@@ -40,7 +40,7 @@ function logLine(jobId, mrId, text) {
 // Sélectionne les MR à traiter pour un job 'review' : toutes celles en to_review.
 function mrsToReview() {
   return db.prepare(`
-    SELECT mr.*, repo.project AS project, repo.url AS url, repo.branch_pattern AS branch_pattern
+    SELECT mr.*, repo.project AS project, repo.url AS url, repo.branch_pattern AS branch_pattern, repo.forge AS forge
     FROM mr JOIN repo ON repo.id = mr.repo_id
     WHERE mr.status = 'to_review' AND repo.enabled = 1
     ORDER BY mr.repo_id, mr.iid`).all();
@@ -48,7 +48,7 @@ function mrsToReview() {
 
 function mrRowById(id) {
   return db.prepare(`
-    SELECT mr.*, repo.project AS project, repo.url AS url, repo.branch_pattern AS branch_pattern
+    SELECT mr.*, repo.project AS project, repo.url AS url, repo.branch_pattern AS branch_pattern, repo.forge AS forge
     FROM mr JOIN repo ON repo.id = mr.repo_id
     WHERE mr.id = ?`).get(id);
 }

@@ -11,6 +11,7 @@ function getConfig() {
 
 const ALLOWED = [
   'gitlab_url', 'access_token', 'clone_path', 'jira_url',
+  'github_url', 'github_token',
   'prompt_review', 'prompt_explain', 'prompt_modify', 'review_skill', 'language',
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
 ];
@@ -23,6 +24,7 @@ function updateConfig(patch) {
   }
   // normalise les URLs (pas de slash final) et le chemin de clonage (pas d'espaces)
   if (next.gitlab_url) next.gitlab_url = next.gitlab_url.trim().replace(/\/+$/, '');
+  if (next.github_url) next.github_url = next.github_url.trim().replace(/\/+$/, '');
   if (next.jira_url) next.jira_url = next.jira_url.trim().replace(/\/+$/, '');
   if (next.clone_path) next.clone_path = next.clone_path.trim();
   // Rafraîchissement auto : 0 = désactivé ; sinon minimum 1 minute (protège des rate limits API).
@@ -49,6 +51,8 @@ function updateConfig(patch) {
       gitlab_url = @gitlab_url,
       access_token = @access_token,
       clone_path = @clone_path,
+      github_url = @github_url,
+      github_token = @github_token,
       jira_url = @jira_url,
       prompt_review = @prompt_review,
       prompt_explain = @prompt_explain,

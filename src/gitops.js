@@ -15,7 +15,7 @@
    dans un clone permettent encore de reconstituer la branche. */
 
 const db = require('./db');
-const gitlab = require('./gitlab');
+const forge = require('./forge');
 const git = require('./git');
 const demoGit = require('./demo-git');
 const { getConfig } = require('./config');
@@ -68,24 +68,31 @@ function shellQuote(s) {
 }
 function commandsFor(action, row, name, message) {
   const real = [];
-  const api = { path: `/projects/${encodeURIComponent(row.project)}/repository/`, method: 'POST' };
+  const gh = forge.forgeOf(row) === 'github';
+  // Chemin d'API affiché : celui de la forge du dépôt (information, pas exécution).
+  const base = gh ? `/repos/${row.project}/git/refs` : `/projects/${encodeURIComponent(row.project)}/repository/`;
+  const api = { path: base, method: 'POST' };
   let equiv = '';
   if (action === 'new_branch') {
     equiv = `git push origin ${row.ref}:refs/heads/${name}`;
-    api.path += 'branches'; api.method = 'POST';
+    if (!gh) api.path += 'branches';
+    api.method = 'POST';
   } else if (action === 'create_tag') {
     equiv = message && message.trim()
       ? `git tag -a ${name} ${row.ref} -m ${shellQuote(message.trim())} && git push origin refs/tags/${name}`
       : `git push origin ${row.ref}:refs/tags/${name}`;
-    api.path += 'tags'; api.method = 'POST';
+    if (!gh) api.path += 'tags';
+    api.method = 'POST';
   } else if (action === 'delete_branch') {
     real.push('git fetch --prune --tags origin');      // filet de sécurité, réel
     equiv = `git push origin --delete ${row.ref}`;
-    api.path += `branches/${encodeURIComponent(row.ref)}`; api.method = 'DELETE';
+    api.path += gh ? `/heads/${row.ref}` : `branches/${encodeURIComponent(row.ref)}`;
+    api.method = 'DELETE';
   } else if (action === 'delete_tag') {
     real.push('git fetch --prune --tags origin');
     equiv = `git push origin --delete refs/tags/${row.ref}`;
-    api.path += `tags/${encodeURIComponent(row.ref)}`; api.method = 'DELETE';
+    api.path += gh ? `/tags/${row.ref}` : `tags/${encodeURIComponent(row.ref)}`;
+    api.method = 'DELETE';
   }
   return { real, equiv, api: `${api.method} ${api.path}` };
 }
@@ -114,17 +121,19 @@ async function preview({ action, targets, name, message }) {
      listings paginés complets par ligne, pour des données identiques.
      On mémoïse la PROMESSE : deux lignes du même dépôt partagent l'appel en vol. */
   const listsCache = new Map();
-  const listsFor = (project) => {
+  const listsFor = (repo) => {
+    const project = repo.project;
+    const api = forge.clientFor(repo);
     // En démo : mêmes formes de données que gitlab.js, mais fictives → toute la logique
     // d'états et de commandes ci-dessous s'applique telle quelle, hors-ligne.
     if (!listsCache.has(project)) {
       listsCache.set(project, demoGit.isDemo()
         ? Promise.resolve(demoGit.listsFor(project))
         : Promise.all([
-          gitlab.listBranchesFull(cfg, project),
-          touchesTags(action) ? gitlab.listTags(cfg, project) : Promise.resolve([]),
-          gitlab.listProtectedBranches(cfg, project),
-          touchesTags(action) ? gitlab.listProtectedTags(cfg, project) : Promise.resolve([]),
+          api.listBranchesFull(cfg, project),
+          touchesTags(action) ? api.listTags(cfg, project) : Promise.resolve([]),
+          api.listProtectedBranches(cfg, project),
+          touchesTags(action) ? api.listProtectedTags(cfg, project) : Promise.resolve([]),
         ]));
     }
     return listsCache.get(project);
@@ -140,9 +149,9 @@ async function preview({ action, targets, name, message }) {
   for (const tg of targets) {
     const repo = repoById(tg.repo_id);
     if (!repo) continue;
-    const line = { repo_id: repo.id, project: repo.project };
+    const line = { repo_id: repo.id, project: repo.project, forge: forge.forgeOf(repo) };
     try {
-      const [branches, tags, protBranches, protTags] = await listsFor(repo.project);
+      const [branches, tags, protBranches, protTags] = await listsFor(repo);
       const defBranch = (branches.find((b) => b.default) || {}).name || null;
 
       if (creating) {
@@ -229,10 +238,11 @@ async function execute({ action, targets, name, message }, onLog = () => {}) {
       }
 
       // `row.target` porte le nom propre à CETTE ligne (global ou par projet).
-      if (action === 'new_branch') await gitlab.createBranch(cfg, row.project, row.target, row.ref);
-      else if (action === 'create_tag') await gitlab.createTag(cfg, row.project, row.target, row.ref, message);
-      else if (action === 'delete_branch') await gitlab.deleteBranch(cfg, row.project, row.ref);
-      else if (action === 'delete_tag') await gitlab.deleteTag(cfg, row.project, row.ref);
+      const api = forge.clientFor(repo);
+      if (action === 'new_branch') await api.createBranch(cfg, row.project, row.target, row.ref);
+      else if (action === 'create_tag') await api.createTag(cfg, row.project, row.target, row.ref, message);
+      else if (action === 'delete_branch') await api.deleteBranch(cfg, row.project, row.ref);
+      else if (action === 'delete_tag') await api.deleteTag(cfg, row.project, row.ref);
 
       db.prepare(`INSERT INTO git_op
         (batch_id, created_at, action, repo_id, project, ref_name, ref_sha, tag_sha, tag_message, source_ref, status, fetched)
@@ -285,15 +295,16 @@ async function restore(opId, onLog = () => {}) {
       await git.ensureRepo(cfg, repo, onLog);
       const cwd = git.cloneDirFor(cfg, repo);
       await git.run('git', [...git.gitTlsArgs(), 'push', 'origin', `${op.ref_sha}:${refPath}`],
-        { cwd, onLog, redactSecrets: [cfg.access_token] });
+        { cwd, onLog, redactSecrets: git.secretsOf(cfg) });
       ok = true; via = 'clone';
     } catch (e) { onLog(t('git.log.restore-local-failed', { error: e.message })); }
   }
   if (!ok) {
     // Repli : l'API accepte un SHA comme point de départ, mais seulement tant que
     // l'objet existe encore côté serveur.
-    if (isTag) await gitlab.createTag(cfg, op.project, op.ref_name, op.ref_sha, op.tag_message || '');
-    else await gitlab.createBranch(cfg, op.project, op.ref_name, op.ref_sha);
+    const api = forge.clientFor(repo);
+    if (isTag) await api.createTag(cfg, op.project, op.ref_name, op.ref_sha, op.tag_message || '');
+    else await api.createBranch(cfg, op.project, op.ref_name, op.ref_sha);
     ok = true; via = 'api';
   }
   db.prepare('UPDATE git_op SET restored_at = ? WHERE id = ?').run(new Date().toISOString(), op.id);

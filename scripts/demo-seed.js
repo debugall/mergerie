@@ -23,10 +23,13 @@ const iso = (daysAgo, h = 10) => new Date(Date.now() - daysAgo * day + h * 36000
 const at = (daysAgo) => new Date(Date.now() - daysAgo * day).toISOString();
 
 const AUTHORS = ['amady', 'lina', 'karim', 'sofia', 'noah'];
+// La démo mélange les deux forges : les badges GitLab/GitHub sont ainsi visibles
+// sans aucune configuration, comme dans une installation réelle multi-forge.
 const PROJECTS = [
-  { project: 'groupe/api-core', url: 'https://gitlab.demo/groupe/api-core.git' },
-  { project: 'groupe/webapp-front', url: 'https://gitlab.demo/groupe/webapp-front.git' },
-  { project: 'groupe/batch-jobs', url: 'https://gitlab.demo/groupe/batch-jobs.git' },
+  { project: 'groupe/api-core', url: 'https://gitlab.demo/groupe/api-core.git', forge: 'gitlab' },
+  { project: 'groupe/webapp-front', url: 'https://gitlab.demo/groupe/webapp-front.git', forge: 'gitlab' },
+  { project: 'groupe/batch-jobs', url: 'https://gitlab.demo/groupe/batch-jobs.git', forge: 'gitlab' },
+  { project: 'acme/design-system', url: 'https://github.com/acme/design-system.git', forge: 'github' },
 ];
 
 // ---------- config : GitLab factice, pas de token (démo hors-ligne) ----------
@@ -36,7 +39,7 @@ db.prepare(`UPDATE config SET gitlab_url = ?, access_token = '', jira_url = ?, r
 // ---------- dépôts ----------
 const repoIds = {};
 for (const p of PROJECTS) {
-  const info = db.prepare('INSERT INTO repo (project, url, branch_pattern, enabled, created_at) VALUES (?, ?, \'\', 1, ?)').run(p.project, p.url, at(60));
+  const info = db.prepare('INSERT INTO repo (project, url, branch_pattern, enabled, created_at, forge) VALUES (?, ?, \'\', 1, ?, ?)').run(p.project, p.url, at(60), p.forge || 'gitlab');
   repoIds[p.project] = info.lastInsertRowid;
 }
 
@@ -88,6 +91,7 @@ const MRS = [
   { project: 'groupe/webapp-front', title: 'Refonte du formulaire de connexion', branch: 'feat/PROJ-790-login', status: 'to_review', changed: ['src/pages/Login.jsx', 'src/api/auth.js', 'src/styles/login.css'], summary: 'refond l\'écran de connexion et sa validation' },
   { project: 'groupe/batch-jobs', title: 'Hotfix : timeout export nocturne', branch: 'hotfix/export-timeout', status: 'to_review', changed: ['jobs/nightlyExport.js'], summary: 'corrige un timeout sur l\'export de nuit' },
   { project: 'groupe/webapp-front', title: 'Ajout du dark mode', branch: 'feat/PROJ-701-dark', status: 'to_review', changed: ['src/theme.js', 'src/components/Toggle.jsx'], summary: 'introduit un thème sombre configurable' },
+  { project: 'acme/design-system', title: 'Tokens de couleur : passage en HSL', branch: 'feat/DS-118-hsl-tokens', status: 'to_review', changed: ['src/tokens/color.ts', 'docs/theming.md'], summary: 'convertit les tokens de couleur en HSL' },
 ];
 // MR déjà reviewées / traitées, réparties dans le temps pour les stats
 const REVIEWED = [
@@ -98,6 +102,7 @@ const REVIEWED = [
   { project: 'groupe/api-core', title: 'Rate limiting par clé d\'API', branch: 'feat/PROJ-560-ratelimit', daysAgo: 17, note: 7.8, status: 'done', changed: ['src/middleware/rateLimit.js'], summary: 'limite le débit par clé d\'API' },
   { project: 'groupe/webapp-front', title: 'Accessibilité : labels et focus', branch: 'feat/PROJ-540-a11y', daysAgo: 22, note: 8.9, status: 'done', changed: ['src/components/Form.jsx', 'src/components/Modal.jsx'], summary: 'améliore l\'accessibilité des formulaires' },
   { project: 'groupe/batch-jobs', title: 'Reprise sur erreur de l\'export', branch: 'feat/PROJ-500-retry', daysAgo: 27, note: 6.8, status: 'done', changed: ['jobs/export.js'], summary: 'ajoute une reprise sur erreur à l\'export' },
+  { project: 'acme/design-system', title: 'Composant Tooltip accessible', branch: 'feat/DS-102-tooltip', daysAgo: 11, note: 8.1, status: 'reviewed', changed: ['src/components/Tooltip.tsx'], summary: 'ajoute un tooltip accessible au clavier' },
 ];
 
 let iid = 200;
@@ -110,7 +115,9 @@ function insertMr(m, extra = {}) {
     .run({
       repo_id: repoIds[m.project], iid, title: m.title,
       source_branch: m.branch, target_branch: extra.target || 'main',
-      web_url: `https://gitlab.demo/${m.project}/-/merge_requests/${iid}`,
+      web_url: (PROJECTS.find((p) => p.project === m.project) || {}).forge === 'github'
+        ? `https://github.com/${m.project}/pull/${iid}`
+        : `https://gitlab.demo/${m.project}/-/merge_requests/${iid}`,
       current_sha: sha, reviewed_sha: extra.reviewed_sha || null,
       status: m.status, updated_at: extra.date || at(1),
       gitlab_created_at: extra.date || at(2),

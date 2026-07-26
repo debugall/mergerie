@@ -3,10 +3,10 @@
 [![CI](https://github.com/debugall/mergerie/actions/workflows/ci.yml/badge.svg)](https://github.com/debugall/mergerie/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](./LICENSE)
 
-**From prompt to merge — a local AI dev cockpit for GitLab.**
+**From prompt to merge — a local AI dev cockpit for GitLab and GitHub.**
 
 *Mergerie* (pronounced *mer-zhuh-REE*) is a local, single-user web app that turns an AI agent CLI into a
-review-and-ship workstation for your GitLab projects.
+review-and-ship workstation for your GitLab and GitHub projects.
 
 Everything runs **on your machine** — a Node + SQLite server and a web UI, nothing sent anywhere except the
 services **you** configure. It drives your **existing Claude or Copilot subscription** through their own CLI
@@ -26,27 +26,30 @@ npm start          # http://localhost:4319
 
 **`npm run demo` — see it live in 30 seconds, no config, no tokens.** It seeds a realistic fake database
 (reviews, scores, resolution tracking, token cost, AI sessions) into an isolated `data-demo/`, then launches
-the tool on it in dry-run — no GitLab connection, no token required.
+the tool on it in dry-run — no forge connection, no token required.
 
 ```bash
 npm run demo       # http://localhost:4319
 ```
 
+> Throughout the docs, **"MR"** means either a GitLab *merge request* or a GitHub *pull request* — the
+> screens and actions are identical.
+
 ## What it does
 
 Seven tabs, each one line:
 
-- **Reviews** — AI-scored, versioned MR reviews; incremental re-reviews; an autonomous **convergence loop** (review → fix → re-review until the score threshold).
+- **Reviews** — AI-scored, versioned reviews of GitLab merge requests **and GitHub pull requests**; incremental re-reviews; an autonomous **convergence loop** (review → fix → re-review until the score threshold).
 - **AI Dev** — automated coding sessions (the AI codes, commits, pushes, opens the MR), off-repo coding, and read-only code exploration — *from prompt to converged MR* in one click.
 - **Statistics** — MR funnel, score trends, per-project resolution rate, token cost.
-- **Git** — multi-repo branch/tag/command operations, branch explorer and ref finder, **restorable** deletions, always with a preview.
+- **Git** — multi-repo branch/tag/command operations across both forges, branch explorer and ref finder, **restorable** deletions, always with a preview.
 - **Docker** — compose project health and `.env` drift, batch actions, live multi-container logs, error badges in the menu.
 - **Jira** — your assigned tickets fetched automatically, full detail with attachments, status changes and comments.
-- **Settings** — GitLab / Jira connections, repositories, review rules, prompt templates, theme and language.
+- **Settings** — GitLab / GitHub / Jira connections, repositories, review rules, prompt templates, theme and language.
 
 ## Learn more
 
-- 🗺️ **[Roadmap](./ROADMAP.md)** — what's next (GitHub & Bitbucket support, orchestrated releases, deployment piloting).
+- 🗺️ **[Roadmap](./ROADMAP.md)** — what's next (Bitbucket support, orchestrated releases, deployment piloting).
 - 📖 **Full documentation** — English version coming soon. For now: **[Guide complet (🇫🇷 French)](./docs/guide.fr.md)**.
 - 🧭 **Architecture** — modules, data model, pipelines: **[PLAN.md (🇫🇷 French)](./PLAN.md)**.
 - 🇫🇷 **Version française :** **[README.fr.md](./README.fr.md)**.

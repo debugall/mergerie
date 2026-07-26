@@ -13,6 +13,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const mock = require('./mock-gitlab');
+const mockGh = require('./mock-github');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 
@@ -36,6 +37,7 @@ function prepareEnv() {
 async function startApp() {
   const dataDir = prepareEnv();
   const gitlab = await mock.start();
+  const github = await mockGh.start();
   // eslint-disable-next-line global-require
   const server = require('../../src/server');
   if (!server.server.listening) {
@@ -65,11 +67,25 @@ async function startApp() {
     });
   }
 
+  // Connexion GitHub (faux serveur) — à appeler en plus de configure() pour les
+  // dépôts GitHub. Les deux forges peuvent être configurées en même temps.
+  async function configureGithub(extra = {}) {
+    return api('PUT', '/api/config', {
+      github_url: github.url,
+      github_token: mockGh.state.token,
+      clone_path: path.join(dataDir, 'clones'),
+      ...extra,
+    });
+  }
+
   return {
-    base, api, configure, dataDir, gitlabUrl: gitlab.url, state: mock.state,
+    base, api, configure, configureGithub, dataDir,
+    gitlabUrl: gitlab.url, githubUrl: github.url,
+    state: mock.state, ghState: mockGh.state,
     async stop() {
       await server.close();
       await gitlab.close();
+      await github.close();
       try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* best-effort */ }
     },
   };

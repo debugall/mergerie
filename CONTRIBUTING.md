@@ -26,8 +26,8 @@ npm install
 npm start          # http://localhost:4319  (or `npm run dev` for auto-reload)
 ```
 
-**Develop without AI or GitLab — dry-run mode.** You don't need an AI CLI, a GitLab instance, or any token
-to work on most of the app. Dry-run generates mock review reports from the diff, so the whole pipeline stays
+**Develop without AI or a forge — dry-run mode.** You don't need an AI CLI, a GitLab or GitHub account, or any
+token to work on most of the app. Dry-run generates mock review reports from the diff, so the whole pipeline stays
 exercisable:
 
 ```bash
@@ -37,7 +37,7 @@ COPILOT_DRY_RUN=1 npm start
 To explore the whole UI with realistic seeded data and zero configuration, use the demo:
 
 ```bash
-npm run demo       # isolated data-demo/, no GitLab connection, no token
+npm run demo       # isolated data-demo/, no forge connection, no token
 ```
 
 Isolate your data directory when experimenting so you never touch a real database:
@@ -68,6 +68,11 @@ npm test
 
 The UI is **bilingual (French / English)** and supports **light and dark themes** — keep both working when
 you touch strings or styles.
+
+Mergerie talks to **two forges** (GitLab and GitHub). Never call `src/gitlab.js` or `src/github.js` directly
+from another module: go through `src/forge.js` (`clientFor(repo)`). Both clients expose the same interface
+and return the same normalized shapes, so callers stay forge-agnostic. A feature that touches a forge should
+be covered on both (`test/e2e-*.test.js` and `test/e2e-github.test.js`).
 
 ## What to work on
 

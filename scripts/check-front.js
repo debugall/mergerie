@@ -104,6 +104,30 @@ bareRepoSelect.length
   ? fail('Liste de dépôts en <select> sans recherche', bareRepoSelect)
   : ok('Toutes les listes de dépôts ont une recherche');
 
+/* 8. Champ de #configForm absent de CONFIG_FIELDS.
+   Le formulaire de réglages est ÉCLATÉ sur plusieurs sous-onglets via l'attribut
+   HTML `form=`, mais son chargement et son enregistrement itèrent sur une liste
+   blanche, CONFIG_FIELDS. Un champ ajouté au HTML sans être ajouté à cette liste
+   s'affiche, se saisit… et n'est jamais enregistré, sans la moindre erreur.
+   C'est arrivé à jira_email/jira_token, puis à github_url/github_token. */
+const declared = new Set(
+  [...(app.match(/const CONFIG_FIELDS = \[[^\]]*\]/s) || [''])[0]
+    .matchAll(/'([a-z0-9_]+)'/g)].map((m) => m[1]),
+);
+// Champs libres du formulaire : on exclut ceux traités à part (cases à cocher,
+// nombres) car ils ont leur propre ligne dans le chargement/enregistrement.
+const HANDLED_APART = new Set(['auto_refresh_minutes', 'review_explain']);
+const orphanFields = [];
+for (const m of html.matchAll(/<input[^>]*\bform="configForm"[^>]*>/g)) {
+  const tag = m[0];
+  const name = (tag.match(/\bname="([a-z0-9_]+)"/) || [])[1];
+  if (!name || HANDLED_APART.has(name) || declared.has(name)) continue;
+  orphanFields.push(`public/index.html  name="${name}" — absent de CONFIG_FIELDS : le champ ne sera jamais enregistré`);
+}
+orphanFields.length
+  ? fail('Champ de #configForm absent de CONFIG_FIELDS', orphanFields)
+  : ok(`Tous les champs de #configForm sont enregistrés (${declared.size} déclarés)`);
+
 console.log('');
 if (failures) { console.log(`${failures} contrôle(s) en échec.`); process.exit(1); }
 console.log('Contrôles front : OK');

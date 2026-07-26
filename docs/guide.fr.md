@@ -6,6 +6,11 @@ Ce guide détaille chaque onglet, la configuration avancée, le TLS entreprise, 
 données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide, reste sur le
 [README.fr.md](../README.fr.md).
 
+> **Convention.** Mergerie gère **GitLab et GitHub**. Dans ce document, **« MR »** désigne
+> indifféremment une *merge request* GitLab ou une *pull request* GitHub : les écrans, les actions et
+> les garanties décrites sont les mêmes. Les rares différences propres à une forge sont signalées
+> explicitement.
+
 ## Les onglets en détail
 
 Sept onglets : **Reviews** · **Dev IA** · **Statistiques** · **Git** · **Docker** · **Jira** · **Réglages**.
@@ -141,7 +146,7 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   **jamais de merge automatique**.
 - **Codage hors dépôt** — l'IA réalise le prompt **directement dans des dossiers locaux**, **en place**
   et **sans git** : ni branche, ni commit, ni push. Pratique pour des dossiers qui ne sont pas des
-  dépôts GitLab (scripts, expériences, mono-repo local…). Le dossier de travail ne se **saisit** plus :
+  dépôts d'une forge (scripts, expériences, mono-repo local…). Le dossier de travail ne se **saisit** plus :
   on choisit un **répertoire local** (déclaré dans *Réglages → Dépôts*) puis **le ou les projets** qu'il
   contient — le chemin en découle, et un chemin tapé à la main est une faute de frappe qu'on ne découvre
   qu'au milieu du traitement. Le formulaire (projets + prompt) vit dans **la même modale que le codage** — tu peux donc
@@ -172,7 +177,7 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   pour comprendre, car l'écriture passe par l'API et non par le CLI — et l'**appel API** sous-jacent.
 - **Les suppressions sont restaurables.** Avant chaque suppression, l'outil **rapatrie les objets
   dans son clone local**, puis enregistre le SHA. L'onglet **Historique** propose alors
-  `Restaurer` — et ça fonctionne **même après le passage du ramasse-miettes de GitLab**, puisque
+  `Restaurer` — et ça fonctionne **même après le passage du ramasse-miettes de la forge**, puisque
   c'est le clone local qui sert de filet, pas le serveur.
 - **Navigation** — positionne **plusieurs projets de ta machine** (pas les clones de l'outil : tes
   propres dépôts) sur la branche de ton choix, en un geste. On choisit un **répertoire local** — un
@@ -202,9 +207,10 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   branches puis `Supprimer la sélection` ouvre l'aperçu pré-rempli. On peut aussi **explorer plusieurs dépôts
   à la fois** (chaque résultat dans un bloc replié). La **liste des tags** affiche la date, la (les)
   **branche(s) qui portent le tag**, l'auteur du commit pointé — avec un bouton `Auteur du tag`
-  qui va lire le **vrai *tagger*** d'un tag annoté dans le clone local (l'API GitLab ne l'expose pas).
+  qui va lire le **vrai *tagger*** d'un tag annoté dans le clone local (aucune des deux API de forge ne l'expose).
 - **Trouver une ref** — on saisit un nom de tag **ou** de branche (saisie libre) et l'outil dit,
-  **à travers tous les dépôts actifs**, lesquels le possèdent : type, commit + lien GitLab, date,
+  **à travers tous les dépôts actifs** (GitLab et GitHub confondus), lesquels le possèdent : type, commit +
+  lien vers la forge, date,
   branche(s) portant le tag, auteur — avec le même bouton `Auteur du tag`. Un dépôt injoignable est
   signalé à part, jamais confondu avec « absente ».
 
@@ -302,10 +308,10 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
 ### Statistiques
 Funnel des MR, distribution des notes, **évolution de la note moyenne par semaine** (« la qualité
 progresse-t-elle ? »), activité hebdomadaire, tableau par projet (avec **taux de résolution**,
-**tendance** ▲/▼ et le **dernier commit** — date, auteur, lien GitLab vers le commit), un **Top 5 des
+**tendance** ▲/▼ et le **dernier commit** — date, auteur, lien vers le commit sur sa forge), un **Top 5 des
 dépôts à l'activité la plus récente** (dernier commit, auteur, lien), **coût en tokens** (camembert par
 type d'appel + **coût moyen par MR reviewée**), résumé des sessions. L'activité de commits est récupérée
-**en direct depuis GitLab** (chargée à part, best-effort : rien ne casse si GitLab est injoignable).
+**en direct depuis la forge de chaque dépôt** (chargée à part, best-effort : rien ne casse si une forge est injoignable).
 Chaque graphe affiche **la question à laquelle il répond**. Le total de tokens est un **minorant** (le
 travail interne de l'agent n'est pas compté).
 
@@ -313,10 +319,12 @@ travail interne de l'agent n'est pas compté).
 Sous-onglets : **Règles de review spécifiques** (critères ajoutés au prompt quand le nom de
 branche contient un fragment donné **ou quand le diff touche un chemin** — glob type `**/migrations/**`,
 `*.sql` —, plus précis ; une règle par chemin peut porter un **badge « risque »** affiché sur les MR
-concernées, calculé **sans IA** juste sur les chemins du diff, pour voir d'un coup d'œil laquelle reviewer en premier) · **Dépôts** (ajout un par un ou en masse depuis la forge, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ·
+concernées, calculé **sans IA** juste sur les chemins du diff, pour voir d'un coup d'œil laquelle reviewer en premier) · **Dépôts** (ajout un par un ou en masse **depuis GitLab** ou **depuis GitHub** — chaque dépôt porte un badge
+de forge, et un même chemin peut exister sur les deux —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ·
 **Notifications** (sous-onglet dédié, voir ci-dessous) ·
 **Général** (thème clair/sombre/auto, langue, et une **zone dangereuse** pour la remise à zéro) ·
-**Git** (**connexion GitLab** — URL + access token, avec *Tester la connexion* —, **dossier de clonage**,
+**Git** (**connexion GitLab** — URL + access token, avec *Tester la connexion* —, **connexion GitHub** — URL
+(vide = github.com, sinon GitHub Enterprise) + token, avec *Tester GitHub* —, **dossier de clonage**,
 et la **palette de commandes git** de l'onglet *Git → Commandes Git* : ajout/édition/suppression de
 commandes *nom + commande figée*) ·
 **Jira** (**connexion Jira** — URL + email + jeton d'API, avec un bouton *Tester Jira* — ; alimente l'onglet
@@ -373,17 +381,23 @@ Un fichier `.env` à la racine est chargé automatiquement au démarrage.
 | `COPILOT_TIMEOUT_MS` | 900000 | timeout d'un appel IA (15 min) |
 | `GITLAB_CA_CERT` | — | chemin d'un CA à épingler (GitLab self-hosted) — **recommandé** |
 | `GITLAB_INSECURE_TLS` | 0 | `1` = ignore la vérif TLS **pour GitLab uniquement** (dépannage) |
+| `GITHUB_CA_CERT` | — | idem pour une instance **GitHub Enterprise** à CA interne |
+| `GITHUB_INSECURE_TLS` | 0 | `1` = ignore la vérif TLS **pour GitHub uniquement** (dépannage) |
 | `GIT_CLONE_SSH` | 0 | `1` = clone via SSH (ta clé) au lieu de HTTPS+token |
 | `MERGERIE_DATA_DIR` | `data/` | dossier de données isolé (utile pour les tests) |
 
 L'agent IA doit pouvoir **modifier des fichiers** (mode « yolo ») pour les sessions de codage. Les explorations, elles, sont en lecture seule : les dépôts sont remis à zéro après chaque passe.
 
-## GitLab self-hosted / certificat d'entreprise
+## GitLab self-hosted / GitHub Enterprise / certificat d'entreprise
 
 Si l'API échoue avec `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` (CA interne inconnue de Node) :
-- **propre** : exporte le CA (chaîne complète jusqu'à la racine) et pointe `GITLAB_CA_CERT=/chemin/ca.pem` ;
-- **dépannage** : `GITLAB_INSECURE_TLS=1`.
-Pour le **clone**, `git` a son propre store : soit `GIT_CLONE_SSH=1` (clé SSH), soit les réglages ci-dessus sont aussi appliqués à git.
+- **propre** : exporte le CA (chaîne complète jusqu'à la racine) et pointe `GITLAB_CA_CERT=/chemin/ca.pem`
+  (ou `GITHUB_CA_CERT` pour une instance GitHub Enterprise) ;
+- **dépannage** : `GITLAB_INSECURE_TLS=1` / `GITHUB_INSECURE_TLS=1`.
+
+Les deux réglages sont **indépendants** : épingler le CA de ton GitLab interne ne change rien aux appels
+vers github.com. Pour le **clone**, `git` a son propre store : soit `GIT_CLONE_SSH=1` (clé SSH), soit les
+réglages ci-dessus sont aussi appliqués à git.
 
 ## Enregistrer une vidéo de présentation (prête pour YouTube)
 
@@ -441,7 +455,7 @@ Par défaut, **le serveur n'écoute QUE sur `localhost`** (`127.0.0.1`) : il n'e
 le réseau. L'exposer est un **opt-in explicite** via `HOST=0.0.0.0` — à **réserver à un réseau de confiance**
 (ou derrière un **reverse-proxy avec authentification**), jamais sur un réseau ouvert : l'app n'a pas d'auth
 et exécute des opérations puissantes sur ta machine. Aucune donnée n'est envoyée ailleurs que vers les
-services que **tu** configures (ton GitLab, ton Jira, ton CLI d'agent).
+services que **tu** configures (ton GitLab, ton GitHub, ton Jira, ton CLI d'agent).
 
 **Permissions de l'agent IA (« mode yolo »).** L'agent tourne avec ses garde-fous de permissions
 **désactivés** (« yolo ») car les sessions de codage l'exigent : il doit pouvoir créer, modifier et
@@ -452,7 +466,7 @@ que **lire un diff**. Mais pendant une **session de codage**, l'agent dispose de
 sur la machine** — rien ne l'empêche techniquement d'agir hors du clone. C'est le **compromis assumé** d'un
 outil **local mono-utilisateur** : à connaître avant usage, et une raison de plus de ne pas exposer le serveur.
 
-**Secrets.** Le **PAT GitLab** et le **jeton d'API Jira** sont stockés **en local** (SQLite, `data/` est
+**Secrets.** Le **PAT GitLab**, le **token GitHub** et le **jeton d'API Jira** sont stockés **en local** (SQLite, `data/` est
 gitignored). L'API et l'UI ne les renvoient **jamais en clair** : ils sont masqués (`***`) en lecture, et
 envoyer `***` en écriture **ne les écrase pas**. Le `.env` (qui peut porter des jetons d'environnement)
 est lui aussi gitignored.
@@ -490,5 +504,6 @@ opérations git multi-dépôts, **suppressions de branches/tags restaurables** (
 local avant suppression), Docker `down` en aperçu et volumes préservés, et **jamais de merge automatique**
 d'une MR.
 
-**TLS entreprise.** Pour un GitLab self-hosted à CA interne, fournis `GITLAB_CA_CERT`. `GITLAB_INSECURE_TLS=1`
+**TLS entreprise.** Pour un GitLab self-hosted ou un GitHub Enterprise à CA interne, fournis `GITLAB_CA_CERT`
+/ `GITHUB_CA_CERT`. `GITLAB_INSECURE_TLS=1` / `GITHUB_INSECURE_TLS=1`
 **désactive** la vérification du certificat : à **réserver à un réseau interne de confiance**.
