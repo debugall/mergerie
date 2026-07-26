@@ -184,6 +184,7 @@ button[data-busy]::after {
 /* Icônes SVG : prennent la couleur du bouton dans les deux thèmes. */
 .ico { width: 16px; height: 16px; flex: 0 0 16px; }
 .ico-sm { width: 14px; height: 14px; flex-basis: 14px; }
+.forge-ico { width: 14px; height: 14px; flex-basis: 14px; vertical-align: -2px; color: var(--muted); }
 
 .primary { background: var(--accent-btn); color: var(--on-accent); border: none; padding: 7px 14px; border-radius: var(--radius); cursor: pointer; }
 .primary:hover { background: var(--accent-btn-hi); border-color: var(--accent-btn-hi); }

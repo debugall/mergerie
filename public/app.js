@@ -1974,6 +1974,7 @@ $('#ticketSave').addEventListener('click', async () => {
 // itèrent dessus (une divergence entre les deux = un champ qui ne s'enregistre pas,
 // exactement le bug qu'ont connu jira_email / jira_token).
 const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'access_token',
+  'github_url', 'github_token',
   'clone_path', 'review_skill', 'prompt_review', 'prompt_explain', 'prompt_modify',
   'converge_threshold', 'converge_max_passes'];
 async function loadConfig() {
@@ -1994,6 +1995,7 @@ $('#configForm').addEventListener('submit', async (e) => {
   // '***' = champ non touché (on n'écrase pas le secret) ; '' = effacement volontaire.
   if (body.access_token === '***') delete body.access_token;
   if (body.jira_token === '***') delete body.jira_token;
+  if (body.github_token === '***') delete body.github_token;
   try {
     await api('/config', { method: 'PUT', body });
     // Le formulaire est éclaté sur deux sous-onglets (Général / Merge Request) : on affiche
@@ -2041,6 +2043,12 @@ $('#notifTest') && $('#notifTest').addEventListener('click', async () => {
   showNotif(tr('settings.notif.test-title'), tr('settings.notif.test-body'));
 });
 
+// Badge de forge : deux dépôts homonymes sur GitLab et GitHub doivent se distinguer.
+function forgeBadge(forge) {
+  const f = forge === 'github' ? 'github' : 'gitlab';
+  return `<svg class="ico forge-ico" title="${tr(`repo.forge.${f}`)}"><use href="#i-${f}"/></svg> `;
+}
+
 async function loadRepos() {
   const rows = await api('/repos');
   const el = $('#repoList');
@@ -2048,7 +2056,7 @@ async function loadRepos() {
     <div class="card repo-row" data-repo="${r.id}">
       <div class="repo-view">
         <div style="min-width:0">
-          <div class="title">${esc(r.project)}</div>
+          <div class="title">${forgeBadge(r.forge)}${esc(r.project)}</div>
           <div class="meta">${esc(r.url)} · ${tr('settings.repo.pattern')} <code>${r.branch_pattern ? esc(r.branch_pattern) : tr('settings.repo.all-mrs')}</code></div>
         </div>
         <div class="spacer"></div>
@@ -3166,18 +3174,24 @@ document.addEventListener('keydown', (e) => {
 
 try { taskKind = localStorage.getItem('aidevtools_task_kind') || 'code'; } catch { /* ignore */ }
 
-/* ---------- Ajout en masse de dépôts depuis GitLab ---------- */
+/* ---------- Ajout en masse de dépôts (GitLab ou GitHub) ----------
+   Une seule modale, paramétrée par la forge : même recherche, même « tout cocher »,
+   seules la source et l'étiquette changent. */
 let bulkProjects = [];
+let bulkForge = 'gitlab';
 const bulkSelected = new Set();
 
-async function openBulk() {
+async function openBulk(forge = 'gitlab') {
+  bulkForge = forge === 'github' ? 'github' : 'gitlab';
   bulkProjects = [];
   bulkSelected.clear();
   $('#bulkSearch').value = '';
   $('#bulkList').innerHTML = skeleton(5);
+  const title = $('#bulkTitle');
+  if (title) title.textContent = tr(`settings.bulk.title.${bulkForge}`);
   $('#bulkModal').hidden = false;
   try {
-    bulkProjects = await api('/gitlab/projects');
+    bulkProjects = await api(`/${bulkForge}/projects`);
     renderBulk();
   } catch (e) {
     $('#bulkList').innerHTML = errorBox(e.message);
@@ -3191,7 +3205,7 @@ function renderBulk() {
   const el = $('#bulkList');
   if (!bulkProjects.length) {
     el.innerHTML = emptyState({ icon: 'alert', title: tr('settings.bulk.empty.title'),
-      text: tr('settings.bulk.empty.text'),
+      text: tr(bulkForge === 'github' ? 'settings.bulk.empty.github.text' : 'settings.bulk.empty.text'),
       actions: [{ act: 'go-config', label: tr('settings.bulk.empty.action') }] });
     return;
   }
@@ -3208,7 +3222,9 @@ function updateBulkCount() {
   $('#bulkAdd').disabled = bulkSelected.size === 0;
 }
 
-$('#btnBrowseProjects').addEventListener('click', openBulk);
+$('#btnBrowseProjects').addEventListener('click', () => openBulk('gitlab'));
+const btnBrowseGithub = $('#btnBrowseGithub');
+if (btnBrowseGithub) btnBrowseGithub.addEventListener('click', () => openBulk('github'));
 $('#bulkCancel').addEventListener('click', closeBulk);
 $('#bulkModal').addEventListener('click', (e) => { if (e.target.id === 'bulkModal') closeBulk(); });
 $('#bulkSearch').addEventListener('input', renderBulk);
@@ -3230,7 +3246,7 @@ $('#bulkAdd').addEventListener('click', async () => {
   if (!projects.length) return;
   const btn = $('#bulkAdd'); btn.disabled = true;
   try {
-    const r = await api('/repos/bulk', { method: 'POST', body: { projects, branch_pattern: $('#bulkPattern').value } });
+    const r = await api('/repos/bulk', { method: 'POST', body: { projects, branch_pattern: $('#bulkPattern').value, forge: bulkForge } });
     toast(tr('toast.repos-added', { n: r.added, added: r.added }) + (r.skipped ? tr('toast.repos-skipped', { n: r.skipped, skipped: r.skipped }) : ''));
     closeBulk();
     loadRepos();
@@ -5835,7 +5851,7 @@ document.addEventListener('keydown', (e) => {
 const btnTestGitlab = $('#btnTestGitlab');
 if (btnTestGitlab) btnTestGitlab.addEventListener('click', async () => {
   const info = $('#configInfoGit') || $('#configInfo');
-  btnTestGitlab.disabled = true; info.textContent = 'test en cours…';
+  btnTestGitlab.disabled = true; info.textContent = tr('settings.test.running');
   try {
     const r = await api('/gitlab/projects');
     const n = (r.projects || r || []).length;
@@ -5844,6 +5860,23 @@ if (btnTestGitlab) btnTestGitlab.addEventListener('click', async () => {
     info.textContent = '';
     toast(explainError(e.message), true);
   } finally { btnTestGitlab.disabled = false; }
+});
+
+const btnTestGithub = $('#btnTestGithub');
+if (btnTestGithub) btnTestGithub.addEventListener('click', async () => {
+  const info = $('#configInfoGithub');
+  btnTestGithub.disabled = true; info.textContent = tr('settings.test.running');
+  try {
+    const f = $('#configForm');
+    const r = await api('/github/test', { method: 'POST', body: {
+      github_url: f.github_url.value.trim(),
+      github_token: f.github_token.value,
+    } });
+    info.textContent = tr('settings.github.test-ok', { login: r.login });
+    info.className = 'ok';
+  } catch (e) {
+    info.textContent = e.message; info.className = 'err';
+  } finally { btnTestGithub.disabled = false; }
 });
 
 const btnTestJira = $('#btnTestJira');

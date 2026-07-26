@@ -15,7 +15,7 @@ const git = require('./git');
 const copilot = require('./copilot');
 const notify = require('./notify');
 const proc = require('./proc');
-const gitlab = require('./gitlab');
+const forge = require('./forge');
 const taskrunner = require('./taskrunner');
 const discover = require('./discover');
 const agentsession = require('./agentsession');
@@ -91,7 +91,7 @@ async function applyFixAndPush(repo, mr, reviewMd, message, onLog, ctx = {}) {
   if (!committed) return { sha: null };
   const sha = await git.headSha(cwd);
   onLog(`push origin ${mr.source_branch}`);
-  await git.pushBranch(cwd, mr.source_branch, onLog, [cfg.access_token]);
+  await git.pushBranch(cwd, mr.source_branch, onLog, git.secretsOf(cfg));
   return { sha };
 }
 
@@ -209,7 +209,7 @@ function latestRun(mrId) {
    Amorce : dev IA → commit → push → crée la MR → upsert ciblé en base → délègue à
    convergeRun. Idempotent : une étape déjà faite (code committé, MR ouverte) est sautée. */
 function reloadTarget(id) {
-  return db.prepare('SELECT tt.*, repo.project FROM task_target tt JOIN repo ON repo.id = tt.repo_id WHERE tt.id = ?').get(id);
+  return db.prepare('SELECT tt.*, repo.project, repo.forge FROM task_target tt JOIN repo ON repo.id = tt.repo_id WHERE tt.id = ?').get(id);
 }
 
 async function bootstrapMrForTarget(task, tg, onLog) {
@@ -252,10 +252,10 @@ async function bootstrapMrForTarget(task, tg, onLog) {
   }
   if (!iid) {
     let target = tg.base_branch;
-    if (!target) { const b = await gitlab.listBranches(cfg, tg.project); target = (b && b.default) || 'main'; }
+    if (!target) { const b = await forge.clientFor(tg).listBranches(cfg, tg.project); target = (b && b.default) || 'main'; }
     const title = (task.commit_message && task.commit_message.trim()) || tg.branch;
     onLog(`création de la MR ${tg.branch} → ${target}`);
-    const created = await gitlab.createMergeRequest(cfg, tg.project, { source_branch: tg.branch, target_branch: target, title });
+    const created = await forge.clientFor(tg).createMergeRequest(cfg, tg.project, { source_branch: tg.branch, target_branch: target, title });
     iid = created.iid;
     db.prepare('UPDATE task_target SET mr_iid = ?, mr_url = ?, mr_target = ?, mr_merged = 0, updated_at = ? WHERE id = ?')
       .run(iid, created.web_url, target, new Date().toISOString(), tg.id);
@@ -263,7 +263,7 @@ async function bootstrapMrForTarget(task, tg, onLog) {
   }
 
   // 4) upsert CIBLÉ de la MR dans la table `mr` (objet API complet → SHA à jour)
-  const apiMr = await gitlab.getMergeRequest(cfg, tg.project, iid);
+  const apiMr = await forge.clientFor(tg).getMergeRequest(cfg, tg.project, iid);
   return discover.upsertMrFromApi(tg.repo_id, apiMr);
 }
 

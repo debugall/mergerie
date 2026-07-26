@@ -44,7 +44,7 @@ function saveAgentOutput(taskId, targetId, text) {
 // Les projets d'une session. Une session « codage » les traite l'un après l'autre ;
 // une session « exploration » les regarde tous ensemble.
 function targetsOf(taskId) {
-  return db.prepare(`SELECT tt.*, repo.project AS project, repo.url AS url
+  return db.prepare(`SELECT tt.*, repo.project AS project, repo.url AS url, repo.forge AS forge
     FROM task_target tt JOIN repo ON repo.id = tt.repo_id
     WHERE tt.task_id = ? ORDER BY tt.id`).all(taskId);
 }
@@ -216,7 +216,7 @@ async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog,
 
   if (task.auto_push || forcePush) {
     onLog(`push : ${pushCommand}`);
-    await git.pushBranch(cwd, tg.branch, onLog, [cfg.access_token]);
+    await git.pushBranch(cwd, tg.branch, onLog, git.secretsOf(cfg));
     setTarget(tg.id, { status: 'pushed' });
     onLog('✅ branche poussée');
   } else {
@@ -399,13 +399,13 @@ async function runTaskAnswer(task, targetId, onLog = () => {}) {
 // Pousse UN projet d'une session (validation manuelle du push).
 async function pushTarget(taskId, targetId, onLog = () => {}) {
   const cfg = getConfig();
-  const tg = db.prepare(`SELECT tt.*, repo.project FROM task_target tt
+  const tg = db.prepare(`SELECT tt.*, repo.project, repo.forge FROM task_target tt
     JOIN repo ON repo.id = tt.repo_id WHERE tt.id = ? AND tt.task_id = ?`).get(targetId, taskId);
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session-2'));
   const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
   const cwd = git.cloneDirFor(cfg, repo);
   onLog(`push ${tg.project} : git push -u origin ${tg.branch}`);
-  await git.pushBranch(cwd, tg.branch, onLog, [cfg.access_token]);
+  await git.pushBranch(cwd, tg.branch, onLog, git.secretsOf(cfg));
   setTarget(tg.id, { status: 'pushed' });
   syncTaskStatus(taskId);
   onLog('✅ branche poussée');

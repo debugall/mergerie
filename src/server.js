@@ -48,7 +48,7 @@ const { discoverAll } = require('./discover');
 const jobs = require('./jobs');
 const reviewer = require('./reviewer');
 const converge = require('./converge');
-const gitlab = require('./gitlab');
+const forge = require('./forge');
 const git = require('./git');
 const demoGit = require('./demo-git');
 const docker = require('./docker');
@@ -96,7 +96,7 @@ function repoById(id) {
 }
 function mrById(id) {
   return db.prepare(`
-    SELECT mr.*, repo.project AS project, repo.url AS url, repo.branch_pattern AS branch_pattern
+    SELECT mr.*, repo.project AS project, repo.url AS url, repo.branch_pattern AS branch_pattern, repo.forge AS forge
     FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?`).get(id);
 }
 function readFileSafe(p) {
@@ -127,6 +127,7 @@ app.get('/api/status', wrap((req, res) => {
     queued: jobs.queueCount(),
     autoRefreshMinutes: Number(getConfig().auto_refresh_minutes) || 0,
     jiraConfigured: jira.isConfigured(getConfig()), // pilote l'UI « enrichir depuis Jira »
+    githubConfigured: forge.isConfigured(getConfig(), 'github'), // pilote l'UI « ajout en masse depuis GitHub »
   });
 }));
 
@@ -300,11 +301,11 @@ app.get('/api/stats', wrap((req, res) => {
    (qui reste local et instantané) — le dashboard le charge en asynchrone. */
 app.get('/api/dashboard/commits', wrap(async (req, res) => {
   const cfg = getConfig();
-  if (!cfg.gitlab_url || !cfg.access_token) { res.json({ configured: false, commits: [] }); return; }
-  const repos = db.prepare('SELECT project FROM repo WHERE enabled = 1').all();
+  if (!forge.isConfigured(cfg, 'gitlab') && !forge.isConfigured(cfg, 'github')) { res.json({ configured: false, commits: [] }); return; }
+  const repos = db.prepare('SELECT project, forge FROM repo WHERE enabled = 1').all();
   const commits = await Promise.all(repos.map(async (r) => {
     try {
-      const c = await gitlab.latestCommit(cfg, r.project);
+      const c = await forge.clientFor(r).latestCommit(cfg, r.project);
       if (!c) return null;
       return {
         project: r.project,
@@ -468,7 +469,7 @@ app.get('/api/footer', wrap((req, res) => {
 
 app.get('/api/config', wrap((req, res) => {
   const c = getConfig();
-  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '' });
+  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '' });
 }));
 
 // Test de la connexion Jira : récupère un ticket témoin pour valider URL/email/token.
@@ -639,10 +640,11 @@ app.put('/api/config', wrap((req, res) => {
   // ne pas écraser un secret si le front renvoie le masque
   if (patch.access_token === '***') delete patch.access_token;
   if (patch.jira_token === '***') delete patch.jira_token;
+  if (patch.github_token === '***') delete patch.github_token;
   const c = updateConfig(patch);
   i18n.setLang(c.language);   // les messages d'erreur suivent la nouvelle langue
   restartAutoRefresh(); // prend en compte le nouvel intervalle
-  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '' });
+  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '' });
 }));
 
 /* ---------- Repos (admin) ---------- */
@@ -653,13 +655,18 @@ app.get('/api/repos', wrap((req, res) => {
 app.post('/api/repos', wrap((req, res) => {
   const { url, branch_pattern } = req.body || {};
   if (!url) throw new Error(t('err.l-url-du-depot-est'));
-  // project optionnel : déduit de l'URL si non fourni
-  const project = (req.body.project || '').trim() || gitlab.normalizeProject(url);
+  // Forge du dépôt : explicite, sinon déduite de l'URL (github.com → github).
+  const forgeName = req.body.forge ? forge.normalizeForge(req.body.forge)
+    : (/github/i.test(String(url)) ? 'github' : 'gitlab');
+  // project optionnel : déduit de l'URL si non fourni, avec le normalizer de la forge
+  const project = (req.body.project || '').trim() || forge.clientFor({ forge: forgeName }).normalizeProject(url);
   if (!project) throw new Error(t('err.impossible-de-deduire-le-chemin'));
   // pattern vide autorisé = toutes les MR (on ne force plus 'PROJ-')
   const pattern = (branch_pattern ?? '').trim();
-  const info = db.prepare(`INSERT INTO repo (project, url, branch_pattern, enabled, created_at)
-    VALUES (?, ?, ?, 1, ?)`).run(project, url.trim(), pattern, new Date().toISOString());
+  const dup = db.prepare('SELECT id FROM repo WHERE project = ? AND COALESCE(forge, ?) = ?').get(project, 'gitlab', forgeName);
+  if (dup) throw new Error(t('err.repo-already-added', { project, forge: forge.label(forgeName) }));
+  const info = db.prepare(`INSERT INTO repo (project, url, branch_pattern, enabled, created_at, forge)
+    VALUES (?, ?, ?, 1, ?, ?)`).run(project, url.trim(), pattern, new Date().toISOString(), forgeName);
   res.json(repoById(info.lastInsertRowid));
 }));
 
@@ -670,7 +677,7 @@ app.put('/api/repos/:id', wrap((req, res) => {
   const nextUrl = url != null ? String(url).trim() : cur.url;
   // project : fourni explicitement, sinon déduit de l'URL, sinon inchangé
   let project = (req.body.project || '').trim();
-  if (!project) project = url != null ? gitlab.normalizeProject(nextUrl) : cur.project;
+  if (!project) project = url != null ? forge.clientFor(cur).normalizeProject(nextUrl) : cur.project;
   // pattern : vide autorisé (= toutes les MR)
   const pattern = branch_pattern != null ? String(branch_pattern).trim() : cur.branch_pattern;
   db.prepare(`UPDATE repo SET project = ?, url = ?, branch_pattern = ?, enabled = ? WHERE id = ?`)
@@ -969,7 +976,7 @@ app.get('/api/docker/logs/stream', (req, res) => {
 // Liste les projets GitLab accessibles, en marquant ceux déjà ajoutés.
 app.get('/api/gitlab/projects', wrap(async (req, res) => {
   const cfg = getConfig();
-  const projects = await gitlab.listAccessibleProjects(cfg);
+  const projects = await forge.gitlab.listAccessibleProjects(cfg);
   const existing = new Set(db.prepare('SELECT project FROM repo').all().map((r) => r.project));
   res.json(projects.map((p) => ({ ...p, already: existing.has(p.project) })));
 }));
@@ -978,25 +985,50 @@ app.get('/api/gitlab/projects', wrap(async (req, res) => {
 app.get('/api/gitlab/branches', wrap(async (req, res) => {
   const repo = repoById(Number(req.query.repo_id));
   if (!repo) throw new Error(t('err.depot-introuvable'));
-  const r = await gitlab.listBranches(getConfig(), repo.project);
+  const r = await forge.clientFor(repo).listBranches(getConfig(), repo.project);
   res.json(r);
+}));
+
+// Liste les dépôts GitHub accessibles, en marquant ceux déjà ajoutés.
+app.get('/api/github/projects', wrap(async (req, res) => {
+  const cfg = getConfig();
+  const projects = await forge.github.listAccessibleProjects(cfg);
+  const existing = new Set(db.prepare("SELECT project FROM repo WHERE forge = 'github'").all().map((r) => r.project));
+  res.json(projects.map((p) => ({ ...p, already: existing.has(p.project) })));
+}));
+
+// Test de la connexion GitHub : renvoie le compte associé au token.
+// Le front peut renvoyer le masque : on teste alors avec le token déjà en base.
+app.post('/api/github/test', wrap(async (req, res) => {
+  const cfg = getConfig();
+  const test = { ...cfg };
+  if (req.body && req.body.github_url != null) test.github_url = req.body.github_url;
+  if (req.body && req.body.github_token && req.body.github_token !== '***') test.github_token = req.body.github_token;
+  if (!forge.github.isConfigured(test)) throw new Error(t('err.token-github-non-configure'));
+  res.json({ ok: true, ...(await forge.github.testConnection(test)) });
 }));
 
 // Ajout en masse de dépôts sélectionnés (ignore les doublons).
 app.post('/api/repos/bulk', wrap((req, res) => {
   const { projects, branch_pattern } = req.body || {};
   if (!Array.isArray(projects) || !projects.length) throw new Error(t('err.aucun-projet-selectionne'));
+  // `forge` absent = gitlab : le contrat de l'API ne change pas pour l'existant.
+  const forgeName = forge.normalizeForge(req.body && req.body.forge);
+  const api = forge.clientFor({ forge: forgeName });
   const pattern = (branch_pattern ?? '').trim();
   const now = new Date().toISOString();
-  const existing = new Set(db.prepare('SELECT project FROM repo').all().map((r) => r.project));
-  const ins = db.prepare('INSERT INTO repo (project, url, branch_pattern, enabled, created_at) VALUES (?,?,?,1,?)');
+  // Unicité par COUPLE (forge, projet) : « acme/web » peut exister sur les deux forges.
+  const key = (f, p) => `${f}:${p}`;
+  const existing = new Set(db.prepare('SELECT project, forge FROM repo').all()
+    .map((r) => key(forge.forgeOf(r), r.project)));
+  const ins = db.prepare('INSERT INTO repo (project, url, branch_pattern, enabled, created_at, forge) VALUES (?,?,?,1,?,?)');
   let added = 0; let skipped = 0;
   const tx = db.transaction((list) => {
     for (const p of list) {
-      const proj = gitlab.normalizeProject(p.project || p.url);
-      if (!proj || existing.has(proj)) { skipped += 1; continue; }
-      ins.run(proj, String(p.url || '').trim(), pattern, now);
-      existing.add(proj); added += 1;
+      const proj = api.normalizeProject(p.project || p.url);
+      if (!proj || existing.has(key(forgeName, proj))) { skipped += 1; continue; }
+      ins.run(proj, String(p.url || '').trim(), pattern, now, forgeName);
+      existing.add(key(forgeName, proj)); added += 1;
     }
   });
   tx(projects);
@@ -1005,14 +1037,14 @@ app.post('/api/repos/bulk', wrap((req, res) => {
 
 /* ---------- Tasks (tâches de dev pilotées par l'IA) ---------- */
 function taskById(id) {
-  return db.prepare(`SELECT task.*, repo.project AS project FROM task JOIN repo ON repo.id = task.repo_id WHERE task.id = ?`).get(id);
+  return db.prepare(`SELECT task.*, repo.project AS project, repo.forge AS forge FROM task JOIN repo ON repo.id = task.repo_id WHERE task.id = ?`).get(id);
 }
 function taskImages(id) {
   return db.prepare('SELECT id, path FROM task_image WHERE task_id = ? ORDER BY id').all(id);
 }
 // Les projets d'une session, avec leur état d'exécution propre (commit, diff, MR…).
 function taskTargets(taskId) {
-  const rows = db.prepare(`SELECT tt.*, repo.project AS project,
+  const rows = db.prepare(`SELECT tt.*, repo.project AS project, repo.forge AS forge,
       mr.iid AS existing_mr_iid, mr.web_url AS existing_mr_url
     FROM task_target tt
     JOIN repo ON repo.id = tt.repo_id
@@ -1038,7 +1070,7 @@ function effectiveMr(tg) {
   return found ? { iid: found.iid, fromApp: false } : null;
 }
 function targetById(taskId, targetId) {
-  return db.prepare(`SELECT tt.*, repo.project AS project
+  return db.prepare(`SELECT tt.*, repo.project AS project, repo.forge AS forge
     FROM task_target tt JOIN repo ON repo.id = tt.repo_id
     WHERE tt.id = ? AND tt.task_id = ?`).get(targetId, taskId);
 }
@@ -1326,8 +1358,8 @@ app.post('/api/tasks/:id/targets/:tid/mr', wrap(async (req, res) => {
   const cfg = getConfig();
   const title = (req.body && req.body.title || '').trim() || t.commit_message || tg.branch;
   let target = tg.base_branch;
-  if (!target) { const b = await gitlab.listBranches(cfg, tg.project); target = b.default || 'main'; }
-  const mr = await gitlab.createMergeRequest(cfg, tg.project, { source_branch: tg.branch, target_branch: target, title });
+  if (!target) { const b = await forge.clientFor(tg).listBranches(cfg, tg.project); target = b.default || 'main'; }
+  const mr = await forge.clientFor(tg).createMergeRequest(cfg, tg.project, { source_branch: tg.branch, target_branch: target, title });
   db.prepare('UPDATE task_target SET mr_iid = ?, mr_url = ?, mr_target = ?, mr_merged = 0, updated_at = ? WHERE id = ?')
     .run(mr.iid, mr.web_url, target, new Date().toISOString(), tg.id);
   res.json({ iid: mr.iid, url: mr.web_url });
@@ -1339,7 +1371,7 @@ app.post('/api/tasks/:id/targets/:tid/merge', wrap(async (req, res) => {
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
   const eff = effectiveMr(tg);
   if (!eff) throw new Error(t('err.aucune-mr-a-merger-pour'));
-  const merged = await gitlab.mergeMergeRequest(getConfig(), tg.project, eff.iid);
+  const merged = await forge.clientFor(tg).mergeMergeRequest(getConfig(), tg.project, eff.iid);
   // GitLab peut répondre 200 sans merge immédiat : on ne marque que si l'état est 'merged'.
   const isMerged = merged && merged.state === 'merged';
   if (isMerged) {
@@ -1456,11 +1488,11 @@ app.get('/api/mrs', wrap((req, res) => {
   const order = 'ORDER BY mr.gitlab_created_at IS NULL, mr.gitlab_created_at DESC, mr.iid DESC';
   if (status) {
     rows = db.prepare(`
-      SELECT mr.*, repo.project AS project FROM mr JOIN repo ON repo.id = mr.repo_id
+      SELECT mr.*, repo.project AS project, repo.forge AS forge FROM mr JOIN repo ON repo.id = mr.repo_id
       WHERE mr.status = ? ${order}`).all(status);
   } else {
     rows = db.prepare(`
-      SELECT mr.*, repo.project AS project FROM mr JOIN repo ON repo.id = mr.repo_id
+      SELECT mr.*, repo.project AS project, repo.forge AS forge FROM mr JOIN repo ON repo.id = mr.repo_id
       ${order}`).all();
   }
   // marque celles qui ont un rapport + extrait la note globale du rapport
@@ -1527,7 +1559,7 @@ app.get('/api/mrs/:id', wrap((req, res) => {
       jira_configured: jira.isConfigured(getConfig()),
     },
     convergence: converge.latestRun(mr.id), // dernière boucle « Converger » (panneau)
-    links: db.prepare(`SELECT ml.repo_id, ml.branch, repo.project FROM mr_link ml JOIN repo ON repo.id = ml.repo_id WHERE ml.mr_id = ?`).all(mr.id),
+    links: db.prepare(`SELECT ml.repo_id, ml.branch, repo.project, repo.forge FROM mr_link ml JOIN repo ON repo.id = ml.repo_id WHERE ml.mr_id = ?`).all(mr.id),
     repo_links: db.prepare(`SELECT rl.linked_repo_id AS repo_id, rl.branch, repo.project FROM repo_link rl JOIN repo ON repo.id = rl.linked_repo_id WHERE rl.repo_id = ?`).all(mr.repo_id),
     stale: mr.reviewed_sha && mr.reviewed_sha !== mr.current_sha,
   });
@@ -1835,7 +1867,7 @@ app.post('/api/mrs/:id/comment', wrap(async (req, res) => {
   const body = (req.body && req.body.body || '').trim();
   if (!body) throw new Error(t('err.commentaire-vide'));
   const cfg = getConfig();
-  const note = await gitlab.postMrNote(cfg, mr.project, mr.iid, body);
+  const note = await forge.clientFor(mr).postMrNote(cfg, mr.project, mr.iid, body);
   db.prepare('INSERT INTO comment_log (mr_id, body, gitlab_note_id, sent_at) VALUES (?,?,?,?)')
     .run(mr.id, body, note && note.id, new Date().toISOString());
   res.json({ ok: true, note_id: note && note.id });
@@ -1845,7 +1877,7 @@ app.post('/api/mrs/:id/comment', wrap(async (req, res) => {
 app.get('/api/mrs/:id/discussions', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
-  const discs = await gitlab.listMrDiscussions(getConfig(), mr.project, mr.iid);
+  const discs = await forge.clientFor(mr).listMrDiscussions(getConfig(), mr.project, mr.iid);
   const simplified = discs.map((d) => ({
     id: d.id,
     notes: (d.notes || []).filter((n) => !n.system).map((n) => ({
@@ -1868,7 +1900,7 @@ app.post('/api/mrs/:id/discussions/:discussionId/reply', wrap(async (req, res) =
   if (!mr) throw new Error(t('err.mr-introuvable'));
   const body = (req.body && req.body.body || '').trim();
   if (!body) throw new Error(t('err.reponse-vide'));
-  const note = await gitlab.replyToDiscussion(getConfig(), mr.project, mr.iid, req.params.discussionId, body);
+  const note = await forge.clientFor(mr).replyToDiscussion(getConfig(), mr.project, mr.iid, req.params.discussionId, body);
   res.json({ ok: true, id: note && note.id });
 }));
 
@@ -1880,7 +1912,7 @@ app.post('/api/mrs/:id/discussion', wrap(async (req, res) => {
   if (!(body || '').trim()) throw new Error(t('err.commentaire-vide-2'));
   if (!new_path && !old_path) throw new Error(t('err.fichier-requis'));
   const cfg = getConfig();
-  const full = await gitlab.getMergeRequest(cfg, mr.project, mr.iid);
+  const full = await forge.clientFor(mr).getMergeRequest(cfg, mr.project, mr.iid);
   const dr = full && full.diff_refs;
   if (!dr || !dr.head_sha) throw new Error(t('err.references-de-diff-introuvables-la'));
   const position = {
@@ -1890,7 +1922,7 @@ app.post('/api/mrs/:id/discussion', wrap(async (req, res) => {
   };
   if (new_line != null && new_line !== '') position.new_line = Number(new_line);
   if (old_line != null && old_line !== '') position.old_line = Number(old_line);
-  const disc = await gitlab.postMrDiscussion(cfg, mr.project, mr.iid, body.trim(), position);
+  const disc = await forge.clientFor(mr).postMrDiscussion(cfg, mr.project, mr.iid, body.trim(), position);
   res.json({ ok: true, id: disc && disc.id });
 }));
 
@@ -1898,7 +1930,7 @@ app.post('/api/mrs/:id/discussion', wrap(async (req, res) => {
 app.post('/api/mrs/:id/merge', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
-  const merged = await gitlab.mergeMergeRequest(getConfig(), mr.project, mr.iid);
+  const merged = await forge.clientFor(mr).mergeMergeRequest(getConfig(), mr.project, mr.iid);
   const isMerged = merged && merged.state === 'merged';
   if (isMerged) {
     const now = new Date().toISOString();
@@ -1948,10 +1980,12 @@ app.get('/api/git/refs', wrap(async (req, res) => {
   const kind = req.query.kind === 'tags' ? 'tags' : 'branches';
   if (demoGit.isDemo()) return res.json(demoGit.refs(repo.project, kind));
   if (kind === 'tags') {
-    const [tags, prot] = await Promise.all([gitlab.listTags(cfg, repo.project), gitlab.listProtectedTags(cfg, repo.project)]);
+    const api = forge.clientFor(repo);
+    const [tags, prot] = await Promise.all([api.listTags(cfg, repo.project), api.listProtectedTags(cfg, repo.project)]);
     return res.json({ kind, refs: tags.map((x) => ({ name: x.name, sha: x.sha, protected: prot.includes(x.name), annotated: x.annotated, date: x.committed_date })) });
   }
-  const [branches, prot] = await Promise.all([gitlab.listBranchesFull(cfg, repo.project), gitlab.listProtectedBranches(cfg, repo.project)]);
+  const apiB = forge.clientFor(repo);
+  const [branches, prot] = await Promise.all([apiB.listBranchesFull(cfg, repo.project), apiB.listProtectedBranches(cfg, repo.project)]);
   res.json({
     kind,
     default: (branches.find((b) => b.default) || {}).name || null,
@@ -1993,9 +2027,9 @@ app.get('/api/git/branches', wrap(async (req, res) => {
   if (demoGit.isDemo()) return res.json(demoGit.branches(repo.project, repo.id));
   const cfg = getConfig();
   const [branches, mrs, tags] = await Promise.all([
-    gitlab.listBranchesFull(cfg, repo.project),
-    gitlab.listAllMRs(cfg, repo.project).catch(() => []),
-    gitlab.listTags(cfg, repo.project).catch(() => []),
+    forge.clientFor(repo).listBranchesFull(cfg, repo.project),
+    forge.clientFor(repo).listAllMRs(cfg, repo.project).catch(() => []),
+    forge.clientFor(repo).listTags(cfg, repo.project).catch(() => []),
   ]);
   const defaultBranch = (branches.find((b) => b.default) || {}).name || 'main';
   await git.ensureRepo(cfg, repo, () => {});
@@ -2042,21 +2076,21 @@ app.get('/api/git/find-ref', wrap(async (req, res) => {
   const type = ['branch', 'tag'].includes(req.query.type) ? req.query.type : 'both';
   const kinds = type === 'both' ? ['branch', 'tag'] : [type];
   if (demoGit.isDemo()) return res.json(demoGit.findRef(name, type, db.prepare('SELECT id, project FROM repo WHERE enabled = 1').all()));
-  if (!cfg.gitlab_url || !cfg.access_token) throw new Error(t('err.token-gitlab-non-configure-configuration'));
+  if (!forge.isConfigured(cfg, 'gitlab') && !forge.isConfigured(cfg, 'github')) throw new Error(t('err.aucune-forge-configuree'));
   const repos = db.prepare('SELECT * FROM repo WHERE enabled = 1').all();
   const results = await Promise.all(repos.map(async (r) => {
     const matches = [];
     let error = null;
     for (const kind of kinds) {
       try {
-        const ref = await gitlab.getRef(cfg, r.project, kind, name);
+        const ref = await forge.clientFor(r).getRef(cfg, r.project, kind, name);
         if (ref) matches.push({
           kind,
           sha: (ref.commit && (ref.commit.short_id || String(ref.commit.id).slice(0, 8))) || '',
           fullSha: (ref.commit && ref.commit.id) || '',
           date: (ref.commit && ref.commit.committed_date) || null,
           author: (ref.commit && ref.commit.author_name) || '',
-          url: refUrl(cfg, r.project, kind, name),
+          url: forge.refUrl(cfg, r, kind, name),
         });
       } catch (e) { error = String(e.message).slice(0, 200); }
     }
@@ -2095,7 +2129,7 @@ app.post('/api/git/mr', wrap(async (req, res) => {
   const title = String(req.body.title || '').trim() || source;
   if (!source || !target) throw new Error(t('err.git.mr-missing-refs'));
   if (source === target) throw new Error(t('err.git.mr-same-ref'));
-  const mr = await gitlab.createMergeRequest(getConfig(), repo.project, {
+  const mr = await forge.clientFor(repo).createMergeRequest(getConfig(), repo.project, {
     source_branch: source, target_branch: target, title,
   });
   res.json({ iid: mr.iid, url: mr.web_url });

@@ -3,30 +3,11 @@
 // La configuration TLS est SCOPÉE à ces requêtes via un agent dédié :
 // on ne touche jamais au TLS global du process.
 
-const https = require('https');
-const http = require('http');
-const fs = require('fs');
 const { t } = require('../public/i18n-runtime.js');
+const httpreq = require('./httpreq');
 
-// Agent TLS dédié aux requêtes GitLab (calculé une fois).
-let _agentComputed = false;
-let _agent; // undefined = agent par défaut (vérification TLS normale)
-function gitlabAgent() {
-  if (_agentComputed) return _agent;
-  _agentComputed = true;
-  const caPath = process.env.GITLAB_CA_CERT;
-  if (caPath) {
-    // Option propre : épingler le CA self-hosted (vérification TLS conservée).
-    _agent = new https.Agent({ ca: fs.readFileSync(caPath) });
-  } else if (process.env.GITLAB_INSECURE_TLS === '1') {
-    // Repli explicite et LOCAL : vérif désactivée POUR GITLAB UNIQUEMENT.
-    console.warn('⚠️  GITLAB_INSECURE_TLS=1 : vérification TLS désactivée pour les requêtes GitLab uniquement.');
-    _agent = new https.Agent({ rejectUnauthorized: false });
-  } else {
-    _agent = undefined;
-  }
-  return _agent;
-}
+// Agent TLS dédié aux requêtes GitLab (calculé une fois), scopé à ce client.
+const gitlabAgent = httpreq.makeAgentFactory('GITLAB_CA_CERT', 'GITLAB_INSECURE_TLS');
 
 // Normalise un identifiant de projet vers le chemin attendu par l'API GitLab :
 // accepte "group/projet", une URL de clone https, ssh, avec ou sans .git,
@@ -54,41 +35,8 @@ function apiBase(cfg) {
   return `${cfg.gitlab_url}/api/v4`;
 }
 
-// Plafond de patience sur une requête GitLab : au-delà, on préfère une erreur claire
-// à un job de fond bloqué indéfiniment.
-const REQUEST_TIMEOUT_MS = 30_000;
-
-// Requête HTTPS bas niveau, agent TLS scopé. Renvoie { status, statusText, body }.
-function request(url, { method = 'GET', headers = {}, body } = {}) {
-  return new Promise((resolve, reject) => {
-    const u = new URL(url);
-    const lib = u.protocol === 'http:' ? http : https;
-    const opts = {
-      method,
-      hostname: u.hostname,
-      port: u.port || (u.protocol === 'http:' ? 80 : 443),
-      path: u.pathname + u.search,
-      headers,
-    };
-    if (u.protocol === 'https:') opts.agent = gitlabAgent();
-    const req = lib.request(opts, (res) => {
-      let data = '';
-      res.on('data', (c) => { data += c; });
-      res.on('end', () => resolve({ status: res.statusCode, statusText: res.statusMessage || '', body: data }));
-    });
-    req.on('error', reject);
-    // Sans timeout, un GitLab qui accepte la connexion sans jamais répondre (VPN qui
-    // tombe, proxy) gèle le job de fond ET toute la file derrière lui : seul un
-    // redémarrage du serveur en sort. Le code ETIMEDOUT est déjà expliqué plus bas.
-    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      const err = new Error(`délai dépassé après ${REQUEST_TIMEOUT_MS / 1000}s`);
-      err.code = 'ETIMEDOUT';
-      req.destroy(err);
-    });
-    if (body != null) req.write(body);
-    req.end();
-  });
-}
+// Requête bas niveau (module partagé), avec l'agent TLS scopé à GitLab.
+const request = (url, opts = {}) => httpreq.request(url, { ...opts, agent: gitlabAgent() });
 
 async function gitlabFetch(cfg, pathAndQuery, opts = {}) {
   if (!cfg.access_token) throw new Error(t('err.token-gitlab-non-configure-configuration'));

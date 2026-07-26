@@ -60,7 +60,7 @@
     <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
     <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></symbol>
     <symbol id="i-bell-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.73 21a2 2 0 0 1-3.46 0M18.63 13A17.9 17.9 0 0 1 18 8M6.26 6.26A6 6 0 0 0 6 8c0 7-3 9-3 9h14M18 8a6 6 0 0 0-9.33-5M1 1l22 22"/></symbol>
-    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-gitlab" viewBox="0 0 24 24"><path d="M12 21.5 8.9 12h6.2L12 21.5Z" fill="currentColor"/><path d="M12 21.5 8.9 12H3.4l8.6 9.5Zm0 0L15.1 12h5.5L12 21.5Z" fill="currentColor" opacity=".7"/><path d="M3.4 12 2.2 8.2a.6.6 0 0 1 .22-.67L12 21.5 3.4 12Zm17.2 0 1.2-3.8a.6.6 0 0 0-.22-.67L12 21.5 20.6 12Z" fill="currentColor" opacity=".45"/><path d="M2.42 7.53 5.1 2.9a.35.35 0 0 1 .62.05L8.9 12H3.4L2.42 7.53Zm19.16 0L18.9 2.9a.35.35 0 0 0-.62.05L15.1 12h5.5l.98-4.47Z" fill="currentColor" opacity=".7"/></symbol><symbol id="i-github" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z" fill="currentColor"/></symbol><symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
 </svg>
 
 <header>
@@ -441,7 +441,8 @@
         <!-- Sous-onglet : Dépôts -->
         <div id="sub-repos" class="subtab">
             <h2 data-i18n="settings.btn.depots">Dépôts</h2>
-            <p><button id="btnBrowseProjects" type="button" class="btn btn-primary" title="Parcourir les projets GitLab et en importer plusieurs d'un coup" data-i18n-title="settings.repo.title.parcourir-les-projets-gitlab-et"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="settings.repo.btn.ajout-en-masse-depuis-gitlab">Ajout en masse depuis GitLab</span></button></p>
+            <p><button id="btnBrowseProjects" type="button" class="btn btn-primary" title="Parcourir les projets GitLab et en importer plusieurs d'un coup" data-i18n-title="settings.repo.title.parcourir-les-projets-gitlab-et"><svg class="ico"><use href="#i-gitlab"/></svg><span data-i18n="settings.btn.browse-gitlab">Ajout en masse depuis GitLab</span></button>
+            <button id="btnBrowseGithub" type="button" class="btn" title="Parcourir les dépôts GitHub et en importer plusieurs d'un coup" data-i18n-title="settings.btn.browse-github"><svg class="ico"><use href="#i-github"/></svg><span data-i18n="settings.btn.browse-github">Ajout en masse depuis GitHub</span></button></p>
             <form id="repoForm" class="form inline">
                 <input name="url" placeholder="https://gitlab…/group/sous-groupe/projet.git (URL complète)" required style="flex:2" /><button type="button" class="hint" tabindex="0" aria-label="URL de clone complète du dépôt, sous-groupes inclus. Le chemin projet en est déduit automatiquement." data-tip="URL de clone complète du dépôt, sous-groupes inclus. Le chemin projet en est déduit automatiquement." data-i18n-tip="settings.repo.tip.url-de-clone-complete-du"><svg class="ico"><use href="#i-info"/></svg></button>
                 <input name="project" placeholder="chemin projet (optionnel, déduit de l'URL)" data-i18n-placeholder="settings.repo.ph.chemin-projet-optionnel-deduit-de" /><button type="button" class="hint" tabindex="0" aria-label="Chemin GitLab du projet, ex. groupe/sous-groupe/projet. À ne remplir que si la déduction depuis l'URL échoue." data-tip="Chemin GitLab du projet, ex. groupe/sous-groupe/projet. À ne remplir que si la déduction depuis l'URL échoue." data-i18n-tip="settings.repo.tip.chemin-gitlab-du-projet-ex"><svg class="ico"><use href="#i-info"/></svg></button>
@@ -558,6 +559,17 @@
                 <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
                 <button class="btn" type="button" id="btnTestGitlab" title="Vérifier que l'URL et le token permettent bien d'accéder à GitLab" data-i18n-title="settings.title.verifier-que-l-url-et"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.btn.tester-la-connexion">Tester la connexion</span></button>
                 <span id="configInfoGit" class="muted"></span>
+            </div>
+        </div>
+
+        <h2><svg class="ico"><use href="#i-github"/></svg> <span data-i18n="settings.sub.github">GitHub</span></h2>
+        <div class="form" style="max-width:520px">
+            <label><span data-i18n="settings.github.url">URL GitHub</span> <button type="button" class="hint" tabindex="0" aria-label="Vide = github.com. Pour GitHub Enterprise, l'URL de ton instance." data-tip="Vide = github.com. Pour GitHub Enterprise, l'URL de ton instance." data-i18n-tip="settings.github.url.help"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="github_url" placeholder="https://github.com" /></label>
+            <label><span data-i18n="settings.github.token">Token GitHub</span> <button type="button" class="hint" tabindex="0" aria-label="Token classic avec le scope repo, ou fine-grained avec Contents + Pull requests + Metadata." data-tip="Token classic avec le scope repo, ou fine-grained avec Contents + Pull requests + Metadata." data-i18n-tip="settings.github.token.help"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="github_token" type="password" placeholder="ghp_…" /></label>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                <button class="btn" type="button" id="btnTestGithub" title="Vérifier que le token permet bien d'accéder à GitHub" data-i18n-title="settings.title.tester-github"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.btn.tester-github">Tester GitHub</span></button>
+                <span id="configInfoGithub" class="muted"></span>
             </div>
         </div>
 
@@ -734,7 +746,7 @@
 <!-- Modale : ajout en masse de dépôts depuis GitLab -->
 <div id="bulkModal" class="modal" hidden>
     <div class="modal-box bulk-box">
-        <h3 data-i18n="settings.head.ajouter-des-depots-depuis-gitlab">Ajouter des dépôts depuis GitLab</h3>
+        <h3 id="bulkTitle">Ajouter des dépôts depuis GitLab</h3>
         <div class="bulk-toolbar">
             <input id="bulkSearch" class="search" type="search" placeholder="Filtrer les projets…" data-i18n-placeholder="settings.ph.filtrer-les-projets" /><button type="button" class="hint" tabindex="0" aria-label="Filtre l’affichage de la liste ci-dessous (nom ou chemin du projet). N’a aucun effet sur ce qui sera ajouté : seules les cases cochées comptent." data-tip="Filtre l’affichage de la liste ci-dessous (nom ou chemin du projet). N’a aucun effet sur ce qui sera ajouté : seules les cases cochées comptent." data-i18n-tip="settings.tip.filtre-l-affichage-de-la"><svg class="ico"><use href="#i-info"/></svg></button>
             <button id="bulkAll" type="button" class="btn btn-sm" title="Cocher tous les projets affichés" data-i18n-title="settings.title.cocher-tous-les-projets-affiches" data-i18n="settings.btn.tout-cocher">Tout cocher</button>

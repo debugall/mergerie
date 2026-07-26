@@ -114,6 +114,12 @@ CREATE TABLE IF NOT EXISTS comment_log (
 );
 `);
 
+// Migration : forge d'un dépôt ('gitlab' | 'github'). Les dépôts existants restent
+// GitLab — la valeur par défaut suffit, aucune donnée à réécrire.
+try { db.exec("ALTER TABLE repo ADD COLUMN forge TEXT DEFAULT 'gitlab'"); } catch { /* déjà présente */ }
+// Migration : connexion GitHub (URL vide = github.com ; sinon GitHub Enterprise).
+try { db.exec("ALTER TABLE config ADD COLUMN github_url TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN github_token TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 // Migration : colonne d'erreur persistée par MR (texte complet, non tronqué).
 try { db.exec('ALTER TABLE mr ADD COLUMN last_error TEXT'); } catch { /* déjà présente */ }
 // Migration : date de création de la MR côté GitLab (pour le tri).
