@@ -1,0 +1,280 @@
+'use strict';
+/* Sessions de dev (onglet « Dev IA ») de bout en bout : création multi-projets,
+   validation des saisies, exécution sur un vrai dépôt git, itération, push,
+   création puis merge de la MR, et exploration en lecture seule. */
+
+const { test, before, after, describe } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { startApp, makeRemoteRepo, waitForJobs, git } = require('./helpers/app');
+
+const PNG = 'data:image/png;base64,aGVsbG8=';
+
+describe('Sessions de dev de bout en bout', () => {
+  let app; let repo; let repo2; let repoId; let repo2Id;
+
+  before(async () => {
+    app = await startApp();
+    repo = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'r1-')));
+    repo2 = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'r2-')));
+    app.state.branches['grp/app'] = [{ name: 'main', default: true, protected: false, merged: false, commit: { id: repo.mainSha } }];
+    await app.configure();
+    repoId = (await app.api('POST', '/api/repos', { url: repo.url, project: 'grp/app' })).body.id;
+    repo2Id = (await app.api('POST', '/api/repos', { url: repo2.url, project: 'grp/lib' })).body.id;
+  });
+
+  after(async () => { await app.stop(); });
+
+  test('la création d’une session valide ses entrées', async () => {
+    const sansPrompt = await app.api('POST', '/api/tasks', { targets: [{ repo_id: repoId, branch: 'x' }] });
+    assert.equal(sansPrompt.status, 400);
+
+    const sansProjet = await app.api('POST', '/api/tasks', { prompt: 'fais un truc', targets: [] });
+    assert.equal(sansProjet.status, 400);
+
+    const sansBranche = await app.api('POST', '/api/tasks', { prompt: 'p', targets: [{ repo_id: repoId }] });
+    assert.equal(sansBranche.status, 400, 'en codage, la branche de travail est obligatoire');
+
+    const brancheInvalide = await app.api('POST', '/api/tasks', { prompt: 'p', targets: [{ repo_id: repoId, branch: '--yolo' }] });
+    assert.equal(brancheInvalide.status, 400, 'un nom de branche ne doit jamais pouvoir passer pour un flag git');
+
+    const traversee = await app.api('POST', '/api/tasks', { prompt: 'p', targets: [{ repo_id: repoId, branch: 'a/../../b' }] });
+    assert.equal(traversee.status, 400);
+
+    const doublon = await app.api('POST', '/api/tasks', {
+      prompt: 'p', targets: [{ repo_id: repoId, branch: 'a' }, { repo_id: repoId, branch: 'b' }],
+    });
+    assert.equal(doublon.status, 400, 'un même projet ne peut pas être sélectionné deux fois');
+
+    const inconnu = await app.api('POST', '/api/tasks', { prompt: 'p', targets: [{ repo_id: 99999, branch: 'a' }] });
+    assert.equal(inconnu.status, 400);
+  });
+
+  test('cycle complet d’une session de codage sur deux projets', async () => {
+    const creation = await app.api('POST', '/api/tasks', {
+      kind: 'code',
+      prompt: 'Ajoute une fonction de total',
+      commit_message: 'feat: total',
+      images: [PNG],
+      targets: [{ repo_id: repoId, branch: 'feat/total' }, { repo_id: repo2Id, branch: 'feat/total' }],
+    });
+    assert.equal(creation.status, 200);
+    const taskId = creation.body.id;
+    assert.equal(creation.body.targets.length, 2);
+    assert.equal(creation.body.status, 'new');
+
+    const detail = await app.api('GET', `/api/tasks/${taskId}`);
+    assert.equal(detail.body.images.length, 1);
+    assert.equal((await app.api('GET', `/api/tasks/${taskId}/image/0`)).status, 200);
+    assert.equal((await app.api('GET', `/api/tasks/${taskId}/image/9`)).status, 404);
+
+    // Exécution : l'agent est en dry-run, le commit et le diff sont bien réels.
+    await app.api('POST', `/api/tasks/${taskId}/run`);
+    await waitForJobs(app.api);
+
+    const apres = (await app.api('GET', `/api/tasks/${taskId}`)).body.task;
+    assert.equal(apres.status, 'committed');
+    assert.ok(apres.targets.every((t) => t.status === 'committed' && t.commit_sha));
+    assert.equal(apres.targets[0].push_command, 'git push -u origin feat/total');
+
+    const diff = await app.api('GET', `/api/tasks/${taskId}/targets/${apres.targets[0].id}/diff`);
+    assert.match(diff.body.diff, /PROJ_TASK_DRYRUN\.md/);
+    assert.equal(diff.body.project, 'grp/app');
+    assert.equal((await app.api('GET', `/api/tasks/${taskId}/targets/99999/diff`)).status, 400);
+
+    // Itération : une 2e passe sur la même branche.
+    assert.equal((await app.api('POST', `/api/tasks/${taskId}/followup`, { instruction: ' ' })).status, 400);
+    await app.api('POST', `/api/tasks/${taskId}/followup`, { instruction: 'Ajoute aussi la TVA' });
+    await waitForJobs(app.api);
+    const t2 = (await app.api('GET', `/api/tasks/${taskId}`)).body.task;
+    assert.notEqual(t2.targets[0].commit_sha, apres.targets[0].commit_sha, 'la reprise produit un nouveau commit');
+
+    // Push : la branche existe ensuite réellement dans le dépôt distant.
+    const target = t2.targets[0];
+    await app.api('POST', `/api/tasks/${taskId}/targets/${target.id}/push`);
+    await waitForJobs(app.api);
+    const t3 = (await app.api('GET', `/api/tasks/${taskId}`)).body.task;
+    assert.equal(t3.targets[0].status, 'pushed');
+    assert.match(git(repo.bare, ['branch', '--list', 'feat/total']), /feat\/total/);
+
+    // MR : créée via l'API GitLab, puis mergée.
+    const avantPush = t3.targets[1];
+    assert.equal((await app.api('POST', `/api/tasks/${taskId}/targets/${avantPush.id}/mr`)).status, 400,
+      'on ne crée pas de MR sur une branche non poussée');
+
+    const mr = await app.api('POST', `/api/tasks/${taskId}/targets/${target.id}/mr`, { title: 'Total TTC' });
+    assert.equal(mr.status, 200);
+    assert.ok(mr.body.iid);
+    const doublon = await app.api('POST', `/api/tasks/${taskId}/targets/${target.id}/mr`);
+    assert.equal(doublon.status, 400, 'une MR déjà ouverte n’est pas recréée');
+
+    const merge = await app.api('POST', `/api/tasks/${taskId}/targets/${target.id}/merge`);
+    assert.equal(merge.body.merged, true);
+    const t4 = (await app.api('GET', `/api/tasks/${taskId}`)).body.task;
+    assert.equal(t4.targets[0].mr_merged, 1);
+
+    const stats = await app.api('GET', '/api/stats');
+    assert.equal(stats.body.tasks.mrCreated, 1);
+    assert.equal(stats.body.tasks.mrMerged, 1);
+  });
+
+  test('modification et suppression d’une session', async () => {
+    const { body: task } = await app.api('POST', '/api/tasks', {
+      prompt: 'v1', targets: [{ repo_id: repoId, branch: 'feat/edit' }],
+    });
+
+    const maj = await app.api('PUT', `/api/tasks/${task.id}`, {
+      prompt: 'v2', commit_message: 'chore: v2', auto_push: 1,
+      targets: [{ repo_id: repoId, branch: 'feat/edit' }],
+    });
+    assert.equal(maj.body.prompt, 'v2');
+    assert.equal(maj.body.auto_push, 1);
+    assert.equal(maj.body.targets.length, 1);
+
+    // Le toggle « L'IA peut me poser des questions » se persiste à l'édition (et se décoche).
+    const on = await app.api('PUT', `/api/tasks/${task.id}`, { ask_questions: true });
+    assert.equal(on.body.ask_questions, 1, 'coché → enregistré');
+    assert.equal((await app.api('GET', `/api/tasks/${task.id}`)).body.task.ask_questions, 1, 'toujours coché au rechargement');
+    const off = await app.api('PUT', `/api/tasks/${task.id}`, { ask_questions: false });
+    assert.equal(off.body.ask_questions, 0, 'décoché → enregistré');
+    assert.equal(maj.body.targets[0].id, task.targets[0].id, 'une composition inchangée préserve l’état d’exécution');
+
+    const recompose = await app.api('PUT', `/api/tasks/${task.id}`, {
+      targets: [{ repo_id: repoId, branch: 'feat/edit' }, { repo_id: repo2Id, branch: 'feat/edit' }],
+    });
+    assert.equal(recompose.body.targets.length, 2);
+
+    assert.equal((await app.api('PUT', '/api/tasks/99999', {})).status, 400);
+    assert.equal((await app.api('POST', '/api/tasks/99999/run')).status, 400);
+
+    const images = await app.api('PUT', `/api/tasks/${task.id}`, { images: [PNG, PNG] });
+    assert.equal(images.status, 200);
+    const detail = await app.api('GET', `/api/tasks/${task.id}`);
+    assert.equal(detail.body.images.length, 2);
+    const imgId = (await app.api('GET', `/api/tasks/${task.id}`)).body.images[0].id;
+    assert.equal((await app.api('DELETE', `/api/tasks/${task.id}/image/${imgId}`)).body.ok, true);
+    assert.equal((await app.api('GET', `/api/tasks/${task.id}`)).body.images.length, 1);
+
+    assert.equal((await app.api('DELETE', `/api/tasks/${task.id}`)).body.ok, true);
+    assert.equal((await app.api('GET', `/api/tasks/${task.id}`)).status, 400);
+    assert.ok(!fs.existsSync(path.join(app.dataDir, 'tasks', String(task.id))));
+  });
+
+  test('une session en échec consigne son erreur et l’efface à la demande', async () => {
+    const { body: task } = await app.api('POST', '/api/tasks', {
+      prompt: 'suivi impossible', targets: [{ repo_id: repoId, branch: 'jamais/creee' }],
+    });
+    // Un suivi sans exécution préalable : la branche n'existe nulle part.
+    await app.api('POST', `/api/tasks/${task.id}/followup`, { instruction: 'continue' });
+    await waitForJobs(app.api);
+
+    const enErreur = (await app.api('GET', `/api/tasks/${task.id}`)).body.task;
+    assert.equal(enErreur.status, 'error');
+    assert.ok(enErreur.last_error);
+
+    assert.equal((await app.api('POST', `/api/tasks/${task.id}/clear-error`)).body.ok, true);
+    assert.equal((await app.api('GET', `/api/tasks/${task.id}`)).body.task.last_error, null);
+  });
+
+  test('exploration : lecture seule, réponse en Markdown', async () => {
+    const { body: task } = await app.api('POST', '/api/tasks', {
+      kind: 'explore',
+      prompt: 'Comment fonctionne le module app ?',
+      targets: [{ repo_id: repoId }],   // branche facultative en exploration
+    });
+    assert.equal(task.kind, 'explore');
+    assert.ok(!task.branch, 'en exploration la branche est facultative');
+    assert.equal(task.targets[0].branch, null);
+
+    await app.api('POST', `/api/tasks/${task.id}/run`);
+    await waitForJobs(app.api);
+
+    const apres = (await app.api('GET', `/api/tasks/${task.id}`)).body.task;
+    assert.equal(apres.status, 'done');
+
+    const md = await app.api('GET', `/api/tasks/${task.id}/md`);
+    assert.match(md.body.md, /Comment fonctionne le module app/);
+    assert.equal(md.body.prompt, 'Comment fonctionne le module app ?');
+
+    // Question de suivi : la réponse précédente est reprise en contexte.
+    await app.api('POST', `/api/tasks/${task.id}/followup`, { instruction: 'Et les tests ?' });
+    await waitForJobs(app.api);
+    const md2 = await app.api('GET', `/api/tasks/${task.id}/md`);
+    assert.match(md2.body.md, /Et les tests/);
+
+    // Le dépôt exploré n'a subi aucune modification.
+    const clone = path.join(app.dataDir, 'clones', 'grp__app');
+    assert.equal(git(clone, ['status', '--porcelain']).trim(), '', 'exploration = lecture seule');
+    assert.equal((await app.api('GET', '/api/tasks/99999/md')).status, 400);
+  });
+
+  test('GET /api/tasks liste les sessions avec leurs projets', async () => {
+    const { body } = await app.api('GET', '/api/tasks');
+    assert.ok(body.length >= 2);
+    assert.ok(body.every((t) => Array.isArray(t.targets)));
+    assert.ok(body.some((t) => t.image_count > 0));
+  });
+
+  // ask → stop → resume : l'IA pose des questions, la session passe en attente (la file se
+  // libère), puis reprend après réponses. En dry-run l'agent « simule » un bloc QUESTIONS.
+  test('l’IA pose une question : needs_input puis reprise après réponses', async () => {
+    const creation = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Ajoute un mécanisme de retry', ask_questions: true,
+      targets: [{ repo_id: repoId, branch: 'feat/ask' }],
+    });
+    assert.equal(creation.status, 200);
+    assert.equal(creation.body.ask_questions, 1, 'l’option est persistée');
+    const taskId = creation.body.id;
+
+    await app.api('POST', `/api/tasks/${taskId}/run`);
+    await waitForJobs(app.api); // la file rend la main → elle n'est pas gelée
+
+    let task = (await app.api('GET', `/api/tasks/${taskId}`)).body.task;
+    assert.equal(task.status, 'needs_input', 'la session est en attente, pas en erreur');
+    const tg = task.targets[0];
+    assert.equal(tg.status, 'needs_input');
+    assert.equal(tg.questions.length, 2, 'les deux questions sont exposées');
+    assert.ok(tg.questions[0].options && tg.questions[0].options.length, 'q1 : options (radio)');
+    assert.equal(tg.questions[1].options, null, 'q2 : réponse libre');
+    assert.ok(!tg.commit_sha, 'aucun commit tant que la question n’est pas répondue');
+
+    // Réponses vides → refus explicite.
+    assert.equal((await app.api('POST', `/api/tasks/${taskId}/targets/${tg.id}/answer`, { answers: {} })).status, 400);
+
+    // Réponses valides → reprise de la session.
+    const ans = await app.api('POST', `/api/tasks/${taskId}/targets/${tg.id}/answer`, {
+      answers: { q1: 'decorator', q2: 'Oui, via une migration idempotente' },
+    });
+    assert.equal(ans.status, 200);
+    await waitForJobs(app.api);
+
+    task = (await app.api('GET', `/api/tasks/${taskId}`)).body.task;
+    assert.equal(task.status, 'committed', 'après réponses, l’agent poursuit et commite');
+    assert.equal(task.targets[0].status, 'committed');
+    assert.ok(task.targets[0].commit_sha);
+    assert.ok(!task.targets[0].questions, 'les questions sont soldées');
+
+    // Répondre à un projet qui n'attend rien → refusé.
+    assert.equal((await app.api('POST', `/api/tasks/${taskId}/targets/${task.targets[0].id}/answer`, { answers: { q1: 'x' } })).status, 400);
+  });
+
+  test('toggle désactivé : aucune question n’est posée', async () => {
+    const c = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Tâche sans questions', ask_questions: false,
+      targets: [{ repo_id: repoId, branch: 'feat/noask' }],
+    });
+    assert.equal(c.body.ask_questions, 0);
+    await app.api('POST', `/api/tasks/${c.body.id}/run`);
+    await waitForJobs(app.api);
+    const task = (await app.api('GET', `/api/tasks/${c.body.id}`)).body.task;
+    assert.equal(task.status, 'committed', 'sans le toggle, l’agent tranche seul et commite');
+
+    // Retour de l'agent consultable en fin de session (comme la réponse d'une exploration).
+    const tg = task.targets[0];
+    assert.ok(tg.output_path, 'le retour de l’agent est référencé sur le projet');
+    const out = (await app.api('GET', `/api/tasks/${c.body.id}/targets/${tg.id}/output`)).body;
+    assert.ok(out.output && out.output.includes('dry-run'), 'le retour est lisible');
+    assert.equal(out.project, 'grp/app');
+  });
+});

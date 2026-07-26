@@ -1,0 +1,53 @@
+{
+  "name": "mergerie",
+  "version": "1.0.0",
+  "description": "From prompt to merge — a local AI dev cockpit for GitLab: MR review, autonomous coding sessions and convergence.",
+  "license": "AGPL-3.0-only",
+  "author": "Amady (https://github.com/debugall)",
+  "keywords": [
+    "gitlab",
+    "code-review",
+    "merge-request",
+    "ai",
+    "llm",
+    "claude",
+    "copilot",
+    "code-review-automation",
+    "devtools",
+    "self-hosted",
+    "local-first"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/debugall/mergerie.git"
+  },
+  "bugs": {
+    "url": "https://github.com/debugall/mergerie/issues"
+  },
+  "homepage": "https://github.com/debugall/mergerie#readme",
+  "type": "commonjs",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "dev": "node --env-file-if-exists=.env --watch src/server.js",
+    "pipe": "node --env-file-if-exists=.env src/cli.js",
+    "test": "node --test test/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage test/*.test.js",
+    "i18n:check": "node scripts/i18n-check.js",
+    "check:front": "node scripts/check-front.js",
+    "check": "npm run check:front && npm run i18n:check",
+    "demo": "node scripts/demo-seed.js && MERGERIE_DEMO=1 MERGERIE_DATA_DIR=data-demo COPILOT_DRY_RUN=1 node src/server.js",
+    "record:demo": "node scripts/record-demo.js"
+  },
+  "engines": {
+    "node": ">=22.9.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "express": "^4.21.2",
+    "gpt-tokenizer": "^3.4.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0"
+  }
+}

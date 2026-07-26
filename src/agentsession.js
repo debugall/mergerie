@@ -1,0 +1,204 @@
+'use strict';
+/* Couche d'adaptation « reprise de session d'agent » (spec §4), validée par le banc d'essai
+ * de Réglages → AI sessions. Le reste de l'app ne manipule qu'une CLÉ logique de session ;
+ * chaque backend la traduit en handle natif :
+ *   - claude  : --session-id <uuid> (création) puis --resume <uuid> (reprise). Déterministe.
+ *   - copilot : un COPILOT_HOME isolé par clé + --continue (l'unique session du home).
+ *
+ * Invariants (spec §4.4) : le cwd fait partie de l'identité de session (persister + vérifier) ;
+ * jamais --continue côté claude ; une clé = une exécution à la fois (verrou côté appelant).
+ */
+
+const { spawn } = require('child_process');
+const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const copilot = require('./copilot');
+const { DATA_DIR, ensureDir } = require('./paths');
+
+const TIMEOUT_MS = Number(process.env.AGENT_SESSION_TIMEOUT_MS || process.env.COPILOT_TIMEOUT_MS || 900000);
+const SESSIONS_ROOT = path.join(DATA_DIR, 'agent-sessions'); // homes Copilot isolés par clé
+
+function backendName() {
+  const bin = String(copilot.COPILOT_BIN || '').toLowerCase();
+  if (bin.includes('claude')) return 'claude';
+  if (bin.includes('copilot')) return 'copilot';
+  return 'unknown';
+}
+
+const slug = (key) => String(key).replace(/[^\w.-]/g, '_').slice(0, 120);
+
+function spawnAgent({ args, cwd, env }, onLog = () => {}) {
+  return new Promise((resolve, reject) => {
+    const bin = copilot.COPILOT_BIN;
+    const shown = args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ');
+    onLog(`$ ${bin} ${shown}  (cwd=${cwd})`);
+    const child = spawn(bin, args, { cwd, env: { ...process.env, ...(env || {}) } });
+    let stdout = ''; let stderr = ''; let obuf = '';
+    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`timeout après ${TIMEOUT_MS} ms`)); }, TIMEOUT_MS);
+    // Streame la sortie ligne par ligne : on voit l'agent avancer (copilot n'a pas de mode événements).
+    child.stdout.on('data', (d) => { stdout += d; obuf = emitLines(obuf + d, onLog); });
+    child.stderr.on('data', (d) => { stderr += d; });
+    child.on('error', (e) => { clearTimeout(timer); reject(e); });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (obuf) onLog(obuf);
+      if (code === 0) resolve(stdout.trim());
+      else reject(new Error(`${bin} a échoué (code ${code}) : ${(stderr || stdout).slice(0, 500)}`));
+    });
+  });
+}
+
+function emitLines(buf, onLog) {
+  const parts = buf.replace(/\r/g, '\n').split('\n');
+  const remainder = parts.pop();
+  for (const p of parts) if (p.trim()) onLog(p);
+  return remainder;
+}
+
+// Indice court pour un appel d'outil (fichier édité, commande, motif) — pour un log lisible.
+function toolHint(input) {
+  if (!input || typeof input !== 'object') return '';
+  const f = input.file_path || input.path || input.notebook_path;
+  if (f) return ` ${f}`;
+  if (input.command) return ` ${String(input.command).slice(0, 70)}`;
+  if (input.pattern) return ` /${input.pattern}/`;
+  if (input.url) return ` ${input.url}`;
+  return '';
+}
+
+// Claude en `--output-format stream-json` émet des ÉVÉNEMENTS NDJSON en DIRECT (contrairement
+// à `json` qui ne rend qu'à la fin). On les streame en clair dans le log (texte de l'assistant
+// + outils utilisés) et on capture le RÉSULTAT final (texte + session_id).
+function runClaudeStream(args, cwd, onLog) {
+  return new Promise((resolve, reject) => {
+    const bin = copilot.COPILOT_BIN;
+    const shown = args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ');
+    onLog(`$ ${bin} ${shown}  (cwd=${cwd})`);
+    const child = spawn(bin, args, { cwd });
+    let stderr = ''; let buf = ''; let result = null; let sessionId = null; let lastText = '';
+    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`timeout après ${TIMEOUT_MS} ms`)); }, TIMEOUT_MS);
+    const handleLine = (line) => {
+      const s = line.trim();
+      if (!s) return;
+      let ev;
+      try { ev = JSON.parse(s); } catch { onLog(s.slice(0, 300)); return; } // ligne non-JSON : brut
+      if (ev.session_id) sessionId = ev.session_id;
+      if (ev.type === 'assistant' && ev.message && Array.isArray(ev.message.content)) {
+        for (const c of ev.message.content) {
+          if (c.type === 'text' && String(c.text || '').trim()) { lastText = c.text; onLog(String(c.text).trim().slice(0, 600)); }
+          else if (c.type === 'tool_use') { onLog(`» ${c.name}${toolHint(c.input)}`); }
+        }
+      } else if (ev.type === 'result') {
+        result = (typeof ev.result === 'string') ? ev.result : lastText;
+      }
+    };
+    child.stdout.on('data', (d) => { buf += d; const parts = buf.split('\n'); buf = parts.pop(); for (const p of parts) handleLine(p); });
+    child.stderr.on('data', (d) => { stderr += d; });
+    child.on('error', (e) => { clearTimeout(timer); reject(e); });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (buf.trim()) handleLine(buf);
+      if (code === 0) resolve({ text: (result != null ? result : lastText) || '', sessionId });
+      else reject(new Error(`${bin} a échoué (code ${code}) : ${stderr.slice(0, 500)}`));
+    });
+  });
+}
+
+// Entrées du home Copilot à NE PAS importer dans le home isolé : sessions/historique (pour
+// que --continue reprenne la bonne session et ne pollue pas l'historique réel) et contexte
+// d'agent (skills, instructions) qui altérerait le comportement.
+const COPILOT_EXCLUDE_ENTRIES = new Set([
+  'history', 'history-session-state', 'sessions', 'session-state', 'logs', 'tmp',
+  'skills', 'copilot-instructions.md',
+]);
+
+function firstExistingDir(cands) {
+  for (const c of cands) { if (c && fs.existsSync(c)) return c; }
+  return null;
+}
+
+// Un home isolé n'a pas l'auth du `/login` (stockée dans le home par défaut) : on lie
+// (symlink) l'auth + la config du home source en écartant sessions et contexte. Best-effort.
+function bootstrapCopilotHome(home) {
+  const source = firstExistingDir([
+    process.env.COPILOT_HOME,
+    path.join(os.homedir(), '.copilot'),
+    process.env.XDG_CONFIG_HOME && path.join(process.env.XDG_CONFIG_HOME, 'copilot'),
+  ]);
+  ensureDir(home);
+  if (!source || path.resolve(source) === path.resolve(home)) return { source: null, linked: [] };
+  const linked = [];
+  for (const name of fs.readdirSync(source)) {
+    if (COPILOT_EXCLUDE_ENTRIES.has(name)) continue;
+    const dest = path.join(home, name);
+    if (fs.existsSync(dest)) continue;
+    try { fs.symlinkSync(path.join(source, name), dest); linked.push(name); } catch { /* best-effort */ }
+  }
+  return { source, linked };
+}
+
+function enrichCopilotError(e, bootstrap, home) {
+  if (!/authenticat|COPILOT_GITHUB_TOKEN|GH_TOKEN|not logged|No authentication/i.test(String(e.message))) return e;
+  const src = bootstrap && bootstrap.source;
+  return new Error([
+    'Copilot : authentification introuvable dans le home isolé.',
+    src ? `Auth liée depuis ${src} : ${bootstrap.linked.join(', ') || '(rien)'} — mais non reconnue.` : 'Aucun home Copilot source trouvé pour importer l’auth.',
+    'Solutions : 1) définir COPILOT_GITHUB_TOKEN / GH_TOKEN dans l’environnement du serveur (.env) ;',
+    `2) ou authentifier ce home une fois : COPILOT_HOME=${home} copilot puis /login.`,
+  ].join('\n'));
+}
+
+/* Lance l'agent dans une session logique `key`.
+ * - resume=false : crée la session (claude --session-id / copilot home neuf + bootstrap).
+ * - resume=true  : reprend la session (claude --resume / copilot --continue), en passant le
+ *   `handle` renvoyé au premier run.
+ * Renvoie { text, sessionId, handle, backend }. Le handle et le cwd sont à PERSISTER par
+ * l'appelant (le cwd fait partie de l'identité de session — refuser une reprise si mismatch).
+ */
+async function runInSession({ key, handle, prompt, cwd, resume = false, onLog = () => {} }) {
+  const backend = backendName();
+  if (backend === 'unknown') throw new Error(`Backend « ${copilot.COPILOT_BIN} » non géré (claude ou copilot attendus).`);
+  const EXTRA = copilot.EXTRA_ARGS;
+
+  if (backend === 'claude') {
+    const id = handle || crypto.randomUUID();
+    // stream-json (+ --verbose, requis en -p) : événements en DIRECT → progression visible.
+    const sess = resume ? ['--resume', id] : ['--session-id', id];
+    const args = [...EXTRA, ...sess, '--output-format', 'stream-json', '--verbose', '-p', prompt];
+    const out = await runClaudeStream(args, cwd, onLog);
+    return { text: out.text, sessionId: out.sessionId, handle: id, backend };
+  }
+
+  // copilot : home isolé par clé (persistant entre les passes d'une même session).
+  const home = handle || path.join(SESSIONS_ROOT, slug(key));
+  let bootstrap = null;
+  if (!resume) {
+    try { fs.rmSync(home, { recursive: true, force: true }); } catch { /* neuf */ }
+    bootstrap = bootstrapCopilotHome(home);
+  }
+  const args = resume ? [...EXTRA, '--continue', '-p', prompt] : [...EXTRA, '-p', prompt];
+  try {
+    const text = await spawnAgent({ args, cwd, env: { COPILOT_HOME: home } }, onLog);
+    return { text, sessionId: null, handle: home, backend };
+  } catch (e) {
+    throw enrichCopilotError(e, bootstrap, home);
+  }
+}
+
+// Commande à COPIER pour reprendre soi-même la session dans un terminal : `cd` vers le bon
+// dossier + lancement de l'agent avec le handle de session. claude : --resume <uuid> ;
+// copilot : COPILOT_HOME=<home> + --continue. Renvoie null si la session n'a pas de handle.
+function shQuote(s) { return `'${String(s).replace(/'/g, "'\\''")}'`; }
+function resumeCommand(backend, handle, cwd) {
+  if (!backend || !handle || !cwd) return null;
+  const bin = copilot.COPILOT_BIN;
+  const extra = (copilot.EXTRA_ARGS || []).length ? ` ${copilot.EXTRA_ARGS.join(' ')}` : '';
+  const cd = `cd ${shQuote(cwd)}`;
+  if (backend === 'claude') return `${cd} && ${bin}${extra} --resume ${handle}`;
+  if (backend === 'copilot') return `${cd} && COPILOT_HOME=${shQuote(handle)} ${bin}${extra} --continue`;
+  return null;
+}
+
+module.exports = { backendName, runInSession, resumeCommand, SESSIONS_ROOT };

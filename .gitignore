@@ -1,0 +1,9 @@
+# Dépendances
+node_modules/
+data/
+data-demo/
+demo-recordings/
+.env
+.DS_Store
+.idea
+*.log

@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mergerie</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Crect%20x%3D%226%22%20y%3D%226%22%20width%3D%2288%22%20height%3D%2288%22%20rx%3D%2222%22%20fill%3D%22%232f6fe0%22%2F%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%226.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2269.2%22%20cy%3D%2269.2%22%20r%3D%229.6%22%2F%3E%3Ccircle%20cx%3D%2230.8%22%20cy%3D%2230.8%22%20r%3D%229.6%22%2F%3E%3Cpath%20d%3D%22M30.8%2078.8%20V40.4%20a28.8%2028.8%200%200%200%2028.8%2028.8%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E" />
+    <link rel="stylesheet" href="/style.css" />
+    <script>
+      // Applique le thème AVANT le premier rendu (évite un flash de thème sombre).
+      try {
+        var p = localStorage.getItem('aidevtools_theme') || 'auto';
+        var r = p === 'auto' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : p;
+        document.documentElement.setAttribute('data-theme', r);
+        document.documentElement.lang = localStorage.getItem('aidevtools_lang') || 'fr';
+      } catch (e) { /* stockage indisponible : thème sombre + français par défaut */ }
+    </script>
+</head>
+<body>
+<div id="demoBanner" hidden><span data-i18n="demo.banner">Mode démo — données fictives, aucune connexion GitLab. Explore librement.</span></div>
+<!-- Sprite d'icônes : inline (zéro requête, compatible CSP stricte), monochrome via
+     currentColor → les icônes suivent la couleur du bouton dans les deux thèmes.
+     Remplace les emojis, dont le rendu et les couleurs varient selon l'OS (WSL/Linux). -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+        <g id="g-stroke" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></g>
+    </defs>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M6 3.5l14 8.5-14 8.5z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path fill="currentColor" d="M6 4h4v16H6zM14 4h4v16h-4z"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+    <symbol id="i-merge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></symbol>
+    <symbol id="i-repeat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"/></symbol>
+    <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4M9 4h6"/><circle cx="9" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1.2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></symbol>
+    <symbol id="i-bell-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.73 21a2 2 0 0 1-3.46 0M18.63 13A17.9 17.9 0 0 1 18 8M6.26 6.26A6 6 0 0 0 6 8c0 7-3 9-3 9h14M18 8a6 6 0 0 0-9.33-5M1 1l22 22"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+</svg>
+
+<header>
+    <div class="brand">
+        <!-- Nom du produit : jamais traduit → pas de data-i18n ici. -->
+        <h1>Mergerie</h1>
+        <span class="baseline" data-i18n="ui.span.un-agent-ia-qui-relit">L'IA prépare tes MR — review, corrections, convergence. C'est toi qui merges.</span>
+    </div>
+    <nav>
+        <button data-tab="review" class="active" title="Merge requests : à traiter, reviewées, traitées" data-i18n-title="ui.title.merge-requests-a-traiter-reviewees"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="nav.reviews">Reviews</span><span class="nav-count" id="navCountReview" hidden>0</span></button>
+        <button data-tab="task" title="Sessions de développement pilotées par l'IA" data-i18n-title="ui.title.sessions-de-developpement-pilotees-par"><svg class="ico"><use href="#i-bot"/></svg><span data-i18n="nav.tasks">Dev IA</span><span class="nav-count" id="navCountTask" hidden>0</span></button>
+        <button data-tab="dashboard" title="Statistiques et activité" data-i18n-title="ui.title.statistiques-et-activite"><svg class="ico"><use href="#i-chart"/></svg><span data-i18n="ui.btn.statistiques">Statistiques</span></button>
+        <button data-tab="git" title="Opérations sur les dépôts : branches et tags" data-i18n-title="git.tab.title"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="nav.git">Git</span></button>
+        <button data-tab="docker" title="Projets Docker Compose et containers : drift .env, actions" data-i18n-title="docker.tab.title"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="nav.docker">Docker</span><span class="nav-health err" id="dockerErrBadge" hidden>0</span><span class="nav-health warn" id="dockerUnhealthyBadge" hidden>0</span></button>
+        <button data-tab="jira" title="Mes tickets Jira affectés : contenu, métadonnées, commentaires" data-i18n-title="jira.tab.title"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="nav.jira">Jira</span></button>
+        <button data-tab="admin" title="Dépôts, token, règles de review, thème" data-i18n-title="ui.title.depots-token-regles-de-review"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="ui.btn.reglages">Réglages</span></button>
+    </nav>
+    <div class="header-right">
+        <div id="chrono" class="chrono" title="Chrono de session de travail" data-i18n-title="ui.title.chrono-de-session-de-travail">
+            <span id="chronoTime">00:00</span>
+            <button id="chronoStart" title="Démarrer" data-i18n-title="ui.title.demarrer"><svg class="ico ico-sm"><use href="#i-play"/></svg></button>
+            <button id="chronoPause" title="Pause" data-i18n-title="ui.title.pause" hidden><svg class="ico ico-sm"><use href="#i-pause"/></svg></button>
+            <button id="chronoReset" title="Remettre à zéro" data-i18n-title="ui.title.remettre-a-zero"><svg class="ico ico-sm"><use href="#i-reset"/></svg></button>
+        </div>
+        <span id="dryBadge" class="badge" hidden title="Mode dry-run : les rapports sont simulés, l'IA n'est pas appelée" data-i18n-title="ui.title.mode-dry-run-les-rapports">dry-run</span>
+    </div>
+</header>
+
+<div id="logPanel" class="logpanel" hidden>
+    <div id="logBar" class="logbar" hidden><div id="progressBar"></div></div>
+    <div class="loghead">
+        <button id="logToggle" class="log-toggle" title="Déplier / replier les logs" data-i18n-title="ui.title.deplier-replier-les-logs">▸</button>
+        <span id="logStatus" class="logstatus"></span>
+        <span class="spacer"></span>
+        <button id="logStop" class="btn btn-sm btn-danger" hidden title="Arrêter immédiatement le job en cours" data-i18n-title="ui.title.arreter-immediatement-le-job-en"><svg class="ico"><use href="#i-stop"/></svg><span data-i18n="ui.btn.stop">Stop</span></button>
+        <label class="muted"><input type="checkbox" id="logAutoscroll" checked /><span data-i18n="ui.lbl.auto-defilement">auto-défilement</span></label>
+        <button id="logCopy" class="btn btn-sm btn-ghost" title="Copier tout le journal dans le presse-papier" data-i18n-title="ui.title.copier-tout-le-journal-dans" data-i18n="ui.btn.copier">copier</button>
+        <button id="logHide" class="btn btn-sm btn-ghost" title="Masquer le panneau de logs" data-i18n-title="ui.title.masquer-le-panneau-de-logs" data-i18n="ui.btn.masquer">masquer</button>
+    </div>
+    <pre id="logBox" hidden></pre>
+</div>
+
+<main>
+    <!-- Reviews : les 3 stades d'une même MR, réunis (le parcours ne casse plus au milieu) -->
+    <section id="tab-review" class="tab active">
+        <div class="toolbar">
+            <button id="btnDiscover" class="btn" title="Interroger GitLab pour récupérer les merge requests ouvertes" data-i18n-title="ui.title.interroger-gitlab-pour-recuperer-les"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="ui.btn.chercher-les-nouvelles-mr">Chercher les nouvelles MR</span></button>
+            <button id="btnReview" class="btn btn-primary" title="Lancer la review IA sur toutes les MR à traiter" data-i18n-title="ui.title.lancer-la-review-ia-sur"><svg class="ico"><use href="#i-play"/></svg><span id="btnReviewLabel" data-i18n="ui.span.reviewer">Reviewer</span></button>
+            <span id="discoverInfo" class="muted"></span>
+        </div>
+        <div class="segmented" role="tablist">
+            <button data-seg="to_review" class="active" role="tab"><span data-i18n="review.seg.to-review">À traiter</span> <span class="seg-count" id="segCountToReview">0</span></button>
+            <button data-seg="reviewed" role="tab"><span data-i18n="review.seg.reviewed">Reviewées</span> <span class="seg-count" id="segCountReviewed">0</span></button>
+            <button data-seg="done" role="tab"><span data-i18n="review.seg.done">Traitées</span> <span class="seg-count" id="segCountDone">0</span></button>
+        </div>
+        <input id="searchReview" class="search" type="search" placeholder="Rechercher (titre, auteur, projet, ticket)…" data-i18n-placeholder="ui.ph.rechercher-titre-auteur-projet-ticket" />
+        <div id="reviewErrors"></div>
+        <!-- stade « à traiter » : liste simple -->
+        <div id="toReviewList" class="list"></div>
+        <!-- stades « reviewées » / « traitées » : liste + rapport -->
+        <div id="reportSplit" class="split" hidden>
+            <div class="col-list">
+                <div id="reportList" class="list"></div>
+            </div>
+            <div class="col-detail" id="reportDetail">
+                <p class="muted" data-i18n="ui.p.selectionne-un-rapport-a-gauche">Sélectionne un rapport à gauche.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Dev IA -->
+    <section id="tab-task" class="tab">
+        <div class="segmented subnav" role="tablist">
+            <button data-kind="code" class="active" role="tab" title="L'IA modifie le code, commite et ouvre les MR" data-i18n-title="ui.title.l-ia-modifie-le-code">Codage<span class="seg-count" id="kindCountCode">0</span></button>
+            <button data-kind="local" role="tab" title="L'IA code dans des dossiers locaux, en place, sans git (ni commit ni push)" data-i18n-title="local.tab-title">Codage hors dépôt<span class="seg-count" id="kindCountLocal">0</span></button>
+            <button data-kind="explore" role="tab" title="L'IA répond à une question sur le code, sans rien modifier" data-i18n-title="ui.title.l-ia-repond-a-une">Exploration<span class="seg-count" id="kindCountExplore">0</span></button>
+        </div>
+        <div id="taskToolbar" class="toolbar">
+            <button id="btnNewTask" class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg><span id="btnNewTaskLabel" data-i18n="ui.span.nouvelle-session-de-codage">Nouvelle session de codage</span></button>
+            <span id="taskKindHint" class="muted"></span>
+        </div>
+        <div id="taskList" class="list"></div>
+
+        <!-- Codage hors dépôt : liste des sessions (le formulaire vit dans la modale de codage) -->
+        <div id="localPanel" hidden>
+            <div id="localList" class="list"></div>
+        </div>
+    </section>
+
+    <!-- Dashboard -->
+    <section id="tab-dashboard" class="tab">
+        <div class="toolbar"><h2 style="margin:0" data-i18n="ui.btn.statistiques">Statistiques</h2><span class="spacer"></span><button id="dashRefresh" class="btn" title="Recharger les statistiques" data-i18n-title="ui.title.recharger-les-statistiques"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="ui.btn.rafraichir">Rafraîchir</span></button></div>
+        <div id="dashboard"></div>
+    </section>
+
+    <!-- Git : opérations multi-dépôts (branches, tags, commandes, navigation) -->
+    <section id="tab-git" class="tab">
+        <div class="segmented subnav" role="tablist">
+            <button data-gsub="actions" class="active" role="tab"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.sub.actions">Actions</span></button>
+            <button data-gsub="navigate" role="tab"><svg class="ico"><use href="#i-repeat"/></svg><span data-i18n="git.sub.navigate">Navigation</span></button>
+            <button data-gsub="commands" role="tab"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.sub.commands">Commandes Git</span></button>
+            <button data-gsub="explore" role="tab"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="git.sub.explorer">Explorateur de branches</span></button>
+            <button data-gsub="findref" role="tab"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.sub.findref">Trouver une ref</span></button>
+            <button data-gsub="history" role="tab"><svg class="ico"><use href="#i-clock"/></svg><span data-i18n="git.sub.history">Historique</span></button>
+        </div>
+
+        <!-- Sous-onglet : actions multi-dépôts -->
+        <div id="gsub-actions" class="subtab active">
+            <p class="muted" style="max-width:760px" data-i18n="git.actions.intro">Applique la même opération à plusieurs dépôts d'un coup. Rien n'est exécuté sans un aperçu préalable.</p>
+            <div class="form" style="max-width:760px">
+                <label><span data-i18n="git.lbl.action">Action</span>
+                    <button type="button" class="hint" tabindex="0" data-i18n-tip="git.tip.action" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <select id="gitAction">
+                        <option value="new_branch" data-i18n="git.action.new_branch">Créer une branche</option>
+                        <option value="create_tag" data-i18n="git.action.create_tag">Créer un tag</option>
+                        <option value="delete_branch" data-i18n="git.action.delete_branch">Supprimer des branches</option>
+                        <option value="delete_tag" data-i18n="git.action.delete_tag">Supprimer des tags</option>
+                    </select>
+                </label>
+
+                <!-- La bascule est AVANT la liste : c'est elle qui décide si le nom se
+                     saisit dans chaque ligne ou une seule fois dans le champ du dessous. -->
+                <label class="inline-check" id="gitSameNameField"><input type="checkbox" id="gitSameName" checked /> <span id="gitSameNameLabel" data-i18n="git.lbl.same-name-all">Utiliser le même nom pour tous les projets</span>
+                    <button type="button" class="hint" tabindex="0" data-i18n-tip="git.tip.same-name-all" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                </label>
+
+                <div class="targets-head">
+                    <strong id="gitTargetsLabel" data-i18n="git.targets.source">Projets et branches source</strong>
+                    <button type="button" id="gitAddTarget" class="btn btn-sm" data-i18n-title="git.title.add-project"><svg class="ico ico-sm"><use href="#i-plus"/></svg><span data-i18n="git.btn.add-project">Ajouter un projet</span></button>
+                </div>
+                <div id="gitTargetRows"></div>
+
+                <div id="gitNameField">
+                    <label id="gitNameRow"><span id="gitNameLabel" data-i18n="git.lbl.branch-name">Nom de la branche à créer</span>
+                        <button type="button" class="hint" tabindex="0" data-i18n-tip="git.tip.name" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <input id="gitRefName" placeholder="release/1.0" data-i18n-placeholder="git.ph.name" />
+                    </label>
+                    <label id="gitMsgField" hidden><span data-i18n="git.lbl.tag-message">Message du tag (facultatif)</span>
+                        <button type="button" class="hint" tabindex="0" data-i18n-tip="git.tip.tag-message" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <input id="gitTagMsg" data-i18n-placeholder="git.ph.tag-message" placeholder="Version 1.0 — livraison du 20/07" />
+                    </label>
+                </div>
+
+                <div class="form-actions">
+                    <button id="gitPreview" class="btn btn-primary" data-i18n-title="git.title.preview"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="git.btn.preview">Prévisualiser</span></button>
+                    <span id="gitActionInfo" class="muted"></span>
+                </div>
+            </div>
+            <div id="gitPreviewBox" hidden></div>
+        </div>
+
+        <!-- Sous-onglet : navigation — positionner des projets LOCAUX sur une branche -->
+        <div id="gsub-navigate" class="subtab">
+            <p class="muted" style="max-width:760px" data-i18n="git.navigate.intro">Positionne plusieurs projets locaux sur la branche de ton choix. Rien n'est jeté : si un dépôt a des modifications en cours, le checkout est fait et les fichiers concernés sont listés.</p>
+            <div class="form" style="max-width:900px">
+                <label><span data-i18n="git.navigate.root">Répertoire local</span>
+                    <button type="button" class="hint" tabindex="0" data-i18n-tip="git.navigate.tip.root" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <div id="navRootBox" class="nav-root-box"></div>
+                </label>
+                <div class="targets-head">
+                    <strong data-i18n="git.navigate.projects">Projets et branches cibles</strong>
+                    <button type="button" id="navAddTarget" class="btn btn-sm" data-i18n-title="git.navigate.add-project-title"><svg class="ico ico-sm"><use href="#i-plus"/></svg><span data-i18n="git.navigate.add-project">Ajouter un projet</span></button>
+                </div>
+                <div id="navTargetRows"></div>
+                <div class="form-actions">
+                    <button id="navGo" class="btn btn-primary" data-i18n-title="git.navigate.go-title"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.navigate.go">Se positionner</span></button>
+                    <span id="navInfo" class="muted"></span>
+                </div>
+            </div>
+            <div id="navResultBox" hidden></div>
+        </div>
+
+        <!-- Sous-onglet : Commandes Git — exécuter UNE commande git à la racine de plusieurs
+             projets locaux. Palette (Réglages → Git) + saisie libre → prévisualiser → exécuter. -->
+        <div id="gsub-commands" class="subtab">
+            <p class="muted" style="max-width:820px" data-i18n="git.commands.intro">Exécute la même commande git à la racine de plusieurs projets locaux. Choisis un répertoire, coche les projets, sélectionne une commande de la palette (ou saisis-la), prévisualise puis exécute. La sortie de chaque projet est affichée.</p>
+            <div class="form" style="max-width:900px">
+                <label><span data-i18n="git.navigate.root">Répertoire local</span>
+                    <button type="button" class="hint" tabindex="0" data-i18n-tip="git.navigate.tip.root" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <div id="cmdRootBox" class="nav-root-box"></div>
+                </label>
+                <div class="targets-head">
+                    <strong data-i18n="git.commands.projects">Projets (racine)</strong>
+                    <span id="cmdPickCount" class="muted"></span>
+                </div>
+                <div id="cmdProjectBox" class="cmd-projects"></div>
+                <label><span data-i18n="git.commands.command">Commande git</span>
+                    <button type="button" class="hint" tabindex="0" data-i18n-tip="git.commands.tip.command" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <div class="cmd-cmd-row">
+                        <select id="cmdPalette" class="cmd-palette"><option value="" data-i18n="git.commands.palette-ph">— palette —</option></select>
+                        <span class="cmd-input-wrap"><span class="cmd-prefix">git</span><input id="cmdInput" type="text" placeholder="fetch --all --prune" data-i18n-placeholder="git.commands.input-ph" /></span>
+                    </div>
+                </label>
+                <div class="form-actions">
+                    <button id="cmdPreview" class="btn btn-primary" data-i18n-title="git.commands.preview-title"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="git.commands.preview">Prévisualiser</span></button>
+                    <span id="cmdInfo" class="muted"></span>
+                </div>
+            </div>
+            <div id="cmdPreviewBox" hidden></div>
+            <div id="cmdResultBox" hidden></div>
+        </div>
+
+        <!-- Sous-onglet : explorateur -->
+        <div id="gsub-explore" class="subtab">
+            <p class="muted" style="max-width:760px" data-i18n="git.explorer.intro">Sélectionne un ou plusieurs dépôts, puis Analyser. Le résultat de chaque dépôt s'affiche dans un bloc repliable.</p>
+            <div id="gitExploreRepoBox" class="repo-multi"></div>
+            <div class="form-actions" style="margin-top:10px">
+                <button id="gitExploreGo" class="btn btn-primary" data-i18n-title="git.title.analyze"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="git.btn.analyze">Analyser</span></button>
+                <span id="gitExploreInfo" class="muted"></span>
+            </div>
+            <div id="gitExploreBox"></div>
+        </div>
+
+        <!-- Sous-onglet : trouver une ref (tag ou branche) dans tous les dépôts -->
+        <div id="gsub-findref" class="subtab">
+            <p class="muted" style="max-width:760px" data-i18n="git.findref.intro">Saisis un nom de tag ou de branche : l'outil cherche dans tous les dépôts actifs lesquels le possèdent.</p>
+            <form id="findRefForm" class="form inline" style="max-width:none">
+                <input id="findRefName" placeholder="ex. v1.2.0 ou feature/PROJ-42" data-i18n-placeholder="git.findref.ph" autocomplete="off" required />
+                <select id="findRefType">
+                    <option value="both" data-i18n="git.findref.type.both">Tag ou branche</option>
+                    <option value="tag" data-i18n="git.findref.type.tag">Tag</option>
+                    <option value="branch" data-i18n="git.findref.type.branch">Branche</option>
+                </select>
+                <button id="findRefGo" type="submit" class="btn btn-primary"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="git.findref.search">Rechercher</span></button>
+                <span id="findRefInfo" class="muted"></span>
+            </form>
+            <div id="findRefBox"></div>
+        </div>
+
+        <!-- Sous-onglet : historique -->
+        <div id="gsub-history" class="subtab">
+            <p class="muted" style="max-width:760px" data-i18n="git.history.intro">Chaque opération est journalisée. Une suppression reste restaurable tant que les objets existent — l'outil en garde une copie locale, faite juste avant.</p>
+            <div id="gitHistoryBox" class="list"></div>
+        </div>
+    </section>
+
+    <!-- Docker : projets compose (drift .env) + containers hors-compose -->
+    <section id="tab-docker" class="tab">
+        <div class="segmented subnav" role="tablist">
+            <button data-dsub="compose" class="active" role="tab"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="docker.sub.compose">Compose</span></button>
+            <button data-dsub="orphans" role="tab"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="docker.sub.orphans">Hors-compose</span></button>
+            <button data-dsub="logs" role="tab"><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="docker.sub.logs">Logs</span></button>
+            <button data-dsub="actions" role="tab"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="docker.sub.actions">Actions</span></button>
+        </div>
+        <div class="toolbar">
+            <button id="dockerRefresh" class="btn" data-i18n-title="docker.refresh-title"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="docker.refresh">Rafraîchir</span></button>
+            <span id="dockerInfo" class="muted"></span>
+        </div>
+        <div id="dockerError"></div>
+        <div id="dsub-compose" class="subtab active"><div id="dockerComposeBox"></div></div>
+        <div id="dsub-orphans" class="subtab"><div id="dockerOrphansBox"></div></div>
+
+        <!-- Tail live multi-container : choix des containers + filtres inclure/exclure
+             (persistés) + défilement auto pausable. Rendu optimisé (buffer borné + rAF). -->
+        <div id="dsub-logs" class="subtab">
+            <div class="dlog-top">
+                <div class="dlog-picker">
+                    <div class="dlog-picker-head">
+                        <strong data-i18n="docker.logs.containers">Containers à suivre</strong>
+                        <input id="dlogSearch" class="dlog-search" type="search" placeholder="Rechercher un container…" data-i18n-placeholder="docker.logs.search" />
+                    </div>
+                    <div id="dlogContainers" class="dlog-clist"></div>
+                </div>
+                <div class="dlog-filter">
+                    <label data-i18n="docker.logs.include-lbl">N'afficher que les lignes contenant (au moins un)</label>
+                    <form id="dlogIncludeForm" class="dlog-chipform" autocomplete="off">
+                        <input id="dlogIncludeInput" type="text" placeholder="mot ou expression + Entrée" data-i18n-placeholder="docker.logs.word-ph" />
+                        <button class="btn btn-sm" type="submit"><svg class="ico ico-sm"><use href="#i-plus"/></svg></button>
+                    </form>
+                    <div id="dlogIncludeChips" class="dlog-chips"></div>
+                </div>
+                <div class="dlog-filter">
+                    <label data-i18n="docker.logs.exclude-lbl">Exclure les lignes contenant</label>
+                    <form id="dlogExcludeForm" class="dlog-chipform" autocomplete="off">
+                        <input id="dlogExcludeInput" type="text" placeholder="mot ou expression + Entrée" data-i18n-placeholder="docker.logs.word-ph" />
+                        <button class="btn btn-sm" type="submit"><svg class="ico ico-sm"><use href="#i-plus"/></svg></button>
+                    </form>
+                    <div id="dlogExcludeChips" class="dlog-chips"></div>
+                </div>
+                <div class="dlog-run">
+                    <label class="dlog-tail"><span data-i18n="docker.logs.tail">Nombre de lignes (tail)</span>
+                        <input id="dlogTail" type="number" min="0" max="10000" step="50" value="200" />
+                    </label>
+                    <div class="dlog-run-actions">
+                        <button id="dlogStart" class="btn btn-primary" data-i18n-title="docker.logs.start-title"><svg class="ico"><use href="#i-play"/></svg><span data-i18n="docker.logs.start">Démarrer le tail</span></button>
+                        <button id="dlogStop" class="btn" disabled data-i18n-title="docker.logs.stop-title"><svg class="ico"><use href="#i-stop"/></svg><span data-i18n="docker.logs.stop">Arrêter</span></button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dlog-bar">
+                <span id="dlogStatus" class="muted"></span>
+                <span class="dlog-bar-right">
+                    <label class="inline-check"><input type="checkbox" id="dlogWrap" /> <span data-i18n="docker.logs.wrap">Retour à la ligne</span></label>
+                    <button id="dlogClear" class="btn btn-sm" data-i18n-title="docker.logs.clear-title"><svg class="ico ico-sm"><use href="#i-trash"/></svg><span data-i18n="docker.logs.clear">Vider</span></button>
+                    <button id="dlogPause" class="btn btn-sm" data-i18n-title="docker.logs.pause-title"><svg class="ico ico-sm"><use href="#i-pause"/></svg><span id="dlogPauseLabel" data-i18n="docker.logs.pause">Pause défilement</span></button>
+                </span>
+            </div>
+            <div id="dlogView" class="dlog-view" tabindex="0"></div>
+        </div>
+
+        <!-- Action groupée : on choisit l'action, la liste des containers CONCERNÉS s'affiche
+             (filtrée selon l'action), on coche, on valide → un `docker compose` par projet. -->
+        <div id="dsub-actions" class="subtab">
+            <div class="dact-head">
+                <label class="dact-action"><span data-i18n="docker.actions.choose">Action à appliquer</span>
+                    <select id="dactAction">
+                        <option value="recreate" data-i18n="docker.act.recreate">Recréer</option>
+                        <option value="build" data-i18n="docker.act.build">Build</option>
+                        <option value="restart" data-i18n="docker.act.restart">Redémarrer</option>
+                        <option value="up" data-i18n="docker.act.up">Démarrer</option>
+                        <option value="stop" data-i18n="docker.act.stop">Stop</option>
+                        <option value="pull" data-i18n="docker.act.pull">Pull</option>
+                    </select>
+                </label>
+                <label class="dact-action"><span data-i18n="docker.actions.filter">N'afficher que</span>
+                    <select id="dactFilter">
+                        <option value="all" data-i18n="docker.actions.f-all">Tous</option>
+                        <option value="drift" data-i18n="docker.actions.f-drift">En drift</option>
+                        <option value="unhealthy" data-i18n="docker.actions.f-unhealthy">Unhealthy</option>
+                        <option value="restarting" data-i18n="docker.actions.f-restarting">En restarting</option>
+                        <option value="running" data-i18n="docker.actions.f-running">En cours</option>
+                        <option value="stopped" data-i18n="docker.actions.f-stopped">Arrêtés / non créés</option>
+                    </select>
+                </label>
+                <input id="dactSearch" class="dact-search" type="search" placeholder="Rechercher un service…" data-i18n-placeholder="docker.actions.search" />
+            </div>
+            <p class="muted" data-i18n="docker.actions.hint">Coche les containers auxquels appliquer l'action, puis valide. La liste ne montre que les services concernés par l'action choisie.</p>
+            <div class="dact-bar">
+                <label class="inline-check"><input type="checkbox" id="dactAll" /> <span data-i18n="docker.actions.all">Tout cocher</span></label>
+                <span id="dactCount" class="muted"></span>
+            </div>
+            <div id="dactList" class="dact-list"></div>
+            <div class="form-actions">
+                <button id="dactApply" class="btn btn-primary" disabled><svg class="ico"><use href="#i-play"/></svg><span data-i18n="docker.actions.apply">Appliquer l'action</span></button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Jira : mes tickets affectés (liste) → détail (contenu, métadonnées, commentaires). -->
+    <section id="tab-jira" class="tab">
+        <div class="toolbar">
+            <button id="jiraRefresh" class="btn" data-i18n-title="jira.refresh-title"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="jira.refresh">Rafraîchir</span></button>
+            <label class="inline-check"><input type="checkbox" id="jiraIncludeDone" /> <span data-i18n="jira.include-done">Inclure les terminés</span></label>
+            <span id="jiraInfo" class="muted"></span>
+        </div>
+        <div id="jiraError"></div>
+        <div class="jira-layout">
+            <div class="jira-list-col">
+                <input id="jiraSearch" type="search" class="jira-search" placeholder="Rechercher un ticket…" data-i18n-placeholder="jira.search" />
+                <details id="jiraAssigneeFilter" class="jira-status-filter" hidden>
+                    <summary><svg class="ico ico-sm"><use href="#i-bot"/></svg> <span data-i18n="jira.assignees">Assignés</span> <span id="jiraAssigneeFilterCount" class="muted"></span></summary>
+                    <input id="jiraAssigneeSearch" type="search" class="jira-sf-search" placeholder="Rechercher une personne…" data-i18n-placeholder="jira.people-search" />
+                    <div id="jiraAssigneeFilterBody" class="jira-status-filter-body"></div>
+                </details>
+                <details id="jiraStatusFilter" class="jira-status-filter" hidden>
+                    <summary><svg class="ico ico-sm"><use href="#i-sliders"/></svg> <span data-i18n="jira.statuses">Statuts</span> <span id="jiraStatusFilterCount" class="muted"></span></summary>
+                    <div id="jiraStatusFilterBody" class="jira-status-filter-body"></div>
+                </details>
+                <div id="jiraList" class="jira-list"></div>
+            </div>
+            <div id="jiraDetail" class="jira-detail"></div>
+        </div>
+    </section>
+
+    <section id="tab-admin" class="tab">
+        <div class="segmented subnav" role="tablist">
+            <button data-sub="rules" class="active" role="tab" title="Critères ajoutés au prompt de review selon le nom de branche" data-i18n-title="settings.title.criteres-ajoutes-au-prompt-de" data-i18n="settings.btn.regles-de-review-specifiques">Règles de review spécifiques</button>
+            <button data-sub="repos" role="tab" title="Les dépôts GitLab dont tu suis les merge requests" data-i18n-title="settings.title.les-depots-gitlab-dont-tu" data-i18n="settings.btn.depots">Dépôts</button>
+            <button data-sub="notif" role="tab" title="Notifications bureau : quels événements déclenchent une notification système" data-i18n-title="settings.title.notifications-bureau" data-i18n="settings.sub.notif">Notifications</button>
+            <button data-sub="config" role="tab" title="Connexion GitLab, apparence, prompts, zone dangereuse" data-i18n-title="settings.title.connexion-gitlab-apparence-prompts-zone" data-i18n="settings.btn.general">Général</button>
+            <button data-sub="gitcfg" role="tab" title="Connexion GitLab, dossier de clonage et palette de commandes git" data-i18n-title="settings.title.git" data-i18n="settings.sub.git">Git</button>
+            <button data-sub="jiracfg" role="tab" title="Connexion Jira : URL, email et jeton d'API" data-i18n-title="settings.title.jira" data-i18n="settings.sub.jira">Jira</button>
+            <button data-sub="mr" role="tab" title="Review, rafraîchissement des MR, convergence et templates de prompt" data-i18n-title="settings.title.merge-request" data-i18n="settings.sub.mr">Merge Request</button>
+            <button data-sub="aisession" role="tab" title="Vérifier qu'on peut reprendre une session d'agent (test technique)" data-i18n-title="settings.aisession.tab-title" data-i18n="settings.sub.aisession">AI sessions</button>
+        </div>
+
+        <!-- Sous-onglet : Dépôts -->
+        <div id="sub-repos" class="subtab">
+            <h2 data-i18n="settings.btn.depots">Dépôts</h2>
+            <p><button id="btnBrowseProjects" type="button" class="btn btn-primary" title="Parcourir les projets GitLab et en importer plusieurs d'un coup" data-i18n-title="settings.repo.title.parcourir-les-projets-gitlab-et"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="settings.repo.btn.ajout-en-masse-depuis-gitlab">Ajout en masse depuis GitLab</span></button></p>
+            <form id="repoForm" class="form inline">
+                <input name="url" placeholder="https://gitlab…/group/sous-groupe/projet.git (URL complète)" required style="flex:2" /><button type="button" class="hint" tabindex="0" aria-label="URL de clone complète du dépôt, sous-groupes inclus. Le chemin projet en est déduit automatiquement." data-tip="URL de clone complète du dépôt, sous-groupes inclus. Le chemin projet en est déduit automatiquement." data-i18n-tip="settings.repo.tip.url-de-clone-complete-du"><svg class="ico"><use href="#i-info"/></svg></button>
+                <input name="project" placeholder="chemin projet (optionnel, déduit de l'URL)" data-i18n-placeholder="settings.repo.ph.chemin-projet-optionnel-deduit-de" /><button type="button" class="hint" tabindex="0" aria-label="Chemin GitLab du projet, ex. groupe/sous-groupe/projet. À ne remplir que si la déduction depuis l'URL échoue." data-tip="Chemin GitLab du projet, ex. groupe/sous-groupe/projet. À ne remplir que si la déduction depuis l'URL échoue." data-i18n-tip="settings.repo.tip.chemin-gitlab-du-projet-ex"><svg class="ico"><use href="#i-info"/></svg></button>
+                <input name="branch_pattern" placeholder="pattern (vide = toutes les MR)" data-i18n-placeholder="settings.repo.ph.pattern-vide-toutes-les-mr" /><button type="button" class="hint" tabindex="0" aria-label="Fragment que le nom de la branche source doit contenir pour que la MR soit récupérée. Ex. PROJ- . Vide = toutes les MR." data-tip="Fragment que le nom de la branche source doit contenir pour que la MR soit récupérée. Ex. PROJ- . Vide = toutes les MR." data-i18n-tip="settings.repo.tip.fragment-que-le-nom-de"><svg class="ico"><use href="#i-info"/></svg></button>
+                <button class="btn btn-primary" type="submit" title="Ajouter ce dépôt à la liste" data-i18n-title="settings.repo.title.ajouter-ce-depot-a-la"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="settings.repo.btn.ajouter">Ajouter</span></button>
+            </form>
+            <p class="muted" style="padding:0 0 8px" data-i18n-html="settings.repo.p.colle-simplement-l-url-complete">Colle simplement l'URL complète du dépôt — le chemin projet est déduit automatiquement (sous-groupes inclus). Laisse le <strong>pattern vide</strong> pour récupérer <strong>toutes</strong> les merge requests.</p>
+            <div id="repoList" class="list"></div>
+
+            <!-- Répertoires LOCAUX : un dossier de la machine, un sous-dossier par projet git.
+                 Sert à l'onglet Git → Navigation et au choix du dossier du codage hors dépôt. -->
+            <h2 data-i18n="settings.localroot.title">Répertoires locaux</h2>
+            <p class="muted" style="max-width:760px" data-i18n="settings.localroot.intro">Un répertoire local contient un dossier par projet git déjà cloné sur ta machine. Il alimente l'onglet Git → Navigation et le codage hors dépôt.</p>
+            <form id="localRootForm" class="form inline">
+                <input name="path" placeholder="/chemin/vers/mes-projets" data-i18n-placeholder="settings.localroot.ph.path" required style="flex:2" /><button type="button" class="hint" tabindex="0" data-i18n-tip="settings.localroot.tip.path" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input name="label" placeholder="nom affiché (optionnel)" data-i18n-placeholder="settings.localroot.ph.label" /><button type="button" class="hint" tabindex="0" data-i18n-tip="settings.localroot.tip.label" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <button class="btn btn-primary" type="submit" data-i18n-title="settings.localroot.add-title"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="settings.localroot.add">Ajouter</span></button>
+            </form>
+            <div id="localRootList" class="list"></div>
+        </div>
+
+        <!-- Sous-onglet : Règles de review spécifiques (premier) -->
+        <div id="sub-rules" class="subtab active">
+            <h2 data-i18n="settings.btn.regles-de-review-specifiques">Règles de review spécifiques</h2>
+            <p class="muted" style="max-width:720px" data-i18n-html="settings.rule.p.ajoute-des-criteres-supplementaires-au">Ajoute des critères supplémentaires au prompt de review quand le nom de la branche source contient un fragment donné (ex. <code>PROJ-12344</code>).</p>
+            <form id="ruleForm" class="form" style="max-width:720px">
+                <label><span data-i18n="settings.rule.lbl.le-nom-de-la-branche">Le nom de la branche contient</span> <button type="button" class="hint" tabindex="0" aria-label="Fragment recherché dans le nom de la branche source. Si la branche le contient, les critères ci-dessous sont ajoutés au prompt de review." data-tip="Fragment recherché dans le nom de la branche source. Si la branche le contient, les critères ci-dessous sont ajoutés au prompt de review." data-i18n-tip="settings.rule.tip.fragment-recherche-dans-le-nom"><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input name="branch_match" placeholder="ex. PROJ-12344" data-i18n-placeholder="settings.rule.ph.ex-proj-12344" />
+                </label>
+                <label><span data-i18n="settings.rule.lbl.path-match">…ou le diff touche un chemin</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.rule.tip.path-match" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input name="path_match" placeholder="ex. **/migrations/**, *.sql" data-i18n-placeholder="settings.rule.ph.path-match" />
+                </label>
+                <label><span data-i18n="settings.rule.lbl.label">Badge « risque » (court, optionnel)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.rule.tip.label" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input name="label" placeholder="ex. migrations" data-i18n-placeholder="settings.rule.ph.label" />
+                </label>
+                <label><span data-i18n="settings.rule.lbl.criteres-additionnels-a-verifier-ajoutes">Critères additionnels à vérifier (ajoutés au prompt de review)</span> <button type="button" class="hint" tabindex="0" aria-label="Texte libre ajouté au prompt de review pour les branches concernées. Ex. contraintes métier, points de vigilance récurrents." data-tip="Texte libre ajouté au prompt de review pour les branches concernées. Ex. contraintes métier, points de vigilance récurrents." data-i18n-tip="settings.rule.tip.texte-libre-ajoute-au-prompt"><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea name="content" rows="3" placeholder="ex. Vérifier que la migration SQL est réversible et que les index sont créés." data-i18n-placeholder="settings.rule.ph.ex-verifier-que-la-migration" required></textarea>
+                </label>
+                <button class="btn btn-primary" type="submit" title="Ajouter cette règle de review spécifique" data-i18n-title="settings.rule.title.ajouter-cette-regle-de-review"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="settings.rule.btn.ajouter-la-regle">Ajouter la règle</span></button>
+            </form>
+            <div id="ruleList" class="list"></div>
+        </div>
+
+        <!-- Sous-onglet : Notifications bureau -->
+        <div id="sub-notif" class="subtab">
+            <h2 data-i18n="settings.notif.title">Notifications bureau</h2>
+            <div class="form" style="max-width:560px">
+                <div id="notifPermRow" class="notif-perm">
+                    <span id="notifPermStatus" class="muted"></span>
+                    <button type="button" id="notifRequest" class="btn btn-sm" hidden data-i18n="settings.notif.request">Autoriser</button>
+                    <button type="button" id="notifTest" class="btn btn-sm" data-i18n-title="settings.notif.test-title"><svg class="ico ico-sm"><use href="#i-zap"/></svg><span data-i18n="settings.notif.test">Tester</span></button>
+                </div>
+                <p class="muted" style="margin:2px 0 8px; font-size:12px" data-i18n="settings.notif.help">Une notif appelle une action ou clôt une attente. Le reste vit dans le bandeau.</p>
+                <label class="inline-check"><input type="checkbox" data-notif="queue_done" /> <span data-i18n="settings.notif.queue-done">Fin de la file de reviews</span></label>
+                <label class="inline-check inline-check-mid"><input type="checkbox" data-notif="low_note" /> <span data-i18n="settings.notif.low-note">Review sous un seuil de note</span>
+                    <input type="number" id="notifThreshold" min="0" max="10" step="0.5" class="notif-threshold" /> <span class="muted">/10</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="job_failed" /> <span data-i18n="settings.notif.job-failed">Échec d'un job (timeout, CLI, réseau)</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="session_done" /> <span data-i18n="settings.notif.session-done">Session de codage terminée</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="needs_input" /> <span data-i18n="settings.notif.needs-input">L'IA a posé une question</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="converge_done" /> <span data-i18n="settings.notif.converge-done">Convergence terminée</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="mr_new" /> <span data-i18n="settings.notif.mr-new">Nouvelle MR découverte</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="mr_merged" /> <span data-i18n="settings.notif.mr-merged">MR mergée par quelqu'un</span></label>
+            </div>
+        </div>
+
+        <!-- Sous-onglet : Réglages -->
+        <div id="sub-config" class="subtab">
+        <h2 data-i18n="settings.btn.general">Général</h2>
+        <div class="form" style="max-width:520px">
+            <label><span data-i18n="settings.lbl.apparence">Apparence</span> <button type="button" class="hint" tabindex="0" aria-label="Auto suit le thème de ton système d'exploitation. Le choix est mémorisé dans ce navigateur, pas dans la base." data-tip="Auto suit le thème de ton système d'exploitation. Le choix est mémorisé dans ce navigateur, pas dans la base." data-i18n-tip="settings.tip.auto-suit-le-theme-de"><svg class="ico"><use href="#i-info"/></svg></button>
+                <select id="themeSelect" title="Thème de l'interface — appliqué immédiatement" data-i18n-title="settings.title.theme-de-l-interface-applique">
+                    <option value="auto" data-i18n="settings.opt.auto-suit-le-systeme">Auto (suit le système)</option>
+                    <option value="dark" data-i18n="settings.opt.sombre">Sombre</option>
+                    <option value="light" data-i18n="settings.opt.clair">Clair</option>
+                </select>
+            </label>
+            <label><span data-i18n="settings.language">Langue</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.language.hint" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <select id="langSelect">
+                    <option value="fr" data-i18n="settings.language.fr">Français</option>
+                    <option value="en" data-i18n="settings.language.en">English</option>
+                </select>
+            </label>
+            <label><span data-i18n="settings.lbl.densite">Densité</span> <button type="button" class="hint" tabindex="0" aria-label="Compact resserre les listes (Reviews, Dev IA) pour en voir plus à l'écran. Mémorisé dans ce navigateur." data-tip="Compact resserre les listes (Reviews, Dev IA) pour en voir plus à l'écran. Mémorisé dans ce navigateur." data-i18n-tip="settings.tip.densite"><svg class="ico"><use href="#i-info"/></svg></button>
+                <select id="densitySelect" title="Densité de l'affichage — appliquée immédiatement" data-i18n-title="settings.title.densite">
+                    <option value="cozy" data-i18n="settings.opt.confortable">Confortable</option>
+                    <option value="compact" data-i18n="settings.opt.compact">Compact</option>
+                </select>
+            </label>
+            <p class="muted" style="margin:0" data-i18n="settings.p.applique-immediatement-et-memorise-dans">Appliqué immédiatement et mémorisé dans ce navigateur (pas besoin d'enregistrer).</p>
+        </div>
+
+        <!-- Formulaire ANCRE : tous les champs de config vivent dans les sous-onglets (Git, Jira,
+             Merge Request) et s'y rattachent via l'attribut form= ; c'est ce <form> qui les soumet. -->
+        <form id="configForm" class="form"><span id="configInfo" class="muted"></span></form>
+
+        <h2 data-i18n="settings.head.zone-dangereuse">Zone dangereuse</h2>
+        <details class="danger-zone">
+            <summary data-i18n="settings.head.actions-irreversibles">Actions irréversibles</summary>
+            <p class="muted" data-i18n-html="settings.p.supprime-tous-les-rapports-de">Supprime <strong>tous</strong> les rapports de review et le journal des jobs, et remet toutes les MR en « à traiter ». Les dépôts et les réglages sont conservés.</p>
+            <button id="btnResetReports" class="btn btn-danger" title="Supprimer tous les rapports (irréversible)" data-i18n-title="settings.title.supprimer-tous-les-rapports-irreversible"><svg class="ico"><use href="#i-trash"/></svg><span data-i18n="settings.btn.supprimer-tous-les-rapports">Supprimer tous les rapports</span></button>
+        </details>
+        </div><!-- /sub-config -->
+
+        <!-- Sous-onglet : Git — connexion GitLab + dossier de clonage (déplacés depuis Général),
+             et la palette de commandes git de l'onglet « Commandes Git ». Champs rattachés à
+             #configForm via form= (même logique d'enregistrement que le Général). -->
+        <div id="sub-gitcfg" class="subtab">
+        <h2 data-i18n="settings.sub.git">Git</h2>
+        <div class="form" style="max-width:520px">
+            <label><span data-i18n="settings.lbl.url-gitlab">URL GitLab</span> <button type="button" class="hint" tabindex="0" aria-label="L'adresse racine de ton GitLab, sans chemin de projet. Ex. https://gitlab.com ou https://gitlab.mon-entreprise.fr" data-tip="L'adresse racine de ton GitLab, sans chemin de projet. Ex. https://gitlab.com ou https://gitlab.mon-entreprise.fr" data-i18n-tip="settings.tip.l-adresse-racine-de-ton"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="gitlab_url" placeholder="https://gitlab.com" /></label>
+            <label><span data-i18n="settings.lbl.access-token-pat">Access token (PAT)</span> <button type="button" class="hint" tabindex="0" aria-label="Jeton d'accès personnel GitLab, avec les scopes api et read_repository. Il sert à lire les MR et à cloner les dépôts. Stocké en local uniquement." data-tip="Jeton d'accès personnel GitLab, avec les scopes api et read_repository. Il sert à lire les MR et à cloner les dépôts. Stocké en local uniquement." data-i18n-tip="settings.tip.jeton-d-acces-personnel-gitlab"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="access_token" type="password" placeholder="glpat-…" data-i18n-placeholder="settings.ph.glpat" /></label>
+            <label><span data-i18n="settings.lbl.dossier-de-clonage">Dossier de clonage</span> <button type="button" class="hint" tabindex="0" aria-label="Répertoire où l'outil clone les dépôts et où l'agent IA travaille. Un sous-dossier par projet y est créé." data-tip="Répertoire où l'outil clone les dépôts et où l'agent IA travaille. Un sous-dossier par projet y est créé." data-i18n-tip="settings.tip.repertoire-ou-l-outil-clone"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="clone_path" /></label>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                <button class="btn" type="button" id="btnTestGitlab" title="Vérifier que l'URL et le token permettent bien d'accéder à GitLab" data-i18n-title="settings.title.verifier-que-l-url-et"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.btn.tester-la-connexion">Tester la connexion</span></button>
+                <span id="configInfoGit" class="muted"></span>
+            </div>
+        </div>
+
+        <h2 data-i18n="settings.gitcmd.title">Palette de commandes git</h2>
+        <p class="muted" style="max-width:560px" data-i18n="settings.gitcmd.intro">Commandes proposées dans l'onglet Git → Commandes Git. Chaque entrée = un nom + une commande git figée (sans le mot « git »).</p>
+        <div id="gitCmdList" class="gitcmd-list"></div>
+        <form id="gitCmdForm" class="form" style="max-width:520px" autocomplete="off">
+            <label><span data-i18n="settings.gitcmd.label">Nom</span> <input id="gitCmdLabel" placeholder="Récupérer tout" data-i18n-placeholder="settings.gitcmd.label-ph" /></label>
+            <label><span data-i18n="settings.gitcmd.command">Commande git</span> <input id="gitCmdCommand" placeholder="fetch --all --prune" data-i18n-placeholder="settings.gitcmd.command-ph" /></label>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="submit"><svg class="ico"><use href="#i-plus"/></svg><span id="gitCmdSubmitLabel" data-i18n="settings.gitcmd.add">Ajouter</span></button>
+                <button class="btn" type="button" id="gitCmdCancel" hidden data-i18n="settings.gitcmd.cancel">Annuler</button>
+                <span id="gitCmdInfo" class="muted"></span>
+            </div>
+        </form>
+        </div><!-- /sub-gitcfg -->
+
+        <!-- Sous-onglet : Jira — connexion (déplacée depuis Général). Champs rattachés à
+             #configForm via form= (même logique d'enregistrement). -->
+        <div id="sub-jiracfg" class="subtab">
+        <h2 data-i18n="settings.sub.jira">Jira</h2>
+        <p class="muted" style="max-width:560px" data-i18n="settings.jira.intro">Sert à l'onglet Jira (tes tickets affectés) et à enrichir une session de dev depuis un ticket. Jira Cloud : email + jeton d'API.</p>
+        <div class="form" style="max-width:520px">
+            <label><span data-i18n="settings.lbl.url-jira">URL Jira</span> <button type="button" class="hint" tabindex="0" aria-label="L'adresse racine de ton Jira. Ex. https://mon-entreprise.atlassian.net" data-tip="L'adresse racine de ton Jira. Ex. https://mon-entreprise.atlassian.net" data-i18n-tip="settings.tip.optionnel-sert-a-transformer-les"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_url" placeholder="https://mon-entreprise.atlassian.net" /></label>
+            <label><span data-i18n="settings.lbl.jira-email">Email Jira</span> <button type="button" class="hint" tabindex="0" aria-label="Email du compte Atlassian, utilisé avec le jeton d'API pour l'authentification Basic (Jira Cloud)." data-tip="Email du compte Atlassian, utilisé avec le jeton d'API pour l'authentification Basic (Jira Cloud)."><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_email" placeholder="prenom.nom@entreprise.fr" data-i18n-placeholder="settings.ph.jira-email" /></label>
+            <label><span data-i18n="settings.lbl.jira-token">Jeton d'API Jira</span> <button type="button" class="hint" tabindex="0" aria-label="Jeton d'API créé sur id.atlassian.com (Manage account → Security → API tokens). Stocké en local, masqué." data-tip="Jeton d'API créé sur id.atlassian.com (Manage account → Security → API tokens). Stocké en local, masqué."><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_token" type="password" placeholder="ATATT…" data-i18n-placeholder="settings.ph.jira-token" /></label>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                <button class="btn" type="button" id="btnTestJira" title="Vérifier l'accès Jira en récupérant un ticket témoin" data-i18n-title="settings.title.tester-jira"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.btn.tester-jira">Tester Jira</span></button>
+                <span id="configInfoJira" class="muted"></span>
+            </div>
+        </div>
+        </div><!-- /sub-jiracfg -->
+
+        <!-- Sous-onglet : Merge Request (review, convergence, templates) -->
+        <!-- Les champs restent rattachés à #configForm via l'attribut form= : ils sont
+             chargés/enregistrés par la même logique que le Général (un seul /config). -->
+        <div id="sub-mr" class="subtab">
+        <h2 data-i18n="settings.sub.mr">Merge Request</h2>
+        <div class="form" style="max-width:520px">
+            <label><span data-i18n="settings.lbl.skill-de-review">Skill de review</span> <button type="button" class="hint" tabindex="0" aria-label="Nom du skill passé à l'agent IA pour cadrer la review (par défaut git-review). Laisse tel quel si tu n'as pas de skill personnalisé." data-tip="Nom du skill passé à l'agent IA pour cadrer la review (par défaut git-review). Laisse tel quel si tu n'as pas de skill personnalisé." data-i18n-tip="settings.tip.nom-du-skill-passe-a"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="review_skill" placeholder="git-review" data-i18n-placeholder="settings.ph.git-review" /></label>
+            <label><span data-i18n="settings.lbl.rafraichir-les-mr-automatiquement-minutes">Rafraîchir les MR automatiquement (minutes, 0 = désactivé)</span> <button type="button" class="hint" tabindex="0" aria-label="Découverte automatique des nouvelles MR à intervalle régulier. 0 = désactivé. Minimum 1 minute, pour éviter les rate limits de l'API GitLab." data-tip="Découverte automatique des nouvelles MR à intervalle régulier. 0 = désactivé. Minimum 1 minute, pour éviter les rate limits de l'API GitLab." data-i18n-tip="settings.tip.decouverte-automatique-des-nouvelles-mr"><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="auto_refresh_minutes" type="number" min="0" step="1" placeholder="0" />
+            </label>
+            <label class="inline-check"><input form="configForm" name="review_explain" type="checkbox" /> <span data-i18n="settings.lbl.review-explain">Générer l'explication pédagogique lors d'une review</span>
+                <button type="button" class="hint" tabindex="0" aria-label="Un 2e appel IA après la review, qui alimente l'onglet Explication du rapport. Décoché : review seule (plus rapide, moins de tokens) — l'explication reste générable à la demande depuis le rapport." data-tip="Un 2e appel IA après la review, qui alimente l'onglet Explication du rapport. Décoché : review seule (plus rapide, moins de tokens) — l'explication reste générable à la demande depuis le rapport." data-i18n-tip="settings.tip.review-explain"><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <label><span data-i18n="settings.lbl.converge-threshold">Convergence — seuil cible (/10)</span> <button type="button" class="hint" tabindex="0" aria-label="Note cible par défaut de la boucle « Converger ». La boucle s'arrête dès que la note atteint ce seuil. Surchargeable au lancement." data-tip="Note cible par défaut de la boucle « Converger ». La boucle s'arrête dès que la note atteint ce seuil. Surchargeable au lancement." data-i18n-tip="settings.tip.converge-threshold"><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="converge_threshold" type="number" min="1" max="10" step="0.5" placeholder="8" />
+            </label>
+            <label><span data-i18n="settings.lbl.converge-passes">Convergence — plafond de passes</span> <button type="button" class="hint" tabindex="0" aria-label="Nombre maximal de corrections IA par défaut avant d'arrêter la boucle « Converger ». Garde-fou anti-emballement. Surchargeable au lancement." data-tip="Nombre maximal de corrections IA par défaut avant d'arrêter la boucle « Converger ». Garde-fou anti-emballement. Surchargeable au lancement." data-i18n-tip="settings.tip.converge-passes"><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="converge_max_passes" type="number" min="1" max="10" step="1" placeholder="3" />
+            </label>
+        </div>
+        <!-- Templates : hors du formulaire plafonné à 520px pour laisser les textarea
+             s'élargir (prompts multi-lignes) — leur propre .form plus large les habille. -->
+        <details class="prompt-templates">
+            <summary data-i18n="settings.head.templates-de-prompt-avance">Templates de prompt (avancé)</summary>
+            <div class="form">
+                <label><span data-i18n="settings.lbl.prompt-review">Prompt review</span> <button type="button" class="hint" tabindex="0" aria-label="Instruction envoyée à l'IA pour produire le rapport de review. Placeholders disponibles ci-dessous." data-tip="Instruction envoyée à l'IA pour produire le rapport de review. Placeholders disponibles ci-dessous." data-i18n-tip="settings.tip.instruction-envoyee-a-l-ia"><svg class="ico"><use href="#i-info"/></svg></button> <textarea form="configForm" name="prompt_review" rows="7"></textarea></label>
+                <label><span data-i18n="settings.lbl.prompt-explication">Prompt explication</span> <button type="button" class="hint" tabindex="0" aria-label="Instruction pour l'onglet Explication du rapport : ce que fait la MR, en langage clair." data-tip="Instruction pour l'onglet Explication du rapport : ce que fait la MR, en langage clair." data-i18n-tip="settings.tip.instruction-pour-l-onglet-explication"><svg class="ico"><use href="#i-info"/></svg></button> <textarea form="configForm" name="prompt_explain" rows="7"></textarea></label>
+                <label><span data-i18n="settings.lbl.prompt-modification">Prompt modification</span> <button type="button" class="hint" tabindex="0" aria-label="Instruction utilisée quand l'IA doit modifier du code (sessions de codage et corrections demandées depuis un rapport)." data-tip="Instruction utilisée quand l'IA doit modifier du code (sessions de codage et corrections demandées depuis un rapport)." data-i18n-tip="settings.tip.instruction-utilisee-quand-l-ia"><svg class="ico"><use href="#i-info"/></svg></button> <textarea form="configForm" name="prompt_modify" rows="7"></textarea></label>
+                <p class="muted"><span data-i18n="settings.p.placeholders">Placeholders :</span> <code>{skill} {source} {target} {diff_file} {previous} {instruction}</code></p>
+            </div>
+        </details>
+        <div class="form-actions">
+            <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+            <span id="configInfoMr" class="muted"></span>
+        </div>
+        </div><!-- /sub-mr -->
+
+        <div id="sub-aisession" class="subtab">
+            <h2 data-i18n="settings.aisession.title">Reprise de session IA</h2>
+            <p class="muted" data-i18n="settings.aisession.intro">Test technique : l'agent mémorise un marqueur secret lors d'une première passe, puis on reprend la <strong>même</strong> session et on lui redemande ce marqueur. S'il le restitue, on sait qu'on peut reprendre une session — socle de la future fonctionnalité « l'IA pose une question ».</p>
+            <p>
+                <button id="aiSessionTest" class="btn btn-primary" title="Lance deux passes dans la même session d'agent" data-i18n-title="settings.aisession.test-title"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.aisession.test">Tester la reprise de session</span></button>
+                <span id="aiSessionInfo" class="muted"></span>
+            </p>
+            <div id="aiSessionResult"></div>
+        </div><!-- /sub-aisession -->
+    </section>
+</main>
+
+<!-- Lightbox : aperçu d'une image de pièce jointe Jira en grand (clic sur une vignette). -->
+<div id="jiraLightbox" class="modal jira-lightbox" hidden>
+    <figure class="jira-lightbox-fig">
+        <img id="jiraLightboxImg" src="" alt="" />
+        <figcaption class="jira-lightbox-cap"><span id="jiraLightboxName"></span> <a id="jiraLightboxOpen" href="" target="_blank" rel="noopener" data-i18n="jira.open-new-tab">Ouvrir dans un onglet ↗</a></figcaption>
+    </figure>
+</div>
+
+<!-- Modale : nouvelle tâche de développement -->
+<div id="taskModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 id="taskModalTitle" data-i18n="task.head.nouvelle-tache-de-developpement">Nouvelle tâche de développement</h3>
+        <form id="taskForm" class="form">
+            <div id="taskReposWrap" class="targets-editor">
+                <div class="targets-head">
+                    <span id="targetsLabel" data-i18n="task.span.projets-et-branches">Projets et branches</span>
+                    <button type="button" id="addTarget" class="btn btn-sm" title="Ajouter un projet à cette session" data-i18n-title="task.title.ajouter-un-projet-a-cette"><svg class="ico ico-sm"><use href="#i-plus"/></svg><span data-i18n="task.btn.ajouter-un-projet">Ajouter un projet</span></button>
+                </div>
+                <div id="targetRows"></div>
+                <p class="muted" id="targetsHint" style="margin:6px 0 0"></p>
+            </div>
+            <!-- Codage hors dépôt : répertoire local puis projets (remplace l'éditeur de projets).
+                 Le chemin de travail se DÉDUIT du couple (répertoire, projet) : plus de saisie. -->
+            <div id="taskLocalWrap" class="targets-editor" hidden>
+                <label><span data-i18n="local.root-label">Répertoire local</span>
+                    <button type="button" class="hint" tabindex="0" data-i18n-tip="local.root-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <div id="localRootBox" class="nav-root-box"></div>
+                </label>
+                <div class="targets-head">
+                    <strong data-i18n="local.dirs-label">Projets où coder</strong>
+                    <button type="button" id="taskLocalAddDir" class="btn btn-sm" data-i18n-title="local.add-dir-title"><svg class="ico ico-sm"><use href="#i-plus"/></svg><span data-i18n="local.add-dir">Ajouter un projet</span></button>
+                </div>
+                <div id="taskLocalDirRows"></div>
+                <p class="muted" style="margin:6px 0 0" data-i18n="local.dirs-hint">Les projets du répertoire choisi. Le même prompt est appliqué à chacun, l'un après l'autre.</p>
+            </div>
+            <div id="taskJiraRow" class="task-jira" hidden>
+                <label><span data-i18n="task.lbl.jira-ticket">Enrichir depuis un ticket Jira (optionnel)</span> <button type="button" class="hint" tabindex="0" aria-label="Récupère le titre et la description du ticket via l'API Jira et les ajoute en tête du prompt, comme contexte. Le numéro est pré-rempli si la branche de travail contient une clé (ex. PROJ-1234)." data-tip="Récupère le titre et la description du ticket via l'API Jira et les ajoute en tête du prompt, comme contexte. Le numéro est pré-rempli si la branche de travail contient une clé (ex. PROJ-1234)." data-i18n-tip="task.tip.jira-ticket"><svg class="ico"><use href="#i-info"/></svg></button>
+                    <span class="jira-fetch">
+                        <input id="taskJiraKey" placeholder="PROJ-1234" data-i18n-placeholder="task.ph.jira-key" />
+                        <button type="button" id="taskJiraFetch" class="btn btn-sm" title="Récupérer le ticket et l'ajouter au prompt" data-i18n-title="task.title.jira-fetch"><svg class="ico ico-sm"><use href="#i-doc"/></svg><span data-i18n="task.btn.jira-fetch">Récupérer</span></button>
+                    </span>
+                </label>
+                <span id="taskJiraStatus" class="muted"></span>
+            </div>
+            <label><span data-i18n="task.lbl.tache-a-realiser-prompt">Tâche à réaliser (prompt)</span> <button type="button" class="hint" tabindex="0" aria-label="En codage : ce que l'IA doit implémenter, appliqué à chaque projet sélectionné. En exploration : la question posée sur le code, sans aucune modification." data-tip="En codage : ce que l'IA doit implémenter, appliqué à chaque projet sélectionné. En exploration : la question posée sur le code, sans aucune modification." data-i18n-tip="task.tip.en-codage-ce-que-l"><svg class="ico"><use href="#i-info"/></svg></button>
+                <textarea name="prompt" rows="5" placeholder="Décris la tâche de dev à faire… (ex. Ajouter un endpoint /health qui renvoie le statut)" data-i18n-placeholder="task.ph.decris-la-tache-de-dev" required></textarea>
+            </label>
+            <div id="taskImages" class="ticket-drop">
+                <label class="ticket-file"><svg class="ico"><use href="#i-clip"/></svg><span data-i18n="task.lbl.add-screenshot">Ajouter une capture</span><input type="file" id="taskFile" accept="image/*" hidden multiple /></label>
+                <span class="muted" data-i18n="task.span.ou-colle-des-captures-ctrl">…ou colle des captures (Ctrl+V) pour enrichir le prompt</span>
+                <span id="taskExistingImgs" class="muted"></span>
+                <div id="taskPreviews" class="task-previews"></div>
+            </div>
+            <div id="codeOnlyFields">
+                <label><span data-i18n="task.lbl.message-de-commit-optionnel">Message de commit (optionnel)</span> <button type="button" class="hint" tabindex="0" aria-label="Message du commit créé par l'IA. Vide = la première ligne du prompt est utilisée." data-tip="Message du commit créé par l'IA. Vide = la première ligne du prompt est utilisée." data-i18n-tip="task.tip.message-du-commit-cree-par"><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input name="commit_message" placeholder="défaut : 1ère ligne du prompt" data-i18n-placeholder="task.ph.defaut-1ere-ligne-du-prompt" />
+                </label>
+                <label class="inline-check"><input type="checkbox" name="auto_push" /> <span data-i18n="task.lbl.auto-push">Auto-push (pousser automatiquement après le commit, sans validation)</span> <button type="button" class="hint" tabindex="0" aria-label="Coché, la branche est poussée dès la fin du commit. Décoché, tu relis le diff puis pousses toi-même depuis Dev IA." data-tip="Coché, la branche est poussée dès la fin du commit. Décoché, tu relis le diff puis pousses toi-même depuis Dev IA." data-i18n-tip="task.tip.coche-la-branche-est-poussee"><svg class="ico"><use href="#i-info"/></svg></button></label>
+                <label class="inline-check"><input type="checkbox" name="ask_questions" /> <span data-i18n="task.lbl.ask-questions">L'IA peut me poser des questions quand elle hésite</span> <button type="button" class="hint" tabindex="0" aria-label="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-tip="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-i18n-tip="task.tip.ask-questions"><svg class="ico"><use href="#i-info"/></svg></button></label>
+            </div>
+            <p id="taskLocalWarn" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span data-i18n-html="local.warn">L'IA modifie les fichiers <strong>en place</strong>, sans commit. Si le dossier est un <strong>dépôt git</strong>, tu peux relire et annuler toi-même (git diff / git checkout) ; sinon, <strong>aucune annulation</strong> n'est possible.</span></p>
+            <div class="modal-actions">
+                <button type="button" id="taskCancel" class="btn" title="Fermer sans enregistrer" data-i18n-title="task.title.fermer-sans-enregistrer" data-i18n="task.btn.annuler">Annuler</button>
+                <button type="button" id="taskSubmitOnly" class="btn" hidden title="Créer la session sans l'exécuter — tu la lanceras quand tu veux depuis Dev IA" data-i18n-title="task.title.creer-la-session-sans-l"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="task.btn.creer-sans-lancer">Créer sans lancer</span></button>
+                <button type="button" id="taskConverge" class="btn btn-converge" hidden title="Du prompt à la MR convergée : l'IA code, pousse, ouvre la MR puis converge" data-i18n-title="task.title.converge"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="report.btn.converge">Converger</span></button>
+                <button class="btn btn-primary" type="submit" id="taskSubmit" title="Enregistrer la tâche (ou la créer et la lancer selon le contexte)" data-i18n-title="task.title.enregistrer-la-tache-ou-la"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modale : lancer une convergence (« Converger ») -->
+<div id="convergeModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 id="convergeModalTitle" data-i18n="converge.modal.title">Converger la MR</h3>
+        <p class="muted" data-i18n="converge.modal.intro">La boucle enchaîne review → correction IA (commit + push sur la branche) → re-review du delta, jusqu'au seuil de note ou au plafond de passes. Aucune fusion : la boucle prépare, c'est toi qui valides et merges.</p>
+        <div class="converge-fields">
+            <label><span data-i18n="converge.modal.threshold">Seuil cible</span>
+                <input id="convThreshold" class="mini-num" type="number" min="1" max="10" step="0.5" /> <span class="muted">/10</span></label>
+            <label><span data-i18n="converge.modal.passes">Plafond de passes</span>
+                <input id="convPasses" class="mini-num" type="number" min="1" max="10" step="1" /></label>
+        </div>
+        <p id="convSessionNote" class="converge-note converge-note-session" hidden><svg class="ico ico-sm"><use href="#i-bot"/></svg> <span data-i18n-html="converge.modal.session-note">Session : l'IA va d'abord <strong>coder la tâche</strong>, pousser la branche et <strong>ouvrir la MR</strong>, puis converger — pour chaque projet de la session.</span></p>
+        <p class="converge-note"><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span data-i18n="converge.modal.warn">Chaque passe pousse un commit produit par l'IA sur la branche distante partagée (jamais de merge). Tu relis et merges à la fin.</span></p>
+        <div class="modal-actions">
+            <button id="convCancel" type="button" class="btn" data-i18n="task.btn.annuler">Annuler</button>
+            <button id="convStart" type="button" class="btn btn-converge"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="converge.modal.start">Lancer la convergence</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- Modale : ajout en masse de dépôts depuis GitLab -->
+<div id="bulkModal" class="modal" hidden>
+    <div class="modal-box bulk-box">
+        <h3 data-i18n="settings.head.ajouter-des-depots-depuis-gitlab">Ajouter des dépôts depuis GitLab</h3>
+        <div class="bulk-toolbar">
+            <input id="bulkSearch" class="search" type="search" placeholder="Filtrer les projets…" data-i18n-placeholder="settings.ph.filtrer-les-projets" /><button type="button" class="hint" tabindex="0" aria-label="Filtre l’affichage de la liste ci-dessous (nom ou chemin du projet). N’a aucun effet sur ce qui sera ajouté : seules les cases cochées comptent." data-tip="Filtre l’affichage de la liste ci-dessous (nom ou chemin du projet). N’a aucun effet sur ce qui sera ajouté : seules les cases cochées comptent." data-i18n-tip="settings.tip.filtre-l-affichage-de-la"><svg class="ico"><use href="#i-info"/></svg></button>
+            <button id="bulkAll" type="button" class="btn btn-sm" title="Cocher tous les projets affichés" data-i18n-title="settings.title.cocher-tous-les-projets-affiches" data-i18n="settings.btn.tout-cocher">Tout cocher</button>
+            <button id="bulkNone" type="button" class="btn btn-sm" title="Décocher tous les projets" data-i18n-title="settings.title.decocher-tous-les-projets" data-i18n="settings.btn.tout-decocher">Tout décocher</button><button type="button" class="hint" tabindex="0" aria-label="Tous les projets GitLab auxquels ton token donne accès. Ceux qui apparaissent grisés sont déjà dans tes dépôts et ne peuvent pas être cochés deux fois." data-tip="Tous les projets GitLab auxquels ton token donne accès. Ceux qui apparaissent grisés sont déjà dans tes dépôts et ne peuvent pas être cochés deux fois." data-i18n-tip="settings.tip.tous-les-projets-gitlab-auxquels"><svg class="ico"><use href="#i-info"/></svg></button>
+        </div>
+        <div id="bulkList" class="bulk-list"><p class="muted" data-i18n="settings.p.chargement">Chargement…</p></div>
+        <div class="bulk-footer">
+            <label class="muted"><span data-i18n="settings.lbl.pattern">Pattern</span> <button type="button" class="hint" tabindex="0" aria-label="Appliqué à TOUS les projets ajoutés en une fois : fragment que le nom de la branche source doit contenir pour que la MR soit récupérée (ex. PROJ-). Vide = toutes les MR. Modifiable ensuite dépôt par dépôt." data-tip="Appliqué à TOUS les projets ajoutés en une fois : fragment que le nom de la branche source doit contenir pour que la MR soit récupérée (ex. PROJ-). Vide = toutes les MR. Modifiable ensuite dépôt par dépôt." data-i18n-tip="settings.tip.applique-a-tous-les-projets"><svg class="ico"><use href="#i-info"/></svg></button> <input id="bulkPattern" placeholder="vide = toutes les MR" data-i18n-placeholder="settings.ph.vide-toutes-les-mr" /></label>
+            <span id="bulkCount" class="muted"></span>
+            <span class="spacer"></span>
+            <button id="bulkCancel" type="button" class="btn" title="Fermer sans rien ajouter" data-i18n-title="settings.title.fermer-sans-rien-ajouter" data-i18n="task.btn.annuler">Annuler</button>
+            <button class="btn btn-primary" id="bulkAdd" type="button" title="Ajouter les projets cochés à la liste des dépôts" data-i18n-title="settings.title.ajouter-les-projets-coches-a" data-i18n="settings.btn.ajouter-la-selection">Ajouter la sélection</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modale : contexte libre de la review (ticket, spec, échange… + capture facultative) -->
+<div id="ticketModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3><span data-i18n="context.head.title">Contexte</span> <span id="ticketMrTitle" class="muted"></span></h3>
+        <p class="muted" data-i18n="context.p.facultatif-sera-pris-en-compte">Facultatif — sera pris en compte lors de la review.</p>
+        <!-- Contexte récupéré depuis Jira (lecture) : distinct du complément manuel
+             ci-dessous, les deux sont concaténés à la review. -->
+        <div id="ticketJira" class="ticket-jira" hidden>
+            <div class="ticket-jira-head">
+                <strong><span data-i18n="context.jira.title">Contexte Jira</span> <code id="ticketJiraKey"></code></strong>
+                <span class="spacer"></span>
+                <span id="ticketJiraAt" class="muted"></span>
+                <button type="button" id="ticketJiraRefresh" class="btn btn-sm" title="Re-récupérer le ticket depuis Jira" data-i18n-title="context.jira.refresh-title"><svg class="ico ico-sm"><use href="#i-refresh"/></svg><span data-i18n="context.jira.refresh">Rafraîchir</span></button>
+            </div>
+            <div id="ticketJiraBody" class="ticket-jira-body md"></div>
+            <div id="ticketJiraError" class="ticket-jira-error" hidden></div>
+        </div>
+        <label><span data-i18n="context.lbl.contexte-a-transmettre-a-l">Complément manuel (spécification, règle métier, échange…)</span> <button type="button" class="hint" tabindex="0" aria-label="Tout ce qui aide à juger la MR : contenu du ticket, spécification, règle métier, extrait d'échange, contrainte technique… C'est injecté dans le prompt de review, en plus du diff." data-tip="Tout ce qui aide à juger la MR : contenu du ticket, spécification, règle métier, extrait d'échange, contrainte technique… C'est injecté dans le prompt de review, en plus du diff." data-i18n-tip="context.tip.tout-ce-qui-aide-a"><svg class="ico"><use href="#i-info"/></svg></button>
+            <textarea id="ticketText" rows="7" placeholder="Contenu du ticket, spécification, règle métier, extrait de discussion…" data-i18n-placeholder="context.ph.contenu-du-ticket-specification-regle"></textarea>
+        </label>
+        <div id="ticketDrop" class="ticket-drop">
+            <label class="ticket-file"><svg class="ico"><use href="#i-clip"/></svg><span data-i18n="context.lbl.pick-screenshot">Choisir une capture</span><input type="file" id="ticketFile" accept="image/*" hidden /></label>
+            <span class="muted" data-i18n="context.span.ou-colle-une-capture-ctrl">…ou colle une capture (Ctrl+V) n'importe où dans cette fenêtre</span>
+            <div class="ticket-preview-wrap" hidden>
+                <img id="ticketPreview" alt="capture jointe au contexte" />
+                <button id="ticketRemoveImg" type="button" class="btn btn-sm btn-danger" title="Retirer la capture jointe" data-i18n-title="context.title.retirer-la-capture-jointe" data-i18n="context.btn.retirer">retirer</button>
+            </div>
+        </div>
+        <!-- Projets liés : l'IA analyse l'impact des changements sur ces dépôts (lecture seule). -->
+        <div class="ticket-links">
+            <div class="ticket-links-head">
+                <strong data-i18n="context.links.title">Projets liés (analyse d'impact)</strong>
+                <button type="button" class="hint" tabindex="0" data-i18n-tip="context.links.tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <span class="spacer"></span>
+                <button type="button" id="linkSetDefault" class="btn btn-sm" data-i18n-title="context.links.default-title"><svg class="ico ico-sm"><use href="#i-save"/></svg><span data-i18n="context.links.default">Par défaut du dépôt</span></button>
+                <button type="button" id="linkAdd" class="btn btn-sm" data-i18n-title="context.links.add-title"><svg class="ico ico-sm"><use href="#i-plus"/></svg><span data-i18n="context.links.add">Ajouter un projet</span></button>
+            </div>
+            <div id="linkRows"></div>
+        </div>
+        <div class="modal-actions">
+            <button id="ticketCancel" type="button" class="btn" title="Fermer sans enregistrer le contexte" data-i18n-title="context.title.fermer-sans-enregistrer-le-contexte" data-i18n="task.btn.annuler">Annuler</button>
+            <button class="btn btn-primary" id="ticketSave" type="button" title="Enregistrer ce contexte — il sera pris en compte à la prochaine review" data-i18n-title="context.title.enregistrer-ce-contexte-il-sera" data-i18n="settings.btn.enregistrer">Enregistrer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Vue plein écran : réponse d'une exploration -->
+<div id="taskMdView" class="splitview" hidden>
+    <div class="split-head">
+        <span id="taskMdTitle" class="split-title"></span>
+        <span class="spacer"></span>
+        <button id="taskMdCopy" class="btn btn-sm" title="Copier la réponse en Markdown" data-i18n-title="context.title.copier-la-reponse-en-markdown"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="settings.btn.copier">Copier</span></button>
+        <button id="taskMdClose" class="btn" title="Fermer (Échap)" data-i18n-title="context.title.fermer-echap"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>
+    </div>
+    <div class="split-body"><div class="split-pane" style="grid-column:1 / -1;overflow:auto"><div id="taskMdBody" class="md" style="padding:18px 24px;max-width:900px;margin:0 auto"></div></div></div>
+</div>
+
+<!-- Vue plein écran : diff d'une tâche -->
+<div id="taskDiffView" class="splitview" hidden>
+    <div class="split-head">
+        <span id="taskDiffTitle" class="split-title"></span>
+        <span class="spacer"></span>
+        <button id="taskDiffClose" class="btn" title="Fermer la vue du diff (Échap)" data-i18n-title="context.title.fermer-la-vue-du-diff"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>
+    </div>
+    <div class="split-body">
+        <div class="split-pane split-right" style="grid-column:1 / -1"><pre id="taskDiffPre" class="diff"></pre></div>
+    </div>
+</div>
+
+<!-- Vue plein écran : rapport/explication à gauche, diff à droite -->
+<div id="splitView" class="splitview" hidden>
+    <div class="split-head">
+        <button id="reportToggle" class="split-btn" title="Afficher / masquer le rapport" data-i18n-title="context.title.afficher-masquer-le-rapport"><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="context.btn.rapport">Rapport</span></button>
+        <button id="treeToggle" class="split-btn" title="Afficher / masquer l'arborescence" data-i18n-title="context.title.afficher-masquer-l-arborescence"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="context.btn.arbre">Arbre</span></button>
+        <span id="splitTitle" class="split-title"></span>
+        <span class="spacer"></span>
+        <button id="splitClose" class="btn" title="Fermer la vue plein écran (Échap)" data-i18n-title="context.title.fermer-la-vue-plein-ecran"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>
+    </div>
+    <div class="split-body code-body">
+        <div id="reportPane" class="code-report">
+            <div class="split-tabs">
+                <button data-split="review" class="active" title="Afficher le rapport de revue" data-i18n-title="context.title.afficher-le-rapport-de-revue" data-i18n="context.btn.rapport-de-revue">Rapport de revue</button>
+                <button data-split="explanation" title="Afficher l'explication pédagogique de la MR" data-i18n-title="context.title.afficher-l-explication-pedagogique-de" data-i18n="context.btn.explication">Explication</button>
+            </div>
+            <div id="splitMd" class="md"></div>
+        </div>
+        <div id="treePane" class="code-tree">
+            <input id="treeSearch" class="search" type="search" placeholder="filtrer les fichiers…" data-i18n-placeholder="context.ph.filtrer-les-fichiers" />
+            <div id="treeList" class="tree-list"></div>
+        </div>
+        <div id="filePane" class="code-file">
+            <div class="file-bar">
+                <span id="fileName" class="file-name" data-i18n="context.span.selectionne-un-fichier">Sélectionne un fichier</span>
+                <span class="spacer"></span>
+                <div id="changeNav" class="change-nav" hidden>
+                    <button id="prevChange" title="Changement précédent" data-i18n-title="context.title.changement-precedent"><svg class="ico"><use href="#i-left"/></svg></button>
+                    <span id="changeCounter" class="muted"></span>
+                    <button id="nextChange" title="Changement suivant" data-i18n-title="context.title.changement-suivant"><svg class="ico"><use href="#i-right"/></svg></button>
+                </div>
+            </div>
+            <div class="file-body">
+                <div id="fileContent" class="file-content"></div>
+                <div id="minimap" class="minimap" hidden></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<footer id="footer" class="footer" title="Télémétrie live — activité, tokens IA et MR de l'équipe" data-i18n-title="context.title.telemetrie-live-activite-tokens-ia">
+    <span class="footer-prompt">dev@mergerie:~$<span class="footer-cursor">▮</span></span>
+    <span id="footerFrame" class="footer-frame"></span>
+    <span id="footerTokens" class="footer-tokens" title="Tokens IA consommés (cumul estimé)" data-i18n-title="context.title.tokens-ia-consommes-cumul-estime"><svg class="ico ico-sm"><use href="#i-zap"/></svg> <b id="footerTokCount">0</b> tok</span>
+    <button id="footerLogs" class="footer-mode footer-logs" type="button" hidden title="Réafficher le journal du dernier job (raccourci : l)" data-i18n-title="context.title.reafficher-le-journal"><span class="footer-logs-dot"></span><svg class="ico ico-sm"><use href="#i-doc"/></svg><span data-i18n="context.btn.journal">journal</span></button>
+    <button id="footerMute" class="footer-mode" type="button" title="Mode silencieux (notifications bureau)"><svg class="ico ico-sm"><use href="#i-bell"/></svg></button>
+    <button id="footerMode" class="footer-mode" type="button" title="Mode d'affichage du bandeau" data-i18n-title="context.title.mode-d-affichage-du-bandeau" data-i18n="context.btn.live">live</button>
+    <button id="footerHide" class="footer-hide" type="button" title="Masquer le bandeau" data-i18n-title="context.title.masquer-le-bandeau">✕</button>
+</footer>
+<button id="footerShow" class="footer-show" type="button" title="Afficher le bandeau de télémétrie" data-i18n-title="context.title.afficher-le-bandeau-de-telemetrie" hidden><svg class="ico ico-sm"><use href="#i-zap"/></svg></button>
+
+<script src="/i18n.js"></script>
+<script src="/i18n-runtime.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
