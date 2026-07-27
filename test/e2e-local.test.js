@@ -83,6 +83,51 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
     assert.ok(!fs.existsSync(imgFile), 'images supprimées avec la session');
   });
 
+  test('« Retour de l’IA » : le retour de l’agent est consultable par dossier', async () => {
+    const a = mkdir();
+    const created = (await app.api('POST', '/api/local-tasks', { prompt: 'Ajoute un README', dirs: [a] })).body;
+    await app.api('POST', `/api/local-tasks/${created.id}/run`);
+    await waitForJobs(app.api);
+
+    const lt = (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === created.id);
+    const dir = lt.dirs[0];
+    assert.ok(dir.output_path, 'le retour de l’agent est référencé sur le dossier');
+
+    const out = await app.api('GET', `/api/local-tasks/${created.id}/dirs/${dir.id}/output`);
+    assert.equal(out.status, 200);
+    assert.equal(out.body.path, a, 'le dossier concerné est rappelé');
+    assert.match(out.body.output, /dry-run/i, 'ce que l’agent dit avoir fait');
+
+    // Un dossier d'une AUTRE session n'est pas lisible via cet id de session.
+    const other = (await app.api('POST', '/api/local-tasks', { prompt: 'Z', dirs: [mkdir()] })).body;
+    const cross = await app.api('GET', `/api/local-tasks/${other.id}/dirs/${dir.id}/output`);
+    assert.equal(cross.status, 400, 'un dossier ne se lit que via SA session');
+  });
+
+  test('« Demander une correction » : nouvelle passe sur les mêmes dossiers', async () => {
+    const a = mkdir();
+    const created = (await app.api('POST', '/api/local-tasks', { prompt: 'Première passe', dirs: [a] })).body;
+    await app.api('POST', `/api/local-tasks/${created.id}/run`);
+    await waitForJobs(app.api);
+    const marker = path.join(a, 'PROJ_LOCAL_DRYRUN.md');
+    const firstPass = fs.readFileSync(marker, 'utf8');
+
+    const vide = await app.api('POST', `/api/local-tasks/${created.id}/followup`, { instruction: '  ' });
+    assert.equal(vide.status, 400, 'une demande vide est refusée');
+
+    const job = await app.api('POST', `/api/local-tasks/${created.id}/followup`, { instruction: 'Corrige le titre' });
+    assert.equal(job.body.kind, 'local', 'même file de jobs que la passe initiale');
+    await waitForJobs(app.api);
+
+    // L'IA est repassée sur le MÊME dossier (le marqueur dry-run s'est allongé).
+    assert.ok(fs.readFileSync(marker, 'utf8').length > firstPass.length, 'seconde passe exécutée');
+    const lt = (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === created.id);
+    assert.equal(lt.status, 'done');
+    assert.equal(lt.dirs[0].status, 'done');
+    const out = await app.api('GET', `/api/local-tasks/${created.id}/dirs/${lt.dirs[0].id}/output`);
+    assert.match(out.body.output, /[Ss]uivi/, 'le retour reflète la passe de suivi');
+  });
+
   test('suppression d’une session', async () => {
     const d = mkdir();
     const created = (await app.api('POST', '/api/local-tasks', { prompt: 'W', dirs: [d] })).body;

@@ -56,7 +56,8 @@ la feature *Converger* en action, et une **session reliée à sa MR** — le che
 - **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée,
   re-review incrémentale et **boucle de convergence autonome** (review → correction → re-review jusqu'au seuil).
 - **Dev IA** — sessions de codage automatisées (l'IA code, commite, pousse, ouvre la MR), **codage hors dépôt**
-  et **exploration** de code en lecture seule ; *du prompt à la MR convergée* en un bouton.
+  (avec retour de l'IA et demande de correction) et **exploration** de code en lecture seule ;
+  *du prompt à la MR convergée* en un bouton.
 - **Statistiques** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens.
 - **Git** — opérations multi-dépôts (branches, tags, commandes git) sur les deux forges, navigation de branches
   et recherche de refs, suppressions **restaurables**, tout **avec aperçu**.

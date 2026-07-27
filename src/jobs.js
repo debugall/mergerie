@@ -225,12 +225,12 @@ async function runConvergeSessionJob(jobId, taskId, opts = {}) {
 
 // Exécute une session « Codage hors dépôt » : l'IA code dans chaque dossier local, en
 // place, sans git. Un seul job de fond ; les dossiers sont traités en série.
-async function runLocalJob(jobId, taskId) {
+async function runLocalJob(jobId, taskId, opts = {}) {
   setJob(jobId, { status: 'running', total: 1, done_count: 0, started_at: new Date().toISOString(), message: t('job.msg.starting') });
   logLine(jobId, null, `=== Codage hors dépôt #${jobId} ===`);
   const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   try {
-    await localcoder.runLocal(taskId, onLog);
+    await localcoder.runLocal(taskId, onLog, opts);
     if (proc.isCancelled()) {
       db.prepare("UPDATE local_task SET status = 'new', updated_at = ? WHERE id = ?").run(new Date().toISOString(), taskId);
       logLine(jobId, null, `⏹ Arrêté par l'utilisateur`);
@@ -267,7 +267,7 @@ async function pump() {
     else if (next.kind === 'docker') await runDockerJob(next.jobId, next.payload);
     else if (next.kind === 'converge') await runConvergeJob(next.jobId, next.mrId, next.opts);
     else if (next.kind === 'converge-session') await runConvergeSessionJob(next.jobId, next.taskId, next.opts);
-    else if (next.kind === 'local') await runLocalJob(next.jobId, next.taskId);
+    else if (next.kind === 'local') await runLocalJob(next.jobId, next.taskId, next.opts);
     else await processList(next.jobId, next.rows, next.kind, next.opts);
   } finally {
     running = false;
@@ -375,11 +375,11 @@ function startTaskJob(taskId, action = 'run', opts = {}) {
 }
 
 // Lance une session « Codage hors dépôt » (dossiers locaux, sans git).
-function startLocalJob(taskId) {
+function startLocalJob(taskId, opts = {}) {
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES ('local', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
   const jobId = info.lastInsertRowid;
-  queue.push({ jobId, kind: 'local', taskId });
+  queue.push({ jobId, kind: 'local', taskId, opts });
   setImmediate(pump);
   return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
 }

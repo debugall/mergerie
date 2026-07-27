@@ -264,6 +264,9 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_local_task_dir_task ON local_task_dir(ta
 try { db.exec('ALTER TABLE local_task_dir ADD COLUMN session_key TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE local_task_dir ADD COLUMN session_backend TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE local_task_dir ADD COLUMN session_cwd TEXT'); } catch { /* déjà présente */ }
+// Migration : retour de l'agent par dossier (« Retour de l'IA »), comme output_path
+// côté task_target. Sans lui, une session hors dépôt qui n'a rien modifié reste opaque.
+try { db.exec('ALTER TABLE local_task_dir ADD COLUMN output_path TEXT'); } catch { /* déjà présente */ }
 // Captures jointes au prompt d'un codage hors dépôt (mêmes que task_image, table dédiée).
 db.exec(`CREATE TABLE IF NOT EXISTS local_task_image (
   id INTEGER PRIMARY KEY,

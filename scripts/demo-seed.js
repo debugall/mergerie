@@ -294,9 +294,20 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
 // (Une réussie sur deux dossiers, une en erreur, pour montrer les deux états agrégés.)
 const lt1 = db.prepare('INSERT INTO local_task (prompt, status, created_at, updated_at) VALUES (?,?,?,?)')
   .run('Ajoute un logger structuré (niveau + timestamp ISO), remplace les console.log de ces utilitaires et écris un test pour chacun.', 'done', at(2), at(2));
-for (const p of ['/Users/moi/outils/backup-tool', '/Users/moi/outils/csv-cleaner']) {
-  db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
+// Chaque dossier porte le RETOUR DE L'IA (fichier sur disque, comme en vrai) : le bouton
+// « Retour de l'IA » et « Demander une correction » sont donc démontrables sans agent.
+const LOCAL_OUT = {
+  '/Users/moi/outils/backup-tool': `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` : niveau (\`debug\`/\`info\`/\`warn\`/\`error\`) + timestamp ISO.\n- Remplacé les 14 \`console.log\` de \`backup.js\` et \`restore.js\`.\n- Ajouté \`test/logger.test.js\` (4 cas : format, niveaux, filtrage, sortie stderr).\n\n## Points d'attention\n\n- \`restore.js\` écrivait sur \`stdout\` des données consommées par un script appelant : j'ai gardé \`stdout\` pour celles-là et routé les logs vers \`stderr\`.\n`,
+  '/Users/moi/outils/csv-cleaner': `## Ce que j'ai fait\n\n- Ajouté le même \`src/logger.js\` (copie locale, ce dossier n'est pas un paquet partagé).\n- Remplacé les 6 \`console.log\` de \`clean.js\`.\n- Ajouté \`test/logger.test.js\`.\n\n## Question\n\nLes deux outils dupliquent maintenant le logger. Si tu veux, je peux extraire un petit paquet commun — dis-moi où le placer.\n`,
+};
+for (const p of Object.keys(LOCAL_OUT)) {
+  const info = db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
     .run(lt1.lastInsertRowid, p, 'done', at(2));
+  const dir = ensureDir(path.join(TASKS_DIR, 'local', String(lt1.lastInsertRowid), String(info.lastInsertRowid)));
+  const out = path.join(dir, 'output.md');
+  fs.writeFileSync(out, LOCAL_OUT[p], 'utf8');
+  db.prepare('UPDATE local_task_dir SET output_path = ?, session_key = ?, session_backend = ? WHERE id = ?')
+    .run(out, `demo-local-${info.lastInsertRowid}`, 'claude', info.lastInsertRowid);
 }
 const lt2 = db.prepare('INSERT INTO local_task (prompt, status, last_error, created_at, updated_at) VALUES (?,?,?,?,?)')
   .run('Convertis ce petit script Python en module réutilisable avec des tests pytest.', 'error', 'Le dossier n’a pas pu être traité (agent indisponible en démo).', at(1.2), at(1.2));

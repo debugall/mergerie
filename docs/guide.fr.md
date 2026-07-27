@@ -152,7 +152,11 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   qu'au milieu du traitement. Le formulaire (projets + prompt) vit dans **la même modale que le codage** — tu peux donc
   aussi **joindre des captures d'écran** (bouton ou Ctrl+V) pour enrichir le prompt. Le même prompt est
   appliqué à **chaque dossier**, l'un après l'autre — un dossier en échec n'interrompt pas les autres, et
-  son statut est indiqué par dossier. ⚠ **Aucun filet** : l'agent modifie les fichiers en place, sans
+  son statut est indiqué par dossier. Comme pour le codage sur dépôt, chaque dossier expose
+  **`Retour de l'IA`** — ce que l'agent dit avoir fait, utile quand le dossier n'a pas bougé (prompt
+  incomplet, l'IA a répondu au lieu de coder) —, et la session propose **`Demander une correction`** :
+  une nouvelle passe sur les mêmes dossiers qui **reprend la session de chacun**, donc l'IA garde tout
+  le contexte de ce qu'elle vient de produire. ⚠ **Aucun filet** : l'agent modifie les fichiers en place, sans
   sauvegarde ; sur un dépôt git tu peux relire/annuler toi-même (`git diff` / `git checkout`), sur un
   dossier non-git il n'y a **pas d'annulation** — un avertissement le rappelle. (Sous-onglet dédié, entre
   *Codage* et *Exploration*.)
