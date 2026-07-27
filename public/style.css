@@ -639,6 +639,8 @@ nav button:hover { color: var(--text); background: var(--hover); }
 }
 .nav-health.err { background: var(--badge-err); }
 .nav-health.warn { background: var(--badge-warn); }
+/* Le chiffre explique ce qu'il compte au survol : le curseur d'aide l'annonce. */
+.nav-health[data-tip] { cursor: help; }
 
 /* ---------- Filtre segmenté (les 3 stades d'une MR) ---------- */
 .segmented { display: inline-flex; gap: 2px; padding: 3px; margin: var(--s-3) 0 var(--s-2);
@@ -1127,7 +1129,15 @@ nav button:hover { color: var(--text); background: var(--hover); }
 
 /* Onglet Docker : projets compose (drift .env) + containers hors-compose. */
 /* Filtre affichage/masquage des projets compose (choix persisté). */
+/* Barre de recherche + état de l'onglet Compose : même gabarit que le sous-onglet
+   Actions (.dact-search / .dact-action), au-dessus du filtre par projet. */
+.docker-svcbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: 10px; }
+.dact-action-grow { flex: 1 1 260px; min-width: 200px; }
+.docker-svcbar .dact-search { width: 100%; }
+.docker-svc-hidden { margin: 6px 0 0; font-size: 12px; }
 .docker-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 12px; margin-bottom: 12px; border: 1px solid var(--border, #ccc); border-radius: 10px; }
+/* Noms de projet : toujours sur une ligne → case et libellé centrés l'un sur l'autre. */
+.docker-filter .inline-check > span { line-height: 1; }
 /* État du container, bien visible : pastille colorée + libellé. */
 .docker-state { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; text-transform: capitalize; white-space: nowrap; }
 .docker-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }

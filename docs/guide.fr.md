@@ -230,6 +230,13 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
   `compose.yaml` / `docker-compose.yml` ; chaque fichier devient un **projet compose** avec ses services.
   La liste est **triée par activité récente** (le projet dont un container a été recréé le plus récemment
   d'abord) et un **filtre en tête** permet de **cocher/décocher les projets à afficher** — choix **persisté**.
+- **Retrouver un container : recherche + filtre d'état.** Au-dessus de la liste, un champ de **recherche**
+  (nom de service, nom de container ou nom de projet) et un sélecteur **« N'afficher que »** — *En cours ·
+  Arrêtés / non créés · Unhealthy · En restarting · En drift* — réduisent l'affichage **service par
+  service**. Un projet dont plus aucun service ne correspond **disparaît entièrement** (une carte vide
+  laisserait croire à un projet sans service) ; sur un projet partiellement filtré, une mention rappelle
+  combien de services sont masqués. Les deux réglages sont **persistés** et s'appliquent **à chaud**, sans
+  rappeler Docker — ce sont les mêmes intitulés d'état que le sous-onglet *Actions*.
   **Affichage progressif** pour rester rapide même avec beaucoup de containers : la **liste des projets
   apparaît tout de suite** (scan + un seul `docker ps -a`), puis le détail de chaque projet (drift, états)
   **se remplit carte par carte** au fil de l'eau ; côté serveur, les `docker inspect`/`compose config`

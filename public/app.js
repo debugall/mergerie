@@ -3739,16 +3739,19 @@ function showTip(el) {
 }
 const hideTip = () => tipEl.classList.remove('on');
 
-// Délégation : couvre aussi les champs rendus dynamiquement (lignes de projet).
+/* Délégation : couvre aussi les champs rendus dynamiquement (lignes de projet).
+   Le sélecteur vise TOUT porteur de `data-tip` et pas seulement les icônes `.hint` :
+   des éléments non cliquables (badges de santé du menu) ont aussi besoin d'expliquer
+   ce qu'ils affichent. */
 document.addEventListener('mouseover', (e) => {
-  const h = e.target.closest && e.target.closest('.hint[data-tip]');
+  const h = e.target.closest && e.target.closest('[data-tip]');
   if (h) showTip(h);
 });
 document.addEventListener('mouseout', (e) => {
-  if (e.target.closest && e.target.closest('.hint[data-tip]')) hideTip();
+  if (e.target.closest && e.target.closest('[data-tip]')) hideTip();
 });
 document.addEventListener('focusin', (e) => {
-  const h = e.target.closest && e.target.closest('.hint[data-tip]');
+  const h = e.target.closest && e.target.closest('[data-tip]');
   if (h) showTip(h); else hideTip();
 });
 document.addEventListener('focusout', hideTip);
@@ -4706,8 +4709,18 @@ async function refreshDockerBadges() {
   try {
     const s = await api('/docker/summary');
     const err = s.error || 0; const un = s.unhealthy || 0;
-    eB.hidden = !err; eB.textContent = err; eB.title = tr('docker.badge.error', { n: err, count: err });
-    uB.hidden = !un; uB.textContent = un; uB.title = tr('docker.badge.unhealthy', { n: un, count: un });
+    /* `title = ''` (et non l'absence de title) : sur un enfant, un title VIDE empêche
+       le navigateur de remonter à celui du bouton parent — sans ça, survoler le chiffre
+       afficherait « Projets Docker Compose… » par-dessus notre bulle. */
+    const setBadge = (el, n, key) => {
+      const label = tr(key, { n, count: n });
+      el.hidden = !n; el.textContent = n;
+      el.dataset.tip = label;            // bulle de l'app (immédiate, thémée)
+      el.title = '';
+      el.setAttribute('aria-label', label);
+    };
+    setBadge(eB, err, 'docker.badge.error');
+    setBadge(uB, un, 'docker.badge.unhealthy');
   } catch { eB.hidden = true; uB.hidden = true; }
 }
 
@@ -5118,6 +5131,31 @@ function dockerServiceRow(proj, s) {
 }
 
 // Compose masqués (par chemin de fichier, stable). Choix persisté dans le navigateur.
+/* Filtre de SERVICES de l'onglet Compose : recherche libre + état. Persisté comme le
+   filtre de projets — on retrouve sa vue au rechargement. Le prédicat d'état est celui
+   de l'onglet Actions (`dactMatchesFilter`) : un seul comportement à maintenir. */
+function composeSvcFilter() {
+  try { return { q: '', state: 'all', ...JSON.parse(localStorage.getItem('aidevtools_docker_svcfilter') || '{}') }; }
+  catch { return { q: '', state: 'all' }; }
+}
+function setComposeSvcFilter(patch) {
+  try { localStorage.setItem('aidevtools_docker_svcfilter', JSON.stringify({ ...composeSvcFilter(), ...patch })); }
+  catch { /* stockage indisponible */ }
+}
+// Un service passe-t-il le filtre courant ? `name` sert aussi à chercher par projet.
+function composeSvcMatches(project, svc) {
+  const f = composeSvcFilter();
+  if (f.state !== 'all' && !dactMatchesFilter(f.state, svc)) return false;
+  const q = (f.q || '').trim().toLowerCase();
+  if (!q) return true;
+  const cname = (svc.container && svc.container.name) || '';
+  return `${project} ${svc.name} ${cname}`.toLowerCase().includes(q);
+}
+function composeFilterActive() {
+  const f = composeSvcFilter();
+  return !!(f.q || '').trim() || f.state !== 'all';
+}
+
 function dockerHidden() { try { return new Set(JSON.parse(localStorage.getItem('aidevtools_docker_hidden') || '[]')); } catch { return new Set(); } }
 function setDockerHidden(set) { try { localStorage.setItem('aidevtools_docker_hidden', JSON.stringify([...set])); } catch { /* stockage indisponible */ } }
 
@@ -5152,9 +5190,15 @@ function dockerMakefileBlock(p) {
 
 function dockerProjectCard(p) {
   const make = dockerMakefileBlock(p);
+  const kept = p.error ? [] : (p.services || []).filter((s) => composeSvcMatches(p.name, s));
+  // Filtre actif et aucun service retenu → le projet entier disparaît de la vue
+  // (afficher une carte vide ferait croire à un projet sans service).
+  if (!p.error && !kept.length && composeFilterActive()) return '';
+  const hiddenCount = (p.services || []).length - kept.length;
   const services = p.error
     ? errorBox(p.error)
-    : `<div class="docker-svcs">${(p.services || []).map((s) => dockerServiceRow(p, s)).join('')}</div>`;
+    : `<div class="docker-svcs">${kept.map((s) => dockerServiceRow(p, s)).join('')}</div>`
+      + (hiddenCount > 0 ? `<p class="muted docker-svc-hidden">${esc(tr('docker.filter.svc-hidden', { n: hiddenCount, count: hiddenCount }))}</p>` : '');
   return `<div class="card docker-project">
       <div class="docker-project-head">
         <div class="title" style="flex:1;min-width:0"><code>${esc(p.name)}</code> <span class="muted">${esc(p.file)} · ${esc(p.rootLabel || p.dir)}</span></div>
@@ -5180,10 +5224,22 @@ function renderDockerCompose(d) {
   const hidden = dockerHidden();
   // Filtre persistant : une case par projet (cochée = affiché). Décocher masque son bloc.
   const filter = `<div class="docker-filter"><span class="muted">${esc(tr('docker.filter.label'))}</span>${projects.map((p) => `
-      <label class="inline-check"><input type="checkbox" class="docker-filter-cb" value="${esc(p.path)}" ${hidden.has(p.path) ? '' : 'checked'} /> <span>${esc(p.name)}</span></label>`).join('')}</div>`;
+      <label class="inline-check inline-check-mid"><input type="checkbox" class="docker-filter-cb" value="${esc(p.path)}" ${hidden.has(p.path) ? '' : 'checked'} /> <span>${esc(p.name)}</span></label>`).join('')}</div>`;
   const cards = projects.filter((p) => !hidden.has(p.path)).map(dockerProjectCard).join('');
   box.innerHTML = filter + (cards || `<p class="muted">${esc(tr('docker.filter.all-hidden'))}</p>`);
   wireDockerActions(box);
+  const search = $('#dcSearch', box);
+  if (search) {
+    search.addEventListener('input', () => {
+      setComposeSvcFilter({ q: search.value });
+      const pos = search.selectionStart;
+      renderComposeTab();                                  // filtrage local : aucun appel Docker
+      const again = $('#dcSearch');
+      if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch { /* champ recréé */ } }
+    });
+  }
+  const stateSel = $('#dcState', box);
+  if (stateSel) stateSel.addEventListener('change', () => { setComposeSvcFilter({ state: stateSel.value }); renderComposeTab(); });
   $$('.docker-filter-cb', box).forEach((cb) => cb.addEventListener('change', () => {
     const set = dockerHidden();
     if (cb.checked) set.delete(cb.value); else set.add(cb.value);
@@ -5218,17 +5274,52 @@ function renderComposeTab() {
   if (!box) return;
   if (!COMPOSE.files.length) { box.innerHTML = emptyState({ icon: 'inbox', title: tr('docker.compose.empty.title'), text: tr('docker.compose.empty.text') }); return; }
   const hidden = dockerHidden();
+  const sf = composeSvcFilter();
+  // Recherche + état : mêmes intitulés et mêmes valeurs que le sous-onglet Actions.
+  // Recherche et état ont la MÊME structure (.dact-action : libellé au-dessus du contrôle),
+  // sinon un champ nu se centrerait contre un bloc plus haut et les deux seraient décalés.
+  const svcBar = `<div class="docker-svcbar">
+      <label class="dact-action dact-action-grow"><span>${esc(tr('docker.compose.search-label'))}</span>
+        <input id="dcSearch" class="dact-search" type="search" value="${esc(sf.q || '')}"
+          placeholder="${esc(tr('docker.compose.search'))}" />
+      </label>
+      <label class="dact-action"><span>${esc(tr('docker.actions.filter'))}</span>
+        <select id="dcState">
+          ${[['all', 'docker.actions.f-all'], ['running', 'docker.actions.f-running'], ['stopped', 'docker.actions.f-stopped'],
+             ['unhealthy', 'docker.actions.f-unhealthy'], ['restarting', 'docker.actions.f-restarting'],
+             ['drift', 'docker.actions.f-drift']]
+            .map(([v, k]) => `<option value="${v}" ${sf.state === v ? 'selected' : ''}>${esc(tr(k))}</option>`).join('')}
+        </select>
+      </label>
+    </div>`;
   // Filtre persistant : une case par fichier compose (cochée = affiché).
   const filter = `<div class="docker-filter"><span class="muted">${esc(tr('docker.filter.label'))}</span>${COMPOSE.files.map((f) => `
-      <label class="inline-check"><input type="checkbox" class="docker-filter-cb" value="${esc(f.path)}" ${hidden.has(f.path) ? '' : 'checked'} /> <span>${esc(f.name)}</span></label>`).join('')}</div>`;
+      <label class="inline-check inline-check-mid"><input type="checkbox" class="docker-filter-cb" value="${esc(f.path)}" ${hidden.has(f.path) ? '' : 'checked'} /> <span>${esc(f.name)}</span></label>`).join('')}</div>`;
   const visible = COMPOSE.files.filter((f) => !hidden.has(f.path));
   const slots = visible.map((f) => {
     const d = COMPOSE.details.get(f.path);
+    // Détail pas encore chargé : on garde le squelette, sinon un filtre actif masquerait
+    // des projets qu'on n'a simplement pas encore reçus.
     const inner = d ? (d.__error ? errorBox(d.__error) : dockerProjectCard(d)) : dockerPlaceholderCard(f);
-    return `<div class="docker-slot" data-path="${esc(f.path)}">${inner}</div>`;
+    return inner ? `<div class="docker-slot" data-path="${esc(f.path)}">${inner}</div>` : '';
   }).join('');
-  box.innerHTML = filter + (slots || `<p class="muted">${esc(tr('docker.filter.all-hidden'))}</p>`);
+  const empty = visible.length
+    ? (composeFilterActive() ? `<p class="muted">${esc(tr('docker.filter.no-svc-match'))}</p>` : '')
+    : `<p class="muted">${esc(tr('docker.filter.all-hidden'))}</p>`;
+  box.innerHTML = svcBar + filter + (slots || empty);
   wireDockerActions(box);
+  const search = $('#dcSearch', box);
+  if (search) {
+    search.addEventListener('input', () => {
+      setComposeSvcFilter({ q: search.value });
+      const pos = search.selectionStart;
+      renderComposeTab();                                  // filtrage local : aucun appel Docker
+      const again = $('#dcSearch');
+      if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch { /* champ recréé */ } }
+    });
+  }
+  const stateSel = $('#dcState', box);
+  if (stateSel) stateSel.addEventListener('change', () => { setComposeSvcFilter({ state: stateSel.value }); renderComposeTab(); });
   $$('.docker-filter-cb', box).forEach((cb) => cb.addEventListener('change', () => {
     const set = dockerHidden();
     if (cb.checked) set.delete(cb.value); else set.add(cb.value);
@@ -5243,7 +5334,10 @@ function fillComposeSlot(path) {
   const slot = $$('.docker-slot', box).find((s) => s.dataset.path === path);
   if (!slot) return;
   const d = COMPOSE.details.get(path);
-  slot.innerHTML = d && d.__error ? errorBox(d.__error) : dockerProjectCard(d);
+  const html = d && d.__error ? errorBox(d.__error) : dockerProjectCard(d);
+  // Le détail arrive après coup : s'il ne passe pas le filtre, le slot disparaît.
+  if (!html) { slot.remove(); return; }
+  slot.innerHTML = html;
   wireDockerActions(slot);
 }
 
