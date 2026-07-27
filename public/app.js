@@ -1011,7 +1011,7 @@ function mrCard(m) {
     ${(m.risk || []).map((r) => `<span class="tag risk" title="${esc(tr('mr.risk-title', { pattern: r.path_match }))}">⚠ ${esc(r.label)}</span>`).join('')}
     <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
     ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title')}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
-    ${m.web_url ? `<a href="${esc(m.web_url)}" target="_blank">GitLab ↗</a>` : ''}
+    ${m.web_url ? `<a href="${esc(m.web_url)}" target="_blank">${forgeLabel(m.forge)} ↗</a>` : ''}
     ${m.last_error ? `<span class="tag stale">${tr('mr.tag.error')}</span>` : ''}
     <button class="btn" data-diff="${m.id}" title="${tr('mr.btn.diff-title')}"><svg class="ico"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>
     <button class="btn" data-ticket="${m.id}" data-title="!${m.iid} — ${esc(m.title || '')}" title="${tr('mr.btn.context-title')}"><svg class="ico"><use href="#i-doc"/></svg>${m.has_ticket ? tr('mr.btn.context-done') : tr('mr.btn.context')}</button>
@@ -1237,7 +1237,7 @@ async function openReport(id) {
       </div>
       <div class="spacer"></div>
       ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title')}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
-      ${m.web_url ? `<a href="${esc(m.web_url)}" target="_blank">GitLab ↗</a>` : ''}
+      ${m.web_url ? `<a href="${esc(m.web_url)}" target="_blank">${forgeLabel(m.forge)} ↗</a>` : ''}
     </div>
 
     <div class="detail-actions">
@@ -2042,6 +2042,9 @@ $('#notifTest') && $('#notifTest').addEventListener('click', async () => {
   if (Notification.permission !== 'granted') { toast(tr('settings.notif.test-blocked'), true); return; }
   showNotif(tr('settings.notif.test-title'), tr('settings.notif.test-body'));
 });
+
+// Nom de la forge d'une ligne, pour les libellés de lien (« GitLab ↗ » / « GitHub ↗ »).
+function forgeLabel(forge) { return forge === 'github' ? 'GitHub' : 'GitLab'; }
 
 // Badge de forge : deux dépôts homonymes sur GitLab et GitHub doivent se distinguer.
 function forgeBadge(forge) {
@@ -2851,12 +2854,17 @@ function localDirLine(d) {
   return `<div class="target-line"><span class="tag ${st.cls}">${st.label}</span>`
     + `<code class="local-dir-path">${esc(d.path)}</code>`
     + `${d.last_error ? `<span class="muted" title="${esc(d.last_error)}">⚠</span>` : ''}`
-    + `<span class="spacer"></span>${resumeCmdBtn(d.resume_cmd)}</div>`;
+    + `<span class="spacer"></span>`
+    // Retour de l'agent : la seule fenêtre sur son travail quand le dossier n'a pas bougé.
+    + `${d.output_path ? `<button class="btn btn-sm" data-ldout="${d.id}" data-ltask="${d.task_id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}`
+    + `${resumeCmdBtn(d.resume_cmd)}</div>`;
 }
 
 function localCard(t) {
   const st = TASK_STATUS[t.status] || { label: t.status, cls: '' };
   const canRun = ['new', 'error', 'done'].includes(t.status);
+  // Une correction n'a de sens que sur un dossier DÉJÀ traité : sinon il n'y a rien à corriger.
+  const canFollow = canRun && (t.dirs || []).some((d) => d.status === 'done');
   const n = (t.dirs || []).length;
   return `<div class="card task-row" data-local="${t.id}">
     <div style="min-width:0;flex:1">
@@ -2867,9 +2875,15 @@ function localCard(t) {
       </div>
       <div class="task-prompt">${esc((t.prompt || '').slice(0, 220))}${t.prompt && t.prompt.length > 220 ? '…' : ''}</div>
       <div class="targets">${(t.dirs || []).map(localDirLine).join('')}</div>
+      <div class="mr-create followup" data-lfollowform="${t.id}" hidden>
+        <textarea class="followup-text" placeholder="${esc(tr('local.followup.ph'))}"></textarea>
+        <button class="btn btn-primary" data-lfollowsubmit="${t.id}">${tr('task.btn.run-iteration')}</button>
+        <button class="btn" data-lfollowcancel="${t.id}">${tr('ui.cancel')}</button>
+      </div>
     </div>
     <div class="task-actions">
       ${canRun ? `<button class="btn" data-lrun="${t.id}" title="${esc(tr('local.run-title'))}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : ''}
+      ${canFollow ? `<button class="btn" data-lfollow="${t.id}" title="${esc(tr('local.followup.title'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : ''}
       <button class="btn btn-icon btn-sm btn-danger" data-ldel="${t.id}" title="${esc(tr('local.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>
     </div>
   </div>${t.last_error ? errorBox(t.last_error) : ''}`;
@@ -2887,6 +2901,25 @@ function renderLocalTasks() {
   $$('#localList [data-lrun]').forEach((b) => b.addEventListener('click', () => busy(b, () => api(`/local-tasks/${b.dataset.lrun}/run`, { method: 'POST' }))
     .then(() => { toast(tr('local.started')); refreshStatus(); })
     .catch((e) => toast(explainError(e.message), true))));
+  $$('#localList [data-ldout]').forEach((b) => b.addEventListener('click',
+    () => openLocalDirOutput(b.dataset.ltask, b.dataset.ldout)));
+  // Itération sur la MÊME session : le formulaire se déplie sous les dossiers.
+  $$('#localList [data-lfollow]').forEach((b) => b.addEventListener('click', () => {
+    const form = $(`#localList .followup[data-lfollowform="${b.dataset.lfollow}"]`);
+    if (form) { form.hidden = false; form.querySelector('.followup-text').focus(); }
+  }));
+  $$('#localList [data-lfollowcancel]').forEach((b) => b.addEventListener('click', () => {
+    const form = $(`#localList .followup[data-lfollowform="${b.dataset.lfollowcancel}"]`);
+    if (form) form.hidden = true;
+  }));
+  $$('#localList [data-lfollowsubmit]').forEach((b) => b.addEventListener('click', async () => {
+    const instruction = b.closest('.followup').querySelector('.followup-text').value.trim();
+    if (!instruction) return;
+    try {
+      await busy(b, () => api(`/local-tasks/${b.dataset.lfollowsubmit}/followup`, { method: 'POST', body: { instruction } }));
+      toast(tr('local.started')); refreshStatus();
+    } catch (e) { toast(explainError(e.message), true); }
+  }));
   $$('#localList [data-ldel]').forEach((b) => b.addEventListener('click', async () => {
     if (!confirm(tr('local.confirm-delete'))) return;
     try { await api(`/local-tasks/${b.dataset.ldel}`, { method: 'DELETE' }); toast(tr('local.deleted')); loadTasks(); }
@@ -3160,6 +3193,16 @@ async function openTargetOutput(taskId, targetId) {
     const d = await api(`/tasks/${taskId}/targets/${targetId}/output`);
     currentMd = d.output || '';
     $('#taskMdTitle').textContent = `${d.project} — ${d.branch}`;
+    $('#taskMdBody').innerHTML = mdToHtml(currentMd || tr('task.no-output'));
+    $('#taskMdView').hidden = false;
+  } catch (e) { toast(explainError(e.message), true); }
+}
+// Retour de l'agent pour un dossier hors dépôt — même vue plein écran que côté codage.
+async function openLocalDirOutput(taskId, dirId) {
+  try {
+    const d = await api(`/local-tasks/${taskId}/dirs/${dirId}/output`);
+    currentMd = d.output || '';
+    $('#taskMdTitle').textContent = d.path || '';
     $('#taskMdBody').innerHTML = mdToHtml(currentMd || tr('task.no-output'));
     $('#taskMdView').hidden = false;
   } catch (e) { toast(explainError(e.message), true); }

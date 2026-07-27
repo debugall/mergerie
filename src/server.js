@@ -1300,6 +1300,24 @@ app.post('/api/local-tasks/:id/run', wrap((req, res) => {
   if (!lt) throw new Error(t('err.session-introuvable'));
   res.json(jobs.startLocalJob(lt.id));
 }));
+// Demande de correction : nouvelle passe de l'IA sur les mêmes dossiers, en REPRENANT
+// la session de chacun (l'IA garde le contexte du travail qu'elle vient de produire).
+app.post('/api/local-tasks/:id/followup', wrap((req, res) => {
+  const lt = localTaskById(Number(req.params.id));
+  if (!lt) throw new Error(t('err.session-introuvable'));
+  const instruction = (req.body && req.body.instruction || '').trim();
+  if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
+  res.json(jobs.startLocalJob(lt.id, { instruction }));
+}));
+
+// Retour de l'agent pour UN dossier (ce qu'il dit avoir fait).
+app.get('/api/local-tasks/:id/dirs/:did/output', wrap((req, res) => {
+  const d = db.prepare('SELECT * FROM local_task_dir WHERE id = ? AND task_id = ?')
+    .get(Number(req.params.did), Number(req.params.id));
+  if (!d) throw new Error(t('err.local-dir-introuvable'));
+  res.json({ output: d.output_path ? readFileSafe(d.output_path) : null, path: d.path });
+}));
+
 app.delete('/api/local-tasks/:id', wrap((req, res) => {
   const id = Number(req.params.id);
   db.prepare('DELETE FROM local_task WHERE id = ?').run(id); // cascade sur dirs + images
