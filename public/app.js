@@ -2966,10 +2966,14 @@ function renderLocalTasks() {
     if (form) form.hidden = true;
   }));
   $$('#localList [data-lfollowsubmit]').forEach((b) => b.addEventListener('click', async () => {
-    const instruction = b.closest('.followup').querySelector('.followup-text').value.trim();
+    const form = b.closest('.followup');
+    const field = form.querySelector('.followup-text');
+    const instruction = field.value.trim();
     if (!instruction) return;
     try {
       await busy(b, () => api(`/local-tasks/${b.dataset.lfollowsubmit}/followup`, { method: 'POST', body: { instruction } }));
+      field.value = '';
+      form.hidden = true;
       toast(tr('local.started')); refreshStatus();
     } catch (e) { toast(explainError(e.message), true); }
   }));
@@ -3179,10 +3183,17 @@ function wireTaskActions() {
     if (form) form.hidden = true;
   });
   on('[data-followsubmit]', async (b) => {
-    const instruction = b.closest('.followup').querySelector('.followup-text').value.trim();
+    const form = b.closest('.followup');
+    const field = form.querySelector('.followup-text');
+    const instruction = field.value.trim();
     if (!instruction) return;
     try {
       await busy(b, () => api(`/tasks/${b.dataset.followsubmit}/followup`, { method: 'POST', body: { instruction } }));
+      // La demande est partie : on referme et on vide. Sans ça le formulaire reste ouvert
+      // avec son texte, et `captureTaskForms` le ROUVRE au rendu suivant — on croirait
+      // que l'envoi a échoué.
+      field.value = '';
+      form.hidden = true;
       toast(tr('toast.lance')); refreshStatus();
     } catch (e) { toast(explainError(e.message), true); }
   });

@@ -54,6 +54,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The follow-up form closes once the request is sent.** Asking for a fix (coding session,
+  off-repo coding or exploration) left the text box open with its content, which read as if nothing had
+  been submitted — the form now clears and closes on success.
+
 - **The score shown in the list is the one from the latest review.** A re-review usually recalls the
   previous score in its opening summary ("6.4 → 7.8"); the extractor read the report from the top and
   returned that older score, so the list stayed stuck on the first review's result. It now reads the score
