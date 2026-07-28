@@ -246,7 +246,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
 // Enregistre une NOUVELLE version de la review au lieu d'écraser la précédente.
 // La table `review` continue de pointer la version la plus récente : le reste de
 // l'application (rapports, dashboard, footer) n'a rien à changer.
-function saveReviewVersion(mr, outDir, { reviewContent, explainContent, diffStorePath, kind, noExplain }) {
+function saveReviewVersion(mr, outDir, { reviewContent, explainContent, diffStorePath, kind, noExplain, instruction }) {
   const now = new Date().toISOString();
   const last = db.prepare('SELECT MAX(version) v FROM review_version WHERE mr_id = ?').get(mr.id);
   const version = (last && last.v ? last.v : 0) + 1;
@@ -268,9 +268,10 @@ function saveReviewVersion(mr, outDir, { reviewContent, explainContent, diffStor
   const noteValue = note ? note.value : null;
 
   db.prepare(`INSERT INTO review_version
-    (mr_id, version, md_path, explanation_path, note_value, reviewed_sha, kind, created_at)
-    VALUES (?,?,?,?,?,?,?,?)`)
-    .run(mr.id, version, mdPath, explPath, noteValue, mr.current_sha || null, kind || 'review', now);
+    (mr_id, version, md_path, explanation_path, note_value, reviewed_sha, kind, created_at, instruction)
+    VALUES (?,?,?,?,?,?,?,?,?)`)
+    .run(mr.id, version, mdPath, explPath, noteValue, mr.current_sha || null, kind || 'review', now,
+      instruction ? String(instruction) : null);
 
   const existing = db.prepare('SELECT id FROM review WHERE mr_id = ?').get(mr.id);
   if (existing) {
@@ -398,7 +399,7 @@ async function modifyReview(repo, mr, instruction, onLog = () => {}) {
 
     // une régénération est une nouvelle version : l'ancienne reste consultable
     const { version, mdPath } = saveReviewVersion(mr, outDir, {
-      reviewContent: content, explainContent: null, diffStorePath, kind: 'modify',
+      reviewContent: content, explainContent: null, diffStorePath, kind: 'modify', instruction,
     });
     onLog(`rapport enregistré (version ${version})`);
     return { mdPath, version };

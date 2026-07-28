@@ -29,6 +29,19 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   and applied client-side, without querying Docker again.
 - **Docker menu badges explain themselves.** Hovering the red or amber count in the Docker tab now shows
   what it counts ("1 container in error (restarting/dead)"), using the app's own tooltip.
+- **Search across sessions.** A search field filters coding sessions, off-repo sessions and explorations
+  by prompt, project, branch or folder. It resets when switching sub-tab, so it never contradicts the
+  totals shown on the tabs.
+- **Every iteration of a coding session is kept.** A session iterates (initial run, *Request a fix*,
+  answers to the AI's questions, convergence passes); each pass now keeps **the prompt actually sent** and
+  **its own AI answer**, instead of only the last output. An iteration picker appears in *AI output* from
+  the second pass on, and shows the request next to the answer — reading an answer without knowing what it
+  answered teaches nothing. Applies to off-repo coding too, folder by folder, and to **explorations**,
+  where a follow-up question used to overwrite the previous answer.
+
+- **Review reports keep the change requests that produced them.** The *Ask the AI for a change* section
+  now lists the requests already made on a report, with their date, and opens the report version each one
+  produced.
 
 ### Changed
 

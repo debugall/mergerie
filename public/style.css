@@ -857,6 +857,15 @@ nav button:hover { color: var(--text); background: var(--hover); }
 /* Historique des reviews : sélecteur de version + avertissement de lecture antérieure */
 .md-version { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
   border-radius: var(--r-sm); padding: 3px 8px; font: inherit; font-size: var(--fs-xs); max-width: 320px; }
+/* Prompt d'une itération : texte brut (ce qui a été envoyé à l'agent), pas du Markdown. */
+.pass-prompt { white-space: pre-wrap; background: var(--panel2); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 10px 12px; font-size: var(--fs-sm); overflow-x: auto; }
+/* Historique des demandes de modification d'un rapport : une entrée = la demande + sa date. */
+.modify-history { margin-bottom: var(--s-3); display: flex; flex-direction: column; gap: 8px; }
+.modify-entry { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; background: var(--panel2); }
+.modify-entry-head { display: flex; align-items: center; gap: 10px; font-size: var(--fs-sm); }
+.modify-entry-head .muted { flex: 1; }
+.modify-entry-text { margin-top: 4px; white-space: pre-wrap; font-size: var(--fs-sm); }
 .version-note { margin: var(--s-2) 0 0; padding: 7px 10px; font-size: var(--fs-sm);
   color: var(--text); background: var(--hover); border-left: 3px solid var(--amber); border-radius: var(--r-sm); }
 

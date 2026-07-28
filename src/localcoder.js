@@ -9,26 +9,22 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('./db');
-const { TASKS_DIR, ensureDir } = require('./paths');
 const copilot = require('./copilot');
 const agentsession = require('./agentsession');
 const proc = require('./proc');
+const agentpass = require('./agentpass');
 
 const now = () => new Date().toISOString();
 
-/* Retour de l'agent pour UN dossier : ce qu'il dit avoir fait. Écrit sur disque
-   (pas en base) comme les rapports de review et les retours de `taskrunner`.
-   C'est la seule fenêtre sur le travail quand rien n'a changé dans le dossier —
-   typiquement quand l'IA a RÉPONDU au lieu de coder (prompt incomplet). */
-function saveAgentOutput(taskId, dirId, text) {
-  const md = String(text || '').trim();
-  if (!md) return;
-  try {
-    const dir = ensureDir(path.join(TASKS_DIR, 'local', String(taskId), String(dirId)));
-    const out = path.join(dir, 'output.md');
-    fs.writeFileSync(out, md, 'utf8');
-    setDir(dirId, { output_path: out });
-  } catch { /* best-effort : l'absence de retour ne doit jamais faire échouer la passe */ }
+/* Retour de l'agent pour UN dossier : ce qu'il dit avoir fait. C'est la seule fenêtre
+   sur le travail quand rien n'a changé dans le dossier — typiquement quand l'IA a
+   RÉPONDU au lieu de coder (prompt incomplet). Chaque itération est conservée
+   (prompt + retour) via `agentpass` ; `output_path` pointe la plus récente. */
+function saveAgentOutput(taskId, dirId, text, meta = {}) {
+  const { outPath } = agentpass.record('local', taskId, dirId, {
+    kind: meta.kind || 'run', prompt: meta.prompt, text,
+  });
+  if (outPath) setDir(dirId, { output_path: outPath });
 }
 
 function setDir(id, patch) {
@@ -52,6 +48,7 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
   const task = db.prepare('SELECT * FROM local_task WHERE id = ?').get(taskId);
   if (!task) throw new Error('Session introuvable');
   const followup = String(opts.instruction || '').trim();
+  const passKind = followup ? 'followup' : 'run';
   const dirs = db.prepare('SELECT * FROM local_task_dir WHERE task_id = ? ORDER BY id').all(taskId);
   if (!dirs.length) throw new Error('Aucun dossier');
   db.prepare("UPDATE local_task SET status = 'running', last_error = NULL, updated_at = ? WHERE id = ?").run(now(), taskId);
@@ -87,7 +84,7 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
       if (copilot.isDryRun()) {
         // dry-run : trace visible, aucune vraie modification de code.
         fs.appendFileSync(path.join(d.path, 'PROJ_LOCAL_DRYRUN.md'), `\n## ${task.prompt.slice(0, 120)}\n`, 'utf8');
-        saveAgentOutput(taskId, d.id, `(dry-run) ${followup ? 'Suivi appliqué' : 'Tâche réalisée'} dans \`${d.path}\`.`);
+        saveAgentOutput(taskId, d.id, `(dry-run) ${followup ? 'Suivi appliqué' : 'Tâche réalisée'} dans \`${d.path}\`.`, { kind: passKind, prompt: promptText });
       } else if (agentsession.backendName() !== 'unknown') {
         // Session reprenable par dossier (clé local-<task>-dir-<id>) → commande de reprise copiable.
         const key = `local-${taskId}-dir-${d.id}`;
@@ -104,12 +101,12 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
           created = true;
         }
         copilot.recordUsage('task', promptText, r.text || '');
-        saveAgentOutput(taskId, d.id, r.text);
+        saveAgentOutput(taskId, d.id, r.text, { kind: passKind, prompt: promptText });
         if (created) setDir(d.id, { session_key: r.handle, session_backend: r.backend, session_cwd: d.path });
       } else {
         // Backend non reprenable → appel one-shot (pas de commande de reprise possible).
         const out = await copilot.runPrompt(promptText, d.path, { kind: 'task' }, onLog); // renvoie le texte
-        saveAgentOutput(taskId, d.id, out);
+        saveAgentOutput(taskId, d.id, out, { kind: passKind, prompt: promptText });
       }
       setDir(d.id, { status: 'done', last_error: null });
       onLog(`✅ ${d.path}`);

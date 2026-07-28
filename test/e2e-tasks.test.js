@@ -118,6 +118,32 @@ describe('Sessions de dev de bout en bout', () => {
     const t2 = (await app.api('GET', `/api/tasks/${taskId}`)).body.task;
     assert.notEqual(t2.targets[0].commit_sha, apres.targets[0].commit_sha, 'la reprise produit un nouveau commit');
 
+    /* HISTORIQUE DES ITÉRATIONS : chaque passe conserve le prompt envoyé ET le retour de
+       l'IA. Sans ça, relire une réponse plusieurs itérations plus tard ne dit pas à quoi
+       elle répondait, et seul le dernier retour survivait. */
+    const hist = await app.api('GET', `/api/tasks/${taskId}/targets/${t2.targets[0].id}/passes`);
+    assert.equal(hist.status, 200);
+    assert.equal(hist.body.passes.length, 2, 'le run initial ET la correction sont conservés');
+    assert.deepEqual(hist.body.passes.map((p) => p.kind), ['run', 'followup']);
+    assert.equal(hist.body.current.n, 2, 'la dernière itération est affichée par défaut');
+    assert.match(hist.body.current.prompt, /Ajoute aussi la TVA/, 'le prompt de suivi est conservé');
+
+    // La 1re passe reste lisible, avec SON prompt (celui de la session).
+    const p1 = await app.api('GET', `/api/tasks/${taskId}/targets/${t2.targets[0].id}/passes?n=1`);
+    assert.equal(p1.body.current.n, 1);
+    assert.match(p1.body.current.prompt, /Ajoute une fonction de total/);
+    assert.ok(!/TVA/.test(p1.body.current.prompt), 'chaque passe garde SON prompt');
+
+    /* Régression : une session ANTÉRIEURE à l'historique n'a aucune ligne `agent_pass`,
+       seulement son `output_path`. « Retour de l'IA » doit continuer de l'afficher. */
+    const tgOld = t2.targets[0].id;
+    app.db.prepare('DELETE FROM agent_pass WHERE scope = ? AND task_id = ?').run('task', taskId);
+    const legacy = await app.api('GET', `/api/tasks/${taskId}/targets/${tgOld}/passes`);
+    assert.equal(legacy.status, 200);
+    assert.equal(legacy.body.passes.length, 1, 'le retour historique est présenté comme une passe');
+    assert.equal(legacy.body.current.kind, 'legacy');
+    assert.ok(legacy.body.current.output, 'le retour reste lisible');
+
     // Push : la branche existe ensuite réellement dans le dépôt distant.
     const target = t2.targets[0];
     await app.api('POST', `/api/tasks/${taskId}/targets/${target.id}/push`);
@@ -230,6 +256,21 @@ describe('Sessions de dev de bout en bout', () => {
     await waitForJobs(app.api);
     const md2 = await app.api('GET', `/api/tasks/${task.id}/md`);
     assert.match(md2.body.md, /Et les tests/);
+
+    /* Les DEUX questions restent consultables : une question de suivi écrase le fichier
+       de réponse, donc sans archivage la question initiale et sa réponse seraient perdues. */
+    const hist = await app.api('GET', `/api/tasks/${task.id}/passes`);
+    assert.equal(hist.body.passes.length, 2);
+    assert.deepEqual(hist.body.passes.map((p) => p.kind), ['run', 'followup']);
+    assert.equal(hist.body.current.prompt, 'Et les tests ?', 'la dernière question est affichée');
+    const q1 = await app.api('GET', `/api/tasks/${task.id}/passes?n=1`);
+    assert.equal(q1.body.current.prompt, 'Comment fonctionne le module app ?');
+    // La réponse archivée est le CORPS seul : la question est déjà portée par la passe,
+    // inutile de la dupliquer dans le texte.
+    // (en dry-run le mock est déterministe : les deux réponses se ressemblent, ce qui
+    // compte est que CHAQUE passe ait la sienne, archivée dans son propre fichier)
+    assert.ok(q1.body.current.output && q1.body.current.output.length > 20, 'sa réponse est archivée');
+    assert.ok(hist.body.passes.every((p) => p.has_output), 'les deux passes ont leur fichier');
 
     // Le dépôt exploré n'a subi aucune modification.
     const clone = path.join(app.dataDir, 'clones', 'grp__app');

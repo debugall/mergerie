@@ -1268,6 +1268,7 @@ async function openReport(id) {
 
     <div class="box">
       <h4>${tr('report.modify.title')}</h4>
+      <div id="modifyHistory" class="modify-history" hidden></div>
       <textarea id="modifyInput" placeholder="${tr('report.modify.ph')}"></textarea>
       <button class="btn btn-primary" id="btnModify" title="${tr('report.btn.regen-title')}"><svg class=\"ico\"><use href=\"#i-repeat\"/></svg>${tr('report.btn.regen')}</button>
     </div>
@@ -1309,6 +1310,7 @@ async function openReport(id) {
     try { versions = await api(`/mrs/${id}/versions`); } catch { return; }
     // Suivi de résolution : bandeau + liste des constats, dès qu'il y a un delta.
     renderResolution(id, versions);
+    renderModifyHistory(versions);
     if (versions.length < 2) return;              // une seule passe : rien à choisir
     const sel = $('#mdVersion');
     const latest = versions[0].version;
@@ -1718,6 +1720,34 @@ function renderDecisionPanel(m, stats) {
   if (pvMerge) pvMerge.addEventListener('click', (e) => {
     mergeMrFromQueue(m, e.currentTarget).then((ok) => { if (ok) { closeSplit(); loadToReview(); refreshCounts(); } });
   });
+}
+
+/* Historique des demandes de modification : chaque régénération a été déclenchée par une
+   demande précise, et a produit SA version de rapport. Les afficher côte à côte évite de
+   rejouer de tête « qu'est-ce que j'avais demandé pour arriver à ce rapport ? ». */
+function renderModifyHistory(versions) {
+  const box = $('#modifyHistory');
+  if (!box) return;
+  const asked = (versions || []).filter((v) => v.kind === 'modify' && v.instruction);
+  box.hidden = !asked.length;
+  if (!asked.length) return;
+  box.innerHTML = `<p class="muted">${esc(tr('report.modify.history'))}</p>`
+    + asked.map((v) => `<div class="modify-entry">
+        <div class="modify-entry-head">
+          <span class="muted">${esc(fmtDateTime(v.created_at))}</span>
+          <button type="button" class="btn btn-sm btn-ghost" data-modifyv="${v.version}"
+            title="${esc(tr('report.modify.see-report-title', { v: v.version }))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${esc(tr('report.modify.see-report', { v: v.version }))}</button>
+        </div>
+        <div class="modify-entry-text">${esc(v.instruction)}</div>
+      </div>`).join('');
+  // Ouvrir le rapport correspondant = piloter le sélecteur de versions existant.
+  $$('#modifyHistory [data-modifyv]').forEach((b) => b.addEventListener('click', () => {
+    const sel = $('#mdVersion');
+    if (!sel || sel.hidden) return;
+    sel.value = b.dataset.modifyv;
+    sel.dispatchEvent(new Event('change'));
+    sel.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }));
 }
 
 function closeSplit() {
@@ -2702,6 +2732,10 @@ $('#taskForm').addEventListener('submit', async (e) => {
 $$('#tab-task .subnav [data-kind]').forEach((b) => b.addEventListener('click', () => {
   taskKind = b.dataset.kind;
   try { localStorage.setItem('aidevtools_task_kind', taskKind); } catch { /* ignore */ }
+  // La recherche est remise à zéro en changeant de sous-onglet : les compteurs des onglets
+  // affichent des TOTAUX, une liste filtrée à côté d'un « Codage 3 » se contredirait.
+  const sq = $('#taskSearch');
+  if (sq) sq.value = '';
   renderTasks();
 }));
 
@@ -2751,6 +2785,20 @@ async function loadTasks() {
   renderTasks();
 }
 
+// Texte de recherche courant (sessions de codage, hors dépôt et exploration partagent
+// le même champ : une seule liste est visible à la fois).
+function taskQuery() {
+  const el = $('#taskSearch');
+  return (el && el.value ? el.value : '').toLowerCase().trim();
+}
+// Une session correspond si le texte apparaît dans son prompt, son message de commit,
+// ou dans l'un de ses projets/branches (ou dossiers, hors dépôt).
+function taskMatches(t, q, units) {
+  if (!q) return true;
+  const hay = [t.prompt, t.commit_message, ...(units || [])].filter(Boolean).join(' ').toLowerCase();
+  return hay.includes(q);
+}
+
 function renderTasks() {
   const isLocal = taskKind === 'local';
   const el = $('#taskList');
@@ -2780,7 +2828,13 @@ function renderTasks() {
 
   if (isLocal) { renderLocalTasks(); return; }
 
-  const rows = allTasks.filter((t) => (t.kind === 'explore' ? 'explore' : 'code') === taskKind);
+  const q = taskQuery();
+  const all = allTasks.filter((t) => (t.kind === 'explore' ? 'explore' : 'code') === taskKind);
+  const rows = all.filter((t) => taskMatches(t, q, (t.targets || []).flatMap((x) => [x.project, x.branch])));
+  if (!rows.length && q) {
+    el.innerHTML = `<p class="muted">${tr('task.search.no-match', { q: esc(q) })}</p>`;
+    return;
+  }
   if (!rows.length) {
     el.innerHTML = taskKind === 'code'
       ? emptyState({ icon: 'bot', title: tr('task.empty.code.title'),
@@ -2884,12 +2938,18 @@ function localCard(t) {
 
 function renderLocalTasks() {
   const el = $('#localList');
+  const q = taskQuery();
+  const shown = localTasks.filter((t) => taskMatches(t, q, (t.dirs || []).map((d) => d.path)));
+  if (!shown.length && q) {
+    el.innerHTML = `<p class="muted">${tr('task.search.no-match', { q: esc(q) })}</p>`;
+    return;
+  }
   if (!localTasks.length) {
     el.innerHTML = emptyState({ icon: 'bot', title: tr('local.empty.title'), text: tr('local.empty.text'),
       actions: [{ act: 'new-task', label: tr('task.kind.local.btn'), primary: true }] });
     return;
   }
-  el.innerHTML = localTasks.map(localCard).join('');
+  el.innerHTML = shown.map(localCard).join('');
   stagger('#localList .card');
   $$('#localList [data-lrun]').forEach((b) => b.addEventListener('click', () => busy(b, () => api(`/local-tasks/${b.dataset.lrun}/run`, { method: 'POST' }))
     .then(() => { toast(tr('local.started')); refreshStatus(); })
@@ -3193,42 +3253,63 @@ async function openTargetDiff(taskId, targetId) {
 }
 
 let currentMd = '';
-async function openTaskMd(id) {
+// Réponse d'une exploration : même vue à itérations que les sessions — chaque question
+// de suivi a sa propre entrée, avec la question posée et la réponse obtenue.
+const openTaskMd = (id) => openPasses(`/tasks/${id}`);
+/* Retour de l'agent — même vue plein écran que la réponse d'une exploration, avec un
+   sélecteur d'ITÉRATION quand la session en compte plusieurs (comme le sélecteur de
+   versions d'un rapport de review). Chaque itération montre le prompt envoyé ET le
+   retour obtenu : relire une réponse sans savoir à quelle demande elle répondait
+   n'apprend rien. `base` est la racine d'URL (session sur dépôt ou hors dépôt), le
+   reste du rendu est commun. */
+let passCtx = { base: null };
+async function openPasses(base, n) {
   try {
-    const d = await api(`/tasks/${id}/md`);
-    currentMd = d.md || '';
-    $('#taskMdTitle').textContent = (d.prompt || '').slice(0, 90);
-    $('#taskMdBody').innerHTML = mdToHtml(currentMd || tr('task.no-answer'));
+    const d = await api(`${base}/passes${n ? `?n=${n}` : ''}`);
+    passCtx = { base };
+    $('#taskMdTitle').textContent = d.title || '';
+    const sel = $('#taskPassVersion');
+    // Une seule passe : pas de sélecteur, il n'y a rien à choisir.
+    sel.hidden = (d.passes || []).length < 2;
+    if (!sel.hidden) {
+      const cur = d.current ? d.current.n : 0;
+      sel.innerHTML = d.passes.map((p) => `<option value="${p.n}" ${p.n === cur ? 'selected' : ''}>${
+        esc(tr('task.pass.option', { n: p.n, kind: tr(`task.pass.kind.${p.kind}`), date: fmtDateTime(p.created_at) }))}</option>`).join('');
+    }
+    $('#taskMdBody').innerHTML = passBodyHtml(d.current);
+    currentMd = d.current ? passMarkdown(d.current) : '';
     $('#taskMdView').hidden = false;
   } catch (e) { toast(explainError(e.message), true); }
 }
-// Retour de l'agent pour un projet de codage — même vue plein écran que la réponse d'une
-// exploration (on y lit ce que l'IA dit avoir fait).
-async function openTargetOutput(taskId, targetId) {
-  try {
-    const d = await api(`/tasks/${taskId}/targets/${targetId}/output`);
-    currentMd = d.output || '';
-    $('#taskMdTitle').textContent = `${d.project} — ${d.branch}`;
-    $('#taskMdBody').innerHTML = mdToHtml(currentMd || tr('task.no-output'));
-    $('#taskMdView').hidden = false;
-  } catch (e) { toast(explainError(e.message), true); }
+// Corps d'une itération : la demande, puis la réponse.
+function passBodyHtml(p) {
+  if (!p) return `<p class="muted">${esc(tr('task.no-output'))}</p>`;
+  const prompt = (p.prompt || '').trim();
+  return (prompt ? `<h3>${esc(tr('task.pass.prompt'))}</h3><pre class="pass-prompt">${esc(prompt)}</pre>` : '')
+    + `<h3>${esc(tr('task.pass.answer'))}</h3>`
+    + (p.output ? mdToHtml(p.output) : `<p class="muted">${esc(tr('task.no-output'))}</p>`);
 }
-// Retour de l'agent pour un dossier hors dépôt — même vue plein écran que côté codage.
-async function openLocalDirOutput(taskId, dirId) {
-  try {
-    const d = await api(`/local-tasks/${taskId}/dirs/${dirId}/output`);
-    currentMd = d.output || '';
-    $('#taskMdTitle').textContent = d.path || '';
-    $('#taskMdBody').innerHTML = mdToHtml(currentMd || tr('task.no-output'));
-    $('#taskMdView').hidden = false;
-  } catch (e) { toast(explainError(e.message), true); }
+// Version copiable (le bouton Copier donne du Markdown, pas du HTML).
+function passMarkdown(p) {
+  const prompt = (p.prompt || '').trim();
+  return `${prompt ? `## ${tr('task.pass.prompt')}\n\n${prompt}\n\n` : ''}## ${tr('task.pass.answer')}\n\n${p.output || ''}`;
 }
+$('#taskPassVersion').addEventListener('change', (e) => {
+  if (passCtx.base) openPasses(passCtx.base, e.target.value);
+});
+
+const openTargetOutput = (taskId, targetId) => openPasses(`/tasks/${taskId}/targets/${targetId}`);
+// Retour de l'agent pour un dossier hors dépôt — même vue, même sélecteur d'itération.
+const openLocalDirOutput = (taskId, dirId) => openPasses(`/local-tasks/${taskId}/dirs/${dirId}`);
 $('#taskMdClose').addEventListener('click', () => { $('#taskMdView').hidden = true; });
 $('#taskMdCopy').addEventListener('click', () => copyText(currentMd, $('#taskMdCopy')));
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (!$('#taskMdView').hidden) $('#taskMdView').hidden = true;
 });
+
+const taskSearchEl = $('#taskSearch');
+if (taskSearchEl) taskSearchEl.addEventListener('input', renderTasks); // filtrage local, sans appel serveur
 
 try { taskKind = localStorage.getItem('aidevtools_task_kind') || 'code'; } catch { /* ignore */ }
 

@@ -76,7 +76,7 @@ async function applyFixAndPush(repo, mr, reviewMd, message, onLog, ctx = {}) {
     catch (e) { if (!doResume) throw e; onLog('⚠ reprise de session impossible → session neuve'); r = await agentsession.runInSession({ key, prompt, cwd, resume: false, onLog }); created = true; }
     agentText = r.text || '';
     copilot.recordUsage('task', prompt, agentText);
-    taskrunner.saveAgentOutput(ctx.task.id, ctx.targetId, agentText); // retour de l'agent, consultable
+    taskrunner.saveAgentOutput(ctx.task.id, ctx.targetId, agentText, { kind: 'converge-fix', prompt }); // passe consultable
     if (created) db.prepare('UPDATE task_target SET session_key = ?, session_backend = ?, session_cwd = ?, updated_at = ? WHERE id = ?').run(r.handle, r.backend, cwd, new Date().toISOString(), ctx.targetId);
   } else {
     await copilot.runPrompt(prompt, cwd, { kind: 'task' }, onLog);
@@ -223,7 +223,7 @@ async function bootstrapMrForTarget(task, tg, onLog) {
     const message = taskrunner.commitMessageFor(task);
     const promptText = taskrunner.buildCodePrompt(task);
     onLog(`── dev IA sur ${tg.project} ──`);
-    const res = await taskrunner.execOnTarget(task, tg, { promptText, message, allowCreate: true, onLog, forcePush: true });
+    const res = await taskrunner.execOnTarget(task, tg, { promptText, message, allowCreate: true, onLog, forcePush: true, passKind: 'converge' });
     // L'IA a posé des questions (option activée) : on met la convergence EN ATTENTE ici même,
     // avant de créer la MR. L'utilisateur répond (formulaire de session) puis relance Converger.
     if (res && res.needsInput) { onLog('⏸ l’IA a posé des questions — convergence en attente de tes réponses'); return { needsInput: true }; }

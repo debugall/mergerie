@@ -8,6 +8,7 @@ const git = require('./git');
 const copilot = require('./copilot');
 const agentsession = require('./agentsession');
 const questions = require('./questions');
+const agentpass = require('./agentpass');
 const { t } = require('../public/i18n-runtime.js');
 
 const WORK_REL = 'ai-dev-tools-internal';
@@ -30,15 +31,13 @@ function taskDir(taskId) {
 
 // Écrit le dernier message de l'agent d'un projet dans un fichier et le référence sur la
 // cible. Best-effort : ne doit jamais faire échouer la session pour un souci d'écriture.
-function saveAgentOutput(taskId, targetId, text) {
-  const md = String(text || '').trim();
-  if (!md) return;
-  try {
-    const dir = ensureDir(path.join(taskDir(taskId), String(targetId)));
-    const out = path.join(dir, 'output.md');
-    fs.writeFileSync(out, md, 'utf8');
-    setTarget(targetId, { output_path: out });
-  } catch { /* best-effort */ }
+/* Retour de l'agent pour UNE passe. On enregistre l'itération complète (prompt envoyé +
+   retour) dans l'historique, et `output_path` continue de pointer la plus récente. */
+function saveAgentOutput(taskId, targetId, text, meta = {}) {
+  const { outPath } = agentpass.record('task', taskId, targetId, {
+    kind: meta.kind || 'run', prompt: meta.prompt, text,
+  });
+  if (outPath) setTarget(targetId, { output_path: outPath });
 }
 
 // Les projets d'une session. Une session « codage » les traite l'un après l'autre ;
@@ -107,7 +106,7 @@ function commitMessageFor(task) {
 
 // Exécute le prompt sur UN projet : place la branche, laisse l'IA modifier, commite.
 // La branche de base n'est pas saisie : c'est la branche par défaut du dépôt.
-async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog, forcePush, resume }) {
+async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog, forcePush, resume, passKind }) {
   // On REPREND la session dès qu'un handle existe pour cette cible : la continuité vaut pour
   // le run initial, « Demander une correction » (followup), une relance, la reprise après
   // questions et les passes de convergence. Le 1er passage la crée.
@@ -178,7 +177,7 @@ async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog,
 
   // Retour de l'agent (ce qu'il dit avoir fait), consultable en fin de session — comme la
   // réponse d'une exploration. Vide en dry-run (pas de vrai retour).
-  saveAgentOutput(task.id, tg.id, agentText);
+  saveAgentOutput(task.id, tg.id, agentText, { kind: passKind || 'run', prompt: promptText + imgBlock });
 
   // L'agent a-t-il posé des questions ? Si oui → session en ATTENTE, sans commit (il s'est
   // arrêté avant d'implémenter). Un bloc malformé/absent est ignoré (parseQuestions → null).
@@ -226,7 +225,7 @@ async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog,
 
 // Session de codage : chaque projet est traité l'un après l'autre. Un projet en échec
 // n'interrompt pas les suivants — son erreur est consignée sur SA ligne.
-async function runCodeTask(task, { promptText, message, allowCreate, onLog }) {
+async function runCodeTask(task, { promptText, message, allowCreate, onLog, passKind }) {
   const targets = targetsOf(task.id);
   if (!targets.length) throw new Error(t('err.aucun-projet-selectionne-pour-cette'));
   let ok = 0; let waiting = 0; const fails = [];
@@ -234,7 +233,7 @@ async function runCodeTask(task, { promptText, message, allowCreate, onLog }) {
     onLog(`──────── ${tg.project} · ${tg.branch} ────────`);
     setTarget(tg.id, { status: 'running', last_error: null });
     try {
-      const r = await execOnTarget(task, tg, { promptText, message, allowCreate, onLog });
+      const r = await execOnTarget(task, tg, { promptText, message, allowCreate, onLog, passKind });
       if (r && r.needsInput) waiting += 1; else ok += 1;
     } catch (e) {
       setTarget(tg.id, { status: 'error', last_error: e.message });
@@ -336,6 +335,11 @@ async function runExploration(task, { question, previous, onLog }) {
   const mdPath = path.join(taskDir(task.id), 'exploration.md');
   const header = `# ${question}\n\n> Exploration du ${new Date().toLocaleString('fr-FR')} · ${dirs.map((d) => `${d.project} (\`${d.branch}\`)`).join(' · ')}\n\n---\n\n`;
   fs.writeFileSync(mdPath, header + content, 'utf8');
+  /* Chaque question de suivi ÉCRASE `exploration.md`. On archive donc la passe : la
+     question posée et la réponse obtenue restent consultables ensuite. `unit_id = 0`
+     marque une passe de NIVEAU SESSION — une exploration produit une seule réponse
+     transversale aux dépôts, pas une par projet. */
+  agentpass.record('task', task.id, 0, { kind: previous ? 'followup' : 'run', prompt: question, text: content });
   db.prepare('UPDATE task SET md_path = ?, status = ?, last_error = NULL, updated_at = ? WHERE id = ?')
     .run(mdPath, 'done', new Date().toISOString(), task.id);
   onLog('✅ réponse enregistrée');
@@ -366,7 +370,7 @@ async function runTaskFollowup(task, instruction, onLog = () => {}) {
     'Tu travailles sur une branche existante de ce projet ; le travail précédent est déjà '
     + `committé. Applique la demande de suivi ci-dessous en modifiant directement les fichiers.\n\n`
     + `Demande de suivi : ${instr}`;
-  return runCodeTask(task, { promptText, message, allowCreate: false, onLog });
+  return runCodeTask(task, { promptText, message, allowCreate: false, onLog, passKind: 'followup' });
 }
 
 // Reprise après réponses de l'utilisateur (ask → stop → resume). Cible UN projet précis :
@@ -383,7 +387,7 @@ async function runTaskAnswer(task, targetId, onLog = () => {}) {
   const promptText = questions.buildAnswerInstruction(qs);
   try {
     const res = await execOnTarget(task, tg, {
-      promptText, message: 'Réponses aux questions de l’agent', allowCreate: false, onLog, resume: true,
+      promptText, message: 'Réponses aux questions de l’agent', allowCreate: false, onLog, resume: true, passKind: 'answer',
     });
     syncTaskStatus(task.id);
     return res; // { needsInput } si l'agent re-pose des questions

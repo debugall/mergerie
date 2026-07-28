@@ -76,6 +76,10 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   Si l'option « l'IA peut poser des questions » est active et que l'IA hésite pendant une passe, la boucle
   **se met en attente** (notification) au lieu de deviner : tu réponds, puis tu relances Converger — qui
   **reprend la même session**.
+- **Les demandes de modification sont conservées.** La section `Demander une modification à l'IA` liste
+  les demandes déjà faites sur ce rapport, **avec leur date**, et un bouton ouvre **le rapport que chacune
+  a produit** (la version correspondante). On retrouve ainsi ce qui avait été demandé pour arriver à un
+  rapport donné, au lieu de le reconstituer de mémoire.
 - Sur un rapport : **régénérer** le rapport, **commenter** la MR, **merger**, **relancer la review**,
   **marquer traitée**, **supprimer le rapport** (la MR retourne « à traiter »), et surtout
   **Faire corriger le code par l'IA** — qui ouvre une session de codage pré-remplie avec le rapport
@@ -100,6 +104,10 @@ Arbre du projet + fichier affiché **entier avec le diff en place**, coloration 
 **Commentaire inline** par ligne et **réponses** aux fils, synchronisés avec la forge.
 
 ### Dev IA
+Une **recherche** en tête de liste (prompt, projet, branche, dossier) filtre les sessions du sous-onglet
+courant — utile dès qu'elles s'accumulent. Elle se remet à zéro quand on change de sous-onglet, pour ne pas
+contredire les compteurs qui affichent des totaux.
+
 Deux sous-onglets. Dans les deux cas, une session porte sur **un ou plusieurs projets**, chacun avec
 sa propre branche, et sa date de création est affichée. Le **choix du dépôt se fait au clavier**
 (sélecteur avec recherche), comme celui des branches — utile quand la liste des dépôts est longue.
@@ -127,6 +135,12 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   exploration) — utile pour comprendre son travail, ou **quand rien n'a changé** : si le prompt était
   incomplet et que l'IA a **répondu au lieu de coder** (ex. « donne-moi le nom du fichier »), sa réponse
   est **remontée directement** dans l'erreur du projet plutôt qu'un « aucun changement » opaque.
+- **Toutes les itérations sont conservées.** Une session s'itère (lancement, `Demander une correction`,
+  réponses aux questions, passes de convergence) : chaque passe garde **le prompt réellement envoyé** et
+  **le retour de l'IA correspondant**. Un **sélecteur d'itération** apparaît en haut de `Retour de l'IA`
+  dès la deuxième passe (« Itération 2 · correction demandée · 29/07 00:42 ») et permet de relire
+  n'importe laquelle. Relire une réponse sans savoir à quelle demande elle répondait n'apprend rien : les
+  deux sont donc affichés ensemble. Vaut aussi pour le **codage hors dépôt**, dossier par dossier.
 - **⌨️ Reprendre la session au terminal.** Chaque projet d'une session de codage (dépôt **ou** hors dépôt),
   ainsi que les reviews, expose un bouton **« Reprendre au terminal »** qui copie la **commande prête à
   coller** : `cd` vers le bon dossier + lancement de l'agent avec l'**identifiant de session** (claude
@@ -169,6 +183,9 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   le code et rédige **une seule réponse de synthèse** enregistrée en `.md`, consultable à tout moment
   via `Voir la réponse`. Ni diff ni merge. Les **questions de suivi** reprennent la réponse précédente
   en contexte. Les dépôts sont remis à zéro après coup : **aucune modification ne subsiste**.
+  **Chaque question est conservée** : une question de suivi écrase le fichier de réponse, mais la passe
+  est archivée — `Voir la réponse` propose un **sélecteur d'itération** qui rejoue chaque question avec
+  la réponse qu'elle a obtenue.
 
 ### Git
 Opérations sur **plusieurs dépôts à la fois** et exploration des branches.

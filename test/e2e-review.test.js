@@ -172,6 +172,19 @@ describe('Review de bout en bout', () => {
     const versions = (await app.api('GET', `/api/mrs/${mrId}/versions`)).body;
     assert.equal(versions[0].version, 4);
     assert.equal(versions[0].kind, 'modify');
+    // La DEMANDE est conservée avec la version qu'elle a produite : sans elle, l'historique
+    // ne dit pas ce qui avait été demandé pour arriver à ce rapport.
+    assert.equal(versions[0].instruction, 'Insiste sur la sécurité');
+    assert.equal(versions[0].created_at != null, true);
+
+    // Une seconde demande empile une nouvelle entrée, sans écraser la première.
+    await app.api('POST', `/api/mrs/${mrId}/modify`, { instruction: 'Ajoute les risques de perf' });
+    await waitForJobs(app.api);
+    const v2 = (await app.api('GET', `/api/mrs/${mrId}/versions`)).body;
+    const asked = v2.filter((v) => v.kind === 'modify' && v.instruction).map((v) => v.instruction);
+    assert.deepEqual(asked, ['Ajoute les risques de perf', 'Insiste sur la sécurité'], 'les deux demandes, plus récente d’abord');
+    // Les versions issues d'une review (non-modify) n'ont pas d'instruction.
+    assert.equal(v2.find((v) => v.kind === 'review').instruction, null);
   });
 
   test('POST /api/mrs/:id/fix-review ouvre une session de dev sur la branche de la MR', async () => {

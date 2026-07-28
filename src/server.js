@@ -56,6 +56,7 @@ const demoDocker = require('./demo-docker');
 const demoJira = require('./demo-jira');
 const aisession = require('./aisession');
 const agentsession = require('./agentsession');
+const agentpass = require('./agentpass');
 const localrepos = require('./localrepos');
 const copilot = require('./copilot');
 
@@ -1035,6 +1036,35 @@ app.post('/api/repos/bulk', wrap((req, res) => {
   res.json({ added, skipped });
 }));
 
+/* Liste des passes d'une unité + la passe demandée (la dernière par défaut). Commun aux
+   sessions sur dépôt et au codage hors dépôt : une seule forme de réponse à afficher. */
+function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) {
+  const passes = agentpass.list(scope, taskId, unitId)
+    .map((p) => ({ n: p.n, kind: p.kind, created_at: p.created_at, has_output: !!p.output_path }));
+
+  /* Sessions antérieures à l'historique des passes : elles n'ont aucune ligne
+     `agent_pass`, mais leur `output_path` pointe toujours un retour valide. On le
+     présente comme une passe unique — sans lui, « Retour de l'IA » deviendrait vide
+     sur tout l'existant. Le prompt de l'époque, lui, n'a pas été conservé. */
+  if (!passes.length) {
+    const output = legacyOutputPath ? readFileSafe(legacyOutputPath) : null;
+    if (!output) return { title, passes: [], current: null };
+    return {
+      title,
+      passes: [{ n: 1, kind: 'legacy', created_at: null, has_output: true }],
+      current: { n: 1, kind: 'legacy', created_at: null, prompt: '', output },
+    };
+  }
+
+  const n = Number(wantedN) || passes[passes.length - 1].n;
+  const current = agentpass.get(scope, taskId, unitId, n);
+  return {
+    title,
+    passes,
+    current: current ? { n: current.n, kind: current.kind, created_at: current.created_at, prompt: current.prompt, output: current.output } : null,
+  };
+}
+
 /* ---------- Tasks (tâches de dev pilotées par l'IA) ---------- */
 function taskById(id) {
   return db.prepare(`SELECT task.*, repo.project AS project, repo.forge AS forge FROM task JOIN repo ON repo.id = task.repo_id WHERE task.id = ?`).get(id);
@@ -1211,6 +1241,7 @@ app.put('/api/tasks/:id', wrap((req, res) => {
 
 app.delete('/api/tasks/:id', wrap((req, res) => {
   db.prepare('DELETE FROM task_target WHERE task_id = ?').run(Number(req.params.id));
+  agentpass.removeTask('task', Number(req.params.id));   // pas de FK : nettoyage explicite
   db.prepare('DELETE FROM task WHERE id = ?').run(Number(req.params.id));
   try { fs.rmSync(path.join(TASKS_DIR, String(Number(req.params.id))), { recursive: true, force: true }); } catch { /* rien */ }
   res.json({ ok: true });
@@ -1263,11 +1294,27 @@ app.get('/api/tasks/:id/targets/:tid/filediff', wrap(async (req, res) => {
   res.json(await viewerFileDiff(targetCloneCtx(tg), String(req.query.path || '')));
 }));
 
+/* Historique des ITÉRATIONS d'un projet de session : une entrée par passe, avec le
+   prompt réellement envoyé et le retour de l'agent. `?n=` renvoie une passe précise. */
+app.get('/api/tasks/:id/targets/:tid/passes', wrap((req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  res.json(passesPayload('task', tg.id, Number(req.params.id), req.query.n, `${tg.project} — ${tg.branch}`, tg.output_path));
+}));
+
 // Retour de l'agent pour un projet (ce qu'il dit avoir fait) — consultable en fin de session.
 app.get('/api/tasks/:id/targets/:tid/output', wrap((req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
   res.json({ output: tg.output_path ? readFileSafe(tg.output_path) : null, project: tg.project, branch: tg.branch });
+}));
+
+/* Historique des questions d'une exploration (niveau session, unité 0) : chaque
+   question de suivi a écrasé la réponse précédente, mais la passe est archivée. */
+app.get('/api/tasks/:id/passes', wrap((req, res) => {
+  const tk = taskById(Number(req.params.id));
+  if (!tk) throw new Error(t('err.session-introuvable'));
+  res.json(passesPayload('task', 0, tk.id, req.query.n, tk.prompt || '', tk.md_path));
 }));
 
 // Réponse .md d'une exploration.
@@ -1337,6 +1384,14 @@ app.post('/api/local-tasks/:id/followup', wrap((req, res) => {
   res.json(jobs.startLocalJob(lt.id, { instruction }));
 }));
 
+// Historique des itérations d'un dossier hors dépôt (même forme que côté session).
+app.get('/api/local-tasks/:id/dirs/:did/passes', wrap((req, res) => {
+  const d = db.prepare('SELECT * FROM local_task_dir WHERE id = ? AND task_id = ?')
+    .get(Number(req.params.did), Number(req.params.id));
+  if (!d) throw new Error(t('err.local-dir-introuvable'));
+  res.json(passesPayload('local', d.id, Number(req.params.id), req.query.n, d.path, d.output_path));
+}));
+
 // Retour de l'agent pour UN dossier (ce qu'il dit avoir fait).
 app.get('/api/local-tasks/:id/dirs/:did/output', wrap((req, res) => {
   const d = db.prepare('SELECT * FROM local_task_dir WHERE id = ? AND task_id = ?')
@@ -1347,6 +1402,7 @@ app.get('/api/local-tasks/:id/dirs/:did/output', wrap((req, res) => {
 
 app.delete('/api/local-tasks/:id', wrap((req, res) => {
   const id = Number(req.params.id);
+  agentpass.removeTask('local', id);                     // pas de FK : nettoyage explicite
   db.prepare('DELETE FROM local_task WHERE id = ?').run(id); // cascade sur dirs + images
   try { fs.rmSync(path.join(TASKS_DIR, 'local', String(id)), { recursive: true, force: true }); } catch { /* rien */ }
   res.json({ ok: true });
@@ -1835,7 +1891,7 @@ app.post('/api/mrs/:id/fix-review', wrap((req, res) => {
 
 // Historique des reviews d'une MR : chaque passe est conservée.
 app.get('/api/mrs/:id/versions', wrap((req, res) => {
-  const rows = db.prepare(`SELECT version, note_value, reviewed_sha, kind, created_at,
+  const rows = db.prepare(`SELECT version, note_value, reviewed_sha, kind, created_at, instruction,
     n_new, n_persistent, n_resolved, n_disappeared
     FROM review_version WHERE mr_id = ? ORDER BY version DESC`).all(Number(req.params.id));
   res.json(rows.map((v) => ({
@@ -1844,6 +1900,7 @@ app.get('/api/mrs/:id/versions', wrap((req, res) => {
     sha: v.reviewed_sha ? String(v.reviewed_sha).slice(0, 8) : null,
     kind: v.kind,
     created_at: v.created_at,
+    instruction: v.instruction || null,   // demande à l'origine d'une régénération
     // Delta de résolution (renseigné dès la 2e passe) pour le bandeau du rapport.
     resolution: v.n_resolved == null ? null
       : { resolved: v.n_resolved, persistent: v.n_persistent, new: v.n_new, disappeared: v.n_disappeared },

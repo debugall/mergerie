@@ -267,6 +267,30 @@ try { db.exec('ALTER TABLE local_task_dir ADD COLUMN session_cwd TEXT'); } catch
 // Migration : retour de l'agent par dossier (« Retour de l'IA »), comme output_path
 // côté task_target. Sans lui, une session hors dépôt qui n'a rien modifié reste opaque.
 try { db.exec('ALTER TABLE local_task_dir ADD COLUMN output_path TEXT'); } catch { /* déjà présente */ }
+
+/* HISTORIQUE DES PASSES d'agent — une ligne par itération, pour une session sur dépôt
+   comme pour un codage hors dépôt. Même esprit que `review_version` : chaque passe écrit
+   son propre fichier (`output-v<N>.md`) au lieu d'écraser le précédent, et la colonne
+   `output_path` de l'unité continue de pointer la DERNIÈRE — le reste de l'app n'a rien
+   à changer. On garde le PROMPT réellement envoyé : sans lui, relire un retour d'IA
+   trois itérations plus tard ne dit pas à quoi il répondait.
+
+   Une seule table pour les deux familles (`scope`), plutôt que deux tables jumelles :
+   le serveur et l'interface n'ont ainsi qu'une implémentation. Contrepartie assumée :
+   pas de clé étrangère possible (deux tables parentes), donc les suppressions de session
+   nettoient explicitement cette table. */
+db.exec(`CREATE TABLE IF NOT EXISTS agent_pass (
+  id INTEGER PRIMARY KEY,
+  scope TEXT NOT NULL,          -- 'task' (session sur dépôt) | 'local' (hors dépôt)
+  task_id INTEGER NOT NULL,
+  unit_id INTEGER NOT NULL,     -- task_target.id | local_task_dir.id
+  n INTEGER NOT NULL,           -- numéro de passe, par unité
+  kind TEXT,                    -- run | followup | answer | converge-fix
+  prompt TEXT,                  -- ce qui a RÉELLEMENT été envoyé à l'agent
+  output_path TEXT,             -- retour de l'agent pour cette passe
+  created_at TEXT
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_agent_pass_unit ON agent_pass(scope, task_id, unit_id, n)');
 // Captures jointes au prompt d'un codage hors dépôt (mêmes que task_image, table dédiée).
 db.exec(`CREATE TABLE IF NOT EXISTS local_task_image (
   id INTEGER PRIMARY KEY,
@@ -340,6 +364,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS review_version (
   kind TEXT DEFAULT 'review',
   created_at TEXT
 )`);
+// Migration : demande de modification à l'origine d'une version de rapport (kind='modify').
+// Sans elle, l'historique des régénérations ne dit pas CE QUI avait été demandé.
+try { db.exec('ALTER TABLE review_version ADD COLUMN instruction TEXT'); } catch { /* déjà présente */ }
 db.exec('CREATE INDEX IF NOT EXISTS idx_review_version_mr ON review_version(mr_id, version)');
 
 /* Suivi de résolution entre deux passes de review (ideas.md « Suivi de résolution »).

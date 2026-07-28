@@ -142,6 +142,7 @@
             <button id="btnNewTask" class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg><span id="btnNewTaskLabel" data-i18n="ui.span.nouvelle-session-de-codage">Nouvelle session de codage</span></button>
             <span id="taskKindHint" class="muted"></span>
         </div>
+        <input id="taskSearch" class="search" type="search" placeholder="Rechercher (prompt, projet, branche, dossier)…" data-i18n-placeholder="task.search.ph" aria-label="Rechercher une session" data-i18n-aria="task.search.aria" />
         <div id="taskList" class="list"></div>
 
         <!-- Codage hors dépôt : liste des sessions (le formulaire vit dans la modale de codage) -->
@@ -814,6 +815,7 @@
     <div class="split-head">
         <span id="taskMdTitle" class="split-title"></span>
         <span class="spacer"></span>
+        <select id="taskPassVersion" class="md-version" title="Choisir l'itération à relire" data-i18n-title="task.pass.select-title" hidden></select>
         <button id="taskMdCopy" class="btn btn-sm" title="Copier la réponse en Markdown" data-i18n-title="context.title.copier-la-reponse-en-markdown"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="settings.btn.copier">Copier</span></button>
         <button id="taskMdClose" class="btn" title="Fermer (Échap)" data-i18n-title="context.title.fermer-echap"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>
     </div>

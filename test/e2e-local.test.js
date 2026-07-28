@@ -126,6 +126,16 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
     assert.equal(lt.dirs[0].status, 'done');
     const out = await app.api('GET', `/api/local-tasks/${created.id}/dirs/${lt.dirs[0].id}/output`);
     assert.match(out.body.output, /[Ss]uivi/, 'le retour reflète la passe de suivi');
+
+    // Les DEUX itérations sont conservées, chacune avec le prompt qui lui correspond.
+    const hist = await app.api('GET', `/api/local-tasks/${created.id}/dirs/${lt.dirs[0].id}/passes`);
+    assert.equal(hist.body.passes.length, 2);
+    assert.deepEqual(hist.body.passes.map((p) => p.kind), ['run', 'followup']);
+    assert.equal(hist.body.current.n, 2);
+    assert.match(hist.body.current.prompt, /Corrige le titre/, 'le prompt de correction est conservé');
+    const first = await app.api('GET', `/api/local-tasks/${created.id}/dirs/${lt.dirs[0].id}/passes?n=1`);
+    assert.match(first.body.current.prompt, /Première passe/, 'la 1re passe garde le prompt initial');
+    assert.ok(!/Corrige le titre/.test(first.body.current.prompt));
   });
 
   test('suppression d’une session', async () => {

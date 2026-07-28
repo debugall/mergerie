@@ -40,6 +40,10 @@ async function startApp() {
   const github = await mockGh.start();
   // eslint-disable-next-line global-require
   const server = require('../../src/server');
+  // Même instance que le serveur (MERGERIE_DATA_DIR est déjà posé) : permet à un test de
+  // fabriquer un état hérité qu'aucune API ne sait produire.
+  // eslint-disable-next-line global-require
+  const db = require('../../src/db');
   if (!server.server.listening) {
     await new Promise((resolve) => server.server.once('listening', resolve));
   }
@@ -79,7 +83,7 @@ async function startApp() {
   }
 
   return {
-    base, api, configure, configureGithub, dataDir,
+    base, api, configure, configureGithub, dataDir, db,
     gitlabUrl: gitlab.url, githubUrl: github.url,
     state: mock.state, ghState: mockGh.state,
     async stop() {
