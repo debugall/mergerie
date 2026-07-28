@@ -54,6 +54,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Search fields no longer rebuild their list on every keystroke.** The session and Docker Compose
+  searches are debounced: typing an 8-character query now rebuilds the list once instead of eight times.
+- **Statuses update as soon as a job starts.** Launching an iteration left the card on its previous
+  status ("pushed") until the page was reloaded: the lists were only refreshed when a job *ended*. They
+  now refresh when one *starts* too, so the badge switches to "running" on its own.
 - **The follow-up form closes once the request is sent.** Asking for a fix (coding session,
   off-repo coding or exploration) left the text box open with its content, which read as if nothing had
   been submitted — the form now clears and closes on success.

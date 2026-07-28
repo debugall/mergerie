@@ -137,6 +137,13 @@ function setFavicon(state) {
 const svgIco = (name) => `<svg class="ico ico-sm"><use href="#i-${name}"/></svg>`;
 
 // Apparition échelonnée des cartes (plafonnée : sur 80 MR on n'attend pas 2 s).
+/* Regroupe les appels rapprochés (frappe au clavier) en un seul : un champ de recherche
+   qui reconstruit une liste entière à CHAQUE caractère rame dès que la liste s'allonge. */
+function debounce(fn, ms = 120) {
+  let t = 0;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
 function stagger(sel) {
   $$(sel).forEach((c, i) => c.style.setProperty('--i', Math.min(i, 10)));
 }
@@ -705,6 +712,10 @@ $('#dashRefresh').addEventListener('click', loadDashboard);
 
 /* ---------- Statut / progression ---------- */
 let pollTimer = null;
+// Identité du job en cours : sert à détecter le DÉMARRAGE d'un job (et pas seulement sa
+// fin) pour rafraîchir les listes — sans ça, lancer une itération laissait la carte sur
+// son ancien statut (« poussée ») jusqu'au rechargement de la page.
+let lastSeenJobId = null;
 
 // Polling auto des listes, à l'intervalle configuré (auto_refresh_minutes). Le serveur
 // interroge GitLab de son côté ; le front ne fait que relire la base locale (pas d'appel
@@ -732,6 +743,14 @@ async function refreshStatus() {
     const job = s.job;
     const running = s.running;
     const queued = s.queued || 0;
+    /* Un nouveau job vient de démarrer : les statuts affichés (session, projet) sont
+       déjà périmés. On recharge la liste concernée tout de suite, comme on le fait
+       déjà à la fin d'un job. */
+    if (running && job && job.id !== lastSeenJobId) {
+      lastSeenJobId = job.id;   // n'est consommé qu'une fois le job RÉELLEMENT démarré
+      if ($('#tab-task').classList.contains('active')) loadTasks();
+      if ($('#tab-review').classList.contains('active')) loadSegment(currentSeg);
+    }
     if (running && job) {
       // barre de progression intégrée au panneau de log (plus de bloc séparé)
       $('#logBar').hidden = false;
@@ -754,9 +773,11 @@ async function refreshStatus() {
         if (selectedMr) openReport(selectedMr); // recharge le rapport affiché (re-review/modif)
       }
     }
-    // poll uniquement quand un job tourne
-    if (running && !pollTimer) pollTimer = setInterval(refreshStatus, 1500);
-    if (!running && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    // Poll tant qu'un job occupe la file (en cours OU en attente). Les deux conditions
+    // doivent être SYMÉTRIQUES : sinon on crée le timer puis on le détruit dans la foulée.
+    const fileActive = running || queued > 0;
+    if (fileActive && !pollTimer) pollTimer = setInterval(refreshStatus, 1500);
+    if (!fileActive && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     // log en direct (récupère aussi les dernières lignes après la fin)
     pumpLog();
   } catch (e) { /* silencieux */ }
@@ -3320,7 +3341,8 @@ document.addEventListener('keydown', (e) => {
 });
 
 const taskSearchEl = $('#taskSearch');
-if (taskSearchEl) taskSearchEl.addEventListener('input', renderTasks); // filtrage local, sans appel serveur
+// Filtrage local (aucun appel serveur), regroupé : renderTasks reconstruit toute la liste.
+if (taskSearchEl) taskSearchEl.addEventListener('input', debounce(renderTasks));
 
 try { taskKind = localStorage.getItem('aidevtools_task_kind') || 'code'; } catch { /* ignore */ }
 
@@ -5321,39 +5343,6 @@ function dockerProjectCard(p) {
     </div>`;
 }
 
-function renderDockerCompose(d) {
-  const box = $('#dockerComposeBox');
-  if (d.error) { box.innerHTML = errorBox(d.error); return; }
-  if (!(d.projects || []).length) { box.innerHTML = emptyState({ icon: 'inbox', title: tr('docker.compose.empty.title'), text: tr('docker.compose.empty.text') }); return; }
-  // Tri : le projet dont un container a été le plus récemment (re)créé d'abord ; ceux sans
-  // container ensuite (activité 0). Copie pour ne pas muter la réponse.
-  const projects = d.projects.slice().sort((a, b) => dockerProjectLastActivity(b) - dockerProjectLastActivity(a));
-  const hidden = dockerHidden();
-  // Filtre persistant : une case par projet (cochée = affiché). Décocher masque son bloc.
-  const filter = `<div class="docker-filter"><span class="muted">${esc(tr('docker.filter.label'))}</span>${projects.map((p) => `
-      <label class="inline-check inline-check-mid"><input type="checkbox" class="docker-filter-cb" value="${esc(p.path)}" ${hidden.has(p.path) ? '' : 'checked'} /> <span>${esc(p.name)}</span></label>`).join('')}</div>`;
-  const cards = projects.filter((p) => !hidden.has(p.path)).map(dockerProjectCard).join('');
-  box.innerHTML = filter + (cards || `<p class="muted">${esc(tr('docker.filter.all-hidden'))}</p>`);
-  wireDockerActions(box);
-  const search = $('#dcSearch', box);
-  if (search) {
-    search.addEventListener('input', () => {
-      setComposeSvcFilter({ q: search.value });
-      const pos = search.selectionStart;
-      renderComposeTab();                                  // filtrage local : aucun appel Docker
-      const again = $('#dcSearch');
-      if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch { /* champ recréé */ } }
-    });
-  }
-  const stateSel = $('#dcState', box);
-  if (stateSel) stateSel.addEventListener('change', () => { setComposeSvcFilter({ state: stateSel.value }); renderComposeTab(); });
-  $$('.docker-filter-cb', box).forEach((cb) => cb.addEventListener('change', () => {
-    const set = dockerHidden();
-    if (cb.checked) set.delete(cb.value); else set.add(cb.value);
-    setDockerHidden(set);
-    renderDockerCompose(d); // re-rendu : garde le tri, applique le filtre
-  }));
-}
 
 /* ============ Docker · Compose en affichage PROGRESSIF ============
  * D'abord la liste légère des fichiers (rapide : un scan + un `docker ps -a`), rendue en
@@ -5417,13 +5406,14 @@ function renderComposeTab() {
   wireDockerActions(box);
   const search = $('#dcSearch', box);
   if (search) {
-    search.addEventListener('input', () => {
-      setComposeSvcFilter({ q: search.value });
+    // Debounce : chaque frappe reconstruit toutes les cartes de projet (et les recâble).
+    const apply = debounce(() => {
       const pos = search.selectionStart;
       renderComposeTab();                                  // filtrage local : aucun appel Docker
       const again = $('#dcSearch');
       if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch { /* champ recréé */ } }
     });
+    search.addEventListener('input', () => { setComposeSvcFilter({ q: search.value }); apply(); });
   }
   const stateSel = $('#dcState', box);
   if (stateSel) stateSel.addEventListener('change', () => { setComposeSvcFilter({ state: stateSel.value }); renderComposeTab(); });
