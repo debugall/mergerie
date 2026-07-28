@@ -64,6 +64,29 @@ describe('note : extraction de la note globale du rapport', () => {
     assert.equal(extractNote('note : b'), null, 'une minuscule isolée n’est pas une note (faux positif)');
   });
 
+  test('la note retenue est celle qui CONCLUT le rapport, pas une note citée en cours de route', () => {
+    // Régression : après « Relancer la review », le rapport rappelle souvent la note
+    // précédente dans son résumé. En cherchant depuis le début, la liste restait
+    // bloquée sur la note de la PREMIÈRE review.
+    const rereview = [
+      '# Revue de code — !42',
+      '',
+      '## Suivi de résolution',
+      'La note précédente était de 5,8/10 ; les points bloquants ont été corrigés.',
+      '',
+      '## Note globale',
+      '**8,4/10** — bon niveau, corrections mineures.',
+    ].join('\n');
+    assert.equal(extractNote(rereview).raw, '8,4/10', 'la note finale gagne sur celle citée plus haut');
+
+    // Le libellé peut être un TITRE, la valeur venant à la ligne suivante.
+    assert.equal(extractNote('## Note globale\n**7,2/10** — correct.').raw, '7,2/10');
+    // …ou être porté par la même ligne.
+    assert.equal(extractNote('Note globale : 6/10').raw, '6/10');
+    // Sans libellé explicite, on prend quand même la DERNIÈRE fraction plausible.
+    assert.equal(extractNote('Il reste 2/5 points ouverts.\n\nRésultat : 9/10.').raw, '9/10');
+  });
+
   test('absence de note ou fraction incohérente', () => {
     assert.equal(extractNote(''), null);
     assert.equal(extractNote(null), null);
