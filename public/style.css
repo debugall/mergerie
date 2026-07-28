@@ -1052,6 +1052,11 @@ nav button:hover { color: var(--text); background: var(--hover); }
 
 /* Aperçu du diff avant review : le panneau de gauche devient un panneau de décision. */
 .preview-mode .split-tabs { display: none; }        /* pas de rapport à onglets ici */
+/* Mode « projet de session » : même viewer, mais il n'y a pas de MR derrière —
+   ni onglets Rapport/Explication, ni bouton de commentaire de ligne (qui posterait
+   sur une discussion inexistante). Le panneau de gauche montre le retour de l'IA. */
+.session-mode .split-tabs { display: none; }
+.session-mode .ln-comment { display: none; }
 .diff-decision { padding: 4px 2px; }
 .diff-decision h3 { margin: 0 0 10px; }
 .diff-decision-stats { font-size: var(--fs-sm); font-weight: 600; margin: 0 0 6px; }

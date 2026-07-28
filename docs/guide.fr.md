@@ -113,7 +113,12 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
 - **Codage** — l'IA modifie le code. Pour chaque projet : branche de travail, et **branche de départ**
   facultative (liste déroulante avec recherche ; vide = branche par défaut du dépôt). Le prompt est
   appliqué à chaque projet, séquentiellement — **un projet en échec n'interrompt pas les autres**.
-  Chaque projet a ensuite ses propres actions : **Diff · Pousser · Créer la MR · Merger**. Un
+  Chaque projet a ensuite ses propres actions : **Voir le diff · Pousser · Créer la MR · Merger**.
+  **`Voir le diff`** ouvre le **même explorateur plein écran que celui des merge requests** —
+  arborescence complète du projet au milieu, fichier entier avec les changements en place à droite
+  (navigation d'un changement à l'autre, mini-carte) — avec, à gauche, le **retour de l'IA** au lieu
+  du rapport de revue. On lit donc ce que l'IA dit avoir fait *et* ce qu'elle a réellement écrit, côte
+  à côte, dans le contexte du fichier entier plutôt que dans un patch brut. Un
   **fil d'étape** compact (pastilles **créée → commit → push → MR**) sur chaque ligne situe d'un
   coup d'œil où en est le projet — utile sur une session multi-projets.
   `Demander une correction` relance l'IA sur les branches existantes, **en reprenant la même session** :

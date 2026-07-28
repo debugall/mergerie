@@ -83,6 +83,34 @@ describe('Sessions de dev de bout en bout', () => {
     assert.equal(diff.body.project, 'grp/app');
     assert.equal((await app.api('GET', `/api/tasks/${taskId}/targets/99999/diff`)).status, 400);
 
+    /* « Voir le diff » : le viewer plein écran d'un projet de session est alimenté par
+       LES MÊMES routes que celui d'une MR (`/diffview`, `/file`, `/filediff`), donc les
+       tester ici garantit que la factorisation côté serveur reste valable. */
+    const tgId = apres.targets[0].id;
+    const dv = await app.api('GET', `/api/tasks/${taskId}/targets/${tgId}/diffview`);
+    assert.equal(dv.status, 200);
+    assert.equal(dv.body.project, 'grp/app');
+    assert.equal(dv.body.branch, 'feat/total');
+    assert.match(dv.body.diff, /PROJ_TASK_DRYRUN\.md/);
+    assert.ok(dv.body.stats.files >= 1 && dv.body.stats.added > 0, 'compteurs du diff');
+    const changed = dv.body.files.filter((f) => f.changed).map((f) => f.path);
+    assert.ok(changed.includes('PROJ_TASK_DRYRUN.md'), 'le fichier modifié est marqué dans l’arbre');
+    assert.ok(dv.body.files.some((f) => f.path === 'src/app.js' && !f.changed), 'l’arbre porte AUSSI les fichiers non modifiés');
+
+    // Contenu entier d'un fichier non modifié (panneau de droite du viewer).
+    const file = await app.api('GET', `/api/tasks/${taskId}/targets/${tgId}/file?path=src/app.js`);
+    assert.equal(file.status, 200);
+    assert.match(file.body.content, /module\.exports/);
+
+    // Diff à contexte complet d'un fichier modifié.
+    const fd = await app.api('GET', `/api/tasks/${taskId}/targets/${tgId}/filediff?path=PROJ_TASK_DRYRUN.md`);
+    assert.equal(fd.status, 200);
+    assert.match(fd.body.diff, /PROJ_TASK_DRYRUN\.md/);
+
+    // Garde-fou : un chemin hors de l'arborescence est refusé (anti-traversal).
+    assert.equal((await app.api('GET', `/api/tasks/${taskId}/targets/${tgId}/file?path=../../etc/passwd`)).status, 400);
+    assert.equal((await app.api('GET', `/api/tasks/${taskId}/targets/99999/diffview`)).status, 400);
+
     // Itération : une 2e passe sur la même branche.
     assert.equal((await app.api('POST', `/api/tasks/${taskId}/followup`, { instruction: ' ' })).status, 400);
     await app.api('POST', `/api/tasks/${taskId}/followup`, { instruction: 'Ajoute aussi la TVA' });

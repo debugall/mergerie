@@ -1236,6 +1236,33 @@ app.get('/api/tasks/:id/targets/:tid/diff', wrap((req, res) => {
   res.json({ diff: tg.diff_path ? readFileSafe(tg.diff_path) : null, project: tg.project, branch: tg.branch });
 }));
 
+/* Viewer plein écran d'un projet de session : MÊMES trois routes que pour une MR
+   (`viewerPayload` / `viewerFile` / `viewerFileDiff`), donc le front réutilise le
+   même composant en changeant seulement la base d'URL. */
+app.get('/api/tasks/:id/targets/:tid/diffview', wrap(async (req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  const ctx = targetCloneCtx(tg);
+  // Le diff produit par la session est stocké ; s'il manque (session ancienne), on le
+  // recalcule depuis la branche de départ.
+  let diff = tg.diff_path ? readFileSafe(tg.diff_path) : null;
+  if (!diff) { try { diff = await git.branchDiff(ctx.cwd, ctx.target); } catch { diff = ''; } }
+  res.json({
+    ...(await viewerPayload(ctx, { diff: diff || '', source: tg.branch })),
+    project: tg.project, branch: tg.branch,
+  });
+}));
+app.get('/api/tasks/:id/targets/:tid/file', wrap(async (req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  res.json(await viewerFile(targetCloneCtx(tg), String(req.query.path || '')));
+}));
+app.get('/api/tasks/:id/targets/:tid/filediff', wrap(async (req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  res.json(await viewerFileDiff(targetCloneCtx(tg), String(req.query.path || '')));
+}));
+
 // Retour de l'agent pour un projet (ce qu'il dit avoir fait) — consultable en fin de session.
 app.get('/api/tasks/:id/targets/:tid/output', wrap((req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
@@ -1659,16 +1686,8 @@ app.get('/api/mrs/:id/diffview', wrap(async (req, res) => {
   const rev = db.prepare('SELECT diff_path FROM review WHERE mr_id = ?').get(mr.id);
   const stored = rev ? readFileSafe(rev.diff_path) : null;
   const diff = stored || await git.targetedDiff(cwd, mr.source_branch, mr.target_branch, () => {});
-  const changed = changedFilesFromDiff(diff);
-  let files = [];
-  try { files = await git.lsTree(cwd, `origin/${mr.source_branch}`); } catch { /* arbre indisponible */ }
-  res.json({
-    diff,
-    target: mr.target_branch,
-    source: mr.source_branch,
-    files: files.map((f) => ({ path: f, changed: changed.has(f) })),
-    stats: { files: changed.size, added: (diff.match(/^\+(?!\+\+)/gm) || []).length, removed: (diff.match(/^-(?!--)/gm) || []).length },
-  });
+  const ctx = { cwd, ref: `origin/${mr.source_branch}`, target: mr.target_branch || 'main' };
+  res.json(await viewerPayload(ctx, { diff, source: mr.source_branch }));
 }));
 
 // Ensemble des fichiers modifiés (chemins « b/ ») extraits d'un diff unifié.
@@ -1682,12 +1701,62 @@ function changedFilesFromDiff(diff) {
 }
 function mrCloneCtx(mr) {
   const cfg = getConfig();
-  const cwd = git.cloneDirFor(cfg, { project: mr.project });
+  const cwd = git.cloneDirFor(cfg, { project: mr.project, forge: mr.forge });
   if (!fs.existsSync(path.join(cwd, '.git'))) {
     throw new Error(t('err.depot-non-clone-localement-lance'));
   }
   const ref = mr.reviewed_sha || `origin/${mr.source_branch}`;
-  return { cwd, ref };
+  return { cwd, ref, target: mr.target_branch || 'main' };
+}
+
+/* Même contexte pour un PROJET DE SESSION : le viewer plein écran est identique,
+   seule la source change (la branche produite par l'IA au lieu de la MR). On vise le
+   commit exact produit par la session quand il existe — la branche a pu bouger depuis. */
+function targetCloneCtx(tg) {
+  const cfg = getConfig();
+  const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
+  if (!repo) throw new Error(t('err.depot-introuvable'));
+  const cwd = git.cloneDirFor(cfg, repo);
+  // Message propre à la session : parler de « relancer une review » n'aurait aucun sens ici.
+  if (!fs.existsSync(path.join(cwd, '.git'))) throw new Error(t('err.depot-non-clone-session'));
+  return { cwd, ref: tg.commit_sha || `origin/${tg.branch}`, target: tg.base_branch || 'main' };
+}
+
+/* --- Corps des trois routes du viewer, partagés MR / session ---------------
+   Le chemin demandé est TOUJOURS validé contre l'arborescence de la ref : c'est
+   ce qui empêche de lire un fichier hors du dépôt (traversal). */
+async function viewerFile(ctx, p) {
+  if (!p) throw new Error(t('err.path-requis'));
+  const files = await git.lsTree(ctx.cwd, ctx.ref).catch(() => []);
+  if (!files.includes(p)) throw new Error(t('err.fichier-hors-arborescence'));
+  let content = await git.showFile(ctx.cwd, ctx.ref, p);
+  if (content.indexOf(String.fromCharCode(0)) !== -1) content = '(fichier binaire, non affiche)';
+  return { path: p, content };
+}
+async function viewerFileDiff(ctx, p) {
+  if (!p) throw new Error(t('err.path-requis'));
+  const files = await git.lsTree(ctx.cwd, ctx.ref).catch(() => []);
+  if (!files.includes(p)) throw new Error(t('err.fichier-hors-arborescence'));
+  let diff = '';
+  try { diff = await git.fileDiffFull(ctx.cwd, ctx.target, ctx.ref, p); } catch { diff = ''; }
+  return { diff };
+}
+// Charge utile d'ouverture du viewer : diff complet + arbre marqué + compteurs.
+async function viewerPayload(ctx, { diff, source }) {
+  const changed = changedFilesFromDiff(diff);
+  let files = [];
+  try { files = await git.lsTree(ctx.cwd, ctx.ref); } catch { /* arbre indisponible */ }
+  return {
+    diff,
+    source,
+    target: ctx.target,
+    files: files.map((f) => ({ path: f, changed: changed.has(f) })),
+    stats: {
+      files: changed.size,
+      added: (diff.match(/^\+(?!\+\+)/gm) || []).length,
+      removed: (diff.match(/^-(?!--)/gm) || []).length,
+    },
+  };
 }
 
 // Arborescence du projet à la version reviewée + marquage des fichiers modifiés.
@@ -1707,29 +1776,14 @@ app.get('/api/mrs/:id/tree', wrap(async (req, res) => {
 app.get('/api/mrs/:id/file', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
-  const p = String(req.query.path || '');
-  if (!p) throw new Error(t('err.path-requis'));
-  const { cwd, ref } = mrCloneCtx(mr);
-  const files = await git.lsTree(cwd, ref).catch(() => []);
-  if (!files.includes(p)) throw new Error(t('err.fichier-hors-arborescence'));
-  let content = await git.showFile(cwd, ref, p);
-  if (content.indexOf(String.fromCharCode(0)) !== -1) content = '(fichier binaire, non affiche)';
-  res.json({ path: p, content });
+  res.json(await viewerFile(mrCloneCtx(mr), String(req.query.path || '')));
 }));
 
 // Diff d'un fichier à contexte complet (fichier entier + changements surlignés).
 app.get('/api/mrs/:id/filediff', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
-  const p = String(req.query.path || '');
-  if (!p) throw new Error(t('err.path-requis'));
-  const { cwd, ref } = mrCloneCtx(mr);
-  const files = await git.lsTree(cwd, ref).catch(() => []);
-  if (!files.includes(p)) throw new Error(t('err.fichier-hors-arborescence'));
-  const target = mr.target_branch || 'main';
-  let diff = '';
-  try { diff = await git.fileDiffFull(cwd, target, ref, p); } catch { diff = ''; }
-  res.json({ diff });
+  res.json(await viewerFileDiff(mrCloneCtx(mr), String(req.query.path || '')));
 }));
 
 app.post('/api/mrs/:id/rereview', wrap((req, res) => {

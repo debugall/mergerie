@@ -1408,18 +1408,6 @@ async function openReport(id) {
 /* ---------- Vue plein écran : explorateur de code (rapport | arbre | fichier) ---------- */
 let split = { mrId: null, md: null, explanation: null, diffByFile: {}, files: [], target: '', view: 'diff', path: null, fullCache: {} };
 
-// Rendu d'un diff unifié, avec coloration syntaxique du code (contexte + ajouts/suppr).
-function renderDiff(diff) {
-  if (!diff) return '<span class="muted">(aucun diff)</span>';
-  return diff.split('\n').map((l) => {
-    if (l.startsWith('diff ') || l.startsWith('index ') || l.startsWith('+++') || l.startsWith('---')) return `<span class="dl meta">${esc(l)}</span>`;
-    if (l.startsWith('@@')) return `<span class="dl hunk">${esc(l)}</span>`;
-    if (l.startsWith('+')) return `<span class="dl add">+${highlightCode(l.slice(1))}</span>`;
-    if (l.startsWith('-')) return `<span class="dl del">-${highlightCode(l.slice(1))}</span>`;
-    // ligne de contexte (préfixe espace) ou vide
-    return `<span class="dl"> ${highlightCode(l.slice(1))}</span>`;
-  }).join('\n');
-}
 
 // Rendu du diff en lignes structurées : numéros old/new + bouton « commenter ».
 // Renvoie { html, oldPath, newPath }.
@@ -1517,6 +1505,11 @@ function renderTree() {
   }
 }
 
+/* Base d'URL des routes du viewer. Le composant est le même pour une MR et pour un
+   projet de session : seule la racine change (`split.base`), les chemins `/file` et
+   `/filediff` sont identiques des deux côtés. */
+function splitBase() { return split.base || `/mrs/${split.mrId}`; }
+
 async function selectFile(path) {
   split.path = path;
   renderTree();
@@ -1550,7 +1543,7 @@ async function renderFile() {
   if (changed) {
     // fichier entier AVEC les changements surlignés (diff à contexte complet, façon GitLab)
     if (split.diffFullCache[path] == null) {
-      try { const r = await api(`/mrs/${split.mrId}/filediff?path=${encodeURIComponent(path)}`); split.diffFullCache[path] = r.diff || split.diffByFile[path] || ''; }
+      try { const r = await api(`${splitBase()}/filediff?path=${encodeURIComponent(path)}`); split.diffFullCache[path] = r.diff || split.diffByFile[path] || ''; }
       catch { split.diffFullCache[path] = split.diffByFile[path] || ''; }
     }
     const rd = renderDiffLines(split.diffFullCache[path]);
@@ -1566,7 +1559,7 @@ async function renderFile() {
   $('#changeNav').hidden = true;
   $('#minimap').hidden = true;
   if (split.fullCache[path] == null) {
-    try { const r = await api(`/mrs/${split.mrId}/file?path=${encodeURIComponent(path)}`); split.fullCache[path] = r.content || ''; }
+    try { const r = await api(`${splitBase()}/file?path=${encodeURIComponent(path)}`); split.fullCache[path] = r.content || ''; }
     catch (e) { el.innerHTML = errorBox(e.message); return; }
   }
   el.innerHTML = `<pre class="code">${highlightCode(split.fullCache[path])}</pre>`;
@@ -1729,7 +1722,7 @@ function renderDecisionPanel(m, stats) {
 
 function closeSplit() {
   $('#splitView').hidden = true;
-  $('#splitView').classList.remove('preview-mode');   // sinon un openSplit suivant hériterait du mode aperçu
+  $('#splitView').classList.remove('preview-mode', 'session-mode'); // sinon un openSplit suivant hériterait du mode
 }
 
 $$('#splitView .split-tabs button').forEach((b) => b.addEventListener('click', () => setSplitPane(b.dataset.split)));
@@ -3005,7 +2998,7 @@ function targetLine(t, tg) {
     <span class="spacer"></span>
     ${resumeCmdBtn(tg.resume_cmd)}
     ${tg.output_path ? `<button class="btn btn-sm" data-tgout="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}
-    ${showDiff ? `<button class="btn btn-sm" data-tgdiff="${tg.id}" data-task="${t.id}" title="Voir le diff produit sur ce projet"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${tr('task.btn.diff')}</button>` : ''}
+    ${showDiff ? `<button class="btn btn-sm" data-tgdiff="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-diff'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>` : ''}
     ${showPush ? `<button class="btn btn-sm btn-primary" data-tgpush="${tg.id}" data-task="${t.id}" data-project="${esc(tg.project)}" data-branch="${esc(tg.branch || '')}" title="${tr('task.btn.push-title')}"><svg class="ico ico-sm"><use href="#i-upload"/></svg>${tr('task.btn.push')}</button>` : ''}
     ${canMr ? `<button class="btn btn-sm btn-primary" data-tgmr="${tg.id}" data-task="${t.id}" data-title="${esc(defaultMrTitle)}" title="Ouvrir la MR de ce projet"><svg class="ico ico-sm"><use href="#i-branch"/></svg>${tr('task.btn.create-mr')}</button>` : ''}
     ${mrIid && !tg.mr_merged ? `<button class="btn btn-sm btn-danger" data-tgmerge="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" title="Merger la MR de ce projet"><svg class="ico ico-sm"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>` : ''}
@@ -3166,15 +3159,38 @@ function wireTaskActions() {
 }
 
 /* ---- Vues plein écran : diff d'un projet, réponse d'une exploration ---- */
+/* « Voir le diff » d'un projet de session : on RÉUTILISE le viewer des MR (arbre +
+   fichier entier avec les changements en place + navigation), comme le fait déjà
+   l'aperçu avant review. Seuls changent la base d'URL et le panneau de gauche, qui
+   affiche ici le RETOUR DE L'IA au lieu du rapport de revue. */
 async function openTargetDiff(taskId, targetId) {
-  try {
-    const d = await api(`/tasks/${taskId}/targets/${targetId}/diff`);
-    $('#taskDiffTitle').textContent = `${d.project} — ${d.branch}`;
-    $('#taskDiffPre').innerHTML = renderDiff(d.diff || '');
-    $('#taskDiffView').hidden = false;
-  } catch (e) { toast(explainError(e.message), true); }
+  const base = `/tasks/${taskId}/targets/${targetId}`;
+  let dv;
+  try { dv = await api(`${base}/diffview`); }
+  catch (e) { toast(explainError(e.message), true); return; }
+  let output = '';
+  try { output = (await api(`${base}/output`)).output || ''; } catch { /* pas de retour : panneau vide */ }
+
+  split = {
+    mrId: null, base, session: true,
+    md: '', explanation: '',
+    diffByFile: parseDiffByFile(dv.diff),
+    files: dv.files || [],
+    target: dv.target || '',
+    discussions: [],                       // pas de MR → aucun fil à afficher
+    path: null, fullCache: {}, diffFullCache: {},
+  };
+  $('#splitView').classList.add('session-mode');
+  $('#splitTitle').textContent = `${dv.project} — ${dv.branch}`;
+  $('#splitMd').innerHTML = output
+    ? mdToHtml(output)
+    : `<p class="muted">${esc(tr('task.no-output'))}</p>`;
+  renderTree();
+  $('#splitView').hidden = false;
+  const first = split.files.find((f) => f.changed) || split.files[0];
+  if (first) selectFile(first.path);
+  else { $('#fileName').textContent = tr('preview.no-file'); $('#fileContent').innerHTML = `<p class="muted">${tr('preview.no-file')}</p>`; }
 }
-$('#taskDiffClose').addEventListener('click', () => { $('#taskDiffView').hidden = true; });
 
 let currentMd = '';
 async function openTaskMd(id) {
@@ -3211,8 +3227,7 @@ $('#taskMdClose').addEventListener('click', () => { $('#taskMdView').hidden = tr
 $('#taskMdCopy').addEventListener('click', () => copyText(currentMd, $('#taskMdCopy')));
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  if (!$('#taskDiffView').hidden) $('#taskDiffView').hidden = true;
-  else if (!$('#taskMdView').hidden) $('#taskMdView').hidden = true;
+  if (!$('#taskMdView').hidden) $('#taskMdView').hidden = true;
 });
 
 try { taskKind = localStorage.getItem('aidevtools_task_kind') || 'code'; } catch { /* ignore */ }
@@ -5963,7 +5978,7 @@ const isTyping = (e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.
 document.addEventListener('keydown', (e) => {
   if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
   // pas de raccourci global quand une vue plein écran ou une modale est ouverte
-  if (!$('#splitView').hidden || !$('#taskDiffView').hidden) return;
+  if (!$('#splitView').hidden) return;
   if ($$('.modal').some((m) => !m.hidden)) return;
   const tabs = ['review', 'task', 'dashboard', 'git', 'docker', 'jira', 'admin'];
   if (/^[1-7]$/.test(e.key)) { const t = $(`nav button[data-tab="${tabs[+e.key - 1]}"]`); if (t) { e.preventDefault(); t.click(); } return; }
@@ -6073,7 +6088,7 @@ setInterval(() => { if (!pollTimer) refreshStatus(); }, 5000);
 /* Échap ferme la modale ouverte (avant : seules les vues plein écran réagissaient). */
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  if (!$('#splitView').hidden || !$('#taskDiffView').hidden) return; // gérées ailleurs
+  if (!$('#splitView').hidden) return; // gérée ailleurs
   const open = $$('.modal').filter((m) => !m.hidden).pop();
   if (!open) return;
   e.preventDefault();
