@@ -80,6 +80,10 @@ chemins), rendu **anti-XSS**, opérations destructrices **restaurables** et **ja
 
 → **[Modèle de sécurité détaillé](./docs/guide.fr.md#sécurité)** · Signaler une vulnérabilité : [SECURITY.md](./SECURITY.md)
 
+## Changements
+
+Ce qui change de version en version : **[CHANGELOG.md](./CHANGELOG.md)**.
+
 ## Contribuer
 
 Le développement se fait sur **[GitLab](https://gitlab.com/amady/mergerie)** : les merge requests y sont

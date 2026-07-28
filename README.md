@@ -53,6 +53,7 @@ Seven tabs, each one line:
 - 📖 **Full documentation** — English version coming soon. For now: **[Guide complet (🇫🇷 French)](./docs/guide.fr.md)**.
 - 🧭 **Architecture** — modules, data model, pipelines: **[PLAN.md (🇫🇷 French)](./PLAN.md)**.
 - 🇫🇷 **Version française :** **[README.fr.md](./README.fr.md)**.
+- 📜 **[Changelog](./CHANGELOG.md)** — what changed, release by release.
 - 🔒 **[Security](./SECURITY.md)** — trust model and how to report a vulnerability.
 - 🤝 **[Contributing](./CONTRIBUTING.md)** — how to run it in dev and open a merge request.
 - 🦊 **Development happens on [GitLab](https://gitlab.com/amady/mergerie)** — merge requests are opened there

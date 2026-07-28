@@ -12,4 +12,4 @@
 
 - After each development, add tests. Prefer end-to-end tests so refactoring stays easy without regressions; where end-to-end is not relevant/possible, add unit tests.
 
-- When you add features, remember to update README.md, PLAN.md and the demo mode.
+- When you add features, remember to update README.md, PLAN.md, the demo mode, and add an entry under `## [Unreleased]` in CHANGELOG.md (user-facing wording, not the commit message).

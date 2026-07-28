@@ -69,6 +69,11 @@ npm test
 The UI is **bilingual (French / English)** and supports **light and dark themes** — keep both working when
 you touch strings or styles.
 
+User-visible changes go in **[CHANGELOG.md](./CHANGELOG.md)**, under `## [Unreleased]`, in the
+`Added` / `Changed` / `Fixed` section that fits. Write for the person who uses the tool — what changed and
+why it matters — not a copy of your commit message. Internal refactors that change nothing for them do not
+need an entry.
+
 Mergerie talks to **two forges** (GitLab and GitHub). Never call `src/gitlab.js` or `src/github.js` directly
 from another module: go through `src/forge.js` (`clientFor(repo)`). Both clients expose the same interface
 and return the same normalized shapes, so callers stay forge-agnostic. A feature that touches a forge should
