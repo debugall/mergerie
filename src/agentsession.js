@@ -139,8 +139,28 @@ function bootstrapCopilotHome(home) {
   return { source, linked };
 }
 
+/* Le CLI copilot dit « authentication » aussi bien quand le jeton manque que quand il n'a
+   PAS PU le valider faute de réseau (« Authentication token found but could not be
+   validated. … network fetch failed »). Chercher le mot « authenticat » envoyait donc vers
+   /login et GH_TOKEN un utilisateur dont le seul tort était d'être derrière un proxy. On
+   teste d'abord des motifs propres au transport — eux ne sont jamais ambigus. */
+const NETWORK_RE = /network fetch failed|fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|getaddrinfo|tunnel error|EPROTO|ENOTFOUND|Check your network connection/i;
+const AUTH_RE = /authenticat|COPILOT_GITHUB_TOKEN|GH_TOKEN|not logged|No authentication/i;
+const COPILOT_HOSTS = 'github.com, api.github.com, githubcopilot.com, .githubcopilot.com, api.business.githubcopilot.com';
+
 function enrichCopilotError(e, bootstrap, home) {
-  if (!/authenticat|COPILOT_GITHUB_TOKEN|GH_TOKEN|not logged|No authentication/i.test(String(e.message))) return e;
+  const msg = String(e.message || '');
+  if (NETWORK_RE.test(msg)) {
+    return new Error([
+      'Copilot : échec réseau lors de la validation du jeton — ce n’est pas un problème d’authentification.',
+      `Message d’origine : ${msg.slice(0, 400)}`,
+      'Causes probables : proxy d’entreprise bloquant api.github.com ou api.business.githubcopilot.com, DNS, pare-feu.',
+      `Solutions : 1) vérifier que le serveur joint ces hôtes (curl -x "$HTTP_PROXY" https://api.github.com) ;`,
+      `2) si un proxy est en cause, ajouter un NO_PROXY couvrant ${COPILOT_HOSTS} dans le .env du serveur ;`,
+      '3) relancer ensuite le job.',
+    ].join('\n'));
+  }
+  if (!AUTH_RE.test(msg)) return e;
   const src = bootstrap && bootstrap.source;
   return new Error([
     'Copilot : authentification introuvable dans le home isolé.',
@@ -201,4 +221,4 @@ function resumeCommand(backend, handle, cwd) {
   return null;
 }
 
-module.exports = { backendName, runInSession, resumeCommand, SESSIONS_ROOT };
+module.exports = { backendName, runInSession, resumeCommand, enrichCopilotError, SESSIONS_ROOT };

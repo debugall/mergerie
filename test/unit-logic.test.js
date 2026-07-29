@@ -370,3 +370,41 @@ describe('agentsession : commande de reprise de session', () => {
     assert.match(agentsession.resumeCommand('claude', 'id', "/a'b"), /'\\''/, 'apostrophe échappée pour le shell');
   });
 });
+
+/* Le CLI copilot emploie le mot « authentication » pour deux pannes très différentes.
+   Envoyer quelqu'un faire /login alors que son proxy bloque api.github.com lui fait perdre
+   des heures : ces cas réels sont figés ici pour que la distinction ne reparte pas. */
+describe('agentsession : réseau vs authentification dans les erreurs copilot', () => {
+  const { enrichCopilotError } = require('../src/agentsession');
+  const bootstrap = { source: '/home/moi/.copilot', linked: ['config.json'] };
+  const enrich = (m) => enrichCopilotError(new Error(m), bootstrap, '/data/agent-sessions/x').message;
+
+  test('« token found but could not be validated » + fetch réseau → message RÉSEAU', () => {
+    const m = enrich('Error: Authentication token found but could not be validated. '
+      + 'Failed to fetch OAuth user login: network fetch failed: request failed: '
+      + 'error sending request for url (https://api.github.com/copilot_internal/user)');
+    assert.match(m, /échec réseau/);
+    assert.doesNotMatch(m, /authentification introuvable dans le home isolé/);
+    assert.match(m, /NO_PROXY/, 'la sortie doit dire quoi faire du proxy');
+  });
+
+  test('ECONNRESET / tunnel error → message RÉSEAU même sans le mot « authentication »', () => {
+    const m = enrich('Error: Failed to load models\nError: error sending request for url '
+      + '(https://api.business.githubcopilot.com/models): client error (Connect): tunnel error: '
+      + 'io error establishing tunnel: Connection reset by peer (os error 104) [ECONNRESET]');
+    assert.match(m, /échec réseau/);
+    assert.doesNotMatch(m, /authentification introuvable dans le home isolé/);
+  });
+
+  test('« No authentication found » sans motif réseau → message AUTH inchangé', () => {
+    const m = enrich("No authentication found. Run '/login' to authenticate.");
+    assert.match(m, /authentification introuvable dans le home isolé/);
+    assert.match(m, /COPILOT_HOME=\/data\/agent-sessions\/x/);
+    assert.doesNotMatch(m, /échec réseau/);
+  });
+
+  test('erreur sans rapport → renvoyée telle quelle', () => {
+    const e = new Error('spawn ENOEXEC');
+    assert.equal(enrichCopilotError(e, bootstrap, '/x'), e, 'même objet Error, pas une copie');
+  });
+});

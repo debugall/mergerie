@@ -77,6 +77,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A network failure no longer masquerades as a login problem.** The Copilot CLI says
+  "authentication" in two very different situations: when the token is missing, and when it *found*
+  a token but could not reach GitHub to validate it. Mergerie only looked for the word, so a machine
+  behind a corporate proxy was told its authentication was missing and sent off to run `/login` —
+  which fixes nothing. Transport-level signals (`network fetch failed`, `ECONNRESET`, `tunnel error`,
+  DNS failures…) are now recognised first and produce their own message, naming the hosts to allow
+  and the `NO_PROXY` entry to add. The authentication message is unchanged when it really applies.
 - **Labels name the right forge.** On a GitHub repository, the inline comment button said "Send to
   GitLab"; the same applied to the MR comment section, the merge and "already merged" tooltips. Every
   user-facing label now follows the repository's forge, and the ones that span all repositories (fetch
