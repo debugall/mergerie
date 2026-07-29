@@ -246,6 +246,12 @@ try { db.exec('ALTER TABLE task_target ADD COLUMN questions_json TEXT'); } catch
 // de session, comme la réponse d'une exploration.
 try { db.exec('ALTER TABLE task_target ADD COLUMN output_path TEXT'); } catch { /* déjà présente */ }
 
+/* Session RANGÉE : la liste des sessions ne cesse de grandir et rien n'en sort jamais.
+   Masquer plutôt que supprimer — l'historique, les diffs et les passes d'agent restent
+   consultables en cochant « afficher les sessions masquées ». C'est un rangement, pas une
+   suppression : aucune donnée n'est touchée. */
+try { db.exec('ALTER TABLE task ADD COLUMN hidden INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+
 // « Codage hors dépôt » : l'IA réalise le prompt DANS des dossiers locaux arbitraires,
 // EN PLACE, sans git (ni branche, ni commit, ni push). Table dédiée car sans repo_id.
 db.exec(`CREATE TABLE IF NOT EXISTS local_task (
@@ -272,6 +278,8 @@ try { db.exec('ALTER TABLE local_task_dir ADD COLUMN session_cwd TEXT'); } catch
 // Migration : retour de l'agent par dossier (« Retour de l'IA »), comme output_path
 // côté task_target. Sans lui, une session hors dépôt qui n'a rien modifié reste opaque.
 try { db.exec('ALTER TABLE local_task_dir ADD COLUMN output_path TEXT'); } catch { /* déjà présente */ }
+// Rangement d'une session hors dépôt — même principe que `task.hidden`.
+try { db.exec('ALTER TABLE local_task ADD COLUMN hidden INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 
 /* HISTORIQUE DES PASSES d'agent — une ligne par itération, pour une session sur dépôt
    comme pour un codage hors dépôt. Même esprit que `review_version` : chaque passe écrit

@@ -289,6 +289,28 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
     { id: 'q2', question: 'Combien de tentatives au maximum avant d’abandonner ?', context: 'Aucune valeur n’est imposée par le code existant.', options: null, answer: null },
   ]), at(0.3));
 
+/* Session RANGÉE + prompt LONG : les deux nouveautés de la liste réunies sur une seule fiche.
+   Elle n'apparaît qu'en cochant « afficher les sessions masquées », et son prompt dépasse
+   trois lignes, donc « Voir plus » s'y affiche. */
+const t4 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, hidden, created_at, updated_at) VALUES (?,?,?,?,?,?,1,?,?)')
+  .run(repoIds['groupe/api-core'], [
+    'Migre la couche de persistance des commandes vers le nouveau schéma : la table `orders` doit',
+    'porter `currency` et `tax_rate` au lieu du montant TTC pré-calculé, et le total doit être',
+    'recalculé côté serveur à chaque lecture. Prévois une migration réversible, un backfill des',
+    'lignes existantes à partir du taux en vigueur à la date de la commande, et des tests couvrant',
+    'les commandes multi-devises ainsi que celles créées avant le changement de taux de 2025.',
+    'Ne touche pas au format de l’API publique : la réponse doit rester identique octet pour octet.',
+    'Documente la migration dans `docs/migrations/` en expliquant pourquoi le total n’est plus stocké,',
+    'et ajoute une note dans le CHANGELOG. Si tu rencontres des commandes dont la devise est absente,',
+    'ne devine pas : arrête-toi et remonte la liste des identifiants concernés plutôt que d’appliquer',
+    'une valeur par défaut qui serait fausse pour une partie du parc. Enfin, vérifie que les rapports',
+    'comptables mensuels donnent exactement les mêmes totaux avant et après migration sur les douze',
+    'derniers mois — c’est le seul contrôle qui prouve que le backfill est correct.',
+  ].join(' '), 'ai/orders-schema', 'main', 'pushed', 'code', at(9), at(9));
+db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, mr_iid, mr_url, mr_merged, updated_at) VALUES (?,?,?,?,?,?,?,1,?)')
+  .run(t4.lastInsertRowid, repoIds['groupe/api-core'], 'ai/orders-schema', 'main', 'pushed', 244,
+    'https://gitlab.demo/groupe/api-core/-/merge_requests/244', at(9));
+
 // ---------- codage hors dépôt (« Codage personnalisé ») ----------
 // Session de codage IA dans des dossiers locaux, SANS git : remplit l'onglet dédié.
 // (Une réussie sur deux dossiers, une en erreur, pour montrer les deux états agrégés.)

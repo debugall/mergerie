@@ -61,6 +61,21 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   `down`…) share one styled modal: themed, translated, and with a button that names the action instead
   of a mute "OK". Irreversible actions are recognisable at rest, not only on hover.
 
+- **Finished sessions can be tidied away.** Coding, off-repo coding and exploration sessions each
+  gain a *hide* button: the session leaves the list without being deleted — its diffs, its AI
+  passes and its merge request stay exactly where they were. A **Show hidden sessions** checkbox
+  above the list brings them back, dimmed and dashed so you can tell them apart, and its state is
+  remembered. When the box is unchecked, a count beside it says how many sessions are being kept
+  out of the way: a session that vanished without a trace would be assumed deleted, and recreated.
+- **A long prompt is no longer cut off in the list.** It used to stop dead at 220 characters, which
+  is enough to lose the point of a detailed instruction, with no way to read the rest short of
+  opening the session. The prompt is now folded to three lines with a **Show more** link, and the
+  whole text is in the page — so the browser's own search finds it even while folded.
+- **The log panel says how long the job has been running.** A review over thirty merge requests can
+  run for a quarter of an hour; until now nothing told you whether it had been going for ten seconds
+  or ten minutes. A counter next to the status ticks while the job runs and freezes on the total
+  once it ends. It is computed from the server's start time, so a tab opened halfway through a job
+  still shows the true elapsed time.
 - **Two guard rails where there were none.** Running a free git command on several repositories now
   asks for confirmation — but only when the command can destroy unpushed work (`reset --hard`,
   `clean -fd`, `push --force`, `branch -D`…); a `git fetch` still runs on one click, because a

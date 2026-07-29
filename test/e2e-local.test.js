@@ -138,6 +138,23 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
     assert.ok(!/Corrige le titre/.test(first.body.current.prompt));
   });
 
+  // Pendant hors dépôt du rangement des sessions sur dépôt : même geste, autre table.
+  test('ranger une session hors dépôt : le drapeau fait l’aller-retour, les dossiers restent', async () => {
+    const d = mkdir();
+    const created = (await app.api('POST', '/api/local-tasks', { prompt: 'Range-moi', dirs: [d] })).body;
+    assert.equal(created.hidden, 0);
+
+    assert.equal((await app.api('POST', `/api/local-tasks/${created.id}/hidden`, { hidden: true })).body.hidden, 1);
+    const range = (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === created.id);
+    assert.equal(range.hidden, 1);
+    assert.deepEqual(range.dirs.map((x) => x.path), created.dirs.map((x) => x.path), 'les dossiers sont intacts');
+
+    assert.equal((await app.api('POST', `/api/local-tasks/${created.id}/hidden`, { hidden: false })).body.hidden, 0);
+    assert.equal((await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === created.id).hidden, 0);
+
+    assert.equal((await app.api('POST', '/api/local-tasks/999999/hidden', { hidden: true })).status, 400);
+  });
+
   test('suppression d’une session', async () => {
     const d = mkdir();
     const created = (await app.api('POST', '/api/local-tasks', { prompt: 'W', dirs: [d] })).body;

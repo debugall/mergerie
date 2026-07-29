@@ -40,7 +40,7 @@ npm run demo       # http://localhost:4319
 Seven tabs, each one line:
 
 - **Reviews** — AI-scored, versioned reviews of GitLab merge requests **and GitHub pull requests**; incremental re-reviews; an autonomous **convergence loop** (review → fix → re-review until the score threshold).
-- **AI Dev** — automated coding sessions (the AI codes, commits, pushes, opens the MR), off-repo coding (with the AI's report back and follow-up fix requests), and read-only code exploration — *from prompt to converged MR* in one click.
+- **AI Dev** — automated coding sessions (the AI codes, commits, pushes, opens the MR), off-repo coding (with the AI's report back and follow-up fix requests), and read-only code exploration — *from prompt to converged MR* in one click. Finished sessions can be tidied away without being deleted.
 - **Statistics** — MR funnel, score trends, per-project resolution rate, token cost.
 - **Git** — multi-repo branch/tag/command operations across both forges, branch explorer and ref finder, **restorable** deletions, always with a preview.
 - **Docker** — compose project health and `.env` drift, batch actions, live multi-container logs, error badges in the menu.

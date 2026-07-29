@@ -285,6 +285,32 @@ describe('Sessions de dev de bout en bout', () => {
     assert.ok(body.some((t) => t.image_count > 0));
   });
 
+  /* Ranger une session la sort de la liste sans rien détruire : c'est le point qui distingue
+     ce geste d'une suppression, donc celui qu'il faut vérifier. */
+  test('ranger une session : elle reste entière et le drapeau fait l’aller-retour', async () => {
+    const { body: avant } = await app.api('GET', '/api/tasks');
+    const t = avant[0];
+    assert.equal(t.hidden, 0, 'une session est visible par défaut');
+
+    const range = await app.api('POST', `/api/tasks/${t.id}/hidden`, { hidden: true });
+    assert.equal(range.status, 200);
+    assert.equal(range.body.hidden, 1);
+
+    const { body: apres } = await app.api('GET', '/api/tasks');
+    const memeSession = apres.find((x) => x.id === t.id);
+    assert.equal(memeSession.hidden, 1);
+    assert.equal(memeSession.prompt, t.prompt, 'le rangement ne touche pas au contenu');
+    assert.deepEqual(memeSession.targets.map((x) => x.id), t.targets.map((x) => x.id), 'ni aux projets');
+    assert.equal(apres.length, avant.length, 'la session est toujours renvoyée : c’est le front qui filtre');
+
+    const ressorti = await app.api('POST', `/api/tasks/${t.id}/hidden`, { hidden: false });
+    assert.equal(ressorti.body.hidden, 0);
+    assert.equal((await app.api('GET', '/api/tasks')).body.find((x) => x.id === t.id).hidden, 0);
+
+    const inconnue = await app.api('POST', '/api/tasks/999999/hidden', { hidden: true });
+    assert.equal(inconnue.status, 400, 'une session inexistante ne se range pas silencieusement');
+  });
+
   // ask → stop → resume : l'IA pose des questions, la session passe en attente (la file se
   // libère), puis reprend après réponses. En dry-run l'agent « simule » un bloc QUESTIONS.
   test('l’IA pose une question : needs_input puis reprise après réponses', async () => {

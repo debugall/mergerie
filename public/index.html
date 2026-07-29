@@ -55,6 +55,7 @@
     <symbol id="i-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></symbol>
     <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"/></symbol>
     <symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"/></symbol>
     <symbol id="i-archive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="22" height="5" rx="1"/><path d="M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8M10 12h4"/></symbol>
     <symbol id="i-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9z"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></symbol>
@@ -95,6 +96,7 @@
     <div class="loghead">
         <button id="logToggle" class="log-toggle" title="Déplier / replier les logs" data-i18n-title="ui.title.deplier-replier-les-logs">▸</button>
         <span id="logStatus" class="logstatus"></span>
+        <span id="logElapsed" class="logelapsed" hidden></span>
         <span class="spacer"></span>
         <button id="logStop" class="btn btn-sm btn-danger" hidden title="Arrêter immédiatement le job en cours" data-i18n-title="ui.title.arreter-immediatement-le-job-en"><svg class="ico"><use href="#i-stop"/></svg><span data-i18n="ui.btn.stop">Stop</span></button>
         <label class="muted"><input type="checkbox" id="logAutoscroll" checked /><span data-i18n="ui.lbl.auto-defilement">auto-défilement</span></label>
@@ -144,6 +146,10 @@
             <span id="taskKindHint" class="muted"></span>
         </div>
         <input id="taskSearch" class="search" type="search" placeholder="Rechercher (prompt, projet, branche, dossier)…" data-i18n-placeholder="task.search.ph" aria-label="Rechercher une session" data-i18n-aria="task.search.aria" />
+        <div class="list-head">
+            <label class="inline-check"><input type="checkbox" id="taskShowHidden" /> <span data-i18n="task.hidden.show">Afficher les sessions masquées</span></label>
+            <span id="taskHiddenCount" class="muted"></span>
+        </div>
         <div id="taskList" class="list"></div>
 
         <!-- Codage hors dépôt : liste des sessions (le formulaire vit dans la modale de codage) -->

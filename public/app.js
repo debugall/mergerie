@@ -932,7 +932,8 @@ function logLineClass(t) {
 async function pumpLog() {
   let d;
   try { d = await api(`/jobs/current/log?after=${lastLogId}`); } catch { return; }
-  if (!d.job_id) return;
+  // Aucun job : on arrête le compteur, sinon son intervalle survivrait au dernier job.
+  if (!d.job_id) { jobClock = { started: null, finished: null, running: false }; syncJobClock(); return; }
   const panel = $('#logPanel');
   const box = $('#logBox');
   if (d.job_id !== logJobId) {
@@ -958,6 +959,8 @@ async function pumpLog() {
     : (d.status === 'done' ? (d.message ? tr('job.done', { message: d.message }) : tr('job.done.bare'))
       : (d.status === 'error' ? (d.message ? tr('job.error', { message: d.message }) : tr('job.error.bare')) : (d.status === 'stopped' ? (d.message ? tr('job.stopped', { message: d.message }) : tr('job.stopped.bare')) : d.status)));
   st.innerHTML = `<span class="dot"></span>${esc(label)}`;
+  jobClock = { started: d.started_at || null, finished: d.finished_at || null, running };
+  syncJobClock();
   $('#logStop').hidden = !running;
   if (d.lines.length && logExpanded && $('#logAutoscroll').checked) box.scrollTop = box.scrollHeight;
   // Repli auto quelques secondes après un job TERMINÉ (succès ou arrêt) : le panneau ne doit
@@ -975,6 +978,42 @@ async function pumpLog() {
   }
   lastJobStatus = d.status;
   updateFooterLogs();
+}
+
+/* ---------- Temps écoulé du job ----------
+   Une review sur trente MR peut tourner un quart d'heure : sans compteur, impossible de
+   savoir si le job avance depuis dix secondes ou depuis dix minutes. On mesure à partir du
+   `started_at` renvoyé par le SERVEUR, pas d'un chrono démarré à l'ouverture de la page —
+   un onglet ouvert en cours de job afficherait sinon un temps faux.
+   Une fois le job terminé, la valeur se fige sur la durée totale. */
+let jobClock = { started: null, finished: null, running: false };
+let elapsedTimer = null;
+
+function fmtElapsed(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const two = (n) => String(n).padStart(2, '0');
+  const h = Math.floor(s / 3600);
+  return (h ? `${h}:${two(Math.floor((s % 3600) / 60))}` : `${Math.floor(s / 60)}`) + `:${two(s % 60)}`;
+}
+
+function paintElapsed() {
+  const el = $('#logElapsed');
+  if (!el) return;
+  if (!jobClock.started) { el.hidden = true; return; }
+  const end = jobClock.running ? Date.now() : Date.parse(jobClock.finished || jobClock.started);
+  el.hidden = false;
+  el.textContent = fmtElapsed(end - Date.parse(jobClock.started));
+  el.title = tr(jobClock.running ? 'job.elapsed.running' : 'job.elapsed.total');
+}
+
+/* Le timer n'existe QUE pendant qu'un job tourne. La condition de création et celle de
+   destruction sont volontairement la même expression : dissymétriques, elles créaient puis
+   détruisaient l'intervalle à chaque appel. */
+function syncJobClock() {
+  paintElapsed();
+  const want = !!(jobClock.running && jobClock.started);
+  if (want && !elapsedTimer) elapsedTimer = setInterval(paintElapsed, 1000);
+  if (!want && elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
 }
 
 // repli/dépli du corps des logs (replié par défaut) — l'en-tête (statut) reste visible
@@ -2346,6 +2385,8 @@ $('#localRootForm') && $('#localRootForm').addEventListener('submit', async (e) 
      et sa réponse est enregistrée dans un .md consultable. Ni diff ni merge. */
 let taskNewImages = [];        // captures du formulaire (data URLs)
 let taskKind = 'code';         // sous-onglet courant : 'code' | 'local' | 'explore'
+// Sessions rangées : masquées par défaut, la préférence est relue au démarrage.
+let showHiddenTasks = (() => { try { return localStorage.getItem('aidevtools_show_hidden') === '1'; } catch { return false; } })();
 let allTasks = [];             // dernier chargement (sessions code/explore)
 let localTasks = [];           // sessions « Codage hors dépôt »
 let localRootId = '';          // répertoire local choisi dans le formulaire local
@@ -2994,6 +3035,17 @@ function taskMatches(t, q, units) {
   return hay.includes(q);
 }
 
+// Une session rangée ne sort que si la case le demande.
+const taskVisible = (t) => showHiddenTasks || !t.hidden;
+
+/* Combien de sessions le rangement retire de la vue. Affiché à côté de la case : une
+   session qui disparaît sans laisser de trace se croit supprimée, et on la recrée. */
+function reportHiddenCount(n) {
+  const el = $('#taskHiddenCount');
+  if (!el) return;
+  el.textContent = n ? tr('task.hidden.count', { n, count: n }) : '';
+}
+
 function renderTasks() {
   const isLocal = taskKind === 'local';
   const el = $('#taskList');
@@ -3025,7 +3077,9 @@ function renderTasks() {
 
   const q = taskQuery();
   const all = allTasks.filter((t) => (t.kind === 'explore' ? 'explore' : 'code') === taskKind);
-  const rows = all.filter((t) => taskMatches(t, q, (t.targets || []).flatMap((x) => [x.project, x.branch])));
+  const visible = all.filter(taskVisible);
+  reportHiddenCount(all.length - visible.length);
+  const rows = visible.filter((t) => taskMatches(t, q, (t.targets || []).flatMap((x) => [x.project, x.branch])));
   if (!rows.length && q) {
     el.innerHTML = `<p class="muted">${tr('task.search.no-match', { q: esc(q) })}</p>`;
     return;
@@ -3043,6 +3097,7 @@ function renderTasks() {
 
   el.innerHTML = rows.map((t) => (t.kind === 'explore' ? exploreCard(t) : codeCard(t))).join('');
   stagger('#taskList .card');
+  wirePromptToggles('#taskList');
   wireTaskActions();
   restoreTaskForms(openForms);
 }
@@ -3108,14 +3163,14 @@ function localCard(t) {
   // Une correction n'a de sens que sur un dossier DÉJÀ traité : sinon il n'y a rien à corriger.
   const canFollow = canRun && (t.dirs || []).some((d) => d.status === 'done');
   const n = (t.dirs || []).length;
-  return `<div class="card task-row" data-local="${t.id}">
+  return `<div class="card task-row${t.hidden ? ' is-hidden' : ''}" data-local="${t.id}">
     <div style="min-width:0;flex:1">
       <div class="title">
         <span class="tag ${st.cls}">${st.label}</span>
         <span class="task-projects">${tr('local.dirs-count', { n, count: n })}</span>
         <span class="task-date" title="${tr('task.created-at')}">${fmtDateTime(t.created_at)}</span>
       </div>
-      <div class="task-prompt">${esc((t.prompt || '').slice(0, 220))}${t.prompt && t.prompt.length > 220 ? '…' : ''}</div>
+      ${promptBlock(t.prompt)}
       <div class="targets">${(t.dirs || []).map(localDirLine).join('')}</div>
       <div class="mr-create followup" data-lfollowform="${t.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('local.followup.ph'))}"></textarea>
@@ -3127,6 +3182,7 @@ function localCard(t) {
     canRun ? `<button class="btn" data-lrun="${t.id}" title="${esc(tr('local.run-title'))}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
     canFollow ? `<button class="btn" data-lfollow="${t.id}" title="${esc(tr('local.followup.title'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : '',
   ], [
+    hideBtn('local', t),
     `<button class="btn btn-icon btn-sm btn-danger" data-ldel="${t.id}" title="${esc(tr('local.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>`,
   ])}
   </div>${t.last_error ? errorBox(t.last_error) : ''}`;
@@ -3135,7 +3191,9 @@ function localCard(t) {
 function renderLocalTasks() {
   const el = $('#localList');
   const q = taskQuery();
-  const shown = localTasks.filter((t) => taskMatches(t, q, (t.dirs || []).map((d) => d.path)));
+  const visible = localTasks.filter(taskVisible);
+  reportHiddenCount(localTasks.length - visible.length);
+  const shown = visible.filter((t) => taskMatches(t, q, (t.dirs || []).map((d) => d.path)));
   if (!shown.length && q) {
     el.innerHTML = `<p class="muted">${tr('task.search.no-match', { q: esc(q) })}</p>`;
     return;
@@ -3147,6 +3205,7 @@ function renderLocalTasks() {
   }
   el.innerHTML = shown.map(localCard).join('');
   stagger('#localList .card');
+  wirePromptToggles('#localList');
   $$('#localList [data-lrun]').forEach((b) => b.addEventListener('click', () => busy(b, () => api(`/local-tasks/${b.dataset.lrun}/run`, { method: 'POST' }))
     .then(() => { toast(tr('local.started')); refreshStatus(); })
     .catch((e) => toast(explainError(e.message), true))));
@@ -3186,6 +3245,49 @@ function renderLocalTasks() {
    (modifier, supprimer) en dessous. Mélangées dans une seule pile, la suppression se
    retrouvait tantôt sous « Converger », tantôt sous « Lancer » selon le sous-onglet.
    L'ordre des emplacements est le même partout ; ceux qui ne s'appliquent pas sont omis. */
+/* Prompt d'une session dans la liste. Il était coupé à 220 caractères, ce qui suffit à perdre
+   l'essentiel d'une consigne un peu longue — et rien ne permettait de lire la suite sans
+   ouvrir la session. Le texte COMPLET est désormais dans le DOM, replié sur trois lignes par
+   CSS ; « Voir plus » le déplie sur place. Le bouton n'est révélé qu'après mesure (voir
+   wirePromptToggles) : un prompt de deux lignes n'a rien à déplier. */
+function promptBlock(prompt) {
+  const txt = String(prompt || '');
+  if (!txt.trim()) return '';
+  return `<div class="task-prompt-wrap">
+      <div class="task-prompt clamped">${esc(txt)}</div>
+      <button type="button" class="prompt-more" hidden>${tr('task.prompt.more')}</button>
+    </div>`;
+}
+
+/* Révèle « Voir plus » sur les seuls prompts réellement tronqués. Toutes les LECTURES de
+   mise en page d'abord, toutes les ÉCRITURES ensuite : intercalées, elles forceraient un
+   recalcul par carte. */
+function wirePromptToggles(root) {
+  const wraps = $$(`${root} .task-prompt-wrap`);
+  const overflowing = wraps.filter((w) => {
+    const p = w.querySelector('.task-prompt');
+    return p.scrollHeight > p.clientHeight + 2;
+  });
+  for (const w of overflowing) w.querySelector('.prompt-more').hidden = false;
+  for (const w of wraps) {
+    const btn = w.querySelector('.prompt-more');
+    btn.addEventListener('click', () => {
+      const p = w.querySelector('.task-prompt');
+      const open = p.classList.toggle('clamped');   // `clamped` présent = replié
+      btn.textContent = open ? tr('task.prompt.more') : tr('task.prompt.less');
+    });
+  }
+}
+
+/* Bouton « ranger / ressortir » : il vit avec les actions sur la FICHE, pas sur le travail.
+   `scope` distingue la session sur dépôt du codage hors dépôt — deux tables, deux routes. */
+function hideBtn(scope, t) {
+  const on = t.hidden ? 1 : 0;
+  return `<button class="btn btn-icon btn-sm" data-hide="${t.id}" data-scope="${scope}" data-on="${on}"`
+    + ` title="${esc(tr(on ? 'task.hidden.unhide-title' : 'task.hidden.hide-title'))}">`
+    + `<svg class="ico"><use href="#i-${on ? 'eye' : 'eye-off'}"/></svg></button>`;
+}
+
 function taskActions(work, meta) {
   const w = work.filter(Boolean).join('');
   const m = meta.filter(Boolean).join('');
@@ -3202,14 +3304,14 @@ function taskHead(t) {
       ${t.auto_push && t.kind !== 'explore' ? '<span class="tag">auto-push</span>' : ''}
       <span class="task-date" title="${tr('task.created-at')}">${fmtDateTime(t.created_at)}</span>
     </div>
-    <div class="task-prompt">${esc((t.prompt || '').slice(0, 220))}${t.prompt && t.prompt.length > 220 ? '…' : ''}</div>`;
+    ${promptBlock(t.prompt)}`;
 }
 
 // Carte CODAGE : une ligne par projet, avec ses propres actions.
 function codeCard(t) {
   const canFollow = (t.targets || []).some((x) => ['committed', 'pushed'].includes(x.status));
   const canRun = ['new', 'error', 'committed', 'pushed'].includes(t.status);
-  return `<div class="card task-row" data-task="${t.id}">
+  return `<div class="card task-row${t.hidden ? ' is-hidden' : ''}" data-task="${t.id}">
     <div style="min-width:0;flex:1">
       ${taskHead(t)}
       <div class="targets">
@@ -3227,6 +3329,7 @@ function codeCard(t) {
     canFollow ? `<button class="btn" data-tfollow="${t.id}" title="${esc(tr('task.title.request-fix'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : '',
   ], [
     `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
+    hideBtn('task', t),
     `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>`,
   ])}
   </div>${t.last_error ? errorBox(t.last_error, null, t.id) : ''}`;
@@ -3310,7 +3413,7 @@ function questionsForm(t, tg) {
 // Carte EXPLORATION : pas de diff ni de merge — on lit la réponse.
 function exploreCard(t) {
   const canRun = ['new', 'error', 'done'].includes(t.status);
-  return `<div class="card task-row" data-task="${t.id}">
+  return `<div class="card task-row${t.hidden ? ' is-hidden' : ''}" data-task="${t.id}">
     <div style="min-width:0;flex:1">
       ${taskHead(t)}
       <div class="targets">
@@ -3333,10 +3436,25 @@ function exploreCard(t) {
     t.md_path ? `<button class="btn" data-tfollow="${t.id}" title="${tr('task.title.follow-up')}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.follow-up')}</button>` : '',
   ], [
     `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
+    hideBtn('task', t),
     `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>`,
   ])}
   </div>${t.last_error ? errorBox(t.last_error, null, t.id) : ''}`;
 }
+
+/* Ranger / ressortir : délégué une fois pour les deux listes plutôt que recâblé à chaque
+   rendu — le bouton existe sur les trois sous-onglets et le geste est le même partout. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-hide]');
+  if (!b) return;
+  const scope = b.dataset.scope === 'local' ? 'local-tasks' : 'tasks';
+  const hidden = b.dataset.on !== '1';   // on inverse l'état courant
+  try {
+    await busy(b, () => api(`/${scope}/${b.dataset.hide}/hidden`, { method: 'POST', body: { hidden } }));
+    toast(tr(hidden ? 'task.hidden.done' : 'task.hidden.undone'));
+    loadTasks();
+  } catch (err) { toast(explainError(err.message), true); }
+});
 
 function wireTaskActions() {
   const on = (sel, fn) => $$(`#taskList ${sel}`).forEach((b) => b.addEventListener('click', () => fn(b)));
@@ -3531,6 +3649,19 @@ document.addEventListener('keydown', (e) => {
 const taskSearchEl = $('#taskSearch');
 // Filtrage local (aucun appel serveur), regroupé : renderTasks reconstruit toute la liste.
 if (taskSearchEl) taskSearchEl.addEventListener('input', debounce(renderTasks));
+
+/* La case « afficher les sessions masquées » vaut pour les trois sous-onglets et survit au
+   rechargement : c'est une préférence de vue, pas un filtre de passage. Même stockage que
+   le sous-onglet courant. */
+const showHiddenEl = $('#taskShowHidden');
+if (showHiddenEl) {
+  showHiddenEl.checked = showHiddenTasks;
+  showHiddenEl.addEventListener('change', () => {
+    showHiddenTasks = showHiddenEl.checked;
+    try { localStorage.setItem('aidevtools_show_hidden', showHiddenTasks ? '1' : '0'); } catch { /* ignore */ }
+    renderTasks();
+  });
+}
 
 try { taskKind = localStorage.getItem('aidevtools_task_kind') || 'code'; } catch { /* ignore */ }
 

@@ -1254,6 +1254,18 @@ app.delete('/api/tasks/:id', wrap((req, res) => {
   res.json({ ok: true });
 }));
 
+/* Ranger / ressortir une session. Volontairement séparé de PUT /tasks/:id : c'est un geste
+   de rangement, qui doit rester possible sur une session en cours d'exécution — le PUT, lui,
+   refuse d'éditer une session lancée. */
+app.post('/api/tasks/:id/hidden', wrap((req, res) => {
+  const t2 = taskById(Number(req.params.id));
+  if (!t2) throw new Error(t('err.session-introuvable'));
+  const hidden = (req.body && req.body.hidden) ? 1 : 0;
+  db.prepare('UPDATE task SET hidden = ?, updated_at = ? WHERE id = ?')
+    .run(hidden, new Date().toISOString(), t2.id);
+  res.json({ ok: true, hidden });
+}));
+
 app.delete('/api/tasks/:id/image/:imgId', wrap((req, res) => {
   const im = db.prepare('SELECT * FROM task_image WHERE id = ? AND task_id = ?').get(Number(req.params.imgId), Number(req.params.id));
   if (im) { try { fs.rmSync(im.path, { force: true }); } catch { /* rien */ } db.prepare('DELETE FROM task_image WHERE id = ?').run(im.id); }
@@ -1415,6 +1427,16 @@ app.delete('/api/local-tasks/:id', wrap((req, res) => {
   res.json({ ok: true });
 }));
 
+// Ranger / ressortir une session hors dépôt — pendant de POST /tasks/:id/hidden.
+app.post('/api/local-tasks/:id/hidden', wrap((req, res) => {
+  const lt = localTaskById(Number(req.params.id));
+  if (!lt) throw new Error(t('err.session-introuvable'));
+  const hidden = (req.body && req.body.hidden) ? 1 : 0;
+  db.prepare('UPDATE local_task SET hidden = ?, updated_at = ? WHERE id = ?')
+    .run(hidden, new Date().toISOString(), lt.id);
+  res.json({ ok: true, hidden });
+}));
+
 // Itération : nouvelle passe de l'IA (codage) ou question de suivi (exploration).
 app.post('/api/tasks/:id/followup', wrap((req, res) => {
   const t = taskById(Number(req.params.id));
@@ -1574,6 +1596,11 @@ app.get('/api/jobs/current/log', wrap((req, res) => {
     message: job.message,
     total: job.total,
     done_count: job.done_count,
+    // Horodatages du job : le front en tire le temps écoulé. Il les calcule à partir de la
+    // date SERVEUR plutôt que de compter les secondes depuis l'ouverture de la page — sinon
+    // un onglet ouvert en cours de route afficherait un temps faux.
+    started_at: job.started_at,
+    finished_at: job.finished_at,
     lines,
   });
 }));

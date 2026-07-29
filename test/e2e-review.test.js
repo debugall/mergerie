@@ -87,10 +87,16 @@ describe('Review de bout en bout', () => {
     assert.equal((await app.api('GET', `/api/mrs/${mrId}/versions/99`)).status, 400);
   });
 
-  test('le log du job est consultable après coup', async () => {
+  test('le log du job est consultable après coup, avec ses horodatages', async () => {
     const { body } = await app.api('GET', '/api/jobs/current/log');
     assert.ok(body.lines.length > 0);
     assert.ok(body.lines.some((l) => /review terminée/.test(l.text)));
+    /* Le panneau de logs affiche le temps écoulé à partir de CES dates : il ne compte pas
+       les secondes depuis l'ouverture de la page, sinon un onglet ouvert en cours de job
+       montrerait un temps faux. Sans elles, le compteur ne peut pas exister. */
+    assert.ok(body.started_at, 'started_at est exposé');
+    assert.ok(body.finished_at, 'finished_at est exposé une fois le job terminé');
+    assert.ok(Date.parse(body.finished_at) >= Date.parse(body.started_at), 'la fin ne précède pas le début');
   });
 
   test('GET /api/mrs/:id/diff, /tree, /file et /filediff exposent le code reviewé', async () => {

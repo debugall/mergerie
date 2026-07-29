@@ -475,6 +475,17 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
 .inline-check > .hint { flex: 0 0 auto; margin-top: 1px; }
 /* Ligne courte contenant un champ (ex. seuil de note) : tout se centre verticalement
    plutôt que de s'aligner en haut — la case, le libellé et le champ sont sur une même ligne. */
+/* Bandeau au-dessus d'une liste : options d'affichage + décompte de ce qui est filtré.
+   Le décompte n'est pas décoratif — sans lui, une session rangée disparaît sans laisser
+   de trace et on la croit supprimée. */
+.list-head { display: flex; align-items: center; gap: 12px; padding: 2px 2px 0; }
+.list-head .inline-check { align-items: center !important; margin: 0; cursor: pointer; }
+.list-head .inline-check > input[type="checkbox"] { margin-top: 0; }
+.list-head .muted { font-size: 12.5px; }
+/* Session rangée, visible parce que la case est cochée : reconnaissable au premier coup
+   d'œil, sinon on ne sait plus laquelle on vient de ranger. */
+.card.is-hidden { opacity: .62; border-style: dashed; }
+
 .inline-check-mid { align-items: center !important; }
 .inline-check-mid > input[type="checkbox"] { margin-top: 0; }
 .task-previews { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; margin-top: 6px; }
@@ -483,6 +494,19 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
 .task-prev button { position: absolute; top: -6px; right: -6px; background: var(--red); color: var(--on-accent); border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; line-height: 1; }
 .task-row { align-items: flex-start; }
 .task-prompt { color: var(--muted); font-size: 13px; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+/* Prompt replié sur trois lignes plutôt que coupé à N caractères : la coupure suit ce qui est
+   VISIBLE, donc la largeur réelle de la carte, et « Voir plus » restitue le texte intégral —
+   qui est déjà dans le DOM, donc trouvable par la recherche du navigateur. */
+.task-prompt.clamped {
+  overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3; line-clamp: 3;   /* la propriété standard, pour quand le préfixe partira */
+}
+.prompt-more {
+  background: none; border: none; padding: 0; margin-top: 2px;
+  color: var(--accent); font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.prompt-more:hover { text-decoration: underline; }
 .task-pushcmd { margin-top: 6px; font-size: 12.5px; }
 .task-pushcmd code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; }
 .mr-create { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
@@ -653,6 +677,13 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 .logstatus.error { color: var(--red); }
 .logstatus .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; background: currentColor; }
 .logstatus.running .dot { animation: pulse 1s infinite; }
+/* Temps écoulé du job. Chiffres à chasse fixe : sans ça la ligne tressaute à chaque seconde,
+   la largeur des chiffres variant dans la police de l'interface. */
+.logelapsed {
+  font-variant-numeric: tabular-nums; font-feature-settings: 'tnum';
+  color: var(--muted); font-size: 12.5px;
+  padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px;
+}
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 .logpanel .loghead .log-toggle { background: transparent; border: 1px solid var(--line); color: var(--text); border-radius: 6px; width: 24px; height: 24px; padding: 0; cursor: pointer; font-size: 12px; }
 #logBox { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; color: var(--code-text); background: var(--code-bg); white-space: pre-wrap; word-break: break-word; user-select: text; }
