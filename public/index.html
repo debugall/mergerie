@@ -744,6 +744,59 @@
     </div>
 </div>
 
+<!-- Modale de confirmation générique : remplace les confirm() natifs -->
+<div id="confirmModal" class="modal" hidden>
+    <div class="modal-box modal-confirm">
+        <h3 id="confirmTitle"></h3>
+        <p id="confirmText" class="confirm-text"></p>
+        <pre id="confirmDetail" class="confirm-detail" hidden></pre>
+        <div class="modal-actions">
+            <button id="confirmCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="confirmOk" type="button" class="btn"></button>
+        </div>
+    </div>
+</div>
+
+<!-- Modale : merger une MR (options appliquées par la forge) -->
+<div id="mergeModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 data-i18n="merge.modal.title">Merger la merge request</h3>
+        <p id="mergeModalIntro" class="muted"></p>
+        <div class="modal-fields">
+            <label class="inline-check inline-check-mid"><input id="mergeSquash" type="checkbox" />
+                <span data-i18n="merge.modal.squash">Squash : réunir les commits de la branche en un seul</span></label>
+            <label class="inline-check inline-check-mid"><input id="mergeRemoveBranch" type="checkbox" />
+                <span data-i18n="merge.modal.remove-branch">Supprimer la branche source après le merge</span></label>
+        </div>
+        <p id="mergeModalNote" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span></span></p>
+        <div class="modal-actions">
+            <button id="mergeCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="mergeGo" type="button" class="btn btn-danger btn-solid"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="merge.modal.go">Merger</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- Modale : créer une merge request -->
+<div id="mrModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 data-i18n="mr.modal.title">Créer la merge request</h3>
+        <p id="mrModalIntro" class="muted"></p>
+        <div class="modal-fields">
+            <label class="modal-field"><span data-i18n="mr.modal.title-label">Titre</span>
+                <input id="mrTitle" type="text" autocomplete="off" /></label>
+            <label class="inline-check inline-check-mid"><input id="mrSquash" type="checkbox" />
+                <span data-i18n="merge.modal.squash">Squash : réunir les commits de la branche en un seul</span></label>
+            <label class="inline-check inline-check-mid"><input id="mrRemoveBranch" type="checkbox" />
+                <span data-i18n="merge.modal.remove-branch">Supprimer la branche source après le merge</span></label>
+        </div>
+        <p id="mrModalNote" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-info"/></svg> <span></span></p>
+        <div class="modal-actions">
+            <button id="mrCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="mrGo" type="button" class="btn btn-primary"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="mr.modal.go">Créer la MR</span></button>
+        </div>
+    </div>
+</div>
+
 <!-- Modale : ajout en masse de dépôts depuis GitLab -->
 <div id="bulkModal" class="modal" hidden>
     <div class="modal-box bulk-box">

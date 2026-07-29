@@ -185,18 +185,27 @@ async function postMrNote(cfg, project, iid, body) {
 }
 
 // Crée une merge request et renvoie l'objet MR (iid, web_url…).
-async function createMergeRequest(cfg, project, { source_branch, target_branch, title }) {
+async function createMergeRequest(cfg, project, { source_branch, target_branch, title, squash, removeSourceBranch }) {
   const enc = encodeProject(project);
-  return gitlabFetch(cfg, `/projects/${enc}/merge_requests`, {
-    method: 'POST',
-    body: JSON.stringify({ source_branch, target_branch, title }),
-  });
+  const payload = { source_branch, target_branch, title };
+  // GitLab retient ces deux choix DÈS la création : ils s'appliqueront au merge, y
+  // compris si celui-ci est fait depuis l'interface GitLab.
+  if (squash != null) payload.squash = !!squash;
+  if (removeSourceBranch != null) payload.remove_source_branch = !!removeSourceBranch;
+  return gitlabFetch(cfg, `/projects/${enc}/merge_requests`, { method: 'POST', body: JSON.stringify(payload) });
 }
 
-// Merge une merge request.
-async function mergeMergeRequest(cfg, project, iid) {
+/* Merge une merge request. `opts.squash` écrase l'historique de la branche en un seul
+   commit ; `opts.removeSourceBranch` supprime la branche source après le merge. Les deux
+   sont natifs côté GitLab (paramètres du merge). */
+async function mergeMergeRequest(cfg, project, iid, opts = {}) {
   const enc = encodeProject(project);
-  return gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/merge`, { method: 'PUT' });
+  const body = {};
+  if (opts.squash != null) body.squash = !!opts.squash;
+  if (opts.removeSourceBranch != null) body.should_remove_source_branch = !!opts.removeSourceBranch;
+  return gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/merge`, {
+    method: 'PUT', body: JSON.stringify(body),
+  });
 }
 
 // Récupère une MR complète (pour ses diff_refs : base_sha, start_sha, head_sha).

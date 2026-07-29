@@ -409,6 +409,111 @@ function convergeBoxHtml(run) {
 // Cible de la convergence : soit une MR (rapport), soit une session de dev (du prompt
 // à la MR convergée). La même modale sert les deux ; seul l'endpoint et l'avertissement changent.
 let convergeTarget = null; // { type: 'mr' | 'task', id }
+/* Confirmation générique — remplace les `confirm()` natifs, qui ne suivaient ni le
+   thème, ni la langue du navigateur, ni le vocabulaire de l'app, et dont le bouton
+   « OK » ne disait jamais CE QU'ON VALIDE. Renvoie une promesse booléenne, donc les
+   appelants deviennent `async`.
+
+   `danger` (par défaut) rend l'action de confirmation reconnaissable AU REPOS : une
+   suppression ne doit pas ressembler à un bouton neutre. */
+let confirmResolve = null;
+function confirmDialog({ title, text, detail, confirmLabel, danger = true } = {}) {
+  $('#confirmTitle').textContent = title || tr('confirm.default-title');
+  $('#confirmText').textContent = text || '';
+  const d = $('#confirmDetail');
+  d.hidden = !detail;
+  d.textContent = detail || '';
+  const ok = $('#confirmOk');
+  ok.textContent = confirmLabel || tr('confirm.default-ok');
+  ok.className = danger ? 'btn btn-danger btn-solid' : 'btn btn-primary';
+  $('#confirmModal').hidden = false;
+  setTimeout(() => ok.focus(), 0);
+  return new Promise((resolve) => { confirmResolve = resolve; });
+}
+function closeConfirm(answer) {
+  $('#confirmModal').hidden = true;
+  const r = confirmResolve; confirmResolve = null;
+  if (r) r(answer);
+}
+$('#confirmCancel') && $('#confirmCancel').addEventListener('click', () => closeConfirm(false));
+$('#confirmOk') && $('#confirmOk').addEventListener('click', () => closeConfirm(true));
+$('#confirmModal') && $('#confirmModal').addEventListener('click', (e) => { if (e.target.id === 'confirmModal') closeConfirm(false); });
+
+/* ---------- Modales de merge et de création de MR ----------
+   Elles remplacent les `confirm()`/`prompt()` natifs : ceux-ci ne permettaient aucune
+   option, et une décision irréversible (merge) mérite mieux qu'un « OK / Annuler ».
+   Même gabarit que la modale de convergence : titre, intro contextuelle, champs,
+   note, puis Annuler + action à droite. */
+let mergeCtx = null;
+
+/* `ctx` : { url, label, target, forge, squash, removeSourceBranch, onDone }.
+   `squash`/`removeSourceBranch` pré-cochent d'après ce qui avait été choisi à la
+   création de la MR (mémorisé côté serveur). */
+function openMergeModal(ctx) {
+  mergeCtx = ctx;
+  $('#mergeModalIntro').textContent = tr('merge.modal.intro', {
+    what: ctx.label, target: ctx.target || tr('report.merge.target-fallback'),
+  });
+  $('#mergeSquash').checked = !!ctx.squash;
+  $('#mergeRemoveBranch').checked = !!ctx.removeSourceBranch;
+  const note = $('#mergeModalNote');
+  note.hidden = false;
+  note.querySelector('span').textContent = tr('merge.modal.warn', { forge: forgeLabel(ctx.forge) });
+  $('#mergeGo').disabled = false;
+  $('#mergeModal').hidden = false;
+}
+function closeMergeModal() { $('#mergeModal').hidden = true; mergeCtx = null; }
+$('#mergeCancel') && $('#mergeCancel').addEventListener('click', closeMergeModal);
+$('#mergeModal') && $('#mergeModal').addEventListener('click', (e) => { if (e.target.id === 'mergeModal') closeMergeModal(); });
+$('#mergeGo') && $('#mergeGo').addEventListener('click', async () => {
+  const ctx = mergeCtx; if (!ctx) return;
+  const b = $('#mergeGo'); b.disabled = true;
+  const body = { squash: $('#mergeSquash').checked, removeSourceBranch: $('#mergeRemoveBranch').checked };
+  try {
+    const r = await api(ctx.url, { method: 'POST', body });
+    closeMergeModal();
+    toast(r.merged ? tr('toast.mr-merged-ok') : tr('toast.merge-requested'));
+    if (ctx.onDone) await ctx.onDone(r);
+  } catch (e) { b.disabled = false; toast(explainError(e.message), true); }
+});
+
+let mrCtx = null;
+/* `ctx` : { url, body, title, source, target, forge, onDone }. Les deux options sont
+   proposées ici aussi : GitLab les retient dès la création ; pour GitHub, dont l'API
+   de création ne les accepte pas, elles sont mémorisées et appliquées au merge — la
+   note de la modale le dit explicitement. */
+function openMrModal(ctx) {
+  mrCtx = ctx;
+  $('#mrModalIntro').textContent = tr('mr.modal.intro', { source: ctx.source, target: ctx.target });
+  $('#mrTitle').value = ctx.title || ctx.source || '';
+  $('#mrSquash').checked = false;
+  $('#mrRemoveBranch').checked = false;
+  const note = $('#mrModalNote');
+  const isGithub = forgeLabel(ctx.forge) === 'GitHub';
+  note.hidden = !isGithub;
+  if (isGithub) note.querySelector('span').textContent = tr('mr.modal.github-note');
+  $('#mrGo').disabled = false;
+  $('#mrModal').hidden = false;
+  setTimeout(() => { const f = $('#mrTitle'); if (f) { f.focus(); f.select(); } }, 0);
+}
+function closeMrModal() { $('#mrModal').hidden = true; mrCtx = null; }
+$('#mrCancel') && $('#mrCancel').addEventListener('click', closeMrModal);
+$('#mrModal') && $('#mrModal').addEventListener('click', (e) => { if (e.target.id === 'mrModal') closeMrModal(); });
+$('#mrGo') && $('#mrGo').addEventListener('click', async () => {
+  const ctx = mrCtx; if (!ctx) return;
+  const title = $('#mrTitle').value.trim();
+  if (!title) { $('#mrTitle').focus(); return; }
+  const b = $('#mrGo'); b.disabled = true;
+  const body = { ...(ctx.body || {}), title,
+    squash: $('#mrSquash').checked, removeSourceBranch: $('#mrRemoveBranch').checked };
+  try {
+    const r = await api(ctx.url, { method: 'POST', body });
+    closeMrModal();
+    toast(tr('toast.mr-creee', { iid: r.iid }));
+    if (ctx.onDone) await ctx.onDone(r);
+  } catch (e) { b.disabled = false; toast(explainError(e.message), true); }
+});
+
 async function openConvergeModal(target) {
   convergeTarget = target;
   // Le bouton est grisé pendant le lancement et n'est réarmé que par le catch : sans
@@ -890,7 +995,7 @@ $('#logStop').addEventListener('click', async () => {
   const msg = tr('confirm.stop.head', { progress })
     + (queued ? tr('confirm.stop.queued', { n: queued, count: queued }) : '.')
     + tr('confirm.stop.tail');
-  if (!confirm(msg)) return;
+  if (!await confirmDialog({ text: msg, confirmLabel: tr('job.btn.stop') })) return;
   const b = $('#logStop'); b.disabled = true; b.innerHTML = `<svg class="ico"><use href="#i-stop"/></svg>${tr('job.stopping')}`;
   try { await api('/jobs/stop', { method: 'POST' }); toast(tr('toast.arret-demande-process-en-cours')); }
   catch (e) { toast(e.message, true); }
@@ -981,7 +1086,7 @@ function renderToReview() {
   }));
   $$('#toReviewList [data-merge]').forEach((b) => b.addEventListener('click', () => {
     const m = toReviewRows.find((x) => x.id === Number(b.dataset.merge));
-    if (m) mergeMrFromQueue(m, b).then((ok) => { if (ok) { loadToReview(); refreshCounts(); } });
+    if (m) mergeMrFromQueue(m, () => { loadToReview(); refreshCounts(); });
   }));
   $$('#toReviewList [data-ticket]').forEach((b) => b.addEventListener('click', () => openTicket(Number(b.dataset.ticket), b.dataset.title)));
   $$('#toReviewList [data-dev]').forEach((b) => b.addEventListener('click', () => {
@@ -998,17 +1103,19 @@ $('#searchReview').addEventListener('input', () => (currentSeg === 'to_review' ?
    Ne marque la MR « traitée » que si le merge a RÉELLEMENT eu lieu : une forge qui
    répond « en attente du pipeline » ne l'a pas encore mergée, on la laisse en file.
    Renvoie true si la MR a été mergée (l'appelant peut alors rafraîchir). */
-function mergeMrFromQueue(m, btn) {
-  const target = m.target_branch || tr('report.merge.target-fallback');
-  if (!confirm(tr('confirm.merge-mr', { iid: m.iid, target }))) return Promise.resolve(false);
-  return busy(btn, () => api(`/mrs/${m.id}/merge`, { method: 'POST' }))
-    .then(async (r) => {
-      if (!r.merged) { toast(tr('toast.merge-requested')); return false; }
-      toast(tr('toast.mr-merged-ok'));
+function mergeMrFromQueue(m, onMerged) {
+  openMergeModal({
+    url: `/mrs/${m.id}/merge`,
+    label: `!${m.iid}`,
+    target: m.target_branch,
+    forge: m.forge,
+    squash: m.squash, removeSourceBranch: m.remove_source_branch,
+    onDone: async (r) => {
+      if (!r.merged) return;                                  // pipeline en attente : reste en file
       await api(`/mrs/${m.id}/done`, { method: 'POST' }).catch(() => {}); // sort de la file
-      return true;
-    })
-    .catch((e) => { toast(explainError(e.message), true); return false; });
+      if (onMerged) onMerged();
+    },
+  });
 }
 
 // Ferme tous les menus déroulants des split-buttons (review avec/sans explication).
@@ -1069,7 +1176,7 @@ $('#btnDiscover').addEventListener('click', async () => {
 
 $('#btnReview').addEventListener('click', async () => {
   const n = toReviewRows.length;
-  if (n > 5 && !confirm(tr('confirm.review-all', { n }))) return;
+  if (n > 5 && !await confirmDialog({ text: tr('confirm.review-all', { n }), confirmLabel: tr('mr.btn.review'), danger: false })) return;
   const b = $('#btnReview');
   try {
     await busy(b, () => api('/jobs/review', { method: 'POST' }));
@@ -1123,7 +1230,7 @@ function renderReports() {
   if (!selectedMr) renderReportPlaceholder();
   $$('#reportList [data-delreport]').forEach((b) => b.addEventListener('click', async (e) => {
     e.stopPropagation(); // ne pas ouvrir le rapport
-    if (!confirm(tr('confirm.delete-report', { iid: b.dataset.iid }))) return;
+    if (!await confirmDialog({ text: tr('confirm.delete-report', { iid: b.dataset.iid }), confirmLabel: tr('ui.delete') })) return;
     const id = Number(b.dataset.delreport);
     try {
       await api(`/mrs/${id}/delete-review`, { method: 'POST' });
@@ -1144,7 +1251,7 @@ function noteBadge(note) {
 }
 
 $('#btnResetReports').addEventListener('click', async () => {
-  if (!confirm(tr('confirm.reset-all'))) return;
+  if (!await confirmDialog({ text: tr('confirm.reset-all'), confirmLabel: tr('ui.delete') })) return;
   try {
     const r = await api('/reports/reset', { method: 'POST' });
     selectedMr = null;
@@ -1382,12 +1489,12 @@ async function openReport(id) {
     }).catch((e) => toast(tr('toast.ouverture-impossible', { message: e.message }), true));
   });
   const aMerge = $('#aMerge'); // absent si la MR n'est plus ouverte sur GitLab
-  if (aMerge) aMerge.addEventListener('click', async () => {
-    const target = m.target_branch || 'la branche cible';
-    if (!confirm(tr('confirm.merge-mr', { iid: m.iid, target }))) return;
-    const b = aMerge; b.disabled = true;
-    try { const r = await api(`/mrs/${id}/merge`, { method: 'POST' }); toast(r.merged ? tr('toast.mr-merged-ok') : tr('toast.merge-requested')); }
-    catch (e) { b.disabled = false; toast(e.message, true); }
+  if (aMerge) aMerge.addEventListener('click', () => {
+    openMergeModal({
+      url: `/mrs/${id}/merge`, label: `!${m.iid}`, target: m.target_branch, forge: m.forge,
+      squash: m.squash, removeSourceBranch: m.remove_source_branch,
+      onDone: () => openReport(id),          // recharge le détail (badge « mergée »)
+    });
   });
   const done = $('#aDone'); if (done) done.addEventListener('click', async () => { await api(`/mrs/${id}/done`, { method: 'POST' }); toast(tr('toast.marquee-done')); openReport(id); });
   const reopen = $('#aReopen'); if (reopen) reopen.addEventListener('click', async () => { await api(`/mrs/${id}/reopen`, { method: 'POST' }); toast(tr('toast.rouverte')); openReport(id); });
@@ -1740,7 +1847,7 @@ function renderDecisionPanel(m, stats) {
   });
   const pvMerge = $('#pvMerge');
   if (pvMerge) pvMerge.addEventListener('click', (e) => {
-    mergeMrFromQueue(m, e.currentTarget).then((ok) => { if (ok) { closeSplit(); loadToReview(); refreshCounts(); } });
+    mergeMrFromQueue(m, () => { closeSplit(); loadToReview(); refreshCounts(); });
   });
 }
 
@@ -2132,7 +2239,7 @@ async function loadRepos() {
   };
 
   $$('#repoList [data-del]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm(tr('confirm.delete-repo'))) return;
+    if (!await confirmDialog({ text: tr('confirm.delete-repo'), confirmLabel: tr('ui.delete') })) return;
     await api(`/repos/${b.dataset.del}`, { method: 'DELETE' }); loadRepos();
   }));
   $$('#repoList [data-toggle]').forEach((cb) => cb.addEventListener('change', async () => {
@@ -2185,7 +2292,7 @@ async function loadLocalRootSettings() {
     </div>`).join('')
     : emptyState({ icon: 'inbox', title: tr('settings.localroot.empty.title'), text: tr('settings.localroot.empty.text') });
   $$('#localRootList [data-rootdel]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm(tr('confirm.delete-local-root'))) return;
+    if (!await confirmDialog({ text: tr('confirm.delete-local-root'), confirmLabel: tr('ui.delete') })) return;
     try {
       await api(`/local-roots/${b.dataset.rootdel}`, { method: 'DELETE' });
       localProjectsCache.clear();
@@ -3001,7 +3108,7 @@ function renderLocalTasks() {
     } catch (e) { toast(explainError(e.message), true); }
   }));
   $$('#localList [data-ldel]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm(tr('local.confirm-delete'))) return;
+    if (!await confirmDialog({ text: tr('local.confirm-delete'), confirmLabel: tr('ui.delete') })) return;
     try { await api(`/local-tasks/${b.dataset.ldel}`, { method: 'DELETE' }); toast(tr('local.deleted')); loadTasks(); }
     catch (e) { toast(explainError(e.message), true); }
   }));
@@ -3087,8 +3194,8 @@ function targetLine(t, tg) {
     ${tg.output_path ? `<button class="btn btn-sm" data-tgout="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}
     ${showDiff ? `<button class="btn btn-sm" data-tgdiff="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-diff'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>` : ''}
     ${showPush ? `<button class="btn btn-sm btn-primary" data-tgpush="${tg.id}" data-task="${t.id}" data-project="${esc(tg.project)}" data-branch="${esc(tg.branch || '')}" title="${tr('task.btn.push-title')}"><svg class="ico ico-sm"><use href="#i-upload"/></svg>${tr('task.btn.push')}</button>` : ''}
-    ${canMr ? `<button class="btn btn-sm btn-primary" data-tgmr="${tg.id}" data-task="${t.id}" data-title="${esc(defaultMrTitle)}" title="Ouvrir la MR de ce projet"><svg class="ico ico-sm"><use href="#i-branch"/></svg>${tr('task.btn.create-mr')}</button>` : ''}
-    ${mrIid && !tg.mr_merged ? `<button class="btn btn-sm btn-danger" data-tgmerge="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" title="Merger la MR de ce projet"><svg class="ico ico-sm"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>` : ''}
+    ${canMr ? `<button class="btn btn-sm btn-primary" data-tgmr="${tg.id}" data-task="${t.id}" data-title="${esc(defaultMrTitle)}" data-branch="${esc(tg.branch || '')}" data-target="${esc(tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="Ouvrir la MR de ce projet"><svg class="ico ico-sm"><use href="#i-branch"/></svg>${tr('task.btn.create-mr')}</button>` : ''}
+    ${mrIid && !tg.mr_merged ? `<button class="btn btn-sm btn-danger" data-tgmerge="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-target="${esc(tg.mr_target || tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="Merger la MR de ce projet"><svg class="ico ico-sm"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>` : ''}
     ${tg.last_error ? `<span class="t-err" title="${esc(tg.last_error)}">⚠ ${tr('task.failed')}</span>` : ''}
   </div>${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg) : ''}`;
 }
@@ -3163,7 +3270,7 @@ function wireTaskActions() {
   on('[data-tconverge]', (b) => openConvergeModal({ type: 'task', id: Number(b.dataset.tconverge) }));
 
   on('[data-tdel]', async (b) => {
-    if (!confirm(tr('confirm.delete-task'))) return;
+    if (!await confirmDialog({ text: tr('confirm.delete-task'), confirmLabel: tr('ui.delete') })) return;
     try { await api(`/tasks/${b.dataset.tdel}`, { method: 'DELETE' }); toast(tr('toast.session-supprimee')); loadTasks(); }
     catch (e) { toast(explainError(e.message), true); }
   });
@@ -3173,27 +3280,27 @@ function wireTaskActions() {
   // --- actions PAR PROJET (codage) ---
   on('[data-tgdiff]', (b) => openTargetDiff(b.dataset.task, b.dataset.tgdiff));
   on('[data-tgout]', (b) => openTargetOutput(b.dataset.task, b.dataset.tgout));
-  on('[data-tgpush]', (b) => {
+  on('[data-tgpush]', async (b) => {
     const where = `${b.dataset.project} · ${b.dataset.branch}`;
-    if (!confirm(tr('confirm.push-branch', { branch: b.dataset.branch, project: b.dataset.project }))) return;
+    if (!await confirmDialog({ text: tr('confirm.push-branch', { branch: b.dataset.branch, project: b.dataset.project }), confirmLabel: tr('task.btn.push'), danger: false })) return;
     busy(b, () => api(`/tasks/${b.dataset.task}/targets/${b.dataset.tgpush}/push`, { method: 'POST' }))
       .then(() => { toast(tr('toast.push-lance', { where: where })); refreshStatus(); })
       .catch((e) => toast(explainError(e.message), true));
   });
-  on('[data-tgmr]', async (b) => {
-    const title = prompt('Titre de la merge request :', b.dataset.title);
-    if (title === null) return;
-    try {
-      const r = await busy(b, () => api(`/tasks/${b.dataset.task}/targets/${b.dataset.tgmr}/mr`, { method: 'POST', body: { title } }));
-      toast(tr('toast.mr-creee', { iid: r.iid })); loadTasks();
-    } catch (e) { toast(explainError(e.message), true); }
+  on('[data-tgmr]', (b) => {
+    openMrModal({
+      url: `/tasks/${b.dataset.task}/targets/${b.dataset.tgmr}/mr`,
+      title: b.dataset.title, source: b.dataset.branch, target: b.dataset.target || '',
+      forge: b.dataset.forge,
+      onDone: () => loadTasks(),
+    });
   });
-  on('[data-tgmerge]', async (b) => {
-    if (!confirm(`Merger la MR !${b.dataset.iid} ?`)) return;
-    try {
-      const r = await busy(b, () => api(`/tasks/${b.dataset.task}/targets/${b.dataset.tgmerge}/merge`, { method: 'POST' }));
-      toast(r.merged ? tr('toast.mr-merged') : tr('toast.merge-requested')); loadTasks();
-    } catch (e) { toast(explainError(e.message), true); }
+  on('[data-tgmerge]', (b) => {
+    openMergeModal({
+      url: `/tasks/${b.dataset.task}/targets/${b.dataset.tgmerge}/merge`,
+      label: `!${b.dataset.iid}`, target: b.dataset.target, forge: b.dataset.forge,
+      onDone: () => loadTasks(),
+    });
   });
 
   // --- itération / question de suivi ---
@@ -3462,7 +3569,7 @@ async function loadRules() {
     catch (e) { toast(e.message, true); }
   }));
   $$('#ruleList [data-rdel]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm(tr('confirm.delete-rule'))) return;
+    if (!await confirmDialog({ text: tr('confirm.delete-rule'), confirmLabel: tr('ui.delete') })) return;
     await api(`/rules/${b.dataset.rdel}`, { method: 'DELETE' }); loadRules();
   }));
 }
@@ -4160,7 +4267,7 @@ async function gitDoPreview() {
 async function gitExecute() {
   if (!gitPreviewData) return;
   const n = gitPreviewData.counts.ok;
-  if (gitIsDelete() && !confirm(tr('confirm.git-delete', { n, count: n }))) return;
+  if (gitIsDelete() && !await confirmDialog({ text: tr('confirm.git-delete', { n, count: n }), confirmLabel: tr('ui.delete') })) return;
   const targets = gitReadTargets();
   const body = { action: gitAction(), targets };
   if (!gitIsDelete()) {
@@ -4264,22 +4371,21 @@ function gitRenderExplorer(d, box) {
     $('.git-ex-count', box).textContent = n ? tr('git.explorer.selected', { n, count: n }) : '';
   };
   $$('.git-ex-pick', box).forEach((cb) => cb.addEventListener('change', refresh));
-  // « Créer la MR » : même mécanique que Dev IA (prompt pour le titre + création),
-  // mais entre la branche et sa source. Le libellé du prompt rappelle source → cible,
-  // car la cible est une origine DÉDUITE : on la montre pour pouvoir annuler.
+  /* « Créer la MR » : même modale que Dev IA, mais entre la branche et sa source.
+     L'intro rappelle source → cible, car la cible est une origine DÉDUITE : on la
+     montre pour pouvoir renoncer. */
   $$('[data-gitmr]', box).forEach((b) => b.addEventListener('click', () => {
     const source = b.dataset.gitmr;
     const target = b.dataset.target;
-    const title = prompt(tr('git.mr.prompt', { source, target }), source);
-    if (title === null) return;
-    busy(b, () => api('/git/mr', { method: 'POST', body: { repo_id: d.repo_id, source, target, title } }))
-      .then((r) => {
-        toast(tr('toast.mr-creee', { iid: r.iid }));
+    openMrModal({
+      url: '/git/mr', body: { repo_id: d.repo_id, source, target },
+      title: source, source, target, forge: d.forge,
+      onDone: (r) => {
         // Remplace le bouton par le lien vers la MR : l'écran reflète la réalité
         // sans re-analyser tout le dépôt (coûteux).
         b.outerHTML = '<a class="btn btn-sm" href="' + esc(r.url) + '" target="_blank" title="' + esc(tr('git.mr.open-title', { target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + r.iid + ' ↗</a>';
-      })
-      .catch((e) => toast(explainError(e.message), true));
+      },
+    });
   }));
   // Le pont entre les deux écrans : c'est le parcours réel du nettoyage.
   $('.git-ex-delete', box).addEventListener('click', () => {
@@ -4428,7 +4534,7 @@ async function gitLoadHistory() {
     (o.restorable ? '<button class="btn btn-sm" data-gitrestore="' + o.id + '" title="' + esc(tr('git.title.restore')) + '"><svg class="ico ico-sm"><use href="#i-reset"/></svg>' + esc(tr('git.btn.restore')) + '</button>' : '') +
     '</div>').join('');
   $$('#gitHistoryBox [data-gitrestore]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm(tr('confirm.git-restore'))) return;
+    if (!await confirmDialog({ text: tr('confirm.git-restore'), confirmLabel: tr('git.op.restore'), danger: false })) return;
     try {
       await busy(b, () => api('/git/ops/' + b.dataset.gitrestore + '/restore', { method: 'POST' }));
       toast(tr('toast.git-restore-started')); refreshStatus();
@@ -4804,7 +4910,7 @@ $('#gitCmdList') && $('#gitCmdList').addEventListener('click', async (e) => {
     $('#gitCmdSubmitLabel').textContent = tr('settings.gitcmd.save'); $('#gitCmdCancel').hidden = false;
     $('#gitCmdLabel').focus();
   } else if (del) {
-    if (!confirm(tr('settings.gitcmd.confirm-delete'))) return;
+    if (!await confirmDialog({ text: tr('settings.gitcmd.confirm-delete'), confirmLabel: tr('ui.delete') })) return;
     try { await api(`/git-commands/${del.dataset.gcdel}`, { method: 'DELETE' }); renderGitCmdList(); }
     catch (err) { toast(explainError(err.message), true); }
   }
@@ -5503,7 +5609,11 @@ function wireDockerActions(box) {
     try {
       const pv = await api('/docker/compose/preview-down', { method: 'POST', body: { dir: b.dataset.dir, project: b.dataset.project } });
       const lines = (pv.containers || []).map((c) => `• ${c.name}${c.service ? ` (${c.service})` : ''}`).join('\n');
-      if (!confirm(tr('docker.down.confirm', { n: (pv.containers || []).length }) + '\n\n' + lines + '\n\n' + tr('docker.down.volumes'))) return;
+      const ok = await confirmDialog({
+        text: `${tr('docker.down.confirm', { n: (pv.containers || []).length })}\n${tr('docker.down.volumes')}`,
+        detail: lines, confirmLabel: tr('docker.act.down'),
+      });
+      if (!ok) return;
       await busy(b, () => api('/docker/compose/action', { method: 'POST', body: { dir: b.dataset.dir, action: 'down', services: [] } }));
       toast(tr('docker.act.started')); refreshStatus();
     } catch (e) { toast(explainError(e.message), true); }
@@ -5539,7 +5649,7 @@ function wireDockerActions(box) {
     } catch (e) { toast(explainError(e.message), true); }
   }));
   $$('[data-dockerrm]', box).forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm(tr('docker.orphan.remove-confirm', { name: b.dataset.name }))) return;
+    if (!await confirmDialog({ text: tr('docker.orphan.remove-confirm', { name: b.dataset.name }), confirmLabel: tr('ui.delete') })) return;
     try {
       await busy(b, () => api(`/docker/orphan/${b.dataset.dockerrm}/remove`, { method: 'POST' }));
       toast(tr('docker.orphan.removed')); refreshStatus();

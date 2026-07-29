@@ -48,6 +48,12 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   **zéro clic**. Ta saisie manuelle reste un **complément distinct** (jamais écrasé), et un bouton
   **Rafraîchir** re-récupère le ticket à la demande. Le tout est injecté dans le prompt de review, en
   plus du diff, et le bouton porte un ✓ quand un contexte est déjà enregistré.
+- **Merger ouvre une confirmation avec ses options.** Avant de fusionner, une modale rappelle la MR et
+  sa branche cible, et propose **Squash** (réunir les commits en un seul) et **Supprimer la branche source
+  après le merge**. Les deux cases sont pré-cochées d'après ce qui avait été choisi à la création de la MR.
+- **Créer une MR** ouvre la même famille de modale : titre pré-rempli, et les deux mêmes options. GitLab
+  les retient dès la création ; **GitHub ne sait pas les exprimer à la création** — Mergerie les mémorise
+  alors et les applique au merge, ce que la modale indique.
 - `Merger` merge la MR **directement, sans review** — pour une MR triviale : on confirme, et si le
   merge a réellement lieu la MR sort de la file (marquée traitée). Disponible aussi dans le panneau de
   décision de `Voir le diff`, là où l'on juge justement de la trivialité.

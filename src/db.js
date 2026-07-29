@@ -146,6 +146,11 @@ try { db.exec('ALTER TABLE mr ADD COLUMN ticket_jira_error TEXT'); } catch { /* 
 // Migration : chemins des fichiers modifiés par la MR (pour le badge « risque » et
 // les règles par chemin), un par ligne. Rempli au discover / à la review.
 try { db.exec('ALTER TABLE mr ADD COLUMN changed_paths TEXT'); } catch { /* déjà présente */ }
+/* Options de merge choisies à la création de la MR. GitLab les applique nativement dès
+   la création ; GitHub ne sait pas les exprimer là (ce sont des décisions de merge), on
+   les mémorise donc ici pour pré-cocher — et appliquer — la modale de merge. */
+try { db.exec('ALTER TABLE mr ADD COLUMN squash INTEGER'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN remove_source_branch INTEGER'); } catch { /* déjà présente */ }
 // Migration : règles de review par CHEMIN de fichier (glob) — plus précis que la
 // branche. Une règle peut avoir branch_match et/ou path_match. label = badge court.
 try { db.exec('ALTER TABLE review_rule ADD COLUMN path_match TEXT'); } catch { /* déjà présente */ }

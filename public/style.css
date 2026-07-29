@@ -392,6 +392,27 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .ticket-preview-wrap img { max-width: 100%; max-height: 300px; border: 1px solid var(--line); border-radius: 6px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
+/* Corps commun des modales de confirmation (merge, création de MR) : un champ ou une
+   case par ligne, alignés à gauche — plus lisible qu'une rangée quand les libellés
+   d'options sont des phrases (et que leur longueur change avec la langue). */
+/* Modale de confirmation : plus étroite que les formulaires, le texte doit se lire d'un
+   coup d'œil. `confirm-detail` porte la liste des éléments concernés (containers, refs…). */
+.modal-confirm { width: 460px; }
+.confirm-text { margin: 6px 0 0; white-space: pre-line; }
+.confirm-detail { margin: 10px 0 0; max-height: 220px; overflow: auto; background: var(--panel2);
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; font-size: var(--fs-xs); }
+.modal-fields { display: flex; flex-direction: column; gap: 10px; margin: 14px 0 4px; }
+.modal-field { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); color: var(--muted); }
+.modal-field input {
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--radius); padding: 8px 10px; font: inherit; height: 36px;
+}
+.modal-field input:focus { outline: none; border-color: var(--accent); }
+/* Action irréversible confirmée dans une modale : elle doit être reconnaissable AU REPOS,
+   pas seulement au survol (le `.btn-danger` par défaut n'a qu'un état de survol). */
+.btn-danger.btn-solid { background: var(--red); border-color: var(--red); color: var(--on-red, #fff); }
+.btn-danger.btn-solid:hover { filter: brightness(1.08); color: var(--on-red, #fff); }
+
 /* Modale de création/édition de session : plus large et plus haute — c'est le formulaire
    le plus riche (projets multiples, prompt long, contexte Jira, captures). */
 /* Modales larges : session de codage ET contexte, même gabarit. */

@@ -187,6 +187,10 @@ async function listAllMRs(cfg, project) {
   }));
 }
 
+/* Création d'une PR. ⚠ Contrairement à GitLab, l'API GitHub n'accepte NI le squash NI
+   la suppression de la branche à la création : ce sont des décisions de merge. Les deux
+   options éventuellement choisies ici sont donc mémorisées côté application (table `mr`)
+   et appliquées au moment du merge. */
 async function createMergeRequest(cfg, project, { source_branch, target_branch, title }) {
   const pr = await githubFetch(cfg, `/repos/${encodeProject(project)}/pulls`, {
     method: 'POST',
@@ -196,10 +200,23 @@ async function createMergeRequest(cfg, project, { source_branch, target_branch, 
 }
 
 /* Merge. GitHub renvoie `{ merged, message }` et NON la PR : on relit la PR pour
-   rendre l'état normalisé que l'appelant teste (`state === 'merged'`). */
-async function mergeMergeRequest(cfg, project, iid) {
-  await githubFetch(cfg, `/repos/${encodeProject(project)}/pulls/${iid}/merge`, { method: 'PUT', body: JSON.stringify({}) });
-  return getMergeRequest(cfg, project, iid);
+   rendre l'état normalisé que l'appelant teste (`state === 'merged'`).
+
+   Les deux options du merge n'ont PAS la même forme que chez GitLab :
+   - « squash » est une MÉTHODE de merge (`merge_method`), pas un drapeau ;
+   - la suppression de la branche source n'existe pas dans l'API de merge : c'est un
+     appel séparé, fait APRÈS coup et en best-effort (un merge réussi ne doit pas être
+     signalé en échec parce que la branche n'a pas pu être supprimée). */
+async function mergeMergeRequest(cfg, project, iid, opts = {}) {
+  const enc = encodeProject(project);
+  const body = opts.squash ? { merge_method: 'squash' } : {};
+  await githubFetch(cfg, `/repos/${enc}/pulls/${iid}/merge`, { method: 'PUT', body: JSON.stringify(body) });
+  const mr = await getMergeRequest(cfg, project, iid);
+  if (opts.removeSourceBranch && mr && mr.state === 'merged' && mr.source_branch) {
+    try { await deleteBranch(cfg, project, mr.source_branch); }
+    catch { /* branche protégée ou déjà supprimée : le merge, lui, a bien eu lieu */ }
+  }
+  return mr;
 }
 
 // Fichiers modifiés par une PR (badge « risque » + règles par chemin).

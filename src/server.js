@@ -1460,9 +1460,14 @@ app.post('/api/tasks/:id/targets/:tid/mr', wrap(async (req, res) => {
   const title = (req.body && req.body.title || '').trim() || t.commit_message || tg.branch;
   let target = tg.base_branch;
   if (!target) { const b = await forge.clientFor(tg).listBranches(cfg, tg.project); target = b.default || 'main'; }
-  const mr = await forge.clientFor(tg).createMergeRequest(cfg, tg.project, { source_branch: tg.branch, target_branch: target, title });
+  const squash = !!(req.body && req.body.squash);
+  const removeSourceBranch = !!(req.body && req.body.removeSourceBranch);
+  const mr = await forge.clientFor(tg).createMergeRequest(cfg, tg.project, {
+    source_branch: tg.branch, target_branch: target, title, squash, removeSourceBranch,
+  });
   db.prepare('UPDATE task_target SET mr_iid = ?, mr_url = ?, mr_target = ?, mr_merged = 0, updated_at = ? WHERE id = ?')
     .run(mr.iid, mr.web_url, target, new Date().toISOString(), tg.id);
+  rememberMergeOpts(tg.repo_id, mr.iid, squash, removeSourceBranch);
   res.json({ iid: mr.iid, url: mr.web_url });
 }));
 
@@ -1472,7 +1477,8 @@ app.post('/api/tasks/:id/targets/:tid/merge', wrap(async (req, res) => {
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
   const eff = effectiveMr(tg);
   if (!eff) throw new Error(t('err.aucune-mr-a-merger-pour'));
-  const merged = await forge.clientFor(tg).mergeMergeRequest(getConfig(), tg.project, eff.iid);
+  const known = db.prepare('SELECT * FROM mr WHERE repo_id = ? AND iid = ?').get(tg.repo_id, eff.iid);
+  const merged = await forge.clientFor(tg).mergeMergeRequest(getConfig(), tg.project, eff.iid, mergeOptsFor(known, req.body));
   // GitLab peut répondre 200 sans merge immédiat : on ne marque que si l'état est 'merged'.
   const isMerged = merged && merged.state === 'merged';
   if (isMerged) {
@@ -2056,10 +2062,28 @@ app.post('/api/mrs/:id/discussion', wrap(async (req, res) => {
 }));
 
 // Merge une MR (depuis l'onglet Rapports de review).
+/* Options de merge : ce que demande l'appel, sinon ce qui avait été choisi à la
+   création de la MR (colonnes `mr.squash` / `mr.remove_source_branch`). */
+function mergeOptsFor(mr, body) {
+  const pick = (v, fallback) => (v === undefined ? fallback : !!(v === true || v === 'true' || v === 1 || v === '1'));
+  return {
+    squash: pick(body && body.squash, !!(mr && mr.squash)),
+    removeSourceBranch: pick(body && body.removeSourceBranch, !!(mr && mr.remove_source_branch)),
+  };
+}
+
+/* Mémorise les options choisies à la création. Indispensable pour GitHub, dont l'API de
+   création ne sait pas les exprimer : c'est ici qu'on retrouve l'intention au merge. */
+function rememberMergeOpts(repoId, iid, squash, removeSourceBranch) {
+  db.prepare('UPDATE mr SET squash = ?, remove_source_branch = ? WHERE repo_id = ? AND iid = ?')
+    .run(squash ? 1 : 0, removeSourceBranch ? 1 : 0, repoId, iid);
+}
+
 app.post('/api/mrs/:id/merge', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
-  const merged = await forge.clientFor(mr).mergeMergeRequest(getConfig(), mr.project, mr.iid);
+  const opts = mergeOptsFor(mr, req.body);
+  const merged = await forge.clientFor(mr).mergeMergeRequest(getConfig(), mr.project, mr.iid, opts);
   const isMerged = merged && merged.state === 'merged';
   if (isMerged) {
     const now = new Date().toISOString();
@@ -2174,7 +2198,7 @@ app.get('/api/git/branches', wrap(async (req, res) => {
   await Promise.all(tagsSorted.slice(0, 200).map(async (tg) => {
     tg.branches = await git.branchesForCommit(cwd, tg.sha, defaultBranch);
   }));
-  res.json({ project: repo.project, repo_id: repo.id, default: defaultBranch, branches: rows, tags: tagsSorted });
+  res.json({ project: repo.project, repo_id: repo.id, forge: forge.forgeOf(repo), default: defaultBranch, branches: rows, tags: tagsSorted });
 }));
 
 // Auteur PRÉCIS d'un tag, à la demande (l'API GitLab n'expose pas le tagger d'un tag
@@ -2258,9 +2282,12 @@ app.post('/api/git/mr', wrap(async (req, res) => {
   const title = String(req.body.title || '').trim() || source;
   if (!source || !target) throw new Error(t('err.git.mr-missing-refs'));
   if (source === target) throw new Error(t('err.git.mr-same-ref'));
+  const squash = !!(req.body && req.body.squash);
+  const removeSourceBranch = !!(req.body && req.body.removeSourceBranch);
   const mr = await forge.clientFor(repo).createMergeRequest(getConfig(), repo.project, {
-    source_branch: source, target_branch: target, title,
+    source_branch: source, target_branch: target, title, squash, removeSourceBranch,
   });
+  rememberMergeOpts(repo.id, mr.iid, squash, removeSourceBranch);
   res.json({ iid: mr.iid, url: mr.web_url });
 }));
 

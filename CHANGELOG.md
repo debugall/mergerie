@@ -43,6 +43,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   now lists the requests already made on a report, with their date, and opens the report version each one
   produced.
 
+- **Merging asks for confirmation, with options.** A modal recalls the MR and its target branch and
+  offers **squash** and **delete the source branch**, pre-checked from what was chosen when the MR was
+  created. Creating an MR uses the same modal family (title + the two options) instead of a native
+  browser prompt. GitLab keeps both at creation time; GitHub cannot express them there, so Mergerie
+  remembers them and applies them at merge — the modal says so.
+- **Every confirmation now uses the app's own dialog.** The sixteen remaining native `confirm()` boxes
+  (delete a repository, a rule, a session, a report; stop a job; git deletions and restores; Docker
+  `down`…) share one styled modal: themed, translated, and with a button that names the action instead
+  of a mute "OK". Irreversible actions are recognisable at rest, not only on hover.
+
 ### Changed
 
 - **Coding sessions: `Diff` became `See the diff`** and opens the *same* full-screen viewer as merge
