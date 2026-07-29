@@ -233,7 +233,11 @@ async function execute({ action, targets, name, message }, onLog = () => {}) {
         onLog(t('git.log.securing', { project: row.project }));
         await git.ensureRepo(cfg, repo, onLog);
         const cwd = git.cloneDirFor(cfg, repo);
-        await git.run('git', ['fetch', '--prune', '--tags', 'origin'], { cwd, onLog });
+        /* `--force` comme dans ensureRepo : un tag supprimé puis RECRÉÉ sur un autre SHA
+           (cas courant d'un tag de release repositionné) fait sinon échouer le fetch
+           entier avec « would clobber existing tag », et l'action est perdue alors que
+           le dépôt est sain. Ce clone est un miroir : il suit le remote. */
+        await git.run('git', ['fetch', '--prune', '--tags', '--force', 'origin'], { cwd, onLog });
         fetched = 1;
       }
 

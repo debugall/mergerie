@@ -48,6 +48,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   created. Creating an MR uses the same modal family (title + the two options) instead of a native
   browser prompt. GitLab keeps both at creation time; GitHub cannot express them there, so Mergerie
   remembers them and applies them at merge — the modal says so.
+- **A tag recreated on another commit no longer blocks Git operations.** The safety fetch that precedes
+  every deletion did not force tag updates, so a tag deleted then recreated elsewhere made it fail with
+  `would clobber existing tag` — and the whole action was lost although the repository was fine. It now
+  forces them, like every other fetch on the tool's own clones. Repositories you own (Git → Navigation)
+  are deliberately left untouched: there, a local tag must never be silently overwritten.
 - **The convergence dialog says what it will converge.** It named "the MR" even when started from a
   session — where the AI first codes and opens the MR. Title and opening line now follow the context,
   and the dialog shares the layout of the other confirmation modals.
