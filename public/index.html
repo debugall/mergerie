@@ -55,6 +55,7 @@
     <symbol id="i-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></symbol>
     <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"/></symbol>
     <symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+    <symbol id="i-archive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="22" height="5" rx="1"/><path d="M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8M10 12h4"/></symbol>
     <symbol id="i-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9z"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></symbol>
     <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
@@ -581,8 +582,8 @@
             <label><span data-i18n="settings.gitcmd.label">Nom</span> <input id="gitCmdLabel" placeholder="Récupérer tout" data-i18n-placeholder="settings.gitcmd.label-ph" /></label>
             <label><span data-i18n="settings.gitcmd.command">Commande git</span> <input id="gitCmdCommand" placeholder="fetch --all --prune" data-i18n-placeholder="settings.gitcmd.command-ph" /></label>
             <div class="form-actions">
-                <button class="btn btn-primary" type="submit"><svg class="ico"><use href="#i-plus"/></svg><span id="gitCmdSubmitLabel" data-i18n="settings.gitcmd.add">Ajouter</span></button>
                 <button class="btn" type="button" id="gitCmdCancel" hidden data-i18n="settings.gitcmd.cancel">Annuler</button>
+                <button class="btn btn-primary" type="submit"><svg class="ico"><use href="#i-plus"/></svg><span id="gitCmdSubmitLabel" data-i18n="settings.gitcmd.add">Ajouter</span></button>
                 <span id="gitCmdInfo" class="muted"></span>
             </div>
         </form>
@@ -717,7 +718,7 @@
             <div class="modal-actions">
                 <button type="button" id="taskCancel" class="btn" title="Fermer sans enregistrer" data-i18n-title="task.title.fermer-sans-enregistrer" data-i18n="task.btn.annuler">Annuler</button>
                 <button type="button" id="taskSubmitOnly" class="btn" hidden title="Créer la session sans l'exécuter — tu la lanceras quand tu veux depuis Dev IA" data-i18n-title="task.title.creer-la-session-sans-l"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="task.btn.creer-sans-lancer">Créer sans lancer</span></button>
-                <button type="button" id="taskConverge" class="btn btn-converge" hidden title="Du prompt à la MR convergée : l'IA code, pousse, ouvre la MR puis converge" data-i18n-title="task.title.converge"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="report.btn.converge">Converger</span></button>
+                <button type="button" id="taskConverge" class="btn" hidden title="Du prompt à la MR convergée : l'IA code, pousse, ouvre la MR puis converge" data-i18n-title="task.title.converge"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="report.btn.converge">Converger</span></button>
                 <button class="btn btn-primary" type="submit" id="taskSubmit" title="Enregistrer la tâche (ou la créer et la lancer selon le contexte)" data-i18n-title="task.title.enregistrer-la-tache-ou-la"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
             </div>
         </form>
@@ -881,8 +882,8 @@
 <!-- Vue plein écran : rapport/explication à gauche, diff à droite -->
 <div id="splitView" class="splitview" hidden>
     <div class="split-head">
-        <button id="reportToggle" class="split-btn" title="Afficher / masquer le rapport" data-i18n-title="context.title.afficher-masquer-le-rapport"><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="context.btn.rapport">Rapport</span></button>
-        <button id="treeToggle" class="split-btn" title="Afficher / masquer l'arborescence" data-i18n-title="context.title.afficher-masquer-l-arborescence"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="context.btn.arbre">Arbre</span></button>
+        <button id="reportToggle" class="btn" title="Afficher / masquer le rapport" data-i18n-title="context.title.afficher-masquer-le-rapport"><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="context.btn.rapport">Rapport</span></button>
+        <button id="treeToggle" class="btn" title="Afficher / masquer l'arborescence" data-i18n-title="context.title.afficher-masquer-l-arborescence"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="context.btn.arbre">Arbre</span></button>
         <span id="splitTitle" class="split-title"></span>
         <span class="spacer"></span>
         <button id="splitClose" class="btn" title="Fermer la vue plein écran (Échap)" data-i18n-title="context.title.fermer-la-vue-plein-ecran"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>

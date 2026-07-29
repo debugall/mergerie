@@ -128,6 +128,25 @@ orphanFields.length
   ? fail('Champ de #configForm absent de CONFIG_FIELDS', orphanFields)
   : ok(`Tous les champs de #configForm sont enregistrés (${declared.size} déclarés)`);
 
+/* 9. Deux fonctions de même nom au premier niveau d'app.js.
+   Le fichier est un seul script global : une seconde `function foo()` écrase la
+   première par hoisting, sans le moindre avertissement. Tous les appels partent
+   alors sur l'autre corps — et sur l'autre SIGNATURE. C'est arrivé à toastUndo,
+   redéfini avec (msg, undoLabel, onUndo) alors que l'original attendait
+   (msg, onUndo, ms) : le callback d'annulation recevait une chaîne. */
+const declaredFns = new Map();
+const dupFns = [];
+lines.forEach((l, i) => {
+  const m = l.match(/^function\s+([A-Za-z_$][\w$]*)\s*\(/); // ^ = premier niveau uniquement
+  if (!m) return;
+  const prev = declaredFns.get(m[1]);
+  if (prev) dupFns.push(`public/app.js:${i + 1}  function ${m[1]}() — déjà défini ligne ${prev} ; la seconde écrase la première`);
+  else declaredFns.set(m[1], i + 1);
+});
+dupFns.length
+  ? fail('Fonction redéfinie au premier niveau d’app.js', dupFns)
+  : ok(`Aucune fonction d'app.js redéfinie (${declaredFns.size} au premier niveau)`);
+
 console.log('');
 if (failures) { console.log(`${failures} contrôle(s) en échec.`); process.exit(1); }
 console.log('Contrôles front : OK');

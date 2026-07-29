@@ -61,6 +61,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   `down`…) share one styled modal: themed, translated, and with a button that names the action instead
   of a mute "OK". Irreversible actions are recognisable at rest, not only on hover.
 
+- **Two guard rails where there were none.** Running a free git command on several repositories now
+  asks for confirmation — but only when the command can destroy unpushed work (`reset --hard`,
+  `clean -fd`, `push --force`, `branch -D`…); a `git fetch` still runs on one click, because a
+  confirmation you always accept teaches nothing. Docker's bulk action does the same for `stop` and
+  `recreate`, listing the services it is about to interrupt, and its button turns red as soon as such
+  a verb is picked. Stopping a *single* compose service is not guarded: it offers **Undo** instead,
+  which costs nothing when the stop was intended.
 - **Start a coding session straight from a Jira ticket.** The ticket detail gains a *Let the AI code it*
   button that opens the coding session modal already filled in: ticket content at the top of the prompt,
   suggested branch name and commit message from the key and summary, ticket number set. You pick the
@@ -68,12 +75,35 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **Action buttons follow one rule now.** A study of every screen found the same three problems
+  everywhere, and they are fixed: a destructive button is recognisable **at rest** and not only on
+  hover (`Merge`, `Stop`, `Delete` carry a red outline all the time); **one** strong-emphasis button
+  per row, card or dialog, so the recommended path is unambiguous — the seven Makefile *Run* buttons,
+  `Converge` in the new-session dialog and `Dismiss without review` all went back to neutral; and
+  **Cancel is always on the left**, the action on the right, in dialogs and in inline forms alike.
+  `Dismiss without review` also lost its green tick — it means "not now", not "approved" — for an
+  archive icon.
+- **Action rows are grouped by intent, and the grouping no longer depends on the language.** A merge
+  request card and a report's detail panel line up their buttons in three declared groups —
+  *consult* (view diff, context), *act* (converge, have the AI fix it, re-run) and *close* (mark
+  done, merge, delete). Until now the groups were whatever the row happened to wrap into, so the
+  same buttons clustered differently in French and in English. A group now stays whole: only the
+  space *between* groups breaks.
+- **`Delete the report` moved where it belongs.** It used to be the only button on the cards of the
+  left-hand list, which put a housekeeping action on the same footing as the whole review journey.
+  It now sits last among the report's own actions, in the detail panel, still red and still asking
+  for confirmation.
+- **The Dev AI columns stopped moving.** In coding, out-of-repo and exploration sessions the action
+  column now has a fixed width, and the actions on the *record* (edit, delete) sit below a separator,
+  right-aligned. The ✕ is at the same place on all three sub-tabs, whatever buttons the card shows.
 - **Coding sessions: `Diff` became `See the diff`** and opens the *same* full-screen viewer as merge
   requests — file tree, whole file with the changes in place, change navigation and minimap — with the
   **AI's report on the left** instead of the review report. The server routes behind both viewers are now
   shared, so there is a single implementation to maintain.
 - **`.env.example` is in English**, documents the GitHub TLS variables (`GITHUB_CA_CERT`,
-  `GITHUB_INSECURE_TLS`) and makes clear that forge API tokens are *not* set there — they live in Settings.
+  `GITHUB_INSECURE_TLS`) and makes clear that forge API tokens are *not* set there — they live in
+  Settings. It also carries a ready-to-uncomment `NO_PROXY` / `no_proxy` pair listing the hosts the
+  agent CLI calls, with the two error messages that tell you it is time to uncomment them.
 
 ### Fixed
 

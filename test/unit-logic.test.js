@@ -408,3 +408,31 @@ describe('agentsession : réseau vs authentification dans les erreurs copilot', 
     assert.equal(enrichCopilotError(e, bootstrap, '/x'), e, 'même objet Error, pas une copie');
   });
 });
+
+/* La liste des commandes git jugées destructives vit dans le front (public/app.js) : elle n'y
+   est pas exportable, mais se laisse évaluer isolément. Un test vaut mieux qu'une relecture :
+   trop large, elle fait confirmer un `git fetch` et on apprend à cliquer sans lire ; trop
+   étroite, un `reset --hard` part sur trente dépôts sans un mot. */
+describe('front : classement des commandes git destructives', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const from = src.indexOf('const GIT_DESTRUCTIVE');
+  const to = src.indexOf('\n', src.indexOf('function gitCmdIsDestructive'));
+  assert.ok(from > 0 && to > from, 'GIT_DESTRUCTIVE et gitCmdIsDestructive doivent rester ensemble dans app.js');
+  // eslint-disable-next-line no-new-func
+  const isDestructive = new Function(`${src.slice(from, to)}\nreturn gitCmdIsDestructive;`)();
+
+  test('les commandes qui détruisent du travail non poussé sont reconnues', () => {
+    for (const cmd of ['reset --hard origin/main', 'clean -fd', 'checkout -f main', 'push --force',
+      'push origin --delete old', 'branch -D old', 'tag -d v1.2', 'stash drop', 'rebase main',
+      'switch --discard-changes main', 'gc --prune=now', 'rm -r src', 'restore .']) {
+      assert.ok(isDestructive(cmd), `« git ${cmd} » devrait demander confirmation`);
+    }
+  });
+
+  test('les commandes de lecture ou de synchro courantes ne sont pas signalées', () => {
+    for (const cmd of ['fetch --all --prune', 'status', 'log --oneline', 'remote -v', 'pull --rebase',
+      'diff HEAD', 'branch -a', 'tag --list', 'stash list', 'describe --tags']) {
+      assert.ok(!isDestructive(cmd), `« git ${cmd} » ne devrait pas demander confirmation`);
+    }
+  });
+});

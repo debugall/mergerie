@@ -97,13 +97,15 @@ const skeleton = (n = 4) => `<div class="sk-wrap">${'<div class="sk"></div>'.rep
 
 // Toast avec annulation : remplace avantageusement un confirm() sur les actions
 // réversibles (l'utilisateur n'est pas interrompu, et peut revenir en arrière).
+// Un seul exemplaire de cette fonction : une seconde définition du même nom écraserait
+// silencieusement celle-ci (hoisting), et tous les appels partiraient sur l'autre signature.
 function toastUndo(msg, onUndo, ms = 6000) {
   const t = document.createElement('div');
   t.className = 'toast';
   const span = document.createElement('span');
   span.className = 'toast-msg'; span.textContent = msg;
   const b = document.createElement('button');
-  b.className = 'toast-btn'; b.textContent = '↩ Annuler';
+  b.className = 'toast-btn'; b.textContent = `↩ ${tr('ui.undo')}`;
   const timer = setTimeout(() => dismissToast(t), ms);
   b.addEventListener('click', () => { clearTimeout(timer); dismissToast(t); onUndo(); });
   t.appendChild(span); t.appendChild(b);
@@ -165,8 +167,8 @@ document.addEventListener('click', (e) => {
   const ed = document.createElement('div');
   ed.className = 'cmt-editor';
   ed.innerHTML = `<textarea placeholder="${tr('cmt.reply.ph')}"></textarea>`
-    + `<div class="cmt-actions"><button type="button" class="cmt-cancel" title="${tr('cmt.cancel.title')}">${tr('ui.cancel')}</button>`
-    + `<button type="button" class="primary cmt-send" title="${tr('cmt.reply.title', { forge: forgeLabel(split.forge) })}">${tr('cmt.reply.btn')}</button></div>`;
+    + `<div class="cmt-actions"><button type="button" class="btn btn-sm cmt-cancel" title="${tr('cmt.cancel.title')}">${tr('ui.cancel')}</button>`
+    + `<button type="button" class="btn btn-sm btn-primary cmt-send" title="${tr('cmt.reply.title', { forge: forgeLabel(split.forge) })}">${tr('cmt.reply.btn')}</button></div>`;
   wrap.appendChild(ed);
   btn.hidden = true;
   const ta = ed.querySelector('textarea'); ta.focus();
@@ -210,9 +212,9 @@ function errorBox(text, mrId, taskId) {
   const hint = errorHint(text);
   const hintHtml = hint ? `<div class="errhint">${esc(hint)}</div>` : '';
   const clear = mrId ? ` data-clear-mr="${mrId}"` : (taskId ? ` data-clear-task="${taskId}"` : '');
-  return `<div class="errbox"><div class="errhead"><span>⚠ Erreur</span>`
-    + `<span class="errbtns"><button class="errcopy" title="Copier le message d'erreur">copier</button>`
-    + `<button class="errclear"${clear} title="Effacer cette erreur"><svg class=\"ico\"><use href=\"#i-close\"/></svg></button></span></div>`
+  return `<div class="errbox"><div class="errhead"><span>⚠ ${tr('ui.error')}</span>`
+    + `<span class="errbtns"><button class="btn btn-sm errcopy" title="${esc(tr('err.copy-title'))}">${tr('ui.copy')}</button>`
+    + `<button class="btn btn-icon btn-sm btn-danger errclear"${clear} title="${esc(tr('err.clear-title'))}"><svg class=\"ico ico-sm\"><use href=\"#i-close\"/></svg></button></span></div>`
     + `${hintHtml}<pre>${esc(text)}</pre></div>`;
 }
 
@@ -1139,19 +1141,23 @@ function mrCard(m) {
   return `<div class="card">
     <div class="card-main">
       <div class="title">!${m.iid} — ${esc(m.title || '')}</div>
-      <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}${m.gitlab_created_at ? ` · ${fmtDate(m.gitlab_created_at)}` : ''}${ticketLink(m.ticket_url, m.ticket_key)}</div>
+      <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}${m.gitlab_created_at ? ` · ${fmtDate(m.gitlab_created_at)}` : ''}${ticketLink(m.ticket_url, m.ticket_key)}${m.web_url ? ` · <a href="${esc(m.web_url)}" target="_blank">${forgeLabel(m.forge)} ↗</a>` : ''}</div>
       <div class="meta branches"><code>${esc(m.source_branch)}</code> <span class="branch-arrow">→</span> <code>${esc(m.target_branch)}</code></div>
+      ${/* Les tags sont des MÉTADONNÉES, pas des actions : les laisser dans la rangée de
+            boutons décalait celle-ci d'une carte à l'autre selon le nombre de tags. */''}
+      <div class="card-tags">
+        ${(m.risk || []).map((r) => `<span class="tag risk" title="${esc(tr('mr.risk-title', { pattern: r.path_match }))}">⚠ ${esc(r.label)}</span>`).join('')}
+        <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
+        ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
+        ${m.last_error ? `<span class="tag stale">${tr('mr.tag.error')}</span>` : ''}
+      </div>
     </div>
     <div class="card-actions">
-    ${(m.risk || []).map((r) => `<span class="tag risk" title="${esc(tr('mr.risk-title', { pattern: r.path_match }))}">⚠ ${esc(r.label)}</span>`).join('')}
-    <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
-    ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
-    ${m.web_url ? `<a href="${esc(m.web_url)}" target="_blank">${forgeLabel(m.forge)} ↗</a>` : ''}
-    ${m.last_error ? `<span class="tag stale">${tr('mr.tag.error')}</span>` : ''}
+    <div class="btn-group">
     <button class="btn" data-diff="${m.id}" title="${tr('mr.btn.diff-title')}"><svg class="ico"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>
     <button class="btn" data-ticket="${m.id}" data-title="!${m.iid} — ${esc(m.title || '')}" title="${tr('mr.btn.context-title')}"><svg class="ico"><use href="#i-doc"/></svg>${m.has_ticket ? tr('mr.btn.context-done') : tr('mr.btn.context')}</button>
-    <button class="btn btn-ok" data-done="${m.id}" data-iid="${m.iid}" title="${tr('mr.btn.dismiss-title')}"><svg class=\"ico\"><use href=\"#i-check\"/></svg>${tr('mr.btn.dismiss')}</button>
-    ${m.closed_seen ? '' : `<button class="btn btn-danger" data-merge="${m.id}" title="${tr('mr.btn.merge-title')}"><svg class="ico"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>`}
+    </div>
+    <div class="btn-group">
     <button class="btn" data-dev="${m.id}" data-branch="${esc(m.source_branch)}" title="${tr('mr.btn.code-title')}"><svg class=\"ico\"><use href=\"#i-bot\"/></svg>${tr('mr.btn.code')}</button>
     <span class="btn-split">
       <button class="btn btn-primary" data-review="${m.id}" data-iid="${m.iid}" title="${tr('mr.btn.review-title')}"><svg class=\"ico\"><use href=\"#i-play\"/></svg>${tr('mr.btn.review')}</button>
@@ -1161,6 +1167,11 @@ function mrCard(m) {
         <button role="menuitem" data-review-run="${m.id}" data-iid="${m.iid}" data-explain="0">${tr('mr.btn.review-no-explain')}</button>
       </div>
     </span>
+    </div>
+    <div class="btn-group">
+    <button class="btn" data-done="${m.id}" data-iid="${m.iid}" title="${tr('mr.btn.dismiss-title')}"><svg class=\"ico\"><use href=\"#i-archive\"/></svg>${tr('mr.btn.dismiss')}</button>
+    ${m.closed_seen ? '' : `<button class="btn btn-danger" data-merge="${m.id}" title="${tr('mr.btn.merge-title')}"><svg class="ico"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>`}
+    </div>
     </div>
   </div>${m.last_error ? errorBox(m.last_error, m.id) : ''}`;
 }
@@ -1231,21 +1242,9 @@ function renderReports() {
           ${m.stale ? `<span class="tag stale">${tr('mr.tag.stale')}</span>` : ''}
         </div>
       </div>
-      <button class="btn btn-icon btn-sm btn-danger" data-delreport="${m.id}" data-iid="${m.iid}" title="${tr('mr.btn.delete-report-title')}"><svg class=\"ico\"><use href=\"#i-trash\"/></svg></button>
     </div>`).join('');
   $$('#reportList .card').forEach((c) => c.addEventListener('click', () => openReport(Number(c.dataset.id))));
   if (!selectedMr) renderReportPlaceholder();
-  $$('#reportList [data-delreport]').forEach((b) => b.addEventListener('click', async (e) => {
-    e.stopPropagation(); // ne pas ouvrir le rapport
-    if (!await confirmDialog({ text: tr('confirm.delete-report', { iid: b.dataset.iid }), confirmLabel: tr('ui.delete') })) return;
-    const id = Number(b.dataset.delreport);
-    try {
-      await api(`/mrs/${id}/delete-review`, { method: 'POST' });
-      if (selectedMr === id) { selectedMr = null; renderReportPlaceholder(); }
-      toast(tr('toast.rapport-de-supprime-mr-remise', { iid: b.dataset.iid }));
-      loadReports(currentSeg); refreshStatus();
-    } catch (err) { toast(err.message, true); }
-  }));
 }
 // la recherche est partagée : #searchReview rafraîchit le stade courant
 
@@ -1376,15 +1375,22 @@ async function openReport(id) {
     </div>
 
     <div class="detail-actions">
-      <button id="aSplit" class="btn btn-primary" title="${tr('report.btn.split-title')}"><svg class=\"ico\"><use href=\"#i-expand\"/></svg>${tr('report.btn.split')}</button>
-      <button id="aTicket" class="btn" title="${tr('report.btn.context-title')}"><svg class="ico"><use href="#i-doc"/></svg>${tr('mr.btn.context')}${d.ticket && (d.ticket.text || d.ticket.has_image) ? ' ✓' : ''}</button>
-      ${d.review ? `<button id="aFix" class="btn" title="${tr('report.btn.fix-title')}"><svg class="ico"><use href="#i-bot"/></svg>${tr('report.btn.fix')}</button>` : ''}
-      ${d.review && m.status !== 'done' && !m.closed_seen ? `<button id="aConverge" class="btn btn-converge" title="${tr('report.btn.converge-title')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : ''}
-      ${m.closed_seen ? '' : `<button id="aMerge" class="btn btn-danger" data-target="${esc(m.target_branch || '')}" title="${tr('report.btn.merge-title', { forge: forgeLabel(m.forge) })}"><svg class=\"ico\"><use href=\"#i-merge\"/></svg>${tr('task.btn.merge')}</button>`}
-      ${m.status !== 'done' ? `<button id="aDone" class="btn btn-ok" title="${tr('report.btn.done-title')}"><svg class=\"ico\"><use href=\"#i-check\"/></svg>${tr('report.btn.done')}</button>` : `<button id="aReopen" class="btn" title="${tr('report.btn.reopen-title')}"><svg class=\"ico\"><use href=\"#i-reset\"/></svg>${tr('report.btn.reopen')}</button>`}
-      ${m.status !== 'done' ? `<button id="aRe" class="btn" title="${tr('report.btn.rerun-title')}"><svg class=\"ico\"><use href=\"#i-repeat\"/></svg>${tr('report.btn.rerun')}</button>` : ''}
-      ${m.status !== 'done' && d.stale ? `<button id="aReInc" class="btn" title="${tr('report.btn.rerun-inc-title')}"><svg class=\"ico\"><use href=\"#i-repeat\"/></svg>${tr('report.btn.rerun-inc')}</button>` : ''}
-      ${resumeCmdBtn(d.resume_cmd)}
+      <div class="btn-group">
+        <button id="aSplit" class="btn btn-primary" title="${tr('report.btn.split-title')}"><svg class=\"ico\"><use href=\"#i-expand\"/></svg>${tr('report.btn.split')}</button>
+        <button id="aTicket" class="btn" title="${tr('report.btn.context-title')}"><svg class="ico"><use href="#i-doc"/></svg>${tr('mr.btn.context')}${d.ticket && (d.ticket.text || d.ticket.has_image) ? ' ✓' : ''}</button>
+      </div>
+      <div class="btn-group">
+        ${d.review && m.status !== 'done' && !m.closed_seen ? `<button id="aConverge" class="btn btn-converge" title="${tr('report.btn.converge-title')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : ''}
+        ${d.review ? `<button id="aFix" class="btn" title="${tr('report.btn.fix-title')}"><svg class="ico"><use href="#i-bot"/></svg>${tr('report.btn.fix')}</button>` : ''}
+        ${m.status !== 'done' ? `<button id="aRe" class="btn" title="${tr('report.btn.rerun-title')}"><svg class=\"ico\"><use href=\"#i-repeat\"/></svg>${tr('report.btn.rerun')}</button>` : ''}
+        ${m.status !== 'done' && d.stale ? `<button id="aReInc" class="btn" title="${tr('report.btn.rerun-inc-title')}"><svg class=\"ico\"><use href=\"#i-repeat\"/></svg>${tr('report.btn.rerun-inc')}</button>` : ''}
+        ${resumeCmdBtn(d.resume_cmd)}
+      </div>
+      <div class="btn-group">
+        ${m.status !== 'done' ? `<button id="aDone" class="btn btn-ok" title="${tr('report.btn.done-title')}"><svg class=\"ico\"><use href=\"#i-check\"/></svg>${tr('report.btn.done')}</button>` : `<button id="aReopen" class="btn" title="${tr('report.btn.reopen-title')}"><svg class=\"ico\"><use href=\"#i-reset\"/></svg>${tr('report.btn.reopen')}</button>`}
+        ${m.closed_seen ? '' : `<button id="aMerge" class="btn btn-danger" data-target="${esc(m.target_branch || '')}" title="${tr('report.btn.merge-title', { forge: forgeLabel(m.forge) })}"><svg class=\"ico\"><use href=\"#i-merge\"/></svg>${tr('task.btn.merge')}</button>`}
+        <button id="aDelReport" class="btn btn-danger" data-iid="${m.iid}" title="${tr('mr.btn.delete-report-title')}"><svg class=\"ico\"><use href=\"#i-trash\"/></svg>${tr('report.btn.delete')}</button>
+      </div>
     </div>
 
     ${m.last_error ? errorBox(m.last_error, m.id) : ''}
@@ -1517,6 +1523,19 @@ async function openReport(id) {
   // Converger : ouvre la modale de lancement (seuil + plafond pré-remplis depuis la config).
   const conv = $('#aConverge'); if (conv) conv.addEventListener('click', () => openConvergeModal({ type: 'mr', id, label: `!${m.iid}` }));
 
+  /* Supprimer le rapport vit ici, avec les autres actions sur l'objet, et non plus sur la
+     carte de la colonne de gauche : c'y était la SEULE action visible, ce qui la mettait
+     très en avant pour ce qu'elle est — un nettoyage, pas une étape du parcours. */
+  const del = $('#aDelReport'); if (del) del.addEventListener('click', async () => {
+    if (!await confirmDialog({ text: tr('confirm.delete-report', { iid: m.iid }), confirmLabel: tr('ui.delete') })) return;
+    try {
+      await api(`/mrs/${id}/delete-review`, { method: 'POST' });
+      selectedMr = null; renderReportPlaceholder();
+      toast(tr('toast.rapport-de-supprime-mr-remise', { iid: m.iid }));
+      loadReports(currentSeg); refreshStatus();
+    } catch (e) { toast(explainError(e.message), true); }
+  });
+
   $('#btnModify').addEventListener('click', async () => {
     const instruction = $('#modifyInput').value.trim();
     if (!instruction) return;
@@ -1570,7 +1589,7 @@ function renderDiffLines(diff) {
     const pfx = type === 'add' ? '+' : type === 'del' ? '-' : ' ';
     rows.push(`<div class="dl-row ${type}" data-old="${o}" data-new="${n}">`
       + `<span class="ln ln-old">${o}</span><span class="ln ln-new">${n}</span>`
-      + `<button class="cbtn ln-comment" title="Commenter cette ligne"><svg class="ico"><use href="#i-plus"/></svg></button>`
+      + `<button class="cbtn ln-comment" title="${tr('cmt.inline.line-title')}"><svg class="ico"><use href="#i-plus"/></svg></button>`
       + `<span class="dl ${type}">${esc(pfx)}${highlightCode(code)}</span></div>`);
   }
   return { html: `<div class="difflines">${rows.join('')}</div>`, oldPath, newPath };
@@ -1830,7 +1849,7 @@ function renderDecisionPanel(m, stats) {
       <p class="muted">${tr('preview.decision.help')}</p>
       <div class="diff-decision-actions">
         <button id="pvReview" class="btn btn-primary"><svg class="ico"><use href="#i-play"/></svg>${tr('mr.btn.review')}</button>
-        <button id="pvDismiss" class="btn btn-ok"><svg class="ico"><use href="#i-check"/></svg>${tr('mr.btn.dismiss')}</button>
+        <button id="pvDismiss" class="btn"><svg class="ico"><use href="#i-archive"/></svg>${tr('mr.btn.dismiss')}</button>
         ${m.closed_seen ? '' : `<button id="pvMerge" class="btn btn-danger"><svg class="ico"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>`}
       </div>
     </div>`;
@@ -1908,8 +1927,8 @@ $('#fileContent').addEventListener('click', (e) => {
   ed.className = 'cmt-editor';
   const forge = forgeLabel(split.forge);
   ed.innerHTML = `<textarea placeholder="${tr('cmt.inline.ph')}"></textarea>`
-    + `<div class="cmt-actions"><button type="button" class="cmt-cancel" title="${tr('cmt.cancel.title')}">${tr('ui.cancel')}</button>`
-    + `<button type="button" class="primary cmt-send" title="${tr('cmt.inline.title', { forge })}">${tr('cmt.inline.btn', { forge })}</button></div>`;
+    + `<div class="cmt-actions"><button type="button" class="btn btn-sm cmt-cancel" title="${tr('cmt.cancel.title')}">${tr('ui.cancel')}</button>`
+    + `<button type="button" class="btn btn-sm btn-primary cmt-send" title="${tr('cmt.inline.title', { forge })}">${tr('cmt.inline.btn', { forge })}</button></div>`;
   row.after(ed);
   const ta = ed.querySelector('textarea'); ta.focus();
   ed.querySelector('.cmt-cancel').addEventListener('click', () => ed.remove());
@@ -2232,8 +2251,8 @@ async function loadRepos() {
         <input data-f="project" value="${esc(r.project)}" placeholder="${tr('settings.repo.ph.project')}" />
         <input data-f="branch_pattern" value="${esc(r.branch_pattern || '')}" placeholder="${tr('settings.repo.ph.pattern')}" />
         <div class="repo-edit-actions">
-          <button class="btn btn-primary" data-save="${r.id}" title="${tr('settings.repo.save-title')}">${tr('ui.save')}</button>
           <button class="btn" data-cancel="${r.id}" title="${tr('settings.repo.cancel-title')}">${tr('ui.cancel')}</button>
+          <button class="btn btn-primary" data-save="${r.id}" title="${tr('settings.repo.save-title')}">${tr('ui.save')}</button>
         </div>
       </div>
     </div>`).join('') : emptyState({ icon: 'inbox', title: tr('settings.repo.empty.title'), text: tr('settings.repo.empty.text') });
@@ -2528,7 +2547,7 @@ function targetRowHtml(idx, sel = {}) {
     </div>${hint(tr('task.tip.repo'))}
     ${workField}${workHint}
     ${baseField}${taskKind === 'code' ? hint(tr('task.tip.base-branch')) : ''}
-    <button type="button" class="btn btn-icon btn-sm btn-danger" data-rmrow="${idx}" title="Retirer ce projet"><svg class="ico ico-sm"><use href="#i-close"/></svg></button>
+    <button type="button" class="btn btn-icon btn-sm btn-danger" data-rmrow="${idx}" title="${tr('task.title.remove-project')}"><svg class="ico ico-sm"><use href="#i-close"/></svg></button>
   </div>`;
 }
 function readTargetRows() {
@@ -3100,15 +3119,16 @@ function localCard(t) {
       <div class="targets">${(t.dirs || []).map(localDirLine).join('')}</div>
       <div class="mr-create followup" data-lfollowform="${t.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('local.followup.ph'))}"></textarea>
-        <button class="btn btn-primary" data-lfollowsubmit="${t.id}">${tr('task.btn.run-iteration')}</button>
         <button class="btn" data-lfollowcancel="${t.id}">${tr('ui.cancel')}</button>
+        <button class="btn btn-primary" data-lfollowsubmit="${t.id}">${tr('task.btn.run-iteration')}</button>
       </div>
     </div>
-    <div class="task-actions">
-      ${canRun ? `<button class="btn" data-lrun="${t.id}" title="${esc(tr('local.run-title'))}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : ''}
-      ${canFollow ? `<button class="btn" data-lfollow="${t.id}" title="${esc(tr('local.followup.title'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : ''}
-      <button class="btn btn-icon btn-sm btn-danger" data-ldel="${t.id}" title="${esc(tr('local.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>
-    </div>
+    ${taskActions([
+    canRun ? `<button class="btn" data-lrun="${t.id}" title="${esc(tr('local.run-title'))}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
+    canFollow ? `<button class="btn" data-lfollow="${t.id}" title="${esc(tr('local.followup.title'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : '',
+  ], [
+    `<button class="btn btn-icon btn-sm btn-danger" data-ldel="${t.id}" title="${esc(tr('local.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>`,
+  ])}
   </div>${t.last_error ? errorBox(t.last_error) : ''}`;
 }
 
@@ -3161,6 +3181,17 @@ function renderLocalTasks() {
 }
 
 
+/* Colonne d'actions d'une carte Dev IA, en deux familles : ce qu'on fait avec le TRAVAIL
+   (lancer, converger, demander une correction) au-dessus, ce qu'on fait avec la FICHE
+   (modifier, supprimer) en dessous. Mélangées dans une seule pile, la suppression se
+   retrouvait tantôt sous « Converger », tantôt sous « Lancer » selon le sous-onglet.
+   L'ordre des emplacements est le même partout ; ceux qui ne s'appliquent pas sont omis. */
+function taskActions(work, meta) {
+  const w = work.filter(Boolean).join('');
+  const m = meta.filter(Boolean).join('');
+  return `<div class="task-actions">${w ? `<div class="ta-work">${w}</div>` : ''}${m ? `<div class="ta-meta">${m}</div>` : ''}</div>`;
+}
+
 // En-tête commun : statut, date de création, prompt.
 function taskHead(t) {
   const st = TASK_STATUS[t.status] || { label: t.status, cls: '' };
@@ -3185,18 +3216,19 @@ function codeCard(t) {
         ${(t.targets || []).map((tg) => targetLine(t, tg)).join('')}
       </div>
       <div class="mr-create followup" data-followform="${t.id}" hidden>
-        <textarea class="followup-text" placeholder="Demande de suivi : fais aussi X, corrige Y…"></textarea>
+        <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph'))}"></textarea>
+        <button class="btn" data-followcancel="${t.id}">${tr('ui.cancel')}</button>
         <button class="btn btn-primary" data-followsubmit="${t.id}">${tr('task.btn.run-iteration')}</button>
-        <button class="btn" data-followcancel="${t.id}">Annuler</button>
       </div>
     </div>
-    <div class="task-actions">
-      ${canRun ? `<button class="btn" data-trun="${t.id}" title="${t.status === 'new' ? 'Lancer la session sur tous les projets' : 'Relancer la session sur tous les projets'}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? 'Lancer' : 'Relancer'}</button>` : ''}
-      ${canRun ? `<button class="btn btn-converge" data-tconverge="${t.id}" data-label="${esc(tr('task.projects', { n: (t.targets || []).length, count: (t.targets || []).length }))}" title="${tr('task.title.converge')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : ''}
-      ${canFollow ? `<button class="btn" data-tfollow="${t.id}" title="Relancer l'IA sur les branches existantes avec une demande de suivi"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : ''}
-      <button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="Modifier"><svg class="ico"><use href="#i-edit"/></svg></button>
-      <button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="Supprimer"><svg class="ico"><use href="#i-close"/></svg></button>
-    </div>
+    ${taskActions([
+    canRun ? `<button class="btn" data-trun="${t.id}" title="${t.status === 'new' ? tr('task.title.run-all') : tr('task.title.rerun-all')}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
+    canRun ? `<button class="btn btn-converge" data-tconverge="${t.id}" data-label="${esc(tr('task.projects', { n: (t.targets || []).length, count: (t.targets || []).length }))}" title="${tr('task.title.converge')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : '',
+    canFollow ? `<button class="btn" data-tfollow="${t.id}" title="${esc(tr('task.title.request-fix'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : '',
+  ], [
+    `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
+    `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>`,
+  ])}
   </div>${t.last_error ? errorBox(t.last_error, null, t.id) : ''}`;
 }
 
@@ -3290,18 +3322,19 @@ function exploreCard(t) {
         </div>`).join('')}
       </div>
       <div class="mr-create followup" data-followform="${t.id}" hidden>
-        <textarea class="followup-text" placeholder="Question de suivi : creuse le point X, compare avec Y…"></textarea>
-        <button class="btn btn-primary" data-followsubmit="${t.id}">Poser la question</button>
-        <button class="btn" data-followcancel="${t.id}">Annuler</button>
+        <textarea class="followup-text" placeholder="${esc(tr('explore.followup.ph'))}"></textarea>
+        <button class="btn" data-followcancel="${t.id}">${tr('ui.cancel')}</button>
+        <button class="btn btn-primary" data-followsubmit="${t.id}">${tr('task.btn.ask')}</button>
       </div>
     </div>
-    <div class="task-actions">
-      ${t.md_path ? `<button class="btn btn-primary" data-tmd="${t.id}" title="${tr('task.title.view-answer')}"><svg class="ico"><use href="#i-doc"/></svg>${tr('task.btn.view-answer')}</button>` : ''}
-      ${canRun ? `<button class="btn" data-trun="${t.id}" title="${t.status === 'new' ? 'Lancer l\'exploration' : 'Relancer l\'exploration'}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? 'Lancer' : 'Relancer'}</button>` : ''}
-      ${t.md_path ? `<button class="btn" data-tfollow="${t.id}" title="${tr('task.title.follow-up')}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.follow-up')}</button>` : ''}
-      <button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="Modifier"><svg class="ico"><use href="#i-edit"/></svg></button>
-      <button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="Supprimer"><svg class="ico"><use href="#i-close"/></svg></button>
-    </div>
+    ${taskActions([
+    t.md_path ? `<button class="btn btn-primary" data-tmd="${t.id}" title="${tr('task.title.view-answer')}"><svg class="ico"><use href="#i-doc"/></svg>${tr('task.btn.view-answer')}</button>` : '',
+    canRun ? `<button class="btn" data-trun="${t.id}" title="${t.status === 'new' ? tr('task.title.run-explore') : tr('task.title.rerun-explore')}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
+    t.md_path ? `<button class="btn" data-tfollow="${t.id}" title="${tr('task.title.follow-up')}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.follow-up')}</button>` : '',
+  ], [
+    `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
+    `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>`,
+  ])}
   </div>${t.last_error ? errorBox(t.last_error, null, t.id) : ''}`;
 }
 
@@ -4849,6 +4882,20 @@ async function loadGitCommands() {
 
 function cmdReadTargets() { return [...CMD.selected].map((name) => ({ root_id: Number(CMD.rootId), name })); }
 
+/* Commandes git qui peuvent détruire du travail non poussé. La prévisualisation liste bien
+   les projets ciblés, mais elle n'alerte pas : `git reset --hard` sur trente dépôts ne se
+   rattrape pas. On ne demande confirmation que pour ces verbes-là — confirmer un `git fetch`
+   n'apprendrait qu'à cliquer sans lire. */
+const GIT_DESTRUCTIVE = [
+  /(^|\s)reset\s+.*(--hard|--merge|--keep)/, /(^|\s)clean\s+.*-[a-zA-Z]*[fdx]/,
+  /(^|\s)checkout\s+.*(-f|--force)/, /(^|\s)switch\s+.*(-f|--force|--discard-changes)/,
+  /(^|\s)push\s+.*(--force|--delete|\s-f(\s|$)|\s-d(\s|$))/,
+  /(^|\s)branch\s+.*-D/, /(^|\s)tag\s+.*(-d|--delete)/,
+  /(^|\s)(rm|restore|rebase|filter-branch)(\s|$)/,
+  /(^|\s)stash\s+(drop|clear)/, /(^|\s)update-ref\s+.*-d/, /(^|\s)gc\s+.*--prune/,
+];
+function gitCmdIsDestructive(cmd) { return GIT_DESTRUCTIVE.some((re) => re.test(cmd)); }
+
 function cmdPreview() {
   const targets = cmdReadTargets();
   const command = ($('#cmdInput').value || '').trim();
@@ -4861,11 +4908,19 @@ function cmdPreview() {
     <p class="muted">${esc(tr('git.commands.on-projects', { n: targets.length, count: targets.length }))}</p>
     <ul class="cmd-preview-list">${targets.map((t) => `<li>${esc(t.name)}</li>`).join('')}</ul>
     <div class="form-actions">
-      <button id="cmdRun" class="btn btn-primary"><svg class="ico"><use href="#i-play"/></svg>${esc(tr('git.commands.execute'))}</button>
       <button id="cmdCancel" class="btn">${esc(tr('git.commands.cancel'))}</button>
+      <button id="cmdRun" class="btn btn-primary"><svg class="ico"><use href="#i-play"/></svg>${esc(tr('git.commands.execute'))}</button>
     </div>
   </div>`;
-  $('#cmdRun').addEventListener('click', () => cmdExecute(targets, command));
+  $('#cmdRun').addEventListener('click', async () => {
+    if (gitCmdIsDestructive(command) && !await confirmDialog({
+      title: tr('git.commands.confirm-title'),
+      text: tr('git.commands.confirm-text', { n: targets.length, count: targets.length }),
+      detail: `git ${command}`,
+      confirmLabel: tr('git.commands.execute'),
+    })) return;
+    cmdExecute(targets, command);
+  });
   $('#cmdCancel').addEventListener('click', () => { box.hidden = true; });
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -5278,6 +5333,7 @@ function dactUpdateCount() {
 }
 function renderDockerActions() {
   const box = $('#dactList'); if (!box) return;
+  dactSyncApply();
   const items = dactItems();
   if (!items.length) { box.innerHTML = `<p class="muted">${esc(tr('docker.actions.none'))}</p>`; dactUpdateCount(); return; }
   const byProj = new Map();
@@ -5309,11 +5365,28 @@ async function loadDockerActions() {
     renderDockerActions();
   } catch (e) { if (box) box.innerHTML = errorBox(explainError(e.message)); }
 }
+/* Verbes qui coupent un service en cours. Le bouton d'action groupée devient rouge et demande
+   confirmation, comme l'aperçu git le fait déjà pour une suppression : ici l'action porte sur
+   N services d'un coup, et rien à l'écran ne rappelle lesquels une fois la liste défilée.
+   Les autres verbes (build, pull, up, restart) n'interrompent rien de durable. */
+const DACT_DESTRUCTIVE = new Set(['stop', 'recreate']);
+function dactSyncApply() {
+  const btn = $('#dactApply'); const sel = $('#dactAction');
+  if (!btn || !sel) return;
+  btn.className = DACT_DESTRUCTIVE.has(sel.value) ? 'btn btn-danger btn-solid' : 'btn btn-primary';
+}
+
 async function dactApply() {
   const action = $('#dactAction').value;
   const targets = [...DACT.selected.values()]; // {dir, service} directement — aucun re-parsing
   if (!targets.length) return;
   const b = $('#dactApply');
+  if (DACT_DESTRUCTIVE.has(action) && !await confirmDialog({
+    title: tr('docker.actions.confirm-title'),
+    text: tr(`docker.actions.confirm-${action}`, { n: targets.length, count: targets.length }),
+    detail: targets.map((t) => `• ${t.service}`).join('\n'),
+    confirmLabel: tr('docker.actions.apply'),
+  })) return;
   try {
     await busy(b, () => api('/docker/bulk-action', { method: 'POST', body: { action, targets } }));
     // Feedback chiffré : l'action est asynchrone (file de jobs), le détail par service arrive
@@ -5323,7 +5396,7 @@ async function dactApply() {
 }
 // Changer d'action réinitialise la sélection (elle appartient à une action) ; le filtre d'état
 // et la recherche ne font que masquer/afficher — ils préservent la sélection.
-$('#dactAction') && $('#dactAction').addEventListener('change', () => { DACT.selected.clear(); renderDockerActions(); });
+$('#dactAction') && $('#dactAction').addEventListener('change', () => { DACT.selected.clear(); dactSyncApply(); renderDockerActions(); });
 $('#dactFilter') && $('#dactFilter').addEventListener('change', renderDockerActions);
 $('#dactSearch') && $('#dactSearch').addEventListener('input', renderDockerActions);
 $('#dactApply') && $('#dactApply').addEventListener('click', dactApply);
@@ -5457,7 +5530,7 @@ function dockerMakefileBlock(p) {
   const mk = p.makefile;
   if (!mk || !mk.targets || !mk.targets.length) return '';
   const item = (t) => `<div class="mk-item" data-name="${esc(t.name)}" data-desc="${esc(t.desc || '')}">
-      <button class="btn btn-sm btn-primary mk-run" data-dir="${esc(p.dir)}" data-target="${esc(t.name)}" title="${esc(tr('docker.make.run-title', { target: t.name }))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr('docker.make.run'))}</button>
+      <button class="btn btn-sm mk-run" data-dir="${esc(p.dir)}" data-target="${esc(t.name)}" title="${esc(tr('docker.make.run-title', { target: t.name }))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr('docker.make.run'))}</button>
       <code class="mk-name">${esc(t.name)}</code>
       ${t.recipe ? `<button type="button" class="hint hint-code mk-eye" tabindex="0" aria-label="${esc(tr('docker.make.view-cmd'))}" data-tip="${esc(t.recipe.slice(0, 1400))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg></button>` : ''}
       ${t.desc ? `<span class="muted mk-desc">${esc(t.desc)}</span>` : ''}
@@ -5646,9 +5719,18 @@ function renderDockerOrphans(d) {
 function wireDockerActions(box) {
   $$('[data-dockeract]', box).forEach((b) => b.addEventListener('click', async () => {
     const services = b.dataset.svc ? [b.dataset.svc] : [];
+    const { dir } = b.dataset;
+    const action = b.dataset.dockeract;
+    const run = (a) => api('/docker/compose/action', { method: 'POST', body: { dir, action: a, services } });
     try {
-      await busy(b, () => api('/docker/compose/action', { method: 'POST', body: { dir: b.dataset.dir, action: b.dataset.dockeract, services } }));
-      toast(tr('docker.act.started')); refreshStatus();
+      await busy(b, () => run(action));
+      // Un stop de service se rattrape par un up : on l'offre plutôt que de le faire confirmer.
+      if (action === 'stop' && services.length) {
+        toastUndo(tr('docker.act.started'), () => run('up')
+          .then(() => { toast(tr('docker.act.started')); refreshStatus(); })
+          .catch((e) => toast(explainError(e.message), true)));
+      } else toast(tr('docker.act.started'));
+      refreshStatus();
     } catch (e) { toast(explainError(e.message), true); }
   }));
   $$('[data-dockerdown]', box).forEach((b) => b.addEventListener('click', async () => {
