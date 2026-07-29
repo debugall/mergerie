@@ -56,6 +56,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   `down`…) share one styled modal: themed, translated, and with a button that names the action instead
   of a mute "OK". Irreversible actions are recognisable at rest, not only on hover.
 
+- **Start a coding session straight from a Jira ticket.** The ticket detail gains a *Let the AI code it*
+  button that opens the coding session modal already filled in: ticket content at the top of the prompt,
+  suggested branch name and commit message from the key and summary, ticket number set. You pick the
+  repository and add your own instructions — nothing is launched until you say so.
+
 ### Changed
 
 - **Coding sessions: `Diff` became `See the diff`** and opens the *same* full-screen viewer as merge

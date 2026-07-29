@@ -564,10 +564,17 @@ app.get('/api/jira/attachment/:id', wrap(async (req, res) => {
 // Récupère un ticket Jira par son numéro et renvoie son contexte prêt à injecter
 // (titre + description en Markdown). Utilisé pour enrichir une session de dev.
 app.post('/api/jira/fetch', wrap(async (req, res) => {
-  const cfg = getConfig();
-  if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const key = String((req.body && req.body.key) || '').trim().toUpperCase();
   if (!key) throw new Error(t('err.jira.test-key-required'));
+  // En démo, comme les autres routes Jira : le contexte vient du jeu fictif, sinon
+  // « Faire coder l'IA » et « Récupérer » seraient les seuls boutons Jira inertes.
+  if (demoDocker.isDemo()) {
+    const d = demoJira.issue(key);
+    const body = [`# ${d.summary}`, '', d.descriptionMd || ''].join('\n');
+    return res.json({ key: d.key, summary: d.summary, context: body });
+  }
+  const cfg = getConfig();
+  if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const issue = await jira.fetchIssue(cfg, key);
   res.json({ key: issue.key, summary: issue.summary, context: jira.issueToContext(issue) });
 }));

@@ -2733,6 +2733,45 @@ async function openTaskForMr(m, opts = {}) {
   f.prompt.focus();
 }
 
+/* Depuis un ticket Jira : ouvre la modale de codage déjà remplie du contexte du ticket.
+   Même mécanique que `openTaskForMr`, mais la source est le ticket : on récupère son
+   contenu (summary + description convertie en Markdown) et on le met en tête du prompt,
+   comme le fait le bouton « Récupérer » de la modale — un seul format de contexte à
+   maintenir. La branche est proposée d'après la clé du ticket, jamais imposée. */
+async function openTaskForJira(key) {
+  const f = $('#taskForm');
+  f.reset(); taskNewImages = []; renderTaskPreviews();
+  editingTaskId = null; taskKind = 'code';
+  launchAfterCreate = false; convergeAfterCreate = false;   // on prépare, l'utilisateur lance
+  await loadRepoOptions();
+  applyKindToModal('code');
+
+  let issue = null;
+  try { issue = await api('/jira/fetch', { method: 'POST', body: { key } }); }
+  catch (e) { toast(explainError(e.message), true); }      // le ticket reste ouvrable sans contexte
+
+  const slug = String((issue && issue.summary) || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')      // sans accents (noms de branche)
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  const branch = `feature/${key}${slug ? `-${slug}` : ''}`;
+  renderTargetRows([{ branch }]);                           // dépôt à choisir : on ne peut pas le deviner
+  setupTaskJira(branch);
+
+  if (issue) {
+    f.prompt.value = `${tr('task.jira.context-header', { key: issue.key })}\n\n${(issue.context || '').trim()}\n\n---\n\n`;
+    if (f.commit_message) f.commit_message.value = `${key} ${issue.summary || ''}`.trim();
+  }
+  $('#taskModalTitle').textContent = tr('jira.code-modal-title', { key });
+  $('#taskExistingImgs').textContent = issue ? tr('jira.code-from', { key: issue.key, summary: issue.summary || '' }) : '';
+  $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-play"/></svg>${tr('task.btn.create-run')}`;
+  $('#taskSubmitOnly').hidden = false;
+  $('#taskModal').hidden = false;
+  f.prompt.focus();
+  // Curseur après le bloc de contexte : on écrit SA demande, pas au milieu du ticket.
+  const end = f.prompt.value.length;
+  try { f.prompt.setSelectionRange(end, end); } catch { /* champ non focusable */ }
+}
+
 async function openTaskEdit(id) {
   const f = $('#taskForm');
   f.reset(); taskNewImages = []; renderTaskPreviews();
@@ -5866,6 +5905,7 @@ function renderJiraDetail(it) {
             ${it.transitions.map((tt) => `<option value="${esc(tt.id)}">→ ${esc(tt.to ? tt.to.name : tt.name)}</option>`).join('')}
           </select>` : ''}
           <span class="spacer"></span>
+          <button type="button" class="btn btn-sm btn-primary" data-jiracode="${esc(it.key)}" title="${esc(tr('jira.code-title'))}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${esc(tr('jira.code'))}</button>
           <a href="${esc(it.url)}" target="_blank" rel="noopener" class="jira-open">${esc(tr('jira.open'))} ↗</a>
         </div>
         <h2 class="jira-title">${esc(it.summary)}</h2>
@@ -5993,6 +6033,8 @@ $('#jiraList') && $('#jiraList').addEventListener('click', (e) => {
 });
 // Lightbox : clic sur une vignette d'image → aperçu en grand (Échap/clic dehors ferme, cf. handler modales).
 $('#jiraDetail') && $('#jiraDetail').addEventListener('click', (e) => {
+  const code = e.target.closest('[data-jiracode]');
+  if (code) { openTaskForJira(code.dataset.jiracode).catch((err) => toast(explainError(err.message), true)); return; }
   const img = e.target.closest('[data-jimg]'); if (!img) return; // vignettes ET images inline
   e.preventDefault();
   $('#jiraLightboxImg').src = img.dataset.jimg;

@@ -332,6 +332,11 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   Markdown) et les **pièces jointes** — **téléchargées à la demande** via un **proxy serveur** qui récupère
   le fichier avec le token (un lien direct échouerait, l'API Jira exigeant l'auth). Plus un lien **Ouvrir
   dans Jira**.
+- **`Faire coder l'IA` depuis le ticket.** Le bouton en tête du détail ouvre la **modale de session de
+  codage déjà remplie** : le contenu du ticket (titre + description) est mis en tête du prompt, le message
+  de commit et le **nom de branche** (`feature/PROJ-1421-…`) sont proposés d'après la clé et le résumé, et
+  le numéro de ticket est renseigné. Il ne reste qu'à choisir le dépôt et à préciser ta demande sous le
+  contexte — le curseur y est déjà placé. La session n'est **pas lancée automatiquement** : tu relis avant.
 - **Changer l'état du ticket** : un sélecteur dans l'en-tête liste les **transitions autorisées** (ce que Jira
   permet pour toi sur ce ticket) ; en choisir une **applique la transition** et rafraîchit le statut (détail
   + liste). Rien n'est proposé si tu n'as pas les droits.
