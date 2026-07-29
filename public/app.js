@@ -525,8 +525,15 @@ async function openConvergeModal(target) {
     $('#convThreshold').value = c.converge_threshold || '8';
     $('#convPasses').value = c.converge_max_passes || '3';
   } catch { $('#convThreshold').value = '8'; $('#convPasses').value = '3'; }
+  /* Titre et phrase d'accroche selon la CIBLE : depuis une session, l'IA va d'abord
+     coder et ouvrir la MR — annoncer « Converger la MR » y serait faux. */
+  const isTask = target.type === 'task';
+  $('#convergeModalTitle').textContent = tr(isTask ? 'converge.modal.title-task' : 'converge.modal.title');
+  const what = $('#convergeModalWhat');
+  what.textContent = target.label ? tr(isTask ? 'converge.modal.what-task' : 'converge.modal.what', { what: target.label }) : '';
+  what.hidden = !target.label;
   // Note spécifique session : l'IA va AUSSI coder et ouvrir la MR.
-  const note = $('#convSessionNote'); if (note) note.hidden = target.type !== 'task';
+  const note = $('#convSessionNote'); if (note) note.hidden = !isTask;
   $('#convergeModal').hidden = false;
 }
 function closeConvergeModal() { $('#convergeModal').hidden = true; convergeTarget = null; }
@@ -1508,7 +1515,7 @@ async function openReport(id) {
     catch (e) { toast(e.message, true); }
   });
   // Converger : ouvre la modale de lancement (seuil + plafond pré-remplis depuis la config).
-  const conv = $('#aConverge'); if (conv) conv.addEventListener('click', () => openConvergeModal({ type: 'mr', id }));
+  const conv = $('#aConverge'); if (conv) conv.addEventListener('click', () => openConvergeModal({ type: 'mr', id, label: `!${m.iid}` }));
 
   $('#btnModify').addEventListener('click', async () => {
     const instruction = $('#modifyInput').value.trim();
@@ -3146,7 +3153,7 @@ function codeCard(t) {
     </div>
     <div class="task-actions">
       ${canRun ? `<button class="btn" data-trun="${t.id}" title="${t.status === 'new' ? 'Lancer la session sur tous les projets' : 'Relancer la session sur tous les projets'}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? 'Lancer' : 'Relancer'}</button>` : ''}
-      ${canRun ? `<button class="btn btn-converge" data-tconverge="${t.id}" title="${tr('task.title.converge')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : ''}
+      ${canRun ? `<button class="btn btn-converge" data-tconverge="${t.id}" data-label="${esc(tr('task.projects', { n: (t.targets || []).length, count: (t.targets || []).length }))}" title="${tr('task.title.converge')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : ''}
       ${canFollow ? `<button class="btn" data-tfollow="${t.id}" title="Relancer l'IA sur les branches existantes avec une demande de suivi"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : ''}
       <button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="Modifier"><svg class="ico"><use href="#i-edit"/></svg></button>
       <button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="Supprimer"><svg class="ico"><use href="#i-close"/></svg></button>
@@ -3267,7 +3274,7 @@ function wireTaskActions() {
     .catch((e) => toast(explainError(e.message), true)));
 
   // Converger la session : ouvre la modale (seuil + plafond) ciblée sur cette session.
-  on('[data-tconverge]', (b) => openConvergeModal({ type: 'task', id: Number(b.dataset.tconverge) }));
+  on('[data-tconverge]', (b) => openConvergeModal({ type: 'task', id: Number(b.dataset.tconverge), label: b.dataset.label || '' }));
 
   on('[data-tdel]', async (b) => {
     if (!await confirmDialog({ text: tr('confirm.delete-task'), confirmLabel: tr('ui.delete') })) return;

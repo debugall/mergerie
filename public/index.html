@@ -727,9 +727,10 @@
 <!-- Modale : lancer une convergence (« Converger ») -->
 <div id="convergeModal" class="modal" hidden>
     <div class="modal-box">
-        <h3 id="convergeModalTitle" data-i18n="converge.modal.title">Converger la MR</h3>
+        <h3 id="convergeModalTitle">Converger la merge request</h3>
+        <p id="convergeModalWhat" class="muted"></p>
         <p class="muted" data-i18n="converge.modal.intro">La boucle enchaîne review → correction IA (commit + push sur la branche) → re-review du delta, jusqu'au seuil de note ou au plafond de passes. Aucune fusion : la boucle prépare, c'est toi qui valides et merges.</p>
-        <div class="converge-fields">
+        <div class="modal-fields converge-fields">
             <label><span data-i18n="converge.modal.threshold">Seuil cible</span>
                 <input id="convThreshold" class="mini-num" type="number" min="1" max="10" step="0.5" /> <span class="muted">/10</span></label>
             <label><span data-i18n="converge.modal.passes">Plafond de passes</span>

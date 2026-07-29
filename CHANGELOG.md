@@ -48,6 +48,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   created. Creating an MR uses the same modal family (title + the two options) instead of a native
   browser prompt. GitLab keeps both at creation time; GitHub cannot express them there, so Mergerie
   remembers them and applies them at merge — the modal says so.
+- **The convergence dialog says what it will converge.** It named "the MR" even when started from a
+  session — where the AI first codes and opens the MR. Title and opening line now follow the context,
+  and the dialog shares the layout of the other confirmation modals.
 - **Every confirmation now uses the app's own dialog.** The sixteen remaining native `confirm()` boxes
   (delete a repository, a rule, a session, a report; stop a job; git deletions and restores; Docker
   `down`…) share one styled modal: themed, translated, and with a button that names the action instead
