@@ -54,6 +54,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Labels name the right forge.** On a GitHub repository, the inline comment button said "Send to
+  GitLab"; the same applied to the MR comment section, the merge and "already merged" tooltips. Every
+  user-facing label now follows the repository's forge, and the ones that span all repositories (fetch
+  MRs, restore safety note) no longer name a single forge. The inline comment editor was also still
+  hardcoded in French — it is translated now.
 - **Search fields no longer rebuild their list on every keystroke.** The session and Docker Compose
   searches are debounced: typing an 8-character query now rebuilds the list once instead of eight times.
 - **Statuses update as soon as a job starts.** Launching an iteration left the card on its previous

@@ -165,8 +165,8 @@ document.addEventListener('click', (e) => {
   const ed = document.createElement('div');
   ed.className = 'cmt-editor';
   ed.innerHTML = `<textarea placeholder="${tr('cmt.reply.ph')}"></textarea>`
-    + '<div class="cmt-actions"><button type="button" class="cmt-cancel" title="Annuler la saisie">Annuler</button>'
-    + `<button type="button" class="primary cmt-send" title="${tr('cmt.reply.title')}">${tr('cmt.reply.btn')}</button></div>`;
+    + `<div class="cmt-actions"><button type="button" class="cmt-cancel" title="${tr('cmt.cancel.title')}">${tr('ui.cancel')}</button>`
+    + `<button type="button" class="primary cmt-send" title="${tr('cmt.reply.title', { forge: forgeLabel(split.forge) })}">${tr('cmt.reply.btn')}</button></div>`;
   wrap.appendChild(ed);
   btn.hidden = true;
   const ta = ed.querySelector('textarea'); ta.focus();
@@ -1031,7 +1031,7 @@ function mrCard(m) {
     <div class="card-actions">
     ${(m.risk || []).map((r) => `<span class="tag risk" title="${esc(tr('mr.risk-title', { pattern: r.path_match }))}">⚠ ${esc(r.label)}</span>`).join('')}
     <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
-    ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title')}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
+    ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
     ${m.web_url ? `<a href="${esc(m.web_url)}" target="_blank">${forgeLabel(m.forge)} ↗</a>` : ''}
     ${m.last_error ? `<span class="tag stale">${tr('mr.tag.error')}</span>` : ''}
     <button class="btn" data-diff="${m.id}" title="${tr('mr.btn.diff-title')}"><svg class="ico"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>
@@ -1113,7 +1113,7 @@ function renderReports() {
         <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}${m.gitlab_created_at ? ` · ${fmtDate(m.gitlab_created_at)}` : ''}${ticketLink(m.ticket_url, m.ticket_key)}</div>
         <div class="report-tags">
           <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
-          ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title')}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
+          ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
           ${m.stale ? `<span class="tag stale">${tr('mr.tag.stale')}</span>` : ''}
         </div>
       </div>
@@ -1163,7 +1163,7 @@ function noteHtml(n) {
 }
 // Bloc « Répondre » d'un fil de discussion.
 function replyBtnHtml(discId, mrId) {
-  return `<div class="cmt-reply"><button class="cmt-reply-btn" type="button" data-disc="${esc(discId)}" data-mr="${mrId}" title="${tr('cmt.reply-thread.title')}">↩ ${tr('cmt.reply.btn')}</button></div>`;
+  return `<div class="cmt-reply"><button class="cmt-reply-btn" type="button" data-disc="${esc(discId)}" data-mr="${mrId}" title="${tr('cmt.reply-thread.title', { forge: forgeLabel(split.forge) })}">↩ ${tr('cmt.reply.btn')}</button></div>`;
 }
 
 // Commentaires généraux (non-inline) de la MR, dans le détail du rapport.
@@ -1257,7 +1257,7 @@ async function openReport(id) {
           ${d.stale ? `<span class="tag stale">${tr('report.tag.stale')}</span>` : ''}</div>
       </div>
       <div class="spacer"></div>
-      ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title')}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
+      ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
       ${m.web_url ? `<a href="${esc(m.web_url)}" target="_blank">${forgeLabel(m.forge)} ↗</a>` : ''}
     </div>
 
@@ -1266,7 +1266,7 @@ async function openReport(id) {
       <button id="aTicket" class="btn" title="${tr('report.btn.context-title')}"><svg class="ico"><use href="#i-doc"/></svg>${tr('mr.btn.context')}${d.ticket && (d.ticket.text || d.ticket.has_image) ? ' ✓' : ''}</button>
       ${d.review ? `<button id="aFix" class="btn" title="${tr('report.btn.fix-title')}"><svg class="ico"><use href="#i-bot"/></svg>${tr('report.btn.fix')}</button>` : ''}
       ${d.review && m.status !== 'done' && !m.closed_seen ? `<button id="aConverge" class="btn btn-converge" title="${tr('report.btn.converge-title')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : ''}
-      ${m.closed_seen ? '' : `<button id="aMerge" class="btn btn-danger" data-target="${esc(m.target_branch || '')}" title="${tr('report.btn.merge-title')}"><svg class=\"ico\"><use href=\"#i-merge\"/></svg>${tr('task.btn.merge')}</button>`}
+      ${m.closed_seen ? '' : `<button id="aMerge" class="btn btn-danger" data-target="${esc(m.target_branch || '')}" title="${tr('report.btn.merge-title', { forge: forgeLabel(m.forge) })}"><svg class=\"ico\"><use href=\"#i-merge\"/></svg>${tr('task.btn.merge')}</button>`}
       ${m.status !== 'done' ? `<button id="aDone" class="btn btn-ok" title="${tr('report.btn.done-title')}"><svg class=\"ico\"><use href=\"#i-check\"/></svg>${tr('report.btn.done')}</button>` : `<button id="aReopen" class="btn" title="${tr('report.btn.reopen-title')}"><svg class=\"ico\"><use href=\"#i-reset\"/></svg>${tr('report.btn.reopen')}</button>`}
       ${m.status !== 'done' ? `<button id="aRe" class="btn" title="${tr('report.btn.rerun-title')}"><svg class=\"ico\"><use href=\"#i-repeat\"/></svg>${tr('report.btn.rerun')}</button>` : ''}
       ${m.status !== 'done' && d.stale ? `<button id="aReInc" class="btn" title="${tr('report.btn.rerun-inc-title')}"><svg class=\"ico\"><use href=\"#i-repeat\"/></svg>${tr('report.btn.rerun-inc')}</button>` : ''}
@@ -1295,10 +1295,10 @@ async function openReport(id) {
     </div>
 
     <div class="box">
-      <h4>${tr('report.comments.title')}</h4>
+      <h4>${tr('report.comments.title', { forge: forgeLabel(m.forge) })}</h4>
       <div id="mrComments" class="mr-comments"><p class="muted">${tr('ui.loading')}</p></div>
       <textarea id="commentInput" placeholder="${tr('report.comments.ph')}"></textarea>
-      <button class="btn btn-primary" id="btnComment" title="${tr('report.btn.comment-title')}"><svg class=\"ico\"><use href=\"#i-doc\"/></svg>${tr('report.btn.comment')}</button>
+      <button class="btn btn-primary" id="btnComment" title="${tr('report.btn.comment-title', { forge: forgeLabel(m.forge) })}"><svg class=\"ico\"><use href=\"#i-doc\"/></svg>${tr('report.btn.comment', { forge: forgeLabel(m.forge) })}</button>
       <p class="muted" style="margin-top:6px">${tr('report.comments.inline-hint')} <strong><svg class=\"ico\"><use href=\"#i-expand\"/></svg>${tr('report.btn.split')}</strong>.</p>
     </div>
   `;
@@ -1660,6 +1660,7 @@ async function openSplit(id) {
     ]);
     split = {
       mrId: id,
+      forge: d.mr && d.mr.forge,        // libellés « GitLab »/« GitHub » des commentaires
       md: d.review && d.review.md,
       explanation: d.review && d.review.explanation,
       diffByFile: parseDiffByFile(diffResp.diff),
@@ -1688,7 +1689,7 @@ async function openDiffPreview(m) {
   try { dv = await api(`/mrs/${m.id}/diffview`); }
   catch (e) { toast(explainError(e.message), true); return; }
   split = {
-    mrId: m.id, mr: m, preview: true,
+    mrId: m.id, mr: m, preview: true, forge: m.forge,
     md: '', explanation: '',
     diffByFile: parseDiffByFile(dv.diff),
     files: dv.files || [],
@@ -1791,9 +1792,10 @@ $('#fileContent').addEventListener('click', (e) => {
   }
   const ed = document.createElement('div');
   ed.className = 'cmt-editor';
-  ed.innerHTML = '<textarea placeholder="Commentaire sur cette ligne…"></textarea>'
-    + '<div class="cmt-actions"><button type="button" class="cmt-cancel" title="Annuler la saisie">Annuler</button>'
-    + '<button type="button" class="primary cmt-send" title="Publier ce commentaire sur la ligne dans GitLab">Envoyer sur GitLab</button></div>';
+  const forge = forgeLabel(split.forge);
+  ed.innerHTML = `<textarea placeholder="${tr('cmt.inline.ph')}"></textarea>`
+    + `<div class="cmt-actions"><button type="button" class="cmt-cancel" title="${tr('cmt.cancel.title')}">${tr('ui.cancel')}</button>`
+    + `<button type="button" class="primary cmt-send" title="${tr('cmt.inline.title', { forge })}">${tr('cmt.inline.btn', { forge })}</button></div>`;
   row.after(ed);
   const ta = ed.querySelector('textarea'); ta.focus();
   ed.querySelector('.cmt-cancel').addEventListener('click', () => ed.remove());
@@ -3079,7 +3081,7 @@ function targetLine(t, tg) {
     <span class="t-name">${esc(tg.project)}</span>
     <code>${esc(tg.branch || '')}</code>
     ${mrIid ? (mrUrl ? ` <a href="${esc(mrUrl)}" target="_blank">MR !${mrIid} ↗</a>` : ` <span class="muted">MR !${mrIid}</span>`) : ''}
-    ${tg.mr_merged ? `<span class="tag merged" title="${tr('task.tag.merged-title')}">${tr('task.tag.merged')}</span>` : ''}
+    ${tg.mr_merged ? `<span class="tag merged" title="${tr('task.tag.merged-title', { forge: forgeLabel(tg.forge) })}">${tr('task.tag.merged')}</span>` : ''}
     <span class="spacer"></span>
     ${resumeCmdBtn(tg.resume_cmd)}
     ${tg.output_path ? `<button class="btn btn-sm" data-tgout="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}
