@@ -116,13 +116,14 @@ function containers() {
 // Résumé santé (démo) calculé sur les mêmes containers, pour le badge de menu.
 function summary() {
   const cs = containers();
-  let error = 0; let unhealthy = 0;
+  let error = 0; let exited = 0; let unhealthy = 0;
   for (const c of cs) {
     const st = c.state.toLowerCase(); const status = c.status.toLowerCase();
     if (st === 'restarting' || st === 'dead') error += 1;
+    else if (st === 'exited') exited += 1;
     else if (status.includes('(unhealthy)')) unhealthy += 1;
   }
-  return { error, unhealthy, total: cs.length, running: cs.filter((c) => c.running).length };
+  return { error, exited, unhealthy, total: cs.length, running: cs.filter((c) => c.running).length };
 }
 
 // Flux SSE SIMULÉ : émet des lignes fictives en boucle jusqu'à déconnexion du client. Sert à

@@ -152,21 +152,31 @@ describe('Docker — découverte compose', () => {
     assert.equal(docker.defaultProjectName('/a/b/'), 'b');
   });
 
-  test('healthSummary : compte le rouge (restarting/dead) et l’orange (unhealthy)', () => {
+  test('healthSummary : cassé, arrêté et unhealthy comptés séparément', () => {
     const s = docker.healthSummary([
       { state: 'running', status: 'Up 3 hours' },
       { state: 'running', status: 'Up 3 hours (unhealthy)' },
       { state: 'running', status: 'Up 2 min (healthy)' },
       { state: 'restarting', status: 'Restarting (1) 5s ago' },
       { state: 'dead', status: 'Dead' },
-      { state: 'exited', status: 'Exited (0)' },
+      { state: 'exited', status: 'Exited (0) 2 hours ago' },
+      { state: 'exited', status: 'Exited (137) 5 min ago' },
     ]);
     assert.equal(s.error, 2, 'restarting + dead');
+    /* Les arrêtés sont comptés À PART, quel que soit leur code de sortie : le badge du menu
+       les additionne aux erreurs (de l'extérieur, un service arrêté ne rend pas plus de
+       service qu'un service cassé), mais la bulle distingue les deux — et cette distinction
+       n'existe que si le décompte, lui, ne les mélange pas. */
+    assert.equal(s.exited, 2, 'exited (0) comme exited (137)');
     assert.equal(s.unhealthy, 1, 'seulement le (unhealthy) — pas le (healthy)');
+
     // Un container restarting ET unhealthy compte comme erreur (rouge), pas deux fois.
-    const s2 = docker.healthSummary([{ state: 'restarting', status: 'Restarting (unhealthy)' }]);
-    assert.deepEqual(s2, { error: 1, unhealthy: 0 });
-    assert.deepEqual(docker.healthSummary([]), { error: 0, unhealthy: 0 });
+    assert.deepEqual(docker.healthSummary([{ state: 'restarting', status: 'Restarting (unhealthy)' }]),
+      { error: 1, exited: 0, unhealthy: 0 });
+    // Un container arrêté n'est jamais compté « en erreur » : c'est le badge qui somme.
+    assert.deepEqual(docker.healthSummary([{ state: 'exited', status: 'Exited (0)' }]),
+      { error: 0, exited: 1, unhealthy: 0 });
+    assert.deepEqual(docker.healthSummary([]), { error: 0, exited: 0, unhealthy: 0 });
   });
 
   test('spawnLogs (onglet Logs) refuse un id piégé avant tout spawn', async () => {

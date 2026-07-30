@@ -27,6 +27,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   **Only show** state filter (running, stopped/not created, unhealthy, restarting, drifted) narrow the view
   service by service. A project with no matching service disappears entirely. Both settings are persisted
   and applied client-side, without querying Docker again.
+- **The Docker badge counts stopped containers too.** Its red number only covered containers that
+  were *broken* — restarting or dead — so a service that had simply exited stayed invisible from
+  every other tab, although from the outside it serves just as little. Exited containers are now
+  part of the red count. The two are still told apart where it matters: hovering the number reads
+  "1 container in error (restarting/dead) · 1 stopped container (exited)".
 - **Docker menu badges explain themselves.** Hovering the red or amber count in the Docker tab now shows
   what it counts ("1 container in error (restarting/dead)"), using the app's own tooltip.
 - **Search across sessions.** A search field filters coding sessions, off-repo sessions and explorations

@@ -5290,27 +5290,34 @@ function showDockerSub(name) {
 $$('#tab-docker .subnav [data-dsub]').forEach((b) => b.addEventListener('click', () => showDockerSub(b.dataset.dsub)));
 $('#dockerRefresh') && $('#dockerRefresh').addEventListener('click', () => loadDocker(true));
 
-// Badges santé du menu Docker : nb en erreur (rouge) / unhealthy (orange). Rafraîchi au
-// démarrage, à l'ouverture de l'onglet ET périodiquement (toutes les 30 s, cf. plus bas) via
-// /docker/summary = un seul `docker ps -a` (léger) → visible même hors de l'onglet Docker.
+/* Badges santé du menu Docker. ROUGE = les containers qui ne rendent plus service, qu'ils
+   soient cassés (restarting/dead) ou simplement arrêtés (exited) — de l'extérieur c'est le
+   même symptôme, et c'est ce chiffre-là qu'on veut voir de n'importe quel onglet. La bulle,
+   elle, garde la distinction : « 2 arrêtés · 1 en erreur ». ORANGE = unhealthy.
+   Rafraîchi au démarrage, à l'ouverture de l'onglet ET toutes les 30 s (cf. plus bas) via
+   /docker/summary = un seul `docker ps -a` (léger). */
 async function refreshDockerBadges() {
   const eB = $('#dockerErrBadge'); const uB = $('#dockerUnhealthyBadge');
   if (!eB || !uB) return;
   try {
     const s = await api('/docker/summary');
-    const err = s.error || 0; const un = s.unhealthy || 0;
+    const err = s.error || 0; const exited = s.exited || 0; const un = s.unhealthy || 0;
     /* `title = ''` (et non l'absence de title) : sur un enfant, un title VIDE empêche
        le navigateur de remonter à celui du bouton parent — sans ça, survoler le chiffre
        afficherait « Projets Docker Compose… » par-dessus notre bulle. */
-    const setBadge = (el, n, key) => {
-      const label = tr(key, { n, count: n });
+    const setBadge = (el, n, label) => {
       el.hidden = !n; el.textContent = n;
       el.dataset.tip = label;            // bulle de l'app (immédiate, thémée)
       el.title = '';
       el.setAttribute('aria-label', label);
     };
-    setBadge(eB, err, 'docker.badge.error');
-    setBadge(uB, un, 'docker.badge.unhealthy');
+    // Bulle composée : on n'énumère que ce qui est non nul, dans l'ordre de gravité.
+    const down = [
+      err ? tr('docker.badge.error', { n: err, count: err }) : '',
+      exited ? tr('docker.badge.exited', { n: exited, count: exited }) : '',
+    ].filter(Boolean).join(' · ');
+    setBadge(eB, err + exited, down);
+    setBadge(uB, un, tr('docker.badge.unhealthy', { n: un, count: un }));
   } catch { eB.hidden = true; uB.hidden = true; }
 }
 
