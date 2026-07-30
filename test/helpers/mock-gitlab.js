@@ -27,6 +27,7 @@ function freshState() {
     fail: {},                // path fragment -> { status, body } pour forcer une erreur
     mergeRefuses: false,     // vrai = GitLab répond 200 sans merger (cas réel à couvrir)
     nextIid: 100,
+    nextNoteId: 700,
   };
 }
 
@@ -61,6 +62,8 @@ function handleGitlab(req, res, pathname, query, body) {
   const paged = (arr) => (page > 1 ? [] : arr);
 
   let m;
+  // Compte associé au jeton — sert à savoir quels commentaires sont les miens.
+  if (seg === '/user') return json(res, 200, { id: 1, username: 'testeur', name: 'Testeur' });
   // GET /projects (liste des projets accessibles)
   if (seg.startsWith('/projects?') || seg === '/projects') return json(res, 200, paged(state.projects));
 
@@ -128,7 +131,8 @@ function handleGitlab(req, res, pathname, query, body) {
     if (sub === '/discussions' && req.method === 'POST') {
       const disc = {
         id: `disc-${(state.discussions[key] || []).length + 1}`,
-        notes: [{ id: 1, body: body.body, system: false, author: { name: 'Testeur' }, position: body.position || null }],
+        // id de note UNIQUE dans toute la MR : c'est lui que vise une modification.
+        notes: [{ id: state.nextNoteId++, body: body.body, system: false, author: { name: 'Testeur', username: 'testeur' }, position: body.position || null }],
       };
       (state.discussions[key] = state.discussions[key] || []).push(disc);
       return json(res, 201, disc);
@@ -137,9 +141,19 @@ function handleGitlab(req, res, pathname, query, body) {
     if (m && req.method === 'POST') {
       const disc = (state.discussions[key] || []).find((d) => d.id === decodeURIComponent(m[1]));
       if (!disc) return json(res, 404, { message: '404 Discussion Not Found' });
-      const note = { id: disc.notes.length + 1, body: body.body, system: false, author: { name: 'Testeur' } };
+      const note = { id: state.nextNoteId++, body: body.body, system: false, author: { name: 'Testeur', username: 'testeur' } };
       disc.notes.push(note);
       return json(res, 201, note);
+    }
+    /* Modification d'une note : GitLab n'a qu'une route, quelle que soit la famille de
+       commentaire — on cherche donc dans toutes les discussions de la MR. */
+    m = /^\/notes\/([^/]+)$/.exec(sub);
+    if (m && req.method === 'PUT') {
+      for (const disc of state.discussions[key] || []) {
+        const note = disc.notes.find((n) => String(n.id) === decodeURIComponent(m[1]));
+        if (note) { note.body = body.body; return json(res, 200, note); }
+      }
+      return json(res, 404, { message: '404 Note Not Found' });
     }
     return json(res, 404, { message: '404 Not Found' });
   }

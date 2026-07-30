@@ -214,6 +214,22 @@ async function getMergeRequest(cfg, project, iid) {
   return gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}`);
 }
 
+/* Modifie une note déjà postée. GitLab n'a qu'une route, quel que soit le type de note
+   (générale ou dans un fil inline) : le paramètre `inline` n'existe que pour GitHub, qui
+   sépare commentaires de review et commentaires d'issue. */
+async function updateNote(cfg, project, iid, noteId, body) {
+  const enc = encodeProject(project);
+  return gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/notes/${encodeURIComponent(noteId)}`, {
+    method: 'PUT', body: JSON.stringify({ body }),
+  });
+}
+
+// Compte associé au jeton — sert à savoir quels commentaires sont les miens.
+async function currentUser(cfg) {
+  const u = await gitlabFetch(cfg, '/user');
+  return { username: (u && u.username) || '' };
+}
+
 // Répond à une discussion existante (ajoute une note au fil).
 async function replyToDiscussion(cfg, project, iid, discussionId, body) {
   const enc = encodeProject(project);
@@ -351,6 +367,6 @@ async function listAllMRs(cfg, project) {
   }));
 }
 
-module.exports = { listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion, listMrDiscussions, replyToDiscussion,
+module.exports = { listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
   listBranchesFull, listTags, listProtectedBranches, listProtectedTags, listMrChangedPaths,
   createBranch, deleteBranch, createTag, deleteTag, listAllMRs };

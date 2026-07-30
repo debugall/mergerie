@@ -151,6 +151,29 @@ function handle(req, res, pathname, query, body) {
     return json(res, 404, { message: 'Not Found' });
   }
 
+  /* --- Modification d'un commentaire ---
+     GitHub range les commentaires de review et ceux d'issue sous DEUX ressources
+     distinctes, hors du chemin de la PR. Les deux sont mockées : c'est précisément
+     l'aiguillage entre elles que le code doit faire correctement. */
+  mm = /^\/pulls\/comments\/(\d+)$/.exec(rest);
+  if (mm && req.method === 'PATCH') {
+    const id = Number(mm[1]);
+    for (const list of Object.values(state.reviewComments)) {
+      const c = list.find((x) => x.id === id);
+      if (c) { c.body = body.body; return json(res, 200, c); }
+    }
+    return json(res, 404, { message: 'Not Found' });
+  }
+  mm = /^\/issues\/comments\/(\d+)$/.exec(rest);
+  if (mm && req.method === 'PATCH') {
+    const id = Number(mm[1]);
+    for (const list of Object.values(state.issueComments)) {
+      const c = list.find((x) => x.id === id);
+      if (c) { c.body = body.body; return json(res, 200, c); }
+    }
+    return json(res, 404, { message: 'Not Found' });
+  }
+
   // --- Issue comments (commentaires généraux d'une PR) ---
   mm = /^\/issues\/(\d+)\/comments$/.exec(rest);
   if (mm) {

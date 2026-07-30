@@ -479,6 +479,31 @@ describe('API de bout en bout', () => {
     assert.equal((await app.api('POST', `/api/mrs/${mrId}/discussions/${discId}/reply`, { body: '' })).status, 400);
   });
 
+  /* Modifier un commentaire déjà posté. Le point à protéger n'est pas l'appel — c'est
+     `editable` : il décide de l'affichage du bouton, et il ne doit s'allumer que sur MES
+     commentaires. Le mock répond « testeur » à GET /user, comme auteur des notes. */
+  test('Commentaires : modifier une note, générale comme inline', async () => {
+    const { body: avant } = await app.api('GET', `/api/mrs/${mrId}/discussions`);
+    const inline = avant.discussions.find((d) => d.notes[0].position);
+    const note = inline.notes[0];
+    assert.ok(note.id != null, 'l’id de note est exposé — sans lui rien n’est modifiable');
+    assert.equal(note.editable, true, 'une note écrite par le compte du jeton est modifiable');
+
+    const maj = await app.api('PUT', `/api/mrs/${mrId}/notes/${note.id}`, { body: 'Ligne revue, finalement OK', inline: true });
+    assert.equal(maj.status, 200);
+    assert.equal(maj.body.body, 'Ligne revue, finalement OK');
+
+    const { body: apres } = await app.api('GET', `/api/mrs/${mrId}/discussions`);
+    const memeNote = apres.discussions.flatMap((d) => d.notes).find((n) => n.id === note.id);
+    assert.equal(memeNote.body, 'Ligne revue, finalement OK', 'la modification est bien allée jusqu’à la forge');
+    assert.equal(apres.discussions.flatMap((d) => d.notes).length,
+      avant.discussions.flatMap((d) => d.notes).length, 'modifier n’ajoute pas une note');
+
+    assert.equal((await app.api('PUT', `/api/mrs/${mrId}/notes/${note.id}`, { body: '   ' })).status, 400,
+      'un commentaire vidé n’écrase pas l’original');
+    assert.equal((await app.api('PUT', `/api/mrs/${mrId}/notes/999999`, { body: 'x' })).status, 400);
+  });
+
   /* ---------- Cycle de vie d’une MR ---------- */
 
   test('Statuts : done, reopen, effacement d’erreur', async () => {

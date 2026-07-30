@@ -54,6 +54,7 @@ const demoGit = require('./demo-git');
 const docker = require('./docker');
 const demoDocker = require('./demo-docker');
 const demoJira = require('./demo-jira');
+const demoComments = require('./demo-comments');
 const aisession = require('./aisession');
 const agentsession = require('./agentsession');
 const agentpass = require('./agentpass');
@@ -2035,6 +2036,7 @@ app.post('/api/mrs/:id/comment', wrap(async (req, res) => {
   if (!mr) throw new Error(t('err.mr-introuvable'));
   const body = (req.body && req.body.body || '').trim();
   if (!body) throw new Error(t('err.commentaire-vide'));
+  if (demoDocker.isDemo()) return res.json({ ok: true, note_id: demoComments.post(mr.id, body, null).notes[0].id });
   const cfg = getConfig();
   const note = await forge.clientFor(mr).postMrNote(cfg, mr.project, mr.iid, body);
   db.prepare('INSERT INTO comment_log (mr_id, body, gitlab_note_id, sent_at) VALUES (?,?,?,?)')
@@ -2042,15 +2044,41 @@ app.post('/api/mrs/:id/comment', wrap(async (req, res) => {
   res.json({ ok: true, note_id: note && note.id });
 }));
 
+/* Compte associé au jeton d'une forge. Sert à reconnaître MES commentaires, donc ceux que
+   je peux modifier. Mis en cache : sans cela, chaque ouverture de rapport ajouterait un
+   aller-retour réseau pour une réponse qui ne change jamais. Un échec n'est pas une erreur —
+   il rend simplement les commentaires non modifiables, ce qui est le repli sûr. */
+const meCache = new Map();               // forge -> { username, at }
+const ME_TTL_MS = 30 * 60 * 1000;
+async function forgeUsername(mr) {
+  const f = forge.forgeOf(mr);
+  const hit = meCache.get(f);
+  if (hit && Date.now() - hit.at < ME_TTL_MS) return hit.username;
+  try {
+    const { username } = await forge.clientFor(mr).currentUser(getConfig());
+    meCache.set(f, { username: username || '', at: Date.now() });
+    return username || '';
+  } catch { return ''; }
+}
+
 // Liste les discussions (commentaires) de la MR : inline (avec position) + générales.
 app.get('/api/mrs/:id/discussions', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
-  const discs = await forge.clientFor(mr).listMrDiscussions(getConfig(), mr.project, mr.iid);
+  const [discs, me] = demoDocker.isDemo()
+    ? [demoComments.list(mr.id), demoComments.ME]
+    : await Promise.all([
+      forge.clientFor(mr).listMrDiscussions(getConfig(), mr.project, mr.iid),
+      forgeUsername(mr),
+    ]);
   const simplified = discs.map((d) => ({
     id: d.id,
     notes: (d.notes || []).filter((n) => !n.system).map((n) => ({
+      id: n.id,
       author: (n.author && (n.author.name || n.author.username)) || '',
+      // Modifiable si le compte du jeton est l'auteur. On compare sur le `username`
+      // (identifiant) et jamais sur le nom affiché, qui n'est pas unique.
+      editable: !!(me && n.author && n.author.username === me),
       body: n.body,
       created_at: n.created_at,
       resolved: !!n.resolved,
@@ -2063,12 +2091,32 @@ app.get('/api/mrs/:id/discussions', wrap(async (req, res) => {
   res.json({ discussions: simplified });
 }));
 
+/* Modifie un commentaire déjà posté. `inline` dit s'il s'agit d'un commentaire de ligne :
+   GitHub range les deux familles sous des ressources différentes (GitLab n'en a qu'une).
+   Les droits ne sont pas re-vérifiés ici : c'est la forge qui les détient, et elle refuse
+   la modification du commentaire d'un autre. Le bouton, lui, n'apparaît que sur les miens. */
+app.put('/api/mrs/:id/notes/:noteId', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const body = (req.body && req.body.body || '').trim();
+  if (!body) throw new Error(t('err.commentaire-vide'));
+  if (demoDocker.isDemo()) {
+    const n = demoComments.update(mr.id, req.params.noteId, body);
+    return res.json({ ok: true, id: n.id, body: n.body });
+  }
+  const note = await forge.clientFor(mr).updateNote(
+    getConfig(), mr.project, mr.iid, req.params.noteId, body, { inline: !!(req.body && req.body.inline) },
+  );
+  res.json({ ok: true, id: note && note.id, body: (note && note.body) || body });
+}));
+
 // Répond à une discussion existante.
 app.post('/api/mrs/:id/discussions/:discussionId/reply', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   const body = (req.body && req.body.body || '').trim();
   if (!body) throw new Error(t('err.reponse-vide'));
+  if (demoDocker.isDemo()) return res.json({ ok: true, id: demoComments.reply(mr.id, req.params.discussionId, body).id });
   const note = await forge.clientFor(mr).replyToDiscussion(getConfig(), mr.project, mr.iid, req.params.discussionId, body);
   res.json({ ok: true, id: note && note.id });
 }));
@@ -2080,6 +2128,10 @@ app.post('/api/mrs/:id/discussion', wrap(async (req, res) => {
   const { body, old_path, new_path, old_line, new_line } = req.body || {};
   if (!(body || '').trim()) throw new Error(t('err.commentaire-vide-2'));
   if (!new_path && !old_path) throw new Error(t('err.fichier-requis'));
+  if (demoDocker.isDemo()) {
+    const d = demoComments.post(mr.id, body.trim(), { new_path, old_path, new_line, old_line });
+    return res.json({ ok: true, id: d.id });
+  }
   const cfg = getConfig();
   const full = await forge.clientFor(mr).getMergeRequest(cfg, mr.project, mr.iid);
   const dr = full && full.diff_refs;

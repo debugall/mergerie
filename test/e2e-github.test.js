@@ -229,6 +229,29 @@ describe('GitHub de bout en bout', () => {
     assert.equal(same.notes[1].body, 'corrigé');
   });
 
+  /* Le vrai piège GitHub : commentaire de review et commentaire d'issue vivent sous DEUX
+     ressources distinctes, avec des identifiants de familles différentes. Envoyer une
+     modification de commentaire inline sur la route des issues renvoie 404 — on vérifie
+     donc que chaque famille atterrit au bon endroit, et que l'autre n'a pas bougé. */
+  test('modifier un commentaire : inline et général visent des routes différentes', async () => {
+    const { body: avant } = await app.api('GET', `/api/mrs/${mrId}/discussions`);
+    const inline = avant.discussions.find((d) => d.notes[0].position);
+    const general = avant.discussions.find((d) => !d.notes[0].position);
+    assert.equal(inline.notes[0].editable, true, 'les notes de « testeur » sont les miennes ici');
+
+    const majInline = await app.api('PUT', `/api/mrs/${mrId}/notes/${inline.notes[0].id}`, { body: 'revu', inline: true });
+    assert.equal(majInline.status, 200);
+    assert.equal(app.ghState.reviewComments[`${PROJECT}#42`][0].body, 'revu');
+
+    const majGeneral = await app.api('PUT', `/api/mrs/${mrId}/notes/${general.notes[0].id}`, { body: 'de rien', inline: false });
+    assert.equal(majGeneral.status, 200);
+    assert.equal(app.ghState.issueComments[`${PROJECT}#42`][0].body, 'de rien');
+
+    // Le mauvais aiguillage se voit : un id de review comment n'existe pas côté issues.
+    const mauvaiseRoute = await app.api('PUT', `/api/mrs/${mrId}/notes/${inline.notes[0].id}`, { body: 'x', inline: false });
+    assert.equal(mauvaiseRoute.status, 400, 'GitHub renvoie 404 sur la ressource qui n’est pas la sienne');
+  });
+
   /* ---------- Merge ---------- */
 
   test('merge d’une PR : l’état normalisé passe à « merged »', async () => {

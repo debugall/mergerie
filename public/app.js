@@ -1307,12 +1307,60 @@ $('#btnResetReports').addEventListener('click', async () => {
   } catch (e) { toast(e.message, true); }
 });
 
-// HTML d'une note (auteur, date, corps markdown).
-function noteHtml(n) {
-  return `<div class="cmt"><div class="cmt-head"><b>${esc(n.author)}</b> <span class="muted">${fmtDate(n.created_at)}</span>`
-    + `${n.resolved ? ` <span class="tag done">${tr('cmt.resolved')}</span>` : ''}</div>`
+/* HTML d'une note (auteur, date, corps markdown). Servie telle quelle par les commentaires
+   généraux du rapport ET par les fils inline du visualiseur — une seule implémentation.
+   `data-raw` garde le Markdown SOURCE : le corps affiché est du HTML rendu, il ne peut pas
+   servir à repeupler l'éditeur sans reperdre la mise en forme d'origine. */
+function noteHtml(n, mrId) {
+  const edit = n.editable && n.id != null
+    ? `<button type="button" class="cmt-edit-btn" data-note="${esc(n.id)}" data-mr="${esc(mrId)}"`
+      + ` data-inline="${n.position ? 1 : 0}" title="${esc(tr('cmt.edit.title'))}">${tr('cmt.edit.btn')}</button>`
+    : '';
+  return `<div class="cmt" data-raw="${esc(n.body)}">`
+    + `<div class="cmt-head"><b>${esc(n.author)}</b> <span class="muted">${fmtDate(n.created_at)}</span>`
+    + `${n.resolved ? ` <span class="tag done">${tr('cmt.resolved')}</span>` : ''}`
+    + `<span class="spacer"></span>${edit}</div>`
     + `<div class="cmt-body md">${mdToHtml(n.body)}</div></div>`;
 }
+
+/* Modification d'un commentaire déjà posté, en place : le corps rendu cède la place à un
+   éditeur pré-rempli du Markdown source. Délégué une fois pour les deux endroits où des
+   notes s'affichent — le geste et le rendu y sont identiques. */
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.cmt-edit-btn');
+  if (!btn) return;
+  const cmt = btn.closest('.cmt');
+  const body = cmt.querySelector('.cmt-body');
+  if (cmt.querySelector('.cmt-edit')) return;           // déjà en cours d'édition
+  const ed = document.createElement('div');
+  ed.className = 'cmt-editor cmt-edit';
+  ed.innerHTML = '<textarea></textarea>'
+    + `<div class="cmt-actions"><button type="button" class="btn btn-sm cmt-edit-cancel">${tr('ui.cancel')}</button>`
+    + `<button type="button" class="btn btn-sm btn-primary cmt-edit-save">${tr('ui.save')}</button></div>`;
+  const ta = ed.querySelector('textarea');
+  ta.value = cmt.dataset.raw || '';
+  body.hidden = true; btn.hidden = true;
+  body.after(ed);
+  ta.focus();
+
+  const close = () => { ed.remove(); body.hidden = false; btn.hidden = false; };
+  ed.querySelector('.cmt-edit-cancel').addEventListener('click', close);
+  ed.querySelector('.cmt-edit-save').addEventListener('click', async () => {
+    const text = ta.value.trim();
+    if (!text) { toast(tr('cmt.edit.empty'), true); return; }
+    const save = ed.querySelector('.cmt-edit-save');
+    try {
+      const d = await busy(save, () => api(`/mrs/${btn.dataset.mr}/notes/${encodeURIComponent(btn.dataset.note)}`, {
+        method: 'PUT', body: { body: text, inline: btn.dataset.inline === '1' },
+      }));
+      // On réaffiche ce que la forge a RÉELLEMENT enregistré, pas ce qu'on a envoyé.
+      cmt.dataset.raw = d.body || text;
+      body.innerHTML = mdToHtml(cmt.dataset.raw);
+      close();
+      toast(tr('cmt.edit.done'));
+    } catch (err) { toast(explainError(err.message), true); }
+  });
+});
 // Bloc « Répondre » d'un fil de discussion.
 function replyBtnHtml(discId, mrId) {
   return `<div class="cmt-reply"><button class="cmt-reply-btn" type="button" data-disc="${esc(discId)}" data-mr="${mrId}" title="${tr('cmt.reply-thread.title', { forge: forgeLabel(split.forge) })}">↩ ${tr('cmt.reply.btn')}</button></div>`;
@@ -1327,7 +1375,7 @@ async function loadMrComments(id) {
     const general = (dd.discussions || []).filter((d) => d.notes[0] && !d.notes[0].position);
     if (!general.length) { el.innerHTML = `<p class="muted">${tr('cmt.none')}</p>`; return; }
     el.innerHTML = general.map((d) => `<div class="cmt-thread" data-disc="${esc(d.id)}">`
-      + d.notes.map(noteHtml).join('') + replyBtnHtml(d.id, id) + '</div>').join('');
+      + d.notes.map((n) => noteHtml(n, id)).join('') + replyBtnHtml(d.id, id) + '</div>').join('');
   } catch (e) { el.innerHTML = `<p class="muted">Commentaires indisponibles (${esc(e.message)})</p>`; }
 }
 
@@ -1793,7 +1841,7 @@ function renderInlineThreads() {
     const el = document.createElement('div');
     el.className = 'cmt-thread';
     el.dataset.disc = d.id;
-    el.innerHTML = d.notes.map(noteHtml).join('') + replyBtnHtml(d.id, split.mrId);
+    el.innerHTML = d.notes.map((n) => noteHtml(n, split.mrId)).join('') + replyBtnHtml(d.id, split.mrId);
     row.after(el);
   }
 }

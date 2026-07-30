@@ -239,13 +239,16 @@ async function listMrChangedPaths(cfg, project, iid) {
    Le préfixe `issue-` permet à replyToDiscussion de savoir sur quelle API répondre. */
 
 function toNote(c, position) {
+  const login = (c.user && c.user.login) || '';
   return {
     id: c.id,
     body: c.body,
     system: false,                       // pas d'équivalent des notes système GitLab
     created_at: c.created_at,
     resolved: false,                     // l'état « résolu » n'existe qu'en GraphQL
-    author: { name: (c.user && c.user.login) || '' },
+    // `username` autant que `name` : c'est sur lui que se compare l'auteur d'un
+    // commentaire au compte du jeton, comme côté GitLab.
+    author: { name: login, username: login },
     position: position || null,
   };
 }
@@ -305,6 +308,24 @@ async function postMrDiscussion(cfg, project, iid, body, position) {
     method: 'POST', body: JSON.stringify(payload),
   });
   return { id: String(c.id), notes: [toNote(c, toPosition(c))] };
+}
+
+/* Modifie un commentaire déjà posté. GitHub range les commentaires de review (inline) et
+   ceux d'issue (généraux) sous deux ressources distinctes, avec des identifiants de
+   familles différentes : il faut savoir laquelle viser. GitLab, lui, n'a qu'une route —
+   d'où ce paramètre présent dans le contrat commun mais ignoré là-bas. */
+async function updateNote(cfg, project, iid, noteId, body, opts = {}) {
+  const enc = encodeProject(project);
+  const kind = opts.inline ? 'pulls' : 'issues';
+  return githubFetch(cfg, `/repos/${enc}/${kind}/comments/${encodeURIComponent(noteId)}`, {
+    method: 'PATCH', body: JSON.stringify({ body }),
+  });
+}
+
+// Compte associé au jeton — sert à savoir quels commentaires sont les miens.
+async function currentUser(cfg) {
+  const u = await githubFetch(cfg, '/user');
+  return { username: (u && u.login) || '' };
 }
 
 // Réponse à un fil : `discussionId` est l'id de la note RACINE (ou `issue-<id>`).
@@ -528,6 +549,7 @@ function refWebUrl(cfg, project, kind, name) {
 module.exports = {
   // mêmes noms que gitlab.js (contrat commun consommé via src/forge.js)
   listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches,
+  updateNote, currentUser,
   latestCommit, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion,
   listMrDiscussions, replyToDiscussion, listBranchesFull, listTags, listProtectedBranches,
   listProtectedTags, listMrChangedPaths, createBranch, deleteBranch, createTag, deleteTag, listAllMRs,

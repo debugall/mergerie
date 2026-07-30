@@ -61,6 +61,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   `down`…) share one styled modal: themed, translated, and with a button that names the action instead
   of a mute "OK". Irreversible actions are recognisable at rest, not only on hover.
 
+- **Your own review comments can be edited.** A typo, a wrong line number, a sentence you'd rather
+  rephrase: an **Edit** link now appears on the comments *you* wrote — on a line in the code viewer
+  as well as on the merge request itself. The editor opens in place, pre-filled with the original
+  Markdown, and the change goes to GitLab or GitHub. Comments written by other people carry no such
+  link: Mergerie compares each comment's author with the account behind your token, and if it cannot
+  work out who you are, nothing is offered as editable.
+- **The demo has comments now.** The review screen used to show "comments unavailable" in demo mode,
+  since those routes went straight to the forge. A short fictional thread — one comment of yours, one
+  from a colleague — makes the whole bottom half of a report worth looking at, and shows which
+  comments you may edit.
 - **Finished sessions can be tidied away.** Coding, off-repo coding and exploration sessions each
   gain a *hide* button: the session leaves the list without being deleted — its diffs, its AI
   passes and its merge request stay exactly where they were. A **Show hidden sessions** checkbox
