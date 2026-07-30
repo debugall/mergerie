@@ -138,6 +138,36 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
     assert.ok(!/Corrige le titre/.test(first.body.current.prompt));
   });
 
+  /* Éditer une session. Le point qui compte n'est pas le PUT lui-même, c'est ce qu'il NE
+     détruit pas : corriger une faute dans le prompt ne doit pas faire repartir de zéro les
+     dossiers déjà traités (statut, retour de l'agent, handle de session). */
+  test('édition : le prompt change, les dossiers inchangés gardent leur état', async () => {
+    const a = mkdir(); const b = mkdir();
+    const created = (await app.api('POST', '/api/local-tasks', { prompt: 'version 1', dirs: [a, b] })).body;
+    await app.api('POST', `/api/local-tasks/${created.id}/run`);
+    await waitForJobs(app.api);
+    const avant = (await app.api('GET', `/api/local-tasks/${created.id}`)).body.task;
+    assert.equal(avant.dirs.length, 2);
+    assert.ok(avant.dirs.every((d) => d.status === 'done' && d.output_path), 'les dossiers ont tourné');
+
+    // Même composition → les lignes de dossier sont PRÉSERVÉES.
+    const maj = await app.api('PUT', `/api/local-tasks/${created.id}`, { prompt: 'version 2', dirs: [a, b] });
+    assert.equal(maj.status, 200);
+    assert.equal(maj.body.prompt, 'version 2');
+    assert.deepEqual(maj.body.dirs.map((d) => [d.id, d.status, !!d.output_path]),
+      avant.dirs.map((d) => [d.id, d.status, !!d.output_path]), 'rien n’a été recréé');
+
+    // Composition modifiée → on repart à neuf sur les dossiers (c'est une autre session de travail).
+    const c = mkdir();
+    const change = await app.api('PUT', `/api/local-tasks/${created.id}`, { dirs: [a, c] });
+    assert.deepEqual(change.body.dirs.map((d) => d.path), [a, c]);
+    assert.ok(change.body.dirs.every((d) => d.status === 'new' && !d.output_path));
+    assert.equal(change.body.prompt, 'version 2', 'un PUT sans prompt ne l’efface pas');
+
+    assert.equal((await app.api('PUT', `/api/local-tasks/${created.id}`, { prompt: '  ' })).status, 400);
+    assert.equal((await app.api('PUT', '/api/local-tasks/999999', { prompt: 'x' })).status, 400);
+  });
+
   /* Créer sans lancer : la session existe en statut « new » et attend son déclenchement.
      Le POST de création ne lançait rien, mais l'écran enchaînait toujours sur /run — c'est
      donc le statut au repos qui doit rester vérifiable. */

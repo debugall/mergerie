@@ -1418,6 +1418,39 @@ app.post('/api/local-tasks', wrap((req, res) => {
   saveLocalImages(id, images); // captures jointes au prompt (facultatif)
   res.json(localTaskById(id));
 }));
+// Détail d'une session hors dépôt (édition) — pendant de GET /api/tasks/:id.
+app.get('/api/local-tasks/:id', wrap((req, res) => {
+  const lt = localTaskById(Number(req.params.id));
+  if (!lt) throw new Error(t('err.session-introuvable'));
+  const images = db.prepare('SELECT id FROM local_task_image WHERE task_id = ? ORDER BY id').all(lt.id);
+  res.json({ task: lt, images: images.map((im, i) => ({ id: im.id, idx: i })) });
+}));
+
+/* Édition d'une session hors dépôt — même contrat que PUT /api/tasks/:id.
+   Les dossiers ne sont RECRÉÉS que si leur composition change : sinon on perdrait avec eux
+   le statut de chaque dossier, le retour de l'agent et surtout le handle de session — une
+   correction de faute de frappe dans le prompt repartirait de zéro. */
+app.put('/api/local-tasks/:id', wrap((req, res) => {
+  const lt = localTaskById(Number(req.params.id));
+  if (!lt) throw new Error(t('err.session-introuvable'));
+  const { prompt, dirs, images } = req.body || {};
+  if (Array.isArray(dirs) && dirs.length) {
+    const list = [...new Set(dirs.map((d) => String(d || '').trim()).filter(Boolean))];
+    if (!list.length) throw new Error(t('err.local-dirs-required'));
+    if (list.join('|') !== lt.dirs.map((d) => d.path).join('|')) {
+      const now = new Date().toISOString();
+      db.prepare('DELETE FROM local_task_dir WHERE task_id = ?').run(lt.id);
+      const ins = db.prepare("INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?, ?, 'new', ?)");
+      for (const p of list) ins.run(lt.id, p, now);
+    }
+  }
+  if (prompt != null && !String(prompt).trim()) throw new Error(t('err.prompt-requis'));
+  db.prepare('UPDATE local_task SET prompt = ?, updated_at = ? WHERE id = ?')
+    .run(prompt != null ? String(prompt).trim() : lt.prompt, new Date().toISOString(), lt.id);
+  saveLocalImages(lt.id, images);
+  res.json(localTaskById(lt.id));
+}));
+
 app.post('/api/local-tasks/:id/run', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));

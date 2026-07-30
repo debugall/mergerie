@@ -73,6 +73,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   `down`…) share one styled modal: themed, translated, and with a button that names the action instead
   of a mute "OK". Irreversible actions are recognisable at rest, not only on hover.
 
+- **Out-of-repo coding sessions can be edited.** They were the only kind you could not correct: a
+  typo in the prompt or a wrong folder meant deleting the session and writing it again. The pencil
+  is now on their cards too, and it reopens the same dialog. Editing only the prompt leaves the
+  folders exactly as they were — their status, the AI's report and its session are kept, so a
+  one-word fix does not throw away work already done. Change which folders are targeted and those
+  do start over, which is the point.
 - **Out-of-repo coding can be prepared and run later.** Its dialog only offered *Start coding*, which
   created the session and launched it on the spot — writing one down for later meant not writing it
   at all. It now also offers **Create without running**, next to it: the session is created in the

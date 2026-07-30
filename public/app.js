@@ -2914,6 +2914,37 @@ async function openTaskEdit(id) {
   } catch (e) { toast(explainError(e.message), true); }
 }
 
+/* Édition d'une session hors dépôt. Les dossiers sont stockés en CHEMINS ABSOLUS ; la
+   modale, elle, se pilote en « répertoire local + nom de projet ». On refait donc le chemin
+   inverse : le répertoire est déduit du premier dossier, les projets de leur nom de base.
+   Une session créée depuis cette modale a forcément tous ses dossiers sous UN répertoire
+   (changer de répertoire remet la sélection à zéro), donc le cas normal est couvert ; un
+   dossier venu d'ailleurs est signalé à l'enregistrement plutôt que perdu en silence. */
+async function openLocalTaskEdit(id) {
+  const f = $('#taskForm');
+  f.reset(); taskNewImages = []; renderTaskPreviews();
+  const d = await api(`/local-tasks/${id}`);
+  const t = d.task;
+  editingTaskId = id; launchAfterCreate = false; convergeAfterCreate = false;
+  taskKind = 'local';
+  await loadLocalRoots();
+  const paths = (t.dirs || []).map((x) => x.path);
+  const under = (root, p) => p.startsWith(`${String(root.path).replace(/\/+$/, '')}/`);
+  const root = localRoots.find((r) => paths.some((p) => under(r, p))) || localRoots[0];
+  localRootId = root ? String(root.id) : '';
+  localPicks = paths.map((p) => p.split('/').filter(Boolean).pop() || '');
+  if (!localPicks.length) localPicks = [''];
+  applyKindToModal('local');
+  f.prompt.value = t.prompt || '';
+  $('#taskModalTitle').textContent = tr('local.edit-title');
+  $('#taskExistingImgs').textContent = (d.images && d.images.length)
+    ? tr('task.images-attached', { n: d.images.length, count: d.images.length }) : '';
+  $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
+  $('#taskSubmitOnly').hidden = true;   // on modifie une session existante : rien à créer
+  $('#taskModal').hidden = false;
+  f.prompt.focus();
+}
+
 function closeTaskModal() {
   // Les deux drapeaux vont de pair : un « Converger » dont le POST a échoué détournerait
   // sinon le submit suivant (session non lancée, modale de convergence à la place).
@@ -2978,8 +3009,20 @@ $('#taskForm').addEventListener('submit', async (e) => {
       dirs = picks.map((name) => (all.find((p) => p.name === name) || {}).path).filter(Boolean);
     } catch (err) { toast(explainError(err.message), true); return; }
     if (!dirs.length) { toast(tr('local.dirs-required'), true); return; }
+    /* Un projet choisi qui ne se résout pas en chemin dans le répertoire courant serait
+       silencieusement retiré de la session. À la création c'est déjà fâcheux ; à l'édition
+       ce serait une perte de données. On refuse plutôt que d'enregistrer une liste amputée. */
+    if (dirs.length !== picks.length) { toast(tr('local.dirs-unresolved'), true); return; }
     const btn = $('#taskSubmit');
     try {
+      if (editingTaskId) {
+        await busy(btn, () => api(`/local-tasks/${editingTaskId}`, { method: 'PUT', body: {
+          prompt: f.prompt.value, dirs, images: taskNewImages,
+        } }));
+        toast(tr('toast.session-mise-a-jour'));
+        taskNewImages = []; renderTaskPreviews(); closeTaskModal(); loadTasks();
+        return;
+      }
       const created = await busy(btn, () => api('/local-tasks', { method: 'POST', body: {
         prompt: f.prompt.value, dirs, images: taskNewImages, session_id: f.session_id ? f.session_id.value : '',
       } }));
@@ -3251,6 +3294,7 @@ function localCard(t) {
     canRun ? `<button class="btn" data-lrun="${t.id}" title="${esc(tr('local.run-title'))}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
     canFollow ? `<button class="btn" data-lfollow="${t.id}" title="${esc(tr('local.followup.title'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : '',
   ], [
+    `<button class="btn btn-icon btn-sm" data-ledit="${t.id}" title="${esc(tr('local.edit-title'))}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
     hideBtn('local', t),
     `<button class="btn btn-icon btn-sm btn-danger" data-ldel="${t.id}" title="${esc(tr('local.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>`,
   ])}
@@ -3301,6 +3345,8 @@ function renderLocalTasks() {
       toast(tr('local.started')); refreshStatus();
     } catch (e) { toast(explainError(e.message), true); }
   }));
+  $$('#localList [data-ledit]').forEach((b) => b.addEventListener('click',
+    () => openLocalTaskEdit(Number(b.dataset.ledit)).catch((e) => toast(explainError(e.message), true))));
   $$('#localList [data-ldel]').forEach((b) => b.addEventListener('click', async () => {
     if (!await confirmDialog({ text: tr('local.confirm-delete'), confirmLabel: tr('ui.delete') })) return;
     try { await api(`/local-tasks/${b.dataset.ldel}`, { method: 'DELETE' }); toast(tr('local.deleted')); loadTasks(); }

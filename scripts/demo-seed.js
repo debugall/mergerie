@@ -319,8 +319,8 @@ const lt1 = db.prepare('INSERT INTO local_task (prompt, status, created_at, upda
 // Chaque dossier porte le RETOUR DE L'IA (fichier sur disque, comme en vrai) : le bouton
 // « Retour de l'IA » et « Demander une correction » sont donc démontrables sans agent.
 const LOCAL_OUT = {
-  '/Users/moi/outils/backup-tool': `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` : niveau (\`debug\`/\`info\`/\`warn\`/\`error\`) + timestamp ISO.\n- Remplacé les 14 \`console.log\` de \`backup.js\` et \`restore.js\`.\n- Ajouté \`test/logger.test.js\` (4 cas : format, niveaux, filtrage, sortie stderr).\n\n## Points d'attention\n\n- \`restore.js\` écrivait sur \`stdout\` des données consommées par un script appelant : j'ai gardé \`stdout\` pour celles-là et routé les logs vers \`stderr\`.\n`,
-  '/Users/moi/outils/csv-cleaner': `## Ce que j'ai fait\n\n- Ajouté le même \`src/logger.js\` (copie locale, ce dossier n'est pas un paquet partagé).\n- Remplacé les 6 \`console.log\` de \`clean.js\`.\n- Ajouté \`test/logger.test.js\`.\n\n## Question\n\nLes deux outils dupliquent maintenant le logger. Si tu veux, je peux extraire un petit paquet commun — dis-moi où le placer.\n`,
+  '/home/moi/dev/backup-tool': `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` : niveau (\`debug\`/\`info\`/\`warn\`/\`error\`) + timestamp ISO.\n- Remplacé les 14 \`console.log\` de \`backup.js\` et \`restore.js\`.\n- Ajouté \`test/logger.test.js\` (4 cas : format, niveaux, filtrage, sortie stderr).\n\n## Points d'attention\n\n- \`restore.js\` écrivait sur \`stdout\` des données consommées par un script appelant : j'ai gardé \`stdout\` pour celles-là et routé les logs vers \`stderr\`.\n`,
+  '/home/moi/dev/csv-cleaner': `## Ce que j'ai fait\n\n- Ajouté le même \`src/logger.js\` (copie locale, ce dossier n'est pas un paquet partagé).\n- Remplacé les 6 \`console.log\` de \`clean.js\`.\n- Ajouté \`test/logger.test.js\`.\n\n## Question\n\nLes deux outils dupliquent maintenant le logger. Si tu veux, je peux extraire un petit paquet commun — dis-moi où le placer.\n`,
 };
 for (const p of Object.keys(LOCAL_OUT)) {
   const info = db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
@@ -337,12 +337,12 @@ for (const p of Object.keys(LOCAL_OUT)) {
 const lt0 = db.prepare('INSERT INTO local_task (prompt, status, created_at, updated_at) VALUES (?,?,?,?)')
   .run('Passe ces scripts en ES modules et remplace les require() restants.', 'new', at(0.4), at(0.4));
 db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
-  .run(lt0.lastInsertRowid, '/Users/moi/outils/deploy-scripts', 'new', at(0.4));
+  .run(lt0.lastInsertRowid, '/home/moi/dev/scripts', 'new', at(0.4));
 
 const lt2 = db.prepare('INSERT INTO local_task (prompt, status, last_error, created_at, updated_at) VALUES (?,?,?,?,?)')
   .run('Convertis ce petit script Python en module réutilisable avec des tests pytest.', 'error', 'Le dossier n’a pas pu être traité (agent indisponible en démo).', at(1.2), at(1.2));
 db.prepare('INSERT INTO local_task_dir (task_id, path, status, last_error, updated_at) VALUES (?,?,?,?,?)')
-  .run(lt2.lastInsertRowid, '/Users/moi/scripts/legacy-report', 'error', 'agent indisponible', at(1.2));
+  .run(lt2.lastInsertRowid, '/home/moi/dev/legacy-report', 'error', 'agent indisponible', at(1.2));
 
 // ---------- commentaires (comment_log : mr_id, body, sent_at) ----------
 const someMr = db.prepare("SELECT id FROM mr WHERE status IN ('reviewed','done') LIMIT 1").get();
