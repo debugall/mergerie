@@ -363,6 +363,7 @@
                 <span id="dlogStatus" class="muted"></span>
                 <span class="dlog-bar-right">
                     <label class="inline-check"><input type="checkbox" id="dlogWrap" /> <span data-i18n="docker.logs.wrap">Retour à la ligne</span></label>
+                    <label class="inline-check"><input type="checkbox" id="dlogColor" /> <span data-i18n="docker.logs.color">Afficher les couleurs</span> <button type="button" class="hint" tabindex="0" aria-label="Rend les couleurs que l'application écrit elle-même dans ses lignes (niveau de log, codes HTTP…). Décoché, les lignes s'affichent en texte nu : c'est plus léger sur un flux qui débite en rafale, et c'est le défaut. Les couleurs de fond ne sont jamais rendues — elles supposent un terminal dont on maîtrise le contraste, pas deux thèmes." data-tip="Rend les couleurs que l'application écrit elle-même dans ses lignes (niveau de log, codes HTTP…). Décoché, les lignes s'affichent en texte nu : c'est plus léger sur un flux qui débite en rafale, et c'est le défaut. Les couleurs de fond ne sont jamais rendues — elles supposent un terminal dont on maîtrise le contraste, pas deux thèmes." data-i18n-tip="docker.logs.color-tip"><svg class="ico ico-sm"><use href="#i-info"/></svg></button></label>
                     <button id="dlogClear" class="btn btn-sm" data-i18n-title="docker.logs.clear-title"><svg class="ico ico-sm"><use href="#i-trash"/></svg><span data-i18n="docker.logs.clear">Vider</span></button>
                     <button id="dlogPause" class="btn btn-sm" data-i18n-title="docker.logs.pause-title"><svg class="ico ico-sm"><use href="#i-pause"/></svg><span id="dlogPauseLabel" data-i18n="docker.logs.pause">Pause défilement</span></button>
                 </span>
@@ -936,6 +937,7 @@
 
 <script src="/i18n.js"></script>
 <script src="/i18n-runtime.js"></script>
+<script src="/ansi-runtime.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

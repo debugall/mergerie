@@ -436,3 +436,73 @@ describe('front : classement des commandes git destructives', () => {
     }
   });
 });
+
+/* Séquences ANSI dans les logs. Le cas qui a motivé ce nettoyage : une application dans un
+   container colore sa sortie, `docker logs` la relaie telle quelle, et le panneau affichait
+   « ␛[34mdebug␛[39m » — chaque ligne noyée sous ses propres octets d'échappement. */
+describe('ansi : nettoyage des séquences d’échappement des logs', () => {
+  const { stripAnsi, parseAnsi } = require('../public/ansi-runtime.js');
+  const E = '\u001b';
+
+  test('les couleurs SGR disparaissent, le texte reste intact', () => {
+    assert.equal(stripAnsi(`${E}[34mdebug${E}[39m`), 'debug');
+    // Ligne réelle observée : plusieurs segments colorés dans la même ligne.
+    assert.equal(
+      stripAnsi(`2026-07-30 18:30:23 | ${E}[37minfo${E}[39m ${E}[34m[getToken]${E}[39m - got token`),
+      '2026-07-30 18:30:23 | info [getToken] - got token',
+    );
+    assert.equal(stripAnsi(`${E}[1m${E}[31mERREUR${E}[0m`), 'ERREUR');
+  });
+
+  test('les autres familles de séquences aussi (curseur, titre, hyperlien)', () => {
+    assert.equal(stripAnsi(`${E}[2K${E}[1Gprogression`), 'progression');
+    assert.equal(stripAnsi(`${E}]0;titre de fenêtre\u0007suite`), 'suite');
+    assert.equal(stripAnsi(`${E}(Btexte`), 'texte');
+  });
+
+  test('les caractères de contrôle résiduels partent, sauf tabulation et saut de ligne', () => {
+    assert.equal(stripAnsi('ligne\ravec retour chariot'), 'ligneavec retour chariot');
+    assert.equal(stripAnsi('a\u0008b'), 'ab');
+    assert.equal(stripAnsi('colonne\tcolonne'), 'colonne\tcolonne', 'la tabulation aligne, elle porte du sens');
+    assert.equal(stripAnsi('deux\nlignes'), 'deux\nlignes');
+  });
+
+
+  /* Le rendu coloré, à la demande. Ce qu'il ne faut pas casser : les filtres portent
+     TOUJOURS sur le texte nu, donc `parseAnsi` doit restituer exactement les mêmes
+     caractères que `stripAnsi`, découpés autrement. */
+  test('parseAnsi découpe en segments et restitue le même texte que stripAnsi', () => {
+    const l = `${E}[34mdebug${E}[39m ok ${E}[1;31mERREUR${E}[0m fin`;
+    const segs = parseAnsi(l);
+    assert.deepEqual(segs.map((s) => s.text), ['debug', ' ok ', 'ERREUR', ' fin']);
+    assert.equal(segs.map((s) => s.text).join(''), stripAnsi(l), 'aucun caractère perdu ni ajouté');
+    assert.equal(segs[0].fg, 4);
+    assert.deepEqual([segs[2].fg, segs[2].bold], [1, true], 'gras + rouge cumulés');
+    assert.equal(segs[3].fg, null, 'ESC[0m remet tout à zéro');
+  });
+
+  test('parseAnsi : couleurs vives, et codes non gérés ignorés sans casse', () => {
+    assert.deepEqual(parseAnsi(`${E}[91mvif${E}[39m`).map((s) => [s.fg, s.bright]), [[1, true]]);
+    // 256 couleurs et RGB : leurs paramètres ne doivent pas être relus comme des codes.
+    assert.deepEqual(parseAnsi(`${E}[38;5;208morange${E}[0m`).map((s) => s.text), ['orange']);
+    assert.deepEqual(parseAnsi(`${E}[48;2;10;20;30mfond${E}[0m`).map((s) => [s.text, s.fg]), [['fond', null]]);
+    // Fond seul : ignoré volontairement (contraste non maîtrisé sur deux thèmes).
+    assert.deepEqual(parseAnsi(`${E}[41mrouge${E}[49m`).map((s) => s.fg), [null]);
+    assert.deepEqual(parseAnsi(''), []);
+  });
+
+  test('parseAnsi borne le nombre de segments — une ligne pathologique existe', () => {
+    const l = Array.from({ length: 200 }, (_, i) => `${E}[3${i % 8}mx`).join('');
+    const segs = parseAnsi(l, 16);
+    assert.ok(segs.length <= 17, 'plafond respecté (+1 pour le reste en texte nu)');
+    assert.equal(segs.map((s) => s.text).join(''), 'x'.repeat(200), 'le texte reste complet');
+  });
+
+  test('une ligne sans séquence n’est pas touchée — accents compris', () => {
+    const l = 'adp-api-verif 2026-07-30 | user vérifié, coût 12 € — ok';
+    assert.equal(stripAnsi(l), l);
+    assert.equal(stripAnsi(''), '');
+    assert.equal(stripAnsi(null), '');
+    assert.equal(stripAnsi(undefined), '');
+  });
+});

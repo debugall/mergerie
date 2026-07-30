@@ -145,15 +145,19 @@ function summary() {
 // (pas de Date/random) pour rester déterministe. `res` = réponse SSE déjà ouverte.
 function streamLogs(ids, res) {
   const list = (ids && ids.length ? ids : ['demo_api']);
+  /* Les échantillons portent des COULEURS, comme une vraie application dans un container.
+     Elles partent BRUTES, comme dans le flux réel : c'est ce qui rend la case « afficher
+     les couleurs » démontrable — sans elles, la démo montrerait un écran plus sage que la vie. */
+  const C = (code, s2) => `\u001b[${code}m${s2}\u001b[39m`;
   const samples = [
-    'INFO  GET /api/products 200 12ms',
-    'DEBUG cache lookup key=user:42 miss',
-    'INFO  GET /health 200 1ms',
-    'WARN  slow query 812ms SELECT * FROM orders',
-    'INFO  connected to postgres db:5432',
-    'ERROR upstream timeout after 3000ms retry=1',
-    'INFO  POST /api/cart 201 24ms',
-    'DEBUG worker heartbeat ok queue=3',
+    `${C(37, 'INFO ')} GET /api/products ${C(32, '200')} 12ms`,
+    `${C(34, 'DEBUG')} cache lookup key=user:42 miss`,
+    `${C(37, 'INFO ')} GET /health ${C(32, '200')} 1ms`,
+    `${C(33, 'WARN ')} slow query 812ms SELECT * FROM orders`,
+    `${C(37, 'INFO ')} connected to postgres db:5432`,
+    `${C(31, 'ERROR')} upstream timeout after 3000ms retry=1`,
+    `${C(37, 'INFO ')} POST /api/cart ${C(32, '201')} 24ms`,
+    `${C(34, 'DEBUG')} worker heartbeat ok queue=3`,
   ];
   let i = 0;
   const timer = setInterval(() => {

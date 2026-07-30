@@ -5376,12 +5376,17 @@ const DLOG = {
   containers: [], selected: new Set(), include: [], exclude: [],
   MAX_RAW: 5000, MAX_DOM: 2000, PALETTE: ['#4f9cf9', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#eab308', '#ec4899'],
 };
-const DLOG_K = { inc: 'aidevtools_docker_log_include', exc: 'aidevtools_docker_log_exclude', tail: 'aidevtools_docker_log_tail' };
+const DLOG_K = { inc: 'aidevtools_docker_log_include', exc: 'aidevtools_docker_log_exclude', tail: 'aidevtools_docker_log_tail', color: 'aidevtools_docker_log_color' };
+/* Couleurs de l'application dans ses propres lignes : DÉSACTIVÉES par défaut. Le texte nu
+   c'est un nœud de texte par ligne ; colorer, c'est un nœud par segment — sur un flux qui
+   débite en rafale la différence se voit. Le choix est persisté comme les filtres. */
+let dlogColorOn = (() => { try { return localStorage.getItem(DLOG_K.color) === '1'; } catch { return false; } })();
 
 function dlogLoadFilters() {
   const rd = (k) => { try { const v = JSON.parse(localStorage.getItem(k) || '[]'); return Array.isArray(v) ? v.filter((x) => x && x.w) : []; } catch { return []; } };
   DLOG.include = rd(DLOG_K.inc);
   DLOG.exclude = rd(DLOG_K.exc);
+  dlogRebuildWords();
 }
 function dlogSaveFilters() {
   try {
@@ -5389,15 +5394,37 @@ function dlogSaveFilters() {
     localStorage.setItem(DLOG_K.exc, JSON.stringify(DLOG.exclude));
   } catch { /* stockage indisponible */ }
 }
+
+/* Mots de filtre ACTIFS, préparés une fois pour toutes. `dlogVisible` les recalculait à
+   CHAQUE ligne (deux `filter` + deux `map` + un `toLowerCase` par mot), pour un résultat
+   qui ne change qu'au clic sur une puce — sur un flux qui débite en rafale, c'était deux
+   allocations par ligne pour rien.
+   TOUTE modification des filtres doit passer par `dlogFiltersChanged` : c'est le seul
+   endroit qui reconstruit ce cache, un tableau modifié ailleurs le laisserait périmé. */
+let dlogWords = { inc: [], exc: [] };
+function dlogRebuildWords() {
+  const actifs = (arr) => arr.filter((x) => x.on !== false).map((x) => x.w.toLowerCase());
+  dlogWords = { inc: actifs(DLOG.include), exc: actifs(DLOG.exclude) };
+}
+function dlogFiltersChanged() {
+  dlogSaveFilters(); dlogRebuildWords(); dlogRenderChips(); dlogRerender();
+}
 // Inclus : OU (la ligne passe si elle contient l'un des mots actifs). Exclus : la ligne
 // tombe si elle contient l'un des mots actifs. Insensible à la casse.
+/* Texte NU d'une ligne, calculé une fois et gardé sur l'entrée. C'est lui que voient les
+   filtres et la recherche : sans ça, un mot coupé en deux par une séquence de couleur
+   échapperait à un filtre, et les codes eux-mêmes pourraient matcher par accident. */
+function dlogText(entry) {
+  if (entry.t == null) entry.t = ANSI.stripAnsi(entry.m || '');
+  return entry.t;
+}
 function dlogVisible(text) {
+  const { inc, exc } = dlogWords;
+  // Aucun filtre — le cas courant : on sort avant même de minusculer la ligne.
+  if (!inc.length && !exc.length) return true;
   const s = String(text).toLowerCase();
-  const inc = DLOG.include.filter((x) => x.on !== false).map((x) => x.w.toLowerCase());
   if (inc.length && !inc.some((w) => s.includes(w))) return false;
-  const exc = DLOG.exclude.filter((x) => x.on !== false).map((x) => x.w.toLowerCase());
-  if (exc.some((w) => s.includes(w))) return false;
-  return true;
+  return !exc.some((w) => s.includes(w));
 }
 function dlogColor(id) {
   if (!DLOG.colors[id]) { const n = Object.keys(DLOG.colors).length; DLOG.colors[id] = DLOG.PALETTE[n % DLOG.PALETTE.length]; }
@@ -5415,8 +5442,23 @@ function dlogRowEl(entry) {
   tag.textContent = dlogName(entry.c);
   const msg = document.createElement('span');
   msg.className = 'dlog-msg';
-  msg.textContent = entry.sys === 'closed' ? tr('docker.logs.stream-closed')
-    : entry.sys === 'error' ? `⚠ ${entry.m || ''}` : (entry.m || '');
+  if (entry.sys) {
+    msg.textContent = entry.sys === 'closed' ? tr('docker.logs.stream-closed') : `⚠ ${dlogText(entry)}`;
+  } else if (dlogColorOn) {
+    // Un <span> par segment, jamais d'innerHTML : le contenu vient d'un container.
+    for (const seg of ANSI.parseAnsi(entry.m || '')) {
+      const el = document.createElement('span');
+      el.textContent = seg.text;
+      const cls = [];
+      if (seg.fg != null) cls.push(`ansi-fg-${seg.fg}`, ...(seg.bright ? ['ansi-bright'] : []));
+      if (seg.bold) cls.push('ansi-b');
+      if (seg.underline) cls.push('ansi-u');
+      if (cls.length) el.className = cls.join(' ');
+      msg.appendChild(el);
+    }
+  } else {
+    msg.textContent = dlogText(entry);
+  }
   row.appendChild(tag); row.appendChild(msg);
   return row;
 }
@@ -5439,12 +5481,12 @@ function dlogScheduleFlush() {
 function dlogOnEntry(entry) {
   DLOG.raw.push(entry);
   if (DLOG.raw.length > DLOG.MAX_RAW) DLOG.raw.splice(0, DLOG.raw.length - DLOG.MAX_RAW); // buffer borné
-  if (entry.sys || dlogVisible(entry.m || '')) { DLOG.pending.push(entry); dlogScheduleFlush(); }
+  if (entry.sys || dlogVisible(dlogText(entry))) { DLOG.pending.push(entry); dlogScheduleFlush(); }
 }
 // Rejoue le buffer à travers les filtres courants (changement inclure/exclure) — sans relancer le flux.
 function dlogRerender() {
   const view = $('#dlogView'); if (!view) return;
-  const rows = DLOG.raw.filter((e) => e.sys || dlogVisible(e.m || ''));
+  const rows = DLOG.raw.filter((e) => e.sys || dlogVisible(dlogText(e)));
   const start = Math.max(0, rows.length - DLOG.MAX_DOM);
   const frag = document.createDocumentFragment();
   for (let i = start; i < rows.length; i += 1) frag.appendChild(dlogRowEl(rows[i]));
@@ -5481,7 +5523,7 @@ function dlogAddWord(kind, word) {
   const arr = kind === 'inc' ? DLOG.include : DLOG.exclude;
   if (arr.some((x) => x.w.toLowerCase() === w.toLowerCase())) return; // pas de doublon
   arr.push({ w, on: true });
-  dlogSaveFilters(); dlogRenderChips(); dlogRerender();
+  dlogFiltersChanged();
 }
 
 function dlogRenderContainers() {
@@ -5538,6 +5580,18 @@ $('#dlogStop') && $('#dlogStop').addEventListener('click', dlogStop);
 $('#dlogSearch') && $('#dlogSearch').addEventListener('input', dlogRenderContainers);
 $('#dlogClear') && $('#dlogClear').addEventListener('click', () => { DLOG.raw = []; DLOG.pending = []; $('#dlogView').textContent = ''; dlogStatus(); });
 $('#dlogWrap') && $('#dlogWrap').addEventListener('change', (e) => { $('#dlogView').classList.toggle('wrap', e.target.checked); });
+/* Basculer les couleurs REJOUE le tampon : les lignes brutes sont conservées, on ne relance
+   donc pas le flux et rien n'est perdu — le rendu seul change. */
+(() => {
+  const cb = $('#dlogColor');
+  if (!cb) return;
+  cb.checked = dlogColorOn;
+  cb.addEventListener('change', () => {
+    dlogColorOn = cb.checked;
+    try { localStorage.setItem(DLOG_K.color, dlogColorOn ? '1' : '0'); } catch { /* stockage indisponible */ }
+    dlogRerender();
+  });
+})();
 $('#dlogPause') && $('#dlogPause').addEventListener('click', () => {
   DLOG.autoscroll = !DLOG.autoscroll;
   if (DLOG.autoscroll) { const v = $('#dlogView'); v.scrollTop = v.scrollHeight; }
@@ -5568,7 +5622,7 @@ for (const zone of ['#dlogIncludeChips', '#dlogExcludeChips']) {
     if (e.target.closest('[data-del]')) arr.splice(i, 1);           // retirer
     else if (e.target.closest('[data-tog]')) arr[i].on = arr[i].on === false; // (dés)activer sans perdre le mot
     else return;
-    dlogSaveFilters(); dlogRenderChips(); dlogRerender();
+    dlogFiltersChanged();
   });
 }
 

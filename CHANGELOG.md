@@ -27,6 +27,19 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   **Only show** state filter (running, stopped/not created, unhealthy, restarting, drifted) narrow the view
   service by service. A project with no matching service disappears entirely. Both settings are persisted
   and applied client-side, without querying Docker again.
+- **Docker logs are readable again — and can be colourful on request.** An application running in a
+  container usually colours its output, `docker logs` relays those escape bytes untouched, and the
+  browser is not a terminal: every line came through buried under `[34mdebug[39m` and a control
+  glyph. Lines are shown as plain text by default, which is also the lighter rendering when the
+  stream bursts. A **Show colours** checkbox next to *Wrap lines* renders what the application meant
+  — the blue of *debug*, the red of an error, the green of a 200 — and remembers your choice.
+  Ticking it replays what is already on screen rather than restarting the stream, and the include /
+  exclude filters keep matching on the plain text either way. Background colours are deliberately
+  left out: they assume a terminal whose contrast you control, not a light and a dark theme.
+- **Accents no longer break in the log stream.** A multi-byte character landing on a network chunk
+  boundary was decoded as two invalid halves and shown as a replacement character. The stream is
+  decoded properly now. The job log panel also strips escape sequences, which can reach it from an
+  agent or from git.
 - **"Not running" was three different situations.** The Compose state filter lumped them together
   under *Stopped / not created*, although Docker tells them apart and they call for different
   actions: a container that **ran and exited** wants restarting, one that was **created but never

@@ -1,5 +1,6 @@
 'use strict';
 const db = require('./db');
+const { stripAnsi } = require('../public/ansi-runtime.js');
 const { reviewMr, modifyReview, explainMr } = require('./reviewer');
 const taskrunner = require('./taskrunner');
 const proc = require('./proc');
@@ -34,7 +35,9 @@ function setJob(id, patch) {
 // Ajoute une ligne au log du job (persistée, pollée par l'UI en temps réel).
 const insertLog = db.prepare('INSERT INTO job_log (job_id, mr_id, ts, text) VALUES (?,?,?,?)');
 function logLine(jobId, mrId, text) {
-  insertLog.run(jobId, mrId, new Date().toISOString(), String(text).slice(0, 4000));
+  // Même raison que pour les logs Docker : la sortie d'un agent ou d'un git peut contenir
+  // des séquences de couleur, et le panneau de journal n'est pas un terminal.
+  insertLog.run(jobId, mrId, new Date().toISOString(), stripAnsi(text).slice(0, 4000));
 }
 
 // Sélectionne les MR à traiter pour un job 'review' : toutes celles en to_review.

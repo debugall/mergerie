@@ -55,6 +55,7 @@ const docker = require('./docker');
 const demoDocker = require('./demo-docker');
 const demoJira = require('./demo-jira');
 const demoComments = require('./demo-comments');
+const { StringDecoder } = require('node:string_decoder');
 const aisession = require('./aisession');
 const agentsession = require('./agentsession');
 const agentpass = require('./agentpass');
@@ -964,12 +965,18 @@ app.get('/api/docker/logs/stream', (req, res) => {
       const child = await docker.spawnLogs(id, tail);
       if (closed) { try { child.kill('SIGKILL'); } catch { /* course : client déjà parti */ } return; }
       children.push(child);
-      let ob = ''; let eb = '';
+      /* Un StringDecoder par flux, et non `String(chunk)` : un caractère UTF-8 multi-octets
+         à cheval sur deux chunks serait sinon décodé en deux moitiés invalides, et chaque
+         accent tombant sur une frontière deviendrait un « ￰ ». Le decoder garde l'octet
+         orphelin pour le chunk suivant. */
+      const dec = { o: new StringDecoder('utf8'), e: new StringDecoder('utf8') };
+      const buf = { o: '', e: '' };
       const pump = (chunk, which) => {
-        const merged = (which === 'o' ? ob : eb) + chunk;
-        const parts = merged.split('\n');
-        const rem = parts.pop();
-        if (which === 'o') ob = rem; else eb = rem;
+        const parts = (buf[which] + dec[which].write(chunk)).split('\n');
+        buf[which] = parts.pop();
+        /* La ligne part BRUTE, séquences de couleur comprises : c'est le client qui décide
+           d'afficher du texte nu (par défaut) ou des couleurs, sans relancer le flux.
+           Nettoyer ici interdirait la case à cocher. */
         for (const line of parts) send({ c: id, m: line });
       };
       child.stdout.on('data', (d) => pump(d, 'o'));

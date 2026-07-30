@@ -1348,6 +1348,29 @@ nav button:hover { color: var(--text); background: var(--hover); }
 .dlog-msg { flex: 1 1 auto; }
 .dlog-sys .dlog-msg { color: var(--muted); font-style: italic; }
 .dlog-sys-error .dlog-msg { color: var(--danger, #e57373); font-style: normal; }
+/* Couleurs ANSI de l'application (case « Afficher les couleurs »). Les huit teintes de base
+   sont redéfinies PAR THÈME : les valeurs d'un terminal sombre (le bleu 0000ee, le noir)
+   deviennent illisibles sur fond clair. Le « noir » et le « blanc » ANSI sont d'ailleurs
+   rendus par la couleur de texte courante, faute de quoi l'un des deux thèmes les efface. */
+:root {
+  --ansi-0: var(--text); --ansi-1: #f07178; --ansi-2: #6ac16a; --ansi-3: #d9a441;
+  --ansi-4: #6aa9f4; --ansi-5: #c792ea; --ansi-6: #4dd0c4; --ansi-7: var(--text);
+}
+:root[data-theme="light"] {
+  --ansi-1: #c62d2d; --ansi-2: #2c7a2c; --ansi-3: #8a6100;
+  --ansi-4: #1f5fbf; --ansi-5: #7b3fbf; --ansi-6: #0f7c74;
+}
+.ansi-fg-0 { color: var(--ansi-0); }
+.ansi-fg-1 { color: var(--ansi-1); }
+.ansi-fg-2 { color: var(--ansi-2); }
+.ansi-fg-3 { color: var(--ansi-3); }
+.ansi-fg-4 { color: var(--ansi-4); }
+.ansi-fg-5 { color: var(--ansi-5); }
+.ansi-fg-6 { color: var(--ansi-6); }
+.ansi-fg-7 { color: var(--ansi-7); }
+.ansi-bright { filter: brightness(1.25); }
+.ansi-b { font-weight: 700; }
+.ansi-u { text-decoration: underline; }
 
 /* ===== Docker · Actions groupées ===== */
 .dact-head { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 8px; }
