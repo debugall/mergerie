@@ -138,6 +138,24 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
     assert.ok(!/Corrige le titre/.test(first.body.current.prompt));
   });
 
+  // Pendant hors dépôt de la reprise de session : l'identifiant se range sur chaque dossier.
+  test('session existante fournie : rangée sur chaque dossier', async () => {
+    const { backendName } = require('../src/agentsession');
+    const id = backendName() === 'claude'
+      ? '6ba7b810-9dad-11d1-80b4-00c04fd430c8'
+      : '/home/moi/.mergerie/agent-sessions/deja-la';
+    const a = mkdir(); const b = mkdir();
+    const created = (await app.api('POST', '/api/local-tasks', { prompt: 'continue', dirs: [a, b], session_id: id })).body;
+    const rows = app.db.prepare('SELECT session_key, session_backend, session_cwd FROM local_task_dir WHERE task_id = ?').all(created.id);
+    assert.equal(rows.length, 2);
+    for (const r of rows) {
+      assert.equal(r.session_key, id);
+      assert.equal(r.session_backend, backendName());
+      assert.equal(r.session_cwd, null);
+    }
+    assert.equal((await app.api('POST', '/api/local-tasks', { prompt: 'p', dirs: [mkdir()], session_id: '-x' })).status, 400);
+  });
+
   // Pendant hors dépôt du rangement des sessions sur dépôt : même geste, autre table.
   test('ranger une session hors dépôt : le drapeau fait l’aller-retour, les dossiers restent', async () => {
     const d = mkdir();

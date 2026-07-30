@@ -1133,10 +1133,33 @@ function normalizeTargets(targets, kind) {
     };
   });
 }
-function insertTargets(taskId, list) {
-  const ins = db.prepare("INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, updated_at) VALUES (?, ?, ?, ?, 'new', ?)");
+function insertTargets(taskId, list, sessionId) {
+  /* `sessionId` : session d'agent EXISTANTE fournie à la création. On la range comme si la
+     première passe l'avait créée — les exécutants reprennent déjà une session dès qu'un
+     handle est présent, il n'y a donc rien à changer chez eux. `session_cwd` reste NULL à
+     dessein : on ignore d'où vient cette session, et le garde-fou « même cwd » ne doit pas
+     refuser ce que l'utilisateur a explicitement demandé. Si la reprise échoue, le repli
+     existant repart sur une session neuve avec le contexte réinjecté. */
+  const ins = db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, session_key, session_backend, updated_at)
+    VALUES (?, ?, ?, ?, 'new', ?, ?, ?)`);
   const now = new Date().toISOString();
-  for (const t of list) ins.run(taskId, t.repo_id, t.branch, t.base_branch || null, now);
+  const backend = sessionId ? agentsession.backendName() : null;
+  for (const t of list) ins.run(taskId, t.repo_id, t.branch, t.base_branch || null, sessionId || null, backend, now);
+}
+
+/* Un identifiant de session est passé TEL QUEL à l'agent : `--resume <id>` pour claude,
+   `COPILOT_HOME=<chemin>` pour copilot. Il ne doit donc jamais pouvoir passer pour un flag,
+   et pour claude il a une forme connue — autant refuser tout de suite plutôt que d'échouer
+   au milieu d'un job, une fois les dépôts clonés. */
+function normalizeSessionId(raw) {
+  const id = String(raw || '').trim();
+  if (!id) return null;
+  if (id.startsWith('-')) throw new Error(t('err.session-id-invalide'));
+  if (agentsession.backendName() === 'claude'
+    && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error(t('err.session-id-uuid-attendu'));
+  }
+  return id;
 }
 // Nom de branche sûr : pas de flag (pas de `-` en tête), pas de `..`, caractères limités.
 // Empêche l'injection d'arguments dans les commandes git.
@@ -1201,9 +1224,10 @@ app.get('/api/tasks/:id', wrap((req, res) => {
 // Crée une session : `kind` = 'code' (l'IA modifie le code) ou 'explore' (lecture seule).
 // `targets` = [{ repo_id, branch }] — une session peut porter sur plusieurs projets.
 app.post('/api/tasks', wrap((req, res) => {
-  const { kind, prompt, commit_message, auto_push, images, targets, ask_questions } = req.body || {};
+  const { kind, prompt, commit_message, auto_push, images, targets, ask_questions, session_id } = req.body || {};
   const k = kind === 'explore' ? 'explore' : 'code';
   if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
+  const sessionId = normalizeSessionId(session_id);
   const list = normalizeTargets(targets, k);
   const now = new Date().toISOString();
   // « L'IA peut poser des questions » : opt-in, uniquement pertinent en codage.
@@ -1216,7 +1240,7 @@ app.post('/api/tasks', wrap((req, res) => {
     list[0].repo_id, k, prompt.trim(), list[0].branch || '',
     (commit_message || '').trim() || null, auto_push ? 1 : 0, ask, now, now);
   const taskId = info.lastInsertRowid;
-  insertTargets(taskId, list);
+  insertTargets(taskId, list, sessionId);
   saveTaskImages(taskId, images);
   res.json({ ...taskById(taskId), targets: taskTargets(taskId) });
 }));
@@ -1377,15 +1401,20 @@ app.get('/api/local-tasks', wrap((req, res) => {
   res.json(list);
 }));
 app.post('/api/local-tasks', wrap((req, res) => {
-  const { prompt, dirs, images } = req.body || {};
+  const { prompt, dirs, images, session_id } = req.body || {};
   if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
+  const sessionId = normalizeSessionId(session_id);
   const list = (Array.isArray(dirs) ? dirs : []).map((d) => String(d || '').trim()).filter(Boolean);
   if (!list.length) throw new Error(t('err.local-dirs-required'));
   const now = new Date().toISOString();
   const id = db.prepare("INSERT INTO local_task (prompt, status, created_at, updated_at) VALUES (?, 'new', ?, ?)")
     .run(prompt.trim(), now, now).lastInsertRowid;
-  const ins = db.prepare("INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?, ?, 'new', ?)");
-  for (const p of [...new Set(list)]) ins.run(id, p, now);
+  // Même principe que pour les sessions sur dépôt : la session fournie est rangée comme
+  // si la première passe l'avait créée, `localcoder` la reprend alors sans rien savoir.
+  const ins = db.prepare(`INSERT INTO local_task_dir (task_id, path, status, session_key, session_backend, updated_at)
+    VALUES (?, ?, 'new', ?, ?, ?)`);
+  const backend = sessionId ? agentsession.backendName() : null;
+  for (const p of [...new Set(list)]) ins.run(id, p, sessionId || null, backend, now);
   saveLocalImages(id, images); // captures jointes au prompt (facultatif)
   res.json(localTaskById(id));
 }));

@@ -2795,6 +2795,11 @@ function applyKindToModal(kind) {
   $('#taskLocalWrap').hidden = !isLocal;
   $('#taskLocalWarn').hidden = !isLocal;
   if (isLocal) { $('#taskJiraRow').hidden = true; renderLocalRootPicker(); renderLocalDirRows(); }
+  /* La session à reprendre ne se choisit qu'à la CRÉATION : en édition, chaque projet a
+     déjà son propre handle, et réaffecter une session en cours de route donnerait un état
+     incohérent entre la fiche et ce que l'agent a réellement en mémoire. */
+  const sid = $('#taskSessionId');
+  if (sid) { sid.closest('label').hidden = !!editingTaskId; if (editingTaskId) sid.value = ''; }
   const ta = $('#taskForm').prompt;
   ta.placeholder = isLocal ? tr('local.prompt-ph') : (kind === 'code' ? tr('task.ph.prompt-code') : tr('task.ph.prompt-explore'));
   $('#targetsLabel').textContent = kind === 'code' ? tr('task.targets.code') : tr('task.targets.explore');
@@ -2970,7 +2975,9 @@ $('#taskForm').addEventListener('submit', async (e) => {
     if (!dirs.length) { toast(tr('local.dirs-required'), true); return; }
     const btn = $('#taskSubmit');
     try {
-      const created = await busy(btn, () => api('/local-tasks', { method: 'POST', body: { prompt: f.prompt.value, dirs, images: taskNewImages } }));
+      const created = await busy(btn, () => api('/local-tasks', { method: 'POST', body: {
+        prompt: f.prompt.value, dirs, images: taskNewImages, session_id: f.session_id ? f.session_id.value : '',
+      } }));
       await api(`/local-tasks/${created.id}/run`, { method: 'POST' });
       toast(tr('local.started')); refreshStatus();
       taskNewImages = []; renderTaskPreviews(); closeTaskModal(); loadTasks();
@@ -2985,6 +2992,10 @@ $('#taskForm').addEventListener('submit', async (e) => {
     commit_message: f.commit_message ? f.commit_message.value : '',
     auto_push: f.auto_push ? f.auto_push.checked : false,
     ask_questions: f.ask_questions ? f.ask_questions.checked : false,
+    // Session existante à reprendre. Vide = nouvelle session, le cas courant. Le champ
+    // n'est lu qu'à la CRÉATION : la modale d'édition ne réaffecte pas une session déjà
+    // en cours, qui a son propre handle par projet.
+    session_id: f.session_id ? f.session_id.value : '',
     images: taskNewImages,
     targets,
   };

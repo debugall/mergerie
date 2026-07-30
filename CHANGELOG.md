@@ -61,6 +61,18 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   `down`…) share one styled modal: themed, translated, and with a button that names the action instead
   of a mute "OK". Irreversible actions are recognisable at rest, not only on hover.
 
+- **A new session can continue an existing one.** Creating a coding session, an out-of-repo coding
+  session or an exploration now offers an optional **Resume an existing agent session** field. Fill
+  it in and no new session is opened: the work happens inside that one, so the AI still has
+  everything it worked out earlier — its reading of the code, the decisions already made, what it
+  already tried. Leave it empty and nothing changes. The id is the one shown by *Resume in terminal*
+  on an existing session. A session belongs to one working directory, so if resuming is refused the
+  usual fallback opens a fresh session with the context re-injected rather than losing the run.
+- **Explorations remember, instead of being reminded.** A follow-up question used to paste the
+  previous answer back into the prompt — but an answer is a summary, not the reasoning that produced
+  it, so the AI had to work out again what it had already read. Explorations now run in a resumable
+  session like coding sessions do, and a follow-up simply continues it. Pasting the previous answer
+  back remains as the fallback, for dry-run and for the case where resuming fails.
 - **Picking a branch no longer means scrolling.** In Git → Actions the source branch was a plain
   dropdown listing every branch of the repository, in whatever order the forge returned them — on a
   busy repository that is hundreds of entries. It is now a field you type into, like the repository

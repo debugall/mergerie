@@ -251,7 +251,10 @@ describe('Sessions de dev de bout en bout', () => {
     assert.match(md.body.md, /Comment fonctionne le module app/);
     assert.equal(md.body.prompt, 'Comment fonctionne le module app ?');
 
-    // Question de suivi : la réponse précédente est reprise en contexte.
+    /* Question de suivi. Hors dry-run elle REPREND la session d'agent — l'IA se souvient de
+       ce qu'elle a lu, pas seulement de ce qu'elle a écrit. En dry-run (le cas ici) aucune
+       session n'est ouverte : la réponse précédente reste alors le seul fil de continuité,
+       et c'est ce repli qu'on vérifie — il doit survivre au passage en session. */
     await app.api('POST', `/api/tasks/${task.id}/followup`, { instruction: 'Et les tests ?' });
     await waitForJobs(app.api);
     const md2 = await app.api('GET', `/api/tasks/${task.id}/md`);
@@ -276,6 +279,10 @@ describe('Sessions de dev de bout en bout', () => {
     const clone = path.join(app.dataDir, 'clones', 'grp__app');
     assert.equal(git(clone, ['status', '--porcelain']).trim(), '', 'exploration = lecture seule');
     assert.equal((await app.api('GET', '/api/tasks/99999/md')).status, 400);
+
+    // En dry-run, aucune session n'est ouverte : les cibles restent sans handle.
+    const cible = app.db.prepare('SELECT session_key FROM task_target WHERE task_id = ?').get(task.id);
+    assert.equal(cible.session_key, null, 'le dry-run n’invente pas de session');
   });
 
   test('GET /api/tasks liste les sessions avec leurs projets', async () => {
@@ -283,6 +290,51 @@ describe('Sessions de dev de bout en bout', () => {
     assert.ok(body.length >= 2);
     assert.ok(body.every((t) => Array.isArray(t.targets)));
     assert.ok(body.some((t) => t.image_count > 0));
+  });
+
+  /* Reprendre une session d'agent EXISTANTE au lieu d'en ouvrir une neuve. Le mécanisme
+     n'ajoute rien aux exécutants : ils reprennent déjà une session dès qu'un handle est
+     présent sur le projet. Tout tient donc à ce que la création range bien l'identifiant —
+     c'est ce qui est vérifié ici, plus le refus de ce qui passerait pour un flag. */
+  test('session existante fournie à la création : rangée sur chaque projet', async () => {
+    const { backendName } = require('../src/agentsession');
+    const id = backendName() === 'claude'
+      ? '6ba7b810-9dad-11d1-80b4-00c04fd430c8'
+      : '/home/moi/.mergerie/agent-sessions/deja-la';
+
+    const avec = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'continue ce que tu faisais', session_id: id,
+      targets: [{ repo_id: repoId, branch: 'ai/reprise' }, { repo_id: repo2Id, branch: 'ai/reprise' }],
+    });
+    assert.equal(avec.status, 200);
+    const cibles = app.db.prepare('SELECT session_key, session_backend, session_cwd FROM task_target WHERE task_id = ?').all(avec.body.id);
+    assert.equal(cibles.length, 2);
+    for (const c of cibles) {
+      assert.equal(c.session_key, id, 'chaque projet part sur la session fournie');
+      assert.equal(c.session_backend, backendName());
+      assert.equal(c.session_cwd, null, 'cwd inconnu : le garde-fou « même cwd » ne doit pas bloquer');
+    }
+
+    // Sans le champ, rien ne change : la session est créée au premier run, comme avant.
+    const sans = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'p', targets: [{ repo_id: repoId, branch: 'ai/neuve' }],
+    });
+    assert.equal(app.db.prepare('SELECT session_key FROM task_target WHERE task_id = ?').get(sans.body.id).session_key, null);
+
+    // Un identifiant est passé tel quel à l'agent : il ne doit jamais pouvoir passer pour un flag.
+    const flag = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'p', session_id: '--dangerously-skip-permissions',
+      targets: [{ repo_id: repoId, branch: 'ai/x' }],
+    });
+    assert.equal(flag.status, 400);
+
+    if (backendName() === 'claude') {
+      const pasUuid = await app.api('POST', '/api/tasks', {
+        kind: 'code', prompt: 'p', session_id: 'pas-un-uuid',
+        targets: [{ repo_id: repoId, branch: 'ai/y' }],
+      });
+      assert.equal(pasUuid.status, 400, 'claude attend un UUID : autant le dire avant de cloner');
+    }
   });
 
   /* Ranger une session la sort de la liste sans rien détruire : c'est le point qui distingue

@@ -296,7 +296,25 @@ async function runExploration(task, { question, previous, onLog }) {
 
   const imgBlock = attachImages(task, root, onLog);
   const listing = dirs.map((d) => `- \`${d.dir}/\` → projet **${d.project}**, branche \`${d.branch}\``).join('\n');
-  const prev = previous
+
+  /* Une exploration tourne dans une SESSION reprenable, comme un codage : la question de
+     suivi reprend la session au lieu de recoller la réponse précédente dans le prompt.
+     L'agent garde ainsi ce qu'il a lu et compris, pas seulement ce qu'il a écrit — sa
+     synthèse est un résumé, pas son raisonnement.
+     Le handle est celui déjà enregistré sur les cibles (créé au premier run, ou fourni à la
+     création), toutes les cibles d'une exploration partageant la MÊME session : le cwd est
+     la racine des clones, pas un dépôt en particulier. */
+  const sessionable = !copilot.isDryRun() && agentsession.backendName() !== 'unknown';
+  const known = targets.find((tg) => tg.session_key) || {};
+  let doResume = sessionable && !!known.session_key;
+  if (doResume && known.session_cwd && path.resolve(known.session_cwd) !== path.resolve(root)) {
+    onLog('⚠ cwd de session différent → reprise refusée, session neuve');
+    doResume = false;
+  }
+  /* La réponse précédente n'est réinjectée que HORS session : elle n'a plus lieu d'être
+     quand l'agent s'en souvient, et en dry-run ou sur un backend non reprenable elle reste
+     le seul fil de continuité. */
+  const prev = (previous && !doResume)
     ? `\n\nTu as déjà produit la réponse suivante :\n"""\n${previous}\n"""\nPrends-la en compte et complète-la selon la nouvelle demande.`
     : '';
 
@@ -313,7 +331,30 @@ async function runExploration(task, { question, previous, onLog }) {
   onLog(`exploration (${copilot.isDryRun() ? 'dry-run' : 'IA'}) sur ${dirs.length} dépôt(s)`);
   let stdout = '';
   try {
-    stdout = await copilot.runPrompt(prompt, root, { kind: 'explore' }, onLog);
+    if (sessionable) {
+      const key = `explore-${task.id}`;
+      let created = !doResume;
+      let r;
+      try {
+        r = await agentsession.runInSession({ key, handle: doResume ? known.session_key : null, prompt, cwd: root, resume: doResume, onLog });
+      } catch (e) {
+        if (!doResume) throw e;
+        // Même repli que pour un codage : la session est perdue, pas l'exploration. On
+        // réinjecte la réponse précédente, seul contexte dont dispose une session neuve.
+        onLog(`⚠ reprise impossible (${String(e.message).split('\n')[0]}) → session neuve, contexte réinjecté`);
+        const withPrev = previous
+          ? `${prompt}\n\nTu avais déjà produit la réponse suivante :\n"""\n${previous}\n"""`
+          : prompt;
+        r = await agentsession.runInSession({ key, prompt: withPrev, cwd: root, resume: false, onLog });
+        created = true;
+      }
+      stdout = r.text || '';
+      copilot.recordUsage('explore', prompt, stdout);
+      // Les cibles d'une exploration partagent la session : toutes portent le même handle.
+      if (created) for (const tg of targets) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: root });
+    } else {
+      stdout = await copilot.runPrompt(prompt, root, { kind: 'explore' }, onLog);
+    }
   } finally {
     // garantie lecture seule : quoi qu'il arrive, on annule toute modification
     for (const d of dirs) {
