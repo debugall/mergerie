@@ -331,6 +331,14 @@ for (const p of Object.keys(LOCAL_OUT)) {
   db.prepare('UPDATE local_task_dir SET output_path = ?, session_key = ?, session_backend = ? WHERE id = ?')
     .run(out, `demo-local-${info.lastInsertRowid}`, 'claude', info.lastInsertRowid);
 }
+/* Codage hors dépôt CRÉÉ MAIS PAS LANCÉ (« Créer sans lancer ») : la carte porte alors un
+   bouton « Lancer », et le badge du menu compte le travail en attente. Sans cet exemple,
+   rien à l'écran ne montre qu'on peut préparer un traitement pour plus tard. */
+const lt0 = db.prepare('INSERT INTO local_task (prompt, status, created_at, updated_at) VALUES (?,?,?,?)')
+  .run('Passe ces scripts en ES modules et remplace les require() restants.', 'new', at(0.4), at(0.4));
+db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
+  .run(lt0.lastInsertRowid, '/Users/moi/outils/deploy-scripts', 'new', at(0.4));
+
 const lt2 = db.prepare('INSERT INTO local_task (prompt, status, last_error, created_at, updated_at) VALUES (?,?,?,?,?)')
   .run('Convertis ce petit script Python en module réutilisable avec des tests pytest.', 'error', 'Le dossier n’a pas pu être traité (agent indisponible en démo).', at(1.2), at(1.2));
 db.prepare('INSERT INTO local_task_dir (task_id, path, status, last_error, updated_at) VALUES (?,?,?,?,?)')

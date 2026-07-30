@@ -2816,11 +2816,16 @@ async function openTaskModal(kind = taskKind) {
   if (kind !== 'local') { renderTargetRows([{}]); setupTaskJira(''); }
   $('#taskModalTitle').textContent = KIND_LABEL[kind].title;
   $('#taskExistingImgs').textContent = '';
-  // Codage hors dépôt : créer + lancer directement (« Lancer le codage »).
+  /* Codage hors dépôt : le bouton principal crée ET lance, c'est le geste courant. Mais
+     « Créer sans lancer » l'accompagne, comme pour une session de codage ouverte depuis
+     une MR — préparer un traitement et le déclencher plus tard est un besoin légitime, et
+     rien ne le permettait ici. Codage et exploration, eux, enregistrent sans lancer : leur
+     bouton principal EST déjà le « sans lancer ». */
+  launchAfterCreate = kind === 'local';
   $('#taskSubmit').innerHTML = kind === 'local'
     ? `<svg class="ico"><use href="#i-play"/></svg>${tr('local.run')}`
     : `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
-  $('#taskSubmitOnly').hidden = true;
+  $('#taskSubmitOnly').hidden = kind !== 'local';
   $('#taskModal').hidden = false;
   f.prompt.focus();
 }
@@ -2978,8 +2983,13 @@ $('#taskForm').addEventListener('submit', async (e) => {
       const created = await busy(btn, () => api('/local-tasks', { method: 'POST', body: {
         prompt: f.prompt.value, dirs, images: taskNewImages, session_id: f.session_id ? f.session_id.value : '',
       } }));
-      await api(`/local-tasks/${created.id}/run`, { method: 'POST' });
-      toast(tr('local.started')); refreshStatus();
+      if (launchAfterCreate) {
+        await api(`/local-tasks/${created.id}/run`, { method: 'POST' });
+        toast(tr('local.started')); refreshStatus();
+      } else {
+        // Créée en statut « new » : la carte affiche « Lancer », le geste reste à un clic.
+        toast(tr('toast.local-session-created'));
+      }
       taskNewImages = []; renderTaskPreviews(); closeTaskModal(); loadTasks();
     } catch (err) { toast(explainError(err.message), true); }
     return;

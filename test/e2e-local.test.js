@@ -138,6 +138,24 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
     assert.ok(!/Corrige le titre/.test(first.body.current.prompt));
   });
 
+  /* Créer sans lancer : la session existe en statut « new » et attend son déclenchement.
+     Le POST de création ne lançait rien, mais l'écran enchaînait toujours sur /run — c'est
+     donc le statut au repos qui doit rester vérifiable. */
+  test('créée sans être lancée : statut « new », rien n’a tourné', async () => {
+    const d = mkdir();
+    fs.writeFileSync(path.join(d, 'a.txt'), 'inchangé', 'utf8');
+    const created = (await app.api('POST', '/api/local-tasks', { prompt: 'plus tard', dirs: [d] })).body;
+    assert.equal(created.status, 'new');
+    assert.equal(created.dirs[0].status, 'new');
+    assert.equal(fs.readFileSync(path.join(d, 'a.txt'), 'utf8'), 'inchangé', 'aucun traitement n’a eu lieu');
+
+    // …et le lancement différé fonctionne comme un lancement immédiat.
+    await app.api('POST', `/api/local-tasks/${created.id}/run`);
+    await waitForJobs(app.api);
+    const apres = (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === created.id);
+    assert.equal(apres.status, 'done');
+  });
+
   // Pendant hors dépôt de la reprise de session : l'identifiant se range sur chaque dossier.
   test('session existante fournie : rangée sur chaque dossier', async () => {
     const { backendName } = require('../src/agentsession');

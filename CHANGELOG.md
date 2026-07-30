@@ -61,6 +61,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   `down`…) share one styled modal: themed, translated, and with a button that names the action instead
   of a mute "OK". Irreversible actions are recognisable at rest, not only on hover.
 
+- **Out-of-repo coding can be prepared and run later.** Its dialog only offered *Start coding*, which
+  created the session and launched it on the spot — writing one down for later meant not writing it
+  at all. It now also offers **Create without running**, next to it: the session is created in the
+  "to run" state and its card carries a *Run* button, like every other session. Coding sessions and
+  explorations already worked this way — their main button saves without launching.
 - **A new session can continue an existing one.** Creating a coding session, an out-of-repo coding
   session or an exploration now offers an optional **Resume an existing agent session** field. Fill
   it in and no new session is opened: the work happens inside that one, so the AI still has
