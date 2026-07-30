@@ -2795,11 +2795,6 @@ function applyKindToModal(kind) {
   $('#taskLocalWrap').hidden = !isLocal;
   $('#taskLocalWarn').hidden = !isLocal;
   if (isLocal) { $('#taskJiraRow').hidden = true; renderLocalRootPicker(); renderLocalDirRows(); }
-  /* La session à reprendre ne se choisit qu'à la CRÉATION : en édition, chaque projet a
-     déjà son propre handle, et réaffecter une session en cours de route donnerait un état
-     incohérent entre la fiche et ce que l'agent a réellement en mémoire. */
-  const sid = $('#taskSessionId');
-  if (sid) { sid.closest('label').hidden = !!editingTaskId; if (editingTaskId) sid.value = ''; }
   const ta = $('#taskForm').prompt;
   ta.placeholder = isLocal ? tr('local.prompt-ph') : (kind === 'code' ? tr('task.ph.prompt-code') : tr('task.ph.prompt-explore'));
   $('#targetsLabel').textContent = kind === 'code' ? tr('task.targets.code') : tr('task.targets.explore');
@@ -2906,12 +2901,22 @@ async function openTaskEdit(id) {
     if (f.commit_message) f.commit_message.value = t.commit_message || '';
     if (f.auto_push) f.auto_push.checked = !!t.auto_push;
     if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
+    if (f.session_id) f.session_id.value = sharedSessionKey(t.targets);
     $('#taskModalTitle').textContent = taskKind === 'code' ? 'Modifier la session de codage' : 'Modifier l\'exploration';
     $('#taskExistingImgs').textContent = (d.images && d.images.length) ? tr('task.images-attached', { n: d.images.length, count: d.images.length }) : '';
     $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
     $('#taskSubmitOnly').hidden = true;
     $('#taskModal').hidden = false;
   } catch (e) { toast(explainError(e.message), true); }
+}
+
+/* Session commune à TOUTES les unités d'une session (projets ou dossiers), s'il y en a une.
+   Sert à pré-remplir « reprendre une session existante » en édition : tant que les unités
+   s'accordent, le champ montre la vérité. Dès qu'elles divergent — une seule a tourné, par
+   exemple — on préfère le vide au mensonge d'afficher l'une des deux. */
+function sharedSessionKey(units) {
+  const keys = (units || []).map((u) => u.session_key || '');
+  return keys.length && keys.every((k) => k && k === keys[0]) ? keys[0] : '';
 }
 
 /* Édition d'une session hors dépôt. Les dossiers sont stockés en CHEMINS ABSOLUS ; la
@@ -2936,6 +2941,7 @@ async function openLocalTaskEdit(id) {
   if (!localPicks.length) localPicks = [''];
   applyKindToModal('local');
   f.prompt.value = t.prompt || '';
+  if (f.session_id) f.session_id.value = sharedSessionKey(t.dirs);
   $('#taskModalTitle').textContent = tr('local.edit-title');
   $('#taskExistingImgs').textContent = (d.images && d.images.length)
     ? tr('task.images-attached', { n: d.images.length, count: d.images.length }) : '';
@@ -3018,6 +3024,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
       if (editingTaskId) {
         await busy(btn, () => api(`/local-tasks/${editingTaskId}`, { method: 'PUT', body: {
           prompt: f.prompt.value, dirs, images: taskNewImages,
+          session_id: f.session_id ? f.session_id.value : '',
         } }));
         toast(tr('toast.session-mise-a-jour'));
         taskNewImages = []; renderTaskPreviews(); closeTaskModal(); loadTasks();

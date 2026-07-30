@@ -335,6 +335,15 @@ describe('Sessions de dev de bout en bout', () => {
       });
       assert.equal(pasUuid.status, 400, 'claude attend un UUID : autant le dire avant de cloner');
     }
+
+    // La session se change aussi APRÈS coup ; un champ vide, lui, n'efface pas ce qui existe.
+    const autre = backendName() === 'claude' ? '11111111-2222-3333-4444-555555555555' : '/tmp/agent-sessions/autre';
+    await app.api('PUT', `/api/tasks/${avec.body.id}`, { prompt: 'suite', session_id: autre });
+    let keys = app.db.prepare('SELECT session_key FROM task_target WHERE task_id = ?').all(avec.body.id).map((x) => x.session_key);
+    assert.deepEqual(keys, [autre, autre]);
+    await app.api('PUT', `/api/tasks/${avec.body.id}`, { prompt: 'encore', session_id: '' });
+    keys = app.db.prepare('SELECT session_key FROM task_target WHERE task_id = ?').all(avec.body.id).map((x) => x.session_key);
+    assert.deepEqual(keys, [autre, autre], 'un champ vide ne perd pas la session');
   });
 
   /* Ranger une session la sort de la liste sans rien détruire : c'est le point qui distingue

@@ -102,7 +102,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   it in and no new session is opened: the work happens inside that one, so the AI still has
   everything it worked out earlier — its reading of the code, the decisions already made, what it
   already tried. Leave it empty and nothing changes. The id is the one shown by *Resume in terminal*
-  on an existing session. A session belongs to one working directory, so if resuming is refused the
+  on an existing session, and that button now appears on a session pointed at a supplied id too —
+  without the `cd`, since where that session came from is not ours to know. The field is also there
+  when **editing** a session, pre-filled with the current id, which is the only way to move a session
+  onto another one after the fact; clearing it never wipes anything, so a form merely submitted
+  cannot lose a session. A session belongs to one working directory, so if resuming is refused the
   usual fallback opens a fresh session with the context re-injected rather than losing the run.
 - **Explorations remember, instead of being reminded.** A follow-up question used to paste the
   previous answer back into the prompt — but an answer is a summary, not the reasoning that produced

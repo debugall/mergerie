@@ -363,11 +363,22 @@ describe('agentsession : commande de reprise de session', () => {
     assert.match(cop, /COPILOT_HOME='\/data\/agent-sessions\/x'/);
     assert.match(cop, / --continue$/);
   });
-  test('null si handle/cwd/backend manquant, et quoting des apostrophes', () => {
+  test('null si handle/backend manquant, et quoting des apostrophes', () => {
     assert.equal(agentsession.resumeCommand('claude', null, '/x'), null);
-    assert.equal(agentsession.resumeCommand('claude', 'h', null), null);
     assert.equal(agentsession.resumeCommand('unknown', 'h', '/x'), null);
     assert.match(agentsession.resumeCommand('claude', 'id', "/a'b"), /'\\''/, 'apostrophe échappée pour le shell');
+  });
+
+  /* Sans cwd, la commande existe quand même — SANS `cd`. C'est le cas d'une session
+     FOURNIE à la création : on sait la reprendre, on ignore d'où elle vient. Faire
+     disparaître le bouton là serait le faire disparaître précisément quand on la cherche. */
+  test('cwd inconnu : commande sans `cd`, pas d’absence de commande', () => {
+    const claude = agentsession.resumeCommand('claude', 'uuid-123', null);
+    assert.match(claude, /--resume uuid-123$/);
+    assert.doesNotMatch(claude, /(^|\s)cd\s/);
+    const cop = agentsession.resumeCommand('copilot', '/data/agent-sessions/x', '');
+    assert.match(cop, /^COPILOT_HOME='\/data\/agent-sessions\/x'/);
+    assert.match(cop, / --continue$/);
   });
 });
 

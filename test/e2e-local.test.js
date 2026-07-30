@@ -168,6 +168,27 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
     assert.equal((await app.api('PUT', '/api/local-tasks/999999', { prompt: 'x' })).status, 400);
   });
 
+  /* La session à reprendre se choisit AUSSI en édition — c'est le seul moyen de la changer
+     après coup. Les trois cas qui comptent : inchangée, remplacée, et surtout VIDÉE, qui
+     ne doit rien effacer (un formulaire simplement soumis ne fait pas perdre un handle). */
+  test('édition : la session fournie se change, un champ vide n’efface rien', async () => {
+    const { backendName } = require('../src/agentsession');
+    const id1 = backendName() === 'claude' ? '6ba7b810-9dad-11d1-80b4-00c04fd430c8' : '/home/moi/.copilot-sessions/a';
+    const id2 = backendName() === 'claude' ? '11111111-2222-3333-4444-555555555555' : '/home/moi/.copilot-sessions/b';
+    const d = mkdir();
+    const created = (await app.api('POST', '/api/local-tasks', { prompt: 'p', dirs: [d], session_id: id1 })).body;
+    const keys = async () => (await app.api('GET', `/api/local-tasks/${created.id}`)).body.task.dirs.map((x) => x.session_key);
+
+    await app.api('PUT', `/api/local-tasks/${created.id}`, { prompt: 'p2', dirs: [d], session_id: id1 });
+    assert.deepEqual(await keys(), [id1], 'renvoyer la même valeur ne change rien');
+
+    await app.api('PUT', `/api/local-tasks/${created.id}`, { dirs: [d], session_id: id2 });
+    assert.deepEqual(await keys(), [id2], 'une autre valeur remplace la session');
+
+    await app.api('PUT', `/api/local-tasks/${created.id}`, { prompt: 'p3', dirs: [d], session_id: '' });
+    assert.deepEqual(await keys(), [id2], 'un champ vide ne perd pas la session');
+  });
+
   /* Créer sans lancer : la session existe en statut « new » et attend son déclenchement.
      Le POST de création ne lançait rien, mais l'écran enchaînait toujours sur /run — c'est
      donc le statut au repos qui doit rester vérifiable. */

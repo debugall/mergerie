@@ -212,12 +212,16 @@ async function runInSession({ key, handle, prompt, cwd, resume = false, onLog = 
 // copilot : COPILOT_HOME=<home> + --continue. Renvoie null si la session n'a pas de handle.
 function shQuote(s) { return `'${String(s).replace(/'/g, "'\\''")}'`; }
 function resumeCommand(backend, handle, cwd) {
-  if (!backend || !handle || !cwd) return null;
+  if (!backend || !handle) return null;
   const bin = copilot.COPILOT_BIN;
   const extra = (copilot.EXTRA_ARGS || []).length ? ` ${copilot.EXTRA_ARGS.join(' ')}` : '';
-  const cd = `cd ${shQuote(cwd)}`;
-  if (backend === 'claude') return `${cd} && ${bin}${extra} --resume ${handle}`;
-  if (backend === 'copilot') return `${cd} && COPILOT_HOME=${shQuote(handle)} ${bin}${extra} --continue`;
+  /* Le `cd` n'est émis que si le dossier de travail est CONNU. Il ne l'est pas quand la
+     session a été fournie à la création : on sait la reprendre, pas d'où elle vient. Mieux
+     vaut une commande à lancer depuis le bon dossier soi-même que pas de commande du tout —
+     sans quoi le bouton disparaîtrait précisément dans le cas où l'on cherche cette session. */
+  const cd = cwd ? `cd ${shQuote(cwd)} && ` : '';
+  if (backend === 'claude') return `${cd}${bin}${extra} --resume ${handle}`;
+  if (backend === 'copilot') return `${cd}COPILOT_HOME=${shQuote(handle)} ${bin}${extra} --continue`;
   return null;
 }
 

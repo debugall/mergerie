@@ -1158,6 +1158,20 @@ function insertTargets(taskId, list, sessionId) {
    `COPILOT_HOME=<chemin>` pour copilot. Il ne doit donc jamais pouvoir passer pour un flag,
    et pour claude il a une forme connue — autant refuser tout de suite plutôt que d'échouer
    au milieu d'un job, une fois les dépôts clonés. */
+/* Applique une session fournie aux unités d'une session (projets ou dossiers). N'écrit QUE
+   si la valeur change vraiment : rouvrir la modale pour corriger un prompt ne doit pas
+   réécrire des handles corrects, ni effacer le `session_cwd` qui protège la reprise.
+   Un champ VIDE ne signifie jamais « efface » — on ne perd pas une session d'un formulaire
+   simplement soumis ; pour repartir à neuf, on change les unités, ce qui les recrée. */
+function applySessionId(table, key, taskId, sessionId, units) {
+  if (!sessionId) return;
+  const commun = units.length && units.every((u) => u.session_key && u.session_key === units[0].session_key)
+    ? units[0].session_key : null;
+  if (sessionId === commun) return;
+  db.prepare(`UPDATE ${table} SET session_key = ?, session_backend = ?, session_cwd = NULL WHERE ${key} = ?`)
+    .run(sessionId, agentsession.backendName(), taskId);
+}
+
 function normalizeSessionId(raw) {
   const id = String(raw || '').trim();
   if (!id) return null;
@@ -1255,7 +1269,8 @@ app.post('/api/tasks', wrap((req, res) => {
 app.put('/api/tasks/:id', wrap((req, res) => {
   const t = taskById(Number(req.params.id));
   if (!t) throw new Error(t('err.session-introuvable'));
-  const { prompt, commit_message, auto_push, images, targets, ask_questions } = req.body || {};
+  const { prompt, commit_message, auto_push, images, targets, ask_questions, session_id } = req.body || {};
+  const sessionId = normalizeSessionId(session_id);
   if (Array.isArray(targets) && targets.length) {
     const list = normalizeTargets(targets, t.kind);
     // on ne recrée que si la composition change, pour préserver l'état d'exécution
@@ -1275,6 +1290,8 @@ app.put('/api/tasks/:id', wrap((req, res) => {
     new Date().toISOString(), t.id,
   );
   saveTaskImages(t.id, images);
+  // Après une éventuelle recréation des cibles : celles-ci repartent sans handle.
+  applySessionId('task_target', 'task_id', t.id, sessionId, taskTargets(t.id));
   res.json({ ...taskById(t.id), targets: taskTargets(t.id) });
 }));
 
@@ -1440,7 +1457,8 @@ app.get('/api/local-tasks/:id', wrap((req, res) => {
 app.put('/api/local-tasks/:id', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
-  const { prompt, dirs, images } = req.body || {};
+  const { prompt, dirs, images, session_id } = req.body || {};
+  const sessionId = normalizeSessionId(session_id);
   if (Array.isArray(dirs) && dirs.length) {
     const list = [...new Set(dirs.map((d) => String(d || '').trim()).filter(Boolean))];
     if (!list.length) throw new Error(t('err.local-dirs-required'));
@@ -1455,6 +1473,7 @@ app.put('/api/local-tasks/:id', wrap((req, res) => {
   db.prepare('UPDATE local_task SET prompt = ?, updated_at = ? WHERE id = ?')
     .run(prompt != null ? String(prompt).trim() : lt.prompt, new Date().toISOString(), lt.id);
   saveLocalImages(lt.id, images);
+  applySessionId('local_task_dir', 'task_id', lt.id, sessionId, localDirsFor(lt.id));
   res.json(localTaskById(lt.id));
 }));
 
