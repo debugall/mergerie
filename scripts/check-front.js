@@ -128,7 +128,30 @@ orphanFields.length
   ? fail('Champ de #configForm absent de CONFIG_FIELDS', orphanFields)
   : ok(`Tous les champs de #configForm sont enregistrés (${declared.size} déclarés)`);
 
-/* 9. Deux fonctions de même nom au premier niveau d'app.js.
+/* 9. Liste de refs git sans recherche.
+   Même raison que le contrôle n°7 pour les dépôts : un dépôt actif compte souvent des
+   centaines de branches. Un <select> natif ou une liste à cocher sans filtre y devient
+   impraticable — c'est ce qu'était l'onglet Git → Actions. Les trois listes où l'on
+   CHOISIT une branche doivent donc garder leur recherche. */
+// On cherche l'endroit qui CRÉE le champ, pas une mention de sa classe ailleurs : sinon
+// le gestionnaire d'événement suffirait à faire passer le contrôle alors que le champ
+// n'est plus rendu nulle part.
+const refPickers = [
+  ["comboHtml('git-ref'", 'la ref source (Git → Actions) doit être un combo avec recherche'],
+  ['class="search git-ref-filter"', 'la liste des refs à supprimer (Git → Actions) doit garder son champ de recherche'],
+  ['class="search git-ex-filter"', 'le tableau de branches (Git → Explorateur) doit garder son champ de recherche'],
+];
+const lostSearch = refPickers.filter(([m]) => !app.includes(m)).map(([m, why]) => `public/app.js  \`${m}\` introuvable — ${why}`);
+lines.forEach((l, i) => {
+  if (/<select[^>]*class=['"][^'"]*git-ref/.test(l)) {
+    lostSearch.push(`public/app.js:${i + 1}  <select> de refs git — utiliser comboHtml('git-ref') (recherche)`);
+  }
+});
+lostSearch.length
+  ? fail('Liste de refs git sans recherche', lostSearch)
+  : ok('Toutes les listes de refs git ont une recherche');
+
+/* 10. Deux fonctions de même nom au premier niveau d'app.js.
    Le fichier est un seul script global : une seconde `function foo()` écrase la
    première par hoisting, sans le moindre avertissement. Tous les appels partent
    alors sur l'autre corps — et sur l'autre SIGNATURE. C'est arrivé à toastUndo,

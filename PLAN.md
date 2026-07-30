@@ -268,9 +268,15 @@ neutralise silencieusement l'attribut — source récurrente de bugs.
 Toute liste où l'on choisit un dépôt utilise un **combo avec recherche** (un `<select>` natif
 devient inutilisable au-delà de quelques dizaines de projets) — `repoComboHtml`/`wireRepoCombos`,
 partagé par l'onglet Git ; le modale de session et l'ajout en masse ont leur équivalent.
+**Même règle pour les branches**, pour la même raison en pire (un dépôt actif en compte des
+centaines) : la ref source de Git → Actions est un `comboHtml('git-ref')`, la liste des refs à
+supprimer et le tableau de l'explorateur ont un filtre qui **masque des lignes sans toucher aux
+cases cochées** — on coche, on filtre autre chose, on coche encore, puis on supprime d'un coup.
+Le sélecteur de branche de Git → Navigation et ceux de la modale de session étaient déjà des combos.
 **Garde-fous statiques** (`npm run check`) : `check-front.js` (sélecteur `$` traité en liste,
 sous-onglet sans `segmented`, id inconnu, icône absente, `busy()` mal appelé, **fonction redéfinie au
-premier niveau d'`app.js`** (la seconde écrase la première par hoisting, sans avertissement), `<select>` de dépôt
+premier niveau d'`app.js`** (la seconde écrase la première par hoisting, sans avertissement), **liste de
+refs git sans recherche**, `<select>` de dépôt
 sans recherche) et `i18n-check.js` (parité fr/en, clés absentes, entités HTML, français en dur).
 Chacun est né d'un bug réel : ils attrapent en statique ce que `node --check` ne voit pas.
 

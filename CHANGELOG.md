@@ -61,6 +61,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   `down`…) share one styled modal: themed, translated, and with a button that names the action instead
   of a mute "OK". Irreversible actions are recognisable at rest, not only on hover.
 
+- **Picking a branch no longer means scrolling.** In Git → Actions the source branch was a plain
+  dropdown listing every branch of the repository, in whatever order the forge returned them — on a
+  busy repository that is hundreds of entries. It is now a field you type into, like the repository
+  picker next to it. The two other places where branches are chosen got a filter as well: the list of
+  branches (or tags) to delete, and the branch table of the explorer. Both filters only *hide* rows —
+  tick a branch, search for another, tick it too, then delete them together.
 - **Your own review comments can be edited.** A typo, a wrong line number, a sentence you'd rather
   rephrase: an **Edit** link now appears on the comments *you* wrote — on a line in the code viewer
   as well as on the merge request itself. The editor opens in place, pre-filled with the original

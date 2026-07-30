@@ -4315,6 +4315,14 @@ const gitIsTag = () => /_tag$/.test(gitAction());
 const gitSameName = () => { const c = $('#gitSameName'); return !c || c.checked; };
 const gitPerProjectName = () => !gitIsDelete() && !gitSameName();
 
+/* Quelles refs proposer pour l'action courante : on ne supprime des tags que dans
+   « supprimer un tag » ; partout ailleurs on part d'une branche. */
+function gitRefKind() {
+  return gitIsTag() && gitIsDelete() ? 'tags' : 'branches';
+}
+// « Rechercher un tag » quand c'est un tag qu'on choisit : le libellé doit dire le vrai.
+const gitRefSearchPh = () => tr(gitRefKind() === 'tags' ? 'git.refs.search-ph-tag' : 'git.refs.search-ph');
+
 async function gitLoadRefs(repoId, kind) {
   const key = repoId + '|' + kind;
   if (gitRefsCache[key]) return gitRefsCache[key];
@@ -4327,10 +4335,13 @@ function gitTargetRow(idx, sel) {
   // Dépôt : combo avec recherche (la liste peut compter des dizaines de projets).
   // L'input caché porte la classe `git-repo`, lu par la délégation 'change'.
   const repo = repoComboHtml(sel.repo_id, { idClass: 'git-repo' });
-  // À la suppression, la sélection est MULTIPLE : on coche ce qu'on supprime.
+  /* À la suppression, la sélection est MULTIPLE : on coche ce qu'on supprime, avec un
+     filtre au-dessus de la liste. Sinon c'est un choix unique — combo avec recherche,
+     comme pour les dépôts : un dépôt actif compte souvent des centaines de branches,
+     qu'aucune liste déroulante native ne rend parcourable. */
   const picker = gitIsDelete()
     ? '<div class="git-refs" data-row="' + idx + '"><span class="muted">' + esc(tr('git.refs.loading')) + '</span></div>'
-    : '<select class="git-ref" data-row="' + idx + '"><option value="">' + esc(tr('git.refs.loading')) + '</option></select>';
+    : comboHtml('git-ref', { ph: tr('git.refs.loading'), wrapClass: 'git-ref-combo' });
   // Nom par projet : le champ n'apparaît que si l'utilisateur a décoché « le même
   // pour tous ». Il porte son propre libellé accessible, la ligne n'en ayant pas.
   const nameLbl = gitIsTag() ? tr('git.lbl.tag-name') : tr('git.lbl.branch-name');
@@ -4352,7 +4363,7 @@ async function gitFillRow(idx) {
   if (!row) return;
   const repoId = Number(row.querySelector('.git-repo').value);
   if (!repoId) return;
-  const kind = gitIsTag() && gitIsDelete() ? 'tags' : (gitIsTag() && gitAction() === 'create_tag' ? 'branches' : (gitIsDelete() ? 'branches' : 'branches'));
+  const kind = gitRefKind();
   let d;
   try { d = await gitLoadRefs(repoId, kind); }
   catch (e) {
@@ -4368,18 +4379,32 @@ async function gitFillRow(idx) {
     const sel = (gitTargets[idx] && gitTargets[idx].refs) || [];
     const list = d.refs.filter((r) => !r.default && !r.protected);
     const hidden = d.refs.length - list.length;
+    /* Filtre au-dessus de la liste : un dépôt actif compte souvent des centaines de
+       branches, et la liste défile dans 190 px de haut. Il MASQUE au lieu de reconstruire,
+       pour que les cases déjà cochées survivent à la frappe — et qu'on puisse cocher,
+       filtrer autre chose, cocher encore, puis tout supprimer d'un coup. */
     box.innerHTML = (list.length
-      ? list.map((r) => '<label class="git-ref-item"><input type="checkbox" data-row="' + idx + '" value="' + esc(r.name) + '"' + (sel.includes(r.name) ? ' checked' : '') + ' />' +
+      ? '<input type="search" class="search git-ref-filter" data-row="' + idx + '" placeholder="' + esc(gitRefSearchPh()) + '" aria-label="' + esc(gitRefSearchPh()) + '" />'
+        + '<div class="git-ref-list">'
+        + list.map((r) => '<label class="git-ref-item" data-name="' + esc(r.name.toLowerCase()) + '"><input type="checkbox" data-row="' + idx + '" value="' + esc(r.name) + '"' + (sel.includes(r.name) ? ' checked' : '') + ' />' +
           '<code>' + esc(r.name) + '</code>' + (r.merged ? '<span class="tag done">' + esc(tr('git.tag.merged')) + '</span>' : '') +
           '<span class="muted git-ref-date">' + (r.date ? fmtDate(r.date) : '') + '</span></label>').join('')
+        + '<div class="muted git-ref-nomatch" hidden>' + esc(tr('git.refs.no-match')) + '</div></div>'
       : '<span class="muted">' + esc(tr('git.refs.none')) + '</span>')
       + (hidden ? '<div class="muted git-ref-hidden">' + esc(tr('git.refs.hidden', { n: hidden, count: hidden })) + '</div>' : '');
   } else {
-    const sel2 = row.querySelector('.git-ref');
-    if (!sel2) return;
-    const cur = (gitTargets[idx] && gitTargets[idx].ref) || d.default;
-    sel2.innerHTML = d.refs.map((r) => '<option value="' + esc(r.name) + '"' + (r.name === cur ? ' selected' : '') + '>' + esc(r.name) + (r.default ? ' ' + tr('git.refs.default-suffix') : '') + '</option>').join('');
-    gitTargets[idx] = { ...gitTargets[idx], repo_id: repoId, ref: sel2.value };
+    // Combo : la valeur retenue vit dans l'input CACHÉ (classe `git-ref`), le champ
+    // visible n'en est que l'affichage — c'est lui qui accueille la recherche.
+    const hidden2 = row.querySelector('.git-ref');
+    const search = row.querySelector('[data-combo="git-ref"]');
+    if (!hidden2 || !search) return;
+    const cur = (gitTargets[idx] && gitTargets[idx].ref) || d.default || (d.refs[0] && d.refs[0].name) || '';
+    hidden2.value = cur;
+    hidden2.dataset.label = cur;
+    search.value = cur;
+    search.title = cur;
+    search.placeholder = gitRefSearchPh();
+    gitTargets[idx] = { ...gitTargets[idx], repo_id: repoId, ref: cur };
   }
 }
 
@@ -4388,6 +4413,15 @@ function gitRenderTargets() {
   if (!el) return;
   el.innerHTML = gitTargets.map((t, i) => gitTargetRow(i, t)).join('');
   wireRepoCombos(el);
+  /* Les refs sont chargées à l'OUVERTURE de la liste, pas au rendu de la ligne : rien ne
+     dit que l'utilisateur va la dérouler, et `gitLoadRefs` met déjà en cache par dépôt. */
+  wireCombo(el, 'git-ref', async (row) => {
+    const repoId = Number(row.querySelector('.git-repo').value);
+    if (!repoId) return [];
+    const kind = gitRefKind();
+    const d = await gitLoadRefs(repoId, kind);
+    return d.refs.map((r) => ({ value: r.name, label: r.name, hint: r.default ? tr('git.refs.default-suffix') : '' }));
+  });
   gitTargets.forEach((_, i) => gitFillRow(i));
 }
 
@@ -4587,7 +4621,11 @@ function gitTagsHtml(tags, repoId) {
 function gitRenderExplorer(d, box) {
   // Tri : dernier commit le plus récent d'abord (les branches sans date en dernier).
   const rows = [...d.branches].sort((a, b) => (b.committed_date ? new Date(b.committed_date).getTime() : -Infinity) - (a.committed_date ? new Date(a.committed_date).getTime() : -Infinity));
-  box.innerHTML = '<div class="md-tablewrap"><table class="md-table git-explorer"><thead><tr>' +
+  /* Filtre au-dessus du tableau : c'est aussi une liste où l'on CHOISIT des branches
+     (les cases servent à la suppression groupée), et un dépôt actif en compte des
+     centaines. Comme ailleurs, il masque des lignes sans toucher aux cases cochées. */
+  box.innerHTML = '<input type="search" class="search git-ex-filter" placeholder="' + esc(tr('git.refs.search-ph')) + '" aria-label="' + esc(tr('git.refs.search-ph')) + '" />' +
+    '<div class="md-tablewrap"><table class="md-table git-explorer"><thead><tr>' +
     '<th></th><th>' + esc(tr('git.col.branch')) + '</th><th>' + esc(tr('git.col.vs-default')) + '</th>' +
     '<th>' + esc(tr('git.col.origin')) + '</th><th>' + esc(tr('git.col.merged-into')) + '</th><th>' + esc(tr('git.col.last-commit')) + '</th><th></th>' +
     '</tr></thead><tbody>' + rows.map((b) => {
@@ -4619,9 +4657,23 @@ function gitRenderExplorer(d, box) {
         '<td class="muted">' + (b.committed_date ? fmtDate(b.committed_date) : '—') + (b.author ? ' · ' + esc(b.author) : '') + '</td>' +
         '<td class="git-ex-actions">' + mrBtn + '</td></tr>';
     }).join('') + '</tbody></table></div>' +
+    '<p class="muted git-ex-nomatch" hidden>' + esc(tr('git.refs.no-match')) + '</p>' +
     '<div class="form-actions"><button class="btn btn-danger git-ex-delete" disabled><svg class="ico"><use href="#i-trash"/></svg>' + esc(tr('git.btn.delete-selected')) + '</button>' +
     '<span class="muted git-ex-count"></span></div>' +
     gitTagsHtml(d.tags || [], d.repo_id);
+
+  const filter = $('.git-ex-filter', box);
+  filter.addEventListener('input', () => {
+    const q = filter.value.trim().toLowerCase();
+    let shown = 0;
+    for (const tr_ of $$('.git-explorer tbody tr', box)) {
+      const name = (tr_.querySelector('code') || {}).textContent || '';
+      const hit = !q || name.toLowerCase().includes(q);
+      tr_.hidden = !hit;
+      if (hit) shown += 1;
+    }
+    $('.git-ex-nomatch', box).hidden = shown > 0;
+  });
 
   const refresh = () => {
     const n = $$('.git-ex-pick:checked', box).length;
@@ -5994,6 +6046,20 @@ document.addEventListener('input', (e) => {
   const i = Number(e.target.dataset.row);
   gitTargets[i] = { ...gitTargets[i], name: e.target.value };
   gitDropPreview();
+});
+/* Filtre de la liste de refs à supprimer. Purement visuel : on masque des lignes, on n'en
+   décoche aucune — la sélection appartient à l'utilisateur, pas au filtre. */
+document.addEventListener('input', (e) => {
+  if (!e.target.classList || !e.target.classList.contains('git-ref-filter')) return;
+  const list = e.target.closest('.git-refs').querySelector('.git-ref-list');
+  const q = e.target.value.trim().toLowerCase();
+  let shown = 0;
+  for (const it of list.querySelectorAll('.git-ref-item')) {
+    const hit = !q || it.dataset.name.includes(q);
+    it.hidden = !hit;
+    if (hit) shown += 1;
+  }
+  list.querySelector('.git-ref-nomatch').hidden = shown > 0;
 });
 /* Retoucher un nom APRÈS l'aperçu périme celui-ci : l'exécution relit les champs,
    pas le tableau affiché. Sans ça on prévisualise v2.3.0, on corrige en v2.4.0, et

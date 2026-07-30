@@ -4,6 +4,8 @@
 
 - In every list where projects are selected, make sure there is a search field — the number of projects can be high.
 
+- Same rule for **branches and tags**, for the same reason in worse: an active repository has hundreds. A single choice uses `comboHtml`/`wireCombo`; a multiple choice (checkbox list, table) gets a filter that *hides* rows without unticking anything. `npm run check` fails when one of these search fields disappears.
+
 - Keep in mind the app is multilingual (French / English).
 
 - The app supports **both GitLab and GitHub**, repository by repository (`repo.forge`). Never call `src/gitlab.js` or `src/github.js` directly from other modules: always go through `src/forge.js` (`clientFor(repo)`). Both clients expose the same interface and the same normalized shapes.

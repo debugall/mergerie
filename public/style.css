@@ -1021,16 +1021,28 @@ nav button:hover { color: var(--text); background: var(--hover); }
 .git-row > .git-repo { flex: 0 0 240px; }
 /* Création : dépôt · ref source · nom à créer. Les deux derniers se partagent la
    place restante et se replient sous le dépôt quand la fenêtre est étroite. */
-.git-row > .git-ref { flex: 1 1 180px; min-width: 140px; }
+/* La ref source est un combo (recherche), pas un <select> : la largeur se pose donc sur
+   son enveloppe et non sur l'input caché qui porte la classe `git-ref`. */
+.git-row > .git-ref-combo { flex: 1 1 180px; min-width: 140px; }
 .git-row > .git-name { flex: 1 1 180px; min-width: 140px; width: auto; }
 
 /* Sélection multiple des refs à supprimer : une liste qui défile plutôt qu'un
-   champ de saisie — on ne tape jamais le nom de ce qu'on s'apprête à détruire. */
+   champ de saisie — on ne tape jamais le nom de ce qu'on s'apprête à détruire.
+   Le filtre reste COLLÉ EN HAUT quand la liste défile : chercher dans une liste de
+   deux cents branches sans voir son propre champ de recherche n'a pas de sens. */
 .git-refs {
   flex: 1; min-width: 0; max-height: 190px; overflow-y: auto;
   border: 1px solid var(--line); border-radius: var(--r-md);
   background: var(--panel2); padding: 4px;
 }
+.git-ref-filter {
+  position: sticky; top: -4px; z-index: 1;
+  margin: -4px -4px 4px; width: calc(100% + 8px);
+  padding: 6px 10px 6px 30px; background-position: 9px center; font-size: var(--fs-sm);
+  border-width: 0 0 1px; border-radius: var(--r-md) var(--r-md) 0 0;
+}
+.git-ref-nomatch, .git-ex-nomatch { padding: 6px 8px; font-size: 12px; }
+.git-ex-filter { max-width: 340px; margin-bottom: 8px; }
 .git-ref-item {
   display: flex; align-items: center; gap: 8px; padding: 4px 8px;
   border-radius: 5px; cursor: pointer; font-size: var(--fs-sm);
