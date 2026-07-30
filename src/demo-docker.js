@@ -62,8 +62,20 @@ function composeProjects() {
         },
         {
           name: 'prometheus', image: 'prom/prometheus:v2.53.0',
-          container: null, // service défini mais pas démarré
+          container: null, // service défini mais JAMAIS créé (filtre « Non démarrés »)
           envDiffs: [], imgDrift: false, composeModified: false, badge: 'missing',
+        },
+        {
+          name: 'alertmanager', image: 'prom/alertmanager:v0.27.0',
+          // Arrêté après avoir tourné (filtre « Arrêtés (exited) »).
+          container: { id: 'ab77aa', name: 'monitoring-alertmanager-1', state: 'exited', image: 'prom/alertmanager:v0.27.0', created: iso(12) },
+          envDiffs: [], imgDrift: false, composeModified: false, badge: 'stopped',
+        },
+        {
+          name: 'loki', image: 'grafana/loki:3.0.0',
+          // Créé mais jamais démarré — souvent un échec au démarrage (filtre « Créés, jamais démarrés »).
+          container: { id: 'lo9911', name: 'monitoring-loki-1', state: 'created', image: 'grafana/loki:3.0.0', created: iso(2) },
+          envDiffs: [], imgDrift: false, composeModified: false, badge: 'stopped',
         },
       ],
     },
@@ -110,6 +122,8 @@ function containers() {
     { id: 'demo_db', name: 'boutique-db-1', state: 'running', status: 'Up 3 hours (healthy)', image: 'postgres:16', project: 'boutique', service: 'db', running: true },
     { id: 'demo_cache', name: 'boutique-cache-1', state: 'restarting', status: 'Restarting (1) 5 seconds ago', image: 'redis:7', project: 'boutique', service: 'cache', running: false },
     { id: 'demo_worker', name: 'labo-worker', state: 'exited', status: 'Exited (0) 1 hour ago', image: 'python:3.12', project: null, service: null, running: false },
+    { id: 'ab77aa', name: 'monitoring-alertmanager-1', state: 'exited', status: 'Exited (0) 12 hours ago', image: 'prom/alertmanager:v0.27.0', project: 'monitoring', service: 'alertmanager', running: false },
+    { id: 'lo9911', name: 'monitoring-loki-1', state: 'created', status: 'Created', image: 'grafana/loki:3.0.0', project: 'monitoring', service: 'loki', running: false },
   ];
 }
 

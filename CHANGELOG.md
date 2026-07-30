@@ -27,6 +27,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   **Only show** state filter (running, stopped/not created, unhealthy, restarting, drifted) narrow the view
   service by service. A project with no matching service disappears entirely. Both settings are persisted
   and applied client-side, without querying Docker again.
+- **"Not running" was three different situations.** The Compose state filter lumped them together
+  under *Stopped / not created*, although Docker tells them apart and they call for different
+  actions: a container that **ran and exited** wants restarting, one that was **created but never
+  started** usually failed to start, and a service with **no container at all** has never been
+  brought up. Each is now its own choice, and *Not running (all)* stays as the catch-all. The
+  Actions sub-tab offers exactly the same list — the two "Only show" menus are now built from one
+  definition, so they cannot drift apart.
 - **The Docker badge counts stopped containers too.** Its red number only covered containers that
   were *broken* — restarting or dead — so a service that had simply exited stayed invisible from
   every other tab, although from the outside it serves just as little. Exited containers are now

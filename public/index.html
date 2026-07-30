@@ -385,14 +385,10 @@
                     </select>
                 </label>
                 <label class="dact-action"><span data-i18n="docker.actions.filter">N'afficher que</span>
-                    <select id="dactFilter">
-                        <option value="all" data-i18n="docker.actions.f-all">Tous</option>
-                        <option value="drift" data-i18n="docker.actions.f-drift">En drift</option>
-                        <option value="unhealthy" data-i18n="docker.actions.f-unhealthy">Unhealthy</option>
-                        <option value="restarting" data-i18n="docker.actions.f-restarting">En restarting</option>
-                        <option value="running" data-i18n="docker.actions.f-running">En cours</option>
-                        <option value="stopped" data-i18n="docker.actions.f-stopped">Arrêtés / non créés</option>
-                    </select>
+                    <!-- Options peuplées par app.js depuis DOCKER_STATE_FILTERS : la MÊME liste
+                         que le filtre de l'onglet Compose. Deux menus « N'afficher que » côte à
+                         côte qui divergeraient seraient un piège. -->
+                    <select id="dactFilter"></select>
                 </label>
                 <input id="dactSearch" class="dact-search" type="search" placeholder="Rechercher un service…" data-i18n-placeholder="docker.actions.search" />
             </div>

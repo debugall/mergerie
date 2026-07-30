@@ -5546,7 +5546,14 @@ function dactIsDrift(svc) {
   // config/env, l'image, ou le fichier compose a divergé du container en cours d'exécution.
   return svc.badge === 'drift-config' || svc.badge === 'drift-image' || svc.badge === 'compose-modified';
 }
-// Filtre d'état optionnel (indépendant de l'action) pour ne montrer que les containers pertinents.
+/* Filtre d'état optionnel (indépendant de l'action) pour ne montrer que les containers
+   pertinents. « Ne tourne pas » recouvre trois situations que Docker distingue et qui
+   n'appellent pas les mêmes gestes :
+     exited   le container a tourné puis s'est arrêté      → on le redémarre
+     created  il existe mais n'a JAMAIS démarré            → souvent un échec de démarrage
+     missing  aucun container : le service n'a jamais été créé (« non démarré ») → `up`
+   `stopped` reste le chapeau des trois, et pas seulement pour la commodité : c'est une
+   valeur déjà PERSISTÉE dans le navigateur, la retirer casserait le filtre enregistré. */
 function dactMatchesFilter(filter, svc) {
   const st = svc.container && svc.container.state ? svc.container.state : null;
   const health = svc.container && svc.container.health ? svc.container.health : null;
@@ -5555,11 +5562,32 @@ function dactMatchesFilter(filter, svc) {
     case 'unhealthy': return health === 'unhealthy';
     case 'restarting': return st === 'restarting';
     case 'running': return st === 'running';
-    case 'stopped': return st !== 'running'; // arrêté OU non créé
+    case 'exited': return st === 'exited';
+    case 'created': return st === 'created';
     case 'missing': return !svc.container;
+    case 'stopped': return st !== 'running'; // arrêté, créé-jamais-démarré OU non créé
     default: return true;                    // 'all'
   }
 }
+/* Liste des états proposés, dans l'ordre : ce qui va bien, puis ce qui ne tourne pas (du
+   chapeau au détail), puis ce qui alerte. Partagée par le filtre de Compose et celui
+   d'Actions — deux menus « N'afficher que » côte à côte doivent offrir les mêmes choix. */
+const DOCKER_STATE_FILTERS = [
+  ['all', 'docker.actions.f-all'],
+  ['running', 'docker.actions.f-running'],
+  ['stopped', 'docker.actions.f-stopped'],
+  ['exited', 'docker.actions.f-exited'],
+  ['created', 'docker.actions.f-created'],
+  ['missing', 'docker.actions.f-missing'],
+  ['unhealthy', 'docker.actions.f-unhealthy'],
+  ['restarting', 'docker.actions.f-restarting'],
+  ['drift', 'docker.actions.f-drift'],
+];
+const dockerStateOptions = (cur) => DOCKER_STATE_FILTERS
+  .map(([v, k]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${esc(tr(k))}</option>`).join('');
+// Le menu d'Actions est bâti une fois, depuis cette liste (celui de Compose l'est à chaque
+// rendu, dans son gabarit). Un changement de langue recharge la page : rien à retraduire.
+(() => { const el = $('#dactFilter'); if (el) el.innerHTML = dockerStateOptions('all'); })();
 // Clés i18n complètes (littérales) pour réutiliser EXACTEMENT le libellé de l'onglet Compose.
 const DACT_DRIFT_LABEL = { 'drift-config': 'docker.badge.drift-config', 'drift-image': 'docker.badge.drift-image', 'compose-modified': 'docker.badge.compose-modified' };
 function dactItems() {
@@ -5866,12 +5894,7 @@ function renderComposeTab() {
           placeholder="${esc(tr('docker.compose.search'))}" />
       </label>
       <label class="dact-action"><span>${esc(tr('docker.actions.filter'))}</span>
-        <select id="dcState">
-          ${[['all', 'docker.actions.f-all'], ['running', 'docker.actions.f-running'], ['stopped', 'docker.actions.f-stopped'],
-             ['unhealthy', 'docker.actions.f-unhealthy'], ['restarting', 'docker.actions.f-restarting'],
-             ['drift', 'docker.actions.f-drift']]
-            .map(([v, k]) => `<option value="${v}" ${sf.state === v ? 'selected' : ''}>${esc(tr(k))}</option>`).join('')}
-        </select>
+        <select id="dcState">${dockerStateOptions(sf.state)}</select>
       </label>
     </div>`;
   // Filtre persistant : une case par fichier compose (cochée = affiché).

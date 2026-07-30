@@ -200,3 +200,46 @@ describe('Docker — découverte compose', () => {
     assert.deepEqual(hits, ['compose.yaml', 'docker-compose.yml']);
   });
 });
+
+/* Le filtre d'état de l'onglet Docker vit dans le front (`public/app.js`) : pas exportable,
+   mais évaluable isolément. Ce prédicat décide de ce qui s'affiche ET de ce qui est ciblé
+   par une action groupée — se tromper sur « ne tourne pas » n'est pas anodin. */
+describe('front : filtre d’état des services Docker', () => {
+  const fs2 = require('node:fs');
+  const path2 = require('node:path');
+  const src = fs2.readFileSync(path2.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const from = src.indexOf('function dactIsDrift');
+  const to = src.indexOf('const DOCKER_STATE_FILTERS');
+  assert.ok(from > 0 && to > from, 'dactIsDrift et dactMatchesFilter doivent rester voisins');
+  // eslint-disable-next-line no-new-func
+  const match = new Function(`${src.slice(from, to)}\nreturn dactMatchesFilter;`)();
+
+  const svc = (state, extra = {}) => ({ container: state ? { state, ...extra } : null, badge: extra.badge || 'synced' });
+
+  test('les trois façons de ne pas tourner sont distinguées', () => {
+    const exited = svc('exited');
+    const created = svc('created');
+    const missing = svc(null);
+
+    assert.ok(match('exited', exited) && !match('exited', created) && !match('exited', missing));
+    assert.ok(match('created', created) && !match('created', exited) && !match('created', missing));
+    assert.ok(match('missing', missing) && !match('missing', exited) && !match('missing', created));
+  });
+
+  test('« ne tournent pas » reste le chapeau des trois — c’est une valeur persistée', () => {
+    // Retirer ou restreindre `stopped` casserait le filtre déjà enregistré dans le navigateur.
+    for (const s of [svc('exited'), svc('created'), svc(null), svc('restarting'), svc('dead')]) {
+      assert.ok(match('stopped', s), 'tout ce qui ne tourne pas passe le chapeau');
+    }
+    assert.equal(match('stopped', svc('running')), false);
+  });
+
+  test('les autres états ne sont pas affectés', () => {
+    assert.ok(match('running', svc('running')));
+    assert.ok(match('restarting', svc('restarting')));
+    assert.ok(match('unhealthy', svc('running', { health: 'unhealthy' })));
+    assert.equal(match('unhealthy', svc('running', { health: 'healthy' })), false);
+    assert.ok(match('drift', { container: { state: 'running' }, badge: 'drift-image' }));
+    assert.ok(match('all', svc(null)), 'le filtre « tous » ne filtre rien');
+  });
+});
