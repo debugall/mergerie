@@ -608,6 +608,22 @@ describe('API de bout en bout', () => {
     assert.ok(Array.isArray(log.body.lines));
   });
 
+  /* Voir la file, et en sortir un job pour le lancer à côté. Ce qui est vérifiable de façon
+     déterministe en dry-run (où les jobs s'achèvent aussitôt), c'est le CONTRAT : la forme
+     de la réponse, et les refus. Le parallélisme lui-même repose sur `keysClash`, testé à
+     part sur la règle nue. */
+  test('Jobs : la file s’inspecte, et « lancer en parallèle » refuse ce qui n’attend plus', async () => {
+    const q = await app.api('GET', '/api/jobs/queue');
+    assert.equal(q.status, 200);
+    assert.ok(Array.isArray(q.body.running) && Array.isArray(q.body.queued));
+    assert.equal(q.body.parallelBusy, false);
+
+    // Un job inexistant, ou terminé, n'est plus dans la file : on le dit au lieu de l'ignorer.
+    assert.equal((await app.api('POST', '/api/jobs/999999/start-now')).status, 409);
+    assert.equal((await app.api('POST', '/api/jobs/999999/stop')).status, 409);
+    assert.equal((await app.api('GET', '/api/jobs/999999/log')).status, 400);
+  });
+
   test('POST /api/reports/reset remet les MR à reviewer', async () => {
     const { body } = await app.api('POST', '/api/reports/reset');
     assert.equal(body.ok, true);

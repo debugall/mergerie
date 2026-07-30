@@ -292,6 +292,32 @@ describe('Sessions de dev de bout en bout', () => {
     assert.ok(body.some((t) => t.image_count > 0));
   });
 
+  /* Le périmètre d'un job : ce qu'il va toucher. C'est cette déduction qui décide si deux
+     jobs peuvent tourner ensemble ; une erreur ici ne fait pas planter, elle laisse deux
+     process se disputer le même clone. On la vérifie donc sur de vraies sessions. */
+  test('périmètre d’un job : les dépôts touchés sont bien déduits', async () => {
+    const { jobKeys, keysClash } = require('../src/jobs');
+
+    const deux = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'p', targets: [{ repo_id: repoId, branch: 'ai/k1' }, { repo_id: repo2Id, branch: 'ai/k1' }],
+    })).body;
+    const un = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'p', targets: [{ repo_id: repo2Id, branch: 'ai/k2' }],
+    })).body;
+
+    const kDeux = [...jobKeys({ kind: 'task', taskId: deux.id })];
+    assert.deepEqual(kDeux.sort(), [`repo:${repoId}`, `repo:${repo2Id}`].sort());
+    const kUn = [...jobKeys({ kind: 'task', taskId: un.id })];
+    assert.deepEqual(kUn, [`repo:${repo2Id}`]);
+    assert.equal(keysClash(kDeux, kUn), true, 'ils partagent un dépôt : jamais en parallèle');
+
+    // Docker ne touche aucun dépôt ; une opération git déclare les siens.
+    assert.deepEqual([...jobKeys({ kind: 'docker', payload: {} })], []);
+    assert.deepEqual([...jobKeys({ kind: 'gitops', payload: { targets: [{ repo_id: repoId }] } })], [`repo:${repoId}`]);
+    // Une RESTAURATION relit sa cible en base au moment du run : périmètre inconnu → refus.
+    assert.deepEqual([...jobKeys({ kind: 'gitops', payload: { restoreOpId: 7 } })], ['*']);
+  });
+
   /* Reprendre une session d'agent EXISTANTE au lieu d'en ouvrir une neuve. Le mécanisme
      n'ajoute rien aux exécutants : ils reprennent déjà une session dès qu'un handle est
      présent sur le projet. Tout tient donc à ce que la création range bien l'identifiant —

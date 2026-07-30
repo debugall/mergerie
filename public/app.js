@@ -929,6 +929,66 @@ function logLineClass(t) {
   return '';
 }
 
+/* ---------- Un volet de journal PAR JOB ----------
+   Deux jobs peuvent tourner ensemble (voir « Lancer en parallèle ») : chacun garde son
+   propre volet, donc sa position de défilement et ses lignes. Changer d'onglet ne rejoue
+   rien — on montre l'autre volet, c'est tout. */
+const LOGP = { after: new Map(), active: null };
+
+function logPane(jobId) {
+  const box = $('#logBox');
+  let pane = $(`.logpane[data-job="${jobId}"]`, box);
+  if (!pane) {
+    pane = document.createElement('pre');
+    pane.className = 'logpane';
+    pane.dataset.job = jobId;
+    box.appendChild(pane);
+  }
+  return pane;
+}
+// Ne garde que les volets encore utiles : ceux des jobs affichés en onglet.
+function pruneLogPanes(ids) {
+  for (const pane of $$('#logBox .logpane')) {
+    if (!ids.includes(Number(pane.dataset.job))) { LOGP.after.delete(Number(pane.dataset.job)); pane.remove(); }
+  }
+}
+function showLogPane(jobId) {
+  LOGP.active = jobId;
+  for (const pane of $$('#logBox .logpane')) pane.hidden = Number(pane.dataset.job) !== jobId;
+  for (const b of $$('#logTabs [data-jobtab]')) b.classList.toggle('active', Number(b.dataset.jobtab) === jobId);
+}
+
+// Récupère les nouvelles lignes d'UN job et les ajoute à son volet.
+async function pumpOne(jobId) {
+  const after = LOGP.after.get(jobId) || 0;
+  let d;
+  try { d = await api(`/jobs/${jobId}/log?after=${after}`); } catch { return null; }
+  const pane = logPane(jobId);
+  for (const l of d.lines) {
+    const span = document.createElement('span');
+    const cls = logLineClass(l.text);
+    if (cls) span.className = cls;
+    span.textContent = l.text + '\n';
+    pane.appendChild(span);
+    LOGP.after.set(jobId, l.id);
+  }
+  if (d.lines.length && logExpanded && $('#logAutoscroll').checked && !pane.hidden) pane.scrollTop = pane.scrollHeight;
+  return d;
+}
+
+/* Onglets : un par job en cours. Masqués tant qu'il n'y en a qu'un — un onglet solitaire
+   n'apprend rien et vole une ligne au journal. */
+function renderLogTabs(ids, main) {
+  const bar = $('#logTabs');
+  bar.hidden = ids.length < 2;
+  if (bar.hidden) { bar.innerHTML = ''; return; }
+  bar.innerHTML = ids.map((id) => `<button type="button" data-jobtab="${id}"${id === LOGP.active ? ' class="active"' : ''}>`
+    + `${esc(id === main ? tr('job.tab.main') : tr('job.tab.parallel'))} <span class="muted">#${id}</span></button>`).join('');
+  for (const b of $$('#logTabs [data-jobtab]')) {
+    b.addEventListener('click', () => showLogPane(Number(b.dataset.jobtab)));
+  }
+}
+
 async function pumpLog() {
   let d;
   try { d = await api(`/jobs/current/log?after=${lastLogId}`); } catch { return; }
@@ -938,18 +998,29 @@ async function pumpLog() {
   const box = $('#logBox');
   if (d.job_id !== logJobId) {
     // nouveau job : on réinitialise l'affichage et on repart de zéro
-    logJobId = d.job_id; lastLogId = 0; logHidden = false; box.textContent = '';
+    logJobId = d.job_id; lastLogId = 0; logHidden = false; box.innerHTML = ''; LOGP.after.clear(); LOGP.active = null;
     try { d = await api(`/jobs/current/log?after=0`); } catch { return; }
   }
   if (!logHidden) panel.hidden = false;
+  const pane = logPane(d.job_id);
   for (const l of d.lines) {
     const span = document.createElement('span');
     const cls = logLineClass(l.text);
     if (cls) span.className = cls;
     span.textContent = l.text + '\n';
-    box.appendChild(span);
+    pane.appendChild(span);
     lastLogId = l.id;
+    LOGP.after.set(d.job_id, l.id);
   }
+  /* Les autres jobs en cours (voie parallèle) : un onglet et un volet chacun. Le job
+     courant reste en tête — c'est celui que le bandeau de statut décrit. */
+  const others = (d.running_ids || []).filter((id) => id !== d.job_id);
+  for (const id of others) await pumpOne(id);
+  const ids = [d.job_id, ...others];
+  if (LOGP.active == null || !ids.includes(LOGP.active)) LOGP.active = d.job_id;
+  pruneLogPanes(ids);
+  renderLogTabs(ids, d.job_id);
+  showLogPane(LOGP.active);
   const st = $('#logStatus');
   const running = d.running && d.status === 'running';
   st.className = 'logstatus ' + (running ? 'running' : (d.status === 'error' ? 'error' : (d.status === 'done' ? 'done' : '')));
@@ -962,7 +1033,7 @@ async function pumpLog() {
   jobClock = { started: d.started_at || null, finished: d.finished_at || null, running };
   syncJobClock();
   $('#logStop').hidden = !running;
-  if (d.lines.length && logExpanded && $('#logAutoscroll').checked) box.scrollTop = box.scrollHeight;
+  if (d.lines.length && logExpanded && $('#logAutoscroll').checked && !pane.hidden) pane.scrollTop = pane.scrollHeight;
   // Repli auto quelques secondes après un job TERMINÉ (succès ou arrêt) : le panneau ne doit
   // pas rester collé en haut de tous les onglets. On garde l'ERREUR affichée (elle appelle une
   // action) et on ne masque pas si l'utilisateur a déplié le journal pour le lire.
@@ -977,8 +1048,70 @@ async function pumpLog() {
     }, 6000);
   }
   lastJobStatus = d.status;
+  updateLogQueueBtn(d.queued || 0);
+  if (logQueueOpen) renderLogQueue();
   updateFooterLogs();
 }
+
+/* ---------- File d'attente : voir ce qui attend, et doubler la file ----------
+   Le bandeau annonçait « +3 en attente » sans dire QUOI. On peut maintenant ouvrir la
+   liste et lancer un job précis à côté de celui en cours — à condition qu'il ne touche
+   pas les mêmes dépôts, ce que le serveur vérifie et refuse le cas échéant. */
+let logQueueOpen = false;
+
+const JOB_KIND_LABEL = {
+  review: 'job.kind.review', rereview: 'job.kind.rereview', modify: 'job.kind.modify',
+  explain: 'job.kind.explain', task: 'job.kind.task', local: 'job.kind.local',
+  gitops: 'job.kind.gitops', docker: 'job.kind.docker',
+  converge: 'job.kind.converge', 'converge-session': 'job.kind.converge',
+};
+const jobKindLabel = (k) => (JOB_KIND_LABEL[k] ? tr(JOB_KIND_LABEL[k]) : k);
+
+async function renderLogQueue() {
+  const box = $('#logQueue');
+  if (!box || !logQueueOpen) return;
+  let d;
+  try { d = await api('/jobs/queue'); } catch (e) { box.innerHTML = errorBox(e.message); return; }
+  if (!d.queued.length) { box.innerHTML = `<p class="muted">${esc(tr('job.queue.empty'))}</p>`; return; }
+  box.innerHTML = d.queued.map((j) => {
+    const bloque = j.conflicts.length ? tr('job.queue.conflict', { ids: j.conflicts.join(', ') })
+      : (d.parallelBusy ? tr('job.queue.busy') : '');
+    return `<div class="log-queue-row">
+      <span class="tag">${esc(jobKindLabel(j.kind))}</span>
+      <span class="muted">#${j.id}</span>
+      <span class="log-queue-what">${esc(j.total ? tr('job.queue.count', { n: j.total, count: j.total }) : '')}</span>
+      <span class="spacer"></span>
+      ${bloque ? `<span class="muted log-queue-why" title="${esc(bloque)}">${esc(bloque)}</span>`
+    : `<button class="btn btn-sm" data-jobnow="${j.id}" title="${esc(tr('job.queue.now-title'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr('job.queue.now'))}</button>`}
+      <button class="btn btn-icon btn-sm btn-danger" data-jobcancel="${j.id}" title="${esc(tr('job.queue.cancel-title'))}"><svg class="ico ico-sm"><use href="#i-close"/></svg></button>
+    </div>`;
+  }).join('');
+  for (const b of $$('#logQueue [data-jobnow]')) {
+    b.addEventListener('click', () => busy(b, () => api(`/jobs/${b.dataset.jobnow}/start-now`, { method: 'POST' }))
+      .then(() => { toast(tr('job.queue.started')); refreshStatus(); renderLogQueue(); })
+      .catch((e) => toast(explainError(e.message), true)));
+  }
+  for (const b of $$('#logQueue [data-jobcancel]')) {
+    b.addEventListener('click', async () => {
+      if (!await confirmDialog({ text: tr('job.queue.confirm-cancel'), confirmLabel: tr('job.queue.cancel-ok') })) return;
+      try { await api(`/jobs/${b.dataset.jobcancel}/stop`, { method: 'POST' }); renderLogQueue(); refreshStatus(); }
+      catch (e) { toast(explainError(e.message), true); }
+    });
+  }
+}
+
+function updateLogQueueBtn(queued) {
+  const btn = $('#logQueueBtn');
+  if (!btn) return;
+  btn.hidden = !queued;
+  $('#logQueueCount').textContent = queued;
+  if (!queued) { logQueueOpen = false; $('#logQueue').hidden = true; }
+}
+$('#logQueueBtn') && $('#logQueueBtn').addEventListener('click', () => {
+  logQueueOpen = !logQueueOpen;
+  $('#logQueue').hidden = !logQueueOpen;
+  if (logQueueOpen) renderLogQueue();
+});
 
 /* ---------- Temps écoulé du job ----------
    Une review sur trente MR peut tourner un quart d'heure : sans compteur, impossible de
@@ -1024,13 +1157,18 @@ function applyLogCollapsed() {
 }
 $('#logToggle').addEventListener('click', () => {
   logExpanded = !logExpanded; applyLogCollapsed();
-  if (logExpanded) { const box = $('#logBox'); box.scrollTop = box.scrollHeight; }
+  // Le volet VISIBLE est celui qu'on vient de déplier — c'est lui qu'on descend.
+  if (logExpanded) { const p2 = $('#logBox .logpane:not([hidden])'); if (p2) p2.scrollTop = p2.scrollHeight; }
 });
 applyLogCollapsed();
 
 $('#logHide').addEventListener('click', () => { $('#logPanel').hidden = true; logHidden = true; updateFooterLogs(); });
 $('#footerLogs') && $('#footerLogs').addEventListener('click', showLogPanel);
-$('#logCopy').addEventListener('click', () => copyText($('#logBox').textContent, $('#logCopy')));
+// On copie le journal AFFICHÉ, pas la concaténation des deux jobs en cours.
+$('#logCopy').addEventListener('click', () => {
+  const p2 = $('#logBox .logpane:not([hidden])') || $('#logBox');
+  copyText(p2.textContent, $('#logCopy'));
+});
 $('#logStop').addEventListener('click', async () => {
   // Stop ne se contente pas d'interrompre le job courant : il VIDE aussi la file
   // d'attente. On l'annonce, sinon on perd des jobs sans s'en rendre compte.

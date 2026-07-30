@@ -11,10 +11,19 @@ const localcoder = require('./localcoder');
 const docker = require('./docker');
 const { t } = require('../public/i18n-runtime.js');
 
-// File d'attente séquentielle : un job à la fois, les suivants attendent.
-// L'état est persisté en table `job` pour survivre à la fermeture d'onglet.
-let running = false;
-const queue = []; // { jobId, rows, kind, opts } en attente
+/* File d'attente SÉQUENTIELLE : un job à la fois, les suivants attendent. L'état est
+   persisté en table `job` pour survivre à la fermeture d'onglet.
+
+   Une VOIE SUPPLÉMENTAIRE existe, sur demande explicite : `startNow(jobId)` sort un job de
+   la file et le lance à côté de celui qui tourne. Elle n'est pas automatique — deux jobs
+   qui se marchent dessus dans le même clone git corrompent le dépôt, et c'est à l'humain
+   de dire que les deux travaux sont indépendants. Mergerie vérifie quand même : deux jobs
+   qui touchent le même dépôt ou le même dossier local sont REFUSÉS, pas seulement
+   déconseillés. Une seule voie supplémentaire à la fois, pour que le panneau de logs reste
+   lisible et que la charge reste bornée. */
+let mainRunning = false;                 // la voie séquentielle est-elle occupée ?
+const queue = [];                        // { jobId, rows, kind, opts } en attente
+const active = new Map();                // jobId -> { ctx, entry, lane }
 
 function activeJob() {
   return db.prepare(`SELECT * FROM job WHERE status = 'running' ORDER BY id DESC LIMIT 1`).get() || null;
@@ -25,7 +34,23 @@ function currentJob() {
   return activeJob() || db.prepare(`SELECT * FROM job ORDER BY id DESC LIMIT 1`).get() || null;
 }
 
+// Les jobs qui tournent VRAIMENT, dans l'ordre de lancement (voie principale d'abord).
+function runningJobs() {
+  const ids = [...active.keys()];
+  if (!ids.length) return [];
+  return db.prepare(`SELECT * FROM job WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY id`).all(...ids);
+}
+
+// Les jobs en attente, dans l'ordre de la file — avec ce qu'ils toucheront.
+function queuedJobs() {
+  return queue.map((e) => {
+    const row = db.prepare('SELECT * FROM job WHERE id = ?').get(e.jobId);
+    return { ...row, keys: [...jobKeys(e)], conflicts: conflictsWithRunning(e) };
+  });
+}
+
 function queueCount() { return queue.length; }
+function parallelBusy() { return [...active.values()].some((a) => a.lane === 'extra'); }
 
 function setJob(id, patch) {
   const cols = Object.keys(patch).map((k) => `${k} = @${k}`).join(', ');
@@ -54,6 +79,56 @@ function mrRowById(id) {
     SELECT mr.*, repo.project AS project, repo.url AS url, repo.branch_pattern AS branch_pattern, repo.forge AS forge
     FROM mr JOIN repo ON repo.id = mr.repo_id
     WHERE mr.id = ?`).get(id);
+}
+
+/* Ce qu'un job va TOUCHER, sous forme de clés comparables : un dépôt (donc un clone, donc
+   un checkout) ou un dossier local. Deux jobs qui partagent une clé ne peuvent pas tourner
+   ensemble — l'un ferait un checkout pendant que l'autre lit, et le dépôt en sortirait
+   incohérent. Un job Docker ne touche aucun dépôt : il est parallélisable avec tout.
+   Prudence par défaut : un job dont on ne sait pas déduire les clés renvoie `*`, qui
+   entre en conflit avec tout le monde. Mieux vaut refuser à tort que corrompre un clone. */
+function jobKeys(entry) {
+  const keys = new Set();
+  const repo = (id) => { if (id) keys.add(`repo:${id}`); };
+  const targetsOf = (taskId) => db.prepare('SELECT repo_id FROM task_target WHERE task_id = ?').all(taskId);
+  switch (entry.kind) {
+    case 'docker': return keys;                       // aucun dépôt : jamais en conflit
+    case 'gitops':
+      for (const t2 of (entry.payload && entry.payload.targets) || []) repo(t2.repo_id);
+      if (entry.payload && entry.payload.restoreOpId) keys.add('*'); // cible relue en base au moment du run
+      return keys;
+    case 'local':
+      for (const d of db.prepare('SELECT path FROM local_task_dir WHERE task_id = ?').all(entry.taskId)) keys.add(`dir:${d.path}`);
+      return keys;
+    case 'task':
+    case 'converge-session':
+      for (const t2 of targetsOf(entry.taskId)) repo(t2.repo_id);
+      return keys;
+    case 'converge': {
+      const mr = db.prepare('SELECT repo_id FROM mr WHERE id = ?').get(entry.mrId);
+      repo(mr && mr.repo_id);
+      return keys;
+    }
+    default:                                          // review / rereview / modify / explain
+      if (Array.isArray(entry.rows)) { for (const r of entry.rows) repo(r.repo_id); return keys; }
+      keys.add('*');
+      return keys;
+  }
+}
+
+/* Deux jeux de clés se marchent-ils dessus ? Règle isolée du reste pour être testable :
+   c'est elle qui autorise ou refuse le parallèle, et s'y tromper corrompt un dépôt. */
+function keysClash(a, b) {
+  const A = new Set(a); const B = new Set(b);
+  if (A.has('*') || B.has('*')) return true;      // périmètre inconnu : on refuse
+  for (const k of A) if (B.has(k)) return true;
+  return false;
+}
+
+// Les jobs en cours avec lesquels `entry` entrerait en conflit (ids). Vide = parallélisable.
+function conflictsWithRunning(entry) {
+  const mine = jobKeys(entry);
+  return [...active].filter(([, a]) => keysClash(mine, jobKeys(a.entry))).map(([id]) => id);
 }
 
 async function processList(jobId, rows, kind, opts = {}) {
@@ -257,29 +332,57 @@ async function runLocalJob(jobId, taskId, opts = {}) {
   }
 }
 
-// Worker : exécute les jobs de la file un par un, séquentiellement.
+// Aiguillage : quel exécutant pour quelle sorte de job.
+function runEntry(e) {
+  if (e.kind === 'task') return runTaskJob(e.jobId, e.taskId, e.action, e.opts);
+  if (e.kind === 'gitops') return runGitJob(e.jobId, e.payload);
+  if (e.kind === 'docker') return runDockerJob(e.jobId, e.payload);
+  if (e.kind === 'converge') return runConvergeJob(e.jobId, e.mrId, e.opts);
+  if (e.kind === 'converge-session') return runConvergeSessionJob(e.jobId, e.taskId, e.opts);
+  if (e.kind === 'local') return runLocalJob(e.jobId, e.taskId, e.opts);
+  return processList(e.jobId, e.rows, e.kind, e.opts);
+}
+
+/* Exécute un job dans SON contexte d'annulation. `lane` distingue la voie séquentielle de
+   la voie supplémentaire : seule la première enchaîne la file quand elle se libère. */
+function launch(entry, lane) {
+  const { ctx, done } = proc.run(() => runEntry(entry));
+  active.set(entry.jobId, { ctx, entry, lane });
+  return done.finally(() => {
+    active.delete(entry.jobId);
+    if (lane === 'main') {
+      mainRunning = false;
+      if (queue.length) setImmediate(pump);        // enchaîne le suivant
+    }
+    // Plus rien en cours : on efface un éventuel drapeau d'annulation ambiant resté armé.
+    // Sinon les opérations git HORS file (explorateur, tag-author, find-ref) échoueraient
+    // à tort avec « Job arrêté par l'utilisateur ».
+    if (!active.size) proc.reset();
+  });
+}
+
+// Worker de la voie séquentielle : les jobs de la file, un par un.
 async function pump() {
-  if (running) return;
+  if (mainRunning) return;
   const next = queue.shift();
   if (!next) return;
-  running = true;
-  proc.reset(); // chaque job démarre avec un état d'annulation propre
-  try {
-    if (next.kind === 'task') await runTaskJob(next.jobId, next.taskId, next.action, next.opts);
-    else if (next.kind === 'gitops') await runGitJob(next.jobId, next.payload);
-    else if (next.kind === 'docker') await runDockerJob(next.jobId, next.payload);
-    else if (next.kind === 'converge') await runConvergeJob(next.jobId, next.mrId, next.opts);
-    else if (next.kind === 'converge-session') await runConvergeSessionJob(next.jobId, next.taskId, next.opts);
-    else if (next.kind === 'local') await runLocalJob(next.jobId, next.taskId, next.opts);
-    else await processList(next.jobId, next.rows, next.kind, next.opts);
-  } finally {
-    running = false;
-    if (queue.length) setImmediate(pump); // enchaîne le suivant
-    // File vide : on efface un éventuel drapeau d'annulation resté armé par un Stop.
-    // Sinon, les opérations git HORS file (explorateur, tag-author, find-ref) le verraient
-    // encore et échoueraient à tort avec « Job arrêté par l'utilisateur ».
-    else proc.reset();
-  }
+  mainRunning = true;
+  await launch(next, 'main');
+}
+
+/* Sort un job PRÉCIS de la file et le lance à côté de celui qui tourne. Refuse plutôt que
+   d'avertir quand les deux touchent le même dépôt : un clone abîmé en cours de review ne
+   se rattrape pas d'un clic, alors qu'attendre son tour, si. */
+function startNow(jobId) {
+  const i = queue.findIndex((e) => e.jobId === Number(jobId));
+  if (i === -1) { const e = new Error(t('err.job-pas-en-attente')); e.code = 'BUSY'; throw e; }
+  if (parallelBusy()) { const e = new Error(t('err.job-parallele-occupe')); e.code = 'BUSY'; throw e; }
+  const entry = queue[i];
+  const clash = conflictsWithRunning(entry);
+  if (clash.length) { const e = new Error(t('err.job-conflit', { ids: clash.join(', ') })); e.code = 'BUSY'; throw e; }
+  queue.splice(i, 1);
+  launch(entry, 'extra');
+  return db.prepare('SELECT * FROM job WHERE id = ?').get(entry.jobId);
 }
 
 // Ajoute un job à la file (ne bloque jamais : s'exécute quand son tour vient).
@@ -408,14 +511,30 @@ function startConvergeSessionJob(taskId, opts = {}) {
 }
 
 // Stoppe TOUT : annule le job en cours (tue git/copilot) et vide la file d'attente.
-function stopJob() {
+/* Stop SANS argument : tout arrêter (comportement d'origine — c'est le bouton du panneau).
+   Stop AVEC un id : n'arrêter que ce job, en laissant l'autre voie travailler. Il fallait
+   les deux : avec deux jobs en cours, un Stop global qui tue le voisin serait une surprise
+   désagréable, et un Stop qui n'arrête qu'un job laisserait la file repartir. */
+function stopJob(jobId) {
   const now = new Date().toISOString();
+  if (jobId != null) {
+    const a = active.get(Number(jobId));
+    if (!a) {
+      const i = queue.findIndex((e) => e.jobId === Number(jobId));
+      if (i === -1) { const err = new Error(t('err.job-introuvable')); err.code = 'BUSY'; throw err; }
+      queue.splice(i, 1);
+      setJob(Number(jobId), { status: 'stopped', finished_at: now, message: t('job.msg.cancelled-queued') });
+      return { ok: true, cancelledQueue: 1 };
+    }
+    proc.cancel(a.ctx);
+    return { ok: true, cancelledQueue: 0 };
+  }
   const pending = queue.splice(0); // retire les jobs en attente
   for (const p of pending) {
-    setJob(p.jobId, { status: 'stopped', finished_at: now, message: 'Annulé (jamais démarré)' });
+    setJob(p.jobId, { status: 'stopped', finished_at: now, message: t('job.msg.cancelled-queued') });
   }
-  const hadRunning = running || !!activeJob();
-  if (hadRunning) proc.requestCancel();
+  const hadRunning = active.size > 0 || !!activeJob();
+  for (const a of active.values()) proc.cancel(a.ctx);
   if (!hadRunning && pending.length === 0) {
     const err = new Error('Aucun job en cours ni en attente.');
     err.code = 'BUSY';
@@ -425,7 +544,11 @@ function stopJob() {
 }
 
 function isRunning() {
-  return running || !!activeJob();
+  return active.size > 0 || !!activeJob();
 }
 
-module.exports = { startJob, startTaskJob, startGitJob, startDockerJob, startConvergeJob, startConvergeSessionJob, startLocalJob, stopJob, currentJob, activeJob, isRunning, queueCount };
+module.exports = {
+  startJob, startTaskJob, startGitJob, startDockerJob, startConvergeJob, startConvergeSessionJob,
+  startLocalJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
+  queueCount, parallelBusy, jobKeys, keysClash,
+};

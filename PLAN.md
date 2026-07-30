@@ -170,7 +170,11 @@ remplis à l'exécution) ; **tout le reste ci-dessous est en dur dans le code** 
 
 ## File de jobs
 
-Un **worker séquentiel** unique traite une file : reviews, re-reviews, modifs et tâches passent par la même file (un traitement à la fois). État persisté en `job`/`job_log` → survit à la fermeture d'onglet. **Stop** tue le process enfant et vide la file. Actions de session (kind `task`) : `run` / `followup` / `push` / **`answer`** (reprise après réponses aux questions de l'IA).
+Un **worker séquentiel** traite une file : reviews, re-reviews, modifs et tâches passent par la même file (un traitement à la fois). État persisté en `job`/`job_log` → survit à la fermeture d'onglet. **Stop** sans argument tue tout et vide la file ; **avec un id**, il n'arrête que ce job.
+
+**Une seconde voie, à la demande** : depuis le panneau de logs on voit la file (`GET /api/jobs/queue`) et on peut en sortir un job pour le lancer **à côté** de celui en cours (`POST /api/jobs/:id/start-now`). Ce n'est jamais automatique — deux jobs dans le même clone git le corrompent. Mergerie ne se contente pas d'avertir : `jobKeys(entry)` déduit ce que le job va toucher (`repo:<id>`, `dir:<chemin>`, `*` = périmètre inconnu → refus par prudence) et `keysClash` REFUSE le parallèle en cas d'intersection. Une seule voie supplémentaire à la fois, pour borner la charge et garder deux onglets de journal lisibles.
+
+L'**annulation est par job** (`proc.js`) : un booléen de module suffisait tant qu'un seul job tournait, mais à deux il ferait qu'un Stop arrête le voisin et tue le mauvais process enfant. Le contexte est porté par un **`AsyncLocalStorage`** plutôt que passé en paramètre — les appels à `proc.*` descendent jusque dans `git.run` et `copilot.runPrompt`, un argument de plus aurait contaminé toutes les signatures intermédiaires. Hors job (explorateur, find-ref…), un contexte **ambiant** jamais annulé prend le relais. Actions de session (kind `task`) : `run` / `followup` / `push` / **`answer`** (reprise après réponses aux questions de l'IA).
 
 ## Rafraîchissement automatique des MR
 
@@ -179,7 +183,7 @@ Optionnel, piloté par `config.auto_refresh_minutes` (0 = off, **minimum 1 min**
 ## API REST (extrait)
 
 - Config/dépôts : `GET/PUT /api/config`, `GET/POST/PUT/DELETE /api/repos[...]`, `POST /api/repos/bulk` (champ **`forge`**, absent = `gitlab` → contrat inchangé), `GET /api/gitlab/projects|branches`, **`GET /api/github/projects`**, **`POST /api/github/test`** (valide le token, renvoie le login).
-- Découverte/jobs : `POST /api/discover`, `POST /api/jobs/review`, `POST /api/jobs/stop`, `GET /api/jobs/current[/log]`.
+- Découverte/jobs : `POST /api/discover`, `POST /api/jobs/review`, `POST /api/jobs/stop` (body `job_id` optionnel) et **`POST /api/jobs/:id/stop`**, `GET /api/jobs/current[/log]`, **`GET /api/jobs/:id/log`** (l'onglet du job parallèle), **`GET /api/jobs/queue`** (`{running, queued, parallelBusy}` — chaque job en attente porte ses `keys` et ses `conflicts`, de sorte que l'écran dit POURQUOI il ne peut pas démarrer au lieu de griser un bouton) et **`POST /api/jobs/:id/start-now`**.
 - Diff avant review : `GET /api/mrs/:id/diffview` (clone à la demande + diff en direct, pour juger sans appel IA).
 - Résolution : `GET /api/mrs/:id/findings[?v=N]` (constats + statut d'une version), delta inclus dans `GET /api/mrs/:id/versions`, taux dans `GET /api/stats`.
 - MR : `GET /api/mrs[/:id]`, `/:id/review` (body `explain` optionnel : surcharge ponctuelle du réglage global), `/:id/explain` (génère l'explication seule), `/:id/rereview` (body `incremental` optionnel : ne relire que le delta depuis `reviewed_sha`), `/:id/converge` (body `threshold`/`maxPasses` optionnels : lance la boucle « Converger »), `/:id/modify|fix-review|done|reopen|delete-review|comment|clear-error|merge`, `/:id/diff|tree|file|filediff`, `/:id/discussion[s]`, `/:id/discussions/:discId/reply`, **`PUT /:id/notes/:noteId`** (modifier un commentaire ; body `inline` pour aiguiller côté GitHub), `/:id/ticket[-image]`.

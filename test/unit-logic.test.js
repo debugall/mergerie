@@ -517,3 +517,31 @@ describe('ansi : nettoyage des séquences d’échappement des logs', () => {
     assert.equal(stripAnsi(undefined), '');
   });
 });
+
+/* Le parallélisme repose entièrement sur cette règle : deux jobs qui partagent un dépôt ou
+   un dossier ne peuvent pas tourner ensemble. S'y tromper ne donne pas un bug visible mais
+   un clone git corrompu au milieu d'une review — d'où un test sur la règle nue. */
+describe('jobs : conflit entre deux jobs (autorisation du parallèle)', () => {
+  const { keysClash } = require('../src/jobs');
+
+  test('un dépôt ou un dossier en commun interdit le parallèle', () => {
+    assert.equal(keysClash(['repo:1'], ['repo:1']), true);
+    assert.equal(keysClash(['repo:1', 'repo:2'], ['repo:2', 'repo:3']), true);
+    assert.equal(keysClash(['dir:/a'], ['dir:/a']), true);
+  });
+
+  test('des périmètres disjoints l’autorisent', () => {
+    assert.equal(keysClash(['repo:1'], ['repo:2']), false);
+    assert.equal(keysClash(['dir:/a'], ['dir:/b']), false);
+    // Un job Docker ne touche aucun dépôt : il est parallélisable avec tout.
+    assert.equal(keysClash([], ['repo:1', 'repo:2']), false);
+    assert.equal(keysClash([], []), false);
+  });
+
+  test('un périmètre INCONNU refuse tout — prudence plutôt que corruption', () => {
+    // `*` = job dont on ne sait pas déduire les cibles (restauration git, kind inattendu).
+    assert.equal(keysClash(['*'], []), true);
+    assert.equal(keysClash([], ['*']), true);
+    assert.equal(keysClash(['*'], ['repo:9']), true);
+  });
+});

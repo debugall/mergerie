@@ -1665,22 +1665,38 @@ app.get('/api/jobs/current', wrap((req, res) => {
   res.json({ job: jobs.currentJob(), running: jobs.isRunning(), queued: jobs.queueCount() });
 }));
 
+// Sans id : tout arrêter (bouton du panneau). Avec un id : n'arrêter que ce job-là.
 app.post('/api/jobs/stop', wrap((req, res) => {
-  res.json(jobs.stopJob());
+  res.json(jobs.stopJob(req.body && req.body.job_id));
+}));
+app.post('/api/jobs/:id/stop', wrap((req, res) => {
+  res.json(jobs.stopJob(Number(req.params.id)));
 }));
 
-// Log incrémental du job courant (poll temps réel côté UI).
-app.get('/api/jobs/current/log', wrap((req, res) => {
-  const job = jobs.currentJob();
-  if (!job) return res.json({ job_id: null, lines: [], running: false });
-  const after = Number(req.query.after || 0);
+/* Ce qui tourne et ce qui attend. Les jobs en attente portent leurs `keys` (dépôts et
+   dossiers touchés) et les `conflicts` avec ce qui tourne : l'écran peut ainsi dire
+   POURQUOI un job ne peut pas démarrer tout de suite, au lieu de griser un bouton. */
+app.get('/api/jobs/queue', wrap((req, res) => {
+  res.json({ running: jobs.runningJobs(), queued: jobs.queuedJobs(), parallelBusy: jobs.parallelBusy() });
+}));
+
+// Sort un job de la file et le lance EN PARALLÈLE de celui en cours (refus si conflit).
+app.post('/api/jobs/:id/start-now', wrap((req, res) => {
+  res.json({ ok: true, job: jobs.startNow(Number(req.params.id)) });
+}));
+
+// Charge utile commune aux deux routes de log : le job, ses compteurs, ses lignes.
+function jobLogPayload(job, after) {
   const lines = db.prepare(
     'SELECT id, mr_id, text, ts FROM job_log WHERE job_id = ? AND id > ? ORDER BY id LIMIT 3000',
   ).all(job.id, after);
-  res.json({
+  return {
     job_id: job.id,
+    kind: job.kind,
     status: job.status,
     running: jobs.isRunning(),
+    // Les autres jobs EN COURS : le panneau en tire ses onglets sans requête de plus.
+    running_ids: jobs.runningJobs().map((j) => j.id),
     queued: jobs.queueCount(),
     message: job.message,
     total: job.total,
@@ -1691,7 +1707,21 @@ app.get('/api/jobs/current/log', wrap((req, res) => {
     started_at: job.started_at,
     finished_at: job.finished_at,
     lines,
-  });
+  };
+}
+
+// Log incrémental du job courant (poll temps réel côté UI).
+app.get('/api/jobs/current/log', wrap((req, res) => {
+  const job = jobs.currentJob();
+  if (!job) return res.json({ job_id: null, lines: [], running: false });
+  res.json(jobLogPayload(job, Number(req.query.after || 0)));
+}));
+
+// Log d'un job PRÉCIS — l'onglet du job lancé en parallèle s'en sert.
+app.get('/api/jobs/:id/log', wrap((req, res) => {
+  const job = db.prepare('SELECT * FROM job WHERE id = ?').get(Number(req.params.id));
+  if (!job) throw new Error(t('err.job-introuvable'));
+  res.json(jobLogPayload(job, Number(req.query.after || 0)));
 }));
 
 // Réinitialise : supprime tous les rapports (fichiers + lignes review),

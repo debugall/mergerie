@@ -101,9 +101,15 @@
         <button id="logStop" class="btn btn-sm btn-danger" hidden title="Arrêter immédiatement le job en cours" data-i18n-title="ui.title.arreter-immediatement-le-job-en"><svg class="ico"><use href="#i-stop"/></svg><span data-i18n="ui.btn.stop">Stop</span></button>
         <label class="muted"><input type="checkbox" id="logAutoscroll" checked /><span data-i18n="ui.lbl.auto-defilement">auto-défilement</span></label>
         <button id="logCopy" class="btn btn-sm btn-ghost" title="Copier tout le journal dans le presse-papier" data-i18n-title="ui.title.copier-tout-le-journal-dans" data-i18n="ui.btn.copier">copier</button>
+        <button id="logQueueBtn" class="btn btn-sm btn-ghost" hidden title="Voir les jobs en attente" data-i18n-title="job.queue.title"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="job.queue.btn">En attente</span><span id="logQueueCount" class="nav-health warn">0</span></button>
         <button id="logHide" class="btn btn-sm btn-ghost" title="Masquer le panneau de logs" data-i18n-title="ui.title.masquer-le-panneau-de-logs" data-i18n="ui.btn.masquer">masquer</button>
     </div>
-    <pre id="logBox" hidden></pre>
+    <!-- File d'attente : dépliée à la demande, au-dessus du journal. -->
+    <div id="logQueue" class="log-queue" hidden></div>
+    <!-- Onglets : un par job EN COURS. Masqués tant qu'il n'y en a qu'un — un onglet
+         solitaire n'apprend rien et vole une ligne au journal. -->
+    <div id="logTabs" class="log-tabs" hidden></div>
+    <div id="logBox" hidden></div>
 </div>
 
 <main>

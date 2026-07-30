@@ -97,6 +97,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   at all. It now also offers **Create without running**, next to it: the session is created in the
   "to run" state and its card carries a *Run* button, like every other session. Coding sessions and
   explorations already worked this way — their main button saves without launching.
+- **See what is queued, and jump the queue when it is safe.** The log panel said "+3 waiting"
+  without saying what. A **Queued** button now opens the list — what each job is, how much it has to
+  do — and offers **Start in parallel** on any job that can run alongside the current one. The
+  queue stays sequential by default; this is a deliberate one-off, and only one extra job runs at a
+  time. Jobs that would touch the same repositories or folders are **refused**, not merely
+  discouraged, and the line says which running job is in the way: two agents in one clone corrupt
+  it, and waiting your turn is cheaper than repairing that. A queued job can also simply be removed.
+- **The log panel gets a tab per running job.** With two jobs running, each keeps its own output and
+  its own scroll position; switching tabs shows the other one rather than replaying anything. The
+  tab bar only appears when there is more than one job — a lone tab teaches nothing and costs a
+  line. *Stop* still stops everything, but a single job can now be stopped on its own.
 - **A new session can continue an existing one.** Creating a coding session, an out-of-repo coding
   session or an exploration now offers an optional **Resume an existing agent session** field. Fill
   it in and no new session is opened: the work happens inside that one, so the AI still has

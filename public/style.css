@@ -692,10 +692,25 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 .logpanel .loghead .log-toggle { background: transparent; border: 1px solid var(--line); color: var(--text); border-radius: 6px; width: 24px; height: 24px; padding: 0; cursor: pointer; font-size: 12px; }
-#logBox { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; color: var(--code-text); background: var(--code-bg); white-space: pre-wrap; word-break: break-word; user-select: text; }
-#logBox .cmd { color: var(--log-cmd); }
-#logBox .err { color: var(--diff-del-text); }
-#logBox .hdr { color: var(--hunk); font-weight: 600; }
+/* #logBox est un CONTENEUR de volets (un par job en cours) : c'est le volet qui défile,
+   pas le conteneur, sinon changer d'onglet ferait sauter la position de défilement. */
+#logBox { margin: 0; background: var(--code-bg); }
+.logpane { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; color: var(--code-text); background: var(--code-bg); white-space: pre-wrap; word-break: break-word; user-select: text; }
+/* Onglets de job : même grammaire que les onglets du visualiseur (.split-tabs). */
+.log-tabs { display: flex; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.log-tabs button { background: transparent; border: 1px solid var(--line); color: var(--muted); padding: 3px 10px; border-radius: var(--radius); cursor: pointer; font-size: 12.5px; }
+.log-tabs button:hover:not(.active) { color: var(--text); border-color: var(--accent); }
+.log-tabs button.active { color: var(--text); background: var(--panel2); }
+/* File d'attente : une ligne par job, l'action à droite comme dans les cartes. */
+.log-queue { padding: 4px 10px 8px; border-bottom: 1px solid var(--line); background: var(--panel2); }
+.log-queue-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12.5px; }
+.log-queue-row .spacer { flex: 1; }
+.log-queue-what { color: var(--muted); }
+.log-queue-why { max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#logQueueCount { position: static; margin-left: 6px; }
+.logpane .cmd { color: var(--log-cmd); }
+.logpane .err { color: var(--diff-del-text); }
+.logpane .hdr { color: var(--hunk); font-weight: 600; }
 
 /* Toasts : entrée/sortie (le conteneur #toasts les empile, cf. socle). */
 @keyframes toast-in  { from { opacity: 0; transform: translateY(8px) scale(.97); } }
