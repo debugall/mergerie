@@ -315,6 +315,26 @@ async function fileDiffFull(cwd, base, ref, filePath) {
   return stdout;
 }
 
+/* Nombre de commits d'avance de HEAD sur origin/<base>. Sert à distinguer deux situations que
+   `commitAll` renvoie à l'identique (« rien à committer ») et qui n'ont rien à voir : une branche
+   qui porte DÉJÀ le travail — cas d'une relance après un échec survenu APRÈS le commit — et une
+   branche vide, où l'agent a répondu au lieu de coder. */
+async function aheadOf(cwd, base) {
+  try {
+    const { stdout } = await run('git', ['rev-list', '--count', `origin/${base}..HEAD`], { cwd });
+    return Number(stdout.trim()) || 0;
+  } catch { return 0; } // base inconnue localement : on ne conclut rien
+}
+
+// La branche est-elle déjà sur origin, au même commit que HEAD ?
+async function isPushed(cwd, branch) {
+  try {
+    const { stdout } = await run('git', ['rev-parse', 'HEAD', `origin/${branch}`], { cwd });
+    const [local, distant] = stdout.trim().split('\n');
+    return !!local && local === distant;
+  } catch { return false; } // pas de branche distante
+}
+
 // Diff des changements de la branche courante depuis origin/base.
 async function branchDiff(cwd, base) {
   const { stdout } = await run('git', ['diff', `origin/${base}...HEAD`], { cwd, maxBuffer: 1024 * 1024 * 64 });
@@ -372,6 +392,7 @@ async function ensureCleanWorktree(cwd, onLog = () => {}) {
 }
 
 module.exports = {
+  aheadOf, isPushed,
   resetWorktree,
   ensureRepo, targetedDiff, diffRange, tagAuthor, branchesForCommit, branchesForCommitDetailed, cloneDirFor, authUrl, run, secretsOf, tokenFor,
   defaultBranch, ensureCleanWorktree, refExists, createBranchFrom, checkoutBranch, commitAll, headSha, branchDiff, pushBranch, gitTlsArgs,

@@ -11,6 +11,46 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Added
+
+- **Asking the AI to fix a review now offers to resume the session that wrote the code.** The coding
+  session behind a branch is looked up and its identifier pre-filled, so the agent picks up its own
+  work instead of rediscovering a codebase it just wrote. It is a suggestion, not a rule: the link is
+  inferred from the repository and the branch, which is not proof — a branch can have been taken over
+  by hand — so the field stays editable, and clearing it starts a fresh session as before. Nothing is
+  proposed when no coding session matches.
+- **Check branch state — repair a session without spending an AI call.** When projects are stuck in
+  *error* although their work is already committed, a button on the session re-reads the real state
+  of each branch: if it carries commits its diff is regenerated and the project goes back to *commit
+  ready* (or *pushed*), with the **Create MR** button back. Nothing is glossed over — a branch that
+  really is empty stays in error, with its message. Re-running the session would fix the same thing,
+  but at the cost of one AI call per repository, to redo work that is already done. The button only
+  appears when at least one project is in error.
+
+### Fixed
+
+- **Re-running a session whose work was already committed no longer reports a failure.** When a
+  project failed *after* its commit — a refused push, for instance — re-running it sent the AI over
+  code that was already written. It changed nothing, and "nothing to commit" was read as "the AI
+  replied instead of coding": the project went back to *error*, with no diff and no **Create MR**
+  button, although the work was there and ready. The branch is now inspected before concluding — if
+  it already carries the work, the session picks up where it was, diff and MR button included. A
+  branch that really is empty still gets the explicit message, with the AI's own answer in it.
+- **The agent could fail with "no stdin data received in 3s".** Every agent process was started with
+  an open standard input that nobody ever wrote to or closed, so the CLI waited for data, warned
+  about it, and that warning ended up masking the real reason in the failure message — when it did
+  not make the process exit outright. Standard input is now closed on launch, which is exactly the
+  `< /dev/null` the CLI itself suggests.
+- **Relaunching a failed session left its error badges on screen.** The previous failure was only
+  cleared when the job actually started, so between the click and the start — minutes, behind a busy
+  queue — the card still read *error* and nothing told you the click had been taken. Asking for the
+  work again clears the failure right away, on the session and on each of its projects, and the list
+  refreshes without waiting for the next poll. Same for off-repo sessions.
+- **A job finishing next to another one refreshed nothing.** Since several jobs can run at once, the
+  end-of-queue refresh never fired while any other job was still running, so a card kept its old
+  state — stale error badge included. Lists now refresh as soon as the object they show stops being
+  worked on.
+
 ## [1.1.0] - 2026-07-31
 
 ### Added

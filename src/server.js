@@ -1398,6 +1398,16 @@ app.get('/api/tasks/:id/md', wrap((req, res) => {
   res.json({ md: t.md_path ? readFileSafe(t.md_path) : null, prompt: t.prompt, created_at: t.created_at });
 }));
 
+/* Réconcilier : relire l'état réel des branches d'une session et réparer les projets dont le
+   travail existe déjà (commit passé, échec survenu après). Aucun appel IA — contrairement à une
+   relance, qui en coûterait un par dépôt pour refaire un travail déjà fait. */
+app.post('/api/tasks/:id/reconcile', wrap((req, res) => {
+  const t2 = taskById(Number(req.params.id));
+  if (!t2) throw new Error(tt('err.session-introuvable'));
+  if (t2.kind !== 'code') throw new Error(tt('err.reconcile-code-only'));
+  res.json(jobs.startReconcileJob(t2.id));
+}));
+
 app.post('/api/tasks/:id/run', wrap((req, res) => {
   const t = taskById(Number(req.params.id));
   if (!t) throw new Error(tt('err.session-introuvable'));
@@ -1811,6 +1821,17 @@ app.get('/api/mrs', wrap((req, res) => {
   }));
 }));
 
+/* Retrouve la session de codage qui a produit une branche. Le lien n'est pas stocké en dur :
+   il se reconstitue par (dépôt, branche). En cas d'ambiguïté — plusieurs sessions sur la même
+   branche — on prend la PLUS RÉCENTE, et seulement si elle a bien une session d'agent. */
+function originSessionKey(mr) {
+  const row = db.prepare(`SELECT tt.session_key FROM task_target tt
+    JOIN task t ON t.id = tt.task_id
+    WHERE tt.repo_id = ? AND tt.branch = ? AND tt.session_key IS NOT NULL AND t.kind = 'code'
+    ORDER BY tt.id DESC LIMIT 1`).get(mr.repo_id, mr.source_branch);
+  return (row && row.session_key) || null;
+}
+
 app.get('/api/mrs/:id', wrap((req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
@@ -1823,6 +1844,12 @@ app.get('/api/mrs/:id', wrap((req, res) => {
     ticket_url: ticketUrl(getConfig(), tkey),
     // Commande pour reprendre la session d'agent de la review dans un terminal.
     resume_cmd: agentsession.resumeCommand(mr.review_session_backend, mr.review_session_key, mr.review_session_cwd),
+    /* Session de CODAGE dont cette MR est issue, s'il y en a une. Sert à pré-remplir le champ
+       « identifiant de session » quand on demande une correction : l'IA reprend alors le fil de
+       son propre travail au lieu de redécouvrir le code. Simple proposition — le champ reste
+       modifiable et effaçable, parce que la jointure (dépôt + branche source) n'est pas une
+       preuve : une branche peut avoir été reprise à la main, ou par quelqu'un d'autre. */
+    origin_session: originSessionKey(mr),
     review: rev ? {
       md: readFileSafe(rev.md_path),
       explanation: readFileSafe(rev.explanation_path),

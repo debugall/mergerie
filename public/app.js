@@ -1023,7 +1023,19 @@ function setupAutoRefreshPolling(minutes) {
    — rien ne s'anime quand l'onglet est en arrière-plan (batterie, et personne ne regarde) ;
    — filet purement statique en mouvement réduit (cf. la règle @media dans style.css). */
 let ciblesEnCours = null; // dernières cibles connues, réappliquées après un re-rendu de liste
+/* Un objet qui SORT de la liste des cibles en cours vient de finir. C'est le seul signal fiable
+   depuis que plusieurs jobs tournent de front : le bloc « job terminé » plus bas ne se déclenche
+   que quand la file entière est vide, donc un job qui finit pendant qu'un autre tourne ne
+   rafraîchissait aucune liste — la carte gardait son ancien état, badge d'erreur compris. */
+function objetsTermines(avant, apres) {
+  const set = (t, k) => new Set(((t || {})[k]) || []);
+  const partis = (k) => [...set(avant, k)].filter((id) => !set(apres, k).has(id));
+  return { mrs: partis('mrs'), tasks: partis('tasks'), locals: partis('locals') };
+}
 function marquerEnCours(targets) {
+  const fini = objetsTermines(ciblesEnCours, targets);
+  if (fini.tasks.length || fini.locals.length) { if ($('#tab-task').classList.contains('active')) loadTasks(); }
+  if (fini.mrs.length && $('#tab-review').classList.contains('active')) loadSegment(currentSeg);
   ciblesEnCours = targets;
   const t = targets || { mrs: [], tasks: [], locals: [] };
   const veut = new Set([
@@ -2144,6 +2156,8 @@ async function openReport(id, opts = {}) {
       title: tr('report.fix.modal-title', { iid: m.iid }),
       commitMessage: tr('report.fix.commit', { branch: m.source_branch, iid: m.iid }),
       prompt: tr('prompt.apply-review', { branch: m.source_branch, md }),
+      // Session de codage d'où sort la branche : proposée, jamais imposée (cf. openTaskForMr).
+      sessionId: d.origin_session || '',
     }).catch((e) => toast(tr('toast.ouverture-impossible', { message: e.message }), true));
   });
   const aMerge = $('#aMerge'); // absent si la MR n'est plus ouverte sur GitLab
@@ -3379,11 +3393,22 @@ async function openTaskModal(kind = taskKind) {
     ? `<svg class="ico"><use href="#i-play"/></svg>${tr('local.run')}`
     : `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
   $('#taskSubmitOnly').hidden = kind !== 'local';
-  $('#taskModal').hidden = false;
+  showTaskModal();
   f.prompt.focus();
 }
 
 // Depuis une MR : session de codage sur la branche de la MR, créée ET lancée.
+/* Affiche la modale de session. Passe obligé de TOUS les points d'entrée (nouvelle session,
+   depuis une MR, depuis un ticket, édition) : la mention sous le champ « identifiant de session »
+   ne vaut que pour l'ouverture qui l'a posée, et cinq appelants qui pensent à l'effacer, c'est
+   un sixième qui oubliera. */
+function showTaskModal() {
+  const hint = $('#taskSessionHint');
+  if (hint && !hint.dataset.keep) { hint.textContent = ''; hint.hidden = true; }
+  if (hint) delete hint.dataset.keep;
+  $('#taskModal').hidden = false;
+}
+
 async function openTaskForMr(m, opts = {}) {
   const f = $('#taskForm');
   f.reset(); taskNewImages = []; renderTaskPreviews();
@@ -3396,11 +3421,18 @@ async function openTaskForMr(m, opts = {}) {
   launchAfterCreate = true; convergeAfterCreate = false;
   if (opts.prompt) f.prompt.value = opts.prompt;
   if (opts.commitMessage && f.commit_message) f.commit_message.value = opts.commitMessage;
+  /* Reprendre la session de codage d'origine évite à l'IA de redécouvrir un code qu'elle vient
+     d'écrire. Le champ est PRÉ-REMPLI, pas verrouillé : le lien est déduit de (dépôt, branche),
+     ce qui n'est pas une preuve — la branche a pu être reprise à la main. On voit donc ce qui
+     sera repris, et il suffit de vider le champ pour repartir d'une session neuve. */
+  if (f.session_id) f.session_id.value = opts.sessionId || '';
+  const hint = $('#taskSessionHint');
+  if (hint && opts.sessionId) { hint.textContent = tr('task.session-id.from-mr'); hint.hidden = false; hint.dataset.keep = '1'; }
   $('#taskModalTitle').textContent = opts.title || `Faire coder l'IA sur ${m.source_branch}`;
   $('#taskExistingImgs').textContent = tr('task.from-mr', { branch: m.source_branch, iid: m.iid });
   $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-play"/></svg>${tr('task.btn.create-run')}`;
   $('#taskSubmitOnly').hidden = false;
-  $('#taskModal').hidden = false;
+  showTaskModal();
   f.prompt.focus();
 }
 
@@ -3436,7 +3468,7 @@ async function openTaskForJira(key) {
   $('#taskExistingImgs').textContent = issue ? tr('jira.code-from', { key: issue.key, summary: issue.summary || '' }) : '';
   $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-play"/></svg>${tr('task.btn.create-run')}`;
   $('#taskSubmitOnly').hidden = false;
-  $('#taskModal').hidden = false;
+  showTaskModal();
   f.prompt.focus();
   // Curseur après le bloc de contexte : on écrit SA demande, pas au milieu du ticket.
   const end = f.prompt.value.length;
@@ -3464,7 +3496,7 @@ async function openTaskEdit(id) {
     $('#taskExistingImgs').textContent = (d.images && d.images.length) ? tr('task.images-attached', { n: d.images.length, count: d.images.length }) : '';
     $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
     $('#taskSubmitOnly').hidden = true;
-    $('#taskModal').hidden = false;
+    showTaskModal();
   } catch (e) { toast(explainError(e.message), true); }
 }
 
@@ -3505,7 +3537,7 @@ async function openLocalTaskEdit(id) {
     ? tr('task.images-attached', { n: d.images.length, count: d.images.length }) : '';
   $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
   $('#taskSubmitOnly').hidden = true;   // on modifie une session existante : rien à créer
-  $('#taskModal').hidden = false;
+  showTaskModal();
   f.prompt.focus();
 }
 
@@ -3886,7 +3918,7 @@ function renderLocalTasks() {
   stagger('#localList .card');
   wirePromptToggles('#localList');
   $$('#localList [data-lrun]').forEach((b) => b.addEventListener('click', () => busy(b, () => api(`/local-tasks/${b.dataset.lrun}/run`, { method: 'POST' }))
-    .then(() => { toast(tr('local.started')); refreshStatus(); })
+    .then(() => { toast(tr('local.started')); loadTasks(); refreshStatus(); })
     .catch((e) => toast(explainError(e.message), true))));
   $$('#localList [data-ldout]').forEach((b) => b.addEventListener('click',
     () => openLocalDirOutput(b.dataset.ltask, b.dataset.ldout)));
@@ -4008,6 +4040,11 @@ function codeCard(t) {
     canRun ? `<button class="btn" data-trun="${t.id}" title="${t.status === 'new' ? tr('task.title.run-all') : tr('task.title.rerun-all')}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
     canRun ? `<button class="btn btn-converge" data-tconverge="${t.id}" data-label="${esc(tr('task.projects', { n: (t.targets || []).length, count: (t.targets || []).length }))}" title="${tr('task.title.converge')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : '',
     canFollow ? `<button class="btn" data-tfollow="${t.id}" title="${esc(tr('task.title.request-fix'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : '',
+    /* N'apparaît que s'il y a quelque chose à réparer : un projet en erreur dont le travail
+       peut très bien être déjà commité. Relancer coûterait un appel IA par dépôt pour refaire
+       du travail fait — ce bouton ne fait que relire les branches. */
+    (t.targets || []).some((tg) => tg.status === 'error')
+      ? `<button class="btn" data-treconcile="${t.id}" title="${esc(tr('task.title.reconcile'))}"><svg class="ico"><use href="#i-branch"/></svg>${tr('task.btn.reconcile')}</button>` : '',
   ], [
     `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
     hideBtn('task', t),
@@ -4146,8 +4183,14 @@ document.addEventListener('click', async (e) => {
 function wireTaskActions() {
   const on = (sel, fn) => $$(`#taskList ${sel}`).forEach((b) => b.addEventListener('click', () => fn(b)));
 
+  /* `loadTasks()` sans attendre le prochain sondage : le serveur a déjà soldé l'échec à la mise
+     en file, la carte doit cesser d'afficher « erreur » dans la seconde où l'on clique. */
   on('[data-trun]', (b) => busy(b, () => api(`/tasks/${b.dataset.trun}/run`, { method: 'POST' }))
-    .then(() => { toast(tr('toast.session-lancee')); refreshStatus(); })
+    .then(() => { toast(tr('toast.session-lancee')); loadTasks(); refreshStatus(); })
+    .catch((e) => toast(explainError(e.message), true)));
+
+  on('[data-treconcile]', (b) => busy(b, () => api(`/tasks/${b.dataset.treconcile}/reconcile`, { method: 'POST' }))
+    .then(() => { toast(tr('toast.reconcile-lancee')); loadTasks(); refreshStatus(); })
     .catch((e) => toast(explainError(e.message), true)));
 
   // Converger la session : ouvre la modale (seuil + plafond) ciblée sur cette session.

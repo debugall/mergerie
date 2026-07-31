@@ -99,7 +99,10 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
 - Sur un rapport : **régénérer** le rapport, **commenter** la MR, **merger**, **relancer la review**,
   **marquer traitée**, **supprimer le rapport** (la MR retourne « à traiter »), et surtout
   **Faire corriger le code par l'IA** — qui ouvre une session de codage pré-remplie avec le rapport
-  injecté dans le prompt, pour ajuster avant de lancer. Les sessions ouvertes depuis une MR proposent
+  injecté dans le prompt, pour ajuster avant de lancer. Si la branche vient d'une **session de codage**,
+  son **identifiant de session est pré-rempli** : l'IA reprend le fil de son propre travail au lieu de
+  redécouvrir un code qu'elle vient d'écrire. C'est une proposition, pas une règle — le lien est déduit
+  du dépôt et de la branche, ce qui n'est pas une preuve : vider le champ repart d'une session neuve. Les sessions ouvertes depuis une MR proposent
   **Créer sans lancer** en plus de **Créer et lancer**, pour préparer maintenant et exécuter plus tard.
 - **Chaque passe de review est conservée.** Relancer une review ou régénérer un rapport n'écrase plus
   le précédent : un **sélecteur de version** apparaît dans le rapport dès la deuxième passe
@@ -165,6 +168,17 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   exploration) — utile pour comprendre son travail, ou **quand rien n'a changé** : si le prompt était
   incomplet et que l'IA a **répondu au lieu de coder** (ex. « donne-moi le nom du fichier »), sa réponse
   est **remontée directement** dans l'erreur du projet plutôt qu'un « aucun changement » opaque.
+  En revanche, si la branche **porte déjà le travail** — cas d'une relance après un échec survenu
+  *après* le commit, un push refusé par exemple —, l'absence de nouveau changement n'est **pas** une
+  erreur : la session reprend son état « commit prêt », avec le diff et le bouton de création de MR.
+- **Vérifier l'état des branches — réparer sans dépenser d'appel IA.** Quand des projets sont restés
+  en erreur alors que leur travail est déjà commité, un bouton sur la session **relit l'état réel de
+  chaque branche** : si elle porte des commits, le diff est régénéré et le projet repasse « commit
+  prêt » (ou « poussée »), bouton de création de MR compris. Rien n'est maquillé — une branche
+  réellement vide reste en erreur, avec son message. Relancer la session réparerait la même chose,
+  mais au prix d'**un appel IA par dépôt** pour refaire un travail déjà fait. Le bouton n'apparaît
+  que s'il y a au moins un projet en erreur, et l'opération passe par la file de jobs : toucher un
+  clone pendant qu'un agent y écrit le corromprait.
 - **Toutes les itérations sont conservées.** Une session s'itère (lancement, `Demander une correction`,
   réponses aux questions, passes de convergence) : chaque passe garde **le prompt réellement envoyé** et
   **le retour de l'IA correspondant**. Un **sélecteur d'itération** apparaît en haut de `Retour de l'IA`

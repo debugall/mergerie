@@ -36,6 +36,38 @@ describe('Review de bout en bout', () => {
 
   after(async () => { await app.stop(); });
 
+  /* « Faire corriger le code par l'IA » propose de reprendre la session de codage qui a produit
+     la branche : sans elle, l'agent redécouvre un code qu'il vient d'écrire. Le lien n'est pas
+     stocké, il se reconstitue par (dépôt, branche) — d'où ce test, qui vérifie surtout qu'on ne
+     propose RIEN quand rien ne correspond. */
+  test('la MR expose la session de codage dont sa branche est issue', async () => {
+    const vide = await app.api('GET', `/api/mrs/${mrId}`);
+    assert.equal(vide.body.origin_session, null, 'aucune session de codage : on ne propose rien');
+
+    const { backendName } = require('../src/agentsession');
+    const sid = backendName() === 'claude'
+      ? '6ba7b810-9dad-11d1-80b4-00c04fd430c8'
+      : '/home/moi/.mergerie/agent-sessions/origine';
+    // une session de codage sur LA branche de la MR
+    await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'code ça', session_id: sid,
+      targets: [{ repo_id: repoId, branch: repo.branch }],
+    });
+    const avec = await app.api('GET', `/api/mrs/${mrId}`);
+    assert.equal(avec.body.origin_session, sid, 'la session de la branche est proposée');
+
+    // une session sur une AUTRE branche ne doit jamais être proposée
+    await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'autre chose', session_id: sid,
+      targets: [{ repo_id: repoId, branch: 'une/autre-branche' }],
+    });
+    const autreMr = (await app.api('GET', '/api/mrs')).body.find((m) => m.source_branch !== repo.branch);
+    if (autreMr) {
+      const r = await app.api('GET', `/api/mrs/${autreMr.id}`);
+      assert.notEqual(r.body.origin_session, sid, 'une autre branche ne récupère pas cette session');
+    }
+  });
+
   test('la découverte a rempli les chemins modifiés', async () => {
     const mr = (await app.api('GET', '/api/mrs')).body[0];
     assert.equal(mr.iid, 7);

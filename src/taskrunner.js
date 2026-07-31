@@ -88,6 +88,57 @@ function attachImages(task, cwd, onLog) {
   return imgBlock;
 }
 
+/* ---------- Réconcilier l'état affiché avec l'état réel des branches ----------
+   Un projet peut échouer APRÈS son commit (push refusé, réseau coupé) : le travail existe dans
+   le clone, mais la cible reste « erreur », donc sans diff, sans bouton Pousser ni Créer la MR.
+   Relancer la session le réparerait — au prix d'un appel IA par dépôt, pour du travail déjà fait.
+   Ici on ne fait que REGARDER : la branche a-t-elle des commits d'avance sur sa base ? Si oui, on
+   rétablit l'état qui aurait dû être écrit. Aucun appel IA, et rien n'est maquillé : une branche
+   réellement vide reste en erreur. */
+async function reconcileTargets(task, onLog = () => {}) {
+  const cfg = getConfig();
+  const cibles = targetsOf(task.id).filter((tg) => tg.status === 'error');
+  if (!cibles.length) { onLog('aucun projet en erreur à réconcilier'); return { repaired: 0, checked: 0 }; }
+  let repaired = 0;
+  for (const tg of cibles) {
+    onLog(`──────── ${tg.project} · ${tg.branch} ────────`);
+    try {
+      const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
+      if (!repo) { onLog('dépôt introuvable — ignoré'); continue; }
+      const cwd = await git.ensureRepo(cfg, repo, onLog);
+      await git.ensureCleanWorktree(cwd, onLog);
+      const base = tg.base_branch || await git.defaultBranch(cwd);
+
+      /* On ne réaligne JAMAIS sur origin ici : le cas le plus fréquent est justement un commit
+         local que le push n'a pas emporté. Se caler sur la branche distante le détruirait. */
+      if (await git.refExists(cwd, `refs/heads/${tg.branch}`)) await git.checkoutBranch(cwd, tg.branch, onLog);
+      else if (await git.refExists(cwd, `origin/${tg.branch}`)) await git.createBranchFrom(cwd, tg.branch, `origin/${tg.branch}`, onLog);
+      else { onLog('branche absente en local comme sur le remote — laissée en erreur'); continue; }
+
+      const avance = await git.aheadOf(cwd, base);
+      if (!avance) { onLog(`aucun commit d'avance sur ${base} — rien à réconcilier, laissée en erreur`); continue; }
+
+      const sha = await git.headSha(cwd);
+      const diff = await git.branchDiff(cwd, base);
+      const dpath = path.join(ensureDir(path.join(taskDir(task.id), String(tg.id))), 'diff.patch');
+      fs.writeFileSync(dpath, diff, 'utf8');
+      const pousse = await git.isPushed(cwd, tg.branch);
+      setTarget(tg.id, {
+        base_branch: base, commit_sha: sha, diff_path: dpath,
+        push_command: `git push -u origin ${tg.branch}`,
+        last_error: null, status: pousse ? 'pushed' : 'committed',
+      });
+      repaired += 1;
+      onLog(`✅ ${avance} commit(s) d'avance sur ${base} → ${pousse ? 'branche déjà poussée' : 'commit prêt, en attente de push'}`);
+    } catch (e) {
+      onLog(`⚠ ${tg.project} : ${e.message}`); // un projet illisible n'empêche pas les autres
+    }
+  }
+  syncTaskStatus(task.id);
+  onLog(`${repaired}/${cibles.length} projet(s) réconcilié(s)`);
+  return { repaired, checked: cibles.length };
+}
+
 /* ================= CODAGE ================= */
 
 /* Prompt de dev et message de commit d'une session : UNE seule définition, partagée
@@ -193,13 +244,22 @@ async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog,
   onLog(`commit : ${message}`);
   const committed = await git.commitAll(cwd, message, onLog);
   if (!committed) {
-    // Aucun fichier modifié : le plus souvent l'IA a répondu/demandé une précision au lieu de
-    // coder (prompt incomplet). On REMONTE sa réponse pour que l'erreur soit parlante, et on
-    // suggère « L'IA peut me poser des questions » pour un vrai aller-retour structuré.
-    const said = String(agentText || '').trim();
-    throw new Error(said
-      ? t('err.no-change-agent-said', { said: said.slice(0, 500) })
-      : t('err.aucun-changement-produit-rien-a'));
+    /* « Rien à committer » recouvre deux situations opposées, et les confondre coûtait cher :
+       la branche peut DÉJÀ porter le travail. C'est le cas d'une relance après un échec
+       survenu APRÈS le commit (un push refusé, par exemple) : l'IA repasse, constate que tout
+       est fait, ne touche à rien — et la session repartait en erreur, sans diff ni bouton
+       « Créer la MR », alors que le code est là et prêt. On regarde donc l'état réel de la
+       branche avant de conclure. */
+    const dejaFait = await git.aheadOf(cwd, base);
+    if (!dejaFait) {
+      // Branche vide : là, l'IA a bien répondu au lieu de coder (prompt incomplet). On REMONTE
+      // sa réponse pour que l'erreur soit parlante.
+      const said = String(agentText || '').trim();
+      throw new Error(said
+        ? t('err.no-change-agent-said', { said: said.slice(0, 500) })
+        : t('err.aucun-changement-produit-rien-a'));
+    }
+    onLog(`aucune modification à ajouter : la branche porte déjà le travail (${dejaFait} commit(s) d'avance sur ${base})`);
   }
   const sha = await git.headSha(cwd);
 
@@ -457,6 +517,7 @@ async function pushTarget(taskId, targetId, onLog = () => {}) {
 }
 
 module.exports = {
+  reconcileTargets,
   runTask, runTaskFollowup, runTaskAnswer, pushTarget, targetsOf, setTarget, syncTaskStatus,
   execOnTarget, buildCodePrompt, commitMessageFor, saveAgentOutput,
 };

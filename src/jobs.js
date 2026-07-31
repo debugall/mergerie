@@ -108,6 +108,7 @@ function jobKeys(entry) {
       for (const d of db.prepare('SELECT path FROM local_task_dir WHERE task_id = ?').all(entry.taskId)) keys.add(`dir:${d.path}`);
       return keys;
     case 'task':
+    case 'reconcile':
     case 'converge-session':
       for (const t2 of targetsOf(entry.taskId)) repo(t2.repo_id);
       return keys;
@@ -402,6 +403,7 @@ function runEntry(e) {
   if (e.kind === 'converge') return runConvergeJob(e.jobId, e.mrId, e.opts);
   if (e.kind === 'converge-session') return runConvergeSessionJob(e.jobId, e.taskId, e.opts);
   if (e.kind === 'local') return runLocalJob(e.jobId, e.taskId, e.opts);
+  if (e.kind === 'reconcile') return runReconcileJob(e.jobId, e.taskId);
   return processList(e.jobId, e.rows, e.kind, e.opts);
 }
 
@@ -560,7 +562,48 @@ async function runDockerJob(jobId, payload) {
   }
 }
 
+/* Une relance solde l'échec précédent TOUT DE SUITE, à la mise en file — pas au démarrage
+   effectif du job. Sinon la carte continue d'afficher « erreur » entre le clic et le départ :
+   on ne sait pas si le clic a été pris, et derrière une file chargée cet entre-deux dure des
+   minutes. L'erreur affichée n'est plus l'état courant dès l'instant où l'on redemande le travail. */
+function clearTaskError(taskId) {
+  const now = new Date().toISOString();
+  db.prepare("UPDATE task SET last_error = NULL, updated_at = ? WHERE id = ? AND status = 'error'").run(now, taskId);
+  db.prepare("UPDATE task_target SET last_error = NULL WHERE task_id = ? AND status = 'error'").run(taskId);
+}
+
+/* Réconciliation : on relit l'état réel des branches d'une session et on répare les cibles
+   dont le travail existe déjà. Passe par la FILE, comme tout ce qui touche à un clone : le faire
+   pendant qu'un agent écrit dans le même dépôt le corromprait. Pas de retry — l'opération est
+   idempotente, on la relance à la main si besoin. */
+async function runReconcileJob(jobId, taskId) {
+  const task = db.prepare('SELECT * FROM task WHERE id = ?').get(taskId);
+  logLine(jobId, null, `=== Réconciliation #${jobId} ===`);
+  if (!task) { setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: t('err.tache-introuvable') }); return; }
+  const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
+  try {
+    const r = await taskrunner.reconcileTargets(task, onLog);
+    setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
+    logLine(jobId, null, `=== Réconciliation terminée (${r.repaired}/${r.checked}) ===`);
+  } catch (e) {
+    const full = (e && e.stack) ? `${e.message}\n\n${e.stack}` : String(e && e.message || e);
+    logLine(jobId, null, `❌ Réconciliation ERREUR : ${e.message}`);
+    setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
+    void full;
+  }
+}
+
+function startReconcileJob(taskId) {
+  const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
+    VALUES ('reconcile', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
+  const jobId = info.lastInsertRowid;
+  queue.push({ jobId, kind: 'reconcile', taskId });
+  setImmediate(pump);
+  return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
+}
+
 function startTaskJob(taskId, action = 'run', opts = {}) {
+  if (action !== 'push') clearTaskError(taskId);
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES ('task', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
   const jobId = info.lastInsertRowid;
@@ -572,6 +615,9 @@ function startTaskJob(taskId, action = 'run', opts = {}) {
 
 // Lance une session « Codage hors dépôt » (dossiers locaux, sans git).
 function startLocalJob(taskId, opts = {}) {
+  const maintenant = new Date().toISOString();
+  db.prepare("UPDATE local_task SET last_error = NULL, updated_at = ? WHERE id = ? AND status = 'error'").run(maintenant, taskId);
+  db.prepare("UPDATE local_task_dir SET last_error = NULL WHERE task_id = ? AND status = 'error'").run(taskId);
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES ('local', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
   const jobId = info.lastInsertRowid;
@@ -642,7 +688,7 @@ function isRunning() {
 
 module.exports = {
   startJob, startTaskJob, startGitJob, startDockerJob, startConvergeJob, startConvergeSessionJob,
-  startLocalJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
+  startLocalJob, startReconcileJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
   queueCount, parallelBusy, runningCount, MAX_RUNNING, jobKeys, keysClash, retryJob, canRetry,
   jobTargets, runningTargets,
 };

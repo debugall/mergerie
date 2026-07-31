@@ -44,6 +44,104 @@ describe('Sessions de dev de bout en bout', () => {
     }
   });
 
+  /* Une relance doit solder l'échec précédent DÈS la mise en file, pas au démarrage effectif :
+     sinon la carte continue d'afficher « erreur » entre le clic et le départ du job — et
+     derrière une file chargée, cet entre-deux dure. On vérifie donc l'état juste après le POST,
+     avant que le job n'ait pu s'exécuter. */
+  test('relancer une session en erreur solde l’erreur immédiatement', async () => {
+    const t = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'p', targets: [{ repo_id: repoId, branch: 'ai/echec' }],
+    });
+    const id = t.body.id;
+    app.db.prepare("UPDATE task SET status='error', last_error='échec précédent' WHERE id=?").run(id);
+    app.db.prepare("UPDATE task_target SET status='error', last_error='échec précédent' WHERE task_id=?").run(id);
+
+    const job = await app.api('POST', `/api/tasks/${id}/run`);
+    assert.equal(job.status, 200);
+    // le job vient d'être MIS EN FILE ; l'erreur ne doit déjà plus être affichable
+    const apres = await app.api('GET', `/api/tasks/${id}`);
+    assert.equal(apres.body.task.last_error, null, 'l’erreur de la session est soldée à la mise en file');
+    for (const tg of apres.body.task.targets) {
+      assert.equal(tg.last_error, null, 'l’erreur du projet aussi');
+    }
+    await waitForJobs(app.api);
+  });
+
+  /* Le cœur du correctif « relance après un échec tardif » : `commitAll` renvoie « rien à
+     committer » aussi bien quand l'IA n'a rien produit que quand la branche porte DÉJÀ le
+     travail. Confondre les deux renvoyait la session en erreur sans diff ni bouton « Créer la
+     MR », alors que le code était là. C'est `aheadOf` qui les sépare. */
+  test('une branche qui porte déjà le travail est reconnue comme telle', async () => {
+    const gitmod = require('../src/git');
+    const dir = fs.mkdtempSync(path.join(app.dataDir, 'ahead-'));
+    const r = makeRemoteRepo(dir, { branch: 'feature/deja-fait' });
+    const work = path.join(dir, 'work');
+
+    // sur une branche neuve, sans commit : rien d'avance → l'IA n'a vraiment rien produit
+    git(work, ['checkout', '-b', 'feature/vide', 'main']);
+    git(work, ['fetch', 'origin']);
+    assert.equal(await gitmod.aheadOf(work, 'main'), 0, 'branche vide : aucune avance');
+    assert.equal(await gitmod.isPushed(work, 'feature/vide'), false, 'branche vide : pas sur origin');
+
+    // la branche de travail, elle, porte des commits : une relance ne doit PAS crier à l'erreur
+    git(work, ['checkout', r.branch]);
+    assert.ok(await gitmod.aheadOf(work, 'main') > 0, 'branche de travail : du travail d’avance');
+
+    // et une fois poussée, on sait le dire
+    git(work, ['push', '-u', 'origin', r.branch]);
+    git(work, ['fetch', 'origin']);
+    assert.equal(await gitmod.isPushed(work, r.branch), true, 'branche poussée : reconnue comme telle');
+  });
+
+  /* Le scénario réel : un projet commite, puis échoue APRÈS (push refusé). La cible reste
+     « erreur », donc sans diff ni bouton MR, alors que le travail est dans le clone. Réconcilier
+     doit le rétablir SANS appeler l'IA — et ne rien maquiller quand la branche est vraiment vide. */
+  test('réconcilier rétablit un projet dont le travail est déjà commité', async () => {
+    const t = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'travail déjà fait', targets: [{ repo_id: repoId, branch: 'ai/deja-commite' }],
+    });
+    const id = t.body.id;
+    await app.api('POST', `/api/tasks/${id}/run`);
+    await waitForJobs(app.api);
+
+    // état après un run réussi : on le casse comme le ferait un push refusé APRÈS le commit
+    const avant = (await app.api('GET', `/api/tasks/${id}`)).body.task.targets[0];
+    assert.ok(['committed', 'pushed'].includes(avant.status), `préalable : run réussi (${avant.status})`);
+    app.db.prepare("UPDATE task_target SET status='error', last_error='push refusé', diff_path=NULL WHERE id=?").run(avant.id);
+    app.db.prepare("UPDATE task SET status='error', last_error='push refusé' WHERE id=?").run(id);
+
+    const casse = (await app.api('GET', `/api/tasks/${id}`)).body.task.targets[0];
+    assert.equal(casse.diff_path, null, 'préalable : plus de diff, donc plus de bouton');
+
+    const job = await app.api('POST', `/api/tasks/${id}/reconcile`);
+    assert.equal(job.status, 200, 'la réconciliation est acceptée');
+    await waitForJobs(app.api);
+
+    const apres = (await app.api('GET', `/api/tasks/${id}`)).body;
+    const tg = apres.task.targets[0];
+    assert.ok(['committed', 'pushed'].includes(tg.status), `la cible est rétablie (${tg.status})`);
+    assert.equal(tg.last_error, null, 'l’erreur est levée');
+    assert.ok(tg.diff_path, 'le diff est régénéré — donc « Voir le diff » et la création de MR reviennent');
+    assert.ok(tg.commit_sha, 'le commit est de nouveau référencé');
+  });
+
+  test('réconcilier ne maquille pas un projet réellement en échec', async () => {
+    // branche jamais créée : rien à réconcilier, la cible DOIT rester en erreur.
+    const t = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'jamais lancé', targets: [{ repo_id: repoId, branch: 'ai/jamais-creee' }],
+    });
+    const id = t.body.id;
+    const tgId = (await app.api('GET', `/api/tasks/${id}`)).body.task.targets[0].id;
+    app.db.prepare("UPDATE task_target SET status='error', last_error='échec réel' WHERE id=?").run(tgId);
+
+    await app.api('POST', `/api/tasks/${id}/reconcile`);
+    await waitForJobs(app.api);
+
+    const tg = (await app.api('GET', `/api/tasks/${id}`)).body.task.targets[0];
+    assert.equal(tg.status, 'error', 'une branche vide reste en erreur');
+    assert.equal(tg.last_error, 'échec réel', 'et son message n’est pas effacé');
+  });
+
   test('la création d’une session valide ses entrées', async () => {
     const sansPrompt = await app.api('POST', '/api/tasks', { targets: [{ repo_id: repoId, branch: 'x' }] });
     assert.equal(sansPrompt.status, 400);

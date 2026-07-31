@@ -29,12 +29,19 @@ function backendName() {
 
 const slug = (key) => String(key).replace(/[^\w.-]/g, '_').slice(0, 120);
 
+/* L'entrée standard de l'agent est fermée d'office. Sans ça, `spawn` lui ouvre un tube que
+   personne n'alimente ni ne ferme : le CLI attend des données, avertit au bout de trois secondes
+   (« no stdin data received in 3s »), et cet avertissement finit par masquer la vraie erreur dans
+   le message d'échec — quand il ne fait pas sortir le processus en code 1. `ignore` équivaut au
+   `< /dev/null` que le CLI conseille lui-même. */
+const STDIO = ['ignore', 'pipe', 'pipe'];
+
 function spawnAgent({ args, cwd, env }, onLog = () => {}) {
   return new Promise((resolve, reject) => {
     const bin = copilot.COPILOT_BIN;
     const shown = args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ');
     onLog(`$ ${bin} ${shown}  (cwd=${cwd})`);
-    const child = spawn(bin, args, { cwd, env: { ...process.env, ...(env || {}) } });
+    const child = spawn(bin, args, { cwd, env: { ...process.env, ...(env || {}) }, stdio: STDIO });
     let stdout = ''; let stderr = ''; let obuf = '';
     const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`timeout après ${TIMEOUT_MS} ms`)); }, TIMEOUT_MS);
     // Streame la sortie ligne par ligne : on voit l'agent avancer (copilot n'a pas de mode événements).
@@ -76,7 +83,7 @@ function runClaudeStream(args, cwd, onLog) {
     const bin = copilot.COPILOT_BIN;
     const shown = args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ');
     onLog(`$ ${bin} ${shown}  (cwd=${cwd})`);
-    const child = spawn(bin, args, { cwd });
+    const child = spawn(bin, args, { cwd, stdio: STDIO });
     let stderr = ''; let buf = ''; let result = null; let sessionId = null; let lastText = '';
     const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`timeout après ${TIMEOUT_MS} ms`)); }, TIMEOUT_MS);
     const handleLine = (line) => {

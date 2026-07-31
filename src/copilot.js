@@ -93,7 +93,9 @@ function runReal(prompt, cwd, onLog = () => {}) {
     const parts = [COPILOT_BIN, ...EXTRA_ARGS, '-p', JSON.stringify(prompt)];
     if (proc.isCancelled()) return reject(new Error('Job arrêté par l\'utilisateur.'));
     onLog(`$ ${parts.join(' ')}  (cwd=${cwd})`);
-    const child = spawn(COPILOT_BIN, args, { cwd });
+    /* stdin fermée : sinon le CLI attend des données sur un tube que personne n'alimente,
+       avertit au bout de trois secondes et l'avertissement masque la vraie erreur. */
+    const child = spawn(COPILOT_BIN, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
     proc.setActive(child);
     let stdout = '';
     let stderr = '';
