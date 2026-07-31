@@ -768,7 +768,13 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 .list.animate-in > .card { animation: card-in .26s cubic-bezier(.2,.8,.3,1) both; animation-delay: calc(var(--i, 0) * 22ms); }
 
 /* ---------- Navigation & en-tête ---------- */
-.brand { display: flex; flex-direction: column; gap: 1px; line-height: 1.15; }
+.brand { display: flex; align-items: center; gap: var(--s-3); line-height: 1.15; }
+.brand-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+/* Un seul des deux logos est affiché : celui dont l'encre se voit sur le fond du thème. */
+.brand-logo { display: block; flex: none; width: 30px; height: 30px; }
+.brand-logo.dark { display: none; }
+:root[data-theme="dark"] .brand-logo.light { display: none; }
+:root[data-theme="dark"] .brand-logo.dark { display: block; }
 .baseline { font-size: var(--fs-xs); color: var(--muted); letter-spacing: .01em; white-space: nowrap; }
 /* baseline : masquée quand la place manque, pour ne pas écraser la navigation */
 @media (max-width: 1200px) { .baseline { display: none; } }

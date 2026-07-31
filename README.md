@@ -1,4 +1,9 @@
-# Mergerie
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="public/images/wordmark-dark.svg" />
+    <img src="public/images/wordmark.svg" alt="Mergerie" width="320" />
+  </picture>
+</h1>
 
 [![CI](https://github.com/debugall/mergerie/actions/workflows/ci.yml/badge.svg)](https://github.com/debugall/mergerie/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](./LICENSE)

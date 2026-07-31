@@ -4,7 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mergerie</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Crect%20x%3D%226%22%20y%3D%226%22%20width%3D%2288%22%20height%3D%2288%22%20rx%3D%2222%22%20fill%3D%22%232f6fe0%22%2F%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%226.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2269.2%22%20cy%3D%2269.2%22%20r%3D%229.6%22%2F%3E%3Ccircle%20cx%3D%2230.8%22%20cy%3D%2230.8%22%20r%3D%229.6%22%2F%3E%3Cpath%20d%3D%22M30.8%2078.8%20V40.4%20a28.8%2028.8%200%200%200%2028.8%2028.8%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E" />
+    <!-- Icône d'onglet : même dessin que le logo, posé sur une tuile qui porte l'état du job
+         (bleu au repos, ambre en cours, rouge en erreur — cf. faviconHref dans app.js).
+         Celle-ci est l'état « repos » écrit en dur, pour qu'aucun autre dessin n'apparaisse
+         avant que le script ne tourne. -->
+    <link rel="icon" id="favicon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Crect%20x%3D%226%22%20y%3D%226%22%20width%3D%2288%22%20height%3D%2288%22%20rx%3D%2222%22%20fill%3D%22%232f6fe0%22%2F%3E%3Cg%20transform%3D%22translate(14%2010)%20scale(0.72)%22%3E%3Cpath%20d%3D%22M14%2C84%20L14%2C26%20L50%2C62%20L86%2C26%20L86%2C84%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%229%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Ccircle%20cx%3D%2214%22%20cy%3D%2226%22%20r%3D%227.5%22%20fill%3D%22%23fff%22%2F%3E%3Ccircle%20cx%3D%2286%22%20cy%3D%2226%22%20r%3D%227.5%22%20fill%3D%22%23fff%22%2F%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2262%22%20r%3D%2211%22%20fill%3D%22%232da44e%22%2F%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2262%22%20r%3D%224.5%22%20fill%3D%22%23fff%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E" />
+    <!-- Repli raster pour ce qui ne sait pas afficher un SVG (raccourcis, écran d'accueil). -->
+    <link rel="alternate icon" href="images/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="apple-touch-icon" href="images/apple-touch-icon.png" />
     <link rel="stylesheet" href="/style.css" />
     <script>
       // Applique le thème AVANT le premier rendu (évite un flash de thème sombre).
@@ -66,9 +73,16 @@
 
 <header>
     <div class="brand">
+        <!-- Deux fichiers plutôt qu'un SVG en `currentColor` : le logo n'est pas monochrome
+             (le commit de merge reste vert dans les deux thèmes), seule l'encre du « M » change.
+             Le CSS n'en montre qu'un ; alt vide car le nom du produit suit juste à côté. -->
+        <img class="brand-logo light" src="images/mergerie-logo.svg" alt="" width="30" height="30" />
+        <img class="brand-logo dark" src="images/mergerie-logo-dark.svg" alt="" width="30" height="30" />
+        <div class="brand-text">
         <!-- Nom du produit : jamais traduit → pas de data-i18n ici. -->
         <h1>Mergerie</h1>
         <span class="baseline" data-i18n="ui.span.un-agent-ia-qui-relit">L'IA prépare tes MR — review, corrections, convergence. C'est toi qui merges.</span>
+        </div>
     </div>
     <nav>
         <button data-tab="review" class="active" title="Merge requests : à traiter, reviewées, traitées" data-i18n-title="ui.title.merge-requests-a-traiter-reviewees"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="nav.reviews">Reviews</span><span class="nav-count" id="navCountReview" hidden>0</span></button>

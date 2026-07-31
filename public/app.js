@@ -118,19 +118,27 @@ let faviconState = '';
 // blanc sur une tuile arrondie. La TUILE porte l'état (bleu au repos, ambre en cours, rouge en erreur),
 // le GLYPHE porte l'identité. SVG pur (aucun emoji ni police) → rendu fiable partout, WSL compris.
 const FAVICON_TILE = { idle: '#2f6fe0', busy: '#a16207', error: '#c62828' };
+/* Le glyphe est le logo du produit (public/images/mergerie-logo.svg) : le même « M » en graphe
+   de commits, dessiné en blanc sur la tuile. Le fichier lui-même ne peut pas servir de favicon :
+   son encre est sombre et transparente autour, donc invisible sur une barre d'onglets sombre —
+   d'où la tuile, qui garantit le contraste ET porte l'état. */
 function faviconHref(state) {
   const color = FAVICON_TILE[state] || FAVICON_TILE.idle;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">`
     + `<rect x="6" y="6" width="88" height="88" rx="22" fill="${color}"/>`
-    + `<g fill="none" stroke="#fff" stroke-width="6.4" stroke-linecap="round" stroke-linejoin="round">`
-    + `<circle cx="69.2" cy="69.2" r="9.6"/><circle cx="30.8" cy="30.8" r="9.6"/>`
-    + `<path d="M30.8 78.8 V40.4 a28.8 28.8 0 0 0 28.8 28.8"/></g></svg>`;
+    + `<g transform="translate(14 10) scale(0.72)">`
+    + `<path d="M14,84 L14,26 L50,62 L86,26 L86,84" fill="none" stroke="#fff" stroke-width="9"`
+    + ` stroke-linecap="round" stroke-linejoin="round"/>`
+    + `<circle cx="14" cy="26" r="7.5" fill="#fff"/><circle cx="86" cy="26" r="7.5" fill="#fff"/>`
+    // vert plus clair que celui du logo sur fond blanc : il doit tenir sur les trois tuiles.
+    + `<circle cx="50" cy="62" r="11" fill="#2da44e"/><circle cx="50" cy="62" r="4.5" fill="#fff"/>`
+    + `</g></svg>`;
   return 'data:image/svg+xml,' + encodeURIComponent(svg);
 }
 function setFavicon(state) {
   if (faviconState === state) return;
   faviconState = state;
-  const link = $('link[rel="icon"]');
+  const link = $('#favicon');
   if (link) link.href = faviconHref(state);
 }
 

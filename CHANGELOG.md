@@ -189,6 +189,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   suggested branch name and commit message from the key and summary, ticket number set. You pick the
   repository and add your own instructions — nothing is launched until you say so.
 
+- **Mergerie has a face now.** The product mark — an `M` drawn as a commit graph, its two branches
+  meeting on a green merge commit — sits in the header (one drawing per theme, since only the ink
+  changes) and became the browser tab icon. The tab icon still carries the job state as its
+  background: blue at rest, amber while running, red on error.
 - **The interface got calmer, and a little more alive.** A study of what makes the tool pleasant to
   live in — it runs all day — turned into a batch of changes that share one rule: nothing is added
   that does not carry information.
