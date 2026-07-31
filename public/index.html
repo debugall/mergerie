@@ -4,7 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mergerie</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Crect%20x%3D%226%22%20y%3D%226%22%20width%3D%2288%22%20height%3D%2288%22%20rx%3D%2222%22%20fill%3D%22%232f6fe0%22%2F%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%226.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2269.2%22%20cy%3D%2269.2%22%20r%3D%229.6%22%2F%3E%3Ccircle%20cx%3D%2230.8%22%20cy%3D%2230.8%22%20r%3D%229.6%22%2F%3E%3Cpath%20d%3D%22M30.8%2078.8%20V40.4%20a28.8%2028.8%200%200%200%2028.8%2028.8%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E" />
+    <!-- Icône d'onglet : même dessin que le logo, posé sur une tuile qui porte l'état du job
+         (bleu au repos, ambre en cours, rouge en erreur — cf. faviconHref dans app.js).
+         Celle-ci est l'état « repos » écrit en dur, pour qu'aucun autre dessin n'apparaisse
+         avant que le script ne tourne. -->
+    <link rel="icon" id="favicon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Crect%20x%3D%226%22%20y%3D%226%22%20width%3D%2288%22%20height%3D%2288%22%20rx%3D%2222%22%20fill%3D%22%232f6fe0%22%2F%3E%3Cg%20transform%3D%22translate(14%2010)%20scale(0.72)%22%3E%3Cpath%20d%3D%22M14%2C84%20L14%2C26%20L50%2C62%20L86%2C26%20L86%2C84%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%229%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Ccircle%20cx%3D%2214%22%20cy%3D%2226%22%20r%3D%227.5%22%20fill%3D%22%23fff%22%2F%3E%3Ccircle%20cx%3D%2286%22%20cy%3D%2226%22%20r%3D%227.5%22%20fill%3D%22%23fff%22%2F%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2262%22%20r%3D%2211%22%20fill%3D%22%232da44e%22%2F%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2262%22%20r%3D%224.5%22%20fill%3D%22%23fff%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E" />
+    <!-- Repli raster pour ce qui ne sait pas afficher un SVG (raccourcis, écran d'accueil). -->
+    <link rel="alternate icon" href="images/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="apple-touch-icon" href="images/apple-touch-icon.png" />
     <link rel="stylesheet" href="/style.css" />
     <script>
       // Applique le thème AVANT le premier rendu (évite un flash de thème sombre).
@@ -23,7 +30,6 @@
      Remplace les emojis, dont le rendu et les couleurs varient selon l'OS (WSL/Linux). -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
     <defs>
-        <g id="g-stroke" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></g>
     </defs>
     <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M6 3.5l14 8.5-14 8.5z"/></symbol>
@@ -55,19 +61,28 @@
     <symbol id="i-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></symbol>
     <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"/></symbol>
     <symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"/></symbol>
+    <symbol id="i-archive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="22" height="5" rx="1"/><path d="M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8M10 12h4"/></symbol>
     <symbol id="i-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9z"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></symbol>
     <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
     <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></symbol>
     <symbol id="i-bell-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.73 21a2 2 0 0 1-3.46 0M18.63 13A17.9 17.9 0 0 1 18 8M6.26 6.26A6 6 0 0 0 6 8c0 7-3 9-3 9h14M18 8a6 6 0 0 0-9.33-5M1 1l22 22"/></symbol>
-    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-gitlab" viewBox="0 0 24 24"><path d="M12 21.5 8.9 12h6.2L12 21.5Z" fill="currentColor"/><path d="M12 21.5 8.9 12H3.4l8.6 9.5Zm0 0L15.1 12h5.5L12 21.5Z" fill="currentColor" opacity=".7"/><path d="M3.4 12 2.2 8.2a.6.6 0 0 1 .22-.67L12 21.5 3.4 12Zm17.2 0 1.2-3.8a.6.6 0 0 0-.22-.67L12 21.5 20.6 12Z" fill="currentColor" opacity=".45"/><path d="M2.42 7.53 5.1 2.9a.35.35 0 0 1 .62.05L8.9 12H3.4L2.42 7.53Zm19.16 0L18.9 2.9a.35.35 0 0 0-.62.05L15.1 12h5.5l.98-4.47Z" fill="currentColor" opacity=".7"/></symbol><symbol id="i-github" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z" fill="currentColor"/></symbol><symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
 </svg>
 
 <header>
     <div class="brand">
+        <!-- Deux fichiers plutôt qu'un SVG en `currentColor` : le logo n'est pas monochrome
+             (le commit de merge reste vert dans les deux thèmes), seule l'encre du « M » change.
+             Le CSS n'en montre qu'un ; alt vide car le nom du produit suit juste à côté. -->
+        <img class="brand-logo light" src="images/mergerie-logo.svg" alt="" width="30" height="30" />
+        <img class="brand-logo dark" src="images/mergerie-logo-dark.svg" alt="" width="30" height="30" />
+        <div class="brand-text">
         <!-- Nom du produit : jamais traduit → pas de data-i18n ici. -->
         <h1>Mergerie</h1>
         <span class="baseline" data-i18n="ui.span.un-agent-ia-qui-relit">L'IA prépare tes MR — review, corrections, convergence. C'est toi qui merges.</span>
+        </div>
     </div>
     <nav>
         <button data-tab="review" class="active" title="Merge requests : à traiter, reviewées, traitées" data-i18n-title="ui.title.merge-requests-a-traiter-reviewees"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="nav.reviews">Reviews</span><span class="nav-count" id="navCountReview" hidden>0</span></button>
@@ -94,13 +109,21 @@
     <div class="loghead">
         <button id="logToggle" class="log-toggle" title="Déplier / replier les logs" data-i18n-title="ui.title.deplier-replier-les-logs">▸</button>
         <span id="logStatus" class="logstatus"></span>
+        <span id="logElapsed" class="logelapsed" hidden></span>
         <span class="spacer"></span>
         <button id="logStop" class="btn btn-sm btn-danger" hidden title="Arrêter immédiatement le job en cours" data-i18n-title="ui.title.arreter-immediatement-le-job-en"><svg class="ico"><use href="#i-stop"/></svg><span data-i18n="ui.btn.stop">Stop</span></button>
+        <button id="logRetry" class="btn btn-sm" hidden title="Rejouer ce job sur le même objet — une review reprend là où elle s'est arrêtée" data-i18n-title="job.retry.title"><svg class="ico"><use href="#i-repeat"/></svg><span data-i18n="job.retry.btn">Relancer</span></button>
         <label class="muted"><input type="checkbox" id="logAutoscroll" checked /><span data-i18n="ui.lbl.auto-defilement">auto-défilement</span></label>
         <button id="logCopy" class="btn btn-sm btn-ghost" title="Copier tout le journal dans le presse-papier" data-i18n-title="ui.title.copier-tout-le-journal-dans" data-i18n="ui.btn.copier">copier</button>
+        <button id="logQueueBtn" class="btn btn-sm btn-ghost" hidden title="Voir les jobs en attente" data-i18n-title="job.queue.title"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="job.queue.btn">En attente</span><span id="logQueueCount" class="nav-health warn">0</span></button>
         <button id="logHide" class="btn btn-sm btn-ghost" title="Masquer le panneau de logs" data-i18n-title="ui.title.masquer-le-panneau-de-logs" data-i18n="ui.btn.masquer">masquer</button>
     </div>
-    <pre id="logBox" hidden></pre>
+    <!-- File d'attente : dépliée à la demande, au-dessus du journal. -->
+    <div id="logQueue" class="log-queue" hidden></div>
+    <!-- Onglets : un par job EN COURS. Masqués tant qu'il n'y en a qu'un — un onglet
+         solitaire n'apprend rien et vole une ligne au journal. -->
+    <div id="logTabs" class="log-tabs" hidden></div>
+    <div id="logBox" hidden></div>
 </div>
 
 <main>
@@ -141,6 +164,11 @@
         <div id="taskToolbar" class="toolbar">
             <button id="btnNewTask" class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg><span id="btnNewTaskLabel" data-i18n="ui.span.nouvelle-session-de-codage">Nouvelle session de codage</span></button>
             <span id="taskKindHint" class="muted"></span>
+        </div>
+        <input id="taskSearch" class="search" type="search" placeholder="Rechercher (prompt, projet, branche, dossier)…" data-i18n-placeholder="task.search.ph" aria-label="Rechercher une session" data-i18n-aria="task.search.aria" />
+        <div class="list-head">
+            <label class="inline-check"><input type="checkbox" id="taskShowHidden" /> <span data-i18n="task.hidden.show">Afficher les sessions masquées</span></label>
+            <span id="taskHiddenCount" class="muted"></span>
         </div>
         <div id="taskList" class="list"></div>
 
@@ -355,6 +383,7 @@
                 <span id="dlogStatus" class="muted"></span>
                 <span class="dlog-bar-right">
                     <label class="inline-check"><input type="checkbox" id="dlogWrap" /> <span data-i18n="docker.logs.wrap">Retour à la ligne</span></label>
+                    <label class="inline-check"><input type="checkbox" id="dlogColor" /> <span data-i18n="docker.logs.color">Afficher les couleurs</span> <button type="button" class="hint" tabindex="0" aria-label="Rend les couleurs que l'application écrit elle-même dans ses lignes (niveau de log, codes HTTP…). Décoché, les lignes s'affichent en texte nu : c'est plus léger sur un flux qui débite en rafale, et c'est le défaut. Les couleurs de fond ne sont jamais rendues — elles supposent un terminal dont on maîtrise le contraste, pas deux thèmes." data-tip="Rend les couleurs que l'application écrit elle-même dans ses lignes (niveau de log, codes HTTP…). Décoché, les lignes s'affichent en texte nu : c'est plus léger sur un flux qui débite en rafale, et c'est le défaut. Les couleurs de fond ne sont jamais rendues — elles supposent un terminal dont on maîtrise le contraste, pas deux thèmes." data-i18n-tip="docker.logs.color-tip"><svg class="ico ico-sm"><use href="#i-info"/></svg></button></label>
                     <button id="dlogClear" class="btn btn-sm" data-i18n-title="docker.logs.clear-title"><svg class="ico ico-sm"><use href="#i-trash"/></svg><span data-i18n="docker.logs.clear">Vider</span></button>
                     <button id="dlogPause" class="btn btn-sm" data-i18n-title="docker.logs.pause-title"><svg class="ico ico-sm"><use href="#i-pause"/></svg><span id="dlogPauseLabel" data-i18n="docker.logs.pause">Pause défilement</span></button>
                 </span>
@@ -377,14 +406,10 @@
                     </select>
                 </label>
                 <label class="dact-action"><span data-i18n="docker.actions.filter">N'afficher que</span>
-                    <select id="dactFilter">
-                        <option value="all" data-i18n="docker.actions.f-all">Tous</option>
-                        <option value="drift" data-i18n="docker.actions.f-drift">En drift</option>
-                        <option value="unhealthy" data-i18n="docker.actions.f-unhealthy">Unhealthy</option>
-                        <option value="restarting" data-i18n="docker.actions.f-restarting">En restarting</option>
-                        <option value="running" data-i18n="docker.actions.f-running">En cours</option>
-                        <option value="stopped" data-i18n="docker.actions.f-stopped">Arrêtés / non créés</option>
-                    </select>
+                    <!-- Options peuplées par app.js depuis DOCKER_STATE_FILTERS : la MÊME liste
+                         que le filtre de l'onglet Compose. Deux menus « N'afficher que » côte à
+                         côte qui divergeraient seraient un piège. -->
+                    <select id="dactFilter"></select>
                 </label>
                 <input id="dactSearch" class="dact-search" type="search" placeholder="Rechercher un service…" data-i18n-placeholder="docker.actions.search" />
             </div>
@@ -441,7 +466,8 @@
         <!-- Sous-onglet : Dépôts -->
         <div id="sub-repos" class="subtab">
             <h2 data-i18n="settings.btn.depots">Dépôts</h2>
-            <p><button id="btnBrowseProjects" type="button" class="btn btn-primary" title="Parcourir les projets GitLab et en importer plusieurs d'un coup" data-i18n-title="settings.repo.title.parcourir-les-projets-gitlab-et"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="settings.repo.btn.ajout-en-masse-depuis-gitlab">Ajout en masse depuis GitLab</span></button></p>
+            <p><button id="btnBrowseProjects" type="button" class="btn btn-primary" title="Parcourir les projets GitLab et en importer plusieurs d'un coup" data-i18n-title="settings.repo.title.parcourir-les-projets-gitlab-et"><svg class="ico"><use href="#i-gitlab"/></svg><span data-i18n="settings.btn.browse-gitlab">Ajout en masse depuis GitLab</span></button>
+            <button id="btnBrowseGithub" type="button" class="btn" title="Parcourir les dépôts GitHub et en importer plusieurs d'un coup" data-i18n-title="settings.btn.browse-github"><svg class="ico"><use href="#i-github"/></svg><span data-i18n="settings.btn.browse-github">Ajout en masse depuis GitHub</span></button></p>
             <form id="repoForm" class="form inline">
                 <input name="url" placeholder="https://gitlab…/group/sous-groupe/projet.git (URL complète)" required style="flex:2" /><button type="button" class="hint" tabindex="0" aria-label="URL de clone complète du dépôt, sous-groupes inclus. Le chemin projet en est déduit automatiquement." data-tip="URL de clone complète du dépôt, sous-groupes inclus. Le chemin projet en est déduit automatiquement." data-i18n-tip="settings.repo.tip.url-de-clone-complete-du"><svg class="ico"><use href="#i-info"/></svg></button>
                 <input name="project" placeholder="chemin projet (optionnel, déduit de l'URL)" data-i18n-placeholder="settings.repo.ph.chemin-projet-optionnel-deduit-de" /><button type="button" class="hint" tabindex="0" aria-label="Chemin GitLab du projet, ex. groupe/sous-groupe/projet. À ne remplir que si la déduction depuis l'URL échoue." data-tip="Chemin GitLab du projet, ex. groupe/sous-groupe/projet. À ne remplir que si la déduction depuis l'URL échoue." data-i18n-tip="settings.repo.tip.chemin-gitlab-du-projet-ex"><svg class="ico"><use href="#i-info"/></svg></button>
@@ -561,6 +587,17 @@
             </div>
         </div>
 
+        <h2><svg class="ico"><use href="#i-github"/></svg> <span data-i18n="settings.sub.github">GitHub</span></h2>
+        <div class="form" style="max-width:520px">
+            <label><span data-i18n="settings.github.url">URL GitHub</span> <button type="button" class="hint" tabindex="0" aria-label="Vide = github.com. Pour GitHub Enterprise, l'URL de ton instance." data-tip="Vide = github.com. Pour GitHub Enterprise, l'URL de ton instance." data-i18n-tip="settings.github.url.help"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="github_url" placeholder="https://github.com" /></label>
+            <label><span data-i18n="settings.github.token">Token GitHub</span> <button type="button" class="hint" tabindex="0" aria-label="Token classic avec le scope repo, ou fine-grained avec Contents + Pull requests + Metadata." data-tip="Token classic avec le scope repo, ou fine-grained avec Contents + Pull requests + Metadata." data-i18n-tip="settings.github.token.help"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="github_token" type="password" placeholder="ghp_…" /></label>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                <button class="btn" type="button" id="btnTestGithub" title="Vérifier que le token permet bien d'accéder à GitHub" data-i18n-title="settings.title.tester-github"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.btn.tester-github">Tester GitHub</span></button>
+                <span id="configInfoGithub" class="muted"></span>
+            </div>
+        </div>
+
         <h2 data-i18n="settings.gitcmd.title">Palette de commandes git</h2>
         <p class="muted" style="max-width:560px" data-i18n="settings.gitcmd.intro">Commandes proposées dans l'onglet Git → Commandes Git. Chaque entrée = un nom + une commande git figée (sans le mot « git »).</p>
         <div id="gitCmdList" class="gitcmd-list"></div>
@@ -568,8 +605,8 @@
             <label><span data-i18n="settings.gitcmd.label">Nom</span> <input id="gitCmdLabel" placeholder="Récupérer tout" data-i18n-placeholder="settings.gitcmd.label-ph" /></label>
             <label><span data-i18n="settings.gitcmd.command">Commande git</span> <input id="gitCmdCommand" placeholder="fetch --all --prune" data-i18n-placeholder="settings.gitcmd.command-ph" /></label>
             <div class="form-actions">
-                <button class="btn btn-primary" type="submit"><svg class="ico"><use href="#i-plus"/></svg><span id="gitCmdSubmitLabel" data-i18n="settings.gitcmd.add">Ajouter</span></button>
                 <button class="btn" type="button" id="gitCmdCancel" hidden data-i18n="settings.gitcmd.cancel">Annuler</button>
+                <button class="btn btn-primary" type="submit"><svg class="ico"><use href="#i-plus"/></svg><span id="gitCmdSubmitLabel" data-i18n="settings.gitcmd.add">Ajouter</span></button>
                 <span id="gitCmdInfo" class="muted"></span>
             </div>
         </form>
@@ -700,11 +737,14 @@
                 <label class="inline-check"><input type="checkbox" name="auto_push" /> <span data-i18n="task.lbl.auto-push">Auto-push (pousser automatiquement après le commit, sans validation)</span> <button type="button" class="hint" tabindex="0" aria-label="Coché, la branche est poussée dès la fin du commit. Décoché, tu relis le diff puis pousses toi-même depuis Dev IA." data-tip="Coché, la branche est poussée dès la fin du commit. Décoché, tu relis le diff puis pousses toi-même depuis Dev IA." data-i18n-tip="task.tip.coche-la-branche-est-poussee"><svg class="ico"><use href="#i-info"/></svg></button></label>
                 <label class="inline-check"><input type="checkbox" name="ask_questions" /> <span data-i18n="task.lbl.ask-questions">L'IA peut me poser des questions quand elle hésite</span> <button type="button" class="hint" tabindex="0" aria-label="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-tip="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-i18n-tip="task.tip.ask-questions"><svg class="ico"><use href="#i-info"/></svg></button></label>
             </div>
+            <label><span data-i18n="task.lbl.session-id">Reprendre une session d'agent existante (optionnel)</span> <button type="button" class="hint" tabindex="0" aria-label="Laisse vide pour ouvrir une nouvelle session. Renseigné, l'IA travaille DANS cette session et garde donc tout son contexte : rien de neuf n'est créé. L'identifiant est celui affiché par « Reprendre au terminal » sur une session existante — un UUID avec claude, un chemin de home avec copilot. Une session appartient à un dossier de travail : si la reprise est refusée, une session neuve prend le relais avec le contexte réinjecté." data-tip="Laisse vide pour ouvrir une nouvelle session. Renseigné, l'IA travaille DANS cette session et garde donc tout son contexte : rien de neuf n'est créé. L'identifiant est celui affiché par « Reprendre au terminal » sur une session existante — un UUID avec claude, un chemin de home avec copilot. Une session appartient à un dossier de travail : si la reprise est refusée, une session neuve prend le relais avec le contexte réinjecté." data-i18n-tip="task.tip.session-id"><svg class="ico"><use href="#i-info"/></svg></button>
+                <input name="session_id" id="taskSessionId" autocomplete="off" placeholder="vide = nouvelle session" data-i18n-placeholder="task.ph.session-id" />
+            </label>
             <p id="taskLocalWarn" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span data-i18n-html="local.warn">L'IA modifie les fichiers <strong>en place</strong>, sans commit. Si le dossier est un <strong>dépôt git</strong>, tu peux relire et annuler toi-même (git diff / git checkout) ; sinon, <strong>aucune annulation</strong> n'est possible.</span></p>
             <div class="modal-actions">
                 <button type="button" id="taskCancel" class="btn" title="Fermer sans enregistrer" data-i18n-title="task.title.fermer-sans-enregistrer" data-i18n="task.btn.annuler">Annuler</button>
                 <button type="button" id="taskSubmitOnly" class="btn" hidden title="Créer la session sans l'exécuter — tu la lanceras quand tu veux depuis Dev IA" data-i18n-title="task.title.creer-la-session-sans-l"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="task.btn.creer-sans-lancer">Créer sans lancer</span></button>
-                <button type="button" id="taskConverge" class="btn btn-converge" hidden title="Du prompt à la MR convergée : l'IA code, pousse, ouvre la MR puis converge" data-i18n-title="task.title.converge"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="report.btn.converge">Converger</span></button>
+                <button type="button" id="taskConverge" class="btn" hidden title="Du prompt à la MR convergée : l'IA code, pousse, ouvre la MR puis converge" data-i18n-title="task.title.converge"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="report.btn.converge">Converger</span></button>
                 <button class="btn btn-primary" type="submit" id="taskSubmit" title="Enregistrer la tâche (ou la créer et la lancer selon le contexte)" data-i18n-title="task.title.enregistrer-la-tache-ou-la"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
             </div>
         </form>
@@ -714,9 +754,10 @@
 <!-- Modale : lancer une convergence (« Converger ») -->
 <div id="convergeModal" class="modal" hidden>
     <div class="modal-box">
-        <h3 id="convergeModalTitle" data-i18n="converge.modal.title">Converger la MR</h3>
+        <h3 id="convergeModalTitle">Converger la merge request</h3>
+        <p id="convergeModalWhat" class="muted"></p>
         <p class="muted" data-i18n="converge.modal.intro">La boucle enchaîne review → correction IA (commit + push sur la branche) → re-review du delta, jusqu'au seuil de note ou au plafond de passes. Aucune fusion : la boucle prépare, c'est toi qui valides et merges.</p>
-        <div class="converge-fields">
+        <div class="modal-fields converge-fields">
             <label><span data-i18n="converge.modal.threshold">Seuil cible</span>
                 <input id="convThreshold" class="mini-num" type="number" min="1" max="10" step="0.5" /> <span class="muted">/10</span></label>
             <label><span data-i18n="converge.modal.passes">Plafond de passes</span>
@@ -731,10 +772,87 @@
     </div>
 </div>
 
+<!-- Modale de confirmation générique : remplace les confirm() natifs -->
+<!-- Palette de commandes (Ctrl/Cmd+K). Une entrée de palette ne contient JAMAIS de logique
+     métier : elle clique un bouton existant. Sinon elle deviendrait une seconde navigation,
+     qui dériverait de la vraie au premier renommage. -->
+<div id="paletteModal" class="modal" hidden>
+    <div class="modal-box palette-box">
+        <input id="paletteInput" class="palette-input" type="search" autocomplete="off"
+               placeholder="Aller à… ou chercher une MR, une session" data-i18n-placeholder="palette.ph"
+               aria-label="Palette de commandes" data-i18n-aria="palette.aria" />
+        <div id="paletteList" class="palette-list" role="listbox"></div>
+        <p class="palette-hint muted" data-i18n="palette.hint">↑ ↓ pour choisir · Entrée pour ouvrir · Échap pour fermer</p>
+    </div>
+</div>
+
+<!-- Feuille de raccourcis : persistante, parce qu'un toast de 3,5 s disparaît pendant qu'on le lit. -->
+<div id="shortcutsModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 data-i18n="shortcuts.title">Raccourcis clavier</h3>
+        <div id="shortcutsList" class="shortcuts-list"></div>
+        <div class="modal-actions">
+            <button id="shortcutsClose" type="button" class="btn" data-i18n="ui.close">Fermer</button>
+        </div>
+    </div>
+</div>
+
+<div id="confirmModal" class="modal" hidden>
+    <div class="modal-box modal-confirm">
+        <h3 id="confirmTitle"></h3>
+        <p id="confirmText" class="confirm-text"></p>
+        <pre id="confirmDetail" class="confirm-detail" hidden></pre>
+        <div class="modal-actions">
+            <button id="confirmCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="confirmOk" type="button" class="btn"></button>
+        </div>
+    </div>
+</div>
+
+<!-- Modale : merger une MR (options appliquées par la forge) -->
+<div id="mergeModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 data-i18n="merge.modal.title">Merger la merge request</h3>
+        <p id="mergeModalIntro" class="muted"></p>
+        <div class="modal-fields">
+            <label class="inline-check inline-check-mid"><input id="mergeSquash" type="checkbox" />
+                <span data-i18n="merge.modal.squash">Squash : réunir les commits de la branche en un seul</span></label>
+            <label class="inline-check inline-check-mid"><input id="mergeRemoveBranch" type="checkbox" />
+                <span data-i18n="merge.modal.remove-branch">Supprimer la branche source après le merge</span></label>
+        </div>
+        <p id="mergeModalNote" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span></span></p>
+        <div class="modal-actions">
+            <button id="mergeCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="mergeGo" type="button" class="btn btn-danger btn-solid"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="merge.modal.go">Merger</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- Modale : créer une merge request -->
+<div id="mrModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 data-i18n="mr.modal.title">Créer la merge request</h3>
+        <p id="mrModalIntro" class="muted"></p>
+        <div class="modal-fields">
+            <label class="modal-field"><span data-i18n="mr.modal.title-label">Titre</span>
+                <input id="mrTitle" type="text" autocomplete="off" /></label>
+            <label class="inline-check inline-check-mid"><input id="mrSquash" type="checkbox" />
+                <span data-i18n="merge.modal.squash">Squash : réunir les commits de la branche en un seul</span></label>
+            <label class="inline-check inline-check-mid"><input id="mrRemoveBranch" type="checkbox" />
+                <span data-i18n="merge.modal.remove-branch">Supprimer la branche source après le merge</span></label>
+        </div>
+        <p id="mrModalNote" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-info"/></svg> <span></span></p>
+        <div class="modal-actions">
+            <button id="mrCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="mrGo" type="button" class="btn btn-primary"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="mr.modal.go">Créer la MR</span></button>
+        </div>
+    </div>
+</div>
+
 <!-- Modale : ajout en masse de dépôts depuis GitLab -->
 <div id="bulkModal" class="modal" hidden>
     <div class="modal-box bulk-box">
-        <h3 data-i18n="settings.head.ajouter-des-depots-depuis-gitlab">Ajouter des dépôts depuis GitLab</h3>
+        <h3 id="bulkTitle">Ajouter des dépôts depuis GitLab</h3>
         <div class="bulk-toolbar">
             <input id="bulkSearch" class="search" type="search" placeholder="Filtrer les projets…" data-i18n-placeholder="settings.ph.filtrer-les-projets" /><button type="button" class="hint" tabindex="0" aria-label="Filtre l’affichage de la liste ci-dessous (nom ou chemin du projet). N’a aucun effet sur ce qui sera ajouté : seules les cases cochées comptent." data-tip="Filtre l’affichage de la liste ci-dessous (nom ou chemin du projet). N’a aucun effet sur ce qui sera ajouté : seules les cases cochées comptent." data-i18n-tip="settings.tip.filtre-l-affichage-de-la"><svg class="ico"><use href="#i-info"/></svg></button>
             <button id="bulkAll" type="button" class="btn btn-sm" title="Cocher tous les projets affichés" data-i18n-title="settings.title.cocher-tous-les-projets-affiches" data-i18n="settings.btn.tout-cocher">Tout cocher</button>
@@ -802,6 +920,7 @@
     <div class="split-head">
         <span id="taskMdTitle" class="split-title"></span>
         <span class="spacer"></span>
+        <select id="taskPassVersion" class="md-version" title="Choisir l'itération à relire" data-i18n-title="task.pass.select-title" hidden></select>
         <button id="taskMdCopy" class="btn btn-sm" title="Copier la réponse en Markdown" data-i18n-title="context.title.copier-la-reponse-en-markdown"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="settings.btn.copier">Copier</span></button>
         <button id="taskMdClose" class="btn" title="Fermer (Échap)" data-i18n-title="context.title.fermer-echap"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>
     </div>
@@ -809,22 +928,12 @@
 </div>
 
 <!-- Vue plein écran : diff d'une tâche -->
-<div id="taskDiffView" class="splitview" hidden>
-    <div class="split-head">
-        <span id="taskDiffTitle" class="split-title"></span>
-        <span class="spacer"></span>
-        <button id="taskDiffClose" class="btn" title="Fermer la vue du diff (Échap)" data-i18n-title="context.title.fermer-la-vue-du-diff"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>
-    </div>
-    <div class="split-body">
-        <div class="split-pane split-right" style="grid-column:1 / -1"><pre id="taskDiffPre" class="diff"></pre></div>
-    </div>
-</div>
 
 <!-- Vue plein écran : rapport/explication à gauche, diff à droite -->
 <div id="splitView" class="splitview" hidden>
     <div class="split-head">
-        <button id="reportToggle" class="split-btn" title="Afficher / masquer le rapport" data-i18n-title="context.title.afficher-masquer-le-rapport"><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="context.btn.rapport">Rapport</span></button>
-        <button id="treeToggle" class="split-btn" title="Afficher / masquer l'arborescence" data-i18n-title="context.title.afficher-masquer-l-arborescence"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="context.btn.arbre">Arbre</span></button>
+        <button id="reportToggle" class="btn" title="Afficher / masquer le rapport" data-i18n-title="context.title.afficher-masquer-le-rapport"><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="context.btn.rapport">Rapport</span></button>
+        <button id="treeToggle" class="btn" title="Afficher / masquer l'arborescence" data-i18n-title="context.title.afficher-masquer-l-arborescence"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="context.btn.arbre">Arbre</span></button>
         <span id="splitTitle" class="split-title"></span>
         <span class="spacer"></span>
         <button id="splitClose" class="btn" title="Fermer la vue plein écran (Échap)" data-i18n-title="context.title.fermer-la-vue-plein-ecran"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>
@@ -872,6 +981,7 @@
 
 <script src="/i18n.js"></script>
 <script src="/i18n-runtime.js"></script>
+<script src="/ansi-runtime.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

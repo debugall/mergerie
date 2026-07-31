@@ -114,6 +114,12 @@ CREATE TABLE IF NOT EXISTS comment_log (
 );
 `);
 
+// Migration : forge d'un dépôt ('gitlab' | 'github'). Les dépôts existants restent
+// GitLab — la valeur par défaut suffit, aucune donnée à réécrire.
+try { db.exec("ALTER TABLE repo ADD COLUMN forge TEXT DEFAULT 'gitlab'"); } catch { /* déjà présente */ }
+// Migration : connexion GitHub (URL vide = github.com ; sinon GitHub Enterprise).
+try { db.exec("ALTER TABLE config ADD COLUMN github_url TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN github_token TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 // Migration : colonne d'erreur persistée par MR (texte complet, non tronqué).
 try { db.exec('ALTER TABLE mr ADD COLUMN last_error TEXT'); } catch { /* déjà présente */ }
 // Migration : date de création de la MR côté GitLab (pour le tri).
@@ -140,6 +146,11 @@ try { db.exec('ALTER TABLE mr ADD COLUMN ticket_jira_error TEXT'); } catch { /* 
 // Migration : chemins des fichiers modifiés par la MR (pour le badge « risque » et
 // les règles par chemin), un par ligne. Rempli au discover / à la review.
 try { db.exec('ALTER TABLE mr ADD COLUMN changed_paths TEXT'); } catch { /* déjà présente */ }
+/* Options de merge choisies à la création de la MR. GitLab les applique nativement dès
+   la création ; GitHub ne sait pas les exprimer là (ce sont des décisions de merge), on
+   les mémorise donc ici pour pré-cocher — et appliquer — la modale de merge. */
+try { db.exec('ALTER TABLE mr ADD COLUMN squash INTEGER'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN remove_source_branch INTEGER'); } catch { /* déjà présente */ }
 // Migration : règles de review par CHEMIN de fichier (glob) — plus précis que la
 // branche. Une règle peut avoir branch_match et/ou path_match. label = badge court.
 try { db.exec('ALTER TABLE review_rule ADD COLUMN path_match TEXT'); } catch { /* déjà présente */ }
@@ -235,6 +246,19 @@ try { db.exec('ALTER TABLE task_target ADD COLUMN questions_json TEXT'); } catch
 // de session, comme la réponse d'une exploration.
 try { db.exec('ALTER TABLE task_target ADD COLUMN output_path TEXT'); } catch { /* déjà présente */ }
 
+/* Session RANGÉE : la liste des sessions ne cesse de grandir et rien n'en sort jamais.
+   Masquer plutôt que supprimer — l'historique, les diffs et les passes d'agent restent
+   consultables en cochant « afficher les sessions masquées ». C'est un rangement, pas une
+   suppression : aucune donnée n'est touchée. */
+try { db.exec('ALTER TABLE task ADD COLUMN hidden INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+
+/* De quoi REJOUER un job : l'intention (quelle fonction, sur quel objet), pas son état.
+   Sans ça, un job arrêté ne laisse qu'un `kind` — impossible de savoir quelle session ou
+   quelles MR relancer. On garde l'intention et non les lignes traitées : pour une review,
+   la liste se re-déduit de l'état des MR, et c'est ce qu'on veut (reprendre là où ça s'est
+   arrêté, sans refaire ce qui est fait). */
+try { db.exec('ALTER TABLE job ADD COLUMN retry TEXT'); } catch { /* déjà présente */ }
+
 // « Codage hors dépôt » : l'IA réalise le prompt DANS des dossiers locaux arbitraires,
 // EN PLACE, sans git (ni branche, ni commit, ni push). Table dédiée car sans repo_id.
 db.exec(`CREATE TABLE IF NOT EXISTS local_task (
@@ -258,6 +282,35 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_local_task_dir_task ON local_task_dir(ta
 try { db.exec('ALTER TABLE local_task_dir ADD COLUMN session_key TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE local_task_dir ADD COLUMN session_backend TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE local_task_dir ADD COLUMN session_cwd TEXT'); } catch { /* déjà présente */ }
+// Migration : retour de l'agent par dossier (« Retour de l'IA »), comme output_path
+// côté task_target. Sans lui, une session hors dépôt qui n'a rien modifié reste opaque.
+try { db.exec('ALTER TABLE local_task_dir ADD COLUMN output_path TEXT'); } catch { /* déjà présente */ }
+// Rangement d'une session hors dépôt — même principe que `task.hidden`.
+try { db.exec('ALTER TABLE local_task ADD COLUMN hidden INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+
+/* HISTORIQUE DES PASSES d'agent — une ligne par itération, pour une session sur dépôt
+   comme pour un codage hors dépôt. Même esprit que `review_version` : chaque passe écrit
+   son propre fichier (`output-v<N>.md`) au lieu d'écraser le précédent, et la colonne
+   `output_path` de l'unité continue de pointer la DERNIÈRE — le reste de l'app n'a rien
+   à changer. On garde le PROMPT réellement envoyé : sans lui, relire un retour d'IA
+   trois itérations plus tard ne dit pas à quoi il répondait.
+
+   Une seule table pour les deux familles (`scope`), plutôt que deux tables jumelles :
+   le serveur et l'interface n'ont ainsi qu'une implémentation. Contrepartie assumée :
+   pas de clé étrangère possible (deux tables parentes), donc les suppressions de session
+   nettoient explicitement cette table. */
+db.exec(`CREATE TABLE IF NOT EXISTS agent_pass (
+  id INTEGER PRIMARY KEY,
+  scope TEXT NOT NULL,          -- 'task' (session sur dépôt) | 'local' (hors dépôt)
+  task_id INTEGER NOT NULL,
+  unit_id INTEGER NOT NULL,     -- task_target.id | local_task_dir.id
+  n INTEGER NOT NULL,           -- numéro de passe, par unité
+  kind TEXT,                    -- run | followup | answer | converge-fix
+  prompt TEXT,                  -- ce qui a RÉELLEMENT été envoyé à l'agent
+  output_path TEXT,             -- retour de l'agent pour cette passe
+  created_at TEXT
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_agent_pass_unit ON agent_pass(scope, task_id, unit_id, n)');
 // Captures jointes au prompt d'un codage hors dépôt (mêmes que task_image, table dédiée).
 db.exec(`CREATE TABLE IF NOT EXISTS local_task_image (
   id INTEGER PRIMARY KEY,
@@ -331,6 +384,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS review_version (
   kind TEXT DEFAULT 'review',
   created_at TEXT
 )`);
+// Migration : demande de modification à l'origine d'une version de rapport (kind='modify').
+// Sans elle, l'historique des régénérations ne dit pas CE QUI avait été demandé.
+try { db.exec('ALTER TABLE review_version ADD COLUMN instruction TEXT'); } catch { /* déjà présente */ }
 db.exec('CREATE INDEX IF NOT EXISTS idx_review_version_mr ON review_version(mr_id, version)');
 
 /* Suivi de résolution entre deux passes de review (ideas.md « Suivi de résolution »).

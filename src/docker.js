@@ -344,18 +344,26 @@ async function listContainers() {
   }).sort((a, b) => (a.running === b.running ? a.name.localeCompare(b.name) : (a.running ? -1 : 1)));
 }
 
-// Compteurs de santé pour le badge de l'onglet Docker : ROUGE = containers en erreur
-// (restarting = crash-loop, dead), ORANGE = unhealthy (healthcheck KO, lu dans le Status
-// « Up … (unhealthy) »). Priorité au rouge si un container cumule les deux. Pur → testable.
+/* Compteurs de santé pour le badge de l'onglet Docker. Trois familles, comptées
+   séparément (le badge décide ensuite quoi additionner et de quelle couleur) :
+     error     restarting (crash-loop) ou dead — cassé
+     exited    arrêté proprement — pas cassé, mais pas là non plus
+     unhealthy healthcheck KO, lu dans le Status « Up … (unhealthy) »
+   Un container ne compte QUE dans la première famille qui le prend : restarting ET
+   unhealthy reste une erreur, pas deux lignes. Pur → testable sans démon. */
 function healthSummary(containers) {
-  let error = 0; let unhealthy = 0;
+  let error = 0; let exited = 0; let unhealthy = 0;
   for (const c of containers || []) {
     const state = String(c.state || '').toLowerCase();
     const status = String(c.status || '').toLowerCase();
     if (state === 'restarting' || state === 'dead') error += 1;
+    // `exited` reste un compteur À PART de `error` : un container arrêté n'est pas cassé,
+    // et confondre les deux effacerait la différence entre « je l'ai arrêté » et
+    // « il redémarre en boucle ». C'est le badge qui les additionne, pas le décompte.
+    else if (state === 'exited') exited += 1;
     else if (status.includes('(unhealthy)') || /\bunhealthy\b/.test(status)) unhealthy += 1;
   }
-  return { error, unhealthy };
+  return { error, exited, unhealthy };
 }
 
 // Résumé santé de TOUS les containers (compose + hors-compose), pour le badge de menu.

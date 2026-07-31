@@ -4,11 +4,12 @@ Where Mergerie is heading. This list is about **direction, not dates** — items
 priority, and priorities shift with feedback. Contributions toward any of these are welcome; see
 [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-## Forge support beyond GitLab
+## Forge support
 
-- **GitHub support** — bring the full review / coding / convergence workflow to GitHub pull requests.
+- ✅ **GitHub support** — done. The full workflow (review, comments, merge, coding sessions, convergence,
+  Git tab) works on GitHub pull requests, and GitLab and GitHub repositories can be used side by side.
 - **Bitbucket support** — same workflow for Bitbucket pull requests, so a mixed-forge organization can use a
-  single cockpit.
+  single cockpit. The forge dispatcher (`src/forge.js`) is the extension point.
 
 ## Orchestrated multi-repo releases
 
@@ -18,7 +19,7 @@ operation instead of a manual repo-by-repo chore.
 
 ## Deployment piloting and observability
 
-- **Trigger and watch GitLab CI pipelines** from within Mergerie, without leaving the cockpit.
+- **Trigger and watch CI pipelines** (GitLab CI, GitHub Actions) from within Mergerie, without leaving the cockpit.
 - **See what version runs where** — a clear view of which build is deployed on each environment, so "is my
   fix live?" is answered at a glance.
 

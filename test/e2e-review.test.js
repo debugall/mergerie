@@ -87,10 +87,16 @@ describe('Review de bout en bout', () => {
     assert.equal((await app.api('GET', `/api/mrs/${mrId}/versions/99`)).status, 400);
   });
 
-  test('le log du job est consultable après coup', async () => {
+  test('le log du job est consultable après coup, avec ses horodatages', async () => {
     const { body } = await app.api('GET', '/api/jobs/current/log');
     assert.ok(body.lines.length > 0);
     assert.ok(body.lines.some((l) => /review terminée/.test(l.text)));
+    /* Le panneau de logs affiche le temps écoulé à partir de CES dates : il ne compte pas
+       les secondes depuis l'ouverture de la page, sinon un onglet ouvert en cours de job
+       montrerait un temps faux. Sans elles, le compteur ne peut pas exister. */
+    assert.ok(body.started_at, 'started_at est exposé');
+    assert.ok(body.finished_at, 'finished_at est exposé une fois le job terminé');
+    assert.ok(Date.parse(body.finished_at) >= Date.parse(body.started_at), 'la fin ne précède pas le début');
   });
 
   test('GET /api/mrs/:id/diff, /tree, /file et /filediff exposent le code reviewé', async () => {
@@ -172,6 +178,19 @@ describe('Review de bout en bout', () => {
     const versions = (await app.api('GET', `/api/mrs/${mrId}/versions`)).body;
     assert.equal(versions[0].version, 4);
     assert.equal(versions[0].kind, 'modify');
+    // La DEMANDE est conservée avec la version qu'elle a produite : sans elle, l'historique
+    // ne dit pas ce qui avait été demandé pour arriver à ce rapport.
+    assert.equal(versions[0].instruction, 'Insiste sur la sécurité');
+    assert.equal(versions[0].created_at != null, true);
+
+    // Une seconde demande empile une nouvelle entrée, sans écraser la première.
+    await app.api('POST', `/api/mrs/${mrId}/modify`, { instruction: 'Ajoute les risques de perf' });
+    await waitForJobs(app.api);
+    const v2 = (await app.api('GET', `/api/mrs/${mrId}/versions`)).body;
+    const asked = v2.filter((v) => v.kind === 'modify' && v.instruction).map((v) => v.instruction);
+    assert.deepEqual(asked, ['Ajoute les risques de perf', 'Insiste sur la sécurité'], 'les deux demandes, plus récente d’abord');
+    // Les versions issues d'une review (non-modify) n'ont pas d'instruction.
+    assert.equal(v2.find((v) => v.kind === 'review').instruction, null);
   });
 
   test('POST /api/mrs/:id/fix-review ouvre une session de dev sur la branche de la MR', async () => {

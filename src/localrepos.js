@@ -28,6 +28,12 @@ const DEMO_PROJECTS = [
   { name: 'boutique-web', git: true, branch: 'develop' },
   { name: 'monitoring', git: true, branch: 'main' },
   { name: 'scripts', git: false, branch: null },
+  // Dossiers SANS git : c'est le cas d'usage du « codage hors dépôt », et ce sont ceux
+  // que les sessions de démo ciblent — sans eux, leur modale d'édition ne retrouverait
+  // aucun projet et ne serait pas démontrable.
+  { name: 'backup-tool', git: false, branch: null },
+  { name: 'csv-cleaner', git: false, branch: null },
+  { name: 'legacy-report', git: false, branch: null },
 ];
 
 /* Un nom de branche sûr : pas de tiret en tête (sinon git le lit comme une option),

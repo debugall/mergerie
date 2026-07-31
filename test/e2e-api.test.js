@@ -479,6 +479,31 @@ describe('API de bout en bout', () => {
     assert.equal((await app.api('POST', `/api/mrs/${mrId}/discussions/${discId}/reply`, { body: '' })).status, 400);
   });
 
+  /* Modifier un commentaire déjà posté. Le point à protéger n'est pas l'appel — c'est
+     `editable` : il décide de l'affichage du bouton, et il ne doit s'allumer que sur MES
+     commentaires. Le mock répond « testeur » à GET /user, comme auteur des notes. */
+  test('Commentaires : modifier une note, générale comme inline', async () => {
+    const { body: avant } = await app.api('GET', `/api/mrs/${mrId}/discussions`);
+    const inline = avant.discussions.find((d) => d.notes[0].position);
+    const note = inline.notes[0];
+    assert.ok(note.id != null, 'l’id de note est exposé — sans lui rien n’est modifiable');
+    assert.equal(note.editable, true, 'une note écrite par le compte du jeton est modifiable');
+
+    const maj = await app.api('PUT', `/api/mrs/${mrId}/notes/${note.id}`, { body: 'Ligne revue, finalement OK', inline: true });
+    assert.equal(maj.status, 200);
+    assert.equal(maj.body.body, 'Ligne revue, finalement OK');
+
+    const { body: apres } = await app.api('GET', `/api/mrs/${mrId}/discussions`);
+    const memeNote = apres.discussions.flatMap((d) => d.notes).find((n) => n.id === note.id);
+    assert.equal(memeNote.body, 'Ligne revue, finalement OK', 'la modification est bien allée jusqu’à la forge');
+    assert.equal(apres.discussions.flatMap((d) => d.notes).length,
+      avant.discussions.flatMap((d) => d.notes).length, 'modifier n’ajoute pas une note');
+
+    assert.equal((await app.api('PUT', `/api/mrs/${mrId}/notes/${note.id}`, { body: '   ' })).status, 400,
+      'un commentaire vidé n’écrase pas l’original');
+    assert.equal((await app.api('PUT', `/api/mrs/${mrId}/notes/999999`, { body: 'x' })).status, 400);
+  });
+
   /* ---------- Cycle de vie d’une MR ---------- */
 
   test('Statuts : done, reopen, effacement d’erreur', async () => {
@@ -581,6 +606,29 @@ describe('API de bout en bout', () => {
     assert.equal(stop.status, 409, 'arrêter alors que rien ne tourne = 409, pas une erreur silencieuse');
     const log = await app.api('GET', '/api/jobs/current/log');
     assert.ok(Array.isArray(log.body.lines));
+  });
+
+  /* Voir la file, et en sortir un job pour le lancer à côté. Ce qui est vérifiable de façon
+     déterministe en dry-run (où les jobs s'achèvent aussitôt), c'est le CONTRAT : la forme
+     de la réponse, et les refus. Le parallélisme lui-même repose sur `keysClash`, testé à
+     part sur la règle nue. */
+  test('Jobs : la file s’inspecte, et « lancer en parallèle » refuse ce qui n’attend plus', async () => {
+    const q = await app.api('GET', '/api/jobs/queue');
+    assert.equal(q.status, 200);
+    assert.ok(Array.isArray(q.body.running) && Array.isArray(q.body.queued));
+    assert.equal(q.body.parallelBusy, false);
+    assert.equal(q.body.maxRunning, 3, 'le plafond de jobs simultanés est exposé, pas deviné par le front');
+
+    // Un job inexistant, ou terminé, n'est plus dans la file : on le dit au lieu de l'ignorer.
+    assert.equal((await app.api('POST', '/api/jobs/999999/start-now')).status, 409);
+    assert.equal((await app.api('POST', '/api/jobs/999999/stop')).status, 409);
+    assert.equal((await app.api('GET', '/api/jobs/999999/log')).status, 400);
+
+    /* Arrêter UN job ne doit pas être confondu avec le Stop global. Ici on vérifie ce qui
+       est vérifiable sans jobs longs : les deux routes existent et sont distinctes, et
+       l'arrêt ciblé refuse proprement un id inconnu au lieu de tout arrêter par défaut. */
+    assert.equal((await app.api('POST', '/api/jobs/stop', { job_id: 999999 })).status, 409,
+      'un job_id inconnu ne doit PAS retomber sur « tout arrêter »');
   });
 
   test('POST /api/reports/reset remet les MR à reviewer', async () => {

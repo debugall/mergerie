@@ -4,6 +4,8 @@
   --bg: #0f1420; --panel: #171d2b; --panel2: #1e2636; --line: #2a3346;
   --text: #e6ebf5; --muted: #8b97ad; --accent: #4f8cff; --green: #35c07f;
   --amber: #e0a838; --red: #e05a5a; --purple: #b47ce6;
+  /* Texte rouge sur --panel2 : #e05a5a n'y atteint que 4.17:1. Ce ton dédié donne 4.76:1 (AA). */
+  --red-text: #e56a6a;
   --accent-hi: #6a9dff;
   --accent-btn: #2f6fe0; --accent-btn-hi: #2b64d4; /* fond des boutons : blanc dessus = 4,70:1 */
   --purple-btn: #7c3aed; /* fond du bouton Converger : blanc dessus = 5,70:1 (--purple #b47ce6 échouait à 3,0:1) */
@@ -28,12 +30,10 @@
   /* ---- Typographie : 7 pas, ratio ~1.2 ---- */
   --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px;
   --fs-lg: 16px;  --fs-xl: 20px; --fs-3xl: 28px;
-  --lh-tight: 1.25; --lh-base: 1.55;
   --fw-med: 500; --fw-sem: 620; --fw-bold: 700;
   --ff-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* ---- Espacement : grille 4pt ---- */
-  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+  /* ---- Espacement : grille 4pt ---- */ --s-2: 8px; --s-3: 12px; --s-4: 16px;
   --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-12: 48px;
 
   /* ---- Rayons (--radius reste un alias pour ne rien casser) ---- */
@@ -47,7 +47,6 @@
 
   /* ---- Mouvement ---- */
   --t-fast: .12s cubic-bezier(.4,0,.2,1);
-  --t-base: .2s cubic-bezier(.4,0,.2,1);
   /* code, diff, coloration syntaxique */
   --code-bg: #0c1018; --code-text: #cdd6e6; --hunk: #6fa8ff;
   --diff-add-bg: rgba(53,192,127,.14); --diff-add-text: #93e6ba;
@@ -62,6 +61,7 @@
   --bg: #f5f7fb; --panel: #ffffff; --panel2: #eef1f7; --line: #d6dce8;
   --text: #1b2230; --muted: #5d6a80; --accent: #2563eb; --green: #14804a;
   --amber: #a15c00; --red: #c62d2d; --purple: #7c3aed;
+  --red-text: #c62d2d;   /* 4.87:1 sur --panel2 (AA) */
   --accent-hi: #1d4ed8;
   --accent-btn: #2563eb; --accent-btn-hi: #1d4ed8; --purple-btn: #6d28d9;
   --on-amber: #ffffff; --on-green: #ffffff; --on-accent: #ffffff; --on-red: #ffffff;
@@ -122,7 +122,11 @@ button { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .001ms !important; animation-iteration-count: 1 !important;
-    transition-duration: .001ms !important; scroll-behavior: auto !important;
+    /* Le DÉLAI aussi : sans lui, l'entrée en cascade survivait et la liste apparaissait par
+       saccades — précisément pour qui a demandé moins de mouvement. */
+    animation-delay: 0ms !important;
+    transition-duration: .001ms !important; transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -146,7 +150,19 @@ h3 { font-size: var(--fs-md); font-weight: var(--fw-sem); margin: 0 0 var(--s-3)
   padding: 1px 5px; border-radius: var(--r-sm); border: 1px solid var(--line);
 }
 
-/* Bouton unique : hauteur FIXE (et non padding vertical) → alignement garanti. */
+/* ---------- Sémantique des variantes de bouton ----------
+   Une couleur qui ne veut rien dire de stable ne se lit plus. Règle du socle :
+
+     .btn-primary   l'action PAR DÉFAUT du conteneur — au plus UNE par rangée, carte ou modale
+     .btn-converge  la convergence (parcours produit signature) — au plus une
+     .btn-danger    destructif ou irréversible — autant que nécessaire
+     .btn-ok        confirme un aboutissement positif (« Marquer traitée »), pas un « je passe »
+     .btn           tout le reste, y compris une liste d'actions équivalentes
+
+   Deux emphases fortes côte à côte n'en font aucune : quand une carte propose déjà un
+   chemin recommandé, les autres actions redescendent en `.btn` neutre avec leur icône.
+
+   Bouton unique : hauteur FIXE (et non padding vertical) → alignement garanti. */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   height: 32px; padding: 0 12px; font: inherit; font-size: var(--fs-sm);
@@ -162,7 +178,13 @@ h3 { font-size: var(--fs-md); font-weight: var(--fw-sem); margin: 0 0 var(--s-3)
 .btn-icon { width: 32px; padding: 0; }
 .btn-sm { height: 26px; padding: 0 9px; font-size: var(--fs-xs); }
 .btn-ghost { background: transparent; }
-.btn-danger:hover { border-color: var(--red); color: var(--red); }
+/* Destructif ou irréversible : identifiable AU REPOS. Le survol n'existe ni au clavier
+   ni au tactile, et il arrive de toute façon après qu'on a visé — un bouton « Merger »
+   ou « Stop » qui ressemble à « Pull » tant qu'on ne le survole pas banalise l'action.
+   Bordure + texte rouges (et non fond plein) : le but est de RECONNAÎTRE le destructif,
+   pas de l'attirer — un fond plein dominerait le `btn-primary` voisin. */
+.btn-danger { border-color: color-mix(in srgb, var(--red) 55%, var(--line)); color: var(--red-text); }
+.btn-danger:hover { border-color: var(--red); color: var(--red-text); background: color-mix(in srgb, var(--red) 10%, var(--panel2)); }
 .btn-ok { border-color: var(--green); color: var(--green); }
 .btn-ok:hover { background: var(--green); color: var(--on-green); border-color: var(--green); }
 
@@ -184,9 +206,8 @@ button[data-busy]::after {
 /* Icônes SVG : prennent la couleur du bouton dans les deux thèmes. */
 .ico { width: 16px; height: 16px; flex: 0 0 16px; }
 .ico-sm { width: 14px; height: 14px; flex-basis: 14px; }
+.forge-ico { width: 14px; height: 14px; flex-basis: 14px; vertical-align: -2px; color: var(--muted); }
 
-.primary { background: var(--accent-btn); color: var(--on-accent); border: none; padding: 7px 14px; border-radius: var(--radius); cursor: pointer; }
-.primary:hover { background: var(--accent-btn-hi); border-color: var(--accent-btn-hi); }
 .toolbar { display: flex; gap: 8px; align-items: center; padding: 14px 18px; }
 
 main { padding: 0 var(--s-6) var(--s-12); max-width: none; margin: 0 auto; width: 100%; }
@@ -245,6 +266,18 @@ main { padding: 0 var(--s-6) var(--s-12); max-width: none; margin: 0 auto; width
    proprement en bloc aligné à droite plutôt que de laisser le bouton principal orphelin. */
 .card-main { flex: 1 1 300px; min-width: 0; }
 .card-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+/* Groupes d'actions DÉCLARÉS dans le HTML, et non émergeant du flex-wrap : jusqu'ici
+   l'endroit où la rangée se cassait dépendait de la longueur des libellés, donc de la
+   langue — les mêmes boutons ne se regroupaient pas en français et en anglais. Trois
+   intentions, toujours dans cet ordre : consulter, agir, clore.
+   L'écart INTERNE reste à 6 px, l'écart ENTRE groupes passe à 20 px : c'est ce seul
+   contraste qui les fait lire comme des groupes, sans ajouter de trait ni de titre. */
+.btn-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.card-actions:has(.btn-group), .detail-actions:has(.btn-group) { gap: 20px; }
+/* Tags de la carte : métadonnées, sous l'identité — jamais dans la rangée d'actions,
+   dont le point de départ deviendrait dépendant de leur nombre (R2 de l'étude). */
+.card-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.card-tags:empty { display: none; }
 /* évite les débordements de texte dans les listes (colonne étroite) */
 .list .card > div:not(.spacer) { min-width: 0; }
 
@@ -258,6 +291,11 @@ main { padding: 0 var(--s-6) var(--s-12); max-width: none; margin: 0 auto; width
 /* les branches source → cible passent sur leur propre ligne et WRAPPENT : des noms
    longs restent lisibles en entier au lieu d'être coupés. */
 .list .card .meta.branches { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; margin-top: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+/* Ligne des liens sortants : elle passe à la ligne, jamais elle ne tronque — c'est tout
+   l'intérêt de l'avoir sortie de la ligne d'identité. */
+.list .card .meta.links { overflow: visible; text-overflow: clip; white-space: normal;
+  margin-top: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; }
+.list .card .meta.links a { display: inline-flex; align-items: center; gap: 4px; }
 .list .card .meta.branches .branch-arrow { color: var(--muted); opacity: .8; }
 /* le TITRE, lui, passe à la ligne (soft wrap) : un titre de MR long doit rester lisible en entier */
 .list .card .title { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
@@ -268,14 +306,6 @@ main { padding: 0 var(--s-6) var(--s-12); max-width: none; margin: 0 auto; width
 #reportList .report-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 #reportList .report-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
 .card a { color: var(--accent); text-decoration: none; }
-.btn-ticket { background: transparent; border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 6px 10px; cursor: pointer; font-size: 13px; white-space: nowrap; }
-.btn-ticket:hover { border-color: var(--accent); }
-.btn-done { background: transparent; border: 1px solid var(--green); color: var(--green); border-radius: var(--radius); padding: 6px 10px; cursor: pointer; font-size: 13px; white-space: nowrap; }
-.btn-done:hover { background: var(--green); color: var(--on-green); }
-.btn-dev { background: transparent; border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 6px 10px; cursor: pointer; font-size: 13px; white-space: nowrap; }
-.btn-dev:hover { border-color: var(--accent); color: var(--accent); }
-.btn-del-report { background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: var(--radius); padding: 4px 8px; cursor: pointer; font-size: 13px; }
-.btn-del-report:hover { border-color: var(--red); color: var(--red); }
 
 /* ---------- Footer télémétrie « live » (esthétique terminal) ---------- */
 body { padding-bottom: 36px; } /* réserve la place du footer fixe */
@@ -316,8 +346,6 @@ body.footer-hidden { padding-bottom: 0; }
    pour éviter un vide à droite sur écran large (V2.6). minmax(0,…) reste compressible en dessous. */
 #reportSplit.split { grid-template-columns: 320px minmax(0, 900px); justify-content: center; }
 .col-list .filters { padding: 6px 0; display: flex; align-items: center; gap: 10px; justify-content: space-between; }
-.danger-outline { background: transparent; border: 1px solid var(--red); color: var(--red); border-radius: var(--radius); padding: 5px 10px; cursor: pointer; font-size: 12px; }
-.danger-outline:hover { background: var(--red); color: var(--on-accent); }
 .col-detail { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; min-height: 300px; }
 .note { flex: 0 0 auto; min-width: 44px; text-align: center; font-weight: 700; font-size: 12px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); }
 .note.good { color: var(--on-green); background: var(--green); border-color: var(--green); }
@@ -391,6 +419,28 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .ticket-preview-wrap img { max-width: 100%; max-height: 300px; border: 1px solid var(--line); border-radius: 6px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
+/* Corps commun des modales de confirmation (merge, création de MR) : un champ ou une
+   case par ligne, alignés à gauche — plus lisible qu'une rangée quand les libellés
+   d'options sont des phrases (et que leur longueur change avec la langue). */
+/* Modale de confirmation : plus étroite que les formulaires, le texte doit se lire d'un
+   coup d'œil. `confirm-detail` porte la liste des éléments concernés (containers, refs…). */
+.modal-confirm { width: 460px; }
+.confirm-text { margin: 6px 0 0; white-space: pre-line; }
+.confirm-detail { margin: 10px 0 0; max-height: 220px; overflow: auto; background: var(--panel2);
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; font-size: var(--fs-xs); }
+.modal-fields { display: flex; flex-direction: column; gap: 10px; margin: 14px 0 4px; }
+.modal-field { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); color: var(--muted); }
+.modal-field input {
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--radius); padding: 8px 10px; font: inherit; height: 36px;
+}
+.modal-field input:focus { outline: none; border-color: var(--accent); }
+/* Action irréversible dans une MODALE de confirmation : là, elle est l'action attendue,
+   pas un bouton parmi d'autres — d'où le fond plein, plus fort que le `.btn-danger` des
+   rangées où il ne doit qu'être reconnaissable. */
+.btn-danger.btn-solid { background: var(--red); border-color: var(--red); color: var(--on-red, #fff); }
+.btn-danger.btn-solid:hover { filter: brightness(1.08); color: var(--on-red, #fff); }
+
 /* Modale de création/édition de session : plus large et plus haute — c'est le formulaire
    le plus riche (projets multiples, prompt long, contexte Jira, captures). */
 /* Modales larges : session de codage ET contexte, même gabarit. */
@@ -413,7 +463,7 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .combo input { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
 /* valeur longue : ellipsis quand le champ n'a pas le focus (le title montre le nom complet au survol) */
 .combo input { text-overflow: ellipsis; }
-.combo-options { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin-top: 2px; max-height: 240px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+.combo-options { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin-top: 2px; max-height: 240px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--sh-2); }
 .combo-opt { padding: 7px 10px; cursor: pointer; font-size: 13px; }
 .combo-opt:hover { background: var(--panel2); }
 .combo-opt.muted { color: var(--muted); cursor: default; }
@@ -431,6 +481,17 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
 .inline-check > .hint { flex: 0 0 auto; margin-top: 1px; }
 /* Ligne courte contenant un champ (ex. seuil de note) : tout se centre verticalement
    plutôt que de s'aligner en haut — la case, le libellé et le champ sont sur une même ligne. */
+/* Bandeau au-dessus d'une liste : options d'affichage + décompte de ce qui est filtré.
+   Le décompte n'est pas décoratif — sans lui, une session rangée disparaît sans laisser
+   de trace et on la croit supprimée. */
+.list-head { display: flex; align-items: center; gap: 12px; padding: 2px 2px 0; }
+.list-head .inline-check { align-items: center !important; margin: 0; cursor: pointer; }
+.list-head .inline-check > input[type="checkbox"] { margin-top: 0; }
+.list-head .muted { font-size: 12.5px; }
+/* Session rangée, visible parce que la case est cochée : reconnaissable au premier coup
+   d'œil, sinon on ne sait plus laquelle on vient de ranger. */
+.card.is-hidden { opacity: .62; border-style: dashed; }
+
 .inline-check-mid { align-items: center !important; }
 .inline-check-mid > input[type="checkbox"] { margin-top: 0; }
 .task-previews { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; margin-top: 6px; }
@@ -439,6 +500,19 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
 .task-prev button { position: absolute; top: -6px; right: -6px; background: var(--red); color: var(--on-accent); border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; line-height: 1; }
 .task-row { align-items: flex-start; }
 .task-prompt { color: var(--muted); font-size: 13px; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+/* Prompt replié sur trois lignes plutôt que coupé à N caractères : la coupure suit ce qui est
+   VISIBLE, donc la largeur réelle de la carte, et « Voir plus » restitue le texte intégral —
+   qui est déjà dans le DOM, donc trouvable par la recherche du navigateur. */
+.task-prompt.clamped {
+  overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3; line-clamp: 3;   /* la propriété standard, pour quand le préfixe partira */
+}
+.prompt-more {
+  background: none; border: none; padding: 0; margin-top: 2px;
+  color: var(--accent); font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.prompt-more:hover { text-decoration: underline; }
 .task-pushcmd { margin-top: 6px; font-size: 12.5px; }
 .task-pushcmd code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; }
 .mr-create { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
@@ -446,6 +520,19 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
 .followup { flex-wrap: wrap; }
 .followup-text { flex: 1 1 100%; min-height: 60px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
 .task-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; flex: 0 0 auto; }
+/* Cartes Dev IA : la colonne d'actions garde la même largeur d'une carte à l'autre, sinon
+   elle se cale sur le libellé le plus long de CHAQUE carte et les icônes ✏/✕ se déplacent
+   à chaque ligne. min-width plutôt qu'une largeur figée : une traduction plus longue que
+   prévu élargit la colonne au lieu de déborder du bouton (les libellés sont en nowrap).
+   Sélecteur volontairement long : `.list .card > div:not(.spacer)` plus haut impose
+   min-width: 0 aux enfants de carte, il faut le battre en spécificité. */
+.list .card.task-row > .task-actions { min-width: 210px; }
+.ta-work { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+/* Actions sur la fiche (éditer, supprimer) séparées de celles sur le travail, et alignées à
+   droite : ✕ occupe alors le même point sur les trois sous-onglets, y compris hors dépôt
+   où ✏ n'existe pas. */
+.ta-meta { display: flex; justify-content: flex-end; gap: 6px; }
+.ta-work + .ta-meta { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 2px; }
 
 /* Ajout en masse */
 .bulk-box { width: 760px; display: flex; flex-direction: column; max-height: 88vh; }
@@ -468,7 +555,6 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
 .split-tabs button { background: transparent; border: 1px solid var(--line); color: var(--muted); padding: 5px 12px; border-radius: var(--radius); cursor: pointer; font-size: 13px; transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast); }
 .split-tabs button:hover:not(.active) { color: var(--text); border-color: var(--accent); }
 .split-tabs button.active { color: var(--text); background: var(--panel2); }
-.split-head #splitClose { background: var(--panel2); border: 1px solid var(--line); color: var(--text); padding: 6px 12px; border-radius: var(--radius); cursor: pointer; }
 .split-body { flex: 1; display: grid; grid-template-columns: 1fr 1fr; min-height: 0; }
 .split-pane { overflow-y: auto; padding: 16px; min-width: 0; }
 .split-left { border-right: 1px solid var(--line); }
@@ -482,15 +568,14 @@ pre.diff .dl.meta { color: var(--muted); }
 @media (max-width: 900px) { .split-body { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } .split-left { border-right: none; border-bottom: 1px solid var(--line); } }
 
 /* Explorateur de code (rapport | arbre | fichier) */
-.split-btn { background: var(--panel2); border: 1px solid var(--line); color: var(--text); padding: 6px 12px; border-radius: var(--radius); cursor: pointer; transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast); }
-.split-btn:hover { border-color: var(--accent); color: var(--accent); }
 .code-body { flex: 1; display: grid; grid-template-columns: 28% 260px 1fr; min-height: 0; }
 .code-body.no-report { grid-template-columns: 260px 1fr; }
 .code-body.no-report .code-report { display: none; }
 .code-body.no-tree { grid-template-columns: 28% 1fr; }
 .code-body.no-tree .code-tree { display: none; }
 .code-body.no-report.no-tree { grid-template-columns: 1fr; }
-.split-btn.off { opacity: .5; }
+/* Panneau masqué : le bouton reste lisible mais s'efface — c'est un état, pas un désactivé. */
+.split-head .btn.off { opacity: .5; }
 /* coloration syntaxique — s'applique au fichier complet ET aux lignes de diff */
 .c-com { color: var(--c-com); font-style: italic; }
 .c-str { color: var(--c-str); }
@@ -523,8 +608,6 @@ pre.diff .dl.flash { outline: 2px solid var(--accent); outline-offset: -2px; }
 .cmt-editor { padding: 8px 12px 8px 64px; background: var(--panel2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .cmt-editor textarea { width: 100%; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px; font: inherit; min-height: 60px; }
 .cmt-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
-.cmt-actions button { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 6px 12px; cursor: pointer; }
-.cmt-actions button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 /* Indicateur « ligne commentée » : bulle masquée teintée à l'accent (V2.8 : remplace 💬). */
 .dl-row.has-comment .ln-new::after {
   content: ''; display: inline-block; width: 11px; height: 11px; margin-left: 3px; vertical-align: -1px;
@@ -534,7 +617,13 @@ pre.diff .dl.flash { outline: 2px solid var(--accent); outline-offset: -2px; }
 .cmt-thread { background: var(--panel); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 4px 12px 4px 64px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 .cmt-thread .cmt { padding: 6px 0; border-bottom: 1px dashed var(--line); }
 .cmt-thread .cmt:last-child { border-bottom: none; }
-.cmt-head { font-size: 12.5px; margin-bottom: 2px; }
+.cmt-head { display: flex; align-items: center; gap: 6px; font-size: 12.5px; margin-bottom: 2px; }
+.cmt-head .spacer { flex: 1; }
+/* « Modifier » n'apparaît que sur mes propres commentaires : discret au repos, il ne doit
+   pas concurrencer le texte du commentaire, qui est ce qu'on vient lire. */
+.cmt-edit-btn { background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 12.5px; padding: 0; }
+.cmt-edit-btn:hover { color: var(--accent); text-decoration: underline; }
+.cmt-editor.cmt-edit { padding: 6px 0 0; background: transparent; border: none; }
 .cmt-body { font-size: 13px; }
 .cmt-body p { margin: 2px 0; }
 .mr-comments { margin-bottom: 10px; max-height: 320px; overflow-y: auto; }
@@ -577,7 +666,7 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 @media (max-width: 1000px) { .code-body, .code-body.no-report { grid-template-columns: 190px 1fr; } .code-body .code-report { display: none; } }
 
 #toasts { position: fixed; bottom: 18px; right: 18px; z-index: 50; display: flex; flex-direction: column-reverse; gap: 8px; align-items: flex-end; }
-.toast { position: static; animation: toast-in .22s cubic-bezier(.2,.8,.3,1); max-width: 520px; background: var(--panel); border: 1px solid var(--line); padding: 10px 14px; border-radius: var(--radius); z-index: 50; display: flex; align-items: flex-start; gap: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+.toast { position: static; animation: toast-in .22s cubic-bezier(.2,.8,.3,1); max-width: 520px; background: var(--panel); border: 1px solid var(--line); padding: 10px 14px; border-radius: var(--radius); z-index: 50; display: flex; align-items: flex-start; gap: 10px; box-shadow: var(--sh-3); }
 .toast.err { border-color: var(--red); }
 .toast .toast-msg { color: var(--red); user-select: text; white-space: pre-wrap; word-break: break-word; flex: 1; }
 .toast .toast-btn { background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
@@ -585,15 +674,13 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 .errbox { border: 1px solid var(--red); border-radius: var(--radius); background: rgba(224,90,90,.06); margin: 4px 0 10px; overflow: hidden; }
 .errbox .errhead { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; color: var(--red); font-size: 12px; font-weight: 600; border-bottom: 1px solid rgba(224,90,90,.3); }
 .errbox .errbtns { display: flex; gap: 6px; }
-.errbox .errcopy, .errbox .errclear { background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 2px 10px; cursor: pointer; font-size: 12px; }
-.errbox .errclear { color: var(--red); font-weight: 700; }
 .errbox pre { margin: 0; padding: 10px 12px; overflow-x: auto; font-size: 12px; color: var(--text); white-space: pre-wrap; word-break: break-word; user-select: text; }
 
 /* Le panneau de logs reste FIGÉ sous l'en-tête (lui aussi sticky) quand on scrolle : on suit
    la progression / on garde le bouton Stop même en parcourant le contenu. `--header-h` est
    mesuré en JS (hauteur réelle de l'en-tête, qui varie si la nav passe à la ligne). */
 .logpanel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); margin: 8px 18px 14px; overflow: hidden;
-  position: sticky; top: calc(var(--header-h, 56px) + 6px); z-index: 9; box-shadow: 0 6px 16px rgba(0,0,0,.18); }
+  position: sticky; top: calc(var(--header-h, 56px) + 6px); z-index: 9; box-shadow: var(--sh-2); }
 .logpanel .loghead { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
 .logpanel .loghead .spacer { flex: 1; }
 .logstatus { font-weight: 600; }
@@ -602,12 +689,53 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 .logstatus.error { color: var(--red); }
 .logstatus .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; background: currentColor; }
 .logstatus.running .dot { animation: pulse 1s infinite; }
+/* Temps écoulé du job. Chiffres à chasse fixe : sans ça la ligne tressaute à chaque seconde,
+   la largeur des chiffres variant dans la police de l'interface. */
+.logelapsed {
+  font-variant-numeric: tabular-nums; font-feature-settings: 'tnum';
+  color: var(--muted); font-size: 12.5px;
+  padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px;
+}
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 .logpanel .loghead .log-toggle { background: transparent; border: 1px solid var(--line); color: var(--text); border-radius: 6px; width: 24px; height: 24px; padding: 0; cursor: pointer; font-size: 12px; }
-#logBox { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; color: var(--code-text); background: var(--code-bg); white-space: pre-wrap; word-break: break-word; user-select: text; }
-#logBox .cmd { color: var(--log-cmd); }
-#logBox .err { color: var(--diff-del-text); }
-#logBox .hdr { color: var(--hunk); font-weight: 600; }
+/* #logBox est un CONTENEUR de volets (un par job en cours) : c'est le volet qui défile,
+   pas le conteneur, sinon changer d'onglet ferait sauter la position de défilement. */
+#logBox { margin: 0; background: var(--code-bg); }
+/* Ligne d'en-tête d'un journal élagué : discrète mais présente — un journal tronqué en
+   silence ferait douter de ce qu'on lit. */
+.log-trunc { color: var(--muted); font-style: italic; }
+.logpane { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; color: var(--code-text); background: var(--code-bg); white-space: pre-wrap; word-break: break-word; user-select: text; }
+/* Onglets de job : même grammaire que les onglets du visualiseur (.split-tabs). */
+.log-tabs { display: flex; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+/* L'onglet est une enveloppe : elle porte la bordure et l'état, les deux boutons qu'elle
+   contient (choisir / arrêter) restent transparents. Un bouton dans un bouton n'existe pas. */
+.log-tabs .jobtab { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.log-tabs .jobtab:hover:not(.active) { border-color: var(--accent); }
+.log-tabs .jobtab.active { background: var(--panel2); }
+.log-tabs button { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: none; color: var(--muted); padding: 3px 10px; cursor: pointer; font-size: 12.5px; }
+.log-tabs .jobtab:hover .jobtab-pick, .log-tabs .jobtab.active .jobtab-pick { color: var(--text); }
+/* Le stop reste discret : c'est l'onglet qu'on vient chercher, pas lui. Il ne rougit qu'au
+   survol — un ✕ rouge en permanence sur chaque onglet ferait un bandeau d'alarmes. */
+.log-tabs .jobtab-stop { padding: 3px 7px 3px 4px; border-left: 1px solid var(--line); }
+.log-tabs .jobtab-stop:hover { color: var(--red-text); background: color-mix(in srgb, var(--red) 10%, transparent); }
+/* Pastille d'état, même vocabulaire que le bandeau : ambre en cours (elle bat), vert
+   terminé, rouge en erreur, gris arrêté. C'est ce qui dit qu'un onglet a fini SANS le
+   faire disparaître — un journal supprimé à la seconde où l'on veut le lire, c'est raté. */
+.log-tabs .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
+.log-tabs .running .dot { background: var(--amber); animation: pulse 1s infinite; }
+.log-tabs .done .dot { background: var(--green); }
+.log-tabs .error .dot { background: var(--red); }
+.log-tabs .stopped .dot { background: var(--muted); }
+/* File d'attente : une ligne par job, l'action à droite comme dans les cartes. */
+.log-queue { padding: 4px 10px 8px; border-bottom: 1px solid var(--line); background: var(--panel2); }
+.log-queue-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12.5px; }
+.log-queue-row .spacer { flex: 1; }
+.log-queue-what { color: var(--muted); }
+.log-queue-why { max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#logQueueCount { position: static; margin-left: 6px; }
+.logpane .cmd { color: var(--log-cmd); }
+.logpane .err { color: var(--diff-del-text); }
+.logpane .hdr { color: var(--hunk); font-weight: 600; }
 
 /* Toasts : entrée/sortie (le conteneur #toasts les empile, cf. socle). */
 @keyframes toast-in  { from { opacity: 0; transform: translateY(8px) scale(.97); } }
@@ -615,11 +743,43 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 .toast.leaving { animation: toast-out .18s ease-in forwards; }
 
 /* Apparition échelonnée des cartes de liste (une seule passe, coût CPU nul). */
+/* Palette de commandes : une boîte étroite, ancrée haut — on la lit, on ne la contemple pas. */
+.palette-box { width: 560px; max-width: 92vw; padding: 0; overflow: hidden; }
+.palette-input { width: 100%; border: none; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; font-size: 15px; padding: 14px 16px; outline: none; }
+.palette-list { max-height: 320px; overflow-y: auto; }
+.palette-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px; cursor: pointer; font-size: 13.5px; }
+.palette-item.active, .palette-item:hover { background: var(--panel2); }
+.palette-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-kind { flex: 0 0 auto; font-size: 12px; }
+.palette-empty { padding: 14px 16px; font-size: 13px; }
+.palette-hint { padding: 8px 16px; margin: 0; border-top: 1px solid var(--line); font-size: 12px; }
+/* Feuille de raccourcis : deux colonnes, la touche puis ce qu'elle fait. */
+.shortcuts-list { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; align-items: center; margin: 10px 0 4px; }
+.shortcuts-list kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px; white-space: nowrap; }
+/* Anneau de sélection clavier. Absent tant qu'on n'a pas pressé j/k : un raccourci qui agit
+   sur un élément qu'on n'a pas désigné est un piège. */
+.card.focused { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Atterrissage d'un résultat : un balayage unique sur la PASTILLE de note. Sur la carte
+   entière ce serait un flash ; ici c'est exactement l'objet qui vient d'apparaître. */
+@keyframes landed { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  100% { box-shadow: 0 0 0 10px transparent; } }
+.note.just-landed { animation: landed .9s ease-out 1; }
+
 @keyframes card-in { from { opacity: 0; transform: translateY(6px); } }
-.list .card { animation: card-in .26s cubic-bezier(.2,.8,.3,1) both; animation-delay: calc(var(--i, 0) * 22ms); }
+/* L'entrée en cascade est portée par la LISTE (`animate-in`, posée par `stagger`), pas par la
+   carte : sinon elle rejouait à chaque rendu — donc à chaque frappe dans une recherche et à
+   chaque rafraîchissement. Le mouvement doit dire « ça a changé », jamais « ça a été rendu ». */
+.list.animate-in > .card { animation: card-in .26s cubic-bezier(.2,.8,.3,1) both; animation-delay: calc(var(--i, 0) * 22ms); }
 
 /* ---------- Navigation & en-tête ---------- */
-.brand { display: flex; flex-direction: column; gap: 1px; line-height: 1.15; }
+.brand { display: flex; align-items: center; gap: var(--s-3); line-height: 1.15; }
+.brand-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+/* Un seul des deux logos est affiché : celui dont l'encre se voit sur le fond du thème. */
+.brand-logo { display: block; flex: none; width: 30px; height: 30px; }
+.brand-logo.dark { display: none; }
+:root[data-theme="dark"] .brand-logo.light { display: none; }
+:root[data-theme="dark"] .brand-logo.dark { display: block; }
 .baseline { font-size: var(--fs-xs); color: var(--muted); letter-spacing: .01em; white-space: nowrap; }
 /* baseline : masquée quand la place manque, pour ne pas écraser la navigation */
 @media (max-width: 1200px) { .baseline { display: none; } }
@@ -638,6 +798,8 @@ nav button:hover { color: var(--text); background: var(--hover); }
 }
 .nav-health.err { background: var(--badge-err); }
 .nav-health.warn { background: var(--badge-warn); }
+/* Le chiffre explique ce qu'il compte au survol : le curseur d'aide l'annonce. */
+.nav-health[data-tip] { cursor: help; }
 
 /* ---------- Filtre segmenté (les 3 stades d'une MR) ---------- */
 .segmented { display: inline-flex; gap: 2px; padding: 3px; margin: var(--s-3) 0 var(--s-2);
@@ -703,6 +865,25 @@ nav button:hover { color: var(--text); background: var(--hover); }
 
 /* Résumé actionnable dans la colonne de droite (au lieu d'un simple placeholder) */
 .ph-summary { padding: var(--s-2); }
+/* « Ça tourne » posé sur l'objet lui-même (P9) : un liseré animé sur le bord gauche de la
+   carte concernée. Un seul objet par job en cours, jamais tout un lot.
+   Deux coupures nettes : onglet en arrière-plan (rien à regarder, batterie inutile) et
+   mouvement réduit (le liseré reste, fixe — l'information passe, pas le mouvement). */
+.card.running-now { position: relative; }
+.card.running-now::before {
+  content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px;
+  border-radius: 3px; background: var(--accent);
+  animation: running-pulse 1.8s ease-in-out infinite;
+}
+@keyframes running-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+body.tab-cachee .card.running-now::before { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .card.running-now::before { animation: none; opacity: 1; } }
+
+/* Delta depuis la dernière visite : discret par construction (trois lignes au plus),
+   il ouvre le panneau sans concurrencer le résumé qui suit. */
+.ph-delta { border-left: 2px solid var(--accent); padding: 2px 0 2px var(--s-3); margin-bottom: var(--s-3); }
+.ph-delta ul { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: var(--fs-sm); }
+.ph-delta li { margin: 2px 0; }
 .ph-worst { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-3); }
 .ph-item { display: flex; align-items: center; gap: var(--s-2); width: 100%; text-align: left;
   background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r-md);
@@ -773,7 +954,7 @@ nav button:hover { color: var(--text); background: var(--hover); }
   position: absolute; right: 0; top: calc(100% + 4px); z-index: 40;
   min-width: 210px; padding: 4px;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
-  box-shadow: 0 8px 24px rgba(0,0,0,.28); display: flex; flex-direction: column; gap: 2px;
+  box-shadow: var(--sh-2); display: flex; flex-direction: column; gap: 2px;
 }
 .split-menu button {
   text-align: left; background: transparent; border: 0; color: var(--text);
@@ -802,7 +983,7 @@ nav button:hover { color: var(--text); background: var(--hover); }
 .converge-muted { color: var(--muted); }
 
 /* Modale de lancement. */
-.converge-fields { display: flex; flex-wrap: wrap; gap: 18px; margin: 12px 0; }
+.converge-fields { flex-direction: row; flex-wrap: wrap; gap: 18px; align-items: center; }
 .converge-fields label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
 .mini-num { width: 68px; text-align: center; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 6px 8px; font: inherit; }
 .converge-note { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent); border-radius: var(--radius); padding: 8px 10px; margin: 4px 0 0; }
@@ -854,6 +1035,15 @@ nav button:hover { color: var(--text); background: var(--hover); }
 /* Historique des reviews : sélecteur de version + avertissement de lecture antérieure */
 .md-version { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
   border-radius: var(--r-sm); padding: 3px 8px; font: inherit; font-size: var(--fs-xs); max-width: 320px; }
+/* Prompt d'une itération : texte brut (ce qui a été envoyé à l'agent), pas du Markdown. */
+.pass-prompt { white-space: pre-wrap; background: var(--panel2); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 10px 12px; font-size: var(--fs-sm); overflow-x: auto; }
+/* Historique des demandes de modification d'un rapport : une entrée = la demande + sa date. */
+.modify-history { margin-bottom: var(--s-3); display: flex; flex-direction: column; gap: 8px; }
+.modify-entry { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; background: var(--panel2); }
+.modify-entry-head { display: flex; align-items: center; gap: 10px; font-size: var(--fs-sm); }
+.modify-entry-head .muted { flex: 1; }
+.modify-entry-text { margin-top: 4px; white-space: pre-wrap; font-size: var(--fs-sm); }
 .version-note { margin: var(--s-2) 0 0; padding: 7px 10px; font-size: var(--fs-sm);
   color: var(--text); background: var(--hover); border-left: 3px solid var(--amber); border-radius: var(--r-sm); }
 
@@ -922,16 +1112,28 @@ nav button:hover { color: var(--text); background: var(--hover); }
 .git-row > .git-repo { flex: 0 0 240px; }
 /* Création : dépôt · ref source · nom à créer. Les deux derniers se partagent la
    place restante et se replient sous le dépôt quand la fenêtre est étroite. */
-.git-row > .git-ref { flex: 1 1 180px; min-width: 140px; }
+/* La ref source est un combo (recherche), pas un <select> : la largeur se pose donc sur
+   son enveloppe et non sur l'input caché qui porte la classe `git-ref`. */
+.git-row > .git-ref-combo { flex: 1 1 180px; min-width: 140px; }
 .git-row > .git-name { flex: 1 1 180px; min-width: 140px; width: auto; }
 
 /* Sélection multiple des refs à supprimer : une liste qui défile plutôt qu'un
-   champ de saisie — on ne tape jamais le nom de ce qu'on s'apprête à détruire. */
+   champ de saisie — on ne tape jamais le nom de ce qu'on s'apprête à détruire.
+   Le filtre reste COLLÉ EN HAUT quand la liste défile : chercher dans une liste de
+   deux cents branches sans voir son propre champ de recherche n'a pas de sens. */
 .git-refs {
   flex: 1; min-width: 0; max-height: 190px; overflow-y: auto;
   border: 1px solid var(--line); border-radius: var(--r-md);
   background: var(--panel2); padding: 4px;
 }
+.git-ref-filter {
+  position: sticky; top: -4px; z-index: 1;
+  margin: -4px -4px 4px; width: calc(100% + 8px);
+  padding: 6px 10px 6px 30px; background-position: 9px center; font-size: var(--fs-sm);
+  border-width: 0 0 1px; border-radius: var(--r-md) var(--r-md) 0 0;
+}
+.git-ref-nomatch, .git-ex-nomatch { padding: 6px 8px; font-size: 12px; }
+.git-ex-filter { max-width: 340px; margin-bottom: 8px; }
 .git-ref-item {
   display: flex; align-items: center; gap: 8px; padding: 4px 8px;
   border-radius: 5px; cursor: pointer; font-size: var(--fs-sm);
@@ -1049,6 +1251,11 @@ nav button:hover { color: var(--text); background: var(--hover); }
 
 /* Aperçu du diff avant review : le panneau de gauche devient un panneau de décision. */
 .preview-mode .split-tabs { display: none; }        /* pas de rapport à onglets ici */
+/* Mode « projet de session » : même viewer, mais il n'y a pas de MR derrière —
+   ni onglets Rapport/Explication, ni bouton de commentaire de ligne (qui posterait
+   sur une discussion inexistante). Le panneau de gauche montre le retour de l'IA. */
+.session-mode .split-tabs { display: none; }
+.session-mode .ln-comment { display: none; }
 .diff-decision { padding: 4px 2px; }
 .diff-decision h3 { margin: 0 0 10px; }
 .diff-decision-stats { font-size: var(--fs-sm); font-weight: 600; margin: 0 0 6px; }
@@ -1126,7 +1333,15 @@ nav button:hover { color: var(--text); background: var(--hover); }
 
 /* Onglet Docker : projets compose (drift .env) + containers hors-compose. */
 /* Filtre affichage/masquage des projets compose (choix persisté). */
+/* Barre de recherche + état de l'onglet Compose : même gabarit que le sous-onglet
+   Actions (.dact-search / .dact-action), au-dessus du filtre par projet. */
+.docker-svcbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: 10px; }
+.dact-action-grow { flex: 1 1 260px; min-width: 200px; }
+.docker-svcbar .dact-search { width: 100%; }
+.docker-svc-hidden { margin: 6px 0 0; font-size: 12px; }
 .docker-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 12px; margin-bottom: 12px; border: 1px solid var(--border, #ccc); border-radius: 10px; }
+/* Noms de projet : toujours sur une ligne → case et libellé centrés l'un sur l'autre. */
+.docker-filter .inline-check > span { line-height: 1; }
 /* État du container, bien visible : pastille colorée + libellé. */
 .docker-state { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; text-transform: capitalize; white-space: nowrap; }
 .docker-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
@@ -1224,6 +1439,29 @@ nav button:hover { color: var(--text); background: var(--hover); }
 .dlog-msg { flex: 1 1 auto; }
 .dlog-sys .dlog-msg { color: var(--muted); font-style: italic; }
 .dlog-sys-error .dlog-msg { color: var(--danger, #e57373); font-style: normal; }
+/* Couleurs ANSI de l'application (case « Afficher les couleurs »). Les huit teintes de base
+   sont redéfinies PAR THÈME : les valeurs d'un terminal sombre (le bleu 0000ee, le noir)
+   deviennent illisibles sur fond clair. Le « noir » et le « blanc » ANSI sont d'ailleurs
+   rendus par la couleur de texte courante, faute de quoi l'un des deux thèmes les efface. */
+:root {
+  --ansi-0: var(--text); --ansi-1: #f07178; --ansi-2: #6ac16a; --ansi-3: #d9a441;
+  --ansi-4: #6aa9f4; --ansi-5: #c792ea; --ansi-6: #4dd0c4; --ansi-7: var(--text);
+}
+:root[data-theme="light"] {
+  --ansi-1: #c62d2d; --ansi-2: #2c7a2c; --ansi-3: #8a6100;
+  --ansi-4: #1f5fbf; --ansi-5: #7b3fbf; --ansi-6: #0f7c74;
+}
+.ansi-fg-0 { color: var(--ansi-0); }
+.ansi-fg-1 { color: var(--ansi-1); }
+.ansi-fg-2 { color: var(--ansi-2); }
+.ansi-fg-3 { color: var(--ansi-3); }
+.ansi-fg-4 { color: var(--ansi-4); }
+.ansi-fg-5 { color: var(--ansi-5); }
+.ansi-fg-6 { color: var(--ansi-6); }
+.ansi-fg-7 { color: var(--ansi-7); }
+.ansi-bright { filter: brightness(1.25); }
+.ansi-b { font-weight: 700; }
+.ansi-u { text-decoration: underline; }
 
 /* ===== Docker · Actions groupées ===== */
 .dact-head { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 8px; }
@@ -1397,7 +1635,7 @@ nav button:hover { color: var(--text); background: var(--hover); }
 /* Lightbox : image en grand par-dessus la page (le fond `.modal` gère l'overlay + le centrage). */
 .jira-lightbox { cursor: zoom-out; }
 .jira-lightbox-fig { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: default; }
-.jira-lightbox-fig img { max-width: 92vw; max-height: 84vh; object-fit: contain; border-radius: 8px; background: var(--panel2); box-shadow: 0 10px 44px rgba(0,0,0,.5); }
+.jira-lightbox-fig img { max-width: 92vw; max-height: 84vh; object-fit: contain; border-radius: 8px; background: var(--panel2); box-shadow: var(--sh-3); }
 .jira-lightbox-cap { color: var(--on-overlay); font-size: 13px; display: flex; gap: 14px; align-items: center; }
 .jira-lightbox-cap a { color: #bcd6f5; }
 

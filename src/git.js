@@ -3,7 +3,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { DEFAULT_CLONE_DIR, ensureDir, slugify } = require('./paths');
-const { normalizeProject } = require('./gitlab');
+const forge = require('./forge');
 const proc = require('./proc');
 
 // Émet les lignes complètes d'un buffer vers onLog, renvoie le reste incomplet.
@@ -50,13 +50,14 @@ function run(cmd, args, opts = {}) {
   });
 }
 
-// Injecte le token dans une URL https de clone GitLab.
-function authUrl(cloneUrl, token) {
+/* Injecte le token dans une URL https de clone. Le nom d'utilisateur dépend de la
+   forge : GitLab attend `oauth2`, GitHub attend `x-access-token`. */
+function authUrl(cloneUrl, token, user = 'oauth2') {
   if (!token) return cloneUrl;
   try {
     const u = new URL(cloneUrl);
     if (u.protocol === 'https:') {
-      u.username = 'oauth2';
+      u.username = user;
       u.password = token;
       return u.toString();
     }
@@ -64,9 +65,18 @@ function authUrl(cloneUrl, token) {
   return cloneUrl;
 }
 
+// Le jeton qui donne accès au dépôt, selon sa forge.
+function tokenFor(cfg, repo) {
+  return repo && repo.forge === 'github' ? (cfg.github_token || '') : (cfg.access_token || '');
+}
+// Tous les secrets à masquer dans les logs : on ne sait pas lequel apparaîtra.
+function secretsOf(cfg) {
+  return [cfg.access_token, cfg.github_token].filter(Boolean);
+}
+
 function cloneDirFor(cfg, repo) {
   const base = String(cfg.clone_path || DEFAULT_CLONE_DIR).trim();
-  const proj = normalizeProject(repo.project) || repo.project;
+  const proj = forge.clientFor(repo).normalizeProject(repo.project) || repo.project;
   return path.join(base, slugify(proj));
 }
 
@@ -88,7 +98,8 @@ function cloneUrl(cfg, repo) {
       return `git@${u.hostname}:${u.pathname.replace(/^\/+/, '')}`;
     } catch { /* pas une URL : on continue */ }
   }
-  return authUrl(raw, cfg.access_token);                    // https + token
+  const user = repo && repo.forge === 'github' ? 'x-access-token' : 'oauth2';
+  return authUrl(raw, tokenFor(cfg, repo), user);           // https + token de la forge
 }
 
 // Clone si absent, sinon fetch. Renvoie le chemin du clone.
@@ -108,7 +119,7 @@ async function ensureRepo(cfg, repo, onLog = () => {}) {
   const gitDir = path.join(dir, '.git');
   const url = cloneUrl(cfg, repo);
   const tls = gitTlsArgs();
-  const secrets = [cfg.access_token];
+  const secrets = secretsOf(cfg);
   if (fs.existsSync(gitDir)) {
     onLog(`fetch ${repo.project}`);
     // met à jour l'origin (au cas où le token/protocole a changé) puis fetch.
@@ -362,7 +373,7 @@ async function ensureCleanWorktree(cwd, onLog = () => {}) {
 
 module.exports = {
   resetWorktree,
-  ensureRepo, targetedDiff, diffRange, tagAuthor, branchesForCommit, branchesForCommitDetailed, cloneDirFor, authUrl, run,
+  ensureRepo, targetedDiff, diffRange, tagAuthor, branchesForCommit, branchesForCommitDetailed, cloneDirFor, authUrl, run, secretsOf, tokenFor,
   defaultBranch, ensureCleanWorktree, refExists, createBranchFrom, checkoutBranch, commitAll, headSha, branchDiff, pushBranch, gitTlsArgs,
   lsTree, showFile, fileDiffFull,
 };

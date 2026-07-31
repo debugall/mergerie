@@ -64,6 +64,29 @@ describe('note : extraction de la note globale du rapport', () => {
     assert.equal(extractNote('note : b'), null, 'une minuscule isolée n’est pas une note (faux positif)');
   });
 
+  test('la note retenue est celle qui CONCLUT le rapport, pas une note citée en cours de route', () => {
+    // Régression : après « Relancer la review », le rapport rappelle souvent la note
+    // précédente dans son résumé. En cherchant depuis le début, la liste restait
+    // bloquée sur la note de la PREMIÈRE review.
+    const rereview = [
+      '# Revue de code — !42',
+      '',
+      '## Suivi de résolution',
+      'La note précédente était de 5,8/10 ; les points bloquants ont été corrigés.',
+      '',
+      '## Note globale',
+      '**8,4/10** — bon niveau, corrections mineures.',
+    ].join('\n');
+    assert.equal(extractNote(rereview).raw, '8,4/10', 'la note finale gagne sur celle citée plus haut');
+
+    // Le libellé peut être un TITRE, la valeur venant à la ligne suivante.
+    assert.equal(extractNote('## Note globale\n**7,2/10** — correct.').raw, '7,2/10');
+    // …ou être porté par la même ligne.
+    assert.equal(extractNote('Note globale : 6/10').raw, '6/10');
+    // Sans libellé explicite, on prend quand même la DERNIÈRE fraction plausible.
+    assert.equal(extractNote('Il reste 2/5 points ouverts.\n\nRésultat : 9/10.').raw, '9/10');
+  });
+
   test('absence de note ou fraction incohérente', () => {
     assert.equal(extractNote(''), null);
     assert.equal(extractNote(null), null);
@@ -340,10 +363,290 @@ describe('agentsession : commande de reprise de session', () => {
     assert.match(cop, /COPILOT_HOME='\/data\/agent-sessions\/x'/);
     assert.match(cop, / --continue$/);
   });
-  test('null si handle/cwd/backend manquant, et quoting des apostrophes', () => {
+  test('null si handle/backend manquant, et quoting des apostrophes', () => {
     assert.equal(agentsession.resumeCommand('claude', null, '/x'), null);
-    assert.equal(agentsession.resumeCommand('claude', 'h', null), null);
     assert.equal(agentsession.resumeCommand('unknown', 'h', '/x'), null);
     assert.match(agentsession.resumeCommand('claude', 'id', "/a'b"), /'\\''/, 'apostrophe échappée pour le shell');
+  });
+
+  /* Sans cwd, la commande existe quand même — SANS `cd`. C'est le cas d'une session
+     FOURNIE à la création : on sait la reprendre, on ignore d'où elle vient. Faire
+     disparaître le bouton là serait le faire disparaître précisément quand on la cherche. */
+  test('cwd inconnu : commande sans `cd`, pas d’absence de commande', () => {
+    const claude = agentsession.resumeCommand('claude', 'uuid-123', null);
+    assert.match(claude, /--resume uuid-123$/);
+    assert.doesNotMatch(claude, /(^|\s)cd\s/);
+    const cop = agentsession.resumeCommand('copilot', '/data/agent-sessions/x', '');
+    assert.match(cop, /^COPILOT_HOME='\/data\/agent-sessions\/x'/);
+    assert.match(cop, / --continue$/);
+  });
+});
+
+/* Le CLI copilot emploie le mot « authentication » pour deux pannes très différentes.
+   Envoyer quelqu'un faire /login alors que son proxy bloque api.github.com lui fait perdre
+   des heures : ces cas réels sont figés ici pour que la distinction ne reparte pas. */
+describe('agentsession : réseau vs authentification dans les erreurs copilot', () => {
+  const { enrichCopilotError } = require('../src/agentsession');
+  const bootstrap = { source: '/home/moi/.copilot', linked: ['config.json'] };
+  const enrich = (m) => enrichCopilotError(new Error(m), bootstrap, '/data/agent-sessions/x').message;
+
+  test('« token found but could not be validated » + fetch réseau → message RÉSEAU', () => {
+    const m = enrich('Error: Authentication token found but could not be validated. '
+      + 'Failed to fetch OAuth user login: network fetch failed: request failed: '
+      + 'error sending request for url (https://api.github.com/copilot_internal/user)');
+    assert.match(m, /échec réseau/);
+    assert.doesNotMatch(m, /authentification introuvable dans le home isolé/);
+    assert.match(m, /NO_PROXY/, 'la sortie doit dire quoi faire du proxy');
+  });
+
+  test('ECONNRESET / tunnel error → message RÉSEAU même sans le mot « authentication »', () => {
+    const m = enrich('Error: Failed to load models\nError: error sending request for url '
+      + '(https://api.business.githubcopilot.com/models): client error (Connect): tunnel error: '
+      + 'io error establishing tunnel: Connection reset by peer (os error 104) [ECONNRESET]');
+    assert.match(m, /échec réseau/);
+    assert.doesNotMatch(m, /authentification introuvable dans le home isolé/);
+  });
+
+  test('« No authentication found » sans motif réseau → message AUTH inchangé', () => {
+    const m = enrich("No authentication found. Run '/login' to authenticate.");
+    assert.match(m, /authentification introuvable dans le home isolé/);
+    assert.match(m, /COPILOT_HOME=\/data\/agent-sessions\/x/);
+    assert.doesNotMatch(m, /échec réseau/);
+  });
+
+  test('erreur sans rapport → renvoyée telle quelle', () => {
+    const e = new Error('spawn ENOEXEC');
+    assert.equal(enrichCopilotError(e, bootstrap, '/x'), e, 'même objet Error, pas une copie');
+  });
+});
+
+/* La liste des commandes git jugées destructives vit dans le front (public/app.js) : elle n'y
+   est pas exportable, mais se laisse évaluer isolément. Un test vaut mieux qu'une relecture :
+   trop large, elle fait confirmer un `git fetch` et on apprend à cliquer sans lire ; trop
+   étroite, un `reset --hard` part sur trente dépôts sans un mot. */
+describe('front : classement des commandes git destructives', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const from = src.indexOf('const GIT_DESTRUCTIVE');
+  const to = src.indexOf('\n', src.indexOf('function gitCmdIsDestructive'));
+  assert.ok(from > 0 && to > from, 'GIT_DESTRUCTIVE et gitCmdIsDestructive doivent rester ensemble dans app.js');
+  // eslint-disable-next-line no-new-func
+  const isDestructive = new Function(`${src.slice(from, to)}\nreturn gitCmdIsDestructive;`)();
+
+  test('les commandes qui détruisent du travail non poussé sont reconnues', () => {
+    for (const cmd of ['reset --hard origin/main', 'clean -fd', 'checkout -f main', 'push --force',
+      'push origin --delete old', 'branch -D old', 'tag -d v1.2', 'stash drop', 'rebase main',
+      'switch --discard-changes main', 'gc --prune=now', 'rm -r src', 'restore .']) {
+      assert.ok(isDestructive(cmd), `« git ${cmd} » devrait demander confirmation`);
+    }
+  });
+
+  test('les commandes de lecture ou de synchro courantes ne sont pas signalées', () => {
+    for (const cmd of ['fetch --all --prune', 'status', 'log --oneline', 'remote -v', 'pull --rebase',
+      'diff HEAD', 'branch -a', 'tag --list', 'stash list', 'describe --tags']) {
+      assert.ok(!isDestructive(cmd), `« git ${cmd} » ne devrait pas demander confirmation`);
+    }
+  });
+});
+
+/* Séquences ANSI dans les logs. Le cas qui a motivé ce nettoyage : une application dans un
+   container colore sa sortie, `docker logs` la relaie telle quelle, et le panneau affichait
+   « ␛[34mdebug␛[39m » — chaque ligne noyée sous ses propres octets d'échappement. */
+describe('ansi : nettoyage des séquences d’échappement des logs', () => {
+  const { stripAnsi, parseAnsi } = require('../public/ansi-runtime.js');
+  const E = '\u001b';
+
+  test('les couleurs SGR disparaissent, le texte reste intact', () => {
+    assert.equal(stripAnsi(`${E}[34mdebug${E}[39m`), 'debug');
+    // Ligne réelle observée : plusieurs segments colorés dans la même ligne.
+    assert.equal(
+      stripAnsi(`2026-07-30 18:30:23 | ${E}[37minfo${E}[39m ${E}[34m[getToken]${E}[39m - got token`),
+      '2026-07-30 18:30:23 | info [getToken] - got token',
+    );
+    assert.equal(stripAnsi(`${E}[1m${E}[31mERREUR${E}[0m`), 'ERREUR');
+  });
+
+  test('les autres familles de séquences aussi (curseur, titre, hyperlien)', () => {
+    assert.equal(stripAnsi(`${E}[2K${E}[1Gprogression`), 'progression');
+    assert.equal(stripAnsi(`${E}]0;titre de fenêtre\u0007suite`), 'suite');
+    assert.equal(stripAnsi(`${E}(Btexte`), 'texte');
+  });
+
+  test('les caractères de contrôle résiduels partent, sauf tabulation et saut de ligne', () => {
+    assert.equal(stripAnsi('ligne\ravec retour chariot'), 'ligneavec retour chariot');
+    assert.equal(stripAnsi('a\u0008b'), 'ab');
+    assert.equal(stripAnsi('colonne\tcolonne'), 'colonne\tcolonne', 'la tabulation aligne, elle porte du sens');
+    assert.equal(stripAnsi('deux\nlignes'), 'deux\nlignes');
+  });
+
+
+  /* Le rendu coloré, à la demande. Ce qu'il ne faut pas casser : les filtres portent
+     TOUJOURS sur le texte nu, donc `parseAnsi` doit restituer exactement les mêmes
+     caractères que `stripAnsi`, découpés autrement. */
+  test('parseAnsi découpe en segments et restitue le même texte que stripAnsi', () => {
+    const l = `${E}[34mdebug${E}[39m ok ${E}[1;31mERREUR${E}[0m fin`;
+    const segs = parseAnsi(l);
+    assert.deepEqual(segs.map((s) => s.text), ['debug', ' ok ', 'ERREUR', ' fin']);
+    assert.equal(segs.map((s) => s.text).join(''), stripAnsi(l), 'aucun caractère perdu ni ajouté');
+    assert.equal(segs[0].fg, 4);
+    assert.deepEqual([segs[2].fg, segs[2].bold], [1, true], 'gras + rouge cumulés');
+    assert.equal(segs[3].fg, null, 'ESC[0m remet tout à zéro');
+  });
+
+  test('parseAnsi : couleurs vives, et codes non gérés ignorés sans casse', () => {
+    assert.deepEqual(parseAnsi(`${E}[91mvif${E}[39m`).map((s) => [s.fg, s.bright]), [[1, true]]);
+    // 256 couleurs et RGB : leurs paramètres ne doivent pas être relus comme des codes.
+    assert.deepEqual(parseAnsi(`${E}[38;5;208morange${E}[0m`).map((s) => s.text), ['orange']);
+    assert.deepEqual(parseAnsi(`${E}[48;2;10;20;30mfond${E}[0m`).map((s) => [s.text, s.fg]), [['fond', null]]);
+    // Fond seul : ignoré volontairement (contraste non maîtrisé sur deux thèmes).
+    assert.deepEqual(parseAnsi(`${E}[41mrouge${E}[49m`).map((s) => s.fg), [null]);
+    assert.deepEqual(parseAnsi(''), []);
+  });
+
+  test('parseAnsi borne le nombre de segments — une ligne pathologique existe', () => {
+    const l = Array.from({ length: 200 }, (_, i) => `${E}[3${i % 8}mx`).join('');
+    const segs = parseAnsi(l, 16);
+    assert.ok(segs.length <= 17, 'plafond respecté (+1 pour le reste en texte nu)');
+    assert.equal(segs.map((s) => s.text).join(''), 'x'.repeat(200), 'le texte reste complet');
+  });
+
+  test('une ligne sans séquence n’est pas touchée — accents compris', () => {
+    const l = 'adp-api-verif 2026-07-30 | user vérifié, coût 12 € — ok';
+    assert.equal(stripAnsi(l), l);
+    assert.equal(stripAnsi(''), '');
+    assert.equal(stripAnsi(null), '');
+    assert.equal(stripAnsi(undefined), '');
+  });
+});
+
+/* Le parallélisme repose entièrement sur cette règle : deux jobs qui partagent un dépôt ou
+   un dossier ne peuvent pas tourner ensemble. S'y tromper ne donne pas un bug visible mais
+   un clone git corrompu au milieu d'une review — d'où un test sur la règle nue. */
+describe('jobs : conflit entre deux jobs (autorisation du parallèle)', () => {
+  const { keysClash, MAX_RUNNING } = require('../src/jobs');
+
+  test('le plafond de jobs simultanés est explicite', () => {
+    // Ce n'est pas le code qui limite (tout passe à l'échelle) mais la machine : chaque job
+    // lance un agent. La valeur est donc un choix, pas une contrainte — autant la figer.
+    assert.equal(MAX_RUNNING, 3);
+  });
+
+  test('un dépôt ou un dossier en commun interdit le parallèle', () => {
+    assert.equal(keysClash(['repo:1'], ['repo:1']), true);
+    assert.equal(keysClash(['repo:1', 'repo:2'], ['repo:2', 'repo:3']), true);
+    assert.equal(keysClash(['dir:/a'], ['dir:/a']), true);
+  });
+
+  test('des périmètres disjoints l’autorisent', () => {
+    assert.equal(keysClash(['repo:1'], ['repo:2']), false);
+    assert.equal(keysClash(['dir:/a'], ['dir:/b']), false);
+    // Un job Docker ne touche aucun dépôt : il est parallélisable avec tout.
+    assert.equal(keysClash([], ['repo:1', 'repo:2']), false);
+    assert.equal(keysClash([], []), false);
+  });
+
+  test('un périmètre INCONNU refuse tout — prudence plutôt que corruption', () => {
+    // `*` = job dont on ne sait pas déduire les cibles (restauration git, kind inattendu).
+    assert.equal(keysClash(['*'], []), true);
+    assert.equal(keysClash([], ['*']), true);
+    assert.equal(keysClash(['*'], ['repo:9']), true);
+  });
+});
+
+/* Les cibles d'un job pilotent un repère visuel posé sur la carte concernée. La règle qui
+   compte est la retenue : un job de review porte sur un LOT de MR mais n'en traite qu'une à
+   la fois, et marquer tout le lot ferait clignoter la moitié de la liste. */
+describe('jobs : objets marqués « en cours »', () => {
+  const { jobTargets } = require('../src/jobs');
+
+  test('un lot de review ne désigne QUE la MR en cours de traitement', () => {
+    const entry = { kind: 'review', rows: [{ id: 1 }, { id: 2 }, { id: 3 }] };
+    assert.deepEqual(jobTargets(entry, { current_mr_id: 2 }).mrs, [2]);
+  });
+
+  test('un lot dont le traitement n’a pas encore commencé ne marque rien', () => {
+    const entry = { kind: 'review', rows: [{ id: 1 }, { id: 2 }] };
+    assert.deepEqual(jobTargets(entry, { current_mr_id: null }).mrs, []);
+    assert.deepEqual(jobTargets(entry, undefined).mrs, []);
+  });
+
+  test('chaque famille d’objet tombe dans son propre seau', () => {
+    assert.deepEqual(jobTargets({ kind: 'local', taskId: 7 }), { mrs: [], tasks: [], locals: [7] });
+    assert.deepEqual(jobTargets({ kind: 'task', taskId: 4 }), { mrs: [], tasks: [4], locals: [] });
+    assert.deepEqual(jobTargets({ kind: 'converge-session', taskId: 5 }), { mrs: [], tasks: [5], locals: [] });
+    assert.deepEqual(jobTargets({ kind: 'converge', mrId: 9 }), { mrs: [9], tasks: [], locals: [] });
+  });
+
+  test('un job sans cible identifiable ne marque rien plutôt que n’importe quoi', () => {
+    assert.deepEqual(jobTargets({ kind: 'docker' }), { mrs: [], tasks: [], locals: [] });
+    assert.deepEqual(jobTargets(null), { mrs: [], tasks: [], locals: [] });
+  });
+});
+
+/* Le « delta depuis la dernière visite » ouvre le panneau de rapport. Sa valeur tient
+   entièrement à ce qu'il TAIT : sans rien qui ait changé, il ne doit rien afficher — une
+   ligne « 0 nouvelle MR » chaque matin est exactement ce qui rend un tableau de bord mort. */
+describe('front : delta depuis la dernière visite', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const from = src.indexOf('const VISITE_GAP_MS');
+  const to = src.indexOf('// La colonne de droite');
+  assert.ok(from > 0 && to > from, 'le bloc du delta doit rester d’un seul tenant dans app.js');
+
+  // `tr` est remplacé par un marqueur lisible : on teste la sélection des faits, pas la traduction.
+  const build = (stock) => new Function('localStorage', 'tr', `${src.slice(from, to)}\nreturn { lignesDelta, memoriserVisite };`)(
+    { getItem: (k) => (k in stock ? stock[k] : null), setItem: (k, v) => { stock[k] = v; } },
+    (k, p) => `${k}:${p ? Object.values(p).join(',') : ''}`,
+  );
+  const JOUR = 86400000;
+  const now = 1750000000000;
+  const snap = (ids, ts) => ({ aidevtools_visite_reviewed: JSON.stringify({ ts, ids }) });
+
+  test('sans visite précédente, aucune ligne — on n’invente pas un passé', () => {
+    assert.deepEqual(build({}).lignesDelta('reviewed', [{ id: 1 }, { id: 2 }], now), []);
+  });
+
+  test('rien n’a bougé : rien ne s’affiche (jamais de « 0 nouvelle MR »)', () => {
+    const { lignesDelta } = build(snap([1, 2], now - JOUR));
+    assert.deepEqual(lignesDelta('reviewed', [{ id: 1 }, { id: 2 }], now), []);
+  });
+
+  test('une MR qui traîne ne suffit pas à ouvrir le panneau : ce n’est pas un changement', () => {
+    // Sinon la même ligne s'affiche tous les matins, et le panneau cesse d'être lu.
+    const { lignesDelta } = build(snap([1], now - JOUR));
+    const rows = [{ id: 1, stale: true, gitlab_created_at: new Date(now - 40 * JOUR).toISOString() }];
+    assert.deepEqual(lignesDelta('reviewed', rows, now), []);
+  });
+
+  test('les arrivées et les sorties sont comptées séparément', () => {
+    const { lignesDelta } = build(snap([1, 2, 3], now - JOUR));
+    const l = lignesDelta('reviewed', [{ id: 2 }, { id: 3 }, { id: 4 }], now);
+    assert.equal(l[0], 'report.delta.since.yesterday:');   // en-tête daté
+    assert.deepEqual(l.slice(1), ['report.delta.new:1', 'report.delta.gone:1']);
+  });
+
+  test('l’attente la plus ancienne compte parmi les faits, plafond à trois', () => {
+    const { lignesDelta } = build(snap([1], now - 3 * JOUR));
+    const rows = [
+      { id: 2 },
+      { id: 9, stale: true, gitlab_created_at: new Date(now - 4 * JOUR).toISOString() },
+      { id: 8, stale: true, gitlab_created_at: new Date(now - 12 * JOUR).toISOString() },
+    ];
+    const l = lignesDelta('reviewed', rows, now);
+    assert.equal(l[0], 'report.delta.since.days:3');
+    assert.deepEqual(l.slice(1), ['report.delta.new:3', 'report.delta.gone:1', 'report.delta.wait:12']);
+    assert.ok(l.length <= 4, 'en-tête + trois faits au maximum');
+  });
+
+  test('chaque stade a son propre instantané : changer de segment ne crée pas de faux delta', () => {
+    const { lignesDelta } = build(snap([1, 2], now - JOUR));
+    assert.deepEqual(lignesDelta('done', [{ id: 7 }], now), []);
+  });
+
+  test('dans la même session, la base de comparaison n’est pas réécrite', () => {
+    // Sinon le delta fondrait à chaque re-rendu de la liste, sous les yeux de qui le lit.
+    // Ce test-ci passe par l'horloge réelle : memoriserVisite compare à Date.now().
+    const stock = snap([1, 2], Date.now() - 3600000); // il y a une heure
+    const { memoriserVisite } = build(stock);
+    memoriserVisite('reviewed', [{ id: 1 }, { id: 2 }, { id: 3 }]);
+    assert.deepEqual(JSON.parse(stock.aidevtools_visite_reviewed).ids, [1, 2]);
   });
 });

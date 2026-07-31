@@ -1,0 +1,12 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <!-- M en graphe de commits : jambes = lignes de vie, diagonales = branches qui mergent -->
+  <g stroke="#e6edf3" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M14,84 L14,26 L50,62 L86,26 L86,84"/>
+  </g>
+  <!-- têtes de branches -->
+  <circle cx="14" cy="26" r="7.5" fill="#e6edf3"/>
+  <circle cx="86" cy="26" r="7.5" fill="#e6edf3"/>
+  <!-- le merge commit : convergé, en vert -->
+  <circle cx="50" cy="62" r="11" fill="#2da44e"/>
+  <circle cx="50" cy="62" r="4.5" fill="#ffffff"/>
+</svg>

@@ -62,8 +62,20 @@ function composeProjects() {
         },
         {
           name: 'prometheus', image: 'prom/prometheus:v2.53.0',
-          container: null, // service défini mais pas démarré
+          container: null, // service défini mais JAMAIS créé (filtre « Non démarrés »)
           envDiffs: [], imgDrift: false, composeModified: false, badge: 'missing',
+        },
+        {
+          name: 'alertmanager', image: 'prom/alertmanager:v0.27.0',
+          // Arrêté après avoir tourné (filtre « Arrêtés (exited) »).
+          container: { id: 'ab77aa', name: 'monitoring-alertmanager-1', state: 'exited', image: 'prom/alertmanager:v0.27.0', created: iso(12) },
+          envDiffs: [], imgDrift: false, composeModified: false, badge: 'stopped',
+        },
+        {
+          name: 'loki', image: 'grafana/loki:3.0.0',
+          // Créé mais jamais démarré — souvent un échec au démarrage (filtre « Créés, jamais démarrés »).
+          container: { id: 'lo9911', name: 'monitoring-loki-1', state: 'created', image: 'grafana/loki:3.0.0', created: iso(2) },
+          envDiffs: [], imgDrift: false, composeModified: false, badge: 'stopped',
         },
       ],
     },
@@ -110,19 +122,22 @@ function containers() {
     { id: 'demo_db', name: 'boutique-db-1', state: 'running', status: 'Up 3 hours (healthy)', image: 'postgres:16', project: 'boutique', service: 'db', running: true },
     { id: 'demo_cache', name: 'boutique-cache-1', state: 'restarting', status: 'Restarting (1) 5 seconds ago', image: 'redis:7', project: 'boutique', service: 'cache', running: false },
     { id: 'demo_worker', name: 'labo-worker', state: 'exited', status: 'Exited (0) 1 hour ago', image: 'python:3.12', project: null, service: null, running: false },
+    { id: 'ab77aa', name: 'monitoring-alertmanager-1', state: 'exited', status: 'Exited (0) 12 hours ago', image: 'prom/alertmanager:v0.27.0', project: 'monitoring', service: 'alertmanager', running: false },
+    { id: 'lo9911', name: 'monitoring-loki-1', state: 'created', status: 'Created', image: 'grafana/loki:3.0.0', project: 'monitoring', service: 'loki', running: false },
   ];
 }
 
 // Résumé santé (démo) calculé sur les mêmes containers, pour le badge de menu.
 function summary() {
   const cs = containers();
-  let error = 0; let unhealthy = 0;
+  let error = 0; let exited = 0; let unhealthy = 0;
   for (const c of cs) {
     const st = c.state.toLowerCase(); const status = c.status.toLowerCase();
     if (st === 'restarting' || st === 'dead') error += 1;
+    else if (st === 'exited') exited += 1;
     else if (status.includes('(unhealthy)')) unhealthy += 1;
   }
-  return { error, unhealthy, total: cs.length, running: cs.filter((c) => c.running).length };
+  return { error, exited, unhealthy, total: cs.length, running: cs.filter((c) => c.running).length };
 }
 
 // Flux SSE SIMULÉ : émet des lignes fictives en boucle jusqu'à déconnexion du client. Sert à
@@ -130,15 +145,19 @@ function summary() {
 // (pas de Date/random) pour rester déterministe. `res` = réponse SSE déjà ouverte.
 function streamLogs(ids, res) {
   const list = (ids && ids.length ? ids : ['demo_api']);
+  /* Les échantillons portent des COULEURS, comme une vraie application dans un container.
+     Elles partent BRUTES, comme dans le flux réel : c'est ce qui rend la case « afficher
+     les couleurs » démontrable — sans elles, la démo montrerait un écran plus sage que la vie. */
+  const C = (code, s2) => `\u001b[${code}m${s2}\u001b[39m`;
   const samples = [
-    'INFO  GET /api/products 200 12ms',
-    'DEBUG cache lookup key=user:42 miss',
-    'INFO  GET /health 200 1ms',
-    'WARN  slow query 812ms SELECT * FROM orders',
-    'INFO  connected to postgres db:5432',
-    'ERROR upstream timeout after 3000ms retry=1',
-    'INFO  POST /api/cart 201 24ms',
-    'DEBUG worker heartbeat ok queue=3',
+    `${C(37, 'INFO ')} GET /api/products ${C(32, '200')} 12ms`,
+    `${C(34, 'DEBUG')} cache lookup key=user:42 miss`,
+    `${C(37, 'INFO ')} GET /health ${C(32, '200')} 1ms`,
+    `${C(33, 'WARN ')} slow query 812ms SELECT * FROM orders`,
+    `${C(37, 'INFO ')} connected to postgres db:5432`,
+    `${C(31, 'ERROR')} upstream timeout after 3000ms retry=1`,
+    `${C(37, 'INFO ')} POST /api/cart ${C(32, '201')} 24ms`,
+    `${C(34, 'DEBUG')} worker heartbeat ok queue=3`,
   ];
   let i = 0;
   const timer = setInterval(() => {

@@ -83,6 +83,165 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
     assert.ok(!fs.existsSync(imgFile), 'images supprimées avec la session');
   });
 
+  test('« Retour de l’IA » : le retour de l’agent est consultable par dossier', async () => {
+    const a = mkdir();
+    const created = (await app.api('POST', '/api/local-tasks', { prompt: 'Ajoute un README', dirs: [a] })).body;
+    await app.api('POST', `/api/local-tasks/${created.id}/run`);
+    await waitForJobs(app.api);
+
+    const lt = (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === created.id);
+    const dir = lt.dirs[0];
+    assert.ok(dir.output_path, 'le retour de l’agent est référencé sur le dossier');
+
+    const out = await app.api('GET', `/api/local-tasks/${created.id}/dirs/${dir.id}/output`);
+    assert.equal(out.status, 200);
+    assert.equal(out.body.path, a, 'le dossier concerné est rappelé');
+    assert.match(out.body.output, /dry-run/i, 'ce que l’agent dit avoir fait');
+
+    // Un dossier d'une AUTRE session n'est pas lisible via cet id de session.
+    const other = (await app.api('POST', '/api/local-tasks', { prompt: 'Z', dirs: [mkdir()] })).body;
+    const cross = await app.api('GET', `/api/local-tasks/${other.id}/dirs/${dir.id}/output`);
+    assert.equal(cross.status, 400, 'un dossier ne se lit que via SA session');
+  });
+
+  test('« Demander une correction » : nouvelle passe sur les mêmes dossiers', async () => {
+    const a = mkdir();
+    const created = (await app.api('POST', '/api/local-tasks', { prompt: 'Première passe', dirs: [a] })).body;
+    await app.api('POST', `/api/local-tasks/${created.id}/run`);
+    await waitForJobs(app.api);
+    const marker = path.join(a, 'PROJ_LOCAL_DRYRUN.md');
+    const firstPass = fs.readFileSync(marker, 'utf8');
+
+    const vide = await app.api('POST', `/api/local-tasks/${created.id}/followup`, { instruction: '  ' });
+    assert.equal(vide.status, 400, 'une demande vide est refusée');
+
+    const job = await app.api('POST', `/api/local-tasks/${created.id}/followup`, { instruction: 'Corrige le titre' });
+    assert.equal(job.body.kind, 'local', 'même file de jobs que la passe initiale');
+    await waitForJobs(app.api);
+
+    // L'IA est repassée sur le MÊME dossier (le marqueur dry-run s'est allongé).
+    assert.ok(fs.readFileSync(marker, 'utf8').length > firstPass.length, 'seconde passe exécutée');
+    const lt = (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === created.id);
+    assert.equal(lt.status, 'done');
+    assert.equal(lt.dirs[0].status, 'done');
+    const out = await app.api('GET', `/api/local-tasks/${created.id}/dirs/${lt.dirs[0].id}/output`);
+    assert.match(out.body.output, /[Ss]uivi/, 'le retour reflète la passe de suivi');
+
+    // Les DEUX itérations sont conservées, chacune avec le prompt qui lui correspond.
+    const hist = await app.api('GET', `/api/local-tasks/${created.id}/dirs/${lt.dirs[0].id}/passes`);
+    assert.equal(hist.body.passes.length, 2);
+    assert.deepEqual(hist.body.passes.map((p) => p.kind), ['run', 'followup']);
+    assert.equal(hist.body.current.n, 2);
+    assert.match(hist.body.current.prompt, /Corrige le titre/, 'le prompt de correction est conservé');
+    const first = await app.api('GET', `/api/local-tasks/${created.id}/dirs/${lt.dirs[0].id}/passes?n=1`);
+    assert.match(first.body.current.prompt, /Première passe/, 'la 1re passe garde le prompt initial');
+    assert.ok(!/Corrige le titre/.test(first.body.current.prompt));
+  });
+
+  /* Éditer une session. Le point qui compte n'est pas le PUT lui-même, c'est ce qu'il NE
+     détruit pas : corriger une faute dans le prompt ne doit pas faire repartir de zéro les
+     dossiers déjà traités (statut, retour de l'agent, handle de session). */
+  test('édition : le prompt change, les dossiers inchangés gardent leur état', async () => {
+    const a = mkdir(); const b = mkdir();
+    const created = (await app.api('POST', '/api/local-tasks', { prompt: 'version 1', dirs: [a, b] })).body;
+    await app.api('POST', `/api/local-tasks/${created.id}/run`);
+    await waitForJobs(app.api);
+    const avant = (await app.api('GET', `/api/local-tasks/${created.id}`)).body.task;
+    assert.equal(avant.dirs.length, 2);
+    assert.ok(avant.dirs.every((d) => d.status === 'done' && d.output_path), 'les dossiers ont tourné');
+
+    // Même composition → les lignes de dossier sont PRÉSERVÉES.
+    const maj = await app.api('PUT', `/api/local-tasks/${created.id}`, { prompt: 'version 2', dirs: [a, b] });
+    assert.equal(maj.status, 200);
+    assert.equal(maj.body.prompt, 'version 2');
+    assert.deepEqual(maj.body.dirs.map((d) => [d.id, d.status, !!d.output_path]),
+      avant.dirs.map((d) => [d.id, d.status, !!d.output_path]), 'rien n’a été recréé');
+
+    // Composition modifiée → on repart à neuf sur les dossiers (c'est une autre session de travail).
+    const c = mkdir();
+    const change = await app.api('PUT', `/api/local-tasks/${created.id}`, { dirs: [a, c] });
+    assert.deepEqual(change.body.dirs.map((d) => d.path), [a, c]);
+    assert.ok(change.body.dirs.every((d) => d.status === 'new' && !d.output_path));
+    assert.equal(change.body.prompt, 'version 2', 'un PUT sans prompt ne l’efface pas');
+
+    assert.equal((await app.api('PUT', `/api/local-tasks/${created.id}`, { prompt: '  ' })).status, 400);
+    assert.equal((await app.api('PUT', '/api/local-tasks/999999', { prompt: 'x' })).status, 400);
+  });
+
+  /* La session à reprendre se choisit AUSSI en édition — c'est le seul moyen de la changer
+     après coup. Les trois cas qui comptent : inchangée, remplacée, et surtout VIDÉE, qui
+     ne doit rien effacer (un formulaire simplement soumis ne fait pas perdre un handle). */
+  test('édition : la session fournie se change, un champ vide n’efface rien', async () => {
+    const { backendName } = require('../src/agentsession');
+    const id1 = backendName() === 'claude' ? '6ba7b810-9dad-11d1-80b4-00c04fd430c8' : '/home/moi/.copilot-sessions/a';
+    const id2 = backendName() === 'claude' ? '11111111-2222-3333-4444-555555555555' : '/home/moi/.copilot-sessions/b';
+    const d = mkdir();
+    const created = (await app.api('POST', '/api/local-tasks', { prompt: 'p', dirs: [d], session_id: id1 })).body;
+    const keys = async () => (await app.api('GET', `/api/local-tasks/${created.id}`)).body.task.dirs.map((x) => x.session_key);
+
+    await app.api('PUT', `/api/local-tasks/${created.id}`, { prompt: 'p2', dirs: [d], session_id: id1 });
+    assert.deepEqual(await keys(), [id1], 'renvoyer la même valeur ne change rien');
+
+    await app.api('PUT', `/api/local-tasks/${created.id}`, { dirs: [d], session_id: id2 });
+    assert.deepEqual(await keys(), [id2], 'une autre valeur remplace la session');
+
+    await app.api('PUT', `/api/local-tasks/${created.id}`, { prompt: 'p3', dirs: [d], session_id: '' });
+    assert.deepEqual(await keys(), [id2], 'un champ vide ne perd pas la session');
+  });
+
+  /* Créer sans lancer : la session existe en statut « new » et attend son déclenchement.
+     Le POST de création ne lançait rien, mais l'écran enchaînait toujours sur /run — c'est
+     donc le statut au repos qui doit rester vérifiable. */
+  test('créée sans être lancée : statut « new », rien n’a tourné', async () => {
+    const d = mkdir();
+    fs.writeFileSync(path.join(d, 'a.txt'), 'inchangé', 'utf8');
+    const created = (await app.api('POST', '/api/local-tasks', { prompt: 'plus tard', dirs: [d] })).body;
+    assert.equal(created.status, 'new');
+    assert.equal(created.dirs[0].status, 'new');
+    assert.equal(fs.readFileSync(path.join(d, 'a.txt'), 'utf8'), 'inchangé', 'aucun traitement n’a eu lieu');
+
+    // …et le lancement différé fonctionne comme un lancement immédiat.
+    await app.api('POST', `/api/local-tasks/${created.id}/run`);
+    await waitForJobs(app.api);
+    const apres = (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === created.id);
+    assert.equal(apres.status, 'done');
+  });
+
+  // Pendant hors dépôt de la reprise de session : l'identifiant se range sur chaque dossier.
+  test('session existante fournie : rangée sur chaque dossier', async () => {
+    const { backendName } = require('../src/agentsession');
+    const id = backendName() === 'claude'
+      ? '6ba7b810-9dad-11d1-80b4-00c04fd430c8'
+      : '/home/moi/.mergerie/agent-sessions/deja-la';
+    const a = mkdir(); const b = mkdir();
+    const created = (await app.api('POST', '/api/local-tasks', { prompt: 'continue', dirs: [a, b], session_id: id })).body;
+    const rows = app.db.prepare('SELECT session_key, session_backend, session_cwd FROM local_task_dir WHERE task_id = ?').all(created.id);
+    assert.equal(rows.length, 2);
+    for (const r of rows) {
+      assert.equal(r.session_key, id);
+      assert.equal(r.session_backend, backendName());
+      assert.equal(r.session_cwd, null);
+    }
+    assert.equal((await app.api('POST', '/api/local-tasks', { prompt: 'p', dirs: [mkdir()], session_id: '-x' })).status, 400);
+  });
+
+  // Pendant hors dépôt du rangement des sessions sur dépôt : même geste, autre table.
+  test('ranger une session hors dépôt : le drapeau fait l’aller-retour, les dossiers restent', async () => {
+    const d = mkdir();
+    const created = (await app.api('POST', '/api/local-tasks', { prompt: 'Range-moi', dirs: [d] })).body;
+    assert.equal(created.hidden, 0);
+
+    assert.equal((await app.api('POST', `/api/local-tasks/${created.id}/hidden`, { hidden: true })).body.hidden, 1);
+    const range = (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === created.id);
+    assert.equal(range.hidden, 1);
+    assert.deepEqual(range.dirs.map((x) => x.path), created.dirs.map((x) => x.path), 'les dossiers sont intacts');
+
+    assert.equal((await app.api('POST', `/api/local-tasks/${created.id}/hidden`, { hidden: false })).body.hidden, 0);
+    assert.equal((await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === created.id).hidden, 0);
+
+    assert.equal((await app.api('POST', '/api/local-tasks/999999/hidden', { hidden: true })).status, 400);
+  });
+
   test('suppression d’une session', async () => {
     const d = mkdir();
     const created = (await app.api('POST', '/api/local-tasks', { prompt: 'W', dirs: [d] })).body;

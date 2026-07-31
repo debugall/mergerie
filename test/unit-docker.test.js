@@ -152,21 +152,31 @@ describe('Docker — découverte compose', () => {
     assert.equal(docker.defaultProjectName('/a/b/'), 'b');
   });
 
-  test('healthSummary : compte le rouge (restarting/dead) et l’orange (unhealthy)', () => {
+  test('healthSummary : cassé, arrêté et unhealthy comptés séparément', () => {
     const s = docker.healthSummary([
       { state: 'running', status: 'Up 3 hours' },
       { state: 'running', status: 'Up 3 hours (unhealthy)' },
       { state: 'running', status: 'Up 2 min (healthy)' },
       { state: 'restarting', status: 'Restarting (1) 5s ago' },
       { state: 'dead', status: 'Dead' },
-      { state: 'exited', status: 'Exited (0)' },
+      { state: 'exited', status: 'Exited (0) 2 hours ago' },
+      { state: 'exited', status: 'Exited (137) 5 min ago' },
     ]);
     assert.equal(s.error, 2, 'restarting + dead');
+    /* Les arrêtés sont comptés À PART, quel que soit leur code de sortie : le badge du menu
+       les additionne aux erreurs (de l'extérieur, un service arrêté ne rend pas plus de
+       service qu'un service cassé), mais la bulle distingue les deux — et cette distinction
+       n'existe que si le décompte, lui, ne les mélange pas. */
+    assert.equal(s.exited, 2, 'exited (0) comme exited (137)');
     assert.equal(s.unhealthy, 1, 'seulement le (unhealthy) — pas le (healthy)');
+
     // Un container restarting ET unhealthy compte comme erreur (rouge), pas deux fois.
-    const s2 = docker.healthSummary([{ state: 'restarting', status: 'Restarting (unhealthy)' }]);
-    assert.deepEqual(s2, { error: 1, unhealthy: 0 });
-    assert.deepEqual(docker.healthSummary([]), { error: 0, unhealthy: 0 });
+    assert.deepEqual(docker.healthSummary([{ state: 'restarting', status: 'Restarting (unhealthy)' }]),
+      { error: 1, exited: 0, unhealthy: 0 });
+    // Un container arrêté n'est jamais compté « en erreur » : c'est le badge qui somme.
+    assert.deepEqual(docker.healthSummary([{ state: 'exited', status: 'Exited (0)' }]),
+      { error: 0, exited: 1, unhealthy: 0 });
+    assert.deepEqual(docker.healthSummary([]), { error: 0, exited: 0, unhealthy: 0 });
   });
 
   test('spawnLogs (onglet Logs) refuse un id piégé avant tout spawn', async () => {
@@ -188,5 +198,48 @@ describe('Docker — découverte compose', () => {
     fs.mkdirSync(path.join(root, 'no-compose'));
     const hits = docker.composeFilesUnder(root).map((h) => h.file).sort();
     assert.deepEqual(hits, ['compose.yaml', 'docker-compose.yml']);
+  });
+});
+
+/* Le filtre d'état de l'onglet Docker vit dans le front (`public/app.js`) : pas exportable,
+   mais évaluable isolément. Ce prédicat décide de ce qui s'affiche ET de ce qui est ciblé
+   par une action groupée — se tromper sur « ne tourne pas » n'est pas anodin. */
+describe('front : filtre d’état des services Docker', () => {
+  const fs2 = require('node:fs');
+  const path2 = require('node:path');
+  const src = fs2.readFileSync(path2.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const from = src.indexOf('function dactIsDrift');
+  const to = src.indexOf('const DOCKER_STATE_FILTERS');
+  assert.ok(from > 0 && to > from, 'dactIsDrift et dactMatchesFilter doivent rester voisins');
+  // eslint-disable-next-line no-new-func
+  const match = new Function(`${src.slice(from, to)}\nreturn dactMatchesFilter;`)();
+
+  const svc = (state, extra = {}) => ({ container: state ? { state, ...extra } : null, badge: extra.badge || 'synced' });
+
+  test('les trois façons de ne pas tourner sont distinguées', () => {
+    const exited = svc('exited');
+    const created = svc('created');
+    const missing = svc(null);
+
+    assert.ok(match('exited', exited) && !match('exited', created) && !match('exited', missing));
+    assert.ok(match('created', created) && !match('created', exited) && !match('created', missing));
+    assert.ok(match('missing', missing) && !match('missing', exited) && !match('missing', created));
+  });
+
+  test('« ne tournent pas » reste le chapeau des trois — c’est une valeur persistée', () => {
+    // Retirer ou restreindre `stopped` casserait le filtre déjà enregistré dans le navigateur.
+    for (const s of [svc('exited'), svc('created'), svc(null), svc('restarting'), svc('dead')]) {
+      assert.ok(match('stopped', s), 'tout ce qui ne tourne pas passe le chapeau');
+    }
+    assert.equal(match('stopped', svc('running')), false);
+  });
+
+  test('les autres états ne sont pas affectés', () => {
+    assert.ok(match('running', svc('running')));
+    assert.ok(match('restarting', svc('restarting')));
+    assert.ok(match('unhealthy', svc('running', { health: 'unhealthy' })));
+    assert.equal(match('unhealthy', svc('running', { health: 'healthy' })), false);
+    assert.ok(match('drift', { container: { state: 'running' }, badge: 'drift-image' }));
+    assert.ok(match('all', svc(null)), 'le filtre « tous » ne filtre rien');
   });
 });

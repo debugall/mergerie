@@ -3,30 +3,11 @@
 // La configuration TLS est SCOPÉE à ces requêtes via un agent dédié :
 // on ne touche jamais au TLS global du process.
 
-const https = require('https');
-const http = require('http');
-const fs = require('fs');
 const { t } = require('../public/i18n-runtime.js');
+const httpreq = require('./httpreq');
 
-// Agent TLS dédié aux requêtes GitLab (calculé une fois).
-let _agentComputed = false;
-let _agent; // undefined = agent par défaut (vérification TLS normale)
-function gitlabAgent() {
-  if (_agentComputed) return _agent;
-  _agentComputed = true;
-  const caPath = process.env.GITLAB_CA_CERT;
-  if (caPath) {
-    // Option propre : épingler le CA self-hosted (vérification TLS conservée).
-    _agent = new https.Agent({ ca: fs.readFileSync(caPath) });
-  } else if (process.env.GITLAB_INSECURE_TLS === '1') {
-    // Repli explicite et LOCAL : vérif désactivée POUR GITLAB UNIQUEMENT.
-    console.warn('⚠️  GITLAB_INSECURE_TLS=1 : vérification TLS désactivée pour les requêtes GitLab uniquement.');
-    _agent = new https.Agent({ rejectUnauthorized: false });
-  } else {
-    _agent = undefined;
-  }
-  return _agent;
-}
+// Agent TLS dédié aux requêtes GitLab (calculé une fois), scopé à ce client.
+const gitlabAgent = httpreq.makeAgentFactory('GITLAB_CA_CERT', 'GITLAB_INSECURE_TLS');
 
 // Normalise un identifiant de projet vers le chemin attendu par l'API GitLab :
 // accepte "group/projet", une URL de clone https, ssh, avec ou sans .git,
@@ -54,41 +35,8 @@ function apiBase(cfg) {
   return `${cfg.gitlab_url}/api/v4`;
 }
 
-// Plafond de patience sur une requête GitLab : au-delà, on préfère une erreur claire
-// à un job de fond bloqué indéfiniment.
-const REQUEST_TIMEOUT_MS = 30_000;
-
-// Requête HTTPS bas niveau, agent TLS scopé. Renvoie { status, statusText, body }.
-function request(url, { method = 'GET', headers = {}, body } = {}) {
-  return new Promise((resolve, reject) => {
-    const u = new URL(url);
-    const lib = u.protocol === 'http:' ? http : https;
-    const opts = {
-      method,
-      hostname: u.hostname,
-      port: u.port || (u.protocol === 'http:' ? 80 : 443),
-      path: u.pathname + u.search,
-      headers,
-    };
-    if (u.protocol === 'https:') opts.agent = gitlabAgent();
-    const req = lib.request(opts, (res) => {
-      let data = '';
-      res.on('data', (c) => { data += c; });
-      res.on('end', () => resolve({ status: res.statusCode, statusText: res.statusMessage || '', body: data }));
-    });
-    req.on('error', reject);
-    // Sans timeout, un GitLab qui accepte la connexion sans jamais répondre (VPN qui
-    // tombe, proxy) gèle le job de fond ET toute la file derrière lui : seul un
-    // redémarrage du serveur en sort. Le code ETIMEDOUT est déjà expliqué plus bas.
-    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      const err = new Error(`délai dépassé après ${REQUEST_TIMEOUT_MS / 1000}s`);
-      err.code = 'ETIMEDOUT';
-      req.destroy(err);
-    });
-    if (body != null) req.write(body);
-    req.end();
-  });
-}
+// Requête bas niveau (module partagé), avec l'agent TLS scopé à GitLab.
+const request = (url, opts = {}) => httpreq.request(url, { ...opts, agent: gitlabAgent() });
 
 async function gitlabFetch(cfg, pathAndQuery, opts = {}) {
   if (!cfg.access_token) throw new Error(t('err.token-gitlab-non-configure-configuration'));
@@ -237,24 +185,49 @@ async function postMrNote(cfg, project, iid, body) {
 }
 
 // Crée une merge request et renvoie l'objet MR (iid, web_url…).
-async function createMergeRequest(cfg, project, { source_branch, target_branch, title }) {
+async function createMergeRequest(cfg, project, { source_branch, target_branch, title, squash, removeSourceBranch }) {
   const enc = encodeProject(project);
-  return gitlabFetch(cfg, `/projects/${enc}/merge_requests`, {
-    method: 'POST',
-    body: JSON.stringify({ source_branch, target_branch, title }),
-  });
+  const payload = { source_branch, target_branch, title };
+  // GitLab retient ces deux choix DÈS la création : ils s'appliqueront au merge, y
+  // compris si celui-ci est fait depuis l'interface GitLab.
+  if (squash != null) payload.squash = !!squash;
+  if (removeSourceBranch != null) payload.remove_source_branch = !!removeSourceBranch;
+  return gitlabFetch(cfg, `/projects/${enc}/merge_requests`, { method: 'POST', body: JSON.stringify(payload) });
 }
 
-// Merge une merge request.
-async function mergeMergeRequest(cfg, project, iid) {
+/* Merge une merge request. `opts.squash` écrase l'historique de la branche en un seul
+   commit ; `opts.removeSourceBranch` supprime la branche source après le merge. Les deux
+   sont natifs côté GitLab (paramètres du merge). */
+async function mergeMergeRequest(cfg, project, iid, opts = {}) {
   const enc = encodeProject(project);
-  return gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/merge`, { method: 'PUT' });
+  const body = {};
+  if (opts.squash != null) body.squash = !!opts.squash;
+  if (opts.removeSourceBranch != null) body.should_remove_source_branch = !!opts.removeSourceBranch;
+  return gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/merge`, {
+    method: 'PUT', body: JSON.stringify(body),
+  });
 }
 
 // Récupère une MR complète (pour ses diff_refs : base_sha, start_sha, head_sha).
 async function getMergeRequest(cfg, project, iid) {
   const enc = encodeProject(project);
   return gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}`);
+}
+
+/* Modifie une note déjà postée. GitLab n'a qu'une route, quel que soit le type de note
+   (générale ou dans un fil inline) : le paramètre `inline` n'existe que pour GitHub, qui
+   sépare commentaires de review et commentaires d'issue. */
+async function updateNote(cfg, project, iid, noteId, body) {
+  const enc = encodeProject(project);
+  return gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/notes/${encodeURIComponent(noteId)}`, {
+    method: 'PUT', body: JSON.stringify({ body }),
+  });
+}
+
+// Compte associé au jeton — sert à savoir quels commentaires sont les miens.
+async function currentUser(cfg) {
+  const u = await gitlabFetch(cfg, '/user');
+  return { username: (u && u.username) || '' };
 }
 
 // Répond à une discussion existante (ajoute une note au fil).
@@ -394,6 +367,6 @@ async function listAllMRs(cfg, project) {
   }));
 }
 
-module.exports = { listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion, listMrDiscussions, replyToDiscussion,
+module.exports = { listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
   listBranchesFull, listTags, listProtectedBranches, listProtectedTags, listMrChangedPaths,
   createBranch, deleteBranch, createTag, deleteTag, listAllMRs };

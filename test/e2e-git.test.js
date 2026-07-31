@@ -317,6 +317,45 @@ describe('Opérations Git de bout en bout', () => {
     assert.equal(apres.restorable, false, 'on ne restaure pas deux fois');
   });
 
+  test('Un tag recréé sur un autre SHA ne bloque pas le fetch de sécurité', async () => {
+    /* Régression (signalée en production) : le clone local garde le tag à son ANCIEN
+       SHA. Après suppression puis recréation du tag ailleurs, le `git fetch --tags` qui
+       précède toute suppression échouait avec « would clobber existing tag », et
+       l'action entière était perdue alors que le dépôt était sain. */
+    const { execFileSync } = require('node:child_process');
+    const env = {
+      ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null',
+      GIT_AUTHOR_NAME: 'Bot', GIT_AUTHOR_EMAIL: 'b@x.co',
+      GIT_COMMITTER_NAME: 'Bot', GIT_COMMITTER_EMAIL: 'b@x.co',
+    };
+    const g = (...args) => execFileSync('git', args, { cwd: repo.work, env, encoding: 'utf8' });
+    // L'état du faux GitLab est PARTAGÉ entre les tests : on le restaure à la sortie.
+    const tagsAvant = app.state.tags['grp/app'];
+
+    // 1) tag posé sur main et poussé → le clone de l'app le récupère
+    g('checkout', 'main');
+    g('tag', '-f', 'pilote-adp');
+    g('push', '-f', 'origin', 'refs/tags/pilote-adp');
+    app.state.tags['grp/app'] = [{ name: 'pilote-adp', target: 'tagobj', message: '', commit: { id: repo.mainSha, committed_date: new Date().toISOString() } }];
+    await app.api('GET', `/api/git/branches?repo_id=${repoId}`);   // force un clone/fetch
+
+    // 2) le tag est DÉPLACÉ sur un autre commit côté remote (supprimé puis recréé)
+    g('checkout', repo.branch);
+    g('tag', '-f', 'pilote-adp');
+    g('push', '-f', 'origin', 'refs/tags/pilote-adp');
+    app.state.tags['grp/app'] = [{ name: 'pilote-adp', target: 'tagobj', message: '', commit: { id: repo.branchSha, committed_date: new Date().toISOString() } }];
+
+    // 3) une suppression déclenche le fetch de sécurité : il ne doit PAS échouer
+    await app.api('POST', '/api/git/execute', { action: 'delete_tag', targets: [{ repo_id: repoId, refs: ['pilote-adp'] }] });
+    await waitForJobs(app.api);
+    const op = (await app.api('GET', '/api/git/ops')).body[0];
+    assert.equal(op.action, 'delete_tag');
+    assert.equal(op.status, 'done', op.error || '');
+    assert.equal(op.fetched, 1, 'le fetch de sécurité a bien eu lieu');
+    app.state.tags['grp/app'] = tagsAvant;
+    g('checkout', 'main');
+  });
+
   test('Une opération en échec est journalisée sans interrompre le lot', async () => {
     app.state.fail = { '/repository/tags/' : { status: 403, body: { message: 'protected tag' } } };
     await app.api('POST', '/api/git/execute', { action: 'delete_tag', targets: [{ repo_id: repoId, refs: ['v1.1.0'] }] });
@@ -357,12 +396,23 @@ describe('Opérations Git de bout en bout', () => {
     assert.equal(mr.title, repo.branch, 'sans titre, la branche source fait office de titre');
   });
 
-  test('Le job en cours peut être arrêté', async () => {
-    await app.api('POST', '/api/git/execute', { action: 'new_branch', name: 'a-arreter', targets: [{ repo_id: repoId, ref: 'main' }] });
+  /* Un arrêt DEMANDÉ n'est pas un échec. Les opérations git étaient les seules à ne pas
+     faire la distinction : le Stop de l'utilisateur s'affichait en rouge avec « Job arrêté
+     par l'utilisateur » en guise de message d'erreur — faux, et inquiétant à lire. */
+  test('Le job en cours peut être arrêté, et se termine en « stopped » (pas « error »)', async () => {
+    const { body: job } = await app.api('POST', '/api/git/execute', { action: 'new_branch', name: 'a-arreter', targets: [{ repo_id: repoId, ref: 'main' }] });
     const stop = await app.api('POST', '/api/jobs/stop');
     assert.equal(stop.status, 200);
     assert.equal(stop.body.ok, true);
     await waitForJobs(app.api);
+    const apres = app.db.prepare('SELECT status, message FROM job WHERE id = ?').get(job.id);
+    /* ⚠ Ce test ne PROUVE pas la distinction : une opération git est rapide, le job aboutit
+       souvent avant que le Stop ne l'atteigne, et il finit alors légitimement en « done ».
+       Ce qu'il verrouille, c'est l'invariant : quoi qu'il arrive, un arrêt demandé ne doit
+       jamais ressortir en « error » avec le message d'annulation en guise d'échec. */
+    assert.ok(['stopped', 'done'].includes(apres.status), `statut inattendu : ${apres.status}`);
+    assert.doesNotMatch(String(apres.message || ''), /arrêté par l’utilisateur/i,
+      'un arrêt demandé ne se présente pas comme une erreur');
   });
 
   // Régression : un tag supprimé puis recréé sur un AUTRE commit faisait échouer tout le

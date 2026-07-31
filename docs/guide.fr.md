@@ -6,6 +6,11 @@ Ce guide détaille chaque onglet, la configuration avancée, le TLS entreprise, 
 données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide, reste sur le
 [README.fr.md](../README.fr.md).
 
+> **Convention.** Mergerie gère **GitLab et GitHub**. Dans ce document, **« MR »** désigne
+> indifféremment une *merge request* GitLab ou une *pull request* GitHub : les écrans, les actions et
+> les garanties décrites sont les mêmes. Les rares différences propres à une forge sont signalées
+> explicitement.
+
 ## Les onglets en détail
 
 Sept onglets : **Reviews** · **Dev IA** · **Statistiques** · **Git** · **Docker** · **Jira** · **Réglages**.
@@ -43,13 +48,29 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   **zéro clic**. Ta saisie manuelle reste un **complément distinct** (jamais écrasé), et un bouton
   **Rafraîchir** re-récupère le ticket à la demande. Le tout est injecté dans le prompt de review, en
   plus du diff, et le bouton porte un ✓ quand un contexte est déjà enregistré.
+- **Merger ouvre une confirmation avec ses options.** Avant de fusionner, une modale rappelle la MR et
+  sa branche cible, et propose **Squash** (réunir les commits en un seul) et **Supprimer la branche source
+  après le merge**. Les deux cases sont pré-cochées d'après ce qui avait été choisi à la création de la MR.
+- **Créer une MR** ouvre la même famille de modale : titre pré-rempli, et les deux mêmes options. GitLab
+  les retient dès la création ; **GitHub ne sait pas les exprimer à la création** — Mergerie les mémorise
+  alors et les applique au merge, ce que la modale indique.
 - `Merger` merge la MR **directement, sans review** — pour une MR triviale : on confirme, et si le
   merge a réellement lieu la MR sort de la file (marquée traitée). Disponible aussi dans le panneau de
   décision de `Voir le diff`, là où l'on juge justement de la trivialité.
 - `Classer sans review` sort une MR de la file, avec **annulation** possible pendant quelques secondes.
 - Les reviews s'empilent dans une **file séquentielle** ; un **panneau de log en direct** montre les
   commandes, la sortie et la progression, avec un bouton **Stop** (qui vide aussi la file — la
-  confirmation le précise).
+  confirmation le précise), un **chronomètre** depuis le démarrage et, une fois le rythme établi, une
+  **estimation du temps restant** (elle se tait plutôt que de mentir quand la cadence dévie).
+- **Voir la file d'attente et lancer en parallèle.** Le panneau de log liste ce qui attend, et propose
+  de **promouvoir un job en parallèle** (jusqu'à **3 à la fois**) quand il ne touche **aucun dépôt ni
+  dossier** en commun avec ce qui tourne déjà — la collision est refusée, pas arbitrée : deux agents sur
+  le même clone le corrompraient. Chaque job promu a **son onglet** dans le panneau, avec **son propre
+  bouton Stop** ; l'onglet reste après la fin, pour relire la sortie. Un job **interrompu** peut être
+  **relancé** depuis la file.
+- **Modifier son propre commentaire.** Un commentaire posté depuis Mergerie — **en ligne** dans
+  l'explorateur ou **en général** sur la MR — peut être **réécrit** sans passer par la forge. Seuls les
+  siens : ceux des collègues sont en lecture seule.
 - **Re-review complète ou incrémentale.** `Relancer la review` refait une review **complète** (tout le
   diff). Quand la branche a **bougé depuis la dernière review** (MR *stale*), un bouton `Relancer (delta)`
   apparaît : la **re-review incrémentale** ne relit que **ce qui a changé** depuis le dernier SHA reviewé
@@ -71,6 +92,10 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   Si l'option « l'IA peut poser des questions » est active et que l'IA hésite pendant une passe, la boucle
   **se met en attente** (notification) au lieu de deviner : tu réponds, puis tu relances Converger — qui
   **reprend la même session**.
+- **Les demandes de modification sont conservées.** La section `Demander une modification à l'IA` liste
+  les demandes déjà faites sur ce rapport, **avec leur date**, et un bouton ouvre **le rapport que chacune
+  a produit** (la version correspondante). On retrouve ainsi ce qui avait été demandé pour arriver à un
+  rapport donné, au lieu de le reconstituer de mémoire.
 - Sur un rapport : **régénérer** le rapport, **commenter** la MR, **merger**, **relancer la review**,
   **marquer traitée**, **supprimer le rapport** (la MR retourne « à traiter »), et surtout
   **Faire corriger le code par l'IA** — qui ouvre une session de codage pré-remplie avec le rapport
@@ -92,12 +117,30 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
 ### ⛶ Ouvrir le code (explorateur plein écran)
 Arbre du projet + fichier affiché **entier avec le diff en place**, coloration syntaxique,
 **mini-carte** des changements, navigation entre modifications, panneaux repliables.
-**Commentaire inline** par ligne et **réponses** aux fils, synchronisés avec la forge.
+**Commentaire inline** par ligne et **réponses** aux fils, synchronisés avec la forge — et
+**modifiables** tant qu'ils sont de toi.
 
 ### Dev IA
+Une **recherche** en tête de liste (prompt, projet, branche, dossier) filtre les sessions du sous-onglet
+courant — utile dès qu'elles s'accumulent. Elle se remet à zéro quand on change de sous-onglet, pour ne pas
+contredire les compteurs qui affichent des totaux.
+
 Deux sous-onglets. Dans les deux cas, une session porte sur **un ou plusieurs projets**, chacun avec
 sa propre branche, et sa date de création est affichée. Le **choix du dépôt se fait au clavier**
 (sélecteur avec recherche), comme celui des branches — utile quand la liste des dépôts est longue.
+
+**Ranger les sessions terminées.** Une session finie se **masque** sans être supprimée ; une case
+**« afficher les sessions masquées »** (dont l'état est mémorisé) les fait revenir, et un compteur
+rappelle combien sont filtrées. Vaut pour le codage, le codage hors dépôt et l'exploration. Dans la
+liste, un prompt long est **replié sur trois lignes** avec un **« Voir plus »** qui le déroule entier.
+
+**Créer maintenant, lancer plus tard.** Les trois types de session proposent **`Créer sans lancer`** à
+côté de **`Créer et lancer`** : on prépare le prompt et les cibles, on lance quand on veut.
+
+**Reprendre une session d'agent existante.** Un champ **facultatif « identifiant de session »** à la
+création (codage, hors dépôt, exploration) fait travailler l'IA **dans cette session-là** au lieu d'en
+ouvrir une nouvelle — elle garde donc tout le contexte déjà acquis. Renseigné, il rend aussi disponible
+le bouton **« Reprendre au terminal »**. Le champ est également modifiable après coup.
 
 **Enrichir depuis un ticket Jira (optionnel).** Si Jira est configuré (Réglages → Jira), la modale
 propose un champ **N° de ticket** avec un bouton **Récupérer** : le **titre + la description** du ticket
@@ -108,7 +151,12 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
 - **Codage** — l'IA modifie le code. Pour chaque projet : branche de travail, et **branche de départ**
   facultative (liste déroulante avec recherche ; vide = branche par défaut du dépôt). Le prompt est
   appliqué à chaque projet, séquentiellement — **un projet en échec n'interrompt pas les autres**.
-  Chaque projet a ensuite ses propres actions : **Diff · Pousser · Créer la MR · Merger**. Un
+  Chaque projet a ensuite ses propres actions : **Voir le diff · Pousser · Créer la MR · Merger**.
+  **`Voir le diff`** ouvre le **même explorateur plein écran que celui des merge requests** —
+  arborescence complète du projet au milieu, fichier entier avec les changements en place à droite
+  (navigation d'un changement à l'autre, mini-carte) — avec, à gauche, le **retour de l'IA** au lieu
+  du rapport de revue. On lit donc ce que l'IA dit avoir fait *et* ce qu'elle a réellement écrit, côte
+  à côte, dans le contexte du fichier entier plutôt que dans un patch brut. Un
   **fil d'étape** compact (pastilles **créée → commit → push → MR**) sur chaque ligne situe d'un
   coup d'œil où en est le projet — utile sur une session multi-projets.
   `Demander une correction` relance l'IA sur les branches existantes, **en reprenant la même session** :
@@ -117,6 +165,12 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   exploration) — utile pour comprendre son travail, ou **quand rien n'a changé** : si le prompt était
   incomplet et que l'IA a **répondu au lieu de coder** (ex. « donne-moi le nom du fichier »), sa réponse
   est **remontée directement** dans l'erreur du projet plutôt qu'un « aucun changement » opaque.
+- **Toutes les itérations sont conservées.** Une session s'itère (lancement, `Demander une correction`,
+  réponses aux questions, passes de convergence) : chaque passe garde **le prompt réellement envoyé** et
+  **le retour de l'IA correspondant**. Un **sélecteur d'itération** apparaît en haut de `Retour de l'IA`
+  dès la deuxième passe (« Itération 2 · correction demandée · 29/07 00:42 ») et permet de relire
+  n'importe laquelle. Relire une réponse sans savoir à quelle demande elle répondait n'apprend rien : les
+  deux sont donc affichés ensemble. Vaut aussi pour le **codage hors dépôt**, dossier par dossier.
 - **⌨️ Reprendre la session au terminal.** Chaque projet d'une session de codage (dépôt **ou** hors dépôt),
   ainsi que les reviews, expose un bouton **« Reprendre au terminal »** qui copie la **commande prête à
   coller** : `cd` vers le bon dossier + lancement de l'agent avec l'**identifiant de session** (claude
@@ -141,20 +195,31 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   **jamais de merge automatique**.
 - **Codage hors dépôt** — l'IA réalise le prompt **directement dans des dossiers locaux**, **en place**
   et **sans git** : ni branche, ni commit, ni push. Pratique pour des dossiers qui ne sont pas des
-  dépôts GitLab (scripts, expériences, mono-repo local…). Le dossier de travail ne se **saisit** plus :
+  dépôts d'une forge (scripts, expériences, mono-repo local…). Le dossier de travail ne se **saisit** plus :
   on choisit un **répertoire local** (déclaré dans *Réglages → Dépôts*) puis **le ou les projets** qu'il
   contient — le chemin en découle, et un chemin tapé à la main est une faute de frappe qu'on ne découvre
   qu'au milieu du traitement. Le formulaire (projets + prompt) vit dans **la même modale que le codage** — tu peux donc
   aussi **joindre des captures d'écran** (bouton ou Ctrl+V) pour enrichir le prompt. Le même prompt est
   appliqué à **chaque dossier**, l'un après l'autre — un dossier en échec n'interrompt pas les autres, et
-  son statut est indiqué par dossier. ⚠ **Aucun filet** : l'agent modifie les fichiers en place, sans
+  son statut est indiqué par dossier. Comme pour le codage sur dépôt, chaque dossier expose
+  **`Retour de l'IA`** — ce que l'agent dit avoir fait, utile quand le dossier n'a pas bougé (prompt
+  incomplet, l'IA a répondu au lieu de coder) —, et la session propose **`Demander une correction`** :
+  une nouvelle passe sur les mêmes dossiers qui **reprend la session de chacun**, donc l'IA garde tout
+  le contexte de ce qu'elle vient de produire. Une session hors dépôt est **modifiable** après coup
+  (prompt, dossiers, identifiant de session), comme une session sur dépôt. ⚠ **Aucun filet** : l'agent modifie les fichiers en place, sans
   sauvegarde ; sur un dépôt git tu peux relire/annuler toi-même (`git diff` / `git checkout`), sur un
   dossier non-git il n'y a **pas d'annulation** — un avertissement le rappelle. (Sous-onglet dédié, entre
   *Codage* et *Exploration*.)
 - **Exploration** — **lecture seule** : tu poses une question sur un ou plusieurs projets, l'IA explore
   le code et rédige **une seule réponse de synthèse** enregistrée en `.md`, consultable à tout moment
-  via `Voir la réponse`. Ni diff ni merge. Les **questions de suivi** reprennent la réponse précédente
-  en contexte. Les dépôts sont remis à zéro après coup : **aucune modification ne subsiste**.
+  via `Voir la réponse`. Ni diff ni merge. Une **question de suivi reprend la même session d'agent** —
+  comme pour le codage — au lieu de lui réinjecter sa réponse précédente : l'IA se souvient de son
+  exploration au lieu d'en relire un résumé. Les dépôts sont remis à zéro après coup :
+  **aucune modification ne subsiste**. Chaque exploration expose elle aussi
+  **« Reprendre au terminal »** pour continuer la conversation toi-même.
+  **Chaque question est conservée** : une question de suivi écrase le fichier de réponse, mais la passe
+  est archivée — `Voir la réponse` propose un **sélecteur d'itération** qui rejoue chaque question avec
+  la réponse qu'elle a obtenue.
 
 ### Git
 Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
@@ -163,7 +228,10 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   On ne **saisit** un nom que pour créer ; pour supprimer, on **choisit dans la liste** des refs
   existantes — la branche par défaut et les refs protégées n'y figurent même pas. Le choix du dépôt
   se fait par un **champ avec recherche** (comme partout où l'on choisit un projet), utile quand la
-  liste est longue.
+  liste est longue — **et le choix de la ref aussi** : un dépôt actif compte des centaines de branches
+  et de tags. Un choix unique passe par un sélecteur avec recherche ; un choix multiple (cases à cocher,
+  tableau de l'explorateur) reçoit un filtre qui **masque des lignes sans décocher quoi que ce soit** —
+  on coche, on filtre autre chose, on coche encore, puis on supprime d'un coup.
 - **Rien ne s'exécute sans aperçu.** L'aperçu liste chaque ligne (projet × ref) et son résultat
   attendu : *sera exécutée · existe déjà — ignorée · ref protégée · branche par défaut · introuvable*.
   « Existe déjà » n'est pas une erreur : l'opération est **idempotente**, on peut relancer.
@@ -172,7 +240,7 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   pour comprendre, car l'écriture passe par l'API et non par le CLI — et l'**appel API** sous-jacent.
 - **Les suppressions sont restaurables.** Avant chaque suppression, l'outil **rapatrie les objets
   dans son clone local**, puis enregistre le SHA. L'onglet **Historique** propose alors
-  `Restaurer` — et ça fonctionne **même après le passage du ramasse-miettes de GitLab**, puisque
+  `Restaurer` — et ça fonctionne **même après le passage du ramasse-miettes de la forge**, puisque
   c'est le clone local qui sert de filet, pas le serveur.
 - **Navigation** — positionne **plusieurs projets de ta machine** (pas les clones de l'outil : tes
   propres dépôts) sur la branche de ton choix, en un geste. On choisit un **répertoire local** — un
@@ -202,9 +270,10 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   branches puis `Supprimer la sélection` ouvre l'aperçu pré-rempli. On peut aussi **explorer plusieurs dépôts
   à la fois** (chaque résultat dans un bloc replié). La **liste des tags** affiche la date, la (les)
   **branche(s) qui portent le tag**, l'auteur du commit pointé — avec un bouton `Auteur du tag`
-  qui va lire le **vrai *tagger*** d'un tag annoté dans le clone local (l'API GitLab ne l'expose pas).
+  qui va lire le **vrai *tagger*** d'un tag annoté dans le clone local (aucune des deux API de forge ne l'expose).
 - **Trouver une ref** — on saisit un nom de tag **ou** de branche (saisie libre) et l'outil dit,
-  **à travers tous les dépôts actifs**, lesquels le possèdent : type, commit + lien GitLab, date,
+  **à travers tous les dépôts actifs** (GitLab et GitHub confondus), lesquels le possèdent : type, commit +
+  lien vers la forge, date,
   branche(s) portant le tag, auteur — avec le même bouton `Auteur du tag`. Un dépôt injoignable est
   signalé à part, jamais confondu avec « absente ».
 
@@ -220,6 +289,17 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
   `compose.yaml` / `docker-compose.yml` ; chaque fichier devient un **projet compose** avec ses services.
   La liste est **triée par activité récente** (le projet dont un container a été recréé le plus récemment
   d'abord) et un **filtre en tête** permet de **cocher/décocher les projets à afficher** — choix **persisté**.
+- **Retrouver un container : recherche + filtre d'état.** Au-dessus de la liste, un champ de **recherche**
+  (nom de service, nom de container ou nom de projet) et un sélecteur **« N'afficher que »** — *En cours ·
+  Arrêtés / non créés · **Arrêtés (exited)** · **Créés, jamais démarrés** · **Sans container** ·
+  Unhealthy · En restarting · En drift* — réduisent l'affichage **service par service**. « Ne tourne
+  pas » recouvrait trois situations que Docker distingue et qui appellent des gestes différents : un
+  container qui **a tourné puis s'est arrêté** veut un redémarrage, un container **créé mais jamais
+  démarré** signale souvent un échec au lancement, et **aucun container** appelle un `up`. Le chapeau
+  *Arrêtés / non créés* reste, pour ne pas casser les filtres déjà enregistrés. Un projet dont plus aucun service ne correspond **disparaît entièrement** (une carte vide
+  laisserait croire à un projet sans service) ; sur un projet partiellement filtré, une mention rappelle
+  combien de services sont masqués. Les deux réglages sont **persistés** et s'appliquent **à chaud**, sans
+  rappeler Docker — ce sont les mêmes intitulés d'état que le sous-onglet *Actions*.
   **Affichage progressif** pour rester rapide même avec beaucoup de containers : la **liste des projets
   apparaît tout de suite** (scan + un seul `docker ps -a`), puis le détail de chaque projet (drift, états)
   **se remplit carte par carte** au fil de l'eau ; côté serveur, les `docker inspect`/`compose config`
@@ -252,6 +332,15 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
     **désactive sans le supprimer** ou qu'on **réintègre** d'un clic), et **n'afficher que** les lignes
     contenant certains mots. Les filtres sont **mémorisés** (pas besoin de les re-saisir à chaque fois) et
     s'appliquent **à chaud**, sans relancer le flux.
+  - **Texte lisible, couleurs à la demande.** Une application en container colore sa sortie, `docker logs`
+    relaie ces octets d'échappement tels quels, et un navigateur n'est pas un terminal : chaque ligne
+    arrivait enfouie sous des `[34mdebug[39m`. Les lignes s'affichent **en texte brut par défaut** —
+    c'est aussi le rendu le plus léger quand le flux part en rafale — et une case **« Afficher les
+    couleurs »**, à côté de *Retour à la ligne*, restitue ce que l'application voulait dire. Le choix est
+    mémorisé, cocher **rejoue ce qui est déjà à l'écran** sans relancer le flux, et les filtres
+    continuent de porter sur le texte nu dans les deux cas. Les couleurs de **fond** sont volontairement
+    ignorées : elles supposent un terminal dont on maîtrise le contraste, pas un thème clair et un thème
+    sombre. Un caractère accentué tombant sur une frontière de paquet réseau n'est plus coupé en deux.
   - **Optimisé navigateur** : flux **SSE** (un `docker logs -f` par container, tué à la fermeture), **buffer
     borné** en mémoire, insertions DOM **groupées par frame** (pas de reflow ligne à ligne) et **nombre de
     lignes affichées plafonné** — reste fluide même sur des logs en rafale. Bouton **Vider** et **retour à la
@@ -262,8 +351,8 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
   encore la liste — *En drift*, *Unhealthy*, *En restarting*, *En cours*, *Arrêtés / non créés* — et une
   **recherche** par nom. La validation regroupe les services **par projet** et lance un `docker compose`
   par projet (un échec n'interrompt pas les autres).
-- **Badges de santé sur l'onglet Docker** : le **nombre de containers en erreur** (restarting / dead) en
-  **rouge** et le **nombre d'unhealthy** en **orange**, directement dans le menu — visibles au démarrage et
+- **Badges de santé sur l'onglet Docker** : le **nombre de containers en erreur** (restarting / dead /
+  **exited**) en **rouge** et le **nombre d'unhealthy** en **orange**, directement dans le menu — visibles au démarrage et
   rafraîchis **automatiquement toutes les 30 s** (et à chaque ouverture de l'onglet) — donc un container qui
   bascule en *restarting* apparaît dans le titre du menu **même sans être sur l'onglet Docker**. Le poll est
   léger (un seul `docker ps -a`) et se met en pause quand l'onglet du navigateur est masqué.
@@ -287,6 +376,11 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   Markdown) et les **pièces jointes** — **téléchargées à la demande** via un **proxy serveur** qui récupère
   le fichier avec le token (un lien direct échouerait, l'API Jira exigeant l'auth). Plus un lien **Ouvrir
   dans Jira**.
+- **`Faire coder l'IA` depuis le ticket.** Le bouton en tête du détail ouvre la **modale de session de
+  codage déjà remplie** : le contenu du ticket (titre + description) est mis en tête du prompt, le message
+  de commit et le **nom de branche** (`feature/PROJ-1421-…`) sont proposés d'après la clé et le résumé, et
+  le numéro de ticket est renseigné. Il ne reste qu'à choisir le dépôt et à préciser ta demande sous le
+  contexte — le curseur y est déjà placé. La session n'est **pas lancée automatiquement** : tu relis avant.
 - **Changer l'état du ticket** : un sélecteur dans l'en-tête liste les **transitions autorisées** (ce que Jira
   permet pour toi sur ce ticket) ; en choisir une **applique la transition** et rafraîchit le statut (détail
   + liste). Rien n'est proposé si tu n'as pas les droits.
@@ -302,10 +396,10 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
 ### Statistiques
 Funnel des MR, distribution des notes, **évolution de la note moyenne par semaine** (« la qualité
 progresse-t-elle ? »), activité hebdomadaire, tableau par projet (avec **taux de résolution**,
-**tendance** ▲/▼ et le **dernier commit** — date, auteur, lien GitLab vers le commit), un **Top 5 des
+**tendance** ▲/▼ et le **dernier commit** — date, auteur, lien vers le commit sur sa forge), un **Top 5 des
 dépôts à l'activité la plus récente** (dernier commit, auteur, lien), **coût en tokens** (camembert par
 type d'appel + **coût moyen par MR reviewée**), résumé des sessions. L'activité de commits est récupérée
-**en direct depuis GitLab** (chargée à part, best-effort : rien ne casse si GitLab est injoignable).
+**en direct depuis la forge de chaque dépôt** (chargée à part, best-effort : rien ne casse si une forge est injoignable).
 Chaque graphe affiche **la question à laquelle il répond**. Le total de tokens est un **minorant** (le
 travail interne de l'agent n'est pas compté).
 
@@ -313,10 +407,12 @@ travail interne de l'agent n'est pas compté).
 Sous-onglets : **Règles de review spécifiques** (critères ajoutés au prompt quand le nom de
 branche contient un fragment donné **ou quand le diff touche un chemin** — glob type `**/migrations/**`,
 `*.sql` —, plus précis ; une règle par chemin peut porter un **badge « risque »** affiché sur les MR
-concernées, calculé **sans IA** juste sur les chemins du diff, pour voir d'un coup d'œil laquelle reviewer en premier) · **Dépôts** (ajout un par un ou en masse depuis la forge, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ·
+concernées, calculé **sans IA** juste sur les chemins du diff, pour voir d'un coup d'œil laquelle reviewer en premier) · **Dépôts** (ajout un par un ou en masse **depuis GitLab** ou **depuis GitHub** — chaque dépôt porte un badge
+de forge, et un même chemin peut exister sur les deux —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ·
 **Notifications** (sous-onglet dédié, voir ci-dessous) ·
 **Général** (thème clair/sombre/auto, langue, et une **zone dangereuse** pour la remise à zéro) ·
-**Git** (**connexion GitLab** — URL + access token, avec *Tester la connexion* —, **dossier de clonage**,
+**Git** (**connexion GitLab** — URL + access token, avec *Tester la connexion* —, **connexion GitHub** — URL
+(vide = github.com, sinon GitHub Enterprise) + token, avec *Tester GitHub* —, **dossier de clonage**,
 et la **palette de commandes git** de l'onglet *Git → Commandes Git* : ajout/édition/suppression de
 commandes *nom + commande figée*) ·
 **Jira** (**connexion Jira** — URL + email + jeton d'API, avec un bouton *Tester Jira* — ; alimente l'onglet
@@ -353,11 +449,36 @@ seuls les gabarits restés au défaut sont réalignés.
 > Contrôle de cohérence du dictionnaire : `npm run i18n:check`.
 
 ### Confort d'usage
-Onglet et sous-onglet **mémorisés** d'une session à l'autre · **raccourcis clavier** (`1`-`7` onglets,
-`/` recherche, `r` chercher les MR, `l` logs, `?` aide, `Échap` ferme) · **favicon dynamique** pendant
-un job · messages d'erreur **traduits en actions** (certificat, token, CLI introuvable, timeout,
-réseau) · **onboarding en 3 étapes** tant que la connexion et les dépôts ne sont pas configurés ·
-chaque champ de formulaire porte une **icône i** dont le survol (ou le focus clavier) explique à quoi il sert.
+Onglet, sous-onglet **et stade de Reviews mémorisés** d'une session à l'autre — et **rien d'autre** :
+ni recherche, ni modale, ni rapport ouvert, car un état périmé est pire qu'un démarrage propre ·
+**raccourcis clavier** (`1`-`7` onglets, `/` recherche, `r` chercher les MR, `l` logs, `?` aide,
+`Échap` ferme) · **favicon dynamique** pendant un job · messages d'erreur **traduits en actions**
+(certificat, token, CLI introuvable, timeout, réseau) · **onboarding en 3 étapes** tant que la
+connexion et les dépôts ne sont pas configurés · chaque champ de formulaire porte une **icône i** dont
+le survol (ou le focus clavier) explique à quoi il sert.
+
+- **Palette de commandes — `Ctrl`/`Cmd` + `K`.** On tape un fragment et on saute où l'on veut : un
+  onglet, un stade, une merge request, une session — la recherche porte sur ce qui est déjà chargé,
+  donc elle répond sans appeler le serveur. `?` affiche la liste complète des raccourcis.
+- **Parcourir la liste au clavier** : `j` / `k` descendent et remontent dans la liste visible, `Entrée`
+  ouvre, `Échap` relâche. Aucun cadre de focus n'apparaît tant qu'on n'a pas appuyé sur une touche.
+- **L'interface se tient tranquille.** Un rafraîchissement qui ne change rien ne reconstruit plus la
+  liste : la page ne cligne pas pendant qu'on la lit. Quand une liste se charge vraiment, ses cartes
+  arrivent en cascade — une fois, au chargement, pas à chaque caractère tapé dans un filtre.
+- **Ce qui tourne est marqué sur l'objet qui tourne** : la merge request ou la session concernée porte
+  un liseré animé, **un seul objet à la fois**. Il se fige quand l'onglet passe en arrière-plan et reste
+  immobile si le système demande moins d'animations.
+- **Le journal ne mange plus le navigateur** : au-delà de quelques milliers de lignes, les plus
+  anciennes sont élaguées et un bandeau le dit.
+- **Le panneau de rapport ouvre sur ce qui a changé depuis la dernière visite** — arrivées, sorties, et
+  celle qui attend depuis le plus longtemps. Trois lignes au maximum, et **rien du tout** quand rien
+  n'a bougé.
+- **Lire un rapport survit à un rafraîchissement** : position de défilement, onglet et version consultée
+  sont conservés tant que le rapport lui-même n'a pas changé.
+- Une **ligne d'identité trop longue** (chemin de projet, auteur, date) est tronquée à la largeur de la
+  carte : le survol en montre alors le texte complet — l'info-bulle n'apparaît que si le texte est
+  réellement coupé, et disparaît quand la fenêtre s'élargit. Les liens vers le **ticket** et vers la
+  **forge** ont leur propre ligne, où ils passent à la ligne au lieu d'être coupés.
 
 ## Configuration (.env)
 
@@ -373,17 +494,23 @@ Un fichier `.env` à la racine est chargé automatiquement au démarrage.
 | `COPILOT_TIMEOUT_MS` | 900000 | timeout d'un appel IA (15 min) |
 | `GITLAB_CA_CERT` | — | chemin d'un CA à épingler (GitLab self-hosted) — **recommandé** |
 | `GITLAB_INSECURE_TLS` | 0 | `1` = ignore la vérif TLS **pour GitLab uniquement** (dépannage) |
+| `GITHUB_CA_CERT` | — | idem pour une instance **GitHub Enterprise** à CA interne |
+| `GITHUB_INSECURE_TLS` | 0 | `1` = ignore la vérif TLS **pour GitHub uniquement** (dépannage) |
 | `GIT_CLONE_SSH` | 0 | `1` = clone via SSH (ta clé) au lieu de HTTPS+token |
 | `MERGERIE_DATA_DIR` | `data/` | dossier de données isolé (utile pour les tests) |
 
 L'agent IA doit pouvoir **modifier des fichiers** (mode « yolo ») pour les sessions de codage. Les explorations, elles, sont en lecture seule : les dépôts sont remis à zéro après chaque passe.
 
-## GitLab self-hosted / certificat d'entreprise
+## GitLab self-hosted / GitHub Enterprise / certificat d'entreprise
 
 Si l'API échoue avec `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` (CA interne inconnue de Node) :
-- **propre** : exporte le CA (chaîne complète jusqu'à la racine) et pointe `GITLAB_CA_CERT=/chemin/ca.pem` ;
-- **dépannage** : `GITLAB_INSECURE_TLS=1`.
-Pour le **clone**, `git` a son propre store : soit `GIT_CLONE_SSH=1` (clé SSH), soit les réglages ci-dessus sont aussi appliqués à git.
+- **propre** : exporte le CA (chaîne complète jusqu'à la racine) et pointe `GITLAB_CA_CERT=/chemin/ca.pem`
+  (ou `GITHUB_CA_CERT` pour une instance GitHub Enterprise) ;
+- **dépannage** : `GITLAB_INSECURE_TLS=1` / `GITHUB_INSECURE_TLS=1`.
+
+Les deux réglages sont **indépendants** : épingler le CA de ton GitLab interne ne change rien aux appels
+vers github.com. Pour le **clone**, `git` a son propre store : soit `GIT_CLONE_SSH=1` (clé SSH), soit les
+réglages ci-dessus sont aussi appliqués à git.
 
 ## Enregistrer une vidéo de présentation (prête pour YouTube)
 
@@ -441,7 +568,7 @@ Par défaut, **le serveur n'écoute QUE sur `localhost`** (`127.0.0.1`) : il n'e
 le réseau. L'exposer est un **opt-in explicite** via `HOST=0.0.0.0` — à **réserver à un réseau de confiance**
 (ou derrière un **reverse-proxy avec authentification**), jamais sur un réseau ouvert : l'app n'a pas d'auth
 et exécute des opérations puissantes sur ta machine. Aucune donnée n'est envoyée ailleurs que vers les
-services que **tu** configures (ton GitLab, ton Jira, ton CLI d'agent).
+services que **tu** configures (ton GitLab, ton GitHub, ton Jira, ton CLI d'agent).
 
 **Permissions de l'agent IA (« mode yolo »).** L'agent tourne avec ses garde-fous de permissions
 **désactivés** (« yolo ») car les sessions de codage l'exigent : il doit pouvoir créer, modifier et
@@ -452,7 +579,7 @@ que **lire un diff**. Mais pendant une **session de codage**, l'agent dispose de
 sur la machine** — rien ne l'empêche techniquement d'agir hors du clone. C'est le **compromis assumé** d'un
 outil **local mono-utilisateur** : à connaître avant usage, et une raison de plus de ne pas exposer le serveur.
 
-**Secrets.** Le **PAT GitLab** et le **jeton d'API Jira** sont stockés **en local** (SQLite, `data/` est
+**Secrets.** Le **PAT GitLab**, le **token GitHub** et le **jeton d'API Jira** sont stockés **en local** (SQLite, `data/` est
 gitignored). L'API et l'UI ne les renvoient **jamais en clair** : ils sont masqués (`***`) en lecture, et
 envoyer `***` en écriture **ne les écrase pas**. Le `.env` (qui peut porter des jetons d'environnement)
 est lui aussi gitignored.
@@ -490,5 +617,6 @@ opérations git multi-dépôts, **suppressions de branches/tags restaurables** (
 local avant suppression), Docker `down` en aperçu et volumes préservés, et **jamais de merge automatique**
 d'une MR.
 
-**TLS entreprise.** Pour un GitLab self-hosted à CA interne, fournis `GITLAB_CA_CERT`. `GITLAB_INSECURE_TLS=1`
+**TLS entreprise.** Pour un GitLab self-hosted ou un GitHub Enterprise à CA interne, fournis `GITLAB_CA_CERT`
+/ `GITHUB_CA_CERT`. `GITLAB_INSECURE_TLS=1` / `GITHUB_INSECURE_TLS=1`
 **désactive** la vérification du certificat : à **réserver à un réseau interne de confiance**.

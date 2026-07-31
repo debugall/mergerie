@@ -44,18 +44,25 @@ const glob = require('./glob');
 const notify = require('./notify');
 const gitgraph = require('./gitgraph');
 const { t } = i18n;
+/* Quelques routes nomment leur variable locale `t` (la tâche) et masquaient alors la
+   fonction de traduction : le message d'erreur devenait « t is not a function », c'est-à-dire
+   exactement rien pour qui le lit. `tt` est le même `t`, mais qu'aucune locale ne masque. */
+const tt = t;
 const { discoverAll } = require('./discover');
 const jobs = require('./jobs');
 const reviewer = require('./reviewer');
 const converge = require('./converge');
-const gitlab = require('./gitlab');
+const forge = require('./forge');
 const git = require('./git');
 const demoGit = require('./demo-git');
 const docker = require('./docker');
 const demoDocker = require('./demo-docker');
 const demoJira = require('./demo-jira');
+const demoComments = require('./demo-comments');
+const { StringDecoder } = require('node:string_decoder');
 const aisession = require('./aisession');
 const agentsession = require('./agentsession');
+const agentpass = require('./agentpass');
 const localrepos = require('./localrepos');
 const copilot = require('./copilot');
 
@@ -96,7 +103,7 @@ function repoById(id) {
 }
 function mrById(id) {
   return db.prepare(`
-    SELECT mr.*, repo.project AS project, repo.url AS url, repo.branch_pattern AS branch_pattern
+    SELECT mr.*, repo.project AS project, repo.url AS url, repo.branch_pattern AS branch_pattern, repo.forge AS forge
     FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?`).get(id);
 }
 function readFileSafe(p) {
@@ -124,9 +131,12 @@ app.get('/api/status', wrap((req, res) => {
     copilotCmdPreview: `${copilot.COPILOT_BIN} ${[...copilot.EXTRA_ARGS, '-p', '"<prompt>"'].join(' ')}`,
     job: jobs.currentJob(),
     running: jobs.isRunning(),
+    // Objets en cours de traitement : le front marque la carte concernée (cf. P9).
+    targets: jobs.runningTargets(),
     queued: jobs.queueCount(),
     autoRefreshMinutes: Number(getConfig().auto_refresh_minutes) || 0,
     jiraConfigured: jira.isConfigured(getConfig()), // pilote l'UI « enrichir depuis Jira »
+    githubConfigured: forge.isConfigured(getConfig(), 'github'), // pilote l'UI « ajout en masse depuis GitHub »
   });
 }));
 
@@ -300,11 +310,11 @@ app.get('/api/stats', wrap((req, res) => {
    (qui reste local et instantané) — le dashboard le charge en asynchrone. */
 app.get('/api/dashboard/commits', wrap(async (req, res) => {
   const cfg = getConfig();
-  if (!cfg.gitlab_url || !cfg.access_token) { res.json({ configured: false, commits: [] }); return; }
-  const repos = db.prepare('SELECT project FROM repo WHERE enabled = 1').all();
+  if (!forge.isConfigured(cfg, 'gitlab') && !forge.isConfigured(cfg, 'github')) { res.json({ configured: false, commits: [] }); return; }
+  const repos = db.prepare('SELECT project, forge FROM repo WHERE enabled = 1').all();
   const commits = await Promise.all(repos.map(async (r) => {
     try {
-      const c = await gitlab.latestCommit(cfg, r.project);
+      const c = await forge.clientFor(r).latestCommit(cfg, r.project);
       if (!c) return null;
       return {
         project: r.project,
@@ -468,7 +478,7 @@ app.get('/api/footer', wrap((req, res) => {
 
 app.get('/api/config', wrap((req, res) => {
   const c = getConfig();
-  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '' });
+  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '' });
 }));
 
 // Test de la connexion Jira : récupère un ticket témoin pour valider URL/email/token.
@@ -562,10 +572,17 @@ app.get('/api/jira/attachment/:id', wrap(async (req, res) => {
 // Récupère un ticket Jira par son numéro et renvoie son contexte prêt à injecter
 // (titre + description en Markdown). Utilisé pour enrichir une session de dev.
 app.post('/api/jira/fetch', wrap(async (req, res) => {
-  const cfg = getConfig();
-  if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const key = String((req.body && req.body.key) || '').trim().toUpperCase();
   if (!key) throw new Error(t('err.jira.test-key-required'));
+  // En démo, comme les autres routes Jira : le contexte vient du jeu fictif, sinon
+  // « Faire coder l'IA » et « Récupérer » seraient les seuls boutons Jira inertes.
+  if (demoDocker.isDemo()) {
+    const d = demoJira.issue(key);
+    const body = [`# ${d.summary}`, '', d.descriptionMd || ''].join('\n');
+    return res.json({ key: d.key, summary: d.summary, context: body });
+  }
+  const cfg = getConfig();
+  if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const issue = await jira.fetchIssue(cfg, key);
   res.json({ key: issue.key, summary: issue.summary, context: jira.issueToContext(issue) });
 }));
@@ -639,10 +656,11 @@ app.put('/api/config', wrap((req, res) => {
   // ne pas écraser un secret si le front renvoie le masque
   if (patch.access_token === '***') delete patch.access_token;
   if (patch.jira_token === '***') delete patch.jira_token;
+  if (patch.github_token === '***') delete patch.github_token;
   const c = updateConfig(patch);
   i18n.setLang(c.language);   // les messages d'erreur suivent la nouvelle langue
   restartAutoRefresh(); // prend en compte le nouvel intervalle
-  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '' });
+  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '' });
 }));
 
 /* ---------- Repos (admin) ---------- */
@@ -653,13 +671,18 @@ app.get('/api/repos', wrap((req, res) => {
 app.post('/api/repos', wrap((req, res) => {
   const { url, branch_pattern } = req.body || {};
   if (!url) throw new Error(t('err.l-url-du-depot-est'));
-  // project optionnel : déduit de l'URL si non fourni
-  const project = (req.body.project || '').trim() || gitlab.normalizeProject(url);
+  // Forge du dépôt : explicite, sinon déduite de l'URL (github.com → github).
+  const forgeName = req.body.forge ? forge.normalizeForge(req.body.forge)
+    : (/github/i.test(String(url)) ? 'github' : 'gitlab');
+  // project optionnel : déduit de l'URL si non fourni, avec le normalizer de la forge
+  const project = (req.body.project || '').trim() || forge.clientFor({ forge: forgeName }).normalizeProject(url);
   if (!project) throw new Error(t('err.impossible-de-deduire-le-chemin'));
   // pattern vide autorisé = toutes les MR (on ne force plus 'PROJ-')
   const pattern = (branch_pattern ?? '').trim();
-  const info = db.prepare(`INSERT INTO repo (project, url, branch_pattern, enabled, created_at)
-    VALUES (?, ?, ?, 1, ?)`).run(project, url.trim(), pattern, new Date().toISOString());
+  const dup = db.prepare('SELECT id FROM repo WHERE project = ? AND COALESCE(forge, ?) = ?').get(project, 'gitlab', forgeName);
+  if (dup) throw new Error(t('err.repo-already-added', { project, forge: forge.label(forgeName) }));
+  const info = db.prepare(`INSERT INTO repo (project, url, branch_pattern, enabled, created_at, forge)
+    VALUES (?, ?, ?, 1, ?, ?)`).run(project, url.trim(), pattern, new Date().toISOString(), forgeName);
   res.json(repoById(info.lastInsertRowid));
 }));
 
@@ -670,7 +693,7 @@ app.put('/api/repos/:id', wrap((req, res) => {
   const nextUrl = url != null ? String(url).trim() : cur.url;
   // project : fourni explicitement, sinon déduit de l'URL, sinon inchangé
   let project = (req.body.project || '').trim();
-  if (!project) project = url != null ? gitlab.normalizeProject(nextUrl) : cur.project;
+  if (!project) project = url != null ? forge.clientFor(cur).normalizeProject(nextUrl) : cur.project;
   // pattern : vide autorisé (= toutes les MR)
   const pattern = branch_pattern != null ? String(branch_pattern).trim() : cur.branch_pattern;
   db.prepare(`UPDATE repo SET project = ?, url = ?, branch_pattern = ?, enabled = ? WHERE id = ?`)
@@ -948,12 +971,18 @@ app.get('/api/docker/logs/stream', (req, res) => {
       const child = await docker.spawnLogs(id, tail);
       if (closed) { try { child.kill('SIGKILL'); } catch { /* course : client déjà parti */ } return; }
       children.push(child);
-      let ob = ''; let eb = '';
+      /* Un StringDecoder par flux, et non `String(chunk)` : un caractère UTF-8 multi-octets
+         à cheval sur deux chunks serait sinon décodé en deux moitiés invalides, et chaque
+         accent tombant sur une frontière deviendrait un « ￰ ». Le decoder garde l'octet
+         orphelin pour le chunk suivant. */
+      const dec = { o: new StringDecoder('utf8'), e: new StringDecoder('utf8') };
+      const buf = { o: '', e: '' };
       const pump = (chunk, which) => {
-        const merged = (which === 'o' ? ob : eb) + chunk;
-        const parts = merged.split('\n');
-        const rem = parts.pop();
-        if (which === 'o') ob = rem; else eb = rem;
+        const parts = (buf[which] + dec[which].write(chunk)).split('\n');
+        buf[which] = parts.pop();
+        /* La ligne part BRUTE, séquences de couleur comprises : c'est le client qui décide
+           d'afficher du texte nu (par défaut) ou des couleurs, sans relancer le flux.
+           Nettoyer ici interdirait la case à cocher. */
         for (const line of parts) send({ c: id, m: line });
       };
       child.stdout.on('data', (d) => pump(d, 'o'));
@@ -969,7 +998,7 @@ app.get('/api/docker/logs/stream', (req, res) => {
 // Liste les projets GitLab accessibles, en marquant ceux déjà ajoutés.
 app.get('/api/gitlab/projects', wrap(async (req, res) => {
   const cfg = getConfig();
-  const projects = await gitlab.listAccessibleProjects(cfg);
+  const projects = await forge.gitlab.listAccessibleProjects(cfg);
   const existing = new Set(db.prepare('SELECT project FROM repo').all().map((r) => r.project));
   res.json(projects.map((p) => ({ ...p, already: existing.has(p.project) })));
 }));
@@ -978,41 +1007,95 @@ app.get('/api/gitlab/projects', wrap(async (req, res) => {
 app.get('/api/gitlab/branches', wrap(async (req, res) => {
   const repo = repoById(Number(req.query.repo_id));
   if (!repo) throw new Error(t('err.depot-introuvable'));
-  const r = await gitlab.listBranches(getConfig(), repo.project);
+  const r = await forge.clientFor(repo).listBranches(getConfig(), repo.project);
   res.json(r);
+}));
+
+// Liste les dépôts GitHub accessibles, en marquant ceux déjà ajoutés.
+app.get('/api/github/projects', wrap(async (req, res) => {
+  const cfg = getConfig();
+  const projects = await forge.github.listAccessibleProjects(cfg);
+  const existing = new Set(db.prepare("SELECT project FROM repo WHERE forge = 'github'").all().map((r) => r.project));
+  res.json(projects.map((p) => ({ ...p, already: existing.has(p.project) })));
+}));
+
+// Test de la connexion GitHub : renvoie le compte associé au token.
+// Le front peut renvoyer le masque : on teste alors avec le token déjà en base.
+app.post('/api/github/test', wrap(async (req, res) => {
+  const cfg = getConfig();
+  const test = { ...cfg };
+  if (req.body && req.body.github_url != null) test.github_url = req.body.github_url;
+  if (req.body && req.body.github_token && req.body.github_token !== '***') test.github_token = req.body.github_token;
+  if (!forge.github.isConfigured(test)) throw new Error(t('err.token-github-non-configure'));
+  res.json({ ok: true, ...(await forge.github.testConnection(test)) });
 }));
 
 // Ajout en masse de dépôts sélectionnés (ignore les doublons).
 app.post('/api/repos/bulk', wrap((req, res) => {
   const { projects, branch_pattern } = req.body || {};
   if (!Array.isArray(projects) || !projects.length) throw new Error(t('err.aucun-projet-selectionne'));
+  // `forge` absent = gitlab : le contrat de l'API ne change pas pour l'existant.
+  const forgeName = forge.normalizeForge(req.body && req.body.forge);
+  const api = forge.clientFor({ forge: forgeName });
   const pattern = (branch_pattern ?? '').trim();
   const now = new Date().toISOString();
-  const existing = new Set(db.prepare('SELECT project FROM repo').all().map((r) => r.project));
-  const ins = db.prepare('INSERT INTO repo (project, url, branch_pattern, enabled, created_at) VALUES (?,?,?,1,?)');
+  // Unicité par COUPLE (forge, projet) : « acme/web » peut exister sur les deux forges.
+  const key = (f, p) => `${f}:${p}`;
+  const existing = new Set(db.prepare('SELECT project, forge FROM repo').all()
+    .map((r) => key(forge.forgeOf(r), r.project)));
+  const ins = db.prepare('INSERT INTO repo (project, url, branch_pattern, enabled, created_at, forge) VALUES (?,?,?,1,?,?)');
   let added = 0; let skipped = 0;
   const tx = db.transaction((list) => {
     for (const p of list) {
-      const proj = gitlab.normalizeProject(p.project || p.url);
-      if (!proj || existing.has(proj)) { skipped += 1; continue; }
-      ins.run(proj, String(p.url || '').trim(), pattern, now);
-      existing.add(proj); added += 1;
+      const proj = api.normalizeProject(p.project || p.url);
+      if (!proj || existing.has(key(forgeName, proj))) { skipped += 1; continue; }
+      ins.run(proj, String(p.url || '').trim(), pattern, now, forgeName);
+      existing.add(key(forgeName, proj)); added += 1;
     }
   });
   tx(projects);
   res.json({ added, skipped });
 }));
 
+/* Liste des passes d'une unité + la passe demandée (la dernière par défaut). Commun aux
+   sessions sur dépôt et au codage hors dépôt : une seule forme de réponse à afficher. */
+function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) {
+  const passes = agentpass.list(scope, taskId, unitId)
+    .map((p) => ({ n: p.n, kind: p.kind, created_at: p.created_at, has_output: !!p.output_path }));
+
+  /* Sessions antérieures à l'historique des passes : elles n'ont aucune ligne
+     `agent_pass`, mais leur `output_path` pointe toujours un retour valide. On le
+     présente comme une passe unique — sans lui, « Retour de l'IA » deviendrait vide
+     sur tout l'existant. Le prompt de l'époque, lui, n'a pas été conservé. */
+  if (!passes.length) {
+    const output = legacyOutputPath ? readFileSafe(legacyOutputPath) : null;
+    if (!output) return { title, passes: [], current: null };
+    return {
+      title,
+      passes: [{ n: 1, kind: 'legacy', created_at: null, has_output: true }],
+      current: { n: 1, kind: 'legacy', created_at: null, prompt: '', output },
+    };
+  }
+
+  const n = Number(wantedN) || passes[passes.length - 1].n;
+  const current = agentpass.get(scope, taskId, unitId, n);
+  return {
+    title,
+    passes,
+    current: current ? { n: current.n, kind: current.kind, created_at: current.created_at, prompt: current.prompt, output: current.output } : null,
+  };
+}
+
 /* ---------- Tasks (tâches de dev pilotées par l'IA) ---------- */
 function taskById(id) {
-  return db.prepare(`SELECT task.*, repo.project AS project FROM task JOIN repo ON repo.id = task.repo_id WHERE task.id = ?`).get(id);
+  return db.prepare(`SELECT task.*, repo.project AS project, repo.forge AS forge FROM task JOIN repo ON repo.id = task.repo_id WHERE task.id = ?`).get(id);
 }
 function taskImages(id) {
   return db.prepare('SELECT id, path FROM task_image WHERE task_id = ? ORDER BY id').all(id);
 }
 // Les projets d'une session, avec leur état d'exécution propre (commit, diff, MR…).
 function taskTargets(taskId) {
-  const rows = db.prepare(`SELECT tt.*, repo.project AS project,
+  const rows = db.prepare(`SELECT tt.*, repo.project AS project, repo.forge AS forge,
       mr.iid AS existing_mr_iid, mr.web_url AS existing_mr_url
     FROM task_target tt
     JOIN repo ON repo.id = tt.repo_id
@@ -1038,7 +1121,7 @@ function effectiveMr(tg) {
   return found ? { iid: found.iid, fromApp: false } : null;
 }
 function targetById(taskId, targetId) {
-  return db.prepare(`SELECT tt.*, repo.project AS project
+  return db.prepare(`SELECT tt.*, repo.project AS project, repo.forge AS forge
     FROM task_target tt JOIN repo ON repo.id = tt.repo_id
     WHERE tt.id = ? AND tt.task_id = ?`).get(targetId, taskId);
 }
@@ -1063,10 +1146,47 @@ function normalizeTargets(targets, kind) {
     };
   });
 }
-function insertTargets(taskId, list) {
-  const ins = db.prepare("INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, updated_at) VALUES (?, ?, ?, ?, 'new', ?)");
+function insertTargets(taskId, list, sessionId) {
+  /* `sessionId` : session d'agent EXISTANTE fournie à la création. On la range comme si la
+     première passe l'avait créée — les exécutants reprennent déjà une session dès qu'un
+     handle est présent, il n'y a donc rien à changer chez eux. `session_cwd` reste NULL à
+     dessein : on ignore d'où vient cette session, et le garde-fou « même cwd » ne doit pas
+     refuser ce que l'utilisateur a explicitement demandé. Si la reprise échoue, le repli
+     existant repart sur une session neuve avec le contexte réinjecté. */
+  const ins = db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, session_key, session_backend, updated_at)
+    VALUES (?, ?, ?, ?, 'new', ?, ?, ?)`);
   const now = new Date().toISOString();
-  for (const t of list) ins.run(taskId, t.repo_id, t.branch, t.base_branch || null, now);
+  const backend = sessionId ? agentsession.backendName() : null;
+  for (const t of list) ins.run(taskId, t.repo_id, t.branch, t.base_branch || null, sessionId || null, backend, now);
+}
+
+/* Un identifiant de session est passé TEL QUEL à l'agent : `--resume <id>` pour claude,
+   `COPILOT_HOME=<chemin>` pour copilot. Il ne doit donc jamais pouvoir passer pour un flag,
+   et pour claude il a une forme connue — autant refuser tout de suite plutôt que d'échouer
+   au milieu d'un job, une fois les dépôts clonés. */
+/* Applique une session fournie aux unités d'une session (projets ou dossiers). N'écrit QUE
+   si la valeur change vraiment : rouvrir la modale pour corriger un prompt ne doit pas
+   réécrire des handles corrects, ni effacer le `session_cwd` qui protège la reprise.
+   Un champ VIDE ne signifie jamais « efface » — on ne perd pas une session d'un formulaire
+   simplement soumis ; pour repartir à neuf, on change les unités, ce qui les recrée. */
+function applySessionId(table, key, taskId, sessionId, units) {
+  if (!sessionId) return;
+  const commun = units.length && units.every((u) => u.session_key && u.session_key === units[0].session_key)
+    ? units[0].session_key : null;
+  if (sessionId === commun) return;
+  db.prepare(`UPDATE ${table} SET session_key = ?, session_backend = ?, session_cwd = NULL WHERE ${key} = ?`)
+    .run(sessionId, agentsession.backendName(), taskId);
+}
+
+function normalizeSessionId(raw) {
+  const id = String(raw || '').trim();
+  if (!id) return null;
+  if (id.startsWith('-')) throw new Error(t('err.session-id-invalide'));
+  if (agentsession.backendName() === 'claude'
+    && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error(t('err.session-id-uuid-attendu'));
+  }
+  return id;
 }
 // Nom de branche sûr : pas de flag (pas de `-` en tête), pas de `..`, caractères limités.
 // Empêche l'injection d'arguments dans les commandes git.
@@ -1121,7 +1241,7 @@ app.get('/api/tasks', wrap((req, res) => {
 
 app.get('/api/tasks/:id', wrap((req, res) => {
   const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(t('err.session-introuvable'));
+  if (!t) throw new Error(tt('err.session-introuvable'));
   res.json({
     task: { ...t, targets: taskTargets(t.id) },
     images: taskImages(t.id).map((im, i) => ({ id: im.id, idx: i })),
@@ -1131,9 +1251,10 @@ app.get('/api/tasks/:id', wrap((req, res) => {
 // Crée une session : `kind` = 'code' (l'IA modifie le code) ou 'explore' (lecture seule).
 // `targets` = [{ repo_id, branch }] — une session peut porter sur plusieurs projets.
 app.post('/api/tasks', wrap((req, res) => {
-  const { kind, prompt, commit_message, auto_push, images, targets, ask_questions } = req.body || {};
+  const { kind, prompt, commit_message, auto_push, images, targets, ask_questions, session_id } = req.body || {};
   const k = kind === 'explore' ? 'explore' : 'code';
   if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
+  const sessionId = normalizeSessionId(session_id);
   const list = normalizeTargets(targets, k);
   const now = new Date().toISOString();
   // « L'IA peut poser des questions » : opt-in, uniquement pertinent en codage.
@@ -1146,15 +1267,16 @@ app.post('/api/tasks', wrap((req, res) => {
     list[0].repo_id, k, prompt.trim(), list[0].branch || '',
     (commit_message || '').trim() || null, auto_push ? 1 : 0, ask, now, now);
   const taskId = info.lastInsertRowid;
-  insertTargets(taskId, list);
+  insertTargets(taskId, list, sessionId);
   saveTaskImages(taskId, images);
   res.json({ ...taskById(taskId), targets: taskTargets(taskId) });
 }));
 
 app.put('/api/tasks/:id', wrap((req, res) => {
   const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(t('err.session-introuvable'));
-  const { prompt, commit_message, auto_push, images, targets, ask_questions } = req.body || {};
+  if (!t) throw new Error(tt('err.session-introuvable'));
+  const { prompt, commit_message, auto_push, images, targets, ask_questions, session_id } = req.body || {};
+  const sessionId = normalizeSessionId(session_id);
   if (Array.isArray(targets) && targets.length) {
     const list = normalizeTargets(targets, t.kind);
     // on ne recrée que si la composition change, pour préserver l'état d'exécution
@@ -1174,14 +1296,29 @@ app.put('/api/tasks/:id', wrap((req, res) => {
     new Date().toISOString(), t.id,
   );
   saveTaskImages(t.id, images);
+  // Après une éventuelle recréation des cibles : celles-ci repartent sans handle.
+  applySessionId('task_target', 'task_id', t.id, sessionId, taskTargets(t.id));
   res.json({ ...taskById(t.id), targets: taskTargets(t.id) });
 }));
 
 app.delete('/api/tasks/:id', wrap((req, res) => {
   db.prepare('DELETE FROM task_target WHERE task_id = ?').run(Number(req.params.id));
+  agentpass.removeTask('task', Number(req.params.id));   // pas de FK : nettoyage explicite
   db.prepare('DELETE FROM task WHERE id = ?').run(Number(req.params.id));
   try { fs.rmSync(path.join(TASKS_DIR, String(Number(req.params.id))), { recursive: true, force: true }); } catch { /* rien */ }
   res.json({ ok: true });
+}));
+
+/* Ranger / ressortir une session. Volontairement séparé de PUT /tasks/:id : c'est un geste
+   de rangement, qui doit rester possible sur une session en cours d'exécution — le PUT, lui,
+   refuse d'éditer une session lancée. */
+app.post('/api/tasks/:id/hidden', wrap((req, res) => {
+  const t2 = taskById(Number(req.params.id));
+  if (!t2) throw new Error(t('err.session-introuvable'));
+  const hidden = (req.body && req.body.hidden) ? 1 : 0;
+  db.prepare('UPDATE task SET hidden = ?, updated_at = ? WHERE id = ?')
+    .run(hidden, new Date().toISOString(), t2.id);
+  res.json({ ok: true, hidden });
 }));
 
 app.delete('/api/tasks/:id/image/:imgId', wrap((req, res) => {
@@ -1204,6 +1341,41 @@ app.get('/api/tasks/:id/targets/:tid/diff', wrap((req, res) => {
   res.json({ diff: tg.diff_path ? readFileSafe(tg.diff_path) : null, project: tg.project, branch: tg.branch });
 }));
 
+/* Viewer plein écran d'un projet de session : MÊMES trois routes que pour une MR
+   (`viewerPayload` / `viewerFile` / `viewerFileDiff`), donc le front réutilise le
+   même composant en changeant seulement la base d'URL. */
+app.get('/api/tasks/:id/targets/:tid/diffview', wrap(async (req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  const ctx = targetCloneCtx(tg);
+  // Le diff produit par la session est stocké ; s'il manque (session ancienne), on le
+  // recalcule depuis la branche de départ.
+  let diff = tg.diff_path ? readFileSafe(tg.diff_path) : null;
+  if (!diff) { try { diff = await git.branchDiff(ctx.cwd, ctx.target); } catch { diff = ''; } }
+  res.json({
+    ...(await viewerPayload(ctx, { diff: diff || '', source: tg.branch })),
+    project: tg.project, branch: tg.branch,
+  });
+}));
+app.get('/api/tasks/:id/targets/:tid/file', wrap(async (req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  res.json(await viewerFile(targetCloneCtx(tg), String(req.query.path || '')));
+}));
+app.get('/api/tasks/:id/targets/:tid/filediff', wrap(async (req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  res.json(await viewerFileDiff(targetCloneCtx(tg), String(req.query.path || '')));
+}));
+
+/* Historique des ITÉRATIONS d'un projet de session : une entrée par passe, avec le
+   prompt réellement envoyé et le retour de l'agent. `?n=` renvoie une passe précise. */
+app.get('/api/tasks/:id/targets/:tid/passes', wrap((req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  res.json(passesPayload('task', tg.id, Number(req.params.id), req.query.n, `${tg.project} — ${tg.branch}`, tg.output_path));
+}));
+
 // Retour de l'agent pour un projet (ce qu'il dit avoir fait) — consultable en fin de session.
 app.get('/api/tasks/:id/targets/:tid/output', wrap((req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
@@ -1211,16 +1383,24 @@ app.get('/api/tasks/:id/targets/:tid/output', wrap((req, res) => {
   res.json({ output: tg.output_path ? readFileSafe(tg.output_path) : null, project: tg.project, branch: tg.branch });
 }));
 
+/* Historique des questions d'une exploration (niveau session, unité 0) : chaque
+   question de suivi a écrasé la réponse précédente, mais la passe est archivée. */
+app.get('/api/tasks/:id/passes', wrap((req, res) => {
+  const tk = taskById(Number(req.params.id));
+  if (!tk) throw new Error(t('err.session-introuvable'));
+  res.json(passesPayload('task', 0, tk.id, req.query.n, tk.prompt || '', tk.md_path));
+}));
+
 // Réponse .md d'une exploration.
 app.get('/api/tasks/:id/md', wrap((req, res) => {
   const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(t('err.session-introuvable'));
+  if (!t) throw new Error(tt('err.session-introuvable'));
   res.json({ md: t.md_path ? readFileSafe(t.md_path) : null, prompt: t.prompt, created_at: t.created_at });
 }));
 
 app.post('/api/tasks/:id/run', wrap((req, res) => {
   const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(t('err.session-introuvable'));
+  if (!t) throw new Error(tt('err.session-introuvable'));
   res.json(jobs.startTaskJob(t.id, 'run'));
 }));
 
@@ -1251,36 +1431,113 @@ app.get('/api/local-tasks', wrap((req, res) => {
   res.json(list);
 }));
 app.post('/api/local-tasks', wrap((req, res) => {
-  const { prompt, dirs, images } = req.body || {};
+  const { prompt, dirs, images, session_id } = req.body || {};
   if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
+  const sessionId = normalizeSessionId(session_id);
   const list = (Array.isArray(dirs) ? dirs : []).map((d) => String(d || '').trim()).filter(Boolean);
   if (!list.length) throw new Error(t('err.local-dirs-required'));
   const now = new Date().toISOString();
   const id = db.prepare("INSERT INTO local_task (prompt, status, created_at, updated_at) VALUES (?, 'new', ?, ?)")
     .run(prompt.trim(), now, now).lastInsertRowid;
-  const ins = db.prepare("INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?, ?, 'new', ?)");
-  for (const p of [...new Set(list)]) ins.run(id, p, now);
+  // Même principe que pour les sessions sur dépôt : la session fournie est rangée comme
+  // si la première passe l'avait créée, `localcoder` la reprend alors sans rien savoir.
+  const ins = db.prepare(`INSERT INTO local_task_dir (task_id, path, status, session_key, session_backend, updated_at)
+    VALUES (?, ?, 'new', ?, ?, ?)`);
+  const backend = sessionId ? agentsession.backendName() : null;
+  for (const p of [...new Set(list)]) ins.run(id, p, sessionId || null, backend, now);
   saveLocalImages(id, images); // captures jointes au prompt (facultatif)
   res.json(localTaskById(id));
 }));
+// Détail d'une session hors dépôt (édition) — pendant de GET /api/tasks/:id.
+app.get('/api/local-tasks/:id', wrap((req, res) => {
+  const lt = localTaskById(Number(req.params.id));
+  if (!lt) throw new Error(t('err.session-introuvable'));
+  const images = db.prepare('SELECT id FROM local_task_image WHERE task_id = ? ORDER BY id').all(lt.id);
+  res.json({ task: lt, images: images.map((im, i) => ({ id: im.id, idx: i })) });
+}));
+
+/* Édition d'une session hors dépôt — même contrat que PUT /api/tasks/:id.
+   Les dossiers ne sont RECRÉÉS que si leur composition change : sinon on perdrait avec eux
+   le statut de chaque dossier, le retour de l'agent et surtout le handle de session — une
+   correction de faute de frappe dans le prompt repartirait de zéro. */
+app.put('/api/local-tasks/:id', wrap((req, res) => {
+  const lt = localTaskById(Number(req.params.id));
+  if (!lt) throw new Error(t('err.session-introuvable'));
+  const { prompt, dirs, images, session_id } = req.body || {};
+  const sessionId = normalizeSessionId(session_id);
+  if (Array.isArray(dirs) && dirs.length) {
+    const list = [...new Set(dirs.map((d) => String(d || '').trim()).filter(Boolean))];
+    if (!list.length) throw new Error(t('err.local-dirs-required'));
+    if (list.join('|') !== lt.dirs.map((d) => d.path).join('|')) {
+      const now = new Date().toISOString();
+      db.prepare('DELETE FROM local_task_dir WHERE task_id = ?').run(lt.id);
+      const ins = db.prepare("INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?, ?, 'new', ?)");
+      for (const p of list) ins.run(lt.id, p, now);
+    }
+  }
+  if (prompt != null && !String(prompt).trim()) throw new Error(t('err.prompt-requis'));
+  db.prepare('UPDATE local_task SET prompt = ?, updated_at = ? WHERE id = ?')
+    .run(prompt != null ? String(prompt).trim() : lt.prompt, new Date().toISOString(), lt.id);
+  saveLocalImages(lt.id, images);
+  applySessionId('local_task_dir', 'task_id', lt.id, sessionId, localDirsFor(lt.id));
+  res.json(localTaskById(lt.id));
+}));
+
 app.post('/api/local-tasks/:id/run', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
   res.json(jobs.startLocalJob(lt.id));
 }));
+// Demande de correction : nouvelle passe de l'IA sur les mêmes dossiers, en REPRENANT
+// la session de chacun (l'IA garde le contexte du travail qu'elle vient de produire).
+app.post('/api/local-tasks/:id/followup', wrap((req, res) => {
+  const lt = localTaskById(Number(req.params.id));
+  if (!lt) throw new Error(t('err.session-introuvable'));
+  const instruction = (req.body && req.body.instruction || '').trim();
+  if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
+  res.json(jobs.startLocalJob(lt.id, { instruction }));
+}));
+
+// Historique des itérations d'un dossier hors dépôt (même forme que côté session).
+app.get('/api/local-tasks/:id/dirs/:did/passes', wrap((req, res) => {
+  const d = db.prepare('SELECT * FROM local_task_dir WHERE id = ? AND task_id = ?')
+    .get(Number(req.params.did), Number(req.params.id));
+  if (!d) throw new Error(t('err.local-dir-introuvable'));
+  res.json(passesPayload('local', d.id, Number(req.params.id), req.query.n, d.path, d.output_path));
+}));
+
+// Retour de l'agent pour UN dossier (ce qu'il dit avoir fait).
+app.get('/api/local-tasks/:id/dirs/:did/output', wrap((req, res) => {
+  const d = db.prepare('SELECT * FROM local_task_dir WHERE id = ? AND task_id = ?')
+    .get(Number(req.params.did), Number(req.params.id));
+  if (!d) throw new Error(t('err.local-dir-introuvable'));
+  res.json({ output: d.output_path ? readFileSafe(d.output_path) : null, path: d.path });
+}));
+
 app.delete('/api/local-tasks/:id', wrap((req, res) => {
   const id = Number(req.params.id);
+  agentpass.removeTask('local', id);                     // pas de FK : nettoyage explicite
   db.prepare('DELETE FROM local_task WHERE id = ?').run(id); // cascade sur dirs + images
   try { fs.rmSync(path.join(TASKS_DIR, 'local', String(id)), { recursive: true, force: true }); } catch { /* rien */ }
   res.json({ ok: true });
 }));
 
+// Ranger / ressortir une session hors dépôt — pendant de POST /tasks/:id/hidden.
+app.post('/api/local-tasks/:id/hidden', wrap((req, res) => {
+  const lt = localTaskById(Number(req.params.id));
+  if (!lt) throw new Error(t('err.session-introuvable'));
+  const hidden = (req.body && req.body.hidden) ? 1 : 0;
+  db.prepare('UPDATE local_task SET hidden = ?, updated_at = ? WHERE id = ?')
+    .run(hidden, new Date().toISOString(), lt.id);
+  res.json({ ok: true, hidden });
+}));
+
 // Itération : nouvelle passe de l'IA (codage) ou question de suivi (exploration).
 app.post('/api/tasks/:id/followup', wrap((req, res) => {
   const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(t('err.session-introuvable'));
+  if (!t) throw new Error(tt('err.session-introuvable'));
   const instruction = (req.body && req.body.instruction || '').trim();
-  if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
+  if (!instruction) throw new Error(tt('err.demande-de-suivi-requise'));
   res.json(jobs.startTaskJob(t.id, 'followup', { instruction }));
 }));
 
@@ -1319,17 +1576,22 @@ app.post('/api/tasks/:id/targets/:tid/push', wrap((req, res) => {
 app.post('/api/tasks/:id/targets/:tid/mr', wrap(async (req, res) => {
   const t = taskById(Number(req.params.id));
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
-  if (!t || !tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
-  if (tg.status !== 'pushed') throw new Error(t('err.la-branche-doit-etre-poussee'));
+  if (!t || !tg) throw new Error(tt('err.projet-introuvable-pour-cette-session'));
+  if (tg.status !== 'pushed') throw new Error(tt('err.la-branche-doit-etre-poussee'));
   const already = effectiveMr(tg);
-  if (already) throw new Error(t('err.mr-already-open', { iid: already.iid }));
+  if (already) throw new Error(tt('err.mr-already-open', { iid: already.iid }));
   const cfg = getConfig();
   const title = (req.body && req.body.title || '').trim() || t.commit_message || tg.branch;
   let target = tg.base_branch;
-  if (!target) { const b = await gitlab.listBranches(cfg, tg.project); target = b.default || 'main'; }
-  const mr = await gitlab.createMergeRequest(cfg, tg.project, { source_branch: tg.branch, target_branch: target, title });
+  if (!target) { const b = await forge.clientFor(tg).listBranches(cfg, tg.project); target = b.default || 'main'; }
+  const squash = !!(req.body && req.body.squash);
+  const removeSourceBranch = !!(req.body && req.body.removeSourceBranch);
+  const mr = await forge.clientFor(tg).createMergeRequest(cfg, tg.project, {
+    source_branch: tg.branch, target_branch: target, title, squash, removeSourceBranch,
+  });
   db.prepare('UPDATE task_target SET mr_iid = ?, mr_url = ?, mr_target = ?, mr_merged = 0, updated_at = ? WHERE id = ?')
     .run(mr.iid, mr.web_url, target, new Date().toISOString(), tg.id);
+  rememberMergeOpts(tg.repo_id, mr.iid, squash, removeSourceBranch);
   res.json({ iid: mr.iid, url: mr.web_url });
 }));
 
@@ -1339,7 +1601,8 @@ app.post('/api/tasks/:id/targets/:tid/merge', wrap(async (req, res) => {
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
   const eff = effectiveMr(tg);
   if (!eff) throw new Error(t('err.aucune-mr-a-merger-pour'));
-  const merged = await gitlab.mergeMergeRequest(getConfig(), tg.project, eff.iid);
+  const known = db.prepare('SELECT * FROM mr WHERE repo_id = ? AND iid = ?').get(tg.repo_id, eff.iid);
+  const merged = await forge.clientFor(tg).mergeMergeRequest(getConfig(), tg.project, eff.iid, mergeOptsFor(known, req.body));
   // GitLab peut répondre 200 sans merge immédiat : on ne marque que si l'état est 'merged'.
   const isMerged = merged && merged.state === 'merged';
   if (isMerged) {
@@ -1408,28 +1671,79 @@ app.get('/api/jobs/current', wrap((req, res) => {
   res.json({ job: jobs.currentJob(), running: jobs.isRunning(), queued: jobs.queueCount() });
 }));
 
+// Sans id : tout arrêter (bouton du panneau). Avec un id : n'arrêter que ce job-là.
 app.post('/api/jobs/stop', wrap((req, res) => {
-  res.json(jobs.stopJob());
+  res.json(jobs.stopJob(req.body && req.body.job_id));
+}));
+app.post('/api/jobs/:id/stop', wrap((req, res) => {
+  res.json(jobs.stopJob(Number(req.params.id)));
 }));
 
-// Log incrémental du job courant (poll temps réel côté UI).
-app.get('/api/jobs/current/log', wrap((req, res) => {
-  const job = jobs.currentJob();
-  if (!job) return res.json({ job_id: null, lines: [], running: false });
-  const after = Number(req.query.after || 0);
+/* Ce qui tourne et ce qui attend. Les jobs en attente portent leurs `keys` (dépôts et
+   dossiers touchés) et les `conflicts` avec ce qui tourne : l'écran peut ainsi dire
+   POURQUOI un job ne peut pas démarrer tout de suite, au lieu de griser un bouton. */
+app.get('/api/jobs/queue', wrap((req, res) => {
+  res.json({
+    running: jobs.runningJobs(), queued: jobs.queuedJobs(),
+    parallelBusy: jobs.parallelBusy(), maxRunning: jobs.MAX_RUNNING,
+  });
+}));
+
+// Rejoue un job qui s'est arrêté ou a échoué, sur le même objet.
+app.post('/api/jobs/:id/retry', wrap((req, res) => {
+  res.json({ ok: true, job: jobs.retryJob(Number(req.params.id)) });
+}));
+
+// Sort un job de la file et le lance EN PARALLÈLE de celui en cours (refus si conflit).
+app.post('/api/jobs/:id/start-now', wrap((req, res) => {
+  res.json({ ok: true, job: jobs.startNow(Number(req.params.id)) });
+}));
+
+// Charge utile commune aux deux routes de log : le job, ses compteurs, ses lignes.
+function jobLogPayload(job, after) {
   const lines = db.prepare(
     'SELECT id, mr_id, text, ts FROM job_log WHERE job_id = ? AND id > ? ORDER BY id LIMIT 3000',
   ).all(job.id, after);
-  res.json({
+  return {
     job_id: job.id,
+    kind: job.kind,
     status: job.status,
     running: jobs.isRunning(),
+    // Les autres jobs EN COURS : le panneau en tire ses onglets sans requête de plus.
+    running_ids: jobs.runningJobs().map((j) => j.id),
     queued: jobs.queueCount(),
     message: job.message,
     total: job.total,
     done_count: job.done_count,
+    // Horodatages du job : le front en tire le temps écoulé. Il les calcule à partir de la
+    // date SERVEUR plutôt que de compter les secondes depuis l'ouverture de la page — sinon
+    // un onglet ouvert en cours de route afficherait un temps faux.
+    started_at: job.started_at,
+    finished_at: job.finished_at,
+    // Le serveur décide de ce qui est rejouable — le front n'a pas à connaître la liste.
+    can_retry: jobs.canRetry(job),
     lines,
-  });
+  };
+}
+
+// Log incrémental du job courant (poll temps réel côté UI).
+/* `expect` = le job que le client CROIT courant. Le job courant peut changer sous ses pieds
+   (le principal se termine, un job parallèle devient le plus récent en cours) : si l'id ne
+   correspond plus, son curseur ne vaut rien et on renvoie depuis le début, sinon il
+   manquerait toutes les lignes déjà produites par ce job-là. */
+app.get('/api/jobs/current/log', wrap((req, res) => {
+  const job = jobs.currentJob();
+  if (!job) return res.json({ job_id: null, lines: [], running: false });
+  const expect = Number(req.query.expect || 0);
+  const after = expect && expect === job.id ? Number(req.query.after || 0) : 0;
+  res.json(jobLogPayload(job, after));
+}));
+
+// Log d'un job PRÉCIS — l'onglet du job lancé en parallèle s'en sert.
+app.get('/api/jobs/:id/log', wrap((req, res) => {
+  const job = db.prepare('SELECT * FROM job WHERE id = ?').get(Number(req.params.id));
+  if (!job) throw new Error(t('err.job-introuvable'));
+  res.json(jobLogPayload(job, Number(req.query.after || 0)));
 }));
 
 // Réinitialise : supprime tous les rapports (fichiers + lignes review),
@@ -1456,11 +1770,11 @@ app.get('/api/mrs', wrap((req, res) => {
   const order = 'ORDER BY mr.gitlab_created_at IS NULL, mr.gitlab_created_at DESC, mr.iid DESC';
   if (status) {
     rows = db.prepare(`
-      SELECT mr.*, repo.project AS project FROM mr JOIN repo ON repo.id = mr.repo_id
+      SELECT mr.*, repo.project AS project, repo.forge AS forge FROM mr JOIN repo ON repo.id = mr.repo_id
       WHERE mr.status = ? ${order}`).all(status);
   } else {
     rows = db.prepare(`
-      SELECT mr.*, repo.project AS project FROM mr JOIN repo ON repo.id = mr.repo_id
+      SELECT mr.*, repo.project AS project, repo.forge AS forge FROM mr JOIN repo ON repo.id = mr.repo_id
       ${order}`).all();
   }
   // marque celles qui ont un rapport + extrait la note globale du rapport
@@ -1527,7 +1841,7 @@ app.get('/api/mrs/:id', wrap((req, res) => {
       jira_configured: jira.isConfigured(getConfig()),
     },
     convergence: converge.latestRun(mr.id), // dernière boucle « Converger » (panneau)
-    links: db.prepare(`SELECT ml.repo_id, ml.branch, repo.project FROM mr_link ml JOIN repo ON repo.id = ml.repo_id WHERE ml.mr_id = ?`).all(mr.id),
+    links: db.prepare(`SELECT ml.repo_id, ml.branch, repo.project, repo.forge FROM mr_link ml JOIN repo ON repo.id = ml.repo_id WHERE ml.mr_id = ?`).all(mr.id),
     repo_links: db.prepare(`SELECT rl.linked_repo_id AS repo_id, rl.branch, repo.project FROM repo_link rl JOIN repo ON repo.id = rl.linked_repo_id WHERE rl.repo_id = ?`).all(mr.repo_id),
     stale: mr.reviewed_sha && mr.reviewed_sha !== mr.current_sha,
   });
@@ -1609,16 +1923,8 @@ app.get('/api/mrs/:id/diffview', wrap(async (req, res) => {
   const rev = db.prepare('SELECT diff_path FROM review WHERE mr_id = ?').get(mr.id);
   const stored = rev ? readFileSafe(rev.diff_path) : null;
   const diff = stored || await git.targetedDiff(cwd, mr.source_branch, mr.target_branch, () => {});
-  const changed = changedFilesFromDiff(diff);
-  let files = [];
-  try { files = await git.lsTree(cwd, `origin/${mr.source_branch}`); } catch { /* arbre indisponible */ }
-  res.json({
-    diff,
-    target: mr.target_branch,
-    source: mr.source_branch,
-    files: files.map((f) => ({ path: f, changed: changed.has(f) })),
-    stats: { files: changed.size, added: (diff.match(/^\+(?!\+\+)/gm) || []).length, removed: (diff.match(/^-(?!--)/gm) || []).length },
-  });
+  const ctx = { cwd, ref: `origin/${mr.source_branch}`, target: mr.target_branch || 'main' };
+  res.json(await viewerPayload(ctx, { diff, source: mr.source_branch }));
 }));
 
 // Ensemble des fichiers modifiés (chemins « b/ ») extraits d'un diff unifié.
@@ -1632,12 +1938,62 @@ function changedFilesFromDiff(diff) {
 }
 function mrCloneCtx(mr) {
   const cfg = getConfig();
-  const cwd = git.cloneDirFor(cfg, { project: mr.project });
+  const cwd = git.cloneDirFor(cfg, { project: mr.project, forge: mr.forge });
   if (!fs.existsSync(path.join(cwd, '.git'))) {
     throw new Error(t('err.depot-non-clone-localement-lance'));
   }
   const ref = mr.reviewed_sha || `origin/${mr.source_branch}`;
-  return { cwd, ref };
+  return { cwd, ref, target: mr.target_branch || 'main' };
+}
+
+/* Même contexte pour un PROJET DE SESSION : le viewer plein écran est identique,
+   seule la source change (la branche produite par l'IA au lieu de la MR). On vise le
+   commit exact produit par la session quand il existe — la branche a pu bouger depuis. */
+function targetCloneCtx(tg) {
+  const cfg = getConfig();
+  const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
+  if (!repo) throw new Error(t('err.depot-introuvable'));
+  const cwd = git.cloneDirFor(cfg, repo);
+  // Message propre à la session : parler de « relancer une review » n'aurait aucun sens ici.
+  if (!fs.existsSync(path.join(cwd, '.git'))) throw new Error(t('err.depot-non-clone-session'));
+  return { cwd, ref: tg.commit_sha || `origin/${tg.branch}`, target: tg.base_branch || 'main' };
+}
+
+/* --- Corps des trois routes du viewer, partagés MR / session ---------------
+   Le chemin demandé est TOUJOURS validé contre l'arborescence de la ref : c'est
+   ce qui empêche de lire un fichier hors du dépôt (traversal). */
+async function viewerFile(ctx, p) {
+  if (!p) throw new Error(t('err.path-requis'));
+  const files = await git.lsTree(ctx.cwd, ctx.ref).catch(() => []);
+  if (!files.includes(p)) throw new Error(t('err.fichier-hors-arborescence'));
+  let content = await git.showFile(ctx.cwd, ctx.ref, p);
+  if (content.indexOf(String.fromCharCode(0)) !== -1) content = '(fichier binaire, non affiche)';
+  return { path: p, content };
+}
+async function viewerFileDiff(ctx, p) {
+  if (!p) throw new Error(t('err.path-requis'));
+  const files = await git.lsTree(ctx.cwd, ctx.ref).catch(() => []);
+  if (!files.includes(p)) throw new Error(t('err.fichier-hors-arborescence'));
+  let diff = '';
+  try { diff = await git.fileDiffFull(ctx.cwd, ctx.target, ctx.ref, p); } catch { diff = ''; }
+  return { diff };
+}
+// Charge utile d'ouverture du viewer : diff complet + arbre marqué + compteurs.
+async function viewerPayload(ctx, { diff, source }) {
+  const changed = changedFilesFromDiff(diff);
+  let files = [];
+  try { files = await git.lsTree(ctx.cwd, ctx.ref); } catch { /* arbre indisponible */ }
+  return {
+    diff,
+    source,
+    target: ctx.target,
+    files: files.map((f) => ({ path: f, changed: changed.has(f) })),
+    stats: {
+      files: changed.size,
+      added: (diff.match(/^\+(?!\+\+)/gm) || []).length,
+      removed: (diff.match(/^-(?!--)/gm) || []).length,
+    },
+  };
 }
 
 // Arborescence du projet à la version reviewée + marquage des fichiers modifiés.
@@ -1657,29 +2013,14 @@ app.get('/api/mrs/:id/tree', wrap(async (req, res) => {
 app.get('/api/mrs/:id/file', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
-  const p = String(req.query.path || '');
-  if (!p) throw new Error(t('err.path-requis'));
-  const { cwd, ref } = mrCloneCtx(mr);
-  const files = await git.lsTree(cwd, ref).catch(() => []);
-  if (!files.includes(p)) throw new Error(t('err.fichier-hors-arborescence'));
-  let content = await git.showFile(cwd, ref, p);
-  if (content.indexOf(String.fromCharCode(0)) !== -1) content = '(fichier binaire, non affiche)';
-  res.json({ path: p, content });
+  res.json(await viewerFile(mrCloneCtx(mr), String(req.query.path || '')));
 }));
 
 // Diff d'un fichier à contexte complet (fichier entier + changements surlignés).
 app.get('/api/mrs/:id/filediff', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
-  const p = String(req.query.path || '');
-  if (!p) throw new Error(t('err.path-requis'));
-  const { cwd, ref } = mrCloneCtx(mr);
-  const files = await git.lsTree(cwd, ref).catch(() => []);
-  if (!files.includes(p)) throw new Error(t('err.fichier-hors-arborescence'));
-  const target = mr.target_branch || 'main';
-  let diff = '';
-  try { diff = await git.fileDiffFull(cwd, target, ref, p); } catch { diff = ''; }
-  res.json({ diff });
+  res.json(await viewerFileDiff(mrCloneCtx(mr), String(req.query.path || '')));
 }));
 
 app.post('/api/mrs/:id/rereview', wrap((req, res) => {
@@ -1731,7 +2072,7 @@ app.post('/api/mrs/:id/fix-review', wrap((req, res) => {
 
 // Historique des reviews d'une MR : chaque passe est conservée.
 app.get('/api/mrs/:id/versions', wrap((req, res) => {
-  const rows = db.prepare(`SELECT version, note_value, reviewed_sha, kind, created_at,
+  const rows = db.prepare(`SELECT version, note_value, reviewed_sha, kind, created_at, instruction,
     n_new, n_persistent, n_resolved, n_disappeared
     FROM review_version WHERE mr_id = ? ORDER BY version DESC`).all(Number(req.params.id));
   res.json(rows.map((v) => ({
@@ -1740,6 +2081,7 @@ app.get('/api/mrs/:id/versions', wrap((req, res) => {
     sha: v.reviewed_sha ? String(v.reviewed_sha).slice(0, 8) : null,
     kind: v.kind,
     created_at: v.created_at,
+    instruction: v.instruction || null,   // demande à l'origine d'une régénération
     // Delta de résolution (renseigné dès la 2e passe) pour le bandeau du rapport.
     resolution: v.n_resolved == null ? null
       : { resolved: v.n_resolved, persistent: v.n_persistent, new: v.n_new, disappeared: v.n_disappeared },
@@ -1834,22 +2176,49 @@ app.post('/api/mrs/:id/comment', wrap(async (req, res) => {
   if (!mr) throw new Error(t('err.mr-introuvable'));
   const body = (req.body && req.body.body || '').trim();
   if (!body) throw new Error(t('err.commentaire-vide'));
+  if (demoDocker.isDemo()) return res.json({ ok: true, note_id: demoComments.post(mr.id, body, null).notes[0].id });
   const cfg = getConfig();
-  const note = await gitlab.postMrNote(cfg, mr.project, mr.iid, body);
+  const note = await forge.clientFor(mr).postMrNote(cfg, mr.project, mr.iid, body);
   db.prepare('INSERT INTO comment_log (mr_id, body, gitlab_note_id, sent_at) VALUES (?,?,?,?)')
     .run(mr.id, body, note && note.id, new Date().toISOString());
   res.json({ ok: true, note_id: note && note.id });
 }));
 
+/* Compte associé au jeton d'une forge. Sert à reconnaître MES commentaires, donc ceux que
+   je peux modifier. Mis en cache : sans cela, chaque ouverture de rapport ajouterait un
+   aller-retour réseau pour une réponse qui ne change jamais. Un échec n'est pas une erreur —
+   il rend simplement les commentaires non modifiables, ce qui est le repli sûr. */
+const meCache = new Map();               // forge -> { username, at }
+const ME_TTL_MS = 30 * 60 * 1000;
+async function forgeUsername(mr) {
+  const f = forge.forgeOf(mr);
+  const hit = meCache.get(f);
+  if (hit && Date.now() - hit.at < ME_TTL_MS) return hit.username;
+  try {
+    const { username } = await forge.clientFor(mr).currentUser(getConfig());
+    meCache.set(f, { username: username || '', at: Date.now() });
+    return username || '';
+  } catch { return ''; }
+}
+
 // Liste les discussions (commentaires) de la MR : inline (avec position) + générales.
 app.get('/api/mrs/:id/discussions', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
-  const discs = await gitlab.listMrDiscussions(getConfig(), mr.project, mr.iid);
+  const [discs, me] = demoDocker.isDemo()
+    ? [demoComments.list(mr.id), demoComments.ME]
+    : await Promise.all([
+      forge.clientFor(mr).listMrDiscussions(getConfig(), mr.project, mr.iid),
+      forgeUsername(mr),
+    ]);
   const simplified = discs.map((d) => ({
     id: d.id,
     notes: (d.notes || []).filter((n) => !n.system).map((n) => ({
+      id: n.id,
       author: (n.author && (n.author.name || n.author.username)) || '',
+      // Modifiable si le compte du jeton est l'auteur. On compare sur le `username`
+      // (identifiant) et jamais sur le nom affiché, qui n'est pas unique.
+      editable: !!(me && n.author && n.author.username === me),
       body: n.body,
       created_at: n.created_at,
       resolved: !!n.resolved,
@@ -1862,13 +2231,33 @@ app.get('/api/mrs/:id/discussions', wrap(async (req, res) => {
   res.json({ discussions: simplified });
 }));
 
+/* Modifie un commentaire déjà posté. `inline` dit s'il s'agit d'un commentaire de ligne :
+   GitHub range les deux familles sous des ressources différentes (GitLab n'en a qu'une).
+   Les droits ne sont pas re-vérifiés ici : c'est la forge qui les détient, et elle refuse
+   la modification du commentaire d'un autre. Le bouton, lui, n'apparaît que sur les miens. */
+app.put('/api/mrs/:id/notes/:noteId', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const body = (req.body && req.body.body || '').trim();
+  if (!body) throw new Error(t('err.commentaire-vide'));
+  if (demoDocker.isDemo()) {
+    const n = demoComments.update(mr.id, req.params.noteId, body);
+    return res.json({ ok: true, id: n.id, body: n.body });
+  }
+  const note = await forge.clientFor(mr).updateNote(
+    getConfig(), mr.project, mr.iid, req.params.noteId, body, { inline: !!(req.body && req.body.inline) },
+  );
+  res.json({ ok: true, id: note && note.id, body: (note && note.body) || body });
+}));
+
 // Répond à une discussion existante.
 app.post('/api/mrs/:id/discussions/:discussionId/reply', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   const body = (req.body && req.body.body || '').trim();
   if (!body) throw new Error(t('err.reponse-vide'));
-  const note = await gitlab.replyToDiscussion(getConfig(), mr.project, mr.iid, req.params.discussionId, body);
+  if (demoDocker.isDemo()) return res.json({ ok: true, id: demoComments.reply(mr.id, req.params.discussionId, body).id });
+  const note = await forge.clientFor(mr).replyToDiscussion(getConfig(), mr.project, mr.iid, req.params.discussionId, body);
   res.json({ ok: true, id: note && note.id });
 }));
 
@@ -1879,8 +2268,12 @@ app.post('/api/mrs/:id/discussion', wrap(async (req, res) => {
   const { body, old_path, new_path, old_line, new_line } = req.body || {};
   if (!(body || '').trim()) throw new Error(t('err.commentaire-vide-2'));
   if (!new_path && !old_path) throw new Error(t('err.fichier-requis'));
+  if (demoDocker.isDemo()) {
+    const d = demoComments.post(mr.id, body.trim(), { new_path, old_path, new_line, old_line });
+    return res.json({ ok: true, id: d.id });
+  }
   const cfg = getConfig();
-  const full = await gitlab.getMergeRequest(cfg, mr.project, mr.iid);
+  const full = await forge.clientFor(mr).getMergeRequest(cfg, mr.project, mr.iid);
   const dr = full && full.diff_refs;
   if (!dr || !dr.head_sha) throw new Error(t('err.references-de-diff-introuvables-la'));
   const position = {
@@ -1890,15 +2283,33 @@ app.post('/api/mrs/:id/discussion', wrap(async (req, res) => {
   };
   if (new_line != null && new_line !== '') position.new_line = Number(new_line);
   if (old_line != null && old_line !== '') position.old_line = Number(old_line);
-  const disc = await gitlab.postMrDiscussion(cfg, mr.project, mr.iid, body.trim(), position);
+  const disc = await forge.clientFor(mr).postMrDiscussion(cfg, mr.project, mr.iid, body.trim(), position);
   res.json({ ok: true, id: disc && disc.id });
 }));
 
 // Merge une MR (depuis l'onglet Rapports de review).
+/* Options de merge : ce que demande l'appel, sinon ce qui avait été choisi à la
+   création de la MR (colonnes `mr.squash` / `mr.remove_source_branch`). */
+function mergeOptsFor(mr, body) {
+  const pick = (v, fallback) => (v === undefined ? fallback : !!(v === true || v === 'true' || v === 1 || v === '1'));
+  return {
+    squash: pick(body && body.squash, !!(mr && mr.squash)),
+    removeSourceBranch: pick(body && body.removeSourceBranch, !!(mr && mr.remove_source_branch)),
+  };
+}
+
+/* Mémorise les options choisies à la création. Indispensable pour GitHub, dont l'API de
+   création ne sait pas les exprimer : c'est ici qu'on retrouve l'intention au merge. */
+function rememberMergeOpts(repoId, iid, squash, removeSourceBranch) {
+  db.prepare('UPDATE mr SET squash = ?, remove_source_branch = ? WHERE repo_id = ? AND iid = ?')
+    .run(squash ? 1 : 0, removeSourceBranch ? 1 : 0, repoId, iid);
+}
+
 app.post('/api/mrs/:id/merge', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
-  const merged = await gitlab.mergeMergeRequest(getConfig(), mr.project, mr.iid);
+  const opts = mergeOptsFor(mr, req.body);
+  const merged = await forge.clientFor(mr).mergeMergeRequest(getConfig(), mr.project, mr.iid, opts);
   const isMerged = merged && merged.state === 'merged';
   if (isMerged) {
     const now = new Date().toISOString();
@@ -1948,10 +2359,12 @@ app.get('/api/git/refs', wrap(async (req, res) => {
   const kind = req.query.kind === 'tags' ? 'tags' : 'branches';
   if (demoGit.isDemo()) return res.json(demoGit.refs(repo.project, kind));
   if (kind === 'tags') {
-    const [tags, prot] = await Promise.all([gitlab.listTags(cfg, repo.project), gitlab.listProtectedTags(cfg, repo.project)]);
+    const api = forge.clientFor(repo);
+    const [tags, prot] = await Promise.all([api.listTags(cfg, repo.project), api.listProtectedTags(cfg, repo.project)]);
     return res.json({ kind, refs: tags.map((x) => ({ name: x.name, sha: x.sha, protected: prot.includes(x.name), annotated: x.annotated, date: x.committed_date })) });
   }
-  const [branches, prot] = await Promise.all([gitlab.listBranchesFull(cfg, repo.project), gitlab.listProtectedBranches(cfg, repo.project)]);
+  const apiB = forge.clientFor(repo);
+  const [branches, prot] = await Promise.all([apiB.listBranchesFull(cfg, repo.project), apiB.listProtectedBranches(cfg, repo.project)]);
   res.json({
     kind,
     default: (branches.find((b) => b.default) || {}).name || null,
@@ -1993,9 +2406,9 @@ app.get('/api/git/branches', wrap(async (req, res) => {
   if (demoGit.isDemo()) return res.json(demoGit.branches(repo.project, repo.id));
   const cfg = getConfig();
   const [branches, mrs, tags] = await Promise.all([
-    gitlab.listBranchesFull(cfg, repo.project),
-    gitlab.listAllMRs(cfg, repo.project).catch(() => []),
-    gitlab.listTags(cfg, repo.project).catch(() => []),
+    forge.clientFor(repo).listBranchesFull(cfg, repo.project),
+    forge.clientFor(repo).listAllMRs(cfg, repo.project).catch(() => []),
+    forge.clientFor(repo).listTags(cfg, repo.project).catch(() => []),
   ]);
   const defaultBranch = (branches.find((b) => b.default) || {}).name || 'main';
   await git.ensureRepo(cfg, repo, () => {});
@@ -2011,7 +2424,7 @@ app.get('/api/git/branches', wrap(async (req, res) => {
   await Promise.all(tagsSorted.slice(0, 200).map(async (tg) => {
     tg.branches = await git.branchesForCommit(cwd, tg.sha, defaultBranch);
   }));
-  res.json({ project: repo.project, repo_id: repo.id, default: defaultBranch, branches: rows, tags: tagsSorted });
+  res.json({ project: repo.project, repo_id: repo.id, forge: forge.forgeOf(repo), default: defaultBranch, branches: rows, tags: tagsSorted });
 }));
 
 // Auteur PRÉCIS d'un tag, à la demande (l'API GitLab n'expose pas le tagger d'un tag
@@ -2042,21 +2455,21 @@ app.get('/api/git/find-ref', wrap(async (req, res) => {
   const type = ['branch', 'tag'].includes(req.query.type) ? req.query.type : 'both';
   const kinds = type === 'both' ? ['branch', 'tag'] : [type];
   if (demoGit.isDemo()) return res.json(demoGit.findRef(name, type, db.prepare('SELECT id, project FROM repo WHERE enabled = 1').all()));
-  if (!cfg.gitlab_url || !cfg.access_token) throw new Error(t('err.token-gitlab-non-configure-configuration'));
+  if (!forge.isConfigured(cfg, 'gitlab') && !forge.isConfigured(cfg, 'github')) throw new Error(t('err.aucune-forge-configuree'));
   const repos = db.prepare('SELECT * FROM repo WHERE enabled = 1').all();
   const results = await Promise.all(repos.map(async (r) => {
     const matches = [];
     let error = null;
     for (const kind of kinds) {
       try {
-        const ref = await gitlab.getRef(cfg, r.project, kind, name);
+        const ref = await forge.clientFor(r).getRef(cfg, r.project, kind, name);
         if (ref) matches.push({
           kind,
           sha: (ref.commit && (ref.commit.short_id || String(ref.commit.id).slice(0, 8))) || '',
           fullSha: (ref.commit && ref.commit.id) || '',
           date: (ref.commit && ref.commit.committed_date) || null,
           author: (ref.commit && ref.commit.author_name) || '',
-          url: refUrl(cfg, r.project, kind, name),
+          url: forge.refUrl(cfg, r, kind, name),
         });
       } catch (e) { error = String(e.message).slice(0, 200); }
     }
@@ -2095,9 +2508,12 @@ app.post('/api/git/mr', wrap(async (req, res) => {
   const title = String(req.body.title || '').trim() || source;
   if (!source || !target) throw new Error(t('err.git.mr-missing-refs'));
   if (source === target) throw new Error(t('err.git.mr-same-ref'));
-  const mr = await gitlab.createMergeRequest(getConfig(), repo.project, {
-    source_branch: source, target_branch: target, title,
+  const squash = !!(req.body && req.body.squash);
+  const removeSourceBranch = !!(req.body && req.body.removeSourceBranch);
+  const mr = await forge.clientFor(repo).createMergeRequest(getConfig(), repo.project, {
+    source_branch: source, target_branch: target, title, squash, removeSourceBranch,
   });
+  rememberMergeOpts(repo.id, mr.iid, squash, removeSourceBranch);
   res.json({ iid: mr.iid, url: mr.web_url });
 }));
 

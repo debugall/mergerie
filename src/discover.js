@@ -1,7 +1,7 @@
 'use strict';
 const db = require('./db');
 const { getConfig } = require('./config');
-const gitlab = require('./gitlab');
+const forge = require('./forge');
 const jira = require('./jira');
 const notify = require('./notify');
 
@@ -51,7 +51,7 @@ async function discoverAll() {
 
   for (const repo of repos) {
     try {
-      const mrs = await gitlab.listOpenMRs(cfg, repo.project, repo.branch_pattern);
+      const mrs = await forge.clientFor(repo).listOpenMRs(cfg, repo.project, repo.branch_pattern);
       result.found += mrs.length;
       const openIids = new Set(mrs.map((m) => m.iid));
       for (const m of mrs) {
@@ -103,13 +103,13 @@ async function discoverAll() {
      et rétro-remplissage des existantes, PLAFONNÉ pour ne pas cogner l'API. Chaque
      échec est ignoré (best-effort) : le badge sera juste absent pour cette MR. */
   const MAX_PATH_FETCHES = 25;
-  const needPaths = db.prepare(`SELECT mr.id, mr.iid, repo.project
+  const needPaths = db.prepare(`SELECT mr.id, mr.iid, repo.project, repo.forge
       FROM mr JOIN repo ON repo.id = mr.repo_id
       WHERE mr.changed_paths IS NULL AND (mr.closed_seen IS NULL OR mr.closed_seen = 0)
       ORDER BY mr.updated_at DESC LIMIT ?`).all(MAX_PATH_FETCHES);
   for (const m of needPaths) {
     try {
-      const paths = await gitlab.listMrChangedPaths(cfg, m.project, m.iid);
+      const paths = await forge.clientFor(m).listMrChangedPaths(cfg, m.project, m.iid);
       db.prepare('UPDATE mr SET changed_paths = ? WHERE id = ?').run(paths.join('\n'), m.id);
     } catch { /* best-effort : pas de badge pour cette MR, on continue */ }
   }
@@ -118,14 +118,14 @@ async function discoverAll() {
   // directement sur GitLab. Vérification CIBLÉE (uniquement les tâches dont la MR n'est
   // pas encore marquée mergée) et PLAFONNÉE, pour ménager les rate limits.
   const MAX_TASK_CHECKS = 10;
-  const pendingTasks = db.prepare(`SELECT tt.id, tt.mr_iid, tt.branch, repo.project
+  const pendingTasks = db.prepare(`SELECT tt.id, tt.mr_iid, tt.branch, repo.project, repo.forge
       FROM task_target tt JOIN repo ON repo.id = tt.repo_id
       WHERE tt.mr_iid IS NOT NULL AND (tt.mr_merged IS NULL OR tt.mr_merged = 0)
       ORDER BY tt.updated_at DESC LIMIT ?`).all(MAX_TASK_CHECKS);
   result.tasksMerged = 0;
   for (const t of pendingTasks) {
     try {
-      const m = await gitlab.getMergeRequest(cfg, t.project, t.mr_iid);
+      const m = await forge.clientFor(t).getMergeRequest(cfg, t.project, t.mr_iid);
       if (m && m.state === 'merged') {
         db.prepare('UPDATE task_target SET mr_merged = 1, updated_at = ? WHERE id = ?').run(now, t.id);
         insertFeed.run('mr_merged', t.mr_iid, t.project, '', t.branch || '', now);

@@ -23,10 +23,13 @@ const iso = (daysAgo, h = 10) => new Date(Date.now() - daysAgo * day + h * 36000
 const at = (daysAgo) => new Date(Date.now() - daysAgo * day).toISOString();
 
 const AUTHORS = ['amady', 'lina', 'karim', 'sofia', 'noah'];
+// La démo mélange les deux forges : les badges GitLab/GitHub sont ainsi visibles
+// sans aucune configuration, comme dans une installation réelle multi-forge.
 const PROJECTS = [
-  { project: 'groupe/api-core', url: 'https://gitlab.demo/groupe/api-core.git' },
-  { project: 'groupe/webapp-front', url: 'https://gitlab.demo/groupe/webapp-front.git' },
-  { project: 'groupe/batch-jobs', url: 'https://gitlab.demo/groupe/batch-jobs.git' },
+  { project: 'groupe/api-core', url: 'https://gitlab.demo/groupe/api-core.git', forge: 'gitlab' },
+  { project: 'groupe/webapp-front', url: 'https://gitlab.demo/groupe/webapp-front.git', forge: 'gitlab' },
+  { project: 'groupe/batch-jobs', url: 'https://gitlab.demo/groupe/batch-jobs.git', forge: 'gitlab' },
+  { project: 'acme/design-system', url: 'https://github.com/acme/design-system.git', forge: 'github' },
 ];
 
 // ---------- config : GitLab factice, pas de token (démo hors-ligne) ----------
@@ -36,7 +39,7 @@ db.prepare(`UPDATE config SET gitlab_url = ?, access_token = '', jira_url = ?, r
 // ---------- dépôts ----------
 const repoIds = {};
 for (const p of PROJECTS) {
-  const info = db.prepare('INSERT INTO repo (project, url, branch_pattern, enabled, created_at) VALUES (?, ?, \'\', 1, ?)').run(p.project, p.url, at(60));
+  const info = db.prepare('INSERT INTO repo (project, url, branch_pattern, enabled, created_at, forge) VALUES (?, ?, \'\', 1, ?, ?)').run(p.project, p.url, at(60), p.forge || 'gitlab');
   repoIds[p.project] = info.lastInsertRowid;
 }
 
@@ -88,6 +91,7 @@ const MRS = [
   { project: 'groupe/webapp-front', title: 'Refonte du formulaire de connexion', branch: 'feat/PROJ-790-login', status: 'to_review', changed: ['src/pages/Login.jsx', 'src/api/auth.js', 'src/styles/login.css'], summary: 'refond l\'écran de connexion et sa validation' },
   { project: 'groupe/batch-jobs', title: 'Hotfix : timeout export nocturne', branch: 'hotfix/export-timeout', status: 'to_review', changed: ['jobs/nightlyExport.js'], summary: 'corrige un timeout sur l\'export de nuit' },
   { project: 'groupe/webapp-front', title: 'Ajout du dark mode', branch: 'feat/PROJ-701-dark', status: 'to_review', changed: ['src/theme.js', 'src/components/Toggle.jsx'], summary: 'introduit un thème sombre configurable' },
+  { project: 'acme/design-system', title: 'Tokens de couleur : passage en HSL', branch: 'feat/DS-118-hsl-tokens', status: 'to_review', changed: ['src/tokens/color.ts', 'docs/theming.md'], summary: 'convertit les tokens de couleur en HSL' },
 ];
 // MR déjà reviewées / traitées, réparties dans le temps pour les stats
 const REVIEWED = [
@@ -98,6 +102,7 @@ const REVIEWED = [
   { project: 'groupe/api-core', title: 'Rate limiting par clé d\'API', branch: 'feat/PROJ-560-ratelimit', daysAgo: 17, note: 7.8, status: 'done', changed: ['src/middleware/rateLimit.js'], summary: 'limite le débit par clé d\'API' },
   { project: 'groupe/webapp-front', title: 'Accessibilité : labels et focus', branch: 'feat/PROJ-540-a11y', daysAgo: 22, note: 8.9, status: 'done', changed: ['src/components/Form.jsx', 'src/components/Modal.jsx'], summary: 'améliore l\'accessibilité des formulaires' },
   { project: 'groupe/batch-jobs', title: 'Reprise sur erreur de l\'export', branch: 'feat/PROJ-500-retry', daysAgo: 27, note: 6.8, status: 'done', changed: ['jobs/export.js'], summary: 'ajoute une reprise sur erreur à l\'export' },
+  { project: 'acme/design-system', title: 'Composant Tooltip accessible', branch: 'feat/DS-102-tooltip', daysAgo: 11, note: 8.1, status: 'reviewed', changed: ['src/components/Tooltip.tsx'], summary: 'ajoute un tooltip accessible au clavier' },
 ];
 
 let iid = 200;
@@ -110,7 +115,9 @@ function insertMr(m, extra = {}) {
     .run({
       repo_id: repoIds[m.project], iid, title: m.title,
       source_branch: m.branch, target_branch: extra.target || 'main',
-      web_url: `https://gitlab.demo/${m.project}/-/merge_requests/${iid}`,
+      web_url: (PROJECTS.find((p) => p.project === m.project) || {}).forge === 'github'
+        ? `https://github.com/${m.project}/pull/${iid}`
+        : `https://gitlab.demo/${m.project}/-/merge_requests/${iid}`,
       current_sha: sha, reviewed_sha: extra.reviewed_sha || null,
       status: m.status, updated_at: extra.date || at(1),
       gitlab_created_at: extra.date || at(2),
@@ -266,6 +273,13 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
     '6ba7b810-9dad-11d1-80b4-00c04fd430c8', 'claude', '/home/moi/clones/groupe-api-core', at(4));
 const t2 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, created_at, updated_at, md_path) VALUES (?,?,?,?,?,?,?,?,?)')
   .run(repoIds['groupe/batch-jobs'], 'Comment est gérée la reprise sur erreur dans les jobs ?', '', '', 'done', 'explore', at(6), at(6), path.join(TASKS_DIR, 'demo-explore.md'));
+/* Cible explicite : sans elle, c'est le backfill de `db.js` qui en crée une au démarrage —
+   donc sans session, et la carte n'aurait pas son « Reprendre au terminal ». Une exploration
+   tourne dans UNE session pour tous ses dépôts, dont le répertoire de travail est la RACINE
+   des clones et non un dépôt : c'est pourquoi la commande vit au niveau de la session. */
+db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, session_key, session_backend, session_cwd, updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
+  .run(t2.lastInsertRowid, repoIds['groupe/batch-jobs'], '', '', 'done',
+    '3f2a9c14-7b0e-4d55-9c31-8ae61f0c2b47', 'claude', '/home/moi/clones', at(6));
 ensureDir(TASKS_DIR);
 fs.writeFileSync(path.join(TASKS_DIR, 'demo-explore.md'), '# Reprise sur erreur — synthèse\n\nLes jobs utilisent un état persistant en base et rejouent les lots échoués au prochain passage…\n', 'utf8');
 
@@ -282,19 +296,60 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
     { id: 'q2', question: 'Combien de tentatives au maximum avant d’abandonner ?', context: 'Aucune valeur n’est imposée par le code existant.', options: null, answer: null },
   ]), at(0.3));
 
+/* Session RANGÉE + prompt LONG : les deux nouveautés de la liste réunies sur une seule fiche.
+   Elle n'apparaît qu'en cochant « afficher les sessions masquées », et son prompt dépasse
+   trois lignes, donc « Voir plus » s'y affiche. */
+const t4 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, hidden, created_at, updated_at) VALUES (?,?,?,?,?,?,1,?,?)')
+  .run(repoIds['groupe/api-core'], [
+    'Migre la couche de persistance des commandes vers le nouveau schéma : la table `orders` doit',
+    'porter `currency` et `tax_rate` au lieu du montant TTC pré-calculé, et le total doit être',
+    'recalculé côté serveur à chaque lecture. Prévois une migration réversible, un backfill des',
+    'lignes existantes à partir du taux en vigueur à la date de la commande, et des tests couvrant',
+    'les commandes multi-devises ainsi que celles créées avant le changement de taux de 2025.',
+    'Ne touche pas au format de l’API publique : la réponse doit rester identique octet pour octet.',
+    'Documente la migration dans `docs/migrations/` en expliquant pourquoi le total n’est plus stocké,',
+    'et ajoute une note dans le CHANGELOG. Si tu rencontres des commandes dont la devise est absente,',
+    'ne devine pas : arrête-toi et remonte la liste des identifiants concernés plutôt que d’appliquer',
+    'une valeur par défaut qui serait fausse pour une partie du parc. Enfin, vérifie que les rapports',
+    'comptables mensuels donnent exactement les mêmes totaux avant et après migration sur les douze',
+    'derniers mois — c’est le seul contrôle qui prouve que le backfill est correct.',
+  ].join(' '), 'ai/orders-schema', 'main', 'pushed', 'code', at(9), at(9));
+db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, mr_iid, mr_url, mr_merged, updated_at) VALUES (?,?,?,?,?,?,?,1,?)')
+  .run(t4.lastInsertRowid, repoIds['groupe/api-core'], 'ai/orders-schema', 'main', 'pushed', 244,
+    'https://gitlab.demo/groupe/api-core/-/merge_requests/244', at(9));
+
 // ---------- codage hors dépôt (« Codage personnalisé ») ----------
 // Session de codage IA dans des dossiers locaux, SANS git : remplit l'onglet dédié.
 // (Une réussie sur deux dossiers, une en erreur, pour montrer les deux états agrégés.)
 const lt1 = db.prepare('INSERT INTO local_task (prompt, status, created_at, updated_at) VALUES (?,?,?,?)')
   .run('Ajoute un logger structuré (niveau + timestamp ISO), remplace les console.log de ces utilitaires et écris un test pour chacun.', 'done', at(2), at(2));
-for (const p of ['/Users/moi/outils/backup-tool', '/Users/moi/outils/csv-cleaner']) {
-  db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
+// Chaque dossier porte le RETOUR DE L'IA (fichier sur disque, comme en vrai) : le bouton
+// « Retour de l'IA » et « Demander une correction » sont donc démontrables sans agent.
+const LOCAL_OUT = {
+  '/home/moi/dev/backup-tool': `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` : niveau (\`debug\`/\`info\`/\`warn\`/\`error\`) + timestamp ISO.\n- Remplacé les 14 \`console.log\` de \`backup.js\` et \`restore.js\`.\n- Ajouté \`test/logger.test.js\` (4 cas : format, niveaux, filtrage, sortie stderr).\n\n## Points d'attention\n\n- \`restore.js\` écrivait sur \`stdout\` des données consommées par un script appelant : j'ai gardé \`stdout\` pour celles-là et routé les logs vers \`stderr\`.\n`,
+  '/home/moi/dev/csv-cleaner': `## Ce que j'ai fait\n\n- Ajouté le même \`src/logger.js\` (copie locale, ce dossier n'est pas un paquet partagé).\n- Remplacé les 6 \`console.log\` de \`clean.js\`.\n- Ajouté \`test/logger.test.js\`.\n\n## Question\n\nLes deux outils dupliquent maintenant le logger. Si tu veux, je peux extraire un petit paquet commun — dis-moi où le placer.\n`,
+};
+for (const p of Object.keys(LOCAL_OUT)) {
+  const info = db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
     .run(lt1.lastInsertRowid, p, 'done', at(2));
+  const dir = ensureDir(path.join(TASKS_DIR, 'local', String(lt1.lastInsertRowid), String(info.lastInsertRowid)));
+  const out = path.join(dir, 'output.md');
+  fs.writeFileSync(out, LOCAL_OUT[p], 'utf8');
+  db.prepare('UPDATE local_task_dir SET output_path = ?, session_key = ?, session_backend = ? WHERE id = ?')
+    .run(out, `demo-local-${info.lastInsertRowid}`, 'claude', info.lastInsertRowid);
 }
+/* Codage hors dépôt CRÉÉ MAIS PAS LANCÉ (« Créer sans lancer ») : la carte porte alors un
+   bouton « Lancer », et le badge du menu compte le travail en attente. Sans cet exemple,
+   rien à l'écran ne montre qu'on peut préparer un traitement pour plus tard. */
+const lt0 = db.prepare('INSERT INTO local_task (prompt, status, created_at, updated_at) VALUES (?,?,?,?)')
+  .run('Passe ces scripts en ES modules et remplace les require() restants.', 'new', at(0.4), at(0.4));
+db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
+  .run(lt0.lastInsertRowid, '/home/moi/dev/scripts', 'new', at(0.4));
+
 const lt2 = db.prepare('INSERT INTO local_task (prompt, status, last_error, created_at, updated_at) VALUES (?,?,?,?,?)')
   .run('Convertis ce petit script Python en module réutilisable avec des tests pytest.', 'error', 'Le dossier n’a pas pu être traité (agent indisponible en démo).', at(1.2), at(1.2));
 db.prepare('INSERT INTO local_task_dir (task_id, path, status, last_error, updated_at) VALUES (?,?,?,?,?)')
-  .run(lt2.lastInsertRowid, '/Users/moi/scripts/legacy-report', 'error', 'agent indisponible', at(1.2));
+  .run(lt2.lastInsertRowid, '/home/moi/dev/legacy-report', 'error', 'agent indisponible', at(1.2));
 
 // ---------- commentaires (comment_log : mr_id, body, sent_at) ----------
 const someMr = db.prepare("SELECT id FROM mr WHERE status IN ('reviewed','done') LIMIT 1").get();
