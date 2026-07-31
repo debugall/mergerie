@@ -565,7 +565,12 @@ let mrCtx = null;
    note de la modale le dit explicitement. */
 function openMrModal(ctx) {
   mrCtx = ctx;
-  $('#mrModalIntro').textContent = tr('mr.modal.intro', { source: ctx.source, target: ctx.target });
+  /* Mode « lot » : mêmes options, mais pas de champ titre — chaque MR reprend le message de
+     commit de la session. Demander dix titres à la suite serait la corvée qu'on veut supprimer. */
+  const enLot = !!ctx.bulk;
+  $('#mrModalIntro').textContent = enLot ? ctx.bulk : tr('mr.modal.intro', { source: ctx.source, target: ctx.target });
+  const champ = $('#mrTitle').closest('label') || $('#mrTitle');
+  champ.hidden = enLot;
   $('#mrTitle').value = ctx.title || ctx.source || '';
   $('#mrSquash').checked = false;
   $('#mrRemoveBranch').checked = false;
@@ -575,7 +580,7 @@ function openMrModal(ctx) {
   if (isGithub) note.querySelector('span').textContent = tr('mr.modal.github-note');
   $('#mrGo').disabled = false;
   $('#mrModal').hidden = false;
-  setTimeout(() => { const f = $('#mrTitle'); if (f) { f.focus(); f.select(); } }, 0);
+  if (!enLot) setTimeout(() => { const f = $('#mrTitle'); if (f) { f.focus(); f.select(); } }, 0);
 }
 function closeMrModal() { $('#mrModal').hidden = true; mrCtx = null; }
 $('#mrCancel') && $('#mrCancel').addEventListener('click', closeMrModal);
@@ -583,9 +588,9 @@ $('#mrModal') && $('#mrModal').addEventListener('click', (e) => { if (e.target.i
 $('#mrGo') && $('#mrGo').addEventListener('click', async () => {
   const ctx = mrCtx; if (!ctx) return;
   const title = $('#mrTitle').value.trim();
-  if (!title) { $('#mrTitle').focus(); return; }
+  if (!ctx.bulk && !title) { $('#mrTitle').focus(); return; }
   const b = $('#mrGo'); b.disabled = true;
-  const body = { ...(ctx.body || {}), title,
+  const body = { ...(ctx.body || {}), ...(ctx.bulk ? {} : { title }),
     squash: $('#mrSquash').checked, removeSourceBranch: $('#mrRemoveBranch').checked };
   try {
     const r = await api(ctx.url, { method: 'POST', body });
@@ -4020,15 +4025,41 @@ function taskHead(t) {
     ${promptBlock(t.prompt)}`;
 }
 
+/* Sessions dont la liste de projets est repliée. En mémoire ET en stockage local : le rendu
+   se refait à chaque rafraîchissement, donc un état vivant seulement dans le DOM serait perdu
+   toutes les secondes et demie pendant un job. */
+const projetsReplies = (() => {
+  try { return new Set(JSON.parse(localStorage.getItem('aidevtools_projets_replies') || '[]').map(Number)); }
+  catch { return new Set(); }
+})();
+function basculerProjets(taskId) {
+  if (projetsReplies.has(taskId)) projetsReplies.delete(taskId); else projetsReplies.add(taskId);
+  try { localStorage.setItem('aidevtools_projets_replies', JSON.stringify([...projetsReplies])); }
+  catch { /* stockage indisponible : le repli reste valable pour cette page */ }
+  renderTasks();
+}
+
 // Carte CODAGE : une ligne par projet, avec ses propres actions.
 function codeCard(t) {
-  const canFollow = (t.targets || []).some((x) => ['committed', 'pushed'].includes(x.status));
+  const cibles = t.targets || [];
+  const canFollow = cibles.some((x) => ['committed', 'pushed'].includes(x.status));
   const canRun = ['new', 'error', 'committed', 'pushed'].includes(t.status);
+  /* Repli de la liste de projets. Au-delà de quelques dépôts, une session occupe tout l'écran et
+     on ne voit plus les autres. L'état est PERSISTÉ : sans ça, il se rouvrirait à chaque
+     rafraîchissement automatique, c'est-à-dire toutes les secondes et demie pendant un job. */
+  const repliable = cibles.length > 1;
+  const replie = repliable && projetsReplies.has(t.id);
+  const aPousser = cibles.filter((x) => x.status === 'committed').length;
+  const aOuvrir = cibles.filter((x) => x.status === 'pushed' && !(x.mr_iid || x.existing_mr_iid)).length;
   return `<div class="card task-row${t.hidden ? ' is-hidden' : ''}" data-task="${t.id}">
     <div style="min-width:0;flex:1">
       ${taskHead(t)}
-      <div class="targets">
-        ${(t.targets || []).map((tg) => targetLine(t, tg)).join('')}
+      ${repliable ? `<button class="targets-toggle" data-tfold="${t.id}" aria-expanded="${!replie}">
+        <svg class="ico ico-sm"><use href="#i-right"/></svg>
+        ${replie ? tr('task.toggle.expand', { n: cibles.length, count: cibles.length }) : tr('task.toggle.collapse')}
+      </button>` : ''}
+      <div class="targets"${replie ? ' hidden' : ''}>
+        ${cibles.map((tg) => targetLine(t, tg)).join('')}
       </div>
       <div class="mr-create followup" data-followform="${t.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph'))}"></textarea>
@@ -4043,6 +4074,8 @@ function codeCard(t) {
     /* N'apparaît que s'il y a quelque chose à réparer : un projet en erreur dont le travail
        peut très bien être déjà commité. Relancer coûterait un appel IA par dépôt pour refaire
        du travail fait — ce bouton ne fait que relire les branches. */
+    aPousser > 1 ? `<button class="btn btn-primary" data-tpushall="${t.id}" title="${esc(tr('task.title.push-all'))}"><svg class="ico"><use href="#i-upload"/></svg>${tr('task.btn.push-all', { n: aPousser, count: aPousser })}</button>` : '',
+    aOuvrir > 1 ? `<button class="btn btn-primary" data-tmrall="${t.id}" title="${esc(tr('task.title.mr-all'))}"><svg class="ico"><use href="#i-branch"/></svg>${tr('task.btn.mr-all', { n: aOuvrir, count: aOuvrir })}</button>` : '',
     (t.targets || []).filter((tg) => tg.status === 'error').length > 1
       ? `<button class="btn" data-trunfailed="${t.id}" title="${esc(tr('task.title.rerun-failed'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.rerun-failed')}</button>` : '',
     (t.targets || []).some((tg) => tg.status === 'error')
@@ -4195,6 +4228,35 @@ function wireTaskActions() {
   on('[data-trun]', (b) => busy(b, () => api(`/tasks/${b.dataset.trun}/run`, { method: 'POST' }))
     .then(() => { toast(tr('toast.session-lancee')); loadTasks(); refreshStatus(); })
     .catch((e) => toast(explainError(e.message), true)));
+
+  on('[data-tfold]', (b) => basculerProjets(Number(b.dataset.tfold)));
+
+  on('[data-tpushall]', async (b) => {
+    if (!await confirmDialog({ text: tr('confirm.push-all'), confirmLabel: tr('task.btn.push') })) return;
+    busy(b, () => api(`/tasks/${b.dataset.tpushall}/push-all`, { method: 'POST' }))
+      .then(() => { toast(tr('toast.push-all-lance')); loadTasks(); refreshStatus(); })
+      .catch((e) => toast(explainError(e.message), true));
+  });
+
+  /* Création en lot : une seule modale pour les options (squash, suppression de branche), et le
+     titre de chaque MR est calculé côté serveur d'après la session — demander dix titres à la
+     suite serait précisément la corvée qu'on veut supprimer. */
+  on('[data-tmrall]', (b) => {
+    const t2 = allTasks.find((x) => x.id === Number(b.dataset.tmrall));
+    const cibles = ((t2 && t2.targets) || []).filter((tg) => tg.status === 'pushed' && !(tg.mr_iid || tg.existing_mr_iid));
+    if (!cibles.length) return;
+    openMrModal({
+      url: `/tasks/${b.dataset.tmrall}/mrs`,
+      bulk: tr('task.mr-all.intro', { n: cibles.length, count: cibles.length, projects: cibles.map((x) => x.project).join(', ') }),
+      forge: cibles[0].forge,
+      onDone: (r) => {
+        const n = (r.created || []).length; const f = (r.failed || []).length;
+        toast(f ? tr('task.mr-all.partial', { n, count: n, f, projects: r.failed.map((x) => x.project).join(', ') })
+          : tr('task.mr-all.done', { n, count: n }), !!f);
+        loadTasks();
+      },
+    });
+  });
 
   on('[data-tgrun]', (b) => busy(b, () => api(`/tasks/${b.dataset.task}/run`, { method: 'POST', body: { targets: [Number(b.dataset.tgrun)] } }))
     .then(() => { toast(tr('toast.projet-lance')); loadTasks(); refreshStatus(); })

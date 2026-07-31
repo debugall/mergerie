@@ -112,7 +112,8 @@ function jobKeys(entry) {
     case 'converge-session': {
       /* Une passe ciblée ne réserve que SES dépôts : deux projets d'une même session, sur des
          dépôts distincts, peuvent alors tourner en parallèle. */
-      const ids = entry.opts && entry.opts.targetIds;
+      const o = entry.opts || {};
+      const ids = o.targetIds || (o.targetId ? [o.targetId] : null);
       const cibles = (Array.isArray(ids) && ids.length)
         ? db.prepare(`SELECT repo_id FROM task_target WHERE task_id = ? AND id IN (${ids.map(() => '?').join(',')})`)
           .all(entry.taskId, ...ids.map(Number))
@@ -252,6 +253,7 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
   if (action !== 'push') db.prepare("UPDATE task SET status='running', last_error=NULL, updated_at=? WHERE id=?").run(new Date().toISOString(), task.id);
   try {
     if (action === 'push') await taskrunner.pushTarget(task.id, opts.targetId, onLog);
+    else if (action === 'push-all') await taskrunner.pushTargets(task, opts.targetIds, onLog);
     else if (action === 'followup') await taskrunner.runTaskFollowup(task, opts.instruction, onLog);
     else if (action === 'answer') await taskrunner.runTaskAnswer(task, opts.targetId, onLog);
     else await taskrunner.runTask(task, onLog, { targetIds: opts.targetIds });
@@ -620,7 +622,7 @@ function startReconcileJob(taskId) {
 }
 
 function startTaskJob(taskId, action = 'run', opts = {}) {
-  if (action !== 'push') clearTaskError(taskId, opts.targetIds);
+  if (action !== 'push' && action !== 'push-all') clearTaskError(taskId, opts.targetIds);
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES ('task', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
   const jobId = info.lastInsertRowid;

@@ -1599,6 +1599,47 @@ app.post('/api/tasks/:id/targets/:tid/push', wrap((req, res) => {
 }));
 
 // Crée la MR d'UN projet de la session.
+/* Pousser toutes les branches d'une session qui ne le sont pas encore, en UN job. Sur une
+   session de dix dépôts, pousser à la main dix fois est un travail de scribe — et on en oublie. */
+app.post('/api/tasks/:id/push-all', wrap((req, res) => {
+  const t2 = taskById(Number(req.params.id));
+  if (!t2) throw new Error(tt('err.session-introuvable'));
+  const cibles = db.prepare("SELECT id FROM task_target WHERE task_id = ? AND status = 'committed' ORDER BY id").all(t2.id);
+  if (!cibles.length) throw new Error(tt('err.rien-a-pousser'));
+  res.json(jobs.startTaskJob(t2.id, 'push-all', { targetIds: cibles.map((c) => c.id) }));
+}));
+
+/* Créer la MR de tous les projets poussés qui n'en ont pas encore. Le titre n'est pas demandé
+   projet par projet : chacun reprend la règle du cas unitaire (message de commit, sinon nom de
+   branche). Un échec sur un projet n'empêche pas les autres — le bilan dit lesquels. */
+app.post('/api/tasks/:id/mrs', wrap(async (req, res) => {
+  const t2 = taskById(Number(req.params.id));
+  if (!t2) throw new Error(tt('err.session-introuvable'));
+  const cfg = getConfig();
+  const squash = !!(req.body && req.body.squash);
+  const removeSourceBranch = !!(req.body && req.body.removeSourceBranch);
+  const cibles = taskTargets(t2.id).filter((tg) => tg.status === 'pushed' && !effectiveMr(tg));
+  if (!cibles.length) throw new Error(tt('err.aucune-mr-a-creer'));
+  const created = []; const failed = [];
+  for (const tg of cibles) {
+    try {
+      const title = t2.commit_message || tg.branch;
+      let target = tg.base_branch;
+      if (!target) { const b = await forge.clientFor(tg).listBranches(cfg, tg.project); target = b.default || 'main'; }
+      const mr = await forge.clientFor(tg).createMergeRequest(cfg, tg.project, {
+        source_branch: tg.branch, target_branch: target, title, squash, removeSourceBranch,
+      });
+      db.prepare('UPDATE task_target SET mr_iid = ?, mr_url = ?, mr_target = ?, mr_merged = 0, updated_at = ? WHERE id = ?')
+        .run(mr.iid, mr.web_url, target, new Date().toISOString(), tg.id);
+      rememberMergeOpts(tg.repo_id, mr.iid, squash, removeSourceBranch);
+      created.push({ project: tg.project, iid: mr.iid, url: mr.web_url });
+    } catch (e) {
+      failed.push({ project: tg.project, error: e.message });
+    }
+  }
+  res.json({ created, failed });
+}));
+
 app.post('/api/tasks/:id/targets/:tid/mr', wrap(async (req, res) => {
   const t = taskById(Number(req.params.id));
   const tg = targetById(Number(req.params.id), Number(req.params.tid));

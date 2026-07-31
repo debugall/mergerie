@@ -291,6 +291,15 @@ main { padding: 0 var(--s-6) var(--s-12); max-width: none; margin: 0 auto; width
 /* les branches source → cible passent sur leur propre ligne et WRAPPENT : des noms
    longs restent lisibles en entier au lieu d'être coupés. */
 .list .card .meta.branches { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; margin-top: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+/* Repli de la liste de projets d'une session multi-dépôts. Le chevron pointe à droite quand
+   c'est replié, vers le bas quand c'est ouvert — la direction dit ce qu'un clic va faire. */
+.targets-toggle { display: inline-flex; align-items: center; gap: 6px; margin: 4px 0 2px;
+  background: none; border: none; padding: 2px 0; cursor: pointer;
+  color: var(--muted); font: inherit; font-size: var(--fs-sm); }
+.targets-toggle:hover { color: var(--text); }
+.targets-toggle .ico { transition: transform var(--t-fast); }
+.targets-toggle[aria-expanded="true"] .ico { transform: rotate(90deg); }
+
 /* Précision sous un champ pré-rempli : dit d'où vient la valeur proposée, sans crier. */
 .field-note { display: block; margin-top: 4px; color: var(--muted); font-size: var(--fs-xs); }
 

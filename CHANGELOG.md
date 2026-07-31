@@ -19,6 +19,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   inferred from the repository and the branch, which is not proof — a branch can have been taken over
   by hand — so the field stays editable, and clearing it starts a fresh session as before. Nothing is
   proposed when no coding session matches.
+- **Multi-repo sessions: fold the project list, push everything, open every MR.** A session on
+  several repositories can now **collapse its list of projects** — past a few repositories one
+  session filled the screen and hid the others — and the folded state is remembered, so an automatic
+  refresh does not reopen it under you. Two grouped actions appear when they have something to do:
+  **Push all**, which pushes every committed-but-not-pushed branch in one job, and **Create all MRs**,
+  which opens a merge request for each pushed project that has none. The bulk MR dialog asks for the
+  options once — squash, delete source branch — and gives each merge request the session's commit
+  message as its title, rather than asking for ten titles in a row. In both cases a project that
+  fails does not stop the others, and the summary names the ones that did.
 - **Run one project of a multi-repo session on its own.** Each project of a coding session now has
   its own **Run** button, and a session with several failures offers **Re-run failed projects**.
   Until now a session could only be re-run whole: on ten repositories where six had succeeded, that

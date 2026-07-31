@@ -181,6 +181,55 @@ describe('Sessions de dev de bout en bout', () => {
     assert.equal(tg.status, 'new', 'et rien n’a été lancé');
   });
 
+  /* Actions groupées d'une session multi-dépôts. Le point à vérifier n'est pas qu'elles
+     marchent quand tout va bien, mais qu'elles ne touchent QUE ce qu'il faut : pousser ne doit
+     pas repousser une branche déjà poussée, et créer les MR ne doit pas en ouvrir une seconde
+     là où il y en a déjà une. */
+  test('pousser tous / créer toutes les MR ne visent que ce qui manque', async () => {
+    const t = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'lot', targets: [
+        { repo_id: repoId, branch: 'ai/lot-a' },
+        { repo_id: repo2Id, branch: 'ai/lot-b' },
+      ],
+    });
+    const id = t.body.id;
+    await app.api('POST', `/api/tasks/${id}/run`);
+    await waitForJobs(app.api);
+
+    let cibles = (await app.api('GET', `/api/tasks/${id}`)).body.task.targets;
+    // on ramène les deux à « commité », dont un qui portera déjà une MR
+    for (const tg of cibles) app.db.prepare("UPDATE task_target SET status='committed', mr_iid=NULL, mr_url=NULL WHERE id=?").run(tg.id);
+
+    const push = await app.api('POST', `/api/tasks/${id}/push-all`);
+    assert.equal(push.status, 200, 'le push groupé est accepté');
+    await waitForJobs(app.api);
+    cibles = (await app.api('GET', `/api/tasks/${id}`)).body.task.targets;
+    assert.ok(cibles.every((tg) => tg.status === 'pushed'), 'les deux branches sont poussées');
+
+    // plus rien à pousser : l'action doit le DIRE, pas relancer un job vide
+    const encore = await app.api('POST', `/api/tasks/${id}/push-all`);
+    assert.ok(encore.status >= 400, 'sans branche à pousser, l’action est refusée');
+
+    // une MR existe déjà sur le premier projet : la création groupée doit l'ignorer
+    app.db.prepare("UPDATE task_target SET mr_iid=42, mr_url='https://x/42' WHERE id=?").run(cibles[0].id);
+    const mrs = await app.api('POST', `/api/tasks/${id}/mrs`, { squash: false, removeSourceBranch: false });
+    assert.equal(mrs.status, 200);
+    assert.equal(mrs.body.created.length, 1, 'une seule MR créée — pas de doublon sur le projet qui en a déjà une');
+    assert.equal(mrs.body.created[0].project, cibles[1].project);
+
+    const apres = (await app.api('GET', `/api/tasks/${id}`)).body.task.targets;
+    assert.equal(apres.find((x) => x.id === cibles[0].id).mr_iid, 42, 'la MR existante n’a pas été remplacée');
+
+    // toutes en ont une : plus rien à créer
+    const vide = await app.api('POST', `/api/tasks/${id}/mrs`, {});
+    assert.ok(vide.status >= 400, 'sans MR à créer, l’action est refusée');
+
+    /* Nettoyage : les statistiques comptent les MR créées SUR TOUTE la base, et un autre test
+       assure ce compteur. Un test qui laisse des traces globales en fait échouer un autre selon
+       l'ordre d'exécution — on préfère nettoyer plutôt que dépendre de l'ordre. */
+    app.db.prepare('UPDATE task_target SET mr_iid = NULL, mr_url = NULL WHERE task_id = ?').run(id);
+  });
+
   test('la création d’une session valide ses entrées', async () => {
     const sansPrompt = await app.api('POST', '/api/tasks', { targets: [{ repo_id: repoId, branch: 'x' }] });
     assert.equal(sansPrompt.status, 400);

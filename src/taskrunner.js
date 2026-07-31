@@ -525,8 +525,30 @@ async function pushTarget(taskId, targetId, onLog = () => {}) {
   onLog('✅ branche poussée');
 }
 
+/* Pousse PLUSIEURS projets d'une session en un seul job. Un projet en échec n'interrompt pas
+   les autres — c'est la règle de tout ce qui est multi-dépôts ici : sur dix branches, une
+   permission refusée sur la troisième ne doit pas laisser les sept dernières non poussées. */
+async function pushTargets(task, targetIds, onLog = () => {}) {
+  const voulus = new Set((targetIds || []).map(Number));
+  const cibles = targetsOf(task.id).filter((tg) => voulus.has(tg.id));
+  if (!cibles.length) throw new Error(t('err.projet-introuvable-pour-cette-session-2'));
+  let ok = 0; const echecs = [];
+  for (const tg of cibles) {
+    onLog(`──────── ${tg.project} · ${tg.branch} ────────`);
+    try { await pushTarget(task.id, tg.id, onLog); ok += 1; }
+    catch (e) {
+      setTarget(tg.id, { last_error: e.message });
+      echecs.push(tg.project);
+      onLog(`⚠ ${tg.project} : ${e.message}`);
+    }
+  }
+  syncTaskStatus(task.id);
+  onLog(`${ok}/${cibles.length} branche(s) poussée(s)${echecs.length ? ` — en échec : ${echecs.join(', ')}` : ''}`);
+  return { pushed: ok, failed: echecs.length };
+}
+
 module.exports = {
-  reconcileTargets,
+  reconcileTargets, pushTargets,
   runTask, runTaskFollowup, runTaskAnswer, pushTarget, targetsOf, setTarget, syncTaskStatus,
   execOnTarget, buildCodePrompt, commitMessageFor, saveAgentOutput,
 };

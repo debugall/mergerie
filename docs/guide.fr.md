@@ -171,6 +171,16 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   En revanche, si la branche **porte déjà le travail** — cas d'une relance après un échec survenu
   *après* le commit, un push refusé par exemple —, l'absence de nouveau changement n'est **pas** une
   erreur : la session reprend son état « commit prêt », avec le diff et le bouton de création de MR.
+- **Replier la liste des projets.** Au-delà de quelques dépôts, une session occupait tout l'écran
+  et masquait les autres. Un clic la replie, l'état est **mémorisé** — sinon le rafraîchissement
+  automatique la rouvrirait toutes les secondes et demie pendant un job.
+- **Pousser tous · Créer toutes les MR.** Deux actions groupées, qui n'apparaissent que lorsqu'elles
+  ont quelque chose à faire (le nombre concerné est dans le libellé). **Pousser tous** pousse en un
+  seul job toutes les branches commitées mais pas encore poussées. **Créer toutes les MR** ouvre une
+  merge request pour chaque projet poussé qui n'en a pas : la modale demande les options **une fois**
+  — squash, suppression de la branche source — et chaque MR reprend le **message de commit de la
+  session** comme titre, plutôt que de réclamer dix titres à la suite. Dans les deux cas, un projet
+  en échec n'interrompt pas les autres et le bilan nomme ceux qui ont échoué.
 - **Lancer un projet à la fois.** Sur une session multi-dépôts, chaque projet porte son propre
   bouton **Lancer**, et une session comptant plusieurs échecs propose **Relancer les projets en
   échec**. Auparavant une session ne se relançait qu'en bloc : sur dix dépôts dont six avaient
