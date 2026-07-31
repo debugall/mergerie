@@ -623,6 +623,12 @@ describe('API de bout en bout', () => {
     assert.equal((await app.api('POST', '/api/jobs/999999/start-now')).status, 409);
     assert.equal((await app.api('POST', '/api/jobs/999999/stop')).status, 409);
     assert.equal((await app.api('GET', '/api/jobs/999999/log')).status, 400);
+
+    /* Arrêter UN job ne doit pas être confondu avec le Stop global. Ici on vérifie ce qui
+       est vérifiable sans jobs longs : les deux routes existent et sont distinctes, et
+       l'arrêt ciblé refuse proprement un id inconnu au lieu de tout arrêter par défaut. */
+    assert.equal((await app.api('POST', '/api/jobs/stop', { job_id: 999999 })).status, 409,
+      'un job_id inconnu ne doit PAS retomber sur « tout arrêter »');
   });
 
   test('POST /api/reports/reset remet les MR à reviewer', async () => {

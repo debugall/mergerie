@@ -122,8 +122,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   its job ends**, carrying a dot for how it ended — green finished, red failed, grey stopped — and
   keeps its log until a new batch of jobs starts: the moment a job ends is exactly when you want to
   read it, especially if it failed. The tab bar only appears when there is more than one job — a
-  lone tab teaches nothing and costs a line. *Stop* still stops everything, but a single job can now
-  be stopped on its own.
+  lone tab teaches nothing and costs a line. Each tab of a running job carries **its own stop**,
+  which leaves the others and the queue alone; the panel's *Stop* remains "stop everything" and now
+  says so once more than one job is running, instead of claiming to stop "the running job".
 - **A new session can continue an existing one.** Creating a coding session, an out-of-repo coding
   session or an exploration now offers an optional **Resume an existing agent session** field. Fill
   it in and no new session is opened: the work happens inside that one, so the AI still has

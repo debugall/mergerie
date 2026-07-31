@@ -988,14 +988,32 @@ function renderLogTabs(ids, main) {
   const bar = $('#logTabs');
   bar.hidden = ids.length < 2;
   if (bar.hidden) { bar.innerHTML = ''; return; }
+  /* L'onglet est une ENVELOPPE, pas un bouton : il en contient deux (choisir / arrêter), et
+     un bouton dans un bouton n'existe pas en HTML. L'arrêt n'est proposé que sur un job qui
+     tourne encore — sur un job fini, il n'aurait rien à arrêter. */
   bar.innerHTML = ids.map((id) => {
     const st = LOGP.state.get(id) || 'running';
     const cls = ['jobtab', st === 'running' ? 'running' : st, id === LOGP.active ? 'active' : ''].filter(Boolean).join(' ');
-    return `<button type="button" class="${cls}" data-jobtab="${id}" title="${esc(tr(`job.tab.state.${st}`))}">`
-      + `<span class="dot"></span>${esc(id === main ? tr('job.tab.main') : tr('job.tab.parallel'))} <span class="muted">#${id}</span></button>`;
+    const nom = id === main ? tr('job.tab.main') : tr('job.tab.parallel');
+    return `<span class="${cls}" data-jobtab="${id}">`
+      + `<button type="button" class="jobtab-pick" title="${esc(tr(`job.tab.state.${st}`))}">`
+      + `<span class="dot"></span>${esc(nom)} <span class="muted">#${id}</span></button>`
+      + (st === 'running'
+        ? `<button type="button" class="jobtab-stop" data-jobstop="${id}" title="${esc(tr('job.tab.stop', { name: nom }))}" aria-label="${esc(tr('job.tab.stop', { name: nom }))}"><svg class="ico ico-sm"><use href="#i-stop"/></svg></button>`
+        : '')
+      + '</span>';
   }).join('');
-  for (const b of $$('#logTabs [data-jobtab]')) {
-    b.addEventListener('click', () => showLogPane(Number(b.dataset.jobtab)));
+  for (const b of $$('#logTabs .jobtab-pick')) {
+    b.addEventListener('click', () => showLogPane(Number(b.closest('[data-jobtab]').dataset.jobtab)));
+  }
+  for (const b of $$('#logTabs [data-jobstop]')) {
+    b.addEventListener('click', async () => {
+      const id = Number(b.dataset.jobstop);
+      // Confirmation comme pour le Stop global : arrêter n'est pas un geste de navigation.
+      if (!await confirmDialog({ text: tr('confirm.job-stop-one', { id }), confirmLabel: tr('job.btn.stop') })) return;
+      try { await busy(b, () => api(`/jobs/${id}/stop`, { method: 'POST' })); refreshStatus(); }
+      catch (e) { toast(explainError(e.message), true); }
+    });
   }
 }
 
@@ -1051,7 +1069,11 @@ async function pumpLog() {
   st.innerHTML = `<span class="dot"></span>${esc(label)}`;
   jobClock = { started: d.started_at || null, finished: d.finished_at || null, running };
   syncJobClock();
-  $('#logStop').hidden = !running;
+  const stopBtn = $('#logStop');
+  stopBtn.hidden = !running;
+  /* Ce bouton arrête TOUT et vide la file. Tant qu'un seul job tournait, « le job en cours »
+     était exact ; à plusieurs il faut le dire, sinon on croit n'arrêter que ce qu'on lit. */
+  stopBtn.title = ids.length > 1 ? tr('job.stop.all-title', { n: ids.length }) : tr('job.stop.one-title');
   /* « Relancer » ne s'affiche que sur un job qui n'est pas allé au bout ET dont le serveur
      sait rejouer l'intention. Le bandeau disait « arrêté » et laissait deviner où cliquer. */
   const retry = $('#logRetry');

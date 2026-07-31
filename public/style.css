@@ -698,9 +698,17 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 .logpane { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; color: var(--code-text); background: var(--code-bg); white-space: pre-wrap; word-break: break-word; user-select: text; }
 /* Onglets de job : même grammaire que les onglets du visualiseur (.split-tabs). */
 .log-tabs { display: flex; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
-.log-tabs button { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--line); color: var(--muted); padding: 3px 10px; border-radius: var(--radius); cursor: pointer; font-size: 12.5px; }
-.log-tabs button:hover:not(.active) { color: var(--text); border-color: var(--accent); }
-.log-tabs button.active { color: var(--text); background: var(--panel2); }
+/* L'onglet est une enveloppe : elle porte la bordure et l'état, les deux boutons qu'elle
+   contient (choisir / arrêter) restent transparents. Un bouton dans un bouton n'existe pas. */
+.log-tabs .jobtab { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.log-tabs .jobtab:hover:not(.active) { border-color: var(--accent); }
+.log-tabs .jobtab.active { background: var(--panel2); }
+.log-tabs button { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: none; color: var(--muted); padding: 3px 10px; cursor: pointer; font-size: 12.5px; }
+.log-tabs .jobtab:hover .jobtab-pick, .log-tabs .jobtab.active .jobtab-pick { color: var(--text); }
+/* Le stop reste discret : c'est l'onglet qu'on vient chercher, pas lui. Il ne rougit qu'au
+   survol — un ✕ rouge en permanence sur chaque onglet ferait un bandeau d'alarmes. */
+.log-tabs .jobtab-stop { padding: 3px 7px 3px 4px; border-left: 1px solid var(--line); }
+.log-tabs .jobtab-stop:hover { color: var(--red-text); background: color-mix(in srgb, var(--red) 10%, transparent); }
 /* Pastille d'état, même vocabulaire que le bandeau : ambre en cours (elle bat), vert
    terminé, rouge en erreur, gris arrêté. C'est ce qui dit qu'un onglet a fini SANS le
    faire disparaître — un journal supprimé à la seconde où l'on veut le lire, c'est raté. */
