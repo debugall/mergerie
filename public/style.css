@@ -30,12 +30,10 @@
   /* ---- Typographie : 7 pas, ratio ~1.2 ---- */
   --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px;
   --fs-lg: 16px;  --fs-xl: 20px; --fs-3xl: 28px;
-  --lh-tight: 1.25; --lh-base: 1.55;
   --fw-med: 500; --fw-sem: 620; --fw-bold: 700;
   --ff-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* ---- Espacement : grille 4pt ---- */
-  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+  /* ---- Espacement : grille 4pt ---- */ --s-2: 8px; --s-3: 12px; --s-4: 16px;
   --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-12: 48px;
 
   /* ---- Rayons (--radius reste un alias pour ne rien casser) ---- */
@@ -49,7 +47,6 @@
 
   /* ---- Mouvement ---- */
   --t-fast: .12s cubic-bezier(.4,0,.2,1);
-  --t-base: .2s cubic-bezier(.4,0,.2,1);
   /* code, diff, coloration syntaxique */
   --code-bg: #0c1018; --code-text: #cdd6e6; --hunk: #6fa8ff;
   --diff-add-bg: rgba(53,192,127,.14); --diff-add-text: #93e6ba;
@@ -125,7 +122,11 @@ button { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .001ms !important; animation-iteration-count: 1 !important;
-    transition-duration: .001ms !important; scroll-behavior: auto !important;
+    /* Le DÉLAI aussi : sans lui, l'entrée en cascade survivait et la liste apparaissait par
+       saccades — précisément pour qui a demandé moins de mouvement. */
+    animation-delay: 0ms !important;
+    transition-duration: .001ms !important; transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -457,7 +458,7 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .combo input { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
 /* valeur longue : ellipsis quand le champ n'a pas le focus (le title montre le nom complet au survol) */
 .combo input { text-overflow: ellipsis; }
-.combo-options { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin-top: 2px; max-height: 240px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+.combo-options { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin-top: 2px; max-height: 240px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--sh-2); }
 .combo-opt { padding: 7px 10px; cursor: pointer; font-size: 13px; }
 .combo-opt:hover { background: var(--panel2); }
 .combo-opt.muted { color: var(--muted); cursor: default; }
@@ -660,7 +661,7 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 @media (max-width: 1000px) { .code-body, .code-body.no-report { grid-template-columns: 190px 1fr; } .code-body .code-report { display: none; } }
 
 #toasts { position: fixed; bottom: 18px; right: 18px; z-index: 50; display: flex; flex-direction: column-reverse; gap: 8px; align-items: flex-end; }
-.toast { position: static; animation: toast-in .22s cubic-bezier(.2,.8,.3,1); max-width: 520px; background: var(--panel); border: 1px solid var(--line); padding: 10px 14px; border-radius: var(--radius); z-index: 50; display: flex; align-items: flex-start; gap: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+.toast { position: static; animation: toast-in .22s cubic-bezier(.2,.8,.3,1); max-width: 520px; background: var(--panel); border: 1px solid var(--line); padding: 10px 14px; border-radius: var(--radius); z-index: 50; display: flex; align-items: flex-start; gap: 10px; box-shadow: var(--sh-3); }
 .toast.err { border-color: var(--red); }
 .toast .toast-msg { color: var(--red); user-select: text; white-space: pre-wrap; word-break: break-word; flex: 1; }
 .toast .toast-btn { background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
@@ -674,7 +675,7 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
    la progression / on garde le bouton Stop même en parcourant le contenu. `--header-h` est
    mesuré en JS (hauteur réelle de l'en-tête, qui varie si la nav passe à la ligne). */
 .logpanel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); margin: 8px 18px 14px; overflow: hidden;
-  position: sticky; top: calc(var(--header-h, 56px) + 6px); z-index: 9; box-shadow: 0 6px 16px rgba(0,0,0,.18); }
+  position: sticky; top: calc(var(--header-h, 56px) + 6px); z-index: 9; box-shadow: var(--sh-2); }
 .logpanel .loghead { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
 .logpanel .loghead .spacer { flex: 1; }
 .logstatus { font-weight: 600; }
@@ -695,6 +696,9 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 /* #logBox est un CONTENEUR de volets (un par job en cours) : c'est le volet qui défile,
    pas le conteneur, sinon changer d'onglet ferait sauter la position de défilement. */
 #logBox { margin: 0; background: var(--code-bg); }
+/* Ligne d'en-tête d'un journal élagué : discrète mais présente — un journal tronqué en
+   silence ferait douter de ce qu'on lit. */
+.log-trunc { color: var(--muted); font-style: italic; }
 .logpane { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; color: var(--code-text); background: var(--code-bg); white-space: pre-wrap; word-break: break-word; user-select: text; }
 /* Onglets de job : même grammaire que les onglets du visualiseur (.split-tabs). */
 .log-tabs { display: flex; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
@@ -734,8 +738,34 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 .toast.leaving { animation: toast-out .18s ease-in forwards; }
 
 /* Apparition échelonnée des cartes de liste (une seule passe, coût CPU nul). */
+/* Palette de commandes : une boîte étroite, ancrée haut — on la lit, on ne la contemple pas. */
+.palette-box { width: 560px; max-width: 92vw; padding: 0; overflow: hidden; }
+.palette-input { width: 100%; border: none; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; font-size: 15px; padding: 14px 16px; outline: none; }
+.palette-list { max-height: 320px; overflow-y: auto; }
+.palette-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px; cursor: pointer; font-size: 13.5px; }
+.palette-item.active, .palette-item:hover { background: var(--panel2); }
+.palette-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-kind { flex: 0 0 auto; font-size: 12px; }
+.palette-empty { padding: 14px 16px; font-size: 13px; }
+.palette-hint { padding: 8px 16px; margin: 0; border-top: 1px solid var(--line); font-size: 12px; }
+/* Feuille de raccourcis : deux colonnes, la touche puis ce qu'elle fait. */
+.shortcuts-list { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; align-items: center; margin: 10px 0 4px; }
+.shortcuts-list kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px; white-space: nowrap; }
+/* Anneau de sélection clavier. Absent tant qu'on n'a pas pressé j/k : un raccourci qui agit
+   sur un élément qu'on n'a pas désigné est un piège. */
+.card.focused { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Atterrissage d'un résultat : un balayage unique sur la PASTILLE de note. Sur la carte
+   entière ce serait un flash ; ici c'est exactement l'objet qui vient d'apparaître. */
+@keyframes landed { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  100% { box-shadow: 0 0 0 10px transparent; } }
+.note.just-landed { animation: landed .9s ease-out 1; }
+
 @keyframes card-in { from { opacity: 0; transform: translateY(6px); } }
-.list .card { animation: card-in .26s cubic-bezier(.2,.8,.3,1) both; animation-delay: calc(var(--i, 0) * 22ms); }
+/* L'entrée en cascade est portée par la LISTE (`animate-in`, posée par `stagger`), pas par la
+   carte : sinon elle rejouait à chaque rendu — donc à chaque frappe dans une recherche et à
+   chaque rafraîchissement. Le mouvement doit dire « ça a changé », jamais « ça a été rendu ». */
+.list.animate-in > .card { animation: card-in .26s cubic-bezier(.2,.8,.3,1) both; animation-delay: calc(var(--i, 0) * 22ms); }
 
 /* ---------- Navigation & en-tête ---------- */
 .brand { display: flex; flex-direction: column; gap: 1px; line-height: 1.15; }
@@ -824,6 +854,25 @@ nav button:hover { color: var(--text); background: var(--hover); }
 
 /* Résumé actionnable dans la colonne de droite (au lieu d'un simple placeholder) */
 .ph-summary { padding: var(--s-2); }
+/* « Ça tourne » posé sur l'objet lui-même (P9) : un liseré animé sur le bord gauche de la
+   carte concernée. Un seul objet par job en cours, jamais tout un lot.
+   Deux coupures nettes : onglet en arrière-plan (rien à regarder, batterie inutile) et
+   mouvement réduit (le liseré reste, fixe — l'information passe, pas le mouvement). */
+.card.running-now { position: relative; }
+.card.running-now::before {
+  content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px;
+  border-radius: 3px; background: var(--accent);
+  animation: running-pulse 1.8s ease-in-out infinite;
+}
+@keyframes running-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+body.tab-cachee .card.running-now::before { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .card.running-now::before { animation: none; opacity: 1; } }
+
+/* Delta depuis la dernière visite : discret par construction (trois lignes au plus),
+   il ouvre le panneau sans concurrencer le résumé qui suit. */
+.ph-delta { border-left: 2px solid var(--accent); padding: 2px 0 2px var(--s-3); margin-bottom: var(--s-3); }
+.ph-delta ul { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: var(--fs-sm); }
+.ph-delta li { margin: 2px 0; }
 .ph-worst { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-3); }
 .ph-item { display: flex; align-items: center; gap: var(--s-2); width: 100%; text-align: left;
   background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r-md);
@@ -894,7 +943,7 @@ nav button:hover { color: var(--text); background: var(--hover); }
   position: absolute; right: 0; top: calc(100% + 4px); z-index: 40;
   min-width: 210px; padding: 4px;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
-  box-shadow: 0 8px 24px rgba(0,0,0,.28); display: flex; flex-direction: column; gap: 2px;
+  box-shadow: var(--sh-2); display: flex; flex-direction: column; gap: 2px;
 }
 .split-menu button {
   text-align: left; background: transparent; border: 0; color: var(--text);
@@ -1575,7 +1624,7 @@ nav button:hover { color: var(--text); background: var(--hover); }
 /* Lightbox : image en grand par-dessus la page (le fond `.modal` gère l'overlay + le centrage). */
 .jira-lightbox { cursor: zoom-out; }
 .jira-lightbox-fig { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: default; }
-.jira-lightbox-fig img { max-width: 92vw; max-height: 84vh; object-fit: contain; border-radius: 8px; background: var(--panel2); box-shadow: 0 10px 44px rgba(0,0,0,.5); }
+.jira-lightbox-fig img { max-width: 92vw; max-height: 84vh; object-fit: contain; border-radius: 8px; background: var(--panel2); box-shadow: var(--sh-3); }
 .jira-lightbox-cap { color: var(--on-overlay); font-size: 13px; display: flex; gap: 14px; align-items: center; }
 .jira-lightbox-cap a { color: #bcd6f5; }
 

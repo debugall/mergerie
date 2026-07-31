@@ -44,6 +44,10 @@ const glob = require('./glob');
 const notify = require('./notify');
 const gitgraph = require('./gitgraph');
 const { t } = i18n;
+/* Quelques routes nomment leur variable locale `t` (la tâche) et masquaient alors la
+   fonction de traduction : le message d'erreur devenait « t is not a function », c'est-à-dire
+   exactement rien pour qui le lit. `tt` est le même `t`, mais qu'aucune locale ne masque. */
+const tt = t;
 const { discoverAll } = require('./discover');
 const jobs = require('./jobs');
 const reviewer = require('./reviewer');
@@ -127,6 +131,8 @@ app.get('/api/status', wrap((req, res) => {
     copilotCmdPreview: `${copilot.COPILOT_BIN} ${[...copilot.EXTRA_ARGS, '-p', '"<prompt>"'].join(' ')}`,
     job: jobs.currentJob(),
     running: jobs.isRunning(),
+    // Objets en cours de traitement : le front marque la carte concernée (cf. P9).
+    targets: jobs.runningTargets(),
     queued: jobs.queueCount(),
     autoRefreshMinutes: Number(getConfig().auto_refresh_minutes) || 0,
     jiraConfigured: jira.isConfigured(getConfig()), // pilote l'UI « enrichir depuis Jira »
@@ -1235,7 +1241,7 @@ app.get('/api/tasks', wrap((req, res) => {
 
 app.get('/api/tasks/:id', wrap((req, res) => {
   const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(t('err.session-introuvable'));
+  if (!t) throw new Error(tt('err.session-introuvable'));
   res.json({
     task: { ...t, targets: taskTargets(t.id) },
     images: taskImages(t.id).map((im, i) => ({ id: im.id, idx: i })),
@@ -1268,7 +1274,7 @@ app.post('/api/tasks', wrap((req, res) => {
 
 app.put('/api/tasks/:id', wrap((req, res) => {
   const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(t('err.session-introuvable'));
+  if (!t) throw new Error(tt('err.session-introuvable'));
   const { prompt, commit_message, auto_push, images, targets, ask_questions, session_id } = req.body || {};
   const sessionId = normalizeSessionId(session_id);
   if (Array.isArray(targets) && targets.length) {
@@ -1388,13 +1394,13 @@ app.get('/api/tasks/:id/passes', wrap((req, res) => {
 // Réponse .md d'une exploration.
 app.get('/api/tasks/:id/md', wrap((req, res) => {
   const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(t('err.session-introuvable'));
+  if (!t) throw new Error(tt('err.session-introuvable'));
   res.json({ md: t.md_path ? readFileSafe(t.md_path) : null, prompt: t.prompt, created_at: t.created_at });
 }));
 
 app.post('/api/tasks/:id/run', wrap((req, res) => {
   const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(t('err.session-introuvable'));
+  if (!t) throw new Error(tt('err.session-introuvable'));
   res.json(jobs.startTaskJob(t.id, 'run'));
 }));
 
@@ -1529,9 +1535,9 @@ app.post('/api/local-tasks/:id/hidden', wrap((req, res) => {
 // Itération : nouvelle passe de l'IA (codage) ou question de suivi (exploration).
 app.post('/api/tasks/:id/followup', wrap((req, res) => {
   const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(t('err.session-introuvable'));
+  if (!t) throw new Error(tt('err.session-introuvable'));
   const instruction = (req.body && req.body.instruction || '').trim();
-  if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
+  if (!instruction) throw new Error(tt('err.demande-de-suivi-requise'));
   res.json(jobs.startTaskJob(t.id, 'followup', { instruction }));
 }));
 
@@ -1570,10 +1576,10 @@ app.post('/api/tasks/:id/targets/:tid/push', wrap((req, res) => {
 app.post('/api/tasks/:id/targets/:tid/mr', wrap(async (req, res) => {
   const t = taskById(Number(req.params.id));
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
-  if (!t || !tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
-  if (tg.status !== 'pushed') throw new Error(t('err.la-branche-doit-etre-poussee'));
+  if (!t || !tg) throw new Error(tt('err.projet-introuvable-pour-cette-session'));
+  if (tg.status !== 'pushed') throw new Error(tt('err.la-branche-doit-etre-poussee'));
   const already = effectiveMr(tg);
-  if (already) throw new Error(t('err.mr-already-open', { iid: already.iid }));
+  if (already) throw new Error(tt('err.mr-already-open', { iid: already.iid }));
   const cfg = getConfig();
   const title = (req.body && req.body.title || '').trim() || t.commit_message || tg.branch;
   let target = tg.base_branch;

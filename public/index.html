@@ -23,7 +23,6 @@
      Remplace les emojis, dont le rendu et les couleurs varient selon l'OS (WSL/Linux). -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
     <defs>
-        <g id="g-stroke" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></g>
     </defs>
     <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M6 3.5l14 8.5-14 8.5z"/></symbol>
@@ -760,6 +759,30 @@
 </div>
 
 <!-- Modale de confirmation générique : remplace les confirm() natifs -->
+<!-- Palette de commandes (Ctrl/Cmd+K). Une entrée de palette ne contient JAMAIS de logique
+     métier : elle clique un bouton existant. Sinon elle deviendrait une seconde navigation,
+     qui dériverait de la vraie au premier renommage. -->
+<div id="paletteModal" class="modal" hidden>
+    <div class="modal-box palette-box">
+        <input id="paletteInput" class="palette-input" type="search" autocomplete="off"
+               placeholder="Aller à… ou chercher une MR, une session" data-i18n-placeholder="palette.ph"
+               aria-label="Palette de commandes" data-i18n-aria="palette.aria" />
+        <div id="paletteList" class="palette-list" role="listbox"></div>
+        <p class="palette-hint muted" data-i18n="palette.hint">↑ ↓ pour choisir · Entrée pour ouvrir · Échap pour fermer</p>
+    </div>
+</div>
+
+<!-- Feuille de raccourcis : persistante, parce qu'un toast de 3,5 s disparaît pendant qu'on le lit. -->
+<div id="shortcutsModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 data-i18n="shortcuts.title">Raccourcis clavier</h3>
+        <div id="shortcutsList" class="shortcuts-list"></div>
+        <div class="modal-actions">
+            <button id="shortcutsClose" type="button" class="btn" data-i18n="ui.close">Fermer</button>
+        </div>
+    </div>
+</div>
+
 <div id="confirmModal" class="modal" hidden>
     <div class="modal-box modal-confirm">
         <h3 id="confirmTitle"></h3>

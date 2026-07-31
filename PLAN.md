@@ -279,6 +279,26 @@ centaines) : la ref source de Git → Actions est un `comboHtml('git-ref')`, la 
 supprimer et le tableau de l'explorateur ont un filtre qui **masque des lignes sans toucher aux
 cases cochées** — on coche, on filtre autre chose, on coche encore, puis on supprime d'un coup.
 Le sélecteur de branche de Git → Navigation et ceux de la modale de session étaient déjà des combos.
+**Calme et repères** (issu de l'étude `ludique.md`, dont le fil conducteur est : *rien qui
+n'apporte pas d'information*).
+*Calme* — `renderIfChanged(el, sig, html)` : chaque liste calcule la signature de ce qu'elle
+affiche et ne touche au DOM que si elle a changé (pas de clignotement au rafraîchissement, et les
+écouteurs déjà posés restent valides). L'entrée en cascade (`stagger`) est armée par le seul
+drapeau `listeChargee`, posé par les `loadX()` : elle joue au chargement, jamais à la frappe d'un
+filtre. Le journal est plafonné à `LOG_MAX_NODES` lignes (élagage par la tête, bandeau `.log-trunc`).
+`openReport(id, {keep})` conserve défilement, sous-onglet et version tant que la signature du
+rapport (`reportSig`) est identique.
+*Repères* — le statut expose `targets` (`jobs.runningTargets()`) : le front marque la carte
+concernée d'un liseré animé (`.card.running-now`). Un lot de review ne désigne que sa MR courante
+(`current_mr_id`), l'animation se fige quand l'onglet est en arrière-plan et disparaît en mouvement
+réduit. `etaText()` n'affiche un reste qu'au-delà de deux unités et vingt secondes, par paliers
+grossiers, et se tait dès que le rythme dévie de plus de moitié.
+*Navigation* — palette `Ctrl/Cmd + K` (actions figées + MR et sessions déjà en mémoire, huit
+résultats), `j`/`k`/`Entrée`/`Échap` sur la liste visible, `?` pour l'aide. L'onglet et le stade de
+Reviews sont mémorisés ; **rien d'autre** ne l'est (une modale ou un rapport périmés sont pires
+qu'un démarrage propre). Le panneau de rapport s'ouvre sur le **delta depuis la dernière visite**
+(instantané par stade, base de comparaison figée pendant quatre heures, trois faits au plus, rien
+du tout si rien n'a bougé).
 **Garde-fous statiques** (`npm run check`) : `check-front.js` (sélecteur `$` traité en liste,
 sous-onglet sans `segmented`, id inconnu, icône absente, `busy()` mal appelé, **fonction redéfinie au
 premier niveau d'`app.js`** (la seconde écrase la première par hoisting, sans avertissement), **liste de

@@ -59,10 +59,10 @@ function toast(msg, isErr = false) {
   if (isErr) {
     // erreur : reste affichée jusqu'à fermeture manuelle, texte sélectionnable + copier
     const copy = document.createElement('button');
-    copy.className = 'toast-btn'; copy.textContent = 'copier';
+    copy.className = 'toast-btn'; copy.textContent = tr('ui.copy');
     copy.addEventListener('click', () => copyText(msg, copy));
     const close = document.createElement('button');
-    close.className = 'toast-btn'; close.textContent = '✕';
+    close.className = 'toast-btn'; close.innerHTML = svgIco('close');
     close.addEventListener('click', () => t.remove());
     t.appendChild(copy); t.appendChild(close);
   } else {
@@ -105,7 +105,7 @@ function toastUndo(msg, onUndo, ms = 6000) {
   const span = document.createElement('span');
   span.className = 'toast-msg'; span.textContent = msg;
   const b = document.createElement('button');
-  b.className = 'toast-btn'; b.textContent = `↩ ${tr('ui.undo')}`;
+  b.className = 'toast-btn'; b.innerHTML = `${svgIco('reset')} ${esc(tr('ui.undo'))}`;
   const timer = setTimeout(() => dismissToast(t), ms);
   b.addEventListener('click', () => { clearTimeout(timer); dismissToast(t); onUndo(); });
   t.appendChild(span); t.appendChild(b);
@@ -146,8 +146,38 @@ function debounce(fn, ms = 120) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
+/* L'animation d'entrée n'appartient qu'à un VRAI chargement de données. Un filtrage ou un
+   rafraîchissement réécrivent aussi le DOM, mais ils ne sont pas un événement : les animer
+   revenait à faire clignoter la liste à chaque frappe.
+   Le drapeau est posé par les fonctions de CHARGEMENT et consommé ici — c'est le seul endroit
+   qui sait distinguer « les données sont arrivées » de « on a re-rendu ». */
+let listeChargee = false;
 function stagger(sel) {
-  $$(sel).forEach((c, i) => c.style.setProperty('--i', Math.min(i, 10)));
+  const nodes = $$(sel);
+  nodes.forEach((c, i) => c.style.setProperty('--i', Math.min(i, 10)));
+  const list = nodes[0] && nodes[0].parentElement;
+  const animer = listeChargee;
+  listeChargee = false;
+  if (!list) return;
+  list.classList.remove('animate-in');
+  if (!animer) return;
+  void list.offsetWidth;                 // redémarre l'animation même si la classe y était déjà
+  list.classList.add('animate-in');
+}
+
+/* Écrire dans le DOM seulement si le contenu a VRAIMENT changé. Le rafraîchissement
+   automatique et la frappe dans une recherche rejouaient sinon toute la liste — position de
+   défilement perdue, menus refermés, cartes qui clignotent. La signature doit décrire tout
+   ce qui est AFFICHÉ : si elle en oublie une part, l'écran se fige sur une donnée périmée. */
+const domSig = new Map();
+function renderIfChanged(el, sig, html) {
+  if (domSig.get(el.id) === sig) return false;
+  domSig.set(el.id, sig);
+  el.innerHTML = html;
+  // Le repère « ça tourne » vit sur les cartes : un re-rendu l'effacerait jusqu'au
+  // prochain sondage de statut. On le repose tout de suite (cf. marquerEnCours).
+  if (ciblesEnCours) marquerEnCours(ciblesEnCours);
+  return true;
 }
 
 function dismissToast(t) {
@@ -212,7 +242,7 @@ function errorBox(text, mrId, taskId) {
   const hint = errorHint(text);
   const hintHtml = hint ? `<div class="errhint">${esc(hint)}</div>` : '';
   const clear = mrId ? ` data-clear-mr="${mrId}"` : (taskId ? ` data-clear-task="${taskId}"` : '');
-  return `<div class="errbox"><div class="errhead"><span>⚠ ${tr('ui.error')}</span>`
+  return `<div class="errbox"><div class="errhead"><span>${svgIco('alert')} ${tr('ui.error')}</span>`
     + `<span class="errbtns"><button class="btn btn-sm errcopy" title="${esc(tr('err.copy-title'))}">${tr('ui.copy')}</button>`
     + `<button class="btn btn-icon btn-sm btn-danger errclear"${clear} title="${esc(tr('err.clear-title'))}"><svg class=\"ico ico-sm\"><use href=\"#i-close\"/></svg></button></span></div>`
     + `${hintHtml}<pre>${esc(text)}</pre></div>`;
@@ -376,8 +406,8 @@ async function runAiSessionTest() {
 }
 function aiSessionResultHtml(d) {
   const verdict = d.recalled
-    ? `<div class="ai-verdict ok">✓ ${esc(tr('settings.aisession.ok'))}</div>`
-    : `<div class="ai-verdict bad">✗ ${esc(tr('settings.aisession.ko'))}</div>`;
+    ? `<div class="ai-verdict ok">${svgIco('check')} ${esc(tr('settings.aisession.ok'))}</div>`
+    : `<div class="ai-verdict bad">${svgIco('close')} ${esc(tr('settings.aisession.ko'))}</div>`;
   const flags = [
     d.dryRun ? `<span class="tag">${esc(tr('settings.aisession.dryrun'))}</span>` : '',
     d.sameSession === true ? `<span class="tag done">${esc(tr('settings.aisession.same-session'))}</span>` : '',
@@ -555,6 +585,62 @@ $('#convStart') && $('#convStart').addEventListener('click', async () => {
   } catch (e) { b.disabled = false; toast(explainError(e.message), true); }
 });
 
+/* ---------- Delta depuis la dernière visite ----------
+   Le panneau de droite ouvre la journée. Son axe est STRICTEMENT « ce qui a changé depuis
+   ma dernière session » — le bandeau du pied de page, lui, raconte le présent qui bouge ;
+   deux endroits qui diraient la même chose s'annuleraient. D'où les trois règles dures :
+   plafond à trois lignes, uniquement ce qui a changé (jamais de « 0 nouvelle MR »), et
+   un instantané par stade pour qu'un simple changement de segment ne fasse pas tout
+   passer pour nouveau. */
+const VISITE_GAP_MS = 4 * 3600 * 1000; // en deçà, on est encore dans la même session de travail
+const visiteKey = (seg) => `aidevtools_visite_${seg}`;
+// Lu UNE fois par chargement de page : le delta doit rester stable pendant qu'on
+// travaille, pas fondre au premier re-rendu de la liste.
+const visitesPrec = {};
+function visitePrecedente(seg) {
+  if (!(seg in visitesPrec)) {
+    let v = null;
+    try {
+      const raw = JSON.parse(localStorage.getItem(visiteKey(seg)) || 'null');
+      if (raw && Array.isArray(raw.ids) && raw.ts) v = raw;
+    } catch { /* instantané illisible : on repart de zéro */ }
+    visitesPrec[seg] = v;
+  }
+  return visitesPrec[seg];
+}
+function memoriserVisite(seg, rows) {
+  const prec = visitePrecedente(seg);
+  // Tant qu'on est dans la même session, on garde la base de comparaison d'origine :
+  // sinon le delta s'effacerait à mesure qu'on lit la liste.
+  if (prec && Date.now() - prec.ts < VISITE_GAP_MS) return;
+  try { localStorage.setItem(visiteKey(seg), JSON.stringify({ ts: Date.now(), ids: rows.map((m) => m.id) })); }
+  catch { /* stockage indisponible */ }
+}
+// Renvoie au plus trois lignes de faits, ou [] s'il ne s'est rien passé.
+function lignesDelta(seg, rows, maintenant = Date.now()) {
+  const prec = visitePrecedente(seg);
+  if (!prec) return []; // première visite : aucun passé à comparer
+  const avant = new Set(prec.ids);
+  const ids = new Set(rows.map((m) => m.id));
+  const arrivees = rows.filter((m) => !avant.has(m.id)).length;
+  const parties = prec.ids.filter((id) => !ids.has(id)).length;
+  const jours = Math.max(0, Math.round((maintenant - prec.ts) / 86400000));
+  const depuis = jours <= 0 ? tr('report.delta.since.today') : (jours === 1 ? tr('report.delta.since.yesterday') : tr('report.delta.since.days', { n: jours }));
+  const lignes = [];
+  if (arrivees) lignes.push(tr('report.delta.new', { n: arrivees }));
+  if (parties) lignes.push(tr('report.delta.gone', { n: parties }));
+  /* L'attente la plus longue n'est pas un delta : c'est un état permanent. Elle n'apparaît
+     donc qu'en APPUI d'un vrai changement — seule, elle deviendrait la ligne immuable
+     affichée tous les matins, et c'est ainsi qu'un panneau cesse d'être lu. */
+  const vieilles = lignes.length ? rows.filter((m) => m.stale && m.gitlab_created_at) : [];
+  if (vieilles.length) {
+    const plusVieille = vieilles.reduce((a, b) => (new Date(a.gitlab_created_at) < new Date(b.gitlab_created_at) ? a : b));
+    const j = Math.floor((maintenant - new Date(plusVieille.gitlab_created_at).getTime()) / 86400000);
+    if (j > 0) lignes.push(tr('report.delta.wait', { n: j }));
+  }
+  return lignes.length ? [depuis, ...lignes.slice(0, 3)] : [];
+}
+
 // La colonne de droite était occupée par « Sélectionne une MR ». On y met plutôt
 // un résumé actionnable : ce qu'il y a, et par quoi commencer.
 function renderReportPlaceholder() {
@@ -566,8 +652,14 @@ function renderReportPlaceholder() {
   const avg = noted.length ? Math.round((noted.reduce((s, m) => s + m.note.value, 0) / noted.length) * 100) / 10 : null;
   const stale = rows.filter((m) => m.stale).length;
   const worst = [...noted].sort((a, b) => a.note.value - b.note.value).slice(0, 3);
+  const delta = lignesDelta(currentSeg, rows);
+  memoriserVisite(currentSeg, rows);
   el.innerHTML = `
     <div class="ph-summary">
+      ${delta.length ? `<div class="ph-delta">
+        <div class="step-s">${esc(delta[0])}</div>
+        <ul>${delta.slice(1).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+      </div>` : ''}
       <div class="empty-t">${tr('report.ph.count', { n: rows.length, total: rows.length })}</div>
       <p class="empty-s">${avg != null ? tr('report.ph.avg', { avg }) : tr('report.ph.no-note')}${stale ? tr('report.ph.stale', { stale }) : ''}</p>
       ${worst.length ? `<div class="ph-worst">
@@ -626,7 +718,7 @@ function onboardingHtml() {
   const s = setupState;
   const step = (n, done, t, sub, act, label) => `
     <div class="step ${done ? 'done' : ''}">
-      <span class="step-n">${done ? '✓' : n}</span>
+      <span class="step-n">${done ? svgIco('check') : n}</span>
       <span class="step-txt"><span class="step-t">${t}</span><br><span class="step-s">${sub}</span></span>
       ${done ? '' : `<button class="btn btn-sm ${n === 1 || (n === 2 && s.configured) ? 'btn-primary' : ''}" data-empty-act="${act}">${label}</button>`}
     </div>`;
@@ -674,7 +766,23 @@ async function refreshCounts() {
   try {
     const s = await api('/stats');
     const f = s.funnel || {};
-    const set = (id, n) => { const el = $(id); if (el) el.textContent = n || 0; };
+    /* Un compteur qui saute de 12 à 13 ne se remarque pas ; un compteur qui COMPTE, si.
+       C'est la seule part visible du travail qui vient de se terminer. Animation courte,
+       coupée si l'onglet est masqué (rien à montrer) ou en mouvement réduit. */
+    const set = (id, n) => {
+      const el = $(id); if (!el) return;
+      const cible = n || 0; const depart = Number(el.textContent) || 0;
+      if (cible === depart || document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        el.textContent = cible; return;
+      }
+      const t0 = performance.now(); const dur = 600;
+      const step = (t) => {
+        const k = Math.min(1, (t - t0) / dur);
+        el.textContent = Math.round(depart + (cible - depart) * (1 - (1 - k) ** 3));
+        if (k < 1) requestAnimationFrame(step); else el.textContent = cible;
+      };
+      requestAnimationFrame(step);
+    };
     set('#segCountToReview', f.to_review); set('#segCountReviewed', f.reviewed); set('#segCountDone', f.done);
     const nav = $('#navCountReview');
     if (nav) { nav.textContent = f.to_review || 0; nav.hidden = !f.to_review; }
@@ -690,9 +798,19 @@ async function refreshCounts() {
 /* ---------- Onglet Reviews : 3 stades d'une même MR ----------
    « À traiter » = liste simple ; « Reviewées » / « Traitées » = liste + rapport.
    Un seul champ de recherche, partagé par les trois stades. */
-let currentSeg = 'to_review';
+/* Le segment de Reviews est mémorisé comme l'onglet l'était déjà : sur un outil relancé
+   plusieurs fois par jour, repartir systématiquement sur « à traiter » est une taxe.
+   On ne restaure QUE l'onglet et le segment — jamais une recherche, une modale, une vue
+   plein écran ni un rapport ouvert : restaurer un état périmé est pire qu'un démarrage
+   propre, et c'est le seul risque réel de cette idée. */
+const SEGS = ['to_review', 'reviewed', 'done'];
+let currentSeg = (() => {
+  try { const v = localStorage.getItem('aidevtools_seg'); return SEGS.includes(v) ? v : 'to_review'; }
+  catch { return 'to_review'; }
+})();
 function loadSegment(seg = currentSeg) {
   currentSeg = seg;
+  try { localStorage.setItem('aidevtools_seg', seg); } catch { /* stockage indisponible */ }
   $$('.segmented [data-seg]').forEach((b) => b.classList.toggle('active', b.dataset.seg === seg));
   const isToReview = seg === 'to_review';
   $('#toReviewList').hidden = !isToReview;
@@ -848,9 +966,34 @@ function setupAutoRefreshPolling(minutes) {
     refreshStatus();
   }, m * 60 * 1000);
 }
+/* ---------- « Ça tourne » attaché à l'objet concerné ----------
+   Sans ça, l'information « un traitement est en cours » vit dans le pied de page, loin de la
+   MR ou de la session qu'elle concerne : il faut faire le lien de tête. On marque donc la
+   carte elle-même. Trois garde-fous, sinon le remède devient le mal :
+   — au plus un objet par job en cours (le serveur ne renvoie que la MR courante d'un lot) ;
+   — rien ne s'anime quand l'onglet est en arrière-plan (batterie, et personne ne regarde) ;
+   — filet purement statique en mouvement réduit (cf. la règle @media dans style.css). */
+let ciblesEnCours = null; // dernières cibles connues, réappliquées après un re-rendu de liste
+function marquerEnCours(targets) {
+  ciblesEnCours = targets;
+  const t = targets || { mrs: [], tasks: [], locals: [] };
+  const veut = new Set([
+    ...(t.mrs || []).map((id) => `[data-id="${id}"]`),
+    ...(t.tasks || []).map((id) => `[data-task="${id}"]`),
+    ...(t.locals || []).map((id) => `[data-local="${id}"]`),
+  ]);
+  const vise = new Set();
+  for (const sel of veut) for (const el of $$(`.card${sel}`)) vise.add(el);
+  for (const el of $$('.card.running-now')) if (!vise.has(el)) el.classList.remove('running-now');
+  for (const el of vise) el.classList.add('running-now');
+  document.body.classList.toggle('tab-cachee', document.hidden);
+}
+document.addEventListener('visibilitychange', () => document.body.classList.toggle('tab-cachee', document.hidden));
+
 async function refreshStatus() {
   try {
     const s = await api('/status');
+    marquerEnCours(s.running ? s.targets : null);
     jiraConfigured = !!s.jiraConfigured;
     setupAutoRefreshPolling(s.autoRefreshMinutes); // (re)configure le polling front si besoin
     $('#dryBadge').hidden = !s.dryRun;
@@ -870,7 +1013,7 @@ async function refreshStatus() {
       $('#logBar').hidden = false;
       const pct = job.total ? Math.round((job.done_count / job.total) * 100) : 0;
       $('#progressBar').style.width = pct + '%';
-      document.title = `${job.done_count}/${job.total}${queued ? ` (+${queued})` : ''} — job en cours`;
+      document.title = tr('job.doc-title', { done: job.done_count, total: job.total, wait: queued ? ` (+${queued})` : '' });
       setFavicon('busy');
     } else {
       $('#logBar').hidden = true;
@@ -879,12 +1022,15 @@ async function refreshStatus() {
       setFavicon(job && job.status === 'error' ? 'error' : 'idle');
       if (job && ['done', 'stopped', 'error'].includes(job.status) && pollTimer) {
         // job vient de finir : rafraîchir les listes ET le détail ouvert
+        const avant = new Map(reportRows.map((m) => [m.id, m.note && m.note.raw]));
         loadToReview();
-        if (currentSeg !== 'to_review') loadReports(currentSeg);
+        if (currentSeg !== 'to_review') loadReports(currentSeg).then(() => signalerAtterrissage(avant));
         if ($('#tab-task').classList.contains('active')) loadTasks();
         // action Docker terminée (up/restart/down…) → recharger la liste pour voir le nouvel état
         if ($('#tab-docker').classList.contains('active')) loadDocker();
-        if (selectedMr) openReport(selectedMr); // recharge le rapport affiché (re-review/modif)
+        // `keep` : ne réécrit l'écran que si quelque chose d'affiché a changé.
+        if (selectedMr) openReport(selectedMr, { keep: true });
+        annoncerFinDeJob(job);
       }
     }
     // Poll tant qu'un job occupe la file (en cours OU en attente). Les deux conditions
@@ -895,6 +1041,44 @@ async function refreshStatus() {
     // log en direct (récupère aussi les dernières lignes après la fin)
     pumpLog();
   } catch (e) { /* silencieux */ }
+}
+
+/* ---------- L'atterrissage du résultat ----------
+   Une review qui a tourné trois minutes se terminait en silence : la favicon repassait au
+   repos, le panneau se repliait six secondes plus tard, et une carte changeait de place sans
+   un mot. Le paiement de la boucle centrale du produit était muet.
+   Ce qui rend une récompense supportable au 200ᵉ jour, c'est qu'elle soit MÉRITÉE et
+   PROPORTIONNÉE : elle suit ici plusieurs minutes de travail réel, elle est unique par job,
+   et elle ne vole ni le focus ni un clic. */
+const atterrisSignales = new Set();
+
+function annoncerFinDeJob(job) {
+  if (!job || atterrisSignales.has(`job:${job.id}`)) return;
+  atterrisSignales.add(`job:${job.id}`);
+  if (job.status !== 'done') return;                 // un échec a déjà son bandeau rouge
+  const cle = { review: 'job.landed.review', rereview: 'job.landed.review', task: 'job.landed.task',
+    local: 'job.landed.task', converge: 'job.landed.converge', 'converge-session': 'job.landed.converge' }[job.kind];
+  if (!cle) return;                                  // git, docker… : le résultat est déjà à l'écran
+  toast(tr(cle, { n: job.total || 1, count: job.total || 1 }));
+}
+
+/* Les MR dont la note vient d'apparaître ou de changer : un balayage unique sur la PASTILLE,
+   pas sur la carte — c'est la note qui est le résultat. Plafonné, joué une seule fois par
+   MR, et jamais rejoué : sans ces trois gardes, ce serait un stroboscope à chaque poll. */
+function signalerAtterrissage(avant) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let n = 0;
+  for (const m of reportRows) {
+    const note = m.note && m.note.raw;
+    if (!note || avant.get(m.id) === note) continue;
+    if (atterrisSignales.has(`mr:${m.id}:${note}`)) continue;
+    atterrisSignales.add(`mr:${m.id}:${note}`);
+    if (n++ >= 3) break;                             // trois au plus : au-delà c'est du bruit
+    const el = $(`#reportList .card[data-id="${m.id}"] .note`);
+    if (!el) continue;
+    el.classList.add('just-landed');
+    el.addEventListener('animationend', () => el.classList.remove('just-landed'), { once: true });
+  }
 }
 
 /* ---------- Log en direct du job ---------- */
@@ -921,10 +1105,13 @@ function updateFooterLogs() {
   b.classList.toggle('st-error', lastJobStatus === 'error');
 }
 
+/* Coloration d'une ligne de journal. La détection d'erreur reste volontairement large et
+   couvre les deux langues du serveur : elle ne sert qu'à teinter, jamais à décider — se
+   tromper met une ligne en rouge, pas en péril. */
 function logLineClass(t) {
   if (t.startsWith('$ ')) return 'cmd';
   if (t.startsWith('===') || t.includes('────')) return 'hdr';
-  if (/ERREUR|❌|fatal|failed|\berror\b/i.test(t)) return 'err';
+  if (/ERREUR|ERROR|❌|fatal|failed|échec|\berror\b/i.test(t)) return 'err';
   return '';
 }
 
@@ -964,19 +1151,46 @@ function showLogPane(jobId) {
 }
 
 // Récupère les nouvelles lignes d'UN job et les ajoute à son volet.
+/* Ajout des lignes d'un lot : UN seul passage dans le DOM, et un plafond.
+   Avant, c'était un `appendChild` par ligne dans un `<pre>` sans limite : un `docker compose
+   build` ou une session d'agent bavarde y déversait des dizaines de milliers de nœuds, et le
+   panneau finissait par ramer précisément quand on le regardait travailler.
+   L'élagage se fait par la TÊTE : la fin d'un job est ce qui compte. Une ligne persistante
+   dit ce qui a été retiré — un journal tronqué en silence ferait douter de ce qu'on lit. */
+const LOG_MAX_NODES = 4000;
+function appendLogLines(pane, lines) {
+  if (!lines.length) return;
+  const frag = document.createDocumentFragment();
+  for (const l of lines) {
+    const span = document.createElement('span');
+    const cls = logLineClass(l.text);
+    if (cls) span.className = cls;
+    span.textContent = l.text + '\n';
+    frag.appendChild(span);
+  }
+  pane.appendChild(frag);
+  let over = pane.childElementCount - LOG_MAX_NODES;
+  if (over <= 0) return;
+  let head = pane.querySelector('.log-trunc');
+  if (!head) { head = document.createElement('span'); head.className = 'log-trunc'; }
+  let coupees = Number(head.dataset.n || 0);
+  while (over-- > 0) {
+    const first = pane.firstElementChild;
+    if (!first || first === head) break;
+    first.remove(); coupees += 1;
+  }
+  head.dataset.n = coupees;
+  head.textContent = `${tr('job.log.truncated', { n: coupees, count: coupees })}\n`;
+  pane.prepend(head);
+}
+
 async function pumpOne(jobId) {
   const after = LOGP.after.get(jobId) || 0;
   let d;
   try { d = await api(`/jobs/${jobId}/log?after=${after}`); } catch { return null; }
   const pane = logPane(jobId);
-  for (const l of d.lines) {
-    const span = document.createElement('span');
-    const cls = logLineClass(l.text);
-    if (cls) span.className = cls;
-    span.textContent = l.text + '\n';
-    pane.appendChild(span);
-    LOGP.after.set(jobId, l.id);
-  }
+  appendLogLines(pane, d.lines);
+  if (d.lines.length) LOGP.after.set(jobId, d.lines[d.lines.length - 1].id);
   if (d.lines.length && logExpanded && $('#logAutoscroll').checked && !pane.hidden) pane.scrollTop = pane.scrollHeight;
   return d;
 }
@@ -1022,7 +1236,7 @@ async function pumpLog() {
   const cur = LOGP.after.get(logJobId) || 0;
   try { d = await api(`/jobs/current/log?after=${cur}&expect=${logJobId || 0}`); } catch { return; }
   // Aucun job : on arrête le compteur, sinon son intervalle survivrait au dernier job.
-  if (!d.job_id) { jobClock = { started: null, finished: null, running: false }; syncJobClock(); return; }
+  if (!d.job_id) { jobClock = { started: null, finished: null, running: false, done: 0, total: 0 }; syncJobClock(); return; }
   const panel = $('#logPanel');
   /* On ne remet le panneau à zéro que pour un job VRAIMENT nouveau. Le job « courant » peut
      changer sans que rien ne commence : le principal se termine, un job parallèle devient
@@ -1032,14 +1246,8 @@ async function pumpLog() {
   logJobId = d.job_id;
   if (!logHidden) panel.hidden = false;
   const pane = logPane(d.job_id);
-  for (const l of d.lines) {
-    const span = document.createElement('span');
-    const cls = logLineClass(l.text);
-    if (cls) span.className = cls;
-    span.textContent = l.text + '\n';
-    pane.appendChild(span);
-    LOGP.after.set(d.job_id, l.id);
-  }
+  appendLogLines(pane, d.lines);
+  if (d.lines.length) LOGP.after.set(d.job_id, d.lines[d.lines.length - 1].id);
   LOGP.state.set(d.job_id, d.status);
   if (!LOGP.shown.includes(d.job_id)) LOGP.shown.push(d.job_id);
   // Tout job en cours rejoint le lot affiché ; aucun n'en sort avant le prochain lot.
@@ -1067,7 +1275,7 @@ async function pumpLog() {
     : (d.status === 'done' ? (d.message ? tr('job.done', { message: d.message }) : tr('job.done.bare'))
       : (d.status === 'error' ? (d.message ? tr('job.error', { message: d.message }) : tr('job.error.bare')) : (d.status === 'stopped' ? (d.message ? tr('job.stopped', { message: d.message }) : tr('job.stopped.bare')) : d.status)));
   st.innerHTML = `<span class="dot"></span>${esc(label)}`;
-  jobClock = { started: d.started_at || null, finished: d.finished_at || null, running };
+  jobClock = { started: d.started_at || null, finished: d.finished_at || null, running, done: d.done_count || 0, total: d.total || 0 };
   syncJobClock();
   const stopBtn = $('#logStop');
   stopBtn.hidden = !running;
@@ -1164,7 +1372,7 @@ $('#logQueueBtn') && $('#logQueueBtn').addEventListener('click', () => {
    `started_at` renvoyé par le SERVEUR, pas d'un chrono démarré à l'ouverture de la page —
    un onglet ouvert en cours de job afficherait sinon un temps faux.
    Une fois le job terminé, la valeur se fige sur la durée totale. */
-let jobClock = { started: null, finished: null, running: false };
+let jobClock = { started: null, finished: null, running: false, done: 0, total: 0 };
 let elapsedTimer = null;
 
 function fmtElapsed(ms) {
@@ -1174,13 +1382,36 @@ function fmtElapsed(ms) {
   return (h ? `${h}:${two(Math.floor((s % 3600) / 60))}` : `${Math.floor(s / 60)}`) + `:${two(s % 60)}`;
 }
 
+/* Estimation de fin. « 4/30 » et « 03:12 » ne disent pas s'il reste deux minutes ou vingt :
+   attendre avec un horizon et attendre à l'aveugle sont deux expériences différentes.
+   Trois précautions, parce qu'une estimation fausse est PIRE que pas d'estimation :
+     — au moins deux unités faites (la première MR d'un lot n'est jamais représentative) ;
+     — arrondi grossier, jamais un décompte à la seconde ;
+     — si l'estimation dévie de plus de moitié, on la RETIRE au lieu de la corriger d'un bond.
+   Toujours précédée d'un « ≈ ». */
+let etaLast = 0;
+function etaText() {
+  const { started, running, done, total } = jobClock;
+  if (!running || !started || !total || done < 2 || done >= total) { etaLast = 0; return ''; }
+  const ecoule = Date.now() - Date.parse(started);
+  if (ecoule < 20000) { etaLast = 0; return ''; }
+  const reste = (ecoule / done) * (total - done);
+  if (etaLast && Math.abs(reste - etaLast) > etaLast * 0.5) { etaLast = reste; return ''; }
+  etaLast = reste;
+  const min = reste / 60000;
+  const pas = min < 1 ? tr('job.eta.30s') : min < 2 ? tr('job.eta.min', { n: 1 })
+    : min < 7 ? tr('job.eta.min', { n: 5 }) : min < 15 ? tr('job.eta.min', { n: 10 })
+      : tr('job.eta.long');
+  return ` ≈ ${pas}`;
+}
+
 function paintElapsed() {
   const el = $('#logElapsed');
   if (!el) return;
   if (!jobClock.started) { el.hidden = true; return; }
   const end = jobClock.running ? Date.now() : Date.parse(jobClock.finished || jobClock.started);
   el.hidden = false;
-  el.textContent = fmtElapsed(end - Date.parse(jobClock.started));
+  el.textContent = fmtElapsed(end - Date.parse(jobClock.started)) + etaText();
   el.title = tr(jobClock.running ? 'job.elapsed.running' : 'job.elapsed.total');
 }
 
@@ -1218,6 +1449,8 @@ $('#footerLogs') && $('#footerLogs').addEventListener('click', showLogPanel);
 // On copie le journal AFFICHÉ, pas la concaténation des deux jobs en cours.
 $('#logCopy').addEventListener('click', () => {
   const p2 = $('#logBox .logpane:not([hidden])') || $('#logBox');
+  // Le texte copié contient déjà la ligne « … tronqué » : on copie ce qu'on voit, sans
+  // laisser croire que c'est l'intégralité. Le journal complet reste côté serveur.
   copyText(p2.textContent, $('#logCopy'));
 });
 $('#logStop').addEventListener('click', async () => {
@@ -1249,6 +1482,7 @@ function matchMr(m, q) {
 let toReviewRows = [];
 async function loadToReview() {
   toReviewRows = await api('/mrs?status=to_review');
+  listeChargee = true;
   renderToReview();
 }
 function renderToReview() {
@@ -1276,7 +1510,11 @@ function renderToReview() {
       actions: [{ act: 'clear-search', label: tr('report.search.clear') }] });
     return;
   }
-  el.innerHTML = rows.map(mrCard).join('');
+  /* Signature : tout ce que la carte affiche. Si le rendu est identique on ne touche pas au
+     DOM — donc pas de clignotement au rafraîchissement automatique, et les écouteurs déjà
+     posés restent valides (d'où le `return` : les recâbler serait du travail pour rien). */
+  const sig = rows.map((m) => [m.id, m.status, m.iid, m.title, m.has_ticket, m.closed_seen, m.stale, m.last_error].join('\u0001')).join('\u0002');
+  if (!renderIfChanged(el, sig, rows.map(mrCard).join(''))) return;
   stagger('#toReviewList .card');
   $$('#toReviewList [data-review]').forEach((b) => b.addEventListener('click', async () => {
     try { await busy(b, () => api(`/mrs/${b.dataset.review}/review`, { method: 'POST' })); toast(tr('toast.review-de-lancee', { iid: b.dataset.iid })); refreshStatus(); }
@@ -1333,7 +1571,9 @@ function renderToReview() {
   }));
 }
 // une seule recherche pour les trois stades
-$('#searchReview').addEventListener('input', () => (currentSeg === 'to_review' ? renderToReview() : renderReports()));
+/* Debouncé : chaque frappe reconstruisait la liste entière. `debounce` existait déjà et
+   servait pour les autres recherches — celle-ci avait été oubliée. */
+$('#searchReview').addEventListener('input', debounce(() => (currentSeg === 'to_review' ? renderToReview() : renderReports())));
 
 /* Merge d'une MR depuis la file (sans passer par une review) — pour une MR
    triviale. Confirmation obligatoire (action irréversible et visible par l'équipe).
@@ -1366,7 +1606,7 @@ function closeSplitMenus() {
 document.addEventListener('click', (e) => { if (!e.target.closest('.btn-split')) closeSplitMenus(); });
 
 function mrCard(m) {
-  return `<div class="card">
+  return `<div class="card" data-id="${m.id}">
     <div class="card-main">
       <div class="title">!${m.iid} — ${esc(m.title || '')}</div>
       <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}${m.gitlab_created_at ? ` · ${fmtDate(m.gitlab_created_at)}` : ''}${ticketLink(m.ticket_url, m.ticket_key)}${m.web_url ? ` · <a href="${esc(m.web_url)}" target="_blank">${forgeLabel(m.forge)} ↗</a>` : ''}</div>
@@ -1374,7 +1614,7 @@ function mrCard(m) {
       ${/* Les tags sont des MÉTADONNÉES, pas des actions : les laisser dans la rangée de
             boutons décalait celle-ci d'une carte à l'autre selon le nombre de tags. */''}
       <div class="card-tags">
-        ${(m.risk || []).map((r) => `<span class="tag risk" title="${esc(tr('mr.risk-title', { pattern: r.path_match }))}">⚠ ${esc(r.label)}</span>`).join('')}
+        ${(m.risk || []).map((r) => `<span class="tag risk" title="${esc(tr('mr.risk-title', { pattern: r.path_match }))}">${svgIco('alert')} ${esc(r.label)}</span>`).join('')}
         <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
         ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
         ${m.last_error ? `<span class="tag stale">${tr('mr.tag.error')}</span>` : ''}
@@ -1436,6 +1676,7 @@ let selectedMr = null;
 let reportRows = [];
 async function loadReports(status = 'reviewed') {
   reportRows = await api(`/mrs?status=${status}`);
+  listeChargee = true;
   renderReports();
 }
 function renderReports() {
@@ -1458,7 +1699,8 @@ function renderReports() {
     });
     return;
   }
-  el.innerHTML = rows.map((m) => `
+  const sig = [selectedMr, ...rows.map((m) => [m.id, m.status, m.iid, m.title, m.note && m.note.raw, m.closed_seen, m.stale].join('\u0001'))].join('\u0002');
+  const html = rows.map((m) => `
     <div class="card selectable report-card ${selectedMr === m.id ? 'active' : ''}" data-id="${m.id}">
       ${noteBadge(m.note)}
       <div class="report-main">
@@ -1471,6 +1713,8 @@ function renderReports() {
         </div>
       </div>
     </div>`).join('');
+  if (!renderIfChanged(el, sig, html)) return;
+  stagger('#reportList .card');
   $$('#reportList .card').forEach((c) => c.addEventListener('click', () => openReport(Number(c.dataset.id))));
   if (!selectedMr) renderReportPlaceholder();
 }
@@ -1481,7 +1725,7 @@ function noteBadge(note) {
   if (!note || note.value == null) return `<span class="note none" title="${tr('review.note.none')}">—</span>`;
   const v = note.value;
   const cls = v >= 0.7 ? 'good' : (v >= 0.4 ? 'mid' : 'bad');
-  return `<span class="note ${cls}" title="Note globale">${esc(note.raw)}</span>`;
+  return `<span class="note ${cls}" title="${esc(tr('review.note.title'))}">${esc(note.raw)}</span>`;
 }
 
 $('#btnResetReports').addEventListener('click', async () => {
@@ -1575,7 +1819,7 @@ async function loadMrComments(id) {
 // Clés écrites en toutes lettres (et non `tr('...' + status)`) pour rester
 // greppables — c'est ce que vérifie npm run i18n:check.
 const FINDING_STATUS = {
-  resolved: { icon: '✓', cls: 'ok', key: 'resolution.status.resolved' },
+  resolved: { icon: svgIco('check'), cls: 'ok', key: 'resolution.status.resolved' },
   persistent: { icon: '●', cls: 'warn', key: 'resolution.status.persistent' },
   new: { icon: '+', cls: 'new', key: 'resolution.status.new' },
   disappeared: { icon: '~', cls: 'muted', key: 'resolution.status.disappeared' },
@@ -1586,6 +1830,26 @@ const SEV = {
   minor: { cls: 'minor', key: 'sev.minor' },
   info: { cls: 'info', key: 'sev.info' },
 };
+
+/* Joue une fois le compte des constats résolus. La clé (MR, version) vit en localStorage :
+   elle doit survivre au rechargement de la page, sinon le tic revient à chaque F5. */
+function jouerResolution(mrId, version, resolus) {
+  if (!resolus || version < 2) return;
+  const cle = `aidevtools_res_${mrId}_${version}`;
+  try { if (localStorage.getItem(cle)) return; localStorage.setItem(cle, '1'); } catch { return; }
+  const chip = $('#resolutionBox .res-chip.ok');
+  if (!chip) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;  // le résultat, pas le trajet
+  const texte = chip.textContent;
+  const t0 = performance.now(); const dur = 700;
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / dur);
+    const n = Math.round(resolus * (1 - (1 - k) ** 3));
+    chip.textContent = texte.replace(String(resolus), String(n));
+    if (k < 1 && !document.hidden) requestAnimationFrame(step); else chip.textContent = texte;
+  };
+  requestAnimationFrame(step);
+}
 
 async function renderResolution(id, versions) {
   const box = $('#resolutionBox');
@@ -1609,6 +1873,11 @@ async function renderResolution(id, versions) {
       <span class="res-title">${tr('resolution.title', { v: latest.version })}</span>${bits}<span class="res-note">${noteBit}</span>
     </div><div id="findingsList" class="findings-list"></div>`;
   box.hidden = false;
+  /* Le compte des constats résolus se JOUE, une seule fois par (MR, version). C'est la seule
+     micro-récompense de l'app entièrement dérivée d'un fait : l'IA avait trouvé huit choses,
+     il en reste deux. Rejouée à chaque ouverture du rapport elle deviendrait un tic — d'où la
+     clé mémorisée. Jamais sur une première review : il n'y a rien à résoudre. */
+  jouerResolution(id, latest.version, r.resolved);
 
   // Liste détaillée des constats de la dernière passe.
   const list = $('#findingsList');
@@ -1629,12 +1898,42 @@ async function renderResolution(id, versions) {
   list.hidden = false;
 }
 
-async function openReport(id) {
+/* Ce qui est actuellement rendu dans le détail : sert à ne PAS réécrire l'écran pour rien.
+   Le rapport était réécrit intégralement à chaque fin de job — on lisait un constat en bas de
+   page, un job se terminait ailleurs, et on repartait en haut, onglet et version reperdus.
+   C'est le micro-agacement le plus coûteux de l'app : il se produit plusieurs fois par jour
+   et il ne s'atténue jamais. */
+let reportShown = { id: null, sig: null, stamp: null };
+
+// Empreinte de tout ce que le détail AFFICHE. En oublier une part figerait l'écran sur une
+// donnée périmée — c'est le risque exact de cette optimisation.
+function reportSig(d) {
+  const m = d.mr; const r = d.review; const t2 = d.ticket || {};
+  return [m.status, m.closed_seen, m.squash, m.remove_source_branch, r && r.updated_at,
+    d.convergence && d.convergence.status, d.stale, t2.text && t2.text.length, t2.has_image,
+    t2.jira_text && t2.jira_text.length, (d.comments || []).length, d.resume_cmd].join('\u0001');
+}
+
+async function openReport(id, opts = {}) {
   selectedMr = id;
   // B8 : ne pas re-rendre toute la liste au clic dedans (flash + perte de scroll) —
   // on met simplement à jour la sélection.
   $$('#reportList .card').forEach((c) => c.classList.toggle('active', Number(c.dataset.id) === id));
   const d = await api(`/mrs/${id}`);
+  const sig = reportSig(d);
+  const stamp = (d.review && d.review.updated_at) || '';
+  /* Rechargement de fond (fin de job, sauvegarde d'un contexte) : si rien de ce qui est
+     affiché n'a changé, on ne touche pas au DOM. Un clic explicite, lui, rend toujours. */
+  if (opts.keep && reportShown.id === id && reportShown.sig === sig) return;
+  /* Le contexte de lecture n'est restauré que si le RAPPORT lui-même n'a pas changé : après
+     une re-review, revenir en haut est le bon comportement — le texte n'est plus le même. */
+  const memeRapport = reportShown.id === id && reportShown.stamp === stamp;
+  const garde = memeRapport ? {
+    y: window.scrollY,
+    vue: ($('#reportDetail [data-view].active') || {}).dataset,
+    version: ($('#mdVersion') || {}).value || '',
+  } : null;
+  reportShown = { id, sig, stamp };
   const m = d.mr;
   const rev = d.review;
   const detail = $('#reportDetail');
@@ -1653,7 +1952,7 @@ async function openReport(id) {
     <div class="detail-actions">
       <div class="btn-group">
         <button id="aSplit" class="btn btn-primary" title="${tr('report.btn.split-title')}"><svg class=\"ico\"><use href=\"#i-expand\"/></svg>${tr('report.btn.split')}</button>
-        <button id="aTicket" class="btn" title="${tr('report.btn.context-title')}"><svg class="ico"><use href="#i-doc"/></svg>${tr('mr.btn.context')}${d.ticket && (d.ticket.text || d.ticket.has_image) ? ' ✓' : ''}</button>
+        <button id="aTicket" class="btn" title="${tr('report.btn.context-title')}"><svg class="ico"><use href="#i-doc"/></svg>${tr('mr.btn.context')}${d.ticket && (d.ticket.text || d.ticket.has_image) ? ` ${svgIco('check')}` : ''}</button>
       </div>
       <div class="btn-group">
         ${d.review && m.status !== 'done' && !m.closed_seen ? `<button id="aConverge" class="btn btn-converge" title="${tr('report.btn.converge-title')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : ''}
@@ -1739,6 +2038,11 @@ async function openReport(id) {
     }).join('');
     sel.hidden = false;
     const note = $('#mdVersionNote');
+    // Version relue restaurée APRÈS que la liste existe — sinon elle n'aurait rien à choisir.
+    if (garde && garde.version && [...sel.options].some((o) => o.value === garde.version)) {
+      sel.value = garde.version;
+      sel.dispatchEvent(new Event('change'));
+    }
     sel.addEventListener('change', async () => {
       const v = Number(sel.value);
       try {
@@ -1758,6 +2062,14 @@ async function openReport(id) {
     $$('#reportDetail .tabbar button[data-view]').forEach((x) => x.classList.toggle('active', x === b));
     renderView(b.dataset.view);
   }));
+  /* Restauration du contexte de lecture : l'onglet qu'on regardait, puis la position dans la
+     page. Le défilement est repositionné après le rendu du corps, sinon la page n'est pas
+     encore assez haute pour l'accepter. */
+  if (garde && garde.vue && garde.vue.view && garde.vue.view !== 'review') {
+    const b = $(`#reportDetail .tabbar button[data-view="${garde.vue.view}"]`);
+    if (b) b.click();
+  }
+  if (garde && garde.y) requestAnimationFrame(() => window.scrollTo({ top: garde.y, behavior: 'auto' }));
   // copie le markdown brut de l'onglet actif (rapport ou explication)
   $('#mdCopy').addEventListener('click', () => {
     const active = $('#reportDetail .tabbar button[data-view].active');
@@ -1772,8 +2084,8 @@ async function openReport(id) {
     const md = (rev && rev.md) || '';
     if (!md) { toast(tr('toast.aucun-rapport-de-review-a'), true); return; }
     openTaskForMr(m, {
-      title: `Faire corriger le code par l'IA — !${m.iid}`,
-      commitMessage: `${m.source_branch}: corrections review !${m.iid}`,
+      title: tr('report.fix.modal-title', { iid: m.iid }),
+      commitMessage: tr('report.fix.commit', { branch: m.source_branch, iid: m.iid }),
       prompt: tr('prompt.apply-review', { branch: m.source_branch, md }),
     }).catch((e) => toast(tr('toast.ouverture-impossible', { message: e.message }), true));
   });
@@ -2419,7 +2731,7 @@ $('#ticketSave').addEventListener('click', async () => {
     const savedId = ticketState.id;
     closeTicket();
     loadToReview();
-    if (selectedMr && selectedMr === savedId) openReport(selectedMr); // maj du ✓ dans le détail
+    if (selectedMr && selectedMr === savedId) openReport(selectedMr, { keep: true }); // maj du ✓ dans le détail
   } catch (e) { toast(e.message, true); }
   finally { btn.disabled = false; }
 });
@@ -3091,7 +3403,7 @@ async function openTaskEdit(id) {
     if (f.auto_push) f.auto_push.checked = !!t.auto_push;
     if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
     if (f.session_id) f.session_id.value = sharedSessionKey(t.targets);
-    $('#taskModalTitle').textContent = taskKind === 'code' ? 'Modifier la session de codage' : 'Modifier l\'exploration';
+    $('#taskModalTitle').textContent = tr(taskKind === 'code' ? 'task.edit.code-title' : 'task.edit.explore-title');
     $('#taskExistingImgs').textContent = (d.images && d.images.length) ? tr('task.images-attached', { n: d.images.length, count: d.images.length }) : '';
     $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
     $('#taskSubmitOnly').hidden = true;
@@ -3326,6 +3638,7 @@ async function loadTasks() {
     const [tasks, locals] = await Promise.all([api('/tasks'), api('/local-tasks').catch(() => [])]);
     allTasks = tasks; localTasks = locals;
   } catch (e) { $('#taskList').innerHTML = errorBox(e.message); return; }
+  listeChargee = true;
   renderTasks();
 }
 
@@ -3458,7 +3771,7 @@ function localDirLine(d) {
   const st = TASK_STATUS[d.status] || { label: d.status, cls: '' };
   return `<div class="target-line"><span class="tag ${st.cls}">${st.label}</span>`
     + `<code class="local-dir-path">${esc(d.path)}</code>`
-    + `${d.last_error ? `<span class="muted" title="${esc(d.last_error)}">⚠</span>` : ''}`
+    + `${d.last_error ? `<span class="muted" title="${esc(d.last_error)}">${svgIco('alert')}</span>` : ''}`
     + `<span class="spacer"></span>`
     // Retour de l'agent : la seule fenêtre sur son travail quand le dossier n'a pas bougé.
     + `${d.output_path ? `<button class="btn btn-sm" data-ldout="${d.id}" data-ltask="${d.task_id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}`
@@ -3686,9 +3999,9 @@ function targetLine(t, tg) {
     ${tg.output_path ? `<button class="btn btn-sm" data-tgout="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}
     ${showDiff ? `<button class="btn btn-sm" data-tgdiff="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-diff'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>` : ''}
     ${showPush ? `<button class="btn btn-sm btn-primary" data-tgpush="${tg.id}" data-task="${t.id}" data-project="${esc(tg.project)}" data-branch="${esc(tg.branch || '')}" title="${tr('task.btn.push-title')}"><svg class="ico ico-sm"><use href="#i-upload"/></svg>${tr('task.btn.push')}</button>` : ''}
-    ${canMr ? `<button class="btn btn-sm btn-primary" data-tgmr="${tg.id}" data-task="${t.id}" data-title="${esc(defaultMrTitle)}" data-branch="${esc(tg.branch || '')}" data-target="${esc(tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="Ouvrir la MR de ce projet"><svg class="ico ico-sm"><use href="#i-branch"/></svg>${tr('task.btn.create-mr')}</button>` : ''}
-    ${mrIid && !tg.mr_merged ? `<button class="btn btn-sm btn-danger" data-tgmerge="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-target="${esc(tg.mr_target || tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="Merger la MR de ce projet"><svg class="ico ico-sm"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>` : ''}
-    ${tg.last_error ? `<span class="t-err" title="${esc(tg.last_error)}">⚠ ${tr('task.failed')}</span>` : ''}
+    ${canMr ? `<button class="btn btn-sm btn-primary" data-tgmr="${tg.id}" data-task="${t.id}" data-title="${esc(defaultMrTitle)}" data-branch="${esc(tg.branch || '')}" data-target="${esc(tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.open-mr'))}"><svg class="ico ico-sm"><use href="#i-branch"/></svg>${tr('task.btn.create-mr')}</button>` : ''}
+    ${mrIid && !tg.mr_merged ? `<button class="btn btn-sm btn-danger" data-tgmerge="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-target="${esc(tg.mr_target || tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.merge-mr'))}"><svg class="ico ico-sm"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>` : ''}
+    ${tg.last_error ? `<span class="t-err" title="${esc(tg.last_error)}">${svgIco('alert')} ${tr('task.failed')}</span>` : ''}
   </div>${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg) : ''}`;
 }
 
@@ -3737,7 +4050,7 @@ function exploreCard(t) {
           <span class="tag ${(TASK_STATUS[tg.status] || {}).cls || ''}">${(TASK_STATUS[tg.status] || {}).label || tg.status}</span>
           <span class="t-name">${esc(tg.project)}</span>
           <code>${esc(tg.branch || tr('task.default-branch'))}</code>
-          ${tg.last_error ? `<span class="t-err" title="${esc(tg.last_error)}">⚠ ${tr('task.failed')}</span>` : ''}
+          ${tg.last_error ? `<span class="t-err" title="${esc(tg.last_error)}">${svgIco('alert')} ${tr('task.failed')}</span>` : ''}
         </div>`).join('')}
       </div>
       <div class="mr-create followup" data-followform="${t.id}" hidden>
@@ -4397,7 +4710,7 @@ $('#ruleForm').addEventListener('submit', async (e) => {
     el.className = 'footer-msg' + (f.act ? ' clickable' : '');
     el.textContent = f.t;
     if (f.act) {
-      el.title = 'Ouvrir';
+      el.title = tr('ui.open');
       el.addEventListener('click', () => runAct(f.act));
     }
     frameEl.appendChild(el);
@@ -5040,7 +5353,7 @@ function findRefBranchesHtml(branches) {
     const tip = b && b.isTip;
     return `<div class="findref-branch"><span class="tag">${esc(name)}</span>`
       + `<span class="muted" title="${esc(tr('git.findref.branch-tip-date'))}">${date}</span>`
-      + (tip ? `<span class="findref-tip" title="${esc(tr('git.findref.on-tip'))}">✓</span>` : '')
+      + (tip ? `<span class="findref-tip" title="${esc(tr('git.findref.on-tip'))}">${svgIco('check')}</span>` : '')
       + '</div>';
   }).join('') + '</div>';
 }
@@ -5076,7 +5389,7 @@ async function findRefSearch(e) {
       + '</tbody></table></div>'
     : emptyState({ icon: 'search', title: tr('git.findref.none.title', { name: esc(d.name) }), text: tr('git.findref.none.text') });
   if (errored.length) {
-    html += `<p class="muted" style="margin-top:8px">⚠ ${tr('git.findref.errors', { n: errored.length, count: errored.length })} : ${errored.map((r) => esc(r.project)).join(', ')}</p>`;
+    html += `<p class="muted" style="margin-top:8px">${svgIco('alert')} ${tr('git.findref.errors', { n: errored.length, count: errored.length })} : ${errored.map((r) => esc(r.project)).join(', ')}</p>`;
   }
   $('#findRefBox').innerHTML = html;
   // Auteur PRÉCIS du tag à la demande (le tagger annoté n'est pas dans l'API GitLab).
@@ -6849,6 +7162,130 @@ function updateMuteBtn() {
   if (u) u.setAttribute('href', muted ? '#i-bell-off' : '#i-bell');
 }
 
+/* ---------- Palette de commandes (Ctrl/Cmd+K) ----------
+   On navigue entre sept onglets, une vingtaine de sous-onglets et des centaines de MR toute
+   la journée. La palette transforme « où est cette MR déjà » en un réflexe.
+
+   RÈGLE ABSOLUE : une entrée ne contient jamais de logique métier, seulement de quoi cliquer
+   un bouton ou appeler une fonction de navigation qui existe déjà. Une palette qui
+   réimplémente les actions devient une seconde interface, et elle dérive de la vraie au
+   premier renommage. C'est aussi ce qui la rend testable par le contrôle statique des ids. */
+const PALETTE_ACTIONS = [
+  { key: 'palette.go.reviews', run: () => $('nav button[data-tab="review"]').click() },
+  { key: 'palette.go.to-review', run: () => { $('nav button[data-tab="review"]').click(); loadSegment('to_review'); } },
+  { key: 'palette.go.reviewed', run: () => { $('nav button[data-tab="review"]').click(); loadSegment('reviewed'); } },
+  { key: 'palette.go.done', run: () => { $('nav button[data-tab="review"]').click(); loadSegment('done'); } },
+  { key: 'palette.go.task', run: () => $('nav button[data-tab="task"]').click() },
+  { key: 'palette.go.stats', run: () => $('nav button[data-tab="dashboard"]').click() },
+  { key: 'palette.go.git', run: () => $('nav button[data-tab="git"]').click() },
+  { key: 'palette.go.docker', run: () => $('nav button[data-tab="docker"]').click() },
+  { key: 'palette.go.jira', run: () => $('nav button[data-tab="jira"]').click() },
+  { key: 'palette.go.settings', run: () => $('nav button[data-tab="admin"]').click() },
+  { key: 'palette.act.discover', run: () => { $('nav button[data-tab="review"]').click(); $('#btnDiscover').click(); } },
+  { key: 'palette.act.review-all', run: () => { $('nav button[data-tab="review"]').click(); $('#btnReview').click(); } },
+  { key: 'palette.act.new-task', run: () => { $('nav button[data-tab="task"]').click(); $('#btnNewTask').click(); } },
+  { key: 'palette.act.logs', run: () => showLogPanel() },
+  { key: 'palette.act.shortcuts', run: () => openShortcuts() },
+];
+
+let paletteItems = [];
+let paletteIdx = 0;
+
+// Les objets déjà EN MÉMOIRE : aucune requête, donc la palette reste instantanée.
+function paletteMatches(q) {
+  const out = PALETTE_ACTIONS.filter((a) => tr(a.key).toLowerCase().includes(q))
+    .map((a) => ({ label: tr(a.key), kind: tr('palette.kind.action'), run: a.run }));
+  if (q.length >= 2) {
+    for (const m of [...toReviewRows, ...reportRows]) {
+      if (!matchMr(m, q)) continue;
+      out.push({
+        label: `!${m.iid} — ${m.title || ''}`,
+        kind: m.project,
+        run: () => {
+          $('nav button[data-tab="review"]').click();
+          loadSegment(m.status === 'to_review' ? 'to_review' : (m.status === 'done' ? 'done' : 'reviewed'))
+            .then(() => { if (m.status !== 'to_review') openReport(m.id); });
+        },
+      });
+    }
+    for (const t2 of allTasks) {
+      if (!taskMatches(t2, q, (t2.targets || []).map((x) => x.project))) continue;
+      out.push({
+        label: (t2.prompt || '').slice(0, 70),
+        kind: tr(t2.kind === 'explore' ? 'task.kind.explore.btn' : 'task.kind.code.btn'),
+        run: () => { $('nav button[data-tab="task"]').click(); $(`[data-kind="${t2.kind === 'explore' ? 'explore' : 'code'}"]`).click(); },
+      });
+    }
+  }
+  return out.slice(0, 8);
+}
+
+function renderPalette() {
+  const box = $('#paletteList');
+  if (!paletteItems.length) { box.innerHTML = `<div class="palette-empty muted">${esc(tr('palette.empty'))}</div>`; return; }
+  box.innerHTML = paletteItems.map((it, i) => `<div class="palette-item${i === paletteIdx ? ' active' : ''}" role="option" data-i="${i}">`
+    + `<span class="palette-label">${esc(it.label)}</span><span class="palette-kind muted">${esc(it.kind)}</span></div>`).join('');
+  const act = $('#paletteList .palette-item.active');
+  if (act) act.scrollIntoView({ block: 'nearest' });
+}
+
+function closePalette() { $('#paletteModal').hidden = true; }
+function openPalette() {
+  const m = $('#paletteModal'); if (!m) return;
+  m.hidden = false;
+  const inp = $('#paletteInput');
+  inp.value = ''; paletteIdx = 0;
+  paletteItems = paletteMatches('');
+  renderPalette();
+  inp.focus();
+}
+function runPaletteItem(i) {
+  const it = paletteItems[i];
+  if (!it) return;
+  closePalette();
+  it.run();
+}
+
+$('#paletteInput') && $('#paletteInput').addEventListener('input', () => {
+  paletteItems = paletteMatches($('#paletteInput').value.trim().toLowerCase());
+  paletteIdx = 0;
+  renderPalette();
+});
+$('#paletteInput') && $('#paletteInput').addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); paletteIdx = Math.min(paletteIdx + 1, paletteItems.length - 1); renderPalette(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); paletteIdx = Math.max(paletteIdx - 1, 0); renderPalette(); }
+  else if (e.key === 'Enter') { e.preventDefault(); runPaletteItem(paletteIdx); }
+  else if (e.key === 'Escape') { e.preventDefault(); closePalette(); }
+});
+$('#paletteList') && $('#paletteList').addEventListener('click', (e) => {
+  const it = e.target.closest('.palette-item');
+  if (it) runPaletteItem(Number(it.dataset.i));
+});
+$('#paletteModal') && $('#paletteModal').addEventListener('click', (e) => { if (e.target.id === 'paletteModal') closePalette(); });
+
+/* Feuille de raccourcis PERSISTANTE. Un toast de 3,5 s disparaissait pendant qu'on le lisait,
+   ce qui est exactement le contraire de ce qu'on attend d'une aide. */
+const SHORTCUTS = [
+  ['Ctrl/Cmd + K', 'shortcuts.palette'],
+  ['1 – 7', 'shortcuts.tabs'],
+  ['/', 'shortcuts.search'],
+  ['j / k', 'shortcuts.jk'],
+  ['Entrée', 'shortcuts.enter'],
+  ['d', 'shortcuts.diff'],
+  ['r', 'shortcuts.discover'],
+  ['l', 'shortcuts.logs'],
+  ['?', 'shortcuts.help'],
+  ['Échap', 'shortcuts.escape'],
+];
+function openShortcuts() {
+  const m = $('#shortcutsModal'); if (!m) return;
+  $('#shortcutsList').innerHTML = SHORTCUTS
+    .map(([k, key]) => `<div class="shortcut-row"><kbd>${esc(k)}</kbd><span>${esc(tr(key))}</span></div>`).join('');
+  m.hidden = false;
+}
+$('#shortcutsClose') && $('#shortcutsClose').addEventListener('click', () => { $('#shortcutsModal').hidden = true; });
+$('#shortcutsModal') && $('#shortcutsModal').addEventListener('click', (e) => { if (e.target.id === 'shortcutsModal') e.currentTarget.hidden = true; });
+
 /* ---------- Thème clair / sombre ----------
    Préférence locale au navigateur : 'auto' (suit le système), 'dark' ou 'light'.
    Le thème résolu est posé sur <html data-theme>, le CSS fait le reste.
@@ -6894,10 +7331,42 @@ function updateMuteBtn() {
   apply(read());
 })();
 
+/* Liste actuellement visible : celle dans laquelle `j`/`k` se déplacent. */
+function listeCourante() {
+  for (const sel of ['#toReviewList', '#reportList', '#taskList', '#localList']) {
+    const el = $(sel);
+    if (el && !el.hidden && el.offsetParent !== null && el.querySelector('.card')) return el;
+  }
+  return null;
+}
+const carteFocus = () => $('.card.focused');
+
+/* AUCUN anneau au départ : il n'apparaît qu'à la première pression de `j` ou `k`. Un
+   raccourci invisible qui agit sur un élément qu'on n'a pas désigné est un piège. */
+function bougerFocusCarte(pas) {
+  const liste = listeCourante();
+  if (!liste) return;
+  const cartes = $$('.card', liste);
+  if (!cartes.length) return;
+  const cur = cartes.indexOf(carteFocus());
+  const next = cur === -1 ? (pas > 0 ? 0 : cartes.length - 1) : Math.min(cartes.length - 1, Math.max(0, cur + pas));
+  cartes.forEach((c) => c.classList.remove('focused'));
+  cartes[next].classList.add('focused');
+  cartes[next].scrollIntoView({ block: 'nearest' });
+}
+
 /* ---------- Raccourcis clavier ----------
    Un seul écouteur, avec garde de saisie : on ne détourne jamais une frappe
    destinée à un champ de texte. Les vues plein écran gardent leurs propres touches. */
 const isTyping = (e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+/* Ctrl/Cmd+K passe AVANT la garde de saisie : c'est le seul raccourci qui doit fonctionner
+   même le curseur dans un champ — sinon il ne marcherait pas là où on en a le plus besoin. */
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    if ($('#paletteModal').hidden) openPalette(); else closePalette();
+  }
+});
 document.addEventListener('keydown', (e) => {
   if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
   // pas de raccourci global quand une vue plein écran ou une modale est ouverte
@@ -6917,7 +7386,15 @@ document.addEventListener('keydown', (e) => {
       else { const t = $('#logToggle'); if (t) t.click(); }
       break;
     }
-    case '?': e.preventDefault(); toast(tr('toast.raccourcis-1-4-onglets-recherche')); break;
+    case '?': e.preventDefault(); openShortcuts(); break;
+    /* Navigation au clavier dans la liste courante. Ce qu'elle procure n'est pas une
+       surprise mais un RYTHME : traiter vingt MR au clavier, c'est de la cadence ; à la
+       souris, c'est de la visée. Aucune logique dupliquée — on clique les boutons rendus. */
+    case 'j': e.preventDefault(); bougerFocusCarte(1); break;
+    case 'k': e.preventDefault(); bougerFocusCarte(-1); break;
+    case 'Enter': { const c = carteFocus(); if (c) { e.preventDefault(); const b = c.querySelector('.btn-primary'); if (b) b.click(); } break; }
+    case 'd': { const c = carteFocus(); if (c) { e.preventDefault(); const b = c.querySelector('[data-diff]'); if (b) b.click(); } break; }
+    case 'Escape': { const c = carteFocus(); if (c) c.classList.remove('focused'); break; }
     default: break;
   }
 });
@@ -6930,7 +7407,7 @@ if (btnTestGitlab) btnTestGitlab.addEventListener('click', async () => {
   try {
     const r = await api('/gitlab/projects');
     const n = (r.projects || r || []).length;
-    info.textContent = `✓ connexion OK — ${n} projet${n > 1 ? 's' : ''} accessible${n > 1 ? 's' : ''}`;
+    info.textContent = tr('settings.conn.ok', { n, count: n });
   } catch (e) {
     info.textContent = '';
     toast(explainError(e.message), true);
@@ -6984,7 +7461,7 @@ if (btnTestJira) btnTestJira.addEventListener('click', async () => {
   const btn = $(`nav button[data-tab="${tab}"]`);
   if (btn && tab !== 'review') { btn.click(); return; }
   // B2 : sans catch, un échec d'API laissait la liste vide (écran blanc muet).
-  loadSegment('to_review').catch((e) => { $('#toReviewList').innerHTML = errorBox(`Chargement impossible : ${e.message}`); });
+  loadSegment().catch((e) => { $('#toReviewList').innerHTML = errorBox(`Chargement impossible : ${e.message}`); });
 })();
 checkSetup().then(() => { if (currentSeg === 'to_review') renderToReview(); });
 refreshCounts();

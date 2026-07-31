@@ -26,6 +26,24 @@ describe('Sessions de dev de bout en bout', () => {
 
   after(async () => { await app.stop(); });
 
+  /* Une session inexistante doit répondre « Session introuvable » — et pas la trace d'un
+     bug interne. Ces routes nomment leur variable locale `t` comme la fonction de
+     traduction : la moindre inattention y renvoie « t is not a function », message
+     rigoureusement inutile pour qui le lit, et sur toutes les routes à la fois. */
+  test('une session inexistante donne un message lisible, pas une erreur technique', async () => {
+    for (const [m, url, body] of [
+      ['GET', '/api/tasks/99999', null],
+      ['PUT', '/api/tasks/99999', { prompt: 'x' }],
+      ['GET', '/api/tasks/99999/md', null],
+      ['POST', '/api/tasks/99999/run', null],
+      ['POST', '/api/tasks/99999/followup', { instruction: 'x' }],
+    ]) {
+      const r = body ? await app.api(m, url, body) : await app.api(m, url);
+      assert.ok(r.status >= 400, `${m} ${url} devrait échouer`);
+      assert.match(r.body.error, /introuvable|not found/i, `${m} ${url} → ${r.body.error}`);
+    }
+  });
+
   test('la création d’une session valide ses entrées', async () => {
     const sansPrompt = await app.api('POST', '/api/tasks', { targets: [{ repo_id: repoId, branch: 'x' }] });
     assert.equal(sansPrompt.status, 400);

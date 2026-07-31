@@ -189,6 +189,34 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   suggested branch name and commit message from the key and summary, ticket number set. You pick the
   repository and add your own instructions — nothing is launched until you say so.
 
+- **The interface got calmer, and a little more alive.** A study of what makes the tool pleasant to
+  live in — it runs all day — turned into a batch of changes that share one rule: nothing is added
+  that does not carry information.
+  - **Lists stop blinking.** A refresh that changes nothing no longer rebuilds the list, so the page
+    holds still while you read it. When a list really does load, its cards arrive in a short cascade
+    — once, on load, not on every filter keystroke.
+  - **The job log stops eating the browser.** A long run used to pile up tens of thousands of lines
+    until scrolling stuttered; the panel now keeps the last few thousand and says so at the top.
+  - **You can see how long it has been running, and roughly how long is left.** The remaining time
+    only appears once it can be honest — several units done, at least twenty seconds in — and
+    disappears rather than lie when the pace changes.
+  - **Reading a report survives a refresh.** Scroll position, the tab you were on and the version you
+    were comparing are kept while the report itself has not changed; when it does change, you land at
+    the top of the new one.
+  - **What is running is shown *on* the thing that is running** — the merge request or the session
+    itself carries a soft pulsing marker, one object at a time. It stops when the tab is in the
+    background and stays still (but visible) if you asked the system for less motion.
+  - **New comments landing on a report announce themselves** discreetly, and a resolved discussion
+    fades out instead of vanishing between two renders.
+  - **`Ctrl`/`Cmd` + `K` opens a command palette**: jump to a tab, a stage, a merge request or a
+    session by typing part of its name. `j` / `k` move through the current list, `Enter` opens,
+    `Escape` releases. `?` shows the whole list of shortcuts.
+  - **The tool reopens where you left it** — same tab, same review stage. Nothing else is restored:
+    a stale modal or a stale report is worse than a clean start.
+  - **The report panel opens on what changed since your last visit** — arrivals, departures, and the
+    one that has been waiting longest. At most three lines, and nothing at all when nothing moved.
+  - **A finished job says so once**, even if you were looking elsewhere.
+
 ### Changed
 
 - **Action buttons follow one rule now.** A study of every screen found the same three problems
@@ -223,6 +251,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **"t is not a function" instead of "Session not found".** Six routes named their local variable
+  after the translation helper, so asking for a session that no longer exists — a stale tab, a
+  bookmarked link, a deleted session — answered with an internal error message that told the user
+  nothing. They now say what happened.
 - **A network failure no longer masquerades as a login problem.** The Copilot CLI says
   "authentication" in two very different situations: when the token is missing, and when it *found*
   a token but could not reach GitHub to validate it. Mergerie only looked for the word, so a machine

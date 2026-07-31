@@ -47,6 +47,10 @@ Seven tabs, each one line:
 - **Jira** — your assigned tickets fetched automatically, full detail with attachments, status changes and comments.
 - **Settings** — GitLab / GitHub / Jira connections, repositories, review rules, prompt templates, theme and language.
 
+Everywhere: `Ctrl`/`Cmd` + `K` opens a command palette (jump to a tab, a merge request, a session by
+name), `j` / `k` walk the current list, `?` lists every shortcut. The tool reopens on the tab and
+review stage you left, and the report panel opens on what changed since your last visit.
+
 ## Learn more
 
 - 🗺️ **[Roadmap](./ROADMAP.md)** — what's next (Bitbucket support, orchestrated releases, deployment piloting).

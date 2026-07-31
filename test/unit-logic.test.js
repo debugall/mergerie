@@ -551,3 +551,102 @@ describe('jobs : conflit entre deux jobs (autorisation du parallèle)', () => {
     assert.equal(keysClash(['*'], ['repo:9']), true);
   });
 });
+
+/* Les cibles d'un job pilotent un repère visuel posé sur la carte concernée. La règle qui
+   compte est la retenue : un job de review porte sur un LOT de MR mais n'en traite qu'une à
+   la fois, et marquer tout le lot ferait clignoter la moitié de la liste. */
+describe('jobs : objets marqués « en cours »', () => {
+  const { jobTargets } = require('../src/jobs');
+
+  test('un lot de review ne désigne QUE la MR en cours de traitement', () => {
+    const entry = { kind: 'review', rows: [{ id: 1 }, { id: 2 }, { id: 3 }] };
+    assert.deepEqual(jobTargets(entry, { current_mr_id: 2 }).mrs, [2]);
+  });
+
+  test('un lot dont le traitement n’a pas encore commencé ne marque rien', () => {
+    const entry = { kind: 'review', rows: [{ id: 1 }, { id: 2 }] };
+    assert.deepEqual(jobTargets(entry, { current_mr_id: null }).mrs, []);
+    assert.deepEqual(jobTargets(entry, undefined).mrs, []);
+  });
+
+  test('chaque famille d’objet tombe dans son propre seau', () => {
+    assert.deepEqual(jobTargets({ kind: 'local', taskId: 7 }), { mrs: [], tasks: [], locals: [7] });
+    assert.deepEqual(jobTargets({ kind: 'task', taskId: 4 }), { mrs: [], tasks: [4], locals: [] });
+    assert.deepEqual(jobTargets({ kind: 'converge-session', taskId: 5 }), { mrs: [], tasks: [5], locals: [] });
+    assert.deepEqual(jobTargets({ kind: 'converge', mrId: 9 }), { mrs: [9], tasks: [], locals: [] });
+  });
+
+  test('un job sans cible identifiable ne marque rien plutôt que n’importe quoi', () => {
+    assert.deepEqual(jobTargets({ kind: 'docker' }), { mrs: [], tasks: [], locals: [] });
+    assert.deepEqual(jobTargets(null), { mrs: [], tasks: [], locals: [] });
+  });
+});
+
+/* Le « delta depuis la dernière visite » ouvre le panneau de rapport. Sa valeur tient
+   entièrement à ce qu'il TAIT : sans rien qui ait changé, il ne doit rien afficher — une
+   ligne « 0 nouvelle MR » chaque matin est exactement ce qui rend un tableau de bord mort. */
+describe('front : delta depuis la dernière visite', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const from = src.indexOf('const VISITE_GAP_MS');
+  const to = src.indexOf('// La colonne de droite');
+  assert.ok(from > 0 && to > from, 'le bloc du delta doit rester d’un seul tenant dans app.js');
+
+  // `tr` est remplacé par un marqueur lisible : on teste la sélection des faits, pas la traduction.
+  const build = (stock) => new Function('localStorage', 'tr', `${src.slice(from, to)}\nreturn { lignesDelta, memoriserVisite };`)(
+    { getItem: (k) => (k in stock ? stock[k] : null), setItem: (k, v) => { stock[k] = v; } },
+    (k, p) => `${k}:${p ? Object.values(p).join(',') : ''}`,
+  );
+  const JOUR = 86400000;
+  const now = 1750000000000;
+  const snap = (ids, ts) => ({ aidevtools_visite_reviewed: JSON.stringify({ ts, ids }) });
+
+  test('sans visite précédente, aucune ligne — on n’invente pas un passé', () => {
+    assert.deepEqual(build({}).lignesDelta('reviewed', [{ id: 1 }, { id: 2 }], now), []);
+  });
+
+  test('rien n’a bougé : rien ne s’affiche (jamais de « 0 nouvelle MR »)', () => {
+    const { lignesDelta } = build(snap([1, 2], now - JOUR));
+    assert.deepEqual(lignesDelta('reviewed', [{ id: 1 }, { id: 2 }], now), []);
+  });
+
+  test('une MR qui traîne ne suffit pas à ouvrir le panneau : ce n’est pas un changement', () => {
+    // Sinon la même ligne s'affiche tous les matins, et le panneau cesse d'être lu.
+    const { lignesDelta } = build(snap([1], now - JOUR));
+    const rows = [{ id: 1, stale: true, gitlab_created_at: new Date(now - 40 * JOUR).toISOString() }];
+    assert.deepEqual(lignesDelta('reviewed', rows, now), []);
+  });
+
+  test('les arrivées et les sorties sont comptées séparément', () => {
+    const { lignesDelta } = build(snap([1, 2, 3], now - JOUR));
+    const l = lignesDelta('reviewed', [{ id: 2 }, { id: 3 }, { id: 4 }], now);
+    assert.equal(l[0], 'report.delta.since.yesterday:');   // en-tête daté
+    assert.deepEqual(l.slice(1), ['report.delta.new:1', 'report.delta.gone:1']);
+  });
+
+  test('l’attente la plus ancienne compte parmi les faits, plafond à trois', () => {
+    const { lignesDelta } = build(snap([1], now - 3 * JOUR));
+    const rows = [
+      { id: 2 },
+      { id: 9, stale: true, gitlab_created_at: new Date(now - 4 * JOUR).toISOString() },
+      { id: 8, stale: true, gitlab_created_at: new Date(now - 12 * JOUR).toISOString() },
+    ];
+    const l = lignesDelta('reviewed', rows, now);
+    assert.equal(l[0], 'report.delta.since.days:3');
+    assert.deepEqual(l.slice(1), ['report.delta.new:3', 'report.delta.gone:1', 'report.delta.wait:12']);
+    assert.ok(l.length <= 4, 'en-tête + trois faits au maximum');
+  });
+
+  test('chaque stade a son propre instantané : changer de segment ne crée pas de faux delta', () => {
+    const { lignesDelta } = build(snap([1, 2], now - JOUR));
+    assert.deepEqual(lignesDelta('done', [{ id: 7 }], now), []);
+  });
+
+  test('dans la même session, la base de comparaison n’est pas réécrite', () => {
+    // Sinon le delta fondrait à chaque re-rendu de la liste, sous les yeux de qui le lit.
+    // Ce test-ci passe par l'horloge réelle : memoriserVisite compare à Date.now().
+    const stock = snap([1, 2], Date.now() - 3600000); // il y a une heure
+    const { memoriserVisite } = build(stock);
+    memoriserVisite('reviewed', [{ id: 1 }, { id: 2 }, { id: 3 }]);
+    assert.deepEqual(JSON.parse(stock.aidevtools_visite_reviewed).ids, [1, 2]);
+  });
+});
