@@ -60,7 +60,17 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
 - `Classer sans review` sort une MR de la file, avec **annulation** possible pendant quelques secondes.
 - Les reviews s'empilent dans une **file séquentielle** ; un **panneau de log en direct** montre les
   commandes, la sortie et la progression, avec un bouton **Stop** (qui vide aussi la file — la
-  confirmation le précise).
+  confirmation le précise), un **chronomètre** depuis le démarrage et, une fois le rythme établi, une
+  **estimation du temps restant** (elle se tait plutôt que de mentir quand la cadence dévie).
+- **Voir la file d'attente et lancer en parallèle.** Le panneau de log liste ce qui attend, et propose
+  de **promouvoir un job en parallèle** (jusqu'à **3 à la fois**) quand il ne touche **aucun dépôt ni
+  dossier** en commun avec ce qui tourne déjà — la collision est refusée, pas arbitrée : deux agents sur
+  le même clone le corrompraient. Chaque job promu a **son onglet** dans le panneau, avec **son propre
+  bouton Stop** ; l'onglet reste après la fin, pour relire la sortie. Un job **interrompu** peut être
+  **relancé** depuis la file.
+- **Modifier son propre commentaire.** Un commentaire posté depuis Mergerie — **en ligne** dans
+  l'explorateur ou **en général** sur la MR — peut être **réécrit** sans passer par la forge. Seuls les
+  siens : ceux des collègues sont en lecture seule.
 - **Re-review complète ou incrémentale.** `Relancer la review` refait une review **complète** (tout le
   diff). Quand la branche a **bougé depuis la dernière review** (MR *stale*), un bouton `Relancer (delta)`
   apparaît : la **re-review incrémentale** ne relit que **ce qui a changé** depuis le dernier SHA reviewé
@@ -107,7 +117,8 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
 ### ⛶ Ouvrir le code (explorateur plein écran)
 Arbre du projet + fichier affiché **entier avec le diff en place**, coloration syntaxique,
 **mini-carte** des changements, navigation entre modifications, panneaux repliables.
-**Commentaire inline** par ligne et **réponses** aux fils, synchronisés avec la forge.
+**Commentaire inline** par ligne et **réponses** aux fils, synchronisés avec la forge — et
+**modifiables** tant qu'ils sont de toi.
 
 ### Dev IA
 Une **recherche** en tête de liste (prompt, projet, branche, dossier) filtre les sessions du sous-onglet
@@ -117,6 +128,19 @@ contredire les compteurs qui affichent des totaux.
 Deux sous-onglets. Dans les deux cas, une session porte sur **un ou plusieurs projets**, chacun avec
 sa propre branche, et sa date de création est affichée. Le **choix du dépôt se fait au clavier**
 (sélecteur avec recherche), comme celui des branches — utile quand la liste des dépôts est longue.
+
+**Ranger les sessions terminées.** Une session finie se **masque** sans être supprimée ; une case
+**« afficher les sessions masquées »** (dont l'état est mémorisé) les fait revenir, et un compteur
+rappelle combien sont filtrées. Vaut pour le codage, le codage hors dépôt et l'exploration. Dans la
+liste, un prompt long est **replié sur trois lignes** avec un **« Voir plus »** qui le déroule entier.
+
+**Créer maintenant, lancer plus tard.** Les trois types de session proposent **`Créer sans lancer`** à
+côté de **`Créer et lancer`** : on prépare le prompt et les cibles, on lance quand on veut.
+
+**Reprendre une session d'agent existante.** Un champ **facultatif « identifiant de session »** à la
+création (codage, hors dépôt, exploration) fait travailler l'IA **dans cette session-là** au lieu d'en
+ouvrir une nouvelle — elle garde donc tout le contexte déjà acquis. Renseigné, il rend aussi disponible
+le bouton **« Reprendre au terminal »**. Le champ est également modifiable après coup.
 
 **Enrichir depuis un ticket Jira (optionnel).** Si Jira est configuré (Réglages → Jira), la modale
 propose un champ **N° de ticket** avec un bouton **Récupérer** : le **titre + la description** du ticket
@@ -181,14 +205,18 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   **`Retour de l'IA`** — ce que l'agent dit avoir fait, utile quand le dossier n'a pas bougé (prompt
   incomplet, l'IA a répondu au lieu de coder) —, et la session propose **`Demander une correction`** :
   une nouvelle passe sur les mêmes dossiers qui **reprend la session de chacun**, donc l'IA garde tout
-  le contexte de ce qu'elle vient de produire. ⚠ **Aucun filet** : l'agent modifie les fichiers en place, sans
+  le contexte de ce qu'elle vient de produire. Une session hors dépôt est **modifiable** après coup
+  (prompt, dossiers, identifiant de session), comme une session sur dépôt. ⚠ **Aucun filet** : l'agent modifie les fichiers en place, sans
   sauvegarde ; sur un dépôt git tu peux relire/annuler toi-même (`git diff` / `git checkout`), sur un
   dossier non-git il n'y a **pas d'annulation** — un avertissement le rappelle. (Sous-onglet dédié, entre
   *Codage* et *Exploration*.)
 - **Exploration** — **lecture seule** : tu poses une question sur un ou plusieurs projets, l'IA explore
   le code et rédige **une seule réponse de synthèse** enregistrée en `.md`, consultable à tout moment
-  via `Voir la réponse`. Ni diff ni merge. Les **questions de suivi** reprennent la réponse précédente
-  en contexte. Les dépôts sont remis à zéro après coup : **aucune modification ne subsiste**.
+  via `Voir la réponse`. Ni diff ni merge. Une **question de suivi reprend la même session d'agent** —
+  comme pour le codage — au lieu de lui réinjecter sa réponse précédente : l'IA se souvient de son
+  exploration au lieu d'en relire un résumé. Les dépôts sont remis à zéro après coup :
+  **aucune modification ne subsiste**. Chaque exploration expose elle aussi
+  **« Reprendre au terminal »** pour continuer la conversation toi-même.
   **Chaque question est conservée** : une question de suivi écrase le fichier de réponse, mais la passe
   est archivée — `Voir la réponse` propose un **sélecteur d'itération** qui rejoue chaque question avec
   la réponse qu'elle a obtenue.
@@ -200,7 +228,10 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   On ne **saisit** un nom que pour créer ; pour supprimer, on **choisit dans la liste** des refs
   existantes — la branche par défaut et les refs protégées n'y figurent même pas. Le choix du dépôt
   se fait par un **champ avec recherche** (comme partout où l'on choisit un projet), utile quand la
-  liste est longue.
+  liste est longue — **et le choix de la ref aussi** : un dépôt actif compte des centaines de branches
+  et de tags. Un choix unique passe par un sélecteur avec recherche ; un choix multiple (cases à cocher,
+  tableau de l'explorateur) reçoit un filtre qui **masque des lignes sans décocher quoi que ce soit** —
+  on coche, on filtre autre chose, on coche encore, puis on supprime d'un coup.
 - **Rien ne s'exécute sans aperçu.** L'aperçu liste chaque ligne (projet × ref) et son résultat
   attendu : *sera exécutée · existe déjà — ignorée · ref protégée · branche par défaut · introuvable*.
   « Existe déjà » n'est pas une erreur : l'opération est **idempotente**, on peut relancer.
@@ -260,8 +291,12 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
   d'abord) et un **filtre en tête** permet de **cocher/décocher les projets à afficher** — choix **persisté**.
 - **Retrouver un container : recherche + filtre d'état.** Au-dessus de la liste, un champ de **recherche**
   (nom de service, nom de container ou nom de projet) et un sélecteur **« N'afficher que »** — *En cours ·
-  Arrêtés / non créés · Unhealthy · En restarting · En drift* — réduisent l'affichage **service par
-  service**. Un projet dont plus aucun service ne correspond **disparaît entièrement** (une carte vide
+  Arrêtés / non créés · **Arrêtés (exited)** · **Créés, jamais démarrés** · **Sans container** ·
+  Unhealthy · En restarting · En drift* — réduisent l'affichage **service par service**. « Ne tourne
+  pas » recouvrait trois situations que Docker distingue et qui appellent des gestes différents : un
+  container qui **a tourné puis s'est arrêté** veut un redémarrage, un container **créé mais jamais
+  démarré** signale souvent un échec au lancement, et **aucun container** appelle un `up`. Le chapeau
+  *Arrêtés / non créés* reste, pour ne pas casser les filtres déjà enregistrés. Un projet dont plus aucun service ne correspond **disparaît entièrement** (une carte vide
   laisserait croire à un projet sans service) ; sur un projet partiellement filtré, une mention rappelle
   combien de services sont masqués. Les deux réglages sont **persistés** et s'appliquent **à chaud**, sans
   rappeler Docker — ce sont les mêmes intitulés d'état que le sous-onglet *Actions*.
@@ -297,6 +332,15 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
     **désactive sans le supprimer** ou qu'on **réintègre** d'un clic), et **n'afficher que** les lignes
     contenant certains mots. Les filtres sont **mémorisés** (pas besoin de les re-saisir à chaque fois) et
     s'appliquent **à chaud**, sans relancer le flux.
+  - **Texte lisible, couleurs à la demande.** Une application en container colore sa sortie, `docker logs`
+    relaie ces octets d'échappement tels quels, et un navigateur n'est pas un terminal : chaque ligne
+    arrivait enfouie sous des `[34mdebug[39m`. Les lignes s'affichent **en texte brut par défaut** —
+    c'est aussi le rendu le plus léger quand le flux part en rafale — et une case **« Afficher les
+    couleurs »**, à côté de *Retour à la ligne*, restitue ce que l'application voulait dire. Le choix est
+    mémorisé, cocher **rejoue ce qui est déjà à l'écran** sans relancer le flux, et les filtres
+    continuent de porter sur le texte nu dans les deux cas. Les couleurs de **fond** sont volontairement
+    ignorées : elles supposent un terminal dont on maîtrise le contraste, pas un thème clair et un thème
+    sombre. Un caractère accentué tombant sur une frontière de paquet réseau n'est plus coupé en deux.
   - **Optimisé navigateur** : flux **SSE** (un `docker logs -f` par container, tué à la fermeture), **buffer
     borné** en mémoire, insertions DOM **groupées par frame** (pas de reflow ligne à ligne) et **nombre de
     lignes affichées plafonné** — reste fluide même sur des logs en rafale. Bouton **Vider** et **retour à la
@@ -307,8 +351,8 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
   encore la liste — *En drift*, *Unhealthy*, *En restarting*, *En cours*, *Arrêtés / non créés* — et une
   **recherche** par nom. La validation regroupe les services **par projet** et lance un `docker compose`
   par projet (un échec n'interrompt pas les autres).
-- **Badges de santé sur l'onglet Docker** : le **nombre de containers en erreur** (restarting / dead) en
-  **rouge** et le **nombre d'unhealthy** en **orange**, directement dans le menu — visibles au démarrage et
+- **Badges de santé sur l'onglet Docker** : le **nombre de containers en erreur** (restarting / dead /
+  **exited**) en **rouge** et le **nombre d'unhealthy** en **orange**, directement dans le menu — visibles au démarrage et
   rafraîchis **automatiquement toutes les 30 s** (et à chaque ouverture de l'onglet) — donc un container qui
   bascule en *restarting* apparaît dans le titre du menu **même sans être sur l'onglet Docker**. Le poll est
   léger (un seul `docker ps -a`) et se met en pause quand l'onglet du navigateur est masqué.
@@ -405,11 +449,36 @@ seuls les gabarits restés au défaut sont réalignés.
 > Contrôle de cohérence du dictionnaire : `npm run i18n:check`.
 
 ### Confort d'usage
-Onglet et sous-onglet **mémorisés** d'une session à l'autre · **raccourcis clavier** (`1`-`7` onglets,
-`/` recherche, `r` chercher les MR, `l` logs, `?` aide, `Échap` ferme) · **favicon dynamique** pendant
-un job · messages d'erreur **traduits en actions** (certificat, token, CLI introuvable, timeout,
-réseau) · **onboarding en 3 étapes** tant que la connexion et les dépôts ne sont pas configurés ·
-chaque champ de formulaire porte une **icône i** dont le survol (ou le focus clavier) explique à quoi il sert.
+Onglet, sous-onglet **et stade de Reviews mémorisés** d'une session à l'autre — et **rien d'autre** :
+ni recherche, ni modale, ni rapport ouvert, car un état périmé est pire qu'un démarrage propre ·
+**raccourcis clavier** (`1`-`7` onglets, `/` recherche, `r` chercher les MR, `l` logs, `?` aide,
+`Échap` ferme) · **favicon dynamique** pendant un job · messages d'erreur **traduits en actions**
+(certificat, token, CLI introuvable, timeout, réseau) · **onboarding en 3 étapes** tant que la
+connexion et les dépôts ne sont pas configurés · chaque champ de formulaire porte une **icône i** dont
+le survol (ou le focus clavier) explique à quoi il sert.
+
+- **Palette de commandes — `Ctrl`/`Cmd` + `K`.** On tape un fragment et on saute où l'on veut : un
+  onglet, un stade, une merge request, une session — la recherche porte sur ce qui est déjà chargé,
+  donc elle répond sans appeler le serveur. `?` affiche la liste complète des raccourcis.
+- **Parcourir la liste au clavier** : `j` / `k` descendent et remontent dans la liste visible, `Entrée`
+  ouvre, `Échap` relâche. Aucun cadre de focus n'apparaît tant qu'on n'a pas appuyé sur une touche.
+- **L'interface se tient tranquille.** Un rafraîchissement qui ne change rien ne reconstruit plus la
+  liste : la page ne cligne pas pendant qu'on la lit. Quand une liste se charge vraiment, ses cartes
+  arrivent en cascade — une fois, au chargement, pas à chaque caractère tapé dans un filtre.
+- **Ce qui tourne est marqué sur l'objet qui tourne** : la merge request ou la session concernée porte
+  un liseré animé, **un seul objet à la fois**. Il se fige quand l'onglet passe en arrière-plan et reste
+  immobile si le système demande moins d'animations.
+- **Le journal ne mange plus le navigateur** : au-delà de quelques milliers de lignes, les plus
+  anciennes sont élaguées et un bandeau le dit.
+- **Le panneau de rapport ouvre sur ce qui a changé depuis la dernière visite** — arrivées, sorties, et
+  celle qui attend depuis le plus longtemps. Trois lignes au maximum, et **rien du tout** quand rien
+  n'a bougé.
+- **Lire un rapport survit à un rafraîchissement** : position de défilement, onglet et version consultée
+  sont conservés tant que le rapport lui-même n'a pas changé.
+- Une **ligne d'identité trop longue** (chemin de projet, auteur, date) est tronquée à la largeur de la
+  carte : le survol en montre alors le texte complet — l'info-bulle n'apparaît que si le texte est
+  réellement coupé, et disparaît quand la fenêtre s'élargit. Les liens vers le **ticket** et vers la
+  **forge** ont leur propre ligne, où ils passent à la ligne au lieu d'être coupés.
 
 ## Configuration (.env)
 

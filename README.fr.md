@@ -1,6 +1,11 @@
 > 🇬🇧 **English:** [README.md](./README.md) · 📖 [Guide complet](./docs/guide.fr.md) · 🗺️ [Roadmap](./ROADMAP.md)
 
-# Mergerie
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="public/images/wordmark-dark.svg" />
+    <img src="public/images/wordmark.svg" alt="Mergerie" width="320" />
+  </picture>
+</h1>
 
 [![CI](https://github.com/debugall/mergerie/actions/workflows/ci.yml/badge.svg)](https://github.com/debugall/mergerie/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](./LICENSE)
@@ -57,7 +62,7 @@ la feature *Converger* en action, et une **session reliée à sa MR** — le che
   re-review incrémentale et **boucle de convergence autonome** (review → correction → re-review jusqu'au seuil).
 - **Dev IA** — sessions de codage automatisées (l'IA code, commite, pousse, ouvre la MR), **codage hors dépôt**
   (avec retour de l'IA et demande de correction) et **exploration** de code en lecture seule ;
-  *du prompt à la MR convergée* en un bouton.
+  *du prompt à la MR convergée* en un bouton. Les sessions terminées se **rangent** sans être supprimées.
 - **Statistiques** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens.
 - **Git** — opérations multi-dépôts (branches, tags, commandes git) sur les deux forges, navigation de branches
   et recherche de refs, suppressions **restaurables**, tout **avec aperçu**.
@@ -65,6 +70,11 @@ la feature *Converger* en action, et une **session reliée à sa MR** — le che
   badges d'erreur dans le menu.
 - **Jira** — tes tickets récupérés automatiquement, détail + pièces jointes, changement d'état et commentaires.
 - **Réglages** — connexions GitLab / GitHub / Jira, dépôts, règles de review, templates de prompt, thème et langue.
+
+Partout : `Ctrl`/`Cmd` + `K` ouvre une **palette de commandes** (sauter à un onglet, une MR, une session
+en tapant son nom), `j` / `k` parcourent la liste courante, `?` liste tous les raccourcis. L'outil
+rouvre sur l'onglet et le stade que tu as quittés, et le panneau de rapport ouvre sur **ce qui a changé
+depuis ta dernière visite**.
 
 Les badges signalent le **travail en attente** (MR à traiter, sessions non lancées), pas des totaux.
 

@@ -11,6 +11,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-31
+
 ### Added
 
 - **GitHub support — full parity with GitLab.** Repositories are now handled forge by forge: pull requests
@@ -306,5 +308,6 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/debugall/mergerie/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/debugall/mergerie/releases/tag/v1.0.0
