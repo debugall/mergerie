@@ -273,6 +273,13 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
     '6ba7b810-9dad-11d1-80b4-00c04fd430c8', 'claude', '/home/moi/clones/groupe-api-core', at(4));
 const t2 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, created_at, updated_at, md_path) VALUES (?,?,?,?,?,?,?,?,?)')
   .run(repoIds['groupe/batch-jobs'], 'Comment est gérée la reprise sur erreur dans les jobs ?', '', '', 'done', 'explore', at(6), at(6), path.join(TASKS_DIR, 'demo-explore.md'));
+/* Cible explicite : sans elle, c'est le backfill de `db.js` qui en crée une au démarrage —
+   donc sans session, et la carte n'aurait pas son « Reprendre au terminal ». Une exploration
+   tourne dans UNE session pour tous ses dépôts, dont le répertoire de travail est la RACINE
+   des clones et non un dépôt : c'est pourquoi la commande vit au niveau de la session. */
+db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, session_key, session_backend, session_cwd, updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
+  .run(t2.lastInsertRowid, repoIds['groupe/batch-jobs'], '', '', 'done',
+    '3f2a9c14-7b0e-4d55-9c31-8ae61f0c2b47', 'claude', '/home/moi/clones', at(6));
 ensureDir(TASKS_DIR);
 fs.writeFileSync(path.join(TASKS_DIR, 'demo-explore.md'), '# Reprise sur erreur — synthèse\n\nLes jobs utilisent un état persistant en base et rejouent les lots échoués au prochain passage…\n', 'utf8');
 

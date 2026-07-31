@@ -3724,6 +3724,11 @@ function questionsForm(t, tg) {
 // Carte EXPLORATION : pas de diff ni de merge — on lit la réponse.
 function exploreCard(t) {
   const canRun = ['new', 'error', 'done'].includes(t.status);
+  /* Une exploration tourne dans UNE session pour tous ses dépôts — son répertoire de travail
+     est la racine des clones, pas un dépôt en particulier. La commande de reprise vit donc
+     au niveau de la SESSION, pas de chaque projet : la répéter sur chaque ligne afficherait
+     N fois la même chose. (Un codage, lui, a une session par projet : là elle reste en ligne.) */
+  const resume = (t.targets || []).map((x) => x.resume_cmd).find(Boolean) || '';
   return `<div class="card task-row${t.hidden ? ' is-hidden' : ''}" data-task="${t.id}">
     <div style="min-width:0;flex:1">
       ${taskHead(t)}
@@ -3745,6 +3750,7 @@ function exploreCard(t) {
     t.md_path ? `<button class="btn btn-primary" data-tmd="${t.id}" title="${tr('task.title.view-answer')}"><svg class="ico"><use href="#i-doc"/></svg>${tr('task.btn.view-answer')}</button>` : '',
     canRun ? `<button class="btn" data-trun="${t.id}" title="${t.status === 'new' ? tr('task.title.run-explore') : tr('task.title.rerun-explore')}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
     t.md_path ? `<button class="btn" data-tfollow="${t.id}" title="${tr('task.title.follow-up')}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.follow-up')}</button>` : '',
+    resumeCmdBtn(resume),
   ], [
     `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
     hideBtn('task', t),

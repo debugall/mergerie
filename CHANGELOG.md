@@ -136,6 +136,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   onto another one after the fact; clearing it never wipes anything, so a form merely submitted
   cannot lose a session. A session belongs to one working directory, so if resuming is refused the
   usual fallback opens a fresh session with the context re-injected rather than losing the run.
+- **Explorations show their resume command too.** They gained a resumable session, but their card
+  never offered *Resume in terminal* — the button only existed per project, and an exploration has
+  a single session shared by all of its repositories, working from the clone root rather than any
+  one repository. It now sits with the card's own actions, where it belongs, rather than being
+  repeated identically on every line.
 - **Explorations remember, instead of being reminded.** A follow-up question used to paste the
   previous answer back into the prompt — but an answer is a summary, not the reasoning that produced
   it, so the AI had to work out again what it had already read. Explorations now run in a resumable
