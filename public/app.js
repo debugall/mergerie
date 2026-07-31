@@ -185,7 +185,12 @@ const domSig = new Map();
    Le test coûte une lecture de mise en page par ligne : on le fait en un seul passage juste
    après le rendu (donc rarement, cf. renderIfChanged) et au redimensionnement, jamais en boucle. */
 function titrerTextesTronques(racine = document) {
-  for (const el of racine.querySelectorAll('.list .card .meta:not(.branches):not(.links)')) {
+  /* Sélecteur RELATIF à la racine : `renderIfChanged` passe la liste elle-même (#toReviewList
+     porte la classe `list`), donc chercher `.list .card .meta` ne trouverait rien — il faudrait
+     un `.list` DANS la liste. On part donc de `.card`. Les cartes hors liste ne risquent rien :
+     seule `.list .card .meta` est tronquée en CSS, ailleurs le texte tient et aucune bulle
+     n'est posée. */
+  for (const el of racine.querySelectorAll('.card .meta:not(.branches):not(.links)')) {
     if (el.scrollWidth > el.clientWidth + 1) el.title = el.textContent.trim();
     else if (el.title) el.removeAttribute('title');
   }
@@ -1557,7 +1562,12 @@ function renderToReview() {
   /* Signature : tout ce que la carte affiche. Si le rendu est identique on ne touche pas au
      DOM — donc pas de clignotement au rafraîchissement automatique, et les écouteurs déjà
      posés restent valides (d'où le `return` : les recâbler serait du travail pour rien). */
-  const sig = rows.map((m) => [m.id, m.status, m.iid, m.title, m.has_ticket, m.ticket_key, m.closed_seen, m.stale, m.last_error].join('\u0001')).join('\u0002');
+  /* La signature doit couvrir TOUT ce que la carte affiche, sinon un champ modifié reste à
+     l'écran dans son ancienne valeur — un dépôt renommé, un ticket rattaché après coup, une
+     branche cible changée passeraient inaperçus. */
+  const sig = rows.map((m) => [m.id, m.status, m.iid, m.title, m.project, m.author, m.gitlab_created_at,
+    m.has_ticket, m.ticket_key, m.ticket_url, m.web_url, m.forge, m.source_branch, m.target_branch,
+    (m.risk || []).map((r) => r.label).join(','), m.closed_seen, m.stale, m.last_error].join('\u0001')).join('\u0002');
   if (!renderIfChanged(el, sig, rows.map(mrCard).join(''))) return;
   stagger('#toReviewList .card');
   $$('#toReviewList [data-review]').forEach((b) => b.addEventListener('click', async () => {
@@ -1744,7 +1754,9 @@ function renderReports() {
     });
     return;
   }
-  const sig = [selectedMr, ...rows.map((m) => [m.id, m.status, m.iid, m.title, m.note && m.note.raw, m.closed_seen, m.stale].join('\u0001'))].join('\u0002');
+  const sig = [selectedMr, ...rows.map((m) => [m.id, m.status, m.iid, m.title, m.project, m.author,
+    m.gitlab_created_at, m.ticket_key, m.ticket_url, m.forge, m.note && m.note.raw, m.closed_seen,
+    m.stale].join('\u0001'))].join('\u0002');
   const html = rows.map((m) => `
     <div class="card selectable report-card ${selectedMr === m.id ? 'active' : ''}" data-id="${m.id}">
       ${noteBadge(m.note)}

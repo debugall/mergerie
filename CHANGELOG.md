@@ -264,6 +264,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   author, date — can still be truncated on a very long project path, so hovering it now shows the
   full text; the tooltip only appears when the text really is cut, and goes away when the window
   is widened.
+- **A card could keep showing stale details.** The check that decides whether a list needs
+  redrawing did not look at the project, the author, the date, the branches or the ticket, so a
+  renamed repository, a ticket attached after the fact or a changed target branch stayed on screen
+  in their old form until a full reload. The check now covers everything the card shows.
 - **"t is not a function" instead of "Session not found".** Six routes named their local variable
   after the translation helper, so asking for a session that no longer exists — a stale tab, a
   bookmarked link, a deleted session — answered with an internal error message that told the user
