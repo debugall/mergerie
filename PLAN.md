@@ -287,7 +287,10 @@ cases cochées** — on coche, on filtre autre chose, on coche encore, puis on s
 Le sélecteur de branche de Git → Navigation et ceux de la modale de session étaient déjà des combos.
 **Calme et repères** (issu de l'étude `ludique.md`, dont le fil conducteur est : *rien qui
 n'apporte pas d'information*).
-*Calme* — `renderIfChanged(el, sig, html)` : chaque liste calcule la signature de ce qu'elle
+*Calme* — `titrerTextesTronques()` pose une info-bulle sur les lignes de carte réellement
+coupées (mesure `scrollWidth > clientWidth`), et la retire quand la fenêtre s'élargit : une bulle
+qui répète un texte lisible est du bruit. Un passage après rendu et un au redimensionnement.
+`renderIfChanged(el, sig, html)` : chaque liste calcule la signature de ce qu'elle
 affiche et ne touche au DOM que si elle a changé (pas de clignotement au rafraîchissement, et les
 écouteurs déjà posés restent valides). L'entrée en cascade (`stagger`) est armée par le seul
 drapeau `listeChargee`, posé par les `loadX()` : elle joue au chargement, jamais à la frappe d'un

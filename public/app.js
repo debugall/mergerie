@@ -178,10 +178,27 @@ function stagger(sel) {
    défilement perdue, menus refermés, cartes qui clignotent. La signature doit décrire tout
    ce qui est AFFICHÉ : si elle en oublie une part, l'écran se fige sur une donnée périmée. */
 const domSig = new Map();
+/* La ligne d'identité d'une carte (projet · auteur · date) est tronquée à la largeur de la
+   carte : sur un chemin de projet long, la fin devient illisible. On pose donc une info-bulle —
+   mais UNIQUEMENT quand le texte est réellement coupé. Une bulle qui répète ce qu'on lit déjà
+   est du bruit, et elle s'ouvrirait sous la souris à chaque survol d'une carte.
+   Le test coûte une lecture de mise en page par ligne : on le fait en un seul passage juste
+   après le rendu (donc rarement, cf. renderIfChanged) et au redimensionnement, jamais en boucle. */
+function titrerTextesTronques(racine = document) {
+  for (const el of racine.querySelectorAll('.list .card .meta:not(.branches):not(.links)')) {
+    if (el.scrollWidth > el.clientWidth + 1) el.title = el.textContent.trim();
+    else if (el.title) el.removeAttribute('title');
+  }
+}
+// La troncature dépend de la largeur : ce qui tenait dans une fenêtre large est coupé dans une
+// fenêtre étroite, et inversement. On repasse donc à chaque redimensionnement, groupé.
+window.addEventListener('resize', debounce(() => titrerTextesTronques(), 200));
+
 function renderIfChanged(el, sig, html) {
   if (domSig.get(el.id) === sig) return false;
   domSig.set(el.id, sig);
   el.innerHTML = html;
+  titrerTextesTronques(el);
   // Le repère « ça tourne » vit sur les cartes : un re-rendu l'effacerait jusqu'au
   // prochain sondage de statut. On le repose tout de suite (cf. marquerEnCours).
   if (ciblesEnCours) marquerEnCours(ciblesEnCours);
