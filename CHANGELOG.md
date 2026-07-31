@@ -255,6 +255,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The ticket and forge links were being cut off.** On a merge request to review, they came last
+  on the identity line — after the project path, the author and the date — and that line is
+  truncated to the width of the card, so they were the first thing to vanish behind the ellipsis.
+  The longer the project path, the more certain it was. They now have their own line, where they
+  wrap instead of being cut, each with an icon telling the ticket from the merge request. A card
+  with neither link does not pay for an empty line.
 - **"t is not a function" instead of "Session not found".** Six routes named their local variable
   after the translation helper, so asking for a session that no longer exists — a stale tab, a
   bookmarked link, a deleted session — answered with an internal error message that told the user

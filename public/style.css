@@ -291,6 +291,11 @@ main { padding: 0 var(--s-6) var(--s-12); max-width: none; margin: 0 auto; width
 /* les branches source → cible passent sur leur propre ligne et WRAPPENT : des noms
    longs restent lisibles en entier au lieu d'être coupés. */
 .list .card .meta.branches { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; margin-top: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+/* Ligne des liens sortants : elle passe à la ligne, jamais elle ne tronque — c'est tout
+   l'intérêt de l'avoir sortie de la ligne d'identité. */
+.list .card .meta.links { overflow: visible; text-overflow: clip; white-space: normal;
+  margin-top: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; }
+.list .card .meta.links a { display: inline-flex; align-items: center; gap: 4px; }
 .list .card .meta.branches .branch-arrow { color: var(--muted); opacity: .8; }
 /* le TITRE, lui, passe à la ligne (soft wrap) : un titre de MR long doit rester lisible en entier */
 .list .card .title { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
