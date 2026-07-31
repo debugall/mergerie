@@ -296,6 +296,27 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
     { id: 'q2', question: 'Combien de tentatives au maximum avant d’abandonner ?', context: 'Aucune valeur n’est imposée par le code existant.', options: null, answer: null },
   ]), at(0.3));
 
+/* Session MULTI-DÉPÔTS partiellement en échec : le cas où « relancer » en bloc coûte cher.
+   Deux projets sont passés, deux ont échoué — on voit donc le bouton « Lancer » par projet, le
+   raccourci « Relancer les projets en échec », et « Vérifier l'état des branches ». C'est
+   exactement la situation qui a motivé ces trois ajouts. */
+const t5 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, auto_push, last_error, created_at, updated_at) VALUES (?,?,?,?,?,?,1,?,?,?)')
+  .run(repoIds['groupe/api-core'], 'Ajoute un timeout de 30 s sur tous les appels HTTP sortants, et un log structuré en cas de dépassement.',
+    'feature/http-timeout', 'main', 'error', 'code', 'push refusé : la branche distante a divergé', at(0.6), at(0.6));
+const MULTI = [
+  ['groupe/api-core', 'committed', null],
+  ['groupe/webapp-front', 'error', 'push refusé : la branche distante a divergé'],
+  ['groupe/batch-jobs', 'error', 'L’IA n’a modifié aucun fichier — elle a répondu au lieu de coder :\n\n« Je ne trouve aucun appel HTTP sortant dans ce dépôt. »'],
+  ['acme/design-system', 'pushed', null],
+];
+for (const [projet, statut, err] of MULTI) {
+  db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, commit_sha, last_error, updated_at)
+    VALUES (?,?,?,?,?,?,?,?)`).run(
+    t5.lastInsertRowid, repoIds[projet], 'feature/http-timeout', 'main', statut,
+    statut === 'error' ? null : 'c0ffee1', err, at(0.6),
+  );
+}
+
 /* Session RANGÉE + prompt LONG : les deux nouveautés de la liste réunies sur une seule fiche.
    Elle n'apparaît qu'en cochant « afficher les sessions masquées », et son prompt dépasse
    trois lignes, donc « Voir plus » s'y affiche. */

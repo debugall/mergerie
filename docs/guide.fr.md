@@ -171,6 +171,13 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   En revanche, si la branche **porte déjà le travail** — cas d'une relance après un échec survenu
   *après* le commit, un push refusé par exemple —, l'absence de nouveau changement n'est **pas** une
   erreur : la session reprend son état « commit prêt », avec le diff et le bouton de création de MR.
+- **Lancer un projet à la fois.** Sur une session multi-dépôts, chaque projet porte son propre
+  bouton **Lancer**, et une session comptant plusieurs échecs propose **Relancer les projets en
+  échec**. Auparavant une session ne se relançait qu'en bloc : sur dix dépôts dont six avaient
+  réussi, cela coûtait six appels IA pour refaire un travail bon, et faisait repasser l'agent sur du
+  code qu'on ne voulait plus voir modifier. Une passe ciblée ne **réserve que ses dépôts**, donc deux
+  projets d'une même session sur des dépôts distincts peuvent tourner en parallèle. Relancer la
+  session entière reste à un clic — rien n'est devenu implicite.
 - **Vérifier l'état des branches — réparer sans dépenser d'appel IA.** Quand des projets sont restés
   en erreur alors que leur travail est déjà commité, un bouton sur la session **relit l'état réel de
   chaque branche** : si elle porte des commits, le diff est régénéré et le projet repasse « commit

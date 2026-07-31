@@ -109,9 +109,17 @@ function jobKeys(entry) {
       return keys;
     case 'task':
     case 'reconcile':
-    case 'converge-session':
-      for (const t2 of targetsOf(entry.taskId)) repo(t2.repo_id);
+    case 'converge-session': {
+      /* Une passe ciblée ne réserve que SES dépôts : deux projets d'une même session, sur des
+         dépôts distincts, peuvent alors tourner en parallèle. */
+      const ids = entry.opts && entry.opts.targetIds;
+      const cibles = (Array.isArray(ids) && ids.length)
+        ? db.prepare(`SELECT repo_id FROM task_target WHERE task_id = ? AND id IN (${ids.map(() => '?').join(',')})`)
+          .all(entry.taskId, ...ids.map(Number))
+        : targetsOf(entry.taskId);
+      for (const t2 of cibles) repo(t2.repo_id);
       return keys;
+    }
     case 'converge': {
       const mr = db.prepare('SELECT repo_id FROM mr WHERE id = ?').get(entry.mrId);
       repo(mr && mr.repo_id);
@@ -237,7 +245,8 @@ async function processList(jobId, rows, kind, opts = {}) {
 async function runTaskJob(jobId, taskId, action, opts = {}) {
   setJob(jobId, { status: 'running', total: 1, done_count: 0, started_at: new Date().toISOString(), message: t('job.msg.starting') });
   const task = db.prepare('SELECT * FROM task WHERE id = ?').get(taskId);
-  logLine(jobId, null, `=== Session #${jobId} (${action}) : ${task ? (task.kind === 'explore' ? 'exploration' : 'codage') : '?'} ===`);
+  const portee = (opts.targetIds && opts.targetIds.length) ? ` · ${opts.targetIds.length} projet(s) ciblé(s)` : '';
+  logLine(jobId, null, `=== Session #${jobId} (${action})${portee} : ${task ? (task.kind === 'explore' ? 'exploration' : 'codage') : '?'} ===`);
   if (!task) { setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: t('err.tache-introuvable') }); return; }
   const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   if (action !== 'push') db.prepare("UPDATE task SET status='running', last_error=NULL, updated_at=? WHERE id=?").run(new Date().toISOString(), task.id);
@@ -245,7 +254,7 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
     if (action === 'push') await taskrunner.pushTarget(task.id, opts.targetId, onLog);
     else if (action === 'followup') await taskrunner.runTaskFollowup(task, opts.instruction, onLog);
     else if (action === 'answer') await taskrunner.runTaskAnswer(task, opts.targetId, onLog);
-    else await taskrunner.runTask(task, onLog);
+    else await taskrunner.runTask(task, onLog, { targetIds: opts.targetIds });
     setJob(jobId, { status: 'done', done_count: 1, current_mr_id: null, finished_at: new Date().toISOString(), message: '' });
     // La session peut s'être mise EN ATTENTE (l'agent a posé des questions) : notif dédiée,
     // pas « prête à push ». Sinon, codage terminé → prêt à push/MR.
@@ -566,10 +575,18 @@ async function runDockerJob(jobId, payload) {
    effectif du job. Sinon la carte continue d'afficher « erreur » entre le clic et le départ :
    on ne sait pas si le clic a été pris, et derrière une file chargée cet entre-deux dure des
    minutes. L'erreur affichée n'est plus l'état courant dès l'instant où l'on redemande le travail. */
-function clearTaskError(taskId) {
+function clearTaskError(taskId, targetIds) {
   const now = new Date().toISOString();
   db.prepare("UPDATE task SET last_error = NULL, updated_at = ? WHERE id = ? AND status = 'error'").run(now, taskId);
-  db.prepare("UPDATE task_target SET last_error = NULL WHERE task_id = ? AND status = 'error'").run(taskId);
+  // Une relance CIBLÉE ne solde que les projets qu'elle va refaire : effacer l'erreur des
+  // autres laisserait croire qu'ils ont été retraités.
+  if (Array.isArray(targetIds) && targetIds.length) {
+    const q = targetIds.map(() => '?').join(',');
+    db.prepare(`UPDATE task_target SET last_error = NULL WHERE task_id = ? AND status = 'error' AND id IN (${q})`)
+      .run(taskId, ...targetIds.map(Number));
+  } else {
+    db.prepare("UPDATE task_target SET last_error = NULL WHERE task_id = ? AND status = 'error'").run(taskId);
+  }
 }
 
 /* Réconciliation : on relit l'état réel des branches d'une session et on répare les cibles
@@ -603,7 +620,7 @@ function startReconcileJob(taskId) {
 }
 
 function startTaskJob(taskId, action = 'run', opts = {}) {
-  if (action !== 'push') clearTaskError(taskId);
+  if (action !== 'push') clearTaskError(taskId, opts.targetIds);
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES ('task', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
   const jobId = info.lastInsertRowid;

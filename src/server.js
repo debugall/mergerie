@@ -1401,6 +1401,18 @@ app.get('/api/tasks/:id/md', wrap((req, res) => {
 /* Réconcilier : relire l'état réel des branches d'une session et réparer les projets dont le
    travail existe déjà (commit passé, échec survenu après). Aucun appel IA — contrairement à une
    relance, qui en coûterait un par dépôt pour refaire un travail déjà fait. */
+/* Valide une liste d'ids de projets contre la session : un id étranger doit être refusé, pas
+   ignoré en silence — sinon une faute de frappe fait tourner la session entière sans le dire. */
+function normalizeTargetIds(taskId, raw) {
+  if (!Array.isArray(raw) || !raw.length) return null;
+  const voulus = [...new Set(raw.map(Number).filter(Number.isInteger))];
+  if (!voulus.length) return null;
+  const connus = new Set(db.prepare('SELECT id FROM task_target WHERE task_id = ?').all(taskId).map((r) => r.id));
+  const inconnus = voulus.filter((id) => !connus.has(id));
+  if (inconnus.length) throw new Error(tt('err.projet-introuvable-pour-cette-session-2'));
+  return voulus;
+}
+
 app.post('/api/tasks/:id/reconcile', wrap((req, res) => {
   const t2 = taskById(Number(req.params.id));
   if (!t2) throw new Error(tt('err.session-introuvable'));
@@ -1408,10 +1420,14 @@ app.post('/api/tasks/:id/reconcile', wrap((req, res) => {
   res.json(jobs.startReconcileJob(t2.id));
 }));
 
+/* `targets` (facultatif) restreint la passe à certains projets de la session. Sans lui, toute
+   la session part — comportement d'origine. Sert au bouton « Lancer » de chaque projet et à
+   « relancer les projets en échec ». */
 app.post('/api/tasks/:id/run', wrap((req, res) => {
   const t = taskById(Number(req.params.id));
   if (!t) throw new Error(tt('err.session-introuvable'));
-  res.json(jobs.startTaskJob(t.id, 'run'));
+  const targetIds = normalizeTargetIds(t.id, req.body && req.body.targets);
+  res.json(jobs.startTaskJob(t.id, 'run', targetIds ? { targetIds } : {}));
 }));
 
 // « Converger » une session de dev : du prompt à la/les MR convergée(s). L'IA code,

@@ -285,9 +285,16 @@ async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog,
 
 // Session de codage : chaque projet est traité l'un après l'autre. Un projet en échec
 // n'interrompt pas les suivants — son erreur est consignée sur SA ligne.
-async function runCodeTask(task, { promptText, message, allowCreate, onLog, passKind }) {
-  const targets = targetsOf(task.id);
-  if (!targets.length) throw new Error(t('err.aucun-projet-selectionne-pour-cette'));
+async function runCodeTask(task, { promptText, message, allowCreate, onLog, passKind, targetIds }) {
+  /* `targetIds` restreint la passe à certains projets. Une session multi-dépôts se relançait
+     forcément EN ENTIER : sur dix dépôts dont six ont réussi, cela coûtait six appels IA pour
+     refaire un travail bon, et faisait repasser l'agent sur du code qu'on ne voulait plus voir
+     toucher. Vide ou absent = tous les projets, comportement d'origine. */
+  const tous = targetsOf(task.id);
+  const voulus = Array.isArray(targetIds) && targetIds.length ? targetIds.map(Number) : null;
+  const targets = voulus ? tous.filter((tg) => voulus.includes(tg.id)) : tous;
+  if (!tous.length) throw new Error(t('err.aucun-projet-selectionne-pour-cette'));
+  if (!targets.length) throw new Error(t('err.projet-introuvable-pour-cette-session-2'));
   let ok = 0; let waiting = 0; const fails = [];
   for (const tg of targets) {
     onLog(`──────── ${tg.project} · ${tg.branch} ────────`);
@@ -302,7 +309,8 @@ async function runCodeTask(task, { promptText, message, allowCreate, onLog, pass
     }
   }
   syncTaskStatus(task.id);
-  onLog(`${ok}/${targets.length} projet(s) traité(s)${waiting ? `, ${waiting} en attente de réponses` : ''}`);
+  const portee = voulus ? ` (sur ${tous.length} au total)` : '';
+  onLog(`${ok}/${targets.length} projet(s) traité(s)${portee}${waiting ? `, ${waiting} en attente de réponses` : ''}`);
   if (!ok && !waiting) {
     // Tout a échoué : on remonte la VRAIE raison plutôt qu'un « voir le détail ». Un seul
     // projet → son erreur directement ; plusieurs → la liste, projet par projet.
@@ -449,12 +457,13 @@ async function runExploration(task, { question, previous, onLog }) {
 
 /* ================= Points d'entrée ================= */
 
-async function runTask(task, onLog = () => {}) {
+async function runTask(task, onLog = () => {}, opts = {}) {
   if (task.kind === 'explore') {
     return runExploration(task, { question: task.prompt, previous: null, onLog });
   }
   return runCodeTask(task, {
     promptText: buildCodePrompt(task), message: commitMessageFor(task), allowCreate: true, onLog,
+    targetIds: opts.targetIds,
   });
 }
 

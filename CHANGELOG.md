@@ -19,6 +19,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   inferred from the repository and the branch, which is not proof — a branch can have been taken over
   by hand — so the field stays editable, and clearing it starts a fresh session as before. Nothing is
   proposed when no coding session matches.
+- **Run one project of a multi-repo session on its own.** Each project of a coding session now has
+  its own **Run** button, and a session with several failures offers **Re-run failed projects**.
+  Until now a session could only be re-run whole: on ten repositories where six had succeeded, that
+  meant six AI calls to redo good work — and the agent going back over code you did not want touched
+  again. A targeted pass also only reserves the repositories it touches, so two projects of the same
+  session, on different repositories, can run side by side. Re-running everything is still one click
+  away; nothing became implicit.
 - **Check branch state — repair a session without spending an AI call.** When projects are stuck in
   *error* although their work is already committed, a button on the session re-reads the real state
   of each branch: if it carries commits its diff is regenerated and the project goes back to *commit

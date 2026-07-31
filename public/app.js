@@ -4043,6 +4043,8 @@ function codeCard(t) {
     /* N'apparaît que s'il y a quelque chose à réparer : un projet en erreur dont le travail
        peut très bien être déjà commité. Relancer coûterait un appel IA par dépôt pour refaire
        du travail fait — ce bouton ne fait que relire les branches. */
+    (t.targets || []).filter((tg) => tg.status === 'error').length > 1
+      ? `<button class="btn" data-trunfailed="${t.id}" title="${esc(tr('task.title.rerun-failed'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.rerun-failed')}</button>` : '',
     (t.targets || []).some((tg) => tg.status === 'error')
       ? `<button class="btn" data-treconcile="${t.id}" title="${esc(tr('task.title.reconcile'))}"><svg class="ico"><use href="#i-branch"/></svg>${tr('task.btn.reconcile')}</button>` : '',
   ], [
@@ -4080,6 +4082,10 @@ function targetLine(t, tg) {
   const mrIid = tg.mr_iid || tg.existing_mr_iid;
   const mrUrl = tg.mr_url || tg.existing_mr_url;
   const canMr = tg.status === 'pushed' && !mrIid;
+  /* Lancer UN projet d'une session multi-dépôts. Absent quand le projet est déjà en cours ou en
+     attente de réponses : relancer par-dessus perdrait la question posée. Le bouton ne s'affiche
+     que sur une session à plusieurs projets — sur un seul, il ferait doublon avec « Relancer ». */
+  const runTarget = (t.targets || []).length > 1 && !['running', 'needs_input'].includes(tg.status);
   const defaultMrTitle = t.commit_message || `${tg.branch}: ${(t.prompt || '').split('\n')[0].slice(0, 72)}`;
   return `<div class="target-line">
     <span class="tag ${st.cls}">${st.label}</span>
@@ -4092,6 +4098,7 @@ function targetLine(t, tg) {
     ${resumeCmdBtn(tg.resume_cmd)}
     ${tg.output_path ? `<button class="btn btn-sm" data-tgout="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}
     ${showDiff ? `<button class="btn btn-sm" data-tgdiff="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-diff'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>` : ''}
+    ${runTarget ? `<button class="btn btn-sm" data-tgrun="${tg.id}" data-task="${t.id}" title="${esc(tg.status === 'new' ? tr('task.title.run-target') : tr('task.title.rerun-target'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${tr('task.btn.run-target')}</button>` : ''}
     ${showPush ? `<button class="btn btn-sm btn-primary" data-tgpush="${tg.id}" data-task="${t.id}" data-project="${esc(tg.project)}" data-branch="${esc(tg.branch || '')}" title="${tr('task.btn.push-title')}"><svg class="ico ico-sm"><use href="#i-upload"/></svg>${tr('task.btn.push')}</button>` : ''}
     ${canMr ? `<button class="btn btn-sm btn-primary" data-tgmr="${tg.id}" data-task="${t.id}" data-title="${esc(defaultMrTitle)}" data-branch="${esc(tg.branch || '')}" data-target="${esc(tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.open-mr'))}"><svg class="ico ico-sm"><use href="#i-branch"/></svg>${tr('task.btn.create-mr')}</button>` : ''}
     ${mrIid && !tg.mr_merged ? `<button class="btn btn-sm btn-danger" data-tgmerge="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-target="${esc(tg.mr_target || tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.merge-mr'))}"><svg class="ico ico-sm"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>` : ''}
@@ -4188,6 +4195,19 @@ function wireTaskActions() {
   on('[data-trun]', (b) => busy(b, () => api(`/tasks/${b.dataset.trun}/run`, { method: 'POST' }))
     .then(() => { toast(tr('toast.session-lancee')); loadTasks(); refreshStatus(); })
     .catch((e) => toast(explainError(e.message), true)));
+
+  on('[data-tgrun]', (b) => busy(b, () => api(`/tasks/${b.dataset.task}/run`, { method: 'POST', body: { targets: [Number(b.dataset.tgrun)] } }))
+    .then(() => { toast(tr('toast.projet-lance')); loadTasks(); refreshStatus(); })
+    .catch((e) => toast(explainError(e.message), true)));
+
+  on('[data-trunfailed]', (b) => {
+    const t2 = allTasks.find((x) => x.id === Number(b.dataset.trunfailed));
+    const echecs = ((t2 && t2.targets) || []).filter((tg) => tg.status === 'error').map((tg) => tg.id);
+    if (!echecs.length) return;
+    busy(b, () => api(`/tasks/${b.dataset.trunfailed}/run`, { method: 'POST', body: { targets: echecs } }))
+      .then(() => { toast(tr('toast.session-lancee')); loadTasks(); refreshStatus(); })
+      .catch((e) => toast(explainError(e.message), true));
+  });
 
   on('[data-treconcile]', (b) => busy(b, () => api(`/tasks/${b.dataset.treconcile}/reconcile`, { method: 'POST' }))
     .then(() => { toast(tr('toast.reconcile-lancee')); loadTasks(); refreshStatus(); })

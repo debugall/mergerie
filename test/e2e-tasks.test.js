@@ -142,6 +142,45 @@ describe('Sessions de dev de bout en bout', () => {
     assert.equal(tg.last_error, 'échec réel', 'et son message n’est pas effacé');
   });
 
+  /* Une session multi-dépôts se relançait forcément EN ENTIER. Le point qui compte n'est pas
+     que le projet visé tourne, c'est que les AUTRES ne soient pas touchés : sinon on paie un
+     appel IA par projet déjà bon, et l'agent repasse sur du code qu'on ne voulait plus voir
+     modifier. */
+  test('on lance un seul projet d’une session multi-dépôts', async () => {
+    const t = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'multi', targets: [
+        { repo_id: repoId, branch: 'ai/cible-a' },
+        { repo_id: repo2Id, branch: 'ai/cible-b' },
+      ],
+    });
+    const id = t.body.id;
+    const cibles = (await app.api('GET', `/api/tasks/${id}`)).body.task.targets;
+    assert.equal(cibles.length, 2);
+    const [a, b] = cibles;
+
+    await app.api('POST', `/api/tasks/${id}/run`, { targets: [a.id] });
+    await waitForJobs(app.api);
+
+    const apres = (await app.api('GET', `/api/tasks/${id}`)).body.task.targets;
+    const va = apres.find((x) => x.id === a.id);
+    const vb = apres.find((x) => x.id === b.id);
+    assert.ok(['committed', 'pushed', 'needs_input'].includes(va.status), `le projet visé a tourné (${va.status})`);
+    assert.equal(vb.status, 'new', 'l’autre projet n’a pas été touché');
+    assert.equal(vb.commit_sha, null, 'et n’a rien produit');
+  });
+
+  test('un projet étranger à la session est refusé, pas ignoré', async () => {
+    // Ignorer un id inconnu ferait tourner la session ENTIÈRE sans le dire — le contraire
+    // de ce qu'on a demandé, et sur un multi-dépôts ça se paie.
+    const t = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'p', targets: [{ repo_id: repoId, branch: 'ai/solo' }],
+    });
+    const r = await app.api('POST', `/api/tasks/${t.body.id}/run`, { targets: [999999] });
+    assert.ok(r.status >= 400, 'un id étranger est refusé');
+    const tg = (await app.api('GET', `/api/tasks/${t.body.id}`)).body.task.targets[0];
+    assert.equal(tg.status, 'new', 'et rien n’a été lancé');
+  });
+
   test('la création d’une session valide ses entrées', async () => {
     const sansPrompt = await app.api('POST', '/api/tasks', { targets: [{ repo_id: repoId, branch: 'x' }] });
     assert.equal(sansPrompt.status, 400);
