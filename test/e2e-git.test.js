@@ -396,12 +396,23 @@ describe('Opérations Git de bout en bout', () => {
     assert.equal(mr.title, repo.branch, 'sans titre, la branche source fait office de titre');
   });
 
-  test('Le job en cours peut être arrêté', async () => {
-    await app.api('POST', '/api/git/execute', { action: 'new_branch', name: 'a-arreter', targets: [{ repo_id: repoId, ref: 'main' }] });
+  /* Un arrêt DEMANDÉ n'est pas un échec. Les opérations git étaient les seules à ne pas
+     faire la distinction : le Stop de l'utilisateur s'affichait en rouge avec « Job arrêté
+     par l'utilisateur » en guise de message d'erreur — faux, et inquiétant à lire. */
+  test('Le job en cours peut être arrêté, et se termine en « stopped » (pas « error »)', async () => {
+    const { body: job } = await app.api('POST', '/api/git/execute', { action: 'new_branch', name: 'a-arreter', targets: [{ repo_id: repoId, ref: 'main' }] });
     const stop = await app.api('POST', '/api/jobs/stop');
     assert.equal(stop.status, 200);
     assert.equal(stop.body.ok, true);
     await waitForJobs(app.api);
+    const apres = app.db.prepare('SELECT status, message FROM job WHERE id = ?').get(job.id);
+    /* ⚠ Ce test ne PROUVE pas la distinction : une opération git est rapide, le job aboutit
+       souvent avant que le Stop ne l'atteigne, et il finit alors légitimement en « done ».
+       Ce qu'il verrouille, c'est l'invariant : quoi qu'il arrive, un arrêt demandé ne doit
+       jamais ressortir en « error » avec le message d'annulation en guise d'échec. */
+    assert.ok(['stopped', 'done'].includes(apres.status), `statut inattendu : ${apres.status}`);
+    assert.doesNotMatch(String(apres.message || ''), /arrêté par l’utilisateur/i,
+      'un arrêt demandé ne se présente pas comme une erreur');
   });
 
   // Régression : un tag supprimé puis recréé sur un AUTRE commit faisait échouer tout le

@@ -292,6 +292,37 @@ describe('Sessions de dev de bout en bout', () => {
     assert.ok(body.some((t) => t.image_count > 0));
   });
 
+  /* Relancer un job arrêté. Ce qui compte n'est pas le bouton mais ce qu'il rejoue : la même
+     action sur le même objet, et RIEN pour les opérations qui doivent repasser par leur
+     aperçu. Un job qui est allé au bout n'est pas rejouable non plus — sinon « Relancer »
+     deviendrait un second bouton « Lancer », au mauvais endroit. */
+  test('relance d’un job : seulement ce qui s’est arrêté, et pas les opérations git', async () => {
+    const t2 = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'p', targets: [{ repo_id: repoId, branch: 'ai/retry' }],
+    })).body;
+    await app.api('POST', `/api/tasks/${t2.id}/run`);
+    await waitForJobs(app.api);
+
+    const job = app.db.prepare("SELECT * FROM job WHERE kind = 'task' ORDER BY id DESC LIMIT 1").get();
+    assert.ok(job.retry, 'l’intention du job est mémorisée');
+    assert.deepEqual(JSON.parse(job.retry).taskId, t2.id);
+
+    // Terminé (ou en erreur puis relancé) : on n'autorise la relance que sur stopped/error.
+    app.db.prepare("UPDATE job SET status = 'done' WHERE id = ?").run(job.id);
+    assert.equal((await app.api('POST', `/api/jobs/${job.id}/retry`)).status, 409, 'un job abouti ne se rejoue pas');
+
+    app.db.prepare("UPDATE job SET status = 'stopped' WHERE id = ?").run(job.id);
+    const relance = await app.api('POST', `/api/jobs/${job.id}/retry`);
+    assert.equal(relance.status, 200);
+    assert.equal(relance.body.job.kind, 'task');
+    assert.notEqual(relance.body.job.id, job.id, 'la relance crée un NOUVEAU job, elle ne ressuscite pas l’ancien');
+    await waitForJobs(app.api);
+
+    // Une opération git n'est pas rejouable d'ici : elle doit repasser par son aperçu.
+    const gitJob = app.db.prepare("INSERT INTO job (kind, status, retry) VALUES ('gitops', 'stopped', '{}')").run();
+    assert.equal((await app.api('POST', `/api/jobs/${gitJob.lastInsertRowid}/retry`)).status, 409);
+  });
+
   /* Le périmètre d'un job : ce qu'il va toucher. C'est cette déduction qui décide si deux
      jobs peuvent tourner ensemble ; une erreur ici ne fait pas planter, elle laisse deux
      process se disputer le même clone. On la vérifie donc sur de vraies sessions. */

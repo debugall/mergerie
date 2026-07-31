@@ -899,7 +899,6 @@ async function refreshStatus() {
 
 /* ---------- Log en direct du job ---------- */
 let logJobId = null;
-let lastLogId = 0;
 let logHidden = false;
 // Repli auto d'un job terminé : on ne veut pas que le bandeau reste collé en haut de tous les onglets.
 let autoHideJobId = null;
@@ -933,7 +932,19 @@ function logLineClass(t) {
    Deux jobs peuvent tourner ensemble (voir « Lancer en parallèle ») : chacun garde son
    propre volet, donc sa position de défilement et ses lignes. Changer d'onglet ne rejoue
    rien — on montre l'autre volet, c'est tout. */
-const LOGP = { after: new Map(), active: null };
+/* `shown` : les jobs dont l'onglet reste affiché. Un job TERMINÉ y reste — c'est le moment
+   où l'on veut lire sa sortie, surtout s'il a échoué. Il ne disparaît qu'au démarrage d'un
+   job vraiment nouveau, qui remet le panneau à zéro.
+   `state` retient le statut final de chacun : c'est lui qui colore l'onglet et qui dit
+   quand cesser de l'interroger. */
+const TERMINAL = new Set(['done', 'error', 'stopped']);
+const LOGP = { after: new Map(), active: null, shown: [], state: new Map() };
+
+function logReset() {
+  $('#logBox').innerHTML = '';
+  LOGP.after.clear(); LOGP.state.clear();
+  LOGP.shown = []; LOGP.active = null;
+}
 
 function logPane(jobId) {
   const box = $('#logBox');
@@ -945,12 +956,6 @@ function logPane(jobId) {
     box.appendChild(pane);
   }
   return pane;
-}
-// Ne garde que les volets encore utiles : ceux des jobs affichés en onglet.
-function pruneLogPanes(ids) {
-  for (const pane of $$('#logBox .logpane')) {
-    if (!ids.includes(Number(pane.dataset.job))) { LOGP.after.delete(Number(pane.dataset.job)); pane.remove(); }
-  }
 }
 function showLogPane(jobId) {
   LOGP.active = jobId;
@@ -976,14 +981,19 @@ async function pumpOne(jobId) {
   return d;
 }
 
-/* Onglets : un par job en cours. Masqués tant qu'il n'y en a qu'un — un onglet solitaire
-   n'apprend rien et vole une ligne au journal. */
+/* Onglets : un par job du lot courant, terminés compris. Masqués tant qu'il n'y en a qu'un —
+   un onglet solitaire n'apprend rien et vole une ligne au journal. La pastille reprend le
+   vocabulaire du bandeau : ambre en cours, vert terminé, rouge en erreur, gris arrêté. */
 function renderLogTabs(ids, main) {
   const bar = $('#logTabs');
   bar.hidden = ids.length < 2;
   if (bar.hidden) { bar.innerHTML = ''; return; }
-  bar.innerHTML = ids.map((id) => `<button type="button" data-jobtab="${id}"${id === LOGP.active ? ' class="active"' : ''}>`
-    + `${esc(id === main ? tr('job.tab.main') : tr('job.tab.parallel'))} <span class="muted">#${id}</span></button>`).join('');
+  bar.innerHTML = ids.map((id) => {
+    const st = LOGP.state.get(id) || 'running';
+    const cls = ['jobtab', st === 'running' ? 'running' : st, id === LOGP.active ? 'active' : ''].filter(Boolean).join(' ');
+    return `<button type="button" class="${cls}" data-jobtab="${id}" title="${esc(tr(`job.tab.state.${st}`))}">`
+      + `<span class="dot"></span>${esc(id === main ? tr('job.tab.main') : tr('job.tab.parallel'))} <span class="muted">#${id}</span></button>`;
+  }).join('');
   for (const b of $$('#logTabs [data-jobtab]')) {
     b.addEventListener('click', () => showLogPane(Number(b.dataset.jobtab)));
   }
@@ -991,16 +1001,17 @@ function renderLogTabs(ids, main) {
 
 async function pumpLog() {
   let d;
-  try { d = await api(`/jobs/current/log?after=${lastLogId}`); } catch { return; }
+  const cur = LOGP.after.get(logJobId) || 0;
+  try { d = await api(`/jobs/current/log?after=${cur}&expect=${logJobId || 0}`); } catch { return; }
   // Aucun job : on arrête le compteur, sinon son intervalle survivrait au dernier job.
   if (!d.job_id) { jobClock = { started: null, finished: null, running: false }; syncJobClock(); return; }
   const panel = $('#logPanel');
-  const box = $('#logBox');
-  if (d.job_id !== logJobId) {
-    // nouveau job : on réinitialise l'affichage et on repart de zéro
-    logJobId = d.job_id; lastLogId = 0; logHidden = false; box.innerHTML = ''; LOGP.after.clear(); LOGP.active = null;
-    try { d = await api(`/jobs/current/log?after=0`); } catch { return; }
-  }
+  /* On ne remet le panneau à zéro que pour un job VRAIMENT nouveau. Le job « courant » peut
+     changer sans que rien ne commence : le principal se termine, un job parallèle devient
+     le plus récent en cours. Effacer là ferait disparaître le journal du principal en pleine
+     lecture. Tant que le job est déjà suivi, on se contente de changer qui est « principal ». */
+  if (!LOGP.shown.includes(d.job_id)) { logReset(); logHidden = false; }
+  logJobId = d.job_id;
   if (!logHidden) panel.hidden = false;
   const pane = logPane(d.job_id);
   for (const l of d.lines) {
@@ -1009,30 +1020,42 @@ async function pumpLog() {
     if (cls) span.className = cls;
     span.textContent = l.text + '\n';
     pane.appendChild(span);
-    lastLogId = l.id;
     LOGP.after.set(d.job_id, l.id);
   }
-  /* Les autres jobs en cours (voie parallèle) : un onglet et un volet chacun. Le job
-     courant reste en tête — c'est celui que le bandeau de statut décrit. */
-  const others = (d.running_ids || []).filter((id) => id !== d.job_id);
-  for (const id of others) await pumpOne(id);
-  const ids = [d.job_id, ...others];
+  LOGP.state.set(d.job_id, d.status);
+  if (!LOGP.shown.includes(d.job_id)) LOGP.shown.push(d.job_id);
+  // Tout job en cours rejoint le lot affiché ; aucun n'en sort avant le prochain lot.
+  for (const id of d.running_ids || []) if (!LOGP.shown.includes(id)) LOGP.shown.push(id);
+  /* On interroge les autres jobs du lot tant qu'ils n'ont pas fini. Un job terminé garde son
+     onglet et son journal, mais on cesse de le solliciter — il ne produira plus rien. */
+  for (const id of LOGP.shown) {
+    if (id === d.job_id || TERMINAL.has(LOGP.state.get(id))) continue;
+    const r = await pumpOne(id);
+    if (r && r.status) LOGP.state.set(id, r.status);
+  }
+  const ids = LOGP.shown;
   if (LOGP.active == null || !ids.includes(LOGP.active)) LOGP.active = d.job_id;
-  pruneLogPanes(ids);
   renderLogTabs(ids, d.job_id);
   showLogPane(LOGP.active);
   const st = $('#logStatus');
   const running = d.running && d.status === 'running';
   st.className = 'logstatus ' + (running ? 'running' : (d.status === 'error' ? 'error' : (d.status === 'done' ? 'done' : '')));
-  const wait = d.queued ? ` · +${d.queued} en attente` : '';
+  const wait = d.queued ? ` · ${tr('job.waiting', { n: d.queued })}` : '';
+  /* Le bandeau décrit UN job — celui qui a son onglet actif. Avec plusieurs jobs en cours il
+     mentirait par omission : on annonce donc combien tournent, l'onglet disant lequel on lit. */
+  const plusieurs = ids.length > 1 ? ` · ${tr('job.running-n', { n: ids.length, count: ids.length })}` : '';
   const label = running
-    ? `en cours — ${d.done_count || 0}/${d.total || 0} — ${d.message || ''}${wait}`
+    ? `${tr('job.in-progress', { done: d.done_count || 0, total: d.total || 0, message: d.message || '' })}${plusieurs}${wait}`
     : (d.status === 'done' ? (d.message ? tr('job.done', { message: d.message }) : tr('job.done.bare'))
       : (d.status === 'error' ? (d.message ? tr('job.error', { message: d.message }) : tr('job.error.bare')) : (d.status === 'stopped' ? (d.message ? tr('job.stopped', { message: d.message }) : tr('job.stopped.bare')) : d.status)));
   st.innerHTML = `<span class="dot"></span>${esc(label)}`;
   jobClock = { started: d.started_at || null, finished: d.finished_at || null, running };
   syncJobClock();
   $('#logStop').hidden = !running;
+  /* « Relancer » ne s'affiche que sur un job qui n'est pas allé au bout ET dont le serveur
+     sait rejouer l'intention. Le bandeau disait « arrêté » et laissait deviner où cliquer. */
+  const retry = $('#logRetry');
+  if (retry) { retry.hidden = running || !d.can_retry; retry.dataset.job = d.job_id; }
   if (d.lines.length && logExpanded && $('#logAutoscroll').checked && !pane.hidden) pane.scrollTop = pane.scrollHeight;
   // Repli auto quelques secondes après un job TERMINÉ (succès ou arrêt) : le panneau ne doit
   // pas rester collé en haut de tous les onglets. On garde l'ERREUR affichée (elle appelle une
@@ -1162,6 +1185,12 @@ $('#logToggle').addEventListener('click', () => {
 });
 applyLogCollapsed();
 
+$('#logRetry') && $('#logRetry').addEventListener('click', (e2) => {
+  const b2 = e2.currentTarget;
+  busy(b2, () => api(`/jobs/${b2.dataset.job}/retry`, { method: 'POST' }))
+    .then(() => { toast(tr('job.retry.done')); refreshStatus(); })
+    .catch((err) => toast(explainError(err.message), true));
+});
 $('#logHide').addEventListener('click', () => { $('#logPanel').hidden = true; logHidden = true; updateFooterLogs(); });
 $('#footerLogs') && $('#footerLogs').addEventListener('click', showLogPanel);
 // On copie le journal AFFICHÉ, pas la concaténation des deux jobs en cours.

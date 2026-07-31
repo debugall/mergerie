@@ -522,7 +522,13 @@ describe('ansi : nettoyage des séquences d’échappement des logs', () => {
    un dossier ne peuvent pas tourner ensemble. S'y tromper ne donne pas un bug visible mais
    un clone git corrompu au milieu d'une review — d'où un test sur la règle nue. */
 describe('jobs : conflit entre deux jobs (autorisation du parallèle)', () => {
-  const { keysClash } = require('../src/jobs');
+  const { keysClash, MAX_RUNNING } = require('../src/jobs');
+
+  test('le plafond de jobs simultanés est explicite', () => {
+    // Ce n'est pas le code qui limite (tout passe à l'échelle) mais la machine : chaque job
+    // lance un agent. La valeur est donc un choix, pas une contrainte — autant la figer.
+    assert.equal(MAX_RUNNING, 3);
+  });
 
   test('un dépôt ou un dossier en commun interdit le parallèle', () => {
     assert.equal(keysClash(['repo:1'], ['repo:1']), true);

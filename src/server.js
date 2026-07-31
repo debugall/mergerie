@@ -1677,7 +1677,15 @@ app.post('/api/jobs/:id/stop', wrap((req, res) => {
    dossiers touchés) et les `conflicts` avec ce qui tourne : l'écran peut ainsi dire
    POURQUOI un job ne peut pas démarrer tout de suite, au lieu de griser un bouton. */
 app.get('/api/jobs/queue', wrap((req, res) => {
-  res.json({ running: jobs.runningJobs(), queued: jobs.queuedJobs(), parallelBusy: jobs.parallelBusy() });
+  res.json({
+    running: jobs.runningJobs(), queued: jobs.queuedJobs(),
+    parallelBusy: jobs.parallelBusy(), maxRunning: jobs.MAX_RUNNING,
+  });
+}));
+
+// Rejoue un job qui s'est arrêté ou a échoué, sur le même objet.
+app.post('/api/jobs/:id/retry', wrap((req, res) => {
+  res.json({ ok: true, job: jobs.retryJob(Number(req.params.id)) });
 }));
 
 // Sort un job de la file et le lance EN PARALLÈLE de celui en cours (refus si conflit).
@@ -1706,15 +1714,23 @@ function jobLogPayload(job, after) {
     // un onglet ouvert en cours de route afficherait un temps faux.
     started_at: job.started_at,
     finished_at: job.finished_at,
+    // Le serveur décide de ce qui est rejouable — le front n'a pas à connaître la liste.
+    can_retry: jobs.canRetry(job),
     lines,
   };
 }
 
 // Log incrémental du job courant (poll temps réel côté UI).
+/* `expect` = le job que le client CROIT courant. Le job courant peut changer sous ses pieds
+   (le principal se termine, un job parallèle devient le plus récent en cours) : si l'id ne
+   correspond plus, son curseur ne vaut rien et on renvoie depuis le début, sinon il
+   manquerait toutes les lignes déjà produites par ce job-là. */
 app.get('/api/jobs/current/log', wrap((req, res) => {
   const job = jobs.currentJob();
   if (!job) return res.json({ job_id: null, lines: [], running: false });
-  res.json(jobLogPayload(job, Number(req.query.after || 0)));
+  const expect = Number(req.query.expect || 0);
+  const after = expect && expect === job.id ? Number(req.query.after || 0) : 0;
+  res.json(jobLogPayload(job, after));
 }));
 
 // Log d'un job PRÉCIS — l'onglet du job lancé en parallèle s'en sert.

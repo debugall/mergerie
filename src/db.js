@@ -252,6 +252,13 @@ try { db.exec('ALTER TABLE task_target ADD COLUMN output_path TEXT'); } catch { 
    suppression : aucune donnée n'est touchée. */
 try { db.exec('ALTER TABLE task ADD COLUMN hidden INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 
+/* De quoi REJOUER un job : l'intention (quelle fonction, sur quel objet), pas son état.
+   Sans ça, un job arrêté ne laisse qu'un `kind` — impossible de savoir quelle session ou
+   quelles MR relancer. On garde l'intention et non les lignes traitées : pour une review,
+   la liste se re-déduit de l'état des MR, et c'est ce qu'on veut (reprendre là où ça s'est
+   arrêté, sans refaire ce qui est fait). */
+try { db.exec('ALTER TABLE job ADD COLUMN retry TEXT'); } catch { /* déjà présente */ }
+
 // « Codage hors dépôt » : l'IA réalise le prompt DANS des dossiers locaux arbitraires,
 // EN PLACE, sans git (ni branche, ni commit, ni push). Table dédiée car sans repo_id.
 db.exec(`CREATE TABLE IF NOT EXISTS local_task (

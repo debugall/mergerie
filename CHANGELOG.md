@@ -100,14 +100,30 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **See what is queued, and jump the queue when it is safe.** The log panel said "+3 waiting"
   without saying what. A **Queued** button now opens the list — what each job is, how much it has to
   do — and offers **Start in parallel** on any job that can run alongside the current one. The
-  queue stays sequential by default; this is a deliberate one-off, and only one extra job runs at a
-  time. Jobs that would touch the same repositories or folders are **refused**, not merely
+  queue stays sequential by default; promoting a job is a deliberate act, and at most **three** run at
+  once — past that you stop gaining time and start making them fight for the machine. When more than
+  one is running, the banner says how many, since it can only describe one of them. Jobs that would touch the same repositories or folders are **refused**, not merely
   discouraged, and the line says which running job is in the way: two agents in one clone corrupt
-  it, and waiting your turn is cheaper than repairing that. A queued job can also simply be removed.
-- **The log panel gets a tab per running job.** With two jobs running, each keeps its own output and
-  its own scroll position; switching tabs shows the other one rather than replaying anything. The
-  tab bar only appears when there is more than one job — a lone tab teaches nothing and costs a
-  line. *Stop* still stops everything, but a single job can now be stopped on its own.
+  it, and waiting your turn is cheaper than repairing that. The queue obeys the same rule as it
+  drains: it holds a job back rather than starting it next to a parallel job it would collide
+  with, and it keeps its order instead of quietly skipping ahead. A queued job can also simply be
+  removed.
+- **A job that did not finish can be restarted from where you are.** The banner said "stopped" and
+  left you to work out where to click. A **Restart** button now sits next to it and replays the same
+  action on the same object. A review picks up where it stopped rather than redoing what is done:
+  what is remembered is the intent, not the list, and the list is recomputed from the state of the
+  merge requests. Git operations are deliberately left out — replaying "delete these twelve
+  branches" from a small button, skipping the preview, is exactly what should not be one click away.
+- **Stopping a Git or Docker job no longer looks like a failure.** Every other kind of job told a
+  requested stop apart from an error; those two did not, so your own *Stop* came back in red with
+  "stopped by the user" as the error message. They now end as stopped, like the rest.
+- **The log panel gets a tab per running job.** Each keeps its own output and its own scroll
+  position; switching tabs shows the other one rather than replaying anything. A tab **stays after
+  its job ends**, carrying a dot for how it ended — green finished, red failed, grey stopped — and
+  keeps its log until a new batch of jobs starts: the moment a job ends is exactly when you want to
+  read it, especially if it failed. The tab bar only appears when there is more than one job — a
+  lone tab teaches nothing and costs a line. *Stop* still stops everything, but a single job can now
+  be stopped on its own.
 - **A new session can continue an existing one.** Creating a coding session, an out-of-repo coding
   session or an exploration now offers an optional **Resume an existing agent session** field. Fill
   it in and no new session is opened: the work happens inside that one, so the AI still has

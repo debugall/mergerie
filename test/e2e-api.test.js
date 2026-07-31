@@ -617,6 +617,7 @@ describe('API de bout en bout', () => {
     assert.equal(q.status, 200);
     assert.ok(Array.isArray(q.body.running) && Array.isArray(q.body.queued));
     assert.equal(q.body.parallelBusy, false);
+    assert.equal(q.body.maxRunning, 3, 'le plafond de jobs simultanés est exposé, pas deviné par le front');
 
     // Un job inexistant, ou terminé, n'est plus dans la file : on le dit au lieu de l'ignorer.
     assert.equal((await app.api('POST', '/api/jobs/999999/start-now')).status, 409);

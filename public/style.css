@@ -698,9 +698,17 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 .logpane { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; color: var(--code-text); background: var(--code-bg); white-space: pre-wrap; word-break: break-word; user-select: text; }
 /* Onglets de job : même grammaire que les onglets du visualiseur (.split-tabs). */
 .log-tabs { display: flex; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
-.log-tabs button { background: transparent; border: 1px solid var(--line); color: var(--muted); padding: 3px 10px; border-radius: var(--radius); cursor: pointer; font-size: 12.5px; }
+.log-tabs button { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--line); color: var(--muted); padding: 3px 10px; border-radius: var(--radius); cursor: pointer; font-size: 12.5px; }
 .log-tabs button:hover:not(.active) { color: var(--text); border-color: var(--accent); }
 .log-tabs button.active { color: var(--text); background: var(--panel2); }
+/* Pastille d'état, même vocabulaire que le bandeau : ambre en cours (elle bat), vert
+   terminé, rouge en erreur, gris arrêté. C'est ce qui dit qu'un onglet a fini SANS le
+   faire disparaître — un journal supprimé à la seconde où l'on veut le lire, c'est raté. */
+.log-tabs .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
+.log-tabs .running .dot { background: var(--amber); animation: pulse 1s infinite; }
+.log-tabs .done .dot { background: var(--green); }
+.log-tabs .error .dot { background: var(--red); }
+.log-tabs .stopped .dot { background: var(--muted); }
 /* File d'attente : une ligne par job, l'action à droite comme dans les cartes. */
 .log-queue { padding: 4px 10px 8px; border-bottom: 1px solid var(--line); background: var(--panel2); }
 .log-queue-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12.5px; }
