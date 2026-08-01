@@ -291,6 +291,16 @@ main { padding: 0 var(--s-6) var(--s-12); max-width: none; margin: 0 auto; width
 /* les branches source → cible passent sur leur propre ligne et WRAPPENT : des noms
    longs restent lisibles en entier au lieu d'être coupés. */
 .list .card .meta.branches { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; margin-top: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+/* Journal d'activité : une ligne récemment terminée et pas encore lue porte un liseré, pour
+   que « ce qui a changé depuis ma dernière visite » se voie sans lire les horodatages. */
+.log-queue-row.hist-neuf { border-left: 2px solid var(--accent); padding-left: 6px; }
+/* Date + heure de fin : chiffres à chasse fixe pour que la colonne s'aligne d'une ligne à l'autre. */
+.hist-quand { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; white-space: nowrap; }
+.linklike { background: none; border: none; padding: 0; font: inherit; color: var(--accent);
+  cursor: pointer; text-align: left; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.linklike:hover { text-decoration: underline; }
+
 /* Repli de la liste de projets d'une session multi-dépôts. Le chevron pointe à droite quand
    c'est replié, vers le bas quand c'est ouvert — la direction dit ce qu'un clic va faire. */
 .targets-toggle { display: inline-flex; align-items: center; gap: 6px; margin: 4px 0 2px;
@@ -739,7 +749,11 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 .log-tabs .error .dot { background: var(--red); }
 .log-tabs .stopped .dot { background: var(--muted); }
 /* File d'attente : une ligne par job, l'action à droite comme dans les cartes. */
-.log-queue { padding: 4px 10px 8px; border-bottom: 1px solid var(--line); background: var(--panel2); }
+/* File d'attente et journal d'activité partagent cette enveloppe. Elle est PLAFONNÉE et défile
+   d'elle-même : sans ça, quarante lignes d'historique repoussaient le journal du job hors de
+   l'écran — on ouvrait « Activité » pour se repérer, et on perdait de vue ce qu'on lisait. */
+.log-queue { padding: 4px 10px 8px; border-bottom: 1px solid var(--line); background: var(--panel2);
+  max-height: 30vh; overflow-y: auto; overscroll-behavior: contain; }
 .log-queue-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12.5px; }
 .log-queue-row .spacer { flex: 1; }
 .log-queue-what { color: var(--muted); }

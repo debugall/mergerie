@@ -1097,6 +1097,8 @@ async function refreshStatus() {
         // `keep` : ne réécrit l'écran que si quelque chose d'affiché a changé.
         if (selectedMr) openReport(selectedMr, { keep: true });
         annoncerFinDeJob(job);
+        rafraichirHistCount();          // « N terminés » sur le bouton Activité
+        if (logHistOpen) renderLogHist();
       }
     }
     // Poll tant qu'un job occupe la file (en cours OU en attente). Les deux conditions
@@ -1210,6 +1212,7 @@ function logPane(jobId) {
   }
   return pane;
 }
+let logPaneEpingle = null; // job passé qu'on est en train de relire (cf. pumpLog)
 function showLogPane(jobId) {
   LOGP.active = jobId;
   for (const pane of $$('#logBox .logpane')) pane.hidden = Number(pane.dataset.job) !== jobId;
@@ -1284,7 +1287,7 @@ function renderLogTabs(ids, main) {
       + '</span>';
   }).join('');
   for (const b of $$('#logTabs .jobtab-pick')) {
-    b.addEventListener('click', () => showLogPane(Number(b.closest('[data-jobtab]').dataset.jobtab)));
+    b.addEventListener('click', () => { logPaneEpingle = null; showLogPane(Number(b.closest('[data-jobtab]').dataset.jobtab)); });
   }
   for (const b of $$('#logTabs [data-jobstop]')) {
     b.addEventListener('click', async () => {
@@ -1326,6 +1329,15 @@ async function pumpLog() {
     if (r && r.status) LOGP.state.set(id, r.status);
   }
   const ids = LOGP.shown;
+  /* Un job passé ouvert depuis le journal d'activité ÉPINGLE la vue : sans ça, le suivi du job
+     courant la reprenait au sondage suivant — on cliquait « revoir le journal », on lisait trois
+     secondes, et l'écran repartait ailleurs. Cliquer un onglet vivant relâche l'épingle. */
+  if (logPaneEpingle != null && !ids.includes(logPaneEpingle)) {
+    renderLogTabs(ids, d.job_id);
+    showLogPane(logPaneEpingle);
+    return;
+  }
+  logPaneEpingle = null;
   if (LOGP.active == null || !ids.includes(LOGP.active)) LOGP.active = d.job_id;
   renderLogTabs(ids, d.job_id);
   showLogPane(LOGP.active);
@@ -1386,6 +1398,104 @@ const JOB_KIND_LABEL = {
 };
 const jobKindLabel = (k) => (JOB_KIND_LABEL[k] ? tr(JOB_KIND_LABEL[k]) : k);
 
+/* ---------- Journal d'activité ----------
+   Répond à « qu'est-ce que j'avais lancé, et qu'est-ce qui est fini ? » sans ouvrir les sept
+   onglets un par un. Il ne double pas les notifications : celles-ci ne vivent qu'en mémoire du
+   serveur et le front saute volontairement l'historique au chargement — donc tout ce qui s'est
+   terminé onglet fermé n'existait nulle part. La table `job`, elle, persiste.
+   Le curseur est PAR NAVIGATEUR (localStorage) : c'est bien « depuis MA dernière visite ». */
+let logHistOpen = false;
+const HIST_KEY = 'aidevtools_hist_vu';
+const histVu = () => { try { return Number(localStorage.getItem(HIST_KEY)) || 0; } catch { return 0; } };
+const setHistVu = (id) => { try { localStorage.setItem(HIST_KEY, String(id)); } catch { /* ignore */ } };
+
+const JOB_FINI = ['done', 'stopped', 'error'];
+function jobDuree(j) {
+  if (!j.started_at || !j.finished_at) return '';
+  const ms = new Date(j.finished_at) - new Date(j.started_at);
+  if (!(ms > 0)) return '';
+  return ms < 60000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60000)} min`;
+}
+const JOB_STATUT = { done: 'ok', error: 'bad', stopped: 'mid', running: 'mid', queued: '' };
+
+async function renderLogHist() {
+  const box = $('#logHist');
+  if (!box || !logHistOpen) return;
+  let d;
+  try { d = await api('/jobs/history?limit=40'); } catch (e) { box.innerHTML = errorBox(e.message); return; }
+  if (!d.jobs.length) { box.innerHTML = `<p class="muted">${esc(tr('job.hist.empty'))}</p>`; return; }
+  const vu = histVu();
+  box.innerHTML = d.jobs.map((j) => {
+    const neuf = JOB_FINI.includes(j.status) && j.id > vu;
+    const duree = jobDuree(j);
+    return `<div class="log-queue-row${neuf ? ' hist-neuf' : ''}">
+      <span class="note ${JOB_STATUT[j.status] || ''}">${esc(tr(`job.status.${j.status}`))}</span>
+      <span class="tag">${esc(jobKindLabel(j.kind))}</span>
+      <span class="log-queue-what">${j.label ? `<button class="linklike" data-histgo="${j.id}">${esc(j.label)}</button>` : '<span class="muted">—</span>'}</span>
+      <span class="spacer"></span>
+      ${duree ? `<span class="muted">${esc(duree)}</span>` : ''}
+      <span class="muted hist-quand">${esc(j.finished_at ? fmtDateTime(j.finished_at) : '')}</span>
+      <button class="btn btn-icon btn-sm" data-histlog="${j.id}" title="${esc(tr('job.hist.log'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg></button>
+    </div>`;
+  }).join('');
+  // Ouvrir le journal, c'est l'avoir lu : le compteur retombe.
+  setHistVu(d.latest);
+  majHistCount(d);
+  for (const b of $$('#logHist [data-histgo]')) {
+    b.addEventListener('click', () => {
+      const j = d.jobs.find((x) => String(x.id) === b.dataset.histgo);
+      if (j && j.href) allerVersObjet(j.href);
+    });
+  }
+  for (const b of $$('#logHist [data-histlog]')) {
+    b.addEventListener('click', () => ouvrirLogJob(Number(b.dataset.histlog)));
+  }
+}
+
+// Mène à l'objet d'un job : la bonne liste, le bon stade, la bonne carte.
+function allerVersObjet(href) {
+  if (!href) return;
+  if (href.kind === 'mr') { navTab('review'); openReport(href.id); return; }
+  navTab('task');
+  const sub = href.kind === 'local' ? 'local' : (href.kind === 'explore' ? 'explore' : 'code');
+  const b = $(`#tab-task .subnav [data-kind="${sub}"]`);
+  if (b) b.click();
+  setTimeout(() => {
+    const sel = href.kind === 'local' ? `[data-local="${href.id}"]` : `[data-task="${href.id}"]`;
+    const c = $(`.card${sel}`);
+    if (c) { c.scrollIntoView({ block: 'center' }); c.classList.add('focused'); }
+  }, 300);
+}
+
+/* Relire le journal d'un job passé. On réutilise le MÉCANISME DE VOLETS du panneau — un volet
+   par job — au lieu d'écrire dans le conteneur : sinon le suivi du job en cours écraserait ce
+   qu'on vient d'afficher au sondage suivant. Le volet est rempli une fois puis simplement montré. */
+async function ouvrirLogJob(id) {
+  try {
+    const d = await api(`/jobs/${id}/log`);
+    showLogPanel();
+    const pane = logPane(id);
+    pane.innerHTML = '';
+    appendLogLines(pane, d.lines || []);   // objets {text}, pas des chaînes
+    logPaneEpingle = id;
+    showLogPane(id);
+    pane.scrollTop = pane.scrollHeight;
+  } catch (e) { toast(explainError(e.message), true); }
+}
+
+// Compteur « terminés depuis ta dernière visite » sur le bouton.
+function majHistCount(d) {
+  const el = $('#logHistCount');
+  if (!el || !d) return;
+  const vu = histVu();
+  const n = (d.jobs || []).filter((j) => JOB_FINI.includes(j.status) && j.id > vu).length;
+  el.textContent = n;
+  el.hidden = !n;
+}
+async function rafraichirHistCount() {
+  try { majHistCount(await api('/jobs/history?limit=40')); } catch { /* silencieux */ }
+}
+
 async function renderLogQueue() {
   const box = $('#logQueue');
   if (!box || !logQueueOpen) return;
@@ -1426,8 +1536,15 @@ function updateLogQueueBtn(queued) {
   $('#logQueueCount').textContent = queued;
   if (!queued) { logQueueOpen = false; $('#logQueue').hidden = true; }
 }
+$('#logHistBtn') && $('#logHistBtn').addEventListener('click', () => {
+  logHistOpen = !logHistOpen;
+  $('#logHist').hidden = !logHistOpen;
+  if (logHistOpen) { logQueueOpen = false; $('#logQueue').hidden = true; renderLogHist(); }
+});
+
 $('#logQueueBtn') && $('#logQueueBtn').addEventListener('click', () => {
   logQueueOpen = !logQueueOpen;
+  if (logQueueOpen) { logHistOpen = false; $('#logHist').hidden = true; }
   $('#logQueue').hidden = !logQueueOpen;
   if (logQueueOpen) renderLogQueue();
 });
@@ -7648,6 +7765,7 @@ if (btnTestJira) btnTestJira.addEventListener('click', async () => {
 checkSetup().then(() => { if (currentSeg === 'to_review') renderToReview(); });
 refreshCounts();
 refreshStatus();
+rafraichirHistCount();
 refreshDockerBadges(); // badge santé Docker visible dès le démarrage, sans ouvrir l'onglet
 // Rafraîchissement PÉRIODIQUE du badge santé Docker : on voit un container qui bascule en
 // restarting/unhealthy (rouge/orange dans le titre du menu) même sans être sur l'onglet Docker.

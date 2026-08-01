@@ -171,6 +171,13 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   En revanche, si la branche **porte déjà le travail** — cas d'une relance après un échec survenu
   *après* le commit, un push refusé par exemple —, l'absence de nouveau changement n'est **pas** une
   erreur : la session reprend son état « commit prêt », avec le diff et le bouton de création de MR.
+- **Activité — ce que tu as lancé, et ce qui s'est terminé.** Le panneau de log expose une vue
+  **Activité** : ce qui a tourné, sur quoi, combien de temps, et comment ça s'est fini. Chaque ligne
+  **nomme son objet** et y mène en un clic ; un bouton rouvre le **journal d'un job passé**. Ce qui
+  s'est terminé depuis ta dernière visite est marqué, et le compte s'affiche sur le bouton. Les
+  notifications bureau ne répondaient pas à cette question : elles ne vivent qu'en mémoire du
+  serveur et ne sont volontairement pas rejouées au chargement — donc tout ce qui finissait onglet
+  fermé n'existait nulle part.
 - **Replier la liste des projets.** Au-delà de quelques dépôts, une session occupait tout l'écran
   et masquait les autres. Un clic la replie, l'état est **mémorisé** — sinon le rafraîchissement
   automatique la rouvrirait toutes les secondes et demie pendant un job.

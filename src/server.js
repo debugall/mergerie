@@ -1749,6 +1749,51 @@ app.post('/api/jobs/:id/stop', wrap((req, res) => {
 /* Ce qui tourne et ce qui attend. Les jobs en attente portent leurs `keys` (dépôts et
    dossiers touchés) et les `conflicts` avec ce qui tourne : l'écran peut ainsi dire
    POURQUOI un job ne peut pas démarrer tout de suite, au lieu de griser un bouton. */
+/* Journal d'activité : ce qu'on a lancé, et ce qui s'est terminé pendant qu'on regardait
+   ailleurs. Les notifications ne répondent pas à cette question — elles ne vivent qu'en mémoire
+   et le front saute délibérément l'historique au chargement, donc tout ce qui s'est produit
+   onglet fermé est perdu. La table `job`, elle, persiste.
+   `after` = dernier job vu par ce navigateur : ce qui est plus récent est « nouveau ». */
+app.get('/api/jobs/history', wrap((req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 30, 1), 200);
+  const after = Number(req.query.after) || 0;
+  /* Trié sur l'activité la PLUS RÉCENTE, pas sur l'identifiant. Un id croît à la mise en file :
+     un job queué tôt mais terminé tard passerait au-dessus d'un job queué après et fini avant,
+     ce qui se lit comme un désordre puisque la colonne affichée est l'heure de FIN. Depuis que
+     plusieurs jobs tournent de front, le cas est courant. Un job non terminé est classé sur son
+     démarrage — c'est bien l'activité en cours, donc en tête. */
+  const rows = db.prepare(`SELECT id, kind, status, total, done_count, message, started_at, finished_at,
+    target_kind, target_id, current_mr_id FROM job
+    ORDER BY COALESCE(finished_at, started_at) DESC, id DESC LIMIT ?`).all(limit);
+
+  /* Le libellé de l'objet est résolu ICI : le front n'a en mémoire que les listes qu'il affiche,
+     et un job peut porter sur une session masquée ou une MR d'un autre stade. */
+  const labelMr = db.prepare('SELECT mr.iid, mr.title, repo.project FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?');
+  const labelTask = db.prepare('SELECT prompt, kind FROM task WHERE id = ?');
+  const labelLocal = db.prepare('SELECT prompt FROM local_task WHERE id = ?');
+  const court = (v) => String(v || '').split('\n')[0].slice(0, 70);
+
+  const out = rows.map((j) => {
+    let label = null; let href = null;
+    const mrId = j.target_kind === 'mr' ? j.target_id : (j.target_kind ? null : j.current_mr_id);
+    if (mrId) {
+      const m = labelMr.get(mrId);
+      if (m) { label = `!${m.iid} — ${court(m.title)}`; href = { kind: 'mr', id: mrId }; }
+    } else if (j.target_kind === 'task') {
+      const t2 = labelTask.get(j.target_id);
+      if (t2) { label = court(t2.prompt); href = { kind: t2.kind === 'explore' ? 'explore' : 'task', id: j.target_id }; }
+    } else if (j.target_kind === 'local') {
+      const l = labelLocal.get(j.target_id);
+      if (l) { label = court(l.prompt); href = { kind: 'local', id: j.target_id }; }
+    }
+    return { ...j, label, href };
+  });
+  // `latest` = plus grand id vu, pas le premier de la liste : l'ordre d'affichage n'est plus
+  // celui des ids, et un curseur pris sur la tête raterait un job plus récent classé plus bas.
+  const latest = rows.reduce((m, r) => Math.max(m, r.id), 0);
+  res.json({ jobs: out, latest });
+}));
+
 app.get('/api/jobs/queue', wrap((req, res) => {
   res.json({
     running: jobs.runningJobs(), queued: jobs.queuedJobs(),

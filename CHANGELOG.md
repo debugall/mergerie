@@ -19,6 +19,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   inferred from the repository and the branch, which is not proof — a branch can have been taken over
   by hand — so the field stays editable, and clearing it starts a fresh session as before. Nothing is
   proposed when no coding session matches.
+- **Activity — what you launched, and what finished while you were away.** Launch a few reviews and
+  coding sessions, come back later, and finding out what is done meant opening every tab and reading
+  every card. The log panel gained an **Activity** view: what ran, on what, how long it took, how it
+  ended, with the date and time it finished — each line naming its object and leading to it in one click, with the log of any past job
+  one more click away. What finished since your last visit is marked, and the count sits on the
+  button so the information comes to you. Both the activity view and the queue are height-capped and
+  scroll on their own, so opening them never pushes the log itself off the screen. Desktop notifications did not answer this: they live only
+  in the server's memory and are deliberately not replayed on load, so anything that finished with
+  the tab closed existed nowhere.
 - **Multi-repo sessions: fold the project list, push everything, open every MR.** A session on
   several repositories can now **collapse its list of projects** — past a few repositories one
   session filled the screen and hid the others — and the folded state is remembered, so an automatic

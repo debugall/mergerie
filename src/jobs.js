@@ -485,6 +485,8 @@ function startJob(kind, mrIds = null, opts = {}) {
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES (?, 'queued', ?, 0, 'en file', ?)`).run(kind, rows.length, new Date().toISOString());
   const jobId = info.lastInsertRowid;
+  // Un lot de review porte sur N MR : on ne désigne l'objet que s'il n'y en a qu'une.
+  if (rows.length === 1) setJobTarget(jobId, 'mr', rows[0].id);
   rememberRetry(jobId, { fn: 'job', kind, mrIds, opts });
   queue.push({ jobId, rows, kind, opts });
   setImmediate(pump);
@@ -616,9 +618,18 @@ function startReconcileJob(taskId) {
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES ('reconcile', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
   const jobId = info.lastInsertRowid;
+  setJobTarget(jobId, 'task', taskId);
   queue.push({ jobId, kind: 'reconcile', taskId });
   setImmediate(pump);
   return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
+}
+
+/* Qui ce job concerne-t-il. Écrit à la création plutôt que déduit après coup : la file, les
+   relances et les promotions manipulent des jobs, pas des objets, et sans cette trace le journal
+   d'activité ne peut dire que « job #42 » — ce qui n'apprend rien. */
+function setJobTarget(jobId, kind, id) {
+  if (!id) return;
+  db.prepare('UPDATE job SET target_kind = ?, target_id = ? WHERE id = ?').run(kind, Number(id), jobId);
 }
 
 function startTaskJob(taskId, action = 'run', opts = {}) {
@@ -626,6 +637,7 @@ function startTaskJob(taskId, action = 'run', opts = {}) {
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES ('task', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
   const jobId = info.lastInsertRowid;
+  setJobTarget(jobId, 'task', taskId);
   rememberRetry(jobId, { fn: 'task', taskId, action, opts });
   queue.push({ jobId, kind: 'task', taskId, action, opts });
   setImmediate(pump);
@@ -640,6 +652,7 @@ function startLocalJob(taskId, opts = {}) {
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES ('local', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
   const jobId = info.lastInsertRowid;
+  setJobTarget(jobId, 'local', taskId);
   rememberRetry(jobId, { fn: 'local', taskId, opts });
   queue.push({ jobId, kind: 'local', taskId, opts });
   setImmediate(pump);
@@ -651,6 +664,7 @@ function startConvergeJob(mrId, opts = {}) {
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES ('converge', 'queued', ?, 0, 'en file', ?)`).run(opts.maxPasses || 1, new Date().toISOString());
   const jobId = info.lastInsertRowid;
+  setJobTarget(jobId, 'mr', mrId);
   rememberRetry(jobId, { fn: 'converge', mrId, opts });
   queue.push({ jobId, kind: 'converge', mrId, opts });
   setImmediate(pump);
@@ -662,6 +676,7 @@ function startConvergeSessionJob(taskId, opts = {}) {
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES ('converge-session', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
   const jobId = info.lastInsertRowid;
+  setJobTarget(jobId, 'task', taskId);
   rememberRetry(jobId, { fn: 'converge-session', taskId, opts });
   queue.push({ jobId, kind: 'converge-session', taskId, opts });
   setImmediate(pump);

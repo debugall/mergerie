@@ -302,6 +302,11 @@ concernée d'un liseré animé (`.card.running-now`). Un lot de review ne désig
 (`current_mr_id`), l'animation se fige quand l'onglet est en arrière-plan et disparaît en mouvement
 réduit. `etaText()` n'affiche un reste qu'au-delà de deux unités et vingt secondes, par paliers
 grossiers, et se tait dès que le rythme dévie de plus de moitié.
+*Activité* — `GET /api/jobs/history` liste les jobs passés en résolvant **côté serveur** le
+libellé de leur objet (`job.target_kind` / `target_id`, colonnes ajoutées pour ça : la table ne
+portait que `current_mr_id`, donc rien ne reliait un job à sa session). Le curseur « déjà vu » vit
+dans le navigateur — c'est bien « depuis MA dernière visite ». Relire un job passé **épingle** son
+volet, sinon le suivi du job courant reprenait la vue au sondage suivant.
 *Navigation* — palette `Ctrl/Cmd + K` (actions figées + MR et sessions déjà en mémoire, huit
 résultats), `j`/`k`/`Entrée`/`Échap` sur la liste visible, `?` pour l'aide. L'onglet et le stade de
 Reviews sont mémorisés ; **rien d'autre** ne l'est (une modale ou un rapport périmés sont pires

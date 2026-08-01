@@ -122,6 +122,11 @@ try { db.exec("ALTER TABLE config ADD COLUMN github_url TEXT DEFAULT ''"); } cat
 try { db.exec("ALTER TABLE config ADD COLUMN github_token TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 // Migration : colonne d'erreur persistée par MR (texte complet, non tronqué).
 try { db.exec('ALTER TABLE mr ADD COLUMN last_error TEXT'); } catch { /* déjà présente */ }
+/* De QUOI un job s'occupe-t-il. La table ne portait que `current_mr_id` : rien ne reliait un job
+   à la session de codage qu'il exécutait, donc impossible de dire après coup « ce job-là, c'était
+   la session sur api-core ». C'est ce qui rend le journal d'activité lisible. */
+try { db.exec('ALTER TABLE job ADD COLUMN target_kind TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE job ADD COLUMN target_id INTEGER'); } catch { /* déjà présente */ }
 // Migration : date de création de la MR côté GitLab (pour le tri).
 try { db.exec('ALTER TABLE mr ADD COLUMN gitlab_created_at TEXT'); } catch { /* déjà présente */ }
 // Migration : auteur de la MR.

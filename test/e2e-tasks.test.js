@@ -230,6 +230,63 @@ describe('Sessions de dev de bout en bout', () => {
     app.db.prepare('UPDATE task_target SET mr_iid = NULL, mr_url = NULL WHERE task_id = ?').run(id);
   });
 
+  /* Le journal d'activité répond à « qu'est-ce que j'avais lancé, et qu'est-ce qui est fini ».
+     Ce qui le rend utile, c'est qu'il NOMME l'objet : « job #42 » n'apprend rien. Le lien job →
+     objet n'existait pas en base, d'où ce test sur ce qui le porte. */
+  test('le journal d’activité nomme l’objet de chaque job', async () => {
+    const t = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Ajoute un timeout sur les appels sortants',
+      targets: [{ repo_id: repoId, branch: 'ai/hist' }],
+    });
+    await app.api('POST', `/api/tasks/${t.body.id}/run`);
+    await waitForJobs(app.api);
+
+    const h = await app.api('GET', '/api/jobs/history');
+    const j = h.body.jobs.find((x) => x.target_kind === 'task' && x.target_id === t.body.id);
+    assert.ok(j, 'le job est dans le journal, rattaché à sa session');
+    assert.match(j.label, /timeout/, 'et il en donne un libellé lisible');
+    assert.deepEqual(j.href, { kind: 'task', id: t.body.id }, 'de quoi y mener en un clic');
+    assert.ok(j.started_at && j.finished_at, 'début et fin, donc une durée calculable');
+    assert.equal(h.body.latest, h.body.jobs[0].id, 'le curseur « déjà vu » est fourni');
+  });
+
+  test('le journal est trié sur l’activité la plus récente, pas sur l’identifiant', async () => {
+    /* L'identifiant croît à la MISE EN FILE. Un job queué tôt mais terminé tard doit passer
+       APRÈS un job queué ensuite et terminé avant — sinon la liste se lit comme un désordre,
+       puisque la colonne affichée est l'heure de fin. Le cas est courant depuis que plusieurs
+       jobs tournent de front. */
+    const long = app.db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at, finished_at)
+      VALUES ('review', 'done', 1, 1, '', '2030-01-01T10:00:00Z', '2030-01-01T10:30:00Z')`).run().lastInsertRowid;
+    const court = app.db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at, finished_at)
+      VALUES ('review', 'done', 1, 1, '', '2030-01-01T10:05:00Z', '2030-01-01T10:06:00Z')`).run().lastInsertRowid;
+    assert.ok(court > long, 'préalable : le court a bien un id PLUS GRAND');
+
+    const ids = (await app.api('GET', '/api/jobs/history')).body.jobs.map((j) => j.id);
+    assert.ok(ids.indexOf(long) < ids.indexOf(court), 'le job terminé le plus récemment vient en premier');
+
+    const h = await app.api('GET', '/api/jobs/history');
+    assert.equal(h.body.latest, Math.max(...h.body.jobs.map((j) => j.id)),
+      'le curseur suit le plus grand id, pas la tête de liste');
+
+    app.db.prepare('DELETE FROM job WHERE id IN (?, ?)').run(long, court);
+  });
+
+  test('le journal reste lisible quand l’objet a disparu', async () => {
+    // Une session supprimée ne doit ni faire échouer l'écran, ni afficher un libellé menteur.
+    const t = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'session éphémère', targets: [{ repo_id: repoId, branch: 'ai/ephemere' }],
+    });
+    await app.api('POST', `/api/tasks/${t.body.id}/run`);
+    await waitForJobs(app.api);
+    await app.api('DELETE', `/api/tasks/${t.body.id}`);
+
+    const h = await app.api('GET', '/api/jobs/history');
+    const orphelin = h.body.jobs.find((x) => x.target_kind === 'task' && x.target_id === t.body.id);
+    assert.ok(orphelin, 'le job reste dans le journal');
+    assert.equal(orphelin.label, null, 'sans libellé, plutôt qu’un libellé faux');
+    assert.equal(orphelin.href, null, 'et sans lien vers un objet qui n’existe plus');
+  });
+
   test('la création d’une session valide ses entrées', async () => {
     const sansPrompt = await app.api('POST', '/api/tasks', { targets: [{ repo_id: repoId, branch: 'x' }] });
     assert.equal(sansPrompt.status, 400);
