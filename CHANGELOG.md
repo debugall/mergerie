@@ -54,6 +54,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Stop now really stops the agent.** The button did what it promised everywhere except where you
+  press it: queued jobs were cancelled and git steps were interrupted, but the agent itself — the
+  long phase, and the reason one presses Stop at all — kept running to its fifteen-minute timeout,
+  still writing into the clone and still spending tokens. Its process was never registered with the
+  cancellation machinery, so the stop flag was raised with nothing to kill. It is registered now,
+  like the git and copilot paths already were.
 - **The red Docker badge no longer counts containers you stopped yourself.** A container that
   exited cleanly — you stopped it, or a job finished its work — was counted as red alongside
   crash-looping ones, so the alarm rang every single day; an alarm that always rings stops being
