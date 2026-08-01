@@ -6162,6 +6162,12 @@ async function refreshDockerBadges() {
   try {
     const s = await api('/docker/summary');
     const err = s.error || 0; const exited = s.exited || 0; const un = s.unhealthy || 0;
+    /* Le ROUGE ne compte que l'anormal : restarting/dead, plus les containers sortis en ERREUR.
+       Un arrêt propre (code 0) — « je l'ai arrêté », ou un job qui a fini — n'est pas une avarie ;
+       le compter en rouge faisait sonner l'alarme tous les jours, et une alarme qui sonne toujours
+       n'est plus lue. Les arrêts propres restent visibles dans la bulle, pas dans le chiffre. */
+    const crashed = s.crashed || 0;
+    const propres = Math.max(0, exited - crashed);
     /* `title = ''` (et non l'absence de title) : sur un enfant, un title VIDE empêche
        le navigateur de remonter à celui du bouton parent — sans ça, survoler le chiffre
        afficherait « Projets Docker Compose… » par-dessus notre bulle. */
@@ -6174,9 +6180,10 @@ async function refreshDockerBadges() {
     // Bulle composée : on n'énumère que ce qui est non nul, dans l'ordre de gravité.
     const down = [
       err ? tr('docker.badge.error', { n: err, count: err }) : '',
-      exited ? tr('docker.badge.exited', { n: exited, count: exited }) : '',
+      crashed ? tr('docker.badge.crashed', { n: crashed, count: crashed }) : '',
+      propres ? tr('docker.badge.exited-clean', { n: propres, count: propres }) : '',
     ].filter(Boolean).join(' · ');
-    setBadge(eB, err + exited, down);
+    setBadge(eB, err + crashed, down);
     setBadge(uB, un, tr('docker.badge.unhealthy', { n: un, count: un }));
   } catch { eB.hidden = true; uB.hidden = true; }
 }
@@ -6477,6 +6484,9 @@ function dactMatchesFilter(filter, svc) {
     case 'restarting': return st === 'restarting';
     case 'running': return st === 'running';
     case 'exited': return st === 'exited';
+    /* Sorti EN ERREUR : le seul « arrêté » qui appelle une action. Un code de sortie inconnu
+       n'y entre pas — on ne classe pas un container en panne sur une supposition. */
+    case 'crashed': return st === 'exited' && Number(svc.container.exitCode) > 0;
     case 'created': return st === 'created';
     case 'missing': return !svc.container;
     case 'stopped': return st !== 'running'; // arrêté, créé-jamais-démarré OU non créé
@@ -6491,6 +6501,7 @@ const DOCKER_STATE_FILTERS = [
   ['running', 'docker.actions.f-running'],
   ['stopped', 'docker.actions.f-stopped'],
   ['exited', 'docker.actions.f-exited'],
+  ['crashed', 'docker.actions.f-crashed'],
   ['created', 'docker.actions.f-created'],
   ['missing', 'docker.actions.f-missing'],
   ['unhealthy', 'docker.actions.f-unhealthy'],

@@ -163,20 +163,35 @@ describe('Docker — découverte compose', () => {
       { state: 'exited', status: 'Exited (137) 5 min ago' },
     ]);
     assert.equal(s.error, 2, 'restarting + dead');
-    /* Les arrêtés sont comptés À PART, quel que soit leur code de sortie : le badge du menu
-       les additionne aux erreurs (de l'extérieur, un service arrêté ne rend pas plus de
-       service qu'un service cassé), mais la bulle distingue les deux — et cette distinction
-       n'existe que si le décompte, lui, ne les mélange pas. */
+    /* Les arrêtés sont comptés À PART, quel que soit leur code de sortie — mais `crashed`
+       isole ceux qui sont sortis EN ERREUR. C'est cette distinction qui permet au badge rouge
+       de ne pas sonner pour un container qu'on a arrêté soi-même : une alarme qui sonne tous
+       les jours n'est plus lue. */
     assert.equal(s.exited, 2, 'exited (0) comme exited (137)');
+    assert.equal(s.crashed, 1, 'seul le (137) est une sortie en erreur');
     assert.equal(s.unhealthy, 1, 'seulement le (unhealthy) — pas le (healthy)');
 
     // Un container restarting ET unhealthy compte comme erreur (rouge), pas deux fois.
     assert.deepEqual(docker.healthSummary([{ state: 'restarting', status: 'Restarting (unhealthy)' }]),
-      { error: 1, exited: 0, unhealthy: 0 });
-    // Un container arrêté n'est jamais compté « en erreur » : c'est le badge qui somme.
+      { error: 1, exited: 0, crashed: 0, unhealthy: 0 });
+    // Arrêt PROPRE : compté comme arrêté, jamais comme anomalie — c'est le cas courant.
     assert.deepEqual(docker.healthSummary([{ state: 'exited', status: 'Exited (0)' }]),
-      { error: 0, exited: 1, unhealthy: 0 });
-    assert.deepEqual(docker.healthSummary([]), { error: 0, exited: 0, unhealthy: 0 });
+      { error: 0, exited: 1, crashed: 0, unhealthy: 0 });
+    // Code de sortie ILLISIBLE : on ne crie pas au loup sur une supposition.
+    assert.deepEqual(docker.healthSummary([{ state: 'exited', status: 'Exited' }]),
+      { error: 0, exited: 1, crashed: 0, unhealthy: 0 });
+    assert.deepEqual(docker.healthSummary([]), { error: 0, exited: 0, crashed: 0, unhealthy: 0 });
+  });
+
+  test('exitCodeOf lit le code de sortie dans le Status', () => {
+    // Le code n'existe que dans le texte du Status : Docker ne l'expose pas en colonne.
+    assert.equal(docker.exitCodeOf('Exited (0) 2 hours ago'), 0);
+    assert.equal(docker.exitCodeOf('Exited (137) 5 minutes ago'), 137);
+    assert.equal(docker.exitCodeOf('exited (1) il y a 3 minutes'), 1);
+    assert.equal(docker.exitCodeOf('Exited'), null, 'sans code : on ne sait pas');
+    assert.equal(docker.exitCodeOf('Up 2 hours'), null);
+    assert.equal(docker.exitCodeOf(''), null);
+    assert.equal(docker.exitCodeOf(null), null);
   });
 
   test('spawnLogs (onglet Logs) refuse un id piégé avant tout spawn', async () => {
@@ -224,6 +239,23 @@ describe('front : filtre d’état des services Docker', () => {
     assert.ok(match('exited', exited) && !match('exited', created) && !match('exited', missing));
     assert.ok(match('created', created) && !match('created', exited) && !match('created', missing));
     assert.ok(match('missing', missing) && !match('missing', exited) && !match('missing', created));
+  });
+
+  test('un arrêt propre et un plantage sont deux choses différentes', () => {
+    /* C'est la distinction qui évite qu'un container qu'on a arrêté soi-même déclenche la même
+       alarme qu'un container tombé. Le filtre doit la refléter, sinon on ouvre la liste des
+       « arrêtés » et on retrouve le mélange qu'on voulait fuir. */
+    const propre = svc('exited', { exitCode: 0 });
+    const plante = svc('exited', { exitCode: 137 });
+    const inconnu = svc('exited');            // code non renseigné
+
+    assert.ok(match('crashed', plante), 'un code de sortie non nul est un plantage');
+    assert.equal(match('crashed', propre), false, 'un arrêt propre n’est pas un plantage');
+    assert.equal(match('crashed', inconnu), false, 'code inconnu : on ne suppose pas');
+    assert.equal(match('crashed', svc('running')), false);
+
+    // « Arrêtés (exited) » reste le chapeau : les deux y figurent toujours.
+    assert.ok(match('exited', propre) && match('exited', plante) && match('exited', inconnu));
   });
 
   test('« ne tournent pas » reste le chapeau des trois — c’est une valeur persistée', () => {

@@ -54,6 +54,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The red Docker badge no longer counts containers you stopped yourself.** A container that
+  exited cleanly — you stopped it, or a job finished its work — was counted as red alongside
+  crash-looping ones, so the alarm rang every single day; an alarm that always rings stops being
+  read. Only what is actually wrong is counted now: *restarting* / *dead*, plus containers that
+  exited **with an error**. Clean stops stay visible in the tooltip, just not in the number, and a
+  container whose exit code cannot be read is left out — one does not cry wolf on a guess. The
+  state filter gained a matching **Exited with an error** entry, next to the existing *Stopped
+  (exited)* which still covers both.
 - **Re-running a session whose work was already committed no longer reports a failure.** When a
   project failed *after* its commit — a refused push, for instance — re-running it sent the AI over
   code that was already written. It changed nothing, and "nothing to commit" was read as "the AI

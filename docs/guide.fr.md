@@ -330,7 +330,8 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
 - **Retrouver un container : recherche + filtre d'état.** Au-dessus de la liste, un champ de **recherche**
   (nom de service, nom de container ou nom de projet) et un sélecteur **« N'afficher que »** — *En cours ·
   Arrêtés / non créés · **Arrêtés (exited)** · **Créés, jamais démarrés** · **Sans container** ·
-  Unhealthy · En restarting · En drift* — réduisent l'affichage **service par service**. « Ne tourne
+  **Sortis en erreur** · Unhealthy · En restarting · En drift* — réduisent l'affichage **service par
+  service**. « Ne tourne
   pas » recouvrait trois situations que Docker distingue et qui appellent des gestes différents : un
   container qui **a tourné puis s'est arrêté** veut un redémarrage, un container **créé mais jamais
   démarré** signale souvent un échec au lancement, et **aucun container** appelle un `up`. Le chapeau
@@ -389,8 +390,12 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
   encore la liste — *En drift*, *Unhealthy*, *En restarting*, *En cours*, *Arrêtés / non créés* — et une
   **recherche** par nom. La validation regroupe les services **par projet** et lance un `docker compose`
   par projet (un échec n'interrompt pas les autres).
-- **Badges de santé sur l'onglet Docker** : le **nombre de containers en erreur** (restarting / dead /
-  **exited**) en **rouge** et le **nombre d'unhealthy** en **orange**, directement dans le menu — visibles au démarrage et
+- **Badges de santé sur l'onglet Docker** : le **nombre de containers en erreur** — *restarting*,
+  *dead*, et ceux **sortis en erreur** (code de sortie non nul) — en **rouge**. Un container arrêté
+  **proprement** (code 0 : on l'a arrêté soi-même, ou un job a fini son travail) n'y entre pas : le
+  compter en rouge faisait sonner l'alarme tous les jours, et une alarme qui sonne toujours n'est
+  plus lue. Il reste nommé dans la bulle. Un code de sortie illisible reste hors alarme — on ne crie
+  pas au loup sur une supposition et le **nombre d'unhealthy** en **orange**, directement dans le menu — visibles au démarrage et
   rafraîchis **automatiquement toutes les 30 s** (et à chaque ouverture de l'onglet) — donc un container qui
   bascule en *restarting* apparaît dans le titre du menu **même sans être sur l'onglet Docker**. Le poll est
   léger (un seul `docker ps -a`) et se met en pause quand l'onglet du navigateur est masqué.
