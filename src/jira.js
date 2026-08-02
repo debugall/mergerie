@@ -330,13 +330,33 @@ function detectSprintField(fields) {
    ({ id, name, state }), soit — sur de vieilles instances — des chaînes façon
    « …[id=42,name=Sprint 42,state=ACTIVE] ». On lit les deux plutôt que d'en supposer une. */
 function sprintsDe(brut) {
+  // `<null>` : ce que la forme sérialisée écrit pour une date absente.
+  const date = (x) => (x && x !== '<null>' ? String(x) : '');
   const un = (x) => {
     if (!x) return null;
-    if (typeof x === 'object') return x.id != null ? { v: String(x.id), l: x.name || String(x.id) } : null;
+    if (typeof x === 'object') {
+      if (x.id == null) return null;
+      // On garde une DATE pour pouvoir trier : le début, sinon la fin.
+      return {
+        v: String(x.id), l: x.name || String(x.id),
+        d: date(x.startDate) || date(x.endDate),
+        // active | closed | future — sert à mettre le sprint EN COURS en tête.
+        etat: String(x.state || '').toLowerCase(),
+      };
+    }
     const s = String(x);
     const id = /\bid=(\d+)/.exec(s);
+    if (!id) return null;
     const nom = /\bname=([^,\]]+)/.exec(s);
-    return id ? { v: id[1], l: (nom && nom[1].trim()) || id[1] } : null;
+    const deb = /\bstartDate=([^,\]]+)/.exec(s);
+    const fin = /\bendDate=([^,\]]+)/.exec(s);
+    const etat = /\bstate=([^,\]]+)/.exec(s);
+    return {
+      v: id[1],
+      l: (nom && nom[1].trim()) || id[1],
+      d: date(deb && deb[1].trim()) || date(fin && fin[1].trim()),
+      etat: etat ? etat[1].trim().toLowerCase() : '',
+    };
   };
   return (Array.isArray(brut) ? brut : [brut]).map(un).filter(Boolean);
 }

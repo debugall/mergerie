@@ -18,7 +18,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   marker* rather than its name — a field labelled "Itération" is recognised just the same. The selection
   is applied by Jira itself (`sprint IN (…)`), like projects, so it narrows the search instead of sifting
   a capped extract. Sprints already seen stay on offer after you pick one, otherwise you could never tick
-  a second.
+  a second. The **active sprint sits at the top** and is marked as such — it is the one you want nine
+  times out of ten, and a date alone does not tell it apart from an upcoming one; the rest follow by
+  sprint date, most recent first.
 
 - **Watch Jira tickets and be told when they move.** Some tickets matter to you without being yours —
   the one blocking your work, held by someone else. Checking them by hand three times a day is the

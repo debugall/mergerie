@@ -5,7 +5,7 @@
 const ISSUES = [
   {
     key: 'PROJ-1421', summary: 'Le panier perd les articles après reconnexion', type: 'Bug', typeIcon: '',
-    sprints: [{ v: '42', l: 'Sprint 42' }],
+    sprints: [{ v: '42', l: 'Sprint 42', d: '2026-07-20T08:00:00.000Z', etat: 'future' }],
     epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
     status: 'En cours', statusCategory: 'indeterminate', priority: 'Haute',
     assignee: { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
@@ -25,7 +25,7 @@ const ISSUES = [
   },
   {
     key: 'PROJ-1408', summary: 'Ajouter le paiement en 3× sans frais', type: 'Story', typeIcon: '',
-    sprints: [{ v: '42', l: 'Sprint 42' }],
+    sprints: [{ v: '42', l: 'Sprint 42', d: '2026-07-20T08:00:00.000Z', etat: 'future' }],
     epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
     status: 'À faire', statusCategory: 'new', priority: 'Moyenne',
     assignee: { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
@@ -40,7 +40,7 @@ const ISSUES = [
   },
   {
     key: 'PROJ-1390', summary: 'Migrer les logs vers le nouveau format JSON', type: 'Tâche', typeIcon: '',
-    sprints: [{ v: '43', l: 'Sprint 43' }],
+    sprints: [{ v: '43', l: 'Sprint 43', d: '2026-07-06T08:00:00.000Z', etat: 'active' }],
     epic: { key: 'PROJ-1050', summary: 'Observabilité : logs et métriques', color: 'blue' },
     status: 'En revue', statusCategory: 'indeterminate', priority: 'Basse',
     assignee: { accountId: 'usr-002', name: 'Alex Martin', email: 'alex@demo', avatar: '' },

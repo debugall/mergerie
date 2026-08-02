@@ -433,6 +433,10 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   un champ nommé « Itération » est reconnu comme tel. La sélection est appliquée **par Jira**
   (`sprint IN (…)`), comme les projets, pour ne pas trier un extrait plafonné. Les sprints déjà vus
   restent proposés même une fois un sprint choisi, sinon on ne pourrait pas en cocher un second.
+  Le **sprint en cours est en tête de liste** et signalé comme tel — c'est celui qu'on cherche neuf fois
+  sur dix, et la date seule ne le distingue pas d'un sprint futur. Viennent ensuite les autres par **date
+  décroissante** ; un sprint sans date connue (Jira n'en donne pas toujours pour un sprint futur) passe
+  après ceux qui en ont une.
   Les filtres **Assignés** et **Statuts** ont chacun leur **recherche** — qui **masque** les lignes
   sans rien décocher — et **Tout cocher / Tout décocher** —
   pratique pour vider puis ne garder qu'une ou deux lignes. Sur les assignés, **ne cocher personne ne

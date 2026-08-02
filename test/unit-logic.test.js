@@ -533,12 +533,32 @@ describe('jira : repérage du champ sprint et lecture de ses valeurs', () => {
 
   test('les deux formes de valeur renvoyées par Jira sont lues', () => {
     assert.deepEqual(jira.sprintsDe([{ id: 42, name: 'Sprint 42', state: 'active' }]),
-      [{ v: '42', l: 'Sprint 42' }]);
+      [{ v: '42', l: 'Sprint 42', d: '', etat: 'active' }]);
     // Vieilles instances : une chaîne sérialisée plutôt qu'un objet.
     assert.deepEqual(jira.sprintsDe(['…Sprint@1[id=43,name=Sprint 43,state=CLOSED]']),
-      [{ v: '43', l: 'Sprint 43' }]);
+      [{ v: '43', l: 'Sprint 43', d: '', etat: 'closed' }]);
     assert.deepEqual(jira.sprintsDe(null), [], 'un ticket hors sprint n’a pas de valeur');
     assert.deepEqual(jira.sprintsDe(['sans identifiant']), [], 'une valeur illisible est écartée, pas devinée');
+  });
+
+  test('l’ÉTAT du sprint est extrait : « en cours » passe en tête, quelle que soit sa date', () => {
+    assert.equal(jira.sprintsDe([{ id: 1, name: 'S', state: 'ACTIVE' }])[0].etat, 'active',
+      'normalisé en minuscules : Jira écrit ACTIVE dans une forme, active dans l’autre');
+    assert.equal(jira.sprintsDe(['x@1[id=2,name=S,state=CLOSED]'])[0].etat, 'closed');
+    assert.equal(jira.sprintsDe([{ id: 3, name: 'S' }])[0].etat, '', 'état absent, pas deviné');
+  });
+
+  test('la DATE du sprint est extraite : c’est elle qui ordonne la liste', () => {
+    // Objet : début, sinon fin.
+    assert.equal(jira.sprintsDe([{ id: 1, name: 'S', startDate: '2026-07-20T08:00:00Z' }])[0].d,
+      '2026-07-20T08:00:00Z');
+    assert.equal(jira.sprintsDe([{ id: 1, name: 'S', endDate: '2026-08-01T08:00:00Z' }])[0].d,
+      '2026-08-01T08:00:00Z', 'à défaut de début, la fin situe quand même le sprint');
+    // Forme sérialisée, avec la date absente écrite « <null> ».
+    assert.equal(jira.sprintsDe(['x@1[id=2,name=S,startDate=2026-06-01T09:00:00.000Z,endDate=x]'])[0].d,
+      '2026-06-01T09:00:00.000Z');
+    assert.equal(jira.sprintsDe(['x@1[id=3,name=S,startDate=<null>,endDate=<null>]'])[0].d, '',
+      '« <null> » n’est pas une date : sans quoi le tri la placerait devant les vraies');
   });
 });
 

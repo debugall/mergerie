@@ -7165,7 +7165,8 @@ function setJiraSprintsChoisis(l) { try { localStorage.setItem(JIRA_SPRINT_KEY, 
    AUCUNE contrainte n'est active, et on les propose toujours. */
 function jiraMemoriseValeurs(cle, vues) {
   const memo = new Map((JIRA.connus[cle] || []).map((x) => [x.v, x]));
-  for (const x of vues) memo.set(x.v, { v: x.v, l: x.l });
+  // On garde la valeur ENTIÈRE (dont la date du sprint) : c'est elle qui sert au tri.
+  for (const x of vues) memo.set(x.v, { ...x, n: undefined });
   JIRA.connus[cle] = [...memo.values()];
 }
 function jiraUnionValeurs(cle, vues) {
@@ -7177,13 +7178,24 @@ function jiraUnionValeurs(cle, vues) {
 function jiraSprintsDistincts() {
   const par = new Map();
   for (const it of JIRA.issues) {
-    for (const { v, l } of (it.sprints || [])) {
-      const e = par.get(v) || { v, l, n: 0 };
+    for (const { v, l, d, etat } of (it.sprints || [])) {
+      const e = par.get(v) || { v, l, d, etat, n: 0 };
       e.n += 1; par.set(v, e);
     }
   }
-  // Les sprints récents d'abord : leur identifiant croît avec le temps chez Jira.
-  return jiraUnionValeurs('sprint', [...par.values()]).sort((a, b) => Number(b.v) - Number(a.v));
+  /* Les plus récents en tête, par DATE de sprint. Un sprint sans date (Jira n'en donne pas
+     toujours pour un sprint futur) retombe sur son identifiant, qui croît avec le temps —
+     il passe donc après ceux qui en ont une, plutôt que d'atterrir n'importe où. */
+  return jiraUnionValeurs('sprint', [...par.values()]).sort((a, b) => {
+    /* Le sprint EN COURS d'abord : c'est celui qu'on cherche neuf fois sur dix, et la date
+       seule ne le distingue pas — un sprint futur commence plus tard que lui. */
+    const enCours = (x) => (x.etat === 'active' ? 0 : 1);
+    if (enCours(a) !== enCours(b)) return enCours(a) - enCours(b);
+    if (a.d && b.d && a.d !== b.d) return a.d < b.d ? 1 : -1;
+    if (a.d && !b.d) return -1;
+    if (!a.d && b.d) return 1;
+    return Number(b.v) - Number(a.v);
+  });
 }
 
 function jiraFilterSprintSearch() {
@@ -7202,7 +7214,7 @@ function renderJiraSprintFilter() {
   const lignes = vals;
   body.innerHTML = lignes.map((x) => `<label class="jira-sf-item">
       <input type="checkbox" value="${esc(x.v)}"${choisis.includes(x.v) ? ' checked' : ''} />
-      <span>${esc(x.l)}</span>${x.n ? ` <span class="muted">${x.n}</span>` : ''}</label>`).join('');
+      <span>${esc(x.l)}</span>${x.etat === 'active' ? ` <span class="muted">${esc(tr('jira.sprint-active'))}</span>` : ''}${x.n ? ` <span class="muted">${x.n}</span>` : ''}</label>`).join('');
   const cnt = $('#jiraSprintFilterCount');
   if (cnt) cnt.textContent = choisis.length ? tr('jira.ff.picked', { n: choisis.length, total: lignes.length }) : '';
   jiraFilterSprintSearch();

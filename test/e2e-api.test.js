@@ -625,7 +625,7 @@ describe('API de bout en bout', () => {
     // Le champ est repéré tout seul : ses valeurs arrivent sur les tickets, normalisées.
     const tout = await app.api('GET', '/api/jira/tickets?assignees=');
     assert.deepEqual(cles(tout.body), ['SP-1', 'SP-2', 'SP-3']);
-    assert.deepEqual(tout.body.issues.find((i) => i.key === 'SP-1').sprints, [{ v: '42', l: 'Sprint 42' }]);
+    assert.deepEqual(tout.body.issues.find((i) => i.key === 'SP-1').sprints, [{ v: '42', l: 'Sprint 42', d: '', etat: 'active' }]);
     assert.deepEqual(tout.body.issues.find((i) => i.key === 'SP-3').sprints, [], 'ticket hors sprint');
 
     // La contrainte part dans la requête, pas après coup — sinon elle trierait un extrait.
