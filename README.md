@@ -30,8 +30,9 @@ npm start          # http://localhost:4319
 ```
 
 **`npm run demo` — see it live in 30 seconds, no config, no tokens.** It seeds a realistic fake database
-(reviews, scores, resolution tracking, token cost, AI sessions) into an isolated `data-demo/`, then launches
-the tool on it in dry-run — no forge connection, no token required.
+(reviews, scores, resolution tracking, token cost, AI sessions, and a browsable fictional repository behind
+"View diff") into an isolated `data-demo/`, then launches the tool on it in dry-run — no forge connection,
+no token required.
 
 ```bash
 npm run demo       # http://localhost:4319

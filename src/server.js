@@ -57,6 +57,7 @@ const git = require('./git');
 const demoGit = require('./demo-git');
 const docker = require('./docker');
 const demoDocker = require('./demo-docker');
+const demoDiff = require('./demo-diff');
 const demoJira = require('./demo-jira');
 const demoComments = require('./demo-comments');
 const { StringDecoder } = require('node:string_decoder');
@@ -1341,12 +1342,22 @@ app.get('/api/tasks/:id/targets/:tid/diff', wrap((req, res) => {
   res.json({ diff: tg.diff_path ? readFileSafe(tg.diff_path) : null, project: tg.project, branch: tg.branch });
 }));
 
+/* Un projet de session n'a pas de numéro de MR : on le présente au dépôt fictif de démo
+   sous la même forme qu'une merge request, pour réutiliser le même viewer. */
+const demoMrDe = (tg) => ({
+  iid: 0, project: tg.project, source_branch: tg.branch, target_branch: tg.base_branch || 'main',
+});
+
 /* Viewer plein écran d'un projet de session : MÊMES trois routes que pour une MR
    (`viewerPayload` / `viewerFile` / `viewerFileDiff`), donc le front réutilise le
    même composant en changeant seulement la base d'URL. */
 app.get('/api/tasks/:id/targets/:tid/diffview', wrap(async (req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  if (demoDiff.isDemo()) {
+    res.json({ ...demoDiff.viewFor(demoMrDe(tg)), project: tg.project, branch: tg.branch });
+    return;
+  }
   const ctx = targetCloneCtx(tg);
   // Le diff produit par la session est stocké ; s'il manque (session ancienne), on le
   // recalcule depuis la branche de départ.
@@ -1360,11 +1371,13 @@ app.get('/api/tasks/:id/targets/:tid/diffview', wrap(async (req, res) => {
 app.get('/api/tasks/:id/targets/:tid/file', wrap(async (req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  if (demoDiff.isDemo()) { res.json(demoDiff.fileFor(demoMrDe(tg), String(req.query.path || ''))); return; }
   res.json(await viewerFile(targetCloneCtx(tg), String(req.query.path || '')));
 }));
 app.get('/api/tasks/:id/targets/:tid/filediff', wrap(async (req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  if (demoDiff.isDemo()) { res.json(demoDiff.fileDiffFor(demoMrDe(tg), String(req.query.path || ''))); return; }
   res.json(await viewerFileDiff(targetCloneCtx(tg), String(req.query.path || '')));
 }));
 
@@ -2044,6 +2057,8 @@ app.get('/api/mrs/:id/diff', wrap((req, res) => {
 app.get('/api/mrs/:id/diffview', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
+  // En démo, aucun clone n'est possible (la forge n'existe pas) : dépôt fictif servi tel quel.
+  if (demoDiff.isDemo()) { res.json(demoDiff.viewFor(mr)); return; }
   const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(mr.repo_id);
   if (!repo) throw new Error(t('err.depot-introuvable'));
   const cfg = getConfig();
@@ -2129,6 +2144,7 @@ async function viewerPayload(ctx, { diff, source }) {
 app.get('/api/mrs/:id/tree', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
+  if (demoDiff.isDemo()) { res.json(demoDiff.treeFor(mr)); return; }
   const { cwd, ref } = mrCloneCtx(mr);
   let files;
   try { files = await git.lsTree(cwd, ref); }
@@ -2142,6 +2158,7 @@ app.get('/api/mrs/:id/tree', wrap(async (req, res) => {
 app.get('/api/mrs/:id/file', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
+  if (demoDiff.isDemo()) { res.json(demoDiff.fileFor(mr, String(req.query.path || ''))); return; }
   res.json(await viewerFile(mrCloneCtx(mr), String(req.query.path || '')));
 }));
 
@@ -2149,6 +2166,7 @@ app.get('/api/mrs/:id/file', wrap(async (req, res) => {
 app.get('/api/mrs/:id/filediff', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
+  if (demoDiff.isDemo()) { res.json(demoDiff.fileDiffFor(mr, String(req.query.path || ''))); return; }
   res.json(await viewerFileDiff(mrCloneCtx(mr), String(req.query.path || '')));
 }));
 

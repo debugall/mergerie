@@ -233,6 +233,19 @@ describe('API de bout en bout', () => {
     assert.equal(relance.body.created, 0, 'une 2e découverte ne duplique rien');
     assert.equal(relance.body.updated, 2);
 
+    /* En mode démo, la forge n'existe pas : la découverte ne doit PAS partir sur le réseau
+       ni rendre une erreur par dépôt — elle rend simplement ce qui est déjà connu. */
+    process.env.MERGERIE_DEMO = '1';
+    try {
+      const demo = await app.api('POST', '/api/discover');
+      assert.deepEqual(demo.body.errors, [], 'aucune erreur de token en démo');
+      assert.equal(demo.body.created, 0);
+      assert.equal(demo.body.updated, 0);
+      assert.equal(demo.body.found, 2, 'la démo rend les MR déjà présentes');
+    } finally {
+      delete process.env.MERGERIE_DEMO;
+    }
+
     // Avec un filtre de branche, seule la MR correspondante est vue comme ouverte.
     await app.api('PUT', `/api/repos/${repoId}`, { branch_pattern: 'PROJ-' });
     const filtree = await app.api('POST', '/api/discover');

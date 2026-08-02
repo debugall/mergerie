@@ -27,11 +27,21 @@ async function fetchJiraContext(cfg, mrId, title, branch) {
 
 // Interroge GitLab pour chaque repo activé, upsert les MR ouvertes filtrées.
 // Ne touche pas au statut des MR déjà connues (respecte done / reviewed).
+const isDemo = () => process.env.MERGERIE_DEMO === '1';
+
 async function discoverAll() {
   const cfg = getConfig();
   const repos = db.prepare('SELECT * FROM repo WHERE enabled = 1').all();
   const now = new Date().toISOString();
   const result = { repos: repos.length, found: 0, created: 0, updated: 0, errors: [] };
+
+  /* En démo, la forge n'existe pas : interroger GitLab rendait une erreur par dépôt, sur un
+     bouton mis en avant de la page d'accueil. Un scan y trouve légitimement ce qui est déjà
+     là — on rend ce compte, sans rien créer ni modifier. */
+  if (isDemo()) {
+    result.found = db.prepare("SELECT COUNT(*) n FROM mr WHERE closed_seen = 0").get().n;
+    return result;
+  }
 
   const selectMr = db.prepare('SELECT * FROM mr WHERE repo_id = ? AND iid = ?');
   const insertMr = db.prepare(`INSERT INTO mr

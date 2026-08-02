@@ -54,6 +54,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Demo mode can finally open the code viewer.** "View diff" — on a merge request as well as on a
+  session project — failed every time in demo mode: the viewer goes through a real git clone, and the
+  demo repositories point at a forge that does not exist. Anyone discovering the tool hit an error on
+  one of its most central buttons. Demo mode now serves a coherent fictional repository: real unified
+  diffs, a browsable file tree, per-file diffs, and file contents. As everywhere else, a path outside
+  the tree is still refused — a demo must not teach the wrong reflex.
+- **"Fetch new MRs" no longer fails in demo mode.** The button sits at the top of the home screen, and
+  pressing it in the demo produced one red "GitLab token not configured" card per repository — the
+  first thing a newcomer saw. A scan now legitimately reports what is already there, without going
+  near the network.
 - **Stop now really stops the agent.** The button did what it promised everywhere except where you
   press it: queued jobs were cancelled and git steps were interrupted, but the agent itself — the
   long phase, and the reason one presses Stop at all — kept running to its fifteen-minute timeout,
