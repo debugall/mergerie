@@ -504,6 +504,27 @@ app.get('/api/jira/assignees', wrap(async (req, res) => {
 
 // Tickets assignés aux personnes cochées (`assignees` = accountIds séparés par des virgules ;
 // vide = mes tickets). Filtre statut fait côté client.
+/* Statuts par projet, mémorisés : un workflow ne change pas d'une minute à l'autre, et le
+   filtre les redemanderait à chaque chargement de l'onglet. Vidé à l'enregistrement de la
+   configuration, l'instance visée pouvant changer. */
+const statutsParProjet = new Map();
+app.get('/api/jira/statuses', wrap(async (req, res) => {
+  const cles = [...new Set(String(req.query.projects || '').split(',').map((x) => x.trim()).filter(Boolean))].slice(0, 20);
+  if (demoDocker.isDemo()) return res.json({ configured: true, statuses: demoJira.projectStatuses(cles) });
+  const cfg = getConfig();
+  if (!jira.isConfigured(cfg)) return res.json({ configured: false, statuses: [] });
+  const par = new Map();
+  for (const cle of cles) {
+    if (!statutsParProjet.has(cle)) {
+      // Un projet inaccessible ne doit pas priver le filtre des statuts des autres.
+      try { statutsParProjet.set(cle, await jira.projectStatuses(cfg, cle)); }
+      catch { statutsParProjet.set(cle, []); }
+    }
+    for (const st of statutsParProjet.get(cle)) if (!par.has(st.name)) par.set(st.name, st);
+  }
+  res.json({ configured: true, statuses: [...par.values()] });
+}));
+
 /* Identifiant du champ « sprint », résolu une fois puis mémorisé : il ne change pas en cours
    de route, et le redemander à chaque chargement coûterait un appel Jira pour rien. Remis à
    zéro à l'enregistrement de la configuration (l'instance visée peut changer). */
@@ -519,15 +540,17 @@ async function sprintFieldId(cfg) {
 
 app.get('/api/jira/tickets', wrap(async (req, res) => {
   const accountIds = String(req.query.assignees || '').split(',').map((s) => s.trim()).filter(Boolean);
+  // Statuts décochés : exclus par Jira, pour ne pas trier un extrait déjà plafonné.
+  const hideStatuses = String(req.query.hideStatuses || '').split('\u001f').map((x) => x.trim()).filter(Boolean);
   // Sprints choisis : mêmes règles que les projets — la contrainte part dans la requête.
   const sprints = String(req.query.sprints || '').split(',').map((x) => x.trim()).filter(Boolean);
   // Projets choisis dans le filtre : appliqués par Jira, pas après coup (cf. searchByAssignees).
   const projects = String(req.query.projects || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (demoDocker.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1', projects, sprints) });
+  if (demoDocker.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1', projects, sprints, hideStatuses) });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, issues: [], total: 0 });
   res.json({ configured: true, ...(await jira.searchByAssignees(cfg, {
-    accountIds, includeDone: req.query.includeDone === '1', projects, sprints,
+    accountIds, includeDone: req.query.includeDone === '1', projects, sprints, hideStatuses,
     sprintField: await sprintFieldId(cfg),
   })) });
 }));
@@ -831,6 +854,7 @@ app.put('/api/config', wrap((req, res) => {
   restartAutoRefresh(); // prend en compte le nouvel intervalle
   restartJiraWatch(); // idem pour la surveillance Jira (et le compteur du menu)
   champSprint = null; // l'instance Jira visée a pu changer : on re-cherchera le champ sprint
+  statutsParProjet.clear();
   res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '' });
 }));
 

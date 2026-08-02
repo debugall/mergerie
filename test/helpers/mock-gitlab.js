@@ -25,6 +25,7 @@ function freshState() {
     jiraIssues: {},          // KEY -> { key, fields }
     jiraFail: null,          // { status, body } pour forcer un refus Jira
     jiraFields: [],          // /rest/api/3/field : champs de l'instance (dont le sprint)
+    jiraProjectStatuses: {}, // clé projet -> [{ id, name, statuses:[…] }] (par type de ticket)
     calls: [],               // journal { method, path, body } pour les assertions
     fail: {},                // path fragment -> { status, body } pour forcer une erreur
     mergeRefuses: false,     // vrai = GitLab répond 200 sans merger (cas réel à couvrir)
@@ -230,6 +231,13 @@ function handleJira(req, res, pathname, body = {}) {
   if (!auth.startsWith('Basic ')) return json(res, 401, { errorMessages: ['unauthorized'] });
   // Utilisateur courant (pour cocher « moi » par défaut).
   if (pathname === '/rest/api/3/field') return json(res, 200, state.jiraFields || []);
+  // Statuts du workflow d'un projet, groupés par type de ticket — comme le vrai Jira.
+  const ps = /^\/rest\/api\/3\/project\/([^/]+)\/statuses$/.exec(pathname);
+  if (ps) {
+    const cle = decodeURIComponent(ps[1]);
+    if (!state.jiraProjectStatuses[cle]) return json(res, 404, { errorMessages: ['No project could be found'] });
+    return json(res, 200, state.jiraProjectStatuses[cle]);
+  }
   if (pathname === '/rest/api/3/myself') return json(res, 200, { accountId: 'me-test', displayName: 'Testeur courant', avatarUrls: {} });
   /* Recherche. Le mock ne parle pas JQL, mais il en comprend les DEUX formes que le produit
      émet — `key IN (…)` (tickets surveillés) et `statusCategory = "In Progress"` (compteur du
@@ -251,6 +259,11 @@ function handleJira(req, res, pathname, body = {}) {
     if (prj) {
       const set = new Set(prj[1].split(',').map((k) => k.trim().replace(/^"|"$/g, '')));
       issues = issues.filter((i) => i.fields && i.fields.project && set.has(i.fields.project.key));
+    }
+    const nonStat = /status\s+NOT\s+IN\s*\(([^)]*)\)/i.exec(jql);
+    if (nonStat) {
+      const exclus = new Set(nonStat[1].split(',').map((x) => x.trim().replace(/^"|"$/g, '')));
+      issues = issues.filter((i) => !(i.fields && i.fields.status && exclus.has(i.fields.status.name)));
     }
     const spr = /sprint\s+IN\s*\(([^)]*)\)/i.exec(jql);
     if (spr) {

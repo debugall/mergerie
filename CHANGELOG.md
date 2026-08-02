@@ -117,6 +117,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Hiding a status now narrows the search instead of sifting an extract.** Jira caps a search at a
+  hundred tickets; unticking a status only removed it from those hundred, so tickets you expected to
+  surface never did. The exclusion is part of the query now, like projects and sprints. Custom workflow
+  statuses were already handled — the colour follows the status *category*, not its name — and a status
+  stays on offer once hidden, so you can put it back.
+- **The status filter now lists your workflow's statuses, not just the ones on screen.** A status that
+  exists but happens to be on none of the fetched tickets was simply not offered. The statuses of the
+  projects concerned are loaded alongside — the selected ones, or those of the tickets shown. Not the
+  whole instance: that would add dozens of unrelated entries, and the endpoint for it requires
+  administering Jira, which most accounts cannot.
+
 - **The Jira ticket list no longer changes width with the tickets in it.** A long title stretched the
   left column from 360 to 610 pixels, so filtering made the whole layout jump. A flex item refuses by
   default to go below the width of its own content; the column now holds its size, and a long title wraps

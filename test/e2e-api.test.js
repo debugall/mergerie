@@ -649,6 +649,62 @@ describe('API de bout en bout', () => {
     app.state.jiraFields = [];
   });
 
+  test('Jira : les statuts décochés sont exclus par Jira, noms personnalisés compris', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    const tk = (key, statut, cat) => ({
+      key, fields: { summary: key, status: { name: statut, statusCategory: { key: cat } } },
+    });
+    /* Un workflow Jira définit ses PROPRES statuts : rien n'est codé en dur côté outil, ni ici
+       ni dans le filtre — la liste vient des tickets, et l'exclusion part telle quelle. */
+    app.state.jiraIssues['ST-1'] = tk('ST-1', 'En attente de recette', 'indeterminate');
+    app.state.jiraIssues['ST-2'] = tk('ST-2', 'À faire', 'new');
+    const cles = (b) => b.issues.map((i) => i.key).filter((k) => k.startsWith('ST-')).sort();
+
+    assert.deepEqual(cles((await app.api('GET', '/api/jira/tickets?assignees=')).body), ['ST-1', 'ST-2']);
+
+    const sans = await app.api('GET', '/api/jira/tickets?assignees=&hideStatuses=En%20attente%20de%20recette');
+    assert.deepEqual(cles(sans.body), ['ST-2'], 'un statut maison s’exclut comme les autres');
+
+    app.state.calls.length = 0;
+    await app.api('GET', '/api/jira/tickets?assignees=&hideStatuses=En%20attente%20de%20recette');
+    const jql = decodeURIComponent(new URL(`http://x${app.state.calls.filter((c) => c.path.includes('/search')).pop().path}`).searchParams.get('jql'));
+    assert.match(jql, /status NOT IN \("En attente de recette"\)/);
+
+    // Un nom porteur d'un guillemet fermerait la chaîne JQL : il est écarté, pas échappé au petit bonheur.
+    app.state.calls.length = 0;
+    await app.api('GET', '/api/jira/tickets?assignees=&hideStatuses=%22%29%20OR%20x');
+    const jql2 = decodeURIComponent(new URL(`http://x${app.state.calls.filter((c) => c.path.includes('/search')).pop().path}`).searchParams.get('jql'));
+    assert.ok(!/status NOT IN/.test(jql2), `nom refusé attendu, JQL obtenue : ${jql2}`);
+
+    for (const k of ['ST-1', 'ST-2']) delete app.state.jiraIssues[k];
+  });
+
+  test('Jira : les statuts proposés viennent du WORKFLOW, pas des seuls tickets affichés', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    const st = (nom, cat) => ({ id: nom, name: nom, statusCategory: { key: cat } });
+    /* Deux types de tickets partagent des statuts : la réponse Jira les répète, la nôtre non. */
+    app.state.jiraProjectStatuses.AAA = [
+      { id: '1', name: 'Bug', statuses: [st('À faire', 'new'), st('Bloqué', 'indeterminate'), st('Terminé', 'done')] },
+      { id: '2', name: 'Story', statuses: [st('À faire', 'new'), st('En recette', 'indeterminate')] },
+    ];
+
+    const r = await app.api('GET', '/api/jira/statuses?projects=AAA');
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body.statuses.map((x) => x.name),
+      ['À faire', 'Bloqué', 'Terminé', 'En recette'],
+      'dédoublonnés par nom, tous types de tickets confondus');
+    assert.equal(r.body.statuses.find((x) => x.name === 'Bloqué').cat, 'indeterminate',
+      'la catégorie suit, c’est elle qui donne la couleur');
+
+    // Un projet inaccessible ne prive pas le filtre des statuts des autres.
+    const mixte = await app.api('GET', '/api/jira/statuses?projects=AAA,INCONNU');
+    assert.deepEqual(mixte.body.statuses.map((x) => x.name).sort(),
+      ['Bloqué', 'En recette', 'Terminé', 'À faire'].sort());
+
+    assert.deepEqual((await app.api('GET', '/api/jira/statuses?projects=')).body.statuses, []);
+    app.state.jiraProjectStatuses = {};
+  });
+
   test('Jira : un refus de Jira remonte SON message, pas seulement le code', async () => {
     await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
     // Le faux Jira renvoie un 400 avec le corps que renvoie le vrai.

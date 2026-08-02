@@ -427,7 +427,13 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   celui d'une sous-tâche est une story, l'annoncer comme epic serait un contresens.
   Par défaut on écarte les tickets **terminés** — une case **« Inclure les terminés »** les réintègre. Un
   **filtre par statut** (repliable, cases à cocher, **choix persisté**) permet en plus de n'afficher que les
-  statuts voulus. Un filtre **Sprints** apparaît dès que
+  statuts voulus. Il s'adapte aux **statuts personnalisés** de tes workflows, et la
+  couleur suit la *catégorie* du statut (à faire / en cours / terminé) et non son nom. La liste ne se
+  limite pas aux tickets affichés : les statuts du **workflow des projets concernés** sont chargés en
+  plus, sinon un statut réel mais absent de la page ne serait pas filtrable. On interroge les projets
+  sélectionnés, à défaut ceux des tickets affichés — demander tous les statuts de l'instance donnerait
+  des dizaines d'entrées sans rapport, et l'endpoint qui le permettrait exige d'administrer Jira. Les statuts décochés sont exclus **par Jira**, pas après coup — sinon on trierait un extrait
+  plafonné. Un statut déjà vu reste proposé même une fois exclu, sans quoi on ne pourrait plus le recocher. Un filtre **Sprints** apparaît dès que
   tes tickets en portent un. Le sprint est un champ **personnalisé**, dont l'identifiant change d'une
   instance à l'autre : l'outil le repère par son **marqueur de schéma** Jira, indépendant de la langue —
   un champ nommé « Itération » est reconnu comme tel. La sélection est appliquée **par Jira**

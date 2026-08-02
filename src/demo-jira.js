@@ -83,11 +83,32 @@ const PEOPLE = [
   { accountId: 'usr-003', name: 'Sam Durand', email: 'sam@demo', avatar: '' },
 ];
 
+/* Statuts du workflow de démo, par projet. Deux d'entre eux ne sont portés par AUCUN ticket
+   semé — c'est tout l'intérêt : ils prouvent que la liste vient du workflow et pas seulement
+   des tickets affichés. */
+const STATUTS_PROJET = {
+  PROJ: [
+    { name: 'À faire', cat: 'new' },
+    { name: 'En cours', cat: 'indeterminate' },
+    { name: 'En revue', cat: 'indeterminate' },
+    { name: 'Bloqué', cat: 'indeterminate' },
+    { name: 'En attente de recette', cat: 'indeterminate' },
+    { name: 'Terminé', cat: 'done' },
+  ],
+};
+function projectStatuses(cles) {
+  const par = new Map();
+  for (const c of (cles && cles.length ? cles : Object.keys(STATUTS_PROJET))) {
+    for (const st of (STATUTS_PROJET[c] || [])) if (!par.has(st.name)) par.set(st.name, { ...st });
+  }
+  return [...par.values()];
+}
+
 // Filtre par assigné : « moi » + les collègues (démo).
 function assignees() { return { me: ME, people: PEOPLE }; }
 
 // Tickets des personnes cochées (accountIds) ; vide → mes tickets.
-function tickets(accountIds, includeDone, projects = [], sprints = []) {
+function tickets(accountIds, includeDone, projects = [], sprints = [], hideStatuses = []) {
   // Vide = aucune contrainte d'assigné (même règle qu'en réel), pas « mes tickets ».
   const set = (accountIds && accountIds.length) ? new Set(accountIds) : null;
   const tous = includeDone ? [...ISSUES, ...DONE] : ISSUES;
@@ -100,6 +121,10 @@ function tickets(accountIds, includeDone, projects = [], sprints = []) {
   if (sprints && sprints.length) {
     const ids = new Set(sprints.map(String));
     list = list.filter((i) => (i.sprints || []).some((sp) => ids.has(String(sp.v))));
+  }
+  if (hideStatuses && hideStatuses.length) {
+    const caches = new Set(hideStatuses);
+    list = list.filter((i) => !caches.has(i.status));
   }
   return { issues: list.map(meta), total: list.length };
 }
@@ -151,4 +176,4 @@ function inProgressMine() {
 
 const issueUrl = (key) => `https://jira.demo/browse/${key}`;
 
-module.exports = { assignees, tickets, issue, attachmentFile, inProgressMine, applyTransition, issueUrl };
+module.exports = { assignees, tickets, issue, attachmentFile, inProgressMine, applyTransition, issueUrl, projectStatuses };

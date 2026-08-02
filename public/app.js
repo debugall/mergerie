@@ -7108,10 +7108,32 @@ function jiraSize(bytes) {
 // Filtre par statut (persisté) : on mémorise les statuts MASQUÉS (décochés).
 function jiraHiddenStatuses() { try { return new Set(JSON.parse(localStorage.getItem('aidevtools_jira_status_hidden') || '[]')); } catch { return new Set(); } }
 function setJiraHiddenStatuses(set) { try { localStorage.setItem('aidevtools_jira_status_hidden', JSON.stringify([...set])); } catch { /* ignore */ } }
+/* Les statuts masqués sont exclus PAR Jira : ils disparaîtraient donc de la liste, et on ne
+   pourrait plus les recocher. On garde en mémoire ceux déjà vus, comme pour les sprints. */
+/* Statuts du WORKFLOW des projets concernés, en plus de ceux portés par les tickets chargés :
+   un statut peut exister sans qu'aucun ticket rapporté ne l'ait — il doit rester filtrable.
+   On interroge les projets sélectionnés, sinon ceux des tickets affichés : demander tous les
+   statuts de l'instance donnerait des dizaines d'entrées sans rapport. */
+let jiraStatutsDemandes = '';
+async function chargerStatutsDuWorkflow() {
+  const choisis = jiraFiltres().project || [];
+  const cles = [...new Set(choisis.length ? choisis : JIRA.issues.map((i) => i.projectKey).filter(Boolean))].sort();
+  const signature = cles.join(',');
+  if (!signature || signature === jiraStatutsDemandes) return;
+  jiraStatutsDemandes = signature;
+  try {
+    const d = await api(`/jira/statuses?projects=${encodeURIComponent(signature)}`);
+    if (!(d.statuses || []).length) return;
+    jiraMemoriseValeurs('status', d.statuses.map((st) => ({ v: st.name, l: st.name, cat: st.cat })));
+    renderJiraStatusFilter();
+  } catch { /* filtre : jamais bloquant */ }
+}
+
 function jiraDistinctStatuses() {
   const seen = new Map();
   for (const it of JIRA.issues) if (it.status && !seen.has(it.status)) seen.set(it.status, it.statusCategory);
-  return [...seen.entries()].map(([status, cat]) => ({ status, cat }));
+  const vus = [...seen.entries()].map(([status, cat]) => ({ v: status, l: status, cat }));
+  return jiraUnionValeurs('status', vus).map((x) => ({ status: x.v, cat: x.cat }));
 }
 /* ---------- Jira : filtre générique par champ ----------------------------------
    Choisir le CHAMP puis les valeurs, plutôt qu'un filtre codé en dur par champ. Les valeurs
@@ -7572,14 +7594,21 @@ async function loadJiraTickets() {
   // Les projets cochés sont appliqués PAR Jira : filtrer après coup ne verrait qu'un extrait.
   const projects = (jiraFiltres().project || []).join(',');
   const sprints = jiraSprintsChoisis().join(',');
+  /* Séparateur « unité » (U+001F) : un nom de statut peut contenir une virgule
+     (« En attente, client »), la virgule ne peut donc pas servir de séparateur. */
+  const masques = [...jiraHiddenStatuses()].join('\u001f');
   let d;
-  try { d = await api(`/jira/tickets?assignees=${encodeURIComponent(assignees)}&includeDone=${done}&projects=${encodeURIComponent(projects)}&sprints=${encodeURIComponent(sprints)}`); }
+  try { d = await api(`/jira/tickets?assignees=${encodeURIComponent(assignees)}&includeDone=${done}&projects=${encodeURIComponent(projects)}&sprints=${encodeURIComponent(sprints)}&hideStatuses=${encodeURIComponent(masques)}`); }
   catch (e) { $('#jiraList').innerHTML = ''; $('#jiraError').innerHTML = errorBox(explainError(e.message)); return; }
   JIRA.issues = d.issues || [];
   JIRA.total = d.total != null ? d.total : null;
   /* On ne mémorise que ce qu'on a vu SANS la contrainte correspondante : sinon on figerait
      une liste déjà réduite par le filtre lui-même. */
   if (!sprints) jiraMemoriseValeurs('sprint', JIRA.issues.flatMap((i) => i.sprints || []));
+  if (!masques) {
+    jiraMemoriseValeurs('status', JIRA.issues.filter((i) => i.status)
+      .map((i) => ({ v: i.status, l: i.status, cat: i.statusCategory })));
+  }
   if (!projects) {
     jiraMemoriseValeurs('project', JIRA.issues
       .filter((i) => i.projectKey).map((i) => ({ v: i.projectKey, l: i.project || i.projectKey })));
@@ -7591,6 +7620,7 @@ async function loadJiraTickets() {
   renderJiraFieldFilter();
   renderJiraList();
   const vis = jiraVisibleIssues();
+  chargerStatutsDuWorkflow();   // complète la liste des statuts, sans bloquer l'affichage
   if (vis.length) selectJiraIssue(vis[0].key);
   else $('#jiraDetail').innerHTML = `<div class="jira-empty muted">${esc(tr(JIRA.issues.length ? 'jira.no-match' : 'jira.empty'))}</div>`;
 }
@@ -7737,6 +7767,7 @@ $$('[data-jsfall="assignee"], [data-jsfnone="assignee"], [data-jsfall="status"],
     setJiraHiddenStatuses(new Set(tout ? [] : statuts));
     renderJiraStatusFilter();
     renderJiraList();
+    loadJiraTickets();
   }
 }));
 
@@ -7757,7 +7788,8 @@ $('#jiraStatusFilterBody') && $('#jiraStatusFilterBody').addEventListener('chang
   if (cb.checked) hidden.delete(cb.value); else hidden.add(cb.value);
   setJiraHiddenStatuses(hidden);
   jiraUpdateStatusFilterCount();
-  renderJiraList();
+  renderJiraList();          // réponse immédiate, sans attendre le serveur
+  loadJiraTickets();         // …puis on redemande : l'exclusion est appliquée par Jira
 });
 $('#jiraList') && $('#jiraList').addEventListener('click', (e) => {
   /* Dans la LISTE, l'epic n'est qu'une information : la carte est un bouton de sélection, et y

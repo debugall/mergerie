@@ -361,6 +361,32 @@ function sprintsDe(brut) {
   return (Array.isArray(brut) ? brut : [brut]).map(un).filter(Boolean);
 }
 
+/* Clé de projet Jira : lettres/chiffres, commence par une lettre. Elle part dans la JQL,
+   donc tout ce qui n'a pas cette forme est refusé plutôt que quoté et espéré. */
+const CLE_PROJET = /^[A-Za-z][A-Za-z0-9_]{0,30}$/;
+
+/* Statuts d'un PROJET, tous types de tickets confondus.
+
+   Pourquoi par projet et pas d'un coup : `/rest/api/3/status` omet les projets d'équipe
+   (team-managed), et `/statuses/search` exige d'administrer Jira — droit que la plupart des
+   comptes n'ont pas. Cette route-ci ne demande que le droit de parcourir le projet, et rend
+   exactement les statuts qui concernent l'utilisateur. */
+async function projectStatuses(cfg, projectKey) {
+  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  if (!CLE_PROJET.test(String(projectKey || ''))) return [];
+  const data = await jiraGet(cfg, `/rest/api/3/project/${encodeURIComponent(projectKey)}/statuses`);
+  const par = new Map();
+  for (const type of (Array.isArray(data) ? data : [])) {
+    for (const st of (type.statuses || [])) {
+      // Deux types de tickets partagent souvent un statut : on déduplique par nom.
+      if (st && st.name && !par.has(st.name)) {
+        par.set(st.name, { name: st.name, cat: (st.statusCategory && st.statusCategory.key) || '' });
+      }
+    }
+  }
+  return [...par.values()];
+}
+
 // Identité de l'utilisateur courant (pour cocher « moi » par défaut dans le filtre par assigné).
 async function myself(cfg) {
   const data = await jiraGet(cfg, '/rest/api/3/myself');
@@ -387,11 +413,7 @@ async function listAssignees(cfg) {
 
 // Tickets assignés aux personnes demandées (accountIds). Vide → `assignee = currentUser()` (moi).
 // Écarte les terminés sauf `includeDone`. Triés du plus récemment mis à jour au plus ancien.
-/* Clé de projet Jira : lettres/chiffres, commence par une lettre. Elle part dans la JQL,
-   donc tout ce qui n'a pas cette forme est refusé plutôt que quoté et espéré. */
-const CLE_PROJET = /^[A-Za-z][A-Za-z0-9_]{0,30}$/;
-
-async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = 100, projects = [], sprintField = '', sprints = [] } = {}) {
+async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = 100, projects = [], sprintField = '', sprints = [], hideStatuses = [] } = {}) {
   if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
   // accountId Jira : alphanumérique + `:._@|-`. On rejette le reste (anti-injection JQL) et on quote.
   const ids = (accountIds || []).map(String).filter((s) => /^[A-Za-z0-9:._@|-]{1,128}$/.test(s));
@@ -408,6 +430,11 @@ async function searchByAssignees(cfg, { accountIds = [], includeDone = false, ma
   // Même règle pour le sprint : identifiants numériques, contrainte posée DANS la requête.
   const sprintIds = [...new Set((sprints || []).map(String).filter((x) => /^\d+$/.test(x)))];
   if (sprintIds.length) clauses.push(`sprint IN (${sprintIds.join(', ')})`);
+  /* Statuts masqués : exclus PAR Jira. Un nom de statut est libre (workflow personnalisé),
+     donc on n'accepte ni guillemet ni saut de ligne — le reste est quoté tel quel. */
+  const exclus = [...new Set((hideStatuses || []).map(String)
+    .filter((x) => x && x.length < 120 && !/["\r\n]/.test(x)))];
+  if (exclus.length) clauses.push(`status NOT IN (${exclus.map((x) => `"${x}"`).join(', ')})`);
   if (!includeDone) clauses.push('statusCategory != Done');
   /* Jira Cloud REFUSE une recherche sans aucune contrainte (« unbounded ») : personne de coché
      ET les terminés inclus donnerait un simple ORDER BY, rejeté en 400. On borne alors sur
@@ -582,4 +609,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, statusOfKeys, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
