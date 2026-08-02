@@ -24,6 +24,19 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   is flagged on its own row without interrupting the others or losing its last known status. A change is
   announced **once**: checks are serialised, so the timer and the "Check now" button cannot both report
   the same move, and the new status becomes the reference until it moves again.
+- **Check all / uncheck all on the Jira assignee and status filters.** With a dozen lines, clearing
+  everything to keep one or two meant a dozen clicks. Both buttons ship together: uncheck-all on its own
+  would be a one-way trip.
+- **Ticking nobody in the Jira assignee filter now means "everyone".** An empty selection quietly fell
+  back to `assignee = currentUser()`, so unticking every person handed you your own tickets — the
+  opposite of what you asked for. It now applies no assignee constraint at all: every ticket the account
+  can see, including those assigned to someone else or to nobody. The default, before you touch
+  anything, is still your own tickets.
+- **The Jira filters now sit on one line above the ticket detail.** Assignees, statuses and the field
+  filter stacked three rows deep inside the narrow ticket column, pushing the list down before you had
+  filtered anything, and squeezing their own labels. They are now chips on a single row spanning the full
+  width above the detail panel, where there is room. The one you open floats over the page instead of shoving it, so
+  neither the row nor the list ever moves; clicking outside closes it.
 - **A generic field filter in the Jira tab.** Pick the **field** first — epic, type, priority, project,
   assignee, reporter, labels, components, fix versions — then one or more **values**, offered from what
   the loaded tickets actually contain, each with its ticket count. Both the field picker and every value
@@ -92,11 +105,24 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A Jira ticket's title no longer shares a line with the buttons above it.** A global `header` rule
+  written for the app's own header applied to *every* `<header>`, including the one in the ticket detail:
+  its title and chips were laid out beside the action buttons instead of below them. The rule is now
+  scoped to the app header.
+- **The ticket key in the watched list opens Jira.** It was plain text, while every other key in the tool
+  is a way to get to the ticket.
 - **Confirmation messages are no longer written in red.** Every toast used the error colour, so
   "Repository updated" looked exactly like a failure — the one thing a confirmation must not do. A
   success now carries a discreet green edge and reads in the normal text colour; an error keeps its
   full red border and red text, and still stays on screen until you dismiss it. The louder of the two
   is the one that needs you.
+- **A Jira refusal now says what Jira actually refused.** Errors surfaced as a bare "Jira 400 Bad
+  Request": the response body, where Jira explains itself ("The JQL query is unbounded", "Field 'x' does
+  not exist"), was thrown away. Its messages are now part of the error you see.
+- **Asking for every assignee no longer breaks the search.** With nobody ticked and done tickets included
+  there was no constraint left at all, and Jira Cloud rejects an unbounded query. The search is now bounded
+  to the last year of activity in that one case — invisible in practice, since the list is sorted by last
+  update and capped at a hundred results.
 - **Creating a coding session no longer fails with "t is not a function".** Any validation problem —
   a missing branch name, the same project picked twice, an unknown project — produced that message
   instead of the real one, because a callback parameter shadowed the server's translation function.

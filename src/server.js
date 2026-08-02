@@ -606,7 +606,14 @@ const watchRows = () => db.prepare('SELECT * FROM jira_watch ORDER BY key').all(
 let jiraBadge = { inProgress: 0, at: null, error: null };
 
 app.get('/api/jira/watch', wrap((req, res) => {
-  res.json({ configured: demoDocker.isDemo() || jira.isConfigured(getConfig()), watched: watchRows() });
+  const cfg = getConfig();
+  const demo = demoDocker.isDemo();
+  // L'URL est construite ici, où la configuration Jira est connue — comme pour les tickets.
+  const lien = (key) => (demo ? demoJira.issueUrl(key) : (jira.isConfigured(cfg) ? jira.issueUrl(cfg, key) : null));
+  res.json({
+    configured: demo || jira.isConfigured(cfg),
+    watched: watchRows().map((r) => ({ ...r, url: lien(r.key) })),
+  });
 }));
 
 app.post('/api/jira/watch', wrap(async (req, res) => {

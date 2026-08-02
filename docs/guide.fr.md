@@ -427,8 +427,15 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   celui d'une sous-tâche est une story, l'annoncer comme epic serait un contresens.
   Par défaut on écarte les tickets **terminés** — une case **« Inclure les terminés »** les réintègre. Un
   **filtre par statut** (repliable, cases à cocher, **choix persisté**) permet en plus de n'afficher que les
-  statuts voulus.
-- **Filtres par champ, génériques.** Sous les statuts, un panneau **Filtres** où l'on choisit d'abord
+  statuts voulus. Les filtres **Assignés** et **Statuts** ont chacun **Tout cocher / Tout décocher** —
+  pratique pour vider puis ne garder qu'une ou deux lignes. Sur les assignés, **ne cocher personne ne
+  filtre pas** : la liste prend alors **tous** les tickets visibles par le compte, y compris ceux
+  affectés à quelqu'un d'autre ou à personne. Par défaut, tant qu'on n'a rien touché, seuls **tes**
+  tickets sont chargés.
+- **Filtres par champ, génériques.** Les trois filtres — Assignés, Statuts et **Filtres** — sont des
+  puces alignées **au-dessus du panneau de détail** ; celui qu'on ouvre flotte au-dessus de la page, si
+  bien que ni la ligne ni la liste ne bougent, et un clic à l'extérieur referme. Le panneau **Filtres**
+  permet de choisir d'abord
   **le champ** (epic, type, priorité, projet, assigné, rapporteur, étiquettes, composants, versions
   correctives) puis **une ou plusieurs valeurs**. Les valeurs proposées sont celles **réellement
   présentes** dans les tickets chargés, avec le nombre de tickets pour chacune — proposer une valeur qui

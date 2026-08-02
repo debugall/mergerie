@@ -7488,7 +7488,9 @@ function renderJiraWatch() {
   }
   box.innerHTML = rows.map((r) => `<div class="jira-item jira-cat-${JIRA_CAT[r.status_category] || 'todo'}">
       <div class="jira-item-row1">
-        <code class="jira-key">${esc(r.key)}</code>
+        ${r.url
+          ? `<a class="jira-key jira-key-link" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(tr('jira.watch.open', { key: r.key }))}">${esc(r.key)} ↗</a>`
+          : `<code class="jira-key">${esc(r.key)}</code>`}
         <span class="jira-status jira-status-${JIRA_CAT[r.status_category] || 'todo'}">${esc(r.status || '—')}</span>
         <span class="spacer"></span>
         <button type="button" class="btn btn-icon btn-sm btn-danger" data-jiraunwatch="${esc(r.key)}" title="${esc(tr('jira.watch.stop-title'))}"><svg class="ico"><use href="#i-close"/></svg></button>
@@ -7591,6 +7593,33 @@ $('#jiraAssigneeFilterBody') && $('#jiraAssigneeFilterBody').addEventListener('c
   jiraUpdateAssigneeCount(); // maj du compteur SANS reconstruire (préserve la recherche)
   loadJiraTickets();         // les assignés cochés changent la requête serveur
 });
+/* « Tout cocher » / « Tout décocher » des deux filtres. Les deux boutons vont ensemble : sans
+   le premier, décocher tout devient un aller sans retour — il faudrait recocher une à une les
+   quinze lignes qu'on vient de vider. */
+$$('[data-jsfall], [data-jsfnone]').forEach((b) => b.addEventListener('click', () => {
+  const quoi = b.dataset.jsfall || b.dataset.jsfnone;
+  const tout = !!b.dataset.jsfall;
+  if (quoi === 'assignee') {
+    // Sélection vide = aucune contrainte d'assigné : le serveur renvoie tout ce que le compte voit.
+    setJiraCheckedAssignees(tout ? JIRA.people.map((p) => p.accountId) : []);
+    renderJiraAssigneeFilter();
+    loadJiraTickets();          // les assignés cochés changent la requête serveur
+  } else {
+    const statuts = jiraDistinctStatuses().map((x) => x.status);
+    setJiraHiddenStatuses(new Set(tout ? [] : statuts));
+    renderJiraStatusFilter();
+    renderJiraList();
+  }
+}));
+
+/* Un <details> ne se referme pas tout seul quand on clique ailleurs. Devenus des menus
+   flottants au-dessus de la liste, ils masqueraient les tickets tant qu'on ne les rouvre pas. */
+document.addEventListener('click', (e) => {
+  for (const d of $$('.jira-filters > details[open]')) {
+    if (!d.contains(e.target)) d.open = false;
+  }
+});
+
 $('#jiraAssigneeSearch') && $('#jiraAssigneeSearch').addEventListener('input', jiraFilterAssigneeSearch);
 $('#jiraSearch') && $('#jiraSearch').addEventListener('input', renderJiraList);
 $('#jiraStatusFilterBody') && $('#jiraStatusFilterBody').addEventListener('change', (e) => {

@@ -444,23 +444,41 @@
         <div class="jira-layout">
             <div class="jira-list-col">
                 <input id="jiraSearch" type="search" class="jira-search" placeholder="Rechercher un ticket…" data-i18n-placeholder="jira.search" />
+                <div id="jiraList" class="jira-list"></div>
+            </div>
+            <div class="jira-detail-col">
+            <div class="jira-filters">
                 <details id="jiraAssigneeFilter" class="jira-status-filter" hidden>
                     <summary><svg class="ico ico-sm"><use href="#i-bot"/></svg> <span data-i18n="jira.assignees">Assignés</span> <span id="jiraAssigneeFilterCount" class="muted"></span></summary>
-                    <input id="jiraAssigneeSearch" type="search" class="jira-sf-search" placeholder="Rechercher une personne…" data-i18n-placeholder="jira.people-search" />
-                    <div id="jiraAssigneeFilterBody" class="jira-status-filter-body"></div>
+                    <div class="jira-sf-pop">
+                        <input id="jiraAssigneeSearch" type="search" class="jira-sf-search" placeholder="Rechercher une personne…" data-i18n-placeholder="jira.people-search" />
+                        <div class="jira-sf-actions">
+                            <button type="button" class="btn btn-sm btn-ghost" data-jsfall="assignee" data-i18n="jira.sf.all">Tout cocher</button>
+                            <button type="button" class="btn btn-sm btn-ghost" data-jsfnone="assignee" data-i18n-title="jira.sf.none-assignee-title" data-i18n="jira.sf.none">Tout décocher</button>
+                        </div>
+                        <div id="jiraAssigneeFilterBody" class="jira-status-filter-body"></div>
+                    </div>
                 </details>
                 <details id="jiraStatusFilter" class="jira-status-filter" hidden>
                     <summary><svg class="ico ico-sm"><use href="#i-sliders"/></svg> <span data-i18n="jira.statuses">Statuts</span> <span id="jiraStatusFilterCount" class="muted"></span></summary>
-                    <div id="jiraStatusFilterBody" class="jira-status-filter-body"></div>
+                    <div class="jira-sf-pop">
+                        <div class="jira-sf-actions">
+                            <button type="button" class="btn btn-sm btn-ghost" data-jsfall="status" data-i18n="jira.sf.all">Tout cocher</button>
+                            <button type="button" class="btn btn-sm btn-ghost" data-jsfnone="status" data-i18n="jira.sf.none">Tout décocher</button>
+                        </div>
+                        <div id="jiraStatusFilterBody" class="jira-status-filter-body"></div>
+                    </div>
                 </details>
                 <details id="jiraFieldFilter" class="jira-status-filter" hidden>
                     <summary><svg class="ico ico-sm"><use href="#i-sliders"/></svg> <span data-i18n="jira.ff.title">Filtres</span> <span id="jiraFieldFilterCount" class="muted"></span></summary>
-                    <div id="jiraFieldFilterPick" class="jira-ff-pick"></div>
-                    <div id="jiraFieldFilterBody"></div>
+                    <div class="jira-sf-pop">
+                        <div id="jiraFieldFilterPick" class="jira-ff-pick"></div>
+                        <div id="jiraFieldFilterBody"></div>
+                    </div>
                 </details>
-                <div id="jiraList" class="jira-list"></div>
             </div>
-            <div id="jiraDetail" class="jira-detail"></div>
+                <div id="jiraDetail" class="jira-detail"></div>
+            </div>
         </div>
         </div>
 

@@ -207,13 +207,24 @@ const jiraBase = (cfg) => String(cfg.jira_url).trim().replace(/\/+$/, '');
 const issueUrl = (cfg, key) => `${jiraBase(cfg)}/browse/${encodeURIComponent(key)}`;
 
 // GET JSON authentifié, erreurs Jira remontées en clair (401/403 = auth, autres = status).
+/* Jira explique ses refus dans le CORPS de la réponse (`errorMessages`) : « The JQL query is
+   unbounded », « Field 'sprint' does not exist »… On les jetait, et l'utilisateur ne lisait que
+   « Jira 400 Bad Request » — de quoi ne rien pouvoir faire. */
+function detailErreur(body) {
+  try {
+    const d = JSON.parse(body || '{}');
+    const msgs = [...(d.errorMessages || []), ...Object.values(d.errors || {})].filter(Boolean);
+    return msgs.length ? ` : ${msgs.join(' · ').slice(0, 300)}` : '';
+  } catch { return body ? ` : ${String(body).slice(0, 200)}` : ''; }
+}
+
 async function jiraGet(cfg, pathAndQuery) {
   const res = await request(jiraBase(cfg) + pathAndQuery, {
     headers: { Authorization: authHeader(cfg), Accept: 'application/json' },
   });
   if (res.status === 401 || res.status === 403) throw new Error(`Jira ${res.status} : accès refusé (email/token ?)`);
   if (res.status === 404) throw new Error('Jira 404 : ressource introuvable');
-  if (res.status < 200 || res.status >= 300) throw new Error(`Jira ${res.status} ${res.statusText}`);
+  if (res.status < 200 || res.status >= 300) throw new Error(`Jira ${res.status} ${res.statusText}${detailErreur(res.body)}`);
   try { return JSON.parse(res.body); } catch { throw new Error('Jira : réponse non-JSON'); }
 }
 
@@ -317,9 +328,18 @@ async function searchByAssignees(cfg, { accountIds = [], includeDone = false, ma
   if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
   // accountId Jira : alphanumérique + `:._@|-`. On rejette le reste (anti-injection JQL) et on quote.
   const ids = (accountIds || []).map(String).filter((s) => /^[A-Za-z0-9:._@|-]{1,128}$/.test(s));
-  let jql = ids.length ? `assignee IN (${ids.map((id) => `"${id}"`).join(', ')})` : 'assignee = currentUser()';
-  if (!includeDone) jql += ' AND statusCategory != Done';
-  jql += ' ORDER BY updated DESC';
+  /* Sélection VIDE = aucune contrainte d'assigné : on prend tout ce que le compte voit, même
+     ce qui n'est affecté à personne ou à quelqu'un d'autre. Retomber sur `currentUser()`
+     revenait à ignorer ce que l'utilisateur venait de demander en décochant tout le monde. */
+  const clauses = [];
+  if (ids.length) clauses.push(`assignee IN (${ids.map((id) => `"${id}"`).join(', ')})`);
+  if (!includeDone) clauses.push('statusCategory != Done');
+  /* Jira Cloud REFUSE une recherche sans aucune contrainte (« unbounded ») : personne de coché
+     ET les terminés inclus donnerait un simple ORDER BY, rejeté en 400. On borne alors sur
+     l'activité récente — sans effet visible, la liste étant de toute façon triée par date de
+     mise à jour et plafonnée à cent résultats. */
+  if (!clauses.length) clauses.push('updated >= -365d');
+  const jql = `${clauses.join(' AND ')} ORDER BY updated DESC`;
   const data = await runSearch(cfg, jql, TICKET_FIELDS, max);
   const issues = (data.issues || []).map((i) => withUrls(cfg, issueMeta(i)));
   return { issues, total: data.total != null ? data.total : issues.length };

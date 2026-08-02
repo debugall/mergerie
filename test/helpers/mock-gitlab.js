@@ -23,6 +23,7 @@ function freshState() {
     discussions: {},         // `${project}!${iid}` -> [discussion]
     changes: {},             // `${project}!${iid}` -> [{ new_path }]
     jiraIssues: {},          // KEY -> { key, fields }
+    jiraFail: null,          // { status, body } pour forcer un refus Jira
     calls: [],               // journal { method, path, body } pour les assertions
     fail: {},                // path fragment -> { status, body } pour forcer une erreur
     mergeRefuses: false,     // vrai = GitLab répond 200 sans merger (cas réel à couvrir)
@@ -222,6 +223,8 @@ const TRANSITIONS_MOCK = [
 ];
 
 function handleJira(req, res, pathname, body = {}) {
+  // Panne Jira forcée par le test, corps compris : c'est ce corps qui doit remonter à l'écran.
+  if (state.jiraFail) return json(res, state.jiraFail.status || 500, state.jiraFail.body || {});
   const auth = req.headers.authorization || '';
   if (!auth.startsWith('Basic ')) return json(res, 401, { errorMessages: ['unauthorized'] });
   // Utilisateur courant (pour cocher « moi » par défaut).
@@ -236,6 +239,11 @@ function handleJira(req, res, pathname, body = {}) {
     if (keys) {
       const set = new Set(keys[1].split(',').map((k) => k.trim().replace(/^"|"$/g, '').toUpperCase()));
       issues = issues.filter((i) => set.has(String(i.key).toUpperCase()));
+    }
+    const asg = /assignee\s+IN\s*\(([^)]*)\)/i.exec(jql);
+    if (asg) {
+      const set = new Set(asg[1].split(',').map((a) => a.trim().replace(/^"|"$/g, '')));
+      issues = issues.filter((i) => i.fields && i.fields.assignee && set.has(i.fields.assignee.accountId));
     }
     if (/statusCategory\s*=\s*"?In Progress"?/i.test(jql)) {
       issues = issues.filter((i) => i.fields && i.fields.status

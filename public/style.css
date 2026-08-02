@@ -87,7 +87,9 @@ body {
   margin: 0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: var(--bg); color: var(--text);
 }
-header {
+/* `body >` : sans cette restriction, la règle s'appliquait à TOUT <header>, y compris celui du
+   détail d'un ticket Jira — dont le titre se retrouvait sur la même ligne que les boutons. */
+body > header {
   display: flex; align-items: center; gap: 16px; padding: 10px 18px;
   background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10;
 }
@@ -1583,6 +1585,23 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-search::placeholder { color: var(--muted); }
 .jira-list { display: flex; flex-direction: column; gap: 6px; max-height: 76vh; overflow: auto; padding-right: 2px; }
 /* Filtre par statut : liste de cases à cocher (persisté), repliable. */
+/* Les trois filtres tiennent sur UNE ligne, côte à côte. Celui qu'on ouvre prend toute la
+   largeur (`flex-basis: 100%`) : à 360 px de colonne, un panneau déplié sur un tiers de ligne
+   serait illisible, et c'est le seul moment où l'on a besoin de place. */
+.jira-filters { display: flex; gap: 6px; align-items: flex-start; }
+/* Les puces se partagent toute la largeur de la ligne, à parts égales. */
+.jira-filters > .jira-status-filter { flex: 1 1 0; min-width: 0; position: relative; }
+/* Trois puces dans 360 px : on resserre pour que le compteur « 1/3 » reste lisible — c'est lui
+   qui dit si un filtre est actif, le tronquer viderait la ligne de son sens. */
+.jira-filters > .jira-status-filter { padding: 4px 10px; }
+.jira-filters > .jira-status-filter > summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; gap: 4px; font-size: 12.5px; }
+.jira-filters > .jira-status-filter > summary .ico { flex-shrink: 0; }
+/* Le panneau FLOTTE au-dessus de la liste : c'est ce qui garde les trois filtres alignés quoi
+   qu'on ouvre. Dans le flux, déplier l'un poussait les deux autres à la ligne. */
+.jira-sf-pop { position: absolute; top: calc(100% + 5px); left: 0; z-index: 20;
+  min-width: 260px; max-width: 340px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 8px 10px; box-shadow: var(--sh-3); }
+
 .jira-status-filter { border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px; }
 .jira-status-filter > summary { cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .jira-status-filter-body { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; max-height: 200px; overflow: auto; }
@@ -1609,6 +1628,7 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 /* L'epic est un RATTACHEMENT, pas le sujet de la carte : il reste sur une ligne, discret,
    au-dessus du résumé qui garde tout son poids visuel. Les deux couleurs suivent le thème. */
 /* Filtre générique : un bloc par critère, visuellement rattaché au panneau des filtres. */
+.jira-sf-actions { display: flex; gap: 6px; margin: 6px 0 2px; }
 .jira-ff-pick { padding: 6px 8px; }
 .jira-ff-crit { border-top: 1px solid var(--line); padding: 8px; }
 .jira-ff-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
@@ -1620,6 +1640,8 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-item-epic code { font-family: var(--ff-mono); font-weight: 700; color: var(--accent, #4f9cf9); }
 .jira-item-epic .ico { flex-shrink: 0; opacity: .7; }
 /* Le lien vers Jira n'existe que dans le DÉTAIL : dans la liste, l'epic reste une information. */
+.jira-key-link { color: var(--accent, #4f9cf9); text-decoration: none; }
+.jira-key-link:hover { text-decoration: underline; }
 .jira-epic-link { color: var(--accent, #4f9cf9); text-decoration: none; }
 .jira-epic-link:hover { text-decoration: underline; }
 .jira-item-summary { font-weight: 600; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1632,6 +1654,9 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-status-done { background: color-mix(in srgb, var(--ok, #2e7d32) 20%, transparent); color: var(--ok, #2e7d32); }
 
 /* Détail : liseré de catégorie en tête, sections aérées. */
+/* Colonne de droite : la ligne de filtres, puis le détail. Les filtres y ont toute la largeur —
+   dans la colonne de gauche, trois puces se disputaient 360 px et le compteur se faisait rogner. */
+.jira-detail-col { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .jira-detail { flex: 1 1 auto; min-width: 0; }
 .jira-detail-inner { border: 1px solid var(--line); border-top: 3px solid var(--muted, #888); border-radius: 12px; padding: 18px 20px; max-height: 78vh; overflow: auto; }
 .jira-detail-inner.jira-cat-progress { border-top-color: var(--accent, #4f9cf9); }

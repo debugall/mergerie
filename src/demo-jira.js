@@ -83,8 +83,10 @@ function assignees() { return { me: ME, people: PEOPLE }; }
 
 // Tickets des personnes cochées (accountIds) ; vide → mes tickets.
 function tickets(accountIds, includeDone) {
-  const set = (accountIds && accountIds.length) ? new Set(accountIds) : new Set([ME.accountId]);
-  const list = (includeDone ? [...ISSUES, ...DONE] : ISSUES).filter((i) => i.assignee && set.has(i.assignee.accountId));
+  // Vide = aucune contrainte d'assigné (même règle qu'en réel), pas « mes tickets ».
+  const set = (accountIds && accountIds.length) ? new Set(accountIds) : null;
+  const tous = includeDone ? [...ISSUES, ...DONE] : ISSUES;
+  const list = set ? tous.filter((i) => i.assignee && set.has(i.assignee.accountId)) : tous;
   return { issues: list.map(meta), total: list.length };
 }
 
@@ -133,4 +135,6 @@ function inProgressMine() {
     && i.assignee && i.assignee.accountId === 'me-001').length;
 }
 
-module.exports = { assignees, tickets, issue, attachmentFile, inProgressMine, applyTransition };
+const issueUrl = (key) => `https://jira.demo/browse/${key}`;
+
+module.exports = { assignees, tickets, issue, attachmentFile, inProgressMine, applyTransition, issueUrl };

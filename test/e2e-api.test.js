@@ -530,6 +530,55 @@ describe('API de bout en bout', () => {
     delete app.state.jiraIssues['WATCH-1'];
   });
 
+  test('Jira : sans assigné coché, on prend TOUT — y compris ce qui ne m’est pas affecté', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    const tk = (key, accountId) => ({
+      key,
+      fields: {
+        summary: key, status: { name: 'À faire', statusCategory: { key: 'new' } },
+        ...(accountId ? { assignee: { accountId, displayName: accountId } } : {}),
+      },
+    });
+    app.state.jiraIssues['ASG-1'] = tk('ASG-1', 'me-test');    // à moi
+    app.state.jiraIssues['ASG-2'] = tk('ASG-2', 'autre-001');  // à quelqu'un d'autre
+    app.state.jiraIssues['ASG-3'] = tk('ASG-3', null);         // à personne
+
+    const cles = (b) => b.issues.map((i) => i.key).filter((k) => k.startsWith('ASG-')).sort();
+
+    // Une sélection explicite reste une sélection.
+    const moi = await app.api('GET', '/api/jira/tickets?assignees=me-test');
+    assert.deepEqual(cles(moi.body), ['ASG-1']);
+
+    /* Vide = aucune contrainte d'assigné. Avant, le serveur retombait sur `currentUser()` :
+       décocher tout le monde ramenait ses propres tickets, soit l'inverse de la demande. */
+    const tout = await app.api('GET', '/api/jira/tickets?assignees=');
+    assert.deepEqual(cles(tout.body), ['ASG-1', 'ASG-2', 'ASG-3'],
+      'le non-assigné et celui d’autrui doivent remonter');
+
+    /* Personne de coché ET les terminés inclus : sans contrainte, la JQL se réduirait à un
+       ORDER BY, que Jira Cloud refuse en 400 (« unbounded »). On vérifie donc qu'une clause
+       est bien présente — c'est la requête envoyée qui compte, pas la réponse du faux Jira. */
+    app.state.calls.length = 0;
+    await app.api('GET', '/api/jira/tickets?assignees=&includeDone=1');
+    const rech = app.state.calls.filter((c) => c.path.includes('/search')).pop();
+    const jql = decodeURIComponent(new URL(`http://x${rech.path}`).searchParams.get('jql'));
+    assert.ok(!/^\s*ORDER BY/i.test(jql), `JQL sans contrainte : ${jql}`);
+    assert.match(jql, /updated >= -365d/);
+
+    for (const k of ['ASG-1', 'ASG-2', 'ASG-3']) delete app.state.jiraIssues[k];
+  });
+
+  test('Jira : un refus de Jira remonte SON message, pas seulement le code', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    // Le faux Jira renvoie un 400 avec le corps que renvoie le vrai.
+    app.state.jiraFail = { status: 400, body: { errorMessages: ['The JQL query is unbounded.'] } };
+    const r = await app.api('GET', '/api/jira/tickets?assignees=');
+    assert.equal(r.status, 400);
+    assert.match(r.body.error, /The JQL query is unbounded/,
+      'sans le corps, l’utilisateur ne lit que « Jira 400 Bad Request » et ne peut rien en faire');
+    delete app.state.jiraFail;
+  });
+
   test('Jira : l’epic d’un ticket est exposé, et un parent qui n’en est pas un ne l’est pas', async () => {
     await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
     const parent = (key, type, niveau) => ({
