@@ -7086,7 +7086,7 @@ const notifPermission = () => (notifSupported() ? Notification.permission : 'uns
 
 // Navigation au clic : ramène au bon endroit via le routage d'onglets existant.
 /* ============ Onglet Jira : mes tickets affectés (liste → détail) ============ */
-const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null, space: null };
+const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null };
 const JIRA_CAT = { new: 'todo', indeterminate: 'progress', done: 'done' };
 
 function jiraStatusChip(it) {
@@ -7145,79 +7145,6 @@ function jiraPasseFiltres(it, filtres, champs = JIRA_CHAMPS) {
   return true;
 }
 
-
-/* ---------- Jira : filtre « Espace » -------------------------------------------
-   L'espace est un champ PERSONNALISÉ : son identifiant (`customfield_10101`) diffère d'une
-   instance à l'autre. Le serveur le repère par son nom et nous le donne ; on ne le devine pas.
-
-   Comme pour les statuts, on mémorise les valeurs MASQUÉES : par défaut tout s'affiche, et un
-   espace nouvellement apparu ne se retrouve pas caché sans qu'on l'ait demandé. */
-const JIRA_ESPACE_KEY = 'aidevtools_jira_espaces_caches';
-function jiraEspacesCaches() { try { return new Set(JSON.parse(localStorage.getItem(JIRA_ESPACE_KEY) || '[]')); } catch { return new Set(); } }
-function setJiraEspacesCaches(set) { try { localStorage.setItem(JIRA_ESPACE_KEY, JSON.stringify([...set])); } catch { /* stockage indisponible */ } }
-
-// Valeurs d'espace portées par un ticket (déjà normalisées côté serveur en { v, l }).
-function jiraEspacesDe(it) {
-  const id = JIRA.space && JIRA.space.id;
-  return id ? ((it.custom && it.custom[id]) || []) : [];
-}
-function jiraPasseEspace(it, caches) {
-  if (!caches || !caches.size) return true;
-  const siens = jiraEspacesDe(it);
-  // Un ticket SANS espace reste visible : masquer « Boutique » ne veut pas dire masquer
-  // tout ce qui n'a pas d'espace du tout.
-  if (!siens.length) return true;
-  return siens.some((x) => !caches.has(x.v));
-}
-
-function jiraEspacesDistincts() {
-  const par = new Map();
-  for (const it of JIRA.issues) {
-    for (const { v, l } of jiraEspacesDe(it)) {
-      const e = par.get(v) || { v, l, n: 0 };
-      e.n += 1; par.set(v, e);
-    }
-  }
-  return [...par.values()].sort((a, b) => a.l.localeCompare(b.l, undefined, { numeric: true }));
-}
-
-function jiraFilterEspaceSearch() {
-  const q = (($('#jiraSpaceSearch') && $('#jiraSpaceSearch').value) || '').toLowerCase().trim();
-  $$('#jiraSpaceFilterBody .jira-sf-item').forEach((it) => { it.hidden = !!q && !it.textContent.toLowerCase().includes(q); });
-}
-
-function renderJiraSpaceFilter() {
-  const det = $('#jiraSpaceFilter'); const body = $('#jiraSpaceFilterBody'); if (!det || !body) return;
-  const vals = jiraEspacesDistincts();
-  // Ni champ « espace » dans l'instance, ni valeur à proposer : le filtre n'a rien à dire.
-  det.hidden = !JIRA.space || vals.length === 0;
-  if (det.hidden) return;
-  const lbl = $('#jiraSpaceFilterLabel');
-  if (lbl) lbl.textContent = JIRA.space.name;   // le nom vient de l'instance, pas d'une traduction
-  const caches = jiraEspacesCaches();
-  body.innerHTML = vals.map((x) => `<label class="jira-sf-item">
-      <input type="checkbox" value="${esc(x.v)}"${caches.has(x.v) ? '' : ' checked'} />
-      <span>${esc(x.l)}</span> <span class="muted">${x.n}</span></label>`).join('');
-  const cnt = $('#jiraSpaceFilterCount');
-  if (cnt) cnt.textContent = tr('jira.status-filter-count', { shown: vals.filter((x) => !caches.has(x.v)).length, total: vals.length });
-  jiraFilterEspaceSearch();  // conserve la recherche courante après reconstruction
-}
-
-$('#jiraSpaceFilterBody') && $('#jiraSpaceFilterBody').addEventListener('change', (e) => {
-  const cb = e.target.closest('input[type="checkbox"]'); if (!cb) return;
-  const caches = jiraEspacesCaches();
-  if (cb.checked) caches.delete(cb.value); else caches.add(cb.value);
-  setJiraEspacesCaches(caches);
-  renderJiraSpaceFilter();
-  renderJiraList();
-});
-$('#jiraSpaceSearch') && $('#jiraSpaceSearch').addEventListener('input', jiraFilterEspaceSearch);
-$$('[data-jsfall="space"], [data-jsfnone="space"]').forEach((b) => b.addEventListener('click', () => {
-  const tout = !!b.dataset.jsfall;
-  setJiraEspacesCaches(new Set(tout ? [] : jiraEspacesDistincts().map((x) => x.v)));
-  renderJiraSpaceFilter();
-  renderJiraList();
-}));
 
 const JIRA_FF_KEY = 'aidevtools_jira_filtres';
 function jiraFiltres() {
@@ -7331,9 +7258,8 @@ function jiraVisibleIssues() {
   // L'epic entre dans la recherche : « montre-moi les tickets de tel epic » est une demande courante.
   const foin = (it) => `${it.key} ${it.summary} ${it.epic ? `${it.epic.key} ${it.epic.summary}` : ''}`.toLowerCase();
   const filtres = jiraFiltres();
-  const espaces = jiraEspacesCaches();
   return JIRA.issues.filter((it) => (!q || foin(it).includes(q)) && !hidden.has(it.status)
-    && jiraPasseEspace(it, espaces) && jiraPasseFiltres(it, filtres));
+    && jiraPasseFiltres(it, filtres));
 }
 function jiraUpdateStatusFilterCount() {
   const el = $('#jiraStatusFilterCount'); if (!el) return;
@@ -7526,9 +7452,6 @@ async function loadJira() {
     return;
   }
   JIRA.me = a.me; JIRA.people = a.people || [];
-  // Champs personnalisés de l'instance : sans eux, le filtre ne proposerait que les standards.
-  // Champ « espace » de l'instance : repéré par le serveur, jamais deviné ici.
-  try { JIRA.space = (await api('/jira/fields')).space || null; } catch { JIRA.space = null; }
   renderJiraAssigneeFilter();
   // La liste surveillée est chargée AVEC l'onglet : le bouton « Surveiller » du détail doit
   // connaître l'état réel dès le premier rendu, sinon il propose d'ajouter un ticket déjà suivi.
@@ -7541,16 +7464,13 @@ async function loadJiraTickets() {
   $('#jiraList').innerHTML = skeleton(3);
   const done = $('#jiraIncludeDone').checked ? 1 : 0;
   const assignees = [...jiraCheckedSet()].join(',');
-  // L'espace est un champ personnalisé : il faut le réclamer, sinon ses valeurs n'arrivent pas.
-  const extra = JIRA.space ? JIRA.space.id : '';
   let d;
-  try { d = await api(`/jira/tickets?assignees=${encodeURIComponent(assignees)}&includeDone=${done}&extra=${encodeURIComponent(extra)}`); }
+  try { d = await api(`/jira/tickets?assignees=${encodeURIComponent(assignees)}&includeDone=${done}`); }
   catch (e) { $('#jiraList').innerHTML = ''; $('#jiraError').innerHTML = errorBox(explainError(e.message)); return; }
   JIRA.issues = d.issues || [];
   JIRA.selectedKey = null;
   $('#jiraInfo').textContent = tr('jira.count', { n: JIRA.issues.length, count: JIRA.issues.length });
   renderJiraStatusFilter();
-  renderJiraSpaceFilter();
   renderJiraFieldFilter();
   renderJiraList();
   const vis = jiraVisibleIssues();

@@ -506,34 +506,10 @@ app.get('/api/jira/assignees', wrap(async (req, res) => {
 // vide = mes tickets). Filtre statut fait côté client.
 app.get('/api/jira/tickets', wrap(async (req, res) => {
   const accountIds = String(req.query.assignees || '').split(',').map((s) => s.trim()).filter(Boolean);
-  // Champ « espace » réclamé par le filtre dédié : en plus des champs de base.
-  const extra = String(req.query.extra || '').split(',').map((x) => x.trim()).filter(jira.champPersoValide);
-  if (demoDocker.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1', extra) });
+  if (demoDocker.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1') });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, issues: [], total: 0 });
-  res.json({ configured: true, ...(await jira.searchByAssignees(cfg, { accountIds, includeDone: req.query.includeDone === '1', extra })) });
-}));
-
-/* Champs personnalisés de l'instance, pour que le filtre générique propose CEUX de
-   l'utilisateur (sprint, espace, équipe…) plutôt qu'une liste devinée. */
-app.get('/api/jira/fields', wrap(async (req, res) => {
-  if (demoDocker.isDemo()) {
-    const f = demoJira.fields();
-    return res.json({ configured: true, fields: f, space: jira.detectSpaceField(f) });
-  }
-  const cfg = getConfig();
-  if (!jira.isConfigured(cfg)) return res.json({ configured: false, fields: [], space: null });
-  try {
-    /* Le repérage de l'espace se fait sur TOUS les champs, le filtre générique sur le
-       sous-ensemble filtrable. `all` sert aussi de diagnostic quand rien n'est trouvé. */
-    const all = await jira.allFields(cfg);
-    const space = jira.detectSpaceField(all);
-    res.json({
-      configured: true, fields: jira.filterableFields(all), space,
-      ...(space ? {} : { candidats: all.map((f) => f.name).slice(0, 400) }),
-    });
-  // Un droit manquant sur /field ne doit pas priver l'onglet de ses filtres de base.
-  } catch (e) { res.json({ configured: true, fields: [], space: null, error: String(e.message).slice(0, 200) }); }
+  res.json({ configured: true, ...(await jira.searchByAssignees(cfg, { accountIds, includeDone: req.query.includeDone === '1' })) });
 }));
 
 // Détail d'un ticket Jira : métadonnées + description + commentaires + pièces jointes.

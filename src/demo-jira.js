@@ -6,7 +6,6 @@ const ISSUES = [
   {
     key: 'PROJ-1421', summary: 'Le panier perd les articles après reconnexion', type: 'Bug', typeIcon: '',
     epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
-    perso: { customfield_10020: [{ v: '42', l: 'Sprint 42' }], customfield_10101: [{ v: 'boutique', l: 'Boutique' }] },
     status: 'En cours', statusCategory: 'indeterminate', priority: 'Haute',
     assignee: { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
     reporter: { name: 'Support N2', email: 'support@demo', avatar: '' },
@@ -25,7 +24,6 @@ const ISSUES = [
   },
   {
     key: 'PROJ-1408', summary: 'Ajouter le paiement en 3× sans frais', type: 'Story', typeIcon: '',
-    perso: { customfield_10020: [{ v: '42', l: 'Sprint 42' }], customfield_10101: [{ v: 'paiement', l: 'Paiement' }] },
     epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
     status: 'À faire', statusCategory: 'new', priority: 'Moyenne',
     assignee: { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
@@ -40,7 +38,6 @@ const ISSUES = [
   },
   {
     key: 'PROJ-1390', summary: 'Migrer les logs vers le nouveau format JSON', type: 'Tâche', typeIcon: '',
-    perso: { customfield_10020: [{ v: '43', l: 'Sprint 43' }], customfield_10101: [{ v: 'plateforme', l: 'Plateforme' }] },
     epic: { key: 'PROJ-1050', summary: 'Observabilité : logs et métriques', color: 'blue' },
     status: 'En revue', statusCategory: 'indeterminate', priority: 'Basse',
     assignee: { accountId: 'usr-002', name: 'Alex Martin', email: 'alex@demo', avatar: '' },
@@ -67,13 +64,11 @@ const DONE = [
   },
 ];
 
-const meta = (i, perso = []) => {
-  const { descriptionMd, comments, attachments, perso: valeurs, ...m } = i; // la liste ne porte pas ces 3-là
+const meta = (i) => {
+  const { descriptionMd, comments, attachments, ...m } = i; // la liste ne porte pas ces 3-là
   // L'epic porte SA propre URL, comme en réel : c'est ce qui le rend cliquable.
   const epic = m.epic ? { ...m.epic, url: `https://jira.demo/browse/${m.epic.key}` } : null;
-  // Même forme qu'en réel : { id du champ: [{ v, l }] }, vide si le champ n'est pas demandé.
-  const custom = Object.fromEntries((perso || []).map((id) => [id, (valeurs && valeurs[id]) || []]));
-  return { ...m, epic, custom, url: `https://jira.demo/browse/${i.key}` };
+  return { ...m, epic, url: `https://jira.demo/browse/${i.key}` };
 };
 
 const ME = { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' };
@@ -83,25 +78,16 @@ const PEOPLE = [
   { accountId: 'usr-003', name: 'Sam Durand', email: 'sam@demo', avatar: '' },
 ];
 
-/* Champs personnalisés de l'instance fictive. Deux identifiants numérotés comme en vrai :
-   ils changent d'une instance à l'autre, la démo doit le refléter plutôt que d'inventer des
-   noms lisibles qui laisseraient croire à des champs standards. */
-const CHAMPS_PERSO = [
-  { id: 'customfield_10020', name: 'Sprint', type: 'array' },
-  { id: 'customfield_10101', name: 'Espace', type: 'option' },
-];
-function fields() { return CHAMPS_PERSO.map((f) => ({ ...f })); }
-
 // Filtre par assigné : « moi » + les collègues (démo).
 function assignees() { return { me: ME, people: PEOPLE }; }
 
 // Tickets des personnes cochées (accountIds) ; vide → mes tickets.
-function tickets(accountIds, includeDone, extra = []) {
+function tickets(accountIds, includeDone) {
   // Vide = aucune contrainte d'assigné (même règle qu'en réel), pas « mes tickets ».
   const set = (accountIds && accountIds.length) ? new Set(accountIds) : null;
   const tous = includeDone ? [...ISSUES, ...DONE] : ISSUES;
   const list = set ? tous.filter((i) => i.assignee && set.has(i.assignee.accountId)) : tous;
-  return { issues: list.map((i) => meta(i, extra)), total: list.length };
+  return { issues: list.map(meta), total: list.length };
 }
 
 // Transitions (changements d'état) proposées en démo.
@@ -151,4 +137,4 @@ function inProgressMine() {
 
 const issueUrl = (key) => `https://jira.demo/browse/${key}`;
 
-module.exports = { assignees, tickets, issue, attachmentFile, inProgressMine, applyTransition, issueUrl, fields };
+module.exports = { assignees, tickets, issue, attachmentFile, inProgressMine, applyTransition, issueUrl };

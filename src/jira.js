@@ -243,7 +243,7 @@ async function runSearch(cfg, jql, fields, max = 50) {
 }
 
 // Métadonnées d'un ticket depuis l'objet issue (partagé liste + détail).
-function issueMeta(data, perso = []) {
+function issueMeta(data) {
   const f = data.fields || {};
   const person = personOf;
   return {
@@ -264,8 +264,6 @@ function issueMeta(data, perso = []) {
     components: (f.components || []).map((c) => c.name),
     fixVersions: (f.fixVersions || []).map((v) => v.name),
     epic: epicOf(f),
-    // { customfield_10020: [{ v, l }] } — vide si le champ n'a pas été demandé.
-    custom: Object.fromEntries((perso || []).map((id) => [id, valeursPerso(f[id])])),
   };
 }
 
@@ -300,68 +298,6 @@ function epicOf(f) {
 
 const TICKET_FIELDS = 'summary,status,priority,issuetype,assignee,reporter,created,updated,labels,project,duedate,parent';
 
-/* ---------- Champs personnalisés (sprint, espace, équipe…) --------------------
-   Leur identifiant (`customfield_10020`) CHANGE d'une instance à l'autre : le coder en dur
-   marcherait chez l'un et pas chez l'autre. On interroge donc l'instance, et l'utilisateur
-   choisit dans SES champs.
-
-   `customfield_\d+` est la seule forme acceptée : cet identifiant part dans la requête `fields`
-   de l'API, il ne doit pas pouvoir y injecter autre chose. */
-const CHAMP_PERSO = /^customfield_\d+$/;
-const champPersoValide = (id) => CHAMP_PERSO.test(String(id || ''));
-
-/* Types de champs sur lesquels filtrer a un sens : on veut des valeurs qui SE RÉPÈTENT d'un
-   ticket à l'autre. Un champ texte libre ou une date donnerait autant de valeurs que de
-   tickets — une liste déroulante inutilisable. */
-const TYPES_FILTRABLES = new Set(['option', 'array', 'user', 'version', 'component', 'priority',
-  'resolution', 'group', 'project', 'issuetype', 'status', 'securitylevel', 'number']);
-
-/* Le champ « espace » n'a pas d'identifiant stable : on le repère par son NOM, dans les deux
-   langues de l'interface. Repérage insensible aux accents et à la casse — « Espace », « espace »,
-   « Space » désignent la même chose. Rien trouvé = pas de filtre, plutôt qu'un mauvais champ. */
-const NOMS_ESPACE = ['espace', 'espaces', 'space', 'spaces', 'espace de travail', 'workspace'];
-function detectSpaceField(fields) {
-  const norme = (x) => String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-  // Correspondance EXACTE sur le nom : « Espace disque » n'est pas l'espace Jira.
-  const trouve = (fields || []).find((f) => NOMS_ESPACE.includes(norme(f.name)));
-  return trouve ? { id: trouve.id, name: trouve.name } : null;
-}
-
-// Champs de l'instance utilisables comme filtre, triés par nom.
-/* TOUS les champs de l'instance, normalisés. Le repérage de l'espace doit se faire ici, sur la
-   liste brute : le chercher dans la liste déjà filtrée le manquait dès que son type sortait de
-   la liste blanche ou qu'il s'agissait d'un champ système. */
-async function allFields(cfg) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
-  const data = await jiraGet(cfg, '/rest/api/3/field');
-  return (Array.isArray(data) ? data : [])
-    .filter((f) => f && f.id)
-    .map((f) => ({ id: f.id, name: f.name || f.id, custom: !!f.custom, type: (f.schema && f.schema.type) || '' }))
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-}
-
-// Sous-ensemble utilisable comme filtre générique : champs personnalisés à valeurs répétables.
-function filterableFields(fields) {
-  return (fields || [])
-    .filter((f) => f.custom && champPersoValide(f.id) && TYPES_FILTRABLES.has(f.type));
-}
-
-async function listFields(cfg) { return filterableFields(await allFields(cfg)); }
-
-/* Valeurs d'un champ personnalisé, ramenées à des couples { v, l }. Jira y met de tout : une
-   chaîne, un nombre, un objet { value } (liste de choix), { name } (sprint, version, équipe),
-   { displayName } (personne), ou un tableau de ces choses. On accepte les quatre plutôt que
-   d'en privilégier une : le champ « sprint » de l'un est le champ « équipe » de l'autre. */
-function valeursPerso(brut) {
-  const un = (x) => {
-    if (x == null) return null;
-    if (typeof x === 'string' || typeof x === 'number') return { v: String(x), l: String(x) };
-    const l = x.value || x.name || x.displayName || x.key || null;
-    return l ? { v: String(x.id != null ? x.id : l), l: String(l) } : null;
-  };
-  return (Array.isArray(brut) ? brut : [brut]).map(un).filter(Boolean);
-}
-
 // Identité de l'utilisateur courant (pour cocher « moi » par défaut dans le filtre par assigné).
 async function myself(cfg) {
   const data = await jiraGet(cfg, '/rest/api/3/myself');
@@ -388,7 +324,7 @@ async function listAssignees(cfg) {
 
 // Tickets assignés aux personnes demandées (accountIds). Vide → `assignee = currentUser()` (moi).
 // Écarte les terminés sauf `includeDone`. Triés du plus récemment mis à jour au plus ancien.
-async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = 100, extra = [] } = {}) {
+async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = 100 } = {}) {
   if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
   // accountId Jira : alphanumérique + `:._@|-`. On rejette le reste (anti-injection JQL) et on quote.
   const ids = (accountIds || []).map(String).filter((s) => /^[A-Za-z0-9:._@|-]{1,128}$/.test(s));
@@ -404,10 +340,8 @@ async function searchByAssignees(cfg, { accountIds = [], includeDone = false, ma
      mise à jour et plafonnée à cent résultats. */
   if (!clauses.length) clauses.push('updated >= -365d');
   const jql = `${clauses.join(' AND ')} ORDER BY updated DESC`;
-  // Champs personnalisés demandés par le filtre : réclamés en plus, jamais à la place.
-  const perso = [...new Set((extra || []).map(String).filter(champPersoValide))];
-  const data = await runSearch(cfg, jql, [TICKET_FIELDS, ...perso].join(','), max);
-  const issues = (data.issues || []).map((i) => withUrls(cfg, issueMeta(i, perso)));
+  const data = await runSearch(cfg, jql, TICKET_FIELDS, max);
+  const issues = (data.issues || []).map((i) => withUrls(cfg, issueMeta(i)));
   return { issues, total: data.total != null ? data.total : issues.length };
 }
 
@@ -572,4 +506,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, statusOfKeys, listFields, allFields, filterableFields, champPersoValide, detectSpaceField, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, statusOfKeys, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };

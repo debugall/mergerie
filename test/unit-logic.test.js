@@ -515,21 +515,6 @@ describe('front : filtre Jira par champ', () => {
   });
 });
 
-describe('jira : repérage du champ « espace »', () => {
-  test('repéré par son nom, dans les deux langues et sans se laisser arrêter par l’accent', () => {
-    assert.deepEqual(jira.detectSpaceField([{ id: 'cf_9', name: 'Espace' }]), { id: 'cf_9', name: 'Espace' });
-    assert.deepEqual(jira.detectSpaceField([{ id: 'cf_9', name: 'space' }]), { id: 'cf_9', name: 'space' });
-    assert.deepEqual(jira.detectSpaceField([{ id: 'cf_9', name: ' ESPACE ' }]), { id: 'cf_9', name: ' ESPACE ' });
-  });
-
-  test('rien trouvé = pas de filtre, plutôt qu’un champ pris au hasard', () => {
-    // Un « Espace disque » n'est pas l'espace Jira : la correspondance est EXACTE.
-    assert.equal(jira.detectSpaceField([{ id: 'cf_1', name: 'Espace disque' }, { id: 'cf_2', name: 'Équipe' }]), null);
-    assert.equal(jira.detectSpaceField([]), null);
-    assert.equal(jira.detectSpaceField(null), null);
-  });
-});
-
 /* Séquences ANSI dans les logs. Le cas qui a motivé ce nettoyage : une application dans un
    container colore sa sortie, `docker logs` la relaie telle quelle, et le panneau affichait
    « ␛[34mdebug␛[39m » — chaque ligne noyée sous ses propres octets d'échappement. */
