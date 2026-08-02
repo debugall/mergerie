@@ -7086,7 +7086,7 @@ const notifPermission = () => (notifSupported() ? Notification.permission : 'uns
 
 // Navigation au clic : ramène au bon endroit via le routage d'onglets existant.
 /* ============ Onglet Jira : mes tickets affectés (liste → détail) ============ */
-const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null };
+const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null, total: null };
 const JIRA_CAT = { new: 'todo', indeterminate: 'progress', done: 'done' };
 
 function jiraStatusChip(it) {
@@ -7128,7 +7128,7 @@ const JIRA_CHAMPS = [
   { cle: 'epic', i18n: 'jira.meta.epic', vals: (it) => (it.epic ? [{ v: it.epic.key, l: `${it.epic.key} — ${it.epic.summary}` }] : []) },
   { cle: 'type', i18n: 'jira.meta.type', vals: (it) => (it.type ? [{ v: it.type, l: it.type }] : []) },
   { cle: 'priority', i18n: 'jira.meta.priority', vals: (it) => (it.priority ? [{ v: it.priority, l: it.priority }] : []) },
-  { cle: 'project', i18n: 'jira.meta.project', vals: (it) => (it.project ? [{ v: it.project, l: it.project }] : []) },
+  { cle: 'project', i18n: 'jira.meta.project', vals: (it) => (it.projectKey ? [{ v: it.projectKey, l: it.project || it.projectKey }] : []) },
   { cle: 'reporter', i18n: 'jira.meta.reporter', vals: (it) => (it.reporter && it.reporter.name ? [{ v: it.reporter.name, l: it.reporter.name }] : []) },
   { cle: 'assignee', i18n: 'jira.meta.assignee', vals: (it) => (it.assignee && it.assignee.name ? [{ v: it.assignee.name, l: it.assignee.name }] : []) },
   { cle: 'labels', i18n: 'jira.meta.labels', vals: (it) => (it.labels || []).map((x) => ({ v: x, l: x })) },
@@ -7148,8 +7148,15 @@ function jiraPasseFiltres(it, filtres, champs = JIRA_CHAMPS) {
 
 const JIRA_FF_KEY = 'aidevtools_jira_filtres';
 function jiraFiltres() {
-  try { const v = JSON.parse(localStorage.getItem(JIRA_FF_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; }
-  catch { return {}; }
+  try {
+    const v = JSON.parse(localStorage.getItem(JIRA_FF_KEY) || '{}');
+    if (!v || typeof v !== 'object') return {};
+    /* Le critère « projet » a stocké un temps le libellé « CLE — Nom » ; il porte désormais la
+       CLÉ, seule forme qu'on puisse envoyer à Jira. On convertit à la lecture, sinon une
+       sélection enregistrée ne correspondrait plus à rien et masquerait tout. */
+    if (Array.isArray(v.project)) v.project = v.project.map((x) => String(x).split(' — ')[0]);
+    return v;
+  } catch { return {}; }
 }
 function setJiraFiltres(f) { try { localStorage.setItem(JIRA_FF_KEY, JSON.stringify(f)); } catch { /* stockage indisponible */ } }
 
@@ -7225,6 +7232,8 @@ $('#jiraFieldFilterBody') && $('#jiraFieldFilterBody').addEventListener('change'
   if (cb.checked) set.add(cb.value); else set.delete(cb.value);
   f[cle] = [...set];
   setJiraFiltres(f);
+  // Le projet est appliqué par Jira : changer la sélection change la requête, pas l'affichage.
+  if (cle === 'project') { loadJiraTickets(); return; }
   // On ne redessine PAS le critère : cela replierait la recherche en cours et ferait
   // sauter le focus. Seuls le compteur et la liste des tickets bougent.
   const tete = cb.closest('.jira-ff-crit').querySelector('.jira-ff-head .muted');
@@ -7237,8 +7246,10 @@ $('#jiraFieldFilterBody') && $('#jiraFieldFilterBody').addEventListener('change'
 $('#jiraFieldFilterBody') && $('#jiraFieldFilterBody').addEventListener('click', (e) => {
   const b = e.target.closest('[data-ffdel]'); if (!b) return;
   const f = jiraFiltres();
+  const avaitProjet = b.dataset.ffdel === 'project' && (f.project || []).length;
   delete f[b.dataset.ffdel];
   setJiraFiltres(f);
+  if (avaitProjet) { loadJiraTickets(); return; }
   renderJiraFieldFilter();
   renderJiraList();
 });
@@ -7288,7 +7299,13 @@ function renderJiraList() {
   const box = $('#jiraList'); if (!box) return;
   const items = jiraVisibleIssues();
   // Compteur = nombre de tickets APRÈS filtres (assigné côté serveur + statut/recherche côté client).
-  if ($('#jiraInfo')) $('#jiraInfo').textContent = tr('jira.count', { n: items.length, count: items.length });
+  if ($('#jiraInfo')) {
+    /* Jira plafonne à cent résultats, triés par date de mise à jour. Sans le dire, on croit voir
+       « tous » les tickets et on s'étonne qu'un filtre en fasse disparaître. */
+    const tronque = JIRA.total != null && JIRA.total > JIRA.issues.length;
+    $('#jiraInfo').textContent = tr('jira.count', { n: items.length, count: items.length })
+      + (tronque ? ` · ${tr('jira.truncated', { total: JIRA.total, shown: JIRA.issues.length })}` : '');
+  }
   if (!items.length) { box.innerHTML = `<p class="muted jira-empty">${esc(tr('jira.no-match'))}</p>`; return; }
   box.innerHTML = items.map((it) => `<button class="jira-item jira-cat-${JIRA_CAT[it.statusCategory] || 'todo'}${it.key === JIRA.selectedKey ? ' active' : ''}" data-jira="${esc(it.key)}">
       <div class="jira-item-row1"><code class="jira-key">${esc(it.key)}</code> ${jiraStatusChip(it)}</div>
@@ -7464,10 +7481,13 @@ async function loadJiraTickets() {
   $('#jiraList').innerHTML = skeleton(3);
   const done = $('#jiraIncludeDone').checked ? 1 : 0;
   const assignees = [...jiraCheckedSet()].join(',');
+  // Les projets cochés sont appliqués PAR Jira : filtrer après coup ne verrait qu'un extrait.
+  const projects = (jiraFiltres().project || []).join(',');
   let d;
-  try { d = await api(`/jira/tickets?assignees=${encodeURIComponent(assignees)}&includeDone=${done}`); }
+  try { d = await api(`/jira/tickets?assignees=${encodeURIComponent(assignees)}&includeDone=${done}&projects=${encodeURIComponent(projects)}`); }
   catch (e) { $('#jiraList').innerHTML = ''; $('#jiraError').innerHTML = errorBox(explainError(e.message)); return; }
   JIRA.issues = d.issues || [];
+  JIRA.total = d.total != null ? d.total : null;
   JIRA.selectedKey = null;
   $('#jiraInfo').textContent = tr('jira.count', { n: JIRA.issues.length, count: JIRA.issues.length });
   renderJiraStatusFilter();

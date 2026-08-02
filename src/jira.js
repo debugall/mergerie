@@ -258,6 +258,7 @@ function issueMeta(data) {
     reporter: person(f.reporter),
     labels: f.labels || [],
     project: f.project ? `${f.project.key}${f.project.name ? ` — ${f.project.name}` : ''}` : '',
+    projectKey: f.project ? f.project.key : '',
     created: f.created || '',
     updated: f.updated || '',
     duedate: f.duedate || '',
@@ -324,7 +325,11 @@ async function listAssignees(cfg) {
 
 // Tickets assignés aux personnes demandées (accountIds). Vide → `assignee = currentUser()` (moi).
 // Écarte les terminés sauf `includeDone`. Triés du plus récemment mis à jour au plus ancien.
-async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = 100 } = {}) {
+/* Clé de projet Jira : lettres/chiffres, commence par une lettre. Elle part dans la JQL,
+   donc tout ce qui n'a pas cette forme est refusé plutôt que quoté et espéré. */
+const CLE_PROJET = /^[A-Za-z][A-Za-z0-9_]{0,30}$/;
+
+async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = 100, projects = [] } = {}) {
   if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
   // accountId Jira : alphanumérique + `:._@|-`. On rejette le reste (anti-injection JQL) et on quote.
   const ids = (accountIds || []).map(String).filter((s) => /^[A-Za-z0-9:._@|-]{1,128}$/.test(s));
@@ -333,6 +338,11 @@ async function searchByAssignees(cfg, { accountIds = [], includeDone = false, ma
      revenait à ignorer ce que l'utilisateur venait de demander en décochant tout le monde. */
   const clauses = [];
   if (ids.length) clauses.push(`assignee IN (${ids.map((id) => `"${id}"`).join(', ')})`);
+  /* La sélection de projets est poussée DANS la requête, pas appliquée après coup : le résultat
+     est plafonné à cent tickets triés par date de mise à jour, donc filtrer côté navigateur
+     revient à filtrer un extrait — les tickets du projet voulu peuvent n'y être même pas. */
+  const cles = [...new Set((projects || []).map(String).filter((k) => CLE_PROJET.test(k)))];
+  if (cles.length) clauses.push(`project IN (${cles.map((k) => `"${k}"`).join(', ')})`);
   if (!includeDone) clauses.push('statusCategory != Done');
   /* Jira Cloud REFUSE une recherche sans aucune contrainte (« unbounded ») : personne de coché
      ET les terminés inclus donnerait un simple ORDER BY, rejeté en 400. On borne alors sur

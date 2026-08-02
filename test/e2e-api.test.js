@@ -568,6 +568,43 @@ describe('API de bout en bout', () => {
     for (const k of ['ASG-1', 'ASG-2', 'ASG-3']) delete app.state.jiraIssues[k];
   });
 
+  test('Jira : le filtre par projet est appliqué PAR Jira, pas après coup', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    const tk = (key, projet) => ({
+      key,
+      fields: {
+        summary: key, status: { name: 'À faire', statusCategory: { key: 'new' } },
+        project: { key: projet, name: `Projet ${projet}` },
+      },
+    });
+    app.state.jiraIssues['AAA-1'] = tk('AAA-1', 'AAA');
+    app.state.jiraIssues['BBB-1'] = tk('BBB-1', 'BBB');
+
+    const cles = (b) => b.issues.map((i) => i.key).filter((k) => /^(AAA|BBB)-/.test(k)).sort();
+    assert.deepEqual(cles((await app.api('GET', '/api/jira/tickets?assignees=')).body), ['AAA-1', 'BBB-1']);
+
+    /* Le nerf du problème : le résultat Jira est plafonné et trié par date de mise à jour.
+       Filtrer côté navigateur ne filtrerait qu'un extrait — les tickets du projet voulu
+       pouvant se trouver hors de cet extrait, ils disparaissaient de la liste. */
+    const filtre = await app.api('GET', '/api/jira/tickets?assignees=&projects=AAA');
+    assert.deepEqual(cles(filtre.body), ['AAA-1']);
+
+    app.state.calls.length = 0;
+    await app.api('GET', '/api/jira/tickets?assignees=&projects=AAA');
+    const rech = app.state.calls.filter((c) => c.path.includes('/search')).pop();
+    const jql = decodeURIComponent(new URL(`http://x${rech.path}`).searchParams.get('jql'));
+    assert.match(jql, /project IN \("AAA"\)/, `la contrainte doit être dans la JQL : ${jql}`);
+
+    // Une clé qui n'en est pas une n'atteint jamais la requête.
+    app.state.calls.length = 0;
+    await app.api('GET', '/api/jira/tickets?assignees=&projects=AAA%22%20OR%20x');
+    const rech2 = app.state.calls.filter((c) => c.path.includes('/search')).pop();
+    const jql2 = decodeURIComponent(new URL(`http://x${rech2.path}`).searchParams.get('jql'));
+    assert.ok(!/ OR x/.test(jql2), `injection dans la JQL : ${jql2}`);
+
+    for (const k of ['AAA-1', 'BBB-1']) delete app.state.jiraIssues[k];
+  });
+
   test('Jira : un refus de Jira remonte SON message, pas seulement le code', async () => {
     await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
     // Le faux Jira renvoie un 400 avec le corps que renvoie le vrai.

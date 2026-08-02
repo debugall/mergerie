@@ -506,10 +506,12 @@ app.get('/api/jira/assignees', wrap(async (req, res) => {
 // vide = mes tickets). Filtre statut fait côté client.
 app.get('/api/jira/tickets', wrap(async (req, res) => {
   const accountIds = String(req.query.assignees || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (demoDocker.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1') });
+  // Projets choisis dans le filtre : appliqués par Jira, pas après coup (cf. searchByAssignees).
+  const projects = String(req.query.projects || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (demoDocker.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1', projects) });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, issues: [], total: 0 });
-  res.json({ configured: true, ...(await jira.searchByAssignees(cfg, { accountIds, includeDone: req.query.includeDone === '1' })) });
+  res.json({ configured: true, ...(await jira.searchByAssignees(cfg, { accountIds, includeDone: req.query.includeDone === '1', projects })) });
 }));
 
 // Détail d'un ticket Jira : métadonnées + description + commentaires + pièces jointes.

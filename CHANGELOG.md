@@ -108,6 +108,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Filtering by project no longer makes tickets vanish.** Narrow to your own tickets, pick the project,
+  then drop the assignee filter, and the tickets you were looking at disappeared instead of being joined
+  by their colleagues'. Jira caps a search at a hundred results ordered by last update: with no assignee
+  constraint those hundred come from the whole instance, and your project's tickets can be nowhere in
+  them — the project filter was then sifting an extract, not the project. The selected projects are now
+  part of the query Jira answers. And whenever a list is capped, the counter says so ("100 of 340 shown")
+  instead of letting it look complete.
+
 - **A Jira ticket's title no longer shares a line with the buttons above it.** A global `header` rule
   written for the app's own header applied to *every* `<header>`, including the one in the ticket detail:
   its title and chips were laid out beside the action buttons instead of below them. The rule is now

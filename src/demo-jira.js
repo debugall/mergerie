@@ -68,7 +68,9 @@ const meta = (i) => {
   const { descriptionMd, comments, attachments, ...m } = i; // la liste ne porte pas ces 3-là
   // L'epic porte SA propre URL, comme en réel : c'est ce qui le rend cliquable.
   const epic = m.epic ? { ...m.epic, url: `https://jira.demo/browse/${m.epic.key}` } : null;
-  return { ...m, epic, url: `https://jira.demo/browse/${i.key}` };
+  // Même forme qu'en réel : la CLÉ du projet à part, c'est elle qui sert de valeur de filtre.
+  const projectKey = String(m.project || '').split(' ')[0];
+  return { ...m, epic, projectKey, url: `https://jira.demo/browse/${i.key}` };
 };
 
 const ME = { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' };
@@ -82,11 +84,16 @@ const PEOPLE = [
 function assignees() { return { me: ME, people: PEOPLE }; }
 
 // Tickets des personnes cochées (accountIds) ; vide → mes tickets.
-function tickets(accountIds, includeDone) {
+function tickets(accountIds, includeDone, projects = []) {
   // Vide = aucune contrainte d'assigné (même règle qu'en réel), pas « mes tickets ».
   const set = (accountIds && accountIds.length) ? new Set(accountIds) : null;
   const tous = includeDone ? [...ISSUES, ...DONE] : ISSUES;
-  const list = set ? tous.filter((i) => i.assignee && set.has(i.assignee.accountId)) : tous;
+  let list = set ? tous.filter((i) => i.assignee && set.has(i.assignee.accountId)) : tous;
+  // Même règle qu'en réel : les projets choisis filtrent la requête, pas son résultat.
+  if (projects && projects.length) {
+    const cles = new Set(projects);
+    list = list.filter((i) => cles.has(String(i.project || '').split(' ')[0]));
+  }
   return { issues: list.map(meta), total: list.length };
 }
 

@@ -438,7 +438,11 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   bien que ni la ligne ni la liste ne bougent, et un clic à l'extérieur referme. Le panneau **Filtres**
   permet de choisir d'abord
   **le champ** (epic, type, priorité, projet, assigné, rapporteur, étiquettes, composants, versions
-  correctives) puis **une ou plusieurs valeurs**. Les valeurs proposées sont celles **réellement
+  correctives) puis **une ou plusieurs valeurs**. Le critère **Projet** fait exception : il est appliqué
+  **par Jira**, pas après coup. Jira plafonne une recherche à cent tickets triés par date de mise à jour ;
+  filtrer côté navigateur ne filtrerait donc qu'un extrait, et les tickets du projet voulu pouvaient se
+  trouver hors de cet extrait — ils disparaissaient au lieu d'apparaître. Quand la liste est plafonnée,
+  le compteur le dit (« 100 affichés sur 340 »). Les valeurs proposées sont celles **réellement
   présentes** dans les tickets chargés, avec le nombre de tickets pour chacune — proposer une valeur qui
   ne ramène rien n'aide personne. Le choix du champ et chaque liste de valeurs ont leur **recherche** ;
   celle des valeurs **masque les lignes sans rien décocher**, pour ne jamais perdre une sélection en

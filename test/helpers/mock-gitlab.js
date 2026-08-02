@@ -245,6 +245,11 @@ function handleJira(req, res, pathname, body = {}) {
       const set = new Set(asg[1].split(',').map((a) => a.trim().replace(/^"|"$/g, '')));
       issues = issues.filter((i) => i.fields && i.fields.assignee && set.has(i.fields.assignee.accountId));
     }
+    const prj = /project\s+IN\s*\(([^)]*)\)/i.exec(jql);
+    if (prj) {
+      const set = new Set(prj[1].split(',').map((k) => k.trim().replace(/^"|"$/g, '')));
+      issues = issues.filter((i) => i.fields && i.fields.project && set.has(i.fields.project.key));
+    }
     if (/statusCategory\s*=\s*"?In Progress"?/i.test(jql)) {
       issues = issues.filter((i) => i.fields && i.fields.status
         && i.fields.status.statusCategory && i.fields.status.statusCategory.key === 'indeterminate');
