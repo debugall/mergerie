@@ -1575,7 +1575,14 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 
 /* ===== Onglet Jira : mes tickets affectés (liste → détail) ===== */
 .jira-layout { display: flex; gap: 18px; align-items: flex-start; }
-.jira-list-col { flex: 0 0 360px; max-width: 42%; display: flex; flex-direction: column; gap: 10px; }
+/* Largeur FIXE, et il en faut trois morceaux pour de bon.
+
+   `flex: 0 0 360px` ne suffit pas : un élément flex a `min-width: auto`, donc il refuse de
+   descendre sous la largeur minimale de son CONTENU — un titre de ticket un peu long poussait
+   la colonne à 610 px, et elle changeait de taille au gré des filtres. `min-width: 0` lève
+   cette contrainte, `width` fixe la cible. Le `max-width: 42%` d'avant, lui, la rétrécissait
+   entre 858 et 900 px de fenêtre ; sous 900 px la mise en page s'empile (requête média plus bas). */
+.jira-list-col { flex: 0 0 360px; width: 360px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 /* Champ de recherche : habillé (fond, bordure, hauteur), avec une loupe en préfixe. */
 .jira-search { width: 100%; height: 38px; padding: 8px 12px 8px 34px; font: inherit;
   background: var(--panel2) var(--icon-search) no-repeat 11px center; color: var(--text);
@@ -1607,6 +1614,13 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-status-filter-body { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; max-height: 200px; overflow: auto; }
 .jira-sf-search { width: 100%; margin-top: 8px; padding: 6px 10px; font: inherit; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 8px; }
 .jira-sf-search:focus { border-color: var(--accent); outline: none; }
+/* Saisie d'une clé de ticket à surveiller. Sans habillage, c'était le seul champ brut du
+   navigateur au milieu de contrôles stylés. Chasse fixe : on y tape une référence, pas une phrase. */
+.jira-watch-key { width: 170px; padding: 8px 12px; font: inherit; font-family: var(--ff-mono); font-size: 13px;
+  letter-spacing: .5px; text-transform: uppercase; background: var(--panel2); border: 1px solid var(--line);
+  color: var(--text); border-radius: var(--radius); }
+.jira-watch-key::placeholder { color: var(--muted); letter-spacing: normal; }
+.jira-watch-key:focus { border-color: var(--accent); outline: none; }
 .jira-sf-item { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
 .jira-avatar-sm { flex: 0 0 22px; height: 22px; font-size: 10px; }
 
@@ -1644,7 +1658,10 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-key-link:hover { text-decoration: underline; }
 .jira-epic-link { color: var(--accent, #4f9cf9); text-decoration: none; }
 .jira-epic-link:hover { text-decoration: underline; }
-.jira-item-summary { font-weight: 600; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Le titre passe à la ligne plutôt que d'être coupé : c'est l'information qui décide si on
+   ouvre le ticket, la tronquer oblige à survoler pour la lire. `overflow-wrap: anywhere` évite
+   qu'un mot insécable (une URL, un identifiant) ne déborde de la carte. */
+.jira-item-summary { font-weight: 600; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; }
 .jira-item-foot { font-size: 11.5px; }
 .jira-key { font-family: var(--ff-mono); font-size: 12px; font-weight: 700; letter-spacing: .3px; }
 

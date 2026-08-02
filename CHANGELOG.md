@@ -117,6 +117,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The Jira ticket list no longer changes width with the tickets in it.** A long title stretched the
+  left column from 360 to 610 pixels, so filtering made the whole layout jump. A flex item refuses by
+  default to go below the width of its own content; the column now holds its size, and a long title wraps
+  onto the next line instead of being cut — it is what tells you whether to open the ticket, so hiding
+  half of it meant hovering to read it.
+- **The "watch a ticket" key box looks like the rest of the tool.** It was the one unstyled browser
+  input among styled controls. It now has the same treatment as the other fields, in a fixed-width
+  font — you type a reference there, not a sentence.
+
 - **Filtering by project no longer makes tickets vanish.** Narrow to your own tickets, pick the project,
   then drop the assignee filter, and the tickets you were looking at disappeared instead of being joined
   by their colleagues'. Jira caps a search at a hundred results ordered by last update: with no assignee
