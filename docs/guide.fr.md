@@ -22,6 +22,9 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
 
 - `Chercher les nouvelles MR` interroge la forge et remplit la liste (filtrée par pattern).
   Un **rafraîchissement automatique** optionnel le fait pour toi (voir Réglages).
+  Les dépôts dont la case **récupérer les MR** est décochée (Réglages → Dépôts) sont ignorés
+  par cette recherche : leurs merge requests déjà récupérées restent dans la file, on cesse
+  seulement d'en ramener de nouvelles. À distinguer de **actif**, qui retire le dépôt de partout.
 - `Reviewer les N MR` lance la review IA sur toute la file ; au-delà de 5, une confirmation
   rappelle que chaque MR consomme un appel IA. `Reviewer` traite une MR isolée.
 - **Review avec ou sans explication.** Par défaut, une review produit **deux choses** : le rapport

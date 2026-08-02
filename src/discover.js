@@ -31,7 +31,9 @@ const isDemo = () => process.env.MERGERIE_DEMO === '1';
 
 async function discoverAll() {
   const cfg = getConfig();
-  const repos = db.prepare('SELECT * FROM repo WHERE enabled = 1').all();
+  // `fetch_mrs = 0` : dépôt toujours actif (git, sessions), mais on ne ramène plus ses MR.
+  // COALESCE : les lignes antérieures à la migration ont la colonne à NULL.
+  const repos = db.prepare('SELECT * FROM repo WHERE enabled = 1 AND COALESCE(fetch_mrs, 1) = 1').all();
   const now = new Date().toISOString();
   const result = { repos: repos.length, found: 0, created: 0, updated: 0, errors: [] };
 

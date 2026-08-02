@@ -25,11 +25,14 @@ const at = (daysAgo) => new Date(Date.now() - daysAgo * day).toISOString();
 const AUTHORS = ['amady', 'lina', 'karim', 'sofia', 'noah'];
 // La démo mélange les deux forges : les badges GitLab/GitHub sont ainsi visibles
 // sans aucune configuration, comme dans une installation réelle multi-forge.
+/* `fetch_mrs: 0` sur un dépôt : la démo doit MONTRER qu'on peut cesser de ramener les MR
+   d'un dépôt sans le désactiver. Ses MR déjà semées restent dans la file — c'est exactement
+   le comportement réel, et c'est ce qui rend la case compréhensible. */
 const PROJECTS = [
   { project: 'groupe/api-core', url: 'https://gitlab.demo/groupe/api-core.git', forge: 'gitlab' },
   { project: 'groupe/webapp-front', url: 'https://gitlab.demo/groupe/webapp-front.git', forge: 'gitlab' },
   { project: 'groupe/batch-jobs', url: 'https://gitlab.demo/groupe/batch-jobs.git', forge: 'gitlab' },
-  { project: 'acme/design-system', url: 'https://github.com/acme/design-system.git', forge: 'github' },
+  { project: 'acme/design-system', url: 'https://github.com/acme/design-system.git', forge: 'github', fetch_mrs: 0 },
 ];
 
 // ---------- config : GitLab factice, pas de token (démo hors-ligne) ----------
@@ -39,7 +42,8 @@ db.prepare(`UPDATE config SET gitlab_url = ?, access_token = '', jira_url = ?, r
 // ---------- dépôts ----------
 const repoIds = {};
 for (const p of PROJECTS) {
-  const info = db.prepare('INSERT INTO repo (project, url, branch_pattern, enabled, created_at, forge) VALUES (?, ?, \'\', 1, ?, ?)').run(p.project, p.url, at(60), p.forge || 'gitlab');
+  const info = db.prepare('INSERT INTO repo (project, url, branch_pattern, enabled, created_at, forge, fetch_mrs) VALUES (?, ?, \'\', 1, ?, ?, ?)')
+    .run(p.project, p.url, at(60), p.forge || 'gitlab', p.fetch_mrs == null ? 1 : p.fetch_mrs);
   repoIds[p.project] = info.lastInsertRowid;
 }
 

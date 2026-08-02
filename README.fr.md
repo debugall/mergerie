@@ -37,7 +37,7 @@ npm start          # http://localhost:4319
 Au premier lancement, l'onglet **Reviews** affiche les trois étapes de démarrage, chacune avec son
 bouton. Elles correspondent à l'onglet **Réglages** :
 1. **Git** — URL GitLab + **access token** (PAT scopes `api` + `read_repository`) et/ou **token GitHub** (scope `repo`), dossier de clonage. Un bouton **Tester la connexion** par forge valide le tout. *(URL Jira et connexion Jira optionnelles : onglet **Jira**.)*
-2. **Dépôts** — ajoute-les un par un, ou en masse **depuis GitLab** ou **depuis GitHub** (coche tes projets). Laisse le **pattern vide** pour prendre **toutes** les MR, ou mets un fragment (`PROJ-`) pour ne garder que ces branches.
+2. **Dépôts** — ajoute-les un par un, ou en masse **depuis GitLab** ou **depuis GitHub** (coche tes projets). Laisse le **pattern vide** pour prendre **toutes** les MR, ou mets un fragment (`PROJ-`) pour ne garder que ces branches. La case **récupérer les MR**, cochée par défaut, se décoche pour les dépôts dont tu ne relis pas les merge requests : ils restent utilisables pour le reste (git, sessions de codage), et les MR déjà récupérées restent dans la file.
 3. De retour sur **Reviews**, `Chercher les nouvelles MR` remplit la liste.
 
 ## Mode démo (voir l'outil en 30 s, sans rien configurer)

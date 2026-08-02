@@ -3023,7 +3023,8 @@ async function loadRepos() {
           <div class="meta">${esc(r.url)} · ${tr('settings.repo.pattern')} <code>${r.branch_pattern ? esc(r.branch_pattern) : tr('settings.repo.all-mrs')}</code></div>
         </div>
         <div class="spacer"></div>
-        <label class="muted"><input type="checkbox" data-toggle="${r.id}" ${r.enabled ? 'checked' : ''}/> ${tr('settings.repo.enabled')}</label>
+        <label class="muted" title="${esc(tr('settings.repo.fetch-mrs-title'))}"><input type="checkbox" data-fetch="${r.id}" ${r.fetch_mrs == null || r.fetch_mrs ? 'checked' : ''}/> ${tr('settings.repo.fetch-mrs')}</label>
+        <label class="muted" title="${esc(tr('settings.repo.enabled-title'))}"><input type="checkbox" data-toggle="${r.id}" ${r.enabled ? 'checked' : ''}/> ${tr('settings.repo.enabled')}</label>
         <button class="btn btn-sm" data-edit="${r.id}" title="${tr('settings.repo.edit-title')}"><svg class="ico"><use href="#i-edit"/></svg>${tr('settings.repo.edit')}</button>
         <button class="btn btn-icon btn-sm btn-danger" data-del="${r.id}" title="${tr('settings.repo.del-title')}"><svg class=\"ico\"><use href=\"#i-close\"/></svg></button>
       </div>
@@ -3051,6 +3052,14 @@ async function loadRepos() {
   }));
   $$('#repoList [data-toggle]').forEach((cb) => cb.addEventListener('change', async () => {
     await api(`/repos/${cb.dataset.toggle}`, { method: 'PUT', body: { enabled: cb.checked } });
+  }));
+  /* Décocher ne touche pas aux MR DÉJÀ récupérées : elles restent dans la file, on cesse
+     seulement d'en ramener de nouvelles. Le message le dit, sinon on croit à une purge. */
+  $$('#repoList [data-fetch]').forEach((cb) => cb.addEventListener('change', async () => {
+    try {
+      await api(`/repos/${cb.dataset.fetch}`, { method: 'PUT', body: { fetch_mrs: cb.checked } });
+      toast(tr(cb.checked ? 'toast.repo.fetch-on' : 'toast.repo.fetch-off'));
+    } catch (e) { cb.checked = !cb.checked; toast(e.message, true); }
   }));
   $$('#repoList [data-edit]').forEach((b) => b.addEventListener('click', () => toggleEdit(b.dataset.edit, true)));
   $$('#repoList [data-cancel]').forEach((b) => b.addEventListener('click', () => toggleEdit(b.dataset.cancel, false)));

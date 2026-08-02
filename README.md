@@ -51,7 +51,7 @@ Seven tabs, each one line:
 - **Git** — multi-repo branch/tag/command operations across both forges, branch explorer and ref finder, **restorable** deletions, always with a preview.
 - **Docker** — compose project health and `.env` drift, batch actions, live multi-container logs, error badges in the menu.
 - **Jira** — your assigned tickets fetched automatically, full detail with attachments, status changes and comments.
-- **Settings** — GitLab / GitHub / Jira connections, repositories, review rules, prompt templates, theme and language.
+- **Settings** — GitLab / GitHub / Jira connections, repositories (each one can opt out of MR fetching while staying usable for git and coding sessions), review rules, prompt templates, theme and language.
 
 Everywhere: `Ctrl`/`Cmd` + `K` opens a command palette (jump to a tab, a merge request, a session by
 name), `j` / `k` walk the current list, `?` lists every shortcut. The tool reopens on the tab and

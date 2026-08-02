@@ -690,16 +690,19 @@ app.post('/api/repos', wrap((req, res) => {
 app.put('/api/repos/:id', wrap((req, res) => {
   const cur = repoById(Number(req.params.id));
   if (!cur) throw new Error(t('err.repo-introuvable'));
-  const { url, branch_pattern, enabled } = req.body || {};
+  const { url, branch_pattern, enabled, fetch_mrs } = req.body || {};
   const nextUrl = url != null ? String(url).trim() : cur.url;
   // project : fourni explicitement, sinon déduit de l'URL, sinon inchangé
   let project = (req.body.project || '').trim();
   if (!project) project = url != null ? forge.clientFor(cur).normalizeProject(nextUrl) : cur.project;
   // pattern : vide autorisé (= toutes les MR)
   const pattern = branch_pattern != null ? String(branch_pattern).trim() : cur.branch_pattern;
-  db.prepare(`UPDATE repo SET project = ?, url = ?, branch_pattern = ?, enabled = ? WHERE id = ?`)
+  db.prepare(`UPDATE repo SET project = ?, url = ?, branch_pattern = ?, enabled = ?, fetch_mrs = ? WHERE id = ?`)
     .run(project || cur.project, nextUrl, pattern,
-         enabled == null ? cur.enabled : (enabled ? 1 : 0), cur.id);
+         enabled == null ? cur.enabled : (enabled ? 1 : 0),
+         // absent du corps = inchangé ; NULL d'avant migration = activé, la valeur par défaut
+         fetch_mrs == null ? (cur.fetch_mrs == null ? 1 : cur.fetch_mrs) : (fetch_mrs ? 1 : 0),
+         cur.id);
   res.json(repoById(cur.id));
 }));
 

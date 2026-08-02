@@ -254,6 +254,39 @@ describe('API de bout en bout', () => {
     await app.api('POST', '/api/discover');
   });
 
+  test('un dépôt dont la récupération des MR est coupée est ignoré, sans perdre les MR déjà là', async () => {
+    await app.api('POST', '/api/discover');
+    const avant = (await app.api('GET', '/api/mrs')).body.length;
+    assert.ok(avant > 0, 'il faut des MR déjà récupérées pour que le test ait un sens');
+
+    const off = await app.api('PUT', `/api/repos/${repoId}`, { fetch_mrs: false });
+    assert.equal(off.body.fetch_mrs, 0);
+
+    const scan = await app.api('POST', '/api/discover');
+    assert.equal(scan.body.repos, 0, 'le dépôt n’est plus interrogé du tout');
+    assert.equal(scan.body.found, 0);
+
+    /* Le point important : couper la récupération ne PURGE pas. Les merge requests déjà
+       dans la file — et leurs rapports — doivent survivre, sinon décocher devient destructif. */
+    assert.equal((await app.api('GET', '/api/mrs')).body.length, avant);
+
+    // Et le dépôt reste actif par ailleurs : `enabled` n'a pas bougé.
+    assert.equal(off.body.enabled, 1);
+
+    const on = await app.api('PUT', `/api/repos/${repoId}`, { fetch_mrs: true });
+    assert.equal(on.body.fetch_mrs, 1);
+    assert.equal((await app.api('POST', '/api/discover')).body.repos, 1);
+  });
+
+  test('les autres modifications d’un dépôt ne remettent pas la récupération à zéro', async () => {
+    await app.api('PUT', `/api/repos/${repoId}`, { fetch_mrs: false });
+    // Un PUT qui ne parle pas de fetch_mrs (renommage, pattern…) doit le laisser tel quel.
+    const apres = await app.api('PUT', `/api/repos/${repoId}`, { branch_pattern: 'PROJ-' });
+    assert.equal(apres.body.fetch_mrs, 0, 'un champ absent du corps reste inchangé');
+    await app.api('PUT', `/api/repos/${repoId}`, { fetch_mrs: true, branch_pattern: '' });
+    await app.api('POST', '/api/discover');
+  });
+
   test('GET /api/mrs enrichit chaque MR (ticket, risque, statut)', async () => {
     const { body } = await app.api('GET', '/api/mrs');
     assert.equal(body.length, 2);

@@ -13,6 +13,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Stop fetching merge requests from a repository, without disabling it.** Some repositories are needed
+  for git operations and coding sessions, but their merge requests are none of your business — and they
+  kept filling the review queue. Settings → Repositories now carries a **fetch MRs** checkbox per
+  repository, ticked by default. Unticked, "Fetch new MRs" skips that repository entirely; everything
+  else about it keeps working. Unticking does **not** purge: merge requests already fetched, and their
+  reports, stay where they are — you stop bringing in new ones, you do not lose the old ones. This is
+  deliberately separate from **enabled**, which removes the repository from everywhere at once.
+
 - **Asking the AI to fix a review now offers to resume the session that wrote the code.** The coding
   session behind a branch is looked up and its identifier pre-filled, so the agent picks up its own
   work instead of rediscovering a codebase it just wrote. It is a suggestion, not a rule: the link is

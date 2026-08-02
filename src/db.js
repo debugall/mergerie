@@ -117,6 +117,11 @@ CREATE TABLE IF NOT EXISTS comment_log (
 // Migration : forge d'un dépôt ('gitlab' | 'github'). Les dépôts existants restent
 // GitLab — la valeur par défaut suffit, aucune donnée à réécrire.
 try { db.exec("ALTER TABLE repo ADD COLUMN forge TEXT DEFAULT 'gitlab'"); } catch { /* déjà présente */ }
+/* Migration : récupération des MR, dépôt par dépôt. Distincte de `enabled`, qui retire le
+   dépôt de PARTOUT (git, sessions, recherche de ref). Ici on garde le dépôt utilisable et on
+   cesse seulement de ramener ses MR. Par défaut à 1 : les dépôts existants ne changent pas
+   de comportement. */
+try { db.exec('ALTER TABLE repo ADD COLUMN fetch_mrs INTEGER DEFAULT 1'); } catch { /* déjà présente */ }
 // Migration : connexion GitHub (URL vide = github.com ; sinon GitHub Enterprise).
 try { db.exec("ALTER TABLE config ADD COLUMN github_url TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 try { db.exec("ALTER TABLE config ADD COLUMN github_token TEXT DEFAULT ''"); } catch { /* déjà présente */ }
