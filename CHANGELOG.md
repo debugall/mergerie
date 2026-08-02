@@ -13,6 +13,29 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Watch Jira tickets and be told when they move.** Some tickets matter to you without being yours —
+  the one blocking your work, held by someone else. Checking them by hand three times a day is the
+  kind of thing a tool should do. The Jira tab now has two sub-tabs: **My tickets**, and **Watched**.
+  Add a ticket by its key, or from the **Watch** button on any ticket's detail; a background check
+  (every N minutes, set in Settings → Jira, `0` disables it) compares each watched ticket's status and
+  raises a desktop notification giving the old and the new one — *To do → In Progress* — with a click
+  that takes you back to the list. The current status is recorded when you add the ticket, so the first
+  check cannot announce a change that never happened, and a ticket that disappears or becomes invisible
+  is flagged on its own row without interrupting the others or losing its last known status. A change is
+  announced **once**: checks are serialised, so the timer and the "Check now" button cannot both report
+  the same move, and the new status becomes the reference until it moves again.
+- **Jira tickets now show their epic, and it opens Jira.** The list carries the epic key and title
+  above each ticket's summary, the detail carries it among the metadata, and the search box matches on
+  it — asking for "everything under that epic" is a routine need. In the detail panel the epic is a
+  link that opens it in Jira in a new tab; in the list it stays plain information, since the whole card
+  is the button that selects the ticket. The epic is read from Jira's `parent` field, keeping
+  only parents that really are epics: a sub-task's parent is a story, and calling that an epic would be
+  wrong. Localised type names (Epic, Épique, Épopée) are handled.
+- **The Jira menu now carries a badge: your in-progress tickets.** "In progress" means Jira's *In
+  Progress* status category, the only definition that survives across workflows, since status names are
+  free-form per project. The count is cached server-side and refreshed by the watch timer, so showing
+  it never costs a Jira call — and a status you change from inside the tool updates it at once, without
+  waiting for the next check.
 - **Stop fetching merge requests from a repository, without disabling it.** Some repositories are needed
   for git operations and coding sessions, but their merge requests are none of your business — and they
   kept filling the review queue. Settings → Repositories now carries a **fetch MRs** checkbox per
@@ -62,6 +85,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Demo mode applies Jira status changes for real.** Picking a transition answered "ok" and changed
+  nothing: the list reloaded on the old status, and the menu counter never moved. A demo that accepts an
+  action without reflecting it teaches the opposite of what the tool does.
 - **Demo mode can finally open the code viewer.** "View diff" — on a merge request as well as on a
   session project — failed every time in demo mode: the viewer goes through a real git clone, and the
   demo repositories point at a forge that does not exist. Anyone discovering the tool hit an error on

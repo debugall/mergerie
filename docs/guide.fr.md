@@ -407,12 +407,24 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
   besoin) — comme les erreurs certificat / token.
 
 ### Jira
+Deux sous-onglets : **Mes tickets** et **Surveillés**. Le menu porte une **pastille** = le nombre de
+tickets **en cours qui te sont affectés** (catégorie de statut *In Progress*, la seule définition qui
+traverse les workflows, les noms d'états étant libres d'un projet à l'autre). Elle est alimentée par un
+compteur **mis en cache côté serveur** et rafraîchi par la surveillance : l'afficher ne coûte pas un appel
+Jira à chaque passage.
+
+#### Mes tickets
 **Les tickets Jira**, récupérés automatiquement à l'ouverture du menu. Par **défaut seuls les tiens** sont
 affichés, mais un **filtre par personne** permet de **cocher d'autres assignés** pour voir aussi leurs
 tickets (la liste des personnes = les assignés récents ; **toi coché par défaut**, choix **persisté**). En
 **liste → détail** :
-- La **liste** (à gauche, avec recherche) montre chaque ticket en carte compacte : clé, résumé, **statut**
-  (pastille colorée selon la catégorie : à faire / en cours / terminé), type, priorité, date de mise à jour.
+- La **liste** (à gauche, avec recherche) montre chaque ticket en carte compacte : clé, **epic** de
+  rattachement quand il y en a un, résumé, **statut** (pastille colorée selon la catégorie : à faire /
+  en cours / terminé), type, priorité, date de mise à jour. **La recherche couvre aussi l'epic** —
+  « montre-moi les tickets de tel epic » est une demande courante. Dans la liste l'epic reste une
+  **information** — toute la carte sélectionne le ticket ; c'est **dans le détail** qu'il devient un
+  **lien** vers Jira, ouvert dans un nouvel onglet. L'epic est lu dans le champ `parent` de Jira, en ne retenant que les parents qui en sont réellement un :
+  celui d'une sous-tâche est une story, l'annoncer comme epic serait un contresens.
   Par défaut on écarte les tickets **terminés** — une case **« Inclure les terminés »** les réintègre. Un
   **filtre par statut** (repliable, cases à cocher, **choix persisté**) permet en plus de n'afficher que les
   statuts voulus.
@@ -438,6 +450,23 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   apparaissent (résolues vers le proxy). Un **clic ouvre l'image en grand** (lightbox ; Échap ou clic dehors
   ferme). Les autres fichiers restent en « chip » téléchargeable.
 - Si Jira n'est pas configuré, un message renvoie vers **Réglages → Jira** (URL + email + jeton d'API).
+
+#### Surveillés
+**Suivre un ticket sans qu'il te soit affecté** — le cas courant : un ticket tenu par quelqu'un d'autre
+bloque le tien, et tu veux savoir **quand il bouge**, pas y penser trois fois par jour.
+
+- On ajoute un ticket par sa **clé** (`PROJ-1421`) depuis ce sous-onglet, ou par le bouton **Surveiller**
+  en tête du détail d'un ticket. La clé est validée avant tout appel : elle n'atteint jamais le JQL brute.
+- **L'état courant est mémorisé à l'ajout.** Sans ça, la première vérification comparerait à du vide et
+  annoncerait un changement qui n'a pas eu lieu.
+- Un **timer serveur** revérifie tous les tickets surveillés à la cadence réglée dans
+  **Réglages → Jira** (*Vérifier les tickets surveillés toutes les* N minutes ; **0 = désactivé**). À chaque
+  **changement d'état**, une **notification bureau** donne l'ancien et le nouvel état — `À faire → En cours` —
+  et un clic ramène ici. Le type se coupe dans **Réglages → Notifications**.
+- **`Vérifier maintenant`** déclenche le même code que le timer, tout de suite : ce que montre le bouton est
+  donc exactement ce que fait la surveillance.
+- Un ticket **supprimé ou devenu invisible** (droits perdus) est signalé **sur sa ligne**, sans interrompre
+  la vérification des autres, et **sans effacer** le dernier état connu.
 
 ### Statistiques
 Funnel des MR, distribution des notes, **évolution de la note moyenne par semaine** (« la qualité

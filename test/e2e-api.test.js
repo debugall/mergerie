@@ -457,6 +457,139 @@ describe('API de bout en bout', () => {
     delete app.state.jiraIssues['PROJ-500'];
   });
 
+  test('Jira : surveiller un ticket notifie son changement d’état, et seulement lui', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    const etat = (nom, cat) => ({ name: nom, statusCategory: { key: cat } });
+    app.state.jiraIssues['WATCH-1'] = { key: 'WATCH-1', fields: { summary: 'Ticket suivi', status: etat('À faire', 'new') } };
+    app.state.jiraIssues['WATCH-2'] = { key: 'WATCH-2', fields: { summary: 'Ticket témoin', status: etat('À faire', 'new') } };
+
+    assert.equal((await app.api('POST', '/api/jira/watch', { key: 'pas une clé' })).status, 400, 'clé invalide refusée');
+
+    // L'ajout mémorise l'état COURANT : c'est ce qui évite une fausse notification au 1er passage.
+    const add = await app.api('POST', '/api/jira/watch', { key: 'watch-1' });
+    assert.equal(add.status, 200);
+    assert.equal(add.body.key, 'WATCH-1', 'la clé est normalisée en majuscules');
+    assert.equal(add.body.status, 'À faire');
+    assert.equal((await app.api('POST', '/api/jira/watch', { key: 'WATCH-1' })).status, 400, 'doublon refusé');
+    await app.api('POST', '/api/jira/watch', { key: 'WATCH-2' });
+
+    const vu = (await app.api('GET', '/api/notifications')).body.latest;
+    const rien = await app.api('POST', '/api/jira/watch/check');
+    assert.equal(rien.body.changed, 0, 'aucun changement tant que Jira ne bouge pas');
+    assert.deepEqual((await app.api('GET', `/api/notifications?after=${vu}`)).body.events.filter((e) => e.type === 'jira_status'), [],
+      'une vérification sans changement ne notifie rien');
+
+    // Jira bouge sur UN seul des deux tickets.
+    app.state.jiraIssues['WATCH-1'].fields.status = etat('En cours', 'indeterminate');
+    const bouge = await app.api('POST', '/api/jira/watch/check');
+    assert.equal(bouge.body.changed, 1);
+
+    const evts = (await app.api('GET', `/api/notifications?after=${vu}`)).body.events.filter((e) => e.type === 'jira_status');
+    assert.equal(evts.length, 1, 'un seul ticket a bougé, une seule notification');
+    assert.equal(evts[0].key, 'WATCH-1');
+    assert.equal(evts[0].from, 'À faire');
+    assert.equal(evts[0].to, 'En cours');
+
+    // Le nouvel état devient la référence : re-vérifier ne renotifie pas le même changement.
+    assert.equal((await app.api('POST', '/api/jira/watch/check')).body.changed, 0);
+    const liste = await app.api('GET', '/api/jira/watch');
+    const suivi = liste.body.watched.find((w) => w.key === 'WATCH-1');
+    assert.equal(suivi.status, 'En cours');
+    assert.ok(suivi.changed_at, 'la date du changement est mémorisée');
+
+    // Compteur du menu : les tickets en cours qui me sont affectés.
+    await app.api('POST', '/api/jira/watch/check');
+    const badge = await app.api('GET', '/api/jira/badge');
+    assert.equal(badge.status, 200);
+    assert.equal(badge.body.configured, true);
+
+    // Un ticket disparu de Jira est signalé sur sa ligne, sans faire échouer les autres.
+    delete app.state.jiraIssues['WATCH-2'];
+    const perdu = await app.api('POST', '/api/jira/watch/check');
+    assert.equal(perdu.body.errors, 1);
+    assert.ok((await app.api('GET', '/api/jira/watch')).body.watched.find((w) => w.key === 'WATCH-2').error);
+
+    /* Deux vérifications SIMULTANÉES ne doivent notifier qu'une fois : sans sérialisation, les
+       deux liraient le même ancien état et annonceraient deux fois le même changement. */
+    app.state.jiraIssues['WATCH-1'].fields.status = etat('Terminé', 'done');
+    const avant = (await app.api('GET', '/api/notifications')).body.latest;
+    const [a, b] = await Promise.all([
+      app.api('POST', '/api/jira/watch/check'),
+      app.api('POST', '/api/jira/watch/check'),
+    ]);
+    /* On n'affirme PAS que les deux appels se recouvrent : selon le temps d'aller-retour HTTP, le
+       second peut démarrer après la fin du premier. L'invariant qui compte ne dépend pas de ça. */
+    assert.ok(a.body.changed + b.body.changed >= 1, 'le changement est bien constaté');
+    const doubles = (await app.api('GET', `/api/notifications?after=${avant}`)).body.events
+      .filter((e) => e.type === 'jira_status' && e.key === 'WATCH-1');
+    assert.equal(doubles.length, 1, 'un changement ne produit qu’UNE notification, même vérifié deux fois');
+
+    await app.api('DELETE', '/api/jira/watch/WATCH-1');
+    await app.api('DELETE', '/api/jira/watch/WATCH-2');
+    assert.deepEqual((await app.api('GET', '/api/jira/watch')).body.watched, []);
+    delete app.state.jiraIssues['WATCH-1'];
+  });
+
+  test('Jira : l’epic d’un ticket est exposé, et un parent qui n’en est pas un ne l’est pas', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    const parent = (key, type, niveau) => ({
+      key, fields: { summary: `Parent ${key}`, issuetype: { name: type, ...(niveau == null ? {} : { hierarchyLevel: niveau }) } },
+    });
+    app.state.jiraIssues['EPIC-1'] = {
+      key: 'EPIC-1',
+      fields: { summary: 'Rattaché à un epic', status: { name: 'À faire', statusCategory: { key: 'new' } }, parent: parent('EPIC-100', 'Epic', 1) },
+    };
+    /* Une SOUS-TÂCHE a elle aussi un `parent` — une story. L'annoncer comme epic serait un
+       contresens : c'est le piège de ce champ, et la raison du filtre par niveau. */
+    app.state.jiraIssues['EPIC-2'] = {
+      key: 'EPIC-2',
+      fields: { summary: 'Sous-tâche d’une story', status: { name: 'À faire', statusCategory: { key: 'new' } }, parent: parent('STORY-9', 'Story', 0) },
+    };
+    app.state.jiraIssues['EPIC-3'] = {
+      key: 'EPIC-3',
+      fields: { summary: 'Sans parent', status: { name: 'À faire', statusCategory: { key: 'new' } } },
+    };
+
+    const list = (await app.api('GET', '/api/jira/tickets')).body.issues;
+    const par = (k) => list.find((i) => i.key === k);
+    assert.deepEqual(par('EPIC-1').epic,
+      { key: 'EPIC-100', summary: 'Parent EPIC-100', color: '', url: `${app.gitlabUrl}/browse/EPIC-100` },
+      'l’epic porte sa propre URL : c’est ce qui le rend cliquable');
+    assert.equal(par('EPIC-2').epic, null, 'le parent d’une sous-tâche n’est pas un epic');
+    assert.equal(par('EPIC-3').epic, null);
+
+    // Le détail porte la même information que la liste.
+    assert.deepEqual((await app.api('GET', '/api/jira/issue/EPIC-1')).body.issue.epic,
+      { key: 'EPIC-100', summary: 'Parent EPIC-100', color: '', url: `${app.gitlabUrl}/browse/EPIC-100` });
+
+    // Instance sans `hierarchyLevel` : on retombe sur le nom du type.
+    app.state.jiraIssues['EPIC-1'].fields.parent = parent('EPIC-101', 'Épique');
+    assert.equal((await app.api('GET', '/api/jira/issue/EPIC-1')).body.issue.epic.key, 'EPIC-101');
+
+    for (const k of ['EPIC-1', 'EPIC-2', 'EPIC-3']) delete app.state.jiraIssues[k];
+  });
+
+  test('Jira : passer un ticket « en cours » met le compteur du menu à jour tout de suite', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    app.state.jiraIssues['COUNT-1'] = {
+      key: 'COUNT-1',
+      fields: { summary: 'Pas encore commencé', status: { name: 'À faire', statusCategory: { key: 'new' } } },
+    };
+    const avant = (await app.api('GET', '/api/jira/badge')).body.inProgress;
+
+    // Transition « En cours » (id 21 du faux Jira) : le compteur doit suivre SANS attendre le
+    // timer de surveillance ni le sondage du navigateur — c'est tout l'objet de ce test.
+    const tr = await app.api('POST', '/api/jira/issue/COUNT-1/transition', { transitionId: '21' });
+    assert.equal(tr.status, 200);
+    assert.equal((await app.api('GET', '/api/jira/badge')).body.inProgress, avant + 1,
+      'le compteur est recalculé pendant la transition, pas au prochain tour de timer');
+
+    // Et il redescend quand le ticket sort de « en cours ».
+    await app.api('POST', '/api/jira/issue/COUNT-1/transition', { transitionId: '31' });
+    assert.equal((await app.api('GET', '/api/jira/badge')).body.inProgress, avant);
+    delete app.state.jiraIssues['COUNT-1'];
+  });
+
   test('Jira : l’échec est mémorisé sur la MR pour être affiché', async () => {
     const autre = (await app.api('GET', '/api/mrs')).body.find((m) => m.iid === 8);
     const sansCle = await app.api('POST', `/api/mrs/${autre.id}/jira-refresh`);

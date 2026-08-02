@@ -32,6 +32,11 @@ function updateConfig(patch) {
     let m = parseInt(patch.auto_refresh_minutes, 10);
     next.auto_refresh_minutes = (!Number.isFinite(m) || m <= 0) ? 0 : Math.max(1, m);
   }
+  // Surveillance Jira : même règle — 0 = désactivée, sinon minimum 1 minute.
+  if ('jira_watch_minutes' in patch) {
+    const w = parseInt(patch.jira_watch_minutes, 10);
+    next.jira_watch_minutes = (!Number.isFinite(w) || w <= 0) ? 0 : Math.max(1, w);
+  }
   // Langue : on refuse silencieusement une valeur inconnue plutôt que de casser l'interface.
   if (!['fr', 'en'].includes(next.language)) next.language = 'fr';
   // Explication : booléen stocké en texte, normalisé à '0'/'1' (défaut '1').
@@ -64,7 +69,8 @@ function updateConfig(patch) {
       review_explain = @review_explain,
       converge_threshold = @converge_threshold,
       converge_max_passes = @converge_max_passes,
-      auto_refresh_minutes = @auto_refresh_minutes
+      auto_refresh_minutes = @auto_refresh_minutes,
+      jira_watch_minutes = @jira_watch_minutes
     WHERE id = 1`).run(next);
   return getConfig();
 }

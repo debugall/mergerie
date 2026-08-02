@@ -5,6 +5,7 @@
 const ISSUES = [
   {
     key: 'PROJ-1421', summary: 'Le panier perd les articles après reconnexion', type: 'Bug', typeIcon: '',
+    epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
     status: 'En cours', statusCategory: 'indeterminate', priority: 'Haute',
     assignee: { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
     reporter: { name: 'Support N2', email: 'support@demo', avatar: '' },
@@ -23,6 +24,7 @@ const ISSUES = [
   },
   {
     key: 'PROJ-1408', summary: 'Ajouter le paiement en 3× sans frais', type: 'Story', typeIcon: '',
+    epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
     status: 'À faire', statusCategory: 'new', priority: 'Moyenne',
     assignee: { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
     reporter: { name: 'Product Owner', email: 'po@demo', avatar: '' },
@@ -36,6 +38,7 @@ const ISSUES = [
   },
   {
     key: 'PROJ-1390', summary: 'Migrer les logs vers le nouveau format JSON', type: 'Tâche', typeIcon: '',
+    epic: { key: 'PROJ-1050', summary: 'Observabilité : logs et métriques', color: 'blue' },
     status: 'En revue', statusCategory: 'indeterminate', priority: 'Basse',
     assignee: { accountId: 'usr-002', name: 'Alex Martin', email: 'alex@demo', avatar: '' },
     reporter: { name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
@@ -63,7 +66,9 @@ const DONE = [
 
 const meta = (i) => {
   const { descriptionMd, comments, attachments, ...m } = i; // la liste ne porte pas ces 3-là
-  return { ...m, url: `https://jira.demo/browse/${i.key}` };
+  // L'epic porte SA propre URL, comme en réel : c'est ce qui le rend cliquable.
+  const epic = m.epic ? { ...m.epic, url: `https://jira.demo/browse/${m.epic.key}` } : null;
+  return { ...m, epic, url: `https://jira.demo/browse/${i.key}` };
 };
 
 const ME = { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' };
@@ -96,6 +101,19 @@ function issue(key) {
   return { ...meta(found), descriptionMd: found.descriptionMd, comments: found.comments, attachments: found.attachments || [], transitions: DEMO_TRANSITIONS };
 }
 
+/* Appliquer une transition en démo : on modifie l'état EN MÉMOIRE. Sans ça, changer le statut
+   d'un ticket ne tenait pas — la liste se rechargeait sur l'ancien état, et le compteur du menu
+   ne bougeait jamais. Une démo qui accepte une action sans la refléter enseigne le contraire de
+   ce que fait l'outil. L'effet dure le temps du processus, ce qui suffit à une démonstration. */
+function applyTransition(key, transitionId) {
+  const cible = DEMO_TRANSITIONS.find((tr) => String(tr.id) === String(transitionId));
+  const found = [...ISSUES, ...DONE].find((i) => i.key === key);
+  if (!cible || !found) return { ok: false };
+  found.status = cible.to.name;
+  found.statusCategory = cible.to.statusCategory;
+  return { ok: true, status: found.status };
+}
+
 // Contenu FICTIF d'une pièce jointe (démo) : le vrai viendrait de Jira via le proxy. Pour une
 // image, on renvoie une SVG placeholder → l'aperçu inline s'affiche vraiment en démo.
 function attachmentFile(id) {
@@ -108,4 +126,11 @@ function attachmentFile(id) {
   return { filename: (meta && meta.filename) || `piece-jointe-demo-${id}.txt`, mimeType: 'text/plain', buffer: Buffer.from('(démo) contenu factice — en réel, le fichier est récupéré depuis Jira avec le token.') };
 }
 
-module.exports = { assignees, tickets, issue, attachmentFile };
+/* Compteur du menu en démo : les tickets qui me sont affectés ET en cours. Calculé sur le
+   jeu fictif plutôt qu'écrit en dur, pour qu'il reste juste si on retouche les tickets. */
+function inProgressMine() {
+  return ISSUES.filter((i) => i.statusCategory === 'indeterminate'
+    && i.assignee && i.assignee.accountId === 'me-001').length;
+}
+
+module.exports = { assignees, tickets, issue, attachmentFile, inProgressMine, applyTransition };

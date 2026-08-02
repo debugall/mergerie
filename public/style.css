@@ -1600,6 +1600,14 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-item-row1 .jira-key { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Statut plus compact DANS LA LISTE (évite le chevauchement quand la colonne est étroite). */
 .jira-item .jira-status { flex-shrink: 0; font-size: 10px; padding: 1px 8px; max-width: 55%; overflow: hidden; text-overflow: ellipsis; }
+/* L'epic est un RATTACHEMENT, pas le sujet de la carte : il reste sur une ligne, discret,
+   au-dessus du résumé qui garde tout son poids visuel. Les deux couleurs suivent le thème. */
+.jira-item-epic { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 11.5px; color: var(--muted, #888); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.jira-item-epic code { font-family: var(--ff-mono); font-weight: 700; color: var(--accent, #4f9cf9); }
+.jira-item-epic .ico { flex-shrink: 0; opacity: .7; }
+/* Le lien vers Jira n'existe que dans le DÉTAIL : dans la liste, l'epic reste une information. */
+.jira-epic-link { color: var(--accent, #4f9cf9); text-decoration: none; }
+.jira-epic-link:hover { text-decoration: underline; }
 .jira-item-summary { font-weight: 600; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .jira-item-foot { font-size: 11.5px; }
 .jira-key { font-family: var(--ff-mono); font-size: 12px; font-weight: 700; letter-spacing: .3px; }

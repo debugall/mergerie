@@ -252,10 +252,40 @@ function issueMeta(data) {
     duedate: f.duedate || '',
     components: (f.components || []).map((c) => c.name),
     fixVersions: (f.fixVersions || []).map((v) => v.name),
+    epic: epicOf(f),
   };
 }
 
-const TICKET_FIELDS = 'summary,status,priority,issuetype,assignee,reporter,created,updated,labels,project,duedate';
+/* Epic d'un ticket. Jira Cloud a unifié la hiérarchie : le lien vers l'epic passe par le champ
+   `parent`, y compris pour les projets d'équipe. Mais `parent` sert AUSSI aux sous-tâches, dont
+   le parent est une story — l'annoncer comme epic serait faux. On ne retient donc que les
+   parents dont le type est bien un epic : `hierarchyLevel` quand Jira le donne (1 = epic),
+   sinon le nom du type, seule information disponible sur les instances plus anciennes. */
+/* Ajoute les URL Jira à un ticket : la sienne, et celle de son epic. Regroupé ici parce que
+   `issueMeta` ne connaît pas la config — les trois appelants oubliaient sinon l'un ou l'autre. */
+function withUrls(cfg, meta) {
+  const out = { ...meta, url: issueUrl(cfg, meta.key) };
+  if (out.epic) out.epic = { ...out.epic, url: issueUrl(cfg, out.epic.key) };
+  return out;
+}
+
+function epicOf(f) {
+  const p = f && f.parent;
+  if (!p || !p.key) return null;
+  const t = (p.fields && p.fields.issuetype) || {};
+  // Le nom du type est LOCALISÉ (Epic, Épique, Épopée…) : on retire les accents avant de comparer,
+  // sinon « Épique » ne correspond à rien et l'epic disparaît sur une instance en français.
+  const sansAccent = String(t.name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const estEpic = t.hierarchyLevel != null ? Number(t.hierarchyLevel) >= 1 : /(epic|epique|epopee)/.test(sansAccent);
+  if (!estEpic) return null;
+  return {
+    key: p.key,
+    summary: (p.fields && p.fields.summary) || '',
+    color: (p.fields && p.fields.color && p.fields.color.key) || '',
+  };
+}
+
+const TICKET_FIELDS = 'summary,status,priority,issuetype,assignee,reporter,created,updated,labels,project,duedate,parent';
 
 // Identité de l'utilisateur courant (pour cocher « moi » par défaut dans le filtre par assigné).
 async function myself(cfg) {
@@ -291,15 +321,46 @@ async function searchByAssignees(cfg, { accountIds = [], includeDone = false, ma
   if (!includeDone) jql += ' AND statusCategory != Done';
   jql += ' ORDER BY updated DESC';
   const data = await runSearch(cfg, jql, TICKET_FIELDS, max);
-  const issues = (data.issues || []).map((i) => ({ ...issueMeta(i), url: issueUrl(cfg, i.key) }));
+  const issues = (data.issues || []).map((i) => withUrls(cfg, issueMeta(i)));
   return { issues, total: data.total != null ? data.total : issues.length };
+}
+
+/* Clé de ticket Jira : PROJET-123. Tout ce qui n'a pas cette forme est refusé avant de
+   toucher au JQL — une clé vient de l'utilisateur, elle ne doit jamais s'y injecter. */
+const CLE_VALIDE = /^[A-Z][A-Z0-9]{0,20}-[1-9][0-9]{0,9}$/;
+const cleValide = (k) => CLE_VALIDE.test(String(k || '').trim().toUpperCase());
+
+/* État courant d'une liste de tickets, en UN appel. Sert à la surveillance : comparer
+   l'état renvoyé au dernier état connu. Les clés introuvables sont simplement absentes
+   du résultat — l'appelant en déduit ce qu'il veut (ticket supprimé, droits perdus). */
+async function statusOfKeys(cfg, keys) {
+  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  const propres = [...new Set((keys || []).map((k) => String(k).trim().toUpperCase()).filter(cleValide))];
+  if (!propres.length) return [];
+  const issues = [];
+  // Par paquets : une JQL `key in (...)` de 300 clés serait refusée par Jira.
+  for (let i = 0; i < propres.length; i += 50) {
+    const lot = propres.slice(i, i + 50);
+    const data = await runSearch(cfg, `key IN (${lot.join(', ')})`, TICKET_FIELDS, lot.length);
+    for (const it of (data.issues || [])) issues.push(withUrls(cfg, issueMeta(it)));
+  }
+  return issues;
+}
+
+/* Combien de tickets me sont affectés ET en cours. « En cours » = catégorie de statut
+   `indeterminate` côté Jira : c'est la seule définition qui traverse les workflows, les
+   noms d'états étant libres d'un projet à l'autre. */
+async function countMineInProgress(cfg) {
+  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  const data = await runSearch(cfg, 'assignee = currentUser() AND statusCategory = "In Progress"', 'summary', 1);
+  return data.total != null ? data.total : (data.issues || []).length;
 }
 
 // Détail complet d'un ticket : métadonnées + description (ADF→Markdown) + commentaires (idem)
 // + pièces jointes (métadonnées seulement ; le CONTENU se télécharge à la demande via le proxy).
 async function issueDetail(cfg, key) {
   if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
-  const fields = 'summary,description,status,priority,issuetype,assignee,reporter,created,updated,labels,project,duedate,components,fixVersions,attachment';
+  const fields = 'summary,description,status,priority,issuetype,assignee,reporter,created,updated,labels,project,duedate,components,fixVersions,attachment,parent';
   const data = await jiraGet(cfg, `/rest/api/3/issue/${encodeURIComponent(key)}?fields=${encodeURIComponent(fields)}`);
   const attachments = ((data.fields || {}).attachment || []).map((a) => ({
     id: String(a.id), filename: a.filename || `pièce-${a.id}`, size: a.size || 0,
@@ -320,7 +381,7 @@ async function issueDetail(cfg, key) {
   } catch { comments = []; } // les commentaires ne doivent pas faire échouer le détail
   let trans = [];
   try { trans = await transitions(cfg, key); } catch { trans = []; } // droits insuffisants → pas de changement d'état proposé
-  return { ...issueMeta(data), url: issueUrl(cfg, key), descriptionMd: adfToMarkdown((data.fields || {}).description, mdOpts), comments, attachments, transitions: trans };
+  return { ...withUrls(cfg, issueMeta(data)), descriptionMd: adfToMarkdown((data.fields || {}).description, mdOpts), comments, attachments, transitions: trans };
 }
 
 // Texte brut → ADF minimal (Jira v3 exige l'ADF pour créer un commentaire). Les lignes vides
@@ -425,4 +486,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, statusOfKeys, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };

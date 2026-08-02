@@ -90,7 +90,7 @@
         <button data-tab="dashboard" title="Statistiques et activité" data-i18n-title="ui.title.statistiques-et-activite"><svg class="ico"><use href="#i-chart"/></svg><span data-i18n="ui.btn.statistiques">Statistiques</span></button>
         <button data-tab="git" title="Opérations sur les dépôts : branches et tags" data-i18n-title="git.tab.title"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="nav.git">Git</span></button>
         <button data-tab="docker" title="Projets Docker Compose et containers : drift .env, actions" data-i18n-title="docker.tab.title"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="nav.docker">Docker</span><span class="nav-health err" id="dockerErrBadge" hidden>0</span><span class="nav-health warn" id="dockerUnhealthyBadge" hidden>0</span></button>
-        <button data-tab="jira" title="Mes tickets Jira affectés : contenu, métadonnées, commentaires" data-i18n-title="jira.tab.title"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="nav.jira">Jira</span></button>
+        <button data-tab="jira" title="Mes tickets Jira affectés : contenu, métadonnées, commentaires" data-i18n-title="jira.tab.title"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="nav.jira">Jira</span><span class="nav-count" id="navCountJira" hidden>0</span></button>
         <button data-tab="admin" title="Dépôts, token, règles de review, thème" data-i18n-title="ui.title.depots-token-regles-de-review"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="ui.btn.reglages">Réglages</span></button>
     </nav>
     <div class="header-right">
@@ -430,6 +430,11 @@
 
     <!-- Jira : mes tickets affectés (liste) → détail (contenu, métadonnées, commentaires). -->
     <section id="tab-jira" class="tab">
+        <div class="segmented subnav" role="tablist">
+            <button data-jsub="mine" class="active" role="tab" data-i18n-title="jira.sub.mine-title"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="jira.sub.mine">Mes tickets</span></button>
+            <button data-jsub="watch" role="tab" data-i18n-title="jira.sub.watch-title"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="jira.sub.watch">Surveillés</span><span class="nav-count" id="jiraWatchCount" hidden>0</span></button>
+        </div>
+        <div id="jiraSubMine">
         <div class="toolbar">
             <button id="jiraRefresh" class="btn" data-i18n-title="jira.refresh-title"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="jira.refresh">Rafraîchir</span></button>
             <label class="inline-check"><input type="checkbox" id="jiraIncludeDone" /> <span data-i18n="jira.include-done">Inclure les terminés</span></label>
@@ -451,6 +456,18 @@
                 <div id="jiraList" class="jira-list"></div>
             </div>
             <div id="jiraDetail" class="jira-detail"></div>
+        </div>
+        </div>
+
+        <div id="jiraSubWatch" hidden>
+            <div class="toolbar">
+                <input id="jiraWatchKey" type="text" placeholder="PROJ-1421" data-i18n-placeholder="jira.watch.ph" />
+                <button id="jiraWatchAdd" class="btn btn-primary" data-i18n-title="jira.watch.add-title"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="jira.watch.add">Surveiller</span></button>
+                <button id="jiraWatchCheck" class="btn" data-i18n-title="jira.watch.check-title"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="jira.watch.check">Vérifier maintenant</span></button>
+                <span id="jiraWatchInfo" class="muted"></span>
+            </div>
+            <p class="muted" data-i18n="jira.watch.help">Un ticket surveillé n'a pas besoin de t'être affecté. Dès que son état change, tu reçois une notification.</p>
+            <div id="jiraWatchList" class="jira-list"></div>
         </div>
     </section>
 
@@ -531,6 +548,7 @@
                 <label class="inline-check"><input type="checkbox" data-notif="session_done" /> <span data-i18n="settings.notif.session-done">Session de codage terminée</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="needs_input" /> <span data-i18n="settings.notif.needs-input">L'IA a posé une question</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="converge_done" /> <span data-i18n="settings.notif.converge-done">Convergence terminée</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="jira_status" /> <span data-i18n="settings.notif.jira-status">Un ticket Jira surveillé change d'état</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="mr_new" /> <span data-i18n="settings.notif.mr-new">Nouvelle MR découverte</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="mr_merged" /> <span data-i18n="settings.notif.mr-merged">MR mergée par quelqu'un</span></label>
             </div>
@@ -624,6 +642,7 @@
             <label><span data-i18n="settings.lbl.url-jira">URL Jira</span> <button type="button" class="hint" tabindex="0" aria-label="L'adresse racine de ton Jira. Ex. https://mon-entreprise.atlassian.net" data-tip="L'adresse racine de ton Jira. Ex. https://mon-entreprise.atlassian.net" data-i18n-tip="settings.tip.optionnel-sert-a-transformer-les"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_url" placeholder="https://mon-entreprise.atlassian.net" /></label>
             <label><span data-i18n="settings.lbl.jira-email">Email Jira</span> <button type="button" class="hint" tabindex="0" aria-label="Email du compte Atlassian, utilisé avec le jeton d'API pour l'authentification Basic (Jira Cloud)." data-tip="Email du compte Atlassian, utilisé avec le jeton d'API pour l'authentification Basic (Jira Cloud)."><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_email" placeholder="prenom.nom@entreprise.fr" data-i18n-placeholder="settings.ph.jira-email" /></label>
             <label><span data-i18n="settings.lbl.jira-token">Jeton d'API Jira</span> <button type="button" class="hint" tabindex="0" aria-label="Jeton d'API créé sur id.atlassian.com (Manage account → Security → API tokens). Stocké en local, masqué." data-tip="Jeton d'API créé sur id.atlassian.com (Manage account → Security → API tokens). Stocké en local, masqué."><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_token" type="password" placeholder="ATATT…" data-i18n-placeholder="settings.ph.jira-token" /></label>
+            <label><span data-i18n="settings.lbl.jira-watch-minutes">Vérifier les tickets surveillés toutes les</span> <button type="button" class="hint" tabindex="0" aria-label="Cadence de vérification des tickets surveillés, en minutes. 0 = surveillance désactivée. Alimente aussi le compteur du menu Jira." data-tip="Cadence de vérification des tickets surveillés, en minutes. 0 = surveillance désactivée. Alimente aussi le compteur du menu Jira." data-i18n-tip="settings.tip.jira-watch-minutes"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_watch_minutes" type="number" min="0" step="1" placeholder="5" /></label>
             <div class="form-actions">
                 <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
                 <button class="btn" type="button" id="btnTestJira" title="Vérifier l'accès Jira en récupérant un ticket témoin" data-i18n-title="settings.title.tester-jira"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.btn.tester-jira">Tester Jira</span></button>

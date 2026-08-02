@@ -200,6 +200,21 @@ try { db.exec('ALTER TABLE task ADD COLUMN mr_merged INTEGER'); } catch { /* dé
 try { db.exec("ALTER TABLE config ADD COLUMN language TEXT DEFAULT 'fr'"); } catch { /* déjà présente */ }
 // Migration : rafraîchissement automatique des MR (minutes, 0 = désactivé).
 try { db.exec('ALTER TABLE config ADD COLUMN auto_refresh_minutes INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+// Migration : cadence de vérification des tickets Jira surveillés (0 = désactivée).
+try { db.exec('ALTER TABLE config ADD COLUMN jira_watch_minutes INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
+/* Tickets Jira surveillés. `status` est le DERNIER état connu : c'est lui qu'on compare au
+   prochain passage pour décider s'il y a eu changement. Un ticket ajouté part donc avec
+   l'état courant, sinon la première vérification notifierait un faux changement. */
+db.exec(`CREATE TABLE IF NOT EXISTS jira_watch (
+  key TEXT PRIMARY KEY,
+  summary TEXT,
+  status TEXT,
+  status_category TEXT,
+  added_at TEXT,
+  checked_at TEXT,
+  changed_at TEXT,
+  error TEXT
+)`);
 // Migration : générer l'explication pédagogique lors d'une review ('1' par défaut =
 // comportement historique). '0' = review seule (on saute le 2e appel IA), l'explication
 // restant disponible à la demande via le bouton « Générer l'explication » du rapport.

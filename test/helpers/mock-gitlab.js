@@ -214,14 +214,33 @@ function handleGitlab(req, res, pathname, query, body) {
   return json(res, 404, { message: `404 Not Found (${rest})` });
 }
 
-function handleJira(req, res, pathname) {
+/* Transitions proposées par le faux Jira. « En cours » est indispensable : c'est le seul
+   état qui alimente le compteur du menu (catégorie `indeterminate`). */
+const TRANSITIONS_MOCK = [
+  { id: '21', name: 'En cours', to: { name: 'En cours', statusCategory: { key: 'indeterminate' } } },
+  { id: '31', name: 'Terminé', to: { name: 'Terminé', statusCategory: { key: 'done' } } },
+];
+
+function handleJira(req, res, pathname, body = {}) {
   const auth = req.headers.authorization || '';
   if (!auth.startsWith('Basic ')) return json(res, 401, { errorMessages: ['unauthorized'] });
   // Utilisateur courant (pour cocher « moi » par défaut).
   if (pathname === '/rest/api/3/myself') return json(res, 200, { accountId: 'me-test', displayName: 'Testeur courant', avatarUrls: {} });
-  // Recherche (tickets affectés) : renvoie tous les tickets connus.
+  /* Recherche. Le mock ne parle pas JQL, mais il en comprend les DEUX formes que le produit
+     émet — `key IN (…)` (tickets surveillés) et `statusCategory = "In Progress"` (compteur du
+     menu). Sans ça, un test de surveillance passerait quoi qu'on demande, et ne prouverait rien. */
   if (/^\/rest\/api\/3\/search/.test(pathname)) {
-    const issues = Object.values(state.jiraIssues);
+    const jql = String(new URL(req.url, 'http://localhost').searchParams.get('jql') || '');
+    let issues = Object.values(state.jiraIssues);
+    const keys = /key\s+IN\s*\(([^)]*)\)/i.exec(jql);
+    if (keys) {
+      const set = new Set(keys[1].split(',').map((k) => k.trim().replace(/^"|"$/g, '').toUpperCase()));
+      issues = issues.filter((i) => set.has(String(i.key).toUpperCase()));
+    }
+    if (/statusCategory\s*=\s*"?In Progress"?/i.test(jql)) {
+      issues = issues.filter((i) => i.fields && i.fields.status
+        && i.fields.status.statusCategory && i.fields.status.statusCategory.key === 'indeterminate');
+    }
     return json(res, 200, { issues, total: issues.length });
   }
   // Pièce jointe : métadonnées puis contenu binaire (proxy de téléchargement).
@@ -242,8 +261,20 @@ function handleJira(req, res, pathname) {
   // Transitions (changement d'état) : GET liste, POST applique (204).
   const tr = /^\/rest\/api\/3\/issue\/([^/?]+)\/transitions/.exec(pathname);
   if (tr) {
-    if (req.method === 'POST') { res.writeHead(204); res.end(); return undefined; }
-    return json(res, 200, { transitions: [{ id: '31', name: 'Terminé', to: { name: 'Terminé', statusCategory: { key: 'done' } } }] });
+    if (req.method === 'POST') {
+      /* Une transition APPLIQUE le nouvel état sur le ticket : sans ça, un test qui vérifie
+         l'effet d'un changement d'état (statut de la liste, compteur du menu) passerait quoi
+         qu'on fasse, et ne prouverait rien. */
+      const demande = String((body.transition && body.transition.id) || '');
+      const cible = TRANSITIONS_MOCK.find((x) => String(x.id) === demande);
+      const issue = state.jiraIssues[decodeURIComponent(tr[1])];
+      if (issue && cible) {
+        issue.fields = issue.fields || {};
+        issue.fields.status = { name: cible.to.name, statusCategory: { key: cible.to.statusCategory.key } };
+      }
+      res.writeHead(204); res.end(); return undefined;
+    }
+    return json(res, 200, { transitions: TRANSITIONS_MOCK });
   }
   const m = /^\/rest\/api\/3\/issue\/([^/?]+)/.exec(pathname);
   if (!m) return json(res, 404, { errorMessages: ['not found'] });
@@ -265,7 +296,7 @@ function start() {
       state.calls.push({ method: req.method, path: u.pathname + u.search, body });
       try {
         if (u.pathname.startsWith('/api/v4')) return handleGitlab(req, res, u.pathname, u.searchParams, body);
-        if (u.pathname.startsWith('/rest/api')) return handleJira(req, res, u.pathname);
+        if (u.pathname.startsWith('/rest/api')) return handleJira(req, res, u.pathname, body);
         return json(res, 404, { message: 'no route' });
       } catch (e) {
         return json(res, 500, { message: e.message });

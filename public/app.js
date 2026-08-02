@@ -2936,7 +2936,7 @@ $('#ticketSave').addEventListener('click', async () => {
 const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'access_token',
   'github_url', 'github_token',
   'clone_path', 'review_skill', 'prompt_review', 'prompt_explain', 'prompt_modify',
-  'converge_threshold', 'converge_max_passes'];
+  'converge_threshold', 'converge_max_passes', 'jira_watch_minutes'];
 async function loadConfig() {
   const c = await api('/config');
   const f = $('#configForm');
@@ -7073,6 +7073,7 @@ const NOTIF_DEFAULTS = {
   session_done: true, // session de codage prête à push/MR
   needs_input: true,  // l'agent a posé des questions — clôt une attente, actionnable
   converge_done: true, // boucle de convergence terminée — actionnable par excellence
+  jira_status: true,  // un ticket surveillé change d'état — c'est LA raison de le surveiller
   mr_new: false,      // nouvelle MR — utile pour certains, spam pour d'autres
   mr_merged: false,   // MR mergée — informatif, pas actionnable
   threshold: 5,       // seuil « note basse » (sur 10)
@@ -7115,7 +7116,9 @@ function jiraDistinctStatuses() {
 function jiraVisibleIssues() {
   const q = ($('#jiraSearch').value || '').toLowerCase().trim();
   const hidden = jiraHiddenStatuses();
-  return JIRA.issues.filter((it) => (!q || `${it.key} ${it.summary}`.toLowerCase().includes(q)) && !hidden.has(it.status));
+  // L'epic entre dans la recherche : « montre-moi les tickets de tel epic » est une demande courante.
+  const foin = (it) => `${it.key} ${it.summary} ${it.epic ? `${it.epic.key} ${it.epic.summary}` : ''}`.toLowerCase();
+  return JIRA.issues.filter((it) => (!q || foin(it).includes(q)) && !hidden.has(it.status));
 }
 function jiraUpdateStatusFilterCount() {
   const el = $('#jiraStatusFilterCount'); if (!el) return;
@@ -7141,6 +7144,7 @@ function renderJiraList() {
   if (!items.length) { box.innerHTML = `<p class="muted jira-empty">${esc(tr('jira.no-match'))}</p>`; return; }
   box.innerHTML = items.map((it) => `<button class="jira-item jira-cat-${JIRA_CAT[it.statusCategory] || 'todo'}${it.key === JIRA.selectedKey ? ' active' : ''}" data-jira="${esc(it.key)}">
       <div class="jira-item-row1"><code class="jira-key">${esc(it.key)}</code> ${jiraStatusChip(it)}</div>
+      ${it.epic ? `<span class="jira-item-epic" title="${esc(tr('jira.epic-of', { key: it.epic.key, summary: it.epic.summary }))}"><svg class="ico ico-sm"><use href="#i-tag"/></svg><code>${esc(it.epic.key)}</code> ${esc(it.epic.summary)}</span>` : ''}
       <div class="jira-item-summary">${esc(it.summary)}</div>
       <div class="jira-item-foot muted">${esc(it.type || '')}${it.priority ? ` · ${esc(it.priority)}` : ''} · ${esc(fmtDate(it.updated))}</div>
     </button>`).join('');
@@ -7186,6 +7190,9 @@ function renderJiraDetail(it) {
   const meta = [
     jiraMetaRow(tr('jira.meta.reporter'), person(it.reporter)),
     jiraMetaRow(tr('jira.meta.project'), esc(it.project)),
+    it.epic ? jiraMetaRow(tr('jira.meta.epic'), it.epic.url
+      ? `<a href="${esc(it.epic.url)}" target="_blank" rel="noopener" class="jira-epic-link" title="${esc(tr('jira.epic-open', { key: it.epic.key, summary: it.epic.summary }))}"><code>${esc(it.epic.key)}</code> ${esc(it.epic.summary)} ↗</a>`
+      : `<code>${esc(it.epic.key)}</code> ${esc(it.epic.summary)}`) : '',
     jiraMetaRow(tr('jira.meta.created'), esc(fmtDate(it.created))),
     jiraMetaRow(tr('jira.meta.updated'), esc(fmtDate(it.updated))),
     it.duedate ? jiraMetaRow(tr('jira.meta.due'), esc(fmtDate(it.duedate))) : '',
@@ -7217,6 +7224,7 @@ function renderJiraDetail(it) {
             ${it.transitions.map((tt) => `<option value="${esc(tt.id)}">→ ${esc(tt.to ? tt.to.name : tt.name)}</option>`).join('')}
           </select>` : ''}
           <span class="spacer"></span>
+          <button type="button" class="btn btn-sm${jiraIsWatched(it.key) ? ' active' : ''}" data-jirawatch="${esc(it.key)}" title="${esc(tr(jiraIsWatched(it.key) ? 'jira.watch.stop-title' : 'jira.watch.start-title'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${esc(tr(jiraIsWatched(it.key) ? 'jira.watch.stop' : 'jira.watch.start'))}</button>
           <button type="button" class="btn btn-sm btn-primary" data-jiracode="${esc(it.key)}" title="${esc(tr('jira.code-title'))}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${esc(tr('jira.code'))}</button>
           <a href="${esc(it.url)}" target="_blank" rel="noopener" class="jira-open">${esc(tr('jira.open'))} ↗</a>
         </div>
@@ -7297,7 +7305,11 @@ async function loadJira() {
   }
   JIRA.me = a.me; JIRA.people = a.people || [];
   renderJiraAssigneeFilter();
+  // La liste surveillée est chargée AVEC l'onglet : le bouton « Surveiller » du détail doit
+  // connaître l'état réel dès le premier rendu, sinon il propose d'ajouter un ticket déjà suivi.
+  await loadJiraWatch();
   await loadJiraTickets();
+  refreshJiraBadge();
 }
 
 async function loadJiraTickets() {
@@ -7316,6 +7328,115 @@ async function loadJiraTickets() {
   if (vis.length) selectJiraIssue(vis[0].key);
   else $('#jiraDetail').innerHTML = `<div class="jira-empty muted">${esc(tr(JIRA.issues.length ? 'jira.no-match' : 'jira.empty'))}</div>`;
 }
+
+/* ---------- Jira : tickets surveillés ----------------------------------------
+   Surveiller un ticket n'a rien à voir avec « m'être affecté » : on suit souvent un ticket
+   tenu par quelqu'un d'autre parce qu'il débloque le sien. C'est précisément pour ça que
+   cette liste est un SOUS-ONGLET et pas un filtre de la première : elle n'a ni la même
+   source, ni le même sens, et les mélanger rendrait le compteur incompréhensible. */
+const JIRA_WATCH = { rows: [], keys: new Set() };
+const jiraIsWatched = (key) => JIRA_WATCH.keys.has(String(key || '').toUpperCase());
+
+function renderJiraWatch() {
+  const box = $('#jiraWatchList'); if (!box) return;
+  const rows = JIRA_WATCH.rows;
+  const pastille = $('#jiraWatchCount');
+  if (pastille) { pastille.textContent = rows.length; pastille.hidden = !rows.length; }
+  if (!rows.length) {
+    box.innerHTML = emptyState({ icon: 'eye', title: tr('jira.watch.empty.title'), text: tr('jira.watch.empty.text') });
+    return;
+  }
+  box.innerHTML = rows.map((r) => `<div class="jira-item jira-cat-${JIRA_CAT[r.status_category] || 'todo'}">
+      <div class="jira-item-row1">
+        <code class="jira-key">${esc(r.key)}</code>
+        <span class="jira-status jira-status-${JIRA_CAT[r.status_category] || 'todo'}">${esc(r.status || '—')}</span>
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-icon btn-sm btn-danger" data-jiraunwatch="${esc(r.key)}" title="${esc(tr('jira.watch.stop-title'))}"><svg class="ico"><use href="#i-close"/></svg></button>
+      </div>
+      <div class="jira-item-summary">${esc(r.summary || '')}</div>
+      <div class="jira-item-foot muted">${r.changed_at
+        ? esc(tr('jira.watch.changed-at', { at: fmtDate(r.changed_at) }))
+        : esc(tr('jira.watch.no-change'))}${r.checked_at ? ` · ${esc(tr('jira.watch.checked-at', { at: fmtDate(r.checked_at) }))}` : ''}</div>
+      ${r.error ? `<div class="jira-item-foot err">${esc(r.error)}</div>` : ''}
+    </div>`).join('');
+}
+
+async function loadJiraWatch() {
+  let d;
+  try { d = await api('/jira/watch'); }
+  catch { return; }   // la surveillance ne doit jamais casser l'onglet
+  JIRA_WATCH.rows = d.watched || [];
+  JIRA_WATCH.keys = new Set(JIRA_WATCH.rows.map((r) => String(r.key).toUpperCase()));
+  renderJiraWatch();
+}
+
+async function jiraWatchAdd(key) {
+  const k = String(key || '').trim().toUpperCase();
+  if (!k) return;
+  await api('/jira/watch', { method: 'POST', body: { key: k } });
+  await loadJiraWatch();
+  toast(tr('toast.jira.watch-added', { key: k }));
+}
+
+$('#jiraWatchAdd') && $('#jiraWatchAdd').addEventListener('click', async (e) => {
+  const inp = $('#jiraWatchKey');
+  await busy(e.currentTarget, async () => {
+    try { await jiraWatchAdd(inp.value); inp.value = ''; }
+    catch (err) { toast(explainError(err.message), true); }
+  });
+});
+$('#jiraWatchKey') && $('#jiraWatchKey').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); $('#jiraWatchAdd').click(); }
+});
+$('#jiraWatchList') && $('#jiraWatchList').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-jiraunwatch]'); if (!b) return;
+  try { await api(`/jira/watch/${encodeURIComponent(b.dataset.jiraunwatch)}`, { method: 'DELETE' }); await loadJiraWatch(); }
+  catch (err) { toast(explainError(err.message), true); }
+});
+$('#jiraWatchCheck') && $('#jiraWatchCheck').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+  try {
+    const r = await api('/jira/watch/check', { method: 'POST' });
+    await loadJiraWatch();
+    // On dit ce qui a été VU, pas « c'est fait » : zéro changement est une information.
+    toast(tr(r.changed ? 'toast.jira.watch-changed' : 'toast.jira.watch-none', { n: r.changed, count: r.changed }));
+  } catch (err) { toast(explainError(err.message), true); }
+}));
+
+// Bouton « Surveiller » du détail d'un ticket : bascule, puis redessine l'en-tête.
+$('#jiraDetail') && $('#jiraDetail').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-jirawatch]'); if (!b) return;
+  const key = b.dataset.jirawatch;
+  try {
+    if (jiraIsWatched(key)) { await api(`/jira/watch/${encodeURIComponent(key)}`, { method: 'DELETE' }); await loadJiraWatch(); toast(tr('toast.jira.watch-removed', { key })); }
+    else await jiraWatchAdd(key);
+    selectJiraIssue(key);
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
+// Sous-onglets de Jira.
+function showJiraSub(sub) {
+  $$('#tab-jira .subnav [data-jsub]').forEach((b) => b.classList.toggle('active', b.dataset.jsub === sub));
+  $('#jiraSubMine').hidden = sub !== 'mine';
+  $('#jiraSubWatch').hidden = sub !== 'watch';
+  if (sub === 'watch') loadJiraWatch();
+}
+$$('#tab-jira .subnav [data-jsub]').forEach((b) => b.addEventListener('click', () => showJiraSub(b.dataset.jsub)));
+
+/* Pastille du menu : combien de tickets me sont affectés ET en cours. La valeur vient d'un
+   cache serveur, jamais d'un appel Jira direct — on peut donc l'interroger tranquillement
+   sans dépendre de l'ouverture de l'onglet. */
+async function refreshJiraBadge() {
+  const el = $('#navCountJira'); if (!el) return;
+  try {
+    const d = await api('/jira/badge');
+    const n = d.configured ? (d.inProgress || 0) : 0;
+    el.textContent = n;
+    el.hidden = !n;
+    el.title = n ? tr('jira.badge.title', { n, count: n }) : '';
+  } catch { /* pastille : jamais bloquante */ }
+}
+setInterval(refreshJiraBadge, 60000);
+refreshJiraBadge();
 
 $('#jiraRefresh') && $('#jiraRefresh').addEventListener('click', loadJira);
 $('#jiraIncludeDone') && $('#jiraIncludeDone').addEventListener('change', (e) => {
@@ -7341,6 +7462,8 @@ $('#jiraStatusFilterBody') && $('#jiraStatusFilterBody').addEventListener('chang
   renderJiraList();
 });
 $('#jiraList') && $('#jiraList').addEventListener('click', (e) => {
+  /* Dans la LISTE, l'epic n'est qu'une information : la carte est un bouton de sélection, et y
+     loger une seconde cible de clic obligeait à viser. Le lien vers Jira vit dans le détail. */
   const b = e.target.closest('[data-jira]'); if (b) selectJiraIssue(b.dataset.jira);
 });
 // Lightbox : clic sur une vignette d'image → aperçu en grand (Échap/clic dehors ferme, cf. handler modales).
@@ -7368,6 +7491,9 @@ $('#jiraDetail') && $('#jiraDetail').addEventListener('change', async (e) => {
     await api(`/jira/issue/${encodeURIComponent(key)}/transition`, { method: 'POST', body: { transitionId } });
     toast(tr('jira.status-changed'));
     await selectJiraIssue(key); // détail re-fetché : nouvel état + nouvelles transitions possibles
+    // La pastille du menu compte les tickets EN COURS : ce qu'on vient de faire la change.
+    // Sans ça elle reste fausse jusqu'au prochain sondage, soit une minute d'affichage faux.
+    refreshJiraBadge();
   } catch (err) { toast(explainError(err.message), true); sel.disabled = false; }
 });
 // Poster un commentaire : on l'ajoute au détail affiché sans tout recharger.
@@ -7433,6 +7559,15 @@ function handleNotifEvent(e, p) {
           tr('notif.converge.body', { passes: e.passes }),
           () => navMrReport(e.mr_id),
         );
+      }
+      break;
+    case 'jira_status':
+      /* Le corps porte l'ancien ET le nouvel état : « À faire → En cours » se lit d'un coup
+         d'œil dans la notification, sans avoir à ouvrir l'outil pour comprendre. */
+      if (p.jira_status) {
+        showNotif(tr('notif.jira-status.title', { key: e.key }),
+          tr('notif.jira-status.body', { from: e.from || '—', to: e.to || '—', summary: e.summary || '' }),
+          () => { navTab('jira'); showJiraSub('watch'); });
       }
       break;
     case 'mr_new':

@@ -383,6 +383,17 @@ if (someMr) {
   db.prepare('INSERT INTO comment_log (mr_id, body, sent_at) VALUES (?, ?, ?)').run(someMr.id, 'Bien vu pour la validation MIME.', at(2));
 }
 
+/* ---------- tickets Jira surveillés ----------
+   Un ticket qui n'est PAS affecté à « moi » : c'est le cas d'usage réel de la surveillance —
+   suivre un ticket tenu par quelqu'un d'autre parce qu'il débloque le sien.
+
+   L'état semé (« À faire ») est VOLONTAIREMENT en retard sur celui du jeu Jira fictif
+   (« En revue ») : à la première vérification, la démo détecte donc un vrai changement et
+   affiche « dernier changement … ». Montrer la fonctionnalité vaut mieux que la décrire. */
+db.prepare(`INSERT OR IGNORE INTO jira_watch (key, summary, status, status_category, added_at, checked_at)
+            VALUES (?,?,?,?,?,?)`)
+  .run('PROJ-1390', 'Migrer les logs vers le nouveau format JSON', 'À faire', 'new', at(4), at(0.2));
+
 const counts = {
   repos: db.prepare('SELECT COUNT(*) c FROM repo').get().c,
   mrs: db.prepare('SELECT COUNT(*) c FROM mr').get().c,
@@ -392,5 +403,6 @@ const counts = {
   tasks: db.prepare('SELECT COUNT(*) c FROM task').get().c,
   convergences: db.prepare('SELECT COUNT(*) c FROM convergence_run').get().c,
   localTasks: db.prepare('SELECT COUNT(*) c FROM local_task').get().c,
+  jiraWatch: db.prepare('SELECT COUNT(*) c FROM jira_watch').get().c,
 };
 console.log('Base de démo semée dans data-demo/ :', JSON.stringify(counts));

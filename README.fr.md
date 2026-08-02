@@ -68,7 +68,7 @@ la feature *Converger* en action, et une **session reliée à sa MR** — le che
   et recherche de refs, suppressions **restaurables**, tout **avec aperçu**.
 - **Docker** — état des projets compose (drift `.env`, santé), actions par lot, **logs live** multi-containers,
   badges d'erreur dans le menu.
-- **Jira** — tes tickets récupérés automatiquement, détail + pièces jointes, changement d'état et commentaires.
+- **Jira** — tes tickets récupérés automatiquement, détail + pièces jointes, changement d'état et commentaires ; **tickets surveillés** (affectés ou non) avec notification à chaque changement d'état, et une pastille au menu = tes tickets en cours.
 - **Réglages** — connexions GitLab / GitHub / Jira, dépôts, règles de review, templates de prompt, thème et langue.
 
 Partout : `Ctrl`/`Cmd` + `K` ouvre une **palette de commandes** (sauter à un onglet, une MR, une session

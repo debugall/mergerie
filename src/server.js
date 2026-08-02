@@ -538,11 +538,19 @@ app.post('/api/jira/issue/:key/comment', wrap(async (req, res) => {
 // Changer l'ÉTAT d'un ticket : applique une transition Jira (les transitions possibles sont
 // dans le détail du ticket).
 app.post('/api/jira/issue/:key/transition', wrap(async (req, res) => {
-  if (demoDocker.isDemo()) return res.json({ ok: true, demo: true });
+  if (demoDocker.isDemo()) {
+    return res.json({ ...demoJira.applyTransition(String(req.params.key || '').trim(), (req.body && req.body.transitionId) || ''), demo: true });
+  }
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const id = String((req.body && req.body.transitionId) || '');
-  res.json(await jira.transitionIssue(cfg, String(req.params.key || '').trim(), id));
+  const r = await jira.transitionIssue(cfg, String(req.params.key || '').trim(), id);
+  /* Le compteur du menu vient d'un cache rafraîchi par le timer : après un changement d'état
+     fait DEPUIS l'outil, on sait qu'il est périmé. On le recalcule avant de répondre, pour que
+     la relecture qui suit côté client tombe déjà sur la bonne valeur. Best-effort : une
+     transition réussie ne doit pas être signalée en échec parce que le recomptage a raté. */
+  try { await refreshJiraBadge(); } catch { /* compteur : jamais bloquant */ }
+  res.json(r);
 }));
 
 // Téléchargement PROXY d'une pièce jointe Jira (le lien direct exigerait l'auth Basic dans le
@@ -587,6 +595,143 @@ app.post('/api/jira/fetch', wrap(async (req, res) => {
   const issue = await jira.fetchIssue(cfg, key);
   res.json({ key: issue.key, summary: issue.summary, context: jira.issueToContext(issue) });
 }));
+
+/* ---------- Tickets Jira surveillés ----------------------------------------
+   Surveiller un ticket = mémoriser son état, et être prévenu quand il change. On stocke le
+   DERNIER état connu au moment de l'ajout : sans ça, la première vérification comparerait
+   à du vide et notifierait un changement qui n'a pas eu lieu.
+
+   Une erreur (ticket supprimé, droits perdus, Jira injoignable) est rangée sur la ligne
+   concernée et affichée ; elle n'interrompt jamais la vérification des autres. */
+
+const watchRows = () => db.prepare('SELECT * FROM jira_watch ORDER BY key').all();
+
+// Compteur du menu, en cache : le client l'interroge souvent, Jira ne doit pas l'être autant.
+let jiraBadge = { inProgress: 0, at: null, error: null };
+
+app.get('/api/jira/watch', wrap((req, res) => {
+  res.json({ configured: demoDocker.isDemo() || jira.isConfigured(getConfig()), watched: watchRows() });
+}));
+
+app.post('/api/jira/watch', wrap(async (req, res) => {
+  const key = String((req.body && req.body.key) || '').trim().toUpperCase();
+  if (!jira.cleValide(key)) throw new Error(t('err.jira.watch-key-invalid'));
+  if (db.prepare('SELECT 1 FROM jira_watch WHERE key = ?').get(key)) throw new Error(t('err.jira.watch-exists'));
+  const now = new Date().toISOString();
+  // État de départ : celui du ticket maintenant. C'est ce qui évite la fausse notification.
+  let meta = null;
+  if (demoDocker.isDemo()) { const d = demoJira.issue(key); meta = d && { summary: d.summary, status: d.status, statusCategory: d.statusCategory }; }
+  else {
+    const cfg = getConfig();
+    if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+    meta = (await jira.statusOfKeys(cfg, [key]))[0] || null;
+    if (!meta) throw new Error(t('err.jira.watch-not-found', { key }));
+  }
+  db.prepare(`INSERT INTO jira_watch (key, summary, status, status_category, added_at, checked_at)
+              VALUES (?,?,?,?,?,?)`)
+    .run(key, meta.summary || '', meta.status || '', meta.statusCategory || '', now, now);
+  res.json(db.prepare('SELECT * FROM jira_watch WHERE key = ?').get(key));
+}));
+
+app.delete('/api/jira/watch/:key', wrap((req, res) => {
+  db.prepare('DELETE FROM jira_watch WHERE key = ?').run(String(req.params.key || '').trim().toUpperCase());
+  res.json({ ok: true });
+}));
+
+/* Vérifie tous les tickets surveillés et notifie les changements d'état.
+   Appelée par le timer ET par le bouton « Vérifier maintenant » — même code, donc ce que
+   le bouton montre est exactement ce que le timer fait. */
+/* Une seule vérification à la fois, TOUS APPELANTS CONFONDUS (timer, bouton « Vérifier
+   maintenant », double clic). Deux passages simultanés liraient le même ancien état et
+   notifieraient deux fois le même changement — exactement ce qu'on ne veut pas. Les appels
+   concurrents partagent donc le résultat de celle qui tourne déjà. */
+let checkEnCours = null;
+function checkJiraWatch() {
+  if (!checkEnCours) checkEnCours = faireCheckJiraWatch().finally(() => { checkEnCours = null; });
+  return checkEnCours;
+}
+
+async function faireCheckJiraWatch() {
+  const rows = watchRows();
+  const now = new Date().toISOString();
+  const resultat = { checked: rows.length, changed: 0, errors: 0 };
+  if (!rows.length) return resultat;
+
+  let etats = [];
+  try {
+    etats = demoDocker.isDemo()
+      ? rows.map((r) => { const d = demoJira.issue(r.key); return d && { key: r.key, summary: d.summary, status: d.status, statusCategory: d.statusCategory }; }).filter(Boolean)
+      : await jira.statusOfKeys(getConfig(), rows.map((r) => r.key));
+  } catch (e) {
+    // Jira injoignable : on marque toutes les lignes, sans rien perdre de l'état connu.
+    db.prepare('UPDATE jira_watch SET checked_at = ?, error = ?').run(now, String(e.message).slice(0, 300));
+    resultat.errors = rows.length;
+    return resultat;
+  }
+
+  const parCle = new Map(etats.map((i) => [i.key, i]));
+  const maj = db.prepare(`UPDATE jira_watch SET summary = ?, status = ?, status_category = ?,
+                          checked_at = ?, changed_at = ?, error = NULL WHERE key = ?`);
+  const inchange = db.prepare('UPDATE jira_watch SET summary = ?, checked_at = ?, error = NULL WHERE key = ?');
+  const absent = db.prepare('UPDATE jira_watch SET checked_at = ?, error = ? WHERE key = ?');
+  for (const r of rows) {
+    const cur = parCle.get(r.key);
+    if (!cur) { absent.run(now, t('err.jira.watch-unreachable'), r.key); resultat.errors += 1; continue; }
+    if ((cur.status || '') !== (r.status || '')) {
+      maj.run(cur.summary || '', cur.status || '', cur.statusCategory || '', now, now, r.key);
+      resultat.changed += 1;
+      /* On ne notifie QUE si un état précédent était connu. Sans état de référence il n'y a pas
+         de changement à annoncer, seulement une première observation — la signaler ferait sonner
+         l'outil pour rien. Le nouvel état devient la référence : tant qu'il ne rebouge pas, plus
+         aucune notification, quel que soit le nombre de vérifications. */
+      if (r.status) {
+        notify.push('jira_status', { key: r.key, summary: cur.summary || '', from: r.status, to: cur.status || '' });
+      }
+    } else {
+      inchange.run(cur.summary || r.summary || '', now, r.key);
+    }
+  }
+  return resultat;
+}
+
+app.post('/api/jira/watch/check', wrap(async (req, res) => { res.json(await checkJiraWatch()); }));
+
+// Compteur « en cours qui me sont affectés » : valeur en cache, jamais un appel Jira ici.
+app.get('/api/jira/badge', wrap((req, res) => {
+  if (demoDocker.isDemo()) return res.json({ configured: true, inProgress: demoJira.inProgressMine(), error: null });
+  res.json({ configured: jira.isConfigured(getConfig()), ...jiraBadge });
+}));
+
+async function refreshJiraBadge() {
+  const cfg = getConfig();
+  if (!jira.isConfigured(cfg)) { jiraBadge = { inProgress: 0, at: null, error: null }; return; }
+  try { jiraBadge = { inProgress: await jira.countMineInProgress(cfg), at: new Date().toISOString(), error: null }; }
+  catch (e) { jiraBadge = { ...jiraBadge, error: String(e.message).slice(0, 200) }; }
+}
+
+/* Timer de surveillance : même forme que le rafraîchissement auto des MR (0 = désactivé,
+   pas de chevauchement). Il porte les deux besoins — l'état des tickets surveillés et le
+   compteur du menu — parce qu'ils interrogent la même API et ont la même cadence utile. */
+let jiraWatchTimer = null;
+let jiraWatchBusy = false;
+function restartJiraWatch() {
+  if (jiraWatchTimer) { clearInterval(jiraWatchTimer); jiraWatchTimer = null; }
+  const min = Number(getConfig().jira_watch_minutes) || 0;
+  if (min <= 0) { console.log('[jira-watch] désactivé'); return; }
+  const tour = async () => {
+    if (jiraWatchBusy) return;
+    jiraWatchBusy = true;
+    try {
+      await refreshJiraBadge();
+      const r = await checkJiraWatch();
+      if (r.changed) console.log(`[jira-watch] ${r.changed} changement(s) d'état sur ${r.checked} ticket(s)`);
+    } catch (e) { console.error(`[jira-watch] échec : ${e.message}`); }
+    finally { jiraWatchBusy = false; }
+  };
+  jiraWatchTimer = setInterval(tour, min * 60 * 1000);
+  tour();
+  console.log(`[jira-watch] activé : toutes les ${min} min`);
+}
 
 // Rafraîchir le contexte Jira d'une MR à la demande (bonus des champs séparés :
 // ne touche jamais au contexte manuel).
@@ -661,6 +806,7 @@ app.put('/api/config', wrap((req, res) => {
   const c = updateConfig(patch);
   i18n.setLang(c.language);   // les messages d'erreur suivent la nouvelle langue
   restartAutoRefresh(); // prend en compte le nouvel intervalle
+  restartJiraWatch(); // idem pour la surveillance Jira (et le compteur du menu)
   res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '' });
 }));
 
@@ -2687,6 +2833,7 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`  copilot : ${copilot.COPILOT_BIN} ${[...copilot.EXTRA_ARGS, '-p', '"<prompt>"'].join(' ')}`);
   console.log(`  dry-run : ${copilot.isDryRun()}  |  COPILOT_ARGS=${JSON.stringify(process.env.COPILOT_ARGS || '')}`);
   restartAutoRefresh();
+  restartJiraWatch();
 });
 
 /* Exporté pour les tests de bout en bout : ils lancent le serveur EN PROCESSUS
@@ -2697,6 +2844,8 @@ module.exports = {
   server,
   close() {
     if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+    // Un timer oublié garde le process en vie : la suite de tests ne rendrait jamais la main.
+    if (jiraWatchTimer) { clearInterval(jiraWatchTimer); jiraWatchTimer = null; }
     return new Promise((resolve) => server.close(resolve));
   },
 };
