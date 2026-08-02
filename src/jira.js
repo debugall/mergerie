@@ -319,22 +319,34 @@ const TYPES_FILTRABLES = new Set(['option', 'array', 'user', 'version', 'compone
 /* Le champ « espace » n'a pas d'identifiant stable : on le repère par son NOM, dans les deux
    langues de l'interface. Repérage insensible aux accents et à la casse — « Espace », « espace »,
    « Space » désignent la même chose. Rien trouvé = pas de filtre, plutôt qu'un mauvais champ. */
+const NOMS_ESPACE = ['espace', 'espaces', 'space', 'spaces', 'espace de travail', 'workspace'];
 function detectSpaceField(fields) {
   const norme = (x) => String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-  const exact = (fields || []).find((f) => ['espace', 'space'].includes(norme(f.name)));
-  return exact ? { id: exact.id, name: exact.name } : null;
+  // Correspondance EXACTE sur le nom : « Espace disque » n'est pas l'espace Jira.
+  const trouve = (fields || []).find((f) => NOMS_ESPACE.includes(norme(f.name)));
+  return trouve ? { id: trouve.id, name: trouve.name } : null;
 }
 
 // Champs de l'instance utilisables comme filtre, triés par nom.
-async function listFields(cfg) {
+/* TOUS les champs de l'instance, normalisés. Le repérage de l'espace doit se faire ici, sur la
+   liste brute : le chercher dans la liste déjà filtrée le manquait dès que son type sortait de
+   la liste blanche ou qu'il s'agissait d'un champ système. */
+async function allFields(cfg) {
   if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
   const data = await jiraGet(cfg, '/rest/api/3/field');
   return (Array.isArray(data) ? data : [])
-    .filter((f) => f && f.custom && champPersoValide(f.id))
-    .filter((f) => TYPES_FILTRABLES.has((f.schema && f.schema.type) || ''))
-    .map((f) => ({ id: f.id, name: f.name || f.id, type: (f.schema && f.schema.type) || '' }))
+    .filter((f) => f && f.id)
+    .map((f) => ({ id: f.id, name: f.name || f.id, custom: !!f.custom, type: (f.schema && f.schema.type) || '' }))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 }
+
+// Sous-ensemble utilisable comme filtre générique : champs personnalisés à valeurs répétables.
+function filterableFields(fields) {
+  return (fields || [])
+    .filter((f) => f.custom && champPersoValide(f.id) && TYPES_FILTRABLES.has(f.type));
+}
+
+async function listFields(cfg) { return filterableFields(await allFields(cfg)); }
 
 /* Valeurs d'un champ personnalisé, ramenées à des couples { v, l }. Jira y met de tout : une
    chaîne, un nombre, un objet { value } (liste de choix), { name } (sprint, version, équipe),
@@ -560,4 +572,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, statusOfKeys, listFields, champPersoValide, detectSpaceField, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, statusOfKeys, listFields, allFields, filterableFields, champPersoValide, detectSpaceField, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };

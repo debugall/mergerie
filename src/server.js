@@ -524,8 +524,14 @@ app.get('/api/jira/fields', wrap(async (req, res) => {
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, fields: [], space: null });
   try {
-    const fields = await jira.listFields(cfg);
-    res.json({ configured: true, fields, space: jira.detectSpaceField(fields) });
+    /* Le repérage de l'espace se fait sur TOUS les champs, le filtre générique sur le
+       sous-ensemble filtrable. `all` sert aussi de diagnostic quand rien n'est trouvé. */
+    const all = await jira.allFields(cfg);
+    const space = jira.detectSpaceField(all);
+    res.json({
+      configured: true, fields: jira.filterableFields(all), space,
+      ...(space ? {} : { candidats: all.map((f) => f.name).slice(0, 400) }),
+    });
   // Un droit manquant sur /field ne doit pas priver l'onglet de ses filtres de base.
   } catch (e) { res.json({ configured: true, fields: [], space: null, error: String(e.message).slice(0, 200) }); }
 }));

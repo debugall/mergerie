@@ -25,8 +25,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   announced **once**: checks are serialised, so the timer and the "Check now" button cannot both report
   the same move, and the new status becomes the reference until it moves again.
 - **A dedicated Space filter in the Jira tab.** Space is a *custom* field, and its identifier differs
-  from one Jira to the next, so the tool finds it by name ("Espace" or "Space") instead of guessing an
-  id; the filter only appears when your instance has one. Hiding a space keeps tickets that have no
+  from one Jira to the next, so the tool finds it by name — Espace, Space, Espace de travail, Workspace,
+  accents and case ignored, but matched exactly so an "Espace disque" is never mistaken for it. The
+  search covers every field the instance exposes, system fields included. The filter only appears when
+  your instance has one, and when it does not, the field list is returned so you can see what yours is
+  actually called. Hiding a space keeps tickets that have no
   space at all — hiding "Boutique" does not mean hiding everything unlabelled. It has the same search
   box and check-all / uncheck-all as the assignee and status filters.
 - **The Jira status filter now has a search box, like the assignee one.** With a workflow carrying a
