@@ -506,7 +506,7 @@ app.get('/api/jira/assignees', wrap(async (req, res) => {
 // vide = mes tickets). Filtre statut fait côté client.
 app.get('/api/jira/tickets', wrap(async (req, res) => {
   const accountIds = String(req.query.assignees || '').split(',').map((s) => s.trim()).filter(Boolean);
-  // Champs personnalisés dont le filtre a besoin : réclamés en plus des champs de base.
+  // Champ « espace » réclamé par le filtre dédié : en plus des champs de base.
   const extra = String(req.query.extra || '').split(',').map((x) => x.trim()).filter(jira.champPersoValide);
   if (demoDocker.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1', extra) });
   const cfg = getConfig();
@@ -517,12 +517,17 @@ app.get('/api/jira/tickets', wrap(async (req, res) => {
 /* Champs personnalisés de l'instance, pour que le filtre générique propose CEUX de
    l'utilisateur (sprint, espace, équipe…) plutôt qu'une liste devinée. */
 app.get('/api/jira/fields', wrap(async (req, res) => {
-  if (demoDocker.isDemo()) return res.json({ configured: true, fields: demoJira.fields() });
+  if (demoDocker.isDemo()) {
+    const f = demoJira.fields();
+    return res.json({ configured: true, fields: f, space: jira.detectSpaceField(f) });
+  }
   const cfg = getConfig();
-  if (!jira.isConfigured(cfg)) return res.json({ configured: false, fields: [] });
-  try { res.json({ configured: true, fields: await jira.listFields(cfg) }); }
+  if (!jira.isConfigured(cfg)) return res.json({ configured: false, fields: [], space: null });
+  try {
+    const fields = await jira.listFields(cfg);
+    res.json({ configured: true, fields, space: jira.detectSpaceField(fields) });
   // Un droit manquant sur /field ne doit pas priver l'onglet de ses filtres de base.
-  catch (e) { res.json({ configured: true, fields: [], error: String(e.message).slice(0, 200) }); }
+  } catch (e) { res.json({ configured: true, fields: [], space: null, error: String(e.message).slice(0, 200) }); }
 }));
 
 // Détail d'un ticket Jira : métadonnées + description + commentaires + pièces jointes.

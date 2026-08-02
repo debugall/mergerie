@@ -510,18 +510,23 @@ describe('front : filtre Jira par champ', () => {
     assert.ok(!passe(bug, { epic: ['Tunnel'] }), 'le résumé n’est qu’un libellé d’affichage');
   });
 
-  test('un champ personnalisé de l’instance (sprint, espace…) se filtre comme les autres', () => {
-    const avecSprint = { key: 'A-4', custom: { customfield_10020: [{ v: '42', l: 'Sprint 42' }] } };
-    const sans = { key: 'A-5', custom: { customfield_10020: [] } };
-    assert.ok(passe(avecSprint, { customfield_10020: ['42'] }));
-    assert.ok(!passe(sans, { customfield_10020: ['42'] }));
-    assert.ok(passe(sans, { customfield_10020: [] }), 'critère vide = inactif, ici aussi');
-    // ET avec un champ standard : les deux familles se combinent.
-    assert.ok(!passe({ ...avecSprint, type: 'Story' }, { customfield_10020: ['42'], type: ['Bug'] }));
-  });
-
   test('chaque champ proposé sait extraire ses valeurs sans exploser sur un ticket vide', () => {
     for (const ch of champs) assert.deepEqual(ch.vals({}), [], `${ch.cle} sur un ticket vide`);
+  });
+});
+
+describe('jira : repérage du champ « espace »', () => {
+  test('repéré par son nom, dans les deux langues et sans se laisser arrêter par l’accent', () => {
+    assert.deepEqual(jira.detectSpaceField([{ id: 'cf_9', name: 'Espace' }]), { id: 'cf_9', name: 'Espace' });
+    assert.deepEqual(jira.detectSpaceField([{ id: 'cf_9', name: 'space' }]), { id: 'cf_9', name: 'space' });
+    assert.deepEqual(jira.detectSpaceField([{ id: 'cf_9', name: ' ESPACE ' }]), { id: 'cf_9', name: ' ESPACE ' });
+  });
+
+  test('rien trouvé = pas de filtre, plutôt qu’un champ pris au hasard', () => {
+    // Un « Espace disque » n'est pas l'espace Jira : la correspondance est EXACTE.
+    assert.equal(jira.detectSpaceField([{ id: 'cf_1', name: 'Espace disque' }, { id: 'cf_2', name: 'Équipe' }]), null);
+    assert.equal(jira.detectSpaceField([]), null);
+    assert.equal(jira.detectSpaceField(null), null);
   });
 });
 

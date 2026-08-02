@@ -568,7 +568,7 @@ describe('API de bout en bout', () => {
     for (const k of ['ASG-1', 'ASG-2', 'ASG-3']) delete app.state.jiraIssues[k];
   });
 
-  test('Jira : les champs personnalisés de l’instance sont proposés et filtrables', async () => {
+  test('Jira : le champ « espace » de l’instance est repéré et ses valeurs normalisées', async () => {
     await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
     app.state.jiraFields = [
       { id: 'customfield_10020', name: 'Sprint', custom: true, schema: { type: 'array', items: 'json' } },
@@ -582,6 +582,9 @@ describe('API de bout en bout', () => {
     assert.equal(f.status, 200);
     assert.deepEqual(f.body.fields.map((x) => x.id), ['customfield_10101', 'customfield_10020'],
       'seuls les champs personnalisés filtrables, triés par nom');
+    /* L'espace est repéré par son NOM : son identifiant change d'une instance à l'autre, le
+       coder en dur marcherait chez l'un et pas chez l'autre. */
+    assert.deepEqual(f.body.space, { id: 'customfield_10101', name: 'Espace' });
 
     /* Les valeurs sont normalisées quelle que soit la forme que Jira leur donne : objet à
        `name` (sprint), objet à `value` (liste de choix), chaîne nue. */

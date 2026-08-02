@@ -427,7 +427,11 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   celui d'une sous-tâche est une story, l'annoncer comme epic serait un contresens.
   Par défaut on écarte les tickets **terminés** — une case **« Inclure les terminés »** les réintègre. Un
   **filtre par statut** (repliable, cases à cocher, **choix persisté**) permet en plus de n'afficher que les
-  statuts voulus. Les filtres **Assignés** et **Statuts** ont chacun leur **recherche** — qui **masque** les lignes
+  statuts voulus. Un filtre **Espace** apparaît quand ton instance a un champ
+  de ce nom : c'est un champ **personnalisé**, dont l'identifiant change d'une instance à l'autre, donc
+  l'outil le repère par son nom (« Espace » ou « Space ») plutôt que de le deviner. Un ticket **sans
+  espace** reste visible quand on masque un espace : cacher « Boutique » ne veut pas dire cacher tout
+  ce qui n'en a pas. Les filtres **Assignés**, **Statuts** et **Espace** ont chacun leur **recherche** — qui **masque** les lignes
   sans rien décocher — et **Tout cocher / Tout décocher** —
   pratique pour vider puis ne garder qu'une ou deux lignes. Sur les assignés, **ne cocher personne ne
   filtre pas** : la liste prend alors **tous** les tickets visibles par le compte, y compris ceux
@@ -438,9 +442,7 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   bien que ni la ligne ni la liste ne bougent, et un clic à l'extérieur referme. Le panneau **Filtres**
   permet de choisir d'abord
   **le champ** (epic, type, priorité, projet, assigné, rapporteur, étiquettes, composants, versions
-  correctives) **ainsi que les champs personnalisés de ton instance** — sprint, espace, équipe… —
-  découverts en interrogeant Jira plutôt que devinés, puisque leur identifiant change d'une instance
-  à l'autre. On choisit ensuite **une ou plusieurs valeurs**. Les valeurs proposées sont celles **réellement
+  correctives) puis **une ou plusieurs valeurs**. Les valeurs proposées sont celles **réellement
   présentes** dans les tickets chargés, avec le nombre de tickets pour chacune — proposer une valeur qui
   ne ramène rien n'aide personne. Le choix du champ et chaque liste de valeurs ont leur **recherche** ;
   celle des valeurs **masque les lignes sans rien décocher**, pour ne jamais perdre une sélection en

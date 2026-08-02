@@ -316,6 +316,15 @@ const champPersoValide = (id) => CHAMP_PERSO.test(String(id || ''));
 const TYPES_FILTRABLES = new Set(['option', 'array', 'user', 'version', 'component', 'priority',
   'resolution', 'group', 'project', 'issuetype', 'status', 'securitylevel', 'number']);
 
+/* Le champ « espace » n'a pas d'identifiant stable : on le repère par son NOM, dans les deux
+   langues de l'interface. Repérage insensible aux accents et à la casse — « Espace », « espace »,
+   « Space » désignent la même chose. Rien trouvé = pas de filtre, plutôt qu'un mauvais champ. */
+function detectSpaceField(fields) {
+  const norme = (x) => String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  const exact = (fields || []).find((f) => ['espace', 'space'].includes(norme(f.name)));
+  return exact ? { id: exact.id, name: exact.name } : null;
+}
+
 // Champs de l'instance utilisables comme filtre, triés par nom.
 async function listFields(cfg) {
   if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
@@ -551,4 +560,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, statusOfKeys, listFields, champPersoValide, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, statusOfKeys, listFields, champPersoValide, detectSpaceField, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
