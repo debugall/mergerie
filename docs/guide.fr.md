@@ -428,6 +428,15 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   Par défaut on écarte les tickets **terminés** — une case **« Inclure les terminés »** les réintègre. Un
   **filtre par statut** (repliable, cases à cocher, **choix persisté**) permet en plus de n'afficher que les
   statuts voulus.
+- **Filtres par champ, génériques.** Sous les statuts, un panneau **Filtres** où l'on choisit d'abord
+  **le champ** (epic, type, priorité, projet, assigné, rapporteur, étiquettes, composants, versions
+  correctives) puis **une ou plusieurs valeurs**. Les valeurs proposées sont celles **réellement
+  présentes** dans les tickets chargés, avec le nombre de tickets pour chacune — proposer une valeur qui
+  ne ramène rien n'aide personne. Le choix du champ et chaque liste de valeurs ont leur **recherche** ;
+  celle des valeurs **masque les lignes sans rien décocher**, pour ne jamais perdre une sélection en
+  cachant. Plusieurs critères se combinent en **ET** entre les champs et en **OU** à l'intérieur d'un
+  champ (« les bugs *et* les tâches, de cet epic-ci »). Un critère dont aucune valeur n'est cochée ne
+  filtre rien : ajouter un champ ne vide donc jamais la liste. Les critères sont **persistés**.
 - Le **détail** (à droite) affiche le **contenu** (description Jira convertie d'ADF en Markdown lisible),
   toutes les **métadonnées** (statut, type, priorité, assigné, rapporteur, projet, dates, échéance,
   étiquettes, composants, versions correctives), **tous les commentaires** (auteur, date, corps en

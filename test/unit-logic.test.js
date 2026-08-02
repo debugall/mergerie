@@ -448,6 +448,73 @@ describe('front : classement des commandes git destructives', () => {
   });
 });
 
+/* Filtre générique de l'onglet Jira : on choisit le champ, puis les valeurs. La sémantique
+   (ET entre champs, OU dans un champ, critère vide = inactif) est ce qui décide de ce que
+   l'utilisateur voit : se tromper ici cache des tickets sans rien dire. */
+describe('front : filtre Jira par champ', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const from = src.indexOf('const JIRA_CHAMPS');
+  const to = src.indexOf('\n}', src.indexOf('function jiraPasseFiltres')) + 2;
+  assert.ok(from > 0 && to > from, 'JIRA_CHAMPS et jiraPasseFiltres doivent rester contigus dans app.js');
+  // eslint-disable-next-line no-new-func
+  const { passe, champs } = new Function(`${src.slice(from, to)}
+    return { passe: jiraPasseFiltres, champs: JIRA_CHAMPS };`)();
+
+  const bug = {
+    key: 'A-1', type: 'Bug', priority: 'Haute', project: 'PROJ',
+    epic: { key: 'E-1', summary: 'Tunnel' }, labels: ['régression', 'panier'],
+    components: ['api'], fixVersions: ['2.4.0'],
+    assignee: { name: 'Moi' }, reporter: { name: 'Support' },
+  };
+  const story = {
+    key: 'A-2', type: 'Story', priority: 'Basse', project: 'PROJ',
+    epic: { key: 'E-2', summary: 'Observabilité' }, labels: [],
+    components: [], fixVersions: [],
+    assignee: { name: 'Alex' }, reporter: { name: 'PO' },
+  };
+  const orphelin = { key: 'A-3', type: 'Tâche', project: 'AUTRE' };
+
+  test('aucun filtre : tout passe', () => {
+    for (const it of [bug, story, orphelin]) assert.ok(passe(it, {}));
+  });
+
+  test('un critère sans valeur cochée ne filtre RIEN', () => {
+    // Sinon, ajouter un champ viderait la liste avant d'avoir coché quoi que ce soit.
+    for (const it of [bug, story, orphelin]) assert.ok(passe(it, { epic: [], type: [] }));
+  });
+
+  test('OU à l’intérieur d’un champ', () => {
+    assert.ok(passe(bug, { type: ['Bug', 'Story'] }));
+    assert.ok(passe(story, { type: ['Bug', 'Story'] }));
+    assert.ok(!passe(orphelin, { type: ['Bug', 'Story'] }));
+  });
+
+  test('ET entre les champs', () => {
+    assert.ok(passe(bug, { type: ['Bug'], priority: ['Haute'] }));
+    assert.ok(!passe(bug, { type: ['Bug'], priority: ['Basse'] }), 'les deux doivent être satisfaits');
+  });
+
+  test('un champ multi-valué correspond si UNE de ses valeurs est cochée', () => {
+    assert.ok(passe(bug, { labels: ['panier'] }));
+    assert.ok(passe(bug, { labels: ['inconnu', 'api', 'panier'] }));
+    assert.ok(!passe(bug, { labels: ['inconnu'] }));
+  });
+
+  test('un ticket sans valeur pour un champ filtré est écarté', () => {
+    assert.ok(!passe(story, { labels: ['panier'] }), 'aucune étiquette → ne correspond pas');
+    assert.ok(!passe(orphelin, { epic: ['E-1'] }), 'aucun epic → ne correspond pas');
+  });
+
+  test('l’epic filtre sur sa CLÉ, pas sur son résumé', () => {
+    assert.ok(passe(bug, { epic: ['E-1'] }));
+    assert.ok(!passe(bug, { epic: ['Tunnel'] }), 'le résumé n’est qu’un libellé d’affichage');
+  });
+
+  test('chaque champ proposé sait extraire ses valeurs sans exploser sur un ticket vide', () => {
+    for (const ch of champs) assert.deepEqual(ch.vals({}), [], `${ch.cle} sur un ticket vide`);
+  });
+});
+
 /* Séquences ANSI dans les logs. Le cas qui a motivé ce nettoyage : une application dans un
    container colore sa sortie, `docker logs` la relaie telle quelle, et le panneau affichait
    « ␛[34mdebug␛[39m » — chaque ligne noyée sous ses propres octets d'échappement. */

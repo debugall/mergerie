@@ -1608,6 +1608,14 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-item .jira-status { flex-shrink: 0; font-size: 10px; padding: 1px 8px; max-width: 55%; overflow: hidden; text-overflow: ellipsis; }
 /* L'epic est un RATTACHEMENT, pas le sujet de la carte : il reste sur une ligne, discret,
    au-dessus du résumé qui garde tout son poids visuel. Les deux couleurs suivent le thème. */
+/* Filtre générique : un bloc par critère, visuellement rattaché au panneau des filtres. */
+.jira-ff-pick { padding: 6px 8px; }
+.jira-ff-crit { border-top: 1px solid var(--line); padding: 8px; }
+.jira-ff-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.jira-ff-head b { font-size: 12px; }
+.jira-ff-crit .jira-sf-search { width: 100%; margin-bottom: 4px; }
+.jira-ff-crit .jira-status-filter-body { max-height: 168px; overflow-y: auto; }
+
 .jira-item-epic { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 11.5px; color: var(--muted, #888); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .jira-item-epic code { font-family: var(--ff-mono); font-weight: 700; color: var(--accent, #4f9cf9); }
 .jira-item-epic .ico { flex-shrink: 0; opacity: .7; }

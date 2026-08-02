@@ -24,6 +24,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   is flagged on its own row without interrupting the others or losing its last known status. A change is
   announced **once**: checks are serialised, so the timer and the "Check now" button cannot both report
   the same move, and the new status becomes the reference until it moves again.
+- **A generic field filter in the Jira tab.** Pick the **field** first — epic, type, priority, project,
+  assignee, reporter, labels, components, fix versions — then one or more **values**, offered from what
+  the loaded tickets actually contain, each with its ticket count. Both the field picker and every value
+  list have their own search box; searching a value list **hides rows without unticking anything**, so a
+  selection is never lost by filtering. Criteria combine as AND between fields and OR within a field, and
+  a criterion with nothing ticked filters nothing — adding a field never empties the list on you. Your
+  criteria are remembered.
 - **Jira tickets now show their epic, and it opens Jira.** The list carries the epic key and title
   above each ticket's summary, the detail carries it among the metadata, and the search box matches on
   it — asking for "everything under that epic" is a routine need. In the detail panel the epic is a

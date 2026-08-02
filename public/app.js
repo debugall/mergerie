@@ -7113,12 +7113,151 @@ function jiraDistinctStatuses() {
   for (const it of JIRA.issues) if (it.status && !seen.has(it.status)) seen.set(it.status, it.statusCategory);
   return [...seen.entries()].map(([status, cat]) => ({ status, cat }));
 }
+/* ---------- Jira : filtre générique par champ ----------------------------------
+   Choisir le CHAMP puis les valeurs, plutôt qu'un filtre codé en dur par champ. Les valeurs
+   proposées sont celles réellement présentes dans les tickets chargés : proposer une valeur
+   qui ne ramène rien n'aide personne, et une liste figée se périme.
+
+   Sémantique : ET entre les champs, OU à l'intérieur d'un champ. C'est ce que les gens
+   attendent — « les bugs ET les tâches, de cet epic-ci ». Un champ dont aucune valeur n'est
+   cochée ne filtre pas : sinon, ajouter un critère viderait la liste avant qu'on ait coché
+   quoi que ce soit.
+
+   `JIRA_CHAMPS` et `jiraPasseFiltres` restent contigus : un test les évalue ensemble. */
+const JIRA_CHAMPS = [
+  { cle: 'epic', i18n: 'jira.meta.epic', vals: (it) => (it.epic ? [{ v: it.epic.key, l: `${it.epic.key} — ${it.epic.summary}` }] : []) },
+  { cle: 'type', i18n: 'jira.meta.type', vals: (it) => (it.type ? [{ v: it.type, l: it.type }] : []) },
+  { cle: 'priority', i18n: 'jira.meta.priority', vals: (it) => (it.priority ? [{ v: it.priority, l: it.priority }] : []) },
+  { cle: 'project', i18n: 'jira.meta.project', vals: (it) => (it.project ? [{ v: it.project, l: it.project }] : []) },
+  { cle: 'reporter', i18n: 'jira.meta.reporter', vals: (it) => (it.reporter && it.reporter.name ? [{ v: it.reporter.name, l: it.reporter.name }] : []) },
+  { cle: 'assignee', i18n: 'jira.meta.assignee', vals: (it) => (it.assignee && it.assignee.name ? [{ v: it.assignee.name, l: it.assignee.name }] : []) },
+  { cle: 'labels', i18n: 'jira.meta.labels', vals: (it) => (it.labels || []).map((x) => ({ v: x, l: x })) },
+  { cle: 'components', i18n: 'jira.meta.components', vals: (it) => (it.components || []).map((x) => ({ v: x, l: x })) },
+  { cle: 'fixVersions', i18n: 'jira.meta.fixversions', vals: (it) => (it.fixVersions || []).map((x) => ({ v: x, l: x })) },
+];
+function jiraPasseFiltres(it, filtres, champs = JIRA_CHAMPS) {
+  for (const ch of champs) {
+    const choisies = (filtres && filtres[ch.cle]) || [];
+    if (!choisies.length) continue;                       // critère sans valeur cochée = inactif
+    const siennes = ch.vals(it).map((x) => x.v);
+    if (!siennes.some((v) => choisies.includes(v))) return false;
+  }
+  return true;
+}
+
+const JIRA_FF_KEY = 'aidevtools_jira_filtres';
+function jiraFiltres() {
+  try { const v = JSON.parse(localStorage.getItem(JIRA_FF_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; }
+  catch { return {}; }
+}
+function setJiraFiltres(f) { try { localStorage.setItem(JIRA_FF_KEY, JSON.stringify(f)); } catch { /* stockage indisponible */ } }
+
+// Valeurs distinctes d'un champ dans les tickets chargés, avec le nombre de tickets par valeur.
+function jiraValeursDe(cle) {
+  const ch = JIRA_CHAMPS.find((c) => c.cle === cle);
+  if (!ch) return [];
+  const par = new Map();
+  for (const it of JIRA.issues) {
+    for (const { v, l } of ch.vals(it)) {
+      const e = par.get(v) || { v, l, n: 0 };
+      e.n += 1; par.set(v, e);
+    }
+  }
+  return [...par.values()].sort((a, b) => a.l.localeCompare(b.l, undefined, { numeric: true }));
+}
+
+function renderJiraFieldFilter() {
+  const det = $('#jiraFieldFilter'); const body = $('#jiraFieldFilterBody'); const pick = $('#jiraFieldFilterPick');
+  if (!det || !body || !pick) return;
+  // Champs réellement exploitables sur le jeu courant : proposer « Composants » quand aucun
+  // ticket n'en porte ferait cliquer pour rien.
+  const dispo = JIRA_CHAMPS.filter((c) => jiraValeursDe(c.cle).length > 0);
+  det.hidden = !dispo.length;
+  if (!dispo.length) return;
+
+  const f = jiraFiltres();
+  const actifs = Object.keys(f).filter((k) => JIRA_CHAMPS.some((c) => c.cle === k));
+  const nb = actifs.reduce((n, k) => n + (f[k] || []).length, 0);
+  const cnt = $('#jiraFieldFilterCount');
+  if (cnt) cnt.textContent = nb ? tr('jira.ff.count', { n: nb, count: nb }) : '';
+
+  pick.innerHTML = comboHtml('jf-champ', { ph: tr('jira.ff.add') });
+  wireCombo(pick, 'jf-champ', () => dispo
+    .filter((c) => !actifs.includes(c.cle))
+    .map((c) => ({ value: c.cle, label: tr(c.i18n), hint: String(jiraValeursDe(c.cle).length) })));
+
+  body.innerHTML = actifs.map((cle) => {
+    const ch = JIRA_CHAMPS.find((c) => c.cle === cle);
+    const choisies = f[cle] || [];
+    const vals = jiraValeursDe(cle);
+    return `<div class="jira-ff-crit" data-ffcrit="${esc(cle)}">
+      <div class="jira-ff-head">
+        <b>${esc(tr(ch.i18n))}</b>
+        <span class="muted">${esc(tr('jira.ff.picked', { n: choisies.length, total: vals.length }))}</span>
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-icon btn-sm" data-ffdel="${esc(cle)}" title="${esc(tr('jira.ff.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>
+      </div>
+      <input type="search" class="jira-sf-search" data-ffsearch="${esc(cle)}" placeholder="${esc(tr('jira.ff.search'))}" />
+      <div class="jira-status-filter-body">
+        ${vals.map((x) => `<label class="jira-sf-item" data-ffrow="${esc(String(x.l).toLowerCase())}">
+          <input type="checkbox" data-ffval="${esc(cle)}" value="${esc(x.v)}"${choisies.includes(x.v) ? ' checked' : ''} />
+          <span>${esc(x.l)}</span> <span class="muted">${x.n}</span></label>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Ajout d'un critère : le combo signale son choix par un `change` sur son input caché.
+$('#jiraFieldFilterPick') && $('#jiraFieldFilterPick').addEventListener('change', (e) => {
+  const h = e.target.closest('.jf-champ'); if (!h || !h.value) return;
+  const f = jiraFiltres();
+  if (!f[h.value]) f[h.value] = [];
+  setJiraFiltres(f);
+  renderJiraFieldFilter();
+  renderJiraList();
+});
+$('#jiraFieldFilterBody') && $('#jiraFieldFilterBody').addEventListener('change', (e) => {
+  const cb = e.target.closest('[data-ffval]'); if (!cb) return;
+  const f = jiraFiltres();
+  const cle = cb.dataset.ffval;
+  const set = new Set(f[cle] || []);
+  if (cb.checked) set.add(cb.value); else set.delete(cb.value);
+  f[cle] = [...set];
+  setJiraFiltres(f);
+  // On ne redessine PAS le critère : cela replierait la recherche en cours et ferait
+  // sauter le focus. Seuls le compteur et la liste des tickets bougent.
+  const tete = cb.closest('.jira-ff-crit').querySelector('.jira-ff-head .muted');
+  if (tete) tete.textContent = tr('jira.ff.picked', { n: f[cle].length, total: jiraValeursDe(cle).length });
+  const nb = Object.values(jiraFiltres()).reduce((n, v) => n + v.length, 0);
+  const cnt = $('#jiraFieldFilterCount');
+  if (cnt) cnt.textContent = nb ? tr('jira.ff.count', { n: nb, count: nb }) : '';
+  renderJiraList();
+});
+$('#jiraFieldFilterBody') && $('#jiraFieldFilterBody').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-ffdel]'); if (!b) return;
+  const f = jiraFiltres();
+  delete f[b.dataset.ffdel];
+  setJiraFiltres(f);
+  renderJiraFieldFilter();
+  renderJiraList();
+});
+/* La recherche MASQUE les lignes sans rien décocher : un filtre qui décoche en cachant
+   ferait perdre une sélection sans le dire. */
+$('#jiraFieldFilterBody') && $('#jiraFieldFilterBody').addEventListener('input', (e) => {
+  const s = e.target.closest('[data-ffsearch]'); if (!s) return;
+  const q = (s.value || '').toLowerCase().trim();
+  for (const row of $$('[data-ffrow]', s.closest('.jira-ff-crit'))) {
+    row.hidden = !!q && !row.dataset.ffrow.includes(q);
+  }
+});
+
 function jiraVisibleIssues() {
   const q = ($('#jiraSearch').value || '').toLowerCase().trim();
   const hidden = jiraHiddenStatuses();
   // L'epic entre dans la recherche : « montre-moi les tickets de tel epic » est une demande courante.
   const foin = (it) => `${it.key} ${it.summary} ${it.epic ? `${it.epic.key} ${it.epic.summary}` : ''}`.toLowerCase();
-  return JIRA.issues.filter((it) => (!q || foin(it).includes(q)) && !hidden.has(it.status));
+  const filtres = jiraFiltres();
+  return JIRA.issues.filter((it) => (!q || foin(it).includes(q)) && !hidden.has(it.status) && jiraPasseFiltres(it, filtres));
 }
 function jiraUpdateStatusFilterCount() {
   const el = $('#jiraStatusFilterCount'); if (!el) return;
@@ -7323,6 +7462,7 @@ async function loadJiraTickets() {
   JIRA.selectedKey = null;
   $('#jiraInfo').textContent = tr('jira.count', { n: JIRA.issues.length, count: JIRA.issues.length });
   renderJiraStatusFilter();
+  renderJiraFieldFilter();
   renderJiraList();
   const vis = jiraVisibleIssues();
   if (vis.length) selectJiraIssue(vis[0].key);
