@@ -7086,7 +7086,7 @@ const notifPermission = () => (notifSupported() ? Notification.permission : 'uns
 
 // Navigation au clic : ramène au bon endroit via le routage d'onglets existant.
 /* ============ Onglet Jira : mes tickets affectés (liste → détail) ============ */
-const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null };
+const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null, fields: [] };
 const JIRA_CAT = { new: 'todo', indeterminate: 'progress', done: 'done' };
 
 function jiraStatusChip(it) {
@@ -7135,8 +7135,15 @@ const JIRA_CHAMPS = [
   { cle: 'components', i18n: 'jira.meta.components', vals: (it) => (it.components || []).map((x) => ({ v: x, l: x })) },
   { cle: 'fixVersions', i18n: 'jira.meta.fixversions', vals: (it) => (it.fixVersions || []).map((x) => ({ v: x, l: x })) },
 ];
+/* Un champ personnalisé (sprint, espace…) se filtre comme les autres : ses valeurs arrivent
+   déjà normalisées dans `it.custom[id]`, donc la règle ci-dessous ne change pas. */
+const champPerso = (cle) => ({ cle, i18n: null, vals: (it) => ((it.custom && it.custom[cle]) || []) });
+function jiraChampsDe(filtres, champs = JIRA_CHAMPS) {
+  const perso = Object.keys(filtres || {}).filter((k) => /^customfield_\d+$/.test(k));
+  return [...champs, ...perso.map(champPerso)];
+}
 function jiraPasseFiltres(it, filtres, champs = JIRA_CHAMPS) {
-  for (const ch of champs) {
+  for (const ch of jiraChampsDe(filtres, champs)) {
     const choisies = (filtres && filtres[ch.cle]) || [];
     if (!choisies.length) continue;                       // critère sans valeur cochée = inactif
     const siennes = ch.vals(it).map((x) => x.v);
@@ -7153,8 +7160,16 @@ function jiraFiltres() {
 function setJiraFiltres(f) { try { localStorage.setItem(JIRA_FF_KEY, JSON.stringify(f)); } catch { /* stockage indisponible */ } }
 
 // Valeurs distinctes d'un champ dans les tickets chargés, avec le nombre de tickets par valeur.
-function jiraValeursDe(cle) {
+const jiraChampPerso = (cle) => (JIRA.fields || []).find((f) => f.id === cle);
+// Libellé d'un critère : la clé i18n pour les champs standards, le nom Jira pour les autres.
+function jiraNomChamp(cle) {
   const ch = JIRA_CHAMPS.find((c) => c.cle === cle);
+  if (ch) return tr(ch.i18n);
+  const f = jiraChampPerso(cle);
+  return f ? f.name : cle;
+}
+function jiraValeursDe(cle) {
+  const ch = JIRA_CHAMPS.find((c) => c.cle === cle) || (jiraChampPerso(cle) ? champPerso(cle) : null);
   if (!ch) return [];
   const par = new Map();
   for (const it of JIRA.issues) {
@@ -7171,12 +7186,17 @@ function renderJiraFieldFilter() {
   if (!det || !body || !pick) return;
   // Champs réellement exploitables sur le jeu courant : proposer « Composants » quand aucun
   // ticket n'en porte ferait cliquer pour rien.
-  const dispo = JIRA_CHAMPS.filter((c) => jiraValeursDe(c.cle).length > 0);
+  /* Les champs personnalisés sont proposés même sans valeur connue : leurs valeurs n'arrivent
+     qu'une fois le champ demandé au serveur, c'est-à-dire APRÈS l'avoir choisi ici. */
+  const dispo = [
+    ...JIRA_CHAMPS.filter((c) => jiraValeursDe(c.cle).length > 0),
+    ...(JIRA.fields || []).map((f) => ({ cle: f.id, i18n: null })),
+  ];
   det.hidden = !dispo.length;
   if (!dispo.length) return;
 
   const f = jiraFiltres();
-  const actifs = Object.keys(f).filter((k) => JIRA_CHAMPS.some((c) => c.cle === k));
+  const actifs = Object.keys(f).filter((k) => JIRA_CHAMPS.some((c) => c.cle === k) || jiraChampPerso(k));
   const nb = actifs.reduce((n, k) => n + (f[k] || []).length, 0);
   const cnt = $('#jiraFieldFilterCount');
   if (cnt) cnt.textContent = nb ? tr('jira.ff.count', { n: nb, count: nb }) : '';
@@ -7184,15 +7204,14 @@ function renderJiraFieldFilter() {
   pick.innerHTML = comboHtml('jf-champ', { ph: tr('jira.ff.add') });
   wireCombo(pick, 'jf-champ', () => dispo
     .filter((c) => !actifs.includes(c.cle))
-    .map((c) => ({ value: c.cle, label: tr(c.i18n), hint: String(jiraValeursDe(c.cle).length) })));
+    .map((c) => ({ value: c.cle, label: jiraNomChamp(c.cle), hint: c.i18n ? String(jiraValeursDe(c.cle).length) : tr('jira.ff.custom') })));
 
   body.innerHTML = actifs.map((cle) => {
-    const ch = JIRA_CHAMPS.find((c) => c.cle === cle);
     const choisies = f[cle] || [];
     const vals = jiraValeursDe(cle);
     return `<div class="jira-ff-crit" data-ffcrit="${esc(cle)}">
       <div class="jira-ff-head">
-        <b>${esc(tr(ch.i18n))}</b>
+        <b>${esc(jiraNomChamp(cle))}</b>
         <span class="muted">${esc(tr('jira.ff.picked', { n: choisies.length, total: vals.length }))}</span>
         <span class="spacer"></span>
         <button type="button" class="btn btn-icon btn-sm" data-ffdel="${esc(cle)}" title="${esc(tr('jira.ff.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>
@@ -7213,6 +7232,8 @@ $('#jiraFieldFilterPick') && $('#jiraFieldFilterPick').addEventListener('change'
   const f = jiraFiltres();
   if (!f[h.value]) f[h.value] = [];
   setJiraFiltres(f);
+  // Champ personnalisé : ses valeurs n'existent pas encore côté client, il faut les demander.
+  if (/^customfield_\d+$/.test(h.value)) { loadJiraTickets(); return; }
   renderJiraFieldFilter();
   renderJiraList();
 });
@@ -7264,6 +7285,12 @@ function jiraUpdateStatusFilterCount() {
   const statuses = jiraDistinctStatuses(); const hidden = jiraHiddenStatuses();
   el.textContent = tr('jira.status-filter-count', { shown: statuses.filter((s) => !hidden.has(s.status)).length, total: statuses.length });
 }
+/* Comme pour les assignés : la recherche MASQUE les lignes, elle ne décoche rien. Un filtre
+   qui décocherait en cachant ferait perdre une sélection sans le dire. */
+function jiraFilterStatusSearch() {
+  const q = (($('#jiraStatusSearch') && $('#jiraStatusSearch').value) || '').toLowerCase().trim();
+  $$('#jiraStatusFilterBody .jira-sf-item').forEach((it) => { it.hidden = !!q && !it.textContent.toLowerCase().includes(q); });
+}
 function renderJiraStatusFilter() {
   const det = $('#jiraStatusFilter'); const body = $('#jiraStatusFilterBody'); if (!det || !body) return;
   const statuses = jiraDistinctStatuses();
@@ -7274,6 +7301,7 @@ function renderJiraStatusFilter() {
       <input type="checkbox" value="${esc(status)}"${hidden.has(status) ? '' : ' checked'} />
       <span class="jira-status jira-status-${JIRA_CAT[cat] || 'todo'}">${esc(status)}</span></label>`).join('');
   jiraUpdateStatusFilterCount();
+  jiraFilterStatusSearch(); // conserve la recherche courante après reconstruction
 }
 function renderJiraList() {
   const box = $('#jiraList'); if (!box) return;
@@ -7443,6 +7471,8 @@ async function loadJira() {
     return;
   }
   JIRA.me = a.me; JIRA.people = a.people || [];
+  // Champs personnalisés de l'instance : sans eux, le filtre ne proposerait que les standards.
+  try { JIRA.fields = (await api('/jira/fields')).fields || []; } catch { JIRA.fields = []; }
   renderJiraAssigneeFilter();
   // La liste surveillée est chargée AVEC l'onglet : le bouton « Surveiller » du détail doit
   // connaître l'état réel dès le premier rendu, sinon il propose d'ajouter un ticket déjà suivi.
@@ -7455,8 +7485,11 @@ async function loadJiraTickets() {
   $('#jiraList').innerHTML = skeleton(3);
   const done = $('#jiraIncludeDone').checked ? 1 : 0;
   const assignees = [...jiraCheckedSet()].join(',');
+  // Les champs personnalisés servant de critère doivent être demandés, sinon leurs valeurs
+  // n'arrivent jamais et le critère resterait vide.
+  const extra = Object.keys(jiraFiltres()).filter((k) => /^customfield_\d+$/.test(k)).join(',');
   let d;
-  try { d = await api(`/jira/tickets?assignees=${encodeURIComponent(assignees)}&includeDone=${done}`); }
+  try { d = await api(`/jira/tickets?assignees=${encodeURIComponent(assignees)}&includeDone=${done}&extra=${encodeURIComponent(extra)}`); }
   catch (e) { $('#jiraList').innerHTML = ''; $('#jiraError').innerHTML = errorBox(explainError(e.message)); return; }
   JIRA.issues = d.issues || [];
   JIRA.selectedKey = null;
@@ -7621,6 +7654,7 @@ document.addEventListener('click', (e) => {
 });
 
 $('#jiraAssigneeSearch') && $('#jiraAssigneeSearch').addEventListener('input', jiraFilterAssigneeSearch);
+$('#jiraStatusSearch') && $('#jiraStatusSearch').addEventListener('input', jiraFilterStatusSearch);
 $('#jiraSearch') && $('#jiraSearch').addEventListener('input', renderJiraList);
 $('#jiraStatusFilterBody') && $('#jiraStatusFilterBody').addEventListener('change', (e) => {
   const cb = e.target.closest('input[type="checkbox"]'); if (!cb) return;

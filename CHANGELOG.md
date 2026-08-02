@@ -24,6 +24,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   is flagged on its own row without interrupting the others or losing its last known status. A change is
   announced **once**: checks are serialised, so the timer and the "Check now" button cannot both report
   the same move, and the new status becomes the reference until it moves again.
+- **The Jira status filter now has a search box, like the assignee one.** With a workflow carrying a
+  dozen states, finding the one you wanted meant scanning the list. Searching hides rows without
+  unticking anything, so a selection is never lost by filtering.
 - **Check all / uncheck all on the Jira assignee and status filters.** With a dozen lines, clearing
   everything to keep one or two meant a dozen clicks. Both buttons ship together: uncheck-all on its own
   would be a one-way trip.
@@ -38,7 +41,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   width above the detail panel, where there is room. The one you open floats over the page instead of shoving it, so
   neither the row nor the list ever moves; clicking outside closes it.
 - **A generic field filter in the Jira tab.** Pick the **field** first — epic, type, priority, project,
-  assignee, reporter, labels, components, fix versions — then one or more **values**, offered from what
+  assignee, reporter, labels, components, fix versions, **and your own instance's custom fields**
+  (sprint, space, team…), discovered by asking Jira rather than guessed, since their identifiers differ
+  from one instance to the next — then one or more **values**, offered from what
   the loaded tickets actually contain, each with its ticket count. Both the field picker and every value
   list have their own search box; searching a value list **hides rows without unticking anything**, so a
   selection is never lost by filtering. Criteria combine as AND between fields and OR within a field, and

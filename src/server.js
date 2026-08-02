@@ -506,10 +506,23 @@ app.get('/api/jira/assignees', wrap(async (req, res) => {
 // vide = mes tickets). Filtre statut fait côté client.
 app.get('/api/jira/tickets', wrap(async (req, res) => {
   const accountIds = String(req.query.assignees || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (demoDocker.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1') });
+  // Champs personnalisés dont le filtre a besoin : réclamés en plus des champs de base.
+  const extra = String(req.query.extra || '').split(',').map((x) => x.trim()).filter(jira.champPersoValide);
+  if (demoDocker.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1', extra) });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, issues: [], total: 0 });
-  res.json({ configured: true, ...(await jira.searchByAssignees(cfg, { accountIds, includeDone: req.query.includeDone === '1' })) });
+  res.json({ configured: true, ...(await jira.searchByAssignees(cfg, { accountIds, includeDone: req.query.includeDone === '1', extra })) });
+}));
+
+/* Champs personnalisés de l'instance, pour que le filtre générique propose CEUX de
+   l'utilisateur (sprint, espace, équipe…) plutôt qu'une liste devinée. */
+app.get('/api/jira/fields', wrap(async (req, res) => {
+  if (demoDocker.isDemo()) return res.json({ configured: true, fields: demoJira.fields() });
+  const cfg = getConfig();
+  if (!jira.isConfigured(cfg)) return res.json({ configured: false, fields: [] });
+  try { res.json({ configured: true, fields: await jira.listFields(cfg) }); }
+  // Un droit manquant sur /field ne doit pas priver l'onglet de ses filtres de base.
+  catch (e) { res.json({ configured: true, fields: [], error: String(e.message).slice(0, 200) }); }
 }));
 
 // Détail d'un ticket Jira : métadonnées + description + commentaires + pièces jointes.

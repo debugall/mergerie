@@ -510,6 +510,16 @@ describe('front : filtre Jira par champ', () => {
     assert.ok(!passe(bug, { epic: ['Tunnel'] }), 'le résumé n’est qu’un libellé d’affichage');
   });
 
+  test('un champ personnalisé de l’instance (sprint, espace…) se filtre comme les autres', () => {
+    const avecSprint = { key: 'A-4', custom: { customfield_10020: [{ v: '42', l: 'Sprint 42' }] } };
+    const sans = { key: 'A-5', custom: { customfield_10020: [] } };
+    assert.ok(passe(avecSprint, { customfield_10020: ['42'] }));
+    assert.ok(!passe(sans, { customfield_10020: ['42'] }));
+    assert.ok(passe(sans, { customfield_10020: [] }), 'critère vide = inactif, ici aussi');
+    // ET avec un champ standard : les deux familles se combinent.
+    assert.ok(!passe({ ...avecSprint, type: 'Story' }, { customfield_10020: ['42'], type: ['Bug'] }));
+  });
+
   test('chaque champ proposé sait extraire ses valeurs sans exploser sur un ticket vide', () => {
     for (const ch of champs) assert.deepEqual(ch.vals({}), [], `${ch.cle} sur un ticket vide`);
   });

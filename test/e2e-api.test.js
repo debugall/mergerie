@@ -568,6 +568,49 @@ describe('API de bout en bout', () => {
     for (const k of ['ASG-1', 'ASG-2', 'ASG-3']) delete app.state.jiraIssues[k];
   });
 
+  test('Jira : les champs personnalisés de l’instance sont proposés et filtrables', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    app.state.jiraFields = [
+      { id: 'customfield_10020', name: 'Sprint', custom: true, schema: { type: 'array', items: 'json' } },
+      { id: 'customfield_10101', name: 'Espace', custom: true, schema: { type: 'option' } },
+      // Écartés : un texte libre donnerait autant de valeurs que de tickets, et un champ
+      // système n'a pas besoin d'être découvert.
+      { id: 'customfield_10999', name: 'Note libre', custom: true, schema: { type: 'string' } },
+      { id: 'summary', name: 'Résumé', custom: false, schema: { type: 'string' } },
+    ];
+    const f = await app.api('GET', '/api/jira/fields');
+    assert.equal(f.status, 200);
+    assert.deepEqual(f.body.fields.map((x) => x.id), ['customfield_10101', 'customfield_10020'],
+      'seuls les champs personnalisés filtrables, triés par nom');
+
+    /* Les valeurs sont normalisées quelle que soit la forme que Jira leur donne : objet à
+       `name` (sprint), objet à `value` (liste de choix), chaîne nue. */
+    app.state.jiraIssues['CF-1'] = {
+      key: 'CF-1',
+      fields: {
+        summary: 'Avec sprint', status: { name: 'À faire', statusCategory: { key: 'new' } },
+        customfield_10020: [{ id: 42, name: 'Sprint 42', state: 'active' }],
+        customfield_10101: { id: '7', value: 'Boutique' },
+      },
+    };
+    const t = await app.api('GET', '/api/jira/tickets?assignees=&extra=customfield_10020,customfield_10101');
+    const cf = t.body.issues.find((i) => i.key === 'CF-1');
+    assert.deepEqual(cf.custom.customfield_10020, [{ v: '42', l: 'Sprint 42' }]);
+    assert.deepEqual(cf.custom.customfield_10101, [{ v: '7', l: 'Boutique' }]);
+
+    // Un identifiant qui n'est pas un champ personnalisé n'atteint jamais la requête Jira.
+    app.state.calls.length = 0;
+    await app.api('GET', '/api/jira/tickets?assignees=&extra=summary,customfield_1%20OR%201');
+    const rech = app.state.calls.filter((c) => c.path.includes('/search')).pop();
+    const champs = decodeURIComponent(new URL(`http://x${rech.path}`).searchParams.get('fields'));
+    assert.ok(!champs.includes(' OR '), `injection dans fields : ${champs}`);
+    assert.equal(champs.split(',').filter((x) => x.startsWith('customfield_')).length, 0,
+      'aucun champ personnalisé demandé : les deux identifiants étaient invalides');
+
+    delete app.state.jiraIssues['CF-1'];
+    app.state.jiraFields = [];
+  });
+
   test('Jira : un refus de Jira remonte SON message, pas seulement le code', async () => {
     await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
     // Le faux Jira renvoie un 400 avec le corps que renvoie le vrai.

@@ -24,6 +24,7 @@ function freshState() {
     changes: {},             // `${project}!${iid}` -> [{ new_path }]
     jiraIssues: {},          // KEY -> { key, fields }
     jiraFail: null,          // { status, body } pour forcer un refus Jira
+    jiraFields: [],          // /rest/api/3/field : champs personnalisés de l'instance
     calls: [],               // journal { method, path, body } pour les assertions
     fail: {},                // path fragment -> { status, body } pour forcer une erreur
     mergeRefuses: false,     // vrai = GitLab répond 200 sans merger (cas réel à couvrir)
@@ -228,6 +229,8 @@ function handleJira(req, res, pathname, body = {}) {
   const auth = req.headers.authorization || '';
   if (!auth.startsWith('Basic ')) return json(res, 401, { errorMessages: ['unauthorized'] });
   // Utilisateur courant (pour cocher « moi » par défaut).
+  // Champs de l'instance : c'est là que le produit découvre sprint, espace, équipe…
+  if (pathname === '/rest/api/3/field') return json(res, 200, state.jiraFields || []);
   if (pathname === '/rest/api/3/myself') return json(res, 200, { accountId: 'me-test', displayName: 'Testeur courant', avatarUrls: {} });
   /* Recherche. Le mock ne parle pas JQL, mais il en comprend les DEUX formes que le produit
      émet — `key IN (…)` (tickets surveillés) et `statusCategory = "In Progress"` (compteur du
