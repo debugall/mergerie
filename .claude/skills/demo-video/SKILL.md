@@ -1,0 +1,186 @@
+---
+name: demo-video
+description: "MANUEL UNIQUEMENT — ne jamais déclencher tout seul. Regénère les vidéos de démonstration narrées de Mergerie (demo-live-real-fr.mp4 / demo-live-real-en.mp4) : un vrai Chromium piloté par Playwright parcourt l'application, curseur visible, avec une narration synthétisée. À n'utiliser QUE si l'utilisateur invoque explicitement /demo-video ou demande en toutes lettres de regénérer la vidéo de démonstration."
+---
+
+# Regénérer les vidéos de démonstration
+
+Deux vidéos, ~14 min chacune, 1920×1080 : `demo-live-real-fr.mp4` et `demo-live-real-en.mp4`,
+à la racine du dépôt. Ce sont de **vraies captures** : Playwright pilote un Chromium sur
+l'application, clique pour de bon, et enregistre la page. Rien n'est composé après coup.
+
+Tout l'outillage est dans ce dossier. Les fichiers de travail vont dans `travail/`, ignoré par git.
+
+## Quand ce skill sert
+
+À chaque fois qu'une fonctionnalité arrive et doit entrer dans la démonstration. Le travail
+consiste alors à **ajouter une étape**, pas à tout refaire — voir « Ajouter une étape ».
+
+## Avant toute chose
+
+- **Port 4319 = instance réelle de l'utilisateur.** Ne jamais la démarrer, l'arrêter ni la viser.
+- La démo tourne sur **4321**, et doit être lancée exactement ainsi :
+  ```bash
+  MERGERIE_DEMO=1 MERGERIE_DATA_DIR=data-demo COPILOT_DRY_RUN=1 PORT=4321 node src/server.js
+  ```
+- **Ne jamais pousser.** Les `.mp4` ne sont pas versionnés.
+
+## Chaîne complète
+
+```bash
+cd .claude/skills/demo-video
+
+# 1. narration → clips audio + table des durées  (~1 min)
+python3 synthese.py                 # français
+LANGUE=en python3 synthese.py       # anglais
+
+# 2. vérifier que chaque sélecteur répond, sans tenir la pose  (~3,5 min)
+RAPIDE=1 node parcours.mjs
+LANGUE=en RAPIDE=1 node parcours.mjs
+
+# 3. enregistrement réel  (~15 min chacun — lancer en tâche de fond)
+node parcours.mjs
+LANGUE=en node parcours.mjs
+
+# 4. montage : la voix est recollée aux repères mesurés  (~2 min)
+python3 montage.py
+LANGUE=en python3 montage.py
+```
+
+**Ne jamais sauter l'étape 2.** Un sélecteur cassé se découvre en 3 minutes, ou au bout de
+quinze si on lance directement l'enregistrement.
+
+## Les quatre fichiers
+
+| fichier | rôle |
+|---|---|
+| `narration_fr.py` / `narration_en.py` | le texte, une chaîne par étape |
+| `prononciation.py` | réécriture du texte **prononcé** — voir plus bas, c'est le cœur |
+| `parcours.mjs` | ce que fait le curseur, étape par étape (Playwright) |
+| `montage.py` | assemble image + voix |
+| `synthese.py` | fabrique les clips audio |
+
+`narration_*.py` et `parcours.mjs` **se comptent** : la Nième chaîne est lue pendant la Nième
+étape. `parcours.mjs` s'arrête net si le compte ne tombe pas juste.
+
+## Prononciation — la partie qui demande le plus d'attention
+
+Une synthèse vocale lit de **l'orthographe**, pas du sens. `prononciation.py` réécrit le texte
+juste avant qu'il atteigne la voix ; le texte affiché, lui, n'est jamais touché.
+
+**Deux règles de méthode :**
+
+1. Quand un sigle a un équivalent parlé naturel, **dire le mot entier** (`MR` → « merge
+   request ») plutôt que d'épeler : c'est ce qu'un humain dirait.
+2. Sinon, **épeler en séparant les lettres** (`CLI` → « C L I »), ce que tout moteur lit bien.
+
+**L'ordre des règles compte** : les entrées les plus longues d'abord, sinon `MR` mange `MRs`,
+et `git` mange `GitLab`.
+
+### Pièges vérifiés empiriquement (ne pas les redécouvrir)
+
+| écrit | lu à tort | réécriture retenue | pourquoi |
+|---|---|---|---|
+| `MRs` | « misters » | `merge requests` | — |
+| `IA` | « lida » dans « l'IA » | `intelligence artificielle` | **aucune** graphie ne se lit /i.a/ : `I A` insère une pause, `l'ia` donne « lya », `L'I A` fait épeler « L apostrophe ». Seul le mot entier marche. |
+| `git` | « jite » | `guite` | le *g* doit être durci. À placer **après** `GitLab`/`GitHub`. |
+| `idempotent` | « idempote » | `idempotant` | le « nt » final est muet ; `idempotente` est déjà correct |
+| `lint` | « lainte » | `linnte` | nasalisation ; il faut **doubler le n** |
+| `.env` | épelé | `point ènve` | — |
+| `prompt` | « prom » | `prompte` | consonne finale muette |
+| `?` seul | **silence total** | « la touche point d'interrogation » | la phrase perd son sujet sans qu'on l'entende |
+| `/10` | silence | ` sur 10` | — |
+| `plus` | « plu » | `plusse` | dans « Contrôle plus K » |
+
+**Bascule en anglais** — le risque le plus sérieux : sur certains mots, espeak passe aux
+phonèmes anglais, que le modèle français n'a jamais entendus. Concernés et déjà traités :
+`token`, `web`, `shell`, `pull`, `release`, `Markdown`, `merge request`, `commit`, `push`,
+`build`, `checkout`, `container`, `unhealthy`, `exited`, `reviewer`.
+
+**À NE PAS réécrire** — vérifié, la lecture française par défaut est déjà celle des
+développeurs, et certaines réécritures *dégradaient* le rendu (un *o* fermé au lieu d'ouvert) :
+`Docker`, `tag`, `job`, `drift`, `log`, `compose`, `review`, `merge`, `pipelines`,
+`changelog`, `pattern`, `diff`, `patch`, `fetch`, `ref`, `dev`, `app`, `repo`.
+
+### Comment vérifier une nouvelle réécriture
+
+Écouter, ne pas supposer. Synthétiser la phrase seule et l'écouter avant de la garder :
+
+```bash
+python3 -c "import sys; sys.path.insert(0,'.'); from prononciation import dire; print(dire('ta phrase', 'fr'))"
+```
+
+Puis contrôler qu'espeak ne bascule pas en anglais sur les mots nouveaux.
+
+## Ajouter une étape (le cas courant)
+
+1. **Écrire la phrase** dans `narration_fr.py` ET `narration_en.py`, à la même position.
+2. **Ajouter le geste** dans `parcours.mjs`, à la même position :
+   ```js
+   await versEl(page.locator('#tab-x button', { hasText: L.monLibelle })); await dit();
+   ```
+   `versEl` amène le curseur ; `clique` amène et clique ; `dit()` tient la pose le temps du clip.
+3. **Le libellé passe par `L`**, jamais en dur : ajouter la clé dans `LABELS.fr` et `LABELS.en`
+   en haut de `parcours.mjs`. Relever le libellé anglais **dans l'application**, ne pas le deviner.
+4. Supprimer `travail/voix-*/` **des seuls clips renumérotés** (insérer au milieu décale tout :
+   le plus simple est alors de supprimer les deux dossiers `voix-fr` / `voix-en`).
+5. Rejouer la chaîne complète.
+
+**Sélecteurs : préférer le structurel au texte.** `sous('git', 3)` (4ᵉ sous-onglet) survit à une
+traduction, `hasText: 'Analyser'` non. Les ids (`#dcState`, `#notifThreshold`) sont les plus sûrs.
+
+## Voix
+
+Modèles Piper, **hors dépôt** (~60 Mo pièce), à poser dans `travail/voix/` :
+
+- `fr_FR-siwis-medium.onnx` (+ `.onnx.json`)
+- `en_US-lessac-medium.onnx` (+ `.onnx.json`)
+
+Ils viennent de [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices). La voix
+française a été choisie par l'utilisateur après écoute comparative de sept candidates — ne pas
+en changer sans lui redemander. `pip install piper-tts` fournit le moteur.
+
+## Limites connues du mode démo
+
+À redire honnêtement plutôt qu'à masquer, et à revoir si la démo évolue :
+
+- **Les boutons groupés « Pousser pour tous » / « Créer toutes les MR »** n'apparaissent qu'à
+  partir de deux projets prêts ; aucune session semée n'est dans cet état. La narration les
+  décrit en désignant la colonne d'actions, **sans prétendre qu'ils sont à l'écran**.
+- **Le panneau Activité reste fermé** : il ne se déplie qu'à partir d'un job suivi, et aucun n'a
+  tourné. Le forcer afficherait un panneau vide en prétendant montrer un historique.
+- **Version anglaise : l'interface est en anglais, le contenu semé reste en français** (titres de
+  MR, corps des rapports) — ce sont des données, pas de l'interface.
+- **« Ouvrir le code » n'est jamais cliqué** : cela lancerait un éditeur sur la machine.
+
+Règle générale : **ne jamais commenter un écran qu'on ne montre pas**. Si le mode démo ne sait
+pas produire l'état, soit on corrige le mode démo (cf. `src/demo-diff.js`), soit on désigne le
+bouton en décrivant ce qu'il fait — jamais on ne raconte une fenêtre absente.
+
+## Détails qui ont coûté cher
+
+- **La voix est recollée aux repères mesurés**, pas à la somme des durées prévues. `parcours.mjs`
+  note l'instant réel de chaque étape dans `travail/reperes-<langue>.json` ; `montage.py` pose
+  chaque clip à cet instant. Un clic 200 ms plus lent ne décale donc pas la suite.
+- **Le décalage de tête** (`vidéo − pilotage`, ~2,7 s) correspond au chargement de la page avant
+  le premier repère. `montage.py` le calcule seul ; s'il devient négatif, c'est que
+  l'enregistrement a été coupé trop tôt.
+- **Le curseur suit les vrais événements souris** (`mousemove` / `mousedown`), il n'est pas
+  dessiné à une position supposée — c'est ce qui le rend crédible.
+- **Pas de capture d'écran système.** `ffmpeg -f avfoundation` exigerait l'autorisation macOS
+  « Enregistrement de l'écran » et filmerait tout le bureau. Playwright n'enregistre que la page.
+
+## Vérifier avant de livrer
+
+Ne pas se fier au fait que la commande soit sortie sans erreur — **regarder le film** :
+
+```bash
+ffprobe -v error -show_entries format=duration -of csv=p=0 demo-live-real-fr.mp4
+ffmpeg -hide_banner -i demo-live-real-fr.mp4 -af volumedetect -f null - 2>&1 | grep mean_volume
+# extraire une image au milieu d'une étape et vérifier que le curseur est sur le bon élément
+ffmpeg -y -v error -ss 250 -i demo-live-real-fr.mp4 -frames:v 1 /tmp/verif.jpg
+```
+
+Contrôler au moins : le curseur tombe sur l'élément commenté, l'écran correspond à ce qui est
+dit, le niveau sonore est autour de −17 dB, et **la dernière image est propre** (une erreur
+laissée à l'écran s'y voit pendant toute la fin).
