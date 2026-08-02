@@ -139,27 +139,27 @@ function jobKeys(entry) {
    Volontairement séparé de jobKeys() : celui-ci raisonne en dépôts (collisions), celui-là
    en objets affichés (repérage visuel). */
 function jobTargets(entry, jobRow) {
-  const t = { mrs: [], tasks: [], locals: [] };
-  if (!entry) return t;
-  if (entry.kind === 'local') { if (entry.taskId) t.locals.push(entry.taskId); return t; }
-  if (entry.kind === 'task' || entry.kind === 'converge-session') { if (entry.taskId) t.tasks.push(entry.taskId); return t; }
-  if (entry.kind === 'converge') { if (entry.mrId) t.mrs.push(entry.mrId); return t; }
+  const cibles = { mrs: [], tasks: [], locals: [] };
+  if (!entry) return cibles;
+  if (entry.kind === 'local') { if (entry.taskId) cibles.locals.push(entry.taskId); return cibles; }
+  if (entry.kind === 'task' || entry.kind === 'converge-session') { if (entry.taskId) cibles.tasks.push(entry.taskId); return cibles; }
+  if (entry.kind === 'converge') { if (entry.mrId) cibles.mrs.push(entry.mrId); return cibles; }
   /* Un job de review porte sur un LOT de MR, mais n'en traite qu'une à la fois : on
      renvoie celle-là, pas les dix du lot. Marquer tout le lot ferait clignoter la moitié
      de la liste, ce qui est précisément le contraire de l'effet recherché. */
-  if (Array.isArray(entry.rows)) { const cur = jobRow && jobRow.current_mr_id; if (cur) t.mrs.push(cur); }
-  return t;
+  if (Array.isArray(entry.rows)) { const cur = jobRow && jobRow.current_mr_id; if (cur) cibles.mrs.push(cur); }
+  return cibles;
 }
 
 // Union des cibles de TOUS les jobs en cours, pour un seul appel de statut.
 function runningTargets() {
-  const t = { mrs: [], tasks: [], locals: [] };
+  const cibles = { mrs: [], tasks: [], locals: [] };
   for (const [jobId, { entry }] of active.entries()) {
     const row = db.prepare('SELECT current_mr_id FROM job WHERE id = ?').get(jobId);
     const one = jobTargets(entry, row);
-    for (const k of Object.keys(t)) for (const id of one[k]) if (!t[k].includes(id)) t[k].push(id);
+    for (const k of Object.keys(cibles)) for (const id of one[k]) if (!cibles[k].includes(id)) cibles[k].push(id);
   }
-  return t;
+  return cibles;
 }
 
 /* Deux jeux de clés se marchent-ils dessus ? Règle isolée du reste pour être testable :

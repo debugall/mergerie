@@ -44,10 +44,6 @@ const glob = require('./glob');
 const notify = require('./notify');
 const gitgraph = require('./gitgraph');
 const { t } = i18n;
-/* Quelques routes nomment leur variable locale `t` (la tâche) et masquaient alors la
-   fonction de traduction : le message d'erreur devenait « t is not a function », c'est-à-dire
-   exactement rien pour qui le lit. `tt` est le même `t`, mais qu'aucune locale ne masque. */
-const tt = t;
 const { discoverAll } = require('./discover');
 const jobs = require('./jobs');
 const reviewer = require('./reviewer');
@@ -336,7 +332,7 @@ app.get('/api/footer', wrap((req, res) => {
   const now = new Date();
   const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
   const todayStart = midnight.toISOString();
-  const dayKey = (d) => { const t = new Date(d); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
+  const dayKey = (d) => { const jour = new Date(d); return `${jour.getFullYear()}-${String(jour.getMonth() + 1).padStart(2, '0')}-${String(jour.getDate()).padStart(2, '0')}`; };
   const daysBetween = (iso) => (iso ? Math.floor((now - new Date(iso)) / 86400000) : null);
   const one = (sql, ...p) => db.prepare(sql).get(...p);
 
@@ -435,7 +431,7 @@ app.get('/api/footer', wrap((req, res) => {
   }
 
   // Activité par semaine (8 dernières semaines)
-  const weekKey = (d) => { const t = new Date(d); const off = (t.getDay() + 6) % 7; t.setHours(0, 0, 0, 0); t.setDate(t.getDate() - off); return dayKey(t); };
+  const weekKey = (d) => { const jour = new Date(d); const off = (jour.getDay() + 6) % 7; jour.setHours(0, 0, 0, 0); jour.setDate(jour.getDate() - off); return dayKey(jour); };
   const revByWeek = {}; const tokByWeek = {};
   db.prepare('SELECT created_at FROM review WHERE created_at IS NOT NULL').all()
     .forEach((r) => { const k = weekKey(r.created_at); revByWeek[k] = (revByWeek[k] || 0) + 1; });
@@ -1280,15 +1276,18 @@ function targetById(taskId, targetId) {
 function normalizeTargets(targets, kind) {
   if (!Array.isArray(targets) || !targets.length) throw new Error(t('err.selectionne-au-moins-un-projet'));
   const seen = new Set();
-  return targets.map((t) => {
-    const repoId = Number(t.repo_id);
+  /* Le paramètre ne s'appelle SURTOUT pas `t` : il masquerait la fonction de traduction du
+     module, et chaque `t('err.…')` de ce bloc appellerait l'objet au lieu de traduire —
+     « t is not a function » à la place du message d'erreur attendu. */
+  return targets.map((cible) => {
+    const repoId = Number(cible.repo_id);
     if (!repoId || !repoById(repoId)) throw new Error(t('err.projet-inconnu'));
     if (seen.has(repoId)) throw new Error(t('err.un-meme-projet-est-selectionne'));
     seen.add(repoId);
-    const raw = (t.branch || '').trim();
+    const raw = (cible.branch || '').trim();
     if (kind === 'code' && !raw) throw new Error(t('err.nom-de-branche-requis-pour'));
     // branche de départ facultative : vide = branche par défaut du dépôt
-    const base = (t.base_branch || '').trim();
+    const base = (cible.base_branch || '').trim();
     return {
       repo_id: repoId,
       branch: raw ? assertValidBranch(raw) : null,
@@ -1307,7 +1306,7 @@ function insertTargets(taskId, list, sessionId) {
     VALUES (?, ?, ?, ?, 'new', ?, ?, ?)`);
   const now = new Date().toISOString();
   const backend = sessionId ? agentsession.backendName() : null;
-  for (const t of list) ins.run(taskId, t.repo_id, t.branch, t.base_branch || null, sessionId || null, backend, now);
+  for (const cible of list) ins.run(taskId, cible.repo_id, cible.branch, cible.base_branch || null, sessionId || null, backend, now);
 }
 
 /* Un identifiant de session est passé TEL QUEL à l'agent : `--resume <id>` pour claude,
@@ -1382,19 +1381,19 @@ function saveLocalImages(taskId, images) {
 
 app.get('/api/tasks', wrap((req, res) => {
   const rows = db.prepare('SELECT * FROM task ORDER BY id DESC').all();
-  res.json(rows.map((t) => ({
-    ...t,
-    image_count: db.prepare('SELECT COUNT(*) c FROM task_image WHERE task_id = ?').get(t.id).c,
-    targets: taskTargets(t.id),
+  res.json(rows.map((tache) => ({
+    ...tache,
+    image_count: db.prepare('SELECT COUNT(*) c FROM task_image WHERE task_id = ?').get(tache.id).c,
+    targets: taskTargets(tache.id),
   })));
 }));
 
 app.get('/api/tasks/:id', wrap((req, res) => {
-  const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(tt('err.session-introuvable'));
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
   res.json({
-    task: { ...t, targets: taskTargets(t.id) },
-    images: taskImages(t.id).map((im, i) => ({ id: im.id, idx: i })),
+    task: { ...tache, targets: taskTargets(tache.id) },
+    images: taskImages(tache.id).map((im, i) => ({ id: im.id, idx: i })),
   });
 }));
 
@@ -1423,32 +1422,32 @@ app.post('/api/tasks', wrap((req, res) => {
 }));
 
 app.put('/api/tasks/:id', wrap((req, res) => {
-  const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(tt('err.session-introuvable'));
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
   const { prompt, commit_message, auto_push, images, targets, ask_questions, session_id } = req.body || {};
   const sessionId = normalizeSessionId(session_id);
   if (Array.isArray(targets) && targets.length) {
-    const list = normalizeTargets(targets, t.kind);
+    const list = normalizeTargets(targets, tache.kind);
     // on ne recrée que si la composition change, pour préserver l'état d'exécution
     const key = (x) => `${x.repo_id}:${x.branch}:${x.base_branch || ''}`;
-    const cur = taskTargets(t.id).map(key).join('|');
+    const cur = taskTargets(tache.id).map(key).join('|');
     if (cur !== list.map(key).join('|')) {
-      db.prepare('DELETE FROM task_target WHERE task_id = ?').run(t.id);
-      insertTargets(t.id, list);
+      db.prepare('DELETE FROM task_target WHERE task_id = ?').run(tache.id);
+      insertTargets(tache.id, list);
     }
   }
   db.prepare('UPDATE task SET prompt = ?, commit_message = ?, auto_push = ?, ask_questions = ?, updated_at = ? WHERE id = ?').run(
-    prompt != null ? String(prompt).trim() : t.prompt,
-    commit_message != null ? (String(commit_message).trim() || null) : t.commit_message,
-    auto_push == null ? t.auto_push : (auto_push ? 1 : 0),
+    prompt != null ? String(prompt).trim() : tache.prompt,
+    commit_message != null ? (String(commit_message).trim() || null) : tache.commit_message,
+    auto_push == null ? tache.auto_push : (auto_push ? 1 : 0),
     // ask_questions ne concerne que le codage ; absent du body → on garde la valeur actuelle.
-    ask_questions == null ? t.ask_questions : (t.kind === 'code' && ask_questions ? 1 : 0),
-    new Date().toISOString(), t.id,
+    ask_questions == null ? tache.ask_questions : (tache.kind === 'code' && ask_questions ? 1 : 0),
+    new Date().toISOString(), tache.id,
   );
-  saveTaskImages(t.id, images);
+  saveTaskImages(tache.id, images);
   // Après une éventuelle recréation des cibles : celles-ci repartent sans handle.
-  applySessionId('task_target', 'task_id', t.id, sessionId, taskTargets(t.id));
-  res.json({ ...taskById(t.id), targets: taskTargets(t.id) });
+  applySessionId('task_target', 'task_id', tache.id, sessionId, taskTargets(tache.id));
+  res.json({ ...taskById(tache.id), targets: taskTargets(tache.id) });
 }));
 
 app.delete('/api/tasks/:id', wrap((req, res) => {
@@ -1555,9 +1554,9 @@ app.get('/api/tasks/:id/passes', wrap((req, res) => {
 
 // Réponse .md d'une exploration.
 app.get('/api/tasks/:id/md', wrap((req, res) => {
-  const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(tt('err.session-introuvable'));
-  res.json({ md: t.md_path ? readFileSafe(t.md_path) : null, prompt: t.prompt, created_at: t.created_at });
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  res.json({ md: tache.md_path ? readFileSafe(tache.md_path) : null, prompt: tache.prompt, created_at: tache.created_at });
 }));
 
 /* Réconcilier : relire l'état réel des branches d'une session et réparer les projets dont le
@@ -1571,14 +1570,14 @@ function normalizeTargetIds(taskId, raw) {
   if (!voulus.length) return null;
   const connus = new Set(db.prepare('SELECT id FROM task_target WHERE task_id = ?').all(taskId).map((r) => r.id));
   const inconnus = voulus.filter((id) => !connus.has(id));
-  if (inconnus.length) throw new Error(tt('err.projet-introuvable-pour-cette-session-2'));
+  if (inconnus.length) throw new Error(t('err.projet-introuvable-pour-cette-session-2'));
   return voulus;
 }
 
 app.post('/api/tasks/:id/reconcile', wrap((req, res) => {
   const t2 = taskById(Number(req.params.id));
-  if (!t2) throw new Error(tt('err.session-introuvable'));
-  if (t2.kind !== 'code') throw new Error(tt('err.reconcile-code-only'));
+  if (!t2) throw new Error(t('err.session-introuvable'));
+  if (t2.kind !== 'code') throw new Error(t('err.reconcile-code-only'));
   res.json(jobs.startReconcileJob(t2.id));
 }));
 
@@ -1586,10 +1585,10 @@ app.post('/api/tasks/:id/reconcile', wrap((req, res) => {
    la session part — comportement d'origine. Sert au bouton « Lancer » de chaque projet et à
    « relancer les projets en échec ». */
 app.post('/api/tasks/:id/run', wrap((req, res) => {
-  const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(tt('err.session-introuvable'));
-  const targetIds = normalizeTargetIds(t.id, req.body && req.body.targets);
-  res.json(jobs.startTaskJob(t.id, 'run', targetIds ? { targetIds } : {}));
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  const targetIds = normalizeTargetIds(tache.id, req.body && req.body.targets);
+  res.json(jobs.startTaskJob(tache.id, 'run', targetIds ? { targetIds } : {}));
 }));
 
 // « Converger » une session de dev : du prompt à la/les MR convergée(s). L'IA code,
@@ -1722,11 +1721,11 @@ app.post('/api/local-tasks/:id/hidden', wrap((req, res) => {
 
 // Itération : nouvelle passe de l'IA (codage) ou question de suivi (exploration).
 app.post('/api/tasks/:id/followup', wrap((req, res) => {
-  const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(tt('err.session-introuvable'));
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
   const instruction = (req.body && req.body.instruction || '').trim();
-  if (!instruction) throw new Error(tt('err.demande-de-suivi-requise'));
-  res.json(jobs.startTaskJob(t.id, 'followup', { instruction }));
+  if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
+  res.json(jobs.startTaskJob(tache.id, 'followup', { instruction }));
 }));
 
 // Réponses aux questions de l'agent (ask → stop → resume) : on enregistre les réponses sur
@@ -1765,9 +1764,9 @@ app.post('/api/tasks/:id/targets/:tid/push', wrap((req, res) => {
    session de dix dépôts, pousser à la main dix fois est un travail de scribe — et on en oublie. */
 app.post('/api/tasks/:id/push-all', wrap((req, res) => {
   const t2 = taskById(Number(req.params.id));
-  if (!t2) throw new Error(tt('err.session-introuvable'));
+  if (!t2) throw new Error(t('err.session-introuvable'));
   const cibles = db.prepare("SELECT id FROM task_target WHERE task_id = ? AND status = 'committed' ORDER BY id").all(t2.id);
-  if (!cibles.length) throw new Error(tt('err.rien-a-pousser'));
+  if (!cibles.length) throw new Error(t('err.rien-a-pousser'));
   res.json(jobs.startTaskJob(t2.id, 'push-all', { targetIds: cibles.map((c) => c.id) }));
 }));
 
@@ -1776,12 +1775,12 @@ app.post('/api/tasks/:id/push-all', wrap((req, res) => {
    branche). Un échec sur un projet n'empêche pas les autres — le bilan dit lesquels. */
 app.post('/api/tasks/:id/mrs', wrap(async (req, res) => {
   const t2 = taskById(Number(req.params.id));
-  if (!t2) throw new Error(tt('err.session-introuvable'));
+  if (!t2) throw new Error(t('err.session-introuvable'));
   const cfg = getConfig();
   const squash = !!(req.body && req.body.squash);
   const removeSourceBranch = !!(req.body && req.body.removeSourceBranch);
   const cibles = taskTargets(t2.id).filter((tg) => tg.status === 'pushed' && !effectiveMr(tg));
-  if (!cibles.length) throw new Error(tt('err.aucune-mr-a-creer'));
+  if (!cibles.length) throw new Error(t('err.aucune-mr-a-creer'));
   const created = []; const failed = [];
   for (const tg of cibles) {
     try {
@@ -1803,14 +1802,14 @@ app.post('/api/tasks/:id/mrs', wrap(async (req, res) => {
 }));
 
 app.post('/api/tasks/:id/targets/:tid/mr', wrap(async (req, res) => {
-  const t = taskById(Number(req.params.id));
+  const tache = taskById(Number(req.params.id));
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
-  if (!t || !tg) throw new Error(tt('err.projet-introuvable-pour-cette-session'));
-  if (tg.status !== 'pushed') throw new Error(tt('err.la-branche-doit-etre-poussee'));
+  if (!tache || !tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  if (tg.status !== 'pushed') throw new Error(t('err.la-branche-doit-etre-poussee'));
   const already = effectiveMr(tg);
-  if (already) throw new Error(tt('err.mr-already-open', { iid: already.iid }));
+  if (already) throw new Error(t('err.mr-already-open', { iid: already.iid }));
   const cfg = getConfig();
-  const title = (req.body && req.body.title || '').trim() || t.commit_message || tg.branch;
+  const title = (req.body && req.body.title || '').trim() || tache.commit_message || tg.branch;
   let target = tg.base_branch;
   if (!target) { const b = await forge.clientFor(tg).listBranches(cfg, tg.project); target = b.default || 'main'; }
   const squash = !!(req.body && req.body.squash);
@@ -2159,10 +2158,10 @@ app.post('/api/mrs/:id/ticket', wrap((req, res) => {
   let imgPath = mr.ticket_image;
   if (removeImage && imgPath) { try { fs.rmSync(imgPath, { force: true }); } catch { /* rien */ } imgPath = null; }
   if (image) imgPath = saveTicketImage(mr.id, image);
-  const t = (text || '').trim();
+  const texte = (text || '').trim();
   db.prepare('UPDATE mr SET ticket_text = ?, ticket_image = ?, updated_at = ? WHERE id = ?')
-    .run(t || null, imgPath, new Date().toISOString(), mr.id);
-  res.json({ ok: true, has_text: !!t, has_image: !!imgPath });
+    .run(texte || null, imgPath, new Date().toISOString(), mr.id);
+  res.json({ ok: true, has_text: !!texte, has_image: !!imgPath });
 }));
 
 app.get('/api/mrs/:id/ticket-image', (req, res) => {

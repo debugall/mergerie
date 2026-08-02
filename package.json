@@ -35,7 +35,8 @@
     "test:coverage": "node --test --experimental-test-coverage test/*.test.js",
     "i18n:check": "node scripts/i18n-check.js",
     "check:front": "node scripts/check-front.js",
-    "check": "npm run check:front && npm run i18n:check",
+    "check:server": "node scripts/check-server.js",
+    "check": "npm run check:front && npm run check:server && npm run i18n:check",
     "demo": "node scripts/demo-seed.js && MERGERIE_DEMO=1 MERGERIE_DATA_DIR=data-demo COPILOT_DRY_RUN=1 node src/server.js",
     "record:demo": "node scripts/record-demo.js"
   },

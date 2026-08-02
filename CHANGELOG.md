@@ -85,6 +85,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Creating a coding session no longer fails with "t is not a function".** Any validation problem —
+  a missing branch name, the same project picked twice, an unknown project — produced that message
+  instead of the real one, because a callback parameter shadowed the server's translation function.
+  The four messages now say what is actually wrong. The same shadowing existed in fourteen other
+  places, all waiting to bite the same way; they are renamed, and a new check (`npm run check`) fails
+  the build if the name `t` is ever bound to anything but the translation again.
 - **Demo mode applies Jira status changes for real.** Picking a transition answered "ok" and changed
   nothing: the list reloaded on the old status, and the menu counter never moved. A demo that accepts an
   action without reflecting it teaches the opposite of what the tool does.

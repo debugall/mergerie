@@ -299,17 +299,17 @@ async function listBranchesFull(cfg, project) {
 
 async function listTags(cfg, project) {
   const items = await fetchAllPages(cfg, `/projects/${encodeProject(project)}/repository/tags`);
-  return items.map((t) => ({
-    name: t.name,
+  return items.map((tag) => ({
+    name: tag.name,
     // Pour un tag ANNOTÉ, l'objet tag et le commit ont deux SHA différents.
     // On garde les deux : restaurer avec le seul SHA de commit perdrait le message.
-    sha: t.commit && t.commit.id,
-    target: t.target,
-    message: t.message || '',
-    annotated: !!(t.message && t.message.trim()),
-    committed_date: t.commit && t.commit.committed_date,
+    sha: tag.commit && tag.commit.id,
+    target: tag.target,
+    message: tag.message || '',
+    annotated: !!(tag.message && tag.message.trim()),
+    committed_date: tag.commit && tag.commit.committed_date,
     // Auteur du commit pointé par le tag (donnée exposée par l'API tags).
-    author: (t.commit && t.commit.author_name) || '',
+    author: (tag.commit && tag.commit.author_name) || '',
   }));
 }
 
@@ -324,7 +324,7 @@ async function listProtectedBranches(cfg, project) {
 async function listProtectedTags(cfg, project) {
   try {
     const items = await fetchAllPages(cfg, `/projects/${encodeProject(project)}/protected_tags`);
-    return items.map((t) => t.name);
+    return items.map((tag) => tag.name);
   } catch { return []; }
 }
 

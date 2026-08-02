@@ -55,7 +55,7 @@ To find your way around the codebase (modules, data model, pipelines), read **[P
 Two checks are **mandatory** and must pass:
 
 ```bash
-npm run check        # front-end guardrails + i18n consistency
+npm run check        # front-end + server guardrails, and i18n consistency
 npm run i18n:check   # translation dictionary consistency (also part of `npm run check`)
 ```
 
