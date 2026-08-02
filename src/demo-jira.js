@@ -5,6 +5,7 @@
 const ISSUES = [
   {
     key: 'PROJ-1421', summary: 'Le panier perd les articles après reconnexion', type: 'Bug', typeIcon: '',
+    sprints: [{ v: '42', l: 'Sprint 42' }],
     epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
     status: 'En cours', statusCategory: 'indeterminate', priority: 'Haute',
     assignee: { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
@@ -24,6 +25,7 @@ const ISSUES = [
   },
   {
     key: 'PROJ-1408', summary: 'Ajouter le paiement en 3× sans frais', type: 'Story', typeIcon: '',
+    sprints: [{ v: '42', l: 'Sprint 42' }],
     epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
     status: 'À faire', statusCategory: 'new', priority: 'Moyenne',
     assignee: { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
@@ -38,6 +40,7 @@ const ISSUES = [
   },
   {
     key: 'PROJ-1390', summary: 'Migrer les logs vers le nouveau format JSON', type: 'Tâche', typeIcon: '',
+    sprints: [{ v: '43', l: 'Sprint 43' }],
     epic: { key: 'PROJ-1050', summary: 'Observabilité : logs et métriques', color: 'blue' },
     status: 'En revue', statusCategory: 'indeterminate', priority: 'Basse',
     assignee: { accountId: 'usr-002', name: 'Alex Martin', email: 'alex@demo', avatar: '' },
@@ -84,7 +87,7 @@ const PEOPLE = [
 function assignees() { return { me: ME, people: PEOPLE }; }
 
 // Tickets des personnes cochées (accountIds) ; vide → mes tickets.
-function tickets(accountIds, includeDone, projects = []) {
+function tickets(accountIds, includeDone, projects = [], sprints = []) {
   // Vide = aucune contrainte d'assigné (même règle qu'en réel), pas « mes tickets ».
   const set = (accountIds && accountIds.length) ? new Set(accountIds) : null;
   const tous = includeDone ? [...ISSUES, ...DONE] : ISSUES;
@@ -93,6 +96,10 @@ function tickets(accountIds, includeDone, projects = []) {
   if (projects && projects.length) {
     const cles = new Set(projects);
     list = list.filter((i) => cles.has(String(i.project || '').split(' ')[0]));
+  }
+  if (sprints && sprints.length) {
+    const ids = new Set(sprints.map(String));
+    list = list.filter((i) => (i.sprints || []).some((sp) => ids.has(String(sp.v))));
   }
   return { issues: list.map(meta), total: list.length };
 }

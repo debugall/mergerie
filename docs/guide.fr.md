@@ -427,7 +427,13 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   celui d'une sous-tâche est une story, l'annoncer comme epic serait un contresens.
   Par défaut on écarte les tickets **terminés** — une case **« Inclure les terminés »** les réintègre. Un
   **filtre par statut** (repliable, cases à cocher, **choix persisté**) permet en plus de n'afficher que les
-  statuts voulus. Les filtres **Assignés** et **Statuts** ont chacun leur **recherche** — qui **masque** les lignes
+  statuts voulus. Un filtre **Sprints** apparaît dès que
+  tes tickets en portent un. Le sprint est un champ **personnalisé**, dont l'identifiant change d'une
+  instance à l'autre : l'outil le repère par son **marqueur de schéma** Jira, indépendant de la langue —
+  un champ nommé « Itération » est reconnu comme tel. La sélection est appliquée **par Jira**
+  (`sprint IN (…)`), comme les projets, pour ne pas trier un extrait plafonné. Les sprints déjà vus
+  restent proposés même une fois un sprint choisi, sinon on ne pourrait pas en cocher un second.
+  Les filtres **Assignés** et **Statuts** ont chacun leur **recherche** — qui **masque** les lignes
   sans rien décocher — et **Tout cocher / Tout décocher** —
   pratique pour vider puis ne garder qu'une ou deux lignes. Sur les assignés, **ne cocher personne ne
   filtre pas** : la liste prend alors **tous** les tickets visibles par le compte, y compris ceux

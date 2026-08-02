@@ -470,6 +470,16 @@
                         <div id="jiraStatusFilterBody" class="jira-status-filter-body"></div>
                     </div>
                 </details>
+                <details id="jiraSprintFilter" class="jira-status-filter" hidden>
+                    <summary><svg class="ico ico-sm"><use href="#i-repeat"/></svg> <span data-i18n="jira.sprints">Sprints</span> <span id="jiraSprintFilterCount" class="muted"></span></summary>
+                    <div class="jira-sf-pop">
+                        <input id="jiraSprintSearch" type="search" class="jira-sf-search" placeholder="Rechercher un sprint…" data-i18n-placeholder="jira.sprint-search" />
+                        <div class="jira-sf-actions">
+                            <button type="button" class="btn btn-sm btn-ghost" data-jsfnone="sprint" data-i18n="jira.sf.none">Tout décocher</button>
+                        </div>
+                        <div id="jiraSprintFilterBody" class="jira-status-filter-body"></div>
+                    </div>
+                </details>
                 <details id="jiraFieldFilter" class="jira-status-filter" hidden>
                     <summary><svg class="ico ico-sm"><use href="#i-sliders"/></svg> <span data-i18n="jira.ff.title">Filtres</span> <span id="jiraFieldFilterCount" class="muted"></span></summary>
                     <div class="jira-sf-pop">

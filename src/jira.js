@@ -243,7 +243,7 @@ async function runSearch(cfg, jql, fields, max = 50) {
 }
 
 // Métadonnées d'un ticket depuis l'objet issue (partagé liste + détail).
-function issueMeta(data) {
+function issueMeta(data, champSprint = '') {
   const f = data.fields || {};
   const person = personOf;
   return {
@@ -259,6 +259,8 @@ function issueMeta(data) {
     labels: f.labels || [],
     project: f.project ? `${f.project.key}${f.project.name ? ` — ${f.project.name}` : ''}` : '',
     projectKey: f.project ? f.project.key : '',
+    // Vide si le champ sprint n'est pas connu de l'instance ou pas demandé.
+    sprints: champSprint ? sprintsDe(f[champSprint]) : [],
     created: f.created || '',
     updated: f.updated || '',
     duedate: f.duedate || '',
@@ -299,6 +301,46 @@ function epicOf(f) {
 
 const TICKET_FIELDS = 'summary,status,priority,issuetype,assignee,reporter,created,updated,labels,project,duedate,parent';
 
+/* ---------- Sprint ----------------------------------------------------------
+   Champ personnalisé, donc identifiant variable. On le repère par son MARQUEUR DE SCHÉMA,
+   posé par Jira et indépendant de la langue — contrairement au nom, qui ne l'est pas. */
+const MARQUEUR_SPRINT = 'gh-sprint';
+const CHAMP_SPRINT = /^customfield_\d+$/;
+
+// Tous les champs de l'instance, réduits à ce dont on a besoin ici.
+async function allFields(cfg) {
+  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  const data = await jiraGet(cfg, '/rest/api/3/field');
+  return (Array.isArray(data) ? data : []).filter((f) => f && f.id).map((f) => ({
+    id: f.id, name: f.name || f.id, custom: !!f.custom,
+    marqueur: (f.schema && f.schema.custom) || '',
+  }));
+}
+
+function detectSprintField(fields) {
+  const par = (fields || []).filter((f) => CHAMP_SPRINT.test(f.id));
+  const parMarqueur = par.find((f) => String(f.marqueur).includes(MARQUEUR_SPRINT));
+  if (parMarqueur) return { id: parMarqueur.id, name: parMarqueur.name };
+  // Repli sur le nom, pour une instance qui n'exposerait pas le schéma.
+  const parNom = par.find((f) => String(f.name).trim().toLowerCase() === 'sprint');
+  return parNom ? { id: parNom.id, name: parNom.name } : null;
+}
+
+/* Valeurs de sprint d'un ticket, ramenées à { v: id, l: nom }. Jira renvoie soit des objets
+   ({ id, name, state }), soit — sur de vieilles instances — des chaînes façon
+   « …[id=42,name=Sprint 42,state=ACTIVE] ». On lit les deux plutôt que d'en supposer une. */
+function sprintsDe(brut) {
+  const un = (x) => {
+    if (!x) return null;
+    if (typeof x === 'object') return x.id != null ? { v: String(x.id), l: x.name || String(x.id) } : null;
+    const s = String(x);
+    const id = /\bid=(\d+)/.exec(s);
+    const nom = /\bname=([^,\]]+)/.exec(s);
+    return id ? { v: id[1], l: (nom && nom[1].trim()) || id[1] } : null;
+  };
+  return (Array.isArray(brut) ? brut : [brut]).map(un).filter(Boolean);
+}
+
 // Identité de l'utilisateur courant (pour cocher « moi » par défaut dans le filtre par assigné).
 async function myself(cfg) {
   const data = await jiraGet(cfg, '/rest/api/3/myself');
@@ -329,7 +371,7 @@ async function listAssignees(cfg) {
    donc tout ce qui n'a pas cette forme est refusé plutôt que quoté et espéré. */
 const CLE_PROJET = /^[A-Za-z][A-Za-z0-9_]{0,30}$/;
 
-async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = 100, projects = [] } = {}) {
+async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = 100, projects = [], sprintField = '', sprints = [] } = {}) {
   if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
   // accountId Jira : alphanumérique + `:._@|-`. On rejette le reste (anti-injection JQL) et on quote.
   const ids = (accountIds || []).map(String).filter((s) => /^[A-Za-z0-9:._@|-]{1,128}$/.test(s));
@@ -343,6 +385,9 @@ async function searchByAssignees(cfg, { accountIds = [], includeDone = false, ma
      revient à filtrer un extrait — les tickets du projet voulu peuvent n'y être même pas. */
   const cles = [...new Set((projects || []).map(String).filter((k) => CLE_PROJET.test(k)))];
   if (cles.length) clauses.push(`project IN (${cles.map((k) => `"${k}"`).join(', ')})`);
+  // Même règle pour le sprint : identifiants numériques, contrainte posée DANS la requête.
+  const sprintIds = [...new Set((sprints || []).map(String).filter((x) => /^\d+$/.test(x)))];
+  if (sprintIds.length) clauses.push(`sprint IN (${sprintIds.join(', ')})`);
   if (!includeDone) clauses.push('statusCategory != Done');
   /* Jira Cloud REFUSE une recherche sans aucune contrainte (« unbounded ») : personne de coché
      ET les terminés inclus donnerait un simple ORDER BY, rejeté en 400. On borne alors sur
@@ -350,8 +395,9 @@ async function searchByAssignees(cfg, { accountIds = [], includeDone = false, ma
      mise à jour et plafonnée à cent résultats. */
   if (!clauses.length) clauses.push('updated >= -365d');
   const jql = `${clauses.join(' AND ')} ORDER BY updated DESC`;
-  const data = await runSearch(cfg, jql, TICKET_FIELDS, max);
-  const issues = (data.issues || []).map((i) => withUrls(cfg, issueMeta(i)));
+  const champ = CHAMP_SPRINT.test(sprintField) ? sprintField : '';
+  const data = await runSearch(cfg, jql, champ ? `${TICKET_FIELDS},${champ}` : TICKET_FIELDS, max);
+  const issues = (data.issues || []).map((i) => withUrls(cfg, issueMeta(i, champ)));
   return { issues, total: data.total != null ? data.total : issues.length };
 }
 
@@ -516,4 +562,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, statusOfKeys, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, statusOfKeys, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };

@@ -605,6 +605,50 @@ describe('API de bout en bout', () => {
     for (const k of ['AAA-1', 'BBB-1']) delete app.state.jiraIssues[k];
   });
 
+  test('Jira : le filtre par sprint est posé dans la JQL, comme le projet', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    app.state.jiraFields = [
+      { id: 'customfield_10020', name: 'Itération', custom: true, schema: { custom: 'com.pyxis.greenhopper.jira:gh-sprint' } },
+    ];
+    const tk = (key, sprint) => ({
+      key,
+      fields: {
+        summary: key, status: { name: 'À faire', statusCategory: { key: 'new' } },
+        ...(sprint ? { customfield_10020: [{ id: sprint, name: `Sprint ${sprint}`, state: 'active' }] } : {}),
+      },
+    });
+    app.state.jiraIssues['SP-1'] = tk('SP-1', 42);
+    app.state.jiraIssues['SP-2'] = tk('SP-2', 43);
+    app.state.jiraIssues['SP-3'] = tk('SP-3', null);
+    const cles = (b) => b.issues.map((i) => i.key).filter((k) => k.startsWith('SP-')).sort();
+
+    // Le champ est repéré tout seul : ses valeurs arrivent sur les tickets, normalisées.
+    const tout = await app.api('GET', '/api/jira/tickets?assignees=');
+    assert.deepEqual(cles(tout.body), ['SP-1', 'SP-2', 'SP-3']);
+    assert.deepEqual(tout.body.issues.find((i) => i.key === 'SP-1').sprints, [{ v: '42', l: 'Sprint 42' }]);
+    assert.deepEqual(tout.body.issues.find((i) => i.key === 'SP-3').sprints, [], 'ticket hors sprint');
+
+    // La contrainte part dans la requête, pas après coup — sinon elle trierait un extrait.
+    assert.deepEqual(cles((await app.api('GET', '/api/jira/tickets?assignees=&sprints=42')).body), ['SP-1']);
+    assert.deepEqual(cles((await app.api('GET', '/api/jira/tickets?assignees=&sprints=42,43')).body), ['SP-1', 'SP-2']);
+
+    app.state.calls.length = 0;
+    await app.api('GET', '/api/jira/tickets?assignees=&sprints=42');
+    const rech = app.state.calls.filter((c) => c.path.includes('/search')).pop();
+    const q = new URL(`http://x${rech.path}`).searchParams;
+    assert.match(decodeURIComponent(q.get('jql')), /sprint IN \(42\)/);
+    assert.match(decodeURIComponent(q.get('fields')), /customfield_10020/, 'le champ doit être réclamé');
+
+    // Un identifiant non numérique n'atteint jamais la requête.
+    app.state.calls.length = 0;
+    await app.api('GET', '/api/jira/tickets?assignees=&sprints=42%29%20OR%20x');
+    const jql2 = decodeURIComponent(new URL(`http://x${app.state.calls.filter((c) => c.path.includes('/search')).pop().path}`).searchParams.get('jql'));
+    assert.ok(!/OR x/.test(jql2), `injection dans la JQL : ${jql2}`);
+
+    for (const k of ['SP-1', 'SP-2', 'SP-3']) delete app.state.jiraIssues[k];
+    app.state.jiraFields = [];
+  });
+
   test('Jira : un refus de Jira remonte SON message, pas seulement le code', async () => {
     await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
     // Le faux Jira renvoie un 400 avec le corps que renvoie le vrai.

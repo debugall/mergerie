@@ -13,6 +13,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Filter Jira tickets by sprint.** A Sprints chip appears as soon as your tickets carry one. Sprint is
+  a custom field whose identifier differs from one Jira to the next, so it is found by its Jira *schema
+  marker* rather than its name — a field labelled "Itération" is recognised just the same. The selection
+  is applied by Jira itself (`sprint IN (…)`), like projects, so it narrows the search instead of sifting
+  a capped extract. Sprints already seen stay on offer after you pick one, otherwise you could never tick
+  a second.
+
 - **Watch Jira tickets and be told when they move.** Some tickets matter to you without being yours —
   the one blocking your work, held by someone else. Checking them by hand three times a day is the
   kind of thing a tool should do. The Jira tab now has two sub-tabs: **My tickets**, and **Watched**.

@@ -515,6 +515,33 @@ describe('front : filtre Jira par champ', () => {
   });
 });
 
+describe('jira : repérage du champ sprint et lecture de ses valeurs', () => {
+  test('repéré par son MARQUEUR de schéma, pas par son nom', () => {
+    /* Le nom est localisé — « Itération » sur une instance française. Le marqueur, lui, est
+       posé par Jira et ne dépend d'aucune langue : c'est le seul repère fiable. */
+    assert.deepEqual(jira.detectSprintField([
+      { id: 'customfield_10020', name: 'Itération', marqueur: 'com.pyxis.greenhopper.jira:gh-sprint' },
+    ]), { id: 'customfield_10020', name: 'Itération' });
+  });
+
+  test('repli sur le nom quand le schéma n’est pas exposé, et rien sinon', () => {
+    assert.deepEqual(jira.detectSprintField([{ id: 'customfield_1', name: 'Sprint', marqueur: '' }]),
+      { id: 'customfield_1', name: 'Sprint' });
+    assert.equal(jira.detectSprintField([{ id: 'customfield_1', name: 'Équipe', marqueur: '' }]), null);
+    assert.equal(jira.detectSprintField([]), null);
+  });
+
+  test('les deux formes de valeur renvoyées par Jira sont lues', () => {
+    assert.deepEqual(jira.sprintsDe([{ id: 42, name: 'Sprint 42', state: 'active' }]),
+      [{ v: '42', l: 'Sprint 42' }]);
+    // Vieilles instances : une chaîne sérialisée plutôt qu'un objet.
+    assert.deepEqual(jira.sprintsDe(['…Sprint@1[id=43,name=Sprint 43,state=CLOSED]']),
+      [{ v: '43', l: 'Sprint 43' }]);
+    assert.deepEqual(jira.sprintsDe(null), [], 'un ticket hors sprint n’a pas de valeur');
+    assert.deepEqual(jira.sprintsDe(['sans identifiant']), [], 'une valeur illisible est écartée, pas devinée');
+  });
+});
+
 /* Séquences ANSI dans les logs. Le cas qui a motivé ce nettoyage : une application dans un
    container colore sa sortie, `docker logs` la relaie telle quelle, et le panneau affichait
    « ␛[34mdebug␛[39m » — chaque ligne noyée sous ses propres octets d'échappement. */

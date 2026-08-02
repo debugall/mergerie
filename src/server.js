@@ -504,14 +504,32 @@ app.get('/api/jira/assignees', wrap(async (req, res) => {
 
 // Tickets assignés aux personnes cochées (`assignees` = accountIds séparés par des virgules ;
 // vide = mes tickets). Filtre statut fait côté client.
+/* Identifiant du champ « sprint », résolu une fois puis mémorisé : il ne change pas en cours
+   de route, et le redemander à chaque chargement coûterait un appel Jira pour rien. Remis à
+   zéro à l'enregistrement de la configuration (l'instance visée peut changer). */
+let champSprint = null;   // null = pas encore cherché ; '' = cherché, absent
+async function sprintFieldId(cfg) {
+  if (champSprint !== null) return champSprint;
+  try {
+    const trouve = jira.detectSprintField(await jira.allFields(cfg));
+    champSprint = trouve ? trouve.id : '';
+  } catch { champSprint = ''; }   // droits manquants : on s'en passe, sans casser l'onglet
+  return champSprint;
+}
+
 app.get('/api/jira/tickets', wrap(async (req, res) => {
   const accountIds = String(req.query.assignees || '').split(',').map((s) => s.trim()).filter(Boolean);
+  // Sprints choisis : mêmes règles que les projets — la contrainte part dans la requête.
+  const sprints = String(req.query.sprints || '').split(',').map((x) => x.trim()).filter(Boolean);
   // Projets choisis dans le filtre : appliqués par Jira, pas après coup (cf. searchByAssignees).
   const projects = String(req.query.projects || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (demoDocker.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1', projects) });
+  if (demoDocker.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1', projects, sprints) });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, issues: [], total: 0 });
-  res.json({ configured: true, ...(await jira.searchByAssignees(cfg, { accountIds, includeDone: req.query.includeDone === '1', projects })) });
+  res.json({ configured: true, ...(await jira.searchByAssignees(cfg, {
+    accountIds, includeDone: req.query.includeDone === '1', projects, sprints,
+    sprintField: await sprintFieldId(cfg),
+  })) });
 }));
 
 // Détail d'un ticket Jira : métadonnées + description + commentaires + pièces jointes.
@@ -812,6 +830,7 @@ app.put('/api/config', wrap((req, res) => {
   i18n.setLang(c.language);   // les messages d'erreur suivent la nouvelle langue
   restartAutoRefresh(); // prend en compte le nouvel intervalle
   restartJiraWatch(); // idem pour la surveillance Jira (et le compteur du menu)
+  champSprint = null; // l'instance Jira visée a pu changer : on re-cherchera le champ sprint
   res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '' });
 }));
 

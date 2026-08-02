@@ -7086,7 +7086,7 @@ const notifPermission = () => (notifSupported() ? Notification.permission : 'uns
 
 // Navigation au clic : ramène au bon endroit via le routage d'onglets existant.
 /* ============ Onglet Jira : mes tickets affectés (liste → détail) ============ */
-const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null, total: null };
+const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null, total: null, connus: {} };
 const JIRA_CAT = { new: 'todo', indeterminate: 'progress', done: 'done' };
 
 function jiraStatusChip(it) {
@@ -7146,6 +7146,81 @@ function jiraPasseFiltres(it, filtres, champs = JIRA_CHAMPS) {
 }
 
 
+
+/* ---------- Jira : filtre par sprint ---------------------------------------
+   Le sprint est un vrai champ, et JQL sait le filtrer. La sélection part donc DANS la requête
+   (`sprint IN (…)`), comme les projets : filtrer après coup ne trierait qu'un extrait de cent
+   tickets, et les tickets du sprint voulu pourraient n'y être même pas.
+
+   On mémorise les sprints CHOISIS (et non les masqués, contrairement aux statuts) : sans choix,
+   on ne veut aucune contrainte, pas « tous les sprints » — un ticket hors sprint doit rester
+   visible tant qu'on n'a rien demandé. */
+const JIRA_SPRINT_KEY = 'aidevtools_jira_sprints';
+function jiraSprintsChoisis() { try { const v = JSON.parse(localStorage.getItem(JIRA_SPRINT_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } }
+function setJiraSprintsChoisis(l) { try { localStorage.setItem(JIRA_SPRINT_KEY, JSON.stringify(l)); } catch { /* stockage indisponible */ } }
+
+/* Les sprints (comme les projets) sont filtrés PAR Jira : une fois un sprint choisi, les
+   tickets rapportés n'en portent plus d'autre, et la liste des sprints proposés se réduirait
+   à celui-là — impossible d'en cocher un second. On mémorise donc les valeurs vues quand
+   AUCUNE contrainte n'est active, et on les propose toujours. */
+function jiraMemoriseValeurs(cle, vues) {
+  const memo = new Map((JIRA.connus[cle] || []).map((x) => [x.v, x]));
+  for (const x of vues) memo.set(x.v, { v: x.v, l: x.l });
+  JIRA.connus[cle] = [...memo.values()];
+}
+function jiraUnionValeurs(cle, vues) {
+  const par = new Map((JIRA.connus[cle] || []).map((x) => [x.v, { ...x, n: 0 }]));
+  for (const x of vues) par.set(x.v, x);
+  return [...par.values()];
+}
+
+function jiraSprintsDistincts() {
+  const par = new Map();
+  for (const it of JIRA.issues) {
+    for (const { v, l } of (it.sprints || [])) {
+      const e = par.get(v) || { v, l, n: 0 };
+      e.n += 1; par.set(v, e);
+    }
+  }
+  // Les sprints récents d'abord : leur identifiant croît avec le temps chez Jira.
+  return jiraUnionValeurs('sprint', [...par.values()]).sort((a, b) => Number(b.v) - Number(a.v));
+}
+
+function jiraFilterSprintSearch() {
+  const q = (($('#jiraSprintSearch') && $('#jiraSprintSearch').value) || '').toLowerCase().trim();
+  $$('#jiraSprintFilterBody .jira-sf-item').forEach((it) => { it.hidden = !!q && !it.textContent.toLowerCase().includes(q); });
+}
+
+function renderJiraSprintFilter() {
+  const det = $('#jiraSprintFilter'); const body = $('#jiraSprintFilterBody'); if (!det || !body) return;
+  const vals = jiraSprintsDistincts();
+  const choisis = jiraSprintsChoisis();
+  /* Le panneau reste visible tant qu'une sélection est active, même si plus aucun ticket
+     affiché ne porte ce sprint : sinon le filtre disparaîtrait avec le moyen de le retirer. */
+  det.hidden = !vals.length && !choisis.length;
+  if (det.hidden) return;
+  const lignes = vals;
+  body.innerHTML = lignes.map((x) => `<label class="jira-sf-item">
+      <input type="checkbox" value="${esc(x.v)}"${choisis.includes(x.v) ? ' checked' : ''} />
+      <span>${esc(x.l)}</span>${x.n ? ` <span class="muted">${x.n}</span>` : ''}</label>`).join('');
+  const cnt = $('#jiraSprintFilterCount');
+  if (cnt) cnt.textContent = choisis.length ? tr('jira.ff.picked', { n: choisis.length, total: lignes.length }) : '';
+  jiraFilterSprintSearch();
+}
+
+$('#jiraSprintFilterBody') && $('#jiraSprintFilterBody').addEventListener('change', (e) => {
+  const cb = e.target.closest('input[type="checkbox"]'); if (!cb) return;
+  const set = new Set(jiraSprintsChoisis());
+  if (cb.checked) set.add(cb.value); else set.delete(cb.value);
+  setJiraSprintsChoisis([...set]);
+  loadJiraTickets();   // la contrainte est appliquée par Jira, pas ici
+});
+$('#jiraSprintSearch') && $('#jiraSprintSearch').addEventListener('input', jiraFilterSprintSearch);
+$$('[data-jsfnone="sprint"]').forEach((b) => b.addEventListener('click', () => {
+  setJiraSprintsChoisis([]);
+  loadJiraTickets();
+}));
+
 const JIRA_FF_KEY = 'aidevtools_jira_filtres';
 function jiraFiltres() {
   try {
@@ -7171,7 +7246,8 @@ function jiraValeursDe(cle) {
       e.n += 1; par.set(v, e);
     }
   }
-  return [...par.values()].sort((a, b) => a.l.localeCompare(b.l, undefined, { numeric: true }));
+  return jiraUnionValeurs(cle, [...par.values()])
+    .sort((a, b) => a.l.localeCompare(b.l, undefined, { numeric: true }));
 }
 
 function renderJiraFieldFilter() {
@@ -7483,14 +7559,23 @@ async function loadJiraTickets() {
   const assignees = [...jiraCheckedSet()].join(',');
   // Les projets cochés sont appliqués PAR Jira : filtrer après coup ne verrait qu'un extrait.
   const projects = (jiraFiltres().project || []).join(',');
+  const sprints = jiraSprintsChoisis().join(',');
   let d;
-  try { d = await api(`/jira/tickets?assignees=${encodeURIComponent(assignees)}&includeDone=${done}&projects=${encodeURIComponent(projects)}`); }
+  try { d = await api(`/jira/tickets?assignees=${encodeURIComponent(assignees)}&includeDone=${done}&projects=${encodeURIComponent(projects)}&sprints=${encodeURIComponent(sprints)}`); }
   catch (e) { $('#jiraList').innerHTML = ''; $('#jiraError').innerHTML = errorBox(explainError(e.message)); return; }
   JIRA.issues = d.issues || [];
   JIRA.total = d.total != null ? d.total : null;
+  /* On ne mémorise que ce qu'on a vu SANS la contrainte correspondante : sinon on figerait
+     une liste déjà réduite par le filtre lui-même. */
+  if (!sprints) jiraMemoriseValeurs('sprint', JIRA.issues.flatMap((i) => i.sprints || []));
+  if (!projects) {
+    jiraMemoriseValeurs('project', JIRA.issues
+      .filter((i) => i.projectKey).map((i) => ({ v: i.projectKey, l: i.project || i.projectKey })));
+  }
   JIRA.selectedKey = null;
   $('#jiraInfo').textContent = tr('jira.count', { n: JIRA.issues.length, count: JIRA.issues.length });
   renderJiraStatusFilter();
+  renderJiraSprintFilter();
   renderJiraFieldFilter();
   renderJiraList();
   const vis = jiraVisibleIssues();
@@ -7625,7 +7710,9 @@ $('#jiraAssigneeFilterBody') && $('#jiraAssigneeFilterBody').addEventListener('c
 /* « Tout cocher » / « Tout décocher » des deux filtres. Les deux boutons vont ensemble : sans
    le premier, décocher tout devient un aller sans retour — il faudrait recocher une à une les
    quinze lignes qu'on vient de vider. */
-$$('[data-jsfall], [data-jsfnone]').forEach((b) => b.addEventListener('click', () => {
+/* Ciblage explicite : un `[data-jsfnone]` nu attrapait aussi le bouton du filtre par sprint,
+   qui a son propre gestionnaire — et le faisait passer par la branche « statuts ». */
+$$('[data-jsfall="assignee"], [data-jsfnone="assignee"], [data-jsfall="status"], [data-jsfnone="status"]').forEach((b) => b.addEventListener('click', () => {
   const quoi = b.dataset.jsfall || b.dataset.jsfnone;
   const tout = !!b.dataset.jsfall;
   if (quoi === 'assignee') {

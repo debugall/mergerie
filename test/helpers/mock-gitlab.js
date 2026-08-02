@@ -24,6 +24,7 @@ function freshState() {
     changes: {},             // `${project}!${iid}` -> [{ new_path }]
     jiraIssues: {},          // KEY -> { key, fields }
     jiraFail: null,          // { status, body } pour forcer un refus Jira
+    jiraFields: [],          // /rest/api/3/field : champs de l'instance (dont le sprint)
     calls: [],               // journal { method, path, body } pour les assertions
     fail: {},                // path fragment -> { status, body } pour forcer une erreur
     mergeRefuses: false,     // vrai = GitLab répond 200 sans merger (cas réel à couvrir)
@@ -228,6 +229,7 @@ function handleJira(req, res, pathname, body = {}) {
   const auth = req.headers.authorization || '';
   if (!auth.startsWith('Basic ')) return json(res, 401, { errorMessages: ['unauthorized'] });
   // Utilisateur courant (pour cocher « moi » par défaut).
+  if (pathname === '/rest/api/3/field') return json(res, 200, state.jiraFields || []);
   if (pathname === '/rest/api/3/myself') return json(res, 200, { accountId: 'me-test', displayName: 'Testeur courant', avatarUrls: {} });
   /* Recherche. Le mock ne parle pas JQL, mais il en comprend les DEUX formes que le produit
      émet — `key IN (…)` (tickets surveillés) et `statusCategory = "In Progress"` (compteur du
@@ -249,6 +251,14 @@ function handleJira(req, res, pathname, body = {}) {
     if (prj) {
       const set = new Set(prj[1].split(',').map((k) => k.trim().replace(/^"|"$/g, '')));
       issues = issues.filter((i) => i.fields && i.fields.project && set.has(i.fields.project.key));
+    }
+    const spr = /sprint\s+IN\s*\(([^)]*)\)/i.exec(jql);
+    if (spr) {
+      const ids = new Set(spr[1].split(',').map((x) => x.trim()));
+      issues = issues.filter((i) => {
+        const v = i.fields && i.fields.customfield_10020;
+        return Array.isArray(v) && v.some((sp) => ids.has(String(sp.id)));
+      });
     }
     if (/statusCategory\s*=\s*"?In Progress"?/i.test(jql)) {
       issues = issues.filter((i) => i.fields && i.fields.status
