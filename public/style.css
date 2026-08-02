@@ -689,8 +689,14 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 
 #toasts { position: fixed; bottom: 18px; right: 18px; z-index: 50; display: flex; flex-direction: column-reverse; gap: 8px; align-items: flex-end; }
 .toast { position: static; animation: toast-in .22s cubic-bezier(.2,.8,.3,1); max-width: 520px; background: var(--panel); border: 1px solid var(--line); padding: 10px 14px; border-radius: var(--radius); z-index: 50; display: flex; align-items: flex-start; gap: 10px; box-shadow: var(--sh-3); }
+/* Succès : liseré vert discret, texte en couleur normale — une confirmation doit se lire,
+   pas alerter. Erreur : bordure entière rouge ET texte rouge, parce qu'elle reste affichée
+   jusqu'à fermeture et qu'elle doit se distinguer d'un coup d'œil.
+   (Le texte était rouge pour TOUS les toasts : chaque confirmation ressemblait à un échec.) */
+.toast { border-left-width: 3px; border-left-color: var(--ok); }
 .toast.err { border-color: var(--red); }
-.toast .toast-msg { color: var(--red); user-select: text; white-space: pre-wrap; word-break: break-word; flex: 1; }
+.toast .toast-msg { color: var(--text); user-select: text; white-space: pre-wrap; word-break: break-word; flex: 1; }
+.toast.err .toast-msg { color: var(--red); }
 .toast .toast-btn { background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
 
 .errbox { border: 1px solid var(--red); border-radius: var(--radius); background: rgba(224,90,90,.06); margin: 4px 0 10px; overflow: hidden; }

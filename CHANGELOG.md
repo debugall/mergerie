@@ -85,6 +85,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Confirmation messages are no longer written in red.** Every toast used the error colour, so
+  "Repository updated" looked exactly like a failure — the one thing a confirmation must not do. A
+  success now carries a discreet green edge and reads in the normal text colour; an error keeps its
+  full red border and red text, and still stays on screen until you dismiss it. The louder of the two
+  is the one that needs you.
 - **Creating a coding session no longer fails with "t is not a function".** Any validation problem —
   a missing branch name, the same project picked twice, an unknown project — produced that message
   instead of the real one, because a callback parameter shadowed the server's translation function.
