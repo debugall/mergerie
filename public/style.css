@@ -1747,3 +1747,100 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 
 /* Bannière du mode démo (npm run demo). */
 #demoBanner { background: var(--accent); color: var(--on-accent); text-align: center; padding: 6px 12px; font-size: var(--fs-sm); font-weight: 600; }
+
+/* ---------- Vérification objective (plan_add_verify.md §8) ----------
+   Les couleurs portent le verdict : vert = vérifié, rouge = cassé par la branche, ambre =
+   la base était déjà rouge (donc rien à imputer), gris = plus à jour. Elles reprennent les
+   variables du thème, donc les deux modes suivent sans règle en double. */
+.tag.verify.ok { color: var(--green); border-color: var(--green); }
+.tag.verify.ko { color: var(--red); border-color: var(--red); }
+.tag.verify.warn { color: var(--amber); border-color: var(--amber); }
+.tag.verify.stale { color: var(--muted); border-color: var(--line); }
+.tag.verify.none { color: var(--muted); border-color: var(--line); }
+.tag.verify[data-vreport] { cursor: pointer; }
+.tag.verify[data-vreport]:hover { background: var(--panel2); }
+
+/* Barre d'actions de la sélection multiple de merge requests. */
+.bulk-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; margin-bottom: 8px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.bulk-warn { color: var(--red-text, var(--red)); font-size: var(--fs-sm, 13px); }
+.bulk-lot-name { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--radius); padding: 6px 10px; font: inherit; min-width: 180px; }
+.mr-pick-box { display: flex; align-items: flex-start; padding: 2px 6px 0 0; cursor: pointer; }
+
+/* Couverture d'un vérificateur : une ligne par dépôt, la configuration n'apparaît qu'une
+   fois le dépôt coché — sinon le formulaire afficherait des champs sans objet. */
+.vr-row { padding: 2px 0; }
+.vr-cfg { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 2px 0 8px 30px; }
+.vr-mode, .vr-workdir { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--radius); padding: 5px 8px; font: inherit; font-size: 13px; }
+.vr-workdir { min-width: 260px; }
+.vr-ip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vr-list { max-height: 340px; }
+.vr-test-info.ok { color: var(--green); }
+.vr-test-info.err { color: var(--red-text, var(--red)); }
+
+/* Rapport : les extraits viennent du script, donc ils peuvent être longs et biscornus. */
+.modal-box.modal-wide { width: 860px; }
+.verify-list { margin: 4px 0 12px; padding-left: 20px; font-size: 13px; }
+.verify-list li { margin: 3px 0; }
+.verify-log { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r-md, 8px);
+  padding: 8px 10px; margin: 4px 0; font-size: 12px; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+/* Restauration ratée : le répertoire de l'utilisateur est resté sur un commit détaché.
+   Ça ne se noie pas dans un journal — ça se voit. */
+.verify-restore { color: var(--red-text, var(--red)); border: 1px solid var(--red); border-radius: var(--r-md, 8px); padding: 8px 10px; }
+.verify-pick-opt { width: 100%; justify-content: flex-start; }
+
+/* Le contrat du vérificateur, dépliable au-dessus du formulaire : on écrit le script en le
+   lisant, sans changer d'écran. Les blocs de code défilent au lieu d'élargir la page. */
+.verifier-doc { max-width: 860px; border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 14px; margin-bottom: 14px; background: var(--panel); }
+.verifier-doc[open] { padding-bottom: 14px; }
+.verifier-doc h4 { margin: 16px 0 6px; font-size: 13px; }
+.verifier-doc p, .verifier-doc li { font-size: 13px; line-height: 1.55; color: var(--muted); }
+.verifier-doc ul { margin: 6px 0; padding-left: 20px; }
+.verifier-doc code { font-size: 12px; }
+.verifier-doc pre { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r-md, 8px);
+  padding: 10px 12px; margin: 6px 0 10px; overflow-x: auto; font-size: 12px; line-height: 1.5; }
+.verifier-doc pre code { background: none; padding: 0; color: var(--text); white-space: pre; }
+
+/* Vérificateur « commandes » : la liste ordonnée, et le détail de la modale. */
+.vc-row { display: flex; gap: 6px; margin-bottom: 6px; }
+.vc-row .vc-cmd { flex: 1; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--radius); padding: 7px 10px; font: inherit; font-size: 13px; }
+.vc-row .vc-del { flex: 0 0 auto; }
+/* Mono-dépôt : les cases se comportent en radio, la bordure le rappelle sans texte en plus. */
+
+.verify-pick-detail { margin: 10px 0 0; }
+.verify-pick-detail pre { margin: 4px 0 8px; }
+.verify-pick-opt { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+
+/* Réordonnancement des commandes : le rang se lit, les flèches se désactivent aux extrémités. */
+.vc-row { align-items: center; }
+.vc-rank { flex: 0 0 18px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
+.vc-row .vc-move { flex: 0 0 auto; padding: 6px 8px; }
+/* Choix d'un projet local en mode « in place » : le combo précède le champ libre. Son menu
+   est positionné en absolu, donc rogné par le défilement de la liste des dépôts — on rend
+   l'overflow visible le temps qu'il est ouvert, et on élève la ligne au-dessus des suivantes. */
+.vr-local-combo { flex: 0 0 240px; }
+.vr-list.combo-ouvert { overflow: visible; }
+.vr-row:focus-within { position: relative; z-index: 50; }
+
+/* ---------- Dev IA : des blocs, pas des rangs ----------
+   Une session est un bloc HAUT — prompt, liste de projets, questions de l'agent, erreur. Entre
+   deux blocs de cette taille, un filet d'un pixel se perd dans le blanc : on ne voit plus où
+   l'un finit ni où l'autre commence. Ces listes-là abandonnent donc le rang au profit de la
+   carte — un fond, un contour, et de l'air entre les éléments. Les listes de merge requests,
+   elles, restent en rangs : leurs éléments sont courts, le filet y suffit. */
+#taskList, #localList, #lotList {
+  gap: 14px; border: none; background: transparent; overflow: visible; padding: 6px 0;
+}
+#taskList > .card, #localList > .card, #lotList > .card {
+  border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel);
+}
+:root[data-density="compact"] #taskList,
+:root[data-density="compact"] #localList,
+:root[data-density="compact"] #lotList { gap: 9px; }
+
+/* L'erreur appartient à SA session : dans la carte, pleine largeur sous les deux colonnes.
+   Rendue en frère de la carte, elle flottait entre deux sessions sans dire de laquelle. */
+.card > .errbox { flex: 1 1 100%; margin-top: 10px; }

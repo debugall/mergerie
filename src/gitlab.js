@@ -150,9 +150,12 @@ async function getRef(cfg, project, kind, name) {
 
 // Dernier commit d'un projet (branche par défaut). Renvoie l'objet commit GitLab
 // (id, short_id, title, author_name, committed_date, web_url) ou null si vide.
+/* Dernier commit, TOUTES BRANCHES confondues. Sans `all=true`, l'API ne regarde que la
+   branche par défaut : un dépôt où le travail vit sur des branches de feature paraissait
+   alors sans activité depuis des mois, alors qu'on y pousse tous les jours. */
 async function latestCommit(cfg, project) {
   const enc = encodeProject(project);
-  const items = await gitlabFetch(cfg, `/projects/${enc}/repository/commits?per_page=1`);
+  const items = await gitlabFetch(cfg, `/projects/${enc}/repository/commits?all=true&per_page=1`);
   return Array.isArray(items) && items.length ? items[0] : null;
 }
 

@@ -37,6 +37,10 @@ FR = [
     (r'\bAPI\b', 'A P I'),
     (r'\bSSH\b', 'S S H'),
     (r'\bXSS\b', 'X S S'),
+    # « JUnit » et « TAP » arrivent avec les vérificateurs. Le moteur français lit « TAP »
+    # sans le p final ; les développeurs francophones disent /tap/ et « ji-unite ».
+    (r'\bJUnit\b', 'J unite'),
+    (r'\bTAP\b', 'tape'),
     (r'\bSQL\b', 'S Q L'),
     (r'\bSHA\b', 'S H A'),
     (r'\bGNU\b', 'G N U'),
@@ -152,6 +156,7 @@ EN = [
     (r'\s*·\s*', ', '),
     (r'/10\b', ' out of ten'),
     (r'\bj and k\b', 'J and K'),
+    (r'\bJUnit\b', 'J Unit'),
     (r'\bSQL\b', 'S Q L'),
     (r'\bSHA\b', 'S H A'),
     (r'\bGNU\b', 'G N U'),

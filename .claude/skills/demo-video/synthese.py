@@ -28,10 +28,35 @@ MODELES = {
 }
 # Débit : la voix française de Piper est légèrement pressée par défaut.
 LENTEUR = {'fr': '1.06', 'en': '1.02'}
-SILENCE_FIN = 0.7   # respiration après chaque phrase, sinon les étapes se télescopent
+SILENCE_FIN = 0.7
+PY_PIPER = None   # respiration après chaque phrase, sinon les étapes se télescopent
 
 sys.path.insert(0, ICI)
 from prononciation import dire  # noqa: E402
+
+
+def python_piper():
+    """L'interpréteur qui sait importer `piper`.
+
+    Il n'est pas forcément celui qui exécute ce script : piper-tts s'installe volontiers dans
+    un environnement virtuel, et l'erreur brute (« No module named piper ») ne dit pas où
+    chercher. On essaie donc, dans l'ordre : la variable PIPER_PYTHON, l'interpréteur courant,
+    puis les emplacements usuels — et on échoue avec une consigne, pas avec une trace.
+    """
+    candidats = [os.environ.get('PIPER_PYTHON'), sys.executable]
+    candidats += [os.path.join(ICI, 'travail', 'venv', 'bin', 'python')]
+    candidats += ['python3', '/opt/homebrew/bin/python3', '/usr/bin/python3']
+    for c in candidats:
+        if not c:
+            continue
+        try:
+            subprocess.run([c, '-c', 'import piper'], check=True, capture_output=True)
+            return c
+        except Exception:
+            continue
+    raise SystemExit(
+        'piper introuvable. Installe-le (pip install piper-tts) puis relance, ou désigne\n'
+        "l'interpréteur qui l'a : PIPER_PYTHON=/chemin/vers/python python3 synthese.py")
 
 
 def main():
@@ -41,6 +66,8 @@ def main():
     if not os.path.exists(modele):
         raise SystemExit(f'modèle de voix absent : {modele}\nvoir SKILL.md § « Voix »')
     os.makedirs(VOIX, exist_ok=True)
+    global PY_PIPER
+    PY_PIPER = python_piper()
 
     durees = []
     for i, texte in enumerate(narration, 1):
@@ -48,7 +75,7 @@ def main():
         if not os.path.exists(m4a):
             wav = os.path.join(VOIX, f'{i:02d}.wav')
             subprocess.run(
-                [sys.executable, '-m', 'piper', '-m', modele,
+                [PY_PIPER, '-m', 'piper', '-m', modele,
                  '--length-scale', LENTEUR[LANGUE], '-f', wav],
                 input=dire(texte, LANGUE), text=True, check=True, capture_output=True)
             subprocess.run(

@@ -423,7 +423,7 @@ $$('nav button').forEach((b) => b.addEventListener('click', () => {
    et le dernier sous-onglet consulté est mémorisé. */
 // `mr` partage la logique de `config` : ses champs sont rattachés à #configForm (attribut form=),
 // donc loadConfig les peuple et le submit les enregistre — un seul /config pour les deux onglets.
-const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadConfig, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, aisession: renderAiSessionSettings };
+const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadConfig, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, verifiers: loadVerifiers, aisession: renderAiSessionSettings };
 function showAdminSub(sub) {
   if (!sub) { try { sub = localStorage.getItem('aidevtools_admin_sub') || 'rules'; } catch { sub = 'rules'; } }
   if (!ADMIN_SUBS[sub]) sub = 'rules';
@@ -548,14 +548,17 @@ $('#mergeCancel') && $('#mergeCancel').addEventListener('click', closeMergeModal
 $('#mergeModal') && $('#mergeModal').addEventListener('click', (e) => { if (e.target.id === 'mergeModal') closeMergeModal(); });
 $('#mergeGo') && $('#mergeGo').addEventListener('click', async () => {
   const ctx = mergeCtx; if (!ctx) return;
-  const b = $('#mergeGo'); b.disabled = true;
+  const b = $('#mergeGo');
   const body = { squash: $('#mergeSquash').checked, removeSourceBranch: $('#mergeRemoveBranch').checked };
+  /* Un merge passe par la forge : ça prend une seconde ou deux, et la modale reste à l'écran
+     pendant ce temps. Sans indicateur, le bouton paraît n'avoir rien fait — on reclique.
+     `busy()` met le compte à rebours ET désactive, et rend la main dans tous les cas. */
   try {
-    const r = await api(ctx.url, { method: 'POST', body });
+    const r = await busy(b, () => api(ctx.url, { method: 'POST', body }));
     closeMergeModal();
     toast(r.merged ? tr('toast.mr-merged-ok') : tr('toast.merge-requested'));
     if (ctx.onDone) await ctx.onDone(r);
-  } catch (e) { b.disabled = false; toast(explainError(e.message), true); }
+  } catch (e) { toast(explainError(e.message), true); }
 });
 
 let mrCtx = null;
@@ -589,15 +592,16 @@ $('#mrGo') && $('#mrGo').addEventListener('click', async () => {
   const ctx = mrCtx; if (!ctx) return;
   const title = $('#mrTitle').value.trim();
   if (!ctx.bulk && !title) { $('#mrTitle').focus(); return; }
-  const b = $('#mrGo'); b.disabled = true;
+  const b = $('#mrGo');
   const body = { ...(ctx.body || {}), ...(ctx.bulk ? {} : { title }),
     squash: $('#mrSquash').checked, removeSourceBranch: $('#mrRemoveBranch').checked };
+  // Même raison qu'au merge : l'appel part vers la forge et la modale reste affichée.
   try {
-    const r = await api(ctx.url, { method: 'POST', body });
+    const r = await busy(b, () => api(ctx.url, { method: 'POST', body }));
     closeMrModal();
     toast(tr('toast.mr-creee', { iid: r.iid }));
     if (ctx.onDone) await ctx.onDone(r);
-  } catch (e) { b.disabled = false; toast(explainError(e.message), true); }
+  } catch (e) { toast(explainError(e.message), true); }
 });
 
 async function openConvergeModal(target) {
@@ -869,6 +873,9 @@ function loadSegment(seg = currentSeg) {
   const isToReview = seg === 'to_review';
   $('#toReviewList').hidden = !isToReview;
   $('#reportSplit').hidden = isToReview;
+  // La sélection multiple n'existe que dans la file « à traiter » : ailleurs elle traînerait
+  // une barre d'actions sans cases à cocher pour la défaire.
+  if (!isToReview) { mrSelection.clear(); renderMrBulkBar(); }
   refreshCounts();
   return isToReview ? loadToReview() : loadReports(seg);
 }
@@ -1701,9 +1708,22 @@ function renderToReview() {
      branche cible changée passeraient inaperçus. */
   const sig = rows.map((m) => [m.id, m.status, m.iid, m.title, m.project, m.author, m.gitlab_created_at,
     m.has_ticket, m.ticket_key, m.ticket_url, m.web_url, m.forge, m.source_branch, m.target_branch,
-    (m.risk || []).map((r) => r.label).join(','), m.closed_seen, m.stale, m.last_error].join('\u0001')).join('\u0002');
+    (m.risk || []).map((r) => r.label).join(','), m.closed_seen, m.stale, m.last_error,
+    /* Le badge de vérification fait partie de ce que la carte affiche : sans lui dans la
+       signature, un verdict qui vient de tomber resterait invisible jusqu'au prochain
+       changement d'un autre champ. */
+    m.verification && [m.verification.id, m.verification.verdict, m.verification.stale,
+      m.verification.failed_count, m.verification.detail_source].join(','),
+    m.verifiable, mrSelection.has(m.id)].join('\u0001')).join('\u0002');
   if (!renderIfChanged(el, sig, rows.map(mrCard).join(''))) return;
   stagger('#toReviewList .card');
+  $$('#toReviewList .mr-pick').forEach((c) => c.addEventListener('change', () => {
+    if (c.checked) mrSelection.add(Number(c.value)); else mrSelection.delete(Number(c.value));
+    renderMrBulkBar();
+  }));
+  $$('#toReviewList [data-verify]').forEach((b) => b.addEventListener('click', () => {
+    busy(b, () => lancerVerification([Number(b.dataset.verify)]));
+  }));
   $$('#toReviewList [data-review]').forEach((b) => b.addEventListener('click', async () => {
     try { await busy(b, () => api(`/mrs/${b.dataset.review}/review`, { method: 'POST' })); toast(tr('toast.review-de-lancee', { iid: b.dataset.iid })); refreshStatus(); }
     catch (e) { toast(explainError(e.message), true); }
@@ -1795,6 +1815,8 @@ document.addEventListener('click', (e) => { if (!e.target.closest('.btn-split'))
 
 function mrCard(m) {
   return `<div class="card" data-id="${m.id}">
+    ${/* Case à cocher : vérifier ENSEMBLE des MR qui ne valent qu'ensemble (§8). */''}
+    <label class="mr-pick-box" title="${esc(tr('verify.pick.mr-title'))}"><input type="checkbox" class="mr-pick" value="${m.id}" ${mrSelection.has(m.id) ? 'checked' : ''} /></label>
     <div class="card-main">
       <div class="title">!${m.iid} — ${esc(m.title || '')}</div>
       <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}${m.gitlab_created_at ? ` · ${fmtDate(m.gitlab_created_at)}` : ''}</div>
@@ -1805,6 +1827,7 @@ function mrCard(m) {
       <div class="card-tags">
         ${(m.risk || []).map((r) => `<span class="tag risk" title="${esc(tr('mr.risk-title', { pattern: r.path_match }))}">${svgIco('alert')} ${esc(r.label)}</span>`).join('')}
         <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
+        ${verifyBadge(m.verification)}
         ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
         ${m.last_error ? `<span class="tag stale">${tr('mr.tag.error')}</span>` : ''}
       </div>
@@ -1826,6 +1849,7 @@ function mrCard(m) {
     </span>
     </div>
     <div class="btn-group">
+    <button class="btn" data-verify="${m.id}" ${m.verifiable ? '' : 'disabled'} title="${m.verifiable ? tr('verify.btn.verify-title') : tr('err.verify.no-verifier')}"><svg class="ico"><use href="#i-check"/></svg>${tr('verify.btn.verify')}</button>
     <button class="btn" data-done="${m.id}" data-iid="${m.iid}" title="${tr('mr.btn.dismiss-title')}"><svg class=\"ico\"><use href=\"#i-archive\"/></svg>${tr('mr.btn.dismiss')}</button>
     ${m.closed_seen ? '' : `<button class="btn btn-danger" data-merge="${m.id}" title="${tr('mr.btn.merge-title')}"><svg class="ico"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>`}
     </div>
@@ -1890,7 +1914,8 @@ function renderReports() {
   }
   const sig = [selectedMr, ...rows.map((m) => [m.id, m.status, m.iid, m.title, m.project, m.author,
     m.gitlab_created_at, m.ticket_key, m.ticket_url, m.forge, m.note && m.note.raw, m.closed_seen,
-    m.stale].join('\u0001'))].join('\u0002');
+    m.stale, m.verifiable, m.verification && [m.verification.id, m.verification.verdict, m.verification.stale,
+      m.verification.failed_count, m.verification.detail_source].join(',')].join('\u0001'))].join('\u0002');
   const html = rows.map((m) => `
     <div class="card selectable report-card ${selectedMr === m.id ? 'active' : ''}" data-id="${m.id}">
       ${noteBadge(m.note)}
@@ -1899,6 +1924,9 @@ function renderReports() {
         <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}${m.gitlab_created_at ? ` · ${fmtDate(m.gitlab_created_at)}` : ''}${ticketLink(m.ticket_url, m.ticket_key)}</div>
         <div class="report-tags">
           <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
+          ${verifyBadge(m.verification)}
+          ${/* Une MR déjà reviewée se vérifie aussi : la review est un avis, le verdict un fait. */''}
+          ${m.verifiable ? `<button class="btn btn-sm" data-verify-report="${m.id}" title="${tr('verify.btn.verify-title')}">${svgIco('check')}${tr('verify.btn.verify')}</button>` : ''}
           ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
           ${m.stale ? `<span class="tag stale">${tr('mr.tag.stale')}</span>` : ''}
         </div>
@@ -1907,6 +1935,11 @@ function renderReports() {
   if (!renderIfChanged(el, sig, html)) return;
   stagger('#reportList .card');
   $$('#reportList .card').forEach((c) => c.addEventListener('click', () => openReport(Number(c.dataset.id))));
+  // Le bouton vit DANS une carte cliquable : sans cette coupure, vérifier ouvrirait aussi le rapport.
+  $$('#reportList [data-verify-report]').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    busy(b, () => lancerVerification([Number(b.dataset.verifyReport)]));
+  }));
   if (!selectedMr) renderReportPlaceholder();
 }
 // la recherche est partagée : #searchReview rafraîchit le stade courant
@@ -2148,6 +2181,7 @@ async function openReport(id, opts = {}) {
       <div class="btn-group">
         ${d.review && m.status !== 'done' && !m.closed_seen ? `<button id="aConverge" class="btn btn-converge" title="${tr('report.btn.converge-title')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : ''}
         ${d.review ? `<button id="aFix" class="btn" title="${tr('report.btn.fix-title')}"><svg class="ico"><use href="#i-bot"/></svg>${tr('report.btn.fix')}</button>` : ''}
+        ${d.verifiable ? `<button id="aVerify" class="btn" title="${tr('verify.btn.verify-title')}"><svg class="ico"><use href="#i-check"/></svg>${tr('verify.btn.verify')}</button>` : ''}
         ${m.status !== 'done' ? `<button id="aRe" class="btn" title="${tr('report.btn.rerun-title')}"><svg class=\"ico\"><use href=\"#i-repeat\"/></svg>${tr('report.btn.rerun')}</button>` : ''}
         ${m.status !== 'done' && d.stale ? `<button id="aReInc" class="btn" title="${tr('report.btn.rerun-inc-title')}"><svg class=\"ico\"><use href=\"#i-repeat\"/></svg>${tr('report.btn.rerun-inc')}</button>` : ''}
         ${resumeCmdBtn(d.resume_cmd)}
@@ -2292,6 +2326,9 @@ async function openReport(id, opts = {}) {
   });
   const done = $('#aDone'); if (done) done.addEventListener('click', async () => { await api(`/mrs/${id}/done`, { method: 'POST' }); toast(tr('toast.marquee-done')); openReport(id); });
   const reopen = $('#aReopen'); if (reopen) reopen.addEventListener('click', async () => { await api(`/mrs/${id}/reopen`, { method: 'POST' }); toast(tr('toast.rouverte')); openReport(id); });
+  /* Vérifier depuis le rapport : une MR déjà reviewée reste une MR à vérifier. La review
+     donne un avis, le vérificateur un fait — les deux se lisent au même endroit. */
+  const ver = $('#aVerify'); if (ver) ver.addEventListener('click', () => busy(ver, () => lancerVerification([id])));
   const re = $('#aRe'); if (re) re.addEventListener('click', async () => {
     try { await api(`/mrs/${id}/rereview`, { method: 'POST' }); toast(tr('toast.re-review-lancee')); refreshStatus(); }
     catch (e) { toast(e.message, true); }
@@ -3710,6 +3747,17 @@ $('#taskJiraFetch') && $('#taskJiraFetch').addEventListener('click', async () =>
   } catch (e) { $('#taskJiraStatus').textContent = ''; toast(explainError(e.message), true); }
 });
 $('#btnNewTask').addEventListener('click', () => openTaskModal(taskKind).catch((e) => toast(tr('toast.ouverture-impossible', { message: e.message }), true)));
+/* Le champ « reprendre une session » : la mise en garde s'affiche dès qu'on saisit quelque
+   chose. Elle vit sinon dans une info-bulle, qui ne s'ouvre pas toute seule — or c'est
+   précisément au moment de coller un identifiant qu'il faut savoir qu'une session est liée à
+   son répertoire. Le message pré-rempli depuis une MR (`keep`) a priorité : il est plus précis. */
+$('#taskSessionId') && $('#taskSessionId').addEventListener('input', (e) => {
+  const hint = $('#taskSessionHint');
+  if (!hint || hint.dataset.keep === '1') return;
+  hint.hidden = !e.target.value.trim();
+  hint.textContent = hint.hidden ? '' : tr('task.session-id.scope');
+});
+
 $('#taskCancel').addEventListener('click', closeTaskModal);
 $('#taskSubmitOnly').addEventListener('click', () => {
   launchAfterCreate = false; convergeAfterCreate = false; // on crée, on ne lance pas
@@ -3860,6 +3908,7 @@ async function loadTasks() {
   } catch (e) { $('#taskList').innerHTML = errorBox(e.message); return; }
   listeChargee = true;
   renderTasks();
+  loadLots();
 }
 
 // Texte de recherche courant (sessions de codage, hors dépôt et exploration partagent
@@ -3896,6 +3945,9 @@ function renderTasks() {
   // en local elle ouvre la MÊME modale que le codage. Seule la liste change.
   el.hidden = isLocal;
   $('#localPanel').hidden = !isLocal;
+  // Un lot regroupe des merge requests : il n'a rien à faire sous le codage hors dépôt
+  // ni sous l'exploration, qui ne produisent pas de MR.
+  $('#lotPanel').hidden = taskKind !== 'code';
   $('#btnNewTaskLabel').textContent = KIND_LABEL[taskKind].btn;
   $('#taskKindHint').textContent = KIND_LABEL[taskKind].hint;
 
@@ -4012,7 +4064,8 @@ function localCard(t) {
         <span class="task-date" title="${tr('task.created-at')}">${fmtDateTime(t.created_at)}</span>
       </div>
       ${promptBlock(t.prompt)}
-      <div class="targets">${(t.dirs || []).map(localDirLine).join('')}</div>
+      ${toggleProjetsHtml('local', t.id, n)}
+      <div class="targets"${projetsVisibles('local', t.id, n) ? '' : ' hidden'}>${(t.dirs || []).map(localDirLine).join('')}</div>
       <div class="mr-create followup" data-lfollowform="${t.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('local.followup.ph'))}"></textarea>
         <button class="btn" data-lfollowcancel="${t.id}">${tr('ui.cancel')}</button>
@@ -4021,13 +4074,19 @@ function localCard(t) {
     </div>
     ${taskActions([
     canRun ? `<button class="btn" data-lrun="${t.id}" title="${esc(tr('local.run-title'))}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
+    /* Le retour de l'agent au niveau de la SESSION : les boutons par dossier existent aussi,
+       mais ils vivent dans la liste repliée — et c'est « qu'a fait l'IA ? » qu'on se demande
+       en regardant la carte, pas « qu'a-t-elle fait dans ce dossier-là ». */
+    (t.dirs || []).some((d) => d.output_path)
+      ? `<button class="btn" data-lout="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : '',
     canFollow ? `<button class="btn" data-lfollow="${t.id}" title="${esc(tr('local.followup.title'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : '',
   ], [
     `<button class="btn btn-icon btn-sm" data-ledit="${t.id}" title="${esc(tr('local.edit-title'))}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
     hideBtn('local', t),
     `<button class="btn btn-icon btn-sm btn-danger" data-ldel="${t.id}" title="${esc(tr('local.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>`,
   ])}
-  </div>${t.last_error ? errorBox(t.last_error) : ''}`;
+    ${t.last_error ? errorBox(t.last_error) : ''}
+  </div>`;
 }
 
 function renderLocalTasks() {
@@ -4048,11 +4107,20 @@ function renderLocalTasks() {
   el.innerHTML = shown.map(localCard).join('');
   stagger('#localList .card');
   wirePromptToggles('#localList');
+  /* Le codage hors dépôt a sa propre liste : `wireTaskActions` ne porte que sur `#taskList`,
+     le repli doit donc être câblé ici aussi. */
+  $$('#localList [data-tfold]').forEach((b) => b.addEventListener('click', () => basculerProjets(b.dataset.tfold)));
   $$('#localList [data-lrun]').forEach((b) => b.addEventListener('click', () => busy(b, () => api(`/local-tasks/${b.dataset.lrun}/run`, { method: 'POST' }))
     .then(() => { toast(tr('local.started')); loadTasks(); refreshStatus(); })
     .catch((e) => toast(explainError(e.message), true))));
   $$('#localList [data-ldout]').forEach((b) => b.addEventListener('click',
     () => openLocalDirOutput(b.dataset.ltask, b.dataset.ldout)));
+  // Depuis la carte : on ouvre le premier dossier ayant un retour, les autres sont au sélecteur.
+  $$('#localList [data-lout]').forEach((b) => b.addEventListener('click', () => {
+    const t = localTasks.find((x) => String(x.id) === b.dataset.lout);
+    const premier = ((t && t.dirs) || []).find((d) => d.output_path);
+    if (premier) openLocalDirOutput(b.dataset.lout, premier.id);
+  }));
   // Itération sur la MÊME session : le formulaire se déplie sous les dossiers.
   $$('#localList [data-lfollow]').forEach((b) => b.addEventListener('click', () => {
     const form = $(`#localList .followup[data-lfollowform="${b.dataset.lfollow}"]`);
@@ -4151,19 +4219,49 @@ function taskHead(t) {
     ${promptBlock(t.prompt)}`;
 }
 
-/* Sessions dont la liste de projets est repliée. En mémoire ET en stockage local : le rendu
-   se refait à chaque rafraîchissement, donc un état vivant seulement dans le DOM serait perdu
-   toutes les secondes et demie pendant un job. */
-const projetsReplies = (() => {
-  try { return new Set(JSON.parse(localStorage.getItem('aidevtools_projets_replies') || '[]').map(Number)); }
+/* Repli de la liste de projets, PARTAGÉ par les trois familles de sessions (codage,
+   exploration, codage hors dépôt).
+ *
+ * On mémorise les sessions DÉPLIÉES, pas les repliées : le repli est l'état par défaut, et
+ * au-delà de quelques dépôts une seule session occupe sinon tout l'écran — on ne voit plus
+ * les autres, qui sont pourtant ce qu'on est venu regarder.
+ *
+ * La clé est PRÉFIXÉE par la famille : `task` et `local_task` sont deux tables, un « 3 » de
+ * chacune se confondrait. (L'ancien stockage ne contenait que des identifiants de codage,
+ * sans préfixe et avec la convention inverse : il n'est pas repris, le repli se refait d'un
+ * clic.)
+ *
+ * En stockage local, parce que le rendu se refait à chaque rafraîchissement : un état vivant
+ * seulement dans le DOM serait perdu toutes les secondes et demie pendant un job. */
+const projetsDeplies = (() => {
+  try { return new Set(JSON.parse(localStorage.getItem('aidevtools_projets_deplies') || '[]').map(String)); }
   catch { return new Set(); }
 })();
-function basculerProjets(taskId) {
-  if (projetsReplies.has(taskId)) projetsReplies.delete(taskId); else projetsReplies.add(taskId);
-  try { localStorage.setItem('aidevtools_projets_replies', JSON.stringify([...projetsReplies])); }
+const cleRepli = (famille, id) => `${famille}:${id}`;
+const estDeplie = (famille, id) => projetsDeplies.has(cleRepli(famille, id));
+
+function basculerProjets(cle) {
+  if (projetsDeplies.has(cle)) projetsDeplies.delete(cle); else projetsDeplies.add(cle);
+  try { localStorage.setItem('aidevtools_projets_deplies', JSON.stringify([...projetsDeplies])); }
   catch { /* stockage indisponible : le repli reste valable pour cette page */ }
   renderTasks();
 }
+
+/* Le bouton de repli. Rien du tout en dessous de deux projets : il n'y aurait rien à replier,
+   et une ligne d'interface qui ne sert jamais est une ligne de trop. */
+function toggleProjetsHtml(famille, id, n) {
+  if (n <= 1) return '';
+  const deplie = estDeplie(famille, id);
+  // Le codage hors dépôt manipule des DOSSIERS, pas des projets : le libellé le dit.
+  const cle = famille === 'local' ? 'local.toggle' : 'task.toggle';
+  return `<button class="targets-toggle" data-tfold="${cleRepli(famille, id)}" aria-expanded="${deplie}">
+    <svg class="ico ico-sm"><use href="#i-right"/></svg>
+    ${deplie ? tr(`${cle}.collapse`) : tr(`${cle}.expand`, { n, count: n })}
+  </button>`;
+}
+
+// Les projets sont-ils visibles ? Dépliés explicitement, ou seuls (rien à replier).
+const projetsVisibles = (famille, id, n) => n <= 1 || estDeplie(famille, id);
 
 // Carte CODAGE : une ligne par projet, avec ses propres actions.
 function codeCard(t) {
@@ -4173,18 +4271,14 @@ function codeCard(t) {
   /* Repli de la liste de projets. Au-delà de quelques dépôts, une session occupe tout l'écran et
      on ne voit plus les autres. L'état est PERSISTÉ : sans ça, il se rouvrirait à chaque
      rafraîchissement automatique, c'est-à-dire toutes les secondes et demie pendant un job. */
-  const repliable = cibles.length > 1;
-  const replie = repliable && projetsReplies.has(t.id);
+  const ouvert = projetsVisibles('code', t.id, cibles.length);
   const aPousser = cibles.filter((x) => x.status === 'committed').length;
   const aOuvrir = cibles.filter((x) => x.status === 'pushed' && !(x.mr_iid || x.existing_mr_iid)).length;
   return `<div class="card task-row${t.hidden ? ' is-hidden' : ''}" data-task="${t.id}">
     <div style="min-width:0;flex:1">
       ${taskHead(t)}
-      ${repliable ? `<button class="targets-toggle" data-tfold="${t.id}" aria-expanded="${!replie}">
-        <svg class="ico ico-sm"><use href="#i-right"/></svg>
-        ${replie ? tr('task.toggle.expand', { n: cibles.length, count: cibles.length }) : tr('task.toggle.collapse')}
-      </button>` : ''}
-      <div class="targets"${replie ? ' hidden' : ''}>
+      ${toggleProjetsHtml('code', t.id, cibles.length)}
+      <div class="targets"${ouvert ? '' : ' hidden'}>
         ${cibles.map((tg) => targetLine(t, tg)).join('')}
       </div>
       <div class="mr-create followup" data-followform="${t.id}" hidden>
@@ -4211,7 +4305,8 @@ function codeCard(t) {
     hideBtn('task', t),
     `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>`,
   ])}
-  </div>${t.last_error ? errorBox(t.last_error, null, t.id) : ''}`;
+    ${t.last_error ? errorBox(t.last_error, null, t.id) : ''}
+  </div>`;
 }
 
 // Ligne d'UN projet dans une session de codage : état + actions propres.
@@ -4251,6 +4346,9 @@ function targetLine(t, tg) {
     ${tg.status === 'error' ? '' : targetStepper(tg)}
     <span class="t-name">${esc(tg.project)}</span>
     <code>${esc(tg.branch || '')}</code>
+    ${/* La session demandée n'a pas pu être reprise : on le dit ICI, pas seulement dans un
+          journal qui défile — sinon l'écran affiche un identifiant que personne n'a saisi. */''}
+    ${tg.session_note ? `<span class="t-note" title="${esc(tr('task.session.fallback-title', { detail: tg.session_note }))}">${svgIco('alert')} ${esc(tr('task.session.fallback'))}</span>` : ''}
     ${mrIid ? (mrUrl ? ` <a href="${esc(mrUrl)}" target="_blank">MR !${mrIid} ↗</a>` : ` <span class="muted">MR !${mrIid}</span>`) : ''}
     ${tg.mr_merged ? `<span class="tag merged" title="${tr('task.tag.merged-title', { forge: forgeLabel(tg.forge) })}">${tr('task.tag.merged')}</span>` : ''}
     <span class="spacer"></span>
@@ -4305,7 +4403,8 @@ function exploreCard(t) {
   return `<div class="card task-row${t.hidden ? ' is-hidden' : ''}" data-task="${t.id}">
     <div style="min-width:0;flex:1">
       ${taskHead(t)}
-      <div class="targets">
+      ${toggleProjetsHtml('explore', t.id, (t.targets || []).length)}
+      <div class="targets"${projetsVisibles('explore', t.id, (t.targets || []).length) ? '' : ' hidden'}>
         ${(t.targets || []).map((tg) => `<div class="target-line">
           <span class="tag ${(TASK_STATUS[tg.status] || {}).cls || ''}">${(TASK_STATUS[tg.status] || {}).label || tg.status}</span>
           <span class="t-name">${esc(tg.project)}</span>
@@ -4329,7 +4428,8 @@ function exploreCard(t) {
     hideBtn('task', t),
     `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>`,
   ])}
-  </div>${t.last_error ? errorBox(t.last_error, null, t.id) : ''}`;
+    ${t.last_error ? errorBox(t.last_error, null, t.id) : ''}
+  </div>`;
 }
 
 /* Ranger / ressortir : délégué une fois pour les deux listes plutôt que recâblé à chaque
@@ -4355,7 +4455,7 @@ function wireTaskActions() {
     .then(() => { toast(tr('toast.session-lancee')); loadTasks(); refreshStatus(); })
     .catch((e) => toast(explainError(e.message), true)));
 
-  on('[data-tfold]', (b) => basculerProjets(Number(b.dataset.tfold)));
+  on('[data-tfold]', (b) => basculerProjets(b.dataset.tfold));
 
   on('[data-tpushall]', async (b) => {
     if (!await confirmDialog({ text: tr('confirm.push-all'), confirmLabel: tr('task.btn.push') })) return;
@@ -4539,11 +4639,18 @@ const openTaskMd = (id) => openPasses(`/tasks/${id}`);
    n'apprend rien. `base` est la racine d'URL (session sur dépôt ou hors dépôt), le
    reste du rendu est commun. */
 let passCtx = { base: null };
-async function openPasses(base, n) {
+async function openPasses(base, n, dossiers = null) {
   try {
     const d = await api(`${base}/passes${n ? `?n=${n}` : ''}`);
-    passCtx = { base };
+    passCtx = { base, dossiers };
     $('#taskMdTitle').textContent = d.title || '';
+    /* Sélecteur de DOSSIER : propre au codage hors dépôt, où une session en couvre plusieurs.
+       Comme le sélecteur d'itération, il disparaît quand il n'y a rien à choisir. */
+    const selDir = $('#taskPassDir');
+    selDir.hidden = !dossiers || dossiers.length < 2;
+    if (!selDir.hidden) {
+      selDir.innerHTML = dossiers.map((x) => `<option value="${x.id}" ${base.endsWith(`/${x.id}`) ? 'selected' : ''}>${esc(x.path)}</option>`).join('');
+    }
     const sel = $('#taskPassVersion');
     // Une seule passe : pas de sélecteur, il n'y a rien à choisir.
     sel.hidden = (d.passes || []).length < 2;
@@ -4571,12 +4678,24 @@ function passMarkdown(p) {
   return `${prompt ? `## ${tr('task.pass.prompt')}\n\n${prompt}\n\n` : ''}## ${tr('task.pass.answer')}\n\n${p.output || ''}`;
 }
 $('#taskPassVersion').addEventListener('change', (e) => {
-  if (passCtx.base) openPasses(passCtx.base, e.target.value);
+  /* Le contexte de DOSSIER se repasse : sans lui, changer d'itération refermerait le
+     sélecteur de dossier, et on ne pourrait plus revenir aux autres sans rouvrir la vue. */
+  if (passCtx.base) openPasses(passCtx.base, e.target.value, passCtx.dossiers);
 });
 
 const openTargetOutput = (taskId, targetId) => openPasses(`/tasks/${taskId}/targets/${targetId}`);
-// Retour de l'agent pour un dossier hors dépôt — même vue, même sélecteur d'itération.
-const openLocalDirOutput = (taskId, dirId) => openPasses(`/local-tasks/${taskId}/dirs/${dirId}`);
+/* Retour de l'agent d'un codage hors dépôt. On passe la liste des dossiers QUI ONT un retour :
+   la vue peut alors basculer de l'un à l'autre sans refermer — utile depuis le bouton de la
+   session, qui ne désigne aucun dossier en particulier. */
+function openLocalDirOutput(taskId, dirId) {
+  const t = localTasks.find((x) => String(x.id) === String(taskId));
+  const dossiers = ((t && t.dirs) || []).filter((d) => d.output_path).map((d) => ({ id: d.id, path: d.path }));
+  return openPasses(`/local-tasks/${taskId}/dirs/${dirId}`, null, dossiers);
+}
+$('#taskPassDir') && $('#taskPassDir').addEventListener('change', (e) => {
+  const base = String(passCtx.base || '');
+  openPasses(base.replace(/\/dirs\/\d+$/, `/dirs/${e.target.value}`), null, passCtx.dossiers);
+});
 $('#taskMdClose').addEventListener('click', () => { $('#taskMdView').hidden = true; });
 $('#taskMdCopy').addEventListener('click', () => copyText(currentMd, $('#taskMdCopy')));
 document.addEventListener('keydown', (e) => {
@@ -7074,6 +7193,7 @@ const NOTIF_DEFAULTS = {
   needs_input: true,  // l'agent a posé des questions — clôt une attente, actionnable
   converge_done: true, // boucle de convergence terminée — actionnable par excellence
   jira_status: true,  // un ticket surveillé change d'état — c'est LA raison de le surveiller
+  verify_done: true,  // un verdict objectif est tombé — c'est ce qu'on attendait pour merger
   mr_new: false,      // nouvelle MR — utile pour certains, spam pour d'autres
   mr_merged: false,   // MR mergée — informatif, pas actionnable
   threshold: 5,       // seuil « note basse » (sur 10)
@@ -7900,6 +8020,15 @@ function handleNotifEvent(e, p) {
           () => { navTab('jira'); showJiraSub('watch'); });
       }
       break;
+    case 'verify_done':
+      /* Le verdict est ce qu'on attendait pour décider : on le met dans le TITRE, pas dans un
+         corps qu'il faudrait déplier. Et on rafraîchit les listes, pour que le badge suive
+         même si la notification n'est pas cliquée. */
+      if (p.verify_done) {
+        showNotif(tr(`notif.verify.${e.verdict === 'verified_pass' ? 'pass' : e.verdict === 'verified_fail' ? 'fail' : 'other'}.title`),
+          tr('notif.verify.body'), () => openVerifyReport(e.verification_id));
+      }
+      break;
     case 'mr_new':
       if (p.mr_new) showNotif(tr('notif.mr-new.title', { iid: e.iid, project: e.project }), e.title || '', () => navReviews('to_review'));
       break;
@@ -7917,6 +8046,13 @@ async function pollNotifications() {
   // 1er passage : on cale le curseur sans rien afficher (pas de rejeu de l'historique).
   if (notifCursor == null) { notifCursor = d.latest; return; }
   const p = notifPrefs();
+  /* Rafraîchir l'écran n'est PAS une notification : ça ne doit dépendre ni du mode silencieux
+     ni d'une permission navigateur. Un verdict qui vient de tomber doit apparaître sur les
+     badges même quand les notifications bureau sont refusées. */
+  if ((d.events || []).some((e) => e.type === 'verify_done')) {
+    if (currentSeg === 'to_review') loadToReview(); else loadReports(currentSeg);
+    loadLots();
+  }
   // Muet ou permission non accordée : on avance quand même le curseur (pas d'accumulation).
   if (!p.muted && notifPermission() === 'granted') {
     for (const e of (d.events || [])) handleNotifEvent(e, p);
@@ -8237,6 +8373,605 @@ if (btnTestJira) btnTestJira.addEventListener('click', async () => {
   }
 });
 
+/* ================= Vérification objective (plan_add_verify.md §8) =================
+   Trois écrans se partagent le sujet : les vérificateurs (Réglages), les badges et la
+   sélection multiple (Reviews), les lots (Dev IA). Tout ce qui vient d'un script de
+   vérification est une donnée NON FIABLE : elle est échappée sans exception. */
+
+/* ---------- Réglages → Vérificateurs ---------- */
+
+let verifiers = [];
+
+async function loadVerifiers() {
+  await loadRepoOptions();
+  // Le mode « in place » propose de piocher dans les répertoires locaux déclarés.
+  await loadLocalRoots();
+  try { verifiers = await api('/verifiers'); } catch (e) { verifiers = []; toast(explainError(e.message), true); }
+  renderVerifierRepoBox();
+  renderCommandList([]);
+  appliquerKind();
+  renderVerifierList();
+}
+
+/* Couverture déclarative : une ligne par dépôt, cochée ou non. Recherche obligatoire — le
+   nombre de dépôts peut être élevé, et elle MASQUE sans décocher : filtrer ne doit jamais
+   modifier la sélection en cours. */
+function renderVerifierRepoBox(lignes = []) {
+  const box = $('#verifierRepoBox');
+  if (!box) return;
+  const par = new Map(lignes.map((l) => [l.repo_id, l]));
+  const items = repoOptions.map((r) => {
+    const l = par.get(r.id);
+    return `<div class="vr-row" data-repo="${r.id}">
+      <label class="repo-multi-item"><input type="checkbox" class="vr-pick" value="${r.id}" ${l ? 'checked' : ''} /> <span>${esc(r.project)}</span></label>
+      <div class="vr-cfg" ${l ? '' : 'hidden'}>
+        <select class="vr-mode">
+          <option value="worktree" ${!l || l.mode === 'worktree' ? 'selected' : ''}>${esc(tr('verify.mode.worktree'))}</option>
+          <option value="in_place" ${l && l.mode === 'in_place' ? 'selected' : ''}>${esc(tr('verify.mode.in-place'))}</option>
+        </select>
+        <span class="vr-ip" ${l && l.mode === 'in_place' ? '' : 'hidden'}>
+          ${/* Piocher dans les répertoires locaux déclarés plutôt que retaper un chemin : une
+                faute de frappe ici ne se découvre qu'au premier run, et coûte le run. Le champ
+                libre reste, pour un répertoire hors de toute racine déclarée. */''}
+          ${localRoots.length
+    ? comboHtml('vr-local', { ph: tr('verify.ph.pick-local'), wrapClass: 'vr-local-combo' })
+    : `<span class="muted">${esc(tr('verify.no-local-root'))}</span>`}
+          <input class="vr-workdir" type="text" placeholder="${esc(tr('verify.ph.workdir'))}" value="${esc((l && l.workdir) || '')}" />
+          <button type="button" class="btn vr-test">${esc(tr('verify.btn.test-workdir'))}</button>
+          <label class="inline-check"><input type="checkbox" class="vr-allow" ${l && l.checkout_allowed ? 'checked' : ''} /> <span>${esc(tr('verify.lbl.checkout-allowed'))}</span></label>
+          <span class="vr-test-info muted"></span>
+        </span>
+      </div>
+    </div>`;
+  }).join('');
+  box.innerHTML = `<input class="repo-multi-search" type="search" placeholder="${esc(tr('git.explorer.search-ph'))}" />
+    <div class="repo-multi-list vr-list">${items || `<span class="muted">${esc(tr('settings.repo.empty.title'))}</span>`}</div>`;
+  const search = $('.repo-multi-search', box);
+  search.addEventListener('input', () => {
+    const q = search.value.toLowerCase().trim();
+    $$('.vr-row', box).forEach((it) => { it.hidden = !!q && !$('.repo-multi-item span', it).textContent.toLowerCase().includes(q); });
+  });
+  cablerChoixLocal(box);
+}
+
+/* Le sélecteur de projet local. Il liste TOUS les projets git de TOUTES les racines : ce
+   qu'on cherche ici, c'est un répertoire de travail précis, pas une racine — la faire choisir
+   d'abord ajouterait un geste sans rien apprendre. Recherche à la frappe (`wireCombo`), parce
+   qu'une racine contient couramment des dizaines de projets. */
+function cablerChoixLocal(box) {
+  wireCombo(box, 'vr-local', async () => {
+    const parRacine = await Promise.all(localRoots.map(async (r) => {
+      let projets = [];
+      try { projets = await localProjectsOf(r.id); } catch { projets = []; }
+      return { racine: r, projets };
+    }));
+    const plusieurs = localRoots.length > 1;
+    return parRacine.flatMap(({ racine, projets }) => projets
+      // Seuls les dépôts git : le mode in place exige un dépôt dont l'origine correspond,
+      // proposer un dossier ordinaire ne proposerait qu'un échec.
+      .filter((p) => p.git)
+      .map((p) => ({
+        value: p.path,
+        label: plusieurs ? `${racine.label || racine.path} / ${p.name}` : p.name,
+        hint: p.branch ? `· ${p.branch}` : '',
+      })));
+  });
+  $$('.vr-local', box).forEach((h) => h.addEventListener('change', () => {
+    const champ = $('.vr-workdir', h.closest('.vr-row'));
+    if (champ && h.value) champ.value = h.value;
+  }));
+  /* La liste des dépôts défile (`overflow-y: auto`) : elle ROGNE le menu du combo, qui est
+     positionné en absolu. Même remède que pour les menus de cartes — on débloque l'overflow
+     le temps que le menu est ouvert. Le délai au blur doit dépasser celui de `wireCombo`
+     (150 ms), sinon la liste se referme avant que le clic de sélection n'ait été pris. */
+  $$('[data-combo="vr-local"]', box).forEach((inp) => {
+    const liste = inp.closest('.vr-list');
+    if (!liste) return;
+    inp.addEventListener('focus', () => liste.classList.add('combo-ouvert'));
+    inp.addEventListener('blur', () => setTimeout(() => liste.classList.remove('combo-ouvert'), 250));
+  });
+}
+
+// Le genre pilote la moitié du formulaire : liste de commandes d'un côté, script de l'autre.
+function verifierKind() {
+  const f = $('#verifierForm');
+  return f && f.kind.value === 'script' ? 'script' : 'commands';
+}
+
+function appliquerKind() {
+  const k = verifierKind();
+  const cmds = $('#verifierCommandsBlock');
+  const scr = $('#verifierScriptBlock');
+  if (cmds) cmds.hidden = k !== 'commands';
+  if (scr) scr.hidden = k === 'commands';
+  const aide = $('#verifierRepoHint');
+  if (aide) aide.textContent = k === 'commands' ? tr('settings.verifier.repos.commands') : tr('settings.verifier.repos.script');
+}
+
+/* Une commande par ligne éditable. L'ordre est PORTEUR DE SENS — `npm ci` avant `npm test` —
+   donc il se corrige sans tout retaper : deux flèches par ligne, désactivées aux extrémités
+   plutôt qu'inertes, pour qu'on voie où on est dans la liste. */
+function renderCommandList(commands) {
+  const el = $('#verifierCommandList');
+  if (!el) return;
+  const liste = commands && commands.length ? commands : [''];
+  el.innerHTML = liste.map((c, i) => `<div class="vc-row">
+    <span class="vc-rank muted">${i + 1}</span>
+    <input class="vc-cmd" type="text" value="${esc(c)}" placeholder="${esc(tr('settings.verifier.ph.command-line'))}" />
+    <button type="button" class="btn vc-move" data-dir="-1" ${i === 0 ? 'disabled' : ''} title="${esc(tr('settings.verifier.btn.move-up'))}">${svgIco('up')}</button>
+    <button type="button" class="btn vc-move" data-dir="1" ${i === liste.length - 1 ? 'disabled' : ''} title="${esc(tr('settings.verifier.btn.move-down'))}">${svgIco('down')}</button>
+    <button type="button" class="btn btn-danger vc-del" title="${esc(tr('ui.delete'))}">${svgIco('trash')}</button>
+  </div>`).join('');
+}
+
+/* Déplace la ligne `i` d'un cran. On relit les valeurs À L'ÉCRAN avant de réordonner : une
+   commande en cours de frappe, pas encore enregistrée, ne doit pas être perdue par le
+   réaffichage. */
+function deplacerCommande(i, dir) {
+  const vals = $$('#verifierCommandList .vc-cmd').map((x) => x.value);
+  const j = i + dir;
+  if (j < 0 || j >= vals.length) return;
+  [vals[i], vals[j]] = [vals[j], vals[i]];
+  renderCommandList(vals);
+  const champs = $$('#verifierCommandList .vc-cmd');
+  if (champs[j]) champs[j].focus();
+}
+
+function commandesDuFormulaire() {
+  return $$('#verifierCommandList .vc-cmd').map((i) => i.value.trim()).filter(Boolean);
+}
+
+// Les lignes de couverture telles que l'API les attend.
+function verifierReposFromForm() {
+  return $$('#verifierRepoBox .vr-row').filter((row) => $('.vr-pick', row).checked).map((row) => {
+    const mode = $('.vr-mode', row).value;
+    return {
+      repo_id: Number(row.dataset.repo),
+      mode,
+      workdir: mode === 'in_place' ? $('.vr-workdir', row).value.trim() : null,
+      checkout_allowed: mode === 'in_place' && $('.vr-allow', row).checked ? 1 : 0,
+    };
+  });
+}
+
+$('#verifierRepoBox') && $('#verifierRepoBox').addEventListener('change', (e) => {
+  const row = e.target.closest && e.target.closest('.vr-row');
+  if (!row) return;
+  if (e.target.classList.contains('vr-pick')) $('.vr-cfg', row).hidden = !e.target.checked;
+  if (e.target.classList.contains('vr-mode')) $('.vr-ip', row).hidden = e.target.value !== 'in_place';
+});
+
+/* « Tester le répertoire » : on répond pendant que le formulaire est encore sous les yeux.
+   Découvrir un mauvais chemin au premier run, c'est un run perdu et une erreur loin de sa cause. */
+$('#verifierRepoBox') && $('#verifierRepoBox').addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('.vr-test');
+  if (!b) return;
+  const row = b.closest('.vr-row');
+  const info = $('.vr-test-info', row);
+  const workdir = $('.vr-workdir', row).value.trim();
+  info.className = 'vr-test-info muted';
+  info.textContent = tr('verify.test.running');
+  try {
+    const r = await busy(b, () => api('/verifiers/test-workdir', { method: 'POST', body: { repo_id: Number(row.dataset.repo), workdir } }));
+    if (!r.ok) { info.className = 'vr-test-info err'; info.textContent = r.raison || tr('verify.test.ko'); return; }
+    info.className = 'vr-test-info ok';
+    info.textContent = tr('verify.test.ok', { branch: r.branche || '?' }) + (r.dirty ? ` — ${tr('verify.test.dirty')}` : '');
+  } catch (err) { info.className = 'vr-test-info err'; info.textContent = explainError(err.message); }
+});
+
+function renderVerifierList() {
+  const el = $('#verifierList');
+  if (!el) return;
+  if (!verifiers.length) {
+    el.innerHTML = emptyState({ icon: 'check', title: tr('verify.verifiers.empty.title'), text: tr('verify.verifiers.empty.text') });
+    return;
+  }
+  el.innerHTML = verifiers.map((v) => `<div class="card" data-id="${v.id}">
+    <div class="card-main">
+      <div class="title">${esc(v.name)}</div>
+      <div class="meta">${v.kind === 'commands'
+    ? (v.commands || []).map((c) => `<code>${esc(c)}</code>`).join(' <span class="muted">→</span> ')
+    : `<code>${esc(v.command)}</code>`}</div>
+      <div class="meta">${(v.repos || []).map((r) => {
+    const p = (repoOptions.find((x) => x.id === r.repo_id) || {}).project || `#${r.repo_id}`;
+    return `<span class="tag">${esc(p)} · ${esc(r.mode === 'in_place' ? tr('verify.mode.in-place-short') : tr('verify.mode.worktree-short'))}</span>`;
+  }).join(' ')}</div>
+      <div class="meta muted">${esc(v.kind === 'commands' ? tr('verify.kind.commands') : tr('verify.kind.script'))} · ${esc(tr('verify.verifier.meta', { timeout: v.timeout_s }))}${v.run_base ? ` · ${esc(tr('verify.verifier.with-base'))}` : ''}${v.comment_on_forge ? ` · ${esc(tr('verify.verifier.comments'))}` : ''}</div>
+    </div>
+    <div class="card-actions"><div class="btn-group">
+      <button class="btn" data-vedit="${v.id}">${svgIco('edit')}${esc(tr('settings.repo.edit'))}</button>
+      <button class="btn btn-danger" data-vdel="${v.id}">${svgIco('trash')}${esc(tr('ui.delete'))}</button>
+    </div></div>
+  </div>`).join('');
+  $$('#verifierList [data-vedit]').forEach((b) => b.addEventListener('click', () => editerVerifier(Number(b.dataset.vedit))));
+  $$('#verifierList [data-vdel]').forEach((b) => b.addEventListener('click', async () => {
+    const v = verifiers.find((x) => x.id === Number(b.dataset.vdel));
+    if (!await confirmDialog({ title: tr('verify.verifier.del.title'), text: tr('verify.verifier.del.text', { name: (v && v.name) || '' }), confirmLabel: tr('ui.delete') })) return;
+    try { await busy(b, () => api(`/verifiers/${b.dataset.vdel}`, { method: 'DELETE' })); loadVerifiers(); }
+    catch (e) { toast(explainError(e.message), true); }
+  }));
+}
+
+function editerVerifier(id) {
+  const v = verifiers.find((x) => x.id === id);
+  if (!v) return;
+  const f = $('#verifierForm');
+  f.id.value = v.id;
+  f.name.value = v.name;
+  f.kind.value = v.kind === 'script' ? 'script' : 'commands';
+  f.command.value = v.command || '';
+  f.report_path.value = v.report_path || '';
+  f.parse_tap.checked = v.parse_tap == null ? true : !!v.parse_tap;
+  let env = '';
+  try { env = Object.entries(JSON.parse(v.env_json || '{}')).map(([k, val]) => `${k}=${val}`).join('\n'); }
+  catch { env = ''; }
+  f.env.value = env;
+  f.timeout_s.value = v.timeout_s;
+  f.run_base.checked = !!v.run_base;
+  f.comment_on_forge.checked = !!v.comment_on_forge;
+  renderCommandList(v.commands || []);
+  renderVerifierRepoBox(v.repos || []);
+  appliquerKind();
+  $('#verifierInfo').textContent = tr('verify.verifier.editing', { name: v.name });
+  f.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+$('#verifierForm') && $('#verifierForm').addEventListener('change', (e) => {
+  if (e.target.name === 'kind') appliquerKind();
+});
+$('#btnAddCommand') && $('#btnAddCommand').addEventListener('click', () => {
+  renderCommandList([...commandesDuFormulaire(), '']);
+  const champs = $$('#verifierCommandList .vc-cmd');
+  if (champs.length) champs[champs.length - 1].focus();
+});
+$('#verifierCommandList') && $('#verifierCommandList').addEventListener('click', (e) => {
+  const lignes = $$('#verifierCommandList .vc-row');
+  const bouge = e.target.closest && e.target.closest('.vc-move');
+  if (bouge) {
+    deplacerCommande(lignes.indexOf(bouge.closest('.vc-row')), Number(bouge.dataset.dir));
+    return;
+  }
+  const b = e.target.closest && e.target.closest('.vc-del');
+  if (!b) return;
+  renderCommandList(lignes.filter((r) => r !== b.closest('.vc-row')).map((r) => $('.vc-cmd', r).value));
+});
+
+$('#btnVerifierReset') && $('#btnVerifierReset').addEventListener('click', () => {
+  const f = $('#verifierForm');
+  f.reset(); f.id.value = ''; f.run_base.checked = true; f.parse_tap.checked = true;
+  renderVerifierRepoBox([]);
+  renderCommandList([]);
+  appliquerKind();
+  $('#verifierInfo').textContent = '';
+});
+
+$('#verifierForm') && $('#verifierForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const body = {
+    name: f.name.value.trim(),
+    kind: verifierKind(),
+    command: f.command.value.trim(),
+    commands: commandesDuFormulaire(),
+    report_path: f.report_path.value.trim(),
+    env: f.env.value,
+    parse_tap: f.parse_tap.checked ? 1 : 0,
+    timeout_s: Number(f.timeout_s.value) || undefined,
+    run_base: f.run_base.checked ? 1 : 0,
+    comment_on_forge: f.comment_on_forge.checked ? 1 : 0,
+    repos: verifierReposFromForm(),
+  };
+  const id = f.id.value;
+  try {
+    await api(id ? `/verifiers/${id}` : '/verifiers', { method: id ? 'PUT' : 'POST', body });
+    toast(tr('verify.verifier.saved'));
+    f.reset(); f.id.value = ''; f.run_base.checked = true; f.parse_tap.checked = true;
+    renderCommandList([]);
+    appliquerKind();
+    $('#verifierInfo').textContent = '';
+    await loadVerifiers();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
+/* ---------- Badges de verdict ---------- */
+
+/* Un badge dit trois choses en un coup d'œil : le verdict, s'il porte encore sur le code
+   actuel (⟳ périmé), et s'il a été rendu dans un répertoire de travail (in place). */
+const raccourci = (s, n) => (String(s || '').length > n ? `${String(s).slice(0, n)}…` : String(s || ''));
+
+function verifyBadge(v) {
+  if (!v) return `<span class="tag verify none" title="${esc(tr('verify.badge.none.title'))}">${esc(tr('verify.badge.none'))}</span>`;
+  const suffixe = v.in_place ? ` ${tr('verify.badge.in-place')}` : '';
+  if (v.stale) {
+    return `<span class="tag verify stale" data-vreport="${v.id}" title="${esc(tr('verify.badge.stale.title'))}">${svgIco('refresh')}${esc(tr('verify.badge.stale') + suffixe)}</span>`;
+  }
+  /* Sans nom de test, on ne prétend pas en compter : le badge nomme la COMMANDE qui a
+     échoué. Annoncer « 1 test cassé » là où on ne sait rien des tests serait une invention. */
+  const par = {
+    verified_pass: ['ok', tr('verify.badge.pass'), tr('verify.badge.pass.title')],
+    verified_fail: ['ko',
+      v.detail_source === 'command'
+        ? tr('verify.badge.fail-command', { command: raccourci(v.failed_label || '', 28) })
+        : tr('verify.badge.fail', { n: v.failed_count }),
+      tr('verify.badge.fail.title')],
+    broken_base: ['warn', tr('verify.badge.broken-base'), tr('verify.badge.broken-base.title')],
+    verify_error: ['warn', tr('verify.badge.error'), tr('verify.badge.error.title')],
+  }[v.verdict];
+  if (!par) return '';
+  return `<span class="tag verify ${par[0]}" data-vreport="${v.id}" title="${esc(par[2])}">${esc(par[1] + suffixe)}</span>`;
+}
+
+/* ---------- Rapport de vérification ---------- */
+
+let verifyReportId = null;
+
+async function openVerifyReport(id) {
+  verifyReportId = id;
+  $('#verifyReport').innerHTML = `<p class="muted">${esc(tr('ui.combo.loading'))}</p>`;
+  $('#verifyFix').hidden = true;
+  $('#verifyModal').hidden = false;
+  try {
+    const d = await api(`/verifications/${id}`);
+    $('#verifyReport').innerHTML = verifyReportHtml(d);
+    // « Corriger » n'a de sens que si l'échec est imputable aux branches testées.
+    $('#verifyFix').hidden = d.verdict !== 'verified_fail';
+  } catch (e) { $('#verifyReport').innerHTML = errorBox(explainError(e.message)); }
+}
+
+/* Le déroulé réel des commandes. C'est ce qu'on veut voir en premier sur un vérificateur
+   « commandes » : laquelle a cassé, en combien de temps, et ce qu'elle a écrit. */
+const plusieursDepots = (run) => new Set((run.commands || []).map((c) => c.repo).filter(Boolean)).size > 1;
+
+function commandesHtml(run) {
+  if (!run || !(run.commands || []).length) return '';
+  const src = {
+    tap: tr('verify.report.source.tap'),
+    junit: tr('verify.report.source.junit'),
+    command: tr('verify.report.source.command'),
+    mixte: tr('verify.report.source.mixte'),
+  }[run.detail_source];
+  return `<h4>${esc(tr('verify.report.commands'))}</h4>
+    <ul class="verify-list">${run.commands.map((c) => `<li>
+      <span class="tag ${c.code === 0 ? 'verify ok' : 'verify ko'}">${c.code === 0 ? '✓' : `✗ ${c.code}`}</span>
+      ${/* Le dépôt n'est affiché que s'il y en a plusieurs : sinon il se répète pour rien. */''}
+      ${plusieursDepots(run) && c.repo ? `<strong>${esc(c.repo)}</strong> · ` : ''}<code>${esc(c.command)}</code> <span class="muted">${Math.max(1, Math.round((c.duration_ms || 0) / 1000))} s</span>
+      ${c.output_tail ? `<pre class="verify-log">${esc(c.output_tail)}</pre>` : ''}
+    </li>`).join('')}</ul>
+    ${src ? `<p class="muted">${esc(src)}</p>` : ''}
+    ${run.detail_partiel ? `<p class="muted">${esc(tr('verify.report.detail-partiel'))}</p>` : ''}
+    ${run.incoherence ? `<p class="verify-restore">${svgIco('alert')} ${esc(tr('verify.report.incoherence'))}</p>` : ''}`;
+}
+
+/* Ce qui n'était pas là sur la base. Sans nom de test, c'est le renseignement le plus direct
+   dont on dispose — et il ne coûte rien, les deux sorties existent déjà. */
+function nouveautesHtml(run) {
+  if (!run || !(run.new_lines || []).length) return '';
+  return `<h4>${esc(tr('verify.report.new-lines'))}</h4>
+    <pre class="verify-log">${esc(run.new_lines.join('\n'))}</pre>`;
+}
+
+function verifyReportHtml(d) {
+  const echec = (f) => `<li>
+    <code>${esc(f.test || '')}</code>${f.message ? ` — ${esc(f.message)}` : ''}
+    ${f.log_excerpt ? `<pre class="verify-log">${esc(f.log_excerpt)}</pre>` : ''}
+  </li>`;
+  const cible = (c) => `<li>${esc(c.project || `#${c.repo_id}`)}${c.iid ? ` !${c.iid}` : ''} · <code>${esc(c.branch || '')}</code> @ <code>${esc(String(c.head_sha || '').slice(0, 8))}</code>${c.mode === 'in_place' ? ` <span class="tag warn">${esc(tr('verify.mode.in-place-short'))}</span>` : ''}</li>`;
+  const duree = d.started_at && d.finished_at
+    ? tr('verify.report.duration', { s: Math.max(1, Math.round((new Date(d.finished_at) - new Date(d.started_at)) / 1000)) }) : '';
+  return `
+    <p>${verifyBadge({ ...d, failed_count: (d.imputable || []).length })}
+       <strong>${esc(d.verifier_name || '')}</strong>
+       ${d.lot_name ? `<span class="muted">· ${esc(tr('verify.report.lot', { name: d.lot_name }))}</span>` : ''}
+       ${duree ? `<span class="muted">· ${esc(duree)}</span>` : ''}</p>
+    ${d.restore_error ? `<p class="verify-restore">${svgIco('alert')} ${esc(d.restore_error)}</p>` : ''}
+    ${d.stale ? `<p class="muted">${esc(tr('verify.report.stale'))}</p>` : ''}
+    ${d.base_run ? '' : `<p class="muted">${esc(tr('verify.report.no-base'))}</p>`}
+    <h4>${esc(tr('verify.report.targets'))}</h4>
+    <ul class="verify-list">${(d.targets || []).map(cible).join('')}</ul>
+    ${/* Le contexte : les dépôts que le vérificateur sait tester mais qui n'étaient pas dans
+          le lot. Un vert peut venir de l'un d'eux resté sur une vieille branche — on le dit. */''}
+    ${(d.context || []).length ? `<h4>${esc(tr('verify.report.context'))}</h4>
+      <ul class="verify-list">${d.context.map((c) => `<li>${c.warn ? `${svgIco('alert')} ` : ''}${esc(c.project)} — ${esc(c.raison || `${c.branche || '?'}${c.dirty ? tr('verify.report.context-dirty') : ''}`)}</li>`).join('')}</ul>` : ''}
+    ${(d.imputable || []).length ? `<h4>${esc(tr('verify.report.failed'))}</h4>
+      <ul class="verify-list">${d.imputable.map(echec).join('')}</ul>` : ''}
+    ${commandesHtml(d.head_run)}
+    ${nouveautesHtml(d.head_run)}
+    ${d.log_excerpt ? `<h4>${esc(tr('verify.report.log'))}</h4><pre class="verify-log">${esc(d.log_excerpt)}</pre>` : ''}`;
+}
+
+$('#verifyClose') && $('#verifyClose').addEventListener('click', () => { $('#verifyModal').hidden = true; });
+$('#verifyFix') && $('#verifyFix').addEventListener('click', async (e) => {
+  try {
+    const t2 = await busy(e.currentTarget, () => api(`/verifications/${verifyReportId}/fix`, { method: 'POST' }));
+    $('#verifyModal').hidden = true;
+    toast(tr('verify.fix.created'));
+    /* On ouvre le sous-onglet Codage, pas celui qu'on consultait la dernière fois : la
+       session qu'on vient de créer est une session de codage, et l'envoyer dans le vide
+       (« Exploration », « hors dépôt ») donnerait l'impression que rien ne s'est passé. */
+    const sub = $('#tab-task .subnav [data-kind="code"]');
+    const nav = $('nav button[data-tab="task"]');
+    if (nav) nav.click();
+    if (sub) sub.click();
+    void t2;
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
+// Le badge d'une carte ou d'un détail ouvre le rapport : un clic, partout, même geste.
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-vreport]');
+  if (b) openVerifyReport(Number(b.dataset.vreport));
+});
+
+/* ---------- Lancer une vérification ---------- */
+
+/* On CONFIRME toujours, même quand un seul vérificateur couvre le dépôt. La modale ne sert
+   pas d'abord à choisir : lancer des commandes sur sa machine mérite un écran qui annonce
+   lesquelles, dans quel dépôt et sur quels commits. */
+async function lancerVerification(mrIds, { lotId = null, repoIds = null } = {}) {
+  /* `repoIds` : les dépôts déjà connus de l'appelant (membres d'un lot). Sans eux, on retombe
+     sur les listes Reviews — vides tant que l'onglet n'a pas été chargé, et un lot lancé
+     depuis « Dev IA » échouerait à tort sur « aucun vérificateur ». */
+  const repos = [...new Set(repoIds && repoIds.length ? repoIds : mrIds.map((id) => mrRepoId(id)).filter(Boolean))];
+  let choix = null;
+  try {
+    const r = await api(`/verifiers/for?repos=${repos.join(',')}`);
+    if (!r.verifiers.length) { toast(tr('err.verify.no-verifier'), true); return; }
+    choix = await choisirVerifier(r.verifiers, mrIds);
+    if (!choix) return;
+  } catch (e) { toast(explainError(e.message), true); return; }
+  try {
+    const body = { verifier_id: choix };
+    if (lotId) await api(`/lots/${lotId}/verify`, { method: 'POST', body });
+    else await api('/verify/mrs', { method: 'POST', body: { ...body, mr_ids: mrIds } });
+    toast(tr('verify.toast.started'));
+    refreshStatus();
+  } catch (e) { toast(explainError(e.message), true); }
+}
+
+function mrRepoId(mrId) {
+  const m = toReviewRows.find((x) => x.id === mrId) || reportRows.find((x) => x.id === mrId);
+  return m ? m.repo_id : null;
+}
+
+let verifyPickResolve = null;
+let verifyPickListe = [];
+
+function choisirVerifier(liste, mrIds) {
+  verifyPickListe = liste;
+  const mrs = (mrIds || []).map((id) => toReviewRows.concat(reportRows).find((m) => m.id === id)).filter(Boolean);
+  $('#verifyPickWhat').textContent = mrs.length
+    ? tr('verify.pick.what', { n: mrs.length, list: mrs.map((m) => `${m.project} !${m.iid}`).join(', ') })
+    : '';
+  /* Radio et non bouton-qui-lance : on choisit d'abord, on voit ce que ça implique, puis on
+     lance. Le détail change sous les yeux à chaque sélection. */
+  $('#verifyPickList').innerHTML = liste.map((v, i) => `<label class="inline-check verify-pick-opt">
+    <input type="radio" name="verifyPick" value="${v.id}" ${i === 0 ? 'checked' : ''} />
+    <span>${esc(v.name)} <span class="tag">${esc(v.kind === 'commands' ? tr('verify.kind.commands') : tr('verify.kind.script'))}</span></span>
+  </label>`).join('');
+  majDetailChoix();
+  $('#verifyPickModal').hidden = false;
+  return new Promise((resolve) => { verifyPickResolve = resolve; });
+}
+
+// Ce qui va réellement tourner : les commandes ou le script, le mode, le délai.
+function majDetailChoix() {
+  const sel = $('#verifyPickList input:checked');
+  const v = verifyPickListe.find((x) => String(x.id) === (sel && sel.value));
+  const box = $('#verifyPickDetail');
+  if (!box) return;
+  if (!v) { box.innerHTML = ''; return; }
+  const modes = (v.repos || []).map((r) => `${esc(r.project || `#${r.repo_id}`)} <span class="tag ${r.mode === 'in_place' ? 'warn' : ''}">${esc(r.mode === 'in_place' ? tr('verify.mode.in-place-short') : tr('verify.mode.worktree-short'))}</span>`).join(' · ');
+  box.innerHTML = `
+    ${v.kind === 'commands'
+    ? `<p class="muted">${esc(tr('verify.pick.commands'))}</p><pre class="verify-log">${(v.commands || []).map((c) => `$ ${esc(c)}`).join('\n')}</pre>`
+    : `<p class="muted">${esc(tr('verify.pick.script'))}</p><pre class="verify-log">${esc(v.command)}</pre>`}
+    <p class="muted">${modes}</p>
+    <p class="muted">${esc(v.run_base ? tr('verify.pick.with-base') : tr('verify.pick.no-base'))} · ${esc(tr('verify.verifier.meta', { timeout: v.timeout_s }))}</p>
+    ${(v.repos || []).some((r) => r.mode === 'in_place') ? `<p class="converge-note">${svgIco('alert')} <span>${esc(tr('verify.pick.in-place-warn'))}</span></p>` : ''}`;
+}
+
+function fermerChoixVerifier(v) {
+  $('#verifyPickModal').hidden = true;
+  const r = verifyPickResolve; verifyPickResolve = null;
+  if (r) r(v);
+}
+$('#verifyPickCancel') && $('#verifyPickCancel').addEventListener('click', () => fermerChoixVerifier(null));
+$('#verifyPickList') && $('#verifyPickList').addEventListener('change', majDetailChoix);
+$('#verifyPickGo') && $('#verifyPickGo').addEventListener('click', () => {
+  const sel = $('#verifyPickList input:checked');
+  fermerChoixVerifier(sel ? Number(sel.value) : null);
+});
+
+/* ---------- Sélection multiple dans la liste des MR ---------- */
+
+const mrSelection = new Set();
+
+function mrSelectionRepos() {
+  const par = new Map();
+  for (const id of mrSelection) {
+    const r = mrRepoId(id);
+    if (r) par.set(id, r);
+  }
+  return par;
+}
+
+function renderMrBulkBar() {
+  const bar = $('#mrBulkBar');
+  if (!bar) return;
+  bar.hidden = mrSelection.size === 0;
+  if (!mrSelection.size) return;
+  $('#mrBulkCount').textContent = tr('verify.bulk.count', { n: mrSelection.size });
+  /* Deux MR du même dépôt rendraient le verdict ininterprétable — on ne saurait pas quel code
+     a été testé. On le dit ICI, avant le clic, plutôt que de renvoyer une erreur après. */
+  const repos = [...mrSelectionRepos().values()];
+  const double = repos.length !== new Set(repos).size;
+  $('#mrBulkWarn').hidden = !double;
+  $('#mrBulkWarn').textContent = double ? tr('err.verify.repo-twice') : '';
+  $('#btnBulkVerify').disabled = double;
+  $('#btnBulkLot').disabled = double;
+}
+
+$('#btnBulkClear') && $('#btnBulkClear').addEventListener('click', () => {
+  mrSelection.clear();
+  $$('#toReviewList .mr-pick').forEach((c) => { c.checked = false; });
+  renderMrBulkBar();
+});
+
+$('#btnBulkVerify') && $('#btnBulkVerify').addEventListener('click', () => lancerVerification([...mrSelection]));
+
+$('#btnBulkLot') && $('#btnBulkLot').addEventListener('click', async (e) => {
+  const name = $('#mrBulkLotName').value.trim();
+  if (!name) { toast(tr('err.lot.name-required'), true); $('#mrBulkLotName').focus(); return; }
+  try {
+    await busy(e.currentTarget, () => api('/lots', { method: 'POST', body: { name, members: [...mrSelection] } }));
+    $('#mrBulkLotName').value = '';
+    toast(tr('verify.toast.lot-created', { name }));
+    loadLots();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
+/* ---------- Lots (Dev IA) ---------- */
+
+let lots = [];
+
+async function loadLots() {
+  await loadRepoOptions();
+  try { lots = await api('/lots'); } catch { lots = []; }
+  renderLots();
+}
+
+function renderLots() {
+  const el = $('#lotList');
+  if (!el) return;
+  if (!lots.length) {
+    el.innerHTML = emptyState({ icon: 'inbox', title: tr('verify.lots.empty.title'), text: tr('verify.lots.empty.text') });
+    return;
+  }
+  el.innerHTML = lots.map((l) => `<div class="card" data-id="${l.id}">
+    <div class="card-main">
+      <div class="title">${esc(l.name)}</div>
+      <div class="meta">${(l.members || []).map((m) => `<span class="tag">${esc(m.project || '')} !${esc(String(m.iid || m.ref_id))}</span>`).join(' ')}</div>
+      <div class="card-tags">${verifyBadge(l.last_verification ? { ...l.last_verification, failed_count: (l.last_verification.imputable || []).length } : null)}</div>
+    </div>
+    <div class="card-actions"><div class="btn-group">
+      <button class="btn btn-primary" data-lotverify="${l.id}">${svgIco('play')}${esc(tr('verify.btn.verify-lot'))}</button>
+      <button class="btn btn-danger" data-lotdel="${l.id}">${svgIco('trash')}${esc(tr('ui.delete'))}</button>
+    </div></div>
+  </div>`).join('');
+  $$('#lotList [data-lotverify]').forEach((b) => b.addEventListener('click', () => {
+    const l = lots.find((x) => x.id === Number(b.dataset.lotverify));
+    if (!l) return;
+    const membres = (l.members || []).filter((m) => m.kind === 'mr');
+    lancerVerification(membres.map((m) => m.ref_id), { lotId: l.id, repoIds: membres.map((m) => m.repo_id).filter(Boolean) });
+  }));
+  $$('#lotList [data-lotdel]').forEach((b) => b.addEventListener('click', async () => {
+    const l = lots.find((x) => x.id === Number(b.dataset.lotdel));
+    if (!await confirmDialog({ title: tr('verify.lot.del.title'), text: tr('verify.lot.del.text', { name: (l && l.name) || '' }), confirmLabel: tr('ui.delete') })) return;
+    try { await busy(b, () => api(`/lots/${b.dataset.lotdel}`, { method: 'DELETE' })); loadLots(); }
+    catch (e) { toast(explainError(e.message), true); }
+  }));
+}
+
 /* ---------- Init ---------- */
 // Restaure le dernier onglet consulté (un rechargement ne renvoie plus sur « Reviews »).
 (function restoreTab() {
@@ -8277,6 +9012,10 @@ document.addEventListener('keydown', (e) => {
   const open = $$('.modal').filter((m) => !m.hidden).pop();
   if (!open) return;
   e.preventDefault();
-  const cancel = open.querySelector('#taskCancel, #ticketCancel, #bulkCancel');
+  /* Certaines modales rendent une PROMESSE (choix d'un vérificateur, confirmation) : les
+     masquer sans passer par leur bouton d'annulation laisse l'appelant en attente pour
+     toujours — le bouton qui a ouvert la modale reste alors en chargement, indéfiniment.
+     On clique donc le vrai bouton quand il existe. */
+  const cancel = open.querySelector('#taskCancel, #ticketCancel, #bulkCancel, #verifyPickCancel');
   if (cancel) cancel.click(); else open.hidden = true;
 });

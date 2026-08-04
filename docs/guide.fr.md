@@ -511,7 +511,7 @@ progresse-t-elle ? »), activité hebdomadaire, tableau par projet (avec **taux 
 **tendance** ▲/▼ et le **dernier commit** — date, auteur, lien vers le commit sur sa forge), un **Top 5 des
 dépôts à l'activité la plus récente** (dernier commit, auteur, lien), **coût en tokens** (camembert par
 type d'appel + **coût moyen par MR reviewée**), résumé des sessions. L'activité de commits est récupérée
-**en direct depuis la forge de chaque dépôt** (chargée à part, best-effort : rien ne casse si une forge est injoignable).
+**en direct depuis la forge de chaque dépôt, toutes branches confondues** (chargée à part, best-effort : rien ne casse si une forge est injoignable).
 Chaque graphe affiche **la question à laquelle il répond**. Le total de tokens est un **minorant** (le
 travail interne de l'agent n'est pas compté).
 
@@ -530,6 +530,8 @@ commandes *nom + commande figée*) ·
 **Jira** (**connexion Jira** — URL + email + jeton d'API, avec un bouton *Tester Jira* — ; alimente l'onglet
 *Jira* et l'enrichissement d'une session depuis un ticket) ·
 **Merge Request** (skill de review, rafraîchissement auto, convergence, templates de prompt) ·
+**Vérificateurs** (tes scripts de tests, et les dépôts que chacun sait tester — voir *Vérification
+objective* plus bas) ·
 **AI sessions** (un test technique : deux passes dans la même session d'agent — mémorise un marqueur
 puis le rappelle en reprise — pour vérifier que la **reprise de session** fonctionne avec ton CLI ;
 c'est le socle de la continuité de contexte entre review, corrections et convergence).
@@ -585,12 +587,296 @@ le survol (ou le focus clavier) explique à quoi il sert.
 - **Le panneau de rapport ouvre sur ce qui a changé depuis la dernière visite** — arrivées, sorties, et
   celle qui attend depuis le plus longtemps. Trois lignes au maximum, et **rien du tout** quand rien
   n'a bougé.
+- Le champ **« reprendre une session d'agent existante »** ne se comporte pas pareil selon le backend.
+  Avec **claude**, les sessions sont rangées **par répertoire de projet** (`~/.claude/projects/…`) : comme
+  Mergerie travaille dans son propre clone, un identifiant pris ailleurs — ton dépôt à toi, une session
+  ouverte à la main dans un terminal — n'y sera pas trouvé. Le travail repart alors d'une session neuve
+  avec le contexte réinjecté, et la carte le signale. Avec **copilot**, l'identifiant est un chemin de home
+  isolé : il se reprend depuis n'importe où. Les identifiants proposés par Mergerie (« Reprendre au
+  terminal », session d'origine d'une branche) sont toujours dans le bon répertoire.
+
+- Un **codage hors dépôt** porte le bouton **« Retour de l'IA » au niveau de la session**, pas seulement
+  sur chaque dossier : c'est « qu'a fait l'IA ? » qu'on se demande en regardant la carte. Quand la session
+  couvre plusieurs dossiers, la vue offre un sélecteur pour passer de l'un à l'autre sans se refermer.
+- Une session portant sur **plusieurs projets** (codage, exploration, ou codage hors dépôt) affiche sa
+  liste **repliée**, avec un « Voir les N projets » pour la déplier. Au-delà de quelques dépôts, une seule
+  session occupait sinon tout l'écran et masquait les autres — qui sont pourtant ce qu'on est venu
+  regarder. Le repli est mémorisé par session : il survit aux rafraîchissements automatiques.
 - **Lire un rapport survit à un rafraîchissement** : position de défilement, onglet et version consultée
   sont conservés tant que le rapport lui-même n'a pas changé.
 - Une **ligne d'identité trop longue** (chemin de projet, auteur, date) est tronquée à la largeur de la
   carte : le survol en montre alors le texte complet — l'info-bulle n'apparaît que si le texte est
   réellement coupé, et disparaît quand la fenêtre s'élargit. Les liens vers le **ticket** et vers la
   **forge** ont leur propre ligne, où ils passent à la ligne au lieu d'être coupés.
+
+## Vérification objective (vérificateurs)
+
+Une review dit *ce qu'elle pense* du code. Un **vérificateur** dit **ce qui se passe quand on le lance** :
+c'est **ton** script de tests, Mergerie lui prépare les dépôts et lit son verdict. Les deux se complètent —
+une note de 9/10 sur une MR dont les tests d'intégration cassent ne veut plus rien dire une fois qu'on le sait.
+
+**Ce que ça change concrètement** : un badge sur chaque merge request (`✓ vérifié`, `✗ 2 tests cassés`,
+`⚠ base rouge`, `⟳ périmé`), et surtout la possibilité de **vérifier ensemble** des MR de dépôts
+différents qui ne valent qu'ensemble — la MR du front et celle de l'API qui ne passent que réunies.
+
+### Deux familles de vérificateurs
+
+**Commandes** — tu donnes une liste (`npm ci`, puis `npm test`), Mergerie la lance dans le dépôt préparé
+et **le verdict vient des codes de sortie**. Rien à écrire, rien à installer. C'est le cas courant, et le
+bon point de départ.
+
+L'**ordre compte** — `npm ci` avant `npm test` — et se corrige d'un clic : chaque ligne porte son rang et
+deux flèches pour la déplacer.
+
+Un tel vérificateur peut **couvrir plusieurs dépôts**. Attention à ce que « couvrir » veut dire : déclarer
+un dépôt annonce seulement que ce vérificateur **sait le tester**. À l'exécution, la liste ne tourne que
+dans les dépôts **réellement visés par la vérification** — lancée sur une seule merge request, elle ne
+touche que son dépôt, même si le vérificateur en couvre cinq. Sur un lot, elle est **rejouée dans chacun**,
+l'un après l'autre, et le verdict est le **ET** — tout doit passer. C'est ce qu'on veut quand plusieurs
+projets se testent de la même façon : un seul vérificateur au lieu d'un identique par dépôt. Dans un dépôt,
+la première commande en échec arrête les suivantes (elles en dépendent) ; d'un dépôt à l'autre on continue,
+parce qu'ils sont indépendants et que savoir que deux cassent vaut mieux que de s'arrêter au premier.
+
+Quand plusieurs dépôts sont testés, les échecs sont **préfixés du dépôt** (`grp/lib › panier › remise`) :
+sans ça, deux projets ayant chacun un test du même nom seraient indiscernables — et la comparaison
+base/tête les confondrait.
+
+**Script** — un exécutable à toi qui s'engage sur le contrat JSON décrit plus bas. Plus de travail, mais il
+reçoit **tous les dépôts visés d'un coup** et décide lui-même quoi en faire : c'est la forme d'un vrai test
+d'**intégration**, là où « commandes » rejoue simplement la même liste dans chacun. Il rend aussi des tests
+nommés quelle que soit la façon dont ta suite s'exprime.
+
+Les deux partagent tout le reste : préparation git, double run base/tête, badges, rapport, « Corriger ».
+
+#### Ce que « commandes » sait dire, et ce qu'il ne sait pas dire
+
+La liste s'arrête **à la première commande qui échoue** : après un `npm ci` raté, la sortie de `npm test`
+n'est que du bruit. Le rapport montre alors le déroulé — quelle commande, quel code, combien de temps,
+et sa sortie.
+
+Reste la question des **noms de tests**, qui est ce qui rend le verdict causal. Mergerie les cherche dans
+cet ordre, sans jamais deviner :
+
+1. **Le fichier de rapport JUnit**, si tu en déclares un (champ *Rapport JUnit*, chemin relatif au dépôt —
+   donc lu dans chacun quand plusieurs sont testés). C'est le format pivot : `pytest --junitxml`,
+   `jest-junit`, `phpunit --log-junit`, Surefire, `go-junit-report`… Le plus fiable, et il ne subit pas la
+   troncature du journal.
+2. **Le TAP dans la sortie**, reconnu tout seul — voir plus bas.
+3. **Rien.** Alors c'est la **commande** qui est imputée : le badge affiche `✗ échec : npm test` au lieu
+   d'annoncer un nombre de tests qu'on ne connaît pas. Et comme la clé du delta devient la commande, une
+   commande déjà rouge sur la base donne toujours `⚠ base rouge` — la dégradation reste juste.
+
+Dans ce dernier cas, le rapport affiche en plus **ce qui est nouveau par rapport à la base** : les lignes
+présentes à la tête et absentes du run base. Ça ne coûte rien — les deux sorties existent déjà — et ça
+pointe souvent directement la régression, y compris derrière un `make test` opaque.
+
+Enfin, si le code de sortie et le rapport de tests se **contredisent** (sortie 0 avec des tests rouges, ou
+l'inverse), le verdict suit le code de sortie et le rapport signale la contradiction. C'est presque
+toujours un vrai défaut de la commande de test, et le masquer rendrait un mauvais service.
+
+#### TAP : rien à déclarer
+
+Beaucoup de runners écrivent du **TAP** dès que leur sortie n'est pas un terminal — ce qui est toujours le
+cas ici, Mergerie lançant les commandes à travers des tubes. Il est alors reconnu et analysé sans aucun
+réglage : `node --test`, mocha (`--reporter tap`), vitest (`--reporter=tap`), `pytest-tap`, prove…
+
+Les pièges sont traités : les **sous-tests** ne sont pas comptés deux fois (seules les feuilles en échec
+sont retenues, avec leur nom complet `suite › test`), un `# TODO` est un échec **attendu** et ne compte
+pas, un `# SKIP` n'est ni l'un ni l'autre, un `Bail out!` donne une erreur et non « zéro échec », et le
+**plan** (`1..43`) sert de contrôle : si la sortie a été tronquée, le rapport le dit au lieu de présenter
+une liste partielle comme exhaustive.
+
+L'interrupteur *Interpréter le TAP* existe pour le jour où une sortie exotique déclencherait la détection
+à tort.
+
+#### `npm: command not found`
+
+L'environnement des commandes est **minimal** (`PATH`, `HOME`, `LANG`, `MERGERIE_VERIFY=1`, sans aucun
+jeton), et le `PATH` est celui du **processus serveur**. Lancé depuis un terminal où nvm est chargé, tout
+marche. Lancé par un service ou un lanceur de bureau, `npm` sera introuvable — c'est à ça que sert le champ
+**Variables d'environnement** : une ligne `CLE=valeur`, par exemple un `PATH` complet.
+
+### Le partage des rôles
+
+**Mergerie fait tout le git.** Ton script ne fait aucun checkout, ne connaît aucune branche : il reçoit des
+répertoires déjà positionnés sur les bons commits et répond « les tests passent-ils ». C'est ce qui permet
+au même script de servir en worktree jetable comme dans ton propre répertoire de travail.
+
+**Couverture déclarative ≠ checkout effectif.** Dans *Réglages → Vérificateurs*, déclarer un dépôt dit
+seulement « ce script sait tester ce dépôt-là ». Seuls les dépôts **effectivement visés** par une
+vérification sont préparés et transmis au script. Les autres dépôts couverts et configurés *in place* sont
+lus **en lecture seule** et apparaissent comme **contexte** dans le rapport (avec un ⚠ s'ils sont hors de
+leur branche par défaut ou modifiés) : un vert obtenu grâce à un voisin resté sur une vieille branche ne
+doit pas passer inaperçu.
+
+### Deux modes, dépôt par dépôt
+
+- **worktree** (par défaut) — Mergerie crée un `git worktree` détaché sous `data/worktrees/`, le supprime
+  après le run, et ramasse les orphelins au démarrage. Rien de ce que tu as sur ta machine n'est touché.
+- **in place** — le run a lieu dans **ton** répertoire de travail. Utile quand l'environnement de test ne
+  se recrée pas (base de données locale, containers déjà chauds, `node_modules` installés). Trois
+  garde-fous, dans cet ordre : **consentement explicite** à cocher, **identité du dépôt** vérifiée
+  (le `origin` du répertoire doit être celui du dépôt), et **refus net si le répertoire est modifié** —
+  jamais de `stash` automatique. Pendant le run, ton répertoire est sur un **commit détaché** : ne
+  développe pas dessus. Il est **remis sur sa ref d'origine dans tous les cas**, y compris sur timeout
+  ou plantage du job ; si la restauration échoue, le rapport porte un bandeau **« Restauration manuelle
+  requise »** — ça ne se noie jamais dans un journal.
+
+Le répertoire se **choisit** plutôt qu'il ne se tape : si tu as déclaré des *répertoires locaux*
+(Réglages → Dépôts), un sélecteur liste tous leurs projets git — avec recherche à la frappe, parce qu'une
+racine en contient couramment des dizaines — et remplit le chemin absolu. Un chemin tapé à la main reste
+possible pour un répertoire hors de toute racine déclarée, mais c'est une faute de frappe qui ne se
+découvre qu'au premier run, et qui coûte le run.
+
+Le bouton **« Tester le répertoire »** répond pendant que le formulaire est encore sous tes yeux :
+répertoire reconnu, branche courante, modifications en cours.
+
+### Contrat du script (v1) — famille « script » uniquement
+
+**Quel fichier ?** N'importe quel **exécutable** — l'extension n'a aucune importance (`.sh`, `.py`, `.js`,
+un binaire). Deux conditions techniques : le **bit d'exécution** (`chmod +x`), et un **shebang**
+(`#!/bin/sh`, `#!/usr/bin/env python3`…) s'il s'agit d'un script, puisqu'il est lancé directement et que
+rien ne devine avec quoi l'interpréter. Le champ *Commande* attend un **chemin absolu**, pas une ligne de
+commande : **aucun argument n'est transmis**, et tubes, redirections et variables ne seraient pas
+interprétés — les options se mettent dans le script.
+
+Le script est lancé **sans shell**, une fois par run (`base` puis `head`), avec un **environnement minimal**
+(`PATH`, `HOME`, `LANG`, `MERGERIE_VERIFY=1`) : **aucun jeton**, aucune variable de Mergerie. Son `cwd` est
+le premier répertoire de la liste. Son `stderr` est streamé dans le panneau de log du job.
+
+**Entrée** (JSON sur stdin) :
+
+```json
+{
+  "version": 1,
+  "verifier": "integ",
+  "role": "head",
+  "repos": [
+    { "name": "groupe/webapp-front", "dir": "/abs/path", "sha": "a1b2c3…",
+      "branch": "feat/PROJ-720", "mode": "worktree", "changed": true }
+  ]
+}
+```
+
+**Sortie** : la **dernière ligne JSON valide** de stdout.
+
+```json
+{
+  "version": 1,
+  "status": "pass",
+  "total": 218,
+  "failed": [
+    { "test": "checkout › total serveur", "message": "attendu 42, reçu 41", "log_excerpt": "…" }
+  ],
+  "duration_ms": 42000
+}
+```
+
+Le **code de sortie est indicatif** : c'est stdout qui fait foi (un script qui sort en 1 parce que des
+tests échouent a parfaitement rendu son verdict). En revanche une réponse illisible, tronquée ou hors
+schéma ne devient **jamais un vert** : elle donne `⚠ vérification en erreur`. Bornes : `failed` ≤ 50
+entrées, `log_excerpt` ≤ 4 ko chacun, réponse totale ≤ 256 ko.
+
+### Exemple A — worktree + docker compose éphémère
+
+```sh
+#!/bin/sh
+# Vérificateur d'intégration : une stack jetable par run, détruite quoi qu'il arrive.
+set -eu
+ENTREE=$(cat)
+FRONT=$(printf '%s' "$ENTREE" | jq -r '.repos[] | select(.name|endswith("webapp-front")) | .dir')
+API=$(printf '%s' "$ENTREE" | jq -r '.repos[] | select(.name|endswith("api-core")) | .dir')
+
+PROJET="mergerie-verify-$$"
+trap 'docker compose -p "$PROJET" down --remove-orphans >&2 || true' EXIT
+
+docker compose -p "$PROJET" --env-file ./integ.env \
+  -f "$API/docker-compose.yml" -f "$FRONT/docker-compose.yml" up -d --build >&2
+
+# Le rapport JUnit est converti en réponse du contrat. `total`/`failed` viennent de lui.
+if docker compose -p "$PROJET" run --rm tests >/tmp/out-$$ 2>&1; then
+  printf '{"version":1,"status":"pass","total":%s}\n' "$(grep -c '^ok ' /tmp/out-$$)"
+else
+  printf '{"version":1,"status":"fail","failed":%s}\n' "$(./junit2json.sh /tmp/out-$$)"
+fi
+```
+
+Deux points qui comptent : `-p` **isole le projet compose** (deux runs ne se marchent pas dessus), et le
+`trap EXIT` garantit la destruction de la stack **même si le script est tué** au timeout.
+
+### Exemple B — in place + adaptateur HTTP
+
+Quand la suite tourne déjà dans un orchestrateur local, le script n'a plus qu'à la déclencher et à
+**traduire sa réponse** dans le contrat :
+
+```sh
+#!/bin/sh
+set -eu
+cat >/dev/null            # l'entrée ne sert pas : l'orchestrateur connaît déjà les dossiers
+curl -sf --max-time 900 -X POST http://127.0.0.1:9099/run \
+  | jq -c '{version:1,
+            status: (if .failures == 0 then "pass" else "fail" end),
+            total: .tests,
+            failed: [.results[] | select(.ok|not)
+                     | {test: .name, message: .message, log_excerpt: .output}][:50]}'
+```
+
+### `node_modules`, et pourquoi la base est parfois rouge
+
+**Stratégie `node_modules`.** Un worktree neuf n'a pas de dépendances installées. Deux réponses :
+un **symlink** depuis un cache partagé (rapide, mais suppose que le `lock` n'a pas changé), ou une
+**installation** dans le worktree (lente, mais fidèle). Le choix t'appartient — il vit dans ton script.
+Un `ln -s "$CACHE/node_modules" "$dir/node_modules"` fait l'affaire tant que tu invalides le cache sur
+changement de `package-lock.json`.
+
+**FAQ.**
+
+- *Pourquoi ma base est rouge ?* Le run **base** rejoue la même suite sur les branches cibles, **avant** tes
+  changements. S'il échoue déjà, le verdict est `⚠ base rouge` et **rien n'est imputé à ta branche** —
+  c'est le but. Décocher « Lancer aussi la base » supprime ce second run : le verdict tombe quand même,
+  mais il n'est plus **causal**, et le rapport le dit.
+- *git ne marche pas dans mon container de test.* Dans un worktree, `.git` est un **fichier pointeur** vers
+  le dépôt principal, pas un dossier. Monte aussi le clone (`data/clones/…`) dans le container, ou
+  n'appelle pas git depuis les tests.
+- *« Restauration manuelle requise ».* Le mode *in place* n'a pas pu remettre ton répertoire sur sa
+  branche : il est resté sur un commit détaché. Le message dit **quel répertoire** et **quelle ref**
+  attendre — un `git checkout <ref>` suffit une fois ce qui bloquait levé.
+- *Le verdict est `⟳ périmé`.* Il porte sur des commits qui ne sont plus ceux de la branche. Il est
+  **conservé, pas effacé** (il est daté) : relance la vérification.
+
+### Vérifier ensemble, et corriger
+
+Le bouton **Vérifier** est présent sur les merge requests à traiter **comme sur celles déjà reviewées**
+(dans la liste et dans le panneau de rapport) : une review est un avis, un verdict est un fait, et le
+second garde tout son intérêt une fois le premier rendu. Un clic ouvre une **confirmation** qui annonce ce
+qui va tourner — les commandes ou le script, le dépôt, le mode, le délai — avant de lancer quoi que ce
+soit. Elle apparaît même quand un seul vérificateur couvre le dépôt : exécuter des commandes sur sa
+machine mérite un écran, pas un clic silencieux.
+
+Dans *Reviews*, coche plusieurs merge requests : la barre d'actions propose **Vérifier ensemble** et
+**Créer un lot** (un lot est nommé, persisté, et re-vérifiable d'un bouton depuis *Dev IA*). Deux MR du
+**même dépôt** sont refusées — on ne saurait pas quel code a été testé.
+
+Sur un verdict `✗`, le rapport propose **« Corriger (session IA) »** : une **seule** session de codage
+couvrant **tous** les dépôts du lot — pas seulement celui où le test a cassé, parce que la cause d'un
+échec d'intégration est souvent ailleurs. Le prompt porte les faits (tests cassés, messages, extraits,
+commits testés) et les branches de travail sont **celles des MR** : le push les met à jour en place.
+Après le push, tu relances la vérification à la main — aucune chaîne automatique.
+
+### Deux vérifications en même temps ?
+
+Ça dépend de ce qui tourne. Une vérification **mono-dépôt** est contenue dans son répertoire : une autre
+peut partir en parallèle, tant qu'elle ne vise pas le **même dépôt** — relancer la même chose ne donnerait
+pas un second avis, seulement un run qui attend le premier pour dire la même chose.
+
+Une vérification **multi-dépôts**, elle, est un run d'intégration : elle monte un environnement complet,
+souvent des containers sur des ports et des bases fixes. Celle-là bloque tout le monde, et se fait bloquer
+par tout le monde — deux en parallèle rendraient des rouges qui n'apprennent rien.
+
+Dans les deux cas le refus est immédiat et dit laquelle des deux raisons s'applique.
+
+**Mode dry-run** : il ne concerne que l'agent IA. Une vérification, elle, **reste réelle** si elle est
+configurée. En **mode démo**, en revanche, aucun script n'est lancé : le verdict est simulé.
 
 ## Configuration (.env)
 
@@ -690,6 +976,14 @@ est en lecture seule car le worktree est **remis à zéro dans un `finally`** ap
 que **lire un diff**. Mais pendant une **session de codage**, l'agent dispose des **droits de l'utilisateur
 sur la machine** — rien ne l'empêche techniquement d'agir hors du clone. C'est le **compromis assumé** d'un
 outil **local mono-utilisateur** : à connaître avant usage, et une raison de plus de ne pas exposer le serveur.
+
+**Vérificateurs.** Lancer les tests d'un dépôt, **c'est exécuter le code de ce dépôt** : même niveau de
+confiance que la session d'agent, et le script s'exécute avec **tes** droits sur la machine. La commande
+est un **chemin absolu venant de la configuration** — jamais un fichier du dépôt cloné —, elle est lancée
+**sans shell**, avec un **environnement minimal sans aucun jeton**. La réponse du script est traitée comme
+une **donnée non fiable** : schéma validé, tailles bornées, échappement systématique à l'affichage. Les
+worktrees sont créés **sous `data/` uniquement**, et le mode *in place* n'écrit dans un répertoire à toi
+qu'après **consentement explicite** (voir *Vérification objective*).
 
 **Secrets.** Le **PAT GitLab**, le **token GitHub** et le **jeton d'API Jira** sont stockés **en local** (SQLite, `data/` est
 gitignored). L'API et l'UI ne les renvoient **jamais en clair** : ils sont masqués (`***`) en lecture, et

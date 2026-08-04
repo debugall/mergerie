@@ -38,6 +38,7 @@ const LABELS = {
     checkout: 'Se positionner', analyse: 'Analyser', reconstruct: 'Reconstituer la commande',
     jiraCode: "Faire coder l'IA", bulkAdd: /GitLab/, testConn: /onnexion|onnection/i,
     dark: 'Sombre', phRepo: 'dépôt', phLog: 'expression',
+    verify: 'Vérifier',
   },
   en: {
     review: 'Review', diff: 'View diff', context: 'Context',
@@ -53,6 +54,7 @@ const LABELS = {
     checkout: 'Check out', analyse: 'Analyse', reconstruct: 'Reconstruct command',
     jiraCode: 'Let the AI code it', bulkAdd: /GitLab/, testConn: /onnexion|onnection/i,
     dark: 'Dark', phRepo: 'repository', phLog: 'phrase',
+    verify: 'Verify',
   },
 };
 const L = LABELS[LANGUE];
@@ -166,6 +168,23 @@ async function principal() {
     return l;
   }
 
+  /* Une liste déroulante NATIVE est dessinée par le système, hors de la page : Playwright
+     n'enregistre que la page, la liste ouverte serait donc invisible dans le film — c'est ce
+     qui donnait l'impression d'un clic sans effet. On l'affiche EN PAGE le temps de la
+     montrer, avec ses vraies options (`size`), puis on la referme. Aucun contenu inventé :
+     ce sont les options du vrai contrôle. */
+  async function montreOptions(cible) {
+    const l = await versEl(cible);
+    const n = await l.evaluate((el) => el.options.length);
+    await l.evaluate((el, k) => { el.dataset.tailleAvant = String(el.size || 0); el.size = k; }, Math.min(n, 8));
+    await page.waitForTimeout(450);
+    return l;
+  }
+  async function fermeOptions(cible) {
+    await loc(cible).evaluate((el) => { el.size = Number(el.dataset.tailleAvant) || 0; delete el.dataset.tailleAvant; });
+    await page.waitForTimeout(300);
+  }
+
   async function touche(k) {
     await page.keyboard.press(k);
     await page.waitForTimeout(APRES_CLIC);
@@ -250,6 +269,26 @@ async function principal() {
   await versEl('[data-seg="done"]'); await dit();
   await clique('[data-seg="done"]');
 
+  /* ---------- Vérification objective ----------
+     La démo sème trois verdicts : un lot passé au vert après correction, et une merge request
+     encore rouge, vérifiée par une liste de commandes. On montre donc de VRAIS badges, un vrai
+     rapport et la modale de confirmation — jamais un écran qu'on ne sait pas produire. */
+  await clique('[data-seg="to_review"]');
+  await versEl('#toReviewList .tag.verify'); await dit();   // @@NEW:a1
+  await clique(page.locator('#toReviewList .tag.verify.ko[data-vreport]').first());
+  await versEl('#verifyReport'); await dit();               // @@NEW:a2
+  await versEl('#verifyFix'); await dit();                  // @@NEW:a3
+  await fermeModale();
+  const btnVerif = page.locator('#toReviewList button:not([disabled])', { hasText: L.verify }).first();
+  await versEl(btnVerif); await dit();                      // @@NEW:a4
+  await clique(btnVerif);
+  await versEl('#verifyPickList'); await dit();             // @@NEW:a5
+  await fermeModale();
+  await clique('#toReviewList .mr-pick >> nth=0');
+  await clique('#toReviewList .mr-pick >> nth=1');
+  await versEl('#mrBulkBar'); await dit();                  // @@NEW:a6
+  await clique('#btnBulkClear');
+
   // Dev IA
   await versEl(onglet('task')); await dit();
   await clique(onglet('task'));
@@ -265,7 +304,11 @@ async function principal() {
 
   const s1 = '#taskList .card >> nth=0';
   await versEl(s1); await dit();
-  await versEl(page.locator('#taskList .card', { hasText: L.collapse }).locator('button', { hasText: L.collapse }).first()); await dit();
+  /* Sélecteur STRUCTUREL : le libellé du bouton change selon l'état (« Voir les N projets »
+     replié, « Replier les projets » déplié) et selon la langue. */
+  await versEl('#taskList .targets-toggle'); await dit();
+  // …puis on déplie : les actions par projet vivent DANS la liste, invisibles repliées.
+  await clique('#taskList .targets-toggle');
   await versEl(btn(s1, L.push)); await dit();
   await versEl(btn(s1, L.createMr)); await dit();
   await versEl(btn(s1, L.rerunFailed)); await dit();
@@ -280,6 +323,9 @@ async function principal() {
   await versEl('#localList .card >> nth=0'); await dit();
   await clique(sous('task', 2));
   await versEl('#taskList .card >> nth=0'); await dit();
+
+  await clique(sous('task', 0));
+  await versEl('#lotList .card >> nth=0'); await dit();     // @@NEW:b1
 
   // Statistiques
   await versEl(onglet('dashboard')); await dit();
@@ -329,12 +375,19 @@ async function principal() {
   await versEl(onglet('admin')); await dit();
   await clique(onglet('admin'));
   await clique(sous('admin', 3));
-  await versEl('#tab-admin select >> nth=0'); await dit();
+  await versEl('#sub-config select >> nth=0'); await dit();
   await clique(sous('admin', 1));
   await versEl(page.locator('#tab-admin button', { hasText: L.bulkAdd }).first()); await dit();
   await clique(sous('admin', 0));
   await versEl('#tab-admin input[placeholder*="migrations"]'); await dit();
+  /* Vérificateurs (7) — l'onglet des sessions d'IA a glissé en 8 quand celui-ci a été
+     inséré : un index périmé pointait sur le mauvais panneau sans rien casser. */
   await clique(sous('admin', 7));
+  await montreOptions('#verifierForm select[name=kind]'); await dit();   // @@NEW:c1
+  await fermeOptions('#verifierForm select[name=kind]');
+  await versEl('#verifierCommandList'); await dit();                     // @@NEW:c2
+  await versEl('#verifierRepoBox'); await dit();                         // @@NEW:c3
+  await clique(sous('admin', 8));
   await versEl('#tab-admin'); await dit();
   await clique(sous('admin', 4));
   await versEl(page.locator('#tab-admin button', { hasText: L.testConn }).first()); await dit();
@@ -363,8 +416,9 @@ async function principal() {
 
   await clique(onglet('admin'));
   await clique(sous('admin', 3));
-  const theme = page.locator('#tab-admin select').first();
-  await versEl(theme);
+  const theme = page.locator('#sub-config select').first();
+  await montreOptions(theme);
+  await fermeOptions(theme);
   await theme.selectOption({ label: L.dark }).catch(() => theme.selectOption({ index: 1 }));
   await page.waitForTimeout(900);
   await clique(onglet('review'));

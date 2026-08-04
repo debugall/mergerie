@@ -16,6 +16,7 @@ function freshState() {
     branches: {},            // project -> [{ name, protected, commit:{ sha, commit:{...} } }]
     tags: {},                // project -> [{ name, commit:{ sha } }]
     commits: {},             // project -> [commit] (le plus récent d'abord)
+    events: {},              // project -> [event] : les pushes de TOUTES les branches
     files: {},               // `${project}#${n}` -> [{ filename, previous_filename }]
     reviewComments: {},      // `${project}#${n}` -> [comment]
     issueComments: {},       // `${project}#${n}` -> [comment]
@@ -197,6 +198,8 @@ function handle(req, res, pathname, query, body) {
 
   // --- Tags / commits ---
   if (rest === '/tags' && req.method === 'GET') return paged(res, req, query, tagsOf());
+  // Événements du dépôt : c'est par là qu'on connaît les pushes hors branche par défaut.
+  if (rest.startsWith('/events') && req.method === 'GET') return json(res, 200, state.events[project] || []);
   if (rest === '/commits' && req.method === 'GET') return json(res, 200, state.commits[project] || []);
   mm = /^\/commits\/(.+)$/.exec(rest);
   if (mm && req.method === 'GET') {

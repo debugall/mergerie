@@ -343,6 +343,72 @@ describe('API de bout en bout', () => {
     assert.equal(mauvaise.status, 400);
   });
 
+  /* ---------- Vérificateurs (plan_add_verify.md §3) ---------- */
+
+  test('Vérificateurs : création, couverture déclarée, garde-fous de configuration', async () => {
+    /* Chemin RELATIF refusé : il dépendrait du répertoire courant du serveur et pourrait
+       désigner un script du dépôt cloné plutôt que celui de l'utilisateur. */
+    const rel = await app.api('POST', '/api/verifiers', { name: 'integ', command: './run.sh' });
+    assert.equal(rel.status, 400);
+    assert.match(rel.body.error, /absolu/);
+    assert.equal((await app.api('POST', '/api/verifiers', { name: '  ', command: '/bin/true' })).status, 400);
+
+    const cree = await app.api('POST', '/api/verifiers', {
+      name: 'integ', command: '/usr/local/bin/verify.sh', timeout_s: 120,
+      repos: [{ repo_id: repoId, mode: 'worktree' }],
+    });
+    assert.equal(cree.status, 200);
+    assert.equal(cree.body.timeout_s, 120);
+    assert.equal(cree.body.run_base, 1, 'le double run causal est actif par défaut');
+    assert.equal(cree.body.comment_on_forge, 0, 'commenter la forge reste un choix explicite');
+    assert.deepEqual(cree.body.repos.map((r) => [r.repo_id, r.mode]), [[repoId, 'worktree']]);
+
+    // Le nom identifie le vérificateur dans l'UI et les rapports : pas de doublon.
+    const dup = await app.api('POST', '/api/verifiers', { name: 'integ', command: '/bin/true' });
+    assert.equal(dup.status, 400);
+    assert.match(dup.body.error, /existe déjà/);
+
+    /* Mode « in place » : chemin absolu ET consentement. Sans les deux, on ferait un checkout
+       dans un répertoire de travail sans que personne l'ait autorisé. */
+    const sansDir = await app.api('PUT', `/api/verifiers/${cree.body.id}`, {
+      repos: [{ repo_id: repoId, mode: 'in_place', checkout_allowed: true }],
+    });
+    assert.equal(sansDir.status, 400);
+    assert.match(sansDir.body.error, /absolu/);
+    const sansAccord = await app.api('PUT', `/api/verifiers/${cree.body.id}`, {
+      repos: [{ repo_id: repoId, mode: 'in_place', workdir: '/tmp/wd' }],
+    });
+    assert.equal(sansAccord.status, 400);
+    assert.match(sansAccord.body.error, /autorisation|permission/i);
+
+    const ok = await app.api('PUT', `/api/verifiers/${cree.body.id}`, {
+      timeout_s: 300, run_base: false,
+      repos: [{ repo_id: repoId, mode: 'in_place', workdir: '/tmp/wd', checkout_allowed: true }],
+    });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.timeout_s, 300);
+    assert.equal(ok.body.run_base, 0);
+    assert.equal(ok.body.repos[0].workdir, '/tmp/wd');
+
+    // Un timeout absurde est ramené dans les bornes plutôt que refusé.
+    const borne = await app.api('PUT', `/api/verifiers/${cree.body.id}`, { timeout_s: 999999 });
+    assert.equal(borne.body.timeout_s, 7200);
+    assert.equal(borne.body.repos.length, 1, 'une couverture absente du corps reste inchangée');
+
+    /* « Quel vérificateur couvre ces dépôts » : c'est ce qui décide si le bouton Vérifier est
+       actif. Un dépôt non couvert ne doit remonter aucun vérificateur, jamais un partiel. */
+    const pour = await app.api('GET', `/api/verifiers/for?repos=${repoId}`);
+    assert.deepEqual(pour.body.verifiers.map((x) => x.name), ['integ']);
+    const autreRepo = (await app.api('POST', '/api/repos', { project: 'grp/lib', url: 'https://gitlab.test/grp/lib.git' })).body;
+    assert.deepEqual((await app.api('GET', `/api/verifiers/for?repos=${repoId},${autreRepo.id}`)).body.verifiers, [],
+      'couvrir un dépôt sur deux ne suffit pas');
+    assert.deepEqual((await app.api('GET', '/api/verifiers/for?repos=')).body.verifiers, []);
+
+    await app.api('DELETE', `/api/repos/${autreRepo.id}`);
+    await app.api('DELETE', `/api/verifiers/${cree.body.id}`);
+    assert.deepEqual((await app.api('GET', '/api/verifiers')).body, []);
+  });
+
   /* ---------- Jira ---------- */
 
   test('Jira : test de connexion, récupération et enrichissement d’une MR', async () => {
@@ -945,6 +1011,14 @@ describe('API de bout en bout', () => {
     const c = body.commits[0];
     assert.ok(c.project && c.sha && c.author && c.date, 'champs mappés');
     assert.match(c.url, /\/-\/commit\//, 'lien GitLab vers le commit');
+
+    /* Le classement porte sur l'activité RÉCENTE : il doit voir TOUTES les branches. Sans
+       `all=true`, GitLab ne rend que la branche par défaut, et un dépôt où le travail vit sur
+       des branches de feature paraît endormi depuis des mois. */
+    const appels = app.state.calls.filter((x) => x.path.includes('/repository/commits'));
+    assert.ok(appels.length, 'la route interroge bien les commits');
+    assert.ok(appels.every((x) => x.path.includes('all=true')),
+      `toutes branches confondues attendu, vu : ${appels.map((x) => x.path).join(' | ')}`);
 
     // Un dépôt sans commit est simplement omis (best-effort).
     app.state.commits = {};

@@ -157,7 +157,12 @@ function commitMessageFor(task) {
 
 // Exécute le prompt sur UN projet : place la branche, laisse l'IA modifier, commite.
 // La branche de base n'est pas saisie : c'est la branche par défaut du dépôt.
-async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog, forcePush, resume, passKind }) {
+/* `promptRepli` : ce qu'on envoie quand la session à reprendre s'avère introuvable et qu'il
+   faut repartir de zéro. Ce n'est PAS toujours `promptText` : une demande de suivi (« applique
+   cette correction ») ne se comprend pas sans la tâche d'origine, que la session perdue
+   portait. Le défaut réinjecte donc ce contexte — mais un premier run le contient déjà, et le
+   lui ajouter enverrait deux fois la même consigne, prompt de la tâche compris. */
+async function execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, forcePush, resume, passKind }) {
   // On REPREND la session dès qu'un handle existe pour cette cible : la continuité vaut pour
   // le run initial, « Demander une correction » (followup), une relance, la reprise après
   // questions et les passes de convergence. Le 1er passage la crée.
@@ -209,18 +214,29 @@ async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog,
       doResume = false;
     }
     let r; let created = !doResume; // création = 1re passe OU repli après échec de reprise
+    let note = null;
     try {
       r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt: promptText + imgBlock, cwd, resume: doResume, onLog });
     } catch (e) {
       if (!doResume) throw e;
       // Fallback (§4.5) : reprise impossible → session neuve avec contexte réinjecté.
-      onLog(`⚠ reprise impossible (${String(e.message).split('\n')[0]}) → session neuve, contexte réinjecté`);
-      r = await agentsession.runInSession({ key, prompt: `${buildCodePrompt(task)}\n\n${promptText}${imgBlock}`, cwd, resume: false, onLog });
+      const raison = String(e.message).split('\n')[0];
+      onLog(`⚠ reprise impossible (${raison}) → session neuve, contexte réinjecté`);
+      /* On CONSIGNE le repli. Cas le plus courant : une session d'agent appartient au
+         répertoire où elle a été créée, or Mergerie travaille dans son propre clone — un
+         identifiant venu d'ailleurs (ton dépôt à toi, une session Claude Code) n'y existe
+         pas. Sans cette note, l'écran affiche après coup un identifiant que l'utilisateur
+         n'a jamais saisi, sans rien dire de la substitution. */
+      note = `${tg.session_key} : ${raison}`;
+      const complet = promptRepli != null ? promptRepli : `${buildCodePrompt(task)}\n\n${promptText}`;
+      r = await agentsession.runInSession({ key, prompt: complet + imgBlock, cwd, resume: false, onLog });
       created = true;
     }
     agentText = r.text || '';
     copilot.recordUsage('task', promptText + imgBlock, agentText); // le run en session compte aussi
-    if (created) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: cwd });
+    // La note est posée AVEC le nouveau handle, et effacée dès qu'une reprise réussit.
+    if (created) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: cwd, session_note: note });
+    else if (tg.session_note) setTarget(tg.id, { session_note: null });
   } else {
     // Backend non reconnu (ni claude ni copilot) : pas de reprise possible, appel one-shot.
     agentText = (await copilot.runPrompt(promptText + imgBlock, cwd, { kind: 'task' }, onLog)) || '';
@@ -285,7 +301,7 @@ async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog,
 
 // Session de codage : chaque projet est traité l'un après l'autre. Un projet en échec
 // n'interrompt pas les suivants — son erreur est consignée sur SA ligne.
-async function runCodeTask(task, { promptText, message, allowCreate, onLog, passKind, targetIds }) {
+async function runCodeTask(task, { promptText, promptRepli, message, allowCreate, onLog, passKind, targetIds }) {
   /* `targetIds` restreint la passe à certains projets. Une session multi-dépôts se relançait
      forcément EN ENTIER : sur dix dépôts dont six ont réussi, cela coûtait six appels IA pour
      refaire un travail bon, et faisait repasser l'agent sur du code qu'on ne voulait plus voir
@@ -300,7 +316,7 @@ async function runCodeTask(task, { promptText, message, allowCreate, onLog, pass
     onLog(`──────── ${tg.project} · ${tg.branch} ────────`);
     setTarget(tg.id, { status: 'running', last_error: null });
     try {
-      const r = await execOnTarget(task, tg, { promptText, message, allowCreate, onLog, passKind });
+      const r = await execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, passKind });
       if (r && r.needsInput) waiting += 1; else ok += 1;
     } catch (e) {
       setTarget(tg.id, { status: 'error', last_error: e.message });
@@ -462,7 +478,9 @@ async function runTask(task, onLog = () => {}, opts = {}) {
     return runExploration(task, { question: task.prompt, previous: null, onLog });
   }
   return runCodeTask(task, {
-    promptText: buildCodePrompt(task), message: commitMessageFor(task), allowCreate: true, onLog,
+    // Premier run : le prompt porte déjà toute la tâche, il n'y a rien à réinjecter par-dessus.
+    promptText: buildCodePrompt(task), promptRepli: buildCodePrompt(task),
+    message: commitMessageFor(task), allowCreate: true, onLog,
     targetIds: opts.targetIds,
   });
 }
