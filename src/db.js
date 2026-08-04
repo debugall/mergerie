@@ -127,6 +127,11 @@ try { db.exec("ALTER TABLE config ADD COLUMN github_url TEXT DEFAULT ''"); } cat
 try { db.exec("ALTER TABLE config ADD COLUMN github_token TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 // Migration : colonne d'erreur persistée par MR (texte complet, non tronqué).
 try { db.exec('ALTER TABLE mr ADD COLUMN last_error TEXT'); } catch { /* déjà présente */ }
+/* Pourquoi la session d'agent en cours n'est PAS celle qu'on avait demandée. Le repli sur une
+   session neuve est délibéré (mieux vaut travailler que renoncer), mais il remplace un
+   identifiant que l'utilisateur a saisi lui-même : le taire reviendrait à lui faire croire que
+   sa session continue. Une ligne de journal ne suffit pas — elle défile. */
+try { db.exec('ALTER TABLE task_target ADD COLUMN session_note TEXT'); } catch { /* déjà présente */ }
 /* De QUOI un job s'occupe-t-il. La table ne portait que `current_mr_id` : rien ne reliait un job
    à la session de codage qu'il exécutait, donc impossible de dire après coup « ce job-là, c'était
    la session sur api-core ». C'est ce qui rend le journal d'activité lisible. */
@@ -518,6 +523,139 @@ try { db.exec("ALTER TABLE config ADD COLUMN converge_max_passes TEXT DEFAULT '3
 // review → correction IA (commit + push) → re-review incrémentale, jusqu'au seuil,
 // à la régression, ou au plafond de passes. L'historique fin (notes par passe) vit
 // déjà dans review_version ; cette table porte l'état global de la boucle.
+/* ---------- Vérification objective (plan_add_verify.md) ----------
+   Un verdict de tests produit HORS du circuit IA : l'orchestrateur appelle un script de
+   l'utilisateur, jamais l'agent. Le verdict est un FAIT attaché à des SHAs — il se périme
+   si la branche avance — et il n'est jamais bloquant : il informe, l'humain merge. */
+db.exec(`CREATE TABLE IF NOT EXISTS verifier (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  command TEXT NOT NULL,               -- kind 'script' : chemin absolu. kind 'commands' : ''
+  timeout_s INTEGER NOT NULL DEFAULT 900,
+  run_base INTEGER NOT NULL DEFAULT 1, -- double run causal : la base était-elle déjà rouge ?
+  comment_on_forge INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+)`);
+/* Deux familles de vérificateurs, même verdict, même rapport, mêmes badges :
+     'script'   — un exécutable qui s'engage sur le contrat JSON. Multi-dépôts.
+     'commands' — une liste de commandes ; le verdict vient des CODES DE SORTIE. Multi-dépôts
+                  aussi : la liste est rejouée dans CHAQUE dépôt visé, le verdict est le ET.
+   Colonnes idempotentes plutôt qu'une table à part : ce sont des attributs du vérificateur,
+   et les bases existantes n'ont qu'à recevoir le défaut 'script' pour rester exactes. */
+try { db.exec("ALTER TABLE verifier ADD COLUMN kind TEXT NOT NULL DEFAULT 'script'"); } catch { /* déjà présente */ }
+// Ajoutées à l'environnement minimal. Sans elles, un `npm` installé par nvm reste introuvable
+// quand Mergerie est lancé par un service plutôt que depuis un terminal.
+try { db.exec('ALTER TABLE verifier ADD COLUMN env_json TEXT'); } catch { /* déjà présente */ }
+// Rapport JUnit produit par les commandes (chemin RELATIF au dépôt testé) : donne les noms
+// des tests là où la sortie ne les livre pas, et sans subir la troncature du journal.
+try { db.exec('ALTER TABLE verifier ADD COLUMN report_path TEXT'); } catch { /* déjà présente */ }
+// Interpréter le TAP trouvé dans la sortie. Activé par défaut ; l'interrupteur existe pour
+// le jour où une sortie exotique déclenche la détection à tort.
+try { db.exec('ALTER TABLE verifier ADD COLUMN parse_tap INTEGER NOT NULL DEFAULT 1'); } catch { /* déjà présente */ }
+
+/* Les commandes d'un vérificateur 'commands', DANS L'ORDRE. Une table plutôt qu'une colonne
+   JSON : l'ordre est porteur de sens (`npm ci` avant `npm test`) et l'interface les édite
+   une par une. */
+db.exec(`CREATE TABLE IF NOT EXISTS verifier_command (
+  verifier_id INTEGER NOT NULL REFERENCES verifier(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  command TEXT NOT NULL,
+  PRIMARY KEY (verifier_id, position)
+)`);
+
+/* Couverture DÉCLARATIVE : quels dépôts ce vérificateur sait tester, et comment. Déclarer
+   n'est pas exécuter — un dépôt couvert hors du lot ne sert qu'à consigner le contexte. */
+db.exec(`CREATE TABLE IF NOT EXISTS verifier_repo (
+  verifier_id INTEGER NOT NULL REFERENCES verifier(id) ON DELETE CASCADE,
+  repo_id INTEGER NOT NULL REFERENCES repo(id) ON DELETE CASCADE,
+  mode TEXT NOT NULL CHECK (mode IN ('worktree','in_place')),
+  workdir TEXT,                        -- requis en in_place (chemin absolu de l'utilisateur)
+  checkout_allowed INTEGER NOT NULL DEFAULT 0,  -- consentement explicite : on va y faire un checkout
+  PRIMARY KEY (verifier_id, repo_id)
+)`);
+
+// Un lot = des MR (ou des sessions) vérifiées ensemble, parce qu'elles ne valent qu'ensemble.
+db.exec(`CREATE TABLE IF NOT EXISTS lot (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('mr','session')),
+  created_at TEXT NOT NULL
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS lot_member (
+  lot_id INTEGER NOT NULL REFERENCES lot(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('mr','task')),
+  ref_id INTEGER NOT NULL,
+  PRIMARY KEY (lot_id, kind, ref_id)
+)`);
+
+/* Un rapport de vérification est une ARCHIVE : il dit ce qui a été testé, quand, et avec quel
+   verdict. Supprimer le vérificateur ou le lot ne doit donc ni effacer les verdicts déjà
+   rendus, ni — pire — être refusé à cause d'eux. Les noms sont recopiés à la création et les
+   clés étrangères se détachent. */
+db.exec(`CREATE TABLE IF NOT EXISTS verification (
+  id INTEGER PRIMARY KEY,
+  verifier_id INTEGER REFERENCES verifier(id) ON DELETE SET NULL,
+  verifier_name TEXT NOT NULL DEFAULT '',
+  lot_id INTEGER REFERENCES lot(id) ON DELETE SET NULL,  -- NULL = MR seule (lot implicite)
+  lot_name TEXT,
+  status TEXT NOT NULL CHECK (status IN ('queued','running','done','error')),
+  verdict TEXT CHECK (verdict IN ('verified_pass','verified_fail','broken_base','verify_error')),
+  targets_json TEXT NOT NULL,          -- [{repo_id, mr_id, head_sha, base_sha, branch, mode}]
+  context_json TEXT,                   -- dépôts couverts hors lot : sha/branche/dirty constatés
+  base_run_json TEXT,
+  head_run_json TEXT,
+  imputable_json TEXT,                 -- failed(head) − failed(base)
+  log_excerpt TEXT,
+  started_at TEXT, finished_at TEXT, created_at TEXT NOT NULL
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_verification_lot ON verification(lot_id, id)');
+/* Échec de restauration d'un répertoire « in place » : signalé de façon PERSISTANTE, jamais
+   noyé dans un journal. Le dépôt de l'utilisateur est resté sur un commit détaché. */
+try { db.exec('ALTER TABLE verification ADD COLUMN restore_error TEXT'); } catch { /* déjà présente */ }
+
+/* Bases créées avant que le rapport ne devienne une archive : la table portait des clés
+   étrangères bloquantes vers `verifier` et `lot`. SQLite ne sait pas modifier une contrainte,
+   il faut rebâtir — en recopiant au passage les noms depuis les lignes encore présentes. */
+if (!db.prepare('PRAGMA table_info(verification)').all().some((c) => c.name === 'verifier_name')) {
+  db.pragma('foreign_keys = OFF');
+  db.exec(`CREATE TABLE verification_new (
+    id INTEGER PRIMARY KEY,
+    verifier_id INTEGER REFERENCES verifier(id) ON DELETE SET NULL,
+    verifier_name TEXT NOT NULL DEFAULT '',
+    lot_id INTEGER REFERENCES lot(id) ON DELETE SET NULL,
+    lot_name TEXT,
+    status TEXT NOT NULL CHECK (status IN ('queued','running','done','error')),
+    verdict TEXT CHECK (verdict IN ('verified_pass','verified_fail','broken_base','verify_error')),
+    targets_json TEXT NOT NULL,
+    context_json TEXT,
+    base_run_json TEXT,
+    head_run_json TEXT,
+    imputable_json TEXT,
+    log_excerpt TEXT,
+    started_at TEXT, finished_at TEXT, created_at TEXT NOT NULL,
+    restore_error TEXT
+  );
+  INSERT INTO verification_new
+    SELECT id, verifier_id,
+      COALESCE((SELECT name FROM verifier WHERE verifier.id = verification.verifier_id), ''),
+      lot_id, (SELECT name FROM lot WHERE lot.id = verification.lot_id),
+      status, verdict, targets_json, context_json, base_run_json, head_run_json,
+      imputable_json, log_excerpt, started_at, finished_at, created_at, restore_error
+    FROM verification;
+  DROP TABLE verification;
+  ALTER TABLE verification_new RENAME TO verification;
+  CREATE INDEX IF NOT EXISTS idx_verification_lot ON verification(lot_id, id);`);
+  db.pragma('foreign_keys = ON');
+}
+
+/* Cache des runs par jeu de SHAs : le run BASE ne bouge pas pendant qu'on itère sur la
+   branche, le refaire coûterait plusieurs minutes à chaque passe pour un résultat connu. */
+db.exec(`CREATE TABLE IF NOT EXISTS verification_run_cache (
+  repo_set_hash TEXT PRIMARY KEY,
+  run_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)`);
+
 db.exec(`CREATE TABLE IF NOT EXISTS convergence_run (
   id INTEGER PRIMARY KEY,
   mr_id INTEGER NOT NULL REFERENCES mr(id) ON DELETE CASCADE,

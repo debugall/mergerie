@@ -9,6 +9,8 @@ const notify = require('./notify');
 const converge = require('./converge');
 const localcoder = require('./localcoder');
 const docker = require('./docker');
+const verifyrun = require('./verifyrun');
+const { getConfig } = require('./config');
 const { t } = require('../public/i18n-runtime.js');
 
 /* File d'attente SÉQUENTIELLE : un job à la fois, les suivants attendent. L'état est
@@ -100,6 +102,12 @@ function jobKeys(entry) {
   const targetsOf = (taskId) => db.prepare('SELECT repo_id FROM task_target WHERE task_id = ?').all(taskId);
   switch (entry.kind) {
     case 'docker': return keys;                       // aucun dépôt : jamais en conflit
+    case 'verify': {
+      // Le run crée des worktrees dans le clone : aucun autre job ne doit y toucher pendant.
+      const ver = db.prepare('SELECT targets_json FROM verification WHERE id = ?').get(entry.verificationId);
+      for (const c of JSON.parse((ver && ver.targets_json) || '[]')) repo(c.repo_id);
+      return keys;
+    }
     case 'gitops':
       for (const t2 of (entry.payload && entry.payload.targets) || []) repo(t2.repo_id);
       if (entry.payload && entry.payload.restoreOpId) keys.add('*'); // cible relue en base au moment du run
@@ -415,6 +423,7 @@ function runEntry(e) {
   if (e.kind === 'converge-session') return runConvergeSessionJob(e.jobId, e.taskId, e.opts);
   if (e.kind === 'local') return runLocalJob(e.jobId, e.taskId, e.opts);
   if (e.kind === 'reconcile') return runReconcileJob(e.jobId, e.taskId);
+  if (e.kind === 'verify') return runVerifyJob(e.jobId, e.verificationId);
   return processList(e.jobId, e.rows, e.kind, e.opts);
 }
 
@@ -614,6 +623,84 @@ async function runReconcileJob(jobId, taskId) {
   }
 }
 
+/* ---------- Vérification objective (plan_add_verify.md §5, §10) ----------
+ *
+ * Ce qu'on refuse dépend de ce qui tourne, et la distinction est celle de la RÉALITÉ des runs :
+ *
+ *   — Une vérification MULTI-DÉPÔTS est un run d'intégration : elle monte un environnement
+ *     complet, souvent des containers sur des ports et des bases fixes. Deux en parallèle se
+ *     marcheraient dessus et rendraient des rouges qui n'apprennent rien. Une telle
+ *     vérification bloque donc tout le monde, et se fait bloquer par tout le monde.
+ *   — Une vérification MONO-DÉPÔT est contenue dans son répertoire. Il suffit alors de
+ *     vérifier qu'il ne s'agit pas du même dépôt : deux suites de tests sur des projets sans
+ *     rapport n'ont aucune raison de s'attendre.
+ *
+ * Refuser globalement renverrait l'utilisateur à son écran alors que tous les autres jobs de
+ * Mergerie attendent simplement leur tour.
+ *
+ * Rend la RAISON du refus (`meme-depot` | `integration`) ou `null`. L'appelant en tire le
+ * message : « c'est déjà lancé » et « attends la fin de l'intégration » ne se corrigent pas
+ * de la même façon.
+ */
+function reposDUnVerify(entry) {
+  return [...jobKeys(entry)].map((k) => (k === '*' ? '*' : Number(String(k).replace('repo:', ''))));
+}
+
+function verifyBloquePar(repoIds) {
+  const vises = (repoIds || []).map(Number);
+  const enCours = [...queue, ...[...active.values()].map((a) => a.entry)]
+    .filter((e) => e && e.kind === 'verify');
+  if (!enCours.length) return null;
+
+  for (const e of enCours) {
+    const siens = reposDUnVerify(e);
+    // Périmètre inconnu : on ne prend pas le risque de le croire inoffensif.
+    if (siens.includes('*')) return 'integration';
+    if (siens.length > 1 || vises.length > 1) return 'integration';
+    if (siens.some((r) => vises.includes(r))) return 'meme-depot';
+  }
+  return null;
+}
+
+async function runVerifyJob(jobId, verificationId) {
+  /* Comme tout job qui démarre : sans ce passage en `running`, la ligne reste « en file »
+     pendant toute l'exécution — le panneau de log, le compteur de la file et l'état du
+     favicon annoncent alors une attente là où une suite de tests est en train de tourner. */
+  setJob(jobId, { status: 'running', total: 1, done_count: 0, started_at: new Date().toISOString(), message: t('job.msg.starting') });
+  logLine(jobId, null, `=== Vérification #${verificationId} ===`);
+  const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
+  try {
+    const verdict = await verifyrun.executerVerification(verificationId, getConfig(), onLog);
+    /* Commentaire sur la forge : opt-in par vérificateur (§5.6). Il ne peut pas remettre le
+       verdict en cause — une forge injoignable ne transforme pas un résultat acquis en échec,
+       d'où le `catch` qui se contente de le dire dans le journal. Mais il a lieu AVANT que le
+       job ne se déclare fini : « terminé » doit vouloir dire que tout est fait. */
+    try { await verifyrun.commenterSurForge(verificationId, getConfig(), onLog); }
+    catch (e) { logLine(jobId, null, `commentaire sur la forge impossible : ${e.message}`); }
+    // Un verdict rouge n'est PAS une erreur de job : le job a parfaitement fait son travail.
+    setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
+    logLine(jobId, null, `=== Vérification terminée : ${verdict} ===`);
+    notify.push('verify_done', { verification_id: verificationId, verdict });
+  } catch (e) {
+    logLine(jobId, null, `❌ Vérification ERREUR : ${e.message}`);
+    setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
+    db.prepare("UPDATE verification SET status = 'error', verdict = 'verify_error', finished_at = ? WHERE id = ?")
+      .run(new Date().toISOString(), verificationId);
+    notify.push('verify_done', { verification_id: verificationId, verdict: 'verify_error' });
+  }
+}
+
+function startVerifyJob(verificationId) {
+  const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
+    VALUES ('verify', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
+  const jobId = info.lastInsertRowid;
+  // De quoi ce job s'occupe : sans ça, le journal d'activité affiche une ligne anonyme.
+  setJobTarget(jobId, 'verification', verificationId);
+  queue.push({ jobId, kind: 'verify', verificationId });
+  setImmediate(pump);
+  return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
+}
+
 function startReconcileJob(taskId) {
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES ('reconcile', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
@@ -721,6 +808,7 @@ function isRunning() {
 }
 
 module.exports = {
+  startVerifyJob, verifyBloquePar,
   startJob, startTaskJob, startGitJob, startDockerJob, startConvergeJob, startConvergeSessionJob,
   startLocalJob, startReconcileJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
   queueCount, parallelBusy, runningCount, MAX_RUNNING, jobKeys, keysClash, retryJob, canRetry,

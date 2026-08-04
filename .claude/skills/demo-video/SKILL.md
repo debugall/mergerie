@@ -129,6 +129,14 @@ Puis contrôler qu'espeak ne bascule pas en anglais sur les mots nouveaux.
 **Sélecteurs : préférer le structurel au texte.** `sous('git', 3)` (4ᵉ sous-onglet) survit à une
 traduction, `hasText: 'Analyser'` non. Les ids (`#dcState`, `#notifThreshold`) sont les plus sûrs.
 
+## Listes déroulantes natives
+
+Une liste déroulante `<select>` est dessinée par le **système**, hors de la page. Playwright
+n'enregistre que la page : ouverte, elle est **invisible dans le film**, et le clic semble
+sans effet. `montreOptions(selecteur)` lui pose un `size` le temps de la montrer — ses vraies
+options s'affichent alors *en page* — et `fermeOptions` la remet comme avant. Rien n'est
+inventé : ce sont les options du vrai contrôle.
+
 ## Voix
 
 Modèles Piper, **hors dépôt** (~60 Mo pièce), à poser dans `travail/voix/` :
@@ -139,6 +147,27 @@ Modèles Piper, **hors dépôt** (~60 Mo pièce), à poser dans `travail/voix/` 
 Ils viennent de [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices). La voix
 française a été choisie par l'utilisateur après écoute comparative de sept candidates — ne pas
 en changer sans lui redemander. `pip install piper-tts` fournit le moteur.
+
+`synthese.py` cherche tout seul l'interpréteur qui sait importer `piper` (souvent un
+environnement virtuel, rarement celui qui lance le script). Pour le désigner :
+`PIPER_PYTHON=/chemin/vers/python python3 synthese.py`.
+
+## Ce qui casse le parcours quand l'application bouge
+
+Trois pièges, tous rencontrés — le contrôle rapide (étape 2) n'en attrape qu'un :
+
+- **Un sous-onglet inséré décale `sous(tab, n)`.** L'ancien index continue de fonctionner, il
+  désigne simplement le mauvais panneau. Aucune erreur, un contresens à l'image.
+- **Un libellé qui dépend de l'état.** `hasText: 'Replier les projets'` a cessé de répondre le
+  jour où la liste s'est affichée repliée par défaut. Préférer une classe (`.targets-toggle`).
+- **Un sélecteur trop large attrape un élément caché.** `#tab-admin select` a fini par viser le
+  « Genre » d'un vérificateur, dans un panneau masqué placé plus tôt dans le DOM. Viser le
+  sous-onglet par son id (`#sub-config select`).
+
+Et un piège de l'application elle-même : **une modale qui rend une promesse** (choix du
+vérificateur) laisse le bouton appelant en chargement si on la ferme par Échap sans passer par
+son bouton d'annulation. Ça se voit dans le film — un compte à rebours figé pendant dix
+minutes — et c'est un vrai bug côté application, pas un défaut du parcours.
 
 ## Limites connues du mode démo
 

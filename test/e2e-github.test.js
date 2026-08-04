@@ -345,6 +345,44 @@ describe('GitHub de bout en bout', () => {
     assert.equal(c.author, 'Testeur');
   });
 
+  /* Le tableau de bord classe les dépôts par activité RÉCENTE. S'il ne regardait que la
+     branche par défaut, un dépôt où tout le travail vit sur des branches de feature
+     paraîtrait endormi depuis des mois. GitHub n'a pas d'équivalent au `all=true` de GitLab :
+     ce sont les ÉVÉNEMENTS du dépôt qui portent les pushes de toutes les branches. */
+  test('le dernier commit vient de N’IMPORTE quelle branche, pas seulement la branche par défaut', async () => {
+    app.ghState.commits[PROJECT] = [{
+      sha: 'aaaaaaaabbbbbbbbccccccccdddddddd11111111',
+      commit: { message: 'chore: vieux commit sur main', author: { name: 'Ancien', date: '2020-01-01T00:00:00Z' },
+        committer: { date: '2020-01-01T00:00:00Z' } },
+      html_url: 'https://github.com/acme/webapp/commit/aaaaaaaa',
+    }];
+    // Un push tout frais, sur une branche de feature : c'est LUI qu'on doit voir.
+    const shaChaud = 'ffffffff00000000111111112222222233333333';
+    app.ghState.events[PROJECT] = [
+      { type: 'WatchEvent', created_at: '2026-01-01T00:00:00Z' },
+      { type: 'PushEvent', created_at: '2026-08-01T10:00:00Z',
+        payload: { ref: 'refs/heads/feat/panier', head: shaChaud, commits: [{ sha: shaChaud }] } },
+    ];
+    app.ghState.commits[PROJECT].push({
+      sha: shaChaud,
+      commit: { message: 'feat: panier — remise\n\ndétail', author: { name: 'Récent' },
+        committer: { date: '2026-08-01T09:59:00Z' } },
+      html_url: 'https://github.com/acme/webapp/commit/ffffffff',
+    });
+
+    const { body } = await app.api('GET', '/api/dashboard/commits');
+    const c = body.commits.find((x) => x.project === PROJECT);
+    assert.equal(c.title, 'feat: panier — remise', 'le commit de la branche de feature, pas celui de main');
+    assert.equal(c.author, 'Récent');
+    assert.equal(c.date, '2026-08-01T09:59:00Z');
+
+    // Sans événement exploitable, on retombe sur la branche par défaut plutôt que sur rien.
+    app.ghState.events[PROJECT] = [{ type: 'WatchEvent', created_at: '2026-01-01T00:00:00Z' }];
+    const repli = (await app.api('GET', '/api/dashboard/commits')).body.commits.find((x) => x.project === PROJECT);
+    assert.equal(repli.title, 'chore: vieux commit sur main');
+    app.ghState.events[PROJECT] = [];
+  });
+
   /* ---------- Session de dev → PR ---------- */
 
   test('session de codage sur un dépôt GitHub : commit, push, PR créée', async () => {

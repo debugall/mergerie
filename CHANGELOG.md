@@ -13,6 +13,84 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **“AI's answer” on an out-of-repo session, not just on each folder.** Looking at the card, the question
+  is “what did the AI do?”, not “what did it do in that one folder” — and since the folder list now starts
+  folded, the per-folder buttons were a click away. When a session covers several folders the full-screen
+  view gains a folder selector, so you move from one answer to the next without closing it.
+- **Sessions with several projects now fold away.** Exploration and out-of-repo coding gained the collapse
+  that coding already had, and all three start **folded**: past a few repositories a single session filled
+  the screen and hid the others, which are exactly what you came to look at. The state is remembered per
+  session, so it survives the automatic refresh that redraws the list every second and a half.
+
+- **Objective verification of a merge request.** A review says what it *thinks* of the code; a **verifier**
+  says what happens when you *run* it. A verifier is your own script: Mergerie hands it repositories already
+  positioned on the right commits and reads its verdict — `✓ verified`, `✗ N tests broken`, `⚠ base already
+  red`, `⟳ out of date`. It runs **without a shell**, with an environment that carries **no token**, and its
+  answer is validated against a fixed contract: an unreadable output never becomes a green.
+  Mergerie runs the same suite on the **base** first, so a test broken by somebody else is never blamed on
+  your branch — that distinction is the whole point of the verdict.
+- **A verifier can be just a list of commands.** Writing an executable that speaks a JSON contract is a lot
+  to ask when all you want is “run `npm ci` then `npm test` in this repository”. So a verifier can now be a
+  plain ordered list of commands: the verdict comes from the **exit codes**, the first failing command stops
+  the rest, and the report shows what each one did. Commands run **without a shell** — `&&`, pipes,
+  redirections and `$VAR` are refused at save time, with the reason, rather than becoming baffling arguments
+  ten minutes into a run. One repository per verifier of this kind, because a list of commands runs in one
+  directory, not several.
+- **One command list, several repositories.** Projects that test themselves the same way no longer need one
+  identical verifier each: a “commands” verifier can cover as many repositories as you like, and the list is
+  **replayed in each one**, with the verdict being the AND. The order of the commands carries meaning, so
+  each line shows its rank and can be moved up or down without retyping anything. Inside a repository the first failing command
+  stops the rest, since they depend on it; from one repository to the next it carries on, because they do
+  not — knowing that two are broken beats stopping at the first. Failures are prefixed with the repository,
+  without which two projects owning a test of the same name would be indistinguishable.
+- **Broken test names are recovered without guessing.** A verdict is far more useful when it says *which*
+  test broke — that name is what makes the base/head comparison causal. Mergerie looks for it in a
+  **JUnit report** if you declare one (pytest, jest, PHPUnit, Surefire, go-junit-report all write it), then
+  in the **TAP** many runners emit as soon as their output is not a terminal — recognised with nothing to
+  declare, sub-tests not double-counted, `# TODO` and `# SKIP` honoured, and the plan line used to notice a
+  truncated output instead of presenting a partial list as complete. When neither is there, the **command
+  itself** is what is reported: no invented test count, and a command already red on the base still yields
+  “base already red”. The report then also isolates **what is new compared to the base** — the lines that
+  appear on the branch and not before, which usually points straight at the regression even behind an
+  opaque `make test`.
+- **Two verifications can run at once when nothing ties them together.** Refusing every second
+  verification outright sent you back to your screen while every other job in Mergerie simply waits its
+  turn. What is refused now follows what the runs actually do: a **multi-repository** verification is an
+  integration run — it brings up a whole environment, so it blocks everything and is blocked by everything
+  — whereas a **single-repository** one is contained in its directory and only has to avoid the *same*
+  repository. The refusal says which of the two reasons applies, since they are not fixed the same way.
+- **Pick the working directory instead of typing it.** In “in place” mode, a selector now lists the git
+  projects of every local directory you have declared — with type-ahead search, since one root commonly
+  holds dozens — and fills in the absolute path. Typing a path by hand still works for a directory outside
+  any declared root, but a typo there is only discovered on the first run, and costs that run.
+- **A confirmation before running anything.** Clicking “Verify” now opens a dialog that says what is about
+  to happen — which commands or which script, which repository, which mode, which time limit — and lets you
+  pick between the verifiers that cover it. It appears even when only one does: running commands on your
+  machine deserves a screen, not a silent click.
+- **Verify a merge request that has already been reviewed.** The button now sits on reviewed merge requests
+  too, in the list and in the report panel. A review is an opinion, a verdict is a fact; the second keeps
+  all its value once the first is in.
+- **The contract is written on the screen where you configure it.** Settings → Verifiers unfolds the full
+  format: which file is expected (any executable — the extension is irrelevant, but the executable bit and
+  a shebang are not, and the Command field takes a path, never a command line with arguments), the JSON
+  Mergerie sends on stdin, the JSON it expects back, the limits, and two complete example scripts in shell
+  and in Python. Sending someone to the guide to find the exact field names would mean changing screen at
+  the exact moment they are writing the script.
+- **Verify merge requests together, as a batch.** Some merge requests only hold together as a set: the front
+  one and the API one that pass only when combined. Tick them in Reviews and verify them in one run — the
+  verdict then applies to all of them. Name the selection and it becomes a **batch**, re-verifiable with one
+  button. Two merge requests from the same repository are refused: nobody could say which code was tested.
+- **“Fix (AI session)” on a red verdict.** One coding session covering **every** repository of the batch —
+  not only the one where the test broke, because the cause of an integration failure is often elsewhere. The
+  prompt carries the facts (broken tests, messages, log excerpts, the exact commits tested) and the work
+  happens on the merge requests' existing branches, so pushing updates them in place.
+- **Two ways to run a verifier, repository by repository.** A throwaway **worktree** created and removed by
+  Mergerie, or **in place** in your own working directory when the test environment cannot be recreated
+  (local database, warm containers, installed dependencies). In place asks for explicit consent, checks the
+  directory really is that repository, and **refuses outright if it has uncommitted changes** — never an
+  automatic stash. Your directory is put back on its original ref in every case, including on timeout; if
+  that fails, the report says so in a banner instead of burying it in a log.
+
 - **Filter Jira tickets by sprint.** A Sprints chip appears as soon as your tickets carry one. Sprint is
   a custom field whose identifier differs from one Jira to the next, so it is found by its Jira *schema
   marker* rather than its name — a field labelled "Itération" is recognised just the same. The selection
@@ -116,6 +194,38 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   appears when at least one project is in error.
 
 ### Fixed
+
+- **Tell one AI Dev session from the next at a glance.** A session is a tall block — prompt, project list,
+  the agent's questions, an error — and a one-pixel rule between two blocks that size gets lost in the
+  whitespace: you could not see where one ended. The three lists now show real cards with air between them.
+  The error box, which used to be rendered *beside* the card, sat between two sessions without saying which
+  one it belonged to; it now lives inside its own.
+
+- **“Top 5 — recent activity” now looks at every branch.** It only ever read the default branch, so a
+  repository where the work lives on feature branches looked asleep for months while people pushed to it
+  daily. GitLab is asked for commits across all refs; GitHub has no equivalent, so the repository's events
+  — the only place a push outside the default branch shows up — are read instead, falling back to the
+  default branch when they are unavailable or older than the 90 days GitHub keeps them.
+
+- **Stop sending the same instructions twice when a session cannot be resumed.** Falling back to a fresh
+  session re-injects the context the lost session was holding — which is right for a follow-up request, but
+  a first run already carries the whole task. The prompt, review report included, was therefore sent twice
+  in a single call.
+
+- **Escape no longer leaves a button spinning forever.** Some dialogs hand back a promise — the one that
+  asks which verifier to run, for instance. Closing them with Escape hid the dialog without settling that
+  promise, so the button that opened it stayed in its loading state indefinitely.
+
+- **Say when a requested agent session could not be resumed.** An agent session belongs to the directory
+  it was created in, and Mergerie works in its own clone — so an identifier taken from your own checkout,
+  or from a session opened by hand, is never found there. The work already restarted from a fresh session
+  with the context re-injected, but the substitution was only visible in a log line that scrolls away: the
+  card now says it, and the field warns as soon as you paste something.
+
+- **“Merge” and “Create the MR” now show they are working.** Both call the forge, which takes a moment
+  while the dialog stays on screen; with no indicator the button looked inert and invited a second click.
+
+
 
 - **Hiding a status now narrows the search instead of sifting an extract.** Jira caps a search at a
   hundred tickets; unticking a status only removed it from those hundred, so tickets you expected to

@@ -54,6 +54,8 @@ const demoGit = require('./demo-git');
 const docker = require('./docker');
 const demoDocker = require('./demo-docker');
 const demoDiff = require('./demo-diff');
+const verifyLib = require('./verify');
+const verifyrun = require('./verifyrun');
 const demoJira = require('./demo-jira');
 const demoComments = require('./demo-comments');
 const { StringDecoder } = require('node:string_decoder');
@@ -1904,6 +1906,459 @@ app.get('/api/rules', wrap((req, res) => {
   res.json(db.prepare('SELECT * FROM review_rule ORDER BY id').all());
 }));
 
+/* ---------- Vérificateurs (plan_add_verify.md §3) --------------------------
+   Un vérificateur = un script de l'utilisateur + la liste des dépôts qu'il sait tester.
+   Déclarer la couverture ici plutôt que de la deviner évite deux échecs opaques : lancer une
+   vérification sur un dépôt que le script ignore, et écrire dans un répertoire de travail
+   sans que personne l'ait autorisé. */
+
+const verifierRepos = (id) => db.prepare(`SELECT vr.*, r.project
+  FROM verifier_repo vr JOIN repo r ON r.id = vr.repo_id
+  WHERE vr.verifier_id = ? ORDER BY r.project`).all(id);
+const verifierCommandes = (id) => db.prepare('SELECT command FROM verifier_command WHERE verifier_id = ? ORDER BY position')
+  .all(id).map((c) => c.command);
+const verifierAvecRepos = (id) => {
+  const v = db.prepare('SELECT * FROM verifier WHERE id = ?').get(id);
+  return v ? { ...v, repos: verifierRepos(id), commands: verifierCommandes(id) } : null;
+};
+
+/* Valide le corps d'un vérificateur. On refuse tôt et avec un message précis : ces réglages
+   pilotent l'exécution d'un programme et des checkouts chez l'utilisateur. */
+function lireVerifier(body, courant) {
+  const b = body || {};
+  const name = (b.name != null ? String(b.name) : (courant && courant.name) || '').trim();
+  if (!name) throw new Error(t('err.verifier.name-required'));
+
+  /* Deux genres, deux formes de validation. `script` s'engage sur le contrat JSON ;
+     `commands` ne s'engage sur rien et voit son verdict déduit des codes de sortie. */
+  const kind = (b.kind != null ? String(b.kind) : (courant && courant.kind) || 'script') === 'commands'
+    ? 'commands' : 'script';
+
+  let command = (b.command != null ? String(b.command) : (courant && courant.command) || '').trim();
+  let commands = null;
+  if (kind === 'script') {
+    /* Chemin ABSOLU exigé : un chemin relatif dépendrait du répertoire courant du serveur, et
+       ouvrirait la porte à exécuter un script du dépôt cloné plutôt que celui de l'utilisateur. */
+    if (!command || !path.isAbsolute(command)) throw new Error(t('err.verifier.command-absolute'));
+  } else {
+    command = '';
+    const brut = b.commands != null
+      ? (Array.isArray(b.commands) ? b.commands : [])
+      : (courant ? verifierCommandes(courant.id) : []);
+    commands = brut.map((x) => String(x || '').trim()).filter(Boolean);
+    if (!commands.length) throw new Error(t('err.verifier.commands-required'));
+    /* Chaque ligne est validée MAINTENANT, pas au premier run : découvrir un « && » au bout
+       de dix minutes de préparation serait un run perdu et une erreur loin de sa cause. */
+    for (const c of commands) {
+      const d = verifyLib.decouperCommande(c);
+      if (!d.ok) throw new Error(t('err.verifier.command-invalid', { command: c, reason: d.erreur }));
+    }
+  }
+
+  // Variables ajoutées à l'environnement minimal : « CLE=valeur », une par ligne.
+  let env_json = courant ? courant.env_json : null;
+  if (b.env != null) {
+    const env = {};
+    for (const ligne of String(b.env).split('\n')) {
+      const l = ligne.trim();
+      if (!l || l.startsWith('#')) continue;
+      const i = l.indexOf('=');
+      if (i <= 0) throw new Error(t('err.verifier.env-line', { line: l }));
+      env[l.slice(0, i).trim()] = l.slice(i + 1).trim();
+    }
+    env_json = Object.keys(env).length ? JSON.stringify(env) : null;
+  }
+
+  /* Rapport JUnit : chemin RELATIF au dépôt testé — le répertoire change à chaque run
+     (worktree éphémère), un chemin absolu n'aurait donc aucun sens. */
+  let report_path = courant ? courant.report_path : null;
+  if (b.report_path != null) {
+    const rp = String(b.report_path).trim();
+    if (rp && (path.isAbsolute(rp) || rp.split(/[\\/]/).includes('..'))) {
+      throw new Error(t('err.verifier.report-relative'));
+    }
+    report_path = rp || null;
+  }
+
+  const brutTimeout = b.timeout_s != null ? parseInt(b.timeout_s, 10) : (courant ? courant.timeout_s : 900);
+  const timeout_s = Number.isFinite(brutTimeout) ? Math.min(7200, Math.max(10, brutTimeout)) : 900;
+
+  const bool = (v, def) => (v == null ? def : (v ? 1 : 0));
+  const repos = b.repos == null
+    ? null
+    : (Array.isArray(b.repos) ? b.repos : []).map((l) => {
+      const repo_id = Number(l && l.repo_id);
+      if (!repo_id || !repoById(repo_id)) throw new Error(t('err.projet-inconnu'));
+      const mode = l.mode === 'in_place' ? 'in_place' : 'worktree';
+      const workdir = (l.workdir || '').trim();
+      if (mode === 'in_place') {
+        // Le répertoire est celui de l'utilisateur : sans chemin absolu on ne saurait pas où.
+        if (!workdir || !path.isAbsolute(workdir)) throw new Error(t('err.verifier.workdir-absolute'));
+        // Le consentement est explicite parce que la conséquence l'est : on y fera un checkout.
+        if (!l.checkout_allowed) throw new Error(t('err.verifier.checkout-consent'));
+      }
+      return { repo_id, mode, workdir: mode === 'in_place' ? workdir : null,
+        checkout_allowed: mode === 'in_place' ? 1 : 0 };
+    });
+  const vus = new Set();
+  for (const l of (repos || [])) {
+    if (vus.has(l.repo_id)) throw new Error(t('err.verifier.repo-twice'));
+    vus.add(l.repo_id);
+  }
+  return {
+    name, kind, command, commands, timeout_s, env_json, report_path,
+    parse_tap: bool(b.parse_tap, courant ? courant.parse_tap : 1),
+    run_base: bool(b.run_base, courant ? courant.run_base : 1),
+    comment_on_forge: bool(b.comment_on_forge, courant ? courant.comment_on_forge : 0),
+    repos,
+  };
+}
+
+function ecrireCommandes(verifierId, commands) {
+  if (commands == null) return;   // absent du corps = liste inchangée
+  db.prepare('DELETE FROM verifier_command WHERE verifier_id = ?').run(verifierId);
+  const ins = db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)');
+  commands.forEach((c, i) => ins.run(verifierId, i, c));
+}
+
+function ecrireRepos(verifierId, repos) {
+  if (repos == null) return;   // absent du corps = couverture inchangée
+  db.prepare('DELETE FROM verifier_repo WHERE verifier_id = ?').run(verifierId);
+  const ins = db.prepare(`INSERT INTO verifier_repo (verifier_id, repo_id, mode, workdir, checkout_allowed)
+    VALUES (?, ?, ?, ?, ?)`);
+  for (const l of repos) ins.run(verifierId, l.repo_id, l.mode, l.workdir, l.checkout_allowed);
+}
+
+app.get('/api/verifiers', wrap((req, res) => {
+  res.json(db.prepare('SELECT * FROM verifier ORDER BY name').all()
+    .map((v) => ({ ...v, repos: verifierRepos(v.id), commands: verifierCommandes(v.id) })));
+}));
+
+app.post('/api/verifiers', wrap((req, res) => {
+  const v = lireVerifier(req.body, null);
+  if (db.prepare('SELECT 1 FROM verifier WHERE name = ?').get(v.name)) {
+    throw new Error(t('err.verifier.name-taken', { name: v.name }));
+  }
+  const info = db.prepare(`INSERT INTO verifier
+    (name, kind, command, timeout_s, run_base, comment_on_forge, env_json, report_path, parse_tap, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(v.name, v.kind, v.command, v.timeout_s, v.run_base,
+    v.comment_on_forge, v.env_json, v.report_path, v.parse_tap, new Date().toISOString());
+  ecrireRepos(info.lastInsertRowid, v.repos || []);
+  ecrireCommandes(info.lastInsertRowid, v.commands || []);
+  res.json(verifierAvecRepos(info.lastInsertRowid));
+}));
+
+app.put('/api/verifiers/:id', wrap((req, res) => {
+  const cur = db.prepare('SELECT * FROM verifier WHERE id = ?').get(Number(req.params.id));
+  if (!cur) throw new Error(t('err.verifier.not-found'));
+  const v = lireVerifier(req.body, cur);
+  const homonyme = db.prepare('SELECT 1 FROM verifier WHERE name = ? AND id <> ?').get(v.name, cur.id);
+  if (homonyme) throw new Error(t('err.verifier.name-taken', { name: v.name }));
+  db.prepare(`UPDATE verifier SET name = ?, kind = ?, command = ?, timeout_s = ?, run_base = ?,
+    comment_on_forge = ?, env_json = ?, report_path = ?, parse_tap = ? WHERE id = ?`)
+    .run(v.name, v.kind, v.command, v.timeout_s, v.run_base, v.comment_on_forge,
+      v.env_json, v.report_path, v.parse_tap, cur.id);
+  ecrireRepos(cur.id, v.repos);
+  ecrireCommandes(cur.id, v.commands);
+  res.json(verifierAvecRepos(cur.id));
+}));
+
+app.delete('/api/verifiers/:id', wrap((req, res) => {
+  db.prepare('DELETE FROM verifier WHERE id = ?').run(Number(req.params.id));
+  res.json({ ok: true });
+}));
+
+/* Quel vérificateur peut traiter CE jeu de dépôts. Sert au bouton « Vérifier » : sans
+   réponse, il est grisé avec l'explication, plutôt que de lancer un run voué à l'échec. */
+/* « Tester le répertoire » (§3) : on répond AVANT d'enregistrer, pendant que l'utilisateur
+   a encore le formulaire sous les yeux. Un mauvais chemin découvert au premier run, c'est un
+   run perdu et une erreur loin de sa cause. */
+app.post('/api/verifiers/test-workdir', wrap(async (req, res) => {
+  const repo = repoById(Number(req.body && req.body.repo_id));
+  if (!repo) throw new Error(t('err.projet-inconnu'));
+  const workdir = String((req.body && req.body.workdir) || '').trim();
+  if (!workdir || !path.isAbsolute(workdir)) throw new Error(t('err.verifier.workdir-absolute'));
+  res.json(await verifyrun.inspecterWorkdir(repo, workdir));
+}));
+
+app.get('/api/verifiers/for', wrap((req, res) => {
+  const ids = [...new Set(String(req.query.repos || '').split(',')
+    .map((x) => Number(x.trim())).filter(Boolean))];
+  if (!ids.length) return res.json({ verifiers: [] });
+  const couvrants = db.prepare('SELECT * FROM verifier ORDER BY name').all().filter((v) => {
+    const couverts = new Set(verifierRepos(v.id).map((r) => r.repo_id));
+    return ids.every((id) => couverts.has(id));
+  });
+  res.json({ verifiers: couvrants.map((v) => ({ ...v, repos: verifierRepos(v.id), commands: verifierCommandes(v.id) })) });
+}));
+
+/* ---------- Lancer / consulter une vérification (§5, §8) ------------------ */
+
+/* Cibles d'une vérification à partir de MR. On refuse tôt tout ce qui rendrait le verdict
+   ininterprétable : deux MR du même dépôt (quel code testerait-on ?), une MR sans SHA. */
+function ciblesDepuisMrs(mrIds) {
+  const cibles = [];
+  const vus = new Set();
+  for (const id of mrIds) {
+    const mr = mrById(Number(id));
+    if (!mr) throw new Error(t('err.mr-introuvable'));
+    if (vus.has(mr.repo_id)) throw new Error(t('err.verify.repo-twice'));
+    vus.add(mr.repo_id);
+    if (!mr.current_sha) throw new Error(t('err.verify.no-sha', { iid: mr.iid }));
+    cibles.push({
+      repo_id: mr.repo_id, mr_id: mr.id, head_sha: mr.current_sha,
+      base_sha: `origin/${mr.target_branch || 'main'}`,
+      branch: mr.source_branch, mode: 'worktree',
+    });
+  }
+  return cibles;
+}
+
+/* Le vérificateur doit couvrir TOUS les dépôts visés. Un run partiel donnerait un vert qui
+   ne dit rien de la moitié du lot — pire qu'une absence de verdict. */
+function verifierPour(cibles, verifierId) {
+  const ids = cibles.map((c) => c.repo_id);
+  const candidats = db.prepare('SELECT * FROM verifier ORDER BY name').all().filter((v) => {
+    const couverts = new Set(db.prepare('SELECT repo_id FROM verifier_repo WHERE verifier_id = ?')
+      .all(v.id).map((r) => r.repo_id));
+    return ids.every((id) => couverts.has(id));
+  });
+  if (!candidats.length) throw new Error(t('err.verify.no-verifier'));
+  if (!verifierId) return candidats[0];
+  const choisi = candidats.find((v) => v.id === Number(verifierId));
+  if (!choisi) throw new Error(t('err.verify.verifier-not-covering'));
+  return choisi;
+}
+
+/* Mode de chaque cible : déclaré par le vérificateur, dépôt par dépôt. Le mode voyage avec la
+   cible pour que le rapport puisse dire « (in place) » longtemps après le run. */
+function appliquerModes(verifier, cibles) {
+  const par = new Map(db.prepare('SELECT * FROM verifier_repo WHERE verifier_id = ?')
+    .all(verifier.id).map((r) => [r.repo_id, r]));
+  return cibles.map((c) => {
+    const l = par.get(c.repo_id);
+    return { ...c, mode: (l && l.mode) || 'worktree', workdir: (l && l.workdir) || null };
+  });
+}
+
+function creerVerification({ verifier, cibles, lotId = null }) {
+  /* §10 : une vérification MULTI-DÉPÔTS monte un environnement complet et ne se partage pas ;
+     une MONO-DÉPÔT n'a qu'à ne pas viser le même dépôt qu'une autre. Le message dit laquelle
+     des deux raisons s'applique — elles ne se corrigent pas de la même façon. */
+  const bloque = jobs.verifyBloquePar(cibles.map((c) => c.repo_id));
+  if (bloque) {
+    throw new Error(t(bloque === 'integration' ? 'err.verify.integration-running' : 'err.verify.already-running'));
+  }
+  const lot = lotId ? db.prepare('SELECT name FROM lot WHERE id = ?').get(lotId) : null;
+  /* On recopie les noms : le rapport doit rester lisible après suppression du vérificateur
+     ou du lot, et sa suppression ne doit jamais être bloquée par un vieux verdict. */
+  const info = db.prepare(`INSERT INTO verification
+    (verifier_id, verifier_name, lot_id, lot_name, status, targets_json, created_at)
+    VALUES (?, ?, ?, ?, 'queued', ?, ?)`).run(verifier.id, verifier.name, lotId,
+    lot ? lot.name : null, JSON.stringify(cibles), new Date().toISOString());
+  const id = info.lastInsertRowid;
+  const job = jobs.startVerifyJob(id);
+  return { verification: db.prepare('SELECT * FROM verification WHERE id = ?').get(id), job };
+}
+
+app.post('/api/mrs/:id/verify', wrap((req, res) => {
+  const cibles = ciblesDepuisMrs([req.params.id]);
+  const verifier = verifierPour(cibles, req.body && req.body.verifier_id);
+  res.json(creerVerification({ verifier, cibles: appliquerModes(verifier, cibles) }));
+}));
+
+app.get('/api/verifications/:id', wrap((req, res) => {
+  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(Number(req.params.id));
+  if (!v) throw new Error(t('err.verify.not-found'));
+  res.json(detailVerification(v));
+}));
+
+/* Dernière vérification par MR : ce qui alimente les badges de la liste. On la calcule ici
+   plutôt qu'en base pour que la PÉREMPTION suive le SHA courant sans écriture. */
+function detailVerification(v) {
+  const brut = JSON.parse(v.targets_json || '[]');
+  const shaParMr = {};
+  /* Le nom du dépôt et le numéro de MR voyagent AVEC le rapport : un identifiant nu ne dit
+     rien à l'écran, et l'affichage n'a pas à disposer d'une liste de dépôts pour lire un
+     verdict rendu il y a trois semaines. */
+  const cibles = brut.map((c) => {
+    const mr = mrById(c.mr_id);
+    if (mr) shaParMr[c.mr_id] = mr.current_sha;
+    const repo = db.prepare('SELECT project FROM repo WHERE id = ?').get(c.repo_id);
+    return { ...c, project: (repo && repo.project) || null, iid: mr ? mr.iid : null };
+  });
+  const lire = (j) => { try { return j ? JSON.parse(j) : null; } catch { return null; } };
+  return {
+    ...v,
+    targets: cibles,
+    base_run: lire(v.base_run_json),
+    head_run: lire(v.head_run_json),
+    imputable: lire(v.imputable_json) || [],
+    context: lire(v.context_json) || [],
+    stale: verifyLib.estPerime(cibles, shaParMr),
+    in_place: cibles.some((c) => c.mode === 'in_place'),
+    // Le nom courant si le vérificateur existe encore (il a pu être renommé), sinon l'archive.
+    verifier_name: (db.prepare('SELECT name FROM verifier WHERE id = ?').get(v.verifier_id) || {}).name
+      || v.verifier_name || '',
+  };
+}
+
+/* Ce qu'un BADGE a besoin de savoir, et rien de plus : le rapport complet se demande au clic.
+   Envoyer les `failed[]` de chaque MR dans la liste chargerait des kilo-octets de logs pour
+   afficher « ✗ 2 tests cassés ». */
+function resumeVerification(d) {
+  return {
+    id: d.id, verdict: d.verdict, status: d.status, stale: d.stale, in_place: d.in_place,
+    failed_count: (d.imputable || []).length, verifier_name: d.verifier_name,
+    /* De QUOI vient le détail, et le nom du premier échec. Sans nom de test — cas d'un
+       vérificateur « commandes » dont la sortie ne dit rien — le badge nomme la commande au
+       lieu d'annoncer un nombre de tests qu'on ne connaît pas. */
+    detail_source: (d.head_run && d.head_run.detail_source) || null,
+    failed_label: ((d.imputable || [])[0] || {}).test || null,
+    lot_id: d.lot_id, lot_name: d.lot_name, finished_at: d.finished_at,
+  };
+}
+
+/* Dernier verdict par MR. Une vérification porte sur PLUSIEURS merge requests quand c'est un
+   lot : le lien vit dans `targets_json`, pas dans une colonne — d'où le parcours. La borne à
+   300 suffit largement pour couvrir les MR ouvertes, et évite de relire tout l'historique. */
+function dernieresVerificationsParMr() {
+  const par = new Map();
+  const lignes = db.prepare(`SELECT * FROM verification WHERE status IN ('done','error')
+    ORDER BY id DESC LIMIT 300`).all();
+  for (const v of lignes) {
+    let cibles = [];
+    try { cibles = JSON.parse(v.targets_json || '[]'); } catch { /* ligne illisible : ignorée */ }
+    for (const c of cibles) if (c.mr_id && !par.has(c.mr_id)) par.set(c.mr_id, v);
+  }
+  return par;
+}
+
+app.get('/api/verifications', wrap((req, res) => {
+  const mrId = Number(req.query.mr_id) || null;
+  const lignes = db.prepare('SELECT * FROM verification ORDER BY id DESC LIMIT 200').all()
+    .map(detailVerification)
+    .filter((v) => !mrId || v.targets.some((c) => c.mr_id === mrId));
+  res.json({ verifications: mrId ? lignes.slice(0, 1) : lignes });
+}));
+
+/* ---------- Lots (§8) ------------------------------------------------------
+   Un lot = des merge requests qui ne valent qu'ensemble. Le regrouper explicitement plutôt
+   que de le redécouvrir à chaque fois donne un objet nommé, vérifiable d'un bouton. */
+
+function lotAvecMembres(id) {
+  const l = db.prepare('SELECT * FROM lot WHERE id = ?').get(id);
+  if (!l) return null;
+  const membres = db.prepare('SELECT * FROM lot_member WHERE lot_id = ? ORDER BY ref_id').all(id)
+    .map((m) => {
+      if (m.kind !== 'mr') return { ...m };
+      const mr = mrById(m.ref_id);
+      return { ...m, iid: mr && mr.iid, title: mr && mr.title, project: mr && mr.project, repo_id: mr && mr.repo_id };
+    });
+  const derniere = db.prepare('SELECT * FROM verification WHERE lot_id = ? ORDER BY id DESC LIMIT 1').get(id);
+  return { ...l, members: membres, last_verification: derniere ? detailVerification(derniere) : null };
+}
+
+/* Un même dépôt deux fois dans un lot rendrait le verdict ininterprétable : on ne saurait pas
+   quel code a été testé. Refusé à la création ET revalidé au lancement (§8). */
+function refuserDepotEnDouble(mrIds) {
+  const vus = new Set();
+  for (const id of mrIds) {
+    const mr = mrById(Number(id));
+    if (!mr) throw new Error(t('err.mr-introuvable'));
+    if (vus.has(mr.repo_id)) throw new Error(t('err.verify.repo-twice'));
+    vus.add(mr.repo_id);
+  }
+}
+
+app.get('/api/lots', wrap((req, res) => {
+  res.json(db.prepare('SELECT id FROM lot ORDER BY id DESC').all().map((l) => lotAvecMembres(l.id)));
+}));
+
+app.post('/api/lots', wrap((req, res) => {
+  const name = String((req.body && req.body.name) || '').trim();
+  if (!name) throw new Error(t('err.lot.name-required'));
+  const kind = (req.body && req.body.kind) === 'session' ? 'session' : 'mr';
+  const refs = [...new Set(((req.body && req.body.members) || []).map(Number).filter(Boolean))];
+  if (!refs.length) throw new Error(t('err.lot.empty'));
+  if (kind === 'mr') refuserDepotEnDouble(refs);
+  const info = db.prepare('INSERT INTO lot (name, kind, created_at) VALUES (?,?,?)')
+    .run(name, kind, new Date().toISOString());
+  const ins = db.prepare('INSERT OR IGNORE INTO lot_member (lot_id, kind, ref_id) VALUES (?,?,?)');
+  for (const r of refs) ins.run(info.lastInsertRowid, kind === 'mr' ? 'mr' : 'task', r);
+  res.json(lotAvecMembres(info.lastInsertRowid));
+}));
+
+app.delete('/api/lots/:id', wrap((req, res) => {
+  db.prepare('DELETE FROM lot WHERE id = ?').run(Number(req.params.id));
+  res.json({ ok: true });
+}));
+
+// Vérifier plusieurs MR d'un coup, sans passer par un lot enregistré.
+app.post('/api/verify/mrs', wrap((req, res) => {
+  const ids = ((req.body && req.body.mr_ids) || []).map(Number).filter(Boolean);
+  if (!ids.length) throw new Error(t('err.lot.empty'));
+  const cibles = ciblesDepuisMrs(ids);
+  const verifier = verifierPour(cibles, req.body && req.body.verifier_id);
+  res.json(creerVerification({ verifier, cibles: appliquerModes(verifier, cibles) }));
+}));
+
+app.post('/api/lots/:id/verify', wrap((req, res) => {
+  const lot = lotAvecMembres(Number(req.params.id));
+  if (!lot) throw new Error(t('err.lot.not-found'));
+  const ids = lot.members.filter((m) => m.kind === 'mr').map((m) => m.ref_id);
+  if (!ids.length) throw new Error(t('err.lot.empty'));
+  const cibles = ciblesDepuisMrs(ids);
+  const verifier = verifierPour(cibles, req.body && req.body.verifier_id);
+  res.json(creerVerification({ verifier, cibles: appliquerModes(verifier, cibles), lotId: lot.id }));
+}));
+
+/* ---------- « Corriger (session IA) » (§9) ---------------------------------
+   UNE session multi-dépôts couvrant TOUS les dépôts du lot — pas seulement les « fautifs ».
+   L'imputabilité d'un échec d'intégration est indécidable a priori : le test qui casse est
+   souvent dans un dépôt, la cause dans un autre. L'agent voit tout le lot et décide. */
+app.post('/api/verifications/:id/fix', wrap((req, res) => {
+  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(Number(req.params.id));
+  if (!v) throw new Error(t('err.verify.not-found'));
+  const d = detailVerification(v);
+  if (d.verdict !== 'verified_fail') throw new Error(t('err.verify.fix-only-on-fail'));
+
+  const cibles = d.targets.map((c) => ({ repo_id: c.repo_id, branch: c.branch, base_branch: null }));
+  const list = normalizeTargets(cibles, 'code');
+
+  const lignes = (d.imputable || []).map((f) => {
+    const bouts = [`- ${f.test}`];
+    if (f.message) bouts.push(`  ${f.message}`);
+    if (f.log_excerpt) bouts.push(`  ${String(f.log_excerpt).split('\n').slice(0, 12).join('\n  ')}`);
+    return bouts.join('\n');
+  });
+  const shas = d.targets.map((c) => `- ${c.branch} @ ${String(c.head_sha).slice(0, 8)}`);
+  /* Le prompt porte les FAITS : quels tests, quels messages, quels commits. Sans eux l'agent
+     repart de zéro et redécouvre au prix d'un aller-retour ce que la vérification sait déjà. */
+  const prompt = [
+    `La vérification « ${d.verifier_name} » a échoué${v.lot_id ? ' sur le lot' : ''}.`,
+    '',
+    'Tests cassés par ces branches (et par elles seules — la base passait ou les échouait déjà) :',
+    lignes.length ? lignes.join('\n') : '- (le vérificateur n’a pas détaillé les échecs)',
+    '',
+    'Commits testés :',
+    shas.join('\n'),
+    '',
+    'Corrige la cause dans le ou les dépôts concernés. Ne touche que ce qui est nécessaire.',
+    'Commit et push sur les branches existantes : les merge requests seront mises à jour en place.',
+  ].join('\n');
+
+  const now = new Date().toISOString();
+  const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message,
+    auto_push, ask_questions, status, created_at, updated_at)
+    VALUES (?, 'code', ?, ?, NULL, ?, 1, 0, 'new', ?, ?)`).run(
+    list[0].repo_id, prompt, list[0].branch || '',
+    `fix: ${d.verifier_name} — tests cassés`, now, now);
+  const taskId = info.lastInsertRowid;
+  insertTargets(taskId, list, null);
+  res.json({ ...taskById(taskId), targets: taskTargets(taskId) });
+}));
+
 app.post('/api/rules', wrap((req, res) => {
   const branch_match = (req.body && req.body.branch_match || '').trim();
   const path_match = (req.body && req.body.path_match || '').trim();
@@ -1984,6 +2439,7 @@ app.get('/api/jobs/history', wrap((req, res) => {
   const labelMr = db.prepare('SELECT mr.iid, mr.title, repo.project FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?');
   const labelTask = db.prepare('SELECT prompt, kind FROM task WHERE id = ?');
   const labelLocal = db.prepare('SELECT prompt FROM local_task WHERE id = ?');
+  const labelVerif = db.prepare('SELECT verifier_name, targets_json FROM verification WHERE id = ?');
   const court = (v) => String(v || '').split('\n')[0].slice(0, 70);
 
   const out = rows.map((j) => {
@@ -1998,6 +2454,18 @@ app.get('/api/jobs/history', wrap((req, res) => {
     } else if (j.target_kind === 'local') {
       const l = labelLocal.get(j.target_id);
       if (l) { label = court(l.prompt); href = { kind: 'local', id: j.target_id }; }
+    } else if (j.target_kind === 'verification') {
+      /* Une vérification porte sur une ou plusieurs MR : le libellé les nomme, et le lien
+         mène à la première — c'est la destination utile, et elle existe déjà côté front. */
+      const v = labelVerif.get(j.target_id);
+      if (v) {
+        let cibles = [];
+        try { cibles = JSON.parse(v.targets_json || '[]'); } catch { cibles = []; }
+        const mrs = cibles.map((c) => labelMr.get(c.mr_id)).filter(Boolean);
+        label = court(`${v.verifier_name} — ${mrs.map((m) => `${m.project} !${m.iid}`).join(', ')}`);
+        const premier = cibles.find((c) => c.mr_id);
+        if (premier) href = { kind: 'mr', id: premier.mr_id };
+      }
     }
     return { ...j, label, href };
   });
@@ -2121,10 +2589,17 @@ app.get('/api/mrs', wrap((req, res) => {
       .filter((rule) => glob.matchingPaths(rule.path_match, paths).length > 0)
       .map((rule) => ({ label: rule.label || rule.path_match, path_match: rule.path_match }));
   };
+  const verifs = dernieresVerificationsParMr();
+  /* Un dépôt qu'aucun vérificateur ne couvre : le bouton « Vérifier » sera GRISÉ, avec la raison
+     en info-bulle. Proposer un bouton qui répond « impossible » une fois cliqué fait perdre un
+     geste et n'apprend rien de plus. */
+  const couverts = new Set(db.prepare('SELECT DISTINCT repo_id FROM verifier_repo').all().map((r) => r.repo_id));
   res.json(rows.map((r) => {
     const key = jira.ticketKey(r.title, r.source_branch);
     return {
       ...r,
+      verification: verifs.has(r.id) ? resumeVerification(detailVerification(verifs.get(r.id))) : null,
+      verifiable: couverts.has(r.repo_id),
       has_review: hasReview.has(r.id),
       note: noteByMr[r.id] || null,
       has_ticket: !!(r.ticket_text || r.ticket_image || r.ticket_jira_text),
@@ -2165,6 +2640,12 @@ app.get('/api/mrs/:id', wrap((req, res) => {
        modifiable et effaçable, parce que la jointure (dépôt + branche source) n'est pas une
        preuve : une branche peut avoir été reprise à la main, ou par quelqu'un d'autre. */
     origin_session: originSessionKey(mr),
+    verification: (() => {
+      const v = dernieresVerificationsParMr().get(mr.id);
+      return v ? resumeVerification(detailVerification(v)) : null;
+    })(),
+    // Un vérificateur couvre-t-il ce dépôt ? Le bouton n'apparaît que si oui.
+    verifiable: !!db.prepare('SELECT 1 FROM verifier_repo WHERE repo_id = ?').get(mr.repo_id),
     review: rev ? {
       md: readFileSafe(rev.md_path),
       explanation: readFileSafe(rev.explanation_path),
@@ -2885,6 +3366,7 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`  dry-run : ${copilot.isDryRun()}  |  COPILOT_ARGS=${JSON.stringify(process.env.COPILOT_ARGS || '')}`);
   restartAutoRefresh();
   restartJiraWatch();
+  verifyrun.gcWorktrees((m) => console.log(`[verify] ${m}`));
 });
 
 /* Exporté pour les tests de bout en bout : ils lancent le serveur EN PROCESSUS

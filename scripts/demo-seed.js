@@ -131,7 +131,7 @@ function insertMr(m, extra = {}) {
 }
 
 // MR à traiter
-for (const m of MRS) insertMr(m, { date: at(1 + (MRS.indexOf(m) % 4)) });
+const mrsAtraiter = MRS.map((m) => insertMr(m, { date: at(1 + (MRS.indexOf(m) % 4)) }));
 
 // MR reviewées/traitées + rapports sur disque + versions + constats
 for (const m of REVIEWED) {
@@ -284,7 +284,19 @@ const t2 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, s
 db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, session_key, session_backend, session_cwd, updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
   .run(t2.lastInsertRowid, repoIds['groupe/batch-jobs'], '', '', 'done',
     '3f2a9c14-7b0e-4d55-9c31-8ae61f0c2b47', 'claude', '/home/moi/clones', at(6));
+/* Une exploration MULTI-DÉPÔTS : c'est le cas où la liste de projets se replie, et il
+   n'existait aucun exemple à l'écran. Une question transverse est d'ailleurs l'usage le plus
+   naturel de l'exploration — on cherche rarement dans un seul dépôt. */
+const t2b = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, created_at, updated_at, md_path) VALUES (?,?,?,?,?,?,?,?,?)')
+  .run(repoIds['groupe/api-core'], 'Où est vérifié le jeton d’authentification, et le contrat est-il le même partout ?', '', '', 'done', 'explore', at(3), at(3), path.join(TASKS_DIR, 'demo-explore-multi.md'));
+for (const projet of ['groupe/api-core', 'groupe/webapp-front', 'groupe/batch-jobs']) {
+  db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, session_key, session_backend, session_cwd, updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run(t2b.lastInsertRowid, repoIds[projet], '', '', 'done',
+      '9d41b2ee-3c07-42a8-9f10-5b2c7e8d0a13', 'claude', '/home/moi/clones', at(3));
+}
+
 ensureDir(TASKS_DIR);
+fs.writeFileSync(path.join(TASKS_DIR, 'demo-explore-multi.md'), '# Vérification du jeton — synthèse\n\nTrois implémentations coexistent : un middleware Express dans `api-core`, un intercepteur côté `webapp-front`, et une vérification maison dans `batch-jobs` qui n’applique pas la même tolérance d’horloge…\n', 'utf8');
 fs.writeFileSync(path.join(TASKS_DIR, 'demo-explore.md'), '# Reprise sur erreur — synthèse\n\nLes jobs utilisent un état persistant en base et rejouent les lots échoués au prochain passage…\n', 'utf8');
 
 // Session « l'IA pose une question » (ask → stop → resume) EN ATTENTE : montre le formulaire
@@ -394,6 +406,95 @@ db.prepare(`INSERT OR IGNORE INTO jira_watch (key, summary, status, status_categ
             VALUES (?,?,?,?,?,?)`)
   .run('PROJ-1390', 'Migrer les logs vers le nouveau format JSON', 'À faire', 'new', at(4), at(0.2));
 
+/* ---------- vérification objective (plan_add_verify.md §12) ----------
+   L'histoire qu'on montre est celle qui donne son sens à la fonctionnalité : deux merge
+   requests de dépôts différents qui ne valent qu'ensemble, un premier verdict ROUGE avec les
+   tests nommés, puis un second VERT après correction. Un écran vide n'aurait rien dit. */
+const verifierId = db.prepare(`INSERT INTO verifier (name, command, timeout_s, run_base, comment_on_forge, created_at)
+  VALUES (?,?,?,?,?,?)`).run('integ (démo)', '/usr/local/bin/integ-demo.sh', 900, 1, 0, at(20)).lastInsertRowid;
+for (const projet of ['groupe/api-core', 'groupe/webapp-front']) {
+  db.prepare("INSERT INTO verifier_repo (verifier_id, repo_id, mode, workdir, checkout_allowed) VALUES (?,?,'worktree',NULL,0)")
+    .run(verifierId, repoIds[projet]);
+}
+
+/* Le second genre de vérificateur, celui qui ne demande rien à écrire : une liste de
+   commandes sur UN dépôt. Sa présence rend la modale de confirmation représentative — on y
+   choisit entre les deux familles, ce qui est le geste réel. */
+const cmdId = db.prepare(`INSERT INTO verifier
+  (name, kind, command, timeout_s, run_base, comment_on_forge, parse_tap, created_at)
+  VALUES (?,?,'',?,?,?,1,?)`).run('tests front (démo)', 'commands', 600, 1, 0, at(18)).lastInsertRowid;
+/* Deux dépôts pour ce vérificateur : la même liste est rejouée dans chacun. C'est le cas
+   des projets qui se testent de la même façon, et ça se voit dans la modale. */
+for (const projet of ['groupe/webapp-front', 'groupe/batch-jobs']) {
+  db.prepare("INSERT INTO verifier_repo (verifier_id, repo_id, mode, workdir, checkout_allowed) VALUES (?,?,'worktree',NULL,0)")
+    .run(cmdId, repoIds[projet]);
+}
+['npm ci', 'npm test'].forEach((c, i) => {
+  db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)').run(cmdId, i, c);
+});
+
+const lotId = db.prepare('INSERT INTO lot (name, kind, created_at) VALUES (?,?,?)')
+  .run('Connexion + endpoint santé', 'mr', at(2)).lastInsertRowid;
+const membresLot = [
+  mrsAtraiter.find((m) => m.project === 'groupe/api-core'),
+  mrsAtraiter.find((m) => m.project === 'groupe/webapp-front'),
+];
+for (const m of membresLot) {
+  db.prepare("INSERT INTO lot_member (lot_id, kind, ref_id) VALUES (?, 'mr', ?)").run(lotId, m.id);
+}
+
+const ciblesLot = membresLot.map((m) => ({
+  repo_id: repoIds[m.project], mr_id: m.id, head_sha: m.sha,
+  base_sha: 'b' + require('crypto').randomBytes(19).toString('hex'),
+  branch: m.source_branch, mode: 'worktree',
+}));
+const semerVerification = (quand, verdict, imputable, head) => db.prepare(`INSERT INTO verification
+  (verifier_id, verifier_name, lot_id, lot_name, status, verdict, targets_json, base_run_json,
+   head_run_json, imputable_json, started_at, finished_at, created_at)
+  VALUES (?,?,?,?,'done',?,?,?,?,?,?,?,?)`).run(
+  verifierId, 'integ (démo)', lotId, 'Connexion + endpoint santé', verdict,
+  JSON.stringify(ciblesLot),
+  JSON.stringify({ version: 1, status: 'pass', total: 218 }),
+  JSON.stringify(head), JSON.stringify(imputable), quand, quand, quand);
+
+/* D'abord l'échec, avec des messages qu'on pourrait vraiment lire dans une suite de tests…  */
+semerVerification(at(1.4), 'verified_fail', [
+  { test: 'connexion › jeton expiré', message: 'attendu 401, reçu 500', log_excerpt: 'AuthController.login\n  TypeError: cannot read property "exp" of undefined' },
+  { test: 'santé › readiness quand la base est absente', message: 'attendu « degraded », reçu « ok »' },
+], { version: 1, status: 'fail', total: 218, duration_ms: 96000, failed: [
+  { test: 'connexion › jeton expiré', message: 'attendu 401, reçu 500' },
+  { test: 'santé › readiness quand la base est absente', message: 'attendu « degraded », reçu « ok »' },
+] });
+// …puis le vert qui suit la correction : c'est cette séquence qui rend la fonctionnalité lisible.
+semerVerification(at(0.3), 'verified_pass', [], { version: 1, status: 'pass', total: 218, duration_ms: 91000 });
+
+/* Un verdict ROUGE encore d'actualité, sur une MR hors du lot et avec le vérificateur
+   « commandes » : c'est lui qui montre le déroulé commande par commande et le bouton
+   « Corriger ». Le lot, lui, raconte l'histoire échec → correction → vert, et finit donc au
+   vert : sans cette troisième vérification, aucun écran ne montrerait un rouge courant. */
+const mrRouge = mrsAtraiter.find((m) => m.project === 'groupe/batch-jobs');
+const echecsCmd = [
+  { test: 'export › reprend après une coupure réseau', message: 'attendu 3 tentatives, reçu 1',
+    log_excerpt: 'nightlyExport.js:88\n  AssertionError [ERR_ASSERTION]: 1 !== 3' },
+];
+db.prepare(`INSERT INTO verification
+  (verifier_id, verifier_name, lot_id, lot_name, status, verdict, targets_json, base_run_json,
+   head_run_json, imputable_json, started_at, finished_at, created_at)
+  VALUES (?,?,NULL,NULL,'done','verified_fail',?,?,?,?,?,?,?)`).run(
+  cmdId, 'tests front (démo)',
+  JSON.stringify([{ repo_id: repoIds['groupe/batch-jobs'], mr_id: mrRouge.id, head_sha: mrRouge.sha,
+    base_sha: 'b' + require('crypto').randomBytes(19).toString('hex'),
+    branch: mrRouge.source_branch, mode: 'worktree' }]),
+  JSON.stringify({ version: 1, status: 'pass', total: 96,
+    commands: [{ command: 'npm ci', code: 0, duration_ms: 39000, output_tail: 'ajout de 384 paquets en 39 s' },
+      { command: 'npm test', code: 0, duration_ms: 51000, output_tail: '# pass 96\n# fail 0' }] }),
+  JSON.stringify({ version: 1, status: 'fail', total: 96, duration_ms: 94000,
+    failed: echecsCmd, detail_source: 'tap', detail_partiel: false, incoherence: false,
+    commands: [{ command: 'npm ci', code: 0, duration_ms: 40000, output_tail: 'ajout de 384 paquets en 40 s' },
+      { command: 'npm test', code: 1, duration_ms: 54000,
+        output_tail: 'TAP version 13\nok 1 - export › écrit le fichier\nnot ok 2 - export › reprend après une coupure réseau\n# fail 1' }] }),
+  JSON.stringify(echecsCmd), at(0.15), at(0.15), at(0.15));
+
 const counts = {
   repos: db.prepare('SELECT COUNT(*) c FROM repo').get().c,
   mrs: db.prepare('SELECT COUNT(*) c FROM mr').get().c,
@@ -404,5 +505,6 @@ const counts = {
   convergences: db.prepare('SELECT COUNT(*) c FROM convergence_run').get().c,
   localTasks: db.prepare('SELECT COUNT(*) c FROM local_task').get().c,
   jiraWatch: db.prepare('SELECT COUNT(*) c FROM jira_watch').get().c,
+  verifications: db.prepare('SELECT COUNT(*) c FROM verification').get().c,
 };
 console.log('Base de démo semée dans data-demo/ :', JSON.stringify(counts));
