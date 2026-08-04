@@ -443,6 +443,17 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .ticket-preview-wrap img { max-width: 100%; max-height: 300px; border: 1px solid var(--line); border-radius: 6px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
+/* Clic sur le fond alors qu'une saisie est en cours : la modale se signale au lieu de se
+   fermer. Pas de tremblement horizontal — celui-ci dit « erreur », or rien n'est faux ici :
+   on refuse seulement d'emporter ce qui a été tapé. Une respiration suffit à montrer que le
+   clic a bien été reçu, le message d'à côté dit comment fermer pour de bon. */
+@keyframes modal-refus {
+  0%   { transform: scale(1);     box-shadow: 0 0 0 0 transparent; }
+  35%  { transform: scale(1.014); box-shadow: 0 0 0 2px var(--accent); }
+  100% { transform: scale(1);     box-shadow: 0 0 0 0 transparent; }
+}
+.modal-box.modal-refus { animation: modal-refus .24s ease-out; }
+
 /* Corps commun des modales de confirmation (merge, création de MR) : un champ ou une
    case par ligne, alignés à gauche — plus lisible qu'une rangée quand les libellés
    d'options sont des phrases (et que leur longueur change avec la langue). */

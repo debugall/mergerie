@@ -195,6 +195,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A modal no longer takes your typing with it when you click beside it.** Two different mishaps looked
+  the same. Selecting text in a field and releasing the mouse a few pixels outside it counts, for the
+  browser, as a click on the backdrop — so a dialog you never meant to leave closed, and the prompt you had
+  written was gone; the same went for dragging a textarea's resize handle. A click now only closes a modal
+  if the mouse was *pressed* on the backdrop too. And a genuine click beside a dialog you have started
+  filling in no longer discards it: the dialog gives a short pulse and reminds you that Escape or Cancel
+  closes it. Untouched dialogs still close on a click beside them — opening one and changing your mind
+  stays a quick gesture — and searching or filtering inside one does not count as filling it in.
+
 - **Tell one AI Dev session from the next at a glance.** A session is a tall block — prompt, project list,
   the agent's questions, an error — and a one-pixel rule between two blocks that size gets lost in the
   whitespace: you could not see where one ended. The three lists now show real cards with air between them.

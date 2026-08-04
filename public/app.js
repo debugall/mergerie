@@ -487,6 +487,58 @@ function convergeBoxHtml(run) {
     </div>`;
 }
 
+/* ---------- Fermeture d'une modale au clic sur le fond ----------
+   Deux gestes se ressemblaient et n'ont rien à voir l'un avec l'autre.
+
+   Un `click` naît sur l'ANCÊTRE COMMUN du mousedown et du mouseup. Sélectionner du texte dans
+   un champ et relâcher trois pixels en dehors vise donc le FOND, tout comme tirer la poignée
+   de redimensionnement d'un textarea : la modale se fermait — et emportait la saisie — alors
+   que personne n'avait cliqué à côté. On exige donc que la pression AIT COMMENCÉ sur le fond.
+
+   Reste le vrai clic à côté. Tant que rien n'a été saisi il ferme, et c'est ce qu'on veut :
+   on ouvre une modale, on change d'avis, ça doit rester rapide. Dès qu'il y a une saisie il
+   ne l'emporte plus ; la modale bat une fois et rappelle Échap, plutôt qu'une deuxième modale
+   par-dessus la première. Le drapeau se lève sur `input`/`change`, qui ne partent QUE d'une
+   action humaine : remplir les champs à l'ouverture ne salit donc rien. */
+function fermerAuFond(sel, close, { salissable = true } = {}) {
+  const modal = $(sel);
+  if (!modal) return;
+  let depart = null;
+  modal.addEventListener('pointerdown', (e) => { depart = e.target; });
+  if (salissable) {
+    const marquer = (e) => {
+      /* Un champ de recherche filtre la vue, il ne se saisit pas : le protéger empêcherait
+         de fermer une modale qu'on a seulement parcourue. Le `.cb-search` d'un combo est
+         dans ce cas — le choix, lui, atterrit dans l'input caché, qui émet son `change`
+         et compte donc bien comme une saisie. */
+      const el = e.target;
+      if (el.type === 'search' || el.classList.contains('search') || el.classList.contains('cb-search')) return;
+      modal.dataset.saisi = '1';
+    };
+    modal.addEventListener('input', marquer);
+    modal.addEventListener('change', marquer);
+    // Chaque ouverture repart d'une modale vierge — et chaque fermeture aussi, au cas où
+    // elle serait rouverte sans repasser par sa fonction d'ouverture.
+    new MutationObserver(() => { delete modal.dataset.saisi; })
+      .observe(modal, { attributes: true, attributeFilter: ['hidden'] });
+  }
+  modal.addEventListener('click', (e) => {
+    if (e.target !== modal || depart !== modal) return;
+    depart = null;
+    if (modal.dataset.saisi) { refuserFermeture(modal); return; }
+    close();
+  });
+}
+
+function refuserFermeture(modal) {
+  const boite = modal.querySelector('.modal-box') || modal;
+  boite.classList.remove('modal-refus');
+  void boite.offsetWidth; // relance l'animation quand on clique deux fois de suite
+  boite.classList.add('modal-refus');
+  boite.addEventListener('animationend', () => boite.classList.remove('modal-refus'), { once: true });
+  toast(tr('ui.modal.protegee'));
+}
+
 // Cible de la convergence : soit une MR (rapport), soit une session de dev (du prompt
 // à la MR convergée). La même modale sert les deux ; seul l'endpoint et l'avertissement changent.
 let convergeTarget = null; // { type: 'mr' | 'task', id }
@@ -518,7 +570,7 @@ function closeConfirm(answer) {
 }
 $('#confirmCancel') && $('#confirmCancel').addEventListener('click', () => closeConfirm(false));
 $('#confirmOk') && $('#confirmOk').addEventListener('click', () => closeConfirm(true));
-$('#confirmModal') && $('#confirmModal').addEventListener('click', (e) => { if (e.target.id === 'confirmModal') closeConfirm(false); });
+fermerAuFond('#confirmModal', () => closeConfirm(false), { salissable: false });
 
 /* ---------- Modales de merge et de création de MR ----------
    Elles remplacent les `confirm()`/`prompt()` natifs : ceux-ci ne permettaient aucune
@@ -545,7 +597,7 @@ function openMergeModal(ctx) {
 }
 function closeMergeModal() { $('#mergeModal').hidden = true; mergeCtx = null; }
 $('#mergeCancel') && $('#mergeCancel').addEventListener('click', closeMergeModal);
-$('#mergeModal') && $('#mergeModal').addEventListener('click', (e) => { if (e.target.id === 'mergeModal') closeMergeModal(); });
+fermerAuFond('#mergeModal', closeMergeModal);
 $('#mergeGo') && $('#mergeGo').addEventListener('click', async () => {
   const ctx = mergeCtx; if (!ctx) return;
   const b = $('#mergeGo');
@@ -587,7 +639,7 @@ function openMrModal(ctx) {
 }
 function closeMrModal() { $('#mrModal').hidden = true; mrCtx = null; }
 $('#mrCancel') && $('#mrCancel').addEventListener('click', closeMrModal);
-$('#mrModal') && $('#mrModal').addEventListener('click', (e) => { if (e.target.id === 'mrModal') closeMrModal(); });
+fermerAuFond('#mrModal', closeMrModal);
 $('#mrGo') && $('#mrGo').addEventListener('click', async () => {
   const ctx = mrCtx; if (!ctx) return;
   const title = $('#mrTitle').value.trim();
@@ -628,7 +680,7 @@ async function openConvergeModal(target) {
 }
 function closeConvergeModal() { $('#convergeModal').hidden = true; convergeTarget = null; }
 $('#convCancel') && $('#convCancel').addEventListener('click', closeConvergeModal);
-$('#convergeModal') && $('#convergeModal').addEventListener('click', (e) => { if (e.target.id === 'convergeModal') closeConvergeModal(); });
+fermerAuFond('#convergeModal', closeConvergeModal);
 $('#convStart') && $('#convStart').addEventListener('click', async () => {
   const tgt = convergeTarget; if (!tgt) return;
   const body = { threshold: $('#convThreshold').value, maxPasses: $('#convPasses').value };
@@ -2946,7 +2998,7 @@ if (linkAdd) linkAdd.addEventListener('click', () => {
   renderLinkRows(cur);
 });
 $('#ticketCancel').addEventListener('click', closeTicket);
-$('#ticketModal').addEventListener('click', (e) => { if (e.target.id === 'ticketModal') closeTicket(); });
+fermerAuFond('#ticketModal', closeTicket);
 $('#ticketSave').addEventListener('click', async () => {
   const btn = $('#ticketSave'); btn.disabled = true;
   try {
@@ -3768,7 +3820,7 @@ $('#taskConverge') && $('#taskConverge').addEventListener('click', () => {
   convergeAfterCreate = true; launchAfterCreate = false;
   $('#taskForm').requestSubmit();
 });
-$('#taskModal').addEventListener('click', (e) => { if (e.target.id === 'taskModal') closeTaskModal(); });
+fermerAuFond('#taskModal', closeTaskModal);
 
 $('#taskForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -4774,7 +4826,7 @@ $('#btnBrowseProjects').addEventListener('click', () => openBulk('gitlab'));
 const btnBrowseGithub = $('#btnBrowseGithub');
 if (btnBrowseGithub) btnBrowseGithub.addEventListener('click', () => openBulk('github'));
 $('#bulkCancel').addEventListener('click', closeBulk);
-$('#bulkModal').addEventListener('click', (e) => { if (e.target.id === 'bulkModal') closeBulk(); });
+fermerAuFond('#bulkModal', closeBulk);
 $('#bulkSearch').addEventListener('input', renderBulk);
 $('#bulkList').addEventListener('change', (e) => {
   const cb = e.target.closest('input[data-proj]');
@@ -8181,7 +8233,7 @@ $('#paletteList') && $('#paletteList').addEventListener('click', (e) => {
   const it = e.target.closest('.palette-item');
   if (it) runPaletteItem(Number(it.dataset.i));
 });
-$('#paletteModal') && $('#paletteModal').addEventListener('click', (e) => { if (e.target.id === 'paletteModal') closePalette(); });
+fermerAuFond('#paletteModal', closePalette, { salissable: false });
 
 /* Feuille de raccourcis PERSISTANTE. Un toast de 3,5 s disparaissait pendant qu'on le lisait,
    ce qui est exactement le contraire de ce qu'on attend d'une aide. */
@@ -8204,7 +8256,7 @@ function openShortcuts() {
   m.hidden = false;
 }
 $('#shortcutsClose') && $('#shortcutsClose').addEventListener('click', () => { $('#shortcutsModal').hidden = true; });
-$('#shortcutsModal') && $('#shortcutsModal').addEventListener('click', (e) => { if (e.target.id === 'shortcutsModal') e.currentTarget.hidden = true; });
+fermerAuFond('#shortcutsModal', () => { $('#shortcutsModal').hidden = true; }, { salissable: false });
 
 /* ---------- Thème clair / sombre ----------
    Préférence locale au navigateur : 'auto' (suit le système), 'dark' ou 'light'.

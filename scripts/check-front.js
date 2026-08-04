@@ -170,6 +170,28 @@ dupFns.length
   ? fail('Fonction redéfinie au premier niveau d’app.js', dupFns)
   : ok(`Aucune fonction d'app.js redéfinie (${declaredFns.size} au premier niveau)`);
 
+/* 11. Fermeture d'une modale au clic sur le fond, écrite à la main.
+   `if (e.target.id === 'xModal') close()` a l'air juste et ne l'est pas : un `click` naît
+   sur l'ancêtre commun du mousedown et du mouseup, si bien qu'une sélection de texte
+   relâchée hors du champ fermait la modale et emportait la saisie. `fermerAuFond()` exige
+   que la pression ait commencé sur le fond, et refuse d'emporter une saisie en cours.
+   La règle vaut aussi pour les modales à venir : elles doivent passer par le même chemin. */
+const fondManuel = [];
+lines.forEach((l, i) => {
+  const m = l.match(/e\.target\.id === '(\w*[Mm]odal)'/);
+  if (m) fondManuel.push(`public/app.js:${i + 1}  clic sur le fond de #${m[1]} — passer par fermerAuFond()`);
+});
+// …et chaque modale déclarée doit exister : un id mal orthographié ne lève aucune erreur,
+// la modale ne se ferme simplement plus au clic sur le fond.
+const fondInconnu = [];
+for (const m of app.matchAll(/fermerAuFond\('#(\w+)'/g)) {
+  if (!html.includes(`id="${m[1]}"`)) fondInconnu.push(`public/app.js  fermerAuFond('#${m[1]}') — cet id n'existe pas dans index.html`);
+}
+const fondKo = [...fondManuel, ...fondInconnu];
+fondKo.length
+  ? fail('Fermeture au clic sur le fond', fondKo)
+  : ok(`Toutes les modales se ferment au fond par fermerAuFond() (${[...app.matchAll(/fermerAuFond\('#/g)].length})`);
+
 console.log('');
 if (failures) { console.log(`${failures} contrôle(s) en échec.`); process.exit(1); }
 console.log('Contrôles front : OK');
