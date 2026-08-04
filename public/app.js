@@ -4392,6 +4392,11 @@ function targetLine(t, tg) {
      attente de réponses : relancer par-dessus perdrait la question posée. Le bouton ne s'affiche
      que sur une session à plusieurs projets — sur un seul, il ferait doublon avec « Relancer ». */
   const runTarget = (t.targets || []).length > 1 && !['running', 'needs_input'].includes(tg.status);
+  /* Corriger CE projet. Une remarque porte presque toujours sur un dépôt précis : l'envoyer à
+     toute la session coûtait un appel IA par dépôt et faisait repasser l'agent sur du code
+     qu'on ne voulait plus voir toucher. Comme « Lancer », le bouton n'apparaît qu'à partir de
+     deux projets — sur un seul il ferait doublon avec « Demander une correction ». */
+  const followTarget = (t.targets || []).length > 1 && ['committed', 'pushed'].includes(tg.status);
   const defaultMrTitle = t.commit_message || `${tg.branch}: ${(t.prompt || '').split('\n')[0].slice(0, 72)}`;
   return `<div class="target-line">
     <span class="tag ${st.cls}">${st.label}</span>
@@ -4408,11 +4413,17 @@ function targetLine(t, tg) {
     ${tg.output_path ? `<button class="btn btn-sm" data-tgout="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}
     ${showDiff ? `<button class="btn btn-sm" data-tgdiff="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-diff'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>` : ''}
     ${runTarget ? `<button class="btn btn-sm" data-tgrun="${tg.id}" data-task="${t.id}" title="${esc(tg.status === 'new' ? tr('task.title.run-target') : tr('task.title.rerun-target'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${tr('task.btn.run-target')}</button>` : ''}
+    ${followTarget ? `<button class="btn btn-sm" data-tgfollow="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.request-fix-target', { project: tg.project }))}"><svg class="ico ico-sm"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : ''}
     ${showPush ? `<button class="btn btn-sm btn-primary" data-tgpush="${tg.id}" data-task="${t.id}" data-project="${esc(tg.project)}" data-branch="${esc(tg.branch || '')}" title="${tr('task.btn.push-title')}"><svg class="ico ico-sm"><use href="#i-upload"/></svg>${tr('task.btn.push')}</button>` : ''}
     ${canMr ? `<button class="btn btn-sm btn-primary" data-tgmr="${tg.id}" data-task="${t.id}" data-title="${esc(defaultMrTitle)}" data-branch="${esc(tg.branch || '')}" data-target="${esc(tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.open-mr'))}"><svg class="ico ico-sm"><use href="#i-branch"/></svg>${tr('task.btn.create-mr')}</button>` : ''}
     ${mrIid && !tg.mr_merged ? `<button class="btn btn-sm btn-danger" data-tgmerge="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-target="${esc(tg.mr_target || tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.merge-mr'))}"><svg class="ico ico-sm"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>` : ''}
     ${tg.last_error ? `<span class="t-err" title="${esc(tg.last_error)}">${svgIco('alert')} ${tr('task.failed')}</span>` : ''}
-  </div>${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg) : ''}`;
+  </div>${followTarget ? `
+  <div class="mr-create followup followup-target" data-followform="tg${tg.id}" hidden>
+    <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph-target', { project: tg.project }))}"></textarea>
+    <button class="btn" data-followcancel="tg${tg.id}">${tr('ui.cancel')}</button>
+    <button class="btn btn-primary" data-followsubmit="${t.id}" data-followtarget="${tg.id}">${tr('task.btn.run-iteration')}</button>
+  </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg) : ''}`;
 }
 
 // Formulaire de réponses aux questions de l'agent (ask → stop → resume). Radio quand
@@ -4595,6 +4606,11 @@ function wireTaskActions() {
     const form = $(`#taskList .followup[data-followform="${b.dataset.tfollow}"]`);
     if (form) { form.hidden = false; form.querySelector('.followup-text').focus(); }
   });
+  // Correction d'UN projet : même formulaire, restreint à cette cible.
+  on('[data-tgfollow]', (b) => {
+    const form = $(`#taskList .followup[data-followform="tg${b.dataset.tgfollow}"]`);
+    if (form) { form.hidden = false; form.querySelector('.followup-text').focus(); }
+  });
   on('[data-followcancel]', (b) => {
     const form = $(`#taskList .followup[data-followform="${b.dataset.followcancel}"]`);
     if (form) form.hidden = true;
@@ -4604,8 +4620,12 @@ function wireTaskActions() {
     const field = form.querySelector('.followup-text');
     const instruction = field.value.trim();
     if (!instruction) return;
+    const cible = b.dataset.followtarget;
     try {
-      await busy(b, () => api(`/tasks/${b.dataset.followsubmit}/followup`, { method: 'POST', body: { instruction } }));
+      await busy(b, () => api(`/tasks/${b.dataset.followsubmit}/followup`, {
+        method: 'POST',
+        body: cible ? { instruction, targets: [Number(cible)] } : { instruction },
+      }));
       // La demande est partie : on referme et on vide. Sans ça le formulaire reste ouvert
       // avec son texte, et `captureTaskForms` le ROUVRE au rendu suivant — on croirait
       // que l'envoi a échoué.

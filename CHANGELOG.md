@@ -13,6 +13,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Ask for a fix on one repository of a multi-repo coding session.** Each project line now has its own
+  “Request a fix” button, next to “Run”. A remark is nearly always about one repository — “use
+  AbortController here” means nothing in the other four — yet the only way to say it was to send it to the
+  whole session: one AI call per repository, to redo work that was already good, and the agent walking back
+  over code you did not want touched. The session-wide button is unchanged, and the per-project one only
+  shows up from two projects on. An exploration still answers as a whole, so it cannot be narrowed that way.
+
 - **“AI's answer” on an out-of-repo session, not just on each folder.** Looking at the card, the question
   is “what did the AI do?”, not “what did it do in that one folder” — and since the folder list now starts
   folded, the per-folder buttons were a click away. When a session covers several folders the full-screen

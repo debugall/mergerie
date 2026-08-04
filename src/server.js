@@ -1779,13 +1779,21 @@ app.post('/api/local-tasks/:id/hidden', wrap((req, res) => {
   res.json({ ok: true, hidden });
 }));
 
-// Itération : nouvelle passe de l'IA (codage) ou question de suivi (exploration).
+/* Itération : nouvelle passe de l'IA (codage) ou question de suivi (exploration).
+
+   `targets` restreint la correction à certains projets, comme pour « Lancer ». Sur une
+   session multi-dépôts, la remarque à faire est presque toujours propre à UN projet : la
+   passer à tous coûtait un appel IA par dépôt et faisait repasser l'agent sur du code qu'on
+   ne voulait plus voir toucher. Une exploration produit UNE synthèse commune : la restreindre
+   n'aurait pas de sens, on refuse plutôt que d'ignorer en silence. */
 app.post('/api/tasks/:id/followup', wrap((req, res) => {
   const tache = taskById(Number(req.params.id));
   if (!tache) throw new Error(t('err.session-introuvable'));
   const instruction = (req.body && req.body.instruction || '').trim();
   if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
-  res.json(jobs.startTaskJob(tache.id, 'followup', { instruction }));
+  const targetIds = normalizeTargetIds(tache.id, req.body && req.body.targets);
+  if (targetIds && tache.kind !== 'code') throw new Error(t('err.followup-cible-code-only'));
+  res.json(jobs.startTaskJob(tache.id, 'followup', targetIds ? { instruction, targetIds } : { instruction }));
 }));
 
 // Réponses aux questions de l'agent (ask → stop → resume) : on enregistre les réponses sur

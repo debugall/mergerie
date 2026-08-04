@@ -169,6 +169,53 @@ describe('Sessions de dev de bout en bout', () => {
     assert.equal(vb.commit_sha, null, 'et n’a rien produit');
   });
 
+  /* Même exigence pour la CORRECTION : une remarque porte presque toujours sur un dépôt
+     précis. La passer à toute la session refait un travail bon, dépôt par dépôt, et fait
+     repasser l'agent sur du code qu'on ne voulait plus voir toucher. */
+  test('on corrige un seul projet d’une session multi-dépôts', async () => {
+    const t = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'multi-fix', targets: [
+        { repo_id: repoId, branch: 'ai/fix-a' },
+        { repo_id: repo2Id, branch: 'ai/fix-b' },
+      ],
+    });
+    const id = t.body.id;
+    await app.api('POST', `/api/tasks/${id}/run`);
+    await waitForJobs(app.api);
+
+    const avant = (await app.api('GET', `/api/tasks/${id}`)).body.task.targets;
+    const [a, b] = avant;
+    assert.ok(['committed', 'pushed'].includes(a.status) && ['committed', 'pushed'].includes(b.status),
+      'les deux projets ont produit un commit');
+
+    await app.api('POST', `/api/tasks/${id}/followup`, { instruction: 'Renomme la variable', targets: [a.id] });
+    await waitForJobs(app.api);
+
+    const apres = (await app.api('GET', `/api/tasks/${id}`)).body.task.targets;
+    const va = apres.find((x) => x.id === a.id);
+    const vb = apres.find((x) => x.id === b.id);
+    assert.notEqual(va.commit_sha, a.commit_sha, 'le projet visé a une nouvelle passe');
+    assert.equal(vb.commit_sha, b.commit_sha, 'l’autre projet n’a pas bougé');
+
+    // L'historique le confirme là où ça compte : une itération d'un côté, aucune de l'autre.
+    const ha = await app.api('GET', `/api/tasks/${id}/targets/${a.id}/passes`);
+    const hb = await app.api('GET', `/api/tasks/${id}/targets/${b.id}/passes`);
+    assert.deepEqual(ha.body.passes.map((p) => p.kind), ['run', 'followup']);
+    assert.deepEqual(hb.body.passes.map((p) => p.kind), ['run'], 'aucun appel IA gaspillé sur l’autre dépôt');
+  });
+
+  /* Une exploration produit UNE synthèse commune : viser un dépôt n'a pas de sens. Refuser
+     vaut mieux qu'ignorer en silence — sinon l'utilisateur croit avoir restreint la passe. */
+  test('cibler un dépôt est refusé sur une exploration', async () => {
+    const t = await app.api('POST', '/api/tasks', {
+      kind: 'explore', prompt: 'où est la config ?', targets: [{ repo_id: repoId }],
+    });
+    const tg = (await app.api('GET', `/api/tasks/${t.body.id}`)).body.task.targets[0];
+    const r = await app.api('POST', `/api/tasks/${t.body.id}/followup`, { instruction: 'précise', targets: [tg.id] });
+    assert.equal(r.status, 400);
+    assert.match(r.body.error, /synthèse|write-up/);
+  });
+
   test('un projet étranger à la session est refusé, pas ignoré', async () => {
     // Ignorer un id inconnu ferait tourner la session ENTIÈRE sans le dire — le contraire
     // de ce qu'on a demandé, et sur un multi-dépôts ça se paie.

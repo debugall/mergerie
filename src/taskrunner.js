@@ -485,7 +485,9 @@ async function runTask(task, onLog = () => {}, opts = {}) {
   });
 }
 
-async function runTaskFollowup(task, instruction, onLog = () => {}) {
+// `targetIds` : correction limitée à certains projets d'une session multi-dépôts. Une
+// remarque porte presque toujours sur UN dépôt ; la passer à tous refait du travail bon.
+async function runTaskFollowup(task, instruction, onLog = () => {}, { targetIds } = {}) {
   const instr = String(instruction || '').trim();
   if (!instr) throw new Error(t('err.demande-de-suivi-vide'));
 
@@ -498,7 +500,7 @@ async function runTaskFollowup(task, instruction, onLog = () => {}) {
     'Tu travailles sur une branche existante de ce projet ; le travail précédent est déjà '
     + `committé. Applique la demande de suivi ci-dessous en modifiant directement les fichiers.\n\n`
     + `Demande de suivi : ${instr}`;
-  return runCodeTask(task, { promptText, message, allowCreate: false, onLog, passKind: 'followup' });
+  return runCodeTask(task, { promptText, message, allowCreate: false, onLog, passKind: 'followup', targetIds });
 }
 
 // Reprise après réponses de l'utilisateur (ask → stop → resume). Cible UN projet précis :
