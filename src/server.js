@@ -304,13 +304,19 @@ app.get('/api/stats', wrap((req, res) => {
   });
 }));
 
-/* Dernier commit de chaque dépôt actif (branche par défaut), via GitLab. Live et
-   best-effort : un dépôt injoignable est simplement omis. Endpoint SÉPARÉ de /stats
-   (qui reste local et instantané) — le dashboard le charge en asynchrone. */
+/* Dernier commit de chaque dépôt SUIVI, toutes branches confondues. Live et best-effort :
+   un dépôt injoignable est simplement omis. Endpoint SÉPARÉ de /stats (qui reste local et
+   instantané) — le dashboard le charge en asynchrone.
+
+   « Suivi » exclut les dépôts désactivés, mais aussi ceux dont la récupération des MR est
+   coupée : on ne les regarde plus, ils n'ont donc rien à faire en tête de l'activité
+   récente — et l'appel à la forge qu'ils coûtaient est justement ce qu'on voulait éviter
+   en les décochant. */
 app.get('/api/dashboard/commits', wrap(async (req, res) => {
   const cfg = getConfig();
   if (!forge.isConfigured(cfg, 'gitlab') && !forge.isConfigured(cfg, 'github')) { res.json({ configured: false, commits: [] }); return; }
-  const repos = db.prepare('SELECT project, forge FROM repo WHERE enabled = 1').all();
+  // IFNULL : les dépôts créés avant la colonne `fetch_mrs` la portent à NULL, et sont suivis.
+  const repos = db.prepare('SELECT project, forge FROM repo WHERE enabled = 1 AND IFNULL(fetch_mrs, 1) = 1').all();
   const commits = await Promise.all(repos.map(async (r) => {
     try {
       const c = await forge.clientFor(r).latestCommit(cfg, r.project);

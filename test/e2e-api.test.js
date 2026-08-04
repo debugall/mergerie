@@ -1020,6 +1020,22 @@ describe('API de bout en bout', () => {
     assert.ok(appels.every((x) => x.path.includes('all=true')),
       `toutes branches confondues attendu, vu : ${appels.map((x) => x.path).join(' | ')}`);
 
+    /* Un dépôt dont la récupération des MR est coupée n'est plus suivi : il ne peut donc pas
+       trôner en tête de l'activité récente, et on ne dépense plus d'appel forge pour lui —
+       c'est précisément ce qu'on cherchait en la décochant. */
+    const cible = repos[0];
+    await app.api('PUT', `/api/repos/${cible.id}`, { url: cible.url, enabled: 1, fetch_mrs: 0 });
+    const avantSansMr = app.state.calls.length;
+    const sansMr = (await app.api('GET', '/api/dashboard/commits')).body.commits;
+    assert.ok(!sansMr.some((c) => c.project === cible.project), `${cible.project} ne devrait plus compter`);
+    assert.equal(sansMr.length, repos.length - 1, 'les autres dépôts sont toujours là');
+    assert.ok(!app.state.calls.slice(avantSansMr).some((x) => x.path.includes(encodeURIComponent(cible.project))),
+      'aucun appel à la forge pour un dépôt qu’on ne suit plus');
+
+    await app.api('PUT', `/api/repos/${cible.id}`, { url: cible.url, enabled: 1, fetch_mrs: 1 });
+    assert.equal((await app.api('GET', '/api/dashboard/commits')).body.commits.length, repos.length,
+      'et il revient dès qu’on le suit de nouveau');
+
     // Un dépôt sans commit est simplement omis (best-effort).
     app.state.commits = {};
     assert.equal((await app.api('GET', '/api/dashboard/commits')).body.commits.length, 0);

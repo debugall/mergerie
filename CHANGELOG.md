@@ -195,6 +195,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **“Top 5 — recent activity” now ignores repositories you no longer follow.** A repository whose merge
+  request fetching is switched off is one you have stopped watching; it had no business heading the list of
+  what is moving, and the forge call it cost is exactly what turning that switch off was meant to avoid. It
+  disappears from the ranking, and from the “last commit” column, until you follow it again — disabled
+  repositories already behaved this way. The caption under the ranking also said “default branch”, which
+  stopped being true when the ranking started looking at every branch.
+
 - **A modal no longer takes your typing with it when you click beside it.** Two different mishaps looked
   the same. Selecting text in a field and releasing the mouse a few pixels outside it counts, for the
   browser, as a click on the backdrop — so a dialog you never meant to leave closed, and the prompt you had
