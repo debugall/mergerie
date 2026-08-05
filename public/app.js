@@ -8731,8 +8731,17 @@ $('#verifierRepoBox') && $('#verifierRepoBox').addEventListener('click', async (
   try {
     const r = await busy(b, () => api('/verifiers/test-workdir', { method: 'POST', body: { repo_id: Number(row.dataset.repo), workdir } }));
     if (!r.ok) { info.className = 'vr-test-info err'; info.textContent = r.raison || tr('verify.test.ko'); return; }
+    /* Deux réserves distinctes, et une seule est bloquante : des modifications non commitées
+       feraient refuser le run, des fichiers non suivis non — mais il faut savoir qu'ils
+       seront là pendant les tests. Les taire ferait passer pour propre un répertoire qui ne
+       l'est pas tout à fait. */
     info.className = 'vr-test-info ok';
-    info.textContent = tr('verify.test.ok', { branch: r.branche || '?' }) + (r.dirty ? ` — ${tr('verify.test.dirty')}` : '');
+    const reserves = [
+      r.dirty ? tr('verify.test.dirty') : '',
+      r.untracked ? tr('verify.test.untracked', { n: r.untracked, count: r.untracked }) : '',
+    ].filter(Boolean);
+    info.textContent = tr('verify.test.ok', { branch: r.branche || '?' })
+      + (reserves.length ? ` — ${reserves.join(' · ')}` : '');
   } catch (err) { info.className = 'vr-test-info err'; info.textContent = explainError(err.message); }
 });
 
@@ -8948,7 +8957,7 @@ function verifyReportHtml(d) {
     ${/* Le contexte : les dépôts que le vérificateur sait tester mais qui n'étaient pas dans
           le lot. Un vert peut venir de l'un d'eux resté sur une vieille branche — on le dit. */''}
     ${(d.context || []).length ? `<h4>${esc(tr('verify.report.context'))}</h4>
-      <ul class="verify-list">${d.context.map((c) => `<li>${c.warn ? `${svgIco('alert')} ` : ''}${esc(c.project)} — ${esc(c.raison || `${c.branche || '?'}${c.dirty ? tr('verify.report.context-dirty') : ''}`)}</li>`).join('')}</ul>` : ''}
+      <ul class="verify-list">${d.context.map((c) => `<li>${c.warn ? `${svgIco('alert')} ` : ''}${esc(c.project)} — ${esc(c.raison || `${c.branche || '?'}${c.dirty ? tr('verify.report.context-dirty') : ''}${c.untracked ? tr('verify.report.context-untracked', { n: c.untracked, count: c.untracked }) : ''}`)}</li>`).join('')}</ul>` : ''}
     ${(d.imputable || []).length ? `<h4>${esc(tr('verify.report.failed'))}</h4>
       <ul class="verify-list">${d.imputable.map(echec).join('')}</ul>` : ''}
     ${commandesHtml(d.head_run)}

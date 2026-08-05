@@ -150,17 +150,77 @@ describe('Vérification objective — mode in place', () => {
     await app.api('DELETE', `/api/verifiers/${bloque.id}`);
   });
 
-  test('un répertoire modifié fait REFUSER le run — jamais de stash automatique', async () => {
-    fs.writeFileSync(path.join(workdir, 'brouillon.txt'), 'travail en cours\n');
+  /* Ce qui doit bloquer, c'est « un checkout perdrait du travail ». Donc un fichier SUIVI et
+     modifié — pas la simple présence de quelque chose dans le répertoire. */
+  test('un fichier SUIVI modifié fait REFUSER le run — jamais de stash automatique', async () => {
+    fs.writeFileSync(path.join(workdir, 'a.txt'), 'travail en cours\n'); // a.txt est commité
     const v = await poserVerifier('ip-dirty', repond({ version: 1, status: 'pass' }));
     const d = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id })).body.verification.id);
     assert.equal(d.verdict, 'verify_error');
     assert.match(d.log_excerpt || '', /non commitées/);
-    // Le fichier de l'utilisateur est intact : on n'a rien déplacé.
-    assert.equal(fs.readFileSync(path.join(workdir, 'brouillon.txt'), 'utf8'), 'travail en cours\n');
+    // Le travail de l'utilisateur est intact : on n'a rien déplacé.
+    assert.equal(fs.readFileSync(path.join(workdir, 'a.txt'), 'utf8'), 'travail en cours\n');
     assert.equal(git(workdir, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
-    fs.unlinkSync(path.join(workdir, 'brouillon.txt'));
+    git(workdir, 'checkout', '--', 'a.txt');
     await app.api('DELETE', `/api/verifiers/${v.id}`);
+  });
+
+  /* Des fichiers NON SUIVIS ne sont dans aucun commit : le checkout détaché ne les touche
+     pas. Refuser à cause d'eux interdisait le mode in place à tout répertoire portant un
+     `.env`, un dossier d'artefacts ou une note de travail — c'est-à-dire à presque tous. */
+  test('des fichiers uniquement NON SUIVIS n’empêchent pas le run, et sont laissés en place', async () => {
+    const notes = path.join(workdir, 'notes-perso.txt');
+    const conf = path.join(workdir, '.env.local');
+    fs.writeFileSync(notes, 'à ne pas perdre\n');
+    fs.writeFileSync(conf, 'TOKEN=abc\n');
+
+    // Le bouton « Tester le répertoire » les signale sans refuser.
+    const t = await app.api('POST', '/api/verifiers/test-workdir', { repo_id: repoId, workdir });
+    assert.equal(t.body.ok, true, 'le répertoire reste utilisable');
+    assert.equal(t.body.dirty, false, 'rien de suivi n’a bougé');
+    assert.equal(t.body.untracked, 2, '…mais les deux fichiers sont comptés et annoncés');
+
+    // Et le run va au bout.
+    const v = await poserVerifier('ip-untracked', repond({ version: 1, status: 'pass' }));
+    const d = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id })).body.verification.id);
+    assert.equal(d.verdict, 'verified_pass', d.log_excerpt || '');
+    assert.match(d.log_excerpt || '', /non suivi/, 'le journal dit qu’ils étaient là pendant les tests');
+
+    // Ils ont traversé le checkout ET la restauration sans être touchés.
+    assert.equal(fs.readFileSync(notes, 'utf8'), 'à ne pas perdre\n');
+    assert.equal(fs.readFileSync(conf, 'utf8'), 'TOKEN=abc\n');
+    assert.equal(git(workdir, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main', 'et le dépôt est remis sur sa branche');
+
+    fs.unlinkSync(notes); fs.unlinkSync(conf);
+    await app.api('DELETE', `/api/verifiers/${v.id}`);
+  });
+
+  /* Un non-suivi qui porte le nom d'un fichier de la ref visée est le seul cas gênant : git
+     refuse alors le checkout de lui-même. On vérifie qu'on ne l'écrase pas en douce, et que
+     l'échec reste lisible. */
+  test('un fichier non suivi que le checkout écraserait fait échouer proprement', async () => {
+    const encombrant = path.join(workdir, 'b.txt');
+    // b.txt n'existe que sur feature/x, la branche à tester.
+    git(distant, 'checkout', '-q', 'feature/x');
+    fs.writeFileSync(path.join(distant, 'b.txt'), 'venu de la branche\n');
+    git(distant, 'add', '-A'); git(distant, 'commit', '-qm', 'ajoute b');
+    const nouveauSha = git(distant, 'rev-parse', 'HEAD');
+    git(distant, 'checkout', '-q', 'main');
+    app.state.mrs['grp/app'][0].sha = nouveauSha;
+    await app.api('POST', '/api/discover');
+
+    fs.writeFileSync(encombrant, 'à moi\n');
+    const v = await poserVerifier('ip-collision', repond({ version: 1, status: 'pass' }));
+    const d = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id })).body.verification.id);
+    assert.equal(d.verdict, 'verify_error', 'on ne rend pas un verdict sur un checkout qui n’a pas eu lieu');
+    assert.equal(fs.readFileSync(encombrant, 'utf8'), 'à moi\n', 'le fichier de l’utilisateur n’a pas été écrasé');
+    assert.equal(git(workdir, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
+
+    fs.unlinkSync(encombrant);
+    await app.api('DELETE', `/api/verifiers/${v.id}`);
+    // On remet la MR sur son SHA d'origine pour les tests suivants.
+    app.state.mrs['grp/app'][0].sha = headSha;
+    await app.api('POST', '/api/discover');
   });
 
   test('sans consentement de checkout, la ligne in place est refusée à l’enregistrement', async () => {

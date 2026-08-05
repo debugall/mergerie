@@ -209,6 +209,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **An “in place” verifier no longer refuses a directory that merely holds untracked files.** It asked for
+  a directory with nothing at all in `git status`, which in practice meant almost none: a `.env.local`, a
+  build folder, a scratch note were enough to be turned away. What has to block is a checkout that would
+  lose work — untracked files are in no commit, so the detached checkout leaves them alone. They are now
+  counted, reported by “Test the directory” and noted in the run log, since they are still there while the
+  tests run. Modified *tracked* files still refuse the run: Mergerie never stashes your work for you.
+
 - **The report stays put while you scroll the list of merge requests.** Under “Reviewed” and “Processed”,
   list and report shared a single page scrollbar: going down the list to pick another merge request
   carried the report off the screen, and you had to scroll back up to read it — though the whole point of

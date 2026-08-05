@@ -329,10 +329,19 @@ async function inspecterWorkdir(repo, workdir) {
   if (!verify.memeDepot(remote, repo.url)) {
     return { ok: false, raison: `${workdir} pointe sur ${remote}, pas sur ${repo.url}`, remote };
   }
-  const dirty = (await gitTexte(workdir, ['status', '--porcelain'])).length > 0;
+  /* Ce qui bloque n'est pas « le répertoire n'est pas propre », c'est « un checkout perdrait
+     du travail ». Un fichier NON SUIVI n'est dans aucun commit : le checkout détaché ne le
+     touche pas, et la restauration le laisse où il est. Refuser à cause de lui interdisait
+     le mode in place à tout répertoire portant un `.env`, un `node_modules` non ignoré ou
+     une note de travail — c'est-à-dire à presque tous.
+     (Si un non-suivi porte le nom d'un fichier de la ref visée, git refuse le checkout de
+     lui-même, avec sa propre explication : on n'écrase rien en douce.) */
+  const lignes = (await gitTexte(workdir, ['status', '--porcelain'])).split('\n').filter(Boolean);
+  const untracked = lignes.filter((l) => l.startsWith('??')).length;
+  const dirty = lignes.length - untracked > 0;
   const branche = await gitTexte(workdir, ['rev-parse', '--abbrev-ref', 'HEAD']);
   const sha = await gitTexte(workdir, ['rev-parse', 'HEAD']);
-  return { ok: true, remote, dirty, branche, sha };
+  return { ok: true, remote, dirty, untracked, branche, sha };
 }
 
 /* Prépare un dépôt en place et rend de quoi le remettre comme on l'a trouvé.
@@ -347,6 +356,10 @@ async function preparerInPlace(repo, ligne, sha, noter) {
   // La ref d'origine : une branche si on est dessus, sinon le SHA détaché.
   const refOrigine = etat.branche && etat.branche !== 'HEAD' ? etat.branche : etat.sha;
   noter(`in place ${ligne.workdir} : ${refOrigine} → ${String(sha).slice(0, 8)}`);
+  /* Dit, et pas seulement toléré : ces fichiers restent en place pendant le run et peuvent
+     donc peser sur le résultat (un `.env` local, une dépendance installée à la main). Le
+     journal doit permettre de s'en souvenir en relisant un verdict surprenant. */
+  if (etat.untracked) noter(`  ${etat.untracked} fichier(s) non suivi(s) laissés en place`);
   /* La branche vient d'être poussée depuis le clone du dataDir : le répertoire de
      l'utilisateur ne la connaît pas encore. */
   try { await git.run('git', ['fetch', 'origin', sha], { cwd: ligne.workdir }); }
@@ -382,7 +395,9 @@ async function lireContexte(verifier, reposCibles) {
     const defaut = await brancheParDefaut(l.workdir);
     contexte.push({
       repo_id: repo.id, project: repo.project, workdir: l.workdir,
-      branche: etat.branche, sha: etat.sha, dirty: etat.dirty,
+      branche: etat.branche, sha: etat.sha, dirty: etat.dirty, untracked: etat.untracked,
+      /* Les non-suivis n'alertent pas : ils n'empêchent pas de savoir QUEL code a été lu,
+         qui est la question à laquelle le contexte répond. Ils restent affichés. */
       warn: !!etat.dirty || (!!defaut && etat.branche !== defaut),
     });
   }
