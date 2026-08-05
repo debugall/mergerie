@@ -3418,6 +3418,33 @@ function comboHtml(cls, { value = '', label = '', ph = '', disabled = false, wra
 /* `load(rowEl)` renvoie [{ value, label, hint }] et peut être asynchrone. La mise en
    cache est laissée à l'appelant : lui seul sait quand une liste devient périmée
    (après un checkout, la branche courante d'un projet a changé). */
+/* Le menu d'un combo est posé en `position: fixed`, aux coordonnées du champ.
+
+   En absolu, il appartient au flux d'un ancêtre : dès que celui-ci défile (la liste des dépôts
+   d'un vérificateur, la colonne des rapports…), le menu est ROGNÉ par lui. Le contournement
+   d'avant — rendre l'overflow visible le temps de l'ouverture — coûtait deux défauts pour un :
+   le navigateur remet `scrollTop` à zéro quand un conteneur cesse de défiler, donc la liste
+   sautait en haut et le champ filait sous le menu ; et le menu, n'étant plus rogné, s'affichait
+   jusqu'à 186 px SOUS le bloc, détaché de son champ.
+
+   En fixed, plus d'ancêtre qui rogne, et le menu s'ouvre au-dessus du champ quand il n'y a pas
+   la place en dessous — la fin d'une liste est justement là où on manque de place. */
+function placerMenu(input, box) {
+  const r = input.getBoundingClientRect();
+  const marge = 8;
+  box.style.position = 'fixed';
+  box.style.left = `${r.left}px`;
+  box.style.width = `${r.width}px`;
+  const dessous = window.innerHeight - r.bottom - marge;
+  const dessus = r.top - marge;
+  // On ne bascule au-dessus que si c'est franchement mieux : sinon le menu sautillerait
+  // d'un côté à l'autre au fil du filtrage, pendant qu'on tape.
+  const versLeHaut = dessous < 160 && dessus > dessous;
+  box.style.maxHeight = `${Math.max(120, Math.min(240, versLeHaut ? dessus : dessous))}px`;
+  if (versLeHaut) { box.style.top = 'auto'; box.style.bottom = `${window.innerHeight - r.top + 2}px`; }
+  else { box.style.bottom = 'auto'; box.style.top = `${r.bottom + 2}px`; }
+}
+
 function wireCombo(root, cls, load) {
   $$(`[data-combo="${cls}"]`, root || document).forEach((input) => {
     if (input.dataset.wired) return;
@@ -3426,9 +3453,20 @@ function wireCombo(root, cls, load) {
     const hidden = combo.querySelector(`.${cls}`);
     const box = combo.querySelector('.combo-options');
     const restore = () => { input.value = hidden.dataset.label || ''; input.title = input.value; input.scrollLeft = input.scrollWidth; };
+    /* Le menu ne fait plus partie du flux : il faut le suivre à la main quand ce qui l'entoure
+       bouge. En capture, pour attraper AUSSI le défilement d'un conteneur interne, qui ne
+       remonte pas jusqu'à `window`. */
+    const suivre = () => { if (!box.hidden) placerMenu(input, box); };
+    const ecouter = (on) => {
+      const fn = on ? 'addEventListener' : 'removeEventListener';
+      window[fn]('scroll', suivre, true);
+      window[fn]('resize', suivre);
+    };
     const open = async () => {
       box.innerHTML = `<div class="combo-opt muted">${esc(tr('ui.combo.loading'))}</div>`;
       box.hidden = false;
+      placerMenu(input, box);
+      ecouter(true);
       let opts;
       try { opts = await load(combo.closest('[data-row]')); }
       catch (e) { box.innerHTML = `<div class="combo-opt muted">${esc(explainError(e.message))}</div>`; return; }
@@ -3436,13 +3474,16 @@ function wireCombo(root, cls, load) {
       const list = opts.filter((o) => String(o.label).toLowerCase().includes(q)).slice(0, 300);
       box.innerHTML = list.map((o) => `<div class="combo-opt" data-v="${esc(String(o.value))}" data-l="${esc(String(o.label))}">${esc(String(o.label))}${o.hint ? ` <span class="muted">${esc(o.hint)}</span>` : ''}</div>`).join('')
         || `<div class="combo-opt muted">${esc(tr('ui.combo.empty'))}</div>`;
+      // Le contenu vient de changer de hauteur : ce qui tenait en dessous n'y tient plus forcément.
+      placerMenu(input, box);
     };
+    const fermer = () => { box.hidden = true; ecouter(false); };
     // Au focus on vide l'affichage : sinon le libellé courant servirait lui-même de
     // filtre et la liste se réduirait à cette seule option. Le blur le rétablit
     // depuis `data-label`, donc une saisie libre ne vaut jamais sélection.
     input.addEventListener('focus', () => { input.value = ''; open(); });
     input.addEventListener('input', open);
-    input.addEventListener('blur', () => setTimeout(() => { box.hidden = true; restore(); }, 150));
+    input.addEventListener('blur', () => setTimeout(() => { fermer(); restore(); }, 150));
     box.addEventListener('mousedown', (e) => {
       const o = e.target.closest('.combo-opt[data-v]');
       if (!o) return;
@@ -3450,7 +3491,7 @@ function wireCombo(root, cls, load) {
       hidden.value = o.dataset.v;
       hidden.dataset.label = o.dataset.l;
       restore();
-      box.hidden = true;
+      fermer();
       // Un input caché n'émet pas 'change' tout seul : on le déclenche pour que les
       // champs qui en dépendent (branches d'un projet) se remettent à zéro.
       if (changed) hidden.dispatchEvent(new Event('change', { bubbles: true }));
@@ -8637,16 +8678,6 @@ function cablerChoixLocal(box) {
     const champ = $('.vr-workdir', h.closest('.vr-row'));
     if (champ && h.value) champ.value = h.value;
   }));
-  /* La liste des dépôts défile (`overflow-y: auto`) : elle ROGNE le menu du combo, qui est
-     positionné en absolu. Même remède que pour les menus de cartes — on débloque l'overflow
-     le temps que le menu est ouvert. Le délai au blur doit dépasser celui de `wireCombo`
-     (150 ms), sinon la liste se referme avant que le clic de sélection n'ait été pris. */
-  $$('[data-combo="vr-local"]', box).forEach((inp) => {
-    const liste = inp.closest('.vr-list');
-    if (!liste) return;
-    inp.addEventListener('focus', () => liste.classList.add('combo-ouvert'));
-    inp.addEventListener('blur', () => setTimeout(() => liste.classList.remove('combo-ouvert'), 250));
-  });
 }
 
 // Le genre pilote la moitié du formulaire : liste de commandes d'un côté, script de l'autre.

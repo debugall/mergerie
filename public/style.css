@@ -534,6 +534,9 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .combo input { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
 /* valeur longue : ellipsis quand le champ n'a pas le focus (le title montre le nom complet au survol) */
 .combo input { text-overflow: ellipsis; }
+/* `position` et coordonnées sont posées en JS à l'ouverture (`placerMenu`) : le menu se pose en
+   `fixed`, sinon le défilement d'un conteneur le rogne. L'absolu ci-dessous n'est que le repli
+   si le menu s'affichait avant d'être placé. */
 .combo-options { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin-top: 2px; max-height: 240px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--sh-2); }
 .combo-opt { padding: 7px 10px; cursor: pointer; font-size: 13px; }
 .combo-opt:hover { background: var(--panel2); }
@@ -1866,11 +1869,9 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .vc-rank { flex: 0 0 18px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
 .vc-row .vc-move { flex: 0 0 auto; padding: 6px 8px; }
 /* Choix d'un projet local en mode « in place » : le combo précède le champ libre. Son menu
-   est positionné en absolu, donc rogné par le défilement de la liste des dépôts — on rend
-   l'overflow visible le temps qu'il est ouvert, et on élève la ligne au-dessus des suivantes. */
+   n'est plus rogné par le défilement de la liste des dépôts — il se pose en `position: fixed`
+   aux coordonnées du champ (voir `placerMenu`), donc aucun ancêtre ne le découpe. */
 .vr-local-combo { flex: 0 0 240px; }
-.vr-list.combo-ouvert { overflow: visible; }
-.vr-row:focus-within { position: relative; z-index: 50; }
 
 /* ---------- Dev IA : des blocs, pas des rangs ----------
    Une session est un bloc HAUT — prompt, liste de projets, questions de l'agent, erreur. Entre

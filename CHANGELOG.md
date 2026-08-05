@@ -209,6 +209,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Dropdown lists no longer spill out of their block.** Any list-with-search — “pick a local project” in a
+  verifier, a branch, a git ref — now opens attached to its field and flips above it when there is no room
+  below. It used to be clipped by whatever container it sat in, and the workaround for that reset the
+  container's scroll position, so the list you were reading jumped back to the top and the menu ended up
+  floating well under the block, detached from its field.
+
 - **An “in place” verifier no longer refuses a directory that merely holds untracked files.** It asked for
   a directory with nothing at all in `git status`, which in practice meant almost none: a `.env.local`, a
   build folder, a scratch note were enough to be turned away. What has to block is a checkout that would
