@@ -43,11 +43,11 @@ npm run demo       # http://localhost:4319
 
 ## What it does
 
-Seven tabs, each one line:
+Seven tabs, each one line — plus the objective verification, which lives inside Reviews and Settings:
 
 - **Reviews** — AI-scored, versioned reviews of GitLab merge requests **and GitHub pull requests**; incremental re-reviews; an autonomous **convergence loop** (review → fix → re-review until the score threshold) Convergence works on the *review*; the **objective verification** comes after, on the merge request itself — see the guide.
-- **AI Dev** — automated coding sessions (the AI codes, commits, pushes, opens the MR), off-repo coding (with the AI's report back and follow-up fix requests), and read-only code exploration — *from prompt to converged MR* in one click. Finished sessions can be tidied away without being deleted.
-- **Objective verification** — your own test script gives a merge request a verdict that isn't an opinion: `✓ verified`, `✗ 2 tests broken`, `⚠ base already red`. Merge requests from different repositories that only hold together as a set are **verified together**, and one click opens a fixing session covering all of them. See the guide.
+- **AI Dev** — automated coding sessions (the AI codes, commits, pushes, opens the MR), off-repo coding (with the AI's report back and follow-up fix requests), and read-only code exploration — *from prompt to converged MR* in one click. On a multi-repo session each project runs, and takes a follow-up fix, on its own. Finished sessions can be tidied away without being deleted.
+- **Objective verification** — a plain list of commands (`npm ci`, `npm test`) or your own test script gives a merge request a verdict that isn't an opinion: `✓ verified`, `✗ 2 tests broken`, `⚠ base already red`. Broken test names are read straight from TAP or JUnit output when there is any. Merge requests from different repositories that only hold together as a set are **verified together**, and one click opens a fixing session covering all of them. See the guide.
 - **Statistics** — MR funnel, score trends, per-project resolution rate, token cost.
 - **Git** — multi-repo branch/tag/command operations across both forges, branch explorer and ref finder, **restorable** deletions, always with a preview.
 - **Docker** — compose project health and `.env` drift, batch actions, live multi-container logs, error badges in the menu.

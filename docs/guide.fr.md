@@ -119,6 +119,14 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   **ton template de prompt de review n'est pas modifié**, l'instruction est ajoutée à la volée.
   L'onglet Statistiques en tire un **taux de résolution par projet**.
 - Une MR qui n'est plus ouverte sur la forge porte le badge **mergée** ; le bouton Merger disparaît.
+- **Filtrer par couleur de note.** Sous *Reviewées* et *Traitées*, trois cases au-dessus de la liste —
+  vert (≥ 7/10), orange (4 à 6,9), rouge (< 4) — **se cumulent** : « montre-moi les rouges et les
+  oranges » tient en deux clics, et chacune porte le nombre de merge requests qu'elle fera apparaître.
+  Le choix est retenu d'une visite à l'autre ; décocher la dernière case ramène tout, plutôt que de
+  laisser une liste vide sans issue. Le résumé de droite suit le filtre. Le stade *À traiter* n'a pas
+  ces cases : une MR n'y revient qu'après suppression de son rapport, donc sans note à filtrer.
+- **Liste et rapport défilent chacun pour soi.** Descendre la liste pour changer de merge request
+  n'emporte plus le rapport hors de l'écran — on regarde les deux ensemble.
 
 ### ⛶ Ouvrir le code (explorateur plein écran)
 Arbre du projet + fichier affiché **entier avec le diff en place**, coloration syntaxique,
@@ -166,7 +174,12 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   **fil d'étape** compact (pastilles **créée → commit → push → MR**) sur chaque ligne situe d'un
   coup d'œil où en est le projet — utile sur une session multi-projets.
   `Demander une correction` relance l'IA sur les branches existantes, **en reprenant la même session** :
-  l'IA garde tout le contexte du travail déjà produit (idem pour une relance de la session).
+  l'IA garde tout le contexte du travail déjà produit (idem pour une relance de la session). Sur une
+  session multi-dépôts, **chaque projet porte son propre bouton** : une remarque ne vaut presque jamais
+  pour les cinq dépôts (« utilise plutôt AbortController ici » ne veut rien dire ailleurs), et l'envoyer
+  à toute la session coûte un appel IA par dépôt pour refaire du travail déjà bon. Le bouton de la carte,
+  lui, s'adresse toujours à tous. Une **exploration** répond d'un seul tenant : elle ne se restreint pas
+  à un dépôt.
   À la fin du codage, **`Retour de l'IA`** affiche ce que l'agent dit avoir fait (comme la réponse d'une
   exploration) — utile pour comprendre son travail, ou **quand rien n'a changé** : si le prompt était
   incomplet et que l'IA a **répondu au lieu de coder** (ex. « donne-moi le nom du fichier »), sa réponse
@@ -181,9 +194,11 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   notifications bureau ne répondaient pas à cette question : elles ne vivent qu'en mémoire du
   serveur et ne sont volontairement pas rejouées au chargement — donc tout ce qui finissait onglet
   fermé n'existait nulle part.
-- **Replier la liste des projets.** Au-delà de quelques dépôts, une session occupait tout l'écran
-  et masquait les autres. Un clic la replie, l'état est **mémorisé** — sinon le rafraîchissement
-  automatique la rouvrirait toutes les secondes et demie pendant un job.
+- **La liste des projets s'ouvre repliée.** Au-delà de quelques dépôts, une session occupait tout
+  l'écran et masquait les autres — qui sont pourtant ce qu'on est venu regarder. Un « Voir les N
+  projets » la déplie, et l'état est **mémorisé par session** : sinon le rafraîchissement automatique
+  la refermerait toutes les secondes et demie pendant un job. Vaut pour les trois familles (codage,
+  codage hors dépôt, exploration).
 - **Pousser tous · Créer toutes les MR.** Deux actions groupées, qui n'apparaissent que lorsqu'elles
   ont quelque chose à faire (le nombre concerné est dans le libellé). **Pousser tous** pousse en un
   seul job toutes les branches commitées mais pas encore poussées. **Créer toutes les MR** ouvre une
@@ -509,7 +524,9 @@ bloque le tien, et tu veux savoir **quand il bouge**, pas y penser trois fois pa
 Funnel des MR, distribution des notes, **évolution de la note moyenne par semaine** (« la qualité
 progresse-t-elle ? »), activité hebdomadaire, tableau par projet (avec **taux de résolution**,
 **tendance** ▲/▼ et le **dernier commit** — date, auteur, lien vers le commit sur sa forge), un **Top 5 des
-dépôts à l'activité la plus récente** (dernier commit, auteur, lien), **coût en tokens** (camembert par
+dépôts à l'activité la plus récente** (dernier commit avec **date ET heure** — plusieurs dépôts poussent
+le même jour, et sans l'heure le classement paraît arbitraire —, auteur, lien ; les dépôts dont la
+récupération des MR est décochée en sont exclus, comme les dépôts inactifs : on ne les suit plus), **coût en tokens** (camembert par
 type d'appel + **coût moyen par MR reviewée**), résumé des sessions. L'activité de commits est récupérée
 **en direct depuis la forge de chaque dépôt, toutes branches confondues** (chargée à part, best-effort : rien ne casse si une forge est injoignable).
 Chaque graphe affiche **la question à laquelle il répond**. Le total de tokens est un **minorant** (le
@@ -716,8 +733,14 @@ doit pas passer inaperçu.
 - **in place** — le run a lieu dans **ton** répertoire de travail. Utile quand l'environnement de test ne
   se recrée pas (base de données locale, containers déjà chauds, `node_modules` installés). Trois
   garde-fous, dans cet ordre : **consentement explicite** à cocher, **identité du dépôt** vérifiée
-  (le `origin` du répertoire doit être celui du dépôt), et **refus net si le répertoire est modifié** —
-  jamais de `stash` automatique. Pendant le run, ton répertoire est sur un **commit détaché** : ne
+  (le `origin` du répertoire doit être celui du dépôt), et **refus net si des fichiers SUIVIS ont été
+  modifiés** — jamais de `stash` automatique. Des fichiers **non suivis** ne bloquent pas : ils ne sont
+  dans aucun commit, le checkout détaché ne les touche pas et la restauration les laisse où ils sont —
+  exiger le contraire interdisait le mode *in place* à tout répertoire portant un `.env.local` ou un
+  dossier d'artefacts, c'est-à-dire à presque tous. Ils sont comptés et **notés au journal du run** :
+  ils restent là pendant les tests et peuvent peser sur le résultat. (Si l'un d'eux porte le nom d'un
+  fichier de la branche à tester, git refuse le checkout de lui-même : la vérification échoue au lieu
+  d'écraser ton fichier.) Pendant le run, ton répertoire est sur un **commit détaché** : ne
   développe pas dessus. Il est **remis sur sa ref d'origine dans tous les cas**, y compris sur timeout
   ou plantage du job ; si la restauration échoue, le rapport porte un bandeau **« Restauration manuelle
   requise »** — ça ne se noie jamais dans un journal.
@@ -729,7 +752,8 @@ possible pour un répertoire hors de toute racine déclarée, mais c'est une fau
 découvre qu'au premier run, et qui coûte le run.
 
 Le bouton **« Tester le répertoire »** répond pendant que le formulaire est encore sous tes yeux :
-répertoire reconnu, branche courante, modifications en cours.
+répertoire reconnu, branche courante, et les deux réserves possibles — des modifications suivies (qui
+feraient refuser le run) et des fichiers non suivis (qui ne bloquent pas, mais seront là pendant les tests).
 
 ### Contrat du script (v1) — famille « script » uniquement
 

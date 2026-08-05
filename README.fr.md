@@ -51,18 +51,27 @@ coût en tokens, sessions Dev IA, codage hors dépôt) dans `data-demo/` — **i
 `data/` — puis lance l'outil dessus, en dry-run et **sans aucune connexion à une forge ni token**. Idéal pour
 découvrir l'outil : **zéro configuration**. La démo inclut une **MR convergée** (5,8 → 7,1 → 8,4) pour voir
 la feature *Converger* en action, et une **session reliée à sa MR** — le chemin *du prompt à la MR convergée*.
+Elle porte aussi des **vérifications objectives** déjà rendues (dont une rouge, détaillée commande par commande)
+et un **lot** de merge requests vérifiées ensemble.
 
 *(Enregistrer une vidéo de présentation : voir le [Guide complet → Mode démo](./docs/guide.fr.md#enregistrer-une-vidéo-de-présentation-prête-pour-youtube).)*
 
 ## Les onglets
 
-**Sept onglets** — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)** :
+**Sept onglets** — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)**, et la **[vérification objective](./docs/guide.fr.md#vérification-objective-vérificateurs)** a sa propre section :
 
 - **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée,
   re-review incrémentale et **boucle de convergence autonome** (review → correction → re-review jusqu'au seuil).
+  Les listes se filtrent par **couleur de note**.
 - **Dev IA** — sessions de codage automatisées (l'IA code, commite, pousse, ouvre la MR), **codage hors dépôt**
   (avec retour de l'IA et demande de correction) et **exploration** de code en lecture seule ;
-  *du prompt à la MR convergée* en un bouton. Les sessions terminées se **rangent** sans être supprimées.
+  *du prompt à la MR convergée* en un bouton. Sur une session multi-dépôts, chaque projet se lance — et se
+  fait corriger — **séparément**. Les sessions terminées se **rangent** sans être supprimées.
+- **Vérification objective** — une liste de commandes (`npm ci`, `npm test`) ou ton propre script de test donne à
+  une merge request un verdict qui n'est pas un avis : `✓ vérifié`, `✗ 2 tests cassés`, `⚠ base déjà rouge`. Les
+  noms des tests cassés sont lus de la sortie **TAP** ou d'un rapport **JUnit** quand il y en a. Des merge requests
+  de dépôts différents qui ne tiennent qu'ensemble se **vérifient ensemble**, et un clic ouvre une session de
+  correction qui les couvre toutes. Ce n'est pas un onglet : ça vit dans *Reviews* et *Réglages*.
 - **Statistiques** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens.
 - **Git** — opérations multi-dépôts (branches, tags, commandes git) sur les deux forges, navigation de branches
   et recherche de refs, suppressions **restaurables**, tout **avec aperçu**.
