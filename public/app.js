@@ -339,6 +339,19 @@ function fmtDate(iso) {
   } catch { return ''; }
 }
 
+/* L'heure seule, à composer avec `fmtDate`. Utile là où l'ORDRE est le sujet : dans un
+   classement par fraîcheur, plusieurs dépôts partagent la même journée et le rang paraît
+   alors arbitraire — « pourquoi celui-ci est-il devant ? ».
+   Distinct de `fmtDateTime`, qui abrège l'année sur deux chiffres : à côté d'une colonne
+   qui l'écrit en entier, deux formats de date dans le même écran se remarquent. */
+function fmtHour(iso) {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return d.toLocaleTimeString(I18Nrt.currentLocale(), { hour: '2-digit', minute: '2-digit' });
+  } catch { return ''; }
+}
+
 // Rendu markdown minimal (titres, gras, code, listes, blockquote, tableaux GFM).
 function mdToHtml(md) {
   if (!md) return '<p class="muted">(vide)</p>';
@@ -1050,7 +1063,7 @@ async function fillDashboardCommits() {
   t5.innerHTML = `<h3>${tr('stats.top5.title')}</h3><p class="dash-help">${tr('stats.top5.help')}</p>`
     + (top.length
       ? `<div class="md-tablewrap"><table class="md-table"><thead><tr><th>${tr('stats.col.project')}</th><th>${tr('stats.col.last-commit')}</th><th>${tr('stats.col.author')}</th></tr></thead>
-          <tbody>${top.map((c) => `<tr><td>${esc(c.project)}</td><td>${c.url ? `<a href="${esc(c.url)}" target="_blank" title="${esc(c.title)}"><code>${esc(c.sha)}</code></a>` : `<code>${esc(c.sha)}</code>`} · ${c.date ? fmtDate(c.date) : '—'}</td><td class="muted">${esc(c.author)}</td></tr>`).join('')}</tbody></table></div>`
+          <tbody>${top.map((c) => `<tr><td>${esc(c.project)}</td><td>${c.url ? `<a href="${esc(c.url)}" target="_blank" title="${esc(c.title)}"><code>${esc(c.sha)}</code></a>` : `<code>${esc(c.sha)}</code>`} · ${c.date ? `${fmtDate(c.date)} ${fmtHour(c.date)}` : '—'}</td><td class="muted">${esc(c.author)}</td></tr>`).join('')}</tbody></table></div>`
       : `<p class="muted">${d.configured ? tr('stats.top5.empty') : tr('stats.top5.not-configured')}</p>`);
 }
 $('#dashRefresh').addEventListener('click', loadDashboard);

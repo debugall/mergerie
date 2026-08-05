@@ -1,0 +1,126 @@
+'use strict';
+/* Colonne de gauche et rapport : deux zones de défilement distinctes, dans un VRAI navigateur.
+ *
+ * Le comportement est entièrement porté par la mise en page (grille, `position: sticky`,
+ * `overflow`) : rien à interroger côté serveur. Et c'est exactement le genre de réglage
+ * qu'une règle CSS ajoutée ailleurs casse sans bruit — d'où un test qui fait tourner la
+ * molette pour de bon et regarde ce qui a bougé.
+ *
+ * Chromium vient de la dépendance de développement `playwright` ; le fichier se déclare
+ * ignoré s'il n'a jamais été téléchargé.
+ */
+
+const { test, before, after, describe } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { startApp, makeRemoteRepo, waitForJobs } = require('./helpers/app');
+
+let chromium = null;
+let dispo = false;
+try {
+  ({ chromium } = require('playwright'));
+  dispo = fs.existsSync(chromium.executablePath());
+} catch { /* playwright absent */ }
+
+describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? false : 'chromium absent — npx playwright install chromium' }, () => {
+  let app;
+  let navigateur;
+  let page;
+
+  const NB = 6; // assez de cartes pour que la liste dépasse une fenêtre courte
+
+  before(async () => {
+    app = await startApp();
+    const repo = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'remote-')));
+    app.state.mrs['grp/app'] = Array.from({ length: NB }, (_, i) => ({
+      iid: 100 + i, title: `Merge request de démonstration numéro ${i + 1}`, state: 'opened',
+      source_branch: repo.branch, target_branch: 'main',
+      web_url: `https://gitlab.test/grp/app/-/merge_requests/${100 + i}`,
+      sha: repo.branchSha, created_at: new Date().toISOString(), author: { name: 'Alice' },
+      diff_refs: { base_sha: repo.mainSha, start_sha: repo.mainSha, head_sha: repo.branchSha },
+    }));
+    for (let i = 0; i < NB; i++) app.state.changes[`grp/app!${100 + i}`] = [{ new_path: 'src/app.js' }];
+
+    await app.configure();
+    await app.api('POST', '/api/repos', { url: repo.url, project: 'grp/app' });
+    await app.api('POST', '/api/discover');
+    // Reviewer TOUT : le stade « Reviewées » se remplit, c'est lui qui affiche les deux colonnes.
+    for (const m of (await app.api('GET', '/api/mrs')).body) {
+      await app.api('POST', `/api/mrs/${m.id}/review`, {});
+      await waitForJobs(app.api);
+    }
+
+    navigateur = await chromium.launch();
+    // Fenêtre volontairement courte : sans elle, la liste tiendrait à l'écran et il n'y
+    // aurait rien à faire défiler — le test passerait sans rien prouver.
+    page = await navigateur.newPage({ viewport: { width: 1440, height: 520 } });
+    await page.goto(app.base);
+  });
+
+  after(async () => {
+    if (navigateur) await navigateur.close();
+    if (app) await app.stop();
+  });
+
+  // Ouvre un stade et sélectionne son premier rapport, pour que la colonne de droite soit pleine.
+  async function ouvrirStade(seg) {
+    await page.locator(`[data-seg="${seg}"]`).click();
+    await page.waitForSelector('#reportSplit:not([hidden]) #reportList .card');
+    await page.locator('#reportList .card').first().click();
+    await page.waitForTimeout(300);
+  }
+
+  // Fait tourner la molette AU-DESSUS de la liste et rend compte de ce qui a bougé.
+  async function moletteSurLaListe() {
+    const avant = await page.evaluate(() => ({
+      rapport: Math.round(document.querySelector('#reportDetail').getBoundingClientRect().top),
+      page: Math.round(window.scrollY),
+    }));
+    const boite = await page.locator('#reportList').boundingBox();
+    await page.mouse.move(boite.x + boite.width / 2, boite.y + 60);
+    await page.mouse.wheel(0, 800);
+    await page.waitForTimeout(400);
+    return page.evaluate((av) => ({
+      liste: Math.round(document.querySelector('#reportSplit .col-list').scrollTop),
+      rapportBouge: Math.round(document.querySelector('#reportDetail').getBoundingClientRect().top) - av.rapport,
+      pageBouge: Math.round(window.scrollY) - av.page,
+    }), avant);
+  }
+
+  /* Marquer les rapports « traités » les fait passer du premier stade au second : les tests
+     qui suivent portent donc sur « Traitées ». C'est aussi ce qui impose l'ordre du fichier —
+     le stade « Reviewées » se vide dès qu'on a marqué. */
+  async function toutMarquerTraite() {
+    for (const m of (await app.api('GET', '/api/mrs')).body) await app.api('POST', `/api/mrs/${m.id}/done`, {});
+    await page.reload();
+  }
+
+  for (const [seg, libelle] of [['reviewed', 'Reviewées'], ['done', 'Traitées']]) {
+    test(`« ${libelle} » : la liste défile seule, le rapport reste en place`, async () => {
+      if (seg === 'done') await toutMarquerTraite();
+      await ouvrirStade(seg);
+      const r = await moletteSurLaListe();
+      assert.ok(r.liste > 100, `la liste doit défirer pour de bon (vu ${r.liste} px)`);
+      assert.equal(r.rapportBouge, 0, 'le rapport ne doit pas bouger d’un pixel');
+      assert.equal(r.pageBouge, 0, 'et la page non plus');
+    });
+  }
+
+  /* Le pendant du test précédent : arrivé au bas de la liste, la molette ne doit pas
+     enchaîner sur la page. Sans `overscroll-behavior`, l'écran se met à glisser au moment
+     précis où on croit encore parcourir la liste. */
+  test('la fin de la liste n’entraîne pas la page', async () => {
+    await toutMarquerTraite(); // idempotent : le test reste jouable seul
+    await ouvrirStade('done');
+    const boite = await page.locator('#reportList').boundingBox();
+    await page.mouse.move(boite.x + boite.width / 2, boite.y + 60);
+    for (let i = 0; i < 6; i++) { await page.mouse.wheel(0, 1200); await page.waitForTimeout(120); }
+    const fin = await page.evaluate(() => {
+      const l = document.querySelector('#reportSplit .col-list');
+      return { enBas: l.scrollTop + l.clientHeight >= l.scrollHeight - 2, page: Math.round(window.scrollY) };
+    });
+    assert.ok(fin.enBas, 'la liste a bien été parcourue jusqu’en bas');
+    assert.equal(fin.page, 0, 'la page est restée immobile');
+  });
+});

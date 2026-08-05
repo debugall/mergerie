@@ -202,6 +202,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The report stays put while you scroll the list of merge requests.** Under “Reviewed” and “Processed”,
+  list and report shared a single page scrollbar: going down the list to pick another merge request
+  carried the report off the screen, and you had to scroll back up to read it — though the whole point of
+  the two columns is to look at both at once. Each column now keeps its own scrollbar, and reaching the
+  bottom of the list no longer starts moving the page underneath.
+
+- **“Top 5 — recent activity” now shows the time, not just the date.** It ranks repositories by how
+  recently they were pushed to, and several of them usually share the same day — so the order looked
+  arbitrary. The last-commit column of the projects table is unchanged: there, nothing depends on the order.
+
 - **“Top 5 — recent activity” now ignores repositories you no longer follow.** A repository whose merge
   request fetching is switched off is one you have stopped watching; it had no business heading the list of
   what is moving, and the forge call it cost is exactly what turning that switch off was meant to avoid. It

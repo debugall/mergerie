@@ -157,14 +157,24 @@ lostSearch.length
    alors sur l'autre corps — et sur l'autre SIGNATURE. C'est arrivé à toastUndo,
    redéfini avec (msg, undoLabel, onUndo) alors que l'original attendait
    (msg, onUndo, ms) : le callback d'annulation recevait une chaîne. */
+/* Les `const nom = (…) => …` du premier niveau comptent AUSSI, et sont pires : une
+   `function` redéclarée écrase silencieusement, un `const` en double est une SyntaxError
+   qui empêche le script ENTIER de s'évaluer — plus une seule ligne d'interface ne
+   fonctionne. C'est arrivé avec un `fmtDateTime` ajouté en haut du fichier alors qu'il
+   existait déjà 3600 lignes plus bas, et ce contrôle ne regardait alors que `function`. */
 const declaredFns = new Map();
 const dupFns = [];
 lines.forEach((l, i) => {
-  const m = l.match(/^function\s+([A-Za-z_$][\w$]*)\s*\(/); // ^ = premier niveau uniquement
+  const m = l.match(/^(?:function\s+([A-Za-z_$][\w$]*)\s*\(|(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=)/);
   if (!m) return;
-  const prev = declaredFns.get(m[1]);
-  if (prev) dupFns.push(`public/app.js:${i + 1}  function ${m[1]}() — déjà défini ligne ${prev} ; la seconde écrase la première`);
-  else declaredFns.set(m[1], i + 1);
+  const nom = m[1] || m[2];
+  const quoi = m[1] ? `function ${nom}()` : `const ${nom}`;
+  const prev = declaredFns.get(nom);
+  if (prev) {
+    dupFns.push(m[1]
+      ? `public/app.js:${i + 1}  ${quoi} — déjà défini ligne ${prev} ; la seconde écrase la première`
+      : `public/app.js:${i + 1}  ${quoi} — déjà défini ligne ${prev} ; SyntaxError, tout app.js cesse de s'exécuter`);
+  } else declaredFns.set(nom, i + 1);
 });
 dupFns.length
   ? fail('Fonction redéfinie au premier niveau d’app.js', dupFns)

@@ -371,6 +371,26 @@ body.footer-hidden { padding-bottom: 0; }
 #reportSplit.split { grid-template-columns: 320px minmax(0, 900px); justify-content: center; }
 .col-list .filters { padding: 6px 0; display: flex; align-items: center; gap: 10px; justify-content: space-between; }
 .col-detail { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; min-height: 300px; }
+
+/* Liste et rapport défilent CHACUN pour soi. Avec une seule barre de page, descendre la liste
+   pour changer de merge request emportait le rapport hors de l'écran, et il fallait remonter
+   pour le lire — alors qu'on regarde les deux ensemble. Chaque colonne s'accroche donc sous
+   l'en-tête (`--header-h`, mesuré en JS) et garde son propre ascenseur.
+   `align-items: start` est indispensable : par défaut une piste de grille s'étire sur toute
+   la hauteur de la rangée, la colonne courte prend la taille de la longue et rien ne colle. */
+#reportSplit.split { align-items: start; }
+#reportSplit .col-list,
+#reportSplit .col-detail {
+  position: sticky; top: calc(var(--header-h, 56px) + 6px);
+  max-height: calc(100vh - var(--header-h, 56px) - 28px);
+  overflow-y: auto;
+  /* Arrivé en bas de la liste, la molette ne doit pas enchaîner sur la page : on croirait
+     que la liste continue alors que c'est tout l'écran qui bouge. */
+  overscroll-behavior: contain;
+}
+/* Le rapport peut être court : la barre de défilement du navigateur ne s'affiche alors pas,
+   mais `min-height: 300px` le ferait dépasser sur un écran bas — d'où le plafond commun. */
+#reportSplit .col-detail { min-height: 0; }
 .note { flex: 0 0 auto; min-width: 44px; text-align: center; font-weight: 700; font-size: 12px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); }
 .note.good { color: var(--on-green); background: var(--green); border-color: var(--green); }
 .note.mid { color: var(--on-amber); background: var(--amber); border-color: var(--amber); }
