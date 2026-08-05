@@ -8830,6 +8830,7 @@ function editerVerifier(id) {
   renderVerifierRepoBox(v.repos || []);
   appliquerKind();
   $('#verifierInfo').textContent = tr('verify.verifier.editing', { name: v.name });
+  ouvrirFormVerifier(true);
   f.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -8853,13 +8854,40 @@ $('#verifierCommandList') && $('#verifierCommandList').addEventListener('click',
   renderCommandList(lignes.filter((r) => r !== b.closest('.vc-row')).map((r) => $('.vc-cmd', r).value));
 });
 
-$('#btnVerifierReset') && $('#btnVerifierReset').addEventListener('click', () => {
+/* Le formulaire reste FERMÉ tant qu'on ne demande rien. Déployé en permanence, il occupait
+   l'écran entier — champs, liste de commandes, tableau des dépôts couverts — au-dessus de la
+   liste des vérificateurs, qui est pourtant ce qu'on vient consulter. Il s'ouvre sur
+   « Ajouter » ou sur « Modifier », et se referme dès qu'on a fini. */
+function ouvrirFormVerifier(ouvert) {
+  const f = $('#verifierForm');
+  if (!f) return;
+  f.hidden = !ouvert;
+  const b = $('#btnNewVerifier');
+  // Le bouton d'ouverture disparaît pendant l'édition : deux formulaires n'ont pas de sens,
+  // et « Ajouter » alors qu'on modifie un vérificateur existant se lirait comme une erreur.
+  if (b) b.hidden = ouvert;
+}
+
+function viderFormVerifier() {
   const f = $('#verifierForm');
   f.reset(); f.id.value = ''; f.run_base.checked = true; f.parse_tap.checked = true;
   renderVerifierRepoBox([]);
   renderCommandList([]);
   appliquerKind();
   $('#verifierInfo').textContent = '';
+}
+
+$('#btnNewVerifier') && $('#btnNewVerifier').addEventListener('click', () => {
+  viderFormVerifier();
+  ouvrirFormVerifier(true);
+  const f = $('#verifierForm');
+  f.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  f.name.focus();
+});
+
+$('#btnVerifierCancel') && $('#btnVerifierCancel').addEventListener('click', () => {
+  viderFormVerifier();
+  ouvrirFormVerifier(false);
 });
 
 $('#verifierForm') && $('#verifierForm').addEventListener('submit', async (e) => {
@@ -8882,10 +8910,8 @@ $('#verifierForm') && $('#verifierForm').addEventListener('submit', async (e) =>
   try {
     await api(id ? `/verifiers/${id}` : '/verifiers', { method: id ? 'PUT' : 'POST', body });
     toast(tr('verify.verifier.saved'));
-    f.reset(); f.id.value = ''; f.run_base.checked = true; f.parse_tap.checked = true;
-    renderCommandList([]);
-    appliquerKind();
-    $('#verifierInfo').textContent = '';
+    viderFormVerifier();
+    ouvrirFormVerifier(false);
     await loadVerifiers();
   } catch (err) { toast(explainError(err.message), true); }
 });

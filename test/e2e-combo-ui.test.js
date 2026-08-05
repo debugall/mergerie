@@ -69,6 +69,9 @@ describe('Combo — le menu ne se fait ni rogner ni détacher', { skip: dispo ? 
   async function ouvrirCombo(indexLigne) {
     await page.locator('[data-tab="admin"]').click();
     await page.locator('#tab-admin .subnav button', { hasText: 'Vérificateurs' }).click();
+    // Le formulaire s'ouvre à la demande : sans ce clic, ses lignes existent dans le DOM
+    // mais restent invisibles, et rien ne peut être cliqué.
+    if (await page.locator('#btnNewVerifier').isVisible()) await page.locator('#btnNewVerifier').click();
     await page.waitForSelector('#verifierRepoBox .vr-row');
     const ligne = page.locator('#verifierRepoBox .vr-row').nth(indexLigne);
     if (!(await ligne.locator('.vr-pick').isChecked())) await ligne.locator('.vr-pick').check();

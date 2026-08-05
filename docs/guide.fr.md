@@ -548,7 +548,8 @@ commandes *nom + commande figée*) ·
 *Jira* et l'enrichissement d'une session depuis un ticket) ·
 **Merge Request** (skill de review, rafraîchissement auto, convergence, templates de prompt) ·
 **Vérificateurs** (tes scripts de tests, et les dépôts que chacun sait tester — voir *Vérification
-objective* plus bas) ·
+objective* plus bas ; la page montre d'abord **la liste**, et le formulaire s'ouvre sur *Ajouter un
+vérificateur* ou sur *Modifier*) ·
 **AI sessions** (un test technique : deux passes dans la même session d'agent — mémorise un marqueur
 puis le rappelle en reprise — pour vérifier que la **reprise de session** fonctionne avec ton CLI ;
 c'est le socle de la continuité de contexte entre review, corrections et convergence).

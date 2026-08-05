@@ -653,7 +653,10 @@ print(json.dumps({
     "failed": casses[:50],
 }))</code></pre>
             </details>
-            <form id="verifierForm" class="form" style="max-width:860px">
+            <div class="toolbar">
+                <button id="btnNewVerifier" class="btn btn-primary" type="button"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="verify.verifier.btn.add">Ajouter un vérificateur</span></button>
+            </div>
+            <form id="verifierForm" class="form" style="max-width:860px" hidden>
                 <input type="hidden" name="id" />
                 <label><span data-i18n="settings.verifier.lbl.name">Nom</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.name" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input name="name" required placeholder="ex. intégration" data-i18n-placeholder="settings.verifier.ph.name" />
@@ -697,7 +700,7 @@ print(json.dumps({
                 <div id="verifierRepoBox"></div>
                 <div class="form-actions">
                     <button class="btn btn-primary" type="submit"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
-                    <button class="btn" type="button" id="btnVerifierReset" data-i18n="settings.verifier.btn.new">Nouveau</button>
+                    <button class="btn" type="button" id="btnVerifierCancel" data-i18n="ui.cancel">Annuler</button>
                     <span id="verifierInfo" class="muted"></span>
                 </div>
             </form>

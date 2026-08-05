@@ -383,6 +383,9 @@ async function principal() {
   /* Vérificateurs (7) — l'onglet des sessions d'IA a glissé en 8 quand celui-ci a été
      inséré : un index périmé pointait sur le mauvais panneau sans rien casser. */
   await clique(sous('admin', 7));
+  // Le formulaire s'ouvre à la demande depuis peu : sans ce clic, les trois pointages
+  // suivants viseraient des champs masqués et le parcours s'arrêterait là.
+  await clique('#btnNewVerifier');
   await montreOptions('#verifierForm select[name=kind]'); await dit();   // @@NEW:c1
   await fermeOptions('#verifierForm select[name=kind]');
   await versEl('#verifierCommandList'); await dit();                     // @@NEW:c2

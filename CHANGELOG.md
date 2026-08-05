@@ -207,6 +207,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   but at the cost of one AI call per repository, to redo work that is already done. The button only
   appears when at least one project is in error.
 
+### Changed
+
+- **The verifier form now opens on demand.** Settings → Verifiers used to lead with the whole form — name,
+  command list, covered repositories — which pushed the verifiers you came to look at off the screen. The
+  list comes first now, and “Add a verifier” opens the form; so does “Edit”, already filled in. Saving or
+  cancelling closes it again.
+
 ### Fixed
 
 - **The base run is replayed every time, instead of being reused.** Mergerie used to cache it per set of
