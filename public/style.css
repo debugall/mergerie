@@ -372,6 +372,22 @@ body.footer-hidden { padding-bottom: 0; }
 .col-list .filters { padding: 6px 0; display: flex; align-items: center; gap: 10px; justify-content: space-between; }
 .col-detail { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; min-height: 300px; }
 
+/* Filtre par couleur de note, au-dessus de la liste. Les pastilles reprennent EXACTEMENT
+   l'habillage des notes des cartes (`.note.good/.mid/.bad`) : c'est ce qui rend le lien
+   évident sans une ligne d'explication. */
+.note-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 2px 0 10px; }
+.note-filters .nf-label { color: var(--muted); font-size: var(--fs-xs); }
+.nf-item { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none;
+  border: 1px solid transparent; border-radius: var(--r-sm); padding: 2px 6px 2px 3px; }
+.nf-item:hover { border-color: var(--line); }
+.nf-item input { cursor: pointer; margin: 0; }
+.nf-item .note { min-width: 0; padding: 2px 6px; font-size: 11px; }
+.nf-count { color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+/* Un filtre actif se voit AU REPOS : sans ce repère, une liste courte se lit comme
+   « il n'y a que ça », et on ne pense pas à regarder trois cases au-dessus. */
+.note-filters.is-filtering .nf-label { color: var(--accent); font-weight: 600; }
+.nf-item:has(input:not(:checked)) .note { opacity: .4; }
+
 /* Liste et rapport défilent CHACUN pour soi. Avec une seule barre de page, descendre la liste
    pour changer de merge request emportait le rapport hors de l'écran, et il fallait remonter
    pour le lire — alors qu'on regarde les deux ensemble. Chaque colonne s'accroche donc sous

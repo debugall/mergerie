@@ -13,6 +13,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Filter reviewed merge requests by score colour.** Three checkboxes sit above the list, under
+  “Reviewed” and “Processed”: green (7/10 and above), amber (4 to 6.9), red (below 4). They combine, so
+  “show me the red and amber ones” is one click each, and each carries the number of merge requests it
+  will bring up. The choice is remembered between visits, unticking the last box brings everything back
+  rather than leaving you with an empty list and no way out, and the summary on the right follows the
+  filter instead of describing merge requests you can no longer see.
+
 - **Ask for a fix on one repository of a multi-repo coding session.** Each project line now has its own
   “Request a fix” button, next to “Run”. A remark is nearly always about one repository — “use
   AbortController here” means nothing in the other four — yet the only way to say it was to send it to the

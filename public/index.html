@@ -162,6 +162,26 @@
         <!-- stades « reviewées » / « traitées » : liste + rapport -->
         <div id="reportSplit" class="split" hidden>
             <div class="col-list">
+                <!-- Filtre par couleur de note. Trois cases indépendantes : on cherche
+                     souvent « les rouges ET les oranges », pas une seule tranche. -->
+                <div id="noteFilters" class="note-filters">
+                    <span class="nf-label" data-i18n="review.filter.note">Note</span>
+                    <label class="nf-item" title="Notes de 7/10 et plus" data-i18n-title="review.filter.good-title">
+                        <input type="checkbox" class="note-pick" value="good" checked />
+                        <span class="note good" data-i18n="review.filter.good">≥ 7</span>
+                        <span class="nf-count" data-nf-count="good"></span>
+                    </label>
+                    <label class="nf-item" title="Notes de 4/10 à 6,9/10" data-i18n-title="review.filter.mid-title">
+                        <input type="checkbox" class="note-pick" value="mid" checked />
+                        <span class="note mid" data-i18n="review.filter.mid">4 – 6,9</span>
+                        <span class="nf-count" data-nf-count="mid"></span>
+                    </label>
+                    <label class="nf-item" title="Notes en dessous de 4/10" data-i18n-title="review.filter.bad-title">
+                        <input type="checkbox" class="note-pick" value="bad" checked />
+                        <span class="note bad" data-i18n="review.filter.bad">&lt; 4</span>
+                        <span class="nf-count" data-nf-count="bad"></span>
+                    </label>
+                </div>
                 <div id="reportList" class="list"></div>
             </div>
             <div class="col-detail" id="reportDetail">

@@ -769,14 +769,20 @@ function lignesDelta(seg, rows, maintenant = Date.now()) {
 function renderReportPlaceholder() {
   const el = $('#reportDetail');
   if (!el) return;
-  const rows = reportRows || [];
-  if (!rows.length) { el.innerHTML = `<p class="muted">${tr('report.ph.pick')}</p>`; return; }
+  const toutes = reportRows || [];
+  if (!toutes.length) { el.innerHTML = `<p class="muted">${tr('report.ph.pick')}</p>`; return; }
+  /* Le résumé décrit ce qui est À L'ÉCRAN : sinon « 6 rapports » et trois raccourcis vers des
+     merge requests masquées s'affichent à côté d'une liste qui n'en montre qu'une.
+     Le suivi des nouveautés, lui, reste sur le stade ENTIER : mémoriser une visite partielle
+     ferait resignaler comme neuves des lignes que le filtre avait simplement cachées. */
+  const rows = toutes.filter(passeFiltreNote);
   const noted = rows.filter((m) => m.note && m.note.value != null);
   const avg = noted.length ? Math.round((noted.reduce((s, m) => s + m.note.value, 0) / noted.length) * 100) / 10 : null;
   const stale = rows.filter((m) => m.stale).length;
   const worst = [...noted].sort((a, b) => a.note.value - b.note.value).slice(0, 3);
-  const delta = lignesDelta(currentSeg, rows);
-  memoriserVisite(currentSeg, rows);
+  const delta = lignesDelta(currentSeg, toutes);
+  memoriserVisite(currentSeg, toutes);
+  if (!rows.length) { el.innerHTML = `<p class="muted">${tr('report.ph.pick')}</p>`; return; }
   el.innerHTML = `
     <div class="ph-summary">
       ${delta.length ? `<div class="ph-delta">
@@ -788,7 +794,7 @@ function renderReportPlaceholder() {
       ${worst.length ? `<div class="ph-worst">
         <div class="step-s">${tr('report.ph.priority')}</div>
         ${worst.map((m) => `<button class="ph-item" data-open-mr="${m.id}">
-            <span class="note ${m.note.value >= 0.7 ? 'good' : (m.note.value >= 0.4 ? 'mid' : 'bad')}">${esc(m.note.raw)}</span>
+            <span class="note ${noteClass(m.note)}">${esc(m.note.raw)}</span>
             <span class="ph-item-t">!${m.iid} — ${esc((m.title || '').slice(0, 48))}</span>
           </button>`).join('')}
       </div>` : ''}
@@ -871,6 +877,7 @@ document.addEventListener('click', (e) => {
     case 'seg-reviewed': loadSegment('reviewed'); break;
     case 'go-jira-config': go('admin'); showAdminSub('jiracfg'); break;
     case 'clear-search': $('#searchReview').value = ''; loadSegment(currentSeg); break;
+    case 'clear-note-filter': reinitFiltreNote(); break;
     default: break;
   }
 });
@@ -1952,6 +1959,30 @@ $('#btnReview').addEventListener('click', async () => {
 /* ---------- Rapports ---------- */
 let selectedMr = null;
 let reportRows = [];
+
+/* ---- Filtre par couleur de note (stades « Reviewées » et « Traitées ») ----
+   Trois cases indépendantes : on cherche « les rouges ET les oranges », pas une tranche.
+   Tout coché = pas de filtre, et c'est l'état par défaut — un filtre resté actif d'une
+   session à l'autre ferait croire à une liste vide. Il survit quand même au rechargement :
+   décocher à chaque visite serait pire.
+
+   Une carte SANS note (rapport dont aucune note n'a pu être extraite) n'appartient à aucune
+   des trois couleurs. Elle reste visible tant qu'on ne filtre pas ; dès qu'on choisit des
+   couleurs, elle sort — demander « les rouges » ne doit pas ramener des cartes grises. */
+const NOTE_CLASSES = ['good', 'mid', 'bad'];
+let noteFilter = new Set(NOTE_CLASSES);
+try {
+  const brut = JSON.parse(localStorage.getItem('aidevtools_note_filter') || 'null');
+  if (Array.isArray(brut)) {
+    const garde = brut.filter((c) => NOTE_CLASSES.includes(c));
+    // Un filtre vide n'afficherait rien et n'aurait pas d'issue évidente : on revient à tout.
+    if (garde.length) noteFilter = new Set(garde);
+  }
+} catch { /* stockage indisponible ou valeur illisible : filtre par défaut */ }
+
+const filtreNoteActif = () => noteFilter.size < NOTE_CLASSES.length;
+const passeFiltreNote = (m) => !filtreNoteActif() || noteFilter.has(noteClass(m.note));
+
 async function loadReports(status = 'reviewed') {
   reportRows = await api(`/mrs?status=${status}`);
   listeChargee = true;
@@ -1960,6 +1991,7 @@ async function loadReports(status = 'reviewed') {
 function renderReports() {
   const el = $('#reportList');
   const q = ($('#searchReview').value || '').toLowerCase().trim();
+  majFiltreNote();
   if (!reportRows.length) {
     el.innerHTML = emptyState({ icon: 'doc',
       title: currentSeg === 'done' ? tr('report.empty.done.title') : tr('report.empty.none.title'),
@@ -1967,13 +1999,25 @@ function renderReports() {
       actions: [{ act: 'seg-to-review', label: tr('report.empty.action'), primary: true }] });
     return;
   }
-  const rows = q ? reportRows.filter((m) => matchMr(m, q)) : reportRows;
-  if (!rows.length) {
+  const cherchees = q ? reportRows.filter((m) => matchMr(m, q)) : reportRows;
+  if (!cherchees.length) {
     el.innerHTML = emptyState({
       icon: 'search',
       title: tr('report.search.none', { q: esc(q) }),
       text: tr('report.search.count', { n: reportRows.length, total: reportRows.length }),
       actions: [{ act: 'clear-search', label: tr('report.search.clear') }],
+    });
+    return;
+  }
+  const rows = cherchees.filter(passeFiltreNote);
+  /* Tout masqué par les couleurs : le dire, et proposer la sortie. Une liste vide sans
+     explication au-dessus de trois cases décochées se lit comme « il n'y a rien ». */
+  if (!rows.length) {
+    el.innerHTML = emptyState({
+      icon: 'search',
+      title: tr('review.filter.empty.title'),
+      text: tr('review.filter.empty.text', { n: cherchees.length, count: cherchees.length }),
+      actions: [{ act: 'clear-note-filter', label: tr('review.filter.clear'), primary: true }],
     });
     return;
   }
@@ -2009,11 +2053,59 @@ function renderReports() {
 }
 // la recherche est partagée : #searchReview rafraîchit le stade courant
 
+/* Cases et compteurs du filtre de note. Le compteur porte sur ce que la RECHERCHE a laissé,
+   pas sur tout le stade : sinon « 3 rouges » resterait affiché à côté d'une liste filtrée
+   qui n'en montre aucun. Il se lit donc « en cochant ceci, voilà ce qui apparaît ». */
+function majFiltreNote() {
+  const boite = $('#noteFilters');
+  if (!boite) return;
+  const q = ($('#searchReview').value || '').toLowerCase().trim();
+  const base = q ? reportRows.filter((m) => matchMr(m, q)) : reportRows;
+  const parCouleur = {};
+  for (const m of base) {
+    const c = noteClass(m.note);
+    if (c) parCouleur[c] = (parCouleur[c] || 0) + 1;
+  }
+  $$('.note-pick', boite).forEach((c) => { c.checked = noteFilter.has(c.value); });
+  $$('[data-nf-count]', boite).forEach((s) => { s.textContent = parCouleur[s.dataset.nfCount] || 0; });
+  boite.classList.toggle('is-filtering', filtreNoteActif());
+  /* Rien à filtrer, rien à montrer : sur un stade vide, trois cases au-dessus d'un message
+     « aucun rapport » n'aident personne. (Le stade « À traiter » masque toute la colonne :
+     ses cartes n'ont pas de note — une MR n'y revient qu'après suppression de son rapport.) */
+  boite.hidden = !reportRows.length;
+}
+
+function ecrireFiltreNote() {
+  try { localStorage.setItem('aidevtools_note_filter', JSON.stringify([...noteFilter])); } catch { /* ignore */ }
+}
+
+function reinitFiltreNote() {
+  noteFilter = new Set(NOTE_CLASSES);
+  ecrireFiltreNote();
+  renderReports();
+}
+
+$$('#noteFilters .note-pick').forEach((c) => c.addEventListener('change', () => {
+  if (c.checked) noteFilter.add(c.value); else noteFilter.delete(c.value);
+  /* Tout décocher afficherait une liste vide dont la sortie n'est pas évidente — la case
+     qu'on vient de décocher est la seule à pouvoir la rouvrir. On revient donc à « tout ». */
+  if (!noteFilter.size) noteFilter = new Set(NOTE_CLASSES);
+  ecrireFiltreNote();
+  renderReports();
+}));
+
+/* Couleur d'une note. Une seule définition des seuils, partagée par la pastille et par le
+   filtre : deux tables de seuils finiraient par diverger, et une carte verte se retrouverait
+   masquée en cochant « vert ». `null` = pas de note extraite du rapport. */
+function noteClass(note) {
+  if (!note || note.value == null) return null;
+  return note.value >= 0.7 ? 'good' : (note.value >= 0.4 ? 'mid' : 'bad');
+}
+
 // Pastille de note globale colorée (vert = bon, orange = moyen, rouge = mauvais).
 function noteBadge(note) {
-  if (!note || note.value == null) return `<span class="note none" title="${tr('review.note.none')}">—</span>`;
-  const v = note.value;
-  const cls = v >= 0.7 ? 'good' : (v >= 0.4 ? 'mid' : 'bad');
+  const cls = noteClass(note);
+  if (!cls) return `<span class="note none" title="${tr('review.note.none')}">—</span>`;
   return `<span class="note ${cls}" title="${esc(tr('review.note.title'))}">${esc(note.raw)}</span>`;
 }
 

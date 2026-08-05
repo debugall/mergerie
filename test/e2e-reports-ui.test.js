@@ -50,6 +50,14 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
       await app.api('POST', `/api/mrs/${m.id}/review`, {});
       await waitForJobs(app.api);
     }
+    /* L'agent en dry-run rend le MÊME rapport pour toutes : une seule couleur, donc rien à
+       filtrer. On réécrit les rapports avec des notes étalées sur les trois tranches.
+       La note est relue du FICHIER à chaque appel (`extractNote`), pas stockée : réécrire
+       suffit, et on exerce au passage le vrai chemin d'extraction. */
+    const NOTES = ['9,1', '7,5', '6,0', '4,2', '3,3', '1,8']; // 2 vertes, 2 oranges, 2 rouges
+    app.db.prepare('SELECT mr_id, md_path FROM review ORDER BY mr_id').all().forEach((rv, i) => {
+      fs.writeFileSync(rv.md_path, `# Revue\n\nDu texte.\n\n## Note globale\n\n**${NOTES[i % NOTES.length]}/10**\n`, 'utf8');
+    });
 
     navigateur = await chromium.launch();
     // Fenêtre volontairement courte : sans elle, la liste tiendrait à l'écran et il n'y
@@ -107,20 +115,88 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
     });
   }
 
-  /* Le pendant du test précédent : arrivé au bas de la liste, la molette ne doit pas
+  /* ---- Filtre par couleur de note ----
+     Trois cases indépendantes au-dessus de la liste. Ce qui compte : elles se combinent,
+     l'état survit au rechargement, et il reste toujours un chemin de retour vers la liste
+     entière — un filtre sans issue est pire que pas de filtre. */
+  const notesAffichees = () => page.$$eval('#reportList .card .note',
+    (ns) => ns.map((n) => n.className.replace('note ', '').trim()));
+
+  const cocher = async (couleur, veut) => {
+    const c = page.locator(`#noteFilters input[value="${couleur}"]`);
+    if ((await c.isChecked()) !== veut) await c.click();
+    await page.waitForTimeout(250);
+  };
+
+  test('les cases de note se combinent, et le compteur annonce ce qu’on verra', async () => {
+    await toutMarquerTraite();
+    await ouvrirStade('done');
+
+    const toutes = await notesAffichees();
+    assert.ok(toutes.length >= 2, 'il faut plusieurs rapports pour que le filtre ait un sens');
+    const compteurs = await page.$$eval('#noteFilters [data-nf-count]',
+      (s) => Object.fromEntries(s.map((x) => [x.dataset.nfCount, Number(x.textContent)])));
+    for (const couleur of ['good', 'mid', 'bad']) {
+      assert.equal(compteurs[couleur], toutes.filter((c) => c === couleur).length,
+        `le compteur ${couleur} doit annoncer ce que la case fera apparaître`);
+    }
+
+    // Une seule couleur : rien d'autre ne subsiste.
+    const majoritaire = ['good', 'mid', 'bad'].find((c) => compteurs[c] > 0);
+    for (const c of ['good', 'mid', 'bad']) await cocher(c, c === majoritaire);
+    const restant = await notesAffichees();
+    assert.ok(restant.length, 'la couleur choisie reste visible');
+    assert.deepEqual([...new Set(restant)], [majoritaire], 'et elle seule');
+
+    // Deux couleurs cochées : l'union, pas l'une ou l'autre.
+    const seconde = ['good', 'mid', 'bad'].find((c) => c !== majoritaire && compteurs[c] > 0);
+    if (seconde) {
+      await cocher(seconde, true);
+      const deux = new Set(await notesAffichees());
+      assert.deepEqual([...deux].sort(), [majoritaire, seconde].sort(), 'les cases s’additionnent');
+    }
+  });
+
+  test('le choix survit au rechargement, et tout décocher n’enferme personne', async () => {
+    await ouvrirStade('done');
+    const compteurs = await page.$$eval('#noteFilters [data-nf-count]',
+      (s) => Object.fromEntries(s.map((x) => [x.dataset.nfCount, Number(x.textContent)])));
+    const garde = ['good', 'mid', 'bad'].find((c) => compteurs[c] > 0);
+    for (const c of ['good', 'mid', 'bad']) await cocher(c, c === garde);
+    const avant = await notesAffichees();
+
+    await page.reload();
+    await ouvrirStade('done');
+    assert.deepEqual(await notesAffichees(), avant, 'le filtre est retrouvé tel quel');
+    assert.equal(await page.locator(`#noteFilters input[value="${garde}"]`).isChecked(), true,
+      'et les cases le montrent — sinon la liste paraîtrait amputée sans raison');
+
+    /* Décocher la DERNIÈRE case : la liste deviendrait vide et plus aucune case ne
+       permettrait de la rouvrir. On revient donc à tout afficher. */
+    await page.locator(`#noteFilters input[value="${garde}"]`).click();
+    await page.waitForTimeout(300);
+    const cases = await page.$$eval('#noteFilters .note-pick', (cs) => cs.map((c) => c.checked));
+    assert.deepEqual(cases, [true, true, true], 'tout revient coché');
+    assert.ok((await notesAffichees()).length >= avant.length, 'et la liste entière réapparaît');
+  });
+
+  /* Le pendant du test de défilement : arrivé au bas de la liste, la molette ne doit pas
      enchaîner sur la page. Sans `overscroll-behavior`, l'écran se met à glisser au moment
      précis où on croit encore parcourir la liste. */
   test('la fin de la liste n’entraîne pas la page', async () => {
     await toutMarquerTraite(); // idempotent : le test reste jouable seul
     await ouvrirStade('done');
+    // Position de départ mesurée, pas supposée : sélectionner une carte peut déjà avoir
+    // déplacé la page de quelques pixels. Ce qu'on défend, c'est qu'elle ne bouge PLUS.
+    const depart = await page.evaluate(() => Math.round(window.scrollY));
     const boite = await page.locator('#reportList').boundingBox();
     await page.mouse.move(boite.x + boite.width / 2, boite.y + 60);
     for (let i = 0; i < 6; i++) { await page.mouse.wheel(0, 1200); await page.waitForTimeout(120); }
-    const fin = await page.evaluate(() => {
+    const fin = await page.evaluate((d) => {
       const l = document.querySelector('#reportSplit .col-list');
-      return { enBas: l.scrollTop + l.clientHeight >= l.scrollHeight - 2, page: Math.round(window.scrollY) };
-    });
+      return { enBas: l.scrollTop + l.clientHeight >= l.scrollHeight - 2, bouge: Math.round(window.scrollY) - d };
+    }, depart);
     assert.ok(fin.enBas, 'la liste a bien été parcourue jusqu’en bas');
-    assert.equal(fin.page, 0, 'la page est restée immobile');
+    assert.equal(fin.bouge, 0, 'la page n’a pas suivi');
   });
 });

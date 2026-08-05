@@ -312,7 +312,7 @@ sont pas re-vérifiés à l'écriture — c'est la forge qui les détient.
 
 ## Interface
 
-Sept onglets : **Reviews** (filtre segmenté sur les 3 stades d'une MR) · **Dev IA** (sous-onglets
+Sept onglets : **Reviews** (filtre segmenté sur les 3 stades d'une MR ; sur *Reviewées* et *Traitées*, **trois cases de couleur de note** au-dessus de la liste — vert ≥ 7, orange 4–6,9, rouge < 4 —, cumulables, chacune portant le nombre de MR qu'elle fera apparaître, choix persisté ; décocher la dernière ramène tout, et le résumé de droite suit le filtre. Le stade *À traiter* n'en a pas : une MR n'y revient qu'après suppression de son rapport, donc sans note) · **Dev IA** (sous-onglets
 Codage / Codage hors dépôt / Exploration ; recherche commune, **rangement des sessions terminées**
 — drapeau `hidden` en base, case « afficher les sessions masquées » persistée, décompte de ce qui
 est filtré ; prompt replié sur trois lignes avec « Voir plus », texte complet toujours dans le DOM) · **Statistiques** · **Git** (sous-onglets Actions / Navigation / **Commandes Git** / Explorateur de branches / Trouver une ref / Historique) · **Docker** (sous-onglets Compose / Hors-compose / Logs / Actions ; drift .env, badges santé du menu, tail live des logs, actions groupées ; **Compose : recherche de service/container + filtre d'état**, tous deux persistés et appliqués côté client — le prédicat d'état est celui d'*Actions* (`dactMatchesFilter`) et la LISTE d'états est la même (`DOCKER_STATE_FILTERS`, dont le menu d'Actions est peuplé au démarrage) : un seul comportement, un seul jeu de choix. « Ne tourne pas » se décline en **exited** (a tourné puis s'est arrêté → redémarrer), **created** (existe mais n'a jamais démarré → souvent un échec au démarrage) et **missing** (aucun container → `up`), avec `stopped` conservé comme chapeau des trois — c'est une valeur déjà persistée dans le navigateur, la retirer casserait les filtres enregistrés) · **Jira** (mes tickets affectés : liste filtrable par statut — choix persisté — → détail avec contenu, métadonnées, commentaires, pièces jointes, changement d'état, ajout de commentaire) ·
@@ -366,8 +366,8 @@ qu'un démarrage propre). Le panneau de rapport s'ouvre sur le **delta depuis la
 (instantané par stade, base de comparaison figée pendant quatre heures, trois faits au plus, rien
 du tout si rien n'a bougé).
 **Garde-fous statiques** (`npm run check`) : `check-front.js` (sélecteur `$` traité en liste,
-sous-onglet sans `segmented`, id inconnu, icône absente, `busy()` mal appelé, **fonction redéfinie au
-premier niveau d'`app.js`** (la seconde écrase la première par hoisting, sans avertissement), **liste de
+sous-onglet sans `segmented`, id inconnu, icône absente, `busy()` mal appelé, **nom redéfini au
+premier niveau d'`app.js`** (une `function` écrase la précédente par hoisting sans avertissement ; un `const`/`let` en double est pire — SyntaxError, et plus une ligne d'`app.js` ne s'exécute), **liste de
 refs git sans recherche**, `<select>` de dépôt
 sans recherche) et `i18n-check.js` (parité fr/en, clés absentes, entités HTML, français en dur).
 Chacun est né d'un bug réel : ils attrapent en statique ce que `node --check` ne voit pas.
