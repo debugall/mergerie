@@ -648,13 +648,11 @@ if (!db.prepare('PRAGMA table_info(verification)').all().some((c) => c.name === 
   db.pragma('foreign_keys = ON');
 }
 
-/* Cache des runs par jeu de SHAs : le run BASE ne bouge pas pendant qu'on itère sur la
-   branche, le refaire coûterait plusieurs minutes à chaque passe pour un résultat connu. */
-db.exec(`CREATE TABLE IF NOT EXISTS verification_run_cache (
-  repo_set_hash TEXT PRIMARY KEY,
-  run_json TEXT NOT NULL,
-  created_at TEXT NOT NULL
-)`);
+/* Le run BASE était mis en cache par jeu de SHAs. Supprimé : le cache pariait sur un
+   environnement inchangé — ce que Mergerie ne peut pas vérifier —, et le pari se payait des
+   deux côtés (un rouge corrigé hors git restait collé, un vert périmé faisait accuser la
+   branche à tort). La table ne contenait que ce cache : rien à conserver. */
+try { db.exec('DROP TABLE IF EXISTS verification_run_cache'); } catch { /* déjà absente */ }
 
 db.exec(`CREATE TABLE IF NOT EXISTS convergence_run (
   id INTEGER PRIMARY KEY,

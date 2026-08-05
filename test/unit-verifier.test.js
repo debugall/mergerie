@@ -111,7 +111,7 @@ describe('verify : composition du verdict', () => {
   });
 });
 
-describe('verify : péremption et cache', () => {
+describe('verify : péremption', () => {
   const cibles = [{ mr_id: 1, head_sha: 'aaa' }, { mr_id: 2, head_sha: 'bbb' }];
 
   test('un verdict se périme dès qu’UNE des branches a avancé', () => {
@@ -119,22 +119,6 @@ describe('verify : péremption et cache', () => {
     assert.equal(v.estPerime(cibles, { 1: 'aaa', 2: 'ccc' }), true);
     // SHA courant inconnu : on ne périme pas sur une absence d'information.
     assert.equal(v.estPerime(cibles, { 1: 'aaa' }), false);
-  });
-
-  test('l’empreinte d’un run ne dépend pas de l’ordre des dépôts', () => {
-    const jeu = [{ repo_id: 1, sha: 'x' }, { repo_id: 2, sha: 'y' }];
-    const V = { id: 3, command: '/bin/integ', timeout_s: 900 };
-    const a = v.hashRunSet(V, jeu);
-    assert.equal(a, v.hashRunSet(V, [...jeu].reverse()), 'sinon le cache raterait un run pourtant identique');
-    assert.notEqual(a, v.hashRunSet(V, [{ repo_id: 1, sha: 'x' }, { repo_id: 2, sha: 'z' }]));
-    assert.notEqual(a, v.hashRunSet({ ...V, id: 4 }, jeu),
-      'deux vérificateurs différents ne partagent pas un résultat');
-    /* Les deux pièges du cache, et ils rendent tous deux un verdict FAUX en silence :
-       un identifiant recyclé après suppression, et une commande modifiée sous le même id. */
-    assert.notEqual(a, v.hashRunSet({ ...V, command: '/bin/integ-v2' }, jeu),
-      'changer la commande doit invalider le résultat mis en cache');
-    assert.notEqual(a, v.hashRunSet({ ...V, timeout_s: 60 }, jeu),
-      'un timeout plus court peut changer l’issue du run');
   });
 });
 

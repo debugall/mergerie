@@ -13,8 +13,6 @@
  *     sortie illisible — on ne conclut pas : `verify_error`, visible.
  */
 
-const crypto = require('crypto');
-
 const VERDICTS = ['verified_pass', 'verified_fail', 'broken_base', 'verify_error'];
 
 // Bornes du contrat (§4). Elles protègent l'affichage et la base, pas le script.
@@ -484,22 +482,7 @@ function estPerime(targets, shaCourantParMr) {
   });
 }
 
-/* ---------------------------------------------------------------- cache & remotes */
-
-/* Empreinte d'un jeu de dépôts+SHAs pour un vérificateur : deux runs identiques la partagent.
-   L'identité du vérificateur, c'est CE QU'IL LANCE, pas sa ligne en base : un identifiant seul
-   serait réattribué à un autre vérificateur après suppression (SQLite recycle les rowid), et
-   une commande modifiée continuerait de servir l'ancien résultat. Deux façons de rendre un
-   verdict faux sans que rien ne le signale. */
-function hashRunSet(verifier, cibles) {
-  const v = verifier && typeof verifier === 'object' ? verifier : { id: verifier };
-  const trie = [...(cibles || [])]
-    .map((c) => `${c.repo_id}@${c.sha}`)
-    .sort()
-    .join('|');
-  const qui = [v.id, v.command || '', v.timeout_s || ''].join('::');
-  return crypto.createHash('sha256').update(`${qui}::${trie}`).digest('hex');
-}
+/* ---------------------------------------------------------------- remotes */
 
 /* Deux URLs de remote désignent-elles le même dépôt ? On compare hôte + chemin, en ignorant
    le protocole, l'utilisateur, le port, le `.git` final et la casse de l'hôte : `git@h:g/p.git`
@@ -527,7 +510,7 @@ const memeDepot = (a, b) => {
 module.exports = {
   VERDICTS, MAX_FAILED, MAX_LOG, MAX_REPONSE,
   validerReponse, derniereLigneJson, deltaImputable, composerVerdict, estPerime,
-  hashRunSet, normaliserRemote, memeDepot, tronquer, queue,
+  normaliserRemote, memeDepot, tronquer, queue,
   decouperCommande, estTap, parserTap, parserJUnit, nouvellesLignes, composerRunCommandes,
   fusionnerDetails,
 };

@@ -859,6 +859,13 @@ changement de `package-lock.json`.
   changements. S'il échoue déjà, le verdict est `⚠ base rouge` et **rien n'est imputé à ta branche** —
   c'est le but. Décocher « Lancer aussi la base » supprime ce second run : le verdict tombe quand même,
   mais il n'est plus **causal**, et le rapport le dit.
+- *La base est-elle rejouée à chaque fois ?* **Oui**, même quand aucun commit n'a bougé. Un cache par jeu
+  de SHAs a existé et faisait gagner du temps ; il supposait que l'**environnement** n'avait pas bougé non
+  plus, ce que rien ne permet de vérifier — et il se trompait dans les deux sens : un rouge de base corrigé
+  hors git (un service redémarré, une migration appliquée) restait collé et bloquait la MR sur un
+  « base rouge » périmé ; à l'inverse, un vert de base devenu faux faisait imputer à ta branche un échec
+  qui ne venait pas d'elle. Une vérification coûte donc deux runs — c'est le prix d'un verdict qui ne
+  ment pas. Pour n'en payer qu'un, décoche « Lancer aussi la base » : le verdict est alors marqué non causal.
 - *git ne marche pas dans mon container de test.* Dans un worktree, `.git` est un **fichier pointeur** vers
   le dépôt principal, pas un dossier. Monte aussi le clone (`data/clones/…`) dans le container, ou
   n'appelle pas git depuis les tests.

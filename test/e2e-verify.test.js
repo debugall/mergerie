@@ -269,23 +269,63 @@ describe('Vérification objective — mode worktree', () => {
     await app.api('DELETE', `/api/verifiers/${v.id}`);
   });
 
-  /* Un run base en ERREUR ne doit pas devenir collant : un souci d'environnement passager
-     serait resservi du cache à chaque vérification suivante sur les mêmes SHAs, et la base ne
-     serait plus jamais rejouée. Seul un run qui a CONCLU mérite d'être mémorisé. */
-  test('un run base en erreur n’est pas mis en cache', async () => {
-    const compteur = path.join(bin, 'compteur-base.txt');
+  /* Le run BASE est REJOUÉ à chaque vérification, même quand rien n'a bougé côté git.
+     Un cache par jeu de SHAs a existé ; il pariait sur un environnement identique, ce que
+     Mergerie ne peut pas vérifier. Les deux scénarios ci-dessous sont ceux qu'il ratait, et
+     ils se trompent dans les deux sens : garder un rouge périmé bloque une MR corrigée,
+     garder un vert périmé accuse la branche d'un échec qui n'est pas le sien. Le script
+     répond ici différemment d'un appel à l'autre, à SHAs strictement identiques. */
+  test('la base rejouée : un rouge corrigé hors git ne reste pas collé', async () => {
+    const compteur = path.join(bin, 'compteur-base-rouge.txt');
     if (fs.existsSync(compteur)) fs.unlinkSync(compteur);
-    // Premier appel : erreur. Les suivants : vert. Le verdict change donc SI la base est rejouée.
-    const v = await poser(`cat >/dev/null\nn=$(cat ${compteur} 2>/dev/null || echo 0)\nn=$((n+1))\necho $n > ${compteur}\n`
-      + `if [ "$n" = "1" ]; then printf '{"version":1,"status":"error"}\\n'; else printf '{"version":1,"status":"pass"}\\n'; fi`,
-      { nom: 'base-capricieuse' });
+    /* 1re vérification : la base échoue (un service local pas encore démarré, disons).
+       2e : elle passe — on a corrigé l'environnement, sans toucher au dépôt. */
+    const v = await poser([
+      'ENTREE=$(cat)',
+      'ROLE=$(printf "%s" "$ENTREE" | sed -n \'s/.*"role":"\\([^"]*\\)".*/\\1/p\')',
+      `n=$(cat ${compteur} 2>/dev/null || echo 0)`,
+      'if [ "$ROLE" = "base" ]; then',
+      `  n=$((n+1)); echo $n > ${compteur}`,
+      '  if [ "$n" = "1" ]; then printf \'{"version":1,"status":"fail","failed":[{"test":"integ"}]}\\n\'',
+      '  else printf \'{"version":1,"status":"pass"}\\n\'; fi',
+      'else printf \'{"version":1,"status":"pass"}\\n\'; fi',
+    ].join('\n'), { nom: 'base-rouge-corrigee' });
 
     const d1 = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id })).body.verification.id);
-    assert.equal(d1.verdict, 'verify_error', 'une base en erreur ne conclut pas');
+    assert.equal(d1.verdict, 'broken_base', 'la base était rouge : rien n’est imputé à la branche');
 
     const d2 = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id })).body.verification.id);
-    assert.equal(d2.verdict, 'verified_pass', 'la base a été REJOUÉE, pas relue du cache');
+    assert.equal(d2.verdict, 'verified_pass', 'la base a été REJOUÉE : le correctif est vu');
     assert.equal(d2.base_run.status, 'pass');
+    await app.api('DELETE', `/api/verifiers/${v.id}`);
+  });
+
+  test('la base rejouée : un vert périmé ne fait pas accuser la branche', async () => {
+    const compteur = path.join(bin, 'compteur-base-verte.txt');
+    if (fs.existsSync(compteur)) fs.unlinkSync(compteur);
+    /* 1re vérification : tout est vert. 2e : la base est devenue rouge (une dépendance
+       externe qui casse) et la tête l'est aussi. Sans rejouer la base, on conclurait
+       « verified_fail » — la branche accusée d'un échec qu'elle n'a pas causé. */
+    const v = await poser([
+      'ENTREE=$(cat)',
+      'ROLE=$(printf "%s" "$ENTREE" | sed -n \'s/.*"role":"\\([^"]*\\)".*/\\1/p\')',
+      // Le run head lit le compteur APRÈS que la base du même run l'a incrémenté : 1 = 1re vérif.
+      `n=$(cat ${compteur} 2>/dev/null || echo 0)`,
+      'if [ "$ROLE" = "base" ]; then',
+      `  n=$((n+1)); echo $n > ${compteur}`,
+      '  if [ "$n" = "1" ]; then printf \'{"version":1,"status":"pass"}\\n\'',
+      '  else printf \'{"version":1,"status":"fail","failed":[{"test":"dep-externe"}]}\\n\'; fi',
+      'elif [ "$n" = "1" ]; then printf \'{"version":1,"status":"pass"}\\n\'',
+      'else printf \'{"version":1,"status":"fail","failed":[{"test":"dep-externe"}]}\\n\'; fi',
+    ].join('\n'), { nom: 'base-verte-perimee' });
+
+    const d1 = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id })).body.verification.id);
+    assert.equal(d1.verdict, 'verified_pass');
+
+    const d2 = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id })).body.verification.id);
+    assert.equal(d2.base_run.status, 'fail', 'la base a bien été rejouée');
+    assert.equal(d2.verdict, 'broken_base',
+      'le même test casse des deux côtés : c’est la base qui est rouge, pas la branche');
     await app.api('DELETE', `/api/verifiers/${v.id}`);
   });
 

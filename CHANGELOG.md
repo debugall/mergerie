@@ -209,6 +209,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The base run is replayed every time, instead of being reused.** Mergerie used to cache it per set of
+  commits — the base does not move while you iterate, so why pay for it twice? Because the commits are only
+  half the story: restart a local service, apply a migration, reinstall a dependency, and the same commits
+  give a different answer. The cache was wrong in both directions: a red base you had just fixed outside git
+  stayed stuck, blocking the merge request on a "base already red" that was no longer true — and a green
+  base that had since gone red made your branch take the blame for a failure that was not its doing. A
+  verification now costs two runs; unticking "also run the base" still buys you one, at the price of a
+  verdict flagged as non-causal.
+
 - **Dropdown lists no longer spill out of their block.** Any list-with-search — “pick a local project” in a
   verifier, a branch, a git ref — now opens attached to its field and flips above it when there is no room
   below. It used to be clipped by whatever container it sat in, and the workaround for that reset the

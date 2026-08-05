@@ -527,26 +527,27 @@ describe('Vérification objective — vérificateur « commandes »', () => {
     await app.api('DELETE', `/api/verifiers/${solo.id}`);
   });
 
-  test('modifier la liste des commandes invalide le run base mis en cache', async () => {
+  /* Les commandes sont relancées EN ENTIER à chaque vérification, base comprise. Un cache du
+     run base a existé ; il supposait qu'à SHAs égaux le résultat l'était aussi — vrai du code,
+     faux de l'environnement (service redémarré, migration appliquée, dépendance réinstallée).
+     On compte donc les exécutions réelles plutôt que de croire le journal. */
+  test('la base est relancée à chaque vérification, pas reprise d’un run précédent', async () => {
     const marqueur = path.join(bin, 'compte.txt');
     fs.writeFileSync(marqueur, '');
     const cmd = outil('compte.sh', `echo x >> ${marqueur}\nexit 0`);
     // Une ligne écrite par exécution : le fichier COMPTE les runs réellement lancés.
     const runs = () => fs.readFileSync(marqueur, 'utf8').split('\n').filter(Boolean).length;
 
-    const v = await poser([cmd], { nom: 'cmd-cache' });
+    const v = await poser([cmd], { nom: 'cmd-base-rejouee' });
     await lancer(v);
     assert.equal(runs(), 2, 'premier passage : la base ET la tête sont lancées');
 
-    // Même vérificateur, mêmes SHAs : le run base doit être repris du cache.
+    // Même vérificateur, mêmes SHAs : la base repart quand même.
     await lancer(v);
-    assert.equal(runs(), 3, 'seule la tête est rejouée, la base vient du cache');
+    assert.equal(runs(), 4, 'deuxième passage : la base est REJOUÉE, pas relue');
 
-    // On change la liste : le résultat mémorisé ne vaut plus rien.
-    const maj = await app.api('PUT', `/api/verifiers/${v.id}`, { commands: [cmd, outil('deux.sh', 'exit 0')] });
-    assert.equal(maj.status, 200);
-    await lancer(maj.body);
-    assert.equal(runs(), 5, 'base ET tête sont rejouées après modification de la liste');
+    await lancer(v);
+    assert.equal(runs(), 6, '…et à chaque fois ensuite');
     await app.api('DELETE', `/api/verifiers/${v.id}`);
   });
 });

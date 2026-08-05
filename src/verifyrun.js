@@ -416,19 +416,6 @@ async function restaurerInPlace(etat, noter) {
   }
 }
 
-/* ---------------------------------------------------------------- cache des runs */
-
-function runEnCache(hash) {
-  const l = db.prepare('SELECT run_json FROM verification_run_cache WHERE repo_set_hash = ?').get(hash);
-  if (!l) return null;
-  try { return JSON.parse(l.run_json); } catch { return null; }
-}
-function mettreEnCache(hash, run) {
-  db.prepare(`INSERT INTO verification_run_cache (repo_set_hash, run_json, created_at) VALUES (?,?,?)
-              ON CONFLICT(repo_set_hash) DO UPDATE SET run_json = excluded.run_json`)
-    .run(hash, JSON.stringify(run), new Date().toISOString());
-}
-
 /* ---------------------------------------------------------------- orchestration (§5) */
 
 const nowIso = () => new Date().toISOString();
@@ -448,16 +435,6 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
   const cibles = JSON.parse(v.targets_json || '[]');
   const commandes = db.prepare('SELECT command FROM verifier_command WHERE verifier_id = ? ORDER BY position')
     .all(verifier.id).map((c) => c.command);
-  /* Identité du vérificateur pour le CACHE : ce qu'il lance, pas sa ligne en base. Pour un
-     vérificateur « commandes », c'est la liste elle-même — la modifier doit invalider le run
-     base mémorisé, sinon on servirait le résultat de l'ancienne suite. */
-  const identite = {
-    id: verifier.id, timeout_s: verifier.timeout_s,
-    command: verifier.kind === 'commands'
-      ? `commands:${commandes.join('\u001f')}:${verifier.report_path || ''}:${verifier.env_json || ''}`
-      : verifier.command,
-  };
-
   db.prepare("UPDATE verification SET status = 'running', started_at = ? WHERE id = ?")
     .run(nowIso(), verificationId);
 
@@ -559,24 +536,26 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
       : appelerScript(verifier, role, reposPrets, noter));
 
     /* Run BASE : il répond à « était-ce déjà rouge avant ? ». Sans lui, un test cassé par
-       quelqu'un d'autre serait imputé à cette branche. Mis en cache : la base ne bouge pas
-       pendant qu'on itère, la refaire coûterait plusieurs minutes pour un résultat connu. */
+       quelqu'un d'autre serait imputé à cette branche.
+
+       Il est REFAIT à chaque vérification. Un cache par jeu de SHAs a existé — la base ne
+       bouge pas pendant qu'on itère, et la refaire coûte des minutes. Mais il pariait sur
+       une chose que Mergerie ne peut pas vérifier : que l'ENVIRONNEMENT n'a pas bougé non
+       plus. Or il bouge — un service local qu'on redémarre, une migration qu'on applique,
+       une dépendance qu'on réinstalle —, et le pari se paie des deux côtés :
+         · un rouge de base gardé alors qu'on vient de le corriger hors git bloque la MR sur
+           un « base déjà rouge » qui n'est plus vrai ;
+         · un vert de base gardé alors que la base est devenue rouge fait imputer à la
+           branche un échec qui ne vient pas d'elle — exactement ce que le run base existe
+           pour éviter.
+       Un run qui coûte deux fois plus longtemps vaut mieux qu'un verdict faux en silence. */
     let base = null;
     if (verifier.run_base) {
-      // On prépare AVANT de calculer l'empreinte : c'est la préparation qui résout les refs.
       const reposBase = await preparer('base_sha');
-      const hash = verify.hashRunSet(identite, ciblesResolues.map((c) => ({ repo_id: c.repo_id, sha: c.base_sha })));
-      base = runEnCache(hash);
-      if (base) noter('run base : résultat déjà connu pour ces SHAs, réutilisé');
-      else {
-        noter('run base…');
-        const r = await lancer('base', reposBase);
-        if (r.erreur) { noter(`run base : ${r.erreur}`); return finir({ status: 'error', verdict: 'verify_error' }); }
-        base = r.run;
-        // Un run en erreur (souci d'environnement transitoire) ne doit pas devenir collant :
-        // seul un run qui a conclu mérite d'être resservi.
-        if (base.status !== 'error') mettreEnCache(hash, base);
-      }
+      noter('run base…');
+      const r = await lancer('base', reposBase);
+      if (r.erreur) { noter(`run base : ${r.erreur}`); return finir({ status: 'error', verdict: 'verify_error' }); }
+      base = r.run;
     }
 
     noter('run head…');
@@ -666,5 +645,5 @@ module.exports = {
   WORKTREES_DIR, cheminWorktree, executerVerification, commenterSurForge,
   appelerScript, lancerCommandes, envVerifier, ajouterWorktree, retirerWorktree, gcWorktrees,
   inspecterWorkdir, preparerInPlace, restaurerInPlace, lireContexte,
-  runEnCache, mettreEnCache, envMinimal,
+  envMinimal,
 };
