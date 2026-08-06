@@ -149,13 +149,72 @@ describe('Statistiques — activité des projets sur 6 mois', () => {
       assert.equal(noms.length, barres, 'chaque barre a son nom');
       assert.ok(noms.every((x) => x.length > 0));
       assert.ok(noms.includes('projet-00'), 'le nom court est affiché');
-      const complet = await page.locator('#dashActivity .pab-name').first().getAttribute('title');
-      assert.match(complet, /groupe\/projet-/, '…et le chemin complet reste au survol');
+
+      /* La colonne ENTIÈRE est le bouton, pas seulement les trois lignes de texte : viser un
+         libellé de dix pixels est un geste inutilement précis. Et c'est un `<button>` natif,
+         donc atteignable au clavier et lisible à voix haute — l'infobulle, elle, ne parle
+         qu'à la souris. */
+      const premiere = page.locator('#dashActivity .pab').first();
+      assert.equal(await premiere.evaluate((e) => e.tagName), 'BUTTON');
+      const aria = await premiere.getAttribute('aria-label');
+      assert.match(aria, /groupe\/projet-/, 'le chemin complet est annoncé');
+      assert.match(aria, /commit/i, '…avec ce que la barre représente');
+      const boite = await premiere.boundingBox();
+      assert.ok(boite.height > 100, `la cible du clic est toute la colonne (vue ${Math.round(boite.height)} px)`);
+
+      // Et le clavier atteint bien le graphe.
+      await premiere.focus();
+      assert.equal(await page.evaluate(() => document.activeElement.className.includes('pab')), true);
 
       // Le tout tient sans défilement vertical : c'est l'intérêt du format.
       const h = await page.locator('#dashActivity .pab-chart').evaluate((e) => e.getBoundingClientRect().height);
       assert.ok(h <= 260, `le graphe doit rester compact (vu ${Math.round(h)} px)`);
     } finally { await nav.close(); }
+  });
+
+  /* Les dates de la forge portent un décalage local ; les bornes envoyées sont en UTC.
+     Découper la chaîne rangeait un commit du 1er à 1 h du matin dans un mois que la requête
+     n'avait pas demandé : il ne trouvait aucun seau et DISPARAISSAIT sans un mot. */
+  test('un commit à cheval sur deux mois est rangé selon les bornes, pas selon sa chaîne', async () => {
+    const id = (await app.api('POST', '/api/repos', { project: 'grp/frontiere', url: 'https://gitlab.test/grp/frontiere.git' })).body.id;
+    // Le 1er du mois courant à 01:00+02:00 — soit le DERNIER JOUR DU MOIS PRÉCÉDENT en UTC.
+    const n = new Date();
+    const premier = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), 1));
+    const avecDecalage = `${premier.toISOString().slice(0, 10)}T01:00:00.000+02:00`;
+    app.state.commits['grp/frontiere'] = [{ id: 'f1', committed_date: avecDecalage, author_email: 'alice@example.com' }];
+
+    const { body } = await app.api('GET', '/api/dashboard/activity');
+    const p = body.projects.find((x) => x.project === 'grp/frontiere');
+    assert.equal(p.total, 1, 'le commit doit être compté quelque part, pas nulle part');
+    /* C'est en UTC que la forge a décidé de le rendre — les bornes `since`/`until` le sont.
+       Le ranger d'après la lecture littérale de sa chaîne (heure locale) le mettrait dans le
+       mois SUIVANT : la répartition mensuelle serait fausse, et près d'une borne il
+       disparaîtrait tout à fait, faute de seau correspondant. */
+    assert.equal(p.counts[p.counts.length - 2], 1, 'compté dans le mois auquel les bornes UTC le rattachent');
+    assert.equal(p.counts[p.counts.length - 1], 0, '…et pas dans le mois courant');
+    await app.api('DELETE', `/api/repos/${id}`);
+  });
+
+  /* Un dépôt tenu par un robot n'est pas vivant. Sans filtre, Renovate ou Dependabot lui
+     donnent quelques jours d'activité par mois à perpétuité, et il n'est jamais « endormi ». */
+  test('les commits de robots ne font pas passer un dépôt pour vivant', async () => {
+    const id = (await app.api('POST', '/api/repos', { project: 'grp/robot', url: 'https://gitlab.test/grp/robot.git' })).body.id;
+    app.state.commits['grp/robot'] = [
+      { id: 'b1', committed_date: mois(0, 9), author_email: '49699333+dependabot[bot]@users.noreply.github.com' },
+      { id: 'b2', committed_date: mois(1, 9), author_name: 'renovate[bot]', author_email: '' },
+      { id: 'b3', committed_date: mois(2, 9), author_email: 'github-actions@github.com' },
+    ];
+    const p = (await app.api('GET', '/api/dashboard/activity')).body.projects.find((x) => x.project === 'grp/robot');
+    assert.equal(p.total, 0, 'aucun commit humain : le dépôt ne compte pas comme actif');
+    assert.equal(p.contributeurs, 0, '…et un robot n’est pas un contributeur');
+
+    /* En revanche un humain qui commite depuis l'interface web de GitHub porte aussi une
+       adresse `noreply` : lui doit compter. C'est pour ça que ce motif n'est pas filtré. */
+    app.state.commits['grp/robot'].push({ id: 'h1', committed_date: mois(0, 14), author_email: '12345+alice@users.noreply.github.com' });
+    app.db.prepare('DELETE FROM commit_activity WHERE repo_id = ?').run(id);
+    const p2 = (await app.api('GET', '/api/dashboard/activity')).body.projects.find((x) => x.project === 'grp/robot');
+    assert.equal(p2.total, 1, 'un commit fait depuis le web par un humain compte');
+    await app.api('DELETE', `/api/repos/${id}`);
   });
 
   /* Le détail d'un projet : douze mois au lieu de six. C'est ce qui sépare « calme depuis
@@ -173,7 +232,37 @@ describe('Statistiques — activité des projets sur 6 mois', () => {
       'un dépôt inconnu répond une erreur lisible');
   });
 
-  test('la modale s’ouvre au clic sur le nom sous une barre', { skip: dispoNavigateur ? false : 'chromium absent' }, async () => {
+  /* Sur un dépôt sans une ligne de l'année, `indexOf(0)` désignait le premier mois : la
+     fenêtre annonçait fièrement un « mois le plus actif » qui n'existait pas. */
+  test('un dépôt sans aucune activité n’a pas de « mois le plus actif »', async () => {
+    const id = (await app.api('POST', '/api/repos', { project: 'grp/vide', url: 'https://gitlab.test/grp/vide.git' })).body.id;
+    app.state.commits['grp/vide'] = [];
+    const { body } = await app.api('GET', `/api/dashboard/activity/${id}`);
+    assert.equal(body.totalDays, 0);
+    assert.equal(body.meilleurMois, null, 'aucun mois ne peut être le plus actif');
+    assert.equal(body.dernierActif, null);
+    await app.api('DELETE', `/api/repos/${id}`);
+  });
+
+  /* Deux vues peuvent demander le même dépôt en même temps (vue d'ensemble et fenêtre de
+     détail, ou deux onglets). Sans garde, les deux paginent la forge pour écrire la même
+     chose — du travail payé deux fois, et deux fois plus de risque de rate limit. */
+  test('deux demandes simultanées ne paginent la forge qu’une fois', async () => {
+    const id = (await app.api('POST', '/api/repos', { project: 'grp/course', url: 'https://gitlab.test/grp/course.git' })).body.id;
+    app.state.commits['grp/course'] = [{ id: 'c1', committed_date: mois(0, 9), author_email: 'alice@example.com' }];
+    const avant = appelsPour('grp/course');
+    const [a1, b1] = await Promise.all([
+      app.api('GET', `/api/dashboard/activity/${id}`),
+      app.api('GET', `/api/dashboard/activity/${id}`),
+    ]);
+    assert.equal(a1.status, 200);
+    assert.equal(b1.body.total, a1.body.total, 'les deux réponses sont identiques');
+    const pages = appelsPour('grp/course') - avant;
+    assert.equal(pages, 1, `un SEUL passage de pagination attendu, pas un par appelant (vu ${pages})`);
+    await app.api('DELETE', `/api/repos/${id}`);
+  });
+
+  test('la modale s’ouvre au clic sur la barre d’un projet', { skip: dispoNavigateur ? false : 'chromium absent' }, async () => {
     const nav = await chromium.launch();
     try {
       const page = await nav.newPage({ viewport: { width: 1400, height: 950 } });
@@ -182,7 +271,9 @@ describe('Statistiques — activité des projets sur 6 mois', () => {
       await page.waitForSelector('#dashActivity .pab');
       assert.equal(await page.locator('#activityModal').isHidden(), true, 'fermée tant qu’on ne demande rien');
 
-      await page.locator('#dashActivity [data-pab-detail]').first().click();
+      // On clique la BARRE (le haut de la colonne), pas le libellé : c'est le geste naturel.
+      const col = page.locator('#dashActivity [data-pab-detail]').first();
+      await col.locator('.pab-stack').click();
       await page.waitForSelector('#activityModal:not([hidden]) .ad-chart');
       assert.equal(await page.locator('#activityModal .ad-col').count(), 12, 'une colonne par mois sur douze');
       const titre = await page.locator('#activityTitle').textContent();

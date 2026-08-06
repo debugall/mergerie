@@ -574,11 +574,21 @@ par mois), donc franchement comparable d'un dépôt à l'autre. Les commits rest
   simplement peu actif. Un seul mois creux arrive à tout le monde, deux dessinent une pente.
 - Le **survol d'une barre** donne le détail : jours d'activité et commits mois par mois, contributeurs
   distincts du mois le plus fourni, et la raison quand le dépôt est injoignable.
-- **Cliquer le nom sous une barre** ouvre le projet sur **12 mois** : six mois disent *qui* bouge, douze
+- **Cliquer une barre** — toute la colonne, libellé compris — ouvre le projet sur **12 mois** : six mois disent *qui* bouge, douze
   disent *dans quel sens*. Un dépôt calme depuis deux mois après dix mois soutenus ne raconte pas la même
   histoire qu'un dépôt éteint depuis un an, et la vue d'ensemble ne peut pas les distinguer. La fenêtre
   donne le total de jours, de commits et de contributeurs, le **mois le plus actif** et la **dernière
   activité** — deux repères qu'on cherche sinon à l'œil sur le graphe.
+
+Ce qui est **écarté du compte** : les commits de robots (Dependabot, Renovate, GitHub Actions, Mergify).
+Sans ce filtre, un dépôt abandonné mais mis à jour chaque semaine par un robot garderait quelques jours
+d'activité par mois et ne serait jamais signalé endormi — le faux positif exact que ce graphe doit éviter.
+Un humain qui commite depuis l'interface web d'une forge, lui, compte normalement.
+
+Les dépôts sont interrogés **quatre à la fois** : en série, vingt dépôts additionnent leurs allers-retours
+réseau et le premier chargement se compte en dizaines de secondes ; tous d'un coup, la forge répond par un
+refus. Deux vues qui demandent le même dépôt au même moment (la vue d'ensemble et la fenêtre de détail)
+partagent le même travail au lieu de le payer deux fois.
 
 Les comptes sont **mis en cache par mois** : un mois clos ne change plus, seul le mois courant est
 rafraîchi (au plus une fois par demi-heure). Sans ça, six mois d'historique se repagineraient depuis la

@@ -44,6 +44,7 @@ const glob = require('./glob');
 const notify = require('./notify');
 const gitgraph = require('./gitgraph');
 const docx = require('./docx');
+const { pMap } = require('./pmap');
 const { t } = i18n;
 const { discoverAll } = require('./discover');
 const jobs = require('./jobs');
@@ -347,6 +348,15 @@ app.get('/api/dashboard/commits', wrap(async (req, res) => {
    plus, seul le mois courant est rafraîchi. */
 const TTL_MOIS_COURANT_MS = 30 * 60 * 1000;
 
+/* Un dépôt tenu par un robot n'est pas un dépôt vivant. Dependabot ou Renovate y poussent
+   chaque semaine : sans ce filtre, un projet abandonné garderait quatre jours d'activité par
+   mois et ne serait JAMAIS signalé endormi — exactement le faux positif que le graphe existe
+   pour éviter. On écarte donc leurs commits du compte, jours comme contributeurs.
+   `noreply@github.com` n'est PAS un motif : les commits faits depuis l'interface web de
+   GitHub par de vrais humains le portent aussi. */
+const MOTIFS_BOT = [/\[bot\]/i, /\bdependabot\b/i, /\brenovate\b/i, /\bgithub-actions\b/i, /\bmergify\b/i];
+const estBot = (auteur) => MOTIFS_BOT.some((re) => re.test(String(auteur || '')));
+
 // Les 6 derniers mois, du plus ancien au plus récent, en 'YYYY-MM'.
 function derniersMois(n = 6, maintenant = new Date()) {
   const out = [];
@@ -365,7 +375,20 @@ const finDuMois = (mois) => {
 
 /* Remplit le cache d'un dépôt pour les mois manquants ou périmés. Un seul appel forge pour
    toute la plage manquante : demander mois par mois multiplierait les requêtes par six. */
-async function majActiviteDepot(cfg, repo, mois) {
+/* Deux vues peuvent demander le même dépôt en même temps — la vue d'ensemble et la fenêtre
+   de détail, ou simplement deux onglets. Sans garde, les deux paginent la forge en parallèle
+   pour écrire la même chose. La promesse en cours est donc partagée. */
+const activiteEnVol = new Map();
+function majActiviteDepot(cfg, repo, mois) {
+  const cle = `${repo.id}:${mois[0]}:${mois[mois.length - 1]}`;
+  const enVol = activiteEnVol.get(cle);
+  if (enVol) return enVol;
+  const p = majActiviteDepotVrai(cfg, repo, mois).finally(() => activiteEnVol.delete(cle));
+  activiteEnVol.set(cle, p);
+  return p;
+}
+
+async function majActiviteDepotVrai(cfg, repo, mois) {
   const enCache = new Map(db.prepare('SELECT * FROM commit_activity WHERE repo_id = ?').all(repo.id).map((r) => [r.month, r]));
   const courant = mois[mois.length - 1];
   const now = Date.now();
@@ -384,11 +407,19 @@ async function majActiviteDepot(cfg, repo, mois) {
   const parMois = new Map(aRefaire.map((m) => [m, { n: 0, auteurs: new Set(), jours: new Set() }]));
   for (const c of commits) {
     if (!c.date) continue;
-    const m = String(c.date).slice(0, 7);
-    const agg = parMois.get(m);
-    if (!agg) continue;                       // hors plage demandée : la forge est large sur les bornes
+    if (estBot(c.author)) continue;           // cf. MOTIFS_BOT : un robot ne rend pas un dépôt vivant
+    /* Les dates de la forge portent un DÉCALAGE local (`…T01:00:00+02:00`), alors que les
+       bornes `since`/`until` sont en UTC. Découper la chaîne rangeait donc un commit du 1er
+       à 1 h du matin dans le mois suivant celui où l'API l'avait renvoyé : il ne trouvait
+       aucun seau et disparaissait sans un mot. On normalise en UTC, à la même échelle que
+       les bornes. Conséquence assumée : une « journée » est une journée UTC. */
+    const d = new Date(c.date);
+    if (Number.isNaN(d.getTime())) continue;
+    const iso = d.toISOString();
+    const agg = parMois.get(iso.slice(0, 7));
+    if (!agg) continue;                       // hors plage demandée : les bornes de l'API sont inclusives
     agg.n += 1;
-    agg.jours.add(String(c.date).slice(0, 10));   // une journée de travail, pas un commit de plus
+    agg.jours.add(iso.slice(0, 10));          // une journée de travail, pas un commit de plus
     if (c.author) agg.auteurs.add(String(c.author).toLowerCase());
   }
   const ins = db.prepare(`INSERT INTO commit_activity (repo_id, month, commits, authors, active_days, partiel, fetched_at)
@@ -410,8 +441,11 @@ app.get('/api/dashboard/activity', wrap(async (req, res) => {
   }
   // Mêmes dépôts que le classement d'activité récente : actifs ET dont on suit les MR.
   const repos = db.prepare('SELECT * FROM repo WHERE enabled = 1 AND IFNULL(fetch_mrs, 1) = 1 ORDER BY project').all();
-  const projets = [];
-  for (const repo of repos) {
+  /* Les dépôts sont traités EN PARALLÈLE, quatre à la fois. En série, vingt dépôts de quelques
+     pages chacun additionnent leurs allers-retours réseau : l'écran reste sur son squelette
+     pendant des dizaines de secondes au premier chargement. Quatre, et pas davantage, parce
+     qu'une forge répond aux rafales par un 429. */
+  const projets = await pMap(repos, 4, async (repo) => {
     let erreur = null;
     // Best-effort, dépôt par dépôt : une forge injoignable ne doit pas vider tout l'écran.
     if (!demo) {
@@ -422,7 +456,7 @@ app.get('/api/dashboard/activity', wrap(async (req, res) => {
     const counts = mois.map((m) => (lignes.get(m) || {}).commits || 0);
     const authors = mois.map((m) => (lignes.get(m) || {}).authors || 0);
     const days = mois.map((m) => (lignes.get(m) || {}).active_days || 0);
-    projets.push({
+    return {
       repo_id: repo.id,
       project: repo.project,
       forge: repo.forge,
@@ -437,8 +471,8 @@ app.get('/api/dashboard/activity', wrap(async (req, res) => {
       contributeurs: Math.max(0, ...authors),
       partiel: mois.some((m) => (lignes.get(m) || {}).partiel),
       erreur,
-    });
-  }
+    };
+  });
   // Le plus actif d'abord : l'écran répond à « qui bouge ? », pas à l'ordre alphabétique.
   projets.sort((a, b) => b.totalDays - a.totalDays || b.total - a.total || a.project.localeCompare(b.project));
   res.json({ configured: true, months: mois, projects: projets });
@@ -474,8 +508,10 @@ app.get('/api/dashboard/activity/:repoId', wrap(async (req, res) => {
     totalDays: days.reduce((a, b) => a + b, 0),
     contributeurs: Math.max(0, ...authors),
     /* Le mois le plus fourni et le dernier mois actif : deux repères qu'on cherche à l'œil
-       sur un graphe et qu'il vaut mieux nommer. */
-    meilleurMois: mois[days.indexOf(Math.max(...days))] || null,
+       sur un graphe et qu'il vaut mieux nommer. `null` quand il n'y a RIEN : sans ce test,
+       `indexOf(0)` désignait le premier mois, et un dépôt sans une ligne de l'année affichait
+       fièrement son « mois le plus actif ». */
+    meilleurMois: Math.max(0, ...days) > 0 ? mois[days.indexOf(Math.max(...days))] : null,
     dernierActif: [...mois].reverse().find((m, i) => days[days.length - 1 - i] > 0) || null,
     partiel: mois.some((m) => (lignes.get(m) || {}).partiel),
     erreur,

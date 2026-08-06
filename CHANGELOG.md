@@ -23,7 +23,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   opens it over **twelve** months: six months say *which* repositories move, twelve say *in which
   direction* — quiet for two months after ten busy ones is not the same story as dead for a year, and the
   overview cannot tell them apart. The window also names the busiest month and the last month with any
-  activity. A repository with nothing in the last two months turns
+  activity. Bot commits (Dependabot, Renovate, GitHub Actions) are left out: a repository nobody maintains
+  but a robot updates weekly would otherwise never be flagged as asleep. Repositories are queried four at a
+  time, so a first load over twenty of them takes seconds rather than a minute. A repository with nothing in the last two months turns
   grey and is labelled asleep: still on screen, since that is exactly what you came to see, but not to be
   mistaken for a merely quiet one. Hovering a bar gives the month-by-month breakdown and the number of
   distinct contributors. Counts are cached per month, so a closed month is never paid for twice.

@@ -18,6 +18,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { run } = require('./git'); // spawn générique { stdout, stderr }, redaction incluse
+const { pMap } = require('./pmap');
 
 const COMPOSE_FILES = ['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml'];
 
@@ -410,18 +411,8 @@ async function imageEnv(image) {
 }
 
 /* Un projet compose : services + drift par service. `rootLabel` sert d'affichage. */
-// map parallèle BORNÉ : évite de lancer 50 `docker inspect`/`compose config` d'un coup (ce qui
-// noierait le démon), tout en gardant plusieurs projets/services en vol → bien plus rapide que
-// le séquentiel. Préserve l'ordre des résultats.
-async function pMap(items, limit, fn) {
-  const out = new Array(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) { const i = next; next += 1; out[i] = await fn(items[i], i); }
-  };
-  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length || 1) }, worker));
-  return out;
-}
+/* `pMap` vit maintenant dans son propre module : l'activité des dépôts en a le même besoin
+   (borner les appels à la forge), et deux copies d'un ordonnanceur finissent par diverger. */
 
 // Nom de projet compose PAR DÉFAUT (quand le compose ne le fixe pas) = basename du dossier
 // « sanitisé » comme le fait Docker Compose. Sert au tri/rattachement RAPIDE (liste), sans

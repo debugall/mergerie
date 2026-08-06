@@ -261,8 +261,12 @@ main { padding: 0 var(--s-6) var(--s-12); max-width: none; margin: 0 auto; width
 /* Largeur bornée : sans plafond, trois dépôts s'étalaient sur toute la largeur de la carte —
    des colonnes de 400 px pour une barre de 34, et un trait de séparation interminable sous
    chaque nom. Le graphe doit se lire pareil à trois projets et à vingt. */
-.pab { flex: 1 1 0; min-width: 34px; max-width: 88px; height: 100%; display: flex; flex-direction: column;
-  align-items: center; justify-content: flex-end; gap: 3px; position: relative; }
+/* La colonne entière est un bouton : cible large, focusable au clavier. On neutralise donc
+   l'habillage natif — sinon chaque projet arriverait avec un fond et une bordure de bouton. */
+button.pab { flex: 1 1 0; min-width: 34px; max-width: 88px; height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-end; gap: 3px; position: relative;
+  background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+button.pab:hover .pab-name { color: var(--accent); text-decoration: underline; }
 .pab-val { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 /* La pile occupe la hauteur restante ; les segments se posent en bas, du plus récent au plus
    ancien dans l'ordre du DOM (inversé au rendu), pour que le temps se lise de bas en haut. */
@@ -284,12 +288,6 @@ main { padding: 0 var(--s-6) var(--s-12); max-width: none; margin: 0 auto; width
 .pab-key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; background: var(--accent); }
 .pab-key.vieux { opacity: .35; }
 .pab-key.dort { background: var(--muted); }
-/* Le nom sous la barre est un bouton : il ouvre les 12 mois du projet. Il doit se voir
-   cliquable sans devenir un bouton visuel de plus dans un graphe déjà chargé. */
-button.pab-name { background: none; border: 0; border-top: 1px solid var(--line); cursor: pointer;
-  font: inherit; font-size: 10.5px; color: var(--text); padding: 2px 0 0; }
-button.pab-name:hover { color: var(--accent); text-decoration: underline; }
-.pab.dort button.pab-name { color: var(--muted); }
 
 /* Détail d'un projet sur 12 mois (modale) : même lecture que le graphe d'ensemble, en plus
    large — une colonne par mois, hauteur = jours d'activité. */

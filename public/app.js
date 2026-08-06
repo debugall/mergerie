@@ -1100,19 +1100,26 @@ async function fillDashboardActivity() {
       + (dort ? `\n\n${tr('stats.activity.asleep-tip')}` : '');
     // Segments du plus ANCIEN en bas au plus RÉCENT en haut : le temps se lit de bas en haut.
     const segments = p.days.map((n, i) => (n === 0 ? '' : `<span class="pab-seg" style="height:${(n / maxi) * 100}%;--o:${0.35 + (i / Math.max(1, mois.length - 1)) * 0.65}"></span>`)).reverse().join('');
-    return `<div class="pab${dort ? ' dort' : ''}" title="${esc(infobulle)}">
-      <span class="pab-val" title="${esc(tr('stats.activity.days-unit'))}">${p.totalDays ? fmtNum(p.totalDays) : '0'}</span>
+    /* TOUTE la colonne est le bouton — barre comprise, pas seulement le nom : viser trois
+       lignes de texte de dix pixels est un geste inutilement précis quand la barre au-dessus
+       désigne déjà le projet. Un `<button>` natif plutôt qu'un div cliquable : il se
+       focalise au clavier, s'active à Entrée, et se lit correctement à voix haute — d'où
+       l'`aria-label`, qui porte ce que l'infobulle ne dit qu'à la souris. */
+    const resume = `${p.project} — ${tr('stats.activity.total-tip', { n: p.totalDays, count: p.totalDays })}, `
+      + `${tr('stats.activity.commits-tip', { n: p.total, count: p.total })}`
+      + (dort ? `. ${tr('stats.activity.asleep-tip')}` : '');
+    return `<button type="button" class="pab${dort ? ' dort' : ''}" data-pab-detail="${p.repo_id}"
+      title="${esc(infobulle)}" aria-label="${esc(`${resume}. ${tr('stats.activity.detail-title', { project: p.project })}`)}">
+      <span class="pab-val">${p.totalDays ? fmtNum(p.totalDays) : '0'}</span>
       <span class="pab-stack">${segments}</span>
-      ${/* Le nom est un BOUTON : six mois disent qui bouge, douze disent dans quel sens. */''}
-      <button type="button" class="pab-name" data-pab-detail="${p.repo_id}"
-        title="${esc(tr('stats.activity.detail-title', { project: p.project }))}">${esc(court(p.project))}</button>
-    </div>`;
+      <span class="pab-name">${esc(court(p.project))}</span>
+    </button>`;
   };
 
   const dormants = projets.filter(endormi).length;
   const partiels = projets.filter((p) => p.partiel).length;
   el.innerHTML = entete
-    + `<div class="pab-chart">${projets.map(barre).join('')}</div>`
+    + `<div class="pab-chart" role="group" aria-label="${esc(tr('stats.activity.title'))}">${projets.map(barre).join('')}</div>`
     + `<div class="pab-legend muted">
         <span class="pab-scale"><span class="pab-key vieux"></span>${esc(libelleMois(mois[0]))}
         <span class="pab-key recent"></span>${esc(libelleMois(mois[mois.length - 1]))}*</span>
@@ -1167,10 +1174,12 @@ async function ouvrirActiviteProjet(repoId) {
       ${tuile(d.contributeurs || '—', tr('stats.activity.detail.authors'))}
     </div>
     <div class="ad-chart">${barres}</div>
-    <p class="muted ad-facts">
-      ${d.meilleurMois ? tr('stats.activity.detail.best', { month: libelle(d.meilleurMois) }) : ''}
-      ${d.dernierActif ? ` · ${tr('stats.activity.detail.last', { month: libelle(d.dernierActif) })}` : ` · ${tr('stats.activity.detail.never')}`}
-    </p>
+    ${/* Les repères, joints proprement : un projet sans activité n'a ni « mois le plus actif »
+          ni « dernière activité », et la phrase ne doit pas commencer par un séparateur. */''}
+    <p class="muted ad-facts">${[
+    d.meilleurMois ? tr('stats.activity.detail.best', { month: libelle(d.meilleurMois) }) : '',
+    d.dernierActif ? tr('stats.activity.detail.last', { month: libelle(d.dernierActif) }) : tr('stats.activity.detail.never'),
+  ].filter(Boolean).join(' · ')}</p>
     ${d.erreur ? errorBox(d.erreur) : ''}
     <p class="muted dash-floor">* ${tr('stats.activity.partial-month')}${d.partiel ? ` · ${tr('stats.activity.truncated', { n: 1, count: 1 })}` : ''}</p>`;
 }
