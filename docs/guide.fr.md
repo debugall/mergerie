@@ -15,6 +15,10 @@ données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide
 
 Sept onglets : **Reviews** · **Dev IA** · **Statistiques** · **Git** · **Docker** · **Jira** · **Réglages**.
 Les badges signalent le **travail en attente** (MR à traiter, sessions non lancées), pas des totaux.
+L'onglet **Reviews** en porte deux : le bleu compte les merge requests **à traiter**, l'orange les
+**rapports notés sous 7/10 qui attendent encore une décision**. Le second dit lesquelles lire en premier ;
+il ne compte que le stade *Reviewées*, donc classer une merge request le fait redescendre — un compteur qui
+ne redescend jamais cesse vite d'être regardé.
 
 ### Reviews
 Les trois stades d'une même merge request, réunis derrière un filtre segmenté —

@@ -919,6 +919,16 @@ async function refreshCounts() {
     set('#segCountToReview', f.to_review); set('#segCountReviewed', f.reviewed); set('#segCountDone', f.done);
     const nav = $('#navCountReview');
     if (nav) { nav.textContent = f.to_review || 0; nav.hidden = !f.to_review; }
+    /* Badge ORANGE : les rapports faibles qui attendent encore une décision. Il complète le
+       badge neutre (« à traiter ») sans le remplacer — l'un dit combien de merge requests
+       n'ont pas été lues, l'autre lesquelles méritent d'être lues en premier. */
+    const bas = $('#navLowScores');
+    if (bas) {
+      const n = s.lowScores || 0;
+      bas.textContent = n;
+      bas.hidden = !n;
+      bas.title = tr('nav.low-scores', { n, count: n });
+    }
     const lbl = $('#btnReviewLabel'); const btn = $('#btnReview');
     if (lbl && btn) {
       const n = f.to_review || 0;

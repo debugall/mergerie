@@ -1014,6 +1014,58 @@ describe('API de bout en bout', () => {
     assert.equal(body.tasks.total, 0);
   });
 
+  /* Le badge orange du menu Reviews : les rapports FAIBLES qui attendent encore une décision.
+     Ce que Mergerie badge, c'est du travail en attente — pas un total. Une merge request
+     classée traitée ne demande plus rien, même mal notée : la compter donnerait un chiffre qui
+     ne redescend jamais, donc qu'on cesse de regarder. */
+  test('les rapports notés sous 7/10 et encore à traiter sont comptés à part', async () => {
+    /* Trois merge requests à nous, insérées en base : dépendre de celles que les autres tests
+       laissent derrière eux rendrait ce test tributaire de leur ordre. */
+    const avant = (await app.api('GET', '/api/stats')).body.lowScores;
+    const repoId = app.db.prepare('SELECT id FROM repo LIMIT 1').get().id;
+    const ids = [901, 902, 903].map((iid) => app.db.prepare(
+      "INSERT INTO mr (repo_id, iid, title, source_branch, target_branch, status) VALUES (?,?,?,?,?,'to_review')",
+    ).run(repoId, iid, `note ${iid}`, `f/${iid}`, 'main').lastInsertRowid);
+    const mrs = ids.map((id) => ({ id }));
+    const poser = (mrId, note, statut) => {
+      app.db.prepare("INSERT OR REPLACE INTO review (mr_id, md_path, note_value, created_at, updated_at) VALUES (?,?,?,?,?)")
+        .run(mrId, `/tmp/r-${mrId}.md`, note, new Date().toISOString(), new Date().toISOString());
+      app.db.prepare('UPDATE mr SET status = ? WHERE id = ?').run(statut, mrId);
+    };
+    /* Le nettoyage passe par `finally` : sans lui, un échec en cours de route laisse nos
+       reviews en base et fait tomber les tests suivants — on diagnostique alors deux pannes
+       là où il n'y en a qu'une. */
+    try {
+      poser(mrs[0].id, 0.55, 'reviewed');   // 5,5/10 → compte
+      poser(mrs[1].id, 0.82, 'reviewed');   // 8,2/10 → ne compte pas
+      poser(mrs[2].id, 0.31, 'done');       // 3,1/10 mais déjà traitée → ne compte pas
+
+      const compte = async () => (await app.api('GET', '/api/stats')).body.lowScores - avant;
+      assert.equal(await compte(), 1);
+
+      // Le seuil est bien 7/10, borne exclue : 7,0 n'est pas « faible ».
+      app.db.prepare('UPDATE review SET note_value = 0.7 WHERE mr_id = ?').run(mrs[0].id);
+      assert.equal(await compte(), 0, '7/10 pile n’est pas sous 7');
+
+      // Un rapport sans note extraite ne compte pas non plus : on ne devine pas.
+      app.db.prepare('UPDATE review SET note_value = NULL WHERE mr_id = ?').run(mrs[0].id);
+      assert.equal(await compte(), 0);
+
+      // Traiter la merge request fait redescendre le compteur : c'est ce qui le rend crédible.
+      app.db.prepare('UPDATE review SET note_value = 0.4 WHERE mr_id = ?').run(mrs[0].id);
+      assert.equal(await compte(), 1);
+      await app.api('POST', `/api/mrs/${mrs[0].id}/done`, {});
+      assert.equal(await compte(), 0);
+    } finally {
+      /* Reviews COMPRISES : compter sur la suppression en cascade rendrait ce nettoyage
+         dépendant d'un pragma. */
+      for (const m of mrs) {
+        app.db.prepare('DELETE FROM review WHERE mr_id = ?').run(m.id);
+        app.db.prepare('DELETE FROM mr WHERE id = ?').run(m.id);
+      }
+    }
+  });
+
   test('GET /api/dashboard/commits renvoie le dernier commit par dépôt actif', async () => {
     const repos = (await app.api('GET', '/api/repos')).body.filter((r) => r.enabled);
     assert.ok(repos.length, 'au moins un dépôt actif');

@@ -300,8 +300,18 @@ app.get('/api/stats', wrap((req, res) => {
     mrMerged: db.prepare('SELECT COUNT(*) c FROM task_target WHERE mr_merged = 1').get().c,
   };
 
+  /* Rapports FAIBLES encore à traiter — ce que le badge orange du menu Reviews annonce.
+     Restreint au stade « reviewées » : les badges de Mergerie comptent du travail en attente,
+     pas des totaux. Une merge request déjà classée traitée ne demande plus rien, même si sa
+     note était mauvaise ; la compter ferait un chiffre qui ne redescend jamais.
+     `note_value` est normalisée sur [0,1] — 0,7 vaut donc 7/10. */
+  const faibles = db.prepare(`SELECT COUNT(*) c
+    FROM review JOIN mr ON mr.id = review.mr_id
+    WHERE mr.status = 'reviewed' AND review.note_value IS NOT NULL AND review.note_value < 0.7`).get().c;
+
   res.json({
     funnel, notes, projects, weekly, scoreTrend, tokens, tasks, resolution,
+    lowScores: faibles,
     commentsPosted: db.prepare('SELECT COUNT(*) c FROM comment_log').get().c,
   });
 }));

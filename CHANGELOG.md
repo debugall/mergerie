@@ -13,6 +13,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **An orange badge on Reviews counts the weak reports still waiting.** Next to the blue “to review”
+  count, it shows how many reports scored **under 7/10** have not been dealt with yet — which ones to read
+  first, rather than how many exist. It only counts the *Reviewed* stage, so marking a merge request as
+  processed brings it down: a counter that never goes down stops being looked at.
+
 - **See which projects are alive over the last six months.** A new chart in Statistics: one bar per tracked
   repository — a horizontal bar, longest first, with the name spelled out on the left. The chart has a fixed
   height and scrolls, so twenty repositories fit without pushing the rest of the page down and without a
