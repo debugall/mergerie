@@ -1098,8 +1098,8 @@ async function fillDashboardActivity() {
       + `\n\n${detail}`
       + (p.erreur ? `\n\n⚠ ${p.erreur}` : '')
       + (dort ? `\n\n${tr('stats.activity.asleep-tip')}` : '');
-    // Segments du plus ANCIEN en bas au plus RÉCENT en haut : le temps se lit de bas en haut.
-    const segments = p.days.map((n, i) => (n === 0 ? '' : `<span class="pab-seg" style="height:${(n / maxi) * 100}%;--o:${0.35 + (i / Math.max(1, mois.length - 1)) * 0.65}"></span>`)).reverse().join('');
+    // Barres HORIZONTALES : le temps se lit de gauche à droite, du plus ancien au plus récent.
+    const segments = p.days.map((n, i) => (n === 0 ? '' : `<span class="pab-seg" style="width:${(n / maxi) * 100}%;--o:${0.35 + (i / Math.max(1, mois.length - 1)) * 0.65}"></span>`)).join('');
     /* TOUTE la colonne est le bouton — barre comprise, pas seulement le nom : viser trois
        lignes de texte de dix pixels est un geste inutilement précis quand la barre au-dessus
        désigne déjà le projet. Un `<button>` natif plutôt qu'un div cliquable : il se
@@ -1108,11 +1108,14 @@ async function fillDashboardActivity() {
     const resume = `${p.project} — ${tr('stats.activity.total-tip', { n: p.totalDays, count: p.totalDays })}, `
       + `${tr('stats.activity.commits-tip', { n: p.total, count: p.total })}`
       + (dort ? `. ${tr('stats.activity.asleep-tip')}` : '');
+    /* Une LIGNE par projet : le nom tient en entier à gauche, ce qu'une colonne de 65 px ne
+       permettait pas — à vingt projets, tous les libellés finissaient tronqués. La hauteur du
+       graphe est bornée et défile : la liste peut s'allonger sans repousser le reste de la page. */
     return `<button type="button" class="pab${dort ? ' dort' : ''}" data-pab-detail="${p.repo_id}"
       title="${esc(infobulle)}" aria-label="${esc(`${resume}. ${tr('stats.activity.detail-title', { project: p.project })}`)}">
-      <span class="pab-val">${p.totalDays ? fmtNum(p.totalDays) : '0'}</span>
+      <span class="pab-name" title="${esc(p.project)}">${esc(court(p.project))}</span>
       <span class="pab-stack">${segments}</span>
-      <span class="pab-name">${esc(court(p.project))}</span>
+      <span class="pab-val">${p.totalDays ? fmtNum(p.totalDays) : '0'}</span>
     </button>`;
   };
 

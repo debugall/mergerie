@@ -159,16 +159,28 @@ describe('Statistiques — activité des projets sur 6 mois', () => {
       const aria = await premiere.getAttribute('aria-label');
       assert.match(aria, /groupe\/projet-/, 'le chemin complet est annoncé');
       assert.match(aria, /commit/i, '…avec ce que la barre représente');
+      /* La cible est la LIGNE entière, pas le seul libellé — indépendamment de l'orientation
+         du graphe : on compare donc la surface cliquable à celle du nom. */
       const boite = await premiere.boundingBox();
-      assert.ok(boite.height > 100, `la cible du clic est toute la colonne (vue ${Math.round(boite.height)} px)`);
+      const libelle = await premiere.locator('.pab-name').boundingBox();
+      const surface = boite.width * boite.height;
+      assert.ok(surface > libelle.width * libelle.height * 3,
+        `la cible doit dépasser largement le libellé (${Math.round(surface)} px² contre ${Math.round(libelle.width * libelle.height)} px²)`);
 
       // Et le clavier atteint bien le graphe.
       await premiere.focus();
       assert.equal(await page.evaluate(() => document.activeElement.className.includes('pab')), true);
 
-      // Le tout tient sans défilement vertical : c'est l'intérêt du format.
-      const h = await page.locator('#dashActivity .pab-chart').evaluate((e) => e.getBoundingClientRect().height);
-      assert.ok(h <= 260, `le graphe doit rester compact (vu ${Math.round(h)} px)`);
+      /* Le graphe a une hauteur BORNÉE et défile : vingt dépôts ne doivent pas repousser le
+         reste de la page. Et aucun nom n'est tronqué — c'est ce que l'horizontal apporte. */
+      const g = await page.locator('#dashActivity .pab-chart').evaluate((e) => ({
+        hauteur: Math.round(e.getBoundingClientRect().height),
+        contenu: e.scrollHeight,
+      }));
+      assert.ok(g.hauteur <= 340, `hauteur bornée attendue (vue ${g.hauteur} px)`);
+      assert.ok(g.contenu > g.hauteur, 'vingt dépôts dépassent : le graphe doit donc défiler');
+      const tronques = await page.$$eval('#dashActivity .pab-name', (n) => n.filter((x) => x.scrollWidth > x.clientWidth + 1).length);
+      assert.equal(tronques, 0, 'aucun nom de projet ne doit être coupé');
     } finally { await nav.close(); }
   });
 

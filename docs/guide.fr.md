@@ -555,22 +555,25 @@ récupération des MR est décochée en sont exclus, comme les dépôts inactifs
 type d'appel + **coût moyen par MR reviewée**), résumé des sessions. L'activité de commits est récupérée
 **en direct depuis la forge de chaque dépôt, toutes branches confondues** (chargée à part, best-effort : rien ne casse si une forge est injoignable).
 **Activité des projets — 6 derniers mois.** Répond à « quels dépôts vivent, lesquels dorment ». **Une barre
-par dépôt suivi** (actif ET récupération des MR cochée), rangées de la plus haute à la plus basse, avec le
-**nom du projet sous chaque barre** : vingt dépôts se lisent alors d'un coup d'œil.
+horizontale par dépôt suivi** (actif ET récupération des MR cochée), rangées de la plus longue à la plus
+courte, **nom en clair à gauche** et total à droite. Le graphe a une **hauteur fixe et défile** : vingt
+dépôts s'y lisent sans repousser le reste de la page, et sans qu'aucun nom soit tronqué — en colonnes,
+chacun n'avait que 65 px et tous finissaient coupés.
 
-La hauteur, ce sont les **jours d'activité** — les journées où au moins un commit est arrivé — et non le
+La longueur, ce sont les **jours d'activité** — les journées où au moins un commit est arrivé — et non le
 nombre de commits. Une journée travaillée veut dire la même chose partout, alors qu'un nombre de commits
 mesure surtout le *style* : squasher ou non change le compte du simple au quarantuple pour le même travail,
 et un dépôt gonflé écraserait tous les autres. La mesure est aussi **bornée** (une vingtaine de jours ouvrés
 par mois), donc franchement comparable d'un dépôt à l'autre. Les commits restent au survol.
 
-- La barre est **empilée par mois**, du plus ancien (pâle, en bas) au plus récent (plein, en haut). La
-  hauteur donne le volume, le dégradé dit si l'activité est **récente ou ancienne** — deux cents commits
+- La barre est **empilée par mois**, du plus ancien (pâle, à gauche) au plus récent (plein, à droite) —
+  le temps se lit dans le sens de lecture. La longueur donne le volume, le dégradé dit si l'activité est
+  **récente ou ancienne** — deux cents commits
   concentrés il y a cinq mois ne décrivent pas le même projet que deux cents commits réguliers.
 - Le **mois en cours** n'est pas fini : il est marqué d'un astérisque dans la légende, pour qu'on ne lise
   pas une baisse là où il n'y a qu'un mois entamé.
 - Un dépôt sans aucun commit sur les **deux derniers mois** passe en **gris** et son nom en italique. Il
-  reste à l'écran — c'est justement ce qu'on vient voir —, mais ne se confond pas avec un projet
+  reste dans la liste — c'est justement ce qu'on vient voir —, mais ne se confond pas avec un projet
   simplement peu actif. Un seul mois creux arrive à tout le monde, deux dessinent une pente.
 - Le **survol d'une barre** donne le détail : jours d'activité et commits mois par mois, contributeurs
   distincts du mois le plus fourni, et la raison quand le dépôt est injoignable.
