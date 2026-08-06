@@ -667,6 +667,11 @@ app.get('/api/jira/watch', wrap((req, res) => {
   });
 }));
 
+/* La note tient sur une ligne ou deux : c'est un rappel, pas un journal. On la borne plutôt
+   que de laisser une colonne libre s'étaler dans une liste où chaque ticket doit rester lisible. */
+const MAX_NOTE_WATCH = 500;
+const lireNote = (v) => String(v == null ? '' : v).trim().slice(0, MAX_NOTE_WATCH);
+
 app.post('/api/jira/watch', wrap(async (req, res) => {
   const key = String((req.body && req.body.key) || '').trim().toUpperCase();
   if (!jira.cleValide(key)) throw new Error(t('err.jira.watch-key-invalid'));
@@ -681,9 +686,21 @@ app.post('/api/jira/watch', wrap(async (req, res) => {
     meta = (await jira.statusOfKeys(cfg, [key]))[0] || null;
     if (!meta) throw new Error(t('err.jira.watch-not-found', { key }));
   }
-  db.prepare(`INSERT INTO jira_watch (key, summary, status, status_category, added_at, checked_at)
-              VALUES (?,?,?,?,?,?)`)
-    .run(key, meta.summary || '', meta.status || '', meta.statusCategory || '', now, now);
+  db.prepare(`INSERT INTO jira_watch (key, summary, status, status_category, added_at, checked_at, note)
+              VALUES (?,?,?,?,?,?,?)`)
+    .run(key, meta.summary || '', meta.status || '', meta.statusCategory || '', now, now,
+      lireNote(req.body && req.body.note));
+  res.json(db.prepare('SELECT * FROM jira_watch WHERE key = ?').get(key));
+}));
+
+/* La raison de surveiller change avec le temps — le ticket avance, on suit autre chose. Elle
+   se corrige donc sans retirer puis ré-ajouter le ticket, ce qui perdrait sa date d'ajout et
+   son dernier état connu (et déclencherait une fausse notification au passage suivant). */
+app.patch('/api/jira/watch/:key', wrap((req, res) => {
+  const key = String(req.params.key || '').trim().toUpperCase();
+  const ligne = db.prepare('SELECT 1 FROM jira_watch WHERE key = ?').get(key);
+  if (!ligne) throw new Error(t('err.jira.watch-unknown', { key }));
+  db.prepare('UPDATE jira_watch SET note = ? WHERE key = ?').run(lireNote(req.body && req.body.note), key);
   res.json(db.prepare('SELECT * FROM jira_watch WHERE key = ?').get(key));
 }));
 

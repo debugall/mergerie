@@ -511,6 +511,12 @@ bloque le tien, et tu veux savoir **quand il bouge**, pas y penser trois fois pa
   en tête du détail d'un ticket. La clé est validée avant tout appel : elle n'atteint jamais le JQL brute.
 - **L'état courant est mémorisé à l'ajout.** Sans ça, la première vérification comparerait à du vide et
   annoncerait un changement qui n'a pas eu lieu.
+- **Dire pourquoi tu le surveilles.** Un champ facultatif à côté de la clé — « bloque la migration de la
+  facturation », « prévenir Sofia dès que c'est en revue ». Trois mois plus tard, une clé et un résumé ne
+  rappellent plus la raison. Elle s'affiche sous le titre du ticket et se **corrige à tout moment** par le
+  crayon de sa ligne : passer par retirer/ré-ajouter perdrait la date d'ajout et le dernier état connu, et
+  provoquerait une fausse notification au passage suivant. La vider est un choix valable — on ne garde pas
+  un rappel périmé.
 - Un **timer serveur** revérifie tous les tickets surveillés à la cadence réglée dans
   **Réglages → Jira** (*Vérifier les tickets surveillés toutes les* N minutes ; **0 = désactivé**). À chaque
   **changement d'état**, une **notification bureau** donne l'ancien et le nouvel état — `À faire → En cours` —

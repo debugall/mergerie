@@ -532,10 +532,11 @@ describe('API de bout en bout', () => {
     assert.equal((await app.api('POST', '/api/jira/watch', { key: 'pas une clé' })).status, 400, 'clé invalide refusée');
 
     // L'ajout mémorise l'état COURANT : c'est ce qui évite une fausse notification au 1er passage.
-    const add = await app.api('POST', '/api/jira/watch', { key: 'watch-1' });
+    const add = await app.api('POST', '/api/jira/watch', { key: 'watch-1', note: 'bloque la migration facturation' });
     assert.equal(add.status, 200);
     assert.equal(add.body.key, 'WATCH-1', 'la clé est normalisée en majuscules');
     assert.equal(add.body.status, 'À faire');
+    assert.equal(add.body.note, 'bloque la migration facturation', 'la raison de surveiller est conservée');
     assert.equal((await app.api('POST', '/api/jira/watch', { key: 'WATCH-1' })).status, 400, 'doublon refusé');
     await app.api('POST', '/api/jira/watch', { key: 'WATCH-2' });
 
@@ -562,6 +563,26 @@ describe('API de bout en bout', () => {
     const suivi = liste.body.watched.find((w) => w.key === 'WATCH-1');
     assert.equal(suivi.status, 'En cours');
     assert.ok(suivi.changed_at, 'la date du changement est mémorisée');
+    /* La raison survit aux vérifications : elles réécrivent le résumé et l'état, pas la note.
+       C'est le genre de perte qu'on ne remarque que des semaines plus tard. */
+    assert.equal(suivi.note, 'bloque la migration facturation');
+
+    /* Elle se corrige sans retirer le ticket : le retirer perdrait sa date d'ajout et son
+       dernier état connu, et le ré-ajouter notifierait un faux changement. */
+    const modif = await app.api('PATCH', '/api/jira/watch/WATCH-1', { note: 'suivi pour la démo client' });
+    assert.equal(modif.status, 200);
+    assert.equal(modif.body.note, 'suivi pour la démo client');
+    assert.equal(modif.body.added_at, suivi.added_at, 'la date d’ajout ne bouge pas');
+    assert.equal(modif.body.status, 'En cours', '…ni l’état connu');
+    // Vider la note est un choix valable : on ne force pas à garder un rappel périmé.
+    assert.equal((await app.api('PATCH', '/api/jira/watch/WATCH-1', { note: '  ' })).body.note, '');
+    await app.api('PATCH', '/api/jira/watch/WATCH-1', { note: 'suivi pour la démo client' });
+    // Une note démesurée est tronquée, pas refusée : la liste doit rester lisible.
+    const longue = await app.api('PATCH', '/api/jira/watch/WATCH-1', { note: 'x'.repeat(900) });
+    assert.equal(longue.body.note.length, 500);
+    await app.api('PATCH', '/api/jira/watch/WATCH-1', { note: 'suivi pour la démo client' });
+    // Un ticket non surveillé n'a pas de note à modifier.
+    assert.equal((await app.api('PATCH', '/api/jira/watch/INCONNU-9', { note: 'x' })).status, 400);
 
     // Compteur du menu : les tickets en cours qui me sont affectés.
     await app.api('POST', '/api/jira/watch/check');

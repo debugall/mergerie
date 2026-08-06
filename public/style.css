@@ -1671,6 +1671,24 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
   color: var(--text); border-radius: var(--radius); }
 .jira-watch-key::placeholder { color: var(--muted); letter-spacing: normal; }
 .jira-watch-key:focus { border-color: var(--accent); outline: none; }
+/* Le pourquoi de la surveillance, à côté de la clé. Il prend la place restante : c'est du
+   texte libre, une largeur fixe le tronquerait dès la première phrase utile. */
+.jira-watch-note { flex: 1 1 260px; min-width: 0; padding: 8px 12px; font: inherit; font-size: 13px;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); }
+.jira-watch-note:focus { border-color: var(--accent); outline: none; }
+
+/* Sur la carte : la raison en clair, et le crayon qui l'ouvre. Le tout en gris — c'est un
+   rappel personnel, pas une donnée du ticket, et il ne doit pas concurrencer son résumé. */
+.jira-watch-note-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.jira-watch-note-row .jira-watch-note { flex: 1 1 auto; border: none; background: none; padding: 0;
+  font-size: 12px; font-style: italic; color: var(--muted); overflow-wrap: anywhere; }
+.jira-watch-note-row .btn { flex: 0 0 auto; opacity: .6; }
+.jira-watch-note-row .btn:hover { opacity: 1; }
+.jira-note-form { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.jira-note-form .jira-note-input { flex: 1 1 auto; min-width: 0; padding: 6px 10px; font: inherit;
+  font-size: 12px; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--radius); }
+.jira-note-form .jira-note-input:focus { border-color: var(--accent); outline: none; }
 .jira-sf-item { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
 .jira-avatar-sm { flex: 0 0 22px; height: 22px; font-size: 10px; }
 

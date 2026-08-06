@@ -402,9 +402,10 @@ if (someMr) {
    L'état semé (« À faire ») est VOLONTAIREMENT en retard sur celui du jeu Jira fictif
    (« En revue ») : à la première vérification, la démo détecte donc un vrai changement et
    affiche « dernier changement … ». Montrer la fonctionnalité vaut mieux que la décrire. */
-db.prepare(`INSERT OR IGNORE INTO jira_watch (key, summary, status, status_category, added_at, checked_at)
-            VALUES (?,?,?,?,?,?)`)
-  .run('PROJ-1390', 'Migrer les logs vers le nouveau format JSON', 'À faire', 'new', at(4), at(0.2));
+db.prepare(`INSERT OR IGNORE INTO jira_watch (key, summary, status, status_category, added_at, checked_at, note)
+            VALUES (?,?,?,?,?,?,?)`)
+  .run('PROJ-1390', 'Migrer les logs vers le nouveau format JSON', 'À faire', 'new', at(4), at(0.2),
+    'bloque la migration de la facturation — prévenir Sofia dès que c’est en revue');
 
 /* ---------- vérification objective (plan_add_verify.md §12) ----------
    L'histoire qu'on montre est celle qui donne son sens à la fonctionnalité : deux merge

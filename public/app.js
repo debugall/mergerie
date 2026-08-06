@@ -7990,6 +7990,19 @@ function renderJiraWatch() {
         <button type="button" class="btn btn-icon btn-sm btn-danger" data-jiraunwatch="${esc(r.key)}" title="${esc(tr('jira.watch.stop-title'))}"><svg class="ico"><use href="#i-close"/></svg></button>
       </div>
       <div class="jira-item-summary">${esc(r.summary || '')}</div>
+      ${/* La raison de surveiller. Absente, on propose de la dire : trois mois plus tard, une
+            clé et un résumé ne rappellent plus pourquoi ce ticket est là. */''}
+      <div class="jira-watch-note-row">
+        ${r.note
+    ? `<span class="jira-watch-note">${esc(r.note)}</span>`
+    : `<span class="muted">${esc(tr('jira.watch.note-add'))}</span>`}
+        <button type="button" class="btn btn-icon btn-sm" data-jiranote="${esc(r.key)}" title="${esc(tr('jira.watch.note-edit'))}"><svg class="ico ico-sm"><use href="#i-edit"/></svg></button>
+      </div>
+      <div class="jira-note-form" data-jiranoteform="${esc(r.key)}" hidden>
+        <input type="text" class="jira-note-input" maxlength="500" value="${esc(r.note || '')}" placeholder="${esc(tr('jira.watch.note-ph'))}" />
+        <button type="button" class="btn" data-jiranotecancel="${esc(r.key)}">${esc(tr('ui.cancel'))}</button>
+        <button type="button" class="btn btn-primary" data-jiranotesave="${esc(r.key)}">${esc(tr('jira.watch.note-save'))}</button>
+      </div>
       <div class="jira-item-foot muted">${r.changed_at
         ? esc(tr('jira.watch.changed-at', { at: fmtDate(r.changed_at) }))
         : esc(tr('jira.watch.no-change'))}${r.checked_at ? ` · ${esc(tr('jira.watch.checked-at', { at: fmtDate(r.checked_at) }))}` : ''}</div>
@@ -8006,10 +8019,10 @@ async function loadJiraWatch() {
   renderJiraWatch();
 }
 
-async function jiraWatchAdd(key) {
+async function jiraWatchAdd(key, note) {
   const k = String(key || '').trim().toUpperCase();
   if (!k) return;
-  await api('/jira/watch', { method: 'POST', body: { key: k } });
+  await api('/jira/watch', { method: 'POST', body: { key: k, note: note || '' } });
   await loadJiraWatch();
   toast(tr('toast.jira.watch-added', { key: k }));
 }
@@ -8017,14 +8030,45 @@ async function jiraWatchAdd(key) {
 $('#jiraWatchAdd') && $('#jiraWatchAdd').addEventListener('click', async (e) => {
   const inp = $('#jiraWatchKey');
   await busy(e.currentTarget, async () => {
-    try { await jiraWatchAdd(inp.value); inp.value = ''; }
+    const note = $('#jiraWatchNote');
+    try { await jiraWatchAdd(inp.value, note && note.value); inp.value = ''; if (note) note.value = ''; }
     catch (err) { toast(explainError(err.message), true); }
   });
 });
-$('#jiraWatchKey') && $('#jiraWatchKey').addEventListener('keydown', (e) => {
+[$('#jiraWatchKey'), $('#jiraWatchNote')].forEach((el) => el && el.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); $('#jiraWatchAdd').click(); }
-});
+}));
 $('#jiraWatchList') && $('#jiraWatchList').addEventListener('click', async (e) => {
+  const form = (key) => $(`#jiraWatchList .jira-note-form[data-jiranoteform="${key}"]`);
+
+  const ouvrir = e.target.closest('[data-jiranote]');
+  if (ouvrir) {
+    const f = form(ouvrir.dataset.jiranote);
+    if (f) { f.hidden = false; const i = $('.jira-note-input', f); i.focus(); i.select(); }
+    return;
+  }
+  const annuler = e.target.closest('[data-jiranotecancel]');
+  if (annuler) {
+    const f = form(annuler.dataset.jiranotecancel);
+    // On rétablit la valeur enregistrée : annuler doit vraiment annuler, y compris à la réouverture.
+    const ligne = JIRA_WATCH.rows.find((r) => r.key === annuler.dataset.jiranotecancel);
+    if (f) { $('.jira-note-input', f).value = (ligne && ligne.note) || ''; f.hidden = true; }
+    return;
+  }
+  const enregistrer = e.target.closest('[data-jiranotesave]');
+  if (enregistrer) {
+    const key = enregistrer.dataset.jiranotesave;
+    const f = form(key);
+    try {
+      await busy(enregistrer, () => api(`/jira/watch/${encodeURIComponent(key)}`, {
+        method: 'PATCH', body: { note: $('.jira-note-input', f).value },
+      }));
+      await loadJiraWatch();
+      toast(tr('jira.watch.note-saved', { key }));
+    } catch (err) { toast(explainError(err.message), true); }
+    return;
+  }
+
   const b = e.target.closest('[data-jiraunwatch]'); if (!b) return;
   try { await api(`/jira/watch/${encodeURIComponent(b.dataset.jiraunwatch)}`, { method: 'DELETE' }); await loadJiraWatch(); }
   catch (err) { toast(explainError(err.message), true); }

@@ -13,6 +13,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Say why you are watching a Jira ticket.** An optional note next to the key — “blocks the billing
+  migration”, “tell Sofia as soon as it is in review”. Three months later a key and a summary no longer
+  recall the reason. It shows under the ticket title and can be edited from its line at any time: going
+  through unwatch-then-rewatch would lose the date you added it and the last state Mergerie knows, and would
+  fire a false notification on the next check. Clearing it is fine too — a stale reminder helps nobody.
+
 - **Filter reviewed merge requests by score colour.** Three checkboxes sit above the list, under
   “Reviewed” and “Processed”: green (7/10 and above), amber (4 to 6.9), red (below 4). They combine, so
   “show me the red and amber ones” is one click each, and each carries the number of merge requests it

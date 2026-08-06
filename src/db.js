@@ -220,6 +220,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS jira_watch (
   changed_at TEXT,
   error TEXT
 )`);
+/* Pourquoi on surveille CE ticket. Trois mois plus tard, une clé et un résumé ne le disent
+   plus — « il bloque la migration de la facturation » si. La colonne est ajoutée à part :
+   les bases existantes ont déjà la table. */
+try { db.exec('ALTER TABLE jira_watch ADD COLUMN note TEXT'); } catch { /* déjà présente */ }
 // Migration : générer l'explication pédagogique lors d'une review ('1' par défaut =
 // comportement historique). '0' = review seule (on saute le 2e appel IA), l'explication
 // restant disponible à la demande via le bouton « Générer l'explication » du rapport.
