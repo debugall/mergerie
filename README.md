@@ -61,7 +61,7 @@ review stage you left, and the report panel opens on what changed since your las
 ## Learn more
 
 - 🗺️ **[Roadmap](./ROADMAP.md)** — what's next (Bitbucket support, orchestrated releases, deployment piloting).
-- 📖 **Full documentation** — English version coming soon. For now: **[Guide complet (🇫🇷 French)](./docs/guide.fr.md)**.
+- 📖 **[Full guide](./docs/guide.en.md)** — every tab in detail, objective verification, `.env`, enterprise TLS, data & backup, security model. Also in **[🇫🇷 French](./docs/guide.fr.md)**.
 - 🧭 **Architecture** — modules, data model, pipelines: **[PLAN.md (🇫🇷 French)](./PLAN.md)**.
 - 🇫🇷 **Version française :** **[README.fr.md](./README.fr.md)**.
 - 📜 **[Changelog](./CHANGELOG.md)** — what changed, release by release.

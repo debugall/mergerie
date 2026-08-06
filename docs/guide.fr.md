@@ -1,6 +1,6 @@
 # Mergerie — Guide complet
 
-> ↩ Retour au [README.fr.md](../README.fr.md) · 🇬🇧 [README (English)](../README.md)
+> ↩ Retour au [README.fr.md](../README.fr.md) · 🇬🇧 [Guide (English)](./guide.en.md)
 
 Ce guide détaille chaque onglet, la configuration avancée, le TLS entreprise, les clones locaux, les
 données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide, reste sur le

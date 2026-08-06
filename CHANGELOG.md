@@ -266,6 +266,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   but at the cost of one AI call per repository, to redo work that is already done. The button only
   appears when at least one project is in error.
 
+- **The full guide now exists in English.** Every tab, objective verification and its script contract,
+  `.env` configuration, enterprise TLS, local clones, data & backup and the security model — the whole
+  document, not a summary. Until now the only complete documentation was in French, which put anyone
+  arriving from the mirror in front of eleven hundred lines they could not read. The two versions must keep
+  the same section structure, and `npm run check` fails when they drift apart or when a link points at a
+  heading that no longer exists.
+
 ### Changed
 
 - **AI Dev lists lead with what just finished running.** They were ordered by creation, so a session you

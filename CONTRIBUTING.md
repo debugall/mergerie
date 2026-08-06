@@ -48,7 +48,8 @@ MERGERIE_DATA_DIR=/tmp/mergerie-dev npm start
 
 To find your way around the codebase (modules, data model, pipelines), read **[PLAN.md](./PLAN.md)**
 (French). The user-facing behavior of every tab is documented in the
-**[full guide](./docs/guide.fr.md)** (French).
+**[full guide](./docs/guide.en.md)** (also in [French](./docs/guide.fr.md) — the two must keep the same
+section structure, which `npm run check` enforces).
 
 ## Before you open a pull request
 
