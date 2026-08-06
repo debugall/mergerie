@@ -679,8 +679,17 @@ pre.diff .dl.flash { outline: 2px solid var(--accent); outline-offset: -2px; }
 .dl-row.del .ln, .dl-row.del .dl { background: var(--diff-del-bg); }
 .dl-row.hunk, .dl-row.hunk .dl { color: var(--hunk); }
 .dl-row.flash { outline: 2px solid var(--accent); outline-offset: -2px; }
-.cmt-editor { padding: 8px 12px 8px 64px; background: var(--panel2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.cmt-editor textarea { width: 100%; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px; font: inherit; min-height: 60px; }
+/* Éditeur et fil de commentaires vivent DANS la zone de diff, qui défile horizontalement :
+   sa largeur est celle de la ligne de code la plus longue, pas celle de l'écran. En bloc
+   ordinaire, l'éditeur s'étirait donc sur toute cette largeur et son bouton « Enregistrer »,
+   aligné à droite, partait à des milliers de pixels hors champ — il fallait scroller pour
+   valider ce qu'on venait d'écrire.
+   `position: sticky; left: 0` le colle au bord gauche VISIBLE, et `width: fit-content` le
+   dimensionne sur son propre contenu au lieu de suivre le conteneur. */
+.cmt-editor { position: sticky; left: 0; width: fit-content; max-width: 100vw;
+  padding: 8px 12px 8px 64px; background: var(--panel2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.cmt-editor textarea { width: 620px; max-width: calc(100vw - 200px); background: var(--panel); border: 1px solid var(--line);
+  color: var(--text); border-radius: var(--radius); padding: 8px; font: inherit; min-height: 60px; }
 .cmt-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
 /* Indicateur « ligne commentée » : bulle masquée teintée à l'accent (V2.8 : remplace 💬). */
 .dl-row.has-comment .ln-new::after {
@@ -688,7 +697,11 @@ pre.diff .dl.flash { outline: 2px solid var(--accent); outline-offset: -2px; }
   background-color: var(--accent);
   -webkit-mask: no-repeat center/contain var(--icon-comment); mask: no-repeat center/contain var(--icon-comment);
 }
-.cmt-thread { background: var(--panel); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 4px 12px 4px 64px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+/* Même raison pour les commentaires DÉJÀ postés : étirés sur la largeur du code, ils se
+   lisaient sur une ligne interminable, et leurs boutons partaient hors champ. */
+.cmt-thread { position: sticky; left: 0; width: fit-content; max-width: 100vw;
+  background: var(--panel); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 4px 12px 4px 64px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.cmt-thread .cmt-body, .cmt-thread .cmt-head { max-width: 620px; }
 .cmt-thread .cmt { padding: 6px 0; border-bottom: 1px dashed var(--line); }
 .cmt-thread .cmt:last-child { border-bottom: none; }
 .cmt-head { display: flex; align-items: center; gap: 6px; font-size: 12.5px; margin-bottom: 2px; }

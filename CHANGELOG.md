@@ -242,6 +242,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The inline comment box no longer runs off the side of the screen.** In the code explorer, the diff
+  area is as wide as the file's longest line, and the comment editor stretched to match — so on a file with
+  one long line, its “Send” button sat thousands of pixels to the right and you had to scroll sideways to
+  post what you had just typed. The editor now sticks to the left edge of what you can see and sizes itself
+  on its own content, whichever way you scroll. Existing comment threads got the same treatment: they were
+  stretched to the same width and read as one endless line.
+
 - **Saving an exploration again no longer resets its repositories.** Reopening a finished exploration and
   saving it — even without changing anything — sent every repository back to “to run” while the session
   itself still read “done”. Mergerie only rebuilds the project rows when their composition changes, but the
