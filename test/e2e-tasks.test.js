@@ -593,6 +593,47 @@ describe('Sessions de dev de bout en bout', () => {
     assert.equal(cible.session_key, null, 'le dry-run n’invente pas de session');
   });
 
+  /* Rouvrir une session pour l'enregistrer SANS RIEN CHANGER ne doit rien remettre à zéro.
+     Sur une exploration, la comparaison de composition tenait compte de `base_branch` — que
+     le run RÉSOUT et réécrit sur chaque cible, alors que le formulaire n'en envoie aucune.
+     Les cibles étaient donc supprimées et recréées : chaque dépôt repassait « à exécuter »
+     sous une session pourtant « terminée ». */
+  test('réenregistrer une exploration sans rien changer ne remet pas les dépôts à zéro', async () => {
+    const t = (await app.api('POST', '/api/tasks', {
+      kind: 'explore', prompt: 'Où est vérifié le jeton ?',
+      targets: [{ repo_id: repoId }, { repo_id: repo2Id }],
+    })).body;
+    await app.api('POST', `/api/tasks/${t.id}/run`);
+    await waitForJobs(app.api);
+
+    const avant = (await app.api('GET', `/api/tasks/${t.id}`)).body.task;
+    assert.equal(avant.status, 'done');
+    assert.deepEqual(avant.targets.map((x) => x.status), ['done', 'done']);
+    assert.ok(avant.targets.every((x) => x.base_branch), 'le run a bien résolu une branche de base');
+
+    // Ce que renvoie le formulaire d'édition d'une exploration : les dépôts, rien de plus.
+    const maj = await app.api('PUT', `/api/tasks/${t.id}`, {
+      prompt: 'Où est vérifié le jeton ? (reformulé)',
+      targets: avant.targets.map((x) => ({ repo_id: x.repo_id })),
+    });
+    assert.equal(maj.status, 200);
+
+    const apres = (await app.api('GET', `/api/tasks/${t.id}`)).body.task;
+    assert.deepEqual(apres.targets.map((x) => x.status), ['done', 'done'],
+      'les dépôts gardent leur état : rien n’a changé dans leur composition');
+    assert.deepEqual(apres.targets.map((x) => x.id), avant.targets.map((x) => x.id),
+      'ce sont les MÊMES lignes, pas des remplaçantes');
+    assert.equal(apres.prompt, 'Où est vérifié le jeton ? (reformulé)', 'le prompt, lui, est bien mis à jour');
+
+    // …mais ajouter un dépôt CHANGE la composition : là, les cibles sont refaites.
+    await app.api('PUT', `/api/tasks/${t.id}`, {
+      targets: [{ repo_id: repoId }],
+    });
+    const reduit = (await app.api('GET', `/api/tasks/${t.id}`)).body.task;
+    assert.equal(reduit.targets.length, 1, 'la composition a bien été appliquée');
+    assert.equal(reduit.targets[0].status, 'new', 'une cible neuve repart à zéro, c’est normal');
+  });
+
   test('GET /api/tasks liste les sessions avec leurs projets', async () => {
     const { body } = await app.api('GET', '/api/tasks');
     assert.ok(body.length >= 2);

@@ -236,6 +236,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Saving an exploration again no longer resets its repositories.** Reopening a finished exploration and
+  saving it — even without changing anything — sent every repository back to “to run” while the session
+  itself still read “done”. Mergerie only rebuilds the project rows when their composition changes, but the
+  comparison included the base branch, which the run *resolves* and writes back and which the form never
+  sends. That branch is a result, not a choice, so it no longer takes part in the comparison. Genuinely
+  changing the repositories still rebuilds them, as it should.
+
 - **The base run is replayed every time, instead of being reused.** Mergerie used to cache it per set of
   commits — the base does not move while you iterate, so why pay for it twice? Because the commits are only
   half the story: restart a local service, apply a migration, reinstall a dependency, and the same commits

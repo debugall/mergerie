@@ -1512,8 +1512,17 @@ app.put('/api/tasks/:id', wrap((req, res) => {
   const sessionId = normalizeSessionId(session_id);
   if (Array.isArray(targets) && targets.length) {
     const list = normalizeTargets(targets, tache.kind);
-    // on ne recrée que si la composition change, pour préserver l'état d'exécution
-    const key = (x) => `${x.repo_id}:${x.branch}:${x.base_branch || ''}`;
+    /* On ne recrée les cibles que si la COMPOSITION change : sinon on perdrait leur état
+       d'exécution (commit, diff, MR, handle de session).
+
+       La comparaison ne porte donc que sur ce que l'utilisateur a CHOISI. Pour une
+       exploration, `base_branch` n'est pas un choix : c'est la branche que le run a
+       RÉSOLUE et réécrite sur chaque cible. Elle la faisait donc différer du formulaire —
+       qui n'en envoie aucune — et rouvrir une exploration terminée pour l'enregistrer sans
+       rien changer remettait tous ses dépôts « à exécuter », sous une session « terminée ».
+       `|| ''` sur la branche pour la même raison : `null` et `''` désignent ici la même
+       absence de choix, mais ne s'écrivent pas pareil dans une clé. */
+    const key = (x) => [x.repo_id, x.branch || '', tache.kind === 'explore' ? '' : (x.base_branch || '')].join(':');
     const cur = taskTargets(tache.id).map(key).join('|');
     if (cur !== list.map(key).join('|')) {
       db.prepare('DELETE FROM task_target WHERE task_id = ?').run(tache.id);
