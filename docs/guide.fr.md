@@ -1060,11 +1060,39 @@ elles, ne lisent qu'un `git diff` et ne dépendent jamais de l'état du worktree
 
 ## Données & sauvegarde
 
-Tout l'état vit dans **`data/`** (gitignored) : `reviewer.db` (SQLite), `clones/`, `reviews/` (un dossier par MR, avec **une version de rapport par passe** : `review-v1.md`, `review-v2.md`…), `tickets/`, `tasks/` (diffs par projet et réponses d'exploration). Pense à une sauvegarde ponctuelle :
+Tout l'état vit dans **`data/`** (gitignored) : `reviewer.db` (SQLite), `clones/`, `reviews/` (un dossier par MR, avec **une version de rapport par passe** : `review-v1.md`, `review-v2.md`…), `tickets/`, `tasks/` (diffs par projet et réponses d'exploration).
 
-```bash
-cp data/reviewer.db data/reviewer.db.bak
-```
+### Sauvegarder
+
+**Réglages → Général → « Sauvegarder les données »** produit une archive `.zip` datée contenant :
+
+- **`reviewer.db`**, copiée par l'API de sauvegarde de SQLite et non par un `cp` — une copie de fichier
+  faite pendant une écriture donne une base corrompue, ce qui ne se découvre que le jour où l'on essaie de
+  la restaurer ;
+- **`reviews/`**, **`tasks/`** et **`tickets/`** : les rapports, les retours d'agent et les captures que la
+  base référence par leur chemin. Sauvegarder la base seule laisserait des références mortes ;
+- un **`LISEZ-MOI.txt`** avec la marche à suivre pour restaurer — une sauvegarde qu'on ne sait plus
+  restaurer ne vaut rien, et c'est six mois plus tard qu'on l'ouvre.
+
+Les **clones et les worktrees en sont exclus** : ils se retrouvent avec un `git clone`, et les inclure
+multiplierait la taille de l'archive pour ne rien sauver d'irremplaçable. L'archive est assemblée en
+mémoire ; au-delà de 256 Mo elle est refusée avec le nom du fichier qui a fait déborder, plutôt que de
+faire tomber le serveur.
+
+**Restaurer** — Mergerie arrêtée (la base ne doit pas être écrite pendant la copie) : mettre l'ancien
+`data/` de côté, décompresser l'archive à sa place, relancer. Les clones manquants sont refaits à la
+demande.
+
+### Conserver l'historique
+
+**Réglages → Général → « Conserver l'historique »** (défaut **90 jours**, `0` = sans limite) supprime au-delà
+du délai : les **journaux de jobs**, les **jobs terminés** et le **fil d'activité**. Le ménage a lieu au
+démarrage puis une fois par jour. Minimum 7 jours — un délai plus court effacerait le journal du job qu'on
+est en train de lire ; et un job **en cours** n'est jamais purgé, si ancien soit-il.
+
+Deux choses ne sont **jamais** purgées, à dessein : le **coût en tokens** (`usage`), parce qu'il porte un
+total cumulé qui ne doit pas baisser tout seul, et les **itérations d'agent** (`agent_pass`), qui
+disparaissent déjà avec leur session et dont les cartes proposent la relecture.
 
 Pour lancer des tests sans toucher ta base : `MERGERIE_DATA_DIR=/tmp/mon-test npm start`.
 

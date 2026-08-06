@@ -45,6 +45,8 @@ const notify = require('./notify');
 const gitgraph = require('./gitgraph');
 const docx = require('./docx');
 const { pMap } = require('./pmap');
+const backup = require('./backup');
+const retention = require('./retention');
 const { t } = i18n;
 const { discoverAll } = require('./discover');
 const jobs = require('./jobs');
@@ -2824,6 +2826,21 @@ app.post('/api/export/docx', wrap((req, res) => {
   res.send(buf);
 }));
 
+/* ---------- Sauvegarde des données ----------
+   Tout le travail accumulé — rapports, verdicts, sessions, suivi de résolution — vit dans un
+   seul dossier qu'aucune commande n'exportait. Une suppression accidentelle ou un disque qui
+   lâche effaçait des mois de contexte sans recours. C'est un TÉLÉCHARGEMENT (donc `GET`) :
+   l'opération ne change rien côté serveur. */
+app.get('/api/backup', wrap(async (req, res) => {
+  const { buffer, contenu } = await backup.construire(db);
+  const nom = backup.nomArchive();
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${nom}"`);
+  // Ce que l'archive contient, lisible sans l'ouvrir : le front l'affiche après coup.
+  res.setHeader('X-Mergerie-Backup', Buffer.from(JSON.stringify(contenu), 'utf8').toString('base64'));
+  res.send(buffer);
+}));
+
 /* ---------- MRs ---------- */
 app.get('/api/mrs', wrap((req, res) => {
   const { status } = req.query;
@@ -3624,6 +3641,7 @@ const HOST = process.env.HOST || '127.0.0.1';
 // L'avertissement porte sur « ce n'est PAS une boucle locale », pas sur l'égalité à 0.0.0.0 :
 // HOST est un nom très répandu (tcsh, PaaS, images CI) et n'importe quelle valeur héritée de
 // l'environnement (`::`, une IP de LAN…) expose l'app, qui n'a aucune authentification.
+let retentionTimer = null;
 const LOOPBACK = ['127.0.0.1', 'localhost', '::1'];
 const HOST_EXPOSED = !LOOPBACK.includes(HOST);
 // IPv6 : l'hôte doit être crocheté dans l'URL (http://[::1]:4319).
@@ -3636,6 +3654,11 @@ const server = app.listen(PORT, HOST, () => {
   restartAutoRefresh();
   restartJiraWatch();
   verifyrun.gcWorktrees((m) => console.log(`[verify] ${m}`));
+  // Ménage de l'historique : au démarrage, puis une fois par jour.
+  retentionTimer = retention.demarrer(
+    () => getConfig().retention_days,
+    (m) => console.log(`[retention] ${m}`),
+  );
 });
 
 /* Exporté pour les tests de bout en bout : ils lancent le serveur EN PROCESSUS
@@ -3648,6 +3671,7 @@ module.exports = {
     if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
     // Un timer oublié garde le process en vie : la suite de tests ne rendrait jamais la main.
     if (jiraWatchTimer) { clearInterval(jiraWatchTimer); jiraWatchTimer = null; }
+    if (retentionTimer) { clearInterval(retentionTimer); retentionTimer = null; }
     return new Promise((resolve) => server.close(resolve));
   },
 };

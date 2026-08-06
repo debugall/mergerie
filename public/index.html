@@ -801,6 +801,17 @@ print(json.dumps({
                     <option value="light" data-i18n="settings.opt.clair">Clair</option>
                 </select>
             </label>
+            <!-- Données : ce qu'on garde, et comment on l'emporte. Placé dans « Général »
+                 parce que ça ne concerne ni les MR ni une forge en particulier. -->
+            <label><span data-i18n="settings.lbl.retention">Conserver l'historique (jours, 0 = sans limite)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.retention" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="retention_days" type="number" min="0" step="1" placeholder="90" />
+            </label>
+            <!-- Sauvegarde : la seule chose que Mergerie ne sait pas reconstruire. -->
+            <div class="backup-row">
+                <button type="button" id="btnBackup" class="btn"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="settings.backup.btn">Sauvegarder les données</span></button>
+                <span id="backupInfo" class="muted"></span>
+            </div>
+
             <label><span data-i18n="settings.language">Langue</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.language.hint" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <select id="langSelect">
                     <option value="fr" data-i18n="settings.language.fr">Français</option>

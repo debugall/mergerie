@@ -1199,6 +1199,40 @@ async function ouvrirActiviteProjet(repoId) {
     <p class="muted dash-floor">* ${tr('stats.activity.partial-month')}${d.partiel ? ` · ${tr('stats.activity.truncated', { n: 1, count: 1 })}` : ''}</p>`;
 }
 
+/* ---------- Sauvegarde des données ----------
+   Une archive de tout ce que Mergerie ne sait pas reconstruire : la base, les rapports, les
+   retours d'agent, les captures. Pas les clones — ils se retrouvent avec un `git clone`.
+   On dit ce que l'archive contient APRÈS l'avoir produite : « c'est fait » n'apprend rien,
+   « 1 base, 34 rapports, 2,1 Mo » se vérifie. */
+$('#btnBackup') && $('#btnBackup').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+  const info = $('#backupInfo');
+  if (info) { info.className = 'muted'; info.textContent = tr('settings.backup.running'); }
+  try {
+    const res = await fetch('/api/backup');
+    if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || res.statusText);
+    const blob = await res.blob();
+    // Le nom vient du serveur (daté) : deux sauvegardes ne doivent pas s'écraser.
+    const nom = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+    telecharger(blob, nom ? nom[1] : 'mergerie-backup.zip');
+    let detail = '';
+    try {
+      const brut = res.headers.get('X-Mergerie-Backup');
+      if (brut) {
+        detail = JSON.parse(atob(brut))
+          .filter((c) => c.fichiers)
+          .map((c) => `${c.nom} ${c.fichiers}`).join(' · ');
+      }
+    } catch { /* l'en-tête est un confort : son absence ne change rien au fichier */ }
+    if (info) {
+      info.className = 'muted ok';
+      info.textContent = tr('settings.backup.done', { size: Math.max(1, Math.round(blob.size / 1024)) })
+        + (detail ? ` — ${detail}` : '');
+    }
+  } catch (err) {
+    if (info) { info.className = 'muted err'; info.textContent = explainError(err.message); }
+  }
+}));
+
 const fermerActivite = () => { $('#activityModal').hidden = true; };
 $('#activityClose') && $('#activityClose').addEventListener('click', fermerActivite);
 fermerAuFond('#activityModal', fermerActivite, { salissable: false });
@@ -3295,12 +3329,14 @@ $('#ticketSave').addEventListener('click', async () => {
 const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'access_token',
   'github_url', 'github_token',
   'clone_path', 'review_skill', 'prompt_review', 'prompt_explain', 'prompt_modify',
-  'converge_threshold', 'converge_max_passes', 'jira_watch_minutes'];
+  'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days'];
 async function loadConfig() {
   const c = await api('/config');
   const f = $('#configForm');
   for (const k of CONFIG_FIELDS) { if (f[k]) f[k].value = c[k] || ''; }
   f.auto_refresh_minutes.value = Number(c.auto_refresh_minutes) || 0; // 0 affiché explicitement
+  // Idem : 0 signifie « sans limite », il doit s'écrire plutôt que rester vide.
+  if (f.retention_days) f.retention_days.value = Number(c.retention_days) || 0;
   if (f.review_explain) f.review_explain.checked = c.review_explain !== '0'; // défaut : activé
   renderNotifSettings();
 }

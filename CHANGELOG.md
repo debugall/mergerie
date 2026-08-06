@@ -13,6 +13,20 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Back up your data in one click.** Settings → General now produces a dated `.zip` holding the database
+  and every file it points at — reports, agent answers, context screenshots — plus a short note on how to
+  restore it. The database is copied through SQLite's own backup API rather than a plain file copy, which
+  would silently produce a corrupt file if a write happened mid-copy. Clones and worktrees are left out on
+  purpose: a `git clone` brings them back, and including them would multiply the archive size for nothing.
+  Until now the months of accumulated work — reports, verdicts, resolution tracking — lived in a single
+  folder that no command could export.
+
+- **History no longer grows forever.** Job logs, finished jobs and the activity feed are now trimmed past a
+  configurable age (Settings → General, 90 days by default, `0` to keep everything). The cleanup runs at
+  startup then once a day, never touches a job that is still running, and leaves two things alone on
+  purpose: token costs, whose running total must not drop by itself, and agent iterations, which already
+  disappear with their session.
+
 - **An orange badge on Reviews counts the weak reports still waiting.** Next to the blue “to review”
   count, it shows how many reports scored **under 7/10** have not been dealt with yet — which ones to read
   first, rather than how many exist. It only counts the *Reviewed* stage, so marking a merge request as

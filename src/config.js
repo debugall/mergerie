@@ -37,6 +37,12 @@ function updateConfig(patch) {
     const w = parseInt(patch.jira_watch_minutes, 10);
     next.jira_watch_minutes = (!Number.isFinite(w) || w <= 0) ? 0 : Math.max(1, w);
   }
+  /* Rétention de l'historique : 0 = illimité, sinon au moins 7 jours. Le plancher évite
+     qu'une saisie à « 1 » n'efface le journal du job qu'on est en train de lire. */
+  if ('retention_days' in patch) {
+    const d = parseInt(patch.retention_days, 10);
+    next.retention_days = (!Number.isFinite(d) || d <= 0) ? 0 : Math.max(7, d);
+  }
   // Langue : on refuse silencieusement une valeur inconnue plutôt que de casser l'interface.
   if (!['fr', 'en'].includes(next.language)) next.language = 'fr';
   // Explication : booléen stocké en texte, normalisé à '0'/'1' (défaut '1').
@@ -70,7 +76,8 @@ function updateConfig(patch) {
       converge_threshold = @converge_threshold,
       converge_max_passes = @converge_max_passes,
       auto_refresh_minutes = @auto_refresh_minutes,
-      jira_watch_minutes = @jira_watch_minutes
+      jira_watch_minutes = @jira_watch_minutes,
+      retention_days = @retention_days
     WHERE id = 1`).run(next);
   return getConfig();
 }

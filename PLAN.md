@@ -220,6 +220,15 @@ remplis à l'exécution) ; **tout le reste ci-dessous est en dur dans le code** 
 - **Marqueur `=== RAPPORT DE REVUE ===`** : séparateur en dur entre la consigne de correction et le rapport injecté (convergence).
 - *(Hors IA)* Le **contrat JSON v1 d'un vérificateur `script`** et les formats **TAP**/**JUnit XML** lus d'un vérificateur `commandes` sont eux aussi des contrats de parsing imposés, mais à un programme de l'utilisateur, pas à un agent : voir « Vérification objective ».
 
+## Rétention de l'historique
+
+`retention.js` — `config.retention_days` (défaut 90, 0 = illimité, plancher 7). Purge au démarrage puis une
+fois par jour (`setInterval` **unref**, sinon le processus refuserait de s'arrêter) : `job_log`, `job` et
+`feed` au-delà du délai. Les journaux sont supprimés AVANT leurs jobs — l'inverse laisserait des lignes
+orphelines que plus rien ne référence (pas de cascade). Un job `queued`/`running` n'est **jamais** purgé,
+si ancien soit-il. `usage` (coût cumulé en tokens, un total qui ne doit pas baisser) et `agent_pass`
+(disparaît déjà avec sa session) sont épargnés à dessein.
+
 ## File de jobs
 
 Un **worker séquentiel** traite une file : reviews, re-reviews, modifs et tâches passent par la même file (un traitement à la fois). État persisté en `job`/`job_log` → survit à la fermeture d'onglet. **Stop** sans argument tue tout et vide la file ; **avec un id**, il n'arrête que ce job. Un arrêt DEMANDÉ finit en `stopped`, jamais en `error` — les opérations git et docker étaient les seules à ne pas faire la distinction, et affichaient le Stop de l'utilisateur comme un échec. Un job `stopped`/`error` rejouable expose `can_retry` et se relance depuis le bandeau (`POST /api/jobs/:id/retry`), qui crée un NOUVEAU job.
@@ -254,6 +263,7 @@ Optionnel, piloté par `config.auto_refresh_minutes` (0 = off, **minimum 1 min**
 - **`GET /api/dashboard/activity`** — activité mensuelle des dépôts SUIVIS sur 6 mois (`{ configured, months, projects: [{ project, counts[6], authors[6], total, contributeurs, partiel, erreur }] }`). Cache en base par (dépôt, mois) : un mois clos est définitif, seul le mois courant est rafraîchi (TTL 30 min) — sinon six mois d'historique se repagineraient depuis la forge à chaque ouverture. Best-effort par dépôt : une forge injoignable remplit `erreur` sur SA ligne au lieu de vider l'écran.
 - Activité : dépôts interrogés **4 à la fois** (`pmap.js`, partagé avec Docker) ; les commits de **robots** (`[bot]`, dependabot, renovate, github-actions, mergify) sont écartés du compte — sinon un dépôt abandonné mais mis à jour par un robot ne serait jamais « endormi » ; dates normalisées en **UTC** avant rangement, à la même échelle que les bornes `since`/`until` (les découper en local rangeait un commit du 1er à 1 h dans le mois suivant, quand il ne disparaissait pas faute de seau) ; deux demandes concurrentes du même dépôt partagent la même promesse.
 - **`GET /api/dashboard/activity/:repoId`** — le même dépôt sur **12 mois** (clic sur le nom sous sa barre) : `counts`/`days`/`authors` par mois, totaux, `meilleurMois` et `dernierActif` nommés plutôt qu'à chercher à l'œil. Même cache que la vue d'ensemble — ses six premiers mois sont souvent déjà chargés.
+- **`GET /api/backup`** — archive `.zip` datée : la base (copiée par l'API `backup()` de SQLite, PAS un `cp` — une copie brute pendant une écriture donne une base corrompue) + `reviews/`, `tasks/`, `tickets/` + un mode d'emploi de restauration. Clones et worktrees EXCLUS (reconstructibles par `git clone`). Assemblage en mémoire, plafonné à 256 Mo avec le fichier fautif nommé. Modules : `backup.js`, `zip.js` (sorti de `docx.js` : un `.docx` est un ZIP, une sauvegarde aussi).
 - Notifications : `GET /api/notifications?after=:id` (événements postérieurs à `:id` + `latest`, pour le long-poll léger du client).
 
 ## Footer « télémétrie live »

@@ -439,6 +439,12 @@ body.footer-hidden { padding-bottom: 0; }
 /* Filtre par couleur de note, au-dessus de la liste. Les pastilles reprennent EXACTEMENT
    l'habillage des notes des cartes (`.note.good/.mid/.bad`) : c'est ce qui rend le lien
    évident sans une ligne d'explication. */
+/* Sauvegarde : une action isolée dans un formulaire de réglages — elle ne s'enregistre pas
+   avec le reste, elle produit un fichier. D'où sa propre ligne, et son compte rendu à côté. */
+.backup-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 4px; }
+.backup-row .ok { color: var(--green); }
+.backup-row .err { color: var(--red-text, var(--red)); }
+
 .note-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 2px 0 10px; }
 .note-filters .nf-label { color: var(--muted); font-size: var(--fs-xs); }
 .nf-item { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none;

@@ -207,6 +207,12 @@ try { db.exec("ALTER TABLE config ADD COLUMN language TEXT DEFAULT 'fr'"); } cat
 try { db.exec('ALTER TABLE config ADD COLUMN auto_refresh_minutes INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 // Migration : cadence de vérification des tickets Jira surveillés (0 = désactivée).
 try { db.exec('ALTER TABLE config ADD COLUMN jira_watch_minutes INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
+/* Rétention de l'historique, en JOURS (0 = illimité). `job_log`, `job` et `feed` accumulent
+   sans jamais se vider ; sur une instance utilisée tous les jours, ce sont elles qui finissent
+   par peser. 90 jours par défaut : assez long pour relire le journal d'un job d'il y a deux
+   mois, assez court pour que la base ne double pas chaque année. Voir `retention.js` pour ce
+   qui n'est PAS purgé, et pourquoi. */
+try { db.exec('ALTER TABLE config ADD COLUMN retention_days INTEGER DEFAULT 90'); } catch { /* déjà présente */ }
 /* Tickets Jira surveillés. `status` est le DERNIER état connu : c'est lui qu'on compare au
    prochain passage pour décider s'il y a eu changement. Un ticket ajouté part donc avec
    l'état courant, sinon la première vérification notifierait un faux changement. */
