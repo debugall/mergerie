@@ -13,6 +13,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Export an AI answer as HTML, Word or PDF.** An agent's answer often has to be read outside Mergerie —
+  pasted into a ticket, attached to a report, sent to somebody who does not run the tool. The full-screen
+  view now has an **Export** button. The HTML is a **standalone** document: styles embedded, nothing loaded
+  from the network, so it reads offline and travels as one file. The `.docx` is a real Word document —
+  headings, lists, tables, code blocks — built without installing anything. PDF goes through your browser's
+  own print dialog (“Save as PDF”), which lays the page out better than a rendering engine we would have to
+  ship. All three carry the title and the date inside the document, since a file loses its name long before
+  it loses its content.
+
 - **Say why you are watching a Jira ticket.** An optional note next to the key — “blocks the billing
   migration”, “tell Sofia as soon as it is in review”. Three months later a key and a summary no longer
   recall the reason. It shows under the ticket title and can be edited from its line at any time: going

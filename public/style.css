@@ -1026,6 +1026,9 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 
 /* ---------- Split-button « Review » (défaut + surcharge avec/sans explication) ---------- */
 .btn-split { position: relative; display: inline-flex; }
+/* Même mécanique pour un bouton simple qui déroule un menu (export d'une réponse) :
+   le menu est positionné par rapport à ce conteneur, pas à la barre entière. */
+.split-menu-wrap { position: relative; display: inline-flex; }
 /* Le bouton principal et le caret se collent en un seul bloc visuel. */
 .btn-split > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .btn-split-caret { border-top-left-radius: 0; border-bottom-left-radius: 0; padding-left: 7px; padding-right: 7px; margin-left: -1px; font-size: 11px; }

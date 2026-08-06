@@ -1203,6 +1203,14 @@ print(json.dumps({
         <select id="taskPassDir" class="md-version" title="Choisir le dossier" data-i18n-title="local.pass.dir-title" hidden></select>
         <select id="taskPassVersion" class="md-version" title="Choisir l'itération à relire" data-i18n-title="task.pass.select-title" hidden></select>
         <button id="taskMdCopy" class="btn btn-sm" title="Copier la réponse en Markdown" data-i18n-title="context.title.copier-la-reponse-en-markdown"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="settings.btn.copier">Copier</span></button>
+        <div class="split-menu-wrap">
+            <button id="taskMdExport" class="btn btn-sm" aria-haspopup="true" aria-expanded="false" title="Exporter la réponse" data-i18n-title="export.title"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="export.btn">Exporter</span></button>
+            <div id="taskMdExportMenu" class="split-menu" hidden>
+                <button type="button" data-export="html">HTML</button>
+                <button type="button" data-export="docx">Word (.docx)</button>
+                <button type="button" data-export="pdf">PDF</button>
+            </div>
+        </div>
         <button id="taskMdClose" class="btn" title="Fermer (Échap)" data-i18n-title="context.title.fermer-echap"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>
     </div>
     <div class="split-body"><div class="split-pane" style="grid-column:1 / -1;overflow:auto"><div id="taskMdBody" class="md" style="padding:18px 24px;max-width:900px;margin:0 auto"></div></div></div>

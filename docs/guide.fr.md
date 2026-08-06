@@ -226,6 +226,14 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   mais au prix d'**un appel IA par dépôt** pour refaire un travail déjà fait. Le bouton n'apparaît
   que s'il y a au moins un projet en erreur, et l'opération passe par la file de jobs : toucher un
   clone pendant qu'un agent y écrit le corromprait.
+- **Exporter une réponse.** La vue plein écran d'un retour d'agent (comme d'une réponse
+  d'exploration) porte un bouton **Exporter** : **HTML**, **Word (.docx)** ou **PDF**. Le HTML est un
+  document **autonome** — styles embarqués, aucune ressource extérieure : il se lit hors ligne et
+  s'envoie tel quel. Le `.docx` est un vrai document Word (titres, listes, tableaux, blocs de code),
+  fabriqué sans rien installer. Le **PDF** passe par la fenêtre d'impression du navigateur, où l'on
+  choisit « Enregistrer au format PDF » : le rendu est celui qu'on a sous les yeux, et Mergerie
+  n'embarque pas un moteur de rendu de 300 Mo pour un bouton. Dans les trois cas, le document porte
+  son titre et sa date : un fichier transféré perd son nom bien avant son contenu.
 - **Toutes les itérations sont conservées.** Une session s'itère (lancement, `Demander une correction`,
   réponses aux questions, passes de convergence) : chaque passe garde **le prompt réellement envoyé** et
   **le retour de l'IA correspondant**. Un **sélecteur d'itération** apparaît en haut de `Retour de l'IA`
