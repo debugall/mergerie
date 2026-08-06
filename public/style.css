@@ -1706,6 +1706,9 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-item.jira-cat-done { border-left-color: var(--ok, #2e7d32); }
 .jira-item:hover { border-color: var(--accent); }
 .jira-item.active { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+/* La carte d'un ticket surveillé n'est pas un `<button>` — elle en contient (retirer,
+   modifier la raison). Elle se comporte quand même comme une cible de sélection. */
+.jira-watch-item { cursor: pointer; }
 .jira-item-row1 { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
 .jira-item-row1 .jira-key { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Statut plus compact DANS LA LISTE (évite le chevauchement quand la colonne est étroite). */

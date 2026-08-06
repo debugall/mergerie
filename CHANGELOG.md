@@ -22,6 +22,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   ship. All three carry the title and the date inside the document, since a file loses its name long before
   it loses its content.
 
+- **Read a watched Jira ticket without leaving Mergerie.** Picking a ticket in the “Watched” list now
+  opens it on the right, exactly as under “My tickets”: description, metadata, comments, attachments, and
+  the same actions — change status, comment, “Let the AI code it”. It is the same panel rather than a copy,
+  so the two can never drift apart. Each sub-tab keeps its own selection, and the card's own controls
+  (unwatch, edit the reason) still do only what they say.
+
 - **Say why you are watching a Jira ticket.** An optional note next to the key — “blocks the billing
   migration”, “tell Sofia as soon as it is in review”. Three months later a key and a summary no longer
   recall the reason. It shows under the ticket title and can be edited from its line at any time: going

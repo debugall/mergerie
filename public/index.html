@@ -528,7 +528,7 @@
                     </div>
                 </details>
             </div>
-                <div id="jiraDetail" class="jira-detail"></div>
+                <div id="jiraDetail" class="jira-detail js-jira-detail"></div>
             </div>
         </div>
         </div>
@@ -542,7 +542,17 @@
                 <span id="jiraWatchInfo" class="muted"></span>
             </div>
             <p class="muted" data-i18n="jira.watch.help">Un ticket surveillé n'a pas besoin de t'être affecté. Dès que son état change, tu reçois une notification.</p>
-            <div id="jiraWatchList" class="jira-list"></div>
+            <!-- Même disposition que « Mes tickets » : la liste à gauche, le ticket à droite.
+                 Un ticket surveillé se consulte autant qu'un ticket affecté — l'ouvrir dans
+                 Jira pour le lire obligeait à quitter Mergerie. -->
+            <div class="jira-layout">
+                <div class="jira-list-col">
+                    <div id="jiraWatchList" class="jira-list"></div>
+                </div>
+                <div class="jira-detail-col">
+                    <div id="jiraWatchDetail" class="jira-detail js-jira-detail"></div>
+                </div>
+            </div>
         </div>
     </section>
 

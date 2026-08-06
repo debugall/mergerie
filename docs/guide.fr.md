@@ -534,6 +534,12 @@ bloque le tien, et tu veux savoir **quand il bouge**, pas y penser trois fois pa
   **Réglages → Jira** (*Vérifier les tickets surveillés toutes les* N minutes ; **0 = désactivé**). À chaque
   **changement d'état**, une **notification bureau** donne l'ancien et le nouvel état — `À faire → En cours` —
   et un clic ramène ici. Le type se coupe dans **Réglages → Notifications**.
+- **Le ticket se lit ici.** Cliquer une ligne de la liste ouvre le ticket **à droite**, comme sous
+  *Mes tickets* : description, métadonnées, commentaires, pièces jointes — et les mêmes actions
+  (changer l'état, commenter, *Faire coder l'IA*). C'est le même panneau, pas une copie : surveiller un
+  ticket sans pouvoir le lire obligeait à ouvrir Jira pour trois lignes de description. Les contrôles de
+  la carte (retirer, corriger la raison) gardent leur effet propre, et chaque sous-onglet garde **sa**
+  sélection.
 - **`Vérifier maintenant`** déclenche le même code que le timer, tout de suite : ce que montre le bouton est
   donc exactement ce que fait la surveillance.
 - Un ticket **supprimé ou devenu invisible** (droits perdus) est signalé **sur sa ligne**, sans interrompre

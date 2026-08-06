@@ -7537,7 +7537,7 @@ const notifPermission = () => (notifSupported() ? Notification.permission : 'uns
 
 // Navigation au clic : ramène au bon endroit via le routage d'onglets existant.
 /* ============ Onglet Jira : mes tickets affectés (liste → détail) ============ */
-const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null, total: null, connus: {} };
+const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null, currentBox: null, total: null, connus: {} };
 const JIRA_CAT = { new: 'todo', indeterminate: 'progress', done: 'done' };
 
 function jiraStatusChip(it) {
@@ -7903,9 +7903,14 @@ function jiraAttachmentsBlock(it) {
       ${files ? `<div class="jira-attachments">${files}</div>` : ''}</div>`;
 }
 
-function renderJiraDetail(it) {
-  const box = $('#jiraDetail'); if (!box) return;
+/* Le détail d'un ticket s'affiche dans DEUX endroits — « Mes tickets » et « Surveillés » —
+   avec exactement les mêmes actions (transitions, commentaires, pièces jointes, « faire coder
+   l'IA »). D'où un conteneur en paramètre plutôt qu'un second rendu : deux copies finiraient
+   par diverger, et c'est le genre d'écart qu'on ne voit qu'en production. */
+function renderJiraDetail(it, box = $('#jiraDetail')) {
+  if (!box) return;
   JIRA.current = it || null; // gardé pour ajouter un commentaire sans tout recharger
+  JIRA.currentBox = box;     // …et pour le réafficher au bon endroit
   if (!it) { box.innerHTML = ''; return; }
   const person = (p) => (p ? esc(p.name) : '—');
   const chips = [
@@ -7966,18 +7971,26 @@ function renderJiraDetail(it) {
     </article>`;
 }
 
-async function selectJiraIssue(key) {
-  JIRA.selectedKey = key;
-  renderJiraList();
-  const box = $('#jiraDetail');
+/* `ou` : 'mine' (Mes tickets) ou 'watch' (Surveillés). Les deux sous-onglets ont leur propre
+   liste et leur propre sélection — passer de l'un à l'autre ne doit pas déplacer le curseur
+   de celui qu'on vient de quitter. */
+async function selectJiraIssue(key, ou = 'mine') {
+  const surveille = ou === 'watch';
+  const box = $(surveille ? '#jiraWatchDetail' : '#jiraDetail');
+  if (!box) return;
+  if (surveille) { JIRA_WATCH.selectedKey = key; renderJiraWatch(); }
+  else { JIRA.selectedKey = key; renderJiraList(); }
   box.innerHTML = skeleton(2);
   try {
     const d = await api(`/jira/issue/${encodeURIComponent(key)}`);
-    // Synchronise l'entrée de la liste (statut/priorité/date) avec le détail à jour — utile
-    // notamment après un changement d'état.
+    /* Synchronise l'entrée de la liste (statut/priorité/date) avec le détail à jour — utile
+       notamment après un changement d'état. Côté surveillés, l'état affiché vient de la
+       dernière vérification : le détail est plus frais, on en profite. */
     const li = JIRA.issues.find((x) => x.key === key);
     if (li && d.issue) { li.status = d.issue.status; li.statusCategory = d.issue.statusCategory; li.priority = d.issue.priority; li.updated = d.issue.updated; renderJiraList(); }
-    renderJiraDetail(d.issue);
+    const w = JIRA_WATCH.rows.find((x) => x.key === key);
+    if (w && d.issue) { w.status = d.issue.status; w.status_category = d.issue.statusCategory; if (surveille) renderJiraWatch(); }
+    renderJiraDetail(d.issue, box);
   } catch (e) { box.innerHTML = errorBox(explainError(e.message)); }
 }
 
@@ -8081,7 +8094,7 @@ async function loadJiraTickets() {
    tenu par quelqu'un d'autre parce qu'il débloque le sien. C'est précisément pour ça que
    cette liste est un SOUS-ONGLET et pas un filtre de la première : elle n'a ni la même
    source, ni le même sens, et les mélanger rendrait le compteur incompréhensible. */
-const JIRA_WATCH = { rows: [], keys: new Set() };
+const JIRA_WATCH = { rows: [], keys: new Set(), selectedKey: null };
 const jiraIsWatched = (key) => JIRA_WATCH.keys.has(String(key || '').toUpperCase());
 
 function renderJiraWatch() {
@@ -8093,7 +8106,7 @@ function renderJiraWatch() {
     box.innerHTML = emptyState({ icon: 'eye', title: tr('jira.watch.empty.title'), text: tr('jira.watch.empty.text') });
     return;
   }
-  box.innerHTML = rows.map((r) => `<div class="jira-item jira-cat-${JIRA_CAT[r.status_category] || 'todo'}">
+  box.innerHTML = rows.map((r) => `<div class="jira-item jira-watch-item jira-cat-${JIRA_CAT[r.status_category] || 'todo'}${r.key === JIRA_WATCH.selectedKey ? ' active' : ''}" data-jirawatchopen="${esc(r.key)}">
       <div class="jira-item-row1">
         ${r.url
           ? `<a class="jira-key jira-key-link" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(tr('jira.watch.open', { key: r.key }))}">${esc(r.key)} ↗</a>`
@@ -8182,9 +8195,27 @@ $('#jiraWatchList') && $('#jiraWatchList').addEventListener('click', async (e) =
     return;
   }
 
-  const b = e.target.closest('[data-jiraunwatch]'); if (!b) return;
-  try { await api(`/jira/watch/${encodeURIComponent(b.dataset.jiraunwatch)}`, { method: 'DELETE' }); await loadJiraWatch(); }
-  catch (err) { toast(explainError(err.message), true); }
+  const b = e.target.closest('[data-jiraunwatch]');
+  if (b) {
+    try {
+      await api(`/jira/watch/${encodeURIComponent(b.dataset.jiraunwatch)}`, { method: 'DELETE' });
+      // Le ticket retiré était peut-être celui affiché à droite : le panneau doit suivre.
+      if (JIRA_WATCH.selectedKey === b.dataset.jiraunwatch) {
+        JIRA_WATCH.selectedKey = null;
+        $('#jiraWatchDetail').innerHTML = '';
+      }
+      await loadJiraWatch();
+    } catch (err) { toast(explainError(err.message), true); }
+    return;
+  }
+
+  /* Clic sur la carte : on ouvre le ticket à droite. Les contrôles de la carte (retirer,
+     modifier la raison, lien vers Jira) gardent leur propre effet — sans cette exclusion,
+     ouvrir le formulaire de note sélectionnerait aussi le ticket, ce qui n'est pas demandé. */
+  const carte = e.target.closest('[data-jirawatchopen]');
+  if (carte && !e.target.closest('button, a, input, textarea, .jira-note-form')) {
+    selectJiraIssue(carte.dataset.jirawatchopen, 'watch');
+  }
 });
 $('#jiraWatchCheck') && $('#jiraWatchCheck').addEventListener('click', (e) => busy(e.currentTarget, async () => {
   try {
@@ -8196,13 +8227,23 @@ $('#jiraWatchCheck') && $('#jiraWatchCheck').addEventListener('click', (e) => bu
 }));
 
 // Bouton « Surveiller » du détail d'un ticket : bascule, puis redessine l'en-tête.
-$('#jiraDetail') && $('#jiraDetail').addEventListener('click', async (e) => {
+/* Le détail vit dans deux panneaux (Mes tickets · Surveillés) et porte les mêmes actions.
+   On câble donc chaque gestionnaire SUR LES DEUX, une fois pour toutes : dupliquer les
+   écouteurs par sous-onglet, c'est se garantir qu'une action marchera d'un côté seulement. */
+function surLeDetailJira(type, handler) {
+  $$('.js-jira-detail').forEach((el) => el.addEventListener(type, handler));
+}
+// Dans quel panneau l'action a-t-elle eu lieu ? Ce qui est rechargé ensuite en dépend :
+// recharger « Mes tickets » depuis le panneau des surveillés viderait celui qu'on regarde.
+const ouDuDetail = (e) => (e.currentTarget && e.currentTarget.id === 'jiraWatchDetail' ? 'watch' : 'mine');
+
+surLeDetailJira('click', async (e) => {
   const b = e.target.closest('[data-jirawatch]'); if (!b) return;
   const key = b.dataset.jirawatch;
   try {
     if (jiraIsWatched(key)) { await api(`/jira/watch/${encodeURIComponent(key)}`, { method: 'DELETE' }); await loadJiraWatch(); toast(tr('toast.jira.watch-removed', { key })); }
     else await jiraWatchAdd(key);
-    selectJiraIssue(key);
+    selectJiraIssue(key, ouDuDetail(e));
   } catch (err) { toast(explainError(err.message), true); }
 });
 
@@ -8292,7 +8333,7 @@ $('#jiraList') && $('#jiraList').addEventListener('click', (e) => {
   const b = e.target.closest('[data-jira]'); if (b) selectJiraIssue(b.dataset.jira);
 });
 // Lightbox : clic sur une vignette d'image → aperçu en grand (Échap/clic dehors ferme, cf. handler modales).
-$('#jiraDetail') && $('#jiraDetail').addEventListener('click', (e) => {
+surLeDetailJira('click', (e) => {
   const code = e.target.closest('[data-jiracode]');
   if (code) { openTaskForJira(code.dataset.jiracode).catch((err) => toast(explainError(err.message), true)); return; }
   const img = e.target.closest('[data-jimg]'); if (!img) return; // vignettes ET images inline
@@ -8308,21 +8349,21 @@ $('#jiraLightbox') && $('#jiraLightbox').addEventListener('click', (e) => {
   if (e.target.id === 'jiraLightbox') e.currentTarget.hidden = true;
 });
 // Changer l'état du ticket : sélection d'une transition → POST → recharge le détail (+ la liste).
-$('#jiraDetail') && $('#jiraDetail').addEventListener('change', async (e) => {
+surLeDetailJira('change', async (e) => {
   const sel = e.target.closest('.jira-transition'); if (!sel || !sel.value) return;
   const key = sel.dataset.key; const transitionId = sel.value;
   sel.disabled = true;
   try {
     await api(`/jira/issue/${encodeURIComponent(key)}/transition`, { method: 'POST', body: { transitionId } });
     toast(tr('jira.status-changed'));
-    await selectJiraIssue(key); // détail re-fetché : nouvel état + nouvelles transitions possibles
+    await selectJiraIssue(key, ouDuDetail(e)); // détail re-fetché : nouvel état + nouvelles transitions possibles
     // La pastille du menu compte les tickets EN COURS : ce qu'on vient de faire la change.
     // Sans ça elle reste fausse jusqu'au prochain sondage, soit une minute d'affichage faux.
     refreshJiraBadge();
   } catch (err) { toast(explainError(err.message), true); sel.disabled = false; }
 });
 // Poster un commentaire : on l'ajoute au détail affiché sans tout recharger.
-$('#jiraDetail') && $('#jiraDetail').addEventListener('submit', async (e) => {
+surLeDetailJira('submit', async (e) => {
   const form = e.target.closest('.jira-comment-form'); if (!form) return;
   e.preventDefault();
   const key = form.dataset.key;
@@ -8335,8 +8376,8 @@ $('#jiraDetail') && $('#jiraDetail').addEventListener('submit', async (e) => {
     toast(tr('jira.comment-added'));
     if (JIRA.current && JIRA.current.key === key && d.comment) {
       JIRA.current.comments = [...(JIRA.current.comments || []), d.comment];
-      renderJiraDetail(JIRA.current);
-    } else { await selectJiraIssue(key); }
+      renderJiraDetail(JIRA.current, JIRA.currentBox);
+    } else { await selectJiraIssue(key, ouDuDetail(e)); }
   } catch (err) { toast(explainError(err.message), true); }
 });
 function navTab(tab) { const b = $(`nav button[data-tab="${tab}"]`); if (b) b.click(); }
