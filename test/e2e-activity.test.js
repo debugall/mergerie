@@ -181,6 +181,24 @@ describe('Statistiques — activité des projets sur 6 mois', () => {
       assert.ok(g.contenu > g.hauteur, 'vingt dépôts dépassent : le graphe doit donc défiler');
       const tronques = await page.$$eval('#dashActivity .pab-name', (n) => n.filter((x) => x.scrollWidth > x.clientWidth + 1).length);
       assert.equal(tronques, 0, 'aucun nom de projet ne doit être coupé');
+
+      /* Une couleur par mois : repérer « avril » demanderait sinon de compter les segments
+         depuis la gauche. On lit les couleurs RÉELLEMENT calculées — une variable CSS non
+         définie donnerait six segments identiques sans que rien ne le signale.
+         Et dans LES DEUX thèmes : ils définissent chacun leur palette, en oublier un revient
+         à livrer un graphe monochrome à la moitié des utilisateurs. */
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);
+        const teintes = await page.$$eval('#dashActivity .pab:not(.dort) .pab-seg',
+          (segs) => segs.slice(0, 6).map((x) => getComputedStyle(x).backgroundColor));
+        assert.equal(teintes.length, 6, `six mois, six segments (${theme})`);
+        assert.equal(new Set(teintes).size, 6, `six teintes distinctes attendues en ${theme}, vu ${JSON.stringify(teintes)}`);
+
+        // Et la légende les reprend, dans le même ordre, pour qu'on sache laquelle est laquelle.
+        const legende = await page.$$eval('#dashActivity .pab-mois .pab-key',
+          (k) => k.map((x) => getComputedStyle(x).backgroundColor));
+        assert.deepEqual(legende, teintes, `la légende doit porter exactement les couleurs du graphe (${theme})`);
+      }
     } finally { await nav.close(); }
   });
 

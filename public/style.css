@@ -7,6 +7,11 @@
   /* Texte rouge sur --panel2 : #e05a5a n'y atteint que 4.17:1. Ce ton dédié donne 4.76:1 (AA). */
   --red-text: #e56a6a;
   --accent-hi: #6a9dff;
+  /* Six teintes pour les six mois du graphe d'activité. Une SÉQUENCE (froid → chaud) plutôt
+     qu'un arc-en-ciel : les mois se suivent, l'ordre doit rester lisible même sans lire la
+     légende — tout en restant assez distinctes pour qu'on désigne un mois du doigt. */
+  --mois-1: #7c8cf8; --mois-2: #4f9cf0; --mois-3: #2fb5c4;
+  --mois-4: #4bb56d; --mois-5: #d0a53a; --mois-6: #e2864a;
   --accent-btn: #2f6fe0; --accent-btn-hi: #2b64d4; /* fond des boutons : blanc dessus = 4,70:1 */
   --purple-btn: #7c3aed; /* fond du bouton Converger : blanc dessus = 5,70:1 (--purple #b47ce6 échouait à 3,0:1) */
   /* B4 : texte sur fond coloré — jamais #fff en dur (échouait AA : 3,22:1) */
@@ -63,6 +68,10 @@
   --amber: #a15c00; --red: #c62d2d; --purple: #7c3aed;
   --red-text: #c62d2d;   /* 4.87:1 sur --panel2 (AA) */
   --accent-hi: #1d4ed8;
+  /* Mêmes teintes, assombries : sur fond blanc, les tons du thème sombre passeraient pour
+     des pastels indistincts. */
+  --mois-1: #5b63d6; --mois-2: #2b7fd4; --mois-3: #0e8f9e;
+  --mois-4: #2f8f52; --mois-5: #a97c12; --mois-6: #c05f22;
   --accent-btn: #2563eb; --accent-btn-hi: #1d4ed8; --purple-btn: #6d28d9;
   --on-amber: #ffffff; --on-green: #ffffff; --on-accent: #ffffff; --on-red: #ffffff;
   --line-soft: #e6eaf2; --hover: rgba(16,24,40,.04);
@@ -274,17 +283,20 @@ button.pab:hover .pab-name { color: var(--accent); }
    dans le sens de lecture. Le fond de la piste rend visible ce qui n'est pas rempli. */
 .pab-stack { display: flex; flex-direction: row; align-items: stretch; height: 16px;
   border-radius: 3px; overflow: hidden; background: var(--line-soft, var(--line)); }
-.pab-seg { display: block; height: 100%; background: var(--accent); opacity: var(--o, 1); min-width: 1px; }
+/* Une couleur par mois : identifier « avril » d'un coup d'œil demandait sinon de compter les
+   segments depuis la gauche. La teinte vient d'une variable posée à l'affichage. */
+.pab-seg { display: block; height: 100%; background: var(--c, var(--accent)); min-width: 1px; }
 .pab-val { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
-/* Un projet endormi garde sa barre — c'est justement ce qu'on veut voir — mais en gris :
-   il ne doit pas se confondre avec un projet simplement peu actif. */
-.pab.dort .pab-seg { background: var(--muted); }
+/* Un projet endormi doit se distinguer au premier regard, sans perdre pour autant la lecture
+   de SES mois : c'est souvent là qu'on veut savoir QUAND il s'est arrêté. On désature au lieu
+   d'écraser en gris uni. */
+.pab.dort .pab-stack { filter: grayscale(.8); opacity: .75; }
 .pab.dort .pab-name, .pab.dort .pab-val { color: var(--muted); font-style: italic; }
-.pab-legend { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-top: 10px; font-size: var(--fs-xs); }
-.pab-scale, .pab-legend-sleep { display: inline-flex; align-items: center; gap: 5px; }
-.pab-key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; background: var(--accent); }
-.pab-key.vieux { opacity: .35; }
-.pab-key.dort { background: var(--muted); }
+/* Légende : un mois, une pastille, dans l'ordre du graphe. */
+.pab-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 10px; font-size: var(--fs-xs); }
+.pab-mois, .pab-legend-sleep { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+.pab-key { display: inline-block; width: 11px; height: 11px; border-radius: 3px; background: var(--c, var(--accent)); }
+.pab-key.dort { background: var(--muted); filter: grayscale(.8); opacity: .75; }
 
 /* Détail d'un projet sur 12 mois (modale) : même lecture que le graphe d'ensemble, en plus
    large — une colonne par mois, hauteur = jours d'activité. */

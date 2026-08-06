@@ -1098,8 +1098,10 @@ async function fillDashboardActivity() {
       + `\n\n${detail}`
       + (p.erreur ? `\n\n⚠ ${p.erreur}` : '')
       + (dort ? `\n\n${tr('stats.activity.asleep-tip')}` : '');
-    // Barres HORIZONTALES : le temps se lit de gauche à droite, du plus ancien au plus récent.
-    const segments = p.days.map((n, i) => (n === 0 ? '' : `<span class="pab-seg" style="width:${(n / maxi) * 100}%;--o:${0.35 + (i / Math.max(1, mois.length - 1)) * 0.65}"></span>`)).join('');
+    /* Barres HORIZONTALES : le temps se lit de gauche à droite, du plus ancien au plus récent.
+       Une couleur par mois — repérer « avril » demandait sinon de compter les segments. */
+    const segments = p.days.map((n, i) => (n === 0 ? '' : `<span class="pab-seg" style="width:${(n / maxi) * 100}%;--c:var(--mois-${i + 1})"
+        title="${esc(`${libelleMois(mois[i])} — ${tr('stats.activity.tip-line', { days: n, commits: p.counts[i] })}`)}"></span>`)).join('');
     /* TOUTE la colonne est le bouton — barre comprise, pas seulement le nom : viser trois
        lignes de texte de dix pixels est un geste inutilement précis quand la barre au-dessus
        désigne déjà le projet. Un `<button>` natif plutôt qu'un div cliquable : il se
@@ -1123,9 +1125,9 @@ async function fillDashboardActivity() {
   const partiels = projets.filter((p) => p.partiel).length;
   el.innerHTML = entete
     + `<div class="pab-chart" role="group" aria-label="${esc(tr('stats.activity.title'))}">${projets.map(barre).join('')}</div>`
-    + `<div class="pab-legend muted">
-        <span class="pab-scale"><span class="pab-key vieux"></span>${esc(libelleMois(mois[0]))}
-        <span class="pab-key recent"></span>${esc(libelleMois(mois[mois.length - 1]))}*</span>
+    // Légende : chaque mois avec sa pastille, dans l'ordre du graphe.
+    + `<div class="pab-legend">
+        ${mois.map((m, i) => `<span class="pab-mois"><span class="pab-key" style="--c:var(--mois-${i + 1})"></span>${esc(libelleMois(m))}${i === mois.length - 1 ? '*' : ''}</span>`).join('')}
         ${dormants ? `<span class="pab-legend-sleep"><span class="pab-key dort"></span>${esc(tr('stats.activity.asleep-group', { n: dormants, count: dormants }))}</span>` : ''}
       </div>`
     + (partiels ? `<p class="muted dash-floor">${tr('stats.activity.truncated', { n: partiels, count: partiels })}</p>` : '')

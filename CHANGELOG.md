@@ -19,8 +19,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   single name being cut off. The length is the number of **active days**, not commits: a working day means the same thing everywhere, whereas a commit
   count mostly measures whether you squash — the same work lands as one commit in one repository and forty
   in the next. Being bounded (about twenty working days a month), it also compares honestly across
-  repositories. Commits and contributors are one hover away. Each bar is stacked by month, oldest (pale,
-  left) to most recent, so the shading says whether the work is recent or old. Clicking a project's name
+  repositories. Commits and contributors are one hover away. Each bar is stacked by month, **one colour per
+  month** with a legend underneath, oldest on the left to most recent on the right, so you can point at a
+  month instead of counting segments. Clicking a project's name
   opens it over **twelve** months: six months say *which* repositories move, twelve say *in which
   direction* — quiet for two months after ten busy ones is not the same story as dead for a year, and the
   overview cannot tell them apart. The window also names the busiest month and the last month with any

@@ -566,13 +566,17 @@ mesure surtout le *style* : squasher ou non change le compte du simple au quaran
 et un dépôt gonflé écraserait tous les autres. La mesure est aussi **bornée** (une vingtaine de jours ouvrés
 par mois), donc franchement comparable d'un dépôt à l'autre. Les commits restent au survol.
 
-- La barre est **empilée par mois**, du plus ancien (pâle, à gauche) au plus récent (plein, à droite) —
-  le temps se lit dans le sens de lecture. La longueur donne le volume, le dégradé dit si l'activité est
-  **récente ou ancienne** — deux cents commits
+- La barre est **empilée par mois**, **une couleur par mois**, du plus ancien à gauche au plus récent à
+  droite — le temps se lit dans le sens de lecture, et la légende sous le graphe donne la correspondance.
+  Les teintes suivent une séquence froid → chaud plutôt qu'un arc-en-ciel : les mois se suivent, l'ordre
+  doit rester lisible même sans regarder la légende. La longueur donne le volume, la répartition dit si
+  l'activité est **récente ou ancienne** — deux cents commits
   concentrés il y a cinq mois ne décrivent pas le même projet que deux cents commits réguliers.
 - Le **mois en cours** n'est pas fini : il est marqué d'un astérisque dans la légende, pour qu'on ne lise
   pas une baisse là où il n'y a qu'un mois entamé.
-- Un dépôt sans aucun commit sur les **deux derniers mois** passe en **gris** et son nom en italique. Il
+- Un dépôt sans aucun commit sur les **deux derniers mois** voit sa barre **désaturée** et son nom passer
+  en italique gris — désaturée plutôt qu'écrasée en gris uni, pour qu'on puisse encore lire *quand* il
+  s'est arrêté, ce qui est souvent la question qu'on se pose devant lui. Il
   reste dans la liste — c'est justement ce qu'on vient voir —, mais ne se confond pas avec un projet
   simplement peu actif. Un seul mois creux arrive à tout le monde, deux dessinent une pente.
 - Le **survol d'une barre** donne le détail : jours d'activité et commits mois par mois, contributeurs
