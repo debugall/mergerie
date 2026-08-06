@@ -139,6 +139,11 @@ Une **recherche** en tête de liste (prompt, projet, branche, dossier) filtre le
 courant — utile dès qu'elles s'accumulent. Elle se remet à zéro quand on change de sous-onglet, pour ne pas
 contredire les compteurs qui affichent des totaux.
 
+Les listes montrent **en tête ce qui vient de finir de s'exécuter** — et au-dessus de tout, ce qui tourne
+en ce moment. C'est la date de fin d'**exécution** qui décide, pas la dernière modification : corriger un
+prompt, pousser une branche ou ranger une session ne la fait pas remonter devant celle qui vient de
+tourner. Une session jamais lancée se range à sa date de création.
+
 Deux sous-onglets. Dans les deux cas, une session porte sur **un ou plusieurs projets**, chacun avec
 sa propre branche, et sa date de création est affichée. Le **choix du dépôt se fait au clavier**
 (sélecteur avec recherche), comme celui des branches — utile quand la liste des dépôts est longue.

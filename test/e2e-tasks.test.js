@@ -600,6 +600,45 @@ describe('Sessions de dev de bout en bout', () => {
     assert.ok(body.some((t) => t.image_count > 0));
   });
 
+  /* L'ordre de la liste répond à « qu'est-ce qui vient de finir ? ». C'est la date de fin
+     d'EXÉCUTION qui décide, pas la dernière modification : corriger un prompt ou pousser une
+     branche ne doit pas faire remonter une session en tête devant celle qui vient de tourner. */
+  test('les sessions les plus récemment exécutées passent devant', async () => {
+    const creer = async (nom) => (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: nom, targets: [{ repo_id: repoId, branch: `ai/${nom}` }],
+    })).body.id;
+    const a = await creer('tri-a');
+    const b = await creer('tri-b');
+
+    // On exécute A APRÈS B : c'est A qui doit être en tête, alors que B a l'id le plus grand.
+    await app.api('POST', `/api/tasks/${b}/run`);
+    await waitForJobs(app.api);
+    await app.api('POST', `/api/tasks/${a}/run`);
+    await waitForJobs(app.api);
+
+    const rang = async () => (await app.api('GET', '/api/tasks')).body.map((t) => t.id);
+    let ordre = await rang();
+    assert.ok(ordre.indexOf(a) < ordre.indexOf(b), `dernier exécuté en tête (vu ${ordre.join(',')})`);
+
+    /* Modifier B sans le relancer ne doit RIEN changer à l'ordre : `updated_at` bouge, pas
+       `finished_at`. C'est toute la raison d'avoir une colonne séparée. */
+    await app.api('PUT', `/api/tasks/${b}`, { prompt: 'tri-b corrigé' });
+    ordre = await rang();
+    assert.ok(ordre.indexOf(a) < ordre.indexOf(b), 'une simple modification ne remonte pas la session');
+
+    // …mais la relancer, si.
+    await app.api('POST', `/api/tasks/${b}/run`);
+    await waitForJobs(app.api);
+    ordre = await rang();
+    assert.ok(ordre.indexOf(b) < ordre.indexOf(a), 'après relance, B repasse devant');
+
+    // Une session jamais exécutée se range à sa date de création, pas en fin de liste.
+    const neuve = await creer('tri-neuve');
+    ordre = await rang();
+    assert.ok(ordre.indexOf(neuve) < ordre.length - 1,
+      'une session qu’on vient de créer ne doit pas tomber tout en bas');
+  });
+
   /* Relancer un job arrêté. Ce qui compte n'est pas le bouton mais ce qu'il rejoue : la même
      action sur le même objet, et RIEN pour les opérations qui doivent repasser par leur
      aperçu. Un job qui est allé au bout n'est pas rejouable non plus — sinon « Relancer »

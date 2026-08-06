@@ -4916,6 +4916,7 @@ $('#taskPassDir') && $('#taskPassDir').addEventListener('change', (e) => {
 });
 $('#taskMdClose').addEventListener('click', () => { $('#taskMdView').hidden = true; });
 $('#taskMdCopy').addEventListener('click', () => copyText(currentMd, $('#taskMdCopy')));
+
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (!$('#taskMdView').hidden) $('#taskMdView').hidden = true;

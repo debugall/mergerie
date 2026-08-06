@@ -287,6 +287,9 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
     logLine(jobId, null, `❌ Task ERREUR : ${e.message}`);
     setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
     notify.push('job_failed', { task_id: task.id, message: String(e.message).slice(0, 200) });
+  } finally {
+    // `push`/`push-all` déplacent du code déjà produit : la session n'a pas tourné.
+    if (action !== 'push' && action !== 'push-all') marquerFinExecution('task', task.id);
   }
 }
 
@@ -354,6 +357,9 @@ async function runConvergeSessionJob(jobId, taskId, opts = {}) {
     logLine(jobId, null, `❌ Convergence session ERREUR : ${e.message}`);
     setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
     notify.push('job_failed', { task_id: taskId, message: String(e.message).slice(0, 200) });
+  } finally {
+    // Converger fait tourner l'agent, plusieurs fois : c'est bien une exécution de la session.
+    marquerFinExecution('task', taskId);
   }
 }
 
@@ -385,6 +391,8 @@ async function runLocalJob(jobId, taskId, opts = {}) {
     logLine(jobId, null, `❌ Codage hors dépôt ERREUR : ${e.message}`);
     setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
     notify.push('job_failed', { local_task_id: taskId, message: String(e.message).slice(0, 200) });
+  } finally {
+    marquerFinExecution('local_task', taskId);
   }
 }
 
@@ -588,6 +596,15 @@ async function runDockerJob(jobId, payload) {
    effectif du job. Sinon la carte continue d'afficher « erreur » entre le clic et le départ :
    on ne sait pas si le clic a été pris, et derrière une file chargée cet entre-deux dure des
    minutes. L'erreur affichée n'est plus l'état courant dès l'instant où l'on redemande le travail. */
+/* Fin d'une EXÉCUTION de session. Sert au tri des listes Dev IA : on veut voir en tête ce
+   qui vient de finir de tourner. Posé quelle que soit l'issue — terminé, en erreur, arrêté —
+   parce que dans les trois cas l'exécution est finie et qu'on vient d'y assister.
+   Pas sur un push ni sur une réconciliation : ce ne sont pas des exécutions de la tâche. */
+function marquerFinExecution(table, id) {
+  try { db.prepare(`UPDATE ${table} SET finished_at = ? WHERE id = ?`).run(new Date().toISOString(), id); }
+  catch { /* le tri est un confort : il ne doit jamais faire échouer un job */ }
+}
+
 function clearTaskError(taskId, targetIds) {
   const now = new Date().toISOString();
   db.prepare("UPDATE task SET last_error = NULL, updated_at = ? WHERE id = ? AND status = 'error'").run(now, taskId);

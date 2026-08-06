@@ -227,6 +227,11 @@ try { db.exec('ALTER TABLE jira_watch ADD COLUMN note TEXT'); } catch { /* déj�
 // Migration : générer l'explication pédagogique lors d'une review ('1' par défaut =
 // comportement historique). '0' = review seule (on saute le 2e appel IA), l'explication
 // restant disponible à la demande via le bouton « Générer l'explication » du rapport.
+/* Fin de la dernière EXÉCUTION d'une session (codage, hors dépôt, exploration). Distinct
+   d'`updated_at`, qui bouge aussi quand on corrige un prompt, qu'on pousse une branche ou
+   qu'on range la session — trier là-dessus ferait remonter en tête une session qu'on vient
+   seulement de relire. Sert à montrer d'abord ce qui vient de finir de tourner. */
+try { db.exec('ALTER TABLE task ADD COLUMN finished_at TEXT'); } catch { /* déjà présente */ }
 try { db.exec("ALTER TABLE config ADD COLUMN review_explain TEXT DEFAULT '1'"); } catch { /* déjà présente */ }
 // Consommation de tokens de l'agent IA (estimée) — alimente le footer télémétrie.
 db.exec(`CREATE TABLE IF NOT EXISTS usage (
@@ -321,6 +326,9 @@ try { db.exec('ALTER TABLE local_task_dir ADD COLUMN session_cwd TEXT'); } catch
 try { db.exec('ALTER TABLE local_task_dir ADD COLUMN output_path TEXT'); } catch { /* déjà présente */ }
 // Rangement d'une session hors dépôt — même principe que `task.hidden`.
 try { db.exec('ALTER TABLE local_task ADD COLUMN hidden INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+// Même colonne que sur `task` : elle doit être ajoutée APRÈS la création de la table,
+// sinon l'ALTER échoue sur une base neuve et la colonne n'existe jamais.
+try { db.exec('ALTER TABLE local_task ADD COLUMN finished_at TEXT'); } catch { /* déjà présente */ }
 
 /* HISTORIQUE DES PASSES d'agent — une ligne par itération, pour une session sur dépôt
    comme pour un codage hors dépôt. Même esprit que `review_version` : chaque passe écrit

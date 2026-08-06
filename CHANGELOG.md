@@ -215,6 +215,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **AI Dev lists lead with what just finished running.** They were ordered by creation, so a session you
+  launched minutes ago sat below one created last week and never run. Whatever is running now comes first,
+  then the most recently executed. Execution is what counts: fixing a prompt, pushing a branch or tidying a
+  session away no longer jumps it ahead of the one that actually just ran.
+
 - **The verifier form now opens on demand.** Settings → Verifiers used to lead with the whole form — name,
   command list, covered repositories — which pushed the verifiers you came to look at off the screen. The
   list comes first now, and “Add a verifier” opens the form; so does “Edit”, already filled in. Saving or

@@ -43,6 +43,7 @@ const jira = require('./jira');
 const glob = require('./glob');
 const notify = require('./notify');
 const gitgraph = require('./gitgraph');
+const docx = require('./docx');
 const { t } = i18n;
 const { discoverAll } = require('./discover');
 const jobs = require('./jobs');
@@ -1457,7 +1458,13 @@ function saveLocalImages(taskId, images) {
 }
 
 app.get('/api/tasks', wrap((req, res) => {
-  const rows = db.prepare('SELECT * FROM task ORDER BY id DESC').all();
+  /* En tête, ce qui vient de se passer : les sessions qui TOURNENT, puis les plus récemment
+     exécutées. `finished_at` plutôt qu'`updated_at`, qui bouge aussi quand on corrige un
+     prompt ou qu'on pousse une branche — une session simplement relue remonterait alors en
+     tête. Jamais exécutée : sa date de création fait foi, sinon une session qu'on vient de
+     créer tomberait tout en bas. */
+  const rows = db.prepare(`SELECT * FROM task
+    ORDER BY (status = 'running') DESC, COALESCE(finished_at, created_at) DESC, id DESC`).all();
   res.json(rows.map((tache) => ({
     ...tache,
     image_count: db.prepare('SELECT COUNT(*) c FROM task_image WHERE task_id = ?').get(tache.id).c,
@@ -1690,7 +1697,9 @@ function localTaskById(id) {
   return lt;
 }
 app.get('/api/local-tasks', wrap((req, res) => {
-  const list = db.prepare('SELECT * FROM local_task ORDER BY id DESC').all();
+  // Même tri que les sessions de codage : d'abord ce qui tourne, puis ce qui vient de finir.
+  const list = db.prepare(`SELECT * FROM local_task
+    ORDER BY (status = 'running') DESC, COALESCE(finished_at, created_at) DESC, id DESC`).all();
   for (const lt of list) lt.dirs = localDirsFor(lt.id);
   res.json(list);
 }));
@@ -2584,6 +2593,33 @@ app.post('/api/reports/reset', wrap((req, res) => {
   db.prepare('DELETE FROM job_log').run();
   db.prepare('DELETE FROM job').run();
   res.json({ ok: true, deleted: del.changes });
+}));
+
+/* ---------- Export d'une réponse d'agent ----------
+   Le HTML et le PDF se fabriquent dans le navigateur : il a déjà le contenu rendu, et le PDF
+   passe par sa propre boîte d'impression. Le .docx, lui, est un ZIP — Node sait le faire avec
+   `zlib`, alors qu'au front il faudrait embarquer une bibliothèque de compression pour un
+   bouton. D'où cette seule route. */
+/* Nom de fichier lisible tiré du titre : on garde les accents (les systèmes modernes les
+   acceptent) et on écarte ce qui casse un chemin — séparateurs, deux-points, guillemets. */
+const nomDeFichier = (t2) => String(t2 || '').trim()
+  .replace(/[/\\?%*:|"<>\u0000-\u001f]/g, '-')
+  .replace(/\s+/g, ' ')
+  .slice(0, 80)
+  .trim()
+  .replace(/^[.\s]+|[.\s]+$/g, '');
+
+app.post('/api/export/docx', wrap((req, res) => {
+  const markdown = String((req.body && req.body.markdown) || '');
+  if (!markdown.trim()) throw new Error(t('err.export.vide'));
+  const titre = String((req.body && req.body.title) || '').slice(0, 200);
+  const fichier = `${nomDeFichier(titre) || 'mergerie'}.docx`;
+  const buf = docx.markdownToDocx(titre, markdown);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  /* `filename*` en UTF-8 : les titres portent des accents, et le paramètre `filename` seul
+     les rendrait illisibles (ou ferait tomber le navigateur sur un nom générique). */
+  res.setHeader('Content-Disposition', `attachment; filename="export.docx"; filename*=UTF-8''${encodeURIComponent(fichier)}`);
+  res.send(buf);
 }));
 
 /* ---------- MRs ---------- */

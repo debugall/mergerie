@@ -207,6 +207,29 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
     assert.equal(apres.status, 'done');
   });
 
+  /* Même ordre que les sessions de codage : ce qui vient de finir de tourner en tête. Sans
+     ça, une session hors dépôt exécutée il y a une minute se retrouve sous une session plus
+     récemment CRÉÉE mais jamais lancée. */
+  test('les sessions hors dépôt les plus récemment exécutées passent devant', async () => {
+    const creer = async (nom) => (await app.api('POST', '/api/local-tasks', { prompt: nom, dirs: [mkdir()] })).body.id;
+    const a = await creer('ordre-a');
+    const b = await creer('ordre-b');
+
+    await app.api('POST', `/api/local-tasks/${b}/run`);
+    await waitForJobs(app.api);
+    await app.api('POST', `/api/local-tasks/${a}/run`);
+    await waitForJobs(app.api);
+
+    const rang = async () => (await app.api('GET', '/api/local-tasks')).body.map((x) => x.id);
+    let ordre = await rang();
+    assert.ok(ordre.indexOf(a) < ordre.indexOf(b), `dernier exécuté en tête (vu ${ordre.join(',')})`);
+
+    // Corriger le prompt ne remonte pas la session : seule une exécution compte.
+    await app.api('PUT', `/api/local-tasks/${b}`, { prompt: 'ordre-b corrigé' });
+    ordre = await rang();
+    assert.ok(ordre.indexOf(a) < ordre.indexOf(b), 'une simple modification ne change pas l’ordre');
+  });
+
   // Pendant hors dépôt de la reprise de session : l'identifiant se range sur chaque dossier.
   test('session existante fournie : rangée sur chaque dossier', async () => {
     const { backendName } = require('../src/agentsession');
