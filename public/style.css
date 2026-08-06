@@ -252,6 +252,63 @@ main { padding: 0 var(--s-6) var(--s-12); max-width: none; margin: 0 auto; width
 .vbars-x { display: flex; gap: 6px; margin-top: 4px; }
 .vbars-x span { flex: 1; text-align: center; font-size: 10px; color: var(--muted); }
 
+/* Activité par projet sur six mois — UNE barre par dépôt, hauteur = commits des six mois.
+   Vingt projets se lisent alors d'un coup ; une liste de vingt lignes, non.
+   Chaque barre est empilée par mois, du plus ancien (pâle, en bas) au plus récent (plein,
+   en haut) : la hauteur donne le volume, le dégradé dit si l'activité est récente. */
+.pab-chart { display: flex; align-items: flex-end; justify-content: flex-start; gap: 8px;
+  height: 220px; padding: 18px 2px 0; overflow-x: auto; overflow-y: hidden; }
+/* Largeur bornée : sans plafond, trois dépôts s'étalaient sur toute la largeur de la carte —
+   des colonnes de 400 px pour une barre de 34, et un trait de séparation interminable sous
+   chaque nom. Le graphe doit se lire pareil à trois projets et à vingt. */
+.pab { flex: 1 1 0; min-width: 34px; max-width: 88px; height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-end; gap: 3px; position: relative; }
+.pab-val { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* La pile occupe la hauteur restante ; les segments se posent en bas, du plus récent au plus
+   ancien dans l'ordre du DOM (inversé au rendu), pour que le temps se lise de bas en haut. */
+.pab-stack { flex: 1 1 auto; width: 72%; max-width: 34px; min-width: 10px; display: flex;
+  flex-direction: column; justify-content: flex-end; border-radius: 3px 3px 0 0; overflow: hidden; }
+.pab-seg { display: block; width: 100%; background: var(--accent); opacity: var(--o, 1); min-height: 1px; }
+/* Un projet endormi garde sa barre — c'est justement ce qu'on veut voir — mais en gris :
+   il ne doit pas se confondre avec un projet simplement peu actif. */
+.pab.dort .pab-seg { background: var(--muted); }
+.pab.dort .pab-name, .pab.dort .pab-val { color: var(--muted); font-style: italic; }
+/* Le nom sous la barre : tronqué à la largeur de la colonne, entier au survol. Sans
+   troncature, vingt noms de projet se chevauchent et aucun n'est lisible. */
+.pab-name { width: 100%; font-size: 10.5px; color: var(--text); text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-top: 2px;
+  border-top: 1px solid var(--line); }
+.pab:hover .pab-stack { filter: brightness(1.12); }
+.pab-legend { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-top: 10px; font-size: var(--fs-xs); }
+.pab-scale, .pab-legend-sleep { display: inline-flex; align-items: center; gap: 5px; }
+.pab-key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; background: var(--accent); }
+.pab-key.vieux { opacity: .35; }
+.pab-key.dort { background: var(--muted); }
+/* Le nom sous la barre est un bouton : il ouvre les 12 mois du projet. Il doit se voir
+   cliquable sans devenir un bouton visuel de plus dans un graphe déjà chargé. */
+button.pab-name { background: none; border: 0; border-top: 1px solid var(--line); cursor: pointer;
+  font: inherit; font-size: 10.5px; color: var(--text); padding: 2px 0 0; }
+button.pab-name:hover { color: var(--accent); text-decoration: underline; }
+.pab.dort button.pab-name { color: var(--muted); }
+
+/* Détail d'un projet sur 12 mois (modale) : même lecture que le graphe d'ensemble, en plus
+   large — une colonne par mois, hauteur = jours d'activité. */
+.activity-box { width: 720px; }
+.ad-chart { display: flex; align-items: flex-end; gap: 6px; height: 170px; margin: 14px 0 6px; }
+.ad-col { flex: 1 1 0; height: 100%; display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-end; gap: 3px; min-width: 0; }
+.ad-val { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ad-bar { width: 68%; max-width: 30px; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; }
+.ad-bar.vide { background: var(--line); height: 2px !important; }
+/* Le dernier mois n'est pas fini : hachuré, comme dans la vue d'ensemble. */
+.ad-bar.encours { background: repeating-linear-gradient(135deg, var(--accent) 0 3px, transparent 3px 6px), var(--panel2); }
+.ad-x { font-size: 10px; color: var(--muted); white-space: nowrap; }
+.ad-facts { margin: 6px 0 0; }
+@media (max-width: 900px) {
+  .pa-head, .pa-row { grid-template-columns: minmax(90px, 1fr) minmax(90px, 1.4fr) 46px; }
+  .pa-who, .pa-tag, .pa-err { display: none; }
+}
+
 .search { width: 100%; background: var(--panel2) var(--icon-search) no-repeat 11px center; background-size: 15px; border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 9px 12px 9px 34px; font: inherit; margin: 4px 0 8px; }
 .search:focus { outline: none; border-color: var(--accent); }
 

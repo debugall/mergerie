@@ -470,6 +470,31 @@ async function latestCommit(cfg, project) {
   return versCommit(Array.isArray(items) && items.length ? items[0] : null);
 }
 
+/* Commits d'une PÉRIODE — pendant GitHub de `gitlab.commitsBetween`, même forme en sortie.
+
+   Différence assumée : GitHub ne sait pas lister « toutes branches » en un appel. Il
+   faudrait énumérer les branches puis paginer chacune — des dizaines d'appels par dépôt,
+   pour un compte qui compterait plusieurs fois les commits partagés. On s'en tient donc à
+   la branche par défaut, et l'écran le dit plutôt que de laisser croire à un compte complet. */
+async function commitsBetween(cfg, project, sinceIso, untilIso, maxPages = 12) {
+  const enc = encodeProject(project);
+  const out = [];
+  let partiel = false;
+  for (let page = 1; ; page += 1) {
+    if (page > maxPages) { partiel = true; break; }
+    const q = `since=${encodeURIComponent(sinceIso)}&until=${encodeURIComponent(untilIso)}&per_page=100&page=${page}`;
+    const items = await githubFetch(cfg, `/repos/${enc}/commits?${q}`);
+    if (!Array.isArray(items) || !items.length) break;
+    for (const c of items) {
+      const cm = (c && c.commit) || {};
+      const auteur = (cm.author && (cm.author.email || cm.author.name)) || (c.author && c.author.login) || '';
+      out.push({ date: (cm.author && cm.author.date) || (cm.committer && cm.committer.date) || null, author: auteur });
+    }
+    if (items.length < 100) break;
+  }
+  return { commits: out, partiel };
+}
+
 /* Une ref précise (branche ou tag), à la forme GitLab, ou null si absente (404).
    Pour un tag on résout la ref puis le commit pointé, afin d'exposer la même
    structure `{ commit: { id, short_id, committed_date, author_name } }`. */
@@ -577,7 +602,7 @@ module.exports = {
   // mêmes noms que gitlab.js (contrat commun consommé via src/forge.js)
   listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches,
   updateNote, currentUser,
-  latestCommit, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion,
+  latestCommit, commitsBetween, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion,
   listMrDiscussions, replyToDiscussion, listBranchesFull, listTags, listProtectedBranches,
   listProtectedTags, listMrChangedPaths, createBranch, deleteBranch, createTag, deleteTag, listAllMRs,
   // propres à GitHub

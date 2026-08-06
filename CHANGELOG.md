@@ -13,6 +13,21 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **See which projects are alive over the last six months.** A new chart in Statistics: one bar per tracked
+  repository, tallest first, its name underneath — twenty repositories read at a glance. The height is the
+  number of **active days**, not commits: a working day means the same thing everywhere, whereas a commit
+  count mostly measures whether you squash — the same work lands as one commit in one repository and forty
+  in the next. Being bounded (about twenty working days a month), it also compares honestly across
+  repositories. Commits and contributors are one hover away. Each bar is stacked by month, oldest (pale,
+  bottom) to most recent, so the shading says whether the work is recent or old. Clicking a project's name
+  opens it over **twelve** months: six months say *which* repositories move, twelve say *in which
+  direction* — quiet for two months after ten busy ones is not the same story as dead for a year, and the
+  overview cannot tell them apart. The window also names the busiest month and the last month with any
+  activity. A repository with nothing in the last two months turns
+  grey and is labelled asleep: still on screen, since that is exactly what you came to see, but not to be
+  mistaken for a merely quiet one. Hovering a bar gives the month-by-month breakdown and the number of
+  distinct contributors. Counts are cached per month, so a closed month is never paid for twice.
+
 - **Export an AI answer as HTML, Word or PDF.** An agent's answer often has to be read outside Mergerie —
   pasted into a ticket, attached to a report, sent to somebody who does not run the tool. The full-screen
   view now has an **Export** button. The HTML is a **standalone** document: styles embedded, nothing loaded

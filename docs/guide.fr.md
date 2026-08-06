@@ -554,6 +554,39 @@ le même jour, et sans l'heure le classement paraît arbitraire —, auteur, lie
 récupération des MR est décochée en sont exclus, comme les dépôts inactifs : on ne les suit plus), **coût en tokens** (camembert par
 type d'appel + **coût moyen par MR reviewée**), résumé des sessions. L'activité de commits est récupérée
 **en direct depuis la forge de chaque dépôt, toutes branches confondues** (chargée à part, best-effort : rien ne casse si une forge est injoignable).
+**Activité des projets — 6 derniers mois.** Répond à « quels dépôts vivent, lesquels dorment ». **Une barre
+par dépôt suivi** (actif ET récupération des MR cochée), rangées de la plus haute à la plus basse, avec le
+**nom du projet sous chaque barre** : vingt dépôts se lisent alors d'un coup d'œil.
+
+La hauteur, ce sont les **jours d'activité** — les journées où au moins un commit est arrivé — et non le
+nombre de commits. Une journée travaillée veut dire la même chose partout, alors qu'un nombre de commits
+mesure surtout le *style* : squasher ou non change le compte du simple au quarantuple pour le même travail,
+et un dépôt gonflé écraserait tous les autres. La mesure est aussi **bornée** (une vingtaine de jours ouvrés
+par mois), donc franchement comparable d'un dépôt à l'autre. Les commits restent au survol.
+
+- La barre est **empilée par mois**, du plus ancien (pâle, en bas) au plus récent (plein, en haut). La
+  hauteur donne le volume, le dégradé dit si l'activité est **récente ou ancienne** — deux cents commits
+  concentrés il y a cinq mois ne décrivent pas le même projet que deux cents commits réguliers.
+- Le **mois en cours** n'est pas fini : il est marqué d'un astérisque dans la légende, pour qu'on ne lise
+  pas une baisse là où il n'y a qu'un mois entamé.
+- Un dépôt sans aucun commit sur les **deux derniers mois** passe en **gris** et son nom en italique. Il
+  reste à l'écran — c'est justement ce qu'on vient voir —, mais ne se confond pas avec un projet
+  simplement peu actif. Un seul mois creux arrive à tout le monde, deux dessinent une pente.
+- Le **survol d'une barre** donne le détail : jours d'activité et commits mois par mois, contributeurs
+  distincts du mois le plus fourni, et la raison quand le dépôt est injoignable.
+- **Cliquer le nom sous une barre** ouvre le projet sur **12 mois** : six mois disent *qui* bouge, douze
+  disent *dans quel sens*. Un dépôt calme depuis deux mois après dix mois soutenus ne raconte pas la même
+  histoire qu'un dépôt éteint depuis un an, et la vue d'ensemble ne peut pas les distinguer. La fenêtre
+  donne le total de jours, de commits et de contributeurs, le **mois le plus actif** et la **dernière
+  activité** — deux repères qu'on cherche sinon à l'œil sur le graphe.
+
+Les comptes sont **mis en cache par mois** : un mois clos ne change plus, seul le mois courant est
+rafraîchi (au plus une fois par demi-heure). Sans ça, six mois d'historique se repagineraient depuis la
+forge à chaque ouverture de l'onglet. Côté GitLab le compte porte sur **toutes les branches** ; côté GitHub
+sur la **branche par défaut** seulement — les lister toutes y coûterait des dizaines d'appels par dépôt, et
+l'écran le dit plutôt que de laisser croire à un compte complet. Un dépôt injoignable garde sa barre, avec
+la raison au survol.
+
 Chaque graphe affiche **la question à laquelle il répond**. Le total de tokens est un **minorant** (le
 travail interne de l'agent n'est pas compté).
 

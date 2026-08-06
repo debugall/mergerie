@@ -159,6 +159,30 @@ async function latestCommit(cfg, project) {
   return Array.isArray(items) && items.length ? items[0] : null;
 }
 
+/* Commits d'une PÉRIODE, pour mesurer l'activité d'un dépôt (onglet Statistiques).
+   On ne rend que ce qui sert au comptage — date et auteur — plutôt que les objets entiers :
+   six mois d'un dépôt vivant, c'est des milliers de commits qu'il serait absurde de garder
+   en mémoire pour n'en compter que les mois.
+
+   `all=true` : toutes branches, comme le classement d'activité récente. Un dépôt dont le
+   travail vit sur des branches de feature paraîtrait sinon endormi.
+   Le plafond de pages est une sécurité, pas une limite attendue : au-delà, le compte est
+   MARQUÉ tronqué (`partiel`) plutôt que présenté comme exact. */
+async function commitsBetween(cfg, project, sinceIso, untilIso, maxPages = 12) {
+  const enc = encodeProject(project);
+  const out = [];
+  let partiel = false;
+  for (let page = 1; ; page += 1) {
+    if (page > maxPages) { partiel = true; break; }
+    const q = `since=${encodeURIComponent(sinceIso)}&until=${encodeURIComponent(untilIso)}&all=true&per_page=100&page=${page}`;
+    const items = await gitlabFetch(cfg, `/projects/${enc}/repository/commits?${q}`);
+    if (!Array.isArray(items) || !items.length) break;
+    for (const c of items) out.push({ date: c.committed_date || c.created_at || null, author: c.author_email || c.author_name || '' });
+    if (items.length < 100) break;
+  }
+  return { commits: out, partiel };
+}
+
 async function listBranches(cfg, project) {
   const enc = encodeProject(project);
   const out = [];
@@ -370,6 +394,6 @@ async function listAllMRs(cfg, project) {
   }));
 }
 
-module.exports = { listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
+module.exports = { listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, commitsBetween, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
   listBranchesFull, listTags, listProtectedBranches, listProtectedTags, listMrChangedPaths,
   createBranch, deleteBranch, createTag, deleteTag, listAllMRs };

@@ -331,6 +331,9 @@ function mrLinks(m) {
 }
 
 // Date courte lisible (JJ/MM/AAAA) à partir d'un ISO GitLab.
+// Séparateur de milliers, partagé par les cartes du tableau de bord.
+const fmtNum = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
 function fmtDate(iso) {
   try {
     const d = new Date(iso);
@@ -962,7 +965,6 @@ async function loadDashboard() {
 
   const tile = (label, value, cls = '') => `<div class="stat-tile ${cls}"><div class="stat-val">${value}</div><div class="stat-lbl">${esc(label)}</div></div>`;
   const noteBadge = (v) => (v == null ? '<span class="note none">—</span>' : `<span class="note ${v >= 7 ? 'good' : v >= 4 ? 'mid' : 'bad'}">${v}</span>`);
-  const fmtNum = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   // Légende d'utilité sous chaque titre : « à quelle question ce graphe répond ».
   const cap = (key) => `<p class="dash-help">${tr(key)}</p>`;
 
@@ -1032,12 +1034,150 @@ async function loadDashboard() {
     <p class="muted dash-floor">${tr('stats.tokens.floor')}</p></div>` : '';
 
   el.innerHTML = `<div id="dashTop5" class="dash-card">${skeleton(2)}</div>`
-    + funnelHtml + `<div class="dash-grid">${notesHtml}${trendHtml}${weeklyHtml}${tokHtml}</div>` + projHtml + devHtml;
+    + funnelHtml + `<div class="dash-grid">${notesHtml}${trendHtml}${weeklyHtml}${tokHtml}</div>`
+    + `<div id="dashActivity" class="dash-card">${skeleton(3)}</div>` + projHtml + devHtml;
 
   // Activité GitLab en direct (dernier commit par projet) : chargée à part pour ne pas
   // ralentir le dashboard ni le faire échouer si GitLab est injoignable.
   fillDashboardCommits();
+  // Même raison, en plus marqué : six mois d'historique se paginent depuis la forge.
+  fillDashboardActivity();
 }
+
+/* Activité des projets sur six mois — un petit graphe PAR PROJET plutôt qu'un empilement.
+
+   Le nombre de commits ne se compare pas d'un projet à l'autre : celui qui squash en fait un
+   par merge request, celui qui ne squash pas en fait quarante pour le même travail. Ce qui se
+   lit, c'est la FORME de chaque projet dans le temps — et un empilement écraserait de toute
+   façon tous les petits derrière le plus gros. Chaque ligne a donc sa propre échelle, et
+   l'ordre (du plus actif au plus calme) porte la comparaison. */
+async function fillDashboardActivity() {
+  const el = $('#dashActivity');
+  if (!el) return;
+  let d;
+  try { d = await api('/dashboard/activity'); }
+  catch { el.innerHTML = `<h3>${tr('stats.activity.title')}</h3><p class="muted">${tr('stats.top5.unavailable')}</p>`; return; }
+  if (!$('#dashboard')) return;
+
+  const mois = d.months || [];
+  const projets = d.projects || [];
+  const entete = `<h3>${tr('stats.activity.title')}</h3><p class="dash-help">${tr('stats.activity.help')}</p>`;
+  if (!d.configured) { el.innerHTML = `${entete}<p class="muted">${tr('stats.top5.not-configured')}</p>`; return; }
+  if (!projets.length) { el.innerHTML = `${entete}<p class="muted">${tr('stats.activity.empty')}</p>`; return; }
+
+  const libelleMois = (m) => {
+    const [a, mm] = m.split('-');
+    return new Date(Date.UTC(Number(a), Number(mm) - 1, 1))
+      .toLocaleDateString(I18Nrt.currentLocale(), { month: 'short', timeZone: 'UTC' });
+  };
+  /* Endormi : rien sur les DEUX derniers mois. Un seul mois creux arrive à tout le monde
+     (congés, mise en production), deux dessinent une pente. Ils restent à l'écran — c'est
+     précisément ce qu'on vient chercher, et une barre au ras du sol le dit mieux qu'un texte. */
+  const endormi = (p) => p.counts.slice(-2).every((n) => n === 0);
+
+  /* UNE barre par projet, hauteur = JOURS ACTIFS des six mois — les journées où au moins un
+     commit est tombé. Le nombre de commits mesurerait surtout le style : squasher ou non
+     change le compte du simple au quarantuple pour le même travail, et un dépôt gonflé
+     écraserait tous les autres. Une journée travaillée, elle, veut dire la même chose
+     partout, et la mesure est bornée (une vingtaine de jours ouvrés par mois) donc
+     comparable d'un dépôt à l'autre. Les commits restent dans l'infobulle.
+
+     La barre est EMPILÉE par mois, du plus ancien (pâle) au plus récent (plein) : la hauteur
+     donne le volume, le dégradé dit si l'activité est récente ou ancienne — un projet actif
+     cinq mois plus tôt n'est pas dans le même état qu'un projet actif aujourd'hui. */
+  const maxi = Math.max(1, ...projets.map((p) => p.totalDays));
+  const court = (nom) => (nom.includes('/') ? nom.slice(nom.lastIndexOf('/') + 1) : nom);
+
+  const barre = (p) => {
+    const dort = endormi(p);
+    // Le détail montre les deux : les jours portent la barre, les commits éclairent.
+    const detail = mois.map((m, i) => `${libelleMois(m)} ${tr('stats.activity.tip-line', { days: p.days[i], commits: p.counts[i] })}`).join('\n');
+    const infobulle = `${p.project} — ${tr('stats.activity.total-tip', { n: p.totalDays, count: p.totalDays })}`
+      + `\n${tr('stats.activity.commits-tip', { n: p.total, count: p.total })}`
+      + (p.contributeurs ? ` · ${tr('stats.activity.authors-tip', { n: p.contributeurs, count: p.contributeurs })}` : '')
+      + `\n\n${detail}`
+      + (p.erreur ? `\n\n⚠ ${p.erreur}` : '')
+      + (dort ? `\n\n${tr('stats.activity.asleep-tip')}` : '');
+    // Segments du plus ANCIEN en bas au plus RÉCENT en haut : le temps se lit de bas en haut.
+    const segments = p.days.map((n, i) => (n === 0 ? '' : `<span class="pab-seg" style="height:${(n / maxi) * 100}%;--o:${0.35 + (i / Math.max(1, mois.length - 1)) * 0.65}"></span>`)).reverse().join('');
+    return `<div class="pab${dort ? ' dort' : ''}" title="${esc(infobulle)}">
+      <span class="pab-val" title="${esc(tr('stats.activity.days-unit'))}">${p.totalDays ? fmtNum(p.totalDays) : '0'}</span>
+      <span class="pab-stack">${segments}</span>
+      ${/* Le nom est un BOUTON : six mois disent qui bouge, douze disent dans quel sens. */''}
+      <button type="button" class="pab-name" data-pab-detail="${p.repo_id}"
+        title="${esc(tr('stats.activity.detail-title', { project: p.project }))}">${esc(court(p.project))}</button>
+    </div>`;
+  };
+
+  const dormants = projets.filter(endormi).length;
+  const partiels = projets.filter((p) => p.partiel).length;
+  el.innerHTML = entete
+    + `<div class="pab-chart">${projets.map(barre).join('')}</div>`
+    + `<div class="pab-legend muted">
+        <span class="pab-scale"><span class="pab-key vieux"></span>${esc(libelleMois(mois[0]))}
+        <span class="pab-key recent"></span>${esc(libelleMois(mois[mois.length - 1]))}*</span>
+        ${dormants ? `<span class="pab-legend-sleep"><span class="pab-key dort"></span>${esc(tr('stats.activity.asleep-group', { n: dormants, count: dormants }))}</span>` : ''}
+      </div>`
+    + (partiels ? `<p class="muted dash-floor">${tr('stats.activity.truncated', { n: partiels, count: partiels })}</p>` : '')
+    + `<p class="muted dash-floor">* ${tr('stats.activity.partial-month')} · ${tr('stats.activity.note')}</p>`;
+
+  // Le graphe est reconstruit à chaque visite de l'onglet : les écouteurs se reposent ici.
+  $$('#dashActivity [data-pab-detail]', el).forEach((b2) =>
+    b2.addEventListener('click', () => ouvrirActiviteProjet(Number(b2.dataset.pabDetail))));
+}
+
+/* ---------- Détail d'activité d'un projet sur 12 mois ----------
+   Six mois répondent à « qui bouge ? », douze à « dans quel sens ? » : un dépôt calme depuis
+   deux mois après dix mois soutenus ne raconte pas la même chose qu'un dépôt éteint depuis un
+   an, et la vue d'ensemble ne peut pas les distinguer. */
+async function ouvrirActiviteProjet(repoId) {
+  const modale = $('#activityModal');
+  const corps = $('#activityBody');
+  if (!modale || !corps) return;
+  $('#activityTitle').textContent = tr('stats.activity.detail.loading');
+  corps.innerHTML = skeleton(3);
+  modale.hidden = false;
+  let d;
+  try { d = await api(`/dashboard/activity/${repoId}`); }
+  catch (e) { corps.innerHTML = errorBox(explainError(e.message)); return; }
+
+  const libelle = (m) => {
+    const [a, mm] = m.split('-');
+    return new Date(Date.UTC(Number(a), Number(mm) - 1, 1))
+      .toLocaleDateString(I18Nrt.currentLocale(), { month: 'short', year: '2-digit', timeZone: 'UTC' });
+  };
+  $('#activityTitle').textContent = tr('stats.activity.detail.title', { project: d.project });
+  const maxi = Math.max(1, ...d.days);
+  const barres = d.months.map((m, i) => {
+    const encours = i === d.months.length - 1;
+    const t = `${libelle(m)} — ${tr('stats.activity.tip-line', { days: d.days[i], commits: d.counts[i] })}`
+      + (d.authors[i] ? ` · ${tr('stats.activity.authors-tip', { n: d.authors[i], count: d.authors[i] })}` : '')
+      + (encours ? ` — ${tr('stats.activity.partial-month')}` : '');
+    return `<div class="ad-col" title="${esc(t)}">
+        <span class="ad-val">${d.days[i] || ''}</span>
+        <span class="ad-bar${d.days[i] === 0 ? ' vide' : ''}${encours ? ' encours' : ''}" style="height:${(d.days[i] / maxi) * 100}%"></span>
+        <span class="ad-x">${esc(libelle(m))}${encours ? '*' : ''}</span>
+      </div>`;
+  }).join('');
+
+  const tuile = (val, lbl) => `<div class="stat-tile"><div class="stat-val">${val}</div><div class="stat-lbl">${esc(lbl)}</div></div>`;
+  corps.innerHTML = `<div class="stat-row">
+      ${tuile(fmtNum(d.totalDays), tr('stats.activity.detail.days'))}
+      ${tuile(fmtNum(d.total), tr('stats.activity.detail.commits'))}
+      ${tuile(d.contributeurs || '—', tr('stats.activity.detail.authors'))}
+    </div>
+    <div class="ad-chart">${barres}</div>
+    <p class="muted ad-facts">
+      ${d.meilleurMois ? tr('stats.activity.detail.best', { month: libelle(d.meilleurMois) }) : ''}
+      ${d.dernierActif ? ` · ${tr('stats.activity.detail.last', { month: libelle(d.dernierActif) })}` : ` · ${tr('stats.activity.detail.never')}`}
+    </p>
+    ${d.erreur ? errorBox(d.erreur) : ''}
+    <p class="muted dash-floor">* ${tr('stats.activity.partial-month')}${d.partiel ? ` · ${tr('stats.activity.truncated', { n: 1, count: 1 })}` : ''}</p>`;
+}
+
+const fermerActivite = () => { $('#activityModal').hidden = true; };
+$('#activityClose') && $('#activityClose').addEventListener('click', fermerActivite);
+fermerAuFond('#activityModal', fermerActivite, { salissable: false });
 
 // Cellule « dernier commit » : date (lien vers le commit GitLab) + auteur.
 function lastCommitCell(c) {

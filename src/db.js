@@ -325,6 +325,30 @@ try { db.exec('ALTER TABLE local_task_dir ADD COLUMN session_cwd TEXT'); } catch
 // côté task_target. Sans lui, une session hors dépôt qui n'a rien modifié reste opaque.
 try { db.exec('ALTER TABLE local_task_dir ADD COLUMN output_path TEXT'); } catch { /* déjà présente */ }
 // Rangement d'une session hors dépôt — même principe que `task.hidden`.
+/* Activité mensuelle d'un dépôt (onglet Statistiques). Mise en cache parce qu'elle coûte
+   cher à récupérer — six mois d'un dépôt vivant, c'est des centaines de commits paginés —
+   et qu'un mois CLOS ne change plus jamais : seul le mois courant se recalcule.
+   `authors` = contributeurs distincts du mois ; `partiel` = le plafond de pagination a été
+   atteint, donc le compte est un minorant et l'écran doit le dire. */
+db.exec(`CREATE TABLE IF NOT EXISTS commit_activity (
+  repo_id INTEGER NOT NULL REFERENCES repo(id) ON DELETE CASCADE,
+  month TEXT NOT NULL,              -- 'YYYY-MM'
+  commits INTEGER NOT NULL,
+  authors INTEGER NOT NULL DEFAULT 0,
+  partiel INTEGER NOT NULL DEFAULT 0,
+  fetched_at TEXT NOT NULL,
+  PRIMARY KEY (repo_id, month)
+)`);
+/* `active_days` = jours DISTINCTS où au moins un commit est tombé. C'est cette mesure que le
+   graphe met en hauteur : contrairement au nombre de commits, elle ne dépend pas du style
+   (squasher ou non ne change pas le nombre de journées travaillées) et elle est bornée, donc
+   comparable d'un dépôt à l'autre. Le cache existant ne la connaît pas : on le VIDE plutôt
+   que de le laisser servir des barres vides — il se reconstruit tout seul à la prochaine visite. */
+try {
+  db.exec('ALTER TABLE commit_activity ADD COLUMN active_days INTEGER NOT NULL DEFAULT 0');
+  db.exec('DELETE FROM commit_activity');
+} catch { /* déjà présente */ }
+
 try { db.exec('ALTER TABLE local_task ADD COLUMN hidden INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 // Même colonne que sur `task` : elle doit être ajoutée APRÈS la création de la table,
 // sinon l'ALTER échoue sur une base neuve et la colonne n'existe jamais.

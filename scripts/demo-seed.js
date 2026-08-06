@@ -251,6 +251,51 @@ for (const m of REVIEWED) {
     .run(ct.lastInsertRowid, repoIds[base.project], base.branch, 'main', 'pushed', headSha, mr.iid, mrUrl, iso(1));
 }
 
+/* ---------- activité des projets sur 6 mois (onglet Statistiques) ----------
+   Trois profils, parce que c'est leur CONTRASTE qui donne son sens au graphe : un projet en
+   croissance, un régulier, et un qui s'est arrêté il y a trois mois — c'est ce dernier que
+   l'écran doit rendre visible d'un coup d'œil. `acme/design-system` n'y figure pas : sa
+   récupération de MR est décochée, donc on ne le suit plus.
+   Le mois est calculé depuis MAINTENANT : la démo ne doit pas vieillir toute seule. */
+const moisDemo = (() => {
+  const out = [];
+  const n = new Date();
+  // Douze mois : le graphe d'ensemble en montre six, la modale de détail les douze.
+  for (let i = 11; i >= 0; i -= 1) {
+    const d = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth() - i, 1));
+    out.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+  }
+  return out;
+})();
+const ACTIVITE = {
+  /* `jours` = journées où du code est arrivé : c'est ce que le graphe met en hauteur.
+     Douze valeurs — les six premières n'apparaissent que dans la modale de détail, et c'est
+     précisément là qu'elles servent : `batch-jobs` était soutenu avant de s'éteindre, ce que
+     six mois seuls ne montreraient pas. */
+  'groupe/api-core': {
+    commits: [21, 26, 30, 28, 33, 29, 34, 41, 38, 52, 61, 47],
+    jours: [9, 11, 12, 11, 13, 12, 12, 15, 14, 18, 19, 13],
+    auteurs: [2, 3, 3, 3, 4, 3, 3, 4, 3, 5, 5, 4],
+  },
+  'groupe/webapp-front': {
+    commits: [24, 20, 23, 26, 22, 20, 22, 19, 25, 21, 18, 23],
+    jours: [10, 9, 10, 11, 9, 9, 9, 8, 11, 10, 8, 7],
+    auteurs: [2, 2, 2, 3, 2, 2, 2, 2, 3, 2, 2, 2],
+  },
+  'groupe/batch-jobs': {
+    commits: [28, 31, 26, 24, 21, 19, 17, 12, 9, 4, 0, 0],
+    jours: [11, 13, 11, 10, 9, 8, 7, 6, 4, 2, 0, 0],
+    auteurs: [3, 3, 2, 2, 2, 2, 2, 2, 1, 1, 0, 0],
+  },
+};
+{
+  const ins = db.prepare(`INSERT OR REPLACE INTO commit_activity (repo_id, month, commits, authors, active_days, partiel, fetched_at)
+                          VALUES (?,?,?,?,?,0,?)`);
+  for (const [projet, a2] of Object.entries(ACTIVITE)) {
+    moisDemo.forEach((m, i) => ins.run(repoIds[projet], m, a2.commits[i], a2.auteurs[i], a2.jours[i], at(0.1)));
+  }
+}
+
 // ---------- consommation de tokens (dashboard coût + tendance hebdo) ----------
 const KINDS = [['review', 5200], ['explain', 1500], ['task', 9000], ['explore', 3200], ['modify', 2600]];
 for (let d = 55; d >= 0; d -= 2) {
