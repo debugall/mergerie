@@ -13,6 +13,37 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A Links tab — the work links your bookmarks cannot structure.** The same service exists in local, dev,
+  staging and production; a folder tree scatters it across four places. A **grid** shows it at once —
+  services as rows, environments as columns, one URL per cell. That URL is written out, never guessed from
+  another by swapping a piece of domain: that kind of magic eventually sends you to the wrong environment
+  without a word. An empty cell takes the address in place, no dialog. Whatever has no environment
+  dimension — Confluence, a doc, a tool — stays a **free link**, found by tag.
+  - **A global palette** on `Ctrl`/`Cmd`+`K` or the `o` key, and a search field in the header so it can be
+    found without knowing the shortcut. It searches everything at once: grid cells, free links, merge
+    requests, watched tickets, note pages, open todos and navigation actions. Fuzzy by subsequence
+    (`kib pre` finds “Kibana · preprod”) and ranked by **frecency** — what you open often *and* recently.
+  - **Contextual buttons on merge requests** when a service is linked to a repository: its grid URLs, plus
+    **templates** with `{env}`, `{branch}`, `{mr_iid}` and `{service}` resolved on click. Unknown variables
+    are refused as you type them, every substituted value is URL-encoded, and a variable with no value here
+    leaves the button greyed with its reason rather than a URL with holes.
+  - **Chrome bookmarks import**, preview first: the folder tree as it was, each link tickable, tagged by its
+    folder path. Replayable — re-importing the same file does not duplicate what is already there. The file
+    is parsed, never executed.
+  - **An opt-in health check**, behind two switches: globally off by default, and off per environment with
+    **production out of the lot** unless asked. `HEAD` with no body read, 5 s, sequential, and only while a
+    Mergerie tab is open — no phantom traffic at night. Unreachable links get a red badge on the menu.
+
+- **The navigation moved into a left sidebar.** At nine entries a horizontal bar was out of room — “AI Dev”
+  already wrapped onto two lines. Vertically each entry gets its own row, its badges fit, and the tenth
+  costs nothing. The bar collapses to icons from a button at the foot of the column, remembers the choice,
+  and collapses on its own below 1100 px. The header space this freed now carries the palette's search
+  field, which had the opposite problem: being invisible unless you knew the shortcut.
+  The README's animation was re-recorded on the new shell, and the settings that turn the recording
+  into that GIF now live in `scripts/demo-gif.sh` (`npm run demo:gif`) instead of having to be worked
+  out again each time.
+
+
 - **Back up your data in one click.** Settings → General now produces a dated `.zip` holding the database
   and every file it points at — reports, agent answers, context screenshots — plus a short note on how to
   restore it. The database is copied through SQLite's own backup API rather than a plain file copy, which

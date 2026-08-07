@@ -11,8 +11,11 @@ security model. For a quick start, stay on the [README](../README.md).
 
 ## The tabs in detail
 
-Eight tabs, in pairs — the core, what I have to do, my machine, the meta:
-**Reviews** · **AI Dev** — **Notes** · **Jira** — **Git** · **Docker** — **Stats** · **Settings**.
+Nine tabs, in a **left sidebar**, grouped by family — the core, what I have to do, my machine and its
+links, the meta:
+**Reviews** · **AI Dev** — **Notes** · **Jira** — **Git** · **Docker** · **Links** — **Stats** · **Settings**.
+The bar **collapses to icons** from a button at the foot of the column (the choice is remembered), and
+collapses on its own below 1100 px wide.
 Badges show **work waiting**, not totals (MRs to review, sessions not yet run). The **Reviews** tab carries
 two: the blue one counts merge requests **to review**, the orange one counts **reports scored under 7/10
 that still await a decision**. The second tells you which to read first; it only counts the *Reviewed*
@@ -655,6 +658,119 @@ Two sub-views, like Coding/Exploration in AI Dev.
   server's PATH**, an **actionable** message explains it (pointing at `DOCKER_BIN` in the `.env` if needed)
   — like the certificate / token errors.
 
+### Links
+Work links have a **structure** a browser's bookmarks cannot express: the same service exists in
+local, dev, staging and production. A folder tree scatters it across four places; a **grid** shows
+it at once — services as rows, environments as columns.
+
+Two shapes, because there are two realities. Whatever has no environment dimension (Confluence, a
+doc, a tool) stays a **free link**, flat, found by its tags.
+
+#### The grid
+- **Rows are services**, pinned first then alphabetical. Each row carries the name, its **tags**,
+  and the **linked Mergerie repository** when there is one.
+- **Columns are environments**, in the order you give them, each with its own header **colour**
+  (production in red invites a second thought before clicking).
+- **A cell is one URL, written out.** We could have guessed the staging address from the dev one by
+  swapping a piece of domain; that is exactly the magic that one day sends you to the wrong
+  environment without a word. An empty cell shows a `+`: you paste the address **in the cell**,
+  Enter confirms, Esc cancels — no dialog to paste a URL. Clearing the field clears the cell.
+- **Filter by tag** above the grid: a service often belongs to two families at once (*backend* and
+  *payment*), which a folder tree would force it to choose between.
+- Only **`http` or `https`** addresses are accepted, here as everywhere in this tab: these links
+  open in one click from the application.
+
+#### Free links
+A flat list under the grid: label, URL, tags. Instant search, add and edit in place. This is where
+imported bookmarks land.
+
+**Turning them into a service.** Tick several links, then `Turn into a service`: one row per link,
+one environment to pick for each. The mapping is **explicit** — guessing “dev” from a URL
+containing `-dev` would work nine times out of ten, and the tenth would put a production address in
+the development column.
+
+#### The palette — `Ctrl`/`Cmd` + `K`, or the `o` key
+The search field in the header opens the **global palette**, which searches **everything at once**:
+the grid's cells (“kibana staging”), free links, merge requests (by number or by words of the
+title), watched tickets, note pages, open todos, and navigation actions. Enter opens — an external
+link in a new tab, an internal object in its own place.
+
+- **Fuzzy search**, accent- and case-insensitive — `generation` finds “Génération du rapport”, and
+  the other way round. You abbreviate **by words**: `kib pre` finds “Kibana · preprod”, each word
+  you type having to appear *whole* somewhere in the target. Dropping a letter inside a word
+  (`kbana`) finds nothing, and that is deliberate: allowing gapped words all the way down into the
+  database would push more than half the rows past the ranking, which would then have nothing left
+  to sort with. The ranking itself favours what **starts** a word — `api` brings up “api-core”
+  ahead of “rapid”, which holds the same letters.
+- **Ranked by frecency**: what you open *often* **and** *recently* comes up. A plain counter would
+  keep whatever you hammered last month at the top forever; a plain date would lose what you have
+  opened every day for a year.
+- The palette queries the **server**: it therefore sees everything, including what the current tab
+  has not loaded — searching for a merge request from Docker works. Filtering happens **in the database**, not
+  over a slice of it: a merge request three hundred older ones down is as findable as a fresh one.
+  Only the *answer* is capped — at twelve rows, which is what a dropdown can show.
+
+#### Contextual links on merge requests
+When a service is linked to a repository, the **detail of that repository's merge requests** carries
+a row of buttons: the service's grid URLs (“Open · dev”), then its **contextual links**.
+
+A contextual link is a **template** with variables, resolved when you click:
+
+| variable | resolves to |
+|---|---|
+| `{env}` | the environment (one button per environment that has a URL) |
+| `{branch}` | the merge request's source branch |
+| `{mr_iid}` | the merge request number |
+| `{service}` | the service's name |
+
+Example: `https://kibana-{env}.corp/app/logs?q={service}%20{branch}` opens the logs of *that*
+branch, on the environment you want, without retyping anything.
+
+- **An unknown variable is refused as you type it**, and the message says which ones exist: a typo
+  should show up while you write it, not produce a broken URL three weeks later.
+- **Every substituted value is URL-encoded**: a branch named `feat/x?y=1` does not build a surprise
+  URL with an extra parameter.
+- A variable **with no value in this context** leaves the button visible but **greyed out**, with
+  its reason on hover. Hiding it would suggest it does not exist; a URL with holes would land on an
+  error page.
+- A template **without `{env}`** gives a **single** button: it does not depend on the environment,
+  and offering one per column would hand you the same address N times.
+
+#### Importing Chrome bookmarks
+*Chrome → Bookmarks → Bookmark manager → ⋮ → Export bookmarks*, then `Import from Chrome`.
+
+- **Preview first**: the folder tree as it was in the browser, each link tickable. Nothing is
+  created until you confirm — the same spirit as the mandatory preview of git operations.
+- Everything ticked arrives as **free links**, **tagged by its folder path**
+  (`Work/Kibana` → `work`, `kibana`).
+- **Replayable**: re-importing the same file after adding three bookmarks does not duplicate the
+  other hundred — a URL already known is skipped, and the number skipped is announced (silence
+  would read as a failure).
+- The file is **never executed or rendered**: it is parsed, and only `http(s)` addresses come out —
+  a `javascript:` bookmark is ignored. Size capped at 5 MB.
+- Turning them into services comes **afterwards**, by hand (see above).
+
+#### Health check — off by default, behind two switches
+These requests are the **only** ones this tab sends outward, and they go to addresses you typed in.
+Hence two switches, not one:
+
+1. **Globally**, in *Settings → General*, with its interval (5 min by default, 1 min minimum).
+2. **Per environment**, in the environment's dialog. **Production is out by default**: sending
+   automatic traffic at a production service is not a decision a tool makes on your behalf.
+
+How it works: a `HEAD` (falling back to `GET` on a 405, so a matter of method is not read as
+“unreachable”), 5 s of patience, redirects followed (3 at most), **no response body read**. 2xx-3xx
+→ reachable, anything else → unreachable. The cycle is **sequential**: twenty services × four
+environments fired at once is eighty simultaneous connections leaving a workstation.
+
+⚠ **Two limits worth knowing.** Checks only go out **while a Mergerie tab is open** — no phantom
+traffic at night. And the result is a **last known state**, not a history: the question asked is
+“is it up right now?”.
+
+Display: a dot on the cell (green, red, grey), with the HTTP code, the latency and the time on
+hover; and the number of unreachable links as a **red badge** on the Links entry of the menu.
+**No desktop notification**: a service going down at night would produce dozens.
+
 ### Stats
 An MR funnel, a distribution of the scores, the **weekly evolution of the average score** (“is quality
 improving?”), weekly activity, a table per project (with the **resolution rate**, a **trend** ▲/▼ and the
@@ -1126,6 +1242,7 @@ settings above are applied to git as well.
 ```bash
 npm i -D playwright && npx playwright install chromium   # once
 npm run record:demo                                       # → demo-recordings/mergerie-demo.webm
+npm run demo:gif                                          # → docs/demo.gif (the README one)
 ```
 
 `scripts/record-demo.js` is self-contained: it launches the app in demo mode itself, waits for port 4319,
@@ -1135,6 +1252,12 @@ down cleanly (closing the context flushes the video). The route: *Reviews* → a
 selector **v1 → v2 → v3** (a progression from **5.8 to 8.4**) → resolution tracking → *AI Dev* (a session
 linked to its MR, a question asked by the AI) → *Jira* → *Git* (the branch explorer) → *Docker* (`.env`
 drift + live logs) → *Stats*. The `.webm` produced uploads straight to YouTube.
+
+**The README's GIF** comes from the same recording: `npm run demo:gif`. Its settings (6 fps, 640 px,
+128 colours, palette computed on the video) are tuned to stay under ~4.5 MB — a file GitHub reloads
+on every visit to the landing page — without making the interface unreadable. They live in
+`scripts/demo-gif.sh` rather than in a command to be rediscovered: working them out again costs half
+an hour and yields a file twice too heavy.
 
 ## Dry-run mode (no AI)
 

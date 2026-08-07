@@ -438,6 +438,7 @@ $$('nav button').forEach((b) => b.addEventListener('click', () => {
   else dlogStop(); // en quittant Docker, on coupe le tail live (et ses process serveur)
   if (b.dataset.tab === 'jira') loadJira();
   if (b.dataset.tab === 'notes') loadNotes();
+  if (b.dataset.tab === 'links') loadLinks();
   try { localStorage.setItem('aidevtools_tab', b.dataset.tab); } catch { /* ignore */ }
 }));
 
@@ -2557,6 +2558,8 @@ async function openReport(id, opts = {}) {
       </div>
     </div>
 
+    <div id="mrLinksBox"></div>
+
     ${m.last_error ? errorBox(m.last_error, m.id) : ''}
     ${convergeBoxHtml(d.convergence)}
 
@@ -2589,6 +2592,9 @@ async function openReport(id, opts = {}) {
 
   // charge et affiche les commentaires généraux (non-inline) de la MR
   loadMrComments(id);
+  /* Les liens du service associé à ce dépôt (aucun service lié → rien ne s'affiche, et
+     surtout pas un bloc vide). Chargé à part : ils ne doivent pas retarder le rapport. */
+  renderMrLinks(id, $('#mrLinksBox'));
 
   // bascule rapport / explication
   // Historique des reviews : chaque passe est conservée, on peut relire les précédentes.
@@ -3338,7 +3344,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'github_url', 'github_token',
   'clone_path', 'review_skill', 'prompt_review', 'prompt_explain', 'prompt_modify',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
-  'stale_mr_days'];
+  'stale_mr_days', 'health_minutes'];
 async function loadConfig() {
   const c = await api('/config');
   const f = $('#configForm');
@@ -3350,6 +3356,8 @@ async function loadConfig() {
   // Atterrissage sur le brief : coché par défaut, comme côté serveur.
   if (f.brief_on_open) f.brief_on_open.checked = c.brief_on_open !== '0';
   if (f.stale_mr_days) f.stale_mr_days.value = Number(c.stale_mr_days) || 5;
+  if (f.health_check) f.health_check.checked = c.health_check === '1';   // désactivé par défaut
+  if (f.health_minutes) f.health_minutes.value = Number(c.health_minutes) || 5;
   renderNotifSettings();
 }
 $('#configForm').addEventListener('submit', async (e) => {
@@ -3360,6 +3368,7 @@ $('#configForm').addEventListener('submit', async (e) => {
   body.auto_refresh_minutes = f.auto_refresh_minutes.value;
   if (f.review_explain) body.review_explain = f.review_explain.checked ? '1' : '0';
   if (f.brief_on_open) body.brief_on_open = f.brief_on_open.checked ? '1' : '0';
+  if (f.health_check) body.health_check = f.health_check.checked ? '1' : '0';
   // '***' = champ non touché (on n'écrase pas le secret) ; '' = effacement volontaire.
   if (body.access_token === '***') delete body.access_token;
   if (body.jira_token === '***') delete body.jira_token;
@@ -8771,8 +8780,53 @@ const PALETTE_ACTIONS = [
 
 let paletteItems = [];
 let paletteIdx = 0;
+let paletteSeq = 0;
 
-// Les objets déjà EN MÉMOIRE : aucune requête, donc la palette reste instantanée.
+/* Les ACTIONS que le client sait faire, envoyées au serveur avec la requête : lui seul
+   connaît les liens, les MR et les notes, nous seuls savons ouvrir un onglet ou une modale.
+   Les lister côté serveur aurait fait deux endroits à tenir d'accord. */
+const paletteActions = () => PALETTE_ACTIONS.map((a, i) => ({ id: `act:${i}`, label: tr(a.key) }));
+
+/* La palette interroge le SERVEUR. Auparavant elle ne fouillait que les objets déjà chargés
+   dans l'onglet courant : chercher une MR depuis Docker ne rendait rien, et les liens
+   n'existaient nulle part. Une requête par frappe, débouncée, et le résultat le plus récent
+   gagne — `paletteSeq` écarte la réponse d'une frappe précédente arrivée en retard. */
+async function paletteChercher(q) {
+  const seq = ++paletteSeq;
+  let d;
+  try { d = await api('/launcher', { method: 'POST', body: { q, actions: paletteActions() } }); }
+  catch { return; }
+  if (seq !== paletteSeq) return;              // une frappe plus récente a déjà répondu
+  paletteItems = (d.results || []).map((r) => ({
+    label: r.label,
+    kind: r.detail || tr(`palette.group.${r.group}`),
+    run: () => ouvrirResultatPalette(r),
+  }));
+  paletteIdx = 0;
+  renderPalette();
+}
+
+/* Ouvrir un résultat. Un lien EXTERNE part dans un nouvel onglet ; un objet interne navigue.
+   Dans les deux cas on note l'usage — c'est ce qui fait remonter demain ce qu'on ouvre
+   aujourd'hui. */
+function ouvrirResultatPalette(r) {
+  api('/launcher/used', { method: 'POST', body: { kind: r.kind, ref: r.ref } }).catch(() => {});
+  if (r.url) { window.open(r.url, '_blank', 'noopener,noreferrer'); return; }
+  if (r.action) {
+    const i = Number(String(r.action).split(':')[1]);
+    const a = PALETTE_ACTIONS[i];
+    if (a) a.run();
+    return;
+  }
+  const n = r.nav || {};
+  if (n.mr_id) { navMrReport(n.mr_id); return; }
+  if (n.ticket) { navTab('jira'); showJiraSub('mine'); selectJiraIssue(n.ticket, 'mine'); return; }
+  if (n.page_id) { navTab('notes'); showNotesSub('pages'); openNotePage(n.page_id); return; }
+  if (n.todo_id) { navTab('notes'); showNotesSub('todos'); return; }
+  if (n.tab) navTab(n.tab);
+}
+
+// Conservé pour les tests hors ligne et l'ouverture instantanée : les actions locales.
 function paletteMatches(q) {
   const out = PALETTE_ACTIONS.filter((a) => tr(a.key).toLowerCase().includes(q))
     .map((a) => ({ label: tr(a.key), kind: tr('palette.kind.action'), run: a.run }));
@@ -8811,14 +8865,37 @@ function renderPalette() {
 }
 
 function closePalette() { $('#paletteModal').hidden = true; }
+/* Ancre la boîte SOUS le champ de l'en-tête. Repli au centre haut si le déclencheur est
+   masqué (écran étroit) : mieux vaut une palette utilisable qu'une palette bien alignée. */
+function placerPalette() {
+  const box = $('#paletteModal .palette-box');
+  const dec = $('#paletteTrigger');
+  if (!box) return;
+  const large = box.offsetWidth || 560;
+  if (!dec || !dec.offsetParent) {
+    box.style.left = `${Math.max(8, (window.innerWidth - large) / 2)}px`;
+    box.style.top = '64px';
+    return;
+  }
+  const r = dec.getBoundingClientRect();
+  // Aligné sur le champ, puis borné à la fenêtre : sur un écran étroit, la boîte est plus
+  // large que le déclencheur et déborderait à droite.
+  box.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - large - 8))}px`;
+  box.style.top = `${r.bottom + 6}px`;
+}
+
 function openPalette() {
   const m = $('#paletteModal'); if (!m) return;
   m.hidden = false;
+  placerPalette();
   const inp = $('#paletteInput');
   inp.value = ''; paletteIdx = 0;
+  // Les actions locales s'affichent TOUT DE SUITE, la réponse du serveur les remplace :
+  // une palette qui s'ouvre vide en attendant le réseau se referme avant d'avoir servi.
   paletteItems = paletteMatches('');
   renderPalette();
   inp.focus();
+  paletteChercher('');
 }
 function runPaletteItem(i) {
   const it = paletteItems[i];
@@ -8827,10 +8904,12 @@ function runPaletteItem(i) {
   it.run();
 }
 
+let paletteTimer = null;
 $('#paletteInput') && $('#paletteInput').addEventListener('input', () => {
-  paletteItems = paletteMatches($('#paletteInput').value.trim().toLowerCase());
-  paletteIdx = 0;
-  renderPalette();
+  const q = $('#paletteInput').value.trim();
+  clearTimeout(paletteTimer);
+  // 120 ms : assez pour ne pas interroger à chaque lettre, assez peu pour ne pas se sentir.
+  paletteTimer = setTimeout(() => paletteChercher(q), 120);
 });
 $('#paletteInput') && $('#paletteInput').addEventListener('keydown', (e) => {
   if (e.key === 'ArrowDown') { e.preventDefault(); paletteIdx = Math.min(paletteIdx + 1, paletteItems.length - 1); renderPalette(); }
@@ -8843,6 +8922,17 @@ $('#paletteList') && $('#paletteList').addEventListener('click', (e) => {
   if (it) runPaletteItem(Number(it.dataset.i));
 });
 fermerAuFond('#paletteModal', closePalette, { salissable: false });
+$('#paletteTrigger') && $('#paletteTrigger').addEventListener('click', () => openPalette());
+// Redimensionner la fenêtre déplace le champ : la boîte le suit au lieu de rester en l'air.
+window.addEventListener('resize', () => { if (!$('#paletteModal').hidden) placerPalette(); });
+/* Le raccourci affiché doit être CELUI DU CLAVIER qu'on a sous les doigts : « Ctrl K » sur
+   un Mac enverrait chercher une touche qui ne fait rien ici. */
+(function libellerRaccourciPalette() {
+  const k = $('#paletteKbd');
+  if (!k) return;
+  const mac = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent || '');
+  k.textContent = mac ? '⌘ K' : 'Ctrl K';
+})();
 
 /* Feuille de raccourcis PERSISTANTE. Un toast de 3,5 s disparaissait pendant qu'on le lisait,
    ce qui est exactement le contraire de ce qu'on attend d'une aide. */
@@ -8855,6 +8945,7 @@ const SHORTCUTS = [
   ['d', 'shortcuts.diff'],
   ['r', 'shortcuts.discover'],
   ['n', 'shortcuts.notes'],
+  ['o', 'shortcuts.palette-o'],
   ['l', 'shortcuts.logs'],
   ['?', 'shortcuts.help'],
   ['Échap', 'shortcuts.escape'],
@@ -9645,6 +9736,536 @@ function marquerBriefVu() {
   try { localStorage.setItem(BRIEF_KEY, new Date().toDateString()); } catch { /* stockage indisponible */ }
 }
 
+/* ============ Onglet Liens : grille services × environnements ============
+   Les marque-pages d'un navigateur ne savent pas dire qu'un même service existe en local,
+   en dev, en preprod et en prod : ils en font quatre entrées dans quatre dossiers. D'où une
+   GRILLE — services en lignes, environnements en colonnes — et, à côté, des liens libres à
+   plat pour tout ce qui n'a pas de dimension environnement. Deux formes, deux réalités. */
+const LINKS = { grid: null, tag: '', freeQ: '', selection: new Set(), importLinks: [] };
+
+async function loadLinks() {
+  const box = $('#linkGrid');
+  if (!box) return;
+  box.innerHTML = skeleton(3);
+  try { LINKS.grid = await api('/links/grid'); }
+  catch (e) { box.innerHTML = errorBox(e.message); return; }
+  renderLinkTags();
+  renderLinkGrid();
+  renderFreeLinks();
+  majBadgeLinks(LINKS.grid.down || 0);
+  const dispo = (LINKS.grid.environments || []).some((e) => e.health_check);
+  const b = $('#linkHealthNow');
+  if (b) b.hidden = !dispo;
+}
+
+/* Le badge du menu compte les cases DOWN. Comme celui de Docker : ce qui est cassé se
+   signale tout seul, on n'a pas à ouvrir l'onglet pour l'apprendre. */
+function majBadgeLinks(n) {
+  const b = $('#navLinksDown');
+  if (!b) return;
+  b.hidden = !n;
+  b.textContent = String(n || 0);
+  b.dataset.tip = tr('links.health.down', { n, count: n });
+  b.title = '';
+  b.setAttribute('aria-label', b.dataset.tip);
+}
+
+function renderLinkTags() {
+  const box = $('#linkTags');
+  const tags = (LINKS.grid && LINKS.grid.tags) || [];
+  if (!tags.length) { box.innerHTML = ''; return; }
+  box.innerHTML = tags.map((t) => `<button type="button" class="link-tag${LINKS.tag === t ? ' active' : ''}" data-linktag="${esc(t)}">${esc(t)}</button>`).join('');
+}
+
+const serviceVisible = (s) => !LINKS.tag || (s.tags || []).includes(LINKS.tag);
+
+function renderLinkGrid() {
+  const box = $('#linkGrid');
+  const { environments: envs = [], services = [] } = LINKS.grid || {};
+  if (!envs.length && !services.length) {
+    box.innerHTML = emptyState({
+      icon: 'link', title: esc(tr('links.empty.title')), text: esc(tr('links.empty.text')),
+      actions: [{ act: 'newenv', label: esc(tr('links.env.new')), primary: true }],
+    });
+    return;
+  }
+  const visibles = services.filter(serviceVisible);
+  if (!visibles.length) {
+    box.innerHTML = `<p class="muted">${esc(tr('links.no-match', { tag: LINKS.tag }))}</p>`;
+    return;
+  }
+
+  const entete = envs.map((e) => `<th><span class="link-env">`
+    + `<span class="link-env-dot" style="background:${esc(e.color)}"></span>${esc(e.name)}`
+    + `${e.health_check ? ` <span class="muted" title="${esc(tr('links.env.health'))}">${svgIco('refresh')}</span>` : ''}</span></th>`).join('');
+
+  const lignes = visibles.map((s) => {
+    const cases = envs.map((e) => {
+      const url = (s.urls || {})[e.id];
+      const h = (s.health || {})[e.id];
+      if (!url) {
+        return `<td class="link-cell"><button type="button" class="link-add" data-addurl="${s.id}" data-env="${e.id}">+</button></td>`;
+      }
+      /* `rel="noopener noreferrer"` sur TOUTES les ouvertures externes : l'onglet ouvert ne
+         doit rien pouvoir faire de la page qui l'a ouvert. */
+      return `<td class="link-cell"><a class="link-open" href="${esc(url)}" target="_blank" rel="noopener noreferrer"
+          data-usekind="service_url" data-useref="${s.id}:${e.id}" title="${esc(url)}">
+          ${h ? `<span class="link-health ${esc(h.status)}" title="${esc(santeInfo(h))}"></span>` : ''}
+          <span>${esc(urlCourte(url))}</span></a></td>`;
+    }).join('');
+    return `<tr>
+      <td class="link-svc">
+        <div class="link-svc-name">
+          ${s.pinned ? `<span title="${esc(tr('links.service.pinned'))}">${svgIco('tag')}</span>` : ''}
+          <button type="button" class="btn btn-sm btn-ghost" data-editservice="${s.id}" title="${esc(tr('links.service.edit'))}">${esc(s.name)}</button>
+        </div>
+        <div class="link-svc-meta">
+          ${s.project ? `<span title="${esc(tr('links.service.repo'))}">${svgIco('branch')} ${esc(s.project)}</span>` : ''}
+          ${(s.tags || []).map((t) => `<span class="link-svc-tag">${esc(t)}</span>`).join('')}
+          ${s.context_links ? `<span title="${esc(tr('links.ctx.title'))}">${svgIco('zap')} ${s.context_links}</span>` : ''}
+        </div>
+      </td>${cases}</tr>`;
+  }).join('');
+
+  box.innerHTML = `<table class="link-grid"><thead><tr><th class="link-svc"></th>${entete}</tr></thead><tbody>${lignes}</tbody></table>`;
+}
+
+/* L'URL raccourcie : l'hôte et le début du chemin. Une case de grille montre OÙ l'on va, pas
+   la requête complète — celle-ci vit dans l'info-bulle. */
+function urlCourte(url) {
+  try {
+    const u = new URL(url);
+    const chemin = u.pathname === '/' ? '' : u.pathname;
+    return (u.host + chemin).slice(0, 42);
+  } catch { return String(url).slice(0, 42); }
+}
+
+const santeInfo = (h) => [
+  tr(`links.health.${h.status}`),
+  h.http_code ? `HTTP ${h.http_code}` : '',
+  h.latency_ms != null ? `${h.latency_ms} ms` : '',
+  h.checked_at ? fmtHour(h.checked_at) : '',
+].filter(Boolean).join(' · ');
+
+function renderFreeLinks() {
+  const box = $('#linkFreeList');
+  const q = LINKS.freeQ.toLowerCase();
+  const tous = ((LINKS.grid && LINKS.grid.free_links) || [])
+    .filter((l) => (!LINKS.tag || (l.tags || []).includes(LINKS.tag))
+      && (!q || l.label.toLowerCase().includes(q) || l.url.toLowerCase().includes(q)));
+  const btn = $('#linkToService');
+  if (btn) btn.hidden = LINKS.selection.size < 1;
+  if (!tous.length) {
+    box.innerHTML = `<p class="muted">${esc(tr(LINKS.freeQ || LINKS.tag ? 'links.no-match' : 'links.free.empty', { tag: LINKS.tag }))}</p>`;
+    return;
+  }
+  box.innerHTML = tous.map((l) => `<div class="link-free-row">
+      <input type="checkbox" data-freepick="${l.id}"${LINKS.selection.has(l.id) ? ' checked' : ''} aria-label="${esc(tr('links.free.pick'))}" />
+      <span class="link-free-label">${esc(l.label)}</span>
+      ${(l.tags || []).map((t) => `<span class="link-svc-tag">${esc(t)}</span>`).join('')}
+      <a class="link-free-url" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer"
+         data-usekind="free_link" data-useref="${l.id}">${esc(l.url)}</a>
+      <button type="button" class="btn btn-sm btn-ghost" data-editfree="${l.id}" title="${esc(tr('ui.edit'))}">${svgIco('edit')}</button>
+    </div>`).join('');
+}
+
+/* Chaque ouverture nourrit la frécence de la palette : ce qu'on clique ici remonte là-bas.
+   Par délégation et en `capture: false` — le lien s'ouvre normalement, on ne l'intercepte pas. */
+document.addEventListener('click', (e) => {
+  const a = e.target.closest && e.target.closest('[data-usekind]');
+  if (!a) return;
+  api('/launcher/used', { method: 'POST', body: { kind: a.dataset.usekind, ref: a.dataset.useref } })
+    .catch(() => { /* la frécence n'est pas une donnée critique */ });
+});
+
+$('#linkTags') && $('#linkTags').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-linktag]');
+  if (!b) return;
+  LINKS.tag = LINKS.tag === b.dataset.linktag ? '' : b.dataset.linktag;
+  renderLinkTags(); renderLinkGrid(); renderFreeLinks();
+});
+$('#linkFreeSearch') && $('#linkFreeSearch').addEventListener('input', () => {
+  LINKS.freeQ = $('#linkFreeSearch').value.trim();
+  renderFreeLinks();
+});
+
+/* Ajout d'une URL DANS la case : le champ remplace le `+`, Entrée valide, Échap annule.
+   Ouvrir une modale pour coller une adresse aurait coûté trois clics là où il en faut un. */
+$('#linkGrid') && $('#linkGrid').addEventListener('click', (e) => {
+  const add = e.target.closest('[data-addurl]');
+  if (add) {
+    const td = add.closest('.link-cell');
+    const sid = add.dataset.addurl;
+    const eid = add.dataset.env;
+    td.innerHTML = `<input type="url" placeholder="https://…" data-urlfor="${sid}" data-env="${eid}" />`;
+    $('input', td).focus();
+    return;
+  }
+  const ed = e.target.closest('[data-editservice]');
+  if (ed) openServiceModal(Number(ed.dataset.editservice));
+});
+$('#linkGrid') && $('#linkGrid').addEventListener('keydown', async (e) => {
+  const inp = e.target.closest('[data-urlfor]');
+  if (!inp) return;
+  if (e.key === 'Escape') { e.preventDefault(); renderLinkGrid(); return; }
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  try {
+    await api(`/services/${inp.dataset.urlfor}/urls`, { method: 'PUT', body: { environment_id: Number(inp.dataset.env), url: inp.value } });
+    await loadLinks();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+$('#linkFreeList') && $('#linkFreeList').addEventListener('click', (e) => {
+  const ed = e.target.closest('[data-editfree]');
+  if (ed) { openFreeModal(Number(ed.dataset.editfree)); return; }
+  const pick = e.target.closest('[data-freepick]');
+  if (pick) {
+    const id = Number(pick.dataset.freepick);
+    if (pick.checked) LINKS.selection.add(id); else LINKS.selection.delete(id);
+    const btn = $('#linkToService');
+    if (btn) btn.hidden = LINKS.selection.size < 1;
+  }
+});
+
+/* ---------- Environnements ---------- */
+
+let envEnCours = null;
+function openEnvModal(env) {
+  envEnCours = env || null;
+  $('#envModalTitle').textContent = tr(env ? 'links.env.edit' : 'links.env.new');
+  $('#envName').value = env ? env.name : '';
+  $('#envColor').value = (env && env.color) || '#2f6fe0';
+  $('#envHealth').checked = !!(env && env.health_check);
+  $('#envDelete').hidden = !env;
+  $('#envModal').hidden = false;
+  setTimeout(() => $('#envName').focus(), 0);
+}
+$('#linkNewEnv') && $('#linkNewEnv').addEventListener('click', () => openEnvModal(null));
+$('#envCancel') && $('#envCancel').addEventListener('click', () => { $('#envModal').hidden = true; });
+fermerAuFond('#envModal', () => { $('#envModal').hidden = true; }, { salissable: true });
+$('#envSave') && $('#envSave').addEventListener('click', async () => {
+  const body = { name: $('#envName').value, color: $('#envColor').value, health_check: $('#envHealth').checked ? 1 : 0 };
+  try {
+    if (envEnCours) await api(`/environments/${envEnCours.id}`, { method: 'PUT', body });
+    else await api('/environments', { method: 'POST', body });
+    $('#envModal').hidden = true;
+    await loadLinks();
+  } catch (e) { toast(explainError(e.message), true); }
+});
+$('#envDelete') && $('#envDelete').addEventListener('click', async () => {
+  if (!envEnCours) return;
+  if (!await confirmDialog({
+    title: tr('links.env.delete'), text: tr('links.env.delete-text', { name: envEnCours.name }),
+    confirmLabel: tr('ui.delete'),
+  })) return;
+  try {
+    await api(`/environments/${envEnCours.id}`, { method: 'DELETE' });
+    $('#envModal').hidden = true;
+    await loadLinks();
+  } catch (e) { toast(explainError(e.message), true); }
+});
+// L'en-tête d'une colonne ouvre son environnement : c'est là qu'on va le chercher.
+$('#linkGrid') && $('#linkGrid').addEventListener('click', (e) => {
+  const th = e.target.closest('thead th');
+  if (!th || th.classList.contains('link-svc')) return;
+  const i = [...th.parentElement.children].indexOf(th) - 1;
+  const env = ((LINKS.grid && LINKS.grid.environments) || [])[i];
+  if (env) openEnvModal(env);
+});
+
+/* ---------- Services et liens contextuels ---------- */
+
+let serviceEnCours = null;
+async function openServiceModal(id) {
+  serviceEnCours = id ? ((LINKS.grid.services || []).find((s) => s.id === id) || null) : null;
+  $('#serviceModalTitle').textContent = tr(serviceEnCours ? 'links.service.edit' : 'links.service.new');
+  $('#serviceName').value = serviceEnCours ? serviceEnCours.name : '';
+  $('#serviceTags').value = serviceEnCours ? (serviceEnCours.tags || []).join(', ') : '';
+  // Le choix du dépôt passe par le sélecteur À RECHERCHE, comme partout ailleurs.
+  /* Le dépôt se choisit dans le sélecteur À RECHERCHE, comme partout : la liste peut
+     compter des dizaines d'entrées. `defaultFirst: false` — un service sans dépôt est le
+     cas courant, en pré-sélectionner un au hasard poserait des boutons sur ses MR. */
+  await loadRepoOptions();
+  $('#serviceRepoBox').innerHTML = repoComboHtml(serviceEnCours ? serviceEnCours.repo_id : null, { idClass: 'js-service-repo', defaultFirst: false });
+  wireRepoCombos($('#serviceRepoBox'));
+  $('#serviceDelete').hidden = !serviceEnCours;
+  $('#serviceCtxBox').hidden = !serviceEnCours;
+  if (serviceEnCours) await renderCtxLinks(serviceEnCours.id);
+  $('#serviceModal').hidden = false;
+  setTimeout(() => $('#serviceName').focus(), 0);
+}
+async function renderCtxLinks(serviceId) {
+  const box = $('#serviceCtxList');
+  try {
+    const d = await api(`/services/${serviceId}/context-links`);
+    box.innerHTML = (d.links || []).length
+      ? d.links.map((l) => `<div class="link-ctx-row"><strong>${esc(l.label)}</strong>`
+        + `<code>${esc(l.url_template)}</code>`
+        + `<button type="button" class="btn btn-sm btn-ghost btn-danger" data-delctx="${l.id}">${svgIco('trash')}</button></div>`).join('')
+      : `<p class="muted">${esc(tr('links.ctx.empty'))}</p>`;
+  } catch (e) { box.innerHTML = errorBox(e.message); }
+}
+$('#serviceCtxList') && $('#serviceCtxList').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-delctx]');
+  if (!b || !serviceEnCours) return;
+  try { await api(`/context-links/${b.dataset.delctx}`, { method: 'DELETE' }); await renderCtxLinks(serviceEnCours.id); }
+  catch (err) { toast(explainError(err.message), true); }
+});
+$('#ctxAdd') && $('#ctxAdd').addEventListener('click', async () => {
+  if (!serviceEnCours) return;
+  try {
+    await api(`/services/${serviceEnCours.id}/context-links`, { method: 'POST', body: { label: $('#ctxLabel').value, url_template: $('#ctxTemplate').value } });
+    $('#ctxLabel').value = ''; $('#ctxTemplate').value = '';
+    await renderCtxLinks(serviceEnCours.id);
+  } catch (e) { toast(explainError(e.message), true); }
+});
+$('#linkNewService') && $('#linkNewService').addEventListener('click', () => openServiceModal(null));
+$('#serviceCancel') && $('#serviceCancel').addEventListener('click', () => { $('#serviceModal').hidden = true; });
+fermerAuFond('#serviceModal', () => { $('#serviceModal').hidden = true; }, { salissable: true });
+$('#serviceSave') && $('#serviceSave').addEventListener('click', async () => {
+  const repo = $('#serviceRepoBox .js-service-repo');
+  const body = {
+    name: $('#serviceName').value,
+    tags: $('#serviceTags').value,
+    repo_id: repo ? Number(repo.value) || null : null,
+  };
+  try {
+    if (serviceEnCours) await api(`/services/${serviceEnCours.id}`, { method: 'PUT', body });
+    else await api('/services', { method: 'POST', body });
+    $('#serviceModal').hidden = true;
+    await loadLinks();
+  } catch (e) { toast(explainError(e.message), true); }
+});
+$('#serviceDelete') && $('#serviceDelete').addEventListener('click', async () => {
+  if (!serviceEnCours) return;
+  if (!await confirmDialog({
+    title: tr('links.service.delete'), text: tr('links.service.delete-text', { name: serviceEnCours.name }),
+    confirmLabel: tr('ui.delete'),
+  })) return;
+  try {
+    await api(`/services/${serviceEnCours.id}`, { method: 'DELETE' });
+    $('#serviceModal').hidden = true;
+    await loadLinks();
+  } catch (e) { toast(explainError(e.message), true); }
+});
+
+/* ---------- Liens libres ---------- */
+
+let freeEnCours = null;
+function openFreeModal(id) {
+  freeEnCours = id ? (((LINKS.grid && LINKS.grid.free_links) || []).find((l) => l.id === id) || null) : null;
+  $('#freeLinkTitle').textContent = tr(freeEnCours ? 'links.free.edit' : 'links.free.new');
+  $('#freeLabel').value = freeEnCours ? freeEnCours.label : '';
+  $('#freeUrl').value = freeEnCours ? freeEnCours.url : '';
+  $('#freeTags').value = freeEnCours ? (freeEnCours.tags || []).join(', ') : '';
+  $('#freeDelete').hidden = !freeEnCours;
+  $('#freeLinkModal').hidden = false;
+  setTimeout(() => $('#freeLabel').focus(), 0);
+}
+$('#linkNewFree') && $('#linkNewFree').addEventListener('click', () => openFreeModal(null));
+$('#freeCancel') && $('#freeCancel').addEventListener('click', () => { $('#freeLinkModal').hidden = true; });
+fermerAuFond('#freeLinkModal', () => { $('#freeLinkModal').hidden = true; }, { salissable: true });
+$('#freeSave') && $('#freeSave').addEventListener('click', async () => {
+  const body = { label: $('#freeLabel').value, url: $('#freeUrl').value, tags: $('#freeTags').value };
+  try {
+    if (freeEnCours) await api(`/free-links/${freeEnCours.id}`, { method: 'PUT', body });
+    else await api('/free-links', { method: 'POST', body });
+    $('#freeLinkModal').hidden = true;
+    await loadLinks();
+  } catch (e) { toast(explainError(e.message), true); }
+});
+$('#freeDelete') && $('#freeDelete').addEventListener('click', async () => {
+  if (!freeEnCours) return;
+  if (!await confirmDialog({ title: tr('links.free.delete'), text: tr('links.free.delete-text', { label: freeEnCours.label }), confirmLabel: tr('ui.delete') })) return;
+  try {
+    await api(`/free-links/${freeEnCours.id}`, { method: 'DELETE' });
+    $('#freeLinkModal').hidden = true;
+    await loadLinks();
+  } catch (e) { toast(explainError(e.message), true); }
+});
+
+/* ---------- Convertir des liens libres en service ---------- */
+
+$('#linkToService') && $('#linkToService').addEventListener('click', () => {
+  const choisis = ((LINKS.grid && LINKS.grid.free_links) || []).filter((l) => LINKS.selection.has(l.id));
+  if (!choisis.length) return;
+  const envs = (LINKS.grid.environments || []);
+  if (!envs.length) { toast(tr('links.free.need-env'), true); return; }
+  $('#toServiceName').value = nomCommun(choisis.map((l) => l.label));
+  /* Une ligne par lien, un environnement à choisir : le mapping est EXPLICITE. Deviner
+     « dev » depuis une URL contenant « -dev » marcherait neuf fois sur dix — et la dixième
+     poserait une URL de production dans la colonne de développement. */
+  $('#toServiceRows').innerHTML = choisis.map((l) => `<div class="link-ctx-row">
+      <span class="link-free-url" title="${esc(l.url)}">${esc(l.label)} — ${esc(l.url)}</span>
+      <select data-mapfree="${l.id}">
+        <option value="">${esc(tr('links.free.skip'))}</option>
+        ${envs.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('')}
+      </select>
+    </div>`).join('');
+  $('#toServiceModal').hidden = false;
+});
+// Le plus long préfixe commun aux libellés : « Kibana dev » + « Kibana prod » → « Kibana ».
+function nomCommun(labels) {
+  if (!labels.length) return '';
+  let p = labels[0];
+  for (const l of labels.slice(1)) {
+    let i = 0;
+    while (i < p.length && i < l.length && p[i].toLowerCase() === l[i].toLowerCase()) i += 1;
+    p = p.slice(0, i);
+  }
+  return p.replace(/[\s\-—·|]+$/, '').trim() || labels[0];
+}
+$('#toServiceCancel') && $('#toServiceCancel').addEventListener('click', () => { $('#toServiceModal').hidden = true; });
+fermerAuFond('#toServiceModal', () => { $('#toServiceModal').hidden = true; }, { salissable: true });
+$('#toServiceOk') && $('#toServiceOk').addEventListener('click', async () => {
+  const mapping = $$('#toServiceRows [data-mapfree]')
+    .filter((s) => s.value)
+    .map((s) => ({ free_link_id: Number(s.dataset.mapfree), environment_id: Number(s.value) }));
+  try {
+    const r = await api('/free-links/to-service', { method: 'POST', body: { name: $('#toServiceName').value, mapping } });
+    $('#toServiceModal').hidden = true;
+    LINKS.selection.clear();
+    toast(tr('links.free.converted', { n: r.convertis, count: r.convertis }));
+    await loadLinks();
+  } catch (e) { toast(explainError(e.message), true); }
+});
+
+/* ---------- Import Chrome ---------- */
+
+$('#linkImport') && $('#linkImport').addEventListener('click', () => {
+  LINKS.importLinks = [];
+  $('#importPreview').hidden = true;
+  $('#importApply').disabled = true;
+  $('#importFile').value = '';
+  $('#importModal').hidden = false;
+});
+$('#importCancel') && $('#importCancel').addEventListener('click', () => { $('#importModal').hidden = true; });
+fermerAuFond('#importModal', () => { $('#importModal').hidden = true; }, { salissable: true });
+$('#importFile') && $('#importFile').addEventListener('change', async () => {
+  const f = $('#importFile').files[0];
+  if (!f) return;
+  try {
+    const html = await f.text();
+    const d = await api('/links/import', { method: 'POST', body: { html } });
+    LINKS.importLinks = d.links || [];
+    renderImport();
+  } catch (e) { toast(explainError(e.message), true); }
+});
+/* L'arbre des dossiers, tel qu'il était dans le navigateur : on reconnaît son propre
+   rangement, ce qui rend le choix évident. Les tags proposés viennent de ce chemin. */
+function renderImport() {
+  const box = $('#importTree');
+  if (!LINKS.importLinks.length) {
+    box.innerHTML = `<p class="muted">${esc(tr('links.import.empty'))}</p>`;
+    $('#importPreview').hidden = false;
+    $('#importApply').disabled = true;
+    return;
+  }
+  const parDossier = new Map();
+  LINKS.importLinks.forEach((l, i) => {
+    const d = l.folder || tr('links.import.root');
+    if (!parDossier.has(d)) parDossier.set(d, []);
+    parDossier.get(d).push({ ...l, i });
+  });
+  box.innerHTML = [...parDossier.entries()].map(([dossier, liens]) => `
+    <div class="import-folder">${esc(dossier)}</div>
+    ${liens.map((l) => `<label class="import-item">
+      <input type="checkbox" data-imp="${l.i}" checked />
+      <span>${esc(l.label)}</span>
+      <span class="import-url">${esc(l.url)}</span>
+    </label>`).join('')}`).join('');
+  $('#importPreview').hidden = false;
+  majImportCount();
+}
+function majImportCount() {
+  const n = $$('#importTree [data-imp]:checked').length;
+  $('#importCount').textContent = tr('links.import.count', { n, count: n });
+  $('#importApply').disabled = !n;
+}
+$('#importTree') && $('#importTree').addEventListener('change', majImportCount);
+$('#importAll') && $('#importAll').addEventListener('click', () => { $$('#importTree [data-imp]').forEach((c) => { c.checked = true; }); majImportCount(); });
+$('#importNone') && $('#importNone').addEventListener('click', () => { $$('#importTree [data-imp]').forEach((c) => { c.checked = false; }); majImportCount(); });
+$('#importApply') && $('#importApply').addEventListener('click', async (e) => {
+  const choisis = $$('#importTree [data-imp]:checked').map((c) => LINKS.importLinks[Number(c.dataset.imp)]).filter(Boolean);
+  try {
+    const r = await busy(e.currentTarget, () => api('/links/import/apply', { method: 'POST', body: { links: choisis } }));
+    $('#importModal').hidden = true;
+    /* Le compte des IGNORÉS est dit : un import rejoué qui ne crée rien doit s'expliquer,
+       sinon il passe pour un échec silencieux. */
+    toast(r.skipped
+      ? tr('links.import.done-skipped', { n: r.created, count: r.created, skipped: r.skipped })
+      : tr('links.import.done', { n: r.created, count: r.created }));
+    await loadLinks();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
+/* ---------- Health check à la demande ---------- */
+
+$('#linkHealthNow') && $('#linkHealthNow').addEventListener('click', async (e) => {
+  try {
+    const r = await busy(e.currentTarget, () => api('/links/health/check', { method: 'POST' }));
+    toast(tr('links.health.done', { up: r.up, down: r.down }));
+    await loadLinks();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
+$('#linkGrid') && $('#linkGrid').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-empty-act="newenv"]');
+  if (b) openEnvModal(null);
+});
+
+/* ---------- Boutons contextuels sur une merge request ---------- */
+
+/* Les liens du service associé au dépôt de la MR : ses URLs de grille, puis ses gabarits
+   résolus avec la branche et le numéro. Un gabarit non résoluble ICI reste affiché, GRISÉ,
+   avec sa raison — le faire disparaître laisserait croire qu'il n'existe pas. */
+async function renderMrLinks(mrId, box) {
+  if (!box) return;
+  let d;
+  try { d = await api(`/mrs/${mrId}/links`); } catch { return; }
+  if (!d.service || (!d.envs.length && !d.context.length)) return;
+  const boutons = [
+    ...d.envs.map((e) => `<a class="btn btn-sm" href="${esc(e.url)}" target="_blank" rel="noopener noreferrer"
+        data-usekind="service_url" data-useref="${d.service.id}:${e.environment_id}">
+        <span class="link-env-dot" style="background:${esc(e.color)}"></span>${esc(tr('links.mr.open', { env: e.env }))}</a>`),
+    ...d.context.flatMap((c) => {
+      if (c.per_env.length) {
+        return c.per_env.map((k) => (k.url
+          ? `<a class="btn btn-sm" href="${esc(k.url)}" target="_blank" rel="noopener noreferrer">${svgIco('zap')}${esc(c.label)} · ${esc(k.env)}</a>`
+          : `<button type="button" class="btn btn-sm" disabled title="${esc(tr('links.mr.unresolved', { name: `{${k.manquante}}` }))}">${svgIco('zap')}${esc(c.label)} · ${esc(k.env)}</button>`));
+      }
+      return [c.url
+        ? `<a class="btn btn-sm" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${svgIco('zap')}${esc(c.label)}</a>`
+        : `<button type="button" class="btn btn-sm" disabled title="${esc(tr('links.mr.unresolved', { name: `{${c.manquante}}` }))}">${svgIco('zap')}${esc(c.label)}</button>`];
+    }),
+  ];
+  box.innerHTML = `<div class="mr-links"><span class="muted">${esc(d.service.name)}</span>${boutons.join('')}</div>`;
+}
+
+/* ---------- Sidebar ---------- */
+
+const SIDEBAR_KEY = 'mergerie_sidebar';
+function appliquerSidebar(compacte) {
+  document.body.classList.toggle('sidebar-compacte', compacte);
+  /* Sous 1100 px, le CSS compacte de lui-même. `sidebar-large` dit « l'utilisateur a
+     DEMANDÉ le format large » et lève cette compaction automatique — sans quoi son choix
+     serait ignoré sur un écran moyen sans qu'il comprenne pourquoi. */
+  document.body.classList.toggle('sidebar-large', !compacte);
+  const b = $('#sidebarToggle');
+  if (b) b.title = tr(compacte ? 'nav.expand' : 'nav.collapse');
+}
+$('#sidebarToggle') && $('#sidebarToggle').addEventListener('click', () => {
+  const compacte = !document.body.classList.contains('sidebar-compacte');
+  try { localStorage.setItem(SIDEBAR_KEY, compacte ? '1' : '0'); } catch { /* stockage indisponible */ }
+  appliquerSidebar(compacte);
+});
+(function restaurerSidebar() {
+  let v = null;
+  try { v = localStorage.getItem(SIDEBAR_KEY); } catch { /* stockage indisponible */ }
+  // Sans choix enregistré, on laisse le CSS décider selon la largeur.
+  if (v !== null) appliquerSidebar(v === '1');
+})();
+
 /* ---------- Raccourcis clavier ----------
    Un seul écouteur, avec garde de saisie : on ne détourne jamais une frappe
    destinée à un champ de texte. Les vues plein écran gardent leurs propres touches. */
@@ -9686,6 +10307,9 @@ document.addEventListener('keydown', (e) => {
     /* Capture rapide : la touche la plus utile de l'onglet Notes est celle qui n'oblige pas
        à y aller. On note ce qui vient de passer, on trie plus tard. */
     case 'n': e.preventDefault(); openCapture(); break;
+    /* `o` comme « ouvrir » : la palette est le chemin le plus court vers n'importe quoi, et
+       elle mérite une touche seule en plus de Ctrl/Cmd + K. */
+    case 'o': e.preventDefault(); openPalette(); break;
     /* Navigation au clavier dans la liste courante. Ce qu'elle procure n'est pas une
        surprise mais un RYTHME : traiter vingt MR au clavier, c'est de la cadence ; à la
        souris, c'est de la visée. Aucune logique dupliquée — on clique les boutons rendus. */

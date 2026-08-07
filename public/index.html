@@ -54,6 +54,7 @@
     <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4M9 4h6"/><circle cx="9" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1.2" fill="currentColor" stroke="none"/></symbol>
     <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8"/></symbol>
     <symbol id="i-clip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
     <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></symbol>
     <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
@@ -89,16 +90,15 @@
         <span class="baseline"><span data-i18n="ui.baseline.1">L'IA prépare tes MR — review, corrections, convergence.</span><span data-i18n="ui.baseline.2">C'est toi qui merges.</span></span>
         </div>
     </div>
-    <nav>
-        <button data-tab="review" class="active" title="Merge requests : à traiter, reviewées, traitées" data-i18n-title="ui.title.merge-requests-a-traiter-reviewees"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="nav.reviews">Reviews</span><span class="nav-count" id="navCountReview" hidden>0</span><span class="nav-health warn" id="navLowScores" hidden>0</span></button>
-        <button data-tab="task" title="Sessions de développement pilotées par l'IA" data-i18n-title="ui.title.sessions-de-developpement-pilotees-par"><svg class="ico"><use href="#i-bot"/></svg><span data-i18n="nav.tasks">Dev IA</span><span class="nav-count" id="navCountTask" hidden>0</span></button>
-        <button data-tab="notes" title="Notes, todos et rappels — et le brief du matin" data-i18n-title="ui.title.notes"><svg class="ico"><use href="#i-clip"/></svg><span data-i18n="nav.notes">Notes</span><span class="nav-health err" id="navTodoUrgent" hidden>0</span><span class="nav-count" id="navCountNotes" hidden>0</span></button>
-        <button data-tab="jira" title="Mes tickets Jira affectés : contenu, métadonnées, commentaires" data-i18n-title="jira.tab.title"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="nav.jira">Jira</span><span class="nav-count" id="navCountJira" hidden>0</span></button>
-        <button data-tab="git" title="Opérations sur les dépôts : branches et tags" data-i18n-title="git.tab.title"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="nav.git">Git</span></button>
-        <button data-tab="docker" title="Projets Docker Compose et containers : drift .env, actions" data-i18n-title="docker.tab.title"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="nav.docker">Docker</span><span class="nav-health err" id="dockerErrBadge" hidden>0</span><span class="nav-health warn" id="dockerUnhealthyBadge" hidden>0</span></button>
-        <button data-tab="dashboard" title="Statistiques et activité" data-i18n-title="ui.title.statistiques-et-activite"><svg class="ico"><use href="#i-chart"/></svg><span data-i18n="ui.btn.statistiques">Statistiques</span></button>
-        <button data-tab="admin" title="Dépôts, token, règles de review, thème" data-i18n-title="ui.title.depots-token-regles-de-review"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="ui.btn.reglages">Réglages</span></button>
-    </nav>
+    <!-- La navigation est partie à gauche : l'en-tête avait un grand vide au milieu. Il
+         accueille le déclencheur de la PALETTE — qui souffrait du défaut inverse, être
+         invisible tant qu'on ne connaît pas le raccourci. L'espace sert, et la fonction se
+         découvre. -->
+    <button type="button" id="paletteTrigger" class="palette-trigger" data-i18n-title="palette.open-title">
+        <svg class="ico"><use href="#i-search"/></svg>
+        <span data-i18n="palette.open">Rechercher un lien, une MR, un ticket…</span>
+        <kbd id="paletteKbd">Ctrl K</kbd>
+    </button>
     <div class="header-right">
         <div id="chrono" class="chrono" title="Chrono de session de travail" data-i18n-title="ui.title.chrono-de-session-de-travail">
             <span id="chronoTime">00:00</span>
@@ -135,6 +135,24 @@
     <div id="logBox" hidden></div>
 </div>
 
+<!-- La navigation est une SIDEBAR : à huit puis neuf entrées, une barre horizontale
+     dans l'en-tête arrivait au bout de la place — « Dev IA » passait déjà sur deux lignes.
+     Verticalement, chaque entrée a sa ligne, ses badges tiennent, et les suivantes ne
+     coûtent rien. Les boutons gardent `data-tab` : raccourcis, palette et tests continuent
+     de les désigner comme avant. -->
+<div class="shell">
+<nav class="sidebar" id="sidebar">
+        <button data-tab="review" class="active" title="Merge requests : à traiter, reviewées, traitées" data-i18n-title="ui.title.merge-requests-a-traiter-reviewees"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="nav.reviews">Reviews</span><span class="nav-count" id="navCountReview" hidden>0</span><span class="nav-health warn" id="navLowScores" hidden>0</span></button>
+        <button data-tab="task" title="Sessions de développement pilotées par l'IA" data-i18n-title="ui.title.sessions-de-developpement-pilotees-par"><svg class="ico"><use href="#i-bot"/></svg><span data-i18n="nav.tasks">Dev IA</span><span class="nav-count" id="navCountTask" hidden>0</span></button>
+        <button data-tab="notes" title="Notes, todos et rappels — et le brief du matin" data-i18n-title="ui.title.notes"><svg class="ico"><use href="#i-clip"/></svg><span data-i18n="nav.notes">Notes</span><span class="nav-health err" id="navTodoUrgent" hidden>0</span><span class="nav-count" id="navCountNotes" hidden>0</span></button>
+        <button data-tab="jira" title="Mes tickets Jira affectés : contenu, métadonnées, commentaires" data-i18n-title="jira.tab.title"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="nav.jira">Jira</span><span class="nav-count" id="navCountJira" hidden>0</span></button>
+        <button data-tab="git" title="Opérations sur les dépôts : branches et tags" data-i18n-title="git.tab.title"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="nav.git">Git</span></button>
+        <button data-tab="docker" title="Projets Docker Compose et containers : drift .env, actions" data-i18n-title="docker.tab.title"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="nav.docker">Docker</span><span class="nav-health err" id="dockerErrBadge" hidden>0</span><span class="nav-health warn" id="dockerUnhealthyBadge" hidden>0</span></button>
+        <button data-tab="links" title="Liens de travail : grille services × environnements, liens libres" data-i18n-title="links.tab.title"><svg class="ico"><use href="#i-link"/></svg><span data-i18n="nav.links">Liens</span><span class="nav-health err" id="navLinksDown" hidden>0</span></button>
+        <button data-tab="dashboard" title="Statistiques et activité" data-i18n-title="ui.title.statistiques-et-activite"><svg class="ico"><use href="#i-chart"/></svg><span data-i18n="ui.btn.statistiques">Statistiques</span></button>
+        <button data-tab="admin" title="Dépôts, token, règles de review, thème" data-i18n-title="ui.title.depots-token-regles-de-review"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="ui.btn.reglages">Réglages</span></button>
+    <button type="button" id="sidebarToggle" class="sidebar-toggle" data-i18n-title="nav.collapse" title="Réduire le menu"><svg class="ico"><use href="#i-left"/></svg><span data-i18n="nav.collapse-label">Réduire</span></button>
+</nav>
 <main>
     <!-- Reviews : les 3 stades d'une même MR, réunis (le parcours ne casse plus au milieu) -->
     <section id="tab-review" class="tab active">
@@ -604,6 +622,32 @@
         </div>
     </section>
 
+    <!-- Liens : la grille services × environnements, puis les liens libres. Deux formes
+         parce qu'il y a deux réalités — un service existe en quatre environnements, une
+         page Confluence n'existe qu'une fois. -->
+    <section id="tab-links" class="tab">
+        <div class="toolbar">
+            <button id="linkNewEnv" class="btn" data-i18n-title="links.env.new-title"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="links.env.new">Nouvel environnement</span></button>
+            <button id="linkNewService" class="btn btn-primary" data-i18n-title="links.service.new-title"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="links.service.new">Nouveau service</span></button>
+            <button id="linkImport" class="btn" data-i18n-title="links.import.btn-title"><svg class="ico"><use href="#i-upload"/></svg><span data-i18n="links.import.btn">Importer depuis Chrome</span></button>
+            <span class="spacer"></span>
+            <button id="linkHealthNow" class="btn" data-i18n-title="links.health.now-title" hidden><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="links.health.now">Vérifier la santé</span></button>
+            <span id="linkInfo" class="muted"></span>
+        </div>
+        <!-- Un filtre par TAG, pas des dossiers : un service appartient souvent à deux
+             familles à la fois, et un arbre l'obligerait à en choisir une. -->
+        <div id="linkTags" class="link-tags"></div>
+        <div id="linkGrid" class="link-grid-wrap"></div>
+
+        <h3 class="link-free-head" data-i18n="links.free.title">Liens libres</h3>
+        <div class="toolbar toolbar-tight">
+            <input id="linkFreeSearch" type="search" class="jira-search" placeholder="Rechercher un lien…" data-i18n-placeholder="links.free.search" />
+            <button id="linkNewFree" class="btn" data-i18n-title="links.free.new-title"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="links.free.new">Nouveau lien</span></button>
+            <button id="linkToService" class="btn" data-i18n-title="links.free.to-service-title" hidden><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="links.free.to-service">Convertir en service</span></button>
+        </div>
+        <div id="linkFreeList" class="link-free-list"></div>
+    </section>
+
     <section id="tab-admin" class="tab">
         <div class="segmented subnav" role="tablist">
             <button data-sub="rules" class="active" role="tab" title="Critères ajoutés au prompt de review selon le nom de branche" data-i18n-title="settings.title.criteres-ajoutes-au-prompt-de" data-i18n="settings.btn.regles-de-review-specifiques">Règles de review spécifiques</button>
@@ -858,6 +902,13 @@ print(json.dumps({
             <!-- Brief du matin : l'atterrissage est un réglage de l'OUTIL (comme la langue),
                  pas du navigateur — d'où la base et non le localStorage. -->
             <label class="inline-check"><input form="configForm" name="brief_on_open" type="checkbox" /> <span data-i18n="settings.lbl.brief-on-open">Brief du matin à la première ouverture</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.brief-on-open" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- Santé des liens : opt-in GLOBAL, et opt-in par environnement dans l'onglet
+                 Liens. Deux verrous, parce que pinguer la prod n'est pas une décision que
+                 l'outil prend à la place de son utilisateur. -->
+            <label class="inline-check"><input form="configForm" name="health_check" type="checkbox" /> <span data-i18n="settings.lbl.health-check">Vérifier la santé des liens</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.health-check" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <label><span data-i18n="settings.lbl.health-minutes">Vérifier la santé toutes les (minutes)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.health-minutes" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="health_minutes" type="number" min="1" max="1440" step="1" placeholder="5" />
+            </label>
             <label><span data-i18n="settings.lbl.stale-mr-days">MR dormante au bout de (jours)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.stale-mr-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <input form="configForm" name="stale_mr_days" type="number" min="1" max="90" step="1" placeholder="5" />
             </label>
@@ -1000,6 +1051,7 @@ print(json.dumps({
         </div><!-- /sub-aisession -->
     </section>
 </main>
+</div><!-- /.shell -->
 
 <!-- Lightbox : aperçu d'une image de pièce jointe Jira en grand (clic sur une vignette). -->
 <div id="jiraLightbox" class="modal jira-lightbox" hidden>
@@ -1136,6 +1188,131 @@ print(json.dumps({
 <!-- Capture rapide : touche « n » depuis n'importe quel onglet. Un champ, Entrée, c'est fait.
      Le tri (priorité, échéance, lien) se fait plus tard dans l'onglet — la capture doit coûter
      deux secondes, sinon on la remplace par un post-it. -->
+<!-- Un environnement : nom, couleur d'en-tête, et son propre interrupteur de santé —
+     la prod reste hors du lot tant qu'on ne l'a pas demandée. -->
+<div id="envModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 id="envModalTitle" data-i18n="links.env.new">Nouvel environnement</h3>
+        <div class="form">
+            <label><span data-i18n="links.env.name">Nom</span>
+                <input id="envName" type="text" maxlength="100" placeholder="dev, preprod, prod…" data-i18n-placeholder="links.env.name-ph" />
+            </label>
+            <label><span data-i18n="links.env.color">Couleur d'en-tête</span>
+                <input id="envColor" type="color" value="#2f6fe0" />
+            </label>
+            <label class="inline-check"><input id="envHealth" type="checkbox" /> <span data-i18n="links.env.health">Vérifier la santé de cet environnement</span>
+                <button type="button" class="hint" tabindex="0" data-i18n-tip="links.env.health-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+            </label>
+        </div>
+        <div class="modal-actions">
+            <button id="envDelete" type="button" class="btn btn-danger" hidden data-i18n="ui.delete">Supprimer</button>
+            <span class="spacer"></span>
+            <button id="envCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="envSave" type="button" class="btn btn-primary" data-i18n="ui.save">Enregistrer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Un service : son nom, le dépôt Mergerie associé (c'est lui qui fait apparaître les
+     boutons sur les MR), ses tags, et ses liens contextuels à gabarit. -->
+<div id="serviceModal" class="modal" hidden>
+    <div class="modal-box modal-service">
+        <h3 id="serviceModalTitle" data-i18n="links.service.new">Nouveau service</h3>
+        <div class="form">
+            <label><span data-i18n="links.service.name">Nom</span>
+                <input id="serviceName" type="text" maxlength="100" placeholder="api-core" data-i18n-placeholder="links.service.name-ph" />
+            </label>
+            <label><span data-i18n="links.service.repo">Dépôt associé (optionnel)</span>
+                <button type="button" class="hint" tabindex="0" data-i18n-tip="links.service.repo-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <div id="serviceRepoBox"></div>
+            </label>
+            <label><span data-i18n="links.service.tags">Tags (séparés par des virgules)</span>
+                <input id="serviceTags" type="text" maxlength="300" placeholder="backend, paiement" data-i18n-placeholder="links.service.tags-ph" />
+            </label>
+        </div>
+        <div id="serviceCtxBox" hidden>
+            <h4 data-i18n="links.ctx.title">Liens contextuels (sur les merge requests)</h4>
+            <p class="muted" data-i18n-html="links.ctx.help">Variables : <code>{env}</code>, <code>{branch}</code>, <code>{mr_iid}</code>, <code>{service}</code>. Chaque valeur est URL-encodée.</p>
+            <div id="serviceCtxList"></div>
+            <div class="link-ctx-form">
+                <input id="ctxLabel" type="text" maxlength="100" placeholder="Logs" data-i18n-placeholder="links.ctx.label-ph" />
+                <input id="ctxTemplate" type="text" maxlength="2000" placeholder="https://kibana-{env}.corp/?q={service}%20{branch}" data-i18n-placeholder="links.ctx.template-ph" />
+                <button id="ctxAdd" type="button" class="btn btn-sm btn-primary" data-i18n="ui.add">Ajouter</button>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button id="serviceDelete" type="button" class="btn btn-danger" hidden data-i18n="ui.delete">Supprimer</button>
+            <span class="spacer"></span>
+            <button id="serviceCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="serviceSave" type="button" class="btn btn-primary" data-i18n="ui.save">Enregistrer</button>
+        </div>
+    </div>
+</div>
+
+<div id="freeLinkModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 id="freeLinkTitle" data-i18n="links.free.new">Nouveau lien</h3>
+        <div class="form">
+            <label><span data-i18n="links.free.label">Libellé</span>
+                <input id="freeLabel" type="text" maxlength="100" />
+            </label>
+            <label><span data-i18n="links.free.url">URL</span>
+                <input id="freeUrl" type="url" maxlength="2000" placeholder="https://…" />
+            </label>
+            <label><span data-i18n="links.service.tags">Tags (séparés par des virgules)</span>
+                <input id="freeTags" type="text" maxlength="300" />
+            </label>
+        </div>
+        <div class="modal-actions">
+            <button id="freeDelete" type="button" class="btn btn-danger" hidden data-i18n="ui.delete">Supprimer</button>
+            <span class="spacer"></span>
+            <button id="freeCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="freeSave" type="button" class="btn btn-primary" data-i18n="ui.save">Enregistrer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Import : APERÇU d'abord, création ensuite — comme les opérations git. On voit l'arbre
+     et ce qui sera créé avant que quoi que ce soit ne bouge. -->
+<div id="importModal" class="modal" hidden>
+    <div class="modal-box modal-import">
+        <h3 data-i18n="links.import.title">Importer les marque-pages de Chrome</h3>
+        <p class="muted" data-i18n="links.import.help">Chrome → Favoris → Gestionnaire de favoris → ⋮ → Exporter les favoris. Le fichier n'est jamais exécuté : il est seulement analysé.</p>
+        <input id="importFile" type="file" accept=".html,.htm,text/html" />
+        <div id="importPreview" hidden>
+            <div class="toolbar toolbar-tight">
+                <span id="importCount" class="muted"></span>
+                <span class="spacer"></span>
+                <button id="importAll" type="button" class="btn btn-sm btn-ghost" data-i18n="links.import.all">Tout cocher</button>
+                <button id="importNone" type="button" class="btn btn-sm btn-ghost" data-i18n="links.import.none">Tout décocher</button>
+            </div>
+            <div id="importTree" class="import-tree"></div>
+        </div>
+        <div class="modal-actions">
+            <button id="importCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="importApply" type="button" class="btn btn-primary" disabled data-i18n="links.import.apply">Importer la sélection</button>
+        </div>
+    </div>
+</div>
+
+<!-- Convertir des liens libres en service : une ligne par lien, un environnement à choisir.
+     Mapping EXPLICITE — aucune détection service×env n'est tentée à l'import. -->
+<div id="toServiceModal" class="modal" hidden>
+    <div class="modal-box modal-import">
+        <h3 data-i18n="links.free.to-service">Convertir en service</h3>
+        <div class="form">
+            <label><span data-i18n="links.service.name">Nom</span>
+                <input id="toServiceName" type="text" maxlength="100" />
+            </label>
+        </div>
+        <div id="toServiceRows"></div>
+        <div class="modal-actions">
+            <button id="toServiceCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="toServiceOk" type="button" class="btn btn-primary" data-i18n="links.free.to-service">Convertir en service</button>
+        </div>
+    </div>
+</div>
+
 <div id="captureModal" class="modal" hidden>
     <div class="modal-box modal-capture">
         <h3 data-i18n="notes.capture.title">Nouvelle todo</h3>

@@ -316,9 +316,9 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     const barre = await page.locator('nav button[data-tab]').evaluateAll(
       (els) => els.map((e) => e.dataset.tab),
     );
-    assert.equal(barre.length, 8);
-    assert.deepEqual(barre, ['review', 'task', 'notes', 'jira', 'git', 'docker', 'dashboard', 'admin'],
-      'quatre paires : le cœur · ce que j’ai à faire · ma machine · le méta');
+    assert.equal(barre.length, 9);
+    assert.deepEqual(barre, ['review', 'task', 'notes', 'jira', 'git', 'docker', 'links', 'dashboard', 'admin'],
+      'le cœur · ce que j’ai à faire · ma machine et ses liens · le méta');
 
     for (let i = 0; i < barre.length; i += 1) {
       await page.locator('body').click();          // le focus quitte tout champ de saisie
@@ -331,7 +331,8 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     // Et la feuille d'aide annonce la plage réelle, pas un « 1 – 8 » recopié une fois de plus.
     await page.keyboard.press('?');
     await page.waitForSelector('#shortcutsModal:not([hidden])');
-    assert.match(await page.locator('#shortcutsList').innerText(), /1 – 8/);
+    assert.match(await page.locator('#shortcutsList').innerText(), /1 – 9/,
+      'la plage annoncée suit le nombre réel d’onglets');
     await page.locator('#shortcutsClose').click();
   });
 
