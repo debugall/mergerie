@@ -702,7 +702,9 @@ link in a new tab, an internal object in its own place.
   keep whatever you hammered last month at the top forever; a plain date would lose what you have
   opened every day for a year.
 - The palette queries the **server**: it therefore sees everything, including what the current tab
-  has not loaded — searching for a merge request from Docker works.
+  has not loaded — searching for a merge request from Docker works. Filtering happens **in the database**, not
+  over a slice of it: a merge request three hundred older ones down is as findable as a fresh one.
+  Only the *answer* is capped — at twelve rows, which is what a dropdown can show.
 
 #### Contextual links on merge requests
 When a service is linked to a repository, the **detail of that repository's merge requests** carries

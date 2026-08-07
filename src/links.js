@@ -207,6 +207,10 @@ function poserUrl(serviceId, body = {}, msgs) {
   const brut = String(body.url == null ? '' : body.url).trim();
   if (!brut) {
     db.prepare('DELETE FROM service_url WHERE service_id = ? AND environment_id = ?').run(Number(serviceId), envId);
+    /* …et son verdict de santé avec elle. Sans ça, effacer l'URL d'un service en panne
+       faisait disparaître la pastille (la case est vide) mais laissait le compteur `down`
+       l'inclure : un badge rouge permanent sur le menu, sans rien à montrer. */
+    db.prepare('DELETE FROM health_status WHERE service_id = ? AND environment_id = ?').run(Number(serviceId), envId);
     return { ok: true, url: null };
   }
   const url = lireUrl(brut, msgs.urlInvalide);
@@ -276,18 +280,26 @@ function supprimerFreeLink(id, msgs) {
 /* Convertit des liens libres en un service : une ligne par lien, affectée à un
    environnement. C'est le geste d'APRÈS l'import — explicite, et non une devinette faite
    à l'import sur des noms de dossiers. */
+/* TOUT OU RIEN. Un environnement supprimé entre l'ouverture de la modale et le clic faisait
+   échouer `poserUrl` en plein milieu : le service existait avec une partie de ses URLs,
+   quelques liens libres avaient déjà disparu, et rejouer butait sur « nom déjà pris ».
+   La transaction rend l'échec propre — on retrouve exactement l'état d'avant. */
 function convertirEnService(body = {}, msgs) {
-  const service = creerService({ name: body.name, repo_id: body.repo_id, tags: body.tags }, msgs);
-  const faits = [];
-  for (const m of (Array.isArray(body.mapping) ? body.mapping : [])) {
-    const lien = db.prepare('SELECT * FROM free_link WHERE id = ?').get(Number(m.free_link_id) || 0);
-    if (!lien) continue;
-    poserUrl(service.id, { environment_id: m.environment_id, url: lien.url }, msgs);
-    // Le lien libre disparaît : le garder en double ferait deux entrées pour la même adresse.
-    db.prepare('DELETE FROM free_link WHERE id = ?').run(lien.id);
-    faits.push(lien.id);
-  }
-  return { service, convertis: faits.length };
+  let service = null;
+  let faits = 0;
+  const trans = db.transaction((mapping) => {
+    service = creerService({ name: body.name, repo_id: body.repo_id, tags: body.tags }, msgs);
+    for (const m of mapping) {
+      const lien = db.prepare('SELECT * FROM free_link WHERE id = ?').get(Number(m.free_link_id) || 0);
+      if (!lien) continue;
+      poserUrl(service.id, { environment_id: m.environment_id, url: lien.url }, msgs);
+      // Le lien libre disparaît : le garder en double ferait deux entrées pour la même adresse.
+      db.prepare('DELETE FROM free_link WHERE id = ?').run(lien.id);
+      faits += 1;
+    }
+  });
+  trans(Array.isArray(body.mapping) ? body.mapping : []);
+  return { service, convertis: faits };
 }
 
 /* ------------------------------------------------------------ grille ---- */
@@ -362,7 +374,11 @@ function liensDeMr(mr) {
       label: c.label,
       per_env: sansEnv ? [] : parEnvRes,
       url: direct ? direct.url : null,
-      manquante: direct ? direct.manquante : (parEnvRes.find((x) => x.manquante) || {}).manquante || null,
+      /* Sans AUCUNE case remplie, `per_env` est vide et rien ne peut dire quelle variable
+         manque : la coupable est alors `{env}` lui-même, faute d'environnement où aller.
+         Sans ce repli, l'info-bulle du bouton grisé annonçait « {null} ». */
+      manquante: direct ? direct.manquante
+        : ((parEnvRes.find((x) => x.manquante) || {}).manquante || (cases.length ? null : 'env')),
     };
   });
   return { service: { id: service.id, name: service.name }, envs: cases, context };
@@ -437,12 +453,36 @@ function scoreFuzzy(texte, requete) {
 
 /* ------------------------------------------------- palette (launcher) ---- */
 
-/* Toutes les sources en SQL, à la demande — aucun index en mémoire à tenir à jour, donc
-   rien à réconcilier quand une MR arrive ou qu'une note change. La requête est bornée par
-   source, puis reclassée globalement : sans plafond par source, un dépôt à mille MR
-   noierait les liens que la palette existe pour retrouver. */
+/* Toutes les sources en SQL, à la demande — aucun index en mémoire à tenir à jour, donc rien
+   à réconcilier quand une MR arrive ou qu'une note change.
+
+   LE PRÉ-FILTRE EST EN SQL, ET C'EST LE POINT. Chaque source est plafonnée pour qu'un dépôt à
+   mille merge requests ne noie pas les liens que la palette existe pour retrouver. Mais tant
+   que ce plafond s'appliquait AVANT la recherche, il ne rendait que les lignes les plus
+   récentes et le flou ne voyait jamais les autres : taper `!214` sur une merge request un peu
+   ancienne ne rendait RIEN, sans un mot — de quoi conclure que la palette est cassée.
+
+   D'où un `LIKE` par mot, en SQL : grossier, mais il ne laisse rien de côté. Le flou affine
+   ensuite sur ce qui reste, et le plafond redevient ce qu'il aurait toujours dû être — un
+   garde-fou contre une réponse démesurée, pas un filtre sur ce qui est cherchable. */
 const PAR_SOURCE = 30;
 const TOTAL = 12;
+
+/* Une condition SQL par mot de la requête, chacun pouvant tomber dans n'importe laquelle des
+   colonnes citées. Rend `{ cond, args }` — `cond` vide quand il n'y a pas de requête, la
+   palette s'ouvrant alors sur les entrées les plus récentes.
+   Le `%` et le `_` d'une saisie sont ÉCHAPPÉS : sans cela, taper « % » ramènerait tout. */
+function preFiltre(requete, colonnes) {
+  const mots = sansAccent(requete).split(/\s+/).filter(Boolean);
+  if (!mots.length) return { cond: '', args: [] };
+  const args = [];
+  const groupes = mots.map((mot) => {
+    const like = `%${mot.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+    const ors = colonnes.map((c) => { args.push(like); return `${c} LIKE ? ESCAPE '\\'`; });
+    return `(${ors.join(' OR ')})`;
+  });
+  return { cond: groupes.join(' AND '), args };
+}
 
 function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
   const requete = String(q || '').trim();
@@ -451,16 +491,20 @@ function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
   const pousser = (o) => out.push(o);
 
   // 1. Liens — les cases de la grille, puis les liens libres.
+  const fCase = preFiltre(requete, ['s.name', 'e.name', 'u.url']);
   for (const r of db.prepare(`SELECT s.id sid, s.name service, e.id eid, e.name env, u.url
       FROM service_url u JOIN service s ON s.id = u.service_id JOIN environment e ON e.id = u.environment_id
-      ORDER BY s.name, e.position LIMIT ?`).all(PAR_SOURCE * 4)) {
+      ${fCase.cond ? `WHERE ${fCase.cond}` : ''}
+      ORDER BY s.name, e.position LIMIT ?`).all(...fCase.args, PAR_SOURCE * 4)) {
     pousser({
       kind: 'service_url', ref: `${r.sid}:${r.eid}`, group: 'links',
       label: `${r.service} · ${r.env}`, detail: r.url, url: r.url,
       texte: `${r.service} ${r.env}`,
     });
   }
-  for (const r of db.prepare('SELECT * FROM free_link LIMIT ?').all(PAR_SOURCE * 2)) {
+  const fLibre = preFiltre(requete, ['label', 'url', 'tags']);
+  for (const r of db.prepare(`SELECT * FROM free_link ${fLibre.cond ? `WHERE ${fLibre.cond}` : ''}
+      ORDER BY label COLLATE NOCASE LIMIT ?`).all(...fLibre.args, PAR_SOURCE * 2)) {
     const tags = litTags(r.tags);
     pousser({
       kind: 'free_link', ref: String(r.id), group: 'links',
@@ -469,9 +513,19 @@ function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
     });
   }
 
-  // 2. Merge requests — par numéro ou par mots du titre.
+  /* 2. Merge requests — par NUMÉRO ou par mots du titre. Le numéro passe par une égalité et
+     non par un `LIKE` : `!214` ne se retrouve ni dans un titre ni dans un nom de projet, et
+     c'est pourtant la façon la plus courante de désigner une merge request. */
+  const fMr = preFiltre(requete, ['m.title', 'p.project']);
+  const iid = parseInt(String(requete).replace(/^!/, ''), 10);
+  const parNum = Number.isFinite(iid);
+  const condMr = fMr.cond
+    ? (parNum ? `WHERE (m.iid = ? OR (${fMr.cond}))` : `WHERE ${fMr.cond}`)
+    : '';
+  const argsMr = condMr ? (parNum ? [iid, ...fMr.args] : fMr.args) : [];
   for (const r of db.prepare(`SELECT m.id, m.iid, m.title, m.status, p.project FROM mr m
-      JOIN repo p ON p.id = m.repo_id ORDER BY m.id DESC LIMIT ?`).all(PAR_SOURCE * 3)) {
+      JOIN repo p ON p.id = m.repo_id ${condMr} ORDER BY m.id DESC LIMIT ?`)
+    .all(...argsMr, PAR_SOURCE * 3)) {
     pousser({
       kind: 'mr', ref: String(r.id), group: 'mrs',
       label: `!${r.iid} — ${r.title || ''}`, detail: r.project,
@@ -482,7 +536,9 @@ function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
 
   // 3. Tickets surveillés — la seule liste de tickets que le serveur connaisse hors ligne.
   if (jiraConfigure) {
-    for (const r of db.prepare('SELECT * FROM jira_watch LIMIT ?').all(PAR_SOURCE)) {
+    const fTicket = preFiltre(requete, ['key', 'summary']);
+    for (const r of db.prepare(`SELECT * FROM jira_watch ${fTicket.cond ? `WHERE ${fTicket.cond}` : ''}
+        ORDER BY key LIMIT ?`).all(...fTicket.args, PAR_SOURCE)) {
       pousser({
         kind: 'ticket', ref: r.key, group: 'tickets',
         label: `${r.key} — ${r.summary || ''}`, detail: r.status || '',
@@ -493,13 +549,18 @@ function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
   }
 
   // 4. Pages de notes et todos ouvertes.
-  for (const r of db.prepare('SELECT id, title FROM note_page ORDER BY updated_at DESC LIMIT ?').all(PAR_SOURCE)) {
+  const fNote = preFiltre(requete, ['title']);
+  for (const r of db.prepare(`SELECT id, title FROM note_page ${fNote.cond ? `WHERE ${fNote.cond}` : ''}
+      ORDER BY updated_at DESC LIMIT ?`).all(...fNote.args, PAR_SOURCE)) {
     pousser({
       kind: 'note', ref: String(r.id), group: 'notes',
       label: r.title, detail: '', nav: { tab: 'notes', page_id: r.id }, texte: r.title,
     });
   }
-  for (const r of db.prepare("SELECT id, title FROM todo WHERE status = 'open' AND archived_at IS NULL LIMIT ?").all(PAR_SOURCE)) {
+  const fTodo = preFiltre(requete, ['title']);
+  for (const r of db.prepare(`SELECT id, title FROM todo
+      WHERE status = 'open' AND archived_at IS NULL ${fTodo.cond ? `AND (${fTodo.cond})` : ''}
+      ORDER BY id DESC LIMIT ?`).all(...fTodo.args, PAR_SOURCE)) {
     pousser({
       kind: 'todo', ref: String(r.id), group: 'notes',
       label: r.title, detail: '', nav: { tab: 'notes', todo_id: r.id }, texte: r.title,

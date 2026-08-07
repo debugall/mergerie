@@ -740,7 +740,9 @@ navigation. Entrée ouvre — un lien externe dans un nouvel onglet, un objet in
   compteur ferait remonter à vie ce qu'on a beaucoup ouvert le mois dernier ; une simple date
   perdrait ce qu'on ouvre chaque jour depuis un an.
 - La palette interroge le **serveur** : elle voit donc tout, y compris ce que l'onglet courant n'a
-  pas chargé — chercher une merge request depuis Docker fonctionne.
+  pas chargé — chercher une merge request depuis Docker fonctionne. Le tri se fait **en base**, pas
+  sur un extrait : une merge request vieille de trois cents autres se trouve aussi bien qu'une
+  fraîche. Seule la *réponse* est bornée — à douze lignes, ce qu'un menu déroulant peut montrer.
 
 #### Liens contextuels sur les merge requests
 Quand un service est associé à un dépôt, le **détail des merge requests de ce dépôt** porte une

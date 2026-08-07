@@ -151,6 +151,59 @@ describe('frécence : souvent ET récemment', () => {
   });
 });
 
+/* Le plafond par source est un garde-fou contre une réponse démesurée — pas un filtre sur ce
+   qui est CHERCHABLE. Tant qu'il s'appliquait avant la recherche, une merge request au-delà
+   des plus récentes était introuvable, sans le moindre message. */
+describe('palette : le plafond ne cache pas ce qu’on cherche', () => {
+  const beaucoup = () => {
+    db.prepare('DELETE FROM mr').run();
+    db.prepare('DELETE FROM free_link').run();
+    db.prepare("INSERT OR IGNORE INTO repo (id, project, url, enabled) VALUES (1, 'grp/app', 'u', 1)").run();
+    const now = new Date().toISOString();
+    const ins = db.prepare("INSERT INTO mr (repo_id, iid, title, status, updated_at) VALUES (1,?,?,'to_review',?)");
+    for (let i = 200; i <= 400; i += 1) ins.run(i, `MR numero ${i}`, now);
+    for (let i = 1; i <= 100; i += 1) links.creerFreeLink({ label: `Lien numero ${i}`, url: `https://x${i}.test` }, MSGS);
+  };
+
+  test('une merge request ancienne se trouve par son numéro', () => {
+    beaucoup();
+    // 201 merge requests, plafond par source à 90 : la 214 est loin derrière les plus récentes.
+    assert.deepEqual(links.launcher('!214', {}).map((r) => r.label), ['!214 — MR numero 214']);
+    assert.deepEqual(links.launcher('numero 214', {}).map((r) => r.label), ['!214 — MR numero 214'],
+      'et par les mots de son titre');
+  });
+
+  test('un lien libre au-delà du plafond se trouve aussi', () => {
+    beaucoup();
+    const r = links.launcher('Lien numero 97', {});
+    assert.ok(r.some((x) => x.label === 'Lien numero 97'),
+      `le 97e sur 100 doit être atteignable, vu : ${JSON.stringify(r.map((x) => x.label))}`);
+  });
+
+  /* Sans `ORDER BY`, quels liens étaient cherchables dépendait de l'ordre physique des
+     lignes — donc de rien de compréhensible pour qui s'en sert. */
+  test('la réponse reste bornée, et stable d’un appel à l’autre', () => {
+    beaucoup();
+    const a = links.launcher('lien', {}).map((x) => x.ref);
+    const b = links.launcher('lien', {}).map((x) => x.ref);
+    assert.deepEqual(a, b, 'deux fois la même requête rend deux fois la même chose');
+    assert.ok(a.length <= 12, 'le plafond global tient toujours');
+  });
+
+  /* Le `%` d'une saisie est du TEXTE, pas un joker SQL : sans échappement, le taper
+     ramènerait toute la base. */
+  test('les jokers SQL saisis ne font pas tout remonter', () => {
+    beaucoup();
+    assert.equal(links.launcher('%', {}).length, 0);
+    assert.equal(links.launcher('_', {}).length, 0);
+  });
+
+  test('sans requête, la palette s’ouvre quand même pleine', () => {
+    beaucoup();
+    assert.ok(links.launcher('', {}).length > 0);
+  });
+});
+
 describe('import : le format « Netscape » de Chrome', () => {
   const FICHIER = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
 <DL><p>
@@ -235,6 +288,51 @@ describe('grille et conversion', () => {
     assert.equal(links.grille().services[0].urls[env.id], undefined);
   });
 
+  /* Effacer l'URL d'un service en panne faisait disparaître la pastille (la case est vide)
+     mais laissait le compteur `down` la compter : un badge rouge permanent sur le menu, sans
+     rien à montrer. */
+  test('vider une case emporte son verdict de santé', () => {
+    db.prepare('DELETE FROM service').run();
+    db.prepare('DELETE FROM environment').run();
+    const env = links.creerEnvironnement({ name: 'dev', health_check: 1 }, MSGS);
+    const svc = links.creerService({ name: 'sonde' }, MSGS);
+    links.poserUrl(svc.id, { environment_id: env.id, url: 'https://ko.test' }, MSGS);
+    db.prepare(`INSERT INTO health_status (service_id, environment_id, status, http_code, latency_ms, checked_at)
+      VALUES (?,?, 'down', 503, 12, ?)`).run(svc.id, env.id, new Date().toISOString());
+    assert.equal(links.grille().down, 1);
+
+    links.poserUrl(svc.id, { environment_id: env.id, url: '' }, MSGS);
+    assert.equal(links.grille().down, 0, 'plus de case, plus de verdict — donc plus de badge');
+  });
+
+  /* TOUT OU RIEN : un environnement supprimé entre l'ouverture de la modale et le clic
+     laissait un service à moitié fait, des liens déjà supprimés, et un rejeu impossible
+     (« nom déjà pris »). */
+  test('une conversion qui échoue en cours de route ne laisse rien derrière elle', () => {
+    db.prepare('DELETE FROM service').run();
+    db.prepare('DELETE FROM environment').run();
+    db.prepare('DELETE FROM free_link').run();
+    const dev = links.creerEnvironnement({ name: 'dev' }, MSGS);
+    const a = links.creerFreeLink({ label: 'A', url: 'https://a.test' }, MSGS);
+    const b = links.creerFreeLink({ label: 'B', url: 'https://b.test' }, MSGS);
+
+    assert.throws(() => links.convertirEnService({
+      name: 'Kibana',
+      mapping: [
+        { free_link_id: a.id, environment_id: dev.id },
+        { free_link_id: b.id, environment_id: 99999 },     // environnement disparu
+      ],
+    }, MSGS), /ENV-INCONNU/);
+
+    assert.equal(db.prepare("SELECT COUNT(*) c FROM service WHERE name = 'Kibana'").get().c, 0,
+      'le service à moitié fait est défait');
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM free_link').get().c, 2,
+      'les deux liens libres sont toujours là');
+    // …et rejouer proprement fonctionne, au lieu de buter sur « nom déjà pris ».
+    const ok = links.convertirEnService({ name: 'Kibana', mapping: [{ free_link_id: a.id, environment_id: dev.id }] }, MSGS);
+    assert.equal(ok.convertis, 1);
+  });
+
   test('un nom d’environnement ou de service en double est refusé', () => {
     db.prepare('DELETE FROM environment').run();
     links.creerEnvironnement({ name: 'preprod' }, MSGS);
@@ -312,5 +410,19 @@ describe('liens contextuels d’une merge request', () => {
   test('un dépôt sans service associé ne rend aucun bouton', () => {
     assert.deepEqual(links.liensDeMr({ repo_id: 99999, iid: 1, source_branch: 'main' }),
       { service: null, envs: [], context: [] });
+  });
+
+  /* Un service lié à un dépôt mais SANS aucune case remplie : `per_env` est vide, et rien ne
+     peut dire quelle variable manque. L'info-bulle annonçait alors « {null} ». */
+  test('un gabarit {env} sans aucune case remplie nomme « env », pas « null »', () => {
+    db.prepare('DELETE FROM service').run();
+    db.prepare('DELETE FROM environment').run();
+    links.creerEnvironnement({ name: 'dev' }, MSGS);
+    const svc = links.creerService({ name: 'orphelin', repo_id: 77 }, MSGS);
+    links.creerContextLink(svc.id, { label: 'Logs', url_template: 'https://k-{env}.test/x' }, MSGS);
+
+    const c = links.liensDeMr({ repo_id: 77, iid: 5, source_branch: 'main' }).context[0];
+    assert.equal(c.url, null);
+    assert.equal(c.manquante, 'env', 'la coupable est nommée : il n’y a aucun environnement où aller');
   });
 });

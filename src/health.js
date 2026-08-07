@@ -18,6 +18,7 @@
  * autre chose qu'un outil de développement vu du réseau.
  */
 
+const fs = require('fs');
 const http = require('http');
 const https = require('https');
 const db = require('./db');
@@ -33,6 +34,16 @@ const CLIENT_VIVANT_MS = 2 * 60 * 1000;
    grille sont sur les mêmes domaines que GitLab. Poser un second réglage pour le même
    certificat aurait été une source d'incohérence de plus. */
 const tlsAgent = makeAgentFactory('GITLAB_CA_CERT', 'GITLAB_INSECURE_TLS');
+
+/* Un CA déclaré mais introuvable échouerait EN SILENCE ici : le premier appel rejette (la
+   case passe « down »), puis la fabrique ayant mis son résultat en cache, tous les suivants
+   retombent sur l'agent par défaut — et les URLs internes en CA privée restent « down » sans
+   que rien ne l'explique. Côté forges, l'erreur remonte jusqu'à l'écran ; ici `verifierUne`
+   avale tout pour ne pas faire tomber le cycle. D'où ce mot au démarrage. */
+if (process.env.GITLAB_CA_CERT && !fs.existsSync(process.env.GITLAB_CA_CERT)) {
+  console.error(`[links] GITLAB_CA_CERT introuvable (${process.env.GITLAB_CA_CERT}) : `
+    + 'les vérifications HTTPS vers un certificat interne échoueront et compteront « down ».');
+}
 
 /* Une case à vérifier = un service × un environnement DONT le health check est activé.
    La jointure fait le filtre : inutile d'aller chercher des URLs pour les écarter ensuite. */
@@ -127,7 +138,12 @@ async function cycle() {
 /* Le minuteur. `lireConfig` rend la config à chaque passage — activer ou changer l'intervalle
    ne demande donc pas de redémarrer. `clientVu` dit quand un navigateur s'est manifesté pour
    la dernière fois : sans client, on ne sort pas sur le réseau. */
-function demarrer(lireConfig, clientVu, onLog = () => {}) {
+/* `battementMs` EST l'unité de temps du minuteur : il bat une fois par « minute », et
+   `health_minutes` se compte en battements. En service c'est la vraie minute. Les tests le
+   raccourcissent, parce que le chevauchement de cycles ne se manifeste que lorsqu'un cycle
+   dure plus longtemps que l'intervalle — l'attendre pour de vrai revient à ne pas le
+   vérifier. */
+function demarrer(lireConfig, clientVu, onLog = () => {}, battementMs = 60_000) {
   const passe = async () => {
     try {
       const cfg = lireConfig() || {};
@@ -140,13 +156,20 @@ function demarrer(lireConfig, clientVu, onLog = () => {}) {
   /* Le minuteur bat à la MINUTE et décide lui-même s'il est temps : changer l'intervalle
      dans les réglages prend effet au prochain battement, sans redémarrage ni reconstruction. */
   let dernier = 0;
-  const t = setInterval(() => {
+  /* Un VERROU, et non le seul minuteur. Vingt cases toutes en délai dépassé font un cycle de
+     cent secondes (20 × 5 s) ; avec l'intervalle plancher d'une minute, le battement suivant
+     en lançait un second par-dessus — exactement le trafic parallèle que l'en-tête de ce
+     fichier promet d'éviter. Le repère de temps est posé à la FIN : l'intervalle sépare deux
+     cycles, il ne court pas pendant l'un d'eux. */
+  let enCours = false;
+  const t = setInterval(async () => {
+    if (enCours) return;
     const cfg = lireConfig() || {};
     const minutes = Math.max(MIN_MINUTES, Number(cfg.health_minutes) || 5);
-    if (Date.now() - dernier < minutes * 60_000) return;
-    dernier = Date.now();
-    passe();
-  }, 60_000);
+    if (Date.now() - dernier < minutes * battementMs) return;
+    enCours = true;
+    try { await passe(); } finally { enCours = false; dernier = Date.now(); }
+  }, battementMs);
   if (t.unref) t.unref();
   return t;
 }
