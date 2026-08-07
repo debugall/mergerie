@@ -43,7 +43,7 @@ npm run demo       # http://localhost:4319
 
 ## What it does
 
-Eight tabs, each one line — plus the objective verification, which lives inside Reviews and Settings:
+Nine tabs in a left sidebar, each one line — plus the objective verification, which lives inside Reviews and Settings:
 
 - **Reviews** — AI-scored, versioned reviews of GitLab merge requests **and GitHub pull requests**; incremental re-reviews; an autonomous **convergence loop** (review → fix → re-review until the score threshold) Convergence works on the *review*; the **objective verification** comes after, on the merge request itself — see the guide.
 - **AI Dev** — automated coding sessions (the AI codes, commits, pushes, opens the MR), off-repo coding (with the AI's report back and follow-up fix requests), and read-only code exploration — *from prompt to converged MR* in one click. On a multi-repo session each project runs, and takes a follow-up fix, on its own. Finished sessions can be tidied away without being deleted.
@@ -52,6 +52,7 @@ Eight tabs, each one line — plus the objective verification, which lives insid
 - **Jira** — your assigned tickets fetched automatically, full detail with attachments, status changes and comments; **watched tickets** (assigned to you or not) with a desktop notification on every status change, and a menu badge counting your in-progress tickets.
 - **Git** — multi-repo branch/tag/command operations across both forges, branch explorer and ref finder, **restorable** deletions, always with a preview.
 - **Docker** — compose project health and `.env` drift, batch actions, live multi-container logs, error badges in the menu.
+- **Links** — the work links your bookmarks cannot structure: a **services × environments grid** (one URL per cell, written out — no guessing an address from another), free links found by tag, and a **global palette** (`Ctrl`/`Cmd`+`K`) that searches links, MRs, tickets, notes and todos at once, ranked by frecency. A service linked to a repository puts buttons straight on its merge requests, including **templated** ones (`{env}`, `{branch}`, `{mr_iid}`) resolved on click. Chrome bookmarks import with a preview, and an **opt-in health check** — off by default, off on production unless asked — badges what is unreachable.
 - **Stats** — MR funnel, score trends, per-project resolution rate, token cost.
 - **Settings** — GitLab / GitHub / Jira connections, repositories (each one can opt out of MR fetching while staying usable for git and coding sessions), review rules, prompt templates, theme and language.
 

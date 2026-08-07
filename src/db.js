@@ -712,6 +712,88 @@ db.exec(`CREATE TABLE IF NOT EXISTS convergence_run (
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_convergence_run_mr ON convergence_run(mr_id)');
 
+/* ---------- Liens (plan_add_links.md) ----------
+   Les liens de travail ont une STRUCTURE que les marque-pages d'un navigateur ne savent pas
+   représenter : le même service existe en local, en dev, en preprod, en prod. D'où une
+   grille — services en lignes, environnements en colonnes — plutôt qu'un arbre de dossiers
+   où chaque service se retrouve éclaté en quatre endroits.
+
+   Ce qui n'entre pas dans cette grille (Confluence, une doc, un outil) reste un LIEN LIBRE,
+   à plat, retrouvé par ses tags. Deux formes, parce qu'il y a deux réalités — et non une
+   forme unique qui conviendrait mal aux deux. */
+db.exec(`CREATE TABLE IF NOT EXISTS environment (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  position INTEGER NOT NULL,
+  color TEXT NOT NULL DEFAULT '#2f6fe0',
+  health_check INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+)`);
+
+db.exec(`CREATE TABLE IF NOT EXISTS service (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  repo_id INTEGER REFERENCES repo(id) ON DELETE SET NULL,
+  tags TEXT NOT NULL DEFAULT '[]',
+  pinned INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+)`);
+
+/* Une URL par (service, environnement) — EXPLICITE. On aurait pu deviner une URL de preprod
+   depuis celle de dev en remplaçant un morceau de domaine ; c'est exactement le genre de
+   magie qui envoie un jour sur le mauvais environnement sans prévenir. */
+db.exec(`CREATE TABLE IF NOT EXISTS service_url (
+  service_id INTEGER NOT NULL REFERENCES service(id) ON DELETE CASCADE,
+  environment_id INTEGER NOT NULL REFERENCES environment(id) ON DELETE CASCADE,
+  url TEXT NOT NULL,
+  PRIMARY KEY (service_id, environment_id)
+)`);
+
+/* Les liens CONTEXTUELS vivent à part des URLs de grille : la grille doit rester lisible
+   d'un coup d'œil, le contextuel porte des gabarits à variables. Mélanger les deux aurait
+   rendu la grille illisible pour servir un cas plus rare. */
+db.exec(`CREATE TABLE IF NOT EXISTS context_link (
+  id INTEGER PRIMARY KEY,
+  service_id INTEGER NOT NULL REFERENCES service(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  url_template TEXT NOT NULL
+)`);
+
+db.exec(`CREATE TABLE IF NOT EXISTS free_link (
+  id INTEGER PRIMARY KEY,
+  label TEXT NOT NULL,
+  url TEXT NOT NULL,
+  tags TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL
+)`);
+
+/* Frécence de la palette : ce qu'on ouvre souvent ET récemment remonte. Un simple compteur
+   ferait remonter à vie ce qu'on a beaucoup utilisé le mois dernier ; une simple date
+   perdrait ce qu'on ouvre tous les jours depuis un an. */
+db.exec(`CREATE TABLE IF NOT EXISTS launcher_usage (
+  kind TEXT NOT NULL,
+  ref TEXT NOT NULL,
+  uses INTEGER NOT NULL DEFAULT 0,
+  last_used_at TEXT NOT NULL,
+  PRIMARY KEY (kind, ref)
+)`);
+
+/* DERNIER état connu, pas un historique : on veut savoir si c'est debout maintenant. Garder
+   la série ferait grossir la base sans fin pour une question qu'on ne pose jamais. */
+db.exec(`CREATE TABLE IF NOT EXISTS health_status (
+  service_id INTEGER NOT NULL REFERENCES service(id) ON DELETE CASCADE,
+  environment_id INTEGER NOT NULL REFERENCES environment(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('up','down','unknown')),
+  http_code INTEGER,
+  latency_ms INTEGER,
+  checked_at TEXT NOT NULL,
+  PRIMARY KEY (service_id, environment_id)
+)`);
+
+// Health check : désactivé par défaut, et l'intervalle a un plancher (voir src/config.js).
+try { db.exec("ALTER TABLE config ADD COLUMN health_check TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE config ADD COLUMN health_minutes INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
+
 /* ---------- Notes, todos et rappels (plan_add_notes.md) ----------
    Des notes de POSTE DE TRAVAIL, pas une base de connaissances : des pages plates (ni
    dossiers ni hiérarchie), une liste de todos et des rappels datés. Tout vit dans cette

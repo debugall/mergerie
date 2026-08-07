@@ -58,7 +58,7 @@ et un **lot** de merge requests vérifiées ensemble.
 
 ## Les onglets
 
-**Huit onglets** — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)**, et la **[vérification objective](./docs/guide.fr.md#vérification-objective-vérificateurs)** a sa propre section :
+**Neuf onglets**, dans une barre latérale — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)**, et la **[vérification objective](./docs/guide.fr.md#vérification-objective-vérificateurs)** a sa propre section :
 
 - **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée,
   re-review incrémentale et **boucle de convergence autonome** (review → correction → re-review jusqu'au seuil).
@@ -82,6 +82,13 @@ et un **lot** de merge requests vérifiées ensemble.
   et recherche de refs, suppressions **restaurables**, tout **avec aperçu**.
 - **Docker** — état des projets compose (drift `.env`, santé), actions par lot, **logs live** multi-containers,
   badges d'erreur dans le menu.
+- **Liens** — les liens de travail que les marque-pages ne savent pas structurer : une **grille services ×
+  environnements** (une URL par case, écrite — aucune adresse devinée depuis une autre), des liens libres
+  retrouvés par tag, et une **palette globale** (`Ctrl`/`Cmd`+`K`) qui cherche d'un coup dans les liens, les
+  MR, les tickets, les notes et les todos, classés par frécence. Un service associé à un dépôt pose ses
+  boutons directement sur ses merge requests, y compris des liens **templatés** (`{env}`, `{branch}`,
+  `{mr_iid}`) résolus au clic. Les favoris Chrome s'importent avec aperçu, et un **health check opt-in** —
+  désactivé par défaut, et hors production tant qu'on ne l'a pas demandé — badge ce qui est injoignable.
 - **Stats** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens.
 - **Réglages** — connexions GitLab / GitHub / Jira, dépôts, règles de review, templates de prompt, thème et langue.
 

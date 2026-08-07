@@ -300,6 +300,26 @@ async function main() {
       await sleep(4200);
     });
 
+    /* ═══ 7 bis) Liens : la grille, puis la palette globale ═══
+       C'est la fonctionnalité qui se raconte le plus mal en mots et le mieux à l'écran :
+       une grille services × environnements, et un lanceur qui trouve tout au clavier. */
+    await section('Liens · grille et palette', async () => {
+      await clickEl(page, page.locator('button[data-tab="links"]'));
+      await page.waitForSelector('.link-grid', { state: 'visible', timeout: 12000 }).catch(() => {});
+      if (!(await need(page, '.link-grid', 'Grille de liens'))) return;
+      await cap(page, 'Un service par ligne, un environnement par colonne — et l’état de chacun');
+      await moveTo(page, page.locator('.link-health.down').first());
+      await sleep(1400);
+      // La palette : on l'ouvre par son champ, on tape, les résultats tombent.
+      await clickEl(page, page.locator('#paletteTrigger'));
+      await sleep(500);
+      await page.locator('#paletteInput').type('kib', { delay: 140 });
+      await sleep(1400);
+      await cap(page, 'La palette cherche partout à la fois — liens, MR, tickets, notes');
+      await page.keyboard.press('Escape');
+      await sleep(700);
+    });
+
     // ═══ 8) Docker : liste compose + drift de variables ═══
     await section('Docker · drift .env', async () => {
       await clickEl(page, page.locator('button[data-tab="docker"]'));

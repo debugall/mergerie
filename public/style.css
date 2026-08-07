@@ -103,12 +103,66 @@ body > header {
   background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10;
 }
 header h1 { font-size: 16px; margin: 0; letter-spacing: .3px; }
-nav { display: flex; gap: 4px; }
-nav button {
-  background: transparent; border: 1px solid transparent; color: var(--muted);
-  padding: 6px 12px; border-radius: var(--radius); cursor: pointer; font-size: 14px;
+/* ---------- Sidebar ----------
+   La navigation est passée à GAUCHE : à neuf entrées, une barre horizontale dans l'en-tête
+   arrivait au bout de la place (« Dev IA » passait déjà sur deux lignes). Verticalement,
+   chaque entrée a sa ligne, ses badges tiennent, et la dixième ne coûtera rien.
+
+   `position: sticky` plutôt que `fixed` : la sidebar reste sous l'en-tête sans avoir à
+   dupliquer sa hauteur en dur, et le footer fixe garde sa place. */
+.shell { display: flex; align-items: flex-start; }
+.sidebar {
+  position: sticky; top: var(--header-h, 60px); flex: 0 0 var(--sidebar-w, 194px);
+  width: var(--sidebar-w, 194px); display: flex; flex-direction: column; gap: 2px;
+  padding: 12px 10px; border-right: 1px solid var(--line); background: var(--panel);
+  height: calc(100vh - var(--header-h, 60px) - 36px); overflow-y: auto;
 }
-nav button.active { background: var(--panel2); color: var(--text); border-color: var(--line); }
+.sidebar button[data-tab] {
+  background: transparent; border: 1px solid transparent; color: var(--muted);
+  padding: 8px 10px; border-radius: var(--radius); cursor: pointer; font-size: 14px;
+  display: flex; align-items: center; gap: 9px; text-align: left; width: 100%;
+}
+.sidebar button[data-tab].active { background: var(--panel2); color: var(--text); border-color: var(--line); }
+/* Le libellé prend la place restante : les badges se rangent à droite, alignés d'une ligne
+   à l'autre — c'est ce qui rend la colonne lisible d'un coup d'œil. */
+.sidebar button[data-tab] > span:not([class]) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar .nav-count, .sidebar .nav-health { flex: none; margin-left: 0; }
+.sidebar-toggle {
+  margin-top: auto; background: transparent; border: 1px solid transparent; color: var(--muted);
+  padding: 7px 10px; border-radius: var(--radius); cursor: pointer; font-size: 13px;
+  display: flex; align-items: center; gap: 9px; width: 100%;
+}
+.sidebar-toggle:hover { background: var(--hover); color: var(--text); }
+/* COMPACTE : icônes seules. Les libellés sont masqués, pas retirés — les lecteurs d'écran
+   et le `title` continuent de dire où l'on va. */
+body.sidebar-compacte { --sidebar-w: 56px; }
+body.sidebar-compacte .sidebar button > span:not([class]) { display: none; }
+body.sidebar-compacte .sidebar button[data-tab] { justify-content: center; padding: 9px 0; }
+body.sidebar-compacte .sidebar-toggle { justify-content: center; }
+body.sidebar-compacte .sidebar-toggle .ico { transform: rotate(180deg); }
+/* Les badges d'un menu compact se posent sur l'icône : côte à côte, ils déborderaient. */
+body.sidebar-compacte .sidebar .nav-count, body.sidebar-compacte .sidebar .nav-health {
+  position: absolute; top: 2px; right: 4px; font-size: 9px; min-width: 14px; height: 14px; line-height: 14px; padding: 0 3px;
+}
+body.sidebar-compacte .sidebar button[data-tab] { position: relative; }
+/* Le déclencheur de palette occupe le centre. `margin: 0 auto` le CENTRE dans l'en-tête
+   plutôt que de le coller à la marque : c'est un point de mire, pas un appendice du logo. */
+.palette-trigger {
+  flex: 1 1 auto; max-width: 460px; margin: 0 auto; display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px; background: var(--panel2); border: 1px solid var(--line);
+  border-radius: var(--r-full); color: var(--muted); cursor: pointer; font: inherit; font-size: 13px;
+}
+.palette-trigger:hover { border-color: var(--accent); color: var(--text); }
+.palette-trigger > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.palette-trigger kbd {
+  flex: none; font: inherit; font-size: 11px; padding: 1px 6px; border-radius: 5px;
+  background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+}
+/* Sous 900 px, le champ ne tient plus avec le reste : l'icône seule suffit à le rappeler. */
+@media (max-width: 900px) {
+  .palette-trigger { flex: 0 0 auto; max-width: none; }
+  .palette-trigger > span, .palette-trigger kbd { display: none; }
+}
 .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .badge { background: var(--amber); color: var(--on-amber); padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 
@@ -221,7 +275,7 @@ button[data-busy]::after {
 
 .toolbar { display: flex; gap: 8px; align-items: center; padding: 14px 18px; }
 
-main { padding: 0 var(--s-6) var(--s-12); max-width: none; margin: 0 auto; width: 100%; }
+main { padding: 0 var(--s-6) var(--s-12); max-width: none; margin: 0; width: 100%; flex: 1; min-width: 0; }
 .tab { display: none; }
 .tab.active { display: block; }
 /* V2.6 : les onglets de LECTURE (reviews, stats) sont bornés en largeur — au-delà, les lignes
@@ -918,8 +972,13 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 .toast.leaving { animation: toast-out .18s ease-in forwards; }
 
 /* Apparition échelonnée des cartes de liste (une seule passe, coût CPU nul). */
-/* Palette de commandes : une boîte étroite, ancrée haut — on la lit, on ne la contemple pas. */
-.palette-box { width: 560px; max-width: 92vw; padding: 0; overflow: hidden; }
+/* Palette de commandes : une boîte étroite, ANCRÉE SOUS le champ de l'en-tête d'où on
+   l'ouvre — l'œil y est déjà. Centrée au milieu de l'écran, elle obligeait à le déplacer.
+   La position est posée en JS (`placerPalette`), qui la recale au redimensionnement. */
+.palette-box { position: fixed; width: 560px; max-width: 92vw; padding: 0; overflow: hidden; }
+/* Le fond de la modale ne s'assombrit pas : la palette est une suggestion, pas une décision
+   qui met le reste en pause — et on veut continuer de voir ce qu'on quitte. */
+#paletteModal { background: transparent; align-items: flex-start; justify-content: flex-start; }
 .palette-input { width: 100%; border: none; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; font-size: 15px; padding: 14px 16px; outline: none; }
 .palette-list { max-height: 320px; overflow-y: auto; }
 .palette-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px; cursor: pointer; font-size: 13.5px; }
@@ -2138,4 +2197,90 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
   .notes-layout, .note-panes { flex-direction: column; }
   .notes-list-col { flex: none; width: 100%; }
   .note-content, .note-preview { min-height: 34vh; }
+}
+
+/* ============ Liens : grille services × environnements ============ */
+
+.link-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.link-tag {
+  padding: 3px 10px; border-radius: var(--r-full); font-size: 12px; cursor: pointer;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--muted);
+}
+.link-tag:hover { color: var(--text); }
+.link-tag.active { background: var(--accent-btn); border-color: var(--accent-btn); color: var(--on-accent); }
+
+/* La grille défile HORIZONTALEMENT dans son cadre : à six environnements, elle dépasse, et
+   c'est elle qui doit défiler — pas la page entière. */
+.link-grid-wrap { overflow-x: auto; }
+.link-grid { border-collapse: separate; border-spacing: 0; width: 100%; }
+.link-grid th, .link-grid td { border-bottom: 1px solid var(--line); padding: 0; vertical-align: middle; }
+/* La colonne des services reste visible pendant qu'on fait défiler les environnements :
+   une case sans savoir de quel service elle est ne dit rien. */
+.link-grid th.link-svc, .link-grid td.link-svc {
+  position: sticky; left: 0; z-index: 1; background: var(--bg);
+  min-width: 220px; padding: 8px 12px 8px 0;
+}
+.link-grid thead th { font-size: 12px; font-weight: var(--fw-sem); text-align: left; padding: 6px 8px; white-space: nowrap; }
+/* L'en-tête porte la couleur de l'environnement — sur une pastille, pas en fond : un aplat
+   de couleur derrière du texte redevient un problème de contraste à chaque thème. */
+.link-env { display: inline-flex; align-items: center; gap: 6px; }
+.link-env-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.link-svc-name { font-weight: var(--fw-sem); display: flex; align-items: center; gap: 8px; }
+.link-svc-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; font-size: 11px; color: var(--muted); }
+.link-svc-tag { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r-full); padding: 0 7px; }
+.link-cell { padding: 4px 6px; min-width: 150px; }
+.link-open {
+  display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 9px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  color: var(--accent); text-decoration: none; font-size: 12.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.link-open:hover { background: var(--panel2); color: var(--accent-hi); }
+/* Case vide : un `+` discret. Une case vide et une case pleine doivent se distinguer sans
+   qu'on les compare — sinon on clique au hasard. */
+.link-add {
+  width: 100%; padding: 6px 9px; background: transparent; border: 1px dashed var(--line);
+  border-radius: var(--radius); color: var(--muted); cursor: pointer; font-size: 12.5px; text-align: left;
+}
+.link-add:hover { border-color: var(--accent); color: var(--text); }
+.link-cell input {
+  width: 100%; padding: 5px 8px; font: inherit; font-size: 12.5px; background: var(--panel2);
+  border: 1px solid var(--accent); border-radius: var(--radius); color: var(--text);
+}
+.link-health { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.link-health.up { background: var(--green); }
+.link-health.down { background: var(--red); }
+.link-health.unknown { background: var(--muted); }
+
+.link-free-head { margin: 26px 0 8px; font-size: 15px; }
+.link-free-list { display: flex; flex-direction: column; gap: 4px; max-width: 900px; }
+.link-free-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.link-free-row .link-free-label { font-weight: var(--fw-sem); }
+.link-free-row .link-free-url { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.link-ctx-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.link-ctx-form input { flex: 1 1 220px; min-width: 0; padding: 6px 10px; font: inherit; font-size: 12.5px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); }
+.link-ctx-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12.5px; }
+.link-ctx-row code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-service, .modal-import { width: min(720px, 94vw); }
+.import-tree { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; }
+.import-folder { font-weight: var(--fw-sem); margin: 8px 0 2px; font-size: 12.5px; color: var(--muted); }
+.import-item { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 2px 0 2px 14px; }
+.import-item .import-url { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+
+/* Les boutons contextuels sur une merge request. Un gabarit non résoluble ici reste VISIBLE,
+   grisé, avec sa raison : le faire disparaître laisserait croire qu'il n'existe pas. */
+.mr-links { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.mr-links .btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+/* Sous 1100 px, la sidebar se compacte d'elle-même : à cette largeur, 194 px de menu
+   prennent sur la lecture, qui est ce qu'on est venu faire. */
+@media (max-width: 1100px) {
+  body:not(.sidebar-large) { --sidebar-w: 56px; }
+  body:not(.sidebar-large) .sidebar button > span:not([class]) { display: none; }
+  body:not(.sidebar-large) .sidebar button[data-tab] { justify-content: center; padding: 9px 0; position: relative; }
+  body:not(.sidebar-large) .sidebar-toggle { justify-content: center; }
 }

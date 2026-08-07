@@ -49,6 +49,8 @@ const backup = require('./backup');
 const retention = require('./retention');
 const notes = require('./notes');
 const brief = require('./brief');
+const links = require('./links');
+const health = require('./health');
 const { t } = i18n;
 const { discoverAll } = require('./discover');
 const jobs = require('./jobs');
@@ -126,7 +128,13 @@ function ticketUrl(cfg, key) {
 /* ---------- Statut / config ---------- */
 // Flux d'événements notifiables : le client passe le dernier id vu (?after=), on
 // renvoie les nouveaux + le dernier id (pour ne rejouer aucun événement).
+/* Le poll des notifications sert aussi de SIGNE DE VIE : tant qu'un navigateur le fait,
+   quelqu'un regarde. Le health check des liens s'en sert pour ne pas sortir sur le réseau
+   quand l'application est fermée — pas de trafic fantôme la nuit. Ce poll est le bon
+   candidat : il tourne toutes les cinq secondes, sur tous les onglets, sans condition. */
+let clientVuA = 0;
 app.get('/api/notifications', wrap((req, res) => {
+  clientVuA = Date.now();
   res.json({ events: notify.since(req.query.after), latest: notify.latestId() });
 }));
 
@@ -2944,6 +2952,84 @@ app.get('/api/brief', wrap((req, res) => {
   res.json(brief.construire({ staleDays: getConfig().stale_mr_days }));
 }));
 
+/* ---------- Liens (plan_add_links.md) --------------------------------------
+   Une grille services × environnements, des liens libres tagués, une palette globale et
+   un health check opt-in. Toutes les URLs sont validées `http(s)` par src/links.js : elles
+   sont ouvertes d'un clic depuis l'application. */
+
+const msgLinks = () => ({
+  nomVide: t('err.links.name-required'),
+  nomPris: t('err.links.name-taken'),
+  labelVide: t('err.links.label-required'),
+  urlInvalide: t('err.links.url-invalid'),
+  templateVide: t('err.links.template-invalid'),
+  variableInconnue: (nom, valides) => t('err.links.template-variable', { name: nom, list: valides.map((v) => `{${v}}`).join(', ') }),
+  tropDeTags: t('err.links.too-many-tags'),
+  inconnu: t('err.links.unknown'),
+  envInconnu: t('err.links.env-unknown'),
+  tropGros: t('err.links.import-too-big'),
+});
+
+app.get('/api/links/grid', wrap((req, res) => { res.json(links.grille()); }));
+
+app.get('/api/environments', wrap((req, res) => { res.json({ environments: links.listerEnvironnements() }); }));
+app.post('/api/environments', wrap((req, res) => { res.json(links.creerEnvironnement(req.body || {}, msgLinks())); }));
+app.put('/api/environments/:id', wrap((req, res) => { res.json(links.majEnvironnement(req.params.id, req.body || {}, msgLinks())); }));
+app.delete('/api/environments/:id', wrap((req, res) => { res.json(links.supprimerEnvironnement(req.params.id, msgLinks())); }));
+
+app.post('/api/services', wrap((req, res) => { res.json(links.creerService(req.body || {}, msgLinks())); }));
+app.put('/api/services/:id', wrap((req, res) => { res.json(links.majService(req.params.id, req.body || {}, msgLinks())); }));
+app.delete('/api/services/:id', wrap((req, res) => { res.json(links.supprimerService(req.params.id, msgLinks())); }));
+// Poser (ou vider) la case d'un environnement pour ce service.
+app.put('/api/services/:id/urls', wrap((req, res) => { res.json(links.poserUrl(req.params.id, req.body || {}, msgLinks())); }));
+
+app.get('/api/services/:id/context-links', wrap((req, res) => { res.json({ links: links.listerContextLinks(req.params.id) }); }));
+app.post('/api/services/:id/context-links', wrap((req, res) => { res.json(links.creerContextLink(req.params.id, req.body || {}, msgLinks())); }));
+app.delete('/api/context-links/:id', wrap((req, res) => { res.json(links.supprimerContextLink(req.params.id, msgLinks())); }));
+
+app.get('/api/free-links', wrap((req, res) => { res.json({ links: links.listerFreeLinks(req.query) }); }));
+app.post('/api/free-links', wrap((req, res) => { res.json(links.creerFreeLink(req.body || {}, msgLinks())); }));
+app.put('/api/free-links/:id', wrap((req, res) => { res.json(links.majFreeLink(req.params.id, req.body || {}, msgLinks())); }));
+app.delete('/api/free-links/:id', wrap((req, res) => { res.json(links.supprimerFreeLink(req.params.id, msgLinks())); }));
+// Des liens libres deviennent un service : le geste d'APRÈS l'import, explicite.
+app.post('/api/free-links/to-service', wrap((req, res) => { res.json(links.convertirEnService(req.body || {}, msgLinks())); }));
+
+/* La palette. Les actions de navigation viennent du CLIENT : lui seul sait ce qu'il sait
+   faire, et les lister côté serveur aurait fait deux endroits à tenir d'accord. */
+app.post('/api/launcher', wrap((req, res) => {
+  const body = req.body || {};
+  res.json({
+    results: links.launcher(body.q, {
+      jiraConfigure: demoDocker.isDemo() || jira.isConfigured(getConfig()),
+      actions: Array.isArray(body.actions) ? body.actions.slice(0, 60) : [],
+    }),
+  });
+}));
+app.post('/api/launcher/used', wrap((req, res) => {
+  const b = req.body || {};
+  res.json(links.noterUsage(b.kind, b.ref));
+}));
+
+/* Import de marque-pages : APERÇU d'abord (on ne crée rien), application ensuite. Même
+   esprit que l'aperçu obligatoire des opérations git — on voit avant d'exécuter. */
+app.post('/api/links/import', wrap((req, res) => {
+  res.json({ links: links.parserBookmarks((req.body || {}).html, msgLinks()) });
+}));
+app.post('/api/links/import/apply', wrap((req, res) => {
+  res.json(links.appliquerImport(req.body || {}, msgLinks()));
+}));
+
+// Les boutons contextuels d'une merge request : URLs de grille du service + gabarits résolus.
+app.get('/api/mrs/:id/links', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw Object.assign(new Error(t('err.links.unknown')), { status: 404 });
+  res.json(links.liensDeMr(mr));
+}));
+
+// Vérifier maintenant : le même code que le minuteur, donc ce que le bouton montre est
+// exactement ce que fait la surveillance.
+app.post('/api/links/health/check', wrap(async (req, res) => { res.json(await health.cycle()); }));
+
 /* ---------- MRs ---------- */
 app.get('/api/mrs', wrap((req, res) => {
   const { status } = req.query;
@@ -3746,6 +3832,7 @@ const HOST = process.env.HOST || '127.0.0.1';
 // l'environnement (`::`, une IP de LAN…) expose l'app, qui n'a aucune authentification.
 let retentionTimer = null;
 let archiveTimer = null;
+let healthTimer = null;
 const LOOPBACK = ['127.0.0.1', 'localhost', '::1'];
 const HOST_EXPOSED = !LOOPBACK.includes(HOST);
 // IPv6 : l'hôte doit être crocheté dans l'URL (http://[::1]:4319).
@@ -3765,6 +3852,8 @@ const server = app.listen(PORT, HOST, () => {
   );
   // Les todos faites depuis plus de sept jours quittent la liste — sans jamais être supprimées.
   archiveTimer = notes.demarrerArchivage((m) => console.log(`[notes] ${m}`));
+  // Santé des liens : opt-in, par environnement, et seulement si un client regarde.
+  healthTimer = health.demarrer(getConfig, () => clientVuA, (m) => console.log(`[links] ${m}`));
 });
 
 /* Exporté pour les tests de bout en bout : ils lancent le serveur EN PROCESSUS
@@ -3779,6 +3868,7 @@ module.exports = {
     if (jiraWatchTimer) { clearInterval(jiraWatchTimer); jiraWatchTimer = null; }
     if (retentionTimer) { clearInterval(retentionTimer); retentionTimer = null; }
     if (archiveTimer) { clearInterval(archiveTimer); archiveTimer = null; }
+    if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
     return new Promise((resolve) => server.close(resolve));
   },
 };

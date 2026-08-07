@@ -13,8 +13,11 @@ données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide
 
 ## Les onglets en détail
 
-Huit onglets, rangés par paires — le cœur, ce que j'ai à faire, ma machine, le méta :
-**Reviews** · **Dev IA** — **Notes** · **Jira** — **Git** · **Docker** — **Stats** · **Réglages**.
+Neuf onglets, dans une **barre latérale** à gauche, rangés par familles — le cœur, ce que j'ai à
+faire, ma machine et ses liens, le méta :
+**Reviews** · **Dev IA** — **Notes** · **Jira** — **Git** · **Docker** · **Liens** — **Stats** · **Réglages**.
+La barre se **réduit en icônes** d'un bouton en pied de colonne (choix mémorisé), et se réduit d'elle-même
+sous 1100 px de large.
 Les badges signalent le **travail en attente** (MR à traiter, sessions non lancées), pas des totaux.
 L'onglet **Reviews** en porte deux : le bleu compte les merge requests **à traiter**, l'orange les
 **rapports notés sous 7/10 qui attendent encore une décision**. Le second dit lesquelles lire en premier ;
@@ -690,6 +693,119 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
 - Si le **démon Docker n'est pas joignable** (Docker Desktop éteint, socket absent) ou si le **CLI n'est pas
   dans le PATH du serveur**, un message **actionnable** l'explique (indique `DOCKER_BIN` dans le `.env` au
   besoin) — comme les erreurs certificat / token.
+
+### Liens
+Les liens de travail ont une **structure** que les marque-pages d'un navigateur ne savent pas
+représenter : le même service existe en local, en dev, en preprod, en prod. Un arbre de dossiers
+l'éclate en quatre endroits ; une **grille** le montre d'un coup — services en lignes,
+environnements en colonnes.
+
+Deux formes, parce qu'il y a deux réalités. Ce qui n'a pas de dimension environnement (Confluence,
+une doc, un outil) reste un **lien libre**, à plat, retrouvé par ses tags.
+
+#### La grille
+- **Lignes = services**, épinglés en tête puis par ordre alphabétique. Chaque ligne porte le nom,
+  ses **tags**, et le **dépôt Mergerie associé** quand il y en a un.
+- **Colonnes = environnements**, dans l'ordre que tu leur donnes, chacun avec sa **couleur**
+  d'en-tête (la prod en rouge invite à réfléchir avant de cliquer).
+- **Une case = une URL, écrite.** On aurait pu deviner l'adresse de preprod depuis celle de dev en
+  remplaçant un morceau de domaine ; c'est exactement la magie qui envoie un jour sur le mauvais
+  environnement sans prévenir. Une case vide affiche un `+` : on colle l'adresse **dans la case**,
+  Entrée valide, Échap annule — pas de modale pour coller une URL. Vider le champ efface la case.
+- **Filtre par tag** au-dessus de la grille : un service appartient souvent à deux familles à la
+  fois (*backend* et *paiement*), ce qu'un arbre de dossiers l'obligerait à trancher.
+- Seules les adresses **`http` ou `https`** sont acceptées, ici comme partout dans cet onglet : ces
+  liens s'ouvrent d'un clic depuis l'application.
+
+#### Liens libres
+Une liste à plat, sous la grille : libellé, URL, tags. Recherche instantanée, ajout et édition au
+clic. C'est là qu'atterrit l'import de marque-pages.
+
+**Les transformer en service.** Coche plusieurs liens, puis `Convertir en service` : une ligne par
+lien, un environnement à choisir pour chacune. Le mapping est **explicite** — deviner « dev »
+depuis une URL contenant `-dev` marcherait neuf fois sur dix, et la dixième poserait une adresse de
+production dans la colonne de développement.
+
+#### La palette — `Ctrl`/`Cmd` + `K`, ou la touche `o`
+Le champ de recherche de l'en-tête ouvre la **palette globale**, qui cherche **partout à la fois** :
+les cases de la grille (« kibana preprod »), les liens libres, les merge requests (par numéro ou par
+mots du titre), les tickets surveillés, les pages de notes, les todos ouvertes, et les actions de
+navigation. Entrée ouvre — un lien externe dans un nouvel onglet, un objet interne à sa place.
+
+- **Recherche floue**, insensible aux accents et à la casse, par **sous-séquences** : `kib pre`
+  trouve « Kibana · preprod ». Les lettres doivent rester **proches** — sans cette contrainte,
+  `api` se retrouve dans presque n'importe quelle phrase française et les vrais résultats se font
+  chasser par le bruit.
+- **Classement par frécence** : ce qu'on ouvre *souvent* **et** *récemment* remonte. Un simple
+  compteur ferait remonter à vie ce qu'on a beaucoup ouvert le mois dernier ; une simple date
+  perdrait ce qu'on ouvre chaque jour depuis un an.
+- La palette interroge le **serveur** : elle voit donc tout, y compris ce que l'onglet courant n'a
+  pas chargé — chercher une merge request depuis Docker fonctionne.
+
+#### Liens contextuels sur les merge requests
+Quand un service est associé à un dépôt, le **détail des merge requests de ce dépôt** porte une
+rangée de boutons : les URLs de grille du service (« Ouvrir · dev »), puis ses **liens contextuels**.
+
+Un lien contextuel est un **gabarit** à variables, résolu au moment du clic :
+
+| variable | vaut |
+|---|---|
+| `{env}` | l'environnement (un bouton par environnement ayant une URL) |
+| `{branch}` | la branche source de la merge request |
+| `{mr_iid}` | le numéro de la merge request |
+| `{service}` | le nom du service |
+
+Exemple : `https://kibana-{env}.corp/app/logs?q={service}%20{branch}` ouvre les logs de *cette*
+branche, sur l'environnement voulu, sans rien retaper.
+
+- **Une variable inconnue est refusée à la saisie**, et le message dit lesquelles existent : une
+  faute de frappe doit se voir en l'écrivant, pas produire une URL cassée trois semaines plus tard.
+- **Chaque valeur substituée est URL-encodée** : une branche `feat/x?y=1` ne fabrique pas une URL
+  surprise avec un paramètre en plus.
+- Une variable **sans valeur dans ce contexte** laisse le bouton visible mais **grisé**, avec sa
+  raison au survol. Le faire disparaître laisserait croire qu'il n'existe pas ; une URL à trous
+  mènerait sur une page d'erreur.
+- Un gabarit **sans `{env}`** donne **un seul** bouton : il ne dépend pas de l'environnement, en
+  proposer un par colonne rendrait N fois la même adresse.
+
+#### Importer les marque-pages de Chrome
+*Chrome → Favoris → Gestionnaire de favoris → ⋮ → Exporter les favoris*, puis
+`Importer depuis Chrome`.
+
+- **Aperçu d'abord** : l'arbre des dossiers tel qu'il était dans le navigateur, chaque lien
+  cochable. Rien n'est créé tant qu'on n'a pas validé — même esprit que l'aperçu obligatoire des
+  opérations git.
+- Tout ce qui est coché arrive en **liens libres**, **tagué par son chemin de dossier**
+  (`Travail/Kibana` → `travail`, `kibana`).
+- **Rejouable** : réimporter le même fichier après y avoir ajouté trois favoris ne double pas les
+  cent autres — une URL déjà connue est ignorée, et le compte des ignorés est annoncé (un silence
+  passerait pour un échec).
+- Le fichier n'est **jamais exécuté ni rendu** : il est analysé, et seules les adresses `http(s)` en
+  sortent — un favori `javascript:` est ignoré. Taille bornée à 5 Mo.
+- La conversion en services vient **après**, à la main (voir plus haut).
+
+#### Health check — désactivé par défaut, à double tour
+Ces requêtes sont les **seules** que cet onglet envoie vers l'extérieur, et elles partent vers des
+adresses que tu as saisies. D'où deux interrupteurs, pas un :
+
+1. **Globalement**, dans *Réglages → Général*, avec sa cadence (5 min par défaut, 1 min au minimum).
+2. **Par environnement**, dans la modale de l'environnement. **La production est hors du lot par
+   défaut** : envoyer du trafic automatique vers un service en production n'est pas une décision
+   qu'un outil prend à la place de son utilisateur.
+
+Mécanique : un `HEAD` (repli en `GET` si le serveur répond 405, pour ne pas conclure « injoignable »
+sur une question de méthode), 5 s de patience, redirections suivies (3 au plus), **aucun corps de
+réponse lu**. 2xx-3xx → joignable, le reste → injoignable. Le cycle est **séquentiel** : vingt
+services × quatre environnements lancés d'un coup, ce sont quatre-vingts connexions simultanées
+sortant d'un poste de travail.
+
+⚠ **Deux limites à connaître.** Les vérifications ne partent **que lorsqu'un onglet Mergerie est
+ouvert** — pas de trafic fantôme la nuit. Et le résultat est un **dernier état connu**, pas un
+historique : la question posée est « est-ce debout maintenant ? ».
+
+Affichage : une pastille sur la case (verte, rouge, grise), avec le code HTTP, la latence et
+l'heure au survol ; et le nombre de liens injoignables en **badge rouge** sur l'entrée Liens du
+menu. **Aucune notification bureau** : un service qui tombe la nuit en produirait des dizaines.
 
 ### Stats
 Funnel des MR, distribution des notes, **évolution de la note moyenne par semaine** (« la qualité

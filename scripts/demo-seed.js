@@ -603,6 +603,67 @@ db.prepare(`INSERT INTO verification
     done_at: at(12), archived_at: at(5), created_at: at(20) });
 }
 
+/* ---------- Liens (plan_add_links.md §11) ----------
+   Trois environnements, quatre services dont deux liés aux dépôts de démo (ce sont eux qui
+   font apparaître les boutons sur les merge requests), un gabarit contextuel, des liens
+   libres tagués et des états de santé SEMÉS — le vrai health check reste inactif en démo,
+   on montre le badge sans pinguer quoi que ce soit. */
+{
+  const insEnv = db.prepare('INSERT INTO environment (name, position, color, health_check, created_at) VALUES (?,?,?,?,?)');
+  const envIds = {};
+  [['local', '#8b97ad', 0], ['dev', '#2f6fe0', 1], ['preprod', '#a16207', 1]]
+    .forEach(([nom, couleur, sante], i) => { envIds[nom] = insEnv.run(nom, i + 1, couleur, sante, at(30)).lastInsertRowid; });
+
+  const insSvc = db.prepare('INSERT INTO service (name, repo_id, tags, pinned, created_at) VALUES (?,?,?,?,?)');
+  const insUrl = db.prepare('INSERT INTO service_url (service_id, environment_id, url) VALUES (?,?,?)');
+  const SERVICES = [
+    { nom: 'webapp-front', repo: 'groupe/webapp-front', tags: ['front', 'produit'], pin: 1,
+      urls: { local: 'http://localhost:3000', dev: 'https://front-dev.demo.invalid', preprod: 'https://front-preprod.demo.invalid' } },
+    { nom: 'api-core', repo: 'groupe/api-core', tags: ['backend', 'produit'], pin: 1,
+      urls: { local: 'http://localhost:8080/health', dev: 'https://api-dev.demo.invalid/health', preprod: 'https://api-preprod.demo.invalid/health' } },
+    { nom: 'Kibana', repo: null, tags: ['observabilite'], pin: 0,
+      urls: { dev: 'https://kibana-dev.demo.invalid/app/logs', preprod: 'https://kibana-preprod.demo.invalid/app/logs' } },
+    { nom: 'Grafana', repo: null, tags: ['observabilite'], pin: 0,
+      urls: { dev: 'https://grafana-dev.demo.invalid/d/home' } },
+  ];
+  const svcIds = {};
+  for (const s of SERVICES) {
+    const id = insSvc.run(s.nom, s.repo ? repoIds[s.repo] : null, JSON.stringify(s.tags), s.pin, at(30)).lastInsertRowid;
+    svcIds[s.nom] = id;
+    for (const [env, url] of Object.entries(s.urls)) insUrl.run(id, envIds[env], url);
+  }
+
+  /* Le lien contextuel qui donne son sens à la fonctionnalité : depuis une merge request,
+     ouvrir les logs de SA branche, sur l'environnement voulu, sans rien retaper. */
+  db.prepare('INSERT INTO context_link (service_id, label, url_template) VALUES (?,?,?)')
+    .run(svcIds['api-core'], 'Logs', 'https://kibana-{env}.demo.invalid/app/logs?q={service}%20{branch}');
+
+  const insFree = db.prepare('INSERT INTO free_link (label, url, tags, created_at) VALUES (?,?,?,?)');
+  [
+    ['Confluence — specs paiement', 'https://confluence.demo.invalid/paiement', ['confluence', 'produit']],
+    ['Confluence — runbook astreinte', 'https://confluence.demo.invalid/runbook', ['confluence', 'astreinte']],
+    ['Doc API publique', 'https://docs.demo.invalid/api', ['doc']],
+    ['Portail SSO', 'https://sso.demo.invalid', ['outils']],
+    ['Statut fournisseur PSP', 'https://status.demo.invalid/psp', ['outils', 'astreinte']],
+    ['Tableau de bord coûts cloud', 'https://cloud.demo.invalid/couts', ['outils']],
+  ].forEach(([label, url, tags]) => insFree.run(label, url, JSON.stringify(tags), at(20)));
+
+  /* Un `down` : le badge du menu n'existe que pour se voir, et une grille toute verte ne
+     montre pas ce qu'il fait. */
+  const insSante = db.prepare(`INSERT INTO health_status
+    (service_id, environment_id, status, http_code, latency_ms, checked_at) VALUES (?,?,?,?,?,?)`);
+  insSante.run(svcIds['api-core'], envIds.dev, 'up', 200, 84, at(0.01));
+  insSante.run(svcIds['api-core'], envIds.preprod, 'down', 503, 122, at(0.01));
+  insSante.run(svcIds['webapp-front'], envIds.dev, 'up', 200, 212, at(0.01));
+  insSante.run(svcIds['webapp-front'], envIds.preprod, 'up', 200, 301, at(0.01));
+  insSante.run(svcIds.Kibana, envIds.dev, 'up', 200, 66, at(0.01));
+
+  // De quoi que la palette classe : ce qu'on ouvre le plus se retrouve en tête.
+  const insUsage = db.prepare('INSERT INTO launcher_usage (kind, ref, uses, last_used_at) VALUES (?,?,?,?)');
+  insUsage.run('service_url', `${svcIds['api-core']}:${envIds.dev}`, 42, at(0.1));
+  insUsage.run('service_url', `${svcIds['webapp-front']}:${envIds.local}`, 17, at(0.4));
+}
+
 const counts = {
   repos: db.prepare('SELECT COUNT(*) c FROM repo').get().c,
   mrs: db.prepare('SELECT COUNT(*) c FROM mr').get().c,
@@ -616,5 +677,7 @@ const counts = {
   verifications: db.prepare('SELECT COUNT(*) c FROM verification').get().c,
   notePages: db.prepare('SELECT COUNT(*) c FROM note_page').get().c,
   todos: db.prepare('SELECT COUNT(*) c FROM todo').get().c,
+  services: db.prepare('SELECT COUNT(*) c FROM service').get().c,
+  freeLinks: db.prepare('SELECT COUNT(*) c FROM free_link').get().c,
 };
 console.log('Base de démo semée dans data-demo/ :', JSON.stringify(counts));
