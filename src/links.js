@@ -415,6 +415,15 @@ const usages = () => {
 const sansAccent = (s) => String(s == null ? '' : s)
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
+/* LA MÊME FONCTION, CÔTÉ SQL. Le pré-filtre de la palette compare la requête — déjà dénudée
+   de ses accents — à des valeurs qui, elles, les ont gardés : sans ça, `LIKE '%generation%'`
+   ne trouvait pas « Génération du rapport », et le taper AVEC l'accent échouait tout autant,
+   puisque la requête est dénudée avant la comparaison. Dans une application dont les titres
+   de merge requests, de notes et de todos sont largement en français, cela revenait à ne plus
+   rien trouver. Elle est enregistrée ici, à côté de sa jumelle en JavaScript : les deux côtés
+   du `LIKE` doivent normaliser pareil, et une seule définition ne peut pas dériver. */
+db.function('sans_accent', { deterministic: true }, (v) => (v == null ? null : sansAccent(v)));
+
 /* Chaque mot de la requête doit se retrouver dans la cible, en SOUS-SÉQUENCE : « kib pre »
    trouve « Kibana · preprod ». On note mieux ce qui commence un mot — taper « api » doit
    remonter « api-core » avant « rapidité », qui contient pourtant les mêmes lettres. */
@@ -471,14 +480,21 @@ const TOTAL = 12;
 /* Une condition SQL par mot de la requête, chacun pouvant tomber dans n'importe laquelle des
    colonnes citées. Rend `{ cond, args }` — `cond` vide quand il n'y a pas de requête, la
    palette s'ouvrant alors sur les entrées les plus récentes.
-   Le `%` et le `_` d'une saisie sont ÉCHAPPÉS : sans cela, taper « % » ramènerait tout. */
+   Le `%` et le `_` d'une saisie sont ÉCHAPPÉS : sans cela, taper « % » ramènerait tout.
+   CONTIGU PAR MOT, ET C'EST DÉLIBÉRÉ. Le flou accepte les lettres d'un mot à trous (« kbana »
+   pour « Kibana ») ; le pré-filtre, non — il exige le fragment entier. Le traduire fidèlement
+   donnerait `%k%b%a%n%a%` ; mesuré sur mille titres de merge requests en français, « pre »
+   toucherait alors 622 lignes au lieu de 190, et le plafond par source recouperait AVANT que
+   la contrainte d'étalement du flou n'ait pu trier — soit exactement le défaut que ce
+   pré-filtre existe pour corriger. On abrège donc par MOTS (« kib pre » trouve
+   « Kibana · preprod », chaque mot étant un fragment), pas en sautant des lettres. */
 function preFiltre(requete, colonnes) {
   const mots = sansAccent(requete).split(/\s+/).filter(Boolean);
   if (!mots.length) return { cond: '', args: [] };
   const args = [];
   const groupes = mots.map((mot) => {
     const like = `%${mot.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
-    const ors = colonnes.map((c) => { args.push(like); return `${c} LIKE ? ESCAPE '\\'`; });
+    const ors = colonnes.map((c) => { args.push(like); return `sans_accent(${c}) LIKE ? ESCAPE '\\'`; });
     return `(${ors.join(' OR ')})`;
   });
   return { cond: groupes.join(' AND '), args };

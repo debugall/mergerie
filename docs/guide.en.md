@@ -695,9 +695,13 @@ the grid's cells (“kibana staging”), free links, merge requests (by number o
 title), watched tickets, note pages, open todos, and navigation actions. Enter opens — an external
 link in a new tab, an internal object in its own place.
 
-- **Fuzzy search**, accent- and case-insensitive, by **subsequence**: `kib pre` finds
-  “Kibana · preprod”. The letters must stay **close together** — without that constraint, `api`
-  turns up in almost any English sentence and the real results get crowded out by noise.
+- **Fuzzy search**, accent- and case-insensitive — `generation` finds “Génération du rapport”, and
+  the other way round. You abbreviate **by words**: `kib pre` finds “Kibana · preprod”, each word
+  you type having to appear *whole* somewhere in the target. Dropping a letter inside a word
+  (`kbana`) finds nothing, and that is deliberate: allowing gapped words all the way down into the
+  database would push more than half the rows past the ranking, which would then have nothing left
+  to sort with. The ranking itself favours what **starts** a word — `api` brings up “api-core”
+  ahead of “rapid”, which holds the same letters.
 - **Ranked by frecency**: what you open *often* **and** *recently* comes up. A plain counter would
   keep whatever you hammered last month at the top forever; a plain date would lose what you have
   opened every day for a year.

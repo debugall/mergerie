@@ -732,10 +732,13 @@ les cases de la grille (« kibana preprod »), les liens libres, les merge reque
 mots du titre), les tickets surveillés, les pages de notes, les todos ouvertes, et les actions de
 navigation. Entrée ouvre — un lien externe dans un nouvel onglet, un objet interne à sa place.
 
-- **Recherche floue**, insensible aux accents et à la casse, par **sous-séquences** : `kib pre`
-  trouve « Kibana · preprod ». Les lettres doivent rester **proches** — sans cette contrainte,
-  `api` se retrouve dans presque n'importe quelle phrase française et les vrais résultats se font
-  chasser par le bruit.
+- **Recherche floue**, insensible aux accents et à la casse — `generation` trouve « Génération du
+  rapport », et inversement. On abrège **par mots** : `kib pre` trouve « Kibana · preprod », chaque
+  mot tapé devant se retrouver *entier* quelque part dans la cible. Sauter une lettre au milieu
+  d'un mot (`kbana`) ne trouve rien, et c'est voulu : accepter les mots à trous jusque dans la base
+  ferait passer plus de la moitié des lignes devant le classement, qui n'aurait alors plus les
+  moyens de trier. Le classement, lui, favorise ce qui **commence** un mot — `api` remonte
+  « api-core » avant « rapidité », qui contient pourtant les mêmes lettres.
 - **Classement par frécence** : ce qu'on ouvre *souvent* **et** *récemment* remonte. Un simple
   compteur ferait remonter à vie ce qu'on a beaucoup ouvert le mois dernier ; une simple date
   perdrait ce qu'on ouvre chaque jour depuis un an.

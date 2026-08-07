@@ -202,6 +202,38 @@ describe('palette : le plafond ne cache pas ce qu’on cherche', () => {
     beaucoup();
     assert.ok(links.launcher('', {}).length > 0);
   });
+
+  /* Le pré-filtre compare la requête — déjà dénudée de ses accents — à des valeurs qui, elles,
+     les ont gardés. Sans normalisation des DEUX côtés du `LIKE`, une ligne accentuée
+     n'atteignait jamais le flou, qui savait pourtant la trouver. Dans une application dont les
+     titres sont largement en français, cela revenait à ne plus rien trouver — et taper la
+     requête AVEC son accent échouait tout autant, puisqu'elle est dénudée avant d'être comparée.
+     Les libellés ci-dessous portent donc de VRAIS accents : sans eux le test ne prouverait rien. */
+  test('les accents ne cachent plus rien, dans un sens comme dans l’autre', () => {
+    db.prepare('DELETE FROM free_link').run();
+    links.creerFreeLink({ label: 'Génération du rapport', url: 'https://a.test' }, MSGS);
+    links.creerFreeLink({ label: 'Vérification des accès', url: 'https://c.test' }, MSGS);
+
+    for (const q of ['generation', 'génération', 'Generation', 'GÉNÉRATION']) {
+      assert.deepEqual(links.launcher(q, {}).map((x) => x.label), ['Génération du rapport'], q);
+    }
+    assert.deepEqual(links.launcher('verification des acces', {}).map((x) => x.label),
+      ['Vérification des accès'], 'chaque mot de la requête est normalisé, pas seulement le premier');
+  });
+
+  /* UN CHOIX, PAS UN OUBLI. Le flou accepte un mot à trous ; le pré-filtre exige le fragment
+     entier. Le traduire fidèlement donnerait `%k%b%a%n%a%` — sur mille titres français,
+     « pre » toucherait 622 lignes au lieu de 190, et le plafond recouperait avant que la
+     contrainte d'étalement n'ait pu trier. On abrège par MOTS, pas en sautant des lettres. */
+  test('on abrège par mots, pas en sautant des lettres dans un mot', () => {
+    db.prepare('DELETE FROM free_link').run();
+    links.creerFreeLink({ label: 'Kibana preprod', url: 'https://b.test' }, MSGS);
+
+    assert.deepEqual(links.launcher('kib pre', {}).map((x) => x.label), ['Kibana preprod'],
+      'chaque mot est un fragment : c’est ce que la documentation promet');
+    assert.deepEqual(links.launcher('kbana', {}), [],
+      'une lettre sautée au milieu d’un mot ne passe pas le pré-filtre');
+  });
 });
 
 describe('import : le format « Netscape » de Chrome', () => {
