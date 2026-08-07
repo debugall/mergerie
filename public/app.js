@@ -368,7 +368,11 @@ function mdToHtml(md) {
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>');
-  const splitRow = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+  /* Le `|` d'une cellule est échappé à la source (`\|`) : sans quoi il ouvrirait une colonne
+     de plus et décalerait toute la ligne. On coupe donc sur les `|` NON échappés, puis on
+     rend le caractère à la cellule. */
+  const splitRow = (line) => line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '')
+    .split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, '|'));
   const isSep = (line) => { const c = splitRow(line); return c.length > 0 && c.every((x) => /^:?-+:?$/.test(x)); };
   const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
 
@@ -400,7 +404,9 @@ function mdToHtml(md) {
         const cells = splitRow(r);
         body += '<tr>' + headers.map((_, k) => `<td${cellStyle(k)}>${inline(cells[k] || '')}</td>`).join('') + '</tr>';
       }
-      html += `<div class="md-tablewrap"><table class="md-table"><thead>${thead}</thead><tbody>${body}</tbody></table></div>`;
+      const sansEnTete = headers.every((hh) => hh === '');
+      html += `<div class="md-tablewrap"><table class="md-table${sansEnTete ? ' md-table-nohead' : ''}">`
+        + `<thead>${thead}</thead><tbody>${body}</tbody></table></div>`;
       i = j - 1;
       continue;
     }
@@ -431,6 +437,7 @@ $$('nav button').forEach((b) => b.addEventListener('click', () => {
   if (b.dataset.tab === 'docker') loadDocker();
   else dlogStop(); // en quittant Docker, on coupe le tail live (et ses process serveur)
   if (b.dataset.tab === 'jira') loadJira();
+  if (b.dataset.tab === 'notes') loadNotes();
   try { localStorage.setItem('aidevtools_tab', b.dataset.tab); } catch { /* ignore */ }
 }));
 
@@ -2533,6 +2540,7 @@ async function openReport(id, opts = {}) {
       <div class="btn-group">
         <button id="aSplit" class="btn btn-primary" title="${tr('report.btn.split-title')}"><svg class=\"ico\"><use href=\"#i-expand\"/></svg>${tr('report.btn.split')}</button>
         <button id="aTicket" class="btn" title="${tr('report.btn.context-title')}"><svg class="ico"><use href="#i-doc"/></svg>${tr('mr.btn.context')}${d.ticket && (d.ticket.text || d.ticket.has_image) ? ` ${svgIco('check')}` : ''}</button>
+        ${addTodoBtn('mr', m.id, tr('notes.add-todo.mr', { iid: m.iid, title: String(m.title || '').slice(0, 60) }))}
       </div>
       <div class="btn-group">
         ${d.review && m.status !== 'done' && !m.closed_seen ? `<button id="aConverge" class="btn btn-converge" title="${tr('report.btn.converge-title')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : ''}
@@ -3329,7 +3337,8 @@ $('#ticketSave').addEventListener('click', async () => {
 const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'access_token',
   'github_url', 'github_token',
   'clone_path', 'review_skill', 'prompt_review', 'prompt_explain', 'prompt_modify',
-  'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days'];
+  'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
+  'stale_mr_days'];
 async function loadConfig() {
   const c = await api('/config');
   const f = $('#configForm');
@@ -3338,6 +3347,9 @@ async function loadConfig() {
   // Idem : 0 signifie « sans limite », il doit s'écrire plutôt que rester vide.
   if (f.retention_days) f.retention_days.value = Number(c.retention_days) || 0;
   if (f.review_explain) f.review_explain.checked = c.review_explain !== '0'; // défaut : activé
+  // Atterrissage sur le brief : coché par défaut, comme côté serveur.
+  if (f.brief_on_open) f.brief_on_open.checked = c.brief_on_open !== '0';
+  if (f.stale_mr_days) f.stale_mr_days.value = Number(c.stale_mr_days) || 5;
   renderNotifSettings();
 }
 $('#configForm').addEventListener('submit', async (e) => {
@@ -3347,6 +3359,7 @@ $('#configForm').addEventListener('submit', async (e) => {
   for (const k of CONFIG_FIELDS) { if (f[k]) body[k] = f[k].value; }
   body.auto_refresh_minutes = f.auto_refresh_minutes.value;
   if (f.review_explain) body.review_explain = f.review_explain.checked ? '1' : '0';
+  if (f.brief_on_open) body.brief_on_open = f.brief_on_open.checked ? '1' : '0';
   // '***' = champ non touché (on n'écrase pas le secret) ; '' = effacement volontaire.
   if (body.access_token === '***') delete body.access_token;
   if (body.jira_token === '***') delete body.jira_token;
@@ -8156,6 +8169,7 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
           </select>` : ''}
           <span class="spacer"></span>
           <button type="button" class="btn btn-sm${jiraIsWatched(it.key) ? ' active' : ''}" data-jirawatch="${esc(it.key)}" title="${esc(tr(jiraIsWatched(it.key) ? 'jira.watch.stop-title' : 'jira.watch.start-title'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${esc(tr(jiraIsWatched(it.key) ? 'jira.watch.stop' : 'jira.watch.start'))}</button>
+          ${addTodoBtn('ticket', it.key, tr('notes.add-todo.ticket', { key: it.key, title: String(it.summary || '').slice(0, 60) }))}
           <button type="button" class="btn btn-sm btn-primary" data-jiracode="${esc(it.key)}" title="${esc(tr('jira.code-title'))}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${esc(tr('jira.code'))}</button>
           <a href="${esc(it.url)}" target="_blank" rel="noopener" class="jira-open">${esc(tr('jira.open'))} ↗</a>
         </div>
@@ -8712,14 +8726,19 @@ const PALETTE_ACTIONS = [
   { key: 'palette.go.reviewed', run: () => { $('nav button[data-tab="review"]').click(); loadSegment('reviewed'); } },
   { key: 'palette.go.done', run: () => { $('nav button[data-tab="review"]').click(); loadSegment('done'); } },
   { key: 'palette.go.task', run: () => $('nav button[data-tab="task"]').click() },
-  { key: 'palette.go.stats', run: () => $('nav button[data-tab="dashboard"]').click() },
+  { key: 'palette.go.notes', run: () => { navTab('notes'); showNotesSub('today'); } },
+  { key: 'palette.go.todos', run: () => { navTab('notes'); showNotesSub('todos'); } },
+  { key: 'palette.go.pages', run: () => { navTab('notes'); showNotesSub('pages'); } },
+  { key: 'palette.go.jira', run: () => $('nav button[data-tab="jira"]').click() },
   { key: 'palette.go.git', run: () => $('nav button[data-tab="git"]').click() },
   { key: 'palette.go.docker', run: () => $('nav button[data-tab="docker"]').click() },
-  { key: 'palette.go.jira', run: () => $('nav button[data-tab="jira"]').click() },
+  { key: 'palette.go.stats', run: () => $('nav button[data-tab="dashboard"]').click() },
   { key: 'palette.go.settings', run: () => $('nav button[data-tab="admin"]').click() },
   { key: 'palette.act.discover', run: () => { $('nav button[data-tab="review"]').click(); $('#btnDiscover').click(); } },
   { key: 'palette.act.review-all', run: () => { $('nav button[data-tab="review"]').click(); $('#btnReview').click(); } },
   { key: 'palette.act.new-task', run: () => { $('nav button[data-tab="task"]').click(); $('#btnNewTask').click(); } },
+  { key: 'palette.act.new-todo', run: () => openCapture() },
+  { key: 'palette.act.new-page', run: () => { navTab('notes'); showNotesSub('pages'); $('#pageNew').click(); } },
   { key: 'palette.act.logs', run: () => showLogPanel() },
   { key: 'palette.act.shortcuts', run: () => openShortcuts() },
 ];
@@ -8803,20 +8822,22 @@ fermerAuFond('#paletteModal', closePalette, { salissable: false });
    ce qui est exactement le contraire de ce qu'on attend d'une aide. */
 const SHORTCUTS = [
   ['Ctrl/Cmd + K', 'shortcuts.palette'],
-  ['1 – 7', 'shortcuts.tabs'],
+  [null, 'shortcuts.tabs'],   // plage calculée au rendu : autant que d'onglets dans la barre
   ['/', 'shortcuts.search'],
   ['j / k', 'shortcuts.jk'],
   ['Entrée', 'shortcuts.enter'],
   ['d', 'shortcuts.diff'],
   ['r', 'shortcuts.discover'],
+  ['n', 'shortcuts.notes'],
   ['l', 'shortcuts.logs'],
   ['?', 'shortcuts.help'],
   ['Échap', 'shortcuts.escape'],
 ];
 function openShortcuts() {
   const m = $('#shortcutsModal'); if (!m) return;
+  const nbOnglets = $$('nav button[data-tab]').length;
   $('#shortcutsList').innerHTML = SHORTCUTS
-    .map(([k, key]) => `<div class="shortcut-row"><kbd>${esc(k)}</kbd><span>${esc(tr(key))}</span></div>`).join('');
+    .map(([k, key]) => `<div class="shortcut-row"><kbd>${esc(k || `1 – ${nbOnglets}`)}</kbd><span>${esc(tr(key))}</span></div>`).join('');
   m.hidden = false;
 }
 $('#shortcutsClose') && $('#shortcutsClose').addEventListener('click', () => { $('#shortcutsModal').hidden = true; });
@@ -8891,6 +8912,713 @@ function bougerFocusCarte(pas) {
   cartes[next].scrollIntoView({ block: 'nearest' });
 }
 
+/* ============ Onglet Notes : brief, todos et pages ============
+   Des post-it de poste de travail, pas une base de connaissances. Tout est local, tout est
+   déterministe : aucun appel IA, aucun token — le brief doit s'afficher instantanément à
+   l'ouverture, avant même le premier café. */
+const NOTES = {
+  sub: 'today',
+  filter: 'open',       // open | done | archived
+  pages: [],
+  pageId: null,
+  page: null,
+  index: { mrs: {}, jira: false },   // table de résolution de l'autolink
+  open: [],             // todos ouvertes : sert à l'anti-doublon d'« Ajouter aux todos »
+  affichees: [],        // la liste RÉELLEMENT à l'écran (le filtre courant), pour l'édition
+};
+
+const NOTES_SUBS = { today: 'notesSubToday', todos: 'notesSubTodos', pages: 'notesSubPages' };
+
+function showNotesSub(sub) {
+  NOTES.sub = NOTES_SUBS[sub] ? sub : 'today';
+  $$('#tab-notes .subnav button').forEach((b) => b.classList.toggle('active', b.dataset.nsub === NOTES.sub));
+  Object.entries(NOTES_SUBS).forEach(([k, id]) => { const el = $(`#${id}`); if (el) el.hidden = k !== NOTES.sub; });
+  try { localStorage.setItem('mergerie_notes_sub', NOTES.sub); } catch { /* stockage indisponible */ }
+  if (NOTES.sub !== 'pages') viderPageSave();
+  if (NOTES.sub === 'today') loadBrief();
+  if (NOTES.sub === 'todos') loadTodos();
+  if (NOTES.sub === 'pages') loadPages();
+}
+$$('#tab-notes .subnav button').forEach((b) => b.addEventListener('click', () => showNotesSub(b.dataset.nsub)));
+
+function loadNotes() {
+  let sub = NOTES.sub;
+  try { sub = localStorage.getItem('mergerie_notes_sub') || sub; } catch { /* stockage indisponible */ }
+  showNotesSub(sub);
+}
+
+/* La table de résolution de l'autolink, mise en cache : elle change quand des MR arrivent,
+   pas entre deux frappes. On la relit à chaque ouverture de l'onglet, pas à chaque rendu —
+   une page qui se réaffiche à chaque caractère tapé ne doit pas interroger le serveur. */
+async function notesIndex(force = false) {
+  if (!force && NOTES.indexAt && Date.now() - NOTES.indexAt < 60000) return NOTES.index;
+  try {
+    NOTES.index = await api('/notes-index');
+    NOTES.indexAt = Date.now();
+  } catch { /* index indisponible : le texte reste du texte, sans lien mort */ }
+  return NOTES.index;
+}
+
+/* Rendu Markdown + autolink. L'ordre importe : `mdToHtml` échappe, l'autolink s'applique
+   APRÈS et n'injecte que des balises qu'il fabrique lui-même. On saute les blocs de code :
+   `!42` dans un extrait de shell est du code, pas une merge request. */
+const NOTE_CODE_RE = /(<pre>[\s\S]*?<\/pre>|<code>[\s\S]*?<\/code>)/;
+function renderNoteMd(md) {
+  const html = mdToHtml(md);
+  return html.split(NOTE_CODE_RE)
+    .map((part, i) => (i % 2 ? part : NOTESRT.autolink(part, NOTES.index)))
+    .join('');
+}
+
+/* Clic sur un lien d'autolink : la navigation vit ici, pas dans le module de rendu, qui ne
+   sait pas où sont les onglets. Délégation, comme partout ailleurs. */
+document.addEventListener('click', (e) => {
+  const a = e.target.closest && e.target.closest('.note-link');
+  if (!a) return;
+  e.preventDefault();
+  if (a.dataset.noteMr) { navMrReport(Number(a.dataset.noteMr)); return; }
+  if (a.dataset.noteMrSearch) {
+    navReviews('reviewed');
+    const s = $('#searchReview');
+    if (s) { s.value = a.dataset.noteMrSearch; s.dispatchEvent(new Event('input')); }
+    return;
+  }
+  if (a.dataset.noteTicket) { navTab('jira'); showJiraSub('mine'); selectJiraIssue(a.dataset.noteTicket, 'mine'); }
+});
+
+/* ---------- Le brief « Aujourd'hui » ---------- */
+
+async function loadBrief() {
+  const box = $('#briefBox');
+  if (!box) return;
+  box.innerHTML = skeleton(4);
+  await notesIndex();
+  let d;
+  try { d = await api('/brief'); } catch (err) { box.innerHTML = `<p class="err">${esc(explainError(err.message))}</p>`; return; }
+  renderBrief(d);
+}
+
+/* Une section vide n'est pas rendue. Un écran qui affiche sept titres dont six sous-titrés
+   « rien » apprend qu'il ne s'est rien passé — ce qui n'était pas la question posée. */
+function briefSection(titre, corps, { icon = 'inbox', hint = '' } = {}) {
+  if (!corps) return '';
+  return `<section class="brief-sec">
+    <h3><svg class="ico"><use href="#i-${icon}"/></svg>${esc(titre)}</h3>
+    ${hint ? `<p class="muted brief-hint">${esc(hint)}</p>` : ''}
+    ${corps}
+  </section>`;
+}
+
+function renderBrief(d) {
+  const box = $('#briefBox');
+  const jour = new Date(d.date).toLocaleDateString(I18Nrt.currentLocale(), {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+
+  const rappels = (d.reminders || []).map((t) => briefTodoRow(t, true)).join('');
+  const todos = (d.todos || []).map((t) => briefTodoRow(t, false)).join('');
+
+  const sessions = (d.sessions || []).map((s) => `<div class="brief-item">
+      <div class="brief-item-main">
+        <div class="brief-item-title">${esc(String(s.prompt || '').slice(0, 120))}</div>
+        <div class="meta">${esc(tr('notes.brief.session.targets', { n: s.targets, count: s.targets }))}</div>
+      </div>
+      <button type="button" class="btn btn-sm btn-primary" data-brief-session="${s.task_id}">${esc(tr('notes.brief.session.go'))}</button>
+    </div>`).join('');
+
+  const verifs = (d.verifications || []).map((v) => `<div class="brief-item">
+      <div class="brief-item-main">
+        <div class="brief-item-title">${esc(v.lot_name || v.verifier_name || '')}${v.failed_label ? ` — <code>${esc(v.failed_label)}</code>` : ''}</div>
+        <div class="meta">${esc(tr('notes.brief.verif.failed', { n: v.failed, count: v.failed }))}
+          ${v.targets.map((c) => (c.iid ? ` · !${c.iid}` : '')).join('')}</div>
+      </div>
+      <button type="button" class="btn btn-sm" data-brief-verif="${v.verification_id}">${esc(tr('notes.brief.verif.go'))}</button>
+    </div>`).join('');
+
+  const fresh = (d.fresh_mrs || []).map((m) => `<div class="brief-item brief-clickable" data-brief-mr="${m.id}">
+      <div class="brief-item-main">
+        <div class="brief-item-title">!${m.iid} — ${esc(m.title || '')}</div>
+        <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}</div>
+      </div>
+    </div>`).join('');
+
+  const stale = (d.stale_mrs || []).map((m) => `<div class="brief-item brief-clickable" data-brief-mr="${m.id}">
+      <div class="brief-item-main">
+        <div class="brief-item-title">!${m.iid} — ${esc(m.title || '')}</div>
+        <div class="meta">${esc(m.project)} · ${esc(tr('notes.brief.stale.line', { n: m.days, count: m.days }))}</div>
+      </div>
+    </div>`).join('');
+
+  const a = d.activity;
+  const activite = a ? `<p class="brief-activity">${[
+    a.merged ? esc(tr('notes.brief.activity.merged', { n: a.merged, count: a.merged })) : '',
+    a.opened ? esc(tr('notes.brief.activity.opened', { n: a.opened, count: a.opened })) : '',
+    a.verified ? esc(tr('notes.brief.activity.verified', { n: a.verified, count: a.verified })) : '',
+  ].filter(Boolean).join(' · ')}</p>` : '';
+
+  const corps = [
+    briefSection(tr('notes.brief.sec.reminders'), rappels, { icon: 'clock' }),
+    briefSection(tr('notes.brief.sec.todos'), todos, { icon: 'check' }),
+    briefSection(tr('notes.brief.sec.sessions'), sessions, { icon: 'bot' }),
+    briefSection(tr('notes.brief.sec.verifications'), verifs, { icon: 'alert' }),
+    briefSection(tr('notes.brief.sec.fresh'), fresh, { icon: 'merge', hint: tr('notes.brief.fresh.hint') }),
+    briefSection(tr('notes.brief.sec.stale'), stale, { icon: 'clock', hint: tr('notes.brief.stale.hint', { n: d.stale_days }) }),
+    briefSection(tr('notes.brief.sec.activity'), activite, { icon: 'chart' }),
+  ].join('');
+
+  box.innerHTML = `<header class="brief-head">
+      <div class="brief-hello">${esc(tr('notes.brief.hello'))}</div>
+      <div class="brief-date">${esc(jour)}</div>
+    </header>
+    ${corps || emptyState({ icon: 'check', title: esc(tr('notes.brief.empty.title')), text: esc(tr('notes.brief.empty.text')) })}`;
+
+}
+
+// Une ligne de todo dans le brief : cochable et snoozable sur place — c'est tout l'intérêt
+// d'un brief, agir sans changer d'écran.
+function briefTodoRow(t, avecSnooze) {
+  return `<div class="brief-item todo-row" data-todo="${t.id}">
+    <input type="checkbox" class="todo-check" data-todo-check="${t.id}" aria-label="${esc(tr('notes.todo.done'))}" />
+    <div class="brief-item-main">
+      <div class="brief-item-title">${esc(t.title)}</div>
+      <div class="meta">${todoPrioBadge(t.priority)}${todoDueHtml(t)}${todoLinkHtml(t)}</div>
+    </div>
+    ${avecSnooze ? todoSnoozeHtml(t.id) : ''}
+  </div>`;
+}
+
+/* Les deux pastilles du menu Notes, calculées depuis les todos ouvertes déjà en mémoire :
+   ROUGE = ce qui presse, BLEU = le reste à faire. Leur somme est le nombre de todos à faire.
+
+   « Presse » n'est pas seulement la priorité haute : une todo normale dont l'échéance est
+   dépassée depuis trois jours réclame autant. Compter la seule priorité aurait laissé le
+   retard invisible dans le menu — et le retard est précisément ce qu'on vient d'oublier.
+   La bulle énumère la composition, pour qu'un chiffre qui ne correspond pas au nombre de
+   pastilles « Haute » s'explique de lui-même. */
+function majBadgeNotes() {
+  const rouge = $('#navTodoUrgent');
+  const bleu = $('#navCountNotes');
+  if (!rouge || !bleu) return;
+  const maintenant = Date.now();
+  const ouvertes = NOTES.open || [];
+  const enRetard = ouvertes.filter((t) => t.due_at && new Date(t.due_at).getTime() <= maintenant);
+  const hautes = ouvertes.filter((t) => t.priority === 'high' && !enRetard.includes(t));
+  const urgentes = enRetard.length + hautes.length;
+  const reste = ouvertes.length - urgentes;
+
+  const poser = (el, n, bulle) => {
+    el.hidden = !n;
+    el.textContent = String(n);
+    el.dataset.tip = bulle;
+    /* `title = ''` et non l'absence de title : sur un enfant, un title VIDE empêche le
+       navigateur de remonter à celui du bouton parent — sans ça, survoler le chiffre
+       afficherait « Notes, todos et rappels… » par-dessus notre bulle. */
+    el.title = '';
+    el.setAttribute('aria-label', bulle);
+  };
+  poser(rouge, urgentes, [
+    enRetard.length ? tr('nav.todos.late', { n: enRetard.length, count: enRetard.length }) : '',
+    hautes.length ? tr('nav.todos.high', { n: hautes.length, count: hautes.length }) : '',
+  ].filter(Boolean).join(' · '));
+  poser(bleu, reste, tr('nav.todos.rest', { n: reste, count: reste }));
+}
+
+document.addEventListener('click', (e) => {
+  const s = e.target.closest && e.target.closest('[data-brief-session]');
+  if (s) { navTab('task'); return; }
+  const v = e.target.closest && e.target.closest('[data-brief-verif]');
+  if (v) { openVerifyReport(Number(v.dataset.briefVerif)); return; }
+  const m = e.target.closest && e.target.closest('[data-brief-mr]');
+  if (m) navMrReport(Number(m.dataset.briefMr));
+});
+
+/* ---------- Todos ---------- */
+
+function todoPrioBadge(p) {
+  if (p === 'normal') return '';   // la normale est le cas courant : la baliser serait du bruit
+  return `<span class="prio prio-${esc(p)}">${esc(tr(`notes.prio.${p}`))}</span>`;
+}
+
+/* L'échéance en RELATIF. « 2026-08-09 09:00 » oblige à calculer ; « demain 9 h » se lit.
+   Le rouge est réservé au dépassé : une échéance à venir n'est pas une alarme. */
+function todoDueLabel(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return { texte: '', enRetard: false };
+  const now = new Date();
+  const jour = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dj = Math.round((jour(d) - jour(now)) / 86400000);
+  if (d.getTime() < now.getTime()) {
+    const retard = -dj;
+    return {
+      texte: retard >= 1 ? tr('notes.todo.due.overdue', { n: retard, count: retard }) : tr('notes.todo.due.now'),
+      enRetard: true,
+    };
+  }
+  if (dj === 0) return { texte: tr('notes.todo.due.today', { time: fmtHour(iso) }), enRetard: false };
+  if (dj === 1) return { texte: tr('notes.todo.due.tomorrow', { time: fmtHour(iso) }), enRetard: false };
+  return { texte: tr('notes.todo.due.in-days', { n: dj, count: dj }), enRetard: false };
+}
+
+function todoDueHtml(t) {
+  if (!t.due_at) return '';
+  const { texte, enRetard } = todoDueLabel(t.due_at);
+  return `<span class="todo-due${enRetard ? ' late' : ''}" title="${esc(`${fmtDate(t.due_at)} ${fmtHour(t.due_at)}`)}">${svgIco('clock')} ${esc(texte)}</span>`;
+}
+
+const todoSnoozeHtml = (id) => `<span class="todo-snooze">
+  <button type="button" class="btn btn-sm btn-ghost" data-snooze="hour" data-todo-id="${id}" title="${esc(tr('notes.todo.snooze.hour-title'))}">${esc(tr('notes.todo.snooze.hour'))}</button>
+  <button type="button" class="btn btn-sm btn-ghost" data-snooze="tomorrow" data-todo-id="${id}" title="${esc(tr('notes.todo.snooze.tomorrow-title'))}">${esc(tr('notes.todo.snooze.tomorrow'))}</button>
+</span>`;
+
+/* Le lien vers l'objet suivi. Une MR dont l'id ne résout plus (rapport supprimé, dépôt
+   retiré) reste affichée comme telle plutôt que de disparaître : la todo, elle, existe. */
+function todoLinkHtml(t) {
+  if (!t.link_kind || !t.link_ref) return '';
+  if (t.link_kind === 'mr') {
+    return `<a href="#" class="note-link" data-note-mr="${esc(t.link_ref)}" title="${esc(tr('notes.todo.link-title'))}">${svgIco('merge')} ${esc(tr('notes.todo.link.mr', { iid: todoMrIid(t.link_ref) }))}</a>`;
+  }
+  if (t.link_kind === 'ticket') {
+    return `<a href="#" class="note-link" data-note-ticket="${esc(t.link_ref)}" title="${esc(tr('notes.todo.link-title'))}">${svgIco('tag')} ${esc(tr('notes.todo.link.ticket', { key: t.link_ref }))}</a>`;
+  }
+  return `<span class="muted">${svgIco('branch')} ${esc(tr('notes.todo.link.repo', { project: t.link_ref }))}</span>`;
+}
+
+// L'iid affiché vient de l'index d'autolink : la todo ne stocke que l'id interne, et un
+// numéro interne n'a jamais rien dit à personne.
+function todoMrIid(mrId) {
+  for (const [iid, cands] of Object.entries(NOTES.index.mrs || {})) {
+    if (cands.some((c) => String(c.id) === String(mrId))) return iid;
+  }
+  return '?';
+}
+
+async function loadTodos() {
+  const box = $('#todoList');
+  if (!box) return;
+  box.innerHTML = skeleton(4);
+  await notesIndex();
+  let d;
+  try { d = await api(`/todos?status=${encodeURIComponent(NOTES.filter)}`); }
+  catch (e) { box.innerHTML = `<p class="err">${esc(explainError(e.message))}</p>`; return; }
+  renderTodos(d.todos || []);
+}
+
+function renderTodos(rows) {
+  NOTES.affichees = rows;   // le crayon existe aussi sous « Faites » et « Archivées »
+  const box = $('#todoList');
+  const info = $('#todoInfo');
+  if (info) info.textContent = rows.length ? tr('notes.todo.count', { n: rows.length, count: rows.length }) : '';
+  /* La pastille du sous-onglet ne bouge QUE sur la vue « à faire » : sur les faites ou les
+     archivées, elle annoncerait un travail en attente qui n'existe pas. */
+  if (NOTES.filter === 'open') {
+    const b = $('#notesTodoCount');
+    if (b) { b.hidden = !rows.length; b.textContent = String(rows.length); }
+  }
+  if (!rows.length) {
+    const texte = NOTES.filter === 'archived'
+      ? tr('notes.todo.empty.archived', { n: 7 })
+      : NOTES.filter === 'done' ? tr('notes.todo.empty.done') : tr('notes.todo.empty.text');
+    box.innerHTML = emptyState({ icon: 'check', title: esc(tr('notes.todo.empty.title')), text: esc(texte) });
+    return;
+  }
+  box.innerHTML = rows.map((t) => `<div class="todo-row card${t.status === 'done' ? ' done' : ''}" data-todo="${t.id}">
+      <input type="checkbox" class="todo-check" data-todo-check="${t.id}"${t.status === 'done' ? ' checked' : ''} aria-label="${esc(tr('notes.todo.done'))}" />
+      <div class="brief-item-main">
+        <div class="brief-item-title">${esc(t.title)}</div>
+        <div class="meta">${todoPrioBadge(t.priority)}${todoDueHtml(t)}${todoLinkHtml(t)}
+          ${t.archived_at ? `<span class="muted">${esc(tr('notes.todo.archived-at', { date: fmtDate(t.archived_at) }))}</span>` : ''}</div>
+        ${t.note ? `<div class="todo-note md-body">${renderNoteMd(t.note)}</div>` : ''}
+      </div>
+      ${t.due_at && t.status === 'open' ? todoSnoozeHtml(t.id) : ''}
+      <button type="button" class="btn btn-sm btn-ghost" data-todo-edit="${t.id}" title="${esc(tr('notes.todo.edit-title'))}">${svgIco('edit')}</button>
+      <button type="button" class="btn btn-sm btn-ghost btn-danger" data-todo-del="${t.id}" title="${esc(tr('notes.todo.delete-title'))}">${svgIco('trash')}</button>
+    </div>`).join('');
+}
+
+$$('#tab-notes .todo-filter button').forEach((b) => b.addEventListener('click', () => {
+  NOTES.filter = b.dataset.tfilter;
+  $$('#tab-notes .todo-filter button').forEach((x) => x.classList.toggle('active', x === b));
+  loadTodos();
+}));
+
+// Ajout inline : le champ et le bouton font la même chose, parce qu'on tape puis on
+// valide — sans quitter le clavier.
+async function todoQuickAdd() {
+  const input = $('#todoQuickAdd');
+  const titre = (input.value || '').trim();
+  if (!titre) return;
+  try {
+    await api('/todos', { method: 'POST', body: { title: titre } });
+    input.value = '';
+    await refreshOpenTodos();
+    loadTodos();
+  } catch (e) { toast(explainError(e.message), true); }
+}
+$('#todoQuickBtn') && $('#todoQuickBtn').addEventListener('click', () => todoQuickAdd());
+$('#todoQuickAdd') && $('#todoQuickAdd').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); todoQuickAdd(); }
+});
+
+/* Cocher, snoozer, éditer, supprimer — par délégation, parce que ces lignes sont rendues
+   à trois endroits (brief, liste, et le brief se re-rend tout seul). */
+document.addEventListener('change', async (e) => {
+  const cb = e.target.closest && e.target.closest('[data-todo-check]');
+  if (!cb) return;
+  const id = Number(cb.dataset.todoCheck);
+  try {
+    await api(`/todos/${id}`, { method: 'PUT', body: { status: cb.checked ? 'done' : 'open' } });
+    toast(tr(cb.checked ? 'notes.todo.done' : 'notes.todo.reopened'));
+    await refreshOpenTodos();
+    if (NOTES.sub === 'todos') loadTodos(); else loadBrief();
+  } catch (err) { cb.checked = !cb.checked; toast(explainError(err.message), true); }
+});
+
+document.addEventListener('click', async (e) => {
+  const sn = e.target.closest && e.target.closest('[data-snooze]');
+  if (sn) {
+    try {
+      await api(`/todos/${Number(sn.dataset.todoId)}`, { method: 'PUT', body: { snooze: sn.dataset.snooze } });
+      toast(tr('notes.todo.snoozed'));
+      if (NOTES.sub === 'todos') loadTodos(); else loadBrief();
+    } catch (err) { toast(explainError(err.message), true); }
+    return;
+  }
+  const del = e.target.closest && e.target.closest('[data-todo-del]');
+  if (del) {
+    if (!await confirmDialog({
+      title: tr('notes.todo.delete'),
+      text: tr('notes.todo.confirm-delete', { n: 7 }),
+      confirmLabel: tr('notes.todo.delete'),
+    })) return;
+    try {
+      await api(`/todos/${Number(del.dataset.todoDel)}`, { method: 'DELETE' });
+      toast(tr('notes.todo.deleted'));
+      await refreshOpenTodos();
+      loadTodos();
+    } catch (err) { toast(explainError(err.message), true); }
+    return;
+  }
+  const ed = e.target.closest && e.target.closest('[data-todo-edit]');
+  if (ed) openCapture({ editId: Number(ed.dataset.todoEdit) });
+});
+
+// Les todos ouvertes en cache : elles servent à savoir si un objet est DÉJÀ suivi, pour ne
+// pas proposer d'en créer une seconde qui dirait la même chose.
+async function refreshOpenTodos() {
+  try { NOTES.open = (await api('/todos?status=open')).todos || []; }
+  catch { /* liste indisponible : le bouton proposera simplement de créer */ }
+  majBadgeNotes();   // une seule porte d'entrée : qui relit la liste remet les pastilles à jour
+}
+
+/* ---------- Pages ---------- */
+
+async function loadPages() {
+  const box = $('#pageList');
+  if (!box) return;
+  await notesIndex();
+  const q = ($('#pageSearch') && $('#pageSearch').value) || '';
+  try { NOTES.pages = (await api(`/notes?q=${encodeURIComponent(q)}`)).pages || []; }
+  catch (e) { box.innerHTML = `<p class="err">${esc(explainError(e.message))}</p>`; return; }
+  renderPageList(q);
+  // La page ouverte a pu être filtrée : on garde l'éditeur tel quel, c'est une recherche,
+  // pas une fermeture.
+  if (!NOTES.page) renderPageEditor();
+}
+
+function renderPageList(q) {
+  const box = $('#pageList');
+  if (!NOTES.pages.length) {
+    box.innerHTML = q
+      ? `<p class="muted">${esc(tr('notes.page.no-match', { q }))}</p>`
+      : emptyState({ icon: 'doc', title: esc(tr('notes.page.empty.title')), text: esc(tr('notes.page.empty.text')) });
+    return;
+  }
+  box.innerHTML = NOTES.pages.map((p) => `<button type="button" class="note-item${p.id === NOTES.pageId ? ' active' : ''}" data-page="${p.id}">
+      <span class="note-item-title">${p.pinned ? `${svgIco('tag')} ` : ''}${esc(p.title || tr('notes.page.untitled'))}</span>
+      <span class="note-item-date">${esc(fmtDate(p.updated_at))}</span>
+    </button>`).join('');
+}
+
+$('#pageList') && $('#pageList').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-page]');
+  if (b) openNotePage(Number(b.dataset.page));
+});
+
+let pageSearchTimer = null;
+$('#pageSearch') && $('#pageSearch').addEventListener('input', () => {
+  clearTimeout(pageSearchTimer);
+  pageSearchTimer = setTimeout(loadPages, 200);
+});
+
+async function openNotePage(id) {
+  await viderPageSave();          // la frappe en attente appartient à la page qu'on quitte
+  try { NOTES.page = await api(`/notes/${id}`); } catch (e) { toast(explainError(e.message), true); return; }
+  NOTES.pageId = id;
+  renderPageList(($('#pageSearch') && $('#pageSearch').value) || '');
+  renderPageEditor();
+}
+
+/* La sauvegarde en attente d'une page — AU NIVEAU MODULE, avec ses valeurs figées.
+   Deux pièges qu'un minuteur enfermé dans le rendu ne voyait pas :
+
+   — il restait armé quand on ouvrait une AUTRE page, et relisait le DOM au moment de tirer :
+     il écrivait donc le contenu de la nouvelle page dans l'ancienne. Corriger un mot puis
+     cliquer la page suivante dans la seconde suffisait à perdre la première, en silence ;
+   — l'annuler purement et simplement aurait perdu la dernière frappe. On le VIDE : avant
+     tout changement de page, la sauvegarde en attente part avec SES propres valeurs. */
+let pageSave = null;   // { id, title, content, timer }
+
+async function viderPageSave() {
+  const att = pageSave;
+  if (!att) return;
+  clearTimeout(att.timer);
+  pageSave = null;
+  const surCettePage = () => NOTES.page && NOTES.page.id === att.id;
+  const dire = (cle, params) => { const el = $('#pageSaved'); if (el && surCettePage()) el.textContent = tr(cle, params); };
+  try {
+    const maj = await api(`/notes/${att.id}`, { method: 'PUT', body: { title: att.title, content: att.content } });
+    const ligne = NOTES.pages.find((x) => x.id === att.id);
+    if (ligne) { ligne.title = maj.title; ligne.updated_at = maj.updated_at; }
+    /* On ne remet à jour l'état affiché que si c'est TOUJOURS cette page : sinon on
+       écraserait celle qu'on vient d'ouvrir avec le contenu de la précédente. */
+    if (surCettePage()) NOTES.page = maj;
+    dire('notes.page.saved');
+    renderPageList(($('#pageSearch') && $('#pageSearch').value) || '');
+  } catch (e) { dire('notes.page.save-failed', { error: e.message }); }
+}
+
+// Une page supprimée n'a plus rien à recevoir : on jette sa sauvegarde au lieu de la vider.
+function oublierPageSave(id) {
+  if (pageSave && pageSave.id === id) { clearTimeout(pageSave.timer); pageSave = null; }
+}
+
+function renderPageEditor() {
+  const box = $('#pageEditor');
+  if (!box) return;
+  const p = NOTES.page;
+  if (!p) {
+    box.innerHTML = `<p class="muted note-none">${esc(tr('notes.page.none-selected'))}</p>`;
+    return;
+  }
+  box.innerHTML = `
+    <div class="note-editor-head">
+      <input id="pageTitle" type="text" class="note-title" maxlength="200" value="${esc(p.title)}" placeholder="${esc(tr('notes.page.title-ph'))}" />
+      <span id="pageSaved" class="note-saved"></span>
+      <span class="spacer"></span>
+      <button type="button" id="pagePin" class="btn btn-sm${p.pinned ? ' active' : ''}" title="${esc(tr('notes.page.pin-title'))}">${svgIco('tag')}<span>${esc(tr(p.pinned ? 'notes.page.unpin' : 'notes.page.pin'))}</span></button>
+      <button type="button" id="pageExport" class="btn btn-sm" title="${esc(tr('notes.page.export-title'))}">${svgIco('download')}<span>${esc(tr('notes.page.export'))}</span></button>
+      <button type="button" id="pageDelete" class="btn btn-sm btn-danger">${svgIco('trash')}<span>${esc(tr('notes.page.delete'))}</span></button>
+    </div>
+    <div class="note-panes">
+      <textarea id="pageContent" class="note-content" placeholder="${esc(tr('notes.page.content-ph'))}" spellcheck="true">${esc(p.content || '')}</textarea>
+      <div class="note-preview md-body" id="pagePreview">${renderNoteMd(p.content || '')}</div>
+    </div>`;
+
+  const marquer = (cle, param) => { const el = $('#pageSaved'); if (el) el.textContent = cle ? tr(cle, param) : ''; };
+  /* Autosauvegarde à la frappe, avec un délai : enregistrer à chaque caractère ferait une
+     requête par lettre ; n'enregistrer qu'à la fermeture perdrait le travail d'une page
+     restée ouverte. L'aperçu, lui, suit immédiatement — c'est du rendu local.
+     Les valeurs sont FIGÉES ici : au tir, le DOM peut déjà montrer une autre page. */
+  const planifier = () => {
+    marquer('notes.page.saving');
+    if (pageSave) clearTimeout(pageSave.timer);
+    pageSave = { id: p.id, title: $('#pageTitle').value, content: $('#pageContent').value, timer: null };
+    pageSave.timer = setTimeout(viderPageSave, 1000);
+  };
+  $('#pageContent').addEventListener('input', () => {
+    $('#pagePreview').innerHTML = renderNoteMd($('#pageContent').value);
+    planifier();
+  });
+  $('#pageTitle').addEventListener('input', planifier);
+
+  $('#pagePin').addEventListener('click', async () => {
+    await viderPageSave();
+    try {
+      NOTES.page = await api(`/notes/${p.id}`, { method: 'PUT', body: { pinned: p.pinned ? 0 : 1 } });
+      await loadPages();
+      renderPageEditor();
+    } catch (e) { toast(explainError(e.message), true); }
+  });
+  $('#pageExport').addEventListener('click', () => { window.location.href = `/api/notes/${p.id}/export`; });
+  $('#pageDelete').addEventListener('click', async () => {
+    if (!await confirmDialog({
+      title: tr('notes.page.delete'),
+      text: tr('notes.page.confirm-delete', { title: p.title }),
+      confirmLabel: tr('notes.page.delete'),
+    })) return;
+    try {
+      oublierPageSave(p.id);
+      await api(`/notes/${p.id}`, { method: 'DELETE' });
+      NOTES.page = null; NOTES.pageId = null;
+      toast(tr('notes.page.deleted'));
+      await loadPages();
+      renderPageEditor();
+    } catch (e) { toast(explainError(e.message), true); }
+  });
+}
+
+$('#pageNew') && $('#pageNew').addEventListener('click', async () => {
+  try {
+    const p = await api('/notes', { method: 'POST', body: { title: tr('notes.page.default-title') } });
+    await loadPages();
+    await openNotePage(p.id);
+    const t = $('#pageTitle'); if (t) { t.focus(); t.select(); }
+  } catch (e) { toast(explainError(e.message), true); }
+});
+
+/* ---------- Capture rapide (touche « n ») ----------
+   Un champ, Entrée, c'est fait. Le tri se fait plus tard : si la capture coûte plus de deux
+   secondes, on retourne au post-it. La même modale sert à l'ÉDITION d'une todo existante —
+   ce sont les mêmes champs, et deux formulaires jumeaux auraient divergé. */
+let captureCtx = null;
+
+function openCapture(ctx = {}) {
+  captureCtx = ctx;
+  const modal = $('#captureModal');
+  const titre = $('#captureTitle');
+  const details = $('#captureDetails');
+  /* La todo à éditer se cherche d'abord parmi les ouvertes, puis parmi CELLES QUI SONT À
+     L'ÉCRAN : le crayon est rendu sous « Faites » et « Archivées » aussi. Ne regarder que
+     les ouvertes ouvrait une modale VIDE sur ces deux filtres — et valider écrasait alors
+     priorité, note et échéance par les valeurs par défaut du formulaire. */
+  const existante = ctx.editId
+    ? (NOTES.open.find((t) => t.id === ctx.editId)
+      || (NOTES.affichees || []).find((t) => t.id === ctx.editId))
+    : null;
+  if (ctx.editId && !existante) { toast(tr('err.notes.unknown'), true); return; }
+  const source = existante || ctx;
+  titre.value = source.title || '';
+  $('#capturePriority').value = source.priority || 'normal';
+  $('#captureNote').value = source.note || '';
+  $('#captureDue').value = source.due_at ? isoVersLocal(source.due_at) : '';
+  // Une todo qu'on édite s'ouvre dépliée : on vient justement changer un de ces champs.
+  details.hidden = !ctx.editId;
+  $('#captureMore').textContent = tr(details.hidden ? 'notes.capture.more' : 'notes.capture.less');
+  modal.hidden = false;
+  setTimeout(() => { titre.focus(); titre.select(); }, 0);
+}
+function closeCapture() { $('#captureModal').hidden = true; captureCtx = null; }
+
+// ISO → valeur d'un <input type="datetime-local">, qui n'accepte que du LOCAL sans fuseau.
+function isoVersLocal(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+async function submitCapture() {
+  const body = {
+    title: $('#captureTitle').value,
+    priority: $('#capturePriority').value,
+    note: $('#captureNote').value,
+    due_at: $('#captureDue').value || null,
+  };
+  if (captureCtx && captureCtx.link_kind) { body.link_kind = captureCtx.link_kind; body.link_ref = captureCtx.link_ref; }
+  const edit = captureCtx && captureCtx.editId;
+  try {
+    if (edit) await api(`/todos/${edit}`, { method: 'PUT', body });
+    else await api('/todos', { method: 'POST', body });
+    closeCapture();
+    toast(tr(edit ? 'notes.todo.saved' : 'notes.capture.added'));
+    await refreshOpenTodos();
+    // Pas de navigation après une capture : on était en train de faire autre chose.
+    if ($('#tab-notes').classList.contains('active')) { if (NOTES.sub === 'todos') loadTodos(); else loadBrief(); }
+    majBoutonsTodo();
+  } catch (e) { toast(explainError(e.message), true); }
+}
+
+$('#captureOk') && $('#captureOk').addEventListener('click', () => submitCapture());
+$('#captureCancel') && $('#captureCancel').addEventListener('click', () => closeCapture());
+$('#captureMore') && $('#captureMore').addEventListener('click', () => {
+  const d = $('#captureDetails');
+  d.hidden = !d.hidden;
+  $('#captureMore').textContent = tr(d.hidden ? 'notes.capture.more' : 'notes.capture.less');
+});
+$('#captureTitle') && $('#captureTitle').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); submitCapture(); }
+});
+fermerAuFond('#captureModal', () => closeCapture(), { salissable: true });
+
+/* ---------- « Ajouter aux todos » depuis une MR ou un ticket ----------
+   Le bouton connaît l'existant : une todo ouverte déjà liée au même objet le fait devenir
+   « Voir la todo ». Créer un doublon silencieux serait la façon la plus sûre de rendre la
+   liste inutilisable au bout d'une semaine. */
+const todoLie = (kind, ref) => NOTES.open.find((t) => t.link_kind === kind && String(t.link_ref) === String(ref));
+
+function addTodoBtn(kind, ref, titre) {
+  const existante = todoLie(kind, ref);
+  if (existante) {
+    return `<button type="button" class="btn btn-sm" data-see-todo="${existante.id}" title="${esc(tr('notes.view-todo-title'))}">${svgIco('check')}${esc(tr('notes.view-todo'))}</button>`;
+  }
+  return `<button type="button" class="btn btn-sm" data-add-todo="${esc(kind)}" data-add-ref="${esc(ref)}" data-add-title="${esc(titre)}" title="${esc(tr('notes.add-todo-title'))}">${svgIco('clip')}${esc(tr('notes.add-todo'))}</button>`;
+}
+
+// Après création, le bouton encore à l'écran doit basculer : sinon on clique deux fois et
+// on obtient le doublon que l'anti-doublon existe pour éviter.
+function majBoutonsTodo() {
+  $$('[data-add-todo]').forEach((b) => {
+    const t = todoLie(b.dataset.addTodo, b.dataset.addRef);
+    if (!t) return;
+    b.outerHTML = `<button type="button" class="btn btn-sm" data-see-todo="${t.id}" title="${esc(tr('notes.view-todo-title'))}">${svgIco('check')}${esc(tr('notes.view-todo'))}</button>`;
+  });
+}
+
+document.addEventListener('click', (e) => {
+  const add = e.target.closest && e.target.closest('[data-add-todo]');
+  if (add) {
+    openCapture({ title: add.dataset.addTitle, link_kind: add.dataset.addTodo, link_ref: add.dataset.addRef });
+    return;
+  }
+  const see = e.target.closest && e.target.closest('[data-see-todo]');
+  if (see) { navTab('notes'); showNotesSub('todos'); }
+});
+
+/* ---------- Rappels ----------
+   Le poll existant des notifications interroge aussi les échéances. Deux subtilités :
+     — le serveur n'écrit `reminded_at` qu'après CONFIRMATION du client, pour ne pas perdre
+       un rappel quand la notification échoue ;
+     — au premier passage (rattrapage), plusieurs rappels en retard donnent UNE notification
+       groupée : dix pop-ups au démarrage se ferment sans être lues. */
+let rappelsAmorces = false;
+async function pollReminders() {
+  const p = notifPrefs();
+  let d;
+  try { d = await api('/todos/reminders/due'); } catch { return; }
+  const dus = d.due || [];
+  /* Une échéance qui vient d'échoir fait passer sa todo du bleu au rouge : on relit la liste
+     ici, sinon la pastille ne bougerait qu'à la prochaine visite de l'onglet. */
+  await refreshOpenTodos();
+  if (!dus.length) { rappelsAmorces = true; return; }
+  const rattrapage = !rappelsAmorces && dus.length >= 2;
+  rappelsAmorces = true;
+  if (p.muted || notifPermission() !== 'granted' || !p.reminder) return;
+  if (rattrapage) {
+    showNotif(tr('notif.reminders-group.title', { n: dus.length, count: dus.length }),
+      tr('notif.reminders-group.body'), () => { navTab('notes'); showNotesSub('today'); });
+  } else {
+    for (const t of dus) {
+      showNotif(tr('notif.reminder.title', { title: t.title }), tr('notif.reminder.body'),
+        () => { navTab('notes'); showNotesSub('todos'); });
+    }
+  }
+  // Confirmation d'affichage : c'est elle qui consomme le rappel, pas la lecture.
+  for (const t of dus) { try { await api(`/todos/${t.id}/reminded`, { method: 'POST' }); } catch { /* réessai au prochain passage */ } }
+}
+setInterval(pollReminders, 60000);
+
+/* ---------- Atterrissage sur le brief ----------
+   Une fois par jour CALENDAIRE, et seulement si le réglage est actif. La date du dernier
+   affichage reste locale au navigateur : deux navigateurs ouverts n'ont pas à se voler le
+   brief l'un l'autre, alors que le réglage, lui, vaut pour l'outil. */
+const BRIEF_KEY = 'mergerie_brief_seen';
+function briefDejaVuAujourdHui() {
+  try { return localStorage.getItem(BRIEF_KEY) === new Date().toDateString(); } catch { return true; }
+}
+function marquerBriefVu() {
+  try { localStorage.setItem(BRIEF_KEY, new Date().toDateString()); } catch { /* stockage indisponible */ }
+}
+
 /* ---------- Raccourcis clavier ----------
    Un seul écouteur, avec garde de saisie : on ne détourne jamais une frappe
    destinée à un champ de texte. Les vues plein écran gardent leurs propres touches. */
@@ -8908,8 +9636,14 @@ document.addEventListener('keydown', (e) => {
   // pas de raccourci global quand une vue plein écran ou une modale est ouverte
   if (!$('#splitView').hidden) return;
   if ($$('.modal').some((m) => !m.hidden)) return;
-  const tabs = ['review', 'task', 'dashboard', 'git', 'docker', 'jira', 'admin'];
-  if (/^[1-7]$/.test(e.key)) { const t = $(`nav button[data-tab="${tabs[+e.key - 1]}"]`); if (t) { e.preventDefault(); t.click(); } return; }
+  /* Les chiffres suivent la BARRE, lue dans le DOM — jamais une liste recopiée à côté.
+     Une copie se désynchronise au premier réordonnancement, et le décalage est silencieux :
+     « 3 » ouvrirait un autre onglet que le troisième, sans que rien ne signale l'erreur. */
+  if (/^[1-9]$/.test(e.key)) {
+    const t = $$('nav button[data-tab]')[+e.key - 1];
+    if (t) { e.preventDefault(); t.click(); }
+    return;
+  }
   switch (e.key) {
     case '/': e.preventDefault(); { const s = $('#searchReview'); if (s && !$('#tab-review').classList.contains('active')) $('nav button[data-tab="review"]').click(); if (s) s.focus(); } break;
     case 'r': if ($('#tab-review').classList.contains('active')) { e.preventDefault(); $('#btnDiscover').click(); } break;
@@ -8923,6 +9657,9 @@ document.addEventListener('keydown', (e) => {
       break;
     }
     case '?': e.preventDefault(); openShortcuts(); break;
+    /* Capture rapide : la touche la plus utile de l'onglet Notes est celle qui n'oblige pas
+       à y aller. On note ce qui vient de passer, on trie plus tard. */
+    case 'n': e.preventDefault(); openCapture(); break;
     /* Navigation au clavier dans la liste courante. Ce qu'elle procure n'est pas une
        surprise mais un RYTHME : traiter vingt MR au clavier, c'est de la cadence ; à la
        souris, c'est de la visée. Aucune logique dupliquée — on clique les boutons rendus. */
@@ -9614,19 +10351,38 @@ function renderLots() {
 }
 
 /* ---------- Init ---------- */
-// Restaure le dernier onglet consulté (un rechargement ne renvoie plus sur « Reviews »).
+/* Restaure le dernier onglet consulté (un rechargement ne renvoie plus sur « Reviews »),
+   SAUF à la première ouverture de la journée : le brief passe alors devant. Une fois par
+   jour calendaire, jamais deux — sinon chaque rechargement de la page ramènerait sur le
+   brief celui qui était en train de lire un rapport. Le réglage vit en base (il vaut pour
+   l'outil), la date du dernier affichage en localStorage (elle vaut pour ce navigateur). */
 (function restoreTab() {
   let tab = 'review';
   try { tab = localStorage.getItem('aidevtools_tab') || 'review'; } catch { /* ignore */ }
-  const btn = $(`nav button[data-tab="${tab}"]`);
-  if (btn && tab !== 'review') { btn.click(); return; }
-  // B2 : sans catch, un échec d'API laissait la liste vide (écran blanc muet).
-  loadSegment().catch((e) => { $('#toReviewList').innerHTML = errorBox(`Chargement impossible : ${e.message}`); });
+  const atterrir = () => {
+    const btn = $(`nav button[data-tab="${tab}"]`);
+    if (btn && tab !== 'review') { btn.click(); return; }
+    // B2 : sans catch, un échec d'API laissait la liste vide (écran blanc muet).
+    loadSegment().catch((e) => { $('#toReviewList').innerHTML = errorBox(`Chargement impossible : ${e.message}`); });
+  };
+  if (briefDejaVuAujourdHui()) { atterrir(); return; }
+  api('/config').then((c) => {
+    if (c.brief_on_open === '0') { atterrir(); return; }
+    marquerBriefVu();
+    tab = 'notes';
+    atterrir();
+    /* APRÈS le clic, et pas avant : ouvrir l'onglet appelle `loadNotes()`, qui restaure le
+       dernier sous-onglet consulté. On atterrirait donc sur Pages ou Todos — alors que ce
+       qu'on vient chercher, une fois par jour, est précisément le brief. */
+    showNotesSub('today');
+  }).catch(atterrir);   // configuration illisible : on ne bloque jamais le démarrage
 })();
 checkSetup().then(() => { if (currentSeg === 'to_review') renderToReview(); });
 refreshCounts();
 refreshStatus();
 rafraichirHistCount();
+refreshOpenTodos();     // l'anti-doublon d'« Ajouter aux todos » a besoin de la liste
+pollReminders();        // rattrapage des rappels échus pendant que l'onglet était fermé
 refreshDockerBadges(); // badge santé Docker visible dès le démarrage, sans ouvrir l'onglet
 // Rafraîchissement PÉRIODIQUE du badge santé Docker : on voit un container qui bascule en
 // restarting/unhealthy (rouge/orange dans le titre du menu) même sans être sur l'onglet Docker.

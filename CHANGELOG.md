@@ -266,6 +266,32 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   but at the cost of one AI call per repository, to redo work that is already done. The button only
   appears when at least one project is in error.
 
+- **Notes, todos, reminders — and a morning brief.** A new **Notes** tab replaces the sticky notes and the
+  notepad tab of everyday work, with one difference that is the whole point: it lives inside Mergerie, so a
+  note can point at what you actually track, and it travels in the backup.
+  - **Today** opens the day: reminders due, today's todos, sessions where the AI is waiting for an answer,
+    failed verifications, merge requests that arrived since yesterday, and those reviewed days ago but still
+    open. Action-first, each section hidden when empty, every line clickable. It is computed entirely from
+    the local database — **no AI call, no token, no network** — so it appears instantly. On the first opening
+    of the day the app lands here rather than on the tab you left; once a day, and switchable off in
+    Settings → General.
+  - **Todos** with high/normal/low priority and an optional due date that doubles as a **desktop reminder**,
+    snoozable by **+1 h** or **tomorrow 9 am**. Ticking one keeps it, struck through, for seven days, then
+    files it under *Archived* — nothing is ever deleted behind your back.
+  - **Pages** of free-form notes in Markdown, with live preview, autosave, pinning, search over title *and*
+    content, and export to `.md`.
+  - **`n` from anywhere** opens a one-field capture: type, Enter, done — no navigation, because you were in
+    the middle of something else.
+  - **`!214` and `PROJ-720` become links** wherever you write them. If a number exists on several
+    repositories the link goes to a pre-filled search rather than guessing one; if it exists nowhere it stays
+    plain text rather than becoming a dead link.
+  - A **merge request** or a **Jira ticket** can be added to the todos in one click, pre-filled and linked —
+    and if one already follows that object, the button says so instead of creating a silent duplicate.
+  - The tab carries **two badges**: red for what presses — todos **overdue** or at **high priority** — and
+    blue for the rest still to do, their sum being the number of open todos. Red does not read off the
+    “High” badges alone: a normal todo whose due date passed three days ago asks just as much, and lateness
+    is exactly what gets forgotten. Hovering says what the number is made of.
+
 - **The full guide now exists in English.** Every tab, objective verification and its script contract,
   `.env` configuration, enterprise TLS, local clones, data & backup and the security model — the whole
   document, not a summary. Until now the only complete documentation was in French, which put anyone
@@ -274,6 +300,21 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   heading that no longer exists.
 
 ### Changed
+
+- **The tabs are reordered into four pairs.** Their order used to be the order they were *added* in, not a
+  designed one — which put Stats, the rarest tab and one of the three carrying no badge, in third place, and
+  Notes second-to-last even though it holds the morning brief the app opens on. They now read
+  **Reviews · AI Dev** (the core: review, produce), **Notes · Jira** (what I have to do: my todos, my
+  tickets), **Git · Docker** (my machine: repositories, containers), **Stats · Settings** (the meta: measure,
+  configure). At eight items a flat list gets counted rather than scanned; four pairs are remembered — and
+  the number shortcuts become learnable along with them. The keys now follow the bar **read from the DOM**
+  instead of a list copied beside it, which could silently drift so that `3` opened something other than the
+  third tab. The command palette and the guide follow the same order.
+
+- **The Statistics menu entry is now “Stats”, and the tagline sits on two lines.** With an eighth tab in
+  the bar, the longest label was the one that could most afford to shrink — English already said “Stats”.
+  The tagline under the product name no longer runs all the way to the navigation: it breaks where the
+  sentence does, between what the AI prepares and what you merge.
 
 - **AI Dev lists lead with what just finished running.** They were ordered by creation, so a session you
   launched minutes ago sat below one created last week and never run. Whatever is running now comes first,
@@ -286,6 +327,25 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   cancelling closes it again.
 
 ### Fixed
+
+- **A code template inside a Jira table is readable again.** Technical tickets routinely lay a template out
+  as a table — a label on the left, JSON on the right. A Markdown table holds one line per cell, so the code
+  arrived flattened onto a single line, its indentation collapsed by the HTML and impossible to copy. Tables
+  whose cells carry a code block, a list or several paragraphs are now **unfolded**: each row becomes the
+  label followed by its block, rows separated by a rule. Ordinary data tables are untouched — and a `|`
+  inside a cell no longer opens a column of its own and shifts the whole row.
+
+- **A Jira table with no header no longer loses its first row.** Markdown requires a header row; a Jira
+  table does not. The first row was promoted to a title regardless — so a header-less table lost a line of
+  data to the heading, and a key/value table (whose header is the first *column*, making its first row
+  mixed) lost a whole pair. Only a row whose cells are all headers is treated as one now; otherwise an
+  empty header is emitted, which the display hides rather than showing a blank grey band. Header cells
+  outside the header row are rendered in bold, Markdown having no column header.
+
+- **Markdown rendered outside a review report had no styling at all.** The Jira description and comments,
+  the note-page preview and a todo's note all use a container that, it turned out, no CSS rule ever matched:
+  code blocks had no background, no padding and no horizontal scroll, so a long line pushed out of the card
+  instead of scrolling inside it. They now look like the code in a review report.
 
 - **The inline comment box no longer runs off the side of the screen.** In the code explorer, the diff
   area is as wide as the file's longest line, and the comment editor stretched to match — so on a file with

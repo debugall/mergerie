@@ -712,6 +712,51 @@ db.exec(`CREATE TABLE IF NOT EXISTS convergence_run (
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_convergence_run_mr ON convergence_run(mr_id)');
 
+/* ---------- Notes, todos et rappels (plan_add_notes.md) ----------
+   Des notes de POSTE DE TRAVAIL, pas une base de connaissances : des pages plates (ni
+   dossiers ni hiérarchie), une liste de todos et des rappels datés. Tout vit dans cette
+   base, donc dans la sauvegarde existante — c'est la raison pour laquelle ces post-it
+   valent mieux qu'un fichier texte à côté. */
+db.exec(`CREATE TABLE IF NOT EXISTS note_page (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL DEFAULT '',
+  pinned INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_note_page_ordre ON note_page(pinned DESC, updated_at DESC)');
+
+/* `due_at` porte À LA FOIS l'échéance et le rappel — une seule vérité plutôt qu'une entité
+   `reminder` séparée qu'il faudrait réconcilier. `reminded_at` empêche la re-notification,
+   et tout changement de `due_at` le remet à NULL (voir src/notes.js). `archived_at` sort des
+   listes une todo faite depuis plus de sept jours, sans jamais la supprimer. */
+db.exec(`CREATE TABLE IF NOT EXISTS todo (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('high','normal','low')),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','done')),
+  note TEXT,
+  link_kind TEXT CHECK (link_kind IN ('mr','ticket','repo')),
+  link_ref TEXT,
+  due_at TEXT,
+  reminded_at TEXT,
+  done_at TEXT,
+  archived_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_todo_due ON todo(status, archived_at, due_at)');
+
+/* Atterrissage sur le brief à la première ouverture de la journée. En base et non en
+   localStorage : c'est un RÉGLAGE (comme la langue), et il doit valoir pour l'outil, pas
+   pour un navigateur. La date du dernier affichage, elle, reste locale — deux navigateurs
+   ouverts n'ont pas à se voler le brief l'un l'autre. */
+try { db.exec("ALTER TABLE config ADD COLUMN brief_on_open TEXT DEFAULT '1'"); } catch { /* déjà présente */ }
+/* Au-delà de combien de jours une MR reviewée et toujours ouverte est « dormante ». Cinq
+   jours : au-dessous, on signalerait la MR d'avant-hier, qu'on n'a pas oubliée. */
+try { db.exec('ALTER TABLE config ADD COLUMN stale_mr_days INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
+
 const DEFAULT_PROMPT_REVIEW = PROMPTS.fr.prompt_review;
 const DEFAULT_PROMPT_EXPLAIN = PROMPTS.fr.prompt_explain;
 const DEFAULT_PROMPT_MODIFY = PROMPTS.fr.prompt_modify;

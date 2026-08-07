@@ -51,6 +51,24 @@ const ISSUES = [
     descriptionMd: 'Uniformiser tous les logs applicatifs au format JSON structuré (clé `level`, `msg`, `ts`).',
     comments: [],
   },
+  {
+    key: 'PROJ-1402', summary: 'Ajouter les gabarits de notification NP15', type: 'Tâche', typeIcon: '',
+    sprints: [{ v: '43', l: 'Sprint 43', d: '2026-07-06T08:00:00.000Z', etat: 'active' }],
+    epic: { key: 'PROJ-1050', summary: 'Observabilité : logs et métriques', color: 'blue' },
+    status: 'À faire', statusCategory: 'new', priority: 'Moyenne',
+    assignee: { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
+    reporter: { name: 'Alex Martin', email: 'alex@demo', avatar: '' },
+    project: 'PROJ — Plateforme', labels: ['notification'],
+    created: '2026-07-18T09:00:00.000+0000', updated: '2026-07-24T16:10:00.000+0000',
+    duedate: '', components: [], fixVersions: [],
+    /* Une description dont la source Jira est un TABLEAU portant des blocs de code : c'est la
+       mise en page courante d'un ticket technique — une étiquette, un gabarit à copier.
+       Aplati en cellules, le JSON se retrouvait sur une seule ligne, indentations écrasées et
+       incopiable ; ces tableaux sont désormais dépliés (voir `renderTable` dans src/jira.js),
+       et c'est ce rendu-là que la démo montre. */
+    descriptionMd: "Ajouter les templates suivant dans l'appel d'envoi de notification.\n\nNP15_Suppression_IN\n\n```json\n{\n    \"partner\": \"LIN\",\n    \"model\": { \"code\": \"LIN_NP15_SUPPRESSION_IN\", \"version\": 8 },\n    \"recipients\": [\n        { \"media\": \"EMAIL\", \"email\": \"{{EMAIL}}\" }\n    ],\n    \"data\": { \"dest\": \"STRING\", \"prenom\": \"STRING\" }\n}\n```\n\n---\n\nNP15-1_Suppression_IN\n\n```json\n{\n    \"partner\": \"LIN\",\n    \"model\": { \"code\": \"LIN_NP15-1_SUPPRESSION_IN\", \"version\": 1 },\n    \"recipients\": [\n        { \"media\": \"EMAIL\", \"email\": \"{{EMAIL}}\" }\n    ]\n}\n```",
+    comments: [],
+  },
 ];
 
 const DONE = [

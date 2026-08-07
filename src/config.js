@@ -14,6 +14,7 @@ const ALLOWED = [
   'github_url', 'github_token',
   'prompt_review', 'prompt_explain', 'prompt_modify', 'review_skill', 'language',
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
+  'brief_on_open',
 ];
 
 function updateConfig(patch) {
@@ -43,6 +44,15 @@ function updateConfig(patch) {
     const d = parseInt(patch.retention_days, 10);
     next.retention_days = (!Number.isFinite(d) || d <= 0) ? 0 : Math.max(7, d);
   }
+  /* MR dormante : au bout de combien de jours une MR reviewée et toujours ouverte remonte
+     dans le brief. Au moins 1 jour — à 0, toute MR reviewée ce matin serait « dormante »,
+     et une section qui contient tout ne signale plus rien. */
+  if ('stale_mr_days' in patch) {
+    const s = parseInt(patch.stale_mr_days, 10);
+    next.stale_mr_days = (!Number.isFinite(s) || s <= 0) ? 5 : Math.min(90, s);
+  }
+  // Brief à la première ouverture de la journée : booléen en texte, comme review_explain.
+  next.brief_on_open = next.brief_on_open === '0' ? '0' : '1';
   // Langue : on refuse silencieusement une valeur inconnue plutôt que de casser l'interface.
   if (!['fr', 'en'].includes(next.language)) next.language = 'fr';
   // Explication : booléen stocké en texte, normalisé à '0'/'1' (défaut '1').
@@ -77,7 +87,9 @@ function updateConfig(patch) {
       converge_max_passes = @converge_max_passes,
       auto_refresh_minutes = @auto_refresh_minutes,
       jira_watch_minutes = @jira_watch_minutes,
-      retention_days = @retention_days
+      retention_days = @retention_days,
+      brief_on_open = @brief_on_open,
+      stale_mr_days = @stale_mr_days
     WHERE id = 1`).run(next);
   return getConfig();
 }

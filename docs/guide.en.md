@@ -11,12 +11,17 @@ security model. For a quick start, stay on the [README](../README.md).
 
 ## The tabs in detail
 
-Seven tabs: **Reviews** · **AI Dev** · **Statistics** · **Git** · **Docker** · **Jira** · **Settings**.
+Eight tabs, in pairs — the core, what I have to do, my machine, the meta:
+**Reviews** · **AI Dev** — **Notes** · **Jira** — **Git** · **Docker** — **Stats** · **Settings**.
 Badges show **work waiting**, not totals (MRs to review, sessions not yet run). The **Reviews** tab carries
 two: the blue one counts merge requests **to review**, the orange one counts **reports scored under 7/10
 that still await a decision**. The second tells you which to read first; it only counts the *Reviewed*
 stage, so marking a merge request as done brings it back down — a counter that never goes down soon stops
 being looked at.
+The **Notes** tab carries two as well: the **red** one counts what presses — todos **overdue** or at **high
+priority** —, the **blue** one the rest of the todos to do. Their sum is the number of open todos; hovering
+the red one says what it is made of, because it does not read off the “High” badges alone: a normal todo
+whose due date has passed asks just as much, and lateness is exactly what gets forgotten.
 
 ### Reviews
 The three stages of one merge request, behind a segmented filter — **To review · Reviewed · Done** — with a
@@ -115,7 +120,7 @@ shared search (title, author, project, ticket).
   “resolved” if the line concerned **actually changed** between the two versions of the code (checked
   through git); otherwise it is marked “gone” — the AI may simply not have reported it again. The findings
   come from a structured block the AI emits alongside the report (invisible when reading); **your review
-  prompt template is not modified**, the instruction is added on the fly. The Statistics tab turns this into
+  prompt template is not modified**, the instruction is added on the fly. The Stats tab turns this into
   a **resolution rate per project**.
 - An MR that is no longer open on the forge carries the **merged** badge; the Merge button disappears.
 - **Filter by score colour.** Under *Reviewed* and *Done*, three checkboxes above the list — green
@@ -277,6 +282,234 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   follow-up question overwrites the answer file, but the pass is archived — `View answer` offers an
   **iteration selector** that replays each question with the answer it got.
 
+### Notes
+The sticky notes and the notepad tab of everyday work, **inside the tool** — so **anchored** to what it
+tracks (merge requests, tickets) and **inside the backup**. Three sub-tabs: **Today** (the brief),
+**Todos**, **Pages**. Nothing goes to the AI or to a forge: everything lives in the local database, and
+this tab **spends no tokens at all**.
+
+#### Today — the morning brief
+Seven sections, **ordered action-first**: what calls for a gesture before what merely informs. Each is
+**hidden when empty** — a screen showing seven headings, six of them subtitled “nothing”, teaches you that
+nothing happened, which was not the question. Every line reaches its object in one click.
+
+1. **Reminders** — due dates that have passed and today's, with the “done” checkbox and the snooze buttons
+   **right there**: that is the whole point of a brief, acting without changing screen.
+2. **Today's todos** — the **high priorities with no date** and the ones due today. High-without-a-date is
+   there because “important but with no deadline” is exactly what gets lost: nothing ever surfaces it on
+   its own. A todo already listed under *Reminders* does not appear twice.
+3. **Sessions waiting for an answer** — the sessions where the AI asked a question. They are the costliest
+   to forget: the session is blocked, the queue is free, and nothing restarts without you.
+4. **Failed verifications** — the last red verdict per batch or per MR. **Stale** verdicts are left out:
+   the branch has moved, the verdict covers code that is no longer there, and showing it would send you to
+   fix a problem that may already be fixed.
+5. **MRs to review** — the ones that **arrived since yesterday**, not the whole queue (which has its own
+   tab and its own badge).
+6. **Dormant MRs** — reviewed more than **N days** ago (adjustable, 5 by default) and still open: the work
+   is done, the decision is missing.
+7. **Activity since yesterday** — one line, three numbers. Deliberately poor: it is context, not a task;
+   the detail lives in *Stats*.
+
+Everything is computed **in SQL, with no AI and no network**: the brief appears instantly, before the first
+coffee, and costs nothing. A summary written by an agent was tempting; it would have charged one call every
+morning to rephrase facts that already read fine.
+
+**Landing.** On the **first opening of the day**, the app opens here rather than on the tab you left. Once
+per calendar day, never twice — otherwise every page reload would drag back to the brief someone who was
+reading a report. Switch it off in *Settings → General*.
+
+#### Todos
+A flat list, sorted **by priority then by due date**; the ones without a date come after those that have
+one, otherwise the more numerous no-date todos would push what is due today to the bottom.
+
+- **Inline add** at the top of the list: you type, Enter, it exists — normal priority, no date. Sorting
+  comes afterwards.
+- **Binary status**: to do / done. No “in progress”: a workstation todo gets ticked, it is not steered.
+- **Priority** high / normal / low. Normal shows no badge — flagging it would be noise.
+- **Due date = reminder**: a single date, serving both. It is shown **relatively** (“tomorrow 9 am”,
+  “in 3 days”), and **in red only once it has passed**: a due date ahead is not an alarm.
+- **Snooze** in one click: **+1 h** or **tomorrow 9 am**. “Tomorrow 9 am” means 9 am **on the clock**, not
+  “in 24 hours” — a daylight-saving change must not shift the appointment.
+- **Optional link** to a merge request, a ticket or a repository: the line becomes clickable.
+- **Nothing is deleted.** A finished todo stays **struck through for seven days** — you want to see what
+  you did this week — then moves to **Archived**, where it stays readable. Reopening it takes it out of the
+  drawer. A *Delete* button exists, but ticking “done” is the normal gesture.
+- Three filters: **To do · Done · Archived**.
+- The **menu** carries the count: red for what presses (overdue or high priority), blue for the rest to do.
+
+#### Quick capture — the `n` key
+From **any tab**, `n` opens a small dialog: one field, **Enter** creates the todo, **Esc** cancels. A
+*“+ details”* link unfolds priority, due date and note when that is useful. After creation, a discreet
+toast — **and no navigation**: you were in the middle of something else. If capture cost more than two
+seconds, you would go back to the sticky note. The key is ignored while the cursor is in an input.
+
+#### Pages
+**Flat** note pages: no folders, no hierarchy. On the left the list (**pinned first**, then most recently
+modified) with a **search covering the title AND the content** — the word you are after is often in the
+body. On the right the editable title, then **the editor and the Markdown preview side by side** (the same
+renderer as the review reports, hence the same escaping).
+
+- **Autosave** as you type, with a one-second delay and a discreet “Saved” indicator. Saving on every
+  character would mean one request per letter; saving only on close would lose the work of a page left
+  open.
+- **Pin** keeps a page at the top of the list.
+- **Export** downloads the page as `.md`, under a name **slugified** from the title.
+- **Delete** asks for confirmation — it is the only irreversible action of the tab.
+
+#### Autolink — `!214` and `PROJ-720` become links
+What you write in a note are the identifiers of everyday work. They become clickable **at render time**
+(pages, todo notes); **storage stays plain text** — you re-read your notes elsewhere, and an exported `.md`
+must not carry HTML.
+
+- `!214` → the merge request. **One repository** carries that number: direct link. **Several**: a link to
+  *Reviews* with the search pre-filled, showing the candidates — we do not guess, and a wrong link is worse
+  than a link that asks you to choose. **None**: the text stays text, no dead link.
+  Resolved are the merge requests still **open**, plus those that moved in the **last six months**:
+  past that, a closed MR is no longer a reference you write in a note, and re-reading the whole
+  table on every visit to the tab would cost a lot for three references.
+- `PROJ-720` → the ticket, **if Jira is configured**.
+- Nothing is transformed **inside a code block**: `!42` in a shell snippet is code.
+- The content is **escaped first**, the autolink applies **afterwards** and only injects tags it builds
+  itself. No fragment of a note can become markup.
+
+#### “Add to the todos”, from an MR or a ticket
+A button on the **detail of a merge request** and on that of a **Jira ticket** opens the quick capture
+**pre-filled**: proposed title (`Follow !214 — <title>`), link set, normal priority, no date — all of it
+still editable. If an open todo **already** follows that object, the button becomes **“See the todo”**:
+creating a silent duplicate would be the surest way to make the list useless within a week.
+
+#### Reminders
+The channel is the existing **desktop notifications**, with its own **“Reminders”** category (on by
+default, *Settings → Notifications*).
+
+- A due date reached gives **one** notification, **once** — and **snoozing makes it ring again**: without
+  that, pushing back an already-notified reminder would silence it for good.
+- The notification is marked as sent **after it is displayed**, not when the list is read: a notification
+  that fails (permission denied, tab closed in between) must not consume the only chance to warn you.
+- **Catch-up at startup**: if several reminders are overdue when the page loads, they give **a single
+  grouped notification** (“3 reminders waiting”) — ten pop-ups at startup get dismissed unread.
+- ⚠ **A limit worth knowing**: reminders are sent by the browser. The **Mergerie tab therefore has to be
+  open somewhere**. A reminder that falls due while everything is closed is not lost — it goes out on the
+  next load, in the catch-up.
+- The snooze buttons live **in the interface**, not in the notification: notification actions would require
+  a service worker, which is out of scope.
+
+The notes, the todos and their history live in the **database of the data folder**: they are therefore
+covered by the **backup** (*Settings → General*), just like the review reports.
+
+### Jira
+Two sub-tabs: **My tickets** and **Watched**. The menu carries a **badge** = the number of tickets
+**in progress that are assigned to you** (status category *In Progress*, the only definition that survives
+across workflows, since state names are free from one project to the next). It is fed by a counter
+**cached server-side** and refreshed by the watcher: showing it does not cost a Jira call every time you
+walk past.
+
+#### My tickets
+**The Jira tickets**, fetched automatically when you open the menu. By **default only yours** are shown, but
+a **filter by person** lets you **tick other assignees** to see their tickets too (the list of people = the
+recent assignees; **you ticked by default**, a **persisted** choice). A **list → detail** layout:
+- The **list** (on the left, with search) shows each ticket as a compact card: key, the **epic** it belongs
+  to when there is one, summary, **status** (a dot coloured by category: to do / in progress / done), type,
+  priority, update date. **The search covers the epic too** — “show me the tickets of that epic” is a common
+  ask. In the list the epic stays a piece of **information** — the whole card selects the ticket; it is
+  **in the detail** that it becomes a **link** to Jira, opened in a new tab. The epic is read from Jira's
+  `parent` field, keeping only the parents that really are one: a sub-task's parent is a story, and
+  announcing it as an epic would be a contradiction. Tickets that are **done** are left out by default — an
+  **“Include done”** checkbox brings them back. A **filter by status** (collapsible, checkboxes, a
+  **persisted** choice) additionally lets you show only the statuses you want. It adapts to the **custom
+  statuses** of your workflows, and the colour follows the status *category* (to do / in progress / done),
+  not its name. The list is not limited to the displayed tickets: the statuses of the **workflow of the
+  projects concerned** are loaded as well, otherwise a real status absent from the page would not be
+  filterable. We query the selected projects, failing that the ones of the displayed tickets — asking for
+  every status of the instance would give dozens of unrelated entries, and the endpoint that allows it
+  requires administering Jira. Unticked statuses are excluded **by Jira**, not afterwards — otherwise we
+  would be sorting a capped excerpt. A status already seen stays on offer even once excluded, without which
+  you could no longer tick it back. A **Sprints** filter appears as soon as your tickets carry one. The
+  sprint is a **custom** field whose identifier changes from one instance to another: the tool spots it by
+  its Jira **schema marker**, which is language-independent — a field named “Iteration” is recognised as
+  such. The selection is applied **by Jira** (`sprint IN (…)`), like the projects, so as not to sort a
+  capped excerpt. Sprints already seen stay on offer once a sprint is chosen, otherwise you could not tick
+  a second one. The **current sprint sits at the top of the list** and is flagged as such — it is the one
+  you are after nine times out of ten, and the date alone does not tell it apart from a future sprint. Then
+  come the others by **descending date**; a sprint with no known date (Jira does not always give one for a
+  future sprint) comes after those that have one. The **Assignees** and **Statuses** filters each have
+  their own **search** — which **hides** rows without unticking anything — and **Check all / Uncheck all** —
+  handy to empty everything then keep only one or two rows. On the assignees, **ticking nobody does not
+  filter**: the list then takes **every** ticket the account can see, including those assigned to someone
+  else or to no one. By default, as long as you have touched nothing, only **your** tickets are loaded.
+- **Filters by field, generic.** The three filters — Assignees, Statuses and **Filters** — are chips lined up
+  **above the detail panel**; the one you open floats over the page, so neither the row nor the list moves,
+  and a click outside closes it. The **Filters** panel lets you choose the **field** first (epic, type,
+  priority, project, assignee, reporter, labels, components, fix versions) then **one or more values**. The
+  **Project** criterion is an exception: it is applied **by Jira**, not afterwards. Jira caps a search at a
+  hundred tickets sorted by update date; filtering browser-side would therefore filter only an excerpt, and
+  the tickets of the wanted project could sit outside that excerpt — they disappeared instead of appearing.
+  When the list is capped, the counter says so (“100 of 340 shown”). The values on offer are the ones
+  **actually present** in the loaded tickets, with the number of tickets for each — offering a value that
+  brings back nothing helps nobody. The field picker and each value list have their own **search**; the
+  values' one **hides rows without unticking anything**, so a selection is never lost by hiding. Several
+  criteria combine with **AND** between fields and **OR** inside a field (“bugs *and* tasks, from this
+  epic”). A criterion with no value ticked filters nothing: adding a field therefore never empties the list.
+  The criteria are **persisted**.
+- The **detail** (on the right) shows the **content** (the Jira description converted from ADF into readable
+  Markdown), every **metadata** field (status, type, priority, assignee, reporter, project, dates, due date,
+  labels, components, fix versions), **all the comments** (author, date, body in Markdown) and the
+  **attachments** — **downloaded on demand** through a **server proxy** that fetches the file with the token
+  (a direct link would fail, since the Jira API requires auth). Plus an **Open in Jira** link.
+- **Code blocks stay code blocks.** A technical ticket often puts a template inside a Jira **table** — a
+  label on the left, JSON on the right. A Markdown table holds one line per cell: the code ended up
+  flattened there, its indentation crushed and uncopyable. Such tables are therefore **unfolded** — each
+  row becomes the label then its block, rows separated by a rule. You lose the grid, which was only a
+  layout; you keep the content, which is what you came to copy. Ordinary data tables stay tables — and
+  nothing in them is wrongly promoted to a title: only a row whose cells are **all** headers becomes one.
+  A table with no header therefore keeps its first row, and a key/value table (header in the first
+  **column**) keeps its first pair, the key in bold for want of a Markdown equivalent.
+- **`Let the AI code it` from the ticket.** The button at the head of the detail opens the **coding session
+  dialog already filled in**: the ticket's content (title + description) is placed at the top of the prompt,
+  the commit message and the **branch name** (`feature/PROJ-1421-…`) are proposed from the key and the
+  summary, and the ticket number is filled in. All that is left is to pick the repository and to spell out
+  your request under the context — the cursor is already there. The session is **not launched
+  automatically**: you read it over first.
+- **Change the ticket's state**: a selector in the header lists the **allowed transitions** (what Jira lets
+  *you* do on this ticket); picking one **applies the transition** and refreshes the status (detail + list).
+  Nothing is offered if you do not have the rights.
+- **Post a comment**: a field at the bottom of the comments section — the text is converted to **ADF** (the
+  format of Jira Cloud comments) server-side, and the new comment is appended to the thread without
+  reloading everything.
+- **Images are shown directly**: image attachments get a **fixed-width preview**, and images **embedded in
+  the description or a comment** are rendered **inline** where they appear (resolved through the proxy). A
+  **click opens the image large** (lightbox; Esc or a click outside closes it). Other files stay as
+  downloadable “chips”.
+- If Jira is not configured, a message points at **Settings → Jira** (URL + email + API token).
+
+#### Watched
+**Follow a ticket without it being assigned to you** — the common case: a ticket held by someone else blocks
+yours, and you want to know **when it moves**, not to think about it three times a day.
+
+- You add a ticket by its **key** (`PROJ-1421`) from this sub-tab, or with the **Watch** button at the head
+  of a ticket's detail. The key is validated before any call: it never reaches the raw JQL.
+- **The current state is recorded when you add it.** Without that, the first check would compare against
+  nothing and announce a change that never happened.
+- **Say why you are watching it.** An optional field next to the key — “blocks the billing migration”, “tell
+  Sofia as soon as it is in review”. Three months later, a key and a summary no longer recall the reason. It
+  is shown under the ticket's title and can be **corrected at any time** through the pencil on its row:
+  going through remove/re-add would lose the date it was added and the last known state, and would trigger a
+  false notification on the next pass. Clearing it is a legitimate choice — you do not keep a stale
+  reminder.
+- A **server timer** re-checks every watched ticket at the rhythm set in **Settings → Jira** (*Check watched
+  tickets every* N minutes; **0 = off**). On every **state change**, a **desktop notification** gives the
+  old and the new state — `To do → In progress` — and a click brings you back here. The type can be switched
+  off in **Settings → Notifications**.
+- **The ticket reads right here.** Clicking a row of the list opens the ticket **on the right**, as under
+  *My tickets*: description, metadata, comments, attachments — and the same actions (change the state,
+  comment, *Let the AI code it*). It is the same panel, not a copy: watching a ticket without being able to
+  read it forced you to open Jira for three lines of description. The card's own controls (remove, correct
+  the reason) keep their own effect, and each sub-tab keeps **its** selection.
+- **`Check now`** triggers the very same code as the timer, immediately: what the button shows is therefore
+  exactly what the watcher does.
+- A ticket that was **deleted or became invisible** (rights lost) is reported **on its row**, without
+  interrupting the check of the others, and **without erasing** the last known state.
+
 ### Git
 Operations across **several repositories at once**, and branch exploration.
 
@@ -414,112 +647,7 @@ Two sub-views, like Coding/Exploration in AI Dev.
   server's PATH**, an **actionable** message explains it (pointing at `DOCKER_BIN` in the `.env` if needed)
   — like the certificate / token errors.
 
-### Jira
-Two sub-tabs: **My tickets** and **Watched**. The menu carries a **badge** = the number of tickets
-**in progress that are assigned to you** (status category *In Progress*, the only definition that survives
-across workflows, since state names are free from one project to the next). It is fed by a counter
-**cached server-side** and refreshed by the watcher: showing it does not cost a Jira call every time you
-walk past.
-
-#### My tickets
-**The Jira tickets**, fetched automatically when you open the menu. By **default only yours** are shown, but
-a **filter by person** lets you **tick other assignees** to see their tickets too (the list of people = the
-recent assignees; **you ticked by default**, a **persisted** choice). A **list → detail** layout:
-- The **list** (on the left, with search) shows each ticket as a compact card: key, the **epic** it belongs
-  to when there is one, summary, **status** (a dot coloured by category: to do / in progress / done), type,
-  priority, update date. **The search covers the epic too** — “show me the tickets of that epic” is a common
-  ask. In the list the epic stays a piece of **information** — the whole card selects the ticket; it is
-  **in the detail** that it becomes a **link** to Jira, opened in a new tab. The epic is read from Jira's
-  `parent` field, keeping only the parents that really are one: a sub-task's parent is a story, and
-  announcing it as an epic would be a contradiction. Tickets that are **done** are left out by default — an
-  **“Include done”** checkbox brings them back. A **filter by status** (collapsible, checkboxes, a
-  **persisted** choice) additionally lets you show only the statuses you want. It adapts to the **custom
-  statuses** of your workflows, and the colour follows the status *category* (to do / in progress / done),
-  not its name. The list is not limited to the displayed tickets: the statuses of the **workflow of the
-  projects concerned** are loaded as well, otherwise a real status absent from the page would not be
-  filterable. We query the selected projects, failing that the ones of the displayed tickets — asking for
-  every status of the instance would give dozens of unrelated entries, and the endpoint that allows it
-  requires administering Jira. Unticked statuses are excluded **by Jira**, not afterwards — otherwise we
-  would be sorting a capped excerpt. A status already seen stays on offer even once excluded, without which
-  you could no longer tick it back. A **Sprints** filter appears as soon as your tickets carry one. The
-  sprint is a **custom** field whose identifier changes from one instance to another: the tool spots it by
-  its Jira **schema marker**, which is language-independent — a field named “Iteration” is recognised as
-  such. The selection is applied **by Jira** (`sprint IN (…)`), like the projects, so as not to sort a
-  capped excerpt. Sprints already seen stay on offer once a sprint is chosen, otherwise you could not tick
-  a second one. The **current sprint sits at the top of the list** and is flagged as such — it is the one
-  you are after nine times out of ten, and the date alone does not tell it apart from a future sprint. Then
-  come the others by **descending date**; a sprint with no known date (Jira does not always give one for a
-  future sprint) comes after those that have one. The **Assignees** and **Statuses** filters each have
-  their own **search** — which **hides** rows without unticking anything — and **Check all / Uncheck all** —
-  handy to empty everything then keep only one or two rows. On the assignees, **ticking nobody does not
-  filter**: the list then takes **every** ticket the account can see, including those assigned to someone
-  else or to no one. By default, as long as you have touched nothing, only **your** tickets are loaded.
-- **Filters by field, generic.** The three filters — Assignees, Statuses and **Filters** — are chips lined up
-  **above the detail panel**; the one you open floats over the page, so neither the row nor the list moves,
-  and a click outside closes it. The **Filters** panel lets you choose the **field** first (epic, type,
-  priority, project, assignee, reporter, labels, components, fix versions) then **one or more values**. The
-  **Project** criterion is an exception: it is applied **by Jira**, not afterwards. Jira caps a search at a
-  hundred tickets sorted by update date; filtering browser-side would therefore filter only an excerpt, and
-  the tickets of the wanted project could sit outside that excerpt — they disappeared instead of appearing.
-  When the list is capped, the counter says so (“100 of 340 shown”). The values on offer are the ones
-  **actually present** in the loaded tickets, with the number of tickets for each — offering a value that
-  brings back nothing helps nobody. The field picker and each value list have their own **search**; the
-  values' one **hides rows without unticking anything**, so a selection is never lost by hiding. Several
-  criteria combine with **AND** between fields and **OR** inside a field (“bugs *and* tasks, from this
-  epic”). A criterion with no value ticked filters nothing: adding a field therefore never empties the list.
-  The criteria are **persisted**.
-- The **detail** (on the right) shows the **content** (the Jira description converted from ADF into readable
-  Markdown), every **metadata** field (status, type, priority, assignee, reporter, project, dates, due date,
-  labels, components, fix versions), **all the comments** (author, date, body in Markdown) and the
-  **attachments** — **downloaded on demand** through a **server proxy** that fetches the file with the token
-  (a direct link would fail, since the Jira API requires auth). Plus an **Open in Jira** link.
-- **`Let the AI code it` from the ticket.** The button at the head of the detail opens the **coding session
-  dialog already filled in**: the ticket's content (title + description) is placed at the top of the prompt,
-  the commit message and the **branch name** (`feature/PROJ-1421-…`) are proposed from the key and the
-  summary, and the ticket number is filled in. All that is left is to pick the repository and to spell out
-  your request under the context — the cursor is already there. The session is **not launched
-  automatically**: you read it over first.
-- **Change the ticket's state**: a selector in the header lists the **allowed transitions** (what Jira lets
-  *you* do on this ticket); picking one **applies the transition** and refreshes the status (detail + list).
-  Nothing is offered if you do not have the rights.
-- **Post a comment**: a field at the bottom of the comments section — the text is converted to **ADF** (the
-  format of Jira Cloud comments) server-side, and the new comment is appended to the thread without
-  reloading everything.
-- **Images are shown directly**: image attachments get a **fixed-width preview**, and images **embedded in
-  the description or a comment** are rendered **inline** where they appear (resolved through the proxy). A
-  **click opens the image large** (lightbox; Esc or a click outside closes it). Other files stay as
-  downloadable “chips”.
-- If Jira is not configured, a message points at **Settings → Jira** (URL + email + API token).
-
-#### Watched
-**Follow a ticket without it being assigned to you** — the common case: a ticket held by someone else blocks
-yours, and you want to know **when it moves**, not to think about it three times a day.
-
-- You add a ticket by its **key** (`PROJ-1421`) from this sub-tab, or with the **Watch** button at the head
-  of a ticket's detail. The key is validated before any call: it never reaches the raw JQL.
-- **The current state is recorded when you add it.** Without that, the first check would compare against
-  nothing and announce a change that never happened.
-- **Say why you are watching it.** An optional field next to the key — “blocks the billing migration”, “tell
-  Sofia as soon as it is in review”. Three months later, a key and a summary no longer recall the reason. It
-  is shown under the ticket's title and can be **corrected at any time** through the pencil on its row:
-  going through remove/re-add would lose the date it was added and the last known state, and would trigger a
-  false notification on the next pass. Clearing it is a legitimate choice — you do not keep a stale
-  reminder.
-- A **server timer** re-checks every watched ticket at the rhythm set in **Settings → Jira** (*Check watched
-  tickets every* N minutes; **0 = off**). On every **state change**, a **desktop notification** gives the
-  old and the new state — `To do → In progress` — and a click brings you back here. The type can be switched
-  off in **Settings → Notifications**.
-- **The ticket reads right here.** Clicking a row of the list opens the ticket **on the right**, as under
-  *My tickets*: description, metadata, comments, attachments — and the same actions (change the state,
-  comment, *Let the AI code it*). It is the same panel, not a copy: watching a ticket without being able to
-  read it forced you to open Jira for three lines of description. The card's own controls (remove, correct
-  the reason) keep their own effect, and each sub-tab keeps **its** selection.
-- **`Check now`** triggers the very same code as the timer, immediately: what the button shows is therefore
-  exactly what the watcher does.
-- A ticket that was **deleted or became invisible** (rights lost) is reported **on its row**, without
-  interrupting the check of the others, and **without erasing** the last known state.
-
-### Statistics
+### Stats
 An MR funnel, a distribution of the scores, the **weekly evolution of the average score** (“is quality
 improving?”), weekly activity, a table per project (with the **resolution rate**, a **trend** ▲/▼ and the
 **last commit** — date, author, link to the commit on its forge), a **Top 5 of the repositories with the
@@ -632,7 +760,7 @@ default are realigned.
 ### Everyday comfort
 The tab, the sub-tab **and the Reviews stage are remembered** from one session to the next — and **nothing
 else**: no search, no dialog, no open report, because a stale state is worse than a clean start ·
-**keyboard shortcuts** (`1`-`7` for tabs, `/` search, `r` fetch MRs, `l` logs, `?` help, `Esc` closes) · a
+**keyboard shortcuts** (`1`-`8` for tabs, `/` search, `n` new todo, `r` fetch MRs, `l` logs, `?` help, `Esc` closes) · a
 **dynamic favicon** during a job · error messages **translated into actions** (certificate, token, CLI not
 found, timeout, network) · a **3-step onboarding** as long as the connection and the repositories are not
 configured · every form field carries an **i icon** whose hover (or keyboard focus) explains what it is for.
@@ -998,7 +1126,7 @@ intro/outro **cards** and **explanatory captions** synchronised with each screen
 down cleanly (closing the context flushes the video). The route: *Reviews* → a scored report → the version
 selector **v1 → v2 → v3** (a progression from **5.8 to 8.4**) → resolution tracking → *AI Dev* (a session
 linked to its MR, a question asked by the AI) → *Jira* → *Git* (the branch explorer) → *Docker* (`.env`
-drift + live logs) → *Statistics*. The `.webm` produced uploads straight to YouTube.
+drift + live logs) → *Stats*. The `.webm` produced uploads straight to YouTube.
 
 ## Dry-run mode (no AI)
 

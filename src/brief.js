@@ -1,0 +1,170 @@
+'use strict';
+/* Le brief « Aujourd'hui » — ce qui ouvre la journée.
+ *
+ * Sept sections, ORDONNÉES ACTION D'ABORD : ce qui réclame un geste avant ce qui informe.
+ * Une section vide n'est pas rendue — un écran qui affiche sept titres dont six sous-titrés
+ * « rien » apprend qu'il ne s'est rien passé, ce qui n'était pas la question.
+ *
+ * ZÉRO IA, ZÉRO RÉSEAU. Tout vient de la base en quelques requêtes : le brief doit s'afficher
+ * instantanément à l'ouverture, et coûter zéro token. Un résumé rédigé par un agent était
+ * tentant ; il aurait fait payer un appel à chaque premier café, pour reformuler des faits
+ * qui se lisent déjà.
+ *
+ * Chaque item porte de quoi NAVIGUER vers son objet (`kind` + identifiants). Le brief ne
+ * fabrique pas d'URL : c'est le front qui sait où vivent les onglets.
+ */
+
+const db = require('./db');
+const verifyLib = require('./verify');
+
+const JOUR_MS = 24 * 60 * 60 * 1000;
+// Combien d'items au plus par section. Un brief se lit debout, café en main : au-delà, ce
+// n'est plus un brief mais la liste elle-même, qui existe déjà dans son onglet.
+const MAX_PAR_SECTION = 8;
+
+/* Fin de la journée en cours, heure LOCALE. « Dû aujourd'hui » se juge au cadran de celui
+   qui lit, pas en UTC : à 23 h à Paris, une échéance « aujourd'hui » n'est pas demain. */
+function finDuJour(maintenant) {
+  const d = new Date(maintenant.getTime());
+  d.setHours(23, 59, 59, 999);
+  return d.toISOString();
+}
+
+/* 1. RAPPELS — échus + dus aujourd'hui. En tête parce que c'est le seul contenu du brief
+   que l'utilisateur a lui-même programmé : il a demandé qu'on le lui rappelle. */
+function rappels(maintenant) {
+  return db.prepare(`SELECT * FROM todo
+    WHERE status = 'open' AND archived_at IS NULL AND due_at IS NOT NULL AND due_at <= ?
+    ORDER BY due_at LIMIT ?`).all(finDuJour(maintenant), MAX_PAR_SECTION);
+}
+
+/* 2. TODOS DU JOUR — la priorité HAUTE SANS ÉCHÉANCE, et rien d'autre. « Important mais sans
+   date » est exactement ce qui se perd : rien ne le remonte jamais tout seul, alors que ce
+   qui porte une échéance finit par se signaler.
+
+   Tout ce qui est daté pour aujourd'hui appartient à §1 — `rappels` prend déjà `due_at`
+   jusqu'à la fin de la journée, pas seulement l'échu. La requête portait une seconde branche
+   « ou échéance aujourd'hui » suivie d'un `NOT IN` qui excluait ce même ensemble : elle ne
+   pouvait rien ramener, et le `NOT IN` retirait en prime les datées AU-DELÀ des huit lignes
+   affichées par §1 — elles disparaissaient alors du brief entier. Une seule règle, écrite une
+   fois : ce qui a une date est un rappel, ce qui n'en a pas et compte est une todo du jour. */
+function todosDuJour() {
+  return db.prepare(`SELECT * FROM todo
+    WHERE status = 'open' AND archived_at IS NULL AND due_at IS NULL AND priority = 'high'
+    ORDER BY id DESC LIMIT ?`).all(MAX_PAR_SECTION);
+}
+
+/* 3. SESSIONS EN ATTENTE DE RÉPONSE — l'agent s'est arrêté sur une question. Ce sont les
+   items les plus coûteux à oublier : la session est bloquée, la file est libre, et rien ne
+   repartira tant qu'on n'aura pas répondu. */
+function sessionsEnAttente() {
+  return db.prepare(`SELECT t.id, t.prompt, t.kind, COUNT(*) n
+    FROM task_target tt JOIN task t ON t.id = tt.task_id
+    WHERE tt.status = 'needs_input'
+    GROUP BY t.id ORDER BY t.id DESC LIMIT ?`).all(MAX_PAR_SECTION)
+    .map((r) => ({ task_id: r.id, prompt: r.prompt, kind: r.kind, targets: r.n }));
+}
+
+/* 4. VÉRIFICATIONS EN ÉCHEC — le dernier verdict rouge par lot / MR, périmés exclus.
+   Périmé = la branche a bougé depuis : le verdict porte sur du code qui n'est plus là, et
+   le montrer comme actionnable enverrait corriger un problème peut-être déjà corrigé.
+   On ne garde que la DERNIÈRE vérification de chaque lot (ou de chaque MR seule) : les
+   précédentes sont de l'histoire, pas du travail. */
+function verificationsEnEchec() {
+  const lignes = db.prepare(`SELECT * FROM verification
+    WHERE status IN ('done','error') AND verdict = 'verified_fail'
+    ORDER BY id DESC LIMIT 100`).all();
+  const vues = new Set();
+  const out = [];
+  // Préparés UNE fois pour toute la boucle, comme partout ailleurs dans le projet.
+  const lireMr = db.prepare('SELECT iid, current_sha, repo_id FROM mr WHERE id = ?');
+  const lireRepo = db.prepare('SELECT project FROM repo WHERE id = ?');
+  for (const v of lignes) {
+    let cibles = [];
+    try { cibles = JSON.parse(v.targets_json || '[]'); } catch { continue; }
+    // Une clé par lot ; une vérification de MR seule (lot_id NULL) est sa propre clé.
+    const cle = v.lot_id ? `lot:${v.lot_id}` : `mr:${(cibles[0] || {}).mr_id || v.id}`;
+    if (vues.has(cle)) continue;
+    vues.add(cle);
+    const shaParMr = {};
+    const enrichies = cibles.map((c) => {
+      const mr = lireMr.get(c.mr_id);
+      if (mr) shaParMr[c.mr_id] = mr.current_sha;
+      const repo = mr && lireRepo.get(mr.repo_id);
+      return { ...c, iid: mr ? mr.iid : null, project: (repo && repo.project) || null };
+    });
+    if (verifyLib.estPerime(enrichies, shaParMr)) continue;
+    let imputable = [];
+    try { imputable = JSON.parse(v.imputable_json || '[]'); } catch { /* illisible */ }
+    out.push({
+      verification_id: v.id,
+      verifier_name: v.verifier_name || '',
+      lot_id: v.lot_id, lot_name: v.lot_name,
+      finished_at: v.finished_at,
+      failed: imputable.length,
+      failed_label: (imputable[0] || {}).test || null,
+      targets: enrichies.map((c) => ({ mr_id: c.mr_id, iid: c.iid, project: c.project })),
+    });
+    if (out.length >= MAX_PAR_SECTION) break;
+  }
+  return out;
+}
+
+/* 5. MR À TRAITER — arrivées dans les dernières 24 h. Le brief ne redit pas la file entière
+   (elle a son onglet et son badge) : il signale ce qui est TOMBÉ depuis hier, c'est-à-dire
+   ce qu'on n'a pas encore pu voir. */
+function mrFraiches(maintenant) {
+  const depuis = new Date(maintenant.getTime() - JOUR_MS).toISOString();
+  return db.prepare(`SELECT mr.id, mr.iid, mr.title, mr.author, mr.gitlab_created_at, r.project
+    FROM mr JOIN repo r ON r.id = mr.repo_id
+    WHERE mr.status = 'to_review' AND mr.gitlab_created_at IS NOT NULL AND mr.gitlab_created_at >= ?
+    ORDER BY mr.gitlab_created_at DESC LIMIT ?`).all(depuis, MAX_PAR_SECTION);
+}
+
+/* 6. MR DORMANTES — reviewées il y a plus de N jours et toujours ouvertes. C'est le travail
+   qu'on a fait et qui ne sert à rien tant que personne ne merge : le rapport existe, la
+   décision manque. Le seuil est réglable parce qu'il dépend du rythme de l'équipe. */
+function mrDormantes(maintenant, jours) {
+  const n = Number(jours) > 0 ? Number(jours) : 5;
+  const limite = new Date(maintenant.getTime() - n * JOUR_MS).toISOString();
+  return db.prepare(`SELECT mr.id, mr.iid, mr.title, r.project, review.updated_at reviewed_at,
+      review.note_value
+    FROM mr JOIN repo r ON r.id = mr.repo_id JOIN review ON review.mr_id = mr.id
+    WHERE mr.status = 'reviewed' AND COALESCE(mr.closed_seen, 0) = 0
+      AND review.updated_at IS NOT NULL AND review.updated_at < ?
+    ORDER BY review.updated_at LIMIT ?`).all(limite, MAX_PAR_SECTION)
+    .map((m) => ({ ...m, days: Math.floor((maintenant.getTime() - new Date(m.reviewed_at).getTime()) / JOUR_MS) }));
+}
+
+/* 7. ACTIVITÉ DEPUIS HIER — une ligne, trois nombres. Volontairement pauvre : c'est du
+   contexte, pas une tâche. Le détail vit dans les Statistiques. */
+function activite(maintenant) {
+  const depuis = new Date(maintenant.getTime() - JOUR_MS).toISOString();
+  const compte = (sql, ...args) => db.prepare(sql).get(...args).c;
+  return {
+    merged: compte("SELECT COUNT(*) c FROM feed WHERE type = 'mr_merged' AND at >= ?", depuis),
+    opened: compte("SELECT COUNT(*) c FROM feed WHERE type = 'mr_opened' AND at >= ?", depuis),
+    verified: compte(`SELECT COUNT(*) c FROM verification
+      WHERE status IN ('done','error') AND finished_at IS NOT NULL AND finished_at >= ?`, depuis),
+  };
+}
+
+/* Le brief complet. `sections` porte l'ordre ET le vide : le front n'a qu'à sauter ce qui
+   est vide, sans avoir à connaître la règle de composition — elle est ici, en un endroit. */
+function construire({ maintenant = new Date(), staleDays = 5 } = {}) {
+  const act = activite(maintenant);
+  return {
+    date: maintenant.toISOString(),
+    reminders: rappels(maintenant),
+    todos: todosDuJour(),
+    sessions: sessionsEnAttente(),
+    verifications: verificationsEnEchec(),
+    fresh_mrs: mrFraiches(maintenant),
+    stale_mrs: mrDormantes(maintenant, staleDays),
+    stale_days: Number(staleDays) > 0 ? Number(staleDays) : 5,
+    // Une activité toute à zéro est un vide : la section se masque comme les autres.
+    activity: (act.merged || act.opened || act.verified) ? act : null,
+  };
+}
+
+module.exports = { construire, MAX_PAR_SECTION };

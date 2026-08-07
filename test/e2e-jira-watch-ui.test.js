@@ -125,6 +125,130 @@ describe('Jira · Surveillés — le ticket s’ouvre à droite', { skip: dispo 
       'garder à l’écran le détail d’un ticket qu’on ne suit plus n’aurait pas de sens');
   });
 
+  async function poserTicketTechnique(description) {
+    app.state.jiraIssues['WATCH-3'] = {
+      key: 'WATCH-3',
+      fields: {
+        summary: 'Gabarits de notification',
+        status: { name: 'À faire', statusCategory: { key: 'new' } },
+        issuetype: { name: 'Tâche' },
+        description,
+      },
+    };
+    await app.api('DELETE', '/api/jira/watch/WATCH-3');
+    await app.api('POST', '/api/jira/watch', { key: 'WATCH-3' });
+    await ouvrirSurveilles();
+    await page.locator('#jiraWatchList .jira-item', { hasText: 'Gabarits' }).click();
+  }
+
+  /* Le rendu d'un ticket TECHNIQUE, bout en bout : ADF Jira → Markdown → HTML. Jira met
+     volontiers un gabarit JSON dans une cellule de tableau ; aplati en cellules, le code
+     arrivait sur une seule ligne, indentations écrasées par le repli HTML et incopiable.
+     On vérifie ici ce que l'utilisateur VOIT, pas seulement le Markdown intermédiaire. */
+  test('un gabarit de code dans un tableau Jira s’affiche en bloc, lignes et indentations gardées', async () => {
+    const JSON_GABARIT = '{\n    "partner": "LIN",\n    "version": 8\n}';
+    await poserTicketTechnique({
+      type: 'doc',
+      version: 1,
+      content: [{ type: 'table', content: [{ type: 'tableRow', content: [
+        { type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'NP15_Suppression_IN' }] }] },
+        { type: 'tableCell', content: [{ type: 'codeBlock', attrs: { language: 'json' }, content: [{ type: 'text', text: JSON_GABARIT }] }] },
+      ] }] }],
+    });
+    await page.waitForSelector('#jiraWatchDetail pre');
+
+    const bloc = page.locator('#jiraWatchDetail pre').first();
+    assert.equal((await bloc.textContent()).trim(), JSON_GABARIT,
+      'le contenu du bloc est celui de Jira, retours à la ligne compris');
+    assert.match(await page.locator('#jiraWatchDetail').innerText(), /NP15_Suppression_IN/,
+      'l’étiquette de la cellule voisine n’est pas perdue');
+
+    /* Un bloc de code doit se DISTINGUER du texte et garder son propre ascenseur : sans
+       fond ni `overflow-x`, une ligne longue débordait de la carte. */
+    const style = await bloc.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { fond: cs.backgroundColor, overflow: cs.overflowX, blanc: cs.whiteSpace };
+    });
+    assert.notEqual(style.fond, 'rgba(0, 0, 0, 0)', 'le bloc a un fond, comme dans un rapport de review');
+    assert.equal(style.overflow, 'auto');
+    assert.match(style.blanc, /^pre/, 'les espaces ne sont pas repliés');
+
+    // Et la carte ne déborde pas horizontalement, même sur une ligne à rallonge.
+    const deborde = await page.locator('#jiraWatchDetail').evaluate((el) => {
+      const p = el.querySelector('pre');
+      p.textContent = 'x'.repeat(600);
+      return { bloc: p.scrollWidth > p.clientWidth, carte: el.scrollWidth > el.clientWidth };
+    });
+    assert.equal(deborde.bloc, true, 'la ligne longue défile DANS le bloc');
+    assert.equal(deborde.carte, false, '…et ne pousse pas le panneau');
+  });
+
+  /* Un `|` dans une cellule ouvrirait une colonne de plus : il est échappé à la source, et
+     le rendu doit savoir le relire — sinon la ligne se décale d'une case. */
+  test('un tableau Jira ordinaire garde ses colonnes, « | » compris', async () => {
+    const cell = (t) => ({ type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }] });
+    const head = (t) => ({ type: 'tableHeader', content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }] });
+    await poserTicketTechnique({
+      type: 'doc',
+      version: 1,
+      content: [{ type: 'table', content: [
+        { type: 'tableRow', content: [head('Champ'), head('Valeur')] },
+        { type: 'tableRow', content: [cell('mode'), cell('strict | souple')] },
+      ] }],
+    });
+    await page.waitForSelector('#jiraWatchDetail table');
+    const lignes = await page.locator('#jiraWatchDetail table tbody tr').evaluateAll(
+      (trs) => trs.map((tr) => [...tr.children].map((td) => td.textContent)),
+    );
+    assert.deepEqual(lignes, [['mode', 'strict | souple']],
+      'deux colonnes, et le pipe rendu à la cellule au lieu d’en ouvrir une troisième');
+  });
+
+  /* Markdown exige une ligne d'en-tête ; un tableau Jira, non. Faute d'en-tête on en émet
+     un VIDE plutôt que de promouvoir la première ligne de données — et l'affichage le masque,
+     sinon l'écran porterait une bande grise sans le moindre libellé. */
+  test('un tableau Jira sans en-tête garde toutes ses lignes, et n’affiche pas de bande vide', async () => {
+    const cell = (t) => ({ type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }] });
+    await poserTicketTechnique({
+      type: 'doc',
+      version: 1,
+      content: [{ type: 'table', content: [
+        { type: 'tableRow', content: [cell('TVA'), cell('20%')] },
+        { type: 'tableRow', content: [cell('Frais'), cell('0€')] },
+      ] }],
+    });
+    await page.waitForSelector('#jiraWatchDetail table');
+    const vu = await page.locator('#jiraWatchDetail table').evaluate((t) => ({
+      lignes: [...t.querySelectorAll('tbody tr')].map((r) => [...r.children].map((c) => c.textContent)),
+      enTete: getComputedStyle(t.querySelector('thead')).display,
+    }));
+    assert.deepEqual(vu.lignes, [['TVA', '20%'], ['Frais', '0€']],
+      'les DEUX lignes sont là : aucune n’a été promue en titre');
+    assert.equal(vu.enTete, 'none', 'l’en-tête vide est masqué, pas affiché en bande grise');
+  });
+
+  /* Un tableau clé/valeur met son en-tête en première COLONNE. Markdown n'a pas de `th` en
+     colonne : la clé est mise en gras, et la paire est conservée. */
+  test('un tableau clé/valeur garde ses paires, clés en gras', async () => {
+    const p = (t) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
+    await poserTicketTechnique({
+      type: 'doc',
+      version: 1,
+      content: [{ type: 'table', content: [
+        { type: 'tableRow', content: [{ type: 'tableHeader', content: [p('Partenaire')] }, { type: 'tableCell', content: [p('LIN')] }] },
+        { type: 'tableRow', content: [{ type: 'tableHeader', content: [p('Version')] }, { type: 'tableCell', content: [p('8')] }] },
+      ] }],
+    });
+    await page.waitForSelector('#jiraWatchDetail table');
+    const vu = await page.locator('#jiraWatchDetail table').evaluate((t) => ({
+      lignes: [...t.querySelectorAll('tbody tr')].map((r) => [...r.children].map((c) => c.textContent)),
+      cles: [...t.querySelectorAll('tbody tr td:first-child strong')].map((e) => e.textContent),
+    }));
+    assert.deepEqual(vu.lignes, [['Partenaire', 'LIN'], ['Version', '8']],
+      'la première paire n’est plus sacrifiée à l’en-tête');
+    assert.deepEqual(vu.cles, ['Partenaire', 'Version']);
+  });
+
   /* Les deux sous-onglets ont chacun leur sélection : revenir sur « Mes tickets » ne doit pas
      hériter du ticket qu'on lisait dans « Surveillés », ni l'inverse. */
   test('les deux panneaux gardent leur propre sélection', async () => {

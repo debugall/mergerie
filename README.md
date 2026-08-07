@@ -43,15 +43,16 @@ npm run demo       # http://localhost:4319
 
 ## What it does
 
-Seven tabs, each one line — plus the objective verification, which lives inside Reviews and Settings:
+Eight tabs, each one line — plus the objective verification, which lives inside Reviews and Settings:
 
 - **Reviews** — AI-scored, versioned reviews of GitLab merge requests **and GitHub pull requests**; incremental re-reviews; an autonomous **convergence loop** (review → fix → re-review until the score threshold) Convergence works on the *review*; the **objective verification** comes after, on the merge request itself — see the guide.
 - **AI Dev** — automated coding sessions (the AI codes, commits, pushes, opens the MR), off-repo coding (with the AI's report back and follow-up fix requests), and read-only code exploration — *from prompt to converged MR* in one click. On a multi-repo session each project runs, and takes a follow-up fix, on its own. Finished sessions can be tidied away without being deleted.
 - **Objective verification** — a plain list of commands (`npm ci`, `npm test`) or your own test script gives a merge request a verdict that isn't an opinion: `✓ verified`, `✗ 2 tests broken`, `⚠ base already red`. Broken test names are read straight from TAP or JUnit output when there is any. Merge requests from different repositories that only hold together as a set are **verified together**, and one click opens a fixing session covering all of them. See the guide.
-- **Statistics** — MR funnel, score trends, per-project resolution rate, token cost.
+- **Notes** — the sticky notes of everyday work, kept inside the tool: note pages in Markdown, a prioritised todo list with due dates that double as **desktop reminders**, and a **morning brief** that opens the day — reminders, sessions waiting for an answer, failed verifications, fresh and dormant MRs, all computed locally with **no AI call**. `!214` and `PROJ-720` written in a note become links, and a merge request or a ticket can be added to the todos in one click.
+- **Jira** — your assigned tickets fetched automatically, full detail with attachments, status changes and comments; **watched tickets** (assigned to you or not) with a desktop notification on every status change, and a menu badge counting your in-progress tickets.
 - **Git** — multi-repo branch/tag/command operations across both forges, branch explorer and ref finder, **restorable** deletions, always with a preview.
 - **Docker** — compose project health and `.env` drift, batch actions, live multi-container logs, error badges in the menu.
-- **Jira** — your assigned tickets fetched automatically, full detail with attachments, status changes and comments; **watched tickets** (assigned to you or not) with a desktop notification on every status change, and a menu badge counting your in-progress tickets.
+- **Stats** — MR funnel, score trends, per-project resolution rate, token cost.
 - **Settings** — GitLab / GitHub / Jira connections, repositories (each one can opt out of MR fetching while staying usable for git and coding sessions), review rules, prompt templates, theme and language.
 
 Everywhere: `Ctrl`/`Cmd` + `K` opens a command palette (jump to a tab, a merge request, a session by

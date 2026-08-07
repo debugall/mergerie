@@ -489,13 +489,21 @@ body.footer-hidden { padding-bottom: 0; }
 
 .md { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; }
 .md h1 { font-size: 18px; } .md h2 { font-size: 15px; margin-top: 16px; } .md h3 { font-size: 14px; }
-.md code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
-.md pre { background: var(--code-bg); padding: 10px; border-radius: 6px; overflow-x: auto; }
-.md blockquote { border-left: 3px solid var(--accent); margin: 8px 0; padding: 2px 12px; color: var(--muted); }
-.md ul { padding-left: 22px; }
+.md-body h1 { font-size: 17px; } .md-body h2 { font-size: 15px; } .md-body h3, .md-body h4 { font-size: 14px; }
+.md code, .md-body code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+.md pre, .md-body pre { background: var(--code-bg); padding: 10px; border-radius: 6px; overflow-x: auto; }
+/* Dans un bloc, le code ne reprend pas la pastille du code INLINE : deux fonds l'un sur
+   l'autre feraient un damier sur chaque identifiant. */
+.md pre code, .md-body pre code { background: none; padding: 0; }
+.md blockquote, .md-body blockquote { border-left: 3px solid var(--accent); margin: 8px 0; padding: 2px 12px; color: var(--muted); }
+.md ul, .md-body ul { padding-left: 22px; }
+.md-body hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
 .md-tablewrap { overflow-x: auto; margin: 12px 0; }
 .md-table { border-collapse: collapse; }
 .md-table th, .md-table td { border: 1px solid var(--line); padding: 6px 11px; font-size: 13px; vertical-align: top; }
+/* En-tête entièrement vide : la source n'en avait pas. On le masque plutôt que d'afficher
+   une bande sans libellé — et surtout plutôt que de promouvoir une ligne de données. */
+.md-table-nohead thead { display: none; }
 .md-table th { background: var(--panel2); font-weight: 600; text-align: left; white-space: nowrap; }
 .md-table tbody tr:nth-child(even), .md-table tbody tr:nth-child(even) { background: var(--row-alt); }
 
@@ -940,14 +948,18 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 .list.animate-in > .card { animation: card-in .26s cubic-bezier(.2,.8,.3,1) both; animation-delay: calc(var(--i, 0) * 22ms); }
 
 /* ---------- Navigation & en-tête ---------- */
-.brand { display: flex; align-items: center; gap: var(--s-3); line-height: 1.15; }
+.brand { display: flex; align-items: flex-start; gap: var(--s-3); line-height: 1.15; }
 .brand-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 /* Un seul des deux logos est affiché : celui dont l'encre se voit sur le fond du thème. */
 .brand-logo { display: block; flex: none; width: 30px; height: 30px; }
 .brand-logo.dark { display: none; }
 :root[data-theme="dark"] .brand-logo.light { display: none; }
 :root[data-theme="dark"] .brand-logo.dark { display: block; }
-.baseline { font-size: var(--fs-xs); color: var(--muted); letter-spacing: .01em; white-space: nowrap; }
+/* Deux lignes, chacune insécable : c'est la COUPURE qui est choisie, pas la largeur qui la
+   décide — sinon elle se déplacerait à chaque redimensionnement, et le sens avec elle. */
+.baseline { display: flex; flex-direction: column; font-size: var(--fs-xs); color: var(--muted);
+  letter-spacing: .01em; line-height: 1.35; }
+.baseline > span { white-space: nowrap; }
 /* baseline : masquée quand la place manque, pour ne pas écraser la navigation */
 @media (max-width: 1200px) { .baseline { display: none; } }
 nav button { display: inline-flex; align-items: center; gap: 6px; transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast); }
@@ -1264,7 +1276,7 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
    Les vues plein écran (.split-pane, .code-report) ont déjà leur min-width: 0. */
 .split { grid-template-columns: 320px minmax(0, 1fr); }
 .col-detail, .col-list { min-width: 0; }
-.md { max-width: 100%; overflow-wrap: break-word; }   /* URLs et identifiants longs en prose */
+.md, .md-body { max-width: 100%; overflow-wrap: break-word; }   /* URLs et identifiants longs en prose */
 .md-tablewrap { max-width: 100%; }
 
 /* Le label ajouté dans la modale Contexte n'est pas dans un `.form` : on lui
@@ -1836,9 +1848,10 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-detail-inner.jira-cat-progress { border-top-color: var(--accent, #4f9cf9); }
 .jira-detail-inner.jira-cat-done { border-top-color: var(--ok, #2e7d32); }
 .jira-dhead { margin-bottom: 16px; }
-.jira-dhead-top { display: flex; align-items: center; gap: 10px; }
+.jira-dhead-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .jira-dhead-top .spacer { flex: 1; }
-.jira-open { font-size: 13px; white-space: nowrap; }
+.jira-open { font-size: 13px; white-space: nowrap; color: var(--accent); }
+.jira-open:hover { color: var(--accent-hi); }
 .jira-title { margin: 8px 0 10px; font-size: 20px; line-height: 1.3; }
 .jira-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .jira-chip { font-size: 12px; padding: 2px 10px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); white-space: nowrap; }
@@ -1999,3 +2012,108 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 /* L'erreur appartient à SA session : dans la carte, pleine largeur sous les deux colonnes.
    Rendue en frère de la carte, elle flottait entre deux sessions sans dire de laquelle. */
 .card > .errbox { flex: 1 1 100%; margin-top: 10px; }
+
+/* ============ Notes : brief, todos et pages ============
+   Sobre et dans le système existant : aucune couleur nouvelle, aucun composant nouveau —
+   les cartes, les puces et les boutons sont ceux du reste de l'application. Tout passe par
+   les variables de thème, donc le clair et le sombre suivent sans règle dédiée. */
+
+/* ---- brief ---- */
+.brief { max-width: 900px; }
+.brief-head { margin: 4px 0 18px; }
+.brief-hello { font-size: 13px; color: var(--muted); }
+.brief-date { font-size: 22px; font-weight: 650; }
+/* Une majuscule à la PREMIÈRE lettre seulement : `capitalize` en mettrait une à chaque mot,
+   ce qui donnerait « Vendredi 7 Août 2026 » là où le français écrit le jour et le mois en
+   minuscules. L'anglais, lui, les capitalise déjà à la source. */
+.brief-date::first-letter { text-transform: uppercase; }
+.brief-sec { margin-bottom: 22px; }
+.brief-sec h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 14px;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.brief-sec h3 .ico { width: 15px; height: 15px; }
+.brief-hint { margin: -4px 0 8px; font-size: 12px; }
+.brief-item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 6px; }
+.brief-item-main { flex: 1; min-width: 0; }
+.brief-item-title { font-weight: 550; overflow-wrap: anywhere; }
+.brief-item .meta { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap;
+  align-items: center; gap: 6px; margin-top: 2px; }
+.brief-clickable { cursor: pointer; }
+.brief-clickable:hover { background: var(--panel2); }
+.brief-activity { margin: 0; color: var(--muted); }
+
+/* ---- todos ---- */
+.todo-quick { flex: 1 1 320px; min-width: 200px; height: 38px; padding: 8px 12px; font: inherit;
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }
+.todo-quick:focus { border-color: var(--accent); outline: none; }
+.todo-list { display: flex; flex-direction: column; gap: 6px; max-width: 900px; }
+.todo-row { display: flex; align-items: flex-start; gap: 10px; }
+.todo-check { margin-top: 3px; width: 16px; height: 16px; flex: none; cursor: pointer; }
+/* Une todo faite reste LISIBLE, seulement barrée : elle attend sept jours avant de partir,
+   et on veut voir ce qu'on a fait cette semaine — pas deviner sous un gris illisible. */
+.todo-row.done .brief-item-title { text-decoration: line-through; color: var(--muted); }
+.todo-note { font-size: 13px; margin-top: 4px; color: var(--muted); }
+.todo-note p { margin: 2px 0; }
+.todo-snooze { display: flex; gap: 4px; flex: none; }
+.todo-due { display: inline-flex; align-items: center; gap: 4px; }
+.todo-due .ico { width: 12px; height: 12px; }
+/* Le rouge est réservé au DÉPASSÉ : une échéance à venir n'est pas une alarme. */
+.todo-due.late { color: var(--red-text); font-weight: 600; }
+.prio { padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 650; }
+.prio-high { background: var(--badge-err); color: var(--on-red); }
+.prio-low { background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
+.todo-filter button { font-size: 12px; }
+
+/* ---- pages ---- */
+.notes-layout { display: flex; gap: 18px; align-items: flex-start; }
+/* Même construction que la colonne des tickets : `min-width: 0` lève le minimum implicite
+   d'un élément flex, sans quoi un titre long élargirait la colonne au gré du contenu. */
+.notes-list-col { flex: 0 0 300px; width: 300px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.notes-editor-col { flex: 1; min-width: 0; }
+.toolbar-tight { margin: 0; }
+.notes-list { display: flex; flex-direction: column; gap: 4px; max-height: 72vh; overflow: auto; }
+.note-item { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  padding: 8px 10px; background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 9px; cursor: pointer; font: inherit; }
+.note-item:hover { background: var(--panel2); }
+.note-item.active { border-color: var(--accent); background: var(--panel2); }
+.note-item-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-item-title .ico { width: 12px; height: 12px; }
+.note-item-date { color: var(--muted); font-size: 11px; flex: none; }
+.notes-editor { display: flex; flex-direction: column; gap: 10px; }
+.note-none { padding: 40px 0; text-align: center; }
+.note-editor-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.note-title { flex: 1 1 240px; min-width: 160px; height: 38px; padding: 8px 12px;
+  font: inherit; font-weight: 600; background: var(--panel2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px; }
+.note-title:focus { border-color: var(--accent); outline: none; }
+/* L'indicateur d'enregistrement est DISCRET par construction : il rassure quand on le
+   cherche, il ne réclame pas l'attention à chaque frappe. */
+.note-saved { font-size: 12px; color: var(--muted); min-width: 90px; }
+.note-panes { display: flex; gap: 12px; align-items: stretch; }
+.note-content, .note-preview { flex: 1 1 50%; min-width: 0; min-height: 60vh; }
+.note-content { padding: 12px; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+  border-radius: 10px; resize: vertical; }
+.note-content:focus { border-color: var(--accent); outline: none; }
+.note-preview { padding: 12px 16px; overflow: auto; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 10px; }
+/* Les références autolinkées se voient comme des liens, sans souligner tout le texte. */
+.note-link { color: var(--accent); text-decoration: none; border-bottom: 1px dotted currentColor; }
+.note-link:hover { color: var(--accent-hi); }
+.note-link-multi { border-bottom-style: dashed; }
+
+/* ---- capture rapide ---- */
+.modal-capture { width: min(520px, 92vw); display: flex; flex-direction: column; gap: 10px; }
+.modal-capture input[type="text"] { height: 40px; padding: 8px 12px; font: inherit;
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }
+.modal-capture input[type="text"]:focus { border-color: var(--accent); outline: none; }
+.modal-capture #captureMore { align-self: flex-start; }
+.modal-capture #captureDetails { display: flex; flex-direction: column; gap: 8px; }
+
+/* Sous 900 px les deux colonnes s'empilent — comme les tickets et les rapports. */
+@media (max-width: 900px) {
+  .notes-layout, .note-panes { flex-direction: column; }
+  .notes-list-col { flex: none; width: 100%; }
+  .note-content, .note-preview { min-height: 34vh; }
+}

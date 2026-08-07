@@ -13,12 +13,17 @@ données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide
 
 ## Les onglets en détail
 
-Sept onglets : **Reviews** · **Dev IA** · **Statistiques** · **Git** · **Docker** · **Jira** · **Réglages**.
+Huit onglets, rangés par paires — le cœur, ce que j'ai à faire, ma machine, le méta :
+**Reviews** · **Dev IA** — **Notes** · **Jira** — **Git** · **Docker** — **Stats** · **Réglages**.
 Les badges signalent le **travail en attente** (MR à traiter, sessions non lancées), pas des totaux.
 L'onglet **Reviews** en porte deux : le bleu compte les merge requests **à traiter**, l'orange les
 **rapports notés sous 7/10 qui attendent encore une décision**. Le second dit lesquelles lire en premier ;
 il ne compte que le stade *Reviewées*, donc classer une merge request le fait redescendre — un compteur qui
 ne redescend jamais cesse vite d'être regardé.
+L'onglet **Notes** en porte deux aussi : le **rouge** compte ce qui presse — todos **en retard** ou en
+**priorité haute** —, le **bleu** le reste des todos à faire. Leur somme est le nombre de todos ouvertes ;
+au survol, le rouge dit de quoi il est fait, car il ne se lit pas seulement sur les pastilles « Haute » :
+une todo normale dont l'échéance est dépassée réclame autant, et c'est justement le retard qu'on oublie.
 
 ### Reviews
 Les trois stades d'une même merge request, réunis derrière un filtre segmenté —
@@ -121,7 +126,7 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   (vérifié via git) ; sinon il est marqué « disparu » — l'IA a pu simplement ne pas le re-signaler.
   Les constats viennent d'un bloc structuré que l'IA émet en plus du rapport (invisible à la lecture) ;
   **ton template de prompt de review n'est pas modifié**, l'instruction est ajoutée à la volée.
-  L'onglet Statistiques en tire un **taux de résolution par projet**.
+  L'onglet Stats en tire un **taux de résolution par projet**.
 - Une MR qui n'est plus ouverte sur la forge porte le badge **mergée** ; le bouton Merger disparaît.
 - **Filtrer par couleur de note.** Sous *Reviewées* et *Traitées*, trois cases au-dessus de la liste —
   vert (≥ 7/10), orange (4 à 6,9), rouge (< 4) — **se cumulent** : « montre-moi les rouges et les
@@ -294,6 +299,244 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   est archivée — `Voir la réponse` propose un **sélecteur d'itération** qui rejoue chaque question avec
   la réponse qu'elle a obtenue.
 
+### Notes
+Les post-it et l'onglet bloc-notes du quotidien, **dans l'outil** — donc **ancrés** à ce qu'on y suit
+(merge requests, tickets) et **dans la sauvegarde**. Trois sous-onglets : **Aujourd'hui** (le brief),
+**Todos**, **Pages**. Rien ne part vers l'IA ni vers une forge : tout vit dans la base locale, et
+**aucun token n'est consommé** par cet onglet.
+
+#### Aujourd'hui — le brief du matin
+Sept sections, **ordonnées « action d'abord »** : ce qui réclame un geste avant ce qui informe. Chacune
+est **masquée quand elle est vide** — un écran qui affiche sept titres dont six sous-titrés « rien »
+apprend qu'il ne s'est rien passé, ce qui n'était pas la question. Chaque ligne mène à son objet en un clic.
+
+1. **Rappels** — les échéances échues et celles du jour, avec la case « fait » et les boutons de report
+   **sur place** : c'est tout l'intérêt d'un brief, agir sans changer d'écran.
+2. **Todos du jour** — les priorités **hautes sans date** et les échéances d'aujourd'hui. Les hautes sans
+   date sont là parce que « important mais sans échéance » est exactement ce qui se perd : rien ne le
+   remonte jamais tout seul. Une todo déjà listée en *Rappels* n'y réapparaît pas.
+3. **Sessions en attente de réponse** — les sessions où l'IA a posé une question. Ce sont les plus
+   coûteuses à oublier : la session est bloquée, la file est libre, et rien ne repartira sans toi.
+4. **Vérifications en échec** — le dernier verdict rouge par lot ou par MR. Les verdicts **périmés** en
+   sont écartés : la branche a bougé, le verdict porte sur du code qui n'est plus là, et l'afficher
+   enverrait corriger un problème peut-être déjà corrigé.
+5. **MR à traiter** — celles **arrivées depuis hier**, pas la file entière (elle a son onglet et son badge).
+6. **MR dormantes** — reviewées il y a plus de **N jours** (réglable, 5 par défaut) et toujours ouvertes :
+   le travail est fait, la décision manque.
+7. **Activité depuis hier** — une ligne, trois nombres. Volontairement pauvre : c'est du contexte, pas une
+   tâche ; le détail vit dans *Stats*.
+
+Tout est calculé **en SQL, sans IA et sans réseau** : le brief s'affiche instantanément, avant le premier
+café, et ne coûte rien. Un résumé rédigé par un agent était tentant ; il aurait fait payer un appel chaque
+matin pour reformuler des faits qui se lisent déjà.
+
+**Atterrissage.** À la **première ouverture de la journée**, l'application s'ouvre ici plutôt que sur le
+dernier onglet consulté. Une fois par jour calendaire, jamais deux — sinon chaque rechargement ramènerait
+sur le brief celui qui lisait un rapport. Débrayable dans *Réglages → Général*.
+
+#### Todos
+Une liste plate, triée **par priorité puis par échéance** ; les sans-date passent après celles qui en ont
+une, sinon les plus nombreuses repousseraient en bas ce qui est dû aujourd'hui.
+
+- **Ajout inline** en tête de liste : on tape, Entrée, c'est créé — priorité normale, sans date. Le tri se
+  fait après.
+- **Statut binaire** : à faire / fait. Pas de « en cours » : une todo de poste de travail se coche, elle
+  ne se pilote pas.
+- **Priorité** haute / normale / basse. La normale n'affiche aucune pastille — la baliser serait du bruit.
+- **Échéance = rappel** : une seule date, qui sert des deux côtés. Elle s'affiche **en relatif**
+  (« demain 9 h », « dans 3 j »), et **en rouge seulement si elle est dépassée** : une échéance à venir
+  n'est pas une alarme.
+- **Report** en un clic : **+1 h** ou **demain 9 h**. « Demain 9 h » veut dire 9 h **au cadran**, pas
+  « dans 24 heures » — un changement d'heure ne doit pas décaler le rendez-vous.
+- **Lien optionnel** vers une merge request, un ticket ou un dépôt : la ligne devient cliquable.
+- **Rien n'est supprimé.** Une todo faite reste **barrée sept jours** — on veut voir ce qu'on a fait cette
+  semaine — puis passe dans **Archivées**, où elle reste consultable. La rouvrir la sort du tiroir.
+  Le bouton *Supprimer* existe, mais cocher « fait » est le geste normal.
+- Trois filtres : **À faire · Faites · Archivées**.
+- Le **menu** porte le compte : rouge ce qui presse (en retard ou priorité haute), bleu le reste à faire.
+
+#### Capture rapide — la touche `n`
+Depuis **n'importe quel onglet**, `n` ouvre une mini-modale : un champ, **Entrée** crée la todo, **Échap**
+annule. Un lien *« + détails »* déplie priorité, échéance et note quand c'est utile. Après création, un
+toast discret — **et aucune navigation** : on était en train de faire autre chose. Si la capture coûtait
+plus de deux secondes, on retournerait au post-it. La touche est ignorée quand le curseur est dans un
+champ de saisie.
+
+#### Pages
+Des pages de notes **plates** : ni dossiers ni hiérarchie. À gauche la liste (**épinglées en tête**, puis
+les plus récemment modifiées) avec une **recherche qui porte sur le titre ET le contenu** — c'est souvent
+dans le corps que se trouve le mot cherché. À droite le titre éditable, puis **la saisie et l'aperçu
+Markdown côte à côte** (le même rendu que les rapports de review, donc le même échappement).
+
+- **Autosauvegarde** à la frappe, avec un délai d'une seconde et un indicateur discret « Enregistré ».
+  Enregistrer à chaque caractère ferait une requête par lettre ; n'enregistrer qu'à la fermeture perdrait
+  le travail d'une page restée ouverte.
+- **Épingler** garde une page en tête de liste.
+- **Exporter** télécharge la page en `.md`, au nom **slugifié** depuis le titre.
+- **Supprimer** demande confirmation — c'est la seule action irréversible de l'onglet.
+
+#### Autolink — `!214` et `PROJ-720` deviennent des liens
+Ce qu'on écrit dans une note, ce sont les identifiants du quotidien. Ils deviennent cliquables **au rendu**
+(pages, notes de todos) ; le **stockage reste du texte brut** — on relit ses notes ailleurs, et un `.md`
+exporté ne doit pas charrier du HTML.
+
+- `!214` → la merge request. **Un seul dépôt** porte ce numéro : lien direct. **Plusieurs** : lien vers
+  *Reviews* avec la recherche pré-remplie, qui montre les candidats — on ne devine pas, un lien faux est
+  pire qu'un lien qui demande de choisir. **Aucun** : le texte reste du texte, pas de lien mort.
+  Sont résolues les merge requests encore **ouvertes**, plus celles qui ont bougé dans les **six
+  derniers mois** : au-delà, une MR fermée n'est plus une référence qu'on écrit dans une note, et
+  relire toute la table à chaque ouverture de l'onglet coûterait cher pour trois références.
+- `PROJ-720` → le ticket, **si Jira est configuré**.
+- Rien n'est transformé **dans un bloc de code** : `!42` dans un extrait de shell est du code.
+- Le contenu est **échappé d'abord**, l'autolink s'applique **après** et n'injecte que des balises qu'il
+  fabrique lui-même. Aucun fragment d'une note ne peut devenir du balisage.
+
+#### « Ajouter aux todos », depuis une MR ou un ticket
+Un bouton sur le **détail d'une merge request** et sur celui d'un **ticket Jira** ouvre la capture rapide
+**pré-remplie** : titre proposé (`Suivre !214 — <titre>`), lien posé, priorité normale, sans date — tout
+reste éditable. Si une todo ouverte suit **déjà** cet objet, le bouton devient **« Voir la todo »** :
+créer un doublon silencieux serait la façon la plus sûre de rendre la liste inutilisable en une semaine.
+
+#### Rappels
+Le canal est celui des **notifications bureau** existantes, avec sa propre catégorie **« Rappels »**
+(activée par défaut, *Réglages → Notifications*).
+
+- Une échéance atteinte donne **une** notification, **une seule fois** — et **repousser la fait
+  re-sonner** : sans cela, snoozer un rappel déjà notifié le rendrait définitivement muet.
+- La notification est marquée comme envoyée **après affichage**, pas à la lecture de la liste : une
+  notification qui échoue (permission refusée, onglet fermé entre-temps) ne doit pas consommer l'unique
+  occasion de prévenir.
+- **Rattrapage au démarrage** : si plusieurs rappels sont en retard au chargement, ils donnent **une seule
+  notification groupée** (« 3 rappels en attente ») — dix pop-ups au démarrage se ferment sans être lues.
+- ⚠ **Limite à connaître** : les rappels partent du navigateur. Il faut donc que **l'onglet Mergerie soit
+  ouvert quelque part**. Un rappel dû pendant que tout est fermé n'est pas perdu — il part au prochain
+  chargement, dans le rattrapage.
+- Les boutons de report sont **dans l'interface**, pas dans la notification : des actions de notification
+  exigeraient un service worker, hors périmètre.
+
+Les notes, les todos et leur historique vivent dans la **base du dossier de données** : ils sont donc
+couverts par la **sauvegarde** (*Réglages → Général*), au même titre que les rapports de review.
+
+### Jira
+Deux sous-onglets : **Mes tickets** et **Surveillés**. Le menu porte une **pastille** = le nombre de
+tickets **en cours qui te sont affectés** (catégorie de statut *In Progress*, la seule définition qui
+traverse les workflows, les noms d'états étant libres d'un projet à l'autre). Elle est alimentée par un
+compteur **mis en cache côté serveur** et rafraîchi par la surveillance : l'afficher ne coûte pas un appel
+Jira à chaque passage.
+
+#### Mes tickets
+**Les tickets Jira**, récupérés automatiquement à l'ouverture du menu. Par **défaut seuls les tiens** sont
+affichés, mais un **filtre par personne** permet de **cocher d'autres assignés** pour voir aussi leurs
+tickets (la liste des personnes = les assignés récents ; **toi coché par défaut**, choix **persisté**). En
+**liste → détail** :
+- La **liste** (à gauche, avec recherche) montre chaque ticket en carte compacte : clé, **epic** de
+  rattachement quand il y en a un, résumé, **statut** (pastille colorée selon la catégorie : à faire /
+  en cours / terminé), type, priorité, date de mise à jour. **La recherche couvre aussi l'epic** —
+  « montre-moi les tickets de tel epic » est une demande courante. Dans la liste l'epic reste une
+  **information** — toute la carte sélectionne le ticket ; c'est **dans le détail** qu'il devient un
+  **lien** vers Jira, ouvert dans un nouvel onglet. L'epic est lu dans le champ `parent` de Jira, en ne retenant que les parents qui en sont réellement un :
+  celui d'une sous-tâche est une story, l'annoncer comme epic serait un contresens.
+  Par défaut on écarte les tickets **terminés** — une case **« Inclure les terminés »** les réintègre. Un
+  **filtre par statut** (repliable, cases à cocher, **choix persisté**) permet en plus de n'afficher que les
+  statuts voulus. Il s'adapte aux **statuts personnalisés** de tes workflows, et la
+  couleur suit la *catégorie* du statut (à faire / en cours / terminé) et non son nom. La liste ne se
+  limite pas aux tickets affichés : les statuts du **workflow des projets concernés** sont chargés en
+  plus, sinon un statut réel mais absent de la page ne serait pas filtrable. On interroge les projets
+  sélectionnés, à défaut ceux des tickets affichés — demander tous les statuts de l'instance donnerait
+  des dizaines d'entrées sans rapport, et l'endpoint qui le permettrait exige d'administrer Jira. Les statuts décochés sont exclus **par Jira**, pas après coup — sinon on trierait un extrait
+  plafonné. Un statut déjà vu reste proposé même une fois exclu, sans quoi on ne pourrait plus le recocher. Un filtre **Sprints** apparaît dès que
+  tes tickets en portent un. Le sprint est un champ **personnalisé**, dont l'identifiant change d'une
+  instance à l'autre : l'outil le repère par son **marqueur de schéma** Jira, indépendant de la langue —
+  un champ nommé « Itération » est reconnu comme tel. La sélection est appliquée **par Jira**
+  (`sprint IN (…)`), comme les projets, pour ne pas trier un extrait plafonné. Les sprints déjà vus
+  restent proposés même une fois un sprint choisi, sinon on ne pourrait pas en cocher un second.
+  Le **sprint en cours est en tête de liste** et signalé comme tel — c'est celui qu'on cherche neuf fois
+  sur dix, et la date seule ne le distingue pas d'un sprint futur. Viennent ensuite les autres par **date
+  décroissante** ; un sprint sans date connue (Jira n'en donne pas toujours pour un sprint futur) passe
+  après ceux qui en ont une.
+  Les filtres **Assignés** et **Statuts** ont chacun leur **recherche** — qui **masque** les lignes
+  sans rien décocher — et **Tout cocher / Tout décocher** —
+  pratique pour vider puis ne garder qu'une ou deux lignes. Sur les assignés, **ne cocher personne ne
+  filtre pas** : la liste prend alors **tous** les tickets visibles par le compte, y compris ceux
+  affectés à quelqu'un d'autre ou à personne. Par défaut, tant qu'on n'a rien touché, seuls **tes**
+  tickets sont chargés.
+- **Filtres par champ, génériques.** Les trois filtres — Assignés, Statuts et **Filtres** — sont des
+  puces alignées **au-dessus du panneau de détail** ; celui qu'on ouvre flotte au-dessus de la page, si
+  bien que ni la ligne ni la liste ne bougent, et un clic à l'extérieur referme. Le panneau **Filtres**
+  permet de choisir d'abord
+  **le champ** (epic, type, priorité, projet, assigné, rapporteur, étiquettes, composants, versions
+  correctives) puis **une ou plusieurs valeurs**. Le critère **Projet** fait exception : il est appliqué
+  **par Jira**, pas après coup. Jira plafonne une recherche à cent tickets triés par date de mise à jour ;
+  filtrer côté navigateur ne filtrerait donc qu'un extrait, et les tickets du projet voulu pouvaient se
+  trouver hors de cet extrait — ils disparaissaient au lieu d'apparaître. Quand la liste est plafonnée,
+  le compteur le dit (« 100 affichés sur 340 »). Les valeurs proposées sont celles **réellement
+  présentes** dans les tickets chargés, avec le nombre de tickets pour chacune — proposer une valeur qui
+  ne ramène rien n'aide personne. Le choix du champ et chaque liste de valeurs ont leur **recherche** ;
+  celle des valeurs **masque les lignes sans rien décocher**, pour ne jamais perdre une sélection en
+  cachant. Plusieurs critères se combinent en **ET** entre les champs et en **OU** à l'intérieur d'un
+  champ (« les bugs *et* les tâches, de cet epic-ci »). Un critère dont aucune valeur n'est cochée ne
+  filtre rien : ajouter un champ ne vide donc jamais la liste. Les critères sont **persistés**.
+- Le **détail** (à droite) affiche le **contenu** (description Jira convertie d'ADF en Markdown lisible),
+  toutes les **métadonnées** (statut, type, priorité, assigné, rapporteur, projet, dates, échéance,
+  étiquettes, composants, versions correctives), **tous les commentaires** (auteur, date, corps en
+  Markdown) et les **pièces jointes** — **téléchargées à la demande** via un **proxy serveur** qui récupère
+  le fichier avec le token (un lien direct échouerait, l'API Jira exigeant l'auth). Plus un lien **Ouvrir
+  dans Jira**.
+- **Les blocs de code restent des blocs de code.** Un ticket technique met souvent un gabarit dans un
+  **tableau** Jira — une étiquette à gauche, du JSON à droite. Un tableau Markdown, lui, tient sur une
+  ligne par cellule : le code s'y retrouvait aplati, indentations écrasées et incopiable. Ces tableaux
+  sont donc **dépliés** — chaque ligne devient l'étiquette puis son bloc, les lignes séparées par un
+  trait. On perd la grille, qui n'était qu'une mise en page ; on garde le contenu, qui est ce qu'on
+  venait copier. Les tableaux de données ordinaires, eux, restent des tableaux — et rien n'y est
+  promu en titre à tort : seule une ligne dont **toutes** les cellules sont des en-têtes en devient
+  un. Un tableau sans en-tête garde donc sa première ligne, et un tableau clé/valeur (en-tête en
+  première **colonne**) garde sa première paire, la clé en gras faute d'équivalent en Markdown.
+- **`Faire coder l'IA` depuis le ticket.** Le bouton en tête du détail ouvre la **modale de session de
+  codage déjà remplie** : le contenu du ticket (titre + description) est mis en tête du prompt, le message
+  de commit et le **nom de branche** (`feature/PROJ-1421-…`) sont proposés d'après la clé et le résumé, et
+  le numéro de ticket est renseigné. Il ne reste qu'à choisir le dépôt et à préciser ta demande sous le
+  contexte — le curseur y est déjà placé. La session n'est **pas lancée automatiquement** : tu relis avant.
+- **Changer l'état du ticket** : un sélecteur dans l'en-tête liste les **transitions autorisées** (ce que Jira
+  permet pour toi sur ce ticket) ; en choisir une **applique la transition** et rafraîchit le statut (détail
+  + liste). Rien n'est proposé si tu n'as pas les droits.
+- **Poster un commentaire** : un champ en bas de la section commentaires — le texte est converti en **ADF**
+  (le format des commentaires Jira Cloud) côté serveur, et le nouveau commentaire s'ajoute au fil sans
+  tout recharger.
+- **Les images s'affichent directement** : les pièces jointes image ont un **aperçu à largeur fixe**, et les
+  images **embarquées dans la description ou un commentaire** sont rendues **inline** là où elles
+  apparaissent (résolues vers le proxy). Un **clic ouvre l'image en grand** (lightbox ; Échap ou clic dehors
+  ferme). Les autres fichiers restent en « chip » téléchargeable.
+- Si Jira n'est pas configuré, un message renvoie vers **Réglages → Jira** (URL + email + jeton d'API).
+
+#### Surveillés
+**Suivre un ticket sans qu'il te soit affecté** — le cas courant : un ticket tenu par quelqu'un d'autre
+bloque le tien, et tu veux savoir **quand il bouge**, pas y penser trois fois par jour.
+
+- On ajoute un ticket par sa **clé** (`PROJ-1421`) depuis ce sous-onglet, ou par le bouton **Surveiller**
+  en tête du détail d'un ticket. La clé est validée avant tout appel : elle n'atteint jamais le JQL brute.
+- **L'état courant est mémorisé à l'ajout.** Sans ça, la première vérification comparerait à du vide et
+  annoncerait un changement qui n'a pas eu lieu.
+- **Dire pourquoi tu le surveilles.** Un champ facultatif à côté de la clé — « bloque la migration de la
+  facturation », « prévenir Sofia dès que c'est en revue ». Trois mois plus tard, une clé et un résumé ne
+  rappellent plus la raison. Elle s'affiche sous le titre du ticket et se **corrige à tout moment** par le
+  crayon de sa ligne : passer par retirer/ré-ajouter perdrait la date d'ajout et le dernier état connu, et
+  provoquerait une fausse notification au passage suivant. La vider est un choix valable — on ne garde pas
+  un rappel périmé.
+- Un **timer serveur** revérifie tous les tickets surveillés à la cadence réglée dans
+  **Réglages → Jira** (*Vérifier les tickets surveillés toutes les* N minutes ; **0 = désactivé**). À chaque
+  **changement d'état**, une **notification bureau** donne l'ancien et le nouvel état — `À faire → En cours` —
+  et un clic ramène ici. Le type se coupe dans **Réglages → Notifications**.
+- **Le ticket se lit ici.** Cliquer une ligne de la liste ouvre le ticket **à droite**, comme sous
+  *Mes tickets* : description, métadonnées, commentaires, pièces jointes — et les mêmes actions
+  (changer l'état, commenter, *Faire coder l'IA*). C'est le même panneau, pas une copie : surveiller un
+  ticket sans pouvoir le lire obligeait à ouvrir Jira pour trois lignes de description. Les contrôles de
+  la carte (retirer, corriger la raison) gardent leur effet propre, et chaque sous-onglet garde **sa**
+  sélection.
+- **`Vérifier maintenant`** déclenche le même code que le timer, tout de suite : ce que montre le bouton est
+  donc exactement ce que fait la surveillance.
+- Un ticket **supprimé ou devenu invisible** (droits perdus) est signalé **sur sa ligne**, sans interrompre
+  la vérification des autres, et **sans effacer** le dernier état connu.
+
 ### Git
 Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
 
@@ -438,118 +681,7 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
   dans le PATH du serveur**, un message **actionnable** l'explique (indique `DOCKER_BIN` dans le `.env` au
   besoin) — comme les erreurs certificat / token.
 
-### Jira
-Deux sous-onglets : **Mes tickets** et **Surveillés**. Le menu porte une **pastille** = le nombre de
-tickets **en cours qui te sont affectés** (catégorie de statut *In Progress*, la seule définition qui
-traverse les workflows, les noms d'états étant libres d'un projet à l'autre). Elle est alimentée par un
-compteur **mis en cache côté serveur** et rafraîchi par la surveillance : l'afficher ne coûte pas un appel
-Jira à chaque passage.
-
-#### Mes tickets
-**Les tickets Jira**, récupérés automatiquement à l'ouverture du menu. Par **défaut seuls les tiens** sont
-affichés, mais un **filtre par personne** permet de **cocher d'autres assignés** pour voir aussi leurs
-tickets (la liste des personnes = les assignés récents ; **toi coché par défaut**, choix **persisté**). En
-**liste → détail** :
-- La **liste** (à gauche, avec recherche) montre chaque ticket en carte compacte : clé, **epic** de
-  rattachement quand il y en a un, résumé, **statut** (pastille colorée selon la catégorie : à faire /
-  en cours / terminé), type, priorité, date de mise à jour. **La recherche couvre aussi l'epic** —
-  « montre-moi les tickets de tel epic » est une demande courante. Dans la liste l'epic reste une
-  **information** — toute la carte sélectionne le ticket ; c'est **dans le détail** qu'il devient un
-  **lien** vers Jira, ouvert dans un nouvel onglet. L'epic est lu dans le champ `parent` de Jira, en ne retenant que les parents qui en sont réellement un :
-  celui d'une sous-tâche est une story, l'annoncer comme epic serait un contresens.
-  Par défaut on écarte les tickets **terminés** — une case **« Inclure les terminés »** les réintègre. Un
-  **filtre par statut** (repliable, cases à cocher, **choix persisté**) permet en plus de n'afficher que les
-  statuts voulus. Il s'adapte aux **statuts personnalisés** de tes workflows, et la
-  couleur suit la *catégorie* du statut (à faire / en cours / terminé) et non son nom. La liste ne se
-  limite pas aux tickets affichés : les statuts du **workflow des projets concernés** sont chargés en
-  plus, sinon un statut réel mais absent de la page ne serait pas filtrable. On interroge les projets
-  sélectionnés, à défaut ceux des tickets affichés — demander tous les statuts de l'instance donnerait
-  des dizaines d'entrées sans rapport, et l'endpoint qui le permettrait exige d'administrer Jira. Les statuts décochés sont exclus **par Jira**, pas après coup — sinon on trierait un extrait
-  plafonné. Un statut déjà vu reste proposé même une fois exclu, sans quoi on ne pourrait plus le recocher. Un filtre **Sprints** apparaît dès que
-  tes tickets en portent un. Le sprint est un champ **personnalisé**, dont l'identifiant change d'une
-  instance à l'autre : l'outil le repère par son **marqueur de schéma** Jira, indépendant de la langue —
-  un champ nommé « Itération » est reconnu comme tel. La sélection est appliquée **par Jira**
-  (`sprint IN (…)`), comme les projets, pour ne pas trier un extrait plafonné. Les sprints déjà vus
-  restent proposés même une fois un sprint choisi, sinon on ne pourrait pas en cocher un second.
-  Le **sprint en cours est en tête de liste** et signalé comme tel — c'est celui qu'on cherche neuf fois
-  sur dix, et la date seule ne le distingue pas d'un sprint futur. Viennent ensuite les autres par **date
-  décroissante** ; un sprint sans date connue (Jira n'en donne pas toujours pour un sprint futur) passe
-  après ceux qui en ont une.
-  Les filtres **Assignés** et **Statuts** ont chacun leur **recherche** — qui **masque** les lignes
-  sans rien décocher — et **Tout cocher / Tout décocher** —
-  pratique pour vider puis ne garder qu'une ou deux lignes. Sur les assignés, **ne cocher personne ne
-  filtre pas** : la liste prend alors **tous** les tickets visibles par le compte, y compris ceux
-  affectés à quelqu'un d'autre ou à personne. Par défaut, tant qu'on n'a rien touché, seuls **tes**
-  tickets sont chargés.
-- **Filtres par champ, génériques.** Les trois filtres — Assignés, Statuts et **Filtres** — sont des
-  puces alignées **au-dessus du panneau de détail** ; celui qu'on ouvre flotte au-dessus de la page, si
-  bien que ni la ligne ni la liste ne bougent, et un clic à l'extérieur referme. Le panneau **Filtres**
-  permet de choisir d'abord
-  **le champ** (epic, type, priorité, projet, assigné, rapporteur, étiquettes, composants, versions
-  correctives) puis **une ou plusieurs valeurs**. Le critère **Projet** fait exception : il est appliqué
-  **par Jira**, pas après coup. Jira plafonne une recherche à cent tickets triés par date de mise à jour ;
-  filtrer côté navigateur ne filtrerait donc qu'un extrait, et les tickets du projet voulu pouvaient se
-  trouver hors de cet extrait — ils disparaissaient au lieu d'apparaître. Quand la liste est plafonnée,
-  le compteur le dit (« 100 affichés sur 340 »). Les valeurs proposées sont celles **réellement
-  présentes** dans les tickets chargés, avec le nombre de tickets pour chacune — proposer une valeur qui
-  ne ramène rien n'aide personne. Le choix du champ et chaque liste de valeurs ont leur **recherche** ;
-  celle des valeurs **masque les lignes sans rien décocher**, pour ne jamais perdre une sélection en
-  cachant. Plusieurs critères se combinent en **ET** entre les champs et en **OU** à l'intérieur d'un
-  champ (« les bugs *et* les tâches, de cet epic-ci »). Un critère dont aucune valeur n'est cochée ne
-  filtre rien : ajouter un champ ne vide donc jamais la liste. Les critères sont **persistés**.
-- Le **détail** (à droite) affiche le **contenu** (description Jira convertie d'ADF en Markdown lisible),
-  toutes les **métadonnées** (statut, type, priorité, assigné, rapporteur, projet, dates, échéance,
-  étiquettes, composants, versions correctives), **tous les commentaires** (auteur, date, corps en
-  Markdown) et les **pièces jointes** — **téléchargées à la demande** via un **proxy serveur** qui récupère
-  le fichier avec le token (un lien direct échouerait, l'API Jira exigeant l'auth). Plus un lien **Ouvrir
-  dans Jira**.
-- **`Faire coder l'IA` depuis le ticket.** Le bouton en tête du détail ouvre la **modale de session de
-  codage déjà remplie** : le contenu du ticket (titre + description) est mis en tête du prompt, le message
-  de commit et le **nom de branche** (`feature/PROJ-1421-…`) sont proposés d'après la clé et le résumé, et
-  le numéro de ticket est renseigné. Il ne reste qu'à choisir le dépôt et à préciser ta demande sous le
-  contexte — le curseur y est déjà placé. La session n'est **pas lancée automatiquement** : tu relis avant.
-- **Changer l'état du ticket** : un sélecteur dans l'en-tête liste les **transitions autorisées** (ce que Jira
-  permet pour toi sur ce ticket) ; en choisir une **applique la transition** et rafraîchit le statut (détail
-  + liste). Rien n'est proposé si tu n'as pas les droits.
-- **Poster un commentaire** : un champ en bas de la section commentaires — le texte est converti en **ADF**
-  (le format des commentaires Jira Cloud) côté serveur, et le nouveau commentaire s'ajoute au fil sans
-  tout recharger.
-- **Les images s'affichent directement** : les pièces jointes image ont un **aperçu à largeur fixe**, et les
-  images **embarquées dans la description ou un commentaire** sont rendues **inline** là où elles
-  apparaissent (résolues vers le proxy). Un **clic ouvre l'image en grand** (lightbox ; Échap ou clic dehors
-  ferme). Les autres fichiers restent en « chip » téléchargeable.
-- Si Jira n'est pas configuré, un message renvoie vers **Réglages → Jira** (URL + email + jeton d'API).
-
-#### Surveillés
-**Suivre un ticket sans qu'il te soit affecté** — le cas courant : un ticket tenu par quelqu'un d'autre
-bloque le tien, et tu veux savoir **quand il bouge**, pas y penser trois fois par jour.
-
-- On ajoute un ticket par sa **clé** (`PROJ-1421`) depuis ce sous-onglet, ou par le bouton **Surveiller**
-  en tête du détail d'un ticket. La clé est validée avant tout appel : elle n'atteint jamais le JQL brute.
-- **L'état courant est mémorisé à l'ajout.** Sans ça, la première vérification comparerait à du vide et
-  annoncerait un changement qui n'a pas eu lieu.
-- **Dire pourquoi tu le surveilles.** Un champ facultatif à côté de la clé — « bloque la migration de la
-  facturation », « prévenir Sofia dès que c'est en revue ». Trois mois plus tard, une clé et un résumé ne
-  rappellent plus la raison. Elle s'affiche sous le titre du ticket et se **corrige à tout moment** par le
-  crayon de sa ligne : passer par retirer/ré-ajouter perdrait la date d'ajout et le dernier état connu, et
-  provoquerait une fausse notification au passage suivant. La vider est un choix valable — on ne garde pas
-  un rappel périmé.
-- Un **timer serveur** revérifie tous les tickets surveillés à la cadence réglée dans
-  **Réglages → Jira** (*Vérifier les tickets surveillés toutes les* N minutes ; **0 = désactivé**). À chaque
-  **changement d'état**, une **notification bureau** donne l'ancien et le nouvel état — `À faire → En cours` —
-  et un clic ramène ici. Le type se coupe dans **Réglages → Notifications**.
-- **Le ticket se lit ici.** Cliquer une ligne de la liste ouvre le ticket **à droite**, comme sous
-  *Mes tickets* : description, métadonnées, commentaires, pièces jointes — et les mêmes actions
-  (changer l'état, commenter, *Faire coder l'IA*). C'est le même panneau, pas une copie : surveiller un
-  ticket sans pouvoir le lire obligeait à ouvrir Jira pour trois lignes de description. Les contrôles de
-  la carte (retirer, corriger la raison) gardent leur effet propre, et chaque sous-onglet garde **sa**
-  sélection.
-- **`Vérifier maintenant`** déclenche le même code que le timer, tout de suite : ce que montre le bouton est
-  donc exactement ce que fait la surveillance.
-- Un ticket **supprimé ou devenu invisible** (droits perdus) est signalé **sur sa ligne**, sans interrompre
-  la vérification des autres, et **sans effacer** le dernier état connu.
-
-### Statistiques
+### Stats
 Funnel des MR, distribution des notes, **évolution de la note moyenne par semaine** (« la qualité
 progresse-t-elle ? »), activité hebdomadaire, tableau par projet (avec **taux de résolution**,
 **tendance** ▲/▼ et le **dernier commit** — date, auteur, lien vers le commit sur sa forge), un **Top 5 des
@@ -662,7 +794,7 @@ seuls les gabarits restés au défaut sont réalignés.
 ### Confort d'usage
 Onglet, sous-onglet **et stade de Reviews mémorisés** d'une session à l'autre — et **rien d'autre** :
 ni recherche, ni modale, ni rapport ouvert, car un état périmé est pire qu'un démarrage propre ·
-**raccourcis clavier** (`1`-`7` onglets, `/` recherche, `r` chercher les MR, `l` logs, `?` aide,
+**raccourcis clavier** (`1`-`8` onglets, `/` recherche, `n` nouvelle todo, `r` chercher les MR, `l` logs, `?` aide,
 `Échap` ferme) · **favicon dynamique** pendant un job · messages d'erreur **traduits en actions**
 (certificat, token, CLI introuvable, timeout, réseau) · **onboarding en 3 étapes** tant que la
 connexion et les dépôts ne sont pas configurés · chaque champ de formulaire porte une **icône i** dont
@@ -1034,7 +1166,7 @@ pilote un Chromium qui enregistre en **1920×1080** une **visite guidée** avec 
 proprement (la fermeture du contexte flushe la vidéo). Le parcours : *Reviews* → un rapport noté →
 sélecteur de versions **v1 → v2 → v3** (progression **5,8 → 8,4**) → suivi de résolution → *Dev IA*
 (session reliée à sa MR, question posée par l'IA) → *Jira* → *Git* (explorateur de branches) →
-*Docker* (drift `.env` + logs live) → *Statistiques*. Le `.webm` produit s'uploade directement sur
+*Docker* (drift `.env` + logs live) → *Stats*. Le `.webm` produit s'uploade directement sur
 YouTube.
 
 ## Mode dry-run (sans IA)
