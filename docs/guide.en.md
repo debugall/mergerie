@@ -553,7 +553,10 @@ Operations across **several repositories at once**, and branch exploration.
   and its source (the inferred origin, otherwise the default branch) — the same title popup as in AI Dev,
   offered only when the branch has commits ahead. Ticking branches then `Delete selection` opens the
   pre-filled preview. You can also **explore several repositories at once** (each result in a collapsible
-  block). The **tag list** shows the date, the **branch(es) that carry the tag** and the author of the
+  block, **folded** and marked with a chevron that rotates — repositories are analysed **one after
+  another**, and each block says where it stands (*waiting*, then *analysing* with its spinner, then its
+  branch count). A clone can take a minute: the button spins meanwhile, and a repository that fails
+  **opens its block** to show why instead of leaving it shut. The **tag list** shows the date, the **branch(es) that carry the tag** and the author of the
   pointed commit — with a `Tag author` button that reads the **real *tagger*** of an annotated tag in the
   local clone (neither forge API exposes it).
 - **Find a ref** — you type a tag **or** branch name (free text) and the tool says, **across every active

@@ -584,7 +584,11 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   **`Créer la MR`** ouvre une MR entre elle et sa source (l'origine déduite, sinon la branche par défaut) —
   même popup de titre que dans Dev IA, proposé seulement quand la branche a des commits d'avance. Cocher des
   branches puis `Supprimer la sélection` ouvre l'aperçu pré-rempli. On peut aussi **explorer plusieurs dépôts
-  à la fois** (chaque résultat dans un bloc replié). La **liste des tags** affiche la date, la (les)
+  à la fois** : chaque résultat va dans son bloc, **replié** et marqué d'un chevron qui pivote — les
+  dépôts sont analysés **l'un après l'autre**, et chaque bloc dit où il en est (*en attente*, puis
+  *analyse en cours* avec son indicateur, puis son nombre de branches). Un clone peut durer une
+  minute : le bouton tourne pendant ce temps, et un dépôt en échec **ouvre son bloc** pour montrer
+  la raison au lieu de la laisser enfermée. La **liste des tags** affiche la date, la (les)
   **branche(s) qui portent le tag**, l'auteur du commit pointé — avec un bouton `Auteur du tag`
   qui va lire le **vrai *tagger*** d'un tag annoté dans le clone local (aucune des deux API de forge ne l'expose).
 - **Trouver une ref** — on saisit un nom de tag **ou** de branche (saisie libre) et l'outil dit,

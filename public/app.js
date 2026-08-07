@@ -6282,32 +6282,39 @@ async function gitAnalyze() {
   const btn = $('#gitExploreGo');
   const wrap = $('#gitExploreBox');
   $('#gitExploreInfo').textContent = tr('git.explorer.analyzing');
+  /* Chaque dépôt annonce son ÉTAT dans son propre en-tête. Le squelette du corps ne se voyait
+     pas : les blocs naissent repliés, et un clone peut durer une minute — on cliquait
+     « Analyser » sans plus rien voir bouger. L'analyse étant séquentielle, on distingue ce
+     qui ATTEND de ce qui TOURNE : sur trois dépôts cochés, on veut savoir lequel travaille. */
   wrap.innerHTML = ids.map((id) => {
     const repo = repoOptions.find((r) => r.id === id);
     return `<details class="git-ex-project" data-repo="${id}">
-        <summary><span class="git-ex-proj-name">${esc(repo ? repo.project : id)}</span> <span class="git-ex-proj-info muted"></span></summary>
+        <summary><span class="git-ex-proj-name">${esc(repo ? repo.project : id)}</span> <span class="git-ex-proj-info muted">${esc(tr('git.explorer.pending'))}</span></summary>
         <div class="git-ex-proj-body">${skeleton(2)}</div>
       </details>`;
   }).join('');
-  btn.disabled = true;
   try {
     // Séquentiel : un clone/fetch à la fois, comme le reste de l'app (ménage les I/O).
-    for (const id of ids) {
-      const details = $(`.git-ex-project[data-repo="${id}"]`, wrap);
-      const body = $('.git-ex-proj-body', details);
-      const info = $('.git-ex-proj-info', details);
-      try {
-        const d = await api('/git/branches?repo_id=' + id);
-        info.textContent = tr('git.explorer.count', { n: d.branches.length, count: d.branches.length, def: d.default });
-        body.innerHTML = '';
-        gitRenderExplorer(d, body);
-      } catch (e) {
-        info.textContent = '';
-        body.innerHTML = errorBox(e.message);
+    await busy(btn, async () => {
+      for (const id of ids) {
+        const details = $(`.git-ex-project[data-repo="${id}"]`, wrap);
+        const body = $('.git-ex-proj-body', details);
+        const info = $('.git-ex-proj-info', details);
+        info.innerHTML = `<span class="spin"></span> ${esc(tr('git.explorer.running'))}`;
+        try {
+          const d = await api('/git/branches?repo_id=' + id);
+          info.textContent = tr('git.explorer.count', { n: d.branches.length, count: d.branches.length, def: d.default });
+          body.innerHTML = '';
+          gitRenderExplorer(d, body);
+        } catch (e) {
+          info.textContent = '';
+          body.innerHTML = errorBox(e.message);
+          // Une erreur reste invisible dans un bloc replié : on l'ouvre pour la montrer.
+          details.open = true;
+        }
       }
-    }
+    });
   } finally {
-    btn.disabled = false;
     $('#gitExploreInfo').textContent = '';
   }
 }

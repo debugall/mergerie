@@ -16,6 +16,8 @@
 }(typeof self !== 'undefined' ? self : this, function () {
   return {
     fr: {
+      "git.explorer.pending": "en attente…",
+      "git.explorer.running": "analyse en cours…",
       "palette.go.notes": "Notes \u2014 brief du jour",
       "palette.go.todos": "Notes \u2014 todos",
       "palette.go.pages": "Notes \u2014 pages",
@@ -1923,6 +1925,8 @@
       "ui.title.statistiques-et-activite": "Statistiques et activité",
     },
     en: {
+      "git.explorer.pending": "waiting…",
+      "git.explorer.running": "analysing…",
       "palette.go.notes": "Notes \u2014 today\u2019s brief",
       "palette.go.todos": "Notes \u2014 todos",
       "palette.go.pages": "Notes \u2014 pages",

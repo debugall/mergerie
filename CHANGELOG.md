@@ -328,6 +328,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The branch explorer now says it is working.** Clicking “Analyse” could look like nothing happened:
+  the loading skeleton sat inside blocks that open folded, and a clone can take a minute. Each repository
+  now announces its state in its own header — *waiting*, then *analysing* with a spinner, then its branch
+  count — so on several repositories you can see which one is being worked on, since they are handled one
+  after another. The button spins too, and a repository that fails opens its block to show why rather than
+  keeping the reason shut inside. Those blocks also regained a **chevron**: `display: flex` on their
+  summary had removed the browser's native marker, so nothing said whether a block was folded or not.
+
+
 - **A code template inside a Jira table is readable again.** Technical tickets routinely lay a template out
   as a table — a label on the left, JSON on the right. A Markdown table holds one line per cell, so the code
   arrived flattened onto a single line, its indentation collapsed by the HTML and impossible to copy. Tables

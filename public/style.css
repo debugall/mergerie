@@ -1351,7 +1351,18 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .repo-multi-item input { flex: 0 0 auto; }
 /* Un bloc de résultat par dépôt, replié par défaut. */
 .git-ex-project { border: 1px solid var(--line); border-radius: var(--r-md); margin: 8px 0; background: var(--panel); }
-.git-ex-project > summary { padding: 10px 12px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+.git-ex-project > summary { padding: 10px 12px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 10px; list-style: none; }
+/* Chevron EXPLICITE. `display: flex` sur un `summary` supprime le marqueur natif du
+   navigateur : le bloc ne disait alors plus s'il était replié ou déplié, alors que c'est
+   justement sa raison d'être. Même triangle que l'arborescence de fichiers — dessiné par
+   des bordures, sans dépendance de police (les emojis rendent mal hors macOS). */
+.git-ex-project > summary::-webkit-details-marker { display: none; }
+.git-ex-project > summary::before {
+  content: ''; flex: none; width: 0; height: 0;
+  border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+  transition: transform var(--t-fast);
+}
+.git-ex-project[open] > summary::before { transform: rotate(90deg); }
 .git-ex-project > summary .git-ex-proj-info { font-weight: 400; }
 .git-ex-project .git-ex-proj-body { padding: 0 12px 12px; }
 
