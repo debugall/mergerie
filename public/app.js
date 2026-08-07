@@ -8346,9 +8346,11 @@ function renderJiraWatch() {
         <button type="button" class="btn btn-icon btn-sm" data-jiranote="${esc(r.key)}" title="${esc(tr('jira.watch.note-edit'))}"><svg class="ico ico-sm"><use href="#i-edit"/></svg></button>
       </div>
       <div class="jira-note-form" data-jiranoteform="${esc(r.key)}" hidden>
-        <input type="text" class="jira-note-input" maxlength="500" value="${esc(r.note || '')}" placeholder="${esc(tr('jira.watch.note-ph'))}" />
-        <button type="button" class="btn" data-jiranotecancel="${esc(r.key)}">${esc(tr('ui.cancel'))}</button>
-        <button type="button" class="btn btn-primary" data-jiranotesave="${esc(r.key)}">${esc(tr('jira.watch.note-save'))}</button>
+        <textarea class="jira-note-input" rows="3" maxlength="500" placeholder="${esc(tr('jira.watch.note-ph'))}" title="${esc(tr('jira.watch.note-hint'))}">${esc(r.note || '')}</textarea>
+        <div class="jira-note-actions">
+          <button type="button" class="btn btn-sm" data-jiranotecancel="${esc(r.key)}">${esc(tr('ui.cancel'))}</button>
+          <button type="button" class="btn btn-sm btn-primary" data-jiranotesave="${esc(r.key)}">${esc(tr('jira.watch.note-save'))}</button>
+        </div>
       </div>
       <div class="jira-item-foot muted">${r.changed_at
         ? esc(tr('jira.watch.changed-at', { at: fmtDate(r.changed_at) }))
@@ -8382,9 +8384,26 @@ $('#jiraWatchAdd') && $('#jiraWatchAdd').addEventListener('click', async (e) => 
     catch (err) { toast(explainError(err.message), true); }
   });
 });
-[$('#jiraWatchKey'), $('#jiraWatchNote')].forEach((el) => el && el.addEventListener('keydown', (e) => {
+$('#jiraWatchKey') && $('#jiraWatchKey').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); $('#jiraWatchAdd').click(); }
-}));
+});
+/* La note est un textarea : Entrée y passe à la ligne, sinon on ne pourrait pas écrire les
+   deux phrases pour lesquelles on l'a agrandie. C'est Ctrl/Cmd + Entrée qui valide. */
+$('#jiraWatchNote') && $('#jiraWatchNote').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); $('#jiraWatchAdd').click(); }
+});
+$('#jiraWatchList') && $('#jiraWatchList').addEventListener('keydown', (e) => {
+  const champ = e.target.closest && e.target.closest('.jira-note-input');
+  if (!champ) return;
+  const f = champ.closest('.jira-note-form');
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault();
+    const b = $('[data-jiranotesave]', f); if (b) b.click();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    const b = $('[data-jiranotecancel]', f); if (b) b.click();
+  }
+});
 $('#jiraWatchList') && $('#jiraWatchList').addEventListener('click', async (e) => {
   const form = (key) => $(`#jiraWatchList .jira-note-form[data-jiranoteform="${key}"]`);
 

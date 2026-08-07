@@ -387,6 +387,11 @@ exporté ne doit pas charrier du HTML.
   derniers mois** : au-delà, une MR fermée n'est plus une référence qu'on écrit dans une note, et
   relire toute la table à chaque ouverture de l'onglet coûterait cher pour trois références.
 - `PROJ-720` → le ticket, **si Jira est configuré**.
+- Une **URL collée** devient cliquable (nouvel onglet). **`http`/`https` seulement** : une note est du
+  texte qu'on colle sans le relire, et un lien fabriqué n'a pas à pouvoir exécuter quoi que ce soit —
+  `javascript:` et consorts restent du texte. La ponctuation qui ferme la phrase reste dehors, et une
+  référence **contenue dans une URL** n'est pas re-transformée (coller un lien Jira ne fabrique pas un
+  second lien à l'intérieur du premier).
 - Rien n'est transformé **dans un bloc de code** : `!42` dans un extrait de shell est du code.
 - Le contenu est **échappé d'abord**, l'autolink s'applique **après** et n'injecte que des balises qu'il
   fabrique lui-même. Aucun fragment d'une note ne peut devenir du balisage.
@@ -521,7 +526,8 @@ bloque le tien, et tu veux savoir **quand il bouge**, pas y penser trois fois pa
   rappellent plus la raison. Elle s'affiche sous le titre du ticket et se **corrige à tout moment** par le
   crayon de sa ligne : passer par retirer/ré-ajouter perdrait la date d'ajout et le dernier état connu, et
   provoquerait une fausse notification au passage suivant. La vider est un choix valable — on ne garde pas
-  un rappel périmé.
+  un rappel périmé. Le champ tient **plusieurs lignes** (une raison en fait rarement une) : Entrée y passe
+  à la ligne, **Ctrl/Cmd + Entrée** enregistre, Échap referme sans rien changer.
 - Un **timer serveur** revérifie tous les tickets surveillés à la cadence réglée dans
   **Réglages → Jira** (*Vérifier les tickets surveillés toutes les* N minutes ; **0 = désactivé**). À chaque
   **changement d'état**, une **notification bureau** donne l'ancien et le nouvel état — `À faire → En cours` —

@@ -368,6 +368,10 @@ must not carry HTML.
   past that, a closed MR is no longer a reference you write in a note, and re-reading the whole
   table on every visit to the tab would cost a lot for three references.
 - `PROJ-720` → the ticket, **if Jira is configured**.
+- A **pasted URL** becomes clickable (new tab). **`http`/`https` only**: a note is text you paste without
+  re-reading it, and a link you build has no business being able to run anything — `javascript:` and the
+  like stay text. Sentence-ending punctuation stays outside, and a reference **inside a URL** is not
+  transformed again (pasting a Jira link does not build a second link inside the first).
 - Nothing is transformed **inside a code block**: `!42` in a shell snippet is code.
 - The content is **escaped first**, the autolink applies **afterwards** and only injects tags it builds
   itself. No fragment of a note can become markup.
@@ -495,7 +499,8 @@ yours, and you want to know **when it moves**, not to think about it three times
   is shown under the ticket's title and can be **corrected at any time** through the pencil on its row:
   going through remove/re-add would lose the date it was added and the last known state, and would trigger a
   false notification on the next pass. Clearing it is a legitimate choice — you do not keep a stale
-  reminder.
+  reminder. The field holds **several lines** (a reason rarely fits on one): Enter starts a new line,
+  **Ctrl/Cmd + Enter** saves, Esc closes without changing anything.
 - A **server timer** re-checks every watched ticket at the rhythm set in **Settings → Jira** (*Check watched
   tickets every* N minutes; **0 = off**). On every **state change**, a **desktop notification** gives the
   old and the new state — `To do → In progress` — and a click brings you back here. The type can be switched

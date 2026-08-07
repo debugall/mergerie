@@ -141,6 +141,58 @@ describe('Jira · Surveillés — le ticket s’ouvre à droite', { skip: dispo 
     await page.locator('#jiraWatchList .jira-item', { hasText: 'Gabarits' }).click();
   }
 
+  /* La raison de surveiller tient rarement sur une ligne — « bloque la migration de la
+     facturation — prévenir Sofia dès que c'est en revue » dépassait déjà du champ. Elle se
+     saisit donc dans un `textarea`, ce qui change les touches : Entrée y passe à la ligne,
+     Ctrl/Cmd + Entrée enregistre. Et ce qu'on écrit sur deux lignes doit se RELIRE sur deux
+     lignes : les écraser à l'affichage rendrait le champ trompeur. */
+  test('la raison se saisit sur plusieurs lignes, et se relit telle quelle', async () => {
+    await ouvrirSurveilles();
+    for (const sel of ['#jiraWatchNote', '#jiraWatchList .jira-note-input']) {
+      assert.equal(await page.locator(sel).first().evaluate((e) => e.tagName), 'TEXTAREA',
+        `${sel} : un champ d’une ligne tronquait la raison dès la première phrase utile`);
+    }
+    // Le champ de la carte occupe toute sa largeur : les boutons sont passés dessous.
+    await page.locator('#jiraWatchList [data-jiranote]').first().click();
+    await page.waitForSelector('#jiraWatchList .jira-note-form:not([hidden])');
+    const geo = await page.locator('#jiraWatchList .jira-note-input').first().evaluate((e) => ({
+      champ: e.getBoundingClientRect().width,
+      carte: e.closest('.jira-item').getBoundingClientRect().width,
+      lignes: e.getBoundingClientRect().height,
+    }));
+    assert.ok(geo.champ > geo.carte * 0.8, `le champ prend la carte, vu ${Math.round(geo.champ)}/${Math.round(geo.carte)} px`);
+    assert.ok(geo.lignes > 40, 'et plus d’une ligne de haut');
+
+    const champ = page.locator('#jiraWatchList .jira-note-input').first();
+    await champ.fill('');
+    await champ.type('première raison');
+    await champ.press('Enter');            // sur un textarea, Entrée passe à la ligne…
+    await champ.type('seconde ligne');
+    assert.match(await champ.inputValue(), /première raison\nseconde ligne/,
+      'Entrée ne doit pas valider : c’est pour cela qu’on a agrandi le champ');
+
+    await champ.press('ControlOrMeta+Enter');   // …et c'est Ctrl/Cmd + Entrée qui enregistre
+    await page.waitForSelector('#jiraWatchList .jira-note-form[hidden]', { state: 'attached' });
+
+    const enBase = (await app.api('GET', '/api/jira/watch')).body.watched.find((w) => w.note);
+    assert.match(enBase.note, /première raison\nseconde ligne/, 'le saut de ligne arrive jusqu’au serveur');
+    assert.match(await page.locator('#jiraWatchList .jira-watch-note').first().evaluate(
+      (e) => getComputedStyle(e).whiteSpace,
+    ), /pre-line|pre-wrap/, 'et il est respecté à l’affichage');
+  });
+
+  test('Échap referme le champ sans rien enregistrer', async () => {
+    await ouvrirSurveilles();
+    const avant = (await app.api('GET', '/api/jira/watch')).body.watched.map((w) => w.note || '');
+    await page.locator('#jiraWatchList [data-jiranote]').first().click();
+    const champ = page.locator('#jiraWatchList .jira-note-input').first();
+    await champ.fill('saisie abandonnée');
+    await champ.press('Escape');
+    await page.waitForSelector('#jiraWatchList .jira-note-form[hidden]', { state: 'attached' });
+    assert.deepEqual((await app.api('GET', '/api/jira/watch')).body.watched.map((w) => w.note || ''), avant,
+      'annuler doit vraiment annuler');
+  });
+
   /* Le rendu d'un ticket TECHNIQUE, bout en bout : ADF Jira → Markdown → HTML. Jira met
      volontiers un gabarit JSON dans une cellule de tableau ; aplati en cellules, le code
      arrivait sur une seule ligne, indentations écrasées par le repli HTML et incopiable.

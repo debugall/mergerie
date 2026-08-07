@@ -1782,21 +1782,29 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-watch-key:focus { border-color: var(--accent); outline: none; }
 /* Le pourquoi de la surveillance, à côté de la clé. Il prend la place restante : c'est du
    texte libre, une largeur fixe le tronquerait dès la première phrase utile. */
-.jira-watch-note { flex: 1 1 260px; min-width: 0; padding: 8px 12px; font: inherit; font-size: 13px;
-  background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); }
+.jira-watch-note { flex: 1 1 320px; min-width: 0; padding: 8px 12px; font: inherit; font-size: 13px;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius);
+  resize: vertical; min-height: 58px; line-height: 1.45; }
 .jira-watch-note:focus { border-color: var(--accent); outline: none; }
 
 /* Sur la carte : la raison en clair, et le crayon qui l'ouvre. Le tout en gris — c'est un
    rappel personnel, pas une donnée du ticket, et il ne doit pas concurrencer son résumé. */
 .jira-watch-note-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+/* La note AFFICHÉE est un `span`, pas le champ : ni cadre, ni hauteur minimale. `pre-line`
+   garde les retours à la ligne qu'on vient d'autoriser à la saisie — les écraser à
+   l'affichage rendrait le textarea trompeur. */
 .jira-watch-note-row .jira-watch-note { flex: 1 1 auto; border: none; background: none; padding: 0;
-  font-size: 12px; font-style: italic; color: var(--muted); overflow-wrap: anywhere; }
+  min-height: 0; resize: none; font-size: 12px; font-style: italic; color: var(--muted);
+  overflow-wrap: anywhere; white-space: pre-line; }
 .jira-watch-note-row .btn { flex: 0 0 auto; opacity: .6; }
 .jira-watch-note-row .btn:hover { opacity: 1; }
-.jira-note-form { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+/* En COLONNE : la carte vit dans une liste étroite, et garder les boutons à côté du champ
+   ne laissait qu'une centaine de pixels pour écrire — moins qu'avant l'agrandissement. */
+.jira-note-form { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.jira-note-actions { display: flex; justify-content: flex-end; gap: 6px; }
 .jira-note-form .jira-note-input { flex: 1 1 auto; min-width: 0; padding: 6px 10px; font: inherit;
   font-size: 12px; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
-  border-radius: var(--radius); }
+  border-radius: var(--radius); resize: vertical; min-height: 62px; line-height: 1.45; }
 .jira-note-form .jira-note-input:focus { border-color: var(--accent); outline: none; }
 .jira-sf-item { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
 .jira-avatar-sm { flex: 0 0 22px; height: 22px; font-size: 10px; }
@@ -2110,9 +2118,12 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .note-preview { padding: 12px 16px; overflow: auto; background: var(--panel);
   border: 1px solid var(--line); border-radius: 10px; }
 /* Les références autolinkées se voient comme des liens, sans souligner tout le texte. */
-.note-link { color: var(--accent); text-decoration: none; border-bottom: 1px dotted currentColor; }
-.note-link:hover { color: var(--accent-hi); }
+.note-link, .note-url { color: var(--accent); text-decoration: none; border-bottom: 1px dotted currentColor; }
+.note-link:hover, .note-url:hover { color: var(--accent-hi); }
 .note-link-multi { border-bottom-style: dashed; }
+/* Une URL collée n'a pas d'espace où se couper : sans ça, elle déborde de la carte d'une
+   todo comme du panneau d'aperçu d'une page. */
+.note-url { overflow-wrap: anywhere; }
 
 /* ---- capture rapide ---- */
 .modal-capture { width: min(520px, 92vw); display: flex; flex-direction: column; gap: 10px; }

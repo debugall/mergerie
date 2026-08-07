@@ -69,6 +69,45 @@ describe('autolink : les références du quotidien deviennent des liens', () => 
     assert.doesNotMatch(html, /<script/, 'aucune balise n’est reconstituée');
   });
 
+  /* Une note, c'est là qu'on colle une URL sans la relire. Elle doit être cliquable — et
+     n'ouvrir que ce qu'un lien a le droit d'ouvrir. */
+  test('une URL collée devient un lien, http(s) seulement', () => {
+    const html = autolink('doc ici https://exemple.test/guide?a=1&amp;b=2 et voilà', index);
+    assert.match(html, /<a href="https:\/\/exemple\.test\/guide\?a=1&amp;b=2" class="note-url"/);
+    assert.match(html, /target="_blank" rel="noopener noreferrer"/,
+      'un lien externe ne donne jamais accès à window.opener');
+    assert.match(autolink('voir http://intra.test/x', index), /<a href="http:/);
+  });
+
+  test('les protocoles dangereux restent du texte', () => {
+    for (const mauvais of ['javascript:alert(1)', 'data:text/html,<b>', 'file:///etc/passwd', 'vbscript:x']) {
+      assert.doesNotMatch(autolink(`clic ${mauvais}`, index), /<a /,
+        `${mauvais} ne doit pas devenir un lien`);
+    }
+  });
+
+  /* La ponctuation qui ferme la phrase n'appartient pas au lien : la garder donnait une
+     adresse en 404 au premier clic. */
+  test('la ponctuation finale reste hors du lien', () => {
+    const html = autolink('voir https://exemple.test/page.', index);
+    assert.match(html, />https:\/\/exemple\.test\/page<\/a>\./);
+  });
+
+  /* Le piège de l'ordre : une URL Jira CONTIENT une clé de ticket. La transformer aussi
+     aurait posé un second lien à l'intérieur du texte du premier. */
+  test('une référence contenue dans une URL n’est pas re-transformée', () => {
+    const html = autolink('ticket https://jira.demo/browse/PROJ-720 à lire', index);
+    assert.equal((html.match(/<a /g) || []).length, 1, 'un seul lien : celui de l’URL');
+    assert.doesNotMatch(html, /data-note-ticket/);
+    // Hors d'une URL, la clé redevient un lien de ticket.
+    assert.match(autolink('PROJ-720 tout seul', index), /data-note-ticket="PROJ-720"/);
+  });
+
+  test('une adresse déjà dans un attribut n’est pas re-liée', () => {
+    const html = autolink('<img src="https://exemple.test/a.png" alt="x" />', index);
+    assert.doesNotMatch(html, /<a /, 'le rendu Markdown produit déjà cet attribut');
+  });
+
   test('un lien fabriqué ne peut pas être détourné par un nom de projet', () => {
     const html = autolink('!5', { mrs: { 5: [{ id: 3, project: 'a" onmouseover="x' }] }, jira: false });
     assert.doesNotMatch(html, /onmouseover="x"/, 'le nom du dépôt est échappé dans l’attribut');

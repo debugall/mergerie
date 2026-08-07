@@ -16,6 +16,7 @@
 }(typeof self !== 'undefined' ? self : this, function () {
   return {
     fr: {
+      "jira.watch.note-hint": "Entrée passe à la ligne ; Ctrl/Cmd + Entrée enregistre.",
       "git.explorer.pending": "en attente…",
       "git.explorer.running": "analyse en cours…",
       "palette.go.notes": "Notes \u2014 brief du jour",
@@ -1925,6 +1926,7 @@
       "ui.title.statistiques-et-activite": "Statistiques et activité",
     },
     en: {
+      "jira.watch.note-hint": "Enter starts a new line; Ctrl/Cmd + Enter saves.",
       "git.explorer.pending": "waiting…",
       "git.explorer.running": "analysing…",
       "palette.go.notes": "Notes \u2014 today\u2019s brief",

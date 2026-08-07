@@ -29,6 +29,16 @@
   /* Une clé Jira : deux lettres majuscules au moins, puis un tiret et des chiffres. La
      garde arrière (`(?![\w-])`) empêche `PROJ-720-suite` d'être coupé en deux. */
   const TICKET_RE = /(^|[^\w-])([A-Z][A-Z0-9]+-\d+)(?![\w-])/g;
+  /* Une URL COLLÉE dans une note. `http(s)` UNIQUEMENT, jamais `javascript:` ni `data:` :
+     une note est du texte qu'on colle sans le relire, et un lien fabriqué n'a pas à pouvoir
+     exécuter quoi que ce soit. La garde avant (`[^\w@/"']`) écarte deux faux positifs : une
+     adresse déjà dans un attribut (`src="http…"`, produit par le rendu Markdown) et une URL
+     collée à un mot. On s'arrête au premier `<` : au-delà commence une balise. */
+  const URL_RE = /(^|[^\w@/"'])(https?:\/\/[^\s<]+)/g;
+  /* Un lien DÉJÀ posé — pour ne pas transformer ce qu'il contient. Coller une URL Jira
+     (`https://jira/browse/PROJ-720`) faisait sinon de `PROJ-720` un second lien À
+     L'INTÉRIEUR du texte du premier. */
+  const LIEN_POSE_RE = /(<a\b[^>]*>[\s\S]*?<\/a>)/;
 
   /* Transforme les références en liens. `index` :
        { mrs: { "214": [{id, project}, …] }, jira: true|false }
@@ -38,7 +48,26 @@
   function autolink(htmlEchappe, index) {
     const mrs = (index && index.mrs) || {};
     const jira = !!(index && index.jira);
-    let out = String(htmlEchappe == null ? '' : htmlEchappe);
+
+    /* Les URL D'ABORD, les références ensuite et seulement HORS des liens déjà posés :
+       l'ordre inverse aurait transformé la clé de ticket contenue dans une URL Jira. */
+    const brut = String(htmlEchappe == null ? '' : htmlEchappe).replace(URL_RE, (m, avant, url) => {
+      /* La ponctuation qui termine la phrase n'appartient pas au lien. Le `;` est laissé
+         dedans à dessein : il termine aussi les entités (`&amp;`), et le retirer couperait
+         une URL à paramètres en plein milieu. */
+      const queue = (url.match(/[.,:!?)\]]+$/) || [''])[0];
+      const propre = queue ? url.slice(0, -queue.length) : url;
+      if (!propre) return m;
+      return `${avant}<a href="${propre}" class="note-url" target="_blank" rel="noopener noreferrer">${propre}</a>${queue}`;
+    });
+
+    return brut.split(LIEN_POSE_RE)
+      .map((part, i) => (i % 2 ? part : refsEnLiens(part, mrs, jira)))
+      .join('');
+  }
+
+  function refsEnLiens(htmlEchappe, mrs, jira) {
+    let out = htmlEchappe;
 
     out = out.replace(MR_RE, (m, avant, iid) => {
       const cands = mrs[iid];
@@ -69,5 +98,5 @@
     ));
   }
 
-  return { autolink, MR_RE, TICKET_RE };
+  return { autolink, MR_RE, TICKET_RE, URL_RE };
 }));

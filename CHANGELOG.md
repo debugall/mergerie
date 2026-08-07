@@ -328,6 +328,19 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A link pasted into a note is now clickable.** URLs written in a note page or a todo's note become links
+  opening in a new tab — `http`/`https` only, since a note is text you paste without re-reading it and a
+  link the tool builds has no business being able to run anything. Sentence-ending punctuation stays outside
+  the link, and a reference contained in a URL is no longer transformed a second time: pasting a Jira link
+  no longer built a ticket link inside the URL's own text.
+
+- **The “say why” field of a watched ticket holds several lines.** A reason rarely fits on one — “blocks the
+  billing migration — tell Sofia as soon as it is in review” already overflowed. Both the add field and the
+  one on the card are now resizable text areas: Enter starts a new line, Ctrl/Cmd + Enter saves, Esc closes
+  without changing anything. On the card the buttons moved below the field, which in a narrow column left
+  barely a hundred pixels to write in. Line breaks are kept when the note is displayed back.
+
+
 - **The branch explorer now says it is working.** Clicking “Analyse” could look like nothing happened:
   the loading skeleton sat inside blocks that open folded, and a clone can take a minute. Each repository
   now announces its state in its own header — *waiting*, then *analysing* with a spinner, then its branch
@@ -335,7 +348,6 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   after another. The button spins too, and a repository that fails opens its block to show why rather than
   keeping the reason shut inside. Those blocks also regained a **chevron**: `display: flex` on their
   summary had removed the browser's native marker, so nothing said whether a block was folded or not.
-
 
 - **A code template inside a Jira table is readable again.** Technical tickets routinely lay a template out
   as a table — a label on the left, JSON on the right. A Markdown table holds one line per cell, so the code

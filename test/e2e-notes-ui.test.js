@@ -261,6 +261,34 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     await page.locator('#tab-notes [data-tfilter="open"]').click();
   });
 
+  /* Une note de todo est l'endroit où l'on colle une adresse sans la relire : elle doit
+     être cliquable, et ne mener QUE là où un lien a le droit de mener. */
+  test('un lien collé dans la note d’une todo est cliquable', async () => {
+    const t = (await app.api('POST', '/api/todos', {
+      title: 'suivre la doc du PSP',
+      note: 'barème ici https://psp.test/tarifs?v=2&plan=pro — et javascript:alert(1) ne doit rien ouvrir',
+    })).body;
+
+    await page.locator('nav button[data-tab="notes"]').click();
+    await page.locator('#tab-notes .subnav button[data-nsub="todos"]').click();
+    await page.locator('#tab-notes [data-tfilter="open"]').click();
+    const ligne = page.locator('#todoList .todo-row', { hasText: 'suivre la doc du PSP' });
+    await ligne.waitFor();
+
+    const liens = await ligne.locator('.todo-note a').evaluateAll((els) => els.map((e) => ({
+      href: e.getAttribute('href'), cible: e.getAttribute('target'), rel: e.getAttribute('rel'),
+    })));
+    assert.equal(liens.length, 1, 'seule l’adresse http(s) devient un lien');
+    assert.equal(liens[0].href, 'https://psp.test/tarifs?v=2&plan=pro',
+      'l’URL est rendue entière, paramètres compris');
+    assert.equal(liens[0].cible, '_blank');
+    assert.match(liens[0].rel, /noopener/);
+    assert.match(await ligne.locator('.todo-note').innerText(), /javascript:alert\(1\)/,
+      'le protocole dangereux reste du texte, visible tel quel');
+
+    await app.api('DELETE', `/api/todos/${t.id}`);
+  });
+
   /* Le rendu échappe AVANT d'autolinker : rien de ce qu'on écrit dans une note ne peut
      devenir du balisage. C'est la garantie que la section Sécurité du guide annonce. */
   test('une note ne peut pas injecter de HTML', async () => {
