@@ -83,16 +83,20 @@
         <div class="brand-text">
         <!-- Nom du produit : jamais traduit → pas de data-i18n ici. -->
         <h1>Mergerie</h1>
-        <span class="baseline" data-i18n="ui.span.un-agent-ia-qui-relit">L'IA prépare tes MR — review, corrections, convergence. C'est toi qui merges.</span>
+        <!-- Deux lignes, alignées sous le nom du produit : la phrase disait la même chose
+             sur une ligne, mais elle courait alors jusqu'à la navigation. La coupure est
+             sémantique — ce que fait l'IA, puis ce que tu fais — et non un repli de place. -->
+        <span class="baseline"><span data-i18n="ui.baseline.1">L'IA prépare tes MR — review, corrections, convergence.</span><span data-i18n="ui.baseline.2">C'est toi qui merges.</span></span>
         </div>
     </div>
     <nav>
         <button data-tab="review" class="active" title="Merge requests : à traiter, reviewées, traitées" data-i18n-title="ui.title.merge-requests-a-traiter-reviewees"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="nav.reviews">Reviews</span><span class="nav-count" id="navCountReview" hidden>0</span><span class="nav-health warn" id="navLowScores" hidden>0</span></button>
         <button data-tab="task" title="Sessions de développement pilotées par l'IA" data-i18n-title="ui.title.sessions-de-developpement-pilotees-par"><svg class="ico"><use href="#i-bot"/></svg><span data-i18n="nav.tasks">Dev IA</span><span class="nav-count" id="navCountTask" hidden>0</span></button>
-        <button data-tab="dashboard" title="Statistiques et activité" data-i18n-title="ui.title.statistiques-et-activite"><svg class="ico"><use href="#i-chart"/></svg><span data-i18n="ui.btn.statistiques">Statistiques</span></button>
+        <button data-tab="notes" title="Notes, todos et rappels — et le brief du matin" data-i18n-title="ui.title.notes"><svg class="ico"><use href="#i-clip"/></svg><span data-i18n="nav.notes">Notes</span><span class="nav-health err" id="navTodoUrgent" hidden>0</span><span class="nav-count" id="navCountNotes" hidden>0</span></button>
+        <button data-tab="jira" title="Mes tickets Jira affectés : contenu, métadonnées, commentaires" data-i18n-title="jira.tab.title"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="nav.jira">Jira</span><span class="nav-count" id="navCountJira" hidden>0</span></button>
         <button data-tab="git" title="Opérations sur les dépôts : branches et tags" data-i18n-title="git.tab.title"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="nav.git">Git</span></button>
         <button data-tab="docker" title="Projets Docker Compose et containers : drift .env, actions" data-i18n-title="docker.tab.title"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="nav.docker">Docker</span><span class="nav-health err" id="dockerErrBadge" hidden>0</span><span class="nav-health warn" id="dockerUnhealthyBadge" hidden>0</span></button>
-        <button data-tab="jira" title="Mes tickets Jira affectés : contenu, métadonnées, commentaires" data-i18n-title="jira.tab.title"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="nav.jira">Jira</span><span class="nav-count" id="navCountJira" hidden>0</span></button>
+        <button data-tab="dashboard" title="Statistiques et activité" data-i18n-title="ui.title.statistiques-et-activite"><svg class="ico"><use href="#i-chart"/></svg><span data-i18n="ui.btn.statistiques">Statistiques</span></button>
         <button data-tab="admin" title="Dépôts, token, règles de review, thème" data-i18n-title="ui.title.depots-token-regles-de-review"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="ui.btn.reglages">Réglages</span></button>
     </nav>
     <div class="header-right">
@@ -556,6 +560,50 @@
         </div>
     </section>
 
+    <!-- Notes : les post-it du poste de travail. Le brief ouvre la journée, les todos
+         portent ce qui reste à faire, les pages remplacent le bloc-notes. Tout est local. -->
+    <section id="tab-notes" class="tab">
+        <div class="segmented subnav" role="tablist">
+            <button data-nsub="today" class="active" role="tab" data-i18n-title="notes.sub.today-title"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="notes.sub.today">Aujourd'hui</span></button>
+            <button data-nsub="todos" role="tab" data-i18n-title="notes.sub.todos-title"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="notes.sub.todos">Todos</span><span class="nav-count" id="notesTodoCount" hidden>0</span></button>
+            <button data-nsub="pages" role="tab" data-i18n-title="notes.sub.pages-title"><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="notes.sub.pages">Pages</span></button>
+        </div>
+
+        <div id="notesSubToday">
+            <div id="briefBox" class="brief"></div>
+        </div>
+
+        <div id="notesSubTodos" hidden>
+            <div class="toolbar">
+                <input id="todoQuickAdd" type="text" class="todo-quick" autocomplete="off" maxlength="200" placeholder="Ajouter une todo…" data-i18n-placeholder="notes.todo.add-ph" />
+                <button id="todoQuickBtn" class="btn btn-primary" data-i18n-title="notes.todo.add-title"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="notes.todo.add">Ajouter</span></button>
+                <span class="spacer"></span>
+                <div class="segmented todo-filter" role="tablist">
+                    <button data-tfilter="open" class="active" role="tab" data-i18n="notes.todo.filter.open">À faire</button>
+                    <button data-tfilter="done" role="tab" data-i18n="notes.todo.filter.done">Faites</button>
+                    <button data-tfilter="archived" role="tab" data-i18n="notes.todo.filter.archived">Archivées</button>
+                </div>
+                <span id="todoInfo" class="muted"></span>
+            </div>
+            <div id="todoList" class="todo-list"></div>
+        </div>
+
+        <div id="notesSubPages" hidden>
+            <div class="notes-layout">
+                <div class="notes-list-col">
+                    <div class="toolbar toolbar-tight">
+                        <button id="pageNew" class="btn btn-primary" data-i18n-title="notes.page.new-title"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="notes.page.new">Nouvelle page</span></button>
+                    </div>
+                    <input id="pageSearch" type="search" class="jira-search" placeholder="Rechercher (titre et contenu)…" data-i18n-placeholder="notes.page.search" />
+                    <div id="pageList" class="notes-list"></div>
+                </div>
+                <div class="notes-editor-col">
+                    <div id="pageEditor" class="notes-editor"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <section id="tab-admin" class="tab">
         <div class="segmented subnav" role="tablist">
             <button data-sub="rules" class="active" role="tab" title="Critères ajoutés au prompt de review selon le nom de branche" data-i18n-title="settings.title.criteres-ajoutes-au-prompt-de" data-i18n="settings.btn.regles-de-review-specifiques">Règles de review spécifiques</button>
@@ -784,6 +832,7 @@ print(json.dumps({
                 <label class="inline-check"><input type="checkbox" data-notif="needs_input" /> <span data-i18n="settings.notif.needs-input">L'IA a posé une question</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="converge_done" /> <span data-i18n="settings.notif.converge-done">Convergence terminée</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="jira_status" /> <span data-i18n="settings.notif.jira-status">Un ticket Jira surveillé change d'état</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="reminder" /> <span data-i18n="settings.notif.reminder">Rappels de todos</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.notif.reminder-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                 <label class="inline-check"><input type="checkbox" data-notif="verify_done" /> <span data-i18n="settings.notif.verify-done">Une vérification objective a rendu son verdict</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="mr_new" /> <span data-i18n="settings.notif.mr-new">Nouvelle MR découverte</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="mr_merged" /> <span data-i18n="settings.notif.mr-merged">MR mergée par quelqu'un</span></label>
@@ -805,6 +854,12 @@ print(json.dumps({
                  parce que ça ne concerne ni les MR ni une forge en particulier. -->
             <label><span data-i18n="settings.lbl.retention">Conserver l'historique (jours, 0 = sans limite)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.retention" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <input form="configForm" name="retention_days" type="number" min="0" step="1" placeholder="90" />
+            </label>
+            <!-- Brief du matin : l'atterrissage est un réglage de l'OUTIL (comme la langue),
+                 pas du navigateur — d'où la base et non le localStorage. -->
+            <label class="inline-check"><input form="configForm" name="brief_on_open" type="checkbox" /> <span data-i18n="settings.lbl.brief-on-open">Brief du matin à la première ouverture</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.brief-on-open" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <label><span data-i18n="settings.lbl.stale-mr-days">MR dormante au bout de (jours)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.stale-mr-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="stale_mr_days" type="number" min="1" max="90" step="1" placeholder="5" />
             </label>
             <!-- Sauvegarde : la seule chose que Mergerie ne sait pas reconstruire. -->
             <div class="backup-row">
@@ -1078,6 +1133,37 @@ print(json.dumps({
     </div>
 </div>
 
+<!-- Capture rapide : touche « n » depuis n'importe quel onglet. Un champ, Entrée, c'est fait.
+     Le tri (priorité, échéance, lien) se fait plus tard dans l'onglet — la capture doit coûter
+     deux secondes, sinon on la remplace par un post-it. -->
+<div id="captureModal" class="modal" hidden>
+    <div class="modal-box modal-capture">
+        <h3 data-i18n="notes.capture.title">Nouvelle todo</h3>
+        <input id="captureTitle" type="text" maxlength="200" autocomplete="off" placeholder="Que faut-il faire ?" data-i18n-placeholder="notes.capture.ph" />
+        <button type="button" id="captureMore" class="btn btn-sm btn-ghost" data-i18n="notes.capture.more">+ détails</button>
+        <div id="captureDetails" hidden>
+            <label><span data-i18n="notes.todo.prio-label">Priorité</span>
+                <select id="capturePriority">
+                    <option value="high" data-i18n="notes.prio.high">Haute</option>
+                    <option value="normal" selected data-i18n="notes.prio.normal">Normale</option>
+                    <option value="low" data-i18n="notes.prio.low">Basse</option>
+                </select>
+            </label>
+            <label><span data-i18n="notes.todo.due-label">Échéance (et rappel)</span>
+                <input id="captureDue" type="datetime-local" />
+            </label>
+            <label><span data-i18n="notes.todo.note-label">Note</span>
+                <textarea id="captureNote" rows="2" maxlength="2000" placeholder="précision, contexte…" data-i18n-placeholder="notes.todo.note-ph"></textarea>
+            </label>
+        </div>
+        <p class="muted" data-i18n="notes.capture.hint">Entrée pour créer, Échap pour annuler.</p>
+        <div class="modal-actions">
+            <button id="captureCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="captureOk" type="button" class="btn btn-primary" data-i18n="notes.capture.create">Créer</button>
+        </div>
+    </div>
+</div>
+
 <div id="confirmModal" class="modal" hidden>
     <div class="modal-box modal-confirm">
         <h3 id="confirmTitle"></h3>
@@ -1303,6 +1389,7 @@ print(json.dumps({
 <script src="/i18n.js"></script>
 <script src="/i18n-runtime.js"></script>
 <script src="/ansi-runtime.js"></script>
+<script src="/notes-runtime.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

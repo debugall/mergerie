@@ -61,12 +61,18 @@ async function startApp() {
     return { status: res.status, body: json, text, headers: res.headers };
   }
 
-  // Configure l'app pour parler au faux GitLab (et au faux Jira si demandé).
+  /* Configure l'app pour parler au faux GitLab (et au faux Jira si demandé).
+
+     `brief_on_open: '0'` par DÉFAUT : sans lui, la première ouverture de la journée ferait
+     atterrir chaque test de navigateur sur Notes → Aujourd'hui au lieu de l'onglet qu'il
+     vient exercer — un profil de navigateur neuf n'a jamais « déjà vu » le brief du jour.
+     Un test qui veut justement éprouver l'atterrissage le repasse à '1' via `extra`. */
   async function configure(extra = {}) {
     return api('PUT', '/api/config', {
       gitlab_url: gitlab.url,
       access_token: mock.state.token,
       clone_path: path.join(dataDir, 'clones'),
+      brief_on_open: '0',
       ...extra,
     });
   }

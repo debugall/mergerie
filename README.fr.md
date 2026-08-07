@@ -58,7 +58,7 @@ et un **lot** de merge requests vérifiées ensemble.
 
 ## Les onglets
 
-**Sept onglets** — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)**, et la **[vérification objective](./docs/guide.fr.md#vérification-objective-vérificateurs)** a sa propre section :
+**Huit onglets** — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)**, et la **[vérification objective](./docs/guide.fr.md#vérification-objective-vérificateurs)** a sa propre section :
 
 - **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée,
   re-review incrémentale et **boucle de convergence autonome** (review → correction → re-review jusqu'au seuil).
@@ -72,12 +72,17 @@ et un **lot** de merge requests vérifiées ensemble.
   noms des tests cassés sont lus de la sortie **TAP** ou d'un rapport **JUnit** quand il y en a. Des merge requests
   de dépôts différents qui ne tiennent qu'ensemble se **vérifient ensemble**, et un clic ouvre une session de
   correction qui les couvre toutes. Ce n'est pas un onglet : ça vit dans *Reviews* et *Réglages*.
-- **Statistiques** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens.
+- **Notes** — les post-it du quotidien, gardés dans l'outil : pages de notes en Markdown, todos priorisées dont
+  l'échéance sert de **rappel bureau**, et un **brief du matin** qui ouvre la journée — rappels, sessions en
+  attente de réponse, vérifications en échec, MR fraîches et MR dormantes, le tout calculé en local et **sans
+  aucun appel IA**. `!214` et `PROJ-720` écrits dans une note deviennent des liens, et une merge request ou un
+  ticket s'ajoute aux todos d'un clic.
+- **Jira** — tes tickets récupérés automatiquement, détail + pièces jointes, changement d'état et commentaires ; **tickets surveillés** (affectés ou non) avec notification à chaque changement d'état, et une pastille au menu = tes tickets en cours.
 - **Git** — opérations multi-dépôts (branches, tags, commandes git) sur les deux forges, navigation de branches
   et recherche de refs, suppressions **restaurables**, tout **avec aperçu**.
 - **Docker** — état des projets compose (drift `.env`, santé), actions par lot, **logs live** multi-containers,
   badges d'erreur dans le menu.
-- **Jira** — tes tickets récupérés automatiquement, détail + pièces jointes, changement d'état et commentaires ; **tickets surveillés** (affectés ou non) avec notification à chaque changement d'état, et une pastille au menu = tes tickets en cours.
+- **Stats** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens.
 - **Réglages** — connexions GitLab / GitHub / Jira, dépôts, règles de review, templates de prompt, thème et langue.
 
 Partout : `Ctrl`/`Cmd` + `K` ouvre une **palette de commandes** (sauter à un onglet, une MR, une session

@@ -131,7 +131,9 @@ function insertMr(m, extra = {}) {
 }
 
 // MR à traiter
-const mrsAtraiter = MRS.map((m) => insertMr(m, { date: at(1 + (MRS.indexOf(m) % 4)) }));
+/* Les deux premières arrivent dans les DERNIÈRES 24 H : c'est ce que le brief appelle
+   « MR à traiter », et une section vide n'aurait rien montré. */
+const mrsAtraiter = MRS.map((m) => insertMr(m, { date: at(0.2 + (MRS.indexOf(m) % 4)) }));
 
 // MR reviewées/traitées + rapports sur disque + versions + constats
 for (const m of REVIEWED) {
@@ -541,6 +543,66 @@ db.prepare(`INSERT INTO verification
         output_tail: 'TAP version 13\nok 1 - export › écrit le fichier\nnot ok 2 - export › reprend après une coupure réseau\n# fail 1' }] }),
   JSON.stringify(echecsCmd), at(0.15), at(0.15), at(0.15));
 
+/* ---------- Notes, todos et rappels (plan_add_notes.md §10) ----------
+   La démo doit montrer l'onglet VIVANT, brief compris : une page avec des références
+   autolinkées vers de vraies MR et un vrai ticket, des todos de toutes les formes (haute
+   priorité sans date, échéance dépassée → rappel dès le chargement, liée à une MR, faite
+   hier, archivée). Le brief se remplit alors tout seul à partir de ce qui est déjà semé —
+   sessions en attente, verdict rouge, MR fraîches et MR dormantes comprises. */
+{
+  const mrHealth = mrsAtraiter.find((m) => m.project === 'groupe/api-core');
+  const insPage = db.prepare(`INSERT INTO note_page (title, content, pinned, created_at, updated_at)
+    VALUES (?,?,?,?,?)`);
+  insPage.run('Points à aborder au daily',
+    ['- Relancer le PSP sur le retry : la session IA attend une réponse.',
+      `- Reparler de !${mrHealth.iid} — la sonde de santé change le readiness du déploiement.`,
+      '- PROJ-1390 bloque la facturation ; Sofia doit être prévenue dès la revue.',
+      '',
+      '## À ne pas oublier',
+      'Le point archi de jeudi porte sur le cache : préparer deux chiffres.'].join('\n'),
+    1, at(3), at(0.2));
+  insPage.run('Notes migration TypeORM',
+    ['Bilan de l’essai de la semaine dernière.',
+      '',
+      '| étape | état |',
+      '|---|---|',
+      '| entités | fait |',
+      '| relations | en cours |',
+      '| migrations | à faire |',
+      '',
+      '`repository.find()` remplace les requêtes brutes ; attention au N+1 sur les relations.',
+      '',
+      `Suite dans !${mrHealth.iid}, ticket PROJ-833.`].join('\n'),
+    0, at(9), at(2));
+
+  const insTodo = db.prepare(`INSERT INTO todo
+    (title, priority, status, note, link_kind, link_ref, due_at, reminded_at, done_at, archived_at, created_at, updated_at)
+    VALUES (@title,@priority,@status,@note,@link_kind,@link_ref,@due_at,@reminded_at,@done_at,@archived_at,@created_at,@updated_at)`);
+  const todo = (o) => insTodo.run({
+    priority: 'normal', status: 'open', note: null, link_kind: null, link_ref: null,
+    due_at: null, reminded_at: null, done_at: null, archived_at: null,
+    created_at: at(2), updated_at: at(1), ...o,
+  });
+
+  // Haute priorité SANS date : c'est ce qui se perd, et que le brief remonte tout seul.
+  todo({ title: 'Décider du format de log avant le point archi', priority: 'high', created_at: at(5) });
+  /* Échéance DÉPASSÉE : au chargement de la démo, le rappel part vraiment. C'est inoffensif
+     et ça montre la fonctionnalité mieux que n'importe quelle capture d'écran. */
+  todo({ title: 'Relancer la plateforme sur le quota Redis', priority: 'high',
+    note: 'sans réponse depuis mardi', due_at: at(0.05) });
+  todo({ title: 'Vérifier la migration d’index avant le déploiement',
+    due_at: new Date(Date.now() + 0.4 * day).toISOString() });
+  // Liée à une MR : le lien vers l'objet suivi est cliquable depuis la liste.
+  todo({ title: `Suivre !${mrHealth.iid} — sonde de santé`, link_kind: 'mr', link_ref: String(mrHealth.id),
+    note: 'à merger avant la mise en prod de jeudi' });
+  todo({ title: 'Relire la note de migration TypeORM', priority: 'low' });
+  // Faite hier : elle reste barrée sept jours, on voit ce qu'on a fait cette semaine.
+  todo({ title: 'Préparer les chiffres du cache catalogue', status: 'done', done_at: at(1), created_at: at(4) });
+  // Archivée : le tiroir n'est pas vide, et rien n'a jamais été supprimé.
+  todo({ title: 'Nettoyer les branches de l’ancien sprint', status: 'done',
+    done_at: at(12), archived_at: at(5), created_at: at(20) });
+}
+
 const counts = {
   repos: db.prepare('SELECT COUNT(*) c FROM repo').get().c,
   mrs: db.prepare('SELECT COUNT(*) c FROM mr').get().c,
@@ -552,5 +614,7 @@ const counts = {
   localTasks: db.prepare('SELECT COUNT(*) c FROM local_task').get().c,
   jiraWatch: db.prepare('SELECT COUNT(*) c FROM jira_watch').get().c,
   verifications: db.prepare('SELECT COUNT(*) c FROM verification').get().c,
+  notePages: db.prepare('SELECT COUNT(*) c FROM note_page').get().c,
+  todos: db.prepare('SELECT COUNT(*) c FROM todo').get().c,
 };
 console.log('Base de démo semée dans data-demo/ :', JSON.stringify(counts));

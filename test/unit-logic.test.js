@@ -219,6 +219,132 @@ describe('jira : clé de ticket et conversion ADF → Markdown', () => {
     assert.match(md, /_\(pièce jointe\)_/);
   });
 
+  /* Le cas qui rendait un ticket technique illisible. Jira autorise n'importe quel bloc dans
+     une cellule et s'en sert : une étiquette à gauche, un gabarit JSON à droite. Un tableau
+     Markdown, lui, tient sur UNE ligne par cellule — le code s'y retrouvait aplati, ses
+     indentations écrasées au rendu HTML, et incopiable. */
+  test('un tableau dont une cellule porte du code est DÉPLIÉ, pas aplati', () => {
+    const cell = (kids) => ({ type: 'tableCell', content: kids });
+    const para = (t) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
+    const md = jira.adfToMarkdown({
+      type: 'doc',
+      content: [{ type: 'table', content: [
+        { type: 'tableRow', content: [
+          cell([para('NP15_Suppression_IN')]),
+          cell([{ type: 'codeBlock', attrs: { language: 'json' }, content: [{ type: 'text', text: '{\n    "partner": "LIN",\n    "version": 8\n}' }] }]),
+        ] },
+        { type: 'tableRow', content: [
+          cell([para('NP15-1_Suppression_IN')]),
+          cell([{ type: 'codeBlock', content: [{ type: 'text', text: '{\n    "version": 1\n}' }] }]),
+        ] },
+      ] }],
+    });
+    assert.doesNotMatch(md, /^\|/m, 'aucune ligne de tableau : le contenu ne tenait pas dedans');
+    assert.match(md, /NP15_Suppression_IN\n\n```json\n\{\n {4}"partner": "LIN",/,
+      'l’étiquette, puis le bloc de code avec ses indentations');
+    assert.match(md, /\n---\n/, 'les lignes du tableau restent distinguables');
+    assert.match(md, /"version": 1/, 'la seconde ligne est là aussi');
+  });
+
+  test('une cellule à plusieurs paragraphes est dépliée elle aussi', () => {
+    const para = (t) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
+    const md = jira.adfToMarkdown({
+      type: 'doc',
+      content: [{ type: 'table', content: [{ type: 'tableRow', content: [
+        { type: 'tableCell', content: [para('un'), para('deux')] },
+      ] }] }],
+    });
+    // Collés bout à bout, « un » et « deux » devenaient un seul mot illisible.
+    assert.match(md, /un\n\ndeux/);
+  });
+
+  /* Un `|` dans une cellule ouvrirait une colonne de plus et décalerait toute la ligne :
+     il est échappé à la source, et le rendu sait le lire (cf. `splitRow` dans app.js). */
+  test('un tableau ordinaire reste un tableau, et le | d’une cellule est échappé', () => {
+    const para = (t) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
+    const head = (t) => ({ type: 'tableHeader', content: [para(t)] });
+    const cell = (t) => ({ type: 'tableCell', content: [para(t)] });
+    const md = jira.adfToMarkdown({
+      type: 'doc',
+      content: [{ type: 'table', content: [
+        { type: 'tableRow', content: [head('Champ'), head('Valeur')] },
+        { type: 'tableRow', content: [cell('mode'), cell('strict | souple')] },
+      ] }],
+    });
+    assert.match(md, /\| Champ \| Valeur \|/);
+    assert.match(md, /\| mode \| strict \\\| souple \|/);
+    assert.equal(md.split('\n').length, 3, 'trois lignes : en-tête, séparateur, données');
+  });
+
+  /* Markdown n'a d'en-tête qu'en LIGNE, et en exige une. Promouvoir la première ligne sans
+     vérifier déguisait donc en titre la première ligne de DONNÉES d'un tableau qui n'avait
+     pas d'en-tête — une ligne perdue à chaque fois. */
+  test('un tableau sans ligne d’en-tête ne sacrifie plus sa première ligne', () => {
+    const p = (t) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
+    const C = (t) => ({ type: 'tableCell', content: [p(t)] });
+    const md = jira.adfToMarkdown({
+      type: 'doc',
+      content: [{ type: 'table', content: [
+        { type: 'tableRow', content: [C('TVA'), C('20%')] },
+        { type: 'tableRow', content: [C('Frais'), C('0€')] },
+      ] }],
+    });
+    const lignes = md.split('\n');
+    assert.equal(lignes[0], '|  |  |', 'un en-tête VIDE : Markdown en exige un, il ne ment sur rien');
+    assert.equal(lignes[1], '| --- | --- |');
+    assert.match(md, /\| TVA \| 20% \|/, 'la première ligne de données est toujours là');
+    assert.match(md, /\| Frais \| 0€ \|/);
+    assert.equal(lignes.length, 4, 'deux lignes de données, aucune promue en titre');
+  });
+
+  /* Un tableau clé/valeur met l'en-tête en première COLONNE : sa première ligne est donc
+     mixte, et n'est pas un titre. La promouvoir sacrifiait une paire entière. */
+  test('un en-tête de COLONNE n’est pas pris pour une ligne d’en-tête', () => {
+    const p = (t) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
+    const md = jira.adfToMarkdown({
+      type: 'doc',
+      content: [{ type: 'table', content: [
+        { type: 'tableRow', content: [
+          { type: 'tableHeader', content: [p('Partenaire')] },
+          { type: 'tableCell', content: [p('LIN')] },
+        ] },
+        { type: 'tableRow', content: [
+          { type: 'tableHeader', content: [p('Version')] },
+          { type: 'tableCell', content: [p('8')] },
+        ] },
+      ] }],
+    });
+    assert.match(md, /\| \*\*Partenaire\*\* \| LIN \|/,
+      'la paire est gardée, et la clé mise en gras faute de `th` en colonne en Markdown');
+    assert.match(md, /\| \*\*Version\*\* \| 8 \|/);
+  });
+
+  test('une vraie ligne d’en-tête reste une ligne d’en-tête', () => {
+    const p = (t) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
+    const H = (t) => ({ type: 'tableHeader', content: [p(t)] });
+    const C = (t) => ({ type: 'tableCell', content: [p(t)] });
+    const md = jira.adfToMarkdown({
+      type: 'doc',
+      content: [{ type: 'table', content: [
+        { type: 'tableRow', content: [H('Champ'), H('Valeur')] },
+        { type: 'tableRow', content: [C('TVA'), C('20%')] },
+      ] }],
+    });
+    assert.equal(md.split('\n')[0], '| Champ | Valeur |');
+    // Et l'en-tête n'est pas mis en gras par-dessus : il est déjà un `th`.
+    assert.doesNotMatch(md, /\*\*Champ\*\*/);
+  });
+
+  test('les marques d’une cellule survivent au rendu du tableau', () => {
+    const md = jira.adfToMarkdown({
+      type: 'doc',
+      content: [{ type: 'table', content: [{ type: 'tableRow', content: [
+        { type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'urgent', marks: [{ type: 'strong' }] }] }] },
+      ] }] }],
+    });
+    assert.match(md, /\*\*urgent\*\*/, 'le gras était perdu quand on aplatissait les cellules');
+  });
+
   test('les liens non http(s) sont neutralisés (contenu Jira = source externe)', () => {
     const doc = (href) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'clic', marks: [{ type: 'link', attrs: { href } }] }] }] });
     assert.equal(jira.adfToMarkdown(doc('https://ok.test/x')), '[clic](https://ok.test/x)');

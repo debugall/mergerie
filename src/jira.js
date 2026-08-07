@@ -116,16 +116,66 @@ function block(node, depth = 0) {
   }
 }
 
-// Tableau ADF → tableau Markdown (best-effort).
+/* Un tableau Markdown tient sur UNE LIGNE par cellule. Jira, lui, autorise n'importe quel
+   bloc dans une cellule — et s'en sert : la mise en page courante d'un ticket technique est
+   une étiquette à gauche, un bloc de code à droite. Aplatir cela en cellules détruisait
+   exactement ce qu'on venait lire : le JSON se retrouvait sur une seule ligne, indentations
+   écrasées par le repli HTML, incopiable.
+
+   Quand une cellule porte un tel bloc, on DÉPLIE le tableau : chaque ligne devient une suite
+   de blocs rendus normalement, les lignes séparées par une règle. On perd la grille — qui
+   n'était de toute façon qu'une mise en page — et on garde le contenu. */
+const BLOC_HORS_CELLULE = new Set([
+  'codeBlock', 'bulletList', 'orderedList', 'table', 'heading', 'blockquote',
+  'mediaSingle', 'mediaGroup', 'rule', 'panel',
+]);
+const cellulesDe = (row) => (row.content || []).filter((c) => c.type === 'tableCell' || c.type === 'tableHeader');
+const celluleRiche = (c) => {
+  const kids = c.content || [];
+  // Plusieurs paragraphes souffrent du même écrasement : ils se collaient bout à bout.
+  return kids.some((k) => BLOC_HORS_CELLULE.has(k.type))
+    || kids.filter((k) => k.type === 'paragraph').length > 1;
+};
+
 function renderTable(node) {
   const rows = (node.content || []).filter((r) => r.type === 'tableRow');
   if (!rows.length) return '';
-  const cells = (row) => (row.content || []).map((c) => inline((c.content || []).flatMap((p) => p.content || [])).replace(/\n/g, ' ').trim());
+
+  if (rows.some((r) => cellulesDe(r).some(celluleRiche))) {
+    return rows
+      .map((r) => cellulesDe(r)
+        .map((c) => (c.content || []).map((k) => block(k)).filter((s) => s !== '').join('\n\n'))
+        .filter((s) => s !== '').join('\n\n'))
+      .filter((s) => s !== '').join('\n\n---\n\n');
+  }
+
+  /* Tableau ordinaire. Les cellules passent par `block()` et non par leur contenu aplati :
+     descendre d'un niveau perdait le TYPE du bloc, donc ses marques. Un `|` est échappé —
+     sans quoi il ouvrirait une colonne de plus et décalerait toute la ligne. */
+  const texte = (c) => (c.content || [])
+    .map((k) => block(k)).join(' ').replace(/\s*\n+\s*/g, ' ').replace(/\|/g, '\\|').trim();
+  /* Markdown n'a d'en-tête qu'en LIGNE. Un en-tête de colonne — la première cellule d'un
+     tableau clé/valeur — n'a donc pas d'équivalent : on le met en gras, faute de quoi il se
+     confondrait avec les données qu'il intitule. */
+  const cells = (row, enTete) => cellulesDe(row)
+    .map((c) => { const t = texte(c); return (!enTete && c.type === 'tableHeader' && t) ? `**${t}**` : t; });
+
+  /* Une VRAIE ligne d'en-tête a TOUTES ses cellules en `tableHeader` : c'est ce que produit
+     la case « ligne d'en-tête » de Jira. Promouvoir `rows[0]` sans vérifier déguisait en
+     titre la première ligne de données d'un tableau qui n'en avait pas — et, sur un tableau
+     clé/valeur (en-tête en première COLONNE, donc première ligne mixte), sacrifiait une paire
+     entière. Faute de ligne d'en-tête, on en émet une VIDE : Markdown en exige une, et un
+     en-tête vide ne ment sur rien — l'affichage la masque (cf. `md-table-nohead`). */
+  const avecEnTete = cellulesDe(rows[0]).length > 0
+    && cellulesDe(rows[0]).every((c) => c.type === 'tableHeader');
+  const corps = avecEnTete ? rows.slice(1) : rows;
+  const nbCol = Math.max(...rows.map((r) => cellulesDe(r).length));
+  const head = avecEnTete ? cells(rows[0], true) : Array(nbCol).fill('');
+
   const out = [];
-  const head = cells(rows[0]);
   out.push(`| ${head.join(' | ')} |`);
   out.push(`| ${head.map(() => '---').join(' | ')} |`);
-  for (const r of rows.slice(1)) out.push(`| ${cells(r).join(' | ')} |`);
+  for (const r of corps) out.push(`| ${cells(r, false).join(' | ')} |`);
   return out.join('\n');
 }
 

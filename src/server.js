@@ -47,6 +47,8 @@ const docx = require('./docx');
 const { pMap } = require('./pmap');
 const backup = require('./backup');
 const retention = require('./retention');
+const notes = require('./notes');
+const brief = require('./brief');
 const { t } = i18n;
 const { discoverAll } = require('./discover');
 const jobs = require('./jobs');
@@ -79,8 +81,12 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
   setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
 }));
 
+/* Le statut par défaut est 400 : la quasi-totalité des refus sont des saisies invalides.
+   Une erreur peut le SURCHARGER en portant `.status` — c'est ainsi qu'un objet absent rend
+   un 404 plutôt qu'un 400, distinction dont le front a besoin pour dire « supprimée entre
+   temps » au lieu de « saisie invalide ». */
 const wrap = (fn) => (req, res) => Promise.resolve().then(() => fn(req, res)).catch((e) => {
-  const status = e.code === 'BUSY' ? 409 : 400;
+  const status = e.code === 'BUSY' ? 409 : (Number.isInteger(e.status) && e.status >= 400 && e.status < 600 ? e.status : 400);
   res.status(status).json({ error: e.message });
 });
 
@@ -2841,6 +2847,103 @@ app.get('/api/backup', wrap(async (req, res) => {
   res.send(buffer);
 }));
 
+/* ---------- Notes, todos, rappels et brief (plan_add_notes.md) --------------
+   Tout est local : rien ne part vers l'agent ni vers une forge. Les messages d'erreur
+   traversent `t()` comme partout ailleurs — ils s'affichent tels quels dans l'interface. */
+
+// Les libellés d'erreur passés à src/notes.js. Regroupés parce que les mêmes servent à la
+// création et à l'édition : les dupliquer aux deux endroits les ferait diverger.
+const msgNotes = () => ({
+  titreVide: t('err.notes.title-required'),
+  inconnue: t('err.notes.unknown'),
+  prioriteInvalide: t('err.notes.priority-invalid'),
+  statutInvalide: t('err.notes.status-invalid'),
+  dateInvalide: t('err.notes.due-invalid'),
+  lienInvalide: t('err.notes.link-invalid'),
+});
+
+app.get('/api/notes', wrap((req, res) => {
+  res.json({ pages: notes.listerPages(req.query.q) });
+}));
+
+app.post('/api/notes', wrap((req, res) => {
+  res.json(notes.creerPage(req.body || {}, msgNotes()));
+}));
+
+app.get('/api/notes/:id', wrap((req, res) => {
+  const page = notes.lirePage(req.params.id);
+  if (!page) throw Object.assign(new Error(t('err.notes.unknown')), { status: 404 });
+  res.json(page);
+}));
+
+app.put('/api/notes/:id', wrap((req, res) => {
+  res.json(notes.majPage(req.params.id, req.body || {}, msgNotes()));
+}));
+
+app.delete('/api/notes/:id', wrap((req, res) => {
+  res.json(notes.supprimerPage(req.params.id, msgNotes()));
+}));
+
+/* Export d'une page en Markdown. Le nom du fichier est SLUGIFIÉ depuis le titre : un titre
+   porte des espaces, des accents et parfois un `/` — `Content-Disposition` n'est pas
+   l'endroit où découvrir qu'un nom de page contenait une traversée de chemin. */
+app.get('/api/notes/:id/export', wrap((req, res) => {
+  const page = notes.lirePage(req.params.id);
+  if (!page) throw Object.assign(new Error(t('err.notes.unknown')), { status: 404 });
+  res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${notes.slugifier(page.title)}.md"`);
+  res.send(`# ${page.title}\n\n${page.content || ''}\n`);
+}));
+
+app.get('/api/todos', wrap((req, res) => {
+  res.json({ todos: notes.listerTodos(req.query.status) });
+}));
+
+app.post('/api/todos', wrap((req, res) => {
+  res.json(notes.creerTodo(req.body || {}, msgNotes()));
+}));
+
+/* Édition, cocher/décocher ET snooze passent par la même route : ce sont les mêmes colonnes.
+   `snooze` est traduit ici en `due_at` plutôt que côté client — « demain 9 h » doit vouloir
+   dire la même chose que le rappel l'ait posé le navigateur ou le serveur. */
+app.put('/api/todos/:id', wrap((req, res) => {
+  const body = { ...(req.body || {}) };
+  if (body.snooze) {
+    const quand = notes.calculerSnooze(body.snooze);
+    if (!quand) throw new Error(t('err.notes.snooze-invalid'));
+    body.due_at = quand;
+    delete body.snooze;
+  }
+  res.json(notes.majTodo(req.params.id, body, msgNotes()));
+}));
+
+app.delete('/api/todos/:id', wrap((req, res) => {
+  res.json(notes.supprimerTodo(req.params.id, msgNotes()));
+}));
+
+// Ce qui est dû et pas encore annoncé. Le client notifie puis confirme (route ci-dessous).
+app.get('/api/todos/reminders/due', wrap((req, res) => {
+  res.json({ due: notes.rappelsDus() });
+}));
+
+/* Confirmation d'AFFICHAGE, envoyée par le client après la notification. Marquer à la
+   lecture aurait été plus simple, mais aurait consommé l'unique occasion de prévenir quand
+   la notification échoue (permission refusée, onglet fermé entre-temps). */
+app.post('/api/todos/:id/reminded', wrap((req, res) => {
+  res.json(notes.marquerNotifie(req.params.id, msgNotes()));
+}));
+
+/* Ce dont le RENDU a besoin pour transformer `!214` en lien : une table de résolution
+   iid → dépôts, pas la liste des MR. Un même numéro pouvant exister sur plusieurs dépôts,
+   on rend tous les candidats et le front décide (lien direct ou recherche pré-remplie). */
+app.get('/api/notes-index', wrap((req, res) => {
+  res.json({ mrs: notes.indexAutolink(), jira: demoDocker.isDemo() || jira.isConfigured(getConfig()) });
+}));
+
+app.get('/api/brief', wrap((req, res) => {
+  res.json(brief.construire({ staleDays: getConfig().stale_mr_days }));
+}));
+
 /* ---------- MRs ---------- */
 app.get('/api/mrs', wrap((req, res) => {
   const { status } = req.query;
@@ -3642,6 +3745,7 @@ const HOST = process.env.HOST || '127.0.0.1';
 // HOST est un nom très répandu (tcsh, PaaS, images CI) et n'importe quelle valeur héritée de
 // l'environnement (`::`, une IP de LAN…) expose l'app, qui n'a aucune authentification.
 let retentionTimer = null;
+let archiveTimer = null;
 const LOOPBACK = ['127.0.0.1', 'localhost', '::1'];
 const HOST_EXPOSED = !LOOPBACK.includes(HOST);
 // IPv6 : l'hôte doit être crocheté dans l'URL (http://[::1]:4319).
@@ -3659,6 +3763,8 @@ const server = app.listen(PORT, HOST, () => {
     () => getConfig().retention_days,
     (m) => console.log(`[retention] ${m}`),
   );
+  // Les todos faites depuis plus de sept jours quittent la liste — sans jamais être supprimées.
+  archiveTimer = notes.demarrerArchivage((m) => console.log(`[notes] ${m}`));
 });
 
 /* Exporté pour les tests de bout en bout : ils lancent le serveur EN PROCESSUS
@@ -3672,6 +3778,7 @@ module.exports = {
     // Un timer oublié garde le process en vie : la suite de tests ne rendrait jamais la main.
     if (jiraWatchTimer) { clearInterval(jiraWatchTimer); jiraWatchTimer = null; }
     if (retentionTimer) { clearInterval(retentionTimer); retentionTimer = null; }
+    if (archiveTimer) { clearInterval(archiveTimer); archiveTimer = null; }
     return new Promise((resolve) => server.close(resolve));
   },
 };
