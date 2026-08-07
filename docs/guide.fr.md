@@ -1284,6 +1284,7 @@ réglages ci-dessus sont aussi appliqués à git.
 ```bash
 npm i -D playwright && npx playwright install chromium   # une seule fois
 npm run record:demo                                       # → demo-recordings/mergerie-demo.webm
+npm run demo:gif                                          # → docs/demo.gif (celui du README)
 ```
 
 `scripts/record-demo.js` est autonome : il lance lui-même l'app en mode démo, attend le port 4319,
@@ -1294,6 +1295,12 @@ sélecteur de versions **v1 → v2 → v3** (progression **5,8 → 8,4**) → su
 (session reliée à sa MR, question posée par l'IA) → *Jira* → *Git* (explorateur de branches) →
 *Docker* (drift `.env` + logs live) → *Stats*. Le `.webm` produit s'uploade directement sur
 YouTube.
+
+**Le GIF du README** se fabrique du même enregistrement : `npm run demo:gif`. Les réglages (6 im/s,
+640 px, 128 couleurs, palette calculée sur la vidéo) sont calés pour tenir sous ~4,5 Mo — un fichier
+que GitHub recharge à chaque visite de la page d'accueil — sans rendre l'interface illisible. Ils
+vivent dans `scripts/demo-gif.sh` plutôt que dans une commande à retrouver : les redécouvrir coûte
+une demi-heure et donne un fichier deux fois trop lourd.
 
 ## Mode dry-run (sans IA)
 

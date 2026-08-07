@@ -39,6 +39,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   costs nothing. The bar collapses to icons from a button at the foot of the column, remembers the choice,
   and collapses on its own below 1100 px. The header space this freed now carries the palette's search
   field, which had the opposite problem: being invisible unless you knew the shortcut.
+  The README's animation was re-recorded on the new shell, and the settings that turn the recording
+  into that GIF now live in `scripts/demo-gif.sh` (`npm run demo:gif`) instead of having to be worked
+  out again each time.
 
 
 - **Back up your data in one click.** Settings → General now produces a dated `.zip` holding the database

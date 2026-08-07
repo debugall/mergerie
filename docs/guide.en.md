@@ -1236,6 +1236,7 @@ settings above are applied to git as well.
 ```bash
 npm i -D playwright && npx playwright install chromium   # once
 npm run record:demo                                       # → demo-recordings/mergerie-demo.webm
+npm run demo:gif                                          # → docs/demo.gif (the README one)
 ```
 
 `scripts/record-demo.js` is self-contained: it launches the app in demo mode itself, waits for port 4319,
@@ -1245,6 +1246,12 @@ down cleanly (closing the context flushes the video). The route: *Reviews* → a
 selector **v1 → v2 → v3** (a progression from **5.8 to 8.4**) → resolution tracking → *AI Dev* (a session
 linked to its MR, a question asked by the AI) → *Jira* → *Git* (the branch explorer) → *Docker* (`.env`
 drift + live logs) → *Stats*. The `.webm` produced uploads straight to YouTube.
+
+**The README's GIF** comes from the same recording: `npm run demo:gif`. Its settings (6 fps, 640 px,
+128 colours, palette computed on the video) are tuned to stay under ~4.5 MB — a file GitHub reloads
+on every visit to the landing page — without making the interface unreadable. They live in
+`scripts/demo-gif.sh` rather than in a command to be rediscovered: working them out again costs half
+an hour and yields a file twice too heavy.
 
 ## Dry-run mode (no AI)
 

@@ -39,7 +39,8 @@
     "check:docs": "node scripts/check-docs.js",
     "check": "npm run check:front && npm run check:server && npm run check:docs && npm run i18n:check",
     "demo": "node scripts/demo-seed.js && MERGERIE_DEMO=1 MERGERIE_DATA_DIR=data-demo COPILOT_DRY_RUN=1 node src/server.js",
-    "record:demo": "node scripts/record-demo.js"
+    "record:demo": "node scripts/record-demo.js",
+    "demo:gif": "sh scripts/demo-gif.sh"
   },
   "engines": {
     "node": ">=22.9.0"
