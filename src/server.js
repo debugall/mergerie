@@ -2976,6 +2976,11 @@ app.get('/api/environments', wrap((req, res) => { res.json({ environments: links
 app.post('/api/environments', wrap((req, res) => { res.json(links.creerEnvironnement(req.body || {}, msgLinks())); }));
 app.put('/api/environments/:id', wrap((req, res) => { res.json(links.majEnvironnement(req.params.id, req.body || {}, msgLinks())); }));
 app.delete('/api/environments/:id', wrap((req, res) => { res.json(links.supprimerEnvironnement(req.params.id, msgLinks())); }));
+/* Déplacer une colonne d'un cran. Un POST et non un PUT de `position` : le client n'a pas à
+   savoir quelles positions portent les voisines, il dit seulement de quel côté aller. */
+app.post('/api/environments/:id/move', wrap((req, res) => {
+  res.json(links.deplacerEnvironnement(req.params.id, (req.body || {}).dir, msgLinks()));
+}));
 
 app.post('/api/services', wrap((req, res) => { res.json(links.creerService(req.body || {}, msgLinks())); }));
 app.put('/api/services/:id', wrap((req, res) => { res.json(links.majService(req.params.id, req.body || {}, msgLinks())); }));

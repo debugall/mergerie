@@ -2253,6 +2253,52 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .link-health.unknown { background: var(--muted); }
 
 .link-free-head { margin: 26px 0 8px; font-size: 15px; }
+
+/* ---- Onglet Liens : ce qui se fait, et ce qui se voit ------------------------------------
+   Les boutons d'action de la grille (crayon, flèches, réglages) restent INVISIBLES au repos
+   et apparaissent au survol de leur ligne ou colonne — et au focus clavier, sans quoi ils
+   n'existeraient que pour la souris. Une grille de vingt services couverte de trente icônes
+   ne se lit plus ; une grille qui n'en montre aucune ne laisse rien deviner. Le survol est
+   le compromis : calme au repos, complet dès qu'on s'approche. */
+.link-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; flex: none;
+  border: 1px solid transparent; border-radius: var(--r-sm);
+  background: transparent; color: var(--muted); cursor: pointer;
+  opacity: 0; transition: opacity .12s ease, color .12s ease, border-color .12s ease;
+}
+.link-icon .ico { width: 14px; height: 14px; }
+.link-icon:hover { color: var(--text); border-color: var(--line); background: var(--panel2); }
+.link-icon:disabled { opacity: 0 !important; cursor: default; }
+/* Au clavier, l'icône se montre dès qu'elle prend le focus : sans ça elle serait atteignable
+   par Tab tout en restant invisible — le pire des deux mondes. */
+.link-icon:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: 1px; }
+.link-cell:hover .link-icon,
+.link-grid tr:hover .link-svc-name .link-icon,
+.link-grid th:hover .link-icon { opacity: 1; }
+.link-grid th:hover .link-icon:disabled { opacity: .25 !important; }
+
+.link-cell { position: relative; }
+.link-cell .link-edit { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: var(--panel); }
+.link-env-acts { display: inline-flex; align-items: center; gap: 1px; margin-left: 4px; }
+
+/* La ligne qu'on vient de créer ou de modifier se signale, puis se tait. */
+@keyframes link-flash { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } to { background: transparent; } }
+.link-flash td { animation: link-flash 1.6s ease-out; }
+
+/* La pastille « N injoignables » : un bouton, pas une décoration — il filtre. */
+.btn-down { color: var(--danger); border-color: var(--danger); gap: 6px; }
+.btn-down.active { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn-down.active .link-health.down { background: #fff; }
+
+/* Les adresses par environnement, dans la modale de service. */
+.link-urls-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.link-url-row { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 10px; }
+.link-url-row > .link-env { font-size: 12px; color: var(--muted); }
+
+.link-free-bar { padding-left: 0; padding-right: 0; }
+.link-free-bar .link-free-head { margin: 0; }
+
 .link-free-list { display: flex; flex-direction: column; gap: 4px; max-width: 900px; }
 .link-free-row {
   display: flex; align-items: center; gap: 10px; padding: 8px 12px;

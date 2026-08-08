@@ -63,6 +63,15 @@ lines.forEach((l, i) => {
 });
 unknown.length ? fail('Sélecteur pointant un id inconnu', unknown) : ok(`Tous les id référencés existent (${htmlIds.size} dans le HTML)`);
 
+/* 3 bis. Un id porté DEUX FOIS. `$('#x')` rend alors le premier dans l'ordre du document, qui
+   n'est pas forcément celui qu'on visait : le bouton se branche sur un autre écran et ne
+   répond pas, sans la moindre erreur. Vu en vrai — un « Ajouter » de l'onglet Liens est allé
+   se brancher sur l'« Ajouter » des projets liés d'une review. */
+const vus = new Map();
+for (const m of html.matchAll(/\bid="([\w-]+)"/g)) vus.set(m[1], (vus.get(m[1]) || 0) + 1);
+const doubles = [...vus].filter(([, n]) => n > 1).map(([id, n]) => `#${id} apparaît ${n} fois dans index.html`);
+doubles.length ? fail('Id porté par plusieurs éléments', doubles) : ok('Aucun id en double dans le HTML');
+
 /* 4. Symboles d'icône utilisés mais absents du sprite. */
 const symbols = new Set([...html.matchAll(/<symbol id="([\w-]+)"/g)].map((m) => m[1]));
 const usedIcons = new Set([...(app + html).matchAll(/href="#(i-[\w-]+)"/g)].map((m) => m[1]));

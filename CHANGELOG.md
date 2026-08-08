@@ -347,6 +347,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   The tagline under the product name no longer runs all the way to the navigation: it breaks where the
   sentence does, between what the AI prepares and what you merge.
 
+- **The Links tab now leads with what you do every day.** Its top bar carried four setup buttons —
+  new environment, new service, import, health check — while finding a link, the daily gesture, had
+  no place at all. A single search field takes that space and filters **both halves of the screen**,
+  grid and free links together; `+ Add` and a `⋯` menu hold the rest. When the grid has nothing but
+  the free links do, the message points down instead of claiming nothing matches. Creating a service
+  now asks for its addresses, one row per environment, and scrolls to the new row rather than
+  leaving you to find it. Columns can be reordered from their header, services pinned to the top,
+  and the free-link checkboxes only appear when you ask to select. An “N unreachable” chip filters
+  the grid down to what is failing — the menu badge said there was a problem, nothing led to it.
+
 - **The presentation video is recorded in both languages, and shows the new tabs.** `npm run record:demo`
   now produces a French and an English `.webm` rather than one French recording, and the tour takes in
   Notes, Links and the collapsing column alongside the screens it already covered. Dropdowns are redrawn
@@ -364,6 +374,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   cancelling closes it again.
 
 ### Fixed
+
+- **A filled grid cell can be corrected again.** The Links tab let you type a URL into an empty cell,
+  and then never again: a filled cell was only a link, and the service form held no address field.
+  Fixing a typo meant deleting the whole service — losing its other URLs and its contextual links —
+  and typing everything back. A pencil now appears on hover, the field opens pre-filled, and
+  clearing it clears the cell, which is what the guide had been promising all along.
 
 - **Collapsing the navigation column no longer empties the screen.** The collapse button lives in the
   column with the tabs, and the tab handler took it for one of them: clicking it deactivated every tab,

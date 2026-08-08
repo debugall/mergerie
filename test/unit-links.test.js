@@ -236,6 +236,84 @@ describe('palette : le plafond ne cache pas ce qu’on cherche', () => {
   });
 });
 
+/* Créer un service SANS ses adresses rendait une ligne vide, qu'il fallait ensuite retrouver
+   dans la grille pour la remplir case par case. Le formulaire les demande maintenant. */
+describe('créer un service avec ses adresses', () => {
+  const neuf = () => {
+    db.prepare('DELETE FROM service').run();
+    db.prepare('DELETE FROM environment').run();
+    return [links.creerEnvironnement({ name: 'local' }, MSGS), links.creerEnvironnement({ name: 'prod' }, MSGS)];
+  };
+
+  test('les adresses fournies sont posées avec le service', () => {
+    const [local, prod] = neuf();
+    const s = links.creerService({
+      name: 'api', urls: [{ environment_id: local.id, url: 'http://localhost:8080' }, { environment_id: prod.id, url: 'https://api.test' }],
+    }, MSGS);
+    const ligne = links.grille().services.find((x) => x.id === s.id);
+    assert.deepEqual(ligne.urls, { [local.id]: 'http://localhost:8080', [prod.id]: 'https://api.test' });
+  });
+
+  test('une case laissée vide reste vide, sans erreur', () => {
+    const [local] = neuf();
+    const s = links.creerService({ name: 'api', urls: [{ environment_id: local.id, url: '  ' }] }, MSGS);
+    assert.deepEqual(links.grille().services.find((x) => x.id === s.id).urls, {});
+  });
+
+  /* TOUT OU RIEN. Une adresse invalide au milieu ne doit pas laisser derrière elle un service
+     à moitié rempli — et un nom déjà pris au moment de rejouer. */
+  test('une adresse invalide ne laisse rien derrière elle', () => {
+    const [local, prod] = neuf();
+    assert.throws(() => links.creerService({
+      name: 'api', urls: [{ environment_id: local.id, url: 'https://bon.test' }, { environment_id: prod.id, url: 'pas-une-url' }],
+    }, MSGS), /URL-INVALIDE/);
+    assert.equal(links.grille().services.length, 0, 'le service est défait');
+    // …et rejouer proprement fonctionne.
+    assert.ok(links.creerService({ name: 'api', urls: [{ environment_id: local.id, url: 'https://bon.test' }] }, MSGS).id);
+  });
+});
+
+/* L'ordre des colonnes était celui de la création, définitivement : une prod créée avant la
+   preprod restait mal placée pour toujours. */
+describe('déplacer une colonne', () => {
+  const trois = () => {
+    db.prepare('DELETE FROM environment').run();
+    return ['local', 'prod', 'dev'].map((n) => links.creerEnvironnement({ name: n }, MSGS));
+  };
+  const noms = () => links.grille().environments.map((e) => e.name);
+
+  test('un cran à gauche, un cran à droite', () => {
+    const [, , dev] = trois();
+    assert.deepEqual(noms(), ['local', 'prod', 'dev']);
+    links.deplacerEnvironnement(dev.id, -1, MSGS);
+    assert.deepEqual(noms(), ['local', 'dev', 'prod']);
+    links.deplacerEnvironnement(dev.id, 1, MSGS);
+    assert.deepEqual(noms(), ['local', 'prod', 'dev']);
+  });
+
+  test('au bout de la rangée, rien ne bouge et ce n’est pas une faute', () => {
+    const [local] = trois();
+    assert.deepEqual(links.deplacerEnvironnement(local.id, -1, MSGS), { ok: true, moved: false });
+    assert.deepEqual(noms(), ['local', 'prod', 'dev']);
+  });
+
+  /* Deux environnements semés dans la même seconde peuvent porter la MÊME position. Un échange
+     direct entre deux valeurs égales ne changerait rien : le bouton semblerait cassé. */
+  test('des positions identiques ne bloquent pas le déplacement', () => {
+    trois();
+    db.prepare('UPDATE environment SET position = 1').run();
+    const avant = noms();
+    links.deplacerEnvironnement(links.grille().environments[2].id, -1, MSGS);
+    const apres = noms();
+    assert.notDeepEqual(apres, avant, `l’ordre doit changer (avant ${avant}, après ${apres})`);
+    assert.equal(apres[1], avant[2], 'le troisième est passé en deuxième');
+  });
+
+  test('un environnement inconnu est refusé', () => {
+    assert.throws(() => links.deplacerEnvironnement(99999, 1, MSGS), /INCONNU/);
+  });
+});
+
 describe('import : le format « Netscape » de Chrome', () => {
   const FICHIER = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
 <DL><p>

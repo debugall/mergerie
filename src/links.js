@@ -149,6 +149,38 @@ function majEnvironnement(id, patch = {}, msgs) {
   return db.prepare('SELECT * FROM environment WHERE id = ?').get(env.id);
 }
 
+/* Déplacer une colonne d'un cran. L'ordre des environnements est celui qu'on leur donne, et
+   jusqu'ici on ne pouvait plus le corriger : une prod créée avant la preprod restait mal
+   placée pour toujours.
+
+   On RENUMÉROTE d'abord de 1 à n dans l'ordre courant, puis on échange deux voisins. Le
+   détour paraît inutile, il ne l'est pas : deux environnements créés dans la même seconde
+   peuvent porter la même `position`, et un échange direct entre deux valeurs égales ne
+   changerait rien — le bouton semblerait cassé. Renuméroter d'abord rend le geste
+   toujours vrai, quel que soit l'état d'où l'on part.
+
+   Le tout dans une transaction : à mi-chemin, deux colonnes portent le même numéro, et
+   personne ne doit voir cet instant-là. */
+function deplacerEnvironnement(id, dir, msgs) {
+  const env = db.prepare('SELECT 1 FROM environment WHERE id = ?').get(Number(id) || 0);
+  if (!env) throw erreur(msgs.inconnu, 404);
+  const sens = Number(dir) < 0 ? -1 : 1;
+  let bouge = false;
+  db.transaction(() => {
+    const maj = db.prepare('UPDATE environment SET position = ? WHERE id = ?');
+    const ordre = db.prepare('SELECT id FROM environment ORDER BY position, id').all().map((e) => e.id);
+    ordre.forEach((eid, i) => maj.run(i + 1, eid));
+    const i = ordre.indexOf(Number(id));
+    const j = i + sens;
+    // Au bout de la rangée : rien à faire, et ce n'est pas une faute — le bouton reste là.
+    if (j < 0 || j >= ordre.length) return;
+    maj.run(j + 1, ordre[i]);
+    maj.run(i + 1, ordre[j]);
+    bouge = true;
+  })();
+  return { ok: true, moved: bouge };
+}
+
 function supprimerEnvironnement(id, msgs) {
   const env = db.prepare('SELECT 1 FROM environment WHERE id = ?').get(Number(id) || 0);
   if (!env) throw erreur(msgs.inconnu, 404);
@@ -160,12 +192,22 @@ function supprimerEnvironnement(id, msgs) {
 
 const lireService = (id) => db.prepare('SELECT * FROM service WHERE id = ?').get(Number(id) || 0);
 
+/* `body.urls` est FACULTATIF, mais c'est lui qui fait la différence entre créer un service et
+   créer un service UTILISABLE. Sans lui, enregistrer rendait une ligne vide qu'il fallait
+   ensuite retrouver dans la grille pour la remplir case par case. Tout ou rien : une URL
+   invalide au milieu ne doit pas laisser un service à moitié rempli derrière elle. */
 function creerService(body = {}, msgs) {
   const name = lireLabel(body.name, msgs.nomVide);
   if (db.prepare('SELECT 1 FROM service WHERE name = ?').get(name)) throw erreur(msgs.nomPris);
-  const info = db.prepare('INSERT INTO service (name, repo_id, tags, pinned, created_at) VALUES (?,?,?,?,?)')
-    .run(name, lireRepoId(body.repo_id), JSON.stringify(lireTags(body.tags, msgs.tropDeTags)), body.pinned ? 1 : 0, nowIso());
-  return lireService(info.lastInsertRowid);
+  const urls = Array.isArray(body.urls) ? body.urls.filter((u) => u && String(u.url || '').trim()) : [];
+  let id = 0;
+  db.transaction(() => {
+    const info = db.prepare('INSERT INTO service (name, repo_id, tags, pinned, created_at) VALUES (?,?,?,?,?)')
+      .run(name, lireRepoId(body.repo_id), JSON.stringify(lireTags(body.tags, msgs.tropDeTags)), body.pinned ? 1 : 0, nowIso());
+    id = info.lastInsertRowid;
+    for (const u of urls) poserUrl(id, { environment_id: u.environment_id, url: u.url }, msgs);
+  })();
+  return lireService(id);
 }
 
 // Un dépôt inexistant ne se rattache pas : la colonne accepte NULL, autant y mettre NULL.
@@ -663,6 +705,7 @@ function appliquerImport(body = {}, msgs) {
 }
 
 module.exports = {
+  deplacerEnvironnement,
   VARIABLES, MAX_LABEL, MAX_TAG, MAX_TAGS, MAX_IMPORT,
   lireUrl, lireTags, normaliserTag, lireTemplate, resoudreTemplate, scoreFuzzy, frecence,
   listerEnvironnements, creerEnvironnement, majEnvironnement, supprimerEnvironnement,

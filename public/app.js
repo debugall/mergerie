@@ -9745,7 +9745,7 @@ function marquerBriefVu() {
    en dev, en preprod et en prod : ils en font quatre entrées dans quatre dossiers. D'où une
    GRILLE — services en lignes, environnements en colonnes — et, à côté, des liens libres à
    plat pour tout ce qui n'a pas de dimension environnement. Deux formes, deux réalités. */
-const LINKS = { grid: null, tag: '', freeQ: '', selection: new Set(), importLinks: [] };
+const LINKS = { grid: null, tag: '', q: '', onlyDown: false, selectMode: false, selection: new Set(), importLinks: [] };
 
 async function loadLinks() {
   const box = $('#linkGrid');
@@ -9757,9 +9757,24 @@ async function loadLinks() {
   renderLinkGrid();
   renderFreeLinks();
   majBadgeLinks(LINKS.grid.down || 0);
-  const dispo = (LINKS.grid.environments || []).some((e) => e.health_check);
-  const b = $('#linkHealthNow');
-  if (b) b.hidden = !dispo;
+  majBarreLiens();
+}
+
+/* La barre du haut suit l'état : « Vérifier la santé » n'apparaît que si un environnement est
+   sous surveillance, et la pastille « N injoignables » que s'il y a quelque chose à montrer.
+   Un bouton qui ne peut rien faire vaut moins que pas de bouton. */
+function majBarreLiens() {
+  const g = LINKS.grid || {};
+  const h = $('#linkMoreMenu [data-more="health"]');
+  if (h) h.hidden = !(g.environments || []).some((e) => e.health_check);
+  const n = g.down || 0;
+  const f = $('#linkDownFilter');
+  if (f) {
+    f.hidden = !n && !LINKS.onlyDown;
+    f.classList.toggle('active', LINKS.onlyDown);
+    f.setAttribute('aria-pressed', String(LINKS.onlyDown));
+    $('span:last-child', f).textContent = n ? tr('links.down.filter', { n, count: n }) : tr('links.down.none');
+  }
 }
 
 /* Le badge du menu compte les cases DOWN. Comme celui de Docker : ce qui est cassé se
@@ -9781,27 +9796,58 @@ function renderLinkTags() {
   box.innerHTML = tags.map((t) => `<button type="button" class="link-tag${LINKS.tag === t ? ' active' : ''}" data-linktag="${esc(t)}">${esc(t)}</button>`).join('');
 }
 
-const serviceVisible = (s) => !LINKS.tag || (s.tags || []).includes(LINKS.tag);
+/* UNE requête pour les deux moitiés de l'écran. Un service se cherche par son nom, ses tags,
+   son dépôt ou n'importe laquelle de ses URLs — c'est souvent l'URL qu'on a en tête (« celui
+   qui est sur kibana-preprod ») plutôt que le nom qu'on lui a donné. */
+function serviceVisible(s) {
+  if (LINKS.tag && !(s.tags || []).includes(LINKS.tag)) return false;
+  if (LINKS.onlyDown && !Object.values(s.health || {}).some((h) => h && h.status === 'down')) return false;
+  if (!LINKS.q) return true;
+  const foin = [s.name, s.project || '', ...(s.tags || []), ...Object.values(s.urls || {})].join(' ').toLowerCase();
+  return LINKS.q.split(/\s+/).filter(Boolean).every((m) => foin.includes(m));
+}
+const freeVisible = (l) => (!LINKS.tag || (l.tags || []).includes(LINKS.tag))
+  && (!LINKS.onlyDown)
+  && (!LINKS.q || LINKS.q.split(/\s+/).filter(Boolean)
+    .every((m) => `${l.label} ${l.url} ${(l.tags || []).join(' ')}`.toLowerCase().includes(m)));
 
 function renderLinkGrid() {
   const box = $('#linkGrid');
   const { environments: envs = [], services = [] } = LINKS.grid || {};
   if (!envs.length && !services.length) {
+    /* L'IMPORT EN PREMIER : c'est le chemin le plus court entre « écran vide » et « outil
+       utile ». Créer un environnement puis un service puis coller une URL demande trois
+       gestes avant de voir quoi que ce soit. */
     box.innerHTML = emptyState({
-      icon: 'link', title: esc(tr('links.empty.title')), text: esc(tr('links.empty.text')),
-      actions: [{ act: 'newenv', label: esc(tr('links.env.new')), primary: true }],
+      icon: 'link', title: esc(tr('links.empty.title')), text: esc(tr('links.empty.text2')),
+      actions: [
+        { act: 'import', label: esc(tr('links.empty.import')), primary: true },
+        { act: 'newenv', label: esc(tr('links.env.new')) },
+      ],
     });
     return;
   }
   const visibles = services.filter(serviceVisible);
   if (!visibles.length) {
-    box.innerHTML = `<p class="muted">${esc(tr('links.no-match', { tag: LINKS.tag }))}</p>`;
+    /* Le message dit ce qui est vrai DE LA GRILLE, et renvoie vers l'autre moitié de l'écran :
+       « rien ne correspond » affiché au-dessus de trois résultats est un mensonge d'affichage. */
+    const ailleurs = ((LINKS.grid || {}).free_links || []).some(freeVisible);
+    box.innerHTML = `<p class="muted">${esc(tr(ailleurs ? 'links.grid.no-match'
+      : (LINKS.onlyDown ? 'links.down.none' : 'links.no-match-all')))}</p>`;
     return;
   }
 
-  const entete = envs.map((e) => `<th><span class="link-env">`
+  /* L'en-tête ÉTAIT cliquable sans rien pour le dire, et l'ordre des colonnes ne se corrigeait
+     pas. Les trois boutons n'apparaissent qu'au survol (et au focus clavier) : la grille reste
+     calme au repos, et ce qui est faisable finit par se voir. */
+  const entete = envs.map((e, i) => `<th><span class="link-env">`
     + `<span class="link-env-dot" style="background:${esc(e.color)}"></span>${esc(e.name)}`
-    + `${e.health_check ? ` <span class="muted" title="${esc(tr('links.env.health'))}">${svgIco('refresh')}</span>` : ''}</span></th>`).join('');
+    + `${e.health_check ? ` <span class="muted" title="${esc(tr('links.env.health'))}">${svgIco('refresh')}</span>` : ''}`
+    + `<span class="link-env-acts">`
+    + `<button type="button" class="link-icon" data-envmove="${e.id}" data-dir="-1"${i === 0 ? ' disabled' : ''} title="${esc(tr('links.env.move-left'))}" aria-label="${esc(tr('links.env.move-left'))}">${svgIco('left')}</button>`
+    + `<button type="button" class="link-icon" data-envmove="${e.id}" data-dir="1"${i === envs.length - 1 ? ' disabled' : ''} title="${esc(tr('links.env.move-right'))}" aria-label="${esc(tr('links.env.move-right'))}">${svgIco('right')}</button>`
+    + `<button type="button" class="link-icon" data-envedit="${e.id}" title="${esc(tr('links.env.settings'))}" aria-label="${esc(tr('links.env.settings'))}">${svgIco('sliders')}</button>`
+    + `</span></span></th>`).join('');
 
   const lignes = visibles.map((s) => {
     const cases = envs.map((e) => {
@@ -9812,21 +9858,29 @@ function renderLinkGrid() {
       }
       /* `rel="noopener noreferrer"` sur TOUTES les ouvertures externes : l'onglet ouvert ne
          doit rien pouvoir faire de la page qui l'a ouvert. */
+      /* LE CRAYON. Une case remplie n'offrait aucun chemin de retour : pour corriger une faute
+         de frappe il fallait supprimer le service — et perdre ses autres URLs et ses liens
+         contextuels — puis tout ressaisir. Le guide promettait pourtant que vider le champ
+         efface la case ; la promesse était devenue inatteignable. */
       return `<td class="link-cell"><a class="link-open" href="${esc(url)}" target="_blank" rel="noopener noreferrer"
           data-usekind="service_url" data-useref="${s.id}:${e.id}" title="${esc(url)}">
           ${h ? `<span class="link-health ${esc(h.status)}" title="${esc(santeInfo(h))}"></span>` : ''}
-          <span>${esc(urlCourte(url))}</span></a></td>`;
+          <span>${esc(urlCourte(url))}</span></a>
+        <button type="button" class="link-icon link-edit" data-editurl="${s.id}" data-env="${e.id}"
+          title="${esc(tr('links.url.edit'))}" aria-label="${esc(tr('links.url.edit'))}">${svgIco('edit')}</button></td>`;
     }).join('');
     return `<tr>
       <td class="link-svc">
         <div class="link-svc-name">
           ${s.pinned ? `<span title="${esc(tr('links.service.pinned'))}">${svgIco('tag')}</span>` : ''}
           <button type="button" class="btn btn-sm btn-ghost" data-editservice="${s.id}" title="${esc(tr('links.service.edit'))}">${esc(s.name)}</button>
+          <button type="button" class="link-icon link-edit" data-editservice="${s.id}"
+            title="${esc(tr('links.service.edit'))}" aria-label="${esc(tr('links.service.edit'))}">${svgIco('edit')}</button>
         </div>
         <div class="link-svc-meta">
           ${s.project ? `<span title="${esc(tr('links.service.repo'))}">${svgIco('branch')} ${esc(s.project)}</span>` : ''}
           ${(s.tags || []).map((t) => `<span class="link-svc-tag">${esc(t)}</span>`).join('')}
-          ${s.context_links ? `<span title="${esc(tr('links.ctx.title'))}">${svgIco('zap')} ${s.context_links}</span>` : ''}
+          ${s.context_links ? `<span class="link-svc-tag">${svgIco('zap')} ${esc(tr('links.ctx.count', { n: s.context_links, count: s.context_links }))}</span>` : ''}
         </div>
       </td>${cases}</tr>`;
   }).join('');
@@ -9853,18 +9907,33 @@ const santeInfo = (h) => [
 
 function renderFreeLinks() {
   const box = $('#linkFreeList');
-  const q = LINKS.freeQ.toLowerCase();
-  const tous = ((LINKS.grid && LINKS.grid.free_links) || [])
-    .filter((l) => (!LINKS.tag || (l.tags || []).includes(LINKS.tag))
-      && (!q || l.label.toLowerCase().includes(q) || l.url.toLowerCase().includes(q)));
+  /* « Injoignable » est une notion de GRILLE : un lien libre n'a pas d'environnement, donc
+     pas d'état. Sous ce filtre, la section entière disparaît — la laisser afficher « aucun
+     lien libre ne correspond » aurait annoncé une absence qui n'a pas de sens. */
+  const bloc = $('#tab-links .link-free-bar');
+  if (bloc) bloc.hidden = LINKS.onlyDown;
+  box.hidden = LINKS.onlyDown;
+  if (LINKS.onlyDown) return;
+  const tous = ((LINKS.grid && LINKS.grid.free_links) || []).filter(freeVisible);
   const btn = $('#linkToService');
-  if (btn) btn.hidden = LINKS.selection.size < 1;
+  if (btn) btn.hidden = !LINKS.selectMode || LINKS.selection.size < 1;
+  const sel = $('#linkFreeSelect');
+  if (sel) {
+    // Rien à cocher : proposer de sélectionner serait proposer un geste sans objet.
+    sel.hidden = !((LINKS.grid && LINKS.grid.free_links) || []).length;
+    sel.classList.toggle('active', LINKS.selectMode);
+    sel.setAttribute('aria-pressed', String(LINKS.selectMode));
+    $('span', sel).textContent = tr(LINKS.selectMode ? 'links.select.done' : 'links.select');
+  }
+  // Le compte se lit à côté du titre : il dit ce que le filtre a laissé, sans compter à la main.
+  const cpt = $('#linkFreeCount');
+  if (cpt) cpt.textContent = tous.length ? tr('links.free.count', { n: tous.length, count: tous.length }) : '';
   if (!tous.length) {
-    box.innerHTML = `<p class="muted">${esc(tr(LINKS.freeQ || LINKS.tag ? 'links.no-match' : 'links.free.empty', { tag: LINKS.tag }))}</p>`;
+    box.innerHTML = `<p class="muted">${esc(tr(LINKS.q || LINKS.tag ? 'links.free.no-match' : 'links.free.empty'))}</p>`;
     return;
   }
   box.innerHTML = tous.map((l) => `<div class="link-free-row">
-      <input type="checkbox" data-freepick="${l.id}"${LINKS.selection.has(l.id) ? ' checked' : ''} aria-label="${esc(tr('links.free.pick'))}" />
+      ${LINKS.selectMode ? `<input type="checkbox" data-freepick="${l.id}"${LINKS.selection.has(l.id) ? ' checked' : ''} aria-label="${esc(tr('links.free.pick'))}" />` : ''}
       <span class="link-free-label">${esc(l.label)}</span>
       ${(l.tags || []).map((t) => `<span class="link-svc-tag">${esc(t)}</span>`).join('')}
       <a class="link-free-url" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer"
@@ -9888,21 +9957,97 @@ $('#linkTags') && $('#linkTags').addEventListener('click', (e) => {
   LINKS.tag = LINKS.tag === b.dataset.linktag ? '' : b.dataset.linktag;
   renderLinkTags(); renderLinkGrid(); renderFreeLinks();
 });
-$('#linkFreeSearch') && $('#linkFreeSearch').addEventListener('input', () => {
-  LINKS.freeQ = $('#linkFreeSearch').value.trim();
+/* Une frappe filtre les DEUX moitiés de l'écran d'un coup. Rien à recharger : tout est déjà
+   côté client, la palette globale s'occupant de ce qui n'est pas chargé. */
+$('#linkSearch') && $('#linkSearch').addEventListener('input', () => {
+  LINKS.q = $('#linkSearch').value.trim().toLowerCase();
+  renderLinkGrid();
+  renderFreeLinks();
+});
+
+const menuLiens = (bouton, menu) => {
+  const b = $(bouton);
+  if (!b) return;
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const ouvrir = $(menu).hidden;
+    closeSplitMenus();
+    $(menu).hidden = !ouvrir;
+    b.setAttribute('aria-expanded', String(ouvrir));
+  });
+};
+menuLiens('#linksAdd', '#linkAddMenu');
+menuLiens('#linkMore', '#linkMoreMenu');
+
+$('#linkAddMenu') && $('#linkAddMenu').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-add]');
+  if (!b) return;
+  closeSplitMenus();
+  if (b.dataset.add === 'free') openFreeModal(null);
+  else if (b.dataset.add === 'service') openServiceModal(null);
+  else openEnvModal(null);
+});
+$('#linkMoreMenu') && $('#linkMoreMenu').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-more]');
+  if (!b) return;
+  closeSplitMenus();
+  if (b.dataset.more === 'import') ouvrirImport();
+  else busy(b, lancerHealth);
+});
+
+/* La pastille mène AU problème. Le badge du menu disait qu'il y en avait un ; rien n'y menait,
+   et il fallait parcourir la grille à l'œil pour trouver la pastille rouge. */
+$('#linkDownFilter') && $('#linkDownFilter').addEventListener('click', () => {
+  LINKS.onlyDown = !LINKS.onlyDown;
+  majBarreLiens();
+  renderLinkGrid();
+  renderFreeLinks();
+});
+
+/* Le mode sélection : les cases à cocher n'existent que le temps de s'en servir. En sortir
+   vide la sélection — la garder en mémoire ferait agir plus tard sur des lignes invisibles. */
+$('#linkFreeSelect') && $('#linkFreeSelect').addEventListener('click', () => {
+  LINKS.selectMode = !LINKS.selectMode;
+  if (!LINKS.selectMode) LINKS.selection.clear();
   renderFreeLinks();
 });
 
 /* Ajout d'une URL DANS la case : le champ remplace le `+`, Entrée valide, Échap annule.
    Ouvrir une modale pour coller une adresse aurait coûté trois clics là où il en faut un. */
+/* Ouvre le champ DANS la case, vide pour un ajout, pré-rempli pour une correction. La
+   sélection du texte à l'ouverture est délibérée : neuf fois sur dix on remplace l'adresse
+   plutôt qu'on ne la retouche, et retaper par-dessus ne doit pas demander un Ctrl+A. */
+function ouvrirCase(td, sid, eid, valeur = '') {
+  td.innerHTML = `<input type="url" placeholder="https://…" data-urlfor="${sid}" data-env="${eid}"
+    title="${esc(tr('links.url.edit-hint'))}" value="${esc(valeur)}" />`;
+  const i = $('input', td);
+  i.focus();
+  i.select();
+}
 $('#linkGrid') && $('#linkGrid').addEventListener('click', (e) => {
+  const mv = e.target.closest('[data-envmove]');
+  if (mv) {
+    busy(mv, async () => {
+      try {
+        await api(`/environments/${mv.dataset.envmove}/move`, { method: 'POST', body: { dir: Number(mv.dataset.dir) } });
+        await loadLinks();
+      } catch (err) { toast(explainError(err.message), true); }
+    });
+    return;
+  }
+  const ee = e.target.closest('[data-envedit]');
+  if (ee) {
+    const env = ((LINKS.grid && LINKS.grid.environments) || []).find((x) => x.id === Number(ee.dataset.envedit));
+    if (env) openEnvModal(env);
+    return;
+  }
   const add = e.target.closest('[data-addurl]');
-  if (add) {
-    const td = add.closest('.link-cell');
-    const sid = add.dataset.addurl;
-    const eid = add.dataset.env;
-    td.innerHTML = `<input type="url" placeholder="https://…" data-urlfor="${sid}" data-env="${eid}" />`;
-    $('input', td).focus();
+  if (add) { ouvrirCase(add.closest('.link-cell'), add.dataset.addurl, add.dataset.env); return; }
+  const maj = e.target.closest('[data-editurl]');
+  if (maj) {
+    const svc = ((LINKS.grid && LINKS.grid.services) || []).find((x) => x.id === Number(maj.dataset.editurl));
+    ouvrirCase(maj.closest('.link-cell'), maj.dataset.editurl, maj.dataset.env,
+      (svc && (svc.urls || {})[maj.dataset.env]) || '');
     return;
   }
   const ed = e.target.closest('[data-editservice]');
@@ -9944,7 +10089,6 @@ function openEnvModal(env) {
   $('#envModal').hidden = false;
   setTimeout(() => $('#envName').focus(), 0);
 }
-$('#linkNewEnv') && $('#linkNewEnv').addEventListener('click', () => openEnvModal(null));
 $('#envCancel') && $('#envCancel').addEventListener('click', () => { $('#envModal').hidden = true; });
 fermerAuFond('#envModal', () => { $('#envModal').hidden = true; }, { salissable: true });
 $('#envSave') && $('#envSave').addEventListener('click', async () => {
@@ -9968,14 +10112,9 @@ $('#envDelete') && $('#envDelete').addEventListener('click', async () => {
     await loadLinks();
   } catch (e) { toast(explainError(e.message), true); }
 });
-// L'en-tête d'une colonne ouvre son environnement : c'est là qu'on va le chercher.
-$('#linkGrid') && $('#linkGrid').addEventListener('click', (e) => {
-  const th = e.target.closest('thead th');
-  if (!th || th.classList.contains('link-svc')) return;
-  const i = [...th.parentElement.children].indexOf(th) - 1;
-  const env = ((LINKS.grid && LINKS.grid.environments) || [])[i];
-  if (env) openEnvModal(env);
-});
+/* L'en-tête entier N'EST PLUS cliquable : il l'était sans que rien ne le dise, et le clic
+   partait aussi quand on visait les flèches de déplacement. Un bouton nommé, c'est plus long
+   à écrire et plus court à comprendre. */
 
 /* ---------- Services et liens contextuels ---------- */
 
@@ -9992,11 +10131,27 @@ async function openServiceModal(id) {
   await loadRepoOptions();
   $('#serviceRepoBox').innerHTML = repoComboHtml(serviceEnCours ? serviceEnCours.repo_id : null, { idClass: 'js-service-repo', defaultFirst: false });
   wireRepoCombos($('#serviceRepoBox'));
+  $('#servicePinned').checked = !!(serviceEnCours && serviceEnCours.pinned);
+  renderServiceUrls();
   $('#serviceDelete').hidden = !serviceEnCours;
   $('#serviceCtxBox').hidden = !serviceEnCours;
   if (serviceEnCours) await renderCtxLinks(serviceEnCours.id);
   $('#serviceModal').hidden = false;
   setTimeout(() => $('#serviceName').focus(), 0);
+}
+
+/* Une ligne par environnement, pré-remplie à l'édition. C'est le second chemin vers une URL,
+   et il vaut la peine d'exister : la grille sert quand on corrige une case, la modale quand on
+   pose tout un service d'un coup. */
+function renderServiceUrls() {
+  const envs = ((LINKS.grid && LINKS.grid.environments) || []);
+  const box = $('#serviceUrlsList');
+  if (!envs.length) { box.innerHTML = `<p class="muted">${esc(tr('links.service.no-env'))}</p>`; return; }
+  box.innerHTML = envs.map((e) => `<label class="link-url-row">
+      <span class="link-env"><span class="link-env-dot" style="background:${esc(e.color)}"></span>${esc(e.name)}</span>
+      <input type="url" data-svcurl="${e.id}" placeholder="https://…"
+        value="${esc((serviceEnCours && (serviceEnCours.urls || {})[e.id]) || '')}" />
+    </label>`).join('');
 }
 async function renderCtxLinks(serviceId) {
   const box = $('#serviceCtxList');
@@ -10023,7 +10178,6 @@ $('#ctxAdd') && $('#ctxAdd').addEventListener('click', async () => {
     await renderCtxLinks(serviceEnCours.id);
   } catch (e) { toast(explainError(e.message), true); }
 });
-$('#linkNewService') && $('#linkNewService').addEventListener('click', () => openServiceModal(null));
 $('#serviceCancel') && $('#serviceCancel').addEventListener('click', () => { $('#serviceModal').hidden = true; });
 fermerAuFond('#serviceModal', () => { $('#serviceModal').hidden = true; }, { salissable: true });
 $('#serviceSave') && $('#serviceSave').addEventListener('click', async () => {
@@ -10032,14 +10186,41 @@ $('#serviceSave') && $('#serviceSave').addEventListener('click', async () => {
     name: $('#serviceName').value,
     tags: $('#serviceTags').value,
     repo_id: repo ? Number(repo.value) || null : null,
+    pinned: $('#servicePinned').checked ? 1 : 0,
   };
+  const saisies = $$('#serviceUrlsList [data-svcurl]').map((i) => ({ environment_id: Number(i.dataset.svcurl), url: i.value.trim() }));
   try {
-    if (serviceEnCours) await api(`/services/${serviceEnCours.id}`, { method: 'PUT', body });
-    else await api('/services', { method: 'POST', body });
+    let id;
+    if (serviceEnCours) {
+      await api(`/services/${serviceEnCours.id}`, { method: 'PUT', body });
+      id = serviceEnCours.id;
+      /* On n'envoie QUE ce qui a bougé : rejouer les autres pour rien ferait autant d'écritures
+         inutiles, et effacerait le verdict de santé de cases qu'on n'a pas touchées. */
+      const avant = serviceEnCours.urls || {};
+      for (const u of saisies) {
+        if ((avant[u.environment_id] || '') === u.url) continue;
+        await api(`/services/${id}/urls`, { method: 'PUT', body: u });
+      }
+    } else {
+      id = (await api('/services', { method: 'POST', body: { ...body, urls: saisies } })).id;
+    }
     $('#serviceModal').hidden = true;
     await loadLinks();
+    montrerLigneService(id);
   } catch (e) { toast(explainError(e.message), true); }
 });
+
+/* Après enregistrement, on AMÈNE À la ligne au lieu de laisser chercher : la grille est
+   alphabétique, un service nouvellement créé atterrit n'importe où. Le surlignage s'efface
+   tout seul — il dit « c'est ici », il n'a pas à rester. */
+function montrerLigneService(id) {
+  const b = $(`#linkGrid [data-editservice="${id}"]`);
+  if (!b) return;
+  const tr2 = b.closest('tr');
+  tr2.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  tr2.classList.add('link-flash');
+  setTimeout(() => tr2.classList.remove('link-flash'), 1600);
+}
 $('#serviceDelete') && $('#serviceDelete').addEventListener('click', async () => {
   if (!serviceEnCours) return;
   if (!await confirmDialog({
@@ -10136,13 +10317,15 @@ $('#toServiceOk') && $('#toServiceOk').addEventListener('click', async () => {
 
 /* ---------- Import Chrome ---------- */
 
-$('#linkImport') && $('#linkImport').addEventListener('click', () => {
+/* Nommée, parce qu'on y entre maintenant par trois portes : le menu « Autres actions »,
+   l'état vide, et rien d'autre — le bouton de barre a disparu avec la barre de configuration. */
+function ouvrirImport() {
   LINKS.importLinks = [];
   $('#importPreview').hidden = true;
   $('#importApply').disabled = true;
   $('#importFile').value = '';
   $('#importModal').hidden = false;
-});
+}
 $('#importCancel') && $('#importCancel').addEventListener('click', () => { $('#importModal').hidden = true; });
 fermerAuFond('#importModal', () => { $('#importModal').hidden = true; }, { salissable: true });
 $('#importFile') && $('#importFile').addEventListener('change', async () => {
@@ -10205,17 +10388,19 @@ $('#importApply') && $('#importApply').addEventListener('click', async (e) => {
 
 /* ---------- Health check à la demande ---------- */
 
-$('#linkHealthNow') && $('#linkHealthNow').addEventListener('click', async (e) => {
+async function lancerHealth() {
   try {
-    const r = await busy(e.currentTarget, () => api('/links/health/check', { method: 'POST' }));
+    const r = await api('/links/health/check', { method: 'POST' });
     toast(tr('links.health.done', { up: r.up, down: r.down }));
     await loadLinks();
   } catch (err) { toast(explainError(err.message), true); }
-});
+}
 
 $('#linkGrid') && $('#linkGrid').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-empty-act="newenv"]');
-  if (b) openEnvModal(null);
+  const b = e.target.closest('[data-empty-act]');
+  if (!b) return;
+  if (b.dataset.emptyAct === 'import') ouvrirImport();
+  else openEnvModal(null);
 });
 
 /* ---------- Boutons contextuels sur une merge request ---------- */

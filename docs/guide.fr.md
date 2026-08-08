@@ -703,28 +703,53 @@ environnements en colonnes.
 Deux formes, parce qu'il y a deux réalités. Ce qui n'a pas de dimension environnement (Confluence,
 une doc, un outil) reste un **lien libre**, à plat, retrouvé par ses tags.
 
+#### La barre du haut
+**Un champ de recherche**, et il couvre **les deux moitiés de l'écran** — la grille et les liens
+libres. Chercher `kibana` ou un morceau d'URL suffit ; on n'a pas à décider dans quelle moitié
+regarder avant de savoir où est la réponse. Quand la grille ne rend rien mais que les liens libres
+si, le message le dit et renvoie plus bas, au lieu d'annoncer « rien ne correspond » au-dessus de
+résultats bien présents.
+
+À côté : **`+ Ajouter`** (un lien simple, un service, un environnement) et un menu **`⋯`** pour
+l'import de marque-pages et la vérification de santé. Ces trois-là se font une fois dans la vie de
+l'outil ; retrouver un lien se fait tous les jours, et c'est ce qui occupe la place.
+
+Enfin une pastille **« N injoignables »** quand il y en a : elle **filtre la grille** sur les
+services concernés. Le badge du menu disait qu'il y avait un problème ; celle-ci y mène.
+
 #### La grille
 - **Lignes = services**, épinglés en tête puis par ordre alphabétique. Chaque ligne porte le nom,
-  ses **tags**, et le **dépôt Mergerie associé** quand il y en a un.
+  ses **tags**, et le **dépôt Mergerie associé** quand il y en a un. `Épingler en tête de grille`
+  est une case de la fiche du service : c'est ainsi qu'on remonte ce qu'on ouvre tous les jours.
 - **Colonnes = environnements**, dans l'ordre que tu leur donnes, chacun avec sa **couleur**
-  d'en-tête (la prod en rouge invite à réfléchir avant de cliquer).
+  d'en-tête (la prod en rouge invite à réfléchir avant de cliquer). Au survol d'un en-tête,
+  deux flèches **déplacent la colonne** d'un cran et une roue dentée ouvre son réglage — l'ordre
+  n'est plus figé à la création, et ce qui est cliquable finit par se voir.
 - **Une case = une URL, écrite.** On aurait pu deviner l'adresse de preprod depuis celle de dev en
   remplaçant un morceau de domaine ; c'est exactement la magie qui envoie un jour sur le mauvais
-  environnement sans prévenir. Une case vide affiche un `+` : on colle l'adresse **dans la case**,
-  Entrée valide, Échap annule — pas de modale pour coller une URL. Vider le champ efface la case.
+  environnement sans prévenir. Une case vide affiche un `+`, une case remplie un **crayon** au
+  survol : on saisit **dans la case**, Entrée valide, Échap annule, et **vider le champ efface la
+  case** — pas de modale pour coller une adresse.
 - **Filtre par tag** au-dessus de la grille : un service appartient souvent à deux familles à la
   fois (*backend* et *paiement*), ce qu'un arbre de dossiers l'obligerait à trancher.
 - Seules les adresses **`http` ou `https`** sont acceptées, ici comme partout dans cet onglet : ces
   liens s'ouvrent d'un clic depuis l'application.
 
-#### Liens libres
-Une liste à plat, sous la grille : libellé, URL, tags. Recherche instantanée, ajout et édition au
-clic. C'est là qu'atterrit l'import de marque-pages.
+**Créer un service, c'est aussi poser ses adresses.** La fiche liste **une ligne par
+environnement**, toutes facultatives. Enregistrer rendait auparavant une ligne vide qu'il fallait
+retrouver dans la grille pour la remplir case par case ; le service naît maintenant utilisable, et
+l'écran **descend jusqu'à sa ligne** en la soulignant une seconde — une grille alphabétique le fait
+atterrir n'importe où.
 
-**Les transformer en service.** Coche plusieurs liens, puis `Convertir en service` : une ligne par
-lien, un environnement à choisir pour chacune. Le mapping est **explicite** — deviner « dev »
-depuis une URL contenant `-dev` marcherait neuf fois sur dix, et la dixième poserait une adresse de
-production dans la colonne de développement.
+#### Liens libres
+Une liste à plat, sous la grille : libellé, URL, tags. Ajout et édition au clic, et la recherche du
+haut les filtre avec le reste. C'est là qu'atterrit l'import de marque-pages.
+
+**Les transformer en service.** `Sélectionner` fait apparaître les cases à cocher — elles ne sont
+pas là en permanence, l'opération est rare et le bruit quotidien se paie cher. Coche plusieurs
+liens, puis `Convertir en service` : une ligne par lien, un environnement à choisir pour chacune.
+Le mapping est **explicite** — deviner « dev » depuis une URL contenant `-dev` marcherait neuf fois
+sur dix, et la dixième poserait une adresse de production dans la colonne de développement.
 
 #### La palette — `Ctrl`/`Cmd` + `K`, ou la touche `o`
 Le champ de recherche de l'en-tête ouvre la **palette globale**, qui cherche **partout à la fois** :

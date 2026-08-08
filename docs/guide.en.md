@@ -666,28 +666,52 @@ it at once — services as rows, environments as columns.
 Two shapes, because there are two realities. Whatever has no environment dimension (Confluence, a
 doc, a tool) stays a **free link**, flat, found by its tags.
 
+#### The top bar
+**One search field**, and it covers **both halves of the screen** — the grid and the free links.
+Searching `kibana` or a fragment of a URL is enough; you do not have to decide which half to look
+in before knowing where the answer is. When the grid has nothing but the free links do, the message
+says so and points you down, instead of announcing “nothing matches” above results that are right
+there.
+
+Next to it: **`+ Add`** (a plain link, a service, an environment) and a **`⋯`** menu for bookmark
+import and the health check. Those three happen once in the tool's lifetime; finding a link happens
+every day, and that is what gets the space.
+
+Finally an **“N unreachable”** chip when there are any: it **filters the grid** down to the services
+concerned. The menu badge said there was a problem; this one takes you to it.
+
 #### The grid
 - **Rows are services**, pinned first then alphabetical. Each row carries the name, its **tags**,
-  and the **linked Mergerie repository** when there is one.
+  and the **linked Mergerie repository** when there is one. `Pin to the top of the grid` is a
+  checkbox on the service's own form: that is how you raise what you open every day.
 - **Columns are environments**, in the order you give them, each with its own header **colour**
-  (production in red invites a second thought before clicking).
+  (production in red invites a second thought before clicking). Hovering a header reveals two
+  arrows that **move the column** one step, and a gear that opens its settings — the order is no
+  longer frozen at creation time, and what is clickable eventually shows itself.
 - **A cell is one URL, written out.** We could have guessed the staging address from the dev one by
   swapping a piece of domain; that is exactly the magic that one day sends you to the wrong
-  environment without a word. An empty cell shows a `+`: you paste the address **in the cell**,
-  Enter confirms, Esc cancels — no dialog to paste a URL. Clearing the field clears the cell.
+  environment without a word. An empty cell shows a `+`, a filled one a **pencil** on hover: you
+  type **in the cell**, Enter confirms, Esc cancels, and **clearing the field clears the cell** —
+  no dialog to paste an address.
 - **Filter by tag** above the grid: a service often belongs to two families at once (*backend* and
   *payment*), which a folder tree would force it to choose between.
 - Only **`http` or `https`** addresses are accepted, here as everywhere in this tab: these links
   open in one click from the application.
 
-#### Free links
-A flat list under the grid: label, URL, tags. Instant search, add and edit in place. This is where
-imported bookmarks land.
+**Creating a service means setting its addresses too.** The form lists **one row per environment**,
+all optional. Saving used to produce an empty row you then had to find in the grid to fill cell by
+cell; a service now comes into being usable, and the screen **scrolls to its row** and highlights it
+for a second — an alphabetical grid drops it anywhere.
 
-**Turning them into a service.** Tick several links, then `Turn into a service`: one row per link,
-one environment to pick for each. The mapping is **explicit** — guessing “dev” from a URL
-containing `-dev` would work nine times out of ten, and the tenth would put a production address in
-the development column.
+#### Free links
+A flat list under the grid: label, URL, tags. Add and edit in place, and the search at the top
+filters them along with everything else. This is where imported bookmarks land.
+
+**Turning them into a service.** `Select` reveals the checkboxes — they are not there permanently,
+the operation is rare and everyday noise is expensive. Tick several links, then `Turn into a
+service`: one row per link, one environment to pick for each. The mapping is **explicit** — guessing
+“dev” from a URL containing `-dev` would work nine times out of ten, and the tenth would put a
+production address in the development column.
 
 #### The palette — `Ctrl`/`Cmd` + `K`, or the `o` key
 The search field in the header opens the **global palette**, which searches **everything at once**:
