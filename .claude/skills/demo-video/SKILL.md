@@ -25,6 +25,70 @@ consiste alors à **ajouter une étape**, pas à tout refaire — voir « Ajoute
   ```
 - **Ne jamais pousser.** Les `.mp4` ne sont pas versionnés.
 
+## À ne pas confondre : il existe DEUX enregistreurs
+
+| | ce skill | `scripts/record-demo.js` |
+|---|---|---|
+| durée | ~14 min | ~2 min 40 |
+| voix | narration synthétisée | aucune, des légendes à l'écran |
+| sortie | `demo-live-real-{fr,en}.mp4` | `demo-recordings/mergerie-demo-{fr,en}.webm` |
+| sert à | la présentation longue | le GIF du README (`npm run demo:gif`) et YouTube |
+
+Les deux sont **bilingues** et parcourent la même application, mais ne partagent aucun code. Une
+fonctionnalité nouvelle doit entrer dans les deux — et les deux se lancent sur le port 4321.
+Corriger un sélecteur ici ne corrige rien là-bas.
+
+## L'APPLICATION A CHANGÉ — à intégrer au prochain enregistrement
+
+Écrit après la fusion des onglets *Notes* et *Liens*. Tout ce qui suit a été **vérifié dans
+l'application en marche**, pas déduit du code.
+
+### Ce qui manque au parcours
+
+Le parcours compte 87 étapes et **ne montre ni Notes ni Liens** : deux onglets entiers, soit la
+part la plus visible de ce que l'outil sait faire aujourd'hui. C'est le premier travail à faire.
+
+- **Notes** — `onglet('notes')` répond, `sous('notes', 0..2)` donne *Aujourd'hui · Todos · Pages*
+  (la formule `#tab-notes > div > button` fonctionne, vérifié : 3 boutons). À montrer : le brief du
+  matin (`#briefBox .brief-sec`), les todos (`#todoList .todo-row`, cochables sur place), une page
+  et son autolink (`#pageList .note-item` puis `#pageEditor`).
+- **Liens** — `onglet('links')` répond. À montrer : la grille (`.link-grid`), une pastille de santé
+  (`.link-health.down`), les liens libres, et la palette.
+
+### La navigation est une colonne, plus un bandeau
+
+- **`nav button` renvoie DIX éléments pour NEUF onglets.** Le dixième est `#sidebarToggle`, le
+  bouton de repli, qui vit dans le `<nav>` sans porter de `data-tab`. Tout sélecteur `nav button`
+  non filtré l'attrape. `onglet()` vise déjà `nav button[data-tab]` et survit ; un nouveau
+  sélecteur écrit à la va-vite, non.
+- `versEl('nav')` désigne maintenant une **colonne pleine hauteur** : le curseur atterrit au milieu
+  à gauche, pas sur un bandeau. C'est utilisable, mais ne plus dire « en haut ».
+- Le repli (`#sidebarToggle`) est en soi une **chose à montrer** : la colonne passe en icônes,
+  se souvient du choix, et se replie seule sous 1100 px.
+
+### L'application n'atterrit plus sur les reviews
+
+Au chargement, l'onglet actif est **`tab-notes`** (le brief du matin), pas `tab-review`. Le parcours
+clique `onglet('review')` juste après sa première étape, donc rien n'est cassé — mais la **première
+image du film montre les Notes**, et la narration d'ouverture doit en tenir compte.
+
+### La palette est devenue globale
+
+`Contrôle K` **ou la touche `o`** ouvre `#paletteModal` ; on peut aussi cliquer `#paletteTrigger`,
+le champ posé dans l'en-tête. `#paletteModal input` répond toujours. Elle ne cherche plus seulement
+des onglets et des MR : cases de la grille, liens libres, merge requests, tickets surveillés, pages,
+todos et actions de navigation — le tout **interrogé côté serveur et filtré en base**.
+
+**La requête à taper pour la démontrer est `paiement`** : c'est le seul mot du jeu de démo qui
+ressorte à la fois d'un lien libre, d'une merge request, d'un ticket surveillé et d'une todo. Taper
+un mot qui ne rend que deux lignes de la même famille dément la phrase qu'on vient de prononcer.
+
+### Deux phrases de narration ont été corrigées
+
+`NARRATION[0]` annonçait « sept onglets en haut » et `NARRATION[84]` « une palette de commandes ».
+Les deux sont réécrites, dans les deux langues. Les `.mp4` livrés, eux, disent encore l'ancienne
+version : ils sont à refaire.
+
 ## Chaîne complète
 
 ```bash
@@ -102,6 +166,22 @@ développeurs, et certaines réécritures *dégradaient* le rendu (un *o* fermé
 `Docker`, `tag`, `job`, `drift`, `log`, `compose`, `review`, `merge`, `pipelines`,
 `changelog`, `pattern`, `diff`, `patch`, `fetch`, `ref`, `dev`, `app`, `repo`.
 
+### Vocabulaire nouveau, à écouter avant de l'employer
+
+Les onglets *Notes* et *Liens* apportent des mots que la table ci-dessus n'a jamais rencontrés. Ils
+sont listés ici **sans réécriture proposée** : aucune n'a pu être écoutée (piper n'était pas
+installé sur la machine où cette liste a été dressée), et le principe du fichier est qu'on ne
+retient une réécriture qu'après l'avoir entendue.
+
+- `todo` / `todos` — anglicisme court, candidat sérieux à la bascule en phonèmes anglais.
+- `frécence` — mot inventé (fréquence + récence) : à peu près sûr d'être mal lu. Le contourner en
+  disant « ce qu'on ouvre souvent et récemment » est sans doute plus simple que de le faire dire.
+- `preprod`, `Kibana`, `Grafana`, `Confluence` — noms propres de la grille de liens.
+- `health check`, `brief`, `autolink`, `snooze`.
+- **Une lettre seule est un piège connu** : `?` était lu comme un silence total. La palette s'ouvre
+  aussi par la touche `o` — ne pas l'annoncer dans la narration sans avoir vérifié qu'un `o` isolé
+  s'entend. La formule sûre existe déjà : « la touche point d'interrogation ».
+
 ### Comment vérifier une nouvelle réécriture
 
 Écouter, ne pas supposer. Synthétiser la phrase seule et l'écouter avant de la garder :
@@ -137,6 +217,13 @@ sans effet. `montreOptions(selecteur)` lui pose un `size` le temps de la montrer
 options s'affichent alors *en page* — et `fermeOptions` la remet comme avant. Rien n'est
 inventé : ce sont les options du vrai contrôle.
 
+`scripts/record-demo.js` résout le même problème **autrement** : il dessine un double de la liste
+dans la page (`__selOpen`), aux vraies dimensions et avec les vraies options lues sur l'élément.
+Ce n'est pas un arbitrage technique, c'est un doublon : le second a été écrit sans savoir que le
+premier existait. **L'astuce du `size` est la meilleure des deux** — elle montre le vrai contrôle,
+pas une copie qui pourrait un jour mentir sur son contenu. Si l'un des deux doit être aligné sur
+l'autre, c'est `record-demo.js` qui doit adopter le `size`.
+
 ## Voix
 
 Modèles Piper, **hors dépôt** (~60 Mo pièce), à poser dans `travail/voix/` :
@@ -163,6 +250,10 @@ Trois pièges, tous rencontrés — le contrôle rapide (étape 2) n'en attrape 
 - **Un sélecteur trop large attrape un élément caché.** `#tab-admin select` a fini par viser le
   « Genre » d'un vérificateur, dans un panneau masqué placé plus tôt dans le DOM. Viser le
   sous-onglet par son id (`#sub-config select`).
+- **Un bouton qui n'est pas un onglet dans le `<nav>`.** `#sidebarToggle` y vit désormais, sans
+  `data-tab`. L'application elle-même s'y est fait prendre : son gestionnaire d'onglets écoutait
+  `nav button`, si bien que replier la colonne désactivait tous les onglets et vidait l'écran.
+  Corrigé côté application ; la leçon vaut pour tout sélecteur écrit ici.
 
 Et un piège de l'application elle-même : **une modale qui rend une promesse** (choix du
 vérificateur) laisse le bouton appelant en chargement si on la ferme par Échap sans passer par
@@ -185,6 +276,24 @@ minutes — et c'est un vrai bug côté application, pas un défaut du parcours.
 Règle générale : **ne jamais commenter un écran qu'on ne montre pas**. Si le mode démo ne sait
 pas produire l'état, soit on corrige le mode démo (cf. `src/demo-diff.js`), soit on désigne le
 bouton en décrivant ce qu'il fait — jamais on ne raconte une fenêtre absente.
+
+## Toucher au jeu de démo (`scripts/demo-seed.js`)
+
+Le seed **efface `data-demo/` et repart d'une base propre** à chaque exécution : inutile de nettoyer
+avant, et rien de ce qu'on y ajoute ne survit à côté d'un ancien état.
+
+Deux pièges payés comptant :
+
+- **Un ticket surveillé doit exister dans `src/demo-jira.js`.** Une clé inventée est bien insérée,
+  puis la surveillance la vérifie, ne la trouve pas dans le jeu Jira fictif, et lui recolle le
+  résumé d'un autre ticket. On se retrouve avec une ligne qui dit autre chose que ce qu'on a semé —
+  et on ne le voit qu'à l'écran, plusieurs minutes de tournage plus tard.
+- **`INSERT OR IGNORE` ne signale rien** quand la ligne existe déjà. Après avoir semé, vérifier ce
+  que la base contient VRAIMENT plutôt que ce qu'on croit y avoir mis.
+
+Le fil rouge du jeu de démo est le **tunnel de paiement** : merge request `!216`, branche
+`feat/PROJ-720-checkout`, ticket surveillé `PROJ-1408`, un lien libre Confluence et une todo. C'est
+ce fil qu'il faut suivre quand on veut montrer qu'un même sujet traverse plusieurs écrans.
 
 ## Détails qui ont coûté cher
 

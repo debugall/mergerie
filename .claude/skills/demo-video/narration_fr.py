@@ -13,7 +13,7 @@ l'orthographe correcte ici, jamais une graphie phonétique.
 
 NARRATION = [
     (
-        'Voici Mergerie, un cockpit de développement local assisté par IA. Sept onglets en haut : les reviews de merge requests, les sessions de développement, les statistiques, git, Docker, Jira et les réglages. Les pastilles signalent le travail en attente, jamais des totaux décoratifs. '
+        'Voici Mergerie, un cockpit de développement local assisté par IA. Neuf onglets dans une colonne à gauche : les reviews de merge requests, les sessions de développement, les notes, Jira, git, Docker, les liens de travail, les statistiques et les réglages. Les pastilles signalent le travail en attente, jamais des totaux décoratifs. '
     ),
     (
         "On commence par les merge requests à traiter. Chaque carte donne l'essentiel : le numéro, le titre, le projet, l'auteur et la date, puis les branches concernées et les liens vers le ticket et vers la forge. "
@@ -265,7 +265,7 @@ NARRATION = [
         "En bas de l'écran, une barre suit les jobs en direct : ce qui tourne, les tokens consommés, et un journal qui se déplie. Ce journal contient une vue Activité, qui liste ce qui a été lancé et ce qui s'est terminé, avec un lien qui ramène directement sur l'objet concerné. "
     ),
     (
-        'Contrôle K ouvre une palette de commandes : on tape un fragment et on saute à un onglet, une merge request ou une session. '
+        'Contrôle K ouvre la palette globale : elle cherche partout à la fois, les liens de travail, les merge requests, les tickets, les pages de notes et les todos, et remonte d\'abord ce qu\'on ouvre souvent et récemment. '
     ),
     (
         "La touche point d'interrogation affiche tous les raccourcis clavier. "

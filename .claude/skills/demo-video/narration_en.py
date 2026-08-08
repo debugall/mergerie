@@ -13,7 +13,7 @@ l'orthographe correcte ici, jamais une graphie phonétique.
 
 NARRATION = [
     (
-        'This is Mergerie, a local AI-assisted development cockpit. Seven tabs across the top: merge request reviews, coding sessions, statistics, git, Docker, Jira and settings. The badges flag work that is waiting, never decorative totals. '
+        'This is Mergerie, a local AI-assisted development cockpit. Nine tabs in a column down the left: merge request reviews, coding sessions, notes, Jira, git, Docker, work links, stats and settings. The badges flag work that is waiting, never decorative totals. '
     ),
     (
         'We start with the merge requests to handle. Each card carries the essentials: the number, the title, the project, the author and the date, then the branches involved and links to the ticket and to the forge. '
@@ -265,7 +265,7 @@ NARRATION = [
         'At the bottom of the screen, a bar follows jobs live: what is running, the tokens spent, and a log that unfolds. That log holds an Activity view, listing what was launched and what finished, with a link that takes you straight back to the object concerned. '
     ),
     (
-        'Control K opens a command palette: you type a fragment and jump to a tab, a merge request or a session. '
+        'Control K opens the global palette: it searches everything at once, work links, merge requests, tickets, note pages and todos, and brings up first what you open often and recently. '
     ),
     (
         'The question mark key shows every keyboard shortcut. '
