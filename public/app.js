@@ -9781,16 +9781,25 @@ function renderLinkGrid() {
   const box = $('#linkGrid');
   const { environments: envs = [], services = [] } = LINKS.grid || {};
   if (!envs.length && !services.length) {
-    /* L'IMPORT EN PREMIER : c'est le chemin le plus court entre « écran vide » et « outil
-       utile ». Créer un environnement puis un service puis coller une URL demande trois
-       gestes avant de voir quoi que ce soit. */
-    box.innerHTML = emptyState({
-      icon: 'link', title: esc(tr('links.empty.title')), text: esc(tr('links.empty.text2')),
-      actions: [
-        { act: 'import', label: esc(tr('links.empty.import')), primary: true },
-        { act: 'newenv', label: esc(tr('links.env.new')) },
-      ],
-    });
+    /* DEUX vides, et deux messages. Sans cette distinction, importer ses marque-pages laissait
+       l'écran répondre « aucun lien pour l'instant » au-dessus des liens qu'on venait
+       d'importer — en proposant de les importer une seconde fois.
+       L'IMPORT EN PREMIER dans le vrai vide : c'est le chemin le plus court entre « écran
+       vide » et « outil utile ». Créer un environnement, puis un service, puis coller une URL
+       demande trois gestes avant de voir quoi que ce soit. */
+    const desLiens = (((LINKS.grid || {}).free_links) || []).length > 0;
+    box.innerHTML = desLiens
+      ? emptyState({
+        icon: 'link', title: esc(tr('links.grid.empty.title')), text: esc(tr('links.grid.empty.text')),
+        actions: [{ act: 'newenv', label: esc(tr('links.env.new')), primary: true }],
+      })
+      : emptyState({
+        icon: 'link', title: esc(tr('links.empty.title')), text: esc(tr('links.empty.text2')),
+        actions: [
+          { act: 'import', label: esc(tr('links.empty.import')), primary: true },
+          { act: 'newenv', label: esc(tr('links.env.new')) },
+        ],
+      });
     return;
   }
   const visibles = services.filter(serviceVisible);

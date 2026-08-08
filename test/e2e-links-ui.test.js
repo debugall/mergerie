@@ -56,6 +56,11 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await page.locator('nav button[data-tab="links"]').click();
     await page.waitForSelector('#linkGrid .link-grid');
   };
+  // Sans grille à attendre : les deux derniers tests l'observent justement absente.
+  const ouvrirVide = async () => {
+    await page.locator('nav button[data-tab="links"]').click();
+    await page.waitForSelector('#linkGrid .empty');
+  };
 
   test('la grille montre un service par ligne et un environnement par colonne', async () => {
     await ouvrirLiens();
@@ -279,9 +284,41 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await page.waitForTimeout(600);
   });
 
+  /* LES DEUX ÉCRANS VIDES. En avant-dernier, parce que ce test DÉTRUIT le décor : il vide la
+     grille pour l'observer vide. Tout ce qui précède a déjà eu ce dont il avait besoin.
+
+     Le défaut qu'il garde : après un import de marque-pages, l'écran répondait « aucun lien
+     pour l'instant » AU-DESSUS des liens qu'on venait d'importer, en proposant de les importer
+     une seconde fois. La grille ne regardait que les services et les environnements. */
+  test('grille vide avec des liens libres : le message ne dit plus « aucun lien »', async () => {
+    const g = (await app.api('GET', '/api/links/grid')).body;
+    for (const s of g.services) await app.api('DELETE', `/api/services/${s.id}`);
+    for (const e of g.environments) await app.api('DELETE', `/api/environments/${e.id}`);
+    assert.ok(g.free_links.length >= 1, 'il reste bien des liens libres à montrer');
+
+    await page.reload();
+    await ouvrirVide();
+    assert.equal(await page.locator('#linkGrid [data-empty-act="import"]').count(), 0,
+      'ne pas proposer d’importer ce qui vient de l’être');
+    assert.match(await page.locator('#linkGrid .empty').innerText(), /grille|grid/i,
+      'le message parle de la GRILLE, pas d’une absence de liens');
+    assert.ok(await page.locator('.link-free-row').count() >= 1, '…et les liens sont bien là, en dessous');
+  });
+
+  test('rien du tout : on propose le chemin le plus court, l’import', async () => {
+    for (const l of (await app.api('GET', '/api/links/grid')).body.free_links) {
+      await app.api('DELETE', `/api/free-links/${l.id}`);
+    }
+    await page.reload();
+    await ouvrirVide();
+    assert.equal(await page.locator('#linkGrid [data-empty-act="import"]').count(), 1,
+      'là, et seulement là, l’import est le raccourci vers un outil utile');
+  });
+
   /* EN DERNIER, volontairement : à ce stade tous les écrans de l'onglet ont été traversés. */
   test('aucune erreur JavaScript pendant tout le parcours', () => {
     assert.deepEqual(erreurs, [], `la console doit rester muette, vu : ${JSON.stringify(erreurs)}`);
   });
 
 });
+

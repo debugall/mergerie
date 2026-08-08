@@ -371,6 +371,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Importing bookmarks no longer leaves the Links tab saying it is empty.** The grid only looked at
+  services and environments, so after an import it answered “no links yet” directly above the links
+  that had just arrived — and offered to import them a second time. The two empty screens are now
+  told apart: with nothing at all, importing is offered as the shortest path to a useful tool; with
+  free links but no grid yet, the message explains what the grid is for and points at the links
+  below.
+
 - **A filled grid cell can be corrected again.** The Links tab let you type a URL into an empty cell,
   and then never again: a filled cell was only a link, and the service form held no address field.
   Fixing a typo meant deleting the whole service — losing its other URLs and its contextual links —
