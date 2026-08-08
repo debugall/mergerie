@@ -425,9 +425,13 @@ function mdToHtml(md) {
   return html;
 }
 
-/* ---------- Onglets ---------- */
-$$('nav button').forEach((b) => b.addEventListener('click', () => {
-  $$('nav button').forEach((x) => x.classList.toggle('active', x === b));
+/* ---------- Onglets ----------
+   `[data-tab]` EST LA CONDITION, pas un raccourci d'écriture. Depuis que la navigation vit
+   dans une colonne, le bouton de repli est lui aussi un `nav button` — sans ce filtre, le
+   replier désactivait tous les onglets, vidait l'écran, et mémorisait « undefined » comme
+   dernier onglet : le rechargement suivant n'affichait rien non plus. */
+$$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  $$('nav button[data-tab]').forEach((x) => x.classList.toggle('active', x === b));
   $$('.tab').forEach((t) => t.classList.toggle('active', t.id === `tab-${b.dataset.tab}`));
   if (b.dataset.tab === 'admin') showAdminSub();
   if (b.dataset.tab === 'task') loadTasks();

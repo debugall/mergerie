@@ -359,6 +359,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Collapsing the navigation column no longer empties the screen.** The collapse button lives in the
+  column with the tabs, and the tab handler took it for one of them: clicking it deactivated every tab,
+  blanked the content area, and stored “undefined” as the last tab visited — so the next reload showed
+  nothing either. It now only listens to buttons that actually carry a tab.
+
 - **A link pasted into a note is now clickable.** URLs written in a note page or a todo's note become links
   opening in a new tab — `http`/`https` only, since a note is text you paste without re-reading it and a
   link the tool builds has no business being able to run anything. Sentence-ending punctuation stays outside

@@ -153,6 +153,33 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await page.waitForFunction((w) => document.querySelector('#sidebar').getBoundingClientRect().width >= w, avant);
   });
 
+  /* Le bouton de repli est lui aussi un `nav button`. Tant que le gestionnaire d'onglets ne
+     filtrait pas sur `[data-tab]`, le replier désactivait TOUS les onglets : l'écran devenait
+     blanc, et « undefined » partait dans le dernier onglet mémorisé — le rechargement suivant
+     n'affichait rien non plus. Un défaut invisible en lisant le code, criant à l'écran. */
+  test('replier la colonne ne vide pas l’écran', async () => {
+    await page.reload();
+    await page.waitForSelector('.sidebar button[data-tab]');
+    await page.locator('nav button[data-tab="dashboard"]').click();
+    await page.waitForSelector('#tab-dashboard.active');
+
+    await page.locator('#sidebarToggle').click();
+    await page.waitForFunction(() => document.querySelector('#sidebar').getBoundingClientRect().width < 120);
+
+    assert.equal(await page.locator('#tab-dashboard').isVisible(), true,
+      'l’onglet actif reste affiché après le repli');
+    assert.equal(await page.evaluate(() => (document.querySelector('.tab.active') || {}).id), 'tab-dashboard');
+    assert.equal(await page.evaluate(() => localStorage.getItem('aidevtools_tab')), 'dashboard',
+      'et le dernier onglet mémorisé reste un vrai onglet');
+
+    // …y compris au rechargement, qui est là que le « undefined » se voyait vraiment.
+    await page.reload();
+    await page.waitForSelector('.sidebar button[data-tab]');
+    assert.equal(await page.evaluate(() => (document.querySelector('.tab.active') || {}).id), 'tab-dashboard');
+    await page.locator('#sidebarToggle').click();               // on remet en large
+    await page.waitForFunction(() => document.querySelector('#sidebar').getBoundingClientRect().width >= 120);
+  });
+
   test('le badge des liens injoignables apparaît sur l’entrée du menu', async () => {
     const g = (await app.api('GET', '/api/links/grid')).body;
     const svc = g.services[0];
