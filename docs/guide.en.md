@@ -1241,7 +1241,8 @@ settings above are applied to git as well.
 
 ```bash
 npm i -D playwright && npx playwright install chromium   # once
-npm run record:demo                                       # → demo-recordings/mergerie-demo.webm
+npm run record:demo                                       # both languages, one after the other
+npm run record:demo -- --lang=en                          # → demo-recordings/mergerie-demo-en.webm
 npm run demo:gif                                          # → docs/demo.gif (the README one)
 ```
 
@@ -1250,11 +1251,24 @@ and drives a Chromium that records, in **1920×1080**, a **guided tour** with a 
 intro/outro **cards** and **explanatory captions** synchronised with each screen — then shuts everything
 down cleanly (closing the context flushes the video). The route: *Reviews* → a scored report → the version
 selector **v1 → v2 → v3** (a progression from **5.8 to 8.4**) → resolution tracking → *AI Dev* (a session
-linked to its MR, a question asked by the AI) → *Jira* → *Git* (the branch explorer) → *Docker* (`.env`
-drift + live logs) → *Stats*. The `.webm` produced uploads straight to YouTube.
+linked to its MR, a question asked by the AI) → *Notes* (morning brief, todos, pages) → *Jira* →
+*Git* (the branch explorer) → *Links* (grid, health, global palette) → *Docker* (`.env` drift + live
+logs) → *Stats* → the navigation column folding away. The `.webm` produced uploads straight to
+YouTube.
+
+**Both languages** are recorded one after the other against the same demo server, and the language is
+set in **both** places the app reads it from — `localStorage` for the interface, and `config.language`
+in the database for messages coming from the server. Setting only one yields an English video
+punctuated with French sentences.
+
+**Dropdowns are redrawn inside the page** for the duration of the recording. A native `<select>`'s list
+is drawn by the operating system, outside the page: the camera films the page, so it never showed up.
+You saw the cursor click, then the value change on its own — the least intelligible gesture in the
+video. The stand-in is built from the element's real options; it is a recording device, living in
+`scripts/record-demo.js` and nowhere else.
 
 **The README's GIF** comes from the same recording: `npm run demo:gif`. Its settings (6 fps, 640 px,
-128 colours, palette computed on the video) are tuned to stay under ~4.5 MB — a file GitHub reloads
+64 colours, palette computed on the video) are tuned to stay under ~3.5 MB — a file GitHub reloads
 on every visit to the landing page — without making the interface unreadable. They live in
 `scripts/demo-gif.sh` rather than in a command to be rediscovered: working them out again costs half
 an hour and yields a file twice too heavy.

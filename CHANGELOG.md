@@ -347,6 +347,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   The tagline under the product name no longer runs all the way to the navigation: it breaks where the
   sentence does, between what the AI prepares and what you merge.
 
+- **The presentation video is recorded in both languages, and shows the new tabs.** `npm run record:demo`
+  now produces a French and an English `.webm` rather than one French recording, and the tour takes in
+  Notes, Links and the collapsing column alongside the screens it already covered. Dropdowns are redrawn
+  inside the page while recording: a native list is painted by the operating system, outside the page the
+  camera films, so it never appeared — you saw the cursor click and the value change on its own.
+
 - **AI Dev lists lead with what just finished running.** They were ordered by creation, so a session you
   launched minutes ago sat below one created last week and never run. Whatever is running now comes first,
   then the most recently executed. Execution is what counts: fixing a prompt, pushing a branch or tidying a

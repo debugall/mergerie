@@ -10,19 +10,22 @@
 # privilégie ce qui bouge d'une image à l'autre), puis l'encodage avec cette palette. Sans
 # elle, un GIF 256 couleurs sur une interface à dégradés vire au marron par bandes.
 #
-#   npm run demo:gif                     # depuis demo-recordings/mergerie-demo.webm
+#   npm run demo:gif                     # depuis demo-recordings/mergerie-demo-fr.webm
 #   sh scripts/demo-gif.sh <src> <dst>   # à la main
 set -eu
 
-SRC="${1:-demo-recordings/mergerie-demo.webm}"
+SRC="${1:-demo-recordings/mergerie-demo-fr.webm}"
 DST="${2:-docs/demo.gif}"
 # 6 im/s : en dessous, le faux curseur saccade et la démo paraît cassée plutôt que rapide.
 FPS="${FPS:-6}"
 # 640 px : la largeur d'affichage du README. Au-delà, on paie des pixels que personne ne voit.
 LARGE="${LARGE:-640}"
-# 128 couleurs plutôt que 256 : ~25 % de moins, et l'écart ne se voit pas sur une interface
-# à plats. C'est le réglage qui rapporte le plus sans toucher à la lisibilité.
-COULEURS="${COULEURS:-128}"
+# 64 couleurs plutôt que 256. C'est le réglage qui rapporte le plus sans toucher à la
+# lisibilité : l'interface est en aplats, et sur une capture de l'onglet Notes le texte reste
+# aussi lisible qu'à 128. Mesuré sur la visite guidée de 163 s : 256 → hors sujet,
+# 128 → 5235 Ko, 96 → 4659 Ko, 64 → 3455 Ko. La marge compte, la vidéo s'allonge à chaque
+# fonctionnalité ajoutée et le budget, lui, ne bouge pas.
+COULEURS="${COULEURS:-64}"
 
 [ -f "$SRC" ] || { echo "Enregistrement absent : $SRC (lance d'abord « npm run record:demo »)" >&2; exit 1; }
 command -v ffmpeg >/dev/null || { echo "ffmpeg est nécessaire (brew install ffmpeg)" >&2; exit 1; }

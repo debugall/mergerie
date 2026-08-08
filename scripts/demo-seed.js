@@ -454,6 +454,20 @@ db.prepare(`INSERT OR IGNORE INTO jira_watch (key, summary, status, status_categ
   .run('PROJ-1390', 'Migrer les logs vers le nouveau format JSON', 'À faire', 'new', at(4), at(0.2),
     'bloque la migration de la facturation — prévenir Sofia dès que c’est en revue');
 
+/* Un second ticket surveillé. Trois raisons, dont une seule saute aux yeux : la liste montre
+   qu'elle EST une liste, la raison « pourquoi je le surveille » s'étale sur plusieurs lignes
+   — ce que le champ sait faire depuis qu'il est devenu un textarea — et surtout « paiement »
+   devient cherchable dans une famille de plus : la palette peut alors montrer, sur une seule
+   requête, qu'elle traverse tout le cockpit au lieu d'un seul écran.
+
+   LA CLÉ DOIT EXISTER DANS LE JEU JIRA FICTIF (`src/demo-jira.js`). Une clé inventée est bien
+   insérée, puis la surveillance la vérifie, ne la trouve pas, et lui recolle le résumé d'un
+   autre ticket : on se retrouve avec une ligne qui dit autre chose que ce qu'on a semé. */
+db.prepare(`INSERT OR IGNORE INTO jira_watch (key, summary, status, status_category, added_at, checked_at, note)
+            VALUES (?,?,?,?,?,?,?)`)
+  .run('PROJ-1408', 'Ajouter le paiement en 3× sans frais', 'À faire', 'new', at(11), at(0.2),
+    'dépend du tunnel refondu par !216.\nÀ replanifier si la recette de vendredi glisse.');
+
 /* ---------- vérification objective (plan_add_verify.md §12) ----------
    L'histoire qu'on montre est celle qui donne son sens à la fonctionnalité : deux merge
    requests de dépôts différents qui ne valent qu'ensemble, un premier verdict ROUGE avec les
@@ -596,6 +610,8 @@ db.prepare(`INSERT INTO verification
   todo({ title: `Suivre !${mrHealth.iid} — sonde de santé`, link_kind: 'mr', link_ref: String(mrHealth.id),
     note: 'à merger avant la mise en prod de jeudi' });
   todo({ title: 'Relire la note de migration TypeORM', priority: 'low' });
+  todo({ title: 'Repasser sur les libellés d’erreur du tunnel de paiement',
+    priority: 'normal', created_at: at(2) });
   // Faite hier : elle reste barrée sept jours, on voit ce qu'on a fait cette semaine.
   todo({ title: 'Préparer les chiffres du cache catalogue', status: 'done', done_at: at(1), created_at: at(4) });
   // Archivée : le tiroir n'est pas vide, et rien n'a jamais été supprimé.

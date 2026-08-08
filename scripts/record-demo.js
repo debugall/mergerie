@@ -1,7 +1,9 @@
 'use strict';
-/* Enregistre la vidéo de PRÉSENTATION de Mergerie, prête à publier.
+/* Enregistre la vidéo de PRÉSENTATION de Mergerie, prête à publier — EN FRANÇAIS ET EN ANGLAIS.
  *
- *   node scripts/record-demo.js            (ou : npm run record:demo)
+ *   npm run record:demo               les deux langues, l'une après l'autre
+ *   npm run record:demo -- --lang=en  une seule
+ *   DEMO_PORT=4321 npm run record:demo
  *
  * Autonome et rejouable : lance l'app EN MODE DÉMO (npm run demo → données fictives seedées,
  * AUCUNE connexion GitLab/Jira/Docker ni token), attend le port, pilote un Chromium qui
@@ -11,10 +13,14 @@
  * Le script REFUSE de filmer un serveur qui n'est pas en mode démo (il ne doit jamais capturer
  * de vraies données). Pour l'exécuter à côté d'une instance déjà lancée : DEMO_PORT=<port libre>.
  *
+ * LA LANGUE EST POSÉE AUX DEUX ENDROITS où l'app la lit — `localStorage` pour l'interface, et
+ * `config.language` en base pour les messages venus du serveur. N'en poser qu'un donnerait une
+ * vidéo anglaise ponctuée de phrases françaises.
+ *
  * Prérequis (installation unique) :
  *   npm i -D playwright && npx playwright install chromium
  *
- * Vidéo écrite dans demo-recordings/mergerie-demo.webm.
+ * Vidéos écrites dans demo-recordings/mergerie-demo-<langue>.webm.
  */
 
 const { spawn } = require('node:child_process');
@@ -35,13 +41,75 @@ const W = 1920; const H = 1080;
 // URL du dépôt affichée sur le carton de fin (surchargeable).
 const REPO_URL = process.env.REPO_URL || 'github.com/debugall/mergerie';
 const OUT_DIR = path.resolve(__dirname, '..', 'demo-recordings');
-const OUT_FILE = path.join(OUT_DIR, 'mergerie-demo.webm');
 const ROOT = path.resolve(__dirname, '..');
+// La clé que l'app lit dans localStorage pour appliquer la langue avant le premier rendu.
+const LANG_KEY = 'aidevtools_lang';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/* ------------------------------------------------------------------ textes ----
+   Une entrée par légende, dans les deux langues. Elles sont réunies ICI et non
+   dispersées dans le scénario : c'est la seule façon de voir d'un coup d'œil qu'aucune
+   n'a été oubliée d'un côté — le même raisonnement que le contrôle de parité des
+   dictionnaires de l'application. */
+const TEXTES = {
+  fr: {
+    locale: 'fr-FR',
+    introTitre: 'Mergerie',
+    introSous: 'From prompt to merge — l’IA exécute, tu valides',
+    review: 'Chaque MR est reviewée et notée par l’IA — sur des critères cadrés',
+    converge: 'Converger : review → correction IA → re-review. De 5,8 à 8,4 en 3 passes, tout l’historique conservé',
+    resolution: 'Chaque constat « résolu » est vérifié dans git — l’IA n’est pas crue sur parole',
+    session: 'Du prompt à la MR convergée : l’IA code, commit, pousse, ouvre la MR et la fait converger. Le merge reste à toi',
+    question: 'En cas d’ambiguïté, l’IA s’arrête et te demande — au lieu de deviner',
+    briefTitre: 'Notes',
+    brief: 'Le brief du matin : ce qui t’attend, rassemblé avant que tu ne le cherches',
+    todos: 'Des todos qui se cochent sur place, avec priorité, échéance et lien vers la MR concernée',
+    pages: 'Des pages libres en Markdown — les MR et les tickets cités deviennent cliquables tout seuls',
+    jira: 'Tes tickets Jira, leur contexte injecté automatiquement dans les reviews',
+    git: 'Opérations git sur tous tes dépôts — toujours avec aperçu, suppressions restaurables',
+    gitExplore: 'L’explorateur dit ce qu’il fait pendant qu’il travaille, et chaque dépôt se replie',
+    liens: 'Un service par ligne, un environnement par colonne — et l’état de chacun',
+    liensSante: 'La sonde de santé est optionnelle, désactivée par défaut, et la prod reste hors du lot',
+    palette: 'La palette cherche partout à la fois — liens, MR, tickets, notes, todos',
+    docker: 'Le drift .env détecté variable par variable — secrets masqués',
+    logs: 'Logs live multi-containers, filtrables',
+    stats: 'La qualité progresse-t-elle ? Notes, taux de résolution, coût en tokens',
+    sidebar: 'Neuf onglets tiennent dans une colonne, qui se replie en icônes quand l’écran manque',
+    finTitre: 'Mergerie — npm run demo',
+    finSous: (u) => `30 secondes pour l’essayer. Aucune config, aucun token\n${u}`,
+  },
+  en: {
+    locale: 'en-GB',
+    introTitre: 'Mergerie',
+    introSous: 'From prompt to merge — the AI does the work, you approve it',
+    review: 'Every MR is reviewed and scored by the AI — against criteria you set',
+    converge: 'Converge: review → AI fix → re-review. From 5.8 to 8.4 in 3 passes, every pass kept',
+    resolution: 'Each “resolved” finding is checked against git — the AI is not taken at its word',
+    session: 'From prompt to merged-ready MR: the AI codes, commits, pushes, opens the MR and converges it. The merge stays yours',
+    question: 'When something is ambiguous the AI stops and asks — instead of guessing',
+    briefTitre: 'Notes',
+    brief: 'The morning brief: what is waiting for you, gathered before you go looking',
+    todos: 'Todos you tick off in place, with priority, due date and a link to the MR they belong to',
+    pages: 'Free-form Markdown pages — the MRs and tickets you mention become clickable on their own',
+    jira: 'Your Jira tickets, their context fed into reviews automatically',
+    git: 'Git operations across every repository — always with a preview, deletions restorable',
+    gitExplore: 'The explorer says what it is doing while it works, and each repository folds away',
+    liens: 'One service per row, one environment per column — and the state of each',
+    liensSante: 'The health probe is optional, off by default, and production stays out of it unless asked',
+    palette: 'The palette searches everything at once — links, MRs, tickets, notes, todos',
+    docker: '.env drift caught variable by variable — secrets masked',
+    logs: 'Live logs across containers, filterable',
+    stats: 'Is quality improving? Scores, resolution rate, token cost',
+    sidebar: 'Nine tabs fit in one column, which folds down to icons when the screen runs short',
+    finTitre: 'Mergerie — npm run demo',
+    finSous: (u) => `Thirty seconds to try it. No config, no token\n${u}`,
+  },
+};
+
 // --- Habillage injecté dans la page : faux curseur (Playwright ne filme pas celui de l'OS,
-// et l'OS n'est pas filmé), + une légende bas-écran et un carton plein écran pilotables. ---
+// et l'OS n'est pas filmé), + une légende bas-écran, un carton plein écran, et un rendu
+// visible des listes déroulantes natives — voir __selOpen plus bas. ---
 const OVERLAY_JS = `(() => {
   if (window.__demoOverlay) return; window.__demoOverlay = true;
   const S = (el, css) => { el.style.cssText = css; return el; };
@@ -70,6 +138,52 @@ const OVERLAY_JS = `(() => {
   window.__capHide = () => { cap.style.opacity = '0'; cap.style.transform = 'translateX(-50%) translateY(14px)'; };
   window.__card = (t, s) => { card.querySelector('#__t').textContent = t; card.querySelector('#__s').textContent = s || ''; card.style.opacity = '1'; };
   window.__cardHide = () => { card.style.opacity = '0'; };
+
+  /* LISTES DÉROULANTES — le seul élément de l'interface que la caméra ne voyait pas.
+     La liste d'un <select> natif est dessinée par le SYSTÈME, hors de la page : Playwright
+     filme la page, donc elle n'apparaissait jamais. On voyait le curseur cliquer, puis la
+     valeur changer toute seule — le geste le plus incompréhensible de la vidéo.
+     On en dessine donc un double DANS la page, aux vraies dimensions et avec les vraies
+     options lues sur l'élément. C'est un artifice d'enregistrement, jamais chargé par
+     l'application : il vit dans ce script et nulle part ailleurs. */
+  let box = null;
+  window.__selOpen = (sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return 0;
+    window.__selClose();
+    const r = el.getBoundingClientRect();
+    box = S(document.createElement('div'),
+      'position:fixed;left:' + r.left + 'px;top:' + (r.bottom + 6) + 'px;min-width:' + Math.max(r.width, 240) + 'px;'
+      + 'padding:6px;background:#0f172a;border:1px solid rgba(148,163,184,.45);border-radius:12px;'
+      + 'box-shadow:0 22px 60px rgba(0,0,0,.6);z-index:2147483100;pointer-events:none;overflow:hidden;'
+      + 'font:500 20px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;'
+      + 'opacity:0;transform:translateY(-6px);transition:opacity .2s ease,transform .2s ease;');
+    for (const o of el.options) {
+      const it = S(document.createElement('div'),
+        'padding:11px 16px;border-radius:8px;color:#e2e8f0;white-space:nowrap;');
+      it.textContent = o.textContent;
+      it.dataset.v = o.value;
+      box.appendChild(it);
+    }
+    document.body.appendChild(box);
+    requestAnimationFrame(() => { box.style.opacity = '1'; box.style.transform = 'translateY(0)'; });
+    return el.options.length;
+  };
+  // Met en évidence l'option choisie, comme le ferait le survol dans une vraie liste.
+  window.__selPick = (v) => {
+    if (!box) return;
+    for (const it of box.children) {
+      const on = it.dataset.v === String(v);
+      it.style.background = on ? '#2563eb' : 'transparent';
+      it.style.color = on ? '#fff' : '#e2e8f0';
+    }
+  };
+  window.__selClose = () => {
+    if (!box) return;
+    const b = box; box = null;
+    b.style.opacity = '0';
+    setTimeout(() => b.remove(), 220);
+  };
 })();`;
 
 // --- Cycle de vie du serveur de démo ---
@@ -80,6 +194,20 @@ function fetchStatus() {
     });
     req.on('error', () => resolve(null));
     req.setTimeout(1500, () => { req.destroy(); resolve(null); });
+  });
+}
+/* La langue du SERVEUR, à part de celle de l'interface : ses messages d'erreur sont affichés
+   tels quels. Sans ça, une vidéo anglaise se retrouve ponctuée de phrases françaises. */
+function setServerLang(lang) {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({ language: lang });
+    const req = http.request(`${BASE}/api/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+    }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode < 400)); });
+    req.on('error', () => resolve(false));
+    req.setTimeout(4000, () => { req.destroy(); resolve(false); });
+    req.end(body);
   });
 }
 async function waitForDemo(timeoutMs = 90000) {
@@ -138,28 +266,34 @@ const capHide = (page) => page.evaluate(() => window.__capHide && window.__capHi
 const card = (page, t, s) => page.evaluate(([a, b]) => window.__card && window.__card(a, b), [t, s]).catch(() => {});
 const cardHide = (page) => page.evaluate(() => window.__cardHide && window.__cardHide()).catch(() => {});
 
-// Écrans vides à signaler EN FIN d'exécution plutôt que de filmer du vide.
-const warnings = [];
-async function present(page, selector, min = 1) {
-  try { return (await page.locator(selector).count()) >= min; } catch { return false; }
-}
-async function need(page, selector, sceneLabel) {
-  const ok = await present(page, selector);
-  if (!ok) warnings.push(`« ${sceneLabel} » : « ${selector} » absent → écran probablement vide en démo (non filmé)`);
-  return ok;
-}
-
-// Chaque section est isolée : si un écran change, la vidéo se termine quand même.
-// 800 ms de respiration à la fin de chaque écran (rythme humain, jamais de saut brusque).
-async function section(name, fn) {
-  try { await fn(); await sleep(800); }
-  catch (e) { warnings.push(`« ${name} » interrompue : ${e.message}`); console.warn(`  ⚠ section « ${name} » : ${e.message}`); }
+/* Choisir dans une liste déroulante, VISIBLEMENT : on ouvre le double dessiné dans la page,
+   on laisse le temps de lire, on met en évidence l'option, puis on la sélectionne pour de
+   vrai. Le spectateur voit le même enchaînement que celui qu'il ferait à la souris. */
+async function pickOption(page, selector, valeur, { lire = 850, apres = 500 } = {}) {
+  const loc = page.locator(selector);
+  await moveTo(page, loc);
+  await sleep(300);
+  const n = await page.evaluate((s) => window.__selOpen && window.__selOpen(s), selector).catch(() => 0);
+  if (!n) { await loc.selectOption(valeur).catch(() => {}); return; }
+  await sleep(lire);
+  await page.evaluate((v) => window.__selPick && window.__selPick(v), valeur).catch(() => {});
+  await sleep(420);
+  await loc.selectOption(valeur).catch(() => {});
+  await sleep(apres);
+  await page.evaluate(() => window.__selClose && window.__selClose()).catch(() => {});
 }
 
 async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
-  // 1) Serveur de démo — obligatoire et vérifié.
+  const args = process.argv.slice(2);
+  const demande = (args.find((a) => a.startsWith('--lang=')) || '').split('=')[1] || process.env.DEMO_LANG;
+  const langues = demande ? [demande] : ['fr', 'en'];
+  for (const l of langues) {
+    if (!TEXTES[l]) throw new Error(`Langue inconnue : « ${l} » (attendu : ${Object.keys(TEXTES).join(', ')}).`);
+  }
+
+  // 1) Serveur de démo — obligatoire et vérifié. Partagé par les deux enregistrements.
   let demo = null;
   let st = await fetchStatus();
   if (st) {
@@ -174,15 +308,55 @@ async function main() {
     if (!st) { stopDemo(demo); throw new Error(`Serveur muet sur ${BASE}.`); }
     if (!st.demo) { stopDemo(demo); throw new Error('Le serveur démarré n’est pas en mode démo (MERGERIE_DEMO manquant ?).'); }
   }
-  console.log('• Mode démo confirmé. Enregistrement…');
+  console.log('• Mode démo confirmé.');
+
+  try {
+    for (const lang of langues) {
+      console.log(`\n• Enregistrement « ${lang} » …`);
+      await enregistrer(lang);
+    }
+  } finally {
+    if (demo) stopDemo(demo);
+  }
+}
+
+async function enregistrer(lang) {
+  const T = TEXTES[lang];
+  const OUT_FILE = path.join(OUT_DIR, `mergerie-demo-${lang}.webm`);
+  const warnings = [];
+  px = W / 2; py = H / 2;
+
+  // Écrans vides à signaler EN FIN d'exécution plutôt que de filmer du vide.
+  const present = async (page, selector, min = 1) => {
+    try { return (await page.locator(selector).count()) >= min; } catch { return false; }
+  };
+  const need = async (page, selector, sceneLabel) => {
+    const ok = await present(page, selector);
+    if (!ok) warnings.push(`« ${sceneLabel} » : « ${selector} » absent → écran probablement vide en démo (non filmé)`);
+    return ok;
+  };
+  // Chaque section est isolée : si un écran change, la vidéo se termine quand même.
+  // 800 ms de respiration à la fin de chaque écran (rythme humain, jamais de saut brusque).
+  const section = async (name, fn) => {
+    try { await fn(); await sleep(800); }
+    catch (e) { warnings.push(`« ${name} » interrompue : ${e.message}`); console.warn(`  ⚠ section « ${name} » : ${e.message}`); }
+  };
+
+  await setServerLang(lang);
 
   const browser = await chromium.launch();
   const context = await browser.newContext({
     viewport: { width: W, height: H },
     recordVideo: { dir: OUT_DIR, size: { width: W, height: H } },
-    locale: 'fr-FR',
+    locale: T.locale,
     deviceScaleFactor: 1,
   });
+  /* La langue AVANT le premier rendu : l'app la lit dans localStorage tout en haut de son
+     module, plusieurs tables de libellés étant construites à l'évaluation. La poser après
+     chargement obligerait à recharger la page — au milieu de la vidéo. */
+  await context.addInitScript(([k, v]) => {
+    try { localStorage.setItem(k, v); } catch { /* stockage indisponible */ }
+  }, [LANG_KEY, lang]);
   await context.addInitScript(OVERLAY_JS);
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
@@ -196,45 +370,42 @@ async function main() {
     await sleep(400);
 
     // ═══ Carton d'intro (≈3 s) ═══
-    await card(page, 'Mergerie', 'From prompt to merge — l’IA exécute, tu valides');
+    await card(page, T.introTitre, T.introSous);
     await sleep(3200);
     await cardHide(page);
     await sleep(800);
 
     // ═══ 1) Reviews → le rapport de la MR convergée (le moment fort d'abord) ═══
     await section('Reviews · rapport de la MR convergée', async () => {
-      await clickEl(page, page.locator('button[data-tab="review"]'));
+      await clickEl(page, page.locator('nav button[data-tab="review"]'));
       await sleep(600);
       await clickEl(page, page.locator('button[data-seg="reviewed"]'));
       await page.waitForSelector('#reportList .card', { state: 'visible', timeout: 10000 });
       await sleep(700);
-      await cap(page, 'Chaque MR est reviewée et notée par l’IA — sur des critères cadrés');
+      await cap(page, T.review);
       await sleep(900);
-      const target = page.locator('#reportList .card', { hasText: 'Refonte du tunnel de paiement' }).first();
-      if (!(await need(page, '#reportList .card:has-text("Refonte du tunnel de paiement")', 'MR convergée'))) return;
+      const target = page.locator('#reportList .card').first();
+      if (!(await need(page, '#reportList .card', 'MR convergée'))) return;
       await clickEl(page, target);
       await page.waitForSelector('#mdView', { state: 'visible', timeout: 10000 });
       await glide(page, W * 0.5, H * 0.42);
-      await sleep(4800);
+      await sleep(4400);
     });
 
-    // ═══ 2) Boucle « Converger » : v1 → v2 → v3 (1,5 s par version) ═══
+    // ═══ 2) Boucle « Converger » : v1 → v2 → v3, la liste déroulante VISIBLE ═══
     await section('Converger · progression des versions', async () => {
       if (!(await need(page, '#mdVersion', 'Sélecteur de versions'))) return;
-      await cap(page, 'Converger : review → correction IA → re-review. De 5,8 à 8,4 en 3 passes, tout l’historique conservé');
+      await cap(page, T.converge);
       await sleep(900);
-      const sel = page.locator('#mdVersion');
-      await moveTo(page, sel);
-      await sleep(500);
-      await sel.selectOption('1'); await sleep(1500);
-      await sel.selectOption('2'); await sleep(1500);
-      await sel.selectOption('3'); await sleep(1600);
+      await pickOption(page, '#mdVersion', '1', { lire: 1100, apres: 1300 });
+      await pickOption(page, '#mdVersion', '2', { lire: 500, apres: 1300 });
+      await pickOption(page, '#mdVersion', '3', { lire: 500, apres: 1500 });
     });
 
     // ═══ 3) Suivi de résolution ═══
     await section('Suivi de résolution', async () => {
       if (!(await need(page, '#resolutionBox .res-chip', 'Suivi de résolution'))) return;
-      await cap(page, 'Chaque constat « résolu » est vérifié dans git — l’IA n’est pas crue sur parole');
+      await cap(page, T.resolution);
       await sleep(900);
       const chips = page.locator('#resolutionBox .res-chip');
       const cn = Math.min(await chips.count(), 4);
@@ -244,103 +415,147 @@ async function main() {
 
     // ═══ 4) Dev IA : la session qui a produit CETTE MR (du prompt à la MR convergée) ═══
     await section('Dev IA · session reliée à la MR', async () => {
-      await clickEl(page, page.locator('button[data-tab="task"]'));
+      await clickEl(page, page.locator('nav button[data-tab="task"]'));
       await sleep(700);
-      await cap(page, 'Du prompt à la MR convergée : l’IA code, commit, pousse, ouvre la MR et la fait converger. Le merge reste à toi');
+      await cap(page, T.session);
       await sleep(900);
-      const linked = page.locator('#taskList .card', { hasText: 'tunnel de paiement' }).first();
-      if (await need(page, '#taskList .card:has-text("tunnel de paiement")', 'Session reliée')) {
-        await moveTo(page, linked);
-        await sleep(4400);
+      if (await need(page, '#taskList .card', 'Session reliée')) {
+        await moveTo(page, page.locator('#taskList .card').first());
+        await sleep(4200);
       }
     });
 
     // ═══ 5) Une session « l'IA pose une question » (needs_input) ═══
     await section('Dev IA · l’IA pose une question', async () => {
       if (!(await need(page, '#taskList .q-opt', 'Session en attente de réponse'))) return;
-      await cap(page, 'En cas d’ambiguïté, l’IA s’arrête et te demande — au lieu de deviner');
+      await cap(page, T.question);
       await sleep(900);
-      const q = page.locator('#taskList .q-opt').first();
-      await moveTo(page, q);
-      await sleep(4400);
+      await moveTo(page, page.locator('#taskList .q-opt').first());
+      await sleep(4000);
     });
 
-    // ═══ 6) Jira : liste puis détail d'un ticket ═══
+    /* ═══ 6) Notes : le brief du matin, les todos, les pages ═══
+       L'onglet n'existait pas quand la vidéo précédente a été tournée. C'est aussi le seul
+       écran qui rassemble le travail des autres — il mérite ses trois temps. */
+    await section('Notes · brief, todos et pages', async () => {
+      await clickEl(page, page.locator('nav button[data-tab="notes"]'));
+      await page.waitForSelector('#briefBox .brief-sec', { state: 'visible', timeout: 10000 }).catch(() => {});
+      if (!(await need(page, '#briefBox .brief-sec', 'Brief du matin'))) return;
+      await cap(page, T.brief);
+      await sleep(900);
+      await glide(page, W * 0.5, H * 0.45);
+      await sleep(3800);
+
+      await clickEl(page, page.locator('button[data-nsub="todos"]'));
+      await page.waitForSelector('#todoList .todo-row', { state: 'visible', timeout: 8000 }).catch(() => {});
+      if (await present(page, '#todoList .todo-row')) {
+        await cap(page, T.todos);
+        await sleep(700);
+        const rows = page.locator('#todoList .todo-row');
+        const n = Math.min(await rows.count(), 3);
+        for (let i = 0; i < n; i += 1) { await moveTo(page, rows.nth(i), 480); await sleep(700); }
+        await sleep(1600);
+      } else warnings.push('« Notes · todos » : aucune todo en démo (non filmé)');
+
+      await clickEl(page, page.locator('button[data-nsub="pages"]'));
+      await page.waitForSelector('#pageList .note-item', { state: 'visible', timeout: 8000 }).catch(() => {});
+      if (await present(page, '#pageList .note-item')) {
+        await cap(page, T.pages);
+        await sleep(700);
+        await clickEl(page, page.locator('#pageList .note-item').first());
+        await page.waitForSelector('#pageEditor', { state: 'visible', timeout: 6000 }).catch(() => {});
+        await glide(page, W * 0.62, H * 0.45);
+        await sleep(3800);
+      } else warnings.push('« Notes · pages » : aucune page en démo (non filmé)');
+    });
+
+    // ═══ 7) Jira : liste puis détail d'un ticket ═══
     await section('Jira · tickets et détail', async () => {
-      await clickEl(page, page.locator('button[data-tab="jira"]'));
+      await clickEl(page, page.locator('nav button[data-tab="jira"]'));
       await page.waitForSelector('.jira-item', { state: 'visible', timeout: 10000 });
-      await cap(page, 'Tes tickets Jira, leur contexte injecté automatiquement dans les reviews');
+      await cap(page, T.jira);
       await sleep(900);
       if (!(await need(page, '.jira-item', 'Liste Jira'))) return;
       await clickEl(page, page.locator('.jira-item').first());
       await page.waitForSelector('#jiraDetail', { state: 'visible', timeout: 8000 }).catch(() => {});
       await glide(page, W * 0.62, H * 0.4);
-      await sleep(3600);
-      const comment = page.locator('.jira-comment').first();
-      if (await present(page, '.jira-comment')) { await moveTo(page, comment); await sleep(2200); }
+      await sleep(3400);
+      if (await present(page, '.jira-comment')) { await moveTo(page, page.locator('.jira-comment').first()); await sleep(2000); }
       else await sleep(1400);
     });
 
-    // ═══ 7) Git : explorateur de branches multi-dépôts ═══
+    // ═══ 8) Git : explorateur de branches multi-dépôts ═══
     await section('Git · explorateur de branches', async () => {
-      await clickEl(page, page.locator('button[data-tab="git"]'));
+      await clickEl(page, page.locator('nav button[data-tab="git"]'));
       await sleep(500);
       await clickEl(page, page.locator('button[data-gsub="explore"]'));
-      await cap(page, 'Opérations git sur tous tes dépôts — toujours avec aperçu, suppressions restaurables');
+      await cap(page, T.git);
       await sleep(900);
       if (!(await need(page, '#gitExploreRepoBox .git-multi-pick', 'Sélecteur de dépôts'))) return;
       await clickEl(page, page.locator('#gitExploreRepoBox .git-multi-pick').first());
       await sleep(400);
+      await cap(page, T.gitExplore);
       await clickEl(page, page.locator('#gitExploreGo'));
       await page.waitForSelector('#gitExploreBox .git-ex-project', { state: 'visible', timeout: 10000 });
       await sleep(700);
       await clickEl(page, page.locator('#gitExploreBox .git-ex-project summary').first());
       await page.waitForSelector('#gitExploreBox table', { state: 'visible', timeout: 6000 }).catch(() => {});
       await glide(page, W * 0.5, H * 0.5);
-      await sleep(4200);
+      await sleep(3800);
     });
 
-    /* ═══ 7 bis) Liens : la grille, puis la palette globale ═══
+    /* ═══ 9) Liens : la grille, la santé, puis la palette globale ═══
        C'est la fonctionnalité qui se raconte le plus mal en mots et le mieux à l'écran :
        une grille services × environnements, et un lanceur qui trouve tout au clavier. */
-    await section('Liens · grille et palette', async () => {
-      await clickEl(page, page.locator('button[data-tab="links"]'));
+    await section('Liens · grille, santé et palette', async () => {
+      await clickEl(page, page.locator('nav button[data-tab="links"]'));
       await page.waitForSelector('.link-grid', { state: 'visible', timeout: 12000 }).catch(() => {});
       if (!(await need(page, '.link-grid', 'Grille de liens'))) return;
-      await cap(page, 'Un service par ligne, un environnement par colonne — et l’état de chacun');
-      await moveTo(page, page.locator('.link-health.down').first());
-      await sleep(1400);
+      await cap(page, T.liens);
+      await sleep(900);
+      await glide(page, W * 0.5, H * 0.4);
+      await sleep(2400);
+      if (await present(page, '.link-health.down')) {
+        await cap(page, T.liensSante);
+        await moveTo(page, page.locator('.link-health.down').first());
+        await sleep(2600);
+      }
       // La palette : on l'ouvre par son champ, on tape, les résultats tombent.
       await clickEl(page, page.locator('#paletteTrigger'));
       await sleep(500);
-      await page.locator('#paletteInput').type('kib', { delay: 140 });
-      await sleep(1400);
-      await cap(page, 'La palette cherche partout à la fois — liens, MR, tickets, notes');
+      await cap(page, T.palette);
+      /* « paiement » et non « kib » : c'est le fil rouge de la démo, et le seul mot qui
+         ressorte à la fois d'un lien, d'une merge request, d'un ticket surveillé et d'une
+         todo. La légende promet que la palette traverse tout le cockpit — autant que
+         l'écran le prouve au lieu de rendre deux lignes de la même famille. */
+      await page.locator('#paletteInput').type('paiement', { delay: 130 });
+      await sleep(2800);
       await page.keyboard.press('Escape');
       await sleep(700);
     });
 
-    // ═══ 8) Docker : liste compose + drift de variables ═══
+    // ═══ 10) Docker : liste compose + drift de variables ═══
     await section('Docker · drift .env', async () => {
-      await clickEl(page, page.locator('button[data-tab="docker"]'));
+      await clickEl(page, page.locator('nav button[data-tab="docker"]'));
       await page.waitForSelector('#dockerComposeBox .docker-svc', { state: 'visible', timeout: 12000 }).catch(() => {});
-      await cap(page, 'Le drift .env détecté variable par variable — secrets masqués');
+      await cap(page, T.docker);
       await sleep(900);
       // le diff de variables du service en drift (rendu inline sur sa carte)
       await page.waitForSelector('.env-diff', { state: 'visible', timeout: 8000 }).catch(() => {});
       if (!(await need(page, '.env-diff', 'Diff de variables'))) return;
       await moveTo(page, page.locator('.env-diff').first());
       await sleep(1200);
-      const chg = page.locator('.env-diff .env-added, .env-diff .env-removed').first();
-      if (await present(page, '.env-diff .env-added, .env-diff .env-removed')) { await moveTo(page, chg, 450); }
-      await sleep(2600);
+      if (await present(page, '.env-diff .env-added, .env-diff .env-removed')) {
+        await moveTo(page, page.locator('.env-diff .env-added, .env-diff .env-removed').first(), 450);
+      }
+      await sleep(2400);
     });
 
-    // ═══ 9) Docker → Logs : tail live de 2 containers ═══
+    // ═══ 11) Docker → Logs : tail live de 2 containers ═══
     await section('Docker · logs live', async () => {
       await clickEl(page, page.locator('button[data-dsub="logs"]'));
       await page.waitForSelector('#dlogContainers .dlog-citem', { state: 'visible', timeout: 8000 });
-      await cap(page, 'Logs live multi-containers, filtrables');
+      await cap(page, T.logs);
       await sleep(900);
       const items = page.locator('#dlogContainers .dlog-citem');
       const n = Math.min(await items.count(), 2);
@@ -354,46 +569,63 @@ async function main() {
       }).catch(() => false);
       if (!gotLines) warnings.push('« Docker · logs » : aucune ligne reçue (flux vide) — écran peu parlant');
       await glide(page, W * 0.5, H * 0.55);
-      await sleep(gotLines ? 4400 : 1000);
+      await sleep(gotLines ? 4000 : 1000);
     });
 
-    // ═══ 10) Statistiques : vue d'ensemble ═══
+    // ═══ 12) Statistiques : vue d'ensemble ═══
     await section('Statistiques', async () => {
-      await clickEl(page, page.locator('button[data-tab="dashboard"]'));
+      await clickEl(page, page.locator('nav button[data-tab="dashboard"]'));
       await page.waitForSelector('#tab-dashboard.active', { state: 'visible', timeout: 8000 }).catch(() => {});
-      await cap(page, 'La qualité progresse-t-elle ? Notes, taux de résolution, coût en tokens');
+      await cap(page, T.stats);
       await sleep(900);
       await glide(page, W * 0.5, H * 0.42);
-      await sleep(3600);
-      await page.mouse.wheel(0, 520).catch(() => {});
       await sleep(3400);
+      await page.mouse.wheel(0, 520).catch(() => {});
+      await sleep(3200);
+    });
+
+    /* ═══ 13) La colonne de navigation, qui se replie ═══
+       Dernier plan avant le carton : il montre l'app entière d'un coup, et le geste explique
+       à lui seul pourquoi la navigation a quitté le bandeau du haut. */
+    await section('Navigation · la colonne se replie', async () => {
+      if (!(await need(page, '#sidebarToggle', 'Bouton de repli'))) return;
+      /* REMONTER D'ABORD. L'écran précédent s'est terminé en bas de page ; sans ça, le
+         dernier plan de la vidéo — celui qui montre l'application entière — se jouait sur
+         une zone blanche, et l'outil avait l'air vide au moment de conclure. */
+      await page.mouse.wheel(0, -3000).catch(() => {});
+      await sleep(900);
+      await cap(page, T.sidebar);
+      await sleep(900);
+      await clickEl(page, page.locator('#sidebarToggle'));
+      await sleep(2200);
+      await clickEl(page, page.locator('#sidebarToggle'));
+      await sleep(1400);
     });
 
     // ═══ Carton de fin (≈4 s) ═══
     await capHide(page);
     await sleep(500);
-    await card(page, 'Mergerie — npm run demo', `30 secondes pour l’essayer. Aucune config, aucun token\n${REPO_URL}`);
+    await card(page, T.finTitre, T.finSous(REPO_URL));
     await sleep(4000);
   } finally {
     const recMs = Date.now() - recStart;
     await context.close(); // flush de la vidéo
     await browser.close();
-    if (demo) stopDemo(demo);
 
-    // Renomme le .webm au nom stable.
+    // Renomme le .webm au nom stable de la langue.
     try {
       const raw = await video.path();
       if (raw && raw !== OUT_FILE) { fs.rmSync(OUT_FILE, { force: true }); fs.renameSync(raw, OUT_FILE); }
     } catch { /* nom automatique conservé */ }
 
     const secs = Math.round(recMs / 1000);
-    console.log(`\n✓ Vidéo enregistrée : ${path.relative(ROOT, OUT_FILE)}  (~${secs}s)`);
-    if (secs < 100 || secs > 200) console.warn(`  ⚠ Durée hors cible 100–200 s (${secs}s).`);
+    console.log(`  ✓ ${path.relative(ROOT, OUT_FILE)}  (~${secs}s)`);
+    if (secs < 150 || secs > 300) console.warn(`  ⚠ Durée hors cible 150–300 s (${secs}s).`);
     if (warnings.length) {
-      console.warn('\n⚠ Écrans/sections à vérifier :');
-      for (const w of warnings) console.warn('   -', w);
+      console.warn('  ⚠ Écrans/sections à vérifier :');
+      for (const w of warnings) console.warn('     -', w);
     } else {
-      console.log('  Tous les écrans attendus ont été filmés.');
+      console.log('    Tous les écrans attendus ont été filmés.');
     }
   }
 }

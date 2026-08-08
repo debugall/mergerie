@@ -1288,7 +1288,8 @@ réglages ci-dessus sont aussi appliqués à git.
 
 ```bash
 npm i -D playwright && npx playwright install chromium   # une seule fois
-npm run record:demo                                       # → demo-recordings/mergerie-demo.webm
+npm run record:demo                                       # les deux langues, l'une après l'autre
+npm run record:demo -- --lang=en                          # → demo-recordings/mergerie-demo-en.webm
 npm run demo:gif                                          # → docs/demo.gif (celui du README)
 ```
 
@@ -1297,12 +1298,25 @@ pilote un Chromium qui enregistre en **1920×1080** une **visite guidée** avec 
 **cartons** d'intro/fin et **légendes explicatives** synchronisées sur chaque écran — puis arrête tout
 proprement (la fermeture du contexte flushe la vidéo). Le parcours : *Reviews* → un rapport noté →
 sélecteur de versions **v1 → v2 → v3** (progression **5,8 → 8,4**) → suivi de résolution → *Dev IA*
-(session reliée à sa MR, question posée par l'IA) → *Jira* → *Git* (explorateur de branches) →
-*Docker* (drift `.env` + logs live) → *Stats*. Le `.webm` produit s'uploade directement sur
-YouTube.
+(session reliée à sa MR, question posée par l'IA) → *Notes* (brief du matin, todos, pages) →
+*Jira* → *Git* (explorateur de branches) → *Liens* (grille, santé, palette globale) → *Docker*
+(drift `.env` + logs live) → *Stats* → la colonne de navigation qui se replie. Le `.webm` produit
+s'uploade directement sur YouTube.
+
+**Les deux langues** sont enregistrées l'une après l'autre, sur le même serveur de démo, et la
+langue est posée aux **deux** endroits où l'app la lit — `localStorage` pour l'interface, et
+`config.language` en base pour les messages venus du serveur. N'en poser qu'un donne une vidéo
+anglaise ponctuée de phrases françaises.
+
+**Les listes déroulantes sont redessinées dans la page** le temps de l'enregistrement. La liste
+d'un `<select>` natif est dessinée par le système, hors de la page : la caméra filme la page, donc
+elle n'apparaissait jamais. On voyait le curseur cliquer, puis la valeur changer toute seule — le
+geste le plus incompréhensible de la vidéo. Le double est construit à partir des vraies options de
+l'élément ; c'est un artifice d'enregistrement, il vit dans `scripts/record-demo.js` et nulle part
+ailleurs.
 
 **Le GIF du README** se fabrique du même enregistrement : `npm run demo:gif`. Les réglages (6 im/s,
-640 px, 128 couleurs, palette calculée sur la vidéo) sont calés pour tenir sous ~4,5 Mo — un fichier
+640 px, 64 couleurs, palette calculée sur la vidéo) sont calés pour tenir sous ~3,5 Mo — un fichier
 que GitHub recharge à chaque visite de la page d'accueil — sans rendre l'interface illisible. Ils
 vivent dans `scripts/demo-gif.sh` plutôt que dans une commande à retrouver : les redécouvrir coûte
 une demi-heure et donne un fichier deux fois trop lourd.
