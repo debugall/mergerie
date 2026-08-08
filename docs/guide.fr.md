@@ -711,11 +711,8 @@ si, le message le dit et renvoie plus bas, au lieu d'annoncer « rien ne corresp
 résultats bien présents.
 
 À côté : **`+ Ajouter`** (un lien simple, un service, un environnement) et un menu **`⋯`** pour
-l'import de marque-pages et la vérification de santé. Ces trois-là se font une fois dans la vie de
-l'outil ; retrouver un lien se fait tous les jours, et c'est ce qui occupe la place.
-
-Enfin une pastille **« N injoignables »** quand il y en a : elle **filtre la grille** sur les
-services concernés. Le badge du menu disait qu'il y avait un problème ; celle-ci y mène.
+l'import de marque-pages. Ces gestes se font une fois dans la vie de l'outil ; retrouver un lien se
+fait tous les jours, et c'est ce qui occupe la place.
 
 #### La grille
 - **Lignes = services**, épinglés en tête puis par ordre alphabétique. Chaque ligne porte le nom,
@@ -813,29 +810,6 @@ branche, sur l'environnement voulu, sans rien retaper.
 - Le fichier n'est **jamais exécuté ni rendu** : il est analysé, et seules les adresses `http(s)` en
   sortent — un favori `javascript:` est ignoré. Taille bornée à 5 Mo.
 - La conversion en services vient **après**, à la main (voir plus haut).
-
-#### Health check — désactivé par défaut, à double tour
-Ces requêtes sont les **seules** que cet onglet envoie vers l'extérieur, et elles partent vers des
-adresses que tu as saisies. D'où deux interrupteurs, pas un :
-
-1. **Globalement**, dans *Réglages → Général*, avec sa cadence (5 min par défaut, 1 min au minimum).
-2. **Par environnement**, dans la modale de l'environnement. **La production est hors du lot par
-   défaut** : envoyer du trafic automatique vers un service en production n'est pas une décision
-   qu'un outil prend à la place de son utilisateur.
-
-Mécanique : un `HEAD` (repli en `GET` si le serveur répond 405, pour ne pas conclure « injoignable »
-sur une question de méthode), 5 s de patience, redirections suivies (3 au plus), **aucun corps de
-réponse lu**. 2xx-3xx → joignable, le reste → injoignable. Le cycle est **séquentiel** : vingt
-services × quatre environnements lancés d'un coup, ce sont quatre-vingts connexions simultanées
-sortant d'un poste de travail.
-
-⚠ **Deux limites à connaître.** Les vérifications ne partent **que lorsqu'un onglet Mergerie est
-ouvert** — pas de trafic fantôme la nuit. Et le résultat est un **dernier état connu**, pas un
-historique : la question posée est « est-ce debout maintenant ? ».
-
-Affichage : une pastille sur la case (verte, rouge, grise), avec le code HTTP, la latence et
-l'heure au survol ; et le nombre de liens injoignables en **badge rouge** sur l'entrée Liens du
-menu. **Aucune notification bureau** : un service qui tombe la nuit en produirait des dizaines.
 
 ### Stats
 Funnel des MR, distribution des notes, **évolution de la note moyenne par semaine** (« la qualité

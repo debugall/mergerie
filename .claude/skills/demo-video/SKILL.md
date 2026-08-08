@@ -52,8 +52,8 @@ part la plus visible de ce que l'outil sait faire aujourd'hui. C'est le premier 
   (la formule `#tab-notes > div > button` fonctionne, vérifié : 3 boutons). À montrer : le brief du
   matin (`#briefBox .brief-sec`), les todos (`#todoList .todo-row`, cochables sur place), une page
   et son autolink (`#pageList .note-item` puis `#pageEditor`).
-- **Liens** — `onglet('links')` répond. À montrer : la grille (`.link-grid`), une pastille de santé
-  (`.link-health.down`), les liens libres, et la palette.
+- **Liens** — `onglet('links')` répond. À montrer : la grille (`.link-grid`), les liens libres, et la
+  palette.
 
 ### La navigation est une colonne, plus un bandeau
 
@@ -177,7 +177,7 @@ retient une réécriture qu'après l'avoir entendue.
 - `frécence` — mot inventé (fréquence + récence) : à peu près sûr d'être mal lu. Le contourner en
   disant « ce qu'on ouvre souvent et récemment » est sans doute plus simple que de le faire dire.
 - `preprod`, `Kibana`, `Grafana`, `Confluence` — noms propres de la grille de liens.
-- `health check`, `brief`, `autolink`, `snooze`.
+- `brief`, `autolink`, `snooze`.
 - **Une lettre seule est un piège connu** : `?` était lu comme un silence total. La palette s'ouvre
   aussi par la touche `o` — ne pas l'annoncer dans la narration sans avoir vérifié qu'un `o` isolé
   s'entend. La formule sûre existe déjà : « la touche point d'interrogation ».

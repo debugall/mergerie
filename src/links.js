@@ -123,8 +123,8 @@ function creerEnvironnement(body = {}, msgs) {
   if (db.prepare('SELECT 1 FROM environment WHERE name = ?').get(name)) throw erreur(msgs.nomPris);
   const suivant = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 p FROM environment').get().p;
   const pos = Number.isFinite(Number(body.position)) && body.position !== '' ? Number(body.position) : suivant;
-  const info = db.prepare(`INSERT INTO environment (name, position, color, health_check, created_at)
-    VALUES (?,?,?,?,?)`).run(name, pos, lireCouleur(body.color), body.health_check ? 1 : 0, nowIso());
+  const info = db.prepare(`INSERT INTO environment (name, position, color, created_at)
+    VALUES (?,?,?,?)`).run(name, pos, lireCouleur(body.color), nowIso());
   return db.prepare('SELECT * FROM environment WHERE id = ?').get(info.lastInsertRowid);
 }
 
@@ -144,7 +144,6 @@ function majEnvironnement(id, patch = {}, msgs) {
   }
   if (patch.position !== undefined) { champs.push('position = ?'); vals.push(Number(patch.position) || 0); }
   if (patch.color !== undefined) { champs.push('color = ?'); vals.push(lireCouleur(patch.color)); }
-  if (patch.health_check !== undefined) { champs.push('health_check = ?'); vals.push(patch.health_check ? 1 : 0); }
   if (champs.length) db.prepare(`UPDATE environment SET ${champs.join(', ')} WHERE id = ?`).run(...vals, env.id);
   return db.prepare('SELECT * FROM environment WHERE id = ?').get(env.id);
 }
@@ -249,10 +248,6 @@ function poserUrl(serviceId, body = {}, msgs) {
   const brut = String(body.url == null ? '' : body.url).trim();
   if (!brut) {
     db.prepare('DELETE FROM service_url WHERE service_id = ? AND environment_id = ?').run(Number(serviceId), envId);
-    /* …et son verdict de santé avec elle. Sans ça, effacer l'URL d'un service en panne
-       faisait disparaître la pastille (la case est vide) mais laissait le compteur `down`
-       l'inclure : un badge rouge permanent sur le menu, sans rien à montrer. */
-    db.prepare('DELETE FROM health_status WHERE service_id = ? AND environment_id = ?').run(Number(serviceId), envId);
     return { ok: true, url: null };
   }
   const url = lireUrl(brut, msgs.urlInvalide);
@@ -352,7 +347,6 @@ function grille() {
     LEFT JOIN repo r ON r.id = s.repo_id
     ORDER BY s.pinned DESC, s.name COLLATE NOCASE`).all();
   const urls = db.prepare('SELECT * FROM service_url').all();
-  const sante = db.prepare('SELECT * FROM health_status').all();
   const ctx = db.prepare('SELECT service_id, COUNT(*) n FROM context_link GROUP BY service_id').all();
 
   const parService = new Map();
@@ -360,7 +354,6 @@ function grille() {
     if (!parService.has(u.service_id)) parService.set(u.service_id, {});
     parService.get(u.service_id)[u.environment_id] = u.url;
   }
-  const santeParCle = new Map(sante.map((h) => [`${h.service_id}:${h.environment_id}`, h]));
   const ctxParService = new Map(ctx.map((c) => [c.service_id, c.n]));
 
   return {
@@ -369,9 +362,6 @@ function grille() {
       ...s,
       tags: litTags(s.tags),
       urls: parService.get(s.id) || {},
-      health: Object.fromEntries(envs
-        .map((e) => [e.id, santeParCle.get(`${s.id}:${e.id}`) || null])
-        .filter(([, v]) => v)),
       context_links: ctxParService.get(s.id) || 0,
     })),
     free_links: listerFreeLinks(),
@@ -380,7 +370,6 @@ function grille() {
       ...services.flatMap((s) => litTags(s.tags)),
       ...db.prepare('SELECT tags FROM free_link').all().flatMap((r) => litTags(r.tags)),
     ])].sort(),
-    down: db.prepare("SELECT COUNT(*) c FROM health_status WHERE status = 'down'").get().c,
   };
 }
 

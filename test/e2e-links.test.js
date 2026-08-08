@@ -3,10 +3,9 @@
  *
  * Ce que l'unitaire ne prouve pas : que les routes existent et valident, que la grille se
  * compose, que l'import va de l'aperçu à la création sans doublon, que la palette voit
- * toutes les sources et retient ce qu'on ouvre — et que le health check reste bien à
- * DOUBLE opt-in : la prod n'est pas pinguée sans qu'on l'ait demandée, ni quoi que ce soit
- * quand le réglage global est éteint. Ce dernier point se vérifie contre un vrai serveur
- * local, seul moyen de savoir ce qui a été appelé et ce qui ne l'a pas été.
+ * toutes les sources et retient ce qu'on ouvre — et que les adresses de la grille ne sont
+ * jamais appelées par l'application. Ce dernier point se vérifie contre un vrai serveur local :
+ * c'est le seul moyen de savoir ce qui a été appelé, et ici la bonne réponse est « rien ».
  */
 
 const { test, before, after, describe } = require('node:test');
@@ -15,20 +14,15 @@ const http = require('node:http');
 const { startApp } = require('./helpers/app');
 
 let app;
-let cible;          // le serveur qu'on « pingue »
-let appels = [];    // ce que le health check est allé chercher — la preuve du double opt-in
+let cible;          // un serveur qui ne doit JAMAIS rien recevoir
+let appels = [];    // ce qu'il a reçu — reste vide, c'est tout l'intérêt
 
 before(async () => {
   app = await startApp();
   await app.configure();
   cible = http.createServer((req, res) => {
     appels.push({ method: req.method, url: req.url });
-    if (req.url === '/up') { res.writeHead(204); res.end(); return; }
-    if (req.url === '/down') { res.writeHead(503); res.end(); return; }
-    if (req.url === '/nohead' && req.method === 'HEAD') { res.writeHead(405); res.end(); return; }
-    if (req.url === '/nohead') { res.writeHead(200); res.end('page'); return; }
-    if (req.url === '/redir') { res.writeHead(302, { Location: '/up' }); res.end(); return; }
-    res.writeHead(404); res.end();
+    res.writeHead(204); res.end();
   });
   await new Promise((r) => cible.listen(0, '127.0.0.1', r));
 });
@@ -41,10 +35,9 @@ const base = () => `http://127.0.0.1:${cible.address().port}`;
 
 describe('Environnements et services', () => {
   test('cycle complet : environnements, service, cases de la grille', async () => {
-    const dev = await app.api('POST', '/api/environments', { name: 'dev', color: '#2f6fe0', health_check: 1 });
+    const dev = await app.api('POST', '/api/environments', { name: 'dev', color: '#2f6fe0' });
     assert.equal(dev.status, 200);
-    const prod = await app.api('POST', '/api/environments', { name: 'prod', color: '#c62828' });
-    assert.equal(prod.body.health_check, 0, 'la prod n’est pas vérifiée sans qu’on le demande');
+    await app.api('POST', '/api/environments', { name: 'prod', color: '#c62828' });
 
     const svc = await app.api('POST', '/api/services', { name: 'api-core', tags: 'Backend, backend, Métier' });
     assert.deepEqual(JSON.parse(svc.body.tags), ['backend', 'metier'], 'tags normalisés et dédupliqués');
@@ -194,76 +187,26 @@ describe('Liens contextuels sur une merge request', () => {
   });
 });
 
-describe('Health check — double opt-in', () => {
-  /* LE point de sûreté de la fonctionnalité : ce sont les seules requêtes sortantes, elles
-     partent vers des URLs saisies par l'utilisateur, et elles ne doivent partir QUE là où
-     on les a autorisées. On le prouve en regardant ce que le serveur cible a reçu. */
-  test('rien n’est pingué tant que le réglage global est éteint', async () => {
-    await app.api('PUT', '/api/config', { health_check: '0' });
-    appels = [];
-    const r = await app.api('POST', '/api/links/health/check');
-    // Le bouton force un cycle, mais le MINUTEUR, lui, ne part pas : c'est ce qu'on vérifie
-    // ci-dessous. Ici on s'assure surtout que la prod reste dehors.
-    assert.equal(r.status, 200);
-  });
+/* Les adresses de la grille sont ouvertes PAR L'UTILISATEUR, d'un clic. L'application, elle,
+   ne s'y connecte jamais : ce sont des adresses internes, saisies à la main, et un outil local
+   qui sortirait seul vers elles demanderait une confiance dont il n'a pas besoin.
 
-  test('seuls les environnements cochés sont vérifiés — la prod reste dehors', async () => {
-    await app.api('PUT', '/api/config', { health_check: '1' });
-    const envs = (await app.api('GET', '/api/environments')).body.environments;
-    const dev = envs[0];
-    const prod = (await app.api('POST', '/api/environments', { name: 'production' })).body;
-    assert.equal(prod.health_check, 0);
-
-    const svc = (await app.api('POST', '/api/services', { name: 'sonde' })).body;
-    await app.api('PUT', `/api/services/${svc.id}/urls`, { environment_id: dev.id, url: `${base()}/up` });
-    await app.api('PUT', `/api/services/${svc.id}/urls`, { environment_id: prod.id, url: `${base()}/PROD-NE-DOIT-PAS-ETRE-APPELE` });
+   Un test qui n'attend rien paraît creux ; celui-ci vaut pour ce qu'il empêche. On pose une
+   adresse pointant vers un serveur à nous, on exerce tout ce qui touche aux liens, et on
+   vérifie qu'il n'a rien reçu. */
+describe('les adresses de la grille ne sont jamais appelées par l’application', () => {
+  test('poser des URLs, tout consulter, et le serveur cible ne reçoit rien', async () => {
+    const env = (await app.api('GET', '/api/environments')).body.environments[0];
+    const svc = (await app.api('POST', '/api/services', { name: 'jamais-appele' })).body;
+    await app.api('PUT', `/api/services/${svc.id}/urls`, { environment_id: env.id, url: `${base()}/surtout-pas` });
 
     appels = [];
-    await app.api('POST', '/api/links/health/check');
-    assert.ok(!appels.some((a) => /PROD-NE-DOIT-PAS/.test(a.url)),
-      `la production ne doit recevoir aucune requête, vu : ${JSON.stringify(appels)}`);
-    assert.ok(appels.some((a) => a.url === '/up'), 'l’environnement coché, lui, est bien vérifié');
-    assert.equal(appels.find((a) => a.url === '/up').method, 'HEAD', 'HEAD d’abord : on ne lit pas le corps');
-  });
+    await app.api('GET', '/api/links/grid');
+    await app.api('POST', '/api/launcher', { q: 'jamais', actions: [] });
+    await app.api('GET', '/api/environments');
+    // Une seconde de battement : un minuteur oublié se manifesterait là.
+    await new Promise((r) => { setTimeout(r, 1000); });
 
-  test('up, down, redirection et HEAD refusé sont classés correctement', async () => {
-    const envs = (await app.api('GET', '/api/environments')).body.environments;
-    const dev = envs.find((e) => e.health_check);
-    const poser = async (nom, chemin) => {
-      const s = (await app.api('POST', '/api/services', { name: nom })).body;
-      await app.api('PUT', `/api/services/${s.id}/urls`, { environment_id: dev.id, url: base() + chemin });
-      return s.id;
-    };
-    const ids = {
-      up: await poser('s-up', '/up'),
-      down: await poser('s-down', '/down'),
-      redir: await poser('s-redir', '/redir'),
-      nohead: await poser('s-nohead', '/nohead'),
-    };
-    await app.api('POST', '/api/links/health/check');
-    const g = (await app.api('GET', '/api/links/grid')).body;
-    const etat = (id) => (g.services.find((s) => s.id === id).health[dev.id] || {}).status;
-    assert.equal(etat(ids.up), 'up');
-    assert.equal(etat(ids.down), 'down', 'un 503 n’est pas debout');
-    assert.equal(etat(ids.redir), 'up', 'une redirection suivie mène à un 2xx');
-    assert.equal(etat(ids.nohead), 'up', 'un 405 sur HEAD ne vaut pas « down » : on repasse en GET');
-    assert.ok(g.down >= 1, 'le compteur du badge suit');
-  });
-
-  test('décocher un environnement efface ses verdicts au lieu de les laisser vieillir', async () => {
-    const dev = (await app.api('GET', '/api/environments')).body.environments.find((e) => e.health_check);
-    await app.api('PUT', `/api/environments/${dev.id}`, { health_check: 0 });
-    await app.api('POST', '/api/links/health/check');
-    const g = (await app.api('GET', '/api/links/grid')).body;
-    assert.ok(g.services.every((s) => !s.health[dev.id]),
-      'un « up » d’il y a trois semaines ne doit pas passer pour frais');
-    await app.api('PUT', `/api/environments/${dev.id}`, { health_check: 1 });
-  });
-
-  test('le réglage d’intervalle a un plancher', async () => {
-    assert.equal((await app.api('PUT', '/api/config', { health_minutes: 0 })).body.health_minutes, 5);
-    assert.equal((await app.api('PUT', '/api/config', { health_minutes: 'souvent' })).body.health_minutes, 5);
-    assert.equal((await app.api('PUT', '/api/config', { health_minutes: 15 })).body.health_minutes, 15);
-    assert.equal((await app.api('PUT', '/api/config', { health_check: '0' })).body.health_check, '0');
+    assert.deepEqual(appels, [], `aucune requête ne doit partir, vu : ${JSON.stringify(appels)}`);
   });
 });

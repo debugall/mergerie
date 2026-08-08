@@ -69,8 +69,7 @@ const TEXTES = {
     jira: 'Tes tickets Jira, leur contexte injecté automatiquement dans les reviews',
     git: 'Opérations git sur tous tes dépôts — toujours avec aperçu, suppressions restaurables',
     gitExplore: 'L’explorateur dit ce qu’il fait pendant qu’il travaille, et chaque dépôt se replie',
-    liens: 'Un service par ligne, un environnement par colonne — et l’état de chacun',
-    liensSante: 'La sonde de santé est optionnelle, désactivée par défaut, et la prod reste hors du lot',
+    liens: 'Un service par ligne, un environnement par colonne — l’adresse écrite, jamais devinée',
     palette: 'La palette cherche partout à la fois — liens, MR, tickets, notes, todos',
     docker: 'Le drift .env détecté variable par variable — secrets masqués',
     logs: 'Logs live multi-containers, filtrables',
@@ -95,8 +94,7 @@ const TEXTES = {
     jira: 'Your Jira tickets, their context fed into reviews automatically',
     git: 'Git operations across every repository — always with a preview, deletions restorable',
     gitExplore: 'The explorer says what it is doing while it works, and each repository folds away',
-    liens: 'One service per row, one environment per column — and the state of each',
-    liensSante: 'The health probe is optional, off by default, and production stays out of it unless asked',
+    liens: 'One service per row, one environment per column — the address written out, never guessed',
     palette: 'The palette searches everything at once — links, MRs, tickets, notes, todos',
     docker: '.env drift caught variable by variable — secrets masked',
     logs: 'Live logs across containers, filterable',
@@ -515,11 +513,6 @@ async function enregistrer(lang) {
       await sleep(900);
       await glide(page, W * 0.5, H * 0.4);
       await sleep(2400);
-      if (await present(page, '.link-health.down')) {
-        await cap(page, T.liensSante);
-        await moveTo(page, page.locator('.link-health.down').first());
-        await sleep(2600);
-      }
       // La palette : on l'ouvre par son champ, on tape, les résultats tombent.
       await clickEl(page, page.locator('#paletteTrigger'));
       await sleep(500);

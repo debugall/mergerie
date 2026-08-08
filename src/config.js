@@ -14,7 +14,7 @@ const ALLOWED = [
   'github_url', 'github_token',
   'prompt_review', 'prompt_explain', 'prompt_modify', 'review_skill', 'language',
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
-  'brief_on_open', 'health_check',
+  'brief_on_open',
 ];
 
 function updateConfig(patch) {
@@ -51,14 +51,6 @@ function updateConfig(patch) {
     const s = parseInt(patch.stale_mr_days, 10);
     next.stale_mr_days = (!Number.isFinite(s) || s <= 0) ? 5 : Math.min(90, s);
   }
-  /* Health check des liens : intervalle en minutes, plancher à 1. Sous la minute, on
-     pinguerait des services internes plus souvent qu'on ne les consulte. */
-  if ('health_minutes' in patch) {
-    const h = parseInt(patch.health_minutes, 10);
-    next.health_minutes = (!Number.isFinite(h) || h < 1) ? 5 : Math.min(1440, h);
-  }
-  // Désactivé par défaut : un outil local ne pingue pas des URLs internes sans qu'on le demande.
-  next.health_check = next.health_check === '1' ? '1' : '0';
   // Brief à la première ouverture de la journée : booléen en texte, comme review_explain.
   next.brief_on_open = next.brief_on_open === '0' ? '0' : '1';
   // Langue : on refuse silencieusement une valeur inconnue plutôt que de casser l'interface.
@@ -97,9 +89,7 @@ function updateConfig(patch) {
       jira_watch_minutes = @jira_watch_minutes,
       retention_days = @retention_days,
       brief_on_open = @brief_on_open,
-      stale_mr_days = @stale_mr_days,
-      health_check = @health_check,
-      health_minutes = @health_minutes
+      stale_mr_days = @stale_mr_days
     WHERE id = 1`).run(next);
   return getConfig();
 }

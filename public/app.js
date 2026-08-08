@@ -3348,7 +3348,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'github_url', 'github_token',
   'clone_path', 'review_skill', 'prompt_review', 'prompt_explain', 'prompt_modify',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
-  'stale_mr_days', 'health_minutes'];
+  'stale_mr_days'];
 async function loadConfig() {
   const c = await api('/config');
   const f = $('#configForm');
@@ -3360,8 +3360,6 @@ async function loadConfig() {
   // Atterrissage sur le brief : coché par défaut, comme côté serveur.
   if (f.brief_on_open) f.brief_on_open.checked = c.brief_on_open !== '0';
   if (f.stale_mr_days) f.stale_mr_days.value = Number(c.stale_mr_days) || 5;
-  if (f.health_check) f.health_check.checked = c.health_check === '1';   // désactivé par défaut
-  if (f.health_minutes) f.health_minutes.value = Number(c.health_minutes) || 5;
   renderNotifSettings();
 }
 $('#configForm').addEventListener('submit', async (e) => {
@@ -3372,7 +3370,6 @@ $('#configForm').addEventListener('submit', async (e) => {
   body.auto_refresh_minutes = f.auto_refresh_minutes.value;
   if (f.review_explain) body.review_explain = f.review_explain.checked ? '1' : '0';
   if (f.brief_on_open) body.brief_on_open = f.brief_on_open.checked ? '1' : '0';
-  if (f.health_check) body.health_check = f.health_check.checked ? '1' : '0';
   // '***' = champ non touché (on n'écrase pas le secret) ; '' = effacement volontaire.
   if (body.access_token === '***') delete body.access_token;
   if (body.jira_token === '***') delete body.jira_token;
@@ -9745,7 +9742,7 @@ function marquerBriefVu() {
    en dev, en preprod et en prod : ils en font quatre entrées dans quatre dossiers. D'où une
    GRILLE — services en lignes, environnements en colonnes — et, à côté, des liens libres à
    plat pour tout ce qui n'a pas de dimension environnement. Deux formes, deux réalités. */
-const LINKS = { grid: null, tag: '', q: '', onlyDown: false, selectMode: false, selection: new Set(), importLinks: [] };
+const LINKS = { grid: null, tag: '', q: '', selectMode: false, selection: new Set(), importLinks: [] };
 
 async function loadLinks() {
   const box = $('#linkGrid');
@@ -9756,38 +9753,9 @@ async function loadLinks() {
   renderLinkTags();
   renderLinkGrid();
   renderFreeLinks();
-  majBadgeLinks(LINKS.grid.down || 0);
-  majBarreLiens();
 }
 
-/* La barre du haut suit l'état : « Vérifier la santé » n'apparaît que si un environnement est
-   sous surveillance, et la pastille « N injoignables » que s'il y a quelque chose à montrer.
-   Un bouton qui ne peut rien faire vaut moins que pas de bouton. */
-function majBarreLiens() {
-  const g = LINKS.grid || {};
-  const h = $('#linkMoreMenu [data-more="health"]');
-  if (h) h.hidden = !(g.environments || []).some((e) => e.health_check);
-  const n = g.down || 0;
-  const f = $('#linkDownFilter');
-  if (f) {
-    f.hidden = !n && !LINKS.onlyDown;
-    f.classList.toggle('active', LINKS.onlyDown);
-    f.setAttribute('aria-pressed', String(LINKS.onlyDown));
-    $('span:last-child', f).textContent = n ? tr('links.down.filter', { n, count: n }) : tr('links.down.none');
-  }
-}
 
-/* Le badge du menu compte les cases DOWN. Comme celui de Docker : ce qui est cassé se
-   signale tout seul, on n'a pas à ouvrir l'onglet pour l'apprendre. */
-function majBadgeLinks(n) {
-  const b = $('#navLinksDown');
-  if (!b) return;
-  b.hidden = !n;
-  b.textContent = String(n || 0);
-  b.dataset.tip = tr('links.health.down', { n, count: n });
-  b.title = '';
-  b.setAttribute('aria-label', b.dataset.tip);
-}
 
 function renderLinkTags() {
   const box = $('#linkTags');
@@ -9801,13 +9769,11 @@ function renderLinkTags() {
    qui est sur kibana-preprod ») plutôt que le nom qu'on lui a donné. */
 function serviceVisible(s) {
   if (LINKS.tag && !(s.tags || []).includes(LINKS.tag)) return false;
-  if (LINKS.onlyDown && !Object.values(s.health || {}).some((h) => h && h.status === 'down')) return false;
   if (!LINKS.q) return true;
   const foin = [s.name, s.project || '', ...(s.tags || []), ...Object.values(s.urls || {})].join(' ').toLowerCase();
   return LINKS.q.split(/\s+/).filter(Boolean).every((m) => foin.includes(m));
 }
 const freeVisible = (l) => (!LINKS.tag || (l.tags || []).includes(LINKS.tag))
-  && (!LINKS.onlyDown)
   && (!LINKS.q || LINKS.q.split(/\s+/).filter(Boolean)
     .every((m) => `${l.label} ${l.url} ${(l.tags || []).join(' ')}`.toLowerCase().includes(m)));
 
@@ -9832,8 +9798,7 @@ function renderLinkGrid() {
     /* Le message dit ce qui est vrai DE LA GRILLE, et renvoie vers l'autre moitié de l'écran :
        « rien ne correspond » affiché au-dessus de trois résultats est un mensonge d'affichage. */
     const ailleurs = ((LINKS.grid || {}).free_links || []).some(freeVisible);
-    box.innerHTML = `<p class="muted">${esc(tr(ailleurs ? 'links.grid.no-match'
-      : (LINKS.onlyDown ? 'links.down.none' : 'links.no-match-all')))}</p>`;
+    box.innerHTML = `<p class="muted">${esc(tr(ailleurs ? 'links.grid.no-match' : 'links.no-match-all'))}</p>`;
     return;
   }
 
@@ -9842,7 +9807,6 @@ function renderLinkGrid() {
      calme au repos, et ce qui est faisable finit par se voir. */
   const entete = envs.map((e, i) => `<th><span class="link-env">`
     + `<span class="link-env-dot" style="background:${esc(e.color)}"></span>${esc(e.name)}`
-    + `${e.health_check ? ` <span class="muted" title="${esc(tr('links.env.health'))}">${svgIco('refresh')}</span>` : ''}`
     + `<span class="link-env-acts">`
     + `<button type="button" class="link-icon" data-envmove="${e.id}" data-dir="-1"${i === 0 ? ' disabled' : ''} title="${esc(tr('links.env.move-left'))}" aria-label="${esc(tr('links.env.move-left'))}">${svgIco('left')}</button>`
     + `<button type="button" class="link-icon" data-envmove="${e.id}" data-dir="1"${i === envs.length - 1 ? ' disabled' : ''} title="${esc(tr('links.env.move-right'))}" aria-label="${esc(tr('links.env.move-right'))}">${svgIco('right')}</button>`
@@ -9852,7 +9816,6 @@ function renderLinkGrid() {
   const lignes = visibles.map((s) => {
     const cases = envs.map((e) => {
       const url = (s.urls || {})[e.id];
-      const h = (s.health || {})[e.id];
       if (!url) {
         return `<td class="link-cell"><button type="button" class="link-add" data-addurl="${s.id}" data-env="${e.id}">+</button></td>`;
       }
@@ -9864,7 +9827,6 @@ function renderLinkGrid() {
          efface la case ; la promesse était devenue inatteignable. */
       return `<td class="link-cell"><a class="link-open" href="${esc(url)}" target="_blank" rel="noopener noreferrer"
           data-usekind="service_url" data-useref="${s.id}:${e.id}" title="${esc(url)}">
-          ${h ? `<span class="link-health ${esc(h.status)}" title="${esc(santeInfo(h))}"></span>` : ''}
           <span>${esc(urlCourte(url))}</span></a>
         <button type="button" class="link-icon link-edit" data-editurl="${s.id}" data-env="${e.id}"
           title="${esc(tr('links.url.edit'))}" aria-label="${esc(tr('links.url.edit'))}">${svgIco('edit')}</button></td>`;
@@ -9898,22 +9860,9 @@ function urlCourte(url) {
   } catch { return String(url).slice(0, 42); }
 }
 
-const santeInfo = (h) => [
-  tr(`links.health.${h.status}`),
-  h.http_code ? `HTTP ${h.http_code}` : '',
-  h.latency_ms != null ? `${h.latency_ms} ms` : '',
-  h.checked_at ? fmtHour(h.checked_at) : '',
-].filter(Boolean).join(' · ');
 
 function renderFreeLinks() {
   const box = $('#linkFreeList');
-  /* « Injoignable » est une notion de GRILLE : un lien libre n'a pas d'environnement, donc
-     pas d'état. Sous ce filtre, la section entière disparaît — la laisser afficher « aucun
-     lien libre ne correspond » aurait annoncé une absence qui n'a pas de sens. */
-  const bloc = $('#tab-links .link-free-bar');
-  if (bloc) bloc.hidden = LINKS.onlyDown;
-  box.hidden = LINKS.onlyDown;
-  if (LINKS.onlyDown) return;
   const tous = ((LINKS.grid && LINKS.grid.free_links) || []).filter(freeVisible);
   const btn = $('#linkToService');
   if (btn) btn.hidden = !LINKS.selectMode || LINKS.selection.size < 1;
@@ -9992,17 +9941,8 @@ $('#linkMoreMenu') && $('#linkMoreMenu').addEventListener('click', (e) => {
   if (!b) return;
   closeSplitMenus();
   if (b.dataset.more === 'import') ouvrirImport();
-  else busy(b, lancerHealth);
 });
 
-/* La pastille mène AU problème. Le badge du menu disait qu'il y en avait un ; rien n'y menait,
-   et il fallait parcourir la grille à l'œil pour trouver la pastille rouge. */
-$('#linkDownFilter') && $('#linkDownFilter').addEventListener('click', () => {
-  LINKS.onlyDown = !LINKS.onlyDown;
-  majBarreLiens();
-  renderLinkGrid();
-  renderFreeLinks();
-});
 
 /* Le mode sélection : les cases à cocher n'existent que le temps de s'en servir. En sortir
    vide la sélection — la garder en mémoire ferait agir plus tard sur des lignes invisibles. */
@@ -10084,7 +10024,6 @@ function openEnvModal(env) {
   $('#envModalTitle').textContent = tr(env ? 'links.env.edit' : 'links.env.new');
   $('#envName').value = env ? env.name : '';
   $('#envColor').value = (env && env.color) || '#2f6fe0';
-  $('#envHealth').checked = !!(env && env.health_check);
   $('#envDelete').hidden = !env;
   $('#envModal').hidden = false;
   setTimeout(() => $('#envName').focus(), 0);
@@ -10092,7 +10031,7 @@ function openEnvModal(env) {
 $('#envCancel') && $('#envCancel').addEventListener('click', () => { $('#envModal').hidden = true; });
 fermerAuFond('#envModal', () => { $('#envModal').hidden = true; }, { salissable: true });
 $('#envSave') && $('#envSave').addEventListener('click', async () => {
-  const body = { name: $('#envName').value, color: $('#envColor').value, health_check: $('#envHealth').checked ? 1 : 0 };
+  const body = { name: $('#envName').value, color: $('#envColor').value };
   try {
     if (envEnCours) await api(`/environments/${envEnCours.id}`, { method: 'PUT', body });
     else await api('/environments', { method: 'POST', body });
@@ -10385,16 +10324,6 @@ $('#importApply') && $('#importApply').addEventListener('click', async (e) => {
     await loadLinks();
   } catch (err) { toast(explainError(err.message), true); }
 });
-
-/* ---------- Health check à la demande ---------- */
-
-async function lancerHealth() {
-  try {
-    const r = await api('/links/health/check', { method: 'POST' });
-    toast(tr('links.health.done', { up: r.up, down: r.down }));
-    await loadLinks();
-  } catch (err) { toast(explainError(err.message), true); }
-}
 
 $('#linkGrid') && $('#linkGrid').addEventListener('click', (e) => {
   const b = e.target.closest('[data-empty-act]');

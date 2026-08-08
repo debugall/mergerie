@@ -622,13 +622,12 @@ db.prepare(`INSERT INTO verification
 /* ---------- Liens (plan_add_links.md §11) ----------
    Trois environnements, quatre services dont deux liés aux dépôts de démo (ce sont eux qui
    font apparaître les boutons sur les merge requests), un gabarit contextuel, des liens
-   libres tagués et des états de santé SEMÉS — le vrai health check reste inactif en démo,
-   on montre le badge sans pinguer quoi que ce soit. */
+   libres tagués. */
 {
-  const insEnv = db.prepare('INSERT INTO environment (name, position, color, health_check, created_at) VALUES (?,?,?,?,?)');
+  const insEnv = db.prepare('INSERT INTO environment (name, position, color, created_at) VALUES (?,?,?,?)');
   const envIds = {};
-  [['local', '#8b97ad', 0], ['dev', '#2f6fe0', 1], ['preprod', '#a16207', 1]]
-    .forEach(([nom, couleur, sante], i) => { envIds[nom] = insEnv.run(nom, i + 1, couleur, sante, at(30)).lastInsertRowid; });
+  [['local', '#8b97ad'], ['dev', '#2f6fe0'], ['preprod', '#a16207']]
+    .forEach(([nom, couleur], i) => { envIds[nom] = insEnv.run(nom, i + 1, couleur, at(30)).lastInsertRowid; });
 
   const insSvc = db.prepare('INSERT INTO service (name, repo_id, tags, pinned, created_at) VALUES (?,?,?,?,?)');
   const insUrl = db.prepare('INSERT INTO service_url (service_id, environment_id, url) VALUES (?,?,?)');
@@ -663,16 +662,6 @@ db.prepare(`INSERT INTO verification
     ['Statut fournisseur PSP', 'https://status.demo.invalid/psp', ['outils', 'astreinte']],
     ['Tableau de bord coûts cloud', 'https://cloud.demo.invalid/couts', ['outils']],
   ].forEach(([label, url, tags]) => insFree.run(label, url, JSON.stringify(tags), at(20)));
-
-  /* Un `down` : le badge du menu n'existe que pour se voir, et une grille toute verte ne
-     montre pas ce qu'il fait. */
-  const insSante = db.prepare(`INSERT INTO health_status
-    (service_id, environment_id, status, http_code, latency_ms, checked_at) VALUES (?,?,?,?,?,?)`);
-  insSante.run(svcIds['api-core'], envIds.dev, 'up', 200, 84, at(0.01));
-  insSante.run(svcIds['api-core'], envIds.preprod, 'down', 503, 122, at(0.01));
-  insSante.run(svcIds['webapp-front'], envIds.dev, 'up', 200, 212, at(0.01));
-  insSante.run(svcIds['webapp-front'], envIds.preprod, 'up', 200, 301, at(0.01));
-  insSante.run(svcIds.Kibana, envIds.dev, 'up', 200, 66, at(0.01));
 
   // De quoi que la palette classe : ce qu'on ouvre le plus se retrouve en tête.
   const insUsage = db.prepare('INSERT INTO launcher_usage (kind, ref, uses, last_used_at) VALUES (?,?,?,?)');

@@ -398,23 +398,6 @@ describe('grille et conversion', () => {
     assert.equal(links.grille().services[0].urls[env.id], undefined);
   });
 
-  /* Effacer l'URL d'un service en panne faisait disparaître la pastille (la case est vide)
-     mais laissait le compteur `down` la compter : un badge rouge permanent sur le menu, sans
-     rien à montrer. */
-  test('vider une case emporte son verdict de santé', () => {
-    db.prepare('DELETE FROM service').run();
-    db.prepare('DELETE FROM environment').run();
-    const env = links.creerEnvironnement({ name: 'dev', health_check: 1 }, MSGS);
-    const svc = links.creerService({ name: 'sonde' }, MSGS);
-    links.poserUrl(svc.id, { environment_id: env.id, url: 'https://ko.test' }, MSGS);
-    db.prepare(`INSERT INTO health_status (service_id, environment_id, status, http_code, latency_ms, checked_at)
-      VALUES (?,?, 'down', 503, 12, ?)`).run(svc.id, env.id, new Date().toISOString());
-    assert.equal(links.grille().down, 1);
-
-    links.poserUrl(svc.id, { environment_id: env.id, url: '' }, MSGS);
-    assert.equal(links.grille().down, 0, 'plus de case, plus de verdict — donc plus de badge');
-  });
-
   /* TOUT OU RIEN : un environnement supprimé entre l'ouverture de la modale et le clic
      laissait un service à moitié fait, des liens déjà supprimés, et un rejeu impossible
      (« nom déjà pris »). */

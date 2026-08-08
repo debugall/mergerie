@@ -674,11 +674,8 @@ says so and points you down, instead of announcing “nothing matches” above r
 there.
 
 Next to it: **`+ Add`** (a plain link, a service, an environment) and a **`⋯`** menu for bookmark
-import and the health check. Those three happen once in the tool's lifetime; finding a link happens
-every day, and that is what gets the space.
-
-Finally an **“N unreachable”** chip when there are any: it **filters the grid** down to the services
-concerned. The menu badge said there was a problem; this one takes you to it.
+import. Those gestures happen once in the tool's lifetime; finding a link happens every day, and
+that is what gets the space.
 
 #### The grid
 - **Rows are services**, pinned first then alphabetical. Each row carries the name, its **tags**,
@@ -773,27 +770,6 @@ branch, on the environment you want, without retyping anything.
 - The file is **never executed or rendered**: it is parsed, and only `http(s)` addresses come out —
   a `javascript:` bookmark is ignored. Size capped at 5 MB.
 - Turning them into services comes **afterwards**, by hand (see above).
-
-#### Health check — off by default, behind two switches
-These requests are the **only** ones this tab sends outward, and they go to addresses you typed in.
-Hence two switches, not one:
-
-1. **Globally**, in *Settings → General*, with its interval (5 min by default, 1 min minimum).
-2. **Per environment**, in the environment's dialog. **Production is out by default**: sending
-   automatic traffic at a production service is not a decision a tool makes on your behalf.
-
-How it works: a `HEAD` (falling back to `GET` on a 405, so a matter of method is not read as
-“unreachable”), 5 s of patience, redirects followed (3 at most), **no response body read**. 2xx-3xx
-→ reachable, anything else → unreachable. The cycle is **sequential**: twenty services × four
-environments fired at once is eighty simultaneous connections leaving a workstation.
-
-⚠ **Two limits worth knowing.** Checks only go out **while a Mergerie tab is open** — no phantom
-traffic at night. And the result is a **last known state**, not a history: the question asked is
-“is it up right now?”.
-
-Display: a dot on the cell (green, red, grey), with the HTTP code, the latency and the time on
-hover; and the number of unreachable links as a **red badge** on the Links entry of the menu.
-**No desktop notification**: a service going down at night would produce dozens.
 
 ### Stats
 An MR funnel, a distribution of the scores, the **weekly evolution of the average score** (“is quality

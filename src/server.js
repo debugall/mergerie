@@ -50,7 +50,6 @@ const retention = require('./retention');
 const notes = require('./notes');
 const brief = require('./brief');
 const links = require('./links');
-const health = require('./health');
 const { t } = i18n;
 const { discoverAll } = require('./discover');
 const jobs = require('./jobs');
@@ -128,13 +127,7 @@ function ticketUrl(cfg, key) {
 /* ---------- Statut / config ---------- */
 // Flux d'événements notifiables : le client passe le dernier id vu (?after=), on
 // renvoie les nouveaux + le dernier id (pour ne rejouer aucun événement).
-/* Le poll des notifications sert aussi de SIGNE DE VIE : tant qu'un navigateur le fait,
-   quelqu'un regarde. Le health check des liens s'en sert pour ne pas sortir sur le réseau
-   quand l'application est fermée — pas de trafic fantôme la nuit. Ce poll est le bon
-   candidat : il tourne toutes les cinq secondes, sur tous les onglets, sans condition. */
-let clientVuA = 0;
 app.get('/api/notifications', wrap((req, res) => {
-  clientVuA = Date.now();
   res.json({ events: notify.since(req.query.after), latest: notify.latestId() });
 }));
 
@@ -2953,9 +2946,10 @@ app.get('/api/brief', wrap((req, res) => {
 }));
 
 /* ---------- Liens (plan_add_links.md) --------------------------------------
-   Une grille services × environnements, des liens libres tagués, une palette globale et
-   un health check opt-in. Toutes les URLs sont validées `http(s)` par src/links.js : elles
-   sont ouvertes d'un clic depuis l'application. */
+   Une grille services × environnements, des liens libres tagués et une palette globale.
+   Toutes les URLs sont validées `http(s)` par src/links.js : elles sont ouvertes d'un clic
+   depuis l'application, et l'outil ne s'y connecte JAMAIS de lui-même — surveiller des
+   services n'est pas son travail. */
 
 const msgLinks = () => ({
   nomVide: t('err.links.name-required'),
@@ -3033,7 +3027,6 @@ app.get('/api/mrs/:id/links', wrap((req, res) => {
 
 // Vérifier maintenant : le même code que le minuteur, donc ce que le bouton montre est
 // exactement ce que fait la surveillance.
-app.post('/api/links/health/check', wrap(async (req, res) => { res.json(await health.cycle()); }));
 
 /* ---------- MRs ---------- */
 app.get('/api/mrs', wrap((req, res) => {
@@ -3837,7 +3830,6 @@ const HOST = process.env.HOST || '127.0.0.1';
 // l'environnement (`::`, une IP de LAN…) expose l'app, qui n'a aucune authentification.
 let retentionTimer = null;
 let archiveTimer = null;
-let healthTimer = null;
 const LOOPBACK = ['127.0.0.1', 'localhost', '::1'];
 const HOST_EXPOSED = !LOOPBACK.includes(HOST);
 // IPv6 : l'hôte doit être crocheté dans l'URL (http://[::1]:4319).
@@ -3858,7 +3850,6 @@ const server = app.listen(PORT, HOST, () => {
   // Les todos faites depuis plus de sept jours quittent la liste — sans jamais être supprimées.
   archiveTimer = notes.demarrerArchivage((m) => console.log(`[notes] ${m}`));
   // Santé des liens : opt-in, par environnement, et seulement si un client regarde.
-  healthTimer = health.demarrer(getConfig, () => clientVuA, (m) => console.log(`[links] ${m}`));
 });
 
 /* Exporté pour les tests de bout en bout : ils lancent le serveur EN PROCESSUS
@@ -3873,7 +3864,6 @@ module.exports = {
     if (jiraWatchTimer) { clearInterval(jiraWatchTimer); jiraWatchTimer = null; }
     if (retentionTimer) { clearInterval(retentionTimer); retentionTimer = null; }
     if (archiveTimer) { clearInterval(archiveTimer); archiveTimer = null; }
-    if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
     return new Promise((resolve) => server.close(resolve));
   },
 };

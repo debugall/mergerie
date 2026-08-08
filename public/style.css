@@ -2247,10 +2247,6 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
   width: 100%; padding: 5px 8px; font: inherit; font-size: 12.5px; background: var(--panel2);
   border: 1px solid var(--accent); border-radius: var(--radius); color: var(--text);
 }
-.link-health { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-.link-health.up { background: var(--green); }
-.link-health.down { background: var(--red); }
-.link-health.unknown { background: var(--muted); }
 
 .link-free-head { margin: 26px 0 8px; font-size: 15px; }
 
@@ -2285,11 +2281,6 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 /* La ligne qu'on vient de créer ou de modifier se signale, puis se tait. */
 @keyframes link-flash { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } to { background: transparent; } }
 .link-flash td { animation: link-flash 1.6s ease-out; }
-
-/* La pastille « N injoignables » : un bouton, pas une décoration — il filtre. */
-.btn-down { color: var(--danger); border-color: var(--danger); gap: 6px; }
-.btn-down.active { background: var(--danger); border-color: var(--danger); color: #fff; }
-.btn-down.active .link-health.down { background: #fff; }
 
 /* Les adresses par environnement, dans la modale de service. */
 .link-urls-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }

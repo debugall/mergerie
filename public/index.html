@@ -149,7 +149,7 @@
         <button data-tab="jira" title="Mes tickets Jira affectés : contenu, métadonnées, commentaires" data-i18n-title="jira.tab.title"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="nav.jira">Jira</span><span class="nav-count" id="navCountJira" hidden>0</span></button>
         <button data-tab="git" title="Opérations sur les dépôts : branches et tags" data-i18n-title="git.tab.title"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="nav.git">Git</span></button>
         <button data-tab="docker" title="Projets Docker Compose et containers : drift .env, actions" data-i18n-title="docker.tab.title"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="nav.docker">Docker</span><span class="nav-health err" id="dockerErrBadge" hidden>0</span><span class="nav-health warn" id="dockerUnhealthyBadge" hidden>0</span></button>
-        <button data-tab="links" title="Liens de travail : grille services × environnements, liens libres" data-i18n-title="links.tab.title"><svg class="ico"><use href="#i-link"/></svg><span data-i18n="nav.links">Liens</span><span class="nav-health err" id="navLinksDown" hidden>0</span></button>
+        <button data-tab="links" title="Liens de travail : grille services × environnements, liens libres" data-i18n-title="links.tab.title"><svg class="ico"><use href="#i-link"/></svg><span data-i18n="nav.links">Liens</span></button>
         <button data-tab="dashboard" title="Statistiques et activité" data-i18n-title="ui.title.statistiques-et-activite"><svg class="ico"><use href="#i-chart"/></svg><span data-i18n="ui.btn.statistiques">Statistiques</span></button>
         <button data-tab="admin" title="Dépôts, token, règles de review, thème" data-i18n-title="ui.title.depots-token-regles-de-review"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="ui.btn.reglages">Réglages</span></button>
     <button type="button" id="sidebarToggle" class="sidebar-toggle" data-i18n-title="nav.collapse" title="Réduire le menu"><svg class="ico"><use href="#i-left"/></svg><span data-i18n="nav.collapse-label">Réduire</span></button>
@@ -647,11 +647,8 @@
                 <button id="linkMore" class="btn" aria-haspopup="true" aria-expanded="false" data-i18n-title="links.more" aria-label="Autres actions"><svg class="ico"><use href="#i-more"/></svg></button>
                 <div id="linkMoreMenu" class="split-menu" hidden>
                     <button type="button" data-more="import"><span data-i18n="links.import.btn">Importer depuis Chrome</span></button>
-                    <button type="button" data-more="health" hidden><span data-i18n="links.health.now">Vérifier la santé</span></button>
                 </div>
             </div>
-            <!-- Le badge du menu dit qu'il y a un problème ; ceci mène AU problème. -->
-            <button id="linkDownFilter" class="btn btn-down" hidden data-i18n-title="links.down.filter-title"><span class="link-health down" aria-hidden="true"></span><span></span></button>
             <span class="spacer"></span>
             <span id="linkInfo" class="muted"></span>
         </div>
@@ -927,13 +924,6 @@ print(json.dumps({
             <!-- Brief du matin : l'atterrissage est un réglage de l'OUTIL (comme la langue),
                  pas du navigateur — d'où la base et non le localStorage. -->
             <label class="inline-check"><input form="configForm" name="brief_on_open" type="checkbox" /> <span data-i18n="settings.lbl.brief-on-open">Brief du matin à la première ouverture</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.brief-on-open" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
-            <!-- Santé des liens : opt-in GLOBAL, et opt-in par environnement dans l'onglet
-                 Liens. Deux verrous, parce que pinguer la prod n'est pas une décision que
-                 l'outil prend à la place de son utilisateur. -->
-            <label class="inline-check"><input form="configForm" name="health_check" type="checkbox" /> <span data-i18n="settings.lbl.health-check">Vérifier la santé des liens</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.health-check" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
-            <label><span data-i18n="settings.lbl.health-minutes">Vérifier la santé toutes les (minutes)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.health-minutes" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                <input form="configForm" name="health_minutes" type="number" min="1" max="1440" step="1" placeholder="5" />
-            </label>
             <label><span data-i18n="settings.lbl.stale-mr-days">MR dormante au bout de (jours)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.stale-mr-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <input form="configForm" name="stale_mr_days" type="number" min="1" max="90" step="1" placeholder="5" />
             </label>
@@ -1213,7 +1203,7 @@ print(json.dumps({
 <!-- Capture rapide : touche « n » depuis n'importe quel onglet. Un champ, Entrée, c'est fait.
      Le tri (priorité, échéance, lien) se fait plus tard dans l'onglet — la capture doit coûter
      deux secondes, sinon on la remplace par un post-it. -->
-<!-- Un environnement : nom, couleur d'en-tête, et son propre interrupteur de santé —
+<!-- Un environnement : un nom et une couleur d'en-tête —
      la prod reste hors du lot tant qu'on ne l'a pas demandée. -->
 <div id="envModal" class="modal" hidden>
     <div class="modal-box">
@@ -1224,9 +1214,6 @@ print(json.dumps({
             </label>
             <label><span data-i18n="links.env.color">Couleur d'en-tête</span>
                 <input id="envColor" type="color" value="#2f6fe0" />
-            </label>
-            <label class="inline-check"><input id="envHealth" type="checkbox" /> <span data-i18n="links.env.health">Vérifier la santé de cet environnement</span>
-                <button type="button" class="hint" tabindex="0" data-i18n-tip="links.env.health-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
             </label>
         </div>
         <div class="modal-actions">

@@ -87,8 +87,7 @@ et un **lot** de merge requests vérifiées ensemble.
   retrouvés par tag, et une **palette globale** (`Ctrl`/`Cmd`+`K`) qui cherche d'un coup dans les liens, les
   MR, les tickets, les notes et les todos, classés par frécence. Un service associé à un dépôt pose ses
   boutons directement sur ses merge requests, y compris des liens **templatés** (`{env}`, `{branch}`,
-  `{mr_iid}`) résolus au clic. Les favoris Chrome s'importent avec aperçu, et un **health check opt-in** —
-  désactivé par défaut, et hors production tant qu'on ne l'a pas demandé — badge ce qui est injoignable.
+  `{mr_iid}`) résolus au clic. Les favoris Chrome s'importent avec aperçu.
 - **Stats** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens.
 - **Réglages** — connexions GitLab / GitHub / Jira, dépôts, règles de review, templates de prompt, thème et langue.
 

@@ -726,7 +726,6 @@ db.exec(`CREATE TABLE IF NOT EXISTS environment (
   name TEXT NOT NULL UNIQUE,
   position INTEGER NOT NULL,
   color TEXT NOT NULL DEFAULT '#2f6fe0',
-  health_check INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 )`);
 
@@ -777,22 +776,6 @@ db.exec(`CREATE TABLE IF NOT EXISTS launcher_usage (
   last_used_at TEXT NOT NULL,
   PRIMARY KEY (kind, ref)
 )`);
-
-/* DERNIER état connu, pas un historique : on veut savoir si c'est debout maintenant. Garder
-   la série ferait grossir la base sans fin pour une question qu'on ne pose jamais. */
-db.exec(`CREATE TABLE IF NOT EXISTS health_status (
-  service_id INTEGER NOT NULL REFERENCES service(id) ON DELETE CASCADE,
-  environment_id INTEGER NOT NULL REFERENCES environment(id) ON DELETE CASCADE,
-  status TEXT NOT NULL CHECK (status IN ('up','down','unknown')),
-  http_code INTEGER,
-  latency_ms INTEGER,
-  checked_at TEXT NOT NULL,
-  PRIMARY KEY (service_id, environment_id)
-)`);
-
-// Health check : désactivé par défaut, et l'intervalle a un plancher (voir src/config.js).
-try { db.exec("ALTER TABLE config ADD COLUMN health_check TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
-try { db.exec('ALTER TABLE config ADD COLUMN health_minutes INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
 
 /* ---------- Notes, todos et rappels (plan_add_notes.md) ----------
    Des notes de POSTE DE TRAVAIL, pas une base de connaissances : des pages plates (ni
@@ -876,6 +859,15 @@ if (seeded && !seeded.s) {
   ].forEach(([label, command], i) => ins.run(label, command, i, now));
   db.prepare('UPDATE config SET git_commands_seeded = 1 WHERE id = 1').run();
 }
+
+/* Nettoyage de tables et colonnes qui ne servent plus. Elles ne visent que les bases DÉJÀ EN
+   SERVICE — une base neuve ne les crée simplement pas. La donnée qu'elles portaient était
+   dérivée, rien à conserver. Idempotents comme les migrations voisines : la seconde exécution
+   ne trouve plus rien et ne dit rien. */
+try { db.exec('DROP TABLE IF EXISTS health_status'); } catch { /* déjà partie */ }
+try { db.exec('ALTER TABLE environment DROP COLUMN health_check'); } catch { /* déjà retirée */ }
+try { db.exec('ALTER TABLE config DROP COLUMN health_check'); } catch { /* déjà retirée */ }
+try { db.exec('ALTER TABLE config DROP COLUMN health_minutes'); } catch { /* déjà retirée */ }
 
 // Au démarrage : tout job resté "running" a été coupé -> interrupted.
 db.prepare(`UPDATE job SET status = 'interrupted', finished_at = ?

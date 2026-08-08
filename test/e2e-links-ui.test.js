@@ -26,6 +26,10 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
   let navigateur;
   let page;
   let env;
+  /* Une erreur JavaScript ne fait PAS échouer un test : l'app la rattrape et l'affiche en
+     toast, l'écran reste utilisable, et la suite passe au vert. C'est arrivé — un appel resté
+     à une fonction supprimée. On collecte donc, et on exige le silence à la fin. */
+  const erreurs = [];
 
   before(async () => {
     app = await startApp();
@@ -38,6 +42,8 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
 
     navigateur = await chromium.launch();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 900 } });
+    page.on('pageerror', (e) => erreurs.push(String(e)));
+    page.on('console', (m) => { if (m.type() === 'error') erreurs.push(m.text()); });
     await page.goto(app.base);
   });
 
@@ -273,38 +279,9 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await page.waitForTimeout(600);
   });
 
-  /* Le badge du menu disait qu'il y avait un problème ; rien ne menait au problème. */
-  test('la pastille « injoignable » filtre la grille', async () => {
-    const g = (await app.api('GET', '/api/links/grid')).body;
-    app.db.prepare(`INSERT INTO health_status (service_id, environment_id, status, http_code, latency_ms, checked_at)
-      VALUES (?,?, 'down', 503, 40, ?)
-      ON CONFLICT(service_id, environment_id) DO UPDATE SET status = 'down'`)
-      .run(g.services[0].id, env.id, new Date().toISOString());
-    await page.reload();
-    await ouvrirLiens();
-    await page.waitForSelector('#linkDownFilter:not([hidden])');
-    await page.locator('#linkDownFilter').click();
-    await page.waitForFunction(() => document.querySelectorAll('#linkGrid tbody tr').length === 1);
-    assert.equal(await page.locator('#linkFreeList').isHidden(), true,
-      '« injoignable » n’a pas de sens pour un lien libre : la section disparaît plutôt que de mentir');
-    await page.locator('#linkDownFilter').click();
-    await page.waitForFunction(() => !document.querySelector('#linkFreeList').hidden);
+  /* EN DERNIER, volontairement : à ce stade tous les écrans de l'onglet ont été traversés. */
+  test('aucune erreur JavaScript pendant tout le parcours', () => {
+    assert.deepEqual(erreurs, [], `la console doit rester muette, vu : ${JSON.stringify(erreurs)}`);
   });
 
-  test('le badge des liens injoignables apparaît sur l’entrée du menu', async () => {
-    const g = (await app.api('GET', '/api/links/grid')).body;
-    const svc = g.services[0];
-    app.db.prepare(`INSERT INTO health_status (service_id, environment_id, status, http_code, latency_ms, checked_at)
-      VALUES (?,?, 'down', 503, 40, ?)
-      ON CONFLICT(service_id, environment_id) DO UPDATE SET status = 'down'`)
-      .run(svc.id, env.id, new Date().toISOString());
-    await page.reload();
-    await ouvrirLiens();
-    await page.waitForFunction(() => !document.querySelector('#navLinksDown').hidden);
-    assert.equal(await page.locator('#navLinksDown').innerText(), '1');
-    /* Dans LA GRILLE : la pastille de la barre porte elle aussi un point rouge, décoratif
-       celui-là, et il vient plus tôt dans le document. */
-    assert.match(await page.locator('#linkGrid .link-health.down').first().getAttribute('title'), /503/,
-      'le code et la latence sont au survol de la case');
-  });
 });
