@@ -9808,19 +9808,20 @@ function renderLinkFiltres() {
     chips.innerHTML = envs.map((e) => `<button type="button" class="link-tag link-env-chip${LINKS.envs.size && !LINKS.envs.has(e.id) ? '' : ' active'}" data-linkenv="${e.id}">`
       + `<span class="link-env-dot" style="background:${esc(e.color)}"></span>${esc(e.name)}</button>`).join('');
   }
-  const pick = $('#linkSvcPick');
-  if (pick) {
-    const n = LINKS.svcs.size;
-    $('span', pick).textContent = n ? tr('links.filter.services-n', { n, count: n }) : `${tr('links.filter.services')} · ${tr('links.filter.all')}`;
-    pick.classList.toggle('active', n > 0);
-  }
-  const liste = $('#linkSvcList');
-  if (liste) {
+  /* Les services à plat, comme les environnements. Le champ qui les tamise n'apparaît qu'au-delà
+     d'une douzaine : plus bas, il occuperait la barre sans rien rendre. Il MASQUE des pastilles
+     sans en décocher — un service filtré hors de vue reste actif, et son compte le rappelle. */
+  const SEUIL_TAMIS = 12;
+  const tousSvc = g.services || [];
+  const tamis = $('#linkSvcSearch');
+  if (tamis) tamis.hidden = tousSvc.length <= SEUIL_TAMIS;
+  const chipsSvc = $('#linkSvcChips');
+  if (chipsSvc) {
     const q = LINKS.svcQ.toLowerCase();
-    const vus = (g.services || []).filter((x) => !q || x.name.toLowerCase().includes(q));
-    liste.innerHTML = vus.length
-      ? vus.map((x) => `<label class="repo-multi-item"><input type="checkbox" data-linksvc="${x.id}"${LINKS.svcs.has(x.id) ? ' checked' : ''} /> <span>${esc(x.name)}</span></label>`).join('')
-      : `<p class="muted">${esc(tr('links.free.no-match'))}</p>`;
+    const vus = tousSvc.filter((x) => !q || x.name.toLowerCase().includes(q));
+    const caches = LINKS.svcs.size ? [...LINKS.svcs].filter((id) => !vus.some((x) => x.id === id)).length : 0;
+    chipsSvc.innerHTML = vus.map((x) => `<button type="button" class="link-tag link-svc-chip${LINKS.svcs.size && !LINKS.svcs.has(x.id) ? '' : ' active'}" data-linksvc="${x.id}">${esc(x.name)}</button>`).join('')
+      + (caches ? `<span class="muted lf-hidden">${esc(tr('links.filter.hidden-active', { n: caches, count: caches }))}</span>` : '');
   }
   const clear = $('#linkClearFilters');
   if (clear) clear.hidden = !(LINKS.envs.size || LINKS.svcs.size || LINKS.tag);
@@ -9977,8 +9978,30 @@ function urlCourte(url) {
 function renderFreeLinks() {
   const box = $('#linkFreeList');
   const tous = ((LINKS.grid && LINKS.grid.free_links) || []).filter(freeVisible);
+  /* CE QU'ON VOIT EST CE SUR QUOI ON AGIT. Un lien coché puis filtré hors de vue partirait
+     avec les autres au moment de ranger, sans que rien ne l'ait annoncé. On retire donc de la
+     sélection ce que le filtre a écarté — quitte à devoir recocher, ce qui se voit. */
+  if (LINKS.selectMode) {
+    const vus = new Set(tous.map((l) => l.id));
+    for (const id of [...LINKS.selection]) if (!vus.has(id)) LINKS.selection.delete(id);
+  }
   const btn = $('#linkToService');
-  if (btn) btn.hidden = !LINKS.selectMode || LINKS.selection.size < 1;
+  if (btn) {
+    btn.hidden = !LINKS.selectMode || LINKS.selection.size < 1;
+    // Le compte SUR le bouton : « ranger » sans dire combien se fait à l'aveugle.
+    $('span', btn).textContent = LINKS.selection.size
+      ? tr('links.free.file-n', { n: LINKS.selection.size, count: LINKS.selection.size })
+      : tr('links.free.file');
+  }
+  /* « Tout sélectionner » porte sur ce que le filtre a laissé, pas sur la base entière : on
+     tamise d'abord (« kibana »), on coche tout, on range. C'est le geste d'après l'import. */
+  const tout = $('#linkFreeAll');
+  if (tout) {
+    tout.hidden = !LINKS.selectMode || !tous.length;
+    const complet = tous.length > 0 && tous.every((l) => LINKS.selection.has(l.id));
+    $('span', tout).textContent = tr(complet ? 'links.select.none' : 'links.select.all');
+    tout.dataset.complet = complet ? '1' : '';
+  }
   const sel = $('#linkFreeSelect');
   if (sel) {
     // Rien à cocher : proposer de sélectionner serait proposer un geste sans objet.
@@ -10011,7 +10034,10 @@ function renderFreeLinks() {
       parDossier.get(d).push(l);
     }
     const ordre = [...parDossier.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-    box.innerHTML = ordre.map(([d, liens]) => `<details class="link-free-group">
+    /* DÉPLIÉS par défaut. Le groupement sert à donner une structure — des titres, des comptes —
+       pas à cacher : replier oblige à ouvrir dix dossiers pour retrouver un lien, ce qui coûte
+       plus cher que de faire défiler. On garde le pliage pour qui veut ranger l'écran. */
+    box.innerHTML = ordre.map(([d, liens]) => `<details class="link-free-group" open>
       <summary>${esc(d)} <span class="muted">${esc(tr('links.free.count', { n: liens.length, count: liens.length }))}</span></summary>
       ${liens.map(ligneFreeLink).join('')}
     </details>`).join('');
@@ -10071,11 +10097,17 @@ $('#linkSvcSearch') && $('#linkSvcSearch').addEventListener('input', () => {
   LINKS.svcQ = $('#linkSvcSearch').value.trim();
   renderLinkFiltres();
 });
-$('#linkSvcList') && $('#linkSvcList').addEventListener('change', (e) => {
-  const c = e.target.closest('[data-linksvc]');
-  if (!c) return;
-  const id = Number(c.dataset.linksvc);
-  if (c.checked) LINKS.svcs.add(id); else LINKS.svcs.delete(id);
+
+$('#linkSvcChips') && $('#linkSvcChips').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-linksvc]');
+  if (!b) return;
+  const id = Number(b.dataset.linksvc);
+  const tous = ((LINKS.grid || {}).services || []).map((x) => x.id);
+  // Même geste que les colonnes : depuis « tout », un clic veut dire « celui-là ».
+  if (!LINKS.svcs.size) LINKS.svcs = new Set([id]);
+  else if (LINKS.svcs.has(id)) LINKS.svcs.delete(id);
+  else LINKS.svcs.add(id);
+  if (!LINKS.svcs.size || LINKS.svcs.size === tous.length) LINKS.svcs.clear();
   retenirFiltresLiens();
   rafraichirLiens();
 });
@@ -10112,7 +10144,6 @@ const menuLiens = (bouton, menu) => {
 };
 menuLiens('#linksAdd', '#linkAddMenu');
 menuLiens('#linkMore', '#linkMoreMenu');
-menuLiens('#linkSvcPick', '#linkSvcMenu');
 
 $('#linkAddMenu') && $('#linkAddMenu').addEventListener('click', (e) => {
   const b = e.target.closest('[data-add]');
@@ -10133,6 +10164,12 @@ $('#linkMoreMenu') && $('#linkMoreMenu').addEventListener('click', (e) => {
 
 /* Le mode sélection : les cases à cocher n'existent que le temps de s'en servir. En sortir
    vide la sélection — la garder en mémoire ferait agir plus tard sur des lignes invisibles. */
+$('#linkFreeAll') && $('#linkFreeAll').addEventListener('click', (e) => {
+  const visibles = ((LINKS.grid && LINKS.grid.free_links) || []).filter(freeVisible);
+  if (e.currentTarget.dataset.complet) visibles.forEach((l) => LINKS.selection.delete(l.id));
+  else visibles.forEach((l) => LINKS.selection.add(l.id));
+  renderFreeLinks();
+});
 $('#linkFreeSelect') && $('#linkFreeSelect').addEventListener('click', () => {
   LINKS.selectMode = !LINKS.selectMode;
   if (!LINKS.selectMode) LINKS.selection.clear();

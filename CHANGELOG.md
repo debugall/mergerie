@@ -366,14 +366,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 - **Filters for environments and services, labelled and always on screen.** Environments are chips
   that hide columns — one click means “that one”, and a service with no address in the kept columns
-  drops out rather than showing an empty row. Services are a checkbox list with its own search field,
-  since there can be thirty. Tags now carry their count. All three survive a reload, and one button
+  drops out rather than showing an empty row. Services are chips as well — opening a menu to see
+  what you filter on is one click too many — with a sifting field past a dozen of them. Tags now carry their count. All three survive a reload, and one button
   releases them.
 
 - **A free link can be filed into a service — a new one or one that already exists.** Turning links
   into a service could only ever create one, so filing had to happen in a single sitting or not at
   all. Every free-link row now carries a `File` button, the picker offers the existing services with
   a search field, and `File everything into` sets one environment for all the rows at once.
+  `Select all` ticks whatever the current filter left — sift, tick, file, repeat — and a link
+  filtered out of sight leaves the selection rather than being filed silently.
   Addresses are appended to the cell instead of replacing it — two links filed into the same place
   both fit, where the previous code silently kept only the last — and the link's label becomes the
   address's name.

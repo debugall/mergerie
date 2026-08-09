@@ -664,13 +664,13 @@
         <div class="link-filters">
             <span class="lf-lab" data-i18n="links.filter.envs">Environnements</span>
             <div id="linkEnvChips" class="link-tags"></div>
-            <div class="split-menu-wrap">
-                <button id="linkSvcPick" class="btn btn-sm" aria-haspopup="true" aria-expanded="false"><span data-i18n="links.filter.services">Services</span></button>
-                <div id="linkSvcMenu" class="split-menu link-svc-menu" hidden>
-                    <input id="linkSvcSearch" type="search" class="jira-search" placeholder="Filtrer les services…" data-i18n-placeholder="links.filter.service-search" />
-                    <div id="linkSvcList" class="link-svc-list"></div>
-                </div>
-            </div>
+            <span class="lf-lab" data-i18n="links.filter.services">Services</span>
+            <!-- À PLAT, comme les environnements : ouvrir un menu pour voir sur quoi on filtre
+                 est un clic de trop sur un geste quotidien. Le champ qui les tamise n'apparaît
+                 qu'au-delà d'une douzaine, et il MASQUE des pastilles sans jamais en décocher —
+                 sinon chercher reviendrait à défaire ce qu'on venait de choisir. -->
+            <input id="linkSvcSearch" type="search" class="jira-search link-svc-filter" placeholder="Filtrer les services…" data-i18n-placeholder="links.filter.service-search" hidden />
+            <div id="linkSvcChips" class="link-tags"></div>
             <span class="lf-lab" data-i18n="links.filter.tags">Tags</span>
             <div id="linkTags" class="link-tags"></div>
             <!-- Le dépliage se faisait case par case et se perdait au rechargement : le mauvais
@@ -687,6 +687,7 @@
             <!-- Les cases à cocher ne servent qu'à « Convertir en service », geste rare. Les
                  laisser en permanence faisait payer chaque jour le prix d'une action annuelle. -->
             <button id="linkFreeSelect" class="btn btn-sm" data-i18n-title="links.select-title"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="links.select">Sélectionner</span></button>
+            <button id="linkFreeAll" class="btn btn-sm" hidden><span data-i18n="links.select.all">Tout sélectionner</span></button>
             <button id="linkToService" class="btn btn-sm" data-i18n-title="links.free.to-service-title" hidden><svg class="ico"><use href="#i-archive"/></svg><span data-i18n="links.free.file">Ranger dans un service</span></button>
             <button id="linkNewFree" class="btn btn-sm" data-i18n-title="links.free.new-title"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="links.free.new">Nouveau lien</span></button>
         </div>

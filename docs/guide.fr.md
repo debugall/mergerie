@@ -717,7 +717,10 @@ Sous la barre, **les filtres, étiquetés et toujours à l'écran** — ils serv
   clics ajoutent et retirent. Retirer la dernière ramène à tout, une grille sans colonne ne
   montrant rien. Un service sans aucune adresse dans les colonnes retenues **sort de la liste** :
   filtrer sur la prod pour voir dix lignes vides ne montre pas la prod, ça montre ce qu'elle n'a pas.
-- **Services**, dans une liste à cocher **avec son champ de recherche** — ils peuvent être trente.
+- **Services**, en pastilles eux aussi : ouvrir un menu pour voir sur quoi on filtre est un clic de
+  trop sur un geste quotidien. Au-delà d'une douzaine, un champ apparaît pour les **tamiser** — il
+  masque des pastilles sans jamais en décocher, et le compte des sélectionnés hors de vue le
+  rappelle.
 - **Tags**, chacun avec **son compte** : une rangée sans chiffres ne dit pas où est la matière.
 
 Les trois **survivent au rechargement**, et `Tout afficher` les relâche d'un clic.
@@ -765,7 +768,9 @@ Une liste sous la grille : libellé, URL, tags. Ajout et édition au clic, et la
 filtre avec le reste. C'est là qu'atterrit l'import de marque-pages.
 
 Au-delà d'une douzaine, elle se **groupe par dossier** — le dernier tag posé par l'import est celui
-qui contenait le lien — chaque groupe replié, avec son compte. Sous une recherche ou un tag, on
+qui contenait le lien — avec le compte de chacun. Les groupes sont **dépliés** : ils servent à donner
+une structure, pas à cacher ; ouvrir dix dossiers pour retrouver un lien coûte plus cher que de
+faire défiler. Chacun se replie si l'on veut ranger l'écran. Sous une recherche ou un tag, on
 revient à plat : le filtre EST le rangement, et deux niveaux de tri à la fois cachent ce qu'on vient
 de demander.
 
@@ -778,7 +783,10 @@ nombre** (« supprimer tous les liens ? » ne dit pas s'il y en a trois ou deux 
 **Les ranger dans un service.** C'est le geste d'après l'import : deux cents adresses arrivent à
 plat, et il faut les classer. Chaque ligne porte un bouton `Ranger` ; pour en traiter plusieurs d'un
 coup, `Sélectionner` fait apparaître les cases à cocher — elles ne sont pas là en permanence,
-l'opération est rare et le bruit quotidien se paie cher.
+l'opération est rare et le bruit quotidien se paie cher. `Tout sélectionner` coche alors **ce que
+le filtre a laissé** : on tamise (« confluence »), on coche tout, on range, et on recommence. Un lien
+coché puis filtré hors de vue **sort de la sélection** — sinon il partirait avec les autres sans que
+rien ne l'ait annoncé.
 
 Dans les deux cas, la même fenêtre :
 

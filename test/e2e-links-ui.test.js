@@ -255,6 +255,7 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
   test('les cases à cocher n’apparaissent qu’en mode sélection', async () => {
     await ouvrirLiens();
     assert.equal(await page.locator('#linkFreeList input[type=checkbox]').count(), 0);
+    assert.equal(await page.locator('#linkFreeAll').isHidden(), true);
     await page.locator('#linkFreeSelect').click();
     await page.waitForFunction(() => document.querySelectorAll('#linkFreeList input[type=checkbox]').length > 0);
     await page.locator('#linkFreeList input[type=checkbox]').first().check();
@@ -262,6 +263,33 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await page.locator('#linkFreeSelect').click();
     await page.waitForFunction(() => document.querySelectorAll('#linkFreeList input[type=checkbox]').length === 0);
     assert.equal(await page.locator('#linkToService').isHidden(), true, 'sortir du mode oublie la sélection');
+  });
+
+  /* Après un import, ranger se fait par paquets : on tamise (« confluence »), on coche tout ce
+     qui reste, on range. Cocher deux cents lignes à la main est exactement ce qui fait renoncer. */
+  test('« tout sélectionner » porte sur les liens filtrés, et le filtre défait la sélection', async () => {
+    await ouvrirLiens();
+    await app.api('POST', '/api/free-links', { label: 'Confluence — archi', url: 'https://c2.demo.invalid/a', tags: 'confluence' });
+    await page.reload();
+    await ouvrirLiens();
+    await page.locator('#linkFreeSelect').click();
+    await page.waitForSelector('#linkFreeAll:not([hidden])');
+
+    await page.locator('#linkSearch').fill('confluence');
+    await page.waitForFunction(() => document.querySelectorAll('.link-free-row').length === 2);
+    await page.locator('#linkFreeAll').click();
+    await page.waitForFunction(() => document.querySelectorAll('#linkFreeList input:checked').length === 2);
+    // Le compte est SUR le bouton : « ranger » sans dire combien se fait à l'aveugle.
+    assert.match(await page.locator('#linkToService').innerText(), /2/);
+
+    /* CE QU'ON VOIT EST CE SUR QUOI ON AGIT : un lien coché puis filtré hors de vue partirait
+       avec les autres au moment de ranger, sans que rien ne l'ait annoncé. */
+    await page.locator('#linkSearch').fill('sso');
+    await page.waitForFunction(() => document.querySelectorAll('#linkFreeList input:checked').length === 0);
+    assert.equal(await page.locator('#linkToService').isHidden(), true);
+
+    await page.locator('#linkSearch').fill('');
+    await page.locator('#linkFreeSelect').click();
   });
 
   /* L'ordre des colonnes ne se corrigeait pas, et l'en-tête était cliquable sans que rien
@@ -273,9 +301,12 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     const th = page.locator('.link-grid thead th').nth(2);
     await th.hover();
     await th.locator('[data-dir="-1"]').click();
+    /* On attend l'état COMPLET attendu, pas « quelque chose a changé » : le tableau passe par
+       un instant vide pendant sa réécriture, et `c[0] !== a[0]` y est déjà vrai — l'attente
+       rendait la main sur une grille sans colonne, ce qui ne se voit que sous charge. */
     await page.waitForFunction((a) => {
       const c = [...document.querySelectorAll('.link-grid thead th')].slice(1).map((e) => e.textContent.trim().split('\n')[0]);
-      return c[0] !== a[0];
+      return c.length === a.length && c[0] === a[1] && c[1] === a[0];
     }, avant);
     const apres = await cols();
     assert.deepEqual([apres[0], apres[1]], [avant[1], avant[0]], 'les deux premières colonnes ont échangé');
@@ -360,13 +391,13 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await page.locator('#linkClearFilters').click();
     await page.waitForFunction((n) => document.querySelectorAll('.link-grid thead th').length === n, toutes.length + 1);
 
-    // La liste des services a sa RECHERCHE : la règle du projet dès qu'une liste peut être longue.
-    await page.locator('#linkSvcPick').click();
-    await page.waitForSelector('#linkSvcMenu:not([hidden])');
-    assert.equal(await page.locator('#linkSvcSearch').count(), 1);
-    await page.locator('#linkSvcList input[type=checkbox]').first().check();
+    /* Les services sont À PLAT : ouvrir un menu pour voir sur quoi on filtre était un clic de
+       trop sur un geste quotidien. Le champ qui les tamise n'apparaît qu'au-delà d'une douzaine. */
+    assert.equal(await page.locator('#linkSvcChips button').count(), 2);
+    assert.equal(await page.locator('#linkSvcSearch').isHidden(), true, 'à deux services, pas de tamis');
+    await page.locator('#linkSvcChips button').first().click();
     await page.waitForFunction(() => document.querySelectorAll('#linkGrid tbody tr').length === 1);
-    assert.match(await page.locator('#linkSvcPick').innerText(), /1/);
+    assert.equal(await page.locator('#linkSvcChips button.active').count(), 1);
 
     // …et le choix survit au rechargement : on le repose sinon chaque matin.
     await page.reload();
@@ -415,6 +446,25 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await page.waitForFunction(() => document.querySelectorAll('#linkGrid .link-plus').length > 0);
 
     await app.api('DELETE', `/api/services/${svc.id}`);
+  });
+
+  /* Le groupement par dossier donne une STRUCTURE — des titres, des comptes — il ne cache pas :
+     ouvrir dix dossiers pour retrouver un lien coûte plus cher que de faire défiler. */
+  test('les groupes de liens libres sont dépliés d’emblée', async () => {
+    for (let i = 1; i <= 14; i += 1) {
+      await app.api('POST', '/api/free-links', { label: `Lien ${i}`, url: `https://l${i}.demo.invalid`, tags: i % 2 ? 'alpha' : 'beta' });
+    }
+    await page.reload();
+    await ouvrirLiens();
+    await page.waitForSelector('.link-free-group');
+    const groupes = await page.locator('.link-free-group').count();
+    assert.ok(groupes >= 2, 'au-delà d’une douzaine, la liste se groupe');
+    assert.equal(await page.locator('.link-free-group[open]').count(), groupes, 'tous ouverts');
+    assert.ok(await page.locator('.link-free-row:visible').count() >= 14, '…donc tout est lisible sans un clic');
+
+    for (const l of (await app.api('GET', '/api/links/grid')).body.free_links) {
+      if (/^Lien \d+$/.test(l.label)) await app.api('DELETE', `/api/free-links/${l.id}`);
+    }
   });
 
   /* LE GESTE D'APRÈS L'IMPORT : deux cents adresses à plat, qu'il faut classer. Depuis la

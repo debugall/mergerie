@@ -680,7 +680,9 @@ Below the bar, **the filters, labelled and always on screen** — they are used 
   Removing the last one goes back to all, since a grid with no column shows nothing. A service with
   no address in the kept columns **drops out of the list**: filtering on production to see ten empty
   rows does not show production, it shows what production lacks.
-- **Services**, in a checkbox list **with its own search field** — there can be thirty of them.
+- **Services**, as chips too: opening a menu to see what you are filtering on is one click too many
+  on an everyday gesture. Past a dozen, a field appears to **sift** them — it hides chips without
+  ever unticking one, and a count reminds you of the selected ones out of sight.
 - **Tags**, each with **its count**: a row of chips without numbers does not say where the substance is.
 
 All three **survive a reload**, and `Show everything` releases them in one click.
@@ -726,7 +728,9 @@ A list under the grid: label, URL, tags. Add and edit in place, and the search a
 them along with everything else. This is where imported bookmarks land.
 
 Past a dozen, it **groups by folder** — the last tag the import wrote is the one that held the link
-— each group folded, with its count. Under a search or a tag it goes back to flat: the filter IS the
+— with a count for each. The groups are **open**: they are there to give structure, not to hide;
+opening ten folders to find one link costs more than scrolling. Each one folds away if you want to
+tidy the screen. Under a search or a tag it goes back to flat: the filter IS the
 arrangement, and two levels of sorting at once hide what you just asked for.
 
 **Wiping the list.** The `⋯` menu carries `Delete every free link` — the escape hatch from a bad
@@ -738,7 +742,9 @@ button does not appear when there is nothing to delete.
 **Filing them into a service.** This is the gesture that follows an import: two hundred addresses
 arrive flat and have to be filed. Every row carries a `File` button; to handle several at once,
 `Select` reveals the checkboxes — they are not there permanently, the operation is rare and everyday
-noise is expensive.
+noise is expensive. `Select all` then ticks **whatever the filter left**: you sift (“confluence”),
+tick everything, file, and start again. A link ticked and then filtered out of sight **leaves the
+selection** — otherwise it would go along with the others without anything saying so.
 
 Either way, the same dialog:
 

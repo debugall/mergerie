@@ -2211,9 +2211,9 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .lt-n { margin-left: 6px; opacity: .7; font-variant-numeric: tabular-nums; }
 .link-tag .link-env-dot { margin-right: 5px; }
 .btn.active { background: var(--accent-btn); border-color: var(--accent-btn); color: var(--on-accent); }
-/* La liste des services : une recherche en tête, comme partout où une liste peut être longue. */
-.link-svc-menu { min-width: 260px; padding: 8px; }
-.link-svc-list { max-height: 280px; overflow-y: auto; margin-top: 6px; }
+/* Le tamis des services : un champ court, à côté des pastilles et non au-dessus. */
+.link-svc-filter { width: 180px; height: 26px; padding: 3px 10px 3px 10px; font-size: 12px; }
+.lf-hidden { font-size: 11px; align-self: center; }
 
 /* L'aperçu d'import : un dossier par ligne, replié, avec sa case et son compte. */
 .import-folder-box > summary {
