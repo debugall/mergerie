@@ -291,10 +291,15 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     const g = (await app.api('GET', '/api/links/grid')).body;
     await app.api('PUT', `/api/services/${g.services[0].id}/urls`, {
       environment_id: env.id,
+      /* SIX adresses : au-delà du seuil de la ligne, sinon la case les montrerait toutes —
+         c'est justement ce que fait une ligne peu chargée, et c'est éprouvé plus bas. */
       urls: [
         { label: 'erreurs paiement', url: 'https://kib.demo.invalid/?q=paiement' },
         { label: 'latence API', url: 'https://kib.demo.invalid/?q=latence' },
         { label: 'journal complet', url: 'https://kib.demo.invalid/all' },
+        { label: 'erreurs 5xx', url: 'https://kib.demo.invalid/?q=5xx' },
+        { label: 'webhooks rejetés', url: 'https://kib.demo.invalid/?q=webhook' },
+        { label: 'lenteurs base', url: 'https://kib.demo.invalid/?q=slow' },
       ],
     });
     await page.reload();
@@ -315,18 +320,23 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
       return !!td && td.querySelectorAll('.link-open').length === k;
     }, n);
     await cell.locator('[data-cellopen]').click();
-    await attendreOuvrables(3);
+    await attendreOuvrables(6);
 
     // L'éditeur tient DANS la case : une ligne par adresse, et la case s'étire.
     await cell.hover();
     await cell.locator('.link-edit').click();
     await page.waitForSelector('.link-cell-edit');
-    assert.equal(await page.locator('.lce-row').count(), 3);
-    await page.locator('.lce-row').nth(2).locator('.lce-del').click();
+    assert.equal(await page.locator('.lce-row').count(), 6);
+    await page.locator('.lce-row').nth(5).locator('.lce-del').click();
+    /* Cinq après suppression, et la case reste DÉPLIÉE : on l'a ouverte, enregistrer n'est pas
+       une raison de la refermer sous les doigts. */
     await page.locator('.lce-save').click();
+    await attendreOuvrables(5);
+    assert.doesNotMatch(await page.locator('#linkGrid').innerText(), /lenteurs base/, 'la ligne retirée disparaît');
+
+    // Repliée, elle revient à deux et compte le reste.
+    await cell.locator('[data-cellopen]').click();
     await attendreOuvrables(2);
-    assert.equal(await nbOuvrables(), 2);
-    assert.doesNotMatch(await cell.innerText(), /journal complet/, 'la ligne retirée disparaît');
   });
 
   /* LES FILTRES SERVENT TOUS LES JOURS. Les environnements en pastilles, les services dans une
@@ -368,6 +378,43 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
       'plus de filtre actif, plus de bouton pour les relâcher');
 
     await app.api('DELETE', `/api/services/${autre.id}`);
+  });
+
+  /* COMBIEN MONTRER. Un chiffre en dur ne convient à personne : à deux, une grille dont chaque
+     case en porte trois se déplie sans arrêt ; à dix, une seule case chargée fait une ligne
+     haute comme un écran. Le seuil se juge donc sur la LIGNE. */
+  test('une ligne peu chargée montre tout ; au-delà, le « +N » dit ce qu’il cache', async () => {
+    const g = (await app.api('GET', '/api/links/grid')).body;
+    const svc = (await app.api('POST', '/api/services', { name: 'petite-ligne' })).body;
+    await app.api('PUT', `/api/services/${svc.id}/urls`, {
+      environment_id: env.id,
+      urls: [{ label: 'un', url: 'https://u1.demo.invalid' }, { label: 'deux', url: 'https://u2.demo.invalid' },
+        { label: 'trois', url: 'https://u3.demo.invalid' }],
+    });
+    await page.reload();
+    await ouvrirLiens();
+
+    const petite = page.locator('.link-grid tbody tr').filter({ hasText: 'petite-ligne' });
+    assert.equal(await petite.locator('.link-open').count(), 3, 'trois adresses tiennent sans être repliées');
+    assert.equal(await petite.locator('.link-plus').count(), 0, '…et sans bouton à cliquer');
+
+    // La ligne chargée, elle, se replie — et son bouton NOMME ce qu'il cache.
+    const chargee = page.locator('.link-grid tbody tr')
+      .filter({ has: page.locator(`[data-editservice="${g.services[0].id}"]`) });
+    const plus = chargee.locator('.link-plus').first();
+    assert.match(await plus.getAttribute('title'), /journal complet/,
+      'un compteur seul obligerait à déplier pour savoir si ça valait la peine');
+
+    // « Tout déplier » : un seul geste, et il est retenu.
+    await page.locator('#linkExpandAll').click();
+    await page.waitForFunction(() => document.querySelectorAll('#linkGrid .link-plus').length === 0);
+    await page.reload();
+    await ouvrirLiens();
+    assert.equal(await page.locator('#linkGrid .link-plus').count(), 0, 'le choix survit au rechargement');
+    await page.locator('#linkExpandAll').click();
+    await page.waitForFunction(() => document.querySelectorAll('#linkGrid .link-plus').length > 0);
+
+    await app.api('DELETE', `/api/services/${svc.id}`);
   });
 
   /* LE GESTE D'APRÈS L'IMPORT : deux cents adresses à plat, qu'il faut classer. Depuis la

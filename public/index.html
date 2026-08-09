@@ -673,6 +673,9 @@
             </div>
             <span class="lf-lab" data-i18n="links.filter.tags">Tags</span>
             <div id="linkTags" class="link-tags"></div>
+            <!-- Le dépliage se faisait case par case et se perdait au rechargement : le mauvais
+                 défaut pour qui a toujours six adresses par case. -->
+            <button id="linkExpandAll" class="btn btn-sm" aria-pressed="false"><svg class="ico"><use href="#i-expand"/></svg><span data-i18n="links.url.expand-all">Tout déplier</span></button>
             <button id="linkClearFilters" class="btn btn-sm btn-ghost" hidden><span data-i18n="links.filter.clear">Tout afficher</span></button>
         </div>
         <div id="linkGrid" class="link-grid-wrap"></div>

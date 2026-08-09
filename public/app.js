@@ -9745,7 +9745,7 @@ function marquerBriefVu() {
 const LINKS = {
   grid: null, tag: '', q: '', selectMode: false, selection: new Set(), ouvertes: new Set(), importLinks: [],
   // Filtres : Set VIDE = « tout », jamais « rien ». Un filtre qu'on n'a pas posé ne cache rien.
-  envs: new Set(), svcs: new Set(), svcQ: '',
+  envs: new Set(), svcs: new Set(), svcQ: '', toutDeplier: false,
 };
 
 /* Les filtres servent tous les jours : les reposer à chaque ouverture serait absurde. Même
@@ -9758,11 +9758,14 @@ function chargerFiltresLiens() {
     LINKS.envs = new Set(Array.isArray(d.envs) ? d.envs : []);
     LINKS.svcs = new Set(Array.isArray(d.svcs) ? d.svcs : []);
     LINKS.tag = typeof d.tag === 'string' ? d.tag : '';
+    LINKS.toutDeplier = !!d.toutDeplier;
   } catch { /* stockage indisponible */ }
 }
 function retenirFiltresLiens() {
   try {
-    localStorage.setItem(LINKS_FILTRES, JSON.stringify({ envs: [...LINKS.envs], svcs: [...LINKS.svcs], tag: LINKS.tag }));
+    localStorage.setItem(LINKS_FILTRES, JSON.stringify({
+      envs: [...LINKS.envs], svcs: [...LINKS.svcs], tag: LINKS.tag, toutDeplier: LINKS.toutDeplier,
+    }));
   } catch { /* stockage indisponible */ }
 }
 
@@ -9821,6 +9824,16 @@ function renderLinkFiltres() {
   }
   const clear = $('#linkClearFilters');
   if (clear) clear.hidden = !(LINKS.envs.size || LINKS.svcs.size || LINKS.tag);
+  const exp = $('#linkExpandAll');
+  if (exp) {
+    exp.classList.toggle('active', LINKS.toutDeplier);
+    exp.setAttribute('aria-pressed', String(LINKS.toutDeplier));
+    $('span', exp).textContent = tr(LINKS.toutDeplier ? 'links.url.collapse-all' : 'links.url.expand-all');
+    /* Le bouton ne s'affiche que s'il y a quelque chose à déplier : sur une grille dont
+       aucune case ne dépasse le seuil, il ne ferait rien et occuperait la barre. */
+    const dense = ((LINKS.grid || {}).services || []).some((x) => Object.values(x.urls || {}).some((l) => l.length > SEUIL_LIGNE));
+    exp.hidden = !dense && !LINKS.toutDeplier;
+  }
 }
 
 // Les colonnes retenues. Set vide = toutes : un filtre non posé ne cache rien.
@@ -9843,6 +9856,9 @@ function serviceVisible(s) {
 const freeVisible = (l) => (!LINKS.tag || (l.tags || []).includes(LINKS.tag))
   && (!LINKS.q || LINKS.q.split(/\s+/).filter(Boolean)
     .every((m) => `${l.label} ${l.url} ${(l.tags || []).join(' ')}`.toLowerCase().includes(m)));
+
+/* Au-delà de quatre adresses dans la case la plus fournie d'une ligne, on replie. */
+const SEUIL_LIGNE = 4;
 
 function renderLinkGrid() {
   const box = $('#linkGrid');
@@ -9892,26 +9908,35 @@ function renderLinkGrid() {
     + `</span></span></th>`).join('');
 
   const lignes = visibles.map((s) => {
+    const maxLigne = Math.max(0, ...envs.map((e) => (((s.urls || {})[e.id]) || []).length));
     const cases = envs.map((e) => {
       const liste = ((s.urls || {})[e.id]) || [];
       if (!liste.length) {
         return `<td class="link-cell"><button type="button" class="link-add" data-addurl="${s.id}" data-env="${e.id}">+</button></td>`;
       }
-      /* AU PLUS DEUX ADRESSES VISIBLES, puis un « +N » qui déplie SUR PLACE. Une case qui en
-         porte dix ferait une ligne de tableau haute comme un écran ; un menu surgissant
-         cacherait ce qu'on est venu voir. Le dépliage garde les deux avantages : la grille
-         reste régulière au repos, et rien n'est masqué à qui le demande. */
-      const deplie = LINKS.ouvertes.has(`${s.id}:${e.id}`);
+      /* COMBIEN D'ADRESSES MONTRER. Un chiffre en dur ne convient à personne : à deux, une
+         grille dont chaque case en porte trois se déplie sans arrêt ; à dix, une seule case
+         chargée fait une ligne haute comme un écran.
+         Le seuil se juge donc SUR LA LIGNE : tant que la case la plus fournie reste sous
+         `SEUIL_LIGNE`, on montre tout — la ligne garde une hauteur raisonnable et plus rien
+         n'est caché. Au-delà, on retombe à deux et le « +N » prend le relais. */
+      const deplie = LINKS.toutDeplier || LINKS.ouvertes.has(`${s.id}:${e.id}`) || maxLigne <= SEUIL_LIGNE;
       const montrees = deplie ? liste : liste.slice(0, 2);
       /* `rel="noopener noreferrer"` sur TOUTES les ouvertures externes : l'onglet ouvert ne
          doit rien pouvoir faire de la page qui l'a ouvert. */
       const lignes = montrees.map((u) => `<a class="link-open" href="${esc(u.url)}" target="_blank" rel="noopener noreferrer"
           data-usekind="service_url" data-useref="${s.id}:${e.id}:${u.id}" title="${esc(u.url)}">
           <span>${esc(u.label || urlCourte(u.url))}</span></a>`).join('');
-      const reste = liste.length - montrees.length;
-      const plus = (reste > 0 || deplie)
-        ? `<button type="button" class="link-plus" data-cellopen="${s.id}:${e.id}">${deplie ? esc(tr('links.url.less')) : `+${reste}`}</button>`
-        : '';
+      const caches = liste.slice(montrees.length);
+      /* Le « +N » DIT CE QU'IL CACHE au survol. Un compteur seul oblige à déplier pour savoir
+         s'il valait la peine d'être déplié — sur une grille entière, c'est autant d'allers et
+         retours pour rien. */
+      const plus = caches.length
+        ? `<button type="button" class="link-plus" data-cellopen="${s.id}:${e.id}"
+             title="${esc(caches.map((u) => u.label || urlCourte(u.url)).join('\n'))}">+${caches.length}</button>`
+        : (deplie && liste.length > 2 && !LINKS.toutDeplier && maxLigne > SEUIL_LIGNE
+          ? `<button type="button" class="link-plus" data-cellopen="${s.id}:${e.id}">${esc(tr('links.url.less'))}</button>`
+          : '');
       /* LE CRAYON. Une case remplie n'offrait aucun chemin de retour : pour corriger une faute
          de frappe il fallait supprimer le service — et perdre ses autres URLs et ses liens
          contextuels — puis tout ressaisir. */
@@ -10051,6 +10076,14 @@ $('#linkSvcList') && $('#linkSvcList').addEventListener('change', (e) => {
   if (!c) return;
   const id = Number(c.dataset.linksvc);
   if (c.checked) LINKS.svcs.add(id); else LINKS.svcs.delete(id);
+  retenirFiltresLiens();
+  rafraichirLiens();
+});
+$('#linkExpandAll') && $('#linkExpandAll').addEventListener('click', () => {
+  LINKS.toutDeplier = !LINKS.toutDeplier;
+  // Les dépliages individuels s'effacent : deux états superposés donneraient une grille dont
+  // on ne saurait plus dire pourquoi telle case est ouverte et telle autre non.
+  LINKS.ouvertes.clear();
   retenirFiltresLiens();
   rafraichirLiens();
 });

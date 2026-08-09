@@ -741,9 +741,12 @@ fait tous les jours, et c'est ce qui occupe la place.
   vider efface la case** — pas de modale pour coller une adresse.
 - **Plusieurs adresses au même endroit**, parce que c'est le cas réel : un Kibana de production,
   ce sont autant d'adresses que de filtres enregistrés. Chacune porte un **nom** (« erreurs
-  paiement », « latence API »), sans quoi la seconde serait indiscernable de la première. La case
-  en montre **deux**, puis un `+N` qui déplie sur place — une case à dix adresses ferait sinon une
-  ligne haute comme un écran. Le crayon ouvre **une ligne par adresse**, et la case s'étire le
+  paiement », « latence API »), sans quoi la seconde serait indiscernable de la première. **Combien la case en
+  montre se juge sur la LIGNE** : tant que sa case la plus fournie reste sous cinq adresses, tout
+  s'affiche — la hauteur reste raisonnable et rien n'est caché. Au-delà, la case en montre deux et
+  un `+N` déplie sur place ; **son info-bulle nomme ce qu'il cache**, pour ne pas avoir à déplier
+  juste pour savoir si ça valait la peine. Et `Tout déplier`, dans la barre de filtres, ouvre toutes
+  les cases d'un coup — le choix est **retenu**. Le crayon ouvre **une ligne par adresse**, et la case s'étire le
   temps de la saisie. La **palette** trouve chacune par son nom, et la frécence se compte par
   adresse : on ouvre toujours les deux mêmes sur les dix.
 - **Filtre par tag** au-dessus de la grille : un service appartient souvent à deux familles à la

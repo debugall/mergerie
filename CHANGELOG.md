@@ -358,9 +358,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **A grid cell can hold several addresses, each with a name.** One cell was one URL, so writing a
   second one silently overwrote the first — which is wrong the moment a service exposes more than
   one view in the same place: a production Kibana is as many addresses as it has saved filters. Each
-  now carries a name (“payment errors”, “API latency”); the cell shows two and a `+N` that expands
-  in place, the pencil opens one row per address, and the palette finds each by its name. Existing
-  cells are carried over untouched, as single unnamed addresses.
+  now carries a name (“payment errors”, “API latency”), the pencil opens one row per address, and the
+  palette finds each by its name. How many a cell shows is judged on the row: under five addresses
+  everything is displayed, past that a `+N` expands in place and its tooltip names what it hides.
+  `Expand all` opens every cell at once and is remembered. Existing cells are carried over untouched,
+  as single unnamed addresses.
 
 - **Filters for environments and services, labelled and always on screen.** Environments are chips
   that hide columns — one click means “that one”, and a service with no address in the kept columns

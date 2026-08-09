@@ -704,9 +704,11 @@ that is what gets the space.
   cell** — no dialog to paste an address.
 - **Several addresses in the same place**, because that is the real case: a production Kibana is as
   many addresses as it has saved filters. Each carries a **name** (“payment errors”, “API latency”),
-  without which the second would be indistinguishable from the first. The cell shows **two**, then a
-  `+N` that expands in place — a cell with ten addresses would otherwise make a table row as tall as
-  a screen. The pencil opens **one row per address**, and the cell stretches while you type. The
+  without which the second would be indistinguishable from the first. **How many a cell shows is judged on the
+  ROW**: as long as its fullest cell stays under five addresses, everything is displayed — the height
+  stays reasonable and nothing is hidden. Past that, the cell shows two and a `+N` expands in place;
+  **its tooltip names what it hides**, so you never expand just to find out whether it was worth it.
+  And `Expand all`, in the filter bar, opens every cell at once — the choice is **remembered**. The pencil opens **one row per address**, and the cell stretches while you type. The
   **palette** finds each by its name, and frecency is counted per address: you always open the same
   two out of ten.
 - **Filter by tag** above the grid: a service often belongs to two families at once (*backend* and
