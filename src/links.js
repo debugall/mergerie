@@ -204,7 +204,16 @@ function creerService(body = {}, msgs) {
     const info = db.prepare('INSERT INTO service (name, repo_id, tags, pinned, created_at) VALUES (?,?,?,?,?)')
       .run(name, lireRepoId(body.repo_id), JSON.stringify(lireTags(body.tags, msgs.tropDeTags)), body.pinned ? 1 : 0, nowIso());
     id = info.lastInsertRowid;
-    for (const u of urls) poserUrl(id, { environment_id: u.environment_id, url: u.url }, msgs);
+    /* Regroupées PAR ENVIRONNEMENT avant d'être posées : `poserUrl` remplace la case entière,
+       donc deux adresses du même environnement envoyées séparément ne laisseraient que la
+       seconde. */
+    const parEnv = new Map();
+    for (const u of urls) {
+      const e = Number(u.environment_id) || 0;
+      if (!parEnv.has(e)) parEnv.set(e, []);
+      parEnv.get(e).push({ label: u.label, url: u.url });
+    }
+    for (const [e, liste] of parEnv) poserUrl(id, { environment_id: e, urls: liste }, msgs);
   })();
   return lireService(id);
 }
@@ -239,23 +248,39 @@ function supprimerService(id, msgs) {
   return { ok: true };
 }
 
-/* Poser une URL dans une case. Une URL vide EFFACE la case — c'est le geste naturel quand on
-   vide le champ, et il ne mérite pas un second bouton. */
+/* Poser le contenu d'une case. La case porte une LISTE d'adresses : un même service au même
+   endroit expose souvent plusieurs vues — un Kibana de production, ce sont autant d'adresses
+   que de filtres enregistrés. Chacune porte un libellé, sans quoi la seconde serait
+   indiscernable de la première dans la liste.
+
+   REMPLACEMENT INTÉGRAL, et non ajout : l'appelant envoie la case telle qu'elle doit être.
+   C'est ce qui permet à un champ vidé d'effacer la case, à une ligne retirée de disparaître,
+   et à l'ordre affiché d'être celui qu'on a posé — trois gestes qu'un « ajouter » séparé
+   aurait fallu inventer un par un.
+
+   `{ url }` seul reste accepté : c'est la saisie rapide dans la case, une adresse sans nom. */
 function poserUrl(serviceId, body = {}, msgs) {
   if (!lireService(serviceId)) throw erreur(msgs.inconnu, 404);
   const envId = Number(body.environment_id) || 0;
   if (!db.prepare('SELECT 1 FROM environment WHERE id = ?').get(envId)) throw erreur(msgs.envInconnu, 404);
-  const brut = String(body.url == null ? '' : body.url).trim();
-  if (!brut) {
+
+  const brut = Array.isArray(body.urls) ? body.urls : [{ label: body.label, url: body.url }];
+  const propres = brut
+    .map((u) => ({ label: String((u && u.label) || '').trim().slice(0, MAX_LABEL), url: String((u && u.url) || '').trim() }))
+    .filter((u) => u.url);
+  const lignes = propres.map((u) => ({ label: u.label, url: lireUrl(u.url, msgs.urlInvalide) }));
+
+  db.transaction(() => {
     db.prepare('DELETE FROM service_url WHERE service_id = ? AND environment_id = ?').run(Number(serviceId), envId);
-    return { ok: true, url: null };
-  }
-  const url = lireUrl(brut, msgs.urlInvalide);
-  db.prepare(`INSERT INTO service_url (service_id, environment_id, url) VALUES (?,?,?)
-    ON CONFLICT(service_id, environment_id) DO UPDATE SET url = excluded.url`)
-    .run(Number(serviceId), envId, url);
-  return { ok: true, url };
+    const ins = db.prepare('INSERT INTO service_url (service_id, environment_id, label, url, position) VALUES (?,?,?,?,?)');
+    lignes.forEach((u, i) => ins.run(Number(serviceId), envId, u.label, u.url, i));
+  })();
+  return { ok: true, urls: lignes };
 }
+
+// Les adresses d'une case, dans l'ordre posé.
+const casesDe = (serviceId) => db.prepare(`SELECT id, environment_id, label, url FROM service_url
+  WHERE service_id = ? ORDER BY environment_id, position, id`).all(Number(serviceId) || 0);
 
 /* ------------------------------------------------- liens contextuels ---- */
 
@@ -314,6 +339,19 @@ function supprimerFreeLink(id, msgs) {
   return { ok: true };
 }
 
+/* Tout effacer d'un coup. C'est la sortie de secours d'un import de marque-pages : on en
+   déverse deux cents, on constate que ce n'était pas ce qu'on voulait, et les supprimer un par
+   un serait deux cents confirmations. Le nombre supprimé est RENDU — l'appelant s'en sert pour
+   demander confirmation avant, et pour dire ce qui s'est passé après ; un « c'est fait » sans
+   chiffre laisserait douter de ce qui vient de disparaître.
+
+   Ne touche QUE les liens libres : la grille, ses services et ses URLs ne sont pas concernés. */
+function supprimerTousFreeLinks() {
+  const n = db.prepare('SELECT COUNT(*) c FROM free_link').get().c;
+  db.prepare('DELETE FROM free_link').run();
+  return { ok: true, deleted: n };
+}
+
 /* Convertit des liens libres en un service : une ligne par lien, affectée à un
    environnement. C'est le geste d'APRÈS l'import — explicite, et non une devinette faite
    à l'import sur des noms de dossiers. */
@@ -346,13 +384,16 @@ function grille() {
   const services = db.prepare(`SELECT s.*, r.project FROM service s
     LEFT JOIN repo r ON r.id = s.repo_id
     ORDER BY s.pinned DESC, s.name COLLATE NOCASE`).all();
-  const urls = db.prepare('SELECT * FROM service_url').all();
+  const urls = db.prepare('SELECT * FROM service_url ORDER BY position, id').all();
   const ctx = db.prepare('SELECT service_id, COUNT(*) n FROM context_link GROUP BY service_id').all();
 
+  /* `urls[envId]` est une LISTE, même à un seul élément : un client qui doit traiter deux
+     formes selon le nombre finit toujours par en oublier une. */
   const parService = new Map();
   for (const u of urls) {
     if (!parService.has(u.service_id)) parService.set(u.service_id, {});
-    parService.get(u.service_id)[u.environment_id] = u.url;
+    const par = parService.get(u.service_id);
+    (par[u.environment_id] = par[u.environment_id] || []).push({ id: u.id, label: u.label, url: u.url });
   }
   const ctxParService = new Map(ctx.map((c) => [c.service_id, c.n]));
 
@@ -385,10 +426,15 @@ function liensDeMr(mr) {
   if (!service) return { service: null, envs: [], context: [] };
 
   const envs = listerEnvironnements();
-  const parEnv = new Map(db.prepare('SELECT * FROM service_url WHERE service_id = ?').all(service.id)
-    .map((u) => [u.environment_id, u.url]));
-  const cases = envs.filter((e) => parEnv.has(e.id))
-    .map((e) => ({ environment_id: e.id, env: e.name, color: e.color, url: parEnv.get(e.id) }));
+  const parEnv = new Map();
+  for (const u of casesDe(service.id)) {
+    if (!parEnv.has(u.environment_id)) parEnv.set(u.environment_id, []);
+    parEnv.get(u.environment_id).push(u);
+  }
+  /* Un bouton PAR ADRESSE : une case qui en porte trois donne trois boutons, chacun nommé.
+     N'en montrer qu'un obligerait à deviner lequel, et le libellé existe pour ça. */
+  const cases = envs.filter((e) => parEnv.has(e.id)).flatMap((e) => parEnv.get(e.id)
+    .map((u) => ({ environment_id: e.id, env: e.name, color: e.color, url: u.url, label: u.label })));
 
   const valeursCommunes = { branch: mr.source_branch, mr_iid: mr.iid, service: service.name };
   const context = listerContextLinks(service.id).map((c) => {
@@ -538,15 +584,19 @@ function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
   const pousser = (o) => out.push(o);
 
   // 1. Liens — les cases de la grille, puis les liens libres.
-  const fCase = preFiltre(requete, ['s.name', 'e.name', 'u.url']);
-  for (const r of db.prepare(`SELECT s.id sid, s.name service, e.id eid, e.name env, u.url
+  /* UNE ENTRÉE PAR ADRESSE, libellé compris : une case qui porte « erreurs paiement » et
+     « latence API » doit se trouver par ces mots-là, pas seulement par le nom du service. */
+  const fCase = preFiltre(requete, ['s.name', 'e.name', 'u.url', 'u.label']);
+  for (const r of db.prepare(`SELECT s.id sid, s.name service, e.id eid, e.name env, u.id uid, u.label, u.url
       FROM service_url u JOIN service s ON s.id = u.service_id JOIN environment e ON e.id = u.environment_id
       ${fCase.cond ? `WHERE ${fCase.cond}` : ''}
-      ORDER BY s.name, e.position LIMIT ?`).all(...fCase.args, PAR_SOURCE * 4)) {
+      ORDER BY s.name, e.position, u.position, u.id LIMIT ?`).all(...fCase.args, PAR_SOURCE * 4)) {
     pousser({
-      kind: 'service_url', ref: `${r.sid}:${r.eid}`, group: 'links',
-      label: `${r.service} · ${r.env}`, detail: r.url, url: r.url,
-      texte: `${r.service} ${r.env}`,
+      /* La FRÉCENCE se compte par adresse (`sid:eid:uid`) et non par case : sur un Kibana de
+         production, on ouvre toujours les deux mêmes filtres sur les dix enregistrés. */
+      kind: 'service_url', ref: `${r.sid}:${r.eid}:${r.uid}`, group: 'links',
+      label: `${r.service} · ${r.env}${r.label ? ` — ${r.label}` : ''}`, detail: r.url, url: r.url,
+      texte: `${r.service} ${r.env} ${r.label || ''}`,
     });
   }
   const fLibre = preFiltre(requete, ['label', 'url', 'tags']);
@@ -656,10 +706,29 @@ function parserBookmarks(html, msgs) {
       label: (decoder(m[3] || '').replace(/<[^>]*>/g, '').trim() || href).slice(0, MAX_LABEL),
       url: href.slice(0, MAX_URL),
       folder: pile.join('/'),
-      tags: pile.map(normaliserTag).filter(Boolean).slice(0, MAX_TAGS),
+      tags: tagsDuChemin(pile),
     });
   }
   return out;
+}
+
+/* LES RACINES DU NAVIGATEUR NE DEVIENNENT PAS DES TAGS. « Barre de favoris » est présente sur
+   la totalité des liens exportés : un filtre qui répond partout ne filtre rien, et il occupait
+   la première place dans la rangée de pastilles, devant ceux qui disent quelque chose.
+
+   Une LISTE NOMMÉE, et non « on retire toujours le premier segment » : un export peut très
+   bien commencer par un vrai dossier, et le perdre effacerait la seule information de rangement
+   qu'on avait. Mieux vaut reconnaître les quelques noms que les navigateurs emploient, quitte
+   à en oublier un, que de mutiler ce qu'on ne reconnaît pas. */
+const RACINES = new Set([
+  'barre-de-favoris', 'autres-favoris', 'favoris-mobiles', 'barre-personnelle',
+  'menu-des-marque-pages', 'marque-pages-mobiles', 'autres-marque-pages',
+  'bookmarks-bar', 'bookmarks-toolbar', 'other-bookmarks', 'mobile-bookmarks',
+  'bookmarks-menu', 'favorites-bar', 'favoritos', 'lesezeichenleiste',
+]);
+function tagsDuChemin(pile) {
+  const t = pile.map(normaliserTag).filter(Boolean);
+  return (t.length && RACINES.has(t[0]) ? t.slice(1) : t).slice(0, MAX_TAGS);
 }
 
 // Entités du fichier exporté. Volontairement minimal : on ne rend jamais ce HTML.
@@ -700,6 +769,6 @@ module.exports = {
   listerEnvironnements, creerEnvironnement, majEnvironnement, supprimerEnvironnement,
   lireService, creerService, majService, supprimerService, poserUrl,
   listerContextLinks, creerContextLink, supprimerContextLink,
-  listerFreeLinks, creerFreeLink, majFreeLink, supprimerFreeLink, convertirEnService,
+  listerFreeLinks, creerFreeLink, majFreeLink, supprimerFreeLink, supprimerTousFreeLinks, convertirEnService,
   grille, liensDeMr, noterUsage, launcher, parserBookmarks, appliquerImport,
 };

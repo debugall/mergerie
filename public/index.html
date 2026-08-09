@@ -647,14 +647,34 @@
                 <button id="linkMore" class="btn" aria-haspopup="true" aria-expanded="false" data-i18n-title="links.more" aria-label="Autres actions"><svg class="ico"><use href="#i-more"/></svg></button>
                 <div id="linkMoreMenu" class="split-menu" hidden>
                     <button type="button" data-more="import"><span data-i18n="links.import.btn">Importer depuis Chrome</span></button>
+                    <!-- La sortie de secours d'un import raté. Rouge, en dernier, et masqué
+                         quand il n'y a rien à supprimer : un bouton destructeur ne se propose
+                         pas quand il ne peut rien faire. -->
+                    <button type="button" data-more="wipe" class="danger" hidden><span data-i18n="links.free.delete-all">Supprimer tous les liens libres</span></button>
                 </div>
             </div>
             <span class="spacer"></span>
             <span id="linkInfo" class="muted"></span>
         </div>
-        <!-- Un filtre par TAG, pas des dossiers : un service appartient souvent à deux
-             familles à la fois, et un arbre l'obligerait à en choisir une. -->
-        <div id="linkTags" class="link-tags"></div>
+        <!-- LES FILTRES, ÉTIQUETÉS ET TOUJOURS À L'ÉCRAN. Ils servent tous les jours ; les
+             laisser flotter sans dire sur quoi ils portent obligeait à cliquer pour comprendre.
+             Les environnements en pastilles parce qu'ils sont trois à six et qu'un menu coûte
+             un clic rien que pour voir son état ; les services dans une liste à cocher parce
+             qu'ils peuvent être trente — avec son champ de recherche, comme partout ici. -->
+        <div class="link-filters">
+            <span class="lf-lab" data-i18n="links.filter.envs">Environnements</span>
+            <div id="linkEnvChips" class="link-tags"></div>
+            <div class="split-menu-wrap">
+                <button id="linkSvcPick" class="btn btn-sm" aria-haspopup="true" aria-expanded="false"><span data-i18n="links.filter.services">Services</span></button>
+                <div id="linkSvcMenu" class="split-menu link-svc-menu" hidden>
+                    <input id="linkSvcSearch" type="search" class="jira-search" placeholder="Filtrer les services…" data-i18n-placeholder="links.filter.service-search" />
+                    <div id="linkSvcList" class="link-svc-list"></div>
+                </div>
+            </div>
+            <span class="lf-lab" data-i18n="links.filter.tags">Tags</span>
+            <div id="linkTags" class="link-tags"></div>
+            <button id="linkClearFilters" class="btn btn-sm btn-ghost" hidden><span data-i18n="links.filter.clear">Tout afficher</span></button>
+        </div>
         <div id="linkGrid" class="link-grid-wrap"></div>
 
         <div class="toolbar toolbar-tight link-free-bar">

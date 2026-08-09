@@ -352,6 +352,26 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   now asks for its addresses, one row per environment, and scrolls to the new row rather than
   leaving you to find it. Columns can be reordered from their header, services pinned to the top,
   and the free-link checkboxes only appear when you ask to select.
+  The `⋯` menu also carries **Delete every free link** — the escape hatch from a bad bookmark
+  import, with a confirmation that states the count and says the grid is left alone.
+
+- **A grid cell can hold several addresses, each with a name.** One cell was one URL, so writing a
+  second one silently overwrote the first — which is wrong the moment a service exposes more than
+  one view in the same place: a production Kibana is as many addresses as it has saved filters. Each
+  now carries a name (“payment errors”, “API latency”); the cell shows two and a `+N` that expands
+  in place, the pencil opens one row per address, and the palette finds each by its name. Existing
+  cells are carried over untouched, as single unnamed addresses.
+
+- **Filters for environments and services, labelled and always on screen.** Environments are chips
+  that hide columns — one click means “that one”, and a service with no address in the kept columns
+  drops out rather than showing an empty row. Services are a checkbox list with its own search field,
+  since there can be thirty. Tags now carry their count. All three survive a reload, and one button
+  releases them.
+
+- **Bookmark import no longer dumps everything in.** The preview is folded by folder, with a count
+  and a checkbox per folder, and nothing is ticked: you unfold what you want and import twelve links
+  instead of two hundred. The root folder no longer becomes a tag — present on every link, it
+  filtered nothing while taking the first spot. Past a dozen, the free links group by folder.
 
 - **The presentation video is recorded in both languages, and shows the new tabs.** `npm run record:demo`
   now produces a French and an English `.webm` rather than one French recording, and the tour takes in

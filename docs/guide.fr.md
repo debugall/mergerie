@@ -710,6 +710,18 @@ regarder avant de savoir où est la réponse. Quand la grille ne rend rien mais 
 si, le message le dit et renvoie plus bas, au lieu d'annoncer « rien ne correspond » au-dessus de
 résultats bien présents.
 
+Sous la barre, **les filtres, étiquetés et toujours à l'écran** — ils servent tous les jours :
+
+- **Environnements**, en pastilles colorées : elles masquent des **colonnes**. Depuis « tout
+  affiché », un clic veut dire *celle-là* — on part travailler sur un environnement ; ensuite les
+  clics ajoutent et retirent. Retirer la dernière ramène à tout, une grille sans colonne ne
+  montrant rien. Un service sans aucune adresse dans les colonnes retenues **sort de la liste** :
+  filtrer sur la prod pour voir dix lignes vides ne montre pas la prod, ça montre ce qu'elle n'a pas.
+- **Services**, dans une liste à cocher **avec son champ de recherche** — ils peuvent être trente.
+- **Tags**, chacun avec **son compte** : une rangée sans chiffres ne dit pas où est la matière.
+
+Les trois **survivent au rechargement**, et `Tout afficher` les relâche d'un clic.
+
 À côté : **`+ Ajouter`** (un lien simple, un service, un environnement) et un menu **`⋯`** pour
 l'import de marque-pages. Ces gestes se font une fois dans la vie de l'outil ; retrouver un lien se
 fait tous les jours, et c'est ce qui occupe la place.
@@ -722,11 +734,18 @@ fait tous les jours, et c'est ce qui occupe la place.
   d'en-tête (la prod en rouge invite à réfléchir avant de cliquer). Au survol d'un en-tête,
   deux flèches **déplacent la colonne** d'un cran et une roue dentée ouvre son réglage — l'ordre
   n'est plus figé à la création, et ce qui est cliquable finit par se voir.
-- **Une case = une URL, écrite.** On aurait pu deviner l'adresse de preprod depuis celle de dev en
-  remplaçant un morceau de domaine ; c'est exactement la magie qui envoie un jour sur le mauvais
-  environnement sans prévenir. Une case vide affiche un `+`, une case remplie un **crayon** au
-  survol : on saisit **dans la case**, Entrée valide, Échap annule, et **vider le champ efface la
-  case** — pas de modale pour coller une adresse.
+- **Une case = une ou plusieurs adresses, écrites.** On aurait pu deviner l'adresse de preprod
+  depuis celle de dev en remplaçant un morceau de domaine ; c'est exactement la magie qui envoie un
+  jour sur le mauvais environnement sans prévenir. Une case vide affiche un `+`, une case remplie un
+  **crayon** au survol : on saisit **dans la case**, Entrée enregistre, Échap annule, et **tout
+  vider efface la case** — pas de modale pour coller une adresse.
+- **Plusieurs adresses au même endroit**, parce que c'est le cas réel : un Kibana de production,
+  ce sont autant d'adresses que de filtres enregistrés. Chacune porte un **nom** (« erreurs
+  paiement », « latence API »), sans quoi la seconde serait indiscernable de la première. La case
+  en montre **deux**, puis un `+N` qui déplie sur place — une case à dix adresses ferait sinon une
+  ligne haute comme un écran. Le crayon ouvre **une ligne par adresse**, et la case s'étire le
+  temps de la saisie. La **palette** trouve chacune par son nom, et la frécence se compte par
+  adresse : on ouvre toujours les deux mêmes sur les dix.
 - **Filtre par tag** au-dessus de la grille : un service appartient souvent à deux familles à la
   fois (*backend* et *paiement*), ce qu'un arbre de dossiers l'obligerait à trancher.
 - Seules les adresses **`http` ou `https`** sont acceptées, ici comme partout dans cet onglet : ces
@@ -739,8 +758,19 @@ l'écran **descend jusqu'à sa ligne** en la soulignant une seconde — une gril
 atterrir n'importe où.
 
 #### Liens libres
-Une liste à plat, sous la grille : libellé, URL, tags. Ajout et édition au clic, et la recherche du
-haut les filtre avec le reste. C'est là qu'atterrit l'import de marque-pages.
+Une liste sous la grille : libellé, URL, tags. Ajout et édition au clic, et la recherche du haut les
+filtre avec le reste. C'est là qu'atterrit l'import de marque-pages.
+
+Au-delà d'une douzaine, elle se **groupe par dossier** — le dernier tag posé par l'import est celui
+qui contenait le lien — chaque groupe replié, avec son compte. Sous une recherche ou un tag, on
+revient à plat : le filtre EST le rangement, et deux niveaux de tri à la fois cachent ce qu'on vient
+de demander.
+
+**Tout effacer.** Le menu `⋯` porte `Supprimer tous les liens libres` — la sortie de secours d'un
+import raté : on en déverse deux cents, on constate que ce n'était pas ce qu'on voulait, et les
+reprendre un par un serait deux cents confirmations. La demande de confirmation **annonce le
+nombre** (« supprimer tous les liens ? » ne dit pas s'il y en a trois ou deux cents) et rappelle que
+**la grille n'est pas touchée**. Le bouton n'apparaît pas quand il n'y a rien à supprimer.
 
 **Les transformer en service.** `Sélectionner` fait apparaître les cases à cocher — elles ne sont
 pas là en permanence, l'opération est rare et le bruit quotidien se paie cher. Coche plusieurs
@@ -798,6 +828,15 @@ branche, sur l'environnement voulu, sans rien retaper.
 #### Importer les marque-pages de Chrome
 *Chrome → Favoris → Gestionnaire de favoris → ⋮ → Exporter les favoris*, puis
 `Importer depuis Chrome`.
+
+**L'aperçu est replié par dossier, et rien n'est coché.** Un dossier par ligne, avec son compte et
+sa case ; on déplie celui qu'on veut, on coche, on importe douze liens au lieu de deux cents.
+Choisir ce qui entre coûte dix secondes, trier ce qui est entré coûte une demi-heure. Les **dossiers racines des navigateurs**
+(« Barre de favoris », « Autres favoris », « Bookmarks bar »…) **ne deviennent pas des tags** :
+présents sur la totalité des liens, ils ne filtraient rien et occupaient la première place devant
+ceux qui disent quelque chose. C'est une liste de noms connus, et non « le premier dossier venu » —
+un export peut très bien commencer par un vrai dossier, et le perdre effacerait la seule information
+de rangement qu'on avait.
 
 - **Aperçu d'abord** : l'arbre des dossiers tel qu'il était dans le navigateur, chaque lien
   cochable. Rien n'est créé tant qu'on n'a pas validé — même esprit que l'aperçu obligatoire des

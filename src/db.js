@@ -741,12 +741,50 @@ db.exec(`CREATE TABLE IF NOT EXISTS service (
 /* Une URL par (service, environnement) — EXPLICITE. On aurait pu deviner une URL de preprod
    depuis celle de dev en remplaçant un morceau de domaine ; c'est exactement le genre de
    magie qui envoie un jour sur le mauvais environnement sans prévenir. */
+/* PLUSIEURS ADRESSES PAR CASE. Une case portait une seule URL — clé primaire (service,
+   environnement). C'est faux dès qu'un même service expose plusieurs vues au même endroit :
+   un Kibana de production, ce sont autant d'adresses que de filtres enregistrés, et chacune
+   mérite son nom. D'où une ligne par adresse, avec son libellé et son rang. */
 db.exec(`CREATE TABLE IF NOT EXISTS service_url (
+  id INTEGER PRIMARY KEY,
   service_id INTEGER NOT NULL REFERENCES service(id) ON DELETE CASCADE,
   environment_id INTEGER NOT NULL REFERENCES environment(id) ON DELETE CASCADE,
+  label TEXT NOT NULL DEFAULT '',
   url TEXT NOT NULL,
-  PRIMARY KEY (service_id, environment_id)
+  position INTEGER NOT NULL DEFAULT 0
 )`);
+/* Bases déjà en service : l'ancienne table n'a pas de colonne `id`, et SQLite ne sait pas
+   ajouter une clé primaire. On la RECONSTRUIT — la seule migration de ce dépôt à le faire.
+   Chaque case existante devient une adresse unique, sans libellé : c'est exactement ce
+   qu'elle était. */
+{
+  const cols = db.prepare('PRAGMA table_info(service_url)').all();
+  if (cols.length && !cols.some((c) => c.name === 'id')) {
+    /* CLÉS ÉTRANGÈRES DÉSACTIVÉES le temps de la manœuvre, comme le prescrit SQLite pour une
+       reconstruction : sans ça, la recopie les vérifie ligne à ligne et une seule adresse
+       orpheline empêcherait l'application de démarrer. Le `WHERE EXISTS` les écarte plutôt —
+       une URL rattachée à un service disparu ne pointe plus vers rien de toute façon. */
+    db.pragma('foreign_keys = OFF');
+    db.transaction(() => {
+      db.exec(`CREATE TABLE service_url_v2 (
+        id INTEGER PRIMARY KEY,
+        service_id INTEGER NOT NULL REFERENCES service(id) ON DELETE CASCADE,
+        environment_id INTEGER NOT NULL REFERENCES environment(id) ON DELETE CASCADE,
+        label TEXT NOT NULL DEFAULT '',
+        url TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0
+      )`);
+      db.exec(`INSERT INTO service_url_v2 (service_id, environment_id, label, url, position)
+               SELECT u.service_id, u.environment_id, '', u.url, 0 FROM service_url u
+               WHERE EXISTS (SELECT 1 FROM service s WHERE s.id = u.service_id)
+                 AND EXISTS (SELECT 1 FROM environment e WHERE e.id = u.environment_id)`);
+      db.exec('DROP TABLE service_url');
+      db.exec('ALTER TABLE service_url_v2 RENAME TO service_url');
+    })();
+    db.pragma('foreign_keys = ON');
+  }
+}
+db.exec('CREATE INDEX IF NOT EXISTS idx_service_url_cell ON service_url (service_id, environment_id, position, id)');
 
 /* Les liens CONTEXTUELS vivent à part des URLs de grille : la grille doit rester lisible
    d'un coup d'œil, le contextuel porte des gabarits à variables. Mélanger les deux aurait

@@ -1202,6 +1202,7 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
   padding: 7px 10px; border-radius: var(--r-sm); cursor: pointer; font: inherit; font-size: 13px;
 }
 .split-menu button:hover { background: var(--hover); }
+.split-menu button.danger { color: var(--danger); }
 
 /* Onglet Explication vide → invite à générer à la demande. */
 .empty-explain { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 18px 4px; }
@@ -2202,6 +2203,42 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 /* ============ Liens : grille services × environnements ============ */
 
 .link-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+
+/* La barre de filtres : étiquetée, sur une ligne, et repliée en colonnes quand l'écran manque. */
+.link-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 12px; }
+.link-filters .link-tags { margin: 0; }
+.lf-lab { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.lt-n { margin-left: 6px; opacity: .7; font-variant-numeric: tabular-nums; }
+.link-tag .link-env-dot { margin-right: 5px; }
+.btn.active { background: var(--accent-btn); border-color: var(--accent-btn); color: var(--on-accent); }
+/* La liste des services : une recherche en tête, comme partout où une liste peut être longue. */
+.link-svc-menu { min-width: 260px; padding: 8px; }
+.link-svc-list { max-height: 280px; overflow-y: auto; margin-top: 6px; }
+
+/* L'aperçu d'import : un dossier par ligne, replié, avec sa case et son compte. */
+.import-folder-box > summary {
+  display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 5px 4px;
+  border-radius: var(--r-sm); list-style: none;
+}
+.import-folder-box > summary::-webkit-details-marker { display: none; }
+.import-folder-box > summary::before { content: '▸'; color: var(--muted); font-size: 11px; }
+.import-folder-box[open] > summary::before { content: '▾'; }
+.import-folder-box > summary:hover { background: var(--hover); }
+.import-folder-box .import-item { padding-left: 26px; }
+
+/* Les liens libres groupés par dossier : même pliage que l'aperçu d'import, pour qu'on
+   reconnaisse le geste d'un écran à l'autre. */
+.link-free-group > summary {
+  display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 4px;
+  font-weight: var(--fw-sem); font-size: 13px; border-radius: var(--r-sm); list-style: none;
+}
+.link-free-group > summary::-webkit-details-marker { display: none; }
+.link-free-group > summary::before { content: '▸'; color: var(--muted); font-size: 11px; }
+.link-free-group[open] > summary::before { content: '▾'; }
+.link-free-group > summary:hover { background: var(--hover); }
+.link-free-group .link-free-row { margin-left: 18px; }
+
+
 .link-tag {
   padding: 3px 10px; border-radius: var(--r-full); font-size: 12px; cursor: pointer;
   background: var(--panel2); border: 1px solid var(--line); color: var(--muted);
@@ -2278,13 +2315,34 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .link-cell .link-edit { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: var(--panel); }
 .link-env-acts { display: inline-flex; align-items: center; gap: 1px; margin-left: 4px; }
 
+/* Une case peut porter plusieurs adresses : elles s'empilent, au plus deux, puis « +N » les
+   déplie SUR PLACE. La ligne du tableau grandit — c'est voulu : rien n'est caché derrière un
+   menu qu'il faudrait positionner, refermer, et faire survivre au défilement. */
+.link-cell .link-open + .link-open { margin-top: 3px; }
+.link-plus {
+  display: block; margin: 3px 0 0; padding: 1px 8px; font-size: 11px; cursor: pointer;
+  background: transparent; border: 1px dashed var(--line); border-radius: var(--r-full); color: var(--muted);
+}
+.link-plus:hover { border-color: var(--accent); color: var(--text); }
+
+/* L'éditeur d'une case : une ligne par adresse, la case s'étire le temps de la saisie. */
+.link-cell-edit { display: flex; flex-direction: column; gap: 6px; padding: 4px 2px; min-width: 300px; }
+.lce-rows { display: flex; flex-direction: column; gap: 4px; }
+.lce-row { display: grid; grid-template-columns: 34% 1fr 24px; gap: 4px; align-items: center; }
+.lce-row .lce-del { opacity: .55; }
+.lce-row:hover .lce-del { opacity: 1; }
+.lce-actions { display: flex; align-items: center; gap: 6px; }
+.lce-hint { font-size: 11px; margin: 0; }
+
+
 /* La ligne qu'on vient de créer ou de modifier se signale, puis se tait. */
 @keyframes link-flash { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } to { background: transparent; } }
 .link-flash td { animation: link-flash 1.6s ease-out; }
 
 /* Les adresses par environnement, dans la modale de service. */
 .link-urls-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
-.link-url-row { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 10px; }
+.link-url-row { display: grid; grid-template-columns: 130px 1fr auto; align-items: center; gap: 10px; }
+.link-url-more { font-size: 11px; white-space: nowrap; }
 .link-url-row > .link-env { font-size: 12px; color: var(--muted); }
 
 .link-free-bar { padding-left: 0; padding-right: 0; }

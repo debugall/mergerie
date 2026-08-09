@@ -2990,6 +2990,10 @@ app.get('/api/free-links', wrap((req, res) => { res.json({ links: links.listerFr
 app.post('/api/free-links', wrap((req, res) => { res.json(links.creerFreeLink(req.body || {}, msgLinks())); }));
 app.put('/api/free-links/:id', wrap((req, res) => { res.json(links.majFreeLink(req.params.id, req.body || {}, msgLinks())); }));
 app.delete('/api/free-links/:id', wrap((req, res) => { res.json(links.supprimerFreeLink(req.params.id, msgLinks())); }));
+/* Déclarée APRÈS `/:id` — sans quoi Express ferait correspondre « /api/free-links » à la route
+   paramétrée sur certaines formes d'URL, et « tout supprimer » deviendrait un cas particulier
+   de « supprimer celui-là ». */
+app.delete('/api/free-links', wrap((req, res) => { res.json(links.supprimerTousFreeLinks()); }));
 // Des liens libres deviennent un service : le geste d'APRÈS l'import, explicite.
 app.post('/api/free-links/to-service', wrap((req, res) => { res.json(links.convertirEnService(req.body || {}, msgLinks())); }));
 

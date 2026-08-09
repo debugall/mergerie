@@ -19,6 +19,11 @@ const assert = require('node:assert/strict');
 const links = require('../src/links');
 const db = require('../src/db');
 
+/* Une case porte une LISTE d'adresses ({id, label, url}). Quand seul le contenu importe, on
+   ne compare que les URLs : l'identifiant change à chaque réécriture de la case. */
+const urlsSeules = (svc) => Object.fromEntries(Object.entries(svc.urls || {})
+  .map(([e, liste]) => [e, liste.map((u) => u.url)]));
+
 const MSGS = {
   nomVide: 'NOM-VIDE', nomPris: 'NOM-PRIS', labelVide: 'LABEL-VIDE',
   urlInvalide: 'URL-INVALIDE', templateVide: 'TEMPLATE-VIDE',
@@ -251,7 +256,7 @@ describe('créer un service avec ses adresses', () => {
       name: 'api', urls: [{ environment_id: local.id, url: 'http://localhost:8080' }, { environment_id: prod.id, url: 'https://api.test' }],
     }, MSGS);
     const ligne = links.grille().services.find((x) => x.id === s.id);
-    assert.deepEqual(ligne.urls, { [local.id]: 'http://localhost:8080', [prod.id]: 'https://api.test' });
+    assert.deepEqual(urlsSeules(ligne), { [local.id]: ['http://localhost:8080'], [prod.id]: ['https://api.test'] });
   });
 
   test('une case laissée vide reste vide, sans erreur', () => {
@@ -314,6 +319,133 @@ describe('déplacer une colonne', () => {
   });
 });
 
+/* La sortie de secours d'un import de marque-pages : on en déverse deux cents, on constate que
+   ce n'était pas ce qu'on voulait, et les reprendre un par un serait deux cents confirmations. */
+/* PLUSIEURS ADRESSES DANS UNE CASE. Un même service au même endroit expose souvent plusieurs
+   vues : un Kibana de production, ce sont autant d'adresses que de filtres enregistrés. La case
+   portait une seule URL, et poser la seconde écrasait la première SANS RIEN DIRE. */
+describe('une case porte plusieurs adresses', () => {
+  const decor = () => {
+    db.prepare('DELETE FROM service').run();
+    db.prepare('DELETE FROM environment').run();
+    const prod = links.creerEnvironnement({ name: 'prod' }, MSGS);
+    const svc = links.creerService({ name: 'Kibana' }, MSGS);
+    return { prod, svc };
+  };
+  const cellule = (svcId, envId) => (links.grille().services.find((s) => s.id === svcId).urls || {})[envId] || [];
+
+  test('elles gardent leur nom et leur ordre', () => {
+    const { prod, svc } = decor();
+    links.poserUrl(svc.id, { environment_id: prod.id, urls: [
+      { label: 'erreurs paiement', url: 'https://kib.test/?q=paiement' },
+      { label: 'latence API', url: 'https://kib.test/?q=latence' },
+    ] }, MSGS);
+    assert.deepEqual(cellule(svc.id, prod.id).map((u) => [u.label, u.url]), [
+      ['erreurs paiement', 'https://kib.test/?q=paiement'],
+      ['latence API', 'https://kib.test/?q=latence'],
+    ]);
+  });
+
+  /* REMPLACEMENT INTÉGRAL : l'appelant envoie la case telle qu'elle doit être. C'est ce qui
+     permet à une ligne retirée de disparaître sans inventer un geste « supprimer l'adresse ». */
+  test('poser la case la remplace entièrement', () => {
+    const { prod, svc } = decor();
+    links.poserUrl(svc.id, { environment_id: prod.id, urls: [
+      { label: 'a', url: 'https://a.test' }, { label: 'b', url: 'https://b.test' },
+    ] }, MSGS);
+    links.poserUrl(svc.id, { environment_id: prod.id, urls: [{ label: 'b', url: 'https://b.test' }] }, MSGS);
+    assert.deepEqual(cellule(svc.id, prod.id).map((u) => u.url), ['https://b.test']);
+  });
+
+  test('une adresse sans URL est ignorée, et tout vider efface la case', () => {
+    const { prod, svc } = decor();
+    links.poserUrl(svc.id, { environment_id: prod.id, urls: [
+      { label: 'vide', url: '   ' }, { label: 'bonne', url: 'https://ok.test' },
+    ] }, MSGS);
+    assert.deepEqual(cellule(svc.id, prod.id).map((u) => u.label), ['bonne'],
+      'une ligne laissée vide dans l’éditeur ne crée rien');
+    links.poserUrl(svc.id, { environment_id: prod.id, urls: [] }, MSGS);
+    assert.deepEqual(cellule(svc.id, prod.id), []);
+  });
+
+  test('une seule URL nue reste acceptée — c’est la saisie rapide dans la case', () => {
+    const { prod, svc } = decor();
+    links.poserUrl(svc.id, { environment_id: prod.id, url: 'https://simple.test' }, MSGS);
+    assert.deepEqual(cellule(svc.id, prod.id).map((u) => [u.label, u.url]), [['', 'https://simple.test']]);
+  });
+
+  test('une URL invalide refuse la case entière, sans en garder la moitié', () => {
+    const { prod, svc } = decor();
+    links.poserUrl(svc.id, { environment_id: prod.id, urls: [{ url: 'https://bonne.test' }] }, MSGS);
+    assert.throws(() => links.poserUrl(svc.id, { environment_id: prod.id, urls: [
+      { url: 'https://autre.test' }, { url: 'pas-une-url' },
+    ] }, MSGS), /URL-INVALIDE/);
+    assert.deepEqual(cellule(svc.id, prod.id).map((u) => u.url), ['https://bonne.test'],
+      'la case d’avant est intacte');
+  });
+
+  /* La palette doit trouver par le NOM de l'adresse : c'est ce qui distingue « erreurs
+     paiement » de « latence API » sur un même Kibana de production. */
+  test('la palette trouve une adresse par son nom', () => {
+    const { prod, svc } = decor();
+    links.poserUrl(svc.id, { environment_id: prod.id, urls: [
+      { label: 'erreurs paiement', url: 'https://kib.test/?q=paiement' },
+      { label: 'latence API', url: 'https://kib.test/?q=latence' },
+    ] }, MSGS);
+    const r = links.launcher('latence', {});
+    assert.equal(r.length, 1);
+    assert.match(r[0].label, /Kibana · prod — latence API/);
+    assert.equal(r[0].url, 'https://kib.test/?q=latence');
+    // La frécence se compte PAR ADRESSE : on ouvre toujours les deux mêmes sur les dix.
+    assert.match(r[0].ref, new RegExp(`^${svc.id}:${prod.id}:\\d+$`));
+  });
+
+  /* Créer un service en une passe avec plusieurs adresses sur le même environnement : elles
+     doivent être REGROUPÉES avant d'être posées, sinon la seconde effacerait la première. */
+  test('un service créé d’un coup peut porter deux adresses au même endroit', () => {
+    db.prepare('DELETE FROM service').run();
+    db.prepare('DELETE FROM environment').run();
+    const prod = links.creerEnvironnement({ name: 'prod' }, MSGS);
+    const svc = links.creerService({ name: 'Kibana', urls: [
+      { environment_id: prod.id, label: 'un', url: 'https://un.test' },
+      { environment_id: prod.id, label: 'deux', url: 'https://deux.test' },
+    ] }, MSGS);
+    assert.deepEqual(cellule(svc.id, prod.id).map((u) => u.label), ['un', 'deux']);
+  });
+});
+
+describe('vider les liens libres', () => {
+  test('tout part, et le nombre supprimé est rendu', () => {
+    db.prepare('DELETE FROM free_link').run();
+    for (let i = 1; i <= 4; i += 1) links.creerFreeLink({ label: `L${i}`, url: `https://x${i}.test` }, MSGS);
+    assert.deepEqual(links.supprimerTousFreeLinks(), { ok: true, deleted: 4 });
+    assert.equal(links.grille().free_links.length, 0);
+  });
+
+  /* Le nombre sert à demander confirmation AVANT : « supprimer tous les liens ? » ne dit pas
+     s'il y en a trois ou deux cents, et c'est ce qu'on a besoin de savoir pour répondre. */
+  test('sur une liste déjà vide, il ne se passe rien et ça ne casse pas', () => {
+    db.prepare('DELETE FROM free_link').run();
+    assert.deepEqual(links.supprimerTousFreeLinks(), { ok: true, deleted: 0 });
+  });
+
+  test('la grille n’est pas touchée', () => {
+    db.prepare('DELETE FROM service').run();
+    db.prepare('DELETE FROM environment').run();
+    db.prepare('DELETE FROM free_link').run();
+    const env = links.creerEnvironnement({ name: 'dev' }, MSGS);
+    const svc = links.creerService({ name: 'api', urls: [{ environment_id: env.id, url: 'https://api.test' }] }, MSGS);
+    links.creerFreeLink({ label: 'doc', url: 'https://doc.test' }, MSGS);
+
+    links.supprimerTousFreeLinks();
+    const g = links.grille();
+    assert.equal(g.free_links.length, 0);
+    assert.equal(g.services.length, 1, 'le service reste');
+    assert.deepEqual(urlsSeules(g.services[0]), { [env.id]: ['https://api.test'] }, '…avec son URL');
+    assert.ok(svc.id);
+  });
+});
+
 describe('import : le format « Netscape » de Chrome', () => {
   const FICHIER = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
 <DL><p>
@@ -334,10 +466,43 @@ describe('import : le format « Netscape » de Chrome', () => {
     const l = links.parserBookmarks(FICHIER, MSGS);
     const parLabel = Object.fromEntries(l.map((x) => [x.label, x]));
     assert.equal(l.length, 3, 'trois liens http(s)');
-    assert.deepEqual(parLabel['Kibana & logs'].tags, ['barre-de-favoris', 'travail'],
-      'le chemin complet devient les tags');
+    /* LE DOSSIER RACINE NE DEVIENT PAS UN TAG. « Barre de favoris » se retrouverait sur la
+       totalité des liens : un filtre qui répond partout ne filtre rien, et il occupait la
+       première place dans la rangée de pastilles, devant ceux qui disent quelque chose. */
+    assert.deepEqual(parLabel['Kibana & logs'].tags, ['travail'],
+      'le chemin devient les tags, moins sa racine');
+    assert.equal(parLabel['Kibana & logs'].folder, 'Barre de favoris/Travail',
+      'le chemin complet reste affiché dans l’aperçu, lui');
     assert.equal(parLabel.Confluence.folder, 'Barre de favoris', 'le `</DL>` dépile bien');
+    assert.deepEqual(parLabel.Confluence.tags, [],
+      'un lien posé directement dans la barre n’a pas de dossier à lui');
     assert.deepEqual(parLabel['Hors dossier'].tags, [], 'un lien de la racine n’invente pas de tag');
+  });
+
+  /* Une LISTE NOMMÉE de racines, et non « on retire toujours le premier segment » : un export
+     peut commencer par un vrai dossier, et le perdre effacerait la seule information de
+     rangement qu'on avait. */
+  test('un dossier de tête qui n’est pas une racine de navigateur est conservé', () => {
+    const l = links.parserBookmarks(`<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<DL><p>
+  <DT><H3>Travail</H3>
+  <DL><p><DT><A HREF="https://kibana.corp/app">Kibana</A></DL><p>
+</DL><p>`, MSGS);
+    assert.deepEqual(l[0].tags, ['travail'], '« Travail » est un dossier à soi, pas une racine');
+  });
+
+  test('les racines connues des navigateurs sont écartées', () => {
+    for (const racine of ['Barre de favoris', 'Other bookmarks', 'Menu des marque-pages']) {
+      const l = links.parserBookmarks(`<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<DL><p>
+  <DT><H3>${racine}</H3>
+  <DL><p>
+    <DT><H3>Recettes</H3>
+    <DL><p><DT><A HREF="https://r.corp/x">R</A></DL><p>
+  </DL><p>
+</DL><p>`, MSGS);
+      assert.deepEqual(l[0].tags, ['recettes'], racine);
+    }
   });
 
   /* Un fichier fourni par l'extérieur : on l'analyse, on ne l'exécute ni ne le rend jamais.
@@ -391,7 +556,7 @@ describe('grille et conversion', () => {
 
     links.poserUrl(svc.id, { environment_id: env.id, url: 'https://a.test/1' }, MSGS);
     links.poserUrl(svc.id, { environment_id: env.id, url: 'https://a.test/2' }, MSGS);
-    assert.equal(links.grille().services[0].urls[env.id], 'https://a.test/2', 'la seconde remplace la première');
+    assert.deepEqual(urlsSeules(links.grille().services[0])[env.id], ['https://a.test/2'], 'la seconde remplace la première');
 
     // Vider le champ EFFACE la case : c'est le geste naturel, il ne mérite pas un second bouton.
     links.poserUrl(svc.id, { environment_id: env.id, url: '' }, MSGS);
@@ -458,8 +623,8 @@ describe('grille et conversion', () => {
     }, MSGS);
     assert.equal(r.convertis, 2);
     const g = links.grille();
-    assert.equal(g.services[0].urls[dev.id], 'https://k-dev.test');
-    assert.equal(g.services[0].urls[prod.id], 'https://k-prod.test');
+    assert.deepEqual(urlsSeules(g.services[0])[dev.id], ['https://k-dev.test']);
+    assert.deepEqual(urlsSeules(g.services[0])[prod.id], ['https://k-prod.test']);
     assert.equal(g.free_links.length, 0, 'les liens convertis ne restent pas en double');
   });
 });

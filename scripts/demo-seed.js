@@ -630,14 +630,25 @@ db.prepare(`INSERT INTO verification
     .forEach(([nom, couleur], i) => { envIds[nom] = insEnv.run(nom, i + 1, couleur, at(30)).lastInsertRowid; });
 
   const insSvc = db.prepare('INSERT INTO service (name, repo_id, tags, pinned, created_at) VALUES (?,?,?,?,?)');
-  const insUrl = db.prepare('INSERT INTO service_url (service_id, environment_id, url) VALUES (?,?,?)');
+  const insUrl = db.prepare('INSERT INTO service_url (service_id, environment_id, label, url, position) VALUES (?,?,?,?,?)');
   const SERVICES = [
     { nom: 'webapp-front', repo: 'groupe/webapp-front', tags: ['front', 'produit'], pin: 1,
       urls: { local: 'http://localhost:3000', dev: 'https://front-dev.demo.invalid', preprod: 'https://front-preprod.demo.invalid' } },
     { nom: 'api-core', repo: 'groupe/api-core', tags: ['backend', 'produit'], pin: 1,
       urls: { local: 'http://localhost:8080/health', dev: 'https://api-dev.demo.invalid/health', preprod: 'https://api-preprod.demo.invalid/health' } },
+    /* KIBANA PORTE PLUSIEURS ADRESSES EN PREPROD, et c'est le cas qui justifie la
+       fonctionnalité : un même outil au même endroit, autant d'adresses que de filtres
+       enregistrés. Sans un exemple à plusieurs, la grille laisserait croire qu'une case ne
+       peut porter qu'une adresse. */
     { nom: 'Kibana', repo: null, tags: ['observabilite'], pin: 0,
-      urls: { dev: 'https://kibana-dev.demo.invalid/app/logs', preprod: 'https://kibana-preprod.demo.invalid/app/logs' } },
+      urls: {
+        dev: [['', 'https://kibana-dev.demo.invalid/app/logs']],
+        preprod: [
+          ['erreurs paiement', 'https://kibana-preprod.demo.invalid/app/logs?q=checkout%20AND%20level:error'],
+          ['latence API', 'https://kibana-preprod.demo.invalid/app/apm?service=api-core'],
+          ['journal complet', 'https://kibana-preprod.demo.invalid/app/logs'],
+        ],
+      } },
     { nom: 'Grafana', repo: null, tags: ['observabilite'], pin: 0,
       urls: { dev: 'https://grafana-dev.demo.invalid/d/home' } },
   ];
@@ -645,7 +656,11 @@ db.prepare(`INSERT INTO verification
   for (const s of SERVICES) {
     const id = insSvc.run(s.nom, s.repo ? repoIds[s.repo] : null, JSON.stringify(s.tags), s.pin, at(30)).lastInsertRowid;
     svcIds[s.nom] = id;
-    for (const [env, url] of Object.entries(s.urls)) insUrl.run(id, envIds[env], url);
+    for (const [env, v] of Object.entries(s.urls)) {
+      // Une chaîne = une adresse sans nom ; une liste = plusieurs, nommées, dans cet ordre.
+      const liste = Array.isArray(v) ? v : [['', v]];
+      liste.forEach(([label, url], i) => insUrl.run(id, envIds[env], label, url, i));
+    }
   }
 
   /* Le lien contextuel qui donne son sens à la fonctionnalité : depuis une merge request,

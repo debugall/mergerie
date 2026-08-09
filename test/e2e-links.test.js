@@ -45,7 +45,7 @@ describe('Environnements et services', () => {
     await app.api('PUT', `/api/services/${svc.body.id}/urls`, { environment_id: dev.body.id, url: `${base()}/up` });
     const g = await app.api('GET', '/api/links/grid');
     assert.equal(g.body.services.length, 1);
-    assert.equal(g.body.services[0].urls[dev.body.id], `${base()}/up`);
+    assert.deepEqual(g.body.services[0].urls[dev.body.id].map((u) => u.url), [`${base()}/up`]);
     assert.deepEqual(g.body.environments.map((e) => e.name), ['dev', 'prod'], 'ordonnés par position');
   });
 
@@ -112,7 +112,7 @@ describe('Liens libres et import', () => {
     assert.equal(r.body.convertis, 1);
     const g = (await app.api('GET', '/api/links/grid')).body;
     const kib = g.services.find((s) => s.name === 'Kibana');
-    assert.equal(kib.urls[dev.id], 'https://kibana.corp/app');
+    assert.deepEqual(kib.urls[dev.id].map((u) => u.url), ['https://kibana.corp/app']);
     assert.ok(!g.free_links.some((l) => l.label === 'Kibana'), 'le lien converti ne reste pas en double');
   });
 });
@@ -194,6 +194,23 @@ describe('Liens contextuels sur une merge request', () => {
    Un test qui n'attend rien paraît creux ; celui-ci vaut pour ce qu'il empêche. On pose une
    adresse pointant vers un serveur à nous, on exerce tout ce qui touche aux liens, et on
    vérifie qu'il n'a rien reçu. */
+describe('vider les liens libres', () => {
+  test('la route efface tout et rend le compte, sans toucher à la grille', async () => {
+    await app.api('POST', '/api/free-links', { label: 'A', url: 'https://a.demo.invalid' });
+    await app.api('POST', '/api/free-links', { label: 'B', url: 'https://b.demo.invalid' });
+    const avant = (await app.api('GET', '/api/links/grid')).body;
+    assert.ok(avant.free_links.length >= 2);
+
+    const r = await app.api('DELETE', '/api/free-links');
+    assert.equal(r.status, 200);
+    assert.equal(r.body.deleted, avant.free_links.length);
+
+    const apres = (await app.api('GET', '/api/links/grid')).body;
+    assert.equal(apres.free_links.length, 0);
+    assert.equal(apres.services.length, avant.services.length, 'les services sont intacts');
+  });
+});
+
 describe('les adresses de la grille ne sont jamais appelées par l’application', () => {
   test('poser des URLs, tout consulter, et le serveur cible ne reçoit rien', async () => {
     const env = (await app.api('GET', '/api/environments')).body.environments[0];

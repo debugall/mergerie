@@ -673,6 +673,18 @@ in before knowing where the answer is. When the grid has nothing but the free li
 says so and points you down, instead of announcing “nothing matches” above results that are right
 there.
 
+Below the bar, **the filters, labelled and always on screen** — they are used every day:
+
+- **Environments**, as coloured chips: they hide **columns**. From “everything shown”, one click
+  means *that one* — you set out to work on an environment; after that, clicks add and remove.
+  Removing the last one goes back to all, since a grid with no column shows nothing. A service with
+  no address in the kept columns **drops out of the list**: filtering on production to see ten empty
+  rows does not show production, it shows what production lacks.
+- **Services**, in a checkbox list **with its own search field** — there can be thirty of them.
+- **Tags**, each with **its count**: a row of chips without numbers does not say where the substance is.
+
+All three **survive a reload**, and `Show everything` releases them in one click.
+
 Next to it: **`+ Add`** (a plain link, a service, an environment) and a **`⋯`** menu for bookmark
 import. Those gestures happen once in the tool's lifetime; finding a link happens every day, and
 that is what gets the space.
@@ -685,11 +697,18 @@ that is what gets the space.
   (production in red invites a second thought before clicking). Hovering a header reveals two
   arrows that **move the column** one step, and a gear that opens its settings — the order is no
   longer frozen at creation time, and what is clickable eventually shows itself.
-- **A cell is one URL, written out.** We could have guessed the staging address from the dev one by
-  swapping a piece of domain; that is exactly the magic that one day sends you to the wrong
-  environment without a word. An empty cell shows a `+`, a filled one a **pencil** on hover: you
-  type **in the cell**, Enter confirms, Esc cancels, and **clearing the field clears the cell** —
-  no dialog to paste an address.
+- **A cell is one or several addresses, written out.** We could have guessed the staging address
+  from the dev one by swapping a piece of domain; that is exactly the magic that one day sends you
+  to the wrong environment without a word. An empty cell shows a `+`, a filled one a **pencil** on
+  hover: you type **in the cell**, Enter saves, Esc cancels, and **clearing everything clears the
+  cell** — no dialog to paste an address.
+- **Several addresses in the same place**, because that is the real case: a production Kibana is as
+  many addresses as it has saved filters. Each carries a **name** (“payment errors”, “API latency”),
+  without which the second would be indistinguishable from the first. The cell shows **two**, then a
+  `+N` that expands in place — a cell with ten addresses would otherwise make a table row as tall as
+  a screen. The pencil opens **one row per address**, and the cell stretches while you type. The
+  **palette** finds each by its name, and frecency is counted per address: you always open the same
+  two out of ten.
 - **Filter by tag** above the grid: a service often belongs to two families at once (*backend* and
   *payment*), which a folder tree would force it to choose between.
 - Only **`http` or `https`** addresses are accepted, here as everywhere in this tab: these links
@@ -701,8 +720,18 @@ cell; a service now comes into being usable, and the screen **scrolls to its row
 for a second — an alphabetical grid drops it anywhere.
 
 #### Free links
-A flat list under the grid: label, URL, tags. Add and edit in place, and the search at the top
-filters them along with everything else. This is where imported bookmarks land.
+A list under the grid: label, URL, tags. Add and edit in place, and the search at the top filters
+them along with everything else. This is where imported bookmarks land.
+
+Past a dozen, it **groups by folder** — the last tag the import wrote is the one that held the link
+— each group folded, with its count. Under a search or a tag it goes back to flat: the filter IS the
+arrangement, and two levels of sorting at once hide what you just asked for.
+
+**Wiping the list.** The `⋯` menu carries `Delete every free link` — the escape hatch from a bad
+import: you dump two hundred in, realise it was not what you wanted, and taking them back one by one
+would be two hundred confirmations. The confirmation **states the count** (“delete all links?” does
+not say whether there are three or two hundred) and reminds you that **the grid is left alone**. The
+button does not appear when there is nothing to delete.
 
 **Turning them into a service.** `Select` reveals the checkboxes — they are not there permanently,
 the operation is rare and everyday noise is expensive. Tick several links, then `Turn into a
@@ -759,6 +788,14 @@ branch, on the environment you want, without retyping anything.
 
 #### Importing Chrome bookmarks
 *Chrome → Bookmarks → Bookmark manager → ⋮ → Export bookmarks*, then `Import from Chrome`.
+
+**The preview is folded by folder, and nothing is ticked.** One folder per row, with its count and
+its checkbox; you unfold the one you want, tick it, and import twelve links instead of two hundred.
+Choosing what comes in costs ten seconds; sorting out what came in costs half an hour. The **browsers' root folders**
+(“Bookmarks bar”, “Other bookmarks”, “Barre de favoris”…) **do not become tags**: present on every
+single link, they filtered nothing while taking the first spot ahead of the ones that say something.
+It is a list of known names, not “whatever folder comes first” — an export may well start with a
+real folder, and dropping it would erase the only filing information there was.
 
 - **Preview first**: the folder tree as it was in the browser, each link tickable. Nothing is
   created until you confirm — the same spirit as the mandatory preview of git operations.

@@ -79,7 +79,7 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
   test('une URL s’ajoute dans la case, sans modale', async () => {
     await ouvrirLiens();
     await page.locator('.link-add').first().click();
-    const champ = page.locator('.link-cell input[data-urlfor]');
+    const champ = page.locator('.link-cell-edit .lce-url');
     await champ.waitFor();
     await champ.fill('https://api-preprod.demo.invalid/health');
     await champ.press('Enter');
@@ -93,14 +93,14 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
 
   test('le filtre par tag masque les services qui ne le portent pas', async () => {
     await ouvrirLiens();
-    await page.locator('.link-tag', { hasText: 'confluence' }).click();
+    await page.locator('#linkTags .link-tag', { hasText: 'confluence' }).click();
     await page.waitForFunction(() => !document.querySelector('#linkGrid .link-grid'));
     /* Le message ne répète plus le filtre : il renvoie vers l'autre moitié de l'écran, où le
        lien tagué « confluence » se trouve bel et bien. Dire « rien ne correspond » au-dessus
        de résultats présents était un mensonge d'affichage. */
     assert.match(await page.locator('#linkGrid').innerText(), /liens libres/i, 'le vide dit où regarder');
     assert.ok(await page.locator('.link-free-row').count() >= 1);
-    await page.locator('.link-tag.active').click();          // on relâche le filtre
+    await page.locator('#linkTags .link-tag.active').click();   // on relâche le filtre — CELUI DES TAGS
     await page.waitForSelector('#linkGrid .link-grid');
   });
 
@@ -204,7 +204,7 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     const cell = () => page.locator('.link-grid tbody tr').first().locator('td.link-cell').first();
     await cell().hover();
     await cell().locator('.link-edit').click();
-    const champ = page.locator('.link-cell input[data-urlfor]');
+    const champ = page.locator('.link-cell-edit .lce-url');
     await champ.waitFor();
     assert.match(await champ.inputValue(), /^https?:\/\//, 'le champ s’ouvre PRÉ-REMPLI, pas vide');
 
@@ -212,24 +212,24 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await champ.press('Enter');
     await page.waitForFunction(() => /corrige\.demo/.test(document.querySelector('#linkGrid').textContent));
 
-    // Le champ vidé efface la case : c'est ce que le guide promet, et c'est le geste naturel.
+    // Tout vider efface la case : c'est ce que le guide promet, et c'est le geste naturel.
     await cell().hover();
     await cell().locator('.link-edit').click();
-    await page.locator('.link-cell input[data-urlfor]').fill('');
-    await page.locator('.link-cell input[data-urlfor]').press('Enter');
+    await page.locator('.link-cell-edit .lce-url').fill('');
+    await page.locator('.link-cell-edit .lce-url').press('Enter');
     await page.waitForFunction(() => document.querySelectorAll('#linkGrid .link-add').length > 0);
 
     // …et on doit pouvoir changer d'avis sans rien écrire.
     await cell().locator('.link-add').click();
-    await page.locator('.link-cell input[data-urlfor]').fill('https://jamais.demo.invalid');
-    await page.locator('.link-cell input[data-urlfor]').press('Escape');
+    await page.locator('.link-cell-edit .lce-url').fill('https://jamais.demo.invalid');
+    await page.locator('.link-cell-edit .lce-url').press('Escape');
     await page.waitForTimeout(200);
     assert.doesNotMatch(await page.locator('#linkGrid').innerText(), /jamais\.demo/);
 
     // On rend le décor tel qu'on l'a trouvé : les tests de ce fichier se suivent.
     await cell().locator('.link-add').click();
-    await page.locator('.link-cell input[data-urlfor]').fill('https://api-dev.demo.invalid/health');
-    await page.locator('.link-cell input[data-urlfor]').press('Enter');
+    await page.locator('.link-cell-edit .lce-url').fill('https://api-dev.demo.invalid/health');
+    await page.locator('.link-cell-edit .lce-url').press('Enter');
     await page.waitForFunction(() => /api-dev\.demo/.test(document.querySelector('#linkGrid').textContent));
   });
 
@@ -282,6 +282,125 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await page.locator('.link-grid thead th').nth(1).hover();
     await page.locator('.link-grid thead th').nth(1).locator('[data-dir="1"]').click();
     await page.waitForTimeout(600);
+  });
+
+  /* PLUSIEURS ADRESSES DANS UNE CASE. Un Kibana de production, ce sont autant d'adresses que
+     de filtres enregistrés ; la case n'en portait qu'une et poser la seconde écrasait la
+     première sans rien dire. Au repos on en montre deux, puis « +N » déplie SUR PLACE. */
+  test('une case porte plusieurs adresses, dépliables et modifiables', async () => {
+    const g = (await app.api('GET', '/api/links/grid')).body;
+    await app.api('PUT', `/api/services/${g.services[0].id}/urls`, {
+      environment_id: env.id,
+      urls: [
+        { label: 'erreurs paiement', url: 'https://kib.demo.invalid/?q=paiement' },
+        { label: 'latence API', url: 'https://kib.demo.invalid/?q=latence' },
+        { label: 'journal complet', url: 'https://kib.demo.invalid/all' },
+      ],
+    });
+    await page.reload();
+    await ouvrirLiens();
+    const cell = page.locator('.link-grid tbody tr').first().locator('td.link-cell').first();
+    assert.equal(await cell.locator('.link-open').count(), 2, 'deux au repos : la ligne reste régulière');
+    assert.match(await cell.innerText(), /erreurs paiement/, 'le nom prime sur l’URL');
+
+    // La PREMIÈRE case d'une ligne n'est pas son premier `td` : celui-là porte le service.
+    const nbOuvrables = () => page.evaluate(() => document
+      .querySelectorAll('#linkGrid tbody tr:first-child td.link-cell')[0]
+      .querySelectorAll('.link-open').length);
+    await cell.locator('[data-cellopen]').click();
+    await page.waitForFunction(() => document
+      .querySelectorAll('#linkGrid tbody tr:first-child td.link-cell')[0]
+      .querySelectorAll('.link-open').length === 3);
+
+    // L'éditeur tient DANS la case : une ligne par adresse, et la case s'étire.
+    await cell.hover();
+    await cell.locator('.link-edit').click();
+    await page.waitForSelector('.link-cell-edit');
+    assert.equal(await page.locator('.lce-row').count(), 3);
+    await page.locator('.lce-row').nth(2).locator('.lce-del').click();
+    await page.locator('.lce-save').click();
+    await page.waitForFunction(() => document
+      .querySelectorAll('#linkGrid tbody tr:first-child td.link-cell')[0]
+      .querySelectorAll('.link-open').length === 2);
+    assert.equal(await nbOuvrables(), 2);
+    assert.doesNotMatch(await cell.innerText(), /journal complet/, 'la ligne retirée disparaît');
+  });
+
+  /* LES FILTRES SERVENT TOUS LES JOURS. Les environnements en pastilles, les services dans une
+     liste à cocher — avec sa recherche, parce qu'ils peuvent être trente. */
+  test('les pastilles filtrent les colonnes, la liste filtre les lignes', async () => {
+    // Un second service : à une seule ligne, un filtre de lignes ne se voit pas.
+    const autre = (await app.api('POST', '/api/services', { name: 'zeta-front' })).body;
+    await app.api('PUT', `/api/services/${autre.id}/urls`, { environment_id: env.id, url: 'https://zeta.demo.invalid' });
+    await page.reload();
+    await ouvrirLiens();
+    await page.waitForFunction(() => document.querySelectorAll('#linkGrid tbody tr').length === 2);
+    const cols = async () => (await page.locator('.link-grid thead th').allInnerTexts()).slice(1).map((t) => t.trim().split('\n')[0]);
+    const toutes = await cols();
+    assert.ok(toutes.length >= 2);
+
+    // Depuis « tout affiché », un clic veut dire « celle-là » : c'est le geste courant.
+    await page.locator(`[data-linkenv="${env.id}"]`).click();
+    await page.waitForFunction((n) => document.querySelectorAll('.link-grid thead th').length === n, 2);
+    assert.deepEqual(await cols(), [toutes[0]]);
+
+    await page.locator('#linkClearFilters').click();
+    await page.waitForFunction((n) => document.querySelectorAll('.link-grid thead th').length === n, toutes.length + 1);
+
+    // La liste des services a sa RECHERCHE : la règle du projet dès qu'une liste peut être longue.
+    await page.locator('#linkSvcPick').click();
+    await page.waitForSelector('#linkSvcMenu:not([hidden])');
+    assert.equal(await page.locator('#linkSvcSearch').count(), 1);
+    await page.locator('#linkSvcList input[type=checkbox]').first().check();
+    await page.waitForFunction(() => document.querySelectorAll('#linkGrid tbody tr').length === 1);
+    assert.match(await page.locator('#linkSvcPick').innerText(), /1/);
+
+    // …et le choix survit au rechargement : on le repose sinon chaque matin.
+    await page.reload();
+    await ouvrirLiens();
+    assert.equal(await page.locator('#linkGrid tbody tr').count(), 1, 'le filtre est encore posé');
+    await page.locator('#linkClearFilters').click();
+    await page.waitForFunction(() => document.querySelectorAll('#linkGrid tbody tr').length === 2);
+    assert.equal(await page.locator('#linkClearFilters').isHidden(), true,
+      'plus de filtre actif, plus de bouton pour les relâcher');
+
+    await app.api('DELETE', `/api/services/${autre.id}`);
+  });
+
+  /* L'IMPORT NE DÉVERSE PLUS TOUT. Deux cents favoris cochés d'office entraient d'un clic ;
+     on passait ensuite la journée à trier une liste plate. */
+  test('l’aperçu d’import est replié, et rien n’est coché', async () => {
+    await ouvrirLiens();
+    await page.locator('#linkMore').click();
+    await page.locator('#linkMoreMenu [data-more="import"]').click();
+    await page.waitForSelector('#importModal:not([hidden])');
+    await page.locator('#importFile').setInputFiles({
+      name: 'favoris.html',
+      mimeType: 'text/html',
+      buffer: Buffer.from(`<!DOCTYPE NETSCAPE-Bookmark-file-1><DL><p>
+        <DT><H3>Barre de favoris</H3><DL><p>
+          <DT><H3>Recettes</H3><DL><p>
+            <DT><A HREF="https://r1.demo.invalid/">R1</A>
+            <DT><A HREF="https://r2.demo.invalid/">R2</A>
+          </DL><p>
+        </DL><p></DL><p>`),
+    });
+    await page.waitForSelector('.import-folder-box');
+    assert.equal(await page.locator('#importTree [data-imp]:checked').count(), 0,
+      'rien n’est coché : on choisit ce qui entre');
+    assert.equal(await page.locator('#importApply').isDisabled(), true);
+
+    // La case d'un dossier prend tout son contenu.
+    await page.locator('.imp-folder').first().check();
+    await page.waitForFunction(() => document.querySelectorAll('#importTree [data-imp]:checked').length === 2);
+    await page.locator('#importApply').click();
+    await page.waitForSelector('#importModal[hidden]', { state: 'attached' });
+
+    /* Le tag racine n'est PAS créé : « barre-de-favoris » se retrouverait sur chaque lien, et
+       un filtre présent partout ne filtre rien. */
+    const tags = await page.locator('#linkTags').innerText();
+    assert.match(tags, /recettes/);
+    assert.doesNotMatch(tags, /barre-de-favoris/);
   });
 
   /* LES DEUX ÉCRANS VIDES. En avant-dernier, parce que ce test DÉTRUIT le décor : il vide la

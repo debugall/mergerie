@@ -9742,7 +9742,29 @@ function marquerBriefVu() {
    en dev, en preprod et en prod : ils en font quatre entrées dans quatre dossiers. D'où une
    GRILLE — services en lignes, environnements en colonnes — et, à côté, des liens libres à
    plat pour tout ce qui n'a pas de dimension environnement. Deux formes, deux réalités. */
-const LINKS = { grid: null, tag: '', q: '', selectMode: false, selection: new Set(), importLinks: [] };
+const LINKS = {
+  grid: null, tag: '', q: '', selectMode: false, selection: new Set(), ouvertes: new Set(), importLinks: [],
+  // Filtres : Set VIDE = « tout », jamais « rien ». Un filtre qu'on n'a pas posé ne cache rien.
+  envs: new Set(), svcs: new Set(), svcQ: '',
+};
+
+/* Les filtres servent tous les jours : les reposer à chaque ouverture serait absurde. Même
+   mécanisme que le filtre des notes — `localStorage`, côté navigateur, parce que c'est une
+   préférence d'affichage et pas un réglage de l'outil. */
+const LINKS_FILTRES = 'mergerie_links_filters';
+function chargerFiltresLiens() {
+  try {
+    const d = JSON.parse(localStorage.getItem(LINKS_FILTRES) || '{}');
+    LINKS.envs = new Set(Array.isArray(d.envs) ? d.envs : []);
+    LINKS.svcs = new Set(Array.isArray(d.svcs) ? d.svcs : []);
+    LINKS.tag = typeof d.tag === 'string' ? d.tag : '';
+  } catch { /* stockage indisponible */ }
+}
+function retenirFiltresLiens() {
+  try {
+    localStorage.setItem(LINKS_FILTRES, JSON.stringify({ envs: [...LINKS.envs], svcs: [...LINKS.svcs], tag: LINKS.tag }));
+  } catch { /* stockage indisponible */ }
+}
 
 async function loadLinks() {
   const box = $('#linkGrid');
@@ -9750,24 +9772,69 @@ async function loadLinks() {
   box.innerHTML = skeleton(3);
   try { LINKS.grid = await api('/links/grid'); }
   catch (e) { box.innerHTML = errorBox(e.message); return; }
-  renderLinkTags();
-  renderLinkGrid();
-  renderFreeLinks();
+  chargerFiltresLiens();
+  /* Un environnement ou un service supprimé depuis la dernière visite laisserait un filtre
+     invisible et impossible à relâcher : on écarte ce qui n'existe plus. */
+  const idsEnv = new Set((LINKS.grid.environments || []).map((e) => e.id));
+  const idsSvc = new Set((LINKS.grid.services || []).map((x) => x.id));
+  LINKS.envs = new Set([...LINKS.envs].filter((i) => idsEnv.has(i)));
+  LINKS.svcs = new Set([...LINKS.svcs].filter((i) => idsSvc.has(i)));
+  if (LINKS.tag && !(LINKS.grid.tags || []).includes(LINKS.tag)) LINKS.tag = '';
+  rafraichirLiens();
 }
 
 
 
+/* Le COMPTE sur chaque pastille. Une rangée de tags sans chiffres ne dit pas où est la
+   matière ; avec, elle devient le sommaire de ce qu'on a importé. */
 function renderLinkTags() {
   const box = $('#linkTags');
-  const tags = (LINKS.grid && LINKS.grid.tags) || [];
+  const g = LINKS.grid || {};
+  const tags = g.tags || [];
   if (!tags.length) { box.innerHTML = ''; return; }
-  box.innerHTML = tags.map((t) => `<button type="button" class="link-tag${LINKS.tag === t ? ' active' : ''}" data-linktag="${esc(t)}">${esc(t)}</button>`).join('');
+  const compte = (t) => (g.services || []).filter((x) => (x.tags || []).includes(t)).length
+    + (g.free_links || []).filter((x) => (x.tags || []).includes(t)).length;
+  box.innerHTML = tags.map((t) => `<button type="button" class="link-tag${LINKS.tag === t ? ' active' : ''}" data-linktag="${esc(t)}">${esc(t)}<span class="lt-n">${compte(t)}</span></button>`).join('');
 }
+
+function renderLinkFiltres() {
+  const g = LINKS.grid || {};
+  const envs = g.environments || [];
+  const chips = $('#linkEnvChips');
+  if (chips) {
+    chips.innerHTML = envs.map((e) => `<button type="button" class="link-tag link-env-chip${LINKS.envs.size && !LINKS.envs.has(e.id) ? '' : ' active'}" data-linkenv="${e.id}">`
+      + `<span class="link-env-dot" style="background:${esc(e.color)}"></span>${esc(e.name)}</button>`).join('');
+  }
+  const pick = $('#linkSvcPick');
+  if (pick) {
+    const n = LINKS.svcs.size;
+    $('span', pick).textContent = n ? tr('links.filter.services-n', { n, count: n }) : `${tr('links.filter.services')} · ${tr('links.filter.all')}`;
+    pick.classList.toggle('active', n > 0);
+  }
+  const liste = $('#linkSvcList');
+  if (liste) {
+    const q = LINKS.svcQ.toLowerCase();
+    const vus = (g.services || []).filter((x) => !q || x.name.toLowerCase().includes(q));
+    liste.innerHTML = vus.length
+      ? vus.map((x) => `<label class="repo-multi-item"><input type="checkbox" data-linksvc="${x.id}"${LINKS.svcs.has(x.id) ? ' checked' : ''} /> <span>${esc(x.name)}</span></label>`).join('')
+      : `<p class="muted">${esc(tr('links.free.no-match'))}</p>`;
+  }
+  const clear = $('#linkClearFilters');
+  if (clear) clear.hidden = !(LINKS.envs.size || LINKS.svcs.size || LINKS.tag);
+}
+
+// Les colonnes retenues. Set vide = toutes : un filtre non posé ne cache rien.
+const envsVisibles = () => ((LINKS.grid || {}).environments || [])
+  .filter((e) => !LINKS.envs.size || LINKS.envs.has(e.id));
 
 /* UNE requête pour les deux moitiés de l'écran. Un service se cherche par son nom, ses tags,
    son dépôt ou n'importe laquelle de ses URLs — c'est souvent l'URL qu'on a en tête (« celui
    qui est sur kibana-preprod ») plutôt que le nom qu'on lui a donné. */
 function serviceVisible(s) {
+  if (LINKS.svcs.size && !LINKS.svcs.has(s.id)) return false;
+  /* Filtrer sur la prod et voir dix lignes entièrement vides ne montre pas la prod, ça montre
+     ce qu'elle n'a pas. Une ligne sans aucune adresse dans les colonnes retenues sort donc. */
+  if (LINKS.envs.size && !envsVisibles().some((e) => ((s.urls || {})[e.id] || []).length)) return false;
   if (LINKS.tag && !(s.tags || []).includes(LINKS.tag)) return false;
   if (!LINKS.q) return true;
   const foin = [s.name, s.project || '', ...(s.tags || []), ...Object.values(s.urls || {})].join(' ').toLowerCase();
@@ -9779,8 +9846,9 @@ const freeVisible = (l) => (!LINKS.tag || (l.tags || []).includes(LINKS.tag))
 
 function renderLinkGrid() {
   const box = $('#linkGrid');
-  const { environments: envs = [], services = [] } = LINKS.grid || {};
-  if (!envs.length && !services.length) {
+  const { environments: toutesEnvs = [], services = [] } = LINKS.grid || {};
+  const envs = envsVisibles();
+  if (!toutesEnvs.length && !services.length) {
     /* DEUX vides, et deux messages. Sans cette distinction, importer ses marque-pages laissait
        l'écran répondre « aucun lien pour l'instant » au-dessus des liens qu'on venait
        d'importer — en proposant de les importer une seconde fois.
@@ -9814,29 +9882,40 @@ function renderLinkGrid() {
   /* L'en-tête ÉTAIT cliquable sans rien pour le dire, et l'ordre des colonnes ne se corrigeait
      pas. Les trois boutons n'apparaissent qu'au survol (et au focus clavier) : la grille reste
      calme au repos, et ce qui est faisable finit par se voir. */
-  const entete = envs.map((e, i) => `<th><span class="link-env">`
+  const rang = (id) => toutesEnvs.findIndex((x) => x.id === id);
+  const entete = envs.map((e) => `<th><span class="link-env">`
     + `<span class="link-env-dot" style="background:${esc(e.color)}"></span>${esc(e.name)}`
     + `<span class="link-env-acts">`
-    + `<button type="button" class="link-icon" data-envmove="${e.id}" data-dir="-1"${i === 0 ? ' disabled' : ''} title="${esc(tr('links.env.move-left'))}" aria-label="${esc(tr('links.env.move-left'))}">${svgIco('left')}</button>`
-    + `<button type="button" class="link-icon" data-envmove="${e.id}" data-dir="1"${i === envs.length - 1 ? ' disabled' : ''} title="${esc(tr('links.env.move-right'))}" aria-label="${esc(tr('links.env.move-right'))}">${svgIco('right')}</button>`
+    + `<button type="button" class="link-icon" data-envmove="${e.id}" data-dir="-1"${rang(e.id) === 0 ? ' disabled' : ''} title="${esc(tr('links.env.move-left'))}" aria-label="${esc(tr('links.env.move-left'))}">${svgIco('left')}</button>`
+    + `<button type="button" class="link-icon" data-envmove="${e.id}" data-dir="1"${rang(e.id) === toutesEnvs.length - 1 ? ' disabled' : ''} title="${esc(tr('links.env.move-right'))}" aria-label="${esc(tr('links.env.move-right'))}">${svgIco('right')}</button>`
     + `<button type="button" class="link-icon" data-envedit="${e.id}" title="${esc(tr('links.env.settings'))}" aria-label="${esc(tr('links.env.settings'))}">${svgIco('sliders')}</button>`
     + `</span></span></th>`).join('');
 
   const lignes = visibles.map((s) => {
     const cases = envs.map((e) => {
-      const url = (s.urls || {})[e.id];
-      if (!url) {
+      const liste = ((s.urls || {})[e.id]) || [];
+      if (!liste.length) {
         return `<td class="link-cell"><button type="button" class="link-add" data-addurl="${s.id}" data-env="${e.id}">+</button></td>`;
       }
+      /* AU PLUS DEUX ADRESSES VISIBLES, puis un « +N » qui déplie SUR PLACE. Une case qui en
+         porte dix ferait une ligne de tableau haute comme un écran ; un menu surgissant
+         cacherait ce qu'on est venu voir. Le dépliage garde les deux avantages : la grille
+         reste régulière au repos, et rien n'est masqué à qui le demande. */
+      const deplie = LINKS.ouvertes.has(`${s.id}:${e.id}`);
+      const montrees = deplie ? liste : liste.slice(0, 2);
       /* `rel="noopener noreferrer"` sur TOUTES les ouvertures externes : l'onglet ouvert ne
          doit rien pouvoir faire de la page qui l'a ouvert. */
+      const lignes = montrees.map((u) => `<a class="link-open" href="${esc(u.url)}" target="_blank" rel="noopener noreferrer"
+          data-usekind="service_url" data-useref="${s.id}:${e.id}:${u.id}" title="${esc(u.url)}">
+          <span>${esc(u.label || urlCourte(u.url))}</span></a>`).join('');
+      const reste = liste.length - montrees.length;
+      const plus = (reste > 0 || deplie)
+        ? `<button type="button" class="link-plus" data-cellopen="${s.id}:${e.id}">${deplie ? esc(tr('links.url.less')) : `+${reste}`}</button>`
+        : '';
       /* LE CRAYON. Une case remplie n'offrait aucun chemin de retour : pour corriger une faute
          de frappe il fallait supprimer le service — et perdre ses autres URLs et ses liens
-         contextuels — puis tout ressaisir. Le guide promettait pourtant que vider le champ
-         efface la case ; la promesse était devenue inatteignable. */
-      return `<td class="link-cell"><a class="link-open" href="${esc(url)}" target="_blank" rel="noopener noreferrer"
-          data-usekind="service_url" data-useref="${s.id}:${e.id}" title="${esc(url)}">
-          <span>${esc(urlCourte(url))}</span></a>
+         contextuels — puis tout ressaisir. */
+      return `<td class="link-cell">${lignes}${plus}
         <button type="button" class="link-icon link-edit" data-editurl="${s.id}" data-env="${e.id}"
           title="${esc(tr('links.url.edit'))}" aria-label="${esc(tr('links.url.edit'))}">${svgIco('edit')}</button></td>`;
     }).join('');
@@ -9886,19 +9965,44 @@ function renderFreeLinks() {
   // Le compte se lit à côté du titre : il dit ce que le filtre a laissé, sans compter à la main.
   const cpt = $('#linkFreeCount');
   if (cpt) cpt.textContent = tous.length ? tr('links.free.count', { n: tous.length, count: tous.length }) : '';
+  const wipe = $('#linkMoreMenu [data-more="wipe"]');
+  if (wipe) wipe.hidden = !((LINKS.grid && LINKS.grid.free_links) || []).length;
   if (!tous.length) {
     box.innerHTML = `<p class="muted">${esc(tr(LINKS.q || LINKS.tag ? 'links.free.no-match' : 'links.free.empty'))}</p>`;
     return;
   }
-  box.innerHTML = tous.map((l) => `<div class="link-free-row">
+  /* GROUPÉS PAR DOSSIER au-delà d'une douzaine. L'import pose le chemin du dossier en tags —
+     le dernier est celui qui contenait le lien. Une liste plate de deux cents entrées ne se
+     parcourt pas ; les mêmes rangées par dossier, repliées, se survolent.
+     Sous une recherche ou un tag, on reste à plat : le filtre EST le rangement, et deux niveaux
+     de tri à la fois cachent ce qu'on vient de demander. */
+  const SEUIL_GROUPES = 12;
+  const filtre = LINKS.q || LINKS.tag;
+  if (!filtre && tous.length > SEUIL_GROUPES) {
+    const parDossier = new Map();
+    for (const l of tous) {
+      const d = (l.tags || []).slice(-1)[0] || tr('links.free.no-folder');
+      if (!parDossier.has(d)) parDossier.set(d, []);
+      parDossier.get(d).push(l);
+    }
+    const ordre = [...parDossier.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    box.innerHTML = ordre.map(([d, liens]) => `<details class="link-free-group">
+      <summary>${esc(d)} <span class="muted">${esc(tr('links.free.count', { n: liens.length, count: liens.length }))}</span></summary>
+      ${liens.map(ligneFreeLink).join('')}
+    </details>`).join('');
+    return;
+  }
+  box.innerHTML = tous.map(ligneFreeLink).join('');
+}
+
+const ligneFreeLink = (l) => `<div class="link-free-row">
       ${LINKS.selectMode ? `<input type="checkbox" data-freepick="${l.id}"${LINKS.selection.has(l.id) ? ' checked' : ''} aria-label="${esc(tr('links.free.pick'))}" />` : ''}
       <span class="link-free-label">${esc(l.label)}</span>
       ${(l.tags || []).map((t) => `<span class="link-svc-tag">${esc(t)}</span>`).join('')}
       <a class="link-free-url" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer"
          data-usekind="free_link" data-useref="${l.id}">${esc(l.url)}</a>
       <button type="button" class="btn btn-sm btn-ghost" data-editfree="${l.id}" title="${esc(tr('ui.edit'))}">${svgIco('edit')}</button>
-    </div>`).join('');
-}
+    </div>`;
 
 /* Chaque ouverture nourrit la frécence de la palette : ce qu'on clique ici remonte là-bas.
    Par délégation et en `capture: false` — le lien s'ouvre normalement, on ne l'intercepte pas. */
@@ -9913,10 +10017,48 @@ $('#linkTags') && $('#linkTags').addEventListener('click', (e) => {
   const b = e.target.closest('[data-linktag]');
   if (!b) return;
   LINKS.tag = LINKS.tag === b.dataset.linktag ? '' : b.dataset.linktag;
-  renderLinkTags(); renderLinkGrid(); renderFreeLinks();
+  retenirFiltresLiens();
+  rafraichirLiens();
 });
-/* Une frappe filtre les DEUX moitiés de l'écran d'un coup. Rien à recharger : tout est déjà
-   côté client, la palette globale s'occupant de ce qui n'est pas chargé. */
+const rafraichirLiens = () => { renderLinkFiltres(); renderLinkTags(); renderLinkGrid(); renderFreeLinks(); };
+
+/* Une frappe, un clic sur une pastille ou une coche refont le MÊME rendu : quatre fonctions
+   appelées dans le même ordre partout, plutôt qu'un sous-ensemble différent à chaque endroit —
+   c'est ainsi qu'un compteur finit par ne plus suivre son filtre. */
+$('#linkEnvChips') && $('#linkEnvChips').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-linkenv]');
+  if (!b) return;
+  const id = Number(b.dataset.linkenv);
+  const envs = ((LINKS.grid || {}).environments || []).map((x) => x.id);
+  /* Depuis « tout affiché », un clic veut dire « CELLE-LÀ » — c'est le geste courant, on part
+     travailler sur un environnement. Ensuite seulement les clics ajoutent et retirent.
+     Retirer la dernière ramène à tout : une grille sans colonne ne montrerait rien, et il
+     faudrait alors chercher comment en sortir. */
+  if (!LINKS.envs.size) LINKS.envs = new Set([id]);
+  else if (LINKS.envs.has(id)) LINKS.envs.delete(id);
+  else LINKS.envs.add(id);
+  if (!LINKS.envs.size || LINKS.envs.size === envs.length) LINKS.envs.clear();
+  retenirFiltresLiens();
+  rafraichirLiens();
+});
+$('#linkSvcSearch') && $('#linkSvcSearch').addEventListener('input', () => {
+  LINKS.svcQ = $('#linkSvcSearch').value.trim();
+  renderLinkFiltres();
+});
+$('#linkSvcList') && $('#linkSvcList').addEventListener('change', (e) => {
+  const c = e.target.closest('[data-linksvc]');
+  if (!c) return;
+  const id = Number(c.dataset.linksvc);
+  if (c.checked) LINKS.svcs.add(id); else LINKS.svcs.delete(id);
+  retenirFiltresLiens();
+  rafraichirLiens();
+});
+$('#linkClearFilters') && $('#linkClearFilters').addEventListener('click', () => {
+  LINKS.envs.clear(); LINKS.svcs.clear(); LINKS.tag = '';
+  retenirFiltresLiens();
+  rafraichirLiens();
+});
+
 $('#linkSearch') && $('#linkSearch').addEventListener('input', () => {
   LINKS.q = $('#linkSearch').value.trim().toLowerCase();
   renderLinkGrid();
@@ -9936,6 +10078,7 @@ const menuLiens = (bouton, menu) => {
 };
 menuLiens('#linksAdd', '#linkAddMenu');
 menuLiens('#linkMore', '#linkMoreMenu');
+menuLiens('#linkSvcPick', '#linkSvcMenu');
 
 $('#linkAddMenu') && $('#linkAddMenu').addEventListener('click', (e) => {
   const b = e.target.closest('[data-add]');
@@ -9949,7 +10092,8 @@ $('#linkMoreMenu') && $('#linkMoreMenu').addEventListener('click', (e) => {
   const b = e.target.closest('[data-more]');
   if (!b) return;
   closeSplitMenus();
-  if (b.dataset.more === 'import') ouvrirImport();
+  if (b.dataset.more === 'import') { ouvrirImport(); return; }
+  if (b.dataset.more === 'wipe') viderLiensLibres();
 });
 
 
@@ -9966,12 +10110,49 @@ $('#linkFreeSelect') && $('#linkFreeSelect').addEventListener('click', () => {
 /* Ouvre le champ DANS la case, vide pour un ajout, pré-rempli pour une correction. La
    sélection du texte à l'ouverture est délibérée : neuf fois sur dix on remplace l'adresse
    plutôt qu'on ne la retouche, et retaper par-dessus ne doit pas demander un Ctrl+A. */
-function ouvrirCase(td, sid, eid, valeur = '') {
-  td.innerHTML = `<input type="url" placeholder="https://…" data-urlfor="${sid}" data-env="${eid}"
-    title="${esc(tr('links.url.edit-hint'))}" value="${esc(valeur)}" />`;
-  const i = $('input', td);
+/* L'ÉDITEUR TIENT DANS LA CASE, et la case grandit. Un menu surgissant aurait demandé d'être
+   positionné, de se refermer au bon moment, et de survivre au défilement du tableau ; la case
+   qui s'étire ne demande rien de tout ça et montre exactement où l'on écrit.
+   Une ligne par adresse : un nom (facultatif — une case à une seule adresse n'en a pas besoin)
+   et l'URL. Vider une URL retire sa ligne à l'enregistrement ; tout vider efface la case. */
+function ligneEdition(u = { label: '', url: '' }) {
+  return `<div class="lce-row">
+    <input type="text" class="lce-label" maxlength="100" placeholder="${esc(tr('links.url.label-ph'))}" value="${esc(u.label || '')}" />
+    <input type="url" class="lce-url" placeholder="https://…" value="${esc(u.url || '')}" />
+    <button type="button" class="link-icon lce-del" title="${esc(tr('ui.delete'))}" aria-label="${esc(tr('ui.delete'))}">${svgIco('trash')}</button>
+  </div>`;
+}
+function ouvrirCase(td, sid, eid, liste = []) {
+  const lignes = (liste.length ? liste : [{ label: '', url: '' }]).map(ligneEdition).join('');
+  td.innerHTML = `<div class="link-cell-edit" data-cellfor="${sid}" data-env="${eid}">
+    <div class="lce-rows">${lignes}</div>
+    <div class="lce-actions">
+      <button type="button" class="btn btn-sm btn-ghost lce-add">${svgIco('plus')}<span>${esc(tr('links.url.add'))}</span></button>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn-sm lce-cancel">${esc(tr('ui.cancel'))}</button>
+      <button type="button" class="btn btn-sm btn-primary lce-save">${esc(tr('ui.save'))}</button>
+    </div>
+    <p class="muted lce-hint">${esc(tr('links.url.edit-hint'))}</p>
+  </div>`;
+  const i = $('.lce-url', td);
   i.focus();
   i.select();
+}
+
+// Ce que l'éditeur d'une case contient à l'instant t.
+const lireCase = (box) => $$('.lce-row', box).map((r) => ({
+  label: $('.lce-label', r).value.trim(),
+  url: $('.lce-url', r).value.trim(),
+})).filter((u) => u.url);
+
+async function enregistrerCase(box) {
+  try {
+    await api(`/services/${box.dataset.cellfor}/urls`, {
+      method: 'PUT',
+      body: { environment_id: Number(box.dataset.env), urls: lireCase(box) },
+    });
+    await loadLinks();
+  } catch (err) { toast(explainError(err.message), true); }
 }
 $('#linkGrid') && $('#linkGrid').addEventListener('click', (e) => {
   const mv = e.target.closest('[data-envmove]');
@@ -9990,28 +10171,51 @@ $('#linkGrid') && $('#linkGrid').addEventListener('click', (e) => {
     if (env) openEnvModal(env);
     return;
   }
+  const plus = e.target.closest('[data-cellopen]');
+  if (plus) {
+    const cle = plus.dataset.cellopen;
+    if (LINKS.ouvertes.has(cle)) LINKS.ouvertes.delete(cle); else LINKS.ouvertes.add(cle);
+    renderLinkGrid();
+    return;
+  }
   const add = e.target.closest('[data-addurl]');
   if (add) { ouvrirCase(add.closest('.link-cell'), add.dataset.addurl, add.dataset.env); return; }
   const maj = e.target.closest('[data-editurl]');
   if (maj) {
     const svc = ((LINKS.grid && LINKS.grid.services) || []).find((x) => x.id === Number(maj.dataset.editurl));
     ouvrirCase(maj.closest('.link-cell'), maj.dataset.editurl, maj.dataset.env,
-      (svc && (svc.urls || {})[maj.dataset.env]) || '');
+      (svc && (svc.urls || {})[maj.dataset.env]) || []);
     return;
+  }
+  const box = e.target.closest('.link-cell-edit');
+  if (box) {
+    if (e.target.closest('.lce-add')) {
+      $('.lce-rows', box).insertAdjacentHTML('beforeend', ligneEdition());
+      $$('.lce-url', box).pop().focus();
+      return;
+    }
+    // Retirer la dernière ligne la vide au lieu de la supprimer : sinon la case n'aurait plus
+    // de champ où écrire, et il faudrait ressortir puis rentrer pour repartir.
+    const del = e.target.closest('.lce-del');
+    if (del) {
+      const rows = $$('.lce-row', box);
+      if (rows.length > 1) del.closest('.lce-row').remove();
+      else { $('.lce-label', rows[0]).value = ''; $('.lce-url', rows[0]).value = ''; }
+      return;
+    }
+    if (e.target.closest('.lce-cancel')) { renderLinkGrid(); return; }
+    if (e.target.closest('.lce-save')) { enregistrerCase(box); }
   }
   const ed = e.target.closest('[data-editservice]');
   if (ed) openServiceModal(Number(ed.dataset.editservice));
 });
-$('#linkGrid') && $('#linkGrid').addEventListener('keydown', async (e) => {
-  const inp = e.target.closest('[data-urlfor]');
-  if (!inp) return;
+$('#linkGrid') && $('#linkGrid').addEventListener('keydown', (e) => {
+  const box = e.target.closest('.link-cell-edit');
+  if (!box) return;
   if (e.key === 'Escape') { e.preventDefault(); renderLinkGrid(); return; }
   if (e.key !== 'Enter') return;
   e.preventDefault();
-  try {
-    await api(`/services/${inp.dataset.urlfor}/urls`, { method: 'PUT', body: { environment_id: Number(inp.dataset.env), url: inp.value } });
-    await loadLinks();
-  } catch (err) { toast(explainError(err.message), true); }
+  enregistrerCase(box);
 });
 $('#linkFreeList') && $('#linkFreeList').addEventListener('click', (e) => {
   const ed = e.target.closest('[data-editfree]');
@@ -10091,15 +10295,25 @@ async function openServiceModal(id) {
 /* Une ligne par environnement, pré-remplie à l'édition. C'est le second chemin vers une URL,
    et il vaut la peine d'exister : la grille sert quand on corrige une case, la modale quand on
    pose tout un service d'un coup. */
+/* UNE SEULE adresse par environnement ici — la PREMIÈRE. Les cases qui en portent plusieurs se
+   gèrent dans la grille, où l'on voit ce qu'on modifie. La modale sert à poser un service
+   utilisable en une passe, pas à administrer dix adresses dans un formulaire.
+   Le compte des autres est ANNONCÉ à côté : sans lui, on croirait que la case n'en a qu'une,
+   et l'enregistrement — qui remplace la case entière — semblerait les avoir mangées. */
 function renderServiceUrls() {
   const envs = ((LINKS.grid && LINKS.grid.environments) || []);
   const box = $('#serviceUrlsList');
   if (!envs.length) { box.innerHTML = `<p class="muted">${esc(tr('links.service.no-env'))}</p>`; return; }
-  box.innerHTML = envs.map((e) => `<label class="link-url-row">
+  box.innerHTML = envs.map((e) => {
+    const liste = (serviceEnCours && (serviceEnCours.urls || {})[e.id]) || [];
+    const premiere = liste[0] || { label: '', url: '' };
+    const autres = liste.length - 1;
+    return `<label class="link-url-row">
       <span class="link-env"><span class="link-env-dot" style="background:${esc(e.color)}"></span>${esc(e.name)}</span>
-      <input type="url" data-svcurl="${e.id}" placeholder="https://…"
-        value="${esc((serviceEnCours && (serviceEnCours.urls || {})[e.id]) || '')}" />
-    </label>`).join('');
+      <input type="url" data-svcurl="${e.id}" placeholder="https://…" value="${esc(premiere.url)}" />
+      <span class="muted link-url-more">${autres > 0 ? esc(tr('links.url.several', { n: autres, count: autres })) : ''}</span>
+    </label>`;
+  }).join('');
 }
 async function renderCtxLinks(serviceId) {
   const box = $('#serviceCtxList');
@@ -10137,6 +10351,14 @@ $('#serviceSave') && $('#serviceSave').addEventListener('click', async () => {
     pinned: $('#servicePinned').checked ? 1 : 0,
   };
   const saisies = $$('#serviceUrlsList [data-svcurl]').map((i) => ({ environment_id: Number(i.dataset.svcurl), url: i.value.trim() }));
+  /* La case entière est remplacée à l'enregistrement. On REPOSE donc les adresses suivantes
+     telles quelles : sans ça, corriger la première effacerait silencieusement les autres. */
+  const casesCompletes = (envId, url) => {
+    const liste = (serviceEnCours && (serviceEnCours.urls || {})[envId]) || [];
+    const suite = liste.slice(1);
+    if (!url) return suite;                       // vider la première ne touche pas aux autres
+    return [{ label: (liste[0] || {}).label || '', url }, ...suite];
+  };
   try {
     let id;
     if (serviceEnCours) {
@@ -10146,8 +10368,12 @@ $('#serviceSave') && $('#serviceSave').addEventListener('click', async () => {
          inutiles, et effacerait le verdict de santé de cases qu'on n'a pas touchées. */
       const avant = serviceEnCours.urls || {};
       for (const u of saisies) {
-        if ((avant[u.environment_id] || '') === u.url) continue;
-        await api(`/services/${id}/urls`, { method: 'PUT', body: u });
+        if ((((avant[u.environment_id] || [])[0]) || {}).url === u.url) continue;
+        if (!((avant[u.environment_id] || []).length) && !u.url) continue;
+        await api(`/services/${id}/urls`, {
+          method: 'PUT',
+          body: { environment_id: u.environment_id, urls: casesCompletes(u.environment_id, u.url) },
+        });
       }
     } else {
       id = (await api('/services', { method: 'POST', body: { ...body, urls: saisies } })).id;
@@ -10265,6 +10491,25 @@ $('#toServiceOk') && $('#toServiceOk').addEventListener('click', async () => {
 
 /* ---------- Import Chrome ---------- */
 
+/* Tout effacer, derrière une confirmation qui ANNONCE LE NOMBRE. « Supprimer tous les liens ? »
+   ne dit pas s'il y en a trois ou deux cents, et c'est exactement ce qu'on a besoin de savoir
+   avant de répondre. Le message précise aussi ce qui n'est PAS touché : de là où on clique, la
+   grille est juste au-dessus, et rien ne dit que « les liens » ne la désigne pas. */
+async function viderLiensLibres() {
+  const n = (((LINKS.grid || {}).free_links) || []).length;
+  if (!n) return;
+  if (!await confirmDialog({
+    title: tr('links.free.delete-all'), text: tr('links.free.delete-all-text', { n, count: n }),
+    confirmLabel: tr('ui.delete'), danger: true,
+  })) return;
+  try {
+    const r = await api('/free-links', { method: 'DELETE' });
+    toast(tr('links.free.deleted-all', { n: r.deleted, count: r.deleted }));
+    LINKS.selection.clear();
+    await loadLinks();
+  } catch (e) { toast(explainError(e.message), true); }
+}
+
 /* Nommée, parce qu'on y entre maintenant par trois portes : le menu « Autres actions »,
    l'état vide, et rien d'autre — le bouton de barre a disparu avec la barre de configuration. */
 function ouvrirImport() {
@@ -10302,13 +10547,23 @@ function renderImport() {
     if (!parDossier.has(d)) parDossier.set(d, []);
     parDossier.get(d).push({ ...l, i });
   });
-  box.innerHTML = [...parDossier.entries()].map(([dossier, liens]) => `
-    <div class="import-folder">${esc(dossier)}</div>
-    ${liens.map((l) => `<label class="import-item">
-      <input type="checkbox" data-imp="${l.i}" checked />
-      <span>${esc(l.label)}</span>
-      <span class="import-url">${esc(l.url)}</span>
-    </label>`).join('')}`).join('');
+  /* REPLIÉ, ET RIEN DE COCHÉ. Deux cents favoris cochés d'office entrent d'un clic, et on
+     passe le reste de la journée à faire le tri dans une liste plate. Un dossier par ligne,
+     avec son compte et sa case : on déplie celui qu'on veut, on coche, on importe douze liens.
+     Choisir ce qui entre coûte dix secondes ; trier ce qui est entré coûte une demi-heure. */
+  box.innerHTML = [...parDossier.entries()].map(([dossier, liens], k) => `
+    <details class="import-folder-box"${k === 0 && parDossier.size === 1 ? ' open' : ''}>
+      <summary>
+        <input type="checkbox" class="imp-folder" data-folder="${k}" aria-label="${esc(tr('links.import.pick-folder'))}" />
+        <span class="import-folder">${esc(dossier)}</span>
+        <span class="muted">${esc(tr('links.import.count-folder', { n: liens.length, count: liens.length }))}</span>
+      </summary>
+      ${liens.map((l) => `<label class="import-item" data-in="${k}">
+        <input type="checkbox" data-imp="${l.i}" />
+        <span>${esc(l.label)}</span>
+        <span class="import-url">${esc(l.url)}</span>
+      </label>`).join('')}
+    </details>`).join('');
   $('#importPreview').hidden = false;
   majImportCount();
 }
@@ -10317,9 +10572,24 @@ function majImportCount() {
   $('#importCount').textContent = tr('links.import.count', { n, count: n });
   $('#importApply').disabled = !n;
 }
-$('#importTree') && $('#importTree').addEventListener('change', majImportCount);
-$('#importAll') && $('#importAll').addEventListener('click', () => { $$('#importTree [data-imp]').forEach((c) => { c.checked = true; }); majImportCount(); });
-$('#importNone') && $('#importNone').addEventListener('click', () => { $$('#importTree [data-imp]').forEach((c) => { c.checked = false; }); majImportCount(); });
+$('#importTree') && $('#importTree').addEventListener('change', (e) => {
+  // La case d'un dossier coche ses liens ; cocher les liens à la main met la sienne d'accord.
+  const f = e.target.closest('.imp-folder');
+  if (f) {
+    $$(`#importTree .import-item[data-in="${f.dataset.folder}"] [data-imp]`).forEach((c) => { c.checked = f.checked; });
+  } else {
+    $$('#importTree .import-folder-box').forEach((d) => {
+      const cases = $$('[data-imp]', d);
+      const chef = $('.imp-folder', d);
+      if (!chef) return;
+      chef.checked = cases.length > 0 && cases.every((c) => c.checked);
+      chef.indeterminate = !chef.checked && cases.some((c) => c.checked);
+    });
+  }
+  majImportCount();
+});
+$('#importAll') && $('#importAll').addEventListener('click', () => { $$('#importTree input[type=checkbox]').forEach((c) => { c.checked = true; c.indeterminate = false; }); majImportCount(); });
+$('#importNone') && $('#importNone').addEventListener('click', () => { $$('#importTree input[type=checkbox]').forEach((c) => { c.checked = false; c.indeterminate = false; }); majImportCount(); });
 $('#importApply') && $('#importApply').addEventListener('click', async (e) => {
   const choisis = $$('#importTree [data-imp]:checked').map((c) => LINKS.importLinks[Number(c.dataset.imp)]).filter(Boolean);
   try {
@@ -10352,9 +10622,14 @@ async function renderMrLinks(mrId, box) {
   try { d = await api(`/mrs/${mrId}/links`); } catch { return; }
   if (!d.service || (!d.envs.length && !d.context.length)) return;
   const boutons = [
+    /* Un bouton PAR ADRESSE : une case qui porte « erreurs paiement » et « latence API » en
+       donne deux, chacun nommé. Sans le libellé, deux boutons « Ouvrir · prod » côte à côte
+       obligeraient à en survoler un pour savoir lequel est lequel. */
     ...d.envs.map((e) => `<a class="btn btn-sm" href="${esc(e.url)}" target="_blank" rel="noopener noreferrer"
-        data-usekind="service_url" data-useref="${d.service.id}:${e.environment_id}">
-        <span class="link-env-dot" style="background:${esc(e.color)}"></span>${esc(tr('links.mr.open', { env: e.env }))}</a>`),
+        data-usekind="service_url" data-useref="${d.service.id}:${e.environment_id}" title="${esc(e.url)}">
+        <span class="link-env-dot" style="background:${esc(e.color)}"></span>${esc(e.label
+          ? tr('links.mr.open-named', { env: e.env, name: e.label })
+          : tr('links.mr.open', { env: e.env }))}</a>`),
     ...d.context.flatMap((c) => {
       if (c.per_env.length) {
         return c.per_env.map((k) => (k.url
