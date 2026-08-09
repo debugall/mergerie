@@ -352,29 +352,57 @@ function supprimerTousFreeLinks() {
   return { ok: true, deleted: n };
 }
 
-/* Convertit des liens libres en un service : une ligne par lien, affectée à un
-   environnement. C'est le geste d'APRÈS l'import — explicite, et non une devinette faite
-   à l'import sur des noms de dossiers. */
-/* TOUT OU RIEN. Un environnement supprimé entre l'ouverture de la modale et le clic faisait
-   échouer `poserUrl` en plein milieu : le service existait avec une partie de ses URLs,
-   quelques liens libres avaient déjà disparu, et rejouer butait sur « nom déjà pris ».
-   La transaction rend l'échec propre — on retrouve exactement l'état d'avant. */
-function convertirEnService(body = {}, msgs) {
+/* RANGER des liens libres dans un service — celui qu'on désigne, ou un nouveau créé au
+   passage. C'est le geste d'après l'import : deux cents adresses arrivent à plat, et il faut
+   les classer sans rouvrir chacune.
+
+   Trois choses qui ne vont pas de soi :
+
+   — LE SERVICE PEUT DÉJÀ EXISTER. Ne savoir que créer obligeait à tout ranger du premier coup,
+     ou à renoncer. On range aujourd'hui trois liens, demain deux autres, dans le même service.
+
+   — ON AJOUTE À LA CASE, on ne la remplace pas. `poserUrl` réécrit la case entière ; deux liens
+     rangés dans le même environnement n'auraient laissé que le dernier, sans un mot.
+
+   — LE LIBELLÉ DU LIEN DEVIENT LE NOM DE L'ADRESSE. « Kibana — erreurs paiement » rangé dans
+     Kibana × prod garde « erreurs paiement » : c'est exactement l'information qui distingue
+     une adresse d'une autre au même endroit, et elle était déjà écrite.
+
+   Le mapping reste EXPLICITE — deviner « dev » depuis une URL contenant `-dev` marcherait neuf
+   fois sur dix, et la dixième poserait une adresse de production en développement. */
+function rangerDansService(body = {}, msgs) {
   let service = null;
-  let faits = 0;
+  let ranges = 0;
   const trans = db.transaction((mapping) => {
-    service = creerService({ name: body.name, repo_id: body.repo_id, tags: body.tags }, msgs);
+    service = body.service_id
+      ? lireService(body.service_id)
+      : creerService({ name: body.name, repo_id: body.repo_id, tags: body.tags }, msgs);
+    if (!service) throw erreur(msgs.inconnu, 404);
+
+    // Groupés par environnement : une case s'écrit d'un coup, avec tout ce qu'elle doit porter.
+    const parEnv = new Map();
+    const aSupprimer = [];
     for (const m of mapping) {
+      const envId = Number(m.environment_id) || 0;
+      if (!envId) continue;                       // « ne pas affecter » : le lien reste libre
       const lien = db.prepare('SELECT * FROM free_link WHERE id = ?').get(Number(m.free_link_id) || 0);
       if (!lien) continue;
-      poserUrl(service.id, { environment_id: m.environment_id, url: lien.url }, msgs);
-      // Le lien libre disparaît : le garder en double ferait deux entrées pour la même adresse.
-      db.prepare('DELETE FROM free_link WHERE id = ?').run(lien.id);
-      faits += 1;
+      if (!parEnv.has(envId)) parEnv.set(envId, []);
+      parEnv.get(envId).push({ label: lien.label, url: lien.url });
+      aSupprimer.push(lien.id);
+      ranges += 1;
     }
+    for (const [envId, ajouts] of parEnv) {
+      const deja = db.prepare(`SELECT label, url FROM service_url
+        WHERE service_id = ? AND environment_id = ? ORDER BY position, id`).all(service.id, envId);
+      poserUrl(service.id, { environment_id: envId, urls: [...deja, ...ajouts] }, msgs);
+    }
+    // Le lien libre disparaît : le garder en double ferait deux entrées pour la même adresse.
+    const del = db.prepare('DELETE FROM free_link WHERE id = ?');
+    for (const id of aSupprimer) del.run(id);
   });
   trans(Array.isArray(body.mapping) ? body.mapping : []);
-  return { service, convertis: faits };
+  return { service, ranges, convertis: ranges };
 }
 
 /* ------------------------------------------------------------ grille ---- */
@@ -769,6 +797,6 @@ module.exports = {
   listerEnvironnements, creerEnvironnement, majEnvironnement, supprimerEnvironnement,
   lireService, creerService, majService, supprimerService, poserUrl,
   listerContextLinks, creerContextLink, supprimerContextLink,
-  listerFreeLinks, creerFreeLink, majFreeLink, supprimerFreeLink, supprimerTousFreeLinks, convertirEnService,
+  listerFreeLinks, creerFreeLink, majFreeLink, supprimerFreeLink, supprimerTousFreeLinks, rangerDansService,
   grille, liensDeMr, noterUsage, launcher, parserBookmarks, appliquerImport,
 };

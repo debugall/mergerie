@@ -10001,6 +10001,7 @@ const ligneFreeLink = (l) => `<div class="link-free-row">
       ${(l.tags || []).map((t) => `<span class="link-svc-tag">${esc(t)}</span>`).join('')}
       <a class="link-free-url" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer"
          data-usekind="free_link" data-useref="${l.id}">${esc(l.url)}</a>
+      <button type="button" class="btn btn-sm btn-ghost" data-filefree="${l.id}" title="${esc(tr('links.free.file-title'))}" aria-label="${esc(tr('links.free.file-title'))}">${svgIco('archive')}</button>
       <button type="button" class="btn btn-sm btn-ghost" data-editfree="${l.id}" title="${esc(tr('ui.edit'))}">${svgIco('edit')}</button>
     </div>`;
 
@@ -10218,6 +10219,8 @@ $('#linkGrid') && $('#linkGrid').addEventListener('keydown', (e) => {
   enregistrerCase(box);
 });
 $('#linkFreeList') && $('#linkFreeList').addEventListener('click', (e) => {
+  const ra = e.target.closest('[data-filefree]');
+  if (ra) { ouvrirRangement([Number(ra.dataset.filefree)]); return; }
   const ed = e.target.closest('[data-editfree]');
   if (ed) { openFreeModal(Number(ed.dataset.editfree)); return; }
   const pick = e.target.closest('[data-freepick]');
@@ -10388,6 +10391,7 @@ $('#serviceSave') && $('#serviceSave').addEventListener('click', async () => {
    alphabétique, un service nouvellement créé atterrit n'importe où. Le surlignage s'efface
    tout seul — il dit « c'est ici », il n'a pas à rester. */
 function montrerLigneService(id) {
+  if (!id) return;
   const b = $(`#linkGrid [data-editservice="${id}"]`);
   if (!b) return;
   const tr2 = b.closest('tr');
@@ -10445,23 +10449,54 @@ $('#freeDelete') && $('#freeDelete').addEventListener('click', async () => {
 
 /* ---------- Convertir des liens libres en service ---------- */
 
-$('#linkToService') && $('#linkToService').addEventListener('click', () => {
-  const choisis = ((LINKS.grid && LINKS.grid.free_links) || []).filter((l) => LINKS.selection.has(l.id));
+/* Le geste d'après l'import : deux cents adresses arrivent à plat et il faut les classer.
+   On y entre par la ligne d'un lien (le cas courant, un lien à la fois) ou par le mode
+   sélection (plusieurs d'un coup, dans le même service). */
+function ouvrirRangement(ids) {
+  const choisis = ((LINKS.grid && LINKS.grid.free_links) || []).filter((l) => ids.includes(l.id));
   if (!choisis.length) return;
   const envs = (LINKS.grid.environments || []);
   if (!envs.length) { toast(tr('links.free.need-env'), true); return; }
+
+  /* Le sélecteur À RECHERCHE, comme partout où une liste peut être longue. La première entrée
+     crée un service à la volée : ne savoir que créer obligeait à tout ranger du premier coup,
+     ne savoir que choisir obligeait à créer le service avant. */
+  $('#toServiceBox').innerHTML = comboHtml('js-toservice', { value: 'new', label: tr('links.free.file-new'), ph: tr('links.free.pick-service') });
+  wireCombo($('#toServiceBox'), 'js-toservice', () => [
+    { value: 'new', label: tr('links.free.file-new') },
+    ...((LINKS.grid.services || []).map((x) => ({ value: String(x.id), label: x.name, hint: (x.tags || []).join(' · ') }))),
+  ]);
   $('#toServiceName').value = nomCommun(choisis.map((l) => l.label));
+  majRangementNom();
+
+  const options = (sel) => `<option value="">${esc(tr('links.free.skip'))}</option>`
+    + envs.map((e) => `<option value="${e.id}"${String(sel) === String(e.id) ? ' selected' : ''}>${esc(e.name)}</option>`).join('');
+  // Un seul environnement à choisir pour tous : c'est le cas courant, et le refaire ligne à
+  // ligne sur douze liens est exactement ce qui fait renoncer.
+  $('#toServiceAllEnv').innerHTML = options(envs[0].id);
   /* Une ligne par lien, un environnement à choisir : le mapping est EXPLICITE. Deviner
      « dev » depuis une URL contenant « -dev » marcherait neuf fois sur dix — et la dixième
      poserait une URL de production dans la colonne de développement. */
   $('#toServiceRows').innerHTML = choisis.map((l) => `<div class="link-ctx-row">
       <span class="link-free-url" title="${esc(l.url)}">${esc(l.label)} — ${esc(l.url)}</span>
-      <select data-mapfree="${l.id}">
-        <option value="">${esc(tr('links.free.skip'))}</option>
-        ${envs.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('')}
-      </select>
+      <select data-mapfree="${l.id}">${options(envs[0].id)}</select>
     </div>`).join('');
   $('#toServiceModal').hidden = false;
+}
+
+// Le nom ne se demande que pour un service qu'on crée : sinon il n'a rien à dire.
+function majRangementNom() {
+  const v = ($('#toServiceBox .js-toservice') || {}).value;
+  $('#toServiceNameRow').hidden = v !== 'new';
+}
+$('#toServiceBox') && $('#toServiceBox').addEventListener('change', majRangementNom);
+$('#toServiceAllEnv') && $('#toServiceAllEnv').addEventListener('change', () => {
+  const v = $('#toServiceAllEnv').value;
+  $$('#toServiceRows [data-mapfree]').forEach((sel) => { sel.value = v; });
+});
+
+$('#linkToService') && $('#linkToService').addEventListener('click', () => {
+  ouvrirRangement([...LINKS.selection]);
 });
 // Le plus long préfixe commun aux libellés : « Kibana dev » + « Kibana prod » → « Kibana ».
 function nomCommun(labels) {
@@ -10480,12 +10515,19 @@ $('#toServiceOk') && $('#toServiceOk').addEventListener('click', async () => {
   const mapping = $$('#toServiceRows [data-mapfree]')
     .filter((s) => s.value)
     .map((s) => ({ free_link_id: Number(s.dataset.mapfree), environment_id: Number(s.value) }));
+  const choix = ($('#toServiceBox .js-toservice') || {}).value;
+  const corps = choix === 'new'
+    ? { name: $('#toServiceName').value, mapping }
+    : { service_id: Number(choix), mapping };
   try {
-    const r = await api('/free-links/to-service', { method: 'POST', body: { name: $('#toServiceName').value, mapping } });
+    const r = await api('/free-links/to-service', { method: 'POST', body: corps });
     $('#toServiceModal').hidden = true;
+    LINKS.selectMode = false;
     LINKS.selection.clear();
-    toast(tr('links.free.converted', { n: r.convertis, count: r.convertis }));
+    // Le nom du service est DIT : rangé quelque part, on veut savoir où sans aller vérifier.
+    toast(tr('links.free.filed', { n: r.ranges, count: r.ranges, service: (r.service || {}).name || '' }));
     await loadLinks();
+    montrerLigneService((r.service || {}).id);
   } catch (e) { toast(explainError(e.message), true); }
 });
 

@@ -684,7 +684,7 @@
             <!-- Les cases à cocher ne servent qu'à « Convertir en service », geste rare. Les
                  laisser en permanence faisait payer chaque jour le prix d'une action annuelle. -->
             <button id="linkFreeSelect" class="btn btn-sm" data-i18n-title="links.select-title"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="links.select">Sélectionner</span></button>
-            <button id="linkToService" class="btn btn-sm" data-i18n-title="links.free.to-service-title" hidden><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="links.free.to-service">Convertir en service</span></button>
+            <button id="linkToService" class="btn btn-sm" data-i18n-title="links.free.to-service-title" hidden><svg class="ico"><use href="#i-archive"/></svg><span data-i18n="links.free.file">Ranger dans un service</span></button>
             <button id="linkNewFree" class="btn btn-sm" data-i18n-title="links.free.new-title"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="links.free.new">Nouveau lien</span></button>
         </div>
         <div id="linkFreeList" class="link-free-list"></div>
@@ -1341,16 +1341,26 @@ print(json.dumps({
      Mapping EXPLICITE — aucune détection service×env n'est tentée à l'import. -->
 <div id="toServiceModal" class="modal" hidden>
     <div class="modal-box modal-import">
-        <h3 data-i18n="links.free.to-service">Convertir en service</h3>
+        <h3 id="toServiceTitle" data-i18n="links.free.file">Ranger dans un service</h3>
         <div class="form">
-            <label><span data-i18n="links.service.name">Nom</span>
+            <!-- Un service EXISTANT ou un nouveau, au même endroit : ranger trois liens
+                 aujourd'hui et deux demain doit être le même geste. Le sélecteur a sa
+                 recherche — la liste peut compter des dizaines de services. -->
+            <label><span data-i18n="links.free.file-into">Service</span>
+                <div id="toServiceBox"></div>
+            </label>
+            <label id="toServiceNameRow" hidden><span data-i18n="links.service.name">Nom</span>
                 <input id="toServiceName" type="text" maxlength="100" />
             </label>
+        </div>
+        <div class="toolbar toolbar-tight">
+            <span class="muted" data-i18n="links.free.file-all">Tout ranger dans</span>
+            <select id="toServiceAllEnv"></select>
         </div>
         <div id="toServiceRows"></div>
         <div class="modal-actions">
             <button id="toServiceCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
-            <button id="toServiceOk" type="button" class="btn btn-primary" data-i18n="links.free.to-service">Convertir en service</button>
+            <button id="toServiceOk" type="button" class="btn btn-primary" data-i18n="links.free.file">Ranger dans un service</button>
         </div>
     </div>
 </div>

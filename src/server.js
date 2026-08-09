@@ -2995,7 +2995,7 @@ app.delete('/api/free-links/:id', wrap((req, res) => { res.json(links.supprimerF
    de « supprimer celui-là ». */
 app.delete('/api/free-links', wrap((req, res) => { res.json(links.supprimerTousFreeLinks()); }));
 // Des liens libres deviennent un service : le geste d'APRÈS l'import, explicite.
-app.post('/api/free-links/to-service', wrap((req, res) => { res.json(links.convertirEnService(req.body || {}, msgLinks())); }));
+app.post('/api/free-links/to-service', wrap((req, res) => { res.json(links.rangerDansService(req.body || {}, msgLinks())); }));
 
 /* La palette. Les actions de navigation viennent du CLIENT : lui seul sait ce qu'il sait
    faire, et les lister côté serveur aurait fait deux endroits à tenir d'accord. */

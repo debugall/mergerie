@@ -303,14 +303,19 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     assert.equal(await cell.locator('.link-open').count(), 2, 'deux au repos : la ligne reste régulière');
     assert.match(await cell.innerText(), /erreurs paiement/, 'le nom prime sur l’URL');
 
-    // La PREMIÈRE case d'une ligne n'est pas son premier `td` : celui-là porte le service.
-    const nbOuvrables = () => page.evaluate(() => document
-      .querySelectorAll('#linkGrid tbody tr:first-child td.link-cell')[0]
-      .querySelectorAll('.link-open').length);
+    /* La PREMIÈRE case d'une ligne n'est pas son premier `td` : celui-là porte le service.
+       Et la condition doit survivre à l'instant où la grille est réécrite — sinon elle lève
+       au lieu de rendre `false`, et l'attente s'arrête au lieu de patienter. */
+    const nbOuvrables = () => page.evaluate(() => {
+      const td = document.querySelectorAll('#linkGrid tbody tr:first-child td.link-cell')[0];
+      return td ? td.querySelectorAll('.link-open').length : -1;
+    });
+    const attendreOuvrables = (n) => page.waitForFunction((k) => {
+      const td = document.querySelectorAll('#linkGrid tbody tr:first-child td.link-cell')[0];
+      return !!td && td.querySelectorAll('.link-open').length === k;
+    }, n);
     await cell.locator('[data-cellopen]').click();
-    await page.waitForFunction(() => document
-      .querySelectorAll('#linkGrid tbody tr:first-child td.link-cell')[0]
-      .querySelectorAll('.link-open').length === 3);
+    await attendreOuvrables(3);
 
     // L'éditeur tient DANS la case : une ligne par adresse, et la case s'étire.
     await cell.hover();
@@ -319,9 +324,7 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     assert.equal(await page.locator('.lce-row').count(), 3);
     await page.locator('.lce-row').nth(2).locator('.lce-del').click();
     await page.locator('.lce-save').click();
-    await page.waitForFunction(() => document
-      .querySelectorAll('#linkGrid tbody tr:first-child td.link-cell')[0]
-      .querySelectorAll('.link-open').length === 2);
+    await attendreOuvrables(2);
     assert.equal(await nbOuvrables(), 2);
     assert.doesNotMatch(await cell.innerText(), /journal complet/, 'la ligne retirée disparaît');
   });
@@ -365,6 +368,41 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
       'plus de filtre actif, plus de bouton pour les relâcher');
 
     await app.api('DELETE', `/api/services/${autre.id}`);
+  });
+
+  /* LE GESTE D'APRÈS L'IMPORT : deux cents adresses à plat, qu'il faut classer. Depuis la
+     ligne d'un lien, sans passer par le mode sélection — c'est le cas courant, un à la fois. */
+  test('un lien libre se range dans un service existant, en gardant son nom', async () => {
+    /* Un libellé QU'AUCUN AUTRE ÉCRAN NE PORTE DÉJÀ : le test précédent a posé une adresse
+       nommée « erreurs paiement » dans la grille, et attendre ce texte-là aurait été attendre
+       une condition déjà vraie — l'assertion suivante serait passée avant la requête. */
+    await app.api('POST', '/api/free-links', { label: 'runbook astreinte', url: 'https://run.demo.invalid/x' });
+    await page.reload();
+    await ouvrirLiens();
+
+    await page.locator('.link-free-row').filter({ hasText: 'runbook astreinte' }).locator('[data-filefree]').click();
+    await page.waitForSelector('#toServiceModal:not([hidden])');
+
+    // Par défaut on crée : le nom est pré-rempli avec celui du lien.
+    assert.equal(await page.locator('#toServiceNameRow').isHidden(), false);
+    // …et le sélecteur a sa RECHERCHE, comme partout où une liste peut être longue.
+    await page.locator('#toServiceBox .cb-search').click();
+    await page.locator('#toServiceBox .cb-search').fill('api');
+    await page.waitForFunction(() => document.querySelector('#toServiceBox .combo-options')
+      && !document.querySelector('#toServiceBox .combo-options').hidden);
+    await page.locator('#toServiceBox .combo-options div').first().click();
+    await page.waitForFunction(() => document.querySelector('#toServiceNameRow').hidden,
+      null, { timeout: 5000 });
+
+    await page.locator('#toServiceOk').click();
+    /* On attend la DISPARITION du lien libre, pas son apparition dans la grille : la case en
+       montre deux au repos, et une troisième adresse se cache derrière le « +N ». */
+    await page.waitForFunction(() => !/runbook astreinte/.test(document.querySelector('#linkFreeList').textContent));
+
+    const cellules = (await app.api('GET', '/api/links/grid')).body.services
+      .flatMap((svc) => Object.values(svc.urls || {}).flat());
+    assert.ok(cellules.some((u) => u.label === 'runbook astreinte' && u.url === 'https://run.demo.invalid/x'),
+      'le lien est devenu une adresse NOMMÉE dans une case — son libellé est ce qui la distingue');
   });
 
   /* L'IMPORT NE DÉVERSE PLUS TOUT. Deux cents favoris cochés d'office entraient d'un clic ;

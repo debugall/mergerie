@@ -733,11 +733,26 @@ would be two hundred confirmations. The confirmation **states the count** (“de
 not say whether there are three or two hundred) and reminds you that **the grid is left alone**. The
 button does not appear when there is nothing to delete.
 
-**Turning them into a service.** `Select` reveals the checkboxes — they are not there permanently,
-the operation is rare and everyday noise is expensive. Tick several links, then `Turn into a
-service`: one row per link, one environment to pick for each. The mapping is **explicit** — guessing
-“dev” from a URL containing `-dev` would work nine times out of ten, and the tenth would put a
-production address in the development column.
+**Filing them into a service.** This is the gesture that follows an import: two hundred addresses
+arrive flat and have to be filed. Every row carries a `File` button; to handle several at once,
+`Select` reveals the checkboxes — they are not there permanently, the operation is rare and everyday
+noise is expensive.
+
+Either way, the same dialog:
+
+- **An existing service or a new one**, your choice, in a searchable picker. Only being able to
+  create forced you to file everything in one go; you can now file three links today and two more
+  tomorrow, into the same service.
+- **An environment**, with a `File everything into` that sets the same one on every row — redoing it
+  row by row across twelve links is exactly what makes people give up. The mapping stays
+  **explicit**: guessing “dev” from a URL containing `-dev` would work nine times out of ten, and the
+  tenth would put a production address in the development column.
+- **The link's label becomes the address's name.** “payment errors” filed into Kibana × production
+  keeps its name — that is exactly what tells one address from another in the same place, and it was
+  already written.
+
+Addresses are **appended** to the cell, they do not replace it; two links filed into the same place
+both fit. The free link then disappears: keeping it would make two entries for the same address.
 
 #### The palette — `Ctrl`/`Cmd` + `K`, or the `o` key
 The search field in the header opens the **global palette**, which searches **everything at once**:

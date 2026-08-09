@@ -772,11 +772,27 @@ reprendre un par un serait deux cents confirmations. La demande de confirmation 
 nombre** (« supprimer tous les liens ? » ne dit pas s'il y en a trois ou deux cents) et rappelle que
 **la grille n'est pas touchée**. Le bouton n'apparaît pas quand il n'y a rien à supprimer.
 
-**Les transformer en service.** `Sélectionner` fait apparaître les cases à cocher — elles ne sont
-pas là en permanence, l'opération est rare et le bruit quotidien se paie cher. Coche plusieurs
-liens, puis `Convertir en service` : une ligne par lien, un environnement à choisir pour chacune.
-Le mapping est **explicite** — deviner « dev » depuis une URL contenant `-dev` marcherait neuf fois
-sur dix, et la dixième poserait une adresse de production dans la colonne de développement.
+**Les ranger dans un service.** C'est le geste d'après l'import : deux cents adresses arrivent à
+plat, et il faut les classer. Chaque ligne porte un bouton `Ranger` ; pour en traiter plusieurs d'un
+coup, `Sélectionner` fait apparaître les cases à cocher — elles ne sont pas là en permanence,
+l'opération est rare et le bruit quotidien se paie cher.
+
+Dans les deux cas, la même fenêtre :
+
+- **Un service existant ou un nouveau**, au choix, dans un sélecteur à recherche. Ne savoir que
+  créer obligeait à tout ranger du premier coup ; on range aujourd'hui trois liens, demain deux
+  autres, dans le même service.
+- **Un environnement**, avec un `Tout ranger dans` qui pose le même pour toutes les lignes — le
+  refaire ligne à ligne sur douze liens est exactement ce qui fait renoncer. Le mapping reste
+  **explicite** : deviner « dev » depuis une URL contenant `-dev` marcherait neuf fois sur dix, et
+  la dixième poserait une adresse de production dans la colonne de développement.
+- **Le libellé du lien devient le nom de l'adresse.** « erreurs paiement » rangé dans Kibana × prod
+  garde son nom — c'est exactement ce qui distingue une adresse d'une autre au même endroit, et
+  c'était déjà écrit.
+
+Les adresses **s'ajoutent** à la case, elles ne la remplacent pas ; deux liens rangés au même
+endroit y tiennent tous les deux. Le lien libre disparaît alors : le garder ferait deux entrées pour
+la même adresse.
 
 #### La palette — `Ctrl`/`Cmd` + `K`, ou la touche `o`
 Le champ de recherche de l'en-tête ouvre la **palette globale**, qui cherche **partout à la fois** :

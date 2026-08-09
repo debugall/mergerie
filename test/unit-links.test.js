@@ -414,6 +414,69 @@ describe('une case porte plusieurs adresses', () => {
   });
 });
 
+/* LE GESTE D'APRÈS L'IMPORT. Deux cents adresses arrivent à plat, et il faut les classer sans
+   rouvrir chacune — dans un service qu'on crée au passage, ou dans un qui existe déjà. */
+describe('ranger des liens libres dans un service', () => {
+  const decor = () => {
+    db.prepare('DELETE FROM service').run();
+    db.prepare('DELETE FROM environment').run();
+    db.prepare('DELETE FROM free_link').run();
+    return {
+      prod: links.creerEnvironnement({ name: 'prod' }, MSGS),
+      a: links.creerFreeLink({ label: 'erreurs paiement', url: 'https://kib.test/?q=paiement' }, MSGS),
+      b: links.creerFreeLink({ label: 'latence API', url: 'https://kib.test/?q=latence' }, MSGS),
+    };
+  };
+  const cellule = (svcId, envId) => (links.grille().services.find((s) => s.id === svcId).urls || {})[envId] || [];
+
+  /* LE LIBELLÉ DU LIEN DEVIENT LE NOM DE L'ADRESSE : c'est exactement l'information qui
+     distingue une adresse d'une autre au même endroit, et elle était déjà écrite. */
+  test('le libellé du lien devient le nom de l’adresse', () => {
+    const { prod, a } = decor();
+    const r = links.rangerDansService({ name: 'Kibana', mapping: [{ free_link_id: a.id, environment_id: prod.id }] }, MSGS);
+    assert.deepEqual(cellule(r.service.id, prod.id).map((u) => [u.label, u.url]),
+      [['erreurs paiement', 'https://kib.test/?q=paiement']]);
+    assert.deepEqual(links.grille().free_links.map((l) => l.label), ['latence API'],
+      'le lien rangé disparaît des liens libres — le garder ferait deux entrées pour la même adresse');
+  });
+
+  /* DEUX LIENS AU MÊME ENDROIT. `poserUrl` réécrit la case entière : sans regroupement, seul le
+     dernier serait resté — et sans un mot. */
+  test('deux liens rangés dans le même environnement y tiennent tous les deux', () => {
+    const { prod, a, b } = decor();
+    const r = links.rangerDansService({ name: 'Kibana', mapping: [
+      { free_link_id: a.id, environment_id: prod.id }, { free_link_id: b.id, environment_id: prod.id },
+    ] }, MSGS);
+    assert.equal(r.ranges, 2);
+    assert.deepEqual(cellule(r.service.id, prod.id).map((u) => u.label), ['erreurs paiement', 'latence API']);
+  });
+
+  /* ON AJOUTE À LA CASE. Ne savoir que créer obligeait à tout ranger du premier coup : on range
+     aujourd'hui trois liens, demain deux autres, dans le même service. */
+  test('ranger dans un service existant ajoute à la case au lieu de la remplacer', () => {
+    const { prod, a, b } = decor();
+    const r = links.rangerDansService({ name: 'Kibana', mapping: [{ free_link_id: a.id, environment_id: prod.id }] }, MSGS);
+    links.rangerDansService({ service_id: r.service.id, mapping: [{ free_link_id: b.id, environment_id: prod.id }] }, MSGS);
+    assert.deepEqual(cellule(r.service.id, prod.id).map((u) => u.label), ['erreurs paiement', 'latence API']);
+    assert.equal(links.grille().services.length, 1, 'aucun second service n’a été créé');
+  });
+
+  test('« ne pas affecter » laisse le lien là où il est', () => {
+    const { prod, a, b } = decor();
+    const r = links.rangerDansService({ name: 'Kibana', mapping: [
+      { free_link_id: a.id, environment_id: prod.id }, { free_link_id: b.id, environment_id: 0 },
+    ] }, MSGS);
+    assert.equal(r.ranges, 1);
+    assert.deepEqual(links.grille().free_links.map((l) => l.label), ['latence API']);
+  });
+
+  test('un service inconnu est refusé, et rien ne bouge', () => {
+    const { prod, a } = decor();
+    assert.throws(() => links.rangerDansService({ service_id: 99999, mapping: [{ free_link_id: a.id, environment_id: prod.id }] }, MSGS), /INCONNU/);
+    assert.equal(links.grille().free_links.length, 2, 'les liens libres sont intacts');
+  });
+});
+
 describe('vider les liens libres', () => {
   test('tout part, et le nombre supprimé est rendu', () => {
     db.prepare('DELETE FROM free_link').run();
@@ -574,7 +637,7 @@ describe('grille et conversion', () => {
     const a = links.creerFreeLink({ label: 'A', url: 'https://a.test' }, MSGS);
     const b = links.creerFreeLink({ label: 'B', url: 'https://b.test' }, MSGS);
 
-    assert.throws(() => links.convertirEnService({
+    assert.throws(() => links.rangerDansService({
       name: 'Kibana',
       mapping: [
         { free_link_id: a.id, environment_id: dev.id },
@@ -587,7 +650,7 @@ describe('grille et conversion', () => {
     assert.equal(db.prepare('SELECT COUNT(*) c FROM free_link').get().c, 2,
       'les deux liens libres sont toujours là');
     // …et rejouer proprement fonctionne, au lieu de buter sur « nom déjà pris ».
-    const ok = links.convertirEnService({ name: 'Kibana', mapping: [{ free_link_id: a.id, environment_id: dev.id }] }, MSGS);
+    const ok = links.rangerDansService({ name: 'Kibana', mapping: [{ free_link_id: a.id, environment_id: dev.id }] }, MSGS);
     assert.equal(ok.convertis, 1);
   });
 
@@ -617,7 +680,7 @@ describe('grille et conversion', () => {
     const l1 = links.creerFreeLink({ label: 'Kibana dev', url: 'https://k-dev.test' }, MSGS);
     const l2 = links.creerFreeLink({ label: 'Kibana prod', url: 'https://k-prod.test' }, MSGS);
 
-    const r = links.convertirEnService({
+    const r = links.rangerDansService({
       name: 'Kibana',
       mapping: [{ free_link_id: l1.id, environment_id: dev.id }, { free_link_id: l2.id, environment_id: prod.id }],
     }, MSGS);

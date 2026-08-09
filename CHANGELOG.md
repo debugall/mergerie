@@ -368,6 +368,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   since there can be thirty. Tags now carry their count. All three survive a reload, and one button
   releases them.
 
+- **A free link can be filed into a service — a new one or one that already exists.** Turning links
+  into a service could only ever create one, so filing had to happen in a single sitting or not at
+  all. Every free-link row now carries a `File` button, the picker offers the existing services with
+  a search field, and `File everything into` sets one environment for all the rows at once.
+  Addresses are appended to the cell instead of replacing it — two links filed into the same place
+  both fit, where the previous code silently kept only the last — and the link's label becomes the
+  address's name.
+
 - **Bookmark import no longer dumps everything in.** The preview is folded by folder, with a count
   and a checkbox per folder, and nothing is ticked: you unfold what you want and import twelve links
   instead of two hundred. The root folder no longer becomes a tag — present on every link, it
