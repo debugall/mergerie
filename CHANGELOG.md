@@ -13,6 +13,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A coding session can carry a verifier, and runs it by itself when it is done.** Picking one in
+  the session form makes it run once at the end — after convergence if you converge, after the coding
+  run otherwise — so you launch in the morning and find a verdict rather than one more box to tick.
+  Only verifiers covering every repository of the session are offered. A verifier reads what the
+  forge exposes, so it needs pushed code: picking one ticks auto-push and says why, and unticking
+  auto-push drops the verifier — the server applies the same rule, not just the screen. Nothing
+  pushed, coverage lost or another verification already running are refusals written in the
+  session's log; none of them fails the session, whose code is written either way.
+
 - **A Links tab — the work links your bookmarks cannot structure.** The same service exists in local, dev,
   staging and production; a folder tree scatters it across four places. A **grid** shows it at once —
   services as rows, environments as columns, one URL per cell. That URL is written out, never guessed from

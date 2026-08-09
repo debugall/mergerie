@@ -3962,6 +3962,54 @@ function applyKindToModal(kind) {
   $('#targetsLabel').textContent = kind === 'code' ? tr('task.targets.code') : tr('task.targets.explore');
 }
 
+/* LE VÉRIFICATEUR D'UNE SESSION. Il ne se propose que s'il COUVRE TOUS LES DÉPÔTS choisis :
+   un vérificateur qui n'en couvre que la moitié rendrait un vert qui ne dit rien de l'autre,
+   et le proposer serait promettre un verdict qu'on ne peut pas tenir. La liste se refait donc
+   à chaque changement de projets. */
+async function majVerificateursSession(choisi = null) {
+  const sel = $('#taskVerifier');
+  if (!sel) return;
+  const garde = choisi === null ? sel.value : String(choisi || '');
+  const repos = readTargetRows().map((t) => t.repo_id).filter(Boolean);
+  let liste = [];
+  // La route rend un TABLEAU, pas un objet enveloppe : s'en assurer ici évite un écran vide.
+  try { const d = await api('/verifiers'); liste = Array.isArray(d) ? d : (d.verifiers || []); } catch { liste = []; }
+  const couvrants = liste.filter((v) => repos.every((id) => (v.repos || []).some((r) => r.repo_id === id)));
+  sel.innerHTML = `<option value="">${esc(tr('task.verifier.none'))}</option>`
+    + couvrants.map((v) => `<option value="${v.id}">${esc(v.name)}</option>`).join('');
+  if (!couvrants.length && repos.length) {
+    sel.innerHTML = `<option value="">${esc(tr('task.verifier.none-covering'))}</option>`;
+  }
+  sel.value = couvrants.some((v) => String(v.id) === garde) ? garde : '';
+  majLienVerifPush();
+}
+
+/* LES DEUX CASES SONT LIÉES, dans les deux sens. Un vérificateur ne peut pas travailler sur du
+   code qui n'est pas poussé : le choisir coche l'auto-push, et retirer l'auto-push retire le
+   vérificateur. Le faire dans un seul sens laisserait une combinaison qui ne peut pas
+   s'exécuter — et on ne le découvrirait qu'à la fin de la session. */
+function majLienVerifPush() {
+  const f = $('#taskForm');
+  const sel = $('#taskVerifier');
+  if (!f || !sel || !f.auto_push) return;
+  const actif = !!sel.value;
+  if (actif && !f.auto_push.checked) f.auto_push.checked = true;
+  const note = $('#taskVerifierNote');
+  if (note) note.hidden = !actif;
+}
+$('#taskVerifier') && $('#taskVerifier').addEventListener('change', majLienVerifPush);
+/* Changer les projets change la liste : un vérificateur qui couvrait les deux premiers dépôts
+   ne couvre pas forcément le troisième, et le laisser sélectionné promettrait un verdict
+   qu'on ne peut pas tenir. */
+$('#targetRows') && $('#targetRows').addEventListener('change', () => { majVerificateursSession(); });
+document.addEventListener('change', (e) => {
+  if (!e.target.closest || !e.target.matches('#taskForm [name="auto_push"]')) return;
+  const sel = $('#taskVerifier');
+  if (!sel) return;
+  if (!e.target.checked && sel.value) { sel.value = ''; toast(tr('task.verifier.dropped')); }
+  majLienVerifPush();
+});
+
 async function openTaskModal(kind = taskKind) {
   editingTaskId = null; launchAfterCreate = false; convergeAfterCreate = false;
   const f = $('#taskForm');
@@ -3971,6 +4019,7 @@ async function openTaskModal(kind = taskKind) {
   if (kind === 'local') { localPicks = ['']; await loadLocalRoots(); }
   applyKindToModal(kind);
   if (kind !== 'local') { renderTargetRows([{}]); setupTaskJira(''); }
+  await majVerificateursSession('');
   $('#taskModalTitle').textContent = KIND_LABEL[kind].title;
   $('#taskExistingImgs').textContent = '';
   /* Codage hors dépôt : le bouton principal crée ET lance, c'est le geste courant. Mais
@@ -4081,6 +4130,7 @@ async function openTaskEdit(id) {
     if (f.commit_message) f.commit_message.value = t.commit_message || '';
     if (f.auto_push) f.auto_push.checked = !!t.auto_push;
     if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
+    await majVerificateursSession(t.verifier_id || '');
     if (f.session_id) f.session_id.value = sharedSessionKey(t.targets);
     $('#taskModalTitle').textContent = tr(taskKind === 'code' ? 'task.edit.code-title' : 'task.edit.explore-title');
     $('#taskExistingImgs').textContent = (d.images && d.images.length) ? tr('task.images-attached', { n: d.images.length, count: d.images.length }) : '';
@@ -4243,6 +4293,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
     commit_message: f.commit_message ? f.commit_message.value : '',
     auto_push: f.auto_push ? f.auto_push.checked : false,
     ask_questions: f.ask_questions ? f.ask_questions.checked : false,
+    verifier_id: f.verifier_id ? Number(f.verifier_id.value) || null : null,
     // Session existante à reprendre. Vide = nouvelle session, le cas courant. Le champ
     // n'est lu qu'à la CRÉATION : la modale d'édition ne réaffecte pas une session déjà
     // en cours, qui a son propre handle par projet.

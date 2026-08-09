@@ -168,6 +168,25 @@ liste, un prompt long est **replié sur trois lignes** avec un **« Voir plus »
 **Créer maintenant, lancer plus tard.** Les trois types de session proposent **`Créer sans lancer`** à
 côté de **`Créer et lancer`** : on prépare le prompt et les cibles, on lance quand on veut.
 
+**Vérifier après, sans y penser.** Un champ facultatif **`Vérifier après`** à la création d'une
+session de codage : le vérificateur choisi part **tout seul, une fois, à la fin** — après la
+convergence si tu converges, après le codage sinon. On lance la session le matin, on trouve un
+verdict, pas une case à cocher de plus.
+
+Seuls les vérificateurs qui **couvrent tous les dépôts** de la session sont proposés : un vert
+partiel ne dirait rien de la moitié du lot, ce qui est pire qu'une absence de verdict. La liste se
+refait quand tu changes de projets.
+
+Un vérificateur lit ce que la **forge expose** : il lui faut donc du code poussé. Choisir un
+vérificateur **coche l'auto-push** et le dit ; décocher l'auto-push **retire le vérificateur**. Le
+serveur applique la même règle de son côté — un écran n'est pas un garde-fou, et l'API est appelable
+sans lui.
+
+Trois refus, silencieux pour la session mais **écrits dans son journal** : rien n'a été poussé, le
+vérificateur ne couvre plus tous les dépôts, ou une autre vérification tourne déjà sur ces dépôts.
+Et un échec au lancement de la vérification **ne fait pas échouer la session** : le code est écrit et
+poussé, annoncer une erreur mentirait sur ce qui s'est passé.
+
 **Reprendre une session d'agent existante.** Un champ **facultatif « identifiant de session »** à la
 création (codage, hors dépôt, exploration) fait travailler l'IA **dans cette session-là** au lieu d'en
 ouvrir une nouvelle — elle garde donc tout le contexte déjà acquis. Renseigné, il rend aussi disponible

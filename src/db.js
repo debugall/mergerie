@@ -194,6 +194,10 @@ try { db.exec("ALTER TABLE config ADD COLUMN jira_url TEXT DEFAULT ''"); } catch
 try { db.exec("ALTER TABLE config ADD COLUMN jira_email TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 try { db.exec("ALTER TABLE config ADD COLUMN jira_token TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 // Migration : message de commit personnalisable des tâches.
+/* LE VÉRIFICATEUR D'UNE SESSION, facultatif. Rattaché à la session et non au lancement :
+   relancer la même session doit revérifier de la même façon, sans qu'on ait à s'en souvenir.
+   `SET NULL` — supprimer un vérificateur ne doit pas emporter les sessions qui s'en servaient. */
+try { db.exec('ALTER TABLE task ADD COLUMN verifier_id INTEGER REFERENCES verifier(id) ON DELETE SET NULL'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task ADD COLUMN commit_message TEXT'); } catch { /* déjà présente */ }
 // Migration : MR créée depuis une tâche.
 try { db.exec('ALTER TABLE task ADD COLUMN mr_iid INTEGER'); } catch { /* déjà présente */ }

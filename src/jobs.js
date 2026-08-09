@@ -251,6 +251,76 @@ async function processList(jobId, rows, kind, opts = {}) {
 }
 
 // Exécute un job de type "task" (run / followup / push) avec log en direct.
+/* UNE VÉRIFICATION, UNE FOIS, À LA FIN. Le vérificateur d'une session se déclenche tout seul —
+   c'est tout l'intérêt : on lance la session le matin et on trouve un verdict, pas une case à
+   cocher de plus.
+
+   Trois refus délibérés, tous silencieux pour la session mais DITS dans son journal :
+
+   — SANS COMMIT POUSSÉ, rien à vérifier. Un vérificateur travaille sur du code accessible depuis
+     la forge ; c'est la raison pour laquelle choisir un vérificateur coche l'auto-push.
+   — SI LE VÉRIFICATEUR NE COUVRE PAS TOUS LES DÉPÔTS de la session, on ne lance pas. Un vert
+     partiel ne dit rien de la moitié du lot — pire qu'une absence de verdict.
+   — UN ÉCHEC ICI NE FAIT PAS ÉCHOUER LA SESSION. Le code est écrit et poussé ; annoncer la
+     session en erreur parce que la vérification n'a pas pu démarrer serait mentir sur ce qui
+     s'est passé. */
+/* La DÉCISION est séparée du lancement : elle se raconte (« pourquoi ça n'est pas parti ») et
+   s'éprouve sans monter d'environnement ni lancer le moindre process. */
+function preparerVerificationApres(task) {
+  if (!task || !task.verifier_id) return { raison: null };
+  const verifier = db.prepare('SELECT * FROM verifier WHERE id = ?').get(task.verifier_id);
+  if (!verifier) return { raison: 'le vérificateur choisi n’existe plus' };
+
+  const cibles = [];
+  for (const tg of db.prepare('SELECT * FROM task_target WHERE task_id = ? ORDER BY id').all(task.id)) {
+    if (!tg.commit_sha) continue;                       // rien n'a été produit pour ce projet
+    if (cibles.some((c) => c.repo_id === tg.repo_id)) continue;   // un dépôt, une cible
+    const mr = tg.mr_iid
+      ? db.prepare('SELECT id FROM mr WHERE repo_id = ? AND iid = ?').get(tg.repo_id, tg.mr_iid)
+      : null;
+    cibles.push({
+      repo_id: tg.repo_id, mr_id: mr ? mr.id : null, head_sha: tg.commit_sha,
+      base_sha: `origin/${tg.base_branch || 'main'}`, branch: tg.branch, mode: 'worktree',
+    });
+  }
+  if (!cibles.length) return { raison: 'rien de poussé' };
+
+  const par = new Map(db.prepare('SELECT * FROM verifier_repo WHERE verifier_id = ?')
+    .all(verifier.id).map((r) => [r.repo_id, r]));
+  if (!cibles.every((c) => par.has(c.repo_id))) {
+    return { raison: `« ${verifier.name} » ne couvre pas tous les dépôts de la session` };
+  }
+  if (verifyBloquePar(cibles.map((c) => c.repo_id))) {
+    return { raison: 'une autre vérification tourne déjà sur ces dépôts' };
+  }
+  // Le mode de chaque cible est déclaré par le vérificateur, dépôt par dépôt.
+  return {
+    verifier,
+    cibles: cibles.map((c) => {
+      const l = par.get(c.repo_id);
+      return { ...c, mode: (l && l.mode) || 'worktree', workdir: (l && l.workdir) || null };
+    }),
+  };
+}
+
+async function verifierApresSession(task, onLog) {
+  if (!task || !task.verifier_id) return null;
+  try {
+    const d = preparerVerificationApres(task);
+    if (!d.verifier) { onLog(`vérification non lancée : ${d.raison}`); return null; }
+    const info = db.prepare(`INSERT INTO verification
+      (verifier_id, verifier_name, lot_id, lot_name, status, targets_json, created_at)
+      VALUES (?, ?, NULL, NULL, 'queued', ?, ?)`)
+      .run(d.verifier.id, d.verifier.name, JSON.stringify(d.cibles), new Date().toISOString());
+    startVerifyJob(info.lastInsertRowid);
+    onLog(`vérification « ${d.verifier.name} » lancée sur ${d.cibles.length} dépôt(s)`);
+    return info.lastInsertRowid;
+  } catch (e) {
+    onLog(`vérification non lancée : ${e.message}`);
+    return null;
+  }
+}
+
 async function runTaskJob(jobId, taskId, action, opts = {}) {
   setJob(jobId, { status: 'running', total: 1, done_count: 0, started_at: new Date().toISOString(), message: t('job.msg.starting') });
   const task = db.prepare('SELECT * FROM task WHERE id = ?').get(taskId);
@@ -273,6 +343,10 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
       notify.push('needs_input', { task_id: task.id });
     } else if ((action === 'run' || action === 'answer') && task.kind !== 'explore') {
       notify.push('session_done', { task_id: task.id });
+      /* La session s'est terminée normalement : le vérificateur choisi part maintenant, une
+         fois. Pas sur `followup` ni `push` — on vérifie ce qu'une session a produit, pas
+         chaque geste qu'on pose ensuite. */
+      await verifierApresSession(db.prepare('SELECT * FROM task WHERE id = ?').get(task.id), onLog);
     }
     logLine(jobId, null, `=== Task #${jobId} terminée ===`);
   } catch (e) {
@@ -344,6 +418,12 @@ async function runConvergeSessionJob(jobId, taskId, opts = {}) {
     // arrêtée là, on avertit pour que l'utilisateur réponde puis relance Converger.
     const after = db.prepare('SELECT status FROM task WHERE id = ?').get(taskId);
     if (after && after.status === 'needs_input') notify.push('needs_input', { task_id: taskId });
+    /* APRÈS la boucle, pas à chaque passe : vérifier trois fois de suite le même dépôt coûterait
+       trois montages d'environnement pour un seul verdict qui compte, le dernier. On ne lance
+       pas non plus si un projet attend une réponse — le code n'est pas fini. */
+    if (!after || after.status !== 'needs_input') {
+      await verifierApresSession(db.prepare('SELECT * FROM task WHERE id = ?').get(taskId), onLog);
+    }
     logLine(jobId, null, `=== Convergence session #${jobId} terminée (${converged}/${results.length} au seuil) ===`);
   } catch (e) {
     if (proc.isCancelled()) {
@@ -825,7 +905,7 @@ function isRunning() {
 }
 
 module.exports = {
-  startVerifyJob, verifyBloquePar,
+  startVerifyJob, verifyBloquePar, preparerVerificationApres,
   startJob, startTaskJob, startGitJob, startDockerJob, startConvergeJob, startConvergeSessionJob,
   startLocalJob, startReconcileJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
   queueCount, parallelBusy, runningCount, MAX_RUNNING, jobKeys, keysClash, retryJob, canRetry,

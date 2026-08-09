@@ -162,6 +162,24 @@ long prompt is **folded to three lines** with a **“Show more”** that unrolls
 **Create now, run later.** All three session types offer **`Create without running`** next to
 **`Create and run`**: you prepare the prompt and the targets, and launch when you want.
 
+**Verify afterwards, without thinking about it.** An optional **`Verify afterwards`** field when
+creating a coding session: the chosen verifier runs **by itself, once, at the end** — after
+convergence if you converge, after the coding run otherwise. You launch the session in the morning
+and find a verdict, not one more box to tick.
+
+Only verifiers that **cover every repository** in the session are offered: a partial green would say
+nothing about half the batch, which is worse than no verdict at all. The list is rebuilt when you
+change projects.
+
+A verifier reads what the **forge exposes**, so it needs pushed code. Picking a verifier **ticks
+auto-push** and says so; unticking auto-push **drops the verifier**. The server applies the same rule
+on its side — a screen is not a safeguard, and the API is callable without it.
+
+Three refusals, silent for the session but **written in its log**: nothing was pushed, the verifier
+no longer covers every repository, or another verification is already running on them. And a failure
+to start the verification **does not fail the session**: the code is written and pushed, announcing
+an error would misrepresent what happened.
+
 **Resume an existing agent session.** An **optional “session identifier”** field at creation time (coding,
 out-of-repo, exploration) makes the AI work **inside that session** instead of opening a new one — so it
 keeps all the context it has already built. Filled in, it also enables the **“Resume in terminal”** button.

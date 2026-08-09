@@ -1685,8 +1685,19 @@ app.get('/api/tasks/:id', wrap((req, res) => {
 
 // Crée une session : `kind` = 'code' (l'IA modifie le code) ou 'explore' (lecture seule).
 // `targets` = [{ repo_id, branch }] — une session peut porter sur plusieurs projets.
+/* UN VÉRIFICATEUR NE SE LANCE PAS SANS CODE POUSSÉ : il travaille sur ce que la forge expose.
+   Choisir un vérificateur implique donc l'auto-push, et retirer l'auto-push retire le
+   vérificateur. L'écran le dit et coche la case ; le serveur le REFAIT — un client n'est pas
+   un garde-fou, et l'API est appelable sans lui. */
+function lireVerifierSession(kind, autoPush, verifierId) {
+  if (kind !== 'code' || !autoPush) return null;
+  const id = Number(verifierId) || 0;
+  if (!id) return null;
+  return db.prepare('SELECT 1 FROM verifier WHERE id = ?').get(id) ? id : null;
+}
+
 app.post('/api/tasks', wrap((req, res) => {
-  const { kind, prompt, commit_message, auto_push, images, targets, ask_questions, session_id } = req.body || {};
+  const { kind, prompt, commit_message, auto_push, images, targets, ask_questions, session_id, verifier_id } = req.body || {};
   const k = kind === 'explore' ? 'explore' : 'code';
   if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
   const sessionId = normalizeSessionId(session_id);
@@ -1694,13 +1705,13 @@ app.post('/api/tasks', wrap((req, res) => {
   const now = new Date().toISOString();
   // « L'IA peut poser des questions » : opt-in, uniquement pertinent en codage.
   const ask = (k === 'code' && ask_questions) ? 1 : 0;
-  const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message, auto_push, ask_questions, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, 'new', ?, ?)`).run(
+  const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message, auto_push, ask_questions, verifier_id, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, 'new', ?, ?)`).run(
     // `task.branch` est un héritage mono-projet (la vérité est dans task_target) et
     // la colonne est NOT NULL : en exploration la branche est facultative, on y range
     // donc '' plutôt que NULL — sinon la création échoue sur une erreur SQL brute.
     list[0].repo_id, k, prompt.trim(), list[0].branch || '',
-    (commit_message || '').trim() || null, auto_push ? 1 : 0, ask, now, now);
+    (commit_message || '').trim() || null, auto_push ? 1 : 0, ask, lireVerifierSession(k, auto_push, verifier_id), now, now);
   const taskId = info.lastInsertRowid;
   insertTargets(taskId, list, sessionId);
   saveTaskImages(taskId, images);
@@ -1710,7 +1721,7 @@ app.post('/api/tasks', wrap((req, res) => {
 app.put('/api/tasks/:id', wrap((req, res) => {
   const tache = taskById(Number(req.params.id));
   if (!tache) throw new Error(t('err.session-introuvable'));
-  const { prompt, commit_message, auto_push, images, targets, ask_questions, session_id } = req.body || {};
+  const { prompt, commit_message, auto_push, images, targets, ask_questions, session_id, verifier_id } = req.body || {};
   const sessionId = normalizeSessionId(session_id);
   if (Array.isArray(targets) && targets.length) {
     const list = normalizeTargets(targets, tache.kind);
@@ -1731,12 +1742,17 @@ app.put('/api/tasks/:id', wrap((req, res) => {
       insertTargets(tache.id, list);
     }
   }
-  db.prepare('UPDATE task SET prompt = ?, commit_message = ?, auto_push = ?, ask_questions = ?, updated_at = ? WHERE id = ?').run(
+  db.prepare('UPDATE task SET prompt = ?, commit_message = ?, auto_push = ?, ask_questions = ?, verifier_id = ?, updated_at = ? WHERE id = ?').run(
     prompt != null ? String(prompt).trim() : tache.prompt,
     commit_message != null ? (String(commit_message).trim() || null) : tache.commit_message,
     auto_push == null ? tache.auto_push : (auto_push ? 1 : 0),
     // ask_questions ne concerne que le codage ; absent du body → on garde la valeur actuelle.
     ask_questions == null ? tache.ask_questions : (tache.kind === 'code' && ask_questions ? 1 : 0),
+    /* La règle s'applique à la valeur EXISTANTE autant qu'à celle qu'on envoie : décocher
+       l'auto-push sans renvoyer le champ laissait sinon un vérificateur qui ne pourrait plus
+       tourner, et on ne s'en apercevrait qu'à la fin de la session. */
+    lireVerifierSession(tache.kind, auto_push == null ? tache.auto_push : auto_push,
+      verifier_id === undefined ? tache.verifier_id : verifier_id),
     new Date().toISOString(), tache.id,
   );
   saveTaskImages(tache.id, images);
