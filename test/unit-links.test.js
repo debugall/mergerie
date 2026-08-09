@@ -509,6 +509,102 @@ describe('vider les liens libres', () => {
   });
 });
 
+/* LIRE L'ARBRE D'UN EXPORT DE FAVORIS. Un arbre de marque-pages encode souvent, sans le dire, la
+   même grille que cet onglet — et l'aplatir en liens libres est strictement moins bon que ce que
+   fait le navigateur. Un seul indice est cherché, et il ne suppose le métier de personne : un
+   dossier dont plusieurs enfants portent des noms d'environnement. */
+describe('détection de la grille dans un arbre de favoris', () => {
+  const lien = (folder, label, url) => ({ folder, label, url: url || `https://${label.replace(/\W+/g, '')}.test/` });
+
+  /* LES LIBELLÉS SE RÉPÈTENT d'un environnement à l'autre : c'est la même chose vue à cinq
+     endroits, donc une ligne par chose. */
+  test('mêmes libellés partout → une ligne par libellé', () => {
+    const a = links.analyserArbre([
+      lien('app/dev', 'bo dev'), lien('app/dev', 'api'),
+      lien('app/prod', 'bo prod'), lien('app/prod', 'api'),
+    ]);
+    assert.deepEqual(a.environments, ['dev', 'prod']);
+    assert.deepEqual(a.services.map((s) => s.name), ['api', 'bo']);
+    assert.deepEqual(a.services.find((s) => s.name === 'bo').cells.map((c) => c.env).sort(), ['dev', 'prod']);
+  });
+
+  /* LES LIBELLÉS NE SE RÉPÈTENT PAS : ce sont des contenus propres à chaque environnement — un
+     Kibana et ses requêtes enregistrées. Une ligne par libellé en ferait trente. */
+  test('libellés propres à chaque environnement → une ligne pour le dossier', () => {
+    /* Des libellés VRAIMENT propres à chaque environnement : « requete dev 0 » et « requete
+       prod 0 » se ressembleraient une fois le jeton d'environnement retiré, et la détection
+       aurait raison d'y voir la même chose vue deux fois. */
+    const many = (env, mots) => mots.map((m) => lien(`logs/${env}`, m));
+    const a = links.analyserArbre([
+      ...many('dev', ['migrations typeorm', 'seed initial', 'mock paiement', 'trace batch', 'debug websocket', 'profil memoire']),
+      ...many('prod', ['erreurs 5xx', 'purge csv', 'latence pdl', 'keycloak session', 'nginx access', 'pii dans les logs', 'demarrage containers', 'cgu global']),
+    ]);
+    assert.deepEqual(a.services.map((s) => s.name), ['logs']);
+    const cells = a.services[0].cells;
+    assert.deepEqual(cells.map((c) => [c.env, c.links.length]).sort(), [['dev', 6], ['prod', 8]]);
+    assert.ok(cells[0].links[0].label, 'le libellé du favori devient le nom de l’adresse');
+  });
+
+  /* DEUX ORTHOGRAPHES, UNE COLONNE. `pprod` et `preprod` sont le même environnement ; deux
+     colonnes jumelles à moitié remplies seraient pires que pas de détection du tout. */
+  test('les orthographes d’un même environnement fusionnent', () => {
+    const a = links.analyserArbre([
+      lien('x/pprod', 'bo'), lien('x/prod', 'bo'), lien('x/preprod', 'bo'),
+    ]);
+    assert.equal(a.environments.length, 2, `attendu preprod + prod, vu ${a.environments}`);
+    assert.ok(a.environments.some((e) => /p?prod$/.test(e)));
+  });
+
+  test('un environnement numéroté reste distinct', () => {
+    const a = links.analyserArbre([lien('x/recette', 'bo'), lien('x/recette2', 'bo'), lien('x/prod', 'bo')]);
+    assert.deepEqual(a.environments, ['recette', 'recette2', 'prod']);
+  });
+
+  // On lit une grille de gauche à droite comme on promeut une version.
+  test('les colonnes suivent l’ordre de la chaîne de déploiement', () => {
+    const a = links.analyserArbre([
+      lien('x/prod', 'bo'), lien('x/dev', 'bo'), lien('x/preprod', 'bo'), lien('x/local', 'bo'),
+    ]);
+    assert.deepEqual(a.environments, ['local', 'dev', 'preprod', 'prod']);
+  });
+
+  /* Un frère qui n'est pas un environnement n'est pas absorbé : il reste un dossier ordinaire,
+     et ses liens restent libres. */
+  test('un dossier voisin qui n’est pas un environnement est laissé de côté', () => {
+    const a = links.analyserArbre([
+      lien('x/dev', 'bo'), lien('x/prod', 'bo'), lien('x/keycloak', 'secret'),
+    ]);
+    assert.ok(!a.folders.includes('x/keycloak'));
+    assert.ok(!a.services.some((s) => s.name === 'keycloak'));
+  });
+
+  /* Un sous-dossier SOUS l'environnement devient sa propre ligne : sans ça, `logs/prod/keycloak`
+     gonflerait la case `logs × prod` et on ne verrait plus rien. */
+  test('un sous-dossier sous l’environnement devient sa propre ligne', () => {
+    const many = (f, n) => Array.from({ length: n }, (_, i) => lien(f, `${f} ${i}`));
+    const a = links.analyserArbre([...many('logs/prod', 7), ...many('logs/dev', 6), ...many('logs/prod/keycloak', 3)]);
+    assert.ok(a.services.some((s) => s.name === 'logs · keycloak'), a.services.map((s) => s.name).join(', '));
+    assert.equal(a.services.find((s) => s.name === 'logs · keycloak').cells[0].env, 'prod');
+  });
+
+  test('un seul environnement ne fait pas une grille', () => {
+    const a = links.analyserArbre([lien('x/prod', 'bo'), lien('x/outils', 'autre')]);
+    assert.deepEqual(a.services, []);
+    assert.deepEqual(a.folders, []);
+  });
+
+  test('des environnements à la racine sont reconnus aussi', () => {
+    const a = links.analyserArbre([lien('dev', 'bo'), lien('prod', 'bo')]);
+    assert.deepEqual(a.environments, ['dev', 'prod']);
+    assert.deepEqual(a.services.map((s) => s.name), ['bo']);
+  });
+
+  test('un arbre sans le moindre environnement ne propose rien', () => {
+    const a = links.analyserArbre([lien('doc', 'confluence'), lien('doc/specs', 'paiement')]);
+    assert.deepEqual(a.services, []);
+  });
+});
+
 describe('import : le format « Netscape » de Chrome', () => {
   const FICHIER = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
 <DL><p>

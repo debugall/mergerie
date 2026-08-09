@@ -705,7 +705,12 @@ une doc, un outil) reste un **lien libre**, à plat, retrouvé par ses tags.
 
 #### La barre du haut
 **Un champ de recherche**, et il couvre **les deux moitiés de l'écran** — la grille et les liens
-libres. Chercher `kibana` ou un morceau d'URL suffit ; on n'a pas à décider dans quelle moitié
+libres. Il porte sur le nom du service, ses tags, son dépôt, **le nom de chaque adresse** et les URLs
+elles-mêmes : chercher `erreurs paiement` trouve la case qui la contient. Sous une recherche, une case **ne montre que
+ce qui correspond** — afficher ses huit adresses pour une seule trouvée obligerait à relire la case
+au lieu de lire la réponse. Une requête peut mélanger les deux niveaux : `logs apache` prend `logs`
+sur la ligne et `apache` sur l'adresse, et seules les adresses apache s'affichent ; `logs` seul, à
+l'inverse, laisse passer toute la ligne — c'est elle qu'on a demandée. Chercher `kibana` ou un morceau d'URL suffit ; on n'a pas à décider dans quelle moitié
 regarder avant de savoir où est la réponse. Quand la grille ne rend rien mais que les liens libres
 si, le message le dit et renvoie plus bas, au lieu d'annoncer « rien ne correspond » au-dessus de
 résultats bien présents.
@@ -734,9 +739,9 @@ fait tous les jours, et c'est ce qui occupe la place.
   ses **tags**, et le **dépôt Mergerie associé** quand il y en a un. `Épingler en tête de grille`
   est une case de la fiche du service : c'est ainsi qu'on remonte ce qu'on ouvre tous les jours.
 - **Colonnes = environnements**, dans l'ordre que tu leur donnes, chacun avec sa **couleur**
-  d'en-tête (la prod en rouge invite à réfléchir avant de cliquer). Au survol d'un en-tête,
-  deux flèches **déplacent la colonne** d'un cran et une roue dentée ouvre son réglage — l'ordre
-  n'est plus figé à la création, et ce qui est cliquable finit par se voir.
+  d'en-tête (la prod en rouge invite à réfléchir avant de cliquer). **Le nom de la colonne ouvre
+  son réglage** — renommer, changer la couleur, supprimer ; et au survol, deux flèches la
+  **déplacent** d'un cran. La suppression annonce **combien d'adresses partent avec elle**.
 - **Une case = une ou plusieurs adresses, écrites.** On aurait pu deviner l'adresse de preprod
   depuis celle de dev en remplaçant un morceau de domaine ; c'est exactement la magie qui envoie un
   jour sur le mauvais environnement sans prévenir. Une case vide affiche un `+`, une case remplie un
@@ -764,13 +769,24 @@ l'écran **descend jusqu'à sa ligne** en la soulignant une seconde — une gril
 atterrir n'importe où.
 
 #### Liens libres
-Une liste sous la grille : libellé, URL, tags. Ajout et édition au clic, et la recherche du haut les
-filtre avec le reste. C'est là qu'atterrit l'import de marque-pages.
+Une liste sous la grille : libellé, URL, tags, **dossier**. Ajout et édition au clic, et la recherche
+du haut les filtre avec le reste. C'est là qu'atterrit l'import de marque-pages.
 
-Au-delà d'une douzaine, elle se **groupe par dossier** — le dernier tag posé par l'import est celui
-qui contenait le lien — avec le compte de chacun. Les groupes sont **dépliés** : ils servent à donner
-une structure, pas à cacher ; ouvrir dix dossiers pour retrouver un lien coûte plus cher que de
-faire défiler. Chacun se replie si l'on veut ranger l'écran. Sous une recherche ou un tag, on
+Le champ **Dossier** propose les dossiers existants **et accepte les nouveaux** — choisir dans une
+liste interdirait d'en créer un, un champ nu obligerait à retaper un chemin qu'on a déjà. Une barre
+oblique crée le sous-dossier au passage (`doc/astreinte/2026`), et les niveaux intermédiaires sont
+proposés même si aucun lien n'y est posé directement. Laisser vide range le lien à la racine.
+
+Au-delà d'une douzaine, elle se **groupe par dossier**, en reprenant **l'arbre tel qu'il était dans
+le navigateur** — chemin complet, profondeur comprise — avec le compte de chacun. Regrouper sur le
+seul dernier segment faisait fusionner `seres/prod` et `logs/prod` dans un même « prod » : l'outil
+détruisait une structure que le navigateur, lui, préserve. **Le premier niveau est ouvert, les suivants non** : tout
+déplier à cinq niveaux redonne la liste plate qu'on cherchait à quitter, tout replier oblige à
+ouvrir dix dossiers pour retrouver un lien. `Tout déplier` et `Tout replier` disent explicitement
+l'un ou l'autre ; recliquer sur celui qui est actif revient au premier niveau, et le choix est
+retenu. Chaque dossier qui en contient d'autres porte **son propre bouton** de pliage, pour ouvrir
+ou fermer sa branche sans toucher au reste — un coup d'œil, pas une préférence : celui-là ne se
+retient pas. Sous une recherche ou un tag, on
 revient à plat : le filtre EST le rangement, et deux niveaux de tri à la fois cachent ce qu'on vient
 de demander.
 
@@ -856,7 +872,36 @@ branche, sur l'environnement voulu, sans rien retaper.
 *Chrome → Favoris → Gestionnaire de favoris → ⋮ → Exporter les favoris*, puis
 `Importer depuis Chrome`.
 
-**L'aperçu est replié par dossier, et rien n'est coché.** Un dossier par ligne, avec son compte et
+**L'import lit ton arbre.** Un dossier dont plusieurs enfants portent des noms d'environnement
+(`dev`, `recette`, `tmc`, `pprod`, `prod`…) ne décrit pas un rangement : il décrit une **grille**.
+L'aperçu la construit et te la montre **avant de créer quoi que ce soit** — un tableau avec le
+nombre d'adresses par case. Tu la refuses d'une case à décocher, et tout revient en liens libres.
+
+Deux gestes y sont possibles, parce que la détection lit des noms de dossiers et ne peut pas tout
+savoir : **renommer une ligne** sur place (le nom d'un dossier n'est pas toujours celui qu'on
+donnerait au service), et **réunir plusieurs lignes en un seul service** — on coche, on clique
+`Réunir en un service`, et leurs cases se rejoignent environnement par environnement, chaque adresse
+gardant son nom.
+
+Deux formes, distinguées par une mesure : *les libellés se répètent-ils d'un environnement à
+l'autre ?*
+
+- **Ils se répètent** — `bo`, `bp`, `po`, `api` dans chacun de tes cinq environnements : c'est la
+  même chose vue à cinq endroits, donc **une ligne par libellé**.
+- **Ils ne se répètent pas** — un Kibana et ses requêtes enregistrées, propres à chaque
+  environnement : **une ligne pour le dossier**, et les libellés deviennent les noms des adresses.
+
+Trois détails qui évitent des grilles absurdes : deux orthographes d'un même environnement
+(`pprod` et `preprod`) donnent **une seule colonne** ; un environnement numéroté (`recette2`) reste
+distinct ; et un sous-dossier **sous** l'environnement devient sa propre ligne (`logs/prod/keycloak`
+→ un service `logs · keycloak`), sans quoi une case porterait vingt-quatre adresses. Les colonnes
+sont rangées dans l'ordre de la chaîne de déploiement, pas dans celui du fichier.
+
+Rien n'est deviné du métier : le seul indice cherché est un **nom d'environnement**, sur une liste
+large en français et en anglais. Un dossier voisin qui n'en est pas un (`seres/keycloak`) est laissé
+de côté et ses liens restent libres.
+
+**Le reste de l'aperçu est replié par dossier, et rien n'est coché.** Un dossier par ligne, avec son compte et
 sa case ; on déplie celui qu'on veut, on coche, on importe douze liens au lieu de deux cents.
 Choisir ce qui entre coûte dix secondes, trier ce qui est entré coûte une demi-heure. Les **dossiers racines des navigateurs**
 (« Barre de favoris », « Autres favoris », « Bookmarks bar »…) **ne deviennent pas des tags** :

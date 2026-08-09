@@ -2226,6 +2226,16 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .import-folder-box > summary:hover { background: var(--hover); }
 .import-folder-box .import-item { padding-left: 26px; }
 
+/* La grille proposée par l'import : un aperçu, pas un tableau de travail — assez lisible pour
+   juger, assez compact pour tenir dans la modale. */
+.import-proposal { border: 1px solid var(--accent); border-radius: var(--r-md); padding: 10px 12px; margin: 10px 0; }
+.import-grid { border-collapse: collapse; margin: 8px 0 4px; font-size: 12px; }
+.import-grid th, .import-grid td { border: 1px solid var(--line); padding: 3px 9px; text-align: center; }
+.import-grid td:first-child, .import-grid th:first-child { text-align: left; font-weight: var(--fw-sem); }
+.import-proposal p { margin: 4px 0 0; font-size: 11px; }
+.import-grid .ig-first { display: flex; align-items: center; gap: 8px; }
+.import-grid .ig-name { width: 190px; height: 24px; padding: 2px 6px; font: inherit; font-size: 12px; }
+
 /* Les liens libres groupés par dossier : même pliage que l'aperçu d'import, pour qu'on
    reconnaisse le geste d'un écran à l'autre. */
 .link-free-group > summary {
@@ -2236,7 +2246,12 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .link-free-group > summary::before { content: '▸'; color: var(--muted); font-size: 11px; }
 .link-free-group[open] > summary::before { content: '▾'; }
 .link-free-group > summary:hover { background: var(--hover); }
+/* Le bouton de pliage d'un dossier : discret, et il ne se montre qu'au survol de sa ligne. */
+.link-free-group > summary .lfg-fold { margin-left: 2px; }
+.link-free-group > summary:hover .lfg-fold, .lfg-fold:focus-visible { opacity: 1; }
 .link-free-group .link-free-row { margin-left: 18px; }
+/* Un arbre : chaque niveau se décale du sien, sans quoi la profondeur ne se voit pas. */
+.link-free-group .link-free-group { margin-left: 14px; }
 
 
 .link-tag {
@@ -2248,14 +2263,21 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 
 /* La grille défile HORIZONTALEMENT dans son cadre : à six environnements, elle dépasse, et
    c'est elle qui doit défiler — pas la page entière. */
+/* LES COLONNES SE PARTAGENT LA LARGEUR, elles ne l'imposent pas. Avec des largeurs dictées par
+   le contenu, cinq environnements d'URLs longues débordaient : on faisait défiler de côté pour
+   lire une grille dont tout l'intérêt est de se voir d'un coup.
+   `table-layout: fixed` fige le calcul sur la première ligne : la colonne des services garde sa
+   place, les environnements se répartissent le reste à parts égales, et les adresses s'abrègent
+   au lieu d'élargir. Le débordement reste possible au-delà de sept colonnes — mieux vaut
+   défiler que rendre chaque case illisible. */
 .link-grid-wrap { overflow-x: auto; }
-.link-grid { border-collapse: separate; border-spacing: 0; width: 100%; }
+.link-grid { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; min-width: 640px; }
 .link-grid th, .link-grid td { border-bottom: 1px solid var(--line); padding: 0; vertical-align: middle; }
 /* La colonne des services reste visible pendant qu'on fait défiler les environnements :
    une case sans savoir de quel service elle est ne dit rien. */
 .link-grid th.link-svc, .link-grid td.link-svc {
   position: sticky; left: 0; z-index: 1; background: var(--bg);
-  min-width: 220px; padding: 8px 12px 8px 0;
+  width: 220px; padding: 8px 12px 8px 0;
 }
 .link-grid thead th { font-size: 12px; font-weight: var(--fw-sem); text-align: left; padding: 6px 8px; white-space: nowrap; }
 /* L'en-tête porte la couleur de l'environnement — sur une pastille, pas en fond : un aplat
@@ -2265,7 +2287,12 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .link-svc-name { font-weight: var(--fw-sem); display: flex; align-items: center; gap: 8px; }
 .link-svc-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; font-size: 11px; color: var(--muted); }
 .link-svc-tag { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r-full); padding: 0 7px; }
-.link-cell { padding: 4px 6px; min-width: 150px; }
+.link-cell { padding: 4px 6px; }
+/* Le tableau sans une seule ligne : les colonnes restent là, et on dit pourquoi c'est vide. */
+.link-grid-empty td { padding: 18px 8px; color: var(--muted); text-align: center; }
+/* Une adresse trop longue s'ABRÈGE : sans ça, elle élargit sa colonne et pousse les autres
+   hors de l'écran. L'adresse entière reste au survol, et le nom prime sur l'URL quand il existe. */
+.link-open > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .link-open {
   display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 9px;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
@@ -2313,6 +2340,10 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 
 .link-cell { position: relative; }
 .link-cell .link-edit { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: var(--panel); }
+/* Le nom d'un environnement EST le bouton qui l'ouvre : c'est ce qu'on vise pour agir sur une
+   colonne. Il se souligne au survol, sans quoi rien ne dirait qu'il est cliquable. */
+.link-env-name { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.link-env-name:hover { text-decoration: underline; text-underline-offset: 3px; }
 .link-env-acts { display: inline-flex; align-items: center; gap: 1px; margin-left: 4px; }
 
 /* Une case peut porter plusieurs adresses : elles s'empilent, au plus deux, puis « +N » les
@@ -2326,9 +2357,13 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .link-plus:hover { border-color: var(--accent); color: var(--text); }
 
 /* L'éditeur d'une case : une ligne par adresse, la case s'étire le temps de la saisie. */
-.link-cell-edit { display: flex; flex-direction: column; gap: 6px; padding: 4px 2px; min-width: 300px; }
+/* L'éditeur s'adapte à la colonne au lieu de l'élargir : à l'étroit, le nom passe au-dessus
+   de l'URL plutôt que de forcer un défilement horizontal sur toute la grille. */
+.link-cell-edit { display: flex; flex-direction: column; gap: 6px; padding: 4px 2px; min-width: 0; }
+.lce-row > input { min-width: 0; }
 .lce-rows { display: flex; flex-direction: column; gap: 4px; }
 .lce-row { display: grid; grid-template-columns: 34% 1fr 24px; gap: 4px; align-items: center; }
+@media (max-width: 1400px) { .lce-row { grid-template-columns: 1fr 24px; } .lce-row .lce-label { grid-column: 1 / -1; } }
 .lce-row .lce-del { opacity: .55; }
 .lce-row:hover .lce-del { opacity: 1; }
 .lce-actions { display: flex; align-items: center; gap: 6px; }
@@ -2360,7 +2395,9 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
   background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); }
 .link-ctx-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12.5px; }
 .link-ctx-row code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.modal-service, .modal-import { width: min(720px, 94vw); }
+.modal-service { width: min(720px, 94vw); }
+/* L'import porte une GRILLE : à 720 px, un tableau de cinq colonnes se lisait de biais. */
+.modal-import { width: min(1180px, 96vw); }
 .import-tree { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; }
 .import-folder { font-weight: var(--fw-sem); margin: 8px 0 2px; font-size: 12.5px; color: var(--muted); }
 .import-item { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 2px 0 2px 14px; }

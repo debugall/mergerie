@@ -9743,7 +9743,7 @@ function marquerBriefVu() {
    GRILLE — services en lignes, environnements en colonnes — et, à côté, des liens libres à
    plat pour tout ce qui n'a pas de dimension environnement. Deux formes, deux réalités. */
 const LINKS = {
-  grid: null, tag: '', q: '', selectMode: false, selection: new Set(), ouvertes: new Set(), importLinks: [],
+  grid: null, tag: '', q: '', selectMode: false, selection: new Set(), ouvertes: new Set(), importLinks: [], importGrid: null, freeDeplie: null,
   // Filtres : Set VIDE = « tout », jamais « rien ». Un filtre qu'on n'a pas posé ne cache rien.
   envs: new Set(), svcs: new Set(), svcQ: '', toutDeplier: false,
 };
@@ -9759,12 +9759,13 @@ function chargerFiltresLiens() {
     LINKS.svcs = new Set(Array.isArray(d.svcs) ? d.svcs : []);
     LINKS.tag = typeof d.tag === 'string' ? d.tag : '';
     LINKS.toutDeplier = !!d.toutDeplier;
+    LINKS.freeDeplie = d.freeDeplie === true || d.freeDeplie === false ? d.freeDeplie : null;
   } catch { /* stockage indisponible */ }
 }
 function retenirFiltresLiens() {
   try {
     localStorage.setItem(LINKS_FILTRES, JSON.stringify({
-      envs: [...LINKS.envs], svcs: [...LINKS.svcs], tag: LINKS.tag, toutDeplier: LINKS.toutDeplier,
+      envs: [...LINKS.envs], svcs: [...LINKS.svcs], tag: LINKS.tag, toutDeplier: LINKS.toutDeplier, freeDeplie: LINKS.freeDeplie,
     }));
   } catch { /* stockage indisponible */ }
 }
@@ -9844,6 +9845,18 @@ const envsVisibles = () => ((LINKS.grid || {}).environments || [])
 /* UNE requête pour les deux moitiés de l'écran. Un service se cherche par son nom, ses tags,
    son dépôt ou n'importe laquelle de ses URLs — c'est souvent l'URL qu'on a en tête (« celui
    qui est sur kibana-preprod ») plutôt que le nom qu'on lui a donné. */
+const motsRecherche = () => LINKS.q.split(/\s+/).filter(Boolean);
+const metaService = (s) => [s.name, s.project || '', ...(s.tags || [])].join(' ').toLowerCase();
+
+/* UNE ADRESSE EST TROUVÉE si la requête tient dans « ce que dit son service » PLUS « ce qu'elle
+   dit elle-même ». C'est ce qui rend « logs apache » juste : « logs » vient de la ligne,
+   « apache » de l'adresse, et seules les adresses apache s'affichent. Chercher « logs » seul,
+   à l'inverse, laisse passer toutes les adresses de la ligne — la ligne entière a été demandée. */
+function adresseTrouvee(s, u) {
+  const foin = `${metaService(s)} ${u.label || ''} ${u.url}`.toLowerCase();
+  return motsRecherche().every((m) => foin.includes(m));
+}
+
 function serviceVisible(s) {
   if (LINKS.svcs.size && !LINKS.svcs.has(s.id)) return false;
   /* Filtrer sur la prod et voir dix lignes entièrement vides ne montre pas la prod, ça montre
@@ -9851,8 +9864,11 @@ function serviceVisible(s) {
   if (LINKS.envs.size && !envsVisibles().some((e) => ((s.urls || {})[e.id] || []).length)) return false;
   if (LINKS.tag && !(s.tags || []).includes(LINKS.tag)) return false;
   if (!LINKS.q) return true;
-  const foin = [s.name, s.project || '', ...(s.tags || []), ...Object.values(s.urls || {})].join(' ').toLowerCase();
-  return LINKS.q.split(/\s+/).filter(Boolean).every((m) => foin.includes(m));
+  const mots = motsRecherche();
+  const meta = metaService(s);
+  // Le service se trouve par lui-même, ou par l'une de ses adresses.
+  return mots.every((m) => meta.includes(m))
+    || Object.values(s.urls || {}).flat().some((u) => adresseTrouvee(s, u));
 }
 const freeVisible = (l) => (!LINKS.tag || (l.tags || []).includes(LINKS.tag))
   && (!LINKS.q || LINKS.q.split(/\s+/).filter(Boolean)
@@ -9888,29 +9904,28 @@ function renderLinkGrid() {
     return;
   }
   const visibles = services.filter(serviceVisible);
-  if (!visibles.length) {
-    /* Le message dit ce qui est vrai DE LA GRILLE, et renvoie vers l'autre moitié de l'écran :
-       « rien ne correspond » affiché au-dessus de trois résultats est un mensonge d'affichage. */
-    const ailleurs = ((LINKS.grid || {}).free_links || []).some(freeVisible);
-    box.innerHTML = `<p class="muted">${esc(tr(ailleurs ? 'links.grid.no-match' : 'links.no-match-all'))}</p>`;
-    return;
-  }
 
   /* L'en-tête ÉTAIT cliquable sans rien pour le dire, et l'ordre des colonnes ne se corrigeait
      pas. Les trois boutons n'apparaissent qu'au survol (et au focus clavier) : la grille reste
      calme au repos, et ce qui est faisable finit par se voir. */
   const rang = (id) => toutesEnvs.findIndex((x) => x.id === id);
+  /* LE NOM EST LE BOUTON. Régler ou supprimer un environnement se cachait derrière une roue
+     dentée n'apparaissant qu'au survol : la fonction existait, personne ne la trouvait. Le nom
+     est ce qu'on vise naturellement quand on veut agir sur une colonne. */
   const entete = envs.map((e) => `<th><span class="link-env">`
-    + `<span class="link-env-dot" style="background:${esc(e.color)}"></span>${esc(e.name)}`
+    + `<span class="link-env-dot" style="background:${esc(e.color)}"></span>`
+    + `<button type="button" class="link-env-name" data-envedit="${e.id}" title="${esc(tr('links.env.settings'))}">${esc(e.name)}</button>`
     + `<span class="link-env-acts">`
     + `<button type="button" class="link-icon" data-envmove="${e.id}" data-dir="-1"${rang(e.id) === 0 ? ' disabled' : ''} title="${esc(tr('links.env.move-left'))}" aria-label="${esc(tr('links.env.move-left'))}">${svgIco('left')}</button>`
     + `<button type="button" class="link-icon" data-envmove="${e.id}" data-dir="1"${rang(e.id) === toutesEnvs.length - 1 ? ' disabled' : ''} title="${esc(tr('links.env.move-right'))}" aria-label="${esc(tr('links.env.move-right'))}">${svgIco('right')}</button>`
-    + `<button type="button" class="link-icon" data-envedit="${e.id}" title="${esc(tr('links.env.settings'))}" aria-label="${esc(tr('links.env.settings'))}">${svgIco('sliders')}</button>`
     + `</span></span></th>`).join('');
 
   const lignes = visibles.map((s) => {
     const maxLigne = Math.max(0, ...envs.map((e) => (((s.urls || {})[e.id]) || []).length));
     const cases = envs.map((e) => {
+      /* SOUS UNE RECHERCHE, LA CASE NE MONTRE QUE CE QUI CORRESPOND. Afficher les huit adresses
+         d'une case pour une seule trouvée oblige à relire la case au lieu de lire la réponse.
+         Le `+` d'ajout ne revient pas pour autant : la case n'est pas vide, elle est filtrée. */
       const liste = ((s.urls || {})[e.id]) || [];
       if (!liste.length) {
         return `<td class="link-cell"><button type="button" class="link-add" data-addurl="${s.id}" data-env="${e.id}">+</button></td>`;
@@ -9921,21 +9936,28 @@ function renderLinkGrid() {
          Le seuil se juge donc SUR LA LIGNE : tant que la case la plus fournie reste sous
          `SEUIL_LIGNE`, on montre tout — la ligne garde une hauteur raisonnable et plus rien
          n'est caché. Au-delà, on retombe à deux et le « +N » prend le relais. */
-      const deplie = LINKS.toutDeplier || LINKS.ouvertes.has(`${s.id}:${e.id}`) || maxLigne <= SEUIL_LIGNE;
-      const montrees = deplie ? liste : liste.slice(0, 2);
+      /* SOUS UNE RECHERCHE, la case montre tout : laisser l'adresse trouvée derrière un « +7 »
+         obligerait à déplier pour voir ce qu'on vient de chercher. */
+      const retenues = LINKS.q ? liste.filter((u) => adresseTrouvee(s, u)) : liste;
+      if (LINKS.q && !retenues.length) return '<td class="link-cell"></td>';
+      const deplie = LINKS.q || LINKS.toutDeplier || LINKS.ouvertes.has(`${s.id}:${e.id}`) || maxLigne <= SEUIL_LIGNE;
+      const montrees = deplie ? retenues : retenues.slice(0, 2);
       /* `rel="noopener noreferrer"` sur TOUTES les ouvertures externes : l'onglet ouvert ne
          doit rien pouvoir faire de la page qui l'a ouvert. */
       const lignes = montrees.map((u) => `<a class="link-open" href="${esc(u.url)}" target="_blank" rel="noopener noreferrer"
           data-usekind="service_url" data-useref="${s.id}:${e.id}:${u.id}" title="${esc(u.url)}">
           <span>${esc(u.label || urlCourte(u.url))}</span></a>`).join('');
-      const caches = liste.slice(montrees.length);
+      const caches = retenues.slice(montrees.length);
       /* Le « +N » DIT CE QU'IL CACHE au survol. Un compteur seul oblige à déplier pour savoir
          s'il valait la peine d'être déplié — sur une grille entière, c'est autant d'allers et
          retours pour rien. */
       const plus = caches.length
         ? `<button type="button" class="link-plus" data-cellopen="${s.id}:${e.id}"
              title="${esc(caches.map((u) => u.label || urlCourte(u.url)).join('\n'))}">+${caches.length}</button>`
-        : (deplie && liste.length > 2 && !LINKS.toutDeplier && maxLigne > SEUIL_LIGNE
+        /* « Réduire » n'a de sens que si le dépliage vient d'un clic. Sous une recherche ou sous
+           « Tout déplier », il serait visible et inerte — un bouton qui ne fait rien est pire
+           qu'un bouton absent. */
+        : (deplie && retenues.length > 2 && !LINKS.q && !LINKS.toutDeplier && maxLigne > SEUIL_LIGNE
           ? `<button type="button" class="link-plus" data-cellopen="${s.id}:${e.id}">${esc(tr('links.url.less'))}</button>`
           : '');
       /* LE CRAYON. Une case remplie n'offrait aucun chemin de retour : pour corriger une faute
@@ -9961,7 +9983,17 @@ function renderLinkGrid() {
       </td>${cases}</tr>`;
   }).join('');
 
-  box.innerHTML = `<table class="link-grid"><thead><tr><th class="link-svc"></th>${entete}</tr></thead><tbody>${lignes}</tbody></table>`;
+  /* LE TABLEAU EXISTE DÈS QU'IL Y A UNE COLONNE, même sans une seule ligne. Sans ça, un
+     environnement créé avant tout service devenait inatteignable : ses réglages vivent dans
+     son en-tête, et l'en-tête n'était pas rendu — impossible de le renommer ni de le
+     supprimer, et l'écran annonçait « rien ne correspond à cette recherche » à quelqu'un qui
+     n'avait rien cherché. */
+  const vide = !visibles.length ? `<tr class="link-grid-empty"><td colspan="${envs.length + 1}">${esc(tr(
+    services.length
+      ? (((LINKS.grid || {}).free_links || []).some(freeVisible) ? 'links.grid.no-match' : 'links.no-match-all')
+      : 'links.grid.no-service',
+  ))}</td></tr>` : '';
+  box.innerHTML = `<table class="link-grid"><thead><tr><th class="link-svc"></th>${entete}</tr></thead><tbody>${lignes}${vide}</tbody></table>`;
 }
 
 /* L'URL raccourcie : l'hôte et le début du chemin. Une case de grille montre OÙ l'on va, pas
@@ -9975,9 +10007,16 @@ function urlCourte(url) {
 }
 
 
+/* GROUPÉS PAR DOSSIER au-delà d'une douzaine, en reprenant l'arbre du navigateur. Une liste
+   plate de deux cents entrées ne se parcourt pas ; les mêmes rangées par dossier se survolent.
+   Sous une recherche ou un tag, on reste à plat : le filtre EST le rangement, et deux niveaux de
+   tri à la fois cachent ce qu'on vient de demander. */
+const SEUIL_GROUPES = 12;
+
 function renderFreeLinks() {
   const box = $('#linkFreeList');
   const tous = ((LINKS.grid && LINKS.grid.free_links) || []).filter(freeVisible);
+  const filtre = LINKS.q || LINKS.tag;
   /* CE QU'ON VOIT EST CE SUR QUOI ON AGIT. Un lien coché puis filtré hors de vue partirait
      avec les autres au moment de ranger, sans que rien ne l'ait annoncé. On retire donc de la
      sélection ce que le filtre a écarté — quitte à devoir recocher, ce qui se voit. */
@@ -9995,6 +10034,16 @@ function renderFreeLinks() {
   }
   /* « Tout sélectionner » porte sur ce que le filtre a laissé, pas sur la base entière : on
      tamise d'abord (« kibana »), on coche tout, on range. C'est le geste d'après l'import. */
+  /* Replier ou déplier TOUS les dossiers d'un coup. Le pliage un par un suffit à trois dossiers ;
+     à treize, on veut voir l'arbre nu ou tout son contenu, pas cliquer treize fois. */
+  const groupable = !filtre && tous.length > SEUIL_GROUPES;
+  for (const [sel, actif] of [['#linkFreeExpand', LINKS.freeDeplie === true], ['#linkFreeFold', LINKS.freeDeplie === false]]) {
+    const b2 = $(sel);
+    if (!b2) continue;
+    b2.hidden = !groupable;
+    b2.classList.toggle('active', actif);
+    b2.setAttribute('aria-pressed', String(actif));
+  }
   const tout = $('#linkFreeAll');
   if (tout) {
     tout.hidden = !LINKS.selectMode || !tous.length;
@@ -10019,31 +10068,51 @@ function renderFreeLinks() {
     box.innerHTML = `<p class="muted">${esc(tr(LINKS.q || LINKS.tag ? 'links.free.no-match' : 'links.free.empty'))}</p>`;
     return;
   }
-  /* GROUPÉS PAR DOSSIER au-delà d'une douzaine. L'import pose le chemin du dossier en tags —
-     le dernier est celui qui contenait le lien. Une liste plate de deux cents entrées ne se
-     parcourt pas ; les mêmes rangées par dossier, repliées, se survolent.
-     Sous une recherche ou un tag, on reste à plat : le filtre EST le rangement, et deux niveaux
-     de tri à la fois cachent ce qu'on vient de demander. */
-  const SEUIL_GROUPES = 12;
-  const filtre = LINKS.q || LINKS.tag;
   if (!filtre && tous.length > SEUIL_GROUPES) {
-    const parDossier = new Map();
-    for (const l of tous) {
-      const d = (l.tags || []).slice(-1)[0] || tr('links.free.no-folder');
-      if (!parDossier.has(d)) parDossier.set(d, []);
-      parDossier.get(d).push(l);
-    }
-    const ordre = [...parDossier.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-    /* DÉPLIÉS par défaut. Le groupement sert à donner une structure — des titres, des comptes —
-       pas à cacher : replier oblige à ouvrir dix dossiers pour retrouver un lien, ce qui coûte
-       plus cher que de faire défiler. On garde le pliage pour qui veut ranger l'écran. */
-    box.innerHTML = ordre.map(([d, liens]) => `<details class="link-free-group" open>
-      <summary>${esc(d)} <span class="muted">${esc(tr('links.free.count', { n: liens.length, count: liens.length }))}</span></summary>
-      ${liens.map(ligneFreeLink).join('')}
-    </details>`).join('');
+    box.innerHTML = arbreFreeLinks(tous);
     return;
   }
   box.innerHTML = tous.map(ligneFreeLink).join('');
+}
+
+/* L'ARBRE RÉEL, et non un groupement sur le dernier segment du chemin. Grouper par la feuille
+   faisait fusionner `seres/prod` et `logs/prod` dans un même « prod » : l'outil détruisait une
+   structure que le navigateur, lui, préserve. Le chemin complet est conservé à l'import, et
+   l'écran le rend tel quel — déplié, parce que ranger sert à structurer, pas à cacher. */
+function arbreFreeLinks(liens) {
+  const racine = { enfants: new Map(), liens: [] };
+  for (const l of liens) {
+    let n = racine;
+    for (const seg of String(l.folder || '').split('/').filter(Boolean)) {
+      if (!n.enfants.has(seg)) n.enfants.set(seg, { enfants: new Map(), liens: [] });
+      n = n.enfants.get(seg);
+    }
+    n.liens.push(l);
+  }
+  const compter = (n) => n.liens.length + [...n.enfants.values()].reduce((t, e) => t + compter(e), 0);
+  /* PAR DÉFAUT, LE PREMIER NIVEAU SEULEMENT. Un arbre entièrement déplié à cinq niveaux redonne
+     la liste plate qu'on cherchait à quitter ; entièrement replié, il oblige à ouvrir dix
+     dossiers pour retrouver un lien. Le premier niveau montre le sommaire et rien de plus.
+     Les deux boutons, eux, disent explicitement « tout » ou « rien ». */
+  const ouvert = (profondeur) => (LINKS.freeDeplie === null ? profondeur === 0 : LINKS.freeDeplie);
+  const rendre = (n, nom, profondeur = 0) => {
+    const dedans = [...n.enfants.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([k, e]) => rendre(e, k, profondeur + 1)).join('') + n.liens.map(ligneFreeLink).join('');
+    if (nom === null) return dedans;                 // la racine n'est pas un dossier
+    const t = compter(n);
+    /* Le bouton de pliage n'apparaît QUE si le dossier en contient d'autres : sur une feuille,
+       il ne ferait rien de plus que le chevron du dossier lui-même. */
+    const sousDossiers = n.enfants.size > 0;
+    const bouton = sousDossiers
+      ? `<button type="button" class="link-icon lfg-fold" data-foldsub
+           title="${esc(tr('links.free.fold-here'))}" aria-label="${esc(tr('links.free.fold-here'))}">${svgIco('unfold')}</button>`
+      : '';
+    return `<details class="link-free-group"${ouvert(profondeur) ? ' open' : ''}>
+      <summary>${esc(nom)} <span class="muted">${esc(tr('links.free.count', { n: t, count: t }))}</span>${bouton}</summary>
+      ${dedans}</details>`;
+  };
+  // La racine n'est pas un dossier : ses enfants sont le PREMIER niveau, donc profondeur 0.
+  return rendre(racine, null, -1);
 }
 
 const ligneFreeLink = (l) => `<div class="link-free-row">
@@ -10164,6 +10233,29 @@ $('#linkMoreMenu') && $('#linkMoreMenu').addEventListener('click', (e) => {
 
 /* Le mode sélection : les cases à cocher n'existent que le temps de s'en servir. En sortir
    vide la sélection — la garder en mémoire ferait agir plus tard sur des lignes invisibles. */
+/* Recliquer sur le bouton actif REVIENT AU DÉFAUT — le premier niveau. Sans ça, on ne pourrait
+   plus y retourner qu'en vidant son stockage. */
+const plierLiens = (valeur) => {
+  LINKS.freeDeplie = LINKS.freeDeplie === valeur ? null : valeur;
+  retenirFiltresLiens();
+  renderFreeLinks();
+};
+/* Plier ou déplier UN dossier et tout ce qu'il contient. Le geste est local et ne se retient
+   pas : c'est un coup d'œil, pas une préférence. L'icône bascule pour dire ce que fera le
+   prochain clic — sans quoi on ne saurait pas si l'on va ouvrir ou fermer. */
+$('#linkFreeList') && $('#linkFreeList').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-foldsub]');
+  if (!b) return;
+  e.preventDefault();                 // ne pas basculer le <details> qui porte le bouton
+  e.stopPropagation();
+  const sous = $$('details', b.closest('details'));
+  const tousOuverts = sous.length > 0 && sous.every((d) => d.open);
+  sous.forEach((d) => { d.open = !tousOuverts; });
+  $('use', b).setAttribute('href', tousOuverts ? '#i-unfold' : '#i-fold');
+});
+
+$('#linkFreeExpand') && $('#linkFreeExpand').addEventListener('click', () => plierLiens(true));
+$('#linkFreeFold') && $('#linkFreeFold').addEventListener('click', () => plierLiens(false));
 $('#linkFreeAll') && $('#linkFreeAll').addEventListener('click', (e) => {
   const visibles = ((LINKS.grid && LINKS.grid.free_links) || []).filter(freeVisible);
   if (e.currentTarget.dataset.complet) visibles.forEach((l) => LINKS.selection.delete(l.id));
@@ -10327,9 +10419,16 @@ $('#envSave') && $('#envSave').addEventListener('click', async () => {
 });
 $('#envDelete') && $('#envDelete').addEventListener('click', async () => {
   if (!envEnCours) return;
+  /* COMBIEN D'ADRESSES PARTENT AVEC LA COLONNE. « Les URLs sont supprimées avec lui » ne dit
+     pas s'il y en a une ou quarante, et c'est ce qu'on a besoin de savoir pour répondre. */
+  const n = ((LINKS.grid && LINKS.grid.services) || [])
+    .reduce((t, s2) => t + (((s2.urls || {})[envEnCours.id] || []).length), 0);
   if (!await confirmDialog({
-    title: tr('links.env.delete'), text: tr('links.env.delete-text', { name: envEnCours.name }),
-    confirmLabel: tr('ui.delete'),
+    title: tr('links.env.delete'),
+    text: n
+      ? tr('links.env.delete-text-n', { name: envEnCours.name, n, count: n })
+      : tr('links.env.delete-text-empty', { name: envEnCours.name }),
+    confirmLabel: tr('ui.delete'), danger: true,
   })) return;
   try {
     await api(`/environments/${envEnCours.id}`, { method: 'DELETE' });
@@ -10491,6 +10590,16 @@ function openFreeModal(id) {
   $('#freeLabel').value = freeEnCours ? freeEnCours.label : '';
   $('#freeUrl').value = freeEnCours ? freeEnCours.url : '';
   $('#freeTags').value = freeEnCours ? (freeEnCours.tags || []).join(', ') : '';
+  $('#freeFolder').value = freeEnCours ? (freeEnCours.folder || '') : '';
+  /* Tous les dossiers connus, y compris les niveaux INTERMÉDIAIRES : « doc/specs » existe même
+     si aucun lien n'est posé directement dans « doc », et le proposer évite de le retaper. */
+  const dossiers = new Set();
+  for (const l of ((LINKS.grid && LINKS.grid.free_links) || [])) {
+    const p2 = String(l.folder || '').split('/').filter(Boolean);
+    for (let i = 1; i <= p2.length; i += 1) dossiers.add(p2.slice(0, i).join('/'));
+  }
+  $('#freeFolders').innerHTML = [...dossiers].sort()
+    .map((d) => `<option value="${esc(d)}"></option>`).join('');
   $('#freeDelete').hidden = !freeEnCours;
   $('#freeLinkModal').hidden = false;
   setTimeout(() => $('#freeLabel').focus(), 0);
@@ -10499,7 +10608,7 @@ $('#linkNewFree') && $('#linkNewFree').addEventListener('click', () => openFreeM
 $('#freeCancel') && $('#freeCancel').addEventListener('click', () => { $('#freeLinkModal').hidden = true; });
 fermerAuFond('#freeLinkModal', () => { $('#freeLinkModal').hidden = true; }, { salissable: true });
 $('#freeSave') && $('#freeSave').addEventListener('click', async () => {
-  const body = { label: $('#freeLabel').value, url: $('#freeUrl').value, tags: $('#freeTags').value };
+  const body = { label: $('#freeLabel').value, url: $('#freeUrl').value, tags: $('#freeTags').value, folder: $('#freeFolder').value };
   try {
     if (freeEnCours) await api(`/free-links/${freeEnCours.id}`, { method: 'PUT', body });
     else await api('/free-links', { method: 'POST', body });
@@ -10640,6 +10749,7 @@ $('#importFile') && $('#importFile').addEventListener('change', async () => {
     const html = await f.text();
     const d = await api('/links/import', { method: 'POST', body: { html } });
     LINKS.importLinks = d.links || [];
+    LINKS.importGrid = d.proposal && (d.proposal.services || []).length ? d.proposal : null;
     renderImport();
   } catch (e) { toast(explainError(e.message), true); }
 });
@@ -10653,8 +10763,13 @@ function renderImport() {
     $('#importApply').disabled = true;
     return;
   }
+  renderImportProposal();
+  /* Les dossiers absorbés par la grille ne sont plus proposés en liens libres : les laisser
+     ferait importer deux fois la même adresse, une fois dans une case et une fois à plat. */
+  const absorbes = new Set(pris());
   const parDossier = new Map();
   LINKS.importLinks.forEach((l, i) => {
+    if (absorbes.has(dossierCourt(l.folder))) return;
     const d = l.folder || tr('links.import.root');
     if (!parDossier.has(d)) parDossier.set(d, []);
     parDossier.get(d).push({ ...l, i });
@@ -10679,6 +10794,89 @@ function renderImport() {
   $('#importPreview').hidden = false;
   majImportCount();
 }
+/* Le chemin tel que le serveur le compte : sans la racine du navigateur, qui ne dit rien. */
+const RACINES_VUES = /^(barre de favoris|autres favoris|favoris mobiles|barre personnelle|menu des marque-pages|marque-pages mobiles|autres marque-pages|bookmarks bar|bookmarks toolbar|other bookmarks|mobile bookmarks|bookmarks menu|favorites bar)\//i;
+const dossierCourt = (f) => String(f || '').replace(RACINES_VUES, '');
+const pris = () => (LINKS.importGrid && $('#importGrid') && $('#importGrid').checked ? LINKS.importGrid.folders : []);
+
+function renderImportProposal() {
+  const box = $('#importProposal');
+  if (!box) return;
+  box.hidden = !LINKS.importGrid;
+  if (!LINKS.importGrid) return;
+  const { environments: envs, services } = LINKS.importGrid;
+  $('#importProposalTitle').textContent = tr('links.import.grid', {
+    envs: tr('links.import.grid-envs', { n: envs.length, count: envs.length }),
+    svcs: tr('links.import.grid-svcs', { n: services.length, count: services.length }),
+  });
+  /* La grille TELLE QU'ELLE SERA, pas une phrase qui la décrit : c'est en la voyant qu'on sait
+     si elle a du sens, et un compte par case suffit à s'en rendre compte.
+     Chaque ligne est COCHABLE parce que la détection ne peut pas tout savoir : elle ne sait pas
+     que « logs · keycloak » et « logs · purge » sont, pour toi, le même service. Deux lignes
+     cochées, un nom, et elles n'en font plus qu'une. */
+  const entete = envs.map((e) => `<th>${esc(e)}</th>`).join('');
+  /* Le nom de chaque ligne est MODIFIABLE ici : la détection le tire d'un nom de dossier, qui
+     n'est pas toujours celui qu'on donnerait au service. Le corriger avant la création coûte
+     une frappe ; le corriger après demande d'ouvrir la fiche du service. */
+  const lignes = services.map((svc, i) => {
+    const n = (env) => ((svc.cells.find((c) => c.env === env) || {}).links || []).length;
+    return `<tr><td class="ig-first"><input type="checkbox" data-igrow="${i}" aria-label="${esc(tr('links.import.merge'))}" />
+        <input type="text" class="ig-name" data-igname="${i}" maxlength="100" value="${esc(svc.name)}" /></td>${envs.map((e) => `<td>${n(e) || '·'}</td>`).join('')}</tr>`;
+  }).join('');
+  $('#importProposalTable').innerHTML = `<table class="import-grid"><thead><tr><th></th>${entete}</tr></thead><tbody>${lignes}</tbody></table>`
+    + `<div class="toolbar toolbar-tight"><button type="button" id="importMerge" class="btn btn-sm" hidden>`
+    + `${svgIco('merge')}<span>${esc(tr('links.import.merge'))}</span></button>`
+    + `<span class="muted">${esc(tr('links.import.grid-help'))}</span></div>`;
+}
+$('#importGrid') && $('#importGrid').addEventListener('change', renderImport);
+
+/* FUSIONNER DES LIGNES. La détection lit des noms de dossiers ; elle ne sait pas que deux
+   d'entre eux désignent le même service chez toi. On coche, on nomme, et les cases se
+   rejoignent — environnement par environnement, sans rien perdre. */
+$('#importProposalTable') && $('#importProposalTable').addEventListener('change', () => {
+  const n = $$('#importProposalTable [data-igrow]:checked').length;
+  const b = $('#importMerge');
+  if (b) b.hidden = n < 2;
+});
+/* On note le nom SANS re-rendre : re-rendre à chaque frappe reprendrait le focus au champ, et
+   l'on ne pourrait pas écrire trois lettres d'affilée. */
+$('#importProposalTable') && $('#importProposalTable').addEventListener('input', (e) => {
+  const i = e.target.closest('[data-igname]');
+  if (!i || !LINKS.importGrid) return;
+  const svc = LINKS.importGrid.services[Number(i.dataset.igname)];
+  if (svc) svc.name = i.value;
+});
+$('#importProposalTable') && $('#importProposalTable').addEventListener('click', (e) => {
+  if (!e.target.closest('#importMerge')) return;
+  const idx = $$('#importProposalTable [data-igrow]:checked').map((c) => Number(c.dataset.igrow));
+  if (idx.length < 2) return;
+  const choisis = idx.map((i) => LINKS.importGrid.services[i]);
+  // Le nom part du préfixe commun — celui qu'on allait taper — et reste modifiable dans le tableau.
+  const fusion = { name: prefixeCommun(choisis.map((s2) => s2.name)), source: choisis[0].source, cells: [] };
+  for (const svc of choisis) {
+    for (const cell of svc.cells) {
+      let c = fusion.cells.find((x) => x.env === cell.env);
+      if (!c) { c = { env: cell.env, links: [] }; fusion.cells.push(c); }
+      c.links.push(...cell.links);
+    }
+  }
+  LINKS.importGrid.services = [fusion, ...LINKS.importGrid.services.filter((s2) => !choisis.includes(s2))]
+    .sort((a, b2) => a.name.localeCompare(b2.name));
+  renderImport();
+});
+
+// « logs · keycloak » + « logs · purge » → « logs ». Le préfixe commun est le nom qu'on allait taper.
+function prefixeCommun(noms) {
+  if (!noms.length) return '';
+  let p = noms[0];
+  for (const n of noms.slice(1)) {
+    let i = 0;
+    while (i < p.length && i < n.length && p[i].toLowerCase() === n[i].toLowerCase()) i += 1;
+    p = p.slice(0, i);
+  }
+  return p.replace(/[\s·\-—|]+$/, '').trim() || noms[0];
+}
+
 function majImportCount() {
   const n = $$('#importTree [data-imp]:checked').length;
   $('#importCount').textContent = tr('links.import.count', { n, count: n });
@@ -10704,14 +10902,25 @@ $('#importAll') && $('#importAll').addEventListener('click', () => { $$('#import
 $('#importNone') && $('#importNone').addEventListener('click', () => { $$('#importTree input[type=checkbox]').forEach((c) => { c.checked = false; c.indeterminate = false; }); majImportCount(); });
 $('#importApply') && $('#importApply').addEventListener('click', async (e) => {
   const choisis = $$('#importTree [data-imp]:checked').map((c) => LINKS.importLinks[Number(c.dataset.imp)]).filter(Boolean);
+  const grid = LINKS.importGrid && $('#importGrid').checked ? LINKS.importGrid : null;
   try {
-    const r = await busy(e.currentTarget, () => api('/links/import/apply', { method: 'POST', body: { links: choisis } }));
+    const r = await busy(e.currentTarget, () => api('/links/import/apply', { method: 'POST', body: { links: choisis, grid } }));
     $('#importModal').hidden = true;
     /* Le compte des IGNORÉS est dit : un import rejoué qui ne crée rien doit s'expliquer,
        sinon il passe pour un échec silencieux. */
-    toast(r.skipped
-      ? tr('links.import.done-skipped', { n: r.created, count: r.created, skipped: r.skipped })
-      : tr('links.import.done', { n: r.created, count: r.created }));
+    /* Ce que la grille a produit est DIT : sans ça, on voit soixante-neuf liens importés et on
+       cherche où sont passés les soixante-treize autres. */
+    if (r.services_created || r.urls_created) {
+      toast(tr('links.import.done-grid', {
+        n: r.created,
+        svcs: tr('links.import.grid-svcs', { n: r.services_created, count: r.services_created }),
+        urls: tr('links.import.urls-n', { n: r.urls_created, count: r.urls_created }),
+      }));
+    } else {
+      toast(r.skipped
+        ? tr('links.import.done-skipped', { n: r.created, count: r.created, skipped: r.skipped })
+        : tr('links.import.done', { n: r.created, count: r.created }));
+    }
     await loadLinks();
   } catch (err) { toast(explainError(err.message), true); }
 });

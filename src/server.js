@@ -3015,8 +3015,12 @@ app.post('/api/launcher/used', wrap((req, res) => {
 
 /* Import de marque-pages : APERÇU d'abord (on ne crée rien), application ensuite. Même
    esprit que l'aperçu obligatoire des opérations git — on voit avant d'exécuter. */
+/* L'aperçu rend AUSSI ce que l'arbre laisse deviner : un dossier dont plusieurs enfants portent
+   des noms d'environnement décrit une grille. Rien n'est créé — c'est une proposition, montrée
+   avant de l'appliquer et refusable d'un clic. */
 app.post('/api/links/import', wrap((req, res) => {
-  res.json({ links: links.parserBookmarks((req.body || {}).html, msgLinks()) });
+  const l = links.parserBookmarks((req.body || {}).html, msgLinks());
+  res.json({ links: l, proposal: links.analyserArbre(l) });
 }));
 app.post('/api/links/import/apply', wrap((req, res) => {
   res.json(links.appliquerImport(req.body || {}, msgLinks()));

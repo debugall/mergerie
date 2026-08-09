@@ -194,6 +194,124 @@ describe('Liens contextuels sur une merge request', () => {
    Un test qui n'attend rien paraît creux ; celui-ci vaut pour ce qu'il empêche. On pose une
    adresse pointant vers un serveur à nous, on exerce tout ce qui touche aux liens, et on
    vérifie qu'il n'a rien reçu. */
+/* L'IMPORT CONSTRUIT LA GRILLE. Un arbre de favoris encode souvent la même chose que cet
+   onglet ; l'aplatir en liens libres était strictement moins bon que ce que fait le navigateur. */
+describe('import : la grille proposée puis construite', () => {
+  const ARBRE = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<DL><p>
+  <DT><H3>Barre de favoris</H3>
+  <DL><p>
+    <DT><H3>app</H3>
+    <DL><p>
+      <DT><H3>dev</H3><DL><p>
+        <DT><A HREF="https://bo-dev.demo.invalid/">bo dev</A>
+        <DT><A HREF="https://api-dev.demo.invalid/">api</A>
+      </DL><p>
+      <DT><H3>pprod</H3><DL><p>
+        <DT><A HREF="https://bo-pprod.demo.invalid/">bo pprod</A>
+        <DT><A HREF="https://api-pprod.demo.invalid/">api</A>
+      </DL><p>
+      <DT><H3>preprod</H3><DL><p>
+        <DT><A HREF="https://bo-preprod.demo.invalid/">bo preprod</A>
+      </DL><p>
+      <DT><H3>prod</H3><DL><p>
+        <DT><A HREF="https://bo-prod.demo.invalid/">bo prod</A>
+        <DT><A HREF="https://api-prod.demo.invalid/">api</A>
+      </DL><p>
+    </DL><p>
+    <DT><H3>doc</H3><DL><p>
+      <DT><A HREF="https://confluence.demo.invalid/x">Confluence</A>
+    </DL><p>
+  </DL><p>
+</DL><p>`;
+
+  test('l’aperçu PROPOSE une grille sans rien créer', async () => {
+    // Le décor est partagé avec les tests précédents : on compare à l'état d'AVANT, pas à zéro.
+    const avant = (await app.api('GET', '/api/links/grid')).body.services.length;
+    const r = await app.api('POST', '/api/links/import', { html: ARBRE });
+    assert.equal(r.status, 200);
+    const p = r.body.proposal;
+    /* TROIS colonnes et non quatre : `pprod` et `preprod` sont le même environnement écrit de
+       deux façons, et deux colonnes jumelles à moitié remplies seraient pires que rien. */
+    assert.equal(p.environments.length, 3, `vu : ${p.environments}`);
+    assert.equal(p.environments[0], 'dev', 'et dans l’ordre de la chaîne de déploiement');
+    assert.equal(p.environments[2], 'prod');
+    assert.match(p.environments[1], /^(p|pre)prod$/, 'les deux orthographes n’ont donné qu’une colonne');
+    assert.deepEqual(p.services.map((s) => s.name).sort(), ['api', 'bo']);
+    // Rien n'a bougé : c'est un APERÇU.
+    assert.equal((await app.api('GET', '/api/links/grid')).body.services.length, avant);
+  });
+
+  test('appliquée, elle crée colonnes, lignes et adresses — et reste rejouable', async () => {
+    /* On repart d'une grille vide : ce test observe ce que l'IMPORT construit, pas ce que les
+       tests précédents ont laissé. Les liens libres aussi, pour compter juste. */
+    for (const s of (await app.api('GET', '/api/links/grid')).body.services) await app.api('DELETE', `/api/services/${s.id}`);
+    for (const e of (await app.api('GET', '/api/environments')).body.environments) await app.api('DELETE', `/api/environments/${e.id}`);
+    await app.api('DELETE', '/api/free-links');
+    const p = (await app.api('POST', '/api/links/import', { html: ARBRE })).body.proposal;
+    const libres = (await app.api('POST', '/api/links/import', { html: ARBRE })).body.links
+      .filter((l) => !p.folders.includes(l.folder.replace(/^Barre de favoris\//, '')));
+
+    const r = await app.api('POST', '/api/links/import/apply', { links: libres, grid: p });
+    assert.equal(r.body.services_created, 2);
+    assert.ok(r.body.urls_created >= 7);
+
+    const g = (await app.api('GET', '/api/links/grid')).body;
+    assert.deepEqual(g.services.map((s) => s.name).sort(), ['api', 'bo']);
+    assert.equal(g.environments.length, 3);
+    assert.equal(g.free_links.length, 1, 'le dossier « doc » n’a pas d’environnement : il reste libre');
+    assert.equal(g.free_links[0].folder, 'doc', 'et il garde son chemin');
+
+    // Rejoué : rien n'est doublé, ni en grille ni en liens libres.
+    const rejeu = await app.api('POST', '/api/links/import/apply', { links: libres, grid: p });
+    assert.equal(rejeu.body.urls_created, 0);
+    assert.equal(rejeu.body.services_created, 0);
+    const g2 = (await app.api('GET', '/api/links/grid')).body;
+    assert.equal(g2.services.length, 2);
+    assert.equal(g2.free_links.length, 1);
+  });
+
+  test('refuser la grille importe tout à plat, comme avant', async () => {
+    for (const s of (await app.api('GET', '/api/links/grid')).body.services) await app.api('DELETE', `/api/services/${s.id}`);
+    await app.api('DELETE', '/api/free-links');
+    const d = (await app.api('POST', '/api/links/import', { html: ARBRE })).body;
+    const r = await app.api('POST', '/api/links/import/apply', { links: d.links });
+    assert.equal(r.body.created, 8);
+    assert.equal(r.body.services_created, undefined, 'sans grille demandée, pas de compteur de grille');
+    assert.equal((await app.api('GET', '/api/links/grid')).body.services.length, 0);
+  });
+});
+
+/* FUSIONNER DES LIGNES PROPOSÉES. La détection lit des noms de dossiers ; elle ne sait pas que
+   deux d'entre eux désignent le même service. C'est une transformation du côté du client, mais le
+   serveur doit l'accepter telle quelle — d'où ce test sur la forme envoyée. */
+describe('import : réunir plusieurs lignes en un service', () => {
+  test('des cases venues de deux lignes se rejoignent dans le même service', async () => {
+    for (const s2 of (await app.api('GET', '/api/links/grid')).body.services) await app.api('DELETE', `/api/services/${s2.id}`);
+    for (const e of (await app.api('GET', '/api/environments')).body.environments) await app.api('DELETE', `/api/environments/${e.id}`);
+
+    const grid = {
+      environments: ['dev', 'prod'],
+      services: [{
+        name: 'Kibana',
+        cells: [
+          { env: 'prod', links: [{ label: 'keycloak', url: 'https://k1.demo.invalid' }, { label: 'purge', url: 'https://k2.demo.invalid' }] },
+          { env: 'dev', links: [{ label: 'tout', url: 'https://k3.demo.invalid' }] },
+        ],
+      }],
+    };
+    const r = await app.api('POST', '/api/links/import/apply', { links: [], grid });
+    assert.equal(r.body.services_created, 1);
+    assert.equal(r.body.urls_created, 3);
+
+    const g = (await app.api('GET', '/api/links/grid')).body;
+    const svc = g.services.find((x) => x.name === 'Kibana');
+    const prod = g.environments.find((e) => e.name === 'prod');
+    assert.deepEqual(svc.urls[prod.id].map((u) => u.label), ['keycloak', 'purge'],
+      'les deux lignes réunies tiennent dans la même case, chacune avec son nom');
+  });
+});
+
 describe('vider les liens libres', () => {
   test('la route efface tout et rend le compte, sans toucher à la grille', async () => {
     await app.api('POST', '/api/free-links', { label: 'A', url: 'https://a.demo.invalid' });

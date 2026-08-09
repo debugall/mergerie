@@ -94,11 +94,11 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
   test('le filtre par tag masque les services qui ne le portent pas', async () => {
     await ouvrirLiens();
     await page.locator('#linkTags .link-tag', { hasText: 'confluence' }).click();
-    await page.waitForFunction(() => !document.querySelector('#linkGrid .link-grid'));
+    await page.waitForSelector('#linkGrid .link-grid-empty');
     /* Le message ne répète plus le filtre : il renvoie vers l'autre moitié de l'écran, où le
        lien tagué « confluence » se trouve bel et bien. Dire « rien ne correspond » au-dessus
        de résultats présents était un mensonge d'affichage. */
-    assert.match(await page.locator('#linkGrid').innerText(), /liens libres/i, 'le vide dit où regarder');
+    assert.match(await page.locator('.link-grid-empty').innerText(), /liens libres/i, 'le vide dit où regarder');
     assert.ok(await page.locator('.link-free-row').count() >= 1);
     await page.locator('#linkTags .link-tag.active').click();   // on relâche le filtre — CELUI DES TAGS
     await page.waitForSelector('#linkGrid .link-grid');
@@ -236,6 +236,52 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
   /* Une recherche pour les DEUX moitiés de l'écran. Deux champs obligeaient à choisir où
      chercher avant de savoir où était la réponse — et le message « rien ne correspond »
      s'affichait au-dessus de résultats bien présents, plus bas. */
+  /* LE NOM DE CHAQUE ADRESSE COMPTE, autant que l'URL : c'est « erreurs paiement » qu'on a en
+     tête, pas le domaine. Et sous une recherche, la case montre tout — laisser l'adresse trouvée
+     derrière un « +7 » obligerait à déplier pour voir ce qu'on vient de chercher. */
+  test('la recherche trouve une adresse par son nom, et la montre', async () => {
+    const g = (await app.api('GET', '/api/links/grid')).body;
+    await app.api('PUT', `/api/services/${g.services[0].id}/urls`, {
+      environment_id: env.id,
+      urls: [
+        { label: 'erreurs paiement', url: 'https://k1.demo.invalid/a' },
+        { label: 'latence API', url: 'https://k2.demo.invalid/b' },
+        { label: 'journal complet', url: 'https://k3.demo.invalid/c' },
+        { label: 'webhooks rejetés', url: 'https://k4.demo.invalid/d' },
+        { label: 'lenteurs base', url: 'https://k5.demo.invalid/e' },
+        { label: 'erreurs 5xx', url: 'https://k6.demo.invalid/f' },
+      ],
+    });
+    await page.reload();
+    await ouvrirLiens();
+    assert.ok(await page.locator('.link-plus').count() > 0, 'au repos, la case en cache une partie');
+
+    await page.locator('#linkSearch').fill('webhooks');
+    await page.waitForFunction(() => document.querySelectorAll('#linkGrid tbody tr').length === 1);
+    /* LA CASE NE MONTRE QUE CE QUI CORRESPOND : afficher les six adresses pour une seule trouvée
+       obligerait à relire la case au lieu de lire la réponse. */
+    assert.deepEqual(await page.locator('#linkGrid .link-open').allInnerTexts(), ['webhooks rejetés']);
+    assert.equal(await page.locator('.link-plus').count(), 0,
+      'et aucun bouton inerte : le dépliage vient de la recherche, pas d’un clic');
+
+    /* « nom-du-service adresse » : un mot vient de la ligne, l'autre de l'adresse. Exiger que
+       chaque mot tienne dans l'adresse seule ne rendrait jamais rien. */
+    const nom = (await app.api('GET', '/api/links/grid')).body.services.find((x) => x.id === g.services[0].id).name;
+    await page.locator('#linkSearch').fill(`${nom} latence`);
+    await page.waitForFunction(() => document.querySelectorAll('#linkGrid .link-open').length === 1);
+    assert.deepEqual(await page.locator('#linkGrid .link-open').allInnerTexts(), ['latence API']);
+
+    // Chercher la ligne elle-même, en revanche, laisse passer toutes ses adresses.
+    await page.locator('#linkSearch').fill(nom);
+    await page.waitForFunction(() => document.querySelectorAll('#linkGrid .link-open').length === 6);
+
+    // L'URL compte aussi : on cherche parfois par le domaine qu'on a en tête.
+    await page.locator('#linkSearch').fill('k5.demo');
+    await page.waitForFunction(() => document.querySelectorAll('#linkGrid tbody tr').length === 1);
+    await page.locator('#linkSearch').fill('');
+    await page.waitForFunction(() => document.querySelectorAll('#linkGrid .link-plus').length > 0);
+  });
+
   test('une seule recherche filtre la grille et les liens libres', async () => {
     await ouvrirLiens();
     await page.locator('#linkSearch').fill('api-core');
@@ -243,8 +289,8 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     assert.equal(await page.locator('.link-free-row').count(), 0);
 
     await page.locator('#linkSearch').fill('confluence');
-    await page.waitForFunction(() => !document.querySelector('#linkGrid .link-grid'));
-    assert.match(await page.locator('#linkGrid').innerText(), /liens libres/i,
+    await page.waitForSelector('#linkGrid .link-grid-empty');
+    assert.match(await page.locator('.link-grid-empty').innerText(), /liens libres/i,
       'le message renvoie vers l’autre moitié de l’écran au lieu de dire « rien »');
     assert.ok(await page.locator('.link-free-row').count() >= 1, '…où les résultats sont bien là');
     await page.locator('#linkSearch').fill('');
@@ -298,6 +344,13 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await ouvrirLiens();
     const cols = async () => (await page.locator('.link-grid thead th').allInnerTexts()).slice(1).map((t) => t.trim().split('\n')[0]);
     const avant = await cols();
+    /* LE NOM EST LE BOUTON. Régler ou supprimer une colonne se cachait derrière une roue dentée
+       qui n'apparaissait qu'au survol : la fonction existait, personne ne la trouvait. */
+    await page.locator('.link-grid thead th').nth(1).locator('.link-env-name').click();
+    await page.waitForSelector('#envModal:not([hidden])');
+    assert.equal(await page.locator('#envDelete').isVisible(), true, 'et supprimer est proposé là');
+    await page.locator('#envCancel').click();
+
     const th = page.locator('.link-grid thead th').nth(2);
     await th.hover();
     await th.locator('[data-dir="-1"]').click();
@@ -448,19 +501,44 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await app.api('DELETE', `/api/services/${svc.id}`);
   });
 
-  /* Le groupement par dossier donne une STRUCTURE — des titres, des comptes — il ne cache pas :
-     ouvrir dix dossiers pour retrouver un lien coûte plus cher que de faire défiler. */
-  test('les groupes de liens libres sont dépliés d’emblée', async () => {
+  /* Le groupement par dossier donne une STRUCTURE. Le PREMIER NIVEAU seulement est ouvert :
+     tout déplier à cinq niveaux redonne la liste plate qu'on cherchait à quitter, tout replier
+     oblige à ouvrir dix dossiers pour retrouver un lien. Deux boutons disent explicitement
+     « tout » ou « rien », et recliquer sur celui qui est actif revient au défaut. */
+  test('le premier niveau est ouvert, les deux boutons font le reste', async () => {
+    /* Le groupement se fait sur le DOSSIER, pas sur les tags : c'est ce qui rend l'arbre du
+       navigateur, profondeur comprise. Sans dossier, un lien reste à la racine — à plat. */
     for (let i = 1; i <= 14; i += 1) {
-      await app.api('POST', '/api/free-links', { label: `Lien ${i}`, url: `https://l${i}.demo.invalid`, tags: i % 2 ? 'alpha' : 'beta' });
+      await app.api('POST', '/api/free-links', {
+        label: `Lien ${i}`, url: `https://l${i}.demo.invalid`, folder: i % 3 === 0 ? 'alpha' : (i % 3 === 1 ? 'beta/dedans' : 'beta/autre'),
+      });
     }
     await page.reload();
     await ouvrirLiens();
     await page.waitForSelector('.link-free-group');
     const groupes = await page.locator('.link-free-group').count();
     assert.ok(groupes >= 2, 'au-delà d’une douzaine, la liste se groupe');
-    assert.equal(await page.locator('.link-free-group[open]').count(), groupes, 'tous ouverts');
-    assert.ok(await page.locator('.link-free-row:visible').count() >= 14, '…donc tout est lisible sans un clic');
+    assert.equal(await page.locator('.link-free-group .link-free-group').count(), 2,
+      'et la profondeur est rendue : « beta » contient « dedans » et « autre »');
+    const niveau1 = await page.locator('#linkFreeList > .link-free-group').count();
+    assert.equal(await page.locator('#linkFreeList > .link-free-group[open]').count(), niveau1,
+      'le premier niveau est ouvert');
+    assert.ok(await page.locator('.link-free-group[open]').count() < groupes,
+      '…et pas les niveaux du dessous');
+
+    await page.locator('#linkFreeExpand').click();
+    await page.waitForFunction((n) => document.querySelectorAll('.link-free-group[open]').length === n, groupes);
+    await page.locator('#linkFreeFold').click();
+    await page.waitForFunction(() => document.querySelectorAll('.link-free-group[open]').length === 0);
+
+    // Le choix est retenu d'une visite à l'autre.
+    await page.reload();
+    await ouvrirLiens();
+    assert.equal(await page.locator('.link-free-group[open]').count(), 0, 'le pliage survit au rechargement');
+
+    // Recliquer sur le bouton actif revient au défaut : sinon on n'y retournerait plus.
+    await page.locator('#linkFreeFold').click();
+    await page.waitForFunction((n) => document.querySelectorAll('#linkFreeList > .link-free-group[open]').length === n, niveau1);
 
     for (const l of (await app.api('GET', '/api/links/grid')).body.free_links) {
       if (/^Lien \d+$/.test(l.label)) await app.api('DELETE', `/api/free-links/${l.id}`);
@@ -500,6 +578,31 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
       .flatMap((svc) => Object.values(svc.urls || {}).flat());
     assert.ok(cellules.some((u) => u.label === 'runbook astreinte' && u.url === 'https://run.demo.invalid/x'),
       'le lien est devenu une adresse NOMMÉE dans une case — son libellé est ce qui la distingue');
+  });
+
+  /* RANGER UN LIEN À LA CRÉATION. Choisir dans une liste interdirait de créer un dossier ; un
+     champ nu obligerait à retaper un chemin qu'on a déjà. Le champ propose l'existant et accepte
+     le nouveau — et une barre oblique crée le sous-dossier au passage. */
+  test('un lien libre se range dans un dossier, existant ou nouveau', async () => {
+    await app.api('POST', '/api/free-links', { label: 'Runbook', url: 'https://run1.demo.invalid', folder: 'doc/astreinte' });
+    await page.reload();
+    await ouvrirLiens();
+
+    await page.locator('#linksAdd').click();
+    await page.locator('#linkAddMenu [data-add="free"]').click();
+    await page.waitForSelector('#freeLinkModal:not([hidden])');
+    const proposes = await page.locator('#freeFolders option').evaluateAll((els) => els.map((e) => e.value));
+    assert.ok(proposes.includes('doc'), 'les niveaux INTERMÉDIAIRES sont proposés, pas seulement les feuilles');
+    assert.ok(proposes.includes('doc/astreinte'));
+
+    await page.locator('#freeLabel').fill('Nouveau');
+    await page.locator('#freeUrl').fill('https://run2.demo.invalid');
+    await page.locator('#freeFolder').fill('doc/astreinte/2026');
+    await page.locator('#freeSave').click();
+    await page.waitForFunction(() => !document.querySelector('#freeLinkModal').hidden === false);
+
+    const l = (await app.api('GET', '/api/links/grid')).body.free_links.find((x) => x.label === 'Nouveau');
+    assert.equal(l.folder, 'doc/astreinte/2026', 'le sous-sous-dossier est créé au passage');
   });
 
   /* L'IMPORT NE DÉVERSE PLUS TOUT. Deux cents favoris cochés d'office entraient d'un clic ;

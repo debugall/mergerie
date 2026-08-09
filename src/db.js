@@ -801,8 +801,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS free_link (
   label TEXT NOT NULL,
   url TEXT NOT NULL,
   tags TEXT NOT NULL DEFAULT '[]',
+  folder TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
 )`);
+/* LE CHEMIN COMPLET, et pas seulement des tags. Les tags perdent l'ordre et la profondeur :
+   `seres/prod` et `logs/prod` se réduisaient tous deux au tag « prod » et se retrouvaient dans
+   le même groupe — l'outil détruisait une structure que le navigateur, lui, préserve. */
+try { db.exec("ALTER TABLE free_link ADD COLUMN folder TEXT NOT NULL DEFAULT ''"); } catch { /* déjà présente */ }
 
 /* Frécence de la palette : ce qu'on ouvre souvent ET récemment remonte. Un simple compteur
    ferait remonter à vie ce qu'on a beaucoup utilisé le mois dernier ; une simple date

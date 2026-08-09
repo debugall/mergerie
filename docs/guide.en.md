@@ -667,8 +667,13 @@ Two shapes, because there are two realities. Whatever has no environment dimensi
 doc, a tool) stays a **free link**, flat, found by its tags.
 
 #### The top bar
-**One search field**, and it covers **both halves of the screen** — the grid and the free links.
-Searching `kibana` or a fragment of a URL is enough; you do not have to decide which half to look
+**One search field**, and it covers **both halves of the screen** — the grid and the free links. It
+matches the service's name, its tags, its repository, **each address's name** and the URLs
+themselves: searching `payment errors` finds the cell that holds it. Under a search, a cell **shows only what
+matches** — displaying its eight addresses for one hit would make you re-read the cell instead of
+reading the answer. A query can mix both levels: `logs apache` takes `logs` from the row and `apache`
+from the address, and only the apache addresses show; `logs` alone, conversely, lets the whole row
+through — the row is what you asked for. Searching `kibana` or a fragment of a URL is enough; you do not have to decide which half to look
 in before knowing where the answer is. When the grid has nothing but the free links do, the message
 says so and points you down, instead of announcing “nothing matches” above results that are right
 there.
@@ -696,9 +701,9 @@ that is what gets the space.
   and the **linked Mergerie repository** when there is one. `Pin to the top of the grid` is a
   checkbox on the service's own form: that is how you raise what you open every day.
 - **Columns are environments**, in the order you give them, each with its own header **colour**
-  (production in red invites a second thought before clicking). Hovering a header reveals two
-  arrows that **move the column** one step, and a gear that opens its settings — the order is no
-  longer frozen at creation time, and what is clickable eventually shows itself.
+  (production in red invites a second thought before clicking). **The column's name opens its settings** —
+  rename, recolour, delete; and on hover, two arrows **move it** one step. Deleting says **how many
+  addresses go with it**.
 - **A cell is one or several addresses, written out.** We could have guessed the staging address
   from the dev one by swapping a piece of domain; that is exactly the magic that one day sends you
   to the wrong environment without a word. An empty cell shows a `+`, a filled one a **pencil** on
@@ -724,13 +729,23 @@ cell; a service now comes into being usable, and the screen **scrolls to its row
 for a second — an alphabetical grid drops it anywhere.
 
 #### Free links
-A list under the grid: label, URL, tags. Add and edit in place, and the search at the top filters
-them along with everything else. This is where imported bookmarks land.
+A list under the grid: label, URL, tags, **folder**. Add and edit in place, and the search at the top
+filters them along with everything else. This is where imported bookmarks land.
 
-Past a dozen, it **groups by folder** — the last tag the import wrote is the one that held the link
-— with a count for each. The groups are **open**: they are there to give structure, not to hide;
-opening ten folders to find one link costs more than scrolling. Each one folds away if you want to
-tidy the screen. Under a search or a tag it goes back to flat: the filter IS the
+The **Folder** field offers the existing folders **and accepts new ones** — picking from a list would
+forbid creating one, a bare field would make you retype a path you already have. A slash creates the
+sub-folder on the way (`doc/oncall/2026`), and intermediate levels are offered even when no link sits
+directly in them. Leaving it empty files the link at the root.
+
+Past a dozen, it **groups by folder**, reproducing **the tree as it was in the browser** — full
+path, depth included — with a count for each. Grouping on the last segment alone made `seres/prod`
+and `logs/prod` merge into a single “prod”: the tool was destroying a structure the browser
+preserves. **The first level is open, the ones below are not**: expanding
+five levels gives back the flat list you were trying to leave, collapsing everything makes you open
+ten folders to find one link. `Expand all` and `Collapse all` say explicitly one or the other;
+clicking the active one again returns to the first level, and the choice is remembered. Every folder
+that holds others carries **its own** fold button, to open or close that branch without touching the
+rest — a glance, not a preference: that one is not remembered. Under a search or a tag it goes back to flat: the filter IS the
 arrangement, and two levels of sorting at once hide what you just asked for.
 
 **Wiping the list.** The `⋯` menu carries `Delete every free link` — the escape hatch from a bad
@@ -812,7 +827,34 @@ branch, on the environment you want, without retyping anything.
 #### Importing Chrome bookmarks
 *Chrome → Bookmarks → Bookmark manager → ⋮ → Export bookmarks*, then `Import from Chrome`.
 
-**The preview is folded by folder, and nothing is ticked.** One folder per row, with its count and
+**The import reads your tree.** A folder whose children carry environment names (`dev`, `staging`,
+`preprod`, `prod`…) is not describing filing: it is describing a **grid**. The preview builds it and
+shows it to you **before creating anything** — a table with the number of addresses per cell. You
+refuse it by unticking a box, and everything comes back as free links.
+
+Two gestures are available there, because the detection reads folder names and cannot know
+everything: **renaming a row** in place (a folder's name is not always the one you would give the
+service), and **merging several rows into one service** — tick them, click `Merge into one service`,
+and their cells join environment by environment, each address keeping its name.
+
+Two shapes, told apart by one measurement: *do the labels repeat from one environment to the next?*
+
+- **They repeat** — `bo`, `bp`, `po`, `api` in each of your five environments: that is the same
+  thing seen in five places, so **one row per label**.
+- **They do not repeat** — a Kibana and its saved queries, specific to each environment: **one row
+  for the folder**, and the labels become the addresses' names.
+
+Three details that avoid absurd grids: two spellings of one environment (`pprod` and `preprod`) give
+**a single column**; a numbered environment (`recette2`) stays distinct; and a sub-folder **below**
+the environment becomes its own row (`logs/prod/keycloak` → a `logs · keycloak` service), without
+which one cell would hold twenty-four addresses. Columns are ordered along the deployment chain, not
+along the file.
+
+Nothing is guessed about your domain: the only clue looked for is an **environment name**, from a
+deliberately wide list in French and English. A neighbouring folder that is not one
+(`seres/keycloak`) is left alone and its links stay free.
+
+**The rest of the preview is folded by folder, and nothing is ticked.** One folder per row, with its count and
 its checkbox; you unfold the one you want, tick it, and import twelve links instead of two hundred.
 Choosing what comes in costs ten seconds; sorting out what came in costs half an hour. The **browsers' root folders**
 (“Bookmarks bar”, “Other bookmarks”, “Barre de favoris”…) **do not become tags**: present on every

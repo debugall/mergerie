@@ -83,6 +83,14 @@ function lireTags(v, msgTrop) {
   return out;
 }
 
+/* Le chemin du dossier, tel qu'il était dans le navigateur — sans la racine, qui ne dit rien.
+   Il sert à REGROUPER, jamais à filtrer : c'est le rôle des tags. */
+function lireDossier(v) {
+  const parts = String(v == null ? '' : v).split('/').map((x) => x.trim()).filter(Boolean);
+  if (parts.length && RACINES.has(normaliserTag(parts[0]))) parts.shift();
+  return parts.join('/').slice(0, 300);
+}
+
 const litTags = (json) => { try { const a = JSON.parse(json || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
 
 /* Un gabarit : on vérifie que TOUTES les variables citées sont connues. Le message rend la
@@ -314,9 +322,9 @@ function listerFreeLinks({ q = '', tag = '' } = {}) {
 }
 
 function creerFreeLink(body = {}, msgs) {
-  const info = db.prepare('INSERT INTO free_link (label, url, tags, created_at) VALUES (?,?,?,?)')
+  const info = db.prepare('INSERT INTO free_link (label, url, tags, folder, created_at) VALUES (?,?,?,?,?)')
     .run(lireLabel(body.label, msgs.labelVide), lireUrl(body.url, msgs.urlInvalide),
-      JSON.stringify(lireTags(body.tags, msgs.tropDeTags)), nowIso());
+      JSON.stringify(lireTags(body.tags, msgs.tropDeTags)), lireDossier(body.folder), nowIso());
   return db.prepare('SELECT * FROM free_link WHERE id = ?').get(info.lastInsertRowid);
 }
 
@@ -328,6 +336,7 @@ function majFreeLink(id, patch = {}, msgs) {
   if (patch.label !== undefined) { champs.push('label = ?'); vals.push(lireLabel(patch.label, msgs.labelVide)); }
   if (patch.url !== undefined) { champs.push('url = ?'); vals.push(lireUrl(patch.url, msgs.urlInvalide)); }
   if (patch.tags !== undefined) { champs.push('tags = ?'); vals.push(JSON.stringify(lireTags(patch.tags, msgs.tropDeTags))); }
+  if (patch.folder !== undefined) { champs.push('folder = ?'); vals.push(lireDossier(patch.folder)); }
   if (champs.length) db.prepare(`UPDATE free_link SET ${champs.join(', ')} WHERE id = ?`).run(...vals, l.id);
   const maj = db.prepare('SELECT * FROM free_link WHERE id = ?').get(l.id);
   return { ...maj, tags: litTags(maj.tags) };
@@ -765,6 +774,168 @@ const decoder = (s) => String(s)
   .replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
   .replace(/&amp;/gi, '&');
 
+/* ============================ LIRE L'ARBRE D'UN EXPORT DE FAVORIS ============================
+   Un arbre de marque-pages n'est pas plat : il encode souvent, sans le dire, la même grille que
+   cet onglet. `seres/{dev,recette,tmc,pprod,prod}` contenant chacun `bo`, `bp`, `po`, `api`,
+   c'est un tableau de quatre services sur cinq environnements — et l'aplatir en vingt liens
+   nommés « bo dev », « bo pprod » est strictement moins bon que ce que fait le navigateur.
+
+   On cherche donc UN SEUL indice, celui qui se reconnaît sans connaître le métier de personne :
+   un dossier dont plusieurs enfants portent des noms d'environnement. Le reste en découle.
+
+   Rien n'est créé ici. Cette fonction PROPOSE ; l'utilisateur voit la grille avant qu'elle
+   n'existe, et peut la refuser d'un clic. Une détection qui agit toute seule sur les favoris de
+   quelqu'un est un très bon moyen de lui faire détester l'import. */
+
+/* Le vocabulaire des environnements, et leur forme canonique. Deux orthographes d'un même
+   environnement (`pprod` et `preprod`) doivent donner UNE colonne, sinon on obtient deux
+   colonnes jumelles à moitié remplies. La liste est volontairement large — français et
+   anglais — parce qu'elle ne coûte rien et qu'un nom manquant fait rater toute la détection. */
+const ENV_CANON = new Map(Object.entries({
+  local: 'local', localhost: 'local', poste: 'local',
+  dev: 'dev', develop: 'dev', development: 'dev', devel: 'dev',
+  sandbox: 'sandbox', bac: 'sandbox', 'bac-a-sable': 'sandbox',
+  test: 'test', tests: 'test', qa: 'qa', sit: 'sit', uat: 'uat',
+  recette: 'recette', rct: 'recette', rec: 'recette',
+  integ: 'integ', integration: 'integ', int: 'integ',
+  tmc: 'tmc', vabf: 'vabf', vsr: 'vsr',
+  preprod: 'preprod', pprod: 'preprod', 'pre-prod': 'preprod', preproduction: 'preprod', ppr: 'preprod',
+  staging: 'staging', stage: 'staging', stg: 'staging',
+  homolog: 'homolog', homologation: 'homolog', hom: 'homolog',
+  demo: 'demo', perf: 'perf', canary: 'canary',
+  prod: 'prod', production: 'prod', prd: 'prod', live: 'prod',
+}));
+
+/* Rend la forme canonique d'un nom de dossier, ou null s'il ne ressemble pas à un
+   environnement. Le suffixe chiffré est CONSERVÉ : `recette2` est un autre environnement que
+   `recette`, et les confondre écraserait l'un avec l'autre. */
+function canonEnv(nom) {
+  const n = normaliserTag(nom);
+  if (!n) return null;
+  if (ENV_CANON.has(n)) return ENV_CANON.get(n);
+  const m = n.match(/^([a-z-]+?)-?(\d+)$/);
+  if (m && ENV_CANON.has(m[1])) return `${ENV_CANON.get(m[1])}${m[2]}`;
+  return null;
+}
+
+// Combien de libellés faut-il partager pour parler d'une même chose vue dans plusieurs
+// environnements ? La moitié. En deçà, ce sont des contenus propres à chaque environnement.
+const PART_MIN = 0.5;
+// Au-delà, on ne fabrique pas une ligne par libellé : trente lignes valent moins qu'une.
+const LIBELLES_MAX = 12;
+
+// « bo prod », « logs preprod » : le nom de l'environnement dans le libellé est du bruit une
+// fois que la COLONNE le dit. On le retire pour comparer les libellés d'un environnement à l'autre.
+function sansEnvDansLabel(label) {
+  return normaliserTag(String(label || '').replace(/[^\p{L}\p{N}]+/gu, ' '))
+    .split('-').filter((mot) => mot && !canonEnv(mot)).join('-');
+}
+
+function analyserArbre(liens) {
+  const parDossier = new Map();
+  for (const l of liens) {
+    const d = lireDossier(l.folder);
+    if (!parDossier.has(d)) parDossier.set(d, []);
+    parDossier.get(d).push(l);
+  }
+  // Tous les nœuds de l'arbre, y compris ceux qui ne portent aucun lien en propre.
+  const enfants = new Map();
+  for (const d of parDossier.keys()) {
+    const p = d ? d.split('/') : [];
+    for (let i = 0; i <= p.length; i += 1) {
+      const noeud = p.slice(0, i).join('/');
+      if (!enfants.has(noeud)) enfants.set(noeud, new Set());
+      if (i < p.length) enfants.get(noeud).add(p[i]);
+    }
+  }
+
+  const environnements = [];       // { name, canon }
+  const services = [];             // { name, source, cells: [{ env, links }] }
+  const consommes = new Set();
+  const envPourCanon = new Map();
+  const poserEnv = (nom) => {
+    const c = canonEnv(nom);
+    if (!envPourCanon.has(c)) { envPourCanon.set(c, nom); environnements.push({ name: nom, canon: c }); }
+    return envPourCanon.get(c);
+  };
+
+  // Du plus court au plus long : un parent traité avant ses enfants, jamais l'inverse.
+  for (const noeud of [...enfants.keys()].sort((a, b) => a.length - b.length)) {
+    if ([...consommes].some((c) => noeud === c || noeud.startsWith(`${c}/`))) continue;
+    const kids = [...enfants.get(noeud)];
+    const envKids = kids.filter((k) => canonEnv(k));
+    if (envKids.length < 2) continue;               // pas assez pour parler d'une grille
+
+    const chemin = (k) => (noeud ? `${noeud}/${k}` : k);
+    const parEnv = new Map(envKids.map((k) => [k, parDossier.get(chemin(k)) || []]));
+
+    /* Les libellés se répètent-ils d'un environnement à l'autre ? C'est ce qui distingue
+       « la même chose vue à cinq endroits » (une ligne par chose) de « des contenus propres à
+       chaque endroit » (une ligne pour le dossier, des adresses nommées dans les cases). */
+    const compte = new Map();
+    for (const [, ls] of parEnv) {
+      for (const nom of new Set(ls.map((l) => sansEnvDansLabel(l.label)))) {
+        compte.set(nom, (compte.get(nom) || 0) + 1);
+      }
+    }
+    const distincts = [...compte.keys()].filter(Boolean);
+    const partages = distincts.filter((n) => compte.get(n) > 1).length;
+    const parLibelle = distincts.length > 0 && distincts.length <= LIBELLES_MAX
+      && (partages / distincts.length) >= PART_MIN;
+
+    const feuille = noeud ? noeud.split('/').pop() : '';
+    for (const k of envKids) {
+      const envNom = poserEnv(k);
+      const ls = parEnv.get(k);
+      if (parLibelle) {
+        // Une ligne par libellé : `bo`, `bp`, `po`, `api`.
+        for (const l of ls) {
+          const nom = sansEnvDansLabel(l.label) || l.label;
+          poserCellule(services, nom, noeud, envNom, { label: '', url: l.url });
+        }
+      } else if (ls.length) {
+        // Une ligne pour le dossier, et les libellés deviennent les noms des adresses.
+        poserCellule(services, feuille || envNom, noeud, envNom, ls.map((l) => ({ label: l.label, url: l.url })));
+      }
+      consommes.add(chemin(k));
+
+      /* Les sous-dossiers SOUS l'environnement deviennent leurs propres lignes : sans ça,
+         `logs/prod/{keycloak,purge,old}` gonflerait la case `logs × prod` à vingt-quatre
+         adresses, et on ne verrait plus rien. */
+      for (const sous of (enfants.get(chemin(k)) || [])) {
+        const dessous = parDossier.get(`${chemin(k)}/${sous}`) || [];
+        if (!dessous.length) continue;
+        poserCellule(services, `${feuille ? `${feuille} · ` : ''}${sous}`, noeud, envNom,
+          dessous.map((l) => ({ label: l.label, url: l.url })));
+        consommes.add(`${chemin(k)}/${sous}`);
+      }
+    }
+  }
+
+  environnements.sort((a, b) => ordreEnv(a.canon) - ordreEnv(b.canon));
+  services.sort((a, b) => a.name.localeCompare(b.name));
+  return { environments: environnements.map((e) => e.name), services, folders: [...consommes] };
+}
+
+// L'ordre naturel d'une chaîne de déploiement : on lit une grille de gauche à droite comme on
+// promeut une version. Un environnement inconnu se range à la fin plutôt qu'au hasard.
+const ORDRE = ['local', 'sandbox', 'dev', 'test', 'integ', 'qa', 'sit', 'recette', 'uat', 'tmc',
+  'vabf', 'vsr', 'staging', 'preprod', 'homolog', 'perf', 'demo', 'canary', 'prod'];
+const ordreEnv = (canon) => {
+  const base = String(canon || '').replace(/\d+$/, '');
+  const i = ORDRE.indexOf(base);
+  return (i < 0 ? ORDRE.length : i) * 10 + Number((String(canon).match(/\d+$/) || [0])[0]);
+};
+
+function poserCellule(services, nom, source, env, adresses) {
+  const liste = Array.isArray(adresses) ? adresses : [adresses];
+  let svc = services.find((x) => x.name === nom);
+  if (!svc) { svc = { name: nom, source, cells: [] }; services.push(svc); }
+  let cell = svc.cells.find((c) => c.env === env);
+  if (!cell) { cell = { env, links: [] }; svc.cells.push(cell); }
+  cell.links.push(...liste);
+}
+
 /* Applique une sélection d'un import. REJOUABLE : une URL déjà présente n'est pas recréée —
    réimporter le même fichier après en avoir ajouté trois ne doit pas doubler les cent
    autres. Le compte des ignorés est rendu, pour que le silence ne passe pas pour un échec. */
@@ -773,7 +944,7 @@ function appliquerImport(body = {}, msgs) {
   const connues = new Set(db.prepare('SELECT url FROM free_link').all().map((r) => r.url));
   let crees = 0;
   let ignores = 0;
-  const ins = db.prepare('INSERT INTO free_link (label, url, tags, created_at) VALUES (?,?,?,?)');
+  const ins = db.prepare('INSERT INTO free_link (label, url, tags, folder, created_at) VALUES (?,?,?,?,?)');
   const now = nowIso();
   const trans = db.transaction((rows) => {
     for (const l of rows) {
@@ -782,12 +953,65 @@ function appliquerImport(body = {}, msgs) {
       if (connues.has(url)) { ignores += 1; continue; }
       connues.add(url);
       ins.run(String(l.label || url).trim().slice(0, MAX_LABEL) || url, url,
-        JSON.stringify(lireTags(l.tags, msgs.tropDeTags)), now);
+        JSON.stringify(lireTags(l.tags, msgs.tropDeTags)), lireDossier(l.folder), now);
       crees += 1;
     }
   });
   trans(liens);
-  return { created: crees, skipped: ignores };
+  /* Les compteurs de la grille n'apparaissent QUE si une grille a été demandée : un import
+     ordinaire ne doit pas rendre trois zéros dont l'appelant n'a rien à faire. */
+  const grille = construireGrille(body.grid, msgs);
+  return grille ? { created: crees, skipped: ignores, ...grille } : { created: crees, skipped: ignores };
+}
+
+/* Crée ce que l'analyse a proposé — et seulement si l'utilisateur l'a gardé. Rejouable comme le
+   reste de l'import : un environnement ou un service du même nom est RÉUTILISÉ, une adresse déjà
+   présente dans la case est ignorée. Réimporter un fichier enrichi de trois favoris ne doit pas
+   dupliquer les cent autres. */
+function construireGrille(grid, msgs) {
+  if (!grid || !Array.isArray(grid.services) || !grid.services.length) return null;
+  let envsCrees = 0;
+  let svcCrees = 0;
+  let urlsCrees = 0;
+
+  db.transaction(() => {
+    const envParNom = new Map();
+    for (const nom of (grid.environments || [])) {
+      const propre = String(nom || '').trim();
+      if (!propre) continue;
+      const deja = db.prepare('SELECT * FROM environment WHERE name = ?').get(propre);
+      if (deja) { envParNom.set(propre, deja.id); continue; }
+      envParNom.set(propre, creerEnvironnement({ name: propre }, msgs).id);
+      envsCrees += 1;
+    }
+
+    for (const svc of grid.services) {
+      const nom = String(svc.name || '').trim().slice(0, MAX_LABEL);
+      if (!nom) continue;
+      let service = db.prepare('SELECT * FROM service WHERE name = ?').get(nom);
+      if (!service) { service = creerService({ name: nom }, msgs); svcCrees += 1; }
+
+      for (const cell of (svc.cells || [])) {
+        const envId = envParNom.get(String(cell.env || '').trim());
+        if (!envId) continue;
+        const deja = db.prepare(`SELECT label, url FROM service_url
+          WHERE service_id = ? AND environment_id = ? ORDER BY position, id`).all(service.id, envId);
+        const connues = new Set(deja.map((u) => u.url));
+        const ajouts = [];
+        for (const l of (cell.links || [])) {
+          let url;
+          try { url = lireUrl(l.url, msgs.urlInvalide); } catch { continue; }
+          if (connues.has(url)) continue;
+          connues.add(url);
+          ajouts.push({ label: String(l.label || '').trim().slice(0, MAX_LABEL), url });
+        }
+        if (!ajouts.length) continue;
+        poserUrl(service.id, { environment_id: envId, urls: [...deja, ...ajouts] }, msgs);
+        urlsCrees += ajouts.length;
+      }
+    }
+  })();
+  return { envs_created: envsCrees, services_created: svcCrees, urls_created: urlsCrees };
 }
 
 module.exports = {
@@ -797,6 +1021,6 @@ module.exports = {
   listerEnvironnements, creerEnvironnement, majEnvironnement, supprimerEnvironnement,
   lireService, creerService, majService, supprimerService, poserUrl,
   listerContextLinks, creerContextLink, supprimerContextLink,
-  listerFreeLinks, creerFreeLink, majFreeLink, supprimerFreeLink, supprimerTousFreeLinks, rangerDansService,
+  lireDossier, analyserArbre, canonEnv, listerFreeLinks, creerFreeLink, majFreeLink, supprimerFreeLink, supprimerTousFreeLinks, rangerDansService,
   grille, liensDeMr, noterUsage, launcher, parserBookmarks, appliquerImport,
 };

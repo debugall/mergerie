@@ -380,6 +380,44 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   both fit, where the previous code silently kept only the last — and the link's label becomes the
   address's name.
 
+- **Bookmark import now builds the grid it finds in your tree.** A folder whose children carry
+  environment names describes a grid, not filing — and flattening it into free links was strictly
+  worse than what the browser already does. The preview builds the grid and shows it before creating
+  anything, with a count per cell and a box to refuse it. Labels that repeat across environments
+  become one row each (`bo`, `api`); labels specific to each environment become one row for the
+  folder with named addresses (a Kibana and its saved queries). Two spellings of one environment
+  merge into a single column, a numbered environment stays distinct, and a sub-folder below the
+  environment becomes its own row. Nothing is guessed about your domain: the only clue is an
+  environment name, from a wide French and English list.
+
+- **An environment is edited and deleted from its own name.** Renaming, recolouring or removing a
+  column sat behind a gear that only appeared on hover: the feature existed and nobody found it.
+  The column's name is now the button, and deleting says how many addresses go with it. The free
+  links open their first level of folders and no more, with `Expand all` / `Collapse all` for the
+  two extremes — remembered across reloads — and a fold button on every folder that holds others.
+
+- **An environment with no service could not be reached at all.** Its settings live in the grid's
+  column header, and the header was not rendered until a service existed: a freshly created
+  environment could be neither renamed nor deleted, and the screen announced “nothing matches this
+  search” to someone who had searched for nothing. The table is now drawn as soon as there is one
+  column, with a row saying why it is empty.
+
+- **The search reaches the names of the addresses inside the grid**, not just service names and
+  URLs — and a cell then shows only the addresses that match, so you read the answer instead of
+  re-reading the cell. A query can mix both levels: `logs apache` takes one word from the row and
+  the other from the address. The grid's columns also share the available width and shorten long addresses instead of
+  pushing the table into a horizontal scroll.
+
+- **A free link is filed into a folder as you create it.** The form offers the existing folders and
+  accepts new ones — a slash creates the sub-folder on the way. The import preview also lets you
+  rename a proposed row and merge several of them into one service, since the detection reads folder
+  names and cannot know that two of them mean the same thing to you. The import dialog is wider, so
+  a five-column grid can be read straight on.
+
+- **Free links keep their full folder path.** Grouping on the last segment made `seres/prod` and
+  `logs/prod` merge into a single “prod” group — the tool destroyed a structure the browser
+  preserves. The list is now the real tree, at full depth.
+
 - **Bookmark import no longer dumps everything in.** The preview is folded by folder, with a count
   and a checkbox per folder, and nothing is ticked: you unfold what you want and import twelve links
   instead of two hundred. The root folder no longer becomes a tag — present on every link, it
