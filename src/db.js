@@ -202,6 +202,12 @@ try { db.exec('ALTER TABLE task ADD COLUMN verifier_id INTEGER REFERENCES verifi
    dont les premiers mots se ressemblent souvent d'une session à l'autre. Un titre court écrit
    par qui la lance dit en un coup d'œil ce qu'elle fait ; vide, on retombe sur le prompt. */
 try { db.exec('ALTER TABLE task ADD COLUMN label TEXT'); } catch { /* déjà présente */ }
+/* UN SUIVI EN ATTENTE. On lit le travail de l'IA pendant qu'elle travaille, et la remarque
+   vient là — pas vingt minutes plus tard quand la session est finie et qu'on est passé à
+   autre chose. On l'écrit donc quand elle vient, elle attend ici, et c'est un geste explicite
+   qui l'envoie : rien dans `jobs.js` ni `taskrunner.js` ne lit cette colonne, une session ne
+   doit jamais repartir toute seule sur un texte écrit une heure plus tôt. */
+try { db.exec('ALTER TABLE task ADD COLUMN followup_draft TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task ADD COLUMN commit_message TEXT'); } catch { /* déjà présente */ }
 // Migration : MR créée depuis une tâche.
 try { db.exec('ALTER TABLE task ADD COLUMN mr_iid INTEGER'); } catch { /* déjà présente */ }
@@ -397,6 +403,7 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_agent_pass_unit ON agent_pass(scope, tas
    n'apparaît alors que sur les bases où la table préexistait — le genre de différence qui ne
    se voit qu'en production. */
 try { db.exec('ALTER TABLE local_task ADD COLUMN label TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE local_task ADD COLUMN followup_draft TEXT'); } catch { /* déjà présente */ }
 
 db.exec(`CREATE TABLE IF NOT EXISTS local_task_image (
   id INTEGER PRIMARY KEY,

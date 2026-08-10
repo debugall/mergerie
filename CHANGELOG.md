@@ -13,6 +13,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A follow-up can be written while a session is running, and sent when you decide.** The remark
+  comes while you read what the agent is doing, not twenty minutes later — so you write it there and
+  then, and it waits on the card. You can reword it as long as it has not gone out, delete it, and
+  send it in one click once the session is over. Nothing sends it for you: a follow-up written for
+  code that has changed since would be worse than no follow-up at all, and a test keeps that door
+  shut. Applies to coding, out-of-repo and exploration sessions.
+
 - **A session can carry a short label.** Coding, out-of-repo and exploration sessions take an
   optional title at creation: a list is otherwise read through its prompt, three folded lines whose
   first words look alike from one session to the next. The label says what a session is about where

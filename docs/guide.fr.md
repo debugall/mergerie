@@ -177,6 +177,20 @@ changerait ce que l'agent produit sans que personne ne l'ait demandé, et deux s
 prompt mais au libellé différent ne rendraient plus la même chose. Un test le garde fermé, y compris
 contre un module qui se mettrait à le lire.
 
+**Un suivi écrit pendant que ça tourne, envoyé quand tu le décides.** La remarque vient en lisant
+ce que l'agent fait — pas vingt minutes plus tard, une fois la session finie et l'esprit ailleurs. Sur
+une session en cours, **`Préparer un suivi`** ouvre le même formulaire que `Demander une correction`,
+avec **`Enregistrer le suivi`** au lieu de `Lancer` : le texte reste **sur la carte**, sous les yeux,
+tant qu'il n'est pas parti. On le **corrige**, on le **supprime** (l'effacer suffit), et **`Envoyer le
+suivi`** le lance en un geste une fois la session terminée. Vaut pour le codage, le codage hors dépôt
+et l'exploration.
+
+⚠ **Rien ne l'envoie à ta place.** Le bouton d'envoi est là dès le premier instant, mais **désactivé**
+tant que la session tourne. Un suivi déclenché tout seul à la fin d'une session repartirait sur une
+consigne écrite pour un état du code qui n'existe plus, sans que personne ne regarde : c'est pire que
+pas de suivi du tout. Un test le garde fermé, et aucun module de la chaîne d'exécution ne connaît
+seulement ce texte.
+
 **Créer maintenant, lancer plus tard.** Les trois types de session proposent **`Créer sans lancer`** à
 côté de **`Créer et lancer`** : on prépare le prompt et les cibles, on lance quand on veut.
 

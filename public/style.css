@@ -725,6 +725,14 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
 .mr-create .mr-title { flex: 1; min-width: 220px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 6px 10px; font: inherit; }
 .followup { flex-wrap: wrap; }
 .followup-text { flex: 1 1 100%; min-height: 60px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
+/* Suivi en attente : un encadré qui se remarque sans crier. Le liseré à gauche suffit à le
+   distinguer du prompt juste au-dessus, et les couleurs sortent des variables de thème —
+   il se lit pareil en clair et en sombre. */
+.followup-draft { margin-top: 8px; padding: 8px 10px; border-left: 3px solid var(--accent); background: var(--panel2); border-radius: var(--radius); }
+.followup-draft-head { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: .85rem; margin-bottom: 4px; }
+.followup-draft-head .muted { font-weight: 400; }
+.followup-draft-text { white-space: pre-wrap; font-size: .9rem; margin-bottom: 6px; }
+.followup-draft-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .task-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; flex: 0 0 auto; }
 /* Cartes Dev IA : la colonne d'actions garde la même largeur d'une carte à l'autre, sinon
    elle se cale sur le libellé le plus long de CHAQUE carte et les icônes ✏/✕ se déplacent

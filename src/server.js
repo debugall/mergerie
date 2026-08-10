@@ -1693,6 +1693,17 @@ app.get('/api/tasks/:id', wrap((req, res) => {
    s'afficherait comme un titre — un titre invisible qui pousse le prompt d'un cran. */
 const lireLibelle = (v) => (v == null ? null : (String(v).trim().slice(0, 120) || null));
 
+/* Un suivi vide n'est pas un suivi : l'écran afficherait un bloc « suivi prêt » sans texte,
+   avec un bouton « Envoyer » qui échouerait. Effacer le texte EST la façon de le supprimer. */
+const lireSuivi = (v) => (v == null ? null : (String(v).trim() || null));
+
+/* Enregistre le suivi en attente d'une session (codage / hors dépôt / exploration).
+   Une seule table près : la colonne s'appelle pareil des deux côtés. */
+function poserSuivi(table, id, valeur) {
+  db.prepare(`UPDATE ${table} SET followup_draft = ?, updated_at = ? WHERE id = ?`)
+    .run(lireSuivi(valeur), new Date().toISOString(), id);
+}
+
 function lireVerifierSession(kind, autoPush, verifierId) {
   if (kind !== 'code' || !autoPush) return null;
   const id = Number(verifierId) || 0;
@@ -2000,9 +2011,17 @@ app.post('/api/local-tasks/:id/run', wrap((req, res) => {
 app.post('/api/local-tasks/:id/followup', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
-  const instruction = (req.body && req.body.instruction || '').trim();
+  const instruction = (req.body && req.body.instruction || '').trim() || lt.followup_draft || '';
   if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
-  res.json(jobs.startLocalJob(lt.id, { instruction }));
+  res.json(envoyerSuivi('local_task', lt, () => jobs.startLocalJob(lt.id, { instruction })));
+}));
+
+// Suivi en attente d'une session hors dépôt — même contrat que POST /tasks/:id/followup-draft.
+app.put('/api/local-tasks/:id/followup-draft', wrap((req, res) => {
+  const lt = localTaskById(Number(req.params.id));
+  if (!lt) throw new Error(t('err.session-introuvable'));
+  poserSuivi('local_task', lt.id, req.body && req.body.instruction);
+  res.json({ ok: true, followup_draft: localTaskById(lt.id).followup_draft });
 }));
 
 // Historique des itérations d'un dossier hors dépôt (même forme que côté session).
@@ -2049,12 +2068,35 @@ app.post('/api/local-tasks/:id/hidden', wrap((req, res) => {
 app.post('/api/tasks/:id/followup', wrap((req, res) => {
   const tache = taskById(Number(req.params.id));
   if (!tache) throw new Error(t('err.session-introuvable'));
-  const instruction = (req.body && req.body.instruction || '').trim();
+  const instruction = (req.body && req.body.instruction || '').trim() || tache.followup_draft || '';
   if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
   const targetIds = normalizeTargetIds(tache.id, req.body && req.body.targets);
   if (targetIds && tache.kind !== 'code') throw new Error(t('err.followup-cible-code-only'));
-  res.json(jobs.startTaskJob(tache.id, 'followup', targetIds ? { instruction, targetIds } : { instruction }));
+  res.json(envoyerSuivi('task', tache, () => jobs.startTaskJob(tache.id, 'followup',
+    targetIds ? { instruction, targetIds } : { instruction })));
 }));
+
+/* LE SUIVI EN ATTENTE. Écrit pendant que la session tourne, relisible et modifiable tant
+   qu'il n'est pas parti, envoyé quand on le décide — jamais par la machine. Une seule route
+   pour poser, corriger et effacer : un texte vide EST la suppression. */
+app.put('/api/tasks/:id/followup-draft', wrap((req, res) => {
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  poserSuivi('task', tache.id, req.body && req.body.instruction);
+  res.json({ ok: true, followup_draft: taskById(tache.id).followup_draft });
+}));
+
+/* Un suivi ne part qu'une fois. On le retire AVANT de lancer — sinon deux clics rapides
+   partent deux fois — et on le remet si le lancement échoue, pour ne pas perdre le texte
+   sur une session qui tournait déjà. */
+function envoyerSuivi(table, session, lancer) {
+  const garde = session.followup_draft;
+  if (garde) poserSuivi(table, session.id, null);
+  try { return lancer(); } catch (e) {
+    if (garde) poserSuivi(table, session.id, garde);
+    throw e;
+  }
+}
 
 // Réponses aux questions de l'agent (ask → stop → resume) : on enregistre les réponses sur
 // la cible, puis on relance l'agent DANS LA MÊME session pour qu'il poursuive.

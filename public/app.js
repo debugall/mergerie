@@ -4369,27 +4369,89 @@ const fmtDateTime = (iso) => {
     + ' ' + d.toLocaleTimeString(I18Nrt.currentLocale(), { hour: '2-digit', minute: '2-digit' });
 };
 
-// Sauvegarde/restaure les formulaires inline ouverts avant un re-rendu.
-function captureTaskForms() {
+/* Sauvegarde/restaure les formulaires inline ouverts avant un re-rendu. Une session qui tourne
+   se re-rend toutes les secondes et demie : sans ça, un suivi qu'on est en train d'écrire
+   disparaît sous les doigts. La liste hors dépôt y a droit autant que les autres — c'est
+   justement pendant que ça tourne qu'on écrit un suivi. */
+const CLES_FORM = ['mrform', 'followform', 'lfollowform'];
+function captureTaskForms(racine = '#taskList') {
   const state = {};
-  $$('#taskList .mr-create').forEach((f) => {
-    const id = f.dataset.mrform || f.dataset.followform;
-    if (!id || f.hidden) return;
+  $$(`${racine} .mr-create`).forEach((f) => {
+    const cle = CLES_FORM.find((k) => f.dataset[k]);
+    if (!cle || f.hidden) return;
     const field = f.querySelector('textarea, input');
-    state[`${f.dataset.mrform ? 'mr' : 'follow'}:${id}`] = field ? field.value : '';
+    state[`${cle}:${f.dataset[cle]}`] = field ? field.value : '';
   });
   return state;
 }
-function restoreTaskForms(state) {
+function restoreTaskForms(state, racine = '#taskList') {
   for (const [key, value] of Object.entries(state)) {
-    const [kind, id] = key.split(':');
-    const f = $(`#taskList .mr-create[data-${kind === 'mr' ? 'mrform' : 'followform'}="${id}"]`);
+    const i = key.indexOf(':');   // l'identifiant peut contenir un préfixe (« tg12 »)
+    const f = $(`${racine} .mr-create[data-${key.slice(0, i)}="${key.slice(i + 1)}"]`);
     if (!f) continue;
     f.hidden = false;
     const field = f.querySelector('textarea, input');
     if (field) field.value = value;
   }
 }
+
+/* LE SUIVI EN ATTENTE. Écrit pendant que la session travaille, il reste affiché sur la carte
+   tant qu'on ne l'a pas envoyé — sinon on oublie qu'on en a un. Le bouton d'envoi est là dès
+   le premier instant, désactivé, pour qu'on sache où il sera. */
+function suiviBlock(t, pre) {
+  if (!t.followup_draft) return '';
+  const enCours = t.status === 'running';
+  return `<div class="followup-draft">
+    <div class="followup-draft-head">${svgIco('repeat')}<span>${tr('task.followup.draft')}</span>
+      <span class="muted">${tr('task.followup.draft-hint')}</span></div>
+    <div class="followup-draft-text">${esc(t.followup_draft)}</div>
+    <div class="followup-draft-actions">
+      <button class="btn btn-sm" data-${pre}followedit="${t.id}">${tr('ui.edit')}</button>
+      <button class="btn btn-sm btn-danger" data-${pre}followdrop="${t.id}">${tr('ui.delete')}</button>
+      <button class="btn btn-sm btn-primary" data-${pre}followsend="${t.id}"${enCours ? ' disabled' : ''} title="${esc(tr(enCours ? 'task.title.send-followup-wait' : 'task.title.send-followup'))}">${tr('task.btn.send-followup')}</button>
+    </div>
+  </div>`;
+}
+
+/* Enregistrer, corriger, supprimer, envoyer : les quatre gestes du suivi, identiques pour une
+   session de dépôt et pour une session hors dépôt — seule la route change. */
+async function enregistrerSuivi(b, route) {
+  const form = b.closest('.followup');
+  const field = form.querySelector('.followup-text');
+  const instruction = field.value.trim();
+  if (!instruction) { supprimerSuivi(b, route); return; }   // effacer le texte, c'est supprimer
+  try {
+    await busy(b, () => api(route, { method: 'PUT', body: { instruction } }));
+    /* On referme AVANT de recharger : ouvert, `captureTaskForms` le rouvrirait au rendu
+       suivant et on croirait que l'enregistrement n'a rien fait. */
+    form.hidden = true;
+    toast(tr('toast.suivi-enregistre'));
+    loadTasks();
+  } catch (e) { toast(explainError(e.message), true); }
+}
+async function supprimerSuivi(b, route) {
+  try {
+    await busy(b, () => api(route, { method: 'PUT', body: { instruction: '' } }));
+    const form = b.closest('.followup');
+    if (form) form.hidden = true;
+    toast(tr('toast.suivi-supprime'));
+    loadTasks();
+  } catch (e) { toast(explainError(e.message), true); }
+}
+// Corps vide EXPRÈS : c'est le serveur qui reprend le suivi enregistré et l'efface, en un geste.
+async function envoyerSuivi(b, route) {
+  try {
+    await busy(b, () => api(route, { method: 'POST', body: {} }));
+    toast(tr('toast.lance'));
+    refreshStatus(); loadTasks();
+  } catch (e) { toast(explainError(e.message), true); }
+}
+
+// Le bouton qui ouvre le formulaire de suivi : « préparer » tant que ça tourne, « corriger » après.
+const followBtn = (t, attr, titreFini, libelleFini = 'task.btn.request-fix') => {
+  const enCours = t.status === 'running';
+  return `<button class="btn" data-${attr}="${t.id}" title="${esc(tr(enCours ? 'task.title.draft-followup' : titreFini))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr(enCours ? 'task.btn.draft-followup' : libelleFini)}</button>`;
+};
 
 async function loadTasks() {
   try {
@@ -4544,7 +4606,10 @@ function localCard(t) {
   const st = TASK_STATUS[t.status] || { label: t.status, cls: '' };
   const canRun = ['new', 'error', 'done'].includes(t.status);
   // Une correction n'a de sens que sur un dossier DÉJÀ traité : sinon il n'y a rien à corriger.
-  const canFollow = canRun && (t.dirs || []).some((d) => d.status === 'done');
+  /* … ou sur une session QUI TOURNE : là on ne corrige pas, on prépare. La remarque se voit
+     pendant le travail, pas vingt minutes après. */
+  const enCours = t.status === 'running';
+  const canFollow = enCours || (canRun && (t.dirs || []).some((d) => d.status === 'done'));
   const n = (t.dirs || []).length;
   return `<div class="card task-row${t.hidden ? ' is-hidden' : ''}" data-local="${t.id}">
     <div style="min-width:0;flex:1">
@@ -4557,10 +4622,12 @@ function localCard(t) {
       ${promptBlock(t.prompt)}
       ${toggleProjetsHtml('local', t.id, n)}
       <div class="targets"${projetsVisibles('local', t.id, n) ? '' : ' hidden'}>${(t.dirs || []).map(localDirLine).join('')}</div>
+      ${suiviBlock(t, 'l')}
       <div class="mr-create followup" data-lfollowform="${t.id}" hidden>
-        <textarea class="followup-text" placeholder="${esc(tr('local.followup.ph'))}"></textarea>
+        <textarea class="followup-text" placeholder="${esc(tr('local.followup.ph'))}">${esc(t.followup_draft || '')}</textarea>
         <button class="btn" data-lfollowcancel="${t.id}">${tr('ui.cancel')}</button>
-        <button class="btn btn-primary" data-lfollowsubmit="${t.id}">${tr('task.btn.run-iteration')}</button>
+        <button class="btn" data-lfollowsave="${t.id}">${tr('task.btn.save-followup')}</button>
+        ${enCours ? '' : `<button class="btn btn-primary" data-lfollowsubmit="${t.id}">${tr('task.btn.run-iteration')}</button>`}
       </div>
     </div>
     ${taskActions([
@@ -4570,7 +4637,7 @@ function localCard(t) {
        en regardant la carte, pas « qu'a-t-elle fait dans ce dossier-là ». */
     (t.dirs || []).some((d) => d.output_path)
       ? `<button class="btn" data-lout="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : '',
-    canFollow ? `<button class="btn" data-lfollow="${t.id}" title="${esc(tr('local.followup.title'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : '',
+    canFollow ? followBtn(t, 'lfollow', 'local.followup.title') : '',
   ], [
     `<button class="btn btn-icon btn-sm" data-ledit="${t.id}" title="${esc(tr('local.edit-title'))}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
     hideBtn('local', t),
@@ -4582,6 +4649,7 @@ function localCard(t) {
 
 function renderLocalTasks() {
   const el = $('#localList');
+  const ouverts = captureTaskForms('#localList');
   const q = taskQuery();
   const visible = localTasks.filter(taskVisible);
   reportHiddenCount(localTasks.length - visible.length);
@@ -4596,6 +4664,7 @@ function renderLocalTasks() {
     return;
   }
   el.innerHTML = shown.map(localCard).join('');
+  restoreTaskForms(ouverts, '#localList');
   stagger('#localList .card');
   wirePromptToggles('#localList');
   /* Le codage hors dépôt a sa propre liste : `wireTaskActions` ne porte que sur `#taskList`,
@@ -4633,6 +4702,17 @@ function renderLocalTasks() {
       toast(tr('local.started')); refreshStatus();
     } catch (e) { toast(explainError(e.message), true); }
   }));
+  // Suivi préparé pendant que la session tourne : enregistré ici, envoyé plus tard, par nous.
+  $$('#localList [data-lfollowsave]').forEach((b) => b.addEventListener('click',
+    () => enregistrerSuivi(b, `/local-tasks/${b.dataset.lfollowsave}/followup-draft`)));
+  $$('#localList [data-lfollowedit]').forEach((b) => b.addEventListener('click', () => {
+    const form = $(`#localList .followup[data-lfollowform="${b.dataset.lfollowedit}"]`);
+    if (form) { form.hidden = false; form.querySelector('.followup-text').focus(); }
+  }));
+  $$('#localList [data-lfollowdrop]').forEach((b) => b.addEventListener('click',
+    () => supprimerSuivi(b, `/local-tasks/${b.dataset.lfollowdrop}/followup-draft`)));
+  $$('#localList [data-lfollowsend]').forEach((b) => b.addEventListener('click',
+    () => envoyerSuivi(b, `/local-tasks/${b.dataset.lfollowsend}/followup`)));
   $$('#localList [data-ledit]').forEach((b) => b.addEventListener('click',
     () => openLocalTaskEdit(Number(b.dataset.ledit)).catch((e) => toast(explainError(e.message), true))));
   $$('#localList [data-ldel]').forEach((b) => b.addEventListener('click', async () => {
@@ -4762,7 +4842,8 @@ const projetsVisibles = (famille, id, n) => n <= 1 || estDeplie(famille, id);
 // Carte CODAGE : une ligne par projet, avec ses propres actions.
 function codeCard(t) {
   const cibles = t.targets || [];
-  const canFollow = cibles.some((x) => ['committed', 'pushed'].includes(x.status));
+  const enCours = t.status === 'running';
+  const canFollow = enCours || cibles.some((x) => ['committed', 'pushed'].includes(x.status));
   const canRun = ['new', 'error', 'committed', 'pushed'].includes(t.status);
   /* Repli de la liste de projets. Au-delà de quelques dépôts, une session occupe tout l'écran et
      on ne voit plus les autres. L'état est PERSISTÉ : sans ça, il se rouvrirait à chaque
@@ -4777,16 +4858,18 @@ function codeCard(t) {
       <div class="targets"${ouvert ? '' : ' hidden'}>
         ${cibles.map((tg) => targetLine(t, tg)).join('')}
       </div>
+      ${suiviBlock(t, '')}
       <div class="mr-create followup" data-followform="${t.id}" hidden>
-        <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph'))}"></textarea>
+        <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph'))}">${esc(t.followup_draft || '')}</textarea>
         <button class="btn" data-followcancel="${t.id}">${tr('ui.cancel')}</button>
-        <button class="btn btn-primary" data-followsubmit="${t.id}">${tr('task.btn.run-iteration')}</button>
+        <button class="btn" data-followsave="${t.id}">${tr('task.btn.save-followup')}</button>
+        ${enCours ? '' : `<button class="btn btn-primary" data-followsubmit="${t.id}">${tr('task.btn.run-iteration')}</button>`}
       </div>
     </div>
     ${taskActions([
     canRun ? `<button class="btn" data-trun="${t.id}" title="${t.status === 'new' ? tr('task.title.run-all') : tr('task.title.rerun-all')}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
     canRun ? `<button class="btn btn-converge" data-tconverge="${t.id}" data-label="${esc(tr('task.projects', { n: (t.targets || []).length, count: (t.targets || []).length }))}" title="${tr('task.title.converge')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : '',
-    canFollow ? `<button class="btn" data-tfollow="${t.id}" title="${esc(tr('task.title.request-fix'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : '',
+    canFollow ? followBtn(t, 'tfollow', 'task.title.request-fix') : '',
     /* N'apparaît que s'il y a quelque chose à réparer : un projet en erreur dont le travail
        peut très bien être déjà commité. Relancer coûterait un appel IA par dépôt pour refaire
        du travail fait — ce bouton ne fait que relire les branches. */
@@ -4919,16 +5002,18 @@ function exploreCard(t) {
           ${tg.last_error ? `<span class="t-err" title="${esc(tg.last_error)}">${svgIco('alert')} ${tr('task.failed')}</span>` : ''}
         </div>`).join('')}
       </div>
+      ${suiviBlock(t, '')}
       <div class="mr-create followup" data-followform="${t.id}" hidden>
-        <textarea class="followup-text" placeholder="${esc(tr('explore.followup.ph'))}"></textarea>
+        <textarea class="followup-text" placeholder="${esc(tr('explore.followup.ph'))}">${esc(t.followup_draft || '')}</textarea>
         <button class="btn" data-followcancel="${t.id}">${tr('ui.cancel')}</button>
-        <button class="btn btn-primary" data-followsubmit="${t.id}">${tr('task.btn.ask')}</button>
+        <button class="btn" data-followsave="${t.id}">${tr('task.btn.save-followup')}</button>
+        ${t.status === 'running' ? '' : `<button class="btn btn-primary" data-followsubmit="${t.id}">${tr('task.btn.ask')}</button>`}
       </div>
     </div>
     ${taskActions([
     t.md_path ? `<button class="btn btn-primary" data-tmd="${t.id}" title="${tr('task.title.view-answer')}"><svg class="ico"><use href="#i-doc"/></svg>${tr('task.btn.view-answer')}</button>` : '',
     canRun ? `<button class="btn" data-trun="${t.id}" title="${t.status === 'new' ? tr('task.title.run-explore') : tr('task.title.rerun-explore')}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
-    t.md_path ? `<button class="btn" data-tfollow="${t.id}" title="${tr('task.title.follow-up')}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.follow-up')}</button>` : '',
+    (t.md_path || t.status === 'running') ? followBtn(t, 'tfollow', 'task.title.follow-up', 'task.btn.follow-up') : '',
     resumeCmdBtn(resume),
   ], [
     `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
@@ -5059,6 +5144,15 @@ function wireTaskActions() {
     const form = $(`#taskList .followup[data-followform="${b.dataset.followcancel}"]`);
     if (form) form.hidden = true;
   });
+  // Enregistrer le suivi sans l'envoyer — et le rouvrir plus tard pour le corriger.
+  on('[data-followsave]', (b) => enregistrerSuivi(b, `/tasks/${b.dataset.followsave}/followup-draft`));
+  on('[data-followedit]', (b) => {
+    const form = $(`#taskList .followup[data-followform="${b.dataset.followedit}"]`);
+    if (form) { form.hidden = false; form.querySelector('.followup-text').focus(); }
+  });
+  on('[data-followdrop]', (b) => supprimerSuivi(b, `/tasks/${b.dataset.followdrop}/followup-draft`));
+  // Envoi manuel : le corps est vide exprès, le serveur prend le suivi enregistré et l'efface.
+  on('[data-followsend]', (b) => envoyerSuivi(b, `/tasks/${b.dataset.followsend}/followup`));
   on('[data-followsubmit]', async (b) => {
     const form = b.closest('.followup');
     const field = form.querySelector('.followup-text');

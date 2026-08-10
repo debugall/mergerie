@@ -171,6 +171,20 @@ change what the agent produces without anyone asking, and two sessions with the 
 different labels would stop producing the same thing. A test keeps that door shut, including against
 a module that would start reading it.
 
+**A follow-up written while it runs, sent when you decide.** The remark comes while you read what the
+agent is doing — not twenty minutes later, once the session is over and your mind is elsewhere. On a
+running session, **`Prepare a follow-up`** opens the same form as `Request a fix`, with **`Save the
+follow-up`** instead of `Run`: the text stays **on the card**, under your eyes, for as long as it has
+not gone out. You can **reword** it, **delete** it (clearing the text is enough), and **`Send the
+follow-up`** fires it in one click once the session is over. Applies to coding, out-of-repo and
+exploration sessions.
+
+⚠ **Nothing sends it for you.** The send button is there from the first moment, but **disabled** for
+as long as the session runs. A follow-up fired by itself at the end of a session would go out on an
+instruction written for a state of the code that no longer exists, with nobody watching: that is
+worse than no follow-up at all. A test keeps that door shut, and no module of the execution chain
+so much as knows about this text.
+
 **Create now, run later.** All three session types offer **`Create without running`** next to
 **`Create and run`**: you prepare the prompt and the targets, and launch when you want.
 
