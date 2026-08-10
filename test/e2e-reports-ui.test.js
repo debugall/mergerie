@@ -79,6 +79,30 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
     await page.waitForTimeout(300);
   }
 
+  /* MARQUER TRAITÉE FAIT CHANGER DE STADE : la MR quitte « Reviewées » pour « Traitées ». Le
+     bouton du rapport ne rafraîchissait que le panneau de droite — la carte restait dans une
+     liste où elle n'avait plus sa place, et le compteur du segment mentait jusqu'au prochain
+     rechargement. Le même geste depuis la file « À traiter » mettait déjà la liste à jour. */
+  test('« Marquer traitée » retire la carte de la liste, et « Rouvrir » la ramène', async () => {
+    /* EN PREMIER dans ce fichier, et il rend ce qu'il a pris. Les tests suivants filtrent par
+       note et mémorisent leur choix : les laisser passer d'abord ferait observer un retrait de
+       carte dans une liste déjà réduite par un filtre — et l'on ne saurait plus qui l'a retirée. */
+    await ouvrirStade('reviewed');
+    const cartes = () => page.locator('#reportList .card').count();
+    const avant = await cartes();
+    assert.ok(avant >= 2, 'il faut de quoi observer un retrait');
+
+    await page.locator('#aDone').click();
+    await page.waitForFunction((n) => document.querySelectorAll('#reportList .card').length === n - 1, avant);
+    // Le compteur est rafraîchi à part : on l'attend plutôt que de l'affirmer dans la foulée.
+    await page.waitForFunction((n) => new RegExp(`\\b${n}\\b`)
+      .test(document.querySelector('[data-seg="reviewed"]').textContent), avant - 1);
+    assert.equal(await page.locator('#aReopen').count(), 1, 'le rapport propose maintenant de rouvrir');
+
+    await page.locator('#aReopen').click();
+    await page.waitForFunction((n) => document.querySelectorAll('#reportList .card').length === n, avant);
+  });
+
   // Fait tourner la molette AU-DESSUS de la liste et rend compte de ce qui a bougé.
   async function moletteSurLaListe() {
     const avant = await page.evaluate(() => ({
@@ -199,4 +223,5 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
     assert.ok(fin.enBas, 'la liste a bien été parcourue jusqu’en bas');
     assert.equal(fin.bouge, 0, 'la page n’a pas suivi');
   });
+
 });

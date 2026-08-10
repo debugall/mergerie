@@ -450,6 +450,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **“Mark as handled” now moves the merge request out of the Reviewed list.** The button in the
+  report refreshed the report and nothing else, so the card stayed in a list it no longer belonged
+  to and the stage counter kept the old number until the next reload — the same gesture from the
+  “To handle” queue already updated the list. “Reopen” brings it back the same way.
+
 - **Importing bookmarks no longer leaves the Links tab saying it is empty.** The grid only looked at
   services and environments, so after an import it answered “no links yet” directly above the links
   that had just arrived — and offered to import them a second time. The two empty screens are now

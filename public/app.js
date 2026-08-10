@@ -2698,8 +2698,20 @@ async function openReport(id, opts = {}) {
       onDone: () => openReport(id),          // recharge le détail (badge « mergée »)
     });
   });
-  const done = $('#aDone'); if (done) done.addEventListener('click', async () => { await api(`/mrs/${id}/done`, { method: 'POST' }); toast(tr('toast.marquee-done')); openReport(id); });
-  const reopen = $('#aReopen'); if (reopen) reopen.addEventListener('click', async () => { await api(`/mrs/${id}/reopen`, { method: 'POST' }); toast(tr('toast.rouverte')); openReport(id); });
+  /* LA LISTE SUIT, pas seulement le rapport. Ces deux boutons changent le STADE de la MR : elle
+     quitte « Reviewées » pour « Traitées », ou l'inverse. Ne rafraîchir que le panneau de droite
+     laissait la carte dans une liste où elle n'a plus sa place, et le compteur du segment mentait
+     jusqu'au prochain rechargement — le même geste depuis la file « À traiter » le faisait déjà. */
+  const done = $('#aDone'); if (done) done.addEventListener('click', async () => {
+    await api(`/mrs/${id}/done`, { method: 'POST' });
+    toast(tr('toast.marquee-done'));
+    openReport(id); loadSegment(); refreshCounts();
+  });
+  const reopen = $('#aReopen'); if (reopen) reopen.addEventListener('click', async () => {
+    await api(`/mrs/${id}/reopen`, { method: 'POST' });
+    toast(tr('toast.rouverte'));
+    openReport(id); loadSegment(); refreshCounts();
+  });
   /* Vérifier depuis le rapport : une MR déjà reviewée reste une MR à vérifier. La review
      donne un avis, le vérificateur un fait — les deux se lisent au même endroit. */
   const ver = $('#aVerify'); if (ver) ver.addEventListener('click', () => busy(ver, () => lancerVerification([id])));
