@@ -13,6 +13,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A session can carry a short label.** Coding, out-of-repo and exploration sessions take an
+  optional title at creation: a list is otherwise read through its prompt, three folded lines whose
+  first words look alike from one session to the next. The label says what a session is about where
+  the prompt says what to do; it heads the card, joins the search, and can be changed later. It is
+  never sent to the AI and never used as a commit message — it is a filing title, and a test keeps
+  that door shut. Out-of-repo sessions have their own form wiring, so a browser test covers all
+  three families rather than one.
+
 - **A coding session can carry a verifier, and runs it by itself when it is done.** Picking one in
   the session form makes it run once at the end — after convergence if you converge, after the coding
   run otherwise — so you launch in the morning and find a verdict rather than one more box to tick.

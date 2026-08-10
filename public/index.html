@@ -1140,6 +1140,12 @@ print(json.dumps({
                 </label>
                 <span id="taskJiraStatus" class="muted"></span>
             </div>
+            <!-- UN TITRE COURT, FACULTATIF. Une liste de sessions se lit par son prompt — trois
+                 lignes repliées dont les premiers mots se ressemblent d'une session à l'autre.
+                 Vide, la carte retombe sur le prompt : rien ne se perd. -->
+            <label><span data-i18n="task.lbl.label">Libellé (optionnel)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="task.tip.label" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input name="label" maxlength="120" placeholder="ex. Migration TypeORM des entités" data-i18n-placeholder="task.ph.label" />
+            </label>
             <label><span data-i18n="task.lbl.tache-a-realiser-prompt">Tâche à réaliser (prompt)</span> <button type="button" class="hint" tabindex="0" aria-label="En codage : ce que l'IA doit implémenter, appliqué à chaque projet sélectionné. En exploration : la question posée sur le code, sans aucune modification." data-tip="En codage : ce que l'IA doit implémenter, appliqué à chaque projet sélectionné. En exploration : la question posée sur le code, sans aucune modification." data-i18n-tip="task.tip.en-codage-ce-que-l"><svg class="ico"><use href="#i-info"/></svg></button>
                 <textarea name="prompt" rows="5" placeholder="Décris la tâche de dev à faire… (ex. Ajouter un endpoint /health qui renvoie le statut)" data-i18n-placeholder="task.ph.decris-la-tache-de-dev" required></textarea>
             </label>

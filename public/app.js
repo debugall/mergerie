@@ -4139,6 +4139,7 @@ async function openTaskEdit(id) {
     renderTargetRows((t.targets || []).map((x) => ({ repo_id: x.repo_id, branch: x.branch, base_branch: x.base_branch })));
     setupTaskJira((t.targets && t.targets[0] && t.targets[0].branch) || '');
     f.prompt.value = t.prompt || '';
+    if (f.label) f.label.value = t.label || '';
     if (f.commit_message) f.commit_message.value = t.commit_message || '';
     if (f.auto_push) f.auto_push.checked = !!t.auto_push;
     if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
@@ -4183,6 +4184,7 @@ async function openLocalTaskEdit(id) {
   if (!localPicks.length) localPicks = [''];
   applyKindToModal('local');
   f.prompt.value = t.prompt || '';
+  if (f.label) f.label.value = t.label || '';
   if (f.session_id) f.session_id.value = sharedSessionKey(t.dirs);
   $('#taskModalTitle').textContent = tr('local.edit-title');
   $('#taskExistingImgs').textContent = (d.images && d.images.length)
@@ -4276,6 +4278,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
     try {
       if (editingTaskId) {
         await busy(btn, () => api(`/local-tasks/${editingTaskId}`, { method: 'PUT', body: {
+          label: f.label ? f.label.value : '',
           prompt: f.prompt.value, dirs, images: taskNewImages,
           session_id: f.session_id ? f.session_id.value : '',
         } }));
@@ -4284,6 +4287,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
         return;
       }
       const created = await busy(btn, () => api('/local-tasks', { method: 'POST', body: {
+        label: f.label ? f.label.value : '',
         prompt: f.prompt.value, dirs, images: taskNewImages, session_id: f.session_id ? f.session_id.value : '',
       } }));
       if (launchAfterCreate) {
@@ -4301,6 +4305,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
   if (!targets.length) { toast(tr('toast.selectionne-au-moins-un-projet'), true); return; }
   const body = {
     kind: taskKind,
+    label: f.label ? f.label.value : '',
     prompt: f.prompt.value,
     commit_message: f.commit_message ? f.commit_message.value : '',
     auto_push: f.auto_push ? f.auto_push.checked : false,
@@ -4406,7 +4411,7 @@ function taskQuery() {
 // ou dans l'un de ses projets/branches (ou dossiers, hors dépôt).
 function taskMatches(t, q, units) {
   if (!q) return true;
-  const hay = [t.prompt, t.commit_message, ...(units || [])].filter(Boolean).join(' ').toLowerCase();
+  const hay = [t.label, t.prompt, t.commit_message, ...(units || [])].filter(Boolean).join(' ').toLowerCase();
   return hay.includes(q);
 }
 
@@ -4548,6 +4553,7 @@ function localCard(t) {
         <span class="task-projects">${tr('local.dirs-count', { n, count: n })}</span>
         <span class="task-date" title="${tr('task.created-at')}">${fmtDateTime(t.created_at)}</span>
       </div>
+      ${libelleBlock(t)}
       ${promptBlock(t.prompt)}
       ${toggleProjetsHtml('local', t.id, n)}
       <div class="targets"${projetsVisibles('local', t.id, n) ? '' : ' hidden'}>${(t.dirs || []).map(localDirLine).join('')}</div>
@@ -4692,6 +4698,10 @@ function taskActions(work, meta) {
 }
 
 // En-tête commun : statut, date de création, prompt.
+/* Le libellé passe AVANT le prompt et le domine visuellement : c'est lui qu'on parcourt des
+   yeux. Le prompt reste dessous — il dit ce qu'il faut faire, le libellé dit de quoi il s'agit. */
+const libelleBlock = (t) => (t.label ? `<div class="task-label">${esc(t.label)}</div>` : '');
+
 function taskHead(t) {
   const st = TASK_STATUS[t.status] || { label: t.status, cls: '' };
   const nb = (t.targets || []).length;
@@ -4701,6 +4711,7 @@ function taskHead(t) {
       ${t.auto_push && t.kind !== 'explore' ? '<span class="tag">auto-push</span>' : ''}
       <span class="task-date" title="${tr('task.created-at')}">${fmtDateTime(t.created_at)}</span>
     </div>
+    ${libelleBlock(t)}
     ${promptBlock(t.prompt)}`;
 }
 

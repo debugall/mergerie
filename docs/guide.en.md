@@ -159,6 +159,18 @@ branches — which matters when the list of repositories is long.
 how many are filtered out. This applies to coding, out-of-repo coding and exploration alike. In the list, a
 long prompt is **folded to three lines** with a **“Show more”** that unrolls it.
 
+**A label, optional.** A short title when creating a session — coding, out-of-repo or exploration.
+A list is otherwise read through its prompt, three folded lines whose first words look alike from one
+session to the next; the label says **what it is about** where the prompt says **what to do**. It
+shows at the top of the card, takes part in the search, and can be changed later. Left empty, the
+card is exactly what it was.
+
+⚠ **The label is NOT sent to the AI**, and is not used as a commit message. It is a filing title,
+written for the human scanning the list — not an instruction. Slipping it into the prompt would
+change what the agent produces without anyone asking, and two sessions with the same prompt but
+different labels would stop producing the same thing. A test keeps that door shut, including against
+a module that would start reading it.
+
 **Create now, run later.** All three session types offer **`Create without running`** next to
 **`Create and run`**: you prepare the prompt and the targets, and launch when you want.
 

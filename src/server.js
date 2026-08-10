@@ -1689,6 +1689,10 @@ app.get('/api/tasks/:id', wrap((req, res) => {
    Choisir un vérificateur implique donc l'auto-push, et retirer l'auto-push retire le
    vérificateur. L'écran le dit et coche la case ; le serveur le REFAIT — un client n'est pas
    un garde-fou, et l'API est appelable sans lui. */
+/* Un libellé vide et un libellé absent sont la MÊME chose : NULL. Sans ça, une chaîne vide
+   s'afficherait comme un titre — un titre invisible qui pousse le prompt d'un cran. */
+const lireLibelle = (v) => (v == null ? null : (String(v).trim().slice(0, 120) || null));
+
 function lireVerifierSession(kind, autoPush, verifierId) {
   if (kind !== 'code' || !autoPush) return null;
   const id = Number(verifierId) || 0;
@@ -1697,7 +1701,7 @@ function lireVerifierSession(kind, autoPush, verifierId) {
 }
 
 app.post('/api/tasks', wrap((req, res) => {
-  const { kind, prompt, commit_message, auto_push, images, targets, ask_questions, session_id, verifier_id } = req.body || {};
+  const { kind, prompt, commit_message, auto_push, images, targets, ask_questions, session_id, verifier_id, label } = req.body || {};
   const k = kind === 'explore' ? 'explore' : 'code';
   if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
   const sessionId = normalizeSessionId(session_id);
@@ -1705,13 +1709,14 @@ app.post('/api/tasks', wrap((req, res) => {
   const now = new Date().toISOString();
   // « L'IA peut poser des questions » : opt-in, uniquement pertinent en codage.
   const ask = (k === 'code' && ask_questions) ? 1 : 0;
-  const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message, auto_push, ask_questions, verifier_id, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, 'new', ?, ?)`).run(
+  const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message, auto_push, ask_questions, verifier_id, label, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 'new', ?, ?)`).run(
     // `task.branch` est un héritage mono-projet (la vérité est dans task_target) et
     // la colonne est NOT NULL : en exploration la branche est facultative, on y range
     // donc '' plutôt que NULL — sinon la création échoue sur une erreur SQL brute.
     list[0].repo_id, k, prompt.trim(), list[0].branch || '',
-    (commit_message || '').trim() || null, auto_push ? 1 : 0, ask, lireVerifierSession(k, auto_push, verifier_id), now, now);
+    (commit_message || '').trim() || null, auto_push ? 1 : 0, ask, lireVerifierSession(k, auto_push, verifier_id),
+    lireLibelle(label), now, now);
   const taskId = info.lastInsertRowid;
   insertTargets(taskId, list, sessionId);
   saveTaskImages(taskId, images);
@@ -1721,7 +1726,7 @@ app.post('/api/tasks', wrap((req, res) => {
 app.put('/api/tasks/:id', wrap((req, res) => {
   const tache = taskById(Number(req.params.id));
   if (!tache) throw new Error(t('err.session-introuvable'));
-  const { prompt, commit_message, auto_push, images, targets, ask_questions, session_id, verifier_id } = req.body || {};
+  const { prompt, commit_message, auto_push, images, targets, ask_questions, session_id, verifier_id, label } = req.body || {};
   const sessionId = normalizeSessionId(session_id);
   if (Array.isArray(targets) && targets.length) {
     const list = normalizeTargets(targets, tache.kind);
@@ -1742,7 +1747,7 @@ app.put('/api/tasks/:id', wrap((req, res) => {
       insertTargets(tache.id, list);
     }
   }
-  db.prepare('UPDATE task SET prompt = ?, commit_message = ?, auto_push = ?, ask_questions = ?, verifier_id = ?, updated_at = ? WHERE id = ?').run(
+  db.prepare('UPDATE task SET prompt = ?, commit_message = ?, auto_push = ?, ask_questions = ?, verifier_id = ?, label = ?, updated_at = ? WHERE id = ?').run(
     prompt != null ? String(prompt).trim() : tache.prompt,
     commit_message != null ? (String(commit_message).trim() || null) : tache.commit_message,
     auto_push == null ? tache.auto_push : (auto_push ? 1 : 0),
@@ -1753,6 +1758,7 @@ app.put('/api/tasks/:id', wrap((req, res) => {
        tourner, et on ne s'en apercevrait qu'à la fin de la session. */
     lireVerifierSession(tache.kind, auto_push == null ? tache.auto_push : auto_push,
       verifier_id === undefined ? tache.verifier_id : verifier_id),
+    label === undefined ? tache.label : lireLibelle(label),
     new Date().toISOString(), tache.id,
   );
   saveTaskImages(tache.id, images);
@@ -1931,14 +1937,14 @@ app.get('/api/local-tasks', wrap((req, res) => {
   res.json(list);
 }));
 app.post('/api/local-tasks', wrap((req, res) => {
-  const { prompt, dirs, images, session_id } = req.body || {};
+  const { prompt, dirs, images, session_id, label } = req.body || {};
   if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
   const sessionId = normalizeSessionId(session_id);
   const list = (Array.isArray(dirs) ? dirs : []).map((d) => String(d || '').trim()).filter(Boolean);
   if (!list.length) throw new Error(t('err.local-dirs-required'));
   const now = new Date().toISOString();
-  const id = db.prepare("INSERT INTO local_task (prompt, status, created_at, updated_at) VALUES (?, 'new', ?, ?)")
-    .run(prompt.trim(), now, now).lastInsertRowid;
+  const id = db.prepare("INSERT INTO local_task (prompt, label, status, created_at, updated_at) VALUES (?, ?, 'new', ?, ?)")
+    .run(prompt.trim(), lireLibelle(label), now, now).lastInsertRowid;
   // Même principe que pour les sessions sur dépôt : la session fournie est rangée comme
   // si la première passe l'avait créée, `localcoder` la reprend alors sans rien savoir.
   const ins = db.prepare(`INSERT INTO local_task_dir (task_id, path, status, session_key, session_backend, updated_at)
@@ -1963,7 +1969,7 @@ app.get('/api/local-tasks/:id', wrap((req, res) => {
 app.put('/api/local-tasks/:id', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
-  const { prompt, dirs, images, session_id } = req.body || {};
+  const { prompt, dirs, images, session_id, label } = req.body || {};
   const sessionId = normalizeSessionId(session_id);
   if (Array.isArray(dirs) && dirs.length) {
     const list = [...new Set(dirs.map((d) => String(d || '').trim()).filter(Boolean))];
@@ -1976,8 +1982,9 @@ app.put('/api/local-tasks/:id', wrap((req, res) => {
     }
   }
   if (prompt != null && !String(prompt).trim()) throw new Error(t('err.prompt-requis'));
-  db.prepare('UPDATE local_task SET prompt = ?, updated_at = ? WHERE id = ?')
-    .run(prompt != null ? String(prompt).trim() : lt.prompt, new Date().toISOString(), lt.id);
+  db.prepare('UPDATE local_task SET prompt = ?, label = ?, updated_at = ? WHERE id = ?')
+    .run(prompt != null ? String(prompt).trim() : lt.prompt,
+      label === undefined ? lt.label : lireLibelle(label), new Date().toISOString(), lt.id);
   saveLocalImages(lt.id, images);
   applySessionId('local_task_dir', 'task_id', lt.id, sessionId, localDirsFor(lt.id));
   res.json(localTaskById(lt.id));

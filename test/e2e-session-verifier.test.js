@@ -62,4 +62,39 @@ describe('session : le vérificateur et l’auto-push sont liés', () => {
     });
     assert.equal(r.body.verifier_id, null);
   });
+  /* UN LIBELLÉ, FACULTATIF. Une liste de sessions se lit par son prompt — trois lignes repliées
+     dont les premiers mots se ressemblent d'une session à l'autre. Un titre court dit en un
+     coup d'œil de quoi il s'agit ; vide, la carte retombe sur le prompt. */
+  test('une session porte un libellé, et un libellé blanc vaut aucun libellé', async () => {
+    const avec = await creer({ label: '  Migration TypeORM  ' });
+    assert.equal(avec.body.label, 'Migration TypeORM', 'les espaces de bord ne font pas partie du titre');
+
+    const sans = await creer({ label: '   ' });
+    assert.equal(sans.body.label, null,
+      'une chaîne vide s’afficherait comme un titre invisible qui pousse le prompt d’un cran');
+
+    const jamais = await creer({});
+    assert.equal(jamais.body.label, null);
+
+    // Modifiable après coup, et effaçable.
+    const maj = await app.api('PUT', `/api/tasks/${avec.body.id}`, { label: 'Migration TypeORM — phase 2' });
+    assert.equal(maj.body.label, 'Migration TypeORM — phase 2');
+    assert.equal((await app.api('PUT', `/api/tasks/${avec.body.id}`, { label: '' })).body.label, null);
+    // Absent du corps = inchangé : une modification du prompt ne doit pas effacer le titre.
+    await app.api('PUT', `/api/tasks/${avec.body.id}`, { label: 'gardé' });
+    assert.equal((await app.api('PUT', `/api/tasks/${avec.body.id}`, { prompt: 'autre chose' })).body.label, 'gardé');
+  });
+
+  test('une session hors dépôt porte le sien aussi', async () => {
+    const l = (await app.api('POST', '/api/local-tasks', {
+      label: 'Nettoyage des scripts', prompt: 'Ranger', dirs: ['/tmp/x'],
+    })).body;
+    assert.equal(l.label, 'Nettoyage des scripts');
+    assert.equal((await app.api('PUT', `/api/local-tasks/${l.id}`, { prompt: 'Ranger mieux' })).body.label,
+      'Nettoyage des scripts', 'modifier le prompt ne l’efface pas');
+    // …et il se modifie, comme celui d'une session sur dépôt.
+    assert.equal((await app.api('PUT', `/api/local-tasks/${l.id}`, { label: 'Rangement des scripts' })).body.label,
+      'Rangement des scripts');
+  });
+
 });

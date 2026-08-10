@@ -198,6 +198,10 @@ try { db.exec("ALTER TABLE config ADD COLUMN jira_token TEXT DEFAULT ''"); } cat
    relancer la même session doit revérifier de la même façon, sans qu'on ait à s'en souvenir.
    `SET NULL` — supprimer un vérificateur ne doit pas emporter les sessions qui s'en servaient. */
 try { db.exec('ALTER TABLE task ADD COLUMN verifier_id INTEGER REFERENCES verifier(id) ON DELETE SET NULL'); } catch { /* déjà présente */ }
+/* UN LIBELLÉ, FACULTATIF. Une liste de sessions se lit par son prompt — trois lignes repliées
+   dont les premiers mots se ressemblent souvent d'une session à l'autre. Un titre court écrit
+   par qui la lance dit en un coup d'œil ce qu'elle fait ; vide, on retombe sur le prompt. */
+try { db.exec('ALTER TABLE task ADD COLUMN label TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task ADD COLUMN commit_message TEXT'); } catch { /* déjà présente */ }
 // Migration : MR créée depuis une tâche.
 try { db.exec('ALTER TABLE task ADD COLUMN mr_iid INTEGER'); } catch { /* déjà présente */ }
@@ -388,6 +392,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS agent_pass (
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_agent_pass_unit ON agent_pass(scope, task_id, unit_id, n)');
 // Captures jointes au prompt d'un codage hors dépôt (mêmes que task_image, table dédiée).
+/* APRÈS la création de la table, et pas avant : un `ALTER` posé plus haut dans ce fichier
+   échoue sur une table qui n'existe pas encore, et le `catch` l'avale sans un mot. La colonne
+   n'apparaît alors que sur les bases où la table préexistait — le genre de différence qui ne
+   se voit qu'en production. */
+try { db.exec('ALTER TABLE local_task ADD COLUMN label TEXT'); } catch { /* déjà présente */ }
+
 db.exec(`CREATE TABLE IF NOT EXISTS local_task_image (
   id INTEGER PRIMARY KEY,
   task_id INTEGER NOT NULL REFERENCES local_task(id) ON DELETE CASCADE,

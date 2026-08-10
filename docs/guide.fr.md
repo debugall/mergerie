@@ -165,6 +165,18 @@ sa propre branche, et sa date de création est affichée. Le **choix du dépôt 
 rappelle combien sont filtrées. Vaut pour le codage, le codage hors dépôt et l'exploration. Dans la
 liste, un prompt long est **replié sur trois lignes** avec un **« Voir plus »** qui le déroule entier.
 
+**Un libellé, facultatif.** Un titre court à la création d'une session — codage, hors dépôt ou
+exploration. Une liste se lit sinon par son prompt, trois lignes repliées dont les premiers mots se
+ressemblent d'une session à l'autre ; le libellé dit **de quoi il s'agit** quand le prompt dit **ce
+qu'il faut faire**. Il s'affiche en tête de carte, entre dans la recherche, et se modifie après coup.
+Laissé vide, la carte est exactement ce qu'elle était.
+
+⚠ **Le libellé ne part PAS à l'IA**, et ne sert pas de message de commit. C'est un titre de
+rangement, écrit pour l'humain qui parcourt la liste — pas une consigne. Le glisser dans le prompt
+changerait ce que l'agent produit sans que personne ne l'ait demandé, et deux sessions au même
+prompt mais au libellé différent ne rendraient plus la même chose. Un test le garde fermé, y compris
+contre un module qui se mettrait à le lire.
+
 **Créer maintenant, lancer plus tard.** Les trois types de session proposent **`Créer sans lancer`** à
 côté de **`Créer et lancer`** : on prépare le prompt et les cibles, on lance quand on veut.
 

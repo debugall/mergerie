@@ -1272,6 +1272,8 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .tstepper.merged .tstep-pip { background: var(--accent); }
 .task-projects { font-size: var(--fs-xs); color: var(--muted); }
 .task-date { margin-left: auto; font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Le libellé domine le prompt : c'est lui qu'on parcourt des yeux dans une liste. */
+.task-label { font-weight: var(--fw-sem); font-size: 14px; margin: 2px 0 1px; }
 .card .title { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
 
 /* Historique des reviews : sélecteur de version + avertissement de lecture antérieure */
