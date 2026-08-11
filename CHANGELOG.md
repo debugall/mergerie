@@ -13,6 +13,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Jenkins behind a corporate certificate.** An internal server is almost always served by a
+  certificate a freshly installed Node does not know, and Node's own message — *unable to get
+  local issuer certificate* — names neither the cause nor the cure. `JENKINS_CA_CERT` pins your
+  internal CA (the clean way) and `JENKINS_INSECURE_TLS=1` skips the check while troubleshooting,
+  for Jenkins only, exactly like the GitLab and GitHub settings. The error now names both
+  variables, and so does the Settings → Jenkins page.
+
 - **A Jenkins tab: see where your jobs stand, and run them.** Every job your account can see,
   grouped by folder, with a search (a company installation lines up hundreds) and a filter for
   what is failing, unstable or running. A job's page shows its parameters and its last ten

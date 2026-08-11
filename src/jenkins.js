@@ -24,7 +24,27 @@
 
 const { makeAgentFactory, request } = require('./httpreq');
 
-const tlsAgent = makeAgentFactory('MERGERIE_JENKINS_CA', 'MERGERIE_JENKINS_INSECURE');
+/* Même convention que les forges : `<SERVICE>_CA_CERT` pour épingler le CA interne,
+   `<SERVICE>_INSECURE_TLS=1` pour dépanner. Un Jenkins d'entreprise est presque toujours
+   derrière un certificat que Node ne connaît pas. */
+const tlsAgent = makeAgentFactory('JENKINS_CA_CERT', 'JENKINS_INSECURE_TLS');
+
+/* UNE ERREUR TLS DIT QUOI FAIRE. « unable to get local issuer certificate » est exact et
+   parfaitement inutile : il ne nomme ni la cause (le CA interne de l'entreprise, inconnu de
+   Node) ni le remède. On traduit donc les codes en gestes, en nommant les deux variables —
+   le CA épinglé d'abord, la désactivation ensuite, parce que c'est l'ordre des bonnes idées. */
+const AIDES = {
+  UNABLE_TO_GET_ISSUER_CERT_LOCALLY: "CA d'entreprise inconnue de Node. Exporte le CA interne et lance avec JENKINS_CA_CERT=/chemin/ca.pem (recommandé), ou JENKINS_INSECURE_TLS=1 en dépannage.",
+  UNABLE_TO_GET_ISSUER_CERT: "CA d'entreprise inconnue de Node. Fournis JENKINS_CA_CERT=/chemin/ca.pem, ou JENKINS_INSECURE_TLS=1 en dépannage.",
+  UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'certificat TLS non vérifiable. Fournis JENKINS_CA_CERT=/chemin/ca.pem, ou JENKINS_INSECURE_TLS=1 en dépannage.',
+  SELF_SIGNED_CERT_IN_CHAIN: 'certificat auto-signé. Fournis JENKINS_CA_CERT=/chemin/ca.pem, ou JENKINS_INSECURE_TLS=1 en dépannage.',
+  DEPTH_ZERO_SELF_SIGNED_CERT: 'certificat auto-signé. Fournis JENKINS_CA_CERT=/chemin/ca.pem, ou JENKINS_INSECURE_TLS=1 en dépannage.',
+  CERT_UNTRUSTED: 'certificat non fiable pour Node. Fournis JENKINS_CA_CERT=/chemin/ca.pem, ou JENKINS_INSECURE_TLS=1 en dépannage.',
+  CERT_HAS_EXPIRED: 'le certificat du serveur a expiré (côté Jenkins, rien à corriger ici).',
+  ENOTFOUND: "hôte introuvable : vérifie l'URL Jenkins (schéma https://, pas de chemin de job).",
+  ECONNREFUSED: 'connexion refusée : mauvais port/URL, ou Jenkins injoignable depuis cette machine (VPN ?).',
+  ETIMEDOUT: 'délai dépassé : Jenkins injoignable (réseau, proxy, VPN).',
+};
 
 const isConfigured = (cfg) => !!(cfg && cfg.jenkins_url && cfg.jenkins_user && cfg.jenkins_token);
 
@@ -45,10 +65,19 @@ function cheminUrl(chemin) {
 }
 
 async function appel(cfg, chemin, { method = 'GET', headers = {}, body } = {}) {
-  const res = await request(base(cfg) + chemin, {
-    method, body, agent: tlsAgent(), headers: { ...entetes(cfg), ...headers },
-  });
-  return res;
+  try {
+    return await request(base(cfg) + chemin, {
+      method, body, agent: tlsAgent(), headers: { ...entetes(cfg), ...headers },
+    });
+  } catch (e) {
+    /* Le code de Node est parfois dans `cause` (fetch/TLS l'enveloppe) : on regarde les deux,
+       sinon un certificat auto-signé retomberait sur le message brut qu'on cherche à éviter. */
+    const code = (e && e.code) || (e && e.cause && e.cause.code) || '';
+    const aide = AIDES[code];
+    throw new Error(aide
+      ? `Jenkins (${base(cfg)}) : ${aide}`
+      : `Jenkins (${base(cfg)}) injoignable : ${(e && e.message) || String(e)}`);
+  }
 }
 
 /* Erreur LISIBLE. Jenkins renvoie une page HTML complète sur 403/404 : la recopier dans un

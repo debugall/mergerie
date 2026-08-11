@@ -1067,6 +1067,7 @@ print(json.dumps({
         <div id="sub-jenkinscfg" class="subtab">
         <h2 data-i18n="settings.sub.jenkins">Jenkins</h2>
         <p class="muted" style="max-width:560px" data-i18n="settings.jenkins.intro">Sert à l'onglet Jenkins : voir l'état des jobs et les lancer. Jenkins authentifie le couple utilisateur + jeton d'API — le jeton seul ne suffit pas.</p>
+        <p class="muted" style="max-width:560px" data-i18n="settings.jenkins.tls">Certificat d'entreprise : si la connexion échoue sur « unable to get local issuer certificate », lance le serveur avec JENKINS_CA_CERT=/chemin/ca.pem (recommandé) ou JENKINS_INSECURE_TLS=1 en dépannage.</p>
         <div class="form" style="max-width:520px">
             <label><span data-i18n="settings.lbl.jenkins-url">URL Jenkins</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.jenkins-url" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jenkins_url" placeholder="https://jenkins.mon-entreprise.fr" /></label>
             <label><span data-i18n="settings.lbl.jenkins-user">Utilisateur Jenkins</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.jenkins-user" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jenkins_user" placeholder="prenom.nom" data-i18n-placeholder="settings.ph.jenkins-user" /></label>

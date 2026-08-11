@@ -1437,21 +1437,28 @@ A `.env` file at the root is loaded automatically at startup.
 | `GITLAB_INSECURE_TLS` | 0 | `1` = skip the TLS check **for GitLab only** (troubleshooting) |
 | `GITHUB_CA_CERT` | — | same for a **GitHub Enterprise** instance with an internal CA |
 | `GITHUB_INSECURE_TLS` | 0 | `1` = skip the TLS check **for GitHub only** (troubleshooting) |
+| `JENKINS_CA_CERT` | — | same for an **internal Jenkins** behind a corporate certificate |
+| `JENKINS_INSECURE_TLS` | 0 | `1` = skip the TLS check **for Jenkins only** (troubleshooting) |
 | `GIT_CLONE_SSH` | 0 | `1` = clone over SSH (your key) instead of HTTPS+token |
 | `MERGERIE_DATA_DIR` | `data/` | isolated data folder (useful for tests) |
 
 The AI agent must be able to **modify files** (“yolo” mode) for the coding sessions. Explorations, on the
 other hand, are read-only: the repositories are reset after each pass.
 
-## Self-hosted GitLab / GitHub Enterprise / corporate certificate
+## Self-hosted GitLab / GitHub Enterprise / internal Jenkins / corporate certificate
 
-If the API fails with `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` (an internal CA unknown to Node):
+If the API fails with `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` or `unable to get local issuer certificate`
+(an internal CA unknown to Node):
 - **the clean way**: export the CA (the full chain up to the root) and point `GITLAB_CA_CERT=/path/ca.pem`
-  at it (or `GITHUB_CA_CERT` for a GitHub Enterprise instance);
-- **troubleshooting**: `GITLAB_INSECURE_TLS=1` / `GITHUB_INSECURE_TLS=1`.
+  at it (or `GITHUB_CA_CERT` for a GitHub Enterprise instance, `JENKINS_CA_CERT` for an internal Jenkins);
+- **troubleshooting**: `GITLAB_INSECURE_TLS=1` / `GITHUB_INSECURE_TLS=1` / `JENKINS_INSECURE_TLS=1`.
 
-The two settings are **independent**: pinning your internal GitLab's CA changes nothing for calls to
-github.com. For the **clone**, `git` has its own store: either `GIT_CLONE_SSH=1` (an SSH key), or the
+This is the common case with **Jenkins**: an internal server is almost always served by a certificate a
+freshly installed Node does not know. The Jenkins tab's message names both variables directly — the
+pinned CA first, disabling the check second.
+
+The three settings are **independent**: pinning your internal GitLab's CA changes nothing for calls to
+github.com or to your Jenkins. For the **clone**, `git` has its own store: either `GIT_CLONE_SSH=1` (an SSH key), or the
 settings above are applied to git as well.
 
 ## Recording a presentation video (ready for YouTube)
@@ -1614,6 +1621,7 @@ multi-repository git operations, **restorable branch/tag deletions** (objects pu
 before deletion), a Docker `down` in preview with volumes preserved, and **never an automatic merge** of an
 MR.
 
-**Enterprise TLS.** For a self-hosted GitLab or a GitHub Enterprise with an internal CA, supply
-`GITLAB_CA_CERT` / `GITHUB_CA_CERT`. `GITLAB_INSECURE_TLS=1` / `GITHUB_INSECURE_TLS=1` **disables** the
-certificate check: to be **reserved for a trusted internal network**.
+**Enterprise TLS.** For a self-hosted GitLab, a GitHub Enterprise or an internal Jenkins with an
+internal CA, supply `GITLAB_CA_CERT` / `GITHUB_CA_CERT` / `JENKINS_CA_CERT`. The matching
+`*_INSECURE_TLS=1` **disables** the certificate check for that service only: to be **reserved for a
+trusted internal network**.
