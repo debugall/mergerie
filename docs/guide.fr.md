@@ -861,6 +861,16 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   qui envoie, avec la confirmation habituelle. **Les valeurs proposées sont celles du job** :
   ce sont elles qui partiront si tu n'y touches pas. Partir sur des valeurs par défaut qu'on
   n'a pas vues, c'est déployer la mauvaise version dans le mauvais environnement.
+- **`Relancer` : le même job, les mêmes valeurs.** Le geste le plus fréquent après un échec.
+  Dans la **liste**, il repart avec les paramètres du **dernier lancement** ; dans la **fiche**,
+  chaque exécution de l'historique a le sien et repart avec **ses** valeurs à elle — c'est ce
+  qu'on veut après avoir lu la console d'un build raté. La confirmation **montre les valeurs**
+  qui vont partir : « relancer » ne dit rien si on ne voit pas avec quoi. Un job sans paramètre
+  n'a pas ce bouton : ce serait `Lancer`.
+- ⚠ **Un paramètre secret ne peut pas être renvoyé.** Jenkins ne rend jamais sa valeur (et
+  Mergerie ne l'affiche pas) : à la relance, Jenkins reprendra sa valeur par défaut. La
+  confirmation le dit et les compte, plutôt que de laisser repartir un job amputé de son mot de
+  passe sans que personne ne s'en aperçoive.
 - **Un job désactivé n'a pas de bouton `Lancer`** : proposer ce que Jenkins refusera est une
   promesse qu'on ne tient pas.
 

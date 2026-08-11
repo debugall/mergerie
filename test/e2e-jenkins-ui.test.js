@@ -538,6 +538,66 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.locator('#jenkinsClose').click();
   });
 
+  /* RELANCER À L'IDENTIQUE, depuis la liste. La confirmation doit MONTRER les valeurs : sans
+     elles, « relancer » ne dit pas avec quoi, et c'est justement la question. */
+  test('relancer depuis la liste repart avec les paramètres du dernier lancement', async () => {
+    await allerJenkins();
+    await page.waitForSelector('#jenkinsBox .jk-row');
+    const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'deploy-prod' }).first();
+    const avant = mock.state.calls.filter((c) => c.method === 'POST').length;
+
+    /* ANNULER N'ENVOIE RIEN. Sans ce passage, la confirmation pourrait n'être qu'un décor :
+       tous les autres tests cliquent « oui », et une garde qui ne garde rien passerait. */
+    await ligne.locator('[data-jkrerun]').click();
+    await page.waitForSelector('#confirmModal:not([hidden])');
+    await page.locator('#confirmCancel').click();
+    await page.waitForSelector('#confirmModal[hidden]', { state: 'attached' });
+    assert.equal(mock.state.calls.filter((c) => c.method === 'POST').length, avant,
+      'annuler doit vraiment ne rien relancer');
+
+    await ligne.locator('[data-jkrerun]').click();
+    await page.waitForSelector('#confirmModal:not([hidden])');
+    const detail = await page.locator('#confirmDetail').textContent();
+    assert.match(detail, /VERSION = 1\.4/, 'la confirmation montre les valeurs qui vont repartir');
+    assert.match(detail, /ENV = prod/);
+    assert.match(await page.locator('#confirmText').textContent(), /1 paramètre secret/,
+      'un secret ne peut pas être renvoyé : le dire vaut mieux que relancer un job amputé');
+
+    await page.locator('#confirmOk').click();
+    await page.waitForFunction((n) => document.querySelectorAll('#toasts .toast').length >= n, 1);
+    const post = mock.state.calls.filter((c) => c.method === 'POST').slice(avant)[0];
+    assert.ok(post.path.endsWith('/buildWithParameters'));
+    assert.match(post.body, /VERSION=1\.4/);
+    assert.match(post.body, /ENV=prod/);
+    assert.ok(!/MDP/.test(post.body), 'le secret n’est pas inventé');
+  });
+
+  test('un job sans paramètre n’a pas de bouton « Relancer » (ce serait « Lancer »)', async () => {
+    await allerJenkins();
+    const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'api-build' }).first();
+    assert.equal(await ligne.locator('[data-jkrerun]').count(), 0);
+  });
+
+  /* Et depuis l'historique : les valeurs de CETTE exécution, pas celles du dernier lancement —
+     c'est ce qu'on veut après avoir lu la console d'un build raté. */
+  test('relancer une exécution précise reprend SES valeurs', async () => {
+    await allerJenkins();
+    await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
+    await page.waitForSelector('#jenkinsFiche [data-jkrerunbuild="10"]');
+    const avant = mock.state.calls.filter((c) => c.method === 'POST').length;
+
+    await page.locator('[data-jkrerunbuild="10"]').click();
+    await page.waitForSelector('#confirmModal:not([hidden])');
+    assert.match(await page.locator('#confirmDetail').textContent(), /ENV = recette/,
+      'les valeurs du build CHOISI, pas celles du dernier');
+    await page.locator('#confirmOk').click();
+    await page.waitForFunction((n) => document.querySelectorAll('#toasts .toast').length >= n, 1);
+    const post = mock.state.calls.filter((c) => c.method === 'POST').slice(avant)[0];
+    assert.match(post.body, /ENV=recette/);
+    // La fermeture suit l'envoi : on l'attend plutôt que de la lire dans la même milliseconde.
+    await page.waitForSelector('#jenkinsModal[hidden]', { state: 'attached' });
+  });
+
   /* LE LIEN VERS JENKINS. Il s'ouvre dans un nouvel onglet, et il ne relaie que du http(s) :
      l'URL vient de Jenkins, donc de l'extérieur. */
   test('chaque ligne porte un lien vers le job dans Jenkins', async () => {

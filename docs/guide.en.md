@@ -822,6 +822,15 @@ Jenkins already does well, and which there is no point redoing.
   usual confirmation. **The values shown are the job's own**: those are what will be sent if you
   leave them alone. Going with default values you have not seen is how the wrong version reaches
   the wrong environment.
+- **`Run again`: the same job, the same values.** The most frequent gesture after a failure.
+  In the **list** it goes out with the parameters of the **last run**; in the job's **page**,
+  every run in the history has its own button and goes out with **its** values — which is what
+  you want after reading the console of a failed build. The confirmation **shows the values**
+  that are about to be sent: "run again" says nothing if you cannot see with what. A job with no
+  parameter has no such button: that would be `Run`.
+- ⚠ **A secret parameter cannot be sent back.** Jenkins never returns its value (and Mergerie
+  never displays it): on a re-run, Jenkins will use its default. The confirmation says so and
+  counts them, rather than letting a job go out without its password and nobody noticing.
 - **A disabled job has no `Run` button**: offering what Jenkins will refuse is a promise you
   cannot keep.
 

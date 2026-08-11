@@ -12224,6 +12224,7 @@ function jkRow(j) {
     ${ennui ? `<span class="tag stale">${esc(jkStatutLabel(j))}</span>` : ''}
     ${jkLienExterne(j.url)}
     <button type="button" class="btn btn-sm" data-jkopen="${esc(j.path)}">${esc(tr('jenkins.open'))}</button>
+    ${(j.buildable && j.last && (j.lastParams || []).length) ? `<button type="button" class="btn btn-sm" data-jkrerun="${esc(j.path)}" title="${esc(tr('jenkins.rerun.title-btn'))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg>${esc(tr('jenkins.rerun'))}</button>` : ''}
     ${j.buildable ? `<button type="button" class="btn btn-sm btn-primary" data-jkrun="${esc(j.path)}" title="${esc(j.params ? tr('jenkins.run.params-title', { n: j.params, count: j.params }) : tr('jenkins.run.title'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(j.params ? tr('jenkins.run.params') : tr('jenkins.run'))}</button>` : ''}
   </div>`;
 }
@@ -12390,6 +12391,7 @@ function jkBuildLigne(chemin, b, choisi) {
       <span class="jk-meta">${esc(quand)}${b.duration ? ` · ${Math.round(b.duration / 1000)} s` : ''}</span>
     </button>
     <button type="button" class="btn btn-sm" data-jklog="${b.number}" data-jkpath="${esc(chemin)}">${esc(tr('jenkins.console'))}</button>
+    <button type="button" class="btn btn-sm" data-jkrerunbuild="${b.number}" title="${esc(tr('jenkins.rerun.title-build', { n: b.number }))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg></button>
   </div>`;
 }
 
@@ -12482,6 +12484,36 @@ function jkParamsSaisis() {
     out[el.dataset.jkparam] = el.value;
   });
   return out;
+}
+
+/* RELANCER À L'IDENTIQUE. Le geste le plus fréquent après un échec : le même job, les mêmes
+   valeurs — sans les retaper, et sans risquer d'en oublier une. La confirmation MONTRE ce qui
+   va repartir : « relancer » ne veut rien dire si on ne voit pas avec quoi.
+
+   Les paramètres secrets n'ont pas été rendus par Jenkins (on ne les affiche jamais) : ils ne
+   peuvent donc pas repartir. On le DIT plutôt que de laisser partir un job amputé de son mot
+   de passe sans que personne ne s'en aperçoive. */
+async function relancerJenkins(chemin, params, caches) {
+  const liste = params || [];
+  const ok = await confirmDialog({
+    title: tr('jenkins.rerun.title'),
+    text: caches
+      ? `${tr('jenkins.rerun.text', { job: chemin })} ${tr('jenkins.rerun.secrets', { n: caches, count: caches })}`
+      : tr('jenkins.rerun.text', { job: chemin }),
+    detail: liste.length ? liste.map((p) => `${p.name} = ${p.value}`).join('\n') : tr('jenkins.build.no-params'),
+    confirmLabel: tr('jenkins.rerun'),
+  });
+  if (!ok) return false;
+  try {
+    const avant = (JENKINS.jobs.find((x) => x.path === chemin) || {}).lastNumber || 0;
+    await api('/jenkins/build', { method: 'POST', body: {
+      path: chemin, parameters: Object.fromEntries(liste.map((p) => [p.name, p.value])),
+    } });
+    jkPoserLance(chemin, avant);
+    toast(tr('jenkins.queued', { job: chemin }));
+    loadJenkins();
+    return true;
+  } catch (e) { toast(explainError(e.message), true); return false; }
 }
 
 /* LANCER DEMANDE CONFIRMATION. Un job Jenkins n'est pas une page qu'on ouvre : il déploie,
@@ -12602,8 +12634,23 @@ document.addEventListener('click', (e) => {
       });
       return;
     }
+    const rerun = e.target.closest('[data-jkrerun]');
+    if (rerun) {
+      const j = JENKINS.jobs.find((x) => x.path === rerun.dataset.jkrerun);
+      if (j) relancerJenkins(j.path, j.lastParams, j.lastParamsCaches);
+      return;
+    }
     const open = e.target.closest('[data-jkopen]') || e.target.closest('[data-jkjob]');
     if (open) { openJenkinsJob(open.dataset.jkopen || open.dataset.jkjob); return; }
+  }
+  /* Relancer UNE exécution précise, avec SES valeurs : c'est ce qu'on veut après avoir lu la
+     console d'un build raté, pas les valeurs du dernier lancement qui n'est pas celui-là. */
+  const rb = e.target.closest && e.target.closest('[data-jkrerunbuild]');
+  if (rb) {
+    const d = JENKINS.job;
+    const b = d && (d.builds || []).find((x) => x.number === Number(rb.dataset.jkrerunbuild));
+    if (b) relancerJenkins(d.path, b.params, b.paramsCaches).then((parti) => { if (parti) $('#jenkinsModal').hidden = true; });
+    return;
   }
   const build = e.target.closest && e.target.closest('[data-jkbuild]');
   if (build) { JENKINS.build = Number(build.dataset.jkbuild); renderJenkinsFiche(); return; }

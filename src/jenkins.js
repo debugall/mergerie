@@ -203,16 +203,31 @@ function auteurDe(build) {
    prétendrait montrer avec quoi le job est parti en en cachant la moitié. Seule chaque VALEUR
    est bornée — une valeur de trois mille caractères n'est pas une information, c'est un mur. */
 const MAX_VALEUR = 60;
+const estSecret = (p) => /password/i.test(String(p._class || '')) || /password|secret|token/i.test(p.name);
+
 function paramsDuBuild(build) {
   const out = [];
   for (const action of (build && build.actions) || []) {
     for (const p of (action && action.parameters) || []) {
       if (!p || !p.name || p.value == null || p.value === '') continue;
-      if (/password/i.test(String(p._class || '')) || /password|secret|token/i.test(p.name)) continue;
+      if (estSecret(p)) continue;
       out.push({ name: p.name, value: String(p.value).slice(0, MAX_VALEUR) });
     }
   }
   return out;
+}
+
+/* COMBIEN ONT ÉTÉ ÉCARTÉS. On ne montre pas les secrets — mais « relancer avec les mêmes
+   paramètres » ne peut pas les renvoyer non plus, et partir sans le dire ferait repartir un
+   job amputé d'un mot de passe. Le compte suffit à prévenir. */
+function paramsCachesDe(build) {
+  let n = 0;
+  for (const action of (build && build.actions) || []) {
+    for (const p of (action && action.parameters) || []) {
+      if (p && p.name && p.value != null && p.value !== '' && estSecret(p)) n += 1;
+    }
+  }
+  return n;
 }
 
 /* SUR QUELLE BRANCHE / QUEL TAG. Trois sources, dans l'ordre de fiabilité : la révision que
@@ -258,6 +273,7 @@ function aplatir(noeuds, prefixe = '', sortie = [], classeParent = '') {
       lastNumber: (n.lastBuild && n.lastBuild.number) || null,
       by: auteurDe(n.lastBuild),
       ref: refDe(n.lastBuild, classeParent, n.name),
+      lastParamsCaches: paramsCachesDe(n.lastBuild),
       /* COMBIEN DE PARAMÈTRES, dès la liste. Sans ça, le bouton « Lancer » promet la même
          chose pour un job qui part au clic et pour un job qui demande d'abord une version et
          un environnement : l'écran peut le DIRE avant qu'on clique, il le dit. */
@@ -414,6 +430,7 @@ async function detail(cfg, chemin) {
       by: auteurDe(b),
       ref: refDe(b, '', ''),
       params: paramsDuBuild(b),
+      paramsCaches: paramsCachesDe(b),
     })),
   };
 }
@@ -487,5 +504,5 @@ async function tester(cfg) {
 module.exports = {
   isConfigured, lister, detail, lancer, console: console_, tester,
   // exportés pour les tests : ce sont les deux traductions qui portent tout le reste
-  lireCouleur, aplatir, cheminUrl, lireParametres, auteurDe, refDe, paramsDuBuild, choixDe, lireChoixHtml,
+  lireCouleur, aplatir, cheminUrl, lireParametres, auteurDe, refDe, paramsDuBuild, paramsCachesDe, choixDe, lireChoixHtml,
 };

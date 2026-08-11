@@ -13,6 +13,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **`Run again` on a Jenkins job, with the same parameters.** In the list it reuses the last
+  run's values; in the job's page every run in the history has its own button and reuses that
+  run's values — what you want after reading the console of a failed build. The confirmation
+  shows the values about to be sent, because "run again" says nothing if you cannot see with
+  what, and it counts the secret parameters that cannot be sent back: Jenkins will fall back to
+  their defaults rather than the job going out silently amputated.
+
 - **Jenkins parameters whose values are computed now come through.** Git Parameter (a repo's
   branches and tags), Extended Choice, Active Choices: these plugins do not declare their
   options, they compute them while rendering their own page, so no API request will ever return

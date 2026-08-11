@@ -63,10 +63,12 @@ function builds(job) {
     params: params
       ? [{ name: 'VERSION', value: `1.5.${i}` }, { name: 'ENVIRONNEMENT', value: ENVS[i] }, { name: 'MIGRATIONS', value: i ? 'false' : 'true' }]
       : [],
+    // Un secret dans le lot : « relancer » ne peut pas le renvoyer, et l'écran doit le dire.
+    paramsCaches: params ? 1 : 0,
   }));
 }
 
-const lister = () => JOBS.map((j) => ({ ...j, params: (PARAMS[j.path] || []).length }));
+const lister = () => JOBS.map((j) => ({ ...j, params: (PARAMS[j.path] || []).length, lastParamsCaches: PARAMS[j.path] ? 1 : 0 }));
 
 function detail(chemin) {
   const job = JOBS.find((j) => j.path === chemin);
