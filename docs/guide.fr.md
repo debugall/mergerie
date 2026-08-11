@@ -786,9 +786,12 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   le monde ; un job **en cours** a sa pastille qui bat), *quand* (la **date** du dernier
   lancement, l'ancienneté relative en infobulle), *par qui et sur quoi* (**l'auteur** du
   lancement — ou sa nature : *par le planificateur*, *sur un push*, *par un job amont* —, la
-  **branche ou le tag** construits, et les **paramètres du dernier lancement** : trois au plus
-  dans la ligne, le reste compté et détaillé en infobulle). Tout cela arrive dans **la même
-  requête** que la liste : l'afficher ne coûte pas un appel de plus.
+  **branche ou le tag** construits, et **tous les paramètres du dernier
+  lancement** avec leurs valeurs, en **pastilles nom/valeur sur leur propre ligne** : mêlés au
+  statut, à la date et à l'auteur — tous gris, tous séparés par des points médians — on lisait
+  une phrase au lieu de couples. La question qu'on se pose en lisant la liste est justement
+  « avec quoi est-il parti ? », et y répondre à moitié obligerait à ouvrir la fiche. Tout cela arrive dans **la même requête** que la liste :
+  l'afficher ne coûte pas un appel de plus.
 
   ⚠ Un paramètre de type **mot de passe** n'est jamais affiché — Jenkins en rend une forme
   chiffrée, illisible, et un secret n'a rien à faire dans une liste — pas plus qu'une valeur
@@ -839,6 +842,13 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   permet de s'apercevoir qu'on s'est trompé de ligne. Un job Jenkins n'est pas une page qu'on
   ouvre — il déploie, il publie, il tourne sur une machine partagée, et on ne peut pas
   l'annuler depuis ici.
+- ⚠ **Un paramètre dynamique que Jenkins n'a pas su calculer** (Extended Choice, Active
+  Choices : leur liste vient d'un script ou d'un fichier de propriétés, évalué au moment
+  d'afficher la page) rend, vu depuis l'API, sa **phrase d'erreur à la place de sa liste** —
+  « Could not get Environment from ENV Param ». Le champ est laissé **vide** et le dit, avec le
+  lien pour aller lancer depuis Jenkins : pré-remplir le champ de cette phrase l'aurait fait
+  partir telle quelle comme valeur.
+
 - **Un job paramétré ne se lance jamais depuis la liste.** Son bouton s'écrit **`Lancer…`** —
   les points de suspension annoncent un formulaire, et l'infobulle dit combien de paramètres il
   attend. Il ouvre la **fiche** du job : la section **`Paramètres`** s'y remplit (un booléen se

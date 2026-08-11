@@ -750,10 +750,12 @@ Jenkins already does well, and which there is no point redoing.
   *Disabled* —, as a colour on its own does not read the same way for everyone; a **running**
   job has a pulsing dot), *when* (the **date** of the last run, with the relative age in the
   tooltip), *by whom and on what* (the **author** of the run — or its nature: *by the
-  scheduler*, *on a push*, *by an upstream job* —, the **branch or tag** that was built, and the
-  **parameters of the last run**: at most three in the line, the rest counted and spelled out in
-  the tooltip). All of it arrives in **the same request** as the list: showing it does not cost
-  one more call.
+  scheduler*, *on a push*, *by an upstream job* —, the **branch or tag** that was built, and **every parameter of the last
+  run** with its value, as **name/value chips on their own line**: mixed in with the status, the
+  date and the author — all grey, all separated by middle dots — you read a sentence instead of
+  pairs. The question you ask while reading the list is precisely "what did it go out with?",
+  and answering half of it would send you to the job's page. All of it arrives in **the same request** as the list: showing it does not cost one more
+  call.
 
   ⚠ A **password** parameter is never displayed — Jenkins returns an encrypted form of it,
   unreadable, and a secret has no business in a list — nor is an empty value, which teaches
@@ -801,6 +803,12 @@ Jenkins already does well, and which there is no point redoing.
 - **Running.** ⚠ Always **with a confirmation**, and the question **names the job**: that is
   what lets you notice you picked the wrong line. A Jenkins job is not a page you open — it
   deploys, it publishes, it runs on a shared machine, and it cannot be cancelled from here.
+- ⚠ **A dynamic parameter Jenkins could not compute** (Extended Choice, Active Choices: their
+  list comes from a script or a properties file, evaluated when the page is rendered) returns,
+  as seen from the API, **its error message instead of its list** — "Could not get Environment
+  from ENV Param". The field is left **empty** and says so, with the link to go and run it from
+  Jenkins: prefilling the field with that sentence would have sent it as the value.
+
 - **A parameterised job never starts from the list.** Its button reads **`Run…`** — the
   ellipsis announces a form, and the tooltip says how many parameters it expects. It opens the
   job's **page**: the **`Parameters`** section is filled in there (a boolean is ticked, a choice

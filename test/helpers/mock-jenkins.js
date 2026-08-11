@@ -80,7 +80,8 @@ function start() {
         const reste = m[2] || '/';
         const job = state.details[cle];
         if (!job) return envoi(404, '<html>Not Found</html>');
-        if (reste.startsWith('/api/json')) return envoi(200, job);
+        // Comme la liste : un vrai Jenkins rend toujours l'URL du job.
+        if (reste.startsWith('/api/json')) return envoi(200, { url: `http://jenkins.test${cle}/`, ...job });
         if (req.method === 'POST' && /\/build(WithParameters)?$/.test(reste)) {
           if (state.crumbActif && req.headers['jenkins-crumb'] !== state.crumb) {
             return envoi(403, '<html>No valid crumb was included in the request</html>');

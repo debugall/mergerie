@@ -419,6 +419,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **The parameters in the Jenkins list are readable.** They sit on their own line as
+  name/value chips instead of trailing the status, the date and the author — all grey, all
+  separated by middle dots, which read as a sentence rather than as pairs.
+
+- **The Jenkins list spells out every parameter of the last run.** It used to show three and
+  count the rest as `+2`, which sent you hovering or opening the job's page for the very
+  question you were asking while reading the list. Lines wrap instead. Values longer than 60
+  characters are still cut — three thousand characters in a list row is a wall, not information.
+
 - **The Jenkins job search now matches what the line shows.** Not just the path: the branch or
   tag, who started the run, and the parameters it went out with. Searching `ENV=prod` and
   finding nothing while it is written on screen is the surest way to stop using a search field.
@@ -555,6 +564,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   cancelling closes it again.
 
 ### Fixed
+
+- **A Jenkins field no longer shows up prefilled with a plugin error.** Dynamic parameters
+  (Extended Choice, Active Choices) build their list from a script evaluated when the page is
+  rendered; seen from the API that evaluation can fail, and the plugin returns its error
+  message — *Could not get Environment from ENV Param* — where the list should be. It was taken
+  for a value and prefilled the field, so a run would have sent that sentence to Jenkins. The
+  field is now left empty, says why, and links to the job in Jenkins.
 
 - **Jenkins choice parameters are dropdowns again.** The job request asked for a fixed list of
   fields, so anything a parameter plugin exposes under another name never arrived — a choice

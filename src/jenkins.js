@@ -122,12 +122,25 @@ function lireCouleur(color) {
    dans une seule chaîne séparée par des virgules (`value`), et sa valeur par défaut ailleurs.
    Sans ce démêlage, la liste retombe en champ de saisie libre : on retape à la main une
    valeur que Jenkins connaît, et une faute de frappe part en production. */
+/* QUAND LE PLUGIN N'A PAS SU CALCULER SES VALEURS. Les paramètres dynamiques (Extended
+   Choice, Active Choices) construisent leur liste par un script ou un fichier de propriétés,
+   évalués côté serveur au moment d'afficher la page. Vu depuis l'API, l'évaluation peut
+   échouer — et le plugin rend alors sa PHRASE D'ERREUR à la place de la liste :
+   « Could not get Environment from ENV Param ».
+
+   La prendre pour une valeur est le pire des cas : le champ arrive pré-rempli d'une phrase
+   qui a l'air d'une valeur, et un lancement l'enverrait telle quelle à Jenkins. On la
+   reconnaît, on vide le champ, et on le DIT — un champ vide inexpliqué se remplit au jugé. */
+const ERREUR_PLUGIN = /^(could not|couldn't|unable to|error)\b/i;
+const estErreurPlugin = (v) => typeof v === 'string' && ERREUR_PLUGIN.test(v.trim());
+
 function choixDe(p) {
   if (Array.isArray(p.choices)) return p.choices.map(String);
   // Certaines versions rendent `choices` sous forme d'objet { values: [...] }.
   if (p.choices && Array.isArray(p.choices.values)) return p.choices.values.map(String);
   const type = String(p.type || p._class || '');
-  if (/ExtendedChoice|MultiSelect|SingleSelect/i.test(type) && typeof p.value === 'string' && p.value.includes(',')) {
+  if (/ExtendedChoice|MultiSelect|SingleSelect/i.test(type) && typeof p.value === 'string'
+      && p.value.includes(',') && !estErreurPlugin(p.value)) {
     return p.value.split(',').map((x) => x.trim()).filter(Boolean);
   }
   return null;
@@ -144,13 +157,19 @@ function defautDe(p) {
 
 function lireParametres(properties) {
   const prop = (properties || []).find((p) => Array.isArray(p && p.parameterDefinitions));
-  return ((prop && prop.parameterDefinitions) || []).map((p) => ({
-    name: p.name,
-    type: String(p.type || p._class || '').replace(/.*\./, ''),
-    description: p.description || '',
-    choices: choixDe(p),
-    value: defautDe(p),
-  }));
+  return ((prop && prop.parameterDefinitions) || []).map((p) => {
+    const defaut = defautDe(p);
+    const cassé = estErreurPlugin(defaut) || (choixDe(p) === null && estErreurPlugin(p.value));
+    return {
+      name: p.name,
+      type: String(p.type || p._class || '').replace(/.*\./, ''),
+      description: p.description || '',
+      choices: choixDe(p),
+      // Vidé, jamais pré-rempli d'une phrase d'erreur : elle partirait à Jenkins comme valeur.
+      value: cassé ? '' : defaut,
+      unresolved: cassé || undefined,
+    };
+  });
 }
 
 /* QUI A LANCÉ. Jenkins ne répond pas à cette question par un champ mais par des « causes » :
@@ -180,16 +199,17 @@ function auteurDe(build) {
    — un paramètre de type MOT DE PASSE, dont Jenkins rend une forme chiffrée (`{AQAAABAA…}`) :
      illisible, sans intérêt, et un secret n'a rien à faire dans une liste ;
    — une valeur vide, qui n'apprend rien et pousse les autres hors de l'écran.
-   Le nombre est borné : un job de déploiement en aligne parfois vingt. */
-const MAX_PARAMS = 8;
+   TOUS les autres sont rendus : un plafond sur le nombre ferait mentir la liste, qui
+   prétendrait montrer avec quoi le job est parti en en cachant la moitié. Seule chaque VALEUR
+   est bornée — une valeur de trois mille caractères n'est pas une information, c'est un mur. */
+const MAX_VALEUR = 60;
 function paramsDuBuild(build) {
   const out = [];
   for (const action of (build && build.actions) || []) {
     for (const p of (action && action.parameters) || []) {
       if (!p || !p.name || p.value == null || p.value === '') continue;
       if (/password/i.test(String(p._class || '')) || /password|secret|token/i.test(p.name)) continue;
-      out.push({ name: p.name, value: String(p.value).slice(0, 60) });
-      if (out.length >= MAX_PARAMS) return out;
+      out.push({ name: p.name, value: String(p.value).slice(0, MAX_VALEUR) });
     }
   }
   return out;

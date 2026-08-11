@@ -94,6 +94,20 @@ describe('Client Jenkins', () => {
       'un secret n’a rien à faire dans une liste, et une valeur vide n’apprend rien');
   });
 
+  /* AUCUN PLAFOND sur le NOMBRE : une liste qui prétend montrer avec quoi le job est parti en
+     cachant la moitié ment. Seule chaque VALEUR est bornée — trois mille caractères dans une
+     ligne de liste ne sont pas une information, c'est un mur. */
+  test('tous les paramètres sont rendus, chaque valeur étant bornée', async () => {
+    poser();
+    mock.state.jobs[2].lastBuild.actions = [{ parameters: [
+      ...Array.from({ length: 14 }, (_, i) => ({ name: `P${i}`, value: `v${i}`, _class: 'hudson.model.StringParameterValue' })),
+      { name: 'LONG', value: 'x'.repeat(200), _class: 'hudson.model.StringParameterValue' },
+    ] }];
+    const job = (await jenkins.lister(cfg)).find((j) => j.path === 'release');
+    assert.equal(job.lastParams.length, 15, 'quatorze paramètres et un long : aucun n’est écarté');
+    assert.equal(job.lastParams[14].value.length, 60);
+  });
+
   test('la couleur dit le verdict ET le fait de tourner', async () => {
     poser();
     const jobs = await jenkins.lister(cfg);

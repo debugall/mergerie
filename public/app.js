@@ -12172,23 +12172,27 @@ function jkCherchable(j) {
     j._q = [
       j.path, j.ref || '',
       (j.by && (j.by.user || j.by.label)) || '',
-      ...(j.lastParams || []).map((p) => `${p.name}=${p.value}`),
+      ...(j.lastParams || []).map((p) => `${p.name}=${p.value} ${p.name} ${p.value}`),
     ].join(' ').toLowerCase();
   }
   return j._q;
 }
 
-const JK_PARAMS_VUS = 3;
+/* TOUS les paramètres du dernier lancement, en clair dans la ligne. Un « +3 » obligeait à
+   survoler ou à ouvrir la fiche pour savoir avec quoi le job était parti — exactement la
+   question qu'on se pose en lisant la liste. La ligne se replie sur plusieurs lignes s'il le
+   faut. Celui qui a DONNÉ la branche affichée n'est pas répété. */
 function jkParams(j) {
-  const liste = (j.lastParams || []).filter((p) => String(p.value) !== String(j.ref || ''));
-  if (!liste.length) return { texte: '', titre: '' };
-  const vus = liste.slice(0, JK_PARAMS_VUS).map((p) => `${p.name}=${p.value}`);
-  const reste = liste.length - vus.length;
-  return {
-    texte: vus.join(' ') + (reste ? ` +${reste}` : ''),
-    titre: liste.map((p) => `${p.name}=${p.value}`).join('\n'),
-  };
+  return (j.lastParams || []).filter((p) => String(p.value) !== String(j.ref || ''));
 }
+
+/* Sur LEUR PROPRE LIGNE, en pastilles nom/valeur. Alignés à la suite du statut, de la date et
+   de l'auteur — tous en gris, tous séparés par des points médians —, ils se confondaient avec
+   eux : on lisait une phrase, pas des couples. Le nom reste discret, la valeur porte la
+   couleur du texte : c'est elle qu'on cherche. */
+const jkParamPastilles = (liste) => (liste.length
+  ? `<div class="jk-params">${liste.map((p) => `<span class="jk-chip"><span class="jk-chip-k">${esc(p.name)}</span><span class="jk-chip-v">${esc(String(p.value))}</span></span>`).join('')}</div>`
+  : '');
 
 /* Le lien vers le job DANS Jenkins. L'URL vient de Jenkins, donc d'une source externe : on
    n'ouvre que du http(s), comme partout ailleurs dans l'application — une `javascript:` glissée
@@ -12208,14 +12212,14 @@ function jkRow(j) {
     j.last ? fmtDateTime(new Date(j.last).toISOString()) : '',
     jkAuteur(j.by),
     j.ref ? `⎇ ${j.ref}` : '',
-    params.texte,
     (j.buildable || j.statut === 'desactive') ? '' : tr('jenkins.st.desactive'),
   ].filter(Boolean);
   return `<div class="card jk-row" data-jkjob="${esc(j.path)}">
     <span class="jk-dot ${esc(j.statut)}${j.enCours ? ' encours' : ''}" aria-hidden="true"></span>
     <div style="min-width:0;flex:1">
       <div class="jk-name">${j.folder ? `<span class="jk-path">${esc(j.folder)}/</span>` : ''}${esc(j.name)}${j.lastNumber ? ` <span class="jk-path">#${j.lastNumber}</span>` : ''}</div>
-      <div class="jk-meta" title="${esc([j.last ? jkQuand(j.last) : '', params.titre].filter(Boolean).join('\n'))}">${infos.map(esc).join(' · ')}</div>
+      <div class="jk-meta" title="${esc(j.last ? jkQuand(j.last) : '')}">${infos.map(esc).join(' · ')}</div>
+      ${jkParamPastilles(params)}
     </div>
     ${ennui ? `<span class="tag stale">${esc(jkStatutLabel(j))}</span>` : ''}
     ${jkLienExterne(j.url)}
@@ -12450,7 +12454,8 @@ async function openJenkinsJob(chemin) {
       ? `<h4>${esc(tr('jenkins.params'))}</h4>
          <p class="muted jk-param-intro">${esc(tr('jenkins.params.intro'))}</p>${d.parameters.map((p) => `<label class="jk-param"><span class="jk-param-name">${esc(p.name)}</span>
           ${p.description ? `<span class="jk-param-desc">${esc(p.description)}</span>` : ''}
-          ${jkParamChamp(p)}</label>`).join('')}`
+          ${jkParamChamp(p)}
+          ${p.unresolved ? `<span class="jk-param-warn">${esc(tr('jenkins.param.unresolved'))} ${jkLienExterne(d.url)}</span>` : ''}</label>`).join('')}`
       : '';
     JENKINS.build = null;
     $('#jenkinsModalBody').innerHTML = `${params}<div class="jk-fiche" id="jenkinsFiche"></div>`;

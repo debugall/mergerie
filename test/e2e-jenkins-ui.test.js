@@ -154,14 +154,19 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     assert.doesNotMatch(meta, /refs\/remotes/, '« refs/remotes/origin/main » est un détail d’implémentation');
 
     /* AVEC QUELS PARAMÈTRES le dernier lancement est parti — ils arrivent dans la même
-       requête que la liste, donc les afficher ne coûte rien. */
-    const dep = await page.locator('#jenkinsBox .jk-row').filter({ hasText: 'deploy-prod' }).first().locator('.jk-meta');
-    const texte = await dep.textContent();
-    assert.match(texte, /ENV=prod/, 'les valeurs du dernier build sont là');
-    assert.doesNotMatch(texte, /MDP=/, 'un paramètre de type mot de passe est écarté');
-    assert.doesNotMatch(texte, /VIDE=/, 'une valeur vide n’apprend rien');
-    assert.match(texte, /\+1/, 'au-delà de trois, le reste est compté et détaillé en infobulle');
-    assert.match(await dep.getAttribute('title'), /DEBUG=/, 'l’infobulle porte la liste entière');
+       requête que la liste, donc les afficher ne coûte rien. Et ils vivent sur LEUR PROPRE LIGNE, en pastilles nom/valeur : mêlés au
+       statut, à la date et à l'auteur — tous gris, tous séparés par des points médians — on
+       lisait une phrase au lieu de couples. */
+    const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'deploy-prod' }).first();
+    const chips = await ligne.locator('.jk-chip').allTextContents();
+    const cles = await ligne.locator('.jk-chip-k').allTextContents();
+    assert.deepEqual(cles, ['VERSION', 'ENV', 'MIGRE', 'DEBUG'],
+      'TOUS les paramètres, sans « +3 » : la question qu’on se pose en lisant la liste est justement « avec quoi ? »');
+    assert.ok(chips.some((c) => /ENV\s*prod/.test(c)), 'nom et valeur ensemble dans la pastille');
+    assert.ok(!cles.includes('MDP'), 'un paramètre de type mot de passe est écarté');
+    assert.ok(!cles.includes('VIDE'), 'une valeur vide n’apprend rien');
+    assert.equal(await ligne.locator('.jk-meta .jk-chip').count(), 0,
+      'ils ne sont plus noyés dans la ligne de statut');
 
     // Un déclenchement automatique n'a pas d'auteur : on dit sa NATURE plutôt que rien.
     const auto = await page.locator('#jenkinsBox .jk-row').filter({ hasText: 'nuit' }).first().locator('.jk-meta').textContent();
@@ -403,6 +408,32 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     assert.deepEqual(await page.locator('[data-jkparam="CIBLE"] option').allTextContents(), ['fr', 'be', 'ch']);
     assert.equal(await page.locator('[data-jkparam="CIBLE"]').inputValue(), 'be', 'et sa valeur par défaut est retenue');
     assert.equal(await balise('VERSION'), 'INPUT', 'un texte libre reste un texte libre');
+    await page.locator('#jenkinsClose').click();
+    mock.state.details['/job/boutique/job/deploy-prod'].property = decor;
+  });
+
+  /* QUAND LE PLUGIN RATE SON CALCUL, il rend sa phrase d'erreur À LA PLACE de la liste. La
+     prendre pour une valeur pré-remplirait le champ d'une phrase qui a l'air d'une valeur —
+     et un lancement l'enverrait telle quelle à Jenkins. */
+  test('un paramètre dynamique en échec n’est pas pré-rempli avec le message d’erreur', async () => {
+    const decor = mock.state.details['/job/boutique/job/deploy-prod'].property;
+    mock.state.details['/job/boutique/job/deploy-prod'].property = [{ parameterDefinitions: [
+      { name: 'HOST_IP',
+        _class: 'com.cwctravel.hudson.plugins.extended_choice_parameter.ExtendedChoiceParameterDefinition',
+        description: 'OPTIONAL : Choose One or Multiple machine(s)',
+        value: 'Could not get Environment from ENV Param' },
+    ] }];
+    await allerJenkins();
+    await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
+    await page.waitForSelector('#jenkinsModal:not([hidden]) [data-jkparam="HOST_IP"]');
+
+    assert.equal(await page.locator('[data-jkparam="HOST_IP"]').inputValue(), '',
+      'la phrase d’erreur du plugin n’est pas une valeur : le champ part vide');
+    assert.match(await page.locator('.jk-param-warn').textContent(), /paramètre dynamique/,
+      'et on le DIT : un champ vide inexpliqué se remplit au jugé');
+    assert.equal(await page.locator('.jk-param-warn .jk-open-ext').count(), 1,
+      'avec le lien pour aller le lancer depuis Jenkins, qui sait calculer ces valeurs');
+
     await page.locator('#jenkinsClose').click();
     mock.state.details['/job/boutique/job/deploy-prod'].property = decor;
   });
