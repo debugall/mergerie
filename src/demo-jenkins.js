@@ -57,7 +57,7 @@ function builds(job) {
   }));
 }
 
-const lister = () => JOBS.map((j) => ({ ...j }));
+const lister = () => JOBS.map((j) => ({ ...j, params: (PARAMS[j.path] || []).length }));
 
 function detail(chemin) {
   const job = JOBS.find((j) => j.path === chemin);

@@ -40,7 +40,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     mock.state.jobs = [
       { name: 'boutique', _class: 'com.cloudbees.hudson.plugins.folder.Folder', jobs: [
         { name: 'api-build', color: 'blue', buildable: true, lastBuild: build(2000, [{ userName: 'Alice' }], 'main') },
-        { name: 'deploy-prod', color: 'blue', buildable: true, lastBuild: build(1000, [{ userName: 'Bruno' }], 'v1.0') },
+        { name: 'deploy-prod', color: 'blue', buildable: true, lastBuild: build(1000, [{ userName: 'Bruno' }], 'v1.0'), property: [{ parameterDefinitions: [{ name: 'VERSION' }, { name: 'ENV' }] }] },
         { name: 'front-build', color: 'red', buildable: true, lastBuild: build(9000, [{ _class: 'hudson.triggers.SCMTrigger$SCMTriggerCause' }], 'feature/x') },
       ] },
       { name: 'batch', _class: 'com.cloudbees.hudson.plugins.folder.Folder', jobs: [
@@ -224,6 +224,21 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     assert.ok(post[0].path.endsWith('/build'), 'un job sans paramètre part sur /build');
   });
 
+  /* CE QUE LE BOUTON PROMET. « Lancer » sur un job qui part au clic et « Lancer » sur un job
+     qui va d'abord demander une version ne sont pas le même geste : l'écran le sait avant le
+     clic (les paramètres arrivent avec la liste), il doit donc le dire — points de suspension
+     et infobulle, la convention de tout formulaire qui s'ouvre. */
+  test('le bouton annonce qu’un job paramétré va demander des valeurs', async () => {
+    await allerJenkins();
+    await page.waitForSelector('#jenkinsBox .jk-row');
+    const avecParams = page.locator('[data-jkrun="boutique/deploy-prod"]');
+    assert.match(await avecParams.textContent(), /Lancer…/);
+    assert.match(await avecParams.getAttribute('title'), /2 paramètres/);
+
+    const sansParams = page.locator('[data-jkrun="boutique/api-build"]');
+    assert.doesNotMatch(await sansParams.textContent(), /…/, 'sans paramètre, rien ne s’ouvre : le bouton lance');
+  });
+
   /* UN JOB PARAMÉTRÉ NE SE LANCE PAS À L'AVEUGLE. Le bouton de la liste ouvre sa fiche : on
      voit ce qu'on va envoyer, et on peut le changer avant. */
   test('un job paramétré ouvre sa fiche au lieu de partir', async () => {
@@ -233,6 +248,8 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.waitForSelector('#jenkinsModal:not([hidden]) [data-jkparam="VERSION"]');
     assert.equal(mock.state.calls.filter((c) => c.method === 'POST').length, avant,
       'ouvrir la fiche ne lance rien');
+    // …et la fiche explique ce qu'on attend de nous, sinon on la prend pour un panneau d'info.
+    assert.match(await page.locator('.jk-param-intro').textContent(), /Lancer/);
     assert.equal(await page.locator('#confirmModal').isHidden(), true);
 
     await page.locator('[data-jkparam="VERSION"]').fill('2.4.1');
@@ -249,12 +266,25 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
       'ce sont les valeurs SAISIES qui partent, pas les défauts du job');
   });
 
-  test('la console d’un build s’ouvre depuis la fiche', async () => {
+  /* La console s'ouvre — et se LIT. Une ligne de log fait volontiers trois cents caractères ;
+     devoir défiler de côté pour lire l'erreur qu'on cherchait revient à ne pas l'afficher. Un
+     `white-space` ne se relit pas, il se mesure : on demande au navigateur si le contenu
+     déborde de son cadre. */
+  test('la console s’ouvre et se replie à la ligne, sans défilement horizontal', async () => {
+    mock.state.console['/job/boutique/job/api-build/8'] = `commande : ${'x'.repeat(600)}\nFinished: SUCCESS`;
     await allerJenkins();
     await page.locator('[data-jkopen="boutique/api-build"]').click();
     await page.waitForSelector('#jenkinsModal:not([hidden]) [data-jklog]');
     await page.locator('[data-jklog]').first().click();
     await page.waitForFunction(() => /Finished: SUCCESS/.test(document.querySelector('#jenkinsLogBody').textContent));
+
+    const deborde = await page.locator('#jenkinsLogBody').evaluate((el) => ({
+      h: el.scrollWidth > el.clientWidth + 1,
+      modale: el.closest('.modal-box').scrollWidth > el.closest('.modal-box').clientWidth + 1,
+    }));
+    assert.equal(deborde.h, false, 'la console doit replier à la ligne, pas défiler de côté');
+    assert.equal(deborde.modale, false, 'et elle ne doit pas non plus élargir la modale qui la porte');
+
     await page.locator('#jenkinsLogClose').click();
     await page.locator('#jenkinsClose').click();
   });

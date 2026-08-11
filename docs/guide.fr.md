@@ -806,15 +806,20 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   qu'il n'informe.
 - **La fiche d'un job** (`Ouvrir`) : sa description, ses **paramètres** et ses **dix derniers
   builds** avec leur verdict, leur date et leur durée. La **console** de chaque build s'ouvre
-  d'un bouton — bornée aux derniers caractères et **déroulée en bas**, là où est l'erreur.
+  d'un bouton — bornée aux derniers caractères, **déroulée en bas** là où est l'erreur, et
+  **repliée à la ligne** : défiler de côté pour lire une erreur qu'on cherchait reviendrait à ne
+  pas l'afficher.
 - **Lancer.** ⚠ Toujours **avec confirmation**, et la question **nomme le job** : c'est ce qui
   permet de s'apercevoir qu'on s'est trompé de ligne. Un job Jenkins n'est pas une page qu'on
   ouvre — il déploie, il publie, il tourne sur une machine partagée, et on ne peut pas
   l'annuler depuis ici.
-- **Un job paramétré ne se lance jamais depuis la liste.** Le bouton ouvre sa **fiche**, où les
-  paramètres se lisent et se modifient (un booléen se coche, un choix se choisit). Partir sur
-  des valeurs par défaut qu'on n'a pas vues, c'est déployer la mauvaise version dans le mauvais
-  environnement.
+- **Un job paramétré ne se lance jamais depuis la liste.** Son bouton s'écrit **`Lancer…`** —
+  les points de suspension annoncent un formulaire, et l'infobulle dit combien de paramètres il
+  attend. Il ouvre la **fiche** du job : la section **`Paramètres`** s'y remplit (un booléen se
+  coche, un choix se choisit, le reste se tape), puis c'est le **`Lancer`** du bas de la fiche
+  qui envoie, avec la confirmation habituelle. **Les valeurs proposées sont celles du job** :
+  ce sont elles qui partiront si tu n'y touches pas. Partir sur des valeurs par défaut qu'on
+  n'a pas vues, c'est déployer la mauvaise version dans le mauvais environnement.
 - **Un job désactivé n'a pas de bouton `Lancer`** : proposer ce que Jenkins refusera est une
   promesse qu'on ne tient pas.
 

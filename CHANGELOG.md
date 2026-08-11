@@ -397,6 +397,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **A Jenkins job that expects parameters now says so before you click.** Its button reads
+  `Run…` and its tooltip gives the number of parameters, and the job's page explains that the
+  values shown are the ones that will be sent. The behaviour had not changed — the button
+  already opened the page instead of launching blind — but nothing announced it, so the page
+  read as an information panel rather than the form it is.
+
 - **The tab shortcuts now go up to ten.** With Jenkins the bar holds ten tabs, and there is no
   "10" key: the tenth is on `0`, as in a browser. Without it, adding a tab silently took its
   shortcut away from the last one — and the help sheet reads the real range from the bar.
@@ -520,6 +526,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   cancelling closes it again.
 
 ### Fixed
+
+- **A Jenkins build console no longer scrolls sideways.** Long lines — a command, a classpath —
+  went off to the right, so reading the error you had opened the console for meant scrolling
+  horizontally. Lines now wrap.
 
 - **A confirmation no longer opens behind the window that asked for it.** Confirming an action
   started from another modal — running a Jenkins job from its page — put the question

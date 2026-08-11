@@ -114,6 +114,20 @@ function lireCouleur(color) {
    sont pas des jobs et ne doivent pas apparaître comme tels — on descend dedans. La
    profondeur est bornée : une installation peut imbriquer sans fin, et une requête qui
    ramène tout l'arbre d'un coup peut peser des mégaoctets. */
+/* Les paramètres d'un job, tels que Jenkins les déclare. On garde le type : un booléen se
+   coche, un choix se choisit, et présenter les trois comme un champ texte ferait retaper des
+   valeurs que Jenkins connaît déjà. */
+function lireParametres(properties) {
+  const prop = (properties || []).find((p) => Array.isArray(p && p.parameterDefinitions));
+  return ((prop && prop.parameterDefinitions) || []).map((p) => ({
+    name: p.name,
+    type: String(p.type || p._class || '').replace(/.*\./, ''),
+    description: p.description || '',
+    choices: Array.isArray(p.choices) ? p.choices : null,
+    value: p.defaultParameterValue ? p.defaultParameterValue.value : '',
+  }));
+}
+
 /* QUI A LANCÉ. Jenkins ne répond pas à cette question par un champ mais par des « causes » :
    une action humaine porte un `userName`, le reste est déclenché par une horloge, un push ou
    un job amont. On rend donc soit un nom, soit la NATURE du déclencheur — « lancé par le
@@ -178,6 +192,10 @@ function aplatir(noeuds, prefixe = '', sortie = [], classeParent = '') {
       lastNumber: (n.lastBuild && n.lastBuild.number) || null,
       by: auteurDe(n.lastBuild),
       ref: refDe(n.lastBuild, classeParent, n.name),
+      /* COMBIEN DE PARAMÈTRES, dès la liste. Sans ça, le bouton « Lancer » promet la même
+         chose pour un job qui part au clic et pour un job qui demande d'abord une version et
+         un environnement : l'écran peut le DIRE avant qu'on clique, il le dit. */
+      params: lireParametres(n.property).length,
     });
   }
   return sortie;
@@ -187,6 +205,7 @@ function aplatir(noeuds, prefixe = '', sortie = [], classeParent = '') {
    trancher d'un coup d'œil : QUI a lancé, et SUR QUOI. Tout arrive dans la MÊME requête —
    interroger chaque job séparément ferait trois cents appels à l'ouverture de l'onglet. */
 const CHAMPS_JOB = 'name,url,color,buildable,_class,'
+  + 'property[parameterDefinitions[name]],'
   + 'lastBuild[timestamp,number,actions[causes[shortDescription,userName,_class],'
   + 'parameters[name,value],lastBuiltRevision[branch[name]]]]';
 const ARBRE = (n) => (n === 0 ? `jobs[${CHAMPS_JOB}]`
@@ -207,20 +226,6 @@ async function lister(cfg) {
     if (a.last || b.last) return a.last ? -1 : 1;
     return a.path.localeCompare(b.path);
   });
-}
-
-/* Les paramètres d'un job, tels que Jenkins les déclare. On garde le type : un booléen se
-   coche, un choix se choisit, et présenter les trois comme un champ texte ferait retaper des
-   valeurs que Jenkins connaît déjà. */
-function lireParametres(properties) {
-  const prop = (properties || []).find((p) => Array.isArray(p && p.parameterDefinitions));
-  return ((prop && prop.parameterDefinitions) || []).map((p) => ({
-    name: p.name,
-    type: String(p.type || p._class || '').replace(/.*\./, ''),
-    description: p.description || '',
-    choices: Array.isArray(p.choices) ? p.choices : null,
-    value: p.defaultParameterValue ? p.defaultParameterValue.value : '',
-  }));
 }
 
 const CHAMPS_BUILD = 'number,result,building,timestamp,duration,url,displayName';

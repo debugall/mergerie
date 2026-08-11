@@ -768,13 +768,18 @@ Jenkins already does well, and which there is no point redoing.
   lies more than it informs.
 - **A job's page** (`Open`): its description, its **parameters** and its **last ten builds**
   with verdict, date and duration. Each build's **console** opens with one button — bounded to
-  the last characters and **scrolled to the bottom**, where the error is.
+  the last characters, **scrolled to the bottom** where the error is, and **wrapped**: having to
+  scroll sideways to read an error you were looking for would amount to not showing it.
 - **Running.** ⚠ Always **with a confirmation**, and the question **names the job**: that is
   what lets you notice you picked the wrong line. A Jenkins job is not a page you open — it
   deploys, it publishes, it runs on a shared machine, and it cannot be cancelled from here.
-- **A parameterised job never starts from the list.** The button opens its **page**, where the
-  parameters can be read and changed (a boolean is ticked, a choice is chosen). Going with
-  default values you have not seen is how the wrong version reaches the wrong environment.
+- **A parameterised job never starts from the list.** Its button reads **`Run…`** — the
+  ellipsis announces a form, and the tooltip says how many parameters it expects. It opens the
+  job's **page**: the **`Parameters`** section is filled in there (a boolean is ticked, a choice
+  is chosen, the rest is typed), then the **`Run`** at the bottom of the page sends it, with the
+  usual confirmation. **The values shown are the job's own**: those are what will be sent if you
+  leave them alone. Going with default values you have not seen is how the wrong version reaches
+  the wrong environment.
 - **A disabled job has no `Run` button**: offering what Jenkins will refuse is a promise you
   cannot keep.
 

@@ -12155,7 +12155,7 @@ function jkRow(j) {
     </div>
     ${ennui ? `<span class="tag stale">${esc(jkStatutLabel(j))}</span>` : ''}
     <button type="button" class="btn btn-sm" data-jkopen="${esc(j.path)}">${esc(tr('jenkins.open'))}</button>
-    ${j.buildable ? `<button type="button" class="btn btn-sm btn-primary" data-jkrun="${esc(j.path)}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr('jenkins.run'))}</button>` : ''}
+    ${j.buildable ? `<button type="button" class="btn btn-sm btn-primary" data-jkrun="${esc(j.path)}" title="${esc(j.params ? tr('jenkins.run.params-title', { n: j.params, count: j.params }) : tr('jenkins.run.title'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(j.params ? tr('jenkins.run.params') : tr('jenkins.run'))}</button>` : ''}
   </div>`;
 }
 
@@ -12252,7 +12252,8 @@ async function openJenkinsJob(chemin) {
     JENKINS.job = d;
     $('#jenkinsModalDesc').textContent = d.description || '';
     const params = d.parameters.length
-      ? `<h4>${esc(tr('jenkins.params'))}</h4>${d.parameters.map((p) => `<label class="jk-param"><span class="jk-param-name">${esc(p.name)}</span>
+      ? `<h4>${esc(tr('jenkins.params'))}</h4>
+         <p class="muted jk-param-intro">${esc(tr('jenkins.params.intro'))}</p>${d.parameters.map((p) => `<label class="jk-param"><span class="jk-param-name">${esc(p.name)}</span>
           ${p.description ? `<span class="jk-param-desc">${esc(p.description)}</span>` : ''}
           ${jkParamChamp(p)}</label>`).join('')}`
       : '';
