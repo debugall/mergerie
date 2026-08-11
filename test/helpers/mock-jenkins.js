@@ -62,7 +62,16 @@ function start() {
           { 'Set-Cookie': 'JSESSIONID=zz1; Path=/; HttpOnly' });
       }
       if (chemin === '/me/api/json') return envoi(200, { id: state.user, fullName: 'Moi Même' });
-      if (chemin === '/api/json') return envoi(200, { jobs: state.jobs });
+      /* Comme un vrai Jenkins, chaque job porte son URL — c'est elle que l'écran relaie en
+         lien « ouvrir dans Jenkins ». La poser ici évite de la répéter dans chaque test. */
+      if (chemin === '/api/json') {
+        const avecUrl = (liste, prefixe) => (liste || []).map((j) => ({
+          ...j,
+          url: j.url || `${prefixe}/job/${encodeURIComponent(j.name)}/`,
+          jobs: j.jobs ? avecUrl(j.jobs, `${prefixe}/job/${encodeURIComponent(j.name)}`) : j.jobs,
+        }));
+        return envoi(200, { jobs: avecUrl(state.jobs, 'http://jenkins.test') });
+      }
 
       // /job/a/job/b/... : on retrouve le job par son préfixe d'URL.
       const m = chemin.match(/^((?:\/job\/[^/]+)+)(\/.*)?$/);

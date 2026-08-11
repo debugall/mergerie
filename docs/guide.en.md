@@ -776,15 +776,28 @@ Jenkins already does well, and which there is no point redoing.
 - **Finding a job.** A **search** — mandatory here: a company installation lines up hundreds of
   jobs. It matches the **whole path**, so "shop" brings back a whole project. A checkbox,
   **`Only what is not fine`**, keeps failures, unstable results and what is running.
-- **Nothing is polled.** The screen asks when the tab opens and on **`Refresh`**, not every
-  thirty seconds. Watching a CI server is not this tool's job, and background polling on a
-  shared installation costs everyone. That is also why the menu **carries no badge**: it would
-  mean querying Jenkins on every application start, and a counter frozen since your last visit
-  lies more than it informs.
-- **A job's page** (`Open`): its description, its **parameters** and its **last ten builds**
-  with verdict, date and duration. Each build's **console** opens with one button — bounded to
-  the last characters, **scrolled to the bottom** where the error is, and **wrapped**: having to
-  scroll sideways to read an error you were looking for would amount to not showing it.
+- **Refreshed every 30 s, and only while you are looking.** The Jenkins tab must be open *and*
+  the window visible: polling behind a hidden tab costs a shared server without teaching anyone
+  anything. The **`Do not refresh on its own`** checkbox turns it off (the choice is
+  remembered), and **`Refresh`** asks again by hand. A background refresh does not make the list
+  blink, and a hiccuping network does not wipe the screen: the previous one stays. The menu
+  **carries no badge** — that would mean querying Jenkins on every application start, even when
+  you are not on the tab.
+- **Told when what YOU started is done.** A desktop notification when a job you started from
+  Mergerie finishes, with its verdict; one click opens its page. Yours only: being told about
+  the team's nightly build would be noise, and you would turn the whole thing off within two
+  days. Can be switched off in *Settings → Notifications*. The wait survives closing the tab —
+  that is precisely the point.
+- **A job's page** (`Open`), in two columns: on the **left** the history of the last ten runs
+  (verdict, date, duration) — each with its **`Console`** button, the most frequent gesture —,
+  on the **right** the details of the one you select: when, how long, **by whom**, on **which
+  branch**, and above all **with which parameters and which values** it went out. The most
+  recent one is selected by default. The **console** opens with one button — bounded to the last
+  characters, **scrolled to the bottom** where the error is, and **wrapped**: having to scroll
+  sideways to read an error you were looking for would amount to not showing it.
+- **A link to Jenkins** on every line (and on every run in the page) opens the job in a **new
+  tab**: what Mergerie does not show — the configuration, the artifacts, the tests — stays one
+  click away.
 - **Running.** ⚠ Always **with a confirmation**, and the question **names the job**: that is
   what lets you notice you picked the wrong line. A Jenkins job is not a page you open — it
   deploys, it publishes, it runs on a shared machine, and it cannot be cancelled from here.

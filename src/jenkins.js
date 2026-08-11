@@ -117,14 +117,39 @@ function lireCouleur(color) {
 /* Les paramètres d'un job, tels que Jenkins les déclare. On garde le type : un booléen se
    coche, un choix se choisit, et présenter les trois comme un champ texte ferait retaper des
    valeurs que Jenkins connaît déjà. */
+/* LES VALEURS D'UNE LISTE DÉROULANTE, quel que soit le plugin qui la fournit. Le paramètre
+   « choix » standard rend un tableau `choices`. Extended Choice, lui, met TOUTES les options
+   dans une seule chaîne séparée par des virgules (`value`), et sa valeur par défaut ailleurs.
+   Sans ce démêlage, la liste retombe en champ de saisie libre : on retape à la main une
+   valeur que Jenkins connaît, et une faute de frappe part en production. */
+function choixDe(p) {
+  if (Array.isArray(p.choices)) return p.choices.map(String);
+  // Certaines versions rendent `choices` sous forme d'objet { values: [...] }.
+  if (p.choices && Array.isArray(p.choices.values)) return p.choices.values.map(String);
+  const type = String(p.type || p._class || '');
+  if (/ExtendedChoice|MultiSelect|SingleSelect/i.test(type) && typeof p.value === 'string' && p.value.includes(',')) {
+    return p.value.split(',').map((x) => x.trim()).filter(Boolean);
+  }
+  return null;
+}
+
+/* La valeur proposée. `defaultParameterValue` est la forme standard ; à défaut on accepte
+   `defaultValue`, que plusieurs plugins utilisent — un champ vide ferait retaper ce que
+   Jenkins allait proposer de lui-même. */
+function defautDe(p) {
+  if (p.defaultParameterValue && p.defaultParameterValue.value !== undefined) return p.defaultParameterValue.value;
+  if (p.defaultValue !== undefined) return p.defaultValue;
+  return '';
+}
+
 function lireParametres(properties) {
   const prop = (properties || []).find((p) => Array.isArray(p && p.parameterDefinitions));
   return ((prop && prop.parameterDefinitions) || []).map((p) => ({
     name: p.name,
     type: String(p.type || p._class || '').replace(/.*\./, ''),
     description: p.description || '',
-    choices: Array.isArray(p.choices) ? p.choices : null,
-    value: p.defaultParameterValue ? p.defaultParameterValue.value : '',
+    choices: choixDe(p),
+    value: defautDe(p),
   }));
 }
 
@@ -250,12 +275,21 @@ async function lister(cfg) {
   });
 }
 
-const CHAMPS_BUILD = 'number,result,building,timestamp,duration,url,displayName';
+/* Chaque build de l'historique porte SES paramètres et SA cause : la fiche montre, à droite,
+   avec quoi l'exécution sélectionnée est partie. Tout arrive dans la requête du job — un appel
+   par build pour reconstituer ça en ferait dix à chaque ouverture de fiche. */
+const CHAMPS_BUILD = 'number,result,building,timestamp,duration,url,displayName,'
+  + 'actions[causes[shortDescription,userName,_class],parameters[name,value,_class],lastBuiltRevision[branch[name]]]';
 
 // Le détail d'un job : de quoi décider de le lancer, et voir ce qu'il a donné.
 async function detail(cfg, chemin) {
   if (!isConfigured(cfg)) throw new Error('Jenkins non configuré (URL, utilisateur, jeton requis).');
-  const tree = `name,url,description,buildable,color,property[parameterDefinitions[name,type,description,choices,defaultParameterValue[value]]],builds[${CHAMPS_BUILD}]{0,10}`;
+  /* `parameterDefinitions[*]` — l'étoile, et non une liste de champs. Chaque plugin de
+     paramètre expose les siens : le choix multiple standard met ses valeurs dans `choices`,
+     mais d'autres les mettent ailleurs, et un champ non demandé n'arrive PAS. Le résultat se
+     voyait à l'écran : une liste déroulante rendue comme un champ de saisie libre, où l'on
+     retapait à la main une valeur que Jenkins connaissait. */
+  const tree = `name,url,description,buildable,color,property[parameterDefinitions[*,defaultParameterValue[value]]],builds[${CHAMPS_BUILD}]{0,10}`;
   const res = await appel(cfg, `${cheminUrl(chemin)}/api/json?tree=${encodeURIComponent(tree)}`);
   const d = json(res, `le job « ${chemin} »`);
   return {
@@ -273,6 +307,9 @@ async function detail(cfg, chemin) {
       timestamp: b.timestamp || null,
       duration: b.duration || 0,
       url: b.url || '',
+      by: auteurDe(b),
+      ref: refDe(b, '', ''),
+      params: paramsDuBuild(b),
     })),
   };
 }
@@ -346,5 +383,5 @@ async function tester(cfg) {
 module.exports = {
   isConfigured, lister, detail, lancer, console: console_, tester,
   // exportés pour les tests : ce sont les deux traductions qui portent tout le reste
-  lireCouleur, aplatir, cheminUrl, lireParametres, auteurDe, refDe, paramsDuBuild,
+  lireCouleur, aplatir, cheminUrl, lireParametres, auteurDe, refDe, paramsDuBuild, choixDe,
 };

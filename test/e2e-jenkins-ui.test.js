@@ -71,8 +71,20 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
         { number: 8, result: 'SUCCESS', building: false, timestamp: Date.now(), duration: 4000, url: '' },
       ],
     };
+    // Un historique AVEC ses paramètres : c'est ce que la fiche doit montrer à droite.
+    const passe = (n, quand, env) => ({
+      number: n, result: 'SUCCESS', building: false, timestamp: quand, duration: 5000, url: `http://jenkins.test/job/x/${n}/`,
+      actions: [
+        { causes: [{ userName: 'Bruno' }] },
+        { parameters: [
+          { name: 'VERSION', value: `1.${n}`, _class: 'hudson.model.StringParameterValue' },
+          { name: 'ENV', value: env, _class: 'hudson.model.StringParameterValue' },
+        ] },
+      ],
+    });
     mock.state.details['/job/boutique/job/deploy-prod'] = {
-      name: 'deploy-prod', color: 'blue', buildable: true, builds: [],
+      name: 'deploy-prod', color: 'blue', buildable: true,
+      builds: [passe(11, 3000, 'prod'), passe(10, 2000, 'recette')],
       property: [{ parameterDefinitions: [
         { name: 'VERSION', type: 'StringParameterDefinition', defaultParameterValue: { value: '1.0' } },
         { name: 'ENV', type: 'ChoiceParameterDefinition', choices: ['recette', 'prod'], defaultParameterValue: { value: 'recette' } },
@@ -160,6 +172,24 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await allerJenkins();
     await page.locator('#jenkinsSearch').fill('front');
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
+
+    /* La recherche porte sur ce que la LIGNE MONTRE : chercher une valeur de paramètre qu'on a
+       sous les yeux et ne rien trouver est la façon la plus sûre de ne plus s'en servir. */
+    await page.locator('#jenkinsSearch').fill('ENV=prod');
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
+    assert.match(await page.locator('#jenkinsBox .jk-row').first().textContent(), /deploy-prod/,
+      'un paramètre du dernier lancement retrouve son job');
+
+    await page.locator('#jenkinsSearch').fill('Alice');
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
+    assert.match(await page.locator('#jenkinsBox .jk-row').first().textContent(), /api-build/,
+      'l’auteur aussi : il est écrit sur la ligne');
+
+    await page.locator('#jenkinsSearch').fill('feature/x');
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
+    assert.match(await page.locator('#jenkinsBox .jk-row').first().textContent(), /front-build/,
+      'la branche aussi');
+
     await page.locator('#jenkinsSearch').fill('');
 
     await page.locator('#jenkinsFailOnly').check();
@@ -222,19 +252,47 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     assert.equal(await page.locator('#jenkinsBox .jk-row').filter({ hasText: 'batch/' }).count(), 0,
       'ses jobs partent avec elle : sinon on aurait des jobs qu’on ne peut plus filtrer');
 
-    // Ce qui est masqué reste VISIBLE en petit : un filtre invisible devient un mystère.
+    /* Ce qui est masqué se COMPTE — un filtre invisible devient un mystère — mais ne s'étale
+       pas : le détail est derrière le clic, pas en travers de l'écran. */
     await page.waitForSelector('#jenkinsFolderHidden:not([hidden])');
     assert.match(await page.locator('#jenkinsFolderHidden').textContent(), /1 dossier masqué/);
+    assert.equal(await page.locator('#jenkinsFolderHidden [data-jkshow]').count(), 0,
+      'le pied compte, il ne liste pas : une rangée de boutons rarement cliqués mange la place');
 
     await page.reload();
     await allerJenkins();
     await lignes(4);
     assert.equal(await page.locator('[data-jkfolder="batch"]').count(), 0, 'le masquage est mémorisé');
 
+    // Le détail, et le retour, se font dans la modale.
+    await page.locator('#jenkinsFolderHidden').click();
+    await page.waitForSelector('#jenkinsHiddenModal:not([hidden])');
+    assert.equal(await page.locator('#jenkinsHiddenList [data-jkshow]').count(), 1);
     await page.locator('[data-jkshow="batch"]').click();
     await lignes(5);
     assert.equal(await page.locator('[data-jkfolder="batch"]').isChecked(), true, 'remis, et coché comme avant');
-    assert.equal(await page.locator('#jenkinsFolderHidden').isHidden(), true, 'plus rien de masqué, plus de pied');
+    assert.equal(await page.locator('#jenkinsHiddenModal').isHidden(), true,
+      'plus rien à remettre : la modale n’a plus de raison d’être ouverte');
+    assert.equal(await page.locator('#jenkinsFolderHidden').isHidden(), true, 'plus rien de masqué, plus de compteur');
+  });
+
+  /* « Tout remettre » : le jour où l'on change d'avis en bloc, remettre huit dossiers un par
+     un est une corvée que le bouton existe pour éviter. */
+  test('« tout remettre » vide la liste des masqués d’un coup', async () => {
+    await allerJenkins();
+    const lignes = (n) => page.waitForFunction((k) => document.querySelectorAll('#jenkinsBox .jk-row').length === k, n);
+    await lignes(5);
+    await page.locator('[data-jkhide="batch"]').click();
+    await page.waitForSelector('#jenkinsFolderHidden:not([hidden])');
+    await page.locator('[data-jkhide="boutique"]').click();
+    await page.waitForFunction(() => /2 dossiers masqués/.test(document.querySelector('#jenkinsFolderHidden').textContent));
+
+    await page.locator('#jenkinsFolderHidden').click();
+    await page.waitForSelector('#jenkinsHiddenModal:not([hidden])');
+    await page.locator('#jenkinsHiddenAll').click();
+    await lignes(5);
+    assert.equal(await page.locator('#jenkinsHiddenModal').isHidden(), true);
+    assert.equal(await page.locator('#jenkinsFolderHidden').isHidden(), true);
   });
 
   /* Un dossier DÉCOCHÉ puis masqué doit revenir DÉCOCHÉ : masquer range, ça ne décide pas à
@@ -247,6 +305,8 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await lignes(4);
     await page.locator('[data-jkhide="batch"]').click();
     await page.waitForSelector('#jenkinsFolderHidden:not([hidden])');
+    await page.locator('#jenkinsFolderHidden').click();
+    await page.waitForSelector('#jenkinsHiddenModal:not([hidden])');
     await page.locator('[data-jkshow="batch"]').click();
     await page.waitForSelector('[data-jkfolder="batch"]');
     assert.equal(await page.locator('[data-jkfolder="batch"]').isChecked(), false,
@@ -320,6 +380,33 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
 
   /* UN JOB PARAMÉTRÉ NE SE LANCE PAS À L'AVEUGLE. Le bouton de la liste ouvre sa fiche : on
      voit ce qu'on va envoyer, et on peut le changer avant. */
+  /* UNE LISTE DÉROULANTE DOIT ÊTRE UNE LISTE. Chaque plugin de paramètre expose ses valeurs à
+     sa façon : le choix standard dans `choices`, Extended Choice dans une seule chaîne à
+     virgules. Retomber en champ libre fait retaper à la main une valeur que Jenkins connaît —
+     et une faute de frappe part alors en production. */
+  test('les paramètres à choix sont rendus en liste déroulante, quel que soit le plugin', async () => {
+    // On REND le décor : les tests partagent le faux serveur, et le suivant compte sur le sien.
+    const decor = mock.state.details['/job/boutique/job/deploy-prod'].property;
+    mock.state.details['/job/boutique/job/deploy-prod'].property = [{ parameterDefinitions: [
+      { name: 'ENV', type: 'ChoiceParameterDefinition', choices: ['recette', 'prod'], defaultParameterValue: { value: 'recette' } },
+      { name: 'CIBLE', _class: 'com.cwctravel.hudson.plugins.extended_choice_parameter.ExtendedChoiceParameterDefinition', value: 'fr, be, ch', defaultValue: 'be' },
+      { name: 'VERSION', type: 'StringParameterDefinition', defaultParameterValue: { value: '1.0' } },
+    ] }];
+    await allerJenkins();
+    await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
+    await page.waitForSelector('#jenkinsModal:not([hidden]) [data-jkparam="ENV"]');
+
+    const balise = (n) => page.locator(`[data-jkparam="${n}"]`).evaluate((el) => el.tagName);
+    assert.equal(await balise('ENV'), 'SELECT', 'le choix standard est une liste');
+    assert.equal(await balise('CIBLE'), 'SELECT',
+      'Extended Choice met ses options dans une chaîne à virgules : c’est une liste aussi');
+    assert.deepEqual(await page.locator('[data-jkparam="CIBLE"] option').allTextContents(), ['fr', 'be', 'ch']);
+    assert.equal(await page.locator('[data-jkparam="CIBLE"]').inputValue(), 'be', 'et sa valeur par défaut est retenue');
+    assert.equal(await balise('VERSION'), 'INPUT', 'un texte libre reste un texte libre');
+    await page.locator('#jenkinsClose').click();
+    mock.state.details['/job/boutique/job/deploy-prod'].property = decor;
+  });
+
   test('un job paramétré ouvre sa fiche au lieu de partir', async () => {
     await allerJenkins();
     const avant = mock.state.calls.filter((c) => c.method === 'POST').length;
@@ -349,6 +436,62 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
      devoir défiler de côté pour lire l'erreur qu'on cherchait revient à ne pas l'afficher. Un
      `white-space` ne se relit pas, il se mesure : on demande au navigateur si le contenu
      déborde de son cadre. */
+  /* LA FICHE EN DEUX COLONNES : l'historique à gauche, ce qu'on sélectionne à droite. Le
+     bouton Console reste dans la liste — c'est le geste le plus fréquent, il ne doit pas
+     coûter une sélection de plus. */
+  test('la fiche montre l’historique à gauche et le détail de l’exécution choisie à droite', async () => {
+    await allerJenkins();
+    await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
+    await page.waitForSelector('#jenkinsFiche [data-jkbuild]');
+
+    // Le plus récent est choisi d'office : c'est celui qu'on vient voir neuf fois sur dix.
+    assert.equal(await page.locator('#jenkinsFiche .jk-build.selected [data-jkbuild]').getAttribute('data-jkbuild'), '11');
+    const droite = page.locator('#jenkinsFiche .jk-fiche-col').nth(1);
+    assert.match(await droite.textContent(), /ENV/, 'les paramètres de l’exécution sont à droite');
+    assert.match(await droite.textContent(), /prod/);
+    assert.match(await droite.textContent(), /Bruno/, 'et qui l’a lancée');
+    assert.equal(await page.locator('#jenkinsFiche .jk-build [data-jklog]').count(),
+      await page.locator('#jenkinsFiche [data-jkbuild]').count(),
+      'chaque ligne d’historique garde son bouton Console');
+
+    /* ET SURTOUT : choisir une AUTRE exécution change le détail. Sans ce clic, on ne prouve
+       que l'affichage du premier build — la sélection pourrait ne rien faire du tout. */
+    assert.match(await droite.textContent(), /1\.11/, 'les valeurs du build #11');
+    await page.locator('[data-jkbuild="10"]').click();
+    await page.waitForFunction(() => /1\.10/.test(document.querySelectorAll('#jenkinsFiche .jk-fiche-col')[1].textContent));
+    assert.match(await droite.textContent(), /recette/, 'ce sont les paramètres du build choisi, pas ceux du dernier');
+    assert.equal(await page.locator('#jenkinsFiche .jk-build.selected [data-jkbuild]').getAttribute('data-jkbuild'), '10',
+      'la ligne choisie se voit dans la liste');
+    await page.locator('#jenkinsClose').click();
+  });
+
+  /* LE LIEN VERS JENKINS. Il s'ouvre dans un nouvel onglet, et il ne relaie que du http(s) :
+     l'URL vient de Jenkins, donc de l'extérieur. */
+  test('chaque ligne porte un lien vers le job dans Jenkins', async () => {
+    await allerJenkins();
+    await page.waitForSelector('#jenkinsBox .jk-row');
+    const lien = page.locator('#jenkinsBox .jk-open-ext').first();
+    assert.equal(await lien.getAttribute('target'), '_blank');
+    assert.match(await lien.getAttribute('rel'), /noopener/, 'la page ouverte ne doit pas reprendre la main');
+    assert.match(await lien.getAttribute('href'), /^https?:\/\//);
+  });
+
+  /* LE RAFRAÎCHISSEMENT AUTOMATIQUE se débraye, et le choix est mémorisé. */
+  test('la case coupe le rafraîchissement automatique, et s’en souvient', async () => {
+    await allerJenkins();
+    await page.waitForSelector('#jenkinsNoAuto');
+    assert.equal(await page.locator('#jenkinsNoAuto').isChecked(), false, 'décoché par défaut : ça se rafraîchit tout seul');
+
+    await page.locator('#jenkinsNoAuto').check();
+    assert.equal(await page.evaluate(() => localStorage.getItem('mergerie_jenkins_auto')), '0');
+    await page.reload();
+    await allerJenkins();
+    await page.waitForSelector('#jenkinsBox .jk-row');
+    assert.equal(await page.locator('#jenkinsNoAuto').isChecked(), true,
+      'un réglage qu’il faut refaire à chaque ouverture n’est pas un réglage');
+    await page.locator('#jenkinsNoAuto').uncheck();
+  });
+
   test('la console s’ouvre et se replie à la ligne, sans défilement horizontal', async () => {
     mock.state.console['/job/boutique/job/api-build/8'] = `commande : ${'x'.repeat(600)}\nFinished: SUCCESS`;
     await allerJenkins();

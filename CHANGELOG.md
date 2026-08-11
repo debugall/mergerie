@@ -13,6 +13,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **The Jenkins tab refreshes itself, tells you when your own job is done, and opens each run
+  side by side.** The list refreshes every 30 seconds — only while the tab is open and the
+  window visible, with a checkbox to turn it off and the choice remembered — and a background
+  refresh never blinks the list nor wipes it when the network hiccups. A desktop notification
+  fires when a job **you** started from Mergerie finishes, with its verdict; the team's nightly
+  builds stay silent, because being told about those is how you end up turning notifications
+  off. A job's page is now two columns: the run history on the left, each run keeping its
+  Console button, and on the right the run you select — when, how long, by whom, on which
+  branch, and with which parameters and values. Every line, and every run, carries a link that
+  opens it in Jenkins in a new tab.
+
 - **The Jenkins list shows the parameters the last run went out with.** Up to three per line,
   the rest counted and spelled out in the tooltip. They cost nothing: they already came with
   the list, in the same request. Password parameters are left out — Jenkins returns an
@@ -408,6 +419,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **The Jenkins job search now matches what the line shows.** Not just the path: the branch or
+  tag, who started the run, and the parameters it went out with. Searching `ENV=prod` and
+  finding nothing while it is written on screen is the surest way to stop using a search field.
+
+- **The Jenkins job page and build console are wider.** The history now sits next to the run
+  details, and console lines of three hundred characters had nowhere to go in 900 px.
+
 - **A Jenkins job that expects parameters now says so before you click.** Its button reads
   `Run…` and its tooltip gives the number of parameters, and the job's page explains that the
   values shown are the ones that will be sent. The behaviour had not changed — the button
@@ -537,6 +555,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   cancelling closes it again.
 
 ### Fixed
+
+- **Jenkins choice parameters are dropdowns again.** The job request asked for a fixed list of
+  fields, so anything a parameter plugin exposes under another name never arrived — a choice
+  parameter fell back to a free-text field where you retyped, by hand, a value Jenkins already
+  knew. Every field is now requested, and Extended Choice parameters (all options in one
+  comma-separated string) are understood too.
 
 - **A Jenkins build console no longer scrolls sideways.** Long lines — a command, a classpath —
   went off to the right, so reading the error you had opened the console for meant scrolling

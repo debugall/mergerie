@@ -7975,6 +7975,7 @@ const NOTIF_DEFAULTS = {
   converge_done: true, // boucle de convergence terminée — actionnable par excellence
   jira_status: true,  // un ticket surveillé change d'état — c'est LA raison de le surveiller
   verify_done: true,  // un verdict objectif est tombé — c'est ce qu'on attendait pour merger
+  jenkins_done: true, // un job Jenkins QUE J'AI LANCÉ s'est terminé — on ne reste pas devant
   mr_new: false,      // nouvelle MR — utile pour certains, spam pour d'autres
   mr_merged: false,   // MR mergée — informatif, pas actionnable
   threshold: 5,       // seuil « note basse » (sur 10)
@@ -12072,7 +12073,7 @@ document.addEventListener('keydown', (e) => {
    ne porte pas de pastille : elle supposerait d'interroger Jenkins à chaque ouverture de
    l'application, et un compteur figé depuis la dernière visite ment plus qu'il n'informe. */
 
-const JENKINS = { jobs: [], configured: true, q: '', echecsSeuls: false, job: null, qDossier: '', horsDossiers: new Set(), masques: new Set() };
+const JENKINS = { jobs: [], configured: true, q: '', echecsSeuls: false, job: null, build: null, qDossier: '', horsDossiers: new Set(), masques: new Set() };
 
 /* Les dossiers DÉCOCHÉS sont mémorisés, pas les cochés. La différence compte le jour où
    l'équipe crée un dossier : mémoriser les cochés le rendrait invisible jusqu'à ce qu'on
@@ -12107,20 +12108,26 @@ function sauverFiltreJenkins() {
 // Les états que Jenkins exprime par une couleur, traduits côté serveur en `statut`.
 const JK_ENNUI = ['echec', 'instable'];
 
-async function loadJenkins() {
+async function loadJenkins({ silencieux = false } = {}) {
   const box = $('#jenkinsBox');
   if (!box) return;
   chargerFiltreJenkins();
-  box.innerHTML = skeleton(4);
+  const auto = $('#jenkinsNoAuto');
+  if (auto) auto.checked = jkAutoCoupe();
+  // Un rafraîchissement de fond ne remplace pas la liste par un squelette : l'écran
+  // clignoterait toutes les trente secondes sous les yeux de quelqu'un qui lit.
+  if (!silencieux) box.innerHTML = skeleton(4);
   try {
     const d = await api('/jenkins/jobs');
     JENKINS.jobs = d.jobs || [];
     JENKINS.configured = d.configured !== false;
   } catch (e) {
-    box.innerHTML = errorBox(explainError(e.message));
-    return;
+    if (!silencieux) box.innerHTML = errorBox(explainError(e.message));
+    return;   // en silencieux, on garde l'écran précédent : un réseau qui hoquette n'efface rien
   }
   renderJenkins();
+  jkVerifierFins(JENKINS.jobs);
+  jkAutoRelance();
 }
 
 function jkStatutLabel(j) {
@@ -12155,6 +12162,22 @@ function jkAuteur(by) {
 /* Les paramètres du dernier lancement, en clair dans la ligne. Trois au plus : au-delà, la
    ligne devient un paragraphe et on ne lit plus rien — le reste est dans l'infobulle, et la
    fiche du job les montre tous. Celui qui a DONNÉ la branche affichée n'est pas répété. */
+/* LA RECHERCHE PORTE SUR CE QUE LA LIGNE MONTRE. Le chemin entier d'abord — on cherche autant
+   « le job de déploiement » que « tout ce qui est dans boutique ». Mais aussi la branche,
+   l'auteur et les PARAMÈTRES du dernier lancement : chercher `v1.5.0` ou `ENV=prod` et ne rien
+   trouver alors que c'est écrit à l'écran est la façon la plus sûre de ne plus se servir d'un
+   champ de recherche. */
+function jkCherchable(j) {
+  if (j._q === undefined) {
+    j._q = [
+      j.path, j.ref || '',
+      (j.by && (j.by.user || j.by.label)) || '',
+      ...(j.lastParams || []).map((p) => `${p.name}=${p.value}`),
+    ].join(' ').toLowerCase();
+  }
+  return j._q;
+}
+
 const JK_PARAMS_VUS = 3;
 function jkParams(j) {
   const liste = (j.lastParams || []).filter((p) => String(p.value) !== String(j.ref || ''));
@@ -12165,6 +12188,15 @@ function jkParams(j) {
     texte: vus.join(' ') + (reste ? ` +${reste}` : ''),
     titre: liste.map((p) => `${p.name}=${p.value}`).join('\n'),
   };
+}
+
+/* Le lien vers le job DANS Jenkins. L'URL vient de Jenkins, donc d'une source externe : on
+   n'ouvre que du http(s), comme partout ailleurs dans l'application — une `javascript:` glissée
+   dans un nom de job n'aurait aucune chance de s'exécuter, mais on ne compte pas là-dessus.
+   `noopener` : la page ouverte ne doit pas pouvoir reprendre la main sur la nôtre. */
+function jkLienExterne(url) {
+  if (!/^https?:\/\//i.test(String(url || ''))) return '';
+  return `<a class="btn btn-icon btn-sm jk-open-ext" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="${esc(tr('jenkins.open-ext'))}" aria-label="${esc(tr('jenkins.open-ext'))}"><svg class="ico ico-sm"><use href="#i-external"/></svg></a>`;
 }
 
 function jkRow(j) {
@@ -12186,6 +12218,7 @@ function jkRow(j) {
       <div class="jk-meta" title="${esc([j.last ? jkQuand(j.last) : '', params.titre].filter(Boolean).join('\n'))}">${infos.map(esc).join(' · ')}</div>
     </div>
     ${ennui ? `<span class="tag stale">${esc(jkStatutLabel(j))}</span>` : ''}
+    ${jkLienExterne(j.url)}
     <button type="button" class="btn btn-sm" data-jkopen="${esc(j.path)}">${esc(tr('jenkins.open'))}</button>
     ${j.buildable ? `<button type="button" class="btn btn-sm btn-primary" data-jkrun="${esc(j.path)}" title="${esc(j.params ? tr('jenkins.run.params-title', { n: j.params, count: j.params }) : tr('jenkins.run.title'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(j.params ? tr('jenkins.run.params') : tr('jenkins.run'))}</button>` : ''}
   </div>`;
@@ -12203,9 +12236,7 @@ function renderJenkins() {
   }
   renderJenkinsDossiers();
   const q = JENKINS.q.toLowerCase();
-  /* La recherche porte sur le CHEMIN entier, pas sur le nom : on cherche autant « le job de
-     déploiement » que « tout ce qui est dans boutique ». */
-  const vus = JENKINS.jobs.filter((j) => (!q || j.path.toLowerCase().includes(q))
+  const vus = JENKINS.jobs.filter((j) => (!q || jkCherchable(j).includes(q))
     && !JENKINS.horsDossiers.has(j.folder) && !JENKINS.masques.has(j.folder)
     && (!JENKINS.echecsSeuls || JK_ENNUI.includes(j.statut) || j.enCours));
   $('#jenkinsCount').textContent = tr('jenkins.count', { n: vus.length, count: vus.length, total: JENKINS.jobs.length });
@@ -12246,31 +12277,149 @@ function renderJenkinsDossiers() {
     <button type="button" class="btn btn-icon btn-sm jk-folder-hide" data-jkhide="${esc(d)}" title="${esc(tr('jenkins.folders.hide'))}" aria-label="${esc(tr('jenkins.folders.hide'))}"><svg class="ico ico-sm"><use href="#i-close"/></svg></button></label>`).join('')
     || `<p class="muted">${esc(tr('jenkins.folders.no-match'))}</p>`;
 
-  /* Les masqués restent VISIBLES, en petit, sous la liste : un filtre dont on ne voit pas ce
-     qu'il retire devient un mystère au bout de trois semaines. Un clic les ramène — un par un,
-     parce qu'on en masque dix et qu'on en veut un seul. */
+  /* Ce qui est masqué se COMPTE, il ne s'étale pas. Une rangée de boutons qu'on ne clique
+     presque jamais mangeait la place de ce qu'on regarde vraiment ; mais le taire ferait d'un
+     filtre un mystère au bout de trois semaines. Un mot, donc, et la liste au clic. */
   const caches = dossiers.filter((d) => JENKINS.masques.has(d));
   const pied = $('#jenkinsFolderHidden');
   pied.hidden = !caches.length;
-  pied.innerHTML = caches.length
-    ? `<span class="muted">${esc(tr('jenkins.folders.hidden', { n: caches.length, count: caches.length }))}</span>`
-      + caches.map((d) => `<button type="button" class="btn btn-sm" data-jkshow="${esc(d)}" title="${esc(tr('jenkins.folders.show'))}">+ ${nom(d)}</button>`).join('')
-    : '';
+  pied.textContent = caches.length ? tr('jenkins.folders.hidden', { n: caches.length, count: caches.length }) : '';
+  pied.title = tr('jenkins.folders.hidden-title');
+  if (!$('#jenkinsHiddenModal').hidden) renderJenkinsMasques();
+}
+
+// La liste des masqués, dans sa modale. Un bouton par dossier : on en masque dix, on en
+// récupère un seul — « tout remettre » existe aussi, pour le jour où on change d'avis en bloc.
+function renderJenkinsMasques() {
+  const box = $('#jenkinsHiddenList');
+  if (!box) return;
+  const comptes = new Map();
+  for (const j of JENKINS.jobs) comptes.set(j.folder, (comptes.get(j.folder) || 0) + 1);
+  const caches = [...JENKINS.masques].sort((a, b) => a.localeCompare(b));
+  box.innerHTML = caches.length
+    ? caches.map((d) => `<div class="jk-hidden-row">
+        <span>${d ? esc(d) : esc(tr('jenkins.folders.root'))}</span>
+        <span class="jk-folder-count">${comptes.get(d) || 0}</span>
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-sm" data-jkshow="${esc(d)}">${esc(tr('jenkins.hidden.restore'))}</button>
+      </div>`).join('')
+    : `<p class="muted">${esc(tr('jenkins.hidden.empty'))}</p>`;
+  $('#jenkinsHiddenAll').hidden = !caches.length;
+}
+
+/* ---------- Rafraîchissement automatique, et fin de MES lancements ----------
+
+   TOUTES LES 30 SECONDES, et seulement quand on REGARDE : l'onglet doit être ouvert et la
+   fenêtre visible. Un sondage qui continue derrière un onglet masqué ou pendant qu'on est
+   ailleurs dans l'application coûte à un Jenkins partagé sans rien apprendre à personne.
+   La case le débraye, et le choix est mémorisé — un réglage qu'il faut refaire à chaque
+   ouverture n'est pas un réglage. */
+const JENKINS_AUTO = 'mergerie_jenkins_auto';
+const JENKINS_LANCES = 'mergerie_jenkins_lances';
+const JK_PERIODE_MS = 30000;
+let jkTimer = null;
+
+const jkAutoCoupe = () => { try { return localStorage.getItem(JENKINS_AUTO) === '0'; } catch { return false; } };
+
+function jkAutoRelance() {
+  if (jkTimer) { clearInterval(jkTimer); jkTimer = null; }
+  const onglet = $('#tab-jenkins');
+  if (!onglet || !onglet.classList.contains('active') || jkAutoCoupe()) return;
+  jkTimer = setInterval(() => {
+    // Onglet du navigateur masqué : on ne demande rien. Il redemandera au retour.
+    if (document.hidden || !$('#tab-jenkins').classList.contains('active')) return;
+    loadJenkins({ silencieux: true });
+  }, JK_PERIODE_MS);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) jkAutoRelance(); });
+
+/* CE QUE J'AI LANCÉ, et qui tourne encore. On retient le numéro du dernier build AU MOMENT du
+   lancement : le build neuf n'existe pas encore (Jenkins met en file), donc c'est son
+   apparition — un numéro plus grand, terminé — qui fait la notification. Persisté : fermer
+   l'onglet en attendant la fin est justement le cas d'usage. */
+function jkLances() { try { return JSON.parse(localStorage.getItem(JENKINS_LANCES) || '{}'); } catch { return {}; } }
+function jkPoserLance(chemin, depuis) {
+  const l = jkLances();
+  l[chemin] = { depuis: depuis || 0, at: Date.now() };
+  try { localStorage.setItem(JENKINS_LANCES, JSON.stringify(l)); } catch { /* stockage indisponible */ }
+}
+function jkOublierLance(chemin) {
+  const l = jkLances(); delete l[chemin];
+  try { localStorage.setItem(JENKINS_LANCES, JSON.stringify(l)); } catch { /* stockage indisponible */ }
+}
+
+/* La notification de fin. Elle ne concerne QUE mes lancements : être prévenu du build nocturne
+   de l'équipe serait du bruit, et on couperait tout au bout de deux jours. */
+function jkVerifierFins(jobs) {
+  const attendus = jkLances();
+  if (!Object.keys(attendus).length) return;
+  const prefs = notifPrefs();
+  for (const j of jobs) {
+    const a = attendus[j.path];
+    if (!a) continue;
+    // Le build attendu est arrivé (numéro strictement plus grand) ET il ne tourne plus.
+    if (!j.lastNumber || j.lastNumber <= a.depuis || j.enCours) continue;
+    jkOublierLance(j.path);
+    if (prefs.jenkins_done && !prefs.muted) {
+      showNotif(tr('jenkins.notif.title', { job: j.path }), tr(`jenkins.st.${j.statut}`), () => {
+        navTab('jenkins'); openJenkinsJob(j.path);
+      });
+    }
+  }
 }
 
 /* ---------- Le détail d'un job : paramètres, historique, console ---------- */
 
-function jkBuildLigne(chemin, b) {
+const jkPastilleBuild = (b) => (b.building ? 'succes encours'
+  : b.result === 'SUCCESS' ? 'succes' : b.result === 'UNSTABLE' ? 'instable' : b.result === 'ABORTED' ? 'jamais' : 'echec');
+
+/* Une ligne d'historique. Elle SÉLECTIONNE (le détail s'affiche à droite) et garde son bouton
+   Console : c'est le geste le plus fréquent, il ne doit pas coûter une sélection de plus. */
+function jkBuildLigne(chemin, b, choisi) {
   const etat = b.building ? tr('jenkins.st.running') : (b.result || '—');
   const quand = b.timestamp ? fmtDateTime(new Date(b.timestamp).toISOString()) : '';
-  return `<div class="jk-build">
-    <span class="jk-dot ${b.building ? 'succes encours' : (b.result === 'SUCCESS' ? 'succes' : b.result === 'UNSTABLE' ? 'instable' : b.result === 'ABORTED' ? 'jamais' : 'echec')}"></span>
-    <strong>#${b.number}</strong>
-    <span>${esc(etat)}</span>
-    <span class="jk-meta">${esc(quand)}${b.duration ? ` · ${Math.round(b.duration / 1000)} s` : ''}</span>
-    <span class="spacer"></span>
+  return `<div class="jk-build${choisi ? ' selected' : ''}">
+    <button type="button" class="jk-build-btn" data-jkbuild="${b.number}" aria-pressed="${choisi ? 'true' : 'false'}">
+      <span class="jk-dot ${jkPastilleBuild(b)}"></span>
+      <strong>#${b.number}</strong>
+      <span>${esc(etat)}</span>
+      <span class="jk-meta">${esc(quand)}${b.duration ? ` · ${Math.round(b.duration / 1000)} s` : ''}</span>
+    </button>
     <button type="button" class="btn btn-sm" data-jklog="${b.number}" data-jkpath="${esc(chemin)}">${esc(tr('jenkins.console'))}</button>
   </div>`;
+}
+
+// Le détail de l'exécution sélectionnée : avec quoi elle est partie, et ce qu'elle a donné.
+function jkBuildDetail(d, b) {
+  if (!b) return `<p class="muted">${esc(tr('jenkins.build.pick'))}</p>`;
+  const ligne = (k, v) => (v ? `<div class="jk-detail-row"><span class="jk-detail-k">${esc(k)}</span><span class="jk-detail-v">${esc(v)}</span></div>` : '');
+  const params = (b.params || []).length
+    ? (b.params || []).map((p) => ligne(p.name, String(p.value))).join('')
+    : `<p class="muted">${esc(tr('jenkins.build.no-params'))}</p>`;
+  return `<div class="jk-build-detail">
+    <h4>#${b.number} — ${esc(b.building ? tr('jenkins.st.running') : (b.result || '—'))} ${jkLienExterne(b.url)}</h4>
+    ${ligne(tr('jenkins.build.when'), b.timestamp ? fmtDateTime(new Date(b.timestamp).toISOString()) : '')}
+    ${ligne(tr('jenkins.build.duration'), b.duration ? `${Math.round(b.duration / 1000)} s` : '')}
+    ${ligne(tr('jenkins.build.by'), jkAuteur(b.by))}
+    ${ligne(tr('jenkins.build.ref'), b.ref || '')}
+    <h4>${esc(tr('jenkins.params.used'))}</h4>
+    ${params}
+  </div>`;
+}
+
+/* La fiche : l'historique à gauche, le détail du build choisi à droite. On sélectionne le
+   plus récent d'office — c'est celui dont on vient chercher les paramètres neuf fois sur dix. */
+function renderJenkinsFiche() {
+  const d = JENKINS.job;
+  if (!d) return;
+  const builds = d.builds || [];
+  if (!builds.some((b) => b.number === JENKINS.build)) JENKINS.build = builds.length ? builds[0].number : null;
+  const choisi = builds.find((b) => b.number === JENKINS.build) || null;
+  const gauche = builds.length
+    ? `<h4>${esc(tr('jenkins.builds'))}</h4><div class="jk-builds">${builds.map((b) => jkBuildLigne(d.path, b, b.number === JENKINS.build)).join('')}</div>`
+    : `<p class="muted">${esc(tr('jenkins.no-build'))}</p>`;
+  const zone = $('#jenkinsFiche');
+  if (zone) zone.innerHTML = `<div class="jk-fiche-col">${gauche}</div><div class="jk-fiche-col">${jkBuildDetail(d, choisi)}</div>`;
 }
 
 // Un paramètre, rendu selon SON type : un booléen se coche, un choix se choisit. Les
@@ -12303,10 +12452,9 @@ async function openJenkinsJob(chemin) {
           ${p.description ? `<span class="jk-param-desc">${esc(p.description)}</span>` : ''}
           ${jkParamChamp(p)}</label>`).join('')}`
       : '';
-    const builds = d.builds.length
-      ? `<h4>${esc(tr('jenkins.builds'))}</h4><div class="jk-builds">${d.builds.map((b) => jkBuildLigne(d.path, b)).join('')}</div>`
-      : `<p class="muted">${esc(tr('jenkins.no-build'))}</p>`;
-    $('#jenkinsModalBody').innerHTML = params + builds;
+    JENKINS.build = null;
+    $('#jenkinsModalBody').innerHTML = `${params}<div class="jk-fiche" id="jenkinsFiche"></div>`;
+    renderJenkinsFiche();
     $('#jenkinsRun').hidden = !d.buildable;
   } catch (e) {
     $('#jenkinsModalBody').innerHTML = errorBox(explainError(e.message));
@@ -12332,7 +12480,9 @@ async function lancerJenkins(chemin, parametres) {
     confirmLabel: tr('jenkins.run'),
   })) return false;
   try {
+    const avant = (JENKINS.jobs.find((x) => x.path === chemin) || {}).lastNumber || 0;
     await api('/jenkins/build', { method: 'POST', body: { path: chemin, parameters: parametres || {} } });
+    jkPoserLance(chemin, avant);
     toast(tr('jenkins.queued', { job: chemin }));
     // Jenkins met en file : l'état ne change pas dans la seconde, on redemande quand même.
     loadJenkins();
@@ -12356,6 +12506,10 @@ async function openJenkinsLog(chemin, numero) {
 $('#jenkinsSearch') && $('#jenkinsSearch').addEventListener('input', (e) => { JENKINS.q = e.target.value; renderJenkins(); });
 $('#jenkinsFailOnly') && $('#jenkinsFailOnly').addEventListener('change', (e) => { JENKINS.echecsSeuls = e.target.checked; renderJenkins(); });
 $('#jenkinsReload') && $('#jenkinsReload').addEventListener('click', () => loadJenkins());
+$('#jenkinsNoAuto') && $('#jenkinsNoAuto').addEventListener('change', (e) => {
+  try { localStorage.setItem(JENKINS_AUTO, e.target.checked ? '0' : '1'); } catch { /* stockage indisponible */ }
+  jkAutoRelance();
+});
 $('#jenkinsFolderSearch') && $('#jenkinsFolderSearch').addEventListener('input', (e) => { JENKINS.qDossier = e.target.value; renderJenkinsDossiers(); });
 /* Masquer / remettre. Le clic sur la croix est intercepté AVANT le `change` du label : sans
    ça, cliquer la croix cocherait aussi la case qui la porte. */
@@ -12367,13 +12521,27 @@ $('#jenkinsFolderList') && $('#jenkinsFolderList').addEventListener('click', (e)
   sauverFiltreJenkins();
   renderJenkins();
 });
-$('#jenkinsFolderHidden') && $('#jenkinsFolderHidden').addEventListener('click', (e) => {
+$('#jenkinsFolderHidden') && $('#jenkinsFolderHidden').addEventListener('click', () => {
+  renderJenkinsMasques();
+  $('#jenkinsHiddenModal').hidden = false;
+});
+$('#jenkinsHiddenList') && $('#jenkinsHiddenList').addEventListener('click', (e) => {
   const b = e.target.closest('[data-jkshow]');
   if (!b) return;
   JENKINS.masques.delete(b.dataset.jkshow);
   sauverFiltreJenkins();
   renderJenkins();
+  // Plus rien à remettre : la modale n'a plus de raison d'être ouverte.
+  if (!JENKINS.masques.size) $('#jenkinsHiddenModal').hidden = true;
 });
+$('#jenkinsHiddenAll') && $('#jenkinsHiddenAll').addEventListener('click', () => {
+  JENKINS.masques.clear();
+  sauverFiltreJenkins();
+  renderJenkins();
+  $('#jenkinsHiddenModal').hidden = true;
+});
+$('#jenkinsHiddenClose') && $('#jenkinsHiddenClose').addEventListener('click', () => { $('#jenkinsHiddenModal').hidden = true; });
+fermerAuFond('#jenkinsHiddenModal', () => { $('#jenkinsHiddenModal').hidden = true; }, { salissable: false });
 $('#jenkinsFolderList') && $('#jenkinsFolderList').addEventListener('change', (e) => {
   const c = e.target.closest('[data-jkfolder]');
   if (!c) return;
@@ -12424,6 +12592,8 @@ document.addEventListener('click', (e) => {
     const open = e.target.closest('[data-jkopen]') || e.target.closest('[data-jkjob]');
     if (open) { openJenkinsJob(open.dataset.jkopen || open.dataset.jkjob); return; }
   }
+  const build = e.target.closest && e.target.closest('[data-jkbuild]');
+  if (build) { JENKINS.build = Number(build.dataset.jkbuild); renderJenkinsFiche(); return; }
   const log = e.target.closest && e.target.closest('[data-jklog]');
   if (log) openJenkinsLog(log.dataset.jkpath, log.dataset.jklog);
 });

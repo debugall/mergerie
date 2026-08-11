@@ -812,17 +812,29 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   aligne des centaines de jobs. Elle porte sur le **chemin entier**, donc « boutique » retrouve
   tout un projet. Une case **`Seulement ce qui ne va pas`** ne garde que l'échec, l'instable et
   ce qui tourne.
-- **Rien n'est sondé.** L'écran demande à l'ouverture de l'onglet et sur **`Rafraîchir`**, pas
-  toutes les trente secondes. Surveiller un serveur d'intégration n'est pas le travail de
-  l'outil, et un sondage de fond sur une installation partagée pèse sur tout le monde. C'est
-  aussi pourquoi le menu **ne porte pas de pastille** : elle supposerait d'interroger Jenkins à
-  chaque ouverture de l'application, et un compteur figé depuis la dernière visite ment plus
-  qu'il n'informe.
-- **La fiche d'un job** (`Ouvrir`) : sa description, ses **paramètres** et ses **dix derniers
-  builds** avec leur verdict, leur date et leur durée. La **console** de chaque build s'ouvre
+- **Rafraîchi toutes les 30 s, et seulement quand tu regardes.** L'onglet Jenkins doit être
+  ouvert *et* la fenêtre visible : un sondage qui continue derrière un onglet masqué coûte à un
+  serveur partagé sans rien apprendre à personne. La case **`Ne pas rafraîchir tout seul`** le
+  débraye (le choix est mémorisé), et **`Rafraîchir`** redemande à la main. Un rafraîchissement
+  de fond ne fait pas clignoter la liste, et un réseau qui hoquette n'efface pas l'écran : on
+  garde le précédent. Le menu **ne porte pas de pastille** — elle supposerait d'interroger
+  Jenkins à chaque ouverture de l'application, même sans être sur l'onglet.
+- **Prévenu à la fin de ce que TU as lancé.** Une notification bureau quand un job que tu as
+  lancé depuis Mergerie se termine, avec son verdict ; un clic ouvre sa fiche. Uniquement les
+  tiens : être prévenu du build nocturne de l'équipe serait du bruit, et on couperait tout au
+  bout de deux jours. Débrayable dans *Réglages → Notifications*. L'attente survit à la
+  fermeture de l'onglet — c'est justement le cas d'usage.
+- **La fiche d'un job** (`Ouvrir`), en deux colonnes : à **gauche** l'historique des dix
+  dernières exécutions (verdict, date, durée) — chacune avec son bouton **`Console`**, le geste
+  le plus fréquent —, à **droite** le détail de celle qu'on sélectionne : quand, combien de
+  temps, **par qui**, sur **quelle branche**, et surtout **avec quels paramètres et quelles
+  valeurs** elle est partie. La plus récente est sélectionnée d'office. La **console** s'ouvre
   d'un bouton — bornée aux derniers caractères, **déroulée en bas** là où est l'erreur, et
   **repliée à la ligne** : défiler de côté pour lire une erreur qu'on cherchait reviendrait à ne
   pas l'afficher.
+- **Un lien vers Jenkins** sur chaque ligne (et sur chaque exécution de la fiche) ouvre le job
+  dans un **nouvel onglet** : ce que Mergerie ne montre pas — la configuration, les artefacts,
+  les tests — reste à un clic.
 - **Lancer.** ⚠ Toujours **avec confirmation**, et la question **nomme le job** : c'est ce qui
   permet de s'apercevoir qu'on s'est trompé de ligne. Un job Jenkins n'est pas une page qu'on
   ouvre — il déploie, il publie, il tourne sur une machine partagée, et on ne peut pas

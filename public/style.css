@@ -654,8 +654,20 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
    le plus riche (projets multiples, prompt long, contexte Jira, captures). */
 /* Modales larges : session de codage ET contexte, même gabarit. */
 #taskModal .modal-box, #ticketModal .modal-box { width: min(1180px, 95vw); }
-/* Jenkins : l'historique et une console tiennent mal dans 640 px. */
-.modal-box.modal-lg { width: min(900px, 95vw); }
+/* Jenkins : l'historique À CÔTÉ du détail d'une exécution, et des lignes de console de trois
+   cents caractères — 900 px repliaient tout en accordéon. */
+.modal-box.modal-lg { width: min(1180px, 95vw); }
+/* La fiche d'un job : l'historique à gauche, ce qu'on a sélectionné à droite. En dessous de
+   820 px l'écran ne porte plus deux colonnes : elles s'empilent. */
+.jk-fiche { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: 14px; align-items: start; }
+@media (max-width: 820px) { .jk-fiche { grid-template-columns: 1fr; } }
+.jk-fiche-col { min-width: 0; }
+.jk-build.selected { background: var(--panel2); border-radius: var(--radius); }
+.jk-build-btn { background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 4px 6px; }
+.jk-detail-row { display: flex; gap: 8px; padding: 3px 0; font-size: 13px; }
+.jk-detail-row .jk-detail-k { color: var(--muted); min-width: 120px; flex: 0 0 auto; overflow-wrap: anywhere; }
+.jk-detail-row .jk-detail-v { overflow-wrap: anywhere; }
+.jk-open-ext { color: var(--muted); }
 /* La console d'un build : JAMAIS de défilement horizontal. Une ligne de log fait volontiers
    trois cents caractères (une commande, un chemin de classpath), et devoir défiler de côté
    pour lire une erreur qu'on cherchait revient à ne pas l'afficher. On replie donc à la
@@ -688,8 +700,12 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .jk-folder-list label:hover .jk-folder-hide, .jk-folder-hide:focus-visible { opacity: .8; }
 .jk-folder-hide:hover { opacity: 1; color: var(--text); }
 @media (hover: none) { .jk-folder-hide { opacity: .6; } }
-.jk-folder-hidden { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px;
-  padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; }
+/* Un seul mot, aligné avec les cases : ce qui est rangé ne doit pas peser plus lourd que ce
+   qu'on regarde. La liste s'ouvre au clic, dans une modale. */
+.jk-folder-hidden { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.jk-hidden-list { display: flex; flex-direction: column; gap: 4px; max-height: 50vh; overflow-y: auto; margin: 8px 0; }
+.jk-hidden-row { display: flex; align-items: center; gap: 8px; padding: 4px 2px; }
+.jk-hidden-row .spacer { flex: 1; }
 /* Le dossier d'un job, devant son nom : sans en-tête de groupe, c'est lui qui situe. */
 .jk-path { color: var(--muted); }
 .jk-folder { margin: 14px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }

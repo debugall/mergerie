@@ -44,9 +44,13 @@ const PARAMS = {
 
 const RESULTATS = { succes: 'SUCCESS', echec: 'FAILURE', instable: 'UNSTABLE', annule: 'ABORTED' };
 
+/* Chaque exécution porte SES paramètres : c'est ce que la fiche montre à droite, et une
+   démo où toutes les exécutions se ressemblent ne montrerait pas à quoi ça sert. */
+const ENVS = ['prod', 'préprod', 'recette', 'préprod', 'recette'];
 function builds(job) {
   if (job.statut === 'jamais' || job.statut === 'desactive') return [];
   const suite = [job.statut, 'succes', 'succes', 'echec', 'succes'];
+  const params = PARAMS[job.path];
   return suite.map((s, i) => ({
     number: 42 - i,
     result: (i === 0 && job.enCours) ? null : (RESULTATS[s] || 'SUCCESS'),
@@ -54,6 +58,11 @@ function builds(job) {
     timestamp: ms(37 * (i + 1)),
     duration: (i === 0 && job.enCours) ? 0 : 95000 + i * 12000,
     url: `${job.url}${42 - i}/`,
+    by: i % 2 ? { trigger: 'timer' } : (job.by || { user: 'Alice' }),
+    ref: job.ref || 'main',
+    params: params
+      ? [{ name: 'VERSION', value: `1.5.${i}` }, { name: 'ENVIRONNEMENT', value: ENVS[i] }, { name: 'MIGRATIONS', value: i ? 'false' : 'true' }]
+      : [],
   }));
 }
 
