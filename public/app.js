@@ -2841,18 +2841,25 @@ function nodeHasChange(node) {
   if (node.file) return !!node.file.changed;
   return Object.values(node.children || {}).some(nodeHasChange);
 }
-function renderTreeNode(node, name) {
+/* Ce que l'utilisateur a ouvert ou fermé À LA MAIN, retenu par chemin de dossier. L'arbre est
+   reconstruit à chaque clic sur un fichier : sans cette mémoire, l'état repart de la règle par
+   défaut et un dossier ouvert se referme sous le curseur — au moment précis où on ouvre l'un de
+   ses fichiers. Rangé dans `split`, il repart donc à zéro quand on ouvre un autre diff. */
+function memoDossiers() { split.dirs = split.dirs || {}; return split.dirs; }
+function renderTreeNode(node, name, parent = '') {
   if (node.file) return treeFileRow(node.file, name);
   const keys = Object.keys(node.children || {}).sort((a, b) => {
     const af = !!node.children[a].file, bf = !!node.children[b].file;
     if (af !== bf) return af ? 1 : -1;
     return a.localeCompare(b);
   });
-  const inner = keys.map((k) => renderTreeNode(node.children[k], k)).join('');
+  const chemin = name === null ? '' : (parent ? `${parent}/${name}` : name);
+  const inner = keys.map((k) => renderTreeNode(node.children[k], k, chemin)).join('');
   if (name === null) return inner;
-  // Déplié uniquement si le dossier contient un changement ; replié sinon.
-  const open = nodeHasChange(node) ? ' open' : '';
-  return `<details${open} class="tree-folder"><summary>${esc(name)}</summary><div class="tree-children">${inner}</div></details>`;
+  // Ce que l'utilisateur a décidé prime ; sinon, déplié seulement si le dossier porte un changement.
+  const memo = memoDossiers();
+  const open = (chemin in memo ? memo[chemin] : nodeHasChange(node)) ? ' open' : '';
+  return `<details${open} class="tree-folder" data-dir="${esc(chemin)}"><summary>${esc(name)}</summary><div class="tree-children">${inner}</div></details>`;
 }
 function renderTree() {
   const q = ($('#treeSearch').value || '').toLowerCase().trim();
@@ -3154,6 +3161,13 @@ $('#fileContent').addEventListener('click', (e) => {
 });
 $('#treeSearch').addEventListener('input', renderTree);
 $('#treeList').addEventListener('click', (e) => { const f = e.target.closest('.tree-file[data-path]'); if (f) selectFile(f.dataset.path); });
+/* On note ce que l'utilisateur ouvre et ferme, à l'instant où il le fait. Rendre l'arbre avec
+   `<details open>` ne déclenche PAS `toggle` : la mémoire ne retient donc que ses gestes à lui,
+   jamais l'état par défaut recalculé. En phase de capture, car `toggle` ne remonte pas. */
+$('#treeList').addEventListener('toggle', (e) => {
+  const d = e.target.closest && e.target.closest('details.tree-folder');
+  if (d) memoDossiers()[d.dataset.dir] = d.open;
+}, true);
 $('#reportToggle').addEventListener('click', () => {
   const hidden = $('.code-body', $('#splitView')).classList.toggle('no-report');
   $('#reportToggle').classList.toggle('off', hidden);

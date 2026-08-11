@@ -465,6 +465,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The code explorer's tree no longer closes under your fingers.** Clicking a file rebuilt the tree
+  and recomputed which folders were open from a single rule — "expanded if it carries a change" — so a
+  folder you had opened by hand collapsed at the very moment you opened one of its files. What you
+  expand or collapse yourself is now remembered for the visit; the next diff starts fresh.
+
 - **“Mark as handled” now moves the merge request out of the Reviewed list.** The button in the
   report refreshed the report and nothing else, so the card stayed in a list it no longer belonged
   to and the stage counter kept the old number until the next reload — the same gesture from the

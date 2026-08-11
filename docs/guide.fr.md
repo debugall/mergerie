@@ -146,6 +146,10 @@ Arbre du projet + fichier affiché **entier avec le diff en place**, coloration 
 **Commentaire inline** par ligne et **réponses** aux fils, synchronisés avec la forge — et
 **modifiables** tant qu'ils sont de toi.
 
+Dans l'arbre, les dossiers **porteurs d'un changement sont dépliés d'office**, les autres repliés — mais
+**ce que tu ouvres ou refermes à la main est retenu** le temps de la visite : cliquer un fichier ne
+referme plus le dossier qui le contient. L'arbre repart de la règle par défaut au diff suivant.
+
 ### Dev IA
 Une **recherche** en tête de liste (prompt, projet, branche, dossier) filtre les sessions du sous-onglet
 courant — utile dès qu'elles s'accumulent. Elle se remet à zéro quand on change de sous-onglet, pour ne pas

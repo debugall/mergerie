@@ -140,6 +140,10 @@ Project tree plus the file shown **in full with the diff in place**, syntax high
 the changes, navigation between modifications, collapsible panels. **Inline comments** per line and
 **replies** to threads, synchronised with the forge — and **editable** as long as they are yours.
 
+In the tree, folders **carrying a change are expanded by default** and the others are collapsed — but
+**whatever you open or close by hand is remembered** for the visit: clicking a file no longer collapses
+the folder it sits in. The tree starts from the default rule again on the next diff.
+
 ### AI Dev
 A **search** at the top of the list (prompt, project, branch, folder) filters the sessions of the current
 sub-tab — useful as soon as they pile up. It resets when you switch sub-tab, so as not to contradict the
