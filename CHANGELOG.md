@@ -13,6 +13,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **The Jenkins list now reads by freshness, and says who ran what.** Jobs are sorted from the
+  latest run to the oldest — in a list of three hundred, what just ran is what you came for —
+  with the never-run ones at the end. Each line carries the date of the last build, its number,
+  who started it (or what did: the scheduler, a push, an upstream job) and the branch or tag
+  that was built. Folders moved to the top as a filter: one checkbox each with its job count,
+  its own search, and the choice is remembered. It stores the folders you *unticked*, so a
+  folder your team creates tomorrow shows up on its own.
+
 - **Jenkins behind a corporate certificate.** An internal server is almost always served by a
   certificate a freshly installed Node does not know, and Node's own message — *unable to get
   local issuer certificate* — names neither the cause nor the cure. `JENKINS_CA_CERT` pins your

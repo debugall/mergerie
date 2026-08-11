@@ -776,16 +776,28 @@ Voir **où en sont les jobs** et **les lancer**, sans quitter l'outil ni ouvrir 
 page. Ce n'est pas une console d'administration : il n'y a ni configuration de job, ni gestion
 d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
 
-- **Ce qui s'affiche.** Tous les jobs visibles par ton compte, **groupés par dossier** et à
-  plat : une installation d'équipe imbrique des dossiers sur trois niveaux, et c'est le
-  **chemin** (`boutique/api-deploy-prod`) qui identifie un job, pas son nom seul — plusieurs
-  projets ont un job « build ». Chaque ligne porte une **pastille de couleur** et le mot qui va
-  avec (*Succès*, *Échec*, *Instable*, *Jamais lancé*, *Désactivé*) : une couleur seule ne se
-  lit pas de la même façon par tout le monde. Un job **en cours** a sa pastille qui bat.
-- **Retrouver.** Une **recherche** — obligatoire ici : une installation d'entreprise aligne des
-  centaines de jobs. Elle porte sur le **chemin entier**, donc « boutique » retrouve tout un
-  projet. Une case **`Seulement ce qui ne va pas`** ne garde que l'échec, l'instable et ce qui
-  tourne.
+- **Ce qui s'affiche.** Tous les jobs visibles par ton compte, à plat, **du dernier lancement
+  au plus ancien** : dans une liste de trois cents jobs, ce qui vient de tourner est ce qu'on
+  vient chercher — pas ce qui commence par « a ». Les **jamais lancés** ferment la marche.
+- **Chaque ligne répond à quatre questions** : *quoi* (le **chemin** `boutique/api-deploy-prod`,
+  car plusieurs projets ont un job « build », et le **numéro** du dernier build), *dans quel
+  état* (**pastille de couleur** *et* le mot qui va avec — *Succès*, *Échec*, *Instable*,
+  *Jamais lancé*, *Désactivé* —, une couleur seule ne se lisant pas de la même façon par tout
+  le monde ; un job **en cours** a sa pastille qui bat), *quand* (la **date** du dernier
+  lancement, l'ancienneté relative en infobulle), *par qui et sur quoi* (**l'auteur** du
+  lancement — ou sa nature : *par le planificateur*, *sur un push*, *par un job amont* — et la
+  **branche ou le tag** construits).
+- **Les dossiers, en tête, servent de filtre.** Une case par dossier, avec son nombre de jobs,
+  **`Tout cocher` / `Tout décocher`**, et une **recherche** pour retrouver un dossier parmi
+  cinquante (elle masque des cases sans jamais en décocher : filtrer ce qu'on regarde ne doit
+  pas changer ce qu'on a choisi de voir — et les deux boutons ne portent alors que sur ce qui
+  est visible). Le choix est **mémorisé**. ⚠ Ce sont les dossiers **décochés** qui sont retenus :
+  un dossier créé demain par l'équipe apparaît donc de lui-même. L'inverse l'aurait rendu
+  invisible jusqu'à ce qu'on pense à aller le cocher.
+- **Retrouver un job.** Une **recherche** — obligatoire ici : une installation d'entreprise
+  aligne des centaines de jobs. Elle porte sur le **chemin entier**, donc « boutique » retrouve
+  tout un projet. Une case **`Seulement ce qui ne va pas`** ne garde que l'échec, l'instable et
+  ce qui tourne.
 - **Rien n'est sondé.** L'écran demande à l'ouverture de l'onglet et sur **`Rafraîchir`**, pas
   toutes les trente secondes. Surveiller un serveur d'intégration n'est pas le travail de
   l'outil, et un sondage de fond sur une installation partagée pèse sur tout le monde. C'est

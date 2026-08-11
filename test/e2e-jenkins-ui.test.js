@@ -33,11 +33,18 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await app.configure();
     srv = await mock.start();
     mock.reset();
+    const build = (t, causes, ref) => ({
+      timestamp: t, number: 10 + (t % 10),
+      actions: [{ causes }, ref ? { lastBuiltRevision: { branch: [{ name: `refs/remotes/origin/${ref}` }] } } : {}],
+    });
     mock.state.jobs = [
       { name: 'boutique', _class: 'com.cloudbees.hudson.plugins.folder.Folder', jobs: [
-        { name: 'api-build', color: 'blue', buildable: true },
-        { name: 'deploy-prod', color: 'blue', buildable: true },
-        { name: 'front-build', color: 'red', buildable: true },
+        { name: 'api-build', color: 'blue', buildable: true, lastBuild: build(2000, [{ userName: 'Alice' }], 'main') },
+        { name: 'deploy-prod', color: 'blue', buildable: true, lastBuild: build(1000, [{ userName: 'Bruno' }], 'v1.0') },
+        { name: 'front-build', color: 'red', buildable: true, lastBuild: build(9000, [{ _class: 'hudson.triggers.SCMTrigger$SCMTriggerCause' }], 'feature/x') },
+      ] },
+      { name: 'batch', _class: 'com.cloudbees.hudson.plugins.folder.Folder', jobs: [
+        { name: 'nuit', color: 'blue', buildable: true, lastBuild: build(5000, [{ _class: 'hudson.triggers.TimerTrigger$TimerTriggerCause' }], 'main') },
       ] },
       { name: 'archive', color: 'disabled', buildable: false },
     ];
@@ -96,15 +103,33 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.reload();
     await allerJenkins();
     await page.waitForSelector('#jenkinsBox .jk-row');
-    assert.equal(await page.locator('#jenkinsBox .jk-row').count(), 4,
+    assert.equal(await page.locator('#jenkinsBox .jk-row').count(), 5,
       'après enregistrement ET rechargement, la liste vient du serveur : le jeton a survécu');
   });
 
-  test('les jobs sont groupés par dossier, et la recherche filtre', async () => {
+  /* L'ORDRE DE LECTURE, et ce que porte chaque ligne. Une liste de jobs se lit par la
+     FRAÎCHEUR : ce qui vient de tourner d'abord. Et il faut trois choses pour savoir si ça
+     nous concerne — quand, par qui, et sur quoi. */
+  test('la liste est triée par date, avec l’auteur et la branche', async () => {
     await allerJenkins();
     await page.waitForSelector('#jenkinsBox .jk-row');
-    assert.deepEqual(await page.locator('#jenkinsBox .jk-folder').allTextContents(), ['boutique']);
+    const noms = await page.locator('#jenkinsBox .jk-name').allTextContents();
+    assert.deepEqual(noms.map((n) => n.replace(/\s+#\d+$/, '')),
+      ['boutique/front-build', 'batch/nuit', 'boutique/api-build', 'boutique/deploy-prod', 'archive'],
+      'du plus récent au plus ancien, et le jamais lancé à la fin');
 
+    const meta = await page.locator('#jenkinsBox .jk-row').filter({ hasText: 'api-build' }).first().locator('.jk-meta').textContent();
+    assert.match(meta, /par Alice/, 'qui a lancé');
+    assert.match(meta, /main/, 'sur quelle branche');
+    assert.doesNotMatch(meta, /refs\/remotes/, '« refs/remotes/origin/main » est un détail d’implémentation');
+
+    // Un déclenchement automatique n'a pas d'auteur : on dit sa NATURE plutôt que rien.
+    const auto = await page.locator('#jenkinsBox .jk-row').filter({ hasText: 'nuit' }).first().locator('.jk-meta').textContent();
+    assert.match(auto, /planificateur/);
+  });
+
+  test('la recherche et « ce qui ne va pas » filtrent la liste', async () => {
+    await allerJenkins();
     await page.locator('#jenkinsSearch').fill('front');
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
     await page.locator('#jenkinsSearch').fill('');
@@ -114,6 +139,58 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     assert.match(await page.locator('#jenkinsBox .jk-row').first().textContent(), /front-build/,
       '« ce qui ne va pas » retient l’échec et l’instable, pas le vert');
     await page.locator('#jenkinsFailOnly').uncheck();
+  });
+
+  /* LE FILTRE PAR DOSSIERS. Il est mémorisé — sinon il faudrait le refaire à chaque
+     ouverture, ce qui revient à ne pas l'avoir. Et il mémorise ce qu'on a DÉCOCHÉ : un
+     dossier créé demain doit apparaître de lui-même, pas rester invisible pour toujours. */
+  test('décocher un dossier masque ses jobs, et ça survit au rechargement', async () => {
+    await allerJenkins();
+    /* On attend le compte ATTENDU, pas un compte capturé : entre deux rendus la liste passe
+       par un squelette à zéro ligne, et une valeur lue là est un piège silencieux. */
+    const lignes = (n) => page.waitForFunction((k) => document.querySelectorAll('#jenkinsBox .jk-row').length === k, n);
+    await lignes(5);
+    await page.waitForSelector('#jenkinsFolders:not([hidden])');
+
+    await page.locator('[data-jkfolder="boutique"]').uncheck();
+    await lignes(2);   // 5 jobs, dont 3 dans « boutique »
+    assert.equal(await page.locator('#jenkinsBox .jk-row').filter({ hasText: 'boutique/' }).count(), 0);
+
+    await page.reload();
+    await allerJenkins();
+    await lignes(2);
+    assert.equal(await page.locator('[data-jkfolder="boutique"]').isChecked(), false,
+      'un filtre qu’il faut refaire à chaque ouverture revient à ne pas l’avoir');
+
+    // Un dossier NOUVEAU chez Jenkins apparaît coché : on mémorise les exclusions, pas les inclusions.
+    mock.state.jobs.push({ name: 'nouveau', _class: 'com.cloudbees.hudson.plugins.folder.Folder', jobs: [{ name: 'a', color: 'blue', buildable: true }] });
+    await page.locator('#jenkinsReload').click();
+    await page.waitForSelector('[data-jkfolder="nouveau"]');
+    assert.equal(await page.locator('[data-jkfolder="nouveau"]').isChecked(), true,
+      'mémoriser les cochés rendrait invisible tout dossier créé après coup');
+    mock.state.jobs.pop();
+    await page.locator('#jenkinsReload').click();
+    await lignes(2);
+
+    await page.locator('[data-jkfolder="boutique"]').check();
+    await lignes(5);
+  });
+
+  /* « Tout décocher » après une recherche ne doit toucher QUE ce qu'on voit : sinon le
+     bouton agit sur des dossiers hors de l'écran, et personne ne comprend ce qui a disparu. */
+  test('« tout décocher » ne porte que sur les dossiers visibles', async () => {
+    await allerJenkins();
+    await page.locator('#jenkinsFolderSearch').fill('bat');
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsFolderList [data-jkfolder]').length === 1);
+    await page.locator('#jenkinsFoldersNone').click();
+    await page.waitForFunction(() => !!document.querySelector('#jenkinsBox .jk-row'));
+    assert.equal(await page.locator('#jenkinsBox .jk-row').filter({ hasText: 'batch/' }).count(), 0);
+    assert.ok(await page.locator('#jenkinsBox .jk-row').filter({ hasText: 'boutique/' }).count() > 0,
+      'les dossiers masqués par la recherche du filtre n’ont pas été touchés');
+
+    await page.locator('#jenkinsFolderSearch').fill('');
+    await page.locator('#jenkinsFoldersAll').click();
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 5);
   });
 
   test('un job désactivé n’a pas de bouton « Lancer »', async () => {

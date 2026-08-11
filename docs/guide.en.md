@@ -741,13 +741,24 @@ See **where your jobs stand** and **run them**, without leaving the tool or open
 page. This is not an administration console: no job configuration, no agent management — what
 Jenkins already does well, and which there is no point redoing.
 
-- **What is shown.** Every job your account can see, **grouped by folder** and flattened: a team
-  installation nests folders three levels deep, and it is the **path**
-  (`shop/api-deploy-prod`) that identifies a job, not its name alone — several projects have a
-  "build" job. Each line carries a **coloured dot** and the matching word (*Success*, *Failed*,
-  *Unstable*, *Never run*, *Disabled*): a colour on its own does not read the same way for
-  everyone. A **running** job has a pulsing dot.
-- **Finding one.** A **search** — mandatory here: a company installation lines up hundreds of
+- **What is shown.** Every job your account can see, flattened, **from the latest run to the
+  oldest**: in a list of three hundred jobs, what just ran is what you came for — not what
+  starts with "a". The **never run** ones close the list.
+- **Every line answers four questions**: *what* (the **path** `shop/api-deploy-prod`, since
+  several projects have a "build" job, and the **number** of the last build), *in what state*
+  (a **coloured dot** *and* the matching word — *Success*, *Failed*, *Unstable*, *Never run*,
+  *Disabled* —, as a colour on its own does not read the same way for everyone; a **running**
+  job has a pulsing dot), *when* (the **date** of the last run, with the relative age in the
+  tooltip), *by whom and on what* (the **author** of the run — or its nature: *by the
+  scheduler*, *on a push*, *by an upstream job* — and the **branch or tag** that was built).
+- **Folders sit on top, as a filter.** One checkbox per folder with its job count,
+  **`Tick all` / `Untick all`**, and a **search** to find one folder among fifty (it hides
+  checkboxes without ever unticking any: filtering what you look at must not change what you
+  chose to see — and the two buttons then only affect what is visible). The choice is
+  **remembered**. ⚠ It is the **unticked** folders that are stored: a folder your team creates
+  tomorrow therefore shows up on its own. The opposite would have kept it invisible until
+  someone thought of going to tick it.
+- **Finding a job.** A **search** — mandatory here: a company installation lines up hundreds of
   jobs. It matches the **whole path**, so "shop" brings back a whole project. A checkbox,
   **`Only what is not fine`**, keeps failures, unstable results and what is running.
 - **Nothing is polled.** The screen asks when the tab opens and on **`Refresh`**, not every

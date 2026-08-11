@@ -637,6 +637,19 @@
             <span id="jenkinsCount" class="muted"></span>
             <button id="jenkinsReload" class="btn" data-i18n-title="jenkins.reload-title" title="Redemander l'état à Jenkins"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="jenkins.reload">Rafraîchir</span></button>
         </div>
+        <!-- LES DOSSIERS EN TÊTE, comme un filtre. La liste, elle, est chronologique : mêler
+             un groupement par dossier à un tri par date donnerait des dossiers dans le
+             désordre et une chronologie interrompue — deux lectures, aucune des deux juste. -->
+        <div id="jenkinsFolders" class="jk-folders" hidden>
+            <div class="jk-folders-head">
+                <strong data-i18n="jenkins.folders">Dossiers</strong>
+                <input id="jenkinsFolderSearch" type="search" class="jira-search jk-folder-search" placeholder="Filtrer les dossiers…" data-i18n-placeholder="jenkins.folders.search" />
+                <span class="spacer"></span>
+                <button type="button" class="btn btn-sm" id="jenkinsFoldersAll" data-i18n="jenkins.folders.all">Tout cocher</button>
+                <button type="button" class="btn btn-sm" id="jenkinsFoldersNone" data-i18n="jenkins.folders.none">Tout décocher</button>
+            </div>
+            <div id="jenkinsFolderList" class="jk-folder-list"></div>
+        </div>
         <div id="jenkinsBox" class="list"></div>
     </section>
 

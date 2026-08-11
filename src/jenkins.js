@@ -114,24 +114,83 @@ function lireCouleur(color) {
    sont pas des jobs et ne doivent pas apparaître comme tels — on descend dedans. La
    profondeur est bornée : une installation peut imbriquer sans fin, et une requête qui
    ramène tout l'arbre d'un coup peut peser des mégaoctets. */
-function aplatir(noeuds, prefixe = '', sortie = []) {
+/* QUI A LANCÉ. Jenkins ne répond pas à cette question par un champ mais par des « causes » :
+   une action humaine porte un `userName`, le reste est déclenché par une horloge, un push ou
+   un job amont. On rend donc soit un nom, soit la NATURE du déclencheur — « lancé par le
+   planificateur » est une réponse, « (vide) » n'en est pas une. */
+const DECLENCHEURS = [
+  [/TimerTrigger/i, 'timer'], [/SCMTrigger/i, 'scm'], [/UpstreamCause/i, 'upstream'],
+  [/BranchIndexingCause/i, 'scm'], [/RemoteCause/i, 'remote'], [/ReplayCause/i, 'replay'],
+];
+function auteurDe(build) {
+  for (const action of (build && build.actions) || []) {
+    for (const c of (action && action.causes) || []) {
+      if (c && c.userName) return { user: c.userName };
+      const cls = String((c && c._class) || '');
+      const trouve = DECLENCHEURS.find(([re]) => re.test(cls));
+      if (trouve) return { trigger: trouve[1] };
+      if (c && c.shortDescription) return { label: String(c.shortDescription).slice(0, 80) };
+    }
+  }
+  return null;
+}
+
+/* SUR QUELLE BRANCHE / QUEL TAG. Trois sources, dans l'ordre de fiabilité : la révision que
+   le plugin git a réellement construite ; à défaut un paramètre de build qui la nomme ; à
+   défaut le nom du job lui-même pour un pipeline multibranche, où la branche EST le job.
+   `refs/remotes/origin/main` est un détail d'implémentation : on rend `main`. */
+const PARAMS_REF = /^(branch|branche|git_?branch|ref|tag|version)$/i;
+function refDe(build, classeParent, nomJob) {
+  for (const action of (build && build.actions) || []) {
+    const b = action && action.lastBuiltRevision && action.lastBuiltRevision.branch;
+    const nom = Array.isArray(b) && b.length ? b[0].name : null;
+    if (nom) return String(nom).replace(/^refs\/(remotes|heads|tags)\//, '').replace(/^origin\//, '');
+  }
+  for (const action of (build && build.actions) || []) {
+    for (const p of (action && action.parameters) || []) {
+      if (p && p.name && PARAMS_REF.test(p.name) && p.value) return String(p.value).slice(0, 80);
+    }
+  }
+  // Pipeline multibranche : chaque branche est un job, son nom est donc la branche.
+  if (/MultiBranch/i.test(String(classeParent || ''))) return decodeURIComponent(nomJob || '');
+  return null;
+}
+
+function aplatir(noeuds, prefixe = '', sortie = [], classeParent = '') {
   for (const n of noeuds || []) {
     if (!n || !n.name) continue;
     const chemin = prefixe ? `${prefixe}/${n.name}` : n.name;
-    if (Array.isArray(n.jobs) && n.jobs.length) { aplatir(n.jobs, chemin, sortie); continue; }
+    if (Array.isArray(n.jobs) && n.jobs.length) { aplatir(n.jobs, chemin, sortie, n._class || ''); continue; }
     // Un dossier VIDE n'est pas un job non plus : sans couleur, il n'y a rien à lancer.
     if (n.color == null && /folder/i.test(String(n._class || ''))) continue;
+    const i = chemin.lastIndexOf('/');
     sortie.push({
       path: chemin, name: n.name, url: n.url || '',
+      // Le dossier est calculé ICI : l'écran s'en sert pour filtrer, il ne doit pas
+      // redécouper des chemins de son côté et se tromper au premier nom exotique.
+      folder: i === -1 ? '' : chemin.slice(0, i),
       ...lireCouleur(n.color),
       buildable: n.buildable !== false,
+      // Date du dernier lancement : c'est l'ordre naturel de lecture d'une liste de jobs —
+      // ce qui vient de tourner d'abord. Jamais lancé → `null`, et non 0, qui trierait comme
+      // une date de 1970 mais se lirait comme une date.
+      last: (n.lastBuild && n.lastBuild.timestamp) || null,
+      lastNumber: (n.lastBuild && n.lastBuild.number) || null,
+      by: auteurDe(n.lastBuild),
+      ref: refDe(n.lastBuild, classeParent, n.name),
     });
   }
   return sortie;
 }
 
-const ARBRE = (n) => (n === 0 ? 'jobs[name,url,color,buildable,_class]'
-  : `jobs[name,url,color,buildable,_class,${ARBRE(n - 1)}]`);
+/* Ce qu'on demande pour chaque job. `actions[...]` sert les deux questions que la liste doit
+   trancher d'un coup d'œil : QUI a lancé, et SUR QUOI. Tout arrive dans la MÊME requête —
+   interroger chaque job séparément ferait trois cents appels à l'ouverture de l'onglet. */
+const CHAMPS_JOB = 'name,url,color,buildable,_class,'
+  + 'lastBuild[timestamp,number,actions[causes[shortDescription,userName,_class],'
+  + 'parameters[name,value],lastBuiltRevision[branch[name]]]]';
+const ARBRE = (n) => (n === 0 ? `jobs[${CHAMPS_JOB}]`
+  : `jobs[${CHAMPS_JOB},${ARBRE(n - 1)}]`);
 
 // La liste complète, aplatie et triée. Le filtrage se fait à l'écran : il en faut un, une
 // installation d'équipe en compte des centaines.
@@ -139,7 +198,15 @@ async function lister(cfg) {
   if (!isConfigured(cfg)) throw new Error('Jenkins non configuré (URL, utilisateur, jeton requis).');
   const res = await appel(cfg, `/api/json?tree=${encodeURIComponent(ARBRE(3))}`);
   const data = json(res, 'la liste des jobs');
-  return aplatir(data.jobs).sort((a, b) => a.path.localeCompare(b.path));
+  /* PAR DATE DE DERNIER LANCEMENT, le plus récent d'abord : dans une liste de trois cents
+     jobs, ce qui vient de tourner est ce qu'on vient chercher. Les jamais lancés ferment la
+     marche, par ordre alphabétique — sans date, ils n'ont pas de place naturelle, et les
+     éparpiller au hasard rendrait la fin de liste illisible. */
+  return aplatir(data.jobs).sort((a, b) => {
+    if (a.last && b.last) return b.last - a.last;
+    if (a.last || b.last) return a.last ? -1 : 1;
+    return a.path.localeCompare(b.path);
+  });
 }
 
 /* Les paramètres d'un job, tels que Jenkins les déclare. On garde le type : un booléen se
@@ -252,5 +319,5 @@ async function tester(cfg) {
 module.exports = {
   isConfigured, lister, detail, lancer, console: console_, tester,
   // exportés pour les tests : ce sont les deux traductions qui portent tout le reste
-  lireCouleur, aplatir, cheminUrl, lireParametres,
+  lireCouleur, aplatir, cheminUrl, lireParametres, auteurDe, refDe,
 };

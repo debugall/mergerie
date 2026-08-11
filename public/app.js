@@ -12072,7 +12072,22 @@ document.addEventListener('keydown', (e) => {
    ne porte pas de pastille : elle supposerait d'interroger Jenkins à chaque ouverture de
    l'application, et un compteur figé depuis la dernière visite ment plus qu'il n'informe. */
 
-const JENKINS = { jobs: [], configured: true, q: '', echecsSeuls: false, job: null };
+const JENKINS = { jobs: [], configured: true, q: '', echecsSeuls: false, job: null, qDossier: '', horsDossiers: new Set() };
+
+/* Les dossiers DÉCOCHÉS sont mémorisés, pas les cochés. La différence compte le jour où
+   l'équipe crée un dossier : mémoriser les cochés le rendrait invisible jusqu'à ce qu'on
+   pense à aller le cocher — un job neuf n'apparaîtrait jamais. */
+const JENKINS_FILTRE = 'mergerie_jenkins_dossiers';
+function chargerFiltreJenkins() {
+  try {
+    const brut = JSON.parse(localStorage.getItem(JENKINS_FILTRE) || '[]');
+    JENKINS.horsDossiers = new Set(Array.isArray(brut) ? brut.map(String) : []);
+  } catch { JENKINS.horsDossiers = new Set(); }
+}
+function sauverFiltreJenkins() {
+  try { localStorage.setItem(JENKINS_FILTRE, JSON.stringify([...JENKINS.horsDossiers])); }
+  catch { /* stockage indisponible */ }
+}
 
 // Les états que Jenkins exprime par une couleur, traduits côté serveur en `statut`.
 const JK_ENNUI = ['echec', 'instable'];
@@ -12080,6 +12095,7 @@ const JK_ENNUI = ['echec', 'instable'];
 async function loadJenkins() {
   const box = $('#jenkinsBox');
   if (!box) return;
+  chargerFiltreJenkins();
   box.innerHTML = skeleton(4);
   try {
     const d = await api('/jenkins/jobs');
@@ -12097,13 +12113,45 @@ function jkStatutLabel(j) {
   return tr(`jenkins.st.${j.statut}`);
 }
 
+/* « il y a 3 h » plutôt qu'une date : sur une liste triée par date, c'est la FRAÎCHEUR qu'on
+   lit, pas le jour exact. `Intl` s'en charge dans la langue courante — une table de
+   traductions maison pour « minute/heure/jour » n'aurait rien apporté. */
+function jkQuand(ms) {
+  if (!ms) return tr('jenkins.st.jamais');
+  const s = Math.round((ms - Date.now()) / 1000);
+  const paliers = [['second', 60], ['minute', 60], ['hour', 24], ['day', 7], ['week', 4.35], ['month', 12], ['year', Infinity]];
+  let v = s;
+  for (const [unite, taille] of paliers) {
+    if (Math.abs(v) < taille) return new Intl.RelativeTimeFormat(I18Nrt.currentLocale(), { numeric: 'auto' }).format(Math.round(v), unite);
+    v /= taille;
+  }
+  return '';
+}
+
+// « Qui a lancé » : un nom, ou la nature du déclencheur — jamais un blanc, qui laisserait
+// croire à une information manquante alors que la réponse est « personne, c'est l'horloge ».
+function jkAuteur(by) {
+  if (!by) return '';
+  if (by.user) return tr('jenkins.by.user', { user: by.user });
+  if (by.trigger) return tr(`jenkins.by.${by.trigger}`);
+  return by.label || '';
+}
+
 function jkRow(j) {
   const ennui = JK_ENNUI.includes(j.statut);
+  const infos = [
+    jkStatutLabel(j),
+    // Sans date, le statut dit DÉJÀ « jamais lancé » : le répéter ferait croire à deux faits.
+    j.last ? fmtDateTime(new Date(j.last).toISOString()) : '',
+    jkAuteur(j.by),
+    j.ref ? `⎇ ${j.ref}` : '',
+    (j.buildable || j.statut === 'desactive') ? '' : tr('jenkins.st.desactive'),
+  ].filter(Boolean);
   return `<div class="card jk-row" data-jkjob="${esc(j.path)}">
     <span class="jk-dot ${esc(j.statut)}${j.enCours ? ' encours' : ''}" aria-hidden="true"></span>
     <div style="min-width:0;flex:1">
-      <div class="jk-name">${esc(j.name)}</div>
-      <div class="jk-meta">${esc(jkStatutLabel(j))}${(j.buildable || j.statut === 'desactive') ? '' : ` · ${esc(tr('jenkins.st.desactive'))}`}</div>
+      <div class="jk-name">${j.folder ? `<span class="jk-path">${esc(j.folder)}/</span>` : ''}${esc(j.name)}${j.lastNumber ? ` <span class="jk-path">#${j.lastNumber}</span>` : ''}</div>
+      <div class="jk-meta" title="${esc(j.last ? jkQuand(j.last) : '')}">${infos.map(esc).join(' · ')}</div>
     </div>
     ${ennui ? `<span class="tag stale">${esc(jkStatutLabel(j))}</span>` : ''}
     <button type="button" class="btn btn-sm" data-jkopen="${esc(j.path)}">${esc(tr('jenkins.open'))}</button>
@@ -12121,10 +12169,12 @@ function renderJenkins() {
     $('#jenkinsCount').textContent = '';
     return;
   }
+  renderJenkinsDossiers();
   const q = JENKINS.q.toLowerCase();
   /* La recherche porte sur le CHEMIN entier, pas sur le nom : on cherche autant « le job de
      déploiement » que « tout ce qui est dans boutique ». */
   const vus = JENKINS.jobs.filter((j) => (!q || j.path.toLowerCase().includes(q))
+    && !JENKINS.horsDossiers.has(j.folder)
     && (!JENKINS.echecsSeuls || JK_ENNUI.includes(j.statut) || j.enCours));
   $('#jenkinsCount').textContent = tr('jenkins.count', { n: vus.length, count: vus.length, total: JENKINS.jobs.length });
 
@@ -12136,19 +12186,30 @@ function renderJenkins() {
     box.innerHTML = `<p class="muted">${esc(tr('jenkins.no-match'))}</p>`;
     return;
   }
-  /* Groupés par DOSSIER, dans l'ordre de Jenkins. Une installation d'équipe aligne des
-     centaines de jobs dont les noms se ressemblent (`api-build`, `api-deploy`) : sans le
-     dossier au-dessus, on ne sait pas de quel projet on parle. */
-  const parDossier = new Map();
-  for (const j of vus) {
-    const i = j.path.lastIndexOf('/');
-    const dossier = i === -1 ? '' : j.path.slice(0, i);
-    if (!parDossier.has(dossier)) parDossier.set(dossier, []);
-    parDossier.get(dossier).push(j);
-  }
-  box.innerHTML = [...parDossier].map(([dossier, jobs]) => (dossier
-    ? `<div class="jk-folder">${esc(dossier)}</div>${jobs.map(jkRow).join('')}`
-    : jobs.map(jkRow).join(''))).join('');
+  /* À PLAT, dans l'ordre rendu par le serveur : du dernier lancement au plus ancien. Le
+     dossier n'est plus un en-tête mais une case à cocher au-dessus — et il reste écrit
+     devant chaque nom, sinon deux `api-build` de projets différents se confondent. */
+  box.innerHTML = vus.map(jkRow).join('');
+}
+
+/* Le filtre par dossiers. Sa propre recherche masque des cases sans jamais en décocher :
+   filtrer ce qu'on regarde ne doit pas changer ce qu'on a choisi de voir. */
+function renderJenkinsDossiers() {
+  const bloc = $('#jenkinsFolders');
+  const liste = $('#jenkinsFolderList');
+  if (!bloc || !liste) return;
+  const comptes = new Map();
+  for (const j of JENKINS.jobs) comptes.set(j.folder, (comptes.get(j.folder) || 0) + 1);
+  const dossiers = [...comptes.keys()].sort((a, b) => a.localeCompare(b));
+  // Un seul dossier (ou aucun) : le filtre n'aurait rien à filtrer.
+  bloc.hidden = dossiers.length < 2;
+  if (bloc.hidden) return;
+  const qd = JENKINS.qDossier.toLowerCase();
+  const montres = dossiers.filter((d) => !qd || (d || '').toLowerCase().includes(qd));
+  liste.innerHTML = montres.map((d) => `<label><input type="checkbox" data-jkfolder="${esc(d)}"${JENKINS.horsDossiers.has(d) ? '' : ' checked'} />
+    <span>${d ? esc(d) : esc(tr('jenkins.folders.root'))}</span>
+    <span class="jk-folder-count">${comptes.get(d)}</span></label>`).join('')
+    || `<p class="muted">${esc(tr('jenkins.folders.no-match'))}</p>`;
 }
 
 /* ---------- Le détail d'un job : paramètres, historique, console ---------- */
@@ -12247,7 +12308,27 @@ async function openJenkinsLog(chemin, numero) {
 
 $('#jenkinsSearch') && $('#jenkinsSearch').addEventListener('input', (e) => { JENKINS.q = e.target.value; renderJenkins(); });
 $('#jenkinsFailOnly') && $('#jenkinsFailOnly').addEventListener('change', (e) => { JENKINS.echecsSeuls = e.target.checked; renderJenkins(); });
-$('#jenkinsReload') && $('#jenkinsReload').addEventListener('click', (b) => loadJenkins());
+$('#jenkinsReload') && $('#jenkinsReload').addEventListener('click', () => loadJenkins());
+$('#jenkinsFolderSearch') && $('#jenkinsFolderSearch').addEventListener('input', (e) => { JENKINS.qDossier = e.target.value; renderJenkinsDossiers(); });
+$('#jenkinsFolderList') && $('#jenkinsFolderList').addEventListener('change', (e) => {
+  const c = e.target.closest('[data-jkfolder]');
+  if (!c) return;
+  const d = c.dataset.jkfolder;
+  if (c.checked) JENKINS.horsDossiers.delete(d); else JENKINS.horsDossiers.add(d);
+  sauverFiltreJenkins();
+  renderJenkins();
+});
+/* « Tout cocher / décocher » ne portent que sur ce qui est VISIBLE dans le filtre : sinon,
+   après une recherche, le bouton toucherait des dossiers qu'on ne voit pas. */
+const jkDossiersVisibles = () => $$('#jenkinsFolderList [data-jkfolder]').map((c) => c.dataset.jkfolder);
+$('#jenkinsFoldersAll') && $('#jenkinsFoldersAll').addEventListener('click', () => {
+  jkDossiersVisibles().forEach((d) => JENKINS.horsDossiers.delete(d));
+  sauverFiltreJenkins(); renderJenkins();
+});
+$('#jenkinsFoldersNone') && $('#jenkinsFoldersNone').addEventListener('click', () => {
+  jkDossiersVisibles().forEach((d) => JENKINS.horsDossiers.add(d));
+  sauverFiltreJenkins(); renderJenkins();
+});
 $('#jenkinsClose') && $('#jenkinsClose').addEventListener('click', () => { $('#jenkinsModal').hidden = true; });
 $('#jenkinsLogClose') && $('#jenkinsLogClose').addEventListener('click', () => { $('#jenkinsLogModal').hidden = true; });
 fermerAuFond('#jenkinsModal', () => { $('#jenkinsModal').hidden = true; }, { salissable: false });

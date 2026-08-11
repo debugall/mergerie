@@ -31,12 +31,12 @@ describe('Client Jenkins', () => {
       {
         name: 'boutique', _class: 'com.cloudbees.hudson.plugins.folder.Folder', color: null,
         jobs: [
-          { name: 'api-build', color: 'blue', buildable: true, url: 'http://j/job/boutique/job/api-build/' },
-          { name: 'front build', color: 'red_anime', buildable: true, url: 'http://j/job/boutique/job/front%20build/' },
+          { name: 'api-build', color: 'blue', buildable: true, url: 'http://j/job/boutique/job/api-build/', lastBuild: { timestamp: 1000, number: 3 } },
+          { name: 'front build', color: 'red_anime', buildable: true, url: 'http://j/job/boutique/job/front%20build/', lastBuild: { timestamp: 5000, number: 9 } },
         ],
       },
       { name: 'vide', _class: 'com.cloudbees.hudson.plugins.folder.Folder', color: null, jobs: [] },
-      { name: 'release', color: 'yellow', buildable: true, url: 'http://j/job/release/' },
+      { name: 'release', color: 'yellow', buildable: true, url: 'http://j/job/release/', lastBuild: { timestamp: 3000, number: 1 } },
       { name: 'archive', color: 'disabled', buildable: false, url: 'http://j/job/archive/' },
     ];
     mock.state.details['/job/boutique/job/api-build'] = {
@@ -57,9 +57,24 @@ describe('Client Jenkins', () => {
   test('l’arbre des jobs est aplati en chemins, dossiers exclus', async () => {
     poser();
     const jobs = await jenkins.lister(cfg);
-    assert.deepEqual(jobs.map((j) => j.path),
+    assert.deepEqual([...jobs.map((j) => j.path)].sort(),
       ['archive', 'boutique/api-build', 'boutique/front build', 'release'],
       'un dossier n’est pas un job : on descend dedans, on ne le liste pas — et un dossier VIDE ne laisse rien');
+    assert.equal(jobs.find((j) => j.path === 'boutique/api-build').folder, 'boutique',
+      'le dossier est calculé côté serveur : l’écran ne redécoupe pas les chemins de son côté');
+    assert.equal(jobs.find((j) => j.path === 'archive').folder, '', 'un job à la racine n’a pas de dossier');
+  });
+
+  /* L'ORDRE DE LECTURE. Dans une liste de trois cents jobs, ce qui vient de tourner est ce
+     qu'on vient chercher — pas ce qui commence par « a ». */
+  test('la liste arrive triée par date de dernier lancement', async () => {
+    poser();
+    const jobs = await jenkins.lister(cfg);
+    assert.deepEqual(jobs.map((j) => j.path),
+      ['boutique/front build', 'release', 'boutique/api-build', 'archive'],
+      'du plus récent au plus ancien, et les jamais lancés à la fin');
+    assert.equal(jobs[0].last, 5000);
+    assert.equal(jobs[3].last, null, 'jamais lancé = null, pas 0 : 0 trierait comme une date de 1970');
   });
 
   test('la couleur dit le verdict ET le fait de tourner', async () => {
