@@ -18,6 +18,20 @@ const db = require('./db');
 const verifyLib = require('./verify');
 
 const JOUR_MS = 24 * 60 * 60 * 1000;
+
+/* Les sections dont une ligne peut être ÉCARTÉE, et sous quelle clé. Une todo n'y est pas :
+   elle a déjà ses gestes propres (cocher, reporter), et un troisième verbe pour la faire
+   disparaître d'un seul écran sèmerait la confusion sur ce qu'on vient de faire d'elle. */
+const ECARTABLES = ['verification', 'session', 'mr'];
+
+function ecartes() {
+  const par = {};
+  for (const k of ECARTABLES) par[k] = new Set();
+  for (const r of db.prepare('SELECT kind, ref FROM brief_hidden').all()) {
+    if (par[r.kind]) par[r.kind].add(String(r.ref));
+  }
+  return par;
+}
 // Combien d'items au plus par section. Un brief se lit debout, café en main : au-delà, ce
 // n'est plus un brief mais la liste elle-même, qui existe déjà dans son onglet.
 const MAX_PAR_SECTION = 8;
@@ -57,11 +71,11 @@ function todosDuJour() {
 /* 3. SESSIONS EN ATTENTE DE RÉPONSE — l'agent s'est arrêté sur une question. Ce sont les
    items les plus coûteux à oublier : la session est bloquée, la file est libre, et rien ne
    repartira tant qu'on n'aura pas répondu. */
-function sessionsEnAttente() {
+function sessionsEnAttente(limite = MAX_PAR_SECTION) {
   return db.prepare(`SELECT t.id, t.prompt, t.kind, COUNT(*) n
     FROM task_target tt JOIN task t ON t.id = tt.task_id
     WHERE tt.status = 'needs_input'
-    GROUP BY t.id ORDER BY t.id DESC LIMIT ?`).all(MAX_PAR_SECTION)
+    GROUP BY t.id ORDER BY t.id DESC LIMIT ?`).all(limite)
     .map((r) => ({ task_id: r.id, prompt: r.prompt, kind: r.kind, targets: r.n }));
 }
 
@@ -70,7 +84,7 @@ function sessionsEnAttente() {
    le montrer comme actionnable enverrait corriger un problème peut-être déjà corrigé.
    On ne garde que la DERNIÈRE vérification de chaque lot (ou de chaque MR seule) : les
    précédentes sont de l'histoire, pas du travail. */
-function verificationsEnEchec() {
+function verificationsEnEchec(limite = MAX_PAR_SECTION) {
   const lignes = db.prepare(`SELECT * FROM verification
     WHERE status IN ('done','error') AND verdict = 'verified_fail'
     ORDER BY id DESC LIMIT 100`).all();
@@ -105,7 +119,7 @@ function verificationsEnEchec() {
       failed_label: (imputable[0] || {}).test || null,
       targets: enrichies.map((c) => ({ mr_id: c.mr_id, iid: c.iid, project: c.project })),
     });
-    if (out.length >= MAX_PAR_SECTION) break;
+    if (out.length >= limite) break;
   }
   return out;
 }
@@ -113,26 +127,26 @@ function verificationsEnEchec() {
 /* 5. MR À TRAITER — arrivées dans les dernières 24 h. Le brief ne redit pas la file entière
    (elle a son onglet et son badge) : il signale ce qui est TOMBÉ depuis hier, c'est-à-dire
    ce qu'on n'a pas encore pu voir. */
-function mrFraiches(maintenant) {
+function mrFraiches(maintenant, limite = MAX_PAR_SECTION) {
   const depuis = new Date(maintenant.getTime() - JOUR_MS).toISOString();
   return db.prepare(`SELECT mr.id, mr.iid, mr.title, mr.author, mr.gitlab_created_at, r.project
     FROM mr JOIN repo r ON r.id = mr.repo_id
     WHERE mr.status = 'to_review' AND mr.gitlab_created_at IS NOT NULL AND mr.gitlab_created_at >= ?
-    ORDER BY mr.gitlab_created_at DESC LIMIT ?`).all(depuis, MAX_PAR_SECTION);
+    ORDER BY mr.gitlab_created_at DESC LIMIT ?`).all(depuis, limite);
 }
 
 /* 6. MR DORMANTES — reviewées il y a plus de N jours et toujours ouvertes. C'est le travail
    qu'on a fait et qui ne sert à rien tant que personne ne merge : le rapport existe, la
    décision manque. Le seuil est réglable parce qu'il dépend du rythme de l'équipe. */
-function mrDormantes(maintenant, jours) {
+function mrDormantes(maintenant, jours, limite = MAX_PAR_SECTION) {
   const n = Number(jours) > 0 ? Number(jours) : 5;
-  const limite = new Date(maintenant.getTime() - n * JOUR_MS).toISOString();
+  const limite2 = new Date(maintenant.getTime() - n * JOUR_MS).toISOString();
   return db.prepare(`SELECT mr.id, mr.iid, mr.title, r.project, review.updated_at reviewed_at,
       review.note_value
     FROM mr JOIN repo r ON r.id = mr.repo_id JOIN review ON review.mr_id = mr.id
     WHERE mr.status = 'reviewed' AND COALESCE(mr.closed_seen, 0) = 0
       AND review.updated_at IS NOT NULL AND review.updated_at < ?
-    ORDER BY review.updated_at LIMIT ?`).all(limite, MAX_PAR_SECTION)
+    ORDER BY review.updated_at LIMIT ?`).all(limite2, limite)
     .map((m) => ({ ...m, days: Math.floor((maintenant.getTime() - new Date(m.reviewed_at).getTime()) / JOUR_MS) }));
 }
 
@@ -153,18 +167,27 @@ function activite(maintenant) {
    est vide, sans avoir à connaître la règle de composition — elle est ici, en un endroit. */
 function construire({ maintenant = new Date(), staleDays = 5 } = {}) {
   const act = activite(maintenant);
+  /* Le filtrage est posé ICI, après le calcul : chaque section garde une requête qui dit ce
+     qui est VRAI, et l'écart se lit d'un seul endroit. Les sections plafonnent à huit lignes,
+     donc on écarte avant de couper — sinon retirer une ligne n'en ferait pas remonter une
+     neuvième, et la section rétrécirait au lieu de se renouveler. */
+  const hors = ecartes();
+  // On demande MAX + ce qui est écarté : juste de quoi refaire le plein, jamais toute la table.
+  const budget = (kind) => MAX_PAR_SECTION + hors[kind].size;
+  const garder = (liste, kind, cle) => liste.filter((x) => !hors[kind].has(String(cle(x)))).slice(0, MAX_PAR_SECTION);
   return {
     date: maintenant.toISOString(),
     reminders: rappels(maintenant),
     todos: todosDuJour(),
-    sessions: sessionsEnAttente(),
-    verifications: verificationsEnEchec(),
-    fresh_mrs: mrFraiches(maintenant),
-    stale_mrs: mrDormantes(maintenant, staleDays),
+    sessions: garder(sessionsEnAttente(budget('session')), 'session', (s) => s.task_id),
+    verifications: garder(verificationsEnEchec(budget('verification')), 'verification', (v) => v.verification_id),
+    fresh_mrs: garder(mrFraiches(maintenant, budget('mr')), 'mr', (m) => m.id),
+    stale_mrs: garder(mrDormantes(maintenant, staleDays, budget('mr')), 'mr', (m) => m.id),
+    hidden_count: db.prepare('SELECT COUNT(*) c FROM brief_hidden').get().c,
     stale_days: Number(staleDays) > 0 ? Number(staleDays) : 5,
     // Une activité toute à zéro est un vide : la section se masque comme les autres.
     activity: (act.merged || act.opened || act.verified) ? act : null,
   };
 }
 
-module.exports = { construire, MAX_PAR_SECTION };
+module.exports = { construire, MAX_PAR_SECTION, ECARTABLES };

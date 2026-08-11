@@ -394,6 +394,18 @@ apprend qu'il ne s'est rien passé, ce qui n'était pas la question. Chaque lign
 7. **Activité depuis hier** — une ligne, trois nombres. Volontairement pauvre : c'est du contexte, pas une
    tâche ; le détail vit dans *Stats*.
 
+**Écarter une ligne qui revient tous les matins.** Le brief recalcule tout à chaque ouverture : un fait
+qui reste vrai reparaît indéfiniment, même traité ailleurs — une vérification rouge dont on a déjà fait le
+tour finit par apprendre à ne plus lire la section. Une **croix** au survol de la ligne l'écarte : elle
+disparaît du brief et n'y revient plus. Vaut pour les vérifications, les sessions en attente et les MR.
+
+⚠ **On écarte un constat, pas un sujet.** La croix retient l'objet vu — *ce verdict-ci*, *cette MR-là* :
+une **nouvelle** vérification du même lot porte un autre identifiant et reparaîtra. C'est voulu — sinon une
+vraie régression resterait invisible pour toujours. Rien n'est supprimé (le verdict garde sa page dans
+*Reviews*), le brief affiche en pied **combien** de lignes il cache, et **`Tout réafficher`** les ramène
+d'un bouton. Une ligne écartée fait **remonter la suivante** : les sections plafonnent à huit, et une
+section qui rétrécit à chaque geste finirait par mentir sur ce qu'il reste à faire.
+
 Tout est calculé **en SQL, sans IA et sans réseau** : le brief s'affiche instantanément, avant le premier
 café, et ne coûte rien. Un résumé rédigé par un agent était tentant ; il aurait fait payer un appel chaque
 matin pour reformuler des faits qui se lisent déjà.

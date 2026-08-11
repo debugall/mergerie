@@ -9344,6 +9344,10 @@ function briefSection(titre, corps, { icon = 'inbox', hint = '' } = {}) {
   </section>`;
 }
 
+/* Écarter une ligne : une croix discrète, à droite, sur chaque item qui peut revenir tous les
+   matins. Sans confirmation — rien n'est supprimé, et « Tout réafficher » est au pied du brief. */
+const briefHideBtn = (kind, ref) => `<button type="button" class="btn btn-icon btn-sm brief-hide" data-brief-hide="${kind}:${ref}" title="${esc(tr('notes.brief.hide'))}" aria-label="${esc(tr('notes.brief.hide'))}"><svg class="ico ico-sm"><use href="#i-close"/></svg></button>`;
+
 function renderBrief(d) {
   const box = $('#briefBox');
   const jour = new Date(d.date).toLocaleDateString(I18Nrt.currentLocale(), {
@@ -9359,6 +9363,7 @@ function renderBrief(d) {
         <div class="meta">${esc(tr('notes.brief.session.targets', { n: s.targets, count: s.targets }))}</div>
       </div>
       <button type="button" class="btn btn-sm btn-primary" data-brief-session="${s.task_id}">${esc(tr('notes.brief.session.go'))}</button>
+      ${briefHideBtn('session', s.task_id)}
     </div>`).join('');
 
   const verifs = (d.verifications || []).map((v) => `<div class="brief-item">
@@ -9368,6 +9373,7 @@ function renderBrief(d) {
           ${v.targets.map((c) => (c.iid ? ` · !${c.iid}` : '')).join('')}</div>
       </div>
       <button type="button" class="btn btn-sm" data-brief-verif="${v.verification_id}">${esc(tr('notes.brief.verif.go'))}</button>
+      ${briefHideBtn('verification', v.verification_id)}
     </div>`).join('');
 
   const fresh = (d.fresh_mrs || []).map((m) => `<div class="brief-item brief-clickable" data-brief-mr="${m.id}">
@@ -9375,6 +9381,7 @@ function renderBrief(d) {
         <div class="brief-item-title">!${m.iid} — ${esc(m.title || '')}</div>
         <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}</div>
       </div>
+      ${briefHideBtn('mr', m.id)}
     </div>`).join('');
 
   const stale = (d.stale_mrs || []).map((m) => `<div class="brief-item brief-clickable" data-brief-mr="${m.id}">
@@ -9382,6 +9389,7 @@ function renderBrief(d) {
         <div class="brief-item-title">!${m.iid} — ${esc(m.title || '')}</div>
         <div class="meta">${esc(m.project)} · ${esc(tr('notes.brief.stale.line', { n: m.days, count: m.days }))}</div>
       </div>
+      ${briefHideBtn('mr', m.id)}
     </div>`).join('');
 
   const a = d.activity;
@@ -9405,8 +9413,9 @@ function renderBrief(d) {
       <div class="brief-hello">${esc(tr('notes.brief.hello'))}</div>
       <div class="brief-date">${esc(jour)}</div>
     </header>
-    ${corps || emptyState({ icon: 'check', title: esc(tr('notes.brief.empty.title')), text: esc(tr('notes.brief.empty.text')) })}`;
-
+    ${corps || emptyState({ icon: 'check', title: esc(tr('notes.brief.empty.title')), text: esc(tr('notes.brief.empty.text')) })}
+    ${d.hidden_count ? `<p class="brief-hidden-foot muted">${esc(tr('notes.brief.hidden', { n: d.hidden_count, count: d.hidden_count }))}
+      <button type="button" class="btn btn-sm" id="briefRestore">${esc(tr('notes.brief.restore'))}</button></p>` : ''}`;
 }
 
 // Une ligne de todo dans le brief : cochable et snoozable sur place — c'est tout l'intérêt
@@ -9458,7 +9467,26 @@ function majBadgeNotes() {
   poser(bleu, reste, tr('nav.todos.rest', { n: reste, count: reste }));
 }
 
-document.addEventListener('click', (e) => {
+document.addEventListener('click', async (e) => {
+  /* La croix EST dans une ligne cliquable (une MR ouvre son rapport) : elle se teste donc en
+     premier, sinon écarter une ligne l'ouvrirait en même temps. */
+  const h = e.target.closest && e.target.closest('[data-brief-hide]');
+  if (h) {
+    const [kind, ...reste] = h.dataset.briefHide.split(':');
+    try {
+      await busy(h, () => api('/brief/hidden', { method: 'POST', body: { kind, ref: reste.join(':') } }));
+      toast(tr('toast.brief-ecarte')); loadBrief();
+    } catch (err) { toast(explainError(err.message), true); }
+    return;
+  }
+  const r = e.target.closest && e.target.closest('#briefRestore');
+  if (r) {
+    try {
+      await busy(r, () => api('/brief/hidden', { method: 'DELETE' }));
+      toast(tr('toast.brief-restaure')); loadBrief();
+    } catch (err) { toast(explainError(err.message), true); }
+    return;
+  }
   const s = e.target.closest && e.target.closest('[data-brief-session]');
   if (s) { navTab('task'); return; }
   const v = e.target.closest && e.target.closest('[data-brief-verif]');

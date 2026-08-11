@@ -378,6 +378,19 @@ nothing happened, which was not the question. Every line reaches its object in o
 7. **Activity since yesterday** — one line, three numbers. Deliberately poor: it is context, not a task;
    the detail lives in *Stats*.
 
+**Dismissing a line that comes back every morning.** The brief recomputes everything each time it opens:
+a fact that stays true reappears indefinitely, even once handled elsewhere — a red verification you have
+already been through eventually teaches you to stop reading the section. A **cross** on hover dismisses the
+line: it leaves the brief and does not come back. Applies to verifications, waiting sessions and merge
+requests.
+
+⚠ **You dismiss a finding, not a subject.** The cross remembers the object you saw — *this verdict*, *that
+merge request*: a **new** verification of the same set carries another identifier and will reappear. That
+is deliberate — otherwise a real regression would stay invisible forever. Nothing is deleted (the verdict
+keeps its page in *Reviews*), the brief shows at the bottom **how many** lines it is hiding, and **`Show
+them again`** brings them all back in one click. A dismissed line makes the **next one move up**: sections
+cap at eight, and a section that shrinks with every gesture would end up lying about what is left to do.
+
 Everything is computed **in SQL, with no AI and no network**: the brief appears instantly, before the first
 coffee, and costs nothing. A summary written by an agent was tempting; it would have charged one call every
 morning to rephrase facts that already read fine.

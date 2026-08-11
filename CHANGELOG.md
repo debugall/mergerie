@@ -13,6 +13,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A brief line can be dismissed for good.** The morning brief recomputes everything each time it
+  opens, so a fact that stays true comes back every day — a failed verification you have already
+  been through reappears indefinitely and eventually teaches you to skip the section. A cross on
+  hover dismisses the line: verifications, waiting sessions and merge requests. It dismisses the
+  *finding*, not the subject — a new verification of the same set reappears, because a real
+  regression must never stay invisible. Nothing is deleted, the brief says how many lines it hides,
+  and one button shows them all again. A dismissed line makes the next one move up, so a section
+  never shrinks below what is really left to do.
+
 - **Running a session again now asks first.** `Run again` sends the **initial prompt** once more:
   the agent starts from the beginning, on top of work already produced, and anything asked since —
   follow-ups, answers to questions — is not replayed. The button sits next to the ones you use all

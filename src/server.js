@@ -3016,6 +3016,25 @@ app.get('/api/brief', wrap((req, res) => {
   res.json(brief.construire({ staleDays: getConfig().stale_mr_days }));
 }));
 
+/* Écarter une ligne du brief. On garde l'objet ÉCARTÉ, pas le sujet : cette vérification-ci,
+   cette MR-là. Le `kind` est validé contre la liste du brief — une clé inventée resterait
+   sinon dans la table sans rien masquer, et personne ne saurait pourquoi. */
+app.post('/api/brief/hidden', wrap((req, res) => {
+  const kind = String((req.body && req.body.kind) || '');
+  const ref = String((req.body && req.body.ref) || '').trim();
+  if (!brief.ECARTABLES.includes(kind) || !ref) throw new Error(t('err.brief-ecart-invalide'));
+  db.prepare('INSERT OR IGNORE INTO brief_hidden (kind, ref, at) VALUES (?, ?, ?)')
+    .run(kind, ref, new Date().toISOString());
+  res.json({ ok: true });
+}));
+
+// Tout réafficher : le geste inverse, en un bouton. Rien n'a été supprimé, il n'y a rien à
+// reconstruire — c'est pour ça qu'écarter peut rester sans confirmation.
+app.delete('/api/brief/hidden', wrap((req, res) => {
+  const n = db.prepare('DELETE FROM brief_hidden').run().changes;
+  res.json({ ok: true, restored: n });
+}));
+
 /* ---------- Liens (plan_add_links.md) --------------------------------------
    Une grille services × environnements, des liens libres tagués et une palette globale.
    Toutes les URLs sont validées `http(s)` par src/links.js : elles sont ouvertes d'un clic

@@ -336,6 +336,31 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     await page.locator('#shortcutsClose').click();
   });
 
+  /* ÉCARTER une ligne du brief, à la souris. La croix vit DANS une ligne cliquable — celle
+     d'une MR ouvre son rapport : si l'ordre des gestes est mal câblé, écarter ouvre en même
+     temps le rapport de ce qu'on vient de vouloir ne plus voir. Ça ne se prouve qu'au clic. */
+  test('la croix écarte la ligne sans ouvrir ce qu’elle porte', async () => {
+    await page.reload();
+    await page.locator('nav button[data-tab="notes"]').click();
+    await page.locator('#tab-notes .subnav button[data-nsub="today"]').click();
+    await page.waitForSelector('#briefBox .brief-item [data-brief-hide^="mr:"]');
+
+    const ligne = page.locator('#briefBox .brief-item').filter({ has: page.locator('[data-brief-hide^="mr:"]') }).first();
+    const titre = await ligne.locator('.brief-item-title').textContent();
+    await ligne.locator('[data-brief-hide]').click();
+
+    await page.waitForSelector('#briefRestore');
+    assert.equal(await page.locator('#splitView').isHidden(), true,
+      'écarter n’ouvre rien : la croix est dans une ligne cliquable, elle doit passer avant');
+    assert.ok(!(await page.locator('#briefBox').textContent()).includes(titre.trim()),
+      'la ligne écartée disparaît sans recharger la page');
+
+    // Et le pied de brief la ramène : rien n'a été supprimé.
+    await page.locator('#briefRestore').click();
+    await page.waitForFunction((t) => document.querySelector('#briefBox').textContent.includes(t), titre.trim());
+    assert.equal(await page.locator('#briefRestore').count(), 0, 'plus rien de caché, plus de pied');
+  });
+
   /* Les deux thèmes existent : une couleur codée en dur se voit ici, pas à la relecture. */
   test('les deux thèmes restent lisibles', async () => {
     await app.api('POST', '/api/todos', { title: 'à regarder dans les deux thèmes', priority: 'high' });

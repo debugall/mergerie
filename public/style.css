@@ -2127,6 +2127,13 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .brief-item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 6px; }
 .brief-item-main { flex: 1; min-width: 0; }
+/* La croix « écarter » : présente mais effacée, elle se révèle au survol de sa ligne. Elle
+   reste visible au clavier (focus) — un bouton qui n'existe qu'à la souris n'existe pas. */
+.brief-hide { opacity: 0; color: var(--muted); transition: opacity .12s ease; }
+.brief-item:hover .brief-hide, .brief-hide:focus-visible { opacity: .8; }
+.brief-hide:hover { opacity: 1; color: var(--text); }
+@media (hover: none) { .brief-hide { opacity: .6; } }
+.brief-hidden-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; }
 .brief-item-title { font-weight: 550; overflow-wrap: anywhere; }
 .brief-item .meta { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap;
   align-items: center; gap: 6px; margin-top: 2px; }

@@ -881,6 +881,21 @@ db.exec(`CREATE TABLE IF NOT EXISTS todo (
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_todo_due ON todo(status, archived_at, due_at)');
 
+/* CE QU'ON A ÉCARTÉ DU BRIEF. Le brief recalcule tout à chaque ouverture : un fait qui reste
+   vrai reparaît tous les matins, même traité ailleurs — une vérification rouge dont on a déjà
+   fait le tour revient indéfiniment et finit par apprendre à ne plus lire la section.
+
+   On écarte donc la LIGNE, pas le sujet : la clé est l'identifiant de l'objet vu (ce verdict-ci,
+   cette MR-là). Une nouvelle vérification du même lot porte un autre identifiant et reparaît —
+   c'est voulu : on a écarté un constat, pas éteint une alarme. Rien n'est supprimé, et tout se
+   réaffiche d'un bouton. */
+db.exec(`CREATE TABLE IF NOT EXISTS brief_hidden (
+  kind TEXT NOT NULL,
+  ref TEXT NOT NULL,
+  at TEXT NOT NULL,
+  PRIMARY KEY (kind, ref)
+)`);
+
 /* Atterrissage sur le brief à la première ouverture de la journée. En base et non en
    localStorage : c'est un RÉGLAGE (comme la langue), et il doit valoir pour l'outil, pas
    pour un navigateur. La date du dernier affichage, elle, reste locale — deux navigateurs

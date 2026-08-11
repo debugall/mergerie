@@ -314,6 +314,89 @@ describe('Brief « Aujourd’hui »', () => {
       'la branche a bougé : le verdict ne porte plus sur ce code');
     app.db.prepare('DELETE FROM verification WHERE id = ?').run(perime);
   });
+
+  /* ÉCARTER une ligne du brief. Le brief recalcule tout chaque matin : un verdict rouge dont
+     on a déjà fait le tour revient indéfiniment et finit par apprendre à ne plus lire la
+     section. On écarte donc le CONSTAT, pas le sujet — et rien n'est supprimé. */
+  test('une vérification écartée ne revient plus, et se réaffiche d’un bouton', async () => {
+    const mr = app.db.prepare('SELECT id, current_sha FROM mr LIMIT 1').get();
+    const repo = app.db.prepare('SELECT id FROM repo LIMIT 1').get();
+    const now = new Date().toISOString();
+    const poser = () => app.db.prepare(`INSERT INTO verification
+      (verifier_name, status, verdict, targets_json, imputable_json, finished_at, created_at)
+      VALUES ('integ', 'done', 'verified_fail', ?, ?, ?, ?)`).run(
+      JSON.stringify([{ repo_id: repo.id, mr_id: mr.id, head_sha: mr.current_sha, branch: 'feature/x', mode: 'worktree' }]),
+      JSON.stringify([{ test: 'panier › remise' }]), now, now,
+    ).lastInsertRowid;
+
+    const id = poser();
+    const vu = () => app.api('GET', '/api/brief').then((r) => r.body);
+    assert.ok((await vu()).verifications.some((x) => x.verification_id === id), 'le rouge est là');
+
+    const ec = await app.api('POST', '/api/brief/hidden', { kind: 'verification', ref: String(id) });
+    assert.equal(ec.status, 200);
+    let b = await vu();
+    assert.ok(!b.verifications.some((x) => x.verification_id === id), 'écarté : il ne revient pas');
+    assert.equal(b.hidden_count, 1, 'le brief dit combien il cache — sinon on croit à une perte');
+
+    // Écarter deux fois n'empile rien : le geste est idempotent, un double clic ne compte pas double.
+    await app.api('POST', '/api/brief/hidden', { kind: 'verification', ref: String(id) });
+    assert.equal((await vu()).hidden_count, 1);
+
+    // La vérification EXISTE toujours : on a masqué une ligne de brief, pas supprimé un verdict.
+    assert.ok(app.db.prepare('SELECT 1 FROM verification WHERE id = ?').get(id), 'rien n’a été supprimé');
+
+    const restaure = await app.api('DELETE', '/api/brief/hidden');
+    assert.equal(restaure.body.restored, 1);
+    b = await vu();
+    assert.ok(b.verifications.some((x) => x.verification_id === id), 'tout réafficher le ramène');
+    assert.equal(b.hidden_count, 0);
+
+    /* Un NOUVEAU verdict du même sujet reparaît : on a écarté un constat, pas éteint une
+       alarme. Sans ça, une vraie régression resterait invisible pour toujours. */
+    await app.api('POST', '/api/brief/hidden', { kind: 'verification', ref: String(id) });
+    const neuf = poser();
+    assert.ok((await vu()).verifications.some((x) => x.verification_id === neuf),
+      'un verdict plus récent n’est pas couvert par l’écart de l’ancien');
+
+    await app.api('DELETE', '/api/brief/hidden');
+    app.db.prepare('DELETE FROM verification WHERE id IN (?, ?)').run(id, neuf);
+  });
+
+  /* Une section plafonne à huit lignes. Écarter la première doit faire remonter la NEUVIÈME,
+     sinon la section rétrécit à chaque geste et le travail caché derrière le plafond ne se
+     montre jamais — on écarterait huit fois pour voir un brief vide qui ment. */
+  test('écarter une ligne fait remonter la suivante', async () => {
+    const repo = app.db.prepare('SELECT id FROM repo LIMIT 1').get();
+    const ids = [];
+    for (let i = 0; i < 9; i += 1) {
+      const t = (await app.api('POST', '/api/tasks', {
+        kind: 'code', prompt: `Question ${i}`, targets: [{ repo_id: repo.id, branch: `feat/q${i}` }],
+      })).body;
+      app.db.prepare("UPDATE task_target SET status = 'needs_input' WHERE task_id = ?").run(t.id);
+      ids.push(t.id);
+    }
+    const sessions = () => app.api('GET', '/api/brief').then((r) => r.body.sessions.map((s) => s.task_id));
+    const avant = await sessions();
+    assert.equal(avant.length, 8, 'le brief se lit debout : huit lignes au plus');
+    const cachee = avant[0];
+    const absente = ids.find((id) => !avant.includes(id));
+
+    await app.api('POST', '/api/brief/hidden', { kind: 'session', ref: String(cachee) });
+    const apres = await sessions();
+    assert.ok(!apres.includes(cachee));
+    assert.equal(apres.length, 8, 'toujours huit : la place libérée est reprise');
+    assert.ok(apres.includes(absente), 'c’est la neuvième qui monte, pas un trou');
+
+    await app.api('DELETE', '/api/brief/hidden');
+    for (const id of ids) await app.api('DELETE', `/api/tasks/${id}`);
+  });
+
+  test('un type d’élément inventé est refusé', async () => {
+    const r = await app.api('POST', '/api/brief/hidden', { kind: 'nimporte', ref: '1' });
+    assert.equal(r.status, 400, 'une clé inconnue resterait en base sans rien masquer');
+    assert.equal((await app.api('POST', '/api/brief/hidden', { kind: 'mr', ref: '  ' })).status, 400);
+  });
 });
 
 describe('Réglages du brief', () => {
