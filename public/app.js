@@ -12072,21 +12072,36 @@ document.addEventListener('keydown', (e) => {
    ne porte pas de pastille : elle supposerait d'interroger Jenkins à chaque ouverture de
    l'application, et un compteur figé depuis la dernière visite ment plus qu'il n'informe. */
 
-const JENKINS = { jobs: [], configured: true, q: '', echecsSeuls: false, job: null, qDossier: '', horsDossiers: new Set() };
+const JENKINS = { jobs: [], configured: true, q: '', echecsSeuls: false, job: null, qDossier: '', horsDossiers: new Set(), masques: new Set() };
 
 /* Les dossiers DÉCOCHÉS sont mémorisés, pas les cochés. La différence compte le jour où
    l'équipe crée un dossier : mémoriser les cochés le rendrait invisible jusqu'à ce qu'on
    pense à aller le cocher — un job neuf n'apparaîtrait jamais. */
 const JENKINS_FILTRE = 'mergerie_jenkins_dossiers';
+/* DEUX ÉTATS, et non un seul, parce que ce sont deux gestes différents :
+   — DÉCOCHÉ : « pas maintenant ». La case reste sous la main, on la recoche d'un clic.
+   — MASQUÉ : « ce dossier ne me concerne pas ». Il sort de la liste des cases, qui redevient
+     lisible — sur une installation à quarante dossiers, une rangée de cases qu'on ne coche
+     jamais est du bruit qu'on relit chaque matin.
+   Un dossier masqué ne montre pas ses jobs non plus : le masquer en laissant ses jobs dans la
+   liste donnerait des jobs qu'on ne peut plus filtrer.
+   L'ancien format (un simple tableau) est relu : personne ne doit perdre son filtre. */
 function chargerFiltreJenkins() {
+  JENKINS.horsDossiers = new Set();
+  JENKINS.masques = new Set();
   try {
-    const brut = JSON.parse(localStorage.getItem(JENKINS_FILTRE) || '[]');
-    JENKINS.horsDossiers = new Set(Array.isArray(brut) ? brut.map(String) : []);
-  } catch { JENKINS.horsDossiers = new Set(); }
+    const brut = JSON.parse(localStorage.getItem(JENKINS_FILTRE) || '{}');
+    if (Array.isArray(brut)) { JENKINS.horsDossiers = new Set(brut.map(String)); return; }
+    JENKINS.horsDossiers = new Set((brut.hors || []).map(String));
+    JENKINS.masques = new Set((brut.masques || []).map(String));
+  } catch { /* stockage illisible : on repart d'un filtre vide */ }
 }
 function sauverFiltreJenkins() {
-  try { localStorage.setItem(JENKINS_FILTRE, JSON.stringify([...JENKINS.horsDossiers])); }
-  catch { /* stockage indisponible */ }
+  try {
+    localStorage.setItem(JENKINS_FILTRE, JSON.stringify({
+      hors: [...JENKINS.horsDossiers], masques: [...JENKINS.masques],
+    }));
+  } catch { /* stockage indisponible */ }
 }
 
 // Les états que Jenkins exprime par une couleur, traduits côté serveur en `statut`.
@@ -12174,7 +12189,7 @@ function renderJenkins() {
   /* La recherche porte sur le CHEMIN entier, pas sur le nom : on cherche autant « le job de
      déploiement » que « tout ce qui est dans boutique ». */
   const vus = JENKINS.jobs.filter((j) => (!q || j.path.toLowerCase().includes(q))
-    && !JENKINS.horsDossiers.has(j.folder)
+    && !JENKINS.horsDossiers.has(j.folder) && !JENKINS.masques.has(j.folder)
     && (!JENKINS.echecsSeuls || JK_ENNUI.includes(j.statut) || j.enCours));
   $('#jenkinsCount').textContent = tr('jenkins.count', { n: vus.length, count: vus.length, total: JENKINS.jobs.length });
 
@@ -12204,12 +12219,26 @@ function renderJenkinsDossiers() {
   // Un seul dossier (ou aucun) : le filtre n'aurait rien à filtrer.
   bloc.hidden = dossiers.length < 2;
   if (bloc.hidden) return;
+  const nom = (d) => (d ? esc(d) : esc(tr('jenkins.folders.root')));
   const qd = JENKINS.qDossier.toLowerCase();
-  const montres = dossiers.filter((d) => !qd || (d || '').toLowerCase().includes(qd));
+  const visibles = dossiers.filter((d) => !JENKINS.masques.has(d));
+  const montres = visibles.filter((d) => !qd || (d || '').toLowerCase().includes(qd));
   liste.innerHTML = montres.map((d) => `<label><input type="checkbox" data-jkfolder="${esc(d)}"${JENKINS.horsDossiers.has(d) ? '' : ' checked'} />
-    <span>${d ? esc(d) : esc(tr('jenkins.folders.root'))}</span>
-    <span class="jk-folder-count">${comptes.get(d)}</span></label>`).join('')
+    <span>${nom(d)}</span>
+    <span class="jk-folder-count">${comptes.get(d)}</span>
+    <button type="button" class="btn btn-icon btn-sm jk-folder-hide" data-jkhide="${esc(d)}" title="${esc(tr('jenkins.folders.hide'))}" aria-label="${esc(tr('jenkins.folders.hide'))}"><svg class="ico ico-sm"><use href="#i-close"/></svg></button></label>`).join('')
     || `<p class="muted">${esc(tr('jenkins.folders.no-match'))}</p>`;
+
+  /* Les masqués restent VISIBLES, en petit, sous la liste : un filtre dont on ne voit pas ce
+     qu'il retire devient un mystère au bout de trois semaines. Un clic les ramène — un par un,
+     parce qu'on en masque dix et qu'on en veut un seul. */
+  const caches = dossiers.filter((d) => JENKINS.masques.has(d));
+  const pied = $('#jenkinsFolderHidden');
+  pied.hidden = !caches.length;
+  pied.innerHTML = caches.length
+    ? `<span class="muted">${esc(tr('jenkins.folders.hidden', { n: caches.length, count: caches.length }))}</span>`
+      + caches.map((d) => `<button type="button" class="btn btn-sm" data-jkshow="${esc(d)}" title="${esc(tr('jenkins.folders.show'))}">+ ${nom(d)}</button>`).join('')
+    : '';
 }
 
 /* ---------- Le détail d'un job : paramètres, historique, console ---------- */
@@ -12311,6 +12340,23 @@ $('#jenkinsSearch') && $('#jenkinsSearch').addEventListener('input', (e) => { JE
 $('#jenkinsFailOnly') && $('#jenkinsFailOnly').addEventListener('change', (e) => { JENKINS.echecsSeuls = e.target.checked; renderJenkins(); });
 $('#jenkinsReload') && $('#jenkinsReload').addEventListener('click', () => loadJenkins());
 $('#jenkinsFolderSearch') && $('#jenkinsFolderSearch').addEventListener('input', (e) => { JENKINS.qDossier = e.target.value; renderJenkinsDossiers(); });
+/* Masquer / remettre. Le clic sur la croix est intercepté AVANT le `change` du label : sans
+   ça, cliquer la croix cocherait aussi la case qui la porte. */
+$('#jenkinsFolderList') && $('#jenkinsFolderList').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-jkhide]');
+  if (!b) return;
+  e.preventDefault();
+  JENKINS.masques.add(b.dataset.jkhide);
+  sauverFiltreJenkins();
+  renderJenkins();
+});
+$('#jenkinsFolderHidden') && $('#jenkinsFolderHidden').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-jkshow]');
+  if (!b) return;
+  JENKINS.masques.delete(b.dataset.jkshow);
+  sauverFiltreJenkins();
+  renderJenkins();
+});
 $('#jenkinsFolderList') && $('#jenkinsFolderList').addEventListener('change', (e) => {
   const c = e.target.closest('[data-jkfolder]');
   if (!c) return;

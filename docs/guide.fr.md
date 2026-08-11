@@ -794,6 +794,14 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   est visible). Le choix est **mémorisé**. ⚠ Ce sont les dossiers **décochés** qui sont retenus :
   un dossier créé demain par l'équipe apparaît donc de lui-même. L'inverse l'aurait rendu
   invisible jusqu'à ce qu'on pense à aller le cocher.
+- **Ranger un dossier qui ne te concerne pas.** Décocher dit « pas maintenant » ; la **croix**
+  au survol d'une case dit « ce dossier n'est pas mon sujet » et le **sort de la liste des
+  filtres**, qui redevient lisible — sur une installation à quarante dossiers, une rangée de
+  cases qu'on ne coche jamais est du bruit qu'on relit chaque matin. Ses jobs partent avec lui
+  (le masquer en les laissant donnerait des jobs qu'on ne peut plus filtrer). Les masqués
+  restent **listés en petit sous les cases**, et un clic sur `+ nom` remet celui qu'on veut :
+  un filtre dont on ne voit pas ce qu'il retire devient un mystère au bout de trois semaines.
+  L'état coché du dossier est **conservé** pendant qu'il est masqué.
 - **Retrouver un job.** Une **recherche** — obligatoire ici : une installation d'entreprise
   aligne des centaines de jobs. Elle porte sur le **chemin entier**, donc « boutique » retrouve
   tout un projet. Une case **`Seulement ce qui ne va pas`** ne garde que l'échec, l'instable et

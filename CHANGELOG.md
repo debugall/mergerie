@@ -13,6 +13,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Jenkins folders you never use can be put away.** A cross on a folder's checkbox takes it
+  out of the filter list — unticking says "not now", hiding says "not my subject" — and its
+  jobs go with it, since a job you cannot filter has no business being in the list. The hidden
+  ones stay listed in small type underneath, and one click brings back the one you want; their
+  ticked state is kept meanwhile. Remembered across sessions, like the rest of the filter.
+
 - **The Jenkins list now reads by freshness, and says who ran what.** Jobs are sorted from the
   latest run to the oldest — in a list of three hundred, what just ran is what you came for —
   with the never-run ones at the end. Each line carries the date of the last build, its number,

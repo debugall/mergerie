@@ -758,6 +758,14 @@ Jenkins already does well, and which there is no point redoing.
   **remembered**. ⚠ It is the **unticked** folders that are stored: a folder your team creates
   tomorrow therefore shows up on its own. The opposite would have kept it invisible until
   someone thought of going to tick it.
+- **Putting away a folder that is not your concern.** Unticking says "not now"; the **cross**
+  on a checkbox's hover says "this folder is not my subject" and **takes it out of the filter
+  list**, which becomes readable again — on an installation with forty folders, a row of boxes
+  you never tick is noise you re-read every morning. Its jobs leave with it (hiding it while
+  keeping them would give you jobs you can no longer filter). Hidden ones stay **listed in
+  small type under the boxes**, and one click on `+ name` brings back the one you want: a
+  filter whose removals you cannot see becomes a mystery three weeks later. The folder's ticked
+  state is **kept** while it is hidden.
 - **Finding a job.** A **search** — mandatory here: a company installation lines up hundreds of
   jobs. It matches the **whole path**, so "shop" brings back a whole project. A checkbox,
   **`Only what is not fine`**, keeps failures, unstable results and what is running.

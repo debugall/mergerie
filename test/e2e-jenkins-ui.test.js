@@ -176,6 +176,57 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await lignes(5);
   });
 
+  /* MASQUER N'EST PAS DÉCOCHER. Décocher, c'est « pas maintenant » — la case reste sous la
+     main. Masquer, c'est « ce dossier ne me concerne pas » : il sort de la liste des cases,
+     qui redevient lisible. Ses jobs partent avec lui — le masquer en les laissant donnerait
+     des jobs qu'on ne peut plus filtrer. Et on doit pouvoir le remettre, un par un. */
+  test('un dossier se masque de la liste des filtres, et se remet', async () => {
+    await allerJenkins();
+    const lignes = (n) => page.waitForFunction((k) => document.querySelectorAll('#jenkinsBox .jk-row').length === k, n);
+    await lignes(5);
+    // Trois entrées : « batch », « boutique », et la racine — un job hors dossier en est un aussi.
+    assert.equal(await page.locator('#jenkinsFolderList [data-jkfolder]').count(), 3);
+
+    await page.locator('[data-jkhide="batch"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsFolderList [data-jkfolder]').length === 2);
+    await lignes(4);
+    assert.equal(await page.locator('[data-jkfolder="batch"]').count(), 0, 'sa case quitte la liste');
+    assert.equal(await page.locator('#jenkinsBox .jk-row').filter({ hasText: 'batch/' }).count(), 0,
+      'ses jobs partent avec elle : sinon on aurait des jobs qu’on ne peut plus filtrer');
+
+    // Ce qui est masqué reste VISIBLE en petit : un filtre invisible devient un mystère.
+    await page.waitForSelector('#jenkinsFolderHidden:not([hidden])');
+    assert.match(await page.locator('#jenkinsFolderHidden').textContent(), /1 dossier masqué/);
+
+    await page.reload();
+    await allerJenkins();
+    await lignes(4);
+    assert.equal(await page.locator('[data-jkfolder="batch"]').count(), 0, 'le masquage est mémorisé');
+
+    await page.locator('[data-jkshow="batch"]').click();
+    await lignes(5);
+    assert.equal(await page.locator('[data-jkfolder="batch"]').isChecked(), true, 'remis, et coché comme avant');
+    assert.equal(await page.locator('#jenkinsFolderHidden').isHidden(), true, 'plus rien de masqué, plus de pied');
+  });
+
+  /* Un dossier DÉCOCHÉ puis masqué doit revenir DÉCOCHÉ : masquer range, ça ne décide pas à
+     notre place de ce qu'on avait choisi de voir. */
+  test('masquer ne perd pas l’état coché du dossier', async () => {
+    await allerJenkins();
+    const lignes = (n) => page.waitForFunction((k) => document.querySelectorAll('#jenkinsBox .jk-row').length === k, n);
+    await lignes(5);
+    await page.locator('[data-jkfolder="batch"]').uncheck();
+    await lignes(4);
+    await page.locator('[data-jkhide="batch"]').click();
+    await page.waitForSelector('#jenkinsFolderHidden:not([hidden])');
+    await page.locator('[data-jkshow="batch"]').click();
+    await page.waitForSelector('[data-jkfolder="batch"]');
+    assert.equal(await page.locator('[data-jkfolder="batch"]').isChecked(), false,
+      'masquer range la case, ça ne recoche pas à notre place');
+    await page.locator('[data-jkfolder="batch"]').check();
+    await lignes(5);
+  });
+
   /* « Tout décocher » après une recherche ne doit toucher QUE ce qu'on voit : sinon le
      bouton agit sur des dossiers hors de l'écran, et personne ne comprend ce qui a disparu. */
   test('« tout décocher » ne porte que sur les dossiers visibles', async () => {

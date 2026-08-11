@@ -682,6 +682,14 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .jk-folder-list { display: flex; flex-wrap: wrap; gap: 4px 16px; max-height: 148px; overflow-y: auto; }
 .jk-folder-list label { display: flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
 .jk-folder-list .jk-folder-count { color: var(--muted); font-size: 12px; }
+/* La croix « masquer » se révèle au survol de sa case — présente, mais pas dans le chemin
+   du regard : le geste courant ici est de cocher, pas de ranger. */
+.jk-folder-hide { opacity: 0; color: var(--muted); transition: opacity .12s ease; }
+.jk-folder-list label:hover .jk-folder-hide, .jk-folder-hide:focus-visible { opacity: .8; }
+.jk-folder-hide:hover { opacity: 1; color: var(--text); }
+@media (hover: none) { .jk-folder-hide { opacity: .6; } }
+.jk-folder-hidden { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px;
+  padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; }
 /* Le dossier d'un job, devant son nom : sans en-tête de groupe, c'est lui qui situe. */
 .jk-path { color: var(--muted); }
 .jk-folder { margin: 14px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
