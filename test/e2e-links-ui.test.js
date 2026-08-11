@@ -150,7 +150,7 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
   test('la sidebar se compacte, et s’en souvient', async () => {
     await page.reload();
     await page.waitForSelector('.sidebar button[data-tab]');
-    assert.equal(await page.locator('.sidebar button[data-tab]').count(), 9);
+    assert.equal(await page.locator('.sidebar button[data-tab]').count(), 10);
 
     const largeur = () => page.locator('#sidebar').evaluate((e) => e.getBoundingClientRect().width);
     const avant = await largeur();

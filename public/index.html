@@ -151,6 +151,7 @@
         <button data-tab="jira" title="Mes tickets Jira affectés : contenu, métadonnées, commentaires" data-i18n-title="jira.tab.title"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="nav.jira">Jira</span><span class="nav-count" id="navCountJira" hidden>0</span></button>
         <button data-tab="git" title="Opérations sur les dépôts : branches et tags" data-i18n-title="git.tab.title"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="nav.git">Git</span></button>
         <button data-tab="docker" title="Projets Docker Compose et containers : drift .env, actions" data-i18n-title="docker.tab.title"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="nav.docker">Docker</span><span class="nav-health err" id="dockerErrBadge" hidden>0</span><span class="nav-health warn" id="dockerUnhealthyBadge" hidden>0</span></button>
+        <button data-tab="jenkins" title="Jenkins : voir l'état des jobs et les lancer" data-i18n-title="jenkins.tab.title"><svg class="ico"><use href="#i-play"/></svg><span data-i18n="nav.jenkins">Jenkins</span></button>
         <button data-tab="links" title="Liens de travail : grille services × environnements, liens libres" data-i18n-title="links.tab.title"><svg class="ico"><use href="#i-link"/></svg><span data-i18n="nav.links">Liens</span></button>
         <button data-tab="dashboard" title="Statistiques et activité" data-i18n-title="ui.title.statistiques-et-activite"><svg class="ico"><use href="#i-chart"/></svg><span data-i18n="ui.btn.statistiques">Statistiques</span></button>
         <button data-tab="admin" title="Dépôts, token, règles de review, thème" data-i18n-title="ui.title.depots-token-regles-de-review"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="ui.btn.reglages">Réglages</span></button>
@@ -625,6 +626,20 @@
         </div>
     </section>
 
+    <!-- Jenkins : l'état des jobs et le bouton pour les lancer. Rien n'est sondé — l'écran
+         demande, on demande à Jenkins : surveiller des serveurs n'est pas le travail de
+         l'outil, et un sondage de fond finirait par peser sur une installation partagée. -->
+    <section id="tab-jenkins" class="tab">
+        <div class="toolbar">
+            <input id="jenkinsSearch" type="search" class="jira-search" placeholder="Rechercher un job, un dossier…" data-i18n-placeholder="jenkins.search" />
+            <label class="inline-check"><input type="checkbox" id="jenkinsFailOnly" /> <span data-i18n="jenkins.fail-only">Seulement ce qui ne va pas</span></label>
+            <span class="spacer"></span>
+            <span id="jenkinsCount" class="muted"></span>
+            <button id="jenkinsReload" class="btn" data-i18n-title="jenkins.reload-title" title="Redemander l'état à Jenkins"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="jenkins.reload">Rafraîchir</span></button>
+        </div>
+        <div id="jenkinsBox" class="list"></div>
+    </section>
+
     <!-- Liens : la grille services × environnements, puis les liens libres. Deux formes
          parce qu'il y a deux réalités — un service existe en quatre environnements, une
          page Confluence n'existe qu'une fois. -->
@@ -706,6 +721,7 @@
             <button data-sub="config" role="tab" title="Connexion GitLab, apparence, prompts, zone dangereuse" data-i18n-title="settings.title.connexion-gitlab-apparence-prompts-zone" data-i18n="settings.btn.general">Général</button>
             <button data-sub="gitcfg" role="tab" title="Connexion GitLab, dossier de clonage et palette de commandes git" data-i18n-title="settings.title.git" data-i18n="settings.sub.git">Git</button>
             <button data-sub="jiracfg" role="tab" title="Connexion Jira : URL, email et jeton d'API" data-i18n-title="settings.title.jira" data-i18n="settings.sub.jira">Jira</button>
+            <button data-sub="jenkinscfg" role="tab" title="Connexion Jenkins : URL, utilisateur et jeton d'API" data-i18n-title="settings.title.jenkins" data-i18n="settings.sub.jenkins">Jenkins</button>
             <button data-sub="mr" role="tab" title="Review, rafraîchissement des MR, convergence et templates de prompt" data-i18n-title="settings.title.merge-request" data-i18n="settings.sub.mr">Merge Request</button>
             <button data-sub="verifiers" role="tab" title="Scripts qui rendent un verdict objectif sur une merge request : tests, intégration" data-i18n-title="settings.verifier.tab-title" data-i18n="settings.sub.verifiers">Vérificateurs</button>
             <button data-sub="aisession" role="tab" title="Vérifier qu'on peut reprendre une session d'agent (test technique)" data-i18n-title="settings.aisession.tab-title" data-i18n="settings.sub.aisession">AI sessions</button>
@@ -1046,6 +1062,22 @@ print(json.dumps({
             </div>
         </div>
         </div><!-- /sub-jiracfg -->
+
+        <!-- Sous-onglet : Jenkins — connexion au serveur d'intégration continue. -->
+        <div id="sub-jenkinscfg" class="subtab">
+        <h2 data-i18n="settings.sub.jenkins">Jenkins</h2>
+        <p class="muted" style="max-width:560px" data-i18n="settings.jenkins.intro">Sert à l'onglet Jenkins : voir l'état des jobs et les lancer. Jenkins authentifie le couple utilisateur + jeton d'API — le jeton seul ne suffit pas.</p>
+        <div class="form" style="max-width:520px">
+            <label><span data-i18n="settings.lbl.jenkins-url">URL Jenkins</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.jenkins-url" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jenkins_url" placeholder="https://jenkins.mon-entreprise.fr" /></label>
+            <label><span data-i18n="settings.lbl.jenkins-user">Utilisateur Jenkins</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.jenkins-user" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jenkins_user" placeholder="prenom.nom" data-i18n-placeholder="settings.ph.jenkins-user" /></label>
+            <label><span data-i18n="settings.lbl.jenkins-token">Jeton d'API Jenkins</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.jenkins-token" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jenkins_token" type="password" placeholder="11a2b3…" data-i18n-placeholder="settings.ph.jenkins-token" /></label>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="submit" form="configForm" data-i18n-title="settings.title.enregistrer-les-reglages" title="Enregistrer les réglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                <button class="btn" type="button" id="btnTestJenkins" data-i18n-title="settings.title.tester-jenkins" title="Vérifier l'accès Jenkins"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.btn.tester-jenkins">Tester Jenkins</span></button>
+                <span id="configInfoJenkins" class="muted"></span>
+            </div>
+        </div>
+        </div><!-- /sub-jenkinscfg -->
 
         <!-- Sous-onglet : Merge Request (review, convergence, templates) -->
         <!-- Les champs restent rattachés à #configForm via l'attribut form= : ils sont
@@ -1440,6 +1472,32 @@ print(json.dumps({
         <div class="modal-actions">
             <button id="confirmCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
             <button id="confirmOk" type="button" class="btn"></button>
+        </div>
+    </div>
+</div>
+
+<!-- Modale : un job Jenkins — ses paramètres, ses derniers builds, sa console. C'est ici
+     qu'on lance : un job paramétré demande une décision (quelle version, quel environnement),
+     et la remplir ailleurs que devant l'historique reviendrait à lancer à l'aveugle. -->
+<div id="jenkinsModal" class="modal" hidden>
+    <div class="modal-box modal-lg">
+        <h3 id="jenkinsModalTitle"></h3>
+        <p id="jenkinsModalDesc" class="muted"></p>
+        <div id="jenkinsModalBody" class="modal-fields"></div>
+        <div class="modal-actions">
+            <button type="button" class="btn" id="jenkinsClose" data-i18n="ui.close">Fermer</button>
+            <button type="button" class="btn btn-primary" id="jenkinsRun"><svg class="ico"><use href="#i-play"/></svg><span data-i18n="jenkins.run">Lancer</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- Modale : la console d'un build. Bornée aux derniers caractères : l'erreur est en bas. -->
+<div id="jenkinsLogModal" class="modal" hidden>
+    <div class="modal-box modal-lg">
+        <h3 id="jenkinsLogTitle"></h3>
+        <pre id="jenkinsLogBody" class="log-box"></pre>
+        <div class="modal-actions">
+            <button type="button" class="btn" id="jenkinsLogClose" data-i18n="ui.close">Fermer</button>
         </div>
     </div>
 </div>

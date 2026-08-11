@@ -13,6 +13,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A Jenkins tab: see where your jobs stand, and run them.** Every job your account can see,
+  grouped by folder, with a search (a company installation lines up hundreds) and a filter for
+  what is failing, unstable or running. A job's page shows its parameters and its last ten
+  builds, and each build's console opens in one click, scrolled to where the error is. Running
+  always asks first and names the job — it deploys on a shared machine and cannot be cancelled
+  from here — and a parameterised job opens its page instead of starting, so the values you are
+  about to send are values you have seen. Nothing is polled: the screen asks when you open the
+  tab or hit Refresh. The connection (URL, user, API token) lives in a new **Settings → Jenkins**
+  tab, with a test that returns the account name the server sees.
+
 - **A brief line can be dismissed for good.** The morning brief recomputes everything each time it
   opens, so a fact that stays true comes back every day — a failed verification you have already
   been through reappears indefinitely and eventually teaches you to skip the section. A cross on
@@ -372,6 +382,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **The tab shortcuts now go up to ten.** With Jenkins the bar holds ten tabs, and there is no
+  "10" key: the tenth is on `0`, as in a browser. Without it, adding a tab silently took its
+  shortcut away from the last one — and the help sheet reads the real range from the bar.
+
 - **`Request a fix` is now `Send a follow-up`.** The button was named after one of its uses, and
   people were using it for all the others: asking for changes, giving further instructions, asking
   what was done and why. One word now covers the whole cycle — *prepare a follow-up* while the
@@ -491,6 +505,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   cancelling closes it again.
 
 ### Fixed
+
+- **A confirmation no longer opens behind the window that asked for it.** Confirming an action
+  started from another modal — running a Jenkins job from its page — put the question
+  underneath, with its button unreachable. Confirmations now sit above other modals.
 
 - **The code explorer's tree no longer closes under your fingers.** Clicking a file rebuilt the tree
   and recomputed which folders were open from a single rule — "expanded if it carries a change" — so a

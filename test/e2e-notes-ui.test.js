@@ -316,23 +316,24 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     const barre = await page.locator('nav button[data-tab]').evaluateAll(
       (els) => els.map((e) => e.dataset.tab),
     );
-    assert.equal(barre.length, 9);
-    assert.deepEqual(barre, ['review', 'task', 'notes', 'jira', 'git', 'docker', 'links', 'dashboard', 'admin'],
-      'le cœur · ce que j’ai à faire · ma machine et ses liens · le méta');
+    assert.equal(barre.length, 10);
+    assert.deepEqual(barre, ['review', 'task', 'notes', 'jira', 'git', 'docker', 'jenkins', 'links', 'dashboard', 'admin'],
+      'le cœur · ce que j’ai à faire · ma machine, son intégration et ses liens · le méta');
 
     for (let i = 0; i < barre.length; i += 1) {
       await page.locator('body').click();          // le focus quitte tout champ de saisie
-      await page.keyboard.press(String(i + 1));
+      // Faute de touche « 10 », le dixième onglet est sur « 0 » — la convention des navigateurs.
+      await page.keyboard.press(i === 9 ? '0' : String(i + 1));
       await page.waitForSelector(`#tab-${barre[i]}.active`);
       assert.equal(await page.locator(`#tab-${barre[i]}`).isVisible(), true,
-        `la touche ${i + 1} doit ouvrir le ${i + 1}ᵉ onglet de la barre (${barre[i]})`);
+        `la touche ${i === 9 ? '0' : i + 1} doit ouvrir le ${i + 1}ᵉ onglet de la barre (${barre[i]})`);
     }
 
     // Et la feuille d'aide annonce la plage réelle, pas un « 1 – 8 » recopié une fois de plus.
     await page.keyboard.press('?');
     await page.waitForSelector('#shortcutsModal:not([hidden])');
-    assert.match(await page.locator('#shortcutsList').innerText(), /1 – 9/,
-      'la plage annoncée suit le nombre réel d’onglets');
+    assert.match(await page.locator('#shortcutsList').innerText(), /1 – 9, 0/,
+      'la plage annoncée suit le nombre réel d’onglets, touche « 0 » comprise');
     await page.locator('#shortcutsClose').click();
   });
 

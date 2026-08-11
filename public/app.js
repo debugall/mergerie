@@ -443,6 +443,7 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
   if (b.dataset.tab === 'jira') loadJira();
   if (b.dataset.tab === 'notes') loadNotes();
   if (b.dataset.tab === 'links') loadLinks();
+  if (b.dataset.tab === 'jenkins') loadJenkins();
   try { localStorage.setItem('aidevtools_tab', b.dataset.tab); } catch { /* ignore */ }
 }));
 
@@ -451,7 +452,7 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
    et le dernier sous-onglet consulté est mémorisé. */
 // `mr` partage la logique de `config` : ses champs sont rattachés à #configForm (attribut form=),
 // donc loadConfig les peuple et le submit les enregistre — un seul /config pour les deux onglets.
-const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadConfig, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, verifiers: loadVerifiers, aisession: renderAiSessionSettings };
+const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadConfig, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadConfig, verifiers: loadVerifiers, aisession: renderAiSessionSettings };
 function showAdminSub(sub) {
   if (!sub) { try { sub = localStorage.getItem('aidevtools_admin_sub') || 'rules'; } catch { sub = 'rules'; } }
   if (!ADMIN_SUBS[sub]) sub = 'rules';
@@ -891,6 +892,7 @@ document.addEventListener('click', (e) => {
     case 'seg-to-review': loadSegment('to_review'); break;
     case 'seg-reviewed': loadSegment('reviewed'); break;
     case 'go-jira-config': go('admin'); showAdminSub('jiracfg'); break;
+    case 'jenkins-config': go('admin'); showAdminSub('jenkinscfg'); break;
     case 'clear-search': $('#searchReview').value = ''; loadSegment(currentSeg); break;
     case 'clear-note-filter': reinitFiltreNote(); break;
     default: break;
@@ -3371,7 +3373,7 @@ $('#ticketSave').addEventListener('click', async () => {
 // itèrent dessus (une divergence entre les deux = un champ qui ne s'enregistre pas,
 // exactement le bug qu'ont connu jira_email / jira_token).
 const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'access_token',
-  'github_url', 'github_token',
+  'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token',
   'clone_path', 'review_skill', 'prompt_review', 'prompt_explain', 'prompt_modify',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
   'stale_mr_days'];
@@ -3400,6 +3402,7 @@ $('#configForm').addEventListener('submit', async (e) => {
   if (body.access_token === '***') delete body.access_token;
   if (body.jira_token === '***') delete body.jira_token;
   if (body.github_token === '***') delete body.github_token;
+  if (body.jenkins_token === '***') delete body.jenkins_token;
   try {
     await api('/config', { method: 'PUT', body });
     // Le formulaire est éclaté sur deux sous-onglets (Général / Merge Request) : on affiche
@@ -8985,6 +8988,7 @@ const PALETTE_ACTIONS = [
   { key: 'palette.go.jira', run: () => $('nav button[data-tab="jira"]').click() },
   { key: 'palette.go.git', run: () => $('nav button[data-tab="git"]').click() },
   { key: 'palette.go.docker', run: () => $('nav button[data-tab="docker"]').click() },
+  { key: 'palette.go.jenkins', run: () => $('nav button[data-tab="jenkins"]').click() },
   { key: 'palette.go.stats', run: () => $('nav button[data-tab="dashboard"]').click() },
   { key: 'palette.go.settings', run: () => $('nav button[data-tab="admin"]').click() },
   { key: 'palette.act.discover', run: () => { $('nav button[data-tab="review"]').click(); $('#btnDiscover').click(); } },
@@ -9171,8 +9175,10 @@ const SHORTCUTS = [
 function openShortcuts() {
   const m = $('#shortcutsModal'); if (!m) return;
   const nbOnglets = $$('nav button[data-tab]').length;
+  // La plage annoncée doit être la VRAIE : au-delà de neuf onglets, le dixième est sur « 0 ».
+  const plage = nbOnglets > 9 ? '1 – 9, 0' : `1 – ${nbOnglets}`;
   $('#shortcutsList').innerHTML = SHORTCUTS
-    .map(([k, key]) => `<div class="shortcut-row"><kbd>${esc(k || `1 – ${nbOnglets}`)}</kbd><span>${esc(tr(key))}</span></div>`).join('');
+    .map(([k, key]) => `<div class="shortcut-row"><kbd>${esc(k || plage)}</kbd><span>${esc(tr(key))}</span></div>`).join('');
   m.hidden = false;
 }
 $('#shortcutsClose') && $('#shortcutsClose').addEventListener('click', () => { $('#shortcutsModal').hidden = true; });
@@ -11254,8 +11260,10 @@ document.addEventListener('keydown', (e) => {
   /* Les chiffres suivent la BARRE, lue dans le DOM — jamais une liste recopiée à côté.
      Une copie se désynchronise au premier réordonnancement, et le décalage est silencieux :
      « 3 » ouvrirait un autre onglet que le troisième, sans que rien ne signale l'erreur. */
-  if (/^[1-9]$/.test(e.key)) {
-    const t = $$('nav button[data-tab]')[+e.key - 1];
+  /* `0` prend le DIXIÈME onglet, faute de touche « 10 » — la convention des navigateurs.
+     Sans lui, ajouter un onglet retirait en silence son raccourci au dernier de la barre. */
+  if (/^[0-9]$/.test(e.key)) {
+    const t = $$('nav button[data-tab]')[e.key === '0' ? 9 : +e.key - 1];
     if (t) { e.preventDefault(); t.click(); }
     return;
   }
@@ -11338,6 +11346,27 @@ if (btnTestJira) btnTestJira.addEventListener('click', async () => {
       jira_token: f.jira_token.value,
     } });
     info.textContent = tr('settings.jira.ok', { key: r.key, summary: (r.summary || '').slice(0, 60) });
+  } catch (e) {
+    info.textContent = '';
+    toast(explainError(e.message), true);
+  }
+});
+
+/* Tester Jenkins : mêmes règles que Jira — on teste les valeurs SAISIES, et le masque veut
+   dire « garde le jeton déjà enregistré ». Le nom du compte rendu par Jenkins prouve que le
+   couple utilisateur/jeton est le bon, pas seulement que l'URL répond. */
+const btnTestJenkins = $('#btnTestJenkins');
+if (btnTestJenkins) btnTestJenkins.addEventListener('click', async () => {
+  const f = $('#configForm');
+  const info = $('#configInfoJenkins') || $('#configInfo');
+  info.textContent = tr('settings.jenkins.testing');
+  try {
+    const r = await busy(btnTestJenkins, () => api('/jenkins/test', { method: 'POST', body: {
+      jenkins_url: f.jenkins_url.value.trim(),
+      jenkins_user: f.jenkins_user.value.trim(),
+      jenkins_token: f.jenkins_token.value,
+    } }));
+    info.textContent = tr('settings.jenkins.ok', { user: r.user, n: r.jobs, count: r.jobs });
   } catch (e) {
     info.textContent = '';
     toast(explainError(e.message), true);
@@ -12033,4 +12062,223 @@ document.addEventListener('keydown', (e) => {
      On clique donc le vrai bouton quand il existe. */
   const cancel = open.querySelector('#taskCancel, #ticketCancel, #bulkCancel, #verifyPickCancel');
   if (cancel) cancel.click(); else open.hidden = true;
+});
+
+/* ============ Onglet Jenkins : voir l'état des jobs, et les lancer ============
+
+   RIEN N'EST SONDÉ. L'écran demande quand on l'ouvre ou quand on clique « Rafraîchir » —
+   surveiller un serveur d'intégration n'est pas le travail de l'outil, et un sondage de
+   fond sur une installation partagée pèse sur tout le monde. C'est aussi pourquoi le menu
+   ne porte pas de pastille : elle supposerait d'interroger Jenkins à chaque ouverture de
+   l'application, et un compteur figé depuis la dernière visite ment plus qu'il n'informe. */
+
+const JENKINS = { jobs: [], configured: true, q: '', echecsSeuls: false, job: null };
+
+// Les états que Jenkins exprime par une couleur, traduits côté serveur en `statut`.
+const JK_ENNUI = ['echec', 'instable'];
+
+async function loadJenkins() {
+  const box = $('#jenkinsBox');
+  if (!box) return;
+  box.innerHTML = skeleton(4);
+  try {
+    const d = await api('/jenkins/jobs');
+    JENKINS.jobs = d.jobs || [];
+    JENKINS.configured = d.configured !== false;
+  } catch (e) {
+    box.innerHTML = errorBox(explainError(e.message));
+    return;
+  }
+  renderJenkins();
+}
+
+function jkStatutLabel(j) {
+  if (j.enCours) return tr('jenkins.st.running');
+  return tr(`jenkins.st.${j.statut}`);
+}
+
+function jkRow(j) {
+  const ennui = JK_ENNUI.includes(j.statut);
+  return `<div class="card jk-row" data-jkjob="${esc(j.path)}">
+    <span class="jk-dot ${esc(j.statut)}${j.enCours ? ' encours' : ''}" aria-hidden="true"></span>
+    <div style="min-width:0;flex:1">
+      <div class="jk-name">${esc(j.name)}</div>
+      <div class="jk-meta">${esc(jkStatutLabel(j))}${(j.buildable || j.statut === 'desactive') ? '' : ` · ${esc(tr('jenkins.st.desactive'))}`}</div>
+    </div>
+    ${ennui ? `<span class="tag stale">${esc(jkStatutLabel(j))}</span>` : ''}
+    <button type="button" class="btn btn-sm" data-jkopen="${esc(j.path)}">${esc(tr('jenkins.open'))}</button>
+    ${j.buildable ? `<button type="button" class="btn btn-sm btn-primary" data-jkrun="${esc(j.path)}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr('jenkins.run'))}</button>` : ''}
+  </div>`;
+}
+
+function renderJenkins() {
+  const box = $('#jenkinsBox');
+  if (!JENKINS.configured) {
+    box.innerHTML = emptyState({
+      icon: 'sliders', title: tr('jenkins.empty.title'), text: tr('jenkins.empty.text'),
+      actions: [{ act: 'jenkins-config', label: tr('jenkins.empty.btn'), primary: true }],
+    });
+    $('#jenkinsCount').textContent = '';
+    return;
+  }
+  const q = JENKINS.q.toLowerCase();
+  /* La recherche porte sur le CHEMIN entier, pas sur le nom : on cherche autant « le job de
+     déploiement » que « tout ce qui est dans boutique ». */
+  const vus = JENKINS.jobs.filter((j) => (!q || j.path.toLowerCase().includes(q))
+    && (!JENKINS.echecsSeuls || JK_ENNUI.includes(j.statut) || j.enCours));
+  $('#jenkinsCount').textContent = tr('jenkins.count', { n: vus.length, count: vus.length, total: JENKINS.jobs.length });
+
+  if (!JENKINS.jobs.length) {
+    box.innerHTML = emptyState({ icon: 'inbox', title: tr('jenkins.none.title'), text: tr('jenkins.none.text') });
+    return;
+  }
+  if (!vus.length) {
+    box.innerHTML = `<p class="muted">${esc(tr('jenkins.no-match'))}</p>`;
+    return;
+  }
+  /* Groupés par DOSSIER, dans l'ordre de Jenkins. Une installation d'équipe aligne des
+     centaines de jobs dont les noms se ressemblent (`api-build`, `api-deploy`) : sans le
+     dossier au-dessus, on ne sait pas de quel projet on parle. */
+  const parDossier = new Map();
+  for (const j of vus) {
+    const i = j.path.lastIndexOf('/');
+    const dossier = i === -1 ? '' : j.path.slice(0, i);
+    if (!parDossier.has(dossier)) parDossier.set(dossier, []);
+    parDossier.get(dossier).push(j);
+  }
+  box.innerHTML = [...parDossier].map(([dossier, jobs]) => (dossier
+    ? `<div class="jk-folder">${esc(dossier)}</div>${jobs.map(jkRow).join('')}`
+    : jobs.map(jkRow).join(''))).join('');
+}
+
+/* ---------- Le détail d'un job : paramètres, historique, console ---------- */
+
+function jkBuildLigne(chemin, b) {
+  const etat = b.building ? tr('jenkins.st.running') : (b.result || '—');
+  const quand = b.timestamp ? fmtDateTime(new Date(b.timestamp).toISOString()) : '';
+  return `<div class="jk-build">
+    <span class="jk-dot ${b.building ? 'succes encours' : (b.result === 'SUCCESS' ? 'succes' : b.result === 'UNSTABLE' ? 'instable' : b.result === 'ABORTED' ? 'jamais' : 'echec')}"></span>
+    <strong>#${b.number}</strong>
+    <span>${esc(etat)}</span>
+    <span class="jk-meta">${esc(quand)}${b.duration ? ` · ${Math.round(b.duration / 1000)} s` : ''}</span>
+    <span class="spacer"></span>
+    <button type="button" class="btn btn-sm" data-jklog="${b.number}" data-jkpath="${esc(chemin)}">${esc(tr('jenkins.console'))}</button>
+  </div>`;
+}
+
+// Un paramètre, rendu selon SON type : un booléen se coche, un choix se choisit. Les
+// présenter tous comme un champ texte ferait retaper des valeurs que Jenkins connaît déjà.
+function jkParamChamp(p) {
+  const id = `jkp-${p.name}`;
+  if (p.choices && p.choices.length) {
+    return `<select id="${esc(id)}" data-jkparam="${esc(p.name)}">${p.choices
+      .map((c) => `<option value="${esc(c)}"${String(c) === String(p.value) ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
+  }
+  if (/boolean/i.test(p.type)) {
+    return `<label class="inline-check"><input type="checkbox" id="${esc(id)}" data-jkparam="${esc(p.name)}"${p.value === true || p.value === 'true' ? ' checked' : ''} /> <span>${esc(tr('jenkins.param.on'))}</span></label>`;
+  }
+  return `<input id="${esc(id)}" data-jkparam="${esc(p.name)}" value="${esc(p.value == null ? '' : String(p.value))}" />`;
+}
+
+async function openJenkinsJob(chemin) {
+  const modal = $('#jenkinsModal');
+  $('#jenkinsModalTitle').textContent = chemin;
+  $('#jenkinsModalDesc').textContent = '';
+  $('#jenkinsModalBody').innerHTML = skeleton(2);
+  modal.hidden = false;
+  try {
+    const d = await api(`/jenkins/job?path=${encodeURIComponent(chemin)}`);
+    JENKINS.job = d;
+    $('#jenkinsModalDesc').textContent = d.description || '';
+    const params = d.parameters.length
+      ? `<h4>${esc(tr('jenkins.params'))}</h4>${d.parameters.map((p) => `<label class="jk-param"><span class="jk-param-name">${esc(p.name)}</span>
+          ${p.description ? `<span class="jk-param-desc">${esc(p.description)}</span>` : ''}
+          ${jkParamChamp(p)}</label>`).join('')}`
+      : '';
+    const builds = d.builds.length
+      ? `<h4>${esc(tr('jenkins.builds'))}</h4><div class="jk-builds">${d.builds.map((b) => jkBuildLigne(d.path, b)).join('')}</div>`
+      : `<p class="muted">${esc(tr('jenkins.no-build'))}</p>`;
+    $('#jenkinsModalBody').innerHTML = params + builds;
+    $('#jenkinsRun').hidden = !d.buildable;
+  } catch (e) {
+    $('#jenkinsModalBody').innerHTML = errorBox(explainError(e.message));
+    $('#jenkinsRun').hidden = true;
+  }
+}
+
+// Les valeurs saisies, relues du formulaire au moment du lancement.
+function jkParamsSaisis() {
+  const out = {};
+  $$('#jenkinsModalBody [data-jkparam]').forEach((el) => {
+    out[el.dataset.jkparam] = el.type === 'checkbox' ? String(el.checked) : el.value;
+  });
+  return out;
+}
+
+/* LANCER DEMANDE CONFIRMATION. Un job Jenkins n'est pas une page qu'on ouvre : il déploie,
+   il publie, il tourne sur une machine partagée. Le clic de trop n'est pas rattrapable
+   depuis ici, et le nom du job dans la question est ce qui permet de s'en apercevoir. */
+async function lancerJenkins(chemin, parametres) {
+  if (!await confirmDialog({
+    title: tr('jenkins.confirm.title'), text: tr('jenkins.confirm.text', { job: chemin }),
+    confirmLabel: tr('jenkins.run'),
+  })) return false;
+  try {
+    await api('/jenkins/build', { method: 'POST', body: { path: chemin, parameters: parametres || {} } });
+    toast(tr('jenkins.queued', { job: chemin }));
+    // Jenkins met en file : l'état ne change pas dans la seconde, on redemande quand même.
+    loadJenkins();
+    return true;
+  } catch (e) { toast(explainError(e.message), true); return false; }
+}
+
+async function openJenkinsLog(chemin, numero) {
+  $('#jenkinsLogTitle').textContent = `${chemin} #${numero}`;
+  $('#jenkinsLogBody').textContent = '…';
+  $('#jenkinsLogModal').hidden = false;
+  try {
+    const d = await api(`/jenkins/console?path=${encodeURIComponent(chemin)}&build=${encodeURIComponent(numero)}`);
+    $('#jenkinsLogBody').textContent = (d.truncated ? `${tr('jenkins.log.truncated')}\n\n` : '') + (d.text || '');
+    $('#jenkinsLogBody').scrollTop = $('#jenkinsLogBody').scrollHeight;   // l'erreur est en bas
+  } catch (e) {
+    $('#jenkinsLogBody').textContent = explainError(e.message);
+  }
+}
+
+$('#jenkinsSearch') && $('#jenkinsSearch').addEventListener('input', (e) => { JENKINS.q = e.target.value; renderJenkins(); });
+$('#jenkinsFailOnly') && $('#jenkinsFailOnly').addEventListener('change', (e) => { JENKINS.echecsSeuls = e.target.checked; renderJenkins(); });
+$('#jenkinsReload') && $('#jenkinsReload').addEventListener('click', (b) => loadJenkins());
+$('#jenkinsClose') && $('#jenkinsClose').addEventListener('click', () => { $('#jenkinsModal').hidden = true; });
+$('#jenkinsLogClose') && $('#jenkinsLogClose').addEventListener('click', () => { $('#jenkinsLogModal').hidden = true; });
+fermerAuFond('#jenkinsModal', () => { $('#jenkinsModal').hidden = true; }, { salissable: false });
+fermerAuFond('#jenkinsLogModal', () => { $('#jenkinsLogModal').hidden = true; }, { salissable: false });
+$('#jenkinsRun') && $('#jenkinsRun').addEventListener('click', async () => {
+  const j = JENKINS.job;
+  if (!j) return;
+  // Lancé depuis la fiche : on la referme, le geste est fait et la liste redemande l'état.
+  if (await lancerJenkins(j.path, jkParamsSaisis())) $('#jenkinsModal').hidden = true;
+});
+
+document.addEventListener('click', (e) => {
+  const box = e.target.closest && e.target.closest('#jenkinsBox');
+  if (box) {
+    const run = e.target.closest('[data-jkrun]');
+    if (run) {
+      /* Un job PARAMÉTRÉ ne se lance pas depuis la liste : on ouvre sa fiche, où les
+         paramètres se lisent. Lancer avec les valeurs par défaut sans les avoir vues est
+         exactement la façon de déployer la mauvaise version. */
+      const j = JENKINS.jobs.find((x) => x.path === run.dataset.jkrun);
+      openJenkinsJob(run.dataset.jkrun).then(() => {
+        if (JENKINS.job && !JENKINS.job.parameters.length) {
+          $('#jenkinsModal').hidden = true;
+          lancerJenkins(j ? j.path : run.dataset.jkrun, {});
+        }
+      });
+      return;
+    }
+    const open = e.target.closest('[data-jkopen]') || e.target.closest('[data-jkjob]');
+    if (open) { openJenkinsJob(open.dataset.jkopen || open.dataset.jkjob); return; }
+  }
+  const log = e.target.closest && e.target.closest('[data-jklog]');
+  if (log) openJenkinsLog(log.dataset.jkpath, log.dataset.jklog);
 });

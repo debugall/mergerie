@@ -736,6 +736,43 @@ Two sub-views, like Coding/Exploration in AI Dev.
   server's PATH**, an **actionable** message explains it (pointing at `DOCKER_BIN` in the `.env` if needed)
   — like the certificate / token errors.
 
+### Jenkins
+See **where your jobs stand** and **run them**, without leaving the tool or opening another
+page. This is not an administration console: no job configuration, no agent management — what
+Jenkins already does well, and which there is no point redoing.
+
+- **What is shown.** Every job your account can see, **grouped by folder** and flattened: a team
+  installation nests folders three levels deep, and it is the **path**
+  (`shop/api-deploy-prod`) that identifies a job, not its name alone — several projects have a
+  "build" job. Each line carries a **coloured dot** and the matching word (*Success*, *Failed*,
+  *Unstable*, *Never run*, *Disabled*): a colour on its own does not read the same way for
+  everyone. A **running** job has a pulsing dot.
+- **Finding one.** A **search** — mandatory here: a company installation lines up hundreds of
+  jobs. It matches the **whole path**, so "shop" brings back a whole project. A checkbox,
+  **`Only what is not fine`**, keeps failures, unstable results and what is running.
+- **Nothing is polled.** The screen asks when the tab opens and on **`Refresh`**, not every
+  thirty seconds. Watching a CI server is not this tool's job, and background polling on a
+  shared installation costs everyone. That is also why the menu **carries no badge**: it would
+  mean querying Jenkins on every application start, and a counter frozen since your last visit
+  lies more than it informs.
+- **A job's page** (`Open`): its description, its **parameters** and its **last ten builds**
+  with verdict, date and duration. Each build's **console** opens with one button — bounded to
+  the last characters and **scrolled to the bottom**, where the error is.
+- **Running.** ⚠ Always **with a confirmation**, and the question **names the job**: that is
+  what lets you notice you picked the wrong line. A Jenkins job is not a page you open — it
+  deploys, it publishes, it runs on a shared machine, and it cannot be cancelled from here.
+- **A parameterised job never starts from the list.** The button opens its **page**, where the
+  parameters can be read and changed (a boolean is ticked, a choice is chosen). Going with
+  default values you have not seen is how the wrong version reaches the wrong environment.
+- **A disabled job has no `Run` button**: offering what Jenkins will refuse is a promise you
+  cannot keep.
+
+**Connection** — *Settings → Jenkins*: the root URL, your **user** and an **API token** (your
+Jenkins profile → *Configure* → *API Token*). Jenkins authenticates the **pair**: the token
+alone is not enough. **`Test Jenkins`** returns the **account name** the server sees — a URL
+that answers does not prove the token is right. The token is stored locally and **masked**;
+saving the settings again without touching it does not erase it.
+
 ### Links
 Work links have a **structure** a browser's bookmarks cannot express: the same service exists in
 local, dev, staging and production. A folder tree scatters it across four places; a **grid** shows
@@ -1064,7 +1101,7 @@ default are realigned.
 ### Everyday comfort
 The tab, the sub-tab **and the Reviews stage are remembered** from one session to the next — and **nothing
 else**: no search, no dialog, no open report, because a stale state is worse than a clean start ·
-**keyboard shortcuts** (`1`-`8` for tabs, `/` search, `n` new todo, `r` fetch MRs, `l` logs, `?` help, `Esc` closes) · a
+**keyboard shortcuts** (`1`-`9` then `0` for the ten tabs, `/` search, `n` new todo, `r` fetch MRs, `l` logs, `?` help, `Esc` closes) · a
 **dynamic favicon** during a job · error messages **translated into actions** (certificate, token, CLI not
 found, timeout, network) · a **3-step onboarding** as long as the connection and the repositories are not
 configured · every form field carries an **i icon** whose hover (or keyboard focus) explains what it is for.

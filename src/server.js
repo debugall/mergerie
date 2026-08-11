@@ -60,6 +60,8 @@ const git = require('./git');
 const demoGit = require('./demo-git');
 const docker = require('./docker');
 const demoDocker = require('./demo-docker');
+const demoJenkins = require('./demo-jenkins');
+const jenkins = require('./jenkins');
 const demoDiff = require('./demo-diff');
 const verifyLib = require('./verify');
 const verifyrun = require('./verifyrun');
@@ -686,7 +688,57 @@ app.get('/api/footer', wrap((req, res) => {
 
 app.get('/api/config', wrap((req, res) => {
   const c = getConfig();
-  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '' });
+  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '', jenkins_token: c.jenkins_token ? '***' : '' });
+}));
+
+/* ---------- Jenkins : voir et lancer des jobs -------------------------------
+   Aucune requête n'est émise sans un geste : pas de sondage, pas de rafraîchissement de
+   fond. L'écran demande, on demande à Jenkins. `configured: false` plutôt qu'une erreur —
+   un onglet non configuré doit expliquer comment le configurer, pas afficher un échec. */
+const jenkinsCfg = () => getConfig();
+
+app.get('/api/jenkins/jobs', wrap(async (req, res) => {
+  if (demoJenkins.isDemo()) return res.json({ configured: true, jobs: demoJenkins.lister() });
+  const cfg = jenkinsCfg();
+  if (!jenkins.isConfigured(cfg)) return res.json({ configured: false, jobs: [] });
+  res.json({ configured: true, jobs: await jenkins.lister(cfg) });
+}));
+
+app.get('/api/jenkins/job', wrap(async (req, res) => {
+  const chemin = String(req.query.path || '').trim();
+  if (!chemin) throw new Error(t('err.jenkins-chemin-requis'));
+  if (demoJenkins.isDemo()) return res.json(demoJenkins.detail(chemin));
+  res.json(await jenkins.detail(jenkinsCfg(), chemin));
+}));
+
+/* Lancer : le seul geste qui ÉCRIT chez Jenkins, donc un POST explicite. Les paramètres
+   arrivent tels que l'écran les a lus du job — on ne les invente pas, et un job sans
+   paramètre part sans corps. */
+app.post('/api/jenkins/build', wrap(async (req, res) => {
+  const chemin = String((req.body && req.body.path) || '').trim();
+  if (!chemin) throw new Error(t('err.jenkins-chemin-requis'));
+  const params = (req.body && req.body.parameters) || {};
+  if (demoJenkins.isDemo()) return res.json(demoJenkins.lancer(chemin, params));
+  res.json(await jenkins.lancer(jenkinsCfg(), chemin, params));
+}));
+
+app.get('/api/jenkins/console', wrap(async (req, res) => {
+  const chemin = String(req.query.path || '').trim();
+  if (!chemin) throw new Error(t('err.jenkins-chemin-requis'));
+  if (demoJenkins.isDemo()) return res.json(demoJenkins.console());
+  res.json(await jenkins.console(jenkinsCfg(), chemin, req.query.build));
+}));
+
+// Test de connexion — même contrat que « Tester Jira » : le masque signifie « garde le jeton ».
+app.post('/api/jenkins/test', wrap(async (req, res) => {
+  if (demoJenkins.isDemo()) return res.json(demoJenkins.tester());
+  const test = { ...jenkinsCfg() };
+  const b = req.body || {};
+  if (b.jenkins_url) test.jenkins_url = b.jenkins_url;
+  if (b.jenkins_user) test.jenkins_user = b.jenkins_user;
+  if (b.jenkins_token && b.jenkins_token !== '***') test.jenkins_token = b.jenkins_token;
+  if (!jenkins.isConfigured(test)) throw new Error(t('err.jenkins-non-configure'));
+  res.json(await jenkins.tester(test));
 }));
 
 // Test de la connexion Jira : récupère un ticket témoin pour valider URL/email/token.
@@ -1077,13 +1129,14 @@ app.put('/api/config', wrap((req, res) => {
   if (patch.access_token === '***') delete patch.access_token;
   if (patch.jira_token === '***') delete patch.jira_token;
   if (patch.github_token === '***') delete patch.github_token;
+  if (patch.jenkins_token === '***') delete patch.jenkins_token;
   const c = updateConfig(patch);
   i18n.setLang(c.language);   // les messages d'erreur suivent la nouvelle langue
   restartAutoRefresh(); // prend en compte le nouvel intervalle
   restartJiraWatch(); // idem pour la surveillance Jira (et le compteur du menu)
   champSprint = null; // l'instance Jira visée a pu changer : on re-cherchera le champ sprint
   statutsParProjet.clear();
-  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '' });
+  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '', jenkins_token: c.jenkins_token ? '***' : '' });
 }));
 
 /* ---------- Repos (admin) ---------- */

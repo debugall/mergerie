@@ -58,5 +58,21 @@ coupables.length
   ? fail('Le nom `t` est réutilisé dans un fichier qui traduit (il masque la traduction)', coupables)
   : ok(`Le nom \`t\` reste la traduction (${fichiers.length} fichiers examinés)`);
 
+/* UN CHAMP DE CONFIG SE DÉCLARE À DEUX ENDROITS dans src/config.js : la liste `ALLOWED`, qui
+   dit ce qu'on accepte du client, et l'UPDATE, qui dit ce qu'on écrit. Manquer le second
+   donne le pire des deux mondes : la route répond 200, l'écran affiche « enregistré », et la
+   valeur n'est nulle part. Ça s'est produit en ajoutant Jenkins ; ce contrôle le rattrape. */
+{
+  const conf = fs.readFileSync(path.join(SRC, 'config.js'), 'utf8');
+  const bloc = (conf.match(/UPDATE config SET([\s\S]*?)WHERE id = 1/) || [])[1] || '';
+  const liste = (conf.match(/const ALLOWED = \[([\s\S]*?)\]/) || [])[1] || '';
+  const champs = [...liste.matchAll(/'([a-z0-9_]+)'/g)].map((m) => m[1]);
+  const oublies = champs.filter((c) => !new RegExp(`\\b${c}\\s*=\\s*@${c}\\b`).test(bloc));
+  oublies.length
+    ? fail('Champs de config acceptés mais jamais écrits (ALLOWED sans ligne dans l’UPDATE)',
+      oublies.map((c) => `src/config.js  ${c} — accepté par ALLOWED, absent de l'UPDATE`))
+    : ok(`Tout champ de config accepté est écrit (${champs.length})`);
+}
+
 console.log(failures ? '\nContrôles serveur : ÉCHEC\n' : '\nContrôles serveur : OK\n');
 process.exit(failures ? 1 : 0);

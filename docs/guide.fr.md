@@ -771,6 +771,47 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
   dans le PATH du serveur**, un message **actionnable** l'explique (indique `DOCKER_BIN` dans le `.env` au
   besoin) — comme les erreurs certificat / token.
 
+### Jenkins
+Voir **où en sont les jobs** et **les lancer**, sans quitter l'outil ni ouvrir une nouvelle
+page. Ce n'est pas une console d'administration : il n'y a ni configuration de job, ni gestion
+d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
+
+- **Ce qui s'affiche.** Tous les jobs visibles par ton compte, **groupés par dossier** et à
+  plat : une installation d'équipe imbrique des dossiers sur trois niveaux, et c'est le
+  **chemin** (`boutique/api-deploy-prod`) qui identifie un job, pas son nom seul — plusieurs
+  projets ont un job « build ». Chaque ligne porte une **pastille de couleur** et le mot qui va
+  avec (*Succès*, *Échec*, *Instable*, *Jamais lancé*, *Désactivé*) : une couleur seule ne se
+  lit pas de la même façon par tout le monde. Un job **en cours** a sa pastille qui bat.
+- **Retrouver.** Une **recherche** — obligatoire ici : une installation d'entreprise aligne des
+  centaines de jobs. Elle porte sur le **chemin entier**, donc « boutique » retrouve tout un
+  projet. Une case **`Seulement ce qui ne va pas`** ne garde que l'échec, l'instable et ce qui
+  tourne.
+- **Rien n'est sondé.** L'écran demande à l'ouverture de l'onglet et sur **`Rafraîchir`**, pas
+  toutes les trente secondes. Surveiller un serveur d'intégration n'est pas le travail de
+  l'outil, et un sondage de fond sur une installation partagée pèse sur tout le monde. C'est
+  aussi pourquoi le menu **ne porte pas de pastille** : elle supposerait d'interroger Jenkins à
+  chaque ouverture de l'application, et un compteur figé depuis la dernière visite ment plus
+  qu'il n'informe.
+- **La fiche d'un job** (`Ouvrir`) : sa description, ses **paramètres** et ses **dix derniers
+  builds** avec leur verdict, leur date et leur durée. La **console** de chaque build s'ouvre
+  d'un bouton — bornée aux derniers caractères et **déroulée en bas**, là où est l'erreur.
+- **Lancer.** ⚠ Toujours **avec confirmation**, et la question **nomme le job** : c'est ce qui
+  permet de s'apercevoir qu'on s'est trompé de ligne. Un job Jenkins n'est pas une page qu'on
+  ouvre — il déploie, il publie, il tourne sur une machine partagée, et on ne peut pas
+  l'annuler depuis ici.
+- **Un job paramétré ne se lance jamais depuis la liste.** Le bouton ouvre sa **fiche**, où les
+  paramètres se lisent et se modifient (un booléen se coche, un choix se choisit). Partir sur
+  des valeurs par défaut qu'on n'a pas vues, c'est déployer la mauvaise version dans le mauvais
+  environnement.
+- **Un job désactivé n'a pas de bouton `Lancer`** : proposer ce que Jenkins refusera est une
+  promesse qu'on ne tient pas.
+
+**Connexion** — *Réglages → Jenkins* : l'URL racine, ton **utilisateur** et un **jeton d'API**
+(ton profil Jenkins → *Configure* → *API Token*). Jenkins authentifie le **couple** : le jeton
+seul ne suffit pas. **`Tester Jenkins`** rend le **nom du compte** vu par le serveur — une URL
+qui répond ne prouve pas que le jeton est bon. Le jeton est stocké en local et **masqué** ;
+réenregistrer les réglages sans y toucher ne l'efface pas.
+
 ### Liens
 Les liens de travail ont une **structure** que les marque-pages d'un navigateur ne savent pas
 représenter : le même service existe en local, en dev, en preprod, en prod. Un arbre de dossiers
@@ -1112,7 +1153,7 @@ seuls les gabarits restés au défaut sont réalignés.
 ### Confort d'usage
 Onglet, sous-onglet **et stade de Reviews mémorisés** d'une session à l'autre — et **rien d'autre** :
 ni recherche, ni modale, ni rapport ouvert, car un état périmé est pire qu'un démarrage propre ·
-**raccourcis clavier** (`1`-`8` onglets, `/` recherche, `n` nouvelle todo, `r` chercher les MR, `l` logs, `?` aide,
+**raccourcis clavier** (`1`-`9` puis `0` pour les dix onglets, `/` recherche, `n` nouvelle todo, `r` chercher les MR, `l` logs, `?` aide,
 `Échap` ferme) · **favicon dynamique** pendant un job · messages d'erreur **traduits en actions**
 (certificat, token, CLI introuvable, timeout, réseau) · **onboarding en 3 étapes** tant que la
 connexion et les dépôts ne sont pas configurés · chaque champ de formulaire porte une **icône i** dont

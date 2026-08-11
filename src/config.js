@@ -15,6 +15,7 @@ const ALLOWED = [
   'prompt_review', 'prompt_explain', 'prompt_modify', 'review_skill', 'language',
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
   'brief_on_open',
+  'jenkins_url', 'jenkins_user', 'jenkins_token',
 ];
 
 function updateConfig(patch) {
@@ -27,6 +28,7 @@ function updateConfig(patch) {
   if (next.gitlab_url) next.gitlab_url = next.gitlab_url.trim().replace(/\/+$/, '');
   if (next.github_url) next.github_url = next.github_url.trim().replace(/\/+$/, '');
   if (next.jira_url) next.jira_url = next.jira_url.trim().replace(/\/+$/, '');
+  if (next.jenkins_url) next.jenkins_url = next.jenkins_url.trim().replace(/\/+$/, '');
   if (next.clone_path) next.clone_path = next.clone_path.trim();
   // Rafraîchissement auto : 0 = désactivé ; sinon minimum 1 minute (protège des rate limits API).
   if ('auto_refresh_minutes' in patch) {
@@ -89,7 +91,10 @@ function updateConfig(patch) {
       jira_watch_minutes = @jira_watch_minutes,
       retention_days = @retention_days,
       brief_on_open = @brief_on_open,
-      stale_mr_days = @stale_mr_days
+      stale_mr_days = @stale_mr_days,
+      jenkins_url = @jenkins_url,
+      jenkins_user = @jenkins_user,
+      jenkins_token = @jenkins_token
     WHERE id = 1`).run(next);
   return getConfig();
 }
