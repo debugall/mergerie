@@ -40,7 +40,25 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     mock.state.jobs = [
       { name: 'boutique', _class: 'com.cloudbees.hudson.plugins.folder.Folder', jobs: [
         { name: 'api-build', color: 'blue', buildable: true, lastBuild: build(2000, [{ userName: 'Alice' }], 'main') },
-        { name: 'deploy-prod', color: 'blue', buildable: true, lastBuild: build(1000, [{ userName: 'Bruno' }], 'v1.0'), property: [{ parameterDefinitions: [{ name: 'VERSION' }, { name: 'ENV' }] }] },
+        { name: 'deploy-prod',
+          color: 'blue',
+          buildable: true,
+          property: [{ parameterDefinitions: [{ name: 'VERSION' }, { name: 'ENV' }] }],
+          lastBuild: {
+            ...build(1000, [{ userName: 'Bruno' }], 'v1.0'),
+            actions: [
+              { causes: [{ userName: 'Bruno' }] },
+              { parameters: [
+                { name: 'VERSION', value: '1.4', _class: 'hudson.model.StringParameterValue' },
+                { name: 'ENV', value: 'prod', _class: 'hudson.model.StringParameterValue' },
+                { name: 'MDP', value: '{AQAAABAA}', _class: 'hudson.model.PasswordParameterValue' },
+                { name: 'VIDE', value: '', _class: 'hudson.model.StringParameterValue' },
+                { name: 'MIGRE', value: true, _class: 'hudson.model.BooleanParameterValue' },
+                { name: 'DEBUG', value: 'false', _class: 'hudson.model.BooleanParameterValue' },
+              ] },
+              { lastBuiltRevision: { branch: [{ name: 'refs/remotes/origin/v1.0' }] } },
+            ],
+          } },
         { name: 'front-build', color: 'red', buildable: true, lastBuild: build(9000, [{ _class: 'hudson.triggers.SCMTrigger$SCMTriggerCause' }], 'feature/x') },
       ] },
       { name: 'batch', _class: 'com.cloudbees.hudson.plugins.folder.Folder', jobs: [
@@ -122,6 +140,16 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     assert.match(meta, /par Alice/, 'qui a lancé');
     assert.match(meta, /main/, 'sur quelle branche');
     assert.doesNotMatch(meta, /refs\/remotes/, '« refs/remotes/origin/main » est un détail d’implémentation');
+
+    /* AVEC QUELS PARAMÈTRES le dernier lancement est parti — ils arrivent dans la même
+       requête que la liste, donc les afficher ne coûte rien. */
+    const dep = await page.locator('#jenkinsBox .jk-row').filter({ hasText: 'deploy-prod' }).first().locator('.jk-meta');
+    const texte = await dep.textContent();
+    assert.match(texte, /ENV=prod/, 'les valeurs du dernier build sont là');
+    assert.doesNotMatch(texte, /MDP=/, 'un paramètre de type mot de passe est écarté');
+    assert.doesNotMatch(texte, /VIDE=/, 'une valeur vide n’apprend rien');
+    assert.match(texte, /\+1/, 'au-delà de trois, le reste est compté et détaillé en infobulle');
+    assert.match(await dep.getAttribute('title'), /DEBUG=/, 'l’infobulle porte la liste entière');
 
     // Un déclenchement automatique n'a pas d'auteur : on dit sa NATURE plutôt que rien.
     const auto = await page.locator('#jenkinsBox .jk-row').filter({ hasText: 'nuit' }).first().locator('.jk-meta').textContent();

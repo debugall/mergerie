@@ -149,6 +149,27 @@ function auteurDe(build) {
   return null;
 }
 
+/* LES PARAMÈTRES DU DERNIER LANCEMENT. Ils sont DÉJÀ dans la réponse — ils servent aussi à
+   retrouver la branche — donc les afficher ne coûte pas un appel de plus : c'est la même
+   requête, le même octet de réseau. Deux exclusions :
+   — un paramètre de type MOT DE PASSE, dont Jenkins rend une forme chiffrée (`{AQAAABAA…}`) :
+     illisible, sans intérêt, et un secret n'a rien à faire dans une liste ;
+   — une valeur vide, qui n'apprend rien et pousse les autres hors de l'écran.
+   Le nombre est borné : un job de déploiement en aligne parfois vingt. */
+const MAX_PARAMS = 8;
+function paramsDuBuild(build) {
+  const out = [];
+  for (const action of (build && build.actions) || []) {
+    for (const p of (action && action.parameters) || []) {
+      if (!p || !p.name || p.value == null || p.value === '') continue;
+      if (/password/i.test(String(p._class || '')) || /password|secret|token/i.test(p.name)) continue;
+      out.push({ name: p.name, value: String(p.value).slice(0, 60) });
+      if (out.length >= MAX_PARAMS) return out;
+    }
+  }
+  return out;
+}
+
 /* SUR QUELLE BRANCHE / QUEL TAG. Trois sources, dans l'ordre de fiabilité : la révision que
    le plugin git a réellement construite ; à défaut un paramètre de build qui la nomme ; à
    défaut le nom du job lui-même pour un pipeline multibranche, où la branche EST le job.
@@ -196,6 +217,7 @@ function aplatir(noeuds, prefixe = '', sortie = [], classeParent = '') {
          chose pour un job qui part au clic et pour un job qui demande d'abord une version et
          un environnement : l'écran peut le DIRE avant qu'on clique, il le dit. */
       params: lireParametres(n.property).length,
+      lastParams: paramsDuBuild(n.lastBuild),
     });
   }
   return sortie;
@@ -207,7 +229,7 @@ function aplatir(noeuds, prefixe = '', sortie = [], classeParent = '') {
 const CHAMPS_JOB = 'name,url,color,buildable,_class,'
   + 'property[parameterDefinitions[name]],'
   + 'lastBuild[timestamp,number,actions[causes[shortDescription,userName,_class],'
-  + 'parameters[name,value],lastBuiltRevision[branch[name]]]]';
+  + 'parameters[name,value,_class],lastBuiltRevision[branch[name]]]]';
 const ARBRE = (n) => (n === 0 ? `jobs[${CHAMPS_JOB}]`
   : `jobs[${CHAMPS_JOB},${ARBRE(n - 1)}]`);
 
@@ -324,5 +346,5 @@ async function tester(cfg) {
 module.exports = {
   isConfigured, lister, detail, lancer, console: console_, tester,
   // exportés pour les tests : ce sont les deux traductions qui portent tout le reste
-  lireCouleur, aplatir, cheminUrl, lireParametres, auteurDe, refDe,
+  lireCouleur, aplatir, cheminUrl, lireParametres, auteurDe, refDe, paramsDuBuild,
 };

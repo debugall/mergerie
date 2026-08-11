@@ -77,6 +77,23 @@ describe('Client Jenkins', () => {
     assert.equal(jobs[3].last, null, 'jamais lancé = null, pas 0 : 0 trierait comme une date de 1970');
   });
 
+  /* LES PARAMÈTRES DU DERNIER LANCEMENT arrivent avec la liste — même requête, aucun appel de
+     plus. Deux choses n'ont pourtant rien à y faire : un mot de passe (Jenkins en rend une
+     forme chiffrée) et une valeur vide. */
+  test('les paramètres du dernier build sont rendus, sans les secrets', async () => {
+    poser();
+    mock.state.jobs[2].lastBuild.actions = [{ parameters: [
+      { name: 'VERSION', value: '2.1', _class: 'hudson.model.StringParameterValue' },
+      { name: 'MDP', value: '{AQAAABAAAAAQabc}', _class: 'hudson.model.PasswordParameterValue' },
+      { name: 'API_TOKEN', value: 'zzz', _class: 'hudson.model.StringParameterValue' },
+      { name: 'VIDE', value: '', _class: 'hudson.model.StringParameterValue' },
+      { name: 'MIGRE', value: true, _class: 'hudson.model.BooleanParameterValue' },
+    ] }];
+    const job = (await jenkins.lister(cfg)).find((j) => j.path === 'release');
+    assert.deepEqual(job.lastParams, [{ name: 'VERSION', value: '2.1' }, { name: 'MIGRE', value: 'true' }],
+      'un secret n’a rien à faire dans une liste, et une valeur vide n’apprend rien');
+  });
+
   test('la couleur dit le verdict ET le fait de tourner', async () => {
     poser();
     const jobs = await jenkins.lister(cfg);

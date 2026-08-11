@@ -750,7 +750,14 @@ Jenkins already does well, and which there is no point redoing.
   *Disabled* —, as a colour on its own does not read the same way for everyone; a **running**
   job has a pulsing dot), *when* (the **date** of the last run, with the relative age in the
   tooltip), *by whom and on what* (the **author** of the run — or its nature: *by the
-  scheduler*, *on a push*, *by an upstream job* — and the **branch or tag** that was built).
+  scheduler*, *on a push*, *by an upstream job* —, the **branch or tag** that was built, and the
+  **parameters of the last run**: at most three in the line, the rest counted and spelled out in
+  the tooltip). All of it arrives in **the same request** as the list: showing it does not cost
+  one more call.
+
+  ⚠ A **password** parameter is never displayed — Jenkins returns an encrypted form of it,
+  unreadable, and a secret has no business in a list — nor is an empty value, which teaches
+  nothing and pushes the others off the screen.
 - **Folders sit on top, as a filter.** One checkbox per folder with its job count,
   **`Tick all` / `Untick all`**, and a **search** to find one folder among fifty (it hides
   checkboxes without ever unticking any: filtering what you look at must not change what you

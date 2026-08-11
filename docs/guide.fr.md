@@ -785,8 +785,14 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   *Jamais lancé*, *Désactivé* —, une couleur seule ne se lisant pas de la même façon par tout
   le monde ; un job **en cours** a sa pastille qui bat), *quand* (la **date** du dernier
   lancement, l'ancienneté relative en infobulle), *par qui et sur quoi* (**l'auteur** du
-  lancement — ou sa nature : *par le planificateur*, *sur un push*, *par un job amont* — et la
-  **branche ou le tag** construits).
+  lancement — ou sa nature : *par le planificateur*, *sur un push*, *par un job amont* —, la
+  **branche ou le tag** construits, et les **paramètres du dernier lancement** : trois au plus
+  dans la ligne, le reste compté et détaillé en infobulle). Tout cela arrive dans **la même
+  requête** que la liste : l'afficher ne coûte pas un appel de plus.
+
+  ⚠ Un paramètre de type **mot de passe** n'est jamais affiché — Jenkins en rend une forme
+  chiffrée, illisible, et un secret n'a rien à faire dans une liste — pas plus qu'une valeur
+  vide, qui n'apprend rien et pousse les autres hors de l'écran.
 - **Les dossiers, en tête, servent de filtre.** Une case par dossier, avec son nombre de jobs,
   **`Tout cocher` / `Tout décocher`**, et une **recherche** pour retrouver un dossier parmi
   cinquante (elle masque des cases sans jamais en décocher : filtrer ce qu'on regarde ne doit

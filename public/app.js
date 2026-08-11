@@ -12152,21 +12152,38 @@ function jkAuteur(by) {
   return by.label || '';
 }
 
+/* Les paramètres du dernier lancement, en clair dans la ligne. Trois au plus : au-delà, la
+   ligne devient un paragraphe et on ne lit plus rien — le reste est dans l'infobulle, et la
+   fiche du job les montre tous. Celui qui a DONNÉ la branche affichée n'est pas répété. */
+const JK_PARAMS_VUS = 3;
+function jkParams(j) {
+  const liste = (j.lastParams || []).filter((p) => String(p.value) !== String(j.ref || ''));
+  if (!liste.length) return { texte: '', titre: '' };
+  const vus = liste.slice(0, JK_PARAMS_VUS).map((p) => `${p.name}=${p.value}`);
+  const reste = liste.length - vus.length;
+  return {
+    texte: vus.join(' ') + (reste ? ` +${reste}` : ''),
+    titre: liste.map((p) => `${p.name}=${p.value}`).join('\n'),
+  };
+}
+
 function jkRow(j) {
   const ennui = JK_ENNUI.includes(j.statut);
+  const params = jkParams(j);
   const infos = [
     jkStatutLabel(j),
     // Sans date, le statut dit DÉJÀ « jamais lancé » : le répéter ferait croire à deux faits.
     j.last ? fmtDateTime(new Date(j.last).toISOString()) : '',
     jkAuteur(j.by),
     j.ref ? `⎇ ${j.ref}` : '',
+    params.texte,
     (j.buildable || j.statut === 'desactive') ? '' : tr('jenkins.st.desactive'),
   ].filter(Boolean);
   return `<div class="card jk-row" data-jkjob="${esc(j.path)}">
     <span class="jk-dot ${esc(j.statut)}${j.enCours ? ' encours' : ''}" aria-hidden="true"></span>
     <div style="min-width:0;flex:1">
       <div class="jk-name">${j.folder ? `<span class="jk-path">${esc(j.folder)}/</span>` : ''}${esc(j.name)}${j.lastNumber ? ` <span class="jk-path">#${j.lastNumber}</span>` : ''}</div>
-      <div class="jk-meta" title="${esc(j.last ? jkQuand(j.last) : '')}">${infos.map(esc).join(' · ')}</div>
+      <div class="jk-meta" title="${esc([j.last ? jkQuand(j.last) : '', params.titre].filter(Boolean).join('\n'))}">${infos.map(esc).join(' · ')}</div>
     </div>
     ${ennui ? `<span class="tag stale">${esc(jkStatutLabel(j))}</span>` : ''}
     <button type="button" class="btn btn-sm" data-jkopen="${esc(j.path)}">${esc(tr('jenkins.open'))}</button>

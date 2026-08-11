@@ -13,6 +13,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **The Jenkins list shows the parameters the last run went out with.** Up to three per line,
+  the rest counted and spelled out in the tooltip. They cost nothing: they already came with
+  the list, in the same request. Password parameters are left out — Jenkins returns an
+  encrypted form and a secret does not belong in a list — and so are empty values.
+
 - **Jenkins folders you never use can be put away.** A cross on a folder's checkbox takes it
   out of the filter list — unticking says "not now", hiding says "not my subject" — and its
   jobs go with it, since a job you cannot filter has no business being in the list. The hidden

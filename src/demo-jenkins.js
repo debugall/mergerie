@@ -13,12 +13,12 @@ const ms = (min) => Date.now() - min * 60000;
    lancement automatique, une branche et un tag, un job jamais lancé (sans date ni auteur). */
 const JOBS = [
   { path: 'boutique/api-build', name: 'api-build', statut: 'succes', enCours: false, buildable: true, age: 18, by: { user: 'Alice' }, ref: 'main' },
-  { path: 'boutique/api-deploy-prod', name: 'api-deploy-prod', statut: 'succes', enCours: false, buildable: true, age: 240, by: { user: 'Moi Même' }, ref: 'v1.5.0' },
+  { path: 'boutique/api-deploy-prod', name: 'api-deploy-prod', statut: 'succes', enCours: false, buildable: true, age: 240, by: { user: 'Moi Même' }, ref: 'v1.5.0', lastParams: [{ name: 'VERSION', value: '1.5.0' }, { name: 'ENVIRONNEMENT', value: 'préprod' }, { name: 'MIGRATIONS', value: 'true' }] },
   { path: 'boutique/front-build', name: 'front-build', statut: 'echec', enCours: false, buildable: true, age: 52, by: { trigger: 'scm' }, ref: 'feature/panier-remise' },
   { path: 'boutique/front-e2e', name: 'front-e2e', statut: 'instable', enCours: false, buildable: true, age: 95, by: { trigger: 'upstream' }, ref: 'main' },
   { path: 'batch/nightly-import', name: 'nightly-import', statut: 'succes', enCours: true, buildable: true, age: 4, by: { trigger: 'timer' }, ref: 'main' },
   { path: 'batch/purge-archives', name: 'purge-archives', statut: 'jamais', enCours: false, buildable: true, age: null, by: null, ref: null },
-  { path: 'outils/release', name: 'release', statut: 'succes', enCours: false, buildable: true, age: 1500, by: { user: 'Bruno' }, ref: 'v2.0.1' },
+  { path: 'outils/release', name: 'release', statut: 'succes', enCours: false, buildable: true, age: 1500, by: { user: 'Bruno' }, ref: 'v2.0.1', lastParams: [{ name: 'BRANCHE', value: 'main' }] },
   { path: 'outils/vieux-pipeline', name: 'vieux-pipeline', statut: 'desactive', enCours: false, buildable: false, age: 40000, by: { user: 'Alice' }, ref: 'main' },
 ].map((j, i) => ({
   ...j,
