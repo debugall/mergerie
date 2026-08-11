@@ -135,6 +135,35 @@ describe('Modales : le clic sur le fond', { skip: dispo ? false : 'chromium abse
     assert.equal(await ouverte(), false, 'chercher n’est pas saisir : la modale reste refermable d’un clic');
   });
 
+  /* L'ERREUR SE LIT AU-DESSUS DE CE QUI L'A CAUSÉE. Une erreur naît le plus souvent DANS une
+     modale — c'est là qu'on valide un formulaire. Sous la modale, le message se produisait
+     derrière elle : on voyait un formulaire qui refuse sans jamais lire pourquoi, et le bouton
+     « Copier » restait hors d'atteinte. Un `z-index` ne se relit pas, il se mesure : on demande
+     au navigateur QUI est réellement au point où s'affiche le toast. */
+  test('un message d’erreur reste lisible et cliquable par-dessus une modale', async () => {
+    await ouvrir();
+    await page.evaluate(() => window.toast('échec de la chose', true));
+    const t = page.locator('#toasts .toast.err').last();
+    await t.waitFor({ state: 'visible' });
+
+    for (const cible of ['.toast-msg', '.toast-btn']) {
+      const b = await t.locator(cible).first().boundingBox();
+      const dessus = await page.evaluate(({ x, y }) => {
+        const el = document.elementFromPoint(x, y);
+        return !!(el && el.closest('.toast'));
+      }, { x: b.x + b.width / 2, y: b.y + b.height / 2 });
+      assert.ok(dessus, `${cible} : la modale passe devant, le message est illisible`);
+    }
+
+    // Et « Copier » répond vraiment au clic — un élément « au-dessus » mais inerte ne sert à rien.
+    await t.locator('.toast-btn').first().click();
+    await page.waitForFunction(() => {
+      const b = document.querySelector('#toasts .toast.err .toast-btn');
+      return b && !/copier|copy/i.test(b.textContent);
+    }, null, { timeout: 3000 });
+    await page.evaluate(() => document.querySelectorAll('#toasts .toast').forEach((x) => x.remove()));
+  });
+
   test('la modale rouverte repart vierge', async () => {
     await ouvrir();
     await ecrire('resté d’une fois précédente');

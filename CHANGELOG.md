@@ -492,6 +492,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Error messages are no longer hidden behind a modal.** An error is most often raised from
+  inside a modal — that is where forms get validated — and the message appeared underneath it: you
+  saw a form refusing without ever being able to read why, and its `Copy` button was out of reach.
+  Messages now sit above everything, including modals and the full-screen code explorer.
+
 - **The code explorer's tree no longer closes under your fingers.** Clicking a file rebuilt the tree
   and recomputed which folders were open from a single rule — "expanded if it carries a change" — so a
   folder you had opened by hand collapsed at the very moment you opened one of its files. What you

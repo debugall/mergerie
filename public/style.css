@@ -895,7 +895,12 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 .tree-file .dot { color: var(--amber); font-size: 9px; }
 @media (max-width: 1000px) { .code-body, .code-body.no-report { grid-template-columns: 190px 1fr; } .code-body .code-report { display: none; } }
 
-#toasts { position: fixed; bottom: 18px; right: 18px; z-index: 50; display: flex; flex-direction: column-reverse; gap: 8px; align-items: flex-end; }
+/* AU-DESSUS DE TOUT, sans exception. Un toast est le seul endroit où l'application dit ce qui
+   vient d'échouer, et l'erreur naît le plus souvent DANS une modale — c'est là qu'on valide un
+   formulaire. Sous la modale (z-index 110), le message se produisait derrière l'écran qui l'avait
+   causé : on voyait un formulaire qui refuse sans jamais lire pourquoi, et le bouton « Copier »
+   restait hors d'atteinte. La valeur dépasse aussi la vue plein écran (100) et les bulles (200). */
+#toasts { position: fixed; bottom: 18px; right: 18px; z-index: 300; display: flex; flex-direction: column-reverse; gap: 8px; align-items: flex-end; }
 .toast { position: static; animation: toast-in .22s cubic-bezier(.2,.8,.3,1); max-width: 520px; background: var(--panel); border: 1px solid var(--line); padding: 10px 14px; border-radius: var(--radius); z-index: 50; display: flex; align-items: flex-start; gap: 10px; box-shadow: var(--sh-3); }
 /* Succès : liseré vert discret, texte en couleur normale — une confirmation doit se lire,
    pas alerter. Erreur : bordure entière rouge ET texte rouge, parce qu'elle reste affichée
