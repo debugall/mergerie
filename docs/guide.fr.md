@@ -183,8 +183,8 @@ contre un module qui se mettrait à le lire.
 
 **Un suivi écrit pendant que ça tourne, envoyé quand tu le décides.** La remarque vient en lisant
 ce que l'agent fait — pas vingt minutes plus tard, une fois la session finie et l'esprit ailleurs. Sur
-une session en cours, **`Préparer un suivi`** ouvre le même formulaire que `Demander une correction`,
-avec **`Enregistrer le suivi`** au lieu de `Lancer` : le texte reste **sur la carte**, sous les yeux,
+une session en cours, **`Préparer un suivi`** ouvre le même formulaire que **`Envoyer un suivi`**,
+avec **`Enregistrer le suivi`** au lieu d'`Envoyer` : le texte reste **sur la carte**, sous les yeux,
 tant qu'il n'est pas parti. On le **corrige**, on le **supprime** (l'effacer suffit), et **`Envoyer le
 suivi`** le lance en un geste une fois la session terminée. Vaut pour le codage, le codage hors dépôt
 et l'exploration.
@@ -194,6 +194,13 @@ tant que la session tourne. Un suivi déclenché tout seul à la fin d'une sessi
 consigne écrite pour un état du code qui n'existe plus, sans que personne ne regarde : c'est pire que
 pas de suivi du tout. Un test le garde fermé, et aucun module de la chaîne d'exécution ne connaît
 seulement ce texte.
+
+**Relancer demande confirmation.** Sur une session qui a déjà tourné, `Relancer` ouvre une
+confirmation qui dit **ce qui va se passer** : l'IA repart du **prompt initial**, sur le travail déjà
+produit, et ce qui a été demandé depuis — suivis, réponses aux questions — n'est pas rejoué. Le bouton
+voisine avec ceux dont on se sert tout le temps, et le clic de trop coûte une session entière. La
+**toute première** mise en route, elle, reste un seul clic : il n'y a rien à protéger. Vaut aussi pour
+le `Relancer` d'un projet en particulier.
 
 **Créer maintenant, lancer plus tard.** Les trois types de session proposent **`Créer sans lancer`** à
 côté de **`Créer et lancer`** : on prépare le prompt et les cibles, on lance quand on veut.
@@ -239,7 +246,8 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   à côte, dans le contexte du fichier entier plutôt que dans un patch brut. Un
   **fil d'étape** compact (pastilles **créée → commit → push → MR**) sur chaque ligne situe d'un
   coup d'œil où en est le projet — utile sur une session multi-projets.
-  `Demander une correction` relance l'IA sur les branches existantes, **en reprenant la même session** :
+  **`Envoyer un suivi`** poursuit la session sur les branches existantes, **sans repartir de zéro** — une
+  correction, une précision, une question sur ce qui vient d'être fait :
   l'IA garde tout le contexte du travail déjà produit (idem pour une relance de la session). Sur une
   session multi-dépôts, **chaque projet porte son propre bouton** : une remarque ne vaut presque jamais
   pour les cinq dépôts (« utilise plutôt AbortController ici » ne veut rien dire ailleurs), et l'envoyer
@@ -295,7 +303,7 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   choisit « Enregistrer au format PDF » : le rendu est celui qu'on a sous les yeux, et Mergerie
   n'embarque pas un moteur de rendu de 300 Mo pour un bouton. Dans les trois cas, le document porte
   son titre et sa date : un fichier transféré perd son nom bien avant son contenu.
-- **Toutes les itérations sont conservées.** Une session s'itère (lancement, `Demander une correction`,
+- **Toutes les itérations sont conservées.** Une session s'itère (lancement, `Envoyer un suivi`,
   réponses aux questions, passes de convergence) : chaque passe garde **le prompt réellement envoyé** et
   **le retour de l'IA correspondant**. Un **sélecteur d'itération** apparaît en haut de `Retour de l'IA`
   dès la deuxième passe (« Itération 2 · correction demandée · 29/07 00:42 ») et permet de relire
@@ -333,7 +341,7 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   appliqué à **chaque dossier**, l'un après l'autre — un dossier en échec n'interrompt pas les autres, et
   son statut est indiqué par dossier. Comme pour le codage sur dépôt, chaque dossier expose
   **`Retour de l'IA`** — ce que l'agent dit avoir fait, utile quand le dossier n'a pas bougé (prompt
-  incomplet, l'IA a répondu au lieu de coder) —, et la session propose **`Demander une correction`** :
+  incomplet, l'IA a répondu au lieu de coder) —, et la session propose **`Envoyer un suivi`** :
   une nouvelle passe sur les mêmes dossiers qui **reprend la session de chacun**, donc l'IA garde tout
   le contexte de ce qu'elle vient de produire. Une session hors dépôt est **modifiable** après coup
   (prompt, dossiers, identifiant de session), comme une session sur dépôt. ⚠ **Aucun filet** : l'agent modifie les fichiers en place, sans

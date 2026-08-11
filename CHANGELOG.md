@@ -13,6 +13,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Running a session again now asks first.** `Run again` sends the **initial prompt** once more:
+  the agent starts from the beginning, on top of work already produced, and anything asked since —
+  follow-ups, answers to questions — is not replayed. The button sits next to the ones you use all
+  the time, and one click too many costs a whole session. The confirmation says what is about to
+  happen rather than just "are you sure?", and the very first run stays a single click.
+
 - **A follow-up can be written while a session is running, and sent when you decide.** The remark
   comes while you read what the agent is doing, not twenty minutes later — so you write it there and
   then, and it waits on the card. You can reword it as long as it has not gone out, delete it, and
@@ -352,6 +358,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   heading that no longer exists.
 
 ### Changed
+
+- **`Request a fix` is now `Send a follow-up`.** The button was named after one of its uses, and
+  people were using it for all the others: asking for changes, giving further instructions, asking
+  what was done and why. One word now covers the whole cycle — *prepare a follow-up* while the
+  session runs, *follow-up waiting* on the card, *send the follow-up* when you decide — and the
+  tooltip says what actually happens: the session continues, the AI keeps all its context. The
+  exploration button (`Follow-up question`) and the form's `Run iteration` / `Ask the question`
+  follow suit.
 
 - **The tabs are reordered into four pairs.** Their order used to be the order they were *added* in, not a
   designed one — which put Stats, the rarest tab and one of the three carrying no badge, in third place, and

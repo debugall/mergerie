@@ -4461,6 +4461,16 @@ async function envoyerSuivi(b, route) {
   } catch (e) { toast(explainError(e.message), true); }
 }
 
+/* RELANCER N'EST PAS CONTINUER. Une relance renvoie le PROMPT INITIAL : tout ce qu'on a demandé
+   depuis — les suivis, les réponses aux questions — n'est pas rejoué, et l'agent repart du début
+   sur du travail déjà fait. Le bouton voisine avec ceux qu'on utilise vraiment souvent, et le clic
+   de trop coûte une session d'IA entière. On ne demande donc rien tant que rien n'a tourné : la
+   toute première mise en route reste un seul clic. */
+async function confirmerRelance(dejaLance, cle = 'confirm.rerun') {
+  if (!dejaLance) return true;
+  return confirmDialog({ title: tr('confirm.rerun.title'), text: tr(cle), confirmLabel: tr('task.btn.rerun') });
+}
+
 // Le bouton qui ouvre le formulaire de suivi : « préparer » tant que ça tourne, « corriger » après.
 const followBtn = (t, attr, titreFini, libelleFini = 'task.btn.request-fix') => {
   const enCours = t.status === 'running';
@@ -4684,9 +4694,13 @@ function renderLocalTasks() {
   /* Le codage hors dépôt a sa propre liste : `wireTaskActions` ne porte que sur `#taskList`,
      le repli doit donc être câblé ici aussi. */
   $$('#localList [data-tfold]').forEach((b) => b.addEventListener('click', () => basculerProjets(b.dataset.tfold)));
-  $$('#localList [data-lrun]').forEach((b) => b.addEventListener('click', () => busy(b, () => api(`/local-tasks/${b.dataset.lrun}/run`, { method: 'POST' }))
-    .then(() => { toast(tr('local.started')); loadTasks(); refreshStatus(); })
-    .catch((e) => toast(explainError(e.message), true))));
+  $$('#localList [data-lrun]').forEach((b) => b.addEventListener('click', async () => {
+    const t2 = localTasks.find((x) => String(x.id) === b.dataset.lrun);
+    if (!await confirmerRelance(t2 && t2.status !== 'new')) return;
+    busy(b, () => api(`/local-tasks/${b.dataset.lrun}/run`, { method: 'POST' }))
+      .then(() => { toast(tr('local.started')); loadTasks(); refreshStatus(); })
+      .catch((e) => toast(explainError(e.message), true));
+  }));
   $$('#localList [data-ldout]').forEach((b) => b.addEventListener('click',
     () => openLocalDirOutput(b.dataset.ltask, b.dataset.ldout)));
   // Depuis la carte : on ouvre le premier dossier ayant un retour, les autres sont au sélecteur.
@@ -5057,9 +5071,13 @@ function wireTaskActions() {
 
   /* `loadTasks()` sans attendre le prochain sondage : le serveur a déjà soldé l'échec à la mise
      en file, la carte doit cesser d'afficher « erreur » dans la seconde où l'on clique. */
-  on('[data-trun]', (b) => busy(b, () => api(`/tasks/${b.dataset.trun}/run`, { method: 'POST' }))
-    .then(() => { toast(tr('toast.session-lancee')); loadTasks(); refreshStatus(); })
-    .catch((e) => toast(explainError(e.message), true)));
+  on('[data-trun]', async (b) => {
+    const t2 = allTasks.find((x) => x.id === Number(b.dataset.trun));
+    if (!await confirmerRelance(t2 && t2.status !== 'new')) return;
+    busy(b, () => api(`/tasks/${b.dataset.trun}/run`, { method: 'POST' }))
+      .then(() => { toast(tr('toast.session-lancee')); loadTasks(); refreshStatus(); })
+      .catch((e) => toast(explainError(e.message), true));
+  });
 
   on('[data-tfold]', (b) => basculerProjets(b.dataset.tfold));
 
@@ -5090,9 +5108,14 @@ function wireTaskActions() {
     });
   });
 
-  on('[data-tgrun]', (b) => busy(b, () => api(`/tasks/${b.dataset.task}/run`, { method: 'POST', body: { targets: [Number(b.dataset.tgrun)] } }))
-    .then(() => { toast(tr('toast.projet-lance')); loadTasks(); refreshStatus(); })
-    .catch((e) => toast(explainError(e.message), true)));
+  on('[data-tgrun]', async (b) => {
+    const t2 = allTasks.find((x) => x.id === Number(b.dataset.task));
+    const tg = ((t2 && t2.targets) || []).find((x) => x.id === Number(b.dataset.tgrun));
+    if (!await confirmerRelance(tg && tg.status !== 'new', 'confirm.rerun-target')) return;
+    busy(b, () => api(`/tasks/${b.dataset.task}/run`, { method: 'POST', body: { targets: [Number(b.dataset.tgrun)] } }))
+      .then(() => { toast(tr('toast.projet-lance')); loadTasks(); refreshStatus(); })
+      .catch((e) => toast(explainError(e.message), true));
+  });
 
   on('[data-trunfailed]', (b) => {
     const t2 = allTasks.find((x) => x.id === Number(b.dataset.trunfailed));

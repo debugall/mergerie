@@ -177,8 +177,8 @@ a module that would start reading it.
 
 **A follow-up written while it runs, sent when you decide.** The remark comes while you read what the
 agent is doing — not twenty minutes later, once the session is over and your mind is elsewhere. On a
-running session, **`Prepare a follow-up`** opens the same form as `Request a fix`, with **`Save the
-follow-up`** instead of `Run`: the text stays **on the card**, under your eyes, for as long as it has
+running session, **`Prepare a follow-up`** opens the same form as **`Send a follow-up`**, with **`Save the
+follow-up`** instead of `Send`: the text stays **on the card**, under your eyes, for as long as it has
 not gone out. You can **reword** it, **delete** it (clearing the text is enough), and **`Send the
 follow-up`** fires it in one click once the session is over. Applies to coding, out-of-repo and
 exploration sessions.
@@ -188,6 +188,13 @@ as long as the session runs. A follow-up fired by itself at the end of a session
 instruction written for a state of the code that no longer exists, with nobody watching: that is
 worse than no follow-up at all. A test keeps that door shut, and no module of the execution chain
 so much as knows about this text.
+
+**Running again asks first.** On a session that has already run, `Run again` opens a confirmation
+that says **what is about to happen**: the AI starts again from the **initial prompt**, on top of the
+work already produced, and anything asked since — follow-ups, answers to questions — is not replayed.
+The button sits next to the ones you use all the time, and one click too many costs a whole session.
+The **very first** run stays a single click: there is nothing to protect. The same applies to the
+`Run again` of one particular project.
 
 **Create now, run later.** All three session types offer **`Create without running`** next to
 **`Create and run`**: you prepare the prompt and the targets, and launch when you want.
@@ -231,7 +238,8 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   the context of the whole file rather than in a raw patch. A compact **stage trail** (pills
   **created → commit → push → MR**) on each row tells you at a glance where the project stands — handy on a
   multi-project session.
-  `Request a fix` runs the AI again on the existing branches, **resuming the same session**: the AI keeps
+  **`Send a follow-up`** continues the session on the existing branches, **without starting over** — a fix,
+  a clarification, a question about what was just done: the AI keeps
   all the context of the work already produced (likewise for a re-run of the session). On a multi-repository
   session, **each project carries its own button**: a remark almost never applies to all five repositories
   (“use AbortController here instead” means nothing elsewhere), and sending it to the whole session costs
@@ -282,7 +290,7 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   front of you, and Mergerie does not ship a 300 MB rendering engine for one button. In all three cases the
   document carries its title and its date: a file that gets forwarded loses its name long before its
   content.
-- **Every iteration is kept.** A session iterates (launch, `Request a fix`, answers to questions,
+- **Every iteration is kept.** A session iterates (launch, `Send a follow-up`, answers to questions,
   convergence passes): each pass keeps **the prompt actually sent** and **the matching AI output**. An
   **iteration selector** appears at the top of `AI output` from the second pass on (“Iteration 2 · fix
   requested · 29/07 00:42”) and lets you re-read any of them. Re-reading an answer without knowing which
@@ -318,7 +326,7 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   — a failing folder does not stop the others, and the status is shown per folder. As with repository
   coding, each folder exposes **`AI output`** — what the agent says it did, useful when the folder has not
   moved (incomplete prompt, the AI answered instead of coding) — and the session offers
-  **`Request a fix`**: a fresh pass over the same folders that **resumes each one's session**, so the AI
+  **`Send a follow-up`**: a fresh pass over the same folders that **resumes each one's session**, so the AI
   keeps all the context of what it has just produced. An out-of-repo session is **editable** afterwards
   (prompt, folders, session identifier), like a repository session. ⚠ **No safety net**: the agent modifies
   the files in place, without a backup; on a git repository you can review and undo yourself (`git diff` /
