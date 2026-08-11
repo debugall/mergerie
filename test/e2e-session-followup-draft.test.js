@@ -69,6 +69,42 @@ describe('session : le suivi en attente', () => {
     assert.deepEqual(hist.body.passes.map((p) => p.kind), ['run'], 'une seule passe : personne n’a envoyé le suivi');
   });
 
+  /* L'AUTRE MOITIÉ DU CONTRAT : armé, il part — et il ne part QU'UNE FOIS. Le laisser en place
+     ferait repartir la session à la fin de sa propre passe de suivi, en boucle. */
+  test('armé, il part tout seul à la fin de la session, une seule fois', async () => {
+    const { id } = await creerLocale();
+    await app.api('PUT', `/api/local-tasks/${id}/followup-draft`, { instruction: 'Pense aux tests', auto: true });
+    assert.equal((await lire(id)).followup_auto, 1, 'la case est retenue avec le texte');
+
+    await app.api('POST', `/api/local-tasks/${id}/run`);
+    await waitForJobs(app.api);
+
+    const lt = await lire(id);
+    assert.equal(lt.followup_draft, null, 'parti = consommé');
+    assert.equal(lt.followup_auto, 0, 'désarmé : réarmer est un geste, pas un reste');
+    const hist = await app.api('GET', `/api/local-tasks/${id}/dirs/${lt.dirs[0].id}/passes`);
+    assert.deepEqual(hist.body.passes.map((p) => p.kind), ['run', 'followup'],
+      'exactement deux passes : la session, puis le suivi — pas une boucle');
+    assert.match(hist.body.current.prompt, /Pense aux tests/);
+  });
+
+  test('supprimer le texte désarme la case', async () => {
+    const { id } = await creerLocale();
+    await app.api('PUT', `/api/local-tasks/${id}/followup-draft`, { instruction: 'à jeter', auto: true });
+    await app.api('PUT', `/api/local-tasks/${id}/followup-draft`, { instruction: '' });
+    const lt = await lire(id);
+    assert.equal(lt.followup_draft, null);
+    assert.equal(lt.followup_auto, 0,
+      'une case restée armée sur un suivi supprimé ferait partir le suivant sans qu’on l’ait demandé');
+
+    // Et la session peut tourner sans que rien ne parte.
+    await app.api('POST', `/api/local-tasks/${id}/run`);
+    await waitForJobs(app.api);
+    const apres = await lire(id);
+    const hist = await app.api('GET', `/api/local-tasks/${id}/dirs/${apres.dirs[0].id}/passes`);
+    assert.deepEqual(hist.body.passes.map((p) => p.kind), ['run']);
+  });
+
   test('l’envoi manuel part sans rien retaper, et ne part qu’une fois', async () => {
     const { id, dir } = await creerLocale();
     await app.api('POST', `/api/local-tasks/${id}/run`);

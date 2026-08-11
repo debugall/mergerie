@@ -208,6 +208,9 @@ try { db.exec('ALTER TABLE task ADD COLUMN label TEXT'); } catch { /* déjà pr�
    qui l'envoie : rien dans `jobs.js` ni `taskrunner.js` ne lit cette colonne, une session ne
    doit jamais repartir toute seule sur un texte écrit une heure plus tôt. */
 try { db.exec('ALTER TABLE task ADD COLUMN followup_draft TEXT'); } catch { /* déjà présente */ }
+/* … sauf si on demande explicitement le contraire. Coché, le suivi part de lui-même à la fin de
+   la session. Le défaut reste 0 : un envoi automatique doit être un choix, jamais un oubli. */
+try { db.exec('ALTER TABLE task ADD COLUMN followup_auto INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task ADD COLUMN commit_message TEXT'); } catch { /* déjà présente */ }
 // Migration : MR créée depuis une tâche.
 try { db.exec('ALTER TABLE task ADD COLUMN mr_iid INTEGER'); } catch { /* déjà présente */ }
@@ -404,6 +407,7 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_agent_pass_unit ON agent_pass(scope, tas
    se voit qu'en production. */
 try { db.exec('ALTER TABLE local_task ADD COLUMN label TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE local_task ADD COLUMN followup_draft TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE local_task ADD COLUMN followup_auto INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
 
 db.exec(`CREATE TABLE IF NOT EXISTS local_task_image (
   id INTEGER PRIMARY KEY,

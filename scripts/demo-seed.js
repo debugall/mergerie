@@ -323,7 +323,8 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
   .run(t1.lastInsertRowid, repoIds['groupe/api-core'], 'ai/metrics-endpoint', 'main', 'pushed', 250, 'https://gitlab.demo/groupe/api-core/-/merge_requests/250', 1,
     '6ba7b810-9dad-11d1-80b4-00c04fd430c8', 'claude', '/home/moi/clones/groupe-api-core', at(4));
 /* Un suivi écrit PENDANT que la session travaillait, et toujours pas envoyé : c'est l'état
-   qu'on veut montrer. Il attend un geste — rien ne le déclenche à la fin de la session. */
+   qu'on veut montrer. Il attend un geste — la case « automatiquement » est décochée, donc rien
+   ne le déclenche à la fin de la session. */
 db.prepare('UPDATE task SET followup_draft = ? WHERE id = ?')
   .run('Ajoute aussi un compteur des erreurs 5xx, et un mot dans le README.', t1.lastInsertRowid);
 const t2 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, created_at, updated_at, md_path) VALUES (?,?,?,?,?,?,?,?,?)')

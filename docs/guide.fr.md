@@ -189,11 +189,19 @@ tant qu'il n'est pas parti. On le **corrige**, on le **supprime** (l'effacer suf
 suivi`** le lance en un geste une fois la session terminée. Vaut pour le codage, le codage hors dépôt
 et l'exploration.
 
-⚠ **Rien ne l'envoie à ta place.** Le bouton d'envoi est là dès le premier instant, mais **désactivé**
-tant que la session tourne. Un suivi déclenché tout seul à la fin d'une session repartirait sur une
-consigne écrite pour un état du code qui n'existe plus, sans que personne ne regarde : c'est pire que
-pas de suivi du tout. Un test le garde fermé, et aucun module de la chaîne d'exécution ne connaît
-seulement ce texte.
+**Ou il part tout seul, si tu le demandes.** Une case **`L'envoyer automatiquement à la fin de la
+session`**, sous le texte, arme le suivi : il partira dès que la session aura fini de travailler, sans
+que tu aies à revenir. La carte le dit — **`Suivi armé`** au lieu de **`Suivi en attente`** — et il ne
+part **qu'une fois** : le texte est retiré et la case désarmée avant le lancement, sinon la passe de
+suivi retrouverait la même consigne en finissant et la session tournerait en boucle. Rien ne part non
+plus après un **échec**, ni sur une session qui **attend une réponse**.
+
+⚠ **Décochée, la case ne fait rien — et c'est le défaut.** Le bouton d'envoi reste **désactivé** tant
+que la session tourne, et un suivi non armé attend indéfiniment ton geste. Un envoi automatique est un
+choix qu'on pose en écrivant la remarque, jamais un effet de bord : la colonne n'est lue que par la
+fonction qui décide d'envoyer, et aucun module parlant à l'agent ne la connaît — deux tests le gardent
+fermé. Si tu as choisi un **vérificateur**, il attend la fin du suivi automatique : un verdict rendu
+sur du code qui va encore changer ne vaudrait rien.
 
 **Relancer demande confirmation.** Sur une session qui a déjà tourné, `Relancer` ouvre une
 confirmation qui dit **ce qui va se passer** : l'IA repart du **prompt initial**, sur le travail déjà

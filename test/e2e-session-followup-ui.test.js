@@ -113,10 +113,33 @@ describe('Suivi en attente — l’écran', { skip: dispo ? false : 'chromium ab
       const form = page.locator(`${liste} .followup`).first();
       await form.locator('.followup-text').fill('phrase à moitié tapée');
 
+      await form.locator('.followup-auto').check();
       await page.evaluate(() => window.loadTasks());
       await page.waitForTimeout(150);
       assert.equal(await form.locator('.followup-text').inputValue(), 'phrase à moitié tapée',
         'le rendu suivant ne doit pas manger la saisie en cours');
+      assert.equal(await form.locator('.followup-auto').isChecked(), true,
+        'la case cochée fait partie de la saisie : la perdre en silence enverrait le suivi à la main sans le savoir');
+    });
+
+    /* Armer, c'est décider. La carte doit le DIRE — sinon on croit avoir un suivi qui attend
+       alors qu'il partira tout seul, ou l'inverse. */
+    test(`${kind} : la case « automatique » est retenue et annoncée`, async () => {
+      await page.locator(`#tab-task .subnav [data-kind="${kind}"]`).click();
+      await page.waitForSelector(`${liste} .followup-draft`);
+      await page.locator(`${liste} [data-followedit], ${liste} [data-lfollowedit]`).first().click();
+      const form = page.locator(`${liste} .followup`).first();
+      await form.locator('.followup-text').fill('Pense aux tests');
+      await form.locator('.followup-auto').check();
+      await form.locator(enregistrer).click();
+
+      const bloc = page.locator(`${liste} .followup-draft.is-auto`).first();
+      await bloc.waitFor({ state: 'visible' });
+      assert.match(await bloc.textContent(), /Suivi armé/, 'la carte annonce qu’il partira seul');
+
+      await page.locator(`${liste} [data-followedit], ${liste} [data-lfollowedit]`).first().click();
+      assert.equal(await form.locator('.followup-auto').isChecked(), true,
+        'rouvrir le suivi doit montrer l’état réel : une case qui se décoche à la relecture ment');
     });
   }
 

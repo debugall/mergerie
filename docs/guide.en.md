@@ -183,11 +183,20 @@ not gone out. You can **reword** it, **delete** it (clearing the text is enough)
 follow-up`** fires it in one click once the session is over. Applies to coding, out-of-repo and
 exploration sessions.
 
-⚠ **Nothing sends it for you.** The send button is there from the first moment, but **disabled** for
-as long as the session runs. A follow-up fired by itself at the end of a session would go out on an
-instruction written for a state of the code that no longer exists, with nobody watching: that is
-worse than no follow-up at all. A test keeps that door shut, and no module of the execution chain
-so much as knows about this text.
+**Or it goes out by itself, if you ask.** A checkbox **`Send it automatically when the session
+finishes`**, under the text, arms the follow-up: it leaves as soon as the session has finished
+working, with nothing for you to come back to. The card says so — **`Follow-up armed`** instead of
+**`Follow-up waiting`** — and it goes out **once only**: the text is removed and the box disarmed
+before launching, otherwise the follow-up pass would find the same instruction on finishing and the
+session would loop. Nothing goes out after a **failure** either, nor on a session **waiting for an
+answer**.
+
+⚠ **Unticked, the box does nothing — and that is the default.** The send button stays **disabled** for
+as long as the session runs, and an unarmed follow-up waits for your gesture indefinitely. Sending
+automatically is a choice made while writing the remark, never a side effect: the column is read only
+by the function that decides to send, and no module talking to the agent knows about it — two tests
+keep that door shut. If you picked a **verifier**, it waits for the automatic follow-up to finish: a
+verdict on code that is about to change again would be worth nothing.
 
 **Running again asks first.** On a session that has already run, `Run again` opens a confirmation
 that says **what is about to happen**: the AI starts again from the **initial prompt**, on top of the

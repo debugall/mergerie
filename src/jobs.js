@@ -303,6 +303,27 @@ function preparerVerificationApres(task) {
   };
 }
 
+/* LE SUIVI AUTOMATIQUE — le seul endroit du code qui envoie un suivi sans qu'on ait cliqué.
+   Par défaut un suivi attend un geste ; coché à l'écran, il part de lui-même dès que la session
+   a fini de travailler.
+
+   On le RETIRE avant de lancer, et on décoche. Sans ça, la passe de suivi se termine à son tour,
+   retrouve le même texte armé, et la session repart en boucle jusqu'à épuisement du budget IA —
+   c'est arrivé en test, en quelques secondes. Il part donc UNE fois ; en réécrire un est un
+   geste conscient. Rien non plus après un échec : l'appelant ne passe ici que sur une fin
+   normale, on n'enchaîne pas une consigne sur une session qui vient de casser. */
+function suiviAutomatique(scope, id, onLog) {
+  const table = scope === 'local' ? 'local_task' : 'task';
+  const s = db.prepare(`SELECT followup_draft d, followup_auto a FROM ${table} WHERE id = ?`).get(id);
+  if (!s || !s.a || !s.d) return null;
+  db.prepare(`UPDATE ${table} SET followup_draft = NULL, followup_auto = 0, updated_at = ? WHERE id = ?`)
+    .run(new Date().toISOString(), id);
+  onLog(`suivi automatique envoyé : ${String(s.d).split('\n')[0].slice(0, 120)}`);
+  return scope === 'local'
+    ? startLocalJob(id, { instruction: s.d })
+    : startTaskJob(id, 'followup', { instruction: s.d, autoSuivi: true });
+}
+
 async function verifierApresSession(task, onLog) {
   if (!task || !task.verifier_id) return null;
   try {
@@ -341,12 +362,18 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
     const after = db.prepare('SELECT status FROM task WHERE id = ?').get(task.id);
     if (after && after.status === 'needs_input') {
       notify.push('needs_input', { task_id: task.id });
-    } else if ((action === 'run' || action === 'answer') && task.kind !== 'explore') {
-      notify.push('session_done', { task_id: task.id });
-      /* La session s'est terminée normalement : le vérificateur choisi part maintenant, une
-         fois. Pas sur `followup` ni `push` — on vérifie ce qu'une session a produit, pas
-         chaque geste qu'on pose ensuite. */
-      await verifierApresSession(db.prepare('SELECT * FROM task WHERE id = ?').get(task.id), onLog);
+    } else if (action === 'run' || action === 'answer' || (action === 'followup' && opts.autoSuivi)) {
+      /* Un suivi armé part MAINTENANT, et repasse ici en finissant : la notification de fin et
+         la vérification attendent donc ce second tour. Annoncer « terminée » puis relancer
+         l'agent dans la seconde serait mentir, et un verdict rendu sur du code qui va encore
+         changer ne vaudrait rien. */
+      if (!suiviAutomatique('task', task.id, onLog) && task.kind !== 'explore') {
+        notify.push('session_done', { task_id: task.id });
+        /* Le vérificateur choisi part maintenant, une fois. Pas sur un `followup` demandé à la
+           main ni sur `push` — on vérifie ce qu'une session a produit, pas chaque geste qu'on
+           pose ensuite. */
+        await verifierApresSession(db.prepare('SELECT * FROM task WHERE id = ?').get(task.id), onLog);
+      }
     }
     logLine(jobId, null, `=== Task #${jobId} terminée ===`);
   } catch (e) {
@@ -422,7 +449,10 @@ async function runConvergeSessionJob(jobId, taskId, opts = {}) {
        trois montages d'environnement pour un seul verdict qui compte, le dernier. On ne lance
        pas non plus si un projet attend une réponse — le code n'est pas fini. */
     if (!after || after.status !== 'needs_input') {
-      await verifierApresSession(db.prepare('SELECT * FROM task WHERE id = ?').get(taskId), onLog);
+      // Même ordre qu'après une session simple : le suivi armé d'abord, le verdict ensuite.
+      if (!suiviAutomatique('task', taskId, onLog)) {
+        await verifierApresSession(db.prepare('SELECT * FROM task WHERE id = ?').get(taskId), onLog);
+      }
     }
     logLine(jobId, null, `=== Convergence session #${jobId} terminée (${converged}/${results.length} au seuil) ===`);
   } catch (e) {
@@ -459,7 +489,8 @@ async function runLocalJob(jobId, taskId, opts = {}) {
     }
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
     logLine(jobId, null, `=== Codage hors dépôt #${jobId} terminé ===`);
-    notify.push('session_done', { local_task_id: taskId });
+    // Suivi armé : il part, et c'est SA fin qui annoncera la session terminée.
+    if (!suiviAutomatique('local', taskId, onLog)) notify.push('session_done', { local_task_id: taskId });
   } catch (e) {
     if (proc.isCancelled()) {
       db.prepare("UPDATE local_task SET status = 'new', updated_at = ? WHERE id = ?").run(new Date().toISOString(), taskId);

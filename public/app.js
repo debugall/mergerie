@@ -4394,7 +4394,8 @@ function captureTaskForms(racine = '#taskList') {
     const cle = CLES_FORM.find((k) => f.dataset[k]);
     if (!cle || f.hidden) return;
     const field = f.querySelector('textarea, input');
-    state[`${cle}:${f.dataset[cle]}`] = field ? field.value : '';
+    const auto = f.querySelector('.followup-auto');
+    state[`${cle}:${f.dataset[cle]}`] = { v: field ? field.value : '', auto: auto ? auto.checked : null };
   });
   return state;
 }
@@ -4405,19 +4406,26 @@ function restoreTaskForms(state, racine = '#taskList') {
     if (!f) continue;
     f.hidden = false;
     const field = f.querySelector('textarea, input');
-    if (field) field.value = value;
+    if (field) field.value = value.v;
+    const auto = f.querySelector('.followup-auto');
+    if (auto && value.auto !== null) auto.checked = value.auto;
   }
 }
 
 /* LE SUIVI EN ATTENTE. Écrit pendant que la session travaille, il reste affiché sur la carte
    tant qu'on ne l'a pas envoyé — sinon on oublie qu'on en a un. Le bouton d'envoi est là dès
    le premier instant, désactivé, pour qu'on sache où il sera. */
+/* La case qui arme le suivi. Décochée par défaut, et sur la MÊME ligne que le texte : c'est au
+   moment où on écrit la remarque qu'on sait si elle mérite de partir toute seule. */
+const autoSuiviCase = (t) => `<label class="inline-check followup-auto-line"><input type="checkbox" class="followup-auto"${t.followup_auto ? ' checked' : ''} />
+    <span>${tr('task.followup.auto')}</span></label>`;
+
 function suiviBlock(t, pre) {
   if (!t.followup_draft) return '';
   const enCours = t.status === 'running';
-  return `<div class="followup-draft">
-    <div class="followup-draft-head">${svgIco('repeat')}<span>${tr('task.followup.draft')}</span>
-      <span class="muted">${tr('task.followup.draft-hint')}</span></div>
+  return `<div class="followup-draft${t.followup_auto ? ' is-auto' : ''}">
+    <div class="followup-draft-head">${svgIco('repeat')}<span>${tr(t.followup_auto ? 'task.followup.draft-auto' : 'task.followup.draft')}</span>
+      <span class="muted">${tr(t.followup_auto ? 'task.followup.draft-hint-auto' : 'task.followup.draft-hint')}</span></div>
     <div class="followup-draft-text">${esc(t.followup_draft)}</div>
     <div class="followup-draft-actions">
       <button class="btn btn-sm" data-${pre}followedit="${t.id}">${tr('ui.edit')}</button>
@@ -4434,8 +4442,9 @@ async function enregistrerSuivi(b, route) {
   const field = form.querySelector('.followup-text');
   const instruction = field.value.trim();
   if (!instruction) { supprimerSuivi(b, route); return; }   // effacer le texte, c'est supprimer
+  const caseAuto = form.querySelector('.followup-auto');
   try {
-    await busy(b, () => api(route, { method: 'PUT', body: { instruction } }));
+    await busy(b, () => api(route, { method: 'PUT', body: { instruction, auto: !!(caseAuto && caseAuto.checked) } }));
     /* On referme AVANT de recharger : ouvert, `captureTaskForms` le rouvrirait au rendu
        suivant et on croirait que l'enregistrement n'a rien fait. */
     form.hidden = true;
@@ -4649,6 +4658,7 @@ function localCard(t) {
       ${suiviBlock(t, 'l')}
       <div class="mr-create followup" data-lfollowform="${t.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('local.followup.ph'))}">${esc(t.followup_draft || '')}</textarea>
+        ${autoSuiviCase(t)}
         <button class="btn" data-lfollowcancel="${t.id}">${tr('ui.cancel')}</button>
         <button class="btn" data-lfollowsave="${t.id}">${tr('task.btn.save-followup')}</button>
         ${enCours ? '' : `<button class="btn btn-primary" data-lfollowsubmit="${t.id}">${tr('task.btn.run-iteration')}</button>`}
@@ -4889,6 +4899,7 @@ function codeCard(t) {
       ${suiviBlock(t, '')}
       <div class="mr-create followup" data-followform="${t.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph'))}">${esc(t.followup_draft || '')}</textarea>
+        ${autoSuiviCase(t)}
         <button class="btn" data-followcancel="${t.id}">${tr('ui.cancel')}</button>
         <button class="btn" data-followsave="${t.id}">${tr('task.btn.save-followup')}</button>
         ${enCours ? '' : `<button class="btn btn-primary" data-followsubmit="${t.id}">${tr('task.btn.run-iteration')}</button>`}
@@ -5033,6 +5044,7 @@ function exploreCard(t) {
       ${suiviBlock(t, '')}
       <div class="mr-create followup" data-followform="${t.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('explore.followup.ph'))}">${esc(t.followup_draft || '')}</textarea>
+        ${autoSuiviCase(t)}
         <button class="btn" data-followcancel="${t.id}">${tr('ui.cancel')}</button>
         <button class="btn" data-followsave="${t.id}">${tr('task.btn.save-followup')}</button>
         ${t.status === 'running' ? '' : `<button class="btn btn-primary" data-followsubmit="${t.id}">${tr('task.btn.ask')}</button>`}

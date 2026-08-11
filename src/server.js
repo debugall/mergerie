@@ -1699,9 +1699,13 @@ const lireSuivi = (v) => (v == null ? null : (String(v).trim() || null));
 
 /* Enregistre le suivi en attente d'une session (codage / hors dépôt / exploration).
    Une seule table près : la colonne s'appelle pareil des deux côtés. */
-function poserSuivi(table, id, valeur) {
-  db.prepare(`UPDATE ${table} SET followup_draft = ?, updated_at = ? WHERE id = ?`)
-    .run(lireSuivi(valeur), new Date().toISOString(), id);
+/* `auto` : le suivi part-il de lui-même à la fin de la session ? Sans texte, la question ne se
+   pose pas — un envoi automatique de rien n'existe pas, et laisser la case armée sur un suivi
+   supprimé ferait partir le suivant sans qu'on l'ait demandé. */
+function poserSuivi(table, id, valeur, auto) {
+  const texte = lireSuivi(valeur);
+  db.prepare(`UPDATE ${table} SET followup_draft = ?, followup_auto = ?, updated_at = ? WHERE id = ?`)
+    .run(texte, (texte && auto) ? 1 : 0, new Date().toISOString(), id);
 }
 
 function lireVerifierSession(kind, autoPush, verifierId) {
@@ -2020,8 +2024,9 @@ app.post('/api/local-tasks/:id/followup', wrap((req, res) => {
 app.put('/api/local-tasks/:id/followup-draft', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
-  poserSuivi('local_task', lt.id, req.body && req.body.instruction);
-  res.json({ ok: true, followup_draft: localTaskById(lt.id).followup_draft });
+  poserSuivi('local_task', lt.id, req.body && req.body.instruction, req.body && req.body.auto);
+  const apres = localTaskById(lt.id);
+  res.json({ ok: true, followup_draft: apres.followup_draft, followup_auto: apres.followup_auto });
 }));
 
 // Historique des itérations d'un dossier hors dépôt (même forme que côté session).
@@ -2082,8 +2087,9 @@ app.post('/api/tasks/:id/followup', wrap((req, res) => {
 app.put('/api/tasks/:id/followup-draft', wrap((req, res) => {
   const tache = taskById(Number(req.params.id));
   if (!tache) throw new Error(t('err.session-introuvable'));
-  poserSuivi('task', tache.id, req.body && req.body.instruction);
-  res.json({ ok: true, followup_draft: taskById(tache.id).followup_draft });
+  poserSuivi('task', tache.id, req.body && req.body.instruction, req.body && req.body.auto);
+  const apres = taskById(tache.id);
+  res.json({ ok: true, followup_draft: apres.followup_draft, followup_auto: apres.followup_auto });
 }));
 
 /* Un suivi ne part qu'une fois. On le retire AVANT de lancer — sinon deux clics rapides
@@ -2091,9 +2097,9 @@ app.put('/api/tasks/:id/followup-draft', wrap((req, res) => {
    sur une session qui tournait déjà. */
 function envoyerSuivi(table, session, lancer) {
   const garde = session.followup_draft;
-  if (garde) poserSuivi(table, session.id, null);
+  if (garde) poserSuivi(table, session.id, null, 0);
   try { return lancer(); } catch (e) {
-    if (garde) poserSuivi(table, session.id, garde);
+    if (garde) poserSuivi(table, session.id, garde, session.followup_auto);   // texte ET case
     throw e;
   }
 }
