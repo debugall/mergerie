@@ -12431,8 +12431,13 @@ function renderJenkinsFiche() {
 function jkParamChamp(p) {
   const id = `jkp-${p.name}`;
   if (p.choices && p.choices.length) {
-    return `<select id="${esc(id)}" data-jkparam="${esc(p.name)}">${p.choices
-      .map((c) => `<option value="${esc(c)}"${String(c) === String(p.value) ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
+    /* MULTIPLE quand le job l'accepte (« choose one or multiple machines ») : une liste à choix
+       unique obligerait à lancer autant de fois qu'il y a de cibles. Les valeurs partent
+       séparées par des virgules, la forme qu'attendent les plugins qui posent la question. */
+    const choisies = new Set(String(p.value == null ? '' : p.value).split(',').map((x) => x.trim()).filter(Boolean));
+    const taille = p.multiple ? ` multiple size="${Math.min(8, Math.max(3, p.choices.length))}"` : '';
+    return `<select id="${esc(id)}" data-jkparam="${esc(p.name)}"${taille}>${p.choices
+      .map((c) => `<option value="${esc(c)}"${choisies.has(String(c)) ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
   }
   if (/boolean/i.test(p.type)) {
     return `<label class="inline-check"><input type="checkbox" id="${esc(id)}" data-jkparam="${esc(p.name)}"${p.value === true || p.value === 'true' ? ' checked' : ''} /> <span>${esc(tr('jenkins.param.on'))}</span></label>`;
@@ -12471,7 +12476,10 @@ async function openJenkinsJob(chemin) {
 function jkParamsSaisis() {
   const out = {};
   $$('#jenkinsModalBody [data-jkparam]').forEach((el) => {
-    out[el.dataset.jkparam] = el.type === 'checkbox' ? String(el.checked) : el.value;
+    if (el.type === 'checkbox') { out[el.dataset.jkparam] = String(el.checked); return; }
+    // Choix multiple : Jenkins attend une seule valeur, les sélections séparées par des virgules.
+    if (el.multiple) { out[el.dataset.jkparam] = [...el.selectedOptions].map((o) => o.value).join(','); return; }
+    out[el.dataset.jkparam] = el.value;
   });
   return out;
 }

@@ -108,6 +108,57 @@ describe('Client Jenkins', () => {
     assert.equal(job.lastParams[14].value.length, 60);
   });
 
+  /* LES VALEURS QUI N'EXISTENT QUE DANS LA PAGE. Git Parameter et les listes dynamiques ne
+     déclarent pas leurs options : Jenkins les calcule en rendant sa page « Build with
+     Parameters ». On va donc les y lire — et seulement pour les paramètres dont l'API n'a
+     rien dit. */
+  test('les listes calculées sont reprises du formulaire de lancement', async () => {
+    poser();
+    mock.state.details['/job/release'].property = [{ parameterDefinitions: [
+      { name: 'Branche', _class: 'net.uaznia.lukanus.hudson.plugins.gitparameter.GitParameterDefinition', type: 'PT_BRANCH' },
+      { name: 'ENV', _class: 'com.cwctravel.hudson.plugins.extended_choice_parameter.ExtendedChoiceParameterDefinition',
+        value: 'Could not get Environment from ENV Param' },
+      { name: 'LIBRE', type: 'StringParameterDefinition', defaultParameterValue: { value: 'x' } },
+      { name: 'DEJA', type: 'ChoiceParameterDefinition', choices: ['a', 'b'], defaultParameterValue: { value: 'b' } },
+    ] }];
+    mock.state.forms['/job/release'] = `
+      <div name="parameter"><input type="hidden" name="name" value="Branche">
+        <select name="value" size="10" multiple>
+          <option value="refs/heads/develop">refs/heads/develop</option>
+          <option value="refs/heads/master" selected>refs/heads/master</option>
+        </select></div>
+      <div name="parameter"><input type="hidden" name="name" value="ENV">
+        <select name="value"><option>dev</option><option selected>prod</option></select></div>
+      <div name="parameter"><input type="hidden" name="name" value="LIBRE">
+        <input name="value" value="x"></div>
+      <div name="parameter"><input type="hidden" name="name" value="DEJA">
+        <select name="value"><option>z</option></select></div>`;
+
+    const par = Object.fromEntries((await jenkins.detail(cfg, 'release')).parameters.map((p) => [p.name, p]));
+    assert.deepEqual(par.Branche.choices, ['refs/heads/develop', 'refs/heads/master'],
+      'les branches ne sont NULLE PART dans l’API : elles ne peuvent venir que de la page');
+    assert.equal(par.Branche.multiple, true, 'le job en accepte plusieurs : la liste aussi');
+    assert.equal(par.Branche.value, 'refs/heads/master', 'la sélection de la page est reprise');
+    assert.deepEqual(par.ENV.choices, ['dev', 'prod']);
+    assert.equal(par.ENV.value, 'prod');
+    assert.equal(par.ENV.unresolved, undefined, 'la page a répondu : plus rien à signaler');
+    assert.equal(par.LIBRE.choices, null, 'un champ libre reste libre');
+    assert.deepEqual(par.DEJA.choices, ['a', 'b'],
+      'l’API est la source la plus sûre : ce qu’elle a déjà dit n’est pas écrasé par le HTML');
+  });
+
+  // La page ne répond pas / est illisible : on retombe exactement sur le comportement d'avant.
+  test('sans page de lancement, rien n’est perdu', async () => {
+    poser();
+    mock.state.details['/job/release'].property = [{ parameterDefinitions: [
+      { name: 'ENV', _class: 'ExtendedChoiceParameterDefinition', value: 'Could not get Environment from ENV Param' },
+    ] }];
+    const par = (await jenkins.detail(cfg, 'release')).parameters[0];
+    assert.equal(par.choices, null);
+    assert.equal(par.value, '', 'la phrase d’erreur n’est toujours pas une valeur');
+    assert.equal(par.unresolved, true, 'et on le dit encore : jamais pire qu’avant');
+  });
+
   test('la couleur dit le verdict ET le fait de tourner', async () => {
     poser();
     const jobs = await jenkins.lister(cfg);

@@ -412,6 +412,48 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     mock.state.details['/job/boutique/job/deploy-prod'].property = decor;
   });
 
+  /* LE CAS RÉEL : un job dont les paramètres sont des LISTES CALCULÉES (branches du dépôt,
+     environnements). L'API n'en dit rien ; la page de lancement, elle, les porte. À l'écran,
+     ça doit donner de vraies listes — et le choix multiple doit rester multiple. */
+  test('les listes calculées par Jenkins arrivent jusqu’au formulaire', async () => {
+    const decor = mock.state.details['/job/boutique/job/deploy-prod'].property;
+    mock.state.details['/job/boutique/job/deploy-prod'].property = [{ parameterDefinitions: [
+      { name: 'Branche', _class: 'net.uaznia.lukanus.hudson.plugins.gitparameter.GitParameterDefinition' },
+      { name: 'ENV', _class: 'ExtendedChoiceParameterDefinition', value: 'Could not get Environment from ENV Param' },
+    ] }];
+    mock.state.forms['/job/boutique/job/deploy-prod'] = `
+      <div name="parameter"><input type="hidden" name="name" value="Branche">
+        <select name="value" multiple>
+          <option value="refs/heads/develop">refs/heads/develop</option>
+          <option value="refs/heads/master" selected>refs/heads/master</option>
+        </select></div>
+      <div name="parameter"><input type="hidden" name="name" value="ENV">
+        <select name="value"><option selected>dev</option><option>prod</option></select></div>`;
+
+    await allerJenkins();
+    await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
+    await page.waitForSelector('#jenkinsModal:not([hidden]) [data-jkparam="Branche"]');
+    assert.equal(await page.locator('[data-jkparam="ENV"]').evaluate((el) => el.tagName), 'SELECT',
+      'plus de champ libre : la page de Jenkins portait la liste');
+    assert.equal(await page.locator('[data-jkparam="Branche"]').evaluate((el) => el.multiple), true,
+      '« une ou plusieurs machines » doit rester un choix multiple');
+    assert.equal(await page.locator('.jk-param-warn').count(), 0, 'plus rien à signaler');
+
+    // Ce qui part à Jenkins : les valeurs choisies, séparées par des virgules.
+    await page.locator('[data-jkparam="Branche"]').selectOption(['refs/heads/develop', 'refs/heads/master']);
+    const avant = mock.state.calls.filter((c) => c.method === 'POST').length;
+    await page.locator('#jenkinsRun').click();
+    await page.waitForSelector('#confirmModal:not([hidden])');
+    await page.locator('#confirmOk').click();
+    await page.waitForFunction((n) => document.querySelectorAll('#toasts .toast').length >= n, 1);
+    const post = mock.state.calls.filter((c) => c.method === 'POST').slice(avant)[0];
+    assert.match(decodeURIComponent(post.body), /Branche=refs\/heads\/develop,refs\/heads\/master/,
+      'un choix multiple part en une valeur séparée par des virgules, la forme qu’attend le plugin');
+
+    mock.state.details['/job/boutique/job/deploy-prod'].property = decor;
+    delete mock.state.forms['/job/boutique/job/deploy-prod'];
+  });
+
   /* QUAND LE PLUGIN RATE SON CALCUL, il rend sa phrase d'erreur À LA PLACE de la liste. La
      prendre pour une valeur pré-remplirait le champ d'une phrase qui a l'air d'une valeur —
      et un lancement l'enverrait telle quelle à Jenkins. */

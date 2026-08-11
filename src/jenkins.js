@@ -298,6 +298,90 @@ async function lister(cfg) {
 /* Chaque build de l'historique porte SES paramètres et SA cause : la fiche montre, à droite,
    avec quoi l'exécution sélectionnée est partie. Tout arrive dans la requête du job — un appel
    par build pour reconstituer ça en ferait dix à chaque ouverture de fiche. */
+/* ---------- LE FORMULAIRE DE LANCEMENT, quand l'API ne suffit pas ----------
+
+   Git Parameter, Extended Choice, Active Choices : ces plugins ne DÉCLARENT pas leurs valeurs,
+   ils les CALCULENT au moment où Jenkins rend sa page — en interrogeant le dépôt git, un
+   script, un fichier de propriétés. L'API ne les porte donc pas, et aucune requête JSON ne les
+   fera apparaître : la liste des branches d'un job n'existe nulle part dans `/api/json`.
+
+   Elle existe en revanche dans la page que Jenkins fabrique pour un humain — celle qu'on voit
+   en cliquant « Build with Parameters ». On la lit donc, mais SEULEMENT pour les paramètres
+   dont l'API n'a rien dit : une requête de plus, à l'ouverture d'une fiche, et jamais pour un
+   job dont tout est déjà connu.
+
+   Analyser du HTML est fragile, et c'est assumé : en cas d'échec on retombe exactement sur le
+   comportement d'avant (champ libre, prévenu). Jamais pire, souvent mieux. */
+
+// Les blocs de paramètre de la page de lancement : `<div name="parameter"> … </div>`.
+function blocsParametres(html) {
+  const out = [];
+  const re = /name=["']parameter["']/g;
+  let m = re.exec(html);
+  while (m) {
+    const suivant = re.exec(html);
+    out.push(html.slice(m.index, suivant ? suivant.index : html.length));
+    m = suivant;
+  }
+  return out;
+}
+
+const attr = (bloc, re) => { const m = bloc.match(re); return m ? m[1] : null; };
+const decode = (t) => String(t).replace(/&quot;/g, '"').replace(/&#0?39;/g, "'")
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
+
+/* Ce que la page dit d'un paramètre : ses options, celle qui est sélectionnée, et s'il en
+   accepte plusieurs. Une `<option>` sans attribut `value` vaut son texte — Jenkins écrit les
+   deux formes selon le plugin. */
+function lireChoixHtml(html) {
+  const par = {};
+  for (const bloc of blocsParametres(html)) {
+    const nom = attr(bloc, /name=["']name["'][^>]*value=["']([^"']+)["']/)
+      || attr(bloc, /value=["']([^"']+)["'][^>]*name=["']name["']/);
+    if (!nom) continue;
+    const select = bloc.match(/<select\b([^>]*)>([\s\S]*?)<\/select>/i);
+    if (!select) continue;
+    const options = [...select[2].matchAll(/<option\b([^>]*)>([\s\S]*?)<\/option>/gi)].map((o) => ({
+      valeur: decode(attr(o[1], /value=["']([^"']*)["']/) ?? o[2].replace(/<[^>]*>/g, '')),
+      choisie: /\bselected\b/i.test(o[1]),
+    })).filter((o) => o.valeur !== '');
+    if (!options.length) continue;
+    const choisies = options.filter((o) => o.choisie).map((o) => o.valeur);
+    par[decode(nom)] = {
+      choices: options.map((o) => o.valeur),
+      value: choisies.length ? choisies.join(',') : '',
+      multiple: /\bmultiple\b/i.test(select[1]),
+    };
+  }
+  return par;
+}
+
+/* Complète les paramètres avec ce que la page sait et que l'API ignore. On ne TOUCHE PAS à
+   ceux dont l'API a déjà donné les valeurs : elle est la source la plus sûre, le HTML n'est
+   qu'un rattrapage. */
+async function completerParFormulaire(cfg, chemin, parametres) {
+  if (!parametres.some((p) => !p.choices)) return parametres;
+  let page = '';
+  try {
+    const res = await appel(cfg, `${cheminUrl(chemin)}/build?delay=0sec`, { headers: { Accept: 'text/html' } });
+    if (res.status < 200 || res.status >= 300) return parametres;
+    page = res.body || '';
+  } catch { return parametres; }        // la page n'a pas répondu : on garde ce qu'on a
+  let vus = {};
+  try { vus = lireChoixHtml(page); } catch { return parametres; }
+  return parametres.map((p) => {
+    const trouve = vus[p.name];
+    if (p.choices || !trouve) return p;
+    return {
+      ...p,
+      choices: trouve.choices,
+      multiple: trouve.multiple || undefined,
+      value: trouve.value || (p.unresolved ? '' : p.value),
+      unresolved: undefined,             // la page a répondu : il n'y a plus rien à signaler
+    };
+  });
+}
+
 const CHAMPS_BUILD = 'number,result,building,timestamp,duration,url,displayName,'
   + 'actions[causes[shortDescription,userName,_class],parameters[name,value,_class],lastBuiltRevision[branch[name]]]';
 
@@ -319,7 +403,7 @@ async function detail(cfg, chemin) {
     description: d.description || '',
     buildable: d.buildable !== false,
     ...lireCouleur(d.color),
-    parameters: lireParametres(d.property),
+    parameters: await completerParFormulaire(cfg, chemin, lireParametres(d.property)),
     builds: (d.builds || []).map((b) => ({
       number: b.number,
       result: b.result || null,          // null = en cours : Jenkins ne tranche qu'à la fin
@@ -403,5 +487,5 @@ async function tester(cfg) {
 module.exports = {
   isConfigured, lister, detail, lancer, console: console_, tester,
   // exportés pour les tests : ce sont les deux traductions qui portent tout le reste
-  lireCouleur, aplatir, cheminUrl, lireParametres, auteurDe, refDe, paramsDuBuild, choixDe,
+  lireCouleur, aplatir, cheminUrl, lireParametres, auteurDe, refDe, paramsDuBuild, choixDe, lireChoixHtml,
 };

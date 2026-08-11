@@ -19,6 +19,7 @@ function freshState() {
     jobs: [],                     // arbre brut, tel que Jenkins le rend
     details: {},                  // chemin d'URL -> objet du job
     console: {},                  // `${chemin}/${n}` -> texte
+    forms: {},                    // chemin d'URL -> HTML de la page « Build with Parameters »
     calls: [],                    // { method, path, body, auth, crumb, cookie }
     fail: {},                     // fragment de chemin -> { status, body }
   };
@@ -87,6 +88,15 @@ function start() {
             return envoi(403, '<html>No valid crumb was included in the request</html>');
           }
           return envoi(201, '', { Location: 'http://jenkins.test/queue/item/77/' });
+        }
+        /* La page de lancement, telle que Jenkins la fabrique pour un humain : c'est le seul
+           endroit où vivent les valeurs des paramètres calculés (Git Parameter, choix
+           dynamiques). Sans elle dans le faux serveur, on ne testerait pas le rattrapage. */
+        if (req.method === 'GET' && reste.startsWith('/build')) {
+          const form = state.forms[cle];
+          if (form == null) return envoi(404, '<html>Not Found</html>');
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          return res.end(form);
         }
         const c = reste.match(/^\/(\d+)\/consoleText$/);
         if (c) {

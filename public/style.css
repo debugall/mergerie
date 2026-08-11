@@ -736,6 +736,9 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
    explication — un champ vide inexpliqué se remplit au jugé. */
 .jk-param-warn { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--amber); }
 .jk-param input[type="text"], .jk-param input:not([type]), .jk-param select { width: 100%; margin-top: 4px; }
+/* Une liste à choix multiple garde sa hauteur : repliée en une ligne, on ne voit pas qu'on
+   peut en choisir plusieurs, ni ce qui est déjà choisi. */
+.jk-param select[multiple] { min-height: 92px; padding: 4px; }
 /* La barre d'outils ne doit pas casser le libellé de la case en deux lignes. */
 #tab-jenkins .toolbar .inline-check { white-space: nowrap; }
 /* Le formulaire est plafonné à 720px par défaut (.form) : on lève ce plafond dans ces

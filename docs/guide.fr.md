@@ -842,12 +842,17 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   permet de s'apercevoir qu'on s'est trompé de ligne. Un job Jenkins n'est pas une page qu'on
   ouvre — il déploie, il publie, il tourne sur une machine partagée, et on ne peut pas
   l'annuler depuis ici.
-- ⚠ **Un paramètre dynamique que Jenkins n'a pas su calculer** (Extended Choice, Active
-  Choices : leur liste vient d'un script ou d'un fichier de propriétés, évalué au moment
-  d'afficher la page) rend, vu depuis l'API, sa **phrase d'erreur à la place de sa liste** —
-  « Could not get Environment from ENV Param ». Le champ est laissé **vide** et le dit, avec le
-  lien pour aller lancer depuis Jenkins : pré-remplir le champ de cette phrase l'aurait fait
-  partir telle quelle comme valeur.
+- **Les listes que Jenkins CALCULE sont récupérées là où elles existent.** *Git Parameter*
+  (la liste des branches et tags du dépôt), *Extended Choice*, *Active Choices* : ces plugins ne
+  déclarent pas leurs valeurs, ils les calculent au moment de rendre leur page — l'API n'en
+  porte donc aucune trace. Mergerie lit alors le **formulaire de lancement** de Jenkins, celui
+  qu'on voit en cliquant *Build with Parameters*, et **uniquement pour les paramètres dont
+  l'API n'a rien dit** (ce qu'elle déclare fait foi). Un **choix multiple** reste multiple, et
+  les valeurs partent séparées par des virgules — la forme qu'attendent ces plugins.
+- ⚠ **Si la page ne répond pas non plus**, le champ est laissé **vide** et le dit, avec le lien
+  pour aller lancer depuis Jenkins. C'est le cas quand le plugin échoue jusque dans sa page et
+  rend sa phrase d'erreur (« Could not get Environment from ENV Param ») : pré-remplir le champ
+  de cette phrase l'aurait fait partir telle quelle comme valeur.
 
 - **Un job paramétré ne se lance jamais depuis la liste.** Son bouton s'écrit **`Lancer…`** —
   les points de suspension annoncent un formulaire, et l'infobulle dit combien de paramètres il

@@ -13,6 +13,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Jenkins parameters whose values are computed now come through.** Git Parameter (a repo's
+  branches and tags), Extended Choice, Active Choices: these plugins do not declare their
+  options, they compute them while rendering their own page, so no API request will ever return
+  them. Mergerie now reads Jenkins' build form for the parameters the API said nothing about —
+  what the API declares still wins — and a multiple choice stays multiple, sent comma-separated
+  as those plugins expect. When the page cannot answer either, the field stays empty and says
+  so, as before.
+
 - **The Jenkins tab refreshes itself, tells you when your own job is done, and opens each run
   side by side.** The list refreshes every 30 seconds — only while the tab is open and the
   window visible, with a checkbox to turn it off and the choice remembered — and a background

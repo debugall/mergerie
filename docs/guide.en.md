@@ -803,11 +803,17 @@ Jenkins already does well, and which there is no point redoing.
 - **Running.** ⚠ Always **with a confirmation**, and the question **names the job**: that is
   what lets you notice you picked the wrong line. A Jenkins job is not a page you open — it
   deploys, it publishes, it runs on a shared machine, and it cannot be cancelled from here.
-- ⚠ **A dynamic parameter Jenkins could not compute** (Extended Choice, Active Choices: their
-  list comes from a script or a properties file, evaluated when the page is rendered) returns,
-  as seen from the API, **its error message instead of its list** — "Could not get Environment
-  from ENV Param". The field is left **empty** and says so, with the link to go and run it from
-  Jenkins: prefilling the field with that sentence would have sent it as the value.
+- **The lists Jenkins COMPUTES are fetched where they exist.** *Git Parameter* (the repo's
+  branches and tags), *Extended Choice*, *Active Choices*: these plugins do not declare their
+  values, they compute them while rendering their page — so the API carries no trace of them.
+  Mergerie then reads Jenkins' **build form**, the page you get by clicking *Build with
+  Parameters*, and **only for the parameters the API said nothing about** (what it declares
+  wins). A **multiple choice** stays multiple, and the values go out comma-separated — the shape
+  those plugins expect.
+- ⚠ **If the page does not answer either**, the field is left **empty** and says so, with the
+  link to go and run it from Jenkins. That happens when the plugin fails inside its own page too
+  and returns its error message ("Could not get Environment from ENV Param"): prefilling the
+  field with that sentence would have sent it as the value.
 
 - **A parameterised job never starts from the list.** Its button reads **`Run…`** — the
   ellipsis announces a form, and the tooltip says how many parameters it expects. It opens the
