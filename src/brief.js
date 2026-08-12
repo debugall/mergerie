@@ -22,7 +22,7 @@ const JOUR_MS = 24 * 60 * 60 * 1000;
 /* Les sections dont une ligne peut être ÉCARTÉE, et sous quelle clé. Une todo n'y est pas :
    elle a déjà ses gestes propres (cocher, reporter), et un troisième verbe pour la faire
    disparaître d'un seul écran sèmerait la confusion sur ce qu'on vient de faire d'elle. */
-const ECARTABLES = ['verification', 'session', 'mr'];
+const ECARTABLES = ['verification', 'session', 'mr', 'sess'];
 
 function ecartes() {
   const par = {};
@@ -124,6 +124,30 @@ function verificationsEnEchec(limite = MAX_PAR_SECTION) {
   return out;
 }
 
+/* 4 bis. LES SESSIONS DE DEV QUI ATTENDENT UN GESTE. Trois attentes distinctes, et c'est
+   toujours LE MÊME oubli : le travail est fait, il ne manque qu'un clic. Une session jamais
+   lancée ne produira rien ; une branche commitée mais pas poussée n'existe pour personne ;
+   une branche poussée sans MR ne sera jamais relue. On rend des NOMBRES et non des listes :
+   c'est un rappel, le détail vit dans l'onglet Dev IA — et à trois lignes de plus par section,
+   le brief cesserait d'être un brief. */
+function sessionsEnAttente2() {
+  const c = (sql, ...a2) => db.prepare(sql).get(...a2).c;
+  return {
+    to_run: c("SELECT COUNT(*) c FROM task WHERE status = 'new'")
+      + c("SELECT COUNT(*) c FROM local_task WHERE status = 'new'"),
+    to_push: c("SELECT COUNT(*) c FROM task_target WHERE status = 'committed'"),
+    /* Poussée mais sans MR — ni celle qu'on a créée (`mr_iid`), ni celle qui existait DÉJÀ sur
+       la branche : c'est une jointure et non une colonne, exactement comme dans la liste des
+       sessions. Compter la première seule proposerait d'ouvrir une seconde MR sur une branche
+       qui en a déjà une, ce qui est pire que de se taire. */
+    to_mr: c(`SELECT COUNT(*) c FROM task_target tt
+      WHERE tt.status = 'pushed' AND COALESCE(tt.mr_iid, 0) = 0
+        AND NOT EXISTS (SELECT 1 FROM mr
+          WHERE mr.repo_id = tt.repo_id AND mr.source_branch = tt.branch
+            AND COALESCE(mr.closed_seen, 0) = 0)`),
+  };
+}
+
 /* 5. MR À TRAITER — arrivées dans les dernières 24 h. Le brief ne redit pas la file entière
    (elle a son onglet et son badge) : il signale ce qui est TOMBÉ depuis hier, c'est-à-dire
    ce qu'on n'a pas encore pu voir. */
@@ -181,6 +205,10 @@ function construire({ maintenant = new Date(), staleDays = 5 } = {}) {
     todos: todosDuJour(),
     sessions: garder(sessionsEnAttente(budget('session')), 'session', (s) => s.task_id),
     verifications: garder(verificationsEnEchec(budget('verification')), 'verification', (v) => v.verification_id),
+    /* Écartable comme le reste : quelqu'un qui laisse volontiers des sessions non lancées ne
+       veut pas qu'on le lui rappelle tous les matins. */
+    pending_sessions: Object.fromEntries(Object.entries(sessionsEnAttente2())
+      .map(([k, v]) => [k, hors.sess.has(k) ? 0 : v])),
     fresh_mrs: garder(mrFraiches(maintenant, budget('mr')), 'mr', (m) => m.id),
     stale_mrs: garder(mrDormantes(maintenant, staleDays, budget('mr')), 'mr', (m) => m.id),
     hidden_count: db.prepare('SELECT COUNT(*) c FROM brief_hidden').get().c,

@@ -6,6 +6,7 @@ const taskrunner = require('./taskrunner');
 const proc = require('./proc');
 const gitops = require('./gitops');
 const notify = require('./notify');
+const notes = require('./notes');
 const converge = require('./converge');
 const localcoder = require('./localcoder');
 const docker = require('./docker');
@@ -303,6 +304,27 @@ function preparerVerificationApres(task) {
   };
 }
 
+/* UNE SESSION QUI ATTEND UNE RÉPONSE POSE SA TODO. L'agent s'arrête, la file se libère, et
+   plus rien ne repartira tant que personne n'aura répondu — sauf qu'on est passé à autre chose
+   et que la notification est fermée depuis longtemps. La todo, elle, reste sous les yeux dans
+   l'onglet Notes et dans le brief du matin.
+
+   Une todo par SESSION, pas par projet : cinq questions sur cinq dépôts d'une même session sont
+   un seul geste à poser dans sa journée, et cinq lignes identiques ne diraient rien de plus. */
+function todoQuestion(taskId) {
+  const tache = db.prepare('SELECT * FROM task WHERE id = ?').get(taskId);
+  if (!tache) return;
+  const cibles = db.prepare(`SELECT r.project FROM task_target tt JOIN repo r ON r.id = tt.repo_id
+    WHERE tt.task_id = ? AND tt.status = 'needs_input'`).all(taskId).map((x) => x.project);
+  if (!cibles.length) return;
+  const quoi = (tache.label || tache.prompt || '').split('\n')[0].slice(0, 80);
+  try {
+    notes.todoAuto('session_question', taskId,
+      `Répondre à l'IA — session #${taskId}${quoi ? ` : ${quoi}` : ''}`,
+      `L'agent attend une réponse sur : ${cibles.join(', ')}.`);
+  } catch { /* une todo qu'on n'a pas pu poser ne doit pas faire échouer la session */ }
+}
+
 /* LE SUIVI AUTOMATIQUE — le seul endroit du code qui envoie un suivi sans qu'on ait cliqué.
    Par défaut un suivi attend un geste ; coché à l'écran, il part de lui-même dès que la session
    a fini de travailler.
@@ -362,6 +384,7 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
     const after = db.prepare('SELECT status FROM task WHERE id = ?').get(task.id);
     if (after && after.status === 'needs_input') {
       notify.push('needs_input', { task_id: task.id });
+      todoQuestion(task.id);
     } else if (action === 'run' || action === 'answer' || (action === 'followup' && opts.autoSuivi)) {
       /* Un suivi armé part MAINTENANT, et repasse ici en finissant : la notification de fin et
          la vérification attendent donc ce second tour. Annoncer « terminée » puis relancer
@@ -444,7 +467,7 @@ async function runConvergeSessionJob(jobId, taskId, opts = {}) {
     // Une passe a pu mettre un projet EN ATTENTE (l'IA a posé une question) : la boucle s'est
     // arrêtée là, on avertit pour que l'utilisateur réponde puis relance Converger.
     const after = db.prepare('SELECT status FROM task WHERE id = ?').get(taskId);
-    if (after && after.status === 'needs_input') notify.push('needs_input', { task_id: taskId });
+    if (after && after.status === 'needs_input') { notify.push('needs_input', { task_id: taskId }); todoQuestion(taskId); }
     /* APRÈS la boucle, pas à chaque passe : vérifier trois fois de suite le même dépôt coûterait
        trois montages d'environnement pour un seul verdict qui compte, le dernier. On ne lance
        pas non plus si un projet attend une réponse — le code n'est pas fini. */

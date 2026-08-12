@@ -1,5 +1,14 @@
 /* Thème SOMBRE = défaut. Le thème clair surcharge ces variables plus bas.
    `data-theme` est posé sur <html> par app.js (valeur résolue : dark | light). */
+
+/* CE QUE LE SYSTÈME DESSINE POUR NOUS. La liste OUVERTE d'un `<select>`, la barre de
+   défilement, le sélecteur de date : ce ne sont pas nos éléments, c'est l'OS qui les peint —
+   et sans cette déclaration il les peint TOUJOURS en clair. En thème sombre, notre texte clair
+   se retrouvait donc sur un fond blanc : illisible, et impossible à corriger avec des couleurs
+   sur `option`, que macOS ignore. Une ligne, et tous les contrôles natifs suivent le thème. */
+:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
+
 :root {
   --bg: #0f1420; --panel: #171d2b; --panel2: #1e2636; --line: #2a3346;
   --text: #e6ebf5; --muted: #8b97ad; --accent: #4f8cff; --green: #35c07f;

@@ -2178,6 +2178,12 @@ app.post('/api/tasks/:id/targets/:tid/answer', wrap((req, res) => {
   // le moindre rechargement ré-affiche le formulaire (déjà répondu). Passage direct en running.
   db.prepare("UPDATE task_target SET questions_json = ?, status = 'running', last_error = NULL, updated_at = ? WHERE id = ?")
     .run(JSON.stringify(qs), new Date().toISOString(), tg.id);
+  /* La todo posée par l'outil se referme ici — mais SEULEMENT si plus aucun projet de la
+     session n'attend : sur une session multi-dépôts, répondre au premier ne solde pas le
+     travail, et une todo cochée trop tôt fait oublier les quatre autres. */
+  const encore = db.prepare("SELECT COUNT(*) c FROM task_target WHERE task_id = ? AND status = 'needs_input'")
+    .get(Number(req.params.id)).c;
+  if (!encore) notes.fermerTodoAuto('session_question', Number(req.params.id));
   res.json(jobs.startTaskJob(Number(req.params.id), 'answer', { targetId: tg.id }));
 }));
 

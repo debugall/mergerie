@@ -9531,6 +9531,19 @@ function renderBrief(d) {
       ${briefHideBtn('mr', m.id)}
     </div>`).join('');
 
+  /* LES SESSIONS QUI ATTENDENT UN GESTE. Trois attentes, un seul oubli : le travail est fait,
+     il ne manque qu'un clic. Des nombres, pas des listes — le détail vit dans Dev IA, et à trois
+     lignes de plus le brief cesserait d'être un brief. Une attente à zéro ne s'affiche pas. */
+  const ps = d.pending_sessions || {};
+  const attentes = [
+    ['to_run', 'notes.brief.sess.to-run', ps.to_run],
+    ['to_push', 'notes.brief.sess.to-push', ps.to_push],
+    ['to_mr', 'notes.brief.sess.to-mr', ps.to_mr],
+  ].filter(([, , n]) => n > 0).map(([cle, k, n]) => `<div class="brief-item brief-clickable" data-brief-sess="${cle}">
+      <div class="brief-item-main"><div class="brief-item-title">${esc(tr(k, { n, count: n }))}</div></div>
+      ${briefHideBtn('sess', cle)}
+    </div>`).join('');
+
   const a = d.activity;
   const activite = a ? `<p class="brief-activity">${[
     a.merged ? esc(tr('notes.brief.activity.merged', { n: a.merged, count: a.merged })) : '',
@@ -9543,6 +9556,7 @@ function renderBrief(d) {
     briefSection(tr('notes.brief.sec.todos'), todos, { icon: 'check' }),
     briefSection(tr('notes.brief.sec.sessions'), sessions, { icon: 'bot' }),
     briefSection(tr('notes.brief.sec.verifications'), verifs, { icon: 'alert' }),
+    briefSection(tr('notes.brief.sec.pending'), attentes, { icon: 'bot', hint: tr('notes.brief.pending.hint') }),
     briefSection(tr('notes.brief.sec.fresh'), fresh, { icon: 'merge', hint: tr('notes.brief.fresh.hint') }),
     briefSection(tr('notes.brief.sec.stale'), stale, { icon: 'clock', hint: tr('notes.brief.stale.hint', { n: d.stale_days }) }),
     briefSection(tr('notes.brief.sec.activity'), activite, { icon: 'chart' }),
@@ -9628,6 +9642,8 @@ document.addEventListener('click', async (e) => {
   }
   const s = e.target.closest && e.target.closest('[data-brief-session]');
   if (s) { navTab('task'); return; }
+  const att = e.target.closest && e.target.closest('[data-brief-sess]');
+  if (att) { navTab('task'); return; }
   const v = e.target.closest && e.target.closest('[data-brief-verif]');
   if (v) { openVerifyReport(Number(v.dataset.briefVerif)); return; }
   const m = e.target.closest && e.target.closest('[data-brief-mr]');

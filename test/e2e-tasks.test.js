@@ -840,8 +840,21 @@ describe('Sessions de dev de bout en bout', () => {
     assert.equal(tg.questions[1].options, null, 'q2 : réponse libre');
     assert.ok(!tg.commit_sha, 'aucun commit tant que la question n’est pas répondue');
 
+    /* UNE SESSION ARRÊTÉE POSE SA TODO. La file est libre, plus rien ne repartira, et on est
+       passé à autre chose — la notification est fermée depuis longtemps. La todo, elle, reste
+       sous les yeux dans l'onglet Notes et dans le brief du matin. */
+    const todos = () => app.api('GET', '/api/todos').then((r) => r.body.todos);
+    const posee = (await todos()).find((x) => x.auto_kind === 'session_question');
+    assert.ok(posee, 'la session en attente a posé sa todo');
+    assert.equal(posee.auto_ref, String(taskId));
+    assert.equal(posee.priority, 'high', 'une session arrêtée bloque une file : ça ne se range pas en bas');
+    assert.match(posee.title, /Répondre/);
+    assert.match(posee.note || '', /grp\/app/, 'la note dit sur quel projet l’agent attend');
+
     // Réponses vides → refus explicite.
     assert.equal((await app.api('POST', `/api/tasks/${taskId}/targets/${tg.id}/answer`, { answers: {} })).status, 400);
+    assert.equal((await todos()).find((x) => x.auto_ref === String(taskId)).status, 'open',
+      'un refus n’est pas une réponse : la todo reste ouverte');
 
     // Réponses valides → reprise de la session.
     const ans = await app.api('POST', `/api/tasks/${taskId}/targets/${tg.id}/answer`, {
@@ -849,6 +862,15 @@ describe('Sessions de dev de bout en bout', () => {
     });
     assert.equal(ans.status, 200);
     await waitForJobs(app.api);
+
+    /* …et elle se referme dès qu'on a répondu. Cochée, pas supprimée : ce qu'on a fait de sa
+       journée se relit dans « Faites ». */
+    const apres = (await app.api('GET', '/api/todos?status=done')).body.todos
+      .find((x) => x.auto_kind === 'session_question' && x.auto_ref === String(taskId));
+    assert.ok(apres, 'répondre referme la todo');
+    assert.ok(apres.done_at);
+    assert.equal((await todos()).some((x) => x.auto_ref === String(taskId)), false,
+      'elle ne traîne plus dans « à faire »');
 
     task = (await app.api('GET', `/api/tasks/${taskId}`)).body.task;
     assert.equal(task.status, 'committed', 'après réponses, l’agent poursuit et commite');

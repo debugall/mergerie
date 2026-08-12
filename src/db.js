@@ -933,6 +933,18 @@ try {
    trente serait absurde. */
 db.exec('CREATE INDEX IF NOT EXISTS idx_todo_position ON todo(status, archived_at, position)');
 
+/* LES TODOS QUE L'OUTIL POSE LUI-MÊME. Une session de dev qui s'arrête sur une question attend
+   — parfois des heures, parce qu'on est passé à autre chose et que rien ne le rappelle. Elle
+   pose donc sa propre todo, et la referme quand on a répondu.
+
+   Une colonne à part plutôt que `link_kind` : celui-ci est contraint par un CHECK (mr/ticket/
+   repo) et sert le lien que l'UTILISATEUR choisit. Mélanger les deux obligerait à reconstruire
+   la table pour ajouter un type, et brouillerait « ce que j'ai lié » avec « ce que l'outil a
+   posé ». `auto_ref` porte de quoi la retrouver pour la fermer. */
+try { db.exec('ALTER TABLE todo ADD COLUMN auto_kind TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE todo ADD COLUMN auto_ref TEXT'); } catch { /* déjà présente */ }
+db.exec('CREATE INDEX IF NOT EXISTS idx_todo_auto ON todo(auto_kind, auto_ref)');
+
 /* CE QU'ON A ÉCARTÉ DU BRIEF. Le brief recalcule tout à chaque ouverture : un fait qui reste
    vrai reparaît tous les matins, même traité ailleurs — une vérification rouge dont on a déjà
    fait le tour revient indéfiniment et finit par apprendre à ne plus lire la section.

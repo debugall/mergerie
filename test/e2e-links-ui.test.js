@@ -677,5 +677,18 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     assert.deepEqual(erreurs, [], `la console doit rester muette, vu : ${JSON.stringify(erreurs)}`);
   });
 
+
+  /* CE QUE LE SYSTÈME DESSINE POUR NOUS. La liste OUVERTE d'un `<select>` n'est pas notre
+     élément : c'est l'OS qui la peint, et sans `color-scheme` il la peint toujours en clair —
+     texte clair sur fond blanc en thème sombre, illisible, et que des couleurs sur `option`
+     ne rattrapent pas (macOS les ignore). Ça ne se relit pas dans la feuille de style : on
+     demande au navigateur ce qu'il a retenu. */
+  test('les contrôles natifs suivent le thème', async () => {
+    for (const [theme, attendu] of [['dark', 'dark'], ['light', 'light']]) {
+      await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);
+      assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme), attendu,
+        `thème ${theme} : sans ça, une liste déroulante ouverte est illisible`);
+    }
+  });
 });
 

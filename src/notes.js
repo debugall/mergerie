@@ -187,6 +187,38 @@ function listerTodos(statut = 'open') {
   return db.prepare(`SELECT * FROM todo WHERE status = 'open' AND archived_at IS NULL ${ORDRE_MANUEL}`).all();
 }
 
+/* UNE TODO POSÉE PAR L'OUTIL, et refermée par lui. Idempotent : la même session qui repose une
+   question ne crée pas une deuxième ligne — on rouvre celle qui existe (elle a pu être cochée à
+   la main entre-temps). Priorité haute : une session arrêtée bloque une file et ne repartira
+   pas toute seule.
+
+   Elle reste une todo ORDINAIRE : on peut la cocher, l'éditer, la supprimer. L'outil ne
+   reprend pas la main sur ce qu'on en a fait — il ne fait que la poser et la refermer. */
+function todoAuto(kind, ref, titre, note) {
+  const cle = String(ref);
+  const now = nowIso();
+  const existante = db.prepare('SELECT * FROM todo WHERE auto_kind = ? AND auto_ref = ? AND archived_at IS NULL')
+    .get(kind, cle);
+  if (existante) {
+    db.prepare("UPDATE todo SET status = 'open', done_at = NULL, title = ?, note = ?, updated_at = ? WHERE id = ?")
+      .run(lireTitre(titre, 'titre'), lireNote(note), now, existante.id);
+    return db.prepare('SELECT * FROM todo WHERE id = ?').get(existante.id);
+  }
+  const info = db.prepare(`INSERT INTO todo
+    (title, priority, status, note, due_at, created_at, updated_at, auto_kind, auto_ref)
+    VALUES (?, 'high', 'open', ?, NULL, ?, ?, ?, ?)`)
+    .run(lireTitre(titre, 'titre'), lireNote(note), now, now, kind, cle);
+  return db.prepare('SELECT * FROM todo WHERE id = ?').get(info.lastInsertRowid);
+}
+
+/* La refermer : cochée, pas supprimée. Ce qu'on a fait de sa journée se relit dans « Faites » —
+   une todo qui disparaît sans laisser de trace donne l'impression de n'avoir rien fait. */
+function fermerTodoAuto(kind, ref) {
+  const now = nowIso();
+  return db.prepare("UPDATE todo SET status = 'done', done_at = ?, updated_at = ? WHERE auto_kind = ? AND auto_ref = ? AND status = 'open'")
+    .run(now, now, kind, String(ref)).changes;
+}
+
 /* Réordonner : l'écran envoie l'ordre COMPLET de ce qu'il affiche, on numérote 1..n. Envoyer
    « telle todo passe avant telle autre » obligerait à recalculer les voisines côté serveur et
    à gérer les égalités ; la liste entière est courte, non ambiguë, et rejouable telle quelle.
@@ -363,7 +395,7 @@ function indexAutolink({ maintenant = Date.now() } = {}) {
 }
 
 module.exports = {
-  reordonnerTodos,
+  reordonnerTodos, todoAuto, fermerTodoAuto,
   MAX_TITLE, MAX_NOTE, MAX_PAGE, PRIORITES, LINK_KINDS, JOURS_AVANT_ARCHIVE, JOURS_AUTOLINK,
   listerPages, lirePage, creerPage, majPage, supprimerPage, slugifier,
   listerTodos, lireTodo, creerTodo, majTodo, supprimerTodo, calculerSnooze,

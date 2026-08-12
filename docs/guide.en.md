@@ -179,6 +179,18 @@ branches — which matters when the list of repositories is long.
 how many are filtered out. This applies to coding, out-of-repo coding and exploration alike. In the list, a
 long prompt is **folded to three lines** with a **“Show more”** that unrolls it.
 
+**A session stopped on a question raises its own todo.** When the AI interrupts itself to ask
+something, a **high-priority todo** is created automatically — "Reply to the AI — session #12",
+with the projects concerned in its note. The queue is free, nothing will restart, and the
+notification was dismissed long ago: the todo stays in sight, in *Notes* and in the morning
+brief. **Answering closes it** (ticked, not deleted: what you did with your day is re-read in
+"Done").
+
+⚠ On a **multi-repository** session it only closes when **no** project is waiting any more:
+answering the first does not settle the work, and a todo ticked too early makes you forget the
+other four. It stays an **ordinary** todo — you can tick, edit or delete it: the tool raises it
+and closes it, it does not take over what you did with it.
+
 **A label, optional.** A short title when creating a session — coding, out-of-repo or exploration.
 A list is otherwise read through its prompt, three folded lines whose first words look alike from one
 session to the next; the label says **what it is about** where the prompt says **what to do**. It
@@ -384,6 +396,12 @@ nothing happened, which was not the question. Every line reaches its object in o
    its own. A todo already listed under *Reminders* does not appear twice.
 3. **Sessions waiting for an answer** — the sessions where the AI asked a question. They are the costliest
    to forget: the session is blocked, the queue is free, and nothing restarts without you.
+4 bis. **AI sessions waiting** — three numbers, one and the same oversight: the work is done,
+   only a gesture is missing. A session **never run** will produce nothing; a project **committed
+   but not pushed** exists for nobody; a branch **pushed without a merge request** will never be
+   reviewed. Numbers rather than lists — the detail lives in *AI Dev*, and three more lines would
+   stop the brief being a brief. A branch that **already** has an open MR (even one created
+   elsewhere) does not count: offering to open a second one would be worse than saying nothing.
 4. **Failed verifications** — the last red verdict per batch or per MR. **Stale** verdicts are left out:
    the branch has moved, the verdict covers code that is no longer there, and showing it would send you to
    fix a problem that may already be fixed.

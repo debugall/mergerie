@@ -13,6 +13,18 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A session stopped on a question raises its own todo, and answering closes it.** When the AI
+  interrupts itself to ask something, the queue is free, nothing will restart, and the desktop
+  notification was dismissed long ago — so a high-priority todo is created, naming the session
+  and the projects concerned, and it sits in Notes and in the morning brief until you answer.
+  On a multi-repository session it only closes once no project is waiting any more. It stays an
+  ordinary todo: the tool raises it and closes it, it does not take over what you did with it.
+
+- **The morning brief counts the sessions waiting for a gesture.** How many were never run, how
+  many are committed but not pushed, how many are pushed without a merge request — the work is
+  done, only a click is missing. Numbers rather than lists, and a branch that already has an open
+  merge request is not counted.
+
 - **The Jenkins menu carries a badge: how many jobs ran today.** The question you ask walking
   past the tab is "did anything move this morning?", not "how many jobs exist". It is filled
   once at startup, like the Docker badge, then kept current by the tab's own refresh — Jenkins
@@ -630,6 +642,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   cancelling closes it again.
 
 ### Fixed
+
+- **Open dropdown lists are readable in dark mode.** The list a `<select>` opens is drawn by the
+  operating system, not by the page, and without a `color-scheme` declaration it was always
+  painted light — light text on a white background. Every native control now follows the theme:
+  dropdowns, scrollbars, date pickers.
 
 - **A Jenkins field no longer shows up prefilled with a plugin error.** Dynamic parameters
   (Extended Choice, Active Choices) build their list from a script evaluated when the page is

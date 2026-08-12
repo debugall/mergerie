@@ -185,6 +185,18 @@ sa propre branche, et sa date de création est affichée. Le **choix du dépôt 
 rappelle combien sont filtrées. Vaut pour le codage, le codage hors dépôt et l'exploration. Dans la
 liste, un prompt long est **replié sur trois lignes** avec un **« Voir plus »** qui le déroule entier.
 
+**Une session arrêtée sur une question pose sa todo.** Quand l'IA s'interrompt pour demander
+quelque chose, une **todo de priorité haute** est créée automatiquement — « Répondre à l'IA —
+session #12 », avec les projets concernés en note. La file est libre, plus rien ne repartira, et
+la notification est fermée depuis longtemps : la todo, elle, reste sous les yeux dans *Notes* et
+dans le brief du matin. **Répondre la referme** (cochée, pas supprimée : ce qu'on a fait de sa
+journée se relit dans « Faites »).
+
+⚠ Sur une session **multi-dépôts**, elle ne se referme que lorsque **plus aucun** projet n'attend :
+répondre au premier ne solde pas le travail, et une todo cochée trop tôt fait oublier les quatre
+autres. Elle reste une todo **ordinaire** — on peut la cocher, l'éditer, la supprimer : l'outil la
+pose et la referme, il ne reprend pas la main sur ce qu'on en a fait.
+
 **Un libellé, facultatif.** Un titre court à la création d'une session — codage, hors dépôt ou
 exploration. Une liste se lit sinon par son prompt, trois lignes repliées dont les premiers mots se
 ressemblent d'une session à l'autre ; le libellé dit **de quoi il s'agit** quand le prompt dit **ce
@@ -401,6 +413,12 @@ apprend qu'il ne s'est rien passé, ce qui n'était pas la question. Chaque lign
    remonte jamais tout seul. Une todo déjà listée en *Rappels* n'y réapparaît pas.
 3. **Sessions en attente de réponse** — les sessions où l'IA a posé une question. Ce sont les plus
    coûteuses à oublier : la session est bloquée, la file est libre, et rien ne repartira sans toi.
+4 bis. **Sessions de dev en attente** — trois nombres, un seul oubli : le travail est fait, il ne
+   manque qu'un geste. Une session **jamais lancée** ne produira rien ; un projet **commité mais
+   pas poussé** n'existe pour personne ; une branche **poussée sans merge request** ne sera jamais
+   relue. Des nombres et non des listes — le détail vit dans *Dev IA*, et à trois lignes de plus
+   le brief cesserait d'être un brief. Une branche qui a **déjà** une MR ouverte (même créée
+   ailleurs) ne compte pas : proposer d'en ouvrir une seconde serait pire que de se taire.
 4. **Vérifications en échec** — le dernier verdict rouge par lot ou par MR. Les verdicts **périmés** en
    sont écartés : la branche a bougé, le verdict porte sur du code qui n'est plus là, et l'afficher
    enverrait corriger un problème peut-être déjà corrigé.

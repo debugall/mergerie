@@ -439,6 +439,57 @@ describe('Sauvegarde', () => {
   });
 });
 
+describe('Sessions de dev en attente, dans le brief', () => {
+  /* Trois attentes distinctes, et c'est toujours LE MÊME oubli : le travail est fait, il ne
+     manque qu'un clic. Une session jamais lancée ne produira rien, une branche commitée mais
+     pas poussée n'existe pour personne, une branche poussée sans MR ne sera jamais relue. */
+  test('les trois attentes sont comptées, et le brief les porte', async () => {
+    const repo = app.db.prepare('SELECT id FROM repo LIMIT 1').get();
+    const t = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'trois attentes', targets: [{ repo_id: repo.id, branch: 'feat/a' }],
+    })).body;
+    const brief = () => app.api('GET', '/api/brief').then((r) => r.body.pending_sessions);
+
+    let p = await brief();
+    assert.equal(p.to_run, 1, 'une session jamais lancée');
+
+    const cible = app.db.prepare('SELECT id FROM task_target WHERE task_id = ?').get(t.id);
+    app.db.prepare("UPDATE task SET status = 'committed' WHERE id = ?").run(t.id);
+    app.db.prepare("UPDATE task_target SET status = 'committed' WHERE id = ?").run(cible.id);
+    p = await brief();
+    assert.deepEqual([p.to_run, p.to_push, p.to_mr], [0, 1, 0], 'commitée : elle attend un push');
+
+    app.db.prepare("UPDATE task_target SET status = 'pushed', branch = 'zzz-sans-mr' WHERE id = ?").run(cible.id);
+    p = await brief();
+    assert.deepEqual([p.to_push, p.to_mr], [0, 1], 'poussée sans MR : elle attend une MR');
+
+    /* Une branche qui a DÉJÀ une MR ouverte ne compte pas : proposer d'en ouvrir une seconde
+       serait pire que de se taire. La MR est reliée par la branche, pas par une colonne. */
+    const mr = app.db.prepare('SELECT id, source_branch, repo_id FROM mr LIMIT 1').get();
+    app.db.prepare('UPDATE task_target SET branch = ?, repo_id = ? WHERE id = ?')
+      .run(mr.source_branch, mr.repo_id, cible.id);
+    p = await brief();
+    assert.equal(p.to_mr, 0, 'la MR existante est vue, même si ce n’est pas nous qui l’avons créée');
+
+    await app.api('DELETE', `/api/tasks/${t.id}`);
+  });
+
+  test('une attente s’écarte du brief comme le reste', async () => {
+    const repo = app.db.prepare('SELECT id FROM repo LIMIT 1').get();
+    const t = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'à écarter', targets: [{ repo_id: repo.id, branch: 'feat/b' }],
+    })).body;
+    assert.equal((await app.api('GET', '/api/brief')).body.pending_sessions.to_run, 1);
+
+    await app.api('POST', '/api/brief/hidden', { kind: 'sess', ref: 'to_run' });
+    assert.equal((await app.api('GET', '/api/brief')).body.pending_sessions.to_run, 0,
+      'qui laisse volontiers des sessions non lancées ne veut pas se l’entendre dire chaque matin');
+
+    await app.api('DELETE', '/api/brief/hidden');
+    await app.api('DELETE', `/api/tasks/${t.id}`);
+  });
+});
+
 describe('Ordre de la liste « à faire »', () => {
   /* Le tri automatique répond à « qu'est-ce qui presse » ; il ne répond pas à « dans quel
      ordre je m'y prends ce matin ». La liste suit donc l'ordre qu'on lui donne — priorité et
