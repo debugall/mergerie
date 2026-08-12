@@ -13,6 +13,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Jenkins parameters that recur across jobs line up in columns, and can be filtered.** On a
+  team installation the same three or four parameters come back from one job to the next; shown
+  in each job's own order, the eye has to hunt for them on every line. From three jobs on, a
+  parameter takes the same place on every row — empty slot included, or the next column moves up
+  — and gets a dropdown above the list to filter on its values. Three rather than two: at two, a
+  coincidence between two jobs would freeze a column for everyone. Columns are computed on all
+  jobs, so filtering never moves them.
+
 - **The todo list can be arranged by hand, inside each priority.** Priority still comes first —
   it answers "what is pressing" — and your own order arranges what sits inside it: drag a row by
   its grip, or use the two arrows on each row, since dragging is neither announceable nor reliable

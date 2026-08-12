@@ -12268,7 +12268,7 @@ document.addEventListener('keydown', (e) => {
    ne porte pas de pastille : elle supposerait d'interroger Jenkins à chaque ouverture de
    l'application, et un compteur figé depuis la dernière visite ment plus qu'il n'informe. */
 
-const JENKINS = { jobs: [], configured: true, q: '', echecsSeuls: false, job: null, build: null, qDossier: '', horsDossiers: new Set(), masques: new Set() };
+const JENKINS = { jobs: [], configured: true, q: '', echecsSeuls: false, job: null, build: null, qDossier: '', horsDossiers: new Set(), masques: new Set(), paramFiltres: {} };
 
 /* Les dossiers DÉCOCHÉS sont mémorisés, pas les cochés. La différence compte le jour où
    l'équipe crée un dossier : mémoriser les cochés le rendrait invisible jusqu'à ce qu'on
@@ -12381,13 +12381,54 @@ function jkParams(j) {
   return (j.lastParams || []).filter((p) => String(p.value) !== String(j.ref || ''));
 }
 
+/* LES PARAMÈTRES QUI REVIENNENT PARTOUT MÉRITENT UNE COLONNE. Sur une installation d'équipe,
+   les mêmes trois ou quatre paramètres (ENV, VERSION, BRANCHE) reviennent d'un job à l'autre :
+   affichés dans l'ordre propre à chaque job, l'œil doit les rechercher à chaque ligne. À partir
+   de TROIS jobs, un paramètre est considéré comme fréquent : il prend la même place sur toutes
+   les lignes — vide comprise, sinon la colonne suivante se décale et l'alignement ne tient plus.
+   Les autres, propres à un job, suivent à la fin.
+
+   Trois plutôt que deux : à deux, une coïncidence entre deux jobs figerait une colonne pour
+   tout le monde. */
+const JK_PARAM_FREQUENT = 3;
+
+/* Combien de JOBS portent chaque paramètre — pas combien de fois il apparaît : un job qui le
+   passerait deux fois ne le rendrait pas plus courant. */
+function jkFrequences(jobs) {
+  const par = new Map();
+  for (const j of jobs) {
+    for (const nom of new Set((j.lastParams || []).map((p) => p.name))) {
+      par.set(nom, (par.get(nom) || 0) + 1);
+    }
+  }
+  return par;
+}
+
+/* L'ordre des colonnes : du plus répandu au moins répandu, puis alphabétique. Stable d'un
+   rafraîchissement à l'autre tant que les jobs ne changent pas — une colonne qui se déplace
+   toute seule vaut moins qu'une absence de colonne. */
+function jkColonnes(jobs) {
+  return [...jkFrequences(jobs)]
+    .filter(([, n]) => n >= JK_PARAM_FREQUENT)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([nom]) => nom);
+}
+
+const jkChip = (nom, valeur) => `<span class="jk-chip"><span class="jk-chip-k">${esc(nom)}</span><span class="jk-chip-v">${esc(String(valeur))}</span></span>`;
+
 /* Sur LEUR PROPRE LIGNE, en pastilles nom/valeur. Alignés à la suite du statut, de la date et
    de l'auteur — tous en gris, tous séparés par des points médians —, ils se confondaient avec
    eux : on lisait une phrase, pas des couples. Le nom reste discret, la valeur porte la
    couleur du texte : c'est elle qu'on cherche. */
-const jkParamPastilles = (liste) => (liste.length
-  ? `<div class="jk-params">${liste.map((p) => `<span class="jk-chip"><span class="jk-chip-k">${esc(p.name)}</span><span class="jk-chip-v">${esc(String(p.value))}</span></span>`).join('')}</div>`
-  : '');
+function jkParamPastilles(liste, colonnes) {
+  if (!liste.length && !colonnes.length) return '';
+  const par = new Map(liste.map((p) => [p.name, p.value]));
+  const fixes = colonnes.map((nom) => `<span class="jk-cell">${par.has(nom) ? jkChip(nom, par.get(nom)) : ''}</span>`).join('');
+  const restes = liste.filter((p) => !colonnes.includes(p.name)).map((p) => jkChip(p.name, p.value)).join('');
+  if (!fixes && !restes) return '';
+  return `<div class="jk-params"${colonnes.length ? ` style="--jk-cols:${colonnes.length}"` : ''}>`
+    + `${fixes}<span class="jk-cell jk-cell-reste">${restes}</span></div>`;
+}
 
 /* Le lien vers le job DANS Jenkins. L'URL vient de Jenkins, donc d'une source externe : on
    n'ouvre que du http(s), comme partout ailleurs dans l'application — une `javascript:` glissée
@@ -12398,7 +12439,7 @@ function jkLienExterne(url) {
   return `<a class="btn btn-icon btn-sm jk-open-ext" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="${esc(tr('jenkins.open-ext'))}" aria-label="${esc(tr('jenkins.open-ext'))}"><svg class="ico ico-sm"><use href="#i-external"/></svg></a>`;
 }
 
-function jkRow(j) {
+function jkRow(j, colonnes = []) {
   const ennui = JK_ENNUI.includes(j.statut);
   const params = jkParams(j);
   const infos = [
@@ -12414,7 +12455,7 @@ function jkRow(j) {
     <div style="min-width:0;flex:1">
       <div class="jk-name">${j.folder ? `<span class="jk-path">${esc(j.folder)}/</span>` : ''}${esc(j.name)}${j.lastNumber ? ` <span class="jk-path">#${j.lastNumber}</span>` : ''}</div>
       <div class="jk-meta" title="${esc(j.last ? jkQuand(j.last) : '')}">${infos.map(esc).join(' · ')}</div>
-      ${jkParamPastilles(params)}
+      ${jkParamPastilles(params, colonnes)}
     </div>
     ${ennui ? `<span class="tag stale">${esc(jkStatutLabel(j))}</span>` : ''}
     ${jkLienExterne(j.url)}
@@ -12435,9 +12476,11 @@ function renderJenkins() {
     return;
   }
   renderJenkinsDossiers();
+  renderJenkinsParamFiltres();
   const q = JENKINS.q.toLowerCase();
   const vus = JENKINS.jobs.filter((j) => (!q || jkCherchable(j).includes(q))
     && !JENKINS.horsDossiers.has(j.folder) && !JENKINS.masques.has(j.folder)
+    && jkPasseFiltresParam(j)
     && (!JENKINS.echecsSeuls || JK_ENNUI.includes(j.statut) || j.enCours));
   $('#jenkinsCount').textContent = tr('jenkins.count', { n: vus.length, count: vus.length, total: JENKINS.jobs.length });
 
@@ -12452,7 +12495,40 @@ function renderJenkins() {
   /* À PLAT, dans l'ordre rendu par le serveur : du dernier lancement au plus ancien. Le
      dossier n'est plus un en-tête mais une case à cocher au-dessus — et il reste écrit
      devant chaque nom, sinon deux `api-build` de projets différents se confondent. */
-  box.innerHTML = vus.map(jkRow).join('');
+  /* Les colonnes sont calculées sur TOUS les jobs, pas sur ceux qui restent après filtrage :
+     sinon filtrer déplacerait les colonnes sous les yeux, et l'alignement qu'on vient de gagner
+     changerait à chaque frappe. */
+  const colonnes = jkColonnes(JENKINS.jobs);
+  box.innerHTML = vus.map((j) => jkRow(j, colonnes)).join('');
+}
+
+/* FILTRER SUR LES VALEURS D'UN PARAMÈTRE FRÉQUENT. C'est la question qu'on se pose devant une
+   liste de trois cents jobs : « qu'est-ce qui est parti en prod ? », « qu'est-ce qui tourne sur
+   la 2.4 ? ». Un job SANS le paramètre est écarté dès qu'on filtre dessus : il ne répond pas à
+   la question posée, et le garder « au cas où » viderait le filtre de son sens. */
+function jkPasseFiltresParam(j) {
+  const filtres = Object.entries(JENKINS.paramFiltres || {}).filter(([, v]) => v);
+  if (!filtres.length) return true;
+  const par = new Map((j.lastParams || []).map((p) => [p.name, String(p.value)]));
+  return filtres.every(([nom, valeur]) => par.get(nom) === valeur);
+}
+
+function renderJenkinsParamFiltres() {
+  const box = $('#jenkinsParamFiltres');
+  if (!box) return;
+  const colonnes = jkColonnes(JENKINS.jobs);
+  box.hidden = !colonnes.length;
+  if (box.hidden) return;
+  box.innerHTML = colonnes.map((nom) => {
+    const valeurs = [...new Set(JENKINS.jobs.flatMap((j) => (j.lastParams || [])
+      .filter((p) => p.name === nom).map((p) => String(p.value))))].sort((a, b) => a.localeCompare(b));
+    const choisie = (JENKINS.paramFiltres || {})[nom] || '';
+    return `<label class="jk-pf"><span class="jk-pf-k">${esc(nom)}</span>
+      <select data-jkpf="${esc(nom)}">
+        <option value="">${esc(tr('jenkins.param.all'))}</option>
+        ${valeurs.map((v) => `<option value="${esc(v)}"${v === choisie ? ' selected' : ''}>${esc(v)}</option>`).join('')}
+      </select></label>`;
+  }).join('');
 }
 
 /* Le filtre par dossiers. Sa propre recherche masque des cases sans jamais en décocher :
@@ -12749,6 +12825,12 @@ $('#jenkinsReload') && $('#jenkinsReload').addEventListener('click', () => loadJ
 $('#jenkinsNoAuto') && $('#jenkinsNoAuto').addEventListener('change', (e) => {
   try { localStorage.setItem(JENKINS_AUTO, e.target.checked ? '0' : '1'); } catch { /* stockage indisponible */ }
   jkAutoRelance();
+});
+$('#jenkinsParamFiltres') && $('#jenkinsParamFiltres').addEventListener('change', (e) => {
+  const sel = e.target.closest('[data-jkpf]');
+  if (!sel) return;
+  JENKINS.paramFiltres = { ...JENKINS.paramFiltres, [sel.dataset.jkpf]: sel.value };
+  renderJenkins();
 });
 $('#jenkinsFolderSearch') && $('#jenkinsFolderSearch').addEventListener('input', (e) => { JENKINS.qDossier = e.target.value; renderJenkinsDossiers(); });
 /* Masquer / remettre. Le clic sur la croix est intercepté AVANT le `change` du label : sans

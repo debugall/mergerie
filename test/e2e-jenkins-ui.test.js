@@ -33,13 +33,17 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await app.configure();
     srv = await mock.start();
     mock.reset();
-    const build = (t, causes, ref) => ({
+    const build = (t, causes, ref, params) => ({
       timestamp: t, number: 10 + (t % 10),
-      actions: [{ causes }, ref ? { lastBuiltRevision: { branch: [{ name: `refs/remotes/origin/${ref}` }] } } : {}],
+      actions: [
+        { causes },
+        params ? { parameters: params.map(([name, value]) => ({ name, value, _class: 'hudson.model.StringParameterValue' })) } : {},
+        ref ? { lastBuiltRevision: { branch: [{ name: `refs/remotes/origin/${ref}` }] } } : {},
+      ],
     });
     mock.state.jobs = [
       { name: 'boutique', _class: 'com.cloudbees.hudson.plugins.folder.Folder', jobs: [
-        { name: 'api-build', color: 'blue', buildable: true, lastBuild: build(2000, [{ userName: 'Alice' }], 'main') },
+        { name: 'api-build', color: 'blue', buildable: true, lastBuild: build(2000, [{ userName: 'Alice' }], 'main', [['ENV', 'recette'], ['VERSION', '9.9'], ['SEUL', 'x']]) },
         { name: 'deploy-prod',
           color: 'blue',
           buildable: true,
@@ -59,10 +63,12 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
               { lastBuiltRevision: { branch: [{ name: 'refs/remotes/origin/v1.0' }] } },
             ],
           } },
-        { name: 'front-build', color: 'red', buildable: true, lastBuild: build(9000, [{ _class: 'hudson.triggers.SCMTrigger$SCMTriggerCause' }], 'feature/x') },
+        // Buildable et SANS paramètre : « Relancer » n'aurait rien à reprendre, ce serait « Lancer ».
+        { name: 'simple', color: 'blue', buildable: true, lastBuild: build(500, [{ userName: 'Zoe' }], 'main') },
+        { name: 'front-build', color: 'red', buildable: true, lastBuild: build(9000, [{ _class: 'hudson.triggers.SCMTrigger$SCMTriggerCause' }], 'feature/x', [['ENV', 'dev'], ['VERSION', '8.8'], ['LOT', '10']]) },
       ] },
       { name: 'batch', _class: 'com.cloudbees.hudson.plugins.folder.Folder', jobs: [
-        { name: 'nuit', color: 'blue', buildable: true, lastBuild: build(5000, [{ _class: 'hudson.triggers.TimerTrigger$TimerTriggerCause' }], 'main') },
+        { name: 'nuit', color: 'blue', buildable: true, lastBuild: build(5000, [{ _class: 'hudson.triggers.TimerTrigger$TimerTriggerCause' }], 'main', [['ENV', 'prod'], ['LOT', '20']]) },
       ] },
       { name: 'archive', color: 'disabled', buildable: false },
     ];
@@ -133,7 +139,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.reload();
     await allerJenkins();
     await page.waitForSelector('#jenkinsBox .jk-row');
-    assert.equal(await page.locator('#jenkinsBox .jk-row').count(), 5,
+    assert.equal(await page.locator('#jenkinsBox .jk-row').count(), 6,
       'après enregistrement ET rechargement, la liste vient du serveur : le jeton a survécu');
   });
 
@@ -145,7 +151,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.waitForSelector('#jenkinsBox .jk-row');
     const noms = await page.locator('#jenkinsBox .jk-name').allTextContents();
     assert.deepEqual(noms.map((n) => n.replace(/\s+#\d+$/, '')),
-      ['boutique/front-build', 'batch/nuit', 'boutique/api-build', 'boutique/deploy-prod', 'archive'],
+      ['boutique/front-build', 'batch/nuit', 'boutique/api-build', 'boutique/deploy-prod', 'boutique/simple', 'archive'],
       'du plus récent au plus ancien, et le jamais lancé à la fin');
 
     const meta = await page.locator('#jenkinsBox .jk-row').filter({ hasText: 'api-build' }).first().locator('.jk-meta').textContent();
@@ -160,7 +166,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'deploy-prod' }).first();
     const chips = await ligne.locator('.jk-chip').allTextContents();
     const cles = await ligne.locator('.jk-chip-k').allTextContents();
-    assert.deepEqual(cles, ['VERSION', 'ENV', 'MIGRE', 'DEBUG'],
+    assert.deepEqual([...cles].sort(), ['DEBUG', 'ENV', 'MIGRE', 'VERSION'],
       'TOUS les paramètres, sans « +3 » : la question qu’on se pose en lisant la liste est justement « avec quoi ? »');
     assert.ok(chips.some((c) => /ENV\s*prod/.test(c)), 'nom et valeur ensemble dans la pastille');
     assert.ok(!cles.includes('MDP'), 'un paramètre de type mot de passe est écarté');
@@ -180,10 +186,14 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
 
     /* La recherche porte sur ce que la LIGNE MONTRE : chercher une valeur de paramètre qu'on a
        sous les yeux et ne rien trouver est la façon la plus sûre de ne plus s'en servir. */
-    await page.locator('#jenkinsSearch').fill('ENV=prod');
+    await page.locator('#jenkinsSearch').fill('MIGRE=true');
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
     assert.match(await page.locator('#jenkinsBox .jk-row').first().textContent(), /deploy-prod/,
       'un paramètre du dernier lancement retrouve son job');
+
+    // Une valeur portée par plusieurs jobs les retrouve tous — c'est bien le but.
+    await page.locator('#jenkinsSearch').fill('ENV=prod');
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 2);
 
     await page.locator('#jenkinsSearch').fill('Alice');
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
@@ -204,6 +214,62 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.locator('#jenkinsFailOnly').uncheck();
   });
 
+  /* LES PARAMÈTRES QUI REVIENNENT DEVIENNENT DES COLONNES. Sur une installation d'équipe, les
+     mêmes trois ou quatre paramètres reviennent d'un job à l'autre : affichés dans l'ordre
+     propre à chaque job, l'œil doit les rechercher à chaque ligne. L'alignement ne se relit
+     pas, il se MESURE : on compare la position gauche de la pastille d'une ligne à l'autre. */
+  test('un paramètre présent sur trois jobs prend la même place partout', async () => {
+    await allerJenkins();
+    await page.waitForSelector('#jenkinsBox .jk-row');
+
+    const positions = await page.evaluate(() => [...document.querySelectorAll('#jenkinsBox .jk-params')]
+      .map((g) => Object.fromEntries([...g.querySelectorAll('.jk-chip')]
+        .map((c) => [c.querySelector('.jk-chip-k').textContent, Math.round(c.getBoundingClientRect().left)]))));
+    const xDe = (nom) => positions.filter((p) => p[nom] !== undefined).map((p) => p[nom]);
+    assert.ok(xDe('ENV').length >= 3, 'ENV est bien sur au moins trois jobs — sinon le test ne prouve rien');
+    assert.equal(new Set(xDe('ENV')).size, 1, 'ENV doit tomber au MÊME endroit sur toutes les lignes');
+    assert.equal(new Set(xDe('VERSION')).size, 1, 'la deuxième colonne aussi');
+
+    /* LE CAS QUI COMPTE : un job qui n'a PAS la première colonne. Sans case vide, ce qui suit
+       remonterait à sa place et l'alignement s'effondrerait à partir de cette ligne. */
+    const sansVersion = positions.find((p) => p.VERSION === undefined && p.LOT !== undefined);
+    assert.ok(sansVersion, 'le décor doit contenir un job qui saute une colonne');
+    assert.ok(sansVersion.LOT > xDe('VERSION')[0],
+      'la place de la colonne absente reste vide : le reste ne remonte pas dedans');
+
+    // Un paramètre porté par un seul job n'a pas de colonne : il suit, à la fin.
+    const seul = positions.find((p) => p.SEUL !== undefined);
+    assert.ok(seul.SEUL > seul.VERSION, 'ce qui n’appartient qu’à un job vient après les colonnes');
+  });
+
+  test('on filtre sur la valeur d’un paramètre fréquent', async () => {
+    await allerJenkins();
+    await page.waitForSelector('#jenkinsParamFiltres:not([hidden])');
+    /* LE SEUIL EST À TROIS. À deux, une coïncidence entre deux jobs figerait une colonne pour
+       tout le monde ; `LOT` est sur deux jobs et n'en obtient donc pas. */
+    assert.deepEqual(await page.locator('#jenkinsParamFiltres .jk-pf-k').allTextContents(), ['ENV', 'VERSION'],
+      'ENV sur quatre jobs et VERSION sur trois ; LOT sur deux et SEUL sur un n’en méritent pas');
+
+    await page.locator('[data-jkpf="ENV"]').selectOption('dev');
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
+    assert.match(await page.locator('#jenkinsBox .jk-row').first().textContent(), /front-build/);
+
+    /* Une valeur portée par deux jobs les garde tous les deux — et un job qui n'a PAS le
+       paramètre est écarté : il ne répond pas à la question posée. */
+    await page.locator('[data-jkpf="ENV"]').selectOption('prod');
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 2);
+
+    /* Les colonnes ne bougent PAS quand on filtre : elles sont calculées sur TOUS les jobs.
+       Calculées sur ce qui reste, une liste réduite à un job ferait tomber tout le monde sous
+       le seuil — les colonnes disparaîtraient sous les yeux à chaque frappe. */
+    await page.locator('[data-jkpf="ENV"]').selectOption('dev');
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
+    assert.equal(await page.locator('#jenkinsParamFiltres [data-jkpf]').count(), 2,
+      'un seul job affiché, et pourtant les deux colonnes tiennent');
+    await page.locator('[data-jkpf="ENV"]').selectOption('');
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 6);
+  });
+
   /* LE FILTRE PAR DOSSIERS. Il est mémorisé — sinon il faudrait le refaire à chaque
      ouverture, ce qui revient à ne pas l'avoir. Et il mémorise ce qu'on a DÉCOCHÉ : un
      dossier créé demain doit apparaître de lui-même, pas rester invisible pour toujours. */
@@ -212,11 +278,11 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     /* On attend le compte ATTENDU, pas un compte capturé : entre deux rendus la liste passe
        par un squelette à zéro ligne, et une valeur lue là est un piège silencieux. */
     const lignes = (n) => page.waitForFunction((k) => document.querySelectorAll('#jenkinsBox .jk-row').length === k, n);
-    await lignes(5);
+    await lignes(6);
     await page.waitForSelector('#jenkinsFolders:not([hidden])');
 
     await page.locator('[data-jkfolder="boutique"]').uncheck();
-    await lignes(2);   // 5 jobs, dont 3 dans « boutique »
+    await lignes(2);   // 6 jobs, dont 4 dans « boutique »
     assert.equal(await page.locator('#jenkinsBox .jk-row').filter({ hasText: 'boutique/' }).count(), 0);
 
     await page.reload();
@@ -236,7 +302,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await lignes(2);
 
     await page.locator('[data-jkfolder="boutique"]').check();
-    await lignes(5);
+    await lignes(6);
   });
 
   /* MASQUER N'EST PAS DÉCOCHER. Décocher, c'est « pas maintenant » — la case reste sous la
@@ -246,13 +312,13 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
   test('un dossier se masque de la liste des filtres, et se remet', async () => {
     await allerJenkins();
     const lignes = (n) => page.waitForFunction((k) => document.querySelectorAll('#jenkinsBox .jk-row').length === k, n);
-    await lignes(5);
+    await lignes(6);
     // Trois entrées : « batch », « boutique », et la racine — un job hors dossier en est un aussi.
     assert.equal(await page.locator('#jenkinsFolderList [data-jkfolder]').count(), 3);
 
     await page.locator('[data-jkhide="batch"]').click();
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsFolderList [data-jkfolder]').length === 2);
-    await lignes(4);
+    await lignes(5);
     assert.equal(await page.locator('[data-jkfolder="batch"]').count(), 0, 'sa case quitte la liste');
     assert.equal(await page.locator('#jenkinsBox .jk-row').filter({ hasText: 'batch/' }).count(), 0,
       'ses jobs partent avec elle : sinon on aurait des jobs qu’on ne peut plus filtrer');
@@ -266,7 +332,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
 
     await page.reload();
     await allerJenkins();
-    await lignes(4);
+    await lignes(5);
     assert.equal(await page.locator('[data-jkfolder="batch"]').count(), 0, 'le masquage est mémorisé');
 
     // Le détail, et le retour, se font dans la modale.
@@ -274,7 +340,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.waitForSelector('#jenkinsHiddenModal:not([hidden])');
     assert.equal(await page.locator('#jenkinsHiddenList [data-jkshow]').count(), 1);
     await page.locator('[data-jkshow="batch"]').click();
-    await lignes(5);
+    await lignes(6);
     assert.equal(await page.locator('[data-jkfolder="batch"]').isChecked(), true, 'remis, et coché comme avant');
     assert.equal(await page.locator('#jenkinsHiddenModal').isHidden(), true,
       'plus rien à remettre : la modale n’a plus de raison d’être ouverte');
@@ -286,7 +352,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
   test('« tout remettre » vide la liste des masqués d’un coup', async () => {
     await allerJenkins();
     const lignes = (n) => page.waitForFunction((k) => document.querySelectorAll('#jenkinsBox .jk-row').length === k, n);
-    await lignes(5);
+    await lignes(6);
     await page.locator('[data-jkhide="batch"]').click();
     await page.waitForSelector('#jenkinsFolderHidden:not([hidden])');
     await page.locator('[data-jkhide="boutique"]').click();
@@ -295,7 +361,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.locator('#jenkinsFolderHidden').click();
     await page.waitForSelector('#jenkinsHiddenModal:not([hidden])');
     await page.locator('#jenkinsHiddenAll').click();
-    await lignes(5);
+    await lignes(6);
     assert.equal(await page.locator('#jenkinsHiddenModal').isHidden(), true);
     assert.equal(await page.locator('#jenkinsFolderHidden').isHidden(), true);
   });
@@ -305,9 +371,9 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
   test('masquer ne perd pas l’état coché du dossier', async () => {
     await allerJenkins();
     const lignes = (n) => page.waitForFunction((k) => document.querySelectorAll('#jenkinsBox .jk-row').length === k, n);
-    await lignes(5);
+    await lignes(6);
     await page.locator('[data-jkfolder="batch"]').uncheck();
-    await lignes(4);
+    await lignes(5);
     await page.locator('[data-jkhide="batch"]').click();
     await page.waitForSelector('#jenkinsFolderHidden:not([hidden])');
     await page.locator('#jenkinsFolderHidden').click();
@@ -317,7 +383,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     assert.equal(await page.locator('[data-jkfolder="batch"]').isChecked(), false,
       'masquer range la case, ça ne recoche pas à notre place');
     await page.locator('[data-jkfolder="batch"]').check();
-    await lignes(5);
+    await lignes(6);
   });
 
   /* « Tout décocher » après une recherche ne doit toucher QUE ce qu'on voit : sinon le
@@ -334,7 +400,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
 
     await page.locator('#jenkinsFolderSearch').fill('');
     await page.locator('#jenkinsFoldersAll').click();
-    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 5);
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 6);
   });
 
   test('un job désactivé n’a pas de bouton « Lancer »', async () => {
@@ -574,7 +640,8 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
 
   test('un job sans paramètre n’a pas de bouton « Relancer » (ce serait « Lancer »)', async () => {
     await allerJenkins();
-    const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'api-build' }).first();
+    const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'simple' }).first();
+    assert.equal(await ligne.locator('.jk-chip').count(), 0, 'ce job est bien parti sans paramètre');
     assert.equal(await ligne.locator('[data-jkrerun]').count(), 0);
   });
 

@@ -785,6 +785,17 @@ Jenkins already does well, and which there is no point redoing.
   and answering half of it would send you to the job's page. All of it arrives in **the same request** as the list: showing it does not cost one more
   call.
 
+- **Parameters that recur across jobs become COLUMNS.** From **three jobs** on, a parameter
+  counts as frequent: it takes the **same place on every line**, empty slot included — otherwise
+  the next column moves up and the alignment falls apart. Three rather than two: at two, a
+  coincidence between two jobs would freeze a column for everyone. Whatever belongs to a single
+  job follows at the end of the line.
+- **And you can filter on their values.** One dropdown per column, above the jobs: "what went to
+  prod?", "what is running on 2.4?". A job that does **not** carry the parameter is dropped as
+  soon as you filter on it — it does not answer the question asked. Columns are computed on
+  **all** jobs, not on those left after filtering: otherwise the alignment you just gained would
+  change with every keystroke.
+
   ⚠ A **password** parameter is never displayed — Jenkins returns an encrypted form of it,
   unreadable, and a secret has no business in a list — nor is an empty value, which teaches
   nothing and pushes the others off the screen.

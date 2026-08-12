@@ -822,6 +822,17 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   « avec quoi est-il parti ? », et y répondre à moitié obligerait à ouvrir la fiche. Tout cela arrive dans **la même requête** que la liste :
   l'afficher ne coûte pas un appel de plus.
 
+- **Les paramètres qui reviennent d'un job à l'autre deviennent des COLONNES.** À partir de
+  **trois jobs**, un paramètre est considéré comme fréquent : il prend la **même place sur
+  toutes les lignes**, place vide comprise — sinon la colonne suivante remonte et l'alignement
+  ne tient plus. Trois plutôt que deux : à deux, une coïncidence entre deux jobs figerait une
+  colonne pour tout le monde. Ce qui n'appartient qu'à un job suit à la fin de la ligne.
+- **Et on filtre sur leurs valeurs.** Une liste déroulante par colonne, au-dessus des jobs :
+  « qu'est-ce qui est parti en prod ? », « qu'est-ce qui tourne sur la 2.4 ? ». Un job qui **n'a
+  pas** le paramètre est écarté dès qu'on filtre dessus — il ne répond pas à la question posée.
+  Les colonnes sont calculées sur **tous** les jobs, pas sur ceux qui restent après filtrage :
+  sinon l'alignement qu'on vient de gagner changerait à chaque frappe.
+
   ⚠ Un paramètre de type **mot de passe** n'est jamais affiché — Jenkins en rend une forme
   chiffrée, illisible, et un secret n'a rien à faire dans une liste — pas plus qu'une valeur
   vide, qui n'apprend rien et pousse les autres hors de l'écran.
