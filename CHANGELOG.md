@@ -13,6 +13,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **The Jenkins menu carries a badge: how many jobs ran today.** The question you ask walking
+  past the tab is "did anything move this morning?", not "how many jobs exist". It is filled
+  once at startup, like the Docker badge, then kept current by the tab's own refresh — Jenkins
+  is not polled from the other tabs. Nothing ran today means no badge at all: a zero in a menu
+  teaches nothing. A job that ran five times counts once, since the list only carries each job's
+  last build; the tooltip says "jobs", not "runs".
+
 - **Jenkins parameters that recur across jobs carry a colour, and can be filtered.** On a team
   installation the same three or four parameters come back from one job to the next; shown in
   each job's own order, the eye has to hunt for them on every line. From three jobs on, a
@@ -461,6 +468,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   heading that no longer exists.
 
 ### Changed
+
+- **The Jenkins refresh interval is now a setting.** *Settings → Jenkins* holds it — every N
+  minutes, 0 = never, one minute by default and capped at an hour — instead of a hard-coded
+  30 seconds, and it lives in the database like the merge request and Jira intervals rather than
+  in one browser. It applies without reloading the page. The tab's "Do not refresh on its own"
+  checkbox stays as a local, immediate pause that wins without touching the setting.
+
+- **The Jenkins filter dropdowns look like the rest of the tab.** Raw browser selects belonged
+  to neither the chips below nor the folder boxes above; each filter is now a pill — parameter
+  name inside, value on the right, drawn chevron — and it tints when a value is picked, so an
+  active filter is visible without reading it.
 
 - **The Jenkins menu icon says which tab it is.** It used to be the play triangle — the very
   symbol on the tab's own "Run" buttons, which told you the tab could start something rather

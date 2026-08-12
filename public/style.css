@@ -742,11 +742,27 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .jk-chip.jk-c5 { background: color-mix(in srgb, #3fb6c4 16%, transparent); border-color: color-mix(in srgb, #3fb6c4 45%, var(--line)); }
 .jk-chip.jk-c6 { background: color-mix(in srgb, #d07ab0 16%, transparent); border-color: color-mix(in srgb, #d07ab0 45%, var(--line)); }
 .jk-chip.jk-c7 { background: color-mix(in srgb, #8a9b5c 18%, transparent); border-color: color-mix(in srgb, #8a9b5c 48%, var(--line)); }
-.jk-param-filtres { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px;
-  padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
-.jk-pf { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-.jk-pf-k { color: var(--muted); }
-.jk-pf select { max-width: 220px; }
+/* La barre de filtres reprend la forme des pastilles de la liste : chaque filtre est une
+   PILULE — le nom du paramètre dedans, à gauche, la valeur choisie à droite. Une liste
+   déroulante brute du navigateur, posée telle quelle, n'appartenait à aucun des deux mondes.
+   Le chevron est dessiné (le natif ne se style pas), et la liste n'a plus de cadre à elle :
+   c'est la pilule qui fait le cadre. */
+.jk-param-filtres { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.jk-pf { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; padding: 2px 2px 2px 10px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--panel);
+  transition: border-color .12s ease; }
+.jk-pf:hover, .jk-pf:focus-within { border-color: var(--muted); }
+.jk-pf-k { color: var(--muted); letter-spacing: .02em; }
+.jk-pf select {
+  max-width: 220px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12px;
+  padding: 4px 22px 4px 6px; cursor: pointer; -webkit-appearance: none; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%239aa0aa' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 6px center; background-size: 10px;
+}
+.jk-pf select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 999px; }
+/* Une valeur CHOISIE se voit de loin : la pilule se teinte, comme une pastille de paramètre. */
+.jk-pf.jk-pf-on { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+.jk-pf.jk-pf-on select { color: var(--text); font-weight: 550; }
 /* La croix d'un filtre : discrète, révélée au survol — on ouvre la liste bien plus souvent
    qu'on ne range le filtre lui-même. */
 .jk-pf-hide { opacity: 0; color: var(--muted); transition: opacity .12s ease; }

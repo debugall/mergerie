@@ -862,13 +862,23 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   aligne des centaines de jobs. Elle porte sur le **chemin entier**, donc « boutique » retrouve
   tout un projet. Une case **`Seulement ce qui ne va pas`** ne garde que l'échec, l'instable et
   ce qui tourne.
-- **Rafraîchi toutes les 30 s, et seulement quand tu regardes.** L'onglet Jenkins doit être
-  ouvert *et* la fenêtre visible : un sondage qui continue derrière un onglet masqué coûte à un
-  serveur partagé sans rien apprendre à personne. La case **`Ne pas rafraîchir tout seul`** le
-  débraye (le choix est mémorisé), et **`Rafraîchir`** redemande à la main. Un rafraîchissement
+- **Rafraîchi à la cadence que tu choisis, et seulement quand tu regardes.** *Réglages →
+  Jenkins* porte le réglage — **toutes les N minutes, 0 = jamais**, une minute par défaut,
+  plafonné à une heure. Il est en **base**, comme celui des MR et celui de Jira : c'est un
+  réglage de l'outil, pas du navigateur, et il vaut d'où que tu regardes. Le sondage ne tourne
+  que si l'onglet Jenkins est **ouvert** *et* la fenêtre **visible** : derrière un onglet masqué,
+  il coûterait à un serveur partagé sans rien apprendre à personne. La case **`Ne pas rafraîchir
+  tout seul`**, elle, est une **pause locale et immédiate** — elle l'emporte sans toucher au
+  réglage de fond — et **`Rafraîchir`** redemande à la main. Un rafraîchissement
   de fond ne fait pas clignoter la liste, et un réseau qui hoquette n'efface pas l'écran : on
   garde le précédent. Le menu **ne porte pas de pastille** — elle supposerait d'interroger
   Jenkins à chaque ouverture de l'application, même sans être sur l'onglet.
+- **Le menu porte un badge : combien de jobs ont tourné aujourd'hui.** La question qu'on se
+  pose en passant devant l'onglet est « est-ce que ça a bougé ce matin ? ». Il est rempli une
+  fois au démarrage, puis entretenu par le rafraîchissement de l'onglet — Jenkins n'est pas
+  interrogé depuis les autres onglets. Rien aujourd'hui : pas de badge du tout, un zéro dans un
+  menu n'apprend rien. Un job lancé cinq fois compte pour un — la liste ne porte que le dernier
+  build de chacun, et la bulle dit donc « jobs », pas « lancements ».
 - **Prévenu à la fin de ce que TU as lancé.** Une notification bureau quand un job que tu as
   lancé depuis Mergerie se termine, avec son verdict ; un clic ouvre sa fiche. Uniquement les
   tiens : être prévenu du build nocturne de l'équipe serait du bruit, et on couperait tout au

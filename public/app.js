@@ -1353,6 +1353,12 @@ async function refreshStatus() {
     marquerEnCours(s.running ? s.targets : null);
     jiraConfigured = !!s.jiraConfigured;
     setupAutoRefreshPolling(s.autoRefreshMinutes); // (re)configure le polling front si besoin
+    /* Cadence Jenkins : relue à chaque état, donc changer le réglage s'applique tout de suite.
+       Absente (vieux serveur) → on garde la valeur en cours plutôt que de couper le sondage. */
+    if (s.jenkinsRefreshMinutes !== undefined) {
+      const ms = Number(s.jenkinsRefreshMinutes) > 0 ? Number(s.jenkinsRefreshMinutes) * 60000 : 0;
+      if (ms !== jkPeriodeMs) { jkPeriodeMs = ms; jkAutoRelance(); }
+    }
     $('#dryBadge').hidden = !s.dryRun;
     const job = s.job;
     const running = s.running;
@@ -3498,7 +3504,7 @@ $('#ticketSave').addEventListener('click', async () => {
 // itèrent dessus (une divergence entre les deux = un champ qui ne s'enregistre pas,
 // exactement le bug qu'ont connu jira_email / jira_token).
 const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'access_token',
-  'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token',
+  'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'clone_path', 'review_skill', 'prompt_review', 'prompt_explain', 'prompt_modify',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
   'stale_mr_days'];
@@ -3513,6 +3519,7 @@ async function loadConfig() {
   // Atterrissage sur le brief : coché par défaut, comme côté serveur.
   if (f.brief_on_open) f.brief_on_open.checked = c.brief_on_open !== '0';
   if (f.stale_mr_days) f.stale_mr_days.value = Number(c.stale_mr_days) || 5;
+  if (f.jenkins_refresh_minutes) f.jenkins_refresh_minutes.value = Number(c.jenkins_refresh_minutes) || 0;
   renderNotifSettings();
 }
 $('#configForm').addEventListener('submit', async (e) => {
@@ -12227,6 +12234,7 @@ rafraichirHistCount();
 refreshOpenTodos();     // l'anti-doublon d'« Ajouter aux todos » a besoin de la liste
 pollReminders();        // rattrapage des rappels échus pendant que l'onglet était fermé
 refreshDockerBadges(); // badge santé Docker visible dès le démarrage, sans ouvrir l'onglet
+amorcerBadgeJenkins();  // « combien de jobs ont tourné aujourd'hui », sans ouvrir l'onglet
 // Rafraîchissement PÉRIODIQUE du badge santé Docker : on voit un container qui bascule en
 // restarting/unhealthy (rouge/orange dans le titre du menu) même sans être sur l'onglet Docker.
 // Léger : /docker/summary = un seul `docker ps -a` (pas d'inspect/compose config). En pause
@@ -12324,8 +12332,44 @@ async function loadJenkins({ silencieux = false } = {}) {
     return;   // en silencieux, on garde l'écran précédent : un réseau qui hoquette n'efface rien
   }
   renderJenkins();
+  majBadgeJenkins();
   jkVerifierFins(JENKINS.jobs);
   jkAutoRelance();
+}
+
+/* LE BADGE DU MENU : combien de jobs ont tourné AUJOURD'HUI. La question qu'on se pose en
+   passant devant l'onglet est « est-ce que ça a bougé ce matin ? », pas « combien de jobs
+   existe-t-il ». On compte donc les jobs dont le dernier lancement tombe dans la journée en
+   cours — heure locale, celle de la personne qui regarde.
+
+   Un job lancé cinq fois compte pour un : la liste ne porte que le DERNIER build de chacun,
+   et prétendre compter les exécutions demanderait d'interroger l'historique de chaque job à
+   chaque rafraîchissement. Le titre du badge dit donc « jobs », pas « lancements ». */
+function jkAujourdhui(jobs) {
+  const debut = new Date(); debut.setHours(0, 0, 0, 0);
+  return (jobs || []).filter((j) => j.last && j.last >= debut.getTime()).length;
+}
+
+function majBadgeJenkins() {
+  const el = $('#navCountJenkins');
+  if (!el) return;
+  const n = jkAujourdhui(JENKINS.jobs);
+  el.textContent = String(n);
+  el.hidden = !n;
+  el.title = tr('jenkins.nav.today', { n, count: n });
+}
+
+/* Une fois au démarrage, pour que le badge existe sans avoir ouvert l'onglet — comme celui de
+   Docker. Ensuite c'est le rafraîchissement de l'onglet qui l'entretient : on ne sonde pas
+   Jenkins en continu depuis les autres onglets. Silencieux : Jenkins non configuré,
+   injoignable ou lent ne doit rien afficher ni rien signaler au démarrage. */
+async function amorcerBadgeJenkins() {
+  try {
+    const d = await api('/jenkins/jobs');
+    if (d.configured === false) return;
+    JENKINS.jobs = d.jobs || [];
+    majBadgeJenkins();
+  } catch { /* pas de badge, et c'est tout */ }
 }
 
 function jkStatutLabel(j) {
@@ -12538,7 +12582,7 @@ function renderJenkinsParamFiltres() {
     const valeurs = [...new Set(JENKINS.jobs.flatMap((j) => (j.lastParams || [])
       .filter((p) => p.name === nom).map((p) => String(p.value))))].sort((a, b) => a.localeCompare(b));
     const choisie = (JENKINS.paramFiltres || {})[nom] || '';
-    return `<label class="jk-pf"><span class="jk-pf-k">${esc(nom)}</span>
+    return `<label class="jk-pf${choisie ? ' jk-pf-on' : ''}"><span class="jk-pf-k">${esc(nom)}</span>
       <select data-jkpf="${esc(nom)}">
         <option value="">${esc(tr('jenkins.param.all'))}</option>
         ${valeurs.map((v) => `<option value="${esc(v)}"${v === choisie ? ' selected' : ''}>${esc(v)}</option>`).join('')}
@@ -12615,7 +12659,12 @@ function renderJenkinsMasques() {
    ouverture n'est pas un réglage. */
 const JENKINS_AUTO = 'mergerie_jenkins_auto';
 const JENKINS_LANCES = 'mergerie_jenkins_lances';
-const JK_PERIODE_MS = 30000;
+/* La cadence vient des RÉGLAGES (Réglages → Jenkins), comme celle des MR et celle de Jira :
+   c'est un réglage de l'outil, pas du navigateur, et il doit valoir d'où qu'on regarde. Elle
+   arrive par /api/status, avec le reste de l'état — un changement s'applique donc sans
+   recharger la page. 0 = jamais. La case « ne pas rafraîchir tout seul » reste, elle, une pause
+   locale et immédiate : elle l'emporte sans toucher au réglage de fond. */
+let jkPeriodeMs = 60000;
 let jkTimer = null;
 
 const jkAutoCoupe = () => { try { return localStorage.getItem(JENKINS_AUTO) === '0'; } catch { return false; } };
@@ -12623,12 +12672,12 @@ const jkAutoCoupe = () => { try { return localStorage.getItem(JENKINS_AUTO) === 
 function jkAutoRelance() {
   if (jkTimer) { clearInterval(jkTimer); jkTimer = null; }
   const onglet = $('#tab-jenkins');
-  if (!onglet || !onglet.classList.contains('active') || jkAutoCoupe()) return;
+  if (!onglet || !onglet.classList.contains('active') || jkAutoCoupe() || !jkPeriodeMs) return;
   jkTimer = setInterval(() => {
     // Onglet du navigateur masqué : on ne demande rien. Il redemandera au retour.
     if (document.hidden || !$('#tab-jenkins').classList.contains('active')) return;
     loadJenkins({ silencieux: true });
-  }, JK_PERIODE_MS);
+  }, jkPeriodeMs);
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) jkAutoRelance(); });
 

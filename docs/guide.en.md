@@ -824,13 +824,22 @@ Jenkins already does well, and which there is no point redoing.
 - **Finding a job.** A **search** — mandatory here: a company installation lines up hundreds of
   jobs. It matches the **whole path**, so "shop" brings back a whole project. A checkbox,
   **`Only what is not fine`**, keeps failures, unstable results and what is running.
-- **Refreshed every 30 s, and only while you are looking.** The Jenkins tab must be open *and*
-  the window visible: polling behind a hidden tab costs a shared server without teaching anyone
-  anything. The **`Do not refresh on its own`** checkbox turns it off (the choice is
-  remembered), and **`Refresh`** asks again by hand. A background refresh does not make the list
+- **Refreshed at the pace you choose, and only while you are looking.** *Settings → Jenkins*
+  holds the setting — **every N minutes, 0 = never**, one minute by default, capped at an hour.
+  It lives in the **database**, like the merge request and Jira ones: it is a setting of the
+  tool, not of the browser, and it holds wherever you look from. Polling only runs while the
+  Jenkins tab is **open** *and* the window **visible**: behind a hidden tab it would cost a
+  shared server without teaching anyone anything. The **`Do not refresh on its own`** checkbox is
+  a **local, immediate pause** — it wins without touching the underlying setting — and
+  **`Refresh`** asks again by hand. A background refresh does not make the list
   blink, and a hiccuping network does not wipe the screen: the previous one stays. The menu
   **carries no badge** — that would mean querying Jenkins on every application start, even when
   you are not on the tab.
+- **The menu carries a badge: how many jobs ran today.** The question you ask walking past the
+  tab is "did anything move this morning?". It is filled once at startup, then kept current by
+  the tab's own refresh — Jenkins is not queried from the other tabs. Nothing today means no
+  badge at all: a zero in a menu teaches nothing. A job that ran five times counts once — the
+  list only carries each job's last build, so the tooltip says "jobs", not "runs".
 - **Told when what YOU started is done.** A desktop notification when a job you started from
   Mergerie finishes, with its verdict; one click opens its page. Yours only: being told about
   the team's nightly build would be noise, and you would turn the whole thing off within two

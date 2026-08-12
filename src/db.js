@@ -220,6 +220,10 @@ try { db.exec("ALTER TABLE config ADD COLUMN jira_token TEXT DEFAULT ''"); } cat
 try { db.exec("ALTER TABLE config ADD COLUMN jenkins_url TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 try { db.exec("ALTER TABLE config ADD COLUMN jenkins_user TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 try { db.exec("ALTER TABLE config ADD COLUMN jenkins_token TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+/* Cadence de rafraîchissement de l'onglet Jenkins, en minutes (0 = jamais). En base et non en
+   localStorage, comme celle des MR et celle de Jira : c'est un réglage de l'OUTIL, et il doit
+   valoir quel que soit le navigateur d'où on le regarde. */
+try { db.exec('ALTER TABLE config ADD COLUMN jenkins_refresh_minutes INTEGER DEFAULT 1'); } catch { /* déjà présente */ }
 // Migration : message de commit personnalisable des tâches.
 /* LE VÉRIFICATEUR D'UNE SESSION, facultatif. Rattaché à la session et non au lancement :
    relancer la même session doit revérifier de la même façon, sans qu'on ait à s'en souvenir.

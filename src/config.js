@@ -15,7 +15,7 @@ const ALLOWED = [
   'prompt_review', 'prompt_explain', 'prompt_modify', 'review_skill', 'language',
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
   'brief_on_open',
-  'jenkins_url', 'jenkins_user', 'jenkins_token',
+  'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
 ];
 
 function updateConfig(patch) {
@@ -39,6 +39,13 @@ function updateConfig(patch) {
   if ('jira_watch_minutes' in patch) {
     const w = parseInt(patch.jira_watch_minutes, 10);
     next.jira_watch_minutes = (!Number.isFinite(w) || w <= 0) ? 0 : Math.max(1, w);
+  }
+  /* Onglet Jenkins : 0 = pas de rafraîchissement automatique, sinon au moins une minute et au
+     plus une heure. Le plancher protège l'installation partagée — une liste de trois cents jobs
+     redemandée toutes les dix secondes pèse sur tout le monde, pas seulement sur soi. */
+  if ('jenkins_refresh_minutes' in patch) {
+    const jr = parseInt(patch.jenkins_refresh_minutes, 10);
+    next.jenkins_refresh_minutes = (!Number.isFinite(jr) || jr <= 0) ? 0 : Math.min(60, Math.max(1, jr));
   }
   /* Rétention de l'historique : 0 = illimité, sinon au moins 7 jours. Le plancher évite
      qu'une saisie à « 1 » n'efface le journal du job qu'on est en train de lire. */
@@ -94,7 +101,8 @@ function updateConfig(patch) {
       stale_mr_days = @stale_mr_days,
       jenkins_url = @jenkins_url,
       jenkins_user = @jenkins_user,
-      jenkins_token = @jenkins_token
+      jenkins_token = @jenkins_token,
+      jenkins_refresh_minutes = @jenkins_refresh_minutes
     WHERE id = 1`).run(next);
   return getConfig();
 }

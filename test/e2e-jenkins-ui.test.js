@@ -687,6 +687,39 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.waitForSelector('#jenkinsModal[hidden]', { state: 'attached' });
   });
 
+  /* LE BADGE DU MENU : ce qui a tourné AUJOURD'HUI, pas le nombre de jobs. La question qu'on
+     se pose en passant devant l'onglet est « est-ce que ça a bougé ce matin ? ». */
+  test('le badge du menu compte les jobs qui ont tourné aujourd’hui', async () => {
+    // On REND le décor : les tests partagent le faux serveur, et les suivants comptent sur le sien.
+    const decor = mock.state.jobs;
+    // Un décor daté à la main : deux jobs ce matin, un la semaine dernière.
+    const hier = Date.now() - 8 * 86400000;
+    const cesMatin = Date.now() - 3600000;
+    mock.state.jobs = [
+      { name: 'a', color: 'blue', buildable: true, lastBuild: { number: 1, timestamp: cesMatin, actions: [] } },
+      { name: 'b', color: 'blue', buildable: true, lastBuild: { number: 2, timestamp: cesMatin, actions: [] } },
+      { name: 'c', color: 'blue', buildable: true, lastBuild: { number: 3, timestamp: hier, actions: [] } },
+      { name: 'jamais', color: 'notbuilt', buildable: true },
+    ];
+    await allerJenkins();
+    await page.locator('#jenkinsReload').click();
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 4);
+
+    const badge = page.locator('#navCountJenkins');
+    assert.equal(await badge.textContent(), '2',
+      'deux jobs ce matin ; celui de la semaine dernière et celui qui n’a jamais tourné ne comptent pas');
+    assert.equal(await badge.isHidden(), false);
+
+    // Rien aujourd'hui : pas de badge du tout — un « 0 » dans le menu n'apprend rien.
+    mock.state.jobs = [{ name: 'c', color: 'blue', buildable: true, lastBuild: { number: 3, timestamp: hier, actions: [] } }];
+    await page.locator('#jenkinsReload').click();
+    await page.waitForFunction(() => document.querySelector('#navCountJenkins').hidden);
+
+    mock.state.jobs = decor;
+    await page.locator('#jenkinsReload').click();
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 6);
+  });
+
   /* LE LIEN VERS JENKINS. Il s'ouvre dans un nouvel onglet, et il ne relaie que du http(s) :
      l'URL vient de Jenkins, donc de l'extérieur. */
   test('chaque ligne porte un lien vers le job dans Jenkins', async () => {

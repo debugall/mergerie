@@ -147,6 +147,7 @@ app.get('/api/status', wrap((req, res) => {
     targets: jobs.runningTargets(),
     queued: jobs.queueCount(),
     autoRefreshMinutes: Number(getConfig().auto_refresh_minutes) || 0,
+    jenkinsRefreshMinutes: Number(getConfig().jenkins_refresh_minutes) || 0,
     jiraConfigured: jira.isConfigured(getConfig()), // pilote l'UI « enrichir depuis Jira »
     githubConfigured: forge.isConfigured(getConfig(), 'github'), // pilote l'UI « ajout en masse depuis GitHub »
   });

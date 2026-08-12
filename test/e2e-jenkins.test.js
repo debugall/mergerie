@@ -99,4 +99,24 @@ describe('Jenkins — routes', () => {
     assert.deepEqual({ c: r.body.configured, n: r.body.jobs.length }, { c: false, n: 0 });
     assert.equal((await app.api('POST', '/api/jenkins/test', {})).status, 400, 'tester sans rien, en revanche, est une erreur');
   });
+
+  /* LA CADENCE EST UN RÉGLAGE DE L'OUTIL, comme celle des MR et celle de Jira : en base, pas
+     dans le navigateur, et bornée — une liste de trois cents jobs redemandée toutes les dix
+     secondes pèse sur une installation partagée, pas seulement sur celui qui l'a réglée. */
+  test('la cadence de rafraîchissement se règle, et reste bornée', async () => {
+    const lire = () => app.api('GET', '/api/status').then((r) => r.body.jenkinsRefreshMinutes);
+    assert.equal(await lire(), 1, 'une minute par défaut');
+
+    await app.api('PUT', '/api/config', { jenkins_refresh_minutes: '5' });
+    assert.equal(await lire(), 5, 'l’écran la lit dans /status : changer le réglage s’applique sans recharger');
+
+    await app.api('PUT', '/api/config', { jenkins_refresh_minutes: '0' });
+    assert.equal(await lire(), 0, '0 = jamais : seul le bouton Rafraîchir demande alors l’état');
+
+    await app.api('PUT', '/api/config', { jenkins_refresh_minutes: '999' });
+    assert.equal(await lire(), 60, 'plafonnée à l’heure');
+    await app.api('PUT', '/api/config', { jenkins_refresh_minutes: 'x' });
+    assert.equal(await lire(), 0, 'une saisie illisible coupe le sondage plutôt que d’inventer une cadence');
+    await app.api('PUT', '/api/config', { jenkins_refresh_minutes: '1' });
+  });
 });
