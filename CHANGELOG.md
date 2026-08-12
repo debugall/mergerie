@@ -462,6 +462,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **The Jenkins menu icon says which tab it is.** It used to be the play triangle — the very
+  symbol on the tab's own "Run" buttons, which told you the tab could start something rather
+  than what it was. It is now a pipeline: one stage feeding the next, which is what a Jenkins
+  job is, and it cannot be mistaken for the git branch icon two rows above.
+
 - **The parameters in the Jenkins list are readable.** They sit on their own line as
   name/value chips instead of trailing the status, the date and the author — all grey, all
   separated by middle dots, which read as a sentence rather than as pairs.
