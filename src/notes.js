@@ -161,14 +161,20 @@ function slugifier(titre) {
 const ORDRE_TODO = `ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
   CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at, id DESC`;
 
-/* L'ORDRE DE LA LISTE « À FAIRE » EST CELUI QU'ON LUI DONNE. Le tri automatique répond à
-   « qu'est-ce qui presse » ; il ne répond pas à « dans quel ordre je m'y prends ce matin »,
-   et une liste qui se réarrange toute seule après chaque geste ne se réordonne pas.
+/* LA PRIORITÉ D'ABORD, L'ORDRE CHOISI ENSUITE. Deux questions différentes, et chacune garde
+   sa réponse : la priorité dit ce qui presse, l'ordre manuel dit dans quel ordre je m'y prends
+   à l'intérieur de ce qui presse. Les mélanger — trier tout à la main — laisserait une haute
+   au fond de la liste ; l'inverse — tout automatique — empêchait de s'organiser.
 
-   Priorité et échéance ne disparaissent pas pour autant : elles restent affichées, et ce sont
-   toujours elles qui alimentent le brief et les pastilles du menu. Une todo SANS position est
-   neuve : elle se range en tête, là où on vient de la taper. */
-const ORDRE_MANUEL = 'ORDER BY (position IS NULL) DESC, position, id DESC';
+   Conséquence à assumer : réordonner ne déplace une todo QUE dans son groupe de priorité. La
+   sortir de son groupe demanderait de changer sa priorité, ce qui est un autre geste, et
+   l'écran ne propose donc pas de l'y emmener.
+
+   Une todo SANS position est neuve : elle se range en tête de SON groupe, là où on vient de la
+   taper. L'échéance ne trie plus rien ici — elle reste affichée, et c'est elle qui pilote le
+   brief et les rappels. */
+const ORDRE_MANUEL = `ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+  (position IS NULL) DESC, position, id DESC`;
 
 /* Trois vues, et une seule règle à retenir : les archivées ne se mélangent JAMAIS aux
    autres. « open » et « done » sont des états de travail, « archived » est un tiroir.

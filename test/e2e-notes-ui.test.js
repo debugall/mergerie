@@ -397,6 +397,28 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     assert.equal(await page.locator('#todoList .todo-row [data-todo-down]').last().isDisabled(), true);
   });
 
+  /* LA PRIORITÉ PASSE DEVANT. On ne réordonne donc qu'à l'intérieur d'un groupe : emmener une
+     todo dans un autre groupe la ferait revenir aussitôt, et un geste qui n'aboutit pas est
+     pire que pas de geste — les flèches s'éteignent aux frontières. */
+  test('une haute reste en tête, et les flèches ne traversent pas les priorités', async () => {
+    await page.locator('#tab-notes .subnav button[data-nsub="todos"]').click();
+    await page.evaluate(async () => {
+      await fetch('/api/todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'zzz-haute', priority: 'high' }) });
+    });
+    await page.evaluate(() => window.loadTodos());
+    await page.waitForFunction(() => /zzz-haute/.test(document.querySelector('#todoList .todo-row').textContent));
+
+    const premiere = page.locator('#todoList .todo-row').first();
+    assert.equal(await premiere.getAttribute('data-prio'), 'high',
+      'placée en dernier ou non, une haute reste en tête : la priorité dit ce qui presse');
+    assert.equal(await premiere.locator('[data-todo-down]').isDisabled(), true,
+      'seule de son groupe : elle n’a nulle part où descendre');
+
+    // La première du groupe suivant ne peut pas remonter dans le groupe des hautes.
+    const suivante = page.locator('#todoList .todo-row').nth(1);
+    assert.equal(await suivante.locator('[data-todo-up]').isDisabled(), true);
+  });
+
   /* Les faites et les archivées ont un ordre chronologique qui leur est propre : les arranger
      à la main n'aurait aucun sens, et les poignées y seraient un piège. */
   test('la vue « faites » ne se réordonne pas', async () => {

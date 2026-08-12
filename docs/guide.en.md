@@ -416,17 +416,19 @@ per calendar day, never twice — otherwise every page reload would drag back to
 reading a report. Switch it off in *Settings → General*.
 
 #### Todos
-A flat list, **in the order you give it**: "to do" reorders with the mouse (grip on the left,
-drag and drop) or with the keyboard (two arrows per row — dragging is neither announceable nor reliable
-with a keyboard or a finger). The order is **saved**: an order that does not survive a reload is not an
-order.
+A flat list, sorted **by priority first, then in the order you give it**. Two different questions, each
+keeping its answer: priority says **what is pressing**, your order says **in which order you work through
+it**. "To do" reorders with the mouse (grip on the left, drag and drop) or with the keyboard (two arrows
+per row — dragging is neither announceable nor reliable with a keyboard or a finger), and the order is
+**saved**: an order that does not survive a reload is not an order.
 
-⚠ **Priority and due date no longer sort this list** — they are still displayed, and they still feed the
-**morning brief** and the **menu badges**. Automatic sorting answered "what is pressing"; it did not
-answer "in which order am I going to work this morning", and a list that rearranges itself after every
-gesture cannot be reordered. On the day of the update your list keeps exactly the order it had — nobody's
-todos get reordered to announce that they can be reordered. The **Done** and **Archived** views keep their
-chronological order: you do not arrange your drawer.
+⚠ **Reordering only happens inside a priority.** Taking a todo into another group would bring it straight
+back, and a gesture that does not land is worse than no gesture: the arrows switch off at group
+boundaries, and dragging does not cross them. To change group you change the **priority** — a different
+gesture, and an explicit one. The **due date** no longer sorts anything here: it stays visible and keeps
+feeding the **morning brief** and the **reminders**. On the day of the update your list keeps exactly the
+order it had. The **Done** and **Archived** views keep their chronological order: you do not arrange your
+drawer.
 
 - **Inline add** at the top of the list: you type, Enter, it exists — normal priority, no date. A new todo
   goes **to the top**, where you just typed it; looking for it at the bottom of a list of thirty would be

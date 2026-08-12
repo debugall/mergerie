@@ -9719,7 +9719,11 @@ function renderTodos(rows) {
   /* On ne réordonne que « à faire » : les faites et les archivées ont un ordre chronologique
      qui leur est propre, et les arranger à la main n'aurait aucun sens. */
   const ordonnable = NOTES.filter === 'open';
-  box.innerHTML = rows.map((t, i) => `<div class="todo-row card${t.status === 'done' ? ' done' : ''}${ordonnable ? ' todo-move' : ''}" data-todo="${t.id}"${ordonnable ? ' draggable="true"' : ''}>
+  /* On ne réordonne qu'À L'INTÉRIEUR d'une priorité : la liste est d'abord triée par priorité,
+     donc emmener une todo dans un autre groupe la ferait revenir aussitôt — un geste qui
+     n'aboutit pas est pire que pas de geste. Les flèches s'éteignent donc aux bords du groupe. */
+  const memeGroupe = (a, b2) => a && b2 && a.priority === b2.priority;
+  box.innerHTML = rows.map((t, i) => `<div class="todo-row card${t.status === 'done' ? ' done' : ''}${ordonnable ? ' todo-move' : ''}" data-todo="${t.id}" data-prio="${esc(t.priority)}"${ordonnable ? ' draggable="true"' : ''}>
       ${ordonnable ? `<span class="todo-grip" aria-hidden="true" title="${esc(tr('notes.todo.reorder-title'))}">${svgIco('grip')}</span>` : ''}
       <input type="checkbox" class="todo-check" data-todo-check="${t.id}"${t.status === 'done' ? ' checked' : ''} aria-label="${esc(tr('notes.todo.done'))}" />
       <div class="brief-item-main">
@@ -9729,8 +9733,8 @@ function renderTodos(rows) {
         ${t.note ? `<div class="todo-note md-body">${renderNoteMd(t.note)}</div>` : ''}
       </div>
       ${t.due_at && t.status === 'open' ? todoSnoozeHtml(t.id) : ''}
-      ${ordonnable ? `<button type="button" class="btn btn-sm btn-ghost" data-todo-up="${t.id}"${i === 0 ? ' disabled' : ''} title="${esc(tr('notes.todo.up'))}" aria-label="${esc(tr('notes.todo.up'))}">${svgIco('up')}</button>
-      <button type="button" class="btn btn-sm btn-ghost" data-todo-down="${t.id}"${i === rows.length - 1 ? ' disabled' : ''} title="${esc(tr('notes.todo.down'))}" aria-label="${esc(tr('notes.todo.down'))}">${svgIco('down')}</button>` : ''}
+      ${ordonnable ? `<button type="button" class="btn btn-sm btn-ghost" data-todo-up="${t.id}"${memeGroupe(rows[i - 1], t) ? '' : ' disabled'} title="${esc(tr('notes.todo.up'))}" aria-label="${esc(tr('notes.todo.up'))}">${svgIco('up')}</button>
+      <button type="button" class="btn btn-sm btn-ghost" data-todo-down="${t.id}"${memeGroupe(rows[i + 1], t) ? '' : ' disabled'} title="${esc(tr('notes.todo.down'))}" aria-label="${esc(tr('notes.todo.down'))}">${svgIco('down')}</button>` : ''}
       <button type="button" class="btn btn-sm btn-ghost" data-todo-edit="${t.id}" title="${esc(tr('notes.todo.edit-title'))}">${svgIco('edit')}</button>
       <button type="button" class="btn btn-sm btn-ghost btn-danger" data-todo-del="${t.id}" title="${esc(tr('notes.todo.delete-title'))}">${svgIco('trash')}</button>
     </div>`).join('');
@@ -9749,10 +9753,13 @@ async function enregistrerOrdreTodos(ids) {
 }
 
 function deplacerTodo(id, delta) {
-  const ids = NOTES.affichees.map((t) => t.id);
-  const i = ids.indexOf(Number(id));
+  const liste = NOTES.affichees;
+  const i = liste.findIndex((t) => t.id === Number(id));
   const j = i + delta;
-  if (i === -1 || j < 0 || j >= ids.length) return;
+  if (i === -1 || j < 0 || j >= liste.length) return;
+  // Jamais hors du groupe de priorité : la todo reviendrait à sa place au rendu suivant.
+  if (liste[j].priority !== liste[i].priority) return;
+  const ids = liste.map((t) => t.id);
   ids.splice(j, 0, ids.splice(i, 1)[0]);
   enregistrerOrdreTodos(ids);
 }
@@ -9779,7 +9786,8 @@ $('#todoList') && $('#todoList').addEventListener('dragover', (e) => {
   if (!todoTire) return;
   e.preventDefault();
   const cible = e.target.closest('.todo-row.todo-move');
-  if (!cible || cible === todoTire) return;
+  // Même règle que les flèches : on ne traverse pas une frontière de priorité.
+  if (!cible || cible === todoTire || cible.dataset.prio !== todoTire.dataset.prio) return;
   const r = cible.getBoundingClientRect();
   // Au-dessus ou en dessous, selon le côté de la ligne où l'on est : le geste se voit.
   cible.parentNode.insertBefore(todoTire, e.clientY < r.top + r.height / 2 ? cible : cible.nextSibling);

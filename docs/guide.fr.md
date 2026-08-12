@@ -431,18 +431,20 @@ dernier onglet consulté. Une fois par jour calendaire, jamais deux — sinon ch
 sur le brief celui qui lisait un rapport. Débrayable dans *Réglages → Général*.
 
 #### Todos
-Une liste plate, **dans l'ordre que tu lui donnes** : « à faire » se réordonne à la souris (poignée à
-gauche, glisser-déposer) ou au clavier (deux flèches par ligne — glisser n'est ni annonçable ni fiable au
-clavier et au doigt). L'ordre est **enregistré** : un ordre qui ne survit pas au rechargement n'est pas un
+Une liste plate, triée **par priorité d'abord, puis dans l'ordre que tu lui donnes**. Deux questions
+différentes, chacune garde sa réponse : la priorité dit **ce qui presse**, ton ordre dit **dans quel ordre
+tu t'y prends** à l'intérieur de ce qui presse. « À faire » se réordonne à la souris (poignée à gauche,
+glisser-déposer) ou au clavier (deux flèches par ligne — glisser n'est ni annonçable ni fiable au clavier
+et au doigt), et l'ordre est **enregistré** : un ordre qui ne survit pas au rechargement n'est pas un
 ordre.
 
-⚠ **Priorité et échéance ne trient plus cette liste** — elles restent affichées, et ce sont toujours elles
-qui alimentent le **brief du matin** et les **pastilles du menu**. Le tri automatique répondait à
-« qu'est-ce qui presse » ; il ne répondait pas à « dans quel ordre je m'y prends ce matin », et une liste
-qui se réarrange après chaque geste ne se réordonne pas. Le jour de la mise à jour, ta liste garde
-exactement l'ordre qu'elle avait — on ne réordonne pas les todos de quelqu'un pour lui annoncer qu'il peut
-les réordonner. Les vues **Faites** et **Archivées** gardent, elles, leur ordre chronologique : on n'arrange
-pas son tiroir.
+⚠ **On ne réordonne qu'à l'intérieur d'une priorité.** Emmener une todo dans un autre groupe la ferait
+revenir aussitôt, et un geste qui n'aboutit pas est pire que pas de geste : les flèches s'éteignent aux
+frontières de groupe, et le glisser ne les traverse pas. Pour changer de groupe, on change la **priorité**
+— c'est un autre geste, et il est explicite. L'**échéance**, elle, ne trie plus rien ici : elle reste
+affichée et continue d'alimenter le **brief du matin** et les **rappels**. Le jour de la mise à jour, ta
+liste garde exactement l'ordre qu'elle avait. Les vues **Faites** et **Archivées** gardent leur ordre
+chronologique : on n'arrange pas son tiroir.
 
 - **Ajout inline** en tête de liste : on tape, Entrée, c'est créé — priorité normale, sans date. Une todo
   neuve se range **en tête**, là où on vient de la taper ; la chercher en bas d'une liste de trente serait

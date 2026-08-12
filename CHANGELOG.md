@@ -13,13 +13,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
-- **The todo list can be arranged by hand.** Drag a row by its grip, or use the two arrows on
-  each row — dragging is neither announceable nor reliable with a keyboard or a finger. The order
-  is saved, and a new todo lands at the top, where you just typed it. Priority and due date are
-  still shown and still drive the morning brief and the menu badges, but they no longer sort this
-  list: a list that rearranges itself after every gesture cannot be reordered. Existing lists keep
-  the exact order they had. Done and archived todos keep their chronological order — you do not
-  arrange your drawer.
+- **The todo list can be arranged by hand, inside each priority.** Priority still comes first —
+  it answers "what is pressing" — and your own order arranges what sits inside it: drag a row by
+  its grip, or use the two arrows on each row, since dragging is neither announceable nor reliable
+  with a keyboard or a finger. Reordering never crosses a priority boundary: the todo would spring
+  back, and a gesture that does not land is worse than no gesture; changing group means changing
+  the priority, which is an explicit gesture of its own. The order is saved, a new todo lands at
+  the top of its group where you just typed it, and the due date keeps feeding the morning brief
+  and the reminders. Existing lists keep the exact order they had, and done and archived todos
+  keep their chronological order — you do not arrange your drawer.
 
 - **Inline comments can now wait.** Next to "Comment on GitLab", which still publishes right
   away, a `Save` button keeps the remark pending and local: you review a merge request file by
