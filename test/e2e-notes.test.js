@@ -438,3 +438,50 @@ describe('Sauvegarde', () => {
       'les tables vivent dans la base du dataDir, donc dans la sauvegarde');
   });
 });
+
+describe('Ordre de la liste « à faire »', () => {
+  /* Le tri automatique répond à « qu'est-ce qui presse » ; il ne répond pas à « dans quel
+     ordre je m'y prends ce matin ». La liste suit donc l'ordre qu'on lui donne — priorité et
+     échéance restent affichées et continuent d'alimenter le brief et les pastilles du menu. */
+  const titres = () => app.api('GET', '/api/todos').then((r) => r.body.todos.map((t) => t.title));
+
+  /* LA PRIORITÉ D'ABORD, L'ORDRE CHOISI ENSUITE : deux questions différentes, chacune garde sa
+     réponse. Tout trier à la main laisserait une haute au fond de la liste ; tout automatique
+     empêchait de s'organiser. */
+  test('la priorité passe devant, et l’ordre choisi range l’intérieur du groupe', async () => {
+    for (const t of (await app.api('GET', '/api/todos')).body.todos) await app.api('DELETE', `/api/todos/${t.id}`);
+    const n1 = (await app.api('POST', '/api/todos', { title: 'N1', priority: 'normal' })).body;
+    const n2 = (await app.api('POST', '/api/todos', { title: 'N2', priority: 'normal' })).body;
+    const n3 = (await app.api('POST', '/api/todos', { title: 'N3', priority: 'normal' })).body;
+    const haute = (await app.api('POST', '/api/todos', { title: 'H', priority: 'high' })).body;
+
+    assert.equal((await app.api('POST', '/api/todos/reorder', { ids: [n3.id, n1.id, n2.id, haute.id] })).status, 200);
+    assert.deepEqual(await titres(), ['H', 'N3', 'N1', 'N2'],
+      'la haute reste en tête même placée en dernier : la priorité dit ce qui presse');
+    // Il tient d'un appel à l'autre — sinon ce n'est pas un ordre, c'est un accident.
+    assert.deepEqual(await titres(), ['H', 'N3', 'N1', 'N2']);
+
+    /* Une todo NEUVE se range en tête de SON groupe, là où on vient de la taper : la chercher
+       en bas d'une liste de trente serait absurde. */
+    await app.api('POST', '/api/todos', { title: 'D' });
+    assert.deepEqual(await titres(), ['H', 'D', 'N3', 'N1', 'N2']);
+
+    // Changer la priorité d'une todo la fait changer de groupe, sans toucher à l'ordre du reste.
+    await app.api('PUT', `/api/todos/${n1.id}`, { priority: 'low' });
+    assert.deepEqual(await titres(), ['H', 'D', 'N3', 'N2', 'N1']);
+  });
+
+  test('cocher une todo ne dérange pas l’ordre des autres', async () => {
+    const avant = await titres();
+    const liste = (await app.api('GET', '/api/todos')).body.todos;
+    await app.api('PUT', `/api/todos/${liste[1].id}`, { status: 'done' });
+    assert.deepEqual(await titres(), avant.filter((t) => t !== avant[1]));
+  });
+
+  test('un ordre vide est refusé, une todo inconnue ignorée', async () => {
+    assert.equal((await app.api('POST', '/api/todos/reorder', { ids: [] })).status, 400);
+    const avant = await titres();
+    await app.api('POST', '/api/todos/reorder', { ids: [999999] });
+    assert.deepEqual(await titres(), avant, 'une todo inconnue ne fait pas échouer le reste');
+  });
+});

@@ -13,6 +13,96 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Jenkins parameters that recur across jobs carry a colour, and can be filtered.** On a team
+  installation the same three or four parameters come back from one job to the next; shown in
+  each job's own order, the eye has to hunt for them on every line. From three jobs on, a
+  parameter gets a tint derived from its name — so it never shifts as jobs come and go — and a
+  dropdown above the list to filter on its values. A filter you do not need can be put away with
+  a cross, its value cleared with it, and it comes back from the same window as hidden folders.
+  Three rather than two: at two, a coincidence between two jobs would colour it for everyone.
+
+- **The todo list can be arranged by hand, inside each priority.** Priority still comes first —
+  it answers "what is pressing" — and your own order arranges what sits inside it: drag a row by
+  its grip, or use the two arrows on each row, since dragging is neither announceable nor reliable
+  with a keyboard or a finger. Reordering never crosses a priority boundary: the todo would spring
+  back, and a gesture that does not land is worse than no gesture; changing group means changing
+  the priority, which is an explicit gesture of its own. The order is saved, a new todo lands at
+  the top of its group where you just typed it, and the due date keeps feeding the morning brief
+  and the reminders. Existing lists keep the exact order they had, and done and archived todos
+  keep their chronological order — you do not arrange your drawer.
+
+- **Inline comments can now wait.** Next to "Comment on GitLab", which still publishes right
+  away, a `Save` button keeps the remark pending and local: you review a merge request file by
+  file, and sending one at a time showers the author with notifications while freezing remarks
+  you would have dropped three files later. Pending comments show under their line in amber, can
+  be edited and deleted, and a header button sends them all at once — asking first, and saying
+  how many are about to be published. Whatever fails stays pending with its reason, so a network
+  error on the third comment does not take the first two with it, and positions are resolved at
+  send time so a merge request that moved meanwhile is not annotated on code that no longer
+  exists.
+
+- **`Run again` on a Jenkins job, with the same parameters.** In the list it reuses the last
+  run's values; in the job's page every run in the history has its own button and reuses that
+  run's values — what you want after reading the console of a failed build. The confirmation
+  shows the values about to be sent, because "run again" says nothing if you cannot see with
+  what, and it counts the secret parameters that cannot be sent back: Jenkins will fall back to
+  their defaults rather than the job going out silently amputated.
+
+- **Jenkins parameters whose values are computed now come through.** Git Parameter (a repo's
+  branches and tags), Extended Choice, Active Choices: these plugins do not declare their
+  options, they compute them while rendering their own page, so no API request will ever return
+  them. Mergerie now reads Jenkins' build form for the parameters the API said nothing about —
+  what the API declares still wins — and a multiple choice stays multiple, sent comma-separated
+  as those plugins expect. When the page cannot answer either, the field stays empty and says
+  so, as before.
+
+- **The Jenkins tab refreshes itself, tells you when your own job is done, and opens each run
+  side by side.** The list refreshes every 30 seconds — only while the tab is open and the
+  window visible, with a checkbox to turn it off and the choice remembered — and a background
+  refresh never blinks the list nor wipes it when the network hiccups. A desktop notification
+  fires when a job **you** started from Mergerie finishes, with its verdict; the team's nightly
+  builds stay silent, because being told about those is how you end up turning notifications
+  off. A job's page is now two columns: the run history on the left, each run keeping its
+  Console button, and on the right the run you select — when, how long, by whom, on which
+  branch, and with which parameters and values. Every line, and every run, carries a link that
+  opens it in Jenkins in a new tab.
+
+- **The Jenkins list shows the parameters the last run went out with.** Up to three per line,
+  the rest counted and spelled out in the tooltip. They cost nothing: they already came with
+  the list, in the same request. Password parameters are left out — Jenkins returns an
+  encrypted form and a secret does not belong in a list — and so are empty values.
+
+- **Jenkins folders you never use can be put away.** A cross on a folder's checkbox takes it
+  out of the filter list — unticking says "not now", hiding says "not my subject" — and its
+  jobs go with it, since a job you cannot filter has no business being in the list. The hidden
+  ones stay listed in small type underneath, and one click brings back the one you want; their
+  ticked state is kept meanwhile. Remembered across sessions, like the rest of the filter.
+
+- **The Jenkins list now reads by freshness, and says who ran what.** Jobs are sorted from the
+  latest run to the oldest — in a list of three hundred, what just ran is what you came for —
+  with the never-run ones at the end. Each line carries the date of the last build, its number,
+  who started it (or what did: the scheduler, a push, an upstream job) and the branch or tag
+  that was built. Folders moved to the top as a filter: one checkbox each with its job count,
+  its own search, and the choice is remembered. It stores the folders you *unticked*, so a
+  folder your team creates tomorrow shows up on its own.
+
+- **Jenkins behind a corporate certificate.** An internal server is almost always served by a
+  certificate a freshly installed Node does not know, and Node's own message — *unable to get
+  local issuer certificate* — names neither the cause nor the cure. `JENKINS_CA_CERT` pins your
+  internal CA (the clean way) and `JENKINS_INSECURE_TLS=1` skips the check while troubleshooting,
+  for Jenkins only, exactly like the GitLab and GitHub settings. The error now names both
+  variables, and so does the Settings → Jenkins page.
+
+- **A Jenkins tab: see where your jobs stand, and run them.** Every job your account can see,
+  grouped by folder, with a search (a company installation lines up hundreds) and a filter for
+  what is failing, unstable or running. A job's page shows its parameters and its last ten
+  builds, and each build's console opens in one click, scrolled to where the error is. Running
+  always asks first and names the job — it deploys on a shared machine and cannot be cancelled
+  from here — and a parameterised job opens its page instead of starting, so the values you are
+  about to send are values you have seen. Nothing is polled: the screen asks when you open the
+  tab or hit Refresh. The connection (URL, user, API token) lives in a new **Settings → Jenkins**
+  tab, with a test that returns the account name the server sees.
+
 - **A brief line can be dismissed for good.** The morning brief recomputes everything each time it
   opens, so a fact that stays true comes back every day — a failed verification you have already
   been through reappears indefinitely and eventually teaches you to skip the section. A cross on
@@ -372,6 +462,37 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **The Jenkins menu icon says which tab it is.** It used to be the play triangle — the very
+  symbol on the tab's own "Run" buttons, which told you the tab could start something rather
+  than what it was. It is now a pipeline: one stage feeding the next, which is what a Jenkins
+  job is, and it cannot be mistaken for the git branch icon two rows above.
+
+- **The parameters in the Jenkins list are readable.** They sit on their own line as
+  name/value chips instead of trailing the status, the date and the author — all grey, all
+  separated by middle dots, which read as a sentence rather than as pairs.
+
+- **The Jenkins list spells out every parameter of the last run.** It used to show three and
+  count the rest as `+2`, which sent you hovering or opening the job's page for the very
+  question you were asking while reading the list. Lines wrap instead. Values longer than 60
+  characters are still cut — three thousand characters in a list row is a wall, not information.
+
+- **The Jenkins job search now matches what the line shows.** Not just the path: the branch or
+  tag, who started the run, and the parameters it went out with. Searching `ENV=prod` and
+  finding nothing while it is written on screen is the surest way to stop using a search field.
+
+- **The Jenkins job page and build console are wider.** The history now sits next to the run
+  details, and console lines of three hundred characters had nowhere to go in 900 px.
+
+- **A Jenkins job that expects parameters now says so before you click.** Its button reads
+  `Run…` and its tooltip gives the number of parameters, and the job's page explains that the
+  values shown are the ones that will be sent. The behaviour had not changed — the button
+  already opened the page instead of launching blind — but nothing announced it, so the page
+  read as an information panel rather than the form it is.
+
+- **The tab shortcuts now go up to ten.** With Jenkins the bar holds ten tabs, and there is no
+  "10" key: the tenth is on `0`, as in a browser. Without it, adding a tab silently took its
+  shortcut away from the last one — and the help sheet reads the real range from the bar.
+
 - **`Request a fix` is now `Send a follow-up`.** The button was named after one of its uses, and
   people were using it for all the others: asking for changes, giving further instructions, asking
   what was done and why. One word now covers the whole cycle — *prepare a follow-up* while the
@@ -491,6 +612,27 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   cancelling closes it again.
 
 ### Fixed
+
+- **A Jenkins field no longer shows up prefilled with a plugin error.** Dynamic parameters
+  (Extended Choice, Active Choices) build their list from a script evaluated when the page is
+  rendered; seen from the API that evaluation can fail, and the plugin returns its error
+  message — *Could not get Environment from ENV Param* — where the list should be. It was taken
+  for a value and prefilled the field, so a run would have sent that sentence to Jenkins. The
+  field is now left empty, says why, and links to the job in Jenkins.
+
+- **Jenkins choice parameters are dropdowns again.** The job request asked for a fixed list of
+  fields, so anything a parameter plugin exposes under another name never arrived — a choice
+  parameter fell back to a free-text field where you retyped, by hand, a value Jenkins already
+  knew. Every field is now requested, and Extended Choice parameters (all options in one
+  comma-separated string) are understood too.
+
+- **A Jenkins build console no longer scrolls sideways.** Long lines — a command, a classpath —
+  went off to the right, so reading the error you had opened the console for meant scrolling
+  horizontally. Lines now wrap.
+
+- **A confirmation no longer opens behind the window that asked for it.** Confirming an action
+  started from another modal — running a Jenkins job from its page — put the question
+  underneath, with its button unreachable. Confirmations now sit above other modals.
 
 - **Error messages are no longer hidden behind a modal.** An error is most often raised from
   inside a modal — that is where forms get validated — and the message appeared underneath it: you

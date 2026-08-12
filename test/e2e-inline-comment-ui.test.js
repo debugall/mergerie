@@ -150,4 +150,58 @@ describe('Commentaire en ligne — le bouton reste sous les yeux', { skip: dispo
     const posts = await app.api('GET', '/api/mrs');
     assert.ok(posts.status === 200);
   });
+
+  /* ENREGISTRER SANS ENVOYER, puis tout envoyer d'un coup. C'est le geste de relecture : on
+     écrit ses remarques fichier par fichier, on les corrige, et on les publie quand on a fini.
+     Le témoin de « rien n'est parti » est le FAUX SERVEUR : un badge à l'écran ne prouverait
+     que l'écran. */
+  test('un commentaire s’enregistre en attente, se corrige, et part avec les autres', async () => {
+    const posts = () => app.state.calls.filter((c) => c.method === 'POST' && /\/discussions$/.test(c.path)).length;
+    const avant = posts();
+
+    await ouvrirEditeur();
+    await page.locator('.cmt-editor textarea').fill('à revoir : nom trop court');
+    await page.locator('.cmt-editor .cmt-draft-save').click();
+
+    await page.waitForSelector('#fileContent .cmt-draft');
+    assert.equal(posts(), avant, 'enregistrer ne doit RIEN envoyer à la forge');
+    assert.match(await page.locator('.cmt-draft').textContent(), /nom trop court/);
+    assert.match(await page.locator('.cmt-draft-head').textContent(), /attente/,
+      'il se distingue d’un commentaire publié : sinon on croit le travail fait');
+    await page.waitForFunction(() => document.querySelector('#draftsCount').textContent === '1');
+
+    // On le corrige — tant qu'il n'est pas parti, il n'appartient qu'à nous.
+    await page.locator('[data-draftedit]').first().click();
+    await page.locator('.cmt-draft-edit').fill('à revoir : nom trop court, et le test manque');
+    await page.locator('[data-draftsave]').first().click();
+    await page.waitForFunction(() => /le test manque/.test(document.querySelector('.cmt-draft').textContent));
+    assert.equal(posts(), avant, 'corriger non plus n’envoie rien');
+
+    // Un second, sur une autre ligne, pour prouver l'envoi GROUPÉ.
+    const ligne2 = page.locator('#fileContent .dl-row[data-new]:not([data-new=""])').nth(1);
+    await ligne2.hover();
+    await ligne2.locator('.ln-comment').click();
+    await page.waitForSelector('#fileContent .cmt-editor textarea');
+    await page.locator('.cmt-editor textarea').fill('deuxième remarque');
+    await page.locator('.cmt-editor .cmt-draft-save').click();
+    await page.waitForFunction(() => document.querySelector('#draftsCount').textContent === '2');
+
+    /* L'envoi CONFIRME : publier notifie l'auteur de la MR. Et la question dit combien
+       partent — c'est le seul moyen de s'apercevoir qu'on en avait oublié un. */
+    await page.locator('#draftsSend').click();
+    await page.waitForSelector('#confirmModal:not([hidden])');
+    assert.match(await page.locator('#confirmText').textContent(), /2 commentaires/);
+    await page.locator('#confirmCancel').click();
+    await page.waitForSelector('#confirmModal[hidden]', { state: 'attached' });
+    assert.equal(posts(), avant, 'annuler doit vraiment ne rien publier');
+
+    await page.locator('#draftsSend').click();
+    await page.waitForSelector('#confirmModal:not([hidden])');
+    await page.locator('#confirmOk').click();
+    await page.waitForFunction(() => document.querySelector('#draftsSend').hidden,
+      null, { timeout: 5000 });
+    assert.equal(posts(), avant + 2, 'les deux sont partis, en une fois');
+    assert.equal(await page.locator('#fileContent .cmt-draft').count(), 0,
+      'partis = plus en attente sous la ligne');
+  });
 });

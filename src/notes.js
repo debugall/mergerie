@@ -161,14 +161,42 @@ function slugifier(titre) {
 const ORDRE_TODO = `ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
   CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at, id DESC`;
 
+/* LA PRIORITÉ D'ABORD, L'ORDRE CHOISI ENSUITE. Deux questions différentes, et chacune garde
+   sa réponse : la priorité dit ce qui presse, l'ordre manuel dit dans quel ordre je m'y prends
+   à l'intérieur de ce qui presse. Les mélanger — trier tout à la main — laisserait une haute
+   au fond de la liste ; l'inverse — tout automatique — empêchait de s'organiser.
+
+   Conséquence à assumer : réordonner ne déplace une todo QUE dans son groupe de priorité. La
+   sortir de son groupe demanderait de changer sa priorité, ce qui est un autre geste, et
+   l'écran ne propose donc pas de l'y emmener.
+
+   Une todo SANS position est neuve : elle se range en tête de SON groupe, là où on vient de la
+   taper. L'échéance ne trie plus rien ici — elle reste affichée, et c'est elle qui pilote le
+   brief et les rappels. */
+const ORDRE_MANUEL = `ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+  (position IS NULL) DESC, position, id DESC`;
+
 /* Trois vues, et une seule règle à retenir : les archivées ne se mélangent JAMAIS aux
-   autres. « open » et « done » sont des états de travail, « archived » est un tiroir. */
+   autres. « open » et « done » sont des états de travail, « archived » est un tiroir.
+   Seule « à faire » se réordonne : on n'arrange pas son tiroir. */
 function listerTodos(statut = 'open') {
   const s = String(statut || 'open');
   if (s === 'archived') return db.prepare(`SELECT * FROM todo WHERE archived_at IS NOT NULL ${ORDRE_TODO}`).all();
   if (s === 'done') return db.prepare(`SELECT * FROM todo WHERE status = 'done' AND archived_at IS NULL ${ORDRE_TODO}`).all();
-  if (s === 'all') return db.prepare(`SELECT * FROM todo WHERE archived_at IS NULL ${ORDRE_TODO}`).all();
-  return db.prepare(`SELECT * FROM todo WHERE status = 'open' AND archived_at IS NULL ${ORDRE_TODO}`).all();
+  if (s === 'all') return db.prepare(`SELECT * FROM todo WHERE archived_at IS NULL ${ORDRE_MANUEL}`).all();
+  return db.prepare(`SELECT * FROM todo WHERE status = 'open' AND archived_at IS NULL ${ORDRE_MANUEL}`).all();
+}
+
+/* Réordonner : l'écran envoie l'ordre COMPLET de ce qu'il affiche, on numérote 1..n. Envoyer
+   « telle todo passe avant telle autre » obligerait à recalculer les voisines côté serveur et
+   à gérer les égalités ; la liste entière est courte, non ambiguë, et rejouable telle quelle.
+   Une todo inconnue ou archivée est ignorée plutôt que de faire échouer le tout. */
+function reordonnerTodos(ids) {
+  const liste = (Array.isArray(ids) ? ids : []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+  const maj = db.prepare('UPDATE todo SET position = ? WHERE id = ? AND archived_at IS NULL');
+  const tout = db.transaction((l) => { l.forEach((id, i) => maj.run(i + 1, id)); });
+  tout(liste);
+  return liste.length;
 }
 
 const lireTodo = (id) => db.prepare('SELECT * FROM todo WHERE id = ?').get(Number(id) || 0);
@@ -335,6 +363,7 @@ function indexAutolink({ maintenant = Date.now() } = {}) {
 }
 
 module.exports = {
+  reordonnerTodos,
   MAX_TITLE, MAX_NOTE, MAX_PAGE, PRIORITES, LINK_KINDS, JOURS_AVANT_ARCHIVE, JOURS_AUTOLINK,
   listerPages, lirePage, creerPage, majPage, supprimerPage, slugifier,
   listerTodos, lireTodo, creerTodo, majTodo, supprimerTodo, calculerSnooze,

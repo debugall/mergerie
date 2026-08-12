@@ -60,6 +60,8 @@ const git = require('./git');
 const demoGit = require('./demo-git');
 const docker = require('./docker');
 const demoDocker = require('./demo-docker');
+const demoJenkins = require('./demo-jenkins');
+const jenkins = require('./jenkins');
 const demoDiff = require('./demo-diff');
 const verifyLib = require('./verify');
 const verifyrun = require('./verifyrun');
@@ -686,7 +688,57 @@ app.get('/api/footer', wrap((req, res) => {
 
 app.get('/api/config', wrap((req, res) => {
   const c = getConfig();
-  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '' });
+  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '', jenkins_token: c.jenkins_token ? '***' : '' });
+}));
+
+/* ---------- Jenkins : voir et lancer des jobs -------------------------------
+   Aucune requête n'est émise sans un geste : pas de sondage, pas de rafraîchissement de
+   fond. L'écran demande, on demande à Jenkins. `configured: false` plutôt qu'une erreur —
+   un onglet non configuré doit expliquer comment le configurer, pas afficher un échec. */
+const jenkinsCfg = () => getConfig();
+
+app.get('/api/jenkins/jobs', wrap(async (req, res) => {
+  if (demoJenkins.isDemo()) return res.json({ configured: true, jobs: demoJenkins.lister() });
+  const cfg = jenkinsCfg();
+  if (!jenkins.isConfigured(cfg)) return res.json({ configured: false, jobs: [] });
+  res.json({ configured: true, jobs: await jenkins.lister(cfg) });
+}));
+
+app.get('/api/jenkins/job', wrap(async (req, res) => {
+  const chemin = String(req.query.path || '').trim();
+  if (!chemin) throw new Error(t('err.jenkins-chemin-requis'));
+  if (demoJenkins.isDemo()) return res.json(demoJenkins.detail(chemin));
+  res.json(await jenkins.detail(jenkinsCfg(), chemin));
+}));
+
+/* Lancer : le seul geste qui ÉCRIT chez Jenkins, donc un POST explicite. Les paramètres
+   arrivent tels que l'écran les a lus du job — on ne les invente pas, et un job sans
+   paramètre part sans corps. */
+app.post('/api/jenkins/build', wrap(async (req, res) => {
+  const chemin = String((req.body && req.body.path) || '').trim();
+  if (!chemin) throw new Error(t('err.jenkins-chemin-requis'));
+  const params = (req.body && req.body.parameters) || {};
+  if (demoJenkins.isDemo()) return res.json(demoJenkins.lancer(chemin, params));
+  res.json(await jenkins.lancer(jenkinsCfg(), chemin, params));
+}));
+
+app.get('/api/jenkins/console', wrap(async (req, res) => {
+  const chemin = String(req.query.path || '').trim();
+  if (!chemin) throw new Error(t('err.jenkins-chemin-requis'));
+  if (demoJenkins.isDemo()) return res.json(demoJenkins.console());
+  res.json(await jenkins.console(jenkinsCfg(), chemin, req.query.build));
+}));
+
+// Test de connexion — même contrat que « Tester Jira » : le masque signifie « garde le jeton ».
+app.post('/api/jenkins/test', wrap(async (req, res) => {
+  if (demoJenkins.isDemo()) return res.json(demoJenkins.tester());
+  const test = { ...jenkinsCfg() };
+  const b = req.body || {};
+  if (b.jenkins_url) test.jenkins_url = b.jenkins_url;
+  if (b.jenkins_user) test.jenkins_user = b.jenkins_user;
+  if (b.jenkins_token && b.jenkins_token !== '***') test.jenkins_token = b.jenkins_token;
+  if (!jenkins.isConfigured(test)) throw new Error(t('err.jenkins-non-configure'));
+  res.json(await jenkins.tester(test));
 }));
 
 // Test de la connexion Jira : récupère un ticket témoin pour valider URL/email/token.
@@ -1077,13 +1129,14 @@ app.put('/api/config', wrap((req, res) => {
   if (patch.access_token === '***') delete patch.access_token;
   if (patch.jira_token === '***') delete patch.jira_token;
   if (patch.github_token === '***') delete patch.github_token;
+  if (patch.jenkins_token === '***') delete patch.jenkins_token;
   const c = updateConfig(patch);
   i18n.setLang(c.language);   // les messages d'erreur suivent la nouvelle langue
   restartAutoRefresh(); // prend en compte le nouvel intervalle
   restartJiraWatch(); // idem pour la surveillance Jira (et le compteur du menu)
   champSprint = null; // l'instance Jira visée a pu changer : on re-cherchera le champ sprint
   statutsParProjet.clear();
-  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '' });
+  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '', jenkins_token: c.jenkins_token ? '***' : '' });
 }));
 
 /* ---------- Repos (admin) ---------- */
@@ -2975,6 +3028,13 @@ app.post('/api/todos', wrap((req, res) => {
   res.json(notes.creerTodo(req.body || {}, msgNotes()));
 }));
 
+/* Réordonner la liste « à faire » : l'écran envoie l'ordre complet de ce qu'il affiche. */
+app.post('/api/todos/reorder', wrap((req, res) => {
+  const ids = (req.body && req.body.ids) || [];
+  if (!Array.isArray(ids) || !ids.length) throw new Error(t('err.ordre-vide'));
+  res.json({ ok: true, n: notes.reordonnerTodos(ids) });
+}));
+
 /* Édition, cocher/décocher ET snooze passent par la même route : ce sont les mêmes colonnes.
    `snooze` est traduit ici en `due_at` plutôt que côté client — « demain 9 h » doit vouloir
    dire la même chose que le rappel l'ait posé le navigateur ou le serveur. */
@@ -3684,6 +3744,100 @@ app.post('/api/mrs/:id/discussion', wrap(async (req, res) => {
   if (old_line != null && old_line !== '') position.old_line = Number(old_line);
   const disc = await forge.clientFor(mr).postMrDiscussion(cfg, mr.project, mr.iid, body.trim(), position);
   res.json({ ok: true, id: disc && disc.id });
+}));
+
+/* ---------- Commentaires inline EN ATTENTE ----------------------------------
+   On relit une MR fichier par fichier et on écrit ses remarques au fil de la lecture. Les
+   envoyer une par une bombarde l'auteur de notifications et fige des remarques qu'on aurait
+   retirées trois fichiers plus loin. Ils vivent donc en local, modifiables, jusqu'à un envoi
+   explicite — et le geste direct (POST /discussion) reste inchangé pour qui le préfère. */
+
+const brouillonsDe = (mrId) => db.prepare('SELECT * FROM mr_comment_draft WHERE mr_id = ? ORDER BY id').all(mrId);
+
+const lireLigne = (v) => (v == null || v === '' ? null : Number(v));
+
+app.get('/api/mrs/:id/comment-drafts', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  res.json({ drafts: brouillonsDe(mr.id) });
+}));
+
+app.post('/api/mrs/:id/comment-drafts', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const { body, old_path, new_path, old_line, new_line } = req.body || {};
+  if (!(body || '').trim()) throw new Error(t('err.commentaire-vide-2'));
+  if (!new_path && !old_path) throw new Error(t('err.fichier-requis'));
+  const now = new Date().toISOString();
+  const info = db.prepare(`INSERT INTO mr_comment_draft
+    (mr_id, old_path, new_path, old_line, new_line, body, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?,?)`).run(mr.id, old_path || null, new_path || null,
+    lireLigne(old_line), lireLigne(new_line), String(body).trim(), now, now);
+  res.json(db.prepare('SELECT * FROM mr_comment_draft WHERE id = ?').get(info.lastInsertRowid));
+}));
+
+app.put('/api/mrs/:id/comment-drafts/:did', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const corps = ((req.body && req.body.body) || '').trim();
+  if (!corps) throw new Error(t('err.commentaire-vide-2'));
+  const info = db.prepare('UPDATE mr_comment_draft SET body = ?, updated_at = ? WHERE id = ? AND mr_id = ?')
+    .run(corps, new Date().toISOString(), Number(req.params.did), mr.id);
+  if (!info.changes) throw new Error(t('err.brouillon-introuvable'));
+  res.json(db.prepare('SELECT * FROM mr_comment_draft WHERE id = ?').get(Number(req.params.did)));
+}));
+
+app.delete('/api/mrs/:id/comment-drafts/:did', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  db.prepare('DELETE FROM mr_comment_draft WHERE id = ? AND mr_id = ?').run(Number(req.params.did), mr.id);
+  res.json({ ok: true });
+}));
+
+/* L'ENVOI. Les références de diff sont résolues UNE fois pour tout le lot : elles sont les
+   mêmes pour tous, et les redemander à chaque commentaire ferait autant d'allers-retours que
+   de remarques. Chaque brouillon parti est supprimé AUSSITÔT — si le dixième échoue, les neuf
+   premiers ne doivent pas repartir au prochain essai. Ce qui échoue RESTE, avec sa raison. */
+app.post('/api/mrs/:id/comment-drafts/send', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const liste = brouillonsDe(mr.id);
+  if (!liste.length) throw new Error(t('err.aucun-brouillon'));
+  const supprimer = db.prepare('DELETE FROM mr_comment_draft WHERE id = ?');
+
+  if (demoJenkins.isDemo()) {
+    for (const d of liste) {
+      demoComments.post(mr.id, d.body, { new_path: d.new_path, old_path: d.old_path, new_line: d.new_line, old_line: d.old_line });
+      supprimer.run(d.id);
+    }
+    return res.json({ sent: liste.length, failed: [] });
+  }
+
+  const cfg = getConfig();
+  const client = forge.clientFor(mr);
+  const full = await client.getMergeRequest(cfg, mr.project, mr.iid);
+  const dr = full && full.diff_refs;
+  if (!dr || !dr.head_sha) throw new Error(t('err.references-de-diff-introuvables-la'));
+
+  const failed = [];
+  let sent = 0;
+  for (const d of liste) {
+    const position = {
+      base_sha: dr.base_sha, start_sha: dr.start_sha, head_sha: dr.head_sha,
+      position_type: 'text',
+      old_path: d.old_path || d.new_path, new_path: d.new_path || d.old_path,
+    };
+    if (d.new_line != null) position.new_line = Number(d.new_line);
+    if (d.old_line != null) position.old_line = Number(d.old_line);
+    try {
+      await client.postMrDiscussion(cfg, mr.project, mr.iid, d.body, position);
+      supprimer.run(d.id);
+      sent += 1;
+    } catch (e) {
+      failed.push({ id: d.id, path: d.new_path || d.old_path, error: (e && e.message) || String(e) });
+    }
+  }
+  res.json({ sent, failed });
 }));
 
 // Merge une MR (depuis l'onglet Rapports de review).

@@ -105,6 +105,26 @@ CREATE TABLE IF NOT EXISTS review_rule (
   created_at TEXT
 );
 
+/* LES COMMENTAIRES INLINE EN ATTENTE. On relit une MR fichier par fichier et on écrit ses
+   remarques au fil de la lecture ; les envoyer une par une bombarde l'auteur de notifications
+   et fige des remarques qu'on aurait retirées trois fichiers plus loin. On les garde donc ICI,
+   modifiables, jusqu'à un envoi explicite — le geste direct reste possible et inchangé.
+
+   Aucune SHA n'est stockée : la position est recalculée à l'envoi, comme pour un commentaire
+   direct. Une MR qui a bougé entre-temps recevrait sinon des commentaires accrochés à un état
+   du code qui n'existe plus. */
+CREATE TABLE IF NOT EXISTS mr_comment_draft (
+  id INTEGER PRIMARY KEY,
+  mr_id INTEGER NOT NULL REFERENCES mr(id) ON DELETE CASCADE,
+  old_path TEXT,
+  new_path TEXT,
+  old_line INTEGER,
+  new_line INTEGER,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS comment_log (
   id INTEGER PRIMARY KEY,
   mr_id INTEGER NOT NULL REFERENCES mr(id) ON DELETE CASCADE,
@@ -113,6 +133,8 @@ CREATE TABLE IF NOT EXISTS comment_log (
   sent_at TEXT
 );
 `);
+
+db.exec('CREATE INDEX IF NOT EXISTS idx_mr_comment_draft_mr ON mr_comment_draft(mr_id)');
 
 // Migration : forge d'un dépôt ('gitlab' | 'github'). Les dépôts existants restent
 // GitLab — la valeur par défaut suffit, aucune donnée à réécrire.
@@ -193,6 +215,11 @@ try { db.exec("ALTER TABLE config ADD COLUMN jira_url TEXT DEFAULT ''"); } catch
 // Migration : identifiants Jira Cloud (email + jeton d'API) pour le fetch automatique.
 try { db.exec("ALTER TABLE config ADD COLUMN jira_email TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 try { db.exec("ALTER TABLE config ADD COLUMN jira_token TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+/* Migration : connexion Jenkins (URL + utilisateur + jeton d'API). Jenkins authentifie en
+   Basic `utilisateur:jeton` — le jeton seul ne suffit pas, d'où les deux champs. */
+try { db.exec("ALTER TABLE config ADD COLUMN jenkins_url TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN jenkins_user TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN jenkins_token TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 // Migration : message de commit personnalisable des tâches.
 /* LE VÉRIFICATEUR D'UNE SESSION, facultatif. Rattaché à la session et non au lancement :
    relancer la même session doit revérifier de la même façon, sans qu'on ait à s'en souvenir.
@@ -880,6 +907,27 @@ db.exec(`CREATE TABLE IF NOT EXISTS todo (
   updated_at TEXT NOT NULL
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_todo_due ON todo(status, archived_at, due_at)');
+
+/* UN ORDRE À SOI. Le tri automatique (priorité, puis échéance) répond à « qu'est-ce qui
+   presse » ; il ne répond pas à « dans quel ordre je vais m'y prendre ce matin ». Les deux
+   coexistent : la liste « à faire » suit désormais l'ordre qu'on lui donne, pendant que la
+   priorité et l'échéance continuent d'alimenter le brief et les pastilles du menu.
+
+   APRÈS la création de la table, comme toute migration ici. Le remplissage reprend EXACTEMENT
+   l'ordre affiché jusqu'ici : le premier jour, personne ne voit sa liste changer — on ne
+   réordonne pas les todos de quelqu'un pour lui annoncer qu'il peut les réordonner. */
+try {
+  db.exec('ALTER TABLE todo ADD COLUMN position INTEGER');
+  db.exec(`UPDATE todo SET position = (SELECT n FROM (
+      SELECT id, ROW_NUMBER() OVER (ORDER BY
+        CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+        CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at, id DESC) AS n
+      FROM todo) x WHERE x.id = todo.id)`);
+} catch { /* déjà présente */ }
+/* Une todo arrivée après la migration n'a pas de position : elle se range en TÊTE (position
+   NULL triée en premier), là où on vient de la taper — la chercher en bas d'une liste de
+   trente serait absurde. */
+db.exec('CREATE INDEX IF NOT EXISTS idx_todo_position ON todo(status, archived_at, position)');
 
 /* CE QU'ON A ÉCARTÉ DU BRIEF. Le brief recalcule tout à chaque ouverture : un fait qui reste
    vrai reparaît tous les matins, même traité ailleurs — une vérification rouge dont on a déjà

@@ -443,6 +443,7 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
   if (b.dataset.tab === 'jira') loadJira();
   if (b.dataset.tab === 'notes') loadNotes();
   if (b.dataset.tab === 'links') loadLinks();
+  if (b.dataset.tab === 'jenkins') loadJenkins();
   try { localStorage.setItem('aidevtools_tab', b.dataset.tab); } catch { /* ignore */ }
 }));
 
@@ -451,7 +452,7 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
    et le dernier sous-onglet consulté est mémorisé. */
 // `mr` partage la logique de `config` : ses champs sont rattachés à #configForm (attribut form=),
 // donc loadConfig les peuple et le submit les enregistre — un seul /config pour les deux onglets.
-const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadConfig, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, verifiers: loadVerifiers, aisession: renderAiSessionSettings };
+const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadConfig, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadConfig, verifiers: loadVerifiers, aisession: renderAiSessionSettings };
 function showAdminSub(sub) {
   if (!sub) { try { sub = localStorage.getItem('aidevtools_admin_sub') || 'rules'; } catch { sub = 'rules'; } }
   if (!ADMIN_SUBS[sub]) sub = 'rules';
@@ -891,6 +892,7 @@ document.addEventListener('click', (e) => {
     case 'seg-to-review': loadSegment('to_review'); break;
     case 'seg-reviewed': loadSegment('reviewed'); break;
     case 'go-jira-config': go('admin'); showAdminSub('jiracfg'); break;
+    case 'jenkins-config': go('admin'); showAdminSub('jenkinscfg'); break;
     case 'clear-search': $('#searchReview').value = ''; loadSegment(currentSeg); break;
     case 'clear-note-filter': reinitFiltreNote(); break;
     default: break;
@@ -2918,6 +2920,7 @@ async function renderFile() {
     split.fileNewPath = rd.newPath || path;
     el.innerHTML = rd.html;
     renderInlineThreads();     // commentaires existants sous leur ligne
+    renderInlineDrafts();      // …et ceux qui attendent encore d'être envoyés
     el.scrollTop = 0;
     setupChangeNav();          // repère les changements + saute au premier
     return;
@@ -2970,6 +2973,50 @@ function renderInlineThreads() {
   }
 }
 
+/* LES COMMENTAIRES EN ATTENTE, sous leur ligne, comme les vrais — mais reconnaissables au
+   premier regard : ils ne sont PAS partis. Les afficher comme les autres ferait croire le
+   travail fait, et on refermerait la MR en laissant ses remarques en local. */
+function renderInlineDrafts() {
+  for (const d of split.drafts || []) {
+    if (d.new_path !== split.fileNewPath && d.old_path !== split.fileOldPath) continue;
+    let row = null;
+    if (d.new_line != null) row = $(`#fileContent .dl-row[data-new="${d.new_line}"]`);
+    else if (d.old_line != null) row = $(`#fileContent .dl-row[data-old="${d.old_line}"]`);
+    if (!row) continue;
+    row.classList.add('has-comment');
+    const el = document.createElement('div');
+    el.className = 'cmt-thread cmt-draft';
+    el.dataset.draft = d.id;
+    el.innerHTML = `<div class="cmt-draft-head">${svgIco('edit')}<span>${esc(tr('cmt.draft.badge'))}</span></div>`
+      + `<div class="cmt-draft-body">${esc(d.body)}</div>`
+      + `<div class="cmt-actions"><button type="button" class="btn btn-sm" data-draftedit="${d.id}">${esc(tr('ui.edit'))}</button>`
+      + `<button type="button" class="btn btn-sm btn-danger" data-draftdel="${d.id}">${esc(tr('ui.delete'))}</button></div>`;
+    // Après le fil existant de la même ligne s'il y en a un : les vrais d'abord, l'à-venir après.
+    const apres = row.nextElementSibling && row.nextElementSibling.classList.contains('cmt-thread')
+      ? row.nextElementSibling : row;
+    apres.after(el);
+  }
+}
+
+/* Le compteur, dans l'en-tête de la vue plein écran. C'est LUI qui rappelle qu'un travail
+   attend : sans compteur visible, on referme la MR en laissant ses remarques en local. */
+function majBoutonBrouillons() {
+  const b = $('#draftsSend');
+  if (!b) return;
+  const n = (split.drafts || []).length;
+  b.hidden = !n;
+  $('#draftsCount').textContent = n;
+}
+
+async function chargerBrouillons() {
+  if (!split.mrId) { split.drafts = []; majBoutonBrouillons(); return; }
+  try {
+    const d = await api(`/mrs/${split.mrId}/comment-drafts`);
+    split.drafts = d.drafts || [];
+  } catch { split.drafts = []; }
+  majBoutonBrouillons();
+}
+
 // Mini-carte : marqueurs cliquables aux emplacements des changements.
 function renderMinimap() {
   const mm = $('#minimap');
@@ -3015,6 +3062,7 @@ async function openSplit(id) {
     };
     $('#splitTitle').textContent = `!${d.mr.iid} — ${d.mr.title || ''}`;
     setSplitPane('review');
+    chargerBrouillons();
     renderTree();
     $('#splitView').hidden = false;
     const first = split.files.find((f) => f.changed) || split.files[0];
@@ -3139,10 +3187,28 @@ $('#fileContent').addEventListener('click', (e) => {
   const forge = forgeLabel(split.forge);
   ed.innerHTML = `<textarea placeholder="${tr('cmt.inline.ph')}"></textarea>`
     + `<div class="cmt-actions"><button type="button" class="btn btn-sm cmt-cancel" title="${tr('cmt.cancel.title')}">${tr('ui.cancel')}</button>`
+    /* ENREGISTRER SANS ENVOYER : le geste de relecture. On écrit ses remarques au fil des
+       fichiers, on les corrige, on en retire — et on les envoie toutes quand on a fini. */
+    + `<button type="button" class="btn btn-sm cmt-draft-save" title="${tr('cmt.draft.title')}">${tr('cmt.draft.btn')}</button>`
     + `<button type="button" class="btn btn-sm btn-primary cmt-send" title="${tr('cmt.inline.title', { forge })}">${tr('cmt.inline.btn', { forge })}</button></div>`;
   row.after(ed);
   const ta = ed.querySelector('textarea'); ta.focus();
   ed.querySelector('.cmt-cancel').addEventListener('click', () => ed.remove());
+  ed.querySelector('.cmt-draft-save').addEventListener('click', async () => {
+    const body = ta.value.trim(); if (!body) return;
+    const b = ed.querySelector('.cmt-draft-save'); b.disabled = true;
+    try {
+      const cree = await api(`/mrs/${split.mrId}/comment-drafts`, { method: 'POST', body: {
+        body, old_path: split.fileOldPath, new_path: split.fileNewPath,
+        old_line: row.dataset.old || null, new_line: row.dataset.new || null,
+      } });
+      split.drafts = [...(split.drafts || []), cree];
+      majBoutonBrouillons();
+      ed.remove();
+      renderFile();
+      toast(tr('toast.commentaire-en-attente'));
+    } catch (err) { b.disabled = false; toast(explainError(err.message), true); }
+  });
   ed.querySelector('.cmt-send').addEventListener('click', async () => {
     const body = ta.value.trim(); if (!body) return;
     const send = ed.querySelector('.cmt-send'); send.disabled = true;
@@ -3159,6 +3225,67 @@ $('#fileContent').addEventListener('click', (e) => {
     } catch (err) { send.disabled = false; toast(err.message, true); }
   });
 });
+/* Modifier / supprimer un commentaire en attente, et les envoyer tous. Délégué : le contenu
+   du fichier est régénéré à chaque changement de fichier. */
+$('#fileContent').addEventListener('click', async (e) => {
+  const del = e.target.closest('[data-draftdel]');
+  if (del) {
+    const id = Number(del.dataset.draftdel);
+    try {
+      await api(`/mrs/${split.mrId}/comment-drafts/${id}`, { method: 'DELETE' });
+      split.drafts = (split.drafts || []).filter((d) => d.id !== id);
+      majBoutonBrouillons(); renderFile();
+    } catch (err) { toast(explainError(err.message), true); }
+    return;
+  }
+  const edit = e.target.closest('[data-draftedit]');
+  if (!edit) return;
+  const id = Number(edit.dataset.draftedit);
+  const bloc = edit.closest('.cmt-draft');
+  const d = (split.drafts || []).find((x) => x.id === id);
+  if (!bloc || !d || bloc.querySelector('textarea')) return;
+  const corps = bloc.querySelector('.cmt-draft-body');
+  corps.innerHTML = '<textarea class="cmt-draft-edit"></textarea>';
+  const ta = corps.querySelector('textarea');
+  ta.value = d.body; ta.focus();
+  bloc.querySelector('.cmt-actions').innerHTML = `<button type="button" class="btn btn-sm" data-draftcancel="1">${esc(tr('ui.cancel'))}</button>`
+    + `<button type="button" class="btn btn-sm btn-primary" data-draftsave="${id}">${esc(tr('ui.save'))}</button>`;
+  bloc.querySelector('[data-draftcancel]').addEventListener('click', () => renderFile());
+  bloc.querySelector('[data-draftsave]').addEventListener('click', async () => {
+    const body = ta.value.trim(); if (!body) return;
+    try {
+      const maj = await api(`/mrs/${split.mrId}/comment-drafts/${id}`, { method: 'PUT', body: { body } });
+      split.drafts = (split.drafts || []).map((x) => (x.id === id ? maj : x));
+      renderFile();
+    } catch (err) { toast(explainError(err.message), true); }
+  });
+});
+
+/* L'ENVOI GROUPÉ. Publier chez la forge notifie l'auteur : ça se confirme, et la question dit
+   COMBIEN partent — c'est le seul moyen de s'apercevoir qu'on en avait oublié un. */
+$('#draftsSend') && $('#draftsSend').addEventListener('click', async () => {
+  const n = (split.drafts || []).length;
+  if (!n) return;
+  const ok = await confirmDialog({
+    title: tr('cmt.draft.confirm.title'),
+    text: tr('cmt.draft.confirm.text', { n, count: n, forge: forgeLabel(split.forge) }),
+    detail: (split.drafts || []).map((d) => `${d.new_path || d.old_path}:${d.new_line || d.old_line || '?'} — ${String(d.body).split('\n')[0].slice(0, 80)}`).join('\n'),
+    confirmLabel: tr('cmt.draft.send'),
+    danger: false,
+  });
+  if (!ok) return;
+  try {
+    const r = await busy($('#draftsSend'), () => api(`/mrs/${split.mrId}/comment-drafts/send`, { method: 'POST' }));
+    await chargerBrouillons();
+    /* Ce qui a échoué RESTE en attente, et on le dit : un « envoyé » global sur un lot à
+       moitié parti ferait fermer la MR en croyant le travail fait. */
+    if (r.failed && r.failed.length) toast(tr('cmt.draft.partial', { n: r.sent, count: r.sent, f: r.failed.length }), true);
+    else toast(tr('cmt.draft.sent', { n: r.sent, count: r.sent }));
+    try { const dd = await api(`/mrs/${split.mrId}/discussions`); split.discussions = dd.discussions || []; } catch { /* ignore */ }
+    renderFile();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
 $('#treeSearch').addEventListener('input', renderTree);
 $('#treeList').addEventListener('click', (e) => { const f = e.target.closest('.tree-file[data-path]'); if (f) selectFile(f.dataset.path); });
 /* On note ce que l'utilisateur ouvre et ferme, à l'instant où il le fait. Rendre l'arbre avec
@@ -3371,7 +3498,7 @@ $('#ticketSave').addEventListener('click', async () => {
 // itèrent dessus (une divergence entre les deux = un champ qui ne s'enregistre pas,
 // exactement le bug qu'ont connu jira_email / jira_token).
 const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'access_token',
-  'github_url', 'github_token',
+  'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token',
   'clone_path', 'review_skill', 'prompt_review', 'prompt_explain', 'prompt_modify',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
   'stale_mr_days'];
@@ -3400,6 +3527,7 @@ $('#configForm').addEventListener('submit', async (e) => {
   if (body.access_token === '***') delete body.access_token;
   if (body.jira_token === '***') delete body.jira_token;
   if (body.github_token === '***') delete body.github_token;
+  if (body.jenkins_token === '***') delete body.jenkins_token;
   try {
     await api('/config', { method: 'PUT', body });
     // Le formulaire est éclaté sur deux sous-onglets (Général / Merge Request) : on affiche
@@ -7972,6 +8100,7 @@ const NOTIF_DEFAULTS = {
   converge_done: true, // boucle de convergence terminée — actionnable par excellence
   jira_status: true,  // un ticket surveillé change d'état — c'est LA raison de le surveiller
   verify_done: true,  // un verdict objectif est tombé — c'est ce qu'on attendait pour merger
+  jenkins_done: true, // un job Jenkins QUE J'AI LANCÉ s'est terminé — on ne reste pas devant
   mr_new: false,      // nouvelle MR — utile pour certains, spam pour d'autres
   mr_merged: false,   // MR mergée — informatif, pas actionnable
   threshold: 5,       // seuil « note basse » (sur 10)
@@ -8985,6 +9114,7 @@ const PALETTE_ACTIONS = [
   { key: 'palette.go.jira', run: () => $('nav button[data-tab="jira"]').click() },
   { key: 'palette.go.git', run: () => $('nav button[data-tab="git"]').click() },
   { key: 'palette.go.docker', run: () => $('nav button[data-tab="docker"]').click() },
+  { key: 'palette.go.jenkins', run: () => $('nav button[data-tab="jenkins"]').click() },
   { key: 'palette.go.stats', run: () => $('nav button[data-tab="dashboard"]').click() },
   { key: 'palette.go.settings', run: () => $('nav button[data-tab="admin"]').click() },
   { key: 'palette.act.discover', run: () => { $('nav button[data-tab="review"]').click(); $('#btnDiscover').click(); } },
@@ -9171,8 +9301,10 @@ const SHORTCUTS = [
 function openShortcuts() {
   const m = $('#shortcutsModal'); if (!m) return;
   const nbOnglets = $$('nav button[data-tab]').length;
+  // La plage annoncée doit être la VRAIE : au-delà de neuf onglets, le dixième est sur « 0 ».
+  const plage = nbOnglets > 9 ? '1 – 9, 0' : `1 – ${nbOnglets}`;
   $('#shortcutsList').innerHTML = SHORTCUTS
-    .map(([k, key]) => `<div class="shortcut-row"><kbd>${esc(k || `1 – ${nbOnglets}`)}</kbd><span>${esc(tr(key))}</span></div>`).join('');
+    .map(([k, key]) => `<div class="shortcut-row"><kbd>${esc(k || plage)}</kbd><span>${esc(tr(key))}</span></div>`).join('');
   m.hidden = false;
 }
 $('#shortcutsClose') && $('#shortcutsClose').addEventListener('click', () => { $('#shortcutsModal').hidden = true; });
@@ -9584,7 +9716,15 @@ function renderTodos(rows) {
     box.innerHTML = emptyState({ icon: 'check', title: esc(tr('notes.todo.empty.title')), text: esc(texte) });
     return;
   }
-  box.innerHTML = rows.map((t) => `<div class="todo-row card${t.status === 'done' ? ' done' : ''}" data-todo="${t.id}">
+  /* On ne réordonne que « à faire » : les faites et les archivées ont un ordre chronologique
+     qui leur est propre, et les arranger à la main n'aurait aucun sens. */
+  const ordonnable = NOTES.filter === 'open';
+  /* On ne réordonne qu'À L'INTÉRIEUR d'une priorité : la liste est d'abord triée par priorité,
+     donc emmener une todo dans un autre groupe la ferait revenir aussitôt — un geste qui
+     n'aboutit pas est pire que pas de geste. Les flèches s'éteignent donc aux bords du groupe. */
+  const memeGroupe = (a, b2) => a && b2 && a.priority === b2.priority;
+  box.innerHTML = rows.map((t, i) => `<div class="todo-row card${t.status === 'done' ? ' done' : ''}${ordonnable ? ' todo-move' : ''}" data-todo="${t.id}" data-prio="${esc(t.priority)}"${ordonnable ? ' draggable="true"' : ''}>
+      ${ordonnable ? `<span class="todo-grip" aria-hidden="true" title="${esc(tr('notes.todo.reorder-title'))}">${svgIco('grip')}</span>` : ''}
       <input type="checkbox" class="todo-check" data-todo-check="${t.id}"${t.status === 'done' ? ' checked' : ''} aria-label="${esc(tr('notes.todo.done'))}" />
       <div class="brief-item-main">
         <div class="brief-item-title">${esc(t.title)}</div>
@@ -9593,10 +9733,72 @@ function renderTodos(rows) {
         ${t.note ? `<div class="todo-note md-body">${renderNoteMd(t.note)}</div>` : ''}
       </div>
       ${t.due_at && t.status === 'open' ? todoSnoozeHtml(t.id) : ''}
+      ${ordonnable ? `<button type="button" class="btn btn-sm btn-ghost" data-todo-up="${t.id}"${memeGroupe(rows[i - 1], t) ? '' : ' disabled'} title="${esc(tr('notes.todo.up'))}" aria-label="${esc(tr('notes.todo.up'))}">${svgIco('up')}</button>
+      <button type="button" class="btn btn-sm btn-ghost" data-todo-down="${t.id}"${memeGroupe(rows[i + 1], t) ? '' : ' disabled'} title="${esc(tr('notes.todo.down'))}" aria-label="${esc(tr('notes.todo.down'))}">${svgIco('down')}</button>` : ''}
       <button type="button" class="btn btn-sm btn-ghost" data-todo-edit="${t.id}" title="${esc(tr('notes.todo.edit-title'))}">${svgIco('edit')}</button>
       <button type="button" class="btn btn-sm btn-ghost btn-danger" data-todo-del="${t.id}" title="${esc(tr('notes.todo.delete-title'))}">${svgIco('trash')}</button>
     </div>`).join('');
 }
+
+/* RÉORDONNER. Deux gestes pour le même résultat : le glisser-déposer, naturel à la souris,
+   et deux flèches — qui existent pour le clavier et le tactile, où « glisser » n'est ni
+   annonçable ni fiable. Les deux passent par la même route : l'écran envoie l'ordre COMPLET
+   qu'il affiche, le serveur numérote. */
+async function enregistrerOrdreTodos(ids) {
+  try {
+    await api('/todos/reorder', { method: 'POST', body: { ids } });
+    NOTES.affichees = ids.map((id) => NOTES.affichees.find((t) => t.id === id)).filter(Boolean);
+    renderTodos(NOTES.affichees);
+  } catch (e) { toast(explainError(e.message), true); loadTodos(); }
+}
+
+function deplacerTodo(id, delta) {
+  const liste = NOTES.affichees;
+  const i = liste.findIndex((t) => t.id === Number(id));
+  const j = i + delta;
+  if (i === -1 || j < 0 || j >= liste.length) return;
+  // Jamais hors du groupe de priorité : la todo reviendrait à sa place au rendu suivant.
+  if (liste[j].priority !== liste[i].priority) return;
+  const ids = liste.map((t) => t.id);
+  ids.splice(j, 0, ids.splice(i, 1)[0]);
+  enregistrerOrdreTodos(ids);
+}
+
+$('#todoList') && $('#todoList').addEventListener('click', (e) => {
+  const up = e.target.closest('[data-todo-up]');
+  if (up) { deplacerTodo(up.dataset.todoUp, -1); return; }
+  const down = e.target.closest('[data-todo-down]');
+  if (down) deplacerTodo(down.dataset.todoDown, 1);
+});
+
+/* Glisser-déposer natif. On déplace la ligne DANS le DOM pendant le geste — sans ça, on
+   déplace à l'aveugle et on ne sait pas où l'on va lâcher. L'ordre n'est enregistré qu'au
+   lâcher : une liste qui appelle le serveur à chaque survol le ferait cent fois. */
+let todoTire = null;
+$('#todoList') && $('#todoList').addEventListener('dragstart', (e) => {
+  const row = e.target.closest('.todo-row.todo-move');
+  if (!row) return;
+  todoTire = row;
+  row.classList.add('dragging');
+  if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', row.dataset.todo); } catch { /* refusé */ } }
+});
+$('#todoList') && $('#todoList').addEventListener('dragover', (e) => {
+  if (!todoTire) return;
+  e.preventDefault();
+  const cible = e.target.closest('.todo-row.todo-move');
+  // Même règle que les flèches : on ne traverse pas une frontière de priorité.
+  if (!cible || cible === todoTire || cible.dataset.prio !== todoTire.dataset.prio) return;
+  const r = cible.getBoundingClientRect();
+  // Au-dessus ou en dessous, selon le côté de la ligne où l'on est : le geste se voit.
+  cible.parentNode.insertBefore(todoTire, e.clientY < r.top + r.height / 2 ? cible : cible.nextSibling);
+});
+$('#todoList') && $('#todoList').addEventListener('drop', (e) => { if (todoTire) e.preventDefault(); });
+$('#todoList') && $('#todoList').addEventListener('dragend', () => {
+  if (!todoTire) return;
+  todoTire.classList.remove('dragging');
+  todoTire = null;
+  enregistrerOrdreTodos($$('#todoList .todo-row').map((r) => Number(r.dataset.todo)));
+});
 
 $$('#tab-notes .todo-filter button').forEach((b) => b.addEventListener('click', () => {
   NOTES.filter = b.dataset.tfilter;
@@ -11254,8 +11456,10 @@ document.addEventListener('keydown', (e) => {
   /* Les chiffres suivent la BARRE, lue dans le DOM — jamais une liste recopiée à côté.
      Une copie se désynchronise au premier réordonnancement, et le décalage est silencieux :
      « 3 » ouvrirait un autre onglet que le troisième, sans que rien ne signale l'erreur. */
-  if (/^[1-9]$/.test(e.key)) {
-    const t = $$('nav button[data-tab]')[+e.key - 1];
+  /* `0` prend le DIXIÈME onglet, faute de touche « 10 » — la convention des navigateurs.
+     Sans lui, ajouter un onglet retirait en silence son raccourci au dernier de la barre. */
+  if (/^[0-9]$/.test(e.key)) {
+    const t = $$('nav button[data-tab]')[e.key === '0' ? 9 : +e.key - 1];
     if (t) { e.preventDefault(); t.click(); }
     return;
   }
@@ -11338,6 +11542,27 @@ if (btnTestJira) btnTestJira.addEventListener('click', async () => {
       jira_token: f.jira_token.value,
     } });
     info.textContent = tr('settings.jira.ok', { key: r.key, summary: (r.summary || '').slice(0, 60) });
+  } catch (e) {
+    info.textContent = '';
+    toast(explainError(e.message), true);
+  }
+});
+
+/* Tester Jenkins : mêmes règles que Jira — on teste les valeurs SAISIES, et le masque veut
+   dire « garde le jeton déjà enregistré ». Le nom du compte rendu par Jenkins prouve que le
+   couple utilisateur/jeton est le bon, pas seulement que l'URL répond. */
+const btnTestJenkins = $('#btnTestJenkins');
+if (btnTestJenkins) btnTestJenkins.addEventListener('click', async () => {
+  const f = $('#configForm');
+  const info = $('#configInfoJenkins') || $('#configInfo');
+  info.textContent = tr('settings.jenkins.testing');
+  try {
+    const r = await busy(btnTestJenkins, () => api('/jenkins/test', { method: 'POST', body: {
+      jenkins_url: f.jenkins_url.value.trim(),
+      jenkins_user: f.jenkins_user.value.trim(),
+      jenkins_token: f.jenkins_token.value,
+    } }));
+    info.textContent = tr('settings.jenkins.ok', { user: r.user, n: r.jobs, count: r.jobs });
   } catch (e) {
     info.textContent = '';
     toast(explainError(e.message), true);
@@ -12033,4 +12258,721 @@ document.addEventListener('keydown', (e) => {
      On clique donc le vrai bouton quand il existe. */
   const cancel = open.querySelector('#taskCancel, #ticketCancel, #bulkCancel, #verifyPickCancel');
   if (cancel) cancel.click(); else open.hidden = true;
+});
+
+/* ============ Onglet Jenkins : voir l'état des jobs, et les lancer ============
+
+   RIEN N'EST SONDÉ. L'écran demande quand on l'ouvre ou quand on clique « Rafraîchir » —
+   surveiller un serveur d'intégration n'est pas le travail de l'outil, et un sondage de
+   fond sur une installation partagée pèse sur tout le monde. C'est aussi pourquoi le menu
+   ne porte pas de pastille : elle supposerait d'interroger Jenkins à chaque ouverture de
+   l'application, et un compteur figé depuis la dernière visite ment plus qu'il n'informe. */
+
+const JENKINS = { jobs: [], configured: true, q: '', echecsSeuls: false, job: null, build: null, qDossier: '', horsDossiers: new Set(), masques: new Set(), paramFiltres: {}, paramsMasques: new Set() };
+
+/* Les dossiers DÉCOCHÉS sont mémorisés, pas les cochés. La différence compte le jour où
+   l'équipe crée un dossier : mémoriser les cochés le rendrait invisible jusqu'à ce qu'on
+   pense à aller le cocher — un job neuf n'apparaîtrait jamais. */
+const JENKINS_FILTRE = 'mergerie_jenkins_dossiers';
+/* DEUX ÉTATS, et non un seul, parce que ce sont deux gestes différents :
+   — DÉCOCHÉ : « pas maintenant ». La case reste sous la main, on la recoche d'un clic.
+   — MASQUÉ : « ce dossier ne me concerne pas ». Il sort de la liste des cases, qui redevient
+     lisible — sur une installation à quarante dossiers, une rangée de cases qu'on ne coche
+     jamais est du bruit qu'on relit chaque matin.
+   Un dossier masqué ne montre pas ses jobs non plus : le masquer en laissant ses jobs dans la
+   liste donnerait des jobs qu'on ne peut plus filtrer.
+   L'ancien format (un simple tableau) est relu : personne ne doit perdre son filtre. */
+function chargerFiltreJenkins() {
+  JENKINS.horsDossiers = new Set();
+  JENKINS.masques = new Set();
+  JENKINS.paramsMasques = new Set();
+  try {
+    const brut = JSON.parse(localStorage.getItem(JENKINS_FILTRE) || '{}');
+    if (Array.isArray(brut)) { JENKINS.horsDossiers = new Set(brut.map(String)); return; }
+    JENKINS.horsDossiers = new Set((brut.hors || []).map(String));
+    JENKINS.masques = new Set((brut.masques || []).map(String));
+    JENKINS.paramsMasques = new Set((brut.paramsMasques || []).map(String));
+  } catch { /* stockage illisible : on repart d'un filtre vide */ }
+}
+function sauverFiltreJenkins() {
+  try {
+    localStorage.setItem(JENKINS_FILTRE, JSON.stringify({
+      hors: [...JENKINS.horsDossiers], masques: [...JENKINS.masques],
+      paramsMasques: [...JENKINS.paramsMasques],
+    }));
+  } catch { /* stockage indisponible */ }
+}
+
+// Les états que Jenkins exprime par une couleur, traduits côté serveur en `statut`.
+const JK_ENNUI = ['echec', 'instable'];
+
+async function loadJenkins({ silencieux = false } = {}) {
+  const box = $('#jenkinsBox');
+  if (!box) return;
+  chargerFiltreJenkins();
+  const auto = $('#jenkinsNoAuto');
+  if (auto) auto.checked = jkAutoCoupe();
+  // Un rafraîchissement de fond ne remplace pas la liste par un squelette : l'écran
+  // clignoterait toutes les trente secondes sous les yeux de quelqu'un qui lit.
+  if (!silencieux) box.innerHTML = skeleton(4);
+  try {
+    const d = await api('/jenkins/jobs');
+    JENKINS.jobs = d.jobs || [];
+    JENKINS.configured = d.configured !== false;
+  } catch (e) {
+    if (!silencieux) box.innerHTML = errorBox(explainError(e.message));
+    return;   // en silencieux, on garde l'écran précédent : un réseau qui hoquette n'efface rien
+  }
+  renderJenkins();
+  jkVerifierFins(JENKINS.jobs);
+  jkAutoRelance();
+}
+
+function jkStatutLabel(j) {
+  if (j.enCours) return tr('jenkins.st.running');
+  return tr(`jenkins.st.${j.statut}`);
+}
+
+/* « il y a 3 h » plutôt qu'une date : sur une liste triée par date, c'est la FRAÎCHEUR qu'on
+   lit, pas le jour exact. `Intl` s'en charge dans la langue courante — une table de
+   traductions maison pour « minute/heure/jour » n'aurait rien apporté. */
+function jkQuand(ms) {
+  if (!ms) return tr('jenkins.st.jamais');
+  const s = Math.round((ms - Date.now()) / 1000);
+  const paliers = [['second', 60], ['minute', 60], ['hour', 24], ['day', 7], ['week', 4.35], ['month', 12], ['year', Infinity]];
+  let v = s;
+  for (const [unite, taille] of paliers) {
+    if (Math.abs(v) < taille) return new Intl.RelativeTimeFormat(I18Nrt.currentLocale(), { numeric: 'auto' }).format(Math.round(v), unite);
+    v /= taille;
+  }
+  return '';
+}
+
+// « Qui a lancé » : un nom, ou la nature du déclencheur — jamais un blanc, qui laisserait
+// croire à une information manquante alors que la réponse est « personne, c'est l'horloge ».
+function jkAuteur(by) {
+  if (!by) return '';
+  if (by.user) return tr('jenkins.by.user', { user: by.user });
+  if (by.trigger) return tr(`jenkins.by.${by.trigger}`);
+  return by.label || '';
+}
+
+/* Les paramètres du dernier lancement, en clair dans la ligne. Trois au plus : au-delà, la
+   ligne devient un paragraphe et on ne lit plus rien — le reste est dans l'infobulle, et la
+   fiche du job les montre tous. Celui qui a DONNÉ la branche affichée n'est pas répété. */
+/* LA RECHERCHE PORTE SUR CE QUE LA LIGNE MONTRE. Le chemin entier d'abord — on cherche autant
+   « le job de déploiement » que « tout ce qui est dans boutique ». Mais aussi la branche,
+   l'auteur et les PARAMÈTRES du dernier lancement : chercher `v1.5.0` ou `ENV=prod` et ne rien
+   trouver alors que c'est écrit à l'écran est la façon la plus sûre de ne plus se servir d'un
+   champ de recherche. */
+function jkCherchable(j) {
+  if (j._q === undefined) {
+    j._q = [
+      j.path, j.ref || '',
+      (j.by && (j.by.user || j.by.label)) || '',
+      ...(j.lastParams || []).map((p) => `${p.name}=${p.value} ${p.name} ${p.value}`),
+    ].join(' ').toLowerCase();
+  }
+  return j._q;
+}
+
+/* TOUS les paramètres du dernier lancement, en clair dans la ligne. Un « +3 » obligeait à
+   survoler ou à ouvrir la fiche pour savoir avec quoi le job était parti — exactement la
+   question qu'on se pose en lisant la liste. La ligne se replie sur plusieurs lignes s'il le
+   faut. Celui qui a DONNÉ la branche affichée n'est pas répété. */
+function jkParams(j) {
+  return (j.lastParams || []).filter((p) => String(p.value) !== String(j.ref || ''));
+}
+
+/* LES PARAMÈTRES QUI REVIENNENT PARTOUT MÉRITENT UNE COLONNE. Sur une installation d'équipe,
+   les mêmes trois ou quatre paramètres (ENV, VERSION, BRANCHE) reviennent d'un job à l'autre :
+   affichés dans l'ordre propre à chaque job, l'œil doit les rechercher à chaque ligne. À partir
+   de TROIS jobs, un paramètre est considéré comme fréquent : il prend la même place sur toutes
+   les lignes — vide comprise, sinon la colonne suivante se décale et l'alignement ne tient plus.
+   Les autres, propres à un job, suivent à la fin.
+
+   Trois plutôt que deux : à deux, une coïncidence entre deux jobs figerait une colonne pour
+   tout le monde. */
+const JK_PARAM_FREQUENT = 3;
+
+/* Combien de JOBS portent chaque paramètre — pas combien de fois il apparaît : un job qui le
+   passerait deux fois ne le rendrait pas plus courant. */
+function jkFrequences(jobs) {
+  const par = new Map();
+  for (const j of jobs) {
+    for (const nom of new Set((j.lastParams || []).map((p) => p.name))) {
+      par.set(nom, (par.get(nom) || 0) + 1);
+    }
+  }
+  return par;
+}
+
+/* Les paramètres qui reviennent : du plus répandu au moins répandu, puis alphabétique. Ce sont
+   eux qui reçoivent une teinte et un filtre — colorer un paramètre porté par un seul job
+   n'aiderait à rien et remplirait la liste de couleurs sans signification. */
+function jkColonnes(jobs) {
+  return [...jkFrequences(jobs)]
+    .filter(([, n]) => n >= JK_PARAM_FREQUENT)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([nom]) => nom);
+}
+
+/* LA COULEUR PLUTÔT QUE LA COLONNE. Aligner les paramètres en grille rendait la liste raide et
+   pleine de trous ; ce qu'on cherche vraiment, c'est retrouver `ENV` d'une ligne à l'autre du
+   coin de l'œil. Une teinte stable par NOM le fait sans rien déranger de la mise en page.
+
+   La teinte vient d'un hachage du nom, pas de son rang : elle ne bouge donc pas quand un job
+   apparaît ou disparaît de la liste. Deux noms peuvent tomber sur la même teinte — le nom reste
+   écrit dans la pastille, la couleur aide, elle ne remplace rien. */
+const JK_TEINTES = 8;
+function jkTeinte(nom) {
+  let h = 0;
+  for (let i = 0; i < nom.length; i += 1) h = (h * 31 + nom.charCodeAt(i)) % 9973;
+  return h % JK_TEINTES;
+}
+
+const jkChip = (nom, valeur, colore) => `<span class="jk-chip${colore ? ` jk-c${jkTeinte(nom)}` : ''}"><span class="jk-chip-k">${esc(nom)}</span><span class="jk-chip-v">${esc(String(valeur))}</span></span>`;
+
+/* Sur LEUR PROPRE LIGNE, en pastilles nom/valeur. Alignés à la suite du statut, de la date et
+   de l'auteur — tous en gris, tous séparés par des points médians —, ils se confondaient avec
+   eux : on lisait une phrase, pas des couples. Le nom reste discret, la valeur porte la
+   couleur du texte : c'est elle qu'on cherche. */
+function jkParamPastilles(liste, frequents) {
+  if (!liste.length) return '';
+  return `<div class="jk-params">${liste.map((p) => jkChip(p.name, p.value, frequents.includes(p.name))).join('')}</div>`;
+}
+
+/* Le lien vers le job DANS Jenkins. L'URL vient de Jenkins, donc d'une source externe : on
+   n'ouvre que du http(s), comme partout ailleurs dans l'application — une `javascript:` glissée
+   dans un nom de job n'aurait aucune chance de s'exécuter, mais on ne compte pas là-dessus.
+   `noopener` : la page ouverte ne doit pas pouvoir reprendre la main sur la nôtre. */
+function jkLienExterne(url) {
+  if (!/^https?:\/\//i.test(String(url || ''))) return '';
+  return `<a class="btn btn-icon btn-sm jk-open-ext" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="${esc(tr('jenkins.open-ext'))}" aria-label="${esc(tr('jenkins.open-ext'))}"><svg class="ico ico-sm"><use href="#i-external"/></svg></a>`;
+}
+
+function jkRow(j, colonnes = []) {
+  const ennui = JK_ENNUI.includes(j.statut);
+  const params = jkParams(j);
+  const infos = [
+    jkStatutLabel(j),
+    // Sans date, le statut dit DÉJÀ « jamais lancé » : le répéter ferait croire à deux faits.
+    j.last ? fmtDateTime(new Date(j.last).toISOString()) : '',
+    jkAuteur(j.by),
+    j.ref ? `⎇ ${j.ref}` : '',
+    (j.buildable || j.statut === 'desactive') ? '' : tr('jenkins.st.desactive'),
+  ].filter(Boolean);
+  return `<div class="card jk-row" data-jkjob="${esc(j.path)}">
+    <span class="jk-dot ${esc(j.statut)}${j.enCours ? ' encours' : ''}" aria-hidden="true"></span>
+    <div style="min-width:0;flex:1">
+      <div class="jk-name">${j.folder ? `<span class="jk-path">${esc(j.folder)}/</span>` : ''}${esc(j.name)}${j.lastNumber ? ` <span class="jk-path">#${j.lastNumber}</span>` : ''}</div>
+      <div class="jk-meta" title="${esc(j.last ? jkQuand(j.last) : '')}">${infos.map(esc).join(' · ')}</div>
+      ${jkParamPastilles(params, colonnes)}
+    </div>
+    ${ennui ? `<span class="tag stale">${esc(jkStatutLabel(j))}</span>` : ''}
+    ${jkLienExterne(j.url)}
+    <button type="button" class="btn btn-sm" data-jkopen="${esc(j.path)}">${esc(tr('jenkins.open'))}</button>
+    ${(j.buildable && j.last && (j.lastParams || []).length) ? `<button type="button" class="btn btn-sm" data-jkrerun="${esc(j.path)}" title="${esc(tr('jenkins.rerun.title-btn'))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg>${esc(tr('jenkins.rerun'))}</button>` : ''}
+    ${j.buildable ? `<button type="button" class="btn btn-sm btn-primary" data-jkrun="${esc(j.path)}" title="${esc(j.params ? tr('jenkins.run.params-title', { n: j.params, count: j.params }) : tr('jenkins.run.title'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(j.params ? tr('jenkins.run.params') : tr('jenkins.run'))}</button>` : ''}
+  </div>`;
+}
+
+function renderJenkins() {
+  const box = $('#jenkinsBox');
+  if (!JENKINS.configured) {
+    box.innerHTML = emptyState({
+      icon: 'sliders', title: tr('jenkins.empty.title'), text: tr('jenkins.empty.text'),
+      actions: [{ act: 'jenkins-config', label: tr('jenkins.empty.btn'), primary: true }],
+    });
+    $('#jenkinsCount').textContent = '';
+    return;
+  }
+  renderJenkinsDossiers();
+  renderJenkinsParamFiltres();
+  const q = JENKINS.q.toLowerCase();
+  const vus = JENKINS.jobs.filter((j) => (!q || jkCherchable(j).includes(q))
+    && !JENKINS.horsDossiers.has(j.folder) && !JENKINS.masques.has(j.folder)
+    && jkPasseFiltresParam(j)
+    && (!JENKINS.echecsSeuls || JK_ENNUI.includes(j.statut) || j.enCours));
+  $('#jenkinsCount').textContent = tr('jenkins.count', { n: vus.length, count: vus.length, total: JENKINS.jobs.length });
+
+  if (!JENKINS.jobs.length) {
+    box.innerHTML = emptyState({ icon: 'inbox', title: tr('jenkins.none.title'), text: tr('jenkins.none.text') });
+    return;
+  }
+  if (!vus.length) {
+    box.innerHTML = `<p class="muted">${esc(tr('jenkins.no-match'))}</p>`;
+    return;
+  }
+  /* À PLAT, dans l'ordre rendu par le serveur : du dernier lancement au plus ancien. Le
+     dossier n'est plus un en-tête mais une case à cocher au-dessus — et il reste écrit
+     devant chaque nom, sinon deux `api-build` de projets différents se confondent. */
+  /* Calculés sur TOUS les jobs, pas sur ceux qui restent après filtrage : sinon une teinte
+     changerait de sens à chaque frappe, et un filtre disparaîtrait au moment où l'on s'en sert. */
+  const colonnes = jkColonnes(JENKINS.jobs);
+  box.innerHTML = vus.map((j) => jkRow(j, colonnes)).join('');
+}
+
+/* FILTRER SUR LES VALEURS D'UN PARAMÈTRE FRÉQUENT. C'est la question qu'on se pose devant une
+   liste de trois cents jobs : « qu'est-ce qui est parti en prod ? », « qu'est-ce qui tourne sur
+   la 2.4 ? ». Un job SANS le paramètre est écarté dès qu'on filtre dessus : il ne répond pas à
+   la question posée, et le garder « au cas où » viderait le filtre de son sens. */
+function jkPasseFiltresParam(j) {
+  const filtres = Object.entries(JENKINS.paramFiltres || {}).filter(([, v]) => v);
+  if (!filtres.length) return true;
+  const par = new Map((j.lastParams || []).map((p) => [p.name, String(p.value)]));
+  return filtres.every(([nom, valeur]) => par.get(nom) === valeur);
+}
+
+function renderJenkinsParamFiltres() {
+  const box = $('#jenkinsParamFiltres');
+  if (!box) return;
+  /* Un filtre MASQUÉ sort de la barre : tous les paramètres fréquents ne servent pas à
+     chercher (un numéro de build, un horodatage), et une rangée de listes qu'on n'ouvre jamais
+     est du bruit qu'on relit chaque matin. */
+  const colonnes = jkColonnes(JENKINS.jobs).filter((n) => !JENKINS.paramsMasques.has(n));
+  const caches = jkColonnes(JENKINS.jobs).filter((n) => JENKINS.paramsMasques.has(n));
+  box.hidden = !colonnes.length && !caches.length;
+  if (box.hidden) return;
+  box.innerHTML = colonnes.map((nom) => {
+    const valeurs = [...new Set(JENKINS.jobs.flatMap((j) => (j.lastParams || [])
+      .filter((p) => p.name === nom).map((p) => String(p.value))))].sort((a, b) => a.localeCompare(b));
+    const choisie = (JENKINS.paramFiltres || {})[nom] || '';
+    return `<label class="jk-pf"><span class="jk-pf-k">${esc(nom)}</span>
+      <select data-jkpf="${esc(nom)}">
+        <option value="">${esc(tr('jenkins.param.all'))}</option>
+        ${valeurs.map((v) => `<option value="${esc(v)}"${v === choisie ? ' selected' : ''}>${esc(v)}</option>`).join('')}
+      </select>
+      <button type="button" class="btn btn-icon btn-sm jk-pf-hide" data-jkpfhide="${esc(nom)}" title="${esc(tr('jenkins.param.hide'))}" aria-label="${esc(tr('jenkins.param.hide'))}"><svg class="ico ico-sm"><use href="#i-close"/></svg></button></label>`;
+  }).join('')
+    + (caches.length ? `<button type="button" class="btn btn-sm jk-pf-caches" id="jenkinsParamHidden" title="${esc(tr('jenkins.param.hidden-title'))}">${esc(tr('jenkins.param.hidden', { n: caches.length, count: caches.length }))}</button>` : '');
+}
+
+/* Le filtre par dossiers. Sa propre recherche masque des cases sans jamais en décocher :
+   filtrer ce qu'on regarde ne doit pas changer ce qu'on a choisi de voir. */
+function renderJenkinsDossiers() {
+  const bloc = $('#jenkinsFolders');
+  const liste = $('#jenkinsFolderList');
+  if (!bloc || !liste) return;
+  const comptes = new Map();
+  for (const j of JENKINS.jobs) comptes.set(j.folder, (comptes.get(j.folder) || 0) + 1);
+  const dossiers = [...comptes.keys()].sort((a, b) => a.localeCompare(b));
+  // Un seul dossier (ou aucun) : le filtre n'aurait rien à filtrer.
+  bloc.hidden = dossiers.length < 2;
+  if (bloc.hidden) return;
+  const nom = (d) => (d ? esc(d) : esc(tr('jenkins.folders.root')));
+  const qd = JENKINS.qDossier.toLowerCase();
+  const visibles = dossiers.filter((d) => !JENKINS.masques.has(d));
+  const montres = visibles.filter((d) => !qd || (d || '').toLowerCase().includes(qd));
+  liste.innerHTML = montres.map((d) => `<label><input type="checkbox" data-jkfolder="${esc(d)}"${JENKINS.horsDossiers.has(d) ? '' : ' checked'} />
+    <span>${nom(d)}</span>
+    <span class="jk-folder-count">${comptes.get(d)}</span>
+    <button type="button" class="btn btn-icon btn-sm jk-folder-hide" data-jkhide="${esc(d)}" title="${esc(tr('jenkins.folders.hide'))}" aria-label="${esc(tr('jenkins.folders.hide'))}"><svg class="ico ico-sm"><use href="#i-close"/></svg></button></label>`).join('')
+    || `<p class="muted">${esc(tr('jenkins.folders.no-match'))}</p>`;
+
+  /* Ce qui est masqué se COMPTE, il ne s'étale pas. Une rangée de boutons qu'on ne clique
+     presque jamais mangeait la place de ce qu'on regarde vraiment ; mais le taire ferait d'un
+     filtre un mystère au bout de trois semaines. Un mot, donc, et la liste au clic. */
+  const caches = dossiers.filter((d) => JENKINS.masques.has(d));
+  const pied = $('#jenkinsFolderHidden');
+  pied.hidden = !caches.length;
+  pied.textContent = caches.length ? tr('jenkins.folders.hidden', { n: caches.length, count: caches.length }) : '';
+  pied.title = tr('jenkins.folders.hidden-title');
+  if (!$('#jenkinsHiddenModal').hidden) renderJenkinsMasques();
+}
+
+// La liste des masqués, dans sa modale. Un bouton par dossier : on en masque dix, on en
+// récupère un seul — « tout remettre » existe aussi, pour le jour où on change d'avis en bloc.
+function renderJenkinsMasques() {
+  const box = $('#jenkinsHiddenList');
+  if (!box) return;
+  const comptes = new Map();
+  for (const j of JENKINS.jobs) comptes.set(j.folder, (comptes.get(j.folder) || 0) + 1);
+  const dossiers = [...JENKINS.masques].sort((a, b) => a.localeCompare(b));
+  const params = [...JENKINS.paramsMasques].sort((a, b) => a.localeCompare(b));
+  const ligne = (nom, compte, attr) => `<div class="jk-hidden-row">
+      <span>${nom}</span>
+      ${compte == null ? '' : `<span class="jk-folder-count">${compte}</span>`}
+      <span class="spacer"></span>
+      <button type="button" class="btn btn-sm" ${attr}>${esc(tr('jenkins.hidden.restore'))}</button>
+    </div>`;
+  /* Une seule modale pour les deux familles : ce qu'on a rangé se retrouve au même endroit,
+     qu'il s'agisse d'un dossier ou d'un filtre. Un titre n'apparaît que s'il a du contenu. */
+  const bloc = (titre, lignes) => (lignes.length ? `<h4>${esc(titre)}</h4>${lignes.join('')}` : '');
+  box.innerHTML = (dossiers.length || params.length)
+    ? bloc(tr('jenkins.folders'), dossiers.map((d) => ligne(d ? esc(d) : esc(tr('jenkins.folders.root')), comptes.get(d) || 0, `data-jkshow="${esc(d)}"`)))
+      + bloc(tr('jenkins.params'), params.map((n) => ligne(esc(n), null, `data-jkpfshow="${esc(n)}"`)))
+    : `<p class="muted">${esc(tr('jenkins.hidden.empty'))}</p>`;
+  $('#jenkinsHiddenAll').hidden = !dossiers.length && !params.length;
+}
+
+/* ---------- Rafraîchissement automatique, et fin de MES lancements ----------
+
+   TOUTES LES 30 SECONDES, et seulement quand on REGARDE : l'onglet doit être ouvert et la
+   fenêtre visible. Un sondage qui continue derrière un onglet masqué ou pendant qu'on est
+   ailleurs dans l'application coûte à un Jenkins partagé sans rien apprendre à personne.
+   La case le débraye, et le choix est mémorisé — un réglage qu'il faut refaire à chaque
+   ouverture n'est pas un réglage. */
+const JENKINS_AUTO = 'mergerie_jenkins_auto';
+const JENKINS_LANCES = 'mergerie_jenkins_lances';
+const JK_PERIODE_MS = 30000;
+let jkTimer = null;
+
+const jkAutoCoupe = () => { try { return localStorage.getItem(JENKINS_AUTO) === '0'; } catch { return false; } };
+
+function jkAutoRelance() {
+  if (jkTimer) { clearInterval(jkTimer); jkTimer = null; }
+  const onglet = $('#tab-jenkins');
+  if (!onglet || !onglet.classList.contains('active') || jkAutoCoupe()) return;
+  jkTimer = setInterval(() => {
+    // Onglet du navigateur masqué : on ne demande rien. Il redemandera au retour.
+    if (document.hidden || !$('#tab-jenkins').classList.contains('active')) return;
+    loadJenkins({ silencieux: true });
+  }, JK_PERIODE_MS);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) jkAutoRelance(); });
+
+/* CE QUE J'AI LANCÉ, et qui tourne encore. On retient le numéro du dernier build AU MOMENT du
+   lancement : le build neuf n'existe pas encore (Jenkins met en file), donc c'est son
+   apparition — un numéro plus grand, terminé — qui fait la notification. Persisté : fermer
+   l'onglet en attendant la fin est justement le cas d'usage. */
+function jkLances() { try { return JSON.parse(localStorage.getItem(JENKINS_LANCES) || '{}'); } catch { return {}; } }
+function jkPoserLance(chemin, depuis) {
+  const l = jkLances();
+  l[chemin] = { depuis: depuis || 0, at: Date.now() };
+  try { localStorage.setItem(JENKINS_LANCES, JSON.stringify(l)); } catch { /* stockage indisponible */ }
+}
+function jkOublierLance(chemin) {
+  const l = jkLances(); delete l[chemin];
+  try { localStorage.setItem(JENKINS_LANCES, JSON.stringify(l)); } catch { /* stockage indisponible */ }
+}
+
+/* La notification de fin. Elle ne concerne QUE mes lancements : être prévenu du build nocturne
+   de l'équipe serait du bruit, et on couperait tout au bout de deux jours. */
+function jkVerifierFins(jobs) {
+  const attendus = jkLances();
+  if (!Object.keys(attendus).length) return;
+  const prefs = notifPrefs();
+  for (const j of jobs) {
+    const a = attendus[j.path];
+    if (!a) continue;
+    // Le build attendu est arrivé (numéro strictement plus grand) ET il ne tourne plus.
+    if (!j.lastNumber || j.lastNumber <= a.depuis || j.enCours) continue;
+    jkOublierLance(j.path);
+    if (prefs.jenkins_done && !prefs.muted) {
+      showNotif(tr('jenkins.notif.title', { job: j.path }), tr(`jenkins.st.${j.statut}`), () => {
+        navTab('jenkins'); openJenkinsJob(j.path);
+      });
+    }
+  }
+}
+
+/* ---------- Le détail d'un job : paramètres, historique, console ---------- */
+
+const jkPastilleBuild = (b) => (b.building ? 'succes encours'
+  : b.result === 'SUCCESS' ? 'succes' : b.result === 'UNSTABLE' ? 'instable' : b.result === 'ABORTED' ? 'jamais' : 'echec');
+
+/* Une ligne d'historique. Elle SÉLECTIONNE (le détail s'affiche à droite) et garde son bouton
+   Console : c'est le geste le plus fréquent, il ne doit pas coûter une sélection de plus. */
+function jkBuildLigne(chemin, b, choisi) {
+  const etat = b.building ? tr('jenkins.st.running') : (b.result || '—');
+  const quand = b.timestamp ? fmtDateTime(new Date(b.timestamp).toISOString()) : '';
+  return `<div class="jk-build${choisi ? ' selected' : ''}">
+    <button type="button" class="jk-build-btn" data-jkbuild="${b.number}" aria-pressed="${choisi ? 'true' : 'false'}">
+      <span class="jk-dot ${jkPastilleBuild(b)}"></span>
+      <strong>#${b.number}</strong>
+      <span>${esc(etat)}</span>
+      <span class="jk-meta">${esc(quand)}${b.duration ? ` · ${Math.round(b.duration / 1000)} s` : ''}</span>
+    </button>
+    <button type="button" class="btn btn-sm" data-jklog="${b.number}" data-jkpath="${esc(chemin)}">${esc(tr('jenkins.console'))}</button>
+    <button type="button" class="btn btn-sm" data-jkrerunbuild="${b.number}" title="${esc(tr('jenkins.rerun.title-build', { n: b.number }))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg></button>
+  </div>`;
+}
+
+// Le détail de l'exécution sélectionnée : avec quoi elle est partie, et ce qu'elle a donné.
+function jkBuildDetail(d, b) {
+  if (!b) return `<p class="muted">${esc(tr('jenkins.build.pick'))}</p>`;
+  const ligne = (k, v) => (v ? `<div class="jk-detail-row"><span class="jk-detail-k">${esc(k)}</span><span class="jk-detail-v">${esc(v)}</span></div>` : '');
+  const params = (b.params || []).length
+    ? (b.params || []).map((p) => ligne(p.name, String(p.value))).join('')
+    : `<p class="muted">${esc(tr('jenkins.build.no-params'))}</p>`;
+  return `<div class="jk-build-detail">
+    <h4>#${b.number} — ${esc(b.building ? tr('jenkins.st.running') : (b.result || '—'))} ${jkLienExterne(b.url)}</h4>
+    ${ligne(tr('jenkins.build.when'), b.timestamp ? fmtDateTime(new Date(b.timestamp).toISOString()) : '')}
+    ${ligne(tr('jenkins.build.duration'), b.duration ? `${Math.round(b.duration / 1000)} s` : '')}
+    ${ligne(tr('jenkins.build.by'), jkAuteur(b.by))}
+    ${ligne(tr('jenkins.build.ref'), b.ref || '')}
+    <h4>${esc(tr('jenkins.params.used'))}</h4>
+    ${params}
+  </div>`;
+}
+
+/* La fiche : l'historique à gauche, le détail du build choisi à droite. On sélectionne le
+   plus récent d'office — c'est celui dont on vient chercher les paramètres neuf fois sur dix. */
+function renderJenkinsFiche() {
+  const d = JENKINS.job;
+  if (!d) return;
+  const builds = d.builds || [];
+  if (!builds.some((b) => b.number === JENKINS.build)) JENKINS.build = builds.length ? builds[0].number : null;
+  const choisi = builds.find((b) => b.number === JENKINS.build) || null;
+  const gauche = builds.length
+    ? `<h4>${esc(tr('jenkins.builds'))}</h4><div class="jk-builds">${builds.map((b) => jkBuildLigne(d.path, b, b.number === JENKINS.build)).join('')}</div>`
+    : `<p class="muted">${esc(tr('jenkins.no-build'))}</p>`;
+  const zone = $('#jenkinsFiche');
+  if (zone) zone.innerHTML = `<div class="jk-fiche-col">${gauche}</div><div class="jk-fiche-col">${jkBuildDetail(d, choisi)}</div>`;
+}
+
+// Un paramètre, rendu selon SON type : un booléen se coche, un choix se choisit. Les
+// présenter tous comme un champ texte ferait retaper des valeurs que Jenkins connaît déjà.
+function jkParamChamp(p) {
+  const id = `jkp-${p.name}`;
+  if (p.choices && p.choices.length) {
+    /* MULTIPLE quand le job l'accepte (« choose one or multiple machines ») : une liste à choix
+       unique obligerait à lancer autant de fois qu'il y a de cibles. Les valeurs partent
+       séparées par des virgules, la forme qu'attendent les plugins qui posent la question. */
+    const choisies = new Set(String(p.value == null ? '' : p.value).split(',').map((x) => x.trim()).filter(Boolean));
+    const taille = p.multiple ? ` multiple size="${Math.min(8, Math.max(3, p.choices.length))}"` : '';
+    return `<select id="${esc(id)}" data-jkparam="${esc(p.name)}"${taille}>${p.choices
+      .map((c) => `<option value="${esc(c)}"${choisies.has(String(c)) ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
+  }
+  if (/boolean/i.test(p.type)) {
+    return `<label class="inline-check"><input type="checkbox" id="${esc(id)}" data-jkparam="${esc(p.name)}"${p.value === true || p.value === 'true' ? ' checked' : ''} /> <span>${esc(tr('jenkins.param.on'))}</span></label>`;
+  }
+  return `<input id="${esc(id)}" data-jkparam="${esc(p.name)}" value="${esc(p.value == null ? '' : String(p.value))}" />`;
+}
+
+async function openJenkinsJob(chemin) {
+  const modal = $('#jenkinsModal');
+  $('#jenkinsModalTitle').textContent = chemin;
+  $('#jenkinsModalDesc').textContent = '';
+  $('#jenkinsModalBody').innerHTML = skeleton(2);
+  modal.hidden = false;
+  try {
+    const d = await api(`/jenkins/job?path=${encodeURIComponent(chemin)}`);
+    JENKINS.job = d;
+    $('#jenkinsModalDesc').textContent = d.description || '';
+    const params = d.parameters.length
+      ? `<h4>${esc(tr('jenkins.params'))}</h4>
+         <p class="muted jk-param-intro">${esc(tr('jenkins.params.intro'))}</p>${d.parameters.map((p) => `<label class="jk-param"><span class="jk-param-name">${esc(p.name)}</span>
+          ${p.description ? `<span class="jk-param-desc">${esc(p.description)}</span>` : ''}
+          ${jkParamChamp(p)}
+          ${p.unresolved ? `<span class="jk-param-warn">${esc(tr('jenkins.param.unresolved'))} ${jkLienExterne(d.url)}</span>` : ''}</label>`).join('')}`
+      : '';
+    JENKINS.build = null;
+    $('#jenkinsModalBody').innerHTML = `${params}<div class="jk-fiche" id="jenkinsFiche"></div>`;
+    renderJenkinsFiche();
+    $('#jenkinsRun').hidden = !d.buildable;
+  } catch (e) {
+    $('#jenkinsModalBody').innerHTML = errorBox(explainError(e.message));
+    $('#jenkinsRun').hidden = true;
+  }
+}
+
+// Les valeurs saisies, relues du formulaire au moment du lancement.
+function jkParamsSaisis() {
+  const out = {};
+  $$('#jenkinsModalBody [data-jkparam]').forEach((el) => {
+    if (el.type === 'checkbox') { out[el.dataset.jkparam] = String(el.checked); return; }
+    // Choix multiple : Jenkins attend une seule valeur, les sélections séparées par des virgules.
+    if (el.multiple) { out[el.dataset.jkparam] = [...el.selectedOptions].map((o) => o.value).join(','); return; }
+    out[el.dataset.jkparam] = el.value;
+  });
+  return out;
+}
+
+/* RELANCER À L'IDENTIQUE. Le geste le plus fréquent après un échec : le même job, les mêmes
+   valeurs — sans les retaper, et sans risquer d'en oublier une. La confirmation MONTRE ce qui
+   va repartir : « relancer » ne veut rien dire si on ne voit pas avec quoi.
+
+   Les paramètres secrets n'ont pas été rendus par Jenkins (on ne les affiche jamais) : ils ne
+   peuvent donc pas repartir. On le DIT plutôt que de laisser partir un job amputé de son mot
+   de passe sans que personne ne s'en aperçoive. */
+async function relancerJenkins(chemin, params, caches) {
+  const liste = params || [];
+  const ok = await confirmDialog({
+    title: tr('jenkins.rerun.title'),
+    text: caches
+      ? `${tr('jenkins.rerun.text', { job: chemin })} ${tr('jenkins.rerun.secrets', { n: caches, count: caches })}`
+      : tr('jenkins.rerun.text', { job: chemin }),
+    detail: liste.length ? liste.map((p) => `${p.name} = ${p.value}`).join('\n') : tr('jenkins.build.no-params'),
+    confirmLabel: tr('jenkins.rerun'),
+  });
+  if (!ok) return false;
+  try {
+    const avant = (JENKINS.jobs.find((x) => x.path === chemin) || {}).lastNumber || 0;
+    await api('/jenkins/build', { method: 'POST', body: {
+      path: chemin, parameters: Object.fromEntries(liste.map((p) => [p.name, p.value])),
+    } });
+    jkPoserLance(chemin, avant);
+    toast(tr('jenkins.queued', { job: chemin }));
+    loadJenkins();
+    return true;
+  } catch (e) { toast(explainError(e.message), true); return false; }
+}
+
+/* LANCER DEMANDE CONFIRMATION. Un job Jenkins n'est pas une page qu'on ouvre : il déploie,
+   il publie, il tourne sur une machine partagée. Le clic de trop n'est pas rattrapable
+   depuis ici, et le nom du job dans la question est ce qui permet de s'en apercevoir. */
+async function lancerJenkins(chemin, parametres) {
+  if (!await confirmDialog({
+    title: tr('jenkins.confirm.title'), text: tr('jenkins.confirm.text', { job: chemin }),
+    confirmLabel: tr('jenkins.run'),
+  })) return false;
+  try {
+    const avant = (JENKINS.jobs.find((x) => x.path === chemin) || {}).lastNumber || 0;
+    await api('/jenkins/build', { method: 'POST', body: { path: chemin, parameters: parametres || {} } });
+    jkPoserLance(chemin, avant);
+    toast(tr('jenkins.queued', { job: chemin }));
+    // Jenkins met en file : l'état ne change pas dans la seconde, on redemande quand même.
+    loadJenkins();
+    return true;
+  } catch (e) { toast(explainError(e.message), true); return false; }
+}
+
+async function openJenkinsLog(chemin, numero) {
+  $('#jenkinsLogTitle').textContent = `${chemin} #${numero}`;
+  $('#jenkinsLogBody').textContent = '…';
+  $('#jenkinsLogModal').hidden = false;
+  try {
+    const d = await api(`/jenkins/console?path=${encodeURIComponent(chemin)}&build=${encodeURIComponent(numero)}`);
+    $('#jenkinsLogBody').textContent = (d.truncated ? `${tr('jenkins.log.truncated')}\n\n` : '') + (d.text || '');
+    $('#jenkinsLogBody').scrollTop = $('#jenkinsLogBody').scrollHeight;   // l'erreur est en bas
+  } catch (e) {
+    $('#jenkinsLogBody').textContent = explainError(e.message);
+  }
+}
+
+$('#jenkinsSearch') && $('#jenkinsSearch').addEventListener('input', (e) => { JENKINS.q = e.target.value; renderJenkins(); });
+$('#jenkinsFailOnly') && $('#jenkinsFailOnly').addEventListener('change', (e) => { JENKINS.echecsSeuls = e.target.checked; renderJenkins(); });
+$('#jenkinsReload') && $('#jenkinsReload').addEventListener('click', () => loadJenkins());
+$('#jenkinsNoAuto') && $('#jenkinsNoAuto').addEventListener('change', (e) => {
+  try { localStorage.setItem(JENKINS_AUTO, e.target.checked ? '0' : '1'); } catch { /* stockage indisponible */ }
+  jkAutoRelance();
+});
+$('#jenkinsParamFiltres') && $('#jenkinsParamFiltres').addEventListener('click', (e) => {
+  const h = e.target.closest('[data-jkpfhide]');
+  if (h) {
+    e.preventDefault();
+    const nom = h.dataset.jkpfhide;
+    JENKINS.paramsMasques.add(nom);
+    /* On efface AUSSI sa valeur : un filtre invisible qui continue de filtrer est le meilleur
+       moyen de chercher pendant dix minutes pourquoi la liste est vide. */
+    JENKINS.paramFiltres = { ...JENKINS.paramFiltres, [nom]: '' };
+    sauverFiltreJenkins();
+    renderJenkins();
+    return;
+  }
+  if (e.target.closest('#jenkinsParamHidden')) { renderJenkinsMasques(); $('#jenkinsHiddenModal').hidden = false; }
+});
+$('#jenkinsParamFiltres') && $('#jenkinsParamFiltres').addEventListener('change', (e) => {
+  const sel = e.target.closest('[data-jkpf]');
+  if (!sel) return;
+  JENKINS.paramFiltres = { ...JENKINS.paramFiltres, [sel.dataset.jkpf]: sel.value };
+  renderJenkins();
+});
+$('#jenkinsFolderSearch') && $('#jenkinsFolderSearch').addEventListener('input', (e) => { JENKINS.qDossier = e.target.value; renderJenkinsDossiers(); });
+/* Masquer / remettre. Le clic sur la croix est intercepté AVANT le `change` du label : sans
+   ça, cliquer la croix cocherait aussi la case qui la porte. */
+$('#jenkinsFolderList') && $('#jenkinsFolderList').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-jkhide]');
+  if (!b) return;
+  e.preventDefault();
+  JENKINS.masques.add(b.dataset.jkhide);
+  sauverFiltreJenkins();
+  renderJenkins();
+});
+$('#jenkinsFolderHidden') && $('#jenkinsFolderHidden').addEventListener('click', () => {
+  renderJenkinsMasques();
+  $('#jenkinsHiddenModal').hidden = false;
+});
+$('#jenkinsHiddenList') && $('#jenkinsHiddenList').addEventListener('click', (e) => {
+  const d = e.target.closest('[data-jkshow]');
+  const p = e.target.closest('[data-jkpfshow]');
+  if (!d && !p) return;
+  if (d) JENKINS.masques.delete(d.dataset.jkshow);
+  if (p) JENKINS.paramsMasques.delete(p.dataset.jkpfshow);
+  sauverFiltreJenkins();
+  renderJenkins();
+  // Plus rien à remettre : la modale n'a plus de raison d'être ouverte.
+  if (!JENKINS.masques.size && !JENKINS.paramsMasques.size) $('#jenkinsHiddenModal').hidden = true;
+  else renderJenkinsMasques();
+});
+$('#jenkinsHiddenAll') && $('#jenkinsHiddenAll').addEventListener('click', () => {
+  JENKINS.masques.clear();
+  JENKINS.paramsMasques.clear();
+  sauverFiltreJenkins();
+  renderJenkins();
+  $('#jenkinsHiddenModal').hidden = true;
+});
+$('#jenkinsHiddenClose') && $('#jenkinsHiddenClose').addEventListener('click', () => { $('#jenkinsHiddenModal').hidden = true; });
+fermerAuFond('#jenkinsHiddenModal', () => { $('#jenkinsHiddenModal').hidden = true; }, { salissable: false });
+$('#jenkinsFolderList') && $('#jenkinsFolderList').addEventListener('change', (e) => {
+  const c = e.target.closest('[data-jkfolder]');
+  if (!c) return;
+  const d = c.dataset.jkfolder;
+  if (c.checked) JENKINS.horsDossiers.delete(d); else JENKINS.horsDossiers.add(d);
+  sauverFiltreJenkins();
+  renderJenkins();
+});
+/* « Tout cocher / décocher » ne portent que sur ce qui est VISIBLE dans le filtre : sinon,
+   après une recherche, le bouton toucherait des dossiers qu'on ne voit pas. */
+const jkDossiersVisibles = () => $$('#jenkinsFolderList [data-jkfolder]').map((c) => c.dataset.jkfolder);
+$('#jenkinsFoldersAll') && $('#jenkinsFoldersAll').addEventListener('click', () => {
+  jkDossiersVisibles().forEach((d) => JENKINS.horsDossiers.delete(d));
+  sauverFiltreJenkins(); renderJenkins();
+});
+$('#jenkinsFoldersNone') && $('#jenkinsFoldersNone').addEventListener('click', () => {
+  jkDossiersVisibles().forEach((d) => JENKINS.horsDossiers.add(d));
+  sauverFiltreJenkins(); renderJenkins();
+});
+$('#jenkinsClose') && $('#jenkinsClose').addEventListener('click', () => { $('#jenkinsModal').hidden = true; });
+$('#jenkinsLogClose') && $('#jenkinsLogClose').addEventListener('click', () => { $('#jenkinsLogModal').hidden = true; });
+fermerAuFond('#jenkinsModal', () => { $('#jenkinsModal').hidden = true; }, { salissable: false });
+fermerAuFond('#jenkinsLogModal', () => { $('#jenkinsLogModal').hidden = true; }, { salissable: false });
+$('#jenkinsRun') && $('#jenkinsRun').addEventListener('click', async () => {
+  const j = JENKINS.job;
+  if (!j) return;
+  // Lancé depuis la fiche : on la referme, le geste est fait et la liste redemande l'état.
+  if (await lancerJenkins(j.path, jkParamsSaisis())) $('#jenkinsModal').hidden = true;
+});
+
+document.addEventListener('click', (e) => {
+  const box = e.target.closest && e.target.closest('#jenkinsBox');
+  if (box) {
+    const run = e.target.closest('[data-jkrun]');
+    if (run) {
+      /* Un job PARAMÉTRÉ ne se lance pas depuis la liste : on ouvre sa fiche, où les
+         paramètres se lisent. Lancer avec les valeurs par défaut sans les avoir vues est
+         exactement la façon de déployer la mauvaise version. */
+      const j = JENKINS.jobs.find((x) => x.path === run.dataset.jkrun);
+      openJenkinsJob(run.dataset.jkrun).then(() => {
+        if (JENKINS.job && !JENKINS.job.parameters.length) {
+          $('#jenkinsModal').hidden = true;
+          lancerJenkins(j ? j.path : run.dataset.jkrun, {});
+        }
+      });
+      return;
+    }
+    const rerun = e.target.closest('[data-jkrerun]');
+    if (rerun) {
+      const j = JENKINS.jobs.find((x) => x.path === rerun.dataset.jkrerun);
+      if (j) relancerJenkins(j.path, j.lastParams, j.lastParamsCaches);
+      return;
+    }
+    const open = e.target.closest('[data-jkopen]') || e.target.closest('[data-jkjob]');
+    if (open) { openJenkinsJob(open.dataset.jkopen || open.dataset.jkjob); return; }
+  }
+  /* Relancer UNE exécution précise, avec SES valeurs : c'est ce qu'on veut après avoir lu la
+     console d'un build raté, pas les valeurs du dernier lancement qui n'est pas celui-là. */
+  const rb = e.target.closest && e.target.closest('[data-jkrerunbuild]');
+  if (rb) {
+    const d = JENKINS.job;
+    const b = d && (d.builds || []).find((x) => x.number === Number(rb.dataset.jkrerunbuild));
+    if (b) relancerJenkins(d.path, b.params, b.paramsCaches).then((parti) => { if (parti) $('#jenkinsModal').hidden = true; });
+    return;
+  }
+  const build = e.target.closest && e.target.closest('[data-jkbuild]');
+  if (build) { JENKINS.build = Number(build.dataset.jkbuild); renderJenkinsFiche(); return; }
+  const log = e.target.closest && e.target.closest('[data-jklog]');
+  if (log) openJenkinsLog(log.dataset.jkpath, log.dataset.jklog);
 });

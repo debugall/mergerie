@@ -146,6 +146,22 @@ Arbre du projet + fichier affiché **entier avec le diff en place**, coloration 
 **Commentaire inline** par ligne et **réponses** aux fils, synchronisés avec la forge — et
 **modifiables** tant qu'ils sont de toi.
 
+**Deux façons de commenter, au choix.** `Commenter sur GitLab` publie tout de suite, comme
+avant. **`Enregistrer`** garde la remarque **en attente**, en local : on relit une MR fichier par
+fichier, et envoyer une par une bombarde l'auteur de notifications tout en figeant des remarques
+qu'on aurait retirées trois fichiers plus loin. Un commentaire en attente se **corrige** et se
+**supprime** tant qu'il n'est pas parti ; il s'affiche sous sa ligne avec un liseré ambre et la
+mention **« En attente d'envoi »** — le même rendu qu'un commentaire publié ferait croire le
+travail fait. Le bouton **`Envoyer les commentaires (n)`**, dans l'en-tête, les publie tous d'un
+coup ; c'est aussi lui qui rappelle qu'un travail attend, sans quoi on referme la MR en laissant
+ses remarques en local.
+
+⚠ **L'envoi confirme et dit combien partent** — publier notifie l'auteur — et **ce qui échoue
+reste en attente**, avec sa raison : une erreur réseau sur le troisième commentaire ne doit pas
+emporter les deux premiers ni la demi-heure de relecture. La **position** (fichier, ligne, SHAs)
+est résolue **à l'envoi**, comme pour un commentaire direct : une MR qui a bougé entre-temps ne
+reçoit pas des remarques accrochées à un état du code qui n'existe plus.
+
 Dans l'arbre, les dossiers **porteurs d'un changement sont dépliés d'office**, les autres repliés — mais
 **ce que tu ouvres ou refermes à la main est retenu** le temps de la visite : cliquer un fichier ne
 referme plus le dossier qui le contient. L'arbre repart de la règle par défaut au diff suivant.
@@ -415,11 +431,24 @@ dernier onglet consulté. Une fois par jour calendaire, jamais deux — sinon ch
 sur le brief celui qui lisait un rapport. Débrayable dans *Réglages → Général*.
 
 #### Todos
-Une liste plate, triée **par priorité puis par échéance** ; les sans-date passent après celles qui en ont
-une, sinon les plus nombreuses repousseraient en bas ce qui est dû aujourd'hui.
+Une liste plate, triée **par priorité d'abord, puis dans l'ordre que tu lui donnes**. Deux questions
+différentes, chacune garde sa réponse : la priorité dit **ce qui presse**, ton ordre dit **dans quel ordre
+tu t'y prends** à l'intérieur de ce qui presse. « À faire » se réordonne à la souris (poignée à gauche,
+glisser-déposer) ou au clavier (deux flèches par ligne — glisser n'est ni annonçable ni fiable au clavier
+et au doigt), et l'ordre est **enregistré** : un ordre qui ne survit pas au rechargement n'est pas un
+ordre.
 
-- **Ajout inline** en tête de liste : on tape, Entrée, c'est créé — priorité normale, sans date. Le tri se
-  fait après.
+⚠ **On ne réordonne qu'à l'intérieur d'une priorité.** Emmener une todo dans un autre groupe la ferait
+revenir aussitôt, et un geste qui n'aboutit pas est pire que pas de geste : les flèches s'éteignent aux
+frontières de groupe, et le glisser ne les traverse pas. Pour changer de groupe, on change la **priorité**
+— c'est un autre geste, et il est explicite. L'**échéance**, elle, ne trie plus rien ici : elle reste
+affichée et continue d'alimenter le **brief du matin** et les **rappels**. Le jour de la mise à jour, ta
+liste garde exactement l'ordre qu'elle avait. Les vues **Faites** et **Archivées** gardent leur ordre
+chronologique : on n'arrange pas son tiroir.
+
+- **Ajout inline** en tête de liste : on tape, Entrée, c'est créé — priorité normale, sans date. Une todo
+  neuve se range **en tête**, là où on vient de la taper ; la chercher en bas d'une liste de trente serait
+  absurde.
 - **Statut binaire** : à faire / fait. Pas de « en cours » : une todo de poste de travail se coche, elle
   ne se pilote pas.
 - **Priorité** haute / normale / basse. La normale n'affiche aucune pastille — la baliser serait du bruit.
@@ -771,6 +800,133 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
   dans le PATH du serveur**, un message **actionnable** l'explique (indique `DOCKER_BIN` dans le `.env` au
   besoin) — comme les erreurs certificat / token.
 
+### Jenkins
+Voir **où en sont les jobs** et **les lancer**, sans quitter l'outil ni ouvrir une nouvelle
+page. Ce n'est pas une console d'administration : il n'y a ni configuration de job, ni gestion
+d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
+
+- **Ce qui s'affiche.** Tous les jobs visibles par ton compte, à plat, **du dernier lancement
+  au plus ancien** : dans une liste de trois cents jobs, ce qui vient de tourner est ce qu'on
+  vient chercher — pas ce qui commence par « a ». Les **jamais lancés** ferment la marche.
+- **Chaque ligne répond à quatre questions** : *quoi* (le **chemin** `boutique/api-deploy-prod`,
+  car plusieurs projets ont un job « build », et le **numéro** du dernier build), *dans quel
+  état* (**pastille de couleur** *et* le mot qui va avec — *Succès*, *Échec*, *Instable*,
+  *Jamais lancé*, *Désactivé* —, une couleur seule ne se lisant pas de la même façon par tout
+  le monde ; un job **en cours** a sa pastille qui bat), *quand* (la **date** du dernier
+  lancement, l'ancienneté relative en infobulle), *par qui et sur quoi* (**l'auteur** du
+  lancement — ou sa nature : *par le planificateur*, *sur un push*, *par un job amont* —, la
+  **branche ou le tag** construits, et **tous les paramètres du dernier
+  lancement** avec leurs valeurs, en **pastilles nom/valeur sur leur propre ligne** : mêlés au
+  statut, à la date et à l'auteur — tous gris, tous séparés par des points médians — on lisait
+  une phrase au lieu de couples. La question qu'on se pose en lisant la liste est justement
+  « avec quoi est-il parti ? », et y répondre à moitié obligerait à ouvrir la fiche. Tout cela arrive dans **la même requête** que la liste :
+  l'afficher ne coûte pas un appel de plus.
+
+- **Les paramètres qui reviennent d'un job à l'autre portent une COULEUR.** À partir de **trois
+  jobs**, un paramètre est considéré comme fréquent et reçoit une teinte : on retrouve `ENV`
+  d'une ligne à l'autre du coin de l'œil, sans que la liste se raidisse en colonnes pleines de
+  trous. La teinte vient du **nom**, pas de son rang : elle ne bouge donc pas quand un job
+  apparaît ou disparaît. Elle **aide, elle ne remplace rien** — le nom reste écrit dans la
+  pastille. Trois plutôt que deux : à deux, une coïncidence entre deux jobs colorerait pour tout
+  le monde ; ce qui n'appartient qu'à un job reste neutre.
+- **Et on filtre sur leurs valeurs.** Une liste déroulante par paramètre fréquent, au-dessus des
+  jobs : « qu'est-ce qui est parti en prod ? », « qu'est-ce qui tourne sur la 2.4 ? ». Un job qui
+  **n'a pas** le paramètre est écarté dès qu'on filtre dessus — il ne répond pas à la question
+  posée. Les filtres sont calculés sur **tous** les jobs, pas sur ceux qui restent après
+  filtrage : sinon un filtre disparaîtrait au moment où l'on s'en sert.
+- **Un filtre qui ne sert pas se range.** Une croix au survol le sort de la barre — tous les
+  paramètres fréquents ne servent pas à chercher —, et sa **valeur est effacée en même temps** :
+  un filtre invisible qui continue de filtrer est le meilleur moyen de chercher dix minutes
+  pourquoi la liste est vide. Les rangés se comptent à côté et se retrouvent dans la **même
+  fenêtre que les dossiers masqués**, d'où un clic les remet.
+
+  ⚠ Un paramètre de type **mot de passe** n'est jamais affiché — Jenkins en rend une forme
+  chiffrée, illisible, et un secret n'a rien à faire dans une liste — pas plus qu'une valeur
+  vide, qui n'apprend rien et pousse les autres hors de l'écran.
+- **Les dossiers, en tête, servent de filtre.** Une case par dossier, avec son nombre de jobs,
+  **`Tout cocher` / `Tout décocher`**, et une **recherche** pour retrouver un dossier parmi
+  cinquante (elle masque des cases sans jamais en décocher : filtrer ce qu'on regarde ne doit
+  pas changer ce qu'on a choisi de voir — et les deux boutons ne portent alors que sur ce qui
+  est visible). Le choix est **mémorisé**. ⚠ Ce sont les dossiers **décochés** qui sont retenus :
+  un dossier créé demain par l'équipe apparaît donc de lui-même. L'inverse l'aurait rendu
+  invisible jusqu'à ce qu'on pense à aller le cocher.
+- **Ranger un dossier qui ne te concerne pas.** Décocher dit « pas maintenant » ; la **croix**
+  au survol d'une case dit « ce dossier n'est pas mon sujet » et le **sort de la liste des
+  filtres**, qui redevient lisible — sur une installation à quarante dossiers, une rangée de
+  cases qu'on ne coche jamais est du bruit qu'on relit chaque matin. Ses jobs partent avec lui
+  (le masquer en les laissant donnerait des jobs qu'on ne peut plus filtrer). Les masqués
+  restent **listés en petit sous les cases**, et un clic sur `+ nom` remet celui qu'on veut :
+  un filtre dont on ne voit pas ce qu'il retire devient un mystère au bout de trois semaines.
+  L'état coché du dossier est **conservé** pendant qu'il est masqué.
+- **Retrouver un job.** Une **recherche** — obligatoire ici : une installation d'entreprise
+  aligne des centaines de jobs. Elle porte sur le **chemin entier**, donc « boutique » retrouve
+  tout un projet. Une case **`Seulement ce qui ne va pas`** ne garde que l'échec, l'instable et
+  ce qui tourne.
+- **Rafraîchi toutes les 30 s, et seulement quand tu regardes.** L'onglet Jenkins doit être
+  ouvert *et* la fenêtre visible : un sondage qui continue derrière un onglet masqué coûte à un
+  serveur partagé sans rien apprendre à personne. La case **`Ne pas rafraîchir tout seul`** le
+  débraye (le choix est mémorisé), et **`Rafraîchir`** redemande à la main. Un rafraîchissement
+  de fond ne fait pas clignoter la liste, et un réseau qui hoquette n'efface pas l'écran : on
+  garde le précédent. Le menu **ne porte pas de pastille** — elle supposerait d'interroger
+  Jenkins à chaque ouverture de l'application, même sans être sur l'onglet.
+- **Prévenu à la fin de ce que TU as lancé.** Une notification bureau quand un job que tu as
+  lancé depuis Mergerie se termine, avec son verdict ; un clic ouvre sa fiche. Uniquement les
+  tiens : être prévenu du build nocturne de l'équipe serait du bruit, et on couperait tout au
+  bout de deux jours. Débrayable dans *Réglages → Notifications*. L'attente survit à la
+  fermeture de l'onglet — c'est justement le cas d'usage.
+- **La fiche d'un job** (`Ouvrir`), en deux colonnes : à **gauche** l'historique des dix
+  dernières exécutions (verdict, date, durée) — chacune avec son bouton **`Console`**, le geste
+  le plus fréquent —, à **droite** le détail de celle qu'on sélectionne : quand, combien de
+  temps, **par qui**, sur **quelle branche**, et surtout **avec quels paramètres et quelles
+  valeurs** elle est partie. La plus récente est sélectionnée d'office. La **console** s'ouvre
+  d'un bouton — bornée aux derniers caractères, **déroulée en bas** là où est l'erreur, et
+  **repliée à la ligne** : défiler de côté pour lire une erreur qu'on cherchait reviendrait à ne
+  pas l'afficher.
+- **Un lien vers Jenkins** sur chaque ligne (et sur chaque exécution de la fiche) ouvre le job
+  dans un **nouvel onglet** : ce que Mergerie ne montre pas — la configuration, les artefacts,
+  les tests — reste à un clic.
+- **Lancer.** ⚠ Toujours **avec confirmation**, et la question **nomme le job** : c'est ce qui
+  permet de s'apercevoir qu'on s'est trompé de ligne. Un job Jenkins n'est pas une page qu'on
+  ouvre — il déploie, il publie, il tourne sur une machine partagée, et on ne peut pas
+  l'annuler depuis ici.
+- **Les listes que Jenkins CALCULE sont récupérées là où elles existent.** *Git Parameter*
+  (la liste des branches et tags du dépôt), *Extended Choice*, *Active Choices* : ces plugins ne
+  déclarent pas leurs valeurs, ils les calculent au moment de rendre leur page — l'API n'en
+  porte donc aucune trace. Mergerie lit alors le **formulaire de lancement** de Jenkins, celui
+  qu'on voit en cliquant *Build with Parameters*, et **uniquement pour les paramètres dont
+  l'API n'a rien dit** (ce qu'elle déclare fait foi). Un **choix multiple** reste multiple, et
+  les valeurs partent séparées par des virgules — la forme qu'attendent ces plugins.
+- ⚠ **Si la page ne répond pas non plus**, le champ est laissé **vide** et le dit, avec le lien
+  pour aller lancer depuis Jenkins. C'est le cas quand le plugin échoue jusque dans sa page et
+  rend sa phrase d'erreur (« Could not get Environment from ENV Param ») : pré-remplir le champ
+  de cette phrase l'aurait fait partir telle quelle comme valeur.
+
+- **Un job paramétré ne se lance jamais depuis la liste.** Son bouton s'écrit **`Lancer…`** —
+  les points de suspension annoncent un formulaire, et l'infobulle dit combien de paramètres il
+  attend. Il ouvre la **fiche** du job : la section **`Paramètres`** s'y remplit (un booléen se
+  coche, un choix se choisit, le reste se tape), puis c'est le **`Lancer`** du bas de la fiche
+  qui envoie, avec la confirmation habituelle. **Les valeurs proposées sont celles du job** :
+  ce sont elles qui partiront si tu n'y touches pas. Partir sur des valeurs par défaut qu'on
+  n'a pas vues, c'est déployer la mauvaise version dans le mauvais environnement.
+- **`Relancer` : le même job, les mêmes valeurs.** Le geste le plus fréquent après un échec.
+  Dans la **liste**, il repart avec les paramètres du **dernier lancement** ; dans la **fiche**,
+  chaque exécution de l'historique a le sien et repart avec **ses** valeurs à elle — c'est ce
+  qu'on veut après avoir lu la console d'un build raté. La confirmation **montre les valeurs**
+  qui vont partir : « relancer » ne dit rien si on ne voit pas avec quoi. Un job sans paramètre
+  n'a pas ce bouton : ce serait `Lancer`.
+- ⚠ **Un paramètre secret ne peut pas être renvoyé.** Jenkins ne rend jamais sa valeur (et
+  Mergerie ne l'affiche pas) : à la relance, Jenkins reprendra sa valeur par défaut. La
+  confirmation le dit et les compte, plutôt que de laisser repartir un job amputé de son mot de
+  passe sans que personne ne s'en aperçoive.
+- **Un job désactivé n'a pas de bouton `Lancer`** : proposer ce que Jenkins refusera est une
+  promesse qu'on ne tient pas.
+
+**Connexion** — *Réglages → Jenkins* : l'URL racine, ton **utilisateur** et un **jeton d'API**
+(ton profil Jenkins → *Configure* → *API Token*). Jenkins authentifie le **couple** : le jeton
+seul ne suffit pas. **`Tester Jenkins`** rend le **nom du compte** vu par le serveur — une URL
+qui répond ne prouve pas que le jeton est bon. Le jeton est stocké en local et **masqué** ;
+réenregistrer les réglages sans y toucher ne l'efface pas.
+
 ### Liens
 Les liens de travail ont une **structure** que les marque-pages d'un navigateur ne savent pas
 représenter : le même service existe en local, en dev, en preprod, en prod. Un arbre de dossiers
@@ -1112,7 +1268,7 @@ seuls les gabarits restés au défaut sont réalignés.
 ### Confort d'usage
 Onglet, sous-onglet **et stade de Reviews mémorisés** d'une session à l'autre — et **rien d'autre** :
 ni recherche, ni modale, ni rapport ouvert, car un état périmé est pire qu'un démarrage propre ·
-**raccourcis clavier** (`1`-`8` onglets, `/` recherche, `n` nouvelle todo, `r` chercher les MR, `l` logs, `?` aide,
+**raccourcis clavier** (`1`-`9` puis `0` pour les dix onglets, `/` recherche, `n` nouvelle todo, `r` chercher les MR, `l` logs, `?` aide,
 `Échap` ferme) · **favicon dynamique** pendant un job · messages d'erreur **traduits en actions**
 (certificat, token, CLI introuvable, timeout, réseau) · **onboarding en 3 étapes** tant que la
 connexion et les dépôts ne sont pas configurés · chaque champ de formulaire porte une **icône i** dont
@@ -1455,20 +1611,27 @@ Un fichier `.env` à la racine est chargé automatiquement au démarrage.
 | `GITLAB_INSECURE_TLS` | 0 | `1` = ignore la vérif TLS **pour GitLab uniquement** (dépannage) |
 | `GITHUB_CA_CERT` | — | idem pour une instance **GitHub Enterprise** à CA interne |
 | `GITHUB_INSECURE_TLS` | 0 | `1` = ignore la vérif TLS **pour GitHub uniquement** (dépannage) |
+| `JENKINS_CA_CERT` | — | idem pour un **Jenkins interne** derrière un certificat d'entreprise |
+| `JENKINS_INSECURE_TLS` | 0 | `1` = ignore la vérif TLS **pour Jenkins uniquement** (dépannage) |
 | `GIT_CLONE_SSH` | 0 | `1` = clone via SSH (ta clé) au lieu de HTTPS+token |
 | `MERGERIE_DATA_DIR` | `data/` | dossier de données isolé (utile pour les tests) |
 
 L'agent IA doit pouvoir **modifier des fichiers** (mode « yolo ») pour les sessions de codage. Les explorations, elles, sont en lecture seule : les dépôts sont remis à zéro après chaque passe.
 
-## GitLab self-hosted / GitHub Enterprise / certificat d'entreprise
+## GitLab self-hosted / GitHub Enterprise / Jenkins interne / certificat d'entreprise
 
-Si l'API échoue avec `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` (CA interne inconnue de Node) :
+Si l'API échoue avec `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` ou `unable to get local issuer certificate`
+(CA interne inconnue de Node) :
 - **propre** : exporte le CA (chaîne complète jusqu'à la racine) et pointe `GITLAB_CA_CERT=/chemin/ca.pem`
-  (ou `GITHUB_CA_CERT` pour une instance GitHub Enterprise) ;
-- **dépannage** : `GITLAB_INSECURE_TLS=1` / `GITHUB_INSECURE_TLS=1`.
+  (ou `GITHUB_CA_CERT` pour une instance GitHub Enterprise, `JENKINS_CA_CERT` pour un Jenkins interne) ;
+- **dépannage** : `GITLAB_INSECURE_TLS=1` / `GITHUB_INSECURE_TLS=1` / `JENKINS_INSECURE_TLS=1`.
 
-Les deux réglages sont **indépendants** : épingler le CA de ton GitLab interne ne change rien aux appels
-vers github.com. Pour le **clone**, `git` a son propre store : soit `GIT_CLONE_SSH=1` (clé SSH), soit les
+C'est le cas le plus courant avec **Jenkins** : un serveur interne est presque toujours servi par un
+certificat qu'un Node fraîchement installé ne connaît pas. Le message de l'onglet Jenkins nomme
+directement les deux variables — le CA épinglé d'abord, la désactivation ensuite.
+
+Les trois réglages sont **indépendants** : épingler le CA de ton GitLab interne ne change rien aux appels
+vers github.com ni vers ton Jenkins. Pour le **clone**, `git` a son propre store : soit `GIT_CLONE_SSH=1` (clé SSH), soit les
 réglages ci-dessus sont aussi appliqués à git.
 
 ## Enregistrer une vidéo de présentation (prête pour YouTube)
@@ -1633,6 +1796,7 @@ opérations git multi-dépôts, **suppressions de branches/tags restaurables** (
 local avant suppression), Docker `down` en aperçu et volumes préservés, et **jamais de merge automatique**
 d'une MR.
 
-**TLS entreprise.** Pour un GitLab self-hosted ou un GitHub Enterprise à CA interne, fournis `GITLAB_CA_CERT`
-/ `GITHUB_CA_CERT`. `GITLAB_INSECURE_TLS=1` / `GITHUB_INSECURE_TLS=1`
-**désactive** la vérification du certificat : à **réserver à un réseau interne de confiance**.
+**TLS entreprise.** Pour un GitLab self-hosted, un GitHub Enterprise ou un Jenkins interne à CA interne,
+fournis `GITLAB_CA_CERT` / `GITHUB_CA_CERT` / `JENKINS_CA_CERT`. Le `*_INSECURE_TLS=1` correspondant
+**désactive** la vérification du certificat pour ce service uniquement : à **réserver à un réseau interne
+de confiance**.
