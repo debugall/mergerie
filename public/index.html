@@ -1702,6 +1702,9 @@ print(json.dumps({
         <button id="treeToggle" class="btn" title="Afficher / masquer l'arborescence" data-i18n-title="context.title.afficher-masquer-l-arborescence"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="context.btn.arbre">Arbre</span></button>
         <span id="splitTitle" class="split-title"></span>
         <span class="spacer"></span>
+        <!-- LE RAPPEL. Sans compteur visible, on referme la MR en laissant ses remarques en
+             local — et personne ne les lira jamais. -->
+        <button id="draftsSend" class="btn btn-primary" hidden data-i18n-title="cmt.draft.send-title" title="Envoyer les commentaires en attente vers la forge"><svg class="ico"><use href="#i-upload"/></svg><span data-i18n="cmt.draft.send">Envoyer les commentaires</span> (<span id="draftsCount">0</span>)</button>
         <button id="splitClose" class="btn" title="Fermer la vue plein écran (Échap)" data-i18n-title="context.title.fermer-la-vue-plein-ecran"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>
     </div>
     <div class="split-body code-body">

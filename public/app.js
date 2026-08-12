@@ -2920,6 +2920,7 @@ async function renderFile() {
     split.fileNewPath = rd.newPath || path;
     el.innerHTML = rd.html;
     renderInlineThreads();     // commentaires existants sous leur ligne
+    renderInlineDrafts();      // …et ceux qui attendent encore d'être envoyés
     el.scrollTop = 0;
     setupChangeNav();          // repère les changements + saute au premier
     return;
@@ -2972,6 +2973,50 @@ function renderInlineThreads() {
   }
 }
 
+/* LES COMMENTAIRES EN ATTENTE, sous leur ligne, comme les vrais — mais reconnaissables au
+   premier regard : ils ne sont PAS partis. Les afficher comme les autres ferait croire le
+   travail fait, et on refermerait la MR en laissant ses remarques en local. */
+function renderInlineDrafts() {
+  for (const d of split.drafts || []) {
+    if (d.new_path !== split.fileNewPath && d.old_path !== split.fileOldPath) continue;
+    let row = null;
+    if (d.new_line != null) row = $(`#fileContent .dl-row[data-new="${d.new_line}"]`);
+    else if (d.old_line != null) row = $(`#fileContent .dl-row[data-old="${d.old_line}"]`);
+    if (!row) continue;
+    row.classList.add('has-comment');
+    const el = document.createElement('div');
+    el.className = 'cmt-thread cmt-draft';
+    el.dataset.draft = d.id;
+    el.innerHTML = `<div class="cmt-draft-head">${svgIco('edit')}<span>${esc(tr('cmt.draft.badge'))}</span></div>`
+      + `<div class="cmt-draft-body">${esc(d.body)}</div>`
+      + `<div class="cmt-actions"><button type="button" class="btn btn-sm" data-draftedit="${d.id}">${esc(tr('ui.edit'))}</button>`
+      + `<button type="button" class="btn btn-sm btn-danger" data-draftdel="${d.id}">${esc(tr('ui.delete'))}</button></div>`;
+    // Après le fil existant de la même ligne s'il y en a un : les vrais d'abord, l'à-venir après.
+    const apres = row.nextElementSibling && row.nextElementSibling.classList.contains('cmt-thread')
+      ? row.nextElementSibling : row;
+    apres.after(el);
+  }
+}
+
+/* Le compteur, dans l'en-tête de la vue plein écran. C'est LUI qui rappelle qu'un travail
+   attend : sans compteur visible, on referme la MR en laissant ses remarques en local. */
+function majBoutonBrouillons() {
+  const b = $('#draftsSend');
+  if (!b) return;
+  const n = (split.drafts || []).length;
+  b.hidden = !n;
+  $('#draftsCount').textContent = n;
+}
+
+async function chargerBrouillons() {
+  if (!split.mrId) { split.drafts = []; majBoutonBrouillons(); return; }
+  try {
+    const d = await api(`/mrs/${split.mrId}/comment-drafts`);
+    split.drafts = d.drafts || [];
+  } catch { split.drafts = []; }
+  majBoutonBrouillons();
+}
+
 // Mini-carte : marqueurs cliquables aux emplacements des changements.
 function renderMinimap() {
   const mm = $('#minimap');
@@ -3017,6 +3062,7 @@ async function openSplit(id) {
     };
     $('#splitTitle').textContent = `!${d.mr.iid} — ${d.mr.title || ''}`;
     setSplitPane('review');
+    chargerBrouillons();
     renderTree();
     $('#splitView').hidden = false;
     const first = split.files.find((f) => f.changed) || split.files[0];
@@ -3141,10 +3187,28 @@ $('#fileContent').addEventListener('click', (e) => {
   const forge = forgeLabel(split.forge);
   ed.innerHTML = `<textarea placeholder="${tr('cmt.inline.ph')}"></textarea>`
     + `<div class="cmt-actions"><button type="button" class="btn btn-sm cmt-cancel" title="${tr('cmt.cancel.title')}">${tr('ui.cancel')}</button>`
+    /* ENREGISTRER SANS ENVOYER : le geste de relecture. On écrit ses remarques au fil des
+       fichiers, on les corrige, on en retire — et on les envoie toutes quand on a fini. */
+    + `<button type="button" class="btn btn-sm cmt-draft-save" title="${tr('cmt.draft.title')}">${tr('cmt.draft.btn')}</button>`
     + `<button type="button" class="btn btn-sm btn-primary cmt-send" title="${tr('cmt.inline.title', { forge })}">${tr('cmt.inline.btn', { forge })}</button></div>`;
   row.after(ed);
   const ta = ed.querySelector('textarea'); ta.focus();
   ed.querySelector('.cmt-cancel').addEventListener('click', () => ed.remove());
+  ed.querySelector('.cmt-draft-save').addEventListener('click', async () => {
+    const body = ta.value.trim(); if (!body) return;
+    const b = ed.querySelector('.cmt-draft-save'); b.disabled = true;
+    try {
+      const cree = await api(`/mrs/${split.mrId}/comment-drafts`, { method: 'POST', body: {
+        body, old_path: split.fileOldPath, new_path: split.fileNewPath,
+        old_line: row.dataset.old || null, new_line: row.dataset.new || null,
+      } });
+      split.drafts = [...(split.drafts || []), cree];
+      majBoutonBrouillons();
+      ed.remove();
+      renderFile();
+      toast(tr('toast.commentaire-en-attente'));
+    } catch (err) { b.disabled = false; toast(explainError(err.message), true); }
+  });
   ed.querySelector('.cmt-send').addEventListener('click', async () => {
     const body = ta.value.trim(); if (!body) return;
     const send = ed.querySelector('.cmt-send'); send.disabled = true;
@@ -3161,6 +3225,67 @@ $('#fileContent').addEventListener('click', (e) => {
     } catch (err) { send.disabled = false; toast(err.message, true); }
   });
 });
+/* Modifier / supprimer un commentaire en attente, et les envoyer tous. Délégué : le contenu
+   du fichier est régénéré à chaque changement de fichier. */
+$('#fileContent').addEventListener('click', async (e) => {
+  const del = e.target.closest('[data-draftdel]');
+  if (del) {
+    const id = Number(del.dataset.draftdel);
+    try {
+      await api(`/mrs/${split.mrId}/comment-drafts/${id}`, { method: 'DELETE' });
+      split.drafts = (split.drafts || []).filter((d) => d.id !== id);
+      majBoutonBrouillons(); renderFile();
+    } catch (err) { toast(explainError(err.message), true); }
+    return;
+  }
+  const edit = e.target.closest('[data-draftedit]');
+  if (!edit) return;
+  const id = Number(edit.dataset.draftedit);
+  const bloc = edit.closest('.cmt-draft');
+  const d = (split.drafts || []).find((x) => x.id === id);
+  if (!bloc || !d || bloc.querySelector('textarea')) return;
+  const corps = bloc.querySelector('.cmt-draft-body');
+  corps.innerHTML = '<textarea class="cmt-draft-edit"></textarea>';
+  const ta = corps.querySelector('textarea');
+  ta.value = d.body; ta.focus();
+  bloc.querySelector('.cmt-actions').innerHTML = `<button type="button" class="btn btn-sm" data-draftcancel="1">${esc(tr('ui.cancel'))}</button>`
+    + `<button type="button" class="btn btn-sm btn-primary" data-draftsave="${id}">${esc(tr('ui.save'))}</button>`;
+  bloc.querySelector('[data-draftcancel]').addEventListener('click', () => renderFile());
+  bloc.querySelector('[data-draftsave]').addEventListener('click', async () => {
+    const body = ta.value.trim(); if (!body) return;
+    try {
+      const maj = await api(`/mrs/${split.mrId}/comment-drafts/${id}`, { method: 'PUT', body: { body } });
+      split.drafts = (split.drafts || []).map((x) => (x.id === id ? maj : x));
+      renderFile();
+    } catch (err) { toast(explainError(err.message), true); }
+  });
+});
+
+/* L'ENVOI GROUPÉ. Publier chez la forge notifie l'auteur : ça se confirme, et la question dit
+   COMBIEN partent — c'est le seul moyen de s'apercevoir qu'on en avait oublié un. */
+$('#draftsSend') && $('#draftsSend').addEventListener('click', async () => {
+  const n = (split.drafts || []).length;
+  if (!n) return;
+  const ok = await confirmDialog({
+    title: tr('cmt.draft.confirm.title'),
+    text: tr('cmt.draft.confirm.text', { n, count: n, forge: forgeLabel(split.forge) }),
+    detail: (split.drafts || []).map((d) => `${d.new_path || d.old_path}:${d.new_line || d.old_line || '?'} — ${String(d.body).split('\n')[0].slice(0, 80)}`).join('\n'),
+    confirmLabel: tr('cmt.draft.send'),
+    danger: false,
+  });
+  if (!ok) return;
+  try {
+    const r = await busy($('#draftsSend'), () => api(`/mrs/${split.mrId}/comment-drafts/send`, { method: 'POST' }));
+    await chargerBrouillons();
+    /* Ce qui a échoué RESTE en attente, et on le dit : un « envoyé » global sur un lot à
+       moitié parti ferait fermer la MR en croyant le travail fait. */
+    if (r.failed && r.failed.length) toast(tr('cmt.draft.partial', { n: r.sent, count: r.sent, f: r.failed.length }), true);
+    else toast(tr('cmt.draft.sent', { n: r.sent, count: r.sent }));
+    try { const dd = await api(`/mrs/${split.mrId}/discussions`); split.discussions = dd.discussions || []; } catch { /* ignore */ }
+    renderFile();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
 $('#treeSearch').addEventListener('input', renderTree);
 $('#treeList').addEventListener('click', (e) => { const f = e.target.closest('.tree-file[data-path]'); if (f) selectFile(f.dataset.path); });
 /* On note ce que l'utilisateur ouvre et ferme, à l'instant où il le fait. Rendre l'arbre avec

@@ -13,6 +13,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Inline comments can now wait.** Next to "Comment on GitLab", which still publishes right
+  away, a `Save` button keeps the remark pending and local: you review a merge request file by
+  file, and sending one at a time showers the author with notifications while freezing remarks
+  you would have dropped three files later. Pending comments show under their line in amber, can
+  be edited and deleted, and a header button sends them all at once — asking first, and saying
+  how many are about to be published. Whatever fails stays pending with its reason, so a network
+  error on the third comment does not take the first two with it, and positions are resolved at
+  send time so a merge request that moved meanwhile is not annotated on code that no longer
+  exists.
+
 - **`Run again` on a Jenkins job, with the same parameters.** In the list it reuses the last
   run's values; in the job's page every run in the history has its own button and reuses that
   run's values — what you want after reading the console of a failed build. The confirmation

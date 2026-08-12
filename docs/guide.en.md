@@ -140,6 +140,22 @@ Project tree plus the file shown **in full with the diff in place**, syntax high
 the changes, navigation between modifications, collapsible panels. **Inline comments** per line and
 **replies** to threads, synchronised with the forge — and **editable** as long as they are yours.
 
+**Two ways to comment, your choice.** `Comment on GitLab` publishes right away, as before.
+**`Save`** keeps the remark **pending**, locally: you review a merge request file by file, and
+sending them one at a time showers the author with notifications while freezing remarks you would
+have dropped three files later. A pending comment can be **edited** and **deleted** as long as it
+has not gone out; it shows under its line with an amber border and the words **"Waiting to be
+sent"** — rendering it like a published comment would make the work look done. The
+**`Send the comments (n)`** button in the header publishes them all at once; it is also what
+reminds you that work is waiting, without which you close the merge request leaving your remarks
+behind.
+
+⚠ **Sending asks first and says how many are going out** — publishing notifies the author — and
+**whatever fails stays pending**, with its reason: a network error on the third comment must not
+take the first two, nor the half hour of review, with it. The **position** (file, line, SHAs) is
+resolved **at send time**, exactly as for a direct comment: a merge request that moved meanwhile
+does not receive remarks pinned to a state of the code that no longer exists.
+
 In the tree, folders **carrying a change are expanded by default** and the others are collapsed — but
 **whatever you open or close by hand is remembered** for the visit: clicking a file no longer collapses
 the folder it sits in. The tree starts from the default rule again on the next diff.

@@ -105,6 +105,26 @@ CREATE TABLE IF NOT EXISTS review_rule (
   created_at TEXT
 );
 
+/* LES COMMENTAIRES INLINE EN ATTENTE. On relit une MR fichier par fichier et on écrit ses
+   remarques au fil de la lecture ; les envoyer une par une bombarde l'auteur de notifications
+   et fige des remarques qu'on aurait retirées trois fichiers plus loin. On les garde donc ICI,
+   modifiables, jusqu'à un envoi explicite — le geste direct reste possible et inchangé.
+
+   Aucune SHA n'est stockée : la position est recalculée à l'envoi, comme pour un commentaire
+   direct. Une MR qui a bougé entre-temps recevrait sinon des commentaires accrochés à un état
+   du code qui n'existe plus. */
+CREATE TABLE IF NOT EXISTS mr_comment_draft (
+  id INTEGER PRIMARY KEY,
+  mr_id INTEGER NOT NULL REFERENCES mr(id) ON DELETE CASCADE,
+  old_path TEXT,
+  new_path TEXT,
+  old_line INTEGER,
+  new_line INTEGER,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS comment_log (
   id INTEGER PRIMARY KEY,
   mr_id INTEGER NOT NULL REFERENCES mr(id) ON DELETE CASCADE,
@@ -113,6 +133,8 @@ CREATE TABLE IF NOT EXISTS comment_log (
   sent_at TEXT
 );
 `);
+
+db.exec('CREATE INDEX IF NOT EXISTS idx_mr_comment_draft_mr ON mr_comment_draft(mr_id)');
 
 // Migration : forge d'un dépôt ('gitlab' | 'github'). Les dépôts existants restent
 // GitLab — la valeur par défaut suffit, aucune donnée à réécrire.

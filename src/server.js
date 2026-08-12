@@ -3739,6 +3739,100 @@ app.post('/api/mrs/:id/discussion', wrap(async (req, res) => {
   res.json({ ok: true, id: disc && disc.id });
 }));
 
+/* ---------- Commentaires inline EN ATTENTE ----------------------------------
+   On relit une MR fichier par fichier et on écrit ses remarques au fil de la lecture. Les
+   envoyer une par une bombarde l'auteur de notifications et fige des remarques qu'on aurait
+   retirées trois fichiers plus loin. Ils vivent donc en local, modifiables, jusqu'à un envoi
+   explicite — et le geste direct (POST /discussion) reste inchangé pour qui le préfère. */
+
+const brouillonsDe = (mrId) => db.prepare('SELECT * FROM mr_comment_draft WHERE mr_id = ? ORDER BY id').all(mrId);
+
+const lireLigne = (v) => (v == null || v === '' ? null : Number(v));
+
+app.get('/api/mrs/:id/comment-drafts', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  res.json({ drafts: brouillonsDe(mr.id) });
+}));
+
+app.post('/api/mrs/:id/comment-drafts', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const { body, old_path, new_path, old_line, new_line } = req.body || {};
+  if (!(body || '').trim()) throw new Error(t('err.commentaire-vide-2'));
+  if (!new_path && !old_path) throw new Error(t('err.fichier-requis'));
+  const now = new Date().toISOString();
+  const info = db.prepare(`INSERT INTO mr_comment_draft
+    (mr_id, old_path, new_path, old_line, new_line, body, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?,?)`).run(mr.id, old_path || null, new_path || null,
+    lireLigne(old_line), lireLigne(new_line), String(body).trim(), now, now);
+  res.json(db.prepare('SELECT * FROM mr_comment_draft WHERE id = ?').get(info.lastInsertRowid));
+}));
+
+app.put('/api/mrs/:id/comment-drafts/:did', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const corps = ((req.body && req.body.body) || '').trim();
+  if (!corps) throw new Error(t('err.commentaire-vide-2'));
+  const info = db.prepare('UPDATE mr_comment_draft SET body = ?, updated_at = ? WHERE id = ? AND mr_id = ?')
+    .run(corps, new Date().toISOString(), Number(req.params.did), mr.id);
+  if (!info.changes) throw new Error(t('err.brouillon-introuvable'));
+  res.json(db.prepare('SELECT * FROM mr_comment_draft WHERE id = ?').get(Number(req.params.did)));
+}));
+
+app.delete('/api/mrs/:id/comment-drafts/:did', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  db.prepare('DELETE FROM mr_comment_draft WHERE id = ? AND mr_id = ?').run(Number(req.params.did), mr.id);
+  res.json({ ok: true });
+}));
+
+/* L'ENVOI. Les références de diff sont résolues UNE fois pour tout le lot : elles sont les
+   mêmes pour tous, et les redemander à chaque commentaire ferait autant d'allers-retours que
+   de remarques. Chaque brouillon parti est supprimé AUSSITÔT — si le dixième échoue, les neuf
+   premiers ne doivent pas repartir au prochain essai. Ce qui échoue RESTE, avec sa raison. */
+app.post('/api/mrs/:id/comment-drafts/send', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const liste = brouillonsDe(mr.id);
+  if (!liste.length) throw new Error(t('err.aucun-brouillon'));
+  const supprimer = db.prepare('DELETE FROM mr_comment_draft WHERE id = ?');
+
+  if (demoJenkins.isDemo()) {
+    for (const d of liste) {
+      demoComments.post(mr.id, d.body, { new_path: d.new_path, old_path: d.old_path, new_line: d.new_line, old_line: d.old_line });
+      supprimer.run(d.id);
+    }
+    return res.json({ sent: liste.length, failed: [] });
+  }
+
+  const cfg = getConfig();
+  const client = forge.clientFor(mr);
+  const full = await client.getMergeRequest(cfg, mr.project, mr.iid);
+  const dr = full && full.diff_refs;
+  if (!dr || !dr.head_sha) throw new Error(t('err.references-de-diff-introuvables-la'));
+
+  const failed = [];
+  let sent = 0;
+  for (const d of liste) {
+    const position = {
+      base_sha: dr.base_sha, start_sha: dr.start_sha, head_sha: dr.head_sha,
+      position_type: 'text',
+      old_path: d.old_path || d.new_path, new_path: d.new_path || d.old_path,
+    };
+    if (d.new_line != null) position.new_line = Number(d.new_line);
+    if (d.old_line != null) position.old_line = Number(d.old_line);
+    try {
+      await client.postMrDiscussion(cfg, mr.project, mr.iid, d.body, position);
+      supprimer.run(d.id);
+      sent += 1;
+    } catch (e) {
+      failed.push({ id: d.id, path: d.new_path || d.old_path, error: (e && e.message) || String(e) });
+    }
+  }
+  res.json({ sent, failed });
+}));
+
 // Merge une MR (depuis l'onglet Rapports de review).
 /* Options de merge : ce que demande l'appel, sinon ce qui avait été choisi à la
    création de la MR (colonnes `mr.squash` / `mr.remove_source_branch`). */

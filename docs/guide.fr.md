@@ -146,6 +146,22 @@ Arbre du projet + fichier affiché **entier avec le diff en place**, coloration 
 **Commentaire inline** par ligne et **réponses** aux fils, synchronisés avec la forge — et
 **modifiables** tant qu'ils sont de toi.
 
+**Deux façons de commenter, au choix.** `Commenter sur GitLab` publie tout de suite, comme
+avant. **`Enregistrer`** garde la remarque **en attente**, en local : on relit une MR fichier par
+fichier, et envoyer une par une bombarde l'auteur de notifications tout en figeant des remarques
+qu'on aurait retirées trois fichiers plus loin. Un commentaire en attente se **corrige** et se
+**supprime** tant qu'il n'est pas parti ; il s'affiche sous sa ligne avec un liseré ambre et la
+mention **« En attente d'envoi »** — le même rendu qu'un commentaire publié ferait croire le
+travail fait. Le bouton **`Envoyer les commentaires (n)`**, dans l'en-tête, les publie tous d'un
+coup ; c'est aussi lui qui rappelle qu'un travail attend, sans quoi on referme la MR en laissant
+ses remarques en local.
+
+⚠ **L'envoi confirme et dit combien partent** — publier notifie l'auteur — et **ce qui échoue
+reste en attente**, avec sa raison : une erreur réseau sur le troisième commentaire ne doit pas
+emporter les deux premiers ni la demi-heure de relecture. La **position** (fichier, ligne, SHAs)
+est résolue **à l'envoi**, comme pour un commentaire direct : une MR qui a bougé entre-temps ne
+reçoit pas des remarques accrochées à un état du code qui n'existe plus.
+
 Dans l'arbre, les dossiers **porteurs d'un changement sont dépliés d'office**, les autres repliés — mais
 **ce que tu ouvres ou refermes à la main est retenu** le temps de la visite : cliquer un fichier ne
 referme plus le dossier qui le contient. L'arbre repart de la règle par défaut au diff suivant.
