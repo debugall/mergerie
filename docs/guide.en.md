@@ -785,16 +785,23 @@ Jenkins already does well, and which there is no point redoing.
   and answering half of it would send you to the job's page. All of it arrives in **the same request** as the list: showing it does not cost one more
   call.
 
-- **Parameters that recur across jobs become COLUMNS.** From **three jobs** on, a parameter
-  counts as frequent: it takes the **same place on every line**, empty slot included — otherwise
-  the next column moves up and the alignment falls apart. Three rather than two: at two, a
-  coincidence between two jobs would freeze a column for everyone. Whatever belongs to a single
-  job follows at the end of the line.
-- **And you can filter on their values.** One dropdown per column, above the jobs: "what went to
-  prod?", "what is running on 2.4?". A job that does **not** carry the parameter is dropped as
-  soon as you filter on it — it does not answer the question asked. Columns are computed on
-  **all** jobs, not on those left after filtering: otherwise the alignment you just gained would
-  change with every keystroke.
+- **Parameters that recur across jobs carry a COLOUR.** From **three jobs** on, a parameter
+  counts as frequent and gets a tint: you find `ENV` from one line to the next out of the corner
+  of your eye, without the list stiffening into columns full of gaps. The tint comes from the
+  **name**, not from its rank, so it does not move when a job appears or disappears. It **helps,
+  it replaces nothing** — the name stays written in the chip. Three rather than two: at two, a
+  coincidence between two jobs would colour it for everyone; what belongs to a single job stays
+  neutral.
+- **And you can filter on their values.** One dropdown per frequent parameter, above the jobs:
+  "what went to prod?", "what is running on 2.4?". A job that does **not** carry the parameter is
+  dropped as soon as you filter on it — it does not answer the question asked. Filters are
+  computed on **all** jobs, not on those left after filtering: otherwise a filter would vanish
+  the moment you used it.
+- **A filter that is of no use can be put away.** A cross on hover takes it out of the bar — not
+  every frequent parameter is worth searching on — and its **value is cleared at the same time**:
+  an invisible filter that keeps filtering is the surest way to spend ten minutes wondering why
+  the list is empty. Those put away are counted next to the bar and found again in the **same
+  window as hidden folders**, one click away from coming back.
 
   ⚠ A **password** parameter is never displayed — Jenkins returns an encrypted form of it,
   unreadable, and a secret has no business in a list — nor is an empty value, which teaches

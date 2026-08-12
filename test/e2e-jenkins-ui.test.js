@@ -214,32 +214,54 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.locator('#jenkinsFailOnly').uncheck();
   });
 
-  /* LES PARAMÈTRES QUI REVIENNENT DEVIENNENT DES COLONNES. Sur une installation d'équipe, les
-     mêmes trois ou quatre paramètres reviennent d'un job à l'autre : affichés dans l'ordre
-     propre à chaque job, l'œil doit les rechercher à chaque ligne. L'alignement ne se relit
-     pas, il se MESURE : on compare la position gauche de la pastille d'une ligne à l'autre. */
-  test('un paramètre présent sur trois jobs prend la même place partout', async () => {
+  /* LES PARAMÈTRES QUI REVIENNENT PORTENT UNE COULEUR. Aligner en colonnes raidissait la liste
+     et la remplissait de trous ; ce qu'on cherche, c'est retrouver `ENV` d'une ligne à l'autre
+     du coin de l'œil. La teinte vient du NOM, donc elle ne bouge pas d'un job à l'autre — ni
+     d'un rafraîchissement à l'autre. Un paramètre porté par un seul job reste neutre : une
+     couleur qui ne se retrouve nulle part n'apprend rien. */
+  test('un paramètre présent sur trois jobs porte la même couleur partout', async () => {
     await allerJenkins();
     await page.waitForSelector('#jenkinsBox .jk-row');
 
-    const positions = await page.evaluate(() => [...document.querySelectorAll('#jenkinsBox .jk-params')]
-      .map((g) => Object.fromEntries([...g.querySelectorAll('.jk-chip')]
-        .map((c) => [c.querySelector('.jk-chip-k').textContent, Math.round(c.getBoundingClientRect().left)]))));
-    const xDe = (nom) => positions.filter((p) => p[nom] !== undefined).map((p) => p[nom]);
-    assert.ok(xDe('ENV').length >= 3, 'ENV est bien sur au moins trois jobs — sinon le test ne prouve rien');
-    assert.equal(new Set(xDe('ENV')).size, 1, 'ENV doit tomber au MÊME endroit sur toutes les lignes');
-    assert.equal(new Set(xDe('VERSION')).size, 1, 'la deuxième colonne aussi');
+    const teintes = await page.evaluate(() => [...document.querySelectorAll('#jenkinsBox .jk-chip')]
+      .map((c) => [c.querySelector('.jk-chip-k').textContent,
+        [...c.classList].find((x) => /^jk-c\d+$/.test(x)) || null]));
+    const de = (nom) => [...new Set(teintes.filter(([n]) => n === nom).map(([, t]) => t))];
 
-    /* LE CAS QUI COMPTE : un job qui n'a PAS la première colonne. Sans case vide, ce qui suit
-       remonterait à sa place et l'alignement s'effondrerait à partir de cette ligne. */
-    const sansVersion = positions.find((p) => p.VERSION === undefined && p.LOT !== undefined);
-    assert.ok(sansVersion, 'le décor doit contenir un job qui saute une colonne');
-    assert.ok(sansVersion.LOT > xDe('VERSION')[0],
-      'la place de la colonne absente reste vide : le reste ne remonte pas dedans');
+    assert.equal(de('ENV').length, 1, 'la même teinte sur toutes les lignes');
+    assert.ok(de('ENV')[0], 'ENV est sur quatre jobs : il en reçoit une');
+    assert.ok(de('VERSION')[0], 'VERSION sur trois jobs aussi');
+    assert.notEqual(de('ENV')[0], de('VERSION')[0], 'deux paramètres fréquents se distinguent');
+    assert.equal(de('SEUL')[0], null, 'un paramètre d’un seul job reste neutre');
+    assert.equal(de('LOT')[0], null, 'à deux jobs non plus : le seuil est à trois');
+  });
 
-    // Un paramètre porté par un seul job n'a pas de colonne : il suit, à la fin.
-    const seul = positions.find((p) => p.SEUL !== undefined);
-    assert.ok(seul.SEUL > seul.VERSION, 'ce qui n’appartient qu’à un job vient après les colonnes');
+  /* UN FILTRE QU'ON N'UTILISE JAMAIS EST DU BRUIT. Il se range, comme un dossier — et sa
+     valeur est effacée en même temps : un filtre invisible qui continue de filtrer est le
+     meilleur moyen de chercher dix minutes pourquoi la liste est vide. */
+  test('un filtre non pertinent se masque, sa valeur avec, et se remet', async () => {
+    await allerJenkins();
+    await page.waitForSelector('#jenkinsParamFiltres [data-jkpf="VERSION"]');
+    await page.locator('[data-jkpf="VERSION"]').selectOption('9.9');
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
+
+    await page.locator('[data-jkpfhide="VERSION"]').click();
+    await page.waitForFunction(() => !document.querySelector('[data-jkpf="VERSION"]'));
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 6);
+    assert.match(await page.locator('#jenkinsParamHidden').textContent(), /1 filtre masqué/);
+
+    await page.reload();
+    await allerJenkins();
+    await page.waitForSelector('#jenkinsParamHidden');
+    assert.equal(await page.locator('[data-jkpf="VERSION"]').count(), 0, 'le masquage est mémorisé');
+
+    // On le retrouve dans la même modale que les dossiers rangés, et un clic le remet.
+    await page.locator('#jenkinsParamHidden').click();
+    await page.waitForSelector('#jenkinsHiddenModal:not([hidden])');
+    await page.locator('[data-jkpfshow="VERSION"]').click();
+    await page.waitForSelector('[data-jkpf="VERSION"]');
+    assert.equal(await page.locator('[data-jkpf="VERSION"]').inputValue(), '',
+      'il revient sans sa valeur d’avant : on ne remet pas en marche un filtre à son insu');
   });
 
   test('on filtre sur la valeur d’un paramètre fréquent', async () => {

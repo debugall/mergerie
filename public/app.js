@@ -12268,7 +12268,7 @@ document.addEventListener('keydown', (e) => {
    ne porte pas de pastille : elle supposerait d'interroger Jenkins à chaque ouverture de
    l'application, et un compteur figé depuis la dernière visite ment plus qu'il n'informe. */
 
-const JENKINS = { jobs: [], configured: true, q: '', echecsSeuls: false, job: null, build: null, qDossier: '', horsDossiers: new Set(), masques: new Set(), paramFiltres: {} };
+const JENKINS = { jobs: [], configured: true, q: '', echecsSeuls: false, job: null, build: null, qDossier: '', horsDossiers: new Set(), masques: new Set(), paramFiltres: {}, paramsMasques: new Set() };
 
 /* Les dossiers DÉCOCHÉS sont mémorisés, pas les cochés. La différence compte le jour où
    l'équipe crée un dossier : mémoriser les cochés le rendrait invisible jusqu'à ce qu'on
@@ -12285,17 +12285,20 @@ const JENKINS_FILTRE = 'mergerie_jenkins_dossiers';
 function chargerFiltreJenkins() {
   JENKINS.horsDossiers = new Set();
   JENKINS.masques = new Set();
+  JENKINS.paramsMasques = new Set();
   try {
     const brut = JSON.parse(localStorage.getItem(JENKINS_FILTRE) || '{}');
     if (Array.isArray(brut)) { JENKINS.horsDossiers = new Set(brut.map(String)); return; }
     JENKINS.horsDossiers = new Set((brut.hors || []).map(String));
     JENKINS.masques = new Set((brut.masques || []).map(String));
+    JENKINS.paramsMasques = new Set((brut.paramsMasques || []).map(String));
   } catch { /* stockage illisible : on repart d'un filtre vide */ }
 }
 function sauverFiltreJenkins() {
   try {
     localStorage.setItem(JENKINS_FILTRE, JSON.stringify({
       hors: [...JENKINS.horsDossiers], masques: [...JENKINS.masques],
+      paramsMasques: [...JENKINS.paramsMasques],
     }));
   } catch { /* stockage indisponible */ }
 }
@@ -12404,9 +12407,9 @@ function jkFrequences(jobs) {
   return par;
 }
 
-/* L'ordre des colonnes : du plus répandu au moins répandu, puis alphabétique. Stable d'un
-   rafraîchissement à l'autre tant que les jobs ne changent pas — une colonne qui se déplace
-   toute seule vaut moins qu'une absence de colonne. */
+/* Les paramètres qui reviennent : du plus répandu au moins répandu, puis alphabétique. Ce sont
+   eux qui reçoivent une teinte et un filtre — colorer un paramètre porté par un seul job
+   n'aiderait à rien et remplirait la liste de couleurs sans signification. */
 function jkColonnes(jobs) {
   return [...jkFrequences(jobs)]
     .filter(([, n]) => n >= JK_PARAM_FREQUENT)
@@ -12414,20 +12417,29 @@ function jkColonnes(jobs) {
     .map(([nom]) => nom);
 }
 
-const jkChip = (nom, valeur) => `<span class="jk-chip"><span class="jk-chip-k">${esc(nom)}</span><span class="jk-chip-v">${esc(String(valeur))}</span></span>`;
+/* LA COULEUR PLUTÔT QUE LA COLONNE. Aligner les paramètres en grille rendait la liste raide et
+   pleine de trous ; ce qu'on cherche vraiment, c'est retrouver `ENV` d'une ligne à l'autre du
+   coin de l'œil. Une teinte stable par NOM le fait sans rien déranger de la mise en page.
+
+   La teinte vient d'un hachage du nom, pas de son rang : elle ne bouge donc pas quand un job
+   apparaît ou disparaît de la liste. Deux noms peuvent tomber sur la même teinte — le nom reste
+   écrit dans la pastille, la couleur aide, elle ne remplace rien. */
+const JK_TEINTES = 8;
+function jkTeinte(nom) {
+  let h = 0;
+  for (let i = 0; i < nom.length; i += 1) h = (h * 31 + nom.charCodeAt(i)) % 9973;
+  return h % JK_TEINTES;
+}
+
+const jkChip = (nom, valeur, colore) => `<span class="jk-chip${colore ? ` jk-c${jkTeinte(nom)}` : ''}"><span class="jk-chip-k">${esc(nom)}</span><span class="jk-chip-v">${esc(String(valeur))}</span></span>`;
 
 /* Sur LEUR PROPRE LIGNE, en pastilles nom/valeur. Alignés à la suite du statut, de la date et
    de l'auteur — tous en gris, tous séparés par des points médians —, ils se confondaient avec
    eux : on lisait une phrase, pas des couples. Le nom reste discret, la valeur porte la
    couleur du texte : c'est elle qu'on cherche. */
-function jkParamPastilles(liste, colonnes) {
-  if (!liste.length && !colonnes.length) return '';
-  const par = new Map(liste.map((p) => [p.name, p.value]));
-  const fixes = colonnes.map((nom) => `<span class="jk-cell">${par.has(nom) ? jkChip(nom, par.get(nom)) : ''}</span>`).join('');
-  const restes = liste.filter((p) => !colonnes.includes(p.name)).map((p) => jkChip(p.name, p.value)).join('');
-  if (!fixes && !restes) return '';
-  return `<div class="jk-params"${colonnes.length ? ` style="--jk-cols:${colonnes.length}"` : ''}>`
-    + `${fixes}<span class="jk-cell jk-cell-reste">${restes}</span></div>`;
+function jkParamPastilles(liste, frequents) {
+  if (!liste.length) return '';
+  return `<div class="jk-params">${liste.map((p) => jkChip(p.name, p.value, frequents.includes(p.name))).join('')}</div>`;
 }
 
 /* Le lien vers le job DANS Jenkins. L'URL vient de Jenkins, donc d'une source externe : on
@@ -12495,9 +12507,8 @@ function renderJenkins() {
   /* À PLAT, dans l'ordre rendu par le serveur : du dernier lancement au plus ancien. Le
      dossier n'est plus un en-tête mais une case à cocher au-dessus — et il reste écrit
      devant chaque nom, sinon deux `api-build` de projets différents se confondent. */
-  /* Les colonnes sont calculées sur TOUS les jobs, pas sur ceux qui restent après filtrage :
-     sinon filtrer déplacerait les colonnes sous les yeux, et l'alignement qu'on vient de gagner
-     changerait à chaque frappe. */
+  /* Calculés sur TOUS les jobs, pas sur ceux qui restent après filtrage : sinon une teinte
+     changerait de sens à chaque frappe, et un filtre disparaîtrait au moment où l'on s'en sert. */
   const colonnes = jkColonnes(JENKINS.jobs);
   box.innerHTML = vus.map((j) => jkRow(j, colonnes)).join('');
 }
@@ -12516,8 +12527,12 @@ function jkPasseFiltresParam(j) {
 function renderJenkinsParamFiltres() {
   const box = $('#jenkinsParamFiltres');
   if (!box) return;
-  const colonnes = jkColonnes(JENKINS.jobs);
-  box.hidden = !colonnes.length;
+  /* Un filtre MASQUÉ sort de la barre : tous les paramètres fréquents ne servent pas à
+     chercher (un numéro de build, un horodatage), et une rangée de listes qu'on n'ouvre jamais
+     est du bruit qu'on relit chaque matin. */
+  const colonnes = jkColonnes(JENKINS.jobs).filter((n) => !JENKINS.paramsMasques.has(n));
+  const caches = jkColonnes(JENKINS.jobs).filter((n) => JENKINS.paramsMasques.has(n));
+  box.hidden = !colonnes.length && !caches.length;
   if (box.hidden) return;
   box.innerHTML = colonnes.map((nom) => {
     const valeurs = [...new Set(JENKINS.jobs.flatMap((j) => (j.lastParams || [])
@@ -12527,8 +12542,10 @@ function renderJenkinsParamFiltres() {
       <select data-jkpf="${esc(nom)}">
         <option value="">${esc(tr('jenkins.param.all'))}</option>
         ${valeurs.map((v) => `<option value="${esc(v)}"${v === choisie ? ' selected' : ''}>${esc(v)}</option>`).join('')}
-      </select></label>`;
-  }).join('');
+      </select>
+      <button type="button" class="btn btn-icon btn-sm jk-pf-hide" data-jkpfhide="${esc(nom)}" title="${esc(tr('jenkins.param.hide'))}" aria-label="${esc(tr('jenkins.param.hide'))}"><svg class="ico ico-sm"><use href="#i-close"/></svg></button></label>`;
+  }).join('')
+    + (caches.length ? `<button type="button" class="btn btn-sm jk-pf-caches" id="jenkinsParamHidden" title="${esc(tr('jenkins.param.hidden-title'))}">${esc(tr('jenkins.param.hidden', { n: caches.length, count: caches.length }))}</button>` : '');
 }
 
 /* Le filtre par dossiers. Sa propre recherche masque des cases sans jamais en décocher :
@@ -12571,16 +12588,22 @@ function renderJenkinsMasques() {
   if (!box) return;
   const comptes = new Map();
   for (const j of JENKINS.jobs) comptes.set(j.folder, (comptes.get(j.folder) || 0) + 1);
-  const caches = [...JENKINS.masques].sort((a, b) => a.localeCompare(b));
-  box.innerHTML = caches.length
-    ? caches.map((d) => `<div class="jk-hidden-row">
-        <span>${d ? esc(d) : esc(tr('jenkins.folders.root'))}</span>
-        <span class="jk-folder-count">${comptes.get(d) || 0}</span>
-        <span class="spacer"></span>
-        <button type="button" class="btn btn-sm" data-jkshow="${esc(d)}">${esc(tr('jenkins.hidden.restore'))}</button>
-      </div>`).join('')
+  const dossiers = [...JENKINS.masques].sort((a, b) => a.localeCompare(b));
+  const params = [...JENKINS.paramsMasques].sort((a, b) => a.localeCompare(b));
+  const ligne = (nom, compte, attr) => `<div class="jk-hidden-row">
+      <span>${nom}</span>
+      ${compte == null ? '' : `<span class="jk-folder-count">${compte}</span>`}
+      <span class="spacer"></span>
+      <button type="button" class="btn btn-sm" ${attr}>${esc(tr('jenkins.hidden.restore'))}</button>
+    </div>`;
+  /* Une seule modale pour les deux familles : ce qu'on a rangé se retrouve au même endroit,
+     qu'il s'agisse d'un dossier ou d'un filtre. Un titre n'apparaît que s'il a du contenu. */
+  const bloc = (titre, lignes) => (lignes.length ? `<h4>${esc(titre)}</h4>${lignes.join('')}` : '');
+  box.innerHTML = (dossiers.length || params.length)
+    ? bloc(tr('jenkins.folders'), dossiers.map((d) => ligne(d ? esc(d) : esc(tr('jenkins.folders.root')), comptes.get(d) || 0, `data-jkshow="${esc(d)}"`)))
+      + bloc(tr('jenkins.params'), params.map((n) => ligne(esc(n), null, `data-jkpfshow="${esc(n)}"`)))
     : `<p class="muted">${esc(tr('jenkins.hidden.empty'))}</p>`;
-  $('#jenkinsHiddenAll').hidden = !caches.length;
+  $('#jenkinsHiddenAll').hidden = !dossiers.length && !params.length;
 }
 
 /* ---------- Rafraîchissement automatique, et fin de MES lancements ----------
@@ -12826,6 +12849,21 @@ $('#jenkinsNoAuto') && $('#jenkinsNoAuto').addEventListener('change', (e) => {
   try { localStorage.setItem(JENKINS_AUTO, e.target.checked ? '0' : '1'); } catch { /* stockage indisponible */ }
   jkAutoRelance();
 });
+$('#jenkinsParamFiltres') && $('#jenkinsParamFiltres').addEventListener('click', (e) => {
+  const h = e.target.closest('[data-jkpfhide]');
+  if (h) {
+    e.preventDefault();
+    const nom = h.dataset.jkpfhide;
+    JENKINS.paramsMasques.add(nom);
+    /* On efface AUSSI sa valeur : un filtre invisible qui continue de filtrer est le meilleur
+       moyen de chercher pendant dix minutes pourquoi la liste est vide. */
+    JENKINS.paramFiltres = { ...JENKINS.paramFiltres, [nom]: '' };
+    sauverFiltreJenkins();
+    renderJenkins();
+    return;
+  }
+  if (e.target.closest('#jenkinsParamHidden')) { renderJenkinsMasques(); $('#jenkinsHiddenModal').hidden = false; }
+});
 $('#jenkinsParamFiltres') && $('#jenkinsParamFiltres').addEventListener('change', (e) => {
   const sel = e.target.closest('[data-jkpf]');
   if (!sel) return;
@@ -12848,16 +12886,20 @@ $('#jenkinsFolderHidden') && $('#jenkinsFolderHidden').addEventListener('click',
   $('#jenkinsHiddenModal').hidden = false;
 });
 $('#jenkinsHiddenList') && $('#jenkinsHiddenList').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-jkshow]');
-  if (!b) return;
-  JENKINS.masques.delete(b.dataset.jkshow);
+  const d = e.target.closest('[data-jkshow]');
+  const p = e.target.closest('[data-jkpfshow]');
+  if (!d && !p) return;
+  if (d) JENKINS.masques.delete(d.dataset.jkshow);
+  if (p) JENKINS.paramsMasques.delete(p.dataset.jkpfshow);
   sauverFiltreJenkins();
   renderJenkins();
   // Plus rien à remettre : la modale n'a plus de raison d'être ouverte.
-  if (!JENKINS.masques.size) $('#jenkinsHiddenModal').hidden = true;
+  if (!JENKINS.masques.size && !JENKINS.paramsMasques.size) $('#jenkinsHiddenModal').hidden = true;
+  else renderJenkinsMasques();
 });
 $('#jenkinsHiddenAll') && $('#jenkinsHiddenAll').addEventListener('click', () => {
   JENKINS.masques.clear();
+  JENKINS.paramsMasques.clear();
   sauverFiltreJenkins();
   renderJenkins();
   $('#jenkinsHiddenModal').hidden = true;

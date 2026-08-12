@@ -822,16 +822,23 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   « avec quoi est-il parti ? », et y répondre à moitié obligerait à ouvrir la fiche. Tout cela arrive dans **la même requête** que la liste :
   l'afficher ne coûte pas un appel de plus.
 
-- **Les paramètres qui reviennent d'un job à l'autre deviennent des COLONNES.** À partir de
-  **trois jobs**, un paramètre est considéré comme fréquent : il prend la **même place sur
-  toutes les lignes**, place vide comprise — sinon la colonne suivante remonte et l'alignement
-  ne tient plus. Trois plutôt que deux : à deux, une coïncidence entre deux jobs figerait une
-  colonne pour tout le monde. Ce qui n'appartient qu'à un job suit à la fin de la ligne.
-- **Et on filtre sur leurs valeurs.** Une liste déroulante par colonne, au-dessus des jobs :
-  « qu'est-ce qui est parti en prod ? », « qu'est-ce qui tourne sur la 2.4 ? ». Un job qui **n'a
-  pas** le paramètre est écarté dès qu'on filtre dessus — il ne répond pas à la question posée.
-  Les colonnes sont calculées sur **tous** les jobs, pas sur ceux qui restent après filtrage :
-  sinon l'alignement qu'on vient de gagner changerait à chaque frappe.
+- **Les paramètres qui reviennent d'un job à l'autre portent une COULEUR.** À partir de **trois
+  jobs**, un paramètre est considéré comme fréquent et reçoit une teinte : on retrouve `ENV`
+  d'une ligne à l'autre du coin de l'œil, sans que la liste se raidisse en colonnes pleines de
+  trous. La teinte vient du **nom**, pas de son rang : elle ne bouge donc pas quand un job
+  apparaît ou disparaît. Elle **aide, elle ne remplace rien** — le nom reste écrit dans la
+  pastille. Trois plutôt que deux : à deux, une coïncidence entre deux jobs colorerait pour tout
+  le monde ; ce qui n'appartient qu'à un job reste neutre.
+- **Et on filtre sur leurs valeurs.** Une liste déroulante par paramètre fréquent, au-dessus des
+  jobs : « qu'est-ce qui est parti en prod ? », « qu'est-ce qui tourne sur la 2.4 ? ». Un job qui
+  **n'a pas** le paramètre est écarté dès qu'on filtre dessus — il ne répond pas à la question
+  posée. Les filtres sont calculés sur **tous** les jobs, pas sur ceux qui restent après
+  filtrage : sinon un filtre disparaîtrait au moment où l'on s'en sert.
+- **Un filtre qui ne sert pas se range.** Une croix au survol le sort de la barre — tous les
+  paramètres fréquents ne servent pas à chercher —, et sa **valeur est effacée en même temps** :
+  un filtre invisible qui continue de filtrer est le meilleur moyen de chercher dix minutes
+  pourquoi la liste est vide. Les rangés se comptent à côté et se retrouvent dans la **même
+  fenêtre que les dossiers masqués**, d'où un clic les remet.
 
   ⚠ Un paramètre de type **mot de passe** n'est jamais affiché — Jenkins en rend une forme
   chiffrée, illisible, et un secret n'a rien à faire dans une liste — pas plus qu'une valeur
