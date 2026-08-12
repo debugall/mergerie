@@ -908,6 +908,27 @@ db.exec(`CREATE TABLE IF NOT EXISTS todo (
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_todo_due ON todo(status, archived_at, due_at)');
 
+/* UN ORDRE À SOI. Le tri automatique (priorité, puis échéance) répond à « qu'est-ce qui
+   presse » ; il ne répond pas à « dans quel ordre je vais m'y prendre ce matin ». Les deux
+   coexistent : la liste « à faire » suit désormais l'ordre qu'on lui donne, pendant que la
+   priorité et l'échéance continuent d'alimenter le brief et les pastilles du menu.
+
+   APRÈS la création de la table, comme toute migration ici. Le remplissage reprend EXACTEMENT
+   l'ordre affiché jusqu'ici : le premier jour, personne ne voit sa liste changer — on ne
+   réordonne pas les todos de quelqu'un pour lui annoncer qu'il peut les réordonner. */
+try {
+  db.exec('ALTER TABLE todo ADD COLUMN position INTEGER');
+  db.exec(`UPDATE todo SET position = (SELECT n FROM (
+      SELECT id, ROW_NUMBER() OVER (ORDER BY
+        CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+        CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at, id DESC) AS n
+      FROM todo) x WHERE x.id = todo.id)`);
+} catch { /* déjà présente */ }
+/* Une todo arrivée après la migration n'a pas de position : elle se range en TÊTE (position
+   NULL triée en premier), là où on vient de la taper — la chercher en bas d'une liste de
+   trente serait absurde. */
+db.exec('CREATE INDEX IF NOT EXISTS idx_todo_position ON todo(status, archived_at, position)');
+
 /* CE QU'ON A ÉCARTÉ DU BRIEF. Le brief recalcule tout à chaque ouverture : un fait qui reste
    vrai reparaît tous les matins, même traité ailleurs — une vérification rouge dont on a déjà
    fait le tour revient indéfiniment et finit par apprendre à ne plus lire la section.

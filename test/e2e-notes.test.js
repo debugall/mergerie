@@ -438,3 +438,42 @@ describe('Sauvegarde', () => {
       'les tables vivent dans la base du dataDir, donc dans la sauvegarde');
   });
 });
+
+describe('Ordre de la liste « à faire »', () => {
+  /* Le tri automatique répond à « qu'est-ce qui presse » ; il ne répond pas à « dans quel
+     ordre je m'y prends ce matin ». La liste suit donc l'ordre qu'on lui donne — priorité et
+     échéance restent affichées et continuent d'alimenter le brief et les pastilles du menu. */
+  const titres = () => app.api('GET', '/api/todos').then((r) => r.body.todos.map((t) => t.title));
+
+  test('la liste se réordonne, et l’ordre tient', async () => {
+    for (const t of (await app.api('GET', '/api/todos')).body.todos) await app.api('DELETE', `/api/todos/${t.id}`);
+    const a = (await app.api('POST', '/api/todos', { title: 'A', priority: 'low' })).body;
+    const b = (await app.api('POST', '/api/todos', { title: 'B', priority: 'high' })).body;
+    const c = (await app.api('POST', '/api/todos', { title: 'C', priority: 'normal' })).body;
+
+    assert.equal((await app.api('POST', '/api/todos/reorder', { ids: [a.id, c.id, b.id] })).status, 200);
+    assert.deepEqual(await titres(), ['A', 'C', 'B'],
+      'l’ordre demandé prime sur la priorité : une liste qui se réarrange toute seule ne se réordonne pas');
+    // Il tient d'un appel à l'autre — sinon ce n'est pas un ordre, c'est un accident.
+    assert.deepEqual(await titres(), ['A', 'C', 'B']);
+
+    /* Une todo NEUVE se range en tête, là où on vient de la taper : la chercher en bas d'une
+       liste de trente serait absurde. */
+    await app.api('POST', '/api/todos', { title: 'D' });
+    assert.deepEqual(await titres(), ['D', 'A', 'C', 'B']);
+  });
+
+  test('cocher une todo ne dérange pas l’ordre des autres', async () => {
+    const avant = await titres();
+    const liste = (await app.api('GET', '/api/todos')).body.todos;
+    await app.api('PUT', `/api/todos/${liste[1].id}`, { status: 'done' });
+    assert.deepEqual(await titres(), avant.filter((t) => t !== avant[1]));
+  });
+
+  test('un ordre vide est refusé, une todo inconnue ignorée', async () => {
+    assert.equal((await app.api('POST', '/api/todos/reorder', { ids: [] })).status, 400);
+    const avant = await titres();
+    await app.api('POST', '/api/todos/reorder', { ids: [999999] });
+    assert.deepEqual(await titres(), avant, 'une todo inconnue ne fait pas échouer le reste');
+  });
+});

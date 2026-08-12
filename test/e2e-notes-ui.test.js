@@ -362,6 +362,55 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     assert.equal(await page.locator('#briefRestore').count(), 0, 'plus rien de caché, plus de pied');
   });
 
+  /* RÉORDONNER À LA MAIN. Deux gestes pour le même résultat, et c'est délibéré : le
+     glisser-déposer pour la souris, deux flèches pour le clavier et le tactile — où « glisser »
+     n'est ni annonçable ni fiable. On éprouve les flèches, qui sont le chemin garanti. */
+  test('les flèches réordonnent la liste, et l’ordre survit au rechargement', async () => {
+    await page.reload();
+    await page.locator('nav button[data-tab="notes"]').click();
+    await page.locator('#tab-notes .subnav button[data-nsub="todos"]').click();
+    // On pose nos propres todos : la liste laissée par les tests précédents peut être vide.
+    for (const t of ['zzz-une', 'zzz-deux']) await page.evaluate(async (titre) => {
+      await fetch('/api/todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: titre }) });
+    }, t);
+    await page.evaluate(() => window.loadTodos());
+    await page.waitForFunction(() => /zzz-deux/.test(document.querySelector('#todoList .todo-row').textContent));
+
+    const titres = () => page.locator('#todoList .brief-item-title').allTextContents();
+    const avant = await titres();
+    assert.equal(avant[0], 'zzz-deux', 'une todo neuve arrive en tête, là où on vient de la taper');
+
+    await page.locator('#todoList .todo-row [data-todo-down]').first().click();
+    await page.waitForFunction((t) => document.querySelectorAll('#todoList .brief-item-title')[1].textContent === t, 'zzz-deux');
+    assert.deepEqual((await titres()).slice(0, 2), ['zzz-une', 'zzz-deux']);
+
+    // L'ordre est ENREGISTRÉ, pas seulement déplacé à l'écran.
+    await page.reload();
+    await page.locator('nav button[data-tab="notes"]').click();
+    await page.locator('#tab-notes .subnav button[data-nsub="todos"]').click();
+    await page.waitForSelector('#todoList .todo-row');
+    assert.deepEqual((await titres()).slice(0, 2), ['zzz-une', 'zzz-deux'],
+      'un ordre qui ne survit pas au rechargement n’est pas un ordre');
+
+    // La première ligne ne peut pas monter, la dernière ne peut pas descendre.
+    assert.equal(await page.locator('#todoList .todo-row [data-todo-up]').first().isDisabled(), true);
+    assert.equal(await page.locator('#todoList .todo-row [data-todo-down]').last().isDisabled(), true);
+  });
+
+  /* Les faites et les archivées ont un ordre chronologique qui leur est propre : les arranger
+     à la main n'aurait aucun sens, et les poignées y seraient un piège. */
+  test('la vue « faites » ne se réordonne pas', async () => {
+    await page.locator('#tab-notes .subnav button[data-nsub="todos"]').click();
+    await page.waitForSelector('#todoList .todo-row');
+    await page.locator('#todoList .todo-check').first().check();
+    await page.waitForTimeout(200);
+    await page.locator('.todo-filter [data-tfilter="done"]').click();
+    await page.waitForSelector('#todoList .todo-row');
+    assert.equal(await page.locator('#todoList [data-todo-up]').count(), 0);
+    assert.equal(await page.locator('#todoList .todo-grip').count(), 0);
+    await page.locator('.todo-filter [data-tfilter="open"]').click();
+  });
+
   /* Les deux thèmes existent : une couleur codée en dur se voit ici, pas à la relecture. */
   test('les deux thèmes restent lisibles', async () => {
     await app.api('POST', '/api/todos', { title: 'à regarder dans les deux thèmes', priority: 'high' });

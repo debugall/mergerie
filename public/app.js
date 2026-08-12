@@ -9716,7 +9716,11 @@ function renderTodos(rows) {
     box.innerHTML = emptyState({ icon: 'check', title: esc(tr('notes.todo.empty.title')), text: esc(texte) });
     return;
   }
-  box.innerHTML = rows.map((t) => `<div class="todo-row card${t.status === 'done' ? ' done' : ''}" data-todo="${t.id}">
+  /* On ne réordonne que « à faire » : les faites et les archivées ont un ordre chronologique
+     qui leur est propre, et les arranger à la main n'aurait aucun sens. */
+  const ordonnable = NOTES.filter === 'open';
+  box.innerHTML = rows.map((t, i) => `<div class="todo-row card${t.status === 'done' ? ' done' : ''}${ordonnable ? ' todo-move' : ''}" data-todo="${t.id}"${ordonnable ? ' draggable="true"' : ''}>
+      ${ordonnable ? `<span class="todo-grip" aria-hidden="true" title="${esc(tr('notes.todo.reorder-title'))}">${svgIco('grip')}</span>` : ''}
       <input type="checkbox" class="todo-check" data-todo-check="${t.id}"${t.status === 'done' ? ' checked' : ''} aria-label="${esc(tr('notes.todo.done'))}" />
       <div class="brief-item-main">
         <div class="brief-item-title">${esc(t.title)}</div>
@@ -9725,10 +9729,68 @@ function renderTodos(rows) {
         ${t.note ? `<div class="todo-note md-body">${renderNoteMd(t.note)}</div>` : ''}
       </div>
       ${t.due_at && t.status === 'open' ? todoSnoozeHtml(t.id) : ''}
+      ${ordonnable ? `<button type="button" class="btn btn-sm btn-ghost" data-todo-up="${t.id}"${i === 0 ? ' disabled' : ''} title="${esc(tr('notes.todo.up'))}" aria-label="${esc(tr('notes.todo.up'))}">${svgIco('up')}</button>
+      <button type="button" class="btn btn-sm btn-ghost" data-todo-down="${t.id}"${i === rows.length - 1 ? ' disabled' : ''} title="${esc(tr('notes.todo.down'))}" aria-label="${esc(tr('notes.todo.down'))}">${svgIco('down')}</button>` : ''}
       <button type="button" class="btn btn-sm btn-ghost" data-todo-edit="${t.id}" title="${esc(tr('notes.todo.edit-title'))}">${svgIco('edit')}</button>
       <button type="button" class="btn btn-sm btn-ghost btn-danger" data-todo-del="${t.id}" title="${esc(tr('notes.todo.delete-title'))}">${svgIco('trash')}</button>
     </div>`).join('');
 }
+
+/* RÉORDONNER. Deux gestes pour le même résultat : le glisser-déposer, naturel à la souris,
+   et deux flèches — qui existent pour le clavier et le tactile, où « glisser » n'est ni
+   annonçable ni fiable. Les deux passent par la même route : l'écran envoie l'ordre COMPLET
+   qu'il affiche, le serveur numérote. */
+async function enregistrerOrdreTodos(ids) {
+  try {
+    await api('/todos/reorder', { method: 'POST', body: { ids } });
+    NOTES.affichees = ids.map((id) => NOTES.affichees.find((t) => t.id === id)).filter(Boolean);
+    renderTodos(NOTES.affichees);
+  } catch (e) { toast(explainError(e.message), true); loadTodos(); }
+}
+
+function deplacerTodo(id, delta) {
+  const ids = NOTES.affichees.map((t) => t.id);
+  const i = ids.indexOf(Number(id));
+  const j = i + delta;
+  if (i === -1 || j < 0 || j >= ids.length) return;
+  ids.splice(j, 0, ids.splice(i, 1)[0]);
+  enregistrerOrdreTodos(ids);
+}
+
+$('#todoList') && $('#todoList').addEventListener('click', (e) => {
+  const up = e.target.closest('[data-todo-up]');
+  if (up) { deplacerTodo(up.dataset.todoUp, -1); return; }
+  const down = e.target.closest('[data-todo-down]');
+  if (down) deplacerTodo(down.dataset.todoDown, 1);
+});
+
+/* Glisser-déposer natif. On déplace la ligne DANS le DOM pendant le geste — sans ça, on
+   déplace à l'aveugle et on ne sait pas où l'on va lâcher. L'ordre n'est enregistré qu'au
+   lâcher : une liste qui appelle le serveur à chaque survol le ferait cent fois. */
+let todoTire = null;
+$('#todoList') && $('#todoList').addEventListener('dragstart', (e) => {
+  const row = e.target.closest('.todo-row.todo-move');
+  if (!row) return;
+  todoTire = row;
+  row.classList.add('dragging');
+  if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', row.dataset.todo); } catch { /* refusé */ } }
+});
+$('#todoList') && $('#todoList').addEventListener('dragover', (e) => {
+  if (!todoTire) return;
+  e.preventDefault();
+  const cible = e.target.closest('.todo-row.todo-move');
+  if (!cible || cible === todoTire) return;
+  const r = cible.getBoundingClientRect();
+  // Au-dessus ou en dessous, selon le côté de la ligne où l'on est : le geste se voit.
+  cible.parentNode.insertBefore(todoTire, e.clientY < r.top + r.height / 2 ? cible : cible.nextSibling);
+});
+$('#todoList') && $('#todoList').addEventListener('drop', (e) => { if (todoTire) e.preventDefault(); });
+$('#todoList') && $('#todoList').addEventListener('dragend', () => {
+  if (!todoTire) return;
+  todoTire.classList.remove('dragging');
+  todoTire = null;
+  enregistrerOrdreTodos($$('#todoList .todo-row').map((r) => Number(r.dataset.todo)));
+});
 
 $$('#tab-notes .todo-filter button').forEach((b) => b.addEventListener('click', () => {
   NOTES.filter = b.dataset.tfilter;

@@ -431,11 +431,22 @@ dernier onglet consulté. Une fois par jour calendaire, jamais deux — sinon ch
 sur le brief celui qui lisait un rapport. Débrayable dans *Réglages → Général*.
 
 #### Todos
-Une liste plate, triée **par priorité puis par échéance** ; les sans-date passent après celles qui en ont
-une, sinon les plus nombreuses repousseraient en bas ce qui est dû aujourd'hui.
+Une liste plate, **dans l'ordre que tu lui donnes** : « à faire » se réordonne à la souris (poignée à
+gauche, glisser-déposer) ou au clavier (deux flèches par ligne — glisser n'est ni annonçable ni fiable au
+clavier et au doigt). L'ordre est **enregistré** : un ordre qui ne survit pas au rechargement n'est pas un
+ordre.
 
-- **Ajout inline** en tête de liste : on tape, Entrée, c'est créé — priorité normale, sans date. Le tri se
-  fait après.
+⚠ **Priorité et échéance ne trient plus cette liste** — elles restent affichées, et ce sont toujours elles
+qui alimentent le **brief du matin** et les **pastilles du menu**. Le tri automatique répondait à
+« qu'est-ce qui presse » ; il ne répondait pas à « dans quel ordre je m'y prends ce matin », et une liste
+qui se réarrange après chaque geste ne se réordonne pas. Le jour de la mise à jour, ta liste garde
+exactement l'ordre qu'elle avait — on ne réordonne pas les todos de quelqu'un pour lui annoncer qu'il peut
+les réordonner. Les vues **Faites** et **Archivées** gardent, elles, leur ordre chronologique : on n'arrange
+pas son tiroir.
+
+- **Ajout inline** en tête de liste : on tape, Entrée, c'est créé — priorité normale, sans date. Une todo
+  neuve se range **en tête**, là où on vient de la taper ; la chercher en bas d'une liste de trente serait
+  absurde.
 - **Statut binaire** : à faire / fait. Pas de « en cours » : une todo de poste de travail se coche, elle
   ne se pilote pas.
 - **Priorité** haute / normale / basse. La normale n'affiche aucune pastille — la baliser serait du bruit.

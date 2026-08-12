@@ -3028,6 +3028,13 @@ app.post('/api/todos', wrap((req, res) => {
   res.json(notes.creerTodo(req.body || {}, msgNotes()));
 }));
 
+/* Réordonner la liste « à faire » : l'écran envoie l'ordre complet de ce qu'il affiche. */
+app.post('/api/todos/reorder', wrap((req, res) => {
+  const ids = (req.body && req.body.ids) || [];
+  if (!Array.isArray(ids) || !ids.length) throw new Error(t('err.ordre-vide'));
+  res.json({ ok: true, n: notes.reordonnerTodos(ids) });
+}));
+
 /* Édition, cocher/décocher ET snooze passent par la même route : ce sont les mêmes colonnes.
    `snooze` est traduit ici en `due_at` plutôt que côté client — « demain 9 h » doit vouloir
    dire la même chose que le rappel l'ait posé le navigateur ou le serveur. */

@@ -719,6 +719,12 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 /* Un commentaire EN ATTENTE se distingue d'un commentaire publié au premier regard : le même
    rendu ferait croire le travail fait, et on refermerait la MR en laissant ses remarques en
    local. Liseré ambre — ni une erreur, ni un acquis : quelque chose reste à faire. */
+/* Réordonner une todo : la poignée dit que la ligne se déplace, et le curseur le confirme.
+   Discrète — on coche et on édite bien plus souvent qu'on ne réordonne. */
+.todo-grip { display: inline-flex; align-items: center; color: var(--muted); cursor: grab; opacity: .45; flex: 0 0 auto; }
+.todo-row:hover .todo-grip { opacity: 1; }
+.todo-row.dragging { opacity: .5; outline: 1px dashed var(--accent); }
+.todo-row.todo-move { cursor: default; }
 .cmt-draft { border-left: 3px solid var(--amber); }
 .cmt-draft-head { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--amber); margin-bottom: 4px; }
 .cmt-draft-body { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 6px; }
