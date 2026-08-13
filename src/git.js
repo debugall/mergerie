@@ -287,6 +287,18 @@ async function commitAll(cwd, message, onLog) {
   return true;
 }
 
+/* RENOMMER LE DERNIER COMMIT, sans toucher à ce qu'il contient.
+   Le cas : on relance une session après avoir renseigné le message de commit, l'IA constate
+   que tout est déjà fait et ne commite rien — le commit garde alors le message d'avant, et le
+   champ qu'on vient de remplir n'a servi à rien. `--amend` ne réécrit que le message.
+   Renvoie true si le message a changé, false s'il était déjà le bon (rien à faire). */
+async function renommerDernierCommit(cwd, message, onLog = () => {}) {
+  const { stdout } = await run('git', ['log', '-1', '--format=%s'], { cwd });
+  if (stdout.trim() === String(message).trim()) return false;
+  await run('git', ['commit', '--amend', '-m', message], { cwd, onLog });
+  return true;
+}
+
 async function headSha(cwd) {
   const { stdout } = await run('git', ['rev-parse', 'HEAD'], { cwd });
   return stdout.trim();
@@ -392,7 +404,7 @@ async function ensureCleanWorktree(cwd, onLog = () => {}) {
 }
 
 module.exports = {
-  aheadOf, isPushed,
+  aheadOf, isPushed, renommerDernierCommit,
   resetWorktree,
   ensureRepo, targetedDiff, diffRange, tagAuthor, branchesForCommit, branchesForCommitDetailed, cloneDirFor, authUrl, run, secretsOf, tokenFor,
   defaultBranch, ensureCleanWorktree, refExists, createBranchFrom, checkoutBranch, commitAll, headSha, branchDiff, pushBranch, gitTlsArgs,

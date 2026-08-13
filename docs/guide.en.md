@@ -211,6 +211,14 @@ break the rule exactly when nobody re-reads it, and the offending commit is alre
 empty nothing changes: each gesture keeps its own default, which **says what it just did** (the
 prompt's first line for the run, the follow-up's own for a follow-up).
 
+And when it is filled in **after the fact** — you run a session, you see a badly named commit, you
+fill the field and relaunch — the **last commit is renamed**: the AI finds everything already done
+and commits nothing, so without this the field you just filled would have nothing left to name. Only
+the message changes; the commit's contents are untouched and no extra commit appears. ⚠ **Unless the
+branch is already on `origin`**: renaming a published commit would rewrite a history the forge — and
+possibly a merge request, and possibly a colleague — already has. The job log says so, rather than
+staying silent or doing it behind your back.
+
 **A follow-up written while it runs, sent when you decide.** The remark comes while you read what the
 agent is doing — not twenty minutes later, once the session is over and your mind is elsewhere. On a
 running session, **`Prepare a follow-up`** opens the same form as **`Send a follow-up`**, with **`Save the

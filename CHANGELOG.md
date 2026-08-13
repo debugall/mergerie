@@ -710,6 +710,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A commit message filled in after the fact is applied on the next run.** You launch a
+  session, you see a badly named commit go by, you fill in the commit message field and
+  relaunch — and nothing changed, because the AI finds the work already done and commits
+  nothing, leaving the field with nothing to name. The last commit is now renamed instead: only
+  the message changes, the commit's contents are untouched and no extra commit appears. Not when
+  the branch is already on `origin` — renaming a published commit would rewrite a history the
+  forge, a merge request and possibly a colleague already have; the job log says so rather than
+  staying silent.
+
 - **Reopening Mergerie on the Jenkins tab no longer lands on an empty tab.** The last tab you
   visited is restored at startup, and it was opened while the script was still being evaluated:
   the Jenkins tab reads state declared further down the same file, so it threw, the list stayed

@@ -217,6 +217,14 @@ première ligne casserait la règle au moment précis où on ne relit pas, et le
 poussé. Laissé vide, rien ne change : chaque geste garde son défaut, qui **dit ce qu'il vient de
 faire** (la première ligne du prompt pour le run, celle du suivi pour un suivi).
 
+Et s'il est renseigné **après coup** — on lance, on voit passer un commit mal nommé, on remplit le
+champ, on relance —, le **dernier commit est renommé** : l'IA constate que tout est déjà fait et ne
+commite rien, donc sans ça le champ qu'on vient de remplir n'aurait rien à nommer. Seul le message
+change, le contenu du commit est intact et il n'y a pas de commit de plus. ⚠ **Sauf si la branche est
+déjà sur `origin`** : renommer un commit publié réécrirait une histoire que la forge — et peut-être
+une merge request, et peut-être un collègue — a déjà. Le journal du job le dit alors, plutôt que de
+se taire ou de le faire dans le dos.
+
 **Un suivi écrit pendant que ça tourne, envoyé quand tu le décides.** La remarque vient en lisant
 ce que l'agent fait — pas vingt minutes plus tard, une fois la session finie et l'esprit ailleurs. Sur
 une session en cours, **`Préparer un suivi`** ouvre le même formulaire que **`Envoyer un suivi`**,

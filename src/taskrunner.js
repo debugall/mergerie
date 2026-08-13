@@ -140,6 +140,26 @@ async function reconcileTargets(task, onLog = () => {}) {
   return { repaired, checked: cibles.length };
 }
 
+/* LE MESSAGE RENSEIGNÉ APRÈS COUP DOIT QUAND MÊME S'APPLIQUER. Le geste courant : on lance une
+   session, on voit passer un commit mal nommé, on remplit le champ « message de commit » et on
+   relance. L'IA constate alors que tout est déjà fait et ne commite RIEN — le commit gardait
+   donc son ancien message, et le champ qu'on venait de remplir ne servait à rien. On renomme
+   donc le dernier commit, sans toucher à ce qu'il contient.
+
+   SAUF S'IL EST DÉJÀ PARTI : renommer un commit poussé, c'est réécrire une histoire que la
+   forge — et peut-être une merge request, et peut-être un collègue — a déjà. On le dit alors,
+   plutôt que de le faire en silence ou de se taire ; le geste appartient à qui le lit. */
+async function reappliquerMessage(cwd, branch, message, onLog = () => {}) {
+  if (await git.refExists(cwd, `origin/${branch}`)) {
+    onLog(`ℹ message de commit non réappliqué : ${branch} est déjà sur origin, le renommer `
+      + 'réécrirait un commit publié');
+    return 'publie';
+  }
+  if (!await git.renommerDernierCommit(cwd, message, onLog)) return 'inchange';
+  onLog(`message du dernier commit mis à jour : ${message}`);
+  return 'renomme';
+}
+
 /* ================= CODAGE ================= */
 
 /* Prompt de dev et message de commit d'une session : UNE seule définition, partagée
@@ -291,6 +311,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
         : t('err.aucun-changement-produit-rien-a'));
     }
     onLog(`aucune modification à ajouter : la branche porte déjà le travail (${dejaFait} commit(s) d'avance sur ${base})`);
+    await reappliquerMessage(cwd, tg.branch, message, onLog);
   }
   const sha = await git.headSha(cwd);
 
@@ -586,5 +607,5 @@ async function pushTargets(task, targetIds, onLog = () => {}) {
 module.exports = {
   reconcileTargets, pushTargets,
   runTask, runTaskFollowup, runTaskAnswer, pushTarget, targetsOf, setTarget, syncTaskStatus,
-  execOnTarget, buildCodePrompt, commitMessageFor, saveAgentOutput,
+  execOnTarget, buildCodePrompt, commitMessageFor, saveAgentOutput, reappliquerMessage,
 };
