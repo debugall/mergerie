@@ -864,8 +864,12 @@ Jenkins already does well, and which there is no point redoing.
   days. Can be switched off in *Settings → Notifications*. The wait survives closing the tab —
   that is precisely the point.
 - **A job's page** (`Open`), in two columns: on the **left** the history of the last ten runs
-  (verdict, date, duration) — each with its **`Console`** button, the most frequent gesture —,
-  on the **right** the details of the one you select: when, how long, **by whom**, on **which
+  (verdict, date, duration) — each with its **`Console`** button, the most frequent gesture, and
+  **the parameters it went out with** as pills under the line. Two green lines from the same
+  afternoon are told apart by nothing else. The **tint comes from the parameter's name**, the
+  same as in the job list: `ENV` keeps its colour from one screen to the next, and the eye
+  follows a column down without reading. In a history every parameter comes back on every line,
+  so they are all tinted —, on the **right** the details of the one you select: when, how long, **by whom**, on **which
   branch**, and above all **with which parameters and which values** it went out. The most
   recent one is selected by default. The **console** opens with one button — bounded to the last
   characters, **scrolled to the bottom** where the error is, and **wrapped**: having to scroll

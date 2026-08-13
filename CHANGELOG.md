@@ -60,6 +60,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   send time so a merge request that moved meanwhile is not annotated on code that no longer
   exists.
 
+- **A job's history shows what each run went out with, in the same colours as the list.** Two
+  green lines from the same afternoon are told apart by their parameters, and nothing else:
+  reading them meant clicking each run in turn. Every line now carries its parameters as
+  name/value pills under it, tinted from the parameter's **name** — so `ENV` has the same colour
+  in a job's history as it has in the job list, and the eye follows a column down without
+  reading. In a history every parameter comes back on every line, so they are all tinted.
+
 - **Find the run you are thinking of, then start from its values.** "When did this last go to
   production, and with which version?" is the question you ask in front of a deployment job's
   history. Each parameter the history carries gets a filter above it, and a `Reuse` button on

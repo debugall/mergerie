@@ -201,6 +201,10 @@ describe('Commentaire en ligne — le bouton reste sous les yeux', { skip: dispo
     await page.waitForFunction(() => document.querySelector('#draftsSend').hidden,
       null, { timeout: 5000 });
     assert.equal(posts(), avant + 2, 'les deux sont partis, en une fois');
+    /* Le bouton disparaît avant que le fichier soit redessiné : on attend le compte ATTENDU
+       plutôt que de le lire au vol, sinon le test échoue une fois sur vingt, sous charge. */
+    await page.waitForFunction(() => !document.querySelector('#fileContent .cmt-draft'),
+      null, { timeout: 5000 });
     assert.equal(await page.locator('#fileContent .cmt-draft').count(), 0,
       'partis = plus en attente sous la ligne');
   });

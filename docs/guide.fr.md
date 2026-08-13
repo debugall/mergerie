@@ -904,7 +904,11 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   fermeture de l'onglet — c'est justement le cas d'usage.
 - **La fiche d'un job** (`Ouvrir`), en deux colonnes : à **gauche** l'historique des dix
   dernières exécutions (verdict, date, durée) — chacune avec son bouton **`Console`**, le geste
-  le plus fréquent —, à **droite** le détail de celle qu'on sélectionne : quand, combien de
+  le plus fréquent, et **les paramètres avec lesquels elle est partie**, en pastilles sous la
+  ligne. Deux lignes vertes du même après-midi ne se distinguent que par là. La **teinte vient
+  du nom** du paramètre, la même que dans la liste des jobs : `ENV` garde sa couleur d'un écran
+  à l'autre, et l'œil descend la colonne sans lire. Dans un historique, tous les paramètres
+  reviennent à chaque ligne : ils sont donc tous teintés —, à **droite** le détail de celle qu'on sélectionne : quand, combien de
   temps, **par qui**, sur **quelle branche**, et surtout **avec quels paramètres et quelles
   valeurs** elle est partie. La plus récente est sélectionnée d'office. La **console** s'ouvre
   d'un bouton — bornée aux derniers caractères, **déroulée en bas** là où est l'erreur, et

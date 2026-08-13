@@ -12744,16 +12744,27 @@ const jkPastilleBuild = (b) => (b.building ? 'succes encours'
 function jkBuildLigne(chemin, b, choisi) {
   const etat = b.building ? tr('jenkins.st.running') : (b.result || '—');
   const quand = b.timestamp ? fmtDateTime(new Date(b.timestamp).toISOString()) : '';
+  /* LES PARAMÈTRES SOUS LA LIGNE, ET DE LA MÊME COULEUR QUE DANS LA LISTE. C'est avec quoi
+     l'exécution est partie qui distingue deux lignes autrement identiques : sans ça, retrouver
+     « celle de la 1.5.2 en prod » demande de cliquer chaque ligne l'une après l'autre. La
+     teinte vient du NOM (`jkTeinte`), la même partout : `ENV` a ici la couleur qu'il a dans la
+     liste des jobs, et l'œil descend la colonne sans lire. Ici on colore TOUS les paramètres :
+     dans l'historique d'un même job, ils reviennent tous d'une ligne à l'autre — c'est
+     exactement ce que le seuil de la liste cherche à repérer. */
+  const params = b.params || [];
   return `<div class="jk-build${choisi ? ' selected' : ''}">
-    <button type="button" class="jk-build-btn" data-jkbuild="${b.number}" aria-pressed="${choisi ? 'true' : 'false'}">
-      <span class="jk-dot ${jkPastilleBuild(b)}"></span>
-      <strong>#${b.number}</strong>
-      <span>${esc(etat)}</span>
-      <span class="jk-meta">${esc(quand)}${b.duration ? ` · ${Math.round(b.duration / 1000)} s` : ''}</span>
-    </button>
-    <button type="button" class="btn btn-sm" data-jklog="${b.number}" data-jkpath="${esc(chemin)}">${esc(tr('jenkins.console'))}</button>
-    <button type="button" class="btn btn-sm" data-jkreuse="${b.number}" title="${esc(tr('jenkins.reuse.title', { n: b.number }))}"><svg class="ico ico-sm"><use href="#i-copy"/></svg></button>
-    <button type="button" class="btn btn-sm" data-jkrerunbuild="${b.number}" title="${esc(tr('jenkins.rerun.title-build', { n: b.number }))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg></button>
+    <div class="jk-build-l1">
+      <button type="button" class="jk-build-btn" data-jkbuild="${b.number}" aria-pressed="${choisi ? 'true' : 'false'}">
+        <span class="jk-dot ${jkPastilleBuild(b)}"></span>
+        <strong>#${b.number}</strong>
+        <span>${esc(etat)}</span>
+        <span class="jk-meta">${esc(quand)}${b.duration ? ` · ${Math.round(b.duration / 1000)} s` : ''}</span>
+      </button>
+      <button type="button" class="btn btn-sm" data-jklog="${b.number}" data-jkpath="${esc(chemin)}">${esc(tr('jenkins.console'))}</button>
+      <button type="button" class="btn btn-sm" data-jkreuse="${b.number}" title="${esc(tr('jenkins.reuse.title', { n: b.number }))}"><svg class="ico ico-sm"><use href="#i-copy"/></svg></button>
+      <button type="button" class="btn btn-sm" data-jkrerunbuild="${b.number}" title="${esc(tr('jenkins.rerun.title-build', { n: b.number }))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg></button>
+    </div>
+    ${jkParamPastilles(params, params.map((p) => p.name))}
   </div>`;
 }
 

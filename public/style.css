@@ -787,7 +787,10 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .jk-fiche-filtres { margin-bottom: 6px; }
 .jk-fiche-filtres .jk-pf { font-size: 11.5px; }
 .jk-builds { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 2px; }
-.jk-build { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+/* Deux étages : la ligne (verdict, date, boutons) et, dessous, les paramètres du lancement. */
+.jk-build { display: flex; flex-direction: column; align-items: stretch; gap: 2px; font-size: 13px; }
+.jk-build-l1 { display: flex; align-items: center; gap: 8px; }
+.jk-build .jk-params { padding: 0 6px 4px; }
 .jk-build .spacer { flex: 1; }
 /* Un paramètre se lit de haut en bas : son nom, ce qu'il fait, puis le champ. Sur une
    seule ligne, la description s'intercale entre le nom et la valeur et on ne sait plus

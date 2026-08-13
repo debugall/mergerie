@@ -604,6 +604,18 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     assert.equal(await page.locator('#jenkinsFiche [data-jkbuild]').getAttribute('data-jkbuild'), '11',
       'le lancement retrouvé est bien au-delà des dix derniers');
 
+    /* LES PARAMÈTRES SE LISENT DANS L'HISTORIQUE, dans la couleur qu'ils ont dans la liste des
+       jobs. Sans ça, deux lignes vertes du même jour ne se distinguent qu'en cliquant l'une
+       après l'autre — et une couleur qui changerait d'un écran à l'autre ne servirait à rien. */
+    const pastille = (sel, nom) => page.locator(sel).evaluate((el, n) => {
+      const bloc = el.closest('.jk-build') || el;   // les pastilles sont sous la ligne, pas dedans
+      const c = [...bloc.querySelectorAll('.jk-chip')].find((x) => x.querySelector('.jk-chip-k').textContent === n);
+      return c ? { valeur: c.querySelector('.jk-chip-v').textContent, teinte: [...c.classList].find((k) => /^jk-c\d$/.test(k)) } : null;
+    }, nom);
+    const dansFiche = await pastille('#jenkinsFiche [data-jkbuild="11"]', 'ENV');
+    assert.equal(dansFiche.valeur, 'bac-a-sable', 'chaque exécution montre avec quoi elle est partie');
+    assert.ok(dansFiche.teinte, 'et le paramètre porte une teinte, sinon rien ne se suit du coin de l’œil');
+
     // On cherche les lancements en prod : le plus récent d'entre eux arrive en tête.
     await page.locator('[data-jkff="ENV"]').fill('prod');
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsFiche [data-jkbuild]').length === 2);
@@ -627,6 +639,13 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     assert.match(await page.locator('#jenkinsFiche').textContent(), /Aucune de ces exécutions/);
 
     await page.locator('#jenkinsClose').click();
+
+    /* LA MÊME TEINTE DES DEUX CÔTÉS. Elle vient du nom du paramètre, pas de son rang ni de
+       l'écran où il est affiché : `ENV` doit se retrouver de la liste à la fiche. */
+    await page.waitForSelector('#jenkinsBox .jk-row');
+    const dansListe = await pastille('#jenkinsBox [data-jkjob="boutique/deploy-prod"]', 'ENV');
+    assert.equal(dansListe.teinte, dansFiche.teinte,
+      'la couleur d’un paramètre est la même dans la liste des jobs et dans l’historique');
   });
 
   /* Une valeur qui n'est PLUS proposée par le job (un tag supprimé depuis) doit tout de même
