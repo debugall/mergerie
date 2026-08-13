@@ -666,15 +666,74 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 /* Jenkins : l'historique À CÔTÉ du détail d'une exécution, et des lignes de console de trois
    cents caractères — 900 px repliaient tout en accordéon. */
 .modal-box.modal-lg { width: min(1180px, 95vw); }
-/* La fiche d'un job : l'historique à gauche, ce qu'on a sélectionné à droite. En dessous de
-   820 px l'écran ne porte plus deux colonnes : elles s'empilent. */
-.jk-fiche { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: 14px; align-items: start; }
-@media (max-width: 820px) { .jk-fiche { grid-template-columns: 1fr; } }
+/* ============ Jenkins · la fiche d'un job : trois blocs, trois rôles ============
+
+   TROIS CHOSES DIFFÉRENTES SUR UN SEUL FOND PLAT : ce qu'on s'apprête à lancer, ce qui s'est
+   lancé, et le détail de l'un d'eux. Seul l'espacement disait qu'on changeait de sujet, et il
+   était le même partout — l'écart entre deux exécutions valait celui entre deux zones. Le fond
+   de la modale recule donc d'un cran (`--bg`, le plan de l'application) et chaque zone devient
+   une carte : la séparation ne se lit plus, elle se voit, et dans les deux thèmes. */
+#jenkinsModal .modal-box { background: var(--bg); box-shadow: var(--sh-3); }
+
+/* Le formulaire est en haut, « Lancer » en bas, et dix exécutions entre les deux : quand c'est
+   la boîte entière qui défile, retrouver le bouton demande de redérouler tout l'historique.
+   Seul le corps défile ; le titre et les actions restent — et les blocs collants ci-dessous
+   ont enfin un bord (`top: 0`) auquel s'accrocher. */
+#jenkinsModal .modal-box { display: flex; flex-direction: column; overflow: hidden; }
+#jenkinsModalBody { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+
+/* Une carte = une zone. Le titre est un LIBELLÉ de zone (petit, capitales, gris) et non un
+   titre de contenu : dans le bloc de droite, « #42 — SUCCESS » doit rester le plus fort. */
+.jk-bloc { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
+  padding: 12px 14px; min-width: 0; }
+.jk-bloc-t { margin: 0 0 8px; font-size: var(--fs-xs); font-weight: var(--fw-sem);
+  text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.jk-bloc-t .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+/* L'historique à gauche, ce qu'on a sélectionné à droite. `align-items: start` n'est pas
+   cosmétique : il donne aux colonnes une hauteur de contenu, sans quoi le bloc collant de
+   droite n'a nulle part où glisser. */
+.jk-fiche { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; gap: 12px; align-items: start; }
 .jk-fiche-col { min-width: 0; }
-.jk-build.selected { background: var(--panel2); border-radius: var(--radius); }
-.jk-build-btn { background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 4px 6px; }
-.jk-detail-row { display: flex; gap: 8px; padding: 3px 0; font-size: 13px; }
-.jk-detail-row .jk-detail-k { color: var(--muted); min-width: 120px; flex: 0 0 auto; overflow-wrap: anywhere; }
+
+/* LE DÉTAIL SUIT LA DESCENTE. Comparer « ce que je vais lancer » à « ce qui est parti la
+   dernière fois » est la raison d'être de cette modale : laisser le détail filer vers le haut
+   dès la troisième ligne d'historique la vide de son intérêt. Plafonné et défilant pour
+   lui-même — un job à vingt paramètres serait sinon plus haut que la fenêtre, collé par le
+   haut, sans qu'on puisse jamais en voir la fin. */
+.jk-col-detail { position: sticky; top: 0; max-height: calc(90vh - 170px); overflow: auto; }
+.jk-col-detail > .muted { margin: 0; }
+
+/* L'en-tête de la colonne (titre puis filtres) reste en haut pendant qu'on descend : filtrer
+   après avoir déroulé dix lignes ne doit pas demander de remonter. Les marges négatives le
+   font saigner jusqu'aux bords de la carte, sinon les lignes passent dans ses coins. */
+.jk-col-head { position: sticky; top: 0; z-index: 2; background: var(--panel);
+  margin: -12px -14px 0; padding: 12px 14px 8px; border-bottom: 1px solid var(--line);
+  border-radius: var(--r-lg) var(--r-lg) 0 0; }
+.jk-col-histo .jk-vide { margin: 10px 0 0; }
+
+/* Sous 820 px tout s'empile : deux blocs collants l'un sous l'autre se voleraient le haut de
+   l'écran, et le détail passerait avant la liste qu'il décrit. */
+@media (max-width: 820px) {
+  .jk-fiche { grid-template-columns: 1fr; }
+  .jk-col-detail { position: static; max-height: none; overflow: visible; }
+  .jk-col-head { position: static; }
+}
+
+/* ---- Le détail d'une exécution : un en-tête, puis deux tableaux clé/valeur ---- */
+.jk-build-detail h4:first-child { display: flex; align-items: center; gap: 8px;
+  margin: 0 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--line); font-size: var(--fs-md); }
+/* Le lien « ouvrir dans Jenkins » part au bord : c'est une sortie, pas un mot du titre. */
+.jk-build-detail h4:first-child .jk-open-ext { margin-left: auto; }
+.jk-build-detail h4:not(:first-child) { margin: 14px 0 4px; padding-top: 12px;
+  border-top: 1px solid var(--line-soft); font-size: var(--fs-xs); font-weight: var(--fw-sem);
+  text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+/* Une grille et non un flex : les valeurs s'alignent sur une vraie colonne même quand un nom
+   de paramètre est long, et le filet rend les couples lisibles ligne à ligne. */
+.jk-detail-row { display: grid; grid-template-columns: minmax(110px, 36%) 1fr; gap: 10px;
+  padding: 5px 0; font-size: var(--fs-sm); border-bottom: 1px solid var(--line-soft); }
+.jk-detail-row:last-child { border-bottom: 0; }
+.jk-detail-row .jk-detail-k { color: var(--muted); overflow-wrap: anywhere; }
 .jk-detail-row .jk-detail-v { overflow-wrap: anywhere; }
 .jk-open-ext { color: var(--muted); }
 /* La console d'un build : JAMAIS de défilement horizontal. Une ligne de log fait volontiers
@@ -784,14 +843,54 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
   background: var(--panel2); border: 1px solid var(--line); font-size: 11.5px; max-width: 100%; }
 .jk-chip-k { color: var(--muted); }
 .jk-chip-v { color: var(--text); overflow-wrap: anywhere; }
-.jk-fiche-filtres { margin-bottom: 6px; }
+/* Les filtres vivent DANS l'en-tête de la carte : c'est lui qui porte la marge. */
+.jk-fiche-filtres { margin-bottom: 0; }
 .jk-fiche-filtres .jk-pf { font-size: 11.5px; }
-.jk-builds { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 2px; }
-/* Deux étages : la ligne (verdict, date, boutons) et, dessous, les paramètres du lancement. */
-.jk-build { display: flex; flex-direction: column; align-items: stretch; gap: 2px; font-size: 13px; }
-.jk-build-l1 { display: flex; align-items: center; gap: 8px; }
-.jk-build .jk-params { padding: 0 6px 4px; }
+
+/* UNE LISTE, PAS DIX BLOCS. Les lignes saignent jusqu'aux bords de la carte et se touchent :
+   c'est le filet qui les sépare, pas le vide — un espacement de 4 px valait celui qui séparait
+   les zones entre elles, et les pastilles d'une ligne semblaient appartenir à la suivante. */
+.jk-builds { display: flex; flex-direction: column; margin: 8px -14px -12px; }
+/* Le liseré de gauche est toujours là, transparent : sans lui, la ligne se décalerait de 3 px
+   au moment d'être choisie. */
+.jk-build { display: flex; flex-direction: column; align-items: stretch; gap: 1px;
+  font-size: var(--fs-sm); padding: 6px 12px 7px 11px;
+  border-top: 1px solid var(--line-soft); border-left: 3px solid transparent; }
+.jk-build:first-child { border-top: 0; }
+.jk-build:last-child { border-radius: 0 0 var(--r-lg) var(--r-lg); }
+.jk-build:hover { background: var(--hover); }
+/* LA SÉLECTION NE TIENT PAS QU'À LA COULEUR : un liseré (une forme) et le numéro en gras la
+   disent aussi — deux aplats gris voisins ne se distinguent pas pour tout le monde. */
+.jk-build.selected { background: var(--panel2); border-left-color: var(--accent); }
+.jk-build.selected .jk-build-btn > strong { font-weight: var(--fw-bold); }
+
+.jk-build-l1 { display: flex; align-items: flex-start; gap: 6px; }
+/* DEUX ÉTAGES DANS LA LIGNE. Sur une seule, « 13/08/26 09:26 · 107 s » se repliait où il
+   pouvait dans 360 px et les verdicts ne s'alignaient plus d'une ligne à l'autre. La date
+   passe donc dessous, et la largeur minimale du numéro remet les verdicts sur une colonne
+   malgré #9 et #142. */
+.jk-build-btn { flex: 1; min-width: 0; display: grid; grid-template-columns: auto auto 1fr;
+  column-gap: 8px; row-gap: 1px; align-items: center; padding: 2px 0;
+  background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.jk-build-btn > .jk-dot { grid-row: 1; }
+.jk-build-btn > strong { grid-row: 1; min-width: 3.4em; }
+.jk-build-btn > .jk-verdict { grid-row: 1; }
+.jk-build-btn > .jk-meta { grid-column: 2 / -1; grid-row: 2; }
+/* Les pastilles s'alignent sous le NUMÉRO et non sous la pastille d'état : elles se rattachent
+   ainsi à leur ligne au lieu de flotter entre deux. */
+.jk-build .jk-params { padding: 0; margin: 3px 0 1px 17px; }
 .jk-build .spacer { flex: 1; }
+
+/* Trente cadres de boutons pour dix lignes pesaient plus lourd que les données qu'ils
+   accompagnent. Les boutons restent LÀ et cliquables en permanence : c'est leur cadre qui
+   attend le survol. Sur la ligne choisie et au doigt (pas de survol), il est rendu d'office. */
+.jk-build-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.jk-build-actions .btn { background: transparent; border-color: transparent; color: var(--muted); }
+.jk-build-l1:hover .jk-build-actions .btn,
+.jk-build.selected .jk-build-actions .btn { background: var(--panel2); border-color: var(--line); color: var(--text); }
+.jk-build.selected .jk-build-actions .btn { background: var(--panel); }
+.jk-build-actions .btn:hover { border-color: var(--accent); color: var(--accent); }
+@media (hover: none) { .jk-build-actions .btn { background: var(--panel2); border-color: var(--line); color: var(--text); } }
 /* Un paramètre se lit de haut en bas : son nom, ce qu'il fait, puis le champ. Sur une
    seule ligne, la description s'intercale entre le nom et la valeur et on ne sait plus
    laquelle des deux on est en train de remplir. */

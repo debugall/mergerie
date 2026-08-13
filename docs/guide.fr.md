@@ -902,7 +902,15 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   tiens : être prévenu du build nocturne de l'équipe serait du bruit, et on couperait tout au
   bout de deux jours. Débrayable dans *Réglages → Notifications*. L'attente survit à la
   fermeture de l'onglet — c'est justement le cas d'usage.
-- **La fiche d'un job** (`Ouvrir`), en deux colonnes : à **gauche** l'historique des dix
+- **La fiche d'un job** (`Ouvrir`), en **trois blocs séparés** — le formulaire de lancement,
+  l'historique, le détail de l'exécution choisie. Chacun est une carte sur un fond en retrait :
+  la frontière se **voit** au lieu de se deviner. L'historique est une vraie liste (des filets
+  entre les lignes, la date sur son propre étage pour que les verdicts s'alignent), la ligne
+  choisie porte un **liseré** et son numéro en gras — pas seulement un gris un peu différent —,
+  et les filtres restent **en tête** pendant qu'on descend. Seul le corps défile : **`Lancer`**
+  ne s'enfonce plus sous dix exécutions, et le détail de droite **suit la descente** — comparer
+  « ce que je vais lancer » à « ce qui est parti la dernière fois » est la raison d'être de
+  cette fenêtre. En deux colonnes : à **gauche** l'historique des dix
   dernières exécutions (verdict, date, durée) — chacune avec son bouton **`Console`**, le geste
   le plus fréquent, et **les paramètres avec lesquels elle est partie**, en pastilles sous la
   ligne. Deux lignes vertes du même après-midi ne se distinguent que par là. La **teinte vient

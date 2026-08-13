@@ -905,6 +905,64 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.locator('#jenkinsClose').click();
   });
 
+  /* TROIS ZONES, TROIS BLOCS. Le formulaire de lancement, l'historique et le détail d'une
+     exécution vivaient sur un seul fond plat, séparés par un espacement qui valait celui de
+     deux lignes de la liste : on lisait une coulée. Ce test regarde ce qui se VOIT — trois
+     cartes bordées, le détail qui suit la descente, le bouton qui ne part pas —, pas les
+     déclarations CSS qui les produisent. */
+  test('la fiche sépare ses trois zones, et garde le détail et « Lancer » sous les yeux', async (t) => {
+    const decor = mock.state.details['/job/boutique/job/deploy-prod'];
+    t.after(() => { mock.state.details['/job/boutique/job/deploy-prod'] = decor; });
+    // Assez d'exécutions pour qu'il y ait vraiment de quoi défiler.
+    mock.state.details['/job/boutique/job/deploy-prod'] = {
+      name: 'deploy-prod', color: 'blue', buildable: true,
+      builds: Array.from({ length: 10 }, (_, i) => ({
+        number: 40 - i, result: 'SUCCESS', building: false, timestamp: 9000 - i, duration: 5000, url: '',
+        actions: [{ causes: [{ userName: 'Bruno' }] }, { parameters: [{ name: 'ENV', value: 'prod', _class: 'hudson.model.StringParameterValue' }] }],
+      })),
+      property: [{ parameterDefinitions: [{ name: 'ENV', type: 'StringParameterDefinition', defaultParameterValue: { value: 'prod' } }] }],
+    };
+
+    await allerJenkins();
+    await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
+    await page.waitForSelector('#jenkinsFiche [data-jkbuild]');
+
+    /* Chaque zone est une carte, et une carte se voit : un fond distinct de celui de la
+       modale, et une bordure. Sans ça, il ne reste que du blanc entre deux sujets. */
+    const cartes = await page.locator('#jenkinsModalBody .jk-bloc').evaluateAll((els) => els.map((el) => {
+      const s = getComputedStyle(el);
+      const fond = getComputedStyle(el.closest('.modal-box')).backgroundColor;
+      return { borde: s.borderTopWidth !== '0px' && s.borderTopStyle !== 'none', detache: s.backgroundColor !== fond };
+    }));
+    assert.equal(cartes.length, 3, 'les paramètres, l’historique et le détail : trois zones, trois cartes');
+    assert.ok(cartes.every((c) => c.borde && c.detache), 'chacune se détache du fond de la modale et porte un filet');
+
+    /* LA SÉLECTION NE TIENT PAS QU'À LA COULEUR DE FOND. Deux gris voisins ne se distinguent
+       pas pour tout le monde : un liseré, donc une forme, la dit aussi. */
+    const liseres = await page.locator('#jenkinsFiche .jk-build').evaluateAll((els) => els.slice(0, 2)
+      .map((el) => ({ choisi: el.classList.contains('selected'), bord: getComputedStyle(el).borderLeftColor })));
+    assert.ok(liseres[0].choisi, 'la plus récente est sélectionnée d’office');
+    assert.notEqual(liseres[0].bord, liseres[1].bord,
+      'la ligne choisie porte un liseré que les autres n’ont pas');
+
+    /* ON DESCEND L'HISTORIQUE. Le détail de droite doit rester lisible — c'est en le comparant
+       à ce qu'on s'apprête à lancer qu'on remplit le formulaire — et « Lancer » ne doit pas
+       s'enfoncer sous dix exécutions. */
+    const visible = (sel) => page.locator(sel).evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return r.top < window.innerHeight && r.bottom > 0 && r.height > 0;
+    });
+    await page.locator('#jenkinsModalBody').evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await page.waitForTimeout(150);
+    assert.equal(await visible('#jenkinsRun'), true, '« Lancer » reste à l’écran, sous l’historique déroulé');
+    assert.equal(await visible('#jenkinsFiche .jk-col-detail .jk-build-detail'), true,
+      'le détail de l’exécution suit la descente au lieu de filer vers le haut');
+    assert.equal(await visible('#jenkinsFiche .jk-col-head'), true,
+      'et les filtres restent en tête : filtrer après dix lignes ne doit pas demander de remonter');
+
+    await page.locator('#jenkinsClose').click();
+  });
+
   /* ROUVRIR MERGERIE SUR L'ONGLET JENKINS. Le dernier onglet consulté est restauré au
      chargement : l'onglet s'ouvre donc tout seul, pendant que le script s'évalue encore. Tout
      ce qu'il lit doit déjà exister — sinon la liste reste vide et l'écran s'excuse. Le test se

@@ -863,7 +863,14 @@ Jenkins already does well, and which there is no point redoing.
   the team's nightly build would be noise, and you would turn the whole thing off within two
   days. Can be switched off in *Settings → Notifications*. The wait survives closing the tab —
   that is precisely the point.
-- **A job's page** (`Open`), in two columns: on the **left** the history of the last ten runs
+- **A job's page** (`Open`), as **three separated blocks** — the launch form, the history, the
+  details of the selected run. Each is a card on a recessed background: the boundary is **seen**
+  rather than inferred. The history is a real list (rules between rows, the date on its own line
+  so verdicts line up), the selected run carries an **accent bar** and a bold number — not just a
+  slightly different grey —, and the filters stay **in a header** while you scroll. Only the body
+  scrolls: **`Run`** no longer sinks under ten runs, and the details on the right **follow you
+  down** — comparing "what I am about to launch" with "what went out last time" is what this
+  window is for. In two columns: on the **left** the history of the last ten runs
   (verdict, date, duration) — each with its **`Console`** button, the most frequent gesture, and
   **the parameters it went out with** as pills under the line. Two green lines from the same
   afternoon are told apart by nothing else. The **tint comes from the parameter's name**, the

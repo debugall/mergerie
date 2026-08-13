@@ -501,6 +501,18 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **A Jenkins job's page is three separated blocks instead of one flat sheet.** The launch form,
+  the run history and the details of the selected run all sat on the same background, with the
+  same gap between two zones as between two lines: it read as one column, not three subjects.
+  Each is now a card of its own on a recessed background — the boundary is seen rather than
+  inferred, in both themes. The history became a real list (rules between rows, no floating
+  gaps, the date on its own line so verdicts line up), the selected run is marked by an accent
+  bar and a bold number and not by a shade of grey alone, and the filters sit in a header that
+  stays put while you scroll — filtering after ten lines no longer means scrolling back up.
+  Only the body scrolls now, so `Run` stays reachable instead of sinking under the history, and
+  the run details follow you down: comparing "what I am about to launch" with "what went out
+  last time" is what this window is for.
+
 - **The Jenkins refresh interval is now a setting.** *Settings → Jenkins* holds it — every N
   minutes, 0 = never, one minute by default and capped at an hour — instead of a hard-coded
   30 seconds, and it lives in the database like the merge request and Jira intervals rather than

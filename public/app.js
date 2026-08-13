@@ -12757,12 +12757,14 @@ function jkBuildLigne(chemin, b, choisi) {
       <button type="button" class="jk-build-btn" data-jkbuild="${b.number}" aria-pressed="${choisi ? 'true' : 'false'}">
         <span class="jk-dot ${jkPastilleBuild(b)}"></span>
         <strong>#${b.number}</strong>
-        <span>${esc(etat)}</span>
+        <span class="jk-verdict">${esc(etat)}</span>
         <span class="jk-meta">${esc(quand)}${b.duration ? ` · ${Math.round(b.duration / 1000)} s` : ''}</span>
       </button>
-      <button type="button" class="btn btn-sm" data-jklog="${b.number}" data-jkpath="${esc(chemin)}">${esc(tr('jenkins.console'))}</button>
-      <button type="button" class="btn btn-sm" data-jkreuse="${b.number}" title="${esc(tr('jenkins.reuse.title', { n: b.number }))}"><svg class="ico ico-sm"><use href="#i-copy"/></svg></button>
-      <button type="button" class="btn btn-sm" data-jkrerunbuild="${b.number}" title="${esc(tr('jenkins.rerun.title-build', { n: b.number }))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg></button>
+      <span class="jk-build-actions">
+        <button type="button" class="btn btn-sm" data-jklog="${b.number}" data-jkpath="${esc(chemin)}">${esc(tr('jenkins.console'))}</button>
+        <button type="button" class="btn btn-sm" data-jkreuse="${b.number}" title="${esc(tr('jenkins.reuse.title', { n: b.number }))}"><svg class="ico ico-sm"><use href="#i-copy"/></svg></button>
+        <button type="button" class="btn btn-sm" data-jkrerunbuild="${b.number}" title="${esc(tr('jenkins.rerun.title-build', { n: b.number }))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg></button>
+      </span>
     </div>
     ${jkParamPastilles(params, params.map((p) => p.name))}
   </div>`;
@@ -12776,7 +12778,7 @@ function jkBuildDetail(d, b) {
     ? (b.params || []).map((p) => ligne(p.name, String(p.value))).join('')
     : `<p class="muted">${esc(tr('jenkins.build.no-params'))}</p>`;
   return `<div class="jk-build-detail">
-    <h4>#${b.number} — ${esc(b.building ? tr('jenkins.st.running') : (b.result || '—'))} ${jkLienExterne(b.url)}</h4>
+    <h4><span class="jk-dot ${jkPastilleBuild(b)}"></span>#${b.number} — ${esc(b.building ? tr('jenkins.st.running') : (b.result || '—'))} ${jkLienExterne(b.url)}</h4>
     ${ligne(tr('jenkins.build.when'), b.timestamp ? fmtDateTime(new Date(b.timestamp).toISOString()) : '')}
     ${ligne(tr('jenkins.build.duration'), b.duration ? `${Math.round(b.duration / 1000)} s` : '')}
     ${ligne(tr('jenkins.build.by'), jkAuteur(b.by))}
@@ -12834,15 +12836,23 @@ function renderJenkinsFiche() {
   if (!builds.some((b) => b.number === JENKINS.build)) JENKINS.build = builds.length ? builds[0].number : null;
   const choisi = builds.find((b) => b.number === JENKINS.build) || null;
   const filtre = builds.length !== tous.length;
-  const gauche = jkFiltresFiche(tous)
-    + (tous.length
-      ? `<h4>${esc(tr('jenkins.builds'))}${filtre ? ` <span class="muted">${esc(tr('jenkins.builds.filtered', { n: builds.length, count: builds.length, total: tous.length }))}</span>` : ''}</h4>`
-        + (builds.length
-          ? `<div class="jk-builds">${builds.map((b) => jkBuildLigne(d.path, b, b.number === JENKINS.build)).join('')}</div>`
-          : `<p class="muted">${esc(tr('jenkins.builds.none-matching'))}</p>`)
-      : `<p class="muted">${esc(tr('jenkins.no-build'))}</p>`);
+  /* Le titre AVANT les filtres : une zone s'annonce, puis propose ses commandes. Les deux
+     forment un en-tête qui reste collé en haut pendant qu'on descend l'historique — filtrer
+     après avoir déroulé dix lignes ne doit pas demander de remonter. */
+  const tete = `<div class="jk-col-head">
+      <h4 class="jk-bloc-t">${esc(tr('jenkins.builds'))}${filtre ? ` <span class="muted">${esc(tr('jenkins.builds.filtered', { n: builds.length, count: builds.length, total: tous.length }))}</span>` : ''}</h4>
+      ${jkFiltresFiche(tous)}
+    </div>`;
+  const gauche = tous.length
+    ? tete + (builds.length
+      ? `<div class="jk-builds">${builds.map((b) => jkBuildLigne(d.path, b, b.number === JENKINS.build)).join('')}</div>`
+      : `<p class="muted jk-vide">${esc(tr('jenkins.builds.none-matching'))}</p>`)
+    : `<p class="muted jk-vide">${esc(tr('jenkins.no-build'))}</p>`;
   const zone = $('#jenkinsFiche');
-  if (zone) zone.innerHTML = `<div class="jk-fiche-col">${gauche}</div><div class="jk-fiche-col">${jkBuildDetail(d, choisi)}</div>`;
+  if (zone) {
+    zone.innerHTML = `<div class="jk-fiche-col jk-bloc jk-col-histo">${gauche}</div>`
+      + `<div class="jk-fiche-col jk-bloc jk-col-detail">${jkBuildDetail(d, choisi)}</div>`;
+  }
 }
 
 /* REPRENDRE LES PARAMÈTRES D'UNE EXÉCUTION dans le formulaire, sans lancer. C'est le geste de
@@ -12918,11 +12928,12 @@ async function openJenkinsJob(chemin) {
     JENKINS.job = d;
     $('#jenkinsModalDesc').textContent = d.description || '';
     const params = d.parameters.length
-      ? `<h4>${esc(tr('jenkins.params'))}</h4>
+      ? `<section class="jk-bloc">
+         <h4 class="jk-bloc-t">${esc(tr('jenkins.params'))}</h4>
          <p class="muted jk-param-intro">${esc(tr('jenkins.params.intro'))}</p>${d.parameters.map((p) => `<label class="jk-param"><span class="jk-param-name">${esc(p.name)}</span>
           ${p.description ? `<span class="jk-param-desc">${esc(p.description)}</span>` : ''}
           ${jkParamChamp(p)}
-          ${p.unresolved ? `<span class="jk-param-warn">${esc(tr('jenkins.param.unresolved'))} ${jkLienExterne(d.url)}</span>` : ''}</label>`).join('')}`
+          ${p.unresolved ? `<span class="jk-param-warn">${esc(tr('jenkins.param.unresolved'))} ${jkLienExterne(d.url)}</span>` : ''}</label>`).join('')}</section>`
       : '';
     JENKINS.build = null;
     JENKINS.ficheFiltres = {};          // les filtres d'une fiche ne suivent pas d'un job à l'autre
