@@ -13,6 +13,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A verifier can be duplicated.** Covering ten repositories with the same command save one
+  detail meant retyping everything — or worse, editing the existing one while believing you were
+  creating another. `Duplicate` reopens the form filled with the original's commands, timeout,
+  options and covered repositories, but **without its id**: saving creates a new verifier instead
+  of overwriting the one you started from. The name cannot be copied as-is — they are unique, and
+  the save would fail after you had adjusted everything — so "X (copy)" is proposed, then
+  "(copy 2)", with the field selected because renaming is the first thing you do.
+
 - **Standing instructions, added to every coding session.** *Settings → AI sessions* holds a free
   text field appended to the prompt of every coding session — in a repository and out of one, on
   the first run as on every follow-up. It is what you repeat every time: the language of

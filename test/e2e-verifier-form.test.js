@@ -107,6 +107,43 @@ describe('Réglages → Vérificateurs : le formulaire s’ouvre à la demande',
     assert.deepEqual(await page.$$eval('#verifierCommandList .vc-cmd', (i) => i.map((x) => x.value)), ['npm ci', 'npm test']);
   });
 
+  /* DUPLIQUER : le geste de qui doit couvrir dix dépôts avec la même commande à un détail près.
+     Sans lui, on retape tout — ou, pire, on modifie l'existant en croyant en créer un autre. Ce
+     qui compte ici tient en deux points : le formulaire est rempli comme pour une modification,
+     et il n'a PAS d'identifiant — enregistrer crée, il n'écrase pas l'original. */
+  test('« Dupliquer » ouvre un formulaire pré-rempli qui CRÉE au lieu d’écraser', async () => {
+    await ouvrirOnglet();
+    const avant = await page.locator('#verifierList .card').count();
+    await page.locator('#verifierList [data-vcopy]').first().click();
+    await page.waitForTimeout(300);
+
+    assert.equal((await visible()).form, true);
+    assert.equal(await page.locator('#verifierForm input[name=id]').inputValue(), '',
+      'aucun identifiant : enregistrer ne doit pas écraser le vérificateur d’origine');
+    assert.deepEqual(await page.$$eval('#verifierCommandList .vc-cmd', (i) => i.map((x) => x.value)),
+      ['npm ci', 'npm test'], 'les commandes sont reprises, pas seulement le nom');
+    assert.equal(await page.locator('#verifierRepoBox .vr-pick').first().isChecked(), true,
+      'et les dépôts couverts aussi — c’est la moitié du travail qu’on veut éviter de refaire');
+
+    /* Le nom ne peut pas être recopié tel quel : ils sont uniques, et l'enregistrement
+       échouerait après coup, une fois tout ajusté. */
+    const nom = await page.locator('#verifierForm input[name=name]').inputValue();
+    assert.equal(nom, 'tests unitaires (copie)');
+
+    await page.locator('#verifierForm button[type=submit]').click();
+    await page.waitForTimeout(800);
+    assert.equal(await page.locator('#verifierList .card').count(), avant + 1, 'un vérificateur de PLUS');
+    const noms = await page.$$eval('#verifierList .card .title', (cs) => cs.map((c) => c.textContent));
+    assert.ok(noms.includes('tests unitaires'), 'l’original est intact');
+    assert.ok(noms.includes('tests unitaires (copie)'), '…et la copie existe');
+
+    // Dupliquer une deuxième fois ne rebutera pas sur le nom déjà pris.
+    await page.locator('#verifierList [data-vcopy]').first().click();
+    await page.waitForTimeout(300);
+    assert.equal(await page.locator('#verifierForm input[name=name]').inputValue(), 'tests unitaires (copie 2)');
+    await page.locator('#btnVerifierCancel').click();
+  });
+
   test('enregistrer referme le formulaire et rafraîchit la liste', async () => {
     await ouvrirOnglet();
     await page.locator('#btnNewVerifier').click();

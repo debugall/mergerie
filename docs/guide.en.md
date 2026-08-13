@@ -1254,7 +1254,10 @@ fragment **or when the diff touches a path** — a glob such as `**/migrations/*
 precise; a rule on a path can carry a **“risk” badge** shown on the merge requests concerned, computed
 **without AI** just from the diff's paths, to see at a glance which one to review first) ·
 **Verifiers** (your test scripts, and the repositories each of them can test — see *Objective verification*
-below; the page shows **the list** first, and the form opens on *Add a verifier* or on *Edit*) ·
+below; the page shows **the list** first, and the form opens on *Add a verifier*, *Edit* or
+**`Duplicate`** — the latter reopens it **prefilled** with no id, so saving **creates** instead of
+overwriting the original, with a free name proposed ("X (copy)", since names are unique) and the
+field selected: renaming is the first gesture) ·
 **Notifications** (a dedicated sub-tab, see below) ·
 **General** (light/dark/auto theme, language, density, morning brief, data retention, backup,
 and a **danger zone** for a full reset) ·

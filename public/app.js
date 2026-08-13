@@ -11834,10 +11834,12 @@ function renderVerifierList() {
     </div>
     <div class="card-actions"><div class="btn-group">
       <button class="btn" data-vedit="${v.id}">${svgIco('edit')}${esc(tr('settings.repo.edit'))}</button>
+      <button class="btn" data-vcopy="${v.id}" title="${esc(tr('verify.verifier.duplicate.title'))}">${svgIco('copy')}${esc(tr('verify.verifier.duplicate'))}</button>
       <button class="btn btn-danger" data-vdel="${v.id}">${svgIco('trash')}${esc(tr('ui.delete'))}</button>
     </div></div>
   </div>`).join('');
   $$('#verifierList [data-vedit]').forEach((b) => b.addEventListener('click', () => editerVerifier(Number(b.dataset.vedit))));
+  $$('#verifierList [data-vcopy]').forEach((b) => b.addEventListener('click', () => dupliquerVerifier(Number(b.dataset.vcopy))));
   $$('#verifierList [data-vdel]').forEach((b) => b.addEventListener('click', async () => {
     const v = verifiers.find((x) => x.id === Number(b.dataset.vdel));
     if (!await confirmDialog({ title: tr('verify.verifier.del.title'), text: tr('verify.verifier.del.text', { name: (v && v.name) || '' }), confirmLabel: tr('ui.delete') })) return;
@@ -11846,9 +11848,37 @@ function renderVerifierList() {
   }));
 }
 
+/* UN NOM LIBRE POUR LA COPIE. Les noms de vérificateurs sont uniques : recopier celui de
+   l'original ferait échouer l'enregistrement au moment du clic, après avoir tout ajusté. On
+   propose donc « X (copie) », puis « (copie 2) » — le champ reste sélectionné, renommer est le
+   premier geste attendu. */
+function nomLibreVerifier(nom) {
+  const pris = new Set(verifiers.map((v) => v.name));
+  let candidat = tr('verify.verifier.copy-name', { name: nom });
+  for (let i = 2; pris.has(candidat); i += 1) candidat = tr('verify.verifier.copy-name-n', { name: nom, n: i });
+  return candidat;
+}
+
+/* DUPLIQUER : le formulaire est rempli comme pour une modification, mais SANS identifiant —
+   enregistrer crée donc un nouveau vérificateur au lieu d'écraser celui d'origine. C'est le
+   geste de qui a dix dépôts à couvrir avec la même commande à un détail près : tout retaper,
+   ou pire, modifier l'existant en croyant en créer un autre. */
+function dupliquerVerifier(id) {
+  const v = verifiers.find((x) => x.id === id);
+  if (!v) return;
+  remplirFormVerifier({ ...v, id: '', name: nomLibreVerifier(v.name) },
+    tr('verify.verifier.duplicating', { name: v.name }));
+  const f = $('#verifierForm');
+  f.name.focus(); f.name.select();   // renommer est le premier geste
+}
+
 function editerVerifier(id) {
   const v = verifiers.find((x) => x.id === id);
   if (!v) return;
+  remplirFormVerifier(v, tr('verify.verifier.editing', { name: v.name }));
+}
+
+function remplirFormVerifier(v, info) {
   const f = $('#verifierForm');
   f.id.value = v.id;
   f.name.value = v.name;
@@ -11866,7 +11896,7 @@ function editerVerifier(id) {
   renderCommandList(v.commands || []);
   renderVerifierRepoBox(v.repos || []);
   appliquerKind();
-  $('#verifierInfo').textContent = tr('verify.verifier.editing', { name: v.name });
+  $('#verifierInfo').textContent = info;
   ouvrirFormVerifier(true);
   f.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }

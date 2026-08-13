@@ -1306,7 +1306,9 @@ branche contient un fragment donné **ou quand le diff touche un chemin** — gl
 concernées, calculé **sans IA** juste sur les chemins du diff, pour voir d'un coup d'œil laquelle reviewer en premier) ·
 **Vérificateurs** (tes scripts de tests, et les dépôts que chacun sait tester — voir *Vérification
 objective* plus bas ; la page montre d'abord **la liste**, et le formulaire s'ouvre sur *Ajouter un
-vérificateur* ou sur *Modifier*) ·
+vérificateur*, *Modifier* ou **`Dupliquer`** — celui-ci le rouvre **pré-rempli** sans identifiant,
+donc enregistrer **crée** au lieu d'écraser l'original, avec un nom libre proposé (« X (copie) »,
+les noms étant uniques) et le champ sélectionné : renommer est le premier geste) ·
 **Notifications** (sous-onglet dédié, voir ci-dessous) ·
 **Général** (thème clair/sombre/auto, langue, densité, brief du matin, conservation des données, sauvegarde, et une **zone dangereuse** pour la remise à zéro) ·
 **Jira** (**connexion Jira** — URL + email + jeton d'API, avec un bouton *Tester Jira* — ; alimente l'onglet
