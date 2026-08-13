@@ -150,9 +150,19 @@ function buildCodePrompt(task) {
   // Option « l'IA peut poser des questions » : on ajoute la consigne du bloc <<<QUESTIONS>>>.
   return task && task.ask_questions ? base + questions.QUESTIONS_INSTRUCTION : base;
 }
-function commitMessageFor(task) {
-  return (task.commit_message && task.commit_message.trim())
-    || (task.prompt.split('\n')[0] || '').slice(0, 72);
+/* LE CHAMP « MESSAGE DE COMMIT » VAUT POUR TOUTE LA SESSION. Renseigné, il est la règle : le
+   premier run, un suivi, la reprise après questions et les passes de convergence commitent tous
+   sous ce message. C'est la demande de qui préfixe ses commits — une clé de ticket, une
+   convention d'équipe : un suivi qui repartirait sur sa propre première ligne casserait la règle
+   au moment précis où l'on ne relit pas, et le commit fautif est déjà poussé.
+
+   Laissé vide, chaque geste garde son défaut, qui dit ce qu'il vient de faire (`defaut`) ou, à
+   défaut de défaut, la première ligne du prompt. */
+function commitMessageFor(task, defaut) {
+  const choisi = task && task.commit_message && task.commit_message.trim();
+  if (choisi) return choisi;
+  if (defaut) return defaut;
+  return (((task && task.prompt) || '').split('\n')[0] || '').slice(0, 72);
 }
 
 // Exécute le prompt sur UN projet : place la branche, laisse l'IA modifier, commite.
@@ -495,7 +505,7 @@ async function runTaskFollowup(task, instruction, onLog = () => {}, { targetIds 
     const previous = task.md_path && fs.existsSync(task.md_path) ? fs.readFileSync(task.md_path, 'utf8') : '';
     return runExploration(task, { question: instr, previous, onLog });
   }
-  const message = instr.split('\n')[0].slice(0, 72);
+  const message = commitMessageFor(task, instr.split('\n')[0].slice(0, 72));
   const promptText =
     'Tu travailles sur une branche existante de ce projet ; le travail précédent est déjà '
     + `committé. Applique la demande de suivi ci-dessous en modifiant directement les fichiers.\n\n`
@@ -517,7 +527,8 @@ async function runTaskAnswer(task, targetId, onLog = () => {}) {
   const promptText = questions.buildAnswerInstruction(qs);
   try {
     const res = await execOnTarget(task, tg, {
-      promptText, message: 'Réponses aux questions de l’agent', allowCreate: false, onLog, resume: true, passKind: 'answer',
+      promptText, message: commitMessageFor(task, 'Réponses aux questions de l’agent'),
+      allowCreate: false, onLog, resume: true, passKind: 'answer',
     });
     syncTaskStatus(task.id);
     return res; // { needsInput } si l'agent re-pose des questions

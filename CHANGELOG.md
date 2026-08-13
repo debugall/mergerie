@@ -501,6 +501,32 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **The Settings sub-tabs are ordered by the journey, and the first one is Git.** The old order
+  told the story of the order in which features were written: the bar opened on "Specific review
+  rules", whose contents apply to nothing as long as no repository is tracked and no token is
+  set — while the onboarding was already sending its own first step to Git. It now reads
+  connect (Git) → choose the code (Repositories) → tune the review (Merge Request, Rules,
+  Verifiers) → tune the tool (Notifications, General) → the optional integrations (Jira,
+  Jenkins) → the test bench. A fresh install therefore lands on the token without which nothing
+  works, the last sub-tab you visited is still remembered (by name, so nobody is displaced), and
+  three tooltips that had stopped being true were fixed along the way.
+
+- **The "review skill" setting is gone: the skill is written in the prompt template.** A field
+  of its own meant understanding that it fed a `{skill}` hole hidden inside a text you can
+  rewrite anyway — and the template is exactly where you choose what you ask the AI. Existing
+  installations are migrated: whatever skill was configured is copied into the templates, so
+  nothing changes for anyone and no `{skill}` is left to be sent verbatim to the agent. A
+  template that was never touched comes out identical to the default, so it keeps following the
+  interface language.
+
+- **The commit message chosen for a session now applies to every one of its commits.** It was
+  used by the first run only: a follow-up committed under its own first line, the resume after
+  questions under a fixed sentence, and a convergence pass under the pass number. Anyone who
+  prefixes commits with a ticket key or a team convention had the rule broken exactly where
+  nobody re-reads it — the commit is already pushed. When the field is filled it is now the
+  rule for the whole session; left empty, nothing changes and each gesture keeps its own
+  default, which says what it just did.
+
 - **A Jenkins job's page is three separated blocks instead of one flat sheet.** The launch form,
   the run history and the details of the selected run all sat on the same background, with the
   same gap between two zones as between two lines: it read as one column, not three subjects.

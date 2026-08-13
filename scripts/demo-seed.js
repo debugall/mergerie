@@ -36,7 +36,7 @@ const PROJECTS = [
 ];
 
 // ---------- config : GitLab factice, pas de token (démo hors-ligne) ----------
-db.prepare(`UPDATE config SET gitlab_url = ?, access_token = '', jira_url = ?, review_skill = 'git-review' WHERE id = 1`)
+db.prepare(`UPDATE config SET gitlab_url = ?, access_token = '', jira_url = ? WHERE id = 1`)
   .run('https://gitlab.demo', 'https://jira.demo');
 
 // ---------- dépôts ----------

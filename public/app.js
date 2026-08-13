@@ -447,15 +447,18 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
   try { localStorage.setItem('aidevtools_tab', b.dataset.tab); } catch { /* ignore */ }
 }));
 
-/* ---------- Réglages : sous-onglets (Règles · Dépôts · Notifications · Général) ----------
+/* ---------- Réglages : sous-onglets (Git · Dépôts · Merge Request · …) ----------
    Chaque panneau charge ses données à l'ouverture (rien d'inutile au démarrage),
-   et le dernier sous-onglet consulté est mémorisé. */
+   et le dernier sous-onglet consulté est mémorisé — on revient dans Réglages pour finir ce
+   qu'on y faisait. Le repli, lui, est `gitcfg` : rien de mémorisé = installation neuve, et
+   sans jeton aucun autre réglage ne sert à quoi que ce soit. C'est déjà là que l'onboarding
+   envoie sa première étape. */
 // `mr` partage la logique de `config` : ses champs sont rattachés à #configForm (attribut form=),
 // donc loadConfig les peuple et le submit les enregistre — un seul /config pour les deux onglets.
 const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadConfig, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadConfig, verifiers: loadVerifiers, aisession: renderAiSessionSettings };
 function showAdminSub(sub) {
-  if (!sub) { try { sub = localStorage.getItem('aidevtools_admin_sub') || 'rules'; } catch { sub = 'rules'; } }
-  if (!ADMIN_SUBS[sub]) sub = 'rules';
+  if (!sub) { try { sub = localStorage.getItem('aidevtools_admin_sub') || 'gitcfg'; } catch { sub = 'gitcfg'; } }
+  if (!ADMIN_SUBS[sub]) sub = 'gitcfg';
   $$('#tab-admin .subnav [data-sub]').forEach((b) => b.classList.toggle('active', b.dataset.sub === sub));
   $$('#tab-admin .subtab').forEach((p) => p.classList.toggle('active', p.id === `sub-${sub}`));
   try { localStorage.setItem('aidevtools_admin_sub', sub); } catch { /* ignore */ }
@@ -3505,7 +3508,7 @@ $('#ticketSave').addEventListener('click', async () => {
 // exactement le bug qu'ont connu jira_email / jira_token).
 const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'access_token',
   'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
-  'clone_path', 'review_skill', 'prompt_review', 'prompt_explain', 'prompt_modify',
+  'clone_path', 'prompt_review', 'prompt_explain', 'prompt_modify',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
   'stale_mr_days'];
 async function loadConfig() {

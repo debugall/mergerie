@@ -739,15 +739,21 @@
 
     <section id="tab-admin" class="tab">
         <div class="segmented subnav" role="tablist">
-            <button data-sub="rules" class="active" role="tab" title="Critères ajoutés au prompt de review selon le nom de branche" data-i18n-title="settings.title.criteres-ajoutes-au-prompt-de" data-i18n="settings.btn.regles-de-review-specifiques">Règles de review spécifiques</button>
-            <button data-sub="repos" role="tab" title="Les dépôts GitLab dont tu suis les merge requests" data-i18n-title="settings.title.les-depots-gitlab-dont-tu" data-i18n="settings.btn.depots">Dépôts</button>
+            <!-- L'ORDRE SUIT LE PARCOURS, et non l'ordre dans lequel les fonctionnalités ont été
+                 écrites : connecter (Git) → choisir le code (Dépôts) → régler la review (Merge
+                 Request, Règles, Vérificateurs) → régler l'outil (Notifications, Général) → les
+                 intégrations optionnelles (Jira, Jenkins) → le banc d'essai. « Règles de review »
+                 ouvrait la barre alors que son contenu ne s'applique à rien tant qu'aucun dépôt
+                 n'est suivi, et l'onboarding envoie lui-même son étape 1 sur Git. -->
+            <button data-sub="gitcfg" class="active" role="tab" title="Connexion GitLab et GitHub, dossier de clonage et palette de commandes git" data-i18n-title="settings.title.git" data-i18n="settings.sub.git">Git</button>
+            <button data-sub="repos" role="tab" title="Les dépôts dont tu suis les merge requests, et tes répertoires locaux" data-i18n-title="settings.title.depots" data-i18n="settings.btn.depots">Dépôts</button>
+            <button data-sub="mr" role="tab" title="Review, rafraîchissement des MR, convergence et templates de prompt" data-i18n-title="settings.title.merge-request" data-i18n="settings.sub.mr">Merge Request</button>
+            <button data-sub="rules" role="tab" title="Critères ajoutés au prompt de review selon le nom de branche" data-i18n-title="settings.title.criteres-ajoutes-au-prompt-de" data-i18n="settings.btn.regles-de-review-specifiques">Règles de review spécifiques</button>
+            <button data-sub="verifiers" role="tab" title="Scripts qui rendent un verdict objectif sur une merge request : tests, intégration" data-i18n-title="settings.verifier.tab-title" data-i18n="settings.sub.verifiers">Vérificateurs</button>
             <button data-sub="notif" role="tab" title="Notifications bureau : quels événements déclenchent une notification système" data-i18n-title="settings.title.notifications-bureau" data-i18n="settings.sub.notif">Notifications</button>
-            <button data-sub="config" role="tab" title="Connexion GitLab, apparence, prompts, zone dangereuse" data-i18n-title="settings.title.connexion-gitlab-apparence-prompts-zone" data-i18n="settings.btn.general">Général</button>
-            <button data-sub="gitcfg" role="tab" title="Connexion GitLab, dossier de clonage et palette de commandes git" data-i18n-title="settings.title.git" data-i18n="settings.sub.git">Git</button>
+            <button data-sub="config" role="tab" title="Apparence, langue, brief du matin, conservation des données et zone dangereuse" data-i18n-title="settings.title.general" data-i18n="settings.btn.general">Général</button>
             <button data-sub="jiracfg" role="tab" title="Connexion Jira : URL, email et jeton d'API" data-i18n-title="settings.title.jira" data-i18n="settings.sub.jira">Jira</button>
             <button data-sub="jenkinscfg" role="tab" title="Connexion Jenkins : URL, utilisateur et jeton d'API" data-i18n-title="settings.title.jenkins" data-i18n="settings.sub.jenkins">Jenkins</button>
-            <button data-sub="mr" role="tab" title="Review, rafraîchissement des MR, convergence et templates de prompt" data-i18n-title="settings.title.merge-request" data-i18n="settings.sub.mr">Merge Request</button>
-            <button data-sub="verifiers" role="tab" title="Scripts qui rendent un verdict objectif sur une merge request : tests, intégration" data-i18n-title="settings.verifier.tab-title" data-i18n="settings.sub.verifiers">Vérificateurs</button>
             <button data-sub="aisession" role="tab" title="Vérifier qu'on peut reprendre une session d'agent (test technique)" data-i18n-title="settings.aisession.tab-title" data-i18n="settings.sub.aisession">AI sessions</button>
         </div>
 
@@ -927,7 +933,7 @@ print(json.dumps({
         </div>
 
         <!-- Sous-onglet : Règles de review spécifiques (premier) -->
-        <div id="sub-rules" class="subtab active">
+        <div id="sub-rules" class="subtab">
             <h2 data-i18n="settings.btn.regles-de-review-specifiques">Règles de review spécifiques</h2>
             <p class="muted" style="max-width:720px" data-i18n-html="settings.rule.p.ajoute-des-criteres-supplementaires-au">Ajoute des critères supplémentaires au prompt de review quand le nom de la branche source contient un fragment donné (ex. <code>PROJ-12344</code>).</p>
             <form id="ruleForm" class="form" style="max-width:720px">
@@ -1032,7 +1038,7 @@ print(json.dumps({
         <!-- Sous-onglet : Git — connexion GitLab + dossier de clonage (déplacés depuis Général),
              et la palette de commandes git de l'onglet « Commandes Git ». Champs rattachés à
              #configForm via form= (même logique d'enregistrement que le Général). -->
-        <div id="sub-gitcfg" class="subtab">
+        <div id="sub-gitcfg" class="subtab active">
         <h2 data-i18n="settings.sub.git">Git</h2>
         <div class="form" style="max-width:520px">
             <label><span data-i18n="settings.lbl.url-gitlab">URL GitLab</span> <button type="button" class="hint" tabindex="0" aria-label="L'adresse racine de ton GitLab, sans chemin de projet. Ex. https://gitlab.com ou https://gitlab.mon-entreprise.fr" data-tip="L'adresse racine de ton GitLab, sans chemin de projet. Ex. https://gitlab.com ou https://gitlab.mon-entreprise.fr" data-i18n-tip="settings.tip.l-adresse-racine-de-ton"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="gitlab_url" placeholder="https://gitlab.com" /></label>
@@ -1114,7 +1120,6 @@ print(json.dumps({
         <div id="sub-mr" class="subtab">
         <h2 data-i18n="settings.sub.mr">Merge Request</h2>
         <div class="form" style="max-width:520px">
-            <label><span data-i18n="settings.lbl.skill-de-review">Skill de review</span> <button type="button" class="hint" tabindex="0" aria-label="Nom du skill passé à l'agent IA pour cadrer la review (par défaut git-review). Laisse tel quel si tu n'as pas de skill personnalisé." data-tip="Nom du skill passé à l'agent IA pour cadrer la review (par défaut git-review). Laisse tel quel si tu n'as pas de skill personnalisé." data-i18n-tip="settings.tip.nom-du-skill-passe-a"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="review_skill" placeholder="git-review" data-i18n-placeholder="settings.ph.git-review" /></label>
             <label><span data-i18n="settings.lbl.rafraichir-les-mr-automatiquement-minutes">Rafraîchir les MR automatiquement (minutes, 0 = désactivé)</span> <button type="button" class="hint" tabindex="0" aria-label="Découverte automatique des nouvelles MR à intervalle régulier. 0 = désactivé. Minimum 1 minute, pour éviter les rate limits de l'API GitLab." data-tip="Découverte automatique des nouvelles MR à intervalle régulier. 0 = désactivé. Minimum 1 minute, pour éviter les rate limits de l'API GitLab." data-i18n-tip="settings.tip.decouverte-automatique-des-nouvelles-mr"><svg class="ico"><use href="#i-info"/></svg></button>
                 <input form="configForm" name="auto_refresh_minutes" type="number" min="0" step="1" placeholder="0" />
             </label>
@@ -1135,7 +1140,7 @@ print(json.dumps({
                 <label><span data-i18n="settings.lbl.prompt-review">Prompt review</span> <button type="button" class="hint" tabindex="0" aria-label="Instruction envoyée à l'IA pour produire le rapport de review. Placeholders disponibles ci-dessous." data-tip="Instruction envoyée à l'IA pour produire le rapport de review. Placeholders disponibles ci-dessous." data-i18n-tip="settings.tip.instruction-envoyee-a-l-ia"><svg class="ico"><use href="#i-info"/></svg></button> <textarea form="configForm" name="prompt_review" rows="7"></textarea></label>
                 <label><span data-i18n="settings.lbl.prompt-explication">Prompt explication</span> <button type="button" class="hint" tabindex="0" aria-label="Instruction pour l'onglet Explication du rapport : ce que fait la MR, en langage clair." data-tip="Instruction pour l'onglet Explication du rapport : ce que fait la MR, en langage clair." data-i18n-tip="settings.tip.instruction-pour-l-onglet-explication"><svg class="ico"><use href="#i-info"/></svg></button> <textarea form="configForm" name="prompt_explain" rows="7"></textarea></label>
                 <label><span data-i18n="settings.lbl.prompt-modification">Prompt modification</span> <button type="button" class="hint" tabindex="0" aria-label="Instruction utilisée quand l'IA doit modifier du code (sessions de codage et corrections demandées depuis un rapport)." data-tip="Instruction utilisée quand l'IA doit modifier du code (sessions de codage et corrections demandées depuis un rapport)." data-i18n-tip="settings.tip.instruction-utilisee-quand-l-ia"><svg class="ico"><use href="#i-info"/></svg></button> <textarea form="configForm" name="prompt_modify" rows="7"></textarea></label>
-                <p class="muted"><span data-i18n="settings.p.placeholders">Placeholders :</span> <code>{skill} {source} {target} {diff_file} {previous} {instruction}</code></p>
+                <p class="muted"><span data-i18n="settings.p.placeholders">Placeholders :</span> <code>{source} {target} {diff_file} {previous} {instruction}</code></p>
             </div>
         </details>
         <div class="form-actions">

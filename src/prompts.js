@@ -11,10 +11,14 @@
    n'a jamais été touché. Dès qu'un caractère diffère, le prompt est considéré
    comme personnalisé et laissé intact. */
 
+/* Le nom du skill est ÉCRIT DANS LE GABARIT, il n'a plus de champ à lui. Un réglage séparé
+   obligeait à comprendre qu'il alimentait un `{skill}` caché dans un texte qu'on peut de toute
+   façon réécrire : le gabarit est l'endroit où l'on choisit ce qu'on demande à l'IA, le nom du
+   skill en fait partie. Les gabarits déjà personnalisés sont migrés (voir `src/db.js`). */
 const PROMPTS = {
   fr: {
     prompt_review:
-      'Utilise le skill {skill} pour faire la revue de code UNIQUEMENT des changements ' +
+      'Utilise le skill git-review pour faire la revue de code UNIQUEMENT des changements ' +
       'de la branche {source} par rapport à {target} (le diff est dans le fichier {diff_file}). ' +
       'Ne parse pas tout le dépôt, concentre-toi sur ces changements. ' +
       'Produis un rapport de revue clair en Markdown (français) : problèmes, risques, ' +
@@ -30,7 +34,7 @@ const PROMPTS = {
   },
   en: {
     prompt_review:
-      'Use the {skill} skill to code-review ONLY the changes ' +
+      'Use the git-review skill to code-review ONLY the changes ' +
       'on branch {source} compared to {target} (the diff is in the file {diff_file}). ' +
       'Do not parse the whole repository, focus on these changes. ' +
       'Produce a clear review report in Markdown (English): problems, risks, ' +

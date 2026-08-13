@@ -153,7 +153,11 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
       const cur = latestVersion(mrId);
       const reviewMd = cur && cur.md_path && fs.existsSync(cur.md_path) ? fs.readFileSync(cur.md_path, 'utf8') : '';
       onLog(`──── passe ${passes + 1}/${maxPasses} : correction ────`);
-      const message = `${mr.source_branch}: convergence passe ${passes + 1} (review !${mr.iid})`;
+      /* Même règle qu'ailleurs : le message de commit choisi pour la session vaut pour TOUS
+         ses commits, passes de convergence comprises. Sans session (convergence lancée depuis
+         une MR seule), le défaut dit la passe et la revue dont elle vient. */
+      const message = taskrunner.commitMessageFor(ctx.task,
+        `${mr.source_branch}: convergence passe ${passes + 1} (review !${mr.iid})`);
       const fix = await applyFixAndPush(repo, mr, reviewMd, message, onLog, ctx);
       // L'IA a posé des questions pendant la correction → on met la BOUCLE en attente :
       // la cible passe `needs_input` (questions stockées), l'utilisateur répond (formulaire de

@@ -73,7 +73,6 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   fs.writeFileSync(diffStorePath, diff, 'utf8');
 
   const baseVars = {
-    skill: cfg.review_skill || 'git-review',
     source: mr.source_branch,
     target: mr.target_branch,
     diff_file: diffName,

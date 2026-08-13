@@ -523,6 +523,40 @@ describe('Sessions de dev de bout en bout', () => {
     assert.ok(!fs.existsSync(path.join(app.dataDir, 'tasks', String(task.id))));
   });
 
+  /* LE MESSAGE DE COMMIT CHOISI VAUT POUR TOUTE LA SESSION. Qui préfixe ses commits d'une clé
+     de ticket le fait pour tous : un suivi qui repartirait sur sa propre première ligne
+     casserait la convention au moment où l'on ne relit pas — le commit est déjà poussé. Le test
+     lit les VRAIS commits du dépôt, pas ce que l'application dit avoir demandé. */
+  test('le message de commit renseigné sert au run ET au suivi', async () => {
+    const messages = () => git(path.join(app.dataDir, 'clones', 'grp__app'), ['log', '--format=%s', '-3'])
+      .trim().split('\n');
+
+    const { body: t } = await app.api('POST', '/api/tasks', {
+      prompt: 'Ajoute la TVA\nsur les factures', commit_message: 'PROJ-42 facturation',
+      targets: [{ repo_id: repoId, branch: 'feat/msg' }],
+    });
+    await app.api('POST', `/api/tasks/${t.id}/run`);
+    await waitForJobs(app.api);
+    assert.equal(messages()[0], 'PROJ-42 facturation', 'le run commite sous le message choisi');
+
+    await app.api('POST', `/api/tasks/${t.id}/followup`, { instruction: 'Arrondis au centime' });
+    await waitForJobs(app.api);
+    assert.deepEqual(messages().slice(0, 2), ['PROJ-42 facturation', 'PROJ-42 facturation'],
+      'le suivi aussi — c’est tout l’intérêt d’avoir renseigné le champ');
+
+    /* SANS LE CHAMP, rien ne change : chaque geste garde son défaut, qui dit ce qu'il vient de
+       faire. Le champ est une règle qu'on pose, pas un comportement imposé à tout le monde. */
+    const { body: t2 } = await app.api('POST', '/api/tasks', {
+      prompt: 'Renomme la variable', targets: [{ repo_id: repoId, branch: 'feat/msg2' }],
+    });
+    await app.api('POST', `/api/tasks/${t2.id}/run`);
+    await waitForJobs(app.api);
+    assert.equal(messages()[0], 'Renomme la variable', 'à défaut, la première ligne du prompt');
+    await app.api('POST', `/api/tasks/${t2.id}/followup`, { instruction: 'Et documente-la' });
+    await waitForJobs(app.api);
+    assert.equal(messages()[0], 'Et documente-la', 'et le suivi dit ce que le suivi demandait');
+  });
+
   test('une session en échec consigne son erreur et l’efface à la demande', async () => {
     const { body: task } = await app.api('POST', '/api/tasks', {
       prompt: 'suivi impossible', targets: [{ repo_id: repoId, branch: 'jamais/creee' }],
@@ -822,6 +856,7 @@ describe('Sessions de dev de bout en bout', () => {
   test('l’IA pose une question : needs_input puis reprise après réponses', async () => {
     const creation = await app.api('POST', '/api/tasks', {
       kind: 'code', prompt: 'Ajoute un mécanisme de retry', ask_questions: true,
+      commit_message: 'PROJ-7 retry',
       targets: [{ repo_id: repoId, branch: 'feat/ask' }],
     });
     assert.equal(creation.status, 200);
@@ -876,6 +911,10 @@ describe('Sessions de dev de bout en bout', () => {
     assert.equal(task.status, 'committed', 'après réponses, l’agent poursuit et commite');
     assert.equal(task.targets[0].status, 'committed');
     assert.ok(task.targets[0].commit_sha);
+    /* Et ce commit-là aussi porte le message choisi pour la session : la reprise après
+       questions est un commit de la session comme un autre. */
+    assert.equal(git(path.join(app.dataDir, 'clones', 'grp__app'), ['log', '--format=%s', '-1']).trim(),
+      'PROJ-7 retry');
     assert.ok(!task.targets[0].questions, 'les questions sont soldées');
 
     // Répondre à un projet qui n'attend rien → refusé.

@@ -203,6 +203,14 @@ change what the agent produces without anyone asking, and two sessions with the 
 different labels would stop producing the same thing. A test keeps that door shut, including against
 a module that would start reading it.
 
+**The chosen commit message applies to EVERY commit of the session.** When the *Commit message*
+field is filled it is the rule: the first run, every **follow-up**, the resume after questions and
+the convergence passes all commit under that message. It is what anyone who prefixes their commits
+expects — a ticket key, a team convention: a follow-up falling back on its own first line would
+break the rule exactly when nobody re-reads it, and the offending commit is already pushed. Left
+empty nothing changes: each gesture keeps its own default, which **says what it just did** (the
+prompt's first line for the run, the follow-up's own for a follow-up).
+
 **A follow-up written while it runs, sent when you decide.** The remark comes while you read what the
 agent is doing — not twenty minutes later, once the session is over and your mind is elsewhere. On a
 running session, **`Prepare a follow-up`** opens the same form as **`Send a follow-up`**, with **`Save the
@@ -1218,26 +1226,41 @@ Every chart displays **the question it answers**. The token total is a **lower b
 work is not counted).
 
 ### Settings
-Sub-tabs: **Specific review rules** (criteria added to the prompt when the branch name contains a given
-fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more
-precise; a rule on a path can carry a **“risk” badge** shown on the merge requests concerned, computed
-**without AI** just from the diff's paths, to see at a glance which one to review first) · **Repositories**
+Sub-tabs, **in the order of the journey** — connect, choose the code, tune the review, tune the
+tool, the optional integrations, the test bench:
+
+**Git** (the **GitLab connection** — URL + access token, with
+*Test the connection* —, the **GitHub connection** — URL (empty = github.com, otherwise GitHub Enterprise)
++ token, with *Test GitHub* —, the **clone folder**, and the **git command palette** of the *Git → Git
+commands* tab: add/edit/delete commands as *name + fixed command*). It comes **first**, and it is the one
+that opens on a fresh install: without a token no other setting is worth anything ·
+**Repositories**
 (added one by one or in bulk **from GitLab** or **from GitHub** — each repository carries a forge badge, and
 the same path can exist on both —, plus the **local directories** — a folder on your machine holding one
 subfolder per git project, which feeds the *Git → Navigate* tab and *Out-of-repo coding*; the displayed
 count “n git projects out of m folders” confirms at a glance that you pointed at the right level of the
-tree) · **Notifications** (a dedicated sub-tab, see below) · **General** (light/dark/auto theme, language,
-and a **danger zone** for a full reset) · **Git** (the **GitLab connection** — URL + access token, with
-*Test the connection* —, the **GitHub connection** — URL (empty = github.com, otherwise GitHub Enterprise)
-+ token, with *Test GitHub* —, the **clone folder**, and the **git command palette** of the *Git → Git
-commands* tab: add/edit/delete commands as *name + fixed command*) · **Jira** (the **Jira connection** —
-URL + email + API token, with a *Test Jira* button —; feeds the *Jira* tab and the enrichment of a session
-from a ticket) · **Merge Request** (the review skill, automatic refresh, convergence, prompt templates) ·
+tree) ·
+**Merge Request** (automatic refresh, convergence, prompt templates — the review **skill** is written in the template) ·
+**Specific review rules** (criteria added to the prompt when the branch name contains a given
+fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more
+precise; a rule on a path can carry a **“risk” badge** shown on the merge requests concerned, computed
+**without AI** just from the diff's paths, to see at a glance which one to review first) ·
 **Verifiers** (your test scripts, and the repositories each of them can test — see *Objective verification*
 below; the page shows **the list** first, and the form opens on *Add a verifier* or on *Edit*) ·
+**Notifications** (a dedicated sub-tab, see below) ·
+**General** (light/dark/auto theme, language, density, morning brief, data retention, backup,
+and a **danger zone** for a full reset) ·
+**Jira** (the **Jira connection** —
+URL + email + API token, with a *Test Jira* button —; feeds the *Jira* tab and the enrichment of a session
+from a ticket) ·
+**Jenkins** (URL, user and API token, with a test button, and the jobs' **refresh interval**) ·
 **AI sessions** (a technical test: two passes inside the same agent session — it memorises a marker then
 recalls it on resume — to check that **session resuming** works with your CLI; it is the foundation of
 context continuity between review, fixes and convergence).
+
+The first three are what you fill in to get started; **Rules** and **Verifiers** complete the review; the
+rest is tuned when the need arises. The **last sub-tab you visited is remembered** — you come back to
+Settings to finish what you were doing there.
 
 ### Desktop notifications
 System notifications for the moments that **call for an action or close a wait** — not for atmosphere. On by

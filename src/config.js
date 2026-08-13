@@ -12,7 +12,7 @@ function getConfig() {
 const ALLOWED = [
   'gitlab_url', 'access_token', 'clone_path', 'jira_url',
   'github_url', 'github_token',
-  'prompt_review', 'prompt_explain', 'prompt_modify', 'review_skill', 'language',
+  'prompt_review', 'prompt_explain', 'prompt_modify', 'language',
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
   'brief_on_open',
   'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
@@ -87,7 +87,6 @@ function updateConfig(patch) {
       prompt_review = @prompt_review,
       prompt_explain = @prompt_explain,
       prompt_modify = @prompt_modify,
-      review_skill = @review_skill,
       language = @language,
       jira_email = @jira_email,
       jira_token = @jira_token,

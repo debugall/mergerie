@@ -969,6 +969,21 @@ try { db.exec("ALTER TABLE config ADD COLUMN brief_on_open TEXT DEFAULT '1'"); }
    jours : au-dessous, on signalerait la MR d'avant-hier, qu'on n'a pas oubliée. */
 try { db.exec('ALTER TABLE config ADD COLUMN stale_mr_days INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
 
+/* LE SKILL DE REVIEW N'A PLUS DE CHAMP : il s'écrit dans le gabarit de prompt, là où l'on
+   choisit déjà tout le reste de ce qu'on demande à l'IA. Les gabarits enregistrés portent
+   encore `{skill}`, un trou qui ne serait plus rempli par personne — il partirait tel quel à
+   l'agent. On y recopie donc une bonne fois le skill configuré (`git-review` à défaut). La
+   valeur choisie n'est pas perdue, elle change simplement de place ; et un gabarit resté au
+   défaut redevient exactement le défaut, donc suit encore les changements de langue.
+
+   Rejouable sans dommage : après le premier passage il n'y a plus de `{skill}` à remplacer.
+   Placée APRÈS le `CREATE TABLE config`, sans quoi elle échouerait sur une base neuve. */
+db.exec(`UPDATE config SET
+  prompt_review  = REPLACE(prompt_review,  '{skill}', COALESCE(NULLIF(TRIM(review_skill), ''), 'git-review')),
+  prompt_explain = REPLACE(prompt_explain, '{skill}', COALESCE(NULLIF(TRIM(review_skill), ''), 'git-review')),
+  prompt_modify  = REPLACE(prompt_modify,  '{skill}', COALESCE(NULLIF(TRIM(review_skill), ''), 'git-review'))
+  WHERE prompt_review LIKE '%{skill}%' OR prompt_explain LIKE '%{skill}%' OR prompt_modify LIKE '%{skill}%'`);
+
 const DEFAULT_PROMPT_REVIEW = PROMPTS.fr.prompt_review;
 const DEFAULT_PROMPT_EXPLAIN = PROMPTS.fr.prompt_explain;
 const DEFAULT_PROMPT_MODIFY = PROMPTS.fr.prompt_modify;

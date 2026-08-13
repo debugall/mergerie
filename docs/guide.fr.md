@@ -209,6 +209,14 @@ changerait ce que l'agent produit sans que personne ne l'ait demandé, et deux s
 prompt mais au libellé différent ne rendraient plus la même chose. Un test le garde fermé, y compris
 contre un module qui se mettrait à le lire.
 
+**Le message de commit choisi vaut pour TOUS les commits de la session.** Renseigné, le champ
+*Message de commit* est la règle : le premier run, chaque **suivi**, la reprise après questions et
+les passes de convergence commitent sous ce message. C'est ce qu'attend celui qui préfixe ses
+commits — une clé de ticket, une convention d'équipe : un suivi qui repartirait sur sa propre
+première ligne casserait la règle au moment précis où on ne relit pas, et le commit fautif est déjà
+poussé. Laissé vide, rien ne change : chaque geste garde son défaut, qui **dit ce qu'il vient de
+faire** (la première ligne du prompt pour le run, celle du suivi pour un suivi).
+
 **Un suivi écrit pendant que ça tourne, envoyé quand tu le décides.** La remarque vient en lisant
 ce que l'agent fait — pas vingt minutes plus tard, une fois la session finie et l'esprit ailleurs. Sur
 une session en cours, **`Préparer un suivi`** ouvre le même formulaire que **`Envoyer un suivi`**,
@@ -1273,26 +1281,37 @@ Chaque graphe affiche **la question à laquelle il répond**. Le total de tokens
 travail interne de l'agent n'est pas compté).
 
 ### Réglages
-Sous-onglets : **Règles de review spécifiques** (critères ajoutés au prompt quand le nom de
-branche contient un fragment donné **ou quand le diff touche un chemin** — glob type `**/migrations/**`,
-`*.sql` —, plus précis ; une règle par chemin peut porter un **badge « risque »** affiché sur les MR
-concernées, calculé **sans IA** juste sur les chemins du diff, pour voir d'un coup d'œil laquelle reviewer en premier) · **Dépôts** (ajout un par un ou en masse **depuis GitLab** ou **depuis GitHub** — chaque dépôt porte un badge
-de forge, et un même chemin peut exister sur les deux —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ·
-**Notifications** (sous-onglet dédié, voir ci-dessous) ·
-**Général** (thème clair/sombre/auto, langue, et une **zone dangereuse** pour la remise à zéro) ·
+Sous-onglets, **dans l'ordre du parcours** — connecter, choisir le code, régler la review, régler
+l'outil, les intégrations optionnelles, le banc d'essai :
+
 **Git** (**connexion GitLab** — URL + access token, avec *Tester la connexion* —, **connexion GitHub** — URL
 (vide = github.com, sinon GitHub Enterprise) + token, avec *Tester GitHub* —, **dossier de clonage**,
 et la **palette de commandes git** de l'onglet *Git → Commandes Git* : ajout/édition/suppression de
-commandes *nom + commande figée*) ·
-**Jira** (**connexion Jira** — URL + email + jeton d'API, avec un bouton *Tester Jira* — ; alimente l'onglet
-*Jira* et l'enrichissement d'une session depuis un ticket) ·
-**Merge Request** (skill de review, rafraîchissement auto, convergence, templates de prompt) ·
+commandes *nom + commande figée*). C'est le **premier** onglet, et celui qui s'ouvre d'office la
+première fois : sans jeton, aucun autre réglage ne sert à rien ·
+**Dépôts** (ajout un par un ou en masse **depuis GitLab** ou **depuis GitHub** — chaque dépôt porte un badge
+de forge, et un même chemin peut exister sur les deux —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ·
+**Merge Request** (rafraîchissement auto, convergence, templates de prompt — le **skill** de review s'écrit dans le gabarit) ·
+**Règles de review spécifiques** (critères ajoutés au prompt quand le nom de
+branche contient un fragment donné **ou quand le diff touche un chemin** — glob type `**/migrations/**`,
+`*.sql` —, plus précis ; une règle par chemin peut porter un **badge « risque »** affiché sur les MR
+concernées, calculé **sans IA** juste sur les chemins du diff, pour voir d'un coup d'œil laquelle reviewer en premier) ·
 **Vérificateurs** (tes scripts de tests, et les dépôts que chacun sait tester — voir *Vérification
 objective* plus bas ; la page montre d'abord **la liste**, et le formulaire s'ouvre sur *Ajouter un
 vérificateur* ou sur *Modifier*) ·
+**Notifications** (sous-onglet dédié, voir ci-dessous) ·
+**Général** (thème clair/sombre/auto, langue, densité, brief du matin, conservation des données, sauvegarde, et une **zone dangereuse** pour la remise à zéro) ·
+**Jira** (**connexion Jira** — URL + email + jeton d'API, avec un bouton *Tester Jira* — ; alimente l'onglet
+*Jira* et l'enrichissement d'une session depuis un ticket) ·
+**Jenkins** (URL, utilisateur et jeton d'API, avec un bouton de test, et la **fréquence de
+rafraîchissement** des jobs) ·
 **AI sessions** (un test technique : deux passes dans la même session d'agent — mémorise un marqueur
 puis le rappelle en reprise — pour vérifier que la **reprise de session** fonctionne avec ton CLI ;
 c'est le socle de la continuité de contexte entre review, corrections et convergence).
+
+Les trois premiers sont ce qu'on remplit pour démarrer ; **Règles** et **Vérificateurs** complètent
+la review ; le reste se règle quand le besoin s'en fait sentir. Le **dernier sous-onglet consulté est
+mémorisé** — on revient dans Réglages pour finir ce qu'on y faisait.
 
 ### Notifications bureau
 Des notifications système pour les moments qui **appellent une action ou closent une attente** —
