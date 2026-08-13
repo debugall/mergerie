@@ -148,8 +148,22 @@ function jobKeys(entry) {
    Volontairement séparé de jobKeys() : celui-ci raisonne en dépôts (collisions), celui-là
    en objets affichés (repérage visuel). */
 function jobTargets(entry, jobRow) {
-  const cibles = { mrs: [], tasks: [], locals: [] };
+  const cibles = { mrs: [], tasks: [], locals: [], verifying: [] };
   if (!entry) return cibles;
+  /* UNE VÉRIFICATION MARQUE LES MR QU'ELLE PORTE. Sans ça, cliquer « Vérifier » ne changeait
+     rien à l'écran : le toast passait, le travail durait des minutes, et plus rien ne disait
+     qu'il avait commencé — ni au retour sur l'onglet, ni après un rechargement. `verifying`
+     double `mrs` pour que le bouton sache que c'est SA commande qui tourne, et pas une review
+     sur la même MR : un spinner sur « Vérifier » pendant une review désignerait la mauvaise. */
+  if (entry.kind === 'verify') {
+    let cs = [];
+    try {
+      const v = db.prepare('SELECT targets_json FROM verification WHERE id = ?').get(entry.verificationId);
+      cs = JSON.parse((v && v.targets_json) || '[]');
+    } catch { cs = []; }   // ligne illisible : on n'en marque aucune plutôt que de tomber
+    for (const c of cs) if (c && c.mr_id) { cibles.mrs.push(c.mr_id); cibles.verifying.push(c.mr_id); }
+    return cibles;
+  }
   if (entry.kind === 'local') { if (entry.taskId) cibles.locals.push(entry.taskId); return cibles; }
   if (entry.kind === 'task' || entry.kind === 'converge-session') { if (entry.taskId) cibles.tasks.push(entry.taskId); return cibles; }
   if (entry.kind === 'converge') { if (entry.mrId) cibles.mrs.push(entry.mrId); return cibles; }
@@ -162,7 +176,7 @@ function jobTargets(entry, jobRow) {
 
 // Union des cibles de TOUS les jobs en cours, pour un seul appel de statut.
 function runningTargets() {
-  const cibles = { mrs: [], tasks: [], locals: [] };
+  const cibles = { mrs: [], tasks: [], locals: [], verifying: [] };
   for (const [jobId, { entry }] of active.entries()) {
     const row = db.prepare('SELECT current_mr_id FROM job WHERE id = ?').get(jobId);
     const one = jobTargets(entry, row);

@@ -1340,7 +1340,7 @@ function marquerEnCours(targets) {
   if (fini.tasks.length || fini.locals.length) { if ($('#tab-task').classList.contains('active')) loadTasks(); }
   if (fini.mrs.length && $('#tab-review').classList.contains('active')) loadSegment(currentSeg);
   ciblesEnCours = targets;
-  const t = targets || { mrs: [], tasks: [], locals: [] };
+  const t = targets || { mrs: [], tasks: [], locals: [], verifying: [] };
   const veut = new Set([
     ...(t.mrs || []).map((id) => `[data-id="${id}"]`),
     ...(t.tasks || []).map((id) => `[data-task="${id}"]`),
@@ -1350,7 +1350,35 @@ function marquerEnCours(targets) {
   for (const sel of veut) for (const el of $$(`.card${sel}`)) vise.add(el);
   for (const el of $$('.card.running-now')) if (!vise.has(el)) el.classList.remove('running-now');
   for (const el of vise) el.classList.add('running-now');
+  marquerVerifEnCours(t.verifying || []);
   document.body.classList.toggle('tab-cachee', document.hidden);
+}
+/* LE BOUTON DIT CE QU'IL FAIT, EN TOUTES LETTRES. Une vérification dure des minutes et vit dans
+   un job : le `busy()` du clic retombe dès que la requête a répondu, bien avant que le travail
+   commence — et plus rien ne disait qu'il avait commencé. Le bouton devient donc
+   « Vérification… », spinner compris, tant que le SERVEUR compte ce job comme en cours : ça
+   survit à un re-rendu de la liste, à un changement d'onglet et à un rechargement, ce qu'un
+   état gardé dans la page ne ferait pas.
+
+   Pas le `data-busy` de `busy()` : il masque le libellé, et un bouton devenu rond blanc oblige
+   à se rappeler sur quoi on a cliqué. On garde donc le libellé d'origine dans `data-verif` —
+   qui sert aussi à ne relâcher que les boutons qu'on a nous-mêmes pris. */
+function marquerVerifEnCours(ids) {
+  const veut = new Set(ids.map(Number));
+  for (const b of $$('[data-verify], [data-verify-report], #aVerify')) {
+    const id = Number(b.dataset.verify || b.dataset.verifyReport || (selectedMr || 0));
+    const enCours = veut.has(id);
+    if (enCours && !b.dataset.verif) {
+      b.dataset.verif = b.innerHTML;
+      b.innerHTML = `<span class="spin"></span>${esc(tr('verify.btn.running'))}`;
+      b.disabled = true;
+      b.title = tr('verify.btn.running-title');
+    } else if (!enCours && b.dataset.verif) {
+      b.innerHTML = b.dataset.verif; delete b.dataset.verif;
+      b.disabled = false;
+      b.title = tr('verify.btn.verify-title');
+    }
+  }
 }
 document.addEventListener('visibilitychange', () => document.body.classList.toggle('tab-cachee', document.hidden));
 

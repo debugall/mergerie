@@ -1666,6 +1666,14 @@ qui va tourner — les commandes ou le script, le dépôt, le mode, le délai �
 soit. Elle apparaît même quand un seul vérificateur couvre le dépôt : exécuter des commandes sur sa
 machine mérite un écran, pas un clic silencieux.
 
+**Pendant qu'elle tourne, ça se voit.** Une vérification dure des minutes : le bouton devient
+**`Vérification…`** avec son spinner, désactivé — un second clic ne peut donc pas relancer la même —,
+et la carte porte le **repère « en cours »** (le liseré qui bat), le même que pendant une review. L'état
+vient du **serveur**, pas de la page : il survit à un changement d'onglet, au re-tri de la liste et à un
+rechargement, et il retombe tout seul à la fin, la liste se rafraîchissant pour afficher le verdict.
+⚠ Une review sur la même MR marque bien la carte, mais **ne fait pas tourner** le bouton *Vérifier* :
+un spinner désignant la mauvaise commande vaudrait moins que pas de spinner du tout.
+
 Dans *Reviews*, coche plusieurs merge requests : la barre d'actions propose **Vérifier ensemble** et
 **Créer un lot** (un lot est nommé, persisté, et re-vérifiable d'un bouton depuis *Dev IA*). Deux MR du
 **même dépôt** sont refusées — on ne saurait pas quel code a été testé.

@@ -1606,6 +1606,14 @@ the commands or the script, the repository, the mode, the timeout — before lau
 even when a single verifier covers the repository: running commands on your machine deserves a screen, not a
 silent click.
 
+**While it runs, you can see it.** A verification takes minutes: the button turns into
+**`Verifying…`** with its spinner, disabled — so a second click cannot start the same one again — and
+the card carries the **"in progress" marker** (the pulsing bar), the same one a review uses. The state
+comes from the **server**, not from the page: it survives a tab change, a re-sort of the list and a
+reload, and it clears itself at the end, the list refreshing to show the verdict. ⚠ A review on the
+same merge request does mark the card, but does **not** spin the *Verify* button: a spinner pointing at
+the wrong command would be worth less than no spinner at all.
+
 In *Reviews*, tick several merge requests: the action bar offers **Verify together** and **Create a batch**
 (a batch is named, persisted, and re-verifiable with one button from *AI Dev*). Two MRs from the **same
 repository** are refused — we would not know which code was tested.

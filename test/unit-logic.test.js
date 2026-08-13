@@ -810,15 +810,37 @@ describe('jobs : objets marqués « en cours »', () => {
   });
 
   test('chaque famille d’objet tombe dans son propre seau', () => {
-    assert.deepEqual(jobTargets({ kind: 'local', taskId: 7 }), { mrs: [], tasks: [], locals: [7] });
-    assert.deepEqual(jobTargets({ kind: 'task', taskId: 4 }), { mrs: [], tasks: [4], locals: [] });
-    assert.deepEqual(jobTargets({ kind: 'converge-session', taskId: 5 }), { mrs: [], tasks: [5], locals: [] });
-    assert.deepEqual(jobTargets({ kind: 'converge', mrId: 9 }), { mrs: [9], tasks: [], locals: [] });
+    assert.deepEqual(jobTargets({ kind: 'local', taskId: 7 }), { mrs: [], tasks: [], locals: [7], verifying: [] });
+    assert.deepEqual(jobTargets({ kind: 'task', taskId: 4 }), { mrs: [], tasks: [4], locals: [], verifying: [] });
+    assert.deepEqual(jobTargets({ kind: 'converge-session', taskId: 5 }), { mrs: [], tasks: [5], locals: [], verifying: [] });
+    assert.deepEqual(jobTargets({ kind: 'converge', mrId: 9 }), { mrs: [9], tasks: [], locals: [], verifying: [] });
   });
 
   test('un job sans cible identifiable ne marque rien plutôt que n’importe quoi', () => {
-    assert.deepEqual(jobTargets({ kind: 'docker' }), { mrs: [], tasks: [], locals: [] });
-    assert.deepEqual(jobTargets(null), { mrs: [], tasks: [], locals: [] });
+    assert.deepEqual(jobTargets({ kind: 'docker' }), { mrs: [], tasks: [], locals: [], verifying: [] });
+    assert.deepEqual(jobTargets(null), { mrs: [], tasks: [], locals: [], verifying: [] });
+  });
+
+  /* UNE VÉRIFICATION MARQUE LES MR QU'ELLE PORTE. Sans ça, cliquer « Vérifier » ne changeait
+     rien à l'écran : le travail dure des minutes et plus rien ne disait qu'il avait commencé.
+     Elle les met dans `verifying` EN PLUS de `mrs` — le repère de la carte vaut pour tous les
+     jobs, mais le bouton doit savoir que c'est SA commande qui tourne et pas une review. */
+  test('une vérification marque les MR qu’elle porte, et se distingue d’une review', () => {
+    const db = require('../src/db');
+    db.prepare(`INSERT INTO verification (id, verifier_id, verifier_name, status, targets_json, created_at)
+      VALUES (901, NULL, 'tests', 'running', ?, ?)`)
+      .run(JSON.stringify([{ repo_id: 1, mr_id: 42 }, { repo_id: 2, mr_id: 43 }]), 'now');
+    const cibles = jobTargets({ kind: 'verify', verificationId: 901 });
+    assert.deepEqual(cibles.mrs, [42, 43], 'les cartes des deux MR se marquent');
+    assert.deepEqual(cibles.verifying, [42, 43], '…et le bouton « Vérifier » de chacune sait que c’est lui');
+    assert.deepEqual(jobTargets({ kind: 'review', rows: [] }, { current_mr_id: 42 }).verifying, [],
+      'une review, elle, ne fait pas tourner le bouton « Vérifier »');
+  });
+
+  /* Un lot de vérification porte plusieurs MR, mais toutes travaillent EN MÊME TEMPS (un seul
+     environnement monté) : là, marquer tout le lot est la vérité, contrairement à la review. */
+  test('une vérification introuvable ou illisible ne marque rien plutôt que de tomber', () => {
+    assert.deepEqual(jobTargets({ kind: 'verify', verificationId: 999999 }).mrs, []);
   });
 });
 

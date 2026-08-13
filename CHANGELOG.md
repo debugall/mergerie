@@ -710,6 +710,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A running verification is now visible.** Clicking `Verify` on a merge request started a job
+  and then showed nothing: the request answers in milliseconds while the work takes minutes, so
+  the button's spinner was gone before the run even began. The button now reads `Verifying…`,
+  spinner included and disabled — a second click cannot start the same verification again — and
+  the card carries the same "in progress" marker a review uses. The state comes from the server,
+  so it survives a tab change, a re-sorted list and a page reload, and it clears itself when the
+  job ends. A review on the same merge request marks the card without spinning the `Verify`
+  button: a spinner pointing at the wrong command is worth less than none.
+
 - **A commit message filled in after the fact is applied on the next run.** You launch a
   session, you see a badly named commit go by, you fill in the commit message field and
   relaunch — and nothing changed, because the AI finds the work already done and commits
