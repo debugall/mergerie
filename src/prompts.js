@@ -50,6 +50,20 @@ const PROMPTS = {
   },
 };
 
+/* LES CONSIGNES PERMANENTES : ce qu'on redit à chaque session sans jamais vouloir le retaper.
+   « Commente en français », « lance `npm run check` avant de committer », « pas de dépendance
+   nouvelle ». Les recopier dans chaque prompt marche jusqu'au jour où on oublie — et c'est
+   toujours celui-là qu'on relit trois heures plus tard.
+
+   Elles s'ajoutent APRÈS la tâche : ce qu'on demande d'abord, comment le faire ensuite. Et
+   avant le bloc <<<QUESTIONS>>>, qui est un protocole de réponse et doit rester le dernier mot.
+   Une seule définition pour les sessions de dépôt et le codage hors dépôt : deux copies
+   dériveraient, et personne ne s'en apercevrait avant de lire un prompt archivé. */
+function avecConsignes(prompt, consignes) {
+  const c = String(consignes == null ? '' : consignes).trim();
+  return c ? `${prompt}\n\nConsignes permanentes, valables pour toutes les sessions :\n${c}` : prompt;
+}
+
 const FIELDS = ['prompt_review', 'prompt_explain', 'prompt_modify'];
 
 // Un gabarit est « au défaut » s'il correspond au défaut de N'IMPORTE quelle langue
@@ -72,4 +86,4 @@ function promptsFor(lang, current) {
   return patch;
 }
 
-module.exports = { PROMPTS, FIELDS, isDefault, promptsFor };
+module.exports = { PROMPTS, FIELDS, isDefault, promptsFor, avecConsignes };

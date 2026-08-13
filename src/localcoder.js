@@ -13,6 +13,8 @@ const copilot = require('./copilot');
 const agentsession = require('./agentsession');
 const proc = require('./proc');
 const agentpass = require('./agentpass');
+const { getConfig } = require('./config');
+const { avecConsignes } = require('./prompts');
 
 const now = () => new Date().toISOString();
 
@@ -63,11 +65,14 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
 
   // Suivi : même esprit que `taskrunner.runTaskFollowup`, sans la mention de git
   // (ici l'IA travaille EN PLACE, il n'y a ni branche ni commit précédent).
-  const promptText = followup
+  /* Les consignes permanentes des réglages valent ICI AUSSI : « hors dépôt » change l'endroit
+     où l'IA travaille, pas la façon dont on veut qu'elle travaille. */
+  const promptText = avecConsignes(followup
     ? 'Tu as déjà travaillé dans ce dossier lors d’une passe précédente. Applique la demande '
       + `de suivi ci-dessous en modifiant directement les fichiers.\n\nDemande de suivi : ${followup}${imgBlock}`
     : 'Réalise la tâche de développement suivante dans ce dossier. '
-      + `Modifie directement les fichiers nécessaires.\n\n${task.prompt}${imgBlock}`;
+      + `Modifie directement les fichiers nécessaires.\n\n${task.prompt}${imgBlock}`,
+  getConfig().ai_extra_instructions);
 
   let ok = 0;
   for (const d of dirs) {

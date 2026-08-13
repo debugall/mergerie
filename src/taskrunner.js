@@ -8,6 +8,7 @@ const git = require('./git');
 const copilot = require('./copilot');
 const agentsession = require('./agentsession');
 const questions = require('./questions');
+const { avecConsignes } = require('./prompts');
 const agentpass = require('./agentpass');
 const { t } = require('../public/i18n-runtime.js');
 
@@ -145,11 +146,15 @@ async function reconcileTargets(task, onLog = () => {}) {
    par la session « normale » (runTask) et la session « convergée » (converge.js).
    Le jour où on affine ce prompt — c'est le cœur produit — les deux chemins suivent. */
 function buildCodePrompt(task) {
-  const base = 'Réalise la tâche de développement suivante dans ce dépôt. '
-    + `Modifie directement les fichiers nécessaires.\n\n${task.prompt}`;
+  const base = avecConsignes('Réalise la tâche de développement suivante dans ce dépôt. '
+    + `Modifie directement les fichiers nécessaires.\n\n${task.prompt}`, consignesPermanentes());
   // Option « l'IA peut poser des questions » : on ajoute la consigne du bloc <<<QUESTIONS>>>.
   return task && task.ask_questions ? base + questions.QUESTIONS_INSTRUCTION : base;
 }
+
+/* Relues à CHAQUE prompt et non mises en cache : on les change en réglages parce qu'on vient de
+   voir ce qui manquait, et la session suivante doit en tenir compte sans redémarrer l'outil. */
+const consignesPermanentes = () => getConfig().ai_extra_instructions;
 /* LE CHAMP « MESSAGE DE COMMIT » VAUT POUR TOUTE LA SESSION. Renseigné, il est la règle : le
    premier run, un suivi, la reprise après questions et les passes de convergence commitent tous
    sous ce message. C'est la demande de qui préfixe ses commits — une clé de ticket, une
@@ -506,10 +511,10 @@ async function runTaskFollowup(task, instruction, onLog = () => {}, { targetIds 
     return runExploration(task, { question: instr, previous, onLog });
   }
   const message = commitMessageFor(task, instr.split('\n')[0].slice(0, 72));
-  const promptText =
+  const promptText = avecConsignes(
     'Tu travailles sur une branche existante de ce projet ; le travail précédent est déjà '
     + `committé. Applique la demande de suivi ci-dessous en modifiant directement les fichiers.\n\n`
-    + `Demande de suivi : ${instr}`;
+    + `Demande de suivi : ${instr}`, consignesPermanentes());
   return runCodeTask(task, { promptText, message, allowCreate: false, onLog, passKind: 'followup', targetIds });
 }
 
@@ -524,7 +529,7 @@ async function runTaskAnswer(task, targetId, onLog = () => {}) {
   }
   onLog(`──────── ${tg.project} · ${tg.branch} (reprise après réponses) ────────`);
   setTarget(tg.id, { status: 'running', last_error: null });
-  const promptText = questions.buildAnswerInstruction(qs);
+  const promptText = avecConsignes(questions.buildAnswerInstruction(qs), consignesPermanentes());
   try {
     const res = await execOnTarget(task, tg, {
       promptText, message: commitMessageFor(task, 'Réponses aux questions de l’agent'),

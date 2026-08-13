@@ -1305,13 +1305,27 @@ vérificateur* ou sur *Modifier*) ·
 *Jira* et l'enrichissement d'une session depuis un ticket) ·
 **Jenkins** (URL, utilisateur et jeton d'API, avec un bouton de test, et la **fréquence de
 rafraîchissement** des jobs) ·
-**AI sessions** (un test technique : deux passes dans la même session d'agent — mémorise un marqueur
+**AI sessions** (les **consignes permanentes**, voir ci-dessous, et un test technique : deux passes
+dans la même session d'agent — mémorise un marqueur
 puis le rappelle en reprise — pour vérifier que la **reprise de session** fonctionne avec ton CLI ;
 c'est le socle de la continuité de contexte entre review, corrections et convergence).
 
 Les trois premiers sont ce qu'on remplit pour démarrer ; **Règles** et **Vérificateurs** complètent
 la review ; le reste se règle quand le besoin s'en fait sentir. Le **dernier sous-onglet consulté est
 mémorisé** — on revient dans Réglages pour finir ce qu'on y faisait.
+
+#### Consignes permanentes
+*Réglages → AI sessions.* Un texte libre **ajouté à la fin du prompt de toutes les sessions de codage**
+— dépôt **et** hors dépôt, au premier lancement **comme à chaque suivi**. C'est ce qu'on redit à
+chaque fois : la langue des commentaires, une commande à lancer avant de committer, une
+interdiction. Les recopier dans chaque prompt marche jusqu'au jour où on oublie — et c'est toujours
+celui-là qu'on relit trois heures plus tard.
+
+Elles arrivent **après la tâche** (ce qu'on demande d'abord, comment le faire ensuite) et **avant**
+le bloc de questions, qui reste le dernier mot. Elles sont **relues à chaque prompt** : une consigne
+ajoutée maintenant vaut pour la session lancée juste après, sans redémarrer l'outil. Le champ
+**vide n'ajoute rien** — pas même un titre de section orphelin. ⚠ Elles ne s'appliquent **pas** à
+l'exploration, qui ne produit pas de code.
 
 ### Notifications bureau
 Des notifications système pour les moments qui **appellent une action ou closent une attente** —

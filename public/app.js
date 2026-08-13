@@ -455,7 +455,11 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
    envoie sa première étape. */
 // `mr` partage la logique de `config` : ses champs sont rattachés à #configForm (attribut form=),
 // donc loadConfig les peuple et le submit les enregistre — un seul /config pour les deux onglets.
-const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadConfig, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadConfig, verifiers: loadVerifiers, aisession: renderAiSessionSettings };
+const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadConfig, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadConfig, verifiers: loadVerifiers, aisession: loadAiSessionSettings };
+/* Ce panneau porte à la fois un réglage du formulaire global (les consignes permanentes) et un
+   banc d'essai. Il lui faut donc `loadConfig` comme aux autres, sinon le champ s'affiche vide
+   quoi qu'il y ait en base — et le premier « Enregistrer » l'efface sans rien demander. */
+function loadAiSessionSettings() { loadConfig(); renderAiSessionSettings(); }
 function showAdminSub(sub) {
   if (!sub) { try { sub = localStorage.getItem('aidevtools_admin_sub') || 'gitcfg'; } catch { sub = 'gitcfg'; } }
   if (!ADMIN_SUBS[sub]) sub = 'gitcfg';
@@ -3508,7 +3512,7 @@ $('#ticketSave').addEventListener('click', async () => {
 // exactement le bug qu'ont connu jira_email / jira_token).
 const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'access_token',
   'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
-  'clone_path', 'prompt_review', 'prompt_explain', 'prompt_modify',
+  'clone_path', 'prompt_review', 'prompt_explain', 'prompt_modify', 'ai_extra_instructions',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
   'stale_mr_days'];
 async function loadConfig() {
@@ -3545,6 +3549,7 @@ $('#configForm').addEventListener('submit', async (e) => {
     const info = $('#sub-mr').classList.contains('active') ? $('#configInfoMr')
       : $('#sub-gitcfg').classList.contains('active') ? $('#configInfoGit')
       : $('#sub-jiracfg').classList.contains('active') ? $('#configInfoJira')
+      : $('#sub-aisession').classList.contains('active') ? $('#configInfoAi')
       : $('#configInfo');
     info.textContent = tr('ui.saved'); setTimeout(() => { info.textContent = ''; }, 2000);
     loadConfig(); refreshStatus();

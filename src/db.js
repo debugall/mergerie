@@ -969,6 +969,9 @@ try { db.exec("ALTER TABLE config ADD COLUMN brief_on_open TEXT DEFAULT '1'"); }
    jours : au-dessous, on signalerait la MR d'avant-hier, qu'on n'a pas oubliée. */
 try { db.exec('ALTER TABLE config ADD COLUMN stale_mr_days INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
 
+/* Consignes permanentes ajoutées à toutes les sessions de codage (dépôt et hors dépôt). */
+try { db.exec('ALTER TABLE config ADD COLUMN ai_extra_instructions TEXT'); } catch { /* déjà présente */ }
+
 /* LE SKILL DE REVIEW N'A PLUS DE CHAMP : il s'écrit dans le gabarit de prompt, là où l'on
    choisit déjà tout le reste de ce qu'on demande à l'IA. Les gabarits enregistrés portent
    encore `{skill}`, un trou qui ne serait plus rempli par personne — il partirait tel quel à

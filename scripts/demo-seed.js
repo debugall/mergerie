@@ -36,8 +36,10 @@ const PROJECTS = [
 ];
 
 // ---------- config : GitLab factice, pas de token (démo hors-ligne) ----------
-db.prepare(`UPDATE config SET gitlab_url = ?, access_token = '', jira_url = ? WHERE id = 1`)
-  .run('https://gitlab.demo', 'https://jira.demo');
+db.prepare(`UPDATE config SET gitlab_url = ?, access_token = '', jira_url = ?, ai_extra_instructions = ? WHERE id = 1`)
+  .run('https://gitlab.demo', 'https://jira.demo',
+    // Des consignes permanentes remplies : un champ vide ne montrerait pas à quoi il sert.
+    'Commente en français.\nLance `npm run check` avant de committer.\nN’ajoute aucune dépendance sans le demander.');
 
 // ---------- dépôts ----------
 const repoIds = {};

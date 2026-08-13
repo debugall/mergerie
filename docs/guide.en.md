@@ -1254,13 +1254,26 @@ and a **danger zone** for a full reset) ·
 URL + email + API token, with a *Test Jira* button —; feeds the *Jira* tab and the enrichment of a session
 from a ticket) ·
 **Jenkins** (URL, user and API token, with a test button, and the jobs' **refresh interval**) ·
-**AI sessions** (a technical test: two passes inside the same agent session — it memorises a marker then
+**AI sessions** (the **standing instructions**, see below, and a technical test: two passes inside the
+same agent session — it memorises a marker then
 recalls it on resume — to check that **session resuming** works with your CLI; it is the foundation of
 context continuity between review, fixes and convergence).
 
 The first three are what you fill in to get started; **Rules** and **Verifiers** complete the review; the
 rest is tuned when the need arises. The **last sub-tab you visited is remembered** — you come back to
 Settings to finish what you were doing there.
+
+#### Standing instructions
+*Settings → AI sessions.* Free text **appended to the prompt of every coding session** — in a
+repository **and** out of one, on the first run **as on every follow-up**. It is what you repeat every
+time: the language of comments, a command to run before committing, something not to do. Copying it
+into every prompt works until the day you forget — and that is always the one you re-read three
+hours later.
+
+It comes **after the task** (what to do first, how to do it next) and **before** the questions block,
+which stays the last word. It is **re-read on every prompt**: an instruction added now applies to the
+session started right after, without restarting the tool. An **empty field adds nothing** — not even
+an orphan section heading. ⚠ It does **not** apply to exploration, which produces no code.
 
 ### Desktop notifications
 System notifications for the moments that **call for an action or close a wait** — not for atmosphere. On by

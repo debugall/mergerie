@@ -68,6 +68,30 @@ describe('Réglages : ordre des sous-onglets', { skip: chromium ? false : 'playw
     assert.equal(await actif(), 'jenkinscfg');
   });
 
+  /* LE CHAMP DES CONSIGNES PERMANENTES VIT DANS CE PANNEAU, et un panneau de réglages doit
+     faire trois choses : afficher ce qui est en base, l'enregistrer, et le réafficher. Ce
+     panneau ne chargeait rien (il n'était qu'un banc d'essai) : le champ s'y affichait vide
+     quoi qu'il y ait en base, et le premier « Enregistrer » l'aurait effacé sans rien demander.
+     Passer par l'API prouverait l'API — jamais le formulaire. */
+  test('les consignes permanentes se chargent, s’enregistrent et se relisent depuis l’écran', async () => {
+    await page.evaluate(() => localStorage.setItem('aidevtools_admin_sub', 'aisession'));
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    const champ = page.locator('#sub-aisession textarea[name="ai_extra_instructions"]');
+    await champ.waitFor();
+
+    await champ.fill('Commente en français.');
+    await page.locator('#sub-aisession button[type="submit"]').click();
+    await page.waitForFunction(() => document.querySelector('#configInfoAi').textContent.trim() !== '');
+
+    // Rechargement complet : ce qui compte est ce que la BASE a retenu, pas le champ resté à l'écran.
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await champ.waitFor();
+    await page.waitForFunction(() => document.querySelector('#sub-aisession [name="ai_extra_instructions"]').value !== '');
+    assert.equal(await champ.inputValue(), 'Commente en français.');
+  });
+
   /* Un nom mémorisé qui n'existe plus (un onglet supprimé depuis) ne doit pas laisser l'écran
      vide : on retombe sur le même repli que la première fois. */
   test('un sous-onglet mémorisé qui n’existe plus retombe sur Git', async () => {

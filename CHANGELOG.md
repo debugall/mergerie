@@ -13,6 +13,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Standing instructions, added to every coding session.** *Settings → AI sessions* holds a free
+  text field appended to the prompt of every coding session — in a repository and out of one, on
+  the first run as on every follow-up. It is what you repeat every time: the language of
+  comments, a command to run before committing, something not to do; copying it into each prompt
+  works right up to the day you forget, and that is always the one you re-read three hours later.
+  It comes after the task and before the questions block, it is re-read on every prompt so a
+  change applies to the very next session, and an empty field adds nothing — not even an orphan
+  heading. Exploration is left out: it produces no code.
+
 - **A session stopped on a question raises its own todo, and answering closes it.** When the AI
   interrupts itself to ask something, the queue is free, nothing will restart, and the desktop
   notification was dismissed long ago — so a high-priority todo is created, naming the session

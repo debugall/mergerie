@@ -1150,6 +1150,20 @@ print(json.dumps({
         </div><!-- /sub-mr -->
 
         <div id="sub-aisession" class="subtab">
+            <!-- CE QU'ON REDIT À CHAQUE SESSION SANS VOULOIR LE RETAPER. Le champ vit ici parce
+                 qu'il s'applique aux sessions de codage — dépôt ET hors dépôt —, au même endroit
+                 que ce qui concerne les sessions d'agent. -->
+            <h2 data-i18n="settings.extra.title">Consignes permanentes</h2>
+            <p class="muted" data-i18n="settings.extra.intro">Ajoutées à la fin du prompt de TOUTES les sessions de codage et de codage hors dépôt — au premier lancement comme à chaque suivi. Ce qu'on redit à chaque fois : la langue des commentaires, une commande à lancer avant de committer, une interdiction. Laissé vide, rien n'est ajouté.</p>
+            <div class="form">
+                <label><span data-i18n="settings.extra.lbl">Consignes ajoutées à chaque session</span>
+                    <textarea form="configForm" name="ai_extra_instructions" rows="5" placeholder="Ex. : commente en français ; lance `npm run check` avant de committer." data-i18n-placeholder="settings.extra.ph"></textarea></label>
+                <p>
+                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                    <span id="configInfoAi" class="muted"></span>
+                </p>
+            </div>
+
             <h2 data-i18n="settings.aisession.title">Reprise de session IA</h2>
             <p class="muted" data-i18n="settings.aisession.intro">Test technique : l'agent mémorise un marqueur secret lors d'une première passe, puis on reprend la <strong>même</strong> session et on lui redemande ce marqueur. S'il le restitue, on sait qu'on peut reprendre une session — socle de la future fonctionnalité « l'IA pose une question ».</p>
             <p>
