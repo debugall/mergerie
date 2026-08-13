@@ -762,16 +762,15 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
   transition: border-color .12s ease; }
 .jk-pf:hover, .jk-pf:focus-within { border-color: var(--muted); }
 .jk-pf-k { color: var(--muted); letter-spacing: .02em; }
-.jk-pf select {
-  max-width: 220px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12px;
-  padding: 4px 22px 4px 6px; cursor: pointer; -webkit-appearance: none; appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%239aa0aa' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right 6px center; background-size: 10px;
-}
-.jk-pf select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 999px; }
+/* Un champ à suggestions (`input` + `datalist`) et non une liste fermée : les valeurs
+   proposées sont celles qu'on a vues, une valeur plus ancienne doit rester saisissable. */
+.jk-pf input { max-width: 200px; min-width: 90px; border: 0; background: transparent; color: var(--text);
+  font: inherit; font-size: 12px; padding: 4px 6px; }
+.jk-pf input::placeholder { color: var(--muted); }
+.jk-pf input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 999px; }
 /* Une valeur CHOISIE se voit de loin : la pilule se teinte, comme une pastille de paramètre. */
 .jk-pf.jk-pf-on { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
-.jk-pf.jk-pf-on select { color: var(--text); font-weight: 550; }
+.jk-pf.jk-pf-on input { color: var(--text); font-weight: 550; }
 /* La croix d'un filtre : discrète, révélée au survol — on ouvre la liste bien plus souvent
    qu'on ne range le filtre lui-même. */
 .jk-pf-hide { opacity: 0; color: var(--muted); transition: opacity .12s ease; }
@@ -785,6 +784,8 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
   background: var(--panel2); border: 1px solid var(--line); font-size: 11.5px; max-width: 100%; }
 .jk-chip-k { color: var(--muted); }
 .jk-chip-v { color: var(--text); overflow-wrap: anywhere; }
+.jk-fiche-filtres { margin-bottom: 6px; }
+.jk-fiche-filtres .jk-pf { font-size: 11.5px; }
 .jk-builds { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 2px; }
 .jk-build { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .jk-build .spacer { flex: 1; }

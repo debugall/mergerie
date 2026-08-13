@@ -242,7 +242,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
   test('un filtre non pertinent se masque, sa valeur avec, et se remet', async () => {
     await allerJenkins();
     await page.waitForSelector('#jenkinsParamFiltres [data-jkpf="VERSION"]');
-    await page.locator('[data-jkpf="VERSION"]').selectOption('9.9');
+    await page.locator('[data-jkpf="VERSION"]').fill('9.9');
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
 
     await page.locator('[data-jkpfhide="VERSION"]').click();
@@ -264,7 +264,9 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
       'il revient sans sa valeur d’avant : on ne remet pas en marche un filtre à son insu');
   });
 
-  test('on filtre sur la valeur d’un paramètre fréquent', async () => {
+  test('on filtre sur la valeur d’un paramètre fréquent', async (t) => {
+    // Un filtre laissé posé fausserait tous les tests suivants : on le rend, échec ou non.
+    t.after(async () => { try { await page.locator('[data-jkpf="ENV"]').fill(''); } catch { /* déjà parti */ } });
     await allerJenkins();
     await page.waitForSelector('#jenkinsParamFiltres:not([hidden])');
     /* LE SEUIL EST À TROIS. À deux, une coïncidence entre deux jobs figerait une colonne pour
@@ -272,23 +274,35 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     assert.deepEqual(await page.locator('#jenkinsParamFiltres .jk-pf-k').allTextContents(), ['ENV', 'VERSION'],
       'ENV sur quatre jobs et VERSION sur trois ; LOT sur deux et SEUL sur un n’en méritent pas');
 
-    await page.locator('[data-jkpf="ENV"]').selectOption('dev');
+    await page.locator('[data-jkpf="ENV"]').fill('dev');
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
     assert.match(await page.locator('#jenkinsBox .jk-row').first().textContent(), /front-build/);
 
     /* Une valeur portée par deux jobs les garde tous les deux — et un job qui n'a PAS le
        paramètre est écarté : il ne répond pas à la question posée. */
-    await page.locator('[data-jkpf="ENV"]').selectOption('prod');
+    await page.locator('[data-jkpf="ENV"]').fill('prod');
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 2);
 
     /* Les colonnes ne bougent PAS quand on filtre : elles sont calculées sur TOUS les jobs.
        Calculées sur ce qui reste, une liste réduite à un job ferait tomber tout le monde sous
        le seuil — les colonnes disparaîtraient sous les yeux à chaque frappe. */
-    await page.locator('[data-jkpf="ENV"]').selectOption('dev');
+    await page.locator('[data-jkpf="ENV"]').fill('dev');
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
     assert.equal(await page.locator('#jenkinsParamFiltres [data-jkpf]').count(), 2,
       'un seul job affiché, et pourtant les deux colonnes tiennent');
-    await page.locator('[data-jkpf="ENV"]').selectOption('');
+    /* SUGGÉRER SANS ENFERMER. Les valeurs proposées sont celles des DERNIERS lancements : une
+       liste fermée rendrait impossible de demander « recette », qui existe pourtant. */
+    const propose = await page.locator('[data-jkpf="ENV"]').evaluate((el) => {
+      const dl = document.getElementById(el.getAttribute('list'));
+      return dl ? [...dl.options].map((o) => o.value) : null;
+    });
+    assert.ok(propose && propose.includes('prod'), 'ce qu’on a vu passer reste proposé d’un clic');
+    assert.ok(!propose.includes('preprod'), 'aucun job n’a tourné en préprod récemment : la valeur n’est pas proposée');
+    await page.locator('[data-jkpf="ENV"]').fill('preprod');
+    await page.waitForFunction(() => !document.querySelector('#jenkinsBox .jk-row'));
+    // Une liste fermée aurait refusé la frappe et rien filtré du tout : les six jobs seraient restés.
+
+    await page.locator('[data-jkpf="ENV"]').fill('');
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 6);
   });
 
@@ -542,6 +556,108 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     delete mock.state.forms['/job/boutique/job/deploy-prod'];
   });
 
+  /* FILTRER L'HISTORIQUE, ET REPRENDRE DES PARAMÈTRES. « Quand est-ce parti en prod pour la
+     dernière fois, et avec quelle version ? » est la question qu'on se pose devant l'historique
+     d'un job de déploiement. Et une fois le bon lancement retrouvé, on repart de SES valeurs —
+     en en changeant une, sinon « Relancer » suffisait. */
+  test('l’historique se filtre par valeur, et ses paramètres se reprennent dans le formulaire', async (t) => {
+    const decor = mock.state.details['/job/boutique/job/deploy-prod'];
+    // Le décor est rendu même si le test échoue, sinon la panne se propage aux suivants.
+    t.after(() => { mock.state.details['/job/boutique/job/deploy-prod'] = decor; });
+    const passe = (n, quand, env, version) => ({
+      number: n, result: 'SUCCESS', building: false, timestamp: quand, duration: 5000, url: '',
+      actions: [{ causes: [{ userName: 'Bruno' }] }, { parameters: [
+        { name: 'ENV', value: env, _class: 'hudson.model.StringParameterValue' },
+        { name: 'VERSION', value: version, _class: 'hudson.model.StringParameterValue' },
+      ] }],
+    });
+    /* PLUS DE DIX BUILDS, et le seul lancement en « bac-a-sable » est le PLUS ANCIEN : la fiche
+       n'en charge que dix au départ, donc le filtre doit aller chercher plus loin — sans quoi
+       il répondrait « aucune exécution » sur une valeur qui existe. */
+    const vieux = Array.from({ length: 12 }, (_, i) => passe(30 - i, 9000 - i, 'recette', `9.${i}`));
+    mock.state.details['/job/boutique/job/deploy-prod'] = {
+      name: 'deploy-prod', color: 'blue', buildable: true,
+      builds: [...vieux, passe(14, 4000, 'recette', '2.0'), passe(13, 3000, 'prod', '1.9'),
+        passe(12, 2000, 'prod', '1.8'), passe(11, 1000, 'bac-a-sable', '0.1')],
+      property: [{ parameterDefinitions: [
+        { name: 'ENV', type: 'ChoiceParameterDefinition', choices: ['recette', 'prod'], defaultParameterValue: { value: 'recette' } },
+        { name: 'VERSION', type: 'StringParameterDefinition', defaultParameterValue: { value: '2.0' } },
+      ] }],
+    };
+
+    await allerJenkins();
+    await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
+    await page.waitForSelector('#jenkinsFiche [data-jkbuild]');
+    assert.equal(await page.locator('#jenkinsFiche [data-jkbuild]').count(), 10,
+      'à l’ouverture, on ne charge que les dix derniers — c’est ce qui doit s’afficher vite');
+
+    /* UNE VALEUR HORS DES DIX DERNIERS. Elle n'est ni dans la liste affichée, ni dans les
+       suggestions : on la TAPE, et le filtre va la chercher plus loin. */
+    const propose = await page.locator('[data-jkff="ENV"]').evaluate((el) => {
+      const dl = document.getElementById(el.getAttribute('list'));
+      return dl ? [...dl.options].map((o) => o.value) : null;
+    });
+    assert.deepEqual(propose, ['recette'],
+      'les suggestions viennent de ce qui est chargé — « bac-a-sable » n’y est pas, et doit rester demandable');
+    await page.locator('[data-jkff="ENV"]').fill('bac-a-sable');
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsFiche [data-jkbuild]').length === 1);
+    assert.equal(await page.locator('#jenkinsFiche [data-jkbuild]').getAttribute('data-jkbuild'), '11',
+      'le lancement retrouvé est bien au-delà des dix derniers');
+
+    // On cherche les lancements en prod : le plus récent d'entre eux arrive en tête.
+    await page.locator('[data-jkff="ENV"]').fill('prod');
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsFiche [data-jkbuild]').length === 2);
+    const restants = await page.locator('#jenkinsFiche [data-jkbuild]').evaluateAll((els) => els.map((e) => e.dataset.jkbuild));
+    assert.deepEqual(restants, ['13', '12'], 'les deux lancements en prod, du plus récent au plus ancien');
+    assert.equal(await page.locator('#jenkinsFiche .jk-build.selected [data-jkbuild]').getAttribute('data-jkbuild'), '13',
+      'la sélection suit le filtrage : garder à droite une exécution qu’on ne voit plus à gauche ferait lire des valeurs sans savoir d’où elles viennent');
+
+    /* REPRENDRE, sans lancer : le formulaire est rempli, rien n'est parti. C'est toute la
+       différence avec « Relancer », qui est juste à côté. */
+    const avant = mock.state.calls.filter((c) => c.method === 'POST').length;
+    await page.locator('[data-jkreuse="12"]').click();
+    await page.waitForFunction(() => document.querySelector('[data-jkparam="VERSION"]').value === '1.8');
+    assert.equal(await page.locator('[data-jkparam="ENV"]').inputValue(), 'prod');
+    assert.equal(mock.state.calls.filter((c) => c.method === 'POST').length, avant,
+      'reprendre ne lance RIEN : on ajuste d’abord');
+
+    // Un filtre qui ne laisse rien le dit, plutôt que d'afficher une liste vide sans raison.
+    await page.locator('[data-jkff="VERSION"]').fill('2.0');
+    await page.waitForFunction(() => !document.querySelector('#jenkinsFiche [data-jkbuild]'));
+    assert.match(await page.locator('#jenkinsFiche').textContent(), /Aucune de ces exécutions/);
+
+    await page.locator('#jenkinsClose').click();
+  });
+
+  /* Une valeur qui n'est PLUS proposée par le job (un tag supprimé depuis) doit tout de même
+     se reprendre : un champ laissé sur autre chose ferait lancer avec une valeur qu'on n'a pas
+     choisie — pire que pas de pré-remplissage du tout. */
+  test('une valeur disparue des choix est quand même reprise, et signalée', async () => {
+    const decor = mock.state.details['/job/boutique/job/deploy-prod'];
+    mock.state.details['/job/boutique/job/deploy-prod'] = {
+      name: 'deploy-prod', color: 'blue', buildable: true,
+      builds: [{ number: 20, result: 'SUCCESS', building: false, timestamp: 9000, duration: 1, url: '',
+        actions: [{ parameters: [{ name: 'ENV', value: 'bac-a-sable', _class: 'hudson.model.StringParameterValue' }] }] }],
+      property: [{ parameterDefinitions: [
+        { name: 'ENV', type: 'ChoiceParameterDefinition', choices: ['recette', 'prod'], defaultParameterValue: { value: 'recette' } },
+      ] }],
+    };
+    await allerJenkins();
+    await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
+    await page.waitForSelector('#jenkinsFiche [data-jkreuse="20"]');
+    await page.locator('[data-jkreuse="20"]').click();
+    await page.waitForFunction(() => document.querySelector('[data-jkparam="ENV"]').value === 'bac-a-sable');
+    const libelle = await page.locator('[data-jkparam="ENV"] option[value="bac-a-sable"]').textContent();
+
+    /* On REND le décor avant d'affirmer : une assertion qui échoue laisserait sinon le faux
+       serveur dans cet état, et c'est le test suivant qui tomberait — en cachant celui-ci. */
+    await page.locator('#jenkinsClose').click();
+    mock.state.details['/job/boutique/job/deploy-prod'] = decor;
+
+    assert.match(libelle, /valeur d’alors/,
+      'la valeur ajoutée est signalée comme telle : elle ne fait plus partie des choix du job');
+  });
+
   /* QUAND LE PLUGIN RATE SON CALCUL, il rend sa phrase d'erreur À LA PLACE de la liste. La
      prendre pour une valeur pré-remplirait le champ d'une phrase qui a l'air d'une valeur —
      et un lancement l'enverrait telle quelle à Jenkins. */
@@ -689,12 +805,16 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
 
   /* LE BADGE DU MENU : ce qui a tourné AUJOURD'HUI, pas le nombre de jobs. La question qu'on
      se pose en passant devant l'onglet est « est-ce que ça a bougé ce matin ? ». */
-  test('le badge du menu compte les jobs qui ont tourné aujourd’hui', async () => {
+  test('le badge du menu compte les jobs qui ont tourné aujourd’hui', async (t) => {
     // On REND le décor : les tests partagent le faux serveur, et les suivants comptent sur le sien.
     const decor = mock.state.jobs;
-    // Un décor daté à la main : deux jobs ce matin, un la semaine dernière.
-    const hier = Date.now() - 8 * 86400000;
-    const cesMatin = Date.now() - 3600000;
+    t.after(() => { mock.state.jobs = decor; });
+    /* Un décor daté à la main : deux jobs aujourd'hui, un la semaine dernière. « Aujourd'hui »
+       se compte à partir de MINUIT et non de « il y a une heure » : entre minuit et une heure
+       du matin, « il y a une heure » est hier, et le test échouerait une heure par nuit. */
+    const minuit = new Date(); minuit.setHours(0, 0, 0, 0);
+    const hier = minuit.getTime() - 8 * 86400000;
+    const cesMatin = minuit.getTime() + 60000;
     mock.state.jobs = [
       { name: 'a', color: 'blue', buildable: true, lastBuild: { number: 1, timestamp: cesMatin, actions: [] } },
       { name: 'b', color: 'blue', buildable: true, lastBuild: { number: 2, timestamp: cesMatin, actions: [] } },
@@ -764,5 +884,25 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
 
     await page.locator('#jenkinsLogClose').click();
     await page.locator('#jenkinsClose').click();
+  });
+
+  /* ROUVRIR MERGERIE SUR L'ONGLET JENKINS. Le dernier onglet consulté est restauré au
+     chargement : l'onglet s'ouvre donc tout seul, pendant que le script s'évalue encore. Tout
+     ce qu'il lit doit déjà exister — sinon la liste reste vide et l'écran s'excuse. Le test se
+     met dans les conditions : onglet mémorisé, et brief du jour déjà vu (l'autre chemin passe
+     par une promesse, donc après, et masquerait la panne un rechargement sur deux). */
+  test('rouvrir directement sur l’onglet Jenkins charge la liste, sans erreur', async () => {
+    const erreurs = [];
+    const noter = (e) => erreurs.push(e.message);
+    page.on('pageerror', noter);
+    try {
+      await allerJenkins();
+      await page.evaluate(() => localStorage.setItem('mergerie_brief_seen', new Date().toDateString()));
+      await page.reload();
+      await page.waitForSelector('#jenkinsBox .jk-row', { timeout: 15000 });
+      assert.deepEqual(erreurs, [], 'aucune erreur de script au démarrage');
+      assert.equal(await page.locator('nav button[data-tab="jenkins"].active').count(), 1,
+        'et c’est bien l’onglet Jenkins qui est ouvert');
+    } finally { page.off('pageerror', noter); }
   });
 });

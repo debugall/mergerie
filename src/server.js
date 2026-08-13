@@ -708,8 +708,9 @@ app.get('/api/jenkins/jobs', wrap(async (req, res) => {
 app.get('/api/jenkins/job', wrap(async (req, res) => {
   const chemin = String(req.query.path || '').trim();
   if (!chemin) throw new Error(t('err.jenkins-chemin-requis'));
-  if (demoJenkins.isDemo()) return res.json(demoJenkins.detail(chemin));
-  res.json(await jenkins.detail(jenkinsCfg(), chemin));
+  if (demoJenkins.isDemo()) return res.json(demoJenkins.detail(chemin, req.query.builds));
+  // `builds` : profondeur d'historique demandée par l'écran (bornée côté client Jenkins).
+  res.json(await jenkins.detail(jenkinsCfg(), chemin, req.query.builds));
 }));
 
 /* Lancer : le seul geste qui ÉCRIT chez Jenkins, donc un POST explicite. Les paramètres

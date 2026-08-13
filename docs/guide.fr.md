@@ -910,6 +910,21 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   d'un bouton — bornée aux derniers caractères, **déroulée en bas** là où est l'erreur, et
   **repliée à la ligne** : défiler de côté pour lire une erreur qu'on cherchait reviendrait à ne
   pas l'afficher.
+- **Retrouver l'exécution qu'on a en tête, et repartir de ses valeurs.** « Quand est-ce parti
+  en prod pour la dernière fois, et avec quelle version ? » — au-dessus de l'historique, un
+  filtre par paramètre rencontré, et sur chaque exécution retenue un bouton **`Reprendre`** qui
+  **remplit le formulaire de lancement** avec ses valeurs, **sans rien envoyer** : si l'on
+  repart d'un ancien lancement, c'est presque toujours pour en changer une.
+  - Les filtres **suggèrent** les valeurs qu'ils ont vues, ils n'y **enferment pas** : ce qui est
+    à l'écran n'est que ce qui a été chargé, et une valeur absente de la liste reste parfaitement
+    valable — elle se **tape à la main**. Idem pour les filtres au-dessus de la liste des jobs.
+  - Et le filtrage **ne s'arrête pas aux dix dernières** : au premier filtre posé, l'historique
+    du job est **rechargé plus profond, une seule fois**, pour retrouver un lancement d'il y a six
+    semaines plutôt que de répondre « aucune exécution » à propos de quelque chose qui a bien eu
+    lieu. Le compte affiché (`— 2 sur 200`) dit sur quoi la recherche a porté.
+  - Une valeur **qui n'existe plus** dans les choix du job est **rajoutée et signalée** plutôt
+    qu'ignorée : un champ resté sur autre chose sans le dire ferait lancer avec une valeur que
+    personne n'a choisie.
 - **Un lien vers Jenkins** sur chaque ligne (et sur chaque exécution de la fiche) ouvre le job
   dans un **nouvel onglet** : ce que Mergerie ne montre pas — la configuration, les artefacts,
   les tests — reste à un clic.

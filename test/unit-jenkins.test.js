@@ -193,6 +193,31 @@ describe('Client Jenkins', () => {
     assert.equal(d.builds[0].building, true);
   });
 
+  /* LA PROFONDEUR DE L'HISTORIQUE. Dix builds répondent à « qu'est-ce qui vient de se passer »
+     et rien ne sert d'en demander plus à chaque ouverture. Mais « quand est-ce parti en prod la
+     dernière fois » peut remonter à cinquante lancements : la fiche doit pouvoir redemander
+     plus loin, une fois, sans que ce chiffre soit à la main de qui appelle sans limite. */
+  test('l’historique se demande à la profondeur voulue, bornée des deux côtés', async () => {
+    poser();
+    const demande = () => mock.state.calls.map((c) => /\{0,(\d+)\}/.exec(decodeURIComponent(c.path)))
+      .filter(Boolean).map((m) => Number(m[1]));
+
+    const d = await jenkins.detail(cfg, 'boutique/api-build');
+    assert.deepEqual(demande(), [10], 'par défaut, dix — l’ouverture doit être rapide');
+    assert.equal(d.depth, 10, 'la fiche dit sur combien de lancements elle a cherché, sinon « aucun résultat » ment');
+
+    mock.state.calls.length = 0;
+    assert.equal((await jenkins.detail(cfg, 'boutique/api-build', 200)).depth, 200);
+    assert.deepEqual(demande(), [200]);
+
+    /* Ni un chiffre absurde, ni un texte, ni zéro : le nombre vient d'une URL, donc de
+       l'extérieur, et un `{0,0}` rendrait un historique vide sans rien signaler. */
+    mock.state.calls.length = 0;
+    for (const entree of [5000, 0, -3, 'beaucoup', null]) await jenkins.detail(cfg, 'boutique/api-build', entree);
+    assert.deepEqual(demande(), [200, 10, 10, 10, 10],
+      'trop grand est ramené au plafond, tout le reste au défaut');
+  });
+
   /* LE PIÈGE. Sans crumb, un Jenkins protégé (le défaut) répond 403 avec une page HTML que
      personne ne relie au CSRF. Et le crumb SEUL ne suffit pas : il est lié à la session qui
      l'a demandé, donc le cookie doit repartir avec lui. */

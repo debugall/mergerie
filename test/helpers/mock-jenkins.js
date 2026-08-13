@@ -81,8 +81,15 @@ function start() {
         const reste = m[2] || '/';
         const job = state.details[cle];
         if (!job) return envoi(404, '<html>Not Found</html>');
-        // Comme la liste : un vrai Jenkins rend toujours l'URL du job.
-        if (reste.startsWith('/api/json')) return envoi(200, { url: `http://jenkins.test${cle}/`, ...job });
+        /* Comme la liste : un vrai Jenkins rend toujours l'URL du job. Et il respecte la
+           profondeur demandée dans l'arbre (`builds[…]{0,n}`) : sans ça, on ne testerait pas
+           que l'écran va vraiment chercher plus loin quand on filtre. */
+        if (reste.startsWith('/api/json')) {
+          const m2 = /builds\[.*\]\{0,(\d+)\}/.exec(decodeURIComponent(url.search));
+          const n = m2 ? Number(m2[1]) : null;
+          const builds = n && Array.isArray(job.builds) ? job.builds.slice(0, n) : job.builds;
+          return envoi(200, { url: `http://jenkins.test${cle}/`, ...job, ...(builds ? { builds } : {}) });
+        }
         if (req.method === 'POST' && /\/build(WithParameters)?$/.test(reste)) {
           if (state.crumbActif && req.headers['jenkins-crumb'] !== state.crumb) {
             return envoi(403, '<html>No valid crumb was included in the request</html>');

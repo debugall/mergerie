@@ -870,6 +870,21 @@ Jenkins already does well, and which there is no point redoing.
   recent one is selected by default. The **console** opens with one button — bounded to the last
   characters, **scrolled to the bottom** where the error is, and **wrapped**: having to scroll
   sideways to read an error you were looking for would amount to not showing it.
+- **Find the run you have in mind, then start from its values.** "When did this last go to
+  production, and with which version?" — above the history, one filter per parameter the runs
+  carry, and on every matching run a **`Reuse`** button that **fills the launch form** with its
+  values, **without sending anything**: starting from an old run is almost always about changing
+  one thing in it.
+  - The filters **suggest** the values they have seen, they do not **confine** you to them: what
+    is on screen is only what has been loaded, and a value missing from the list is still
+    perfectly valid — it can be **typed in**. Same for the filters above the job list.
+  - And filtering **does not stop at the last ten**: the first time a filter is set, the job's
+    history is **fetched deeper, once**, so a run from six weeks ago is found rather than
+    answering "no matching run" about something that did happen. The count shown (`— 2 of 200`)
+    says what the search covered.
+  - A value that **no longer exists** among the job's choices is **added back and flagged**
+    rather than dropped: a field silently left on something else would launch with a value
+    nobody chose.
 - **A link to Jenkins** on every line (and on every run in the page) opens the job in a **new
   tab**: what Mergerie does not show — the configuration, the artifacts, the tests — stays one
   click away.

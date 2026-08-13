@@ -12231,7 +12231,12 @@ function renderLots() {
     // B2 : sans catch, un échec d'API laissait la liste vide (écran blanc muet).
     loadSegment().catch((e) => { $('#toReviewList').innerHTML = errorBox(`Chargement impossible : ${e.message}`); });
   };
-  if (briefDejaVuAujourdHui()) { atterrir(); return; }
+  /* LE CLIC ARRIVE APRÈS L'ÉVALUATION DU SCRIPT. Ouvrir un onglet appelle son chargement, et
+     celui-ci lit des données déclarées plus bas dans ce fichier : cliquer ici, en pleine
+     évaluation, échouait avec « Cannot access X before initialization » — l'onglet restait
+     vide et l'écran affichait « Erreur inattendue » au rechargement. L'autre chemin passe par
+     une promesse, donc après : le défaut ne se voyait qu'un rechargement sur deux. */
+  if (briefDejaVuAujourdHui()) { queueMicrotask(atterrir); return; }
   api('/config').then((c) => {
     if (c.brief_on_open === '0') { atterrir(); return; }
     marquerBriefVu();
@@ -12599,10 +12604,7 @@ function renderJenkinsParamFiltres() {
       .filter((p) => p.name === nom).map((p) => String(p.value))))].sort((a, b) => a.localeCompare(b));
     const choisie = (JENKINS.paramFiltres || {})[nom] || '';
     return `<label class="jk-pf${choisie ? ' jk-pf-on' : ''}"><span class="jk-pf-k">${esc(nom)}</span>
-      <select data-jkpf="${esc(nom)}">
-        <option value="">${esc(tr('jenkins.param.all'))}</option>
-        ${valeurs.map((v) => `<option value="${esc(v)}"${v === choisie ? ' selected' : ''}>${esc(v)}</option>`).join('')}
-      </select>
+      ${jkChampValeur('jkpf', nom, valeurs, choisie)}
       <button type="button" class="btn btn-icon btn-sm jk-pf-hide" data-jkpfhide="${esc(nom)}" title="${esc(tr('jenkins.param.hide'))}" aria-label="${esc(tr('jenkins.param.hide'))}"><svg class="ico ico-sm"><use href="#i-close"/></svg></button></label>`;
   }).join('')
     + (caches.length ? `<button type="button" class="btn btn-sm jk-pf-caches" id="jenkinsParamHidden" title="${esc(tr('jenkins.param.hidden-title'))}">${esc(tr('jenkins.param.hidden', { n: caches.length, count: caches.length }))}</button>` : '');
@@ -12750,6 +12752,7 @@ function jkBuildLigne(chemin, b, choisi) {
       <span class="jk-meta">${esc(quand)}${b.duration ? ` · ${Math.round(b.duration / 1000)} s` : ''}</span>
     </button>
     <button type="button" class="btn btn-sm" data-jklog="${b.number}" data-jkpath="${esc(chemin)}">${esc(tr('jenkins.console'))}</button>
+    <button type="button" class="btn btn-sm" data-jkreuse="${b.number}" title="${esc(tr('jenkins.reuse.title', { n: b.number }))}"><svg class="ico ico-sm"><use href="#i-copy"/></svg></button>
     <button type="button" class="btn btn-sm" data-jkrerunbuild="${b.number}" title="${esc(tr('jenkins.rerun.title-build', { n: b.number }))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg></button>
   </div>`;
 }
@@ -12774,17 +12777,104 @@ function jkBuildDetail(d, b) {
 
 /* La fiche : l'historique à gauche, le détail du build choisi à droite. On sélectionne le
    plus récent d'office — c'est celui dont on vient chercher les paramètres neuf fois sur dix. */
+/* UNE LISTE FERMÉE MENTIRAIT. Les valeurs proposées sont celles qu'on a VUES — celles des
+   derniers lancements chargés. Une valeur parfaitement valide qui n'y figure pas (un tag plus
+   ancien, un environnement rarement utilisé) serait alors impossible à demander. Le champ
+   suggère donc, mais laisse taper : `input` + `datalist`, et non `select`. */
+let jkListeSeq = 0;
+function jkChampValeur(attr, nom, valeurs, choisie) {
+  jkListeSeq += 1;
+  const id = `jkdl-${jkListeSeq}`;
+  return `<input list="${id}" data-${attr}="${esc(nom)}" value="${esc(choisie || '')}"
+      placeholder="${esc(tr('jenkins.param.all'))}" spellcheck="false" />
+    <datalist id="${id}">${valeurs.map((v) => `<option value="${esc(v)}"></option>`).join('')}</datalist>`;
+}
+
+/* FILTRER L'HISTORIQUE SUR LES VALEURS DES PARAMÈTRES. « Quand est-ce parti en prod pour la
+   dernière fois, et avec quelle version ? » est la question qu'on se pose devant l'historique
+   d'un job de déploiement — et la lire à l'œil sur dix lignes de paramètres ne marche pas.
+
+   Le filtrage porte sur les builds DÉJÀ chargés (les dix derniers) : aucune requête de plus, et
+   on le DIT plutôt que de laisser croire qu'on cherche dans tout l'historique de Jenkins. */
+function jkFiltresFiche(builds) {
+  const noms = [...new Set(builds.flatMap((b) => (b.params || []).map((p) => p.name)))]
+    .sort((a, b) => a.localeCompare(b));
+  if (!noms.length) return '';
+  return `<div class="jk-param-filtres jk-fiche-filtres">${noms.map((nom) => {
+    const valeurs = [...new Set(builds.flatMap((b) => (b.params || [])
+      .filter((p) => p.name === nom).map((p) => String(p.value))))].sort((a, b) => a.localeCompare(b));
+    const choisie = (JENKINS.ficheFiltres || {})[nom] || '';
+    return `<label class="jk-pf${choisie ? ' jk-pf-on' : ''}"><span class="jk-pf-k">${esc(nom)}</span>
+      ${jkChampValeur('jkff', nom, valeurs, choisie)}</label>`;
+  }).join('')}</div>`;
+}
+
+const jkBuildPasse = (b) => Object.entries(JENKINS.ficheFiltres || {})
+  .filter(([, v]) => v)
+  .every(([nom, valeur]) => (b.params || []).some((p) => p.name === nom && String(p.value) === valeur));
+
 function renderJenkinsFiche() {
   const d = JENKINS.job;
   if (!d) return;
-  const builds = d.builds || [];
+  const tous = d.builds || [];
+  const builds = tous.filter(jkBuildPasse);
+  /* La sélection suit le filtrage : garder à droite le détail d'une exécution qu'on ne voit
+     plus à gauche laisserait lire des valeurs sans savoir d'où elles viennent. */
   if (!builds.some((b) => b.number === JENKINS.build)) JENKINS.build = builds.length ? builds[0].number : null;
   const choisi = builds.find((b) => b.number === JENKINS.build) || null;
-  const gauche = builds.length
-    ? `<h4>${esc(tr('jenkins.builds'))}</h4><div class="jk-builds">${builds.map((b) => jkBuildLigne(d.path, b, b.number === JENKINS.build)).join('')}</div>`
-    : `<p class="muted">${esc(tr('jenkins.no-build'))}</p>`;
+  const filtre = builds.length !== tous.length;
+  const gauche = jkFiltresFiche(tous)
+    + (tous.length
+      ? `<h4>${esc(tr('jenkins.builds'))}${filtre ? ` <span class="muted">${esc(tr('jenkins.builds.filtered', { n: builds.length, count: builds.length, total: tous.length }))}</span>` : ''}</h4>`
+        + (builds.length
+          ? `<div class="jk-builds">${builds.map((b) => jkBuildLigne(d.path, b, b.number === JENKINS.build)).join('')}</div>`
+          : `<p class="muted">${esc(tr('jenkins.builds.none-matching'))}</p>`)
+      : `<p class="muted">${esc(tr('jenkins.no-build'))}</p>`);
   const zone = $('#jenkinsFiche');
   if (zone) zone.innerHTML = `<div class="jk-fiche-col">${gauche}</div><div class="jk-fiche-col">${jkBuildDetail(d, choisi)}</div>`;
+}
+
+/* REPRENDRE LES PARAMÈTRES D'UNE EXÉCUTION dans le formulaire, sans lancer. C'est le geste de
+   celui qui veut repartir de ce qui a marché la dernière fois EN CHANGEANT une valeur — sinon
+   « Relancer », juste à côté, suffisait. On remplit donc, et on laisse la main.
+
+   Une valeur qui n'est plus proposée par le job (un tag supprimé depuis) est AJOUTÉE à la liste
+   plutôt qu'ignorée : un pré-remplissage qui laisse le champ sur autre chose est pire que pas
+   de pré-remplissage — on lancerait avec une valeur qu'on n'a pas choisie. */
+/* La fiche rechargée AVEC son historique profond. On garde tout le reste tel quel — les
+   paramètres saisis dans le formulaire ne doivent pas être effacés parce qu'on a filtré. */
+const JK_HISTO_PROFOND = 200;
+async function approfondirFiche() {
+  const d = JENKINS.job;
+  if (!d) return;
+  try {
+    const profond = await api(`/jenkins/job?path=${encodeURIComponent(d.path)}&builds=${JK_HISTO_PROFOND}`);
+    JENKINS.job = { ...d, builds: profond.builds || d.builds, depth: profond.depth || JK_HISTO_PROFOND };
+  } catch (e) { toast(explainError(e.message), true); }
+}
+
+function jkReprendreParams(numero) {
+  const d = JENKINS.job;
+  const b = d && (d.builds || []).find((x) => x.number === Number(numero));
+  if (!b) return;
+  let repris = 0;
+  for (const p of b.params || []) {
+    const champ = $(`#jenkinsModalBody [data-jkparam="${CSS.escape(p.name)}"]`);
+    if (!champ) continue;
+    const valeur = String(p.value);
+    if (champ.type === 'checkbox') champ.checked = valeur === 'true';
+    else if (champ.tagName === 'SELECT') {
+      const voulues = champ.multiple ? valeur.split(',').map((x) => x.trim()) : [valeur];
+      for (const v of voulues) {
+        if (![...champ.options].some((o) => o.value === v)) champ.add(new Option(`${v} ${tr('jenkins.param.gone')}`, v));
+      }
+      [...champ.options].forEach((o) => { o.selected = voulues.includes(o.value); });
+    } else champ.value = valeur;
+    repris += 1;
+  }
+  const zone = $('#jenkinsModalBody');
+  if (zone) zone.scrollTop = 0;         // le formulaire est en haut de la fiche : on y remonte
+  toast(repris ? tr('jenkins.reuse.done', { n: numero }) : tr('jenkins.reuse.none'), !repris);
 }
 
 // Un paramètre, rendu selon SON type : un booléen se coche, un choix se choisit. Les
@@ -12824,6 +12914,7 @@ async function openJenkinsJob(chemin) {
           ${p.unresolved ? `<span class="jk-param-warn">${esc(tr('jenkins.param.unresolved'))} ${jkLienExterne(d.url)}</span>` : ''}</label>`).join('')}`
       : '';
     JENKINS.build = null;
+    JENKINS.ficheFiltres = {};          // les filtres d'une fiche ne suivent pas d'un job à l'autre
     $('#jenkinsModalBody').innerHTML = `${params}<div class="jk-fiche" id="jenkinsFiche"></div>`;
     renderJenkinsFiche();
     $('#jenkinsRun').hidden = !d.buildable;
@@ -12929,11 +13020,22 @@ $('#jenkinsParamFiltres') && $('#jenkinsParamFiltres').addEventListener('click',
   }
   if (e.target.closest('#jenkinsParamHidden')) { renderJenkinsMasques(); $('#jenkinsHiddenModal').hidden = false; }
 });
-$('#jenkinsParamFiltres') && $('#jenkinsParamFiltres').addEventListener('change', (e) => {
-  const sel = e.target.closest('[data-jkpf]');
-  if (!sel) return;
-  JENKINS.paramFiltres = { ...JENKINS.paramFiltres, [sel.dataset.jkpf]: sel.value };
-  renderJenkins();
+/* On attend un court repos avant de filtrer : à chaque frappe, le rendu remplacerait le champ
+   qu'on est en train de remplir et le curseur sauterait. */
+let jkFrappe = null;
+const jkApresFrappe = (fn) => { clearTimeout(jkFrappe); jkFrappe = setTimeout(fn, 250); };
+
+$('#jenkinsParamFiltres') && $('#jenkinsParamFiltres').addEventListener('input', (e) => {
+  const champ = e.target.closest('[data-jkpf]');
+  if (!champ) return;
+  const nom = champ.dataset.jkpf;
+  const valeur = champ.value.trim();
+  jkApresFrappe(() => {
+    JENKINS.paramFiltres = { ...JENKINS.paramFiltres, [nom]: valeur };
+    renderJenkins();
+    const rendu = $(`#jenkinsParamFiltres [data-jkpf="${CSS.escape(nom)}"]`);
+    if (rendu) { rendu.focus(); rendu.setSelectionRange(rendu.value.length, rendu.value.length); }
+  });
 });
 $('#jenkinsFolderSearch') && $('#jenkinsFolderSearch').addEventListener('input', (e) => { JENKINS.qDossier = e.target.value; renderJenkinsDossiers(); });
 /* Masquer / remettre. Le clic sur la croix est intercepté AVANT le `change` du label : sans
@@ -12990,6 +13092,22 @@ $('#jenkinsFoldersNone') && $('#jenkinsFoldersNone').addEventListener('click', (
   jkDossiersVisibles().forEach((d) => JENKINS.horsDossiers.add(d));
   sauverFiltreJenkins(); renderJenkins();
 });
+$('#jenkinsModalBody') && $('#jenkinsModalBody').addEventListener('input', (e) => {
+  const champ = e.target.closest('[data-jkff]');
+  if (!champ) return;
+  const nom = champ.dataset.jkff;
+  const valeur = champ.value.trim();
+  jkApresFrappe(async () => {
+    JENKINS.ficheFiltres = { ...JENKINS.ficheFiltres, [nom]: valeur };
+    /* CHERCHER PLUS LOIN QUE CE QU'ON A SOUS LES YEUX. Dix builds suffisent pour « ce qui vient
+       de se passer », pas pour « quand est-ce parti en prod la dernière fois ». Dès qu'un filtre
+       est posé, on redemande la fiche avec un historique profond — une seule fois par job. */
+    if (valeur && JENKINS.job && (JENKINS.job.depth || 0) < JK_HISTO_PROFOND) await approfondirFiche();
+    renderJenkinsFiche();
+    const rendu = $(`#jenkinsModalBody [data-jkff="${CSS.escape(nom)}"]`);
+    if (rendu) { rendu.focus(); rendu.setSelectionRange(rendu.value.length, rendu.value.length); }
+  });
+});
 $('#jenkinsClose') && $('#jenkinsClose').addEventListener('click', () => { $('#jenkinsModal').hidden = true; });
 $('#jenkinsLogClose') && $('#jenkinsLogClose').addEventListener('click', () => { $('#jenkinsLogModal').hidden = true; });
 fermerAuFond('#jenkinsModal', () => { $('#jenkinsModal').hidden = true; }, { salissable: false });
@@ -13027,6 +13145,8 @@ document.addEventListener('click', (e) => {
     const open = e.target.closest('[data-jkopen]') || e.target.closest('[data-jkjob]');
     if (open) { openJenkinsJob(open.dataset.jkopen || open.dataset.jkjob); return; }
   }
+  const ff = e.target.closest && e.target.closest('[data-jkreuse]');
+  if (ff) { jkReprendreParams(ff.dataset.jkreuse); return; }
   /* Relancer UNE exécution précise, avec SES valeurs : c'est ce qu'on veut après avoir lu la
      console d'un build raté, pas les valeurs du dernier lancement qui n'est pas celui-là. */
   const rb = e.target.closest && e.target.closest('[data-jkrerunbuild]');

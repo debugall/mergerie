@@ -47,9 +47,15 @@ const RESULTATS = { succes: 'SUCCESS', echec: 'FAILURE', instable: 'UNSTABLE', a
 /* Chaque exécution porte SES paramètres : c'est ce que la fiche montre à droite, et une
    démo où toutes les exécutions se ressemblent ne montrerait pas à quoi ça sert. */
 const ENVS = ['prod', 'préprod', 'recette', 'préprod', 'recette'];
+/* PLUS DE DIX EXÉCUTIONS, et « prod » n'apparaît qu'en tête et tout au fond : la fiche n'en
+   charge que dix, et filtrer sur la prod doit donc aller chercher plus loin. Une démo qui
+   tiendrait en cinq exécutions ne montrerait jamais ce que fait ce filtre. */
+const PROFOND = 14;
+const envDe = (i) => (i === PROFOND - 1 ? 'prod' : ENVS[i % ENVS.length]);
 function builds(job) {
   if (job.statut === 'jamais' || job.statut === 'desactive') return [];
-  const suite = [job.statut, 'succes', 'succes', 'echec', 'succes'];
+  const suite = [job.statut, 'succes', 'succes', 'echec', 'succes',
+    ...Array.from({ length: PROFOND - 5 }, (_, i) => (i % 4 === 3 ? 'echec' : 'succes'))];
   const params = PARAMS[job.path];
   return suite.map((s, i) => ({
     number: 42 - i,
@@ -61,7 +67,7 @@ function builds(job) {
     by: i % 2 ? { trigger: 'timer' } : (job.by || { user: 'Alice' }),
     ref: job.ref || 'main',
     params: params
-      ? [{ name: 'VERSION', value: `1.5.${i}` }, { name: 'ENVIRONNEMENT', value: ENVS[i] }, { name: 'MIGRATIONS', value: i ? 'false' : 'true' }]
+      ? [{ name: 'VERSION', value: `1.5.${i}` }, { name: 'ENVIRONNEMENT', value: envDe(i) }, { name: 'MIGRATIONS', value: i ? 'false' : 'true' }]
       : [],
     // Un secret dans le lot : « relancer » ne peut pas le renvoyer, et l'écran doit le dire.
     paramsCaches: params ? 1 : 0,
@@ -70,14 +76,18 @@ function builds(job) {
 
 const lister = () => JOBS.map((j) => ({ ...j, params: (PARAMS[j.path] || []).length, lastParamsCaches: PARAMS[j.path] ? 1 : 0 }));
 
-function detail(chemin) {
+function detail(chemin, profondeur) {
   const job = JOBS.find((j) => j.path === chemin);
   if (!job) throw new Error(`Jenkins : job « ${chemin} » introuvable (404).`);
+  // La démo tronque comme le vrai client, sinon le filtrage profond n'aurait rien à démontrer.
+  const voulu = Number(profondeur);
+  const n = Number.isFinite(voulu) && voulu >= 1 ? Math.min(200, Math.round(voulu)) : 10;
   return {
     ...job,
+    depth: n,
     description: job.statut === 'echec' ? 'Compilation du front et publication de l’image.' : '',
     parameters: PARAMS[chemin] || [],
-    builds: builds(job),
+    builds: builds(job).slice(0, n),
   };
 }
 

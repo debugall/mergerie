@@ -402,18 +402,33 @@ const CHAMPS_BUILD = 'number,result,building,timestamp,duration,url,displayName,
   + 'actions[causes[shortDescription,userName,_class],parameters[name,value,_class],lastBuiltRevision[branch[name]]]';
 
 // Le détail d'un job : de quoi décider de le lancer, et voir ce qu'il a donné.
-async function detail(cfg, chemin) {
+/* PROFONDEUR D'HISTORIQUE. Dix builds suffisent pour « qu'est-ce qui vient de se passer » —
+   c'est ce qu'on lit en ouvrant une fiche, et c'est ce qui doit s'afficher vite. Chercher
+   « quand est-ce parti en prod la dernière fois » demande d'aller plus loin : l'écran redemande
+   alors la fiche avec une profondeur plus grande, une seule fois. Bornée : `builds[…]{0,n}`
+   ramène les paramètres de chaque build, et mille builds pèseraient plus que la page. */
+const BUILDS_PAR_DEFAUT = 10;
+const BUILDS_MAX = 200;
+
+async function detail(cfg, chemin, profondeur = BUILDS_PAR_DEFAUT) {
   if (!isConfigured(cfg)) throw new Error('Jenkins non configuré (URL, utilisateur, jeton requis).');
   /* `parameterDefinitions[*]` — l'étoile, et non une liste de champs. Chaque plugin de
      paramètre expose les siens : le choix multiple standard met ses valeurs dans `choices`,
      mais d'autres les mettent ailleurs, et un champ non demandé n'arrive PAS. Le résultat se
      voyait à l'écran : une liste déroulante rendue comme un champ de saisie libre, où l'on
      retapait à la main une valeur que Jenkins connaissait. */
-  const tree = `name,url,description,buildable,color,property[parameterDefinitions[*,defaultParameterValue[value]]],builds[${CHAMPS_BUILD}]{0,10}`;
+  /* Le chiffre vient d'une URL, donc de l'extérieur : tout ce qui n'est pas un entier
+     positif retombe sur le défaut, et un plafond garde la requête raisonnable. */
+  const voulu = Number(profondeur);
+  const n = Number.isFinite(voulu) && voulu >= 1 ? Math.min(BUILDS_MAX, Math.round(voulu)) : BUILDS_PAR_DEFAUT;
+  const tree = `name,url,description,buildable,color,property[parameterDefinitions[*,defaultParameterValue[value]]],builds[${CHAMPS_BUILD}]{0,${n}}`;
   const res = await appel(cfg, `${cheminUrl(chemin)}/api/json?tree=${encodeURIComponent(tree)}`);
   const d = json(res, `le job « ${chemin} »`);
   return {
     path: chemin,
+    // Combien on a DEMANDÉ, et combien on a reçu : l'écran dit « sur les N derniers » avec le
+    // vrai chiffre, et sait si aller plus loin a encore un sens.
+    depth: n,
     name: d.name || chemin,
     url: d.url || '',
     description: d.description || '',

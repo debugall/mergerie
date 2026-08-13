@@ -60,6 +60,19 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   send time so a merge request that moved meanwhile is not annotated on code that no longer
   exists.
 
+- **Find the run you are thinking of, then start from its values.** "When did this last go to
+  production, and with which version?" is the question you ask in front of a deployment job's
+  history. Each parameter the history carries gets a filter above it, and a `Reuse` button on
+  every matching run fills the launch form with that run's values — without sending anything,
+  because the reason to start from an old run is usually to change one thing. The filters
+  **suggest** the values they have seen rather than restricting you to them: the values on
+  screen are only those of the runs loaded, and a value that does not appear is still perfectly
+  valid, so it can be typed. And filtering does not stop at the ten runs shown: the first time
+  you filter, the job's history is fetched deeper, once, so a run from six weeks ago is found
+  instead of answering "no matching run" about something that did happen. A value that no
+  longer exists among the job's choices is added back and flagged rather than silently dropped —
+  a field quietly left on something else would launch with a value nobody chose.
+
 - **`Run again` on a Jenkins job, with the same parameters.** In the list it reuses the last
   run's values; in the job's page every run in the history has its own button and reuses that
   run's values — what you want after reading the console of a failed build. The confirmation
@@ -642,6 +655,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   cancelling closes it again.
 
 ### Fixed
+
+- **Reopening Mergerie on the Jenkins tab no longer lands on an empty tab.** The last tab you
+  visited is restored at startup, and it was opened while the script was still being evaluated:
+  the Jenkins tab reads state declared further down the same file, so it threw, the list stayed
+  empty and an "unexpected error" appeared. The landing now happens once the script is fully
+  loaded. The failure only showed up on the second reload of a day — the first goes through the
+  morning brief, which lands later and therefore worked.
 
 - **Open dropdown lists are readable in dark mode.** The list a `<select>` opens is drawn by the
   operating system, not by the page, and without a `color-scheme` declaration it was always
