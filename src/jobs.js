@@ -205,7 +205,7 @@ async function processList(jobId, rows, kind, opts = {}) {
   setJob(jobId, { status: 'running', total: rows.length, done_count: 0, started_at: startedAt, message: t('job.msg.starting') });
   try {
     let i = 0;
-    logLine(jobId, null, `=== Job #${jobId} (${kind}) : ${rows.length} MR à traiter ===`);
+    logLine(jobId, null, t('log.job.review-start', { id: jobId, kind, n: rows.length, count: rows.length }));
     for (const row of rows) {
       if (proc.isCancelled()) break;
       const repo = { id: row.repo_id, project: row.project, url: row.url, branch_pattern: row.branch_pattern };
@@ -220,20 +220,20 @@ async function processList(jobId, rows, kind, opts = {}) {
       try {
         if (kind === 'modify') {
           await modifyReview(repo, mr, opts.instruction || '', onLog);
-          logLine(jobId, mr.id, `✅ MR !${mr.iid} : rapport modifié`);
+          logLine(jobId, mr.id, t('log.job.report-updated', { iid: mr.iid }));
         } else if (kind === 'explain') {
           await explainMr(repo, mr, onLog);
-          logLine(jobId, mr.id, `✅ MR !${mr.iid} : explication générée`);
+          logLine(jobId, mr.id, t('log.job.explained', { iid: mr.iid }));
         } else {
           // opts.explain (true/false) surcharge le réglage global ; undefined = suit le réglage.
           // opts.incremental (re-review) : ne reviewer que le delta depuis le dernier SHA reviewé.
           await reviewMr(repo, mr, onLog, { explain: opts.explain, incremental: opts.incremental });
-          logLine(jobId, mr.id, `✅ MR !${mr.iid} : review ${opts.incremental ? 'incrémentale ' : ''}terminée`);
+          logLine(jobId, mr.id, t('log.job.reviewed', { iid: mr.iid, inc: opts.incremental ? t('log.job.inc') : '' }));
         }
       } catch (e) {
         if (proc.isCancelled()) {
           // arrêt demandé par l'utilisateur : pas une "erreur" de MR
-          logLine(jobId, mr.id, `⏹ MR !${mr.iid} : arrêtée par l'utilisateur`);
+          logLine(jobId, mr.id, t('log.job.mr-stopped', { iid: mr.iid }));
           break;
         }
         // message tronqué pour la barre de progression...
@@ -254,7 +254,7 @@ async function processList(jobId, rows, kind, opts = {}) {
     if (!stopped && (kind === 'review' || kind === 'rereview') && i > 0) {
       notify.push('queue_done', { count: i }); // le lot est terminé
     }
-    logLine(jobId, null, `=== Job #${jobId} ${stopped ? 'ARRÊTÉ' : 'terminé'} (${i}/${rows.length} MR) ===`);
+    logLine(jobId, null, t('log.job.review-end', { id: jobId, etat: t(stopped ? 'log.job.state-stopped' : 'log.job.state-done'), done: i, total: rows.length }));
     setJob(jobId, {
       status: finalStatus, current_mr_id: null, finished_at: new Date().toISOString(),
       message: stopped ? t('job.msg.count-partial', { done: i, total: rows.length }) : t('job.msg.count', { n: rows.length, total: rows.length }),
@@ -354,7 +354,7 @@ function suiviAutomatique(scope, id, onLog) {
   if (!s || !s.a || !s.d) return null;
   db.prepare(`UPDATE ${table} SET followup_draft = NULL, followup_auto = 0, updated_at = ? WHERE id = ?`)
     .run(new Date().toISOString(), id);
-  onLog(`suivi automatique envoyé : ${String(s.d).split('\n')[0].slice(0, 120)}`);
+  onLog(t('log.job.followup-sent', { texte: String(s.d).split('\n')[0].slice(0, 120) }));
   return scope === 'local'
     ? startLocalJob(id, { instruction: s.d })
     : startTaskJob(id, 'followup', { instruction: s.d, autoSuivi: true });
@@ -364,16 +364,16 @@ async function verifierApresSession(task, onLog) {
   if (!task || !task.verifier_id) return null;
   try {
     const d = preparerVerificationApres(task);
-    if (!d.verifier) { onLog(`vérification non lancée : ${d.raison}`); return null; }
+    if (!d.verifier) { onLog(t('log.job.verify-skipped', { raison: d.raison })); return null; }
     const info = db.prepare(`INSERT INTO verification
       (verifier_id, verifier_name, lot_id, lot_name, status, targets_json, created_at)
       VALUES (?, ?, NULL, NULL, 'queued', ?, ?)`)
       .run(d.verifier.id, d.verifier.name, JSON.stringify(d.cibles), new Date().toISOString());
     startVerifyJob(info.lastInsertRowid);
-    onLog(`vérification « ${d.verifier.name} » lancée sur ${d.cibles.length} dépôt(s)`);
+    onLog(t('log.job.verify-started', { name: d.verifier.name, n: d.cibles.length, count: d.cibles.length }));
     return info.lastInsertRowid;
   } catch (e) {
-    onLog(`vérification non lancée : ${e.message}`);
+    onLog(t('log.job.verify-skipped', { raison: e.message }));
     return null;
   }
 }
@@ -412,11 +412,11 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
         await verifierApresSession(db.prepare('SELECT * FROM task WHERE id = ?').get(task.id), onLog);
       }
     }
-    logLine(jobId, null, `=== Task #${jobId} terminée ===`);
+    logLine(jobId, null, t('log.job.task-end', { id: jobId }));
   } catch (e) {
     if (proc.isCancelled()) {
       db.prepare("UPDATE task SET status='new', updated_at=? WHERE id=?").run(new Date().toISOString(), task.id);
-      logLine(jobId, null, `⏹ Task arrêtée par l'utilisateur`);
+      logLine(jobId, null, t('log.job.task-stopped'));
       setJob(jobId, { status: 'stopped', finished_at: new Date().toISOString(), message: '' });
       return;
     }
@@ -448,10 +448,10 @@ async function runConvergeJob(jobId, mrId, opts = {}) {
   try {
     const r = await converge.convergeRun(mrId, opts, onLog);
     setJob(jobId, { status: 'done', done_count: r.passes, current_mr_id: null, finished_at: new Date().toISOString(), message: '' });
-    logLine(jobId, mrId, `=== Convergence #${jobId} terminée (${r.status}) ===`);
+    logLine(jobId, mrId, t('log.job.converge-end', { id: jobId, status: r.status }));
   } catch (e) {
     if (proc.isCancelled()) {
-      logLine(jobId, mrId, `⏹ Convergence arrêtée par l'utilisateur`);
+      logLine(jobId, mrId, t('log.job.converge-stopped'));
       setJob(jobId, { status: 'stopped', finished_at: new Date().toISOString(), message: '' });
       return;
     }
@@ -491,11 +491,11 @@ async function runConvergeSessionJob(jobId, taskId, opts = {}) {
         await verifierApresSession(db.prepare('SELECT * FROM task WHERE id = ?').get(taskId), onLog);
       }
     }
-    logLine(jobId, null, `=== Convergence session #${jobId} terminée (${converged}/${results.length} au seuil) ===`);
+    logLine(jobId, null, t('log.job.converge-session-end', { id: jobId, ok: converged, total: results.length }));
   } catch (e) {
     if (proc.isCancelled()) {
       if (task) db.prepare("UPDATE task SET status = 'new', updated_at = ? WHERE id = ?").run(new Date().toISOString(), taskId);
-      logLine(jobId, null, `⏹ Convergence session arrêtée par l'utilisateur`);
+      logLine(jobId, null, t('log.job.converge-session-stopped'));
       setJob(jobId, { status: 'stopped', finished_at: new Date().toISOString(), message: '' });
       return;
     }
@@ -514,18 +514,18 @@ async function runConvergeSessionJob(jobId, taskId, opts = {}) {
 // place, sans git. Un seul job de fond ; les dossiers sont traités en série.
 async function runLocalJob(jobId, taskId, opts = {}) {
   setJob(jobId, { status: 'running', total: 1, done_count: 0, started_at: new Date().toISOString(), message: t('job.msg.starting') });
-  logLine(jobId, null, `=== Codage hors dépôt #${jobId} ===`);
+  logLine(jobId, null, t('log.job.local-start', { id: jobId }));
   const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   try {
     await localcoder.runLocal(taskId, onLog, opts);
     if (proc.isCancelled()) {
       db.prepare("UPDATE local_task SET status = 'new', updated_at = ? WHERE id = ?").run(new Date().toISOString(), taskId);
-      logLine(jobId, null, `⏹ Arrêté par l'utilisateur`);
+      logLine(jobId, null, t('log.job.stopped'));
       setJob(jobId, { status: 'stopped', finished_at: new Date().toISOString(), message: '' });
       return;
     }
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
-    logLine(jobId, null, `=== Codage hors dépôt #${jobId} terminé ===`);
+    logLine(jobId, null, t('log.job.local-end', { id: jobId }));
     // Suivi armé : il part, et c'est SA fin qui annoncera la session terminée.
     if (!suiviAutomatique('local', taskId, onLog)) notify.push('session_done', { local_task_id: taskId });
   } catch (e) {
@@ -536,7 +536,7 @@ async function runLocalJob(jobId, taskId, opts = {}) {
     }
     const full = (e && e.stack) ? `${e.message}\n\n${e.stack}` : String(e && e.message || e);
     db.prepare("UPDATE local_task SET status = 'error', last_error = ?, updated_at = ? WHERE id = ?").run(full, new Date().toISOString(), taskId);
-    logLine(jobId, null, `❌ Codage hors dépôt ERREUR : ${e.message}`);
+    logLine(jobId, null, t('log.job.local-error', { message: e.message }));
     setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
     notify.push('job_failed', { local_task_id: taskId, message: String(e.message).slice(0, 200) });
   } finally {
@@ -720,7 +720,7 @@ async function runDockerJob(jobId, payload) {
         catch (e) { fails.push(g.dir); onLog(`⚠ ${docker.explainDockerError(e.message)}`); }
         done += 1; setJob(jobId, { done_count: done });
       }
-      if (fails.length) throw new Error(`Échec sur ${fails.length}/${groups.length} projet(s) : ${fails.join(', ')}`);
+      if (fails.length) throw new Error(t('err.job.group-failed', { n: fails.length, total: groups.length, liste: fails.join(', ') }));
     } else if (payload.op === 'orphan-remove') {
       await docker.removeContainer(payload.id, onLog);
     } else if (payload.op === 'orphan-stop') {
@@ -773,16 +773,16 @@ function clearTaskError(taskId, targetIds) {
    idempotente, on la relance à la main si besoin. */
 async function runReconcileJob(jobId, taskId) {
   const task = db.prepare('SELECT * FROM task WHERE id = ?').get(taskId);
-  logLine(jobId, null, `=== Réconciliation #${jobId} ===`);
+  logLine(jobId, null, t('log.job.reconcile-start', { id: jobId }));
   if (!task) { setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: t('err.tache-introuvable') }); return; }
   const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   try {
     const r = await taskrunner.reconcileTargets(task, onLog);
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
-    logLine(jobId, null, `=== Réconciliation terminée (${r.repaired}/${r.checked}) ===`);
+    logLine(jobId, null, t('log.job.reconcile-end', { done: r.repaired, total: r.checked }));
   } catch (e) {
     const full = (e && e.stack) ? `${e.message}\n\n${e.stack}` : String(e && e.message || e);
-    logLine(jobId, null, `❌ Réconciliation ERREUR : ${e.message}`);
+    logLine(jobId, null, t('log.job.reconcile-error', { message: e.message }));
     setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
     void full;
   }
@@ -832,7 +832,7 @@ async function runVerifyJob(jobId, verificationId) {
      pendant toute l'exécution — le panneau de log, le compteur de la file et l'état du
      favicon annoncent alors une attente là où une suite de tests est en train de tourner. */
   setJob(jobId, { status: 'running', total: 1, done_count: 0, started_at: new Date().toISOString(), message: t('job.msg.starting') });
-  logLine(jobId, null, `=== Vérification #${verificationId} ===`);
+  logLine(jobId, null, t('log.job.verify-start', { id: verificationId }));
   const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   try {
     const verdict = await verifyrun.executerVerification(verificationId, getConfig(), onLog);
@@ -844,10 +844,10 @@ async function runVerifyJob(jobId, verificationId) {
     catch (e) { logLine(jobId, null, `commentaire sur la forge impossible : ${e.message}`); }
     // Un verdict rouge n'est PAS une erreur de job : le job a parfaitement fait son travail.
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
-    logLine(jobId, null, `=== Vérification terminée : ${verdict} ===`);
+    logLine(jobId, null, t('log.job.verify-end', { verdict }));
     notify.push('verify_done', { verification_id: verificationId, verdict });
   } catch (e) {
-    logLine(jobId, null, `❌ Vérification ERREUR : ${e.message}`);
+    logLine(jobId, null, t('log.job.verify-error', { message: e.message }));
     setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
     db.prepare("UPDATE verification SET status = 'error', verdict = 'verify_error', finished_at = ? WHERE id = ?")
       .run(new Date().toISOString(), verificationId);

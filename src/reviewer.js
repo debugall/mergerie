@@ -11,6 +11,7 @@ const { extractNote } = require('./note');
 const resolution = require('./resolution');
 const glob = require('./glob');
 const notify = require('./notify');
+const { t } = require('../public/i18n-runtime.js');
 
 /* Instruction de CONSTATS STRUCTURÉS, ajoutée au prompt de review UNIQUEMENT à
    l'exécution — jamais écrite dans le template de l'utilisateur. Elle demande à
@@ -39,7 +40,7 @@ function reviewDirFor(repo, mr) {
 // generate() qui fait écrire la sortie de l'IA DANS un fichier du clone puis la lit.
 // Utilisé aussi bien par la review que par la modification (même comportement).
 async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
-  onLog(`préparation du dépôt ${repo.project}`);
+  onLog(t('log.review.prepare', { project: repo.project }));
   const cwd = await git.ensureRepo(cfg, repo, onLog);
 
   // Re-review incrémentale : ne diffuser que le DELTA depuis le dernier SHA reviewé
@@ -53,7 +54,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
       diff = await git.diffRange(cwd, mr.reviewed_sha, mr.current_sha, onLog);
       usedIncremental = true;
     } catch (e) {
-      onLog(`⚠ diff incrémental impossible (${String(e.message).split('\n')[0]}) → diff complet`);
+      onLog(t('log.review.diff-fallback', { raison: String(e.message).split('\n')[0] }));
       diff = null;
     }
   }
@@ -97,7 +98,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
       fs.copyFileSync(mr.ticket_image, path.join(cwd, rel));
       ticketBlock += `\n\nUne capture d'écran jointe au contexte est disponible dans le fichier \`${rel}\` (chemin relatif au dépôt) — ouvre-la et prends son contenu en compte si pertinent.`;
       onLog('contexte : capture jointe');
-    } catch (e) { onLog(`⚠ capture de contexte ignorée : ${e.message}`); }
+    } catch (e) { onLog(t('log.review.context-skip', { message: e.message })); }
   }
   if (ticketBlock) onLog('contexte pris en compte dans le prompt');
 
@@ -124,7 +125,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
         ? `chemin « ${r.path_match} »` : `branche « ${r.branch_match} »`;
       rulesBlock += `\n- (règle ${why}) ${r.content}`;
     }
-    onLog(`${rules.length} règle(s) de review spécifique(s) appliquée(s)`);
+    onLog(t('log.review.rules', { n: rules.length, count: rules.length }));
   }
 
   /* Projets liés : l'IA analyse l'impact des changements de la MR sur d'autres dépôts.
@@ -150,14 +151,14 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
         const branch = (link.branch || '').trim() || await git.defaultBranch(lcwd);
         if (await git.refExists(lcwd, `origin/${branch}`)) await git.createBranchFrom(lcwd, branch, `origin/${branch}`, onLog);
         else if (await git.refExists(lcwd, `refs/heads/${branch}`)) await git.checkoutBranch(lcwd, branch, onLog);
-        else { onLog(`⚠ projet lié ${lrepo.project} : branche ${branch} introuvable, ignoré`); continue; }
+        else { onLog(t('log.review.linked-missing', { project: lrepo.project, branch })); continue; }
         const slug = slugify(lrepo.project);
         const linkPath = path.join(linkRoot, slug);
         try { fs.symlinkSync(lcwd, linkPath); } catch { fs.rmSync(linkPath, { recursive: true, force: true }); fs.symlinkSync(lcwd, linkPath); }
         linkedDirs.push({ cwd: lcwd });
         mounted.push({ rel: `${workRel}/linked/${slug}`, project: lrepo.project, branch });
-        onLog(`projet lié monté : ${lrepo.project} (${branch})`);
-      } catch (e) { onLog(`⚠ projet lié ${lrepo.project} : ${e.message.split('\n')[0]}`); }
+        onLog(t('log.review.linked-ok', { project: lrepo.project, branch }));
+      } catch (e) { onLog(t('log.review.linked-error', { project: lrepo.project, message: e.message.split('\n')[0] })); }
     }
     if (mounted.length) {
       linkedBlock = `\n\nCette MR modifie le projet **${repo.project}**. D'AUTRES PROJETS en dépendent `
@@ -174,7 +175,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   async function cleanupLinked() {
     for (const d of linkedDirs) { try { await git.resetWorktree(d.cwd, () => {}); } catch { /* best-effort */ } }
     try { fs.rmSync(linkRoot, { recursive: true, force: true }); } catch { /* déjà parti */ }
-    if (linkedDirs.length) onLog('projets liés remis à zéro (analyse en lecture seule)');
+    if (linkedDirs.length) onLog(t('log.review.linked-reset'));
   }
 
   // Lance un prompt en demandant à l'IA d'ÉCRIRE sa sortie dans outRel (dans le clone),
@@ -304,10 +305,10 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
         + `Le diff fourni ne contient QUE les changements APPARUS DEPUIS cette review (le reste de la MR est inchangé). `
         + `Produis un rapport de revue COMPLET et À JOUR de la MR : pars du rapport précédent, tiens compte de l'effet des nouveaux changements `
         + `(problèmes désormais corrigés → à retirer, nouveaux problèmes introduits → à ajouter), et rends-le dans le MÊME format et avec les MÊMES exigences qu'une revue complète (note incluse).`;
-      onLog('re-review incrémentale : delta + rapport précédent en contexte');
+      onLog(t('log.review.incremental'));
     }
 
-    onLog(`review IA (${copilot.isDryRun() ? 'dry-run' : 'copilot'})${incremental ? ' — incrémentale' : ''}`);
+    onLog(t('log.review.run', { mode: copilot.isDryRun() ? 'dry-run' : 'copilot', incremental: incremental ? t('log.review.run-inc') : '' }));
     const rawReview = await generate(cfg.prompt_review, 'ai-dev-tools-internal/review.md', 'review', extra);
     // On retire le bloc de constats du rapport affiché : il ne doit pas polluer la
     // lecture. Ce qui est enregistré et montré est le Markdown SANS le bloc.
@@ -316,16 +317,16 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
 
     let explainContent = null;
     if (explain) {
-      onLog('explication pédagogique');
+      onLog(t('log.review.explain'));
       explainContent = await generate(cfg.prompt_explain, 'ai-dev-tools-internal/explanation.md', 'explain');
     } else {
-      onLog('explication ignorée (review seule)');
+      onLog(t('log.review.explain-skip'));
     }
 
     const { version, mdPath, explPath, now, noteValue } = saveReviewVersion(mr, outDir, {
       reviewContent, explainContent, diffStorePath, kind: 'review', noExplain: !explain,
     });
-    onLog(`rapport enregistré (version ${version})`);
+    onLog(t('log.review.saved', { version }));
     // Note pour la notif « review sous un seuil » (le client décide selon SON seuil).
     notify.push('review_done', { mr_id: mr.id, iid: mr.iid, note10: noteValue == null ? null : Math.round(noteValue * 1000) / 100 });
 
@@ -373,7 +374,7 @@ async function trackResolution({ cwd, mr, version, findings, newSha, onLog }) {
     });
     tx();
   } catch (e) {
-    onLog(`⚠ suivi de résolution ignoré : ${e.message.split('\n')[0]}`);
+    onLog(t('log.review.resolution-skip', { message: e.message.split('\n')[0] }));
   }
 }
 
@@ -400,7 +401,7 @@ async function modifyReview(repo, mr, instruction, onLog = () => {}) {
     const { version, mdPath } = saveReviewVersion(mr, outDir, {
       reviewContent: content, explainContent: null, diffStorePath, kind: 'modify', instruction,
     });
-    onLog(`rapport enregistré (version ${version})`);
+    onLog(t('log.review.saved', { version }));
     return { mdPath, version };
   } finally {
     await cleanupLinked();
@@ -427,7 +428,7 @@ async function explainMr(repo, mr, onLog = () => {}) {
     const now = new Date().toISOString();
     db.prepare('UPDATE review_version SET explanation_path = ? WHERE mr_id = ? AND version = ?').run(explPath, mr.id, version);
     db.prepare('UPDATE review SET explanation_path = ?, updated_at = ? WHERE mr_id = ?').run(explPath, now, mr.id);
-    onLog(`explication enregistrée (version ${version})`);
+    onLog(t('log.review.explain-saved', { version }));
     return { explPath, version };
   } finally {
     await cleanupLinked();

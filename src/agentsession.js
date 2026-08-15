@@ -17,6 +17,7 @@ const os = require('os');
 const path = require('path');
 const copilot = require('./copilot');
 const { DATA_DIR, ensureDir } = require('./paths');
+const { t } = require('../public/i18n-runtime.js');
 
 const TIMEOUT_MS = Number(process.env.AGENT_SESSION_TIMEOUT_MS || process.env.COPILOT_TIMEOUT_MS || 900000);
 const SESSIONS_ROOT = path.join(DATA_DIR, 'agent-sessions'); // homes Copilot isolés par clé
@@ -51,7 +52,7 @@ function spawnAgent({ args, cwd, env }, onLog = () => {}) {
     const child = spawn(bin, args, { cwd, env: { ...process.env, ...(env || {}) }, stdio: STDIO });
     proc.setActive(child);                    // sans ça, « Stop » ne tue pas l'agent (cf. en-tête)
     let stdout = ''; let stderr = ''; let obuf = '';
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`timeout après ${TIMEOUT_MS} ms`)); }, TIMEOUT_MS);
+    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(t('err.cmd.timeout', { cmd: bin, ms: TIMEOUT_MS }))); }, TIMEOUT_MS);
     // Streame la sortie ligne par ligne : on voit l'agent avancer (copilot n'a pas de mode événements).
     child.stdout.on('data', (d) => { stdout += d; obuf = emitLines(obuf + d, onLog); });
     child.stderr.on('data', (d) => { stderr += d; });
@@ -61,7 +62,7 @@ function spawnAgent({ args, cwd, env }, onLog = () => {}) {
       proc.clearActive(child);
       if (obuf) onLog(obuf);
       if (code === 0) resolve(stdout.trim());
-      else reject(new Error(`${bin} a échoué (code ${code}) : ${(stderr || stdout).slice(0, 500)}`));
+      else reject(new Error(t('err.cmd.failed', { cmd: bin, code, sortie: (stderr || stdout).slice(0, 500) })));
     });
   });
 }
@@ -95,7 +96,7 @@ function runClaudeStream(args, cwd, onLog) {
     const child = spawn(bin, args, { cwd, stdio: STDIO });
     proc.setActive(child);                    // idem : c'est LE chemin par défaut (claude)
     let stderr = ''; let buf = ''; let result = null; let sessionId = null; let lastText = '';
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`timeout après ${TIMEOUT_MS} ms`)); }, TIMEOUT_MS);
+    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(t('err.cmd.timeout', { cmd: bin, ms: TIMEOUT_MS }))); }, TIMEOUT_MS);
     const handleLine = (line) => {
       const s = line.trim();
       if (!s) return;
@@ -119,7 +120,7 @@ function runClaudeStream(args, cwd, onLog) {
       proc.clearActive(child);
       if (buf.trim()) handleLine(buf);
       if (code === 0) resolve({ text: (result != null ? result : lastText) || '', sessionId });
-      else reject(new Error(`${bin} a échoué (code ${code}) : ${stderr.slice(0, 500)}`));
+      else reject(new Error(t('err.cmd.failed', { cmd: bin, code, sortie: stderr.slice(0, 500) })));
     });
   });
 }
@@ -197,7 +198,7 @@ function enrichCopilotError(e, bootstrap, home) {
  */
 async function runInSession({ key, handle, prompt, cwd, resume = false, onLog = () => {} }) {
   const backend = backendName();
-  if (backend === 'unknown') throw new Error(`Backend « ${copilot.COPILOT_BIN} » non géré (claude ou copilot attendus).`);
+  if (backend === 'unknown') throw new Error(t('err.agent.backend', { bin: copilot.COPILOT_BIN }));
   const EXTRA = copilot.EXTRA_ARGS;
 
   if (backend === 'claude') {

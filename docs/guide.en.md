@@ -1788,6 +1788,15 @@ on `localhost`** (`127.0.0.1`): it is therefore **not** reachable from the netwo
 operations on your machine. No data is sent anywhere other than to the services **you** configure (your
 GitLab, your GitHub, your Jira, your agent CLI).
 
+**A page open in another tab cannot act on your behalf.** Listening on `localhost` protects nothing here:
+it is **your** browser that sends, and any website can make it post to Mergerie — a plain form goes out
+**without a preflight**, and the routes that do not read their body would run as-is (wipe every report,
+publish your pending comments on a real merge request with your token, launch an agent on your folders).
+The code is public, so the list of routes is no secret. **Any request that writes and announces a foreign
+origin is therefore refused** (403), with a message that names the likely culprit. What is **not** refused:
+reads (they change nothing, and the response stays unreadable to the third-party page) and requests with
+**no** origin — `curl`, a script of yours, the *Commands* tab: a browser always sends one.
+
 **AI agent permissions (“yolo mode”).** The agent runs with its permission guard rails **disabled**
 (“yolo”), because coding sessions require it: it must be able to create, modify and delete files without a
 confirmation at every step. Its **nominal radius of action is the working clone** (`data/clones/…`), and the

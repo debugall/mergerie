@@ -75,6 +75,39 @@ const localrepos = require('./localrepos');
 const copilot = require('./copilot');
 
 const app = express();
+
+/* ============ D'OÙ VIENT CETTE REQUÊTE ? ============
+   Mergerie n'écoute que sur la boucle locale, mais ça ne protège de rien ici : c'est TON
+   navigateur qui émet, et n'importe quelle page ouverte dans un autre onglet peut lui faire
+   poster chez nous. Un simple `<form method="POST" action="http://127.0.0.1:4319/api/…">`
+   part sans préflight (formulaire = requête « simple ») et, sur les 130 routes mutantes, les
+   45 qui ne lisent pas leur corps s'exécutent telles quelles : effacer tous les rapports,
+   publier tes commentaires en attente sur une vraie merge request avec ton jeton, lancer un
+   agent sur tes dossiers. Le code étant publié, la liste des routes n'est un secret pour
+   personne.
+
+   La règle : une requête qui ÉCRIT et qui annonce une origine étrangère est refusée. Les
+   requêtes de l'application portent l'origine de l'application ; un formulaire tiers porte la
+   sienne, et se fait renvoyer. On n'exige PAS que l'en-tête soit présent : `curl`, un script
+   maison ou l'onglet « Commandes » n'en envoient pas, et refuser les requêtes sans origine
+   casserait des usages légitimes sans rien empêcher — un navigateur, lui, en envoie toujours
+   un sur une requête cross-site.
+
+   Les lectures passent : elles ne changent rien, et la réponse n'est de toute façon pas
+   lisible par la page tierce (pas de CORS ici). */
+const MUTANTES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+function memeOrigine(req) {
+  const brut = req.headers.origin;
+  if (!brut) return true;                       // pas de navigateur derrière : rien à trancher
+  let hote;
+  try { hote = new URL(brut).host; } catch { return false; }   // origine illisible = refus
+  return hote === req.headers.host;
+}
+app.use((req, res, next) => {
+  if (!MUTANTES.has(req.method) || memeOrigine(req)) return next();
+  res.status(403).json({ error: i18n.t('err.origine-etrangere') });
+});
+
 app.use(express.json({ limit: '20mb' })); // marge pour les captures de ticket (base64)
 /* Fichiers statiques. `no-cache` = le navigateur peut mettre en cache mais DOIT
    revalider avant chaque usage (requête conditionnelle → 304 si inchangé, contenu

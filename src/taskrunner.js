@@ -85,7 +85,7 @@ function attachImages(task, cwd, onLog) {
     const rel = `${WORK_REL}/img_${i + 1}${ext}`;
     try { fs.copyFileSync(im.path, path.join(cwd, rel)); imgBlock += `\n- capture jointe : \`${rel}\``; } catch { /* ignore */ }
   });
-  if (imgBlock) { imgBlock = `\n\nDes captures d'écran sont fournies (ouvre-les) :${imgBlock}`; onLog(`${images.length} capture(s) jointe(s)`); }
+  if (imgBlock) { imgBlock = `\n\nDes captures d'écran sont fournies (ouvre-les) :${imgBlock}`; onLog(t('log.task.images', { n: images.length, count: images.length })); }
   return imgBlock;
 }
 
@@ -99,13 +99,13 @@ function attachImages(task, cwd, onLog) {
 async function reconcileTargets(task, onLog = () => {}) {
   const cfg = getConfig();
   const cibles = targetsOf(task.id).filter((tg) => tg.status === 'error');
-  if (!cibles.length) { onLog('aucun projet en erreur à réconcilier'); return { repaired: 0, checked: 0 }; }
+  if (!cibles.length) { onLog(t('log.task.reconcile-none')); return { repaired: 0, checked: 0 }; }
   let repaired = 0;
   for (const tg of cibles) {
     onLog(`──────── ${tg.project} · ${tg.branch} ────────`);
     try {
       const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
-      if (!repo) { onLog('dépôt introuvable — ignoré'); continue; }
+      if (!repo) { onLog(t('log.task.repo-missing')); continue; }
       const cwd = await git.ensureRepo(cfg, repo, onLog);
       await git.ensureCleanWorktree(cwd, onLog);
       const base = tg.base_branch || await git.defaultBranch(cwd);
@@ -114,10 +114,10 @@ async function reconcileTargets(task, onLog = () => {}) {
          local que le push n'a pas emporté. Se caler sur la branche distante le détruirait. */
       if (await git.refExists(cwd, `refs/heads/${tg.branch}`)) await git.checkoutBranch(cwd, tg.branch, onLog);
       else if (await git.refExists(cwd, `origin/${tg.branch}`)) await git.createBranchFrom(cwd, tg.branch, `origin/${tg.branch}`, onLog);
-      else { onLog('branche absente en local comme sur le remote — laissée en erreur'); continue; }
+      else { onLog(t('log.task.branch-nowhere')); continue; }
 
       const avance = await git.aheadOf(cwd, base);
-      if (!avance) { onLog(`aucun commit d'avance sur ${base} — rien à réconcilier, laissée en erreur`); continue; }
+      if (!avance) { onLog(t('log.task.no-ahead', { base })); continue; }
 
       const sha = await git.headSha(cwd);
       const diff = await git.branchDiff(cwd, base);
@@ -130,13 +130,13 @@ async function reconcileTargets(task, onLog = () => {}) {
         last_error: null, status: pousse ? 'pushed' : 'committed',
       });
       repaired += 1;
-      onLog(`✅ ${avance} commit(s) d'avance sur ${base} → ${pousse ? 'branche déjà poussée' : 'commit prêt, en attente de push'}`);
+      onLog(t(pousse ? 'log.task.reconcile-pushed' : 'log.task.reconcile-ready', { n: avance, count: avance, base }));
     } catch (e) {
-      onLog(`⚠ ${tg.project} : ${e.message}`); // un projet illisible n'empêche pas les autres
+      onLog(t('log.task.project-error', { project: tg.project, message: e.message })); // un projet illisible n'empêche pas les autres
     }
   }
   syncTaskStatus(task.id);
-  onLog(`${repaired}/${cibles.length} projet(s) réconcilié(s)`);
+  onLog(t('log.task.reconciled', { done: repaired, total: cibles.length }));
   return { repaired, checked: cibles.length };
 }
 
@@ -151,12 +151,11 @@ async function reconcileTargets(task, onLog = () => {}) {
    plutôt que de le faire en silence ou de se taire ; le geste appartient à qui le lit. */
 async function reappliquerMessage(cwd, branch, message, onLog = () => {}) {
   if (await git.refExists(cwd, `origin/${branch}`)) {
-    onLog(`ℹ message de commit non réappliqué : ${branch} est déjà sur origin, le renommer `
-      + 'réécrirait un commit publié');
+    onLog(t('log.task.msg-published', { branch }));
     return 'publie';
   }
   if (!await git.renommerDernierCommit(cwd, message, onLog)) return 'inchange';
-  onLog(`message du dernier commit mis à jour : ${message}`);
+  onLog(t('log.task.msg-updated', { message }));
   return 'renomme';
 }
 
@@ -213,14 +212,26 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
 
   const hasRemote = await git.refExists(cwd, `origin/${tg.branch}`);
   const hasLocal = await git.refExists(cwd, `refs/heads/${tg.branch}`);
-  if (hasRemote) {
-    onLog(`branche ${tg.branch} existe sur le remote → alignement sur origin/${tg.branch}`);
-    await git.createBranchFrom(cwd, tg.branch, `origin/${tg.branch}`, onLog);
-  } else if (hasLocal) {
-    onLog(`branche ${tg.branch} existe en local → réutilisation`);
+  /* ON NE SE RÉALIGNE PAS SUR ORIGIN QUAND LE LOCAL PORTE DU TRAVAIL. Sans auto-push — le
+     défaut —, un suivi commite sans pousser : la branche locale est alors le SEUL endroit où
+     ce commit existe. Repartir de `origin/<branche>` le supprimait, et le journal disait
+     « alignement ». Le suivi suivant recodait sur une branche amputée, et la branche poussée
+     ensuite ne portait plus la première correction.
+
+     Divergence des deux côtés (quelqu'un a poussé pendant ce temps) : on garde quand même le
+     local. Le push refusera en fast-forward — un échec qui se voit et se répare —, là où
+     l'écrasement, lui, ne se voit jamais. `reconcileTargets` applique déjà cette règle. */
+  const nonPousses = hasLocal && hasRemote ? await git.nonPousses(cwd, tg.branch) : 0;
+  if (hasLocal && (!hasRemote || nonPousses)) {
+    onLog(nonPousses
+      ? t('log.task.branch-keep', { branch: tg.branch, n: nonPousses, count: nonPousses })
+      : t('log.task.branch-local', { branch: tg.branch }));
     await git.checkoutBranch(cwd, tg.branch, onLog);
+  } else if (hasRemote) {
+    onLog(t('log.task.branch-remote', { branch: tg.branch }));
+    await git.createBranchFrom(cwd, tg.branch, `origin/${tg.branch}`, onLog);
   } else if (allowCreate) {
-    onLog(`création de la branche ${tg.branch} depuis ${base}`);
+    onLog(t('log.task.branch-create', { branch: tg.branch, base }));
     await git.createBranchFrom(cwd, tg.branch, `origin/${base}`, onLog);
   } else {
     throw new Error(t('err.branch-missing-run-first', { branch: tg.branch }));
@@ -228,7 +239,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
 
   const imgBlock = attachImages(task, cwd, onLog);
 
-  onLog(`exécution (${copilot.isDryRun() ? 'dry-run' : 'IA'})`);
+  onLog(t('log.task.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai') }));
   let agentText = '';
   if (copilot.isDryRun()) {
     if (task.ask_questions && !doResume) {
@@ -245,7 +256,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     // partie de l'identité de session : on refuse une reprise depuis un autre cwd (§4.4).
     const key = `task-${task.id}-target-${tg.id}`;
     if (doResume && tg.session_cwd && path.resolve(tg.session_cwd) !== path.resolve(cwd)) {
-      onLog(`⚠ cwd de session différent → reprise refusée, repli sur une session neuve`);
+      onLog(t('log.task.cwd-mismatch'));
       doResume = false;
     }
     let r; let created = !doResume; // création = 1re passe OU repli après échec de reprise
@@ -256,7 +267,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
       if (!doResume) throw e;
       // Fallback (§4.5) : reprise impossible → session neuve avec contexte réinjecté.
       const raison = String(e.message).split('\n')[0];
-      onLog(`⚠ reprise impossible (${raison}) → session neuve, contexte réinjecté`);
+      onLog(t('log.task.resume-failed', { raison }));
       /* On CONSIGNE le repli. Cas le plus courant : une session d'agent appartient au
          répertoire où elle a été créée, or Mergerie travaille dans son propre clone — un
          identifiant venu d'ailleurs (ton dépôt à toi, une session Claude Code) n'y existe
@@ -287,7 +298,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     const qs = questions.parseQuestions(agentText);
     if (qs && qs.length) {
       setTarget(tg.id, { questions_json: JSON.stringify(qs), status: 'needs_input', last_error: null });
-      onLog(`⏸ ${qs.length} question(s) posée(s) — session en attente de tes réponses`);
+      onLog(t('log.task.questions', { n: qs.length, count: qs.length }));
       return { needsInput: true };
     }
   }
@@ -310,7 +321,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
         ? t('err.no-change-agent-said', { said: said.slice(0, 500) })
         : t('err.aucun-changement-produit-rien-a'));
     }
-    onLog(`aucune modification à ajouter : la branche porte déjà le travail (${dejaFait} commit(s) d'avance sur ${base})`);
+    onLog(t('log.task.already-done', { n: dejaFait, count: dejaFait, base }));
     await reappliquerMessage(cwd, tg.branch, message, onLog);
   }
   const sha = await git.headSha(cwd);
@@ -329,9 +340,9 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     onLog(`push : ${pushCommand}`);
     await git.pushBranch(cwd, tg.branch, onLog, git.secretsOf(cfg));
     setTarget(tg.id, { status: 'pushed' });
-    onLog('✅ branche poussée');
+    onLog(t('log.task.pushed'));
   } else {
-    onLog('✅ commit prêt — en attente de validation du push');
+    onLog(t('log.task.commit-ready'));
   }
 }
 
@@ -357,12 +368,14 @@ async function runCodeTask(task, { promptText, promptRepli, message, allowCreate
     } catch (e) {
       setTarget(tg.id, { status: 'error', last_error: e.message });
       fails.push({ project: tg.project, error: e.message });
-      onLog(`⚠ ${tg.project} : ${e.message}`);
+      onLog(t('log.task.project-error', { project: tg.project, message: e.message }));
     }
   }
   syncTaskStatus(task.id);
-  const portee = voulus ? ` (sur ${tous.length} au total)` : '';
-  onLog(`${ok}/${targets.length} projet(s) traité(s)${portee}${waiting ? `, ${waiting} en attente de réponses` : ''}`);
+  const portee = voulus ? t('log.task.scope', { n: tous.length }) : '';
+  onLog(t('log.task.done', {
+    ok, total: targets.length, portee, attente: waiting ? t('log.task.waiting', { n: waiting }) : '',
+  }));
   if (!ok && !waiting) {
     // Tout a échoué : on remonte la VRAIE raison plutôt qu'un « voir le détail ». Un seul
     // projet → son erreur directement ; plusieurs → la liste, projet par projet.
@@ -387,7 +400,7 @@ async function runExploration(task, { question, previous, onLog }) {
   for (const tg of targets) {
     const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
     if (!repo) { setTarget(tg.id, { status: 'error', last_error: 'Dépôt introuvable.' }); continue; }
-    onLog(`──────── ${tg.project} · ${tg.branch || '(branche par défaut)'} ────────`);
+    onLog(`──────── ${tg.project} · ${tg.branch || t('log.task.default-branch')} ────────`);
     setTarget(tg.id, { status: 'running', last_error: null });
     try {
       const cwd = await git.ensureRepo(cfg, repo, onLog);
@@ -404,7 +417,7 @@ async function runExploration(task, { question, previous, onLog }) {
       setTarget(tg.id, { base_branch: branch, status: 'done', last_error: null });
     } catch (e) {
       setTarget(tg.id, { status: 'error', last_error: e.message });
-      onLog(`⚠ ${tg.project} : ${e.message}`);
+      onLog(t('log.task.project-error', { project: tg.project, message: e.message }));
     }
   }
   if (!dirs.length) throw new Error(t('err.aucun-depot-n-a-pu'));
@@ -428,7 +441,7 @@ async function runExploration(task, { question, previous, onLog }) {
   const known = targets.find((tg) => tg.session_key) || {};
   let doResume = sessionable && !!known.session_key;
   if (doResume && known.session_cwd && path.resolve(known.session_cwd) !== path.resolve(root)) {
-    onLog('⚠ cwd de session différent → reprise refusée, session neuve');
+    onLog(t('log.explore.cwd-mismatch'));
     doResume = false;
   }
   /* La réponse précédente n'est réinjectée que HORS session : elle n'a plus lieu d'être
@@ -448,7 +461,7 @@ async function runExploration(task, { question, previous, onLog }) {
     + `et écris-la UNIQUEMENT dans le fichier \`${outRel}\` (chemin relatif au répertoire courant). `
     + `Ne duplique pas ce contenu sur la sortie standard.`;
 
-  onLog(`exploration (${copilot.isDryRun() ? 'dry-run' : 'IA'}) sur ${dirs.length} dépôt(s)`);
+  onLog(t('log.explore.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai'), n: dirs.length, count: dirs.length }));
   let stdout = '';
   try {
     if (sessionable) {
@@ -461,7 +474,7 @@ async function runExploration(task, { question, previous, onLog }) {
         if (!doResume) throw e;
         // Même repli que pour un codage : la session est perdue, pas l'exploration. On
         // réinjecte la réponse précédente, seul contexte dont dispose une session neuve.
-        onLog(`⚠ reprise impossible (${String(e.message).split('\n')[0]}) → session neuve, contexte réinjecté`);
+        onLog(t('log.task.resume-failed', { raison: String(e.message).split('\n')[0] }));
         const withPrev = previous
           ? `${prompt}\n\nTu avais déjà produit la réponse suivante :\n"""\n${previous}\n"""`
           : prompt;
@@ -480,13 +493,13 @@ async function runExploration(task, { question, previous, onLog }) {
     for (const d of dirs) {
       await git.resetWorktree(d.cwd, () => {});
     }
-    onLog('dépôts remis à zéro (exploration en lecture seule)');
+    onLog(t('log.explore.reset'));
   }
 
   let content = '';
   if (fs.existsSync(outAbs)) content = fs.readFileSync(outAbs, 'utf8').trim();
   if (content) {
-    onLog(`réponse lue depuis ${outRel} (${content.length} octets)`);
+    onLog(t('log.explore.answer-read', { path: outRel, n: content.length }));
     copilot.addOutputToLastUsage(content);
   } else {
     onLog(`(fichier ${outRel} vide/absent → repli sur la sortie standard)`);
@@ -503,7 +516,7 @@ async function runExploration(task, { question, previous, onLog }) {
   agentpass.record('task', task.id, 0, { kind: previous ? 'followup' : 'run', prompt: question, text: content });
   db.prepare('UPDATE task SET md_path = ?, status = ?, last_error = NULL, updated_at = ? WHERE id = ?')
     .run(mdPath, 'done', new Date().toISOString(), task.id);
-  onLog('✅ réponse enregistrée');
+  onLog(t('log.explore.answer-saved'));
   return { mdPath };
 }
 
@@ -548,12 +561,12 @@ async function runTaskAnswer(task, targetId, onLog = () => {}) {
   if (!qs.some((q) => q && q.answer != null && String(q.answer).trim())) {
     throw new Error(t('err.reponses-manquantes'));
   }
-  onLog(`──────── ${tg.project} · ${tg.branch} (reprise après réponses) ────────`);
+  onLog(`──────── ${tg.project} · ${tg.branch} (${t('log.task.after-answers')}) ────────`);
   setTarget(tg.id, { status: 'running', last_error: null });
   const promptText = avecConsignes(questions.buildAnswerInstruction(qs), consignesPermanentes());
   try {
     const res = await execOnTarget(task, tg, {
-      promptText, message: commitMessageFor(task, 'Réponses aux questions de l’agent'),
+      promptText, message: commitMessageFor(task, t('log.task.answers-commit')),
       allowCreate: false, onLog, resume: true, passKind: 'answer',
     });
     syncTaskStatus(task.id);
@@ -579,7 +592,7 @@ async function pushTarget(taskId, targetId, onLog = () => {}) {
   await git.pushBranch(cwd, tg.branch, onLog, git.secretsOf(cfg));
   setTarget(tg.id, { status: 'pushed' });
   syncTaskStatus(taskId);
-  onLog('✅ branche poussée');
+  onLog(t('log.task.pushed'));
 }
 
 /* Pousse PLUSIEURS projets d'une session en un seul job. Un projet en échec n'interrompt pas
@@ -596,11 +609,11 @@ async function pushTargets(task, targetIds, onLog = () => {}) {
     catch (e) {
       setTarget(tg.id, { last_error: e.message });
       echecs.push(tg.project);
-      onLog(`⚠ ${tg.project} : ${e.message}`);
+      onLog(t('log.task.project-error', { project: tg.project, message: e.message }));
     }
   }
   syncTaskStatus(task.id);
-  onLog(`${ok}/${cibles.length} branche(s) poussée(s)${echecs.length ? ` — en échec : ${echecs.join(', ')}` : ''}`);
+  onLog(t('log.task.pushed-n', { ok, total: cibles.length, echecs: echecs.length ? t('log.task.push-failed', { liste: echecs.join(', ') }) : '' }));
   return { pushed: ok, failed: echecs.length };
 }
 

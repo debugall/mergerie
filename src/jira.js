@@ -9,6 +9,7 @@
 
 const https = require('https');
 const http = require('http');
+const { t } = require('../public/i18n-runtime.js');
 
 // Client HTTP autonome (Jira Cloud est en TLS public : pas d'agent CA self-signed).
 function request(url, { method = 'GET', headers = {}, body = null } = {}) {
@@ -158,7 +159,7 @@ function renderTable(node) {
      tableau clé/valeur — n'a donc pas d'équivalent : on le met en gras, faute de quoi il se
      confondrait avec les données qu'il intitule. */
   const cells = (row, enTete) => cellulesDe(row)
-    .map((c) => { const t = texte(c); return (!enTete && c.type === 'tableHeader' && t) ? `**${t}**` : t; });
+    .map((c) => { const txt = texte(c); return (!enTete && c.type === 'tableHeader' && txt) ? `**${txt}**` : txt; });
 
   /* Une VRAIE ligne d'en-tête a TOUTES ses cellules en `tableHeader` : c'est ce que produit
      la case « ligne d'en-tête » de Jira. Promouvoir `rows[0]` sans vérifier déguisait en
@@ -224,17 +225,17 @@ function authHeader(cfg) {
 /* Récupère summary + description d'un ticket. Renvoie { summary, descriptionMd, key }.
    Lève une erreur claire sur 401/403/404 pour que l'appelant la stocke/affiche. */
 async function fetchIssue(cfg, key) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const base = String(cfg.jira_url).trim().replace(/\/+$/, '');
   const url = `${base}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description`;
   const res = await request(url, {
     headers: { Authorization: authHeader(cfg), Accept: 'application/json' },
   });
-  if (res.status === 401 || res.status === 403) throw new Error(`Jira ${res.status} : accès refusé (email/token ?)`);
+  if (res.status === 401 || res.status === 403) throw new Error(t('err.jira.denied', { status: res.status }));
   if (res.status === 404) throw new Error(`Jira 404 : ticket ${key} introuvable`);
   if (res.status < 200 || res.status >= 300) throw new Error(`Jira ${res.status} ${res.statusText}`);
   let data;
-  try { data = JSON.parse(res.body); } catch { throw new Error('Jira : réponse non-JSON'); }
+  try { data = JSON.parse(res.body); } catch { throw new Error(t('err.jira.not-json')); }
   const fields = data.fields || {};
   return {
     key: data.key || key,
@@ -272,10 +273,10 @@ async function jiraGet(cfg, pathAndQuery) {
   const res = await request(jiraBase(cfg) + pathAndQuery, {
     headers: { Authorization: authHeader(cfg), Accept: 'application/json' },
   });
-  if (res.status === 401 || res.status === 403) throw new Error(`Jira ${res.status} : accès refusé (email/token ?)`);
+  if (res.status === 401 || res.status === 403) throw new Error(t('err.jira.denied', { status: res.status }));
   if (res.status === 404) throw new Error('Jira 404 : ressource introuvable');
   if (res.status < 200 || res.status >= 300) throw new Error(`Jira ${res.status} ${res.statusText}${detailErreur(res.body)}`);
-  try { return JSON.parse(res.body); } catch { throw new Error('Jira : réponse non-JSON'); }
+  try { return JSON.parse(res.body); } catch { throw new Error(t('err.jira.not-json')); }
 }
 
 const personOf = (p) => (p ? {
@@ -336,11 +337,11 @@ function withUrls(cfg, meta) {
 function epicOf(f) {
   const p = f && f.parent;
   if (!p || !p.key) return null;
-  const t = (p.fields && p.fields.issuetype) || {};
+  const type = (p.fields && p.fields.issuetype) || {};
   // Le nom du type est LOCALISÉ (Epic, Épique, Épopée…) : on retire les accents avant de comparer,
   // sinon « Épique » ne correspond à rien et l'epic disparaît sur une instance en français.
-  const sansAccent = String(t.name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-  const estEpic = t.hierarchyLevel != null ? Number(t.hierarchyLevel) >= 1 : /(epic|epique|epopee)/.test(sansAccent);
+  const sansAccent = String(type.name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const estEpic = type.hierarchyLevel != null ? Number(type.hierarchyLevel) >= 1 : /(epic|epique|epopee)/.test(sansAccent);
   if (!estEpic) return null;
   return {
     key: p.key,
@@ -359,7 +360,7 @@ const CHAMP_SPRINT = /^customfield_\d+$/;
 
 // Tous les champs de l'instance, réduits à ce dont on a besoin ici.
 async function allFields(cfg) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const data = await jiraGet(cfg, '/rest/api/3/field');
   return (Array.isArray(data) ? data : []).filter((f) => f && f.id).map((f) => ({
     id: f.id, name: f.name || f.id, custom: !!f.custom,
@@ -422,7 +423,7 @@ const CLE_PROJET = /^[A-Za-z][A-Za-z0-9_]{0,30}$/;
    comptes n'ont pas. Cette route-ci ne demande que le droit de parcourir le projet, et rend
    exactement les statuts qui concernent l'utilisateur. */
 async function projectStatuses(cfg, projectKey) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   if (!CLE_PROJET.test(String(projectKey || ''))) return [];
   const data = await jiraGet(cfg, `/rest/api/3/project/${encodeURIComponent(projectKey)}/statuses`);
   const par = new Map();
@@ -446,7 +447,7 @@ async function myself(cfg) {
 // Découvre les personnes ASSIGNÉES récemment (pour proposer les cases du filtre par assigné) :
 // pool des tickets assignés les plus récemment mis à jour → assignés distincts, « moi » en tête.
 async function listAssignees(cfg) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const me = await myself(cfg).catch(() => ({ accountId: '', name: 'Moi', email: '', avatar: '' }));
   const byId = new Map();
   try {
@@ -464,7 +465,7 @@ async function listAssignees(cfg) {
 // Tickets assignés aux personnes demandées (accountIds). Vide → `assignee = currentUser()` (moi).
 // Écarte les terminés sauf `includeDone`. Triés du plus récemment mis à jour au plus ancien.
 async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = 100, projects = [], sprintField = '', sprints = [], hideStatuses = [] } = {}) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   // accountId Jira : alphanumérique + `:._@|-`. On rejette le reste (anti-injection JQL) et on quote.
   const ids = (accountIds || []).map(String).filter((s) => /^[A-Za-z0-9:._@|-]{1,128}$/.test(s));
   /* Sélection VIDE = aucune contrainte d'assigné : on prend tout ce que le compte voit, même
@@ -507,7 +508,7 @@ const cleValide = (k) => CLE_VALIDE.test(String(k || '').trim().toUpperCase());
    l'état renvoyé au dernier état connu. Les clés introuvables sont simplement absentes
    du résultat — l'appelant en déduit ce qu'il veut (ticket supprimé, droits perdus). */
 async function statusOfKeys(cfg, keys) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const propres = [...new Set((keys || []).map((k) => String(k).trim().toUpperCase()).filter(cleValide))];
   if (!propres.length) return [];
   const issues = [];
@@ -524,7 +525,7 @@ async function statusOfKeys(cfg, keys) {
    `indeterminate` côté Jira : c'est la seule définition qui traverse les workflows, les
    noms d'états étant libres d'un projet à l'autre. */
 async function countMineInProgress(cfg) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const data = await runSearch(cfg, 'assignee = currentUser() AND statusCategory = "In Progress"', 'summary', 1);
   return data.total != null ? data.total : (data.issues || []).length;
 }
@@ -532,7 +533,7 @@ async function countMineInProgress(cfg) {
 // Détail complet d'un ticket : métadonnées + description (ADF→Markdown) + commentaires (idem)
 // + pièces jointes (métadonnées seulement ; le CONTENU se télécharge à la demande via le proxy).
 async function issueDetail(cfg, key) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const fields = 'summary,description,status,priority,issuetype,assignee,reporter,created,updated,labels,project,duedate,components,fixVersions,attachment,parent';
   const data = await jiraGet(cfg, `/rest/api/3/issue/${encodeURIComponent(key)}?fields=${encodeURIComponent(fields)}`);
   const attachments = ((data.fields || {}).attachment || []).map((a) => ({
@@ -571,15 +572,15 @@ function textToAdf(text) {
 
 // Poste un commentaire (texte) sur un ticket. Renvoie le commentaire créé (mappé comme les autres).
 async function addComment(cfg, key, text) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
-  const t = String(text || '').trim();
-  if (!t) throw new Error('Commentaire vide.');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const corps = String(text || '').trim();
+  if (!corps) throw new Error(t('err.jira.empty-comment'));
   const res = await request(jiraBase(cfg) + `/rest/api/3/issue/${encodeURIComponent(key)}/comment`, {
     method: 'POST',
     headers: { Authorization: authHeader(cfg), Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify({ body: textToAdf(t) }),
   });
-  if (res.status === 401 || res.status === 403) throw new Error(`Jira ${res.status} : commentaire refusé (droits ?)`);
+  if (res.status === 401 || res.status === 403) throw new Error(t('err.jira.comment-denied', { status: res.status }));
   if (res.status < 200 || res.status >= 300) throw new Error(`Jira ${res.status} ${res.statusText}${res.body ? ` : ${res.body.slice(0, 200)}` : ''}`);
   let data = {}; try { data = JSON.parse(res.body); } catch { /* corps vide */ }
   return {
@@ -602,7 +603,7 @@ async function transitions(cfg, key) {
 
 // Applique une transition (change l'état du ticket). Renvoie 204 sans corps en cas de succès.
 async function transitionIssue(cfg, key, transitionId) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const id = String(transitionId || '');
   if (!/^\d+$/.test(id)) throw new Error('Transition invalide.');
   const res = await request(jiraBase(cfg) + `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`, {
@@ -610,7 +611,7 @@ async function transitionIssue(cfg, key, transitionId) {
     headers: { Authorization: authHeader(cfg), Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify({ transition: { id } }),
   });
-  if (res.status === 401 || res.status === 403) throw new Error(`Jira ${res.status} : changement d'état refusé (droits ?)`);
+  if (res.status === 401 || res.status === 403) throw new Error(t('err.jira.transition-denied', { status: res.status }));
   if (res.status < 200 || res.status >= 300) throw new Error(`Jira ${res.status} ${res.statusText}${res.body ? ` : ${res.body.slice(0, 200)}` : ''}`);
   return { ok: true };
 }
@@ -651,7 +652,7 @@ function requestBinary(url, headers, { maxBytes = 25 * 1024 * 1024, redirects = 
 // Télécharge UNE pièce jointe (à la demande). L'ID est numérique ; l'URL est construite sur la
 // base Jira CONFIGURÉE (jamais fournie par le client) → pas de SSRF depuis l'écran.
 async function downloadAttachment(cfg, id) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   if (!/^\d+$/.test(String(id))) throw new Error('Identifiant de pièce jointe invalide.');
   const meta = await jiraGet(cfg, `/rest/api/3/attachment/${encodeURIComponent(id)}`);
   const url = `${jiraBase(cfg)}/rest/api/3/attachment/content/${encodeURIComponent(id)}`;

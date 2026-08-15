@@ -22,6 +22,7 @@
  */
 
 const db = require('./db');
+const { t } = require('../public/i18n-runtime.js');
 
 const JOUR_MS = 24 * 60 * 60 * 1000;
 
@@ -353,13 +354,13 @@ function demarrerArchivage(onLog = () => {}) {
   const passe = () => {
     try {
       const n = archiver();
-      if (n) onLog(`todos : ${n} archivée(s) après ${JOURS_AVANT_ARCHIVE} jours`);
+      if (n) onLog(t('log.notes.archived', { n, count: n, j: JOURS_AVANT_ARCHIVE }));
     } catch (e) { onLog(`archivage des todos : ${e.message}`); }
   };
   passe();
-  const t = setInterval(passe, JOUR_MS);
-  if (t.unref) t.unref();
-  return t;
+  const minuteur = setInterval(passe, JOUR_MS);
+  if (minuteur.unref) minuteur.unref();
+  return minuteur;
 }
 
 /* ------------------------------------------------------------- autolink ---- */

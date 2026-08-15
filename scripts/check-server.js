@@ -74,5 +74,31 @@ coupables.length
     : ok(`Tout champ de config accepté est écrit (${champs.length})`);
 }
 
+/* UNE MIGRATION SE JOUE APRÈS LE `CREATE TABLE` QU'ELLE RETOUCHE. Placée avant, elle lève
+   « no such table » sur une base neuve, le `catch {}` l'avale, et la colonne n'existe alors que
+   sur les bases où la table préexistait. Tout marche sur la sienne et casse chez les autres :
+   `task_target.session_note` a vécu ainsi, et faisait échouer la PREMIÈRE session de codage
+   d'une installation neuve, après avoir payé une passe d'agent. La règle était écrite dans
+   CLAUDE.md ; elle est maintenant vérifiée. */
+{
+  const lignes = fs.readFileSync(path.join(SRC, 'db.js'), 'utf8').split('\n');
+  const cree = new Map();
+  lignes.forEach((l, i) => {
+    const m = /CREATE TABLE (?:IF NOT EXISTS )?(\w+)/.exec(l);
+    if (m && !cree.has(m[1])) cree.set(m[1], i + 1);
+  });
+  const avant = [];
+  lignes.forEach((l, i) => {
+    const m = /ALTER TABLE (\w+)/.exec(l);
+    if (!m) return;
+    const c = cree.get(m[1]);
+    if (c == null) avant.push(`src/db.js:${i + 1}  ${m[1]} — ALTER sur une table jamais créée ici`);
+    else if (c > i + 1) avant.push(`src/db.js:${i + 1}  ${m[1]} — ALTER avant son CREATE (ligne ${c})`);
+  });
+  avant.length
+    ? fail('Migrations jouées AVANT le CREATE TABLE qu’elles retouchent (invisibles sur une base neuve)', avant)
+    : ok(`Toute migration suit son CREATE TABLE (${cree.size} tables)`);
+}
+
 console.log(failures ? '\nContrôles serveur : ÉCHEC\n' : '\nContrôles serveur : OK\n');
 process.exit(failures ? 1 : 0);

@@ -727,6 +727,38 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   job ends. A review on the same merge request marks the card without spinning the `Verify`
   button: a spinner pointing at the wrong command is worth less than none.
 
+- **A page open in another tab can no longer act on your behalf.** Listening on `localhost`
+  protected nothing against this: your own browser is the one sending, and a plain form on any
+  website goes out without a preflight — the routes that do not read their body ran as-is, which
+  covers wiping every report, publishing your pending comments on a real merge request with your
+  token, and launching an agent on your folders. Any request that writes while announcing a
+  foreign origin is now refused, with a message that names the likely culprit. Reads are
+  untouched, and so are requests with no origin at all — `curl` and your own scripts keep
+  working, while a browser always sends one.
+
+- **A brand-new install no longer loses its first coding session.** One migration sat before the
+  `CREATE TABLE` it patches: on a fresh database it threw "no such table", the empty `catch`
+  swallowed it, and the column only existed on databases where the table predated the migration.
+  The first coding session ran the agent for minutes, then died on `no such column:
+  session_note`, leaving the work uncommitted. The migration moved, and `npm run check` now
+  verifies that every migration follows its `CREATE TABLE` — the rule was written down, it is
+  now enforced.
+
+- **A follow-up you did not push is no longer destroyed by the next pass.** Without auto-push —
+  the default — a follow-up commits without pushing, so the local branch is the only place that
+  commit exists. The next pass realigned on `origin/<branch>` as soon as the remote branch
+  existed, and the log said "aligning". The local branch is now kept whenever it carries commits
+  the remote does not have, and the log says how many. If both sides diverged the local still
+  wins: a push refused for non-fast-forward is a failure you can see and repair, unlike an
+  overwrite.
+
+- **Everything the server writes now follows the interface language.** The interface had been
+  translated for a long time; the server had not. An English user got English screens and then,
+  the moment anything ran, a French job log and French error messages — precisely when you need
+  to understand what is happening. The job logs, error messages and job boundary lines of the
+  server modules now go through the dictionary, and a test runs the same session in both
+  languages and fails if a single accented line comes back.
+
 - **A commit message filled in after the fact is applied on the next run.** You launch a
   session, you see a badly named commit go by, you fill in the commit message field and
   relaunch — and nothing changed, because the AI finds the work already done and commits

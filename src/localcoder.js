@@ -15,6 +15,7 @@ const proc = require('./proc');
 const agentpass = require('./agentpass');
 const { getConfig } = require('./config');
 const { avecConsignes } = require('./prompts');
+const { t } = require('../public/i18n-runtime.js');
 
 const now = () => new Date().toISOString();
 
@@ -122,9 +123,9 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
     }
   }
   syncStatus(taskId);
-  onLog(`${ok}/${dirs.length} dossier(s) traité(s)`);
+  onLog(t('log.local.done', { ok, total: dirs.length }));
   // Échec total (hors annulation) → on lève pour que le job soit marqué en erreur.
-  if (!ok && !proc.isCancelled()) throw new Error('Aucun dossier n’a pu être traité');
+  if (!ok && !proc.isCancelled()) throw new Error(t('err.local.none-handled'));
 }
 
 /* Demande de correction : une nouvelle passe qui REPREND la session de chaque dossier.

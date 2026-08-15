@@ -149,11 +149,6 @@ try { db.exec("ALTER TABLE config ADD COLUMN github_url TEXT DEFAULT ''"); } cat
 try { db.exec("ALTER TABLE config ADD COLUMN github_token TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 // Migration : colonne d'erreur persistée par MR (texte complet, non tronqué).
 try { db.exec('ALTER TABLE mr ADD COLUMN last_error TEXT'); } catch { /* déjà présente */ }
-/* Pourquoi la session d'agent en cours n'est PAS celle qu'on avait demandée. Le repli sur une
-   session neuve est délibéré (mieux vaut travailler que renoncer), mais il remplace un
-   identifiant que l'utilisateur a saisi lui-même : le taire reviendrait à lui faire croire que
-   sa session continue. Une ligne de journal ne suffit pas — elle défile. */
-try { db.exec('ALTER TABLE task_target ADD COLUMN session_note TEXT'); } catch { /* déjà présente */ }
 /* De QUOI un job s'occupe-t-il. La table ne portait que `current_mr_id` : rien ne reliait un job
    à la session de codage qu'il exécutait, donc impossible de dire après coup « ce job-là, c'était
    la session sur api-core ». C'est ce qui rend le journal d'activité lisible. */
@@ -331,6 +326,11 @@ try { db.exec('ALTER TABLE task ADD COLUMN ask_questions INTEGER DEFAULT 0'); } 
 // Handle de reprise de la session d'agent, persisté par cible (le cwd fait partie de son
 // identité — cf. src/agentsession.js). `questions_json` porte les questions posées et les
 // réponses de l'utilisateur pour cette cible.
+/* Pourquoi la session d'agent en cours n'est PAS celle qu'on avait demandée. Le repli sur une
+   session neuve est délibéré (mieux vaut travailler que renoncer), mais il remplace un
+   identifiant que l'utilisateur a saisi lui-même : le taire reviendrait à lui faire croire que
+   sa session continue. Une ligne de journal ne suffit pas — elle défile. */
+try { db.exec('ALTER TABLE task_target ADD COLUMN session_note TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task_target ADD COLUMN session_key TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task_target ADD COLUMN session_backend TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task_target ADD COLUMN session_cwd TEXT'); } catch { /* déjà présente */ }

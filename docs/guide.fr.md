@@ -1847,6 +1847,16 @@ le réseau. L'exposer est un **opt-in explicite** via `HOST=0.0.0.0` — à **r�
 et exécute des opérations puissantes sur ta machine. Aucune donnée n'est envoyée ailleurs que vers les
 services que **tu** configures (ton GitLab, ton GitHub, ton Jira, ton CLI d'agent).
 
+**Une page ouverte dans un autre onglet ne peut pas agir à ta place.** Écouter sur `localhost` ne protège
+de rien contre ça : c'est **ton** navigateur qui émet, et n'importe quel site peut lui faire poster chez
+Mergerie — un simple formulaire part **sans préflight**, et les routes qui ne lisent pas leur corps
+s'exécuteraient telles quelles (effacer tous les rapports, publier tes commentaires en attente sur une vraie
+merge request avec ton jeton, lancer un agent sur tes dossiers). Le code étant public, la liste des routes
+n'est un secret pour personne. **Toute requête qui écrit et qui annonce une origine étrangère est donc
+refusée** (403), avec un message qui nomme le coupable probable. Ce qui **n'est pas** refusé : les lectures
+(elles ne changent rien, et la réponse reste illisible pour la page tierce) et les requêtes **sans** origine
+— `curl`, un script à toi, l'onglet *Commandes* : un navigateur, lui, en envoie toujours une.
+
 **Permissions de l'agent IA (« mode yolo »).** L'agent tourne avec ses garde-fous de permissions
 **désactivés** (« yolo ») car les sessions de codage l'exigent : il doit pouvoir créer, modifier et
 supprimer des fichiers sans confirmation à chaque étape. Son **rayon d'action nominal est le clone de

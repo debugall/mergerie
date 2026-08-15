@@ -5,6 +5,7 @@ const path = require('path');
 const { DEFAULT_CLONE_DIR, ensureDir, slugify } = require('./paths');
 const forge = require('./forge');
 const proc = require('./proc');
+const { t } = require('../public/i18n-runtime.js');
 
 // Émet les lignes complètes d'un buffer vers onLog, renvoie le reste incomplet.
 function emitLines(buf, onLog) {
@@ -29,7 +30,7 @@ function run(cmd, args, opts = {}) {
   const onLog = opts.onLog;
   const secrets = opts.redactSecrets || [];
   return new Promise((resolve, reject) => {
-    if (proc.isCancelled()) return reject(new Error('Job arrêté par l\'utilisateur.'));
+    if (proc.isCancelled()) return reject(new Error(t('err.job.stopped')));
     if (onLog) onLog(`$ ${cmd} ${redact(args, secrets).join(' ')}`);
     const child = spawn(cmd, args, { ...opts });
     proc.setActive(child);
@@ -43,9 +44,9 @@ function run(cmd, args, opts = {}) {
     child.on('close', (code) => {
       proc.clearActive(child);
       if (onLog) { if (obuf) onLog(obuf); if (ebuf) onLog(ebuf); }
-      if (proc.isCancelled()) return reject(new Error('Job arrêté par l\'utilisateur.'));
+      if (proc.isCancelled()) return reject(new Error(t('err.job.stopped')));
       if (code === 0) resolve({ stdout, stderr });
-      else reject(new Error(`${cmd} ${redact(args, secrets).join(' ')} a échoué (code ${code}) : ${stderr || stdout}`));
+      else reject(new Error(t('err.cmd.failed', { cmd: `${cmd} ${redact(args, secrets).join(' ')}`, code, sortie: stderr || stdout })));
     });
   });
 }
@@ -105,7 +106,7 @@ function cloneUrl(cfg, repo) {
 // Clone si absent, sinon fetch. Renvoie le chemin du clone.
 // Récupère/initialise les submodules (best-effort : n'échoue pas la review).
 async function updateSubmodules(dir, tls, secrets, onLog) {
-  onLog('mise à jour des submodules…');
+  onLog(t('log.git.submodules'));
   try {
     await run('git', [...tls, 'submodule', 'sync', '--recursive'], { cwd: dir, onLog, redactSecrets: secrets });
     await run('git', [...tls, 'submodule', 'update', '--init', '--recursive'], { cwd: dir, onLog, redactSecrets: secrets });
@@ -338,6 +339,17 @@ async function aheadOf(cwd, base) {
   } catch { return 0; } // base inconnue localement : on ne conclut rien
 }
 
+/* Combien de commits la branche LOCALE porte que la distante n'a pas. Sert à ne pas jeter du
+   travail : un commit non poussé n'existe nulle part ailleurs, et se réaligner sur origin le
+   supprimerait sans que rien ne le dise. Branche distante inconnue → 0, l'appelant a déjà
+   vérifié qu'elle existe. */
+async function nonPousses(cwd, branch) {
+  try {
+    const { stdout } = await run('git', ['rev-list', '--count', `origin/${branch}..refs/heads/${branch}`], { cwd });
+    return Number(stdout.trim()) || 0;
+  } catch { return 0; }
+}
+
 // La branche est-elle déjà sur origin, au même commit que HEAD ?
 async function isPushed(cwd, branch) {
   try {
@@ -368,7 +380,7 @@ async function resetWorktree(cwd, onLog = () => {}) {
     await run('git', ['checkout', '--', '.'], { cwd, onLog });
     await run('git', ['clean', '-fd'], { cwd, onLog });
   } catch (e) {
-    onLog(`⚠ remise à zéro partielle : ${e.message.split('\n')[0]}`);
+    onLog(t('log.git.reset-partial', { message: e.message.split('\n')[0] }));
   }
 }
 
@@ -398,13 +410,13 @@ async function ensureCleanWorktree(cwd, onLog = () => {}) {
   }
   if (!dirty) return false;
   const n = dirty.split('\n').length;
-  onLog(`⚠ worktree non propre (${n} entrée·s) — vestige d'une session interrompue, remise à zéro`);
+  onLog(t('log.git.dirty', { n, s: n > 1 ? 'ies' : 'y' }));
   await resetWorktree(cwd, onLog);
   return true;
 }
 
 module.exports = {
-  aheadOf, isPushed, renommerDernierCommit,
+  aheadOf, isPushed, renommerDernierCommit, nonPousses,
   resetWorktree,
   ensureRepo, targetedDiff, diffRange, tagAuthor, branchesForCommit, branchesForCommitDetailed, cloneDirFor, authUrl, run, secretsOf, tokenFor,
   defaultBranch, ensureCleanWorktree, refExists, createBranchFrom, checkoutBranch, commitAll, headSha, branchDiff, pushBranch, gitTlsArgs,

@@ -557,6 +557,39 @@ describe('Sessions de dev de bout en bout', () => {
     assert.equal(messages()[0], 'Et documente-la', 'et le suivi dit ce que le suivi demandait');
   });
 
+  /* UN COMMIT NON POUSSÉ NE SE PERD PAS À LA PASSE SUIVANTE. Sans auto-push — le défaut —, un
+     suivi commite sans pousser : la branche locale du clone est alors le SEUL endroit où ce
+     commit existe. Repartir de `origin/<branche>` le supprimait, et le journal disait
+     « alignement » : le suivi d'après recodait sur une branche amputée, et la branche poussée
+     ensuite ne portait plus la première correction. */
+  test('un suivi non poussé survit au suivi suivant', async () => {
+    const clone = path.join(app.dataDir, 'clones', 'grp__app');
+    const sujets = () => git(clone, ['log', '--format=%s', 'origin/main..HEAD']).trim().split('\n').filter(Boolean);
+
+    const { body: t } = await app.api('POST', '/api/tasks', {
+      prompt: 'Ajoute un compteur', targets: [{ repo_id: repoId, branch: 'feat/garde' }],
+    });
+    await app.api('POST', `/api/tasks/${t.id}/run`);
+    await waitForJobs(app.api);
+    const tgId = (await app.api('GET', `/api/tasks/${t.id}`)).body.task.targets[0].id;
+
+    // On POUSSE ce premier commit : c'est ce qui fait exister `origin/feat/garde`, donc le
+    // réalignement — sans branche distante, il n'y avait rien à écraser.
+    await app.api('POST', `/api/tasks/${t.id}/targets/${tgId}/push`);
+    await waitForJobs(app.api);
+
+    // Un suivi, non poussé : il n'existe QUE dans le clone.
+    await app.api('POST', `/api/tasks/${t.id}/followup`, { instruction: 'Renomme la variable' });
+    await waitForJobs(app.api);
+    assert.deepEqual(sujets(), ['Renomme la variable', 'Ajoute un compteur'], 'deux commits, le suivi en tête');
+
+    // Un second suivi : c'est ici que le premier disparaissait.
+    await app.api('POST', `/api/tasks/${t.id}/followup`, { instruction: 'Et documente-la' });
+    await waitForJobs(app.api);
+    assert.deepEqual(sujets(), ['Et documente-la', 'Renomme la variable', 'Ajoute un compteur'],
+      'le suivi non poussé est toujours là — c’était le seul endroit où il existait');
+  });
+
   test('une session en échec consigne son erreur et l’efface à la demande', async () => {
     const { body: task } = await app.api('POST', '/api/tasks', {
       prompt: 'suivi impossible', targets: [{ repo_id: repoId, branch: 'jamais/creee' }],

@@ -20,6 +20,7 @@
  */
 
 const db = require('./db');
+const { t } = require('../public/i18n-runtime.js');
 
 const JOUR_MS = 24 * 60 * 60 * 1000;
 
@@ -60,14 +61,14 @@ function demarrer(lireJours, onLog = () => {}) {
     try {
       const r = purger(lireJours());
       if (r && (r.job_log || r.job || r.feed)) {
-        onLog(`rétention ${r.jours} j : ${r.job_log} ligne(s) de journal, ${r.job} job(s), ${r.feed} événement(s) supprimés`);
+        onLog(t('log.retention.done', { jours: r.jours, logs: r.job_log, jobs: r.job, feed: r.feed }));
       }
-    } catch (e) { onLog(`rétention : ${e.message}`); }   // jamais bloquant au démarrage
+    } catch (e) { onLog(t('log.retention.error', { message: e.message })); }   // jamais bloquant au démarrage
   };
   passe();
-  const t = setInterval(passe, JOUR_MS);
-  if (t.unref) t.unref();
-  return t;
+  const minuteur = setInterval(passe, JOUR_MS);
+  if (minuteur.unref) minuteur.unref();
+  return minuteur;
 }
 
 module.exports = { purger, demarrer, JOUR_MS };

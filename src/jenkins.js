@@ -23,6 +23,7 @@
  * L'outil ne surveille rien de lui-même : aucune requête n'est émise sans un geste. */
 
 const { makeAgentFactory, request } = require('./httpreq');
+const { t } = require('../public/i18n-runtime.js');
 
 /* Même convention que les forges : `<SERVICE>_CA_CERT` pour épingler le CA interne,
    `<SERVICE>_INSECURE_TLS=1` pour dépanner. Un Jenkins d'entreprise est presque toujours
@@ -85,15 +86,15 @@ async function appel(cfg, chemin, { method = 'GET', headers = {}, body } = {}) {
 function verifier(res, quoi) {
   if (res.status >= 200 && res.status < 400) return res;
   if (res.status === 401 || res.status === 403) {
-    throw new Error(`Jenkins a refusé l'accès (${res.status}) — vérifie l'utilisateur et le jeton d'API.`);
+    throw new Error(t('err.jenkins.denied', { status: res.status }));
   }
   if (res.status === 404) throw new Error(`Jenkins : ${quoi} introuvable (404).`);
-  throw new Error(`Jenkins a répondu ${res.status} ${res.statusText || ''}`.trim());
+  throw new Error(t('err.jenkins.status', { status: res.status, texte: res.statusText || '' }).trim());
 }
 
 function json(res, quoi) {
   verifier(res, quoi);
-  try { return JSON.parse(res.body || '{}'); } catch { throw new Error(`Jenkins : réponse illisible pour ${quoi}.`); }
+  try { return JSON.parse(res.body || '{}'); } catch { throw new Error(t('err.jenkins.unreadable', { quoi })); }
 }
 
 /* La couleur de Jenkins, traduite une fois pour toutes. `notbuilt` et `disabled` sont deux
@@ -297,7 +298,7 @@ const ARBRE = (n) => (n === 0 ? `jobs[${CHAMPS_JOB}]`
 // La liste complète, aplatie et triée. Le filtrage se fait à l'écran : il en faut un, une
 // installation d'équipe en compte des centaines.
 async function lister(cfg) {
-  if (!isConfigured(cfg)) throw new Error('Jenkins non configuré (URL, utilisateur, jeton requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jenkins.not-configured'));
   const res = await appel(cfg, `/api/json?tree=${encodeURIComponent(ARBRE(3))}`);
   const data = json(res, 'la liste des jobs');
   /* PAR DATE DE DERNIER LANCEMENT, le plus récent d'abord : dans une liste de trois cents
@@ -343,7 +344,7 @@ function blocsParametres(html) {
 }
 
 const attr = (bloc, re) => { const m = bloc.match(re); return m ? m[1] : null; };
-const decode = (t) => String(t).replace(/&quot;/g, '"').replace(/&#0?39;/g, "'")
+const decode = (s) => String(s).replace(/&quot;/g, '"').replace(/&#0?39;/g, "'")
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
 
 /* Ce que la page dit d'un paramètre : ses options, celle qui est sélectionnée, et s'il en
@@ -411,7 +412,7 @@ const BUILDS_PAR_DEFAUT = 10;
 const BUILDS_MAX = 200;
 
 async function detail(cfg, chemin, profondeur = BUILDS_PAR_DEFAUT) {
-  if (!isConfigured(cfg)) throw new Error('Jenkins non configuré (URL, utilisateur, jeton requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jenkins.not-configured'));
   /* `parameterDefinitions[*]` — l'étoile, et non une liste de champs. Chaque plugin de
      paramètre expose les siens : le choix multiple standard met ses valeurs dans `choices`,
      mais d'autres les mettent ailleurs, et un champ non demandé n'arrive PAS. Le résultat se
@@ -472,7 +473,7 @@ async function crumb(cfg) {
    rien ne le signale. Jenkins répond 201 avec l'URL de l'élément de FILE (pas du build) :
    le numéro n'existe pas encore, on rend donc ce qu'on a. */
 async function lancer(cfg, chemin, parametres) {
-  if (!isConfigured(cfg)) throw new Error('Jenkins non configuré (URL, utilisateur, jeton requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jenkins.not-configured'));
   const entrees = Object.entries(parametres || {}).filter(([k]) => k);
   const c = await crumb(cfg);
   const corps = new URLSearchParams(entrees.map(([k, v]) => [k, v == null ? '' : String(v)])).toString();
@@ -494,9 +495,9 @@ async function lancer(cfg, chemin, parametres) {
    mégaoctets, et c'est la FIN qu'on veut voir — l'erreur est en bas. */
 const MAX_LOG = 200_000;
 async function console_(cfg, chemin, numero) {
-  if (!isConfigured(cfg)) throw new Error('Jenkins non configuré (URL, utilisateur, jeton requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jenkins.not-configured'));
   const n = Number(numero) || 0;
-  if (!n) throw new Error('numéro de build manquant');
+  if (!n) throw new Error(t('err.jenkins.no-build'));
   const res = await appel(cfg, `${cheminUrl(chemin)}/${n}/consoleText`, { headers: { Accept: 'text/plain' } });
   verifier(res, `la console du build #${n}`);
   const texte = res.body || '';
@@ -509,7 +510,7 @@ async function console_(cfg, chemin, numero) {
 // Test de connexion : qui suis-je, et Jenkins me répond-il ? Le nom rendu prouve que le
 // couple utilisateur/jeton est le bon, pas seulement que l'URL existe.
 async function tester(cfg) {
-  if (!isConfigured(cfg)) throw new Error('Jenkins non configuré (URL, utilisateur, jeton requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jenkins.not-configured'));
   const res = await appel(cfg, '/me/api/json?tree=id,fullName');
   const d = json(res, 'le compte courant');
   const jobs = await lister(cfg);

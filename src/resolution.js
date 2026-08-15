@@ -14,6 +14,7 @@
 
 const crypto = require('crypto');
 const git = require('./git');
+const { t } = require('../public/i18n-runtime.js');
 
 const SEVERITIES = ['blocker', 'major', 'minor', 'info'];
 
@@ -31,7 +32,7 @@ function splitFindings(md) {
   return { markdown: cleaned, block };
 }
 
-const normTitle = (t) => String(t || '')
+const normTitle = (titre) => String(titre || '')
   .toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   .replace(/[^a-z0-9]+/g, ' ').trim();
 const normFile = (f) => String(f || '').trim().replace(/^\.?\//, '');
@@ -132,7 +133,7 @@ async function diffFindings({ cwd, current, previous, oldSha, newSha, onLog = ()
     n_resolved: rows.filter((r) => r.status === 'resolved').length,
     n_disappeared: rows.filter((r) => r.status === 'disappeared').length,
   };
-  onLog(`suivi de résolution : ${counts.n_resolved} résolu(s), ${counts.n_persistent} persistant(s), ${counts.n_new} nouveau(x), ${counts.n_disappeared} disparu(s)`);
+  onLog(t('log.resolution.summary', { resolus: counts.n_resolved, persistants: counts.n_persistent, nouveaux: counts.n_new, disparus: counts.n_disappeared }));
   return { rows, counts };
 }
 

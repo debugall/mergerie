@@ -13,6 +13,7 @@ const path = require('path');
 const copilot = require('./copilot');
 const agentsession = require('./agentsession');
 const { DATA_DIR, ensureDir } = require('./paths');
+const { t } = require('../public/i18n-runtime.js');
 
 let running = false; // une exécution du banc d'essai à la fois
 
@@ -30,11 +31,11 @@ function dryRunResult(backend) {
 }
 
 async function runSessionTest(onLog = () => {}) {
-  if (running) throw new Error('Un test de reprise est déjà en cours.');
+  if (running) throw new Error(t('err.aisession.running'));
   running = true;
   try {
     const backend = agentsession.backendName();
-    if (copilot.isDryRun()) { onLog('Dry-run : agent indisponible, résultat simulé.'); return dryRunResult(backend); }
+    if (copilot.isDryRun()) { onLog(t('log.aisession.dry-run')); return dryRunResult(backend); }
 
     const marker = `MARQUEUR-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
     // Le cwd fait partie de l'identité de session : le MÊME pour les deux passes.
@@ -43,16 +44,16 @@ async function runSessionTest(onLog = () => {}) {
     const P1 = `Ceci est un test technique de reprise de session. Mémorise ce marqueur secret : ${marker}. Ne fais rien d'autre et réponds uniquement par « ok ».`;
     const P2 = 'Rappelle-moi le marqueur secret que je t’ai demandé de mémoriser dans le message précédent. Réponds UNIQUEMENT avec le marqueur, sans aucun autre texte.';
 
-    onLog(`Backend : ${backend} · clé : ${key}`);
-    onLog('— Passe 1 : création de la session + mémorisation du marqueur —');
+    onLog(t('log.aisession.backend', { backend, key }));
+    onLog(t('log.aisession.pass1'));
     const r1 = await agentsession.runInSession({ key, prompt: P1, cwd, resume: false, onLog });
 
-    onLog('— Passe 2 : reprise de la MÊME session + rappel du marqueur —');
+    onLog(t('log.aisession.pass2'));
     const r2 = await agentsession.runInSession({ key, handle: r1.handle, prompt: P2, cwd, resume: true, onLog });
 
     const recalled = String(r2.text || '').toUpperCase().includes(marker);
     const sameSession = (r1.sessionId && r2.sessionId) ? (r1.sessionId === r2.sessionId) : null;
-    onLog(recalled ? '✓ Marqueur restitué : la reprise conserve le contexte.' : '✗ Marqueur non restitué : la reprise n’a pas conservé le contexte.');
+    onLog(t(recalled ? 'log.aisession.ok' : 'log.aisession.ko'));
 
     return {
       dryRun: false, backend, handle: r1.handle, cwd, marker,

@@ -24,6 +24,7 @@ const os = require('os');
 const path = require('path');
 const { zipper } = require('./zip');
 const { DATA_DIR, DB_PATH, REVIEWS_DIR, TICKETS_DIR, TASKS_DIR } = require('./paths');
+const { t } = require('../public/i18n-runtime.js');
 
 // 256 Mo : bien au-delà d'un usage normal (une base de quelques Mo, des rapports en Markdown),
 // assez bas pour qu'un dossier qui aurait dérapé soit signalé au lieu de faire tomber le serveur.
@@ -87,7 +88,7 @@ async function construire(db, { maintenant = new Date() } = {}) {
       try { data = fs.readFileSync(abs); } catch { continue; }   // fichier disparu entre-temps
       total += data.length;
       if (total > MAX_ARCHIVE) {
-        const err = new Error(`sauvegarde trop volumineuse (> ${Math.round(MAX_ARCHIVE / 1024 / 1024)} Mo) — arrêtée sur ${nom}/${rel}`);
+        const err = new Error(t('err.backup.too-big', { mo: Math.round(MAX_ARCHIVE / 1024 / 1024), chemin: `${nom}/${rel}` }));
         err.status = 400;
         throw err;
       }

@@ -24,6 +24,7 @@ const verify = require('./verify');
 const demoVerify = require('./demo-verify');
 const { DATA_DIR, ensureDir } = require('./paths');
 const { stripAnsi } = require('../public/ansi-runtime.js');
+const { t } = require('../public/i18n-runtime.js');
 
 const WORKTREES_DIR = path.join(DATA_DIR, 'worktrees');
 const GRACE_KILL_MS = 10_000;   // délai entre SIGTERM et SIGKILL
@@ -83,7 +84,7 @@ function appelerScript(verifier, role, repos, onLog = () => {}) {
        rapport à écrire — puis SIGKILL s'il s'accroche. Sans le second, un script bloqué
        retiendrait la file pour toujours. */
     const minuteur = setTimeout(() => {
-      onLog(`délai dépassé (${verifier.timeout_s} s) : arrêt du vérificateur`);
+      onLog(t('log.verify.timeout', { n: verifier.timeout_s }));
       try { child.kill('SIGTERM'); } catch { /* déjà mort */ }
       tueur = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* déjà mort */ } }, GRACE_KILL_MS);
       terminer({ erreur: `délai dépassé (${verifier.timeout_s} s)`, stderr });
@@ -92,10 +93,10 @@ function appelerScript(verifier, role, repos, onLog = () => {}) {
     // Au-delà de MAX_REPONSE la réponse est déjà invalide : inutile d'accumuler des Mo en mémoire.
     child.stdout.on('data', (c) => { if (stdout.length <= verify.MAX_REPONSE) stdout += c; });
     child.stderr.on('data', (c) => {
-      const t = String(c);
-      stderr += t;
+      const bloc = String(c);
+      stderr += bloc;
       if (stderr.length > verify.MAX_LOG) stderr = stderr.slice(-verify.MAX_LOG);
-      for (const l of t.split('\n')) if (l.trim()) onLog(l.trim());
+      for (const l of bloc.split('\n')) if (l.trim()) onLog(l.trim());
     });
     child.on('error', (e) => terminer({ erreur: `échec du lancement : ${e.message}`, stderr }));
     child.on('close', (code) => {
@@ -192,24 +193,24 @@ function detailDesTests(verifier, dir, resultats, onLog, prefixe = null) {
     const abs = path.resolve(dir, rel);
     // Le chemin est fourni par l'utilisateur mais résolu DANS le dépôt : pas d'évasion.
     if (!abs.startsWith(path.resolve(dir) + path.sep)) {
-      onLog(`${ou}rapport ignoré : ${rel} sort du dépôt testé`);
+      onLog(t('log.verify.report-outside', { ou, rel }));
     } else if (!fs.existsSync(abs)) {
       onLog(`${ou}rapport ${rel} absent — les commandes ne l'ont pas produit`);
     } else {
       const j = verify.parserJUnit(fs.readFileSync(abs, 'utf8'));
       if (j) {
-        onLog(`${ou}rapport ${rel} lu : ${j.total} test(s), ${j.tests.length} en échec`);
+        onLog(t('log.verify.report-read', { ou, rel, total: j.total, failed: j.tests.length }));
         return nommer({ ...j, source: 'junit', complet: true });
       }
       onLog(`${ou}rapport ${rel} illisible (JUnit attendu) — on continue sans`);
     }
   }
   if (!verifier.parse_tap) return null;
-  const t = verify.parserTap(resultats.map((r) => r.output).join('\n'));
-  if (!t) return null;
-  if (t.complet === false) onLog(`${ou}TAP partiel : ${t.racines} entrées lues sur ${t.plan} annoncées (sortie tronquée)`);
-  else onLog(`${ou}TAP reconnu : ${t.total} test(s), ${t.tests.length} en échec`);
-  return nommer({ ...t, source: 'tap' });
+  const tap = verify.parserTap(resultats.map((r) => r.output).join('\n'));
+  if (!tap) return null;
+  if (tap.complet === false) onLog(t('log.verify.tap-partial', { ou, lues: tap.racines, plan: tap.plan }));
+  else onLog(t('log.verify.tap-ok', { ou, total: tap.total, failed: tap.tests.length }));
+  return nommer({ ...tap, source: 'tap' });
 }
 
 /* Joue la liste dans CHAQUE dépôt visé.
@@ -248,7 +249,7 @@ async function lancerCommandes(verifier, commandes, repos, onLog = () => {}) {
       duRepo.push({ command: brut, repo: r.name, code: res.code, duration_ms: res.duration_ms, output: res.output });
       if (res.timedOut) return { erreur: `délai dépassé (${verifier.timeout_s} s) pendant « ${brut} »` };
       if (res.code !== 0) {
-        onLog(`« ${brut} » sort en ${res.code} — les commandes suivantes ne sont pas lancées`);
+        onLog(t('log.verify.cmd-failed', { cmd: brut, code: res.code }));
         break;
       }
       onLog(`« ${brut} » : ok (${Math.round(res.duration_ms / 1000)} s)`);
@@ -301,7 +302,7 @@ function gcWorktrees(onLog = () => {}) {
     try { fs.rmSync(path.join(WORKTREES_DIR, nom), { recursive: true, force: true }); n += 1; }
     catch { /* un répertoire récalcitrant ne doit pas empêcher le serveur de démarrer */ }
   }
-  if (n) onLog(`${n} worktree(s) de vérification orphelin(s) supprimé(s)`);
+  if (n) onLog(t('log.verify.worktrees', { n, count: n }));
   return n;
 }
 
@@ -348,10 +349,10 @@ async function inspecterWorkdir(repo, workdir) {
    Jamais de `stash` automatique : déplacer le travail non commité de quelqu'un sans le lui
    dire est exactement le genre de service qu'on ne rend pas. On refuse, il décide. */
 async function preparerInPlace(repo, ligne, sha, noter) {
-  if (!ligne.checkout_allowed) throw new Error(`checkout non autorisé sur ${ligne.workdir}`);
+  if (!ligne.checkout_allowed) throw new Error(t('err.verify.no-checkout', { workdir: ligne.workdir }));
   const etat = await inspecterWorkdir(repo, ligne.workdir);
   if (!etat.ok) throw new Error(etat.raison);
-  if (etat.dirty) throw new Error(`${ligne.workdir} a des modifications non commitées — vérification refusée`);
+  if (etat.dirty) throw new Error(t('err.verify.dirty', { workdir: ligne.workdir }));
 
   // La ref d'origine : une branche si on est dessus, sinon le SHA détaché.
   const refOrigine = etat.branche && etat.branche !== 'HEAD' ? etat.branche : etat.sha;
@@ -429,9 +430,9 @@ const nowIso = () => new Date().toISOString();
  */
 async function executerVerification(verificationId, cfg, onLog = () => {}) {
   const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
-  if (!v) throw new Error('vérification introuvable');
+  if (!v) throw new Error(t('err.verify.not-found'));
   const verifier = db.prepare('SELECT * FROM verifier WHERE id = ?').get(v.verifier_id);
-  if (!verifier) throw new Error('vérificateur introuvable');
+  if (!verifier) throw new Error(t('err.verify.verifier-gone'));
   const cibles = JSON.parse(v.targets_json || '[]');
   const commandes = db.prepare('SELECT command FROM verifier_command WHERE verifier_id = ? ORDER BY position')
     .all(verifier.id).map((c) => c.command);
@@ -488,7 +489,7 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
         ciblesResolues = [];
         for (const c of cibles) {
           const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(c.repo_id);
-          if (!repo) throw new Error(`dépôt ${c.repo_id} introuvable`);
+          if (!repo) throw new Error(t('err.verify.repo-gone', { id: c.repo_id }));
           ciblesResolues.push({ ...c, base_sha: await resoudre(repo, c.base_sha), head_sha: await resoudre(repo, c.head_sha) });
         }
         db.prepare('UPDATE verification SET targets_json = ? WHERE id = ?')
@@ -507,7 +508,7 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
         if (c.mode === 'in_place') {
           const ligne = db.prepare('SELECT * FROM verifier_repo WHERE verifier_id = ? AND repo_id = ?')
             .get(verifier.id, c.repo_id);
-          if (!ligne) throw new Error(`dépôt ${repo.project} non couvert par ce vérificateur`);
+          if (!ligne) throw new Error(t('err.verify.repo-uncovered', { project: repo.project }));
           // Une seule fois par répertoire : on retient l'état d'AVANT, pas celui du run précédent.
           if (!aRestaurer.some((r) => r.workdir === ligne.workdir)) {
             aRestaurer.push(await preparerInPlace(repo, ligne, c[champ], noter));
@@ -637,7 +638,7 @@ async function commenterSurForge(verificationId, cfg, onLog) {
     await forge.clientFor(mr).postMrNote(cfg, mr.project, mr.iid, body);
     postees.push(`${mr.project}!${mr.iid}`);
   }
-  if (postees.length && onLog) onLog(`verdict commenté sur ${postees.join(', ')}`);
+  if (postees.length && onLog) onLog(t('log.verify.commented', { liste: postees.join(', ') }));
   return postees;
 }
 
