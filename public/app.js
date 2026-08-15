@@ -268,10 +268,14 @@ function explainError(msg) {
 }
 
 // mrId / taskId : permet d'effacer l'erreur EN BASE (sinon elle revient au refresh).
-function errorBox(text, mrId, taskId) {
+/* `localId` : une session hors dépôt a sa propre table, donc sa propre route d'effacement.
+   Sans lui, la croix retirait l'encart de l'écran et l'erreur revenait au rafraîchissement
+   suivant — le bouton avait l'air de marcher, ce qui est pire que pas de bouton. */
+function errorBox(text, mrId, taskId, localId) {
   const hint = errorHint(text);
   const hintHtml = hint ? `<div class="errhint">${esc(hint)}</div>` : '';
-  const clear = mrId ? ` data-clear-mr="${mrId}"` : (taskId ? ` data-clear-task="${taskId}"` : '');
+  const clear = mrId ? ` data-clear-mr="${mrId}"`
+    : (taskId ? ` data-clear-task="${taskId}"` : (localId ? ` data-clear-local="${localId}"` : ''));
   return `<div class="errbox"><div class="errhead"><span>${svgIco('alert')} ${tr('ui.error')}</span>`
     + `<span class="errbtns"><button class="btn btn-sm errcopy" title="${esc(tr('err.copy-title'))}">${tr('ui.copy')}</button>`
     + `<button class="btn btn-icon btn-sm btn-danger errclear"${clear} title="${esc(tr('err.clear-title'))}"><svg class=\"ico ico-sm\"><use href=\"#i-close\"/></svg></button></span></div>`
@@ -293,7 +297,10 @@ document.addEventListener('click', async (e) => {
   const box = b.closest('.errbox');
   const mrId = b.dataset.clearMr;
   const taskId = b.dataset.clearTask;
-  const url = mrId ? `/mrs/${mrId}/clear-error` : (taskId ? `/tasks/${taskId}/clear-error` : null);
+  const localId = b.dataset.clearLocal;
+  const url = mrId ? `/mrs/${mrId}/clear-error`
+    : (taskId ? `/tasks/${taskId}/clear-error`
+      : (localId ? `/local-tasks/${localId}/clear-error` : null));
   if (url) { try { await api(url, { method: 'POST' }); } catch { /* on ferme quand même */ } }
   box.remove();
 });
@@ -4370,6 +4377,7 @@ async function openLocalTaskEdit(id) {
   applyKindToModal('local');
   f.prompt.value = t.prompt || '';
   if (f.label) f.label.value = t.label || '';
+  if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
   if (f.session_id) f.session_id.value = sharedSessionKey(t.dirs);
   $('#taskModalTitle').textContent = tr('local.edit-title');
   $('#taskExistingImgs').textContent = (d.images && d.images.length)
@@ -4466,6 +4474,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
           label: f.label ? f.label.value : '',
           prompt: f.prompt.value, dirs, images: taskNewImages,
           session_id: f.session_id ? f.session_id.value : '',
+          ask_questions: f.ask_questions ? f.ask_questions.checked : false,
         } }));
         toast(tr('toast.session-mise-a-jour'));
         taskNewImages = []; renderTaskPreviews(); closeTaskModal(); loadTasks();
@@ -4474,6 +4483,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
       const created = await busy(btn, () => api('/local-tasks', { method: 'POST', body: {
         label: f.label ? f.label.value : '',
         prompt: f.prompt.value, dirs, images: taskNewImages, session_id: f.session_id ? f.session_id.value : '',
+        ask_questions: f.ask_questions ? f.ask_questions.checked : false,
       } }));
       if (launchAfterCreate) {
         await api(`/local-tasks/${created.id}/run`, { method: 'POST' });
@@ -4795,15 +4805,24 @@ $('#taskLocalAddDir') && $('#taskLocalAddDir').addEventListener('click', () => {
   localPicks.push(''); renderLocalDirRows();
 });
 
-function localDirLine(d) {
+function localDirLine(d, t) {
   const st = TASK_STATUS[d.status] || { label: d.status, cls: '' };
   return `<div class="target-line"><span class="tag ${st.cls}">${st.label}</span>`
     + `<code class="local-dir-path">${esc(d.path)}</code>`
     + `${d.last_error ? `<span class="muted" title="${esc(d.last_error)}">${svgIco('alert')}</span>` : ''}`
     + `<span class="spacer"></span>`
+    /* RELANCER CE DOSSIER-LÀ. Les dossiers d'une session sont indépendants : refaire les
+       quatre qui ont réussi pour rattraper le cinquième coûte quatre passes d'agent. Pas
+       proposé pendant que ça tourne, ni sur un dossier qui attend une réponse. */
+    + `${['new', 'done', 'error'].includes(d.status) && t
+      ? `<button class="btn btn-sm" data-ldrun="${d.id}" data-ltask="${t.id}" title="${esc(tr('local.title.run-dir'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${tr('task.btn.run-target')}</button>` : ''}`
     // Retour de l'agent : la seule fenêtre sur son travail quand le dossier n'a pas bougé.
     + `${d.output_path ? `<button class="btn btn-sm" data-ldout="${d.id}" data-ltask="${d.task_id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}`
-    + `${resumeCmdBtn(d.resume_cmd)}</div>`;
+    + `${resumeCmdBtn(d.resume_cmd)}</div>`
+    /* Hors dépôt, CHAQUE DOSSIER a sa session d'agent : ses questions sont les siennes, et
+       la réponse ne repart que dans celui-là. Un formulaire par dossier, donc. */
+    + `${d.status === 'needs_input' && d.questions && d.questions.length && t
+      ? questionsForm(t, d, `/local-tasks/${t.id}/dirs/${d.id}/answer`) : ''}`;
 }
 
 function localCard(t) {
@@ -4825,7 +4844,7 @@ function localCard(t) {
       ${libelleBlock(t)}
       ${promptBlock(t.prompt)}
       ${toggleProjetsHtml('local', t.id, n)}
-      <div class="targets"${projetsVisibles('local', t.id, n) ? '' : ' hidden'}>${(t.dirs || []).map(localDirLine).join('')}</div>
+      <div class="targets"${projetsVisibles('local', t.id, n) ? '' : ' hidden'}>${(t.dirs || []).map((d) => localDirLine(d, t)).join('')}</div>
       ${suiviBlock(t, 'l')}
       <div class="mr-create followup" data-lfollowform="${t.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('local.followup.ph'))}">${esc(t.followup_draft || '')}</textarea>
@@ -4837,6 +4856,10 @@ function localCard(t) {
     </div>
     ${taskActions([
     canRun ? `<button class="btn" data-lrun="${t.id}" title="${esc(tr('local.run-title'))}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
+    /* Ne refaire QUE ce qui a cassé — le geste d'après un échec partiel. Proposé seulement
+       s'il y a de quoi : un bouton qui relancerait zéro dossier n'apprend rien. */
+    canRun && (t.dirs || []).some((d) => d.status === 'error')
+      ? `<button class="btn" data-lrunfailed="${t.id}" title="${esc(tr('local.title.run-failed'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.rerun-failed')}</button>` : '',
     /* Le retour de l'agent au niveau de la SESSION : les boutons par dossier existent aussi,
        mais ils vivent dans la liste repliée — et c'est « qu'a fait l'IA ? » qu'on se demande
        en regardant la carte, pas « qu'a-t-elle fait dans ce dossier-là ». */
@@ -4848,7 +4871,7 @@ function localCard(t) {
     hideBtn('local', t),
     `<button class="btn btn-icon btn-sm btn-danger" data-ldel="${t.id}" title="${esc(tr('local.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>`,
   ])}
-    ${t.last_error ? errorBox(t.last_error) : ''}
+    ${t.last_error ? errorBox(t.last_error, null, null, t.id) : ''}
   </div>`;
 }
 
@@ -4879,6 +4902,25 @@ function renderLocalTasks() {
     const t2 = localTasks.find((x) => String(x.id) === b.dataset.lrun);
     if (!await confirmerRelance(t2 && t2.status !== 'new')) return;
     busy(b, () => api(`/local-tasks/${b.dataset.lrun}/run`, { method: 'POST' }))
+      .then(() => { toast(tr('local.started')); loadTasks(); refreshStatus(); })
+      .catch((e) => toast(explainError(e.message), true));
+  }));
+  /* RELANCE CIBLÉE. Les dossiers d'une session sont indépendants : refaire les quatre qui ont
+     réussi pour rattraper le cinquième coûte quatre passes d'agent pour rien. Même
+     confirmation que la relance complète — une relance est une relance. */
+  $$('#localList [data-ldrun]').forEach((b) => b.addEventListener('click', async () => {
+    const t2 = localTasks.find((x) => String(x.id) === b.dataset.ltask);
+    const d = ((t2 && t2.dirs) || []).find((x) => String(x.id) === b.dataset.ldrun);
+    if (!await confirmerRelance(d && d.status !== 'new')) return;
+    busy(b, () => api(`/local-tasks/${b.dataset.ltask}/run`, { method: 'POST', body: { dirs: [Number(b.dataset.ldrun)] } }))
+      .then(() => { toast(tr('local.started')); loadTasks(); refreshStatus(); })
+      .catch((e) => toast(explainError(e.message), true));
+  }));
+  $$('#localList [data-lrunfailed]').forEach((b) => b.addEventListener('click', async () => {
+    const t2 = localTasks.find((x) => String(x.id) === b.dataset.lrunfailed);
+    const dirs = ((t2 && t2.dirs) || []).filter((d) => d.status === 'error').map((d) => d.id);
+    if (!dirs.length || !await confirmerRelance(true)) return;
+    busy(b, () => api(`/local-tasks/${b.dataset.lrunfailed}/run`, { method: 'POST', body: { dirs } }))
       .then(() => { toast(tr('local.started')); loadTasks(); refreshStatus(); })
       .catch((e) => toast(explainError(e.message), true));
   }));
@@ -5160,12 +5202,15 @@ function targetLine(t, tg) {
     <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph-target', { project: tg.project }))}"></textarea>
     <button class="btn" data-followcancel="tg${tg.id}">${tr('ui.cancel')}</button>
     <button class="btn btn-primary" data-followsubmit="${t.id}" data-followtarget="${tg.id}">${tr('task.btn.run-iteration')}</button>
-  </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg) : ''}`;
+  </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg, `/tasks/${t.id}/targets/${tg.id}/answer`) : ''}`;
 }
 
 // Formulaire de réponses aux questions de l'agent (ask → stop → resume). Radio quand
 // l'agent a proposé des options (+ « Autre » texte libre), champ texte sinon.
-function questionsForm(t, tg) {
+/* Le MÊME formulaire pour les trois saveurs de session — codage, exploration, hors dépôt.
+   Seule la route de réponse diffère : elle voyage avec le bouton plutôt que d'être devinée,
+   parce qu'une saveur oubliée ici enverrait les réponses au mauvais endroit. */
+function questionsForm(t, tg, route) {
   const qs = tg.questions || [];
   const rows = qs.map((q) => {
     const name = `q_${tg.id}_${q.id}`;
@@ -5185,7 +5230,7 @@ function questionsForm(t, tg) {
         ${field}
       </div>`;
   }).join('');
-  return `<div class="questions-box" data-qtask="${t.id}" data-qtarget="${tg.id}">
+  return `<div class="questions-box" data-qtask="${t.id}" data-qtarget="${tg.id}" data-qroute="${esc(route)}">
       <div class="q-head"><svg class="ico ico-sm"><use href="#i-info"/></svg> <strong>${esc(tr('task.questions.title', { n: qs.length, count: qs.length }))}</strong></div>
       ${rows}
       <div class="q-actions"><button class="btn btn-primary btn-sm" data-qsubmit="${tg.id}" data-task="${t.id}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr('task.questions.submit'))}</button></div>
@@ -5212,6 +5257,13 @@ function exploreCard(t) {
           ${tg.last_error ? `<span class="t-err" title="${esc(tg.last_error)}">${svgIco('alert')} ${tr('task.failed')}</span>` : ''}
         </div>`).join('')}
       </div>
+      ${(() => {
+    /* Une exploration pose SES questions une seule fois : ses cibles partagent la même
+       session d'agent, donc la même hésitation. Un formulaire par dépôt demanderait trois
+       fois la même chose. */
+    const att = (t.targets || []).find((tg) => tg.status === 'needs_input' && tg.questions && tg.questions.length);
+    return att ? questionsForm(t, att, `/tasks/${t.id}/targets/${att.id}/answer`) : '';
+  })()}
       ${suiviBlock(t, '')}
       <div class="mr-create followup" data-followform="${t.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('explore.followup.ph'))}">${esc(t.followup_draft || '')}</textarea>
@@ -5414,7 +5466,7 @@ function wireTaskActions() {
     });
     if (missing) { toast(tr('task.questions.fill-all'), true); return; }
     try {
-      await busy(b, () => api(`/tasks/${b.dataset.task}/targets/${b.dataset.qsubmit}/answer`, { method: 'POST', body: { answers } }));
+      await busy(b, () => api(box.dataset.qroute, { method: 'POST', body: { answers } }));
       // Feedback immédiat : on remplace le formulaire par un état « reprise en cours »
       // sans attendre le prochain rechargement (le projet est déjà passé en running côté serveur).
       box.classList.add('resuming');

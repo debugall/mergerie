@@ -325,6 +325,23 @@ function preparerVerificationApres(task) {
 
    Une todo par SESSION, pas par projet : cinq questions sur cinq dépôts d'une même session sont
    un seul geste à poser dans sa journée, et cinq lignes identiques ne diraient rien de plus. */
+/* La même todo, pour une session hors dépôt. Le `kind` DIFFÈRE de celui des sessions sur
+   dépôt : les deux tables ont leurs propres identifiants, et `session_question:3` désignerait
+   sinon deux sessions différentes — celle qu'on referme ne serait pas celle qui attend. */
+function todoQuestionLocal(taskId) {
+  const tache = db.prepare('SELECT * FROM local_task WHERE id = ?').get(taskId);
+  if (!tache) return;
+  const dossiers = db.prepare("SELECT path FROM local_task_dir WHERE task_id = ? AND status = 'needs_input'")
+    .all(taskId).map((d) => d.path);
+  if (!dossiers.length) return;
+  const quoi = (tache.label || tache.prompt || '').split('\n')[0].slice(0, 80);
+  try {
+    notes.todoAuto('local_question', taskId,
+      `Répondre à l'IA — session hors dépôt #${taskId}${quoi ? ` : ${quoi}` : ''}`,
+      `L'agent attend une réponse sur : ${dossiers.join(', ')}.`);
+  } catch { /* une todo qu'on n'a pas pu poser ne doit pas faire échouer la session */ }
+}
+
 function todoQuestion(taskId) {
   const tache = db.prepare('SELECT * FROM task WHERE id = ?').get(taskId);
   if (!tache) return;
@@ -526,8 +543,16 @@ async function runLocalJob(jobId, taskId, opts = {}) {
     }
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
     logLine(jobId, null, t('log.job.local-end', { id: jobId }));
-    // Suivi armé : il part, et c'est SA fin qui annoncera la session terminée.
-    if (!suiviAutomatique('local', taskId, onLog)) notify.push('session_done', { local_task_id: taskId });
+    /* UN DOSSIER ATTEND UNE RÉPONSE : ce n'est ni une fin ni un échec. On prévient, on pose la
+       todo, et surtout on n'arme PAS le suivi automatique — il repartirait sur une question
+       restée sans réponse. */
+    const attente = db.prepare("SELECT COUNT(*) c FROM local_task_dir WHERE task_id = ? AND status = 'needs_input'").get(taskId).c;
+    if (attente) {
+      notify.push('needs_input', { local_task_id: taskId });
+      todoQuestionLocal(taskId);
+    } else if (!suiviAutomatique('local', taskId, onLog)) {
+      notify.push('session_done', { local_task_id: taskId });
+    }
   } catch (e) {
     if (proc.isCancelled()) {
       db.prepare("UPDATE local_task SET status = 'new', updated_at = ? WHERE id = ?").run(new Date().toISOString(), taskId);

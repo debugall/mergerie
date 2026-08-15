@@ -13,6 +13,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **“The AI may ask me questions” now covers out-of-repo coding and exploration.** The option
+  only existed for coding inside a repository, yet an exploration hesitates the same way — and
+  out of a repository it matters most, since the agent works in place, with no branch and no
+  commit to re-read. In all three flavours the session now goes into waiting, shows its
+  questions on its card, and resumes in the same agent session once answered. An exploration
+  asks once for all its repositories, which share one session; out of a repository each folder
+  has its own questions, and answering one does not make the others work again. While a question
+  stands nothing has been done: no summary is saved, no file is touched. The todo raised for an
+  out-of-repo session carries its own kind, so it cannot be confused with — or closed by — a
+  repository session that happens to have the same number.
+
 - **A verifier can be duplicated.** Covering ten repositories with the same command save one
   detail meant retyping everything — or worse, editing the existing one while believing you were
   creating another. `Duplicate` reopens the form filled with the original's commands, timeout,

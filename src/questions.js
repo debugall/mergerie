@@ -83,4 +83,15 @@ function buildAnswerInstruction(questions) {
   ].join('\n');
 }
 
-module.exports = { QUESTIONS_INSTRUCTION, MAX_QUESTIONS, parseQuestions, buildAnswerInstruction };
+/* En dry-run, l'agent « simule » ce bloc au premier passage quand la session autorise les
+   questions : c'est ce qui permet d'exercer tout le flux ask → attente → réponses → reprise
+   sans agent installé — pour les trois saveurs de session, qui partagent donc ce décor. */
+const DRYRUN_QUESTIONS = `Analyse préalable effectuée.
+<<<QUESTIONS
+[
+  {"id":"q1","question":"Où placer la logique de retry ?","context":"Deux conventions coexistent dans le dépôt.","options":[{"value":"decorator","label":"Décorateur (comme OrderService)"},{"value":"middleware","label":"Middleware HTTP (comme PaymentClient)"}]},
+  {"id":"q2","question":"Faut-il migrer les données existantes ?","context":"La colonne change de type.","options":null}
+]
+QUESTIONS>>>`;
+
+module.exports = { QUESTIONS_INSTRUCTION, MAX_QUESTIONS, parseQuestions, buildAnswerInstruction, DRYRUN_QUESTIONS };

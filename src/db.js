@@ -378,6 +378,11 @@ try { db.exec('ALTER TABLE local_task_dir ADD COLUMN session_cwd TEXT'); } catch
 // Migration : retour de l'agent par dossier (« Retour de l'IA »), comme output_path
 // côté task_target. Sans lui, une session hors dépôt qui n'a rien modifié reste opaque.
 try { db.exec('ALTER TABLE local_task_dir ADD COLUMN output_path TEXT'); } catch { /* déjà présente */ }
+/* « L'IA peut poser des questions » hors dépôt : même boucle que pour un codage de dépôt
+   (ask → arrêt → réponses → reprise dans la MÊME session), mais les questions vivent sur le
+   DOSSIER — chacun a sa propre session d'agent, donc ses propres hésitations. */
+try { db.exec('ALTER TABLE local_task ADD COLUMN ask_questions INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE local_task_dir ADD COLUMN questions_json TEXT'); } catch { /* déjà présente */ }
 // Rangement d'une session hors dépôt — même principe que `task.hidden`.
 /* Activité mensuelle d'un dépôt (onglet Statistiques). Mise en cache parce qu'elle coûte
    cher à récupérer — six mois d'un dépôt vivant, c'est des centaines de commits paginés —

@@ -1810,8 +1810,10 @@ app.post('/api/tasks', wrap((req, res) => {
   const sessionId = normalizeSessionId(session_id);
   const list = normalizeTargets(targets, k);
   const now = new Date().toISOString();
-  // « L'IA peut poser des questions » : opt-in, uniquement pertinent en codage.
-  const ask = (k === 'code' && ask_questions) ? 1 : 0;
+  /* « L'IA peut poser des questions » : opt-in, en codage COMME en exploration. Une exploration
+     hésite de la même façon — « de quel des trois services parles-tu ? » vaut mieux qu'une
+     synthèse à côté du sujet. Le codage hors dépôt a sa propre table, et sa propre route. */
+  const ask = ask_questions ? 1 : 0;
   const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message, auto_push, ask_questions, verifier_id, label, status, created_at, updated_at)
     VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 'new', ?, ?)`).run(
     // `task.branch` est un héritage mono-projet (la vérité est dans task_target) et
@@ -1854,8 +1856,8 @@ app.put('/api/tasks/:id', wrap((req, res) => {
     prompt != null ? String(prompt).trim() : tache.prompt,
     commit_message != null ? (String(commit_message).trim() || null) : tache.commit_message,
     auto_push == null ? tache.auto_push : (auto_push ? 1 : 0),
-    // ask_questions ne concerne que le codage ; absent du body → on garde la valeur actuelle.
-    ask_questions == null ? tache.ask_questions : (tache.kind === 'code' && ask_questions ? 1 : 0),
+    // Absent du body → on garde la valeur actuelle (codage et exploration l'acceptent).
+    ask_questions == null ? tache.ask_questions : (ask_questions ? 1 : 0),
     /* La règle s'applique à la valeur EXISTANTE autant qu'à celle qu'on envoie : décocher
        l'auto-push sans renvoyer le champ laissait sinon un vérificateur qui ne pourrait plus
        tourner, et on ne s'en apercevrait qu'à la fin de la session. */
@@ -2024,7 +2026,12 @@ app.post('/api/tasks/:id/converge', wrap((req, res) => {
 // Dossiers d'une session hors dépôt + la commande de reprise de leur session d'agent.
 function localDirsFor(taskId) {
   return db.prepare('SELECT * FROM local_task_dir WHERE task_id = ? ORDER BY id').all(taskId)
-    .map((d) => ({ ...d, resume_cmd: agentsession.resumeCommand(d.session_backend, d.session_key, d.session_cwd) }));
+    .map((d) => ({
+      ...d,
+      resume_cmd: agentsession.resumeCommand(d.session_backend, d.session_key, d.session_cwd),
+      // Les questions posées par l'agent, prêtes à afficher. Illisibles → aucune, plutôt qu'un plantage.
+      questions: d.questions_json ? (() => { try { return JSON.parse(d.questions_json); } catch { return null; } })() : null,
+    }));
 }
 function localTaskById(id) {
   const lt = db.prepare('SELECT * FROM local_task WHERE id = ?').get(id);
@@ -2040,14 +2047,14 @@ app.get('/api/local-tasks', wrap((req, res) => {
   res.json(list);
 }));
 app.post('/api/local-tasks', wrap((req, res) => {
-  const { prompt, dirs, images, session_id, label } = req.body || {};
+  const { prompt, dirs, images, session_id, label, ask_questions } = req.body || {};
   if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
   const sessionId = normalizeSessionId(session_id);
   const list = (Array.isArray(dirs) ? dirs : []).map((d) => String(d || '').trim()).filter(Boolean);
   if (!list.length) throw new Error(t('err.local-dirs-required'));
   const now = new Date().toISOString();
-  const id = db.prepare("INSERT INTO local_task (prompt, label, status, created_at, updated_at) VALUES (?, ?, 'new', ?, ?)")
-    .run(prompt.trim(), lireLibelle(label), now, now).lastInsertRowid;
+  const id = db.prepare("INSERT INTO local_task (prompt, label, ask_questions, status, created_at, updated_at) VALUES (?, ?, ?, 'new', ?, ?)")
+    .run(prompt.trim(), lireLibelle(label), ask_questions ? 1 : 0, now, now).lastInsertRowid;
   // Même principe que pour les sessions sur dépôt : la session fournie est rangée comme
   // si la première passe l'avait créée, `localcoder` la reprend alors sans rien savoir.
   const ins = db.prepare(`INSERT INTO local_task_dir (task_id, path, status, session_key, session_backend, updated_at)
@@ -2072,7 +2079,7 @@ app.get('/api/local-tasks/:id', wrap((req, res) => {
 app.put('/api/local-tasks/:id', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
-  const { prompt, dirs, images, session_id, label } = req.body || {};
+  const { prompt, dirs, images, session_id, label, ask_questions } = req.body || {};
   const sessionId = normalizeSessionId(session_id);
   if (Array.isArray(dirs) && dirs.length) {
     const list = [...new Set(dirs.map((d) => String(d || '').trim()).filter(Boolean))];
@@ -2085,9 +2092,12 @@ app.put('/api/local-tasks/:id', wrap((req, res) => {
     }
   }
   if (prompt != null && !String(prompt).trim()) throw new Error(t('err.prompt-requis'));
-  db.prepare('UPDATE local_task SET prompt = ?, label = ?, updated_at = ? WHERE id = ?')
+  db.prepare('UPDATE local_task SET prompt = ?, label = ?, ask_questions = ?, updated_at = ? WHERE id = ?')
     .run(prompt != null ? String(prompt).trim() : lt.prompt,
-      label === undefined ? lt.label : lireLibelle(label), new Date().toISOString(), lt.id);
+      label === undefined ? lt.label : lireLibelle(label),
+      // Absent du body → on garde la valeur actuelle, comme pour les sessions sur dépôt.
+      ask_questions == null ? lt.ask_questions : (ask_questions ? 1 : 0),
+      new Date().toISOString(), lt.id);
   saveLocalImages(lt.id, images);
   applySessionId('local_task_dir', 'task_id', lt.id, sessionId, localDirsFor(lt.id));
   res.json(localTaskById(lt.id));
@@ -2096,10 +2106,41 @@ app.put('/api/local-tasks/:id', wrap((req, res) => {
 app.post('/api/local-tasks/:id/run', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
-  res.json(jobs.startLocalJob(lt.id));
+  const dirIds = normalizeDirIds(lt.id, req.body && req.body.dirs);
+  res.json(jobs.startLocalJob(lt.id, dirIds ? { dirIds } : {}));
 }));
 // Demande de correction : nouvelle passe de l'IA sur les mêmes dossiers, en REPRENANT
 // la session de chacun (l'IA garde le contexte du travail qu'elle vient de produire).
+/* Réponses aux questions de l'agent, hors dépôt. Même contrat que la route des sessions sur
+   dépôt — mais les questions vivent sur le DOSSIER, qui a sa propre session d'agent : on ne
+   reprend que celui-là, les autres dossiers n'ont rien demandé. */
+app.post('/api/local-tasks/:id/dirs/:did/answer', wrap((req, res) => {
+  const lt = localTaskById(Number(req.params.id));
+  if (!lt) throw new Error(t('err.session-introuvable'));
+  const d = (lt.dirs || []).find((x) => x.id === Number(req.params.did));
+  if (!d) throw new Error(t('err.local-dir-not-found'));
+  if (d.status !== 'needs_input') throw new Error(t('err.session-pas-en-attente'));
+  let qs = [];
+  try { qs = d.questions_json ? JSON.parse(d.questions_json) : []; } catch { qs = []; }
+  const answers = (req.body && req.body.answers) || {};
+  let filled = 0;
+  qs = qs.map((q) => {
+    const a = answers[q.id];
+    if (a != null && String(a).trim()) { filled += 1; return { ...q, answer: String(a).trim(), answeredAt: new Date().toISOString() }; }
+    return q;
+  });
+  if (!filled) throw new Error(t('err.reponses-manquantes'));
+  // On quitte `needs_input` DÈS l'envoi : sinon un rechargement ré-affiche un formulaire déjà rempli.
+  db.prepare("UPDATE local_task_dir SET questions_json = ?, status = 'running', last_error = NULL, updated_at = ? WHERE id = ?")
+    .run(JSON.stringify(qs), new Date().toISOString(), d.id);
+  /* La todo ne se referme que si plus AUCUN dossier n'attend : sur une session à cinq
+     dossiers, répondre au premier ne solde pas le travail. */
+  const encore = db.prepare("SELECT COUNT(*) c FROM local_task_dir WHERE task_id = ? AND status = 'needs_input'")
+    .get(lt.id).c;
+  if (!encore) notes.fermerTodoAuto('local_question', lt.id);
+  res.json(jobs.startLocalJob(lt.id, { answersDirId: d.id }));
+}));
+
 app.post('/api/local-tasks/:id/followup', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
@@ -3631,6 +3672,26 @@ app.post('/api/mrs/:id/modify', wrap((req, res) => {
 // B6 : symétrique de /mrs/:id/clear-error — sinon l'erreur d'une tâche revient à chaque refresh.
 app.post('/api/tasks/:id/clear-error', wrap((req, res) => {
   db.prepare('UPDATE task SET last_error = NULL WHERE id = ?').run(Number(req.params.id));
+  res.json({ ok: true });
+}));
+
+/* Même geste pour une session hors dépôt. Sans cette route, la croix de l'encart d'erreur
+   retirait la boîte de l'écran et l'erreur revenait au rafraîchissement suivant : un bouton
+   qui a l'air de marcher est pire qu'un bouton absent. */
+/* Relance CIBLÉE d'une session hors dépôt : un dossier précis, ou ceux qui ont échoué. Même
+   contrat que `POST /api/tasks/:id/run` avec ses `targets` — les dossiers d'une session sont
+   indépendants les uns des autres, et refaire les quatre qui ont réussi coûte quatre passes
+   d'agent pour rien. Corps vide = toute la session, comme avant. */
+function normalizeDirIds(taskId, brut) {
+  if (!Array.isArray(brut) || !brut.length) return null;
+  const connus = new Set(db.prepare('SELECT id FROM local_task_dir WHERE task_id = ?').all(taskId).map((d) => d.id));
+  const ids = [...new Set(brut.map(Number).filter((n) => connus.has(n)))];
+  if (!ids.length) throw new Error(t('err.local-dir-not-found'));
+  return ids;
+}
+
+app.post('/api/local-tasks/:id/clear-error', wrap((req, res) => {
+  db.prepare('UPDATE local_task SET last_error = NULL WHERE id = ?').run(Number(req.params.id));
   res.json({ ok: true });
 }));
 

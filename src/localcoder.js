@@ -15,6 +15,7 @@ const proc = require('./proc');
 const agentpass = require('./agentpass');
 const { getConfig } = require('./config');
 const { avecConsignes } = require('./prompts');
+const questions = require('./questions');
 const { t } = require('../public/i18n-runtime.js');
 
 const now = () => new Date().toISOString();
@@ -36,24 +37,40 @@ function setDir(id, patch) {
 }
 
 // Statut agrégé de la session à partir de ses dossiers.
+const lireQuestions = (d) => {
+  try { return d && d.questions_json ? JSON.parse(d.questions_json) : []; } catch { return []; }
+};
+
 function syncStatus(taskId) {
   const dirs = db.prepare('SELECT status FROM local_task_dir WHERE task_id = ?').all(taskId);
   let status = 'done';
   if (dirs.some((d) => d.status === 'running')) status = 'running';
+  /* UN DOSSIER QUI ATTEND UNE RÉPONSE tient toute la session en attente : afficher « terminée »
+     alors qu'une question est posée ferait passer à autre chose sans y répondre — et le travail
+     de ce dossier-là ne repartirait jamais. */
+  else if (dirs.some((d) => d.status === 'needs_input')) status = 'needs_input';
   else if (dirs.length && dirs.every((d) => d.status === 'error')) status = 'error';
   db.prepare('UPDATE local_task SET status = ?, updated_at = ? WHERE id = ?').run(status, now(), taskId);
 }
 
 /* Une passe de l'IA sur tous les dossiers de la session.
    `opts.instruction` = demande de suivi : le prompt change et la session d'agent de
-   chaque dossier est REPRISE (l'IA garde le contexte de ce qu'elle vient de faire). */
+   chaque dossier est REPRISE (l'IA garde le contexte de ce qu'elle vient de faire).
+   `opts.answersDirId` = reprise après questions : SEUL ce dossier repart, avec les réponses
+   pour prompt — les autres n'ont rien demandé et n'ont pas à retravailler.
+   `opts.dirIds` = relance ciblée : on ne refait QUE ces dossiers. Sur une session à cinq
+   dossiers dont un a échoué, tout relancer coûte quatre passes d'agent pour rien. */
 async function runLocal(taskId, onLog = () => {}, opts = {}) {
   const task = db.prepare('SELECT * FROM local_task WHERE id = ?').get(taskId);
-  if (!task) throw new Error('Session introuvable');
+  if (!task) throw new Error(t('err.session-introuvable'));
+  const reponses = opts.answersDirId ? Number(opts.answersDirId) : null;
   const followup = String(opts.instruction || '').trim();
-  const passKind = followup ? 'followup' : 'run';
-  const dirs = db.prepare('SELECT * FROM local_task_dir WHERE task_id = ? ORDER BY id').all(taskId);
-  if (!dirs.length) throw new Error('Aucun dossier');
+  const passKind = reponses ? 'answer' : (followup ? 'followup' : 'run');
+  const voulus = Array.isArray(opts.dirIds) && opts.dirIds.length
+    ? new Set(opts.dirIds.map(Number)) : null;
+  const dirs = db.prepare('SELECT * FROM local_task_dir WHERE task_id = ? ORDER BY id').all(taskId)
+    .filter((d) => (reponses ? d.id === reponses : (!voulus || voulus.has(d.id))));
+  if (!dirs.length) throw new Error(t('err.local.no-dir'));
   db.prepare("UPDATE local_task SET status = 'running', last_error = NULL, updated_at = ? WHERE id = ?").run(now(), taskId);
 
   // Captures jointes : référencées par chemin ABSOLU (l'agent tourne en place dans le
@@ -68,12 +85,33 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
   // (ici l'IA travaille EN PLACE, il n'y a ni branche ni commit précédent).
   /* Les consignes permanentes des réglages valent ICI AUSSI : « hors dépôt » change l'endroit
      où l'IA travaille, pas la façon dont on veut qu'elle travaille. */
-  const promptText = avecConsignes(followup
+  /* Reprise après réponses : le prompt EST la réponse aux questions. L'agent garde le reste
+     dans sa session — réexpliquer la tâche lui ferait recommencer au lieu de continuer. */
+  const repondu = reponses
+    ? questions.buildAnswerInstruction(lireQuestions(dirs[0]))
+    : null;
+  const promptText = avecConsignes(repondu || (followup
     ? 'Tu as déjà travaillé dans ce dossier lors d’une passe précédente. Applique la demande '
       + `de suivi ci-dessous en modifiant directement les fichiers.\n\nDemande de suivi : ${followup}${imgBlock}`
     : 'Réalise la tâche de développement suivante dans ce dossier. '
-      + `Modifie directement les fichiers nécessaires.\n\n${task.prompt}${imgBlock}`,
-  getConfig().ai_extra_instructions);
+      + `Modifie directement les fichiers nécessaires.\n\n${task.prompt}${imgBlock}`),
+  getConfig().ai_extra_instructions)
+    /* Option « l'IA peut poser des questions » : hors dépôt aussi. C'est même là qu'elle
+       compte le plus — l'agent travaille EN PLACE, sans branche ni commit à relire : mieux
+       vaut une question qu'un fichier réécrit selon une hypothèse qu'on n'a pas validée. */
+    + (task.ask_questions ? questions.QUESTIONS_INSTRUCTION : '');
+
+  /* L'AGENT S'EST ARRÊTÉ POUR DEMANDER. Le dossier passe EN ATTENTE — ni succès ni échec —
+     et garde ses questions ; la file se libère. Rendre `true` fait sauter la fin du tour :
+     marquer « fait » un dossier où rien n'a été décidé serait le pire des deux. */
+  function attendQuestions(tache, id, dossier, texte, log) {
+    if (!tache.ask_questions) return false;
+    const qs = questions.parseQuestions(texte);
+    if (!qs || !qs.length) return false;
+    setDir(dossier.id, { questions_json: JSON.stringify(qs), status: 'needs_input', last_error: null });
+    log(t('log.task.questions', { n: qs.length, count: qs.length }));
+    return true;
+  }
 
   let ok = 0;
   for (const d of dirs) {
@@ -87,7 +125,13 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
       if (!st.isDirectory()) throw new Error('Le chemin n’est pas un dossier');
 
       onLog(`codage (${copilot.isDryRun() ? 'dry-run' : 'IA'})`);
-      if (copilot.isDryRun()) {
+      if (copilot.isDryRun() && task.ask_questions && !followup && !reponses) {
+        // Dry-run, première passe : l'agent simule ses questions plutôt que de coder.
+        onLog('$ (DRY-RUN — l’agent pose des questions)');
+        saveAgentOutput(taskId, d.id, questions.DRYRUN_QUESTIONS, { kind: passKind, prompt: promptText });
+        attendQuestions(task, taskId, d, questions.DRYRUN_QUESTIONS, onLog);
+        continue;
+      } else if (copilot.isDryRun()) {
         // dry-run : trace visible, aucune vraie modification de code.
         fs.appendFileSync(path.join(d.path, 'PROJ_LOCAL_DRYRUN.md'), `\n## ${task.prompt.slice(0, 120)}\n`, 'utf8');
         saveAgentOutput(taskId, d.id, `(dry-run) ${followup ? 'Suivi appliqué' : 'Tâche réalisée'} dans \`${d.path}\`.`, { kind: passKind, prompt: promptText });
@@ -109,10 +153,12 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
         copilot.recordUsage('task', promptText, r.text || '');
         saveAgentOutput(taskId, d.id, r.text, { kind: passKind, prompt: promptText });
         if (created) setDir(d.id, { session_key: r.handle, session_backend: r.backend, session_cwd: d.path });
+        if (attendQuestions(task, taskId, d, r.text, onLog)) continue;
       } else {
         // Backend non reprenable → appel one-shot (pas de commande de reprise possible).
         const out = await copilot.runPrompt(promptText, d.path, { kind: 'task' }, onLog); // renvoie le texte
         saveAgentOutput(taskId, d.id, out, { kind: passKind, prompt: promptText });
+        if (attendQuestions(task, taskId, d, out, onLog)) continue;
       }
       setDir(d.id, { status: 'done', last_error: null });
       onLog(`✅ ${d.path}`);
@@ -125,7 +171,11 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
   syncStatus(taskId);
   onLog(t('log.local.done', { ok, total: dirs.length }));
   // Échec total (hors annulation) → on lève pour que le job soit marqué en erreur.
-  if (!ok && !proc.isCancelled()) throw new Error(t('err.local.none-handled'));
+  /* « Aucun dossier traité » n'est une ERREUR que si personne n'a rien demandé. Un dossier
+     qui ATTEND une réponse n'a pas échoué : il s'est arrêté exprès, et faire échouer la
+     session effacerait la question au lieu de la poser. */
+  const attente = db.prepare("SELECT COUNT(*) c FROM local_task_dir WHERE task_id = ? AND status = 'needs_input'").get(taskId).c;
+  if (!ok && !attente && !proc.isCancelled()) throw new Error(t('err.local.none-handled'));
 }
 
 /* Demande de correction : une nouvelle passe qui REPREND la session de chaque dossier.

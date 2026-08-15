@@ -179,6 +179,20 @@ branches — which matters when the list of repositories is long.
 how many are filtered out. This applies to coding, out-of-repo coding and exploration alike. In the list, a
 long prompt is **folded to three lines** with a **“Show more”** that unrolls it.
 
+**“The AI may ask me questions” applies to all three flavours.** Coding in a repository,
+**out-of-repo coding** and **exploration**: ticked, the option lets the agent stop in front of a
+decision it cannot settle instead of guessing. An exploration hesitates just like a coding session —
+“which of the three services do you mean?” beats a summary about the wrong one — and out of a
+repository it matters most: the agent works **in place**, with no branch and no commit to re-read.
+
+What happens then, in all three cases: the session goes **into waiting** (neither finished nor
+failed), the questions appear **on its card**, you answer, and the work **resumes in the same
+session** — the agent keeps what it read. Two differences worth knowing: an **exploration** asks
+**once** for all its repositories (they share the session), whereas **out of a repository** each
+**folder** has its own, and answering one **does not make the others work again**. ⚠ While a
+question stands, **nothing has been done**: no summary saved for an exploration, no file touched
+out of a repository.
+
 **A session stopped on a question raises its own todo.** When the AI interrupts itself to ask
 something, a **high-priority todo** is created automatically — "Reply to the AI — session #12",
 with the projects concerned in its note. The queue is free, nothing will restart, and the
@@ -381,7 +395,12 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   moved (incomplete prompt, the AI answered instead of coding) — and the session offers
   **`Send a follow-up`**: a fresh pass over the same folders that **resumes each one's session**, so the AI
   keeps all the context of what it has just produced. An out-of-repo session is **editable** afterwards
-  (prompt, folders, session identifier), like a repository session. ⚠ **No safety net**: the agent modifies
+  (prompt, folders, session identifier), like a repository session.
+  **Re-runs can be targeted**: every folder has its own **`Run again`**, and the card offers
+  **`Re-run the failed folders`** when there are any — on five folders where one broke, re-running
+  everything would cost four agent passes for nothing. Like any re-run, it asks first. A session's
+  error is **cleared for good** (the cross on the error box), and does not come back on the next
+  refresh. ⚠ **No safety net**: the agent modifies
   the files in place, without a backup; on a git repository you can review and undo yourself (`git diff` /
   `git checkout`), on a non-git folder there is **no undo** — a warning says so. (Dedicated sub-tab, between
   *Coding* and *Exploration*.)

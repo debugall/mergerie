@@ -185,6 +185,20 @@ sa propre branche, et sa date de création est affichée. Le **choix du dépôt 
 rappelle combien sont filtrées. Vaut pour le codage, le codage hors dépôt et l'exploration. Dans la
 liste, un prompt long est **replié sur trois lignes** avec un **« Voir plus »** qui le déroule entier.
 
+**« L'IA peut me poser des questions » vaut pour les trois saveurs.** Codage sur dépôt, **codage
+hors dépôt** et **exploration** : cochée, l'option autorise l'agent à s'arrêter devant une décision
+qu'il ne peut pas trancher, au lieu de deviner. Une exploration hésite comme un codage — « de quel
+des trois services parles-tu ? » vaut mieux qu'une synthèse à côté du sujet —, et hors dépôt c'est
+là que ça compte le plus : l'agent travaille **en place**, sans branche ni commit à relire.
+
+Ce qui se passe alors, dans les trois cas : la session passe **en attente** (ni finie, ni en échec),
+les questions s'affichent **sur sa carte**, on répond, et le travail **reprend dans la même
+session** — l'agent garde ce qu'il a lu. Deux différences à connaître : une **exploration** pose ses
+questions **une seule fois** pour tous ses dépôts (ils partagent la session), alors qu'**hors
+dépôt** chaque **dossier** a la sienne, et répondre à l'un **ne fait pas retravailler les autres**.
+⚠ Tant qu'une question tient, **rien n'a été fait** : pas de synthèse enregistrée en exploration,
+aucun fichier touché hors dépôt.
+
 **Une session arrêtée sur une question pose sa todo.** Quand l'IA s'interrompt pour demander
 quelque chose, une **todo de priorité haute** est créée automatiquement — « Répondre à l'IA —
 session #12 », avec les projets concernés en note. La file est libre, plus rien ne repartira, et
@@ -396,7 +410,12 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   incomplet, l'IA a répondu au lieu de coder) —, et la session propose **`Envoyer un suivi`** :
   une nouvelle passe sur les mêmes dossiers qui **reprend la session de chacun**, donc l'IA garde tout
   le contexte de ce qu'elle vient de produire. Une session hors dépôt est **modifiable** après coup
-  (prompt, dossiers, identifiant de session), comme une session sur dépôt. ⚠ **Aucun filet** : l'agent modifie les fichiers en place, sans
+  (prompt, dossiers, identifiant de session), comme une session sur dépôt.
+  **La relance est ciblable** : chaque dossier a son propre **`Relancer`**, et la carte propose
+  **`Relancer les dossiers en échec`** quand il y en a — sur cinq dossiers dont un a cassé, tout
+  reprendre coûterait quatre passes d'agent pour rien. Comme toute relance, elle demande confirmation.
+  L'erreur d'une session **s'efface pour de bon** (la croix de l'encart), et ne revient pas au
+  rafraîchissement suivant. ⚠ **Aucun filet** : l'agent modifie les fichiers en place, sans
   sauvegarde ; sur un dépôt git tu peux relire/annuler toi-même (`git diff` / `git checkout`), sur un
   dossier non-git il n'y a **pas d'annulation** — un avertissement le rappelle. (Sous-onglet dédié, entre
   *Codage* et *Exploration*.)

@@ -14,16 +14,6 @@ const { t } = require('../public/i18n-runtime.js');
 
 const WORK_REL = 'ai-dev-tools-internal';
 
-// En dry-run, quand une session autorise les questions, l'agent « simule » un bloc
-// QUESTIONS au 1er passage : ça exerce tout le flux ask → needs_input → reprise sans agent.
-const DRYRUN_QUESTIONS = `Analyse préalable effectuée.
-<<<QUESTIONS
-[
-  {"id":"q1","question":"Où placer la logique de retry ?","context":"Deux conventions coexistent dans le dépôt.","options":[{"value":"decorator","label":"Décorateur (comme OrderService)"},{"value":"middleware","label":"Middleware HTTP (comme PaymentClient)"}]},
-  {"id":"q2","question":"Faut-il migrer les données existantes ?","context":"La colonne change de type.","options":null}
-]
-QUESTIONS>>>`;
-
 function safeParseQuestions(json) { try { return JSON.parse(json) || []; } catch { return []; } }
 
 function taskDir(taskId) {
@@ -244,7 +234,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   if (copilot.isDryRun()) {
     if (task.ask_questions && !doResume) {
       onLog('$ (DRY-RUN — l’agent pose des questions)');
-      agentText = DRYRUN_QUESTIONS; // simule le bloc <<<QUESTIONS>>> au 1er passage
+      agentText = questions.DRYRUN_QUESTIONS; // simule le bloc <<<QUESTIONS>>> au 1er passage
     } else {
       onLog('$ (DRY-RUN — aucune vraie modification)');
       fs.appendFileSync(path.join(cwd, 'PROJ_TASK_DRYRUN.md'), `\n## ${message}\n${promptText.slice(0, 200)}\n`, 'utf8');
@@ -390,7 +380,10 @@ async function runCodeTask(task, { promptText, promptRepli, message, allowCreate
 // Prépare chaque dépôt sur la branche demandée, puis pose UNE question à l'agent avec
 // pour cwd la RACINE des clones : il voit ainsi tous les projets et produit une seule
 // synthèse. Les worktrees sont remis à zéro ensuite : aucune modification ne subsiste.
-async function runExploration(task, { question, previous, onLog }) {
+/* `apresReponses` : cette passe fait suite aux réponses de l'utilisateur. C'est le seul moyen
+   FIABLE de savoir qu'on n'est plus au premier tour — l'absence de synthèse précédente n'en est
+   pas un, puisqu'une exploration arrêtée sur une question n'en a jamais écrit. */
+async function runExploration(task, { question, previous, onLog, apresReponses = false }) {
   const cfg = getConfig();
   const targets = targetsOf(task.id);
   if (!targets.length) throw new Error(t('err.aucun-projet-selectionne-pour-cette-2'));
@@ -459,7 +452,10 @@ async function runExploration(task, { question, previous, onLog }) {
     + `dans les dépôts, et ne fais aucun commit.${prev}${imgBlock}\n\n`
     + `Rédige UNE SEULE réponse de synthèse, transversale aux dépôts, en Markdown (français), `
     + `et écris-la UNIQUEMENT dans le fichier \`${outRel}\` (chemin relatif au répertoire courant). `
-    + `Ne duplique pas ce contenu sur la sortie standard.`;
+    + `Ne duplique pas ce contenu sur la sortie standard.`
+    /* Option « l'IA peut poser des questions » : une exploration hésite comme un codage —
+       « de quel des trois services parles-tu ? » vaut mieux qu'une synthèse à côté du sujet. */
+    + (task.ask_questions ? questions.QUESTIONS_INSTRUCTION : '');
 
   onLog(t('log.explore.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai'), n: dirs.length, count: dirs.length }));
   let stdout = '';
@@ -485,6 +481,10 @@ async function runExploration(task, { question, previous, onLog }) {
       copilot.recordUsage('explore', prompt, stdout);
       // Les cibles d'une exploration partagent la session : toutes portent le même handle.
       if (created) for (const tg of targets) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: root });
+    } else if (copilot.isDryRun() && task.ask_questions && !apresReponses) {
+      // Dry-run, première passe : l'agent simule ses questions au lieu de répondre.
+      onLog('$ (DRY-RUN — l’agent pose des questions)');
+      stdout = questions.DRYRUN_QUESTIONS;
     } else {
       stdout = await copilot.runPrompt(prompt, root, { kind: 'explore' }, onLog);
     }
@@ -494,6 +494,27 @@ async function runExploration(task, { question, previous, onLog }) {
       await git.resetWorktree(d.cwd, () => {});
     }
     onLog(t('log.explore.reset'));
+  }
+
+  /* L'AGENT A POSÉ DES QUESTIONS : il s'est arrêté avant de répondre, il n'y a donc pas de
+     synthèse à enregistrer. On met l'exploration EN ATTENTE — mêmes cibles, même formulaire de
+     réponse, même todo que pour un codage — plutôt que d'archiver un fichier vide qui passerait
+     pour une réponse. Toutes les cibles portent la question : elles partagent la session. */
+  /* Volontairement SANS `apresReponses` : un agent a le droit de reposer une question après
+     avoir lu les réponses — c'est même le signe qu'il les a prises au sérieux. Seule la
+     simulation du dry-run est bornée, sinon elle bouclerait sur elle-même. */
+  if (task.ask_questions) {
+    const qs = questions.parseQuestions(stdout);
+    if (qs && qs.length) {
+      for (const tg of targets) {
+        setTarget(tg.id, { questions_json: JSON.stringify(qs), status: 'needs_input', last_error: null });
+      }
+      onLog(t('log.task.questions', { n: qs.length, count: qs.length }));
+      // Le statut de la SESSION suit celui de ses cibles : sans ça, la carte reste « en cours »
+      // pour toujours et la notification « une réponse est attendue » ne part jamais.
+      syncTaskStatus(task.id);
+      return { needsInput: true };
+    }
   }
 
   let content = '';
@@ -560,6 +581,16 @@ async function runTaskAnswer(task, targetId, onLog = () => {}) {
   const qs = tg.questions_json ? safeParseQuestions(tg.questions_json) : [];
   if (!qs.some((q) => q && q.answer != null && String(q.answer).trim())) {
     throw new Error(t('err.reponses-manquantes'));
+  }
+  /* UNE EXPLORATION NE SE REPREND PAS COMME UN CODAGE. Il n'y a ni branche ni commit au bout :
+     répondre, c'est relancer l'exploration avec les réponses pour question, dans la MÊME
+     session — l'agent a gardé ce qu'il a lu, pas seulement ce qu'il a écrit. */
+  if (task.kind === 'explore') {
+    for (const autre of targetsOf(task.id)) {
+      if (autre.status === 'needs_input') setTarget(autre.id, { status: 'running', last_error: null });
+    }
+    const previous = task.md_path && fs.existsSync(task.md_path) ? fs.readFileSync(task.md_path, 'utf8') : '';
+    return runExploration(task, { question: questions.buildAnswerInstruction(qs), previous, onLog, apresReponses: true });
   }
   onLog(`──────── ${tg.project} · ${tg.branch} (${t('log.task.after-answers')}) ────────`);
   setTarget(tg.id, { status: 'running', last_error: null });
