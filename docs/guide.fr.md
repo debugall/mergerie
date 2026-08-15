@@ -1687,6 +1687,28 @@ qui va tourner — les commandes ou le script, le dépôt, le mode, le délai �
 soit. Elle apparaît même quand un seul vérificateur couvre le dépôt : exécuter des commandes sur sa
 machine mérite un écran, pas un clic silencieux.
 
+**Une batterie qui part toute seule.** Une case **`Lancer sur toute nouvelle merge request des
+dépôts couverts`** sur un vérificateur : dès qu'une MR apparaît à la découverte, **tous** les
+vérificateurs automatiques qui couvrent son dépôt partent, sans clic. Seule une MR **nouvelle**
+déclenche — une MR déjà connue est revue à chaque synchronisation, la relancer à chaque fois
+ferait tourner la batterie sur tout le monde en permanence.
+
+⚠ **Cinq vérifications au maximum par tour de découverte.** Un lundi matin, la découverte peut
+ramener quinze merge requests ; quinze batteries fonctionnelles saturent la machine pour une heure
+et bloquent la file partagée avec les reviews. Au-delà, les MR gardent leur bouton **`Vérifier`**,
+et le **journal du serveur dit ce qui n'est pas parti** — un plafond silencieux se lirait comme
+« tout a été vérifié ». Les vérifications d'un même dépôt **s'empilent dans la file** au lieu
+d'être refusées : elles ne tourneront jamais en même temps, mais aucune n'est perdue.
+
+**Voir ce qui a tourné, même quand c'est vert.** Un bouton **`Voir le résultat des vérificateurs`**
+sur la merge request ouvre le détail de **chaque** vérificateur passé dessus — verdict, commits
+testés, tests cassés, et le **déroulé des commandes** avec leur code de sortie et leur sortie. Il
+apparaît dès qu'un résultat existe, pas seulement en rouge : « c'est vert, mais qu'est-ce qui a
+tourné exactement ? » est une question légitime, surtout quand on n'a pas vu passer le lancement.
+Un résultat **périmé** (le SHA de la MR a bougé depuis) le dit. Chaque bloc rouge garde son bouton
+**`Corriger (session IA)`** — avec plusieurs rapports, un bouton unique en pied de fenêtre ne dirait
+pas lequel il corrige.
+
 **Pendant qu'elle tourne, ça se voit.** Une vérification dure des minutes : le bouton devient
 **`Vérification…`** avec son spinner, désactivé — un second clic ne peut donc pas relancer la même —,
 et la carte porte le **repère « en cours »** (le liseré qui bat), le même que pendant une review. L'état

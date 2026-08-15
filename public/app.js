@@ -2183,6 +2183,10 @@ function mrCard(m) {
     </div>
     <div class="btn-group">
     <button class="btn" data-verify="${m.id}" ${m.verifiable ? '' : 'disabled'} title="${m.verifiable ? tr('verify.btn.verify-title') : tr('err.verify.no-verifier')}"><svg class="ico"><use href="#i-check"/></svg>${tr('verify.btn.verify')}</button>
+    ${/* Dès qu'un résultat EXISTE — pas seulement quand c'est rouge : « c'est vert, mais
+          qu'est-ce qui a tourné exactement ? » est une question légitime, et depuis que des
+          vérificateurs partent tout seuls on n'a pas vu passer le lancement. */''}
+    ${m.verification ? `<button class="btn" data-vresults="${m.id}" title="${esc(tr('verify.btn.results-title'))}"><svg class="ico"><use href="#i-doc"/></svg>${tr('verify.btn.results')}</button>` : ''}
     <button class="btn" data-done="${m.id}" data-iid="${m.iid}" title="${tr('mr.btn.dismiss-title')}"><svg class=\"ico\"><use href=\"#i-archive\"/></svg>${tr('mr.btn.dismiss')}</button>
     ${m.closed_seen ? '' : `<button class="btn btn-danger" data-merge="${m.id}" title="${tr('mr.btn.merge-title')}"><svg class="ico"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>`}
     </div>
@@ -11882,7 +11886,7 @@ function renderVerifierList() {
     const p = (repoOptions.find((x) => x.id === r.repo_id) || {}).project || `#${r.repo_id}`;
     return `<span class="tag">${esc(p)} · ${esc(r.mode === 'in_place' ? tr('verify.mode.in-place-short') : tr('verify.mode.worktree-short'))}</span>`;
   }).join(' ')}</div>
-      <div class="meta muted">${esc(v.kind === 'commands' ? tr('verify.kind.commands') : tr('verify.kind.script'))} · ${esc(tr('verify.verifier.meta', { timeout: v.timeout_s }))}${v.run_base ? ` · ${esc(tr('verify.verifier.with-base'))}` : ''}${v.comment_on_forge ? ` · ${esc(tr('verify.verifier.comments'))}` : ''}</div>
+      <div class="meta muted">${esc(v.kind === 'commands' ? tr('verify.kind.commands') : tr('verify.kind.script'))} · ${esc(tr('verify.verifier.meta', { timeout: v.timeout_s }))}${v.run_base ? ` · ${esc(tr('verify.verifier.with-base'))}` : ''}${v.comment_on_forge ? ` · ${esc(tr('verify.verifier.comments'))}` : ''}${v.auto_on_mr ? ` · ${esc(tr('verify.verifier.auto'))}` : ''}</div>
     </div>
     <div class="card-actions"><div class="btn-group">
       <button class="btn" data-vedit="${v.id}">${svgIco('edit')}${esc(tr('settings.repo.edit'))}</button>
@@ -11945,6 +11949,7 @@ function remplirFormVerifier(v, info) {
   f.timeout_s.value = v.timeout_s;
   f.run_base.checked = !!v.run_base;
   f.comment_on_forge.checked = !!v.comment_on_forge;
+  f.auto_on_mr.checked = !!v.auto_on_mr;
   renderCommandList(v.commands || []);
   renderVerifierRepoBox(v.repos || []);
   appliquerKind();
@@ -12023,6 +12028,7 @@ $('#verifierForm') && $('#verifierForm').addEventListener('submit', async (e) =>
     timeout_s: Number(f.timeout_s.value) || undefined,
     run_base: f.run_base.checked ? 1 : 0,
     comment_on_forge: f.comment_on_forge.checked ? 1 : 0,
+    auto_on_mr: f.auto_on_mr.checked ? 1 : 0,
     repos: verifierReposFromForm(),
   };
   const id = f.id.value;
@@ -12069,6 +12075,7 @@ let verifyReportId = null;
 
 async function openVerifyReport(id) {
   verifyReportId = id;
+  $('#verifyModalTitle').textContent = tr('verify.report.title');   // un seul rapport, titre au singulier
   $('#verifyReport').innerHTML = `<p class="muted">${esc(tr('ui.combo.loading'))}</p>`;
   $('#verifyFix').hidden = true;
   $('#verifyModal').hidden = false;
@@ -12141,6 +12148,47 @@ function verifyReportHtml(d) {
     ${d.log_excerpt ? `<h4>${esc(tr('verify.report.log'))}</h4><pre class="verify-log">${esc(d.log_excerpt)}</pre>` : ''}`;
 }
 
+/* TOUS les résultats d'une merge request, un bloc par vérificateur. Le badge, lui, n'ouvre
+   que le dernier verdict rendu : il répond à « ça passe ou non », pas à « qu'est-ce qui a
+   tourné ». Chaque bloc rouge garde SON bouton « Corriger » — avec plusieurs rapports, un
+   bouton unique en pied de fenêtre ne dirait pas lequel il corrige. */
+async function openVerifResultats(mrId) {
+  verifyReportId = null;
+  $('#verifyFix').hidden = true;
+  // La fenêtre montre PLUSIEURS vérificateurs : le titre au singulier ferait croire à un seul.
+  $('#verifyModalTitle').textContent = tr('verify.results.title');
+  $('#verifyReport').innerHTML = `<p class="muted">${esc(tr('ui.combo.loading'))}</p>`;
+  $('#verifyModal').hidden = false;
+  try {
+    const liste = await api(`/mrs/${mrId}/verifications`);
+    if (!liste.length) {
+      $('#verifyReport').innerHTML = `<p class="muted">${esc(tr('verify.results.none'))}</p>`;
+      return;
+    }
+    $('#verifyReport').innerHTML = liste.map((d) => `<section class="verify-bloc">
+      ${verifyReportHtml(d)}
+      ${d.verdict === 'verified_fail' && (d.imputable || []).length
+    ? `<p><button class="btn btn-primary btn-sm" data-vfix="${d.id}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${tr('verify.btn.fix')}</button></p>` : ''}
+    </section>`).join('');
+  } catch (e) { $('#verifyReport').innerHTML = errorBox(explainError(e.message)); }
+}
+
+/* « Corriger » depuis un bloc : même route que le bouton de pied de fenêtre, mais il sait
+   DE QUEL rapport il parle. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-vfix]');
+  if (!b) return;
+  try {
+    await busy(b, () => api(`/verifications/${b.dataset.vfix}/fix`, { method: 'POST' }));
+    $('#verifyModal').hidden = true;
+    toast(tr('verify.fix.created'));
+    const nav = $('nav button[data-tab="task"]');
+    if (nav) nav.click();
+    const sub = $('#tab-task .subnav [data-kind="code"]');
+    if (sub) sub.click();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
 $('#verifyClose') && $('#verifyClose').addEventListener('click', () => { $('#verifyModal').hidden = true; });
 $('#verifyFix') && $('#verifyFix').addEventListener('click', async (e) => {
   try {
@@ -12162,6 +12210,8 @@ $('#verifyFix') && $('#verifyFix').addEventListener('click', async (e) => {
 document.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-vreport]');
   if (b) openVerifyReport(Number(b.dataset.vreport));
+  const r = e.target.closest && e.target.closest('[data-vresults]');
+  if (r) openVerifResultats(Number(r.dataset.vresults));
 });
 
 /* ---------- Lancer une vérification ---------- */

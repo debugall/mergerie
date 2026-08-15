@@ -2467,6 +2467,7 @@ function lireVerifier(body, courant) {
     parse_tap: bool(b.parse_tap, courant ? courant.parse_tap : 1),
     run_base: bool(b.run_base, courant ? courant.run_base : 1),
     comment_on_forge: bool(b.comment_on_forge, courant ? courant.comment_on_forge : 0),
+    auto_on_mr: bool(b.auto_on_mr, courant ? courant.auto_on_mr : 0),
     repos,
   };
 }
@@ -2497,9 +2498,9 @@ app.post('/api/verifiers', wrap((req, res) => {
     throw new Error(t('err.verifier.name-taken', { name: v.name }));
   }
   const info = db.prepare(`INSERT INTO verifier
-    (name, kind, command, timeout_s, run_base, comment_on_forge, env_json, report_path, parse_tap, created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(v.name, v.kind, v.command, v.timeout_s, v.run_base,
-    v.comment_on_forge, v.env_json, v.report_path, v.parse_tap, new Date().toISOString());
+    (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, env_json, report_path, parse_tap, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(v.name, v.kind, v.command, v.timeout_s, v.run_base,
+    v.comment_on_forge, v.auto_on_mr, v.env_json, v.report_path, v.parse_tap, new Date().toISOString());
   ecrireRepos(info.lastInsertRowid, v.repos || []);
   ecrireCommandes(info.lastInsertRowid, v.commands || []);
   res.json(verifierAvecRepos(info.lastInsertRowid));
@@ -2512,8 +2513,8 @@ app.put('/api/verifiers/:id', wrap((req, res) => {
   const homonyme = db.prepare('SELECT 1 FROM verifier WHERE name = ? AND id <> ?').get(v.name, cur.id);
   if (homonyme) throw new Error(t('err.verifier.name-taken', { name: v.name }));
   db.prepare(`UPDATE verifier SET name = ?, kind = ?, command = ?, timeout_s = ?, run_base = ?,
-    comment_on_forge = ?, env_json = ?, report_path = ?, parse_tap = ? WHERE id = ?`)
-    .run(v.name, v.kind, v.command, v.timeout_s, v.run_base, v.comment_on_forge,
+    comment_on_forge = ?, auto_on_mr = ?, env_json = ?, report_path = ?, parse_tap = ? WHERE id = ?`)
+    .run(v.name, v.kind, v.command, v.timeout_s, v.run_base, v.comment_on_forge, v.auto_on_mr,
       v.env_json, v.report_path, v.parse_tap, cur.id);
   ecrireRepos(cur.id, v.repos);
   ecrireCommandes(cur.id, v.commands);
@@ -2598,11 +2599,23 @@ function appliquerModes(verifier, cibles) {
   });
 }
 
-function creerVerification({ verifier, cibles, lotId = null }) {
+/* `enFile` : accepter la mise en attente au lieu de refuser. Réservé au déclenchement
+   AUTOMATIQUE — et c'est la différence de nature entre les deux appelants :
+
+   Un humain qui clique « Vérifier » sur un dépôt déjà en cours de vérification s'est trompé de
+   bouton : lui répondre tout de suite vaut mieux que d'empiler un travail qu'il n'attend pas.
+   La découverte, elle, ne se trompe pas — elle vient de trouver douze merge requests, et les
+   refuser reviendrait à n'en vérifier qu'une : les onze autres ne seront plus jamais
+   « nouvelles », donc plus jamais vérifiées automatiquement.
+
+   Les mettre en file est SÛR : la file de jobs sérialise déjà par dépôt (`keysClash` sur
+   `repo:<id>`), donc deux vérifications d'un même dépôt ne tourneront jamais ensemble — le
+   refus ci-dessous n'est qu'un garde-fou d'ergonomie, pas la protection du clone. */
+function creerVerification({ verifier, cibles, lotId = null, enFile = false }) {
   /* §10 : une vérification MULTI-DÉPÔTS monte un environnement complet et ne se partage pas ;
      une MONO-DÉPÔT n'a qu'à ne pas viser le même dépôt qu'une autre. Le message dit laquelle
      des deux raisons s'applique — elles ne se corrigent pas de la même façon. */
-  const bloque = jobs.verifyBloquePar(cibles.map((c) => c.repo_id));
+  const bloque = enFile ? null : jobs.verifyBloquePar(cibles.map((c) => c.repo_id));
   if (bloque) {
     throw new Error(t(bloque === 'integration' ? 'err.verify.integration-running' : 'err.verify.already-running'));
   }
@@ -2622,6 +2635,30 @@ app.post('/api/mrs/:id/verify', wrap((req, res) => {
   const cibles = ciblesDepuisMrs([req.params.id]);
   const verifier = verifierPour(cibles, req.body && req.body.verifier_id);
   res.json(creerVerification({ verifier, cibles: appliquerModes(verifier, cibles) }));
+}));
+
+/* TOUTES les vérifications d'une merge request — une par vérificateur, la plus récente.
+   Depuis que des vérificateurs partent automatiquement, une MR peut en avoir plusieurs : le
+   badge n'en montre qu'un (le dernier verdict rendu), ce qui suffit pour « ça passe ou non »
+   mais pas pour « qu'est-ce qui a tourné exactement ». La borne à 300 couvre largement les MR
+   ouvertes sans relire tout l'historique — même règle qu'ailleurs. */
+app.get('/api/mrs/:id/verifications', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const vues = new Set();
+  const out = [];
+  for (const v of db.prepare(`SELECT * FROM verification
+    WHERE status IN ('done','error') ORDER BY id DESC LIMIT 300`).all()) {
+    let cibles = [];
+    try { cibles = JSON.parse(v.targets_json || '[]'); } catch { continue; }
+    if (!cibles.some((c) => c.mr_id === mr.id)) continue;
+    // Une seule ligne par vérificateur : les passages précédents sont dans l'historique.
+    const cle = v.verifier_id || `nom:${v.verifier_name}`;
+    if (vues.has(cle)) continue;
+    vues.add(cle);
+    out.push(detailVerification(v));
+  }
+  res.json(out);
 }));
 
 app.get('/api/verifications/:id', wrap((req, res) => {
@@ -2849,9 +2886,62 @@ app.delete('/api/rules/:id', wrap((req, res) => {
 }));
 
 /* ---------- Découverte + jobs ---------- */
-app.post('/api/discover', wrap(async (req, res) => {
+
+/* PLAFOND PAR TOUR DE DÉCOUVERTE. Un lundi matin, la découverte peut ramener quinze merge
+   requests ; quinze batteries fonctionnelles saturent la machine pour une heure et bloquent la
+   file partagée avec les reviews. Les MR non vérifiées gardent leur bouton « Vérifier ». */
+const MAX_VERIF_AUTO = 5;
+
+/* Les vérifications automatiques d'une liste de MR NOUVELLES. Un seul chemin : la route de
+   découverte, le rafraîchissement automatique et l'ajout unitaire passent tous par ici — deux
+   copies dériveraient, et c'est celle qu'on oublie qui ne vérifierait rien.
+
+   Best-effort de bout en bout : un vérificateur qui refuse (dépôt déjà en cours de
+   vérification, MR sans SHA) ne doit pas faire échouer la découverte, dont le travail — trouver
+   les MR — est déjà fait. */
+function lancerVerificationsAuto(mrIds) {
+  const bilan = { lancees: 0, ignorees: 0, plafonnees: 0 };
+  if (!Array.isArray(mrIds) || !mrIds.length) return bilan;
+  const autos = db.prepare('SELECT * FROM verifier WHERE auto_on_mr = 1').all();
+  if (!autos.length) return bilan;
+
+  for (const mrId of mrIds) {
+    const mr = mrById(Number(mrId));
+    if (!mr) continue;
+    // Ceux qui couvrent CE dépôt. Plusieurs peuvent le couvrir : ils partent tous.
+    const couvrants = autos.filter((v) => db.prepare('SELECT 1 FROM verifier_repo WHERE verifier_id = ? AND repo_id = ?')
+      .get(v.id, mr.repo_id));
+    for (const verifier of couvrants) {
+      if (bilan.lancees >= MAX_VERIF_AUTO) { bilan.plafonnees += 1; continue; }
+      try {
+        const cibles = appliquerModes(verifier, ciblesDepuisMrs([mr.id]));
+        creerVerification({ verifier, cibles, enFile: true });
+        bilan.lancees += 1;
+      } catch (e) {
+        // La raison est dans le journal du serveur : une découverte ne doit pas échouer ici.
+        bilan.ignorees += 1;
+        console.log(`[verif-auto] MR !${mr.iid} · ${verifier.name} : ${e.message}`);
+      }
+    }
+  }
+  /* UN PLAFOND SILENCIEUX SE LIT COMME « TOUT A ÉTÉ VÉRIFIÉ ». On dit donc ce qui n'est pas
+     parti, dans le journal du serveur comme dans la réponse de la découverte. */
+  if (bilan.plafonnees) {
+    console.log(`[verif-auto] plafond atteint (${MAX_VERIF_AUTO}) : ${bilan.plafonnees} vérification(s) non lancée(s) — bouton « Vérifier » sur les MR concernées`);
+  }
+  return bilan;
+}
+
+/* Le SEUL chemin de découverte côté serveur : la route et le rafraîchissement automatique
+   passent par lui, donc les vérifications automatiques ne peuvent pas être oubliées d'un côté. */
+async function decouvrir() {
   const result = await discoverAll();
-  res.json(result);
+  result.auto_verify = lancerVerificationsAuto(result.new_mr_ids);
+  return result;
+}
+
+app.post('/api/discover', wrap(async (req, res) => {
+  res.json(await decouvrir());
 }));
 
 app.post('/api/jobs/review', wrap((req, res) => {
@@ -3992,8 +4082,8 @@ function restartAutoRefresh() {
     if (autoRefreshBusy) return; // évite le chevauchement si une découverte est déjà en cours
     autoRefreshBusy = true;
     try {
-      const r = await discoverAll();
-      console.log(`[auto-refresh] ${r.found} MR · ${r.created} nouvelles · ${r.updated} maj${r.errors && r.errors.length ? ` · ${r.errors.length} erreur(s)` : ''}`);
+      const r = await decouvrir();
+      console.log(`[auto-refresh] ${r.found} MR · ${r.created} nouvelles · ${r.updated} maj${r.errors && r.errors.length ? ` · ${r.errors.length} erreur(s)` : ''}${r.auto_verify && r.auto_verify.lancees ? ` · ${r.auto_verify.lancees} vérification(s) auto` : ''}`);
     } catch (e) {
       console.error(`[auto-refresh] échec : ${e.message}`);
     } finally { autoRefreshBusy = false; }

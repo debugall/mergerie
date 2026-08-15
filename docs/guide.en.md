@@ -1628,6 +1628,27 @@ the commands or the script, the repository, the mode, the timeout — before lau
 even when a single verifier covers the repository: running commands on your machine deserves a screen, not a
 silent click.
 
+**A battery that starts by itself.** A checkbox **`Run on every new merge request of the covered
+repositories`** on a verifier: as soon as a merge request appears at discovery, **all** the
+automatic verifiers covering its repository start, with no click. Only a **new** merge request
+triggers them — a known one is seen again at every sync, and re-running it every time would keep
+the battery running on everyone forever.
+
+⚠ **Five verifications at most per discovery run.** On a Monday morning discovery can bring back
+fifteen merge requests; fifteen functional batteries saturate the machine for an hour and block the
+queue shared with reviews. Beyond that, the merge requests keep their **`Verify`** button and the
+**server log says what did not start** — a silent cap would read as “everything was verified”.
+Verifications of the same repository **queue up** instead of being refused: they will never run at
+the same time, but none is lost.
+
+**Seeing what ran, even when it is green.** A **`See the verifiers' results`** button on the merge
+request opens the details of **each** verifier that ran on it — verdict, tested commits, broken
+tests, and the **command by command** breakdown with exit codes and output. It appears as soon as a
+result exists, not only in red: “it is green, but what exactly ran?” is a fair question, especially
+when you did not see the run start. A **stale** result (the merge request's SHA moved since) says
+so. Each red block keeps its own **`Fix (AI session)`** button — with several reports, a single
+button at the bottom would not say which one it fixes.
+
 **While it runs, you can see it.** A verification takes minutes: the button turns into
 **`Verifying…`** with its spinner, disabled — so a second click cannot start the same one again — and
 the card carries the **"in progress" marker** (the pulsing bar), the same one a review uses. The state

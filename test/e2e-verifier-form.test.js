@@ -89,6 +89,11 @@ describe('Réglages → Vérificateurs : le formulaire s’ouvre à la demande',
     assert.equal(await page.locator('#verifierForm input[name=name]').inputValue(), '', 'formulaire vierge');
     assert.equal(await page.locator('#verifierForm input[name=id]').inputValue(), '', 'aucun id : c’est une création');
 
+    /* On amène le bouton AU MILIEU de l'écran avant de cliquer, comme le ferait quelqu'un.
+       `scrollIntoViewIfNeeded` ne suffit pas : un bouton posé dans les trente derniers pixels
+       est « visible » pour le navigateur, mais recouvert par le bandeau fixe du bas — le clic
+       part alors dans le vide. Le test cliquait juste au-dessus du bandeau par chance. */
+    await page.locator('#btnVerifierCancel').evaluate((el) => el.scrollIntoView({ block: 'center' }));
     await page.locator('#btnVerifierCancel').click();
     await page.waitForTimeout(300);
     v = await visible();

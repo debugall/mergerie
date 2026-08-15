@@ -646,6 +646,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS verifier (
    Colonnes idempotentes plutôt qu'une table à part : ce sont des attributs du vérificateur,
    et les bases existantes n'ont qu'à recevoir le défaut 'script' pour rester exactes. */
 try { db.exec("ALTER TABLE verifier ADD COLUMN kind TEXT NOT NULL DEFAULT 'script'"); } catch { /* déjà présente */ }
+/* « Automatique » : ce vérificateur part sur toute NOUVELLE merge request des dépôts qu'il
+   couvre. Sur le vérificateur et non sur chaque ligne de couverture — automatique ici et
+   manuel là est un besoin qu'on n'a pas, et la colonne se déplacera sans casser les données
+   le jour où il apparaît. Défaut 0 : rien ne se met à tourner tout seul sans qu'on le demande. */
+try { db.exec('ALTER TABLE verifier ADD COLUMN auto_on_mr INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
 // Ajoutées à l'environnement minimal. Sans elles, un `npm` installé par nvm reste introuvable
 // quand Mergerie est lancé par un service plutôt que depuis un terminal.
 try { db.exec('ALTER TABLE verifier ADD COLUMN env_json TEXT'); } catch { /* déjà présente */ }

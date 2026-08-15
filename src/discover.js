@@ -35,7 +35,11 @@ async function discoverAll() {
   // COALESCE : les lignes antérieures à la migration ont la colonne à NULL.
   const repos = db.prepare('SELECT * FROM repo WHERE enabled = 1 AND COALESCE(fetch_mrs, 1) = 1').all();
   const now = new Date().toISOString();
-  const result = { repos: repos.length, found: 0, created: 0, updated: 0, errors: [] };
+  /* `new_mr_ids` : les MR VRAIMENT nouvelles de ce tour. C'est la seule information qui
+     permette de ne déclencher les vérifications automatiques que sur elles — une MR déjà
+     connue est revue à chaque découverte, et la relancer à chaque fois ferait tourner la
+     batterie sur tout le monde en permanence. */
+  const result = { repos: repos.length, found: 0, created: 0, updated: 0, errors: [], new_mr_ids: [] };
 
   /* En démo, la forge n'existe pas : interroger GitLab rendait une erreur par dépôt, sur un
      bouton mis en avant de la page d'accueil. Un scan y trouve légitimement ce qui est déjà
@@ -151,6 +155,7 @@ async function discoverAll() {
 
   // borne la taille du journal (on garde les 200 plus récents)
   db.prepare('DELETE FROM feed WHERE id NOT IN (SELECT id FROM feed ORDER BY at DESC LIMIT 200)').run();
+  result.new_mr_ids = newMrs.map((m) => m.id);
   return result;
 }
 

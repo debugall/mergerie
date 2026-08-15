@@ -13,6 +13,24 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A verifier can now start by itself on every new merge request.** Tick `Run on every new
+  merge request of the covered repositories` and the battery runs at discovery, without a
+  click — which is the whole point: verifying required noticing the merge request first. Only
+  new merge requests trigger it, since a known one is seen again at every sync. At most five
+  verifications per discovery round, because fifteen functional batteries would saturate the
+  machine for an hour and block the queue shared with reviews; beyond that the merge requests
+  keep their `Verify` button and the server log says what did not start. Verifications of the
+  same repository queue up instead of being refused — they never run together, but none is
+  silently lost.
+
+- **`See the verifiers' results` on a merge request.** The button opens the details of every
+  verifier that ran on it: verdict, tested commits, broken tests, and the command-by-command
+  breakdown with exit codes and output. It shows up as soon as a result exists, not only when
+  something is red — "it is green, but what exactly ran?" is a fair question, especially now
+  that a battery can start without you seeing it. A stale result says so, and each red block
+  carries its own `Fix (AI session)` button, because a single button at the bottom would not
+  say which report it fixes.
+
 - **“The AI may ask me questions” now covers out-of-repo coding and exploration.** The option
   only existed for coding inside a repository, yet an exploration hesitates the same way — and
   out of a repository it matters most, since the agent works in place, with no branch and no
