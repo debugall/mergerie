@@ -11,6 +11,18 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Added
+
+- **A fourth kind of AI session: the free question.** *AI Dev* gains a `Free question` sub-tab for
+  everything you ask an AI outside any repository — a notion to dig into, two options to compare,
+  a plan to challenge. Nothing on your machine is read or changed: no clone, no folder, none of
+  your files. The point is what happens next: the answer is **kept**, an optional label files the
+  study away, and a **follow-up resumes the same agent session**, so a subject can be worked
+  through in five questions instead of one — each of them archived with the answer it got, and
+  replayable from the iteration selector. `Resume in terminal` hands the thread back to you, and
+  the answer exports to HTML, Word or PDF like any other. A free question reserves no repository:
+  it never blocks a review or a coding session, and nothing blocks it.
+
 ## [1.2.0] - 2026-08-16
 
 ### Added

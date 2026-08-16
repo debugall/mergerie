@@ -271,11 +271,12 @@ function explainError(msg) {
 /* `localId` : une session hors dépôt a sa propre table, donc sa propre route d'effacement.
    Sans lui, la croix retirait l'encart de l'écran et l'erreur revenait au rafraîchissement
    suivant — le bouton avait l'air de marcher, ce qui est pire que pas de bouton. */
-function errorBox(text, mrId, taskId, localId) {
+function errorBox(text, mrId, taskId, localId, askId) {
   const hint = errorHint(text);
   const hintHtml = hint ? `<div class="errhint">${esc(hint)}</div>` : '';
   const clear = mrId ? ` data-clear-mr="${mrId}"`
-    : (taskId ? ` data-clear-task="${taskId}"` : (localId ? ` data-clear-local="${localId}"` : ''));
+    : (taskId ? ` data-clear-task="${taskId}"`
+      : (localId ? ` data-clear-local="${localId}"` : (askId ? ` data-clear-ask="${askId}"` : '')));
   return `<div class="errbox"><div class="errhead"><span>${svgIco('alert')} ${tr('ui.error')}</span>`
     + `<span class="errbtns"><button class="btn btn-sm errcopy" title="${esc(tr('err.copy-title'))}">${tr('ui.copy')}</button>`
     + `<button class="btn btn-icon btn-sm btn-danger errclear"${clear} title="${esc(tr('err.clear-title'))}"><svg class=\"ico ico-sm\"><use href=\"#i-close\"/></svg></button></span></div>`
@@ -298,9 +299,11 @@ document.addEventListener('click', async (e) => {
   const mrId = b.dataset.clearMr;
   const taskId = b.dataset.clearTask;
   const localId = b.dataset.clearLocal;
+  const askId = b.dataset.clearAsk;
   const url = mrId ? `/mrs/${mrId}/clear-error`
     : (taskId ? `/tasks/${taskId}/clear-error`
-      : (localId ? `/local-tasks/${localId}/clear-error` : null));
+      : (localId ? `/local-tasks/${localId}/clear-error`
+        : (askId ? `/questions/${askId}/clear-error` : null)));
   if (url) { try { await api(url, { method: 'POST' }); } catch { /* on ferme quand même */ } }
   box.remove();
 });
@@ -3766,6 +3769,7 @@ let taskKind = 'code';         // sous-onglet courant : 'code' | 'local' | 'expl
 let showHiddenTasks = (() => { try { return localStorage.getItem('aidevtools_show_hidden') === '1'; } catch { return false; } })();
 let allTasks = [];             // dernier chargement (sessions code/explore)
 let localTasks = [];           // sessions « Codage hors dépôt »
+let questions = [];            // « Question libre » : ni dépôt ni dossier
 let localRootId = '';          // répertoire local choisi dans le formulaire local
 let localPicks = [''];         // projets choisis dans ce répertoire (noms de dossier)
 let repoOptions = [];          // dépôts disponibles pour les sélecteurs
@@ -3774,6 +3778,7 @@ const KIND_LABEL = {
   code: { title: tr('task.kind.code.title'), btn: tr('task.kind.code.btn'), hint: tr('task.kind.code.hint') },
   local: { title: tr('task.kind.local.title'), btn: tr('task.kind.local.btn'), hint: tr('task.kind.local.hint') },
   explore: { title: tr('task.kind.explore.title'), btn: tr('task.kind.explore.btn'), hint: tr('task.kind.explore.hint') },
+  ask: { title: tr('task.kind.ask.title'), btn: tr('task.kind.ask.btn'), hint: tr('task.kind.ask.hint') },
 };
 
 async function loadRepoOptions() {
@@ -4157,16 +4162,27 @@ let convergeAfterCreate = false; // « Converger » depuis la modale : créer pu
 
 function applyKindToModal(kind) {
   const isLocal = kind === 'local';
+  /* UNE QUESTION LIBRE N'A AUCUNE CIBLE : ni projet, ni dossier, ni ticket, ni vérificateur.
+     Tout ce qui suppose du code disparaît — laisser un sélecteur de dépôt sur un écran qui
+     ne s'en sert pas ferait croire que la réponse portera dessus. */
+  const isAsk = kind === 'ask';
   $('#codeOnlyFields').hidden = kind !== 'code';
   // « Converger » : sessions de CODAGE GitLab, et seulement à la création (pas en édition).
   const cv = $('#taskConverge'); if (cv) cv.hidden = kind !== 'code' || !!editingTaskId;
   // Codage hors dépôt : dossiers locaux à la place des projets, Jira & avertissement.
-  $('#taskReposWrap').hidden = isLocal;
+  $('#taskReposWrap').hidden = isLocal || isAsk;
   $('#taskLocalWrap').hidden = !isLocal;
   $('#taskLocalWarn').hidden = !isLocal;
   if (isLocal) { $('#taskJiraRow').hidden = true; renderLocalRootPicker(); renderLocalDirRows(); }
+  if (isAsk) $('#taskJiraRow').hidden = true;
+  /* La case « l'IA peut me poser des questions » et l'identifiant de session supposent une
+     cible sur laquelle l'agent hésite ou travaille : sans dépôt ni dossier, elles n'ont rien
+     à quoi se rattacher. */
+  const qRow = $('#taskAskQuestionsRow'); if (qRow) qRow.hidden = isAsk;
+  const sRow = $('#taskSessionRow'); if (sRow) sRow.hidden = isAsk;
   const ta = $('#taskForm').prompt;
-  ta.placeholder = isLocal ? tr('local.prompt-ph') : (kind === 'code' ? tr('task.ph.prompt-code') : tr('task.ph.prompt-explore'));
+  ta.placeholder = isAsk ? tr('ask.prompt-ph')
+    : (isLocal ? tr('local.prompt-ph') : (kind === 'code' ? tr('task.ph.prompt-code') : tr('task.ph.prompt-explore')));
   $('#targetsLabel').textContent = kind === 'code' ? tr('task.targets.code') : tr('task.targets.explore');
 }
 
@@ -4223,11 +4239,11 @@ async function openTaskModal(kind = taskKind) {
   const f = $('#taskForm');
   f.reset(); taskNewImages = []; renderTaskPreviews();
   taskKind = kind;
-  if (kind !== 'local') await loadRepoOptions();
+  if (kind !== 'local' && kind !== 'ask') await loadRepoOptions();
   if (kind === 'local') { localPicks = ['']; await loadLocalRoots(); }
   applyKindToModal(kind);
-  if (kind !== 'local') { renderTargetRows([{}]); setupTaskJira(''); }
-  await majVerificateursSession('');
+  if (kind !== 'local' && kind !== 'ask') { renderTargetRows([{}]); setupTaskJira(''); }
+  if (kind !== 'ask') await majVerificateursSession('');
   $('#taskModalTitle').textContent = KIND_LABEL[kind].title;
   $('#taskExistingImgs').textContent = '';
   /* Codage hors dépôt : le bouton principal crée ET lance, c'est le geste courant. Mais
@@ -4235,11 +4251,13 @@ async function openTaskModal(kind = taskKind) {
      une MR — préparer un traitement et le déclencher plus tard est un besoin légitime, et
      rien ne le permettait ici. Codage et exploration, eux, enregistrent sans lancer : leur
      bouton principal EST déjà le « sans lancer ». */
-  launchAfterCreate = kind === 'local';
-  $('#taskSubmit').innerHTML = kind === 'local'
-    ? `<svg class="ico"><use href="#i-play"/></svg>${tr('local.run')}`
+  /* Une question libre se pose POUR obtenir la réponse : le bouton principal crée et lance,
+     comme hors dépôt. « Créer sans lancer » reste disponible à côté. */
+  launchAfterCreate = kind === 'local' || kind === 'ask';
+  $('#taskSubmit').innerHTML = launchAfterCreate
+    ? `<svg class="ico"><use href="#i-play"/></svg>${tr(kind === 'ask' ? 'ask.run' : 'local.run')}`
     : `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
-  $('#taskSubmitOnly').hidden = kind !== 'local';
+  $('#taskSubmitOnly').hidden = !launchAfterCreate;
   showTaskModal();
   f.prompt.focus();
 }
@@ -4392,6 +4410,25 @@ async function openLocalTaskEdit(id) {
   f.prompt.focus();
 }
 
+/* Édition d'une question : le prompt et le libellé, rien d'autre. La SESSION D'AGENT n'est
+   pas touchée — corriger une formulation ne doit pas faire perdre le fil de l'échange. */
+async function openQuestionEdit(id) {
+  const f = $('#taskForm');
+  f.reset(); taskNewImages = []; renderTaskPreviews();
+  const { task: q } = await api(`/questions/${id}`);
+  editingTaskId = id; launchAfterCreate = false; convergeAfterCreate = false;
+  taskKind = 'ask';
+  applyKindToModal('ask');
+  f.prompt.value = q.prompt || '';
+  if (f.label) f.label.value = q.label || '';
+  $('#taskModalTitle').textContent = tr('ask.edit-title');
+  $('#taskExistingImgs').textContent = '';
+  $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
+  $('#taskSubmitOnly').hidden = true;   // on modifie une question existante : rien à créer
+  showTaskModal();
+  f.prompt.focus();
+}
+
 function closeTaskModal() {
   // Les deux drapeaux vont de pair : un « Converger » dont le POST a échoué détournerait
   // sinon le submit suivant (session non lancée, modale de convergence à la place).
@@ -4500,6 +4537,28 @@ $('#taskForm').addEventListener('submit', async (e) => {
     } catch (err) { toast(explainError(err.message), true); }
     return;
   }
+  /* Question libre : ni cible à lire, ni image, ni session à reprendre — un prompt et un
+     libellé. Son propre envoi, comme le hors dépôt : le formulaire est commun, les contrats
+     ne le sont pas. */
+  if (taskKind === 'ask') {
+    const btn = $('#taskSubmit');
+    const body = { prompt: f.prompt.value, label: f.label ? f.label.value : '' };
+    try {
+      if (editingTaskId) {
+        await busy(btn, () => api(`/questions/${editingTaskId}`, { method: 'PUT', body }));
+        toast(tr('toast.session-mise-a-jour'));
+        closeTaskModal(); loadTasks();
+        return;
+      }
+      const created = await busy(btn, () => api('/questions', { method: 'POST', body }));
+      if (launchAfterCreate) {
+        await api(`/questions/${created.id}/run`, { method: 'POST' });
+        toast(tr('ask.started')); refreshStatus();
+      } else toast(tr('ask.created'));
+      closeTaskModal(); loadTasks();
+    } catch (err) { toast(explainError(err.message), true); }
+    return;
+  }
   const targets = readTargetRows();
   if (!targets.length) { toast(tr('toast.selectionne-au-moins-un-projet'), true); return; }
   const body = {
@@ -4572,7 +4631,7 @@ const fmtDateTime = (iso) => {
    se re-rend toutes les secondes et demie : sans ça, un suivi qu'on est en train d'écrire
    disparaît sous les doigts. La liste hors dépôt y a droit autant que les autres — c'est
    justement pendant que ça tourne qu'on écrit un suivi. */
-const CLES_FORM = ['mrform', 'followform', 'lfollowform'];
+const CLES_FORM = ['mrform', 'followform', 'lfollowform', 'qfollowform'];
 function captureTaskForms(racine = '#taskList') {
   const state = {};
   $$(`${racine} .mr-create`).forEach((f) => {
@@ -4673,8 +4732,10 @@ const followBtn = (t, attr, titreFini, libelleFini = 'task.btn.request-fix') => 
 
 async function loadTasks() {
   try {
-    const [tasks, locals] = await Promise.all([api('/tasks'), api('/local-tasks').catch(() => [])]);
-    allTasks = tasks; localTasks = locals;
+    const [tasks, locals, asks] = await Promise.all([
+      api('/tasks'), api('/local-tasks').catch(() => []), api('/questions').catch(() => []),
+    ]);
+    allTasks = tasks; localTasks = locals; questions = asks;
   } catch (e) { $('#taskList').innerHTML = errorBox(e.message); return; }
   listeChargee = true;
   renderTasks();
@@ -4708,21 +4769,28 @@ function reportHiddenCount(n) {
 
 function renderTasks() {
   const isLocal = taskKind === 'local';
+  const isAsk = taskKind === 'ask';
   const el = $('#taskList');
-  const openForms = isLocal ? {} : captureTaskForms();
+  const openForms = (isLocal || isAsk) ? {} : captureTaskForms();
   $$('#tab-task .subnav [data-kind]').forEach((b) => b.classList.toggle('active', b.dataset.kind === taskKind));
   // La barre d'outils (bouton « Nouvelle session ») reste visible pour tous les kinds —
   // en local elle ouvre la MÊME modale que le codage. Seule la liste change.
-  el.hidden = isLocal;
+  el.hidden = isLocal || isAsk;
   $('#localPanel').hidden = !isLocal;
+  $('#askPanel').hidden = !isAsk;
   // Un lot regroupe des merge requests : il n'a rien à faire sous le codage hors dépôt
   // ni sous l'exploration, qui ne produisent pas de MR.
   $('#lotPanel').hidden = taskKind !== 'code';
   $('#btnNewTaskLabel').textContent = KIND_LABEL[taskKind].btn;
   $('#taskKindHint').textContent = KIND_LABEL[taskKind].hint;
+  /* Le champ de recherche est partagé par les quatre saveurs, mais son texte d'aide promettait
+     « projet, branche, dossier » — trois choses qu'une question libre n'a pas. */
+  const rech = $('#taskSearch');
+  if (rech) rech.placeholder = tr(isAsk ? 'ask.search.ph' : 'task.search.ph');
 
   const counts = { code: 0, explore: 0 };
   allTasks.forEach((t) => { counts[t.kind === 'explore' ? 'explore' : 'code'] += 1; });
+  $('#kindCountAsk').textContent = questions.length;
   $('#kindCountCode').textContent = counts.code;
   $('#kindCountExplore').textContent = counts.explore;
   $('#kindCountLocal').textContent = localTasks.length;
@@ -4730,13 +4798,16 @@ function renderTasks() {
   // comme celui de « Reviews » qui compte les MR à traiter — pas un total.
   const nav = $('#navCountTask');
   if (nav) {
-    const pending = allTasks.filter((t) => t.status === 'new').length + localTasks.filter((t) => t.status === 'new').length;
+    const pending = allTasks.filter((t) => t.status === 'new').length
+      + localTasks.filter((t) => t.status === 'new').length
+      + questions.filter((q) => q.status === 'new').length;
     nav.textContent = pending;
     nav.hidden = !pending;
     nav.title = tr('task.nav.pending', { n: pending, count: pending });
   }
 
   if (isLocal) { renderLocalTasks(); return; }
+  if (isAsk) { renderQuestions(); return; }
 
   const q = taskQuery();
   const all = allTasks.filter((t) => (t.kind === 'explore' ? 'explore' : 'code') === taskKind);
@@ -4975,6 +5046,109 @@ function renderLocalTasks() {
     try { await api(`/local-tasks/${b.dataset.ldel}`, { method: 'DELETE' }); toast(tr('local.deleted')); loadTasks(); }
     catch (e) { toast(explainError(e.message), true); }
   }));
+}
+
+
+/* ---------- Question libre ----------
+   La quatrième saveur de Dev IA : une question posée à l'IA sans dépôt ni dossier, et sa
+   réponse gardée. La carte est celle d'une exploration débarrassée de ses projets — il n'y a
+   ni liste de cibles, ni repli, ni relance ciblée : une question n'a qu'une réponse. */
+function askCard(q) {
+  const st = TASK_STATUS[q.status] || { label: q.status, cls: '' };
+  const enCours = q.status === 'running';
+  const canRun = !enCours;
+  return `<div class="card task-row${q.hidden ? ' is-hidden' : ''}" data-ask="${q.id}">
+    <div style="min-width:0;flex:1">
+      <div class="title">
+        <span class="tag ${st.cls}">${st.label}</span>
+        <span class="task-date" title="${tr('task.created-at')}">${fmtDateTime(q.created_at)}</span>
+      </div>
+      ${libelleBlock(q)}
+      ${promptBlock(q.prompt)}
+      ${suiviBlock(q, 'q')}
+      <div class="mr-create followup" data-qfollowform="${q.id}" hidden>
+        <textarea class="followup-text" placeholder="${esc(tr('ask.followup.ph'))}">${esc(q.followup_draft || '')}</textarea>
+        ${autoSuiviCase(q)}
+        <button class="btn" data-qfollowcancel="${q.id}">${tr('ui.cancel')}</button>
+        <button class="btn" data-qfollowsave="${q.id}">${tr('task.btn.save-followup')}</button>
+        ${enCours ? '' : `<button class="btn btn-primary" data-qfollowsubmit="${q.id}">${tr('task.btn.ask')}</button>`}
+      </div>
+    </div>
+    ${taskActions([
+    q.md_path ? `<button class="btn btn-primary" data-qmd="${q.id}" title="${esc(tr('ask.title.view-answer'))}"><svg class="ico"><use href="#i-doc"/></svg>${tr('task.btn.view-answer')}</button>` : '',
+    canRun ? `<button class="btn" data-qrun="${q.id}" title="${esc(tr(q.status === 'new' ? 'ask.title.run' : 'ask.title.rerun'))}"><svg class="ico"><use href="#i-play"/></svg>${q.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
+    /* Une question de suivi n'a de sens qu'une fois la première réponse obtenue — ou pendant
+       qu'elle se prépare, comme partout ailleurs : la remarque vient en lisant, pas après. */
+    (q.md_path || enCours) ? followBtn(q, 'qfollow', 'ask.followup.title', 'task.btn.follow-up') : '',
+    resumeCmdBtn(q.resume_cmd),
+  ], [
+    `<button class="btn btn-icon btn-sm" data-qedit="${q.id}" title="${esc(tr('ask.edit-title'))}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
+    hideBtn('ask', q),
+    `<button class="btn btn-icon btn-sm btn-danger" data-qdel="${q.id}" title="${esc(tr('ask.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>`,
+  ])}
+    ${q.last_error ? errorBox(q.last_error, null, null, null, q.id) : ''}
+  </div>`;
+}
+
+function renderQuestions() {
+  const el = $('#askList');
+  const ouverts = captureTaskForms('#askList');
+  const texte = taskQuery();
+  const visible = questions.filter(taskVisible);
+  reportHiddenCount(questions.length - visible.length);
+  const shown = visible.filter((q) => taskMatches(q, texte));
+  if (!shown.length && texte) {
+    el.innerHTML = `<p class="muted">${tr('task.search.no-match', { q: esc(texte) })}</p>`;
+    return;
+  }
+  if (!questions.length) {
+    el.innerHTML = emptyState({ icon: 'search', title: tr('ask.empty.title'), text: tr('ask.empty.text'),
+      actions: [{ act: 'new-task', label: tr('task.kind.ask.btn'), primary: true }] });
+    return;
+  }
+  el.innerHTML = shown.map(askCard).join('');
+  restoreTaskForms(ouverts, '#askList');
+  stagger('#askList .card');
+  wirePromptToggles('#askList');
+
+  const sur = (sel, fn) => $$(`#askList ${sel}`).forEach((b) => b.addEventListener('click', () => fn(b)));
+  sur('[data-qmd]', (b) => openPasses(`/questions/${b.dataset.qmd}`));
+  sur('[data-qrun]', async (b) => {
+    const q = questions.find((x) => String(x.id) === b.dataset.qrun);
+    if (!await confirmerRelance(q && q.status !== 'new')) return;
+    busy(b, () => api(`/questions/${b.dataset.qrun}/run`, { method: 'POST' }))
+      .then(() => { toast(tr('ask.started')); loadTasks(); refreshStatus(); })
+      .catch((e) => toast(explainError(e.message), true));
+  });
+  sur('[data-qedit]', (b) => openQuestionEdit(Number(b.dataset.qedit)).catch((e) => toast(explainError(e.message), true)));
+  sur('[data-qdel]', async (b) => {
+    if (!await confirmDialog({ text: tr('ask.confirm-delete'), confirmLabel: tr('ui.delete') })) return;
+    try { await api(`/questions/${b.dataset.qdel}`, { method: 'DELETE' }); toast(tr('ask.deleted')); loadTasks(); }
+    catch (e) { toast(explainError(e.message), true); }
+  });
+
+  /* Suivi : les mêmes quatre gestes que partout ailleurs (préparer, enregistrer, supprimer,
+     envoyer), avec les helpers communs — seule la route change. */
+  const form = (id) => $(`#askList .followup[data-qfollowform="${id}"]`);
+  const deplier = (id) => { const fm = form(id); if (fm) { fm.hidden = false; fm.querySelector('.followup-text').focus(); } };
+  sur('[data-qfollow]', (b) => deplier(b.dataset.qfollow));
+  sur('[data-qfollowedit]', (b) => deplier(b.dataset.qfollowedit));
+  sur('[data-qfollowcancel]', (b) => { const fm = form(b.dataset.qfollowcancel); if (fm) fm.hidden = true; });
+  sur('[data-qfollowsubmit]', async (b) => {
+    const fm = b.closest('.followup');
+    const champ = fm.querySelector('.followup-text');
+    const instruction = champ.value.trim();
+    if (!instruction) return;
+    try {
+      await busy(b, () => api(`/questions/${b.dataset.qfollowsubmit}/followup`, { method: 'POST', body: { instruction } }));
+      champ.value = '';
+      fm.hidden = true;
+      toast(tr('ask.started')); refreshStatus(); loadTasks();
+    } catch (e) { toast(explainError(e.message), true); }
+  });
+  sur('[data-qfollowsave]', (b) => enregistrerSuivi(b, `/questions/${b.dataset.qfollowsave}/followup-draft`));
+  sur('[data-qfollowdrop]', (b) => supprimerSuivi(b, `/questions/${b.dataset.qfollowdrop}/followup-draft`));
+  sur('[data-qfollowsend]', (b) => envoyerSuivi(b, `/questions/${b.dataset.qfollowsend}/followup`));
 }
 
 
@@ -5296,7 +5470,8 @@ function exploreCard(t) {
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-hide]');
   if (!b) return;
-  const scope = b.dataset.scope === 'local' ? 'local-tasks' : 'tasks';
+  const SCOPE_ROUTE = { local: 'local-tasks', ask: 'questions' };
+  const scope = SCOPE_ROUTE[b.dataset.scope] || 'tasks';
   const hidden = b.dataset.on !== '1';   // on inverse l'état courant
   try {
     await busy(b, () => api(`/${scope}/${b.dataset.hide}/hidden`, { method: 'POST', body: { hidden } }));

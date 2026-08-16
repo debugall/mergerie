@@ -64,7 +64,8 @@ et un **lot** de merge requests vérifiées ensemble.
   re-review incrémentale et **boucle de convergence autonome** (review → correction → re-review jusqu'au seuil).
   Les listes se filtrent par **couleur de note**.
 - **Dev IA** — sessions de codage automatisées (l'IA code, commite, pousse, ouvre la MR), **codage hors dépôt**
-  (avec retour de l'IA et demande de correction) et **exploration** de code en lecture seule ;
+  (avec retour de l'IA et demande de correction), **exploration** de code en lecture seule et **questions
+  libres** posées hors de tout dépôt (gardées, libellées, reprenables) ;
   *du prompt à la MR convergée* en un bouton. Sur une session multi-dépôts, chaque projet se lance — et se
   fait corriger — **séparément**. Les sessions terminées se **rangent** sans être supprimées.
 - **Vérification objective** — une liste de commandes (`npm ci`, `npm test`) ou ton propre script de test donne à

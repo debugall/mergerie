@@ -9,6 +9,7 @@ const notify = require('./notify');
 const notes = require('./notes');
 const converge = require('./converge');
 const localcoder = require('./localcoder');
+const asker = require('./asker');
 const docker = require('./docker');
 const verifyrun = require('./verifyrun');
 const { getConfig } = require('./config');
@@ -103,6 +104,10 @@ function jobKeys(entry) {
   const targetsOf = (taskId) => db.prepare('SELECT repo_id FROM task_target WHERE task_id = ?').all(taskId);
   switch (entry.kind) {
     case 'docker': return keys;                       // aucun dépôt : jamais en conflit
+    /* Une question libre ne touche NI dépôt NI dossier : rien à réserver, donc elle ne
+       bloque personne et personne ne la bloque. C'est la seule saveur de session dans ce
+       cas — les trois autres travaillent toujours dans des fichiers. */
+    case 'ask': return keys;
     case 'verify': {
       // Le run crée des worktrees dans le clone : aucun autre job ne doit y toucher pendant.
       const ver = db.prepare('SELECT targets_json FROM verification WHERE id = ?').get(entry.verificationId);
@@ -148,7 +153,7 @@ function jobKeys(entry) {
    Volontairement séparé de jobKeys() : celui-ci raisonne en dépôts (collisions), celui-là
    en objets affichés (repérage visuel). */
 function jobTargets(entry, jobRow) {
-  const cibles = { mrs: [], tasks: [], locals: [], verifying: [] };
+  const cibles = { mrs: [], tasks: [], locals: [], questions: [], verifying: [] };
   if (!entry) return cibles;
   /* UNE VÉRIFICATION MARQUE LES MR QU'ELLE PORTE. Sans ça, cliquer « Vérifier » ne changeait
      rien à l'écran : le toast passait, le travail durait des minutes, et plus rien ne disait
@@ -165,6 +170,7 @@ function jobTargets(entry, jobRow) {
     return cibles;
   }
   if (entry.kind === 'local') { if (entry.taskId) cibles.locals.push(entry.taskId); return cibles; }
+  if (entry.kind === 'ask') { if (entry.taskId) cibles.questions.push(entry.taskId); return cibles; }
   if (entry.kind === 'task' || entry.kind === 'converge-session') { if (entry.taskId) cibles.tasks.push(entry.taskId); return cibles; }
   if (entry.kind === 'converge') { if (entry.mrId) cibles.mrs.push(entry.mrId); return cibles; }
   /* Un job de review porte sur un LOT de MR, mais n'en traite qu'une à la fois : on
@@ -176,7 +182,7 @@ function jobTargets(entry, jobRow) {
 
 // Union des cibles de TOUS les jobs en cours, pour un seul appel de statut.
 function runningTargets() {
-  const cibles = { mrs: [], tasks: [], locals: [], verifying: [] };
+  const cibles = { mrs: [], tasks: [], locals: [], questions: [], verifying: [] };
   for (const [jobId, { entry }] of active.entries()) {
     const row = db.prepare('SELECT current_mr_id FROM job WHERE id = ?').get(jobId);
     const one = jobTargets(entry, row);
@@ -365,16 +371,18 @@ function todoQuestion(taskId) {
    c'est arrivé en test, en quelques secondes. Il part donc UNE fois ; en réécrire un est un
    geste conscient. Rien non plus après un échec : l'appelant ne passe ici que sur une fin
    normale, on n'enchaîne pas une consigne sur une session qui vient de casser. */
+const TABLE_SCOPE = { local: 'local_task', ask: 'question', task: 'task' };
+
 function suiviAutomatique(scope, id, onLog) {
-  const table = scope === 'local' ? 'local_task' : 'task';
+  const table = TABLE_SCOPE[scope] || 'task';
   const s = db.prepare(`SELECT followup_draft d, followup_auto a FROM ${table} WHERE id = ?`).get(id);
   if (!s || !s.a || !s.d) return null;
   db.prepare(`UPDATE ${table} SET followup_draft = NULL, followup_auto = 0, updated_at = ? WHERE id = ?`)
     .run(new Date().toISOString(), id);
   onLog(t('log.job.followup-sent', { texte: String(s.d).split('\n')[0].slice(0, 120) }));
-  return scope === 'local'
-    ? startLocalJob(id, { instruction: s.d })
-    : startTaskJob(id, 'followup', { instruction: s.d, autoSuivi: true });
+  if (scope === 'local') return startLocalJob(id, { instruction: s.d });
+  if (scope === 'ask') return startAskJob(id, { instruction: s.d });
+  return startTaskJob(id, 'followup', { instruction: s.d, autoSuivi: true });
 }
 
 async function verifierApresSession(task, onLog) {
@@ -569,6 +577,38 @@ async function runLocalJob(jobId, taskId, opts = {}) {
   }
 }
 
+async function runAskJob(jobId, questionId, opts = {}) {
+  setJob(jobId, { status: 'running', total: 1, done_count: 0, started_at: new Date().toISOString(), message: t('job.msg.starting') });
+  logLine(jobId, null, t('log.job.ask-start', { id: jobId }));
+  const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
+  try {
+    await asker.runQuestion(questionId, onLog, opts);
+    if (proc.isCancelled()) {
+      db.prepare("UPDATE question SET status = 'new', updated_at = ? WHERE id = ?").run(new Date().toISOString(), questionId);
+      logLine(jobId, null, t('log.job.stopped'));
+      setJob(jobId, { status: 'stopped', finished_at: new Date().toISOString(), message: '' });
+      return;
+    }
+    setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
+    logLine(jobId, null, t('log.job.ask-end', { id: jobId }));
+    if (!suiviAutomatique('ask', questionId, onLog)) notify.push('session_done', { question_id: questionId });
+  } catch (e) {
+    if (proc.isCancelled()) {
+      db.prepare("UPDATE question SET status = 'new', updated_at = ? WHERE id = ?").run(new Date().toISOString(), questionId);
+      setJob(jobId, { status: 'stopped', finished_at: new Date().toISOString(), message: '' });
+      return;
+    }
+    const full = (e && e.stack) ? `${e.message}\n\n${e.stack}` : String(e && e.message || e);
+    db.prepare("UPDATE question SET status = 'error', last_error = ?, updated_at = ? WHERE id = ?")
+      .run(full, new Date().toISOString(), questionId);
+    logLine(jobId, null, t('log.job.ask-error', { message: e.message }));
+    setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
+    notify.push('job_failed', { question_id: questionId, message: String(e.message).slice(0, 200) });
+  } finally {
+    marquerFinExecution('question', questionId);
+  }
+}
+
 /* Ce qu'il faut pour REJOUER un job. On mémorise l'intention (quelle fonction, sur quel
    objet), pas les lignes traitées : pour une review, la liste se re-déduit de l'état des MR,
    donc relancer reprend là où l'arrêt a eu lieu au lieu de refaire ce qui est fait.
@@ -590,6 +630,7 @@ function retryJob(jobId) {
   const sp = JSON.parse(job.retry);
   if (sp.fn === 'task') return startTaskJob(sp.taskId, sp.action, sp.opts);
   if (sp.fn === 'local') return startLocalJob(sp.taskId, sp.opts);
+  if (sp.fn === 'ask') return startAskJob(sp.taskId, sp.opts);
   if (sp.fn === 'converge') return startConvergeJob(sp.mrId, sp.opts);
   if (sp.fn === 'converge-session') return startConvergeSessionJob(sp.taskId, sp.opts);
   return startJob(sp.kind, sp.mrIds, sp.opts);
@@ -603,6 +644,7 @@ function runEntry(e) {
   if (e.kind === 'converge') return runConvergeJob(e.jobId, e.mrId, e.opts);
   if (e.kind === 'converge-session') return runConvergeSessionJob(e.jobId, e.taskId, e.opts);
   if (e.kind === 'local') return runLocalJob(e.jobId, e.taskId, e.opts);
+  if (e.kind === 'ask') return runAskJob(e.jobId, e.taskId, e.opts);
   if (e.kind === 'reconcile') return runReconcileJob(e.jobId, e.taskId);
   if (e.kind === 'verify') return runVerifyJob(e.jobId, e.verificationId);
   return processList(e.jobId, e.rows, e.kind, e.opts);
@@ -936,6 +978,22 @@ function startLocalJob(taskId, opts = {}) {
   return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
 }
 
+/* Lance une « Question libre » : ni dépôt, ni dossier, ni git. Elle passe quand même par la
+   file — un appel d'agent coûte des minutes et des tokens, et le plafond de jobs simultanés
+   vaut pour elle comme pour les autres. */
+function startAskJob(questionId, opts = {}) {
+  db.prepare("UPDATE question SET last_error = NULL, updated_at = ? WHERE id = ? AND status = 'error'")
+    .run(new Date().toISOString(), questionId);
+  const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
+    VALUES ('ask', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
+  const jobId = info.lastInsertRowid;
+  setJobTarget(jobId, 'ask', questionId);
+  rememberRetry(jobId, { fn: 'ask', taskId: questionId, opts });
+  queue.push({ jobId, kind: 'ask', taskId: questionId, opts });
+  setImmediate(pump);
+  return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
+}
+
 // Lance une boucle de convergence pour une MR (« Converger »).
 function startConvergeJob(mrId, opts = {}) {
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
@@ -1000,7 +1058,7 @@ function isRunning() {
 module.exports = {
   startVerifyJob, verifyBloquePar, preparerVerificationApres,
   startJob, startTaskJob, startGitJob, startDockerJob, startConvergeJob, startConvergeSessionJob,
-  startLocalJob, startReconcileJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
+  startLocalJob, startAskJob, startReconcileJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
   queueCount, parallelBusy, runningCount, MAX_RUNNING, jobKeys, keysClash, retryJob, canRetry,
   jobTargets, runningTargets,
 };

@@ -2192,6 +2192,112 @@ app.post('/api/local-tasks/:id/hidden', wrap((req, res) => {
   res.json({ ok: true, hidden });
 }));
 
+/* ---------- Question libre ----------
+   Une question posée à l'IA sans dépôt ni dossier, et sa réponse gardée. Mêmes gestes que les
+   trois autres saveurs (lancer, suivre, ranger, supprimer), mais aucune cible : pas de route
+   par projet ni par dossier, et rien à restreindre au lancement. */
+/* `resume_cmd` : la commande à copier pour reprendre l'échange dans un terminal, comme pour
+   les trois autres saveurs. Calculée à la lecture — elle dépend du binaire configuré, pas
+   d'un état stocké. */
+const questionById = (id) => {
+  const q = db.prepare('SELECT * FROM question WHERE id = ?').get(Number(id));
+  return q ? { ...q, resume_cmd: agentsession.resumeCommand(q.session_backend, q.session_key, q.session_cwd) } : q;
+};
+const exigerQuestion = (id) => {
+  const q = questionById(id);
+  if (!q) throw new Error(t('err.question-introuvable'));
+  return q;
+};
+
+app.get('/api/questions', wrap((req, res) => {
+  // Même tri que les autres listes de sessions : ce qui tourne, puis ce qui vient de finir.
+  const rows = db.prepare(`SELECT * FROM question
+    ORDER BY (status = 'running') DESC, COALESCE(finished_at, created_at) DESC, id DESC`).all();
+  res.json(rows.map((q) => ({ ...q, resume_cmd: agentsession.resumeCommand(q.session_backend, q.session_key, q.session_cwd) })));
+}));
+
+app.post('/api/questions', wrap((req, res) => {
+  const { prompt, label } = req.body || {};
+  if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
+  const now = new Date().toISOString();
+  const id = db.prepare("INSERT INTO question (prompt, label, status, created_at, updated_at) VALUES (?, ?, 'new', ?, ?)")
+    .run(String(prompt).trim(), lireLibelle(label), now, now).lastInsertRowid;
+  res.json(questionById(id));
+}));
+
+app.get('/api/questions/:id', wrap((req, res) => {
+  res.json({ task: exigerQuestion(req.params.id) });
+}));
+
+/* Édition : le prompt et le libellé. La SESSION D'AGENT est volontairement conservée —
+   corriger une faute de frappe dans sa question ne doit pas faire perdre le fil de l'échange
+   déjà engagé avec l'agent. */
+app.put('/api/questions/:id', wrap((req, res) => {
+  const q = exigerQuestion(req.params.id);
+  const { prompt, label } = req.body || {};
+  if (prompt != null && !String(prompt).trim()) throw new Error(t('err.prompt-requis'));
+  db.prepare('UPDATE question SET prompt = ?, label = ?, updated_at = ? WHERE id = ?')
+    .run(prompt != null ? String(prompt).trim() : q.prompt,
+      label === undefined ? q.label : lireLibelle(label),
+      new Date().toISOString(), q.id);
+  res.json(questionById(q.id));
+}));
+
+app.post('/api/questions/:id/run', wrap((req, res) => {
+  res.json(jobs.startAskJob(exigerQuestion(req.params.id).id));
+}));
+
+// Question de suivi : elle REPREND la session de l'agent, qui garde le fil de l'échange.
+app.post('/api/questions/:id/followup', wrap((req, res) => {
+  const q = exigerQuestion(req.params.id);
+  const instruction = (req.body && req.body.instruction || '').trim() || q.followup_draft || '';
+  if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
+  res.json(envoyerSuivi('question', q, () => jobs.startAskJob(q.id, { instruction })));
+}));
+
+// Suivi en attente — même contrat que pour les autres saveurs.
+app.put('/api/questions/:id/followup-draft', wrap((req, res) => {
+  const q = exigerQuestion(req.params.id);
+  poserSuivi('question', q.id, req.body && req.body.instruction, req.body && req.body.auto);
+  const apres = questionById(q.id);
+  res.json({ ok: true, followup_draft: apres.followup_draft, followup_auto: apres.followup_auto });
+}));
+
+// La réponse, en Markdown — même forme que celle d'une exploration (visualiseur commun).
+app.get('/api/questions/:id/md', wrap((req, res) => {
+  const q = exigerQuestion(req.params.id);
+  res.json({ md: q.md_path ? readFileSafe(q.md_path) : null, prompt: q.prompt, created_at: q.created_at });
+}));
+
+// L'historique des passes : une étude menée en cinq questions garde ses cinq réponses.
+app.get('/api/questions/:id/passes', wrap((req, res) => {
+  const q = exigerQuestion(req.params.id);
+  res.json(passesPayload('ask', 0, q.id, req.query.n, null, q.md_path));
+}));
+
+app.post('/api/questions/:id/hidden', wrap((req, res) => {
+  const q = exigerQuestion(req.params.id);
+  const hidden = (req.body && req.body.hidden) ? 1 : 0;
+  db.prepare('UPDATE question SET hidden = ?, updated_at = ? WHERE id = ?')
+    .run(hidden, new Date().toISOString(), q.id);
+  res.json({ ok: true, hidden });
+}));
+
+app.post('/api/questions/:id/clear-error', wrap((req, res) => {
+  const q = exigerQuestion(req.params.id);
+  db.prepare("UPDATE question SET last_error = NULL, status = CASE WHEN status = 'error' THEN 'new' ELSE status END, updated_at = ? WHERE id = ?")
+    .run(new Date().toISOString(), q.id);
+  res.json({ ok: true });
+}));
+
+app.delete('/api/questions/:id', wrap((req, res) => {
+  const id = Number(req.params.id);
+  agentpass.removeTask('ask', id);                       // pas de FK : nettoyage explicite
+  db.prepare('DELETE FROM question WHERE id = ?').run(id);
+  try { fs.rmSync(path.join(TASKS_DIR, 'ask', String(id)), { recursive: true, force: true }); } catch { /* rien */ }
+  res.json({ ok: true });
+}));
+
 /* Itération : nouvelle passe de l'IA (codage) ou question de suivi (exploration).
 
    `targets` restreint la correction à certains projets, comme pour « Lancer ». Sur une

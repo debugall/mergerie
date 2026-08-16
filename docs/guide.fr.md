@@ -429,6 +429,16 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   **Chaque question est conservée** : une question de suivi écrase le fichier de réponse, mais la passe
   est archivée — `Voir la réponse` propose un **sélecteur d'itération** qui rejoue chaque question avec
   la réponse qu'elle a obtenue.
+- **Question libre** — la même chose, **sans aucun dépôt**. On pose une question à l'IA — une notion à
+  creuser, deux options à comparer, un plan à challenger — et la réponse est gardée ici. Rien n'est lu ni
+  modifié sur la machine : ni clone, ni dossier, ni fichier de ton code. Un **libellé** facultatif range
+  l'étude (« Concurrence », « Archi paiement »), et la recherche porte sur la question et le libellé.
+  Comme partout, une **question de suivi reprend la même session d'agent** — c'est ce qui permet de mener
+  une étude en cinq questions plutôt qu'une —, chaque passe est **archivée** avec sa question, et
+  **« Reprendre au terminal »** rend la main pour continuer l'échange soi-même. La réponse s'exporte
+  (HTML, Word, PDF) comme celle d'une exploration. Une question libre ne réserve aucun dépôt : elle ne
+  bloque jamais une review ni une session de codage, et rien ne la bloque.
+  (Sous-onglet dédié, après *Exploration*.)
 
 ### Notes
 Les post-it et l'onglet bloc-notes du quotidien, **dans l'outil** — donc **ancrés** à ce qu'on y suit

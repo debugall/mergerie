@@ -442,6 +442,52 @@ const lt0 = db.prepare('INSERT INTO local_task (prompt, status, created_at, upda
 db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
   .run(lt0.lastInsertRowid, '/home/moi/dev/scripts', 'new', at(0.4));
 
+/* ---------- Questions libres ----------
+   La quatrième saveur de Dev IA : une question posée à l'IA hors de tout dépôt, et sa réponse
+   gardée. Trois états sèment ce qu'il faut voir : une étude déjà répondue (avec sa trace de
+   suivi, ce qui est TOUT l'intérêt de l'onglet), une question posée mais pas encore lancée, et
+   une question dont un suivi attend d'être envoyé. */
+{
+  const poser = ({ prompt, label, status, jours, reponse, suivi }) => {
+    const id = db.prepare(`INSERT INTO question (prompt, label, status, created_at, updated_at, finished_at, followup_draft)
+      VALUES (?,?,?,?,?,?,?)`)
+      .run(prompt, label || null, status, at(jours), at(jours), status === 'done' ? at(jours) : null, suivi || null)
+      .lastInsertRowid;
+    if (!reponse) return id;
+    const dir = ensureDir(path.join(TASKS_DIR, 'ask', String(id)));
+    const md = path.join(dir, 'question.md');
+    fs.writeFileSync(md, `# ${prompt}\n\n> Question libre du ${new Date().toLocaleDateString('fr-FR')}\n\n---\n\n${reponse}`, 'utf8');
+    db.prepare('UPDATE question SET md_path = ? WHERE id = ?').run(md, id);
+    return id;
+  };
+
+  poser({
+    label: 'Concurrence',
+    prompt: 'Quelles différences entre un mutex et un sémaphore, et lequel choisir pour limiter à 5 appels simultanés sortants ?',
+    status: 'done', jours: 0.6,
+    reponse: '## En deux mots\n\nUn **mutex** protège une ressource : un seul détenteur à la fois, et c\'est celui qui '
+      + 'a pris qui rend. Un **sémaphore** compte des jetons : il en distribue N, et n\'importe qui peut en rendre un.\n\n'
+      + '## Pour ton cas\n\nLimiter à cinq appels sortants simultanés, c\'est **compter des places**, pas protéger une '
+      + 'ressource unique : c\'est un sémaphore à 5 jetons.\n\n> ⚠️ Le piège classique : libérer le jeton dans un `finally`. '
+      + 'Sans ça, une exception fuit une place, et au bout de cinq erreurs le service se bloque définitivement.\n',
+    suivi: 'Et comment on teste qu’aucune place ne fuit ?',
+  });
+  poser({
+    label: 'Architecture',
+    prompt: 'Explique le théorème CAP avec un exemple concret, et ce que « choisir AP » implique au quotidien.',
+    status: 'done', jours: 2,
+    reponse: '## Le théorème\n\nEn cas de **partition réseau**, il faut choisir : rester **cohérent** (refuser de répondre) '
+      + 'ou rester **disponible** (répondre avec une donnée peut-être périmée). Hors partition, la question ne se pose pas.\n\n'
+      + '## Choisir AP, concrètement\n\nLe panier d\'un utilisateur reste modifiable pendant l\'incident, et deux versions '
+      + 'divergentes devront être **réconciliées** ensuite. C\'est un choix de produit avant d\'être un choix technique : '
+      + 'quelqu\'un doit décider ce qui gagne quand les deux paniers se contredisent.\n',
+  });
+  poser({
+    prompt: 'Quelles questions poser en entretien pour évaluer quelqu’un sur l’observabilité ?',
+    status: 'new', jours: 0.2,
+  });
+}
+
 const lt2 = db.prepare('INSERT INTO local_task (prompt, status, last_error, created_at, updated_at) VALUES (?,?,?,?,?)')
   .run('Convertis ce petit script Python en module réutilisable avec des tests pytest.', 'error', 'Le dossier n’a pas pu être traité (agent indisponible en démo).', at(1.2), at(1.2));
 db.prepare('INSERT INTO local_task_dir (task_id, path, status, last_error, updated_at) VALUES (?,?,?,?,?)')
@@ -737,6 +783,7 @@ const counts = {
   localTasks: db.prepare('SELECT COUNT(*) c FROM local_task').get().c,
   jiraWatch: db.prepare('SELECT COUNT(*) c FROM jira_watch').get().c,
   verifications: db.prepare('SELECT COUNT(*) c FROM verification').get().c,
+  questions: db.prepare('SELECT COUNT(*) c FROM question').get().c,
   notePages: db.prepare('SELECT COUNT(*) c FROM note_page').get().c,
   todos: db.prepare('SELECT COUNT(*) c FROM todo').get().c,
   services: db.prepare('SELECT COUNT(*) c FROM service').get().c,

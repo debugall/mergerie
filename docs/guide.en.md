@@ -412,6 +412,16 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   **“Resume in terminal”** so you can continue the conversation yourself. **Every question is kept**: a
   follow-up question overwrites the answer file, but the pass is archived — `View answer` offers an
   **iteration selector** that replays each question with the answer it got.
+- **Free question** — the same thing, **with no repository at all**. You ask the AI something — a notion to
+  dig into, two options to compare, a plan to challenge — and the answer is kept here. Nothing on the
+  machine is read or changed: no clone, no folder, none of your files. An optional **label** files the
+  study away (“Concurrency”, “Payment architecture”), and the search covers the question and the label.
+  As everywhere else, a **follow-up question resumes the same agent session** — which is what makes a
+  five-question study possible instead of one — every pass is **archived** with its question, and
+  **“Resume in terminal”** hands the thread back so you can continue it yourself. The answer exports
+  (HTML, Word, PDF) like an exploration's. A free question reserves no repository: it never blocks a
+  review or a coding session, and nothing blocks it.
+  (Dedicated sub-tab, after *Exploration*.)
 
 ### Notes
 The sticky notes and the notepad tab of everyday work, **inside the tool** — so **anchored** to what it

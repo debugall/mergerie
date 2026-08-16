@@ -384,6 +384,35 @@ try { db.exec('ALTER TABLE local_task_dir ADD COLUMN output_path TEXT'); } catch
 try { db.exec('ALTER TABLE local_task ADD COLUMN ask_questions INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE local_task_dir ADD COLUMN questions_json TEXT'); } catch { /* déjà présente */ }
 // Rangement d'une session hors dépôt — même principe que `task.hidden`.
+
+/* ---------- Question libre ----------
+   Poser une question à l'IA SANS dépôt ni dossier, et garder la trace de la réponse.
+
+   POURQUOI UNE TABLE À ELLE : `task` porte un `repo_id NOT NULL` (une session de codage ou
+   une exploration parle toujours d'un dépôt), et `local_task` agrège son statut depuis ses
+   DOSSIERS — une question n'a ni l'un ni l'autre. La greffer sur l'une des deux aurait
+   demandé de rendre optionnel ce qui fait justement leur nature, et chaque écran des trois
+   saveurs existantes aurait eu à gérer un cas « sans cible » qui ne le concerne pas.
+
+   Tout est dans le CREATE : une table neuve n'a pas d'historique à rattraper. Une colonne
+   ajoutée plus tard devra l'être en ALTER, APRÈS ce bloc. */
+db.exec(`CREATE TABLE IF NOT EXISTS question (
+  id INTEGER PRIMARY KEY,
+  prompt TEXT NOT NULL,
+  label TEXT,
+  status TEXT DEFAULT 'new',        -- new | running | done | error
+  md_path TEXT,                     -- la réponse, en Markdown (comme une exploration)
+  last_error TEXT,
+  session_key TEXT,                 -- session d'agent reprenable : un suivi la reprend
+  session_backend TEXT,
+  session_cwd TEXT,
+  followup_draft TEXT,
+  followup_auto INTEGER DEFAULT 0,
+  hidden INTEGER DEFAULT 0,
+  created_at TEXT,
+  updated_at TEXT,
+  finished_at TEXT
+)`);
 /* Activité mensuelle d'un dépôt (onglet Statistiques). Mise en cache parce qu'elle coûte
    cher à récupérer — six mois d'un dépôt vivant, c'est des centaines de commits paginés —
    et qu'un mois CLOS ne change plus jamais : seul le mois courant se recalcule.

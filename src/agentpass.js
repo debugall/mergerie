@@ -20,9 +20,15 @@ const db = require('./db');
 const { TASKS_DIR, ensureDir } = require('./paths');
 
 // Dossier de travail d'une unité : <tasks>/<id>/<unit> ou <tasks>/local/<id>/<unit>.
+/* CHAQUE SCOPE A SON DOSSIER. Les identifiants sont propres à chaque table : la question n°3
+   et la session de codage n°3 existent en même temps, et sans ce préfixe elles écriraient
+   leurs passes au même endroit — la seconde écrasant la première sans rien dire. */
+const RACINE_SCOPE = { local: 'local', ask: 'ask' };
+
 function unitDir(scope, taskId, unitId) {
-  const base = scope === 'local'
-    ? path.join(TASKS_DIR, 'local', String(taskId), String(unitId))
+  const racine = RACINE_SCOPE[scope];
+  const base = racine
+    ? path.join(TASKS_DIR, racine, String(taskId), String(unitId))
     : path.join(TASKS_DIR, String(taskId), String(unitId));
   return ensureDir(base);
 }
