@@ -554,16 +554,19 @@ db.prepare(`INSERT OR IGNORE INTO jira_watch (key, summary, status, status_categ
    L'histoire qu'on montre est celle qui donne son sens à la fonctionnalité : deux merge
    requests de dépôts différents qui ne valent qu'ensemble, un premier verdict ROUGE avec les
    tests nommés, puis un second VERT après correction. Un écran vide n'aurait rien dit. */
-const verifierId = db.prepare(`INSERT INTO verifier (name, command, timeout_s, run_base, comment_on_forge, created_at)
-  VALUES (?,?,?,?,?,?)`).run('integ (démo)', '/usr/local/bin/integ-demo.sh', 900, 1, 0, at(20)).lastInsertRowid;
+/* Le vérificateur d'INTÉGRATION : la même liste de commandes rejouée dans deux dépôts, pour
+   les merge requests qui ne valent qu'ensemble. */
+const verifierId = db.prepare(`INSERT INTO verifier
+  (name, kind, command, timeout_s, run_base, comment_on_forge, parse_tap, created_at)
+  VALUES (?, 'commands', '', ?,?,?,1,?)`).run('integ (démo)', 900, 1, 0, at(20)).lastInsertRowid;
 for (const projet of ['groupe/api-core', 'groupe/webapp-front']) {
   db.prepare("INSERT INTO verifier_repo (verifier_id, repo_id, mode, workdir, checkout_allowed) VALUES (?,?,'worktree',NULL,0)")
     .run(verifierId, repoIds[projet]);
 }
+['npm ci', 'npm run test:integ'].forEach((c, i) => {
+  db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)').run(verifierId, i, c);
+});
 
-/* Le second genre de vérificateur, celui qui ne demande rien à écrire : une liste de
-   commandes sur UN dépôt. Sa présence rend la modale de confirmation représentative — on y
-   choisit entre les deux familles, ce qui est le geste réel. */
 /* Celui-ci part TOUT SEUL sur les nouvelles merge requests (`auto_on_mr`). C'est la
    fonctionnalité qu'on ne peut pas montrer autrement : sans un vérificateur coché, l'écran
    des réglages ne dit rien de ce que la découverte sait déclencher. */

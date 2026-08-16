@@ -1282,7 +1282,7 @@ tree) ·
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more
 precise; a rule on a path can carry a **“risk” badge** shown on the merge requests concerned, computed
 **without AI** just from the diff's paths, to see at a glance which one to review first) ·
-**Verifiers** (your test scripts, and the repositories each of them can test — see *Objective verification*
+**Verifiers** (your test commands, and the repositories each of them can test — see *Objective verification*
 below; the page shows **the list** first, and the form opens on *Add a verifier*, *Edit* or
 **`Duplicate`** — the latter reopens it **prefilled** with no id, so saving **creates** instead of
 overwriting the original, with a free name proposed ("X (copy)", since names are unique) and the
@@ -1388,7 +1388,7 @@ configured · every form field carries an **i icon** whose hover (or keyboard fo
 ## Objective verification (verifiers)
 
 A review says *what it thinks* of the code. A **verifier** says **what happens when you run it**: it is
-**your** test script, Mergerie prepares the repositories for it and reads its verdict. The two complement
+**your** test commands, Mergerie prepares the repositories for them and reads their verdict. The two complement
 each other — a 9/10 score on an MR whose integration tests break means nothing any more once you know it.
 
 **What it changes in practice**: a badge on each merge request (`✓ verified`, `✗ 2 tests broken`,
@@ -1396,11 +1396,15 @@ each other — a 9/10 score on an MR whose integration tests break means nothing
 repositories that are only worth anything together — the front-end MR and the API one that only pass when
 combined.
 
-### Two families of verifiers
+### What a verifier is
 
-**Commands** — you give a list (`npm ci`, then `npm test`), Mergerie runs it in the prepared repository and
-**the verdict comes from the exit codes**. Nothing to write, nothing to install. This is the common case,
-and the right starting point.
+You give a **list of commands** (`npm ci`, then `npm test`), Mergerie runs it in the prepared repository and
+**the verdict comes from the exit codes**. Nothing to write, nothing to install.
+
+> A second family existed up to 1.2: an **executable** committing to a JSON contract. It has been removed —
+> it asked you to write and maintain a program to get what three lines of commands give. A verifier of that
+> family still on file stays visible in the settings, marked as such, and **refuses to run**: rewrite it as
+> a list of commands, then delete it.
 
 The **order matters** — `npm ci` before `npm test` — and is corrected in one click: each row carries its
 rank and two arrows to move it.
@@ -1419,14 +1423,7 @@ When several repositories are tested, the failures are **prefixed with the repos
 (`grp/lib › cart › discount`): without that, two projects each having a test of the same name would be
 indistinguishable — and the base/head comparison would confuse them.
 
-**Script** — an executable of your own that commits to the JSON contract described below. More work, but it
-receives **every targeted repository at once** and decides itself what to do with them: that is the shape of
-a real **integration** test, where “commands” simply replays the same list in each. It also returns named
-tests whatever way your suite expresses itself.
-
-The two share everything else: git preparation, the double base/head run, badges, report, “Fix”.
-
-#### What “commands” can say, and what it cannot
+#### What a verifier can say, and what it cannot
 
 The list stops **at the first command that fails**: after a failed `npm ci`, the output of `npm test` is
 just noise. The report then shows the sequence — which command, which code, how long, and its output.
@@ -1473,13 +1470,13 @@ works. Launched by a service or a desktop launcher, `npm` will not be found — 
 
 ### How the roles are shared
 
-**Mergerie does all the git.** Your script does no checkout and knows no branch: it receives directories
-already positioned on the right commits and answers “do the tests pass”. That is what lets the same script
+**Mergerie does all the git.** Your commands do no checkout and know no branch: they run in directories
+already positioned on the right commits and answer “do the tests pass”. That is what lets the same list
 serve in a throwaway worktree as well as in your own working directory.
 
 **Declarative coverage ≠ actual checkout.** In *Settings → Verifiers*, declaring a repository only says
-“this script knows how to test that repository”. Only the repositories **actually targeted** by a
-verification are prepared and passed to the script. The other covered repositories configured *in place* are
+“this verifier knows how to test that repository”. Only the repositories **actually targeted** by a
+verification are prepared. The other covered repositories configured *in place* are
 read **read-only** and appear as **context** in the report (with a ⚠ if they are off their default branch or
 modified): a green obtained thanks to a neighbour left on an old branch must not go unnoticed.
 
@@ -1510,100 +1507,11 @@ The **“Test the directory”** button answers while the form is still in front
 current branch, and the two possible reservations — tracked modifications (which would get the run refused)
 and untracked files (which do not block, but will be there during the tests).
 
-### Script contract (v1) — the “script” family only
-
-**Which file?** Any **executable** — the extension does not matter at all (`.sh`, `.py`, `.js`, a binary).
-Two technical conditions: the **execute bit** (`chmod +x`), and a **shebang** (`#!/bin/sh`,
-`#!/usr/bin/env python3`…) if it is a script, since it is launched directly and nothing guesses what to
-interpret it with. The *Command* field expects an **absolute path**, not a command line: **no argument is
-passed**, and pipes, redirections and variables would not be interpreted — options go inside the script.
-
-The script is launched **without a shell**, once per run (`base` then `head`), with a **minimal
-environment** (`PATH`, `HOME`, `LANG`, `MERGERIE_VERIFY=1`): **no token**, no Mergerie variable. Its `cwd`
-is the first directory of the list. Its `stderr` is streamed into the job's log panel.
-
-**Input** (JSON on stdin):
-
-```json
-{
-  "version": 1,
-  "verifier": "integ",
-  "role": "head",
-  "repos": [
-    { "name": "group/webapp-front", "dir": "/abs/path", "sha": "a1b2c3…",
-      "branch": "feat/PROJ-720", "mode": "worktree", "changed": true }
-  ]
-}
-```
-
-**Output**: the **last valid JSON line** of stdout.
-
-```json
-{
-  "version": 1,
-  "status": "pass",
-  "total": 218,
-  "failed": [
-    { "test": "checkout › server total", "message": "expected 42, got 41", "log_excerpt": "…" }
-  ],
-  "duration_ms": 42000
-}
-```
-
-The **exit code is indicative**: stdout is what counts (a script that exits 1 because tests failed has
-delivered its verdict perfectly well). An unreadable, truncated or off-schema answer, on the other hand,
-**never becomes a green**: it gives `⚠ verification in error`. Bounds: `failed` ≤ 50 entries, `log_excerpt`
-≤ 4 kB each, the whole response ≤ 256 kB.
-
-### Example A — worktree + an ephemeral docker compose
-
-```sh
-#!/bin/sh
-# Integration verifier: a throwaway stack per run, destroyed whatever happens.
-set -eu
-INPUT=$(cat)
-FRONT=$(printf '%s' "$INPUT" | jq -r '.repos[] | select(.name|endswith("webapp-front")) | .dir')
-API=$(printf '%s' "$INPUT" | jq -r '.repos[] | select(.name|endswith("api-core")) | .dir')
-
-PROJECT="mergerie-verify-$$"
-trap 'docker compose -p "$PROJECT" down --remove-orphans >&2 || true' EXIT
-
-docker compose -p "$PROJECT" --env-file ./integ.env \
-  -f "$API/docker-compose.yml" -f "$FRONT/docker-compose.yml" up -d --build >&2
-
-# The JUnit report is turned into a contract response. `total`/`failed` come from it.
-if docker compose -p "$PROJECT" run --rm tests >/tmp/out-$$ 2>&1; then
-  printf '{"version":1,"status":"pass","total":%s}\n' "$(grep -c '^ok ' /tmp/out-$$)"
-else
-  printf '{"version":1,"status":"fail","failed":%s}\n' "$(./junit2json.sh /tmp/out-$$)"
-fi
-```
-
-Two points that matter: `-p` **isolates the compose project** (two runs do not tread on each other), and the
-`trap EXIT` guarantees the stack is destroyed **even if the script is killed** on a timeout.
-
-### Example B — in place + an HTTP adapter
-
-When the suite already runs in a local orchestrator, the script only has to trigger it and **translate its
-answer** into the contract:
-
-```sh
-#!/bin/sh
-set -eu
-cat >/dev/null            # the input is unused: the orchestrator already knows the folders
-curl -sf --max-time 900 -X POST http://127.0.0.1:9099/run \
-  | jq -c '{version:1,
-            status: (if .failures == 0 then "pass" else "fail" end),
-            total: .tests,
-            failed: [.results[] | select(.ok|not)
-                     | {test: .name, message: .message, log_excerpt: .output}][:50]}'
-```
-
 ### `node_modules`, and why the base is sometimes red
 
 **`node_modules` strategy.** A fresh worktree has no dependencies installed. Two answers: a **symlink** from
 a shared cache (fast, but assumes the `lock` has not changed), or an **install** in the worktree (slow, but
-faithful). The choice is yours — it lives in your script. An
+faithful). The choice is yours — it lives in your commands. An
 `ln -s "$CACHE/node_modules" "$dir/node_modules"` does the job as long as you invalidate the cache when
 `package-lock.json` changes.
 
@@ -1634,7 +1542,7 @@ faithful). The choice is yours — it lives in your script. An
 The **Verify** button is present on the merge requests to review **as well as on those already reviewed**
 (in the list and in the report panel): a review is an opinion, a verdict is a fact, and the second keeps all
 its value once the first has been given. A click opens a **confirmation** announcing what is going to run —
-the commands or the script, the repository, the mode, the timeout — before launching anything. It appears
+the commands, the repository, the mode, the timeout — before launching anything. It appears
 even when a single verifier covers the repository: running commands on your machine deserves a screen, not a
 silent click.
 
@@ -1690,7 +1598,7 @@ everybody — two in parallel would return reds that teach nothing.
 In both cases the refusal is immediate and says which of the two reasons applies.
 
 **Dry-run mode**: it only concerns the AI agent. A verification **stays real** if it is configured. In
-**demo mode**, on the other hand, no script is run at all: the verdict is simulated.
+**demo mode**, on the other hand, no command is run at all: the verdict is simulated.
 
 ## Configuration (.env)
 
@@ -1857,10 +1765,10 @@ the **accepted trade-off** of a **local single-user** tool: to be known before u
 to expose the server.
 
 **Verifiers.** Running a repository's tests **is running that repository's code**: the same level of trust
-as the agent session, and the script executes with **your** rights on the machine. The command is an
-**absolute path coming from the configuration** — never a file from the cloned repository —, it is launched
-**without a shell**, with a **minimal environment containing no token**. The script's answer is treated as
-**untrusted data**: schema validated, sizes bounded, systematic escaping on display. Worktrees are created
+as the agent session, and the commands execute with **your** rights on the machine. Each command comes
+**from the configuration** — never from a file of the cloned repository —, it is launched **without a
+shell**, with a **minimal environment containing no token**. Their output is treated as **untrusted data**:
+sizes bounded, systematic escaping on display. Worktrees are created
 **under `data/` only**, and *in place* mode only writes in a directory of yours after **explicit consent**
 (see *Objective verification*).
 

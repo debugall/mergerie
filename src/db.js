@@ -662,18 +662,23 @@ try { db.exec("ALTER TABLE config ADD COLUMN converge_max_passes TEXT DEFAULT '3
 db.exec(`CREATE TABLE IF NOT EXISTS verifier (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
-  command TEXT NOT NULL,               -- kind 'script' : chemin absolu. kind 'commands' : ''
+  command TEXT NOT NULL,               -- toujours '' : les commandes vivent dans verifier_command
   timeout_s INTEGER NOT NULL DEFAULT 900,
   run_base INTEGER NOT NULL DEFAULT 1, -- double run causal : la base était-elle déjà rouge ?
   comment_on_forge INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 )`);
-/* Deux familles de vérificateurs, même verdict, même rapport, mêmes badges :
-     'script'   — un exécutable qui s'engage sur le contrat JSON. Multi-dépôts.
-     'commands' — une liste de commandes ; le verdict vient des CODES DE SORTIE. Multi-dépôts
-                  aussi : la liste est rejouée dans CHAQUE dépôt visé, le verdict est le ET.
-   Colonnes idempotentes plutôt qu'une table à part : ce sont des attributs du vérificateur,
-   et les bases existantes n'ont qu'à recevoir le défaut 'script' pour rester exactes. */
+/* `kind` vaut désormais TOUJOURS 'commands' : une liste de commandes rejouée dans chaque dépôt
+   visé, le verdict venant des CODES DE SORTIE.
+
+   La colonne SURVIT à la disparition de l'autre famille ('script' : un exécutable s'engageant
+   sur un contrat JSON, retirée en 2.0). Les lignes héritées gardent donc leur valeur : elles
+   restent visibles dans les réglages, marquées comme telles, et le serveur REFUSE de les
+   lancer. Supprimer la colonne aurait effacé la distinction — et avec elle la seule chose qui
+   permet d'expliquer à quelqu'un pourquoi son vérificateur ne part plus.
+   Le DÉFAUT reste 'script' : il ne s'applique qu'aux lignes créées avant cette migration, et
+   le changer réécrirait leur histoire. Toute création passe par le serveur, qui impose
+   'commands'. */
 try { db.exec("ALTER TABLE verifier ADD COLUMN kind TEXT NOT NULL DEFAULT 'script'"); } catch { /* déjà présente */ }
 /* « Automatique » : ce vérificateur part sur toute NOUVELLE merge request des dépôts qu'il
    couvre. Sur le vérificateur et non sur chaque ligne de couverture — automatique ici et

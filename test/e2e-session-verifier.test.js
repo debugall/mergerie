@@ -21,7 +21,7 @@ describe('session : le vérificateur et l’auto-push sont liés', () => {
     await app.configure();
     repoId = (await app.api('POST', '/api/repos', { project: 'grp/app', url: 'https://gitlab.demo/grp/app' })).body.id;
     verifierId = (await app.api('POST', '/api/verifiers', {
-      name: 'integ', kind: 'script', command: '/bin/true', timeout_s: 60,
+      name: 'integ', kind: 'commands', commands: ['/bin/true'], timeout_s: 60,
       repos: [{ repo_id: repoId, mode: 'worktree' }],
     })).body.id;
   });

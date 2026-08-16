@@ -11,6 +11,21 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Removed
+
+- **“Script” verifiers are gone; a verifier is a list of commands.** Writing an executable that
+  speaks a JSON contract was a lot of work for what three lines — `npm ci`, `npm test` — already
+  give, and that contract was the part of the tool nobody read until they needed it. Everything
+  it fed still exists: the causal base/head double run, the named broken tests (read from TAP or
+  a JUnit report), multi-repository coverage, batches, `Fix (AI session)`. **What is lost**: a
+  script could *declare* its own failed test names whatever its output looked like — a suite that
+  prints neither TAP nor JUnit now yields a verdict from exit codes alone, and the report names
+  the failing **command** instead of the failing test.
+  A verifier of that family still on file **is not deleted and not converted**: it stays visible
+  in *Settings → Verifiers*, marked `family removed`, and refuses to run — converting it into a
+  single command would have kept it running while silently changing what its verdict meant.
+  Rewrite it as a list of commands, then delete it.
+
 ### Added
 
 - **A fourth kind of AI session: the free question.** *AI Dev* gains a `Free question` sub-tab for

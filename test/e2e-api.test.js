@@ -346,15 +346,20 @@ describe('API de bout en bout', () => {
   /* ---------- Vérificateurs (plan_add_verify.md §3) ---------- */
 
   test('Vérificateurs : création, couverture déclarée, garde-fous de configuration', async () => {
-    /* Chemin RELATIF refusé : il dépendrait du répertoire courant du serveur et pourrait
-       désigner un script du dépôt cloné plutôt que celui de l'utilisateur. */
-    const rel = await app.api('POST', '/api/verifiers', { name: 'integ', command: './run.sh' });
-    assert.equal(rel.status, 400);
-    assert.match(rel.body.error, /absolu/);
-    assert.equal((await app.api('POST', '/api/verifiers', { name: '  ', command: '/bin/true' })).status, 400);
+    /* La famille « script » n'existe plus : un vieux client qui la demande est REFUSÉ, pas
+       corrigé en silence — accepter en changeant la nature de la demande ferait croire que son
+       contrat JSON est toujours honoré. */
+    const ancien = await app.api('POST', '/api/verifiers', {
+      name: 'integ', kind: 'script', command: '/usr/local/bin/verify.sh',
+    });
+    assert.equal(ancien.status, 400);
+    assert.match(ancien.body.error, /script/i);
+    // Sans commande, il n'y a rien à lancer : on refuse au lieu d'enregistrer une coquille.
+    assert.equal((await app.api('POST', '/api/verifiers', { name: 'vide', commands: [] })).status, 400);
+    assert.equal((await app.api('POST', '/api/verifiers', { name: '  ', commands: ['/bin/true'] })).status, 400);
 
     const cree = await app.api('POST', '/api/verifiers', {
-      name: 'integ', command: '/usr/local/bin/verify.sh', timeout_s: 120,
+      name: 'integ', commands: ['/usr/local/bin/verify.sh --ci'], timeout_s: 120,
       repos: [{ repo_id: repoId, mode: 'worktree' }],
     });
     assert.equal(cree.status, 200);
@@ -364,7 +369,7 @@ describe('API de bout en bout', () => {
     assert.deepEqual(cree.body.repos.map((r) => [r.repo_id, r.mode]), [[repoId, 'worktree']]);
 
     // Le nom identifie le vérificateur dans l'UI et les rapports : pas de doublon.
-    const dup = await app.api('POST', '/api/verifiers', { name: 'integ', command: '/bin/true' });
+    const dup = await app.api('POST', '/api/verifiers', { name: 'integ', commands: ['/bin/true'] });
     assert.equal(dup.status, 400);
     assert.match(dup.body.error, /existe déjà/);
 

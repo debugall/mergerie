@@ -2492,30 +2492,26 @@ function lireVerifier(body, courant) {
   const name = (b.name != null ? String(b.name) : (courant && courant.name) || '').trim();
   if (!name) throw new Error(t('err.verifier.name-required'));
 
-  /* Deux genres, deux formes de validation. `script` s'engage sur le contrat JSON ;
-     `commands` ne s'engage sur rien et voit son verdict déduit des codes de sortie. */
-  const kind = (b.kind != null ? String(b.kind) : (courant && courant.kind) || 'script') === 'commands'
-    ? 'commands' : 'script';
+  /* UN SEUL GENRE DEPUIS LA 2.0 : la liste de commandes. La famille « script » — un exécutable
+     s'engageant sur un contrat JSON — a été retirée : elle demandait d'écrire et de maintenir un
+     programme pour obtenir ce que trois lignes de commandes donnent, et son contrat était la
+     partie de l'outil que personne ne lisait avant d'en avoir besoin.
+     Un `kind: 'script'` envoyé par un vieux client est REFUSÉ, pas corrigé en silence : accepter
+     la demande en changeant sa nature ferait croire que le contrat JSON est toujours honoré. */
+  if (b.kind != null && String(b.kind) !== 'commands') throw new Error(t('err.verifier.kind-removed'));
+  const kind = 'commands';
 
-  let command = (b.command != null ? String(b.command) : (courant && courant.command) || '').trim();
-  let commands = null;
-  if (kind === 'script') {
-    /* Chemin ABSOLU exigé : un chemin relatif dépendrait du répertoire courant du serveur, et
-       ouvrirait la porte à exécuter un script du dépôt cloné plutôt que celui de l'utilisateur. */
-    if (!command || !path.isAbsolute(command)) throw new Error(t('err.verifier.command-absolute'));
-  } else {
-    command = '';
-    const brut = b.commands != null
-      ? (Array.isArray(b.commands) ? b.commands : [])
-      : (courant ? verifierCommandes(courant.id) : []);
-    commands = brut.map((x) => String(x || '').trim()).filter(Boolean);
-    if (!commands.length) throw new Error(t('err.verifier.commands-required'));
-    /* Chaque ligne est validée MAINTENANT, pas au premier run : découvrir un « && » au bout
-       de dix minutes de préparation serait un run perdu et une erreur loin de sa cause. */
-    for (const c of commands) {
-      const d = verifyLib.decouperCommande(c);
-      if (!d.ok) throw new Error(t('err.verifier.command-invalid', { command: c, reason: d.erreur }));
-    }
+  const command = '';
+  const brut = b.commands != null
+    ? (Array.isArray(b.commands) ? b.commands : [])
+    : (courant ? verifierCommandes(courant.id) : []);
+  const commands = brut.map((x) => String(x || '').trim()).filter(Boolean);
+  if (!commands.length) throw new Error(t('err.verifier.commands-required'));
+  /* Chaque ligne est validée MAINTENANT, pas au premier run : découvrir un « && » au bout
+     de dix minutes de préparation serait un run perdu et une erreur loin de sa cause. */
+  for (const c of commands) {
+    const d = verifyLib.decouperCommande(c);
+    if (!d.ok) throw new Error(t('err.verifier.command-invalid', { command: c, reason: d.erreur }));
   }
 
   // Variables ajoutées à l'environnement minimal : « CLE=valeur », une par ligne.
@@ -2718,6 +2714,12 @@ function appliquerModes(verifier, cibles) {
    `repo:<id>`), donc deux vérifications d'un même dépôt ne tourneront jamais ensemble — le
    refus ci-dessous n'est qu'un garde-fou d'ergonomie, pas la protection du clone. */
 function creerVerification({ verifier, cibles, lotId = null, enFile = false }) {
+  /* UN VÉRIFICATEUR HÉRITÉ DE LA FAMILLE « SCRIPT » NE TOURNE PLUS. Sa ligne est conservée
+     — on ne supprime pas la configuration de quelqu'un sans le lui demander — mais le lancer
+     n'aurait aucun sens : plus rien ne sait exécuter son contrat. On refuse ici, une fois pour
+     toutes les portes d'entrée (MR, lot, branche, session, déclenchement automatique), avec le
+     geste à faire. Le laisser partir pour échouer dix minutes plus tard serait pire. */
+  if (verifier && verifier.kind !== 'commands') throw new Error(t('err.verify.script-removed', { name: verifier.name }));
   /* §10 : une vérification MULTI-DÉPÔTS monte un environnement complet et ne se partage pas ;
      une MONO-DÉPÔT n'a qu'à ne pas viser le même dépôt qu'une autre. Le message dit laquelle
      des deux raisons s'applique — elles ne se corrigent pas de la même façon. */
@@ -3008,7 +3010,13 @@ const MAX_VERIF_AUTO = 5;
 function lancerVerificationsAuto(mrIds) {
   const bilan = { lancees: 0, ignorees: 0, plafonnees: 0 };
   if (!Array.isArray(mrIds) || !mrIds.length) return bilan;
-  const autos = db.prepare('SELECT * FROM verifier WHERE auto_on_mr = 1').all();
+  /* Un vérificateur hérité de la famille « script » ne part pas tout seul : `creerVerification`
+     le refuserait, et une exception par merge request découverte transformerait la découverte en
+     échec. On l'écarte ici, en le disant une fois dans le journal. */
+  const tous = db.prepare('SELECT * FROM verifier WHERE auto_on_mr = 1').all();
+  const autos = tous.filter((v) => v.kind === 'commands');
+  const herites = tous.length - autos.length;
+  if (herites) console.log(`[verif-auto] ${herites} vérificateur(s) « script » ignoré(s) : famille retirée, à réécrire en liste de commandes`);
   if (!autos.length) return bilan;
 
   for (const mrId of mrIds) {

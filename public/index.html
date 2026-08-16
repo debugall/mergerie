@@ -768,96 +768,7 @@
             <h2 data-i18n="settings.sub.verifiers">Vérificateurs</h2>
             <p class="muted" style="max-width:760px" data-i18n-html="settings.verifier.intro">Un vérificateur donne à une merge request un verdict qui n'est pas un avis. Deux familles : une <strong>liste de commandes</strong> (<code>npm ci</code>, <code>npm test</code>), rejouée dans chaque dépôt qu'elle couvre — rien à écrire, le verdict vient des codes de sortie —, ou <strong>ton script</strong>, qui reçoit tous les dépôts d'un coup et rend un verdict JSON, forme d'un vrai test d'intégration. Dans les deux cas Mergerie fait tout le git, lance <strong>sans shell</strong> avec un environnement minimal, et n'exécute jamais rien depuis le dépôt cloné.</p>
 
-            <!-- Le contrat, sous les yeux au moment d'écrire le script. Le renvoyer au guide
-                 obligerait à changer d'écran précisément quand on a besoin du format exact. -->
-            <details class="verifier-doc">
-                <summary data-i18n="settings.verifier.doc.title">Vérificateur « script » : format du fichier, de l'entrée et de la sortie (avec exemples)</summary>
 
-                <h4 data-i18n="settings.verifier.doc.file.title">Quel fichier ?</h4>
-                <p data-i18n-html="settings.verifier.doc.file.text"><strong>N'importe quel exécutable</strong> : l'extension n'a aucune importance. Un <code>.sh</code>, un <code>.py</code>, un <code>.js</code>, un binaire compilé — tous conviennent. Deux conditions, et elles sont techniques :</p>
-                <ul>
-                    <li data-i18n-html="settings.verifier.doc.file.exec">le fichier doit porter le <strong>bit d'exécution</strong> (<code>chmod +x /home/moi/bin/integ.sh</code>) ;</li>
-                    <li data-i18n-html="settings.verifier.doc.file.shebang">s'il s'agit d'un script, il doit commencer par un <strong>shebang</strong> (<code>#!/bin/sh</code>, <code>#!/usr/bin/env python3</code>…) — il est lancé <strong>directement</strong>, pas par un shell, donc rien ne devine avec quoi l'interpréter.</li>
-                </ul>
-                <p data-i18n-html="settings.verifier.doc.file.noargs">Le champ <em>Commande</em> attend un <strong>chemin absolu</strong>, pas une ligne de commande : <strong>aucun argument n'est transmis</strong>, et les tubes, redirections et variables (<code>|</code>, <code>&gt;</code>, <code>$VAR</code>) ne seraient pas interprétés. Pour passer des options, mets-les dans le script.</p>
-
-                <h4 data-i18n="settings.verifier.doc.in.title">Ce que Mergerie envoie sur l'entrée standard</h4>
-                <p data-i18n-html="settings.verifier.doc.in.text">Un objet JSON, sur une ligne. <code>role</code> vaut <code>base</code> (les branches cibles, avant tes changements) puis <code>head</code> (avec). <code>repos</code> ne contient que les dépôts <strong>visés par cette vérification</strong>, déjà positionnés sur les bons commits — tu n'as aucun git à faire.</p>
-<pre><code>{
-  "version": 1,
-  "verifier": "intégration",
-  "role": "head",
-  "repos": [
-    {
-      "name": "groupe/webapp-front",
-      "dir": "/abs/chemin/vers/le/repertoire",
-      "sha": "a1b2c3d4e5f6…",
-      "branch": "feat/PROJ-720",
-      "mode": "worktree",
-      "changed": true
-    }
-  ]
-}</code></pre>
-                <p data-i18n-html="settings.verifier.doc.in.env">Le répertoire courant du script est le <code>dir</code> du premier dépôt. Son environnement est <strong>minimal</strong> — <code>PATH</code>, <code>HOME</code>, <code>LANG</code>, <code>MERGERIE_VERIFY=1</code> — et ne contient <strong>aucun jeton</strong>. Tout ce qu'il écrit sur <code>stderr</code> apparaît dans le panneau de log du job.</p>
-
-                <h4 data-i18n="settings.verifier.doc.out.title">Ce que Mergerie attend sur la sortie standard</h4>
-                <p data-i18n-html="settings.verifier.doc.out.text">La <strong>dernière ligne JSON valide</strong> de <code>stdout</code> : ton script peut donc bavarder avant, seule cette ligne compte.</p>
-<pre><code>{"version":1,"status":"pass","total":218,"duration_ms":42000}</code></pre>
-                <p data-i18n="settings.verifier.doc.out.fail">…ou, quand des tests échouent :</p>
-<pre><code>{
-  "version": 1,
-  "status": "fail",
-  "total": 218,
-  "failed": [
-    {
-      "test": "commande › total serveur",
-      "message": "attendu 42, reçu 41",
-      "log_excerpt": "…quelques lignes de contexte…"
-    }
-  ]
-}</code></pre>
-                <ul>
-                    <li data-i18n-html="settings.verifier.doc.out.status"><code>status</code> vaut <code>pass</code>, <code>fail</code> ou <code>error</code>. <code>total</code>, <code>duration_ms</code> et <code>failed</code> sont facultatifs — un <code>fail</code> sans détail est accepté.</li>
-                    <li data-i18n-html="settings.verifier.doc.out.exit">Le <strong>code de sortie est indicatif</strong> : c'est <code>stdout</code> qui fait foi. Un script qui sort en 1 parce que des tests échouent a parfaitement rendu son verdict.</li>
-                    <li data-i18n-html="settings.verifier.doc.out.limits">Bornes : <code>failed</code> ≤ 50 entrées, chaque <code>log_excerpt</code> ≤ 4 ko, réponse totale ≤ 256 ko.</li>
-                    <li data-i18n-html="settings.verifier.doc.out.strict">Une réponse illisible, tronquée ou hors schéma ne devient <strong>jamais un vert</strong> : elle donne « vérification en erreur ».</li>
-                </ul>
-
-                <h4 data-i18n="settings.verifier.doc.ex.title">Exemples complets</h4>
-                <p data-i18n-html="settings.verifier.doc.ex.sh">Shell — la suite tourne, sa sortie est traduite dans le contrat :</p>
-<pre><code>#!/bin/sh
-set -eu
-ENTREE=$(cat)                                    # le JSON arrive sur stdin
-DIR=$(printf '%s' "$ENTREE" | jq -r '.repos[0].dir')
-
-cd "$DIR"
-if npm test >/tmp/verif.$$ 2>&amp;1; then
-  printf '{"version":1,"status":"pass"}\n'
-else
-  cat /tmp/verif.$$ >&amp;2                          # stderr → panneau de log du job
-  printf '{"version":1,"status":"fail"}\n'
-fi</code></pre>
-                <p data-i18n-html="settings.verifier.doc.ex.py">Python — même chose, avec le détail des tests cassés :</p>
-<pre><code>#!/usr/bin/env python3
-import json, subprocess, sys
-
-entree = json.load(sys.stdin)
-dossier = entree["repos"][0]["dir"]
-
-r = subprocess.run(["npm", "test", "--", "--reporter=json"],
-                   cwd=dossier, capture_output=True, text=True)
-print(r.stderr, file=sys.stderr)
-
-casses = [
-    {"test": t["fullTitle"], "message": t.get("err", {}).get("message", "")}
-    for t in json.loads(r.stdout).get("failures", [])
-]
-print(json.dumps({
-    "version": 1,
-    "status": "pass" if not casses else "fail",
-    "failed": casses[:50],
-}))</code></pre>
-            </details>
             <div class="toolbar">
                 <button id="btnNewVerifier" class="btn btn-primary" type="button"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="verify.verifier.btn.add">Ajouter un vérificateur</span></button>
             </div>
@@ -866,15 +777,6 @@ print(json.dumps({
                 <label><span data-i18n="settings.verifier.lbl.name">Nom</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.name" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input name="name" required placeholder="ex. intégration" data-i18n-placeholder="settings.verifier.ph.name" />
                 </label>
-                <!-- Deux familles : une liste de commandes rejouée dans chaque dépôt visé
-                     (rien à écrire) ou un script qui s'engage sur le contrat JSON. -->
-                <label><span data-i18n="settings.verifier.lbl.kind">Genre</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.kind" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                    <select name="kind">
-                        <option value="commands" data-i18n="settings.verifier.kind.commands">Commandes — une liste rejouée dans chaque dépôt</option>
-                        <option value="script" data-i18n="settings.verifier.kind.script">Script — un exécutable qui rend un verdict JSON (multi-dépôts)</option>
-                    </select>
-                </label>
-
                 <div id="verifierCommandsBlock">
                     <label><span data-i18n="settings.verifier.lbl.commands">Commandes, dans l'ordre</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.commands" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                     <div id="verifierCommandList"></div>
@@ -889,9 +791,6 @@ print(json.dumps({
                         <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.parse-tap" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                 </div>
 
-                <label id="verifierScriptBlock"><span data-i18n="settings.verifier.lbl.command">Commande (chemin absolu)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.command" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                    <input name="command" placeholder="/home/moi/bin/integ.sh" data-i18n-placeholder="settings.verifier.ph.command" />
-                </label>
                 <label><span data-i18n="settings.verifier.lbl.timeout">Délai maximum (secondes)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.timeout" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input name="timeout_s" type="number" min="10" step="10" placeholder="900" />
                 </label>

@@ -494,10 +494,10 @@ describe('Vérification objective — vérificateur « commandes »', () => {
      environnement complet — containers, ports, bases — et deux en parallèle se marcheraient
      dessus quels que soient les dépôts. Celui-là bloque donc tout le monde. */
   test('une vérification multi-dépôts bloque même un dépôt sans rapport', async () => {
-    const script = path.join(bin, 'integ-lent.sh');
-    fs.writeFileSync(script, '#!/bin/sh\ncat >/dev/null\nsleep 4\nprintf \'{"version":1,"status":"pass"}\\n\'\n', { mode: 0o755 });
+    const lent = path.join(bin, 'integ-lent.sh');
+    fs.writeFileSync(lent, '#!/bin/sh\nsleep 4\n', { mode: 0o755 });
     const integ = (await app.api('POST', '/api/verifiers', {
-      name: 'integ-multi', kind: 'script', command: script, run_base: false, timeout_s: 30,
+      name: 'integ-multi', kind: 'commands', commands: [lent], run_base: false, timeout_s: 30,
       repos: [{ repo_id: repoId, mode: 'worktree' }, { repo_id: repo2Id, mode: 'worktree' }],
     })).body;
     const solo = (await app.api('POST', '/api/verifiers', {

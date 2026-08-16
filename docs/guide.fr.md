@@ -1333,7 +1333,7 @@ de forge, et un même chemin peut exister sur les deux —, plus les **répertoi
 branche contient un fragment donné **ou quand le diff touche un chemin** — glob type `**/migrations/**`,
 `*.sql` —, plus précis ; une règle par chemin peut porter un **badge « risque »** affiché sur les MR
 concernées, calculé **sans IA** juste sur les chemins du diff, pour voir d'un coup d'œil laquelle reviewer en premier) ·
-**Vérificateurs** (tes scripts de tests, et les dépôts que chacun sait tester — voir *Vérification
+**Vérificateurs** (tes commandes de tests, et les dépôts que chacun sait tester — voir *Vérification
 objective* plus bas ; la page montre d'abord **la liste**, et le formulaire s'ouvre sur *Ajouter un
 vérificateur*, *Modifier* ou **`Dupliquer`** — celui-ci le rouvre **pré-rempli** sans identifiant,
 donc enregistrer **crée** au lieu d'écraser l'original, avec un nom libre proposé (« X (copie) »,
@@ -1442,18 +1442,22 @@ le survol (ou le focus clavier) explique à quoi il sert.
 ## Vérification objective (vérificateurs)
 
 Une review dit *ce qu'elle pense* du code. Un **vérificateur** dit **ce qui se passe quand on le lance** :
-c'est **ton** script de tests, Mergerie lui prépare les dépôts et lit son verdict. Les deux se complètent —
+ce sont **tes** commandes de tests, Mergerie prépare les dépôts et lit leur verdict. Les deux se complètent —
 une note de 9/10 sur une MR dont les tests d'intégration cassent ne veut plus rien dire une fois qu'on le sait.
 
 **Ce que ça change concrètement** : un badge sur chaque merge request (`✓ vérifié`, `✗ 2 tests cassés`,
 `⚠ base rouge`, `⟳ périmé`), et surtout la possibilité de **vérifier ensemble** des MR de dépôts
 différents qui ne valent qu'ensemble — la MR du front et celle de l'API qui ne passent que réunies.
 
-### Deux familles de vérificateurs
+### Ce qu'est un vérificateur
 
-**Commandes** — tu donnes une liste (`npm ci`, puis `npm test`), Mergerie la lance dans le dépôt préparé
-et **le verdict vient des codes de sortie**. Rien à écrire, rien à installer. C'est le cas courant, et le
-bon point de départ.
+Tu donnes une **liste de commandes** (`npm ci`, puis `npm test`), Mergerie la lance dans le dépôt préparé
+et **le verdict vient des codes de sortie**. Rien à écrire, rien à installer.
+
+> Une seconde famille a existé jusqu'à la 1.2 : un **exécutable** s'engageant sur un contrat JSON. Elle a
+> été retirée — elle demandait d'écrire et de maintenir un programme pour obtenir ce que trois lignes de
+> commandes donnent. Un vérificateur de cette famille encore enregistré reste visible dans les réglages,
+> marqué comme tel, et **refuse de tourner** : réécris-le en liste de commandes, puis supprime-le.
 
 L'**ordre compte** — `npm ci` avant `npm test` — et se corrige d'un clic : chaque ligne porte son rang et
 deux flèches pour la déplacer.
@@ -1471,14 +1475,7 @@ Quand plusieurs dépôts sont testés, les échecs sont **préfixés du dépôt*
 sans ça, deux projets ayant chacun un test du même nom seraient indiscernables — et la comparaison
 base/tête les confondrait.
 
-**Script** — un exécutable à toi qui s'engage sur le contrat JSON décrit plus bas. Plus de travail, mais il
-reçoit **tous les dépôts visés d'un coup** et décide lui-même quoi en faire : c'est la forme d'un vrai test
-d'**intégration**, là où « commandes » rejoue simplement la même liste dans chacun. Il rend aussi des tests
-nommés quelle que soit la façon dont ta suite s'exprime.
-
-Les deux partagent tout le reste : préparation git, double run base/tête, badges, rapport, « Corriger ».
-
-#### Ce que « commandes » sait dire, et ce qu'il ne sait pas dire
+#### Ce qu'un vérificateur sait dire, et ce qu'il ne sait pas dire
 
 La liste s'arrête **à la première commande qui échoue** : après un `npm ci` raté, la sortie de `npm test`
 n'est que du bruit. Le rapport montre alors le déroulé — quelle commande, quel code, combien de temps,
@@ -1528,13 +1525,14 @@ marche. Lancé par un service ou un lanceur de bureau, `npm` sera introuvable �
 
 ### Le partage des rôles
 
-**Mergerie fait tout le git.** Ton script ne fait aucun checkout, ne connaît aucune branche : il reçoit des
-répertoires déjà positionnés sur les bons commits et répond « les tests passent-ils ». C'est ce qui permet
-au même script de servir en worktree jetable comme dans ton propre répertoire de travail.
+**Mergerie fait tout le git.** Tes commandes ne font aucun checkout et ne connaissent aucune branche :
+elles tournent dans des répertoires déjà positionnés sur les bons commits et répondent « les tests
+passent-ils ». C'est ce qui permet à la même liste de servir en worktree jetable comme dans ton propre
+répertoire de travail.
 
 **Couverture déclarative ≠ checkout effectif.** Dans *Réglages → Vérificateurs*, déclarer un dépôt dit
-seulement « ce script sait tester ce dépôt-là ». Seuls les dépôts **effectivement visés** par une
-vérification sont préparés et transmis au script. Les autres dépôts couverts et configurés *in place* sont
+seulement « ce vérificateur sait tester ce dépôt-là ». Seuls les dépôts **effectivement visés** par une
+vérification sont préparés. Les autres dépôts couverts et configurés *in place* sont
 lus **en lecture seule** et apparaissent comme **contexte** dans le rapport (avec un ⚠ s'ils sont hors de
 leur branche par défaut ou modifiés) : un vert obtenu grâce à un voisin resté sur une vieille branche ne
 doit pas passer inaperçu.
@@ -1568,101 +1566,11 @@ Le bouton **« Tester le répertoire »** répond pendant que le formulaire est 
 répertoire reconnu, branche courante, et les deux réserves possibles — des modifications suivies (qui
 feraient refuser le run) et des fichiers non suivis (qui ne bloquent pas, mais seront là pendant les tests).
 
-### Contrat du script (v1) — famille « script » uniquement
-
-**Quel fichier ?** N'importe quel **exécutable** — l'extension n'a aucune importance (`.sh`, `.py`, `.js`,
-un binaire). Deux conditions techniques : le **bit d'exécution** (`chmod +x`), et un **shebang**
-(`#!/bin/sh`, `#!/usr/bin/env python3`…) s'il s'agit d'un script, puisqu'il est lancé directement et que
-rien ne devine avec quoi l'interpréter. Le champ *Commande* attend un **chemin absolu**, pas une ligne de
-commande : **aucun argument n'est transmis**, et tubes, redirections et variables ne seraient pas
-interprétés — les options se mettent dans le script.
-
-Le script est lancé **sans shell**, une fois par run (`base` puis `head`), avec un **environnement minimal**
-(`PATH`, `HOME`, `LANG`, `MERGERIE_VERIFY=1`) : **aucun jeton**, aucune variable de Mergerie. Son `cwd` est
-le premier répertoire de la liste. Son `stderr` est streamé dans le panneau de log du job.
-
-**Entrée** (JSON sur stdin) :
-
-```json
-{
-  "version": 1,
-  "verifier": "integ",
-  "role": "head",
-  "repos": [
-    { "name": "groupe/webapp-front", "dir": "/abs/path", "sha": "a1b2c3…",
-      "branch": "feat/PROJ-720", "mode": "worktree", "changed": true }
-  ]
-}
-```
-
-**Sortie** : la **dernière ligne JSON valide** de stdout.
-
-```json
-{
-  "version": 1,
-  "status": "pass",
-  "total": 218,
-  "failed": [
-    { "test": "checkout › total serveur", "message": "attendu 42, reçu 41", "log_excerpt": "…" }
-  ],
-  "duration_ms": 42000
-}
-```
-
-Le **code de sortie est indicatif** : c'est stdout qui fait foi (un script qui sort en 1 parce que des
-tests échouent a parfaitement rendu son verdict). En revanche une réponse illisible, tronquée ou hors
-schéma ne devient **jamais un vert** : elle donne `⚠ vérification en erreur`. Bornes : `failed` ≤ 50
-entrées, `log_excerpt` ≤ 4 ko chacun, réponse totale ≤ 256 ko.
-
-### Exemple A — worktree + docker compose éphémère
-
-```sh
-#!/bin/sh
-# Vérificateur d'intégration : une stack jetable par run, détruite quoi qu'il arrive.
-set -eu
-ENTREE=$(cat)
-FRONT=$(printf '%s' "$ENTREE" | jq -r '.repos[] | select(.name|endswith("webapp-front")) | .dir')
-API=$(printf '%s' "$ENTREE" | jq -r '.repos[] | select(.name|endswith("api-core")) | .dir')
-
-PROJET="mergerie-verify-$$"
-trap 'docker compose -p "$PROJET" down --remove-orphans >&2 || true' EXIT
-
-docker compose -p "$PROJET" --env-file ./integ.env \
-  -f "$API/docker-compose.yml" -f "$FRONT/docker-compose.yml" up -d --build >&2
-
-# Le rapport JUnit est converti en réponse du contrat. `total`/`failed` viennent de lui.
-if docker compose -p "$PROJET" run --rm tests >/tmp/out-$$ 2>&1; then
-  printf '{"version":1,"status":"pass","total":%s}\n' "$(grep -c '^ok ' /tmp/out-$$)"
-else
-  printf '{"version":1,"status":"fail","failed":%s}\n' "$(./junit2json.sh /tmp/out-$$)"
-fi
-```
-
-Deux points qui comptent : `-p` **isole le projet compose** (deux runs ne se marchent pas dessus), et le
-`trap EXIT` garantit la destruction de la stack **même si le script est tué** au timeout.
-
-### Exemple B — in place + adaptateur HTTP
-
-Quand la suite tourne déjà dans un orchestrateur local, le script n'a plus qu'à la déclencher et à
-**traduire sa réponse** dans le contrat :
-
-```sh
-#!/bin/sh
-set -eu
-cat >/dev/null            # l'entrée ne sert pas : l'orchestrateur connaît déjà les dossiers
-curl -sf --max-time 900 -X POST http://127.0.0.1:9099/run \
-  | jq -c '{version:1,
-            status: (if .failures == 0 then "pass" else "fail" end),
-            total: .tests,
-            failed: [.results[] | select(.ok|not)
-                     | {test: .name, message: .message, log_excerpt: .output}][:50]}'
-```
-
 ### `node_modules`, et pourquoi la base est parfois rouge
 
 **Stratégie `node_modules`.** Un worktree neuf n'a pas de dépendances installées. Deux réponses :
 un **symlink** depuis un cache partagé (rapide, mais suppose que le `lock` n'a pas changé), ou une
-**installation** dans le worktree (lente, mais fidèle). Le choix t'appartient — il vit dans ton script.
+**installation** dans le worktree (lente, mais fidèle). Le choix t'appartient — il vit dans tes commandes.
 Un `ln -s "$CACHE/node_modules" "$dir/node_modules"` fait l'affaire tant que tu invalides le cache sur
 changement de `package-lock.json`.
 
@@ -1693,7 +1601,7 @@ changement de `package-lock.json`.
 Le bouton **Vérifier** est présent sur les merge requests à traiter **comme sur celles déjà reviewées**
 (dans la liste et dans le panneau de rapport) : une review est un avis, un verdict est un fait, et le
 second garde tout son intérêt une fois le premier rendu. Un clic ouvre une **confirmation** qui annonce ce
-qui va tourner — les commandes ou le script, le dépôt, le mode, le délai — avant de lancer quoi que ce
+qui va tourner — les commandes, le dépôt, le mode, le délai — avant de lancer quoi que ce
 soit. Elle apparaît même quand un seul vérificateur couvre le dépôt : exécuter des commandes sur sa
 machine mérite un écran, pas un clic silencieux.
 
@@ -1750,7 +1658,7 @@ par tout le monde — deux en parallèle rendraient des rouges qui n'apprennent 
 Dans les deux cas le refus est immédiat et dit laquelle des deux raisons s'applique.
 
 **Mode dry-run** : il ne concerne que l'agent IA. Une vérification, elle, **reste réelle** si elle est
-configurée. En **mode démo**, en revanche, aucun script n'est lancé : le verdict est simulé.
+configurée. En **mode démo**, en revanche, aucune commande n'est lancée : le verdict est simulé.
 
 ## Configuration (.env)
 
@@ -1918,10 +1826,10 @@ sur la machine** — rien ne l'empêche techniquement d'agir hors du clone. C'es
 outil **local mono-utilisateur** : à connaître avant usage, et une raison de plus de ne pas exposer le serveur.
 
 **Vérificateurs.** Lancer les tests d'un dépôt, **c'est exécuter le code de ce dépôt** : même niveau de
-confiance que la session d'agent, et le script s'exécute avec **tes** droits sur la machine. La commande
-est un **chemin absolu venant de la configuration** — jamais un fichier du dépôt cloné —, elle est lancée
-**sans shell**, avec un **environnement minimal sans aucun jeton**. La réponse du script est traitée comme
-une **donnée non fiable** : schéma validé, tailles bornées, échappement systématique à l'affichage. Les
+confiance que la session d'agent, et les commandes s'exécutent avec **tes** droits sur la machine. Chaque
+commande vient de la **configuration** — jamais d'un fichier du dépôt cloné —, elle est lancée **sans
+shell**, avec un **environnement minimal sans aucun jeton**. Leur sortie est traitée comme une **donnée non
+fiable** : tailles bornées, échappement systématique à l'affichage. Les
 worktrees sont créés **sous `data/` uniquement**, et le mode *in place* n'écrit dans un répertoire à toi
 qu'après **consentement explicite** (voir *Vérification objective*).
 

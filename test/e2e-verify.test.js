@@ -22,7 +22,21 @@ function ecrireScript(dir, nom, corps) {
   return p;
 }
 
-const reponse = (obj) => `cat >/dev/null\nprintf '%s\\n' '${JSON.stringify(obj)}'`;
+/* LE VERDICT VIENT DU CODE DE SORTIE. La famille « script » — un exécutable rendant un verdict
+   JSON — a été retirée : ce qui suit lance donc de vraies commandes, et `PASSE`/`CASSE` sont de
+   simples sorties 0 et 1. Les tests dont le SUJET était le contrat lui-même (une sortie
+   illisible, un code de sortie contredit par le JSON, le passage des dépôts sur stdin) ont été
+   supprimés avec lui : ils ne décrivaient plus rien. */
+const PASSE = 'exit 0';
+const CASSE = 'exit 1';
+// Un échec NOMMÉ : les noms de tests se lisent désormais dans le TAP de la sortie.
+const casseAvec = (nom, message) => [
+  "printf 'TAP version 13\\n'",
+  `printf 'not ok 1 - ${nom}\\n'`,
+  ...(message ? [`printf '  ---\\n  message: ${message}\\n  ...\\n'`] : []),
+  "printf '1..1\\n'",
+  'exit 1',
+].join('\n');
 
 describe('Vérification objective — mode worktree', () => {
   let app;
@@ -91,7 +105,7 @@ describe('Vérification objective — mode worktree', () => {
   async function poser(corps, opts = {}) {
     const cmd = ecrireScript(bin, `v-${Math.abs(corps.length)}-${opts.nom || 'x'}.sh`, corps);
     const v = await app.api('POST', '/api/verifiers', {
-      name: opts.nom || `v${Date.now()}`, command: cmd, timeout_s: opts.timeout_s || 60,
+      name: opts.nom || `v${Date.now()}`, kind: 'commands', commands: [cmd], timeout_s: opts.timeout_s || 60,
       run_base: opts.run_base !== false,
       repos: [{ repo_id: repoId, mode: 'worktree' }],
     });
@@ -106,14 +120,13 @@ describe('Vérification objective — mode worktree', () => {
   });
 
   test('base verte et tête verte : verified_pass, et les worktrees sont nettoyés', async () => {
-    const v = await poser(reponse({ version: 1, status: 'pass', total: 12 }), { nom: 'tout-vert' });
+    const v = await poser(PASSE, { nom: 'tout-vert' });
     const lance = await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id });
     assert.equal(lance.status, 200);
     const d = await attendre(lance.body.verification.id);
     assert.equal(d.verdict, 'verified_pass');
     assert.equal(d.status, 'done');
     assert.equal(d.base_run.status, 'pass', 'le run base a bien eu lieu');
-    assert.equal(d.head_run.total, 12);
     assert.deepEqual(d.imputable, []);
 
     // §5.7 : rien ne doit rester dans le dossier des worktrees.
@@ -124,10 +137,7 @@ describe('Vérification objective — mode worktree', () => {
   });
 
   test('base verte, tête rouge : verified_fail, et tout l’échec est imputable à la branche', async () => {
-    const v = await poser(reponse({
-      version: 1, status: 'fail',
-      failed: [{ test: 'checkout › total', message: 'attendu 42, reçu 41' }],
-    }), { nom: 'tout-rouge' });
+    const v = await poser(casseAvec('checkout › total', 'attendu 42, reçu 41'), { nom: 'tout-rouge' });
     /* Le script répond la même chose aux deux rôles : base rouge ET tête rouge, sans delta.
        C'est le cas subtil du tableau — le verdict doit être « base rouge », pas « échec ». */
     const lance = await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id });
@@ -138,8 +148,7 @@ describe('Vérification objective — mode worktree', () => {
   });
 
   test('sans run base, le verdict tombe quand même — signalé non causal', async () => {
-    const v = await poser(reponse({ version: 1, status: 'fail', failed: [{ test: 'a' }] }),
-      { nom: 'sans-base', run_base: false });
+    const v = await poser(casseAvec('a'), { nom: 'sans-base', run_base: false });
     const lance = await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id });
     const d = await attendre(lance.body.verification.id);
     assert.equal(d.verdict, 'verified_fail');
@@ -148,26 +157,8 @@ describe('Vérification objective — mode worktree', () => {
     await app.api('DELETE', `/api/verifiers/${v.id}`);
   });
 
-  test('une sortie illisible ne devient jamais un vert', async () => {
-    const v = await poser('cat >/dev/null\necho "tout va bien"', { nom: 'muet' });
-    const lance = await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id });
-    const d = await attendre(lance.body.verification.id);
-    assert.equal(d.verdict, 'verify_error');
-    assert.equal(d.status, 'error');
-    assert.match(d.log_excerpt || '', /JSON/, 'le journal dit POURQUOI, pas seulement que ça a raté');
-    await app.api('DELETE', `/api/verifiers/${v.id}`);
-  });
-
-  test('un code de sortie non nul avec un verdict valide est accepté : stdout fait foi', async () => {
-    const v = await poser(`${reponse({ version: 1, status: 'pass' })}\nexit 3`, { nom: 'exit3' });
-    const lance = await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id });
-    const d = await attendre(lance.body.verification.id);
-    assert.equal(d.verdict, 'verified_pass', 'beaucoup de lanceurs de tests sortent en ≠ 0');
-    await app.api('DELETE', `/api/verifiers/${v.id}`);
-  });
-
   test('un script qui ne rend jamais la main est arrêté, et le run conclut à une erreur', async () => {
-    const v = await poser('cat >/dev/null\nsleep 60', { nom: 'bloque', timeout_s: 10 });
+    const v = await poser('sleep 60', { nom: 'bloque', timeout_s: 10 });
     const lance = await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id });
     const d = await attendre(lance.body.verification.id);
     assert.equal(d.verdict, 'verify_error');
@@ -175,35 +166,11 @@ describe('Vérification objective — mode worktree', () => {
     await app.api('DELETE', `/api/verifiers/${v.id}`);
   });
 
-  test('le script reçoit les dépôts sur stdin, et un environnement sans secret', async () => {
-    /* Le script recopie ce qu'il a reçu dans son message d'échec : c'est la seule façon
-       d'observer le contrat côté script sans lui faire confiance. */
-    const cmd = ecrireScript(bin, 'espion.sh', [
-      'ENTREE=$(cat)',
-      'REPO=$(printf "%s" "$ENTREE" | sed -n \'s/.*"name":"\\([^"]*\\)".*/\\1/p\')',
-      'ROLE=$(printf "%s" "$ENTREE" | sed -n \'s/.*"role":"\\([^"]*\\)".*/\\1/p\')',
-      'printf \'{"version":1,"status":"fail","failed":[{"test":"espion","message":"repo=%s role=%s verif=%s token=%s"}]}\\n\' \\',
-      '  "$REPO" "$ROLE" "$MERGERIE_VERIFY" "${GITLAB_TOKEN:-absent}"',
-    ].join('\n'));
-    const v = (await app.api('POST', '/api/verifiers', {
-      name: 'espion', command: cmd, run_base: false,
-      repos: [{ repo_id: repoId, mode: 'worktree' }],
-    })).body;
-    const lance = await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id });
-    const d = await attendre(lance.body.verification.id);
-    const msg = d.head_run.failed[0].message;
-    assert.match(msg, /repo=grp\/app/, 'le dépôt cible est transmis');
-    assert.match(msg, /role=head/);
-    assert.match(msg, /verif=1/, 'MERGERIE_VERIFY signale d’où vient l’appel');
-    assert.match(msg, /token=absent/, 'aucun jeton ne doit atteindre le script');
-    await app.api('DELETE', `/api/verifiers/${v.id}`);
-  });
-
   /* Un job de vérification doit se DÉCLARER en cours. Sans ça il restait « en file » du début
      à la fin : le panneau de journal, le compteur de la file et l'état du favicon annonçaient
      une attente pendant qu'une suite de tests tournait. */
   test('pendant le run, le job est « en cours » et sait ce qu’il vérifie', async () => {
-    const v = await poser('cat >/dev/null\nsleep 3\nprintf \'{"version":1,"status":"pass"}\\n\'',
+    const v = await poser('sleep 3',
       { nom: 'declare-running', timeout_s: 30, run_base: false });
     const lance = await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id });
 
@@ -233,7 +200,7 @@ describe('Vérification objective — mode worktree', () => {
      dépôt — accepté — et celui d'un run multi-dépôts — bloquant — sont couverts par
      e2e-verify-commands.test.js, qui dispose de plusieurs dépôts.) */
   test('relancer la même vérification pendant qu’elle tourne est refusé', async () => {
-    const v = await poser('cat >/dev/null\nsleep 5', { nom: 'lent', timeout_s: 30 });
+    const v = await poser('sleep 5', { nom: 'lent', timeout_s: 30 });
     const un = await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id });
     assert.equal(un.status, 200);
     const deux = await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id });
@@ -251,7 +218,7 @@ describe('Vérification objective — mode worktree', () => {
   test('un script qui ignore SIGTERM est tout de même tué', async () => {
     const pidFile = path.join(bin, 'pid-tetu.txt');
     if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile);
-    const v = await poser(`cat >/dev/null\ntrap '' TERM\necho $$ > ${pidFile}\nwhile true; do sleep 1; done`,
+    const v = await poser(`trap '' TERM\necho $$ > ${pidFile}\nwhile true; do sleep 1; done`,
       { nom: 'tetu', timeout_s: 10, run_base: false });
 
     const d = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id })).body.verification.id);
@@ -279,15 +246,14 @@ describe('Vérification objective — mode worktree', () => {
     if (fs.existsSync(compteur)) fs.unlinkSync(compteur);
     /* 1re vérification : la base échoue (un service local pas encore démarré, disons).
        2e : elle passe — on a corrigé l'environnement, sans toucher au dépôt. */
+    /* Le rôle ne se lit plus sur stdin : les commandes n'en reçoivent pas. On COMPTE les
+       appels — l'ordre est garanti, base puis tête —, donc le 1er appel EST le run base de la
+       première vérification, celui qu'on veut rouge. */
     const v = await poser([
-      'ENTREE=$(cat)',
-      'ROLE=$(printf "%s" "$ENTREE" | sed -n \'s/.*"role":"\\([^"]*\\)".*/\\1/p\')',
       `n=$(cat ${compteur} 2>/dev/null || echo 0)`,
-      'if [ "$ROLE" = "base" ]; then',
-      `  n=$((n+1)); echo $n > ${compteur}`,
-      '  if [ "$n" = "1" ]; then printf \'{"version":1,"status":"fail","failed":[{"test":"integ"}]}\\n\'',
-      '  else printf \'{"version":1,"status":"pass"}\\n\'; fi',
-      'else printf \'{"version":1,"status":"pass"}\\n\'; fi',
+      `n=$((n+1)); echo $n > ${compteur}`,
+      'if [ "$n" = "1" ]; then exit 1; fi',
+      'exit 0',
     ].join('\n'), { nom: 'base-rouge-corrigee' });
 
     const d1 = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id })).body.verification.id);
@@ -305,17 +271,14 @@ describe('Vérification objective — mode worktree', () => {
     /* 1re vérification : tout est vert. 2e : la base est devenue rouge (une dépendance
        externe qui casse) et la tête l'est aussi. Sans rejouer la base, on conclurait
        « verified_fail » — la branche accusée d'un échec qu'elle n'a pas causé. */
+    /* Quatre appels dans l'ordre : base₁, tête₁, base₂, tête₂. Les deux premiers passent (tout
+       est vert), les deux suivants échouent — une dépendance externe a cassé entre-temps, sans
+       qu'un seul SHA ait bougé. */
     const v = await poser([
-      'ENTREE=$(cat)',
-      'ROLE=$(printf "%s" "$ENTREE" | sed -n \'s/.*"role":"\\([^"]*\\)".*/\\1/p\')',
-      // Le run head lit le compteur APRÈS que la base du même run l'a incrémenté : 1 = 1re vérif.
       `n=$(cat ${compteur} 2>/dev/null || echo 0)`,
-      'if [ "$ROLE" = "base" ]; then',
-      `  n=$((n+1)); echo $n > ${compteur}`,
-      '  if [ "$n" = "1" ]; then printf \'{"version":1,"status":"pass"}\\n\'',
-      '  else printf \'{"version":1,"status":"fail","failed":[{"test":"dep-externe"}]}\\n\'; fi',
-      'elif [ "$n" = "1" ]; then printf \'{"version":1,"status":"pass"}\\n\'',
-      'else printf \'{"version":1,"status":"fail","failed":[{"test":"dep-externe"}]}\\n\'; fi',
+      `n=$((n+1)); echo $n > ${compteur}`,
+      'if [ "$n" -le 2 ]; then exit 0; fi',
+      'exit 1',
     ].join('\n'), { nom: 'base-verte-perimee' });
 
     const d1 = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id })).body.verification.id);
@@ -329,7 +292,7 @@ describe('Vérification objective — mode worktree', () => {
   });
 
   test('le verdict se périme quand la branche avance', async () => {
-    const v = await poser(reponse({ version: 1, status: 'pass' }), { nom: 'perime' });
+    const v = await poser(PASSE, { nom: 'perime' });
     const lance = await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id });
     const d = await attendre(lance.body.verification.id);
     assert.equal(d.stale, false);
@@ -352,8 +315,9 @@ describe('Vérification objective — mode worktree', () => {
     assert.equal(avant.verification.stale, true, 'et sa péremption voyage avec lui');
     assert.equal(avant.verification.failed_count, 0);
 
-    const v = await poser(reponse({ version: 1, status: 'fail', failed: [{ test: 'a' }, { test: 'b' }] }),
-      { nom: 'badge-rouge', run_base: false });
+    const v = await poser([
+      "printf 'TAP version 13\\nnot ok 1 - a\\nnot ok 2 - b\\n1..2\\n'", 'exit 1',
+    ].join('\n'), { nom: 'badge-rouge', run_base: false });
     // La MR est repositionnée sur un SHA réel, sinon le run ne trouverait pas le commit.
     app.state.mrs['grp/app'][0].sha = execFileSync('git', ['rev-parse', 'feature/x'], { cwd: depotDistant }).toString().trim();
     await app.api('POST', '/api/discover');
@@ -371,7 +335,7 @@ describe('Vérification objective — mode worktree', () => {
   /* Écrire chez les autres est une décision : elle se prend par vérificateur, et le
      commentaire porte les faits — un « ✗ » sans dossier est une accusation. */
   test('le verdict n’est commenté sur la forge que sur opt-in explicite', async () => {
-    const muet = await poser(reponse({ version: 1, status: 'fail', failed: [{ test: 'x' }] }), { nom: 'muet-forge', run_base: false });
+    const muet = await poser(casseAvec('x'), { nom: 'muet-forge', run_base: false });
     let avant = app.state.calls.length;
     await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: muet.id })).body.verification.id);
     assert.equal(app.state.calls.slice(avant).filter((c) => c.method === 'POST' && c.path.includes('/notes')).length, 0,
@@ -379,10 +343,8 @@ describe('Vérification objective — mode worktree', () => {
     await app.api('DELETE', `/api/verifiers/${muet.id}`);
 
     const bavard = (await app.api('POST', '/api/verifiers', {
-      name: 'bavard', run_base: false, comment_on_forge: 1,
-      command: ecrireScript(bin, 'bavard.sh', reponse({
-        version: 1, status: 'fail', failed: [{ test: 'panier › total', message: 'attendu 42, reçu 41' }],
-      })),
+      name: 'bavard', kind: 'commands', run_base: false, comment_on_forge: 1,
+      commands: [ecrireScript(bin, 'bavard.sh', casseAvec('panier › total', 'attendu 42, reçu 41'))],
       repos: [{ repo_id: repoId, mode: 'worktree' }],
     })).body;
     avant = app.state.calls.length;

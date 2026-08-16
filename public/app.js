@@ -11948,20 +11948,12 @@ function cablerChoixLocal(box) {
   }));
 }
 
-// Le genre pilote la moitié du formulaire : liste de commandes d'un côté, script de l'autre.
-function verifierKind() {
-  const f = $('#verifierForm');
-  return f && f.kind.value === 'script' ? 'script' : 'commands';
-}
-
+/* Il n'y a plus qu'une famille : une liste de commandes rejouée dans chaque dépôt visé. La
+   famille « script » (un exécutable rendant un verdict JSON) a été retirée — le formulaire n'a
+   donc plus de genre à choisir, ni de moitié à masquer. */
 function appliquerKind() {
-  const k = verifierKind();
-  const cmds = $('#verifierCommandsBlock');
-  const scr = $('#verifierScriptBlock');
-  if (cmds) cmds.hidden = k !== 'commands';
-  if (scr) scr.hidden = k === 'commands';
   const aide = $('#verifierRepoHint');
-  if (aide) aide.textContent = k === 'commands' ? tr('settings.verifier.repos.commands') : tr('settings.verifier.repos.script');
+  if (aide) aide.textContent = tr('settings.verifier.repos.commands');
 }
 
 /* Une commande par ligne éditable. L'ordre est PORTEUR DE SENS — `npm ci` avant `npm test` —
@@ -12051,24 +12043,33 @@ function renderVerifierList() {
     el.innerHTML = emptyState({ icon: 'check', title: tr('verify.verifiers.empty.title'), text: tr('verify.verifiers.empty.text') });
     return;
   }
-  el.innerHTML = verifiers.map((v) => `<div class="card" data-id="${v.id}">
+  /* UN VÉRIFICATEUR HÉRITÉ DE LA FAMILLE « SCRIPT » se voit du premier coup d'œil et ne se
+     modifie pas : le formulaire ne sait plus le décrire, et le lancer est refusé côté serveur.
+     Il reste listé, avec le geste à faire — le supprimer sans le dire priverait quelqu'un de sa
+     configuration, l'afficher comme les autres lui ferait croire qu'il tourne encore. */
+  el.innerHTML = verifiers.map((v) => {
+    const herite = v.kind !== 'commands';
+    return `<div class="card${herite ? ' is-hidden' : ''}" data-id="${v.id}">
     <div class="card-main">
-      <div class="title">${esc(v.name)}</div>
-      <div class="meta">${v.kind === 'commands'
-    ? (v.commands || []).map((c) => `<code>${esc(c)}</code>`).join(' <span class="muted">→</span> ')
-    : `<code>${esc(v.command)}</code>`}</div>
+      <div class="title">${esc(v.name)}${herite ? ` <span class="tag stale">${esc(tr('verify.kind.script-removed.tag'))}</span>` : ''}</div>
+      <div class="meta">${herite
+    ? `<code>${esc(v.command || '')}</code>`
+    : (v.commands || []).map((c) => `<code>${esc(c)}</code>`).join(' <span class="muted">→</span> ')}</div>
       <div class="meta">${(v.repos || []).map((r) => {
     const p = (repoOptions.find((x) => x.id === r.repo_id) || {}).project || `#${r.repo_id}`;
     return `<span class="tag">${esc(p)} · ${esc(r.mode === 'in_place' ? tr('verify.mode.in-place-short') : tr('verify.mode.worktree-short'))}</span>`;
   }).join(' ')}</div>
-      <div class="meta muted">${esc(v.kind === 'commands' ? tr('verify.kind.commands') : tr('verify.kind.script'))} · ${esc(tr('verify.verifier.meta', { timeout: v.timeout_s }))}${v.run_base ? ` · ${esc(tr('verify.verifier.with-base'))}` : ''}${v.comment_on_forge ? ` · ${esc(tr('verify.verifier.comments'))}` : ''}${v.auto_on_mr ? ` · ${esc(tr('verify.verifier.auto'))}` : ''}</div>
+      ${herite
+    ? `<p class="field-note">${esc(tr('verify.kind.script-removed.hint'))}</p>`
+    : `<div class="meta muted">${esc(tr('verify.kind.commands'))} · ${esc(tr('verify.verifier.meta', { timeout: v.timeout_s }))}${v.run_base ? ` · ${esc(tr('verify.verifier.with-base'))}` : ''}${v.comment_on_forge ? ` · ${esc(tr('verify.verifier.comments'))}` : ''}${v.auto_on_mr ? ` · ${esc(tr('verify.verifier.auto'))}` : ''}</div>`}
     </div>
     <div class="card-actions"><div class="btn-group">
-      <button class="btn" data-vedit="${v.id}">${svgIco('edit')}${esc(tr('settings.repo.edit'))}</button>
-      <button class="btn" data-vcopy="${v.id}" title="${esc(tr('verify.verifier.duplicate.title'))}">${svgIco('copy')}${esc(tr('verify.verifier.duplicate'))}</button>
+      ${herite ? '' : `<button class="btn" data-vedit="${v.id}">${svgIco('edit')}${esc(tr('settings.repo.edit'))}</button>
+      <button class="btn" data-vcopy="${v.id}" title="${esc(tr('verify.verifier.duplicate.title'))}">${svgIco('copy')}${esc(tr('verify.verifier.duplicate'))}</button>`}
       <button class="btn btn-danger" data-vdel="${v.id}">${svgIco('trash')}${esc(tr('ui.delete'))}</button>
     </div></div>
-  </div>`).join('');
+  </div>`;
+  }).join('');
   $$('#verifierList [data-vedit]').forEach((b) => b.addEventListener('click', () => editerVerifier(Number(b.dataset.vedit))));
   $$('#verifierList [data-vcopy]').forEach((b) => b.addEventListener('click', () => dupliquerVerifier(Number(b.dataset.vcopy))));
   $$('#verifierList [data-vdel]').forEach((b) => b.addEventListener('click', async () => {
@@ -12113,8 +12114,6 @@ function remplirFormVerifier(v, info) {
   const f = $('#verifierForm');
   f.id.value = v.id;
   f.name.value = v.name;
-  f.kind.value = v.kind === 'script' ? 'script' : 'commands';
-  f.command.value = v.command || '';
   f.report_path.value = v.report_path || '';
   f.parse_tap.checked = v.parse_tap == null ? true : !!v.parse_tap;
   let env = '';
@@ -12133,9 +12132,6 @@ function remplirFormVerifier(v, info) {
   f.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-$('#verifierForm') && $('#verifierForm').addEventListener('change', (e) => {
-  if (e.target.name === 'kind') appliquerKind();
-});
 $('#btnAddCommand') && $('#btnAddCommand').addEventListener('click', () => {
   renderCommandList([...commandesDuFormulaire(), '']);
   const champs = $$('#verifierCommandList .vc-cmd');
@@ -12194,8 +12190,6 @@ $('#verifierForm') && $('#verifierForm').addEventListener('submit', async (e) =>
   const f = e.target;
   const body = {
     name: f.name.value.trim(),
-    kind: verifierKind(),
-    command: f.command.value.trim(),
     commands: commandesDuFormulaire(),
     report_path: f.report_path.value.trim(),
     env: f.env.value,
@@ -12423,7 +12417,11 @@ function mrRepoId(mrId) {
 let verifyPickResolve = null;
 let verifyPickListe = [];
 
-function choisirVerifier(liste, mrIds) {
+function choisirVerifier(listeBrute, mrIds) {
+  /* Les vérificateurs hérités de la famille « script » ne sont pas proposés : le serveur
+     refuserait de les lancer, et offrir un choix qui échoue au clic suivant est pire que ne pas
+     l'offrir. Ils restent visibles dans les Réglages, où l'on peut les réécrire. */
+  const liste = (listeBrute || []).filter((v) => v.kind === 'commands');
   verifyPickListe = liste;
   const mrs = (mrIds || []).map((id) => toReviewRows.concat(reportRows).find((m) => m.id === id)).filter(Boolean);
   $('#verifyPickWhat').textContent = mrs.length
@@ -12433,14 +12431,14 @@ function choisirVerifier(liste, mrIds) {
      lance. Le détail change sous les yeux à chaque sélection. */
   $('#verifyPickList').innerHTML = liste.map((v, i) => `<label class="inline-check verify-pick-opt">
     <input type="radio" name="verifyPick" value="${v.id}" ${i === 0 ? 'checked' : ''} />
-    <span>${esc(v.name)} <span class="tag">${esc(v.kind === 'commands' ? tr('verify.kind.commands') : tr('verify.kind.script'))}</span></span>
+    <span>${esc(v.name)}</span>
   </label>`).join('');
   majDetailChoix();
   $('#verifyPickModal').hidden = false;
   return new Promise((resolve) => { verifyPickResolve = resolve; });
 }
 
-// Ce qui va réellement tourner : les commandes ou le script, le mode, le délai.
+// Ce qui va réellement tourner : les commandes, le mode, le délai.
 function majDetailChoix() {
   const sel = $('#verifyPickList input:checked');
   const v = verifyPickListe.find((x) => String(x.id) === (sel && sel.value));
@@ -12449,9 +12447,7 @@ function majDetailChoix() {
   if (!v) { box.innerHTML = ''; return; }
   const modes = (v.repos || []).map((r) => `${esc(r.project || `#${r.repo_id}`)} <span class="tag ${r.mode === 'in_place' ? 'warn' : ''}">${esc(r.mode === 'in_place' ? tr('verify.mode.in-place-short') : tr('verify.mode.worktree-short'))}</span>`).join(' · ');
   box.innerHTML = `
-    ${v.kind === 'commands'
-    ? `<p class="muted">${esc(tr('verify.pick.commands'))}</p><pre class="verify-log">${(v.commands || []).map((c) => `$ ${esc(c)}`).join('\n')}</pre>`
-    : `<p class="muted">${esc(tr('verify.pick.script'))}</p><pre class="verify-log">${esc(v.command)}</pre>`}
+    <p class="muted">${esc(tr('verify.pick.commands'))}</p><pre class="verify-log">${(v.commands || []).map((c) => `$ ${esc(c)}`).join('\n')}</pre>
     <p class="muted">${modes}</p>
     <p class="muted">${esc(v.run_base ? tr('verify.pick.with-base') : tr('verify.pick.no-base'))} · ${esc(tr('verify.verifier.meta', { timeout: v.timeout_s }))}</p>
     ${(v.repos || []).some((r) => r.mode === 'in_place') ? `<p class="converge-note">${svgIco('alert')} <span>${esc(tr('verify.pick.in-place-warn'))}</span></p>` : ''}`;

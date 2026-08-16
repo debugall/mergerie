@@ -2328,15 +2328,6 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 
 /* Le contrat du vérificateur, dépliable au-dessus du formulaire : on écrit le script en le
    lisant, sans changer d'écran. Les blocs de code défilent au lieu d'élargir la page. */
-.verifier-doc { max-width: 860px; border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 14px; margin-bottom: 14px; background: var(--panel); }
-.verifier-doc[open] { padding-bottom: 14px; }
-.verifier-doc h4 { margin: 16px 0 6px; font-size: 13px; }
-.verifier-doc p, .verifier-doc li { font-size: 13px; line-height: 1.55; color: var(--muted); }
-.verifier-doc ul { margin: 6px 0; padding-left: 20px; }
-.verifier-doc code { font-size: 12px; }
-.verifier-doc pre { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r-md, 8px);
-  padding: 10px 12px; margin: 6px 0 10px; overflow-x: auto; font-size: 12px; line-height: 1.5; }
-.verifier-doc pre code { background: none; padding: 0; color: var(--text); white-space: pre; }
 
 /* Vérificateur « commandes » : la liste ordonnée, et le détail de la modale. */
 .vc-row { display: flex; gap: 6px; margin-bottom: 6px; }

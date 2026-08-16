@@ -71,7 +71,7 @@ describe('Vérificateurs automatiques sur les nouvelles MR', () => {
   });
 
   const poserVerificateur = (nom, auto) => app.api('POST', '/api/verifiers', {
-    name: nom, command: script, timeout_s: 60, run_base: false, auto_on_mr: auto ? 1 : 0,
+    name: nom, kind: 'commands', commands: [script], timeout_s: 60, run_base: false, auto_on_mr: auto ? 1 : 0,
     repos: [{ repo_id: repoId, mode: 'worktree' }],
   });
 

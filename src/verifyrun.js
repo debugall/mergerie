@@ -43,76 +43,6 @@ function envMinimal() {
   };
 }
 
-/* Lance le vérificateur pour un rôle ('base' | 'head') et rend { run } ou { erreur }.
- * `repos` : [{ name, dir, sha, branch, mode }] — les dépôts CIBLES uniquement.
- *
- * `spawn` sans shell : la commande vient de la configuration, pas d'une chaîne à interpréter.
- * Un shell ici transformerait un nom de répertoire biscornu en exécution arbitraire.
- */
-function appelerScript(verifier, role, repos, onLog = () => {}) {
-  return new Promise((resolve) => {
-    const entree = JSON.stringify({ version: 1, verifier: verifier.name, role, repos });
-    let child;
-    try {
-      child = spawn(verifier.command, [], {
-        cwd: repos[0] ? repos[0].dir : DATA_DIR,
-        env: envMinimal(),
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-    } catch (e) {
-      return resolve({ erreur: `impossible de lancer ${verifier.command} : ${e.message}` });
-    }
-    proc.setActive(child);   // le bouton Stop doit pouvoir l'interrompre comme le reste
-
-    let stdout = '';
-    let stderr = '';
-    let fini = false;
-    let tueur = null;
-
-    /* `tueur` n'est PAS désarmé ici : au timeout, `terminer` résout la promesse avant que le
-       processus ne soit mort — annuler l'escalade à ce moment laisserait un script qui ignore
-       SIGTERM tourner indéfiniment. Il est désarmé à `close`, quand le processus a fini. */
-    const terminer = (r) => {
-      if (fini) return;
-      fini = true;
-      clearTimeout(minuteur);
-      proc.clearActive(child);
-      resolve(r);
-    };
-
-    /* Timeout : SIGTERM d'abord — un script de test a souvent des enfants à ramasser et un
-       rapport à écrire — puis SIGKILL s'il s'accroche. Sans le second, un script bloqué
-       retiendrait la file pour toujours. */
-    const minuteur = setTimeout(() => {
-      onLog(t('log.verify.timeout', { n: verifier.timeout_s }));
-      try { child.kill('SIGTERM'); } catch { /* déjà mort */ }
-      tueur = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* déjà mort */ } }, GRACE_KILL_MS);
-      terminer({ erreur: `délai dépassé (${verifier.timeout_s} s)`, stderr });
-    }, Math.max(1, verifier.timeout_s) * 1000);
-
-    // Au-delà de MAX_REPONSE la réponse est déjà invalide : inutile d'accumuler des Mo en mémoire.
-    child.stdout.on('data', (c) => { if (stdout.length <= verify.MAX_REPONSE) stdout += c; });
-    child.stderr.on('data', (c) => {
-      const bloc = String(c);
-      stderr += bloc;
-      if (stderr.length > verify.MAX_LOG) stderr = stderr.slice(-verify.MAX_LOG);
-      for (const l of bloc.split('\n')) if (l.trim()) onLog(l.trim());
-    });
-    child.on('error', (e) => terminer({ erreur: `échec du lancement : ${e.message}`, stderr }));
-    child.on('close', (code) => {
-      if (tueur) clearTimeout(tueur);   // le processus est vraiment mort : l'escalade n'a plus d'objet
-      // Le code de sortie est INDICATIF : c'est stdout qui fait foi (§4). Un script qui sort
-      // en 1 parce que des tests échouent a parfaitement rendu son verdict.
-      const r = verify.validerReponse(stdout);
-      if (!r.ok) return terminer({ erreur: `${r.erreur} (code de sortie ${code})`, stderr });
-      terminer({ run: r.run, stderr });
-    });
-
-    child.stdin.on('error', () => { /* script qui ne lit pas stdin : ce n'est pas une erreur */ });
-    child.stdin.end(entree);
-  });
-}
-
 /* ---------------------------------------------------------------- vérificateur « commandes »
 
    L'autre famille : une liste de commandes lancées dans le dépôt préparé, et le verdict vient
@@ -530,11 +460,9 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
       return repos;
     };
 
-    /* Le genre du vérificateur ne change QUE la façon d'obtenir un `run` : tout le reste —
-       préparation, cache, composition du verdict, rapport, badges — est commun. */
-    const lancer = (role, reposPrets) => (verifier.kind === 'commands'
-      ? lancerCommandes(verifier, commandes, reposPrets, noter)
-      : appelerScript(verifier, role, reposPrets, noter));
+    /* Une seule famille depuis la 2.0 : la liste de commandes. Le `role` ('base' | 'head') ne
+       sert plus qu'à préparer les dépôts — il ne change rien à la façon de lancer. */
+    const lancer = (role, reposPrets) => lancerCommandes(verifier, commandes, reposPrets, noter);
 
     /* Run BASE : il répond à « était-ce déjà rouge avant ? ». Sans lui, un test cassé par
        quelqu'un d'autre serait imputé à cette branche.
@@ -644,7 +572,7 @@ async function commenterSurForge(verificationId, cfg, onLog) {
 
 module.exports = {
   WORKTREES_DIR, cheminWorktree, executerVerification, commenterSurForge,
-  appelerScript, lancerCommandes, envVerifier, ajouterWorktree, retirerWorktree, gcWorktrees,
+  lancerCommandes, envVerifier, ajouterWorktree, retirerWorktree, gcWorktrees,
   inspecterWorkdir, preparerInPlace, restaurerInPlace, lireContexte,
   envMinimal,
 };
