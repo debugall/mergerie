@@ -60,6 +60,8 @@ const TEXTES = {
     review: 'Chaque MR est reviewée et notée par l’IA — sur des critères cadrés',
     converge: 'Converger : review → correction IA → re-review. De 5,8 à 8,4 en 3 passes, tout l’historique conservé',
     resolution: 'Chaque constat « résolu » est vérifié dans git — l’IA n’est pas crue sur parole',
+    verif: 'Un vérificateur passe de vraies commandes sur la branche — tests, lint, build. Le verdict ne dépend d’aucun avis',
+    verifAuto: 'Coché « automatique », il part tout seul dès qu’une merge request arrive, et le résultat attend sur la carte',
     session: 'Du prompt à la MR convergée : l’IA code, commit, pousse, ouvre la MR et la fait converger. Le merge reste à toi',
     question: 'En cas d’ambiguïté, l’IA s’arrête et te demande — au lieu de deviner',
     briefTitre: 'Notes',
@@ -71,10 +73,12 @@ const TEXTES = {
     gitExplore: 'L’explorateur dit ce qu’il fait pendant qu’il travaille, et chaque dépôt se replie',
     liens: 'Un service par ligne, un environnement par colonne — l’adresse écrite, jamais devinée',
     palette: 'La palette cherche partout à la fois — liens, MR, tickets, notes, todos',
+    jenkins: 'Tes jobs Jenkins, leur dernier résultat et leurs paramètres — filtrables par dossier, relançables d’ici',
+    jenkinsDetail: 'L’historique d’un job run par run, les paramètres de chacun, et le détail à droite',
     docker: 'Le drift .env détecté variable par variable — secrets masqués',
     logs: 'Logs live multi-containers, filtrables',
     stats: 'La qualité progresse-t-elle ? Notes, taux de résolution, coût en tokens',
-    sidebar: 'Neuf onglets tiennent dans une colonne, qui se replie en icônes quand l’écran manque',
+    sidebar: 'Dix onglets tiennent dans une colonne, qui se replie en icônes quand l’écran manque',
     finTitre: 'Mergerie — npm run demo',
     finSous: (u) => `30 secondes pour l’essayer. Aucune config, aucun token\n${u}`,
   },
@@ -85,6 +89,8 @@ const TEXTES = {
     review: 'Every MR is reviewed and scored by the AI — against criteria you set',
     converge: 'Converge: review → AI fix → re-review. From 5.8 to 8.4 in 3 passes, every pass kept',
     resolution: 'Each “resolved” finding is checked against git — the AI is not taken at its word',
+    verif: 'A verifier runs real commands on the branch — tests, lint, build. The verdict rests on no one’s opinion',
+    verifAuto: 'Tick “automatic” and it fires on its own as soon as a merge request lands, with the result waiting on the card',
     session: 'From prompt to merged-ready MR: the AI codes, commits, pushes, opens the MR and converges it. The merge stays yours',
     question: 'When something is ambiguous the AI stops and asks — instead of guessing',
     briefTitre: 'Notes',
@@ -96,10 +102,12 @@ const TEXTES = {
     gitExplore: 'The explorer says what it is doing while it works, and each repository folds away',
     liens: 'One service per row, one environment per column — the address written out, never guessed',
     palette: 'The palette searches everything at once — links, MRs, tickets, notes, todos',
+    jenkins: 'Your Jenkins jobs, their latest result and their parameters — filter by folder, relaunch from here',
+    jenkinsDetail: 'A job’s history run by run, the parameters of each, and the detail on the right',
     docker: '.env drift caught variable by variable — secrets masked',
     logs: 'Live logs across containers, filterable',
     stats: 'Is quality improving? Scores, resolution rate, token cost',
-    sidebar: 'Nine tabs fit in one column, which folds down to icons when the screen runs short',
+    sidebar: 'Ten tabs fit in one column, which folds down to icons when the screen runs short',
     finTitre: 'Mergerie — npm run demo',
     finSous: (u) => `Thirty seconds to try it. No config, no token\n${u}`,
   },
@@ -411,6 +419,30 @@ async function enregistrer(lang) {
       await sleep(1600);
     });
 
+    /* ═══ 3 bis) Vérification objective ═══
+       La review est un avis d'IA ; le vérificateur, lui, exécute. C'est la réponse à
+       « et si l'IA se trompait ? », donc ça se montre à côté du rapport, pas à la fin. */
+    await section('Vérification · verdict objectif', async () => {
+      await clickEl(page, page.locator('button[data-seg="to_review"]'));
+      await page.waitForSelector('#toReviewList .card', { state: 'visible', timeout: 10000 }).catch(() => {});
+      if (!(await need(page, '#toReviewList .tag.verify:not(.none)', 'Badge de vérification'))) return;
+      await cap(page, T.verif);
+      await sleep(900);
+      await moveTo(page, page.locator('#toReviewList .tag.verify:not(.none)').first());
+      await sleep(2400);
+      if (!(await present(page, '#toReviewList [data-vresults]'))) {
+        warnings.push('« Vérification » : aucun résultat semé sur une carte (modale non filmée)');
+        return;
+      }
+      await cap(page, T.verifAuto);
+      await clickEl(page, page.locator('#toReviewList [data-vresults]').first());
+      await page.waitForSelector('#verifyModal .verify-bloc', { state: 'visible', timeout: 8000 }).catch(() => {});
+      await glide(page, W * 0.5, H * 0.45);
+      await sleep(4200);
+      await page.keyboard.press('Escape');
+      await sleep(700);
+    });
+
     // ═══ 4) Dev IA : la session qui a produit CETTE MR (du prompt à la MR convergée) ═══
     await section('Dev IA · session reliée à la MR', async () => {
       await clickEl(page, page.locator('nav button[data-tab="task"]'));
@@ -566,6 +598,39 @@ async function enregistrer(lang) {
     });
 
     // ═══ 12) Statistiques : vue d'ensemble ═══
+    /* ═══ 10 bis) Jenkins ═══
+       Un onglet entier absent des vidéos précédentes. Le job se voit dans la liste, son
+       historique dans la modale — et les paramètres de chaque run, qui sont la raison pour
+       laquelle on ouvre un job plutôt que de lire un mail d'échec. */
+    await section('Jenkins · jobs et historique', async () => {
+      await clickEl(page, page.locator('nav button[data-tab="jenkins"]'));
+      await page.waitForSelector('#jenkinsBox .jk-row', { state: 'visible', timeout: 12000 }).catch(() => {});
+      if (!(await need(page, '#jenkinsBox .jk-row', 'Liste des jobs Jenkins'))) return;
+      await cap(page, T.jenkins);
+      await sleep(900);
+      const jobs = page.locator('#jenkinsBox .jk-row');
+      const nj = Math.min(await jobs.count(), 3);
+      for (let i = 0; i < nj; i += 1) { await moveTo(page, jobs.nth(i), 460); await sleep(650); }
+      await sleep(1400);
+
+      /* UN JOB PARAMÉTRÉ, pas le premier de la liste. La légende annonce « les paramètres de
+         chacun » : ouvert sur un job qui n'en a pas, l'écran dit « cette exécution est partie
+         sans paramètre » pendant qu'on affirme le contraire. */
+      await cap(page, T.jenkinsDetail);
+      const parametre = page.locator('#jenkinsBox .jk-row[data-jkjob="boutique/api-deploy-prod"]');
+      const cible = (await parametre.count()) ? parametre.first() : jobs.first();
+      if (!(await parametre.count())) warnings.push('« Jenkins · historique » : job paramétré absent, ouvert sur le premier de la liste');
+      await clickEl(page, cible);
+      await page.waitForSelector('#jenkinsFiche', { state: 'visible', timeout: 10000 }).catch(() => {});
+      await sleep(1200);
+      await glide(page, W * 0.35, H * 0.5);
+      await sleep(2600);
+      await glide(page, W * 0.7, H * 0.5);
+      await sleep(3200);
+      await page.keyboard.press('Escape');
+      await sleep(700);
+    });
+
     await section('Statistiques', async () => {
       await clickEl(page, page.locator('nav button[data-tab="dashboard"]'));
       await page.waitForSelector('#tab-dashboard.active', { state: 'visible', timeout: 8000 }).catch(() => {});

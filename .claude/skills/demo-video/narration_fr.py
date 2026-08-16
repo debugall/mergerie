@@ -13,7 +13,7 @@ l'orthographe correcte ici, jamais une graphie phonétique.
 
 NARRATION = [
     (
-        'Voici Mergerie, un cockpit de développement local assisté par IA. Neuf onglets dans une colonne à gauche : les reviews de merge requests, les sessions de développement, les notes, Jira, git, Docker, les liens de travail, les statistiques et les réglages. Les pastilles signalent le travail en attente, jamais des totaux décoratifs. '
+        "Voici Mergerie, un cockpit de développement local assisté par IA. Dix onglets dans une colonne à gauche : les reviews de merge requests, les sessions de développement, les notes, Jira, git, Docker, Jenkins, les liens de travail, les statistiques et les réglages. Les pastilles signalent le travail en attente, jamais des totaux décoratifs. "
     ),
     (
         "On commence par les merge requests à traiter. Chaque carte donne l'essentiel : le numéro, le titre, le projet, l'auteur et la date, puis les branches concernées et les liens vers le ticket et vers la forge. "
@@ -25,7 +25,7 @@ NARRATION = [
         "Le bouton Reviewer lance l'analyse par l'IA sur cette merge request. La petite flèche à côté ouvre deux variantes : review seule, ou review accompagnée d'une explication pédagogique du changement. "
     ),
     (
-        'Avant de dépenser un appel, Voir le diff permet de lire le code. '
+        "Avant de dépenser un appel, Voir le diff permet de lire le code. "
     ),
     (
         "Le diff s'ouvre dans l'outil : fichier par fichier, avec les ajouts et les suppressions. On juge soi-même si la merge request mérite une review complète. "
@@ -40,22 +40,22 @@ NARRATION = [
         "En haut, Reviewer les 6 MR traite toute la file d'un coup. Les jobs s'enchaînent, trois au maximum en parallèle, et deux jobs qui toucheraient le même dépôt sont refusés plutôt que de se marcher dessus. "
     ),
     (
-        'Chercher les nouvelles MR interroge GitLab et GitHub et ramène ce qui est apparu depuis la dernière fois. '
+        "Chercher les nouvelles MR interroge GitLab et GitHub et ramène ce qui est apparu depuis la dernière fois. "
     ),
     (
         "Sur chaque carte, Classer sans review sort une merge request triviale de la file, Merger la fusionne directement, et Faire coder l'IA ouvre une session de développement à partir de cette merge request. "
     ),
     (
-        'Passons aux merge requests déjà reviewées. '
+        "Passons aux merge requests déjà reviewées. "
     ),
     (
         "Quand on revient dans l'outil, le panneau de droite résume ce qui a bougé depuis la dernière visite, et propose les rapports à regarder en priorité. "
     ),
     (
-        'La liste de gauche montre la note attribuée à chacune, de zéro à dix, et signale les rapports devenus périmés parce que la branche a bougé depuis. On en ouvre un. '
+        "La liste de gauche montre la note attribuée à chacune, de zéro à dix, et signale les rapports devenus périmés parce que la branche a bougé depuis. On en ouvre un. "
     ),
     (
-        'Le rapport suit toujours la même structure : un résumé, les points relevés avec leur emplacement précis dans le code et leur gravité, ce qui est bien, et une note globale. '
+        "Le rapport suit toujours la même structure : un résumé, les points relevés avec leur emplacement précis dans le code et leur gravité, ce qui est bien, et une note globale. "
     ),
     (
         "Le second onglet contient l'explication pédagogique : ce que fait la merge request et pourquoi, pour prendre en main un changement qu'on n'a pas écrit. Le bouton Copier récupère tout le rapport en Markdown. "
@@ -67,7 +67,7 @@ NARRATION = [
         "Relancer la review refait tout. Relancer delta ne fait relire que ce qui a changé depuis la dernière passe : c'est beaucoup moins cher, et c'est ce qu'on veut la plupart du temps. "
     ),
     (
-        'Marquer traitée range la merge request sans la fusionner, Merger la fusionne, et Supprimer le rapport repart de zéro. '
+        "Marquer traitée range la merge request sans la fusionner, Merger la fusionne, et Supprimer le rapport repart de zéro. "
     ),
     (
         "Plus bas, on peut demander une modification du rapport en langage naturel : creuse ce point, reformule plus court. L'IA régénère le rapport avec cette consigne. "
@@ -79,13 +79,13 @@ NARRATION = [
         "Faire corriger le code par l'IA ouvre une session de développement sur la branche de la merge request, avec les points du rapport comme consigne. "
     ),
     (
-        'Et Converger lance la boucle autonome. '
+        "Et Converger lance la boucle autonome. "
     ),
     (
         "L'IA corrige, commite, pousse, se relit, et recommence jusqu'au seuil de note ou au plafond de passes. L'avertissement est explicite : chaque passe pousse un commit sur la branche partagée, mais jamais de fusion. C'est toi qui relis et qui merges à la fin. "
     ),
     (
-        'Le troisième segment, Traitées, garde la trace de ce qui est terminé. '
+        "Le troisième segment, Traitées, garde la trace de ce qui est terminé. "
     ),
     (
         "Une review donne un avis. À côté, un badge donne un fait : vérifié, ou tant de tests cassés. Il vient d'un vérificateur, c'est-à-dire de vos propres tests, lancés sur les commits de la branche. "
@@ -100,10 +100,22 @@ NARRATION = [
         "Vérifier se lance depuis la liste, et aussi depuis une merge request déjà reviewée : l'avis et le fait ne s'excluent pas. "
     ),
     (
-        'Une confirmation annonce ce qui va tourner : quel vérificateur, quelles commandes, dans quel dépôt et avec quel délai. Lancer des commandes sur sa machine mérite un écran, pas un clic silencieux. '
+        "Une confirmation annonce ce qui va tourner : quel vérificateur, quelles commandes, dans quel dépôt et avec quel délai. Lancer des commandes sur sa machine mérite un écran, pas un clic silencieux. "
     ),
     (
         "Et pour les changements qui ne valent qu'ensemble, on coche plusieurs merge requests de dépôts différents et on les vérifie en une fois : le verdict vaut alors pour toutes. "
+    ),
+    (
+        "Un vérificateur peut partir tout seul dès qu'une merge request apparaît. Ce bouton ouvre le résultat de chacun de ceux qui ont tourné sur elle : le verdict, les commits testés, et les tests cassés nommés un par un. "
+    ),
+    (
+        "Et le déroulé des commandes, avec leur code de sortie et leur sortie. C'est ce qui manquait quand on n'a pas vu passer le lancement : savoir non pas que c'est vert, mais ce qui a tourné. "
+    ),
+    (
+        "Sur un diff, une remarque peut attendre. Ces commentaires sont enregistrés en local, relisables et modifiables, et rien n'est encore parti sur la forge. "
+    ),
+    (
+        "Quand la relecture est finie, un seul bouton les envoie tous. L'auteur reçoit une notification au lieu de dix, et une remarque qu'on n'aurait pas gardée trois fichiers plus loin ne part jamais. "
     ),
     (
         "Passons à l'onglet Dev IA, celui où c'est l'IA qui écrit le code. "
@@ -112,10 +124,10 @@ NARRATION = [
         "Trois familles de sessions : le codage sur des dépôts git, le codage hors dépôt sur un simple dossier de la machine, et l'exploration, qui répond à une question sur le code sans rien modifier. "
     ),
     (
-        'On crée une session de codage. '
+        "On crée une session de codage. "
     ),
     (
-        'On choisit un ou plusieurs dépôts — avec recherche, forcément — la branche à créer ou à réutiliser, et la branche de départ. '
+        "On choisit un ou plusieurs dépôts — avec recherche, forcément — la branche à créer ou à réutiliser, et la branche de départ. "
     ),
     (
         "Puis on décrit la tâche en langage naturel. On peut joindre une capture d'écran, et fixer le message de commit. "
@@ -133,10 +145,10 @@ NARRATION = [
         "Une session à plusieurs projets affiche sa liste repliée : au-delà de quelques dépôts, une seule session prendrait tout l'écran et masquerait les autres. Un clic la déplie, et le choix est mémorisé. "
     ),
     (
-        'Chaque projet a ses propres actions : le relancer seul, sans rejouer les neuf autres, et pousser sa branche. '
+        "Chaque projet a ses propres actions : le relancer seul, sans rejouer les neuf autres, et pousser sa branche. "
     ),
     (
-        'Et créer sa merge request. Dès que plusieurs projets sont prêts, deux boutons groupés apparaissent : pousser pour tous, et créer toutes les merge requests. '
+        "Et créer sa merge request. Dès que plusieurs projets sont prêts, deux boutons groupés apparaissent : pousser pour tous, et créer toutes les merge requests. "
     ),
     (
         "À droite, les actions de la session entière. Relancer les projets en échec ne rejoue que ce qui n'est pas passé. "
@@ -154,7 +166,7 @@ NARRATION = [
         "Reprendre au terminal rouvre la même session d'agent dans un vrai terminal, avec tout son historique : on continue à la main quand c'est plus rapide. "
     ),
     (
-        'Le codage hors dépôt fait la même chose sur un simple dossier, sans git, sans branche et sans merge request. Pratique pour un script isolé ou un dossier de notes. '
+        "Le codage hors dépôt fait la même chose sur un simple dossier, sans git, sans branche et sans merge request. Pratique pour un script isolé ou un dossier de notes. "
     ),
     (
         "L'exploration, elle, ne modifie rien : on pose une question sur le code, on lit la réponse, on enchaîne avec une question de suivi. C'est le mode à utiliser pour comprendre avant de toucher. "
@@ -163,13 +175,46 @@ NARRATION = [
         "Ces regroupements se nomment et se conservent : un lot se re-vérifie ensuite d'un seul bouton. "
     ),
     (
+        "L'onglet Notes est celui sur lequel l'outil s'ouvre : c'est le premier écran de la journée. "
+    ),
+    (
+        "Le brief du matin rassemble ce qui appelle un geste : les merge requests dormantes, les vérifications rouges, les sessions qui attendent une réponse. Chaque ligne est cliquable, et se range définitivement d'une croix si elle ne t'intéresse pas. "
+    ),
+    (
+        "Il compte aussi les sessions de développement en attente : jamais lancées, non poussées, sans merge request. Le travail est fait, il ne manque qu'un clic. "
+    ),
+    (
+        "Les todos se trient par priorité d'abord, puis dans l'ordre que tu leur donnes à la main. Elles se cochent sur place. "
+    ),
+    (
+        "Celle-ci a été posée par l'outil : une session s'est arrêtée pour poser une question. La file est libre, plus rien ne repartira, et la notification est fermée depuis longtemps — la todo, elle, reste sous les yeux. Répondre la referme. "
+    ),
+    (
+        "Les pages sont des notes libres en Markdown, cherchables. "
+    ),
+    (
+        "Une clé de ticket ou un numéro de merge request écrit dans le texte devient un lien vers l'écran correspondant, sans qu'on ait rien à coller. "
+    ),
+    (
+        "L'onglet Liens répond à une question banale et pénible : où est l'adresse de ce service, dans cet environnement ? "
+    ),
+    (
+        "Une grille : les services en lignes, les environnements en colonnes. Une case peut porter plusieurs adresses nommées. "
+    ),
+    (
+        "On filtre par environnement, par service, par étiquette — et la grille reste lisible sans jamais défiler de côté. "
+    ),
+    (
+        "La recherche traverse tout, et la palette de commandes cherche dans la même base : un lien, une merge request, un ticket, une todo. "
+    ),
+    (
         "L'onglet Statistiques répond à une question simple : est-ce que la qualité monte ? "
     ),
     (
         "La distribution des notes et la moyenne par semaine montrent la tendance. En haut, l'activité récente de la forge, projet par projet. "
     ),
     (
-        'Le tableau par projet classe les pires notes en premier, avec le taux de résolution : combien de constats ont réellement été corrigés. '
+        "Le tableau par projet classe les pires notes en premier, avec le taux de résolution : combien de constats ont réellement été corrigés. "
     ),
     (
         "Et le coût en tokens est affiché comme un minorant assumé : le travail interne de l'agent n'est pas comptabilisé, l'outil le dit plutôt que de faire semblant. "
@@ -178,10 +223,10 @@ NARRATION = [
         "L'onglet Git applique la même opération à plusieurs dépôts en même temps. "
     ),
     (
-        'Six outils. Le premier crée ou supprime des branches et des tags sur une sélection de dépôts. '
+        "Six outils. Le premier crée ou supprime des branches et des tags sur une sélection de dépôts. "
     ),
     (
-        'Les dépôts se filtrent par recherche, et les branches aussi — un dépôt actif en compte des centaines, une liste brute serait inutilisable. '
+        "Les dépôts se filtrent par recherche, et les branches aussi — un dépôt actif en compte des centaines, une liste brute serait inutilisable. "
     ),
     (
         "Rien ne s'exécute sans un aperçu ligne par ligne : on voit exactement ce qui va être fait, dépôt par dépôt, avant de confirmer. "
@@ -190,13 +235,13 @@ NARRATION = [
         "La navigation positionne les dépôts locaux sur une branche donnée, en une fois, à partir d'un répertoire qui contient tous les clones. "
     ),
     (
-        'Les commandes git lancent la même commande partout — une palette de commandes courantes est fournie, et on peut écrire la sienne. '
+        "Les commandes git lancent la même commande partout — une palette de commandes courantes est fournie, et on peut écrire la sienne. "
     ),
     (
         "L'explorateur de branches compare l'état des branches entre les dépôts : ce qui est en avance, en retard, ou absent. "
     ),
     (
-        'Trouver une ref cherche un tag ou une branche dans tous les dépôts actifs et dit lesquels le possèdent. '
+        "Trouver une ref cherche un tag ou une branche dans tous les dépôts actifs et dit lesquels le possèdent. "
     ),
     (
         "Enfin, l'historique garde la trace de chaque opération, et chaque suppression de branche ou de tag reste restaurable. "
@@ -205,7 +250,7 @@ NARRATION = [
         "L'onglet Docker montre l'état réel des projets compose. "
     ),
     (
-        'Chaque service affiche son état, et surtout le drift de configuration : ce que le compose demande, comparé à ce qui tourne vraiment, variable par variable. Ici, la taille du pool est passée de dix à vingt-cinq. Les valeurs sensibles, elles, sont masquées. '
+        "Chaque service affiche son état, et surtout le drift de configuration : ce que le compose demande, comparé à ce qui tourne vraiment, variable par variable. Ici, la taille du pool est passée de dix à vingt-cinq. Les valeurs sensibles, elles, sont masquées. "
     ),
     (
         "La recherche et le filtre d'état séparent nettement les containers en cours, ceux qui se sont arrêtés proprement, et ceux qui ont vraiment échoué. La pastille rouge de l'onglet ne compte que les seconds. "
@@ -214,13 +259,43 @@ NARRATION = [
         "Chaque projet compose se monte et se démonte depuis l'outil. "
     ),
     (
-        'Les containers lancés hors compose ont leur propre onglet. Reconstituer la commande retrouve le docker run qui a servi à les créer — précieux pour un container démarré à la main il y a six mois. '
+        "Les containers lancés hors compose ont leur propre onglet. Reconstituer la commande retrouve le docker run qui a servi à les créer — précieux pour un container démarré à la main il y a six mois. "
     ),
     (
-        'Les logs se lisent container par container, avec une recherche par mot-clé. '
+        "Les logs se lisent container par container, avec une recherche par mot-clé. "
     ),
     (
         "Et l'onglet Actions applique recréation, build, redémarrage ou arrêt à une sélection de services, avec le même aperçu préalable qu'ailleurs. "
+    ),
+    (
+        "L'onglet Jenkins montre les jobs et sait les lancer, sans quitter l'outil. Rien n'est sondé en continu : l'écran demande, on demande à Jenkins. "
+    ),
+    (
+        "Chaque ligne répond à quatre questions : quel job, dans quel état, quand pour la dernière fois, et lancé par qui, sur quelle branche. Le tri se fait par dernier lancement. "
+    ),
+    (
+        "Avec quels paramètres, aussi. Un paramètre qui revient d'un job à l'autre porte une couleur tirée de son nom : l'œil descend la colonne sans lire. "
+    ),
+    (
+        "Les dossiers se cochent en tête de liste, et ceux qu'on n'utilise jamais se rangent hors de la barre. "
+    ),
+    (
+        "On filtre sur la valeur d'un paramètre : qu'est-ce qui est parti en prod ? Le champ suggère les valeurs qu'il a vues, sans y enfermer — une valeur plus ancienne se tape à la main. "
+    ),
+    (
+        "La fiche d'un job tient en trois blocs. D'abord les paramètres de lancement : les valeurs proposées sont celles du job, ce sont elles qui partiront si tu n'y touches pas. "
+    ),
+    (
+        "Ensuite l'historique, avec sous chaque ligne les paramètres de ce lancement-là — deux exécutions vertes du même après-midi ne se distinguent que par là. "
+    ),
+    (
+        "Et à droite le détail de celle qu'on choisit : quand, combien de temps, par qui, sur quelle branche. Il suit la descente pendant qu'on parcourt l'historique. "
+    ),
+    (
+        "Reprendre remplit le formulaire avec les valeurs de cette exécution, sans rien lancer : on repart de ce qui a marché en changeant une valeur. Relancer, juste à côté, part tout de suite — avec confirmation, et la confirmation montre les valeurs. "
+    ),
+    (
+        "Le menu porte le nombre de jobs qui ont tourné aujourd'hui. La question qu'on se pose en passant devant, c'est « est-ce que ça a bougé ce matin ? ». "
     ),
     (
         "L'onglet Jira récupère automatiquement les tickets qui te sont affectés. "
@@ -232,7 +307,7 @@ NARRATION = [
         "Le statut se change depuis ici, et Faire coder l'IA ouvre une session de développement déjà remplie avec le contenu du ticket. "
     ),
     (
-        'Restent les réglages, répartis en huit onglets. '
+        "Restent les réglages, répartis en huit onglets. "
     ),
     (
         "Le général tient le thème — clair, sombre, ou suivant le système —, la langue, française ou anglaise, et la densité d'affichage. "
@@ -244,6 +319,12 @@ NARRATION = [
         "Les règles de review spécifiques ajoutent des consignes ciblées : sur un ticket, sur un chemin de fichiers, sur un projet. Une règle sur les migrations ne s'applique qu'aux migrations. "
     ),
     (
+        "Un vérificateur se duplique : le formulaire s'ouvre pré-rempli et enregistrer crée une copie, au lieu d'écraser l'original. "
+    ),
+    (
+        "Coché, il part tout seul sur toute nouvelle merge request des dépôts qu'il couvre. Cinq vérifications au maximum par tour de découverte : au-delà, les merge requests gardent leur bouton, et le journal dit ce qui n'est pas parti. "
+    ),
+    (
         "Un vérificateur se déclare ici, en deux familles. Une liste de commandes, rejouée dans chaque dépôt visé, sans rien écrire. Ou votre propre script, qui reçoit tous les dépôts d'un coup et rend un verdict au format attendu. "
     ),
     (
@@ -253,19 +334,22 @@ NARRATION = [
         "Reste à dire quels dépôts ce vérificateur sait tester, et où. Dans une copie jetable créée pour l'occasion, ou dans votre propre répertoire de travail — auquel cas Mergerie demande votre accord, refuse net si vous avez des modifications en cours, et vous remet toujours sur la branche où il vous avait trouvé. "
     ),
     (
+        "Les consignes permanentes s'ajoutent au prompt de toutes les sessions de codage, dans un dépôt comme hors dépôt, au premier lancement comme à chaque suivi. C'est ce qu'on redit à chaque fois : la langue des commentaires, une commande à lancer avant de committer. "
+    ),
+    (
         "Un onglet dédié aux sessions d'IA règle l'agent utilisé, son binaire, ses délais et ses limites. "
     ),
     (
         "L'onglet Git porte l'URL de la forge, le jeton d'accès et le répertoire de clonage, avec un bouton qui teste la connexion avant d'aller plus loin. "
     ),
     (
-        'Et les notifications préviennent quand un job se termine, avec un seuil de note en dessous duquel on veut être alerté. '
+        "Et les notifications préviennent quand un job se termine, avec un seuil de note en dessous duquel on veut être alerté. "
     ),
     (
         "En bas de l'écran, une barre suit les jobs en direct : ce qui tourne, les tokens consommés, et un journal qui se déplie. Ce journal contient une vue Activité, qui liste ce qui a été lancé et ce qui s'est terminé, avec un lien qui ramène directement sur l'objet concerné. "
     ),
     (
-        'Contrôle K ouvre la palette globale : elle cherche partout à la fois, les liens de travail, les merge requests, les tickets, les pages de notes et les todos, et remonte d\'abord ce qu\'on ouvre souvent et récemment. '
+        "Contrôle K ouvre la palette globale : elle cherche partout à la fois, les liens de travail, les merge requests, les tickets, les pages de notes et les todos, et remonte d'abord ce qu'on ouvre souvent et récemment. "
     ),
     (
         "La touche point d'interrogation affiche tous les raccourcis clavier. "

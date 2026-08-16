@@ -32,234 +32,185 @@ const ECRIRE = process.argv.includes('--write');
 /* ------------------------------------------------------------------ contenu ----
    Les textes des deux langues côte à côte, section par section. Les tenir ensemble est
    volontaire : c'est ce qui rend visible, en relisant, qu'aucune puce n'existe d'un seul
-   côté. Les puces gardent le préfixe « •  » des diapos existantes (deux espaces). */
+   côté. Les puces gardent le préfixe « •  » des diapos existantes (deux espaces).
+
+   CETTE PASSE-CI ajoute Jenkins (une section entière, absente du jeu), les vérificateurs
+   automatiques et le résultat consultable depuis la merge request, et les consignes
+   permanentes. Elle rafraîchit aussi deux diapos devenues fausses : « sept onglets » et la
+   question de l'IA, qui n'était proposée qu'en codage sur dépôt. */
 const PUCE = '•  ';
 
 const CONTENU = {
   fr: {
     piedDePage: 'Mergerie — présentation des fonctionnalités',
-    notes: {
-      section: { titre: 'Notes', sous: 'Le bloc-notes du quotidien, dans l’outil : ancré à ce qu’on y suit, et dans la sauvegarde.' },
+    jenkins: {
+      section: { titre: 'Jenkins', sous: 'L’état des jobs et leur historique, sans ouvrir Jenkins — et sans lire un mail d’échec pour savoir ce qui a tourné.' },
       slides: [
         {
-          bandeau: 'NOTES',
-          titre: 'Le brief du matin',
-          sous: 'Sept sections, action d’abord — et chacune disparaît quand elle est vide.',
+          bandeau: 'JENKINS',
+          titre: 'Les jobs, et ce qu’ils ont donné',
+          sous: 'Une ligne par job, son dernier résultat, sa durée — et le lancement depuis ici.',
           puces: [
-            'Rappels échus, todos du jour, sessions où l’IA attend une réponse, vérifications en échec.',
-            'MR arrivées depuis hier, MR dormantes reviewées il y a plus de N jours, activité de la veille.',
-            'Une section vide est masquée : sept titres sous-titrés « rien » n’apprennent rien.',
-            'On coche et on reporte SUR PLACE : un brief qui oblige à changer d’écran ne sert à rien.',
+            'Vert, rouge, instable ou jamais lancé : le dernier verdict est lisible sans ouvrir le job.',
+            'Un job paramétré se lance depuis l’outil : les paramètres sont demandés avec leurs valeurs par défaut.',
+            'Rafraîchissement automatique, débrayable — un onglet qui se recharge pendant qu’on lit est un onglet qu’on ferme.',
+            'Recherche sur le nom et le dossier : une instance réelle porte des centaines de jobs.',
           ],
         },
         {
-          bandeau: 'NOTES',
-          titre: 'Des todos qui se cochent, pas qui se pilotent',
-          sous: 'Priorité, échéance, report en un clic — et rien qui disparaisse.',
+          bandeau: 'JENKINS',
+          titre: 'Filtrer par dossier, par paramètre, par ce qui ne va pas',
+          sous: 'Trois filtres qui se combinent, parce qu’on ne cherche jamais tout à la fois.',
           puces: [
-            'Ajout inline : on tape, Entrée, c’est créé. Tri par priorité puis par échéance.',
-            'Statut binaire, à faire ou fait. Pas d’« en cours » : une todo se coche, elle ne se pilote pas.',
-            'Échéance affichée en relatif, en rouge seulement si elle est dépassée. Report +1 h ou demain 9 h.',
-            'Une todo faite reste barrée sept jours, puis part aux archives — consultable, jamais perdue.',
+            'Les dossiers sont en tête, cochables, avec leur propre champ de recherche.',
+            'Les paramètres qui reviennent d’un job à l’autre deviennent des colonnes, et se filtrent par valeur.',
+            '« Seulement ce qui ne va pas » réduit la liste aux jobs en échec ou instables.',
+            'La liste reste chronologique : la mêler à un groupement par dossier donnerait deux lectures, aucune juste.',
           ],
         },
         {
-          bandeau: 'NOTES',
-          titre: 'Des pages, et des références qui deviennent des liens',
-          sous: 'Du Markdown libre, et ce qu’on cite reconnu tout seul.',
+          bandeau: 'JENKINS',
+          titre: 'L’historique d’un job, run par run',
+          sous: 'À gauche les exécutions, à droite le détail de celle qu’on regarde.',
           puces: [
-            'Pages libres, épinglables, recherche sur le titre ET le contenu, sauvegarde automatique.',
-            '« !214 » et « PROJ-720 » deviennent cliquables sans qu’on ait rien à baliser.',
-            'Une URL collée devient un lien — http et https seulement, parce qu’on colle sans relire.',
-            'Rien ne part vers l’IA ni vers une forge : tout vit en local, et aucun token n’est consommé.',
+            'Chaque run porte ses paramètres, aux mêmes couleurs que dans la liste — c’est ce qui distingue deux runs identiques.',
+            'Le filtre par valeur de paramètre s’applique aussi ici : « montre-moi les runs de preprod ».',
+            'Au-delà des dix derniers, l’historique se demande à Jenkins sans quitter la fenêtre.',
+            'Le détail donne la cause du lancement, la durée, et le lien vers Jenkins pour aller plus loin.',
           ],
         },
       ],
     },
-    liens: {
-      section: { titre: 'Liens', sous: 'Les liens de travail ont une structure que les marque-pages d’un navigateur ne savent pas représenter.' },
-      slides: [
-        {
-          bandeau: 'LIENS',
-          titre: 'La grille services × environnements',
-          sous: 'Le même service en local, dev, preprod et prod — vu d’un coup, pas éclaté en quatre dossiers.',
-          puces: [
-            'Lignes = services, avec leurs tags et le dépôt associé. Colonnes = environnements, chacun sa couleur.',
-            'Une case = une URL ÉCRITE. Deviner l’adresse de preprod depuis celle de dev envoie un jour au mauvais endroit.',
-            'Une case vide affiche un « + » : on colle l’adresse dans la case, Entrée valide, Échap annule.',
-            'Filtre par tag : un service appartient souvent à deux familles à la fois, qu’un arbre obligerait à trancher.',
-          ],
-        },
-        {
-          bandeau: 'LIENS',
-          titre: 'Liens libres, tags et import des marque-pages',
-          sous: 'Ce qui n’a pas de dimension environnement reste à plat, retrouvé par ses tags.',
-          puces: [
-            'Confluence, une doc, un outil : un libellé, une URL, des tags, une recherche instantanée.',
-            'Import des marque-pages Chrome avec aperçu : l’arbre tel quel, chaque lien cochable, tagué par son dossier.',
-            'Rejouable — réimporter le même fichier ne duplique pas ce qui est déjà là. Le fichier est lu, jamais exécuté.',
-            '« Convertir en service » : le mapping vers les environnements est explicite, jamais deviné depuis l’URL.',
-          ],
-        },
-        {
-          bandeau: 'LIENS',
-          titre: 'La palette globale — Ctrl+K, ou la touche « o »',
-          sous: 'Un champ dans l’en-tête, et tout le cockpit derrière.',
-          puces: [
-            'Cherche partout à la fois : cases de la grille, liens libres, MR, tickets surveillés, pages, todos, navigation.',
-            'Interroge le serveur et filtre en base : elle voit ce que l’onglet courant n’a pas chargé.',
-            'Insensible aux accents et à la casse ; on abrège par mots — « kib pre » trouve « Kibana · preprod ».',
-            'Classement par frécence : ce qu’on ouvre souvent ET récemment remonte, pas ce qu’on a martelé le mois dernier.',
-          ],
-        },
-        {
-          bandeau: 'LIENS',
-          titre: 'Liens contextuels sur les merge requests',
-          sous: 'Des adresses qui dépendent de la merge request, résolues au moment du clic.',
-          puces: [
-            'Sur une MR : les URLs du service, puis des gabarits à {env}, {branch}, {mr_iid}, {service} résolus au clic.',
-            'Une variable inconnue est refusée à la saisie ; sans valeur, le bouton reste grisé et dit pourquoi.',
-            'Chaque valeur substituée est URL-encodée : une branche « feat/x?y=1 » n’ouvre pas un paramètre surprise.',
-            'Le bouton ouvre l’adresse dans un nouvel onglet, sans donner la main sur la page qui l’a ouvert.',
-          ],
-        },
-      ],
-    },
-    navigation: {
-      bandeau: 'CONFORT D’USAGE',
-      titre: 'La navigation tient dans une colonne',
-      sous: 'À neuf entrées, un bandeau horizontal n’avait plus de place.',
+    verifAuto: {
+      bandeau: 'VÉRIFICATION OBJECTIVE',
+      titre: 'Automatique, dès qu’une merge request arrive',
+      sous: 'Une case à cocher sur le vérificateur : plus besoin d’y penser.',
       puces: [
-        'Chaque entrée a sa ligne, ses badges tiennent, et la dixième ne coûtera rien.',
-        'La colonne se replie en icônes d’un bouton, se souvient du choix, et se replie seule sous 1100 px.',
-        'Repliée, les libellés sont masqués et non retirés : le survol et les lecteurs d’écran disent toujours où l’on va.',
-        'La place libérée en haut porte le champ de la palette, qui avait le problème inverse : invisible sans le raccourci.',
+        'Un vérificateur coché « automatique » part tout seul sur chaque nouvelle merge request de ses dépôts.',
+        'Cinq vérifications au plus par découverte : une rafale de merge requests ne doit pas saturer la file.',
+        'La file de jobs et les verrous par dépôt restent les mêmes — rien ne double, rien ne se marche dessus.',
+        'Utile au retour de congés : le verdict est déjà là, sur des branches qu’on n’a pas vues passer.',
       ],
     },
-    palette: {
-      titre: 'La palette globale et les raccourcis',
-      sous: 'Ctrl+K ou la touche « o » — sauter n’importe où sans lâcher le clavier.',
+    verifResultat: {
+      bandeau: 'VÉRIFICATION OBJECTIVE',
+      titre: 'Le résultat, depuis la merge request',
+      sous: 'Un bouton sur la carte : ce qui a tourné, sur quels commits, et ce que ça a donné.',
       puces: [
-        'La palette cherche partout : liens, MR, tickets surveillés, pages, todos, et les actions de navigation.',
-        'Chiffres pour les onglets, / pour la recherche, r pour chercher les MR, l pour les logs.',
-        'j et k parcourent la liste visible, Entrée ouvre, Échap ferme.',
-        '? affiche la liste complète des raccourcis, à tout moment.',
+        '« Voir le résultat des vérificateurs » ouvre chaque vérification qui a porté sur cette merge request.',
+        'Le verdict, les commits testés, le déroulé des commandes avec leur code de sortie et leur sortie.',
+        'Depuis un échec, « Faire corriger par l’IA » ouvre une session de codage avec le contexte déjà écrit.',
+        'Le badge de la carte dit l’état ; ce bouton dit ce qui a été fait — on n’a pas forcément vu le lancement.',
       ],
     },
-    demo: 'MR à traiter, rapports notés, suivi de résolution, notes, liens, statistiques, sessions Dev IA.',
+    consignes: {
+      bandeau: 'DEV IA',
+      titre: 'Des consignes permanentes',
+      sous: 'Ce qu’on redit à chaque session, écrit une fois.',
+      puces: [
+        'Un champ dans les réglages, ajouté au prompt de toutes les sessions de codage, sur dépôt comme hors dépôt.',
+        'Au premier lancement comme à chaque suivi : une consigne oubliée au deuxième message ne sert à rien.',
+        'La langue des commentaires, une commande à lancer avant de commiter, une convention de nommage.',
+        'Le prompt reste visible : rien n’est ajouté dans le dos de celui qui le relit.',
+      ],
+    },
+    ouverture: 'Un outil local, un seul utilisateur, dix onglets — et une règle : l’IA prépare, c’est toi qui merges.',
+    questions: {
+      titre: 'L’IA peut te poser une question',
+      sous: 'Face à un choix structurant, elle s’arrête et demande au lieu de deviner.',
+      puces: [
+        'Proposé dans les TROIS saveurs : codage sur dépôt, codage hors dépôt, exploration.',
+        'La session passe en attente, la file se libère, une todo et une notification t’avertissent.',
+        'Tu réponds depuis la carte — choix proposés ou texte libre — et elle reprend où elle en était.',
+        'Hors dépôt, seul le dossier qui attendait repart : les autres n’ont rien demandé.',
+      ],
+    },
   },
 
   en: {
     piedDePage: 'Mergerie — feature presentation',
-    notes: {
-      section: { titre: 'Notes', sous: 'The day-to-day notepad, inside the tool: anchored to what you track, and inside the backup.' },
+    jenkins: {
+      section: { titre: 'Jenkins', sous: 'Job status and history without opening Jenkins — and without reading a failure e-mail to find out what ran.' },
       slides: [
         {
-          bandeau: 'NOTES',
-          titre: 'The morning brief',
-          sous: 'Seven sections, action first — and each one disappears when it is empty.',
+          bandeau: 'JENKINS',
+          titre: 'The jobs, and what they returned',
+          sous: 'One line per job, its latest result, its duration — and you can launch it from here.',
           puces: [
-            'Overdue reminders, today’s todos, sessions where the AI is waiting for an answer, failed verifications.',
-            'MRs that arrived since yesterday, MRs reviewed more than N days ago and still open, yesterday’s activity.',
-            'An empty section is hidden: seven headings subtitled “nothing” teach you nothing.',
-            'You tick and postpone IN PLACE: a brief that makes you change screens is not a brief.',
+            'Green, red, unstable or never run: the latest verdict reads without opening the job.',
+            'A parameterised job launches from the tool: parameters are asked for, with their default values.',
+            'Auto-refresh, switchable off — a tab that reloads while you read it is a tab you close.',
+            'Search on name and folder: a real instance carries hundreds of jobs.',
           ],
         },
         {
-          bandeau: 'NOTES',
-          titre: 'Todos you tick off, not todos you manage',
-          sous: 'Priority, due date, one-click postpone — and nothing that disappears.',
+          bandeau: 'JENKINS',
+          titre: 'Filter by folder, by parameter, by what is broken',
+          sous: 'Three filters that combine, because you never look for everything at once.',
           puces: [
-            'Inline add: you type, Enter, it exists. Sorted by priority, then by due date.',
-            'Binary status, to do or done. No “in progress”: a todo gets ticked, it does not get managed.',
-            'Due dates shown relatively, in red only once overdue. Postpone by +1 h or to tomorrow 9 am.',
-            'A done todo stays struck through for seven days, then moves to the archive — still readable, never lost.',
+            'Folders come first, tickable, with a search field of their own.',
+            'Parameters that recur from job to job become columns, and filter by value.',
+            '“Only what is broken” cuts the list down to failing and unstable jobs.',
+            'The list stays chronological: mixing in a grouping by folder would give two readings, neither of them right.',
           ],
         },
         {
-          bandeau: 'NOTES',
-          titre: 'Pages, and references that turn into links',
-          sous: 'Free-form Markdown, and what you mention recognised on its own.',
+          bandeau: 'JENKINS',
+          titre: 'A job’s history, run by run',
+          sous: 'Runs on the left, the detail of the one you are looking at on the right.',
           puces: [
-            'Free pages, pinnable, searched on title AND content, saved as you type.',
-            '“!214” and “PROJ-720” become clickable without you marking anything up.',
-            'A pasted URL becomes a link — http and https only, because you paste without re-reading.',
-            'Nothing goes to the AI or to a forge: it all lives locally, and no tokens are spent.',
+            'Each run carries its parameters, in the same colours as in the list — that is what tells two identical runs apart.',
+            'The parameter-value filter applies here too: “show me the preprod runs”.',
+            'Past the last ten, more history is fetched from Jenkins without leaving the window.',
+            'The detail gives the cause of the run, its duration, and the link to Jenkins to go further.',
           ],
         },
       ],
     },
-    liens: {
-      section: { titre: 'Links', sous: 'Work links have a structure that a browser’s bookmarks cannot represent.' },
-      slides: [
-        {
-          bandeau: 'LINKS',
-          titre: 'The services × environments grid',
-          sous: 'The same service in local, dev, staging and production — seen at once, not scattered across four folders.',
-          puces: [
-            'Rows = services, with their tags and linked repository. Columns = environments, each with its colour.',
-            'A cell = a WRITTEN URL. Guessing staging from dev by swapping part of a domain sends you to the wrong place one day.',
-            'An empty cell shows a “+”: you paste the address into the cell, Enter confirms, Esc cancels.',
-            'Filter by tag: a service often belongs to two families at once, which a folder tree would force you to choose between.',
-          ],
-        },
-        {
-          bandeau: 'LINKS',
-          titre: 'Free links, tags and bookmark import',
-          sous: 'Whatever has no environment dimension stays flat, found by its tags.',
-          puces: [
-            'Confluence, a doc, a tool: a label, a URL, tags, and an instant search.',
-            'Chrome bookmark import with a preview: the tree as it was, each link tickable, tagged by its folder.',
-            'Replayable — re-importing the same file does not duplicate what is there. The file is parsed, never executed.',
-            '“Convert to service”: the mapping onto environments is explicit, never guessed from the URL.',
-          ],
-        },
-        {
-          bandeau: 'LINKS',
-          titre: 'The global palette — Ctrl+K, or the “o” key',
-          sous: 'One field in the header, and the whole cockpit behind it.',
-          puces: [
-            'Searches everything at once: grid cells, free links, MRs, watched tickets, pages, todos, navigation.',
-            'Queries the server and filters in the database: it sees what the current tab has not loaded.',
-            'Accent- and case-insensitive; you abbreviate by words — “kib pre” finds “Kibana · preprod”.',
-            'Ranked by frecency: what you open often AND recently comes up, not what you hammered last month.',
-          ],
-        },
-        {
-          bandeau: 'LINKS',
-          titre: 'Contextual links on merge requests',
-          sous: 'Addresses that depend on the merge request, resolved at click time.',
-          puces: [
-            'On an MR: the service’s URLs, then templates with {env}, {branch}, {mr_iid}, {service} resolved on click.',
-            'An unknown variable is refused as you type it; with no value, the button stays greyed and says why.',
-            'Every substituted value is URL-encoded: a branch “feat/x?y=1” does not open a surprise parameter.',
-            'The button opens the address in a new tab, with no handle on the page that opened it.',
-          ],
-        },
-      ],
-    },
-    navigation: {
-      bandeau: 'EVERYDAY COMFORT',
-      titre: 'Navigation fits in one column',
-      sous: 'At nine entries, a horizontal bar had run out of room.',
+    verifAuto: {
+      bandeau: 'OBJECTIVE VERIFICATION',
+      titre: 'Automatic, as soon as a merge request lands',
+      sous: 'One checkbox on the verifier: nothing left to remember.',
       puces: [
-        'Each entry gets its own row, its badges fit, and the tenth will cost nothing.',
-        'The column folds down to icons from a button, remembers the choice, and folds on its own below 1100 px.',
-        'Folded, labels are hidden rather than removed: hover and screen readers still say where each entry leads.',
-        'The space this freed at the top carries the palette’s field, which had the opposite problem: invisible without the shortcut.',
+        'A verifier ticked “automatic” starts on its own for every new merge request in its repositories.',
+        'At most five verifications per discovery: a burst of merge requests must not flood the queue.',
+        'The job queue and the per-repository locks stay the same — nothing doubles, nothing collides.',
+        'Worth having when you come back from leave: the verdict is already there, on branches you never saw.',
       ],
     },
-    palette: {
-      titre: 'The global palette and the shortcuts',
-      sous: 'Ctrl+K or the “o” key — jump anywhere without leaving the keyboard.',
+    verifResultat: {
+      bandeau: 'OBJECTIVE VERIFICATION',
+      titre: 'The result, from the merge request',
+      sous: 'A button on the card: what ran, on which commits, and what it returned.',
       puces: [
-        'The palette searches everything: links, MRs, watched tickets, pages, todos, and navigation actions.',
-        'Digits for tabs, / for search, r to search MRs, l for logs.',
-        'j and k walk the visible list, Enter opens, Esc closes.',
-        '? shows the full list of shortcuts, at any time.',
+        '“See the verifier results” opens every verification that covered this merge request.',
+        'The verdict, the commits tested, the command-by-command breakdown with exit codes and output.',
+        'From a failure, “Have the AI fix it” opens a coding session with the context already written.',
+        'The card badge says the state; this button says what was done — you may not have seen the run start.',
       ],
     },
-    demo: 'MRs to handle, scored reports, resolution tracking, notes, links, stats, AI Dev sessions.',
+    consignes: {
+      bandeau: 'AI DEV',
+      titre: 'Standing instructions',
+      sous: 'What you repeat in every session, written once.',
+      puces: [
+        'A settings field, added to the prompt of every coding session, in a repository or outside one.',
+        'On the first run and on every follow-up: an instruction forgotten by the second message is worth nothing.',
+        'The language of comments, a command to run before committing, a naming convention.',
+        'The prompt stays visible: nothing is added behind the back of whoever reads it.',
+      ],
+    },
+    ouverture: 'A local tool, a single user, ten tabs — and one rule: the AI prepares, you merge.',
+    questions: {
+      titre: 'The AI can ask you a question',
+      sous: 'Facing a structural choice, it stops and asks instead of guessing.',
+      puces: [
+        'Offered in ALL THREE flavours: coding in a repository, coding outside one, exploration.',
+        'The session goes into waiting, the queue frees up, a todo and a notification reach you.',
+        'You answer from the card — offered choices or free text — and it resumes where it left off.',
+        'Outside a repository, only the folder that was waiting resumes: the others asked nothing.',
+      ],
+    },
   },
 };
 
@@ -377,8 +328,8 @@ function traiter(fichier, lang) {
     const ts = [...x.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1]);
     if (ts.length === 3 && /^\d{2}$/.test(ts[0])) intercalaires.push({ i, f, num: ts[0], titre: ts[1] });
   });
-  if (intercalaires.length !== 12) {
-    throw new Error(`${fichier} : ${intercalaires.length} sections trouvées au lieu de 12 — le jeu a changé, le script doit être relu avant d'écrire.`);
+  if (intercalaires.length !== 14) {
+    throw new Error(`${fichier} : ${intercalaires.length} sections trouvées au lieu de 14 — le jeu a changé, le script doit être relu avant d'écrire.`);
   }
 
   let maxId = Math.max(...ordre.map((o) => o.id));
@@ -410,7 +361,13 @@ function traiter(fichier, lang) {
   const modeleInter = intercalaires[7].f;                       // une intercalaire quelconque
   const modeleContenu = fichiers[intercalaires[7].i + 1];       // la diapo de contenu qui la suit
 
-  // --- Section Notes, juste après « Dev IA » (donc avant l'intercalaire suivante) ---
+  /* GARDE-FOU D'IDEMPOTENCE. Le script a déjà servi une fois (Notes, Liens, navigation) et les
+     fichiers d'origine ont été remplacés. Relancé sur un jeu déjà à jour, il ajouterait une
+     seconde fois les mêmes diapos, sans rien signaler — et ça ne se verrait qu'en projection. */
+  if (fichiers.some((f) => /JENKINS/.test(lire(f)))) {
+    throw new Error(`${fichier} : une diapo « JENKINS » existe déjà — le jeu a déjà reçu cette passe.`);
+  }
+
   const poserSection = (avantIndex, bloc, numero) => {
     const sldIds = [creer(modeleInter, [numero, bloc.section.titre, bloc.section.sous])];
     for (const s of bloc.slides) {
@@ -418,44 +375,46 @@ function traiter(fichier, lang) {
     }
     aInserer.push({ avantIndex, sldIds });
   };
-
-  const idxStats = intercalaires.find((s) => s.num === '05').i;      // « 05 Statistiques »
-  const idxReglages = intercalaires.find((s) => s.num === '09').i;   // « 09 Réglages »
-  poserSection(idxStats, C.notes, '05');
-  poserSection(idxReglages, C.liens, '10');
-
-  // --- Une diapo de plus dans « Confort d'usage » : la navigation en colonne ---
-  const idxSecurite = intercalaires.find((s) => s.num === '11').i;
-  const nav = C.navigation;
-  aInserer.push({
-    avantIndex: idxSecurite,
-    sldIds: [creer(modeleContenu, [nav.bandeau, nav.titre, nav.sous, ...nav.puces.map((p) => PUCE + p), C.piedDePage])],
+  const poserDiapo = (avantIndex, d) => aInserer.push({
+    avantIndex,
+    sldIds: [creer(modeleContenu, [d.bandeau, d.titre, d.sous, ...d.puces.map((p) => PUCE + p), C.piedDePage])],
   });
 
+  /* Une diapo s'insère AVANT l'intercalaire suivante : c'est la seule façon de la poser à la
+     FIN d'une section sans dépendre du nombre de diapos qu'elle contient aujourd'hui. */
+  const avant = (num) => intercalaires.find((s) => s.num === num).i;
+
+  // --- Section Jenkins, entre Docker (08) et Jira (09) ---
+  poserSection(avant('09'), C.jenkins, '09');
+  // --- Deux diapos à la fin de « Vérification objective » (03), donc avant « Dev IA » (04) ---
+  /* DEUX DIAPOS AU MÊME POINT D'INSERTION S'INVERSENT : elles sont posées en partant de la fin
+     pour ne pas décaler les repères, donc la dernière déclarée arrive en premier. */
+  poserDiapo(avant('04'), C.verifResultat);
+  poserDiapo(avant('04'), C.verifAuto);
+  // --- Une diapo à la fin de « Dev IA » (04), donc avant « Notes » (05) ---
+  poserDiapo(avant('05'), C.consignes);
+
   // --- Renumérotation des sections : recalculée, jamais retapée ---
-  const nouvelOrdre = [];
-  intercalaires.forEach((s) => {
-    let n = +s.num;
-    if (n >= 5) n += 1;    // Notes s'intercale en 05
-    if (n >= 10) n += 1;   // Liens s'intercale en 10 (après le premier décalage)
-    nouvelOrdre.push({ f: s.f, num: String(n).padStart(2, '0'), ancien: s.num });
+  const nouvelOrdre = intercalaires.map((s) => {
+    const n = +s.num;
+    return { f: s.f, num: String(n >= 9 ? n + 1 : n).padStart(2, '0'), ancien: s.num };
   });
   for (const s of nouvelOrdre) {
     if (s.num !== s.ancien) poser(s.f, remplacerTextes(lire(s.f), [s.num, null, null]));
   }
 
-  // --- Diapos existantes à rafraîchir ---
-  const majPalette = fichiers.find((f) => /Palette de commandes|palette and the shortcuts|Command palette/i.test(lire(f)));
-  if (majPalette) {
-    const x = lire(majPalette);
-    poser(majPalette, remplacerTextes(x, [null, C.palette.titre, C.palette.sous, ...C.palette.puces.map((p) => PUCE + p), null]));
-  } else console.warn(`  ⚠ ${lang} : diapo « palette » introuvable, non mise à jour.`);
+  /* --- Diapos existantes devenues fausses ---
+     Une diapo qui annonce « sept onglets » vieillit mal : elle est fausse avant d'être
+     démodée. Même chose pour la question de l'IA, longtemps réservée au codage sur dépôt. */
+  const ouverture = intercalaires.find((s) => s.num === '01');
+  poser(ouverture.f, remplacerTextes(lire(ouverture.f), [null, null, C.ouverture]));
 
-  const majDemo = fichiers.find((f) => /30 secondes|30 seconds/i.test(lire(f)));
-  if (majDemo) {
-    const x = lire(majDemo);
-    poser(majDemo, remplacerTextes(x, [null, null, null, null, C.demo, null, null, null]));
-  } else console.warn(`  ⚠ ${lang} : diapo « mode démo » introuvable, non mise à jour.`);
+  const majQuestions = fichiers.find((f) => /poser une question|ask you a question/i.test(lire(f)));
+  if (majQuestions) {
+    const q = C.questions;
+    poser(majQuestions, remplacerTextes(lire(majQuestions),
+      [null, q.titre, q.sous, ...q.puces.map((x) => PUCE + x), null]));
+  } else console.warn(`  ⚠ ${lang} : diapo « question de l'IA » introuvable, non mise à jour.`);
 
   // --- Assemblage : sldIdLst, rels et Content_Types ---
   let sldLst = ordre.map((o) => `<p:sldId id="${o.id}" r:id="${o.rid}"/>`);

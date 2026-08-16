@@ -38,6 +38,17 @@ Les deux sont **bilingues** et parcourent la même application, mais ne partagen
 fonctionnalité nouvelle doit entrer dans les deux — et les deux se lancent sur le port 4321.
 Corriger un sélecteur ici ne corrige rien là-bas.
 
+## État au 16/08/2026 : les quatre sorties sont à jour
+
+Films longs (115 étapes, ~23 min), vidéos synthétiques (~3 min 15) et GIF ont été refaits, dans
+les deux langues, avec les nouveautés : vérification automatique et résultat consultable depuis
+la merge request, commentaires en attente, Jenkins (liste, filtres, historique run par run),
+consignes permanentes, questions de l'IA dans les trois saveurs. Les diapositives `presentation*.pptx`
+suivent (103 diapos, `node scripts/slides-update.js`).
+
+La section ci-dessous a été écrite avant cette passe ; ce qu'elle réclamait (Notes, Liens,
+navigation en colonne) est fait. Elle reste pour ses **avertissements**, qui valent toujours.
+
 ## L'APPLICATION A CHANGÉ — à intégrer au prochain enregistrement
 
 Écrit après la fusion des onglets *Notes* et *Liens*. Tout ce qui suit a été **vérifié dans
@@ -250,6 +261,16 @@ Trois pièges, tous rencontrés — le contrôle rapide (étape 2) n'en attrape 
 - **Un sélecteur trop large attrape un élément caché.** `#tab-admin select` a fini par viser le
   « Genre » d'un vérificateur, dans un panneau masqué placé plus tôt dans le DOM. Viser le
   sous-onglet par son id (`#sub-config select`).
+- **Un clic qui part dans le vide, sans erreur.** L'en-tête est `position: sticky` : un élément
+  ramené dans la fenêtre par `scrollIntoViewIfNeeded` peut se retrouver DESSOUS. Playwright le
+  déclare visible (l'occlusion n'entre pas dans son critère), mais les clics du parcours sont de
+  vrais événements souris — ils atteignent alors le titre de l'en-tête, la scène suivante se joue
+  sur un écran inchangé, et **rien n'est levé**. `versEl` dégage désormais la hauteur de
+  l'en-tête ; la panne ne se déclenchait qu'après une étape ayant laissé la page défilée, ce qui
+  la rendait insaisissable. `elementFromPoint` au point du clic est le seul diagnostic qui tranche.
+- **Une donnée de démo datée en relatif change d'état à minuit.** La pastille Jenkins compte les
+  jobs du JOUR : passé minuit, le jeu de démo n'en avait plus, et l'enregistrement anglais a
+  échoué là où le français était passé une heure plus tôt. Corrigé côté `src/demo-jenkins.js`.
 - **Un bouton qui n'est pas un onglet dans le `<nav>`.** `#sidebarToggle` y vit désormais, sans
   `data-tab`. L'application elle-même s'y est fait prendre : son gestionnaire d'onglets écoutait
   `nav button`, si bien que replier la colonne désactivait tous les onglets et vidait l'écran.

@@ -43,7 +43,7 @@ npm run demo       # http://localhost:4319
 
 ## What it does
 
-Nine tabs in a left sidebar, each one line — plus the objective verification, which lives inside Reviews and Settings:
+Ten tabs in a left sidebar, each one line — plus the objective verification, which lives inside Reviews and Settings:
 
 - **Reviews** — AI-scored, versioned reviews of GitLab merge requests **and GitHub pull requests**; incremental re-reviews; an autonomous **convergence loop** (review → fix → re-review until the score threshold) Convergence works on the *review*; the **objective verification** comes after, on the merge request itself — see the guide.
 - **AI Dev** — automated coding sessions (the AI codes, commits, pushes, opens the MR), off-repo coding (with the AI's report back and follow-ups that continue the session), and read-only code exploration — *from prompt to converged MR* in one click. On a multi-repo session each project runs, and takes a follow-up fix, on its own. A follow-up can be **written while a session is still running** and waits on the card until you send it — or goes out by itself at the end of the session if you tick the box. Finished sessions can be tidied away without being deleted.

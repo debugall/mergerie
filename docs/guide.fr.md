@@ -13,9 +13,9 @@ données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide
 
 ## Les onglets en détail
 
-Neuf onglets, dans une **barre latérale** à gauche, rangés par familles — le cœur, ce que j'ai à
+Dix onglets, dans une **barre latérale** à gauche, rangés par familles — le cœur, ce que j'ai à
 faire, ma machine et ses liens, le méta :
-**Reviews** · **Dev IA** — **Notes** · **Jira** — **Git** · **Docker** · **Liens** — **Stats** · **Réglages**.
+**Reviews** · **Dev IA** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Liens** — **Stats** · **Réglages**.
 La barre se **réduit en icônes** d'un bouton en pied de colonne (choix mémorisé), et se réduit d'elle-même
 sous 1100 px de large.
 Les badges signalent le **travail en attente** (MR à traiter, sessions non lancées), pas des totaux.

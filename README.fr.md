@@ -58,7 +58,7 @@ et un **lot** de merge requests vérifiées ensemble.
 
 ## Les onglets
 
-**Neuf onglets**, dans une barre latérale — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)**, et la **[vérification objective](./docs/guide.fr.md#vérification-objective-vérificateurs)** a sa propre section :
+**Dix onglets**, dans une barre latérale — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)**, et la **[vérification objective](./docs/guide.fr.md#vérification-objective-vérificateurs)** a sa propre section :
 
 - **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée,
   re-review incrémentale et **boucle de convergence autonome** (review → correction → re-review jusqu'au seuil).
@@ -82,6 +82,11 @@ et un **lot** de merge requests vérifiées ensemble.
   et recherche de refs, suppressions **restaurables**, tout **avec aperçu**.
 - **Docker** — état des projets compose (drift `.env`, santé), actions par lot, **logs live** multi-containers,
   badges d'erreur dans le menu.
+- **Jenkins** — l'état de tes jobs CI et leur lancement, sans quitter l'outil : tous les jobs que ton compte
+  voit, groupés par dossier, avec une recherche (une installation d'entreprise en porte des centaines) et un
+  filtre sur ce qui ne va pas. L'historique d'un job se lit run par run, **avec les paramètres de chacun**.
+  Lancer demande toujours confirmation et nomme le job ; un job paramétré ouvre sa page, pour voir ce qu'on
+  s'apprête à envoyer. Rien n'est interrogé en boucle : l'écran demande quand on ouvre l'onglet.
 - **Liens** — les liens de travail que les marque-pages ne savent pas structurer : une **grille services ×
   environnements** (une URL par case, écrite — aucune adresse devinée depuis une autre), des liens libres
   retrouvés par tag, et une **palette globale** (`Ctrl`/`Cmd`+`K`) qui cherche d'un coup dans les liens, les

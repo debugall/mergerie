@@ -747,6 +747,18 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The demo no longer empties itself at midnight.** Jenkins demo data is dated relative to
+  now, so past midnight the most recent run fell "yesterday" and the menu badge — which counts
+  the jobs that ran *today* — hid itself. A demo that cannot produce the screen its own
+  documentation describes is worse than no demo: the recording of the English presentation
+  started at 23:50 and failed on that badge at 00:10. The most recent run is now kept on the
+  right side of midnight, the others keep their real spacing, and the job list is rebuilt on
+  each request so a demo server left open overnight does not serve yesterday's "today".
+
+- **Pending review comments now show up in the demo.** They were seeded on files that the demo
+  diff never contained, so they existed in the database and nowhere on screen. The seed and the
+  viewer now read the same diff for a given merge request.
+
 - **A running verification is now visible.** Clicking `Verify` on a merge request started a job
   and then showed nothing: the request answers in milliseconds while the work takes minutes, so
   the button's spinner was gone before the run even began. The button now reads `Verifying…`,

@@ -7,11 +7,24 @@
    Lancer en démo ne lance rien : la réponse dit « mis en file », et la liste ne bouge pas. */
 
 const isDemo = () => process.env.MERGERIE_DEMO === '1';
-const ms = (min) => Date.now() - min * 60000;
+
+/* MINUIT NE DOIT PAS VIDER LA DÉMO. Les exécutions sont datées en relatif : passé minuit, la
+   plus récente tombait « hier », et la pastille du menu — qui compte les jobs du JOUR — se
+   masquait. Un enregistrement commencé à 23 h 50 et fini à 0 h 10 montrait alors deux écrans
+   différents pour la même phrase. On borne donc la plus récente au jour courant : elle reste
+   dans le passé (une minute au moins), mais du bon côté de minuit. Les précédentes gardent
+   leur écart réel, et retomber la veille au soir est exactement ce qu'on attend d'elles. */
+function decalageJour() {
+  const minuit = new Date(); minuit.setHours(0, 0, 0, 0);
+  const plusRecente = Date.now() - 4 * 60000;   // le job le plus frais du jeu : `age: 4`
+  const voulu = Math.min(Math.max(plusRecente, minuit.getTime() + 60000), Date.now() - 60000);
+  return voulu - plusRecente;
+}
+const ms = (min) => Date.now() - min * 60000 + decalageJour();
 
 /* Chaque ligne montre un cas que l'écran doit savoir rendre : un lancement humain et un
    lancement automatique, une branche et un tag, un job jamais lancé (sans date ni auteur). */
-const JOBS = [
+const JOBS_BRUTS = [
   { path: 'boutique/api-build', name: 'api-build', statut: 'succes', enCours: false, buildable: true, age: 18, by: { user: 'Alice' }, ref: 'main', lastParams: [{ name: 'ENV', value: 'recette' }, { name: 'VERSION', value: '1.5.0' }] },
   { path: 'boutique/api-deploy-prod', name: 'api-deploy-prod', statut: 'succes', enCours: false, buildable: true, age: 240, by: { user: 'Moi Même' }, ref: 'v1.5.0', lastParams: [{ name: 'VERSION', value: '1.5.0' }, { name: 'ENV', value: 'préprod' }, { name: 'MIGRATIONS', value: 'true' }] },
   { path: 'boutique/front-build', name: 'front-build', statut: 'echec', enCours: false, buildable: true, age: 52, by: { trigger: 'scm' }, ref: 'feature/panier-remise', lastParams: [{ name: 'ENV', value: 'dev' }, { name: 'VERSION', value: '2.0.0' }, { name: 'MINIFIER', value: 'false' }] },
@@ -20,7 +33,12 @@ const JOBS = [
   { path: 'batch/purge-archives', name: 'purge-archives', statut: 'jamais', enCours: false, buildable: true, age: null, by: null, ref: null },
   { path: 'outils/release', name: 'release', statut: 'succes', enCours: false, buildable: true, age: 1500, by: { user: 'Bruno' }, ref: 'v2.0.1', lastParams: [{ name: 'BRANCHE', value: 'main' }] },
   { path: 'outils/vieux-pipeline', name: 'vieux-pipeline', statut: 'desactive', enCours: false, buildable: false, age: 40000, by: { user: 'Alice' }, ref: 'main' },
-].map((j, i) => ({
+];
+
+/* CONSTRUIT À CHAQUE APPEL, jamais au chargement du module : les dates sont relatives à
+   maintenant, et un serveur de démo laissé ouvert depuis la veille servait sinon des « jobs du
+   jour » datant d'avant-hier. */
+const construireJobs = () => JOBS_BRUTS.map((j, i) => ({
   ...j,
   folder: j.path.slice(0, j.path.lastIndexOf('/')),
   last: j.age == null ? null : ms(j.age),
@@ -74,10 +92,10 @@ function builds(job) {
   }));
 }
 
-const lister = () => JOBS.map((j) => ({ ...j, params: (PARAMS[j.path] || []).length, lastParamsCaches: PARAMS[j.path] ? 1 : 0 }));
+const lister = () => construireJobs().map((j) => ({ ...j, params: (PARAMS[j.path] || []).length, lastParamsCaches: PARAMS[j.path] ? 1 : 0 }));
 
 function detail(chemin, profondeur) {
-  const job = JOBS.find((j) => j.path === chemin);
+  const job = construireJobs().find((j) => j.path === chemin);
   if (!job) throw new Error(`Jenkins : job « ${chemin} » introuvable (404).`);
   // La démo tronque comme le vrai client, sinon le filtrage profond n'aurait rien à démontrer.
   const voulu = Number(profondeur);
@@ -108,5 +126,5 @@ module.exports = {
   detail,
   console: () => ({ text: LOG, truncated: false }),
   lancer: () => ({ queued: true, location: 'https://jenkins.demo/queue/item/1201/' }),
-  tester: () => ({ ok: true, user: 'Démo', jobs: JOBS.length }),
+  tester: () => ({ ok: true, user: 'Démo', jobs: construireJobs().length }),
 };

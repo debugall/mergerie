@@ -15,6 +15,11 @@ fs.rmSync(DEMO_DIR, { recursive: true, force: true }); // repart d'une base prop
 
 const db = require('../src/db');
 const { REVIEWS_DIR, TASKS_DIR, ensureDir, slugify, initDirs } = require('../src/paths');
+/* LE MÊME DIFF DES DEUX CÔTÉS. L'aperçu d'une carte lit `demo-diff.js` en direct, mais la vue
+   plein écran d'un rapport relit le `diff.patch` écrit ici : deux diffs différents pour une
+   même merge request donnaient un fichier « non modifié » dans le viewer, donc pas de lignes
+   numérotées — et les commentaires en attente, qui s'accrochent à une ligne, disparaissaient. */
+const { diffPour } = require('../src/demo-diff');
 initDirs();
 
 const day = 86400000;
@@ -151,7 +156,7 @@ for (const m of REVIEWED) {
   const explPath = path.join(dir, 'explanation-v1.md');
   fs.writeFileSync(explPath, explainMd(mr), 'utf8');
   const diffPath = path.join(dir, 'diff.patch');
-  fs.writeFileSync(diffPath, (m.changed || []).map((f) => `diff --git a/${f} b/${f}\n+++ b/${f}\n+// changement démo\n`).join('\n'), 'utf8');
+  fs.writeFileSync(diffPath, diffPour(mr), 'utf8');
   const noteVal = m.note / 10;
   db.prepare('INSERT INTO review (mr_id, md_path, explanation_path, diff_path, note_value, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
     .run(mr.id, mdPath, explPath, diffPath, noteVal, iso(m.daysAgo), iso(m.daysAgo));
@@ -184,7 +189,7 @@ for (const m of REVIEWED) {
   const v2f = [{ file: 'src/upload/handler.js', line: 40, severity: 'major', title: 'limiter la taille du fichier' }];
   const v2md = path.join(dir, 'review-v2.md'); fs.writeFileSync(v2md, reviewMd(mr, 8.1, v2f), 'utf8');
   const explPath = path.join(dir, 'explanation-v1.md'); fs.writeFileSync(explPath, explainMd(mr), 'utf8');
-  const diffPath = path.join(dir, 'diff.patch'); fs.writeFileSync(diffPath, 'diff --git a/src/upload/handler.js b/src/upload/handler.js\n+++ b/src/upload/handler.js\n+// démo\n', 'utf8');
+  const diffPath = path.join(dir, 'diff.patch'); fs.writeFileSync(diffPath, diffPour(mr), 'utf8');
   db.prepare('INSERT INTO review_version (mr_id, version, md_path, explanation_path, note_value, reviewed_sha, kind, created_at, n_new, n_persistent, n_resolved, n_disappeared) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
     .run(mr.id, 2, v2md, explPath, 0.81, 'sha_v2', 'review', iso(2), 0, 1, 2, 0);
   db.prepare('INSERT INTO finding (mr_id, version, fingerprint, file, line, severity, title, status, created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(mr.id, 2, fp('src/upload/handler.js', 'limiter la taille du fichier'), 'src/upload/handler.js', 40, 'major', 'limiter la taille du fichier', 'persistent', iso(2));
@@ -237,7 +242,7 @@ for (const m of REVIEWED) {
   addFindings(3, v3f, 'persistent', 1.0);
   addFindings(3, [v2f[0]], 'resolved', 1.0); // l’échec PSP, corrigé
   const explPath = path.join(dir, 'explanation-v1.md'); fs.writeFileSync(explPath, explainMd(mr), 'utf8');
-  const diffPath = path.join(dir, 'diff.patch'); fs.writeFileSync(diffPath, 'diff --git a/src/checkout/cart.js b/src/checkout/cart.js\n+++ b/src/checkout/cart.js\n+// démo\n', 'utf8');
+  const diffPath = path.join(dir, 'diff.patch'); fs.writeFileSync(diffPath, diffPour(mr), 'utf8');
   // la table `review` pointe la dernière version (v3, 8,4)
   db.prepare('INSERT INTO review (mr_id, md_path, explanation_path, diff_path, note_value, created_at, updated_at) VALUES (?,?,?,?,?,?,?)').run(mr.id, v3md, explPath, diffPath, 0.84, iso(1), iso(1));
 
@@ -449,6 +454,30 @@ if (someMr) {
   db.prepare('INSERT INTO comment_log (mr_id, body, sent_at) VALUES (?, ?, ?)').run(someMr.id, 'Bien vu pour la validation MIME.', at(2));
 }
 
+/* ---------- commentaires EN ATTENTE (mr_comment_draft) ----------
+   Le geste qu'on veut montrer : on annote plusieurs endroits d'un diff sans rien publier, puis
+   on envoie tout d'un coup. Sans brouillon semé, l'écran ne montre qu'un bouton grisé et la
+   fonctionnalité reste une phrase.
+
+   UN BROUILLON S'ACCROCHE À UN FICHIER ET À UNE LIGNE du diff, et il ne s'affiche que dans la
+   vue plein écran ouverte depuis un rapport (`chargerBrouillons` n'est appelé que là) — pas
+   dans l'aperçu du diff d'une carte. Les chemins et les numéros de ligne doivent donc
+   correspondre au diff que `src/demo-diff.js` sert pour CETTE merge request : sur des chemins
+   inventés, l'insertion réussit sans rien signaler, l'écran reste vide, et on ne s'en aperçoit
+   qu'au tournage. Ce sont ici les lignes 5 de `total.js` et 12 de `tunnel.js`, comptées sur la
+   version NOUVELLE du fichier, celle que le diff numérote à droite. */
+{
+  const mrPaiement = db.prepare("SELECT id FROM mr WHERE source_branch = 'feat/PROJ-720-checkout' LIMIT 1").get();
+  if (mrPaiement) {
+    const ins = db.prepare(`INSERT INTO mr_comment_draft (mr_id, old_path, new_path, old_line, new_line, body, created_at, updated_at)
+      VALUES (?, NULL, ?, NULL, ?, ?, ?, ?)`);
+    ins.run(mrPaiement.id, 'src/checkout/total.js', 5,
+      'L’arrondi est fait ligne par ligne : sur un gros panier, les centimes s’accumulent. Arrondis le total, pas chaque ligne.', at(2), at(2));
+    ins.run(mrPaiement.id, 'src/checkout/tunnel.js', 12,
+      'Cette erreur réseau devient un message générique : on perd la cause, et un paiement déjà encaissé se rejouerait.', at(2), at(2));
+  }
+}
+
 /* ---------- tickets Jira surveillés ----------
    Un ticket qui n'est PAS affecté à « moi » : c'est le cas d'usage réel de la surveillance —
    suivre un ticket tenu par quelqu'un d'autre parce qu'il débloque le sien.
@@ -489,9 +518,12 @@ for (const projet of ['groupe/api-core', 'groupe/webapp-front']) {
 /* Le second genre de vérificateur, celui qui ne demande rien à écrire : une liste de
    commandes sur UN dépôt. Sa présence rend la modale de confirmation représentative — on y
    choisit entre les deux familles, ce qui est le geste réel. */
+/* Celui-ci part TOUT SEUL sur les nouvelles merge requests (`auto_on_mr`). C'est la
+   fonctionnalité qu'on ne peut pas montrer autrement : sans un vérificateur coché, l'écran
+   des réglages ne dit rien de ce que la découverte sait déclencher. */
 const cmdId = db.prepare(`INSERT INTO verifier
-  (name, kind, command, timeout_s, run_base, comment_on_forge, parse_tap, created_at)
-  VALUES (?,?,'',?,?,?,1,?)`).run('tests front (démo)', 'commands', 600, 1, 0, at(18)).lastInsertRowid;
+  (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, parse_tap, created_at)
+  VALUES (?,?,'',?,?,?,1,1,?)`).run('tests front (démo)', 'commands', 600, 1, 0, at(18)).lastInsertRowid;
 /* Deux dépôts pour ce vérificateur : la même liste est rejouée dans chacun. C'est le cas
    des projets qui se testent de la même façon, et ça se voit dans la modale. */
 for (const projet of ['groupe/webapp-front', 'groupe/batch-jobs']) {
@@ -709,5 +741,6 @@ const counts = {
   todos: db.prepare('SELECT COUNT(*) c FROM todo').get().c,
   services: db.prepare('SELECT COUNT(*) c FROM service').get().c,
   freeLinks: db.prepare('SELECT COUNT(*) c FROM free_link').get().c,
+  commentDrafts: db.prepare('SELECT COUNT(*) c FROM mr_comment_draft').get().c,
 };
 console.log('Base de démo semée dans data-demo/ :', JSON.stringify(counts));

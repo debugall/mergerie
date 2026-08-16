@@ -69,6 +69,13 @@ FR = [
     (r'(?i)\bprompts\b', 'promptes'),
     (r'(?i)\bprompt\b', 'prompte'),
     (r'(?i)\bcockpit\b', 'cockpitte'),
+    # JENKINS. Lu « jan-quin » (ZA~k'E~) : le J français, et deux nasalisations là où il n'y
+    #    en a aucune. Le n doublé casse la seconde, comme pour `lint` → `linnte`. Mesuré avec
+    #    `espeak-ng -v fr -q -x` : `djènkinnsse` donne dZEnk'ins, soit exactement ce qu'on dit. 
+    (r'(?i)\bJenkins\b', 'djènkinnsse'),
+    # `pool` fait basculer espeak en phonèmes anglais (p'u:l), que le modèle français n'a
+    # jamais entendus. `poule` donne p'ul — la lecture française de ce mot est la bonne.
+    (r'(?i)\bpool\b', 'poule'),
     (r'(?i)\bissues\b', 'ichiouze'),
     (r'(?i)\bfunnel\b', 'feunel'),
     (r'(?i)\bEnterprise\b', 'Enn-teurpraïze'),

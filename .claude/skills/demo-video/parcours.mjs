@@ -38,7 +38,9 @@ const LABELS = {
     checkout: 'Se positionner', analyse: 'Analyser', reconstruct: 'Reconstituer la commande',
     jiraCode: "Faire coder l'IA", bulkAdd: /GitLab/, testConn: /onnexion|onnection/i,
     dark: 'Sombre', phRepo: 'dépôt', phLog: 'expression',
-    verify: 'Vérifier',
+    verify: 'Vérifier', results: 'Voir le résultat des vérificateurs',
+    open: 'Ouvrir',
+    rerunJob: 'Relancer', todos: 'Todos', pages: 'Pages',
   },
   en: {
     review: 'Review', diff: 'View diff', context: 'Context',
@@ -54,7 +56,9 @@ const LABELS = {
     checkout: 'Check out', analyse: 'Analyse', reconstruct: 'Reconstruct command',
     jiraCode: 'Let the AI code it', bulkAdd: /GitLab/, testConn: /onnexion|onnection/i,
     dark: 'Dark', phRepo: 'repository', phLog: 'phrase',
-    verify: 'Verify',
+    verify: 'Verify', results: 'See the verifiers’ results',
+    open: 'Open',
+    rerunJob: 'Run again', todos: 'Todos', pages: 'Pages',
   },
 };
 const L = LABELS[LANGUE];
@@ -142,8 +146,32 @@ async function principal() {
   // Amène le curseur au centre d'un élément, en le faisant d'abord entrer dans la vue.
   async function versEl(cible) {
     const l = loc(cible);
-    await l.waitFor({ state: 'visible', timeout: 15000 });
+    try { await l.waitFor({ state: 'visible', timeout: 15000 }); } catch (e) {
+      const diag = await l.first().evaluate((el) => {
+        const chaine = []; let n = el;
+        while (n && n !== document.body) {
+          const st = getComputedStyle(n);
+          chaine.push(`${n.tagName}${n.id ? '#' + n.id : ''}.${(n.className || '').toString().slice(0, 40)} [display=${st.display} visibility=${st.visibility} hidden=${n.hidden}]`);
+          n = n.parentElement;
+        }
+        return chaine.slice(0, 6);
+      }).catch(() => ['(introuvable)']);
+      console.error('DIAG chaîne de parenté :\n  ' + diag.join('\n  '));
+      throw e;
+    }
     await l.scrollIntoViewIfNeeded();
+    /* L'EN-TÊTE EST `position: sticky`. Un élément ramené dans la fenêtre peut donc se
+       retrouver DESSOUS : Playwright le dit visible (l'occlusion n'entre pas dans son
+       critère), mais nos clics sont de vrais événements souris — ils atteignent alors le
+       titre de l'en-tête, sans lever la moindre erreur, et la scène suivante se joue sur un
+       écran inchangé. C'est ce qui rendait la panne dépendante de l'état : elle n'apparaît
+       qu'après une étape ayant laissé la page défilée. On dégage la hauteur de l'en-tête. */
+    await l.first().evaluate((el) => {
+      const entete = document.querySelector('body > header');
+      const marge = (entete ? entete.getBoundingClientRect().height : 0) + 10;
+      const haut = el.getBoundingClientRect().top;
+      if (haut < marge) window.scrollBy(0, haut - marge);
+    }).catch(() => {});
     await page.waitForTimeout(350);
     const b = await l.boundingBox();
     if (!b) throw new Error('élément sans boîte : ' + cible);
@@ -204,10 +232,43 @@ async function principal() {
   const btn = (scope, nom) => page.locator(scope).locator('button', { hasText: nom }).first();
   const onglet = (t) => page.locator(`nav button[data-tab="${t}"]`).first();
   const sous = (tab, n) => page.locator(`#tab-${tab} > div > button`).nth(n);
+  /* Les sous-onglets des Réglages se visent par leur NOM, pas par leur rang : leur ordre a
+     déjà changé une fois (rangés dans l'ordre du parcours d'installation), et un index périmé
+     ne casse rien du tout — il ouvre simplement le mauvais panneau, ce qui ne se voit qu'à
+     l'image, une fois le film monté. */
+  const reglage = (nom) => page.locator(`#tab-admin .subnav [data-sub="${nom}"]`);
 
   /* Ce que « Voir le diff » et « Contexte » ouvrent n'est pas toujours une .modal :
      le diff s'affiche dans la vue plein écran #splitView. On vise ce qui est ouvert. */
   const ouvert = () => page.locator('#splitView:visible, .modal-box:visible').first();
+
+  /* ON VÉRIFIE QUE LE STADE A VRAIMENT CHANGÉ, au lieu de faire confiance au clic. La panne qui
+     a motivé ce code venait de l'en-tête sticky (voir `versEl`) : le clic partait dans le vide
+     sans lever d'erreur, la liste restait masquée, et les étapes suivantes commentaient un
+     écran qui n'avait pas bougé. La cause est corrigée en amont ; ce contrôle reste parce qu'un
+     clic sans effet doit ARRÊTER le parcours, jamais le laisser continuer en silence. */
+  async function stade(nom) {
+    // « Traitées » réutilise la liste des reviewées : il n'y a que deux conteneurs.
+    const liste = nom === 'to_review' ? '#toReviewList' : '#reportList';
+    const affichee = () => page.locator(liste).first().isVisible();
+    for (let essai = 1; essai <= 3; essai += 1) {
+      await clique(`[data-seg="${nom}"]`);
+      await page.waitForTimeout(900);
+      /* On vérifie DEUX fois, à 500 ms d'intervalle : le chargement d'un stade est asynchrone,
+         et un rendu parti avant le clic peut atterrir après lui et re-masquer la liste. Une
+         seule vérification passerait juste avant ce rendu tardif. */
+      if (await affichee()) { await page.waitForTimeout(500); if (await affichee()) return; }
+    }
+    const gene = await page.evaluate((n) => {
+      const b = document.querySelector(`[data-seg="${n}"]`);
+      if (!b) return 'bouton de stade absent';
+      const r = b.getBoundingClientRect();
+      const el = document.elementFromPoint(Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2));
+      const ouvertes = [...document.querySelectorAll('.modal, dialog')].filter((m) => !m.hidden).map((m) => m.id || m.className);
+      return `au point du clic : ${el ? el.tagName + '#' + el.id + '.' + el.className : 'rien'} | modales ouvertes : ${ouvertes.join(', ') || 'aucune'}`;
+    }, nom).catch((e) => 'diagnostic impossible : ' + e.message);
+    throw new Error(`le stade « ${nom} » ne s'affiche pas — ${liste} reste masquée. ${gene}`);
+  }
 
   async function fermeModale() {
     await page.keyboard.press('Escape');
@@ -248,7 +309,7 @@ async function principal() {
 
   // Reviews / reviewées
   await versEl('[data-seg="reviewed"]'); await dit();
-  await clique('[data-seg="reviewed"]');
+  await stade('reviewed');
 
   await versEl('#reportDetail'); await dit();
   await versEl('#reportList .card >> nth=2'); await dit();
@@ -267,14 +328,16 @@ async function principal() {
   await versEl(ouvert()); await dit();
   await fermeModale();
   await versEl('[data-seg="done"]'); await dit();
-  await clique('[data-seg="done"]');
+  await stade('done');
 
   /* ---------- Vérification objective ----------
      La démo sème trois verdicts : un lot passé au vert après correction, et une merge request
      encore rouge, vérifiée par une liste de commandes. On montre donc de VRAIS badges, un vrai
      rapport et la modale de confirmation — jamais un écran qu'on ne sait pas produire. */
-  await clique('[data-seg="to_review"]');
-  await versEl('#toReviewList .tag.verify'); await dit();   // @@NEW:a1
+  await stade('to_review');
+  /* Le badge d'une merge request DÉJÀ vérifiée : `.none` est le badge « non vérifié », que la
+     liste masque — le viser attendait un élément invisible jusqu'à expiration du délai. */
+  await versEl('#toReviewList .tag.verify:not(.none)'); await dit();   // @@NEW:a1
   await clique(page.locator('#toReviewList .tag.verify.ko[data-vreport]').first());
   await versEl('#verifyReport'); await dit();               // @@NEW:a2
   await versEl('#verifyFix'); await dit();                  // @@NEW:a3
@@ -289,6 +352,35 @@ async function principal() {
   await versEl('#mrBulkBar'); await dit();                  // @@NEW:a6
   await clique('#btnBulkClear');
 
+  /* Le verdict des vérificateurs, en toutes lettres. Le badge dit « ça passe ou non » ; ce
+     bouton dit CE QUI a tourné — et depuis qu'un vérificateur peut partir tout seul à la
+     découverte, on n'a pas forcément vu le lancement.
+
+     CE BOUTON N'EXISTE QUE SUR LA CARTE D'UNE MERGE REQUEST, donc dans la file « à traiter » :
+     la liste des reviewées affiche des RAPPORTS, qui n'en portent pas. Le viser dans
+     `#reportList` attendait un élément que cet écran ne sait pas produire. */
+  /* LA CARTE DONT LA VÉRIFICATION EST ROUGE, pas la première venue : une vérification au vert
+     n'a pas d'extrait de log, donc pas de `<pre>` — et l'étape suivante commente justement le
+     déroulé des commandes. Prendre la première carte montrait un bloc sans ce qu'on annonce. */
+  await clique(page.locator('#toReviewList .card:has(.tag.verify.ko) [data-vresults]').first());
+  await versEl('#verifyModal .verify-bloc >> nth=0'); await dit();
+  await versEl('#verifyModal .verify-bloc >> nth=0 >> pre'); await dit();
+  await fermeModale();
+
+  /* Commentaires EN ATTENTE : on annote un diff sans rien publier, puis on envoie tout d'un
+     coup. Ils ne s'affichent QUE dans la vue plein écran ouverte depuis un rapport — l'aperçu
+     du diff d'une carte ne les charge pas — d'où le passage par les reviewées et `#aSplit`.
+     Le jeu de démo en sème deux sur la merge request du tunnel de paiement, en tête de liste. */
+  await stade('reviewed');
+  await clique('#reportList .card >> nth=0');
+  await page.waitForTimeout(700);
+  await clique('#aSplit');
+  await page.waitForTimeout(1200);
+  await versEl('#fileContent .cmt-draft >> nth=0'); await dit();
+  await versEl('#draftsSend'); await dit();
+  await fermeModale();
+  await stade('to_review');
+
   // Dev IA
   await versEl(onglet('task')); await dit();
   await clique(onglet('task'));
@@ -302,21 +394,27 @@ async function principal() {
   await versEl(btn('#taskModal', L.converge)); await dit();
   await clique(btn('#taskModal', L.cancel));
 
-  const s1 = '#taskList .card >> nth=0';
+  /* PAR CONTENU, PAS PAR RANG. L'ordre des sessions dépend de leur date de mise à jour : le
+     rang 0 était la session multi-dépôts au tournage précédent, c'est la session en attente de
+     réponse aujourd'hui. Un index périmé ne lève rien — il commente simplement la mauvaise
+     carte. On désigne donc chacune par ce qu'elle est seule à porter. */
+  const s1 = page.locator('#taskList .card').filter({ has: page.locator('.targets-toggle') }).first();
+  const btnDe = (carte, nom) => carte.locator('button', { hasText: nom }).first();
   await versEl(s1); await dit();
   /* Sélecteur STRUCTUREL : le libellé du bouton change selon l'état (« Voir les N projets »
      replié, « Replier les projets » déplié) et selon la langue. */
   await versEl('#taskList .targets-toggle'); await dit();
   // …puis on déplie : les actions par projet vivent DANS la liste, invisibles repliées.
   await clique('#taskList .targets-toggle');
-  await versEl(btn(s1, L.push)); await dit();
-  await versEl(btn(s1, L.createMr)); await dit();
-  await versEl(btn(s1, L.rerunFailed)); await dit();
-  await versEl(btn(s1, L.checkBranches)); await dit();
+  await versEl(btnDe(s1, L.push)); await dit();
+  await versEl(btnDe(s1, L.createMr)); await dit();
+  await versEl(btnDe(s1, L.rerunFailed)); await dit();
+  await versEl(btnDe(s1, L.checkBranches)); await dit();
 
-  const sq = '#taskList .card >> nth=1';
+  const sq = page.locator('#taskList .card')
+    .filter({ has: page.locator('button', { hasText: L.answerResume }) }).first();
   await versEl(sq); await dit();
-  await versEl(btn(sq, L.answerResume)); await dit();
+  await versEl(btnDe(sq, L.answerResume)); await dit();
   await versEl(page.locator('#taskList button', { hasText: L.resumeTerminal }).first()); await dit();
 
   await clique(sous('task', 1));
@@ -326,6 +424,28 @@ async function principal() {
 
   await clique(sous('task', 0));
   await versEl('#lotList .card >> nth=0'); await dit();     // @@NEW:b1
+
+  /* Notes — le brief du matin, les todos, les pages. C'est l'onglet sur lequel l'application
+     s'ouvre : le premier écran de la journée. */
+  await versEl(onglet('notes')); await dit();
+  await clique(onglet('notes'));
+  await versEl('#briefBox .brief-sec >> nth=0'); await dit();
+  await versEl('#briefBox .brief-sec >> nth=2'); await dit();
+  await clique(sous('notes', 1));
+  await versEl('#todoList .todo-row >> nth=0'); await dit();
+  await versEl('#todoList .todo-row >> nth=1'); await dit();
+  await clique(sous('notes', 2));
+  await versEl('#pageList .note-item >> nth=0'); await dit();
+  await clique('#pageList .note-item >> nth=0');
+  await page.waitForTimeout(700);
+  await versEl('#pageEditor'); await dit();
+
+  /* Liens — la grille services × environnements, et la recherche qui la traverse. */
+  await versEl(onglet('links')); await dit();
+  await clique(onglet('links'));
+  await versEl('.link-grid'); await dit();
+  await versEl('#linkEnvChips'); await dit();
+  await versEl('#linkSearch'); await dit();
 
   // Statistiques
   await versEl(onglet('dashboard')); await dit();
@@ -365,6 +485,26 @@ async function principal() {
   await clique(sous('docker', 3));
   await versEl('#dactAction'); await dit();
 
+  /* Jenkins — voir et lancer les jobs sans quitter l'outil. Rien n'est sondé en continu :
+     l'écran demande, on demande à Jenkins. */
+  await versEl(onglet('jenkins')); await dit();
+  await clique(onglet('jenkins'));
+  await page.waitForTimeout(1200);
+  await versEl('#jenkinsBox .jk-row >> nth=0'); await dit();
+  await versEl('#jenkinsBox .jk-row >> nth=0 >> .jk-params'); await dit();
+  await versEl('.jk-folders'); await dit();
+  await versEl('#jenkinsParamFiltres .jk-pf >> nth=0'); await dit();
+  /* La fiche d'un job PARAMÉTRÉ : c'est elle qui montre les trois blocs — ce qu'on s'apprête
+     à lancer, l'historique, et le détail de l'exécution choisie. */
+  await clique('#jenkinsBox [data-jkopen="boutique/api-deploy-prod"]');
+  await page.waitForTimeout(1400);
+  await versEl('#jenkinsModalBody .jk-bloc >> nth=0'); await dit();
+  await versEl('#jenkinsFiche .jk-col-histo .jk-build >> nth=0'); await dit();
+  await versEl('#jenkinsFiche .jk-col-detail'); await dit();
+  await versEl('#jenkinsFiche [data-jkreuse] >> nth=0'); await dit();
+  await fermeModale();
+  await versEl('#navCountJenkins'); await dit();
+
   // Jira
   await versEl(onglet('jira')); await dit();
   await clique(onglet('jira'));
@@ -374,27 +514,30 @@ async function principal() {
   // Réglages
   await versEl(onglet('admin')); await dit();
   await clique(onglet('admin'));
-  await clique(sous('admin', 3));
+  await clique(reglage('config'));
   await versEl('#sub-config select >> nth=0'); await dit();
-  await clique(sous('admin', 1));
+  await clique(reglage('repos'));
   await versEl(page.locator('#tab-admin button', { hasText: L.bulkAdd }).first()); await dit();
-  await clique(sous('admin', 0));
+  await clique(reglage('rules'));
   await versEl('#tab-admin input[placeholder*="migrations"]'); await dit();
-  /* Vérificateurs (7) — l'onglet des sessions d'IA a glissé en 8 quand celui-ci a été
-     inséré : un index périmé pointait sur le mauvais panneau sans rien casser. */
-  await clique(sous('admin', 7));
+  await clique(reglage('verifiers'));
+  /* La case qui fait tourner la batterie toute seule, et le bouton qui repart d'un
+     vérificateur existant : deux gestes qui vivent sur la liste, avant même le formulaire. */
+  await versEl('#verifierList [data-vcopy] >> nth=0'); await dit();
   // Le formulaire s'ouvre à la demande depuis peu : sans ce clic, les trois pointages
   // suivants viseraient des champs masqués et le parcours s'arrêterait là.
   await clique('#btnNewVerifier');
+  await versEl('#verifierForm [name=auto_on_mr]'); await dit();
   await montreOptions('#verifierForm select[name=kind]'); await dit();   // @@NEW:c1
   await fermeOptions('#verifierForm select[name=kind]');
   await versEl('#verifierCommandList'); await dit();                     // @@NEW:c2
   await versEl('#verifierRepoBox'); await dit();                         // @@NEW:c3
-  await clique(sous('admin', 8));
+  await clique(reglage('aisession'));
+  await versEl('#sub-aisession [name=ai_extra_instructions]'); await dit();
   await versEl('#tab-admin'); await dit();
-  await clique(sous('admin', 4));
+  await clique(reglage('gitcfg'));
   await versEl(page.locator('#tab-admin button', { hasText: L.testConn }).first()); await dit();
-  await clique(sous('admin', 2));
+  await clique(reglage('notif'));
   await versEl('#notifThreshold'); await dit();
 
   /* Journal : on lance une vraie recherche de MR (elle rend maintenant un compte propre en
@@ -418,7 +561,7 @@ async function principal() {
   await fermeModale();
 
   await clique(onglet('admin'));
-  await clique(sous('admin', 3));
+  await clique(reglage('config'));
   const theme = page.locator('#sub-config select').first();
   await montreOptions(theme);
   await fermeOptions(theme);

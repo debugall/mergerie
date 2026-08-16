@@ -11,9 +11,9 @@ security model. For a quick start, stay on the [README](../README.md).
 
 ## The tabs in detail
 
-Nine tabs, in a **left sidebar**, grouped by family — the core, what I have to do, my machine and its
+Ten tabs, in a **left sidebar**, grouped by family — the core, what I have to do, my machine and its
 links, the meta:
-**Reviews** · **AI Dev** — **Notes** · **Jira** — **Git** · **Docker** · **Links** — **Stats** · **Settings**.
+**Reviews** · **AI Dev** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Links** — **Stats** · **Settings**.
 The bar **collapses to icons** from a button at the foot of the column (the choice is remembered), and
 collapses on its own below 1100 px wide.
 Badges show **work waiting**, not totals (MRs to review, sessions not yet run). The **Reviews** tab carries
