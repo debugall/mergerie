@@ -71,7 +71,10 @@ et un **lot** de merge requests vérifiées ensemble.
   une merge request un verdict qui n'est pas un avis : `✓ vérifié`, `✗ 2 tests cassés`, `⚠ base déjà rouge`. Les
   noms des tests cassés sont lus de la sortie **TAP** ou d'un rapport **JUnit** quand il y en a. Des merge requests
   de dépôts différents qui ne tiennent qu'ensemble se **vérifient ensemble**, et un clic ouvre une session de
-  correction qui les couvre toutes. Ce n'est pas un onglet : ça vit dans *Reviews* et *Réglages*.
+  correction qui les couvre toutes. Un vérificateur peut aussi **partir tout seul sur chaque nouvelle merge
+  request** des dépôts qu'il couvre : le verdict attend alors sur la carte, et « Voir le résultat des
+  vérificateurs » ouvre ce qui a tourné, sur quels commits, et ce que les commandes ont répondu.
+  Ce n'est pas un onglet : ça vit dans *Reviews* et *Réglages*.
 - **Notes** — les post-it du quotidien, gardés dans l'outil : pages de notes en Markdown, todos priorisées dont
   l'échéance sert de **rappel bureau**, et un **brief du matin** qui ouvre la journée — rappels, sessions en
   attente de réponse, vérifications en échec, MR fraîches et MR dormantes, le tout calculé en local et **sans

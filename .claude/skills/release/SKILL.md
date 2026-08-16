@@ -96,7 +96,7 @@ node scripts/demo-seed.js
 MERGERIE_DEMO=1 MERGERIE_DATA_DIR=data-demo COPILOT_DRY_RUN=1 PORT=<port libre> node src/server.js
 ```
 
-Ouvrir **les sept onglets**, vérifier l'absence d'erreur console, et regarder les écrans
+Ouvrir **les dix onglets**, vérifier l'absence d'erreur console, et regarder les écrans
 touchés par la release. Ne jamais lancer la démo sans `MERGERIE_DATA_DIR=data-demo` : elle
 écrirait dans les données réelles.
 

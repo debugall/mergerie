@@ -11,6 +11,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-16
+
 ### Added
 
 - **A verifier can now start by itself on every new merge request.** Tick `Run on every new
@@ -1407,6 +1409,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/debugall/mergerie/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/debugall/mergerie/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/debugall/mergerie/releases/tag/v1.0.0

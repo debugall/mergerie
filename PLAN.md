@@ -168,6 +168,16 @@ répertoire *in place* remis sur sa ref d'origine y compris sur timeout — et s
 d'un échec d'intégration est indécidable a priori : le test casse dans un dépôt, la cause est souvent dans
 un autre. L'agent voit tout le lot et décide.
 
+**Déclenchement automatique à la découverte.** Un vérificateur coché `auto_on_mr` part seul sur les merge
+requests **nouvelles** de ses dépôts — `discoverAll` remonte `new_mr_ids`, et `lancerVerificationsAuto`
+crée une vérification par MR couverte. Deux garde-fous portent tout le mécanisme : seules les MR NOUVELLES
+comptent (une MR connue est revue à chaque synchronisation — sinon la même vérification repartirait
+indéfiniment), et un plafond de `MAX_VERIF_AUTO = 5` par tour de découverte, parce que quinze batteries
+fonctionnelles saturent la machine pour une heure et bloquent la file partagée avec les reviews. Au-delà du
+plafond, les MR gardent leur bouton `Vérifier` et le journal serveur dit ce qui n'est pas parti. Les
+vérifications d'un même dépôt sont MISES EN FILE au lieu d'être refusées (`enFile`) : elles ne tournent
+jamais ensemble — le verrou `repo:<id>` tient — mais aucune n'est perdue en silence.
+
 ## Pipeline de session (par projet)
 
 **Codage** — pour **chaque projet** de la session, séquentiellement : clone/fetch → branche (alignée
