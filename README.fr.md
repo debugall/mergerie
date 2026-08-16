@@ -37,7 +37,7 @@ npm start          # http://localhost:4319
 Au premier lancement, l'onglet **Reviews** affiche les trois étapes de démarrage, chacune avec son
 bouton. Elles correspondent à l'onglet **Réglages** :
 1. **Git** — URL GitLab + **access token** (PAT scopes `api` + `read_repository`) et/ou **token GitHub** (scope `repo`), dossier de clonage. Un bouton **Tester la connexion** par forge valide le tout. *(URL Jira et connexion Jira optionnelles : onglet **Jira**.)*
-2. **Dépôts** — ajoute-les un par un, ou en masse **depuis GitLab** ou **depuis GitHub** (coche tes projets). Laisse le **pattern vide** pour prendre **toutes** les MR, ou mets un fragment (`PROJ-`) pour ne garder que ces branches.
+2. **Dépôts** — ajoute-les un par un, ou en masse **depuis GitLab** ou **depuis GitHub** (coche tes projets). Laisse le **pattern vide** pour prendre **toutes** les MR, ou mets un fragment (`PROJ-`) pour ne garder que ces branches. La case **récupérer les MR**, cochée par défaut, se décoche pour les dépôts dont tu ne relis pas les merge requests : ils restent utilisables pour le reste (git, sessions de codage), et les MR déjà récupérées restent dans la file.
 3. De retour sur **Reviews**, `Chercher les nouvelles MR` remplit la liste.
 
 ## Mode démo (voir l'outil en 30 s, sans rien configurer)
@@ -51,24 +51,52 @@ coût en tokens, sessions Dev IA, codage hors dépôt) dans `data-demo/` — **i
 `data/` — puis lance l'outil dessus, en dry-run et **sans aucune connexion à une forge ni token**. Idéal pour
 découvrir l'outil : **zéro configuration**. La démo inclut une **MR convergée** (5,8 → 7,1 → 8,4) pour voir
 la feature *Converger* en action, et une **session reliée à sa MR** — le chemin *du prompt à la MR convergée*.
+Elle porte aussi des **vérifications objectives** déjà rendues (dont une rouge, détaillée commande par commande)
+et un **lot** de merge requests vérifiées ensemble.
 
 *(Enregistrer une vidéo de présentation : voir le [Guide complet → Mode démo](./docs/guide.fr.md#enregistrer-une-vidéo-de-présentation-prête-pour-youtube).)*
 
 ## Les onglets
 
-**Sept onglets** — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)** :
+**Dix onglets**, dans une barre latérale — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)**, et la **[vérification objective](./docs/guide.fr.md#vérification-objective-vérificateurs)** a sa propre section :
 
 - **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée,
   re-review incrémentale et **boucle de convergence autonome** (review → correction → re-review jusqu'au seuil).
+  Les listes se filtrent par **couleur de note**.
 - **Dev IA** — sessions de codage automatisées (l'IA code, commite, pousse, ouvre la MR), **codage hors dépôt**
   (avec retour de l'IA et demande de correction) et **exploration** de code en lecture seule ;
-  *du prompt à la MR convergée* en un bouton. Les sessions terminées se **rangent** sans être supprimées.
-- **Statistiques** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens.
+  *du prompt à la MR convergée* en un bouton. Sur une session multi-dépôts, chaque projet se lance — et se
+  fait corriger — **séparément**. Les sessions terminées se **rangent** sans être supprimées.
+- **Vérification objective** — une liste de commandes (`npm ci`, `npm test`) ou ton propre script de test donne à
+  une merge request un verdict qui n'est pas un avis : `✓ vérifié`, `✗ 2 tests cassés`, `⚠ base déjà rouge`. Les
+  noms des tests cassés sont lus de la sortie **TAP** ou d'un rapport **JUnit** quand il y en a. Des merge requests
+  de dépôts différents qui ne tiennent qu'ensemble se **vérifient ensemble**, et un clic ouvre une session de
+  correction qui les couvre toutes. Un vérificateur peut aussi **partir tout seul sur chaque nouvelle merge
+  request** des dépôts qu'il couvre : le verdict attend alors sur la carte, et « Voir le résultat des
+  vérificateurs » ouvre ce qui a tourné, sur quels commits, et ce que les commandes ont répondu.
+  Ce n'est pas un onglet : ça vit dans *Reviews* et *Réglages*.
+- **Notes** — les post-it du quotidien, gardés dans l'outil : pages de notes en Markdown, todos priorisées dont
+  l'échéance sert de **rappel bureau**, et un **brief du matin** qui ouvre la journée — rappels, sessions en
+  attente de réponse, vérifications en échec, MR fraîches et MR dormantes, le tout calculé en local et **sans
+  aucun appel IA**. `!214` et `PROJ-720` écrits dans une note deviennent des liens, et une merge request ou un
+  ticket s'ajoute aux todos d'un clic.
+- **Jira** — tes tickets récupérés automatiquement, détail + pièces jointes, changement d'état et commentaires ; **tickets surveillés** (affectés ou non) avec notification à chaque changement d'état, et une pastille au menu = tes tickets en cours.
 - **Git** — opérations multi-dépôts (branches, tags, commandes git) sur les deux forges, navigation de branches
   et recherche de refs, suppressions **restaurables**, tout **avec aperçu**.
 - **Docker** — état des projets compose (drift `.env`, santé), actions par lot, **logs live** multi-containers,
   badges d'erreur dans le menu.
-- **Jira** — tes tickets récupérés automatiquement, détail + pièces jointes, changement d'état et commentaires.
+- **Jenkins** — l'état de tes jobs CI et leur lancement, sans quitter l'outil : tous les jobs que ton compte
+  voit, groupés par dossier, avec une recherche (une installation d'entreprise en porte des centaines) et un
+  filtre sur ce qui ne va pas. L'historique d'un job se lit run par run, **avec les paramètres de chacun**.
+  Lancer demande toujours confirmation et nomme le job ; un job paramétré ouvre sa page, pour voir ce qu'on
+  s'apprête à envoyer. Rien n'est interrogé en boucle : l'écran demande quand on ouvre l'onglet.
+- **Liens** — les liens de travail que les marque-pages ne savent pas structurer : une **grille services ×
+  environnements** (une URL par case, écrite — aucune adresse devinée depuis une autre), des liens libres
+  retrouvés par tag, et une **palette globale** (`Ctrl`/`Cmd`+`K`) qui cherche d'un coup dans les liens, les
+  MR, les tickets, les notes et les todos, classés par frécence. Un service associé à un dépôt pose ses
+  boutons directement sur ses merge requests, y compris des liens **templatés** (`{env}`, `{branch}`,
+  `{mr_iid}`) résolus au clic. Les favoris Chrome s'importent avec aperçu.
+- **Stats** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens.
 - **Réglages** — connexions GitLab / GitHub / Jira, dépôts, règles de review, templates de prompt, thème et langue.
 
 Partout : `Ctrl`/`Cmd` + `K` ouvre une **palette de commandes** (sauter à un onglet, une MR, une session

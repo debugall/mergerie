@@ -7,3 +7,6 @@ demo-recordings/
 .DS_Store
 .idea
 *.log
+
+*.mp4
+*.pptx

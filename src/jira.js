@@ -9,6 +9,7 @@
 
 const https = require('https');
 const http = require('http');
+const { t } = require('../public/i18n-runtime.js');
 
 // Client HTTP autonome (Jira Cloud est en TLS public : pas d'agent CA self-signed).
 function request(url, { method = 'GET', headers = {}, body = null } = {}) {
@@ -116,16 +117,66 @@ function block(node, depth = 0) {
   }
 }
 
-// Tableau ADF → tableau Markdown (best-effort).
+/* Un tableau Markdown tient sur UNE LIGNE par cellule. Jira, lui, autorise n'importe quel
+   bloc dans une cellule — et s'en sert : la mise en page courante d'un ticket technique est
+   une étiquette à gauche, un bloc de code à droite. Aplatir cela en cellules détruisait
+   exactement ce qu'on venait lire : le JSON se retrouvait sur une seule ligne, indentations
+   écrasées par le repli HTML, incopiable.
+
+   Quand une cellule porte un tel bloc, on DÉPLIE le tableau : chaque ligne devient une suite
+   de blocs rendus normalement, les lignes séparées par une règle. On perd la grille — qui
+   n'était de toute façon qu'une mise en page — et on garde le contenu. */
+const BLOC_HORS_CELLULE = new Set([
+  'codeBlock', 'bulletList', 'orderedList', 'table', 'heading', 'blockquote',
+  'mediaSingle', 'mediaGroup', 'rule', 'panel',
+]);
+const cellulesDe = (row) => (row.content || []).filter((c) => c.type === 'tableCell' || c.type === 'tableHeader');
+const celluleRiche = (c) => {
+  const kids = c.content || [];
+  // Plusieurs paragraphes souffrent du même écrasement : ils se collaient bout à bout.
+  return kids.some((k) => BLOC_HORS_CELLULE.has(k.type))
+    || kids.filter((k) => k.type === 'paragraph').length > 1;
+};
+
 function renderTable(node) {
   const rows = (node.content || []).filter((r) => r.type === 'tableRow');
   if (!rows.length) return '';
-  const cells = (row) => (row.content || []).map((c) => inline((c.content || []).flatMap((p) => p.content || [])).replace(/\n/g, ' ').trim());
+
+  if (rows.some((r) => cellulesDe(r).some(celluleRiche))) {
+    return rows
+      .map((r) => cellulesDe(r)
+        .map((c) => (c.content || []).map((k) => block(k)).filter((s) => s !== '').join('\n\n'))
+        .filter((s) => s !== '').join('\n\n'))
+      .filter((s) => s !== '').join('\n\n---\n\n');
+  }
+
+  /* Tableau ordinaire. Les cellules passent par `block()` et non par leur contenu aplati :
+     descendre d'un niveau perdait le TYPE du bloc, donc ses marques. Un `|` est échappé —
+     sans quoi il ouvrirait une colonne de plus et décalerait toute la ligne. */
+  const texte = (c) => (c.content || [])
+    .map((k) => block(k)).join(' ').replace(/\s*\n+\s*/g, ' ').replace(/\|/g, '\\|').trim();
+  /* Markdown n'a d'en-tête qu'en LIGNE. Un en-tête de colonne — la première cellule d'un
+     tableau clé/valeur — n'a donc pas d'équivalent : on le met en gras, faute de quoi il se
+     confondrait avec les données qu'il intitule. */
+  const cells = (row, enTete) => cellulesDe(row)
+    .map((c) => { const txt = texte(c); return (!enTete && c.type === 'tableHeader' && txt) ? `**${txt}**` : txt; });
+
+  /* Une VRAIE ligne d'en-tête a TOUTES ses cellules en `tableHeader` : c'est ce que produit
+     la case « ligne d'en-tête » de Jira. Promouvoir `rows[0]` sans vérifier déguisait en
+     titre la première ligne de données d'un tableau qui n'en avait pas — et, sur un tableau
+     clé/valeur (en-tête en première COLONNE, donc première ligne mixte), sacrifiait une paire
+     entière. Faute de ligne d'en-tête, on en émet une VIDE : Markdown en exige une, et un
+     en-tête vide ne ment sur rien — l'affichage la masque (cf. `md-table-nohead`). */
+  const avecEnTete = cellulesDe(rows[0]).length > 0
+    && cellulesDe(rows[0]).every((c) => c.type === 'tableHeader');
+  const corps = avecEnTete ? rows.slice(1) : rows;
+  const nbCol = Math.max(...rows.map((r) => cellulesDe(r).length));
+  const head = avecEnTete ? cells(rows[0], true) : Array(nbCol).fill('');
+
   const out = [];
-  const head = cells(rows[0]);
   out.push(`| ${head.join(' | ')} |`);
   out.push(`| ${head.map(() => '---').join(' | ')} |`);
-  for (const r of rows.slice(1)) out.push(`| ${cells(r).join(' | ')} |`);
+  for (const r of corps) out.push(`| ${cells(r, false).join(' | ')} |`);
   return out.join('\n');
 }
 
@@ -174,17 +225,17 @@ function authHeader(cfg) {
 /* Récupère summary + description d'un ticket. Renvoie { summary, descriptionMd, key }.
    Lève une erreur claire sur 401/403/404 pour que l'appelant la stocke/affiche. */
 async function fetchIssue(cfg, key) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const base = String(cfg.jira_url).trim().replace(/\/+$/, '');
   const url = `${base}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description`;
   const res = await request(url, {
     headers: { Authorization: authHeader(cfg), Accept: 'application/json' },
   });
-  if (res.status === 401 || res.status === 403) throw new Error(`Jira ${res.status} : accès refusé (email/token ?)`);
+  if (res.status === 401 || res.status === 403) throw new Error(t('err.jira.denied', { status: res.status }));
   if (res.status === 404) throw new Error(`Jira 404 : ticket ${key} introuvable`);
   if (res.status < 200 || res.status >= 300) throw new Error(`Jira ${res.status} ${res.statusText}`);
   let data;
-  try { data = JSON.parse(res.body); } catch { throw new Error('Jira : réponse non-JSON'); }
+  try { data = JSON.parse(res.body); } catch { throw new Error(t('err.jira.not-json')); }
   const fields = data.fields || {};
   return {
     key: data.key || key,
@@ -207,14 +258,25 @@ const jiraBase = (cfg) => String(cfg.jira_url).trim().replace(/\/+$/, '');
 const issueUrl = (cfg, key) => `${jiraBase(cfg)}/browse/${encodeURIComponent(key)}`;
 
 // GET JSON authentifié, erreurs Jira remontées en clair (401/403 = auth, autres = status).
+/* Jira explique ses refus dans le CORPS de la réponse (`errorMessages`) : « The JQL query is
+   unbounded », « Field 'sprint' does not exist »… On les jetait, et l'utilisateur ne lisait que
+   « Jira 400 Bad Request » — de quoi ne rien pouvoir faire. */
+function detailErreur(body) {
+  try {
+    const d = JSON.parse(body || '{}');
+    const msgs = [...(d.errorMessages || []), ...Object.values(d.errors || {})].filter(Boolean);
+    return msgs.length ? ` : ${msgs.join(' · ').slice(0, 300)}` : '';
+  } catch { return body ? ` : ${String(body).slice(0, 200)}` : ''; }
+}
+
 async function jiraGet(cfg, pathAndQuery) {
   const res = await request(jiraBase(cfg) + pathAndQuery, {
     headers: { Authorization: authHeader(cfg), Accept: 'application/json' },
   });
-  if (res.status === 401 || res.status === 403) throw new Error(`Jira ${res.status} : accès refusé (email/token ?)`);
+  if (res.status === 401 || res.status === 403) throw new Error(t('err.jira.denied', { status: res.status }));
   if (res.status === 404) throw new Error('Jira 404 : ressource introuvable');
-  if (res.status < 200 || res.status >= 300) throw new Error(`Jira ${res.status} ${res.statusText}`);
-  try { return JSON.parse(res.body); } catch { throw new Error('Jira : réponse non-JSON'); }
+  if (res.status < 200 || res.status >= 300) throw new Error(`Jira ${res.status} ${res.statusText}${detailErreur(res.body)}`);
+  try { return JSON.parse(res.body); } catch { throw new Error(t('err.jira.not-json')); }
 }
 
 const personOf = (p) => (p ? {
@@ -232,7 +294,7 @@ async function runSearch(cfg, jql, fields, max = 50) {
 }
 
 // Métadonnées d'un ticket depuis l'objet issue (partagé liste + détail).
-function issueMeta(data) {
+function issueMeta(data, champSprint = '') {
   const f = data.fields || {};
   const person = personOf;
   return {
@@ -247,15 +309,134 @@ function issueMeta(data) {
     reporter: person(f.reporter),
     labels: f.labels || [],
     project: f.project ? `${f.project.key}${f.project.name ? ` — ${f.project.name}` : ''}` : '',
+    projectKey: f.project ? f.project.key : '',
+    // Vide si le champ sprint n'est pas connu de l'instance ou pas demandé.
+    sprints: champSprint ? sprintsDe(f[champSprint]) : [],
     created: f.created || '',
     updated: f.updated || '',
     duedate: f.duedate || '',
     components: (f.components || []).map((c) => c.name),
     fixVersions: (f.fixVersions || []).map((v) => v.name),
+    epic: epicOf(f),
   };
 }
 
-const TICKET_FIELDS = 'summary,status,priority,issuetype,assignee,reporter,created,updated,labels,project,duedate';
+/* Epic d'un ticket. Jira Cloud a unifié la hiérarchie : le lien vers l'epic passe par le champ
+   `parent`, y compris pour les projets d'équipe. Mais `parent` sert AUSSI aux sous-tâches, dont
+   le parent est une story — l'annoncer comme epic serait faux. On ne retient donc que les
+   parents dont le type est bien un epic : `hierarchyLevel` quand Jira le donne (1 = epic),
+   sinon le nom du type, seule information disponible sur les instances plus anciennes. */
+/* Ajoute les URL Jira à un ticket : la sienne, et celle de son epic. Regroupé ici parce que
+   `issueMeta` ne connaît pas la config — les trois appelants oubliaient sinon l'un ou l'autre. */
+function withUrls(cfg, meta) {
+  const out = { ...meta, url: issueUrl(cfg, meta.key) };
+  if (out.epic) out.epic = { ...out.epic, url: issueUrl(cfg, out.epic.key) };
+  return out;
+}
+
+function epicOf(f) {
+  const p = f && f.parent;
+  if (!p || !p.key) return null;
+  const type = (p.fields && p.fields.issuetype) || {};
+  // Le nom du type est LOCALISÉ (Epic, Épique, Épopée…) : on retire les accents avant de comparer,
+  // sinon « Épique » ne correspond à rien et l'epic disparaît sur une instance en français.
+  const sansAccent = String(type.name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const estEpic = type.hierarchyLevel != null ? Number(type.hierarchyLevel) >= 1 : /(epic|epique|epopee)/.test(sansAccent);
+  if (!estEpic) return null;
+  return {
+    key: p.key,
+    summary: (p.fields && p.fields.summary) || '',
+    color: (p.fields && p.fields.color && p.fields.color.key) || '',
+  };
+}
+
+const TICKET_FIELDS = 'summary,status,priority,issuetype,assignee,reporter,created,updated,labels,project,duedate,parent';
+
+/* ---------- Sprint ----------------------------------------------------------
+   Champ personnalisé, donc identifiant variable. On le repère par son MARQUEUR DE SCHÉMA,
+   posé par Jira et indépendant de la langue — contrairement au nom, qui ne l'est pas. */
+const MARQUEUR_SPRINT = 'gh-sprint';
+const CHAMP_SPRINT = /^customfield_\d+$/;
+
+// Tous les champs de l'instance, réduits à ce dont on a besoin ici.
+async function allFields(cfg) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const data = await jiraGet(cfg, '/rest/api/3/field');
+  return (Array.isArray(data) ? data : []).filter((f) => f && f.id).map((f) => ({
+    id: f.id, name: f.name || f.id, custom: !!f.custom,
+    marqueur: (f.schema && f.schema.custom) || '',
+  }));
+}
+
+function detectSprintField(fields) {
+  const par = (fields || []).filter((f) => CHAMP_SPRINT.test(f.id));
+  const parMarqueur = par.find((f) => String(f.marqueur).includes(MARQUEUR_SPRINT));
+  if (parMarqueur) return { id: parMarqueur.id, name: parMarqueur.name };
+  // Repli sur le nom, pour une instance qui n'exposerait pas le schéma.
+  const parNom = par.find((f) => String(f.name).trim().toLowerCase() === 'sprint');
+  return parNom ? { id: parNom.id, name: parNom.name } : null;
+}
+
+/* Valeurs de sprint d'un ticket, ramenées à { v: id, l: nom }. Jira renvoie soit des objets
+   ({ id, name, state }), soit — sur de vieilles instances — des chaînes façon
+   « …[id=42,name=Sprint 42,state=ACTIVE] ». On lit les deux plutôt que d'en supposer une. */
+function sprintsDe(brut) {
+  // `<null>` : ce que la forme sérialisée écrit pour une date absente.
+  const date = (x) => (x && x !== '<null>' ? String(x) : '');
+  const un = (x) => {
+    if (!x) return null;
+    if (typeof x === 'object') {
+      if (x.id == null) return null;
+      // On garde une DATE pour pouvoir trier : le début, sinon la fin.
+      return {
+        v: String(x.id), l: x.name || String(x.id),
+        d: date(x.startDate) || date(x.endDate),
+        // active | closed | future — sert à mettre le sprint EN COURS en tête.
+        etat: String(x.state || '').toLowerCase(),
+      };
+    }
+    const s = String(x);
+    const id = /\bid=(\d+)/.exec(s);
+    if (!id) return null;
+    const nom = /\bname=([^,\]]+)/.exec(s);
+    const deb = /\bstartDate=([^,\]]+)/.exec(s);
+    const fin = /\bendDate=([^,\]]+)/.exec(s);
+    const etat = /\bstate=([^,\]]+)/.exec(s);
+    return {
+      v: id[1],
+      l: (nom && nom[1].trim()) || id[1],
+      d: date(deb && deb[1].trim()) || date(fin && fin[1].trim()),
+      etat: etat ? etat[1].trim().toLowerCase() : '',
+    };
+  };
+  return (Array.isArray(brut) ? brut : [brut]).map(un).filter(Boolean);
+}
+
+/* Clé de projet Jira : lettres/chiffres, commence par une lettre. Elle part dans la JQL,
+   donc tout ce qui n'a pas cette forme est refusé plutôt que quoté et espéré. */
+const CLE_PROJET = /^[A-Za-z][A-Za-z0-9_]{0,30}$/;
+
+/* Statuts d'un PROJET, tous types de tickets confondus.
+
+   Pourquoi par projet et pas d'un coup : `/rest/api/3/status` omet les projets d'équipe
+   (team-managed), et `/statuses/search` exige d'administrer Jira — droit que la plupart des
+   comptes n'ont pas. Cette route-ci ne demande que le droit de parcourir le projet, et rend
+   exactement les statuts qui concernent l'utilisateur. */
+async function projectStatuses(cfg, projectKey) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  if (!CLE_PROJET.test(String(projectKey || ''))) return [];
+  const data = await jiraGet(cfg, `/rest/api/3/project/${encodeURIComponent(projectKey)}/statuses`);
+  const par = new Map();
+  for (const type of (Array.isArray(data) ? data : [])) {
+    for (const st of (type.statuses || [])) {
+      // Deux types de tickets partagent souvent un statut : on déduplique par nom.
+      if (st && st.name && !par.has(st.name)) {
+        par.set(st.name, { name: st.name, cat: (st.statusCategory && st.statusCategory.key) || '' });
+      }
+    }
+  }
+  return [...par.values()];
+}
 
 // Identité de l'utilisateur courant (pour cocher « moi » par défaut dans le filtre par assigné).
 async function myself(cfg) {
@@ -266,7 +447,7 @@ async function myself(cfg) {
 // Découvre les personnes ASSIGNÉES récemment (pour proposer les cases du filtre par assigné) :
 // pool des tickets assignés les plus récemment mis à jour → assignés distincts, « moi » en tête.
 async function listAssignees(cfg) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const me = await myself(cfg).catch(() => ({ accountId: '', name: 'Moi', email: '', avatar: '' }));
   const byId = new Map();
   try {
@@ -283,23 +464,77 @@ async function listAssignees(cfg) {
 
 // Tickets assignés aux personnes demandées (accountIds). Vide → `assignee = currentUser()` (moi).
 // Écarte les terminés sauf `includeDone`. Triés du plus récemment mis à jour au plus ancien.
-async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = 100 } = {}) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = 100, projects = [], sprintField = '', sprints = [], hideStatuses = [] } = {}) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   // accountId Jira : alphanumérique + `:._@|-`. On rejette le reste (anti-injection JQL) et on quote.
   const ids = (accountIds || []).map(String).filter((s) => /^[A-Za-z0-9:._@|-]{1,128}$/.test(s));
-  let jql = ids.length ? `assignee IN (${ids.map((id) => `"${id}"`).join(', ')})` : 'assignee = currentUser()';
-  if (!includeDone) jql += ' AND statusCategory != Done';
-  jql += ' ORDER BY updated DESC';
-  const data = await runSearch(cfg, jql, TICKET_FIELDS, max);
-  const issues = (data.issues || []).map((i) => ({ ...issueMeta(i), url: issueUrl(cfg, i.key) }));
+  /* Sélection VIDE = aucune contrainte d'assigné : on prend tout ce que le compte voit, même
+     ce qui n'est affecté à personne ou à quelqu'un d'autre. Retomber sur `currentUser()`
+     revenait à ignorer ce que l'utilisateur venait de demander en décochant tout le monde. */
+  const clauses = [];
+  if (ids.length) clauses.push(`assignee IN (${ids.map((id) => `"${id}"`).join(', ')})`);
+  /* La sélection de projets est poussée DANS la requête, pas appliquée après coup : le résultat
+     est plafonné à cent tickets triés par date de mise à jour, donc filtrer côté navigateur
+     revient à filtrer un extrait — les tickets du projet voulu peuvent n'y être même pas. */
+  const cles = [...new Set((projects || []).map(String).filter((k) => CLE_PROJET.test(k)))];
+  if (cles.length) clauses.push(`project IN (${cles.map((k) => `"${k}"`).join(', ')})`);
+  // Même règle pour le sprint : identifiants numériques, contrainte posée DANS la requête.
+  const sprintIds = [...new Set((sprints || []).map(String).filter((x) => /^\d+$/.test(x)))];
+  if (sprintIds.length) clauses.push(`sprint IN (${sprintIds.join(', ')})`);
+  /* Statuts masqués : exclus PAR Jira. Un nom de statut est libre (workflow personnalisé),
+     donc on n'accepte ni guillemet ni saut de ligne — le reste est quoté tel quel. */
+  const exclus = [...new Set((hideStatuses || []).map(String)
+    .filter((x) => x && x.length < 120 && !/["\r\n]/.test(x)))];
+  if (exclus.length) clauses.push(`status NOT IN (${exclus.map((x) => `"${x}"`).join(', ')})`);
+  if (!includeDone) clauses.push('statusCategory != Done');
+  /* Jira Cloud REFUSE une recherche sans aucune contrainte (« unbounded ») : personne de coché
+     ET les terminés inclus donnerait un simple ORDER BY, rejeté en 400. On borne alors sur
+     l'activité récente — sans effet visible, la liste étant de toute façon triée par date de
+     mise à jour et plafonnée à cent résultats. */
+  if (!clauses.length) clauses.push('updated >= -365d');
+  const jql = `${clauses.join(' AND ')} ORDER BY updated DESC`;
+  const champ = CHAMP_SPRINT.test(sprintField) ? sprintField : '';
+  const data = await runSearch(cfg, jql, champ ? `${TICKET_FIELDS},${champ}` : TICKET_FIELDS, max);
+  const issues = (data.issues || []).map((i) => withUrls(cfg, issueMeta(i, champ)));
   return { issues, total: data.total != null ? data.total : issues.length };
+}
+
+/* Clé de ticket Jira : PROJET-123. Tout ce qui n'a pas cette forme est refusé avant de
+   toucher au JQL — une clé vient de l'utilisateur, elle ne doit jamais s'y injecter. */
+const CLE_VALIDE = /^[A-Z][A-Z0-9]{0,20}-[1-9][0-9]{0,9}$/;
+const cleValide = (k) => CLE_VALIDE.test(String(k || '').trim().toUpperCase());
+
+/* État courant d'une liste de tickets, en UN appel. Sert à la surveillance : comparer
+   l'état renvoyé au dernier état connu. Les clés introuvables sont simplement absentes
+   du résultat — l'appelant en déduit ce qu'il veut (ticket supprimé, droits perdus). */
+async function statusOfKeys(cfg, keys) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const propres = [...new Set((keys || []).map((k) => String(k).trim().toUpperCase()).filter(cleValide))];
+  if (!propres.length) return [];
+  const issues = [];
+  // Par paquets : une JQL `key in (...)` de 300 clés serait refusée par Jira.
+  for (let i = 0; i < propres.length; i += 50) {
+    const lot = propres.slice(i, i + 50);
+    const data = await runSearch(cfg, `key IN (${lot.join(', ')})`, TICKET_FIELDS, lot.length);
+    for (const it of (data.issues || [])) issues.push(withUrls(cfg, issueMeta(it)));
+  }
+  return issues;
+}
+
+/* Combien de tickets me sont affectés ET en cours. « En cours » = catégorie de statut
+   `indeterminate` côté Jira : c'est la seule définition qui traverse les workflows, les
+   noms d'états étant libres d'un projet à l'autre. */
+async function countMineInProgress(cfg) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const data = await runSearch(cfg, 'assignee = currentUser() AND statusCategory = "In Progress"', 'summary', 1);
+  return data.total != null ? data.total : (data.issues || []).length;
 }
 
 // Détail complet d'un ticket : métadonnées + description (ADF→Markdown) + commentaires (idem)
 // + pièces jointes (métadonnées seulement ; le CONTENU se télécharge à la demande via le proxy).
 async function issueDetail(cfg, key) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
-  const fields = 'summary,description,status,priority,issuetype,assignee,reporter,created,updated,labels,project,duedate,components,fixVersions,attachment';
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const fields = 'summary,description,status,priority,issuetype,assignee,reporter,created,updated,labels,project,duedate,components,fixVersions,attachment,parent';
   const data = await jiraGet(cfg, `/rest/api/3/issue/${encodeURIComponent(key)}?fields=${encodeURIComponent(fields)}`);
   const attachments = ((data.fields || {}).attachment || []).map((a) => ({
     id: String(a.id), filename: a.filename || `pièce-${a.id}`, size: a.size || 0,
@@ -320,7 +555,7 @@ async function issueDetail(cfg, key) {
   } catch { comments = []; } // les commentaires ne doivent pas faire échouer le détail
   let trans = [];
   try { trans = await transitions(cfg, key); } catch { trans = []; } // droits insuffisants → pas de changement d'état proposé
-  return { ...issueMeta(data), url: issueUrl(cfg, key), descriptionMd: adfToMarkdown((data.fields || {}).description, mdOpts), comments, attachments, transitions: trans };
+  return { ...withUrls(cfg, issueMeta(data)), descriptionMd: adfToMarkdown((data.fields || {}).description, mdOpts), comments, attachments, transitions: trans };
 }
 
 // Texte brut → ADF minimal (Jira v3 exige l'ADF pour créer un commentaire). Les lignes vides
@@ -337,15 +572,15 @@ function textToAdf(text) {
 
 // Poste un commentaire (texte) sur un ticket. Renvoie le commentaire créé (mappé comme les autres).
 async function addComment(cfg, key, text) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
-  const t = String(text || '').trim();
-  if (!t) throw new Error('Commentaire vide.');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const corps = String(text || '').trim();
+  if (!corps) throw new Error(t('err.jira.empty-comment'));
   const res = await request(jiraBase(cfg) + `/rest/api/3/issue/${encodeURIComponent(key)}/comment`, {
     method: 'POST',
     headers: { Authorization: authHeader(cfg), Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify({ body: textToAdf(t) }),
   });
-  if (res.status === 401 || res.status === 403) throw new Error(`Jira ${res.status} : commentaire refusé (droits ?)`);
+  if (res.status === 401 || res.status === 403) throw new Error(t('err.jira.comment-denied', { status: res.status }));
   if (res.status < 200 || res.status >= 300) throw new Error(`Jira ${res.status} ${res.statusText}${res.body ? ` : ${res.body.slice(0, 200)}` : ''}`);
   let data = {}; try { data = JSON.parse(res.body); } catch { /* corps vide */ }
   return {
@@ -368,7 +603,7 @@ async function transitions(cfg, key) {
 
 // Applique une transition (change l'état du ticket). Renvoie 204 sans corps en cas de succès.
 async function transitionIssue(cfg, key, transitionId) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const id = String(transitionId || '');
   if (!/^\d+$/.test(id)) throw new Error('Transition invalide.');
   const res = await request(jiraBase(cfg) + `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`, {
@@ -376,7 +611,7 @@ async function transitionIssue(cfg, key, transitionId) {
     headers: { Authorization: authHeader(cfg), Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify({ transition: { id } }),
   });
-  if (res.status === 401 || res.status === 403) throw new Error(`Jira ${res.status} : changement d'état refusé (droits ?)`);
+  if (res.status === 401 || res.status === 403) throw new Error(t('err.jira.transition-denied', { status: res.status }));
   if (res.status < 200 || res.status >= 300) throw new Error(`Jira ${res.status} ${res.statusText}${res.body ? ` : ${res.body.slice(0, 200)}` : ''}`);
   return { ok: true };
 }
@@ -417,7 +652,7 @@ function requestBinary(url, headers, { maxBytes = 25 * 1024 * 1024, redirects = 
 // Télécharge UNE pièce jointe (à la demande). L'ID est numérique ; l'URL est construite sur la
 // base Jira CONFIGURÉE (jamais fournie par le client) → pas de SSRF depuis l'écran.
 async function downloadAttachment(cfg, id) {
-  if (!isConfigured(cfg)) throw new Error('Jira non configuré (URL, email, token requis).');
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   if (!/^\d+$/.test(String(id))) throw new Error('Identifiant de pièce jointe invalide.');
   const meta = await jiraGet(cfg, `/rest/api/3/attachment/${encodeURIComponent(id)}`);
   const url = `${jiraBase(cfg)}/rest/api/3/attachment/content/${encodeURIComponent(id)}`;
@@ -425,4 +660,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };

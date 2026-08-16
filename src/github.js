@@ -428,9 +428,8 @@ async function listProtectedTags(cfg, project) {
 }
 
 // Dernier commit de la branche par défaut, rendu à la forme GitLab (dashboard).
-async function latestCommit(cfg, project) {
-  const items = await githubFetch(cfg, `/repos/${encodeProject(project)}/commits?per_page=1`);
-  const c = Array.isArray(items) && items.length ? items[0] : null;
+// Normalise un commit GitHub vers la forme commune (celle de GitLab).
+function versCommit(c) {
   if (!c) return null;
   const commit = c.commit || {};
   return {
@@ -441,6 +440,59 @@ async function latestCommit(cfg, project) {
     committed_date: (commit.committer && commit.committer.date) || (commit.author && commit.author.date) || null,
     web_url: c.html_url || '',
   };
+}
+
+/* Dernier commit, TOUTES BRANCHES confondues.
+ *
+ * `/commits` ne connaît que la branche par défaut, et GitHub n'a pas d'équivalent du
+ * `all=true` de GitLab. Les ÉVÉNEMENTS du dépôt, eux, portent les pushes de toutes les
+ * branches : on y prend le plus récent, puis on relit le commit désigné pour disposer des
+ * mêmes champs qu'ailleurs (lien web, date de commit).
+ *
+ * Deux limites assumées, d'où le repli : les événements expirent au bout de 90 jours, et
+ * l'API peut être absente selon l'instance. Dans ces cas on retombe sur la branche par
+ * défaut — une information partielle vaut mieux qu'une ligne absente du tableau. */
+async function latestCommit(cfg, project) {
+  const enc = encodeProject(project);
+  try {
+    const evts = await githubFetch(cfg, `/repos/${enc}/events?per_page=30`);
+    const push = (Array.isArray(evts) ? evts : []).find((e) => e && e.type === 'PushEvent');
+    const p = (push && push.payload) || {};
+    const dernier = (p.commits || [])[(p.commits || []).length - 1];
+    const sha = p.head || (dernier && dernier.sha);
+    if (sha) {
+      const c2 = versCommit(await githubFetch(cfg, `/repos/${enc}/commits/${encodeURIComponent(sha)}`));
+      if (c2) return c2;
+    }
+  } catch { /* événements indisponibles : on retombe sur la branche par défaut */ }
+
+  const items = await githubFetch(cfg, `/repos/${enc}/commits?per_page=1`);
+  return versCommit(Array.isArray(items) && items.length ? items[0] : null);
+}
+
+/* Commits d'une PÉRIODE — pendant GitHub de `gitlab.commitsBetween`, même forme en sortie.
+
+   Différence assumée : GitHub ne sait pas lister « toutes branches » en un appel. Il
+   faudrait énumérer les branches puis paginer chacune — des dizaines d'appels par dépôt,
+   pour un compte qui compterait plusieurs fois les commits partagés. On s'en tient donc à
+   la branche par défaut, et l'écran le dit plutôt que de laisser croire à un compte complet. */
+async function commitsBetween(cfg, project, sinceIso, untilIso, maxPages = 12) {
+  const enc = encodeProject(project);
+  const out = [];
+  let partiel = false;
+  for (let page = 1; ; page += 1) {
+    if (page > maxPages) { partiel = true; break; }
+    const q = `since=${encodeURIComponent(sinceIso)}&until=${encodeURIComponent(untilIso)}&per_page=100&page=${page}`;
+    const items = await githubFetch(cfg, `/repos/${enc}/commits?${q}`);
+    if (!Array.isArray(items) || !items.length) break;
+    for (const c of items) {
+      const cm = (c && c.commit) || {};
+      const auteur = (cm.author && (cm.author.email || cm.author.name)) || (c.author && c.author.login) || '';
+      out.push({ date: (cm.author && cm.author.date) || (cm.committer && cm.committer.date) || null, author: auteur });
+    }
+    if (items.length < 100) break;
+  }
+  return { commits: out, partiel };
 }
 
 /* Une ref précise (branche ou tag), à la forme GitLab, ou null si absente (404).
@@ -550,7 +602,7 @@ module.exports = {
   // mêmes noms que gitlab.js (contrat commun consommé via src/forge.js)
   listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches,
   updateNote, currentUser,
-  latestCommit, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion,
+  latestCommit, commitsBetween, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion,
   listMrDiscussions, replyToDiscussion, listBranchesFull, listTags, listProtectedBranches,
   listProtectedTags, listMrChangedPaths, createBranch, deleteBranch, createTag, deleteTag, listAllMRs,
   // propres à GitHub

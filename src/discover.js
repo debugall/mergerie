@@ -27,11 +27,27 @@ async function fetchJiraContext(cfg, mrId, title, branch) {
 
 // Interroge GitLab pour chaque repo activé, upsert les MR ouvertes filtrées.
 // Ne touche pas au statut des MR déjà connues (respecte done / reviewed).
+const isDemo = () => process.env.MERGERIE_DEMO === '1';
+
 async function discoverAll() {
   const cfg = getConfig();
-  const repos = db.prepare('SELECT * FROM repo WHERE enabled = 1').all();
+  // `fetch_mrs = 0` : dépôt toujours actif (git, sessions), mais on ne ramène plus ses MR.
+  // COALESCE : les lignes antérieures à la migration ont la colonne à NULL.
+  const repos = db.prepare('SELECT * FROM repo WHERE enabled = 1 AND COALESCE(fetch_mrs, 1) = 1').all();
   const now = new Date().toISOString();
-  const result = { repos: repos.length, found: 0, created: 0, updated: 0, errors: [] };
+  /* `new_mr_ids` : les MR VRAIMENT nouvelles de ce tour. C'est la seule information qui
+     permette de ne déclencher les vérifications automatiques que sur elles — une MR déjà
+     connue est revue à chaque découverte, et la relancer à chaque fois ferait tourner la
+     batterie sur tout le monde en permanence. */
+  const result = { repos: repos.length, found: 0, created: 0, updated: 0, errors: [], new_mr_ids: [] };
+
+  /* En démo, la forge n'existe pas : interroger GitLab rendait une erreur par dépôt, sur un
+     bouton mis en avant de la page d'accueil. Un scan y trouve légitimement ce qui est déjà
+     là — on rend ce compte, sans rien créer ni modifier. */
+  if (isDemo()) {
+    result.found = db.prepare("SELECT COUNT(*) n FROM mr WHERE closed_seen = 0").get().n;
+    return result;
+  }
 
   const selectMr = db.prepare('SELECT * FROM mr WHERE repo_id = ? AND iid = ?');
   const insertMr = db.prepare(`INSERT INTO mr
@@ -139,6 +155,7 @@ async function discoverAll() {
 
   // borne la taille du journal (on garde les 200 plus récents)
   db.prepare('DELETE FROM feed WHERE id NOT IN (SELECT id FROM feed ORDER BY at DESC LIMIT 200)').run();
+  result.new_mr_ids = newMrs.map((m) => m.id);
   return result;
 }
 

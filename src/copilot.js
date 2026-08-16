@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const proc = require('./proc');
 const db = require('./db');
+const { t } = require('../public/i18n-runtime.js');
 
 // Comptage de tokens : utilise `gpt-tokenizer` (pur JS, hors-ligne) s'il est installé,
 // sinon repli sur l'estimation ≈ 4 caractères / token (approx usuelle GPT/Claude).
@@ -14,7 +15,7 @@ function loadTokenizer() {
   try {
     const gt = require('gpt-tokenizer');
     const enc = gt.encode || (gt.default && gt.default.encode);
-    _tokenizer = typeof enc === 'function' ? (t) => enc(t).length : false;
+    _tokenizer = typeof enc === 'function' ? (txt) => enc(txt).length : false;
   } catch { _tokenizer = false; }
   return _tokenizer;
 }
@@ -91,9 +92,11 @@ function runReal(prompt, cwd, onLog = () => {}) {
     const args = [...EXTRA_ARGS, '-p', prompt];
     // commande COMPLÈTE (non tronquée) : prompt encodé en une ligne lisible
     const parts = [COPILOT_BIN, ...EXTRA_ARGS, '-p', JSON.stringify(prompt)];
-    if (proc.isCancelled()) return reject(new Error('Job arrêté par l\'utilisateur.'));
+    if (proc.isCancelled()) return reject(new Error(t('err.job.stopped')));
     onLog(`$ ${parts.join(' ')}  (cwd=${cwd})`);
-    const child = spawn(COPILOT_BIN, args, { cwd });
+    /* stdin fermée : sinon le CLI attend des données sur un tube que personne n'alimente,
+       avertit au bout de trois secondes et l'avertissement masque la vraie erreur. */
+    const child = spawn(COPILOT_BIN, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
     proc.setActive(child);
     let stdout = '';
     let stderr = '';
@@ -101,7 +104,7 @@ function runReal(prompt, cwd, onLog = () => {}) {
     let ebuf = '';
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
-      reject(new Error(`copilot: timeout après ${TIMEOUT_MS} ms`));
+      reject(new Error(t('err.cmd.timeout', { cmd: 'copilot', ms: TIMEOUT_MS })));
     }, TIMEOUT_MS);
     child.stdout.on('data', (d) => { stdout += d; obuf = emitLines(obuf + d, onLog); });
     child.stderr.on('data', (d) => { stderr += d; ebuf = emitLines(ebuf + d, onLog); });
@@ -111,9 +114,9 @@ function runReal(prompt, cwd, onLog = () => {}) {
       proc.clearActive(child);
       if (obuf) onLog(obuf);
       if (ebuf) onLog(ebuf);
-      if (proc.isCancelled()) return reject(new Error('Job arrêté par l\'utilisateur.'));
+      if (proc.isCancelled()) return reject(new Error(t('err.job.stopped')));
       if (code === 0) resolve(stdout.trim());
-      else reject(new Error(`copilot a échoué (code ${code}) : ${stderr || stdout}`));
+      else reject(new Error(t('err.cmd.failed', { cmd: 'copilot', code, sortie: stderr || stdout })));
     });
   });
 }
@@ -202,11 +205,11 @@ async function runPrompt(prompt, cwd, meta = {}, onLog = () => {}) {
   if (isDryRun()) {
     const parts = [COPILOT_BIN, ...EXTRA_ARGS, '-p', JSON.stringify(prompt)];
     onLog(`$ ${parts.join(' ')}  (DRY-RUN — copilot indisponible)`);
-    onLog('génération du rapport mock à partir du diff…');
+    onLog(t('log.copilot.mock'));
     // petit délai simulé pour rendre la progression visible
     await new Promise((r) => setTimeout(r, 150));
     output = mockReport(prompt, cwd, meta);
-    onLog(`rapport généré (${output.length} octets)`);
+    onLog(t('log.copilot.mock-done', { n: output.length }));
   } else {
     output = await runReal(prompt, cwd, onLog);
   }

@@ -43,11 +43,14 @@ const jira = require('./jira');
 const glob = require('./glob');
 const notify = require('./notify');
 const gitgraph = require('./gitgraph');
+const docx = require('./docx');
+const { pMap } = require('./pmap');
+const backup = require('./backup');
+const retention = require('./retention');
+const notes = require('./notes');
+const brief = require('./brief');
+const links = require('./links');
 const { t } = i18n;
-/* Quelques routes nomment leur variable locale `t` (la tâche) et masquaient alors la
-   fonction de traduction : le message d'erreur devenait « t is not a function », c'est-à-dire
-   exactement rien pour qui le lit. `tt` est le même `t`, mais qu'aucune locale ne masque. */
-const tt = t;
 const { discoverAll } = require('./discover');
 const jobs = require('./jobs');
 const reviewer = require('./reviewer');
@@ -57,6 +60,11 @@ const git = require('./git');
 const demoGit = require('./demo-git');
 const docker = require('./docker');
 const demoDocker = require('./demo-docker');
+const demoJenkins = require('./demo-jenkins');
+const jenkins = require('./jenkins');
+const demoDiff = require('./demo-diff');
+const verifyLib = require('./verify');
+const verifyrun = require('./verifyrun');
 const demoJira = require('./demo-jira');
 const demoComments = require('./demo-comments');
 const { StringDecoder } = require('node:string_decoder');
@@ -67,6 +75,39 @@ const localrepos = require('./localrepos');
 const copilot = require('./copilot');
 
 const app = express();
+
+/* ============ D'OÙ VIENT CETTE REQUÊTE ? ============
+   Mergerie n'écoute que sur la boucle locale, mais ça ne protège de rien ici : c'est TON
+   navigateur qui émet, et n'importe quelle page ouverte dans un autre onglet peut lui faire
+   poster chez nous. Un simple `<form method="POST" action="http://127.0.0.1:4319/api/…">`
+   part sans préflight (formulaire = requête « simple ») et, sur les 130 routes mutantes, les
+   45 qui ne lisent pas leur corps s'exécutent telles quelles : effacer tous les rapports,
+   publier tes commentaires en attente sur une vraie merge request avec ton jeton, lancer un
+   agent sur tes dossiers. Le code étant publié, la liste des routes n'est un secret pour
+   personne.
+
+   La règle : une requête qui ÉCRIT et qui annonce une origine étrangère est refusée. Les
+   requêtes de l'application portent l'origine de l'application ; un formulaire tiers porte la
+   sienne, et se fait renvoyer. On n'exige PAS que l'en-tête soit présent : `curl`, un script
+   maison ou l'onglet « Commandes » n'en envoient pas, et refuser les requêtes sans origine
+   casserait des usages légitimes sans rien empêcher — un navigateur, lui, en envoie toujours
+   un sur une requête cross-site.
+
+   Les lectures passent : elles ne changent rien, et la réponse n'est de toute façon pas
+   lisible par la page tierce (pas de CORS ici). */
+const MUTANTES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+function memeOrigine(req) {
+  const brut = req.headers.origin;
+  if (!brut) return true;                       // pas de navigateur derrière : rien à trancher
+  let hote;
+  try { hote = new URL(brut).host; } catch { return false; }   // origine illisible = refus
+  return hote === req.headers.host;
+}
+app.use((req, res, next) => {
+  if (!MUTANTES.has(req.method) || memeOrigine(req)) return next();
+  res.status(403).json({ error: i18n.t('err.origine-etrangere') });
+});
+
 app.use(express.json({ limit: '20mb' })); // marge pour les captures de ticket (base64)
 /* Fichiers statiques. `no-cache` = le navigateur peut mettre en cache mais DOIT
    revalider avant chaque usage (requête conditionnelle → 304 si inchangé, contenu
@@ -76,8 +117,12 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
   setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
 }));
 
+/* Le statut par défaut est 400 : la quasi-totalité des refus sont des saisies invalides.
+   Une erreur peut le SURCHARGER en portant `.status` — c'est ainsi qu'un objet absent rend
+   un 404 plutôt qu'un 400, distinction dont le front a besoin pour dire « supprimée entre
+   temps » au lieu de « saisie invalide ». */
 const wrap = (fn) => (req, res) => Promise.resolve().then(() => fn(req, res)).catch((e) => {
-  const status = e.code === 'BUSY' ? 409 : 400;
+  const status = e.code === 'BUSY' ? 409 : (Number.isInteger(e.status) && e.status >= 400 && e.status < 600 ? e.status : 400);
   res.status(status).json({ error: e.message });
 });
 
@@ -135,6 +180,7 @@ app.get('/api/status', wrap((req, res) => {
     targets: jobs.runningTargets(),
     queued: jobs.queueCount(),
     autoRefreshMinutes: Number(getConfig().auto_refresh_minutes) || 0,
+    jenkinsRefreshMinutes: Number(getConfig().jenkins_refresh_minutes) || 0,
     jiraConfigured: jira.isConfigured(getConfig()), // pilote l'UI « enrichir depuis Jira »
     githubConfigured: forge.isConfigured(getConfig(), 'github'), // pilote l'UI « ajout en masse depuis GitHub »
   });
@@ -299,19 +345,35 @@ app.get('/api/stats', wrap((req, res) => {
     mrMerged: db.prepare('SELECT COUNT(*) c FROM task_target WHERE mr_merged = 1').get().c,
   };
 
+  /* Rapports FAIBLES encore à traiter — ce que le badge orange du menu Reviews annonce.
+     Restreint au stade « reviewées » : les badges de Mergerie comptent du travail en attente,
+     pas des totaux. Une merge request déjà classée traitée ne demande plus rien, même si sa
+     note était mauvaise ; la compter ferait un chiffre qui ne redescend jamais.
+     `note_value` est normalisée sur [0,1] — 0,7 vaut donc 7/10. */
+  const faibles = db.prepare(`SELECT COUNT(*) c
+    FROM review JOIN mr ON mr.id = review.mr_id
+    WHERE mr.status = 'reviewed' AND review.note_value IS NOT NULL AND review.note_value < 0.7`).get().c;
+
   res.json({
     funnel, notes, projects, weekly, scoreTrend, tokens, tasks, resolution,
+    lowScores: faibles,
     commentsPosted: db.prepare('SELECT COUNT(*) c FROM comment_log').get().c,
   });
 }));
 
-/* Dernier commit de chaque dépôt actif (branche par défaut), via GitLab. Live et
-   best-effort : un dépôt injoignable est simplement omis. Endpoint SÉPARÉ de /stats
-   (qui reste local et instantané) — le dashboard le charge en asynchrone. */
+/* Dernier commit de chaque dépôt SUIVI, toutes branches confondues. Live et best-effort :
+   un dépôt injoignable est simplement omis. Endpoint SÉPARÉ de /stats (qui reste local et
+   instantané) — le dashboard le charge en asynchrone.
+
+   « Suivi » exclut les dépôts désactivés, mais aussi ceux dont la récupération des MR est
+   coupée : on ne les regarde plus, ils n'ont donc rien à faire en tête de l'activité
+   récente — et l'appel à la forge qu'ils coûtaient est justement ce qu'on voulait éviter
+   en les décochant. */
 app.get('/api/dashboard/commits', wrap(async (req, res) => {
   const cfg = getConfig();
   if (!forge.isConfigured(cfg, 'gitlab') && !forge.isConfigured(cfg, 'github')) { res.json({ configured: false, commits: [] }); return; }
-  const repos = db.prepare('SELECT project, forge FROM repo WHERE enabled = 1').all();
+  // IFNULL : les dépôts créés avant la colonne `fetch_mrs` la portent à NULL, et sont suivis.
+  const repos = db.prepare('SELECT project, forge FROM repo WHERE enabled = 1 AND IFNULL(fetch_mrs, 1) = 1').all();
   const commits = await Promise.all(repos.map(async (r) => {
     try {
       const c = await forge.clientFor(r).latestCommit(cfg, r.project);
@@ -329,13 +391,195 @@ app.get('/api/dashboard/commits', wrap(async (req, res) => {
   res.json({ configured: true, commits: commits.filter(Boolean) });
 }));
 
+/* ---------- Activité par projet sur 6 mois (onglet Statistiques) ----------
+
+   Question posée : « quels dépôts sont vivants, lesquels dorment ? ». Le nombre de commits
+   n'y répond qu'imparfaitement — un projet qui squash en fait un par merge request, un autre
+   quarante pour le même travail —, donc l'écran compare les FORMES dans le temps, projet par
+   projet, et non les hauteurs entre projets. Les contributeurs distincts complètent : cinquante
+   commits d'une seule personne ne disent pas la même chose que cinquante de six.
+
+   Le coût est réel (pagination de la forge), d'où le cache par mois : un mois clos ne change
+   plus, seul le mois courant est rafraîchi. */
+const TTL_MOIS_COURANT_MS = 30 * 60 * 1000;
+
+/* Un dépôt tenu par un robot n'est pas un dépôt vivant. Dependabot ou Renovate y poussent
+   chaque semaine : sans ce filtre, un projet abandonné garderait quatre jours d'activité par
+   mois et ne serait JAMAIS signalé endormi — exactement le faux positif que le graphe existe
+   pour éviter. On écarte donc leurs commits du compte, jours comme contributeurs.
+   `noreply@github.com` n'est PAS un motif : les commits faits depuis l'interface web de
+   GitHub par de vrais humains le portent aussi. */
+const MOTIFS_BOT = [/\[bot\]/i, /\bdependabot\b/i, /\brenovate\b/i, /\bgithub-actions\b/i, /\bmergify\b/i];
+const estBot = (auteur) => MOTIFS_BOT.some((re) => re.test(String(auteur || '')));
+
+// Les 6 derniers mois, du plus ancien au plus récent, en 'YYYY-MM'.
+function derniersMois(n = 6, maintenant = new Date()) {
+  const out = [];
+  const d = new Date(Date.UTC(maintenant.getUTCFullYear(), maintenant.getUTCMonth(), 1));
+  for (let i = n - 1; i >= 0; i -= 1) {
+    const m = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - i, 1));
+    out.push(`${m.getUTCFullYear()}-${String(m.getUTCMonth() + 1).padStart(2, '0')}`);
+  }
+  return out;
+}
+const debutDuMois = (mois) => `${mois}-01T00:00:00.000Z`;
+const finDuMois = (mois) => {
+  const [a, m] = mois.split('-').map(Number);
+  return new Date(Date.UTC(m === 12 ? a + 1 : a, m === 12 ? 0 : m, 1)).toISOString();
+};
+
+/* Remplit le cache d'un dépôt pour les mois manquants ou périmés. Un seul appel forge pour
+   toute la plage manquante : demander mois par mois multiplierait les requêtes par six. */
+/* Deux vues peuvent demander le même dépôt en même temps — la vue d'ensemble et la fenêtre
+   de détail, ou simplement deux onglets. Sans garde, les deux paginent la forge en parallèle
+   pour écrire la même chose. La promesse en cours est donc partagée. */
+const activiteEnVol = new Map();
+function majActiviteDepot(cfg, repo, mois) {
+  const cle = `${repo.id}:${mois[0]}:${mois[mois.length - 1]}`;
+  const enVol = activiteEnVol.get(cle);
+  if (enVol) return enVol;
+  const p = majActiviteDepotVrai(cfg, repo, mois).finally(() => activiteEnVol.delete(cle));
+  activiteEnVol.set(cle, p);
+  return p;
+}
+
+async function majActiviteDepotVrai(cfg, repo, mois) {
+  const enCache = new Map(db.prepare('SELECT * FROM commit_activity WHERE repo_id = ?').all(repo.id).map((r) => [r.month, r]));
+  const courant = mois[mois.length - 1];
+  const now = Date.now();
+  const aRefaire = mois.filter((m) => {
+    const l = enCache.get(m);
+    if (!l) return true;
+    // Seul le mois en cours peut encore bouger : les autres sont définitifs.
+    return m === courant && (now - Date.parse(l.fetched_at || 0)) > TTL_MOIS_COURANT_MS;
+  });
+  if (!aRefaire.length) return;
+
+  const depuis = debutDuMois(aRefaire[0]);
+  const jusqua = finDuMois(aRefaire[aRefaire.length - 1]);
+  const { commits, partiel } = await forge.clientFor(repo).commitsBetween(cfg, repo.project, depuis, jusqua);
+
+  const parMois = new Map(aRefaire.map((m) => [m, { n: 0, auteurs: new Set(), jours: new Set() }]));
+  for (const c of commits) {
+    if (!c.date) continue;
+    if (estBot(c.author)) continue;           // cf. MOTIFS_BOT : un robot ne rend pas un dépôt vivant
+    /* Les dates de la forge portent un DÉCALAGE local (`…T01:00:00+02:00`), alors que les
+       bornes `since`/`until` sont en UTC. Découper la chaîne rangeait donc un commit du 1er
+       à 1 h du matin dans le mois suivant celui où l'API l'avait renvoyé : il ne trouvait
+       aucun seau et disparaissait sans un mot. On normalise en UTC, à la même échelle que
+       les bornes. Conséquence assumée : une « journée » est une journée UTC. */
+    const d = new Date(c.date);
+    if (Number.isNaN(d.getTime())) continue;
+    const iso = d.toISOString();
+    const agg = parMois.get(iso.slice(0, 7));
+    if (!agg) continue;                       // hors plage demandée : les bornes de l'API sont inclusives
+    agg.n += 1;
+    agg.jours.add(iso.slice(0, 10));          // une journée de travail, pas un commit de plus
+    if (c.author) agg.auteurs.add(String(c.author).toLowerCase());
+  }
+  const ins = db.prepare(`INSERT INTO commit_activity (repo_id, month, commits, authors, active_days, partiel, fetched_at)
+    VALUES (?,?,?,?,?,?,?) ON CONFLICT(repo_id, month) DO UPDATE SET
+      commits = excluded.commits, authors = excluded.authors, active_days = excluded.active_days,
+      partiel = excluded.partiel, fetched_at = excluded.fetched_at`);
+  const at = new Date().toISOString();
+  for (const [m, agg] of parMois) ins.run(repo.id, m, agg.n, agg.auteurs.size, agg.jours.size, partiel ? 1 : 0, at);
+}
+
+app.get('/api/dashboard/activity', wrap(async (req, res) => {
+  const cfg = getConfig();
+  const mois = derniersMois(6);
+  /* En démo, l'activité est SEMÉE en base : on la lit telle quelle sans appeler de forge —
+     il n'y en a pas, et l'écran doit montrer quelque chose de parlant. */
+  const demo = demoDocker.isDemo();
+  if (!demo && !forge.isConfigured(cfg, 'gitlab') && !forge.isConfigured(cfg, 'github')) {
+    return res.json({ configured: false, months: mois, projects: [] });
+  }
+  // Mêmes dépôts que le classement d'activité récente : actifs ET dont on suit les MR.
+  const repos = db.prepare('SELECT * FROM repo WHERE enabled = 1 AND IFNULL(fetch_mrs, 1) = 1 ORDER BY project').all();
+  /* Les dépôts sont traités EN PARALLÈLE, quatre à la fois. En série, vingt dépôts de quelques
+     pages chacun additionnent leurs allers-retours réseau : l'écran reste sur son squelette
+     pendant des dizaines de secondes au premier chargement. Quatre, et pas davantage, parce
+     qu'une forge répond aux rafales par un 429. */
+  const projets = await pMap(repos, 4, async (repo) => {
+    let erreur = null;
+    // Best-effort, dépôt par dépôt : une forge injoignable ne doit pas vider tout l'écran.
+    if (!demo) {
+      try { await majActiviteDepot(cfg, repo, mois); }
+      catch (e) { erreur = String(e.message).slice(0, 200); }
+    }
+    const lignes = new Map(db.prepare('SELECT * FROM commit_activity WHERE repo_id = ?').all(repo.id).map((r) => [r.month, r]));
+    const counts = mois.map((m) => (lignes.get(m) || {}).commits || 0);
+    const authors = mois.map((m) => (lignes.get(m) || {}).authors || 0);
+    const days = mois.map((m) => (lignes.get(m) || {}).active_days || 0);
+    return {
+      repo_id: repo.id,
+      project: repo.project,
+      forge: repo.forge,
+      counts,
+      authors,
+      days,
+      total: counts.reduce((a, b) => a + b, 0),
+      // Ce que la barre mesure : des journées travaillées, pas des commits.
+      totalDays: days.reduce((a, b) => a + b, 0),
+      // Contributeurs du mois le plus fourni : un maximum est plus parlant qu'une somme,
+      // qui compterait la même personne six fois.
+      contributeurs: Math.max(0, ...authors),
+      partiel: mois.some((m) => (lignes.get(m) || {}).partiel),
+      erreur,
+    };
+  });
+  // Le plus actif d'abord : l'écran répond à « qui bouge ? », pas à l'ordre alphabétique.
+  projets.sort((a, b) => b.totalDays - a.totalDays || b.total - a.total || a.project.localeCompare(b.project));
+  res.json({ configured: true, months: mois, projects: projets });
+}));
+
+/* Détail d'UN dépôt sur douze mois. Le graphe d'ensemble en montre six — assez pour dire qui
+   bouge —, mais juger d'une tendance demande de voir l'année : un projet calme depuis deux
+   mois après dix mois soutenus ne raconte pas la même histoire qu'un projet éteint depuis un an.
+   Même cache que la vue d'ensemble : les six premiers mois sont souvent déjà chargés. */
+app.get('/api/dashboard/activity/:repoId', wrap(async (req, res) => {
+  const repo = repoById(Number(req.params.repoId));
+  if (!repo) throw new Error(t('err.projet-inconnu'));
+  const cfg = getConfig();
+  const mois = derniersMois(12);
+  const demo = demoDocker.isDemo();
+  let erreur = null;
+  if (!demo) {
+    try { await majActiviteDepot(cfg, repo, mois); }
+    catch (e) { erreur = String(e.message).slice(0, 200); }
+  }
+  const lignes = new Map(db.prepare('SELECT * FROM commit_activity WHERE repo_id = ?').all(repo.id).map((r) => [r.month, r]));
+  const counts = mois.map((m) => (lignes.get(m) || {}).commits || 0);
+  const days = mois.map((m) => (lignes.get(m) || {}).active_days || 0);
+  const authors = mois.map((m) => (lignes.get(m) || {}).authors || 0);
+  res.json({
+    project: repo.project,
+    forge: repo.forge,
+    months: mois,
+    counts,
+    days,
+    authors,
+    total: counts.reduce((a, b) => a + b, 0),
+    totalDays: days.reduce((a, b) => a + b, 0),
+    contributeurs: Math.max(0, ...authors),
+    /* Le mois le plus fourni et le dernier mois actif : deux repères qu'on cherche à l'œil
+       sur un graphe et qu'il vaut mieux nommer. `null` quand il n'y a RIEN : sans ce test,
+       `indexOf(0)` désignait le premier mois, et un dépôt sans une ligne de l'année affichait
+       fièrement son « mois le plus actif ». */
+    meilleurMois: Math.max(0, ...days) > 0 ? mois[days.indexOf(Math.max(...days))] : null,
+    dernierActif: [...mois].reverse().find((m, i) => days[days.length - 1 - i] > 0) || null,
+    partiel: mois.some((m) => (lignes.get(m) || {}).partiel),
+    erreur,
+  });
+}));
+
 // Télémétrie du footer : tokens, activité perso, paliers, et activité de l'équipe
 // (MR entrantes) — de la matière fraîche même quand l'utilisateur ne fait rien.
 app.get('/api/footer', wrap((req, res) => {
   const now = new Date();
   const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
   const todayStart = midnight.toISOString();
-  const dayKey = (d) => { const t = new Date(d); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
+  const dayKey = (d) => { const jour = new Date(d); return `${jour.getFullYear()}-${String(jour.getMonth() + 1).padStart(2, '0')}-${String(jour.getDate()).padStart(2, '0')}`; };
   const daysBetween = (iso) => (iso ? Math.floor((now - new Date(iso)) / 86400000) : null);
   const one = (sql, ...p) => db.prepare(sql).get(...p);
 
@@ -434,7 +678,7 @@ app.get('/api/footer', wrap((req, res) => {
   }
 
   // Activité par semaine (8 dernières semaines)
-  const weekKey = (d) => { const t = new Date(d); const off = (t.getDay() + 6) % 7; t.setHours(0, 0, 0, 0); t.setDate(t.getDate() - off); return dayKey(t); };
+  const weekKey = (d) => { const jour = new Date(d); const off = (jour.getDay() + 6) % 7; jour.setHours(0, 0, 0, 0); jour.setDate(jour.getDate() - off); return dayKey(jour); };
   const revByWeek = {}; const tokByWeek = {};
   db.prepare('SELECT created_at FROM review WHERE created_at IS NOT NULL').all()
     .forEach((r) => { const k = weekKey(r.created_at); revByWeek[k] = (revByWeek[k] || 0) + 1; });
@@ -478,7 +722,58 @@ app.get('/api/footer', wrap((req, res) => {
 
 app.get('/api/config', wrap((req, res) => {
   const c = getConfig();
-  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '' });
+  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '', jenkins_token: c.jenkins_token ? '***' : '' });
+}));
+
+/* ---------- Jenkins : voir et lancer des jobs -------------------------------
+   Aucune requête n'est émise sans un geste : pas de sondage, pas de rafraîchissement de
+   fond. L'écran demande, on demande à Jenkins. `configured: false` plutôt qu'une erreur —
+   un onglet non configuré doit expliquer comment le configurer, pas afficher un échec. */
+const jenkinsCfg = () => getConfig();
+
+app.get('/api/jenkins/jobs', wrap(async (req, res) => {
+  if (demoJenkins.isDemo()) return res.json({ configured: true, jobs: demoJenkins.lister() });
+  const cfg = jenkinsCfg();
+  if (!jenkins.isConfigured(cfg)) return res.json({ configured: false, jobs: [] });
+  res.json({ configured: true, jobs: await jenkins.lister(cfg) });
+}));
+
+app.get('/api/jenkins/job', wrap(async (req, res) => {
+  const chemin = String(req.query.path || '').trim();
+  if (!chemin) throw new Error(t('err.jenkins-chemin-requis'));
+  if (demoJenkins.isDemo()) return res.json(demoJenkins.detail(chemin, req.query.builds));
+  // `builds` : profondeur d'historique demandée par l'écran (bornée côté client Jenkins).
+  res.json(await jenkins.detail(jenkinsCfg(), chemin, req.query.builds));
+}));
+
+/* Lancer : le seul geste qui ÉCRIT chez Jenkins, donc un POST explicite. Les paramètres
+   arrivent tels que l'écran les a lus du job — on ne les invente pas, et un job sans
+   paramètre part sans corps. */
+app.post('/api/jenkins/build', wrap(async (req, res) => {
+  const chemin = String((req.body && req.body.path) || '').trim();
+  if (!chemin) throw new Error(t('err.jenkins-chemin-requis'));
+  const params = (req.body && req.body.parameters) || {};
+  if (demoJenkins.isDemo()) return res.json(demoJenkins.lancer(chemin, params));
+  res.json(await jenkins.lancer(jenkinsCfg(), chemin, params));
+}));
+
+app.get('/api/jenkins/console', wrap(async (req, res) => {
+  const chemin = String(req.query.path || '').trim();
+  if (!chemin) throw new Error(t('err.jenkins-chemin-requis'));
+  if (demoJenkins.isDemo()) return res.json(demoJenkins.console());
+  res.json(await jenkins.console(jenkinsCfg(), chemin, req.query.build));
+}));
+
+// Test de connexion — même contrat que « Tester Jira » : le masque signifie « garde le jeton ».
+app.post('/api/jenkins/test', wrap(async (req, res) => {
+  if (demoJenkins.isDemo()) return res.json(demoJenkins.tester());
+  const test = { ...jenkinsCfg() };
+  const b = req.body || {};
+  if (b.jenkins_url) test.jenkins_url = b.jenkins_url;
+  if (b.jenkins_user) test.jenkins_user = b.jenkins_user;
+  if (b.jenkins_token && b.jenkins_token !== '***') test.jenkins_token = b.jenkins_token;
+  if (!jenkins.isConfigured(test)) throw new Error(t('err.jenkins-non-configure'));
+  res.json(await jenkins.tester(test));
 }));
 
 // Test de la connexion Jira : récupère un ticket témoin pour valider URL/email/token.
@@ -507,12 +802,55 @@ app.get('/api/jira/assignees', wrap(async (req, res) => {
 
 // Tickets assignés aux personnes cochées (`assignees` = accountIds séparés par des virgules ;
 // vide = mes tickets). Filtre statut fait côté client.
+/* Statuts par projet, mémorisés : un workflow ne change pas d'une minute à l'autre, et le
+   filtre les redemanderait à chaque chargement de l'onglet. Vidé à l'enregistrement de la
+   configuration, l'instance visée pouvant changer. */
+const statutsParProjet = new Map();
+app.get('/api/jira/statuses', wrap(async (req, res) => {
+  const cles = [...new Set(String(req.query.projects || '').split(',').map((x) => x.trim()).filter(Boolean))].slice(0, 20);
+  if (demoDocker.isDemo()) return res.json({ configured: true, statuses: demoJira.projectStatuses(cles) });
+  const cfg = getConfig();
+  if (!jira.isConfigured(cfg)) return res.json({ configured: false, statuses: [] });
+  const par = new Map();
+  for (const cle of cles) {
+    if (!statutsParProjet.has(cle)) {
+      // Un projet inaccessible ne doit pas priver le filtre des statuts des autres.
+      try { statutsParProjet.set(cle, await jira.projectStatuses(cfg, cle)); }
+      catch { statutsParProjet.set(cle, []); }
+    }
+    for (const st of statutsParProjet.get(cle)) if (!par.has(st.name)) par.set(st.name, st);
+  }
+  res.json({ configured: true, statuses: [...par.values()] });
+}));
+
+/* Identifiant du champ « sprint », résolu une fois puis mémorisé : il ne change pas en cours
+   de route, et le redemander à chaque chargement coûterait un appel Jira pour rien. Remis à
+   zéro à l'enregistrement de la configuration (l'instance visée peut changer). */
+let champSprint = null;   // null = pas encore cherché ; '' = cherché, absent
+async function sprintFieldId(cfg) {
+  if (champSprint !== null) return champSprint;
+  try {
+    const trouve = jira.detectSprintField(await jira.allFields(cfg));
+    champSprint = trouve ? trouve.id : '';
+  } catch { champSprint = ''; }   // droits manquants : on s'en passe, sans casser l'onglet
+  return champSprint;
+}
+
 app.get('/api/jira/tickets', wrap(async (req, res) => {
   const accountIds = String(req.query.assignees || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (demoDocker.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1') });
+  // Statuts décochés : exclus par Jira, pour ne pas trier un extrait déjà plafonné.
+  const hideStatuses = String(req.query.hideStatuses || '').split('\u001f').map((x) => x.trim()).filter(Boolean);
+  // Sprints choisis : mêmes règles que les projets — la contrainte part dans la requête.
+  const sprints = String(req.query.sprints || '').split(',').map((x) => x.trim()).filter(Boolean);
+  // Projets choisis dans le filtre : appliqués par Jira, pas après coup (cf. searchByAssignees).
+  const projects = String(req.query.projects || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (demoDocker.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1', projects, sprints, hideStatuses) });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, issues: [], total: 0 });
-  res.json({ configured: true, ...(await jira.searchByAssignees(cfg, { accountIds, includeDone: req.query.includeDone === '1' })) });
+  res.json({ configured: true, ...(await jira.searchByAssignees(cfg, {
+    accountIds, includeDone: req.query.includeDone === '1', projects, sprints, hideStatuses,
+    sprintField: await sprintFieldId(cfg),
+  })) });
 }));
 
 // Détail d'un ticket Jira : métadonnées + description + commentaires + pièces jointes.
@@ -537,11 +875,19 @@ app.post('/api/jira/issue/:key/comment', wrap(async (req, res) => {
 // Changer l'ÉTAT d'un ticket : applique une transition Jira (les transitions possibles sont
 // dans le détail du ticket).
 app.post('/api/jira/issue/:key/transition', wrap(async (req, res) => {
-  if (demoDocker.isDemo()) return res.json({ ok: true, demo: true });
+  if (demoDocker.isDemo()) {
+    return res.json({ ...demoJira.applyTransition(String(req.params.key || '').trim(), (req.body && req.body.transitionId) || ''), demo: true });
+  }
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const id = String((req.body && req.body.transitionId) || '');
-  res.json(await jira.transitionIssue(cfg, String(req.params.key || '').trim(), id));
+  const r = await jira.transitionIssue(cfg, String(req.params.key || '').trim(), id);
+  /* Le compteur du menu vient d'un cache rafraîchi par le timer : après un changement d'état
+     fait DEPUIS l'outil, on sait qu'il est périmé. On le recalcule avant de répondre, pour que
+     la relecture qui suit côté client tombe déjà sur la bonne valeur. Best-effort : une
+     transition réussie ne doit pas être signalée en échec parce que le recomptage a raté. */
+  try { await refreshJiraBadge(); } catch { /* compteur : jamais bloquant */ }
+  res.json(r);
 }));
 
 // Téléchargement PROXY d'une pièce jointe Jira (le lien direct exigerait l'auth Basic dans le
@@ -586,6 +932,167 @@ app.post('/api/jira/fetch', wrap(async (req, res) => {
   const issue = await jira.fetchIssue(cfg, key);
   res.json({ key: issue.key, summary: issue.summary, context: jira.issueToContext(issue) });
 }));
+
+/* ---------- Tickets Jira surveillés ----------------------------------------
+   Surveiller un ticket = mémoriser son état, et être prévenu quand il change. On stocke le
+   DERNIER état connu au moment de l'ajout : sans ça, la première vérification comparerait
+   à du vide et notifierait un changement qui n'a pas eu lieu.
+
+   Une erreur (ticket supprimé, droits perdus, Jira injoignable) est rangée sur la ligne
+   concernée et affichée ; elle n'interrompt jamais la vérification des autres. */
+
+const watchRows = () => db.prepare('SELECT * FROM jira_watch ORDER BY key').all();
+
+// Compteur du menu, en cache : le client l'interroge souvent, Jira ne doit pas l'être autant.
+let jiraBadge = { inProgress: 0, at: null, error: null };
+
+app.get('/api/jira/watch', wrap((req, res) => {
+  const cfg = getConfig();
+  const demo = demoDocker.isDemo();
+  // L'URL est construite ici, où la configuration Jira est connue — comme pour les tickets.
+  const lien = (key) => (demo ? demoJira.issueUrl(key) : (jira.isConfigured(cfg) ? jira.issueUrl(cfg, key) : null));
+  res.json({
+    configured: demo || jira.isConfigured(cfg),
+    watched: watchRows().map((r) => ({ ...r, url: lien(r.key) })),
+  });
+}));
+
+/* La note tient sur une ligne ou deux : c'est un rappel, pas un journal. On la borne plutôt
+   que de laisser une colonne libre s'étaler dans une liste où chaque ticket doit rester lisible. */
+const MAX_NOTE_WATCH = 500;
+const lireNote = (v) => String(v == null ? '' : v).trim().slice(0, MAX_NOTE_WATCH);
+
+app.post('/api/jira/watch', wrap(async (req, res) => {
+  const key = String((req.body && req.body.key) || '').trim().toUpperCase();
+  if (!jira.cleValide(key)) throw new Error(t('err.jira.watch-key-invalid'));
+  if (db.prepare('SELECT 1 FROM jira_watch WHERE key = ?').get(key)) throw new Error(t('err.jira.watch-exists'));
+  const now = new Date().toISOString();
+  // État de départ : celui du ticket maintenant. C'est ce qui évite la fausse notification.
+  let meta = null;
+  if (demoDocker.isDemo()) { const d = demoJira.issue(key); meta = d && { summary: d.summary, status: d.status, statusCategory: d.statusCategory }; }
+  else {
+    const cfg = getConfig();
+    if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+    meta = (await jira.statusOfKeys(cfg, [key]))[0] || null;
+    if (!meta) throw new Error(t('err.jira.watch-not-found', { key }));
+  }
+  db.prepare(`INSERT INTO jira_watch (key, summary, status, status_category, added_at, checked_at, note)
+              VALUES (?,?,?,?,?,?,?)`)
+    .run(key, meta.summary || '', meta.status || '', meta.statusCategory || '', now, now,
+      lireNote(req.body && req.body.note));
+  res.json(db.prepare('SELECT * FROM jira_watch WHERE key = ?').get(key));
+}));
+
+/* La raison de surveiller change avec le temps — le ticket avance, on suit autre chose. Elle
+   se corrige donc sans retirer puis ré-ajouter le ticket, ce qui perdrait sa date d'ajout et
+   son dernier état connu (et déclencherait une fausse notification au passage suivant). */
+app.patch('/api/jira/watch/:key', wrap((req, res) => {
+  const key = String(req.params.key || '').trim().toUpperCase();
+  const ligne = db.prepare('SELECT 1 FROM jira_watch WHERE key = ?').get(key);
+  if (!ligne) throw new Error(t('err.jira.watch-unknown', { key }));
+  db.prepare('UPDATE jira_watch SET note = ? WHERE key = ?').run(lireNote(req.body && req.body.note), key);
+  res.json(db.prepare('SELECT * FROM jira_watch WHERE key = ?').get(key));
+}));
+
+app.delete('/api/jira/watch/:key', wrap((req, res) => {
+  db.prepare('DELETE FROM jira_watch WHERE key = ?').run(String(req.params.key || '').trim().toUpperCase());
+  res.json({ ok: true });
+}));
+
+/* Vérifie tous les tickets surveillés et notifie les changements d'état.
+   Appelée par le timer ET par le bouton « Vérifier maintenant » — même code, donc ce que
+   le bouton montre est exactement ce que le timer fait. */
+/* Une seule vérification à la fois, TOUS APPELANTS CONFONDUS (timer, bouton « Vérifier
+   maintenant », double clic). Deux passages simultanés liraient le même ancien état et
+   notifieraient deux fois le même changement — exactement ce qu'on ne veut pas. Les appels
+   concurrents partagent donc le résultat de celle qui tourne déjà. */
+let checkEnCours = null;
+function checkJiraWatch() {
+  if (!checkEnCours) checkEnCours = faireCheckJiraWatch().finally(() => { checkEnCours = null; });
+  return checkEnCours;
+}
+
+async function faireCheckJiraWatch() {
+  const rows = watchRows();
+  const now = new Date().toISOString();
+  const resultat = { checked: rows.length, changed: 0, errors: 0 };
+  if (!rows.length) return resultat;
+
+  let etats = [];
+  try {
+    etats = demoDocker.isDemo()
+      ? rows.map((r) => { const d = demoJira.issue(r.key); return d && { key: r.key, summary: d.summary, status: d.status, statusCategory: d.statusCategory }; }).filter(Boolean)
+      : await jira.statusOfKeys(getConfig(), rows.map((r) => r.key));
+  } catch (e) {
+    // Jira injoignable : on marque toutes les lignes, sans rien perdre de l'état connu.
+    db.prepare('UPDATE jira_watch SET checked_at = ?, error = ?').run(now, String(e.message).slice(0, 300));
+    resultat.errors = rows.length;
+    return resultat;
+  }
+
+  const parCle = new Map(etats.map((i) => [i.key, i]));
+  const maj = db.prepare(`UPDATE jira_watch SET summary = ?, status = ?, status_category = ?,
+                          checked_at = ?, changed_at = ?, error = NULL WHERE key = ?`);
+  const inchange = db.prepare('UPDATE jira_watch SET summary = ?, checked_at = ?, error = NULL WHERE key = ?');
+  const absent = db.prepare('UPDATE jira_watch SET checked_at = ?, error = ? WHERE key = ?');
+  for (const r of rows) {
+    const cur = parCle.get(r.key);
+    if (!cur) { absent.run(now, t('err.jira.watch-unreachable'), r.key); resultat.errors += 1; continue; }
+    if ((cur.status || '') !== (r.status || '')) {
+      maj.run(cur.summary || '', cur.status || '', cur.statusCategory || '', now, now, r.key);
+      resultat.changed += 1;
+      /* On ne notifie QUE si un état précédent était connu. Sans état de référence il n'y a pas
+         de changement à annoncer, seulement une première observation — la signaler ferait sonner
+         l'outil pour rien. Le nouvel état devient la référence : tant qu'il ne rebouge pas, plus
+         aucune notification, quel que soit le nombre de vérifications. */
+      if (r.status) {
+        notify.push('jira_status', { key: r.key, summary: cur.summary || '', from: r.status, to: cur.status || '' });
+      }
+    } else {
+      inchange.run(cur.summary || r.summary || '', now, r.key);
+    }
+  }
+  return resultat;
+}
+
+app.post('/api/jira/watch/check', wrap(async (req, res) => { res.json(await checkJiraWatch()); }));
+
+// Compteur « en cours qui me sont affectés » : valeur en cache, jamais un appel Jira ici.
+app.get('/api/jira/badge', wrap((req, res) => {
+  if (demoDocker.isDemo()) return res.json({ configured: true, inProgress: demoJira.inProgressMine(), error: null });
+  res.json({ configured: jira.isConfigured(getConfig()), ...jiraBadge });
+}));
+
+async function refreshJiraBadge() {
+  const cfg = getConfig();
+  if (!jira.isConfigured(cfg)) { jiraBadge = { inProgress: 0, at: null, error: null }; return; }
+  try { jiraBadge = { inProgress: await jira.countMineInProgress(cfg), at: new Date().toISOString(), error: null }; }
+  catch (e) { jiraBadge = { ...jiraBadge, error: String(e.message).slice(0, 200) }; }
+}
+
+/* Timer de surveillance : même forme que le rafraîchissement auto des MR (0 = désactivé,
+   pas de chevauchement). Il porte les deux besoins — l'état des tickets surveillés et le
+   compteur du menu — parce qu'ils interrogent la même API et ont la même cadence utile. */
+let jiraWatchTimer = null;
+let jiraWatchBusy = false;
+function restartJiraWatch() {
+  if (jiraWatchTimer) { clearInterval(jiraWatchTimer); jiraWatchTimer = null; }
+  const min = Number(getConfig().jira_watch_minutes) || 0;
+  if (min <= 0) { console.log('[jira-watch] désactivé'); return; }
+  const tour = async () => {
+    if (jiraWatchBusy) return;
+    jiraWatchBusy = true;
+    try {
+      await refreshJiraBadge();
+      const r = await checkJiraWatch();
+      if (r.changed) console.log(`[jira-watch] ${r.changed} changement(s) d'état sur ${r.checked} ticket(s)`);
+    } catch (e) { console.error(`[jira-watch] échec : ${e.message}`); }
+    finally { jiraWatchBusy = false; }
+  };
+  jiraWatchTimer = setInterval(tour, min * 60 * 1000);
+  tour();
+  console.log(`[jira-watch] activé : toutes les ${min} min`);
+}
 
 // Rafraîchir le contexte Jira d'une MR à la demande (bonus des champs séparés :
 // ne touche jamais au contexte manuel).
@@ -657,10 +1164,14 @@ app.put('/api/config', wrap((req, res) => {
   if (patch.access_token === '***') delete patch.access_token;
   if (patch.jira_token === '***') delete patch.jira_token;
   if (patch.github_token === '***') delete patch.github_token;
+  if (patch.jenkins_token === '***') delete patch.jenkins_token;
   const c = updateConfig(patch);
   i18n.setLang(c.language);   // les messages d'erreur suivent la nouvelle langue
   restartAutoRefresh(); // prend en compte le nouvel intervalle
-  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '' });
+  restartJiraWatch(); // idem pour la surveillance Jira (et le compteur du menu)
+  champSprint = null; // l'instance Jira visée a pu changer : on re-cherchera le champ sprint
+  statutsParProjet.clear();
+  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '', jenkins_token: c.jenkins_token ? '***' : '' });
 }));
 
 /* ---------- Repos (admin) ---------- */
@@ -689,16 +1200,19 @@ app.post('/api/repos', wrap((req, res) => {
 app.put('/api/repos/:id', wrap((req, res) => {
   const cur = repoById(Number(req.params.id));
   if (!cur) throw new Error(t('err.repo-introuvable'));
-  const { url, branch_pattern, enabled } = req.body || {};
+  const { url, branch_pattern, enabled, fetch_mrs } = req.body || {};
   const nextUrl = url != null ? String(url).trim() : cur.url;
   // project : fourni explicitement, sinon déduit de l'URL, sinon inchangé
   let project = (req.body.project || '').trim();
   if (!project) project = url != null ? forge.clientFor(cur).normalizeProject(nextUrl) : cur.project;
   // pattern : vide autorisé (= toutes les MR)
   const pattern = branch_pattern != null ? String(branch_pattern).trim() : cur.branch_pattern;
-  db.prepare(`UPDATE repo SET project = ?, url = ?, branch_pattern = ?, enabled = ? WHERE id = ?`)
+  db.prepare(`UPDATE repo SET project = ?, url = ?, branch_pattern = ?, enabled = ?, fetch_mrs = ? WHERE id = ?`)
     .run(project || cur.project, nextUrl, pattern,
-         enabled == null ? cur.enabled : (enabled ? 1 : 0), cur.id);
+         enabled == null ? cur.enabled : (enabled ? 1 : 0),
+         // absent du corps = inchangé ; NULL d'avant migration = activé, la valeur par défaut
+         fetch_mrs == null ? (cur.fetch_mrs == null ? 1 : cur.fetch_mrs) : (fetch_mrs ? 1 : 0),
+         cur.id);
   res.json(repoById(cur.id));
 }));
 
@@ -1130,15 +1644,18 @@ function targetById(taskId, targetId) {
 function normalizeTargets(targets, kind) {
   if (!Array.isArray(targets) || !targets.length) throw new Error(t('err.selectionne-au-moins-un-projet'));
   const seen = new Set();
-  return targets.map((t) => {
-    const repoId = Number(t.repo_id);
+  /* Le paramètre ne s'appelle SURTOUT pas `t` : il masquerait la fonction de traduction du
+     module, et chaque `t('err.…')` de ce bloc appellerait l'objet au lieu de traduire —
+     « t is not a function » à la place du message d'erreur attendu. */
+  return targets.map((cible) => {
+    const repoId = Number(cible.repo_id);
     if (!repoId || !repoById(repoId)) throw new Error(t('err.projet-inconnu'));
     if (seen.has(repoId)) throw new Error(t('err.un-meme-projet-est-selectionne'));
     seen.add(repoId);
-    const raw = (t.branch || '').trim();
+    const raw = (cible.branch || '').trim();
     if (kind === 'code' && !raw) throw new Error(t('err.nom-de-branche-requis-pour'));
     // branche de départ facultative : vide = branche par défaut du dépôt
-    const base = (t.base_branch || '').trim();
+    const base = (cible.base_branch || '').trim();
     return {
       repo_id: repoId,
       branch: raw ? assertValidBranch(raw) : null,
@@ -1157,7 +1674,7 @@ function insertTargets(taskId, list, sessionId) {
     VALUES (?, ?, ?, ?, 'new', ?, ?, ?)`);
   const now = new Date().toISOString();
   const backend = sessionId ? agentsession.backendName() : null;
-  for (const t of list) ins.run(taskId, t.repo_id, t.branch, t.base_branch || null, sessionId || null, backend, now);
+  for (const cible of list) ins.run(taskId, cible.repo_id, cible.branch, cible.base_branch || null, sessionId || null, backend, now);
 }
 
 /* Un identifiant de session est passé TEL QUEL à l'agent : `--resume <id>` pour claude,
@@ -1231,41 +1748,80 @@ function saveLocalImages(taskId, images) {
 }
 
 app.get('/api/tasks', wrap((req, res) => {
-  const rows = db.prepare('SELECT * FROM task ORDER BY id DESC').all();
-  res.json(rows.map((t) => ({
-    ...t,
-    image_count: db.prepare('SELECT COUNT(*) c FROM task_image WHERE task_id = ?').get(t.id).c,
-    targets: taskTargets(t.id),
+  /* En tête, ce qui vient de se passer : les sessions qui TOURNENT, puis les plus récemment
+     exécutées. `finished_at` plutôt qu'`updated_at`, qui bouge aussi quand on corrige un
+     prompt ou qu'on pousse une branche — une session simplement relue remonterait alors en
+     tête. Jamais exécutée : sa date de création fait foi, sinon une session qu'on vient de
+     créer tomberait tout en bas. */
+  const rows = db.prepare(`SELECT * FROM task
+    ORDER BY (status = 'running') DESC, COALESCE(finished_at, created_at) DESC, id DESC`).all();
+  res.json(rows.map((tache) => ({
+    ...tache,
+    image_count: db.prepare('SELECT COUNT(*) c FROM task_image WHERE task_id = ?').get(tache.id).c,
+    targets: taskTargets(tache.id),
   })));
 }));
 
 app.get('/api/tasks/:id', wrap((req, res) => {
-  const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(tt('err.session-introuvable'));
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
   res.json({
-    task: { ...t, targets: taskTargets(t.id) },
-    images: taskImages(t.id).map((im, i) => ({ id: im.id, idx: i })),
+    task: { ...tache, targets: taskTargets(tache.id) },
+    images: taskImages(tache.id).map((im, i) => ({ id: im.id, idx: i })),
   });
 }));
 
 // Crée une session : `kind` = 'code' (l'IA modifie le code) ou 'explore' (lecture seule).
 // `targets` = [{ repo_id, branch }] — une session peut porter sur plusieurs projets.
+/* UN VÉRIFICATEUR NE SE LANCE PAS SANS CODE POUSSÉ : il travaille sur ce que la forge expose.
+   Choisir un vérificateur implique donc l'auto-push, et retirer l'auto-push retire le
+   vérificateur. L'écran le dit et coche la case ; le serveur le REFAIT — un client n'est pas
+   un garde-fou, et l'API est appelable sans lui. */
+/* Un libellé vide et un libellé absent sont la MÊME chose : NULL. Sans ça, une chaîne vide
+   s'afficherait comme un titre — un titre invisible qui pousse le prompt d'un cran. */
+const lireLibelle = (v) => (v == null ? null : (String(v).trim().slice(0, 120) || null));
+
+/* Un suivi vide n'est pas un suivi : l'écran afficherait un bloc « suivi prêt » sans texte,
+   avec un bouton « Envoyer » qui échouerait. Effacer le texte EST la façon de le supprimer. */
+const lireSuivi = (v) => (v == null ? null : (String(v).trim() || null));
+
+/* Enregistre le suivi en attente d'une session (codage / hors dépôt / exploration).
+   Une seule table près : la colonne s'appelle pareil des deux côtés. */
+/* `auto` : le suivi part-il de lui-même à la fin de la session ? Sans texte, la question ne se
+   pose pas — un envoi automatique de rien n'existe pas, et laisser la case armée sur un suivi
+   supprimé ferait partir le suivant sans qu'on l'ait demandé. */
+function poserSuivi(table, id, valeur, auto) {
+  const texte = lireSuivi(valeur);
+  db.prepare(`UPDATE ${table} SET followup_draft = ?, followup_auto = ?, updated_at = ? WHERE id = ?`)
+    .run(texte, (texte && auto) ? 1 : 0, new Date().toISOString(), id);
+}
+
+function lireVerifierSession(kind, autoPush, verifierId) {
+  if (kind !== 'code' || !autoPush) return null;
+  const id = Number(verifierId) || 0;
+  if (!id) return null;
+  return db.prepare('SELECT 1 FROM verifier WHERE id = ?').get(id) ? id : null;
+}
+
 app.post('/api/tasks', wrap((req, res) => {
-  const { kind, prompt, commit_message, auto_push, images, targets, ask_questions, session_id } = req.body || {};
+  const { kind, prompt, commit_message, auto_push, images, targets, ask_questions, session_id, verifier_id, label } = req.body || {};
   const k = kind === 'explore' ? 'explore' : 'code';
   if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
   const sessionId = normalizeSessionId(session_id);
   const list = normalizeTargets(targets, k);
   const now = new Date().toISOString();
-  // « L'IA peut poser des questions » : opt-in, uniquement pertinent en codage.
-  const ask = (k === 'code' && ask_questions) ? 1 : 0;
-  const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message, auto_push, ask_questions, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, 'new', ?, ?)`).run(
+  /* « L'IA peut poser des questions » : opt-in, en codage COMME en exploration. Une exploration
+     hésite de la même façon — « de quel des trois services parles-tu ? » vaut mieux qu'une
+     synthèse à côté du sujet. Le codage hors dépôt a sa propre table, et sa propre route. */
+  const ask = ask_questions ? 1 : 0;
+  const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message, auto_push, ask_questions, verifier_id, label, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 'new', ?, ?)`).run(
     // `task.branch` est un héritage mono-projet (la vérité est dans task_target) et
     // la colonne est NOT NULL : en exploration la branche est facultative, on y range
     // donc '' plutôt que NULL — sinon la création échoue sur une erreur SQL brute.
     list[0].repo_id, k, prompt.trim(), list[0].branch || '',
-    (commit_message || '').trim() || null, auto_push ? 1 : 0, ask, now, now);
+    (commit_message || '').trim() || null, auto_push ? 1 : 0, ask, lireVerifierSession(k, auto_push, verifier_id),
+    lireLibelle(label), now, now);
   const taskId = info.lastInsertRowid;
   insertTargets(taskId, list, sessionId);
   saveTaskImages(taskId, images);
@@ -1273,32 +1829,47 @@ app.post('/api/tasks', wrap((req, res) => {
 }));
 
 app.put('/api/tasks/:id', wrap((req, res) => {
-  const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(tt('err.session-introuvable'));
-  const { prompt, commit_message, auto_push, images, targets, ask_questions, session_id } = req.body || {};
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  const { prompt, commit_message, auto_push, images, targets, ask_questions, session_id, verifier_id, label } = req.body || {};
   const sessionId = normalizeSessionId(session_id);
   if (Array.isArray(targets) && targets.length) {
-    const list = normalizeTargets(targets, t.kind);
-    // on ne recrée que si la composition change, pour préserver l'état d'exécution
-    const key = (x) => `${x.repo_id}:${x.branch}:${x.base_branch || ''}`;
-    const cur = taskTargets(t.id).map(key).join('|');
+    const list = normalizeTargets(targets, tache.kind);
+    /* On ne recrée les cibles que si la COMPOSITION change : sinon on perdrait leur état
+       d'exécution (commit, diff, MR, handle de session).
+
+       La comparaison ne porte donc que sur ce que l'utilisateur a CHOISI. Pour une
+       exploration, `base_branch` n'est pas un choix : c'est la branche que le run a
+       RÉSOLUE et réécrite sur chaque cible. Elle la faisait donc différer du formulaire —
+       qui n'en envoie aucune — et rouvrir une exploration terminée pour l'enregistrer sans
+       rien changer remettait tous ses dépôts « à exécuter », sous une session « terminée ».
+       `|| ''` sur la branche pour la même raison : `null` et `''` désignent ici la même
+       absence de choix, mais ne s'écrivent pas pareil dans une clé. */
+    const key = (x) => [x.repo_id, x.branch || '', tache.kind === 'explore' ? '' : (x.base_branch || '')].join(':');
+    const cur = taskTargets(tache.id).map(key).join('|');
     if (cur !== list.map(key).join('|')) {
-      db.prepare('DELETE FROM task_target WHERE task_id = ?').run(t.id);
-      insertTargets(t.id, list);
+      db.prepare('DELETE FROM task_target WHERE task_id = ?').run(tache.id);
+      insertTargets(tache.id, list);
     }
   }
-  db.prepare('UPDATE task SET prompt = ?, commit_message = ?, auto_push = ?, ask_questions = ?, updated_at = ? WHERE id = ?').run(
-    prompt != null ? String(prompt).trim() : t.prompt,
-    commit_message != null ? (String(commit_message).trim() || null) : t.commit_message,
-    auto_push == null ? t.auto_push : (auto_push ? 1 : 0),
-    // ask_questions ne concerne que le codage ; absent du body → on garde la valeur actuelle.
-    ask_questions == null ? t.ask_questions : (t.kind === 'code' && ask_questions ? 1 : 0),
-    new Date().toISOString(), t.id,
+  db.prepare('UPDATE task SET prompt = ?, commit_message = ?, auto_push = ?, ask_questions = ?, verifier_id = ?, label = ?, updated_at = ? WHERE id = ?').run(
+    prompt != null ? String(prompt).trim() : tache.prompt,
+    commit_message != null ? (String(commit_message).trim() || null) : tache.commit_message,
+    auto_push == null ? tache.auto_push : (auto_push ? 1 : 0),
+    // Absent du body → on garde la valeur actuelle (codage et exploration l'acceptent).
+    ask_questions == null ? tache.ask_questions : (ask_questions ? 1 : 0),
+    /* La règle s'applique à la valeur EXISTANTE autant qu'à celle qu'on envoie : décocher
+       l'auto-push sans renvoyer le champ laissait sinon un vérificateur qui ne pourrait plus
+       tourner, et on ne s'en apercevrait qu'à la fin de la session. */
+    lireVerifierSession(tache.kind, auto_push == null ? tache.auto_push : auto_push,
+      verifier_id === undefined ? tache.verifier_id : verifier_id),
+    label === undefined ? tache.label : lireLibelle(label),
+    new Date().toISOString(), tache.id,
   );
-  saveTaskImages(t.id, images);
+  saveTaskImages(tache.id, images);
   // Après une éventuelle recréation des cibles : celles-ci repartent sans handle.
-  applySessionId('task_target', 'task_id', t.id, sessionId, taskTargets(t.id));
-  res.json({ ...taskById(t.id), targets: taskTargets(t.id) });
+  applySessionId('task_target', 'task_id', tache.id, sessionId, taskTargets(tache.id));
+  res.json({ ...taskById(tache.id), targets: taskTargets(tache.id) });
 }));
 
 app.delete('/api/tasks/:id', wrap((req, res) => {
@@ -1341,12 +1912,22 @@ app.get('/api/tasks/:id/targets/:tid/diff', wrap((req, res) => {
   res.json({ diff: tg.diff_path ? readFileSafe(tg.diff_path) : null, project: tg.project, branch: tg.branch });
 }));
 
+/* Un projet de session n'a pas de numéro de MR : on le présente au dépôt fictif de démo
+   sous la même forme qu'une merge request, pour réutiliser le même viewer. */
+const demoMrDe = (tg) => ({
+  iid: 0, project: tg.project, source_branch: tg.branch, target_branch: tg.base_branch || 'main',
+});
+
 /* Viewer plein écran d'un projet de session : MÊMES trois routes que pour une MR
    (`viewerPayload` / `viewerFile` / `viewerFileDiff`), donc le front réutilise le
    même composant en changeant seulement la base d'URL. */
 app.get('/api/tasks/:id/targets/:tid/diffview', wrap(async (req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  if (demoDiff.isDemo()) {
+    res.json({ ...demoDiff.viewFor(demoMrDe(tg)), project: tg.project, branch: tg.branch });
+    return;
+  }
   const ctx = targetCloneCtx(tg);
   // Le diff produit par la session est stocké ; s'il manque (session ancienne), on le
   // recalcule depuis la branche de départ.
@@ -1360,11 +1941,13 @@ app.get('/api/tasks/:id/targets/:tid/diffview', wrap(async (req, res) => {
 app.get('/api/tasks/:id/targets/:tid/file', wrap(async (req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  if (demoDiff.isDemo()) { res.json(demoDiff.fileFor(demoMrDe(tg), String(req.query.path || ''))); return; }
   res.json(await viewerFile(targetCloneCtx(tg), String(req.query.path || '')));
 }));
 app.get('/api/tasks/:id/targets/:tid/filediff', wrap(async (req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  if (demoDiff.isDemo()) { res.json(demoDiff.fileDiffFor(demoMrDe(tg), String(req.query.path || ''))); return; }
   res.json(await viewerFileDiff(targetCloneCtx(tg), String(req.query.path || '')));
 }));
 
@@ -1393,15 +1976,41 @@ app.get('/api/tasks/:id/passes', wrap((req, res) => {
 
 // Réponse .md d'une exploration.
 app.get('/api/tasks/:id/md', wrap((req, res) => {
-  const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(tt('err.session-introuvable'));
-  res.json({ md: t.md_path ? readFileSafe(t.md_path) : null, prompt: t.prompt, created_at: t.created_at });
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  res.json({ md: tache.md_path ? readFileSafe(tache.md_path) : null, prompt: tache.prompt, created_at: tache.created_at });
 }));
 
+/* Réconcilier : relire l'état réel des branches d'une session et réparer les projets dont le
+   travail existe déjà (commit passé, échec survenu après). Aucun appel IA — contrairement à une
+   relance, qui en coûterait un par dépôt pour refaire un travail déjà fait. */
+/* Valide une liste d'ids de projets contre la session : un id étranger doit être refusé, pas
+   ignoré en silence — sinon une faute de frappe fait tourner la session entière sans le dire. */
+function normalizeTargetIds(taskId, raw) {
+  if (!Array.isArray(raw) || !raw.length) return null;
+  const voulus = [...new Set(raw.map(Number).filter(Number.isInteger))];
+  if (!voulus.length) return null;
+  const connus = new Set(db.prepare('SELECT id FROM task_target WHERE task_id = ?').all(taskId).map((r) => r.id));
+  const inconnus = voulus.filter((id) => !connus.has(id));
+  if (inconnus.length) throw new Error(t('err.projet-introuvable-pour-cette-session-2'));
+  return voulus;
+}
+
+app.post('/api/tasks/:id/reconcile', wrap((req, res) => {
+  const t2 = taskById(Number(req.params.id));
+  if (!t2) throw new Error(t('err.session-introuvable'));
+  if (t2.kind !== 'code') throw new Error(t('err.reconcile-code-only'));
+  res.json(jobs.startReconcileJob(t2.id));
+}));
+
+/* `targets` (facultatif) restreint la passe à certains projets de la session. Sans lui, toute
+   la session part — comportement d'origine. Sert au bouton « Lancer » de chaque projet et à
+   « relancer les projets en échec ». */
 app.post('/api/tasks/:id/run', wrap((req, res) => {
-  const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(tt('err.session-introuvable'));
-  res.json(jobs.startTaskJob(t.id, 'run'));
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  const targetIds = normalizeTargetIds(tache.id, req.body && req.body.targets);
+  res.json(jobs.startTaskJob(tache.id, 'run', targetIds ? { targetIds } : {}));
 }));
 
 // « Converger » une session de dev : du prompt à la/les MR convergée(s). L'IA code,
@@ -1417,7 +2026,12 @@ app.post('/api/tasks/:id/converge', wrap((req, res) => {
 // Dossiers d'une session hors dépôt + la commande de reprise de leur session d'agent.
 function localDirsFor(taskId) {
   return db.prepare('SELECT * FROM local_task_dir WHERE task_id = ? ORDER BY id').all(taskId)
-    .map((d) => ({ ...d, resume_cmd: agentsession.resumeCommand(d.session_backend, d.session_key, d.session_cwd) }));
+    .map((d) => ({
+      ...d,
+      resume_cmd: agentsession.resumeCommand(d.session_backend, d.session_key, d.session_cwd),
+      // Les questions posées par l'agent, prêtes à afficher. Illisibles → aucune, plutôt qu'un plantage.
+      questions: d.questions_json ? (() => { try { return JSON.parse(d.questions_json); } catch { return null; } })() : null,
+    }));
 }
 function localTaskById(id) {
   const lt = db.prepare('SELECT * FROM local_task WHERE id = ?').get(id);
@@ -1426,19 +2040,21 @@ function localTaskById(id) {
   return lt;
 }
 app.get('/api/local-tasks', wrap((req, res) => {
-  const list = db.prepare('SELECT * FROM local_task ORDER BY id DESC').all();
+  // Même tri que les sessions de codage : d'abord ce qui tourne, puis ce qui vient de finir.
+  const list = db.prepare(`SELECT * FROM local_task
+    ORDER BY (status = 'running') DESC, COALESCE(finished_at, created_at) DESC, id DESC`).all();
   for (const lt of list) lt.dirs = localDirsFor(lt.id);
   res.json(list);
 }));
 app.post('/api/local-tasks', wrap((req, res) => {
-  const { prompt, dirs, images, session_id } = req.body || {};
+  const { prompt, dirs, images, session_id, label, ask_questions } = req.body || {};
   if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
   const sessionId = normalizeSessionId(session_id);
   const list = (Array.isArray(dirs) ? dirs : []).map((d) => String(d || '').trim()).filter(Boolean);
   if (!list.length) throw new Error(t('err.local-dirs-required'));
   const now = new Date().toISOString();
-  const id = db.prepare("INSERT INTO local_task (prompt, status, created_at, updated_at) VALUES (?, 'new', ?, ?)")
-    .run(prompt.trim(), now, now).lastInsertRowid;
+  const id = db.prepare("INSERT INTO local_task (prompt, label, ask_questions, status, created_at, updated_at) VALUES (?, ?, ?, 'new', ?, ?)")
+    .run(prompt.trim(), lireLibelle(label), ask_questions ? 1 : 0, now, now).lastInsertRowid;
   // Même principe que pour les sessions sur dépôt : la session fournie est rangée comme
   // si la première passe l'avait créée, `localcoder` la reprend alors sans rien savoir.
   const ins = db.prepare(`INSERT INTO local_task_dir (task_id, path, status, session_key, session_backend, updated_at)
@@ -1463,7 +2079,7 @@ app.get('/api/local-tasks/:id', wrap((req, res) => {
 app.put('/api/local-tasks/:id', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
-  const { prompt, dirs, images, session_id } = req.body || {};
+  const { prompt, dirs, images, session_id, label, ask_questions } = req.body || {};
   const sessionId = normalizeSessionId(session_id);
   if (Array.isArray(dirs) && dirs.length) {
     const list = [...new Set(dirs.map((d) => String(d || '').trim()).filter(Boolean))];
@@ -1476,8 +2092,12 @@ app.put('/api/local-tasks/:id', wrap((req, res) => {
     }
   }
   if (prompt != null && !String(prompt).trim()) throw new Error(t('err.prompt-requis'));
-  db.prepare('UPDATE local_task SET prompt = ?, updated_at = ? WHERE id = ?')
-    .run(prompt != null ? String(prompt).trim() : lt.prompt, new Date().toISOString(), lt.id);
+  db.prepare('UPDATE local_task SET prompt = ?, label = ?, ask_questions = ?, updated_at = ? WHERE id = ?')
+    .run(prompt != null ? String(prompt).trim() : lt.prompt,
+      label === undefined ? lt.label : lireLibelle(label),
+      // Absent du body → on garde la valeur actuelle, comme pour les sessions sur dépôt.
+      ask_questions == null ? lt.ask_questions : (ask_questions ? 1 : 0),
+      new Date().toISOString(), lt.id);
   saveLocalImages(lt.id, images);
   applySessionId('local_task_dir', 'task_id', lt.id, sessionId, localDirsFor(lt.id));
   res.json(localTaskById(lt.id));
@@ -1486,16 +2106,56 @@ app.put('/api/local-tasks/:id', wrap((req, res) => {
 app.post('/api/local-tasks/:id/run', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
-  res.json(jobs.startLocalJob(lt.id));
+  const dirIds = normalizeDirIds(lt.id, req.body && req.body.dirs);
+  res.json(jobs.startLocalJob(lt.id, dirIds ? { dirIds } : {}));
 }));
 // Demande de correction : nouvelle passe de l'IA sur les mêmes dossiers, en REPRENANT
 // la session de chacun (l'IA garde le contexte du travail qu'elle vient de produire).
+/* Réponses aux questions de l'agent, hors dépôt. Même contrat que la route des sessions sur
+   dépôt — mais les questions vivent sur le DOSSIER, qui a sa propre session d'agent : on ne
+   reprend que celui-là, les autres dossiers n'ont rien demandé. */
+app.post('/api/local-tasks/:id/dirs/:did/answer', wrap((req, res) => {
+  const lt = localTaskById(Number(req.params.id));
+  if (!lt) throw new Error(t('err.session-introuvable'));
+  const d = (lt.dirs || []).find((x) => x.id === Number(req.params.did));
+  if (!d) throw new Error(t('err.local-dir-not-found'));
+  if (d.status !== 'needs_input') throw new Error(t('err.session-pas-en-attente'));
+  let qs = [];
+  try { qs = d.questions_json ? JSON.parse(d.questions_json) : []; } catch { qs = []; }
+  const answers = (req.body && req.body.answers) || {};
+  let filled = 0;
+  qs = qs.map((q) => {
+    const a = answers[q.id];
+    if (a != null && String(a).trim()) { filled += 1; return { ...q, answer: String(a).trim(), answeredAt: new Date().toISOString() }; }
+    return q;
+  });
+  if (!filled) throw new Error(t('err.reponses-manquantes'));
+  // On quitte `needs_input` DÈS l'envoi : sinon un rechargement ré-affiche un formulaire déjà rempli.
+  db.prepare("UPDATE local_task_dir SET questions_json = ?, status = 'running', last_error = NULL, updated_at = ? WHERE id = ?")
+    .run(JSON.stringify(qs), new Date().toISOString(), d.id);
+  /* La todo ne se referme que si plus AUCUN dossier n'attend : sur une session à cinq
+     dossiers, répondre au premier ne solde pas le travail. */
+  const encore = db.prepare("SELECT COUNT(*) c FROM local_task_dir WHERE task_id = ? AND status = 'needs_input'")
+    .get(lt.id).c;
+  if (!encore) notes.fermerTodoAuto('local_question', lt.id);
+  res.json(jobs.startLocalJob(lt.id, { answersDirId: d.id }));
+}));
+
 app.post('/api/local-tasks/:id/followup', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
-  const instruction = (req.body && req.body.instruction || '').trim();
+  const instruction = (req.body && req.body.instruction || '').trim() || lt.followup_draft || '';
   if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
-  res.json(jobs.startLocalJob(lt.id, { instruction }));
+  res.json(envoyerSuivi('local_task', lt, () => jobs.startLocalJob(lt.id, { instruction })));
+}));
+
+// Suivi en attente d'une session hors dépôt — même contrat que POST /tasks/:id/followup-draft.
+app.put('/api/local-tasks/:id/followup-draft', wrap((req, res) => {
+  const lt = localTaskById(Number(req.params.id));
+  if (!lt) throw new Error(t('err.session-introuvable'));
+  poserSuivi('local_task', lt.id, req.body && req.body.instruction, req.body && req.body.auto);
+  const apres = localTaskById(lt.id);
+  res.json({ ok: true, followup_draft: apres.followup_draft, followup_auto: apres.followup_auto });
 }));
 
 // Historique des itérations d'un dossier hors dépôt (même forme que côté session).
@@ -1532,14 +2192,46 @@ app.post('/api/local-tasks/:id/hidden', wrap((req, res) => {
   res.json({ ok: true, hidden });
 }));
 
-// Itération : nouvelle passe de l'IA (codage) ou question de suivi (exploration).
+/* Itération : nouvelle passe de l'IA (codage) ou question de suivi (exploration).
+
+   `targets` restreint la correction à certains projets, comme pour « Lancer ». Sur une
+   session multi-dépôts, la remarque à faire est presque toujours propre à UN projet : la
+   passer à tous coûtait un appel IA par dépôt et faisait repasser l'agent sur du code qu'on
+   ne voulait plus voir toucher. Une exploration produit UNE synthèse commune : la restreindre
+   n'aurait pas de sens, on refuse plutôt que d'ignorer en silence. */
 app.post('/api/tasks/:id/followup', wrap((req, res) => {
-  const t = taskById(Number(req.params.id));
-  if (!t) throw new Error(tt('err.session-introuvable'));
-  const instruction = (req.body && req.body.instruction || '').trim();
-  if (!instruction) throw new Error(tt('err.demande-de-suivi-requise'));
-  res.json(jobs.startTaskJob(t.id, 'followup', { instruction }));
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  const instruction = (req.body && req.body.instruction || '').trim() || tache.followup_draft || '';
+  if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
+  const targetIds = normalizeTargetIds(tache.id, req.body && req.body.targets);
+  if (targetIds && tache.kind !== 'code') throw new Error(t('err.followup-cible-code-only'));
+  res.json(envoyerSuivi('task', tache, () => jobs.startTaskJob(tache.id, 'followup',
+    targetIds ? { instruction, targetIds } : { instruction })));
 }));
+
+/* LE SUIVI EN ATTENTE. Écrit pendant que la session tourne, relisible et modifiable tant
+   qu'il n'est pas parti, envoyé quand on le décide — jamais par la machine. Une seule route
+   pour poser, corriger et effacer : un texte vide EST la suppression. */
+app.put('/api/tasks/:id/followup-draft', wrap((req, res) => {
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  poserSuivi('task', tache.id, req.body && req.body.instruction, req.body && req.body.auto);
+  const apres = taskById(tache.id);
+  res.json({ ok: true, followup_draft: apres.followup_draft, followup_auto: apres.followup_auto });
+}));
+
+/* Un suivi ne part qu'une fois. On le retire AVANT de lancer — sinon deux clics rapides
+   partent deux fois — et on le remet si le lancement échoue, pour ne pas perdre le texte
+   sur une session qui tournait déjà. */
+function envoyerSuivi(table, session, lancer) {
+  const garde = session.followup_draft;
+  if (garde) poserSuivi(table, session.id, null, 0);
+  try { return lancer(); } catch (e) {
+    if (garde) poserSuivi(table, session.id, garde, session.followup_auto);   // texte ET case
+    throw e;
+  }
+}
 
 // Réponses aux questions de l'agent (ask → stop → resume) : on enregistre les réponses sur
 // la cible, puis on relance l'agent DANS LA MÊME session pour qu'il poursuive.
@@ -1561,6 +2253,12 @@ app.post('/api/tasks/:id/targets/:tid/answer', wrap((req, res) => {
   // le moindre rechargement ré-affiche le formulaire (déjà répondu). Passage direct en running.
   db.prepare("UPDATE task_target SET questions_json = ?, status = 'running', last_error = NULL, updated_at = ? WHERE id = ?")
     .run(JSON.stringify(qs), new Date().toISOString(), tg.id);
+  /* La todo posée par l'outil se referme ici — mais SEULEMENT si plus aucun projet de la
+     session n'attend : sur une session multi-dépôts, répondre au premier ne solde pas le
+     travail, et une todo cochée trop tôt fait oublier les quatre autres. */
+  const encore = db.prepare("SELECT COUNT(*) c FROM task_target WHERE task_id = ? AND status = 'needs_input'")
+    .get(Number(req.params.id)).c;
+  if (!encore) notes.fermerTodoAuto('session_question', Number(req.params.id));
   res.json(jobs.startTaskJob(Number(req.params.id), 'answer', { targetId: tg.id }));
 }));
 
@@ -1573,15 +2271,56 @@ app.post('/api/tasks/:id/targets/:tid/push', wrap((req, res) => {
 }));
 
 // Crée la MR d'UN projet de la session.
-app.post('/api/tasks/:id/targets/:tid/mr', wrap(async (req, res) => {
-  const t = taskById(Number(req.params.id));
-  const tg = targetById(Number(req.params.id), Number(req.params.tid));
-  if (!t || !tg) throw new Error(tt('err.projet-introuvable-pour-cette-session'));
-  if (tg.status !== 'pushed') throw new Error(tt('err.la-branche-doit-etre-poussee'));
-  const already = effectiveMr(tg);
-  if (already) throw new Error(tt('err.mr-already-open', { iid: already.iid }));
+/* Pousser toutes les branches d'une session qui ne le sont pas encore, en UN job. Sur une
+   session de dix dépôts, pousser à la main dix fois est un travail de scribe — et on en oublie. */
+app.post('/api/tasks/:id/push-all', wrap((req, res) => {
+  const t2 = taskById(Number(req.params.id));
+  if (!t2) throw new Error(t('err.session-introuvable'));
+  const cibles = db.prepare("SELECT id FROM task_target WHERE task_id = ? AND status = 'committed' ORDER BY id").all(t2.id);
+  if (!cibles.length) throw new Error(t('err.rien-a-pousser'));
+  res.json(jobs.startTaskJob(t2.id, 'push-all', { targetIds: cibles.map((c) => c.id) }));
+}));
+
+/* Créer la MR de tous les projets poussés qui n'en ont pas encore. Le titre n'est pas demandé
+   projet par projet : chacun reprend la règle du cas unitaire (message de commit, sinon nom de
+   branche). Un échec sur un projet n'empêche pas les autres — le bilan dit lesquels. */
+app.post('/api/tasks/:id/mrs', wrap(async (req, res) => {
+  const t2 = taskById(Number(req.params.id));
+  if (!t2) throw new Error(t('err.session-introuvable'));
   const cfg = getConfig();
-  const title = (req.body && req.body.title || '').trim() || t.commit_message || tg.branch;
+  const squash = !!(req.body && req.body.squash);
+  const removeSourceBranch = !!(req.body && req.body.removeSourceBranch);
+  const cibles = taskTargets(t2.id).filter((tg) => tg.status === 'pushed' && !effectiveMr(tg));
+  if (!cibles.length) throw new Error(t('err.aucune-mr-a-creer'));
+  const created = []; const failed = [];
+  for (const tg of cibles) {
+    try {
+      const title = t2.commit_message || tg.branch;
+      let target = tg.base_branch;
+      if (!target) { const b = await forge.clientFor(tg).listBranches(cfg, tg.project); target = b.default || 'main'; }
+      const mr = await forge.clientFor(tg).createMergeRequest(cfg, tg.project, {
+        source_branch: tg.branch, target_branch: target, title, squash, removeSourceBranch,
+      });
+      db.prepare('UPDATE task_target SET mr_iid = ?, mr_url = ?, mr_target = ?, mr_merged = 0, updated_at = ? WHERE id = ?')
+        .run(mr.iid, mr.web_url, target, new Date().toISOString(), tg.id);
+      rememberMergeOpts(tg.repo_id, mr.iid, squash, removeSourceBranch);
+      created.push({ project: tg.project, iid: mr.iid, url: mr.web_url });
+    } catch (e) {
+      failed.push({ project: tg.project, error: e.message });
+    }
+  }
+  res.json({ created, failed });
+}));
+
+app.post('/api/tasks/:id/targets/:tid/mr', wrap(async (req, res) => {
+  const tache = taskById(Number(req.params.id));
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tache || !tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  if (tg.status !== 'pushed') throw new Error(t('err.la-branche-doit-etre-poussee'));
+  const already = effectiveMr(tg);
+  if (already) throw new Error(t('err.mr-already-open', { iid: already.iid }));
+  const cfg = getConfig();
+  const title = (req.body && req.body.title || '').trim() || tache.commit_message || tg.branch;
   let target = tg.base_branch;
   if (!target) { const b = await forge.clientFor(tg).listBranches(cfg, tg.project); target = b.default || 'main'; }
   const squash = !!(req.body && req.body.squash);
@@ -1624,6 +2363,496 @@ app.get('/api/rules', wrap((req, res) => {
   res.json(db.prepare('SELECT * FROM review_rule ORDER BY id').all());
 }));
 
+/* ---------- Vérificateurs (plan_add_verify.md §3) --------------------------
+   Un vérificateur = un script de l'utilisateur + la liste des dépôts qu'il sait tester.
+   Déclarer la couverture ici plutôt que de la deviner évite deux échecs opaques : lancer une
+   vérification sur un dépôt que le script ignore, et écrire dans un répertoire de travail
+   sans que personne l'ait autorisé. */
+
+const verifierRepos = (id) => db.prepare(`SELECT vr.*, r.project
+  FROM verifier_repo vr JOIN repo r ON r.id = vr.repo_id
+  WHERE vr.verifier_id = ? ORDER BY r.project`).all(id);
+const verifierCommandes = (id) => db.prepare('SELECT command FROM verifier_command WHERE verifier_id = ? ORDER BY position')
+  .all(id).map((c) => c.command);
+const verifierAvecRepos = (id) => {
+  const v = db.prepare('SELECT * FROM verifier WHERE id = ?').get(id);
+  return v ? { ...v, repos: verifierRepos(id), commands: verifierCommandes(id) } : null;
+};
+
+/* Valide le corps d'un vérificateur. On refuse tôt et avec un message précis : ces réglages
+   pilotent l'exécution d'un programme et des checkouts chez l'utilisateur. */
+function lireVerifier(body, courant) {
+  const b = body || {};
+  const name = (b.name != null ? String(b.name) : (courant && courant.name) || '').trim();
+  if (!name) throw new Error(t('err.verifier.name-required'));
+
+  /* Deux genres, deux formes de validation. `script` s'engage sur le contrat JSON ;
+     `commands` ne s'engage sur rien et voit son verdict déduit des codes de sortie. */
+  const kind = (b.kind != null ? String(b.kind) : (courant && courant.kind) || 'script') === 'commands'
+    ? 'commands' : 'script';
+
+  let command = (b.command != null ? String(b.command) : (courant && courant.command) || '').trim();
+  let commands = null;
+  if (kind === 'script') {
+    /* Chemin ABSOLU exigé : un chemin relatif dépendrait du répertoire courant du serveur, et
+       ouvrirait la porte à exécuter un script du dépôt cloné plutôt que celui de l'utilisateur. */
+    if (!command || !path.isAbsolute(command)) throw new Error(t('err.verifier.command-absolute'));
+  } else {
+    command = '';
+    const brut = b.commands != null
+      ? (Array.isArray(b.commands) ? b.commands : [])
+      : (courant ? verifierCommandes(courant.id) : []);
+    commands = brut.map((x) => String(x || '').trim()).filter(Boolean);
+    if (!commands.length) throw new Error(t('err.verifier.commands-required'));
+    /* Chaque ligne est validée MAINTENANT, pas au premier run : découvrir un « && » au bout
+       de dix minutes de préparation serait un run perdu et une erreur loin de sa cause. */
+    for (const c of commands) {
+      const d = verifyLib.decouperCommande(c);
+      if (!d.ok) throw new Error(t('err.verifier.command-invalid', { command: c, reason: d.erreur }));
+    }
+  }
+
+  // Variables ajoutées à l'environnement minimal : « CLE=valeur », une par ligne.
+  let env_json = courant ? courant.env_json : null;
+  if (b.env != null) {
+    const env = {};
+    for (const ligne of String(b.env).split('\n')) {
+      const l = ligne.trim();
+      if (!l || l.startsWith('#')) continue;
+      const i = l.indexOf('=');
+      if (i <= 0) throw new Error(t('err.verifier.env-line', { line: l }));
+      env[l.slice(0, i).trim()] = l.slice(i + 1).trim();
+    }
+    env_json = Object.keys(env).length ? JSON.stringify(env) : null;
+  }
+
+  /* Rapport JUnit : chemin RELATIF au dépôt testé — le répertoire change à chaque run
+     (worktree éphémère), un chemin absolu n'aurait donc aucun sens. */
+  let report_path = courant ? courant.report_path : null;
+  if (b.report_path != null) {
+    const rp = String(b.report_path).trim();
+    if (rp && (path.isAbsolute(rp) || rp.split(/[\\/]/).includes('..'))) {
+      throw new Error(t('err.verifier.report-relative'));
+    }
+    report_path = rp || null;
+  }
+
+  const brutTimeout = b.timeout_s != null ? parseInt(b.timeout_s, 10) : (courant ? courant.timeout_s : 900);
+  const timeout_s = Number.isFinite(brutTimeout) ? Math.min(7200, Math.max(10, brutTimeout)) : 900;
+
+  const bool = (v, def) => (v == null ? def : (v ? 1 : 0));
+  const repos = b.repos == null
+    ? null
+    : (Array.isArray(b.repos) ? b.repos : []).map((l) => {
+      const repo_id = Number(l && l.repo_id);
+      if (!repo_id || !repoById(repo_id)) throw new Error(t('err.projet-inconnu'));
+      const mode = l.mode === 'in_place' ? 'in_place' : 'worktree';
+      const workdir = (l.workdir || '').trim();
+      if (mode === 'in_place') {
+        // Le répertoire est celui de l'utilisateur : sans chemin absolu on ne saurait pas où.
+        if (!workdir || !path.isAbsolute(workdir)) throw new Error(t('err.verifier.workdir-absolute'));
+        // Le consentement est explicite parce que la conséquence l'est : on y fera un checkout.
+        if (!l.checkout_allowed) throw new Error(t('err.verifier.checkout-consent'));
+      }
+      return { repo_id, mode, workdir: mode === 'in_place' ? workdir : null,
+        checkout_allowed: mode === 'in_place' ? 1 : 0 };
+    });
+  const vus = new Set();
+  for (const l of (repos || [])) {
+    if (vus.has(l.repo_id)) throw new Error(t('err.verifier.repo-twice'));
+    vus.add(l.repo_id);
+  }
+  return {
+    name, kind, command, commands, timeout_s, env_json, report_path,
+    parse_tap: bool(b.parse_tap, courant ? courant.parse_tap : 1),
+    run_base: bool(b.run_base, courant ? courant.run_base : 1),
+    comment_on_forge: bool(b.comment_on_forge, courant ? courant.comment_on_forge : 0),
+    auto_on_mr: bool(b.auto_on_mr, courant ? courant.auto_on_mr : 0),
+    repos,
+  };
+}
+
+function ecrireCommandes(verifierId, commands) {
+  if (commands == null) return;   // absent du corps = liste inchangée
+  db.prepare('DELETE FROM verifier_command WHERE verifier_id = ?').run(verifierId);
+  const ins = db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)');
+  commands.forEach((c, i) => ins.run(verifierId, i, c));
+}
+
+function ecrireRepos(verifierId, repos) {
+  if (repos == null) return;   // absent du corps = couverture inchangée
+  db.prepare('DELETE FROM verifier_repo WHERE verifier_id = ?').run(verifierId);
+  const ins = db.prepare(`INSERT INTO verifier_repo (verifier_id, repo_id, mode, workdir, checkout_allowed)
+    VALUES (?, ?, ?, ?, ?)`);
+  for (const l of repos) ins.run(verifierId, l.repo_id, l.mode, l.workdir, l.checkout_allowed);
+}
+
+app.get('/api/verifiers', wrap((req, res) => {
+  res.json(db.prepare('SELECT * FROM verifier ORDER BY name').all()
+    .map((v) => ({ ...v, repos: verifierRepos(v.id), commands: verifierCommandes(v.id) })));
+}));
+
+app.post('/api/verifiers', wrap((req, res) => {
+  const v = lireVerifier(req.body, null);
+  if (db.prepare('SELECT 1 FROM verifier WHERE name = ?').get(v.name)) {
+    throw new Error(t('err.verifier.name-taken', { name: v.name }));
+  }
+  const info = db.prepare(`INSERT INTO verifier
+    (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, env_json, report_path, parse_tap, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(v.name, v.kind, v.command, v.timeout_s, v.run_base,
+    v.comment_on_forge, v.auto_on_mr, v.env_json, v.report_path, v.parse_tap, new Date().toISOString());
+  ecrireRepos(info.lastInsertRowid, v.repos || []);
+  ecrireCommandes(info.lastInsertRowid, v.commands || []);
+  res.json(verifierAvecRepos(info.lastInsertRowid));
+}));
+
+app.put('/api/verifiers/:id', wrap((req, res) => {
+  const cur = db.prepare('SELECT * FROM verifier WHERE id = ?').get(Number(req.params.id));
+  if (!cur) throw new Error(t('err.verifier.not-found'));
+  const v = lireVerifier(req.body, cur);
+  const homonyme = db.prepare('SELECT 1 FROM verifier WHERE name = ? AND id <> ?').get(v.name, cur.id);
+  if (homonyme) throw new Error(t('err.verifier.name-taken', { name: v.name }));
+  db.prepare(`UPDATE verifier SET name = ?, kind = ?, command = ?, timeout_s = ?, run_base = ?,
+    comment_on_forge = ?, auto_on_mr = ?, env_json = ?, report_path = ?, parse_tap = ? WHERE id = ?`)
+    .run(v.name, v.kind, v.command, v.timeout_s, v.run_base, v.comment_on_forge, v.auto_on_mr,
+      v.env_json, v.report_path, v.parse_tap, cur.id);
+  ecrireRepos(cur.id, v.repos);
+  ecrireCommandes(cur.id, v.commands);
+  res.json(verifierAvecRepos(cur.id));
+}));
+
+app.delete('/api/verifiers/:id', wrap((req, res) => {
+  db.prepare('DELETE FROM verifier WHERE id = ?').run(Number(req.params.id));
+  res.json({ ok: true });
+}));
+
+/* Quel vérificateur peut traiter CE jeu de dépôts. Sert au bouton « Vérifier » : sans
+   réponse, il est grisé avec l'explication, plutôt que de lancer un run voué à l'échec. */
+/* « Tester le répertoire » (§3) : on répond AVANT d'enregistrer, pendant que l'utilisateur
+   a encore le formulaire sous les yeux. Un mauvais chemin découvert au premier run, c'est un
+   run perdu et une erreur loin de sa cause. */
+app.post('/api/verifiers/test-workdir', wrap(async (req, res) => {
+  const repo = repoById(Number(req.body && req.body.repo_id));
+  if (!repo) throw new Error(t('err.projet-inconnu'));
+  const workdir = String((req.body && req.body.workdir) || '').trim();
+  if (!workdir || !path.isAbsolute(workdir)) throw new Error(t('err.verifier.workdir-absolute'));
+  res.json(await verifyrun.inspecterWorkdir(repo, workdir));
+}));
+
+app.get('/api/verifiers/for', wrap((req, res) => {
+  const ids = [...new Set(String(req.query.repos || '').split(',')
+    .map((x) => Number(x.trim())).filter(Boolean))];
+  if (!ids.length) return res.json({ verifiers: [] });
+  const couvrants = db.prepare('SELECT * FROM verifier ORDER BY name').all().filter((v) => {
+    const couverts = new Set(verifierRepos(v.id).map((r) => r.repo_id));
+    return ids.every((id) => couverts.has(id));
+  });
+  res.json({ verifiers: couvrants.map((v) => ({ ...v, repos: verifierRepos(v.id), commands: verifierCommandes(v.id) })) });
+}));
+
+/* ---------- Lancer / consulter une vérification (§5, §8) ------------------ */
+
+/* Cibles d'une vérification à partir de MR. On refuse tôt tout ce qui rendrait le verdict
+   ininterprétable : deux MR du même dépôt (quel code testerait-on ?), une MR sans SHA. */
+function ciblesDepuisMrs(mrIds) {
+  const cibles = [];
+  const vus = new Set();
+  for (const id of mrIds) {
+    const mr = mrById(Number(id));
+    if (!mr) throw new Error(t('err.mr-introuvable'));
+    if (vus.has(mr.repo_id)) throw new Error(t('err.verify.repo-twice'));
+    vus.add(mr.repo_id);
+    if (!mr.current_sha) throw new Error(t('err.verify.no-sha', { iid: mr.iid }));
+    cibles.push({
+      repo_id: mr.repo_id, mr_id: mr.id, head_sha: mr.current_sha,
+      base_sha: `origin/${mr.target_branch || 'main'}`,
+      branch: mr.source_branch, mode: 'worktree',
+    });
+  }
+  return cibles;
+}
+
+/* Le vérificateur doit couvrir TOUS les dépôts visés. Un run partiel donnerait un vert qui
+   ne dit rien de la moitié du lot — pire qu'une absence de verdict. */
+function verifierPour(cibles, verifierId) {
+  const ids = cibles.map((c) => c.repo_id);
+  const candidats = db.prepare('SELECT * FROM verifier ORDER BY name').all().filter((v) => {
+    const couverts = new Set(db.prepare('SELECT repo_id FROM verifier_repo WHERE verifier_id = ?')
+      .all(v.id).map((r) => r.repo_id));
+    return ids.every((id) => couverts.has(id));
+  });
+  if (!candidats.length) throw new Error(t('err.verify.no-verifier'));
+  if (!verifierId) return candidats[0];
+  const choisi = candidats.find((v) => v.id === Number(verifierId));
+  if (!choisi) throw new Error(t('err.verify.verifier-not-covering'));
+  return choisi;
+}
+
+/* Mode de chaque cible : déclaré par le vérificateur, dépôt par dépôt. Le mode voyage avec la
+   cible pour que le rapport puisse dire « (in place) » longtemps après le run. */
+function appliquerModes(verifier, cibles) {
+  const par = new Map(db.prepare('SELECT * FROM verifier_repo WHERE verifier_id = ?')
+    .all(verifier.id).map((r) => [r.repo_id, r]));
+  return cibles.map((c) => {
+    const l = par.get(c.repo_id);
+    return { ...c, mode: (l && l.mode) || 'worktree', workdir: (l && l.workdir) || null };
+  });
+}
+
+/* `enFile` : accepter la mise en attente au lieu de refuser. Réservé au déclenchement
+   AUTOMATIQUE — et c'est la différence de nature entre les deux appelants :
+
+   Un humain qui clique « Vérifier » sur un dépôt déjà en cours de vérification s'est trompé de
+   bouton : lui répondre tout de suite vaut mieux que d'empiler un travail qu'il n'attend pas.
+   La découverte, elle, ne se trompe pas — elle vient de trouver douze merge requests, et les
+   refuser reviendrait à n'en vérifier qu'une : les onze autres ne seront plus jamais
+   « nouvelles », donc plus jamais vérifiées automatiquement.
+
+   Les mettre en file est SÛR : la file de jobs sérialise déjà par dépôt (`keysClash` sur
+   `repo:<id>`), donc deux vérifications d'un même dépôt ne tourneront jamais ensemble — le
+   refus ci-dessous n'est qu'un garde-fou d'ergonomie, pas la protection du clone. */
+function creerVerification({ verifier, cibles, lotId = null, enFile = false }) {
+  /* §10 : une vérification MULTI-DÉPÔTS monte un environnement complet et ne se partage pas ;
+     une MONO-DÉPÔT n'a qu'à ne pas viser le même dépôt qu'une autre. Le message dit laquelle
+     des deux raisons s'applique — elles ne se corrigent pas de la même façon. */
+  const bloque = enFile ? null : jobs.verifyBloquePar(cibles.map((c) => c.repo_id));
+  if (bloque) {
+    throw new Error(t(bloque === 'integration' ? 'err.verify.integration-running' : 'err.verify.already-running'));
+  }
+  const lot = lotId ? db.prepare('SELECT name FROM lot WHERE id = ?').get(lotId) : null;
+  /* On recopie les noms : le rapport doit rester lisible après suppression du vérificateur
+     ou du lot, et sa suppression ne doit jamais être bloquée par un vieux verdict. */
+  const info = db.prepare(`INSERT INTO verification
+    (verifier_id, verifier_name, lot_id, lot_name, status, targets_json, created_at)
+    VALUES (?, ?, ?, ?, 'queued', ?, ?)`).run(verifier.id, verifier.name, lotId,
+    lot ? lot.name : null, JSON.stringify(cibles), new Date().toISOString());
+  const id = info.lastInsertRowid;
+  const job = jobs.startVerifyJob(id);
+  return { verification: db.prepare('SELECT * FROM verification WHERE id = ?').get(id), job };
+}
+
+app.post('/api/mrs/:id/verify', wrap((req, res) => {
+  const cibles = ciblesDepuisMrs([req.params.id]);
+  const verifier = verifierPour(cibles, req.body && req.body.verifier_id);
+  res.json(creerVerification({ verifier, cibles: appliquerModes(verifier, cibles) }));
+}));
+
+/* TOUTES les vérifications d'une merge request — une par vérificateur, la plus récente.
+   Depuis que des vérificateurs partent automatiquement, une MR peut en avoir plusieurs : le
+   badge n'en montre qu'un (le dernier verdict rendu), ce qui suffit pour « ça passe ou non »
+   mais pas pour « qu'est-ce qui a tourné exactement ». La borne à 300 couvre largement les MR
+   ouvertes sans relire tout l'historique — même règle qu'ailleurs. */
+app.get('/api/mrs/:id/verifications', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const vues = new Set();
+  const out = [];
+  for (const v of db.prepare(`SELECT * FROM verification
+    WHERE status IN ('done','error') ORDER BY id DESC LIMIT 300`).all()) {
+    let cibles = [];
+    try { cibles = JSON.parse(v.targets_json || '[]'); } catch { continue; }
+    if (!cibles.some((c) => c.mr_id === mr.id)) continue;
+    // Une seule ligne par vérificateur : les passages précédents sont dans l'historique.
+    const cle = v.verifier_id || `nom:${v.verifier_name}`;
+    if (vues.has(cle)) continue;
+    vues.add(cle);
+    out.push(detailVerification(v));
+  }
+  res.json(out);
+}));
+
+app.get('/api/verifications/:id', wrap((req, res) => {
+  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(Number(req.params.id));
+  if (!v) throw new Error(t('err.verify.not-found'));
+  res.json(detailVerification(v));
+}));
+
+/* Dernière vérification par MR : ce qui alimente les badges de la liste. On la calcule ici
+   plutôt qu'en base pour que la PÉREMPTION suive le SHA courant sans écriture. */
+function detailVerification(v) {
+  const brut = JSON.parse(v.targets_json || '[]');
+  const shaParMr = {};
+  /* Le nom du dépôt et le numéro de MR voyagent AVEC le rapport : un identifiant nu ne dit
+     rien à l'écran, et l'affichage n'a pas à disposer d'une liste de dépôts pour lire un
+     verdict rendu il y a trois semaines. */
+  const cibles = brut.map((c) => {
+    const mr = mrById(c.mr_id);
+    if (mr) shaParMr[c.mr_id] = mr.current_sha;
+    const repo = db.prepare('SELECT project FROM repo WHERE id = ?').get(c.repo_id);
+    return { ...c, project: (repo && repo.project) || null, iid: mr ? mr.iid : null };
+  });
+  const lire = (j) => { try { return j ? JSON.parse(j) : null; } catch { return null; } };
+  return {
+    ...v,
+    targets: cibles,
+    base_run: lire(v.base_run_json),
+    head_run: lire(v.head_run_json),
+    imputable: lire(v.imputable_json) || [],
+    context: lire(v.context_json) || [],
+    stale: verifyLib.estPerime(cibles, shaParMr),
+    in_place: cibles.some((c) => c.mode === 'in_place'),
+    // Le nom courant si le vérificateur existe encore (il a pu être renommé), sinon l'archive.
+    verifier_name: (db.prepare('SELECT name FROM verifier WHERE id = ?').get(v.verifier_id) || {}).name
+      || v.verifier_name || '',
+  };
+}
+
+/* Ce qu'un BADGE a besoin de savoir, et rien de plus : le rapport complet se demande au clic.
+   Envoyer les `failed[]` de chaque MR dans la liste chargerait des kilo-octets de logs pour
+   afficher « ✗ 2 tests cassés ». */
+function resumeVerification(d) {
+  return {
+    id: d.id, verdict: d.verdict, status: d.status, stale: d.stale, in_place: d.in_place,
+    failed_count: (d.imputable || []).length, verifier_name: d.verifier_name,
+    /* De QUOI vient le détail, et le nom du premier échec. Sans nom de test — cas d'un
+       vérificateur « commandes » dont la sortie ne dit rien — le badge nomme la commande au
+       lieu d'annoncer un nombre de tests qu'on ne connaît pas. */
+    detail_source: (d.head_run && d.head_run.detail_source) || null,
+    failed_label: ((d.imputable || [])[0] || {}).test || null,
+    lot_id: d.lot_id, lot_name: d.lot_name, finished_at: d.finished_at,
+  };
+}
+
+/* Dernier verdict par MR. Une vérification porte sur PLUSIEURS merge requests quand c'est un
+   lot : le lien vit dans `targets_json`, pas dans une colonne — d'où le parcours. La borne à
+   300 suffit largement pour couvrir les MR ouvertes, et évite de relire tout l'historique. */
+function dernieresVerificationsParMr() {
+  const par = new Map();
+  const lignes = db.prepare(`SELECT * FROM verification WHERE status IN ('done','error')
+    ORDER BY id DESC LIMIT 300`).all();
+  for (const v of lignes) {
+    let cibles = [];
+    try { cibles = JSON.parse(v.targets_json || '[]'); } catch { /* ligne illisible : ignorée */ }
+    for (const c of cibles) if (c.mr_id && !par.has(c.mr_id)) par.set(c.mr_id, v);
+  }
+  return par;
+}
+
+app.get('/api/verifications', wrap((req, res) => {
+  const mrId = Number(req.query.mr_id) || null;
+  const lignes = db.prepare('SELECT * FROM verification ORDER BY id DESC LIMIT 200').all()
+    .map(detailVerification)
+    .filter((v) => !mrId || v.targets.some((c) => c.mr_id === mrId));
+  res.json({ verifications: mrId ? lignes.slice(0, 1) : lignes });
+}));
+
+/* ---------- Lots (§8) ------------------------------------------------------
+   Un lot = des merge requests qui ne valent qu'ensemble. Le regrouper explicitement plutôt
+   que de le redécouvrir à chaque fois donne un objet nommé, vérifiable d'un bouton. */
+
+function lotAvecMembres(id) {
+  const l = db.prepare('SELECT * FROM lot WHERE id = ?').get(id);
+  if (!l) return null;
+  const membres = db.prepare('SELECT * FROM lot_member WHERE lot_id = ? ORDER BY ref_id').all(id)
+    .map((m) => {
+      if (m.kind !== 'mr') return { ...m };
+      const mr = mrById(m.ref_id);
+      return { ...m, iid: mr && mr.iid, title: mr && mr.title, project: mr && mr.project, repo_id: mr && mr.repo_id };
+    });
+  const derniere = db.prepare('SELECT * FROM verification WHERE lot_id = ? ORDER BY id DESC LIMIT 1').get(id);
+  return { ...l, members: membres, last_verification: derniere ? detailVerification(derniere) : null };
+}
+
+/* Un même dépôt deux fois dans un lot rendrait le verdict ininterprétable : on ne saurait pas
+   quel code a été testé. Refusé à la création ET revalidé au lancement (§8). */
+function refuserDepotEnDouble(mrIds) {
+  const vus = new Set();
+  for (const id of mrIds) {
+    const mr = mrById(Number(id));
+    if (!mr) throw new Error(t('err.mr-introuvable'));
+    if (vus.has(mr.repo_id)) throw new Error(t('err.verify.repo-twice'));
+    vus.add(mr.repo_id);
+  }
+}
+
+app.get('/api/lots', wrap((req, res) => {
+  res.json(db.prepare('SELECT id FROM lot ORDER BY id DESC').all().map((l) => lotAvecMembres(l.id)));
+}));
+
+app.post('/api/lots', wrap((req, res) => {
+  const name = String((req.body && req.body.name) || '').trim();
+  if (!name) throw new Error(t('err.lot.name-required'));
+  const kind = (req.body && req.body.kind) === 'session' ? 'session' : 'mr';
+  const refs = [...new Set(((req.body && req.body.members) || []).map(Number).filter(Boolean))];
+  if (!refs.length) throw new Error(t('err.lot.empty'));
+  if (kind === 'mr') refuserDepotEnDouble(refs);
+  const info = db.prepare('INSERT INTO lot (name, kind, created_at) VALUES (?,?,?)')
+    .run(name, kind, new Date().toISOString());
+  const ins = db.prepare('INSERT OR IGNORE INTO lot_member (lot_id, kind, ref_id) VALUES (?,?,?)');
+  for (const r of refs) ins.run(info.lastInsertRowid, kind === 'mr' ? 'mr' : 'task', r);
+  res.json(lotAvecMembres(info.lastInsertRowid));
+}));
+
+app.delete('/api/lots/:id', wrap((req, res) => {
+  db.prepare('DELETE FROM lot WHERE id = ?').run(Number(req.params.id));
+  res.json({ ok: true });
+}));
+
+// Vérifier plusieurs MR d'un coup, sans passer par un lot enregistré.
+app.post('/api/verify/mrs', wrap((req, res) => {
+  const ids = ((req.body && req.body.mr_ids) || []).map(Number).filter(Boolean);
+  if (!ids.length) throw new Error(t('err.lot.empty'));
+  const cibles = ciblesDepuisMrs(ids);
+  const verifier = verifierPour(cibles, req.body && req.body.verifier_id);
+  res.json(creerVerification({ verifier, cibles: appliquerModes(verifier, cibles) }));
+}));
+
+app.post('/api/lots/:id/verify', wrap((req, res) => {
+  const lot = lotAvecMembres(Number(req.params.id));
+  if (!lot) throw new Error(t('err.lot.not-found'));
+  const ids = lot.members.filter((m) => m.kind === 'mr').map((m) => m.ref_id);
+  if (!ids.length) throw new Error(t('err.lot.empty'));
+  const cibles = ciblesDepuisMrs(ids);
+  const verifier = verifierPour(cibles, req.body && req.body.verifier_id);
+  res.json(creerVerification({ verifier, cibles: appliquerModes(verifier, cibles), lotId: lot.id }));
+}));
+
+/* ---------- « Corriger (session IA) » (§9) ---------------------------------
+   UNE session multi-dépôts couvrant TOUS les dépôts du lot — pas seulement les « fautifs ».
+   L'imputabilité d'un échec d'intégration est indécidable a priori : le test qui casse est
+   souvent dans un dépôt, la cause dans un autre. L'agent voit tout le lot et décide. */
+app.post('/api/verifications/:id/fix', wrap((req, res) => {
+  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(Number(req.params.id));
+  if (!v) throw new Error(t('err.verify.not-found'));
+  const d = detailVerification(v);
+  if (d.verdict !== 'verified_fail') throw new Error(t('err.verify.fix-only-on-fail'));
+
+  const cibles = d.targets.map((c) => ({ repo_id: c.repo_id, branch: c.branch, base_branch: null }));
+  const list = normalizeTargets(cibles, 'code');
+
+  const lignes = (d.imputable || []).map((f) => {
+    const bouts = [`- ${f.test}`];
+    if (f.message) bouts.push(`  ${f.message}`);
+    if (f.log_excerpt) bouts.push(`  ${String(f.log_excerpt).split('\n').slice(0, 12).join('\n  ')}`);
+    return bouts.join('\n');
+  });
+  const shas = d.targets.map((c) => `- ${c.branch} @ ${String(c.head_sha).slice(0, 8)}`);
+  /* Le prompt porte les FAITS : quels tests, quels messages, quels commits. Sans eux l'agent
+     repart de zéro et redécouvre au prix d'un aller-retour ce que la vérification sait déjà. */
+  const prompt = [
+    `La vérification « ${d.verifier_name} » a échoué${v.lot_id ? ' sur le lot' : ''}.`,
+    '',
+    'Tests cassés par ces branches (et par elles seules — la base passait ou les échouait déjà) :',
+    lignes.length ? lignes.join('\n') : '- (le vérificateur n’a pas détaillé les échecs)',
+    '',
+    'Commits testés :',
+    shas.join('\n'),
+    '',
+    'Corrige la cause dans le ou les dépôts concernés. Ne touche que ce qui est nécessaire.',
+    'Commit et push sur les branches existantes : les merge requests seront mises à jour en place.',
+  ].join('\n');
+
+  const now = new Date().toISOString();
+  const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message,
+    auto_push, ask_questions, status, created_at, updated_at)
+    VALUES (?, 'code', ?, ?, NULL, ?, 1, 0, 'new', ?, ?)`).run(
+    list[0].repo_id, prompt, list[0].branch || '',
+    `fix: ${d.verifier_name} — tests cassés`, now, now);
+  const taskId = info.lastInsertRowid;
+  insertTargets(taskId, list, null);
+  res.json({ ...taskById(taskId), targets: taskTargets(taskId) });
+}));
+
 app.post('/api/rules', wrap((req, res) => {
   const branch_match = (req.body && req.body.branch_match || '').trim();
   const path_match = (req.body && req.body.path_match || '').trim();
@@ -1657,9 +2886,62 @@ app.delete('/api/rules/:id', wrap((req, res) => {
 }));
 
 /* ---------- Découverte + jobs ---------- */
-app.post('/api/discover', wrap(async (req, res) => {
+
+/* PLAFOND PAR TOUR DE DÉCOUVERTE. Un lundi matin, la découverte peut ramener quinze merge
+   requests ; quinze batteries fonctionnelles saturent la machine pour une heure et bloquent la
+   file partagée avec les reviews. Les MR non vérifiées gardent leur bouton « Vérifier ». */
+const MAX_VERIF_AUTO = 5;
+
+/* Les vérifications automatiques d'une liste de MR NOUVELLES. Un seul chemin : la route de
+   découverte, le rafraîchissement automatique et l'ajout unitaire passent tous par ici — deux
+   copies dériveraient, et c'est celle qu'on oublie qui ne vérifierait rien.
+
+   Best-effort de bout en bout : un vérificateur qui refuse (dépôt déjà en cours de
+   vérification, MR sans SHA) ne doit pas faire échouer la découverte, dont le travail — trouver
+   les MR — est déjà fait. */
+function lancerVerificationsAuto(mrIds) {
+  const bilan = { lancees: 0, ignorees: 0, plafonnees: 0 };
+  if (!Array.isArray(mrIds) || !mrIds.length) return bilan;
+  const autos = db.prepare('SELECT * FROM verifier WHERE auto_on_mr = 1').all();
+  if (!autos.length) return bilan;
+
+  for (const mrId of mrIds) {
+    const mr = mrById(Number(mrId));
+    if (!mr) continue;
+    // Ceux qui couvrent CE dépôt. Plusieurs peuvent le couvrir : ils partent tous.
+    const couvrants = autos.filter((v) => db.prepare('SELECT 1 FROM verifier_repo WHERE verifier_id = ? AND repo_id = ?')
+      .get(v.id, mr.repo_id));
+    for (const verifier of couvrants) {
+      if (bilan.lancees >= MAX_VERIF_AUTO) { bilan.plafonnees += 1; continue; }
+      try {
+        const cibles = appliquerModes(verifier, ciblesDepuisMrs([mr.id]));
+        creerVerification({ verifier, cibles, enFile: true });
+        bilan.lancees += 1;
+      } catch (e) {
+        // La raison est dans le journal du serveur : une découverte ne doit pas échouer ici.
+        bilan.ignorees += 1;
+        console.log(`[verif-auto] MR !${mr.iid} · ${verifier.name} : ${e.message}`);
+      }
+    }
+  }
+  /* UN PLAFOND SILENCIEUX SE LIT COMME « TOUT A ÉTÉ VÉRIFIÉ ». On dit donc ce qui n'est pas
+     parti, dans le journal du serveur comme dans la réponse de la découverte. */
+  if (bilan.plafonnees) {
+    console.log(`[verif-auto] plafond atteint (${MAX_VERIF_AUTO}) : ${bilan.plafonnees} vérification(s) non lancée(s) — bouton « Vérifier » sur les MR concernées`);
+  }
+  return bilan;
+}
+
+/* Le SEUL chemin de découverte côté serveur : la route et le rafraîchissement automatique
+   passent par lui, donc les vérifications automatiques ne peuvent pas être oubliées d'un côté. */
+async function decouvrir() {
   const result = await discoverAll();
-  res.json(result);
+  result.auto_verify = lancerVerificationsAuto(result.new_mr_ids);
+  return result;
+}
+
+app.post('/api/discover', wrap(async (req, res) => {
+  res.json(await decouvrir());
 }));
 
 app.post('/api/jobs/review', wrap((req, res) => {
@@ -1682,6 +2964,64 @@ app.post('/api/jobs/:id/stop', wrap((req, res) => {
 /* Ce qui tourne et ce qui attend. Les jobs en attente portent leurs `keys` (dépôts et
    dossiers touchés) et les `conflicts` avec ce qui tourne : l'écran peut ainsi dire
    POURQUOI un job ne peut pas démarrer tout de suite, au lieu de griser un bouton. */
+/* Journal d'activité : ce qu'on a lancé, et ce qui s'est terminé pendant qu'on regardait
+   ailleurs. Les notifications ne répondent pas à cette question — elles ne vivent qu'en mémoire
+   et le front saute délibérément l'historique au chargement, donc tout ce qui s'est produit
+   onglet fermé est perdu. La table `job`, elle, persiste.
+   `after` = dernier job vu par ce navigateur : ce qui est plus récent est « nouveau ». */
+app.get('/api/jobs/history', wrap((req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 30, 1), 200);
+  const after = Number(req.query.after) || 0;
+  /* Trié sur l'activité la PLUS RÉCENTE, pas sur l'identifiant. Un id croît à la mise en file :
+     un job queué tôt mais terminé tard passerait au-dessus d'un job queué après et fini avant,
+     ce qui se lit comme un désordre puisque la colonne affichée est l'heure de FIN. Depuis que
+     plusieurs jobs tournent de front, le cas est courant. Un job non terminé est classé sur son
+     démarrage — c'est bien l'activité en cours, donc en tête. */
+  const rows = db.prepare(`SELECT id, kind, status, total, done_count, message, started_at, finished_at,
+    target_kind, target_id, current_mr_id FROM job
+    ORDER BY COALESCE(finished_at, started_at) DESC, id DESC LIMIT ?`).all(limit);
+
+  /* Le libellé de l'objet est résolu ICI : le front n'a en mémoire que les listes qu'il affiche,
+     et un job peut porter sur une session masquée ou une MR d'un autre stade. */
+  const labelMr = db.prepare('SELECT mr.iid, mr.title, repo.project FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?');
+  const labelTask = db.prepare('SELECT prompt, kind FROM task WHERE id = ?');
+  const labelLocal = db.prepare('SELECT prompt FROM local_task WHERE id = ?');
+  const labelVerif = db.prepare('SELECT verifier_name, targets_json FROM verification WHERE id = ?');
+  const court = (v) => String(v || '').split('\n')[0].slice(0, 70);
+
+  const out = rows.map((j) => {
+    let label = null; let href = null;
+    const mrId = j.target_kind === 'mr' ? j.target_id : (j.target_kind ? null : j.current_mr_id);
+    if (mrId) {
+      const m = labelMr.get(mrId);
+      if (m) { label = `!${m.iid} — ${court(m.title)}`; href = { kind: 'mr', id: mrId }; }
+    } else if (j.target_kind === 'task') {
+      const t2 = labelTask.get(j.target_id);
+      if (t2) { label = court(t2.prompt); href = { kind: t2.kind === 'explore' ? 'explore' : 'task', id: j.target_id }; }
+    } else if (j.target_kind === 'local') {
+      const l = labelLocal.get(j.target_id);
+      if (l) { label = court(l.prompt); href = { kind: 'local', id: j.target_id }; }
+    } else if (j.target_kind === 'verification') {
+      /* Une vérification porte sur une ou plusieurs MR : le libellé les nomme, et le lien
+         mène à la première — c'est la destination utile, et elle existe déjà côté front. */
+      const v = labelVerif.get(j.target_id);
+      if (v) {
+        let cibles = [];
+        try { cibles = JSON.parse(v.targets_json || '[]'); } catch { cibles = []; }
+        const mrs = cibles.map((c) => labelMr.get(c.mr_id)).filter(Boolean);
+        label = court(`${v.verifier_name} — ${mrs.map((m) => `${m.project} !${m.iid}`).join(', ')}`);
+        const premier = cibles.find((c) => c.mr_id);
+        if (premier) href = { kind: 'mr', id: premier.mr_id };
+      }
+    }
+    return { ...j, label, href };
+  });
+  // `latest` = plus grand id vu, pas le premier de la liste : l'ordre d'affichage n'est plus
+  // celui des ids, et un curseur pris sur la tête raterait un job plus récent classé plus bas.
+  const latest = rows.reduce((m, r) => Math.max(m, r.id), 0);
+  res.json({ jobs: out, latest });
+}));
+
 app.get('/api/jobs/queue', wrap((req, res) => {
   res.json({
     running: jobs.runningJobs(), queued: jobs.queuedJobs(),
@@ -1762,6 +3102,262 @@ app.post('/api/reports/reset', wrap((req, res) => {
   res.json({ ok: true, deleted: del.changes });
 }));
 
+/* ---------- Export d'une réponse d'agent ----------
+   Le HTML et le PDF se fabriquent dans le navigateur : il a déjà le contenu rendu, et le PDF
+   passe par sa propre boîte d'impression. Le .docx, lui, est un ZIP — Node sait le faire avec
+   `zlib`, alors qu'au front il faudrait embarquer une bibliothèque de compression pour un
+   bouton. D'où cette seule route. */
+/* Nom de fichier lisible tiré du titre : on garde les accents (les systèmes modernes les
+   acceptent) et on écarte ce qui casse un chemin — séparateurs, deux-points, guillemets. */
+const nomDeFichier = (t2) => String(t2 || '').trim()
+  .replace(/[/\\?%*:|"<>\u0000-\u001f]/g, '-')
+  .replace(/\s+/g, ' ')
+  .slice(0, 80)
+  .trim()
+  .replace(/^[.\s]+|[.\s]+$/g, '');
+
+app.post('/api/export/docx', wrap((req, res) => {
+  const markdown = String((req.body && req.body.markdown) || '');
+  if (!markdown.trim()) throw new Error(t('err.export.vide'));
+  const titre = String((req.body && req.body.title) || '').slice(0, 200);
+  const fichier = `${nomDeFichier(titre) || 'mergerie'}.docx`;
+  const buf = docx.markdownToDocx(titre, markdown);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  /* `filename*` en UTF-8 : les titres portent des accents, et le paramètre `filename` seul
+     les rendrait illisibles (ou ferait tomber le navigateur sur un nom générique). */
+  res.setHeader('Content-Disposition', `attachment; filename="export.docx"; filename*=UTF-8''${encodeURIComponent(fichier)}`);
+  res.send(buf);
+}));
+
+/* ---------- Sauvegarde des données ----------
+   Tout le travail accumulé — rapports, verdicts, sessions, suivi de résolution — vit dans un
+   seul dossier qu'aucune commande n'exportait. Une suppression accidentelle ou un disque qui
+   lâche effaçait des mois de contexte sans recours. C'est un TÉLÉCHARGEMENT (donc `GET`) :
+   l'opération ne change rien côté serveur. */
+app.get('/api/backup', wrap(async (req, res) => {
+  const { buffer, contenu } = await backup.construire(db);
+  const nom = backup.nomArchive();
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${nom}"`);
+  // Ce que l'archive contient, lisible sans l'ouvrir : le front l'affiche après coup.
+  res.setHeader('X-Mergerie-Backup', Buffer.from(JSON.stringify(contenu), 'utf8').toString('base64'));
+  res.send(buffer);
+}));
+
+/* ---------- Notes, todos, rappels et brief (plan_add_notes.md) --------------
+   Tout est local : rien ne part vers l'agent ni vers une forge. Les messages d'erreur
+   traversent `t()` comme partout ailleurs — ils s'affichent tels quels dans l'interface. */
+
+// Les libellés d'erreur passés à src/notes.js. Regroupés parce que les mêmes servent à la
+// création et à l'édition : les dupliquer aux deux endroits les ferait diverger.
+const msgNotes = () => ({
+  titreVide: t('err.notes.title-required'),
+  inconnue: t('err.notes.unknown'),
+  prioriteInvalide: t('err.notes.priority-invalid'),
+  statutInvalide: t('err.notes.status-invalid'),
+  dateInvalide: t('err.notes.due-invalid'),
+  lienInvalide: t('err.notes.link-invalid'),
+});
+
+app.get('/api/notes', wrap((req, res) => {
+  res.json({ pages: notes.listerPages(req.query.q) });
+}));
+
+app.post('/api/notes', wrap((req, res) => {
+  res.json(notes.creerPage(req.body || {}, msgNotes()));
+}));
+
+app.get('/api/notes/:id', wrap((req, res) => {
+  const page = notes.lirePage(req.params.id);
+  if (!page) throw Object.assign(new Error(t('err.notes.unknown')), { status: 404 });
+  res.json(page);
+}));
+
+app.put('/api/notes/:id', wrap((req, res) => {
+  res.json(notes.majPage(req.params.id, req.body || {}, msgNotes()));
+}));
+
+app.delete('/api/notes/:id', wrap((req, res) => {
+  res.json(notes.supprimerPage(req.params.id, msgNotes()));
+}));
+
+/* Export d'une page en Markdown. Le nom du fichier est SLUGIFIÉ depuis le titre : un titre
+   porte des espaces, des accents et parfois un `/` — `Content-Disposition` n'est pas
+   l'endroit où découvrir qu'un nom de page contenait une traversée de chemin. */
+app.get('/api/notes/:id/export', wrap((req, res) => {
+  const page = notes.lirePage(req.params.id);
+  if (!page) throw Object.assign(new Error(t('err.notes.unknown')), { status: 404 });
+  res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${notes.slugifier(page.title)}.md"`);
+  res.send(`# ${page.title}\n\n${page.content || ''}\n`);
+}));
+
+app.get('/api/todos', wrap((req, res) => {
+  res.json({ todos: notes.listerTodos(req.query.status) });
+}));
+
+app.post('/api/todos', wrap((req, res) => {
+  res.json(notes.creerTodo(req.body || {}, msgNotes()));
+}));
+
+/* Réordonner la liste « à faire » : l'écran envoie l'ordre complet de ce qu'il affiche. */
+app.post('/api/todos/reorder', wrap((req, res) => {
+  const ids = (req.body && req.body.ids) || [];
+  if (!Array.isArray(ids) || !ids.length) throw new Error(t('err.ordre-vide'));
+  res.json({ ok: true, n: notes.reordonnerTodos(ids) });
+}));
+
+/* Édition, cocher/décocher ET snooze passent par la même route : ce sont les mêmes colonnes.
+   `snooze` est traduit ici en `due_at` plutôt que côté client — « demain 9 h » doit vouloir
+   dire la même chose que le rappel l'ait posé le navigateur ou le serveur. */
+app.put('/api/todos/:id', wrap((req, res) => {
+  const body = { ...(req.body || {}) };
+  if (body.snooze) {
+    const quand = notes.calculerSnooze(body.snooze);
+    if (!quand) throw new Error(t('err.notes.snooze-invalid'));
+    body.due_at = quand;
+    delete body.snooze;
+  }
+  res.json(notes.majTodo(req.params.id, body, msgNotes()));
+}));
+
+app.delete('/api/todos/:id', wrap((req, res) => {
+  res.json(notes.supprimerTodo(req.params.id, msgNotes()));
+}));
+
+// Ce qui est dû et pas encore annoncé. Le client notifie puis confirme (route ci-dessous).
+app.get('/api/todos/reminders/due', wrap((req, res) => {
+  res.json({ due: notes.rappelsDus() });
+}));
+
+/* Confirmation d'AFFICHAGE, envoyée par le client après la notification. Marquer à la
+   lecture aurait été plus simple, mais aurait consommé l'unique occasion de prévenir quand
+   la notification échoue (permission refusée, onglet fermé entre-temps). */
+app.post('/api/todos/:id/reminded', wrap((req, res) => {
+  res.json(notes.marquerNotifie(req.params.id, msgNotes()));
+}));
+
+/* Ce dont le RENDU a besoin pour transformer `!214` en lien : une table de résolution
+   iid → dépôts, pas la liste des MR. Un même numéro pouvant exister sur plusieurs dépôts,
+   on rend tous les candidats et le front décide (lien direct ou recherche pré-remplie). */
+app.get('/api/notes-index', wrap((req, res) => {
+  res.json({ mrs: notes.indexAutolink(), jira: demoDocker.isDemo() || jira.isConfigured(getConfig()) });
+}));
+
+app.get('/api/brief', wrap((req, res) => {
+  res.json(brief.construire({ staleDays: getConfig().stale_mr_days }));
+}));
+
+/* Écarter une ligne du brief. On garde l'objet ÉCARTÉ, pas le sujet : cette vérification-ci,
+   cette MR-là. Le `kind` est validé contre la liste du brief — une clé inventée resterait
+   sinon dans la table sans rien masquer, et personne ne saurait pourquoi. */
+app.post('/api/brief/hidden', wrap((req, res) => {
+  const kind = String((req.body && req.body.kind) || '');
+  const ref = String((req.body && req.body.ref) || '').trim();
+  if (!brief.ECARTABLES.includes(kind) || !ref) throw new Error(t('err.brief-ecart-invalide'));
+  db.prepare('INSERT OR IGNORE INTO brief_hidden (kind, ref, at) VALUES (?, ?, ?)')
+    .run(kind, ref, new Date().toISOString());
+  res.json({ ok: true });
+}));
+
+// Tout réafficher : le geste inverse, en un bouton. Rien n'a été supprimé, il n'y a rien à
+// reconstruire — c'est pour ça qu'écarter peut rester sans confirmation.
+app.delete('/api/brief/hidden', wrap((req, res) => {
+  const n = db.prepare('DELETE FROM brief_hidden').run().changes;
+  res.json({ ok: true, restored: n });
+}));
+
+/* ---------- Liens (plan_add_links.md) --------------------------------------
+   Une grille services × environnements, des liens libres tagués et une palette globale.
+   Toutes les URLs sont validées `http(s)` par src/links.js : elles sont ouvertes d'un clic
+   depuis l'application, et l'outil ne s'y connecte JAMAIS de lui-même — surveiller des
+   services n'est pas son travail. */
+
+const msgLinks = () => ({
+  nomVide: t('err.links.name-required'),
+  nomPris: t('err.links.name-taken'),
+  labelVide: t('err.links.label-required'),
+  urlInvalide: t('err.links.url-invalid'),
+  templateVide: t('err.links.template-invalid'),
+  variableInconnue: (nom, valides) => t('err.links.template-variable', { name: nom, list: valides.map((v) => `{${v}}`).join(', ') }),
+  tropDeTags: t('err.links.too-many-tags'),
+  inconnu: t('err.links.unknown'),
+  envInconnu: t('err.links.env-unknown'),
+  tropGros: t('err.links.import-too-big'),
+});
+
+app.get('/api/links/grid', wrap((req, res) => { res.json(links.grille()); }));
+
+app.get('/api/environments', wrap((req, res) => { res.json({ environments: links.listerEnvironnements() }); }));
+app.post('/api/environments', wrap((req, res) => { res.json(links.creerEnvironnement(req.body || {}, msgLinks())); }));
+app.put('/api/environments/:id', wrap((req, res) => { res.json(links.majEnvironnement(req.params.id, req.body || {}, msgLinks())); }));
+app.delete('/api/environments/:id', wrap((req, res) => { res.json(links.supprimerEnvironnement(req.params.id, msgLinks())); }));
+/* Déplacer une colonne d'un cran. Un POST et non un PUT de `position` : le client n'a pas à
+   savoir quelles positions portent les voisines, il dit seulement de quel côté aller. */
+app.post('/api/environments/:id/move', wrap((req, res) => {
+  res.json(links.deplacerEnvironnement(req.params.id, (req.body || {}).dir, msgLinks()));
+}));
+
+app.post('/api/services', wrap((req, res) => { res.json(links.creerService(req.body || {}, msgLinks())); }));
+app.put('/api/services/:id', wrap((req, res) => { res.json(links.majService(req.params.id, req.body || {}, msgLinks())); }));
+app.delete('/api/services/:id', wrap((req, res) => { res.json(links.supprimerService(req.params.id, msgLinks())); }));
+// Poser (ou vider) la case d'un environnement pour ce service.
+app.put('/api/services/:id/urls', wrap((req, res) => { res.json(links.poserUrl(req.params.id, req.body || {}, msgLinks())); }));
+
+app.get('/api/services/:id/context-links', wrap((req, res) => { res.json({ links: links.listerContextLinks(req.params.id) }); }));
+app.post('/api/services/:id/context-links', wrap((req, res) => { res.json(links.creerContextLink(req.params.id, req.body || {}, msgLinks())); }));
+app.delete('/api/context-links/:id', wrap((req, res) => { res.json(links.supprimerContextLink(req.params.id, msgLinks())); }));
+
+app.get('/api/free-links', wrap((req, res) => { res.json({ links: links.listerFreeLinks(req.query) }); }));
+app.post('/api/free-links', wrap((req, res) => { res.json(links.creerFreeLink(req.body || {}, msgLinks())); }));
+app.put('/api/free-links/:id', wrap((req, res) => { res.json(links.majFreeLink(req.params.id, req.body || {}, msgLinks())); }));
+app.delete('/api/free-links/:id', wrap((req, res) => { res.json(links.supprimerFreeLink(req.params.id, msgLinks())); }));
+/* Déclarée APRÈS `/:id` — sans quoi Express ferait correspondre « /api/free-links » à la route
+   paramétrée sur certaines formes d'URL, et « tout supprimer » deviendrait un cas particulier
+   de « supprimer celui-là ». */
+app.delete('/api/free-links', wrap((req, res) => { res.json(links.supprimerTousFreeLinks()); }));
+// Des liens libres deviennent un service : le geste d'APRÈS l'import, explicite.
+app.post('/api/free-links/to-service', wrap((req, res) => { res.json(links.rangerDansService(req.body || {}, msgLinks())); }));
+
+/* La palette. Les actions de navigation viennent du CLIENT : lui seul sait ce qu'il sait
+   faire, et les lister côté serveur aurait fait deux endroits à tenir d'accord. */
+app.post('/api/launcher', wrap((req, res) => {
+  const body = req.body || {};
+  res.json({
+    results: links.launcher(body.q, {
+      jiraConfigure: demoDocker.isDemo() || jira.isConfigured(getConfig()),
+      actions: Array.isArray(body.actions) ? body.actions.slice(0, 60) : [],
+    }),
+  });
+}));
+app.post('/api/launcher/used', wrap((req, res) => {
+  const b = req.body || {};
+  res.json(links.noterUsage(b.kind, b.ref));
+}));
+
+/* Import de marque-pages : APERÇU d'abord (on ne crée rien), application ensuite. Même
+   esprit que l'aperçu obligatoire des opérations git — on voit avant d'exécuter. */
+/* L'aperçu rend AUSSI ce que l'arbre laisse deviner : un dossier dont plusieurs enfants portent
+   des noms d'environnement décrit une grille. Rien n'est créé — c'est une proposition, montrée
+   avant de l'appliquer et refusable d'un clic. */
+app.post('/api/links/import', wrap((req, res) => {
+  const l = links.parserBookmarks((req.body || {}).html, msgLinks());
+  res.json({ links: l, proposal: links.analyserArbre(l) });
+}));
+app.post('/api/links/import/apply', wrap((req, res) => {
+  res.json(links.appliquerImport(req.body || {}, msgLinks()));
+}));
+
+// Les boutons contextuels d'une merge request : URLs de grille du service + gabarits résolus.
+app.get('/api/mrs/:id/links', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw Object.assign(new Error(t('err.links.unknown')), { status: 404 });
+  res.json(links.liensDeMr(mr));
+}));
+
+// Vérifier maintenant : le même code que le minuteur, donc ce que le bouton montre est
+// exactement ce que fait la surveillance.
+
 /* ---------- MRs ---------- */
 app.get('/api/mrs', wrap((req, res) => {
   const { status } = req.query;
@@ -1796,10 +3392,17 @@ app.get('/api/mrs', wrap((req, res) => {
       .filter((rule) => glob.matchingPaths(rule.path_match, paths).length > 0)
       .map((rule) => ({ label: rule.label || rule.path_match, path_match: rule.path_match }));
   };
+  const verifs = dernieresVerificationsParMr();
+  /* Un dépôt qu'aucun vérificateur ne couvre : le bouton « Vérifier » sera GRISÉ, avec la raison
+     en info-bulle. Proposer un bouton qui répond « impossible » une fois cliqué fait perdre un
+     geste et n'apprend rien de plus. */
+  const couverts = new Set(db.prepare('SELECT DISTINCT repo_id FROM verifier_repo').all().map((r) => r.repo_id));
   res.json(rows.map((r) => {
     const key = jira.ticketKey(r.title, r.source_branch);
     return {
       ...r,
+      verification: verifs.has(r.id) ? resumeVerification(detailVerification(verifs.get(r.id))) : null,
+      verifiable: couverts.has(r.repo_id),
       has_review: hasReview.has(r.id),
       note: noteByMr[r.id] || null,
       has_ticket: !!(r.ticket_text || r.ticket_image || r.ticket_jira_text),
@@ -1810,6 +3413,17 @@ app.get('/api/mrs', wrap((req, res) => {
     };
   }));
 }));
+
+/* Retrouve la session de codage qui a produit une branche. Le lien n'est pas stocké en dur :
+   il se reconstitue par (dépôt, branche). En cas d'ambiguïté — plusieurs sessions sur la même
+   branche — on prend la PLUS RÉCENTE, et seulement si elle a bien une session d'agent. */
+function originSessionKey(mr) {
+  const row = db.prepare(`SELECT tt.session_key FROM task_target tt
+    JOIN task t ON t.id = tt.task_id
+    WHERE tt.repo_id = ? AND tt.branch = ? AND tt.session_key IS NOT NULL AND t.kind = 'code'
+    ORDER BY tt.id DESC LIMIT 1`).get(mr.repo_id, mr.source_branch);
+  return (row && row.session_key) || null;
+}
 
 app.get('/api/mrs/:id', wrap((req, res) => {
   const mr = mrById(Number(req.params.id));
@@ -1823,6 +3437,18 @@ app.get('/api/mrs/:id', wrap((req, res) => {
     ticket_url: ticketUrl(getConfig(), tkey),
     // Commande pour reprendre la session d'agent de la review dans un terminal.
     resume_cmd: agentsession.resumeCommand(mr.review_session_backend, mr.review_session_key, mr.review_session_cwd),
+    /* Session de CODAGE dont cette MR est issue, s'il y en a une. Sert à pré-remplir le champ
+       « identifiant de session » quand on demande une correction : l'IA reprend alors le fil de
+       son propre travail au lieu de redécouvrir le code. Simple proposition — le champ reste
+       modifiable et effaçable, parce que la jointure (dépôt + branche source) n'est pas une
+       preuve : une branche peut avoir été reprise à la main, ou par quelqu'un d'autre. */
+    origin_session: originSessionKey(mr),
+    verification: (() => {
+      const v = dernieresVerificationsParMr().get(mr.id);
+      return v ? resumeVerification(detailVerification(v)) : null;
+    })(),
+    // Un vérificateur couvre-t-il ce dépôt ? Le bouton n'apparaît que si oui.
+    verifiable: !!db.prepare('SELECT 1 FROM verifier_repo WHERE repo_id = ?').get(mr.repo_id),
     review: rev ? {
       md: readFileSafe(rev.md_path),
       explanation: readFileSafe(rev.explanation_path),
@@ -1868,10 +3494,10 @@ app.post('/api/mrs/:id/ticket', wrap((req, res) => {
   let imgPath = mr.ticket_image;
   if (removeImage && imgPath) { try { fs.rmSync(imgPath, { force: true }); } catch { /* rien */ } imgPath = null; }
   if (image) imgPath = saveTicketImage(mr.id, image);
-  const t = (text || '').trim();
+  const texte = (text || '').trim();
   db.prepare('UPDATE mr SET ticket_text = ?, ticket_image = ?, updated_at = ? WHERE id = ?')
-    .run(t || null, imgPath, new Date().toISOString(), mr.id);
-  res.json({ ok: true, has_text: !!t, has_image: !!imgPath });
+    .run(texte || null, imgPath, new Date().toISOString(), mr.id);
+  res.json({ ok: true, has_text: !!texte, has_image: !!imgPath });
 }));
 
 app.get('/api/mrs/:id/ticket-image', (req, res) => {
@@ -1915,6 +3541,8 @@ app.get('/api/mrs/:id/diff', wrap((req, res) => {
 app.get('/api/mrs/:id/diffview', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
+  // En démo, aucun clone n'est possible (la forge n'existe pas) : dépôt fictif servi tel quel.
+  if (demoDiff.isDemo()) { res.json(demoDiff.viewFor(mr)); return; }
   const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(mr.repo_id);
   if (!repo) throw new Error(t('err.depot-introuvable'));
   const cfg = getConfig();
@@ -2000,6 +3628,7 @@ async function viewerPayload(ctx, { diff, source }) {
 app.get('/api/mrs/:id/tree', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
+  if (demoDiff.isDemo()) { res.json(demoDiff.treeFor(mr)); return; }
   const { cwd, ref } = mrCloneCtx(mr);
   let files;
   try { files = await git.lsTree(cwd, ref); }
@@ -2013,6 +3642,7 @@ app.get('/api/mrs/:id/tree', wrap(async (req, res) => {
 app.get('/api/mrs/:id/file', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
+  if (demoDiff.isDemo()) { res.json(demoDiff.fileFor(mr, String(req.query.path || ''))); return; }
   res.json(await viewerFile(mrCloneCtx(mr), String(req.query.path || '')));
 }));
 
@@ -2020,6 +3650,7 @@ app.get('/api/mrs/:id/file', wrap(async (req, res) => {
 app.get('/api/mrs/:id/filediff', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
+  if (demoDiff.isDemo()) { res.json(demoDiff.fileDiffFor(mr, String(req.query.path || ''))); return; }
   res.json(await viewerFileDiff(mrCloneCtx(mr), String(req.query.path || '')));
 }));
 
@@ -2131,6 +3762,26 @@ app.post('/api/mrs/:id/modify', wrap((req, res) => {
 // B6 : symétrique de /mrs/:id/clear-error — sinon l'erreur d'une tâche revient à chaque refresh.
 app.post('/api/tasks/:id/clear-error', wrap((req, res) => {
   db.prepare('UPDATE task SET last_error = NULL WHERE id = ?').run(Number(req.params.id));
+  res.json({ ok: true });
+}));
+
+/* Même geste pour une session hors dépôt. Sans cette route, la croix de l'encart d'erreur
+   retirait la boîte de l'écran et l'erreur revenait au rafraîchissement suivant : un bouton
+   qui a l'air de marcher est pire qu'un bouton absent. */
+/* Relance CIBLÉE d'une session hors dépôt : un dossier précis, ou ceux qui ont échoué. Même
+   contrat que `POST /api/tasks/:id/run` avec ses `targets` — les dossiers d'une session sont
+   indépendants les uns des autres, et refaire les quatre qui ont réussi coûte quatre passes
+   d'agent pour rien. Corps vide = toute la session, comme avant. */
+function normalizeDirIds(taskId, brut) {
+  if (!Array.isArray(brut) || !brut.length) return null;
+  const connus = new Set(db.prepare('SELECT id FROM local_task_dir WHERE task_id = ?').all(taskId).map((d) => d.id));
+  const ids = [...new Set(brut.map(Number).filter((n) => connus.has(n)))];
+  if (!ids.length) throw new Error(t('err.local-dir-not-found'));
+  return ids;
+}
+
+app.post('/api/local-tasks/:id/clear-error', wrap((req, res) => {
+  db.prepare('UPDATE local_task SET last_error = NULL WHERE id = ?').run(Number(req.params.id));
   res.json({ ok: true });
 }));
 
@@ -2287,6 +3938,100 @@ app.post('/api/mrs/:id/discussion', wrap(async (req, res) => {
   res.json({ ok: true, id: disc && disc.id });
 }));
 
+/* ---------- Commentaires inline EN ATTENTE ----------------------------------
+   On relit une MR fichier par fichier et on écrit ses remarques au fil de la lecture. Les
+   envoyer une par une bombarde l'auteur de notifications et fige des remarques qu'on aurait
+   retirées trois fichiers plus loin. Ils vivent donc en local, modifiables, jusqu'à un envoi
+   explicite — et le geste direct (POST /discussion) reste inchangé pour qui le préfère. */
+
+const brouillonsDe = (mrId) => db.prepare('SELECT * FROM mr_comment_draft WHERE mr_id = ? ORDER BY id').all(mrId);
+
+const lireLigne = (v) => (v == null || v === '' ? null : Number(v));
+
+app.get('/api/mrs/:id/comment-drafts', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  res.json({ drafts: brouillonsDe(mr.id) });
+}));
+
+app.post('/api/mrs/:id/comment-drafts', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const { body, old_path, new_path, old_line, new_line } = req.body || {};
+  if (!(body || '').trim()) throw new Error(t('err.commentaire-vide-2'));
+  if (!new_path && !old_path) throw new Error(t('err.fichier-requis'));
+  const now = new Date().toISOString();
+  const info = db.prepare(`INSERT INTO mr_comment_draft
+    (mr_id, old_path, new_path, old_line, new_line, body, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?,?)`).run(mr.id, old_path || null, new_path || null,
+    lireLigne(old_line), lireLigne(new_line), String(body).trim(), now, now);
+  res.json(db.prepare('SELECT * FROM mr_comment_draft WHERE id = ?').get(info.lastInsertRowid));
+}));
+
+app.put('/api/mrs/:id/comment-drafts/:did', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const corps = ((req.body && req.body.body) || '').trim();
+  if (!corps) throw new Error(t('err.commentaire-vide-2'));
+  const info = db.prepare('UPDATE mr_comment_draft SET body = ?, updated_at = ? WHERE id = ? AND mr_id = ?')
+    .run(corps, new Date().toISOString(), Number(req.params.did), mr.id);
+  if (!info.changes) throw new Error(t('err.brouillon-introuvable'));
+  res.json(db.prepare('SELECT * FROM mr_comment_draft WHERE id = ?').get(Number(req.params.did)));
+}));
+
+app.delete('/api/mrs/:id/comment-drafts/:did', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  db.prepare('DELETE FROM mr_comment_draft WHERE id = ? AND mr_id = ?').run(Number(req.params.did), mr.id);
+  res.json({ ok: true });
+}));
+
+/* L'ENVOI. Les références de diff sont résolues UNE fois pour tout le lot : elles sont les
+   mêmes pour tous, et les redemander à chaque commentaire ferait autant d'allers-retours que
+   de remarques. Chaque brouillon parti est supprimé AUSSITÔT — si le dixième échoue, les neuf
+   premiers ne doivent pas repartir au prochain essai. Ce qui échoue RESTE, avec sa raison. */
+app.post('/api/mrs/:id/comment-drafts/send', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const liste = brouillonsDe(mr.id);
+  if (!liste.length) throw new Error(t('err.aucun-brouillon'));
+  const supprimer = db.prepare('DELETE FROM mr_comment_draft WHERE id = ?');
+
+  if (demoJenkins.isDemo()) {
+    for (const d of liste) {
+      demoComments.post(mr.id, d.body, { new_path: d.new_path, old_path: d.old_path, new_line: d.new_line, old_line: d.old_line });
+      supprimer.run(d.id);
+    }
+    return res.json({ sent: liste.length, failed: [] });
+  }
+
+  const cfg = getConfig();
+  const client = forge.clientFor(mr);
+  const full = await client.getMergeRequest(cfg, mr.project, mr.iid);
+  const dr = full && full.diff_refs;
+  if (!dr || !dr.head_sha) throw new Error(t('err.references-de-diff-introuvables-la'));
+
+  const failed = [];
+  let sent = 0;
+  for (const d of liste) {
+    const position = {
+      base_sha: dr.base_sha, start_sha: dr.start_sha, head_sha: dr.head_sha,
+      position_type: 'text',
+      old_path: d.old_path || d.new_path, new_path: d.new_path || d.old_path,
+    };
+    if (d.new_line != null) position.new_line = Number(d.new_line);
+    if (d.old_line != null) position.old_line = Number(d.old_line);
+    try {
+      await client.postMrDiscussion(cfg, mr.project, mr.iid, d.body, position);
+      supprimer.run(d.id);
+      sent += 1;
+    } catch (e) {
+      failed.push({ id: d.id, path: d.new_path || d.old_path, error: (e && e.message) || String(e) });
+    }
+  }
+  res.json({ sent, failed });
+}));
+
 // Merge une MR (depuis l'onglet Rapports de review).
 /* Options de merge : ce que demande l'appel, sinon ce qui avait été choisi à la
    création de la MR (colonnes `mr.squash` / `mr.remove_source_branch`). */
@@ -2337,8 +4082,8 @@ function restartAutoRefresh() {
     if (autoRefreshBusy) return; // évite le chevauchement si une découverte est déjà en cours
     autoRefreshBusy = true;
     try {
-      const r = await discoverAll();
-      console.log(`[auto-refresh] ${r.found} MR · ${r.created} nouvelles · ${r.updated} maj${r.errors && r.errors.length ? ` · ${r.errors.length} erreur(s)` : ''}`);
+      const r = await decouvrir();
+      console.log(`[auto-refresh] ${r.found} MR · ${r.created} nouvelles · ${r.updated} maj${r.errors && r.errors.length ? ` · ${r.errors.length} erreur(s)` : ''}${r.auto_verify && r.auto_verify.lancees ? ` · ${r.auto_verify.lancees} vérification(s) auto` : ''}`);
     } catch (e) {
       console.error(`[auto-refresh] échec : ${e.message}`);
     } finally { autoRefreshBusy = false; }
@@ -2527,6 +4272,8 @@ const HOST = process.env.HOST || '127.0.0.1';
 // L'avertissement porte sur « ce n'est PAS une boucle locale », pas sur l'égalité à 0.0.0.0 :
 // HOST est un nom très répandu (tcsh, PaaS, images CI) et n'importe quelle valeur héritée de
 // l'environnement (`::`, une IP de LAN…) expose l'app, qui n'a aucune authentification.
+let retentionTimer = null;
+let archiveTimer = null;
 const LOOPBACK = ['127.0.0.1', 'localhost', '::1'];
 const HOST_EXPOSED = !LOOPBACK.includes(HOST);
 // IPv6 : l'hôte doit être crocheté dans l'URL (http://[::1]:4319).
@@ -2537,6 +4284,16 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`  copilot : ${copilot.COPILOT_BIN} ${[...copilot.EXTRA_ARGS, '-p', '"<prompt>"'].join(' ')}`);
   console.log(`  dry-run : ${copilot.isDryRun()}  |  COPILOT_ARGS=${JSON.stringify(process.env.COPILOT_ARGS || '')}`);
   restartAutoRefresh();
+  restartJiraWatch();
+  verifyrun.gcWorktrees((m) => console.log(`[verify] ${m}`));
+  // Ménage de l'historique : au démarrage, puis une fois par jour.
+  retentionTimer = retention.demarrer(
+    () => getConfig().retention_days,
+    (m) => console.log(`[retention] ${m}`),
+  );
+  // Les todos faites depuis plus de sept jours quittent la liste — sans jamais être supprimées.
+  archiveTimer = notes.demarrerArchivage((m) => console.log(`[notes] ${m}`));
+  // Santé des liens : opt-in, par environnement, et seulement si un client regarde.
 });
 
 /* Exporté pour les tests de bout en bout : ils lancent le serveur EN PROCESSUS
@@ -2547,6 +4304,10 @@ module.exports = {
   server,
   close() {
     if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+    // Un timer oublié garde le process en vie : la suite de tests ne rendrait jamais la main.
+    if (jiraWatchTimer) { clearInterval(jiraWatchTimer); jiraWatchTimer = null; }
+    if (retentionTimer) { clearInterval(retentionTimer); retentionTimer = null; }
+    if (archiveTimer) { clearInterval(archiveTimer); archiveTimer = null; }
     return new Promise((resolve) => server.close(resolve));
   },
 };

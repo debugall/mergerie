@@ -1,4 +1,5 @@
 'use strict';
+const { healthSummary } = require('./docker');
 /* Données Docker STATIQUES pour le mode démo (MERGERIE_DEMO=1), sur le modèle de demo-git.js.
    L'onglet Docker interroge un vrai démon en direct ; hors-ligne il serait vide. Ici un jeu
    fictif cohérent : deux projets compose (dont un service en DRIFT config avec son diff de
@@ -68,7 +69,13 @@ function composeProjects() {
         {
           name: 'alertmanager', image: 'prom/alertmanager:v0.27.0',
           // Arrêté après avoir tourné (filtre « Arrêtés (exited) »).
-          container: { id: 'ab77aa', name: 'monitoring-alertmanager-1', state: 'exited', image: 'prom/alertmanager:v0.27.0', created: iso(12) },
+          container: { id: 'ab77aa', name: 'monitoring-alertmanager-1', state: 'exited', exitCode: 0, image: 'prom/alertmanager:v0.27.0', created: iso(12) },
+          envDiffs: [], imgDrift: false, composeModified: false, badge: 'stopped',
+        },
+        {
+          name: 'ingest', image: 'registry.demo/ingest:2.1.0',
+          // Sorti EN ERREUR (filtre « Sortis en erreur ») : c'est le seul arrêté qui alerte.
+          container: { id: 'in44cc', name: 'monitoring-ingest-1', state: 'exited', exitCode: 137, image: 'registry.demo/ingest:2.1.0', created: iso(4) },
           envDiffs: [], imgDrift: false, composeModified: false, badge: 'stopped',
         },
         {
@@ -122,22 +129,21 @@ function containers() {
     { id: 'demo_db', name: 'boutique-db-1', state: 'running', status: 'Up 3 hours (healthy)', image: 'postgres:16', project: 'boutique', service: 'db', running: true },
     { id: 'demo_cache', name: 'boutique-cache-1', state: 'restarting', status: 'Restarting (1) 5 seconds ago', image: 'redis:7', project: 'boutique', service: 'cache', running: false },
     { id: 'demo_worker', name: 'labo-worker', state: 'exited', status: 'Exited (0) 1 hour ago', image: 'python:3.12', project: null, service: null, running: false },
+  /* Sorti EN ERREUR : c'est le seul « exited » qui doit rejoindre le badge rouge. Sans lui, la
+     démo ne montrerait pas la différence entre un arrêt volontaire et un plantage. */
+  { id: 'demo_crash', name: 'labo-importeur', state: 'exited', status: 'Exited (137) 20 minutes ago', image: 'node:22', project: null, service: null, running: false },
+  { id: 'in44cc', name: 'monitoring-ingest-1', state: 'exited', status: 'Exited (137) 4 hours ago', image: 'registry.demo/ingest:2.1.0', project: 'monitoring', service: 'ingest', running: false },
     { id: 'ab77aa', name: 'monitoring-alertmanager-1', state: 'exited', status: 'Exited (0) 12 hours ago', image: 'prom/alertmanager:v0.27.0', project: 'monitoring', service: 'alertmanager', running: false },
     { id: 'lo9911', name: 'monitoring-loki-1', state: 'created', status: 'Created', image: 'grafana/loki:3.0.0', project: 'monitoring', service: 'loki', running: false },
   ];
 }
 
-// Résumé santé (démo) calculé sur les mêmes containers, pour le badge de menu.
+/* Résumé santé (démo) : on délègue au MÊME calcul que le mode réel. Il était réimplémenté ici,
+   donc les deux divergeaient dès qu'on affinait la règle — la démo aurait continué de compter
+   un arrêt propre comme une anomalie. */
 function summary() {
   const cs = containers();
-  let error = 0; let exited = 0; let unhealthy = 0;
-  for (const c of cs) {
-    const st = c.state.toLowerCase(); const status = c.status.toLowerCase();
-    if (st === 'restarting' || st === 'dead') error += 1;
-    else if (st === 'exited') exited += 1;
-    else if (status.includes('(unhealthy)')) unhealthy += 1;
-  }
-  return { error, exited, unhealthy, total: cs.length, running: cs.filter((c) => c.running).length };
+  return { ...healthSummary(cs), total: cs.length, running: cs.filter((c) => c.running).length };
 }
 
 // Flux SSE SIMULÉ : émet des lignes fictives en boucle jusqu'à déconnexion du client. Sert à

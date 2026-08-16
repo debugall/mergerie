@@ -1,6 +1,6 @@
 {
   "name": "mergerie",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "From prompt to merge — a local AI dev cockpit for GitLab: MR review, autonomous coding sessions and convergence.",
   "license": "AGPL-3.0-only",
   "author": "Amady (https://github.com/debugall)",
@@ -35,9 +35,12 @@
     "test:coverage": "node --test --experimental-test-coverage test/*.test.js",
     "i18n:check": "node scripts/i18n-check.js",
     "check:front": "node scripts/check-front.js",
-    "check": "npm run check:front && npm run i18n:check",
+    "check:server": "node scripts/check-server.js",
+    "check:docs": "node scripts/check-docs.js",
+    "check": "npm run check:front && npm run check:server && npm run check:docs && npm run i18n:check",
     "demo": "node scripts/demo-seed.js && MERGERIE_DEMO=1 MERGERIE_DATA_DIR=data-demo COPILOT_DRY_RUN=1 node src/server.js",
-    "record:demo": "node scripts/record-demo.js"
+    "record:demo": "node scripts/record-demo.js",
+    "demo:gif": "sh scripts/demo-gif.sh"
   },
   "engines": {
     "node": ">=22.9.0"

@@ -63,6 +63,15 @@ lines.forEach((l, i) => {
 });
 unknown.length ? fail('Sélecteur pointant un id inconnu', unknown) : ok(`Tous les id référencés existent (${htmlIds.size} dans le HTML)`);
 
+/* 3 bis. Un id porté DEUX FOIS. `$('#x')` rend alors le premier dans l'ordre du document, qui
+   n'est pas forcément celui qu'on visait : le bouton se branche sur un autre écran et ne
+   répond pas, sans la moindre erreur. Vu en vrai — un « Ajouter » de l'onglet Liens est allé
+   se brancher sur l'« Ajouter » des projets liés d'une review. */
+const vus = new Map();
+for (const m of html.matchAll(/\bid="([\w-]+)"/g)) vus.set(m[1], (vus.get(m[1]) || 0) + 1);
+const doubles = [...vus].filter(([, n]) => n > 1).map(([id, n]) => `#${id} apparaît ${n} fois dans index.html`);
+doubles.length ? fail('Id porté par plusieurs éléments', doubles) : ok('Aucun id en double dans le HTML');
+
 /* 4. Symboles d'icône utilisés mais absents du sprite. */
 const symbols = new Set([...html.matchAll(/<symbol id="([\w-]+)"/g)].map((m) => m[1]));
 const usedIcons = new Set([...(app + html).matchAll(/href="#(i-[\w-]+)"/g)].map((m) => m[1]));
@@ -116,7 +125,7 @@ const declared = new Set(
 );
 // Champs libres du formulaire : on exclut ceux traités à part (cases à cocher,
 // nombres) car ils ont leur propre ligne dans le chargement/enregistrement.
-const HANDLED_APART = new Set(['auto_refresh_minutes', 'review_explain']);
+const HANDLED_APART = new Set(['auto_refresh_minutes', 'review_explain', 'brief_on_open']);
 const orphanFields = [];
 for (const m of html.matchAll(/<input[^>]*\bform="configForm"[^>]*>/g)) {
   const tag = m[0];
@@ -157,18 +166,50 @@ lostSearch.length
    alors sur l'autre corps — et sur l'autre SIGNATURE. C'est arrivé à toastUndo,
    redéfini avec (msg, undoLabel, onUndo) alors que l'original attendait
    (msg, onUndo, ms) : le callback d'annulation recevait une chaîne. */
+/* Les `const nom = (…) => …` du premier niveau comptent AUSSI, et sont pires : une
+   `function` redéclarée écrase silencieusement, un `const` en double est une SyntaxError
+   qui empêche le script ENTIER de s'évaluer — plus une seule ligne d'interface ne
+   fonctionne. C'est arrivé avec un `fmtDateTime` ajouté en haut du fichier alors qu'il
+   existait déjà 3600 lignes plus bas, et ce contrôle ne regardait alors que `function`. */
 const declaredFns = new Map();
 const dupFns = [];
 lines.forEach((l, i) => {
-  const m = l.match(/^function\s+([A-Za-z_$][\w$]*)\s*\(/); // ^ = premier niveau uniquement
+  const m = l.match(/^(?:function\s+([A-Za-z_$][\w$]*)\s*\(|(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=)/);
   if (!m) return;
-  const prev = declaredFns.get(m[1]);
-  if (prev) dupFns.push(`public/app.js:${i + 1}  function ${m[1]}() — déjà défini ligne ${prev} ; la seconde écrase la première`);
-  else declaredFns.set(m[1], i + 1);
+  const nom = m[1] || m[2];
+  const quoi = m[1] ? `function ${nom}()` : `const ${nom}`;
+  const prev = declaredFns.get(nom);
+  if (prev) {
+    dupFns.push(m[1]
+      ? `public/app.js:${i + 1}  ${quoi} — déjà défini ligne ${prev} ; la seconde écrase la première`
+      : `public/app.js:${i + 1}  ${quoi} — déjà défini ligne ${prev} ; SyntaxError, tout app.js cesse de s'exécuter`);
+  } else declaredFns.set(nom, i + 1);
 });
 dupFns.length
   ? fail('Fonction redéfinie au premier niveau d’app.js', dupFns)
   : ok(`Aucune fonction d'app.js redéfinie (${declaredFns.size} au premier niveau)`);
+
+/* 11. Fermeture d'une modale au clic sur le fond, écrite à la main.
+   `if (e.target.id === 'xModal') close()` a l'air juste et ne l'est pas : un `click` naît
+   sur l'ancêtre commun du mousedown et du mouseup, si bien qu'une sélection de texte
+   relâchée hors du champ fermait la modale et emportait la saisie. `fermerAuFond()` exige
+   que la pression ait commencé sur le fond, et refuse d'emporter une saisie en cours.
+   La règle vaut aussi pour les modales à venir : elles doivent passer par le même chemin. */
+const fondManuel = [];
+lines.forEach((l, i) => {
+  const m = l.match(/e\.target\.id === '(\w*[Mm]odal)'/);
+  if (m) fondManuel.push(`public/app.js:${i + 1}  clic sur le fond de #${m[1]} — passer par fermerAuFond()`);
+});
+// …et chaque modale déclarée doit exister : un id mal orthographié ne lève aucune erreur,
+// la modale ne se ferme simplement plus au clic sur le fond.
+const fondInconnu = [];
+for (const m of app.matchAll(/fermerAuFond\('#(\w+)'/g)) {
+  if (!html.includes(`id="${m[1]}"`)) fondInconnu.push(`public/app.js  fermerAuFond('#${m[1]}') — cet id n'existe pas dans index.html`);
+}
+const fondKo = [...fondManuel, ...fondInconnu];
+fondKo.length
+  ? fail('Fermeture au clic sur le fond', fondKo)
+  : ok(`Toutes les modales se ferment au fond par fermerAuFond() (${[...app.matchAll(/fermerAuFond\('#/g)].length})`);
 
 console.log('');
 if (failures) { console.log(`${failures} contrôle(s) en échec.`); process.exit(1); }

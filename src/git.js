@@ -5,6 +5,7 @@ const path = require('path');
 const { DEFAULT_CLONE_DIR, ensureDir, slugify } = require('./paths');
 const forge = require('./forge');
 const proc = require('./proc');
+const { t } = require('../public/i18n-runtime.js');
 
 // Émet les lignes complètes d'un buffer vers onLog, renvoie le reste incomplet.
 function emitLines(buf, onLog) {
@@ -29,7 +30,7 @@ function run(cmd, args, opts = {}) {
   const onLog = opts.onLog;
   const secrets = opts.redactSecrets || [];
   return new Promise((resolve, reject) => {
-    if (proc.isCancelled()) return reject(new Error('Job arrêté par l\'utilisateur.'));
+    if (proc.isCancelled()) return reject(new Error(t('err.job.stopped')));
     if (onLog) onLog(`$ ${cmd} ${redact(args, secrets).join(' ')}`);
     const child = spawn(cmd, args, { ...opts });
     proc.setActive(child);
@@ -43,9 +44,9 @@ function run(cmd, args, opts = {}) {
     child.on('close', (code) => {
       proc.clearActive(child);
       if (onLog) { if (obuf) onLog(obuf); if (ebuf) onLog(ebuf); }
-      if (proc.isCancelled()) return reject(new Error('Job arrêté par l\'utilisateur.'));
+      if (proc.isCancelled()) return reject(new Error(t('err.job.stopped')));
       if (code === 0) resolve({ stdout, stderr });
-      else reject(new Error(`${cmd} ${redact(args, secrets).join(' ')} a échoué (code ${code}) : ${stderr || stdout}`));
+      else reject(new Error(t('err.cmd.failed', { cmd: `${cmd} ${redact(args, secrets).join(' ')}`, code, sortie: stderr || stdout })));
     });
   });
 }
@@ -105,7 +106,7 @@ function cloneUrl(cfg, repo) {
 // Clone si absent, sinon fetch. Renvoie le chemin du clone.
 // Récupère/initialise les submodules (best-effort : n'échoue pas la review).
 async function updateSubmodules(dir, tls, secrets, onLog) {
-  onLog('mise à jour des submodules…');
+  onLog(t('log.git.submodules'));
   try {
     await run('git', [...tls, 'submodule', 'sync', '--recursive'], { cwd: dir, onLog, redactSecrets: secrets });
     await run('git', [...tls, 'submodule', 'update', '--init', '--recursive'], { cwd: dir, onLog, redactSecrets: secrets });
@@ -287,6 +288,18 @@ async function commitAll(cwd, message, onLog) {
   return true;
 }
 
+/* RENOMMER LE DERNIER COMMIT, sans toucher à ce qu'il contient.
+   Le cas : on relance une session après avoir renseigné le message de commit, l'IA constate
+   que tout est déjà fait et ne commite rien — le commit garde alors le message d'avant, et le
+   champ qu'on vient de remplir n'a servi à rien. `--amend` ne réécrit que le message.
+   Renvoie true si le message a changé, false s'il était déjà le bon (rien à faire). */
+async function renommerDernierCommit(cwd, message, onLog = () => {}) {
+  const { stdout } = await run('git', ['log', '-1', '--format=%s'], { cwd });
+  if (stdout.trim() === String(message).trim()) return false;
+  await run('git', ['commit', '--amend', '-m', message], { cwd, onLog });
+  return true;
+}
+
 async function headSha(cwd) {
   const { stdout } = await run('git', ['rev-parse', 'HEAD'], { cwd });
   return stdout.trim();
@@ -315,6 +328,37 @@ async function fileDiffFull(cwd, base, ref, filePath) {
   return stdout;
 }
 
+/* Nombre de commits d'avance de HEAD sur origin/<base>. Sert à distinguer deux situations que
+   `commitAll` renvoie à l'identique (« rien à committer ») et qui n'ont rien à voir : une branche
+   qui porte DÉJÀ le travail — cas d'une relance après un échec survenu APRÈS le commit — et une
+   branche vide, où l'agent a répondu au lieu de coder. */
+async function aheadOf(cwd, base) {
+  try {
+    const { stdout } = await run('git', ['rev-list', '--count', `origin/${base}..HEAD`], { cwd });
+    return Number(stdout.trim()) || 0;
+  } catch { return 0; } // base inconnue localement : on ne conclut rien
+}
+
+/* Combien de commits la branche LOCALE porte que la distante n'a pas. Sert à ne pas jeter du
+   travail : un commit non poussé n'existe nulle part ailleurs, et se réaligner sur origin le
+   supprimerait sans que rien ne le dise. Branche distante inconnue → 0, l'appelant a déjà
+   vérifié qu'elle existe. */
+async function nonPousses(cwd, branch) {
+  try {
+    const { stdout } = await run('git', ['rev-list', '--count', `origin/${branch}..refs/heads/${branch}`], { cwd });
+    return Number(stdout.trim()) || 0;
+  } catch { return 0; }
+}
+
+// La branche est-elle déjà sur origin, au même commit que HEAD ?
+async function isPushed(cwd, branch) {
+  try {
+    const { stdout } = await run('git', ['rev-parse', 'HEAD', `origin/${branch}`], { cwd });
+    const [local, distant] = stdout.trim().split('\n');
+    return !!local && local === distant;
+  } catch { return false; } // pas de branche distante
+}
+
 // Diff des changements de la branche courante depuis origin/base.
 async function branchDiff(cwd, base) {
   const { stdout } = await run('git', ['diff', `origin/${base}...HEAD`], { cwd, maxBuffer: 1024 * 1024 * 64 });
@@ -336,7 +380,7 @@ async function resetWorktree(cwd, onLog = () => {}) {
     await run('git', ['checkout', '--', '.'], { cwd, onLog });
     await run('git', ['clean', '-fd'], { cwd, onLog });
   } catch (e) {
-    onLog(`⚠ remise à zéro partielle : ${e.message.split('\n')[0]}`);
+    onLog(t('log.git.reset-partial', { message: e.message.split('\n')[0] }));
   }
 }
 
@@ -366,12 +410,13 @@ async function ensureCleanWorktree(cwd, onLog = () => {}) {
   }
   if (!dirty) return false;
   const n = dirty.split('\n').length;
-  onLog(`⚠ worktree non propre (${n} entrée·s) — vestige d'une session interrompue, remise à zéro`);
+  onLog(t('log.git.dirty', { n, s: n > 1 ? 'ies' : 'y' }));
   await resetWorktree(cwd, onLog);
   return true;
 }
 
 module.exports = {
+  aheadOf, isPushed, renommerDernierCommit, nonPousses,
   resetWorktree,
   ensureRepo, targetedDiff, diffRange, tagAuthor, branchesForCommit, branchesForCommitDetailed, cloneDirFor, authUrl, run, secretsOf, tokenFor,
   defaultBranch, ensureCleanWorktree, refExists, createBranchFrom, checkoutBranch, commitAll, headSha, branchDiff, pushBranch, gitTlsArgs,

@@ -7,6 +7,7 @@
 const https = require('https');
 const http = require('http');
 const fs = require('fs');
+const { t } = require('../public/i18n-runtime.js');
 
 // Plafond de patience sur une requête de forge : au-delà, on préfère une erreur claire
 // à un job de fond bloqué indéfiniment (un serveur qui accepte la connexion sans jamais
@@ -60,7 +61,7 @@ function request(url, { method = 'GET', headers = {}, body, agent } = {}) {
     });
     req.on('error', reject);
     req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      const err = new Error(`délai dépassé après ${REQUEST_TIMEOUT_MS / 1000}s`);
+      const err = new Error(t('err.http.timeout', { s: REQUEST_TIMEOUT_MS / 1000 }));
       err.code = 'ETIMEDOUT';
       req.destroy(err);
     });

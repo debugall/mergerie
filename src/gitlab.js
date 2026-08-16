@@ -150,10 +150,37 @@ async function getRef(cfg, project, kind, name) {
 
 // Dernier commit d'un projet (branche par défaut). Renvoie l'objet commit GitLab
 // (id, short_id, title, author_name, committed_date, web_url) ou null si vide.
+/* Dernier commit, TOUTES BRANCHES confondues. Sans `all=true`, l'API ne regarde que la
+   branche par défaut : un dépôt où le travail vit sur des branches de feature paraissait
+   alors sans activité depuis des mois, alors qu'on y pousse tous les jours. */
 async function latestCommit(cfg, project) {
   const enc = encodeProject(project);
-  const items = await gitlabFetch(cfg, `/projects/${enc}/repository/commits?per_page=1`);
+  const items = await gitlabFetch(cfg, `/projects/${enc}/repository/commits?all=true&per_page=1`);
   return Array.isArray(items) && items.length ? items[0] : null;
+}
+
+/* Commits d'une PÉRIODE, pour mesurer l'activité d'un dépôt (onglet Statistiques).
+   On ne rend que ce qui sert au comptage — date et auteur — plutôt que les objets entiers :
+   six mois d'un dépôt vivant, c'est des milliers de commits qu'il serait absurde de garder
+   en mémoire pour n'en compter que les mois.
+
+   `all=true` : toutes branches, comme le classement d'activité récente. Un dépôt dont le
+   travail vit sur des branches de feature paraîtrait sinon endormi.
+   Le plafond de pages est une sécurité, pas une limite attendue : au-delà, le compte est
+   MARQUÉ tronqué (`partiel`) plutôt que présenté comme exact. */
+async function commitsBetween(cfg, project, sinceIso, untilIso, maxPages = 12) {
+  const enc = encodeProject(project);
+  const out = [];
+  let partiel = false;
+  for (let page = 1; ; page += 1) {
+    if (page > maxPages) { partiel = true; break; }
+    const q = `since=${encodeURIComponent(sinceIso)}&until=${encodeURIComponent(untilIso)}&all=true&per_page=100&page=${page}`;
+    const items = await gitlabFetch(cfg, `/projects/${enc}/repository/commits?${q}`);
+    if (!Array.isArray(items) || !items.length) break;
+    for (const c of items) out.push({ date: c.committed_date || c.created_at || null, author: c.author_email || c.author_name || '' });
+    if (items.length < 100) break;
+  }
+  return { commits: out, partiel };
 }
 
 async function listBranches(cfg, project) {
@@ -299,17 +326,17 @@ async function listBranchesFull(cfg, project) {
 
 async function listTags(cfg, project) {
   const items = await fetchAllPages(cfg, `/projects/${encodeProject(project)}/repository/tags`);
-  return items.map((t) => ({
-    name: t.name,
+  return items.map((tag) => ({
+    name: tag.name,
     // Pour un tag ANNOTÉ, l'objet tag et le commit ont deux SHA différents.
     // On garde les deux : restaurer avec le seul SHA de commit perdrait le message.
-    sha: t.commit && t.commit.id,
-    target: t.target,
-    message: t.message || '',
-    annotated: !!(t.message && t.message.trim()),
-    committed_date: t.commit && t.commit.committed_date,
+    sha: tag.commit && tag.commit.id,
+    target: tag.target,
+    message: tag.message || '',
+    annotated: !!(tag.message && tag.message.trim()),
+    committed_date: tag.commit && tag.commit.committed_date,
     // Auteur du commit pointé par le tag (donnée exposée par l'API tags).
-    author: (t.commit && t.commit.author_name) || '',
+    author: (tag.commit && tag.commit.author_name) || '',
   }));
 }
 
@@ -324,7 +351,7 @@ async function listProtectedBranches(cfg, project) {
 async function listProtectedTags(cfg, project) {
   try {
     const items = await fetchAllPages(cfg, `/projects/${encodeProject(project)}/protected_tags`);
-    return items.map((t) => t.name);
+    return items.map((tag) => tag.name);
   } catch { return []; }
 }
 
@@ -367,6 +394,6 @@ async function listAllMRs(cfg, project) {
   }));
 }
 
-module.exports = { listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
+module.exports = { listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, commitsBetween, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
   listBranchesFull, listTags, listProtectedBranches, listProtectedTags, listMrChangedPaths,
   createBranch, deleteBranch, createTag, deleteTag, listAllMRs };

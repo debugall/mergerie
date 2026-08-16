@@ -233,11 +233,57 @@ describe('API de bout en bout', () => {
     assert.equal(relance.body.created, 0, 'une 2e découverte ne duplique rien');
     assert.equal(relance.body.updated, 2);
 
+    /* En mode démo, la forge n'existe pas : la découverte ne doit PAS partir sur le réseau
+       ni rendre une erreur par dépôt — elle rend simplement ce qui est déjà connu. */
+    process.env.MERGERIE_DEMO = '1';
+    try {
+      const demo = await app.api('POST', '/api/discover');
+      assert.deepEqual(demo.body.errors, [], 'aucune erreur de token en démo');
+      assert.equal(demo.body.created, 0);
+      assert.equal(demo.body.updated, 0);
+      assert.equal(demo.body.found, 2, 'la démo rend les MR déjà présentes');
+    } finally {
+      delete process.env.MERGERIE_DEMO;
+    }
+
     // Avec un filtre de branche, seule la MR correspondante est vue comme ouverte.
     await app.api('PUT', `/api/repos/${repoId}`, { branch_pattern: 'PROJ-' });
     const filtree = await app.api('POST', '/api/discover');
     assert.equal(filtree.body.found, 1);
     await app.api('PUT', `/api/repos/${repoId}`, { branch_pattern: '' });
+    await app.api('POST', '/api/discover');
+  });
+
+  test('un dépôt dont la récupération des MR est coupée est ignoré, sans perdre les MR déjà là', async () => {
+    await app.api('POST', '/api/discover');
+    const avant = (await app.api('GET', '/api/mrs')).body.length;
+    assert.ok(avant > 0, 'il faut des MR déjà récupérées pour que le test ait un sens');
+
+    const off = await app.api('PUT', `/api/repos/${repoId}`, { fetch_mrs: false });
+    assert.equal(off.body.fetch_mrs, 0);
+
+    const scan = await app.api('POST', '/api/discover');
+    assert.equal(scan.body.repos, 0, 'le dépôt n’est plus interrogé du tout');
+    assert.equal(scan.body.found, 0);
+
+    /* Le point important : couper la récupération ne PURGE pas. Les merge requests déjà
+       dans la file — et leurs rapports — doivent survivre, sinon décocher devient destructif. */
+    assert.equal((await app.api('GET', '/api/mrs')).body.length, avant);
+
+    // Et le dépôt reste actif par ailleurs : `enabled` n'a pas bougé.
+    assert.equal(off.body.enabled, 1);
+
+    const on = await app.api('PUT', `/api/repos/${repoId}`, { fetch_mrs: true });
+    assert.equal(on.body.fetch_mrs, 1);
+    assert.equal((await app.api('POST', '/api/discover')).body.repos, 1);
+  });
+
+  test('les autres modifications d’un dépôt ne remettent pas la récupération à zéro', async () => {
+    await app.api('PUT', `/api/repos/${repoId}`, { fetch_mrs: false });
+    // Un PUT qui ne parle pas de fetch_mrs (renommage, pattern…) doit le laisser tel quel.
+    const apres = await app.api('PUT', `/api/repos/${repoId}`, { branch_pattern: 'PROJ-' });
+    assert.equal(apres.body.fetch_mrs, 0, 'un champ absent du corps reste inchangé');
+    await app.api('PUT', `/api/repos/${repoId}`, { fetch_mrs: true, branch_pattern: '' });
     await app.api('POST', '/api/discover');
   });
 
@@ -295,6 +341,72 @@ describe('API de bout en bout', () => {
 
     const mauvaise = await app.api('POST', `/api/mrs/${mrId}/ticket`, { image: 'pas-une-data-url' });
     assert.equal(mauvaise.status, 400);
+  });
+
+  /* ---------- Vérificateurs (plan_add_verify.md §3) ---------- */
+
+  test('Vérificateurs : création, couverture déclarée, garde-fous de configuration', async () => {
+    /* Chemin RELATIF refusé : il dépendrait du répertoire courant du serveur et pourrait
+       désigner un script du dépôt cloné plutôt que celui de l'utilisateur. */
+    const rel = await app.api('POST', '/api/verifiers', { name: 'integ', command: './run.sh' });
+    assert.equal(rel.status, 400);
+    assert.match(rel.body.error, /absolu/);
+    assert.equal((await app.api('POST', '/api/verifiers', { name: '  ', command: '/bin/true' })).status, 400);
+
+    const cree = await app.api('POST', '/api/verifiers', {
+      name: 'integ', command: '/usr/local/bin/verify.sh', timeout_s: 120,
+      repos: [{ repo_id: repoId, mode: 'worktree' }],
+    });
+    assert.equal(cree.status, 200);
+    assert.equal(cree.body.timeout_s, 120);
+    assert.equal(cree.body.run_base, 1, 'le double run causal est actif par défaut');
+    assert.equal(cree.body.comment_on_forge, 0, 'commenter la forge reste un choix explicite');
+    assert.deepEqual(cree.body.repos.map((r) => [r.repo_id, r.mode]), [[repoId, 'worktree']]);
+
+    // Le nom identifie le vérificateur dans l'UI et les rapports : pas de doublon.
+    const dup = await app.api('POST', '/api/verifiers', { name: 'integ', command: '/bin/true' });
+    assert.equal(dup.status, 400);
+    assert.match(dup.body.error, /existe déjà/);
+
+    /* Mode « in place » : chemin absolu ET consentement. Sans les deux, on ferait un checkout
+       dans un répertoire de travail sans que personne l'ait autorisé. */
+    const sansDir = await app.api('PUT', `/api/verifiers/${cree.body.id}`, {
+      repos: [{ repo_id: repoId, mode: 'in_place', checkout_allowed: true }],
+    });
+    assert.equal(sansDir.status, 400);
+    assert.match(sansDir.body.error, /absolu/);
+    const sansAccord = await app.api('PUT', `/api/verifiers/${cree.body.id}`, {
+      repos: [{ repo_id: repoId, mode: 'in_place', workdir: '/tmp/wd' }],
+    });
+    assert.equal(sansAccord.status, 400);
+    assert.match(sansAccord.body.error, /autorisation|permission/i);
+
+    const ok = await app.api('PUT', `/api/verifiers/${cree.body.id}`, {
+      timeout_s: 300, run_base: false,
+      repos: [{ repo_id: repoId, mode: 'in_place', workdir: '/tmp/wd', checkout_allowed: true }],
+    });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.timeout_s, 300);
+    assert.equal(ok.body.run_base, 0);
+    assert.equal(ok.body.repos[0].workdir, '/tmp/wd');
+
+    // Un timeout absurde est ramené dans les bornes plutôt que refusé.
+    const borne = await app.api('PUT', `/api/verifiers/${cree.body.id}`, { timeout_s: 999999 });
+    assert.equal(borne.body.timeout_s, 7200);
+    assert.equal(borne.body.repos.length, 1, 'une couverture absente du corps reste inchangée');
+
+    /* « Quel vérificateur couvre ces dépôts » : c'est ce qui décide si le bouton Vérifier est
+       actif. Un dépôt non couvert ne doit remonter aucun vérificateur, jamais un partiel. */
+    const pour = await app.api('GET', `/api/verifiers/for?repos=${repoId}`);
+    assert.deepEqual(pour.body.verifiers.map((x) => x.name), ['integ']);
+    const autreRepo = (await app.api('POST', '/api/repos', { project: 'grp/lib', url: 'https://gitlab.test/grp/lib.git' })).body;
+    assert.deepEqual((await app.api('GET', `/api/verifiers/for?repos=${repoId},${autreRepo.id}`)).body.verifiers, [],
+      'couvrir un dépôt sur deux ne suffit pas');
+    assert.deepEqual((await app.api('GET', '/api/verifiers/for?repos=')).body.verifiers, []);
+
+    await app.api('DELETE', `/api/repos/${autreRepo.id}`);
+    await app.api('DELETE', `/api/verifiers/${cree.body.id}`);
+    assert.deepEqual((await app.api('GET', '/api/verifiers')).body, []);
   });
 
   /* ---------- Jira ---------- */
@@ -409,6 +521,346 @@ describe('API de bout en bout', () => {
     assert.match(dl.headers.get('content-security-policy') || '', /sandbox/);
     assert.equal((await app.api('GET', '/api/jira/attachment/pas-un-id')).status, 400, 'id non numérique refusé');
     delete app.state.jiraIssues['PROJ-500'];
+  });
+
+  test('Jira : surveiller un ticket notifie son changement d’état, et seulement lui', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    const etat = (nom, cat) => ({ name: nom, statusCategory: { key: cat } });
+    app.state.jiraIssues['WATCH-1'] = { key: 'WATCH-1', fields: { summary: 'Ticket suivi', status: etat('À faire', 'new') } };
+    app.state.jiraIssues['WATCH-2'] = { key: 'WATCH-2', fields: { summary: 'Ticket témoin', status: etat('À faire', 'new') } };
+
+    assert.equal((await app.api('POST', '/api/jira/watch', { key: 'pas une clé' })).status, 400, 'clé invalide refusée');
+
+    // L'ajout mémorise l'état COURANT : c'est ce qui évite une fausse notification au 1er passage.
+    const add = await app.api('POST', '/api/jira/watch', { key: 'watch-1', note: 'bloque la migration facturation' });
+    assert.equal(add.status, 200);
+    assert.equal(add.body.key, 'WATCH-1', 'la clé est normalisée en majuscules');
+    assert.equal(add.body.status, 'À faire');
+    assert.equal(add.body.note, 'bloque la migration facturation', 'la raison de surveiller est conservée');
+    assert.equal((await app.api('POST', '/api/jira/watch', { key: 'WATCH-1' })).status, 400, 'doublon refusé');
+    await app.api('POST', '/api/jira/watch', { key: 'WATCH-2' });
+
+    const vu = (await app.api('GET', '/api/notifications')).body.latest;
+    const rien = await app.api('POST', '/api/jira/watch/check');
+    assert.equal(rien.body.changed, 0, 'aucun changement tant que Jira ne bouge pas');
+    assert.deepEqual((await app.api('GET', `/api/notifications?after=${vu}`)).body.events.filter((e) => e.type === 'jira_status'), [],
+      'une vérification sans changement ne notifie rien');
+
+    // Jira bouge sur UN seul des deux tickets.
+    app.state.jiraIssues['WATCH-1'].fields.status = etat('En cours', 'indeterminate');
+    const bouge = await app.api('POST', '/api/jira/watch/check');
+    assert.equal(bouge.body.changed, 1);
+
+    const evts = (await app.api('GET', `/api/notifications?after=${vu}`)).body.events.filter((e) => e.type === 'jira_status');
+    assert.equal(evts.length, 1, 'un seul ticket a bougé, une seule notification');
+    assert.equal(evts[0].key, 'WATCH-1');
+    assert.equal(evts[0].from, 'À faire');
+    assert.equal(evts[0].to, 'En cours');
+
+    // Le nouvel état devient la référence : re-vérifier ne renotifie pas le même changement.
+    assert.equal((await app.api('POST', '/api/jira/watch/check')).body.changed, 0);
+    const liste = await app.api('GET', '/api/jira/watch');
+    const suivi = liste.body.watched.find((w) => w.key === 'WATCH-1');
+    assert.equal(suivi.status, 'En cours');
+    assert.ok(suivi.changed_at, 'la date du changement est mémorisée');
+    /* La raison survit aux vérifications : elles réécrivent le résumé et l'état, pas la note.
+       C'est le genre de perte qu'on ne remarque que des semaines plus tard. */
+    assert.equal(suivi.note, 'bloque la migration facturation');
+
+    /* Elle se corrige sans retirer le ticket : le retirer perdrait sa date d'ajout et son
+       dernier état connu, et le ré-ajouter notifierait un faux changement. */
+    const modif = await app.api('PATCH', '/api/jira/watch/WATCH-1', { note: 'suivi pour la démo client' });
+    assert.equal(modif.status, 200);
+    assert.equal(modif.body.note, 'suivi pour la démo client');
+    assert.equal(modif.body.added_at, suivi.added_at, 'la date d’ajout ne bouge pas');
+    assert.equal(modif.body.status, 'En cours', '…ni l’état connu');
+    // Vider la note est un choix valable : on ne force pas à garder un rappel périmé.
+    assert.equal((await app.api('PATCH', '/api/jira/watch/WATCH-1', { note: '  ' })).body.note, '');
+    await app.api('PATCH', '/api/jira/watch/WATCH-1', { note: 'suivi pour la démo client' });
+    // Une note démesurée est tronquée, pas refusée : la liste doit rester lisible.
+    const longue = await app.api('PATCH', '/api/jira/watch/WATCH-1', { note: 'x'.repeat(900) });
+    assert.equal(longue.body.note.length, 500);
+    await app.api('PATCH', '/api/jira/watch/WATCH-1', { note: 'suivi pour la démo client' });
+    // Un ticket non surveillé n'a pas de note à modifier.
+    assert.equal((await app.api('PATCH', '/api/jira/watch/INCONNU-9', { note: 'x' })).status, 400);
+
+    // Compteur du menu : les tickets en cours qui me sont affectés.
+    await app.api('POST', '/api/jira/watch/check');
+    const badge = await app.api('GET', '/api/jira/badge');
+    assert.equal(badge.status, 200);
+    assert.equal(badge.body.configured, true);
+
+    // Un ticket disparu de Jira est signalé sur sa ligne, sans faire échouer les autres.
+    delete app.state.jiraIssues['WATCH-2'];
+    const perdu = await app.api('POST', '/api/jira/watch/check');
+    assert.equal(perdu.body.errors, 1);
+    assert.ok((await app.api('GET', '/api/jira/watch')).body.watched.find((w) => w.key === 'WATCH-2').error);
+
+    /* Deux vérifications SIMULTANÉES ne doivent notifier qu'une fois : sans sérialisation, les
+       deux liraient le même ancien état et annonceraient deux fois le même changement. */
+    app.state.jiraIssues['WATCH-1'].fields.status = etat('Terminé', 'done');
+    const avant = (await app.api('GET', '/api/notifications')).body.latest;
+    const [a, b] = await Promise.all([
+      app.api('POST', '/api/jira/watch/check'),
+      app.api('POST', '/api/jira/watch/check'),
+    ]);
+    /* On n'affirme PAS que les deux appels se recouvrent : selon le temps d'aller-retour HTTP, le
+       second peut démarrer après la fin du premier. L'invariant qui compte ne dépend pas de ça. */
+    assert.ok(a.body.changed + b.body.changed >= 1, 'le changement est bien constaté');
+    const doubles = (await app.api('GET', `/api/notifications?after=${avant}`)).body.events
+      .filter((e) => e.type === 'jira_status' && e.key === 'WATCH-1');
+    assert.equal(doubles.length, 1, 'un changement ne produit qu’UNE notification, même vérifié deux fois');
+
+    await app.api('DELETE', '/api/jira/watch/WATCH-1');
+    await app.api('DELETE', '/api/jira/watch/WATCH-2');
+    assert.deepEqual((await app.api('GET', '/api/jira/watch')).body.watched, []);
+    delete app.state.jiraIssues['WATCH-1'];
+  });
+
+  test('Jira : sans assigné coché, on prend TOUT — y compris ce qui ne m’est pas affecté', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    const tk = (key, accountId) => ({
+      key,
+      fields: {
+        summary: key, status: { name: 'À faire', statusCategory: { key: 'new' } },
+        ...(accountId ? { assignee: { accountId, displayName: accountId } } : {}),
+      },
+    });
+    app.state.jiraIssues['ASG-1'] = tk('ASG-1', 'me-test');    // à moi
+    app.state.jiraIssues['ASG-2'] = tk('ASG-2', 'autre-001');  // à quelqu'un d'autre
+    app.state.jiraIssues['ASG-3'] = tk('ASG-3', null);         // à personne
+
+    const cles = (b) => b.issues.map((i) => i.key).filter((k) => k.startsWith('ASG-')).sort();
+
+    // Une sélection explicite reste une sélection.
+    const moi = await app.api('GET', '/api/jira/tickets?assignees=me-test');
+    assert.deepEqual(cles(moi.body), ['ASG-1']);
+
+    /* Vide = aucune contrainte d'assigné. Avant, le serveur retombait sur `currentUser()` :
+       décocher tout le monde ramenait ses propres tickets, soit l'inverse de la demande. */
+    const tout = await app.api('GET', '/api/jira/tickets?assignees=');
+    assert.deepEqual(cles(tout.body), ['ASG-1', 'ASG-2', 'ASG-3'],
+      'le non-assigné et celui d’autrui doivent remonter');
+
+    /* Personne de coché ET les terminés inclus : sans contrainte, la JQL se réduirait à un
+       ORDER BY, que Jira Cloud refuse en 400 (« unbounded »). On vérifie donc qu'une clause
+       est bien présente — c'est la requête envoyée qui compte, pas la réponse du faux Jira. */
+    app.state.calls.length = 0;
+    await app.api('GET', '/api/jira/tickets?assignees=&includeDone=1');
+    const rech = app.state.calls.filter((c) => c.path.includes('/search')).pop();
+    const jql = decodeURIComponent(new URL(`http://x${rech.path}`).searchParams.get('jql'));
+    assert.ok(!/^\s*ORDER BY/i.test(jql), `JQL sans contrainte : ${jql}`);
+    assert.match(jql, /updated >= -365d/);
+
+    for (const k of ['ASG-1', 'ASG-2', 'ASG-3']) delete app.state.jiraIssues[k];
+  });
+
+  test('Jira : le filtre par projet est appliqué PAR Jira, pas après coup', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    const tk = (key, projet) => ({
+      key,
+      fields: {
+        summary: key, status: { name: 'À faire', statusCategory: { key: 'new' } },
+        project: { key: projet, name: `Projet ${projet}` },
+      },
+    });
+    app.state.jiraIssues['AAA-1'] = tk('AAA-1', 'AAA');
+    app.state.jiraIssues['BBB-1'] = tk('BBB-1', 'BBB');
+
+    const cles = (b) => b.issues.map((i) => i.key).filter((k) => /^(AAA|BBB)-/.test(k)).sort();
+    assert.deepEqual(cles((await app.api('GET', '/api/jira/tickets?assignees=')).body), ['AAA-1', 'BBB-1']);
+
+    /* Le nerf du problème : le résultat Jira est plafonné et trié par date de mise à jour.
+       Filtrer côté navigateur ne filtrerait qu'un extrait — les tickets du projet voulu
+       pouvant se trouver hors de cet extrait, ils disparaissaient de la liste. */
+    const filtre = await app.api('GET', '/api/jira/tickets?assignees=&projects=AAA');
+    assert.deepEqual(cles(filtre.body), ['AAA-1']);
+
+    app.state.calls.length = 0;
+    await app.api('GET', '/api/jira/tickets?assignees=&projects=AAA');
+    const rech = app.state.calls.filter((c) => c.path.includes('/search')).pop();
+    const jql = decodeURIComponent(new URL(`http://x${rech.path}`).searchParams.get('jql'));
+    assert.match(jql, /project IN \("AAA"\)/, `la contrainte doit être dans la JQL : ${jql}`);
+
+    // Une clé qui n'en est pas une n'atteint jamais la requête.
+    app.state.calls.length = 0;
+    await app.api('GET', '/api/jira/tickets?assignees=&projects=AAA%22%20OR%20x');
+    const rech2 = app.state.calls.filter((c) => c.path.includes('/search')).pop();
+    const jql2 = decodeURIComponent(new URL(`http://x${rech2.path}`).searchParams.get('jql'));
+    assert.ok(!/ OR x/.test(jql2), `injection dans la JQL : ${jql2}`);
+
+    for (const k of ['AAA-1', 'BBB-1']) delete app.state.jiraIssues[k];
+  });
+
+  test('Jira : le filtre par sprint est posé dans la JQL, comme le projet', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    app.state.jiraFields = [
+      { id: 'customfield_10020', name: 'Itération', custom: true, schema: { custom: 'com.pyxis.greenhopper.jira:gh-sprint' } },
+    ];
+    const tk = (key, sprint) => ({
+      key,
+      fields: {
+        summary: key, status: { name: 'À faire', statusCategory: { key: 'new' } },
+        ...(sprint ? { customfield_10020: [{ id: sprint, name: `Sprint ${sprint}`, state: 'active' }] } : {}),
+      },
+    });
+    app.state.jiraIssues['SP-1'] = tk('SP-1', 42);
+    app.state.jiraIssues['SP-2'] = tk('SP-2', 43);
+    app.state.jiraIssues['SP-3'] = tk('SP-3', null);
+    const cles = (b) => b.issues.map((i) => i.key).filter((k) => k.startsWith('SP-')).sort();
+
+    // Le champ est repéré tout seul : ses valeurs arrivent sur les tickets, normalisées.
+    const tout = await app.api('GET', '/api/jira/tickets?assignees=');
+    assert.deepEqual(cles(tout.body), ['SP-1', 'SP-2', 'SP-3']);
+    assert.deepEqual(tout.body.issues.find((i) => i.key === 'SP-1').sprints, [{ v: '42', l: 'Sprint 42', d: '', etat: 'active' }]);
+    assert.deepEqual(tout.body.issues.find((i) => i.key === 'SP-3').sprints, [], 'ticket hors sprint');
+
+    // La contrainte part dans la requête, pas après coup — sinon elle trierait un extrait.
+    assert.deepEqual(cles((await app.api('GET', '/api/jira/tickets?assignees=&sprints=42')).body), ['SP-1']);
+    assert.deepEqual(cles((await app.api('GET', '/api/jira/tickets?assignees=&sprints=42,43')).body), ['SP-1', 'SP-2']);
+
+    app.state.calls.length = 0;
+    await app.api('GET', '/api/jira/tickets?assignees=&sprints=42');
+    const rech = app.state.calls.filter((c) => c.path.includes('/search')).pop();
+    const q = new URL(`http://x${rech.path}`).searchParams;
+    assert.match(decodeURIComponent(q.get('jql')), /sprint IN \(42\)/);
+    assert.match(decodeURIComponent(q.get('fields')), /customfield_10020/, 'le champ doit être réclamé');
+
+    // Un identifiant non numérique n'atteint jamais la requête.
+    app.state.calls.length = 0;
+    await app.api('GET', '/api/jira/tickets?assignees=&sprints=42%29%20OR%20x');
+    const jql2 = decodeURIComponent(new URL(`http://x${app.state.calls.filter((c) => c.path.includes('/search')).pop().path}`).searchParams.get('jql'));
+    assert.ok(!/OR x/.test(jql2), `injection dans la JQL : ${jql2}`);
+
+    for (const k of ['SP-1', 'SP-2', 'SP-3']) delete app.state.jiraIssues[k];
+    app.state.jiraFields = [];
+  });
+
+  test('Jira : les statuts décochés sont exclus par Jira, noms personnalisés compris', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    const tk = (key, statut, cat) => ({
+      key, fields: { summary: key, status: { name: statut, statusCategory: { key: cat } } },
+    });
+    /* Un workflow Jira définit ses PROPRES statuts : rien n'est codé en dur côté outil, ni ici
+       ni dans le filtre — la liste vient des tickets, et l'exclusion part telle quelle. */
+    app.state.jiraIssues['ST-1'] = tk('ST-1', 'En attente de recette', 'indeterminate');
+    app.state.jiraIssues['ST-2'] = tk('ST-2', 'À faire', 'new');
+    const cles = (b) => b.issues.map((i) => i.key).filter((k) => k.startsWith('ST-')).sort();
+
+    assert.deepEqual(cles((await app.api('GET', '/api/jira/tickets?assignees=')).body), ['ST-1', 'ST-2']);
+
+    const sans = await app.api('GET', '/api/jira/tickets?assignees=&hideStatuses=En%20attente%20de%20recette');
+    assert.deepEqual(cles(sans.body), ['ST-2'], 'un statut maison s’exclut comme les autres');
+
+    app.state.calls.length = 0;
+    await app.api('GET', '/api/jira/tickets?assignees=&hideStatuses=En%20attente%20de%20recette');
+    const jql = decodeURIComponent(new URL(`http://x${app.state.calls.filter((c) => c.path.includes('/search')).pop().path}`).searchParams.get('jql'));
+    assert.match(jql, /status NOT IN \("En attente de recette"\)/);
+
+    // Un nom porteur d'un guillemet fermerait la chaîne JQL : il est écarté, pas échappé au petit bonheur.
+    app.state.calls.length = 0;
+    await app.api('GET', '/api/jira/tickets?assignees=&hideStatuses=%22%29%20OR%20x');
+    const jql2 = decodeURIComponent(new URL(`http://x${app.state.calls.filter((c) => c.path.includes('/search')).pop().path}`).searchParams.get('jql'));
+    assert.ok(!/status NOT IN/.test(jql2), `nom refusé attendu, JQL obtenue : ${jql2}`);
+
+    for (const k of ['ST-1', 'ST-2']) delete app.state.jiraIssues[k];
+  });
+
+  test('Jira : les statuts proposés viennent du WORKFLOW, pas des seuls tickets affichés', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    const st = (nom, cat) => ({ id: nom, name: nom, statusCategory: { key: cat } });
+    /* Deux types de tickets partagent des statuts : la réponse Jira les répète, la nôtre non. */
+    app.state.jiraProjectStatuses.AAA = [
+      { id: '1', name: 'Bug', statuses: [st('À faire', 'new'), st('Bloqué', 'indeterminate'), st('Terminé', 'done')] },
+      { id: '2', name: 'Story', statuses: [st('À faire', 'new'), st('En recette', 'indeterminate')] },
+    ];
+
+    const r = await app.api('GET', '/api/jira/statuses?projects=AAA');
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body.statuses.map((x) => x.name),
+      ['À faire', 'Bloqué', 'Terminé', 'En recette'],
+      'dédoublonnés par nom, tous types de tickets confondus');
+    assert.equal(r.body.statuses.find((x) => x.name === 'Bloqué').cat, 'indeterminate',
+      'la catégorie suit, c’est elle qui donne la couleur');
+
+    // Un projet inaccessible ne prive pas le filtre des statuts des autres.
+    const mixte = await app.api('GET', '/api/jira/statuses?projects=AAA,INCONNU');
+    assert.deepEqual(mixte.body.statuses.map((x) => x.name).sort(),
+      ['Bloqué', 'En recette', 'Terminé', 'À faire'].sort());
+
+    assert.deepEqual((await app.api('GET', '/api/jira/statuses?projects=')).body.statuses, []);
+    app.state.jiraProjectStatuses = {};
+  });
+
+  test('Jira : un refus de Jira remonte SON message, pas seulement le code', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    // Le faux Jira renvoie un 400 avec le corps que renvoie le vrai.
+    app.state.jiraFail = { status: 400, body: { errorMessages: ['The JQL query is unbounded.'] } };
+    const r = await app.api('GET', '/api/jira/tickets?assignees=');
+    assert.equal(r.status, 400);
+    assert.match(r.body.error, /The JQL query is unbounded/,
+      'sans le corps, l’utilisateur ne lit que « Jira 400 Bad Request » et ne peut rien en faire');
+    delete app.state.jiraFail;
+  });
+
+  test('Jira : l’epic d’un ticket est exposé, et un parent qui n’en est pas un ne l’est pas', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    const parent = (key, type, niveau) => ({
+      key, fields: { summary: `Parent ${key}`, issuetype: { name: type, ...(niveau == null ? {} : { hierarchyLevel: niveau }) } },
+    });
+    app.state.jiraIssues['EPIC-1'] = {
+      key: 'EPIC-1',
+      fields: { summary: 'Rattaché à un epic', status: { name: 'À faire', statusCategory: { key: 'new' } }, parent: parent('EPIC-100', 'Epic', 1) },
+    };
+    /* Une SOUS-TÂCHE a elle aussi un `parent` — une story. L'annoncer comme epic serait un
+       contresens : c'est le piège de ce champ, et la raison du filtre par niveau. */
+    app.state.jiraIssues['EPIC-2'] = {
+      key: 'EPIC-2',
+      fields: { summary: 'Sous-tâche d’une story', status: { name: 'À faire', statusCategory: { key: 'new' } }, parent: parent('STORY-9', 'Story', 0) },
+    };
+    app.state.jiraIssues['EPIC-3'] = {
+      key: 'EPIC-3',
+      fields: { summary: 'Sans parent', status: { name: 'À faire', statusCategory: { key: 'new' } } },
+    };
+
+    const list = (await app.api('GET', '/api/jira/tickets')).body.issues;
+    const par = (k) => list.find((i) => i.key === k);
+    assert.deepEqual(par('EPIC-1').epic,
+      { key: 'EPIC-100', summary: 'Parent EPIC-100', color: '', url: `${app.gitlabUrl}/browse/EPIC-100` },
+      'l’epic porte sa propre URL : c’est ce qui le rend cliquable');
+    assert.equal(par('EPIC-2').epic, null, 'le parent d’une sous-tâche n’est pas un epic');
+    assert.equal(par('EPIC-3').epic, null);
+
+    // Le détail porte la même information que la liste.
+    assert.deepEqual((await app.api('GET', '/api/jira/issue/EPIC-1')).body.issue.epic,
+      { key: 'EPIC-100', summary: 'Parent EPIC-100', color: '', url: `${app.gitlabUrl}/browse/EPIC-100` });
+
+    // Instance sans `hierarchyLevel` : on retombe sur le nom du type.
+    app.state.jiraIssues['EPIC-1'].fields.parent = parent('EPIC-101', 'Épique');
+    assert.equal((await app.api('GET', '/api/jira/issue/EPIC-1')).body.issue.epic.key, 'EPIC-101');
+
+    for (const k of ['EPIC-1', 'EPIC-2', 'EPIC-3']) delete app.state.jiraIssues[k];
+  });
+
+  test('Jira : passer un ticket « en cours » met le compteur du menu à jour tout de suite', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    app.state.jiraIssues['COUNT-1'] = {
+      key: 'COUNT-1',
+      fields: { summary: 'Pas encore commencé', status: { name: 'À faire', statusCategory: { key: 'new' } } },
+    };
+    const avant = (await app.api('GET', '/api/jira/badge')).body.inProgress;
+
+    // Transition « En cours » (id 21 du faux Jira) : le compteur doit suivre SANS attendre le
+    // timer de surveillance ni le sondage du navigateur — c'est tout l'objet de ce test.
+    const tr = await app.api('POST', '/api/jira/issue/COUNT-1/transition', { transitionId: '21' });
+    assert.equal(tr.status, 200);
+    assert.equal((await app.api('GET', '/api/jira/badge')).body.inProgress, avant + 1,
+      'le compteur est recalculé pendant la transition, pas au prochain tour de timer');
+
+    // Et il redescend quand le ticket sort de « en cours ».
+    await app.api('POST', '/api/jira/issue/COUNT-1/transition', { transitionId: '31' });
+    assert.equal((await app.api('GET', '/api/jira/badge')).body.inProgress, avant);
+    delete app.state.jiraIssues['COUNT-1'];
   });
 
   test('Jira : l’échec est mémorisé sur la MR pour être affiché', async () => {
@@ -562,6 +1014,58 @@ describe('API de bout en bout', () => {
     assert.equal(body.tasks.total, 0);
   });
 
+  /* Le badge orange du menu Reviews : les rapports FAIBLES qui attendent encore une décision.
+     Ce que Mergerie badge, c'est du travail en attente — pas un total. Une merge request
+     classée traitée ne demande plus rien, même mal notée : la compter donnerait un chiffre qui
+     ne redescend jamais, donc qu'on cesse de regarder. */
+  test('les rapports notés sous 7/10 et encore à traiter sont comptés à part', async () => {
+    /* Trois merge requests à nous, insérées en base : dépendre de celles que les autres tests
+       laissent derrière eux rendrait ce test tributaire de leur ordre. */
+    const avant = (await app.api('GET', '/api/stats')).body.lowScores;
+    const repoId = app.db.prepare('SELECT id FROM repo LIMIT 1').get().id;
+    const ids = [901, 902, 903].map((iid) => app.db.prepare(
+      "INSERT INTO mr (repo_id, iid, title, source_branch, target_branch, status) VALUES (?,?,?,?,?,'to_review')",
+    ).run(repoId, iid, `note ${iid}`, `f/${iid}`, 'main').lastInsertRowid);
+    const mrs = ids.map((id) => ({ id }));
+    const poser = (mrId, note, statut) => {
+      app.db.prepare("INSERT OR REPLACE INTO review (mr_id, md_path, note_value, created_at, updated_at) VALUES (?,?,?,?,?)")
+        .run(mrId, `/tmp/r-${mrId}.md`, note, new Date().toISOString(), new Date().toISOString());
+      app.db.prepare('UPDATE mr SET status = ? WHERE id = ?').run(statut, mrId);
+    };
+    /* Le nettoyage passe par `finally` : sans lui, un échec en cours de route laisse nos
+       reviews en base et fait tomber les tests suivants — on diagnostique alors deux pannes
+       là où il n'y en a qu'une. */
+    try {
+      poser(mrs[0].id, 0.55, 'reviewed');   // 5,5/10 → compte
+      poser(mrs[1].id, 0.82, 'reviewed');   // 8,2/10 → ne compte pas
+      poser(mrs[2].id, 0.31, 'done');       // 3,1/10 mais déjà traitée → ne compte pas
+
+      const compte = async () => (await app.api('GET', '/api/stats')).body.lowScores - avant;
+      assert.equal(await compte(), 1);
+
+      // Le seuil est bien 7/10, borne exclue : 7,0 n'est pas « faible ».
+      app.db.prepare('UPDATE review SET note_value = 0.7 WHERE mr_id = ?').run(mrs[0].id);
+      assert.equal(await compte(), 0, '7/10 pile n’est pas sous 7');
+
+      // Un rapport sans note extraite ne compte pas non plus : on ne devine pas.
+      app.db.prepare('UPDATE review SET note_value = NULL WHERE mr_id = ?').run(mrs[0].id);
+      assert.equal(await compte(), 0);
+
+      // Traiter la merge request fait redescendre le compteur : c'est ce qui le rend crédible.
+      app.db.prepare('UPDATE review SET note_value = 0.4 WHERE mr_id = ?').run(mrs[0].id);
+      assert.equal(await compte(), 1);
+      await app.api('POST', `/api/mrs/${mrs[0].id}/done`, {});
+      assert.equal(await compte(), 0);
+    } finally {
+      /* Reviews COMPRISES : compter sur la suppression en cascade rendrait ce nettoyage
+         dépendant d'un pragma. */
+      for (const m of mrs) {
+        app.db.prepare('DELETE FROM review WHERE mr_id = ?').run(m.id);
+        app.db.prepare('DELETE FROM mr WHERE id = ?').run(m.id);
+      }
+    }
+  });
+
   test('GET /api/dashboard/commits renvoie le dernier commit par dépôt actif', async () => {
     const repos = (await app.api('GET', '/api/repos')).body.filter((r) => r.enabled);
     assert.ok(repos.length, 'au moins un dépôt actif');
@@ -580,6 +1084,30 @@ describe('API de bout en bout', () => {
     const c = body.commits[0];
     assert.ok(c.project && c.sha && c.author && c.date, 'champs mappés');
     assert.match(c.url, /\/-\/commit\//, 'lien GitLab vers le commit');
+
+    /* Le classement porte sur l'activité RÉCENTE : il doit voir TOUTES les branches. Sans
+       `all=true`, GitLab ne rend que la branche par défaut, et un dépôt où le travail vit sur
+       des branches de feature paraît endormi depuis des mois. */
+    const appels = app.state.calls.filter((x) => x.path.includes('/repository/commits'));
+    assert.ok(appels.length, 'la route interroge bien les commits');
+    assert.ok(appels.every((x) => x.path.includes('all=true')),
+      `toutes branches confondues attendu, vu : ${appels.map((x) => x.path).join(' | ')}`);
+
+    /* Un dépôt dont la récupération des MR est coupée n'est plus suivi : il ne peut donc pas
+       trôner en tête de l'activité récente, et on ne dépense plus d'appel forge pour lui —
+       c'est précisément ce qu'on cherchait en la décochant. */
+    const cible = repos[0];
+    await app.api('PUT', `/api/repos/${cible.id}`, { url: cible.url, enabled: 1, fetch_mrs: 0 });
+    const avantSansMr = app.state.calls.length;
+    const sansMr = (await app.api('GET', '/api/dashboard/commits')).body.commits;
+    assert.ok(!sansMr.some((c) => c.project === cible.project), `${cible.project} ne devrait plus compter`);
+    assert.equal(sansMr.length, repos.length - 1, 'les autres dépôts sont toujours là');
+    assert.ok(!app.state.calls.slice(avantSansMr).some((x) => x.path.includes(encodeURIComponent(cible.project))),
+      'aucun appel à la forge pour un dépôt qu’on ne suit plus');
+
+    await app.api('PUT', `/api/repos/${cible.id}`, { url: cible.url, enabled: 1, fetch_mrs: 1 });
+    assert.equal((await app.api('GET', '/api/dashboard/commits')).body.commits.length, repos.length,
+      'et il revient dès qu’on le suit de nouveau');
 
     // Un dépôt sans commit est simplement omis (best-effort).
     app.state.commits = {};

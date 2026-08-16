@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
 
 jobs:
@@ -15,5 +15,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Le paquet `playwright` est installé par `npm ci` ; les NAVIGATEURS sont téléchargés à
+      # part. Sans cette étape, les suites d'interface se passent en silence et le vert du CI
+      # ne dit plus rien de l'écran. `--with-deps` ajoute les librairies système du runner
+      # Ubuntu ; chromium seul suffit — les tests ne visent aucun autre navigateur.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
       - run: npm run check
       - run: npm test

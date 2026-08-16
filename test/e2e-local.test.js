@@ -17,6 +17,49 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
   before(async () => { app = await startApp(); await app.configure(); });
   after(async () => { await app.stop(); });
 
+  /* RELANCE CIBLÉE. Les dossiers d'une session sont indépendants : refaire ceux qui ont réussi
+     pour rattraper le seul qui a cassé coûte une passe d'agent par dossier, pour rien. */
+  test('on relance un seul dossier — les autres ne retravaillent pas', async () => {
+    const a = mkdir(); const b = mkdir();
+    const marqueur = (d) => path.join(d, 'PROJ_LOCAL_DRYRUN.md');
+    const taille = (d) => { try { return fs.statSync(marqueur(d)).size; } catch { return 0; } };
+
+    const { body: lt } = await app.api('POST', '/api/local-tasks', { prompt: 'Range les imports', dirs: [a, b] });
+    await app.api('POST', `/api/local-tasks/${lt.id}/run`);
+    await waitForJobs(app.api);
+    const avant = { a: taille(a), b: taille(b) };
+    assert.ok(avant.a > 0 && avant.b > 0, 'les deux dossiers ont été traités au premier tour');
+
+    const dirs = (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === lt.id).dirs;
+    const r = await app.api('POST', `/api/local-tasks/${lt.id}/run`, { dirs: [dirs[0].id] });
+    assert.equal(r.status, 200);
+    await waitForJobs(app.api);
+
+    assert.ok(taille(a) > avant.a, 'le dossier visé a bien retravaillé');
+    assert.equal(taille(b), avant.b, 'l’autre n’a pas bougé — c’est tout l’intérêt');
+  });
+
+  test('un dossier inconnu est refusé plutôt qu’ignoré en silence', async () => {
+    const d = mkdir();
+    const { body: lt } = await app.api('POST', '/api/local-tasks', { prompt: 'x', dirs: [d] });
+    const r = await app.api('POST', `/api/local-tasks/${lt.id}/run`, { dirs: [999999] });
+    assert.equal(r.status, 400, 'viser un dossier qui n’existe pas ne doit pas relancer TOUTE la session');
+  });
+
+  /* L'ERREUR S'EFFACE VRAIMENT. La croix de l'encart retirait la boîte de l'écran sans rien
+     enregistrer : l'erreur revenait au rafraîchissement suivant, et le bouton avait l'air de
+     marcher — ce qui est pire qu'un bouton absent. */
+  test('effacer l’erreur d’une session hors dépôt l’efface en base', async () => {
+    const { body: lt } = await app.api('POST', '/api/local-tasks', { prompt: 'x', dirs: ['/n/existe/pas'] });
+    await app.api('POST', `/api/local-tasks/${lt.id}/run`);
+    await waitForJobs(app.api);
+    const lire = async () => (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === lt.id);
+    assert.ok((await lire()).last_error, 'la session est en erreur');
+
+    assert.equal((await app.api('POST', `/api/local-tasks/${lt.id}/clear-error`)).status, 200);
+    assert.equal((await lire()).last_error, null, 'et l’erreur ne revient pas au rechargement');
+  });
+
   test('code dans chaque dossier, sans git, et marque « done »', async () => {
     const a = mkdir();
     const b = mkdir();
@@ -205,6 +248,29 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
     await waitForJobs(app.api);
     const apres = (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === created.id);
     assert.equal(apres.status, 'done');
+  });
+
+  /* Même ordre que les sessions de codage : ce qui vient de finir de tourner en tête. Sans
+     ça, une session hors dépôt exécutée il y a une minute se retrouve sous une session plus
+     récemment CRÉÉE mais jamais lancée. */
+  test('les sessions hors dépôt les plus récemment exécutées passent devant', async () => {
+    const creer = async (nom) => (await app.api('POST', '/api/local-tasks', { prompt: nom, dirs: [mkdir()] })).body.id;
+    const a = await creer('ordre-a');
+    const b = await creer('ordre-b');
+
+    await app.api('POST', `/api/local-tasks/${b}/run`);
+    await waitForJobs(app.api);
+    await app.api('POST', `/api/local-tasks/${a}/run`);
+    await waitForJobs(app.api);
+
+    const rang = async () => (await app.api('GET', '/api/local-tasks')).body.map((x) => x.id);
+    let ordre = await rang();
+    assert.ok(ordre.indexOf(a) < ordre.indexOf(b), `dernier exécuté en tête (vu ${ordre.join(',')})`);
+
+    // Corriger le prompt ne remonte pas la session : seule une exécution compte.
+    await app.api('PUT', `/api/local-tasks/${b}`, { prompt: 'ordre-b corrigé' });
+    ordre = await rang();
+    assert.ok(ordre.indexOf(a) < ordre.indexOf(b), 'une simple modification ne change pas l’ordre');
   });
 
   // Pendant hors dépôt de la reprise de session : l'identifiant se range sur chaque dossier.

@@ -61,12 +61,18 @@ async function startApp() {
     return { status: res.status, body: json, text, headers: res.headers };
   }
 
-  // Configure l'app pour parler au faux GitLab (et au faux Jira si demandé).
+  /* Configure l'app pour parler au faux GitLab (et au faux Jira si demandé).
+
+     `brief_on_open: '0'` par DÉFAUT : sans lui, la première ouverture de la journée ferait
+     atterrir chaque test de navigateur sur Notes → Aujourd'hui au lieu de l'onglet qu'il
+     vient exercer — un profil de navigateur neuf n'a jamais « déjà vu » le brief du jour.
+     Un test qui veut justement éprouver l'atterrissage le repasse à '1' via `extra`. */
   async function configure(extra = {}) {
     return api('PUT', '/api/config', {
       gitlab_url: gitlab.url,
       access_token: mock.state.token,
       clone_path: path.join(dataDir, 'clones'),
+      brief_on_open: '0',
       ...extra,
     });
   }
@@ -111,6 +117,55 @@ function git(cwd, args) {
   return execFileSync('git', args, { cwd, env: GIT_ENV, encoding: 'utf8' });
 }
 
+/* IDENTITÉ GIT ÉCRITE DANS LE DÉPÔT DE FIXTURE LUI-MÊME.
+   Les variables `GIT_AUTHOR_*` ci-dessus ne couvrent que les commandes lancées PAR le test.
+   L'application, elle, commite avec l'identité de l'utilisateur — c'est un choix assumé
+   (`src/git.js`), pas un oubli. Sur une machine sans `user.name` global (runner CI, conteneur
+   vierge), ses commits s'arrêtaient donc sur « Committer identity unknown ».
+   C'est au dépôt de fixture de fournir cette identité, en configuration LOCALE : jamais
+   `--global`, qui modifierait la machine de qui lance les tests. */
+const IDENTITE_GIT = { nom: 'Mergerie Tests', email: 'tests@mergerie.invalid' };
+
+function poserIdentiteGit(cwd) {
+  git(cwd, ['config', 'user.name', IDENTITE_GIT.nom]);
+  git(cwd, ['config', 'user.email', IDENTITE_GIT.email]);
+}
+
+/* Pour les commandes git lancées HORS d'un dépôt de fixture préparé (un `git clone`, un dépôt
+   monté à la main) : `git ...ARGS_IDENTITE_GIT, 'commit'` porte l'identité sans rien écrire. */
+const ARGS_IDENTITE_GIT = [
+  '-c', `user.name=${IDENTITE_GIT.nom}`,
+  '-c', `user.email=${IDENTITE_GIT.email}`,
+];
+
+/* ---------- Navigateur des tests d'interface ----------
+   `require('playwright')` réussit dès que le paquet est là ; les NAVIGATEURS, eux, sont
+   téléchargés à part. Un environnement nu passe donc le require et casse au lancement, sur une
+   stack qui ne dit pas quoi faire. On contrôle l'exécutable AVANT de démarrer la suite, et on
+   traduit l'échec de lancement en une phrase qui donne la commande. */
+const MSG_NAVIGATEUR = 'Navigateurs Playwright non installés — lancer : npx playwright install chromium';
+
+function navigateurDispo() {
+  try {
+    // eslint-disable-next-line global-require
+    const { chromium } = require('playwright');
+    return { chromium, dispo: fs.existsSync(chromium.executablePath()) };
+  } catch { return { chromium: null, dispo: false }; }
+}
+
+async function lancerNavigateur(options = {}) {
+  const { chromium } = navigateurDispo();
+  if (!chromium) throw new Error(MSG_NAVIGATEUR);
+  try {
+    return await chromium.launch(options);
+  } catch (e) {
+    if (/Executable doesn't exist|please run the following command/i.test(e.message)) {
+      throw new Error(MSG_NAVIGATEUR);
+    }
+    throw e;
+  }
+}
+
 /* Crée un dépôt nu contenant `main` et une branche de travail qui modifie un
    fichier. Renvoie l'URL (chemin) du dépôt nu et les SHA des deux têtes. */
 function makeRemoteRepo(dir, { branch = 'feature/PROJ-42-ajout', mainFile = 'src/app.js' } = {}) {
@@ -120,6 +175,7 @@ function makeRemoteRepo(dir, { branch = 'feature/PROJ-42-ajout', mainFile = 'src
   fs.mkdirSync(work, { recursive: true });
   git(bare, ['init', '--bare', '--initial-branch=main', '.']);
   git(work, ['init', '--initial-branch=main', '.']);
+  poserIdentiteGit(work);
   git(work, ['remote', 'add', 'origin', bare]);
   fs.mkdirSync(path.join(work, path.dirname(mainFile)), { recursive: true });
   fs.writeFileSync(path.join(work, mainFile), 'const a = 1;\nmodule.exports = { a };\n');
@@ -168,4 +224,8 @@ async function waitForJobs(api, { timeout = 60000 } = {}) {
   }
 }
 
-module.exports = { startApp, makeRemoteRepo, pushChange, waitForJobs, git, ROOT };
+module.exports = {
+  startApp, makeRemoteRepo, pushChange, waitForJobs, git, ROOT,
+  poserIdentiteGit, ARGS_IDENTITE_GIT, IDENTITE_GIT,
+  navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
+};

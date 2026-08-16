@@ -5,6 +5,8 @@
 const ISSUES = [
   {
     key: 'PROJ-1421', summary: 'Le panier perd les articles après reconnexion', type: 'Bug', typeIcon: '',
+    sprints: [{ v: '42', l: 'Sprint 42', d: '2026-07-20T08:00:00.000Z', etat: 'future' }],
+    epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
     status: 'En cours', statusCategory: 'indeterminate', priority: 'Haute',
     assignee: { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
     reporter: { name: 'Support N2', email: 'support@demo', avatar: '' },
@@ -23,6 +25,8 @@ const ISSUES = [
   },
   {
     key: 'PROJ-1408', summary: 'Ajouter le paiement en 3× sans frais', type: 'Story', typeIcon: '',
+    sprints: [{ v: '42', l: 'Sprint 42', d: '2026-07-20T08:00:00.000Z', etat: 'future' }],
+    epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
     status: 'À faire', statusCategory: 'new', priority: 'Moyenne',
     assignee: { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
     reporter: { name: 'Product Owner', email: 'po@demo', avatar: '' },
@@ -36,6 +40,8 @@ const ISSUES = [
   },
   {
     key: 'PROJ-1390', summary: 'Migrer les logs vers le nouveau format JSON', type: 'Tâche', typeIcon: '',
+    sprints: [{ v: '43', l: 'Sprint 43', d: '2026-07-06T08:00:00.000Z', etat: 'active' }],
+    epic: { key: 'PROJ-1050', summary: 'Observabilité : logs et métriques', color: 'blue' },
     status: 'En revue', statusCategory: 'indeterminate', priority: 'Basse',
     assignee: { accountId: 'usr-002', name: 'Alex Martin', email: 'alex@demo', avatar: '' },
     reporter: { name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
@@ -43,6 +49,24 @@ const ISSUES = [
     created: '2026-07-02T14:00:00.000+0000', updated: '2026-07-20T09:00:00.000+0000',
     duedate: '', components: [], fixVersions: [],
     descriptionMd: 'Uniformiser tous les logs applicatifs au format JSON structuré (clé `level`, `msg`, `ts`).',
+    comments: [],
+  },
+  {
+    key: 'PROJ-1402', summary: 'Ajouter les gabarits de notification NP15', type: 'Tâche', typeIcon: '',
+    sprints: [{ v: '43', l: 'Sprint 43', d: '2026-07-06T08:00:00.000Z', etat: 'active' }],
+    epic: { key: 'PROJ-1050', summary: 'Observabilité : logs et métriques', color: 'blue' },
+    status: 'À faire', statusCategory: 'new', priority: 'Moyenne',
+    assignee: { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
+    reporter: { name: 'Alex Martin', email: 'alex@demo', avatar: '' },
+    project: 'PROJ — Plateforme', labels: ['notification'],
+    created: '2026-07-18T09:00:00.000+0000', updated: '2026-07-24T16:10:00.000+0000',
+    duedate: '', components: [], fixVersions: [],
+    /* Une description dont la source Jira est un TABLEAU portant des blocs de code : c'est la
+       mise en page courante d'un ticket technique — une étiquette, un gabarit à copier.
+       Aplati en cellules, le JSON se retrouvait sur une seule ligne, indentations écrasées et
+       incopiable ; ces tableaux sont désormais dépliés (voir `renderTable` dans src/jira.js),
+       et c'est ce rendu-là que la démo montre. */
+    descriptionMd: "Ajouter les templates suivant dans l'appel d'envoi de notification.\n\nNP15_Suppression_IN\n\n```json\n{\n    \"partner\": \"LIN\",\n    \"model\": { \"code\": \"LIN_NP15_SUPPRESSION_IN\", \"version\": 8 },\n    \"recipients\": [\n        { \"media\": \"EMAIL\", \"email\": \"{{EMAIL}}\" }\n    ],\n    \"data\": { \"dest\": \"STRING\", \"prenom\": \"STRING\" }\n}\n```\n\n---\n\nNP15-1_Suppression_IN\n\n```json\n{\n    \"partner\": \"LIN\",\n    \"model\": { \"code\": \"LIN_NP15-1_SUPPRESSION_IN\", \"version\": 1 },\n    \"recipients\": [\n        { \"media\": \"EMAIL\", \"email\": \"{{EMAIL}}\" }\n    ]\n}\n```",
     comments: [],
   },
 ];
@@ -63,7 +87,11 @@ const DONE = [
 
 const meta = (i) => {
   const { descriptionMd, comments, attachments, ...m } = i; // la liste ne porte pas ces 3-là
-  return { ...m, url: `https://jira.demo/browse/${i.key}` };
+  // L'epic porte SA propre URL, comme en réel : c'est ce qui le rend cliquable.
+  const epic = m.epic ? { ...m.epic, url: `https://jira.demo/browse/${m.epic.key}` } : null;
+  // Même forme qu'en réel : la CLÉ du projet à part, c'est elle qui sert de valeur de filtre.
+  const projectKey = String(m.project || '').split(' ')[0];
+  return { ...m, epic, projectKey, url: `https://jira.demo/browse/${i.key}` };
 };
 
 const ME = { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' };
@@ -73,13 +101,49 @@ const PEOPLE = [
   { accountId: 'usr-003', name: 'Sam Durand', email: 'sam@demo', avatar: '' },
 ];
 
+/* Statuts du workflow de démo, par projet. Deux d'entre eux ne sont portés par AUCUN ticket
+   semé — c'est tout l'intérêt : ils prouvent que la liste vient du workflow et pas seulement
+   des tickets affichés. */
+const STATUTS_PROJET = {
+  PROJ: [
+    { name: 'À faire', cat: 'new' },
+    { name: 'En cours', cat: 'indeterminate' },
+    { name: 'En revue', cat: 'indeterminate' },
+    { name: 'Bloqué', cat: 'indeterminate' },
+    { name: 'En attente de recette', cat: 'indeterminate' },
+    { name: 'Terminé', cat: 'done' },
+  ],
+};
+function projectStatuses(cles) {
+  const par = new Map();
+  for (const c of (cles && cles.length ? cles : Object.keys(STATUTS_PROJET))) {
+    for (const st of (STATUTS_PROJET[c] || [])) if (!par.has(st.name)) par.set(st.name, { ...st });
+  }
+  return [...par.values()];
+}
+
 // Filtre par assigné : « moi » + les collègues (démo).
 function assignees() { return { me: ME, people: PEOPLE }; }
 
 // Tickets des personnes cochées (accountIds) ; vide → mes tickets.
-function tickets(accountIds, includeDone) {
-  const set = (accountIds && accountIds.length) ? new Set(accountIds) : new Set([ME.accountId]);
-  const list = (includeDone ? [...ISSUES, ...DONE] : ISSUES).filter((i) => i.assignee && set.has(i.assignee.accountId));
+function tickets(accountIds, includeDone, projects = [], sprints = [], hideStatuses = []) {
+  // Vide = aucune contrainte d'assigné (même règle qu'en réel), pas « mes tickets ».
+  const set = (accountIds && accountIds.length) ? new Set(accountIds) : null;
+  const tous = includeDone ? [...ISSUES, ...DONE] : ISSUES;
+  let list = set ? tous.filter((i) => i.assignee && set.has(i.assignee.accountId)) : tous;
+  // Même règle qu'en réel : les projets choisis filtrent la requête, pas son résultat.
+  if (projects && projects.length) {
+    const cles = new Set(projects);
+    list = list.filter((i) => cles.has(String(i.project || '').split(' ')[0]));
+  }
+  if (sprints && sprints.length) {
+    const ids = new Set(sprints.map(String));
+    list = list.filter((i) => (i.sprints || []).some((sp) => ids.has(String(sp.v))));
+  }
+  if (hideStatuses && hideStatuses.length) {
+    const caches = new Set(hideStatuses);
+    list = list.filter((i) => !caches.has(i.status));
+  }
   return { issues: list.map(meta), total: list.length };
 }
 
@@ -96,6 +160,19 @@ function issue(key) {
   return { ...meta(found), descriptionMd: found.descriptionMd, comments: found.comments, attachments: found.attachments || [], transitions: DEMO_TRANSITIONS };
 }
 
+/* Appliquer une transition en démo : on modifie l'état EN MÉMOIRE. Sans ça, changer le statut
+   d'un ticket ne tenait pas — la liste se rechargeait sur l'ancien état, et le compteur du menu
+   ne bougeait jamais. Une démo qui accepte une action sans la refléter enseigne le contraire de
+   ce que fait l'outil. L'effet dure le temps du processus, ce qui suffit à une démonstration. */
+function applyTransition(key, transitionId) {
+  const cible = DEMO_TRANSITIONS.find((tr) => String(tr.id) === String(transitionId));
+  const found = [...ISSUES, ...DONE].find((i) => i.key === key);
+  if (!cible || !found) return { ok: false };
+  found.status = cible.to.name;
+  found.statusCategory = cible.to.statusCategory;
+  return { ok: true, status: found.status };
+}
+
 // Contenu FICTIF d'une pièce jointe (démo) : le vrai viendrait de Jira via le proxy. Pour une
 // image, on renvoie une SVG placeholder → l'aperçu inline s'affiche vraiment en démo.
 function attachmentFile(id) {
@@ -108,4 +185,13 @@ function attachmentFile(id) {
   return { filename: (meta && meta.filename) || `piece-jointe-demo-${id}.txt`, mimeType: 'text/plain', buffer: Buffer.from('(démo) contenu factice — en réel, le fichier est récupéré depuis Jira avec le token.') };
 }
 
-module.exports = { assignees, tickets, issue, attachmentFile };
+/* Compteur du menu en démo : les tickets qui me sont affectés ET en cours. Calculé sur le
+   jeu fictif plutôt qu'écrit en dur, pour qu'il reste juste si on retouche les tickets. */
+function inProgressMine() {
+  return ISSUES.filter((i) => i.statusCategory === 'indeterminate'
+    && i.assignee && i.assignee.accountId === 'me-001').length;
+}
+
+const issueUrl = (key) => `https://jira.demo/browse/${key}`;
+
+module.exports = { assignees, tickets, issue, attachmentFile, inProgressMine, applyTransition, issueUrl, projectStatuses };

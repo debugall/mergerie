@@ -8,20 +8,11 @@ const git = require('./git');
 const copilot = require('./copilot');
 const agentsession = require('./agentsession');
 const questions = require('./questions');
+const { avecConsignes } = require('./prompts');
 const agentpass = require('./agentpass');
 const { t } = require('../public/i18n-runtime.js');
 
 const WORK_REL = 'ai-dev-tools-internal';
-
-// En dry-run, quand une session autorise les questions, l'agent « simule » un bloc
-// QUESTIONS au 1er passage : ça exerce tout le flux ask → needs_input → reprise sans agent.
-const DRYRUN_QUESTIONS = `Analyse préalable effectuée.
-<<<QUESTIONS
-[
-  {"id":"q1","question":"Où placer la logique de retry ?","context":"Deux conventions coexistent dans le dépôt.","options":[{"value":"decorator","label":"Décorateur (comme OrderService)"},{"value":"middleware","label":"Middleware HTTP (comme PaymentClient)"}]},
-  {"id":"q2","question":"Faut-il migrer les données existantes ?","context":"La colonne change de type.","options":null}
-]
-QUESTIONS>>>`;
 
 function safeParseQuestions(json) { try { return JSON.parse(json) || []; } catch { return []; } }
 
@@ -84,8 +75,78 @@ function attachImages(task, cwd, onLog) {
     const rel = `${WORK_REL}/img_${i + 1}${ext}`;
     try { fs.copyFileSync(im.path, path.join(cwd, rel)); imgBlock += `\n- capture jointe : \`${rel}\``; } catch { /* ignore */ }
   });
-  if (imgBlock) { imgBlock = `\n\nDes captures d'écran sont fournies (ouvre-les) :${imgBlock}`; onLog(`${images.length} capture(s) jointe(s)`); }
+  if (imgBlock) { imgBlock = `\n\nDes captures d'écran sont fournies (ouvre-les) :${imgBlock}`; onLog(t('log.task.images', { n: images.length, count: images.length })); }
   return imgBlock;
+}
+
+/* ---------- Réconcilier l'état affiché avec l'état réel des branches ----------
+   Un projet peut échouer APRÈS son commit (push refusé, réseau coupé) : le travail existe dans
+   le clone, mais la cible reste « erreur », donc sans diff, sans bouton Pousser ni Créer la MR.
+   Relancer la session le réparerait — au prix d'un appel IA par dépôt, pour du travail déjà fait.
+   Ici on ne fait que REGARDER : la branche a-t-elle des commits d'avance sur sa base ? Si oui, on
+   rétablit l'état qui aurait dû être écrit. Aucun appel IA, et rien n'est maquillé : une branche
+   réellement vide reste en erreur. */
+async function reconcileTargets(task, onLog = () => {}) {
+  const cfg = getConfig();
+  const cibles = targetsOf(task.id).filter((tg) => tg.status === 'error');
+  if (!cibles.length) { onLog(t('log.task.reconcile-none')); return { repaired: 0, checked: 0 }; }
+  let repaired = 0;
+  for (const tg of cibles) {
+    onLog(`──────── ${tg.project} · ${tg.branch} ────────`);
+    try {
+      const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
+      if (!repo) { onLog(t('log.task.repo-missing')); continue; }
+      const cwd = await git.ensureRepo(cfg, repo, onLog);
+      await git.ensureCleanWorktree(cwd, onLog);
+      const base = tg.base_branch || await git.defaultBranch(cwd);
+
+      /* On ne réaligne JAMAIS sur origin ici : le cas le plus fréquent est justement un commit
+         local que le push n'a pas emporté. Se caler sur la branche distante le détruirait. */
+      if (await git.refExists(cwd, `refs/heads/${tg.branch}`)) await git.checkoutBranch(cwd, tg.branch, onLog);
+      else if (await git.refExists(cwd, `origin/${tg.branch}`)) await git.createBranchFrom(cwd, tg.branch, `origin/${tg.branch}`, onLog);
+      else { onLog(t('log.task.branch-nowhere')); continue; }
+
+      const avance = await git.aheadOf(cwd, base);
+      if (!avance) { onLog(t('log.task.no-ahead', { base })); continue; }
+
+      const sha = await git.headSha(cwd);
+      const diff = await git.branchDiff(cwd, base);
+      const dpath = path.join(ensureDir(path.join(taskDir(task.id), String(tg.id))), 'diff.patch');
+      fs.writeFileSync(dpath, diff, 'utf8');
+      const pousse = await git.isPushed(cwd, tg.branch);
+      setTarget(tg.id, {
+        base_branch: base, commit_sha: sha, diff_path: dpath,
+        push_command: `git push -u origin ${tg.branch}`,
+        last_error: null, status: pousse ? 'pushed' : 'committed',
+      });
+      repaired += 1;
+      onLog(t(pousse ? 'log.task.reconcile-pushed' : 'log.task.reconcile-ready', { n: avance, count: avance, base }));
+    } catch (e) {
+      onLog(t('log.task.project-error', { project: tg.project, message: e.message })); // un projet illisible n'empêche pas les autres
+    }
+  }
+  syncTaskStatus(task.id);
+  onLog(t('log.task.reconciled', { done: repaired, total: cibles.length }));
+  return { repaired, checked: cibles.length };
+}
+
+/* LE MESSAGE RENSEIGNÉ APRÈS COUP DOIT QUAND MÊME S'APPLIQUER. Le geste courant : on lance une
+   session, on voit passer un commit mal nommé, on remplit le champ « message de commit » et on
+   relance. L'IA constate alors que tout est déjà fait et ne commite RIEN — le commit gardait
+   donc son ancien message, et le champ qu'on venait de remplir ne servait à rien. On renomme
+   donc le dernier commit, sans toucher à ce qu'il contient.
+
+   SAUF S'IL EST DÉJÀ PARTI : renommer un commit poussé, c'est réécrire une histoire que la
+   forge — et peut-être une merge request, et peut-être un collègue — a déjà. On le dit alors,
+   plutôt que de le faire en silence ou de se taire ; le geste appartient à qui le lit. */
+async function reappliquerMessage(cwd, branch, message, onLog = () => {}) {
+  if (await git.refExists(cwd, `origin/${branch}`)) {
+    onLog(t('log.task.msg-published', { branch }));
+    return 'publie';
+  }
+  if (!await git.renommerDernierCommit(cwd, message, onLog)) return 'inchange';
+  onLog(t('log.task.msg-updated', { message }));
+  return 'renomme';
 }
 
 /* ================= CODAGE ================= */
@@ -94,19 +155,38 @@ function attachImages(task, cwd, onLog) {
    par la session « normale » (runTask) et la session « convergée » (converge.js).
    Le jour où on affine ce prompt — c'est le cœur produit — les deux chemins suivent. */
 function buildCodePrompt(task) {
-  const base = 'Réalise la tâche de développement suivante dans ce dépôt. '
-    + `Modifie directement les fichiers nécessaires.\n\n${task.prompt}`;
+  const base = avecConsignes('Réalise la tâche de développement suivante dans ce dépôt. '
+    + `Modifie directement les fichiers nécessaires.\n\n${task.prompt}`, consignesPermanentes());
   // Option « l'IA peut poser des questions » : on ajoute la consigne du bloc <<<QUESTIONS>>>.
   return task && task.ask_questions ? base + questions.QUESTIONS_INSTRUCTION : base;
 }
-function commitMessageFor(task) {
-  return (task.commit_message && task.commit_message.trim())
-    || (task.prompt.split('\n')[0] || '').slice(0, 72);
+
+/* Relues à CHAQUE prompt et non mises en cache : on les change en réglages parce qu'on vient de
+   voir ce qui manquait, et la session suivante doit en tenir compte sans redémarrer l'outil. */
+const consignesPermanentes = () => getConfig().ai_extra_instructions;
+/* LE CHAMP « MESSAGE DE COMMIT » VAUT POUR TOUTE LA SESSION. Renseigné, il est la règle : le
+   premier run, un suivi, la reprise après questions et les passes de convergence commitent tous
+   sous ce message. C'est la demande de qui préfixe ses commits — une clé de ticket, une
+   convention d'équipe : un suivi qui repartirait sur sa propre première ligne casserait la règle
+   au moment précis où l'on ne relit pas, et le commit fautif est déjà poussé.
+
+   Laissé vide, chaque geste garde son défaut, qui dit ce qu'il vient de faire (`defaut`) ou, à
+   défaut de défaut, la première ligne du prompt. */
+function commitMessageFor(task, defaut) {
+  const choisi = task && task.commit_message && task.commit_message.trim();
+  if (choisi) return choisi;
+  if (defaut) return defaut;
+  return (((task && task.prompt) || '').split('\n')[0] || '').slice(0, 72);
 }
 
 // Exécute le prompt sur UN projet : place la branche, laisse l'IA modifier, commite.
 // La branche de base n'est pas saisie : c'est la branche par défaut du dépôt.
-async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog, forcePush, resume, passKind }) {
+/* `promptRepli` : ce qu'on envoie quand la session à reprendre s'avère introuvable et qu'il
+   faut repartir de zéro. Ce n'est PAS toujours `promptText` : une demande de suivi (« applique
+   cette correction ») ne se comprend pas sans la tâche d'origine, que la session perdue
+   portait. Le défaut réinjecte donc ce contexte — mais un premier run le contient déjà, et le
+   lui ajouter enverrait deux fois la même consigne, prompt de la tâche compris. */
+async function execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, forcePush, resume, passKind }) {
   // On REPREND la session dès qu'un handle existe pour cette cible : la continuité vaut pour
   // le run initial, « Demander une correction » (followup), une relance, la reprise après
   // questions et les passes de convergence. Le 1er passage la crée.
@@ -122,14 +202,26 @@ async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog,
 
   const hasRemote = await git.refExists(cwd, `origin/${tg.branch}`);
   const hasLocal = await git.refExists(cwd, `refs/heads/${tg.branch}`);
-  if (hasRemote) {
-    onLog(`branche ${tg.branch} existe sur le remote → alignement sur origin/${tg.branch}`);
-    await git.createBranchFrom(cwd, tg.branch, `origin/${tg.branch}`, onLog);
-  } else if (hasLocal) {
-    onLog(`branche ${tg.branch} existe en local → réutilisation`);
+  /* ON NE SE RÉALIGNE PAS SUR ORIGIN QUAND LE LOCAL PORTE DU TRAVAIL. Sans auto-push — le
+     défaut —, un suivi commite sans pousser : la branche locale est alors le SEUL endroit où
+     ce commit existe. Repartir de `origin/<branche>` le supprimait, et le journal disait
+     « alignement ». Le suivi suivant recodait sur une branche amputée, et la branche poussée
+     ensuite ne portait plus la première correction.
+
+     Divergence des deux côtés (quelqu'un a poussé pendant ce temps) : on garde quand même le
+     local. Le push refusera en fast-forward — un échec qui se voit et se répare —, là où
+     l'écrasement, lui, ne se voit jamais. `reconcileTargets` applique déjà cette règle. */
+  const nonPousses = hasLocal && hasRemote ? await git.nonPousses(cwd, tg.branch) : 0;
+  if (hasLocal && (!hasRemote || nonPousses)) {
+    onLog(nonPousses
+      ? t('log.task.branch-keep', { branch: tg.branch, n: nonPousses, count: nonPousses })
+      : t('log.task.branch-local', { branch: tg.branch }));
     await git.checkoutBranch(cwd, tg.branch, onLog);
+  } else if (hasRemote) {
+    onLog(t('log.task.branch-remote', { branch: tg.branch }));
+    await git.createBranchFrom(cwd, tg.branch, `origin/${tg.branch}`, onLog);
   } else if (allowCreate) {
-    onLog(`création de la branche ${tg.branch} depuis ${base}`);
+    onLog(t('log.task.branch-create', { branch: tg.branch, base }));
     await git.createBranchFrom(cwd, tg.branch, `origin/${base}`, onLog);
   } else {
     throw new Error(t('err.branch-missing-run-first', { branch: tg.branch }));
@@ -137,12 +229,12 @@ async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog,
 
   const imgBlock = attachImages(task, cwd, onLog);
 
-  onLog(`exécution (${copilot.isDryRun() ? 'dry-run' : 'IA'})`);
+  onLog(t('log.task.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai') }));
   let agentText = '';
   if (copilot.isDryRun()) {
     if (task.ask_questions && !doResume) {
       onLog('$ (DRY-RUN — l’agent pose des questions)');
-      agentText = DRYRUN_QUESTIONS; // simule le bloc <<<QUESTIONS>>> au 1er passage
+      agentText = questions.DRYRUN_QUESTIONS; // simule le bloc <<<QUESTIONS>>> au 1er passage
     } else {
       onLog('$ (DRY-RUN — aucune vraie modification)');
       fs.appendFileSync(path.join(cwd, 'PROJ_TASK_DRYRUN.md'), `\n## ${message}\n${promptText.slice(0, 200)}\n`, 'utf8');
@@ -154,22 +246,33 @@ async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog,
     // partie de l'identité de session : on refuse une reprise depuis un autre cwd (§4.4).
     const key = `task-${task.id}-target-${tg.id}`;
     if (doResume && tg.session_cwd && path.resolve(tg.session_cwd) !== path.resolve(cwd)) {
-      onLog(`⚠ cwd de session différent → reprise refusée, repli sur une session neuve`);
+      onLog(t('log.task.cwd-mismatch'));
       doResume = false;
     }
     let r; let created = !doResume; // création = 1re passe OU repli après échec de reprise
+    let note = null;
     try {
       r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt: promptText + imgBlock, cwd, resume: doResume, onLog });
     } catch (e) {
       if (!doResume) throw e;
       // Fallback (§4.5) : reprise impossible → session neuve avec contexte réinjecté.
-      onLog(`⚠ reprise impossible (${String(e.message).split('\n')[0]}) → session neuve, contexte réinjecté`);
-      r = await agentsession.runInSession({ key, prompt: `${buildCodePrompt(task)}\n\n${promptText}${imgBlock}`, cwd, resume: false, onLog });
+      const raison = String(e.message).split('\n')[0];
+      onLog(t('log.task.resume-failed', { raison }));
+      /* On CONSIGNE le repli. Cas le plus courant : une session d'agent appartient au
+         répertoire où elle a été créée, or Mergerie travaille dans son propre clone — un
+         identifiant venu d'ailleurs (ton dépôt à toi, une session Claude Code) n'y existe
+         pas. Sans cette note, l'écran affiche après coup un identifiant que l'utilisateur
+         n'a jamais saisi, sans rien dire de la substitution. */
+      note = `${tg.session_key} : ${raison}`;
+      const complet = promptRepli != null ? promptRepli : `${buildCodePrompt(task)}\n\n${promptText}`;
+      r = await agentsession.runInSession({ key, prompt: complet + imgBlock, cwd, resume: false, onLog });
       created = true;
     }
     agentText = r.text || '';
     copilot.recordUsage('task', promptText + imgBlock, agentText); // le run en session compte aussi
-    if (created) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: cwd });
+    // La note est posée AVEC le nouveau handle, et effacée dès qu'une reprise réussit.
+    if (created) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: cwd, session_note: note });
+    else if (tg.session_note) setTarget(tg.id, { session_note: null });
   } else {
     // Backend non reconnu (ni claude ni copilot) : pas de reprise possible, appel one-shot.
     agentText = (await copilot.runPrompt(promptText + imgBlock, cwd, { kind: 'task' }, onLog)) || '';
@@ -185,7 +288,7 @@ async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog,
     const qs = questions.parseQuestions(agentText);
     if (qs && qs.length) {
       setTarget(tg.id, { questions_json: JSON.stringify(qs), status: 'needs_input', last_error: null });
-      onLog(`⏸ ${qs.length} question(s) posée(s) — session en attente de tes réponses`);
+      onLog(t('log.task.questions', { n: qs.length, count: qs.length }));
       return { needsInput: true };
     }
   }
@@ -193,13 +296,23 @@ async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog,
   onLog(`commit : ${message}`);
   const committed = await git.commitAll(cwd, message, onLog);
   if (!committed) {
-    // Aucun fichier modifié : le plus souvent l'IA a répondu/demandé une précision au lieu de
-    // coder (prompt incomplet). On REMONTE sa réponse pour que l'erreur soit parlante, et on
-    // suggère « L'IA peut me poser des questions » pour un vrai aller-retour structuré.
-    const said = String(agentText || '').trim();
-    throw new Error(said
-      ? t('err.no-change-agent-said', { said: said.slice(0, 500) })
-      : t('err.aucun-changement-produit-rien-a'));
+    /* « Rien à committer » recouvre deux situations opposées, et les confondre coûtait cher :
+       la branche peut DÉJÀ porter le travail. C'est le cas d'une relance après un échec
+       survenu APRÈS le commit (un push refusé, par exemple) : l'IA repasse, constate que tout
+       est fait, ne touche à rien — et la session repartait en erreur, sans diff ni bouton
+       « Créer la MR », alors que le code est là et prêt. On regarde donc l'état réel de la
+       branche avant de conclure. */
+    const dejaFait = await git.aheadOf(cwd, base);
+    if (!dejaFait) {
+      // Branche vide : là, l'IA a bien répondu au lieu de coder (prompt incomplet). On REMONTE
+      // sa réponse pour que l'erreur soit parlante.
+      const said = String(agentText || '').trim();
+      throw new Error(said
+        ? t('err.no-change-agent-said', { said: said.slice(0, 500) })
+        : t('err.aucun-changement-produit-rien-a'));
+    }
+    onLog(t('log.task.already-done', { n: dejaFait, count: dejaFait, base }));
+    await reappliquerMessage(cwd, tg.branch, message, onLog);
   }
   const sha = await git.headSha(cwd);
 
@@ -217,32 +330,42 @@ async function execOnTarget(task, tg, { promptText, message, allowCreate, onLog,
     onLog(`push : ${pushCommand}`);
     await git.pushBranch(cwd, tg.branch, onLog, git.secretsOf(cfg));
     setTarget(tg.id, { status: 'pushed' });
-    onLog('✅ branche poussée');
+    onLog(t('log.task.pushed'));
   } else {
-    onLog('✅ commit prêt — en attente de validation du push');
+    onLog(t('log.task.commit-ready'));
   }
 }
 
 // Session de codage : chaque projet est traité l'un après l'autre. Un projet en échec
 // n'interrompt pas les suivants — son erreur est consignée sur SA ligne.
-async function runCodeTask(task, { promptText, message, allowCreate, onLog, passKind }) {
-  const targets = targetsOf(task.id);
-  if (!targets.length) throw new Error(t('err.aucun-projet-selectionne-pour-cette'));
+async function runCodeTask(task, { promptText, promptRepli, message, allowCreate, onLog, passKind, targetIds }) {
+  /* `targetIds` restreint la passe à certains projets. Une session multi-dépôts se relançait
+     forcément EN ENTIER : sur dix dépôts dont six ont réussi, cela coûtait six appels IA pour
+     refaire un travail bon, et faisait repasser l'agent sur du code qu'on ne voulait plus voir
+     toucher. Vide ou absent = tous les projets, comportement d'origine. */
+  const tous = targetsOf(task.id);
+  const voulus = Array.isArray(targetIds) && targetIds.length ? targetIds.map(Number) : null;
+  const targets = voulus ? tous.filter((tg) => voulus.includes(tg.id)) : tous;
+  if (!tous.length) throw new Error(t('err.aucun-projet-selectionne-pour-cette'));
+  if (!targets.length) throw new Error(t('err.projet-introuvable-pour-cette-session-2'));
   let ok = 0; let waiting = 0; const fails = [];
   for (const tg of targets) {
     onLog(`──────── ${tg.project} · ${tg.branch} ────────`);
     setTarget(tg.id, { status: 'running', last_error: null });
     try {
-      const r = await execOnTarget(task, tg, { promptText, message, allowCreate, onLog, passKind });
+      const r = await execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, passKind });
       if (r && r.needsInput) waiting += 1; else ok += 1;
     } catch (e) {
       setTarget(tg.id, { status: 'error', last_error: e.message });
       fails.push({ project: tg.project, error: e.message });
-      onLog(`⚠ ${tg.project} : ${e.message}`);
+      onLog(t('log.task.project-error', { project: tg.project, message: e.message }));
     }
   }
   syncTaskStatus(task.id);
-  onLog(`${ok}/${targets.length} projet(s) traité(s)${waiting ? `, ${waiting} en attente de réponses` : ''}`);
+  const portee = voulus ? t('log.task.scope', { n: tous.length }) : '';
+  onLog(t('log.task.done', {
+    ok, total: targets.length, portee, attente: waiting ? t('log.task.waiting', { n: waiting }) : '',
+  }));
   if (!ok && !waiting) {
     // Tout a échoué : on remonte la VRAIE raison plutôt qu'un « voir le détail ». Un seul
     // projet → son erreur directement ; plusieurs → la liste, projet par projet.
@@ -257,7 +380,10 @@ async function runCodeTask(task, { promptText, message, allowCreate, onLog, pass
 // Prépare chaque dépôt sur la branche demandée, puis pose UNE question à l'agent avec
 // pour cwd la RACINE des clones : il voit ainsi tous les projets et produit une seule
 // synthèse. Les worktrees sont remis à zéro ensuite : aucune modification ne subsiste.
-async function runExploration(task, { question, previous, onLog }) {
+/* `apresReponses` : cette passe fait suite aux réponses de l'utilisateur. C'est le seul moyen
+   FIABLE de savoir qu'on n'est plus au premier tour — l'absence de synthèse précédente n'en est
+   pas un, puisqu'une exploration arrêtée sur une question n'en a jamais écrit. */
+async function runExploration(task, { question, previous, onLog, apresReponses = false }) {
   const cfg = getConfig();
   const targets = targetsOf(task.id);
   if (!targets.length) throw new Error(t('err.aucun-projet-selectionne-pour-cette-2'));
@@ -267,7 +393,7 @@ async function runExploration(task, { question, previous, onLog }) {
   for (const tg of targets) {
     const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
     if (!repo) { setTarget(tg.id, { status: 'error', last_error: 'Dépôt introuvable.' }); continue; }
-    onLog(`──────── ${tg.project} · ${tg.branch || '(branche par défaut)'} ────────`);
+    onLog(`──────── ${tg.project} · ${tg.branch || t('log.task.default-branch')} ────────`);
     setTarget(tg.id, { status: 'running', last_error: null });
     try {
       const cwd = await git.ensureRepo(cfg, repo, onLog);
@@ -284,7 +410,7 @@ async function runExploration(task, { question, previous, onLog }) {
       setTarget(tg.id, { base_branch: branch, status: 'done', last_error: null });
     } catch (e) {
       setTarget(tg.id, { status: 'error', last_error: e.message });
-      onLog(`⚠ ${tg.project} : ${e.message}`);
+      onLog(t('log.task.project-error', { project: tg.project, message: e.message }));
     }
   }
   if (!dirs.length) throw new Error(t('err.aucun-depot-n-a-pu'));
@@ -308,7 +434,7 @@ async function runExploration(task, { question, previous, onLog }) {
   const known = targets.find((tg) => tg.session_key) || {};
   let doResume = sessionable && !!known.session_key;
   if (doResume && known.session_cwd && path.resolve(known.session_cwd) !== path.resolve(root)) {
-    onLog('⚠ cwd de session différent → reprise refusée, session neuve');
+    onLog(t('log.explore.cwd-mismatch'));
     doResume = false;
   }
   /* La réponse précédente n'est réinjectée que HORS session : elle n'a plus lieu d'être
@@ -326,9 +452,12 @@ async function runExploration(task, { question, previous, onLog }) {
     + `dans les dépôts, et ne fais aucun commit.${prev}${imgBlock}\n\n`
     + `Rédige UNE SEULE réponse de synthèse, transversale aux dépôts, en Markdown (français), `
     + `et écris-la UNIQUEMENT dans le fichier \`${outRel}\` (chemin relatif au répertoire courant). `
-    + `Ne duplique pas ce contenu sur la sortie standard.`;
+    + `Ne duplique pas ce contenu sur la sortie standard.`
+    /* Option « l'IA peut poser des questions » : une exploration hésite comme un codage —
+       « de quel des trois services parles-tu ? » vaut mieux qu'une synthèse à côté du sujet. */
+    + (task.ask_questions ? questions.QUESTIONS_INSTRUCTION : '');
 
-  onLog(`exploration (${copilot.isDryRun() ? 'dry-run' : 'IA'}) sur ${dirs.length} dépôt(s)`);
+  onLog(t('log.explore.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai'), n: dirs.length, count: dirs.length }));
   let stdout = '';
   try {
     if (sessionable) {
@@ -341,7 +470,7 @@ async function runExploration(task, { question, previous, onLog }) {
         if (!doResume) throw e;
         // Même repli que pour un codage : la session est perdue, pas l'exploration. On
         // réinjecte la réponse précédente, seul contexte dont dispose une session neuve.
-        onLog(`⚠ reprise impossible (${String(e.message).split('\n')[0]}) → session neuve, contexte réinjecté`);
+        onLog(t('log.task.resume-failed', { raison: String(e.message).split('\n')[0] }));
         const withPrev = previous
           ? `${prompt}\n\nTu avais déjà produit la réponse suivante :\n"""\n${previous}\n"""`
           : prompt;
@@ -352,6 +481,10 @@ async function runExploration(task, { question, previous, onLog }) {
       copilot.recordUsage('explore', prompt, stdout);
       // Les cibles d'une exploration partagent la session : toutes portent le même handle.
       if (created) for (const tg of targets) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: root });
+    } else if (copilot.isDryRun() && task.ask_questions && !apresReponses) {
+      // Dry-run, première passe : l'agent simule ses questions au lieu de répondre.
+      onLog('$ (DRY-RUN — l’agent pose des questions)');
+      stdout = questions.DRYRUN_QUESTIONS;
     } else {
       stdout = await copilot.runPrompt(prompt, root, { kind: 'explore' }, onLog);
     }
@@ -360,13 +493,34 @@ async function runExploration(task, { question, previous, onLog }) {
     for (const d of dirs) {
       await git.resetWorktree(d.cwd, () => {});
     }
-    onLog('dépôts remis à zéro (exploration en lecture seule)');
+    onLog(t('log.explore.reset'));
+  }
+
+  /* L'AGENT A POSÉ DES QUESTIONS : il s'est arrêté avant de répondre, il n'y a donc pas de
+     synthèse à enregistrer. On met l'exploration EN ATTENTE — mêmes cibles, même formulaire de
+     réponse, même todo que pour un codage — plutôt que d'archiver un fichier vide qui passerait
+     pour une réponse. Toutes les cibles portent la question : elles partagent la session. */
+  /* Volontairement SANS `apresReponses` : un agent a le droit de reposer une question après
+     avoir lu les réponses — c'est même le signe qu'il les a prises au sérieux. Seule la
+     simulation du dry-run est bornée, sinon elle bouclerait sur elle-même. */
+  if (task.ask_questions) {
+    const qs = questions.parseQuestions(stdout);
+    if (qs && qs.length) {
+      for (const tg of targets) {
+        setTarget(tg.id, { questions_json: JSON.stringify(qs), status: 'needs_input', last_error: null });
+      }
+      onLog(t('log.task.questions', { n: qs.length, count: qs.length }));
+      // Le statut de la SESSION suit celui de ses cibles : sans ça, la carte reste « en cours »
+      // pour toujours et la notification « une réponse est attendue » ne part jamais.
+      syncTaskStatus(task.id);
+      return { needsInput: true };
+    }
   }
 
   let content = '';
   if (fs.existsSync(outAbs)) content = fs.readFileSync(outAbs, 'utf8').trim();
   if (content) {
-    onLog(`réponse lue depuis ${outRel} (${content.length} octets)`);
+    onLog(t('log.explore.answer-read', { path: outRel, n: content.length }));
     copilot.addOutputToLastUsage(content);
   } else {
     onLog(`(fichier ${outRel} vide/absent → repli sur la sortie standard)`);
@@ -383,22 +537,27 @@ async function runExploration(task, { question, previous, onLog }) {
   agentpass.record('task', task.id, 0, { kind: previous ? 'followup' : 'run', prompt: question, text: content });
   db.prepare('UPDATE task SET md_path = ?, status = ?, last_error = NULL, updated_at = ? WHERE id = ?')
     .run(mdPath, 'done', new Date().toISOString(), task.id);
-  onLog('✅ réponse enregistrée');
+  onLog(t('log.explore.answer-saved'));
   return { mdPath };
 }
 
 /* ================= Points d'entrée ================= */
 
-async function runTask(task, onLog = () => {}) {
+async function runTask(task, onLog = () => {}, opts = {}) {
   if (task.kind === 'explore') {
     return runExploration(task, { question: task.prompt, previous: null, onLog });
   }
   return runCodeTask(task, {
-    promptText: buildCodePrompt(task), message: commitMessageFor(task), allowCreate: true, onLog,
+    // Premier run : le prompt porte déjà toute la tâche, il n'y a rien à réinjecter par-dessus.
+    promptText: buildCodePrompt(task), promptRepli: buildCodePrompt(task),
+    message: commitMessageFor(task), allowCreate: true, onLog,
+    targetIds: opts.targetIds,
   });
 }
 
-async function runTaskFollowup(task, instruction, onLog = () => {}) {
+// `targetIds` : correction limitée à certains projets d'une session multi-dépôts. Une
+// remarque porte presque toujours sur UN dépôt ; la passer à tous refait du travail bon.
+async function runTaskFollowup(task, instruction, onLog = () => {}, { targetIds } = {}) {
   const instr = String(instruction || '').trim();
   if (!instr) throw new Error(t('err.demande-de-suivi-vide'));
 
@@ -406,12 +565,12 @@ async function runTaskFollowup(task, instruction, onLog = () => {}) {
     const previous = task.md_path && fs.existsSync(task.md_path) ? fs.readFileSync(task.md_path, 'utf8') : '';
     return runExploration(task, { question: instr, previous, onLog });
   }
-  const message = instr.split('\n')[0].slice(0, 72);
-  const promptText =
+  const message = commitMessageFor(task, instr.split('\n')[0].slice(0, 72));
+  const promptText = avecConsignes(
     'Tu travailles sur une branche existante de ce projet ; le travail précédent est déjà '
     + `committé. Applique la demande de suivi ci-dessous en modifiant directement les fichiers.\n\n`
-    + `Demande de suivi : ${instr}`;
-  return runCodeTask(task, { promptText, message, allowCreate: false, onLog, passKind: 'followup' });
+    + `Demande de suivi : ${instr}`, consignesPermanentes());
+  return runCodeTask(task, { promptText, message, allowCreate: false, onLog, passKind: 'followup', targetIds });
 }
 
 // Reprise après réponses de l'utilisateur (ask → stop → resume). Cible UN projet précis :
@@ -423,12 +582,23 @@ async function runTaskAnswer(task, targetId, onLog = () => {}) {
   if (!qs.some((q) => q && q.answer != null && String(q.answer).trim())) {
     throw new Error(t('err.reponses-manquantes'));
   }
-  onLog(`──────── ${tg.project} · ${tg.branch} (reprise après réponses) ────────`);
+  /* UNE EXPLORATION NE SE REPREND PAS COMME UN CODAGE. Il n'y a ni branche ni commit au bout :
+     répondre, c'est relancer l'exploration avec les réponses pour question, dans la MÊME
+     session — l'agent a gardé ce qu'il a lu, pas seulement ce qu'il a écrit. */
+  if (task.kind === 'explore') {
+    for (const autre of targetsOf(task.id)) {
+      if (autre.status === 'needs_input') setTarget(autre.id, { status: 'running', last_error: null });
+    }
+    const previous = task.md_path && fs.existsSync(task.md_path) ? fs.readFileSync(task.md_path, 'utf8') : '';
+    return runExploration(task, { question: questions.buildAnswerInstruction(qs), previous, onLog, apresReponses: true });
+  }
+  onLog(`──────── ${tg.project} · ${tg.branch} (${t('log.task.after-answers')}) ────────`);
   setTarget(tg.id, { status: 'running', last_error: null });
-  const promptText = questions.buildAnswerInstruction(qs);
+  const promptText = avecConsignes(questions.buildAnswerInstruction(qs), consignesPermanentes());
   try {
     const res = await execOnTarget(task, tg, {
-      promptText, message: 'Réponses aux questions de l’agent', allowCreate: false, onLog, resume: true, passKind: 'answer',
+      promptText, message: commitMessageFor(task, t('log.task.answers-commit')),
+      allowCreate: false, onLog, resume: true, passKind: 'answer',
     });
     syncTaskStatus(task.id);
     return res; // { needsInput } si l'agent re-pose des questions
@@ -453,10 +623,33 @@ async function pushTarget(taskId, targetId, onLog = () => {}) {
   await git.pushBranch(cwd, tg.branch, onLog, git.secretsOf(cfg));
   setTarget(tg.id, { status: 'pushed' });
   syncTaskStatus(taskId);
-  onLog('✅ branche poussée');
+  onLog(t('log.task.pushed'));
+}
+
+/* Pousse PLUSIEURS projets d'une session en un seul job. Un projet en échec n'interrompt pas
+   les autres — c'est la règle de tout ce qui est multi-dépôts ici : sur dix branches, une
+   permission refusée sur la troisième ne doit pas laisser les sept dernières non poussées. */
+async function pushTargets(task, targetIds, onLog = () => {}) {
+  const voulus = new Set((targetIds || []).map(Number));
+  const cibles = targetsOf(task.id).filter((tg) => voulus.has(tg.id));
+  if (!cibles.length) throw new Error(t('err.projet-introuvable-pour-cette-session-2'));
+  let ok = 0; const echecs = [];
+  for (const tg of cibles) {
+    onLog(`──────── ${tg.project} · ${tg.branch} ────────`);
+    try { await pushTarget(task.id, tg.id, onLog); ok += 1; }
+    catch (e) {
+      setTarget(tg.id, { last_error: e.message });
+      echecs.push(tg.project);
+      onLog(t('log.task.project-error', { project: tg.project, message: e.message }));
+    }
+  }
+  syncTaskStatus(task.id);
+  onLog(t('log.task.pushed-n', { ok, total: cibles.length, echecs: echecs.length ? t('log.task.push-failed', { liste: echecs.join(', ') }) : '' }));
+  return { pushed: ok, failed: echecs.length };
 }
 
 module.exports = {
+  reconcileTargets, pushTargets,
   runTask, runTaskFollowup, runTaskAnswer, pushTarget, targetsOf, setTarget, syncTaskStatus,
-  execOnTarget, buildCodePrompt, commitMessageFor, saveAgentOutput,
+  execOnTarget, buildCodePrompt, commitMessageFor, saveAgentOutput, reappliquerMessage,
 };

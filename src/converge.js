@@ -22,6 +22,7 @@ const agentsession = require('./agentsession');
 const questions = require('./questions');
 const { getConfig } = require('./config');
 const { reviewMr } = require('./reviewer');
+const { t } = require('../public/i18n-runtime.js');
 
 function latestVersion(mrId) {
   return db.prepare('SELECT * FROM review_version WHERE mr_id = ? ORDER BY version DESC LIMIT 1').get(mrId);
@@ -113,7 +114,7 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
   let mr = db.prepare('SELECT * FROM mr WHERE id = ?').get(mrId);
   if (!mr) throw new Error('MR introuvable');
   const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(mr.repo_id);
-  if (!repo) throw new Error('Dépôt introuvable');
+  if (!repo) throw new Error(t('err.converge.repo-missing'));
 
   const { threshold, maxPasses } = { ...convergeDefaults(), ...opts };
   const runId = db.prepare(`INSERT INTO convergence_run (mr_id, status, threshold, max_passes, passes_done, started_at)
@@ -131,7 +132,7 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
     let v = latestVersion(mrId);
     const stale = mr.reviewed_sha && mr.current_sha && mr.reviewed_sha !== mr.current_sha;
     if (!v || stale) {
-      onLog(v ? 'MR périmée → re-review avant de converger' : 'aucune review → review initiale');
+      onLog(t(v ? 'log.converge.stale' : 'log.converge.no-review'));
       await reviewMr(repo, mr, onLog, { incremental: !!v });
       mr = db.prepare('SELECT * FROM mr WHERE id = ?').get(mrId);
       v = latestVersion(mrId);
@@ -140,7 +141,7 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
     let note = note10Of(v);
     let best = { note, version: v ? v.version : null };
     setRun({ start_note: note, best_note: note, best_version: best.version });
-    onLog(`note de départ : ${note == null ? '—' : `${note}/10`} · seuil ${threshold}/10 · plafond ${maxPasses} passes`);
+    onLog(t('log.converge.start', { note: note == null ? '—' : `${note}/10`, threshold, max: maxPasses }));
 
     let passes = 0;
     let status = 'running';
@@ -153,15 +154,19 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
       const cur = latestVersion(mrId);
       const reviewMd = cur && cur.md_path && fs.existsSync(cur.md_path) ? fs.readFileSync(cur.md_path, 'utf8') : '';
       onLog(`──── passe ${passes + 1}/${maxPasses} : correction ────`);
-      const message = `${mr.source_branch}: convergence passe ${passes + 1} (review !${mr.iid})`;
+      /* Même règle qu'ailleurs : le message de commit choisi pour la session vaut pour TOUS
+         ses commits, passes de convergence comprises. Sans session (convergence lancée depuis
+         une MR seule), le défaut dit la passe et la revue dont elle vient. */
+      const message = taskrunner.commitMessageFor(ctx.task,
+        `${mr.source_branch}: convergence passe ${passes + 1} (review !${mr.iid})`);
       const fix = await applyFixAndPush(repo, mr, reviewMd, message, onLog, ctx);
       // L'IA a posé des questions pendant la correction → on met la BOUCLE en attente :
       // la cible passe `needs_input` (questions stockées), l'utilisateur répond (formulaire de
       // session) puis relance Converger, qui reprend la même session.
       if (fix.needsInput) {
         if (ctx.targetId) taskrunner.setTarget(ctx.targetId, { questions_json: JSON.stringify(fix.questions), status: 'needs_input', last_error: null });
-        setRun({ status: 'needs_input', passes_done: passes, message: 'en attente de réponses — l’IA a posé des questions', finished_at: new Date().toISOString() });
-        onLog('⏸ l’IA a posé des questions pendant la correction — convergence en attente de tes réponses');
+        setRun({ status: 'needs_input', passes_done: passes, message: t('log.converge.waiting'), finished_at: new Date().toISOString() });
+        onLog(t('log.converge.questions-fix'));
         return { runId, status: 'needs_input', note: best.note, passes };
       }
       const newSha = fix.sha;
@@ -173,14 +178,14 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
 
       // 2) Re-review INCRÉMENTALE du delta (reviewed_sha..newSha).
       mr = db.prepare('SELECT * FROM mr WHERE id = ?').get(mrId);
-      onLog(`──── passe ${passes} : re-review incrémentale ────`);
+      onLog(t('log.converge.pass-review', { n: passes }));
       await reviewMr(repo, mr, onLog, { incremental: true });
       mr = db.prepare('SELECT * FROM mr WHERE id = ?').get(mrId);
 
       const nv = latestVersion(mrId);
       const newNote = note10Of(nv);
-      onLog(`note après passe ${passes} : ${newNote == null ? '—' : `${newNote}/10`}`);
-      if (newNote == null) { status = 'error'; setRun({ message: 'note illisible après re-review' }); break; }
+      onLog(t('log.converge.pass-note', { n: passes, note: newNote == null ? '—' : `${newNote}/10` }));
+      if (newNote == null) { status = 'error'; setRun({ message: t('log.converge.bad-note') }); break; }
       if (best.note == null || newNote > best.note) best = { note: newNote, version: nv.version };
       setRun({ best_note: best.note, best_version: best.version });
 
@@ -226,7 +231,7 @@ async function bootstrapMrForTarget(task, tg, onLog) {
     const res = await taskrunner.execOnTarget(task, tg, { promptText, message, allowCreate: true, onLog, forcePush: true, passKind: 'converge' });
     // L'IA a posé des questions (option activée) : on met la convergence EN ATTENTE ici même,
     // avant de créer la MR. L'utilisateur répond (formulaire de session) puis relance Converger.
-    if (res && res.needsInput) { onLog('⏸ l’IA a posé des questions — convergence en attente de tes réponses'); return { needsInput: true }; }
+    if (res && res.needsInput) { onLog(t('log.converge.questions')); return { needsInput: true }; }
     tg = reloadTarget(tg.id);
   }
   // 2) s'assurer que la branche est poussée (session codée mais pas encore poussée)
@@ -238,7 +243,7 @@ async function bootstrapMrForTarget(task, tg, onLog) {
   // task_target.mr_iid soit posé. Sans ce repli, on retenterait une création → 409.
   let iid = tg.mr_iid;
   if (iid) {
-    onLog(`MR !${iid} déjà ouverte → convergence directe`);
+    onLog(t('log.converge.mr-open', { iid }));
   } else {
     const known = db.prepare(`SELECT iid, web_url, target_branch FROM mr
       WHERE repo_id = ? AND source_branch = ? AND (closed_seen IS NULL OR closed_seen = 0)
@@ -247,19 +252,19 @@ async function bootstrapMrForTarget(task, tg, onLog) {
       iid = known.iid;
       db.prepare('UPDATE task_target SET mr_iid = ?, mr_url = ?, mr_target = ?, updated_at = ? WHERE id = ?')
         .run(iid, known.web_url || null, known.target_branch || tg.mr_target || null, new Date().toISOString(), tg.id);
-      onLog(`MR !${iid} déjà ouverte sur GitLab → rattachée puis convergée`);
+      onLog(t('log.converge.mr-attached', { iid }));
     }
   }
   if (!iid) {
     let target = tg.base_branch;
     if (!target) { const b = await forge.clientFor(tg).listBranches(cfg, tg.project); target = (b && b.default) || 'main'; }
     const title = (task.commit_message && task.commit_message.trim()) || tg.branch;
-    onLog(`création de la MR ${tg.branch} → ${target}`);
+    onLog(t('log.converge.mr-create', { branch: tg.branch, target }));
     const created = await forge.clientFor(tg).createMergeRequest(cfg, tg.project, { source_branch: tg.branch, target_branch: target, title });
     iid = created.iid;
     db.prepare('UPDATE task_target SET mr_iid = ?, mr_url = ?, mr_target = ?, mr_merged = 0, updated_at = ? WHERE id = ?')
       .run(iid, created.web_url, target, new Date().toISOString(), tg.id);
-    onLog(`MR !${iid} créée`);
+    onLog(t('log.converge.mr-created', { iid }));
   }
 
   // 4) upsert CIBLÉ de la MR dans la table `mr` (objet API complet → SHA à jour)
@@ -288,7 +293,7 @@ async function refreshTargetDiff(tg, mrId, onLog) {
       patch.commit_sha = await git.headSha(cwd);
     }
   } catch (e) {
-    onLog(`(diff du projet non rafraîchi : ${e.message})`);
+    onLog(t('log.converge.diff-stale', { message: e.message }));
   }
   taskrunner.setTarget(tg.id, patch);
 }
@@ -332,10 +337,10 @@ async function convergeSession(taskId, opts, onLog = () => {}) {
   // « 2/2 projet(s) » alors qu'aucune MR n'a atteint le seuil.
   const converged = results.filter((r) => r.status === 'converged').length;
   const failed = results.filter((r) => r.status === 'error').length;
-  onLog(`convergence de session : ${converged}/${targets.length} projet(s) au seuil, ${failed} en échec`);
+  onLog(t('log.converge.session-done', { ok: converged, total: targets.length, failed }));
   // Un échec total, ou un arrêt utilisateur, ne doit PAS ressortir en job « ✅ terminé » :
   // on relance pour que jobs.js pose 'error' / 'stopped' (cf. runCodeTask).
-  if (proc.isCancelled()) throw new Error('Arrêté par l’utilisateur');
+  if (proc.isCancelled()) throw new Error(t('err.converge.stopped'));
   if (failed && failed === results.length) {
     throw new Error(results[0].error || 'Aucun projet n’a pu converger');
   }

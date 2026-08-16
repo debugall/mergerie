@@ -219,6 +219,132 @@ describe('jira : clé de ticket et conversion ADF → Markdown', () => {
     assert.match(md, /_\(pièce jointe\)_/);
   });
 
+  /* Le cas qui rendait un ticket technique illisible. Jira autorise n'importe quel bloc dans
+     une cellule et s'en sert : une étiquette à gauche, un gabarit JSON à droite. Un tableau
+     Markdown, lui, tient sur UNE ligne par cellule — le code s'y retrouvait aplati, ses
+     indentations écrasées au rendu HTML, et incopiable. */
+  test('un tableau dont une cellule porte du code est DÉPLIÉ, pas aplati', () => {
+    const cell = (kids) => ({ type: 'tableCell', content: kids });
+    const para = (t) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
+    const md = jira.adfToMarkdown({
+      type: 'doc',
+      content: [{ type: 'table', content: [
+        { type: 'tableRow', content: [
+          cell([para('NP15_Suppression_IN')]),
+          cell([{ type: 'codeBlock', attrs: { language: 'json' }, content: [{ type: 'text', text: '{\n    "partner": "LIN",\n    "version": 8\n}' }] }]),
+        ] },
+        { type: 'tableRow', content: [
+          cell([para('NP15-1_Suppression_IN')]),
+          cell([{ type: 'codeBlock', content: [{ type: 'text', text: '{\n    "version": 1\n}' }] }]),
+        ] },
+      ] }],
+    });
+    assert.doesNotMatch(md, /^\|/m, 'aucune ligne de tableau : le contenu ne tenait pas dedans');
+    assert.match(md, /NP15_Suppression_IN\n\n```json\n\{\n {4}"partner": "LIN",/,
+      'l’étiquette, puis le bloc de code avec ses indentations');
+    assert.match(md, /\n---\n/, 'les lignes du tableau restent distinguables');
+    assert.match(md, /"version": 1/, 'la seconde ligne est là aussi');
+  });
+
+  test('une cellule à plusieurs paragraphes est dépliée elle aussi', () => {
+    const para = (t) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
+    const md = jira.adfToMarkdown({
+      type: 'doc',
+      content: [{ type: 'table', content: [{ type: 'tableRow', content: [
+        { type: 'tableCell', content: [para('un'), para('deux')] },
+      ] }] }],
+    });
+    // Collés bout à bout, « un » et « deux » devenaient un seul mot illisible.
+    assert.match(md, /un\n\ndeux/);
+  });
+
+  /* Un `|` dans une cellule ouvrirait une colonne de plus et décalerait toute la ligne :
+     il est échappé à la source, et le rendu sait le lire (cf. `splitRow` dans app.js). */
+  test('un tableau ordinaire reste un tableau, et le | d’une cellule est échappé', () => {
+    const para = (t) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
+    const head = (t) => ({ type: 'tableHeader', content: [para(t)] });
+    const cell = (t) => ({ type: 'tableCell', content: [para(t)] });
+    const md = jira.adfToMarkdown({
+      type: 'doc',
+      content: [{ type: 'table', content: [
+        { type: 'tableRow', content: [head('Champ'), head('Valeur')] },
+        { type: 'tableRow', content: [cell('mode'), cell('strict | souple')] },
+      ] }],
+    });
+    assert.match(md, /\| Champ \| Valeur \|/);
+    assert.match(md, /\| mode \| strict \\\| souple \|/);
+    assert.equal(md.split('\n').length, 3, 'trois lignes : en-tête, séparateur, données');
+  });
+
+  /* Markdown n'a d'en-tête qu'en LIGNE, et en exige une. Promouvoir la première ligne sans
+     vérifier déguisait donc en titre la première ligne de DONNÉES d'un tableau qui n'avait
+     pas d'en-tête — une ligne perdue à chaque fois. */
+  test('un tableau sans ligne d’en-tête ne sacrifie plus sa première ligne', () => {
+    const p = (t) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
+    const C = (t) => ({ type: 'tableCell', content: [p(t)] });
+    const md = jira.adfToMarkdown({
+      type: 'doc',
+      content: [{ type: 'table', content: [
+        { type: 'tableRow', content: [C('TVA'), C('20%')] },
+        { type: 'tableRow', content: [C('Frais'), C('0€')] },
+      ] }],
+    });
+    const lignes = md.split('\n');
+    assert.equal(lignes[0], '|  |  |', 'un en-tête VIDE : Markdown en exige un, il ne ment sur rien');
+    assert.equal(lignes[1], '| --- | --- |');
+    assert.match(md, /\| TVA \| 20% \|/, 'la première ligne de données est toujours là');
+    assert.match(md, /\| Frais \| 0€ \|/);
+    assert.equal(lignes.length, 4, 'deux lignes de données, aucune promue en titre');
+  });
+
+  /* Un tableau clé/valeur met l'en-tête en première COLONNE : sa première ligne est donc
+     mixte, et n'est pas un titre. La promouvoir sacrifiait une paire entière. */
+  test('un en-tête de COLONNE n’est pas pris pour une ligne d’en-tête', () => {
+    const p = (t) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
+    const md = jira.adfToMarkdown({
+      type: 'doc',
+      content: [{ type: 'table', content: [
+        { type: 'tableRow', content: [
+          { type: 'tableHeader', content: [p('Partenaire')] },
+          { type: 'tableCell', content: [p('LIN')] },
+        ] },
+        { type: 'tableRow', content: [
+          { type: 'tableHeader', content: [p('Version')] },
+          { type: 'tableCell', content: [p('8')] },
+        ] },
+      ] }],
+    });
+    assert.match(md, /\| \*\*Partenaire\*\* \| LIN \|/,
+      'la paire est gardée, et la clé mise en gras faute de `th` en colonne en Markdown');
+    assert.match(md, /\| \*\*Version\*\* \| 8 \|/);
+  });
+
+  test('une vraie ligne d’en-tête reste une ligne d’en-tête', () => {
+    const p = (t) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
+    const H = (t) => ({ type: 'tableHeader', content: [p(t)] });
+    const C = (t) => ({ type: 'tableCell', content: [p(t)] });
+    const md = jira.adfToMarkdown({
+      type: 'doc',
+      content: [{ type: 'table', content: [
+        { type: 'tableRow', content: [H('Champ'), H('Valeur')] },
+        { type: 'tableRow', content: [C('TVA'), C('20%')] },
+      ] }],
+    });
+    assert.equal(md.split('\n')[0], '| Champ | Valeur |');
+    // Et l'en-tête n'est pas mis en gras par-dessus : il est déjà un `th`.
+    assert.doesNotMatch(md, /\*\*Champ\*\*/);
+  });
+
+  test('les marques d’une cellule survivent au rendu du tableau', () => {
+    const md = jira.adfToMarkdown({
+      type: 'doc',
+      content: [{ type: 'table', content: [{ type: 'tableRow', content: [
+        { type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'urgent', marks: [{ type: 'strong' }] }] }] },
+      ] }] }],
+    });
+    assert.match(md, /\*\*urgent\*\*/, 'le gras était perdu quand on aplatissait les cellules');
+  });
+
   test('les liens non http(s) sont neutralisés (contenu Jira = source externe)', () => {
     const doc = (href) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'clic', marks: [{ type: 'link', attrs: { href } }] }] }] });
     assert.equal(jira.adfToMarkdown(doc('https://ok.test/x')), '[clic](https://ok.test/x)');
@@ -448,6 +574,120 @@ describe('front : classement des commandes git destructives', () => {
   });
 });
 
+/* Filtre générique de l'onglet Jira : on choisit le champ, puis les valeurs. La sémantique
+   (ET entre champs, OU dans un champ, critère vide = inactif) est ce qui décide de ce que
+   l'utilisateur voit : se tromper ici cache des tickets sans rien dire. */
+describe('front : filtre Jira par champ', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const from = src.indexOf('const JIRA_CHAMPS');
+  const to = src.indexOf('\n}', src.indexOf('function jiraPasseFiltres')) + 2;
+  assert.ok(from > 0 && to > from, 'JIRA_CHAMPS et jiraPasseFiltres doivent rester contigus dans app.js');
+  // eslint-disable-next-line no-new-func
+  const { passe, champs } = new Function(`${src.slice(from, to)}
+    return { passe: jiraPasseFiltres, champs: JIRA_CHAMPS };`)();
+
+  const bug = {
+    key: 'A-1', type: 'Bug', priority: 'Haute', project: 'PROJ',
+    epic: { key: 'E-1', summary: 'Tunnel' }, labels: ['régression', 'panier'],
+    components: ['api'], fixVersions: ['2.4.0'],
+    assignee: { name: 'Moi' }, reporter: { name: 'Support' },
+  };
+  const story = {
+    key: 'A-2', type: 'Story', priority: 'Basse', project: 'PROJ',
+    epic: { key: 'E-2', summary: 'Observabilité' }, labels: [],
+    components: [], fixVersions: [],
+    assignee: { name: 'Alex' }, reporter: { name: 'PO' },
+  };
+  const orphelin = { key: 'A-3', type: 'Tâche', project: 'AUTRE' };
+
+  test('aucun filtre : tout passe', () => {
+    for (const it of [bug, story, orphelin]) assert.ok(passe(it, {}));
+  });
+
+  test('un critère sans valeur cochée ne filtre RIEN', () => {
+    // Sinon, ajouter un champ viderait la liste avant d'avoir coché quoi que ce soit.
+    for (const it of [bug, story, orphelin]) assert.ok(passe(it, { epic: [], type: [] }));
+  });
+
+  test('OU à l’intérieur d’un champ', () => {
+    assert.ok(passe(bug, { type: ['Bug', 'Story'] }));
+    assert.ok(passe(story, { type: ['Bug', 'Story'] }));
+    assert.ok(!passe(orphelin, { type: ['Bug', 'Story'] }));
+  });
+
+  test('ET entre les champs', () => {
+    assert.ok(passe(bug, { type: ['Bug'], priority: ['Haute'] }));
+    assert.ok(!passe(bug, { type: ['Bug'], priority: ['Basse'] }), 'les deux doivent être satisfaits');
+  });
+
+  test('un champ multi-valué correspond si UNE de ses valeurs est cochée', () => {
+    assert.ok(passe(bug, { labels: ['panier'] }));
+    assert.ok(passe(bug, { labels: ['inconnu', 'api', 'panier'] }));
+    assert.ok(!passe(bug, { labels: ['inconnu'] }));
+  });
+
+  test('un ticket sans valeur pour un champ filtré est écarté', () => {
+    assert.ok(!passe(story, { labels: ['panier'] }), 'aucune étiquette → ne correspond pas');
+    assert.ok(!passe(orphelin, { epic: ['E-1'] }), 'aucun epic → ne correspond pas');
+  });
+
+  test('l’epic filtre sur sa CLÉ, pas sur son résumé', () => {
+    assert.ok(passe(bug, { epic: ['E-1'] }));
+    assert.ok(!passe(bug, { epic: ['Tunnel'] }), 'le résumé n’est qu’un libellé d’affichage');
+  });
+
+  test('chaque champ proposé sait extraire ses valeurs sans exploser sur un ticket vide', () => {
+    for (const ch of champs) assert.deepEqual(ch.vals({}), [], `${ch.cle} sur un ticket vide`);
+  });
+});
+
+describe('jira : repérage du champ sprint et lecture de ses valeurs', () => {
+  test('repéré par son MARQUEUR de schéma, pas par son nom', () => {
+    /* Le nom est localisé — « Itération » sur une instance française. Le marqueur, lui, est
+       posé par Jira et ne dépend d'aucune langue : c'est le seul repère fiable. */
+    assert.deepEqual(jira.detectSprintField([
+      { id: 'customfield_10020', name: 'Itération', marqueur: 'com.pyxis.greenhopper.jira:gh-sprint' },
+    ]), { id: 'customfield_10020', name: 'Itération' });
+  });
+
+  test('repli sur le nom quand le schéma n’est pas exposé, et rien sinon', () => {
+    assert.deepEqual(jira.detectSprintField([{ id: 'customfield_1', name: 'Sprint', marqueur: '' }]),
+      { id: 'customfield_1', name: 'Sprint' });
+    assert.equal(jira.detectSprintField([{ id: 'customfield_1', name: 'Équipe', marqueur: '' }]), null);
+    assert.equal(jira.detectSprintField([]), null);
+  });
+
+  test('les deux formes de valeur renvoyées par Jira sont lues', () => {
+    assert.deepEqual(jira.sprintsDe([{ id: 42, name: 'Sprint 42', state: 'active' }]),
+      [{ v: '42', l: 'Sprint 42', d: '', etat: 'active' }]);
+    // Vieilles instances : une chaîne sérialisée plutôt qu'un objet.
+    assert.deepEqual(jira.sprintsDe(['…Sprint@1[id=43,name=Sprint 43,state=CLOSED]']),
+      [{ v: '43', l: 'Sprint 43', d: '', etat: 'closed' }]);
+    assert.deepEqual(jira.sprintsDe(null), [], 'un ticket hors sprint n’a pas de valeur');
+    assert.deepEqual(jira.sprintsDe(['sans identifiant']), [], 'une valeur illisible est écartée, pas devinée');
+  });
+
+  test('l’ÉTAT du sprint est extrait : « en cours » passe en tête, quelle que soit sa date', () => {
+    assert.equal(jira.sprintsDe([{ id: 1, name: 'S', state: 'ACTIVE' }])[0].etat, 'active',
+      'normalisé en minuscules : Jira écrit ACTIVE dans une forme, active dans l’autre');
+    assert.equal(jira.sprintsDe(['x@1[id=2,name=S,state=CLOSED]'])[0].etat, 'closed');
+    assert.equal(jira.sprintsDe([{ id: 3, name: 'S' }])[0].etat, '', 'état absent, pas deviné');
+  });
+
+  test('la DATE du sprint est extraite : c’est elle qui ordonne la liste', () => {
+    // Objet : début, sinon fin.
+    assert.equal(jira.sprintsDe([{ id: 1, name: 'S', startDate: '2026-07-20T08:00:00Z' }])[0].d,
+      '2026-07-20T08:00:00Z');
+    assert.equal(jira.sprintsDe([{ id: 1, name: 'S', endDate: '2026-08-01T08:00:00Z' }])[0].d,
+      '2026-08-01T08:00:00Z', 'à défaut de début, la fin situe quand même le sprint');
+    // Forme sérialisée, avec la date absente écrite « <null> ».
+    assert.equal(jira.sprintsDe(['x@1[id=2,name=S,startDate=2026-06-01T09:00:00.000Z,endDate=x]'])[0].d,
+      '2026-06-01T09:00:00.000Z');
+    assert.equal(jira.sprintsDe(['x@1[id=3,name=S,startDate=<null>,endDate=<null>]'])[0].d, '',
+      '« <null> » n’est pas une date : sans quoi le tri la placerait devant les vraies');
+  });
+});
+
 /* Séquences ANSI dans les logs. Le cas qui a motivé ce nettoyage : une application dans un
    container colore sa sortie, `docker logs` la relaie telle quelle, et le panneau affichait
    « ␛[34mdebug␛[39m » — chaque ligne noyée sous ses propres octets d'échappement. */
@@ -570,15 +810,37 @@ describe('jobs : objets marqués « en cours »', () => {
   });
 
   test('chaque famille d’objet tombe dans son propre seau', () => {
-    assert.deepEqual(jobTargets({ kind: 'local', taskId: 7 }), { mrs: [], tasks: [], locals: [7] });
-    assert.deepEqual(jobTargets({ kind: 'task', taskId: 4 }), { mrs: [], tasks: [4], locals: [] });
-    assert.deepEqual(jobTargets({ kind: 'converge-session', taskId: 5 }), { mrs: [], tasks: [5], locals: [] });
-    assert.deepEqual(jobTargets({ kind: 'converge', mrId: 9 }), { mrs: [9], tasks: [], locals: [] });
+    assert.deepEqual(jobTargets({ kind: 'local', taskId: 7 }), { mrs: [], tasks: [], locals: [7], verifying: [] });
+    assert.deepEqual(jobTargets({ kind: 'task', taskId: 4 }), { mrs: [], tasks: [4], locals: [], verifying: [] });
+    assert.deepEqual(jobTargets({ kind: 'converge-session', taskId: 5 }), { mrs: [], tasks: [5], locals: [], verifying: [] });
+    assert.deepEqual(jobTargets({ kind: 'converge', mrId: 9 }), { mrs: [9], tasks: [], locals: [], verifying: [] });
   });
 
   test('un job sans cible identifiable ne marque rien plutôt que n’importe quoi', () => {
-    assert.deepEqual(jobTargets({ kind: 'docker' }), { mrs: [], tasks: [], locals: [] });
-    assert.deepEqual(jobTargets(null), { mrs: [], tasks: [], locals: [] });
+    assert.deepEqual(jobTargets({ kind: 'docker' }), { mrs: [], tasks: [], locals: [], verifying: [] });
+    assert.deepEqual(jobTargets(null), { mrs: [], tasks: [], locals: [], verifying: [] });
+  });
+
+  /* UNE VÉRIFICATION MARQUE LES MR QU'ELLE PORTE. Sans ça, cliquer « Vérifier » ne changeait
+     rien à l'écran : le travail dure des minutes et plus rien ne disait qu'il avait commencé.
+     Elle les met dans `verifying` EN PLUS de `mrs` — le repère de la carte vaut pour tous les
+     jobs, mais le bouton doit savoir que c'est SA commande qui tourne et pas une review. */
+  test('une vérification marque les MR qu’elle porte, et se distingue d’une review', () => {
+    const db = require('../src/db');
+    db.prepare(`INSERT INTO verification (id, verifier_id, verifier_name, status, targets_json, created_at)
+      VALUES (901, NULL, 'tests', 'running', ?, ?)`)
+      .run(JSON.stringify([{ repo_id: 1, mr_id: 42 }, { repo_id: 2, mr_id: 43 }]), 'now');
+    const cibles = jobTargets({ kind: 'verify', verificationId: 901 });
+    assert.deepEqual(cibles.mrs, [42, 43], 'les cartes des deux MR se marquent');
+    assert.deepEqual(cibles.verifying, [42, 43], '…et le bouton « Vérifier » de chacune sait que c’est lui');
+    assert.deepEqual(jobTargets({ kind: 'review', rows: [] }, { current_mr_id: 42 }).verifying, [],
+      'une review, elle, ne fait pas tourner le bouton « Vérifier »');
+  });
+
+  /* Un lot de vérification porte plusieurs MR, mais toutes travaillent EN MÊME TEMPS (un seul
+     environnement monté) : là, marquer tout le lot est la vérité, contrairement à la review. */
+  test('une vérification introuvable ou illisible ne marque rien plutôt que de tomber', () => {
+    assert.deepEqual(jobTargets({ kind: 'verify', verificationId: 999999 }).mrs, []);
   });
 });
 

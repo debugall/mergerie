@@ -10,12 +10,14 @@
  */
 
 const { spawn } = require('child_process');
+const proc = require('./proc');
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const copilot = require('./copilot');
 const { DATA_DIR, ensureDir } = require('./paths');
+const { t } = require('../public/i18n-runtime.js');
 
 const TIMEOUT_MS = Number(process.env.AGENT_SESSION_TIMEOUT_MS || process.env.COPILOT_TIMEOUT_MS || 900000);
 const SESSIONS_ROOT = path.join(DATA_DIR, 'agent-sessions'); // homes Copilot isolés par clé
@@ -29,23 +31,38 @@ function backendName() {
 
 const slug = (key) => String(key).replace(/[^\w.-]/g, '_').slice(0, 120);
 
+/* L'entrée standard de l'agent est fermée d'office. Sans ça, `spawn` lui ouvre un tube que
+   personne n'alimente ni ne ferme : le CLI attend des données, avertit au bout de trois secondes
+   (« no stdin data received in 3s »), et cet avertissement finit par masquer la vraie erreur dans
+   le message d'échec — quand il ne fait pas sortir le processus en code 1. `ignore` équivaut au
+   `< /dev/null` que le CLI conseille lui-même. */
+const STDIO = ['ignore', 'pipe', 'pipe'];
+
+/* Tout process d'agent lancé ici s'ENREGISTRE auprès de `proc` (comme le font déjà git.js et
+   copilot.js). Sans cet enregistrement, `proc.cancel` levait bien son drapeau d'annulation mais
+   n'avait aucun enfant à tuer : « Stop » vidait la file et laissait l'agent tourner jusqu'à son
+   délai — quinze minutes à écrire dans le clone et à consommer des tokens. Or c'est le chemin
+   NOMINAL (COPILOT_BIN=claude), c'est-à-dire précisément la phase qu'on veut pouvoir arrêter. */
+
 function spawnAgent({ args, cwd, env }, onLog = () => {}) {
   return new Promise((resolve, reject) => {
     const bin = copilot.COPILOT_BIN;
     const shown = args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ');
     onLog(`$ ${bin} ${shown}  (cwd=${cwd})`);
-    const child = spawn(bin, args, { cwd, env: { ...process.env, ...(env || {}) } });
+    const child = spawn(bin, args, { cwd, env: { ...process.env, ...(env || {}) }, stdio: STDIO });
+    proc.setActive(child);                    // sans ça, « Stop » ne tue pas l'agent (cf. en-tête)
     let stdout = ''; let stderr = ''; let obuf = '';
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`timeout après ${TIMEOUT_MS} ms`)); }, TIMEOUT_MS);
+    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(t('err.cmd.timeout', { cmd: bin, ms: TIMEOUT_MS }))); }, TIMEOUT_MS);
     // Streame la sortie ligne par ligne : on voit l'agent avancer (copilot n'a pas de mode événements).
     child.stdout.on('data', (d) => { stdout += d; obuf = emitLines(obuf + d, onLog); });
     child.stderr.on('data', (d) => { stderr += d; });
-    child.on('error', (e) => { clearTimeout(timer); reject(e); });
+    child.on('error', (e) => { clearTimeout(timer); proc.clearActive(child); reject(e); });
     child.on('close', (code) => {
       clearTimeout(timer);
+      proc.clearActive(child);
       if (obuf) onLog(obuf);
       if (code === 0) resolve(stdout.trim());
-      else reject(new Error(`${bin} a échoué (code ${code}) : ${(stderr || stdout).slice(0, 500)}`));
+      else reject(new Error(t('err.cmd.failed', { cmd: bin, code, sortie: (stderr || stdout).slice(0, 500) })));
     });
   });
 }
@@ -76,9 +93,10 @@ function runClaudeStream(args, cwd, onLog) {
     const bin = copilot.COPILOT_BIN;
     const shown = args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ');
     onLog(`$ ${bin} ${shown}  (cwd=${cwd})`);
-    const child = spawn(bin, args, { cwd });
+    const child = spawn(bin, args, { cwd, stdio: STDIO });
+    proc.setActive(child);                    // idem : c'est LE chemin par défaut (claude)
     let stderr = ''; let buf = ''; let result = null; let sessionId = null; let lastText = '';
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`timeout après ${TIMEOUT_MS} ms`)); }, TIMEOUT_MS);
+    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(t('err.cmd.timeout', { cmd: bin, ms: TIMEOUT_MS }))); }, TIMEOUT_MS);
     const handleLine = (line) => {
       const s = line.trim();
       if (!s) return;
@@ -96,12 +114,13 @@ function runClaudeStream(args, cwd, onLog) {
     };
     child.stdout.on('data', (d) => { buf += d; const parts = buf.split('\n'); buf = parts.pop(); for (const p of parts) handleLine(p); });
     child.stderr.on('data', (d) => { stderr += d; });
-    child.on('error', (e) => { clearTimeout(timer); reject(e); });
+    child.on('error', (e) => { clearTimeout(timer); proc.clearActive(child); reject(e); });
     child.on('close', (code) => {
       clearTimeout(timer);
+      proc.clearActive(child);
       if (buf.trim()) handleLine(buf);
       if (code === 0) resolve({ text: (result != null ? result : lastText) || '', sessionId });
-      else reject(new Error(`${bin} a échoué (code ${code}) : ${stderr.slice(0, 500)}`));
+      else reject(new Error(t('err.cmd.failed', { cmd: bin, code, sortie: stderr.slice(0, 500) })));
     });
   });
 }
@@ -179,7 +198,7 @@ function enrichCopilotError(e, bootstrap, home) {
  */
 async function runInSession({ key, handle, prompt, cwd, resume = false, onLog = () => {} }) {
   const backend = backendName();
-  if (backend === 'unknown') throw new Error(`Backend « ${copilot.COPILOT_BIN} » non géré (claude ou copilot attendus).`);
+  if (backend === 'unknown') throw new Error(t('err.agent.backend', { bin: copilot.COPILOT_BIN }));
   const EXTRA = copilot.EXTRA_ARGS;
 
   if (backend === 'claude') {

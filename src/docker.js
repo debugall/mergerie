@@ -18,6 +18,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { run } = require('./git'); // spawn générique { stdout, stderr }, redaction incluse
+const { pMap } = require('./pmap');
 
 const COMPOSE_FILES = ['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml'];
 
@@ -351,19 +352,33 @@ async function listContainers() {
      unhealthy healthcheck KO, lu dans le Status « Up … (unhealthy) »
    Un container ne compte QUE dans la première famille qui le prend : restarting ET
    unhealthy reste une erreur, pas deux lignes. Pur → testable sans démon. */
+/* Code de sortie d'un container arrêté, lu dans son Status (« Exited (137) 2 hours ago »).
+   `null` quand on ne sait pas — Docker ne le fournit pas toujours sous cette forme. */
+function exitCodeOf(status) {
+  const m = /exited\s*\((\d+)\)/i.exec(String(status || ''));
+  return m ? Number(m[1]) : null;
+}
+
 function healthSummary(containers) {
-  let error = 0; let exited = 0; let unhealthy = 0;
+  let error = 0; let exited = 0; let crashed = 0; let unhealthy = 0;
   for (const c of containers || []) {
     const state = String(c.state || '').toLowerCase();
     const status = String(c.status || '').toLowerCase();
     if (state === 'restarting' || state === 'dead') error += 1;
     // `exited` reste un compteur À PART de `error` : un container arrêté n'est pas cassé,
     // et confondre les deux effacerait la différence entre « je l'ai arrêté » et
-    // « il redémarre en boucle ». C'est le badge qui les additionne, pas le décompte.
-    else if (state === 'exited') exited += 1;
-    else if (status.includes('(unhealthy)') || /\bunhealthy\b/.test(status)) unhealthy += 1;
+    // « il redémarre en boucle ». C'est le badge qui décide quoi additionner.
+    else if (state === 'exited') {
+      exited += 1;
+      /* Un arrêt PROPRE (code 0) n'est pas une anomalie : c'est le plus souvent « je l'ai
+         arrêté moi-même », ou un job qui a fini son travail. Le compter en rouge, c'est une
+         alarme qui sonne tous les jours — et une alarme qui sonne toujours n'est plus lue.
+         Seule une sortie en erreur rejoint le rouge ; un code inconnu reste hors alarme,
+         parce qu'on ne crie pas au loup sur une supposition. */
+      if (exitCodeOf(c.status) > 0) crashed += 1;
+    } else if (status.includes('(unhealthy)') || /\bunhealthy\b/.test(status)) unhealthy += 1;
   }
-  return { error, exited, unhealthy };
+  return { error, exited, crashed, unhealthy };
 }
 
 // Résumé santé de TOUS les containers (compose + hors-compose), pour le badge de menu.
@@ -396,18 +411,8 @@ async function imageEnv(image) {
 }
 
 /* Un projet compose : services + drift par service. `rootLabel` sert d'affichage. */
-// map parallèle BORNÉ : évite de lancer 50 `docker inspect`/`compose config` d'un coup (ce qui
-// noierait le démon), tout en gardant plusieurs projets/services en vol → bien plus rapide que
-// le séquentiel. Préserve l'ordre des résultats.
-async function pMap(items, limit, fn) {
-  const out = new Array(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) { const i = next; next += 1; out[i] = await fn(items[i], i); }
-  };
-  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length || 1) }, worker));
-  return out;
-}
+/* `pMap` vit maintenant dans son propre module : l'activité des dépôts en a le même besoin
+   (borner les appels à la forge), et deux copies d'un ordonnanceur finissent par diverger. */
 
 // Nom de projet compose PAR DÉFAUT (quand le compose ne le fixe pas) = basename du dossier
 // « sanitisé » comme le fait Docker Compose. Sert au tri/rattachement RAPIDE (liste), sans
@@ -444,7 +449,10 @@ async function composeProject({ dir, file, path: composePath, rootLabel }, share
       const createdMs = det && det.Created ? Date.parse(det.Created) : 0;
       composeModified = composeMtime > 0 && createdMs > 0 && composeMtime > createdMs;
       const health = det && det.State && det.State.Health ? det.State.Health.Status : null; // healthy/unhealthy/starting
-      container = { id: psRow.ID, name: (psRow.Names || '').split(',')[0], state, health, image: det && det.Config && det.Config.Image, created: det && det.Created };
+      /* `exitCode` vient de l'inspect, pas du texte du Status : c'est un entier, donc fiable,
+         et c'est lui qui distingue « je l'ai arrêté » (0) d'un plantage. */
+      const exitCode = det && det.State && det.State.ExitCode != null ? Number(det.State.ExitCode) : null;
+      container = { id: psRow.ID, name: (psRow.Names || '').split(',')[0], state, health, exitCode, image: det && det.Config && det.Config.Image, created: det && det.Created };
     }
     const badge = serviceBadge({ container, envDiffs, imgDrift, composeModified });
     return { name: svcName, image: svc.image || null, container, envDiffs, imgDrift, composeModified, badge };
@@ -590,5 +598,5 @@ module.exports = {
   composeProjects, composeFileList, composeOne, orphans, previewDown, runCompose, runDown, stopContainer, removeContainer, composeArgs,
   inspect, imageEnv, reconstructRunCommand, makefileFor, runMake, listContainers, spawnLogs, summary,
   // pur (tests) :
-  isSecretName, envArrayToMap, serviceExpectedEnv, diffEnv, imageDrift, serviceBadge, parseLabels, composeFilesUnder, parseMakefileTargets, validRef, healthSummary, defaultProjectName, COMPOSE_FILES,
+  isSecretName, exitCodeOf, envArrayToMap, serviceExpectedEnv, diffEnv, imageDrift, serviceBadge, parseLabels, composeFilesUnder, parseMakefileTargets, validRef, healthSummary, defaultProjectName, COMPOSE_FILES,
 };
