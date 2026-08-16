@@ -64,8 +64,19 @@ Please also run the test suite and **add tests for your change** (end-to-end whe
 otherwise):
 
 ```bash
+npx playwright install chromium   # once: the browsers are downloaded separately from the package
 npm test
 ```
+
+**One prerequisite, and one that is no longer one.**
+
+- The end-to-end UI suites drive a real Chromium. `npm ci` installs the `playwright` package but **not**
+  the browsers, so without that first command those suites skip themselves — and say so, naming the
+  command to run. A green run that skipped them proves nothing about the screen.
+- A **git identity is not required**. The suites build real git repositories and run real commits, but
+  each fixture repository carries its own local `user.name` / `user.email`
+  (`poserIdentiteGit` in `test/helpers/app.js`). Nothing reads — or writes — your global git
+  configuration, so a bare machine passes and yours is left untouched.
 
 The UI is **bilingual (French / English)** and supports **light and dark themes** — keep both working when
 you touch strings or styles.

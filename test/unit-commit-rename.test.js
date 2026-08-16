@@ -21,6 +21,7 @@ const { execFileSync } = require('node:child_process');
 
 const git = require('../src/git');
 const taskrunner = require('../src/taskrunner');
+const { poserIdentiteGit } = require('./helpers/app');
 
 const ENV = {
   ...process.env,
@@ -35,6 +36,10 @@ function depot({ pousse = false } = {}) {
   const work = path.join(dir, 'work');
   fs.mkdirSync(work);
   g(work, 'init', '-q', '-b', 'travail');
+  /* L'AMEND EST FAIT PAR L'APPLICATION, pas par le test : `ENV` ci-dessus ne le couvre donc
+     pas. Sans identité dans le dépôt, `git commit --amend` s'arrête sur « Committer identity
+     unknown » partout où aucune config git globale n'existe — c'est-à-dire en CI. */
+  poserIdentiteGit(work);
   fs.writeFileSync(path.join(work, 'a.txt'), 'contenu\n');
   g(work, 'add', '-A');
   g(work, 'commit', '-qm', 'message d’origine');

@@ -16,7 +16,9 @@ const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { startApp, makeRemoteRepo, waitForJobs } = require('./helpers/app');
+const {
+  startApp, makeRemoteRepo, waitForJobs, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
+} = require('./helpers/app');
 
 describe('Questions de l’agent : exploration et hors dépôt', () => {
   let app; let repoId;
@@ -156,9 +158,10 @@ describe('Questions de l’agent : exploration et hors dépôt', () => {
      prouve l'API — jamais l'écran : le hors dépôt a son propre `submit` et sa propre relecture,
      et c'est exactement là que la case peut s'afficher, s'accepter, et n'être jamais envoyée. */
   test('la case est visible et enregistrée depuis l’écran, pour les trois saveurs', async (t) => {
-    let chromium;
-    try { ({ chromium } = require('playwright')); } catch { t.skip('playwright absent'); return; }
-    const nav = await chromium.launch();
+    /* Le module `playwright` peut être là sans les navigateurs : on contrôle l'EXÉCUTABLE.
+       Sans lui, ce test se passe (il n'a rien à prouver ici) au lieu d'échouer sur une stack. */
+    if (!navigateurDispo().dispo) { t.skip(MSG_NAVIGATEUR); return; }
+    const nav = await lancerNavigateur();
     const page = await nav.newPage({ viewport: { width: 1400, height: 950 } });
     try {
       await page.goto(app.base);

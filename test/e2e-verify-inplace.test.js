@@ -13,7 +13,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { startApp } = require('./helpers/app');
+const { startApp, poserIdentiteGit } = require('./helpers/app');
 
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' }).toString().trim();
 
@@ -32,8 +32,7 @@ describe('Vérification objective — mode in place', () => {
 
     distant = fs.mkdtempSync(path.join(os.tmpdir(), 'ip-remote-'));
     git(distant, 'init', '-q', '-b', 'main');
-    git(distant, 'config', 'user.email', 'test@example.com');
-    git(distant, 'config', 'user.name', 'Test');
+    poserIdentiteGit(distant);
     fs.writeFileSync(path.join(distant, 'a.txt'), 'base\n');
     git(distant, 'add', '-A'); git(distant, 'commit', '-qm', 'base');
     git(distant, 'checkout', '-q', '-b', 'feature/x');
@@ -46,8 +45,8 @@ describe('Vérification objective — mode in place', () => {
     const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'ip-wd-'));
     workdir = path.join(parent, 'app');
     execFileSync('git', ['clone', '-q', distant, workdir], { stdio: 'pipe' });
-    git(workdir, 'config', 'user.email', 'test@example.com');
-    git(workdir, 'config', 'user.name', 'Test');
+    // Un clone n'hérite pas de la config locale de sa source : l'identité se repose ici.
+    poserIdentiteGit(workdir);
 
     await app.configure({ clone_path: fs.mkdtempSync(path.join(os.tmpdir(), 'ip-clones-')) });
     repoId = (await app.api('POST', '/api/repos', { project: 'grp/app', url: distant })).body.id;
@@ -112,6 +111,7 @@ describe('Vérification objective — mode in place', () => {
 
     const autre = fs.mkdtempSync(path.join(os.tmpdir(), 'ip-autre-'));
     git(autre, 'init', '-q', '-b', 'main');
+    poserIdentiteGit(autre);
     git(autre, 'remote', 'add', 'origin', 'https://gitlab.test/grp/AUTRE.git');
     const mauvais = await app.api('POST', '/api/verifiers/test-workdir', { repo_id: repoId, workdir: autre });
     assert.equal(mauvais.body.ok, false);
@@ -239,8 +239,7 @@ describe('Vérification objective — mode in place', () => {
     // Un deuxième dépôt, couvert par le vérificateur mais sans MR dans la vérification.
     const voisinRemote = fs.mkdtempSync(path.join(os.tmpdir(), 'ip-voisin-remote-'));
     git(voisinRemote, 'init', '-q', '-b', 'main');
-    git(voisinRemote, 'config', 'user.email', 'test@example.com');
-    git(voisinRemote, 'config', 'user.name', 'Test');
+    poserIdentiteGit(voisinRemote);
     fs.writeFileSync(path.join(voisinRemote, 'v.txt'), 'v\n');
     git(voisinRemote, 'add', '-A'); git(voisinRemote, 'commit', '-qm', 'v');
     git(voisinRemote, 'checkout', '-q', '-b', 'vieille-branche');

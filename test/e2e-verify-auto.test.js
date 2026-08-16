@@ -17,14 +17,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { startApp } = require('./helpers/app');
+const { startApp, poserIdentiteGit } = require('./helpers/app');
 
 // Un dépôt git réel : la vérification monte de vrais worktrees sur de vrais commits.
 function depot() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'auto-remote-'));
   const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: 'pipe' });
   g('init', '-q', '-b', 'main');
-  g('config', 'user.email', 'test@example.com'); g('config', 'user.name', 'Test');
+  poserIdentiteGit(dir);
   fs.writeFileSync(path.join(dir, 'a.txt'), 'base\n');
   g('add', '-A'); g('commit', '-qm', 'base');
   g('checkout', '-q', '-b', 'feature/x');

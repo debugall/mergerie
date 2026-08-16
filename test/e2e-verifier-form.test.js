@@ -16,7 +16,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { startApp } = require('./helpers/app');
+const { startApp, poserIdentiteGit } = require('./helpers/app');
 
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' }).toString().trim();
 
@@ -37,7 +37,7 @@ describe('Réglages → Vérificateurs : le formulaire s’ouvre à la demande',
     await app.configure({ clone_path: fs.mkdtempSync(path.join(os.tmpdir(), 'vf-clones-')) });
     const d = fs.mkdtempSync(path.join(os.tmpdir(), 'vf-repo-'));
     git(d, 'init', '-q', '-b', 'main');
-    git(d, 'config', 'user.email', 'test@example.com'); git(d, 'config', 'user.name', 'Test');
+    poserIdentiteGit(d);
     fs.writeFileSync(path.join(d, 'a.txt'), 'x\n'); git(d, 'add', '-A'); git(d, 'commit', '-qm', 'init');
     const repoId = (await app.api('POST', '/api/repos', { project: 'groupe/api-core', url: d })).body.id;
     await app.api('POST', '/api/verifiers', {

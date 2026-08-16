@@ -17,7 +17,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { startApp } = require('./helpers/app');
+const { startApp, poserIdentiteGit } = require('./helpers/app');
 
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' }).toString().trim();
 
@@ -41,7 +41,7 @@ describe('Combo — le menu ne se fait ni rogner ni détacher', { skip: dispo ? 
     for (let i = 0; i < NB_DEPOTS; i++) {
       const d = fs.mkdtempSync(path.join(os.tmpdir(), `cb-r${i}-`));
       git(d, 'init', '-q', '-b', 'main');
-      git(d, 'config', 'user.email', 'test@example.com'); git(d, 'config', 'user.name', 'Test');
+      poserIdentiteGit(d);
       fs.writeFileSync(path.join(d, 'a.txt'), 'x\n'); git(d, 'add', '-A'); git(d, 'commit', '-qm', 'init');
       await app.api('POST', '/api/repos', { project: `groupe/projet-numero-${i}`, url: d });
     }
@@ -50,7 +50,7 @@ describe('Combo — le menu ne se fait ni rogner ni détacher', { skip: dispo ? 
     for (const nom of ['alpha', 'beta', 'gamma', 'delta', 'epsilon']) {
       const d = path.join(racine, nom); fs.mkdirSync(d);
       git(d, 'init', '-q', '-b', 'main');
-      git(d, 'config', 'user.email', 'test@example.com'); git(d, 'config', 'user.name', 'Test');
+      poserIdentiteGit(d);
       fs.writeFileSync(path.join(d, 'a.txt'), 'x\n'); git(d, 'add', '-A'); git(d, 'commit', '-qm', 'init');
     }
     await app.api('POST', '/api/local-roots', { path: racine, label: 'mes projets' });

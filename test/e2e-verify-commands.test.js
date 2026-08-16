@@ -13,7 +13,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { startApp } = require('./helpers/app');
+const { startApp, poserIdentiteGit } = require('./helpers/app');
 
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' }).toString().trim();
 
@@ -34,8 +34,7 @@ describe('Vérification objective — vérificateur « commandes »', () => {
 
     distant = fs.mkdtempSync(path.join(os.tmpdir(), 'cmd-remote-'));
     git(distant, 'init', '-q', '-b', 'main');
-    git(distant, 'config', 'user.email', 'test@example.com');
-    git(distant, 'config', 'user.name', 'Test');
+    poserIdentiteGit(distant);
     fs.writeFileSync(path.join(distant, 'a.txt'), 'base\n');
     git(distant, 'add', '-A'); git(distant, 'commit', '-qm', 'base');
     git(distant, 'checkout', '-q', '-b', 'feature/x');
@@ -47,8 +46,7 @@ describe('Vérification objective — vérificateur « commandes »', () => {
     // Un second dépôt, seulement pour prouver qu'un vérificateur « commandes » le refuse.
     const autre = fs.mkdtempSync(path.join(os.tmpdir(), 'cmd-remote2-'));
     git(autre, 'init', '-q', '-b', 'main');
-    git(autre, 'config', 'user.email', 'test@example.com');
-    git(autre, 'config', 'user.name', 'Test');
+    poserIdentiteGit(autre);
     fs.writeFileSync(path.join(autre, 'b.txt'), 'b\n');
     git(autre, 'add', '-A'); git(autre, 'commit', '-qm', 'b');
     git(autre, 'checkout', '-q', '-b', 'feature/y');
@@ -61,8 +59,7 @@ describe('Vérification objective — vérificateur « commandes »', () => {
        qu'un run d'intégration bloque même là où il n'y a aucun dépôt en commun. */
     const tiers = fs.mkdtempSync(path.join(os.tmpdir(), 'cmd-remote3-'));
     git(tiers, 'init', '-q', '-b', 'main');
-    git(tiers, 'config', 'user.email', 'test@example.com');
-    git(tiers, 'config', 'user.name', 'Test');
+    poserIdentiteGit(tiers);
     fs.writeFileSync(path.join(tiers, 'c.txt'), 'c\n');
     git(tiers, 'add', '-A'); git(tiers, 'commit', '-qm', 'c');
     git(tiers, 'checkout', '-q', '-b', 'feature/z');

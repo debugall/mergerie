@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { startApp } = require('./helpers/app');
+const { startApp, poserIdentiteGit } = require('./helpers/app');
 
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' }).toString().trim();
 
@@ -20,8 +20,7 @@ const git = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' }).toStri
 function depot(nom) {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), `lot-${nom}-`));
   git(d, 'init', '-q', '-b', 'main');
-  git(d, 'config', 'user.email', 'test@example.com');
-  git(d, 'config', 'user.name', 'Test');
+  poserIdentiteGit(d);
   fs.writeFileSync(path.join(d, 'a.txt'), 'base\n');
   git(d, 'add', '-A'); git(d, 'commit', '-qm', 'base');
   git(d, 'checkout', '-q', '-b', 'feature/x');

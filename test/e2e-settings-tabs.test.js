@@ -14,18 +14,19 @@
 
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { startApp } = require('./helpers/app');
+const { startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR } = require('./helpers/app');
 
-let chromium;
-try { ({ chromium } = require('playwright')); } catch { /* navigateur absent */ }
+/* Le paquet `playwright` peut être installé sans que les navigateurs le soient : c'est le cas
+   d'un runner CI ou d'un conteneur vierge. On vérifie donc l'EXÉCUTABLE, pas le module. */
+const { dispo } = navigateurDispo();
 
-describe('Réglages : ordre des sous-onglets', { skip: chromium ? false : 'playwright absent' }, () => {
+describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
   let app; let navigateur; let page;
 
   before(async () => {
     app = await startApp();
     await app.configure();
-    navigateur = await chromium.launch();
+    navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 900 } });
     await page.goto(app.base);
   });

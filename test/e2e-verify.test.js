@@ -13,7 +13,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { startApp } = require('./helpers/app');
+const { startApp, poserIdentiteGit } = require('./helpers/app');
 
 // Écrit un script de vérification qui répond ce qu'on lui demande, une fois pour toutes.
 function ecrireScript(dir, nom, corps) {
@@ -40,8 +40,7 @@ describe('Vérification objective — mode worktree', () => {
     depotDistant = fs.mkdtempSync(path.join(os.tmpdir(), 'verif-remote-'));
     const g = (...a) => execFileSync('git', a, { cwd: depotDistant, stdio: 'pipe' });
     g('init', '-q', '-b', 'main');
-    g('config', 'user.email', 'test@example.com');
-    g('config', 'user.name', 'Test');
+    poserIdentiteGit(depotDistant);
     fs.writeFileSync(path.join(depotDistant, 'a.txt'), 'base\n');
     g('add', '-A'); g('commit', '-qm', 'base');
     const baseSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: depotDistant }).toString().trim();
