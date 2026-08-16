@@ -22,6 +22,12 @@ try {
   dispo = fs.existsSync(chromium.executablePath());
 } catch { /* playwright absent */ }
 
+/* Une attente d'écran généreuse. Ces suites tournent à plusieurs sur un runner CI de
+   quatre cœurs : un délai calibré sur une machine de développement y échoue sans que rien
+   ne soit cassé, et l'échec du premier test entraîne tous les suivants qui dépendent de
+   son état. Mieux vaut attendre longtemps pour rien que rendre un rouge qui ne veut rien dire. */
+const ATTENTE_ECRAN = 20000;
+
 describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx playwright install chromium' }, () => {
   let app;
   let srv;
@@ -132,7 +138,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.locator('[name="jenkins_token"]').fill(mock.state.token);
     await page.locator('#btnTestJenkins').click();
     await page.waitForFunction(() => /Moi Même/.test(document.querySelector('#configInfoJenkins').textContent),
-      null, { timeout: 5000 });
+      null, { timeout: ATTENTE_ECRAN });
 
     await page.locator('#sub-jenkinscfg button[type="submit"]').first().click();
     await page.waitForTimeout(300);

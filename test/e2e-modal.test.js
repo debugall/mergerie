@@ -23,6 +23,12 @@ try {
   dispo = fs.existsSync(chromium.executablePath());
 } catch { /* playwright absent */ }
 
+/* Une attente d'écran généreuse. Ces suites tournent à plusieurs sur un runner CI de
+   quatre cœurs : un délai calibré sur une machine de développement y échoue sans que rien
+   ne soit cassé, et l'échec du premier test entraîne tous les suivants qui dépendent de
+   son état. Mieux vaut attendre longtemps pour rien que rendre un rouge qui ne veut rien dire. */
+const ATTENTE_ECRAN = 20000;
+
 describe('Modales : le clic sur le fond', { skip: dispo ? false : 'chromium absent — npx playwright install chromium' }, () => {
   let app;
   let navigateur;
@@ -160,7 +166,7 @@ describe('Modales : le clic sur le fond', { skip: dispo ? false : 'chromium abse
     await page.waitForFunction(() => {
       const b = document.querySelector('#toasts .toast.err .toast-btn');
       return b && !/copier|copy/i.test(b.textContent);
-    }, null, { timeout: 3000 });
+    }, null, { timeout: ATTENTE_ECRAN });
     await page.evaluate(() => document.querySelectorAll('#toasts .toast').forEach((x) => x.remove()));
   });
 

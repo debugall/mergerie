@@ -21,6 +21,12 @@ try {
   dispo = fs.existsSync(chromium.executablePath());
 } catch { /* playwright absent */ }
 
+/* Une attente d'écran généreuse. Ces suites tournent à plusieurs sur un runner CI de
+   quatre cœurs : un délai calibré sur une machine de développement y échoue sans que rien
+   ne soit cassé, et l'échec du premier test entraîne tous les suivants qui dépendent de
+   son état. Mieux vaut attendre longtemps pour rien que rendre un rouge qui ne veut rien dire. */
+const ATTENTE_ECRAN = 20000;
+
 describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromium absent — npx playwright install chromium' }, () => {
   let app;
   let navigateur;
@@ -567,7 +573,7 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
       && !document.querySelector('#toServiceBox .combo-options').hidden);
     await page.locator('#toServiceBox .combo-options div').first().click();
     await page.waitForFunction(() => document.querySelector('#toServiceNameRow').hidden,
-      null, { timeout: 5000 });
+      null, { timeout: ATTENTE_ECRAN });
 
     await page.locator('#toServiceOk').click();
     /* On attend la DISPARITION du lien libre, pas son apparition dans la grille : la case en

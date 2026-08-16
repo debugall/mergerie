@@ -78,10 +78,23 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
     await page.evaluate(() => localStorage.setItem('aidevtools_admin_sub', 'aisession'));
     await page.reload();
     await page.locator('[data-tab="admin"]').click();
+    /* ATTENDRE QUE LA CONFIG SOIT CHARGÉE AVANT DE TAPER. Le formulaire est peuplé par
+       `loadConfig()`, appelé DEUX fois ici : au démarrage, puis à l'ouverture du sous-onglet
+       (`ADMIN_SUBS.aisession`). Si la seconde réponse arrive après notre frappe, elle écrase le
+       champ et c'est une chaîne VIDE qui part à l'enregistrement — le formulaire répond alors
+       « enregistré ✓ » sans que rien de ce qu'on a tapé n'ait été sauvé. Sur une machine rapide
+       les deux réponses reviennent avant la frappe ; sur un runner CI, non. */
+    await page.waitForLoadState('networkidle');
     const champ = page.locator('#sub-aisession textarea[name="ai_extra_instructions"]');
     await champ.waitFor();
 
     await champ.fill('Commente en français.');
+    // Le champ tient-il encore ce qu'on vient d'écrire ? Sinon, autant échouer ICI, sur la
+    // cause, plutôt que trois lignes plus bas sur une relecture vide.
+    await page.waitForFunction(
+      () => document.querySelector('#sub-aisession [name="ai_extra_instructions"]').value === 'Commente en français.',
+      null, { timeout: 5000 },
+    );
     await page.locator('#sub-aisession button[type="submit"]').click();
     await page.waitForFunction(() => document.querySelector('#configInfoAi').textContent.trim() !== '');
 
