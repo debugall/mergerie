@@ -117,6 +117,8 @@ describe('Verdict publié en commentaire', () => {
     assert.equal(pre.posted_at, null, 'rien n’a encore été publié');
     assert.match(pre.body, /✗ 1 test\(s\) cassé\(s\) par cette branche/);
     assert.match(pre.body, /panier › total/, 'les faits, pas seulement le verdict');
+    assert.match(pre.body, /Commandes en échec :/, 'le gabarit par défaut nomme la commande fautive');
+    assert.match(pre.body, /code de sortie 1/);
     assert.match(pre.body, /_Vérifié le \d{2}\/\d{2}\/\d{4} à \d{2}:\d{2}\._/, 'l’horodatage du gabarit par défaut');
   });
 
@@ -228,6 +230,28 @@ describe('Verdict publié en commentaire', () => {
   });
 
   /* ------------------------------------------------- le gabarit du vérificateur ---- */
+
+  /* `{commandes}` répond à « laquelle a cassé ? » — la question que `{tests}` laisse ouverte
+     quand la sortie nomme les tests. */
+  test('{commandes} nomme les commandes en échec, avec leur code de sortie', async () => {
+    const { v, d } = await verifier({
+      nom: 'cmds', commande: script('cmds-ko', "printf 'TAP version 13\nnot ok 1 - panier › total\n1..1\n'\nexit 3"),
+    });
+    await app.api('PUT', `/api/verifiers/${v.id}`, { comment_template: '{tests}\n\n{commandes}' });
+    const { body: pre } = await app.api('GET', `/api/verifications/${d.id}/comment`);
+
+    assert.match(pre.body, /panier › total/, 'le nom du test vient du TAP…');
+    assert.match(pre.body, /Commandes en échec :/);
+    assert.match(pre.body, /cmds-ko\.sh` — code de sortie 3/, '…et la commande fautive est nommée, avec son code');
+  });
+
+  test('{commandes} reste vide quand rien n’a échoué', async () => {
+    const { v, d } = await verifier({ nom: 'cmds-vert' });
+    await app.api('PUT', `/api/verifiers/${v.id}`, { comment_template: '{verdict}\n\n{commandes}\n\n{commits}' });
+    const { body: pre } = await app.api('GET', `/api/verifications/${d.id}/comment`);
+    assert.doesNotMatch(pre.body, /Commandes en échec/, 'tout est vert : pas de section vide');
+    assert.doesNotMatch(pre.body, /\n{3}/, '…et pas de trou laissé par le champ absent');
+  });
 
   test('le gabarit du vérificateur remplace le défaut, à l’écran comme à l’envoi', async () => {
     const { v, d } = await verifier({ nom: 'gabarit' });

@@ -1597,6 +1597,7 @@ case — there, a human decides, with the text in front of them.
 |---|---|
 | `{verdict}` | the verdict line, with the verifier's name — `**integ**: ✗ 2 test(s) broken by this branch`. On a branch verification, “by this branch” disappears |
 | `{tests}` | the broken tests, one per line, with their message when the output gives one. Cut past twenty, and it says so. **Empty when everything passes** |
+| `{commandes}` | the commands that failed, with their exit code (prefixed with the repository when there are several). It answers what `{tests}` leaves open when the output **names** the tests: which ones broke, yes — but which command did. Empty when nothing failed |
 | `{commits}` | the commits actually tested: one per repository, `repository · branch @ sha`. That is what makes the verdict checkable |
 | `{verificateur}` | the verifier's name alone — useful if you write your own verdict sentence |
 | `{date}` | the date the comment is **published** (`17/08/2026`), not the date of the run |

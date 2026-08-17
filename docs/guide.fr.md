@@ -1658,6 +1658,7 @@ champ :
 |---|---|
 | `{verdict}` | la ligne de verdict, avec le nom du vérificateur — `**integ** : ✗ 2 test(s) cassé(s) par cette branche`. Sur une vérification de branche, « par cette branche » disparaît |
 | `{tests}` | les tests cassés, un par ligne, avec leur message quand la sortie en donne un. Coupé au-delà de vingt, et il le dit. **Vide si tout passe** |
+| `{commandes}` | les commandes qui ont échoué, avec leur code de sortie (préfixées du dépôt s'il y en a plusieurs). Elle répond à ce que `{tests}` laisse ouvert quand la sortie **nomme** les tests : lesquels cassent, oui — mais laquelle des commandes. Vide si rien n'a échoué |
 | `{commits}` | les commits réellement testés : un par dépôt, `dépôt · branche @ sha`. C'est ce qui rend le verdict vérifiable |
 | `{verificateur}` | le nom du vérificateur, seul — utile si tu écris ta propre phrase de verdict |
 | `{date}` | la date de **publication** du commentaire (`17/08/2026`), pas celle du run |

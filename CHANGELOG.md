@@ -30,10 +30,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 - **The published comment has an editable template.** Under `Publish the verdict as a comment`,
   a template with fields replaced when it is sent: `{verdict}`, `{tests}`, `{commits}`,
-  `{verificateur}`, `{date}` and `{heure}` — so the comment carries **the date and time it was
+  `{verificateur}`, `{commandes}`, `{date}` and `{heure}` — so the comment carries **the date and time it was
   published**. Each field is **explained on the spot**, with what it actually produces (a field
   name teaches nothing: between `{tests}` and `{commits}`, nobody guesses which one carries the
-  broken test names), and a collapsed **“See an example comment”** renders your own template on
+  broken test names — and `{commandes}`, part of the default template, names the failing commands
+  with their exit code, which `{tests}` cannot say when the output names the tests itself), and a
+  collapsed
+  **“See an example comment”** renders your own template on
   sample data — composed by the same engine as the real comment, so the preview cannot drift from
   what is sent. An unknown field stays visible rather than vanishing: a typo should show in the
   preview, not become a hole in the comment. Left empty, the default template is used, and it

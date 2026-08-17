@@ -521,12 +521,14 @@ const GABARIT_COMMENTAIRE_DEFAUT = [
   '',
   '{tests}',
   '',
+  '{commandes}',
+  '',
   '{commits}',
   '',
   '_Vérifié le {date} à {heure}._',
 ].join('\n');
 
-const CHAMPS_COMMENTAIRE = ['verdict', 'tests', 'commits', 'verificateur', 'date', 'heure'];
+const CHAMPS_COMMENTAIRE = ['verdict', 'tests', 'commandes', 'commits', 'verificateur', 'date', 'heure'];
 
 /* DES BLOCS D'EXEMPLE, pour montrer à quoi ressemble un gabarit une fois rempli. Ils passent
    par la MÊME fonction que le vrai commentaire : un aperçu composé autrement finirait par
@@ -537,6 +539,8 @@ const EXEMPLE_COMMENTAIRE = {
   tests: ['Tests cassés :',
     '- `panier › total` — attendu 42, reçu 41',
     '- `paiement › devise absente`'].join('\n'),
+  commandes: ['Commandes en échec :',
+    '- grp/api › `npm test` — code de sortie 1'].join('\n'),
   commits: ['Commits testés :',
     '- grp/api · `feat/PROJ-720-checkout` @ `a1b2c3d4`',
     '- grp/front · `feat/PROJ-720-tunnel` @ `9f8e7d6c`'].join('\n'),
@@ -575,6 +579,7 @@ function composerCommentaire(donnees, gabarit, maintenant = new Date()) {
   const valeurs = {
     verdict: donnees.verdict || '',
     tests: donnees.tests || '',
+    commandes: donnees.commandes || '',
     commits: donnees.commits || '',
     verificateur: donnees.verificateur || '',
     date: maintenant.toLocaleDateString('fr-FR'),

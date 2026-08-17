@@ -567,12 +567,22 @@ function blocsCommentaire(v, verifier) {
     if (imputable.length > 20) tests.push(`- … et ${imputable.length - 20} de plus`);
   }
 
+  /* LES COMMANDES QUI ONT CASSÉ. Quand la sortie nomme les tests (TAP, JUnit), le bloc
+     `{tests}` ne dit pas QUELLE commande a échoué — utile quand la liste en compte cinq. Vide
+     s'il n'y a rien en échec : le gabarit s'en accommode, la ligne disparaît. */
+  const head = lire(v.head_run_json);
+  const rates = ((head && head.commands) || []).filter((c) => c.code !== 0);
+  const plusieurs = new Set(((head && head.commands) || []).map((c) => c.repo).filter(Boolean)).size > 1;
+  const commandes = rates.length
+    ? ['Commandes en échec :', ...rates.map((c) => `- ${plusieurs && c.repo ? `${c.repo} › ` : ''}\`${c.command}\` — code de sortie ${c.code}`)].join('\n')
+    : '';
+
   const commits = ['Commits testés :'];
   for (const c of cibles) {
     const repo = db.prepare('SELECT project FROM repo WHERE id = ?').get(c.repo_id);
     commits.push(`- ${(repo && repo.project) || c.repo_id} · \`${c.branch || ''}\` @ \`${String(c.head_sha || '').slice(0, 8)}\``);
   }
-  return { verdict, tests: tests.join('\n'), commits: commits.join('\n'), verificateur: nom };
+  return { verdict, tests: tests.join('\n'), commandes, commits: commits.join('\n'), verificateur: nom };
 }
 
 // Le corps prêt à publier : les blocs, posés dans le gabarit du vérificateur (ou le défaut).
