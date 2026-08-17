@@ -219,6 +219,11 @@ try { db.exec("ALTER TABLE config ADD COLUMN jenkins_token TEXT DEFAULT ''"); } 
    localStorage, comme celle des MR et celle de Jira : c'est un réglage de l'OUTIL, et il doit
    valoir quel que soit le navigateur d'où on le regarde. */
 try { db.exec('ALTER TABLE config ADD COLUMN jenkins_refresh_minutes INTEGER DEFAULT 1'); } catch { /* déjà présente */ }
+/* Plafond de vérifications automatiques par tour de découverte. Un lundi matin en ramène
+   quinze : quinze batteries fonctionnelles saturent la machine et bloquent la file partagée
+   avec les reviews. Le bon chiffre dépend de la machine et de la durée des suites — il se règle
+   donc, au lieu d'être une constante que seul le code connaît. 0 = aucune limite (assumé). */
+try { db.exec('ALTER TABLE config ADD COLUMN verif_auto_max INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
 // Migration : message de commit personnalisable des tâches.
 /* LE VÉRIFICATEUR D'UNE SESSION, facultatif. Rattaché à la session et non au lancement :
    relancer la même session doit revérifier de la même façon, sans qu'on ait à s'en souvenir.
@@ -685,6 +690,15 @@ try { db.exec("ALTER TABLE verifier ADD COLUMN kind TEXT NOT NULL DEFAULT 'scrip
    manuel là est un besoin qu'on n'a pas, et la colonne se déplacera sans casser les données
    le jour où il apparaît. Défaut 0 : rien ne se met à tourner tout seul sans qu'on le demande. */
 try { db.exec('ALTER TABLE verifier ADD COLUMN auto_on_mr INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+/* « Relancer quand le verdict se périme » : la MR a reçu de nouveaux commits, le vert obtenu
+   sur l'ancien SHA ne vaut plus rien. Séparé de `auto_on_mr` — vérifier une MR à son arrivée et
+   la revérifier à chaque poussée sont deux appétits différents : la seconde multiplie la charge
+   par le nombre de commits, et c'est un choix qui doit s'assumer ligne par ligne. */
+try { db.exec('ALTER TABLE verifier ADD COLUMN auto_on_stale INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+/* Le gabarit du commentaire publié sur la merge request. Vide = le gabarit par défaut, qui vit
+   dans `verify.js` — on ne le recopie PAS en base : un défaut recopié se fige, et l'améliorer
+   n'atteindrait plus personne. */
+try { db.exec("ALTER TABLE verifier ADD COLUMN comment_template TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 // Ajoutées à l'environnement minimal. Sans elles, un `npm` installé par nvm reste introuvable
 // quand Mergerie est lancé par un service plutôt que depuis un terminal.
 try { db.exec('ALTER TABLE verifier ADD COLUMN env_json TEXT'); } catch { /* déjà présente */ }
@@ -754,6 +768,10 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_verification_lot ON verification(lot_id,
 /* Échec de restauration d'un répertoire « in place » : signalé de façon PERSISTANTE, jamais
    noyé dans un journal. Le dépôt de l'utilisateur est resté sur un commit détaché. */
 try { db.exec('ALTER TABLE verification ADD COLUMN restore_error TEXT'); } catch { /* déjà présente */ }
+/* Ce qui a été PUBLIÉ, et quand. Sans cette trace, l'écran repropose « Publier » comme si de
+   rien n'était et on poste deux fois le même verdict sur la merge request de quelqu'un. */
+try { db.exec('ALTER TABLE verification ADD COLUMN comment_posted_at TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE verification ADD COLUMN comment_targets TEXT'); } catch { /* déjà présente */ }
 
 /* Bases créées avant que le rapport ne devienne une archive : la table portait des clés
    étrangères bloquantes vers `verifier` et `lot`. SQLite ne sait pas modifier une contrainte,

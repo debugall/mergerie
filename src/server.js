@@ -2570,6 +2570,12 @@ function lireVerifier(body, courant) {
     run_base: bool(b.run_base, courant ? courant.run_base : 1),
     comment_on_forge: bool(b.comment_on_forge, courant ? courant.comment_on_forge : 0),
     auto_on_mr: bool(b.auto_on_mr, courant ? courant.auto_on_mr : 0),
+    auto_on_stale: bool(b.auto_on_stale, courant ? courant.auto_on_stale : 0),
+    /* Gabarit VIDE = le défaut, qui vit dans `verify.js`. On ne recopie pas le défaut en base :
+       recopié, il se fige, et l'améliorer n'atteindrait plus personne. */
+    comment_template: b.comment_template != null
+      ? String(b.comment_template).slice(0, 5000)
+      : (courant ? courant.comment_template : ''),
     repos,
   };
 }
@@ -2600,9 +2606,11 @@ app.post('/api/verifiers', wrap((req, res) => {
     throw new Error(t('err.verifier.name-taken', { name: v.name }));
   }
   const info = db.prepare(`INSERT INTO verifier
-    (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, env_json, report_path, parse_tap, created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(v.name, v.kind, v.command, v.timeout_s, v.run_base,
-    v.comment_on_forge, v.auto_on_mr, v.env_json, v.report_path, v.parse_tap, new Date().toISOString());
+    (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, auto_on_stale,
+     comment_template, env_json, report_path, parse_tap, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(v.name, v.kind, v.command, v.timeout_s, v.run_base,
+    v.comment_on_forge, v.auto_on_mr, v.auto_on_stale, v.comment_template,
+    v.env_json, v.report_path, v.parse_tap, new Date().toISOString());
   ecrireRepos(info.lastInsertRowid, v.repos || []);
   ecrireCommandes(info.lastInsertRowid, v.commands || []);
   res.json(verifierAvecRepos(info.lastInsertRowid));
@@ -2615,12 +2623,19 @@ app.put('/api/verifiers/:id', wrap((req, res) => {
   const homonyme = db.prepare('SELECT 1 FROM verifier WHERE name = ? AND id <> ?').get(v.name, cur.id);
   if (homonyme) throw new Error(t('err.verifier.name-taken', { name: v.name }));
   db.prepare(`UPDATE verifier SET name = ?, kind = ?, command = ?, timeout_s = ?, run_base = ?,
-    comment_on_forge = ?, auto_on_mr = ?, env_json = ?, report_path = ?, parse_tap = ? WHERE id = ?`)
+    comment_on_forge = ?, auto_on_mr = ?, auto_on_stale = ?, comment_template = ?,
+    env_json = ?, report_path = ?, parse_tap = ? WHERE id = ?`)
     .run(v.name, v.kind, v.command, v.timeout_s, v.run_base, v.comment_on_forge, v.auto_on_mr,
-      v.env_json, v.report_path, v.parse_tap, cur.id);
+      v.auto_on_stale, v.comment_template, v.env_json, v.report_path, v.parse_tap, cur.id);
   ecrireRepos(cur.id, v.repos);
   ecrireCommandes(cur.id, v.commands);
   res.json(verifierAvecRepos(cur.id));
+}));
+
+/* Le gabarit par défaut, servi au lieu d'être recopié dans l'écran : une seconde copie
+   divergerait, et l'utilisateur croirait modifier ce qui part réellement. */
+app.get('/api/verifiers/comment-template-default', wrap((req, res) => {
+  res.json({ template: verifyLib.GABARIT_COMMENTAIRE_DEFAUT, champs: verifyLib.CHAMPS_COMMENTAIRE });
 }));
 
 app.delete('/api/verifiers/:id', wrap((req, res) => {
@@ -2775,6 +2790,44 @@ app.get('/api/verifications/:id', wrap((req, res) => {
   res.json(detailVerification(v));
 }));
 
+/* LE CORPS PRÉ-REMPLI, tel qu'il partirait. Pas de composition côté écran : ce qui s'affiche
+   dans la modale doit être exactement ce que la publication automatique enverrait, sinon relire
+   avant de publier ne prouve rien. */
+app.get('/api/verifications/:id/comment', wrap((req, res) => {
+  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(Number(req.params.id));
+  if (!v) throw new Error(t('err.verify.not-found'));
+  let cibles = [];
+  try { cibles = JSON.parse(v.targets_json || '[]'); } catch { cibles = []; }
+  const mrs = cibles.filter((c) => c.mr_id).map((c) => {
+    const mr = db.prepare(`SELECT mr.iid AS iid, repo.project AS project
+      FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?`).get(c.mr_id);
+    return mr ? `${mr.project} !${mr.iid}` : null;
+  }).filter(Boolean);
+  let dejaPubliees = null;
+  try { dejaPubliees = v.comment_targets ? JSON.parse(v.comment_targets) : null; } catch { dejaPubliees = null; }
+  res.json({
+    body: verifyrun.corpsCommentaire(v.id) || '',
+    mrs,                                   // ce que la confirmation doit nommer
+    posted_at: v.comment_posted_at || null, // déjà publié ? l'écran ne doit pas le taire
+    posted_targets: dejaPubliees,
+  });
+}));
+
+/* Publie le texte RELU. Le corps vient du client parce que c'est tout l'intérêt : le
+   pré-rempli est une proposition, pas un contrat. Il est borné et publié tel quel. */
+app.post('/api/verifications/:id/comment', wrap(async (req, res) => {
+  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(Number(req.params.id));
+  if (!v) throw new Error(t('err.verify.not-found'));
+  const body = (req.body && req.body.body != null) ? String(req.body.body) : null;
+  if (body != null && !body.trim()) throw new Error(t('err.verify.comment-empty'));
+  const postees = await verifyrun.publierCommentaire(v.id, getConfig(), {
+    body: body == null ? null : body.slice(0, 50000),
+  });
+  if (!postees || !postees.length) throw new Error(t('err.verify.comment-no-mr'));
+  const apres = db.prepare('SELECT comment_posted_at, comment_targets FROM verification WHERE id = ?').get(v.id);
+  res.json({ ok: true, posted: postees, posted_at: apres.comment_posted_at });
+}));
+
 /* Dernière vérification par MR : ce qui alimente les badges de la liste. On la calcule ici
    plutôt qu'en base pour que la PÉREMPTION suive le SHA courant sans écriture. */
 function detailVerification(v) {
@@ -2905,6 +2958,54 @@ app.post('/api/verify/mrs', wrap((req, res) => {
   res.json(creerVerification({ verifier, cibles: appliquerModes(verifier, cibles) }));
 }));
 
+/* ---------- Vérifier une BRANCHE, sans merge request ----------
+   Au retour de congés, plusieurs MR ont été mergées : la question n'est plus « qu'est-ce que
+   cette branche casse ? » mais « est-ce que `develop` est encore vert ? ». C'est le MÊME objet
+   avec une cible différente — une cible porte déjà `repo_id`, `branch`, `head_sha` et un
+   `mr_id` qui peut être nul. Aucun changement de schéma.
+
+   DEUX CHOSES CHANGENT DE SENS, et elles se décident ici :
+   · le double run causal s'éteint (`run_base` forcé à 0) : sur une branche d'intégration, la
+     branche EST la base — le laisser actif ferait tourner la batterie deux fois pour comparer
+     `develop` à `develop` ;
+   · l'imputabilité disparaît : rien n'est « cassé par cette branche », ce qui est rouge est
+     rouge. L'affichage et le commentaire le disent autrement (voir `blocsCommentaire`). */
+async function ciblesDepuisBranches(entrees) {
+  const cfg = getConfig();
+  const cibles = [];
+  const vus = new Set();
+  for (const e of entrees) {
+    const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(Number(e.repo_id));
+    if (!repo) throw new Error(t('err.depot-introuvable'));
+    if (vus.has(repo.id)) throw new Error(t('err.verify.repo-twice'));
+    vus.add(repo.id);
+    const branche = String(e.branch || '').trim();
+    if (!branche) throw new Error(t('err.verify.branch-required', { project: repo.project }));
+    /* Le SHA est résolu MAINTENANT, dans le clone : un verdict est attaché à des commits, pas
+       à un nom de branche qui bougera. C'est aussi ce qui rend la péremption possible. */
+    const cwd = await git.ensureRepo(cfg, repo, () => {});
+    if (!await git.refExists(cwd, `origin/${branche}`)) {
+      throw new Error(t('err.verify.branch-unknown', { branch: branche, project: repo.project }));
+    }
+    const { stdout } = await git.run('git', ['rev-parse', `origin/${branche}`], { cwd });
+    cibles.push({
+      repo_id: repo.id, mr_id: null, head_sha: stdout.trim(),
+      base_sha: null, branch: branche, mode: 'worktree',
+    });
+  }
+  return cibles;
+}
+
+app.post('/api/verify/branches', wrap(async (req, res) => {
+  const entrees = (req.body && req.body.targets) || [];
+  if (!entrees.length) throw new Error(t('err.verify.branch-required', { project: '' }));
+  const cibles = await ciblesDepuisBranches(entrees);
+  const verifier = verifierPour(cibles, req.body && req.body.verifier_id);
+  /* Le run base s'éteint tout seul à l'exécution : `executerVerification` le déduit de
+     l'absence de merge request dans les cibles. Rien à forcer ici, donc rien à désynchroniser. */
+  res.json(creerVerification({ verifier, cibles: appliquerModes(verifier, cibles) }));
+}));
+
 app.post('/api/lots/:id/verify', wrap((req, res) => {
   const lot = lotAvecMembres(Number(req.params.id));
   if (!lot) throw new Error(t('err.lot.not-found'));
@@ -2997,8 +3098,14 @@ app.delete('/api/rules/:id', wrap((req, res) => {
 
 /* PLAFOND PAR TOUR DE DÉCOUVERTE. Un lundi matin, la découverte peut ramener quinze merge
    requests ; quinze batteries fonctionnelles saturent la machine pour une heure et bloquent la
-   file partagée avec les reviews. Les MR non vérifiées gardent leur bouton « Vérifier ». */
-const MAX_VERIF_AUTO = 5;
+   file partagée avec les reviews. Les MR non vérifiées gardent leur bouton « Vérifier ».
+
+   Le bon chiffre dépend de la machine et de la durée des suites : il se RÈGLE (Réglages →
+   Merge Request), et `0` veut dire « sans limite » — un choix qui doit pouvoir s'assumer. */
+const plafondVerifAuto = () => {
+  const v = Number(getConfig().verif_auto_max);
+  return Number.isFinite(v) && v >= 0 ? v : 5;
+};
 
 /* Les vérifications automatiques d'une liste de MR NOUVELLES. Un seul chemin : la route de
    découverte, le rafraîchissement automatique et l'ajout unitaire passent tous par ici — deux
@@ -3007,13 +3114,14 @@ const MAX_VERIF_AUTO = 5;
    Best-effort de bout en bout : un vérificateur qui refuse (dépôt déjà en cours de
    vérification, MR sans SHA) ne doit pas faire échouer la découverte, dont le travail — trouver
    les MR — est déjà fait. */
-function lancerVerificationsAuto(mrIds) {
+function lancerVerificationsAuto(mrIds, { colonne = 'auto_on_mr' } = {}) {
   const bilan = { lancees: 0, ignorees: 0, plafonnees: 0 };
   if (!Array.isArray(mrIds) || !mrIds.length) return bilan;
+  const plafond = plafondVerifAuto();
   /* Un vérificateur hérité de la famille « script » ne part pas tout seul : `creerVerification`
      le refuserait, et une exception par merge request découverte transformerait la découverte en
      échec. On l'écarte ici, en le disant une fois dans le journal. */
-  const tous = db.prepare('SELECT * FROM verifier WHERE auto_on_mr = 1').all();
+  const tous = db.prepare(`SELECT * FROM verifier WHERE ${colonne === 'auto_on_stale' ? 'auto_on_stale' : 'auto_on_mr'} = 1`).all();
   const autos = tous.filter((v) => v.kind === 'commands');
   const herites = tous.length - autos.length;
   if (herites) console.log(`[verif-auto] ${herites} vérificateur(s) « script » ignoré(s) : famille retirée, à réécrire en liste de commandes`);
@@ -3026,7 +3134,7 @@ function lancerVerificationsAuto(mrIds) {
     const couvrants = autos.filter((v) => db.prepare('SELECT 1 FROM verifier_repo WHERE verifier_id = ? AND repo_id = ?')
       .get(v.id, mr.repo_id));
     for (const verifier of couvrants) {
-      if (bilan.lancees >= MAX_VERIF_AUTO) { bilan.plafonnees += 1; continue; }
+      if (plafond && bilan.lancees >= plafond) { bilan.plafonnees += 1; continue; }
       try {
         const cibles = appliquerModes(verifier, ciblesDepuisMrs([mr.id]));
         creerVerification({ verifier, cibles, enFile: true });
@@ -3041,7 +3149,7 @@ function lancerVerificationsAuto(mrIds) {
   /* UN PLAFOND SILENCIEUX SE LIT COMME « TOUT A ÉTÉ VÉRIFIÉ ». On dit donc ce qui n'est pas
      parti, dans le journal du serveur comme dans la réponse de la découverte. */
   if (bilan.plafonnees) {
-    console.log(`[verif-auto] plafond atteint (${MAX_VERIF_AUTO}) : ${bilan.plafonnees} vérification(s) non lancée(s) — bouton « Vérifier » sur les MR concernées`);
+    console.log(`[verif-auto] plafond atteint (${plafond}) : ${bilan.plafonnees} vérification(s) non lancée(s) — bouton « Vérifier » sur les MR concernées`);
   }
   return bilan;
 }
@@ -3051,6 +3159,10 @@ function lancerVerificationsAuto(mrIds) {
 async function decouvrir() {
   const result = await discoverAll();
   result.auto_verify = lancerVerificationsAuto(result.new_mr_ids);
+  /* Les MR dont le SHA vient de bouger : leur verdict est périmé. Deux appels séparés et deux
+     plafonds distincts — une poussée massive sur des MR connues ne doit pas manger le budget
+     des MR nouvelles, qui est le cas d'usage principal. */
+  result.auto_verify_stale = lancerVerificationsAuto(result.stale_mr_ids, { colonne: 'auto_on_stale' });
   return result;
 }
 

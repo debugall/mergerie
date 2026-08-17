@@ -97,14 +97,22 @@ function verificationsEnEchec(limite = MAX_PAR_SECTION) {
     let cibles = [];
     try { cibles = JSON.parse(v.targets_json || '[]'); } catch { continue; }
     // Une clé par lot ; une vérification de MR seule (lot_id NULL) est sa propre clé.
-    const cle = v.lot_id ? `lot:${v.lot_id}` : `mr:${(cibles[0] || {}).mr_id || v.id}`;
+    /* Une clé par lot ; une MR seule est sa propre clé ; une vérification de BRANCHE se
+       dédoublonne sur dépôt + branche — « develop est rouge » ne doit apparaître qu'une fois,
+       même vérifié trois fois dans la nuit. */
+    const premiere = cibles[0] || {};
+    const cle = v.lot_id ? `lot:${v.lot_id}`
+      : (premiere.mr_id ? `mr:${premiere.mr_id}` : `branche:${premiere.repo_id}:${premiere.branch || ''}`);
     if (vues.has(cle)) continue;
     vues.add(cle);
     const shaParMr = {};
+    /* UNE CIBLE PEUT N'AVOIR AUCUNE MERGE REQUEST : c'est une vérification de BRANCHE (« est-ce
+       que develop est encore vert ? »). Le dépôt se lit alors sur la cible elle-même, sinon la
+       ligne du brief sort vide — et un rouge invisible ne sert à rien. */
     const enrichies = cibles.map((c) => {
-      const mr = lireMr.get(c.mr_id);
+      const mr = c.mr_id ? lireMr.get(c.mr_id) : null;
       if (mr) shaParMr[c.mr_id] = mr.current_sha;
-      const repo = mr && lireRepo.get(mr.repo_id);
+      const repo = lireRepo.get(mr ? mr.repo_id : c.repo_id);
       return { ...c, iid: mr ? mr.iid : null, project: (repo && repo.project) || null };
     });
     if (verifyLib.estPerime(enrichies, shaParMr)) continue;
@@ -117,7 +125,8 @@ function verificationsEnEchec(limite = MAX_PAR_SECTION) {
       finished_at: v.finished_at,
       failed: imputable.length,
       failed_label: (imputable[0] || {}).test || null,
-      targets: enrichies.map((c) => ({ mr_id: c.mr_id, iid: c.iid, project: c.project })),
+      // `branch` voyage AVEC la cible : c'est ce qui permet à l'écran d'écrire « dépôt · branche ».
+      targets: enrichies.map((c) => ({ mr_id: c.mr_id, iid: c.iid, project: c.project, branch: c.branch })),
     });
     if (out.length >= limite) break;
   }

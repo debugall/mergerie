@@ -126,6 +126,9 @@ function handleGitlab(req, res, pathname, query, body) {
       return json(res, 200, { ...mr, changes: state.changes[key] || [] });
     }
     if (sub === '/notes' && req.method === 'POST') {
+      /* `failNextNote` : un refus de la forge, à la demande. Il sert à prouver qu'un échec de
+         publication ne laisse PAS de trace « publié » — sans lui, ce chemin ne se teste pas. */
+      if (state.failNextNote) { state.failNextNote = false; return json(res, 403, { message: 'accès refusé' }); }
       return json(res, 201, { id: 900 + (state.calls.length), body: body.body });
     }
     if (sub === '/discussions' && req.method === 'GET') {

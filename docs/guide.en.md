@@ -1552,12 +1552,57 @@ automatic verifiers covering its repository start, with no click. Only a **new**
 triggers them — a known one is seen again at every sync, and re-running it every time would keep
 the battery running on everyone forever.
 
-⚠ **Five verifications at most per discovery run.** On a Monday morning discovery can bring back
-fifteen merge requests; fifteen functional batteries saturate the machine for an hour and block the
-queue shared with reviews. Beyond that, the merge requests keep their **`Verify`** button and the
-**server log says what did not start** — a silent cap would read as “everything was verified”.
-Verifications of the same repository **queue up** instead of being refused: they will never run at
-the same time, but none is lost.
+**Re-running when the verdict goes stale.** A second checkbox, **`Re-run when a verified merge
+request gets new commits`**: a green given on commits that are no longer the latest is worth
+nothing. It is SEPARATE from the first one because it is a different appetite — on a branch that
+moves ten times a day, that is ten batteries. Unticked, the badge simply says “stale” and you
+re-run it yourself.
+
+⚠ **Five verifications at most per discovery run**, and that cap is a **setting**
+(*Settings → Merge Request*). On a Monday morning discovery can bring back fifteen merge requests;
+fifteen functional batteries saturate the machine for an hour and block the queue shared with
+reviews. Beyond that, the merge requests keep their **`Verify`** button and the **server log says
+what did not start** — a silent cap would read as “everything was verified”. `0` means “no limit”,
+a choice that should be made on purpose. Verifications of the same repository **queue up** instead
+of being refused: they will never run at the same time, but none is lost.
+
+### Publishing the verdict on the merge request
+
+Two paths, and they do not blur into one.
+
+**By hand, after reading it.** From the report, **`Publish as a comment`** opens the **pre-filled**
+body — exactly the one automatic publication would send — in an **editable** field. A confirmation
+**names the merge request** before sending, and once published the screen says so (date,
+recipients) instead of offering the button again as if nothing had happened: that is what stops
+the same verdict being posted twice on someone's merge request. If publishing fails, **the text
+stays on screen** — you never lose what you have just written.
+
+**By itself**, if the `Publish the verdict as a comment` box is ticked on the verifier. Unticked by
+default: writing on other people's work is a decision.
+
+**The comment template** can be edited (it appears under the box). Fields in braces are replaced
+when it is sent — `{verdict}`, `{tests}`, `{commits}`, `{verificateur}`, `{date}`, `{heure}` — and
+everything else is written as is. An unknown field **stays visible** rather than disappearing: a
+typo should show in the preview, not turn into a hole in the comment. Left empty, the default
+template is used — and it then benefits from future improvements, which a frozen copy would not.
+
+### Verifying a branch, with no merge request
+
+Back from holiday, several merge requests have been merged: the question is no longer “what does
+this branch break?” but **“is `develop` still green?”**. The **`Verify a branch`** button lives in
+the **Git** tab and on every verifier's card. One row per covered repository, each on its **default
+branch**, picked from a searchable selector — an active repository lines up hundreds of them. The
+last branch verified is remembered.
+
+Two things change meaning, and the tool deduces both from the absence of a merge request:
+
+- **the causal double run switches off** — on an integration branch, the branch IS the base;
+  leaving it on would run the battery twice to compare `develop` with `develop`;
+- **attribution disappears**: nothing is “broken by this branch”, what is red is red. The report
+  and the comment word it differently.
+
+There is no merge request card to carry the badge: the result lives in the verification history
+and in the **morning brief**, where the line reads “repository · branch”.
 
 **Seeing what ran, even when it is green.** A **`See the verifiers' results`** button on the merge
 request opens the details of **each** verifier that ran on it — verdict, tested commits, broken

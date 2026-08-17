@@ -1611,12 +1611,59 @@ vérificateurs automatiques qui couvrent son dépôt partent, sans clic. Seule u
 déclenche — une MR déjà connue est revue à chaque synchronisation, la relancer à chaque fois
 ferait tourner la batterie sur tout le monde en permanence.
 
-⚠ **Cinq vérifications au maximum par tour de découverte.** Un lundi matin, la découverte peut
-ramener quinze merge requests ; quinze batteries fonctionnelles saturent la machine pour une heure
-et bloquent la file partagée avec les reviews. Au-delà, les MR gardent leur bouton **`Vérifier`**,
-et le **journal du serveur dit ce qui n'est pas parti** — un plafond silencieux se lirait comme
-« tout a été vérifié ». Les vérifications d'un même dépôt **s'empilent dans la file** au lieu
-d'être refusées : elles ne tourneront jamais en même temps, mais aucune n'est perdue.
+**Relancer quand le verdict se périme.** Une seconde case, **`Relancer quand une merge request
+vérifiée reçoit de nouveaux commits`** : un vert rendu sur des commits qui ne sont plus les
+derniers ne vaut rien. Elle est SÉPARÉE de la première parce que c'est un appétit différent —
+sur une branche qui bouge dix fois par jour, ça fait dix batteries. Décochée, le badge dit
+simplement « périmé » et c'est toi qui relances.
+
+⚠ **Cinq vérifications au maximum par tour de découverte**, et ce plafond se **règle**
+(*Réglages → Merge Request*). Un lundi matin, la découverte peut ramener quinze merge requests ;
+quinze batteries fonctionnelles saturent la machine pour une heure et bloquent la file partagée
+avec les reviews. Au-delà, les MR gardent leur bouton **`Vérifier`**, et le **journal du serveur
+dit ce qui n'est pas parti** — un plafond silencieux se lirait comme « tout a été vérifié ».
+`0` signifie « sans limite », et c'est un choix qui doit pouvoir s'assumer. Les vérifications
+d'un même dépôt **s'empilent dans la file** au lieu d'être refusées : elles ne tourneront jamais
+en même temps, mais aucune n'est perdue.
+
+### Publier le verdict sur la merge request
+
+Deux chemins, et ils ne se confondent pas.
+
+**À la main, après relecture.** Depuis le rapport, **`Publier en commentaire`** ouvre le corps
+**pré-rempli** — exactement celui que la publication automatique enverrait — dans un champ
+**modifiable**. Une confirmation **nomme la merge request** avant l'envoi, et une fois publié
+l'écran le dit (date, destinataires) au lieu de reproposer le bouton comme si de rien n'était :
+c'est ce qui évite de poster deux fois le même verdict chez quelqu'un. Si la publication échoue,
+**le texte reste sous les yeux** — on ne perd jamais ce qu'on vient d'écrire.
+
+**Tout seul**, si la case `Publier le verdict en commentaire` est cochée sur le vérificateur.
+Décochée par défaut : écrire chez les autres est une décision.
+
+**Le gabarit du commentaire** se modifie (il apparaît sous la case). Les champs entre accolades
+sont remplacés à l'envoi — `{verdict}`, `{tests}`, `{commits}`, `{verificateur}`, `{date}`,
+`{heure}` — et tout le reste est écrit tel quel. Un champ inconnu **reste visible** au lieu de
+disparaître : une faute de frappe doit se voir dans l'aperçu, pas se traduire par un trou dans le
+commentaire. Laissé vide, c'est le gabarit par défaut qui sert — et il profite alors des
+améliorations à venir, ce qu'une copie figée ne ferait pas.
+
+### Vérifier une branche, sans merge request
+
+Au retour de congés, plusieurs merge requests ont été mergées : la question n'est plus « qu'est-ce
+que cette branche casse ? » mais **« est-ce que `develop` est encore vert ? »**. Le bouton
+**`Vérifier une branche`** vit dans l'onglet **Git** et sur la carte de chaque vérificateur. Une
+ligne par dépôt couvert, chacune sur sa **branche par défaut**, choisie dans un sélecteur à
+recherche — un dépôt actif en aligne des centaines. La dernière branche vérifiée est mémorisée.
+
+Deux choses changent de sens, et l'outil les déduit de l'absence de merge request :
+
+- **le double run causal s'éteint** — sur une branche d'intégration, la branche EST la base ;
+  le laisser actif ferait tourner la batterie deux fois pour comparer `develop` à `develop` ;
+- **l'imputabilité disparaît** : rien n'est « cassé par cette branche », ce qui est rouge est
+  rouge. Le rapport et le commentaire l'écrivent autrement.
+
+Il n'y a pas de carte de MR pour porter le badge : le résultat vit dans l'historique des
+vérifications et dans le **brief du matin**, où la ligne s'écrit « dépôt · branche ».
 
 **Voir ce qui a tourné, même quand c'est vert.** Un bouton **`Voir le résultat des vérificateurs`**
 sur la merge request ouvre le détail de **chaque** vérificateur passé dessus — verdict, commits

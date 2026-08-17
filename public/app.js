@@ -3556,6 +3556,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'clone_path', 'prompt_review', 'prompt_explain', 'prompt_modify', 'ai_extra_instructions',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
+  'verif_auto_max',
   'stale_mr_days'];
 async function loadConfig() {
   const c = await api('/config');
@@ -9775,8 +9776,12 @@ function renderBrief(d) {
   const verifs = (d.verifications || []).map((v) => `<div class="brief-item">
       <div class="brief-item-main">
         <div class="brief-item-title">${esc(v.lot_name || v.verifier_name || '')}${v.failed_label ? ` — <code>${esc(v.failed_label)}</code>` : ''}</div>
+        ${/* Une vérification de BRANCHE n'a pas de numéro de MR : sans ce repli, sa ligne
+              n'affichait que « N tests cassés », sans dire OÙ. */''}
         <div class="meta">${esc(tr('notes.brief.verif.failed', { n: v.failed, count: v.failed }))}
-          ${v.targets.map((c) => (c.iid ? ` · !${c.iid}` : '')).join('')}</div>
+          ${v.targets.map((c) => (c.iid
+    ? ` · !${c.iid}`
+    : ` · ${esc(c.project || '')}${c.branch ? ` · ${esc(c.branch)}` : ''}`)).join('')}</div>
       </div>
       <button type="button" class="btn btn-sm" data-brief-verif="${v.verification_id}">${esc(tr('notes.brief.verif.go'))}</button>
       ${briefHideBtn('verification', v.verification_id)}
@@ -11956,6 +11961,25 @@ function appliquerKind() {
   if (aide) aide.textContent = tr('settings.verifier.repos.commands');
 }
 
+/* Le gabarit du commentaire n'a de sens QUE si l'on publie : afficher un champ dont le contenu
+   ne partira nulle part est une promesse qu'on ne tient pas. */
+function majBlocCommentaire() {
+  const f = $('#verifierForm');
+  const bloc = $('#verifierCommentBlock');
+  if (f && bloc) bloc.hidden = !f.comment_on_forge.checked;
+}
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.name === 'comment_on_forge') majBlocCommentaire();
+});
+$('#btnCommentTemplateDefaut') && $('#btnCommentTemplateDefaut').addEventListener('click', async () => {
+  /* On va CHERCHER le défaut au serveur au lieu de le recopier ici : deux copies d'un même
+     texte finissent toujours par diverger, et c'est celle de l'écran qui aurait tort. */
+  try {
+    const d = await api('/verifiers/comment-template-default');
+    $('#verifierForm').comment_template.value = d.template || '';
+  } catch (e) { toast(explainError(e.message), true); }
+});
+
 /* Une commande par ligne éditable. L'ordre est PORTEUR DE SENS — `npm ci` avant `npm test` —
    donc il se corrige sans tout retaper : deux flèches par ligne, désactivées aux extrémités
    plutôt qu'inertes, pour qu'on voie où on est dans la liste. */
@@ -12064,7 +12088,8 @@ function renderVerifierList() {
     : `<div class="meta muted">${esc(tr('verify.kind.commands'))} · ${esc(tr('verify.verifier.meta', { timeout: v.timeout_s }))}${v.run_base ? ` · ${esc(tr('verify.verifier.with-base'))}` : ''}${v.comment_on_forge ? ` · ${esc(tr('verify.verifier.comments'))}` : ''}${v.auto_on_mr ? ` · ${esc(tr('verify.verifier.auto'))}` : ''}</div>`}
     </div>
     <div class="card-actions"><div class="btn-group">
-      ${herite ? '' : `<button class="btn" data-vedit="${v.id}">${svgIco('edit')}${esc(tr('settings.repo.edit'))}</button>
+      ${herite ? '' : `<button class="btn" data-vbranch="${v.id}" title="${esc(tr('verify.branch.title'))}">${svgIco('branch')}${esc(tr('verify.branch.btn'))}</button>
+      <button class="btn" data-vedit="${v.id}">${svgIco('edit')}${esc(tr('settings.repo.edit'))}</button>
       <button class="btn" data-vcopy="${v.id}" title="${esc(tr('verify.verifier.duplicate.title'))}">${svgIco('copy')}${esc(tr('verify.verifier.duplicate'))}</button>`}
       <button class="btn btn-danger" data-vdel="${v.id}">${svgIco('trash')}${esc(tr('ui.delete'))}</button>
     </div></div>
@@ -12124,6 +12149,9 @@ function remplirFormVerifier(v, info) {
   f.run_base.checked = !!v.run_base;
   f.comment_on_forge.checked = !!v.comment_on_forge;
   f.auto_on_mr.checked = !!v.auto_on_mr;
+  f.auto_on_stale.checked = !!v.auto_on_stale;
+  f.comment_template.value = v.comment_template || '';
+  majBlocCommentaire();
   renderCommandList(v.commands || []);
   renderVerifierRepoBox(v.repos || []);
   appliquerKind();
@@ -12169,6 +12197,7 @@ function viderFormVerifier() {
   renderVerifierRepoBox([]);
   renderCommandList([]);
   appliquerKind();
+  majBlocCommentaire();
   $('#verifierInfo').textContent = '';
 }
 
@@ -12197,6 +12226,8 @@ $('#verifierForm') && $('#verifierForm').addEventListener('submit', async (e) =>
     timeout_s: Number(f.timeout_s.value) || undefined,
     run_base: f.run_base.checked ? 1 : 0,
     comment_on_forge: f.comment_on_forge.checked ? 1 : 0,
+    auto_on_stale: f.auto_on_stale.checked ? 1 : 0,
+    comment_template: f.comment_template.value,
     auto_on_mr: f.auto_on_mr.checked ? 1 : 0,
     repos: verifierReposFromForm(),
   };
@@ -12247,14 +12278,88 @@ async function openVerifyReport(id) {
   $('#verifyModalTitle').textContent = tr('verify.report.title');   // un seul rapport, titre au singulier
   $('#verifyReport').innerHTML = `<p class="muted">${esc(tr('ui.combo.loading'))}</p>`;
   $('#verifyFix').hidden = true;
+  fermerBlocCommentaire();
   $('#verifyModal').hidden = false;
   try {
     const d = await api(`/verifications/${id}`);
     $('#verifyReport').innerHTML = verifyReportHtml(d);
     // « Corriger » n'a de sens que si l'échec est imputable aux branches testées.
     $('#verifyFix').hidden = d.verdict !== 'verified_fail';
+    /* Publier n'a de sens que s'il y a une merge request où écrire : une vérification de
+       BRANCHE n'en a pas, et proposer un bouton qui échouerait serait pire que rien. */
+    $('#verifyComment').hidden = !(d.targets || []).some((c) => c.mr_id);
   } catch (e) { $('#verifyReport').innerHTML = errorBox(explainError(e.message)); }
 }
+
+const lireListe = (j) => { try { return j ? JSON.parse(j) : null; } catch { return null; } };
+
+/* ---------- Publication du verdict en commentaire ----------
+   Le corps est composé PAR LE SERVEUR, exactement comme la publication automatique le
+   composerait : ce qu'on relit doit être ce qui part, sinon relire ne prouve rien. */
+function fermerBlocCommentaire() {
+  $('#verifyCommentBox').hidden = true;
+  $('#verifyCommentSend').hidden = true;
+  $('#verifyComment').hidden = true;
+  $('#verifyCommentPosted').hidden = true;
+  $('#verifyCommentBody').value = '';
+}
+
+async function preparerCommentaire(bouton, id) {
+  verifyReportId = id;
+  try {
+    const d = await busy(bouton, () => api(`/verifications/${id}/comment`));
+    $('#verifyCommentBody').value = d.body || '';
+    $('#verifyCommentWhere').textContent = tr('verify.comment.where', { liste: (d.mrs || []).join(', ') });
+    /* DÉJÀ PUBLIÉ : on le dit au lieu de reproposer le bouton comme si de rien n'était — c'est
+       ce qui évite de poster deux fois le même verdict sur la merge request de quelqu'un. */
+    const dejaPublie = $('#verifyCommentPosted');
+    dejaPublie.hidden = !d.posted_at;
+    if (d.posted_at) {
+      dejaPublie.textContent = tr('verify.comment.already', {
+        date: fmtDateTime(d.posted_at), liste: (d.posted_targets || []).join(', '),
+      });
+    }
+    $('#verifyCommentBox').hidden = false;
+    $('#verifyComment').hidden = true;
+    $('#verifyCommentSend').hidden = false;
+    $('#verifyCommentBody').focus();
+    $('#verifyCommentBox').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (err) { toast(explainError(err.message), true); }
+}
+
+// Pied de fenêtre : un seul rapport à l'écran, donc aucun doute sur ce qu'on publie.
+$('#verifyComment') && $('#verifyComment').addEventListener('click', (e) => preparerCommentaire(e.currentTarget, verifyReportId));
+/* Par BLOC : la fenêtre « résultats » en montre plusieurs. Un bouton unique en pied publierait
+   « le » verdict sans dire lequel — chaque vérificateur porte donc le sien. */
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-vcomment]');
+  if (b) preparerCommentaire(b, Number(b.dataset.vcomment));
+});
+
+$('#verifyCommentSend') && $('#verifyCommentSend').addEventListener('click', async (e) => {
+  const body = $('#verifyCommentBody').value.trim();
+  if (!body) { toast(tr('verify.comment.empty'), true); return; }
+  const ou = $('#verifyCommentWhere').textContent;
+  /* Confirmation qui NOMME la merge request : c'est la règle partout où l'outil écrit chez
+     les autres, et c'est le dernier écran avant que d'autres gens le lisent. */
+  if (!await confirmDialog({
+    title: tr('verify.comment.confirm.title'),
+    text: `${ou}\n\n${body.slice(0, 400)}${body.length > 400 ? '…' : ''}`,
+    confirmLabel: tr('verify.btn.comment-send'),
+  })) return;
+  try {
+    const d = await busy(e.currentTarget, () => api(`/verifications/${verifyReportId}/comment`, {
+      method: 'POST', body: { body },
+    }));
+    toast(tr('verify.comment.posted', { liste: (d.posted || []).join(', ') }));
+    $('#verifyCommentSend').hidden = true;
+    const trace = $('#verifyCommentPosted');
+    trace.textContent = tr('verify.comment.already', { date: fmtDateTime(d.posted_at), liste: (d.posted || []).join(', ') });
+    trace.hidden = false;
+    /* On NE VIDE PAS le champ : si la publication a échoué à moitié, ou si l'on veut relire ce
+       qu'on vient d'envoyer, le texte doit rester sous les yeux. */
+  } catch (err) { toast(explainError(err.message), true); }
+});
 
 /* Le déroulé réel des commandes. C'est ce qu'on veut voir en premier sur un vérificateur
    « commandes » : laquelle a cassé, en combien de temps, et ce qu'elle a écrit. */
@@ -12310,7 +12415,9 @@ function verifyReportHtml(d) {
           le lot. Un vert peut venir de l'un d'eux resté sur une vieille branche — on le dit. */''}
     ${(d.context || []).length ? `<h4>${esc(tr('verify.report.context'))}</h4>
       <ul class="verify-list">${d.context.map((c) => `<li>${c.warn ? `${svgIco('alert')} ` : ''}${esc(c.project)} — ${esc(c.raison || `${c.branche || '?'}${c.dirty ? tr('verify.report.context-dirty') : ''}${c.untracked ? tr('verify.report.context-untracked', { n: c.untracked, count: c.untracked }) : ''}`)}</li>`).join('')}</ul>` : ''}
-    ${(d.imputable || []).length ? `<h4>${esc(tr('verify.report.failed'))}</h4>
+    ${/* Sur une vérification de BRANCHE, rien n'est « cassé par ces branches » : la branche EST
+          la base. Le titre le dit autrement, sinon on accuse un auteur qui n'existe pas. */''}
+    ${(d.imputable || []).length ? `<h4>${esc(tr((d.targets || []).some((c) => c.mr_id) ? 'verify.report.failed' : 'verify.report.failed-branch'))}</h4>
       <ul class="verify-list">${d.imputable.map(echec).join('')}</ul>` : ''}
     ${commandesHtml(d.head_run)}
     ${nouveautesHtml(d.head_run)}
@@ -12324,6 +12431,7 @@ function verifyReportHtml(d) {
 async function openVerifResultats(mrId) {
   verifyReportId = null;
   $('#verifyFix').hidden = true;
+  fermerBlocCommentaire();
   // La fenêtre montre PLUSIEURS vérificateurs : le titre au singulier ferait croire à un seul.
   $('#verifyModalTitle').textContent = tr('verify.results.title');
   $('#verifyReport').innerHTML = `<p class="muted">${esc(tr('ui.combo.loading'))}</p>`;
@@ -12336,8 +12444,10 @@ async function openVerifResultats(mrId) {
     }
     $('#verifyReport').innerHTML = liste.map((d) => `<section class="verify-bloc">
       ${verifyReportHtml(d)}
-      ${d.verdict === 'verified_fail' && (d.imputable || []).length
-    ? `<p><button class="btn btn-primary btn-sm" data-vfix="${d.id}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${tr('verify.btn.fix')}</button></p>` : ''}
+      <p>${d.verdict === 'verified_fail' && (d.imputable || []).length
+    ? `<button class="btn btn-primary btn-sm" data-vfix="${d.id}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${tr('verify.btn.fix')}</button> ` : ''}
+      <button class="btn btn-sm" data-vcomment="${d.id}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('verify.btn.comment')}</button>
+      ${d.comment_posted_at ? `<span class="muted">${esc(tr('verify.comment.already', { date: fmtDateTime(d.comment_posted_at), liste: (lireListe(d.comment_targets) || []).join(', ') }))}</span>` : ''}</p>
     </section>`).join('');
   } catch (e) { $('#verifyReport').innerHTML = errorBox(explainError(e.message)); }
 }
@@ -12381,6 +12491,92 @@ document.addEventListener('click', (e) => {
   if (b) openVerifyReport(Number(b.dataset.vreport));
   const r = e.target.closest && e.target.closest('[data-vresults]');
   if (r) openVerifResultats(Number(r.dataset.vresults));
+});
+
+/* ---------- Vérifier une BRANCHE, sans merge request ----------
+   « Est-ce que develop est encore vert ? » — la question du retour de congés. Une ligne par
+   dépôt COUVERT par le vérificateur choisi, chacune sur sa branche par défaut : un vérificateur
+   multi-dépôts monte déjà un environnement complet, c'est la même vérification d'intégration
+   avec des branches au lieu de merge requests. */
+let branchVerifVerifiers = [];
+const BRANCHE_MEMO = 'aidevtools_verif_branche';
+
+const memoBranches = () => { try { return JSON.parse(localStorage.getItem(BRANCHE_MEMO) || '{}'); } catch { return {}; } };
+const memoriserBranche = (repoId, branche) => {
+  try {
+    const m = memoBranches(); m[repoId] = branche;
+    localStorage.setItem(BRANCHE_MEMO, JSON.stringify(m));
+  } catch { /* stockage indisponible : on perd le confort, pas la fonction */ }
+};
+
+async function ouvrirVerifBranche(verifierId = null) {
+  try {
+    const d = await api('/verifiers');
+    branchVerifVerifiers = (Array.isArray(d) ? d : (d.verifiers || [])).filter((v) => (v.repos || []).length);
+  } catch (e) { toast(explainError(e.message), true); return; }
+  if (!branchVerifVerifiers.length) { toast(tr('verify.branch.none'), true); return; }
+  const sel = $('#branchVerifySelect');
+  sel.innerHTML = branchVerifVerifiers.map((v) => `<option value="${v.id}">${esc(v.name)}</option>`).join('');
+  if (verifierId && branchVerifVerifiers.some((v) => v.id === verifierId)) sel.value = String(verifierId);
+  await renderVerifBrancheRows();
+  $('#branchVerifyModal').hidden = false;
+}
+
+async function renderVerifBrancheRows() {
+  const v = branchVerifVerifiers.find((x) => String(x.id) === $('#branchVerifySelect').value);
+  const el = $('#branchVerifyRows');
+  if (!v) { el.innerHTML = ''; return; }
+  const memo = memoBranches();
+  el.innerHTML = (v.repos || []).map((r) => {
+    const projet = (repoOptions.find((x) => x.id === r.repo_id) || {}).project || `#${r.repo_id}`;
+    return `<label class="verif-branche-row" data-repo="${r.repo_id}"><span>${esc(projet)}</span>
+      ${comboHtml('vb-branch', { value: memo[r.repo_id] || '', label: memo[r.repo_id] || '', ph: tr('verify.branch.ph') })}</label>`;
+  }).join('');
+  /* Sélecteur À RECHERCHE, jamais une liste nue : un dépôt actif aligne des centaines de
+     branches — et `npm run check` refuse une liste de branches sans champ de recherche. */
+  wireCombo(el, 'vb-branch', async (row) => {
+    const repoId = Number(row.closest('.verif-branche-row').dataset.repo);
+    const d = await gitLoadRefs(repoId, 'branches');
+    return d.refs.map((r) => ({ value: r.name, label: r.name, hint: r.default ? tr('git.refs.default-suffix') : '' }));
+  });
+  /* La branche PAR DÉFAUT du dépôt est proposée d'emblée — c'est elle, « la branche sur
+     laquelle tout a été mergé », dans la quasi-totalité des cas. La dernière vérifiée gagne. */
+  for (const row of $$('#branchVerifyRows .verif-branche-row')) {
+    const cache = row.querySelector('.vb-branch');
+    if (cache.value) continue;
+    try {
+      const d = await gitLoadRefs(Number(row.dataset.repo), 'branches');
+      const def = (d.refs || []).find((r) => r.default);
+      if (def) {
+        cache.value = def.name;
+        row.querySelector('.cb-search').value = def.name;
+      }
+    } catch { /* dépôt injoignable : la ligne reste à remplir à la main */ }
+  }
+}
+
+$('#btnVerifyBranch') && $('#btnVerifyBranch').addEventListener('click', () => ouvrirVerifBranche());
+$('#branchVerifySelect') && $('#branchVerifySelect').addEventListener('change', () => renderVerifBrancheRows());
+$('#branchVerifyCancel') && $('#branchVerifyCancel').addEventListener('click', () => { $('#branchVerifyModal').hidden = true; });
+$('#branchVerifyGo') && $('#branchVerifyGo').addEventListener('click', async (e) => {
+  const targets = $$('#branchVerifyRows .verif-branche-row').map((row) => ({
+    repo_id: Number(row.dataset.repo),
+    branch: (row.querySelector('.vb-branch').value || '').trim(),
+  }));
+  if (targets.some((t) => !t.branch)) { toast(tr('verify.branch.missing'), true); return; }
+  try {
+    await busy(e.currentTarget, () => api('/verify/branches', {
+      method: 'POST', body: { verifier_id: Number($('#branchVerifySelect').value), targets },
+    }));
+    for (const t of targets) memoriserBranche(t.repo_id, t.branch);
+    $('#branchVerifyModal').hidden = true;
+    toast(tr('verify.toast.started'));
+    refreshStatus();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-vbranch]');
+  if (b) ouvrirVerifBranche(Number(b.dataset.vbranch));
 });
 
 /* ---------- Lancer une vérification ---------- */

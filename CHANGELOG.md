@@ -11,6 +11,39 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Added
+
+- **Publish a verdict on the merge request, after reading it.** `Publish as a comment` on a
+  verification report opens the body **pre-filled with exactly what automatic publication would
+  send**, and lets you edit it before it goes out. A confirmation names the merge request; once
+  published the screen says when and where, instead of offering the button again as if nothing
+  had happened — that is what stops the same verdict being posted twice on someone's work. If
+  publishing fails, the text you wrote stays on screen.
+
+- **The published comment has an editable template.** Under `Publish the verdict as a comment`,
+  a template with fields replaced when it is sent: `{verdict}`, `{tests}`, `{commits}`,
+  `{verificateur}`, `{date}` and `{heure}` — so the comment carries **the date and time it was
+  published**. An unknown field stays visible rather than vanishing: a typo should show in the
+  preview, not become a hole in the comment. Left empty, the default template is used, and it
+  then benefits from later improvements a frozen copy would miss.
+
+- **A verifier can re-run when its verdict goes stale.** A second checkbox: when a verified merge
+  request receives new commits, the green given on the old commits is worth nothing. Separate
+  from “run on every new merge request”, because it is a different appetite — on a branch that
+  moves ten times a day, that is ten batteries.
+
+- **Verify a branch, with no merge request.** Back from holiday, the question is no longer “what
+  does this branch break?” but “is `develop` still green?”. `Verify a branch` sits in the Git tab
+  and on every verifier's card: one row per covered repository, each on its default branch,
+  picked from a searchable selector, and the last branch used is remembered. Two things change
+  meaning and are deduced from the absence of a merge request: the causal double run switches off
+  (the branch IS the base), and nothing is “broken by this branch” — what is red is red. The
+  result lands in the verification history and in the morning brief, as “repository · branch”.
+
+- **The cap on automatic verifications is a setting.** Five per discovery round was a constant
+  only the code knew; the right number depends on the machine and on how long the suites take.
+  It now lives in *Settings → Merge Request*, and `0` means “no limit”.
+
 ### Removed
 
 - **“Script” verifiers are gone; a verifier is a list of commands.** Writing an executable that

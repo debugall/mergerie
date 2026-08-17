@@ -278,6 +278,9 @@
 
         <!-- Sous-onglet : actions multi-dépôts -->
         <div id="gsub-actions" class="subtab active">
+            <!-- « Est-ce que develop est encore vert ? » : la question du retour de congés se
+                 pose devant un dépôt et ses branches, c'est-à-dire ici. -->
+            <p><button type="button" class="btn" id="btnVerifyBranch"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="verify.branch.btn">Vérifier une branche</span></button></p>
             <p class="muted" style="max-width:760px" data-i18n="git.actions.intro">Applique la même opération à plusieurs dépôts d'un coup. Rien n'est exécuté sans un aperçu préalable.</p>
             <div class="form" style="max-width:760px">
                 <label><span data-i18n="git.lbl.action">Action</span>
@@ -798,8 +801,18 @@
                     <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.run-base" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                 <label class="inline-check"><input name="comment_on_forge" type="checkbox" /> <span data-i18n="settings.verifier.lbl.comment">Publier le verdict en commentaire sur la merge request</span>
                     <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.comment" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+                <!-- Le gabarit n'a de sens que si l'on publie : il apparaît avec la case. -->
+                <div id="verifierCommentBlock" hidden>
+                    <label><span data-i18n="settings.verifier.lbl.comment-template">Gabarit du commentaire</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.comment-template" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <textarea name="comment_template" rows="6" spellcheck="false"></textarea>
+                    </label>
+                    <p class="field-note"><span data-i18n="settings.verifier.comment-template.fields">Champs disponibles</span> : <code>{verdict}</code> <code>{tests}</code> <code>{commits}</code> <code>{verificateur}</code> <code>{date}</code> <code>{heure}</code> — <span data-i18n="settings.verifier.comment-template.empty">vide = gabarit par défaut</span>.</p>
+                    <p><button type="button" class="btn btn-sm" id="btnCommentTemplateDefaut" data-i18n="settings.verifier.comment-template.reset">Repartir du gabarit par défaut</button></p>
+                </div>
                 <label class="inline-check"><input name="auto_on_mr" type="checkbox" /> <span data-i18n="settings.verifier.lbl.auto">Lancer sur toute nouvelle merge request des dépôts couverts</span>
                     <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.auto" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+                <label class="inline-check"><input name="auto_on_stale" type="checkbox" /> <span data-i18n="settings.verifier.lbl.auto-stale">Relancer quand une merge request vérifiée reçoit de nouveaux commits</span>
+                    <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.auto-stale" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                 <h3 data-i18n="settings.verifier.repos">Dépôts couverts</h3>
                 <p class="muted" data-i18n="settings.verifier.repos.help">Déclarer un dépôt dit que ce vérificateur sait le tester. Seuls les dépôts effectivement visés par une vérification lui sont mis à disposition.</p>
                 <p class="muted" id="verifierRepoHint"></p>
@@ -1037,6 +1050,9 @@
             </label>
             <label><span data-i18n="settings.lbl.converge-passes">Convergence — plafond de passes</span> <button type="button" class="hint" tabindex="0" aria-label="Nombre maximal de corrections IA par défaut avant d'arrêter la boucle « Converger ». Garde-fou anti-emballement. Surchargeable au lancement." data-tip="Nombre maximal de corrections IA par défaut avant d'arrêter la boucle « Converger ». Garde-fou anti-emballement. Surchargeable au lancement." data-i18n-tip="settings.tip.converge-passes"><svg class="ico"><use href="#i-info"/></svg></button>
                 <input form="configForm" name="converge_max_passes" type="number" min="1" max="10" step="1" placeholder="3" />
+            </label>
+            <label><span data-i18n="settings.lbl.verif-auto-max">Vérifications automatiques — plafond par découverte</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.verif-auto-max" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="verif_auto_max" type="number" min="0" max="50" step="1" placeholder="5" />
             </label>
         </div>
         <!-- Templates : hors du formulaire plafonné à 520px pour laisser les textarea
@@ -1497,8 +1513,18 @@
     <div class="modal-box modal-wide">
         <h3 id="verifyModalTitle" data-i18n="verify.report.title">Rapport de vérification</h3>
         <div id="verifyReport"></div>
+        <!-- Publication en commentaire : le corps est PRÉ-REMPLI puis relu. Il n'apparaît qu'à
+             la demande — un champ de texte ouvert sous chaque rapport inviterait à publier par
+             réflexe, alors que ça écrit sur la merge request que d'autres lisent. -->
+        <div id="verifyCommentBox" hidden>
+            <p id="verifyCommentWhere" class="muted"></p>
+            <textarea id="verifyCommentBody" rows="10" spellcheck="false"></textarea>
+            <p id="verifyCommentPosted" class="field-note" hidden></p>
+        </div>
         <div class="modal-actions">
             <button id="verifyClose" type="button" class="btn" data-i18n="ui.close">Fermer</button>
+            <button id="verifyComment" type="button" class="btn" hidden><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="verify.btn.comment">Publier en commentaire</span></button>
+            <button id="verifyCommentSend" type="button" class="btn btn-primary" hidden><svg class="ico"><use href="#i-upload"/></svg><span data-i18n="verify.btn.comment-send">Publier sur la merge request</span></button>
             <button id="verifyFix" type="button" class="btn btn-primary" hidden><svg class="ico"><use href="#i-bot"/></svg><span data-i18n="verify.btn.fix">Corriger (session IA)</span></button>
         </div>
     </div>
@@ -1516,6 +1542,24 @@
         <div class="modal-actions">
             <button id="verifyPickCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
             <button id="verifyPickGo" type="button" class="btn btn-primary"><svg class="ico"><use href="#i-play"/></svg><span data-i18n="verify.pick.go">Lancer</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- Vérifier une BRANCHE, sans merge request : « est-ce que develop est encore vert ? ».
+     Une ligne par dépôt couvert par le vérificateur, chacune sur sa branche par défaut. Le
+     choix passe par un sélecteur À RECHERCHE : un dépôt actif aligne des centaines de branches. -->
+<div id="branchVerifyModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 data-i18n="verify.branch.title">Vérifier une branche</h3>
+        <p class="muted" data-i18n="verify.branch.help">Le verdict porte sur la branche elle-même : pas de comparaison avec une base, et rien n'est imputé à personne.</p>
+        <label><span data-i18n="verify.branch.verifier">Vérificateur</span>
+            <select id="branchVerifySelect"></select>
+        </label>
+        <div id="branchVerifyRows" class="modal-fields"></div>
+        <div class="modal-actions">
+            <button id="branchVerifyCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="branchVerifyGo" type="button" class="btn btn-primary"><svg class="ico"><use href="#i-play"/></svg><span data-i18n="verify.pick.go">Lancer</span></button>
         </div>
     </div>
 </div>

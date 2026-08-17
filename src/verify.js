@@ -507,7 +507,52 @@ const memeDepot = (a, b) => {
   return !!na && na === normaliserRemote(b);
 };
 
+/* ---------------------------------------------------------------- commentaire de forge
+
+   LE CORPS PUBLIÉ SUR LA MERGE REQUEST. Isolé ici — pas de base, pas de réseau — parce que
+   c'est du TEXTE que des gens vont lire sur leur MR : il doit se prouver sans monter un serveur.
+
+   Un GABARIT, et non une chaîne en dur : le ton d'une équipe n'est pas celui d'une autre, et
+   quelqu'un voudra y mettre le lien de son tableau de bord ou retirer la liste des commits.
+   Les champs absents laissent une ligne vide plutôt qu'un `{trou}` : un gabarit qui affiche ses
+   propres marqueurs sur une vraie merge request est pire que pas de gabarit. */
+const GABARIT_COMMENTAIRE_DEFAUT = [
+  '{verdict}',
+  '',
+  '{tests}',
+  '{commits}',
+  '',
+  '_Vérifié par Mergerie le {date} à {heure}._',
+].join('\n');
+
+const CHAMPS_COMMENTAIRE = ['verdict', 'tests', 'commits', 'verificateur', 'date', 'heure'];
+
+/* Rend le corps du commentaire. `donnees` porte déjà les blocs composés (verdict, tests,
+   commits) : cette fonction ne fait que les poser dans le gabarit, et c'est voulu — le QUOI se
+   décide ailleurs, le COMMENT s'écrit ici.
+
+   L'horodatage est celui de l'INSTANT où le corps est composé, passé en paramètre plutôt que lu
+   de l'horloge : une fonction qui lit l'heure toute seule ne se teste pas. */
+function composerCommentaire(donnees, gabarit, maintenant = new Date()) {
+  const modele = String(gabarit || '').trim() || GABARIT_COMMENTAIRE_DEFAUT;
+  const valeurs = {
+    verdict: donnees.verdict || '',
+    tests: donnees.tests || '',
+    commits: donnees.commits || '',
+    verificateur: donnees.verificateur || '',
+    date: maintenant.toLocaleDateString('fr-FR'),
+    heure: maintenant.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+  };
+  const rendu = modele.replace(/\{(\w+)\}/g, (brut, cle) => (
+    CHAMPS_COMMENTAIRE.includes(cle) ? valeurs[cle] : brut
+  ));
+  /* Un bloc vide (aucun test cassé sur un verdict vert) laisserait trois sauts de ligne au
+     milieu du commentaire : on les ramène à un paragraphe, et on retire les blancs de bout. */
+  return rendu.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 module.exports = {
+  GABARIT_COMMENTAIRE_DEFAUT, CHAMPS_COMMENTAIRE, composerCommentaire,
   VERDICTS, MAX_FAILED, MAX_LOG, MAX_REPONSE,
   validerReponse, derniereLigneJson, deltaImputable, composerVerdict, estPerime,
   normaliserRemote, memeDepot, tronquer, queue,

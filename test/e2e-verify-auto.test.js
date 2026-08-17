@@ -134,6 +134,53 @@ describe('Vérificateurs automatiques sur les nouvelles MR', () => {
     assert.equal(verifications().length, avant + 5);
   });
 
+  /* LE PLAFOND SE RÈGLE. Cinq est un défaut, pas une vérité : il dépend de la machine et de la
+     durée des suites. Et `0` doit vouloir dire « sans limite » — sinon il se lirait comme
+     « aucune vérification », ce qui est exactement l'inverse. */
+  test('le plafond vient des réglages, et 0 signifie « sans limite »', async () => {
+    await app.api('PUT', '/api/config', { verif_auto_max: 2 });
+    let avant = verifications().length;
+    app.state.mrs['grp/app'] = Array.from({ length: 6 }, (_, i) => mrApi(300 + i));
+    let { body: r } = await app.api('POST', '/api/discover');
+    assert.equal(r.auto_verify.lancees, 2, 'le réglage prime sur le défaut');
+    assert.equal(r.auto_verify.plafonnees, 4);
+    assert.equal(verifications().length, avant + 2);
+
+    await app.api('PUT', '/api/config', { verif_auto_max: 0 });
+    avant = verifications().length;
+    app.state.mrs['grp/app'] = Array.from({ length: 6 }, (_, i) => mrApi(400 + i));
+    ({ body: r } = await app.api('POST', '/api/discover'));
+    assert.equal(r.auto_verify.plafonnees, 0, '0 = aucune limite, rien n’est écarté');
+    assert.equal(verifications().length, avant + 6);
+
+    await app.api('PUT', '/api/config', { verif_auto_max: 5 });   // on rend l'état aux suivants
+  });
+
+  /* RELANCER QUAND LE VERDICT SE PÉRIME. Un vert rendu sur des commits qui ne sont plus les
+     derniers ne vaut rien. Mais c'est un appétit DIFFÉRENT de « vérifier à l'arrivée » : sur
+     une branche qui bouge dix fois par jour, ça fait dix batteries. D'où deux cases. */
+  test('une MR qui reçoit de nouveaux commits relance le vérificateur qui le demande', async () => {
+    await app.api('POST', '/api/verifiers', {
+      name: 'sur-peremption', kind: 'commands', commands: [script], run_base: false,
+      auto_on_stale: 1, repos: [{ repo_id: repoId, mode: 'worktree' }],
+    });
+    // Une MR NOUVELLE ne le concerne pas : il n'a que la case « périmée ».
+    app.state.mrs['grp/app'] = [mrApi(700)];
+    let { body: r } = await app.api('POST', '/api/discover');
+    assert.equal(r.auto_verify_stale.lancees, 0, 'à l’arrivée, ce vérificateur-là ne bouge pas');
+
+    // Même SHA : rien ne se périme, donc rien ne repart.
+    ({ body: r } = await app.api('POST', '/api/discover'));
+    assert.equal(r.auto_verify_stale.lancees, 0, 'une MR qui ne bouge pas ne relance rien');
+
+    // Le SHA change : le verdict rendu ne vaut plus rien, la vérification repart.
+    const avant = verifications().length;
+    app.state.mrs['grp/app'] = [{ ...mrApi(700), sha: 'ffffffffffffffffffffffffffffffffffffffff' }];
+    ({ body: r } = await app.api('POST', '/api/discover'));
+    assert.equal(r.auto_verify_stale.lancees, 1, 'le SHA a bougé : on revérifie');
+    assert.equal(verifications().length, avant + 1);
+  });
+
   /* UN VÉRIFICATEUR NE PART QUE SUR LES DÉPÔTS QU'IL COUVRE. Déclarer un dépôt, c'est dire
      « je sais le tester » : lancer une batterie sur un dépôt qu'elle ne connaît pas produirait
      un rouge qui ne veut rien dire, et le pire moment pour le découvrir est en automatique. */

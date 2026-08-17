@@ -570,9 +570,15 @@ for (const projet of ['groupe/api-core', 'groupe/webapp-front']) {
 /* Celui-ci part TOUT SEUL sur les nouvelles merge requests (`auto_on_mr`). C'est la
    fonctionnalité qu'on ne peut pas montrer autrement : sans un vérificateur coché, l'écran
    des réglages ne dit rien de ce que la découverte sait déclencher. */
+/* Celui-ci publie aussi son verdict, avec un GABARIT personnalisé : sans exemple, le champ
+   reste une case à cocher dont personne ne voit ce qu'elle produit. Et il se relance quand une
+   merge request vérifiée reçoit de nouveaux commits. */
 const cmdId = db.prepare(`INSERT INTO verifier
-  (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, parse_tap, created_at)
-  VALUES (?,?,'',?,?,?,1,1,?)`).run('tests front (démo)', 'commands', 600, 1, 0, at(18)).lastInsertRowid;
+  (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, auto_on_stale,
+   comment_template, parse_tap, created_at)
+  VALUES (?,?,'',?,?,?,1,1,?,1,?)`).run('tests front (démo)', 'commands', 600, 1, 1,
+  '{verdict}\n\n{tests}\n{commits}\n\n_Vérification automatique du {date} à {heure} — relancez-la depuis Mergerie._',
+  at(18)).lastInsertRowid;
 /* Deux dépôts pour ce vérificateur : la même liste est rejouée dans chacun. C'est le cas
    des projets qui se testent de la même façon, et ça se voit dans la modale. */
 for (const projet of ['groupe/webapp-front', 'groupe/batch-jobs']) {

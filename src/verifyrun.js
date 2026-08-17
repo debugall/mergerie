@@ -420,7 +420,14 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
         for (const c of cibles) {
           const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(c.repo_id);
           if (!repo) throw new Error(t('err.verify.repo-gone', { id: c.repo_id }));
-          ciblesResolues.push({ ...c, base_sha: await resoudre(repo, c.base_sha), head_sha: await resoudre(repo, c.head_sha) });
+          /* `base_sha` est NUL sur une vérification de branche : il n'y a pas de base à
+             comparer. Le résoudre quand même donnerait `git rev-parse null`, c'est-à-dire une
+             vérification en erreur là où il n'y a rien à faire. */
+          ciblesResolues.push({
+            ...c,
+            base_sha: c.base_sha ? await resoudre(repo, c.base_sha) : null,
+            head_sha: await resoudre(repo, c.head_sha),
+          });
         }
         db.prepare('UPDATE verification SET targets_json = ? WHERE id = ?')
           .run(JSON.stringify(ciblesResolues), verificationId);
@@ -479,7 +486,13 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
            pour éviter.
        Un run qui coûte deux fois plus longtemps vaut mieux qu'un verdict faux en silence. */
     let base = null;
-    if (verifier.run_base) {
+    /* VÉRIFICATION DE BRANCHE : aucune cible ne porte de merge request. « La base était-elle
+       déjà rouge ? » n'a alors pas de sens — sur une branche d'intégration, la branche EST la
+       base, et lancer le run base ferait tourner la batterie deux fois pour comparer `develop`
+       à `develop`. On le DÉDUIT des cibles plutôt que de le stocker : une colonne « type » se
+       désynchronise, une donnée déduite jamais. */
+    const surBranches = !cibles.some((c) => c.mr_id);
+    if (verifier.run_base && !surBranches) {
       const reposBase = await preparer('base_sha');
       noter('run base…');
       const r = await lancer('base', reposBase);
@@ -527,51 +540,91 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
    Décoché par défaut : écrire chez les autres est une décision, pas un réglage par défaut.
    Le corps porte les FAITS (quels tests, quels commits) ; sans eux, un « ✗ » sur une MR est
    une accusation sans dossier. */
-async function commenterSurForge(verificationId, cfg, onLog) {
-  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
-  if (!v) return null;
-  const verifier = db.prepare('SELECT * FROM verifier WHERE id = ?').get(v.verifier_id);
-  if (!verifier || !verifier.comment_on_forge) return null;
-
+/* LES BLOCS DU COMMENTAIRE, séparés de leur mise en forme. Ici on lit la base (verdict, tests,
+   commits) ; `verify.composerCommentaire` les pose dans le gabarit. Cette séparation est ce qui
+   permet à la modale de PRÉ-REMPLIR exactement ce que la publication automatique enverrait. */
+function blocsCommentaire(v, verifier) {
   const lire = (j) => { try { return j ? JSON.parse(j) : null; } catch { return null; } };
   const cibles = lire(v.targets_json) || [];
   const imputable = lire(v.imputable_json) || [];
-  const nom = verifier.name || v.verifier_name;
-  const entete = {
+  const nom = (verifier && verifier.name) || v.verifier_name;
+  /* Sur une vérification de BRANCHE (aucune MR parmi les cibles), rien n'est « cassé par cette
+     branche » : la branche EST la base. Le libellé le dit autrement, sinon on accuse un auteur
+     qui n'existe pas. */
+  const surMr = cibles.some((c) => c.mr_id);
+  const verdict = {
     verified_pass: `**${nom}** : ✓ vérifié`,
-    verified_fail: `**${nom}** : ✗ ${imputable.length} test(s) cassé(s) par cette branche`,
+    verified_fail: surMr
+      ? `**${nom}** : ✗ ${imputable.length} test(s) cassé(s) par cette branche`
+      : `**${nom}** : ✗ ${imputable.length} test(s) cassé(s)`,
     broken_base: `**${nom}** : ⚠ la base était déjà rouge — rien n'est imputable à cette branche`,
   }[v.verdict] || `**${nom}** : ⚠ vérification en erreur`;
 
-  const corps = [entete, ''];
+  const tests = [];
   if (imputable.length) {
-    corps.push('Tests cassés :');
-    for (const f of imputable.slice(0, 20)) corps.push(`- \`${f.test}\`${f.message ? ` — ${f.message}` : ''}`);
-    if (imputable.length > 20) corps.push(`- … et ${imputable.length - 20} de plus`);
-    corps.push('');
+    tests.push('Tests cassés :');
+    for (const f of imputable.slice(0, 20)) tests.push(`- \`${f.test}\`${f.message ? ` — ${f.message}` : ''}`);
+    if (imputable.length > 20) tests.push(`- … et ${imputable.length - 20} de plus`);
   }
-  corps.push('Commits testés :');
+
+  const commits = ['Commits testés :'];
   for (const c of cibles) {
     const repo = db.prepare('SELECT project FROM repo WHERE id = ?').get(c.repo_id);
-    corps.push(`- ${(repo && repo.project) || c.repo_id} · \`${c.branch || ''}\` @ \`${String(c.head_sha || '').slice(0, 8)}\``);
+    commits.push(`- ${(repo && repo.project) || c.repo_id} · \`${c.branch || ''}\` @ \`${String(c.head_sha || '').slice(0, 8)}\``);
   }
-  const body = corps.join('\n');
+  return { verdict, tests: tests.join('\n'), commits: commits.join('\n'), verificateur: nom };
+}
 
+// Le corps prêt à publier : les blocs, posés dans le gabarit du vérificateur (ou le défaut).
+function corpsCommentaire(verificationId, maintenant = new Date()) {
+  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
+  if (!v) return null;
+  const verifier = db.prepare('SELECT * FROM verifier WHERE id = ?').get(v.verifier_id);
+  return verify.composerCommentaire(blocsCommentaire(v, verifier), verifier && verifier.comment_template, maintenant);
+}
+
+/* Publie un corps sur les merge requests de la vérification, et GARDE LA TRACE de l'envoi.
+   `body` fourni = texte relu et modifié par l'utilisateur ; absent = le corps composé. */
+async function publierCommentaire(verificationId, cfg, { body = null, onLog } = {}) {
+  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
+  if (!v) return null;
+  const texte = String(body == null ? corpsCommentaire(verificationId) : body).trim();
+  if (!texte) throw new Error(t('err.verify.comment-empty'));
+
+  let cibles = [];
+  try { cibles = JSON.parse(v.targets_json || '[]'); } catch { cibles = []; }
   const postees = [];
   for (const c of cibles) {
     if (!c.mr_id) continue;
     const mr = db.prepare(`SELECT mr.*, repo.project AS project, repo.forge AS forge
       FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?`).get(c.mr_id);
     if (!mr) continue;
-    await forge.clientFor(mr).postMrNote(cfg, mr.project, mr.iid, body);
+    await forge.clientFor(mr).postMrNote(cfg, mr.project, mr.iid, texte);
     postees.push(`${mr.project}!${mr.iid}`);
   }
-  if (postees.length && onLog) onLog(t('log.verify.commented', { liste: postees.join(', ') }));
+  /* La trace n'est posée QUE si quelque chose est parti : marquer « publié » après un échec
+     réseau ferait disparaître le bouton sans que personne n'ait rien lu. */
+  if (postees.length) {
+    db.prepare('UPDATE verification SET comment_posted_at = ?, comment_targets = ? WHERE id = ?')
+      .run(new Date().toISOString(), JSON.stringify(postees), verificationId);
+    if (onLog) onLog(t('log.verify.commented', { liste: postees.join(', ') }));
+  }
   return postees;
+}
+
+/* Le verdict publié sur la merge request PAR LE VÉRIFICATEUR LUI-MÊME, si — et seulement si —
+   il le demande. Décoché par défaut : écrire chez les autres est une décision. */
+async function commenterSurForge(verificationId, cfg, onLog) {
+  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
+  if (!v) return null;
+  const verifier = db.prepare('SELECT * FROM verifier WHERE id = ?').get(v.verifier_id);
+  if (!verifier || !verifier.comment_on_forge) return null;
+  return publierCommentaire(verificationId, cfg, { onLog });
 }
 
 module.exports = {
   WORKTREES_DIR, cheminWorktree, executerVerification, commenterSurForge,
+  corpsCommentaire, publierCommentaire, blocsCommentaire,
   lancerCommandes, envVerifier, ajouterWorktree, retirerWorktree, gcWorktrees,
   inspecterWorkdir, preparerInPlace, restaurerInPlace, lireContexte,
   envMinimal,
