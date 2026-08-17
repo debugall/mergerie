@@ -699,6 +699,11 @@ try { db.exec('ALTER TABLE verifier ADD COLUMN auto_on_stale INTEGER NOT NULL DE
    dans `verify.js` — on ne le recopie PAS en base : un défaut recopié se fige, et l'améliorer
    n'atteindrait plus personne. */
 try { db.exec("ALTER TABLE verifier ADD COLUMN comment_template TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+/* Les personnes à prévenir quand ça casse — du texte libre repris tel quel dans le commentaire
+   (`@amady @bruno`, ou `@mon-groupe`, plus robuste qu'une liste qui bouge). C'est la FORGE qui
+   résout les mentions et envoie les mails ; Mergerie ne fait que les écrire. Un identifiant
+   numérique ne marche pas : GitLab résout le handle, pas l'id. */
+try { db.exec("ALTER TABLE verifier ADD COLUMN mentions TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 // Ajoutées à l'environnement minimal. Sans elles, un `npm` installé par nvm reste introuvable
 // quand Mergerie est lancé par un service plutôt que depuis un terminal.
 try { db.exec('ALTER TABLE verifier ADD COLUMN env_json TEXT'); } catch { /* déjà présente */ }

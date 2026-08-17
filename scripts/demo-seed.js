@@ -575,9 +575,10 @@ for (const projet of ['groupe/api-core', 'groupe/webapp-front']) {
    merge request vérifiée reçoit de nouveaux commits. */
 const cmdId = db.prepare(`INSERT INTO verifier
   (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, auto_on_stale,
-   comment_template, parse_tap, created_at)
-  VALUES (?,?,'',?,?,?,1,1,?,1,?)`).run('tests front (démo)', 'commands', 600, 1, 1,
-  '{verdict}\n\n{tests}\n\n{commandes}\n\n{commits}\n\n_Vérification automatique du {date} à {heure} — relancez-la depuis Mergerie._',
+   comment_template, mentions, parse_tap, created_at)
+  VALUES (?,?,'',?,?,?,1,1,?,?,1,?)`).run('tests front (démo)', 'commands', 600, 1, 1,
+  '{verdict}\n\n{tests}\n\n{commandes}\n\n{commits}\n\n{mentions}\n\n_Vérification automatique du {date} à {heure} — relancez-la depuis Mergerie._',
+  '@equipe-front',
   at(18)).lastInsertRowid;
 /* Deux dépôts pour ce vérificateur : la même liste est rejouée dans chacun. C'est le cas
    des projets qui se testent de la même façon, et ça se voit dans la modale. */

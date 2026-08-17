@@ -803,6 +803,9 @@
                     <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.comment" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                 <!-- Le gabarit n'a de sens que si l'on publie : il apparaît avec la case. -->
                 <div id="verifierCommentBlock" hidden>
+                    <label><span data-i18n="settings.verifier.lbl.mentions">Personnes à prévenir quand ça casse</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.mentions" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <input name="mentions" autocomplete="off" placeholder="@amady @bruno ou @mon-groupe" data-i18n-placeholder="settings.verifier.ph.mentions" />
+                    </label>
                     <label><span data-i18n="settings.verifier.lbl.comment-template">Gabarit du commentaire</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.comment-template" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                         <textarea name="comment_template" rows="6" spellcheck="false"></textarea>
                     </label>

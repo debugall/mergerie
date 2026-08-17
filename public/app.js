@@ -11982,15 +11982,16 @@ const majApercuGabarit = debounce(async () => {
   const box = $('#verifierCommentPreview');
   if (!box || !box.open) return;                    // replié : rien à composer
   try {
+    const f = $('#verifierForm');
     const d = await api('/verifiers/comment-preview', {
-      method: 'POST', body: { template: $('#verifierForm').comment_template.value },
+      method: 'POST', body: { template: f.comment_template.value, mentions: f.mentions.value },
     });
     $('#verifierCommentPreviewBody').textContent = d.body || '';
   } catch (e) { $('#verifierCommentPreviewBody').textContent = explainError(e.message); }
 }, 250);
 $('#verifierCommentPreview') && $('#verifierCommentPreview').addEventListener('toggle', () => majApercuGabarit());
 document.addEventListener('input', (e) => {
-  if (e.target && e.target.name === 'comment_template') majApercuGabarit();
+  if (e.target && (e.target.name === 'comment_template' || e.target.name === 'mentions')) majApercuGabarit();
 });
 
 let champsGabarit = null;
@@ -12190,6 +12191,7 @@ function remplirFormVerifier(v, info) {
   f.auto_on_mr.checked = !!v.auto_on_mr;
   f.auto_on_stale.checked = !!v.auto_on_stale;
   f.comment_template.value = v.comment_template || '';
+  f.mentions.value = v.mentions || '';
   majBlocCommentaire();
   renderCommandList(v.commands || []);
   renderVerifierRepoBox(v.repos || []);
@@ -12267,6 +12269,7 @@ $('#verifierForm') && $('#verifierForm').addEventListener('submit', async (e) =>
     comment_on_forge: f.comment_on_forge.checked ? 1 : 0,
     auto_on_stale: f.auto_on_stale.checked ? 1 : 0,
     comment_template: f.comment_template.value,
+    mentions: f.mentions.value,
     auto_on_mr: f.auto_on_mr.checked ? 1 : 0,
     repos: verifierReposFromForm(),
   };

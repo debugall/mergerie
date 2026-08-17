@@ -582,7 +582,17 @@ function blocsCommentaire(v, verifier) {
     const repo = db.prepare('SELECT project FROM repo WHERE id = ?').get(c.repo_id);
     commits.push(`- ${(repo && repo.project) || c.repo_id} · \`${c.branch || ''}\` @ \`${String(c.head_sha || '').slice(0, 8)}\``);
   }
-  return { verdict, tests: tests.join('\n'), commandes, commits: commits.join('\n'), verificateur: nom };
+  /* LES MENTIONS NE PARTENT QUE SI QUELQUE CHOSE CASSE. Écrire `@amady` sur chaque merge
+     request vérifiée, y compris pour dire que tout va bien, envoie un mail à quelqu'un pour
+     rien — et c'est exactement comme ça qu'un signal utile finit dans un filtre. Vert, donc
+     vide : le badge et le commentaire suffisent. */
+  const mentions = (v.verdict === 'verified_pass' || !verifier || !verifier.mentions)
+    ? ''
+    : String(verifier.mentions).trim();
+
+  return {
+    verdict, tests: tests.join('\n'), commandes, commits: commits.join('\n'), mentions, verificateur: nom,
+  };
 }
 
 // Le corps prêt à publier : les blocs, posés dans le gabarit du vérificateur (ou le défaut).

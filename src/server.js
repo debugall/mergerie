@@ -2576,6 +2576,10 @@ function lireVerifier(body, courant) {
     comment_template: b.comment_template != null
       ? String(b.comment_template).slice(0, 5000)
       : (courant ? courant.comment_template : ''),
+    /* Repris TEL QUEL dans le commentaire : c'est la forge qui résout les mentions. On borne,
+       on ne valide pas — un handle valide ici dépend de la forge, du groupe, des droits, et
+       refuser à tort empêcherait de prévenir quelqu'un pour une règle qu'on aurait inventée. */
+    mentions: b.mentions != null ? String(b.mentions).slice(0, 500).trim() : (courant ? courant.mentions : ''),
     repos,
   };
 }
@@ -2607,9 +2611,9 @@ app.post('/api/verifiers', wrap((req, res) => {
   }
   const info = db.prepare(`INSERT INTO verifier
     (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, auto_on_stale,
-     comment_template, env_json, report_path, parse_tap, created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(v.name, v.kind, v.command, v.timeout_s, v.run_base,
-    v.comment_on_forge, v.auto_on_mr, v.auto_on_stale, v.comment_template,
+     comment_template, mentions, env_json, report_path, parse_tap, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(v.name, v.kind, v.command, v.timeout_s, v.run_base,
+    v.comment_on_forge, v.auto_on_mr, v.auto_on_stale, v.comment_template, v.mentions,
     v.env_json, v.report_path, v.parse_tap, new Date().toISOString());
   ecrireRepos(info.lastInsertRowid, v.repos || []);
   ecrireCommandes(info.lastInsertRowid, v.commands || []);
@@ -2623,10 +2627,10 @@ app.put('/api/verifiers/:id', wrap((req, res) => {
   const homonyme = db.prepare('SELECT 1 FROM verifier WHERE name = ? AND id <> ?').get(v.name, cur.id);
   if (homonyme) throw new Error(t('err.verifier.name-taken', { name: v.name }));
   db.prepare(`UPDATE verifier SET name = ?, kind = ?, command = ?, timeout_s = ?, run_base = ?,
-    comment_on_forge = ?, auto_on_mr = ?, auto_on_stale = ?, comment_template = ?,
+    comment_on_forge = ?, auto_on_mr = ?, auto_on_stale = ?, comment_template = ?, mentions = ?,
     env_json = ?, report_path = ?, parse_tap = ? WHERE id = ?`)
     .run(v.name, v.kind, v.command, v.timeout_s, v.run_base, v.comment_on_forge, v.auto_on_mr,
-      v.auto_on_stale, v.comment_template, v.env_json, v.report_path, v.parse_tap, cur.id);
+      v.auto_on_stale, v.comment_template, v.mentions, v.env_json, v.report_path, v.parse_tap, cur.id);
   ecrireRepos(cur.id, v.repos);
   ecrireCommandes(cur.id, v.commands);
   res.json(verifierAvecRepos(cur.id));
@@ -2643,7 +2647,13 @@ app.get('/api/verifiers/comment-template-default', wrap((req, res) => {
    c'est justement pour ne pas se tromper qu'on regarde un aperçu. */
 app.post('/api/verifiers/comment-preview', wrap((req, res) => {
   const gabarit = (req.body && req.body.template != null) ? String(req.body.template).slice(0, 5000) : '';
-  res.json({ body: verifyLib.composerCommentaire(verifyLib.EXEMPLE_COMMENTAIRE, gabarit) });
+  /* Les MENTIONS de l'aperçu sont celles du formulaire, pas celles de l'exemple : c'est le seul
+     champ dont l'utilisateur a la vraie valeur sous les yeux au moment où il regarde l'aperçu,
+     et lui en montrer une autre serait exactement le genre de petit mensonge qu'on évite.
+     L'aperçu représente un verdict ROUGE — sur un vert, les mentions ne partent pas. */
+  const blocs = { ...verifyLib.EXEMPLE_COMMENTAIRE };
+  if (req.body && req.body.mentions != null) blocs.mentions = String(req.body.mentions).slice(0, 500).trim();
+  res.json({ body: verifyLib.composerCommentaire(blocs, gabarit) });
 }));
 
 app.delete('/api/verifiers/:id', wrap((req, res) => {

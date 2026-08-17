@@ -1660,9 +1660,18 @@ champ :
 | `{tests}` | les tests cassés, un par ligne, avec leur message quand la sortie en donne un. Coupé au-delà de vingt, et il le dit. **Vide si tout passe** |
 | `{commandes}` | les commandes qui ont échoué, avec leur code de sortie (préfixées du dépôt s'il y en a plusieurs). Elle répond à ce que `{tests}` laisse ouvert quand la sortie **nomme** les tests : lesquels cassent, oui — mais laquelle des commandes. Vide si rien n'a échoué |
 | `{commits}` | les commits réellement testés : un par dépôt, `dépôt · branche @ sha`. C'est ce qui rend le verdict vérifiable |
+| `{mentions}` | les personnes déclarées sur le vérificateur (champ *Personnes à prévenir quand ça casse*), **uniquement sur un verdict rouge**. Vide sur un vert |
 | `{verificateur}` | le nom du vérificateur, seul — utile si tu écris ta propre phrase de verdict |
 | `{date}` | la date de **publication** du commentaire (`17/08/2026`), pas celle du run |
 | `{heure}` | l'heure de publication (`14:12`) |
+
+**Prévenir quelqu'un.** Le champ *Personnes à prévenir quand ça casse* prend des **handles**
+(`@amady @bruno`) ou un **groupe** (`@mon-equipe`, qui vieillit mieux qu'une liste de personnes),
+repris tels quels là où tu places `{mentions}`. C'est la **forge** qui résout la mention et envoie
+le mail — Mergerie ne fait que l'écrire. Deux choses à savoir : il faut le handle, pas
+l'identifiant numérique (GitLab ne résout pas `@42`), et tu ne seras pas notifié de **tes** propres
+mentions, le commentaire étant posté avec ton jeton. Rien n'est mentionné sur un verdict vert :
+prévenir quelqu'un pour dire que tout va bien est le plus sûr moyen de finir dans un filtre.
 
 Tout le reste est écrit tel quel, et un champ inconnu **reste visible** au lieu de disparaître :
 une faute de frappe doit se voir dans l'aperçu, pas se traduire par un trou dans le commentaire.

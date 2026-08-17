@@ -253,6 +253,32 @@ describe('Verdict publié en commentaire', () => {
     assert.doesNotMatch(pre.body, /\n{3}/, '…et pas de trou laissé par le champ absent');
   });
 
+  /* LES MENTIONS, ET LEUR SILENCE. Elles servent à prévenir quelqu'un — donc à envoyer un mail
+     à un collègue. Le cas qui compte est celui où elles ne partent PAS : sur un vert, mentionner
+     est du bruit, et c'est comme ça qu'un signal utile finit filtré. */
+  test('{mentions} n’apparaît que quand quelque chose casse', async () => {
+    const rouge = script('m-ko', "printf 'TAP version 13\nnot ok 1 - panier › total\n1..1\n'\nexit 1");
+    const { v, d } = await verifier({ nom: 'mentions-ko', commande: rouge });
+    await app.api('PUT', `/api/verifiers/${v.id}`, {
+      mentions: '@amady @bruno', comment_template: '{verdict}\n\n{mentions}',
+    });
+    const { body: pre } = await app.api('GET', `/api/verifications/${d.id}/comment`);
+    assert.match(pre.body, /@amady @bruno/, 'sur un rouge, on prévient les gens');
+
+    // Le même vérificateur, un verdict vert : rien ne doit être mentionné.
+    const { d: vert } = await verifier({ nom: 'mentions-vert', champs: { mentions: '@amady', comment_template: '{verdict}\n\n{mentions}' } });
+    assert.equal(vert.verdict, 'verified_pass');
+    const { body: apres } = await app.api('GET', `/api/verifications/${vert.id}/comment`);
+    assert.doesNotMatch(apres.body, /@amady/, 'sur un vert, personne n’est dérangé');
+    assert.doesNotMatch(apres.body, /\n{3}/, '…et le champ vide ne laisse pas de trou');
+  });
+
+  test('les mentions se relisent telles qu’elles ont été saisies', async () => {
+    const { v } = await verifier({ nom: 'mentions-relu', champs: { mentions: '  @mon-groupe  ' } });
+    const relu = (await app.api('GET', '/api/verifiers')).body.find((x) => x.id === v.id);
+    assert.equal(relu.mentions, '@mon-groupe', 'les blancs de bout sont retirés, le reste est intact');
+  });
+
   test('le gabarit du vérificateur remplace le défaut, à l’écran comme à l’envoi', async () => {
     const { v, d } = await verifier({ nom: 'gabarit' });
     await app.api('PUT', `/api/verifiers/${v.id}`, {

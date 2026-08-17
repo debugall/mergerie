@@ -1599,9 +1599,18 @@ case — there, a human decides, with the text in front of them.
 | `{tests}` | the broken tests, one per line, with their message when the output gives one. Cut past twenty, and it says so. **Empty when everything passes** |
 | `{commandes}` | the commands that failed, with their exit code (prefixed with the repository when there are several). It answers what `{tests}` leaves open when the output **names** the tests: which ones broke, yes — but which command did. Empty when nothing failed |
 | `{commits}` | the commits actually tested: one per repository, `repository · branch @ sha`. That is what makes the verdict checkable |
+| `{mentions}` | the people declared on the verifier (*People to ping when it breaks*), **only on a red verdict**. Empty on a green one |
 | `{verificateur}` | the verifier's name alone — useful if you write your own verdict sentence |
 | `{date}` | the date the comment is **published** (`17/08/2026`), not the date of the run |
 | `{heure}` | the time it is published (`14:12`) |
+
+**Pinging someone.** The *People to ping when it breaks* field takes **handles** (`@amady @bruno`)
+or a **group** (`@my-team`, which ages better than a list of people), written as is wherever you
+put `{mentions}`. The **forge** resolves the mention and sends the mail — Mergerie only writes it.
+Two things to know: it must be the handle, not the numeric id (GitLab does not resolve `@42`), and
+you will not be notified of **your own** mentions, since the comment is posted with your token.
+Nothing is mentioned on a green verdict: pinging someone to say all is well is the surest way to
+end up in a mail filter.
 
 Everything else is written as is, and an unknown field **stays visible** rather than disappearing:
 a typo should show in the preview, not turn into a hole in the comment. An empty block leaves no

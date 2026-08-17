@@ -13,6 +13,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Ping people when a verification breaks — and only then.** A verifier carries a
+  `People to ping when it breaks` field (handles like `@amady`, or a group like `@my-team`,
+  which ages better than a list of names), written into the comment wherever you put
+  `{mentions}` in the template. The forge resolves the mention and sends the mail; Mergerie only
+  writes it. **Nothing is mentioned on a green verdict** — pinging someone to say all is well is
+  the surest way to end up in a mail filter. Two facts worth knowing: it must be the handle, not
+  the numeric id (GitLab does not resolve `@42`), and you are never notified of your own
+  mentions, since the comment is posted with your token.
+
 - **Automatic publication now waits for a green base.** A verifier that publishes its verdict
   writes on the merge request only when the **base run passed** — “it passed before, your branch
   breaks it”, or “verified, and it holds”. If the base was already red, or if there is no base
