@@ -619,6 +619,14 @@ async function commenterSurForge(verificationId, cfg, onLog) {
   if (!v) return null;
   const verifier = db.prepare('SELECT * FROM verifier WHERE id = ?').get(v.verifier_id);
   if (!verifier || !verifier.comment_on_forge) return null;
+
+  const lire = (j) => { try { return j ? JSON.parse(j) : null; } catch { return null; } };
+  /* Un seul cas mérite d'écrire chez quelqu'un : la base passait, la branche casse (voir
+     `verify.doitCommenterAuto`). On DIT pourquoi on se tait — un silence se lit comme « publié ». */
+  if (!verify.doitCommenterAuto(lire(v.base_run_json), lire(v.head_run_json))) {
+    if (onLog) onLog(t('log.verify.comment-skipped'));
+    return null;
+  }
   return publierCommentaire(verificationId, cfg, { onLog });
 }
 

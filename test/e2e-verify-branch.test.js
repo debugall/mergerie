@@ -19,7 +19,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { startApp, poserIdentiteGit } = require('./helpers/app');
+const {
+  startApp, poserIdentiteGit, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
+} = require('./helpers/app');
 
 describe('Vérification d’une branche', () => {
   let app; let repoId; let bin; let distant; let git;
@@ -147,6 +149,60 @@ describe('Vérification d’une branche', () => {
     assert.equal(ligne.targets[0].iid, null, 'aucun numéro de MR à afficher…');
     assert.equal(ligne.targets[0].project, 'grp/app', '…donc c’est le dépôt qui identifie la ligne');
     assert.equal(ligne.targets[0].branch, 'develop', '…avec la branche, sinon on ne sait pas laquelle est rouge');
+  });
+
+  /* DEPUIS L'ÉCRAN. Le sélecteur de branche est un `combo` : son chargeur reçoit l'ancêtre
+     portant `data-row` — et sans cet attribut il reçoit `null`, ce qui se voit à l'ouverture de
+     la liste, jamais avant. Le bug est parti en production une fois ; il ne repartira pas. */
+  test('depuis l’écran : la liste des branches s’ouvre, se filtre, et lance la vérification', async (t) => {
+    if (!navigateurDispo().dispo) { t.skip(MSG_NAVIGATEUR); return; }
+    app.state.branches['grp/app'] = [
+      { name: 'main', default: true, protected: false, merged: false, commit: { id: git(distant, 'rev-parse', 'main') } },
+      { name: 'develop', default: false, protected: false, merged: false, commit: { id: git(distant, 'rev-parse', 'develop') } },
+    ];
+    const v = await poser('ui', 'exit 0');
+    const nav = await lancerNavigateur();
+    const page = await nav.newPage({ viewport: { width: 1400, height: 950 } });
+    const erreurs = [];
+    page.on('pageerror', (e) => erreurs.push(e.message));
+    try {
+      await page.goto(app.base);
+      await page.locator('[data-tab="admin"]').click();
+      await page.waitForLoadState('networkidle');
+      await page.locator('#tab-admin .subnav [data-sub="verifiers"]').click();
+      await page.waitForSelector('#verifierList .card');
+      await page.locator(`#verifierList .card[data-id="${v.id}"] [data-vbranch]`).click();
+      await page.waitForSelector('#branchVerifyModal:not([hidden])');
+
+      // La branche par défaut du dépôt est proposée d'emblée : c'est elle, dans la plupart des cas.
+      const champ = page.locator('#branchVerifyRows .cb-search').first();
+      assert.equal(await champ.inputValue(), 'main');
+
+      await champ.click();
+      await page.waitForSelector('.combo-options:not([hidden]) .combo-opt');
+      const options = await page.locator('.combo-options:not([hidden]) .combo-opt').allTextContents();
+      assert.ok(options.some((o) => o.includes('develop')), `la liste des branches s’ouvre : ${options.join(', ')}`);
+
+      // …et elle SE FILTRE : un dépôt actif en aligne des centaines.
+      await champ.fill('deve');
+      await page.waitForTimeout(300);
+      const filtrees = await page.locator('.combo-options:not([hidden]) .combo-opt').allTextContents();
+      assert.ok(filtrees.length && filtrees.every((o) => o.includes('deve')), `filtre : ${filtrees.join(', ')}`);
+      await page.locator('.combo-options:not([hidden]) .combo-opt').first().click();
+
+      const avant = app.db.prepare('SELECT COUNT(*) c FROM verification').get().c;
+      await page.locator('#branchVerifyGo').click();
+      await page.waitForSelector('#branchVerifyModal[hidden]', { state: 'attached' });
+      assert.equal(app.db.prepare('SELECT COUNT(*) c FROM verification').get().c, avant + 1,
+        'le clic lance bien une vérification');
+      const cible = JSON.parse(app.db.prepare('SELECT targets_json t FROM verification ORDER BY id DESC LIMIT 1').get().t)[0];
+      assert.equal(cible.branch, 'develop', 'c’est la branche CHOISIE qui part, pas celle proposée');
+      assert.equal(cible.mr_id, null);
+      assert.equal(erreurs.length, 0, `aucune erreur JS : ${erreurs.join(' | ')}`);
+      // La vérification lancée tient le verrou du dépôt : on la laisse finir, sinon c'est le
+      // test suivant qui se fait refuser son lancement.
+      await attendre(app.db.prepare('SELECT id FROM verification ORDER BY id DESC LIMIT 1').get().id);
+    } finally { await nav.close(); }
   });
 
   /* Le même vérificateur doit continuer à faire son double run causal sur une merge request :

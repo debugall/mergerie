@@ -117,7 +117,7 @@ describe('Verdict publié en commentaire', () => {
     assert.equal(pre.posted_at, null, 'rien n’a encore été publié');
     assert.match(pre.body, /✗ 1 test\(s\) cassé\(s\) par cette branche/);
     assert.match(pre.body, /panier › total/, 'les faits, pas seulement le verdict');
-    assert.match(pre.body, /Vérifié par Mergerie le/, 'l’horodatage du gabarit par défaut');
+    assert.match(pre.body, /_Vérifié le \d{2}\/\d{2}\/\d{4} à \d{2}:\d{2}\._/, 'l’horodatage du gabarit par défaut');
   });
 
   /* LE CŒUR. Si un jour quelqu'un « simplifie » en publiant le corps recomposé côté serveur,
@@ -161,6 +161,70 @@ describe('Verdict publié en commentaire', () => {
     assert.equal(r.status, 400, JSON.stringify(r.body));
     const { body: apres } = await app.api('GET', `/api/verifications/${d.id}/comment`);
     assert.equal(apres.posted_at, null, 'rien n’est parti : rien n’est marqué comme publié');
+  });
+
+  /* ------------------------------------------- la publication AUTOMATIQUE ---- */
+
+  /* LA RÈGLE : on n'écrit sur la merge request de quelqu'un que si la base PASSAIT et que sa
+     branche l'a CASSÉE. C'est le seul cas où le commentaire apprend quelque chose. La décision
+     est pure — elle se prouve sans base ni réseau. */
+  test('c’est la BASE VERTE qui autorise à publier, vert comme rouge', () => {
+    const p = { status: 'pass' }; const f = { status: 'fail' }; const e = { status: 'error' };
+    assert.equal(verify.doitCommenterAuto(p, f), true, 'la base passait, cette branche casse : on le dit');
+    assert.equal(verify.doitCommenterAuto(p, p), true, 'la base passait, la branche tient : un vert ÉCRIT vaut mieux qu’un badge à aller chercher');
+    assert.equal(verify.doitCommenterAuto(f, f), false, 'base déjà rouge : ce n’est pas imputable à cette branche');
+    assert.equal(verify.doitCommenterAuto(f, p), false, 'base rouge : le verdict ne veut rien dire de la branche');
+    assert.equal(verify.doitCommenterAuto(null, f), false, 'sans run base, on ne SAIT PAS : publier serait affirmer');
+    assert.equal(verify.doitCommenterAuto(p, e), false, 'run en erreur : il n’y a pas de verdict à publier');
+    assert.equal(verify.doitCommenterAuto(p, null), false);
+  });
+
+  /* Et de bout en bout : c'est le chemin automatique, celui qui écrit sans qu'on regarde. */
+  test('coché, il publie dès que la base est verte — et se tait quand elle ne l’est pas', async () => {
+    const rouge = script('auto-ko', "printf 'TAP version 13\nnot ok 1 - panier › total\n1..1\n'\nexit 1");
+    const vert = script('auto-ok', 'exit 0');
+
+    /* Base VERTE, tête ROUGE. Le script répond selon le rôle : le run base part en premier,
+       on compte donc les appels — la base est le 1er, la tête le 2e. */
+    const compteur = path.join(bin, 'compteur.txt');
+    fs.rmSync(compteur, { force: true });
+    const causal = script('auto-causal', [
+      `n=$(cat ${compteur} 2>/dev/null || echo 0)`,
+      `n=$((n+1)); echo $n > ${compteur}`,
+      'if [ "$n" = "1" ]; then exit 0; fi',      // base : verte
+      "printf 'TAP version 13\nnot ok 1 - panier › total\n1..1\n'",
+      'exit 1',                                   // tête : rouge
+    ].join('\n'));
+
+    let avant = app.state.calls.length;
+    let { d } = await verifier({ nom: 'auto-causal', commande: causal, champs: { comment_on_forge: 1, run_base: 1 } });
+    assert.equal(d.verdict, 'verified_fail');
+    const note = app.state.calls.slice(avant).find((c) => c.method === 'POST' && c.path.includes('/notes'));
+    assert.ok(note, 'la base passait, la branche casse : le verdict est publié');
+    assert.match(note.body.body, /panier › total/, '…avec les faits');
+
+    // TOUT VERT : on publie aussi — sur une MR qu'on va relire, un vert écrit vaut mieux qu'un
+    // badge qu'il faut aller chercher dans un autre outil.
+    avant = app.state.calls.length;
+    ({ d } = await verifier({ nom: 'auto-vert', commande: vert, champs: { comment_on_forge: 1, run_base: 1 } }));
+    assert.equal(d.verdict, 'verified_pass');
+    const vertPoste = app.state.calls.slice(avant).find((c) => c.method === 'POST' && c.path.includes('/notes'));
+    assert.ok(vertPoste, 'base verte et tête verte : le verdict est publié');
+    assert.match(vertPoste.body.body, /✓ vérifié/);
+
+    // BASE DÉJÀ ROUGE (le même script échoue des deux côtés) : rien ne part non plus.
+    avant = app.state.calls.length;
+    ({ d } = await verifier({ nom: 'auto-base-rouge', commande: rouge, champs: { comment_on_forge: 1, run_base: 1 } }));
+    assert.equal(d.verdict, 'broken_base');
+    assert.equal(app.state.calls.slice(avant).filter((c) => c.path.includes('/notes')).length, 0,
+      'base déjà rouge : accuser cette branche serait faux');
+
+    // SANS RUN BASE : on ne sait pas si c'était déjà rouge, donc on se tait.
+    avant = app.state.calls.length;
+    ({ d } = await verifier({ nom: 'auto-sans-base', commande: rouge, champs: { comment_on_forge: 1, run_base: 0 } }));
+    assert.equal(d.verdict, 'verified_fail');
+    assert.equal(app.state.calls.slice(avant).filter((c) => c.path.includes('/notes')).length, 0,
+      'sans run base, publier reviendrait à affirmer ce qu’on n’a pas vérifié');
   });
 
   /* ------------------------------------------------- le gabarit du vérificateur ---- */

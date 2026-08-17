@@ -2638,6 +2638,14 @@ app.get('/api/verifiers/comment-template-default', wrap((req, res) => {
   res.json({ template: verifyLib.GABARIT_COMMENTAIRE_DEFAUT, champs: verifyLib.CHAMPS_COMMENTAIRE });
 }));
 
+/* L'APERÇU DU GABARIT, composé par le MÊME moteur que le vrai commentaire, à partir de blocs
+   d'exemple. Un aperçu rendu autrement finirait par mentir sur ce qui part réellement — et
+   c'est justement pour ne pas se tromper qu'on regarde un aperçu. */
+app.post('/api/verifiers/comment-preview', wrap((req, res) => {
+  const gabarit = (req.body && req.body.template != null) ? String(req.body.template).slice(0, 5000) : '';
+  res.json({ body: verifyLib.composerCommentaire(verifyLib.EXEMPLE_COMMENTAIRE, gabarit) });
+}));
+
 app.delete('/api/verifiers/:id', wrap((req, res) => {
   db.prepare('DELETE FROM verifier WHERE id = ?').run(Number(req.params.id));
   res.json({ ok: true });

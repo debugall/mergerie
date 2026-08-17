@@ -1577,14 +1577,36 @@ recipients) instead of offering the button again as if nothing had happened: tha
 the same verdict being posted twice on someone's merge request. If publishing fails, **the text
 stays on screen** — you never lose what you have just written.
 
-**By itself**, if the `Publish the verdict as a comment` box is ticked on the verifier. Unticked by
-default: writing on other people's work is a decision.
+**By itself**, if the `Publish the verdict as a comment` box is ticked on the verifier — **as
+long as the base run is green**. It is the base that gives the verdict its meaning:
 
-**The comment template** can be edited (it appears under the box). Fields in braces are replaced
-when it is sent — `{verdict}`, `{tests}`, `{commits}`, `{verificateur}`, `{date}`, `{heure}` — and
-everything else is written as is. An unknown field **stays visible** rather than disappearing: a
-typo should show in the preview, not turn into a hole in the comment. Left empty, the default
-template is used — and it then benefits from future improvements, which a frozen copy would not.
+| Base | Head | Published? |
+|---|---|---|
+| green | red | **yes** — “it passed before, this branch breaks it” |
+| green | green | **yes** — “verified, and it holds”: on a merge request you are about to review, a written green beats a badge you have to go and find |
+| red | — | no — it is not this branch's doing; writing it on ITS merge request would blame it for what someone else broke |
+| absent | — | no — without a base run we do not KNOW whether it was already red, and publishing would assert what we have not checked |
+
+The **server log says why** nothing went out: silence reads as “published”. Unticked by default:
+writing on other people's work is a decision. Publishing **by hand** stays available in every
+case — there, a human decides, with the text in front of them.
+
+**The comment template** can be edited (it appears under the box). What each field produces:
+
+| Field | What it produces |
+|---|---|
+| `{verdict}` | the verdict line, with the verifier's name — `**integ**: ✗ 2 test(s) broken by this branch`. On a branch verification, “by this branch” disappears |
+| `{tests}` | the broken tests, one per line, with their message when the output gives one. Cut past twenty, and it says so. **Empty when everything passes** |
+| `{commits}` | the commits actually tested: one per repository, `repository · branch @ sha`. That is what makes the verdict checkable |
+| `{verificateur}` | the verifier's name alone — useful if you write your own verdict sentence |
+| `{date}` | the date the comment is **published** (`17/08/2026`), not the date of the run |
+| `{heure}` | the time it is published (`14:12`) |
+
+Everything else is written as is, and an unknown field **stays visible** rather than disappearing:
+a typo should show in the preview, not turn into a hole in the comment. An empty block leaves no
+extra blank line. Under the field, **“See an example comment”** shows YOUR template rendered on
+sample data — composed by the same engine as the real comment, otherwise the preview would end up
+lying. Left empty, the default template is used, and it then benefits from later improvements.
 
 ### Verifying a branch, with no merge request
 

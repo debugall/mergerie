@@ -2330,6 +2330,22 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
    lisant, sans changer d'écran. Les blocs de code défilent au lieu d'élargir la page. */
 
 /* Vérificateur « commandes » : la liste ordonnée, et le détail de la modale. */
+/* Aide du gabarit de commentaire : le nom du champ à gauche, ce qu'il contient à droite.
+   Une définition par ligne — un tableau serait plus lourd pour six entrées, et la colonne de
+   droite doit pouvoir respirer sur deux lignes. */
+/* Aperçu du gabarit : replié par défaut (voir index.html). Le `pre` reprend l'habillage des
+   sorties de commandes — c'est du texte brut destiné à une forge, pas de la mise en page. */
+.apercu-gabarit { margin: 4px 0 10px; }
+.apercu-gabarit > summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.apercu-gabarit > summary:hover { color: var(--text); }
+.apercu-gabarit .verify-log { margin-top: 6px; max-height: 260px; }
+
+.champs-gabarit { margin: 6px 0 10px; display: grid; gap: 6px; }
+.champ-gabarit { display: grid; grid-template-columns: minmax(90px, auto) 1fr; gap: 10px; align-items: baseline; }
+.champ-gabarit dt code { font-size: 12px; }
+.champ-gabarit dd { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+@media (max-width: 700px) { .champ-gabarit { grid-template-columns: 1fr; gap: 2px; } }
+
 .vc-row { display: flex; gap: 6px; margin-bottom: 6px; }
 .vc-row .vc-cmd { flex: 1; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
   border-radius: var(--radius); padding: 7px 10px; font: inherit; font-size: 13px; }

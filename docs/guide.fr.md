@@ -1637,15 +1637,38 @@ l'écran le dit (date, destinataires) au lieu de reproposer le bouton comme si d
 c'est ce qui évite de poster deux fois le même verdict chez quelqu'un. Si la publication échoue,
 **le texte reste sous les yeux** — on ne perd jamais ce qu'on vient d'écrire.
 
-**Tout seul**, si la case `Publier le verdict en commentaire` est cochée sur le vérificateur.
-Décochée par défaut : écrire chez les autres est une décision.
+**Tout seul**, si la case `Publier le verdict en commentaire` est cochée sur le vérificateur —
+**à condition que le run base soit vert**. C'est lui qui donne son sens au verdict :
 
-**Le gabarit du commentaire** se modifie (il apparaît sous la case). Les champs entre accolades
-sont remplacés à l'envoi — `{verdict}`, `{tests}`, `{commits}`, `{verificateur}`, `{date}`,
-`{heure}` — et tout le reste est écrit tel quel. Un champ inconnu **reste visible** au lieu de
-disparaître : une faute de frappe doit se voir dans l'aperçu, pas se traduire par un trou dans le
-commentaire. Laissé vide, c'est le gabarit par défaut qui sert — et il profite alors des
-améliorations à venir, ce qu'une copie figée ne ferait pas.
+| Base | Tête | Publié ? |
+|---|---|---|
+| verte | rouge | **oui** — « ça passait avant, cette branche casse » |
+| verte | verte | **oui** — « vérifié, et ça tient » : sur une MR qu'on va relire, un vert écrit vaut mieux qu'un badge à aller chercher |
+| rouge | — | non — ce n'est pas imputable à cette branche ; l'écrire sur SA merge request reviendrait à l'accuser de ce que quelqu'un d'autre a cassé |
+| absente | — | non — sans run base, on ne SAIT PAS si c'était déjà rouge, et publier serait affirmer ce qu'on n'a pas vérifié |
+
+Le **journal du serveur dit pourquoi** rien n'est parti : un silence se lit comme « publié ».
+Décochée par défaut : écrire chez les autres est une décision. La publication **à la main** reste
+possible dans tous les cas — là, c'est un humain qui décide, avec le texte sous les yeux.
+
+**Le gabarit du commentaire** se modifie (il apparaît sous la case). Ce que contient chaque
+champ :
+
+| Champ | Ce qu'il produit |
+|---|---|
+| `{verdict}` | la ligne de verdict, avec le nom du vérificateur — `**integ** : ✗ 2 test(s) cassé(s) par cette branche`. Sur une vérification de branche, « par cette branche » disparaît |
+| `{tests}` | les tests cassés, un par ligne, avec leur message quand la sortie en donne un. Coupé au-delà de vingt, et il le dit. **Vide si tout passe** |
+| `{commits}` | les commits réellement testés : un par dépôt, `dépôt · branche @ sha`. C'est ce qui rend le verdict vérifiable |
+| `{verificateur}` | le nom du vérificateur, seul — utile si tu écris ta propre phrase de verdict |
+| `{date}` | la date de **publication** du commentaire (`17/08/2026`), pas celle du run |
+| `{heure}` | l'heure de publication (`14:12`) |
+
+Tout le reste est écrit tel quel, et un champ inconnu **reste visible** au lieu de disparaître :
+une faute de frappe doit se voir dans l'aperçu, pas se traduire par un trou dans le commentaire.
+Un bloc vide ne laisse pas de ligne blanche en trop. Sous le champ, **« Voir un exemple de
+commentaire »** montre le rendu de TON gabarit sur des données d'exemple — composé par le même
+moteur que le vrai commentaire, sinon l'aperçu finirait par mentir. Laissé vide, c'est le gabarit
+par défaut qui sert, et il profite alors des améliorations à venir.
 
 ### Vérifier une branche, sans merge request
 

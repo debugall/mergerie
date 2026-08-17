@@ -806,7 +806,17 @@
                     <label><span data-i18n="settings.verifier.lbl.comment-template">Gabarit du commentaire</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.comment-template" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                         <textarea name="comment_template" rows="6" spellcheck="false"></textarea>
                     </label>
-                    <p class="field-note"><span data-i18n="settings.verifier.comment-template.fields">Champs disponibles</span> : <code>{verdict}</code> <code>{tests}</code> <code>{commits}</code> <code>{verificateur}</code> <code>{date}</code> <code>{heure}</code> — <span data-i18n="settings.verifier.comment-template.empty">vide = gabarit par défaut</span>.</p>
+                    <p class="field-note" data-i18n="settings.verifier.comment-template.fields">Ce que contient chaque champ, tel qu'il sera remplacé à l'envoi :</p>
+                    <dl id="verifierCommentFields" class="champs-gabarit"></dl>
+                    <p class="field-note" data-i18n="settings.verifier.comment-template.empty">Laissé vide, c'est le gabarit par défaut qui sert.</p>
+                    <!-- REPLIÉ : l'aperçu répond à « ça donne quoi ? », une question qu'on ne se
+                         pose qu'une fois. Ouvert par défaut, il pousserait le formulaire vers le bas
+                         à chaque visite. Il est composé par le moteur, avec des données d'exemple. -->
+                    <details id="verifierCommentPreview" class="apercu-gabarit">
+                        <summary data-i18n="settings.verifier.comment-template.preview">Voir un exemple de commentaire</summary>
+                        <p class="field-note" data-i18n="settings.verifier.comment-template.preview-note">Composé avec des données d'exemple (deux dépôts, deux tests cassés), par le même moteur que le vrai commentaire.</p>
+                        <pre id="verifierCommentPreviewBody" class="verify-log"></pre>
+                    </details>
                     <p><button type="button" class="btn btn-sm" id="btnCommentTemplateDefaut" data-i18n="settings.verifier.comment-template.reset">Repartir du gabarit par défaut</button></p>
                 </div>
                 <label class="inline-check"><input name="auto_on_mr" type="checkbox" /> <span data-i18n="settings.verifier.lbl.auto">Lancer sur toute nouvelle merge request des dépôts couverts</span>

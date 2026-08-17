@@ -520,12 +520,49 @@ const GABARIT_COMMENTAIRE_DEFAUT = [
   '{verdict}',
   '',
   '{tests}',
+  '',
   '{commits}',
   '',
-  '_Vérifié par Mergerie le {date} à {heure}._',
+  '_Vérifié le {date} à {heure}._',
 ].join('\n');
 
 const CHAMPS_COMMENTAIRE = ['verdict', 'tests', 'commits', 'verificateur', 'date', 'heure'];
+
+/* DES BLOCS D'EXEMPLE, pour montrer à quoi ressemble un gabarit une fois rempli. Ils passent
+   par la MÊME fonction que le vrai commentaire : un aperçu composé autrement finirait par
+   mentir sur ce qui part. Un cas rouge, parce que c'est celui où le contenu compte. */
+const EXEMPLE_COMMENTAIRE = {
+  verificateur: 'integ',
+  verdict: '**integ** : ✗ 2 test(s) cassé(s) par cette branche',
+  tests: ['Tests cassés :',
+    '- `panier › total` — attendu 42, reçu 41',
+    '- `paiement › devise absente`'].join('\n'),
+  commits: ['Commits testés :',
+    '- grp/api · `feat/PROJ-720-checkout` @ `a1b2c3d4`',
+    '- grp/front · `feat/PROJ-720-tunnel` @ `9f8e7d6c`'].join('\n'),
+};
+
+/* PUBLIER TOUT SEUL, OU SE TAIRE. La case « Publier le verdict en commentaire » n'écrit sur la
+   merge request que si LA BASE EST VERTE — et elle publie alors le verdict, vert comme rouge :
+
+     · base verte, tête rouge → « ce qui marchait avant ne marche plus, et c'est cette branche » ;
+     · base verte, tête verte → « vérifié, et ça tient » : sur une merge request qu'on va relire,
+       un vert ÉCRIT vaut mieux qu'un badge qu'il faut aller chercher dans un autre outil.
+
+   Ce qui reste tu, et pourquoi :
+     · la base est déjà rouge → ce n'est pas imputable à la branche, et le dire sur SA merge
+       request revient à l'accuser de ce que quelqu'un d'autre a cassé ;
+     · pas de run base (double run désactivé, ou vérification de branche) → on ne SAIT PAS si
+       c'était déjà rouge. Publier reviendrait à affirmer ce qu'on n'a pas vérifié.
+     · run en erreur (commande introuvable, délai dépassé) → il n'y a pas de verdict à publier.
+
+   C'est donc la BASE qui décide de publier, et la tête de ce qu'on écrit. La publication À LA
+   MAIN, depuis le rapport, reste possible dans tous les cas : là, c'est un humain qui décide, et
+   il a le texte sous les yeux. */
+function doitCommenterAuto(base, head) {
+  if (!base || base.status !== 'pass') return false;
+  return !!head && (head.status === 'pass' || head.status === 'fail');
+}
 
 /* Rend le corps du commentaire. `donnees` porte déjà les blocs composés (verdict, tests,
    commits) : cette fonction ne fait que les poser dans le gabarit, et c'est voulu — le QUOI se
@@ -552,7 +589,7 @@ function composerCommentaire(donnees, gabarit, maintenant = new Date()) {
 }
 
 module.exports = {
-  GABARIT_COMMENTAIRE_DEFAUT, CHAMPS_COMMENTAIRE, composerCommentaire,
+  GABARIT_COMMENTAIRE_DEFAUT, CHAMPS_COMMENTAIRE, EXEMPLE_COMMENTAIRE, composerCommentaire, doitCommenterAuto,
   VERDICTS, MAX_FAILED, MAX_LOG, MAX_REPONSE,
   validerReponse, derniereLigneJson, deltaImputable, composerVerdict, estPerime,
   normaliserRemote, memeDepot, tronquer, queue,

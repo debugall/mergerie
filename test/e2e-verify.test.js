@@ -342,9 +342,20 @@ describe('Vérification objective — mode worktree', () => {
       'sans opt-in, rien n’est écrit sur la merge request');
     await app.api('DELETE', `/api/verifiers/${muet.id}`);
 
+    /* AVEC UN RUN BASE VERT. La publication automatique n'écrit que si la base passait : sans
+       elle, on ne saurait pas si l'échec vient de cette branche, et l'écrire sur SA merge
+       request reviendrait à l'accuser. Le script répond donc selon le rang de l'appel — la base
+       part en premier, la tête ensuite. */
+    const compteurForge = path.join(bin, 'compteur-forge.txt');
+    fs.rmSync(compteurForge, { force: true });
     const bavard = (await app.api('POST', '/api/verifiers', {
-      name: 'bavard', kind: 'commands', run_base: false, comment_on_forge: 1,
-      commands: [ecrireScript(bin, 'bavard.sh', casseAvec('panier › total', 'attendu 42, reçu 41'))],
+      name: 'bavard', kind: 'commands', run_base: true, comment_on_forge: 1,
+      commands: [ecrireScript(bin, 'bavard.sh', [
+        `n=$(cat ${compteurForge} 2>/dev/null || echo 0)`,
+        `n=$((n+1)); echo $n > ${compteurForge}`,
+        'if [ "$n" = "1" ]; then exit 0; fi',
+        casseAvec('panier › total', 'attendu 42, reçu 41'),
+      ].join('\n'))],
       repos: [{ repo_id: repoId, mode: 'worktree' }],
     })).body;
     avant = app.state.calls.length;

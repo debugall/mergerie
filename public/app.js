@@ -11967,6 +11967,45 @@ function majBlocCommentaire() {
   const f = $('#verifierForm');
   const bloc = $('#verifierCommentBlock');
   if (f && bloc) bloc.hidden = !f.comment_on_forge.checked;
+  if (f && bloc && !bloc.hidden) { rendreChampsGabarit(); majApercuGabarit(); }
+}
+
+/* CE QUE CONTIENT CHAQUE CHAMP, avec un exemple. Un nom de variable n'apprend rien : entre
+   `{tests}` et `{commits}`, personne ne devine lequel porte les noms de tests cassés.
+
+   La LISTE vient du serveur — c'est lui qui sait ce que le moteur remplace. Une liste écrite en
+   dur ici finirait par annoncer un champ qui n'existe plus, ou taire un champ ajouté depuis.
+   Un champ sans description s'affiche quand même, avec son nom : mieux vaut incomplet que muet. */
+/* L'aperçu se recompose à la frappe, mais pas à chaque touche : `debounce` existe déjà, et
+   composer six fois par seconde pour un texte qu'on est en train d'écrire n'apprend rien. */
+const majApercuGabarit = debounce(async () => {
+  const box = $('#verifierCommentPreview');
+  if (!box || !box.open) return;                    // replié : rien à composer
+  try {
+    const d = await api('/verifiers/comment-preview', {
+      method: 'POST', body: { template: $('#verifierForm').comment_template.value },
+    });
+    $('#verifierCommentPreviewBody').textContent = d.body || '';
+  } catch (e) { $('#verifierCommentPreviewBody').textContent = explainError(e.message); }
+}, 250);
+$('#verifierCommentPreview') && $('#verifierCommentPreview').addEventListener('toggle', () => majApercuGabarit());
+document.addEventListener('input', (e) => {
+  if (e.target && e.target.name === 'comment_template') majApercuGabarit();
+});
+
+let champsGabarit = null;
+async function rendreChampsGabarit() {
+  const el = $('#verifierCommentFields');
+  if (!el || el.dataset.rendu) return;
+  if (!champsGabarit) {
+    try { champsGabarit = (await api('/verifiers/comment-template-default')).champs || []; }
+    catch { return; }        // hors ligne : le gabarit reste modifiable, sans son aide
+  }
+  el.innerHTML = champsGabarit.map((nom) => `<div class="champ-gabarit">
+      <dt><code>{${esc(nom)}}</code></dt>
+      <dd>${esc(tr(`settings.verifier.champ.${nom}`))}</dd>
+    </div>`).join('');
+  el.dataset.rendu = '1';
 }
 document.addEventListener('change', (e) => {
   if (e.target && e.target.name === 'comment_on_forge') majBlocCommentaire();
@@ -12529,13 +12568,16 @@ async function renderVerifBrancheRows() {
   const memo = memoBranches();
   el.innerHTML = (v.repos || []).map((r) => {
     const projet = (repoOptions.find((x) => x.id === r.repo_id) || {}).project || `#${r.repo_id}`;
-    return `<label class="verif-branche-row" data-repo="${r.repo_id}"><span>${esc(projet)}</span>
+    /* `data-row` est le contrat de `wireCombo` : c'est cet ancêtre-là qu'il passe au chargeur
+       (`combo.closest('[data-row]')`). Sans lui, le chargeur reçoit `null`. */
+    return `<label class="verif-branche-row" data-row="${r.repo_id}" data-repo="${r.repo_id}"><span>${esc(projet)}</span>
       ${comboHtml('vb-branch', { value: memo[r.repo_id] || '', label: memo[r.repo_id] || '', ph: tr('verify.branch.ph') })}</label>`;
   }).join('');
   /* Sélecteur À RECHERCHE, jamais une liste nue : un dépôt actif aligne des centaines de
      branches — et `npm run check` refuse une liste de branches sans champ de recherche. */
   wireCombo(el, 'vb-branch', async (row) => {
-    const repoId = Number(row.closest('.verif-branche-row').dataset.repo);
+    const repoId = Number(row && row.dataset.repo);
+    if (!repoId) return [];
     const d = await gitLoadRefs(repoId, 'branches');
     return d.refs.map((r) => ({ value: r.name, label: r.name, hint: r.default ? tr('git.refs.default-suffix') : '' }));
   });

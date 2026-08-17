@@ -13,6 +13,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Automatic publication now waits for a green base.** A verifier that publishes its verdict
+  writes on the merge request only when the **base run passed** — “it passed before, your branch
+  breaks it”, or “verified, and it holds”. If the base was already red, or if there is no base
+  run at all, nothing is published: the verdict would say nothing about that branch, and writing
+  it on its merge request would blame the author for what someone else broke. The server log says
+  why it stayed quiet, because silence reads as “published”. Publishing by hand from the report
+  is unaffected — there, a human decides with the text in front of them.
+
 - **Publish a verdict on the merge request, after reading it.** `Publish as a comment` on a
   verification report opens the body **pre-filled with exactly what automatic publication would
   send**, and lets you edit it before it goes out. A confirmation names the merge request; once
@@ -23,7 +31,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **The published comment has an editable template.** Under `Publish the verdict as a comment`,
   a template with fields replaced when it is sent: `{verdict}`, `{tests}`, `{commits}`,
   `{verificateur}`, `{date}` and `{heure}` — so the comment carries **the date and time it was
-  published**. An unknown field stays visible rather than vanishing: a typo should show in the
+  published**. Each field is **explained on the spot**, with what it actually produces (a field
+  name teaches nothing: between `{tests}` and `{commits}`, nobody guesses which one carries the
+  broken test names), and a collapsed **“See an example comment”** renders your own template on
+  sample data — composed by the same engine as the real comment, so the preview cannot drift from
+  what is sent. An unknown field stays visible rather than vanishing: a typo should show in the
   preview, not become a hole in the comment. Left empty, the default template is used, and it
   then benefits from later improvements a frozen copy would miss.
 
