@@ -2370,8 +2370,19 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
    seulement », « différents », « à droite seulement ». Les listes peuvent être longues — elles
    défilent dans leur colonne plutôt que d'allonger la page, sinon comparer deux gros dépôts
    donnerait un écran de dix mètres où l'on ne retrouve plus les en-têtes. */
-.compare-cotes { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-.compare-cote h4 { margin: 0 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+/* Les deux côtés sont deux BLOCS, pas quatre champs en vrac. Chacun encadre son dépôt et sa
+   ref ; le libellé passe AU-DESSUS du champ, sinon « Dépôt » et « Branche ou tag » n'ayant pas
+   la même longueur, les deux listes ne commencent pas au même endroit et la colonne est
+   dentelée. Les champs prennent toute la largeur du bloc : un nom de projet ou de tag est
+   long, et le tronquer dans un champ étroit fait perdre justement ce qu'on cherchait. */
+.compare-cotes { display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: stretch; }
+.compare-cote { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 12px 14px; min-width: 0; }
+.compare-cote h4 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.form .compare-cote label { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin-bottom: 10px; font-size: 12px; }
+.form .compare-cote label:last-child { margin-bottom: 0; }
+.compare-cote .combo { width: 100%; }
+/* Le lien entre les deux blocs : ils sont les deux termes d'une même question. */
+.compare-vs { align-self: center; color: var(--muted); font-size: 20px; user-select: none; }
 .compare-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 14px 0 8px; }
 .compare-head .search { flex: 1; min-width: 220px; margin: 0; }
 .compare-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; }
@@ -2402,6 +2413,7 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .compare-list code { font-size: 12px; word-break: break-all; }
 @media (max-width: 1100px) {
   .compare-cotes, .compare-grid { grid-template-columns: 1fr; }
+  .compare-vs { justify-self: center; transform: rotate(90deg); }
 }
 
 .champs-gabarit { margin: 6px 0 10px; display: grid; gap: 6px; }

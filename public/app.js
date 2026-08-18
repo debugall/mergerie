@@ -7284,7 +7284,11 @@ function renderCompareCotes() {
       <label><span>${esc(tr('git.compare.ref'))}</span>
         ${comboHtml(`cmp-branch-${cle}`, { value: memo[`ref_${cle}`] || '', label: memo[`label_${cle}`] || '', ph: tr('git.compare.ref-ph') })}</label>
     </div>`;
-  el.innerHTML = cote('a', tr('git.compare.left')) + cote('b', tr('git.compare.right'));
+  /* Le « ⟷ » n'est pas une décoration : il dit que les deux blocs sont les deux termes d'une
+     MÊME question. Sans lui, quatre champs flottaient côte à côte sans qu'on voie les paires. */
+  el.innerHTML = cote('a', tr('git.compare.left'))
+    + `<div class="compare-vs" aria-hidden="true">⟷</div>`
+    + cote('b', tr('git.compare.right'));
   wireRepoCombos(el);
   for (const cle of ['a', 'b']) {
     /* BRANCHES ET TAGS dans la même liste : comparer une version livrée à la suivante, c'est

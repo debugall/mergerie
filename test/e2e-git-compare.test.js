@@ -318,6 +318,23 @@ describe('Git · Comparer deux dépôts', () => {
       assert.equal(await page.locator('#compareCotes .cb-search').count(), 2, 'branches');
     });
 
+    /* Le libellé « Dépôt » et le libellé « Branche ou tag » n'ont pas la même longueur : posés
+       à côté du champ, ils décalaient les deux listes l'une par rapport à l'autre et le bloc
+       partait en dents de scie. Ils sont donc AU-DESSUS, et les champs prennent la largeur —
+       un nom de projet ou de tag est long, le tronquer fait perdre ce qu'on cherchait. */
+    test('les deux listes d’un côté sont alignées et prennent la largeur du bloc', async () => {
+      const geo = await page.evaluate(() => ['a', 'b'].map((c) => {
+        const bloc2 = document.querySelector(`.compare-cote[data-cote="${c}"]`);
+        const combos = [...bloc2.querySelectorAll('.combo')].map((e) => e.getBoundingClientRect());
+        return { bloc: bloc2.getBoundingClientRect().width, x: combos.map((r) => Math.round(r.x)), w: combos.map((r) => Math.round(r.width)) };
+      }));
+      for (const c of geo) {
+        assert.equal(c.x[0], c.x[1], 'les deux listes commencent au même endroit');
+        assert.equal(c.w[0], c.w[1], 'et font la même largeur');
+        assert.ok(c.w[0] > c.bloc - 40, `la liste occupe le bloc (${c.w[0]} pour ${Math.round(c.bloc)})`);
+      }
+    });
+
     test('changer de dépôt vide la branche déjà choisie', async () => {
       await choisir('a', 'grp/api', 'legacy');
       // La valeur transporte le GENRE, pas seulement le nom : « branch:legacy ».
