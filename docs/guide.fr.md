@@ -774,13 +774,18 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   la raison au lieu de la laisser enfermée. La **liste des tags** affiche la date, la (les)
   **branche(s) qui portent le tag**, l'auteur du commit pointé — avec un bouton `Auteur du tag`
   qui va lire le **vrai *tagger*** d'un tag annoté dans le clone local (aucune des deux API de forge ne l'expose).
-- **Comparer** — deux dépôts, une branche pour chacun, et la question « qu'est-ce qui existe ici et
-  pas là ? ». Ce n'est **pas** un `git diff` : les deux dépôts n'ont pas besoin d'une histoire commune
+- **Comparer** — deux dépôts, **une branche ou un tag** de chaque côté, et la question « qu'est-ce qui
+  existe ici et pas là ? » (comparer deux versions livrées, c'est comparer deux tags ; les deux vivent
+  dans la même liste à recherche, marqués, parce qu'une branche et un tag peuvent porter le même nom). Ce n'est **pas** un `git diff` : les deux dépôts n'ont pas besoin d'une histoire commune
   (un service extrait dans son propre dépôt, un fork parti vivre sa vie). L'outil lit les deux
   **arborescences** et range chaque fichier dans une des trois colonnes : **à gauche seulement**, **des
   deux côtés mais différents** (même chemin, contenu différent), **à droite seulement**. Les fichiers
   **identiques** ne sont pas listés — seulement comptés, pour que l'écran montre ce qui manque plutôt que
-  ce qui va bien. Un **filtre** cherche un fichier dans les trois colonnes à la fois. Les deux côtés
+  ce qui va bien. **Cliquer un fichier montre ses différences** : les deux versions en diff unifié, avec un
+  rappel de quel côté est le rouge et lequel est le vert. Un fichier présent d'un seul côté se lit contre
+  le vide — tout son contenu en retrait (ou en ajout), c'est-à-dire exactement ce qui manque à l'autre.
+  Un binaire s'annonce au lieu de déverser ses octets, et un fichier de plus d'un mégaoctet n'est pas
+  chargé — c'est dit, pas caché. Un **filtre** cherche un fichier dans les trois colonnes à la fois. Les deux côtés
   peuvent désigner le **même dépôt** sur deux branches. Au-delà de 2 000 fichiers par colonne, les listes
   sont **coupées et la troncature est annoncée** — jamais silencieuse.
 - **Trouver une ref** — on saisit un nom de tag **ou** de branche (saisie libre) et l'outil dit,

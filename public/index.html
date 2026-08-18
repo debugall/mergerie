@@ -1575,6 +1575,20 @@
 <!-- Vérifier une BRANCHE, sans merge request : « est-ce que develop est encore vert ? ».
      Une ligne par dépôt couvert par le vérificateur, chacune sur sa branche par défaut. Le
      choix passe par un sélecteur À RECHERCHE : un dépôt actif aligne des centaines de branches. -->
+<!-- Comparer : le contenu d'un fichier des deux côtés. Ouverte en cliquant un fichier de
+     l'une des trois colonnes — c'est la question qui suit immédiatement « il est des deux
+     côtés mais différent » : différent COMMENT ? -->
+<div id="compareFileModal" class="modal" hidden>
+    <div class="modal-box cmp-file-box">
+        <h3 id="compareFilePath"></h3>
+        <p id="compareFileSides" class="muted"></p>
+        <div id="compareFileBody" class="cmp-diff"></div>
+        <div class="modal-actions">
+            <button id="compareFileClose" type="button" class="btn" data-i18n="context.title.fermer-echap">Fermer (Échap)</button>
+        </div>
+    </div>
+</div>
+
 <div id="branchVerifyModal" class="modal" hidden>
     <div class="modal-box">
         <h3 data-i18n="verify.branch.title">Vérifier une branche</h3>

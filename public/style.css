@@ -2379,7 +2379,25 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .compare-col h4 { margin: 0 0 4px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
 .compare-col > p.muted { margin: 0 0 8px; font-size: 12px; }
 .compare-list { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow: auto; }
-.compare-list li { padding: 2px 0; border-bottom: 1px solid var(--line); }
+.compare-list li { border-bottom: 1px solid var(--line); }
+/* Un fichier se CLIQUE pour voir ses différences : c'est un bouton, il en a l'affordance. */
+.compare-list .cmp-file { display: block; width: 100%; text-align: left; background: none; border: 0;
+  color: inherit; font: inherit; padding: 3px 4px; border-radius: 6px; cursor: pointer; }
+.compare-list .cmp-file:hover { background: var(--panel2); }
+.compare-list .cmp-file code { cursor: pointer; }
+/* Diff d'un fichier comparé : aucune merge request derrière, donc rien à commenter. */
+/* Un diff se lit sur toute la largeur disponible : c'est du code, il ne se replie pas. La
+   fenêtre prend donc l'écran, et c'est la zone de diff qui défile — pas la fenêtre entière,
+   sinon le chemin du fichier et la légende des deux côtés partent hors de vue. */
+.cmp-file-box { width: 96vw; max-width: 1800px; display: flex; flex-direction: column; max-height: 94vh; }
+.cmp-diff { flex: 1; min-height: 0; overflow: auto; background: var(--code-bg); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 6px 0; }
+.cmp-diff .ln-comment { display: none; }
+#compareFileSides { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0 10px; }
+.cmp-side { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+  padding: 2px 8px; border-radius: 6px; }
+.cmp-side.del { background: var(--diff-del-bg); color: var(--diff-del-text); }
+.cmp-side.add { background: var(--diff-add-bg); color: var(--diff-add-text); }
 .compare-list li:last-child { border-bottom: 0; }
 .compare-list code { font-size: 12px; word-break: break-all; }
 @media (max-width: 1100px) {

@@ -23,11 +23,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **Compare two repositories, side by side.** A `Compare` sub-tab in *Git* takes two
   repositories and one branch each, and answers the question a `git diff` cannot: these two
   repositories share no history — a service extracted into its own repository, a fork gone its own
-  way — so what exists here and not there? Three columns: **left only**, **on both sides but
+  way — so what exists here and not there? Each side takes **a branch or a tag** (comparing two
+  released versions means comparing two tags), and the two are never confused when they share a name. Three columns: **left only**, **on both sides but
   different**, **right only**, with a filter that searches all three at once. Files that are
   identical are counted, not listed, so the screen shows what is missing instead of drowning it in
-  what is fine. Both sides may point at the same repository on two branches. Very large
-  comparisons are truncated, and say so.
+  what is fine. **Click any file to see its differences** — both versions in a unified diff, with a
+  file that exists on one side only read against the void, so you see exactly what the other side is
+  missing. Both sides may point at the same repository on two branches. Very large comparisons are
+  truncated, and say so.
 
 - **Ping people when a verification breaks — and only then.** A verifier carries a
   `People to ping when it breaks` field (handles like `@amady`, or a group like `@my-team`,

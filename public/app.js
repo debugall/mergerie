@@ -7281,17 +7281,27 @@ function renderCompareCotes() {
       <h4>${esc(titre)}</h4>
       <label><span>${esc(tr('git.compare.repo'))}</span>
         ${repoComboHtml(memo[`repo_${cle}`], { idClass: `cmp-repo-${cle}` })}</label>
-      <label><span>${esc(tr('git.compare.branch'))}</span>
-        ${comboHtml(`cmp-branch-${cle}`, { value: memo[`branch_${cle}`] || '', label: memo[`branch_${cle}`] || '', ph: tr('verify.branch.ph') })}</label>
+      <label><span>${esc(tr('git.compare.ref'))}</span>
+        ${comboHtml(`cmp-branch-${cle}`, { value: memo[`ref_${cle}`] || '', label: memo[`label_${cle}`] || '', ph: tr('git.compare.ref-ph') })}</label>
     </div>`;
   el.innerHTML = cote('a', tr('git.compare.left')) + cote('b', tr('git.compare.right'));
   wireRepoCombos(el);
   for (const cle of ['a', 'b']) {
+    /* BRANCHES ET TAGS dans la même liste : comparer une version livrée à la suivante, c'est
+       comparer deux tags. Un tag et une branche peuvent porter le même nom — le genre voyage
+       donc avec la valeur (`tag:v1.2`), et l'écran l'affiche, plutôt que de laisser le serveur
+       deviner lequel des deux on voulait. */
     wireCombo(el, `cmp-branch-${cle}`, async (row) => {
       const repoId = Number($(`.cmp-repo-${cle}`, row || el).value);
       if (!repoId) return [];
-      const d = await gitLoadRefs(repoId, 'branches');
-      return d.refs.map((r) => ({ value: r.name, label: r.name, hint: r.default ? tr('git.refs.default-suffix') : '' }));
+      const [branches, tags] = await Promise.all([
+        gitLoadRefs(repoId, 'branches'),
+        gitLoadRefs(repoId, 'tags').catch(() => ({ refs: [] })),
+      ]);
+      return [
+        ...branches.refs.map((r) => ({ value: `branch:${r.name}`, label: r.name, hint: r.default ? tr('git.refs.default-suffix') : '' })),
+        ...tags.refs.map((r) => ({ value: `tag:${r.name}`, label: r.name, hint: tr('git.compare.tag') })),
+      ];
     });
   }
   /* Changer de dépôt vide la branche : garder « develop » après être passé sur un dépôt qui ne
@@ -7309,29 +7319,74 @@ function renderCompareCotes() {
 }
 
 function compareLecture() {
-  const lire = (cle) => ({
-    repo_id: Number($(`.cmp-repo-${cle}`).value) || 0,
-    branch: ($(`.cmp-branch-${cle}`).value || '').trim(),
-  });
+  const lire = (cle) => {
+    const champ = $(`.cmp-branch-${cle}`);
+    const brut = (champ.value || '').trim();          // « branch:main » ou « tag:v1.2 »
+    const sep = brut.indexOf(':');
+    return {
+      repo_id: Number($(`.cmp-repo-${cle}`).value) || 0,
+      ref: sep < 0 ? brut : brut.slice(sep + 1),
+      kind: brut.startsWith('tag:') ? 'tag' : 'branch',
+      label: champ.dataset.label || '',
+      brut,
+    };
+  };
   return { a: lire('a'), b: lire('b') };
 }
+
+// « grp/api · v1.2 (tag) » — le genre est dit : deux refs homonymes ne montrent pas la même chose.
+const compareCote = (x) => `${x.project} · ${x.ref}${x.kind === 'tag' ? ` (${tr('git.compare.tag')})` : ''}`;
 
 /* Une colonne = une question. Le FILTRE porte sur les trois listes à la fois : on cherche un
    fichier, pas une colonne — et sur deux dépôts jumeaux, la liste des différences est longue. */
 function compareColonne(cle, titre, fichiers, cote) {
   const n = fichiers.length;
+  /* Chaque fichier est CLIQUABLE : « des deux côtés mais différent » appelle aussitôt la
+     question « différent comment ? », et un fichier d'un seul côté se lit contre le vide. */
   return `<section class="compare-col" data-col="${cle}">
     <h4>${esc(titre)} <span class="tag">${n}</span></h4>
     ${cote ? `<p class="muted">${esc(cote)}</p>` : ''}
-    ${n ? `<ul class="compare-list">${fichiers.map((f) => `<li><code>${esc(f)}</code></li>`).join('')}</ul>`
+    ${n ? `<ul class="compare-list">${fichiers.map((f) => `<li><button type="button" class="cmp-file" data-file="${esc(f)}" title="${esc(tr('git.compare.file-title'))}"><code>${esc(f)}</code></button></li>`).join('')}</ul>`
     : `<p class="muted">${esc(tr('git.compare.none'))}</p>`}
   </section>`;
 }
 
+/* Le contenu d'un fichier des deux côtés. Le diff est calculé par git côté serveur — y
+   compris quand les deux dépôts n'ont rien en commun, cas où `git diff a..b` ne sait rien
+   faire. Ici on ne fait que l'afficher, avec le rendu déjà utilisé pour les merge requests. */
+async function ouvrirCompareFichier(chemin, bouton) {
+  if (!compareDernier) return;
+  const { a, b } = compareDernier;
+  const url = `/git/compare/file?repo_a=${compareDernier.repo_a}&ref_a=${encodeURIComponent(a.ref)}&kind_a=${a.kind}`
+    + `&repo_b=${compareDernier.repo_b}&ref_b=${encodeURIComponent(b.ref)}&kind_b=${b.kind}`
+    + `&path=${encodeURIComponent(chemin)}`;
+  let d;
+  try { d = await busy(bouton, () => api(url)); }
+  catch (e) { toast(explainError(e.message), true); return; }
+
+  $('#compareFilePath').textContent = d.path;
+  /* QUEL CÔTÉ EST QUOI. Un diff en rouge et vert ne dit pas de lui-même que le rouge est le
+     dépôt de gauche : on le rappelle avec les mêmes couleurs, sinon on lit le diff à l'envers. */
+  const cote = (x, signe) => `<span class="cmp-side ${signe === '-' ? 'del' : 'add'}">${signe} ${esc(compareCote(x))}`
+    + `${x.exists ? '' : ` — ${esc(tr('git.compare.absent'))}`}</span>`;
+  $('#compareFileSides').innerHTML = cote(d.a, '-') + cote(d.b, '+');
+  const message = (cle) => `<p class="muted" style="padding:12px">${esc(tr(cle))}</p>`;
+  if (d.trop_gros) $('#compareFileBody').innerHTML = message('git.compare.too-big');
+  else if (d.binaire) $('#compareFileBody').innerHTML = message('git.compare.binary');
+  else if (d.identique) $('#compareFileBody').innerHTML = message('git.compare.identical');
+  else $('#compareFileBody').innerHTML = renderDiffLines(d.diff).html;
+  $('#compareFileModal').hidden = false;
+}
+
+$('#compareFileClose') && $('#compareFileClose').addEventListener('click', () => { $('#compareFileModal').hidden = true; });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('#compareFileModal') && !$('#compareFileModal').hidden) $('#compareFileModal').hidden = true;
+});
+
 function renderCompare(d) {
   compareDernier = d;
-  const gauche = `${d.a.project} · ${d.a.branch}`;
-  const droite = `${d.b.project} · ${d.b.branch}`;
+  const gauche = compareCote(d.a);
+  const droite = compareCote(d.b);
   $('#compareResult').innerHTML = `
     <div class="compare-head">
       <span>${esc(tr('git.compare.summary', {
@@ -7345,6 +7400,8 @@ function renderCompare(d) {
       ${compareColonne('diff', tr('git.compare.differ'), d.differ, '')}
       ${compareColonne('b', tr('git.compare.only-right'), d.only_b, droite)}
     </div>`;
+  $$('#compareResult .cmp-file').forEach((btn) => btn.addEventListener('click',
+    () => ouvrirCompareFichier(btn.dataset.file, btn)));
   const filtre = $('#compareFilter');
   filtre.addEventListener('input', debounce(() => {
     const q = filtre.value.toLowerCase().trim();
@@ -7357,16 +7414,21 @@ function renderCompare(d) {
 $('#btnCompare') && $('#btnCompare').addEventListener('click', async (e) => {
   const { a, b } = compareLecture();
   if (!a.repo_id || !b.repo_id) { toast(tr('git.compare.pick-repos'), true); return; }
-  if (!a.branch || !b.branch) { toast(tr('git.compare.pick-branches'), true); return; }
-  if (a.repo_id === b.repo_id && a.branch === b.branch) { toast(tr('git.compare.same-side'), true); return; }
+  if (!a.ref || !b.ref) { toast(tr('git.compare.pick-branches'), true); return; }
+  if (a.repo_id === b.repo_id && a.brut === b.brut) { toast(tr('git.compare.same-side'), true); return; }
   $('#compareInfo').textContent = tr('git.compare.running');
   try {
     const d = await busy(e.currentTarget, () => api(
-      `/git/compare?repo_a=${a.repo_id}&branch_a=${encodeURIComponent(a.branch)}`
-      + `&repo_b=${b.repo_id}&branch_b=${encodeURIComponent(b.branch)}`,
+      `/git/compare?repo_a=${a.repo_id}&ref_a=${encodeURIComponent(a.ref)}&kind_a=${a.kind}`
+      + `&repo_b=${b.repo_id}&ref_b=${encodeURIComponent(b.ref)}&kind_b=${b.kind}`,
     ));
-    compareMemoriser({ repo_a: a.repo_id, branch_a: a.branch, repo_b: b.repo_id, branch_b: b.branch });
-    renderCompare(d);
+    compareMemoriser({
+      repo_a: a.repo_id, ref_a: a.brut, label_a: a.label,
+      repo_b: b.repo_id, ref_b: b.brut, label_b: b.label,
+    });
+    /* Les identifiants de dépôt voyagent avec le résultat : la réponse du serveur ne porte que
+       les NOMS de projet, et c'est l'id qu'il faut pour redemander un fichier. */
+    renderCompare({ ...d, repo_a: a.repo_id, repo_b: b.repo_id });
   } catch (err) {
     $('#compareResult').innerHTML = errorBox(explainError(err.message));
   } finally { $('#compareInfo').textContent = ''; }

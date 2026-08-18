@@ -452,6 +452,10 @@ function fileDiffFor(mr, p) {
    dépôts a besoin de lire. Même source que le reste de la démo. */
 const arbreDeProjet = (projet) => (ARBRES[projet] || ARBRE_DEFAUT).slice();
 
+/* Le corps d'un fichier pour un PROJET (et non pour une merge request) : la comparaison de
+   deux dépôts a besoin des deux versions d'un même chemin. Même fabrique que le reste. */
+const corpsDeProjet = (p, projet, branche) => corpsDe(p, { project: projet, source_branch: branche });
+
 module.exports = {
-  isDemo, viewFor, treeFor, fileFor, fileDiffFor, diffPour, arbrePour, arbreDeProjet,
+  isDemo, viewFor, treeFor, fileFor, fileDiffFor, diffPour, arbrePour, arbreDeProjet, corpsDeProjet,
 };

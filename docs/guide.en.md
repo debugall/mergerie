@@ -740,12 +740,18 @@ Operations across **several repositories at once**, and branch exploration.
   **opens its block** to show why instead of leaving it shut. The **tag list** shows the date, the **branch(es) that carry the tag** and the author of the
   pointed commit — with a `Tag author` button that reads the **real *tagger*** of an annotated tag in the
   local clone (neither forge API exposes it).
-- **Compare** — two repositories, one branch each, and the question “what exists here and not there?”.
+- **Compare** — two repositories, **one branch or tag on each side**, and the question “what exists here
+  and not there?” (comparing two released versions means comparing two tags; both live in the same
+  searchable list, marked, because a branch and a tag may carry the same name).
   This is **not** a `git diff`: the two repositories need no common history (a service extracted into its
   own repository, a fork gone its own way). The tool reads both **trees** and sorts every file into one of
   three columns: **left only**, **on both sides but different** (same path, different content), **right
   only**. **Identical** files are not listed — only counted, so the screen shows what is missing rather
-  than what is fine. A **filter** searches all three columns at once. Both sides may point at the **same
+  than what is fine. **Clicking a file shows its differences**: both versions as a unified diff, with a
+  reminder of which side is the red one and which is the green one. A file present on one side only is
+  read against the void — all of its content as removals (or additions), which is precisely what the
+  other side is missing. A binary file says so instead of dumping its bytes, and a file over one megabyte
+  is not loaded — stated, not hidden. A **filter** searches all three columns at once. Both sides may point at the **same
   repository** on two branches. Beyond 2,000 files per column the lists are **truncated and the truncation
   is announced** — never silent.
 - **Find a ref** — you type a tag **or** branch name (free text) and the tool says, **across every active
