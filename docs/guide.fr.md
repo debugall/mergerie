@@ -769,6 +769,15 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   la raison au lieu de la laisser enfermée. La **liste des tags** affiche la date, la (les)
   **branche(s) qui portent le tag**, l'auteur du commit pointé — avec un bouton `Auteur du tag`
   qui va lire le **vrai *tagger*** d'un tag annoté dans le clone local (aucune des deux API de forge ne l'expose).
+- **Comparer** — deux dépôts, une branche pour chacun, et la question « qu'est-ce qui existe ici et
+  pas là ? ». Ce n'est **pas** un `git diff` : les deux dépôts n'ont pas besoin d'une histoire commune
+  (un service extrait dans son propre dépôt, un fork parti vivre sa vie). L'outil lit les deux
+  **arborescences** et range chaque fichier dans une des trois colonnes : **à gauche seulement**, **des
+  deux côtés mais différents** (même chemin, contenu différent), **à droite seulement**. Les fichiers
+  **identiques** ne sont pas listés — seulement comptés, pour que l'écran montre ce qui manque plutôt que
+  ce qui va bien. Un **filtre** cherche un fichier dans les trois colonnes à la fois. Les deux côtés
+  peuvent désigner le **même dépôt** sur deux branches. Au-delà de 2 000 fichiers par colonne, les listes
+  sont **coupées et la troncature est annoncée** — jamais silencieuse.
 - **Trouver une ref** — on saisit un nom de tag **ou** de branche (saisie libre) et l'outil dit,
   **à travers tous les dépôts actifs** (GitLab et GitHub confondus), lesquels le possèdent : type, commit +
   lien vers la forge, date,

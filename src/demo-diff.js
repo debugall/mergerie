@@ -448,6 +448,10 @@ function fileDiffFor(mr, p) {
   return { diff: section || '' };
 }
 
+/* L'arborescence d'un PROJET (et non d'une merge request) : ce que la comparaison de deux
+   dépôts a besoin de lire. Même source que le reste de la démo. */
+const arbreDeProjet = (projet) => (ARBRES[projet] || ARBRE_DEFAUT).slice();
+
 module.exports = {
-  isDemo, viewFor, treeFor, fileFor, fileDiffFor, diffPour, arbrePour,
+  isDemo, viewFor, treeFor, fileFor, fileDiffFor, diffPour, arbrePour, arbreDeProjet,
 };

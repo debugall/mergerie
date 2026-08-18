@@ -157,4 +157,30 @@ function listsFor(project) {
 
 const isDemo = () => process.env.MERGERIE_DEMO === '1';
 
-module.exports = { isDemo, refs, branches, tagAuthor, findRef, listsFor };
+/* --- /api/git/compare (comparaison de contenu entre deux dépôts) ---
+   Les arborescences fictives vivent dans `demo-diff.js` : un seul jeu de vérité par projet,
+   comme partout ailleurs en démo. On y ajoute une différence de CONTENU sur les fichiers
+   homonymes les plus évidents — sinon la troisième colonne (« des deux côtés, mais
+   différents ») resterait vide et la démo ne montrerait pas ce qu'elle sert à montrer. */
+const DIFFERENTS_EN_DEMO = new Set(['README.md', 'package.json', 'src/main.js']);
+
+function compare(projetA, brancheA, projetB, brancheB) {
+  // eslint-disable-next-line global-require
+  const { arbreDeProjet } = require('./demo-diff');
+  const a = arbreDeProjet(projetA);
+  const b = arbreDeProjet(projetB);
+  const setB = new Set(b);
+  const setA = new Set(a);
+  const communs = a.filter((f) => setB.has(f));
+  return {
+    a: { project: projetA, branch: brancheA, files: a.length },
+    b: { project: projetB, branch: brancheB, files: b.length },
+    only_a: a.filter((f) => !setB.has(f)),
+    only_b: b.filter((f) => !setA.has(f)),
+    differ: communs.filter((f) => DIFFERENTS_EN_DEMO.has(f)),
+    same: communs.filter((f) => !DIFFERENTS_EN_DEMO.has(f)).length,
+    tronque: false,
+  };
+}
+
+module.exports = { isDemo, refs, branches, tagAuthor, findRef, listsFor, compare };

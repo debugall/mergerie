@@ -4341,6 +4341,96 @@ function restartAutoRefresh() {
 // Refs d'un dépôt, pour alimenter les sélecteurs. Les branches protégées et la
 // branche par défaut sont marquées : le front les rend non sélectionnables à la
 // suppression plutôt que de laisser l'aperçu les rejeter ensuite.
+/* ---------- Comparer le CONTENU de deux dépôts ----------
+   Deux dépôts n'ont pas d'histoire commune : `git diff` entre eux n'a aucun sens, et un
+   « nombre de commits d'écart » encore moins. Ce qu'on compare, ce sont les ARBRES — la liste
+   des fichiers de chaque branche, et le hash de chacun :
+
+     · à gauche seulement / à droite seulement : ce qui manque d'un côté ;
+     · des deux côtés mais différents : même chemin, blob différent ;
+     · identiques : on n'en rend que le NOMBRE. Sur deux dépôts jumeaux c'est l'écrasante
+       majorité des lignes, et c'est la seule liste que personne ne lit.
+
+   Le hash git suffit à décider « identique » : deux fichiers de même contenu ont le même
+   objet, quel que soit le dépôt. Aucune lecture de contenu n'est nécessaire. */
+const MAX_COMPARE = 2000;
+
+async function arbreDeBranche(cwd, repo, branche) {
+  if (!await git.refExists(cwd, `origin/${branche}`)) {
+    throw new Error(t('err.verify.branch-unknown', { branch: branche, project: repo.project }));
+  }
+  const { stdout } = await git.run('git', ['ls-tree', '-r', `origin/${branche}`], { cwd });
+  const arbre = new Map();
+  for (const ligne of String(stdout || '').split('\n')) {
+    if (!ligne.trim()) continue;
+    /* Format historique de `ls-tree` : « <mode> <type> <hash>\t<chemin> ». On ne se sert pas de
+       `--format`, arrivé en git 2.36 : cet outil tourne sur les machines des gens. */
+    const sep = ligne.indexOf('\t');
+    if (sep < 0) continue;
+    const [, type, hash] = ligne.slice(0, sep).split(/\s+/);
+    if (type !== 'blob') continue;           // sous-modules et arbres : pas des fichiers
+    arbre.set(ligne.slice(sep + 1), hash);
+  }
+  return arbre;
+}
+
+app.get('/api/git/compare', wrap(async (req, res) => {
+  const lire = (cle) => db.prepare('SELECT * FROM repo WHERE id = ?').get(Number(req.query[cle]));
+  const repoA = lire('repo_a');
+  const repoB = lire('repo_b');
+  if (!repoA || !repoB) throw new Error(t('err.depot-introuvable'));
+  const brancheA = String(req.query.branch_a || '').trim();
+  const brancheB = String(req.query.branch_b || '').trim();
+  if (!brancheA) throw new Error(t('err.verify.branch-required', { project: repoA.project }));
+  if (!brancheB) throw new Error(t('err.verify.branch-required', { project: repoB.project }));
+
+  if (demoGit.isDemo()) {
+    return res.json(demoGit.compare(repoA.project, brancheA, repoB.project, brancheB));
+  }
+
+  const cfg = getConfig();
+  /* Deux côtés sur le MÊME dépôt — comparer `main` à `develop` est le cas le plus banal qui
+     soit — ne préparent qu'UN clone. Le faire deux fois de front lance deux `git clone` dans
+     le même dossier : le second échoue, et la comparaison la plus ordinaire rend une erreur. */
+  let cwdA; let cwdB;
+  if (repoA.id === repoB.id) {
+    cwdA = await git.ensureRepo(cfg, repoA, () => {});
+    cwdB = cwdA;
+  } else {
+    [cwdA, cwdB] = await Promise.all([
+      git.ensureRepo(cfg, repoA, () => {}),
+      git.ensureRepo(cfg, repoB, () => {}),
+    ]);
+  }
+  const [a, b] = await Promise.all([
+    arbreDeBranche(cwdA, repoA, brancheA),
+    arbreDeBranche(cwdB, repoB, brancheB),
+  ]);
+
+  const seulA = []; const seulB = []; const differents = [];
+  let identiques = 0;
+  for (const [chemin, hash] of a) {
+    if (!b.has(chemin)) seulA.push(chemin);
+    else if (b.get(chemin) !== hash) differents.push(chemin);
+    else identiques += 1;
+  }
+  for (const chemin of b.keys()) if (!a.has(chemin)) seulB.push(chemin);
+
+  /* On BORNE, et on le dit. Comparer deux dépôts sans rien en commun rendrait des dizaines de
+     milliers de lignes que ni l'écran ni personne ne lit — mais une liste tronquée en silence
+     se lit comme une liste complète. */
+  const tronque = seulA.length > MAX_COMPARE || seulB.length > MAX_COMPARE || differents.length > MAX_COMPARE;
+  res.json({
+    a: { project: repoA.project, branch: brancheA, files: a.size },
+    b: { project: repoB.project, branch: brancheB, files: b.size },
+    only_a: seulA.sort().slice(0, MAX_COMPARE),
+    only_b: seulB.sort().slice(0, MAX_COMPARE),
+    differ: differents.sort().slice(0, MAX_COMPARE),
+    same: identiques,
+    tronque,
+  });
+}));
+
 app.get('/api/git/refs', wrap(async (req, res) => {
   const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(Number(req.query.repo_id));
   if (!repo) throw new Error(t('err.depot-introuvable'));

@@ -272,6 +272,7 @@
             <button data-gsub="navigate" role="tab"><svg class="ico"><use href="#i-repeat"/></svg><span data-i18n="git.sub.navigate">Navigation</span></button>
             <button data-gsub="commands" role="tab"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.sub.commands">Commandes Git</span></button>
             <button data-gsub="explore" role="tab"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="git.sub.explorer">Explorateur de branches</span></button>
+            <button data-gsub="compare" role="tab"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="git.sub.compare">Comparer</span></button>
             <button data-gsub="findref" role="tab"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.sub.findref">Trouver une ref</span></button>
             <button data-gsub="history" role="tab"><svg class="ico"><use href="#i-clock"/></svg><span data-i18n="git.sub.history">Historique</span></button>
         </div>
@@ -387,6 +388,18 @@
         </div>
 
         <!-- Sous-onglet : trouver une ref (tag ou branche) dans tous les dépôts -->
+        <!-- Sous-onglet : comparer le CONTENU de deux dépôts. Deux dépôts n'ont pas d'histoire
+             commune : ce qu'on compare, ce sont les fichiers de chaque branche. -->
+        <div id="gsub-compare" class="subtab">
+            <p class="muted" style="max-width:760px" data-i18n="git.compare.intro">Compare le contenu de deux dépôts, branche par branche : ce qui existe d'un côté et pas de l'autre, et ce qui porte le même chemin mais un contenu différent. Aucune histoire commune n'est requise.</p>
+            <div class="form" style="max-width:900px">
+                <div id="compareCotes" class="compare-cotes"></div>
+                <p><button type="button" class="btn btn-primary" id="btnCompare"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="git.compare.go">Comparer</span></button>
+                   <span id="compareInfo" class="muted"></span></p>
+            </div>
+            <div id="compareResult"></div>
+        </div>
+
         <div id="gsub-findref" class="subtab">
             <p class="muted" style="max-width:760px" data-i18n="git.findref.intro">Saisis un nom de tag ou de branche : l'outil cherche dans tous les dépôts actifs lesquels le possèdent.</p>
             <form id="findRefForm" class="form inline" style="max-width:none">

@@ -3825,7 +3825,10 @@ function wireRepoCombos(root) {
     // ce seul dépôt. Le blur le rétablit depuis `hidden` : rien n'est perdu.
     input.addEventListener('focus', () => { input.value = ''; open(); });
     input.addEventListener('input', open);
-    input.addEventListener('blur', () => setTimeout(() => { box.hidden = true; input.value = labelOf(hidden.value); input.title = input.value; input.scrollLeft = input.scrollWidth; }, 150));
+    input.addEventListener('blur', () => setTimeout(() => {
+      if (document.activeElement === input) return;   // le champ a été rouvert entre-temps
+      box.hidden = true; input.value = labelOf(hidden.value); input.title = input.value; input.scrollLeft = input.scrollWidth;
+    }, 150));
     box.addEventListener('mousedown', (e) => {
       const o = e.target.closest('.combo-opt[data-r]');
       if (!o) return;
@@ -3921,7 +3924,12 @@ function wireCombo(root, cls, load) {
     // depuis `data-label`, donc une saisie libre ne vaut jamais sélection.
     input.addEventListener('focus', () => { input.value = ''; open(); });
     input.addEventListener('input', open);
-    input.addEventListener('blur', () => setTimeout(() => { fermer(); restore(); }, 150));
+    /* Le délai laisse au clic sur une option le temps d'arriver. S'il a RENDU le focus au champ
+       entre-temps, on ne ferme pas : le menu qu'on vient de rouvrir disparaîtrait tout seul. */
+    input.addEventListener('blur', () => setTimeout(() => {
+      if (document.activeElement === input) return;
+      fermer(); restore();
+    }, 150));
     box.addEventListener('mousedown', (e) => {
       const o = e.target.closest('.combo-opt[data-v]');
       if (!o) return;
@@ -7211,12 +7219,125 @@ document.addEventListener('click', (e) => {
   if (navTargets.length > 1) { navTargets.splice(i, 1); navDropResult(); navRenderTargets(); }
 });
 
+/* ---------- Comparer le contenu de deux dépôts ----------
+   Deux dépôts, deux branches, et la question « qu'est-ce qui existe ici et pas là ? ». Les
+   quatre sélecteurs passent par un combo à RECHERCHE : autant de dépôts qu'on veut, et un dépôt
+   actif aligne des centaines de branches — `npm run check` refuse d'ailleurs une liste de refs
+   sans champ de recherche. */
+const COMPARE_MEMO = 'aidevtools_compare';
+let compareDernier = null;
+
+const compareMemo = () => { try { return JSON.parse(localStorage.getItem(COMPARE_MEMO) || '{}'); } catch { return {}; } };
+const compareMemoriser = (etat) => {
+  try { localStorage.setItem(COMPARE_MEMO, JSON.stringify(etat)); } catch { /* stockage indisponible */ }
+};
+
+function renderCompareCotes() {
+  const el = $('#compareCotes');
+  if (!el) return;
+  const memo = compareMemo();
+  const cote = (cle, titre) => `<div class="compare-cote" data-row data-cote="${cle}">
+      <h4>${esc(titre)}</h4>
+      <label><span>${esc(tr('git.compare.repo'))}</span>
+        ${repoComboHtml(memo[`repo_${cle}`], { idClass: `cmp-repo-${cle}` })}</label>
+      <label><span>${esc(tr('git.compare.branch'))}</span>
+        ${comboHtml(`cmp-branch-${cle}`, { value: memo[`branch_${cle}`] || '', label: memo[`branch_${cle}`] || '', ph: tr('verify.branch.ph') })}</label>
+    </div>`;
+  el.innerHTML = cote('a', tr('git.compare.left')) + cote('b', tr('git.compare.right'));
+  wireRepoCombos(el);
+  for (const cle of ['a', 'b']) {
+    wireCombo(el, `cmp-branch-${cle}`, async (row) => {
+      const repoId = Number($(`.cmp-repo-${cle}`, row || el).value);
+      if (!repoId) return [];
+      const d = await gitLoadRefs(repoId, 'branches');
+      return d.refs.map((r) => ({ value: r.name, label: r.name, hint: r.default ? tr('git.refs.default-suffix') : '' }));
+    });
+  }
+  /* Changer de dépôt vide la branche : garder « develop » après être passé sur un dépôt qui ne
+     l'a pas donnerait une erreur au lancement, plusieurs secondes plus tard.
+     L'événement part du champ CACHÉ (`.rc-id`), pas du champ de recherche visible : c'est lui
+     qui porte l'identifiant, et écouter le champ visible n'entend jamais rien. */
+  $$('.rc-id', el).forEach((hidden) => hidden.addEventListener('change', () => {
+    const cote2 = hidden.closest('[data-cote]');
+    const branche = $(`.cmp-branch-${cote2.dataset.cote}`, cote2);
+    if (branche) {
+      branche.value = ''; branche.dataset.label = '';
+      $('.cb-search', branche.closest('.combo')).value = '';
+    }
+  }));
+}
+
+function compareLecture() {
+  const lire = (cle) => ({
+    repo_id: Number($(`.cmp-repo-${cle}`).value) || 0,
+    branch: ($(`.cmp-branch-${cle}`).value || '').trim(),
+  });
+  return { a: lire('a'), b: lire('b') };
+}
+
+/* Une colonne = une question. Le FILTRE porte sur les trois listes à la fois : on cherche un
+   fichier, pas une colonne — et sur deux dépôts jumeaux, la liste des différences est longue. */
+function compareColonne(cle, titre, fichiers, cote) {
+  const n = fichiers.length;
+  return `<section class="compare-col" data-col="${cle}">
+    <h4>${esc(titre)} <span class="tag">${n}</span></h4>
+    ${cote ? `<p class="muted">${esc(cote)}</p>` : ''}
+    ${n ? `<ul class="compare-list">${fichiers.map((f) => `<li><code>${esc(f)}</code></li>`).join('')}</ul>`
+    : `<p class="muted">${esc(tr('git.compare.none'))}</p>`}
+  </section>`;
+}
+
+function renderCompare(d) {
+  compareDernier = d;
+  const gauche = `${d.a.project} · ${d.a.branch}`;
+  const droite = `${d.b.project} · ${d.b.branch}`;
+  $('#compareResult').innerHTML = `
+    <div class="compare-head">
+      <span>${esc(tr('git.compare.summary', {
+    gauche, droite, a: d.a.files, b: d.b.files, same: d.same,
+  }))}</span>
+      <input id="compareFilter" class="search" type="search" placeholder="${esc(tr('git.compare.filter'))}" />
+    </div>
+    ${d.tronque ? `<p class="converge-note">${svgIco('alert')} <span>${esc(tr('git.compare.truncated'))}</span></p>` : ''}
+    <div class="compare-grid">
+      ${compareColonne('a', tr('git.compare.only-left'), d.only_a, gauche)}
+      ${compareColonne('diff', tr('git.compare.differ'), d.differ, '')}
+      ${compareColonne('b', tr('git.compare.only-right'), d.only_b, droite)}
+    </div>`;
+  const filtre = $('#compareFilter');
+  filtre.addEventListener('input', debounce(() => {
+    const q = filtre.value.toLowerCase().trim();
+    $$('#compareResult .compare-list li').forEach((li) => {
+      li.hidden = !!q && !li.textContent.toLowerCase().includes(q);
+    });
+  }, 120));
+}
+
+$('#btnCompare') && $('#btnCompare').addEventListener('click', async (e) => {
+  const { a, b } = compareLecture();
+  if (!a.repo_id || !b.repo_id) { toast(tr('git.compare.pick-repos'), true); return; }
+  if (!a.branch || !b.branch) { toast(tr('git.compare.pick-branches'), true); return; }
+  if (a.repo_id === b.repo_id && a.branch === b.branch) { toast(tr('git.compare.same-side'), true); return; }
+  $('#compareInfo').textContent = tr('git.compare.running');
+  try {
+    const d = await busy(e.currentTarget, () => api(
+      `/git/compare?repo_a=${a.repo_id}&branch_a=${encodeURIComponent(a.branch)}`
+      + `&repo_b=${b.repo_id}&branch_b=${encodeURIComponent(b.branch)}`,
+    ));
+    compareMemoriser({ repo_a: a.repo_id, branch_a: a.branch, repo_b: b.repo_id, branch_b: b.branch });
+    renderCompare(d);
+  } catch (err) {
+    $('#compareResult').innerHTML = errorBox(explainError(err.message));
+  } finally { $('#compareInfo').textContent = ''; }
+});
+
 function showGitSub(name) {
   $$('#tab-git .subnav [data-gsub]').forEach((b) => b.classList.toggle('active', b.dataset.gsub === name));
   $$('#tab-git .subtab').forEach((s) => s.classList.toggle('active', s.id === 'gsub-' + name));
   try { localStorage.setItem('aidevtools_gitsub', name); } catch { /* stockage indisponible */ }
   if (name === 'history') gitLoadHistory();
   if (name === 'commands') loadGitCommands();
+  if (name === 'compare') renderCompareCotes();
 }
 
 // Explorateur : sélection MULTIPLE de dépôts (cases à cocher) avec recherche à la frappe

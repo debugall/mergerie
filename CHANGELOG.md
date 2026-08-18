@@ -13,6 +13,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Compare two repositories, side by side.** A `Compare` sub-tab in *Git* takes two
+  repositories and one branch each, and answers the question a `git diff` cannot: these two
+  repositories share no history — a service extracted into its own repository, a fork gone its own
+  way — so what exists here and not there? Three columns: **left only**, **on both sides but
+  different**, **right only**, with a filter that searches all three at once. Files that are
+  identical are counted, not listed, so the screen shows what is missing instead of drowning it in
+  what is fine. Both sides may point at the same repository on two branches. Very large
+  comparisons are truncated, and say so.
+
 - **Ping people when a verification breaks — and only then.** A verifier carries a
   `People to ping when it breaks` field (handles like `@amady`, or a group like `@my-team`,
   which ages better than a list of names), written into the comment wherever you put

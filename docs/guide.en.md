@@ -736,6 +736,14 @@ Operations across **several repositories at once**, and branch exploration.
   **opens its block** to show why instead of leaving it shut. The **tag list** shows the date, the **branch(es) that carry the tag** and the author of the
   pointed commit — with a `Tag author` button that reads the **real *tagger*** of an annotated tag in the
   local clone (neither forge API exposes it).
+- **Compare** — two repositories, one branch each, and the question “what exists here and not there?”.
+  This is **not** a `git diff`: the two repositories need no common history (a service extracted into its
+  own repository, a fork gone its own way). The tool reads both **trees** and sorts every file into one of
+  three columns: **left only**, **on both sides but different** (same path, different content), **right
+  only**. **Identical** files are not listed — only counted, so the screen shows what is missing rather
+  than what is fine. A **filter** searches all three columns at once. Both sides may point at the **same
+  repository** on two branches. Beyond 2,000 files per column the lists are **truncated and the truncation
+  is announced** — never silent.
 - **Find a ref** — you type a tag **or** branch name (free text) and the tool says, **across every active
   repository** (GitLab and GitHub alike), which ones have it: type, commit + link to the forge, date, the
   branch(es) carrying the tag, the author — with the same `Tag author` button. An unreachable repository is

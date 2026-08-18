@@ -2340,6 +2340,27 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .apercu-gabarit > summary:hover { color: var(--text); }
 .apercu-gabarit .verify-log { margin-top: 6px; max-height: 260px; }
 
+/* ---------- Comparer deux dépôts ----------
+   Deux côtés côte à côte pour le choix, TROIS colonnes pour le résultat : « à gauche
+   seulement », « différents », « à droite seulement ». Les listes peuvent être longues — elles
+   défilent dans leur colonne plutôt que d'allonger la page, sinon comparer deux gros dépôts
+   donnerait un écran de dix mètres où l'on ne retrouve plus les en-têtes. */
+.compare-cotes { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.compare-cote h4 { margin: 0 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.compare-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 14px 0 8px; }
+.compare-head .search { flex: 1; min-width: 220px; margin: 0; }
+.compare-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; }
+.compare-col { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 10px 12px; min-width: 0; }
+.compare-col h4 { margin: 0 0 4px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.compare-col > p.muted { margin: 0 0 8px; font-size: 12px; }
+.compare-list { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow: auto; }
+.compare-list li { padding: 2px 0; border-bottom: 1px solid var(--line); }
+.compare-list li:last-child { border-bottom: 0; }
+.compare-list code { font-size: 12px; word-break: break-all; }
+@media (max-width: 1100px) {
+  .compare-cotes, .compare-grid { grid-template-columns: 1fr; }
+}
+
 .champs-gabarit { margin: 6px 0 10px; display: grid; gap: 6px; }
 .champ-gabarit { display: grid; grid-template-columns: minmax(90px, auto) 1fr; gap: 10px; align-items: baseline; }
 .champ-gabarit dt code { font-size: 12px; }
