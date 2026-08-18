@@ -359,10 +359,13 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   content.
 - **Every iteration is kept.** A session iterates (launch, `Send a follow-up`, answers to questions,
   convergence passes): each pass keeps **the prompt actually sent** and **the matching AI output**. An
-  **iteration selector** appears at the top of `AI output` from the second pass on (“Iteration 2 · fix
-  requested · 29/07 00:42”) and lets you re-read any of them. Re-reading an answer without knowing which
-  request it answered teaches nothing: the two are therefore shown together. Applies to **out-of-repo
-  coding** too, folder by folder.
+  From the second pass on, `AI output` lists the iterations **in a column on the left** — each with its
+  number, kind, date and **the request that produced it** — and shows the one you pick **on the right**.
+  Nobody remembers an iteration by its number; you remember what you asked: a **search field** at the top
+  of the column therefore searches those requests and **hides** the iterations that do not match, losing
+  none of them — and the filter survives switching iterations. Re-reading an answer without knowing which
+  request it answered teaches nothing: the two are therefore shown together. A single iteration shows no
+  column — there is nothing to pick. Applies to **out-of-repo coding** too, folder by folder.
 - **⌨️ Resume the session in a terminal.** Every project of a coding session (repository **or** out-of-repo),
   and the reviews too, exposes a **“Resume in terminal”** button that copies the **ready-to-paste command**:
   a `cd` to the right folder plus the agent launched with the **session identifier** (claude
@@ -410,8 +413,9 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   re-injecting its previous answer: the AI remembers its exploration instead of re-reading a summary of it.
   The repositories are reset afterwards: **no modification survives**. Each exploration also exposes
   **“Resume in terminal”** so you can continue the conversation yourself. **Every question is kept**: a
-  follow-up question overwrites the answer file, but the pass is archived — `View answer` offers an
-  **iteration selector** that replays each question with the answer it got.
+  follow-up question overwrites the answer file, but the pass is archived — `View answer` lines the
+  iterations up on the left, with the search over the questions asked, and replays the one you pick on
+  the right with the answer it got.
 - **Free question** — the same thing, **with no repository at all**. You ask the AI something — a notion to
   dig into, two options to compare, a plan to challenge — and the answer is kept here. Nothing on the
   machine is read or changed: no clone, no folder, none of your files. An optional **label** files the

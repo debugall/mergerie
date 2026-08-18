@@ -175,6 +175,10 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
     assert.equal(hist.body.passes.length, 2);
     assert.deepEqual(hist.body.passes.map((p) => p.kind), ['run', 'followup']);
     assert.equal(hist.body.current.n, 2);
+    /* La LISTE porte les prompts, pas seulement la passe courante : la colonne de gauche montre
+       chaque itération par la demande qui l'a produite, et sa recherche cherche là-dedans. */
+    assert.match(hist.body.passes[0].prompt, /Première passe/);
+    assert.match(hist.body.passes[1].prompt, /Corrige le titre/);
     assert.match(hist.body.current.prompt, /Corrige le titre/, 'le prompt de correction est conservé');
     const first = await app.api('GET', `/api/local-tasks/${created.id}/dirs/${lt.dirs[0].id}/passes?n=1`);
     assert.match(first.body.current.prompt, /Première passe/, 'la 1re passe garde le prompt initial');

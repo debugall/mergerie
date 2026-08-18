@@ -5709,31 +5709,78 @@ const openTaskMd = (id) => openPasses(`/tasks/${id}`);
    n'apprend rien. `base` est la racine d'URL (session sur dépôt ou hors dépôt), le
    reste du rendu est commun. */
 let passCtx = { base: null };
+let passFiltre = '';
 async function openPasses(base, n, dossiers = null) {
   try {
     const d = await api(`${base}/passes${n ? `?n=${n}` : ''}`);
+    /* La recherche ne survit qu'à l'intérieur d'une même unité : changer d'itération garde le
+       filtre (on cherchait quelque chose), ouvrir une autre session repart de zéro. */
+    if (passCtx.base !== base) passFiltre = '';
     passCtx = { base, dossiers };
     $('#taskMdTitle').textContent = d.title || '';
     /* Sélecteur de DOSSIER : propre au codage hors dépôt, où une session en couvre plusieurs.
-       Comme le sélecteur d'itération, il disparaît quand il n'y a rien à choisir. */
+       Comme la liste d'itérations, il disparaît quand il n'y a rien à choisir. */
     const selDir = $('#taskPassDir');
     selDir.hidden = !dossiers || dossiers.length < 2;
     if (!selDir.hidden) {
       selDir.innerHTML = dossiers.map((x) => `<option value="${x.id}" ${base.endsWith(`/${x.id}`) ? 'selected' : ''}>${esc(x.path)}</option>`).join('');
     }
-    const sel = $('#taskPassVersion');
-    // Une seule passe : pas de sélecteur, il n'y a rien à choisir.
-    sel.hidden = (d.passes || []).length < 2;
-    if (!sel.hidden) {
-      const cur = d.current ? d.current.n : 0;
-      sel.innerHTML = d.passes.map((p) => `<option value="${p.n}" ${p.n === cur ? 'selected' : ''}>${
-        esc(tr('task.pass.option', { n: p.n, kind: tr(`task.pass.kind.${p.kind}`), date: fmtDateTime(p.created_at) }))}</option>`).join('');
-    }
+    renderPassList(d.passes || [], d.current ? d.current.n : 0);
     $('#taskMdBody').innerHTML = passBodyHtml(d.current);
     currentMd = d.current ? passMarkdown(d.current) : '';
     $('#taskMdView').hidden = false;
   } catch (e) { toast(explainError(e.message), true); }
 }
+
+/* La liste des itérations, à GAUCHE. Chaque entrée porte la demande qui l'a produite : une
+   réponse relue sans savoir à quoi elle répondait n'apprend rien, et c'est par la demande
+   qu'on retrouve l'itération qu'on cherche — pas par son numéro. */
+function renderPassList(passes, courante) {
+  const aside = $('#taskPassAside');
+  const corps = $('#taskPassAside').closest('.split-body');
+  // Une seule itération : rien à choisir, la réponse prend toute la largeur.
+  const montrer = passes.length > 1;
+  aside.hidden = !montrer;
+  corps.classList.toggle('no-list', !montrer);
+  if (!montrer) return;
+
+  $('#taskPassTitle').textContent = tr('task.pass.list-title', { n: passes.length });
+  $('#taskPassList').innerHTML = passes.map((p) => {
+    const prompt = (p.prompt || '').trim();
+    return `<button type="button" class="pass-item${p.n === courante ? ' active' : ''}" data-pass="${p.n}"
+      title="${esc(prompt || tr('task.pass.no-prompt'))}">
+      <span class="pass-item-head">${esc(tr('task.pass.option', {
+    n: p.n, kind: tr(`task.pass.kind.${p.kind}`), date: fmtDateTime(p.created_at),
+  }))}</span>
+      <span class="pass-item-prompt${prompt ? '' : ' muted'}">${esc(prompt || tr('task.pass.no-prompt'))}</span>
+    </button>`;
+  }).join('');
+  $$('#taskPassList .pass-item').forEach((b) => b.addEventListener('click', () => {
+    if (passCtx.base) openPasses(passCtx.base, b.dataset.pass, passCtx.dossiers);
+  }));
+  // Le filtre survit au re-rendu : sans cela, choisir une itération rouvrirait la liste entière.
+  $('#taskPassSearch').value = passFiltre;
+  filtrerPasses();
+}
+
+/* Filtrer MASQUE, ne retire pas : l'itération écartée reste à un caractère effacé près. La
+   recherche porte sur la demande ET sur l'en-tête (numéro, genre, date) — on cherche ce qu'on
+   voit. */
+function filtrerPasses() {
+  const q = passFiltre.toLowerCase();
+  let vus = 0;
+  $$('#taskPassList .pass-item').forEach((b) => {
+    const ok = !q || b.textContent.toLowerCase().includes(q);
+    b.hidden = !ok;
+    if (ok) vus += 1;
+  });
+  $('#taskPassNoMatch').hidden = vus > 0;
+}
+
+$('#taskPassSearch') && $('#taskPassSearch').addEventListener('input', debounce((e) => {
+  passFiltre = e.target.value.trim();
+  filtrerPasses();
+}, 120));
 // Corps d'une itération : la demande, puis la réponse.
 function passBodyHtml(p) {
   if (!p) return `<p class="muted">${esc(tr('task.no-output'))}</p>`;
@@ -5747,12 +5794,6 @@ function passMarkdown(p) {
   const prompt = (p.prompt || '').trim();
   return `${prompt ? `## ${tr('task.pass.prompt')}\n\n${prompt}\n\n` : ''}## ${tr('task.pass.answer')}\n\n${p.output || ''}`;
 }
-$('#taskPassVersion').addEventListener('change', (e) => {
-  /* Le contexte de DOSSIER se repasse : sans lui, changer d'itération refermerait le
-     sélecteur de dossier, et on ne pourrait plus revenir aux autres sans rouvrir la vue. */
-  if (passCtx.base) openPasses(passCtx.base, e.target.value, passCtx.dossiers);
-});
-
 const openTargetOutput = (taskId, targetId) => openPasses(`/tasks/${taskId}/targets/${targetId}`);
 /* Retour de l'agent d'un codage hors dépôt. On passe la liste des dossiers QUI ONT un retour :
    la vue peut alors basculer de l'un à l'autre sans refermer — utile depuis le bouton de la

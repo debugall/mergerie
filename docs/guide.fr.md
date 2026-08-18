@@ -371,10 +371,15 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   son titre et sa date : un fichier transféré perd son nom bien avant son contenu.
 - **Toutes les itérations sont conservées.** Une session s'itère (lancement, `Envoyer un suivi`,
   réponses aux questions, passes de convergence) : chaque passe garde **le prompt réellement envoyé** et
-  **le retour de l'IA correspondant**. Un **sélecteur d'itération** apparaît en haut de `Retour de l'IA`
-  dès la deuxième passe (« Itération 2 · correction demandée · 29/07 00:42 ») et permet de relire
-  n'importe laquelle. Relire une réponse sans savoir à quelle demande elle répondait n'apprend rien : les
-  deux sont donc affichés ensemble. Vaut aussi pour le **codage hors dépôt**, dossier par dossier.
+  **le retour de l'IA correspondant**. Dès la deuxième passe, `Retour de l'IA` affiche les itérations
+  **en colonne à gauche** — chacune avec son numéro, son genre, sa date et **la demande qui l'a
+  produite** — et le contenu de celle qu'on choisit **à droite**. On ne se souvient pas du numéro d'une
+  itération, on se souvient de ce qu'on a demandé : un **champ de recherche** en tête de la colonne
+  cherche donc dans ces demandes et **masque** les itérations qui ne correspondent pas, sans en perdre
+  aucune — et le filtre survit au passage d'une itération à l'autre. Relire une réponse sans savoir à
+  quelle demande elle répondait n'apprend rien : les deux sont donc affichés ensemble. Une seule
+  itération n'affiche aucune colonne — il n'y a rien à choisir. Vaut aussi pour le **codage hors
+  dépôt**, dossier par dossier.
 - **⌨️ Reprendre la session au terminal.** Chaque projet d'une session de codage (dépôt **ou** hors dépôt),
   ainsi que les reviews, expose un bouton **« Reprendre au terminal »** qui copie la **commande prête à
   coller** : `cd` vers le bon dossier + lancement de l'agent avec l'**identifiant de session** (claude
@@ -427,8 +432,8 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   **aucune modification ne subsiste**. Chaque exploration expose elle aussi
   **« Reprendre au terminal »** pour continuer la conversation toi-même.
   **Chaque question est conservée** : une question de suivi écrase le fichier de réponse, mais la passe
-  est archivée — `Voir la réponse` propose un **sélecteur d'itération** qui rejoue chaque question avec
-  la réponse qu'elle a obtenue.
+  est archivée — `Voir la réponse` aligne les itérations à gauche, avec la recherche sur les questions
+  posées, et rejoue à droite celle qu'on choisit avec la réponse qu'elle a obtenue.
 - **Question libre** — la même chose, **sans aucun dépôt**. On pose une question à l'IA — une notion à
   creuser, deux options à comparer, un plan à challenger — et la réponse est gardée ici. Rien n'est lu ni
   modifié sur la machine : ni clone, ni dossier, ni fichier de ton code. Un **libellé** facultatif range

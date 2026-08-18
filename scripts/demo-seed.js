@@ -417,13 +417,30 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
 // ---------- codage hors dépôt (« Codage personnalisé ») ----------
 // Session de codage IA dans des dossiers locaux, SANS git : remplit l'onglet dédié.
 // (Une réussie sur deux dossiers, une en erreur, pour montrer les deux états agrégés.)
+const lt1prompt = 'Ajoute un logger structuré (niveau + timestamp ISO), remplace les console.log de ces utilitaires et écris un test pour chacun.';
 const lt1 = db.prepare('INSERT INTO local_task (prompt, status, created_at, updated_at) VALUES (?,?,?,?)')
-  .run('Ajoute un logger structuré (niveau + timestamp ISO), remplace les console.log de ces utilitaires et écris un test pour chacun.', 'done', at(2), at(2));
+  .run(lt1prompt, 'done', at(2), at(2));
 // Chaque dossier porte le RETOUR DE L'IA (fichier sur disque, comme en vrai) : le bouton
 // « Retour de l'IA » et « Envoyer un suivi » sont donc démontrables sans agent.
 const LOCAL_OUT = {
   '/home/moi/dev/backup-tool': `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` : niveau (\`debug\`/\`info\`/\`warn\`/\`error\`) + timestamp ISO.\n- Remplacé les 14 \`console.log\` de \`backup.js\` et \`restore.js\`.\n- Ajouté \`test/logger.test.js\` (4 cas : format, niveaux, filtrage, sortie stderr).\n\n## Points d'attention\n\n- \`restore.js\` écrivait sur \`stdout\` des données consommées par un script appelant : j'ai gardé \`stdout\` pour celles-là et routé les logs vers \`stderr\`.\n`,
   '/home/moi/dev/csv-cleaner': `## Ce que j'ai fait\n\n- Ajouté le même \`src/logger.js\` (copie locale, ce dossier n'est pas un paquet partagé).\n- Remplacé les 6 \`console.log\` de \`clean.js\`.\n- Ajouté \`test/logger.test.js\`.\n\n## Question\n\nLes deux outils dupliquent maintenant le logger. Si tu veux, je peux extraire un petit paquet commun — dis-moi où le placer.\n`,
+};
+/* Les ITÉRATIONS de chaque dossier. Sans elles, « Retour de l'IA » n'aurait qu'une entrée et la
+   colonne de gauche — la liste des demandes, avec sa recherche — ne se montrerait jamais. Le
+   premier dossier en compte trois, le second deux : c'est en les comparant qu'on voit que la
+   liste suit le dossier choisi. La DERNIÈRE reprend le texte de `output.md`, qui reste le
+   retour courant pour toutes les autres vues. */
+const LOCAL_PASSES = {
+  '/home/moi/dev/backup-tool': [
+    { kind: 'run', prompt: lt1prompt, jours: 2.4, out: `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` avec les quatre niveaux.\n- Remplacé les \`console.log\` de \`backup.js\`.\n\n## Reste à faire\n\n\`restore.js\` n'est pas traité : ses sorties sont lues par un script appelant, je préfère une consigne avant d'y toucher.\n` },
+    { kind: 'followup', prompt: 'Les sorties de restore.js sont consommées par un script appelant : garde stdout pour ces données-là et route les logs vers stderr.', jours: 2.2, out: `## Ce que j'ai fait\n\n- \`restore.js\` : logs vers \`stderr\`, données utiles laissées sur \`stdout\`.\n- Vérifié les 14 appels remplacés.\n` },
+    { kind: 'followup', prompt: 'Ajoute un test par cas : format, niveaux, filtrage, sortie stderr.', jours: 2 },
+  ],
+  '/home/moi/dev/csv-cleaner': [
+    { kind: 'run', prompt: lt1prompt, jours: 2.4, out: `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` (copie locale).\n- Remplacé les 6 \`console.log\` de \`clean.js\`.\n` },
+    { kind: 'followup', prompt: 'Ajoute aussi un test du logger, comme dans backup-tool.', jours: 2 },
+  ],
 };
 for (const p of Object.keys(LOCAL_OUT)) {
   const info = db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
@@ -433,6 +450,13 @@ for (const p of Object.keys(LOCAL_OUT)) {
   fs.writeFileSync(out, LOCAL_OUT[p], 'utf8');
   db.prepare('UPDATE local_task_dir SET output_path = ?, session_key = ?, session_backend = ? WHERE id = ?')
     .run(out, `demo-local-${info.lastInsertRowid}`, 'claude', info.lastInsertRowid);
+  (LOCAL_PASSES[p] || []).forEach((passe, i) => {
+    const fichier = path.join(dir, `output-v${i + 1}.md`);
+    fs.writeFileSync(fichier, passe.out || LOCAL_OUT[p], 'utf8');
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
+      VALUES ('local',?,?,?,?,?,?,?)`)
+      .run(lt1.lastInsertRowid, info.lastInsertRowid, i + 1, passe.kind, passe.prompt, fichier, at(passe.jours));
+  });
 }
 /* Codage hors dépôt CRÉÉ MAIS PAS LANCÉ (« Créer sans lancer ») : la carte porte alors un
    bouton « Lancer », et le badge du menu compte le travail en attente. Sans cet exemple,

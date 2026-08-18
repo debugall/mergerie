@@ -13,6 +13,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Iterations of an AI output are a list, not a dropdown.** `AI output` now shows every
+  iteration in a column on the left — number, kind, date and, above all, **the request that
+  produced it** — and the one you pick on the right. A **search field** at the top of the column
+  looks through those requests, because that is what you remember; iterations that do not match
+  are hidden, not dropped, and the filter survives switching iterations. A single iteration shows
+  no column at all: there is nothing to pick.
+
 - **Compare two repositories, side by side.** A `Compare` sub-tab in *Git* takes two
   repositories and one branch each, and answers the question a `git diff` cannot: these two
   repositories share no history — a service extracted into its own repository, a fork gone its own

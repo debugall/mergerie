@@ -2340,6 +2340,31 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .apercu-gabarit > summary:hover { color: var(--text); }
 .apercu-gabarit .verify-log { margin-top: 6px; max-height: 260px; }
 
+/* ---------- Itérations d'un retour d'agent (liste à gauche) ----------
+   Le sélecteur déroulant est devenu une COLONNE : on voit d'un coup les itérations et surtout
+   la demande qui a produit chacune. La colonne défile pour elle-même, la réponse reste lisible
+   à droite quelle que soit la longueur de la liste. */
+.pass-body { grid-template-columns: 320px 1fr; }
+.pass-body.no-list { grid-template-columns: 1fr; }
+.pass-aside { border-right: 1px solid var(--line); padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.pass-aside-head { padding: 12px 12px 8px; border-bottom: 1px solid var(--line); }
+.pass-aside-head h4 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.pass-aside-head .search { width: 100%; margin: 0; }
+.pass-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.pass-item { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: inherit;
+  padding: 8px 10px; font: inherit; }
+.pass-item:hover { border-color: var(--accent); }
+.pass-item.active { border-color: var(--accent); background: var(--panel2); box-shadow: inset 3px 0 0 var(--accent); }
+.pass-item-head { font-size: 12px; color: var(--muted); }
+.pass-item.active .pass-item-head { color: var(--accent); font-weight: 600; }
+/* Trois lignes suffisent à reconnaître sa demande ; le texte entier reste dans l'info-bulle,
+   et sous le titre de l'itération choisie, à droite. */
+.pass-item-prompt { font-size: 13px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical; overflow: hidden; }
+#taskPassNoMatch { margin: 0; padding: 0 12px 12px; font-size: 13px; }
+@media (max-width: 900px) { .pass-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } }
+
 /* ---------- Comparer deux dépôts ----------
    Deux côtés côte à côte pour le choix, TROIS colonnes pour le résultat : « à gauche
    seulement », « différents », « à droite seulement ». Les listes peuvent être longues — elles

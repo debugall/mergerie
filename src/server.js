@@ -1574,8 +1574,14 @@ app.post('/api/repos/bulk', wrap((req, res) => {
 /* Liste des passes d'une unité + la passe demandée (la dernière par défaut). Commun aux
    sessions sur dépôt et au codage hors dépôt : une seule forme de réponse à afficher. */
 function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) {
+  /* Le PROMPT part avec la liste : la colonne de gauche montre chaque itération par la demande
+     qui l'a produite, et son champ de recherche cherche dans ce que l'utilisateur a écrit. Le
+     tronquer ici ferait mentir la recherche — une correspondance au-delà de la coupe ne
+     remonterait jamais. Une session compte quelques itérations, pas des milliers. */
   const passes = agentpass.list(scope, taskId, unitId)
-    .map((p) => ({ n: p.n, kind: p.kind, created_at: p.created_at, has_output: !!p.output_path }));
+    .map((p) => ({
+      n: p.n, kind: p.kind, created_at: p.created_at, has_output: !!p.output_path, prompt: p.prompt || '',
+    }));
 
   /* Sessions antérieures à l'historique des passes : elles n'ont aucune ligne
      `agent_pass`, mais leur `output_path` pointe toujours un retour valide. On le
@@ -1586,7 +1592,7 @@ function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) 
     if (!output) return { title, passes: [], current: null };
     return {
       title,
-      passes: [{ n: 1, kind: 'legacy', created_at: null, has_output: true }],
+      passes: [{ n: 1, kind: 'legacy', created_at: null, has_output: true, prompt: '' }],
       current: { n: 1, kind: 'legacy', created_at: null, prompt: '', output },
     };
   }
