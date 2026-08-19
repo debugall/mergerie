@@ -87,6 +87,18 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   only the code knew; the right number depends on the machine and on how long the suites take.
   It now lives in *Settings → Merge Request*, and `0` means “no limit”.
 
+### Fixed
+
+- **The red Docker badge no longer counts containers you stopped yourself.** `docker stop` — and
+  so `docker compose stop` — sends SIGTERM and then SIGKILL once the grace period runs out, so a
+  container that does not trap SIGTERM exits with **143** or **137** although nothing broke. Those
+  two codes were read as crashes, which set the alarm off on every deliberate stop; an alarm that
+  always rings stops being read. They now count as stopped, named in the tooltip and in the
+  *Exited* filter, while the codes that really do mean a crash stay red — including a **137 caused
+  by running out of memory**, which `docker inspect` distinguishes from a requested kill. The menu
+  badge and the *Exited with an error* filter apply the same rule, so clicking the red count opens
+  exactly the containers it counted.
+
 ### Removed
 
 - **“Script” verifiers are gone; a verifier is a list of commands.** Writing an executable that

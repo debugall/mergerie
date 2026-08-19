@@ -833,10 +833,15 @@ Two sub-views, like Coding/Exploration in AI Dev.
   (all)* — along with a **search** by name. Confirming groups the services **by project** and runs one
   `docker compose` per project (one failure does not stop the others).
 - **Health badges on the Docker tab**: the **number of containers in error** — *restarting*, *dead*, and
-  those that **exited with an error** (a non-zero exit code) — in **red**. A container stopped **cleanly**
-  (code 0: you stopped it yourself, or a job finished its work) does not count: counting it in red set the
-  alarm off every day, and an alarm that always rings stops being read. It is still named in the tooltip. An
-  unreadable exit code stays out of the alarm — we do not cry wolf on a guess. Plus the **number of
+  those that **exited with an error** — in **red**. A container **you stopped** does not count: neither a
+  clean exit (code 0: you stopped it yourself, or a job finished its work) nor one that `docker stop` /
+  `docker compose stop` had to kill by signal — an untrapped SIGTERM (**143**), then SIGKILL once the grace
+  period runs out (**137**), which is the fate of many perfectly healthy images. Counting those in red set
+  the alarm off on every deliberate stop, and an alarm that always rings stops being read; they are still
+  named in the tooltip and in the *Exited* filter. Two exceptions, kept: a 137 caused by **running out of
+  memory** (OOM, read from `docker inspect`) stays red — same code, opposite meaning — and so do the signals
+  that really do mean a crash (**139** SIGSEGV, **134** SIGABRT). An unreadable exit code stays out of the
+  alarm — we do not cry wolf on a guess. Plus the **number of
   unhealthy containers** in **orange**, right in the menu — visible at startup and refreshed
   **automatically every 30 s** (and every time the tab is opened) — so a container flipping to *restarting*
   shows up in the menu title **even when you are not on the Docker tab**. The poll is light (a single

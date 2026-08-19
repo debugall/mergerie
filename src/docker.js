@@ -359,6 +359,15 @@ function exitCodeOf(status) {
   return m ? Number(m[1]) : null;
 }
 
+/* `docker stop` (et donc `docker compose stop`) envoie SIGTERM, puis SIGKILL si le container
+   n'est pas sorti à temps. Un container qui ne piège pas SIGTERM — c'est le cas de beaucoup
+   d'images parfaitement saines — meurt donc du signal et sort en 143 (128+15) ou 137 (128+9).
+   Ces deux codes-là racontent « on me l'a demandé », pas « je suis tombé » : les peindre en
+   rouge fait sonner l'alarme à CHAQUE arrêt volontaire, et une alarme qui sonne tous les jours
+   n'est plus lue. Les autres codes non nuls restent des sorties en erreur — 139 (SIGSEGV) et
+   134 (SIGABRT) sont bien des plantages, eux. */
+const CODES_ARRET_DEMANDE = new Set([137, 143]);
+
 function healthSummary(containers) {
   let error = 0; let exited = 0; let crashed = 0; let unhealthy = 0;
   for (const c of containers || []) {
@@ -371,21 +380,51 @@ function healthSummary(containers) {
     else if (state === 'exited') {
       exited += 1;
       /* Un arrêt PROPRE (code 0) n'est pas une anomalie : c'est le plus souvent « je l'ai
-         arrêté moi-même », ou un job qui a fini son travail. Le compter en rouge, c'est une
-         alarme qui sonne tous les jours — et une alarme qui sonne toujours n'est plus lue.
-         Seule une sortie en erreur rejoint le rouge ; un code inconnu reste hors alarme,
-         parce qu'on ne crie pas au loup sur une supposition. */
-      if (exitCodeOf(c.status) > 0) crashed += 1;
+         arrêté moi-même », ou un job qui a fini son travail. Seule une sortie en erreur
+         rejoint le rouge ; un code inconnu reste hors alarme, parce qu'on ne crie pas au
+         loup sur une supposition.
+         `oom` vient de `docker inspect` : un 137 tué par le noyau faute de mémoire porte le
+         MÊME code qu'un arrêt demandé, et celui-là, on veut le voir. */
+      const code = exitCodeOf(c.status);
+      if (code > 0 && (c.oom || !CODES_ARRET_DEMANDE.has(code))) crashed += 1;
     } else if (status.includes('(unhealthy)') || /\bunhealthy\b/.test(status)) unhealthy += 1;
   }
   return { error, exited, crashed, unhealthy };
 }
 
+/* Lesquels de ces containers ont été tués faute de MÉMOIRE. Docker ne le dit pas dans
+   `ps` — seulement dans `inspect` — d'où cet appel à part, fait uniquement pour les rares
+   containers sortis en 137. Un seul `inspect` pour tous : la question se pose à chaque
+   rafraîchissement du badge. Best-effort : si l'inspection échoue, on n'invente pas d'OOM. */
+/* Lecture du `inspect` ci-dessus, à part parce qu'elle se teste sans démon : `inspect` rend
+   l'id COMPLET quand `ps` en donne un court, d'où le rapprochement par préfixe. */
+function oomDepuisInspect(stdout, ids) {
+  const tues = [];
+  for (const ligne of String(stdout || '').split('\n')) {
+    const [id, oom] = ligne.trim().split(/\s+/);
+    if (id && oom === 'true') tues.push(id);
+  }
+  return new Set((ids || []).filter((court) => tues.some((long) => long.startsWith(court))));
+}
+
+async function oomKilled(ids) {
+  if (!ids.length) return new Set();
+  try {
+    const { stdout } = await docker(['inspect', '--format', '{{.Id}} {{.State.OOMKilled}}', '--', ...ids]);
+    return oomDepuisInspect(stdout, ids);
+  } catch { return new Set(); }
+}
+
 // Résumé santé de TOUS les containers (compose + hors-compose), pour le badge de menu.
 async function summary() {
   const containers = await listContainers();
+  const suspects = containers
+    .filter((c) => c.state === 'exited' && exitCodeOf(c.status) === 137)
+    .map((c) => c.id);
+  const oom = await oomKilled(suspects);
+  const avecOom = oom.size ? containers.map((c) => (oom.has(c.id) ? { ...c, oom: true } : c)) : containers;
   return {
-    ...healthSummary(containers),
+    ...healthSummary(avecOom),
     total: containers.length,
     running: containers.filter((c) => c.running).length,
   };
@@ -452,7 +491,10 @@ async function composeProject({ dir, file, path: composePath, rootLabel }, share
       /* `exitCode` vient de l'inspect, pas du texte du Status : c'est un entier, donc fiable,
          et c'est lui qui distingue « je l'ai arrêté » (0) d'un plantage. */
       const exitCode = det && det.State && det.State.ExitCode != null ? Number(det.State.ExitCode) : null;
-      container = { id: psRow.ID, name: (psRow.Names || '').split(',')[0], state, health, exitCode, image: det && det.Config && det.Config.Image, created: det && det.Created };
+      /* Tué faute de MÉMOIRE : même code de sortie (137) qu'un arrêt demandé, sens opposé.
+         L'inspect est déjà fait ici pour le drift — l'information ne coûte rien de plus. */
+      const oom = !!(det && det.State && det.State.OOMKilled);
+      container = { id: psRow.ID, name: (psRow.Names || '').split(',')[0], state, health, exitCode, oom, image: det && det.Config && det.Config.Image, created: det && det.Created };
     }
     const badge = serviceBadge({ container, envDiffs, imgDrift, composeModified });
     return { name: svcName, image: svc.image || null, container, envDiffs, imgDrift, composeModified, badge };
@@ -598,5 +640,5 @@ module.exports = {
   composeProjects, composeFileList, composeOne, orphans, previewDown, runCompose, runDown, stopContainer, removeContainer, composeArgs,
   inspect, imageEnv, reconstructRunCommand, makefileFor, runMake, listContainers, spawnLogs, summary,
   // pur (tests) :
-  isSecretName, exitCodeOf, envArrayToMap, serviceExpectedEnv, diffEnv, imageDrift, serviceBadge, parseLabels, composeFilesUnder, parseMakefileTargets, validRef, healthSummary, defaultProjectName, COMPOSE_FILES,
+  isSecretName, exitCodeOf, envArrayToMap, serviceExpectedEnv, diffEnv, imageDrift, serviceBadge, parseLabels, composeFilesUnder, parseMakefileTargets, validRef, healthSummary, oomKilled, oomDepuisInspect, defaultProjectName, COMPOSE_FILES,
 };

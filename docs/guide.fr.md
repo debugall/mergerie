@@ -870,11 +870,15 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
   **recherche** par nom. La validation regroupe les services **par projet** et lance un `docker compose`
   par projet (un échec n'interrompt pas les autres).
 - **Badges de santé sur l'onglet Docker** : le **nombre de containers en erreur** — *restarting*,
-  *dead*, et ceux **sortis en erreur** (code de sortie non nul) — en **rouge**. Un container arrêté
-  **proprement** (code 0 : on l'a arrêté soi-même, ou un job a fini son travail) n'y entre pas : le
-  compter en rouge faisait sonner l'alarme tous les jours, et une alarme qui sonne toujours n'est
-  plus lue. Il reste nommé dans la bulle. Un code de sortie illisible reste hors alarme — on ne crie
-  pas au loup sur une supposition et le **nombre d'unhealthy** en **orange**, directement dans le menu — visibles au démarrage et
+  *dead*, et ceux **sortis en erreur** — en **rouge**. Un container **arrêté par toi** n'y entre pas :
+  ni l'arrêt propre (code 0 : on l'a arrêté soi-même, ou un job a fini son travail), ni celui que
+  `docker stop` / `docker compose stop` a dû tuer par signal — SIGTERM non piégé (**143**) puis SIGKILL
+  au bout du délai (**137**), ce qui est le lot de beaucoup d'images parfaitement saines. Le compter en
+  rouge faisait sonner l'alarme à chaque arrêt volontaire, et une alarme qui sonne toujours n'est plus
+  lue ; il reste nommé dans la bulle et dans le filtre *Arrêtés*. Deux réserves, tenues : un 137 dû au
+  **manque de mémoire** (OOM, lu dans `docker inspect`) reste rouge — même code, sens opposé — et les
+  signaux qui disent bien un plantage (**139** SIGSEGV, **134** SIGABRT) aussi. Un code de sortie
+  illisible reste hors alarme — on ne crie pas au loup sur une supposition et le **nombre d'unhealthy** en **orange**, directement dans le menu — visibles au démarrage et
   rafraîchis **automatiquement toutes les 30 s** (et à chaque ouverture de l'onglet) — donc un container qui
   bascule en *restarting* apparaît dans le titre du menu **même sans être sur l'onglet Docker**. Le poll est
   léger (un seul `docker ps -a`) et se met en pause quand l'onglet du navigateur est masqué.

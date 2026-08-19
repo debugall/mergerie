@@ -8012,6 +8012,17 @@ function dactIsDrift(svc) {
      missing  aucun container : le service n'a jamais été créé (« non démarré ») → `up`
    `stopped` reste le chapeau des trois, et pas seulement pour la commodité : c'est une
    valeur déjà PERSISTÉE dans le navigateur, la retirer casserait le filtre enregistré. */
+/* `docker stop` — donc `docker compose stop` — envoie SIGTERM puis SIGKILL : un container qui
+   ne piège pas SIGTERM sort en 143 ou 137 sans que rien ne soit cassé. Ces deux codes disent
+   « on me l'a demandé », pas « je suis tombé ». Sauf s'il a été tué faute de mémoire : même
+   code, sens opposé, et l'inspect le dit. */
+const DACT_ARRET_DEMANDE = [137, 143];
+function dactEstPlantage(c) {
+  const code = Number(c && c.exitCode);
+  if (!(code > 0)) return false;
+  return !!(c && c.oom) || !DACT_ARRET_DEMANDE.includes(code);
+}
+
 function dactMatchesFilter(filter, svc) {
   const st = svc.container && svc.container.state ? svc.container.state : null;
   const health = svc.container && svc.container.health ? svc.container.health : null;
@@ -8022,8 +8033,10 @@ function dactMatchesFilter(filter, svc) {
     case 'running': return st === 'running';
     case 'exited': return st === 'exited';
     /* Sorti EN ERREUR : le seul « arrêté » qui appelle une action. Un code de sortie inconnu
-       n'y entre pas — on ne classe pas un container en panne sur une supposition. */
-    case 'crashed': return st === 'exited' && Number(svc.container.exitCode) > 0;
+       n'y entre pas — on ne classe pas un container en panne sur une supposition. MÊME RÈGLE
+       que le badge du menu (`healthSummary`, côté serveur) : les deux doivent désigner les
+       mêmes containers, sinon cliquer le chiffre rouge ouvre une autre liste que lui. */
+    case 'crashed': return st === 'exited' && dactEstPlantage(svc.container);
     case 'created': return st === 'created';
     case 'missing': return !svc.container;
     case 'stopped': return st !== 'running'; // arrêté, créé-jamais-démarré OU non créé
