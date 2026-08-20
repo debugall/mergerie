@@ -205,17 +205,24 @@ answering the first does not settle the work, and a todo ticked too early makes 
 other four. It stays an **ordinary** todo — you can tick, edit or delete it: the tool raises it
 and closes it, it does not take over what you did with it.
 
-**Duplicate a coding session.** On the card, next to *Edit*, a button opens the form
-**pre-filled** from that session: prompt, label, commit message, repositories, base branch, options
-and verifier. There is no identifier behind it — **saving creates a new session** instead of
-overwriting the one you copied. This is the gesture of running the same instruction on another
-repository, or starting from a past session with two words changed.
-Two fields are exceptions, and the screen says so: the **working branch** is shifted
-(`feature/x` → `feature/x-2`, then `-3` if that one is taken) because two sessions on the same
-branch would tread on each other — the second committing on top of the first's work — and the
-**agent session** is not resumed, since you are starting a fresh conversation rather than
-continuing the original one. The **images** attached to the original are not copied; their number
-is stated. Everything stays editable before saving: it is a proposal, not a carbon copy.
+**Duplicate a session.** On the card, next to *Edit*, a button opens the form **pre-filled** from
+that session — **coding, exploration and out-of-repo coding**. There is no identifier behind it:
+**saving creates a new session** instead of overwriting the one you copied. This is the gesture of
+running the same instruction on another repository, or starting from a past session with two words
+changed. Everything is copied — prompt, label, commit message, repositories or folders, base
+branch, options, verifier — except the following, stated under the prompt:
+- the **agent session** is never resumed: a copy starts a fresh conversation, not the continuation
+  of the original one;
+- in **coding**, the **working branch** is shifted (`feature/x` → `feature/x-2`, then `-3` if that
+  one is taken) because two sessions on the same branch would tread on each other, the second
+  committing on top of the first's work. In **exploration**, the branch is the one you **read**: it
+  is copied as is, shifting it would point at a branch that does not exist;
+- the **images** attached to the original are not copied; their number is stated.
+
+The buttons are those of creating a session of that flavour — `Save` for coding and exploration,
+`Run` alongside `Create without running` for out-of-repo: a button that changed meaning depending
+on whether you create or copy would be a trap. Everything stays editable before saving: it is a
+proposal, not a carbon copy.
 
 **A label, optional.** A short title when creating a session — coding, out-of-repo or exploration.
 A list is otherwise read through its prompt, three folded lines whose first words look alike from one

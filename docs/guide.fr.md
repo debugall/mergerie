@@ -211,17 +211,24 @@ répondre au premier ne solde pas le travail, et une todo cochée trop tôt fait
 autres. Elle reste une todo **ordinaire** — on peut la cocher, l'éditer, la supprimer : l'outil la
 pose et la referme, il ne reprend pas la main sur ce qu'on en a fait.
 
-**Dupliquer une session de codage.** Sur la carte, à côté de *Modifier*, un bouton ouvre le
-formulaire **pré-rempli** de la session : consigne, libellé, message de commit, dépôts, branche de
-départ, options et vérificateur. Il n'y a pas d'identifiant derrière — **enregistrer crée une
-nouvelle session** au lieu d'écraser celle qu'on copiait. C'est le geste de qui relance la même
-consigne sur un autre dépôt, ou repart d'une session passée en changeant deux mots.
-Deux champs font exception, et l'écran le dit : la **branche de travail** est décalée
-(`feature/x` → `feature/x-2`, puis `-3` si elle est déjà prise) parce que deux sessions sur la même
-branche se marcheraient dessus — la seconde commitant par-dessus le travail de la première — et la
-**session d'agent** n'est pas reprise, puisqu'on démarre une conversation neuve et non la suite de
-celle de l'originale. Les **images** attachées à l'originale ne sont pas copiées ; leur nombre est
-rappelé. Tout reste modifiable avant d'enregistrer : c'est une proposition, pas un décalque.
+**Dupliquer une session.** Sur la carte, à côté de *Modifier*, un bouton ouvre le formulaire
+**pré-rempli** de la session — **codage, exploration et codage hors dépôt**. Il n'y a pas
+d'identifiant derrière : **enregistrer crée une nouvelle session** au lieu d'écraser celle qu'on
+copiait. C'est le geste de qui relance la même consigne sur un autre dépôt, ou repart d'une session
+passée en changeant deux mots. Tout se recopie — consigne, libellé, message de commit, dépôts ou
+dossiers, branche de départ, options, vérificateur — sauf ce qui suit, dit sous le prompt :
+- la **session d'agent** n'est jamais reprise : une copie démarre une conversation neuve, pas la
+  suite de celle de l'originale ;
+- en **codage**, la **branche de travail** est décalée (`feature/x` → `feature/x-2`, puis `-3` si
+  elle est déjà prise) parce que deux sessions sur la même branche se marcheraient dessus, la
+  seconde commitant par-dessus le travail de la première. En **exploration**, la branche est celle
+  qu'on **lit** : elle se recopie telle quelle, la décaler pointerait vers une branche inexistante ;
+- les **images** attachées à l'originale ne sont pas copiées ; leur nombre est rappelé.
+
+Les boutons sont ceux d'une création de cette saveur — `Enregistrer` en codage et exploration,
+`Lancer` accompagné de `Créer sans lancer` hors dépôt : un bouton qui changerait de sens selon qu'on
+crée ou qu'on copie serait un piège. Tout reste modifiable avant d'enregistrer : c'est une
+proposition, pas un décalque.
 
 **Un libellé, facultatif.** Un titre court à la création d'une session — codage, hors dépôt ou
 exploration. Une liste se lit sinon par son prompt, trois lignes repliées dont les premiers mots se

@@ -19,12 +19,14 @@
 
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR } = require('./helpers/app');
 
 const { dispo } = navigateurDispo();
 
-describe('Dupliquer une session de codage', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
-  let app; let navigateur; let page; let repo; let origine;
+describe('Dupliquer une session', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
+  let app; let navigateur; let page; let repo; let origine; let exploration; let horsDepot; let dossier;
   const erreurs = [];
 
   before(async () => {
@@ -43,6 +45,22 @@ describe('Dupliquer une session de codage', { skip: dispo ? false : MSG_NAVIGATE
     /* Une session d'agent sur la cible : c'est CE champ qui ne doit pas être repris — le
        reprendre continuerait la conversation de l'originale au lieu d'en ouvrir une neuve. */
     app.db.prepare('UPDATE task_target SET session_key = ? WHERE task_id = ?').run('cle-agent-origine', origine.id);
+
+    // Une EXPLORATION : sa branche est celle qu'on lit, elle ne doit surtout pas être décalée.
+    exploration = (await app.api('POST', '/api/tasks', {
+      kind: 'explore', prompt: 'Où est vérifié le jeton ?', label: 'Auth',
+      targets: [{ repo_id: repo.id, branch: 'develop' }],
+    })).body;
+
+    // …et une session HORS DÉPÔT, qui a son propre envoi et sa propre relecture.
+    const racine = fs.mkdtempSync(path.join(app.dataDir, 'racine-'));
+    dossier = path.join(racine, 'outil');
+    fs.mkdirSync(dossier, { recursive: true });
+    await app.api('POST', '/api/local-roots', { path: racine });
+    horsDepot = (await app.api('POST', '/api/local-tasks', {
+      prompt: 'Range les imports de ces scripts', label: 'Imports', ask_questions: 1, dirs: [dossier],
+    })).body;
+    app.db.prepare('UPDATE local_task_dir SET session_key = ? WHERE task_id = ?').run('cle-agent-locale', horsDepot.id);
 
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 950 } });
@@ -139,6 +157,92 @@ describe('Dupliquer une session de codage', { skip: dispo ? false : MSG_NAVIGATE
     await ouvrirCopie();
     const f = await lireForm();
     assert.equal(f.rows[0].branch, 'feature/timeout-3');
+    assert.deepEqual(erreurs, []);
+  });
+
+  /* LES AUTRES SAVEURS. Le formulaire est partagé, mais chacune a sa relecture — le hors dépôt
+     a carrément son propre envoi et sa propre route. Éprouver le codage et supposer le reste est
+     exactement ce qui laisse passer un champ perdu. Et ce qui change d'une saveur à l'autre n'est
+     pas cosmétique : en exploration la branche est celle qu'on LIT, la décaler pointerait vers
+     une branche inexistante et l'exploration échouerait. */
+  const allerA = async (kind, liste) => {
+    if (await page.locator('#taskModal:not([hidden])').count()) {
+      await page.locator('#taskCancel').click();
+      await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
+    }
+    await page.locator(`#tab-task .subnav [data-kind="${kind}"]`).click();
+    await page.waitForSelector(`${liste} .card`);
+  };
+
+  test('exploration : la branche lue n’est pas décalée, et enregistrer crée', async () => {
+    await allerA('explore', '#taskList');
+    const avant = (await app.api('GET', '/api/tasks')).body.length;
+    await page.locator(`#taskList .card[data-task="${exploration.id}"] [data-tcopy]`).click();
+    await page.waitForSelector('#taskModal:not([hidden])');
+    await page.waitForFunction(() => document.querySelector('#taskForm [name="prompt"]').value !== '');
+
+    const f = await page.evaluate(() => ({
+      info: document.querySelector('#taskExistingImgs').textContent,
+      label: (document.querySelector('#taskForm [name="label"]') || {}).value,
+      branche: document.querySelector('#targetRows .t-branch').value,
+      repo: document.querySelector('#targetRows .t-repo').value,
+    }));
+    assert.equal(f.branche, 'develop', 'la branche qu’on LIT se recopie telle quelle');
+    assert.equal(f.repo, String(repo.id));
+    assert.equal(f.label, 'Auth');
+    assert.ok(!/branche de travail/i.test(f.info), 'et l’écran ne parle pas d’un décalage qui n’a pas lieu');
+
+    await page.locator('#taskForm [name="prompt"]').fill('Et le rafraîchissement du jeton ?');
+    await page.locator('#taskSubmit').click();
+    await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
+
+    const apres = (await app.api('GET', '/api/tasks')).body;
+    assert.equal(apres.length, avant + 1);
+    const copie = apres.find((t) => t.kind === 'explore' && t.id !== exploration.id);
+    assert.equal(copie.kind, 'explore', 'la saveur suit : une exploration ne devient pas un codage');
+    assert.match(copie.prompt, /rafraîchissement/);
+    assert.equal(copie.targets[0].branch, 'develop');
+    assert.match((await app.api('GET', `/api/tasks/${exploration.id}`)).body.task.prompt, /Où est vérifié/);
+  });
+
+  /* Le hors dépôt a SON envoi et SA route : le formulaire peut être rempli à l'écran et
+     l'enregistrement perdre la moitié des champs sans que le codage n'en montre rien. */
+  test('hors dépôt : les dossiers et les options se recopient, et « Créer sans lancer » crée', async () => {
+    await allerA('local', '#localList');
+    const avant = (await app.api('GET', '/api/local-tasks')).body.length;
+    await page.locator(`#localList .card[data-local="${horsDepot.id}"] [data-lcopy]`).click();
+    await page.waitForSelector('#taskModal:not([hidden])');
+    await page.waitForFunction(() => document.querySelector('#taskForm [name="prompt"]').value !== '');
+
+    const f = await page.evaluate(() => ({
+      label: (document.querySelector('#taskForm [name="label"]') || {}).value,
+      questions: (document.querySelector('#taskForm [name="ask_questions"]') || {}).checked,
+      session: (document.querySelector('#taskForm [name="session_id"]') || {}).value,
+      // « Créer sans lancer » accompagne la création hors dépôt : il doit être là, comme pour une neuve.
+      sansLancer: !document.querySelector('#taskSubmitOnly').hidden,
+    }));
+    assert.equal(f.label, 'Imports');
+    assert.equal(f.questions, true);
+    assert.equal(f.session, '', 'la session d’agent d’origine n’est pas reprise');
+    assert.equal(f.sansLancer, true);
+
+    await page.locator('#taskForm [name="prompt"]').fill('Range aussi les exports');
+    await page.locator('#taskSubmitOnly').click();
+    await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
+
+    const apres = (await app.api('GET', '/api/local-tasks')).body;
+    assert.equal(apres.length, avant + 1, 'une session de PLUS');
+    const copie = apres.find((t) => t.id !== horsDepot.id);
+    assert.match(copie.prompt, /exports/);
+    assert.equal(copie.label, 'Imports');
+    assert.equal(copie.ask_questions, 1);
+    assert.deepEqual((copie.dirs || []).map((d) => d.path), [dossier], 'le dossier traité est le même');
+    assert.equal((copie.dirs[0] || {}).session_key || '', '', 'la copie démarre sans session d’agent');
+
+    // L'originale n'a pas bougé, session d'agent comprise.
+    const avant2 = apres.find((t) => t.id === horsDepot.id);
+    assert.match(avant2.prompt, /Range les imports/);
+    assert.equal(avant2.dirs[0].session_key, 'cle-agent-locale');
     assert.deepEqual(erreurs, []);
   });
 });

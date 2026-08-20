@@ -4412,8 +4412,13 @@ async function dupliquerTask(id) {
   taskKind = t.kind || 'code';
   await loadRepoOptions();
   applyKindToModal(taskKind);
+  /* La branche ne se décale QU'EN CODAGE. En exploration, c'est la branche qu'on LIT : la
+     décaler pointerait vers une branche qui n'existe pas, et l'exploration échouerait. */
+  const decale = taskKind === 'code';
   renderTargetRows((t.targets || []).map((x) => ({
-    repo_id: x.repo_id, branch: brancheLibreSession(x.repo_id, x.branch), base_branch: x.base_branch,
+    repo_id: x.repo_id,
+    branch: decale ? brancheLibreSession(x.repo_id, x.branch) : x.branch,
+    base_branch: x.base_branch,
   })));
   setupTaskJira((t.targets && t.targets[0] && t.targets[0].branch) || '');
   f.prompt.value = t.prompt || '';
@@ -4423,14 +4428,58 @@ async function dupliquerTask(id) {
   if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
   await majVerificateursSession(t.verifier_id || '');
   if (f.session_id) f.session_id.value = '';
-  $('#taskModalTitle').textContent = tr('task.duplicate.title');
-  const nImages = (d.images && d.images.length) || 0;
-  $('#taskExistingImgs').textContent = nImages
-    ? `${tr('task.duplicate.info')} ${tr('task.duplicate.no-images', { n: nImages, count: nImages })}`
-    : tr('task.duplicate.info');
-  // Créer, comme une session neuve : le bouton principal enregistre sans lancer.
-  $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
-  $('#taskSubmitOnly').hidden = true;
+  $('#taskModalTitle').textContent = tr(decale ? 'task.duplicate.title' : 'task.duplicate.title-explore');
+  infoDuplication(decale, (d.images && d.images.length) || 0);
+  boutonsCreation(taskKind);
+  showTaskModal();
+  f.prompt.focus();
+}
+
+/* Ce que la copie NE reprend pas, dit sous le prompt. Le silence ici se paierait cher : on
+   croirait avoir un décalque, et on découvrirait la branche décalée après le lancement. */
+function infoDuplication(brancheDecalee, nImages) {
+  const bouts = [tr('task.duplicate.info')];
+  if (brancheDecalee) bouts.push(tr('task.duplicate.info-branch'));
+  if (nImages) bouts.push(tr('task.duplicate.no-images', { n: nImages, count: nImages }));
+  $('#taskExistingImgs').textContent = bouts.join(' ');
+}
+
+/* Les boutons d'une CRÉATION, exactement comme pour une session neuve de cette saveur : un
+   bouton qui changerait de sens selon qu'on crée ou qu'on copie serait un piège. */
+function boutonsCreation(kind) {
+  launchAfterCreate = kind === 'local' || kind === 'ask';
+  $('#taskSubmit').innerHTML = launchAfterCreate
+    ? `<svg class="ico"><use href="#i-play"/></svg>${tr(kind === 'ask' ? 'ask.run' : 'local.run')}`
+    : `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
+  $('#taskSubmitOnly').hidden = !launchAfterCreate;
+}
+
+/* DUPLIQUER une session HORS DÉPÔT. Même geste, mais son propre câblage : les dossiers sont
+   stockés en chemins absolus et la modale se pilote en « répertoire + noms de projets » —
+   c'est la relecture d'`openLocalTaskEdit`, sans l'identifiant. Aucune branche ici : rien à
+   décaler, les dossiers sont ceux qu'on veut retraiter. */
+async function dupliquerLocalTask(id) {
+  const f = $('#taskForm');
+  f.reset(); taskNewImages = []; renderTaskPreviews();
+  const d = await api(`/local-tasks/${id}`);
+  const t = d.task;
+  editingTaskId = null; launchAfterCreate = false; convergeAfterCreate = false;
+  taskKind = 'local';
+  await loadLocalRoots();
+  const paths = (t.dirs || []).map((x) => x.path);
+  const under = (root, p) => p.startsWith(`${String(root.path).replace(/\/+$/, '')}/`);
+  const root = localRoots.find((r) => paths.some((p) => under(r, p))) || localRoots[0];
+  localRootId = root ? String(root.id) : '';
+  localPicks = paths.map((p) => p.split('/').filter(Boolean).pop() || '');
+  if (!localPicks.length) localPicks = [''];
+  applyKindToModal('local');
+  f.prompt.value = t.prompt || '';
+  if (f.label) f.label.value = t.label || '';
+  if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
+  if (f.session_id) f.session_id.value = '';
+  $('#taskModalTitle').textContent = tr('task.duplicate.title-local');
+  infoDuplication(false, (d.images && d.images.length) || 0);
+  boutonsCreation('local');
   showTaskModal();
   f.prompt.focus();
 }
@@ -5011,6 +5060,7 @@ function localCard(t) {
     canFollow ? followBtn(t, 'lfollow', 'local.followup.title') : '',
   ], [
     `<button class="btn btn-icon btn-sm" data-ledit="${t.id}" title="${esc(tr('local.edit-title'))}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
+    `<button class="btn btn-icon btn-sm" data-lcopy="${t.id}" title="${esc(tr('local.title.duplicate'))}"><svg class="ico"><use href="#i-copy"/></svg></button>`,
     hideBtn('local', t),
     `<button class="btn btn-icon btn-sm btn-danger" data-ldel="${t.id}" title="${esc(tr('local.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>`,
   ])}
@@ -5109,6 +5159,8 @@ function renderLocalTasks() {
     () => envoyerSuivi(b, `/local-tasks/${b.dataset.lfollowsend}/followup`)));
   $$('#localList [data-ledit]').forEach((b) => b.addEventListener('click',
     () => openLocalTaskEdit(Number(b.dataset.ledit)).catch((e) => toast(explainError(e.message), true))));
+  $$('#localList [data-lcopy]').forEach((b) => b.addEventListener('click',
+    () => dupliquerLocalTask(Number(b.dataset.lcopy)).catch((e) => toast(explainError(e.message), true))));
   $$('#localList [data-ldel]').forEach((b) => b.addEventListener('click', async () => {
     if (!await confirmDialog({ text: tr('local.confirm-delete'), confirmLabel: tr('ui.delete') })) return;
     try { await api(`/local-tasks/${b.dataset.ldel}`, { method: 'DELETE' }); toast(tr('local.deleted')); loadTasks(); }
@@ -5527,6 +5579,7 @@ function exploreCard(t) {
     resumeCmdBtn(resume),
   ], [
     `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
+    `<button class="btn btn-icon btn-sm" data-tcopy="${t.id}" title="${esc(tr('task.title.duplicate'))}"><svg class="ico"><use href="#i-copy"/></svg></button>`,
     hideBtn('task', t),
     `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>`,
   ])}

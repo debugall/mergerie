@@ -13,14 +13,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
-- **Duplicate a coding session into a pre-filled form.** Next to *Edit*, a button reopens the
-  session's form with everything already there — prompt, label, commit message, repositories, base
-  branch, options, verifier — but with no identifier behind it, so saving **creates** a new session
-  instead of overwriting the one you copied. Two fields deliberately differ: the working branch is
-  shifted (`feature/x` → `feature/x-2`, avoiding branches other sessions already occupy), because
-  two sessions on one branch would commit on top of each other; and the agent session is not
-  resumed, since a copy starts a fresh conversation. Attached images stay with the original, and
-  the screen says so.
+- **Duplicate a session into a pre-filled form — coding, exploration and out-of-repo.** Next to
+  *Edit*, a button reopens the session's form with everything already there — prompt, label, commit
+  message, repositories or folders, base branch, options, verifier — but with no identifier behind
+  it, so saving **creates** a new session instead of overwriting the one you copied. What is
+  deliberately not copied is stated on screen: the agent session is never resumed, since a copy
+  starts a fresh conversation, and attached images stay with the original. In **coding**, the
+  working branch is shifted (`feature/x` → `feature/x-2`, avoiding branches other sessions already
+  occupy) because two sessions on one branch would commit on top of each other; in **exploration**
+  the branch is the one being read, so it is copied as is — shifting it would point at a branch
+  that does not exist.
 
 - **Iterations of an AI output are a list, not a dropdown.** `AI output` now shows every
   iteration in a column on the left — number, kind, date and, above all, **the request that
