@@ -13,6 +13,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Paste a screenshot into a follow-up.** “The button overflows, see the screenshot” — an image
+  says in one glance what takes ten lines, and the moment you have it is the moment you write the
+  follow-up. The follow-up form now takes images the way the creation form does: an `Add a
+  screenshot` button, or plain Ctrl+V in the field, with thumbnails you can remove. Works for
+  coding, exploration and out-of-repo coding, each of which has its own route and its own table.
+  A screenshot belongs to **its** request: the follow-up prompt carries the initial screenshots
+  plus the new one, never those of an earlier follow-up, which illustrated something else. Saving
+  a follow-up as a draft still keeps the text only — the screenshots stay on the open form and go
+  out with the follow-up, and the screen says so instead of dropping them silently.
+
 - **Duplicate a session into a pre-filled form — coding, exploration and out-of-repo.** Next to
   *Edit*, a button reopens the session's form with everything already there — prompt, label, commit
   message, repositories or folders, base branch, options, verifier — but with no identifier behind

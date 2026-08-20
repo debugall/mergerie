@@ -274,6 +274,19 @@ tant qu'il n'est pas parti. On le **corrige**, on le **supprime** (l'effacer suf
 suivi`** le lance en un geste une fois la session terminée. Vaut pour le codage, le codage hors dépôt
 et l'exploration.
 
+**Une capture se colle dans le suivi.** Le formulaire de suivi accepte les images, comme celui
+de la création : bouton **`Ajouter une capture`** ou simplement **Ctrl+V** dans le champ. Les
+vignettes montrent ce qui partira, et se retirent une par une. Vaut pour le **codage**,
+l'**exploration** et le **codage hors dépôt** — pas pour la question libre, qui n'a pas de pièces
+jointes du tout.
+La capture accompagne **cette demande-là** : le prompt du suivi reçoit les captures de la consigne
+initiale plus celle qu'on vient de coller, mais **pas** celles d'un suivi précédent — elles
+illustraient autre chose, et un prompt qui annonce « voici les captures » en montrant la mauvaise
+image envoie l'agent dans le décor.
+⚠ **Un suivi *enregistré* (brouillon) ne garde que le texte** — c'est ce que sait stocker la base.
+Les captures restent attachées au formulaire ouvert et partent avec l'envoi ; un message le rappelle
+au moment d'enregistrer, plutôt que de les faire disparaître en silence.
+
 **Ou il part tout seul, si tu le demandes.** Une case **`L'envoyer automatiquement à la fin de la
 session`**, sous le texte, arme le suivi : il partira dès que la session aura fini de travailler, sans
 que tu aies à revenir. La carte le dit — **`Suivi armé`** au lieu de **`Suivi en attente`** — et il ne

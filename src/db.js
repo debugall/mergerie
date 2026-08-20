@@ -485,6 +485,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS local_task_image (
   path TEXT NOT NULL
 )`);
 
+/* Une capture collée dans une DEMANDE DE SUIVI n'appartient pas à la consigne initiale : elle
+   illustre ce suivi-là. Sans cette marque, elle repartirait dans le prompt de toutes les passes
+   suivantes — l'agent recevrait « voici les captures » avec des images qui parlent d'autre
+   chose. Migrations posées APRÈS les `CREATE TABLE` correspondants : plus haut, l'ALTER échoue
+   sur une table absente et le `catch` l'avale sans un mot. */
+try { db.exec('ALTER TABLE task_image ADD COLUMN followup INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE local_task_image ADD COLUMN followup INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+
 /* « Répertoires locaux » : un dossier de la machine contenant un sous-dossier par
    projet git déjà cloné à la main (~/dev). Sert à l'onglet Git → Navigation et au
    choix du dossier de travail du codage hors dépôt. On ne stocke QUE la racine :

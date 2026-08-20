@@ -268,6 +268,18 @@ not gone out. You can **reword** it, **delete** it (clearing the text is enough)
 follow-up`** fires it in one click once the session is over. Applies to coding, out-of-repo and
 exploration sessions.
 
+**A screenshot can be pasted into a follow-up.** The follow-up form accepts images, just like the
+creation one: the **`Add a screenshot`** button, or simply **Ctrl+V** in the field. Thumbnails show
+what will be sent, and can be removed one by one. Works for **coding**, **exploration** and
+**out-of-repo coding** — not for the free question, which has no attachments at all.
+The screenshot belongs to **that request**: the follow-up prompt gets the screenshots of the
+initial instruction plus the one you just pasted, but **not** those of an earlier follow-up — they
+illustrated something else, and a prompt announcing “here are the screenshots” while showing the
+wrong one sends the agent off course.
+⚠ **A *saved* follow-up (draft) only keeps the text** — that is what the database stores. The
+screenshots stay attached to the open form and go out with the follow-up itself; a message says so
+when you save, rather than making them vanish silently.
+
 **Or it goes out by itself, if you ask.** A checkbox **`Send it automatically when the session
 finishes`**, under the text, arms the follow-up: it leaves as soon as the session has finished
 working, with nothing for you to come back to. The card says so — **`Follow-up armed`** instead of

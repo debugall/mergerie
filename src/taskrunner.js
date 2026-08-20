@@ -65,9 +65,19 @@ function syncTaskStatus(taskId) {
 }
 
 // Bloc « captures » : les images de la tâche sont copiées dans le cwd de l'agent.
-function attachImages(task, cwd, onLog) {
+/* Les captures jointes au prompt. Par défaut, celles de la CONSIGNE INITIALE — celles d'un
+   suivi passé illustraient une autre demande, les renvoyer à chaque passe ferait dire au prompt
+   « voici les captures » en montrant autre chose. `imageIds` ajoute celles du suivi en cours. */
+function attachImages(task, cwd, onLog, { imageIds } = {}) {
   ensureDir(path.join(cwd, WORK_REL));
-  const images = db.prepare('SELECT * FROM task_image WHERE task_id = ? ORDER BY id').all(task.id);
+  const ids = (imageIds || []).map(Number).filter(Number.isInteger);
+  const suivi = ids.length
+    ? db.prepare(`SELECT * FROM task_image WHERE task_id = ? AND id IN (${ids.map(() => '?').join(',')})`).all(task.id, ...ids)
+    : [];
+  const images = [
+    ...db.prepare('SELECT * FROM task_image WHERE task_id = ? AND followup = 0 ORDER BY id').all(task.id),
+    ...suivi,
+  ];
   let imgBlock = '';
   images.forEach((im, i) => {
     if (!fs.existsSync(im.path)) return;
@@ -186,7 +196,7 @@ function commitMessageFor(task, defaut) {
    cette correction ») ne se comprend pas sans la tâche d'origine, que la session perdue
    portait. Le défaut réinjecte donc ce contexte — mais un premier run le contient déjà, et le
    lui ajouter enverrait deux fois la même consigne, prompt de la tâche compris. */
-async function execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, forcePush, resume, passKind }) {
+async function execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, forcePush, resume, passKind, imageIds }) {
   // On REPREND la session dès qu'un handle existe pour cette cible : la continuité vaut pour
   // le run initial, « Demander une correction » (followup), une relance, la reprise après
   // questions et les passes de convergence. Le 1er passage la crée.
@@ -227,7 +237,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     throw new Error(t('err.branch-missing-run-first', { branch: tg.branch }));
   }
 
-  const imgBlock = attachImages(task, cwd, onLog);
+  const imgBlock = attachImages(task, cwd, onLog, { imageIds });
 
   onLog(t('log.task.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai') }));
   let agentText = '';
@@ -338,7 +348,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
 
 // Session de codage : chaque projet est traité l'un après l'autre. Un projet en échec
 // n'interrompt pas les suivants — son erreur est consignée sur SA ligne.
-async function runCodeTask(task, { promptText, promptRepli, message, allowCreate, onLog, passKind, targetIds }) {
+async function runCodeTask(task, { promptText, promptRepli, message, allowCreate, onLog, passKind, targetIds, imageIds }) {
   /* `targetIds` restreint la passe à certains projets. Une session multi-dépôts se relançait
      forcément EN ENTIER : sur dix dépôts dont six ont réussi, cela coûtait six appels IA pour
      refaire un travail bon, et faisait repasser l'agent sur du code qu'on ne voulait plus voir
@@ -353,7 +363,7 @@ async function runCodeTask(task, { promptText, promptRepli, message, allowCreate
     onLog(`──────── ${tg.project} · ${tg.branch} ────────`);
     setTarget(tg.id, { status: 'running', last_error: null });
     try {
-      const r = await execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, passKind });
+      const r = await execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, passKind, imageIds });
       if (r && r.needsInput) waiting += 1; else ok += 1;
     } catch (e) {
       setTarget(tg.id, { status: 'error', last_error: e.message });
@@ -383,7 +393,7 @@ async function runCodeTask(task, { promptText, promptRepli, message, allowCreate
 /* `apresReponses` : cette passe fait suite aux réponses de l'utilisateur. C'est le seul moyen
    FIABLE de savoir qu'on n'est plus au premier tour — l'absence de synthèse précédente n'en est
    pas un, puisqu'une exploration arrêtée sur une question n'en a jamais écrit. */
-async function runExploration(task, { question, previous, onLog, apresReponses = false }) {
+async function runExploration(task, { question, previous, onLog, apresReponses = false, imageIds }) {
   const cfg = getConfig();
   const targets = targetsOf(task.id);
   if (!targets.length) throw new Error(t('err.aucun-projet-selectionne-pour-cette-2'));
@@ -420,7 +430,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
   ensureDir(path.join(root, WORK_REL));
   try { fs.rmSync(outAbs, { force: true }); } catch { /* pas de fichier précédent */ }
 
-  const imgBlock = attachImages(task, root, onLog);
+  const imgBlock = attachImages(task, root, onLog, { imageIds });
   const listing = dirs.map((d) => `- \`${d.dir}/\` → projet **${d.project}**, branche \`${d.branch}\``).join('\n');
 
   /* Une exploration tourne dans une SESSION reprenable, comme un codage : la question de
@@ -575,20 +585,20 @@ async function runTask(task, onLog = () => {}, opts = {}) {
 
 // `targetIds` : correction limitée à certains projets d'une session multi-dépôts. Une
 // remarque porte presque toujours sur UN dépôt ; la passer à tous refait du travail bon.
-async function runTaskFollowup(task, instruction, onLog = () => {}, { targetIds } = {}) {
+async function runTaskFollowup(task, instruction, onLog = () => {}, { targetIds, imageIds } = {}) {
   const instr = String(instruction || '').trim();
   if (!instr) throw new Error(t('err.demande-de-suivi-vide'));
 
   if (task.kind === 'explore') {
     const previous = task.md_path && fs.existsSync(task.md_path) ? fs.readFileSync(task.md_path, 'utf8') : '';
-    return runExploration(task, { question: instr, previous, onLog });
+    return runExploration(task, { question: instr, previous, onLog, imageIds });
   }
   const message = commitMessageFor(task, instr.split('\n')[0].slice(0, 72));
   const promptText = avecConsignes(
     'Tu travailles sur une branche existante de ce projet ; le travail précédent est déjà '
     + `committé. Applique la demande de suivi ci-dessous en modifiant directement les fichiers.\n\n`
     + `Demande de suivi : ${instr}`, consignesPermanentes());
-  return runCodeTask(task, { promptText, message, allowCreate: false, onLog, passKind: 'followup', targetIds });
+  return runCodeTask(task, { promptText, message, allowCreate: false, onLog, passKind: 'followup', targetIds, imageIds });
 }
 
 // Reprise après réponses de l'utilisateur (ask → stop → resume). Cible UN projet précis :

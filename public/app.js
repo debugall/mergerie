@@ -4770,8 +4770,72 @@ function restoreTaskForms(state, racine = '#taskList') {
     if (field) field.value = value.v;
     const auto = f.querySelector('.followup-auto');
     if (auto && value.auto !== null) auto.checked = value.auto;
+    renderSuiviPreviews(f);      // les captures collées survivent au re-rendu, comme le texte
   }
 }
+
+/* ---- Captures collées dans une demande de suivi ----
+   Une remarque de suivi montre souvent quelque chose : une capture de l'écran cassé vaut dix
+   lignes de description. Les images vivent ICI, hors du DOM, parce qu'une carte de session en
+   cours se re-rend toutes les secondes et demie — dans le DOM, la capture disparaîtrait sous
+   les doigts. Elles ne partent qu'avec l'envoi du suivi : un brouillon n'emporte que du texte
+   (c'est ce que sait stocker le serveur), et on le DIT plutôt que de les perdre en silence. */
+const suiviImages = new Map();
+const cleFormSuivi = (form) => {
+  const k = CLES_FORM.find((x) => form.dataset[x]);
+  return k ? `${k}:${form.dataset[k]}` : '';
+};
+const suiviCapturesHtml = () => `<div class="followup-imgs">
+    <button type="button" class="btn btn-sm" data-followpick>${svgIco('clip')}${tr('task.followup.add-image')}</button>
+    <span class="muted">${esc(tr('task.followup.paste-hint'))}</span>
+    <input type="file" class="followup-file" accept="image/*" multiple hidden />
+    <span class="followup-prev"></span>
+  </div>`;
+
+function renderSuiviPreviews(form) {
+  const box = form.querySelector('.followup-prev');
+  if (!box) return;
+  const imgs = suiviImages.get(cleFormSuivi(form)) || [];
+  box.innerHTML = imgs.map((src, i) => `<span class="task-prev"><img src="${src}" />`
+    + `<button type="button" data-rmfollowimg="${i}" title="${esc(tr('task.followup.remove-image'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`).join('');
+  $$('[data-rmfollowimg]', box).forEach((b) => b.addEventListener('click', () => {
+    const liste = suiviImages.get(cleFormSuivi(form)) || [];
+    liste.splice(Number(b.dataset.rmfollowimg), 1);
+    if (liste.length) suiviImages.set(cleFormSuivi(form), liste); else suiviImages.delete(cleFormSuivi(form));
+    renderSuiviPreviews(form);
+  }));
+}
+
+async function ajouterSuiviImages(form, files) {
+  const cle = cleFormSuivi(form);
+  if (!cle) return;
+  const liste = suiviImages.get(cle) || [];
+  for (const f of files) if (f && f.type.startsWith('image/')) liste.push(await readFileDataURL(f));
+  if (liste.length) suiviImages.set(cle, liste);
+  renderSuiviPreviews(form);
+}
+
+/* Coller marche partout où l'on écrit un suivi. La modale de session a son propre collage :
+   elle passe devant, sinon un Ctrl+V sur une carte visible en arrière-plan attacherait la
+   capture à la mauvaise chose. */
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-followpick]');
+  if (!b) return;
+  const f = b.closest('.followup').querySelector('.followup-file');
+  if (f) f.click();
+});
+document.addEventListener('change', (e) => {
+  if (!e.target.classList || !e.target.classList.contains('followup-file')) return;
+  ajouterSuiviImages(e.target.closest('.followup'), [...e.target.files]);
+  e.target.value = '';       // re-choisir le même fichier doit redéclencher l'événement
+});
+document.addEventListener('paste', (e) => {
+  if (!$('#taskModal').hidden) return;
+  const form = document.activeElement && document.activeElement.closest && document.activeElement.closest('.followup');
+  if (!form) return;
+  const imgs = [...(e.clipboardData?.items || [])].filter((it) => it.type.startsWith('image/')).map((it) => it.getAsFile());
+  if (imgs.length) { e.preventDefault(); ajouterSuiviImages(form, imgs); }
+});
 
 /* LE SUIVI EN ATTENTE. Écrit pendant que la session travaille, il reste affiché sur la carte
    tant qu'on ne l'a pas envoyé — sinon on oublie qu'on en a un. Le bouton d'envoi est là dès
@@ -4803,6 +4867,10 @@ async function enregistrerSuivi(b, route) {
   const field = form.querySelector('.followup-text');
   const instruction = field.value.trim();
   if (!instruction) { supprimerSuivi(b, route); return; }   // effacer le texte, c'est supprimer
+  /* Un brouillon ne garde QUE du texte — c'est ce que le serveur sait stocker. Les captures
+     restent attachées au formulaire ouvert et partiront avec l'envoi ; on le dit, parce qu'une
+     image qu'on croit enregistrée et qui disparaît au rechargement est une perte silencieuse. */
+  if ((suiviImages.get(cleFormSuivi(form)) || []).length) toast(tr('task.followup.draft-no-image'));
   const caseAuto = form.querySelector('.followup-auto');
   try {
     await busy(b, () => api(route, { method: 'PUT', body: { instruction, auto: !!(caseAuto && caseAuto.checked) } }));
@@ -5040,6 +5108,7 @@ function localCard(t) {
       ${suiviBlock(t, 'l')}
       <div class="mr-create followup" data-lfollowform="${t.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('local.followup.ph'))}">${esc(t.followup_draft || '')}</textarea>
+        ${suiviCapturesHtml()}
         ${autoSuiviCase(t)}
         <button class="btn" data-lfollowcancel="${t.id}">${tr('ui.cancel')}</button>
         <button class="btn" data-lfollowsave="${t.id}">${tr('task.btn.save-followup')}</button>
@@ -5139,8 +5208,13 @@ function renderLocalTasks() {
     const field = form.querySelector('.followup-text');
     const instruction = field.value.trim();
     if (!instruction) return;
+    const cle = cleFormSuivi(form);
+    const images = suiviImages.get(cle) || [];
     try {
-      await busy(b, () => api(`/local-tasks/${b.dataset.lfollowsubmit}/followup`, { method: 'POST', body: { instruction } }));
+      await busy(b, () => api(`/local-tasks/${b.dataset.lfollowsubmit}/followup`, {
+        method: 'POST', body: { instruction, ...(images.length ? { images } : {}) },
+      }));
+      suiviImages.delete(cle);
       field.value = '';
       form.hidden = true;
       toast(tr('local.started')); refreshStatus();
@@ -5410,6 +5484,7 @@ function codeCard(t) {
       ${suiviBlock(t, '')}
       <div class="mr-create followup" data-followform="${t.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph'))}">${esc(t.followup_draft || '')}</textarea>
+        ${suiviCapturesHtml()}
         ${autoSuiviCase(t)}
         <button class="btn" data-followcancel="${t.id}">${tr('ui.cancel')}</button>
         <button class="btn" data-followsave="${t.id}">${tr('task.btn.save-followup')}</button>
@@ -5499,6 +5574,7 @@ function targetLine(t, tg) {
   </div>${followTarget ? `
   <div class="mr-create followup followup-target" data-followform="tg${tg.id}" hidden>
     <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph-target', { project: tg.project }))}"></textarea>
+    ${suiviCapturesHtml()}
     <button class="btn" data-followcancel="tg${tg.id}">${tr('ui.cancel')}</button>
     <button class="btn btn-primary" data-followsubmit="${t.id}" data-followtarget="${tg.id}">${tr('task.btn.run-iteration')}</button>
   </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg, `/tasks/${t.id}/targets/${tg.id}/answer`) : ''}`;
@@ -5566,6 +5642,7 @@ function exploreCard(t) {
       ${suiviBlock(t, '')}
       <div class="mr-create followup" data-followform="${t.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('explore.followup.ph'))}">${esc(t.followup_draft || '')}</textarea>
+        ${suiviCapturesHtml()}
         ${autoSuiviCase(t)}
         <button class="btn" data-followcancel="${t.id}">${tr('ui.cancel')}</button>
         <button class="btn" data-followsave="${t.id}">${tr('task.btn.save-followup')}</button>
@@ -5733,11 +5810,18 @@ function wireTaskActions() {
     const instruction = field.value.trim();
     if (!instruction) return;
     const cible = b.dataset.followtarget;
+    const cle = cleFormSuivi(form);
+    const images = suiviImages.get(cle) || [];
     try {
       await busy(b, () => api(`/tasks/${b.dataset.followsubmit}/followup`, {
         method: 'POST',
-        body: cible ? { instruction, targets: [Number(cible)] } : { instruction },
+        body: {
+          instruction,
+          ...(cible ? { targets: [Number(cible)] } : {}),
+          ...(images.length ? { images } : {}),
+        },
       }));
+      suiviImages.delete(cle);   // parties avec la demande : elles n'ont plus à traîner
       // La demande est partie : on referme et on vide. Sans ça le formulaire reste ouvert
       // avec son texte, et `captureTaskForms` le ROUVRE au rendu suivant — on croirait
       // que l'envoi a échoué.

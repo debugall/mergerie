@@ -75,8 +75,16 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
 
   // Captures jointes : référencées par chemin ABSOLU (l'agent tourne en place dans le
   // dossier de l'utilisateur, sans clone — on ne copie donc rien dans ses dossiers).
-  const imgs = db.prepare('SELECT path FROM local_task_image WHERE task_id = ? ORDER BY id').all(taskId)
-    .filter((im) => { try { return fs.existsSync(im.path); } catch { return false; } });
+  /* Celles de la CONSIGNE INITIALE, plus celles du suivi en cours (`opts.imageIds`) : une
+     capture collée dans un suivi passé illustrait une autre demande, la renvoyer à chaque
+     passe ferait dire au prompt « voici les captures » en montrant autre chose. */
+  const idsSuivi = (opts.imageIds || []).map(Number).filter(Number.isInteger);
+  const imgs = [
+    ...db.prepare('SELECT path FROM local_task_image WHERE task_id = ? AND followup = 0 ORDER BY id').all(taskId),
+    ...(idsSuivi.length
+      ? db.prepare(`SELECT path FROM local_task_image WHERE task_id = ? AND id IN (${idsSuivi.map(() => '?').join(',')})`).all(taskId, ...idsSuivi)
+      : []),
+  ].filter((im) => { try { return fs.existsSync(im.path); } catch { return false; } });
   const imgBlock = imgs.length
     ? `\n\nDes captures d'écran sont fournies (ouvre-les) :${imgs.map((im) => `\n- \`${im.path}\``).join('')}`
     : '';

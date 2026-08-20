@@ -1727,31 +1727,38 @@ function decodeDataUrlImage(dataUrl) {
   const ext = m[1].toLowerCase() === 'jpeg' ? 'jpg' : m[1].toLowerCase();
   return { ext, buf: Buffer.from(m[2], 'base64') };
 }
-function saveTaskImages(taskId, images) {
-  if (!Array.isArray(images)) return;
+/* `followup` : la capture illustre une demande de SUIVI, pas la consigne initiale. Les ids
+   rendus permettent de n'attacher QUE celles-là au prompt de ce suivi — les autres captures de
+   suivis passés parleraient d'autre chose. */
+function saveTaskImages(taskId, images, { followup = 0 } = {}) {
+  if (!Array.isArray(images)) return [];
   const dir = ensureDir(path.join(TASKS_DIR, String(taskId)));
-  const ins = db.prepare('INSERT INTO task_image (task_id, path) VALUES (?, ?)');
+  const ins = db.prepare('INSERT INTO task_image (task_id, path, followup) VALUES (?, ?, ?)');
+  const ids = [];
   for (const dataUrl of images) {
     const { ext, buf } = decodeDataUrlImage(dataUrl);
     const n = db.prepare('SELECT COUNT(*) c FROM task_image WHERE task_id = ?').get(taskId).c + 1;
     const file = path.join(dir, `img_${n}.${ext}`);
     fs.writeFileSync(file, buf);
-    ins.run(taskId, file);
+    ids.push(ins.run(taskId, file, followup ? 1 : 0).lastInsertRowid);
   }
+  return ids;
 }
 
 // Captures d'un codage hors dépôt : mêmes règles, table dédiée (dossier local/<id>).
-function saveLocalImages(taskId, images) {
-  if (!Array.isArray(images)) return;
+function saveLocalImages(taskId, images, { followup = 0 } = {}) {
+  if (!Array.isArray(images)) return [];
   const dir = ensureDir(path.join(TASKS_DIR, 'local', String(taskId)));
-  const ins = db.prepare('INSERT INTO local_task_image (task_id, path) VALUES (?, ?)');
+  const ins = db.prepare('INSERT INTO local_task_image (task_id, path, followup) VALUES (?, ?, ?)');
+  const ids = [];
   for (const dataUrl of images) {
     const { ext, buf } = decodeDataUrlImage(dataUrl);
     const n = db.prepare('SELECT COUNT(*) c FROM local_task_image WHERE task_id = ?').get(taskId).c + 1;
     const file = path.join(dir, `img_${n}.${ext}`);
     fs.writeFileSync(file, buf);
-    ins.run(taskId, file);
+    ids.push(ins.run(taskId, file, followup ? 1 : 0).lastInsertRowid);
   }
+  return ids;
 }
 
 app.get('/api/tasks', wrap((req, res) => {
@@ -2153,7 +2160,10 @@ app.post('/api/local-tasks/:id/followup', wrap((req, res) => {
   if (!lt) throw new Error(t('err.session-introuvable'));
   const instruction = (req.body && req.body.instruction || '').trim() || lt.followup_draft || '';
   if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
-  res.json(envoyerSuivi('local_task', lt, () => jobs.startLocalJob(lt.id, { instruction })));
+  // Même geste que sur une session de dépôt : une capture peut accompagner la demande.
+  const imageIds = saveLocalImages(lt.id, (req.body && req.body.images) || [], { followup: 1 });
+  res.json(envoyerSuivi('local_task', lt, () => jobs.startLocalJob(lt.id,
+    { instruction, ...(imageIds.length ? { imageIds } : {}) })));
 }));
 
 // Suivi en attente d'une session hors dépôt — même contrat que POST /tasks/:id/followup-draft.
@@ -2319,8 +2329,12 @@ app.post('/api/tasks/:id/followup', wrap((req, res) => {
   if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
   const targetIds = normalizeTargetIds(tache.id, req.body && req.body.targets);
   if (targetIds && tache.kind !== 'code') throw new Error(t('err.followup-cible-code-only'));
+  /* Une capture collée dans le suivi. Elle est enregistrée AVANT le lancement : si le job est
+     refusé (un autre tourne déjà), elle reste jointe à la session plutôt que d'être perdue —
+     le texte du suivi, lui, est déjà remis en brouillon par `envoyerSuivi`. */
+  const imageIds = saveTaskImages(tache.id, (req.body && req.body.images) || [], { followup: 1 });
   res.json(envoyerSuivi('task', tache, () => jobs.startTaskJob(tache.id, 'followup',
-    targetIds ? { instruction, targetIds } : { instruction })));
+    { instruction, ...(targetIds ? { targetIds } : {}), ...(imageIds.length ? { imageIds } : {}) })));
 }));
 
 /* LE SUIVI EN ATTENTE. Écrit pendant que la session tourne, relisible et modifiable tant

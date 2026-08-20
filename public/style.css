@@ -2340,6 +2340,11 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .apercu-gabarit > summary:hover { color: var(--text); }
 .apercu-gabarit .verify-log { margin-top: 6px; max-height: 260px; }
 
+/* Captures d'une demande de suivi : même vignette que celles du formulaire de session. */
+.followup-imgs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 2px; }
+.followup-imgs .muted { font-size: 12px; }
+.followup-prev { display: flex; gap: 6px; flex-wrap: wrap; }
+
 /* ---------- Itérations d'un retour d'agent (liste à gauche) ----------
    Le sélecteur déroulant est devenu une COLONNE : on voit d'un coup les itérations et surtout
    la demande qui a produit chacune. La colonne défile pour elle-même, la réponse reste lisible
