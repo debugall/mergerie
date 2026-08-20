@@ -588,9 +588,16 @@ Markdown côte à côte** (le même rendu que les rapports de review, donc le m�
 - **Autosauvegarde** à la frappe, avec un délai d'une seconde et un indicateur discret « Enregistré ».
   Enregistrer à chaque caractère ferait une requête par lettre ; n'enregistrer qu'à la fermeture perdrait
   le travail d'une page restée ouverte.
+- **Coller une capture** (Ctrl+V) dans l'éditeur l'**insère au curseur**, sur sa propre ligne, et
+  l'aperçu l'affiche aussitôt. L'image part **sur le disque** (`data/notes/<page>/`) et la page ne garde
+  qu'un lien : mettre la capture en base64 dans le contenu gonflerait la ligne de plusieurs mégaoctets,
+  renvoyés en entier à chaque autosauvegarde — c'est-à-dire toutes les secondes pendant qu'on écrit.
 - **Épingler** garde une page en tête de liste.
-- **Exporter** télécharge la page en `.md`, au nom **slugifié** depuis le titre.
-- **Supprimer** demande confirmation — c'est la seule action irréversible de l'onglet.
+- **Exporter** télécharge la page en `.md`, au nom **slugifié** depuis le titre. ⚠ Les captures y sont
+  référencées par leur **adresse dans Mergerie** : le `.md` relu ailleurs affichera le texte, pas les
+  images.
+- **Supprimer** demande confirmation — c'est la seule action irréversible de l'onglet. Les **captures de
+  la page partent avec elle**, fichiers compris.
 
 #### Autolink — `!214` et `PROJ-720` deviennent des liens
 Ce qu'on écrit dans une note, ce sont les identifiants du quotidien. Ils deviennent cliquables **au rendu**

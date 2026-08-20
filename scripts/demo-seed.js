@@ -22,6 +22,45 @@ const { REVIEWS_DIR, TASKS_DIR, ensureDir, slugify, initDirs } = require('../src
 const { diffPour } = require('../src/demo-diff');
 initDirs();
 
+/* Un PNG uni, fabriqué à la main : la démo a besoin d'une image, pas d'un binaire versionné.
+   Un PNG = signature + IHDR + IDAT (zlib) + IEND, chaque bloc préfixé de sa taille et suivi
+   de son CRC32 — c'est tout ce que réclame le format pour une image sans transparence. */
+function pngUni(w, h, [r, v, b]) {
+  const zlib = require('zlib');
+  const brut = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y += 1) {
+    const ligne = y * (w * 3 + 1);
+    brut[ligne] = 0;                                  // filtre « aucun »
+    for (let x = 0; x < w; x += 1) {
+      brut[ligne + 1 + x * 3] = r; brut[ligne + 2 + x * 3] = v; brut[ligne + 3 + x * 3] = b;
+    }
+  }
+  const crcTable = [];
+  for (let n = 0; n < 256; n += 1) {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    crcTable[n] = c >>> 0;
+  }
+  const crc32 = (buf) => {
+    let c = 0xffffffff;
+    for (const octet of buf) c = crcTable[(c ^ octet) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const bloc = (type, data) => {
+    const t = Buffer.from(type, 'ascii');
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(Buffer.concat([t, data])));
+    return Buffer.concat([len, t, data, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;   // 8 bits, RVB
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    bloc('IHDR', ihdr), bloc('IDAT', zlib.deflateSync(brut)), bloc('IEND', Buffer.alloc(0)),
+  ]);
+}
+
 const day = 86400000;
 const iso = (daysAgo, h = 10) => new Date(Date.now() - daysAgo * day + h * 3600000 - 30 * day).toISOString();
 // (les dates s'étalent sur ~8 semaines pour peupler courbes hebdo et tendances)
@@ -694,6 +733,24 @@ db.prepare(`INSERT INTO verification
       '## À ne pas oublier',
       'Le point archi de jeudi porte sur le cache : préparer deux chiffres.'].join('\n'),
     1, at(3), at(0.2));
+  /* Une page AVEC UNE CAPTURE : coller une image est un geste de l'onglet Notes, et sans un
+     exemple semé la démo ne montrerait qu'un éditeur de texte. L'image est fabriquée ici même
+     (un PNG uni, quelques dizaines d'octets) : pas de binaire à versionner, et le fichier vit
+     où l'application le range, `data/notes/<page>/`. */
+  {
+    const id = insPage.run('Bug du tunnel de paiement',
+      ['Le total affiché à l’étape 3 ne correspond pas au panier — reproduit deux fois ce matin.',
+        '',
+        'Capture :',
+        ''].join('\n'), 0, at(1), at(0.5)).lastInsertRowid;
+    const dossier = ensureDir(path.join(DEMO_DIR, 'notes', String(id)));
+    const fichier = path.join(dossier, 'img_1.png');
+    fs.writeFileSync(fichier, pngUni(360, 120, [79, 156, 249]));
+    const imgId = db.prepare('INSERT INTO note_image (page_id, path, created_at) VALUES (?,?,?)')
+      .run(id, fichier, at(0.5)).lastInsertRowid;
+    db.prepare('UPDATE note_page SET content = content || ? WHERE id = ?')
+      .run(`![capture](/api/notes/${id}/images/${imgId})\n`, id);
+  }
   insPage.run('Notes migration TypeORM',
     ['Bilan de l’essai de la semaine dernière.',
       '',

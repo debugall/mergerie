@@ -2257,7 +2257,10 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 /* Image EMBARQUÉE (description / commentaire) : largeur fixe, clic = lightbox. */
 .jira-inline-img { max-width: 320px; height: auto; border: 1px solid var(--line); border-radius: 8px;
   cursor: zoom-in; display: block; margin: 8px 0; background: var(--panel2); }
-/* Lightbox : image en grand par-dessus la page (le fond `.modal` gère l'overlay + le centrage). */
+/* Capture collée dans une page de notes : large pour être lisible, bornée pour ne pas pousser
+   le texte hors de l'écran. Sur SA ligne, comme elle est insérée dans le Markdown. */
+.note-inline-img { display: block; max-width: 100%; width: auto; max-height: 480px; height: auto;
+  border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; }/* Lightbox : image en grand par-dessus la page (le fond `.modal` gère l'overlay + le centrage). */
 .jira-lightbox { cursor: zoom-out; }
 .jira-lightbox-fig { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: default; }
 .jira-lightbox-fig img { max-width: 92vw; max-height: 84vh; object-fit: contain; border-radius: 8px; background: var(--panel2); box-shadow: var(--sh-3); }

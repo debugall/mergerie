@@ -567,9 +567,16 @@ renderer as the review reports, hence the same escaping).
 - **Autosave** as you type, with a one-second delay and a discreet “Saved” indicator. Saving on every
   character would mean one request per letter; saving only on close would lose the work of a page left
   open.
+- **Pasting a screenshot** (Ctrl+V) into the editor **inserts it at the caret**, on its own line, and
+  the preview shows it right away. The image goes **to disk** (`data/notes/<page>/`) and the page only
+  keeps a link: putting the screenshot into the content as base64 would swell the row by several
+  megabytes, resent in full on every autosave — that is, about every second while you write.
 - **Pin** keeps a page at the top of the list.
-- **Export** downloads the page as `.md`, under a name **slugified** from the title.
-- **Delete** asks for confirmation — it is the only irreversible action of the tab.
+- **Export** downloads the page as `.md`, under a name **slugified** from the title. ⚠ Screenshots are
+  referenced by their **address inside Mergerie**: the `.md` read elsewhere will show the text, not the
+  images.
+- **Delete** asks for confirmation — it is the only irreversible action of the tab. The page's
+  **screenshots go with it**, files included.
 
 #### Autolink — `!214` and `PROJ-720` become links
 What you write in a note are the identifiers of everyday work. They become clickable **at render time**

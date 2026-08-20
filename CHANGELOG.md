@@ -13,6 +13,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Paste a screenshot into a note page.** Ctrl+V in the editor inserts the image at the caret,
+  on its own line, and the preview shows it immediately. The file goes to disk and the page keeps
+  only a link — a base64 image inside the content would swell the row by megabytes, resent in full
+  on every autosave, about once a second while you write. Only Mergerie's own image addresses are
+  rendered, so an address typed into the text stays text: a note page never becomes a place where
+  pasting a line calls a third-party server. Deleting the page removes its screenshots, files
+  included. An exported `.md` keeps the links, which resolve inside Mergerie only — stated in the
+  guide.
+
 - **Paste a screenshot into a follow-up.** “The button overflows, see the screenshot” — an image
   says in one glance what takes ten lines, and the moment you have it is the moment you write the
   follow-up. The follow-up form now takes images the way the creation form does: an `Add a

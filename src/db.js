@@ -966,6 +966,19 @@ db.exec(`CREATE TABLE IF NOT EXISTS note_page (
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_note_page_ordre ON note_page(pinned DESC, updated_at DESC)');
 
+/* Captures collées DANS une page de notes. Le fichier vit sur disque, la page ne garde qu'un
+   lien Markdown : mettre l'image en base64 dans `content` ferait grossir la ligne de plusieurs
+   mégaoctets et la renverrait en entier à chaque sauvegarde automatique — c'est-à-dire toutes
+   les secondes pendant qu'on écrit. La suppression de la page emporte les lignes (cascade) ;
+   les fichiers, eux, sont retirés explicitement (voir la route DELETE). */
+db.exec(`CREATE TABLE IF NOT EXISTS note_image (
+  id INTEGER PRIMARY KEY,
+  page_id INTEGER NOT NULL REFERENCES note_page(id) ON DELETE CASCADE,
+  path TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_note_image_page ON note_image(page_id)');
+
 /* `due_at` porte À LA FOIS l'échéance et le rappel — une seule vérité plutôt qu'une entité
    `reminder` séparée qu'il faudrait réconcilier. `reminded_at` empêche la re-notification,
    et tout changement de `due_at` le remet à NULL (voir src/notes.js). `archived_at` sort des

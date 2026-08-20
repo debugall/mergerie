@@ -28,6 +28,8 @@ const REVIEWS_DIR = path.join(DATA_DIR, 'reviews');
 const TICKETS_DIR = path.join(DATA_DIR, 'tickets');
 const TASKS_DIR = path.join(DATA_DIR, 'tasks');
 const TMP_DIR = path.join(DATA_DIR, 'tmp');
+// Captures collées dans une page de notes : un sous-dossier par page.
+const NOTES_DIR = path.join(DATA_DIR, 'notes');
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -40,6 +42,7 @@ function initDirs() {
   ensureDir(REVIEWS_DIR);
   ensureDir(TICKETS_DIR);
   ensureDir(TASKS_DIR);
+  ensureDir(NOTES_DIR);
   ensureDir(TMP_DIR);
 }
 
@@ -51,6 +54,6 @@ function slugify(project) {
 }
 
 module.exports = {
-  ROOT, DATA_DIR, DB_PATH, DEFAULT_CLONE_DIR, REVIEWS_DIR, TICKETS_DIR, TASKS_DIR, TMP_DIR,
+  ROOT, DATA_DIR, DB_PATH, DEFAULT_CLONE_DIR, REVIEWS_DIR, TICKETS_DIR, TASKS_DIR, NOTES_DIR, TMP_DIR,
   ensureDir, initDirs, slugify,
 };

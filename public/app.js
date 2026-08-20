@@ -375,6 +375,10 @@ function mdToHtml(md) {
   const inline = (t) => esc(t)
     // Image embarquée Jira → vignette inline cliquable (URL restreinte à NOTRE proxy = sûr).
     .replace(/!\[([^\]]*)\]\((\/api\/jira\/attachment\/\d+)\)/g, '<img class="jira-inline-img" src="$2" alt="$1" data-jimg="$2" data-jname="$1" loading="lazy" />')
+    /* Capture collée dans une page de notes. MÊME garde-fou : seule cette forme d'URL — la
+       nôtre, servie par nous — devient une image. Une adresse écrite à la main dans le texte
+       reste du texte, sinon `![](javascript:…)` ou un pixel espion chez un tiers passerait. */
+    .replace(/!\[([^\]]*)\]\((\/api\/notes\/\d+\/images\/\d+)\)/g, '<img class="note-inline-img" src="$2" alt="$1" loading="lazy" />')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>');
@@ -10144,6 +10148,24 @@ async function notesIndex(force = false) {
    APRÈS et n'injecte que des balises qu'il fabrique lui-même. On saute les blocs de code :
    `!42` dans un extrait de shell est du code, pas une merge request. */
 const NOTE_CODE_RE = /(<pre>[\s\S]*?<\/pre>|<code>[\s\S]*?<\/code>)/;
+/* Insère du texte à la position du curseur d'un champ, et laisse le curseur APRÈS — comme
+   une frappe. Remplacer toute la valeur enverrait le curseur à la fin du document, ce qui se
+   remarque tout de suite quand on colle une capture au milieu d'un paragraphe. */
+function insererAuCurseur(champ, texte) {
+  const debut = champ.selectionStart != null ? champ.selectionStart : champ.value.length;
+  const fin = champ.selectionEnd != null ? champ.selectionEnd : debut;
+  const avant = champ.value.slice(0, debut);
+  const apres = champ.value.slice(fin);
+  /* Une image sur SA ligne : collée en plein milieu d'une phrase, elle couperait le paragraphe
+     en deux au rendu — et un Markdown qu'on relit ailleurs deviendrait illisible. */
+  const tete = avant && !avant.endsWith('\n') ? '\n\n' : '';
+  const queue = apres && !apres.startsWith('\n') ? '\n\n' : '\n';
+  champ.value = avant + tete + texte + queue + apres;
+  const pos = (avant + tete + texte + queue).length;
+  champ.setSelectionRange(pos, pos);
+  champ.focus();
+}
+
 function renderNoteMd(md) {
   const html = mdToHtml(md);
   return html.split(NOTE_CODE_RE)
@@ -10726,6 +10748,28 @@ function renderPageEditor() {
   };
   $('#pageContent').addEventListener('input', () => {
     $('#pagePreview').innerHTML = renderNoteMd($('#pageContent').value);
+    planifier();
+  });
+
+  /* COLLER UNE CAPTURE. L'image part sur le disque et la page ne garde qu'un lien : le
+     contenu d'une page est réenregistré à chaque frappe (à une seconde près), une image en
+     base64 dedans repartirait en entier à chaque fois.
+     Le lien est inséré AU CURSEUR, comme un texte qu'on aurait tapé — on continue d'écrire
+     sans avoir à retrouver sa place. */
+  $('#pageContent').addEventListener('paste', async (e) => {
+    const fichiers = [...(e.clipboardData?.items || [])]
+      .filter((it) => it.type.startsWith('image/')).map((it) => it.getAsFile()).filter(Boolean);
+    if (!fichiers.length) return;
+    e.preventDefault();
+    const champ = $('#pageContent');
+    for (const f of fichiers) {
+      marquer('notes.page.image-sending');
+      try {
+        const { url } = await api(`/notes/${p.id}/images`, { method: 'POST', body: { image: await readFileDataURL(f) } });
+        insererAuCurseur(champ, `![${tr('notes.page.image-alt')}](${url})`);
+      } catch (err) { marquer(null); toast(explainError(err.message), true); return; }
+    }
+    $('#pagePreview').innerHTML = renderNoteMd(champ.value);
     planifier();
   });
   $('#pageTitle').addEventListener('input', planifier);

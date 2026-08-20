@@ -35,7 +35,7 @@ loadEnv(path.join(__dirname, '..', '.env'));
 
 const express = require('express');
 const db = require('./db');
-const { REVIEWS_DIR, TICKETS_DIR, TASKS_DIR, TMP_DIR, ensureDir } = require('./paths');
+const { REVIEWS_DIR, TICKETS_DIR, TASKS_DIR, NOTES_DIR, TMP_DIR, ensureDir } = require('./paths');
 const { extractNote } = require('./note');
 const { getConfig, updateConfig } = require('./config');
 const i18n = require('../public/i18n-runtime.js');
@@ -3443,7 +3443,39 @@ app.put('/api/notes/:id', wrap((req, res) => {
 }));
 
 app.delete('/api/notes/:id', wrap((req, res) => {
-  res.json(notes.supprimerPage(req.params.id, msgNotes()));
+  // Les lignes partent en cascade ; les FICHIERS, eux, resteraient sur le disque.
+  const dossier = path.join(NOTES_DIR, String(Number(req.params.id) || 0));
+  const out = notes.supprimerPage(req.params.id, msgNotes());
+  try { fs.rmSync(dossier, { recursive: true, force: true }); } catch { /* déjà parti */ }
+  res.json(out);
+}));
+
+/* CAPTURES D'UNE PAGE DE NOTES. Le fichier sur disque, un lien Markdown dans la page : coller
+   une image en base64 dans le contenu gonflerait la ligne de plusieurs mégaoctets, renvoyés en
+   entier à chaque sauvegarde automatique — donc à peu près toutes les secondes pendant qu'on
+   écrit. Le rendu n'accepte d'ailleurs QUE cette forme d'URL, comme pour les pièces jointes
+   Jira : une image dont l'adresse vient du texte de l'utilisateur ne s'affiche pas. */
+app.post('/api/notes/:id/images', wrap((req, res) => {
+  const page = notes.lirePage(req.params.id);
+  if (!page) throw Object.assign(new Error(t('err.notes.unknown')), { status: 404 });
+  const { ext, buf } = decodeDataUrlImage((req.body && req.body.image) || '');
+  const dir = ensureDir(path.join(NOTES_DIR, String(page.id)));
+  const n = db.prepare('SELECT COUNT(*) c FROM note_image WHERE page_id = ?').get(page.id).c + 1;
+  const file = path.join(dir, `img_${n}.${ext}`);
+  fs.writeFileSync(file, buf);
+  const id = db.prepare('INSERT INTO note_image (page_id, path, created_at) VALUES (?,?,?)')
+    .run(page.id, file, new Date().toISOString()).lastInsertRowid;
+  res.json({ id, url: `/api/notes/${page.id}/images/${id}` });
+}));
+
+const TYPE_IMAGE = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' };
+app.get('/api/notes/:id/images/:imgId', wrap((req, res) => {
+  const im = db.prepare('SELECT * FROM note_image WHERE id = ? AND page_id = ?')
+    .get(Number(req.params.imgId), Number(req.params.id));
+  if (!im || !fs.existsSync(im.path)) throw Object.assign(new Error(t('err.notes.image-unknown')), { status: 404 });
+  res.setHeader('Content-Type', TYPE_IMAGE[path.extname(im.path).slice(1).toLowerCase()] || 'application/octet-stream');
+  res.setHeader('Cache-Control', 'private, max-age=86400');   // le contenu d'une capture ne change pas
+  res.sendFile(im.path);
 }));
 
 /* Export d'une page en Markdown. Le nom du fichier est SLUGIFIÉ depuis le titre : un titre
