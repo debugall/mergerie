@@ -205,6 +205,18 @@ answering the first does not settle the work, and a todo ticked too early makes 
 other four. It stays an **ordinary** todo — you can tick, edit or delete it: the tool raises it
 and closes it, it does not take over what you did with it.
 
+**Duplicate a coding session.** On the card, next to *Edit*, a button opens the form
+**pre-filled** from that session: prompt, label, commit message, repositories, base branch, options
+and verifier. There is no identifier behind it — **saving creates a new session** instead of
+overwriting the one you copied. This is the gesture of running the same instruction on another
+repository, or starting from a past session with two words changed.
+Two fields are exceptions, and the screen says so: the **working branch** is shifted
+(`feature/x` → `feature/x-2`, then `-3` if that one is taken) because two sessions on the same
+branch would tread on each other — the second committing on top of the first's work — and the
+**agent session** is not resumed, since you are starting a fresh conversation rather than
+continuing the original one. The **images** attached to the original are not copied; their number
+is stated. Everything stays editable before saving: it is a proposal, not a carbon copy.
+
 **A label, optional.** A short title when creating a session — coding, out-of-repo or exploration.
 A list is otherwise read through its prompt, three folded lines whose first words look alike from one
 session to the next; the label says **what it is about** where the prompt says **what to do**. It

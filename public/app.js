@@ -4376,6 +4376,65 @@ async function openTaskEdit(id) {
   } catch (e) { toast(explainError(e.message), true); }
 }
 
+/* Une session dupliquée ne doit pas repartir sur la MÊME branche : l'IA y commiterait par-dessus
+   le travail de l'originale, et deux sessions se disputeraient une seule branche. On propose donc
+   « -2 », « -3 »… en évitant celles que d'autres sessions du même dépôt occupent déjà. C'est une
+   PROPOSITION : le champ reste libre, et c'est le premier endroit où l'on met la main. */
+function brancheLibreSession(repoId, branche) {
+  if (!branche) return '';
+  const prises = new Set();
+  for (const t of allTasks) {
+    for (const tg of t.targets || []) {
+      if (!repoId || Number(tg.repo_id) === Number(repoId)) prises.add(tg.branch);
+    }
+  }
+  const base = String(branche).replace(/-\d+$/, '');
+  let n = 2;
+  while (prises.has(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
+}
+
+/* DUPLIQUER une session de codage. Le formulaire s'ouvre rempli comme pour une modification,
+   mais SANS identifiant : enregistrer crée une NOUVELLE session au lieu d'écraser l'originale.
+   C'est le geste de qui relance la même consigne sur un autre dépôt, ou repart d'une session
+   passée en changeant deux mots — sinon il faut tout retaper, ou pire, modifier l'existante en
+   croyant en créer une autre.
+   Deux choses ne se copient PAS, et l'écran le dit :
+     - la SESSION D'AGENT (« reprendre une session existante ») : la reprendre continuerait la
+       conversation de l'originale, alors qu'on en démarre une neuve ;
+     - les IMAGES attachées, qui vivent sur disque et appartiennent à la session d'origine. */
+async function dupliquerTask(id) {
+  const f = $('#taskForm');
+  f.reset(); taskNewImages = []; renderTaskPreviews();
+  const d = await api(`/tasks/${id}`);
+  const t = d.task;
+  editingTaskId = null; launchAfterCreate = false; convergeAfterCreate = false;
+  taskKind = t.kind || 'code';
+  await loadRepoOptions();
+  applyKindToModal(taskKind);
+  renderTargetRows((t.targets || []).map((x) => ({
+    repo_id: x.repo_id, branch: brancheLibreSession(x.repo_id, x.branch), base_branch: x.base_branch,
+  })));
+  setupTaskJira((t.targets && t.targets[0] && t.targets[0].branch) || '');
+  f.prompt.value = t.prompt || '';
+  if (f.label) f.label.value = t.label || '';
+  if (f.commit_message) f.commit_message.value = t.commit_message || '';
+  if (f.auto_push) f.auto_push.checked = !!t.auto_push;
+  if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
+  await majVerificateursSession(t.verifier_id || '');
+  if (f.session_id) f.session_id.value = '';
+  $('#taskModalTitle').textContent = tr('task.duplicate.title');
+  const nImages = (d.images && d.images.length) || 0;
+  $('#taskExistingImgs').textContent = nImages
+    ? `${tr('task.duplicate.info')} ${tr('task.duplicate.no-images', { n: nImages, count: nImages })}`
+    : tr('task.duplicate.info');
+  // Créer, comme une session neuve : le bouton principal enregistre sans lancer.
+  $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
+  $('#taskSubmitOnly').hidden = true;
+  showTaskModal();
+  f.prompt.focus();
+}
+
 /* Session commune à TOUTES les unités d'une session (projets ou dossiers), s'il y en a une.
    Sert à pré-remplir « reprendre une session existante » en édition : tant que les unités
    s'accordent, le champ montre la vérité. Dès qu'elles divergent — une seule a tourné, par
@@ -5320,6 +5379,7 @@ function codeCard(t) {
       ? `<button class="btn" data-treconcile="${t.id}" title="${esc(tr('task.title.reconcile'))}"><svg class="ico"><use href="#i-branch"/></svg>${tr('task.btn.reconcile')}</button>` : '',
   ], [
     `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
+    `<button class="btn btn-icon btn-sm" data-tcopy="${t.id}" title="${esc(tr('task.title.duplicate'))}"><svg class="ico"><use href="#i-copy"/></svg></button>`,
     hideBtn('task', t),
     `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>`,
   ])}
@@ -5562,6 +5622,7 @@ function wireTaskActions() {
     catch (e) { toast(explainError(e.message), true); }
   });
   on('[data-tedit]', (b) => openTaskEdit(Number(b.dataset.tedit)).catch((e) => toast(tr('toast.ouverture-impossible', { message: e.message }), true)));
+  on('[data-tcopy]', (b) => dupliquerTask(Number(b.dataset.tcopy)).catch((e) => toast(explainError(e.message), true)));
   on('[data-tmd]', (b) => openTaskMd(Number(b.dataset.tmd)));
 
   // --- actions PAR PROJET (codage) ---

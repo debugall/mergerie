@@ -13,6 +13,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Duplicate a coding session into a pre-filled form.** Next to *Edit*, a button reopens the
+  session's form with everything already there — prompt, label, commit message, repositories, base
+  branch, options, verifier — but with no identifier behind it, so saving **creates** a new session
+  instead of overwriting the one you copied. Two fields deliberately differ: the working branch is
+  shifted (`feature/x` → `feature/x-2`, avoiding branches other sessions already occupy), because
+  two sessions on one branch would commit on top of each other; and the agent session is not
+  resumed, since a copy starts a fresh conversation. Attached images stay with the original, and
+  the screen says so.
+
 - **Iterations of an AI output are a list, not a dropdown.** `AI output` now shows every
   iteration in a column on the left — number, kind, date and, above all, **the request that
   produced it** — and the one you pick on the right. A **search field** at the top of the column
