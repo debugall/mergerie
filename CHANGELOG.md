@@ -100,6 +100,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Line numbers quoted by a review report now match the code on screen.** The AI was handed a
+  patch and nothing else: in a patch, line numbers live only in the `@@` headers, so quoting
+  “line 137” means counting by hand across every hunk — right most of the time, wrong sometimes,
+  and one wrong number makes the reader doubt the whole report. It now also receives the same
+  diff **already numbered**, each line carrying its real number in the final version of the file
+  (blank for deleted lines, which no longer exist), and is told to read numbers there rather than
+  recount them. Second cause, in the viewer itself: the full-screen view listed the file tree of
+  the **branch head** while the file content and its line numbers came from the **reviewed
+  commit** — so a commit pushed after the review made the two disagree. Everything now speaks the
+  reviewed commit, with a fallback to the head if that commit is gone.
+
 - **An exploration's questions now reach the screen.** When the AI hesitated during an
   exploration, its `<<<QUESTIONS>>>` block was looked for on standard output only — while the
   exploration prompt tells the agent to write everything into the answer file and to duplicate

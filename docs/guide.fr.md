@@ -143,6 +143,14 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
 ### ⛶ Ouvrir le code (explorateur plein écran)
 Arbre du projet + fichier affiché **entier avec le diff en place**, coloration syntaxique,
 **mini-carte** des changements, navigation entre modifications, panneaux repliables.
+
+**Tout l'écran parle de la version REVIEWÉE**, pas de la tête de branche : arbre, contenu du
+fichier et numéros de ligne viennent du commit que le rapport décrit. C'est ce qui fait qu'un
+« `src/foo.js` ligne 137 » lu dans le rapport tombe sur la bonne ligne à droite, même si la
+branche a avancé depuis (auquel cas la MR est de toute façon signalée **périmée**). Si ce commit
+a disparu du dépôt — force-push —, l'écran retombe sur la tête de branche.
+Côté rapport, l'IA reçoit le diff **déjà numéroté** : chaque ligne y porte son numéro réel dans
+la version finale du fichier, plutôt que de la laisser recompter depuis les en-têtes `@@`.
 **Commentaire inline** par ligne et **réponses** aux fils, synchronisés avec la forge — et
 **modifiables** tant qu'ils sont de toi.
 

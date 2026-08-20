@@ -3802,7 +3802,15 @@ app.get('/api/mrs/:id/diffview', wrap(async (req, res) => {
   const rev = db.prepare('SELECT diff_path FROM review WHERE mr_id = ?').get(mr.id);
   const stored = rev ? readFileSafe(rev.diff_path) : null;
   const diff = stored || await git.targetedDiff(cwd, mr.source_branch, mr.target_branch, () => {});
-  const ctx = { cwd, ref: `origin/${mr.source_branch}`, target: mr.target_branch || 'main' };
+  /* LA MÊME VERSION QUE LE RAPPORT. Le diff servi ici est celui de la review ; l'arborescence
+     doit donc être celle du commit REVIEWÉ, pas de la tête de branche — sinon, dès que la
+     branche avance, l'écran mélange deux versions : un fichier listé d'après la tête, un
+     contenu et des numéros de ligne venus du commit reviewé (routes `/file` et `/filediff`,
+     qui visent `reviewed_sha`). Repli sur la tête si l'objet n'est plus là (force-push),
+     comme le fait déjà `/tree`. */
+  const vise = mr.reviewed_sha && await git.refExists(cwd, mr.reviewed_sha)
+    ? mr.reviewed_sha : `origin/${mr.source_branch}`;
+  const ctx = { cwd, ref: vise, target: mr.target_branch || 'main' };
   res.json(await viewerPayload(ctx, { diff, source: mr.source_branch }));
 }));
 

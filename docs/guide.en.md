@@ -140,6 +140,14 @@ Project tree plus the file shown **in full with the diff in place**, syntax high
 the changes, navigation between modifications, collapsible panels. **Inline comments** per line and
 **replies** to threads, synchronised with the forge — and **editable** as long as they are yours.
 
+**The whole screen speaks of the REVIEWED version**, not of the branch head: tree, file content and
+line numbers all come from the commit the report describes. That is what makes a “`src/foo.js` line
+137” read in the report land on the right line on the right-hand side, even if the branch has moved
+since (in which case the merge request is flagged **stale** anyway). If that commit has disappeared
+from the repository — a force-push — the screen falls back to the branch head.
+On the report side, the AI receives the diff **already numbered**: every line carries its real
+number in the final version of the file, instead of being left to recount from the `@@` headers.
+
 **Two ways to comment, your choice.** `Comment on GitLab` publishes right away, as before.
 **`Save`** keeps the remark **pending**, locally: you review a merge request file by file, and
 sending them one at a time showers the author with notifications while freezing remarks you would
