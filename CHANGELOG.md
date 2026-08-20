@@ -100,6 +100,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **An exploration's questions now reach the screen.** When the AI hesitated during an
+  exploration, its `<<<QUESTIONS>>>` block was looked for on standard output only — while the
+  exploration prompt tells the agent to write everything into the answer file and to duplicate
+  nothing on standard output. The agent obeyed, the block went into the file, nobody read it: the
+  exploration finished "normally" with the raw protocol block as its answer, and no form to answer
+  it. Both places are now read, and the instruction no longer contradicts itself — the block is
+  explicitly allowed in either. Dry-run simulates the realistic case (block in the file), so the
+  path that actually broke is the one under test.
+
 - **The red Docker badge no longer counts containers you stopped yourself.** `docker stop` — and
   so `docker compose stop` — sends SIGTERM and then SIGKILL once the grace period runs out, so a
   container that does not trap SIGTERM exits with **143** or **137** although nothing broke. Those

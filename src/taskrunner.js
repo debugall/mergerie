@@ -455,7 +455,12 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
     + `Ne duplique pas ce contenu sur la sortie standard.`
     /* Option « l'IA peut poser des questions » : une exploration hésite comme un codage —
        « de quel des trois services parles-tu ? » vaut mieux qu'une synthèse à côté du sujet. */
-    + (task.ask_questions ? questions.QUESTIONS_INSTRUCTION : '');
+    /* …et on lève la CONTRADICTION avec la consigne ci-dessus : « n'écris rien sur la sortie
+       standard » d'un côté, « émets ce bloc à la fin de ta sortie » de l'autre. Un agent doit
+       pouvoir poser sa question sans se demander où la mettre. Les deux endroits sont lus. */
+    + (task.ask_questions ? `${questions.QUESTIONS_INSTRUCTION}\n\nCe bloc est la SEULE exception `
+      + `à la consigne ci-dessus : émets-le sur la sortie standard OU dans \`${outRel}\`, et `
+      + `n'écris alors pas de réponse de synthèse — tu la rédigeras une fois les réponses reçues.` : '');
 
   onLog(t('log.explore.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai'), n: dirs.length, count: dirs.length }));
   let stdout = '';
@@ -482,9 +487,15 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
       // Les cibles d'une exploration partagent la session : toutes portent le même handle.
       if (created) for (const tg of targets) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: root });
     } else if (copilot.isDryRun() && task.ask_questions && !apresReponses) {
-      // Dry-run, première passe : l'agent simule ses questions au lieu de répondre.
+      /* Dry-run, première passe : l'agent simule ses questions au lieu de répondre — et il les
+         écrit DANS LE FICHIER de réponse, pas sur la sortie standard. C'est ce que fait un
+         agent qui suit ce prompt-ci, qui lui demande justement de tout écrire dans ce fichier :
+         la simulation doit reproduire le vrai comportement, sinon elle valide un chemin que
+         personne n'emprunte. (Le codage et le hors dépôt, eux, répondent sur la sortie
+         standard : les deux chemins restent couverts.) */
       onLog('$ (DRY-RUN — l’agent pose des questions)');
-      stdout = questions.DRYRUN_QUESTIONS;
+      fs.writeFileSync(outAbs, questions.DRYRUN_QUESTIONS, 'utf8');
+      stdout = 'J’ai besoin de précisions avant de répondre.';
     } else {
       stdout = await copilot.runPrompt(prompt, root, { kind: 'explore' }, onLog);
     }
@@ -503,8 +514,17 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
   /* Volontairement SANS `apresReponses` : un agent a le droit de reposer une question après
      avoir lu les réponses — c'est même le signe qu'il les a prises au sérieux. Seule la
      simulation du dry-run est bornée, sinon elle bouclerait sur elle-même. */
+  let content = '';
+  if (fs.existsSync(outAbs)) content = fs.readFileSync(outAbs, 'utf8').trim();
+
   if (task.ask_questions) {
-    const qs = questions.parseQuestions(stdout);
+    /* Le bloc peut arriver par DEUX chemins, et ce n'est pas un détail d'implémentation : le
+       prompt d'exploration demande d'écrire la réponse dans un FICHIER et de ne rien dupliquer
+       sur la sortie standard, quand la consigne des questions, elle, parle de « la fin de ta
+       sortie ». Un agent qui hésite pose donc sa question là où on lui a dit d'écrire — dans le
+       fichier. Ne lire que la sortie standard laissait l'exploration se terminer « normalement »,
+       avec le bloc brut en guise de réponse et aucun formulaire à l'écran. */
+    const qs = questions.parseQuestions(stdout) || questions.parseQuestions(content);
     if (qs && qs.length) {
       for (const tg of targets) {
         setTarget(tg.id, { questions_json: JSON.stringify(qs), status: 'needs_input', last_error: null });
@@ -517,8 +537,6 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
     }
   }
 
-  let content = '';
-  if (fs.existsSync(outAbs)) content = fs.readFileSync(outAbs, 'utf8').trim();
   if (content) {
     onLog(t('log.explore.answer-read', { path: outRel, n: content.length }));
     copilot.addOutputToLastUsage(content);

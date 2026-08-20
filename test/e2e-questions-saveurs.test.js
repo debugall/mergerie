@@ -47,6 +47,11 @@ describe('Questions de l’agent : exploration et hors dépôt', () => {
     let task = (await app.api('GET', `/api/tasks/${t.id}`)).body.task;
     assert.equal(task.status, 'needs_input', 'la session attend, elle n’est ni finie ni en erreur');
     const tg = task.targets[0];
+    /* LÀ OÙ L'AGENT ÉCRIT. Le prompt d'exploration lui demande de tout mettre dans le fichier
+       de réponse et de ne rien dupliquer sur la sortie standard : c'est donc dans ce FICHIER
+       qu'il pose ses questions. Ne relire que la sortie standard laissait l'exploration se
+       terminer « normalement », le bloc <<<QUESTIONS>>> brut en guise de réponse et aucun
+       formulaire à l'écran — le défaut se voyait à l'écran, pas dans les tests. */
     assert.equal(tg.questions.length, 2, 'les questions sont exposées à l’écran');
 
     /* Le point qui compte : RIEN n'a été archivé. Une exploration qui s'arrête pour demander
@@ -68,7 +73,10 @@ describe('Questions de l’agent : exploration et hors dépôt', () => {
 
     task = (await app.api('GET', `/api/tasks/${t.id}`)).body.task;
     assert.equal(task.status, 'done', 'après réponses, l’exploration va au bout');
-    assert.ok((await app.api('GET', `/api/tasks/${t.id}/md`)).body.md, 'et la synthèse existe');
+    const md = (await app.api('GET', `/api/tasks/${t.id}/md`)).body.md;
+    assert.ok(md, 'et la synthèse existe');
+    // Et la réponse est une RÉPONSE : jamais le protocole rendu tel quel, comme un texte à lire.
+    assert.ok(!md.includes('<<<QUESTIONS'), 'le bloc de protocole ne doit pas se retrouver dans la réponse');
   });
 
   test('sans la case, une exploration ne pose rien et répond du premier coup', async () => {
