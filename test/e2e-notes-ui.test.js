@@ -126,7 +126,13 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     await page.locator('#tab-notes .subnav button[data-nsub="todos"]').click();
     await page.waitForSelector('#todoList .todo-row');
     const avant = await page.locator('#todoList .todo-row').count();
-    await page.locator('#todoList .todo-check').first().check();
+    /* `click()` et non `check()` : cocher fait DISPARAÎTRE la ligne (la liste « à faire » se
+       recharge sans elle). `check()`, lui, relit la case après le clic pour confirmer qu'elle
+       est cochée — sur une machine lente, le re-rendu passe avant cette relecture, la case
+       n'existe plus, et Playwright attend une ligne partie jusqu'au bout de son délai. Le
+       défaut n'était pas dans l'application : c'est l'effet qu'on veut vérifier, et il est
+       vérifié juste en dessous. */
+    await page.locator('#todoList .todo-check').first().click();
     await page.waitForFunction((n) => document.querySelectorAll('#todoList .todo-row').length === n - 1, avant);
     assert.equal(await page.locator('#todoList .todo-row').count(), avant - 1);
 
@@ -166,7 +172,10 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     await page.locator('nav button[data-tab="notes"]').click();
     await page.locator('#tab-notes .subnav button[data-nsub="todos"]').click();
     await page.waitForSelector('#todoList .todo-row');
-    await page.locator('#todoList .todo-row', { hasText: 'normale en retard' }).locator('.todo-check').check();
+    // Cocher retire la ligne de « à faire » : on clique, puis on vérifie l'EFFET (cf. plus haut).
+    const enRetard = page.locator('#todoList .todo-row', { hasText: 'normale en retard' });
+    await enRetard.locator('.todo-check').click();
+    await enRetard.waitFor({ state: 'detached' });
     await page.waitForFunction(() => document.querySelector('#navTodoUrgent').textContent === '1');
     assert.match(await page.locator('#navTodoUrgent').getAttribute('data-tip'), /priorité haute/);
     assert.doesNotMatch(await page.locator('#navTodoUrgent').getAttribute('data-tip'), /retard/,
@@ -424,8 +433,10 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
   test('la vue « faites » ne se réordonne pas', async () => {
     await page.locator('#tab-notes .subnav button[data-nsub="todos"]').click();
     await page.waitForSelector('#todoList .todo-row');
-    await page.locator('#todoList .todo-check').first().check();
-    await page.waitForTimeout(200);
+    const ouvertes = await page.locator('#todoList .todo-row').count();
+    await page.locator('#todoList .todo-check').first().click();
+    // Attendre l'effet plutôt qu'un délai : sur une machine lente, 200 ms ne suffisent pas.
+    await page.waitForFunction((n) => document.querySelectorAll('#todoList .todo-row').length === n - 1, ouvertes);
     await page.locator('.todo-filter [data-tfilter="done"]').click();
     await page.waitForSelector('#todoList .todo-row');
     assert.equal(await page.locator('#todoList [data-todo-up]').count(), 0);
