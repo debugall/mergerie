@@ -21,3 +21,43 @@
 - After each development, add tests. Prefer end-to-end tests so refactoring stays easy without regressions; where end-to-end is not relevant/possible, add unit tests.
 
 - When you add features, remember to update README.md, PLAN.md, the demo mode, and add an entry under `## [Unreleased]` in CHANGELOG.md (user-facing wording, not the commit message).
+
+- **A green local suite does not mean a green CI.** The GitHub runner has **2 cores**; this
+  machine runs the whole suite in ~80 s where the runner takes ~5 min. Every test that assumes
+  "the assertion runs before the screen re-renders / before the job finishes" passes here and
+  fails there. Before declaring a change done, replay the suite **under the runner's
+  conditions** — from `git archive HEAD`, so an untracked file cannot mask a missing one:
+
+  ```bash
+  rm -rf /tmp/ci && mkdir -p /tmp/ci && git archive HEAD | tar -x -C /tmp/ci
+  printf 'set -e\ncd /app\nexport PLAYWRIGHT_BROWSERS_PATH=/ms-playwright\nnpx playwright install --with-deps chromium >/dev/null\nnpm ci --no-audit --no-fund >/dev/null\nnpm test\n' > /tmp/ci/run.sh
+  docker run --rm --cpus 2 -v /tmp/ci:/app -w /app node:22 bash /app/run.sh
+  ```
+
+  A cheaper first filter: run the file under CPU load (`for i in $(seq 8); do (yes >/dev/null &); done`,
+  then `pkill yes`). It catches the coarsest races in seconds.
+
+- **Never assert on a state the screen is allowed to leave.** This is the single cause of every
+  CI break so far, and each one looked like an application bug at first read:
+  - **`check()` / `uncheck()` re-read the control after clicking.** On a row that disappears on
+    success (ticking a todo removes it from "to do"), the re-read can never succeed. Use
+    `click()`, then assert the **effect** (the row is gone, the badge dropped).
+  - **`waitForTimeout(n)` is a bet on the machine's speed.** Wait for the effect instead:
+    `waitForFunction`, `waitFor({ state })`, or poll the API until the server holds the value.
+    Saving then reloading 300 ms later loses the save on a loaded runner — and the failure
+    then accuses the feature, not the clock.
+  - **The screen's wording is not the server's state.** "Saving…" and "Saved" both match
+    `/enregistr/`; autosave fires ~1 s after the last keystroke. To prove something was stored,
+    read it back from the API, not from a label.
+  - **A job can finish before you can stop or observe it.** `POST /api/jobs/stop` legitimately
+    answers 409 ("nothing to stop") when the job is already done. Accept both outcomes and
+    assert the invariant that actually matters.
+  - **A card that re-renders every 1.5 s invalidates element handles.** Re-resolve locators
+    inside the wait; never hold a handle across an action that triggers a reload.
+  - Known debt: **~38 `waitForTimeout` remain** in `test/`. Each is a coin flip on a slow
+    runner; replace the ones you touch as you go.
+
+- **One `startApp()` per test file.** The harness starts the server **in-process**: a second
+  call in the same file returns the already-stopped instance and waits for a `listening` event
+  that will never come — the file then times out instead of failing, which reads like a hang.
+  Several `describe` blocks in one file must share the same app and the same browser.

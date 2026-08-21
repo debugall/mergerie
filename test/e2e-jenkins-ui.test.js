@@ -28,7 +28,37 @@ try {
    son état. Mieux vaut attendre longtemps pour rien que rendre un rouge qui ne veut rien dire. */
 const ATTENTE_ECRAN = 20000;
 
+/* Attend qu'une condition côté SERVEUR devienne vraie. Un `waitForTimeout` fixe est un pari
+   sur la vitesse de la machine : il tient en local et lâche sur un runner à deux cœurs. */
+async function attendreServeur(cond, quoi, ms = 15000) {
+  const fin = Date.now() + ms;
+  for (;;) {
+    if (await cond()) return;
+    if (Date.now() > fin) throw new Error(`délai dépassé : ${quoi}`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx playwright install chromium' }, () => {
+  /* POSER UN FILTRE, ET S'ASSURER QU'IL A PRIS. La liste Jenkins se recharge toute seule
+     pendant qu'on la regarde (`loadJenkins({ silencieux: true })`) et chaque rendu REMPLACE les
+     champs de filtre. Si le rendu tombe entre le moment où la frappe pose la valeur et celui où
+     l'événement `input` part, la frappe atterrit sur un champ détaché : rien ne se filtre, et
+     l'attente du résultat expire au bout de trente secondes — un échec qui accuse le filtre
+     alors que c'est le chronomètre. On repose donc la valeur tant que l'effet n'est pas là. */
+  async function poserFiltreParam(nom, valeur, lignesAttendues, essais = 5) {
+    for (let i = 1; i <= essais; i += 1) {
+      await page.locator(`[data-jkpf="${nom}"]`).fill(valeur);
+      try {
+        await page.waitForFunction(
+          (n) => document.querySelectorAll('#jenkinsBox .jk-row').length === n,
+          lignesAttendues, { timeout: 3000 },
+        );
+        return;
+      } catch (e) { if (i === essais) throw e; }
+    }
+  }
+
   let app;
   let srv;
   let navigateur;
@@ -141,7 +171,12 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
       null, { timeout: ATTENTE_ECRAN });
 
     await page.locator('#sub-jenkinscfg button[type="submit"]').first().click();
-    await page.waitForTimeout(300);
+    /* On attend que le SERVEUR ait la valeur, pas un délai. Recharger 300 ms après le clic
+       marche sur une machine rapide et perd l'enregistrement sur un runner chargé : la page
+       repart alors sans jeton, la liste reste vide, et l'échec accuse le jeton au lieu du
+       chronomètre. */
+    await attendreServeur(async () => (await app.api('GET', '/api/config')).body.jenkins_url === srv.url,
+      'les identifiants Jenkins sont enregistrés côté serveur');
     await page.reload();
     await allerJenkins();
     await page.waitForSelector('#jenkinsBox .jk-row');
@@ -248,8 +283,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
   test('un filtre non pertinent se masque, sa valeur avec, et se remet', async () => {
     await allerJenkins();
     await page.waitForSelector('#jenkinsParamFiltres [data-jkpf="VERSION"]');
-    await page.locator('[data-jkpf="VERSION"]').fill('9.9');
-    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
+    await poserFiltreParam('VERSION', '9.9', 1);
 
     await page.locator('[data-jkpfhide="VERSION"]').click();
     await page.waitForFunction(() => !document.querySelector('[data-jkpf="VERSION"]'));
@@ -280,20 +314,17 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     assert.deepEqual(await page.locator('#jenkinsParamFiltres .jk-pf-k').allTextContents(), ['ENV', 'VERSION'],
       'ENV sur quatre jobs et VERSION sur trois ; LOT sur deux et SEUL sur un n’en méritent pas');
 
-    await page.locator('[data-jkpf="ENV"]').fill('dev');
-    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
+    await poserFiltreParam('ENV', 'dev', 1);
     assert.match(await page.locator('#jenkinsBox .jk-row').first().textContent(), /front-build/);
 
     /* Une valeur portée par deux jobs les garde tous les deux — et un job qui n'a PAS le
        paramètre est écarté : il ne répond pas à la question posée. */
-    await page.locator('[data-jkpf="ENV"]').fill('prod');
-    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 2);
+    await poserFiltreParam('ENV', 'prod', 2);
 
     /* Les colonnes ne bougent PAS quand on filtre : elles sont calculées sur TOUS les jobs.
        Calculées sur ce qui reste, une liste réduite à un job ferait tomber tout le monde sous
        le seuil — les colonnes disparaîtraient sous les yeux à chaque frappe. */
-    await page.locator('[data-jkpf="ENV"]').fill('dev');
-    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
+    await poserFiltreParam('ENV', 'dev', 1);
     assert.equal(await page.locator('#jenkinsParamFiltres [data-jkpf]').count(), 2,
       'un seul job affiché, et pourtant les deux colonnes tiennent');
     /* SUGGÉRER SANS ENFERMER. Les valeurs proposées sont celles des DERNIERS lancements : une
@@ -304,12 +335,10 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     });
     assert.ok(propose && propose.includes('prod'), 'ce qu’on a vu passer reste proposé d’un clic');
     assert.ok(!propose.includes('preprod'), 'aucun job n’a tourné en préprod récemment : la valeur n’est pas proposée');
-    await page.locator('[data-jkpf="ENV"]').fill('preprod');
-    await page.waitForFunction(() => !document.querySelector('#jenkinsBox .jk-row'));
+    await poserFiltreParam('ENV', 'preprod', 0);
     // Une liste fermée aurait refusé la frappe et rien filtré du tout : les six jobs seraient restés.
 
-    await page.locator('[data-jkpf="ENV"]').fill('');
-    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 6);
+    await poserFiltreParam('ENV', '', 6);
   });
 
   /* LE FILTRE PAR DOSSIERS. Il est mémorisé — sinon il faudrait le refaire à chaque
@@ -959,7 +988,11 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
       return r.top < window.innerHeight && r.bottom > 0 && r.height > 0;
     });
     await page.locator('#jenkinsModalBody').evaluate((el) => { el.scrollTop = el.scrollHeight; });
-    await page.waitForTimeout(150);
+    // Attendre que le défilement ait ABOUTI, pas un délai : c'est la position qui compte ici.
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#jenkinsModalBody');
+      return el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+    });
     assert.equal(await visible('#jenkinsRun'), true, '« Lancer » reste à l’écran, sous l’historique déroulé');
     assert.equal(await visible('#jenkinsFiche .jk-col-detail .jk-build-detail'), true,
       'le détail de l’exécution suit la descente au lieu de filer vers le haut');
