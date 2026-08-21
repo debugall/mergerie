@@ -473,7 +473,7 @@ const LOCAL_OUT = {
 const LOCAL_PASSES = {
   '/home/moi/dev/backup-tool': [
     { kind: 'run', prompt: lt1prompt, jours: 2.4, out: `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` avec les quatre niveaux.\n- Remplacé les \`console.log\` de \`backup.js\`.\n\n## Reste à faire\n\n\`restore.js\` n'est pas traité : ses sorties sont lues par un script appelant, je préfère une consigne avant d'y toucher.\n` },
-    { kind: 'followup', prompt: 'Les sorties de restore.js sont consommées par un script appelant : garde stdout pour ces données-là et route les logs vers stderr.', jours: 2.2, out: `## Ce que j'ai fait\n\n- \`restore.js\` : logs vers \`stderr\`, données utiles laissées sur \`stdout\`.\n- Vérifié les 14 appels remplacés.\n` },
+    { kind: 'followup', favori: true, titre: 'stdout gardé pour les données', prompt: 'Les sorties de restore.js sont consommées par un script appelant : garde stdout pour ces données-là et route les logs vers stderr.', jours: 2.2, out: `## Ce que j'ai fait\n\n- \`restore.js\` : logs vers \`stderr\`, données utiles laissées sur \`stdout\`.\n- Vérifié les 14 appels remplacés.\n` },
     { kind: 'followup', prompt: 'Ajoute un test par cas : format, niveaux, filtrage, sortie stderr.', jours: 2 },
   ],
   '/home/moi/dev/csv-cleaner': [
@@ -492,9 +492,12 @@ for (const p of Object.keys(LOCAL_OUT)) {
   (LOCAL_PASSES[p] || []).forEach((passe, i) => {
     const fichier = path.join(dir, `output-v${i + 1}.md`);
     fs.writeFileSync(fichier, passe.out || LOCAL_OUT[p], 'utf8');
-    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
-      VALUES ('local',?,?,?,?,?,?,?)`)
-      .run(lt1.lastInsertRowid, info.lastInsertRowid, i + 1, passe.kind, passe.prompt, fichier, at(passe.jours));
+    /* Une itération ÉPINGLÉE ET NOMMÉE : c'est le geste qui rend une longue colonne
+       praticable, et sans exemple semé la démo ne montrerait que des « Itération 2 ». */
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at, favori, titre)
+      VALUES ('local',?,?,?,?,?,?,?,?,?)`)
+      .run(lt1.lastInsertRowid, info.lastInsertRowid, i + 1, passe.kind, passe.prompt, fichier, at(passe.jours),
+        passe.favori ? 1 : 0, passe.titre || null);
   });
 }
 /* Codage hors dépôt CRÉÉ MAIS PAS LANCÉ (« Créer sans lancer ») : la carte porte alors un

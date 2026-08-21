@@ -152,4 +152,98 @@ describe('Retour de l’IA · itérations', { skip: dispo ? false : MSG_NAVIGATE
     assert.equal(await page.locator('#taskPassList .pass-item:visible').count(), 3);
     assert.deepEqual(erreurs, []);
   });
+  /* REPÉRER UNE ITÉRATION PARMI VINGT. Le numéro et la date ne disent rien de ce qui s'y est
+     joué. On épingle donc les quelques passes qui comptent — elles remontent en tête — et on
+     leur donne un nom. Ni l'un ni l'autre ne part à l'agent : c'est du rangement, comme le
+     libellé d'une session. */
+  test('une itération se nomme, et le nom se relit après rechargement', async () => {
+    await ouvrirRetour(multi.id);
+    const premiere = items().first();
+    await premiere.locator('[data-passname]').click();
+    await page.locator('.pass-rename').fill('corrige le logger');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('#taskPassList .pass-item-name');
+
+    assert.equal(await page.locator('#taskPassList .pass-item-name').first().textContent(), 'corrige le logger');
+    // Le nom est en BASE, pas seulement à l'écran.
+    const enBase = app.db.prepare("SELECT titre FROM agent_pass WHERE scope = 'local' ORDER BY n LIMIT 1").get();
+    assert.equal(enBase.titre, 'corrige le logger');
+
+    await page.reload();
+    await page.locator('nav button[data-tab="task"]').click();
+    await page.locator('#tab-task .subnav [data-kind="local"]').click();
+    await page.waitForSelector('#localList .card');
+    await ouvrirRetour(multi.id);
+    assert.equal(await page.locator('#taskPassList .pass-item-name').first().textContent(), 'corrige le logger');
+  });
+
+  test('la recherche trouve une itération par son nom', async () => {
+    await ouvrirRetour(multi.id);
+    await page.locator('#taskPassSearch').fill('corrige le logger');
+    await page.waitForFunction(() => document.querySelectorAll('#taskPassList .pass-item[hidden]').length === 2);
+    const visibles = await page.locator('#taskPassList .pass-item:visible').allTextContents();
+    assert.equal(visibles.length, 1);
+    assert.match(visibles[0], /corrige le logger/);
+    await page.locator('#taskPassSearch').fill('');
+    await page.waitForFunction(() => document.querySelectorAll('#taskPassList .pass-item[hidden]').length === 0);
+  });
+
+  /* ÉPINGLER REMONTE EN TÊTE : c'est tout l'intérêt quand la colonne compte vingt lignes. Le
+     numéro reste affiché, donc la chronologie se lit encore. */
+  test('épingler une itération la remonte en tête, et ça se garde', async () => {
+    await ouvrirRetour(multi.id);
+    const derniere = items().last();
+    const numero = await derniere.getAttribute('data-pass');
+    assert.notEqual(numero, await items().first().getAttribute('data-pass'), 'elle n’y est pas déjà');
+
+    await derniere.locator('[data-passfav]').click();
+    await page.waitForFunction((n) => document.querySelector('#taskPassList .pass-item').dataset.pass === n, numero);
+    assert.equal(await page.locator('#taskPassList .pass-item .pass-star.on').count(), 1,
+      'l’étiquette s’allume sur la seule épinglée');
+
+    await page.reload();
+    await page.locator('nav button[data-tab="task"]').click();
+    await page.locator('#tab-task .subnav [data-kind="local"]').click();
+    await page.waitForSelector('#localList .card');
+    await ouvrirRetour(multi.id);
+    assert.equal(await items().first().getAttribute('data-pass'), numero, 'elle est toujours en tête');
+
+    // …et on peut la décrocher : elle retrouve sa place chronologique.
+    await items().first().locator('[data-passfav]').click();
+    await page.waitForFunction((n) => document.querySelector('#taskPassList .pass-item').dataset.pass !== n, numero);
+    assert.equal(await page.locator('#taskPassList .pass-star.on').count(), 0);
+  });
+
+  /* Échap pendant qu'on nomme ne doit RIEN enregistrer : renoncer est un geste, pas un accident. */
+  test('renoncer au nom ne l’enregistre pas', async () => {
+    await ouvrirRetour(multi.id);
+    const deuxieme = items().nth(1);
+    const avant = await deuxieme.locator('.pass-item-name').count();
+    await deuxieme.locator('[data-passname]').click();
+    await page.locator('.pass-rename').fill('jamais enregistré');
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('.pass-rename', { state: 'detached' });
+
+    assert.equal(await deuxieme.locator('.pass-item-name').count(), avant);
+    assert.equal(app.db.prepare("SELECT COUNT(*) c FROM agent_pass WHERE titre = 'jamais enregistré'").get().c, 0);
+    assert.deepEqual(erreurs, []);
+  });
+  /* LE NOM NE PART PAS À L'AGENT. C'est un titre de rangement : le glisser dans un prompt
+     changerait ce que l'agent produit, et deux passes au même prompt mais au titre différent
+     ne rendraient plus la même chose. Même règle que le libellé d'une session. */
+  test('le nom d’une itération reste hors du prompt, et une itération inconnue est refusée', async () => {
+    const passe = app.db.prepare("SELECT id FROM agent_pass WHERE scope = 'local' ORDER BY n LIMIT 1").get();
+    const r = await app.api('PUT', `/api/agent-passes/${passe.id}`, { titre: 'ne doit pas fuir', favori: true });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.titre, 'ne doit pas fuir');
+    assert.equal(r.body.favori, 1);
+
+    const { body } = await app.api('GET', `/api/local-tasks/${multi.id}/dirs/${(await app.api('GET', `/api/local-tasks/${multi.id}`)).body.task.dirs[0].id}/passes`);
+    assert.ok(!JSON.stringify(body.passes.map((p) => p.prompt)).includes('ne doit pas fuir'),
+      'aucun prompt archivé ne porte le titre');
+    assert.equal(body.passes.find((p) => p.id === passe.id).titre, 'ne doit pas fuir',
+      'il voyage bien à part, pour l’écran');
+
+    assert.equal((await app.api('PUT', '/api/agent-passes/999999', { titre: 'x' })).status, 404);
+  });
 });

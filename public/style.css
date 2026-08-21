@@ -2359,11 +2359,27 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .pass-aside-head h4 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 .pass-aside-head .search { width: 100%; margin: 0; }
 .pass-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
-.pass-item { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; cursor: pointer;
+/* La ligne porte DEUX gestes : ouvrir l'itération (toute la surface du texte) et la ranger
+   (épingle, nom). D'où un conteneur en grille plutôt qu'un bouton unique — un bouton dans un
+   bouton n'est pas du HTML valide, et le clic deviendrait ambigu. */
+.pass-item { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 4px;
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: inherit;
   padding: 8px 10px; font: inherit; }
+.pass-open { display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 0; text-align: left;
+  cursor: pointer; background: none; border: 0; color: inherit; font: inherit; padding: 0; }
 .pass-item:hover { border-color: var(--accent); }
 .pass-item.active { border-color: var(--accent); background: var(--panel2); box-shadow: inset 3px 0 0 var(--accent); }
+/* Épinglée : elle est remontée en tête, et son étiquette s'allume. Pas de couleur de fond —
+   celle-ci répond déjà à une autre question (« laquelle je lis »), et deux signaux dans la même
+   teinte ne se distinguent plus. */
+.pass-item-actions { display: flex; gap: 2px; align-items: center; }
+.pass-item-actions button { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 2px;
+  border-radius: 6px; line-height: 0; }
+.pass-item-actions button:hover { background: var(--panel2); color: var(--text); }
+.pass-star.on { color: var(--accent); }
+.pass-item-name { font-size: 13px; font-weight: var(--fw-sem); }
+.pass-rename { grid-column: 1 / -1; width: 100%; margin-top: 4px; background: var(--panel2);
+  border: 1px solid var(--accent); border-radius: 6px; color: var(--text); font: inherit; font-size: 13px; padding: 4px 6px; }
 .pass-item-head { font-size: 12px; color: var(--muted); }
 .pass-item.active .pass-item-head { color: var(--accent); font-weight: 600; }
 /* Trois lignes suffisent à reconnaître sa demande ; le texte entier reste dans l'info-bulle,

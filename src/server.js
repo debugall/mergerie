@@ -1572,6 +1572,19 @@ app.post('/api/repos/bulk', wrap((req, res) => {
   res.json({ added, skipped });
 }));
 
+/* NOMMER ET ÉPINGLER UNE ITÉRATION. Une seule route pour les quatre saveurs : une passe se
+   désigne par l'identifiant de sa ligne, qui est déjà unique. Quatre routes parallèles auraient
+   dérivé, et c'est exactement le genre d'endroit où une saveur se fait oublier. */
+app.put('/api/agent-passes/:id', wrap((req, res) => {
+  const body = req.body || {};
+  const maj = agentpass.marquer(req.params.id, {
+    favori: body.favori === undefined ? undefined : !!body.favori,
+    titre: body.titre === undefined ? undefined : body.titre,
+  });
+  if (!maj) throw Object.assign(new Error(t('err.pass-introuvable')), { status: 404 });
+  res.json(maj);
+}));
+
 /* Liste des passes d'une unité + la passe demandée (la dernière par défaut). Commun aux
    sessions sur dépôt et au codage hors dépôt : une seule forme de réponse à afficher. */
 function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) {
@@ -1581,7 +1594,8 @@ function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) 
      remonterait jamais. Une session compte quelques itérations, pas des milliers. */
   const passes = agentpass.list(scope, taskId, unitId)
     .map((p) => ({
-      n: p.n, kind: p.kind, created_at: p.created_at, has_output: !!p.output_path, prompt: p.prompt || '',
+      id: p.id, n: p.n, kind: p.kind, created_at: p.created_at, has_output: !!p.output_path,
+      prompt: p.prompt || '', favori: p.favori ? 1 : 0, titre: p.titre || '',
     }));
 
   /* Sessions antérieures à l'historique des passes : elles n'ont aucune ligne
@@ -1593,7 +1607,9 @@ function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) 
     if (!output) return { title, passes: [], current: null };
     return {
       title,
-      passes: [{ n: 1, kind: 'legacy', created_at: null, has_output: true, prompt: '' }],
+      /* Passe ANTÉRIEURE à l'historique : aucune ligne en base, donc pas d'identifiant — elle
+         ne peut être ni nommée ni mise en favori, et l'écran n'en propose pas le geste. */
+      passes: [{ n: 1, kind: 'legacy', created_at: null, has_output: true, prompt: '', id: null, favori: 0, titre: '' }],
       current: { n: 1, kind: 'legacy', created_at: null, prompt: '', output },
     };
   }
@@ -1603,7 +1619,10 @@ function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) 
   return {
     title,
     passes,
-    current: current ? { n: current.n, kind: current.kind, created_at: current.created_at, prompt: current.prompt, output: current.output } : null,
+    current: current ? {
+      id: current.id, n: current.n, kind: current.kind, created_at: current.created_at,
+      prompt: current.prompt, output: current.output, favori: current.favori ? 1 : 0, titre: current.titre || '',
+    } : null,
   };
 }
 

@@ -420,6 +420,15 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   quelle demande elle répondait n'apprend rien : les deux sont donc affichés ensemble. Une seule
   itération n'affiche aucune colonne — il n'y a rien à choisir. Vaut aussi pour le **codage hors
   dépôt**, dossier par dossier.
+  **Épingler et nommer.** Au-delà de quelques passes, ni le numéro ni la date ne disent ce qui
+  s'y est joué. Chaque itération porte donc deux gestes : une **étiquette** qui la remonte **en
+  tête de colonne** (le numéro reste affiché, la chronologie se lit encore), et un **nom** qu'on
+  écrit sur place — Entrée valide, Échap renonce. Le nom s'affiche en gras sous l'en-tête et
+  **entre dans la recherche**, comme la demande. ⚠ Ni l'étiquette ni le nom **ne partent à
+  l'IA** : c'est du rangement, écrit pour l'humain qui parcourt la colonne — même règle que le
+  libellé d'une session. Une itération **antérieure à l'historique des passes** n'a pas de ligne
+  en base : elle ne peut être ni nommée ni épinglée, et l'écran le dit au lieu de proposer un
+  geste sans effet.
 - **⌨️ Reprendre la session au terminal.** Chaque projet d'une session de codage (dépôt **ou** hors dépôt),
   ainsi que les reviews, expose un bouton **« Reprendre au terminal »** qui copie la **commande prête à
   coller** : `cd` vers le bon dossier + lancement de l'agent avec l'**identifiant de session** (claude

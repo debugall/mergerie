@@ -55,13 +55,27 @@ function record(scope, taskId, unitId, { kind, prompt, text }) {
 
 // Les passes d'une unité, de la plus ancienne à la plus récente (contenu lu à la demande).
 function list(scope, taskId, unitId) {
-  return db.prepare(`SELECT n, kind, prompt, output_path, created_at FROM agent_pass
+  return db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre FROM agent_pass
     WHERE scope = ? AND task_id = ? AND unit_id = ? ORDER BY n`).all(scope, taskId, unitId);
+}
+
+/* Marquer une passe et la nommer. Deux champs de RANGEMENT : ni le favori ni le titre ne
+   partent à l'agent — les glisser dans un prompt changerait ce qu'il produit, et deux passes
+   au même prompt mais au titre différent ne rendraient plus la même chose.
+   Une passe se désigne par son identifiant de ligne : c'est le même geste pour les quatre
+   saveurs, donc une seule route et un seul câblage plutôt que quatre qui divergeraient. */
+function marquer(id, { favori, titre } = {}) {
+  const p = db.prepare('SELECT * FROM agent_pass WHERE id = ?').get(Number(id) || 0);
+  if (!p) return null;
+  const t = titre === undefined ? p.titre : String(titre || '').trim().slice(0, 120) || null;
+  const f = favori === undefined ? p.favori : (favori ? 1 : 0);
+  db.prepare('UPDATE agent_pass SET favori = ?, titre = ? WHERE id = ?').run(f, t, p.id);
+  return { id: p.id, n: p.n, favori: f, titre: t };
 }
 
 // Une passe précise, avec le retour de l'agent lu sur disque.
 function get(scope, taskId, unitId, n) {
-  const p = db.prepare(`SELECT n, kind, prompt, output_path, created_at FROM agent_pass
+  const p = db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre FROM agent_pass
     WHERE scope = ? AND task_id = ? AND unit_id = ? AND n = ?`).get(scope, taskId, unitId, Number(n));
   if (!p) return null;
   let output = '';
@@ -76,4 +90,4 @@ function removeTask(scope, taskId) {
   db.prepare('DELETE FROM agent_pass WHERE scope = ? AND task_id = ?').run(scope, taskId);
 }
 
-module.exports = { record, list, get, removeTask };
+module.exports = { record, list, get, marquer, removeTask };

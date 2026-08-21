@@ -405,6 +405,14 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   none of them — and the filter survives switching iterations. Re-reading an answer without knowing which
   request it answered teaches nothing: the two are therefore shown together. A single iteration shows no
   column — there is nothing to pick. Applies to **out-of-repo coding** too, folder by folder.
+  **Pin and name.** Past a few passes, neither the number nor the date says what happened in
+  them. Every iteration therefore carries two gestures: a **tag** that lifts it to the **top of
+  the column** (the number stays visible, so the chronology still reads), and a **name** typed in
+  place — Enter confirms, Escape gives up. The name shows in bold under the header and **joins
+  the search**, like the request does. ⚠ Neither the tag nor the name **goes to the AI**: it is
+  filing, written for the human scanning the column — the same rule as a session's label. An
+  iteration **predating the pass history** has no row in the database: it can be neither named
+  nor pinned, and the screen says so rather than offering a gesture with no effect.
 - **⌨️ Resume the session in a terminal.** Every project of a coding session (repository **or** out-of-repo),
   and the reviews too, exposes a **“Resume in terminal”** button that copies the **ready-to-paste command**:
   a `cd` to the right folder plus the agent launched with the **session identifier** (claude

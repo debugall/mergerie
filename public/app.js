@@ -5947,27 +5947,90 @@ function renderPassList(passes, courante) {
   if (!montrer) return;
 
   $('#taskPassTitle').textContent = tr('task.pass.list-title', { n: passes.length });
-  $('#taskPassList').innerHTML = passes.map((p) => {
+  /* LES ÉPINGLÉES EN TÊTE. Au-delà de quelques itérations, celle qu'on cherche est presque
+     toujours l'une des deux ou trois qui ont compté : les remonter évite de faire défiler.
+     Le NUMÉRO reste affiché, donc la chronologie se lit encore — c'est le même choix que les
+     pages de notes épinglées. */
+  const ordonnees = [...passes].sort((a, b2) => (b2.favori ? 1 : 0) - (a.favori ? 1 : 0) || a.n - b2.n);
+  $('#taskPassList').innerHTML = ordonnees.map((p) => {
     const prompt = (p.prompt || '').trim();
-    return `<button type="button" class="pass-item${p.n === courante ? ' active' : ''}" data-pass="${p.n}"
-      title="${esc(prompt || tr('task.pass.no-prompt'))}">
-      <span class="pass-item-head">${esc(tr('task.pass.option', {
+    const titre = (p.titre || '').trim();
+    /* Une passe ANTÉRIEURE à l'historique n'a pas de ligne en base, donc pas d'identifiant :
+       on ne propose ni l'épingle ni le nom plutôt que d'offrir un geste sans effet. */
+    const actions = p.id ? `<span class="pass-item-actions">
+        <button type="button" class="pass-star${p.favori ? ' on' : ''}" data-passfav="${p.id}"
+          title="${esc(tr(p.favori ? 'task.pass.unfav' : 'task.pass.fav'))}">${svgIco('tag')}</button>
+        <button type="button" data-passname="${p.id}" title="${esc(tr('task.pass.rename'))}">${svgIco('edit')}</button>
+      </span>` : `<span class="pass-item-actions muted" title="${esc(tr('task.pass.legacy-no-name'))}">${svgIco('info')}</span>`;
+    return `<div class="pass-item${p.n === courante ? ' active' : ''}${p.favori ? ' fav' : ''}" data-pass="${p.n}">
+      <button type="button" class="pass-open" title="${esc(prompt || tr('task.pass.no-prompt'))}">
+        <span class="pass-item-head">${esc(tr('task.pass.option', {
     n: p.n, kind: tr(`task.pass.kind.${p.kind}`), date: fmtDateTime(p.created_at),
   }))}</span>
-      <span class="pass-item-prompt${prompt ? '' : ' muted'}">${esc(prompt || tr('task.pass.no-prompt'))}</span>
-    </button>`;
+        ${titre ? `<span class="pass-item-name">${esc(titre)}</span>` : ''}
+        <span class="pass-item-prompt${prompt ? '' : ' muted'}">${esc(prompt || tr('task.pass.no-prompt'))}</span>
+      </button>
+      ${actions}
+    </div>`;
   }).join('');
-  $$('#taskPassList .pass-item').forEach((b) => b.addEventListener('click', () => {
-    if (passCtx.base) openPasses(passCtx.base, b.dataset.pass, passCtx.dossiers);
+  $$('#taskPassList .pass-open').forEach((b) => b.addEventListener('click', () => {
+    const item = b.closest('.pass-item');
+    if (passCtx.base) openPasses(passCtx.base, item.dataset.pass, passCtx.dossiers);
+  }));
+  $$('#taskPassList [data-passfav]').forEach((b) => b.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const item = b.closest('.pass-item');
+    try {
+      await api(`/agent-passes/${b.dataset.passfav}`, { method: 'PUT', body: { favori: !item.classList.contains('fav') } });
+      if (passCtx.base) openPasses(passCtx.base, courante || undefined, passCtx.dossiers);
+    } catch (err) { toast(explainError(err.message), true); }
+  }));
+  $$('#taskPassList [data-passname]').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    nommerPasse(b.closest('.pass-item'), b.dataset.passname, courante);
   }));
   // Le filtre survit au re-rendu : sans cela, choisir une itération rouvrirait la liste entière.
   $('#taskPassSearch').value = passFiltre;
   filtrerPasses();
 }
 
+/* NOMMER UNE ITÉRATION, sur place. Le nom remplace le champ le temps de l'écrire : ouvrir une
+   modale pour trois mots ferait perdre des yeux la liste dans laquelle on cherchait justement
+   à s'y retrouver. Entrée valide, Échap annule — et le nom ne part JAMAIS à l'agent : c'est un
+   titre de rangement, écrit pour l'humain qui parcourt la colonne. */
+function nommerPasse(item, id, courante) {
+  if (item.querySelector('.pass-rename')) return;
+  const actuel = (item.querySelector('.pass-item-name') || {}).textContent || '';
+  const champ = document.createElement('input');
+  champ.className = 'pass-rename';
+  champ.value = actuel;
+  champ.placeholder = tr('task.pass.title-ph');
+  champ.maxLength = 120;
+  item.querySelector('.pass-open').after(champ);
+  champ.focus(); champ.select();
+
+  let fini = false;
+  const finir = async (garder) => {
+    if (fini) return;
+    fini = true;
+    const valeur = champ.value.trim();
+    champ.remove();
+    if (!garder || valeur === actuel.trim()) return;
+    try {
+      await api(`/agent-passes/${id}`, { method: 'PUT', body: { titre: valeur } });
+      if (passCtx.base) openPasses(passCtx.base, courante || undefined, passCtx.dossiers);
+    } catch (e) { toast(explainError(e.message), true); }
+  };
+  champ.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finir(true); }
+    if (e.key === 'Escape') { e.preventDefault(); finir(false); }
+  });
+  champ.addEventListener('blur', () => finir(true));
+}
+
 /* Filtrer MASQUE, ne retire pas : l'itération écartée reste à un caractère effacé près. La
-   recherche porte sur la demande ET sur l'en-tête (numéro, genre, date) — on cherche ce qu'on
-   voit. */
+   recherche porte sur la demande, sur le NOM qu'on lui a donné et sur l'en-tête (numéro,
+   genre, date) — on cherche ce qu'on voit. */
 function filtrerPasses() {
   const q = passFiltre.toLowerCase();
   let vus = 0;

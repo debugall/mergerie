@@ -470,6 +470,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS agent_pass (
   created_at TEXT
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_agent_pass_unit ON agent_pass(scope, task_id, unit_id, n)');
+
+/* REPÉRER UNE ITÉRATION PARMI VINGT. Le numéro et la date ne disent rien de ce qui s'y est
+   joué : on marque donc les quelques passes qui comptent (`favori`) et on leur donne un nom
+   (`titre`). Ni l'un ni l'autre ne part à l'agent — c'est du rangement, écrit pour l'humain
+   qui parcourt la colonne. Migrations APRÈS le `CREATE TABLE` : plus haut, l'ALTER échoue sur
+   une table absente et le `catch` l'avale sans un mot. */
+try { db.exec('ALTER TABLE agent_pass ADD COLUMN favori INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE agent_pass ADD COLUMN titre TEXT'); } catch { /* déjà présente */ }
 // Captures jointes au prompt d'un codage hors dépôt (mêmes que task_image, table dédiée).
 /* APRÈS la création de la table, et pas avant : un `ALTER` posé plus haut dans ce fichier
    échoue sur une table qui n'existe pas encore, et le `catch` l'avale sans un mot. La colonne

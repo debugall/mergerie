@@ -13,6 +13,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Pin and name the iterations of an AI output.** Past a few passes, “Iteration 7 · fix
+  requested · 14/08” says nothing about what happened in it. Each iteration now carries a tag
+  that lifts it to the top of the column — the number stays visible, so the chronology still
+  reads — and a name you type in place, which shows in bold and joins the search. Neither goes
+  to the AI: it is filing, written for the human scanning the column, exactly like a session's
+  label. Iterations predating the pass history have no row to mark, and the screen says so
+  instead of offering a gesture with no effect.
+
 - **Paste a screenshot into a note page.** Ctrl+V in the editor inserts the image at the caret,
   on its own line, and the preview shows it immediately. The file goes to disk and the page keeps
   only a link — a base64 image inside the content would swell the row by megabytes, resent in full
