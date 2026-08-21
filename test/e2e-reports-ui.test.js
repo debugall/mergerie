@@ -76,7 +76,9 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
     await page.locator(`[data-seg="${seg}"]`).click();
     await page.waitForSelector('#reportSplit:not([hidden]) #reportList .card');
     await page.locator('#reportList .card').first().click();
-    await page.waitForTimeout(300);
+    /* Le rapport de droite est chargé : ses actions n'existent que là (« Marquer traitée » ou
+       « Rouvrir » selon le stade). C'est l'effet qu'on attend, pas un délai. */
+    await page.waitForSelector('#aDone, #aReopen');
   }
 
   /* MARQUER TRAITÉE FAIT CHANGER DE STADE : la MR quitte « Reviewées » pour « Traitées ». Le
@@ -112,7 +114,12 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
     const boite = await page.locator('#reportList').boundingBox();
     await page.mouse.move(boite.x + boite.width / 2, boite.y + 60);
     await page.mouse.wheel(0, 800);
-    await page.waitForTimeout(400);
+    /* La molette est asynchrone : on attend que le défilement ait ABOUTI (la liste a bougé, ou
+       elle est déjà au bout — c'est le cas que le test d'à côté éprouve), pas un délai fixe. */
+    await page.waitForFunction(() => {
+      const l = document.querySelector('#reportSplit .col-list');
+      return l.scrollTop > 0 || l.scrollHeight <= l.clientHeight + 2;
+    });
     return page.evaluate((av) => ({
       liste: Math.round(document.querySelector('#reportSplit .col-list').scrollTop),
       rapportBouge: Math.round(document.querySelector('#reportDetail').getBoundingClientRect().top) - av.rapport,
@@ -146,10 +153,18 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
   const notesAffichees = () => page.$$eval('#reportList .card .note',
     (ns) => ns.map((n) => n.className.replace('note ', '').trim()));
 
+  /* Le filtre s'applique DANS le gestionnaire (rendu synchrone) : ce qu'on attend, c'est que la
+     case porte l'état voulu — un rendu qui l'aurait remplacée nous ferait lire l'ancienne. Et
+     décocher la DERNIÈRE remet tout coché : c'est voulu, on l'accepte au lieu de l'attendre. */
   const cocher = async (couleur, veut) => {
     const c = page.locator(`#noteFilters input[value="${couleur}"]`);
     if ((await c.isChecked()) !== veut) await c.click();
-    await page.waitForTimeout(250);
+    await page.waitForFunction(({ v, w }) => {
+      const el = document.querySelector(`#noteFilters input[value="${v}"]`);
+      if (!el) return false;
+      if (w) return el.checked;
+      return !el.checked || [...document.querySelectorAll('#noteFilters .note-pick')].every((x) => x.checked);
+    }, { v: couleur, w: veut });
   };
 
   test('les cases de note se combinent, et le compteur annonce ce qu’on verra', async () => {
@@ -198,7 +213,8 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
     /* Décocher la DERNIÈRE case : la liste deviendrait vide et plus aucune case ne
        permettrait de la rouvrir. On revient donc à tout afficher. */
     await page.locator(`#noteFilters input[value="${garde}"]`).click();
-    await page.waitForTimeout(300);
+    // Décocher la dernière remet TOUT : on attend cet effet-là, qui est l'objet du test.
+    await page.waitForFunction(() => [...document.querySelectorAll('#noteFilters .note-pick')].every((c) => c.checked));
     const cases = await page.$$eval('#noteFilters .note-pick', (cs) => cs.map((c) => c.checked));
     assert.deepEqual(cases, [true, true, true], 'tout revient coché');
     assert.ok((await notesAffichees()).length >= avant.length, 'et la liste entière réapparaît');
@@ -215,7 +231,16 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
     const depart = await page.evaluate(() => Math.round(window.scrollY));
     const boite = await page.locator('#reportList').boundingBox();
     await page.mouse.move(boite.x + boite.width / 2, boite.y + 60);
-    for (let i = 0; i < 6; i++) { await page.mouse.wheel(0, 1200); await page.waitForTimeout(120); }
+    /* Six coups de molette, chacun ATTENDU : on veut atteindre le bas de la liste, et une
+       molette lancée avant que la précédente n'ait pris ne défile pas deux fois. */
+    for (let i = 0; i < 6; i += 1) {
+      const avantTour = await page.evaluate(() => document.querySelector('#reportSplit .col-list').scrollTop);
+      await page.mouse.wheel(0, 1200);
+      await page.waitForFunction((av) => {
+        const l = document.querySelector('#reportSplit .col-list');
+        return l.scrollTop !== av || l.scrollTop + l.clientHeight >= l.scrollHeight - 2;
+      }, avantTour);
+    }
     const fin = await page.evaluate((d) => {
       const l = document.querySelector('#reportSplit .col-list');
       return { enBas: l.scrollTop + l.clientHeight >= l.scrollHeight - 2, bouge: Math.round(window.scrollY) - d };

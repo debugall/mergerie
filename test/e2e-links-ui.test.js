@@ -229,7 +229,8 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await cell().locator('.link-add').click();
     await page.locator('.link-cell-edit .lce-url').fill('https://jamais.demo.invalid');
     await page.locator('.link-cell-edit .lce-url').press('Escape');
-    await page.waitForTimeout(200);
+    // Échap referme l'édition : c'est cet effet-là qui dit que le geste a été pris en compte.
+    await page.waitForSelector('.link-cell-edit', { state: 'detached' });
     assert.doesNotMatch(await page.locator('#linkGrid').innerText(), /jamais\.demo/);
 
     // On rend le décor tel qu'on l'a trouvé : les tests de ce fichier se suivent.
@@ -369,9 +370,14 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     }, avant);
     const apres = await cols();
     assert.deepEqual([apres[0], apres[1]], [avant[1], avant[0]], 'les deux premières colonnes ont échangé');
+    /* On rend le décor tel qu'on l'a trouvé — et on attend que ce soit fait : le test suivant
+       lit ces colonnes, et les retrouver à moitié échangées lui donnerait tort pour rien. */
     await page.locator('.link-grid thead th').nth(1).hover();
     await page.locator('.link-grid thead th').nth(1).locator('[data-dir="1"]').click();
-    await page.waitForTimeout(600);
+    await page.waitForFunction((a) => {
+      const c = [...document.querySelectorAll('.link-grid thead th')].slice(1).map((e) => e.textContent.trim().split('\n')[0]);
+      return c[0] === a[0] && c[1] === a[1];
+    }, avant);
   });
 
   /* PLUSIEURS ADRESSES DANS UNE CASE. Un Kibana de production, ce sont autant d'adresses que

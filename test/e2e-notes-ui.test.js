@@ -23,6 +23,17 @@ try {
   dispo = fs.existsSync(chromium.executablePath());
 } catch { /* playwright absent */ }
 
+/* Attend qu'une condition côté SERVEUR devienne vraie. Un délai fixe est un pari sur la
+   vitesse de la machine : il tient en local et lâche sur un runner à deux cœurs. */
+async function attendreServeur(cond, quoi, ms = 15000) {
+  const fin = Date.now() + ms;
+  for (;;) {
+    if (await cond()) return;
+    if (Date.now() > fin) throw new Error(`délai dépassé : ${quoi}`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwright install chromium' }, () => {
   let app;
   let navigateur;
@@ -228,7 +239,13 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     await page.waitForFunction(() => $('#pageSaved').textContent !== '');
     await page.locator('#pageList .note-item', { hasText: 'Page B' }).click();
     await page.waitForFunction(() => document.querySelector('#pageContent').value.includes('B'));
-    await page.waitForTimeout(1500);   // largement au-delà du délai d'autosauvegarde
+    /* On attend que la sauvegarde en attente ait VRAIMENT tiré — c'est tout l'objet du test :
+       elle doit écrire dans A, pas dans B. Interroger la base bat un délai « largement
+       suffisant », qui ne l'est plus sur une machine chargée. */
+    await attendreServeur(async () => {
+      const p2 = (await app.api('GET', `/api/notes/${a.id}`)).body;
+      return /écrit dans A/.test(p2.content || '');
+    }, 'la page A a reçu sa sauvegarde');
 
     const relueA = (await app.api('GET', `/api/notes/${a.id}`)).body;
     const relueB = (await app.api('GET', `/api/notes/${b.id}`)).body;

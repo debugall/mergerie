@@ -179,19 +179,20 @@ describe('Questions de l’agent : exploration et hors dépôt', () => {
       await page.locator('[data-tab="task"]').click();
       for (const kind of ['code', 'local', 'explore']) {
         await page.locator(`#tab-task .subnav [data-kind="${kind}"]`).click();
-        await page.waitForTimeout(200);
+        await page.waitForSelector('#btnNewTask:not([hidden])');
         await page.locator('#btnNewTask').click();
         await page.waitForSelector('#taskModal:not([hidden])');
         assert.equal(await page.locator('#taskForm [name="ask_questions"]').isVisible(), true,
           `la case doit être proposée en « ${kind} » — elle ne vaut pas que pour le codage sur dépôt`);
         await page.locator('#taskCancel, #taskModal .modal-actions .btn').first().click();
-        await page.waitForTimeout(200);
+        // La modale est refermée : la rouvrir avant qu'elle ne le soit ne rouvrirait rien.
+        await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
       }
 
       /* Le vrai piège : le hors dépôt a son PROPRE envoi. On coche, on enregistre, et on
          regarde ce que la BASE a retenu — pas ce que l'écran affiche. */
       await page.locator('#tab-task .subnav [data-kind="local"]').click();
-      await page.waitForTimeout(200);
+      await page.waitForSelector('#btnNewTask:not([hidden])');
       await page.locator('#btnNewTask').click();
       await page.waitForSelector('#taskModal:not([hidden])');
       await page.locator('#taskForm [name="prompt"]').fill('Range les imports');

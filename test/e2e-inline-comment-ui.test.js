@@ -140,7 +140,8 @@ describe('Commentaire en ligne — le bouton reste sous les yeux', { skip: dispo
   test('il le reste après un défilement horizontal', async () => {
     await ouvrirEditeur();
     await page.evaluate(() => { document.querySelector('#fileContent').scrollLeft = 1200; });
-    await page.waitForTimeout(200);
+    // Le défilement a ABOUTI : c'est la position qui décide de ce que la mesure va lire.
+    await page.waitForFunction(() => document.querySelector('#fileContent').scrollLeft >= 1200);
     const m = await mesurer();
     assert.equal(m.boutonDansLaVue, true, 'le bouton doit suivre le bord visible');
     assert.equal(m.champDansLaVue, true, 'le champ aussi');

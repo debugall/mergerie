@@ -185,7 +185,11 @@ describe('Vérification d’une branche', () => {
 
       // …et elle SE FILTRE : un dépôt actif en aligne des centaines.
       await champ.fill('deve');
-      await page.waitForTimeout(300);
+      // Le menu s'est REFILTRÉ : on attend que ce qu'il montre corresponde à la frappe.
+      await page.waitForFunction(() => {
+        const opts = [...document.querySelectorAll('.combo-options:not([hidden]) .combo-opt')];
+        return opts.length > 0 && opts.every((o) => o.textContent.includes('deve'));
+      });
       const filtrees = await page.locator('.combo-options:not([hidden]) .combo-opt').allTextContents();
       assert.ok(filtrees.length && filtrees.every((o) => o.includes('deve')), `filtre : ${filtrees.join(', ')}`);
       await page.locator('.combo-options:not([hidden]) .combo-opt').first().click();

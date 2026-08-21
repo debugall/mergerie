@@ -144,8 +144,7 @@ describe('Question libre', () => {
       await page.goto(app.base);
       await page.locator('[data-tab="task"]').click();
       await page.locator('#tab-task .subnav [data-kind="ask"]').click();
-      await page.waitForTimeout(400);
-
+      await page.waitForSelector('#btnNewTask:not([hidden])');
       await page.locator('#btnNewTask').click();
       await page.waitForSelector('#taskModal:not([hidden])');
       /* Tout ce qui suppose du code doit avoir disparu : un sélecteur de dépôt sur cet écran
@@ -190,7 +189,8 @@ describe('Question libre', () => {
       const total = app.db.prepare('SELECT COUNT(*) c FROM question').get().c;
       await page.goto(app.base);
       await page.locator('[data-tab="task"]').click();
-      await page.waitForTimeout(500);
+      // Le compteur est rempli par le chargement des sessions : on l'attend, lui.
+      await page.waitForFunction((n) => document.querySelector('#kindCountAsk').textContent.trim() === n, String(total));
       assert.equal((await page.locator('#kindCountAsk').textContent()).trim(), String(total));
       // …et la pastille du menu, elle, ne retient que les questions jamais lancées.
       const enAttente = app.db.prepare("SELECT COUNT(*) c FROM question WHERE status = 'new'").get().c;

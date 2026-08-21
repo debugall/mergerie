@@ -114,8 +114,15 @@ describe('Suivi en attente — l’écran', { skip: dispo ? false : 'chromium ab
       await form.locator('.followup-text').fill('phrase à moitié tapée');
 
       await form.locator('.followup-auto').check();
-      await page.evaluate(() => window.loadTasks());
-      await page.waitForTimeout(150);
+      /* On force le re-rendu et on attend qu'il ait EU LIEU — la carte est reconstruite, donc
+         on guette le remplacement du nœud plutôt qu'un délai : mesurer trop tôt lirait l'ancien
+         formulaire et le test passerait sans rien prouver. */
+      await page.evaluate(() => {
+        document.querySelector('#taskList').dataset.rendu = '';
+        const fin = window.loadTasks();
+        Promise.resolve(fin).then(() => { document.querySelector('#taskList').dataset.rendu = '1'; });
+      });
+      await page.waitForFunction(() => document.querySelector('#taskList').dataset.rendu === '1');
       assert.equal(await form.locator('.followup-text').inputValue(), 'phrase à moitié tapée',
         'le rendu suivant ne doit pas manger la saisie en cours');
       assert.equal(await form.locator('.followup-auto').isChecked(), true,

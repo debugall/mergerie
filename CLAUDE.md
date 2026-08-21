@@ -54,8 +54,9 @@
     assert the invariant that actually matters.
   - **A card that re-renders every 1.5 s invalidates element handles.** Re-resolve locators
     inside the wait; never hold a handle across an action that triggers a reload.
-  - Known debt: **~38 `waitForTimeout` remain** in `test/`. Each is a coin flip on a slow
-    runner; replace the ones you touch as you go.
+  - `test/` holds **no `waitForTimeout` at all** any more — the 38 that existed were replaced
+    by waits on the effect. Do not reintroduce one: if you cannot name the effect to wait for,
+    the test does not know what it is proving.
 
 - **One `startApp()` per test file.** The harness starts the server **in-process**: a second
   call in the same file returns the already-stopped instance and waits for a `listening` event

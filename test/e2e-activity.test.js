@@ -311,7 +311,7 @@ describe('Statistiques — activité des projets sur 6 mois', () => {
       assert.equal(await page.locator('#activityModal .stat-tile').count(), 3, 'jours, commits, contributeurs');
 
       await page.locator('#activityClose').click();
-      await page.waitForTimeout(200);
+      await page.locator('#activityModal').waitFor({ state: 'hidden' });
       assert.equal(await page.locator('#activityModal').isHidden(), true, 'et elle se referme');
     } finally { await nav.close(); }
   });
