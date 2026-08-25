@@ -328,6 +328,13 @@ out-of-repo, exploration) makes the AI work **inside that session** instead of o
 keeps all the context it has already built. Filled in, it also enables the **“Resume in terminal”** button.
 The field can be edited afterwards too.
 
+⚠ **The identifier FOLLOWS the passes.** Resuming an agent session does not always continue under the
+same identifier: `claude --resume` opens a **new** one, carrying the whole exchange plus the turn just
+made. Mergerie therefore records, after **every** pass, the one the agent reports — otherwise two
+follow-ups in a row on the same project would both start from the initial state, and the second would
+ignore the first. It is also what makes **“Resume in terminal”** open the conversation **as it stands**,
+not as it was three follow-ups ago.
+
 **Enrich from a Jira ticket (optional).** If Jira is configured (Settings → Jira), the dialog offers a
 **ticket number** field with a **Fetch** button: the ticket's **title + description** are pulled through the
 Jira API and **added at the top of the prompt** as a context block — visible and **editable** before you

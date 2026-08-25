@@ -280,9 +280,15 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     }
     agentText = r.text || '';
     copilot.recordUsage('task', promptText + imgBlock, agentText); // le run en session compte aussi
-    // La note est posée AVEC le nouveau handle, et effacée dès qu'une reprise réussit.
-    if (created) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: cwd, session_note: note });
-    else if (tg.session_note) setTarget(tg.id, { session_note: null });
+    /* On enregistre le handle À CHAQUE passe, pas seulement à la création : l'agent peut rendre
+       un identifiant DIFFÉRENT après une reprise (claude en ouvre un nouveau, qui porte tout
+       l'échange). Garder l'ancien faisait repartir la passe suivante de l'état d'avant — deux
+       suivis d'affilée sur le même projet s'ignoraient. La note, elle, n'accompagne que le
+       repli, et s'efface dès qu'une reprise réussit. */
+    setTarget(tg.id, {
+      session_key: r.handle, session_backend: r.backend, session_cwd: cwd,
+      ...(created ? { session_note: note } : (tg.session_note ? { session_note: null } : {})),
+    });
   } else {
     // Backend non reconnu (ni claude ni copilot) : pas de reprise possible, appel one-shot.
     agentText = (await copilot.runPrompt(promptText + imgBlock, cwd, { kind: 'task' }, onLog)) || '';
@@ -494,8 +500,9 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
       }
       stdout = r.text || '';
       copilot.recordUsage('explore', prompt, stdout);
-      // Les cibles d'une exploration partagent la session : toutes portent le même handle.
-      if (created) for (const tg of targets) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: root });
+      /* Les cibles d'une exploration partagent la session : toutes portent le même handle — et
+         on le réenregistre à chaque passe, l'agent pouvant en rendre un nouveau après reprise. */
+      for (const tg of targets) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: root });
     } else if (copilot.isDryRun() && task.ask_questions && !apresReponses) {
       /* Dry-run, première passe : l'agent simule ses questions au lieu de répondre — et il les
          écrit DANS LE FICHIER de réponse, pas sur la sortie standard. C'est ce que fait un

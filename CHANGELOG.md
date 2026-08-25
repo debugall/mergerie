@@ -127,6 +127,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A second follow-up on the same project no longer forgets the first.** Resuming an agent
+  session does not always continue under the same identifier — `claude --resume <id>` opens a new
+  one, carrying the whole exchange plus the turn just made. Only the identifier from the initial
+  run was kept, so every follow-up resumed the state of that run: two corrections in a row on one
+  project of a multi-repository session ignored each other, and “Resume in terminal” opened the
+  conversation as it was several follow-ups ago. The identifier the agent reports is now recorded
+  after **every** pass — coding, exploration, out-of-repo, free question and convergence alike.
+
 - **Line numbers quoted by a review report now match the code on screen.** The AI was handed a
   patch and nothing else: in a patch, line numbers live only in the `@@` headers, so quoting
   “line 137” means counting by hand across every hunk — right most of the time, wrong sometimes,

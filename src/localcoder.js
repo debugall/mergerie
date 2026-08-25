@@ -160,7 +160,8 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
         }
         copilot.recordUsage('task', promptText, r.text || '');
         saveAgentOutput(taskId, d.id, r.text, { kind: passKind, prompt: promptText });
-        if (created) setDir(d.id, { session_key: r.handle, session_backend: r.backend, session_cwd: d.path });
+        // À chaque passe : une reprise peut rendre un identifiant nouveau (cf. agentsession).
+        setDir(d.id, { session_key: r.handle, session_backend: r.backend, session_cwd: d.path });
         if (attendQuestions(task, taskId, d, r.text, onLog)) continue;
       } else {
         // Backend non reprenable → appel one-shot (pas de commande de reprise possible).

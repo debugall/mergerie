@@ -335,6 +335,13 @@ création (codage, hors dépôt, exploration) fait travailler l'IA **dans cette 
 ouvrir une nouvelle — elle garde donc tout le contexte déjà acquis. Renseigné, il rend aussi disponible
 le bouton **« Reprendre au terminal »**. Le champ est également modifiable après coup.
 
+⚠ **L'identifiant SUIT les passes.** Reprendre une session d'agent n'en poursuit pas toujours
+l'identifiant : `claude --resume` en ouvre un **nouveau**, qui porte l'échange entier plus le tour
+qu'on vient de faire. Mergerie enregistre donc, après **chaque** passe, celui que l'agent annonce —
+sinon deux suivis d'affilée sur le même projet repartiraient tous deux de l'état initial, et le
+second ignorerait le premier. C'est aussi ce qui fait que **« Reprendre au terminal »** ouvre la
+conversation **telle qu'elle est**, et non son état d'il y a trois suivis.
+
 **Enrichir depuis un ticket Jira (optionnel).** Si Jira est configuré (Réglages → Jira), la modale
 propose un champ **N° de ticket** avec un bouton **Récupérer** : le **titre + la description** du ticket
 sont récupérés via l'API Jira et **ajoutés en tête du prompt** comme bloc de contexte — visible et

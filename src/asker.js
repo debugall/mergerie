@@ -107,7 +107,8 @@ async function runQuestion(id, onLog = () => {}, opts = {}) {
       }
       stdout = r.text || '';
       copilot.recordUsage('ask', prompt, stdout);
-      if (creee) setQuestion(q.id, { session_key: r.handle, session_backend: r.backend, session_cwd: cwd });
+      // À chaque passe : une reprise peut rendre un identifiant nouveau (cf. agentsession).
+      setQuestion(q.id, { session_key: r.handle, session_backend: r.backend, session_cwd: cwd });
     } else {
       stdout = await copilot.runPrompt(prompt, cwd, { kind: 'ask' }, onLog);
     }
