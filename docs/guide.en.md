@@ -987,6 +987,13 @@ Jenkins already does well, and which there is no point redoing.
   the tab's own refresh — Jenkins is not queried from the other tabs. Nothing today means no
   badge at all: a zero in a menu teaches nothing. A job that ran five times counts once — the
   list only carries each job's last build, so the tooltip says "jobs", not "runs".
+  **And a RED badge beside it: the jobs that failed today.** The blue count also goes up when all
+  is well; the red one answers the other question — "did something fall over this morning?" —
+  from any tab. Three deliberate limits: **failure only** (unstable has its own colour and its own
+  filter in the tab; painting it red would set the alarm off for a flaky test), **today only** (a
+  failure from yesterday does not count — it sits at the top of the tab, where you go looking for
+  it), and **not while it is re-running** (a restarted job is not announced as broken while it
+  builds). Nothing broken: the badge disappears.
 - **Told when what YOU started is done.** A desktop notification when a job you started from
   Mergerie finishes, with its verdict; one click opens its page. Yours only: being told about
   the team's nightly build would be noise, and you would turn the whole thing off within two

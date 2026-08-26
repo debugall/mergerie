@@ -1028,6 +1028,13 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   interrogé depuis les autres onglets. Rien aujourd'hui : pas de badge du tout, un zéro dans un
   menu n'apprend rien. Un job lancé cinq fois compte pour un — la liste ne porte que le dernier
   build de chacun, et la bulle dit donc « jobs », pas « lancements ».
+  **Et une pastille ROUGE à côté : les jobs en échec du jour.** Le compte bleu monte aussi quand
+  tout va bien ; le rouge répond à l'autre question — « est-ce que quelque chose est tombé ce
+  matin ? » —, de n'importe quel onglet. Trois bornes, assumées : **l'échec seul** (l'instable a
+  sa couleur et son filtre dans l'onglet ; le peindre en rouge ferait sonner l'alarme pour un
+  test capricieux), **le jour seul** (un échec d'hier ne compte pas — il est en tête de l'onglet,
+  là où on va le chercher), et **pas pendant qu'il se rejoue** (un job relancé n'est pas annoncé
+  cassé tant qu'il tourne). Plus rien de cassé : la pastille disparaît.
 - **Prévenu à la fin de ce que TU as lancé.** Une notification bureau quand un job que tu as
   lancé depuis Mergerie se termine, avec son verdict ; un clic ouvre sa fiche. Uniquement les
   tiens : être prévenu du build nocturne de l'équipe serait du bruit, et on couperait tout au

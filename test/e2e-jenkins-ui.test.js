@@ -894,6 +894,44 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 6);
   });
 
+  /* LA PASTILLE ROUGE : ce qui a CASSÉ aujourd'hui. C'est la question qu'on se pose de
+     n'importe quel onglet — « est-ce que quelque chose est tombé ce matin ? » — et à laquelle
+     le compte bleu ne répond pas : il monte aussi quand tout va bien. */
+  test('le badge rouge compte les jobs en échec du jour, et eux seuls', async (t) => {
+    const decor = mock.state.jobs;
+    t.after(() => { mock.state.jobs = decor; });
+    const minuit = new Date(); minuit.setHours(0, 0, 0, 0);
+    const hier = minuit.getTime() - 8 * 86400000;
+    const cesMatin = minuit.getTime() + 60000;
+    mock.state.jobs = [
+      { name: 'casse', color: 'red', buildable: true, lastBuild: { number: 1, timestamp: cesMatin, actions: [] } },
+      { name: 'casse2', color: 'red', buildable: true, lastBuild: { number: 2, timestamp: cesMatin, actions: [] } },
+      // Un échec d'HIER : la pastille dit « aujourd'hui », elle ne raconte pas la semaine.
+      { name: 'casse-hier', color: 'red', buildable: true, lastBuild: { number: 3, timestamp: hier, actions: [] } },
+      // L'INSTABLE a sa propre couleur et son propre filtre : le rouge est réservé à l'échec.
+      { name: 'instable', color: 'yellow', buildable: true, lastBuild: { number: 4, timestamp: cesMatin, actions: [] } },
+      // Reparti depuis : il tourne, on ne l'annonce pas cassé pendant qu'il se rejoue.
+      { name: 'relance', color: 'red_anime', buildable: true, lastBuild: { number: 5, timestamp: cesMatin, actions: [] } },
+      { name: 'vert', color: 'blue', buildable: true, lastBuild: { number: 6, timestamp: cesMatin, actions: [] } },
+    ];
+    await allerJenkins();
+    await page.locator('#jenkinsReload').click();
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 6);
+
+    const rouge = page.locator('#navJenkinsFail');
+    await page.waitForFunction(() => document.querySelector('#navJenkinsFail').textContent === '2');
+    assert.equal(await rouge.isHidden(), false);
+    assert.match(await rouge.getAttribute('data-tip'), /2/, 'la bulle dit de quoi le chiffre est fait');
+    // Le compte bleu, lui, tient tout ce qui a tourné : cinq jobs, échecs compris.
+    assert.equal(await page.locator('#navCountJenkins').textContent(), '5');
+
+    // Plus rien de cassé aujourd'hui : la pastille disparaît au lieu d'afficher « 0 ».
+    mock.state.jobs = [{ name: 'vert', color: 'blue', buildable: true, lastBuild: { number: 6, timestamp: cesMatin, actions: [] } }];
+    await page.locator('#jenkinsReload').click();
+    await page.waitForFunction(() => document.querySelector('#navJenkinsFail').hidden);
+    assert.equal(await page.locator('#navCountJenkins').textContent(), '1', 'le compte du jour, lui, reste');
+  });
+
   /* LE LIEN VERS JENKINS. Il s'ouvre dans un nouvel onglet, et il ne relaie que du http(s) :
      l'URL vient de Jenkins, donc de l'extérieur. */
   test('chaque ligne porte un lien vers le job dans Jenkins', async () => {

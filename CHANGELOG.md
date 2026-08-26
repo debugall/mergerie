@@ -13,6 +13,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A red badge on the Jenkins menu: what failed today.** The blue count says how many jobs ran,
+  which also goes up when everything is fine. The red one answers the question you actually ask
+  walking past the tab — did something fall over this morning? — from any other tab. It counts
+  **failures only** (unstable keeps its own colour and its own filter), **today only** (yesterday's
+  failure sits at the top of the tab, where you go looking for it), and **not while a job is
+  re-running**. Nothing broken, no badge.
+
 - **Arrange the menu bar: order and visibility.** Nine tabs, and everyone uses a handful.
   *Settings → General* now lists them: drag or use the arrows to move what you open ten times a
   day to the top, untick what you never use. Applied at once, remembered in this browser like the

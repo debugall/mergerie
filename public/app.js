@@ -13661,18 +13661,42 @@ async function loadJenkins({ silencieux = false } = {}) {
    Un job lancé cinq fois compte pour un : la liste ne porte que le DERNIER build de chacun,
    et prétendre compter les exécutions demanderait d'interroger l'historique de chaque job à
    chaque rafraîchissement. Le titre du badge dit donc « jobs », pas « lancements ». */
-function jkAujourdhui(jobs) {
+const jkDuJour = (jobs) => {
   const debut = new Date(); debut.setHours(0, 0, 0, 0);
-  return (jobs || []).filter((j) => j.last && j.last >= debut.getTime()).length;
-}
+  return (jobs || []).filter((j) => j.last && j.last >= debut.getTime());
+};
+const jkAujourdhui = (jobs) => jkDuJour(jobs).length;
 
+/* Les deux pastilles du menu. ROUGE : les jobs dont le dernier lancement du JOUR a échoué —
+   c'est ce qu'on veut voir de n'importe quel onglet, sans passer par Jenkins. BLEU : ce qui a
+   tourné aujourd'hui, tous états confondus.
+
+   Trois bornes, assumées :
+   — `echec` SEUL. L'instable a sa propre couleur et son propre filtre dans l'onglet ; le
+     mettre en rouge ferait sonner l'alarme pour un test capricieux, et une alarme qui sonne
+     pour tout n'est plus lue ;
+   — un échec d'HIER ne compte pas : le badge dit « aujourd'hui », il ne raconte pas l'histoire
+     de la semaine. Le voir suppose d'ouvrir l'onglet, où il est en tête ;
+   — un job relancé et redevenu vert ne compte plus : la liste ne porte que le DERNIER build de
+     chacun. Compter les exécutions demanderait d'interroger l'historique de chaque job à chaque
+     rafraîchissement, pour dire quelque chose que la ligne dit déjà mieux. */
 function majBadgeJenkins() {
-  const el = $('#navCountJenkins');
-  if (!el) return;
-  const n = jkAujourdhui(JENKINS.jobs);
-  el.textContent = String(n);
-  el.hidden = !n;
-  el.title = tr('jenkins.nav.today', { n, count: n });
+  const bleu = $('#navCountJenkins');
+  const rouge = $('#navJenkinsFail');
+  if (!bleu || !rouge) return;
+  const duJour = jkDuJour(JENKINS.jobs);
+  const n = duJour.length;
+  bleu.textContent = String(n);
+  bleu.hidden = !n;
+  bleu.title = tr('jenkins.nav.today', { n, count: n });
+
+  const rates = duJour.filter((j) => !j.enCours && j.statut === 'echec').length;
+  rouge.textContent = String(rates);
+  rouge.hidden = !rates;
+  const libelle = tr('jenkins.nav.failed-today', { n: rates, count: rates });
+  rouge.dataset.tip = libelle;                 // bulle de l'app, immédiate et thémée
+  rouge.title = '';                            // …et jamais celle du bouton parent par-dessus
+  rouge.setAttribute('aria-label', libelle);
 }
 
 /* Une fois au démarrage, pour que le badge existe sans avoir ouvert l'onglet — comme celui de
