@@ -5641,7 +5641,14 @@ function questionsForm(t, tg, route) {
   return `<div class="questions-box" data-qtask="${t.id}" data-qtarget="${tg.id}" data-qroute="${esc(route)}">
       <div class="q-head"><svg class="ico ico-sm"><use href="#i-info"/></svg> <strong>${esc(tr('task.questions.title', { n: qs.length, count: qs.length }))}</strong></div>
       ${rows}
-      <div class="q-actions"><button class="btn btn-primary btn-sm" data-qsubmit="${tg.id}" data-task="${t.id}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr('task.questions.submit'))}</button></div>
+      <div class="q-actions">
+        <button class="btn btn-primary btn-sm" data-qsubmit="${tg.id}" data-task="${t.id}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr('task.questions.submit'))}</button>
+        ${/* On peut aussi avoir repris la session DANS SON TERMINAL et répondu là-bas : l'agent y a
+             poursuivi le travail, et Mergerie n'en sait rien. Sans ce bouton, le projet restait en
+             attente pour toujours, et le formulaire proposait de répondre une seconde fois — ce qui
+             aurait relancé l'agent sur un travail déjà fait. */''}
+        <button class="btn btn-sm" data-qelsewhere="${tg.id}" data-task="${t.id}" title="${esc(tr('task.questions.elsewhere-title'))}">${svgIco('check')}${esc(tr('task.questions.elsewhere'))}</button>
+      </div>
     </div>`;
 }
 
@@ -5871,6 +5878,27 @@ function wireTaskActions() {
    Câblé sur la première liste seulement, le bouton du hors dépôt ne faisait rien du tout : on
    répondait à tout, on cliquait, et il ne se passait rien — pas même un message d'erreur. La
    route voyage déjà dans `data-qroute`, il n'y avait donc rien à savoir de plus ici. */
+/* « J'ai répondu au terminal » : même formulaire, même route, un drapeau de plus. Le serveur ne
+   devine rien de ce qui s'est passé dehors — il regarde la branche (sessions de dépôt) ou rend le
+   dossier à l'état « fait » (hors dépôt, où l'agent travaille en place). */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-qelsewhere]');
+  if (!b) return;
+  const box = b.closest('.questions-box');
+  if (!await confirmDialog({
+    title: tr('task.questions.elsewhere'),
+    text: tr('task.questions.elsewhere-confirm'),
+    confirmLabel: tr('task.questions.elsewhere'),
+  })) return;
+  try {
+    await busy(b, () => api(box.dataset.qroute, { method: 'POST', body: { elsewhere: true } }));
+    box.classList.add('resuming');
+    box.innerHTML = `<div class="q-head">${svgIco('check')} <strong>${esc(tr('task.questions.elsewhere-done'))}</strong></div>`;
+    toast(tr('task.questions.elsewhere-done'));
+    refreshStatus(); loadTasks();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
 document.addEventListener('click', async (e) => {
   const b = e.target.closest && e.target.closest('[data-qsubmit]');
   if (!b) return;

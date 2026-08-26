@@ -13,6 +13,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Tell Mergerie you answered the AI's questions in your terminal.** “Resume in terminal” hands
+  you the agent session, so you can answer there — and the agent carries on inside Mergerie's
+  clone, which knows nothing about it. The project stayed waiting forever, with a form offering to
+  answer a second time, which would have sent the agent back over finished work. A second button
+  on the questions form settles that wait without re-running anything. The resulting state is not
+  guessed: on a repository session the branch is re-read (commits ahead → committed or pushed,
+  with the diff; nothing → back to *to do*), and out of a repository — where there is no branch to
+  question — the folder is returned to *done*.
+
 - **Attach files to a session, not just screenshots — in all four flavours.** “Here is the
   client's quote, implement the discount rules”: a PDF, a spreadsheet or a `.txt` says in one file
   what a prompt takes twenty lines to describe. The `Attach a file` button now takes images, PDFs,

@@ -201,6 +201,17 @@ session** — the agent keeps what it read. Two differences worth knowing: an **
 question stands, **nothing has been done**: no summary saved for an exploration, no file touched
 out of a repository.
 
+**And if you answered in your terminal?** “Resume in terminal” copies the agent session, so you can
+answer there and let the agent carry on — inside Mergerie's clone, which knows nothing about it. The
+**`I answered in the terminal`** button, next to `Answer and resume`, settles that wait: the
+questions go away, the todo closes, and **nothing is re-run**. The state is not guessed: on a
+repository session Mergerie **re-reads the branch** (the same machinery as `Check branch state`) —
+commits ahead and the project goes back to *committed* or *pushed* with its diff, nothing at all and
+it returns to *to do*. Out of a repository there is neither branch nor commit to question: the
+folder is returned to *done*, and what it contains is what your terminal made of it. Without this
+gesture the project stayed waiting forever, and the form offered to answer a second time — which
+would have sent the agent back over work already finished.
+
 **A session stopped on a question raises its own todo.** When the AI interrupts itself to ask
 something, a **high-priority todo** is created automatically — "Reply to the AI — session #12",
 with the projects concerned in its note. The queue is free, nothing will restart, and the

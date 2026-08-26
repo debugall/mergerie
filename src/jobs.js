@@ -645,7 +645,7 @@ function runEntry(e) {
   if (e.kind === 'converge-session') return runConvergeSessionJob(e.jobId, e.taskId, e.opts);
   if (e.kind === 'local') return runLocalJob(e.jobId, e.taskId, e.opts);
   if (e.kind === 'ask') return runAskJob(e.jobId, e.taskId, e.opts);
-  if (e.kind === 'reconcile') return runReconcileJob(e.jobId, e.taskId);
+  if (e.kind === 'reconcile') return runReconcileJob(e.jobId, e.taskId, e.opts);
   if (e.kind === 'verify') return runVerifyJob(e.jobId, e.verificationId);
   return processList(e.jobId, e.rows, e.kind, e.opts);
 }
@@ -838,13 +838,13 @@ function clearTaskError(taskId, targetIds) {
    dont le travail existe déjà. Passe par la FILE, comme tout ce qui touche à un clone : le faire
    pendant qu'un agent écrit dans le même dépôt le corromprait. Pas de retry — l'opération est
    idempotente, on la relance à la main si besoin. */
-async function runReconcileJob(jobId, taskId) {
+async function runReconcileJob(jobId, taskId, opts = {}) {
   const task = db.prepare('SELECT * FROM task WHERE id = ?').get(taskId);
   logLine(jobId, null, t('log.job.reconcile-start', { id: jobId }));
   if (!task) { setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: t('err.tache-introuvable') }); return; }
   const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   try {
-    const r = await taskrunner.reconcileTargets(task, onLog);
+    const r = await taskrunner.reconcileTargets(task, onLog, opts);
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
     logLine(jobId, null, t('log.job.reconcile-end', { done: r.repaired, total: r.checked }));
   } catch (e) {
@@ -933,12 +933,12 @@ function startVerifyJob(verificationId) {
   return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
 }
 
-function startReconcileJob(taskId) {
+function startReconcileJob(taskId, opts = {}) {
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES ('reconcile', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
   const jobId = info.lastInsertRowid;
   setJobTarget(jobId, 'task', taskId);
-  queue.push({ jobId, kind: 'reconcile', taskId });
+  queue.push({ jobId, kind: 'reconcile', taskId, opts });
   setImmediate(pump);
   return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
 }

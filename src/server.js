@@ -72,6 +72,7 @@ const { StringDecoder } = require('node:string_decoder');
 const aisession = require('./aisession');
 const agentsession = require('./agentsession');
 const agentpass = require('./agentpass');
+const localcoder = require('./localcoder');
 const pieces = require('./pieces');
 const localrepos = require('./localrepos');
 const copilot = require('./copilot');
@@ -2202,6 +2203,20 @@ app.post('/api/local-tasks/:id/dirs/:did/answer', wrap((req, res) => {
   const d = (lt.dirs || []).find((x) => x.id === Number(req.params.did));
   if (!d) throw new Error(t('err.local-dir-not-found'));
   if (d.status !== 'needs_input') throw new Error(t('err.session-pas-en-attente'));
+
+  /* RÉPONDU AILLEURS — voir la route jumelle des sessions de dépôt. Ici, rien à inspecter :
+     l'agent travaille EN PLACE, il n'y a ni branche ni commit à interroger. Le dossier est donc
+     rendu à l'état « fait », et ce qu'il contient est ce que le terminal en a fait. */
+  if (req.body && req.body.elsewhere) {
+    db.prepare("UPDATE local_task_dir SET questions_json = NULL, status = 'done', last_error = NULL, updated_at = ? WHERE id = ?")
+      .run(new Date().toISOString(), d.id);
+    const attendent = db.prepare("SELECT COUNT(*) c FROM local_task_dir WHERE task_id = ? AND status = 'needs_input'")
+      .get(lt.id).c;
+    if (!attendent) notes.fermerTodoAuto('local_question', lt.id);
+    localcoder.syncStatus(lt.id);   // le statut de la session suit celui de ses dossiers
+    return res.json({ ok: true, task: localTaskById(lt.id) });
+  }
+
   let qs = [];
   try { qs = d.questions_json ? JSON.parse(d.questions_json) : []; } catch { qs = []; }
   const answers = (req.body && req.body.answers) || {};
@@ -2442,6 +2457,26 @@ app.post('/api/tasks/:id/targets/:tid/answer', wrap((req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
   if (tg.status !== 'needs_input') throw new Error(t('err.session-pas-en-attente'));
+
+  /* RÉPONDU AILLEURS. « Reprendre au terminal » copie la session d'agent : on peut donc
+     répondre aux questions dans son propre terminal, et l'agent y poursuit le travail — dans le
+     clone de Mergerie, qui n'en sait rien. Le projet restait alors « en attente » pour toujours,
+     et le formulaire proposait de répondre une seconde fois, ce qui aurait relancé l'agent sur
+     un travail déjà fait.
+     On ne DEVINE pas ce qui s'est passé dehors : on regarde la branche, avec la mécanique qui
+     sert déjà à « Vérifier l'état des branches ». Elle rend des commits, ou rien — et dans les
+     deux cas, c'est la vérité du dépôt, pas une supposition. */
+  if (req.body && req.body.elsewhere) {
+    db.prepare("UPDATE task_target SET questions_json = NULL, status = 'running', last_error = NULL, updated_at = ? WHERE id = ?")
+      .run(new Date().toISOString(), tg.id);
+    const attendent = db.prepare("SELECT COUNT(*) c FROM task_target WHERE task_id = ? AND status = 'needs_input'")
+      .get(Number(req.params.id)).c;
+    if (!attendent) notes.fermerTodoAuto('session_question', Number(req.params.id));
+    return res.json(jobs.startReconcileJob(Number(req.params.id), {
+      statuts: ['running'], targetIds: [tg.id], siRien: 'new',
+    }));
+  }
+
   let qs = [];
   try { qs = tg.questions_json ? JSON.parse(tg.questions_json) : []; } catch { qs = []; }
   const answers = (req.body && req.body.answers) || {};

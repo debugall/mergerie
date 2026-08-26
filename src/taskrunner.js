@@ -80,9 +80,15 @@ function attachImages(task, cwd, onLog, { imageIds } = {}) {
    Ici on ne fait que REGARDER : la branche a-t-elle des commits d'avance sur sa base ? Si oui, on
    rétablit l'état qui aurait dû être écrit. Aucun appel IA, et rien n'est maquillé : une branche
    réellement vide reste en erreur. */
-async function reconcileTargets(task, onLog = () => {}) {
+/* `statuts` : quels projets inspecter (par défaut ceux en erreur — le cas d'origine). `siRien` :
+   statut à poser quand la branche ne porte RIEN. Sert au « j'ai répondu au terminal » : un projet
+   qui attendait une réponse ne doit pas rester en attente quand on vient de dire le contraire, et
+   la branche est le seul témoin de ce qui s'est passé dehors. */
+async function reconcileTargets(task, onLog = () => {}, { statuts = ['error'], targetIds = null, siRien = null } = {}) {
   const cfg = getConfig();
-  const cibles = targetsOf(task.id).filter((tg) => tg.status === 'error');
+  const voulus = Array.isArray(targetIds) && targetIds.length ? targetIds.map(Number) : null;
+  const cibles = targetsOf(task.id)
+    .filter((tg) => statuts.includes(tg.status) && (!voulus || voulus.includes(tg.id)));
   if (!cibles.length) { onLog(t('log.task.reconcile-none')); return { repaired: 0, checked: 0 }; }
   let repaired = 0;
   for (const tg of cibles) {
@@ -101,7 +107,12 @@ async function reconcileTargets(task, onLog = () => {}) {
       else { onLog(t('log.task.branch-nowhere')); continue; }
 
       const avance = await git.aheadOf(cwd, base);
-      if (!avance) { onLog(t('log.task.no-ahead', { base })); continue; }
+      if (!avance) {
+        onLog(t('log.task.no-ahead', { base }));
+        // Rien sur la branche : on ne laisse pas le projet dans un état qu'il n'a plus.
+        if (siRien) setTarget(tg.id, { status: siRien, last_error: null });
+        continue;
+      }
 
       const sha = await git.headSha(cwd);
       const diff = await git.branchDiff(cwd, base);

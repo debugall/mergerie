@@ -188,4 +188,4 @@ async function runLocalFollowup(taskId, instruction, onLog = () => {}) {
   return runLocal(taskId, onLog, { instruction: instr });
 }
 
-module.exports = { runLocal, runLocalFollowup, saveAgentOutput };
+module.exports = { runLocal, runLocalFollowup, saveAgentOutput, syncStatus };

@@ -207,6 +207,17 @@ dépôt** chaque **dossier** a la sienne, et répondre à l'un **ne fait pas ret
 ⚠ Tant qu'une question tient, **rien n'a été fait** : pas de synthèse enregistrée en exploration,
 aucun fichier touché hors dépôt.
 
+**Et si tu as répondu dans ton terminal ?** « Reprendre au terminal » copie la session d'agent : on
+peut donc répondre là-bas, et l'agent y poursuit le travail — dans le clone de Mergerie, qui n'en
+sait rien. Le bouton **`J'ai répondu au terminal`**, à côté de `Répondre et reprendre`, solde cette
+attente : les questions disparaissent, la todo se referme, et **rien n'est relancé**. L'état, lui,
+n'est pas deviné : sur une session de dépôt, Mergerie **relit la branche** (la même mécanique que
+`Vérifier l'état des branches`) — des commits d'avance et le projet repasse en *commité* ou *poussé*
+avec son diff, rien du tout et il revient à *à faire*. Hors dépôt, il n'y a ni branche ni commit à
+interroger : le dossier est rendu à l'état *fait*, et ce qu'il contient est ce que ton terminal en a
+fait. Sans ce geste, le projet restait en attente pour toujours, et le formulaire proposait de
+répondre une seconde fois — ce qui aurait relancé l'agent sur un travail déjà terminé.
+
 **Une session arrêtée sur une question pose sa todo.** Quand l'IA s'interrompt pour demander
 quelque chose, une **todo de priorité haute** est créée automatiquement — « Répondre à l'IA —
 session #12 », avec les projets concernés en note. La file est libre, plus rien ne repartira, et

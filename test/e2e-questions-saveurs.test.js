@@ -279,6 +279,62 @@ describe('Questions de l’agent : exploration et hors dépôt', () => {
     });
   }
 
+  /* RÉPONDU AU TERMINAL. « Reprendre au terminal » copie la session d'agent : on peut répondre
+     dans son propre terminal, et l'agent y poursuit le travail — dans le clone de Mergerie, qui
+     n'en sait rien. Sans un geste pour le dire, le projet restait en attente pour toujours, et le
+     formulaire proposait de répondre une deuxième fois : l'agent serait reparti sur du travail
+     déjà fait. */
+  test('hors dépôt : « j’ai répondu au terminal » retire les questions sans rien relancer', async () => {
+    const dossier = fs.mkdtempSync(path.join(app.dataDir, 'term-'));
+    const { body: lt } = await app.api('POST', '/api/local-tasks', { prompt: 'Range', dirs: [dossier], ask_questions: true });
+    await app.api('POST', `/api/local-tasks/${lt.id}/run`);
+    await waitForJobs(app.api);
+    const lire = async () => (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === lt.id);
+    const d = (await lire()).dirs[0];
+    assert.equal(d.status, 'needs_input');
+    const marqueur = path.join(dossier, 'PROJ_LOCAL_DRYRUN.md');
+    const avant = fs.existsSync(marqueur) ? fs.readFileSync(marqueur, 'utf8').length : 0;
+
+    const r = await app.api('POST', `/api/local-tasks/${lt.id}/dirs/${d.id}/answer`, { elsewhere: true });
+    assert.equal(r.status, 200);
+
+    const apres = (await lire());
+    assert.equal(apres.dirs[0].status, 'done', 'le dossier ne réclame plus rien');
+    assert.equal(apres.dirs[0].questions, null, 'et l’écran n’a plus de questions à afficher');
+    assert.equal(apres.status, 'done', 'la session non plus');
+    // RIEN n'a été relancé : l'agent a travaillé dans le terminal, pas ici.
+    const { body: st } = await app.api('GET', '/api/status');
+    assert.ok(!st.running && !st.queued, 'aucun job n’a été mis en file');
+    const apresTaille = fs.existsSync(marqueur) ? fs.readFileSync(marqueur, 'utf8').length : 0;
+    assert.equal(apresTaille, avant, 'et l’agent n’a pas retravaillé le dossier');
+
+    // Le geste ne vaut qu'une fois : il n'y a plus rien en attente.
+    assert.equal((await app.api('POST', `/api/local-tasks/${lt.id}/dirs/${d.id}/answer`, { elsewhere: true })).status, 400);
+  });
+
+  test('codage : « j’ai répondu au terminal » relit l’état depuis la branche', async () => {
+    const { body: t } = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Ajoute un cache', ask_questions: true,
+      targets: [{ repo_id: repoId, branch: 'feat/terminal', base_branch: 'main' }],
+    });
+    await app.api('POST', `/api/tasks/${t.id}/run`);
+    await waitForJobs(app.api);
+    let tg = (await app.api('GET', `/api/tasks/${t.id}`)).body.task.targets[0];
+    assert.equal(tg.status, 'needs_input');
+
+    const r = await app.api('POST', `/api/tasks/${t.id}/targets/${tg.id}/answer`, { elsewhere: true });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.kind, 'reconcile', 'on INSPECTE la branche, on ne relance pas l’agent');
+    await waitForJobs(app.api);
+
+    tg = (await app.api('GET', `/api/tasks/${t.id}`)).body.task.targets[0];
+    assert.notEqual(tg.status, 'needs_input', 'le projet ne réclame plus de réponse');
+    assert.equal(tg.questions, null, 'et les questions ont disparu de l’écran');
+    /* La branche ne porte rien (l'agent s'était arrêté pour demander) : on le dit en rendant le
+       projet à « à faire », plutôt que de le laisser en attente d'une réponse déjà donnée. */
+    assert.equal(tg.status, 'new');
+  });
+
   test('sans la case, une session hors dépôt code directement', async () => {
     const dossier = fs.mkdtempSync(path.join(app.dataDir, 'hd-sans-'));
     const { body: lt } = await app.api('POST', '/api/local-tasks', { prompt: 'Nettoie', dirs: [dossier] });
