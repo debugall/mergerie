@@ -157,6 +157,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Answering the AI's questions works on an out-of-repo session.** The answers form is rendered
+  in three places — a project line of a coding session, an exploration card, and a folder line of
+  an out-of-repo session — but its button was only wired on the first list. On an out-of-repo
+  session you could answer everything, click *Answer and resume*, and **nothing happened**: no
+  resume, not even an error. The gesture is now bound once, at the document level, where the
+  route already travels with the form.
+
 - **A second follow-up on the same project no longer forgets the first.** Resuming an agent
   session does not always continue under the same identifier — `claude --resume <id>` opens a new
   one, carrying the whole exchange plus the turn just made. Only the identifier from the initial

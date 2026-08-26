@@ -5863,37 +5863,45 @@ function wireTaskActions() {
       toast(tr('toast.lance')); refreshStatus();
     } catch (e) { toast(explainError(e.message), true); }
   });
-  // Soumission des réponses aux questions de l'agent → reprise de la session.
-  on('[data-qsubmit]', async (b) => {
-    const box = b.closest('.questions-box');
-    const answers = {};
-    let missing = false;
-    $$('.q-item', box).forEach((item) => {
-      const qid = item.dataset.qid;
-      const name = item.dataset.name;
-      const free = $('.q-free', item);
-      if (free) { answers[qid] = free.value.trim(); }
-      else {
-        const picked = box.querySelector(`input[name="${name}"]:checked`);
-        if (picked) {
-          answers[qid] = picked.value === '__other__'
-            ? (item.querySelector('.q-other-text')?.value.trim() || '')
-            : picked.value;
-        }
-      }
-      if (!answers[qid]) missing = true;
-    });
-    if (missing) { toast(tr('task.questions.fill-all'), true); return; }
-    try {
-      await busy(b, () => api(box.dataset.qroute, { method: 'POST', body: { answers } }));
-      // Feedback immédiat : on remplace le formulaire par un état « reprise en cours »
-      // sans attendre le prochain rechargement (le projet est déjà passé en running côté serveur).
-      box.classList.add('resuming');
-      box.innerHTML = `<div class="q-head"><span class="spin"></span> <strong>${esc(tr('task.questions.resuming'))}</strong></div>`;
-      toast(tr('task.questions.resumed')); refreshStatus();
-    } catch (e) { toast(explainError(e.message), true); }
-  });
 }
+
+/* RÉPONDRE AUX QUESTIONS DE L'AGENT — délégué au document, et pas à une liste.
+   Le même formulaire est rendu à TROIS endroits : la ligne d'un projet de codage et la carte
+   d'une exploration (dans `#taskList`), et la ligne d'un dossier hors dépôt (dans `#localList`).
+   Câblé sur la première liste seulement, le bouton du hors dépôt ne faisait rien du tout : on
+   répondait à tout, on cliquait, et il ne se passait rien — pas même un message d'erreur. La
+   route voyage déjà dans `data-qroute`, il n'y avait donc rien à savoir de plus ici. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-qsubmit]');
+  if (!b) return;
+  const box = b.closest('.questions-box');
+  const answers = {};
+  let missing = false;
+  $$('.q-item', box).forEach((item) => {
+    const qid = item.dataset.qid;
+    const name = item.dataset.name;
+    const free = $('.q-free', item);
+    if (free) { answers[qid] = free.value.trim(); }
+    else {
+      const picked = box.querySelector(`input[name="${name}"]:checked`);
+      if (picked) {
+        answers[qid] = picked.value === '__other__'
+          ? (item.querySelector('.q-other-text')?.value.trim() || '')
+          : picked.value;
+      }
+    }
+    if (!answers[qid]) missing = true;
+  });
+  if (missing) { toast(tr('task.questions.fill-all'), true); return; }
+  try {
+    await busy(b, () => api(box.dataset.qroute, { method: 'POST', body: { answers } }));
+    // Feedback immédiat : on remplace le formulaire par un état « reprise en cours »
+    // sans attendre le prochain rechargement (le projet est déjà passé en running côté serveur).
+    box.classList.add('resuming');
+    box.innerHTML = `<div class="q-head"><span class="spin"></span> <strong>${esc(tr('task.questions.resuming'))}</strong></div>`;
+    toast(tr('task.questions.resumed')); refreshStatus();
+  } catch (err) { toast(explainError(err.message), true); }
+});
 
 /* ---- Vues plein écran : diff d'un projet, réponse d'une exploration ---- */
 /* « Voir le diff » d'un projet de session : on RÉUTILISE le viewer des MR (arbre +

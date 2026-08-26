@@ -20,6 +20,17 @@ const {
   startApp, makeRemoteRepo, waitForJobs, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
 } = require('./helpers/app');
 
+/* Attend qu'une condition côté SERVEUR devienne vraie : un délai fixe est un pari sur la
+   vitesse de la machine. */
+async function attendreServeur(cond, quoi, ms = 20000) {
+  const fin = Date.now() + ms;
+  for (;;) {
+    if (await cond()) return;
+    if (Date.now() > fin) throw new Error(`délai dépassé : ${quoi}`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 describe('Questions de l’agent : exploration et hors dépôt', () => {
   let app; let repoId;
 
@@ -207,6 +218,66 @@ describe('Questions de l’agent : exploration et hors dépôt', () => {
       assert.equal(cree.ask_questions, 1, 'la case cochée à l’écran doit arriver jusqu’à la base');
     } finally { await nav.close(); }
   });
+
+  /* RÉPONDRE, DEPUIS L'ÉCRAN. Le formulaire de réponses est rendu à trois endroits ; son bouton
+     n'était câblé que sur la liste des sessions de dépôt. Sur une session hors dépôt, on
+     répondait à tout, on cliquait « Répondre et reprendre » — et il ne se passait RIEN : pas de
+     reprise, pas même un message. Un test d'API ne pouvait pas le voir, puisque la route, elle,
+     marchait très bien. */
+  for (const [saveur, liste, creer] of [
+    ['hors dépôt', '#localList', 'local'],
+    ['codage', '#taskList', 'code'],
+  ]) {
+    test(`${saveur} : répondre depuis l’écran relance vraiment la session`, async (t) => {
+      if (!navigateurDispo().dispo) { t.skip(MSG_NAVIGATEUR); return; }
+      let id;
+      if (creer === 'local') {
+        const dossier = fs.mkdtempSync(path.join(app.dataDir, 'ecran-'));
+        id = (await app.api('POST', '/api/local-tasks', { prompt: 'Range les imports', dirs: [dossier], ask_questions: true })).body.id;
+        await app.api('POST', `/api/local-tasks/${id}/run`);
+      } else {
+        id = (await app.api('POST', '/api/tasks', {
+          kind: 'code', prompt: 'Ajoute un retry', ask_questions: true,
+          targets: [{ repo_id: repoId, branch: 'feat/ecran-questions', base_branch: 'main' }],
+        })).body.id;
+        await app.api('POST', `/api/tasks/${id}/run`);
+      }
+      await waitForJobs(app.api);
+
+      const nav = await lancerNavigateur();
+      const page = await nav.newPage({ viewport: { width: 1400, height: 950 } });
+      const erreurs = [];
+      page.on('pageerror', (e) => erreurs.push(e.message));
+      try {
+        await page.goto(app.base);
+        await page.locator('nav button[data-tab="task"]').click();
+        await page.locator(`#tab-task .subnav [data-kind="${creer === 'local' ? 'local' : 'code'}"]`).click();
+        await page.waitForSelector(`${liste} .questions-box`);
+
+        // On répond à TOUT : un choix fermé et une réponse libre, comme le fait l'agent en dry-run.
+        await page.locator(`${liste} .questions-box .q-opts input[type="radio"]`).first().check();
+        await page.locator(`${liste} .questions-box .q-free`).first().fill('Oui, avec une migration');
+
+        await page.locator(`${liste} [data-qsubmit]`).first().click();
+        /* On vérifie l'EFFET, pas l'état transitoire de l'écran : le formulaire annonce
+           « reprise en cours », puis le rafraîchissement de la liste le fait disparaître —
+           attendre la mention perdait la course une fois sur deux. Ce qui compte est que le
+           serveur ait repris la session. */
+        await attendreServeur(async () => {
+          const r = creer === 'local'
+            ? (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === id)
+            : (await app.api('GET', `/api/tasks/${id}`)).body.task;
+          return r && r.status !== 'needs_input';
+        }, 'la session est repartie');
+        // Et le formulaire ne reste pas là à proposer de répondre une seconde fois.
+        await page.waitForFunction((sel) => {
+          const box = document.querySelector(`${sel} .questions-box`);
+          return !box || box.classList.contains('resuming');
+        }, liste);
+        assert.deepEqual(erreurs, []);
+      } finally { await nav.close(); }
+    });
+  }
 
   test('sans la case, une session hors dépôt code directement', async () => {
     const dossier = fs.mkdtempSync(path.join(app.dataDir, 'hd-sans-'));
