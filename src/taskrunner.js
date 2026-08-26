@@ -10,6 +10,7 @@ const agentsession = require('./agentsession');
 const questions = require('./questions');
 const { avecConsignes } = require('./prompts');
 const agentpass = require('./agentpass');
+const pieces = require('./pieces');
 const { t } = require('../public/i18n-runtime.js');
 
 const WORK_REL = 'ai-dev-tools-internal';
@@ -64,29 +65,12 @@ function syncTaskStatus(taskId) {
     .run(status, new Date().toISOString(), taskId);
 }
 
-// Bloc « captures » : les images de la tâche sont copiées dans le cwd de l'agent.
-/* Les captures jointes au prompt. Par défaut, celles de la CONSIGNE INITIALE — celles d'un
-   suivi passé illustraient une autre demande, les renvoyer à chaque passe ferait dire au prompt
-   « voici les captures » en montrant autre chose. `imageIds` ajoute celles du suivi en cours. */
+/* Les pièces jointes de la session, copiées dans le dossier de travail de l'agent : il ne voit
+   que son clone. La règle « consigne initiale + suivi en cours » vit dans `pieces.js`, partagée
+   avec les trois autres saveurs. */
 function attachImages(task, cwd, onLog, { imageIds } = {}) {
   ensureDir(path.join(cwd, WORK_REL));
-  const ids = (imageIds || []).map(Number).filter(Number.isInteger);
-  const suivi = ids.length
-    ? db.prepare(`SELECT * FROM task_image WHERE task_id = ? AND id IN (${ids.map(() => '?').join(',')})`).all(task.id, ...ids)
-    : [];
-  const images = [
-    ...db.prepare('SELECT * FROM task_image WHERE task_id = ? AND followup = 0 ORDER BY id').all(task.id),
-    ...suivi,
-  ];
-  let imgBlock = '';
-  images.forEach((im, i) => {
-    if (!fs.existsSync(im.path)) return;
-    const ext = path.extname(im.path) || '.png';
-    const rel = `${WORK_REL}/img_${i + 1}${ext}`;
-    try { fs.copyFileSync(im.path, path.join(cwd, rel)); imgBlock += `\n- capture jointe : \`${rel}\``; } catch { /* ignore */ }
-  });
-  if (imgBlock) { imgBlock = `\n\nDes captures d'écran sont fournies (ouvre-les) :${imgBlock}`; onLog(t('log.task.images', { n: images.length, count: images.length })); }
-  return imgBlock;
+  return pieces.blocPrompt('task', task.id, { ids: imageIds, dest: cwd, sousDossier: WORK_REL, onLog });
 }
 
 /* ---------- Réconcilier l'état affiché avec l'état réel des branches ----------

@@ -36,7 +36,9 @@ describe('Captures jointes à une demande de suivi', () => {
   });
   after(async () => { await app.stop(); });
 
-  const captures = (taskId) => app.db.prepare('SELECT id, path, followup FROM task_image WHERE task_id = ? ORDER BY id').all(taskId);
+  // Captures ET documents vivent dans la même table depuis qu'une session accepte les deux.
+  const captures = (taskId) => app.db
+    .prepare("SELECT id, path, name, followup FROM piece_jointe WHERE scope = 'task' AND owner_id = ? ORDER BY id").all(taskId);
   // Le prompt réellement envoyé à l'agent, archivé avec la passe.
   const promptDeLaPasse = async (taskId, unitId) => {
     const { body } = await app.api('GET', `/api/tasks/${taskId}/targets/${unitId}/passes`);
@@ -63,9 +65,9 @@ describe('Captures jointes à une demande de suivi', () => {
 
     const tg = (await app.api('GET', `/api/tasks/${t.id}`)).body.task.targets[0];
     const p1 = await promptDeLaPasse(t.id, tg.id);
-    assert.match(p1, /captures d’écran sont fournies|captures d'écran sont fournies/,
+    assert.match(p1, /pièces jointes sont fournies/,
       `le prompt du suivi annonce les captures : ${p1.slice(-300)}`);
-    assert.equal((p1.match(/capture jointe/g) || []).length, 2,
+    assert.equal((p1.match(/^- `/gm) || []).length, 2,
       'celle de la consigne initiale ET celle du suivi');
 
     // 2e suivi, avec SA capture : celle du premier suivi n'a plus rien à faire là.
@@ -74,7 +76,7 @@ describe('Captures jointes à une demande de suivi', () => {
     assert.equal(captures(t.id).length, 3);
     const p2 = await promptDeLaPasse(t.id, tg.id);
     assert.match(p2, /libellé est faux/, 'on lit bien la passe du 2e suivi');
-    assert.equal((p2.match(/capture jointe/g) || []).length, 2,
+    assert.equal((p2.match(/^- `/gm) || []).length, 2,
       'la capture du suivi PRÉCÉDENT ne repart pas — elle illustrait une autre demande');
   });
 
@@ -111,11 +113,11 @@ describe('Captures jointes à une demande de suivi', () => {
     await app.api('POST', `/api/local-tasks/${lt.id}/followup`, { instruction: 'Vois la capture', images: [PNG] });
     await waitForJobs(app.api);
 
-    const imgs = app.db.prepare('SELECT followup FROM local_task_image WHERE task_id = ?').all(lt.id);
+    const imgs = app.db.prepare("SELECT followup FROM piece_jointe WHERE scope = 'local' AND owner_id = ?").all(lt.id);
     assert.deepEqual(imgs.map((i) => i.followup), [1]);
     const dir = (await app.api('GET', `/api/local-tasks/${lt.id}`)).body.task.dirs[0];
     const { body } = await app.api('GET', `/api/local-tasks/${lt.id}/dirs/${dir.id}/passes`);
-    assert.match(body.current.prompt, /captures d’écran sont fournies|captures d'écran sont fournies/);
+    assert.match(body.current.prompt, /pièces jointes sont fournies/);
   });
 
   /* Une image invalide ne doit pas partir en silence NI casser la demande à moitié : on la

@@ -13,6 +13,19 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Attach files to a session, not just screenshots — in all four flavours.** “Here is the
+  client's quote, implement the discount rules”: a PDF, a spreadsheet or a `.txt` says in one file
+  what a prompt takes twenty lines to describe. The `Attach a file` button now takes images, PDFs,
+  text, data files and Office documents (up to 10 MB each); anything else is refused with its
+  reason, before anything is stored. Works at creation and in follow-ups, for coding, out-of-repo
+  coding, exploration and the free question — the last of which had no attachments at all until
+  now. To the agent a screenshot and a PDF are the same thing, a file to open, so both now travel
+  through one mechanism: images show a thumbnail, documents a named chip, and the **original file
+  name** goes into the prompt (`pj_2.pdf` teaches an agent nothing) while the file on disk carries
+  a made-up name — a name coming from a form has no business in a path. What the agent can read is
+  its own business: a `.txt` is safe, an `.xlsx` much less so; Mergerie provides the file, it does
+  not convert it.
+
 - **A red badge on the Jenkins menu: what failed today.** The blue count says how many jobs ran,
   which also goes up when everything is fine. The red one answers the question you actually ask
   walking past the tab — did something fall over this morning? — from any other tab. It counts

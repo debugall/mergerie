@@ -1188,7 +1188,8 @@
                 <textarea name="prompt" rows="5" placeholder="Décris la tâche de dev à faire… (ex. Ajouter un endpoint /health qui renvoie le statut)" data-i18n-placeholder="task.ph.decris-la-tache-de-dev" required></textarea>
             </label>
             <div id="taskImages" class="ticket-drop">
-                <label class="ticket-file"><svg class="ico"><use href="#i-clip"/></svg><span data-i18n="task.lbl.add-screenshot">Ajouter une capture</span><input type="file" id="taskFile" accept="image/*" hidden multiple /></label>
+                <!-- Captures ET documents : pour l'agent, c'est la même chose — un fichier à ouvrir. -->
+                <label class="ticket-file"><svg class="ico"><use href="#i-clip"/></svg><span data-i18n="task.lbl.add-piece">Joindre un fichier</span><input type="file" id="taskFile" accept="image/*,.pdf,.txt,.md,.csv,.tsv,.json,.yml,.yaml,.xml,.html,.log,.docx,.xlsx,.pptx,.odt,.ods,.odp,.rtf" hidden multiple /></label>
                 <span class="muted" data-i18n="task.span.ou-colle-des-captures-ctrl">…ou colle des captures (Ctrl+V) pour enrichir le prompt</span>
                 <span id="taskExistingImgs" class="muted"></span>
                 <div id="taskPreviews" class="task-previews"></div>

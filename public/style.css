@@ -2343,6 +2343,15 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .apercu-gabarit > summary:hover { color: var(--text); }
 .apercu-gabarit .verify-log { margin-top: 6px; max-height: 260px; }
 
+/* Une pièce jointe qui n'est PAS une image : pas de vignette à montrer, donc son nom — c'est
+   ce qui l'identifie, et c'est aussi ce que l'agent recevra. */
+.task-prev-doc { display: inline-flex; align-items: center; gap: 6px; max-width: 220px; padding: 4px 8px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); font-size: 12px; }
+.task-prev-nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* La croix d'une vignette est POSÉE sur l'image (il n'y a pas d'autre place) ; sur une puce
+   nommée, elle se range à la suite du nom — perchée dans le coin, elle en mangeait la fin. */
+.task-prev-doc button { position: static; width: 18px; height: 18px; flex: none; }
+
 /* Captures d'une demande de suivi : même vignette que celles du formulaire de session. */
 .followup-imgs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 2px; }
 .followup-imgs .muted { font-size: 12px; }

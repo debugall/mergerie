@@ -112,9 +112,11 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
     // PNG 1×1 transparent (data URL) — enrichit le prompt.
     const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
     const created = (await app.api('POST', '/api/local-tasks', { prompt: 'Corrige selon la capture', dirs: [d], images: [png] })).body;
-    // le fichier image est écrit sous data/tasks/local/<id>/
-    const imgFile = path.join(app.dataDir, 'tasks', 'local', String(created.id), 'img_1.png');
+    /* Le fichier est écrit sous data/tasks/local/<id>/ — on lit son chemin en base plutôt que
+       de le deviner : le nommage est un détail d'implémentation, l'existence n'en est pas un. */
+    const imgFile = app.db.prepare("SELECT path FROM piece_jointe WHERE scope = 'local' AND owner_id = ?").get(created.id).path;
     assert.ok(fs.existsSync(imgFile), 'la capture est stockée sur disque');
+    assert.match(imgFile, new RegExp(`tasks/local/${created.id}/`), 'rangée avec la session');
 
     await app.api('POST', `/api/local-tasks/${created.id}/run`);
     await waitForJobs(app.api);

@@ -20,6 +20,7 @@ const db = require('./db');
 const copilot = require('./copilot');
 const agentsession = require('./agentsession');
 const agentpass = require('./agentpass');
+const pieces = require('./pieces');
 const { TASKS_DIR, ensureDir } = require('./paths');
 const { t } = require('../public/i18n-runtime.js');
 
@@ -41,7 +42,7 @@ const REPONSE_REL = 'reponse.md';
    agents y mêlent leurs traces d'outil, et une réponse longue y arrive tronquée. On garde
    quand même le repli sur la sortie — une réponse dans un format inattendu vaut mieux que
    « rien à afficher ». */
-function construirePrompt(question, { suivi, precedente, reprise }) {
+function construirePrompt(question, { suivi, precedente, reprise, piecesBloc = '' }) {
   /* La réponse précédente n'est réinjectée que HORS session : quand l'agent s'en souvient,
      la redonner lui ferait relire son propre texte au lieu de son raisonnement. */
   const prev = (precedente && !reprise)
@@ -50,10 +51,16 @@ function construirePrompt(question, { suivi, precedente, reprise }) {
   const entete = suivi
     ? `QUESTION DE SUIVI : ${question}`
     : `QUESTION : ${question}`;
-  return `${entete}${prev}\n\n`
-    + `Tu réponds à une question posée hors de tout dépôt de code : il n'y a aucun projet à `
-    + `explorer, aucun fichier à lire, et rien à modifier. Réponds à partir de ce que tu sais, `
-    + `et dis-le franchement si tu ne sais pas.\n\n`
+  return `${entete}${prev}${piecesBloc}\n\n`
+    /* « aucun fichier à lire » ne vaut plus dès qu'une pièce est jointe : on ne peut pas
+       demander d'ouvrir un document et interdire de lire un fichier dans la même phrase. */
+    + (piecesBloc
+      ? `Tu réponds à une question posée hors de tout dépôt de code : il n'y a aucun projet à `
+        + `explorer et rien à modifier. Appuie-toi sur les pièces jointes ci-dessus et sur ce que `
+        + `tu sais, et dis-le franchement si tu ne sais pas.\n\n`
+      : `Tu réponds à une question posée hors de tout dépôt de code : il n'y a aucun projet à `
+        + `explorer, aucun fichier à lire, et rien à modifier. Réponds à partir de ce que tu sais, `
+        + `et dis-le franchement si tu ne sais pas.\n\n`)
     + `Rédige ta réponse en Markdown (français) et écris-la UNIQUEMENT dans le fichier `
     + `\`${REPONSE_REL}\` du répertoire courant. Ne duplique pas ce contenu sur la sortie standard.`;
 }
@@ -83,7 +90,10 @@ async function runQuestion(id, onLog = () => {}, opts = {}) {
     reprise = false;
   }
 
-  const prompt = construirePrompt(question, { suivi: !!suivi, precedente, reprise });
+  /* Les pièces jointes vivent DÉJÀ dans le répertoire de travail de l'agent (`ask/<id>`) : on
+     les référence par leur nom, sans rien copier. */
+  const piecesBloc = pieces.blocPrompt('ask', q.id, { ids: opts.imageIds, dest: cwd, onLog });
+  const prompt = construirePrompt(question, { suivi: !!suivi, precedente, reprise, piecesBloc });
   try { fs.rmSync(outAbs, { force: true }); } catch { /* pas de réponse précédente */ }
 
   onLog(t('log.ask.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai') }));
@@ -101,7 +111,7 @@ async function runQuestion(id, onLog = () => {}, opts = {}) {
         // session neuve en réinjectant la réponse précédente, seul fil qui lui reste.
         onLog(t('log.task.resume-failed', { raison: String(e.message).split('\n')[0] }));
         r = await agentsession.runInSession({
-          key, prompt: construirePrompt(question, { suivi: !!suivi, precedente, reprise: false }), cwd, resume: false, onLog,
+          key, prompt: construirePrompt(question, { suivi: !!suivi, precedente, reprise: false, piecesBloc }), cwd, resume: false, onLog,
         });
         creee = true;
       }

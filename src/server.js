@@ -72,6 +72,7 @@ const { StringDecoder } = require('node:string_decoder');
 const aisession = require('./aisession');
 const agentsession = require('./agentsession');
 const agentpass = require('./agentpass');
+const pieces = require('./pieces');
 const localrepos = require('./localrepos');
 const copilot = require('./copilot');
 
@@ -1631,7 +1632,7 @@ function taskById(id) {
   return db.prepare(`SELECT task.*, repo.project AS project, repo.forge AS forge FROM task JOIN repo ON repo.id = task.repo_id WHERE task.id = ?`).get(id);
 }
 function taskImages(id) {
-  return db.prepare('SELECT id, path FROM task_image WHERE task_id = ? ORDER BY id').all(id);
+  return piecesDe('task', id);
 }
 // Les projets d'une session, avec leur état d'exécution propre (commit, diff, MR…).
 function taskTargets(taskId) {
@@ -1740,45 +1741,88 @@ function assertValidBranch(branch) {
   }
   return b;
 }
+/* ---------- PIÈCES JOINTES D'UNE SESSION ----------
+   Captures ET documents, un seul mécanisme : pour l'agent, une capture d'écran et un PDF de
+   spécification sont la même chose — un fichier à ouvrir. La distinction ne vaut qu'à
+   l'affichage (vignette ou nom de fichier), pas ici.
+
+   Le nom donné par le navigateur ne sert QU'À L'AFFICHAGE et au prompt : le fichier écrit sur
+   disque porte un nom fabriqué. Un nom venu de l'extérieur n'a rien à faire dans un chemin —
+   `../../.ssh/config` est un nom de fichier valide pour un formulaire. */
+const PJ_MAX_OCTETS = 10 * 1024 * 1024;
+/* Ce qu'on accepte, par EXTENSION. Une liste fermée dit clairement non plutôt que d'accepter
+   n'importe quoi et de laisser l'agent découvrir un binaire qu'il ne sait pas ouvrir. */
+const PJ_EXTENSIONS = new Set([
+  'png', 'jpg', 'jpeg', 'webp', 'gif',
+  'pdf', 'txt', 'md', 'csv', 'tsv', 'json', 'yml', 'yaml', 'xml', 'html', 'log',
+  'docx', 'xlsx', 'pptx', 'odt', 'ods', 'odp', 'rtf',
+]);
+const PJ_SCOPES = { task: (id) => path.join(TASKS_DIR, String(id)), local: (id) => path.join(TASKS_DIR, 'local', String(id)), ask: (id) => path.join(TASKS_DIR, 'ask', String(id)) };
+
 function decodeDataUrlImage(dataUrl) {
   const m = /^data:image\/(png|jpe?g|webp|gif);base64,(.+)$/i.exec(dataUrl || '');
   if (!m) throw new Error(t('err.image-invalide-data-url-image'));
   const ext = m[1].toLowerCase() === 'jpeg' ? 'jpg' : m[1].toLowerCase();
   return { ext, buf: Buffer.from(m[2], 'base64') };
 }
-/* `followup` : la capture illustre une demande de SUIVI, pas la consigne initiale. Les ids
-   rendus permettent de n'attacher QUE celles-là au prompt de ce suivi — les autres captures de
-   suivis passés parleraient d'autre chose. */
-function saveTaskImages(taskId, images, { followup = 0 } = {}) {
-  if (!Array.isArray(images)) return [];
-  const dir = ensureDir(path.join(TASKS_DIR, String(taskId)));
-  const ins = db.prepare('INSERT INTO task_image (task_id, path, followup) VALUES (?, ?, ?)');
+
+/* Une pièce arrive en `{ name, data }` (data URL). L'extension est lue sur le NOM — le type
+   MIME annoncé par le navigateur varie d'un poste à l'autre pour un même .docx, et se refuser
+   à ouvrir un fichier parce que Windows l'a déclaré `application/octet-stream` serait absurde. */
+function decodePiece(piece) {
+  const nom = String((piece && piece.name) || '').trim();
+  const data = String((piece && piece.data) || '');
+  const m = /^data:([^;,]*);base64,(.+)$/i.exec(data);
+  if (!m) throw new Error(t('err.piece.invalide', { name: nom || '?' }));
+  const ext = (nom.split('.').pop() || '').toLowerCase();
+  if (!nom || !PJ_EXTENSIONS.has(ext)) throw new Error(t('err.piece.type', { name: nom || '?' }));
+  const buf = Buffer.from(m[2], 'base64');
+  if (buf.length > PJ_MAX_OCTETS) throw new Error(t('err.piece.trop-grosse', { name: nom, mo: Math.round(PJ_MAX_OCTETS / 1024 / 1024) }));
+  return { ext, buf, nom, mime: m[1] || null };
+}
+
+/* `followup` : la pièce illustre une demande de SUIVI, pas la consigne initiale. Les ids rendus
+   permettent de n'attacher QUE celles-là au prompt de ce suivi — les pièces d'un suivi passé
+   parleraient d'autre chose. */
+function savePieces(scope, ownerId, pieces, { followup = 0 } = {}) {
+  if (!Array.isArray(pieces) || !pieces.length) return [];
+  const dossier = PJ_SCOPES[scope];
+  if (!dossier) throw new Error(`scope de pièce jointe inconnu : ${scope}`);
+  const dir = ensureDir(dossier(ownerId));
+  const ins = db.prepare(`INSERT INTO piece_jointe (scope, owner_id, path, name, mime, followup, created_at)
+    VALUES (?,?,?,?,?,?,?)`);
   const ids = [];
-  for (const dataUrl of images) {
-    const { ext, buf } = decodeDataUrlImage(dataUrl);
-    const n = db.prepare('SELECT COUNT(*) c FROM task_image WHERE task_id = ?').get(taskId).c + 1;
-    const file = path.join(dir, `img_${n}.${ext}`);
+  for (const piece of pieces) {
+    const { ext, buf, nom, mime } = decodePiece(piece);
+    const n = db.prepare('SELECT COUNT(*) c FROM piece_jointe WHERE scope = ? AND owner_id = ?').get(scope, ownerId).c + 1;
+    const file = path.join(dir, `pj_${n}.${ext}`);
     fs.writeFileSync(file, buf);
-    ids.push(ins.run(taskId, file, followup ? 1 : 0).lastInsertRowid);
+    ids.push(ins.run(scope, ownerId, file, nom, mime, followup ? 1 : 0, new Date().toISOString()).lastInsertRowid);
   }
   return ids;
 }
 
-// Captures d'un codage hors dépôt : mêmes règles, table dédiée (dossier local/<id>).
-function saveLocalImages(taskId, images, { followup = 0 } = {}) {
-  if (!Array.isArray(images)) return [];
-  const dir = ensureDir(path.join(TASKS_DIR, 'local', String(taskId)));
-  const ins = db.prepare('INSERT INTO local_task_image (task_id, path, followup) VALUES (?, ?, ?)');
-  const ids = [];
-  for (const dataUrl of images) {
-    const { ext, buf } = decodeDataUrlImage(dataUrl);
-    const n = db.prepare('SELECT COUNT(*) c FROM local_task_image WHERE task_id = ?').get(taskId).c + 1;
-    const file = path.join(dir, `img_${n}.${ext}`);
-    fs.writeFileSync(file, buf);
-    ids.push(ins.run(taskId, file, followup ? 1 : 0).lastInsertRowid);
-  }
-  return ids;
+/* Les captures collées gardent leur chemin d'entrée (`images: [dataUrl]`) : le formulaire les
+   envoie sans nom, puisqu'elles viennent du presse-papiers. On leur en fabrique un — il faut
+   bien nommer ce qu'on donne à l'agent. */
+function saveImagesAsPieces(scope, ownerId, images, opts) {
+  if (!Array.isArray(images) || !images.length) return [];
+  const n0 = db.prepare('SELECT COUNT(*) c FROM piece_jointe WHERE scope = ? AND owner_id = ?').get(scope, ownerId).c;
+  return savePieces(scope, ownerId, images.map((dataUrl, i) => {
+    const { ext } = decodeDataUrlImage(dataUrl);
+    return { name: `capture-${n0 + i + 1}.${ext}`, data: dataUrl };
+  }), opts);
 }
+
+// Tout ce qu'un formulaire peut envoyer : des captures collées et des fichiers choisis.
+const savePiecesEtImages = (scope, ownerId, body, opts) => [
+  ...saveImagesAsPieces(scope, ownerId, (body && body.images) || [], opts),
+  ...savePieces(scope, ownerId, (body && body.files) || [], opts),
+];
+
+const piecesDe = (scope, ownerId) => db
+  .prepare('SELECT id, path, name, mime, followup FROM piece_jointe WHERE scope = ? AND owner_id = ? ORDER BY id')
+  .all(scope, Number(ownerId) || 0);
 
 app.get('/api/tasks', wrap((req, res) => {
   /* En tête, ce qui vient de se passer : les sessions qui TOURNENT, puis les plus récemment
@@ -1790,7 +1834,7 @@ app.get('/api/tasks', wrap((req, res) => {
     ORDER BY (status = 'running') DESC, COALESCE(finished_at, created_at) DESC, id DESC`).all();
   res.json(rows.map((tache) => ({
     ...tache,
-    image_count: db.prepare('SELECT COUNT(*) c FROM task_image WHERE task_id = ?').get(tache.id).c,
+    image_count: db.prepare('SELECT COUNT(*) c FROM piece_jointe WHERE scope = ? AND owner_id = ?').get('task', tache.id).c,
     targets: taskTargets(tache.id),
   })));
 }));
@@ -1857,7 +1901,7 @@ app.post('/api/tasks', wrap((req, res) => {
     lireLibelle(label), now, now);
   const taskId = info.lastInsertRowid;
   insertTargets(taskId, list, sessionId);
-  saveTaskImages(taskId, images);
+  savePiecesEtImages('task', taskId, req.body || {});
   res.json({ ...taskById(taskId), targets: taskTargets(taskId) });
 }));
 
@@ -1899,7 +1943,7 @@ app.put('/api/tasks/:id', wrap((req, res) => {
     label === undefined ? tache.label : lireLibelle(label),
     new Date().toISOString(), tache.id,
   );
-  saveTaskImages(tache.id, images);
+  savePiecesEtImages('task', tache.id, req.body || {});
   // Après une éventuelle recréation des cibles : celles-ci repartent sans handle.
   applySessionId('task_target', 'task_id', tache.id, sessionId, taskTargets(tache.id));
   res.json({ ...taskById(tache.id), targets: taskTargets(tache.id) });
@@ -1908,6 +1952,7 @@ app.put('/api/tasks/:id', wrap((req, res) => {
 app.delete('/api/tasks/:id', wrap((req, res) => {
   db.prepare('DELETE FROM task_target WHERE task_id = ?').run(Number(req.params.id));
   agentpass.removeTask('task', Number(req.params.id));   // pas de FK : nettoyage explicite
+  pieces.removeOwner('task', Number(req.params.id));     // idem pour les pièces jointes
   db.prepare('DELETE FROM task WHERE id = ?').run(Number(req.params.id));
   try { fs.rmSync(path.join(TASKS_DIR, String(Number(req.params.id))), { recursive: true, force: true }); } catch { /* rien */ }
   res.json({ ok: true });
@@ -1925,9 +1970,14 @@ app.post('/api/tasks/:id/hidden', wrap((req, res) => {
   res.json({ ok: true, hidden });
 }));
 
+/* Retirer UNE pièce jointe. La route garde son nom historique (`/image/`) : elle sert aux
+   captures comme aux documents, et la renommer casserait les liens déjà en circulation pour
+   rien. Le fichier part avec la ligne — une pièce détachée resterait sur le disque pour
+   toujours, invisible. */
 app.delete('/api/tasks/:id/image/:imgId', wrap((req, res) => {
-  const im = db.prepare('SELECT * FROM task_image WHERE id = ? AND task_id = ?').get(Number(req.params.imgId), Number(req.params.id));
-  if (im) { try { fs.rmSync(im.path, { force: true }); } catch { /* rien */ } db.prepare('DELETE FROM task_image WHERE id = ?').run(im.id); }
+  const pj = db.prepare('SELECT * FROM piece_jointe WHERE id = ? AND scope = ? AND owner_id = ?')
+    .get(Number(req.params.imgId), 'task', Number(req.params.id));
+  if (pj) { try { fs.rmSync(pj.path, { force: true }); } catch { /* déjà parti */ } db.prepare('DELETE FROM piece_jointe WHERE id = ?').run(pj.id); }
   res.json({ ok: true });
 }));
 
@@ -2094,15 +2144,14 @@ app.post('/api/local-tasks', wrap((req, res) => {
     VALUES (?, ?, 'new', ?, ?, ?)`);
   const backend = sessionId ? agentsession.backendName() : null;
   for (const p of [...new Set(list)]) ins.run(id, p, sessionId || null, backend, now);
-  saveLocalImages(id, images); // captures jointes au prompt (facultatif)
+  savePiecesEtImages('local', id, req.body || {}); // captures et documents (facultatif)
   res.json(localTaskById(id));
 }));
 // Détail d'une session hors dépôt (édition) — pendant de GET /api/tasks/:id.
 app.get('/api/local-tasks/:id', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
-  const images = db.prepare('SELECT id FROM local_task_image WHERE task_id = ? ORDER BY id').all(lt.id);
-  res.json({ task: lt, images: images.map((im, i) => ({ id: im.id, idx: i })) });
+  res.json({ task: lt, images: piecesDe('local', lt.id) });
 }));
 
 /* Édition d'une session hors dépôt — même contrat que PUT /api/tasks/:id.
@@ -2131,7 +2180,7 @@ app.put('/api/local-tasks/:id', wrap((req, res) => {
       // Absent du body → on garde la valeur actuelle, comme pour les sessions sur dépôt.
       ask_questions == null ? lt.ask_questions : (ask_questions ? 1 : 0),
       new Date().toISOString(), lt.id);
-  saveLocalImages(lt.id, images);
+  savePiecesEtImages('local', lt.id, req.body || {});
   applySessionId('local_task_dir', 'task_id', lt.id, sessionId, localDirsFor(lt.id));
   res.json(localTaskById(lt.id));
 }));
@@ -2180,7 +2229,7 @@ app.post('/api/local-tasks/:id/followup', wrap((req, res) => {
   const instruction = (req.body && req.body.instruction || '').trim() || lt.followup_draft || '';
   if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
   // Même geste que sur une session de dépôt : une capture peut accompagner la demande.
-  const imageIds = saveLocalImages(lt.id, (req.body && req.body.images) || [], { followup: 1 });
+  const imageIds = savePiecesEtImages('local', lt.id, req.body || {}, { followup: 1 });
   res.json(envoyerSuivi('local_task', lt, () => jobs.startLocalJob(lt.id,
     { instruction, ...(imageIds.length ? { imageIds } : {}) })));
 }));
@@ -2213,6 +2262,7 @@ app.get('/api/local-tasks/:id/dirs/:did/output', wrap((req, res) => {
 app.delete('/api/local-tasks/:id', wrap((req, res) => {
   const id = Number(req.params.id);
   agentpass.removeTask('local', id);                     // pas de FK : nettoyage explicite
+  pieces.removeOwner('local', id);
   db.prepare('DELETE FROM local_task WHERE id = ?').run(id); // cascade sur dirs + images
   try { fs.rmSync(path.join(TASKS_DIR, 'local', String(id)), { recursive: true, force: true }); } catch { /* rien */ }
   res.json({ ok: true });
@@ -2258,11 +2308,13 @@ app.post('/api/questions', wrap((req, res) => {
   const now = new Date().toISOString();
   const id = db.prepare("INSERT INTO question (prompt, label, status, created_at, updated_at) VALUES (?, ?, 'new', ?, ?)")
     .run(String(prompt).trim(), lireLibelle(label), now, now).lastInsertRowid;
+  savePiecesEtImages('ask', id, req.body || {});
   res.json(questionById(id));
 }));
 
 app.get('/api/questions/:id', wrap((req, res) => {
-  res.json({ task: exigerQuestion(req.params.id) });
+  const q = exigerQuestion(req.params.id);
+  res.json({ task: q, images: piecesDe('ask', q.id) });
 }));
 
 /* Édition : le prompt et le libellé. La SESSION D'AGENT est volontairement conservée —
@@ -2276,6 +2328,7 @@ app.put('/api/questions/:id', wrap((req, res) => {
     .run(prompt != null ? String(prompt).trim() : q.prompt,
       label === undefined ? q.label : lireLibelle(label),
       new Date().toISOString(), q.id);
+  savePiecesEtImages('ask', q.id, req.body || {});
   res.json(questionById(q.id));
 }));
 
@@ -2288,7 +2341,10 @@ app.post('/api/questions/:id/followup', wrap((req, res) => {
   const q = exigerQuestion(req.params.id);
   const instruction = (req.body && req.body.instruction || '').trim() || q.followup_draft || '';
   if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
-  res.json(envoyerSuivi('question', q, () => jobs.startAskJob(q.id, { instruction })));
+  // Comme les autres saveurs : une pièce peut accompagner la demande de suivi.
+  const imageIds = savePiecesEtImages('ask', q.id, req.body || {}, { followup: 1 });
+  res.json(envoyerSuivi('question', q, () => jobs.startAskJob(q.id,
+    { instruction, ...(imageIds.length ? { imageIds } : {}) })));
 }));
 
 // Suivi en attente — même contrat que pour les autres saveurs.
@@ -2329,6 +2385,7 @@ app.post('/api/questions/:id/clear-error', wrap((req, res) => {
 app.delete('/api/questions/:id', wrap((req, res) => {
   const id = Number(req.params.id);
   agentpass.removeTask('ask', id);                       // pas de FK : nettoyage explicite
+  pieces.removeOwner('ask', id);
   db.prepare('DELETE FROM question WHERE id = ?').run(id);
   try { fs.rmSync(path.join(TASKS_DIR, 'ask', String(id)), { recursive: true, force: true }); } catch { /* rien */ }
   res.json({ ok: true });
@@ -2351,7 +2408,7 @@ app.post('/api/tasks/:id/followup', wrap((req, res) => {
   /* Une capture collée dans le suivi. Elle est enregistrée AVANT le lancement : si le job est
      refusé (un autre tourne déjà), elle reste jointe à la session plutôt que d'être perdue —
      le texte du suivi, lui, est déjà remis en brouillon par `envoyerSuivi`. */
-  const imageIds = saveTaskImages(tache.id, (req.body && req.body.images) || [], { followup: 1 });
+  const imageIds = savePiecesEtImages('task', tache.id, req.body || {}, { followup: 1 });
   res.json(envoyerSuivi('task', tache, () => jobs.startTaskJob(tache.id, 'followup',
     { instruction, ...(targetIds ? { targetIds } : {}), ...(imageIds.length ? { imageIds } : {}) })));
 }));

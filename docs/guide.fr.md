@@ -274,18 +274,27 @@ tant qu'il n'est pas parti. On le **corrige**, on le **supprime** (l'effacer suf
 suivi`** le lance en un geste une fois la session terminée. Vaut pour le codage, le codage hors dépôt
 et l'exploration.
 
-**Une capture se colle dans le suivi.** Le formulaire de suivi accepte les images, comme celui
-de la création : bouton **`Ajouter une capture`** ou simplement **Ctrl+V** dans le champ. Les
-vignettes montrent ce qui partira, et se retirent une par une. Vaut pour le **codage**,
-l'**exploration** et le **codage hors dépôt** — pas pour la question libre, qui n'a pas de pièces
-jointes du tout.
-La capture accompagne **cette demande-là** : le prompt du suivi reçoit les captures de la consigne
-initiale plus celle qu'on vient de coller, mais **pas** celles d'un suivi précédent — elles
-illustraient autre chose, et un prompt qui annonce « voici les captures » en montrant la mauvaise
-image envoie l'agent dans le décor.
+**Une pièce jointe se colle ou se choisit, dans le suivi comme à la création.** Bouton
+**`Joindre un fichier`** ou **Ctrl+V** pour une capture. Une image montre sa vignette, un document
+sa **puce nommée** — et c'est la seule différence entre les deux : pour l'agent, une capture et un
+PDF sont la même chose, un fichier à ouvrir. Vaut pour les **quatre saveurs** : codage, codage hors
+dépôt, exploration **et** question libre.
+Sont acceptés les **images**, **PDF**, **texte** (`.txt`, `.md`, `.log`), **données** (`.csv`,
+`.tsv`, `.json`, `.yml`, `.xml`, `.html`) et **documents Office** (`.docx`, `.xlsx`, `.pptx`,
+`.odt`, `.ods`, `.odp`, `.rtf`), jusqu'à **10 Mo** pièce. Le reste est refusé **avec sa raison**,
+avant que rien ne soit enregistré.
+La pièce accompagne **cette demande-là** : le prompt du suivi reçoit celles de la consigne initiale
+plus celle qu'on vient de joindre, mais **pas** celles d'un suivi précédent — elles illustraient
+autre chose, et un prompt qui annonce « voici les pièces jointes » en montrant la mauvaise envoie
+l'agent dans le décor.
 ⚠ **Un suivi *enregistré* (brouillon) ne garde que le texte** — c'est ce que sait stocker la base.
-Les captures restent attachées au formulaire ouvert et partent avec l'envoi ; un message le rappelle
+Les pièces restent attachées au formulaire ouvert et partent avec l'envoi ; un message le rappelle
 au moment d'enregistrer, plutôt que de les faire disparaître en silence.
+⚠ **Le NOM d'origine accompagne le fichier dans le prompt** (« devis-client.pdf »), parce que
+`pj_2.pdf` n'apprend rien à l'agent. Sur disque, en revanche, le fichier porte un nom fabriqué : un
+nom venu d'un formulaire n'a rien à faire dans un chemin. Et **ce que l'agent sait lire dépend de
+lui** : un `.txt` ou un `.csv` sont sûrs, un `.xlsx` beaucoup moins — Mergerie fournit le fichier,
+il ne le convertit pas.
 
 **Ou il part tout seul, si tu le demandes.** Une case **`L'envoyer automatiquement à la fin de la
 session`**, sous le texte, arme le suivi : il partira dès que la session aura fini de travailler, sans
@@ -464,7 +473,7 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   on choisit un **répertoire local** (déclaré dans *Réglages → Dépôts*) puis **le ou les projets** qu'il
   contient — le chemin en découle, et un chemin tapé à la main est une faute de frappe qu'on ne découvre
   qu'au milieu du traitement. Le formulaire (projets + prompt) vit dans **la même modale que le codage** — tu peux donc
-  aussi **joindre des captures d'écran** (bouton ou Ctrl+V) pour enrichir le prompt. Le même prompt est
+  aussi **joindre des fichiers** — captures, PDF, tableurs, texte (bouton ou Ctrl+V) — pour enrichir le prompt. Le même prompt est
   appliqué à **chaque dossier**, l'un après l'autre — un dossier en échec n'interrompt pas les autres, et
   son statut est indiqué par dossier. Comme pour le codage sur dépôt, chaque dossier expose
   **`Retour de l'IA`** — ce que l'agent dit avoir fait, utile quand le dossier n'a pas bougé (prompt

@@ -91,12 +91,6 @@ CREATE TABLE IF NOT EXISTS task (
   updated_at TEXT
 );
 
-CREATE TABLE IF NOT EXISTS task_image (
-  id INTEGER PRIMARY KEY,
-  task_id INTEGER NOT NULL REFERENCES task(id) ON DELETE CASCADE,
-  path TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS review_rule (
   id INTEGER PRIMARY KEY,
   branch_match TEXT NOT NULL,
@@ -478,7 +472,6 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_agent_pass_unit ON agent_pass(scope, tas
    une table absente et le `catch` l'avale sans un mot. */
 try { db.exec('ALTER TABLE agent_pass ADD COLUMN favori INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE agent_pass ADD COLUMN titre TEXT'); } catch { /* déjà présente */ }
-// Captures jointes au prompt d'un codage hors dépôt (mêmes que task_image, table dédiée).
 /* APRÈS la création de la table, et pas avant : un `ALTER` posé plus haut dans ce fichier
    échoue sur une table qui n'existe pas encore, et le `catch` l'avale sans un mot. La colonne
    n'apparaît alors que sur les bases où la table préexistait — le genre de différence qui ne
@@ -487,19 +480,57 @@ try { db.exec('ALTER TABLE local_task ADD COLUMN label TEXT'); } catch { /* déj
 try { db.exec('ALTER TABLE local_task ADD COLUMN followup_draft TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE local_task ADD COLUMN followup_auto INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
 
-db.exec(`CREATE TABLE IF NOT EXISTS local_task_image (
-  id INTEGER PRIMARY KEY,
-  task_id INTEGER NOT NULL REFERENCES local_task(id) ON DELETE CASCADE,
-  path TEXT NOT NULL
-)`);
 
-/* Une capture collée dans une DEMANDE DE SUIVI n'appartient pas à la consigne initiale : elle
-   illustre ce suivi-là. Sans cette marque, elle repartirait dans le prompt de toutes les passes
-   suivantes — l'agent recevrait « voici les captures » avec des images qui parlent d'autre
-   chose. Migrations posées APRÈS les `CREATE TABLE` correspondants : plus haut, l'ALTER échoue
-   sur une table absente et le `catch` l'avale sans un mot. */
-try { db.exec('ALTER TABLE task_image ADD COLUMN followup INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
-try { db.exec('ALTER TABLE local_task_image ADD COLUMN followup INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+/* LES PIÈCES JOINTES D'UNE SESSION — captures ET documents, une seule table.
+ *
+ * Une capture d'écran et un PDF de spécification sont la même chose pour l'agent : un fichier
+ * à ouvrir. Les tenir dans deux familles de tables aurait fait deux enregistrements, deux
+ * lectures, deux blocs de prompt et quatre saveurs à recâbler à chaque fois — pour une
+ * distinction qui ne compte qu'à l'affichage (vignette ou nom de fichier).
+ *
+ * `scope` distingue les familles, comme `agent_pass` : 'task' (codage sur dépôt et
+ * exploration), 'local' (hors dépôt), 'ask' (question libre). Pas de clé étrangère possible —
+ * trois tables parentes — donc le ménage est explicite à la suppression.
+ *
+ * `name` est le nom D'ORIGINE, montré à l'écran et donné à l'agent ; le fichier sur disque, lui,
+ * porte un nom fabriqué : un nom venu de l'extérieur n'a rien à faire dans un chemin. */
+db.exec(`CREATE TABLE IF NOT EXISTS piece_jointe (
+  id INTEGER PRIMARY KEY,
+  scope TEXT NOT NULL,
+  owner_id INTEGER NOT NULL,
+  path TEXT NOT NULL,
+  name TEXT NOT NULL,
+  mime TEXT,
+  followup INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_piece_jointe_owner ON piece_jointe(scope, owner_id)');
+
+/* Reprise des captures déjà en base. Les deux anciennes tables sont recopiées puis RETIRÉES :
+   laisser une table morte derrière soi, c'est garantir qu'un jour quelqu'un l'interrogera et
+   lira un état d'il y a six mois. Les fichiers sur disque, eux, ne bougent pas — seule la ligne
+   change de table. Idempotent : la table disparue, la reprise ne se pose plus. */
+for (const [ancienne, scope] of [['task_image', 'task'], ['local_task_image', 'local']]) {
+  try {
+    const existe = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(ancienne);
+    if (!existe) continue;
+    /* `followup` est arrivée en cours de route : une base plus ancienne ne l'a pas, et le
+       SELECT échouerait dessus. On lit les colonnes réellement présentes plutôt que d'ajouter
+       une colonne à une table qu'on s'apprête à supprimer. */
+    const colonnes = db.prepare(`PRAGMA table_info(${ancienne})`).all().map((c) => c.name);
+    const suivi = colonnes.includes('followup') ? 'followup' : '0';
+    db.exec(`INSERT INTO piece_jointe (scope, owner_id, path, name, mime, followup, created_at)
+      SELECT '${scope}', task_id, path, path, NULL, ${suivi}, NULL FROM ${ancienne}`);
+    db.exec(`DROP TABLE ${ancienne}`);
+    /* Le nom affiché est le nom de FICHIER, pas le chemin : ces captures-là n'en avaient pas
+       d'autre (elles étaient collées, sans nom d'origine), et montrer `/Users/…/img_3.png`
+       dans une puce de formulaire n'apprend rien. */
+    const majNom = db.prepare('UPDATE piece_jointe SET name = ? WHERE id = ?');
+    for (const l of db.prepare("SELECT id, name FROM piece_jointe WHERE scope = ? AND name LIKE '%/%'").all(scope)) {
+      majNom.run(l.name.split('/').filter(Boolean).pop() || l.name, l.id);
+    }
+  } catch { /* reprise best-effort : une capture perdue ne doit pas empêcher l'app de démarrer */ }
+}
 
 /* « Répertoires locaux » : un dossier de la machine contenant un sous-dossier par
    projet git déjà cloné à la main (~/dev). Sert à l'onglet Git → Navigation et au

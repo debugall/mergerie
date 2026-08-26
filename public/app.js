@@ -4150,9 +4150,15 @@ function wireBranchPickers() {
 }
 
 /* ---- Captures ---- */
+/* Une pièce jointe est un `{ name, data }` : le nom sert à l'écran ET dans le prompt — « le
+   devis du client » dit ce qu'est le fichier, `pj_2.pdf` ne dit rien. Une capture collée n'en a
+   pas : on lui en fabrique un. Vignette pour une image, puce nommée pour un document — c'est la
+   seule différence entre les deux, et elle est d'affichage. */
+const estImage = (p) => /^data:image\//i.test(p.data || '');
 function renderTaskPreviews() {
-  $('#taskPreviews').innerHTML = taskNewImages.map((src, i) => `
-    <span class="task-prev"><img src="${src}" /><button type="button" data-rmimg="${i}" title="Retirer cette capture"><svg class="ico"><use href="#i-close"/></svg></button></span>`).join('');
+  $('#taskPreviews').innerHTML = taskNewImages.map((p, i) => (estImage(p)
+    ? `<span class="task-prev"><img src="${p.data}" title="${esc(p.name)}" /><button type="button" data-rmimg="${i}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`
+    : `<span class="task-prev task-prev-doc" title="${esc(p.name)}">${svgIco('doc')}<span class="task-prev-nom">${esc(p.name)}</span><button type="button" data-rmimg="${i}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`)).join('');
   $$('#taskPreviews [data-rmimg]').forEach((b) => b.addEventListener('click', () => {
     taskNewImages.splice(Number(b.dataset.rmimg), 1); renderTaskPreviews();
   }));
@@ -4160,11 +4166,17 @@ function renderTaskPreviews() {
 function readFileDataURL(file) {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
 }
+// Un nom pour ce qui n'en a pas : une image collée vient du presse-papiers, sans nom de fichier.
+const nomDeCapture = (f, i) => (f && f.name && f.name !== 'image.png' ? f.name
+  : `capture-${i}.${((f && f.type) || 'image/png').split('/')[1].replace('jpeg', 'jpg')}`);
 async function addTaskImages(files) {
-  for (const f of files) if (f && f.type.startsWith('image/')) taskNewImages.push(await readFileDataURL(f));
+  for (const f of files) {
+    if (!f) continue;
+    taskNewImages.push({ name: nomDeCapture(f, taskNewImages.length + 1), data: await readFileDataURL(f) });
+  }
   renderTaskPreviews();
 }
-$('#taskFile').addEventListener('change', (e) => addTaskImages([...e.target.files]));
+$('#taskFile').addEventListener('change', (e) => { addTaskImages([...e.target.files]); e.target.value = ''; });
 document.addEventListener('paste', (e) => {
   if ($('#taskModal').hidden) return;
   const imgs = [...(e.clipboardData?.items || [])].filter((it) => it.type.startsWith('image/')).map((it) => it.getAsFile());
@@ -4637,7 +4649,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
       if (editingTaskId) {
         await busy(btn, () => api(`/local-tasks/${editingTaskId}`, { method: 'PUT', body: {
           label: f.label ? f.label.value : '',
-          prompt: f.prompt.value, dirs, images: taskNewImages,
+          prompt: f.prompt.value, dirs, files: taskNewImages,
           session_id: f.session_id ? f.session_id.value : '',
           ask_questions: f.ask_questions ? f.ask_questions.checked : false,
         } }));
@@ -4647,7 +4659,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
       }
       const created = await busy(btn, () => api('/local-tasks', { method: 'POST', body: {
         label: f.label ? f.label.value : '',
-        prompt: f.prompt.value, dirs, images: taskNewImages, session_id: f.session_id ? f.session_id.value : '',
+        prompt: f.prompt.value, dirs, files: taskNewImages, session_id: f.session_id ? f.session_id.value : '',
         ask_questions: f.ask_questions ? f.ask_questions.checked : false,
       } }));
       if (launchAfterCreate) {
@@ -4666,7 +4678,8 @@ $('#taskForm').addEventListener('submit', async (e) => {
      ne le sont pas. */
   if (taskKind === 'ask') {
     const btn = $('#taskSubmit');
-    const body = { prompt: f.prompt.value, label: f.label ? f.label.value : '' };
+    // Une question libre aussi peut s'appuyer sur un document : le devis, la spec, le mail.
+    const body = { prompt: f.prompt.value, label: f.label ? f.label.value : '', files: taskNewImages };
     try {
       if (editingTaskId) {
         await busy(btn, () => api(`/questions/${editingTaskId}`, { method: 'PUT', body }));
@@ -4697,7 +4710,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
     // n'est lu qu'à la CRÉATION : la modale d'édition ne réaffecte pas une session déjà
     // en cours, qui a son propre handle par projet.
     session_id: f.session_id ? f.session_id.value : '',
-    images: taskNewImages,
+    files: taskNewImages,
     targets,
   };
   const btn = $('#taskSubmit');
@@ -4792,10 +4805,11 @@ const cleFormSuivi = (form) => {
   const k = CLES_FORM.find((x) => form.dataset[x]);
   return k ? `${k}:${form.dataset[k]}` : '';
 };
+const PJ_ACCEPT = 'image/*,.pdf,.txt,.md,.csv,.tsv,.json,.yml,.yaml,.xml,.html,.log,.docx,.xlsx,.pptx,.odt,.ods,.odp,.rtf';
 const suiviCapturesHtml = () => `<div class="followup-imgs">
-    <button type="button" class="btn btn-sm" data-followpick>${svgIco('clip')}${tr('task.followup.add-image')}</button>
+    <button type="button" class="btn btn-sm" data-followpick>${svgIco('clip')}${tr('task.lbl.add-piece')}</button>
     <span class="muted">${esc(tr('task.followup.paste-hint'))}</span>
-    <input type="file" class="followup-file" accept="image/*" multiple hidden />
+    <input type="file" class="followup-file" accept="${PJ_ACCEPT}" multiple hidden />
     <span class="followup-prev"></span>
   </div>`;
 
@@ -4803,8 +4817,11 @@ function renderSuiviPreviews(form) {
   const box = form.querySelector('.followup-prev');
   if (!box) return;
   const imgs = suiviImages.get(cleFormSuivi(form)) || [];
-  box.innerHTML = imgs.map((src, i) => `<span class="task-prev"><img src="${src}" />`
-    + `<button type="button" data-rmfollowimg="${i}" title="${esc(tr('task.followup.remove-image'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`).join('');
+  box.innerHTML = imgs.map((p, i) => (estImage(p)
+    ? `<span class="task-prev"><img src="${p.data}" title="${esc(p.name)}" />`
+      + `<button type="button" data-rmfollowimg="${i}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`
+    : `<span class="task-prev task-prev-doc" title="${esc(p.name)}">${svgIco('doc')}<span class="task-prev-nom">${esc(p.name)}</span>`
+      + `<button type="button" data-rmfollowimg="${i}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`)).join('');
   $$('[data-rmfollowimg]', box).forEach((b) => b.addEventListener('click', () => {
     const liste = suiviImages.get(cleFormSuivi(form)) || [];
     liste.splice(Number(b.dataset.rmfollowimg), 1);
@@ -4817,7 +4834,10 @@ async function ajouterSuiviImages(form, files) {
   const cle = cleFormSuivi(form);
   if (!cle) return;
   const liste = suiviImages.get(cle) || [];
-  for (const f of files) if (f && f.type.startsWith('image/')) liste.push(await readFileDataURL(f));
+  for (const f of files) {
+    if (!f) continue;
+    liste.push({ name: nomDeCapture(f, liste.length + 1), data: await readFileDataURL(f) });
+  }
   if (liste.length) suiviImages.set(cle, liste);
   renderSuiviPreviews(form);
 }
@@ -5219,7 +5239,7 @@ function renderLocalTasks() {
     const images = suiviImages.get(cle) || [];
     try {
       await busy(b, () => api(`/local-tasks/${b.dataset.lfollowsubmit}/followup`, {
-        method: 'POST', body: { instruction, ...(images.length ? { images } : {}) },
+        method: 'POST', body: { instruction, ...(images.length ? { files: images } : {}) },
       }));
       suiviImages.delete(cle);
       field.value = '';
@@ -5269,6 +5289,7 @@ function askCard(q) {
       ${suiviBlock(q, 'q')}
       <div class="mr-create followup" data-qfollowform="${q.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('ask.followup.ph'))}">${esc(q.followup_draft || '')}</textarea>
+        ${suiviCapturesHtml()}
         ${autoSuiviCase(q)}
         <button class="btn" data-qfollowcancel="${q.id}">${tr('ui.cancel')}</button>
         <button class="btn" data-qfollowsave="${q.id}">${tr('task.btn.save-followup')}</button>
@@ -5340,8 +5361,13 @@ function renderQuestions() {
     const champ = fm.querySelector('.followup-text');
     const instruction = champ.value.trim();
     if (!instruction) return;
+    const cle = cleFormSuivi(fm);
+    const pieces = suiviImages.get(cle) || [];
     try {
-      await busy(b, () => api(`/questions/${b.dataset.qfollowsubmit}/followup`, { method: 'POST', body: { instruction } }));
+      await busy(b, () => api(`/questions/${b.dataset.qfollowsubmit}/followup`, {
+        method: 'POST', body: { instruction, ...(pieces.length ? { files: pieces } : {}) },
+      }));
+      suiviImages.delete(cle);
       champ.value = '';
       fm.hidden = true;
       toast(tr('ask.started')); refreshStatus(); loadTasks();
@@ -5825,7 +5851,7 @@ function wireTaskActions() {
         body: {
           instruction,
           ...(cible ? { targets: [Number(cible)] } : {}),
-          ...(images.length ? { images } : {}),
+          ...(images.length ? { files: images } : {}),
         },
       }));
       suiviImages.delete(cle);   // parties avec la demande : elles n'ont plus à traîner
