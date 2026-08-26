@@ -1425,7 +1425,7 @@ vérificateur*, *Modifier* ou **`Dupliquer`** — celui-ci le rouvre **pré-remp
 donc enregistrer **crée** au lieu d'écraser l'original, avec un nom libre proposé (« X (copie) »,
 les noms étant uniques) et le champ sélectionné : renommer est le premier geste) ·
 **Notifications** (sous-onglet dédié, voir ci-dessous) ·
-**Général** (thème clair/sombre/auto, langue, densité, brief du matin, conservation des données, sauvegarde, et une **zone dangereuse** pour la remise à zéro) ·
+**Général** (thème clair/sombre/auto, langue, densité, **arrangement des menus**, brief du matin, conservation des données, sauvegarde, et une **zone dangereuse** pour la remise à zéro) ·
 **Jira** (**connexion Jira** — URL + email + jeton d'API, avec un bouton *Tester Jira* — ; alimente l'onglet
 *Jira* et l'enrichissement d'une session depuis un ticket) ·
 **Jenkins** (URL, utilisateur et jeton d'API, avec un bouton de test, et la **fréquence de
@@ -1487,6 +1487,13 @@ ni recherche, ni modale, ni rapport ouvert, car un état périmé est pire qu'un
 connexion et les dépôts ne sont pas configurés · chaque champ de formulaire porte une **icône i** dont
 le survol (ou le focus clavier) explique à quoi il sert.
 
+- **La barre de menus se range** (Réglages → Général). On **remonte** ce qu'on ouvre dix fois par
+  jour et on **masque** ce dont on ne se sert pas : glisser-déposer ou flèches, appliqué tout de
+  suite. Un menu masqué quitte aussi la **palette** et les **raccourcis chiffrés** — `3` ouvre le
+  troisième menu *affiché*, pas le troisième d'origine ; proposer un écran dont l'entrée de menu a
+  disparu serait offrir un aller sans retour. La **fonctionnalité, elle, reste** : rien n'est
+  désactivé, seulement rangé. ⚠ **Réglages ne se masque pas** (c'est le chemin du retour), et
+  l'arrangement est mémorisé **dans ce navigateur**, comme le thème — pas dans la base.
 - **Palette de commandes — `Ctrl`/`Cmd` + `K`.** On tape un fragment et on saute où l'on veut : un
   onglet, un stade, une merge request, une session — la recherche porte sur ce qui est déjà chargé,
   donc elle répond sans appeler le serveur. `?` affiche la liste complète des raccourcis.

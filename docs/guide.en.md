@@ -1372,7 +1372,7 @@ below; the page shows **the list** first, and the form opens on *Add a verifier*
 overwriting the original, with a free name proposed ("X (copy)", since names are unique) and the
 field selected: renaming is the first gesture) ·
 **Notifications** (a dedicated sub-tab, see below) ·
-**General** (light/dark/auto theme, language, density, morning brief, data retention, backup,
+**General** (light/dark/auto theme, language, density, **menu arrangement**, morning brief, data retention, backup,
 and a **danger zone** for a full reset) ·
 **Jira** (the **Jira connection** —
 URL + email + API token, with a *Test Jira* button —; feeds the *Jira* tab and the enrichment of a session
@@ -1432,6 +1432,13 @@ else**: no search, no dialog, no open report, because a stale state is worse tha
 found, timeout, network) · a **3-step onboarding** as long as the connection and the repositories are not
 configured · every form field carries an **i icon** whose hover (or keyboard focus) explains what it is for.
 
+- **The menu bar can be arranged** (Settings → General). Move **up** what you open ten times a day,
+  **hide** what you never use: drag and drop or arrows, applied at once. A hidden menu also leaves
+  the **palette** and the **number shortcuts** — `3` opens the third *shown* menu, not the third
+  original one; offering a screen whose menu entry has gone would be a one-way ticket. The
+  **feature itself stays**: nothing is disabled, only filed away. ⚠ **Settings cannot be hidden**
+  (it is the way back), and the arrangement is remembered **in this browser**, like the theme —
+  not in the database.
 - **Command palette — `Ctrl`/`Cmd` + `K`.** You type a fragment and jump wherever you want: a tab, a stage,
   a merge request, a session — the search covers what is already loaded, so it answers without calling the
   server. `?` shows the full list of shortcuts.

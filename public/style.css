@@ -2348,6 +2348,22 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .followup-imgs .muted { font-size: 12px; }
 .followup-prev { display: flex; gap: 6px; flex-wrap: wrap; }
 
+/* ---------- Réglages → Menus : ordre et visibilité de la barre ----------
+   Une ligne par onglet, dans l'ordre de la barre. La poignée annonce qu'on peut ranger à la
+   souris ; les flèches font le même travail au clavier, et servent aussi de repère quand on ne
+   pense pas à glisser. */
+.nav-prefs-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nav-prefs-lbl { font-size: 13px; color: var(--muted); }
+.nav-prefs { width: 100%; display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.nav-prefs-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: var(--radius); font-size: 13px; }
+.nav-prefs-row.dragging { opacity: .5; }
+/* Le libellé pousse les flèches vers le bord : alignées sous le nom, elles bougeraient d'une
+   ligne à l'autre selon la longueur du mot, et l'œil les chercherait à chaque fois. */
+.nav-prefs-row .inline-check { margin: 0; flex: 1; min-width: 0; }
+.nav-grip { color: var(--muted); cursor: grab; line-height: 0; }
+.nav-prefs-row [disabled] { opacity: .35; cursor: default; }
+
 /* ---------- Itérations d'un retour d'agent (liste à gauche) ----------
    Le sélecteur déroulant est devenu une COLONNE : on voit d'un coup les itérations et surtout
    la demande qui a produit chacune. La colonne défile pour elle-même, la réponse reste lisible

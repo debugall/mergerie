@@ -364,7 +364,7 @@ sont pas re-vérifiés à l'écriture — c'est la forge qui les détient.
 
 ## Interface
 
-Sept onglets : **Reviews** (filtre segmenté sur les 3 stades d'une MR ; sur *Reviewées* et *Traitées*, **trois cases de couleur de note** au-dessus de la liste — vert ≥ 7, orange 4–6,9, rouge < 4 —, cumulables, chacune portant le nombre de MR qu'elle fera apparaître, choix persisté ; décocher la dernière ramène tout, et le résumé de droite suit le filtre. Le stade *À traiter* n'en a pas : une MR n'y revient qu'après suppression de son rapport, donc sans note) · **Dev IA** (sous-onglets
+Sept onglets (leur ORDRE et leur visibilité se règlent dans *Réglages → Général* — préférence de navigateur, `mergerie_nav` ; un onglet masqué quitte aussi la palette et les raccourcis chiffrés, et *Réglages* n'est jamais masquable) : **Reviews** (filtre segmenté sur les 3 stades d'une MR ; sur *Reviewées* et *Traitées*, **trois cases de couleur de note** au-dessus de la liste — vert ≥ 7, orange 4–6,9, rouge < 4 —, cumulables, chacune portant le nombre de MR qu'elle fera apparaître, choix persisté ; décocher la dernière ramène tout, et le résumé de droite suit le filtre. Le stade *À traiter* n'en a pas : une MR n'y revient qu'après suppression de son rapport, donc sans note) · **Dev IA** (sous-onglets
 Codage / Codage hors dépôt / Exploration ; **duplication d'une session** (les trois saveurs) — le
 formulaire d'édition rouvert SANS identifiant, donc on CRÉE ; session d'agent jamais reprise, et
 branche de travail décalée (`-2`, `-3`…) EN CODAGE seulement — en exploration la branche est celle

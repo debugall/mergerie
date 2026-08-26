@@ -13,6 +13,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Arrange the menu bar: order and visibility.** Nine tabs, and everyone uses a handful.
+  *Settings → General* now lists them: drag or use the arrows to move what you open ten times a
+  day to the top, untick what you never use. Applied at once, remembered in this browser like the
+  theme. A hidden menu also leaves the command palette and the number shortcuts — `3` opens the
+  third *shown* menu — because offering a screen whose menu entry has gone is a one-way ticket;
+  the feature itself stays, nothing is disabled. *Settings* cannot be hidden: it is the way back.
+  What is stored is deliberately partial — the tabs you moved and the ones you hid — so a tab
+  added in a future version appears on its own, in its original place, instead of being invisible
+  to everyone who had touched their bar.
+
 - **Pin and name the iterations of an AI output.** Past a few passes, “Iteration 7 · fix
   requested · 14/08” says nothing about what happened in it. Each iteration now carries a tag
   that lifts it to the top of the column — the number stays visible, so the chronology still

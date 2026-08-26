@@ -937,6 +937,15 @@
                     <option value="light" data-i18n="settings.opt.clair">Clair</option>
                 </select>
             </label>
+            <!-- LA BARRE DE MENUS : son ordre et ce qu'on y montre. Préférence de ce navigateur,
+                 comme le thème juste au-dessus — c'est un arrangement d'écran, pas un réglage de
+                 l'outil, et deux postes n'ont pas les mêmes habitudes. -->
+            <div class="nav-prefs-wrap">
+                <span class="nav-prefs-lbl" data-i18n="settings.nav.title">Menus</span>
+                <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.nav.tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <button type="button" id="navPrefsReset" class="btn btn-sm" data-i18n="settings.nav.reset">Rétablir l'ordre d'origine</button>
+                <div id="navPrefs" class="nav-prefs"></div>
+            </div>
             <!-- Données : ce qu'on garde, et comment on l'emporte. Placé dans « Général »
                  parce que ça ne concerne ni les MR ni une forge en particulier. -->
             <label><span data-i18n="settings.lbl.retention">Conserver l'historique (jours, 0 = sans limite)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.retention" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>

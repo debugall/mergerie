@@ -469,11 +469,14 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
    envoie sa première étape. */
 // `mr` partage la logique de `config` : ses champs sont rattachés à #configForm (attribut form=),
 // donc loadConfig les peuple et le submit les enregistre — un seul /config pour les deux onglets.
-const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadConfig, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadConfig, verifiers: loadVerifiers, aisession: loadAiSessionSettings };
+const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadGeneralSettings, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadConfig, verifiers: loadVerifiers, aisession: loadAiSessionSettings };
 /* Ce panneau porte à la fois un réglage du formulaire global (les consignes permanentes) et un
    banc d'essai. Il lui faut donc `loadConfig` comme aux autres, sinon le champ s'affiche vide
    quoi qu'il y ait en base — et le premier « Enregistrer » l'efface sans rien demander. */
 function loadAiSessionSettings() { loadConfig(); renderAiSessionSettings(); }
+/* « Général » porte les réglages de l'outil ET l'arrangement de la barre de menus, qui vit dans
+   le navigateur : deux sources, un seul panneau, donc les deux chargements. */
+function loadGeneralSettings() { loadConfig(); renderNavPrefs(); }
 function showAdminSub(sub) {
   if (!sub) { try { sub = localStorage.getItem('aidevtools_admin_sub') || 'gitcfg'; } catch { sub = 'gitcfg'; } }
   if (!ADMIN_SUBS[sub]) sub = 'gitcfg';
@@ -9884,25 +9887,25 @@ function updateMuteBtn() {
    réimplémente les actions devient une seconde interface, et elle dérive de la vraie au
    premier renommage. C'est aussi ce qui la rend testable par le contrôle statique des ids. */
 const PALETTE_ACTIONS = [
-  { key: 'palette.go.reviews', run: () => $('nav button[data-tab="review"]').click() },
-  { key: 'palette.go.to-review', run: () => { $('nav button[data-tab="review"]').click(); loadSegment('to_review'); } },
-  { key: 'palette.go.reviewed', run: () => { $('nav button[data-tab="review"]').click(); loadSegment('reviewed'); } },
-  { key: 'palette.go.done', run: () => { $('nav button[data-tab="review"]').click(); loadSegment('done'); } },
-  { key: 'palette.go.task', run: () => $('nav button[data-tab="task"]').click() },
-  { key: 'palette.go.notes', run: () => { navTab('notes'); showNotesSub('today'); } },
-  { key: 'palette.go.todos', run: () => { navTab('notes'); showNotesSub('todos'); } },
-  { key: 'palette.go.pages', run: () => { navTab('notes'); showNotesSub('pages'); } },
-  { key: 'palette.go.jira', run: () => $('nav button[data-tab="jira"]').click() },
-  { key: 'palette.go.git', run: () => $('nav button[data-tab="git"]').click() },
-  { key: 'palette.go.docker', run: () => $('nav button[data-tab="docker"]').click() },
-  { key: 'palette.go.jenkins', run: () => $('nav button[data-tab="jenkins"]').click() },
-  { key: 'palette.go.stats', run: () => $('nav button[data-tab="dashboard"]').click() },
+  { key: 'palette.go.reviews', tab: 'review', run: () => $('nav button[data-tab="review"]').click() },
+  { key: 'palette.go.to-review', tab: 'review', run: () => { $('nav button[data-tab="review"]').click(); loadSegment('to_review'); } },
+  { key: 'palette.go.reviewed', tab: 'review', run: () => { $('nav button[data-tab="review"]').click(); loadSegment('reviewed'); } },
+  { key: 'palette.go.done', tab: 'review', run: () => { $('nav button[data-tab="review"]').click(); loadSegment('done'); } },
+  { key: 'palette.go.task', tab: 'task', run: () => $('nav button[data-tab="task"]').click() },
+  { key: 'palette.go.notes', tab: 'notes', run: () => { navTab('notes'); showNotesSub('today'); } },
+  { key: 'palette.go.todos', tab: 'notes', run: () => { navTab('notes'); showNotesSub('todos'); } },
+  { key: 'palette.go.pages', tab: 'notes', run: () => { navTab('notes'); showNotesSub('pages'); } },
+  { key: 'palette.go.jira', tab: 'jira', run: () => $('nav button[data-tab="jira"]').click() },
+  { key: 'palette.go.git', tab: 'git', run: () => $('nav button[data-tab="git"]').click() },
+  { key: 'palette.go.docker', tab: 'docker', run: () => $('nav button[data-tab="docker"]').click() },
+  { key: 'palette.go.jenkins', tab: 'jenkins', run: () => $('nav button[data-tab="jenkins"]').click() },
+  { key: 'palette.go.stats', tab: 'dashboard', run: () => $('nav button[data-tab="dashboard"]').click() },
   { key: 'palette.go.settings', run: () => $('nav button[data-tab="admin"]').click() },
-  { key: 'palette.act.discover', run: () => { $('nav button[data-tab="review"]').click(); $('#btnDiscover').click(); } },
-  { key: 'palette.act.review-all', run: () => { $('nav button[data-tab="review"]').click(); $('#btnReview').click(); } },
-  { key: 'palette.act.new-task', run: () => { $('nav button[data-tab="task"]').click(); $('#btnNewTask').click(); } },
+  { key: 'palette.act.discover', tab: 'review', run: () => { $('nav button[data-tab="review"]').click(); $('#btnDiscover').click(); } },
+  { key: 'palette.act.review-all', tab: 'review', run: () => { $('nav button[data-tab="review"]').click(); $('#btnReview').click(); } },
+  { key: 'palette.act.new-task', tab: 'task', run: () => { $('nav button[data-tab="task"]').click(); $('#btnNewTask').click(); } },
   { key: 'palette.act.new-todo', run: () => openCapture() },
-  { key: 'palette.act.new-page', run: () => { navTab('notes'); showNotesSub('pages'); $('#pageNew').click(); } },
+  { key: 'palette.act.new-page', tab: 'notes', run: () => { navTab('notes'); showNotesSub('pages'); $('#pageNew').click(); } },
   { key: 'palette.act.logs', run: () => showLogPanel() },
   { key: 'palette.act.shortcuts', run: () => openShortcuts() },
 ];
@@ -9914,7 +9917,13 @@ let paletteSeq = 0;
 /* Les ACTIONS que le client sait faire, envoyées au serveur avec la requête : lui seul
    connaît les liens, les MR et les notes, nous seuls savons ouvrir un onglet ou une modale.
    Les lister côté serveur aurait fait deux endroits à tenir d'accord. */
-const paletteActions = () => PALETTE_ACTIONS.map((a, i) => ({ id: `act:${i}`, label: tr(a.key) }));
+/* Un menu masqué ne s'ouvre pas non plus par la palette : masquer, c'est dire « je ne me sers
+   pas de ça » — proposer quand même l'entrée ouvrirait un écran sans entrée de menu, donc sans
+   moyen évident d'y revenir. L'index reste celui de PALETTE_ACTIONS : c'est lui qui exécute. */
+const paletteActions = () => PALETTE_ACTIONS
+  .map((a, i) => ({ id: `act:${i}`, label: tr(a.key), tab: a.tab }))
+  .filter((a) => !a.tab || !navMasque(a.tab))
+  .map(({ id, label }) => ({ id, label }));
 
 /* La palette interroge le SERVEUR. Auparavant elle ne fouillait que les objets déjà chargés
    dans l'onglet courant : chercher une MR depuis Docker ne rendait rien, et les liens
@@ -10090,6 +10099,162 @@ function openShortcuts() {
 }
 $('#shortcutsClose') && $('#shortcutsClose').addEventListener('click', () => { $('#shortcutsModal').hidden = true; });
 fermerAuFond('#shortcutsModal', () => { $('#shortcutsModal').hidden = true; }, { salissable: false });
+
+/* ---------- La barre de menus : ordre et visibilité ----------
+   Préférence de ce NAVIGATEUR, comme le thème et la densité : c'est un arrangement d'écran,
+   pas un réglage de l'outil — deux postes n'ont pas les mêmes habitudes, et l'ordre des menus
+   ne change rien à ce que l'application fait.
+
+   Ce qu'on stocke est volontairement PARTIEL : la liste des onglets rangés à la main, et celle
+   des masqués. Un onglet ajouté dans une version future n'est dans ni l'une ni l'autre — il
+   apparaît donc à sa place d'origine, visible. Enregistrer la liste complète l'aurait rendu
+   invisible chez tous ceux qui avaient touché à leur barre, sans que rien ne le signale.
+
+   L'ordre est appliqué en DÉPLAÇANT les boutons existants, jamais en les reconstruisant : ils
+   portent leurs écouteurs, leurs pastilles et leurs infobulles. Les raccourcis chiffrés lisent
+   la barre, donc ils suivent tout seuls. */
+const NAV_KEY = 'mergerie_nav';
+// Réglages : toujours visible. C'est le chemin du retour — le masquer enfermerait dehors.
+const NAV_TOUJOURS = 'admin';
+
+function lireNav() {
+  try {
+    const v = JSON.parse(localStorage.getItem(NAV_KEY) || '{}');
+    return { ordre: Array.isArray(v.ordre) ? v.ordre : [], masques: Array.isArray(v.masques) ? v.masques : [] };
+  } catch { return { ordre: [], masques: [] }; }
+}
+function ecrireNav(v) {
+  try { localStorage.setItem(NAV_KEY, JSON.stringify(v)); } catch { /* stockage indisponible */ }
+}
+const boutonsNav = () => $$('nav button[data-tab]');
+
+/* L'ordre effectif : les onglets rangés à la main d'abord, dans l'ordre choisi, puis ceux
+   qu'on n'a jamais touchés — à leur place d'origine. */
+function ordreNav() {
+  const { ordre } = lireNav();
+  const presents = boutonsNav().map((b) => b.dataset.tab);
+  const connus = ordre.filter((t) => presents.includes(t));
+  return [...connus, ...presents.filter((t) => !connus.includes(t))];
+}
+const navMasque = (tab) => tab !== NAV_TOUJOURS && lireNav().masques.includes(tab);
+
+function appliquerNav() {
+  const barre = $('nav');
+  if (!barre) return;
+  const par = new Map(boutonsNav().map((b) => [b.dataset.tab, b]));
+  /* On insère AVANT le premier élément qui n'est pas un onglet (le bouton de repli vit dans la
+     barre sans `data-tab`) : sans ce repère, réordonner l'enverrait en tête. */
+  const ancre = [...barre.children].find((el) => !el.dataset || !el.dataset.tab) || null;
+  for (const tab of ordreNav()) {
+    const b = par.get(tab);
+    if (!b) continue;
+    b.hidden = navMasque(tab);
+    barre.insertBefore(b, ancre);
+  }
+  /* L'onglet courant vient d'être masqué : on ne laisse pas un écran ouvert sans son entrée de
+     menu — on bascule sur le premier visible. */
+  const actif = boutonsNav().find((b) => b.classList.contains('active'));
+  if (actif && actif.hidden) {
+    const premier = boutonsNav().find((b) => !b.hidden);
+    if (premier) premier.click();
+  }
+}
+
+/* La liste des Réglages. Les libellés sont LUS dans la barre, jamais recopiés : une seconde
+   liste se désynchroniserait au premier onglet ajouté — et au premier changement de langue. */
+function renderNavPrefs() {
+  const box = $('#navPrefs');
+  if (!box) return;
+  const tabs = ordreNav();
+  box.innerHTML = tabs.map((tab, i) => {
+    const b = $(`nav button[data-tab="${tab}"]`);
+    const libelle = b ? (b.querySelector('span[data-i18n]') || {}).textContent || tab : tab;
+    const fige = tab === NAV_TOUJOURS;
+    return `<div class="nav-prefs-row" data-navtab="${esc(tab)}" draggable="true">
+      <span class="nav-grip" aria-hidden="true" title="${esc(tr('settings.nav.drag'))}">${svgIco('grip')}</span>
+      <label class="inline-check">
+        <input type="checkbox" class="nav-show" ${navMasque(tab) ? '' : 'checked'} ${fige ? 'disabled' : ''}
+          title="${esc(tr(fige ? 'settings.nav.always' : 'settings.nav.show'))}" />
+        <span>${esc(libelle)}</span>
+      </label>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn-sm btn-ghost" data-navup="${esc(tab)}" ${i === 0 ? 'disabled' : ''}
+        title="${esc(tr('settings.nav.up'))}" aria-label="${esc(tr('settings.nav.up'))}">${svgIco('up')}</button>
+      <button type="button" class="btn btn-sm btn-ghost" data-navdown="${esc(tab)}" ${i === tabs.length - 1 ? 'disabled' : ''}
+        title="${esc(tr('settings.nav.down'))}" aria-label="${esc(tr('settings.nav.down'))}">${svgIco('down')}</button>
+    </div>`;
+  }).join('');
+}
+
+// Enregistre l'ordre tel qu'il est À L'ÉCRAN, applique, et redessine (flèches des bords).
+function enregistrerNav(ordre, masques) {
+  ecrireNav({ ordre, masques });
+  appliquerNav();
+  renderNavPrefs();
+}
+const ordreAffiche = () => $$('#navPrefs .nav-prefs-row').map((r) => r.dataset.navtab);
+const masquesAffiches = () => $$('#navPrefs .nav-prefs-row')
+  .filter((r) => !r.querySelector('.nav-show').checked)
+  .map((r) => r.dataset.navtab);
+
+$('#navPrefs') && $('#navPrefs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-navup], [data-navdown]');
+  if (!b) return;
+  const tab = b.dataset.navup || b.dataset.navdown;
+  const ordre = ordreAffiche();
+  const i = ordre.indexOf(tab);
+  const j = b.dataset.navup ? i - 1 : i + 1;
+  if (i < 0 || j < 0 || j >= ordre.length) return;
+  [ordre[i], ordre[j]] = [ordre[j], ordre[i]];
+  enregistrerNav(ordre, masquesAffiches());
+});
+$('#navPrefs') && $('#navPrefs').addEventListener('change', (e) => {
+  if (!e.target.classList.contains('nav-show')) return;
+  enregistrerNav(ordreAffiche(), masquesAffiches());
+});
+$('#navPrefsReset') && $('#navPrefsReset').addEventListener('click', () => {
+  ecrireNav({ ordre: [], masques: [] });
+  /* Rétablir ne suffit pas à remettre les boutons dans l'ordre d'origine : ils ont été
+     DÉPLACÉS dans le DOM. On les repose donc dans l'ordre du fichier, qui est celui que
+     `NAV_DEFAUT` a retenu au démarrage — avant toute application de préférence. */
+  const barre = $('nav');
+  const ancre = [...barre.children].find((el) => !el.dataset || !el.dataset.tab) || null;
+  for (const tab of NAV_DEFAUT) {
+    const b = $(`nav button[data-tab="${tab}"]`);
+    if (b) { b.hidden = false; barre.insertBefore(b, ancre); }
+  }
+  renderNavPrefs();
+});
+
+/* Glisser-déposer, même geste que les todos : la ligne se déplace DANS le DOM pendant le
+   geste (sinon on range à l'aveugle), et l'ordre n'est enregistré qu'au lâcher. */
+let navTire = null;
+$('#navPrefs') && $('#navPrefs').addEventListener('dragstart', (e) => {
+  const row = e.target.closest('.nav-prefs-row');
+  if (!row) return;
+  navTire = row;
+  row.classList.add('dragging');
+  if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', row.dataset.navtab); } catch { /* refusé */ } }
+});
+$('#navPrefs') && $('#navPrefs').addEventListener('dragover', (e) => {
+  if (!navTire) return;
+  e.preventDefault();
+  const cible = e.target.closest('.nav-prefs-row');
+  if (!cible || cible === navTire) return;
+  const r = cible.getBoundingClientRect();
+  cible.parentNode.insertBefore(navTire, e.clientY < r.top + r.height / 2 ? cible : cible.nextSibling);
+});
+$('#navPrefs') && $('#navPrefs').addEventListener('drop', (e) => { if (navTire) e.preventDefault(); });
+$('#navPrefs') && $('#navPrefs').addEventListener('dragend', () => {
+  if (!navTire) return;
+  navTire.classList.remove('dragging');
+  navTire = null;
+  enregistrerNav(ordreAffiche(), masquesAffiches());
+});
+
+// L'ordre du FICHIER, relevé avant toute application : c'est lui que « Rétablir » restaure.
+const NAV_DEFAUT = boutonsNav().map((b) => b.dataset.tab);
+appliquerNav();
 
 /* ---------- Thème clair / sombre ----------
    Préférence locale au navigateur : 'auto' (suit le système), 'dark' ou 'light'.
@@ -12300,7 +12465,9 @@ document.addEventListener('keydown', (e) => {
   /* `0` prend le DIXIÈME onglet, faute de touche « 10 » — la convention des navigateurs.
      Sans lui, ajouter un onglet retirait en silence son raccourci au dernier de la barre. */
   if (/^[0-9]$/.test(e.key)) {
-    const t = $$('nav button[data-tab]')[e.key === '0' ? 9 : +e.key - 1];
+    // …et seulement ce qui est VISIBLE : un menu masqué n'a pas de numéro, sinon « 3 » ouvrirait
+    // un onglet absent de la barre.
+    const t = $$('nav button[data-tab]:not([hidden])')[e.key === '0' ? 9 : +e.key - 1];
     if (t) { e.preventDefault(); t.click(); }
     return;
   }
@@ -13353,6 +13520,8 @@ function renderLots() {
   try { tab = localStorage.getItem('aidevtools_tab') || 'review'; } catch { /* ignore */ }
   const atterrir = () => {
     const btn = $(`nav button[data-tab="${tab}"]`);
+    // Masqué depuis la dernière visite : on n'ouvre pas un écran dont le menu a disparu.
+    if (btn && btn.hidden) { const premier = boutonsNav().find((x) => !x.hidden); if (premier) { premier.click(); return; } }
     if (btn && tab !== 'review') { btn.click(); return; }
     // B2 : sans catch, un échec d'API laissait la liste vide (écran blanc muet).
     loadSegment().catch((e) => { $('#toReviewList').innerHTML = errorBox(`Chargement impossible : ${e.message}`); });
