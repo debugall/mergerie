@@ -13885,7 +13885,7 @@ const jkChip = (nom, valeur, colore) => `<span class="jk-chip${colore ? ` jk-c${
    couleur du texte : c'est elle qu'on cherche. */
 function jkParamPastilles(liste, frequents) {
   if (!liste.length) return '';
-  return `<div class="jk-params">${liste.map((p) => jkChip(p.name, p.value, frequents.includes(p.name))).join('')}</div>`;
+  return `<span class="jk-params">${liste.map((p) => jkChip(p.name, p.value, frequents.includes(p.name))).join('')}</span>`;
 }
 
 /* Le lien vers le job DANS Jenkins. L'URL vient de Jenkins, donc d'une source externe : on
@@ -13908,13 +13908,16 @@ function jkRow(j, colonnes = []) {
     j.ref ? `⎇ ${j.ref}` : '',
     (j.buildable || j.statut === 'desactive') ? '' : tr('jenkins.st.desactive'),
   ].filter(Boolean);
-  return `<div class="card jk-row" data-jkjob="${esc(j.path)}">
+  /* La fiche s'ouvre en cliquant le NOM, pas la ligne entière : les boutons de droite lancent,
+     relancent ou sortent vers Jenkins, et le clic ne doit pas leur ajouter une fenêtre par-dessus.
+     Un vrai <button> — donc au clavier aussi, et le curseur dit où ça se passe. */
+  return `<div class="card jk-row">
     <span class="jk-dot ${esc(j.statut)}${j.enCours ? ' encours' : ''}" aria-hidden="true"></span>
-    <div style="min-width:0;flex:1">
-      <div class="jk-name">${j.folder ? `<span class="jk-path">${esc(j.folder)}/</span>` : ''}${esc(j.name)}${j.lastNumber ? ` <span class="jk-path">#${j.lastNumber}</span>` : ''}</div>
-      <div class="jk-meta" title="${esc(j.last ? jkQuand(j.last) : '')}">${infos.map(esc).join(' · ')}</div>
+    <button type="button" class="jk-ident" data-jkjob="${esc(j.path)}" title="${esc(tr('jenkins.open.title'))}">
+      <span class="jk-name">${j.folder ? `<span class="jk-path">${esc(j.folder)}/</span>` : ''}${esc(j.name)}${j.lastNumber ? ` <span class="jk-path">#${j.lastNumber}</span>` : ''}</span>
+      <span class="jk-meta" title="${esc(j.last ? jkQuand(j.last) : '')}">${infos.map(esc).join(' · ')}</span>
       ${jkParamPastilles(params, colonnes)}
-    </div>
+    </button>
     ${ennui ? `<span class="tag stale">${esc(jkStatutLabel(j))}</span>` : ''}
     ${jkLienExterne(j.url)}
     <button type="button" class="btn btn-sm" data-jkopen="${esc(j.path)}">${esc(tr('jenkins.open'))}</button>
@@ -14298,15 +14301,20 @@ function jkParamChamp(p) {
   return `<input id="${esc(id)}" data-jkparam="${esc(p.name)}" value="${esc(p.value == null ? '' : String(p.value))}" />`;
 }
 
-async function openJenkinsJob(chemin) {
+/* `siParams` : n'afficher la fiche QUE si le job a des paramètres. Sert au bouton « Lancer » de
+   la liste, qui doit consulter la fiche pour savoir s'il y a quelque chose à lire — sans la faire
+   clignoter quand il n'y a rien. Rend vrai si la fenêtre a été montrée. */
+async function openJenkinsJob(chemin, { siParams = false } = {}) {
   const modal = $('#jenkinsModal');
   $('#jenkinsModalTitle').textContent = chemin;
   $('#jenkinsModalDesc').textContent = '';
   $('#jenkinsModalBody').innerHTML = skeleton(2);
-  modal.hidden = false;
+  if (!siParams) modal.hidden = false;
   try {
     const d = await api(`/jenkins/job?path=${encodeURIComponent(chemin)}`);
     JENKINS.job = d;
+    if (siParams && !d.parameters.length) return false;
+    modal.hidden = false;
     $('#jenkinsModalDesc').textContent = d.description || '';
     const params = d.parameters.length
       ? `<section class="jk-bloc">
@@ -14322,9 +14330,12 @@ async function openJenkinsJob(chemin) {
     renderJenkinsFiche();
     $('#jenkinsRun').hidden = !d.buildable;
   } catch (e) {
+    // Une erreur se montre TOUJOURS : sinon le clic sur « Lancer » resterait sans réponse.
+    modal.hidden = false;
     $('#jenkinsModalBody').innerHTML = errorBox(explainError(e.message));
     $('#jenkinsRun').hidden = true;
   }
+  return true;
 }
 
 // Les valeurs saisies, relues du formulaire au moment du lancement.
@@ -14529,13 +14540,10 @@ document.addEventListener('click', (e) => {
     if (run) {
       /* Un job PARAMÉTRÉ ne se lance pas depuis la liste : on ouvre sa fiche, où les
          paramètres se lisent. Lancer avec les valeurs par défaut sans les avoir vues est
-         exactement la façon de déployer la mauvaise version. */
-      const j = JENKINS.jobs.find((x) => x.path === run.dataset.jkrun);
-      openJenkinsJob(run.dataset.jkrun).then(() => {
-        if (JENKINS.job && !JENKINS.job.parameters.length) {
-          $('#jenkinsModal').hidden = true;
-          lancerJenkins(j ? j.path : run.dataset.jkrun, {});
-        }
+         exactement la façon de déployer la mauvaise version. Sans paramètre, rien à lire :
+         le job part, et aucune fenêtre ne s'ouvre — le bouton fait ce qu'il annonce. */
+      openJenkinsJob(run.dataset.jkrun, { siParams: true }).then((montree) => {
+        if (!montree) lancerJenkins(run.dataset.jkrun, {});
       });
       return;
     }

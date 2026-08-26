@@ -520,6 +520,53 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     assert.doesNotMatch(await sansParams.textContent(), /…/, 'sans paramètre, rien ne s’ouvre : le bouton lance');
   });
 
+  /* LE CLIC DE DROITE N'OUVRE PAS LA FENÊTRE DE GAUCHE. La ligne entière ouvrait la fiche :
+     le lien « ouvrir dans Jenkins » sortait vers Jenkins ET posait la fiche par-dessus, et
+     « Lancer » sur un job sans paramètre la faisait clignoter avant de la refermer. La fiche
+     s'ouvre par le nom du job, et par lui seul. */
+  test('la fiche ne s’ouvre qu’en cliquant le nom du job', async () => {
+    await allerJenkins();
+    await page.waitForSelector('#jenkinsBox .jk-row');
+    const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'api-build' }).first();
+    assert.equal(await ligne.locator('.jk-open-ext').count(), 1, 'le décor doit bien porter le lien externe');
+    assert.equal(await ligne.locator('[data-jkjob] .jk-open-ext, [data-jkjob] [data-jkrun], [data-jkjob] [data-jkopen]').count(), 0,
+      'les commandes de droite sont HORS du bouton qui ouvre : un clic ne peut plus remonter jusqu’à lui');
+
+    /* On empêche la NAVIGATION du lien (il ouvrirait un onglet vers Jenkins), pas sa
+       propagation : le gestionnaire de l'application reçoit le clic exactement comme en vrai. */
+    await page.evaluate(() => {
+      document.addEventListener('click', (e) => { if (e.target.closest('a')) e.preventDefault(); }, true);
+    });
+    await ligne.locator('.jk-open-ext').click();
+    assert.ok(await page.locator('#jenkinsModal').isHidden(),
+      'sortir vers Jenkins ne doit pas ouvrir la fiche par-dessus');
+
+    /* Le clignotement ne se voit pas après coup : on surveille l'attribut pendant le geste. */
+    await page.evaluate(() => {
+      window.__ficheVue = false;
+      const m = document.querySelector('#jenkinsModal');
+      new MutationObserver(() => { if (!m.hidden) window.__ficheVue = true; })
+        .observe(m, { attributes: true, attributeFilter: ['hidden'] });
+    });
+    await ligne.locator('[data-jkrun]').click();
+    await page.waitForSelector('#confirmModal:not([hidden])');
+    assert.equal(await page.evaluate(() => window.__ficheVue), false,
+      'un job sans paramètre part : sa fiche n’a rien à montrer et ne doit pas clignoter');
+    await page.locator('#confirmCancel').click();
+    await page.waitForSelector('#confirmModal[hidden]', { state: 'attached' });
+
+    // Et le nom, lui, ouvre — au clavier comme à la souris, c'est un vrai bouton.
+    await ligne.locator('[data-jkjob]').click();
+    await page.waitForSelector('#jenkinsModal:not([hidden])');
+    assert.match(await page.locator('#jenkinsModalTitle').textContent(), /api-build/);
+    await page.locator('#jenkinsClose').click();
+    await page.waitForSelector('#jenkinsModal[hidden]', { state: 'attached' });
+    await ligne.locator('[data-jkjob]').press('Enter');
+    await page.waitForSelector('#jenkinsModal:not([hidden])');
+    await page.locator('#jenkinsClose').click();
+    await page.waitForSelector('#jenkinsModal[hidden]', { state: 'attached' });
+  });
+
   /* UN JOB PARAMÉTRÉ NE SE LANCE PAS À L'AVEUGLE. Le bouton de la liste ouvre sa fiche : on
      voit ce qu'on va envoyer, et on peut le changer avant. */
   /* UNE LISTE DÉROULANTE DOIT ÊTRE UNE LISTE. Chaque plugin de paramètre expose ses valeurs à

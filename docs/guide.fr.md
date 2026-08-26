@@ -1060,7 +1060,9 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   tiens : être prévenu du build nocturne de l'équipe serait du bruit, et on couperait tout au
   bout de deux jours. Débrayable dans *Réglages → Notifications*. L'attente survit à la
   fermeture de l'onglet — c'est justement le cas d'usage.
-- **La fiche d'un job** (`Ouvrir`), en **trois blocs séparés** — le formulaire de lancement,
+- **La fiche d'un job** (`Ouvrir`, ou un clic sur le **nom du job** — la ligne entière ne
+  l'ouvre pas : les boutons de droite lancent, relancent ou sortent vers Jenkins, et le clic
+  ne doit pas leur poser une fenêtre par-dessus), en **trois blocs séparés** — le formulaire de lancement,
   l'historique, le détail de l'exécution choisie. Chacun est une carte sur un fond en retrait :
   la frontière se **voit** au lieu de se deviner. L'historique est une vraie liste (des filets
   entre les lignes, la date sur son propre étage pour que les verdicts s'alignent), la ligne

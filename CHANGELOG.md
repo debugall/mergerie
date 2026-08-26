@@ -166,6 +166,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A button on a Jenkins row no longer opens the job's page on top of what you clicked.** The
+  whole row was clickable, so leaving for Jenkins opened the external tab *and* dropped the job
+  page over it, and *Run* on a job without parameters made that page flash open and shut. The
+  page now opens from the **job's name** — a real button, reachable from the keyboard — and the
+  controls on the right do their own job and nothing else.
+
 - **Answering the AI's questions works on an out-of-repo session.** The answers form is rendered
   in three places — a project line of a coding session, an exploration card, and a folder line of
   an out-of-repo session — but its button was only wired on the first list. On an out-of-repo

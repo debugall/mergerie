@@ -786,10 +786,15 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .jk-path { color: var(--muted); }
 .jk-folder { margin: 14px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .jk-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
-.jk-name { font-weight: 550; overflow-wrap: anywhere; }
+/* Le nom du job EST le bouton qui ouvre la fiche : la ligne entière ne l'est plus, sinon un clic
+   sur « Lancer » ou sur le lien Jenkins ouvrait la fenêtre par-dessus le geste demandé. */
+.jk-ident { flex: 1; min-width: 0; display: block; padding: 0; background: none; border: 0;
+  color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.jk-ident:hover .jk-name { text-decoration: underline; }
+.jk-name { display: block; font-weight: 550; overflow-wrap: anywhere; }
 /* La ligne porte maintenant TOUS les paramètres du dernier lancement : elle doit pouvoir
    se replier plutôt que pousser les boutons hors de la carte. */
-.jk-meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.jk-meta { display: block; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 /* Les paramètres du dernier lancement : leur propre ligne, en pastilles. Le nom en gris, la
    valeur en couleur de texte — c'est la valeur qu'on cherche des yeux. */
 /* Un commentaire EN ATTENTE se distingue d'un commentaire publié au premier regard : le même

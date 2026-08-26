@@ -1020,7 +1020,9 @@ Jenkins already does well, and which there is no point redoing.
   the team's nightly build would be noise, and you would turn the whole thing off within two
   days. Can be switched off in *Settings → Notifications*. The wait survives closing the tab —
   that is precisely the point.
-- **A job's page** (`Open`), as **three separated blocks** — the launch form, the history, the
+- **A job's page** (`Open`, or a click on the **job's name** — the whole row does not open it:
+  the buttons on the right run, re-run or leave for Jenkins, and clicking them must not drop a
+  window on top), as **three separated blocks** — the launch form, the history, the
   details of the selected run. Each is a card on a recessed background: the boundary is **seen**
   rather than inferred. The history is a real list (rules between rows, the date on its own line
   so verdicts line up), the selected run carries an **accent bar** and a bold number — not just a
