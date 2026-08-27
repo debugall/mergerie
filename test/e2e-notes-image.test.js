@@ -112,6 +112,15 @@ describe('Captures dans une page de notes', () => {
       );
     }, PNG);
 
+    /* Le chargement de l'image n'est pas le rendu de la balise : `waitForSelector` rend la
+       main dès que le `<img>` existe, réseau non fait. On attend donc le DÉCODAGE — sinon
+       `naturalWidth` vaut 0 sur une machine lente, et l'échec accuse la route qui sert le
+       fichier alors qu'elle n'a simplement pas fini. */
+    const chargee = (sel) => page.waitForFunction((s) => {
+      const im = document.querySelector(s);
+      return !!im && im.complete && im.naturalWidth > 0;
+    }, sel);
+
     test('coller dans une page neuve insère le lien au curseur et affiche l’image', async () => {
       await page.locator('#pageNew').click();
       await page.waitForSelector('#pageContent');
@@ -127,6 +136,7 @@ describe('Captures dans une page de notes', () => {
         `le lien est inséré au curseur, sur sa propre ligne : ${JSON.stringify(md)}`);
       assert.ok(!md.includes('base64'), 'le contenu de la page ne porte PAS l’image elle-même');
 
+      await chargee('#pagePreview .note-inline-img');
       const img = page.locator('#pagePreview .note-inline-img');
       assert.equal(await img.evaluate((e) => e.naturalWidth), 32, 'l’image est bien chargée depuis le serveur');
 
@@ -143,7 +153,7 @@ describe('Captures dans une page de notes', () => {
       await page.locator('nav button[data-tab="notes"]').click();
       await page.locator('#tab-notes .subnav button[data-nsub="pages"]').click();
       await page.locator('#pageList .note-item').first().click();
-      await page.waitForSelector('#pagePreview .note-inline-img');
+      await chargee('#pagePreview .note-inline-img');
       assert.equal(await page.locator('#pagePreview .note-inline-img').evaluate((e) => e.naturalWidth), 32);
       assert.deepEqual(erreurs, []);
     });
@@ -152,8 +162,18 @@ describe('Captures dans une page de notes', () => {
        deviendrait un endroit où l'on colle une adresse qui appelle un serveur tiers. */
     test('une adresse écrite à la main ne devient pas une image', async () => {
       await page.locator('#pageNew').click();
-      await page.waitForSelector('#pageContent');
+      /* « Nouvelle page » crée la page, recharge la liste, PUIS réécrit l'éditeur. Le
+         `#pageContent` qu'on trouve dans l'intervalle est encore celui de la page PRÉCÉDENTE :
+         ce qu'on y écrit part avec lui au rendu suivant, et l'aperçu ne montre alors jamais ce
+         qu'on croit y avoir tapé. On attend donc l'éditeur de la page NEUVE — reconnaissable à
+         son contenu vide, là où celui d'avant porte la capture du test précédent. */
+      await page.waitForFunction(() => {
+        const t = document.querySelector('#pageContent');
+        return !!t && t.value === '';
+      });
       await page.locator('#pageContent').fill('![x](https://ailleurs.example/pixel.png)\n\n![y](javascript:alert(1))');
+      // Ce qu'on tape doit avoir ATTERRI : sinon l'échec accuserait le rendu au lieu du champ.
+      await page.waitForFunction(() => (document.querySelector('#pageContent') || {}).value.includes('ailleurs.example'));
       await page.waitForFunction(() => document.querySelector('#pagePreview').textContent.includes('ailleurs.example'));
       assert.equal(await page.locator('#pagePreview img').count(), 0,
         'aucune image : ni le tiers, ni le javascript:');

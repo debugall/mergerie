@@ -121,6 +121,29 @@ describe('Réglages → Vérificateurs : le formulaire s’ouvre à la demande',
     assert.deepEqual(await page.$$eval('#verifierCommandList .vc-cmd', (i) => i.map((x) => x.value)), ['npm ci', 'npm test']);
   });
 
+  /* UN RAFRAÎCHISSEMENT QUI TOMBE PENDANT L'ÉDITION. Ouvrir l'onglet lance le chargement de la
+     liste ; cliquer « Modifier » avant qu'il ne soit revenu remplit le formulaire, puis le
+     chargement se termine et remet les commandes et les dépôts à zéro — le nom reste, le reste
+     disparaît sous les doigts. Sur cette machine le chargement gagne toujours la course ; sur un
+     runner à deux cœurs, non. On ne parie donc pas sur la vitesse : on déclenche le
+     rafraîchissement NOUS-MÊMES, formulaire ouvert, et on attend qu'il ait fini. */
+  test('un rafraîchissement de la liste ne vide pas le formulaire ouvert', async () => {
+    await ouvrirOnglet();
+    await page.locator('#verifierList [data-vedit]').first().click();
+    await attendreForm(true);
+    await page.locator('#verifierRepoBox .vr-pick').first().waitFor();
+
+    await page.evaluate(() => loadVerifiers());
+
+    assert.equal(await page.locator('#verifierForm input[name=name]').inputValue(), 'tests unitaires',
+      'le nom tient déjà — c’est ce qui rendait la perte invisible');
+    assert.deepEqual(await page.$$eval('#verifierCommandList .vc-cmd', (i) => i.map((x) => x.value)),
+      ['npm ci', 'npm test'], 'les commandes en cours d’édition ne sont pas à la liste : elle n’a pas à les effacer');
+    assert.equal(await page.locator('#verifierRepoBox .vr-pick').first().isChecked(), true,
+      'ni les dépôts cochés');
+    assert.equal((await visible()).form, true, 'et le formulaire reste ouvert');
+  });
+
   /* DUPLIQUER : le geste de qui doit couvrir dix dépôts avec la même commande à un détail près.
      Sans lui, on retape tout — ou, pire, on modifie l'existant en croyant en créer un autre. Ce
      qui compte ici tient en deux points : le formulaire est rempli comme pour une modification,

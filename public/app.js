@@ -12703,9 +12703,18 @@ async function loadVerifiers() {
   // Le mode « in place » propose de piocher dans les répertoires locaux déclarés.
   await loadLocalRoots();
   try { verifiers = await api('/verifiers'); } catch (e) { verifiers = []; toast(explainError(e.message), true); }
-  renderVerifierRepoBox();
-  renderCommandList([]);
-  appliquerKind();
+  /* LE FORMULAIRE OUVERT NE NOUS APPARTIENT PAS. Ce chargement remet les commandes et les
+     dépôts à zéro pour repartir d'un formulaire vierge — mais s'il revient PENDANT qu'on
+     modifie un vérificateur (ouvrir l'onglet lance déjà un chargement, et cliquer « Modifier »
+     avant qu'il ne soit revenu suffit), il vide ce qu'on est en train d'éditer : le nom reste,
+     les commandes et les dépôts disparaissent sous les doigts. On ne touche donc à ces deux
+     blocs que si le formulaire est fermé. */
+  const f = $('#verifierForm');
+  if (!f || f.hidden) {
+    renderVerifierRepoBox();
+    renderCommandList([]);
+    appliquerKind();
+  }
   renderVerifierList();
 }
 

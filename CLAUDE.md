@@ -30,9 +30,23 @@
 
   ```bash
   rm -rf /tmp/ci && mkdir -p /tmp/ci && git archive HEAD | tar -x -C /tmp/ci
-  printf 'set -e\ncd /app\nexport PLAYWRIGHT_BROWSERS_PATH=/ms-playwright\nnpx playwright install --with-deps chromium >/dev/null\nnpm ci --no-audit --no-fund >/dev/null\nnpm test\n' > /tmp/ci/run.sh
+  printf 'set -e\ncd /app\nexport PLAYWRIGHT_BROWSERS_PATH=/ms-playwright\nnpm ci --no-audit --no-fund >/dev/null\nnpx playwright install --with-deps chromium >/dev/null\nnpm test\n' > /tmp/ci/run.sh
   docker run --rm --cpus 2 -v /tmp/ci:/app -w /app node:22 bash /app/run.sh
   ```
+
+  **`npm ci` BEFORE `npx playwright install`, and read the test count.** The other way round,
+  `npx` downloads some Playwright version and installs ITS chromium; `npm ci` then lays down the
+  project's own, which looks for a different revision, does not find it, and **every screen test
+  skips itself** — `# skipped 8` (whole `describe` blocks), `tests 736` instead of 926, and a big
+  `fail 0`. A replay that "passes" without ever opening a browser proves nothing about what you
+  came to check. So the test count is the first number to compare against the local suite, and
+  `node -e "console.log(require('playwright').chromium.executablePath())"` in the script says it
+  before anything runs.
+
+  To replay work that is **not committed yet** (the normal case here, since commits come last),
+  `git archive HEAD` archives the version from BEFORE and replays it for nothing: use
+  `C=$(git stash create); git archive ${C:-HEAD}`, which makes a commit of the working tree
+  without touching it.
 
   A cheaper first filter: run the file under CPU load (`for i in $(seq 8); do (yes >/dev/null &); done`,
   then `pkill yes`). It catches the coarsest races in seconds.
@@ -54,6 +68,11 @@
     assert the invariant that actually matters.
   - **A card that re-renders every 1.5 s invalidates element handles.** Re-resolve locators
     inside the wait; never hold a handle across an action that triggers a reload.
+  - **A screen that is CREATED then re-rendered hands you the previous one first.** "New page"
+    posts, reloads the list, then rewrites the editor: between the two, `#pageContent` is still
+    the *previous* page's textarea, and what you type there leaves with it at the next render.
+    Waiting for the selector proves nothing — wait for something only the NEW screen satisfies
+    (an empty field where the old one was full), then check what you typed actually landed.
   - `test/` holds **no `waitForTimeout` at all** any more — the 38 that existed were replaced
     by waits on the effect. Do not reintroduce one: if you cannot name the effect to wait for,
     the test does not know what it is proving.
