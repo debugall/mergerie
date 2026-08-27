@@ -301,6 +301,13 @@ l'agent dans le décor.
 ⚠ **Un suivi *enregistré* (brouillon) ne garde que le texte** — c'est ce que sait stocker la base.
 Les pièces restent attachées au formulaire ouvert et partent avec l'envoi ; un message le rappelle
 au moment d'enregistrer, plutôt que de les faire disparaître en silence.
+**Rouvrir une session montre ce qui y est vraiment joint.** Le formulaire d'édition n'affiche pas
+un compte (« 2 captures jointes ») mais les **pièces elles-mêmes** — vignette pour une image, nom
+pour un document — **ouvrables** d'un clic et **retirables** d'une croix, dans les quatre saveurs.
+Retirer supprime le fichier **du disque** : c'est irréversible, donc c'est confirmé. Une pièce
+arrivée **avec un suivi** est montrée en pointillés : elle n'appartient pas à la consigne qu'on est
+en train de modifier.
+
 ⚠ **Le NOM d'origine accompagne le fichier dans le prompt** (« devis-client.pdf »), parce que
 `pj_2.pdf` n'apprend rien à l'agent. Sur disque, en revanche, le fichier porte un nom fabriqué : un
 nom venu d'un formulaire n'a rien à faire dans un chemin. Et **ce que l'agent sait lire dépend de

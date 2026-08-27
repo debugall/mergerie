@@ -166,6 +166,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Attachments are visible again when you reopen a session.** Attach a quote to a coding session,
+  reopen it to edit: the form only said “2 screenshots attached” — not *which* ones, with no way to
+  open one, check you picked the right file, or drop one that had no business being there. The edit
+  form now shows the attachments themselves — thumbnail for an image, name for a document —
+  openable and removable, in all four flavours. An attachment that arrived with a follow-up is
+  shown as such, since it does not belong to the instruction being edited.
+
 - **A button on a Jenkins row no longer opens the job's page on top of what you clicked.** The
   whole row was clickable, so leaving for Jenkins opened the external tab *and* dropped the job
   page over it, and *Run* on a job without parameters made that page flash open and shut. The

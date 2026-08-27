@@ -295,6 +295,12 @@ wrong one sends the agent off course.
 ⚠ **A *saved* follow-up (draft) only keeps the text** — that is what the database stores. The
 attachments stay on the open form and go out with the follow-up itself; a message says so when you
 save, rather than making them vanish silently.
+**Reopening a session shows what is actually attached to it.** The edit form does not show a count
+(“2 screenshots attached”) but the **attachments themselves** — a thumbnail for an image, a name for
+a document — **openable** in one click and **removable** with a cross, in all four flavours.
+Removing deletes the file **from disk**: that is irreversible, so it is confirmed. An attachment
+that came **with a follow-up** is drawn dashed: it does not belong to the instruction being edited.
+
 ⚠ **The original NAME travels with the file into the prompt** (“devis-client.pdf”), because
 `pj_2.pdf` teaches the agent nothing. On disk, however, the file carries a made-up name: a name
 coming from a form has no business in a path. And **what the agent can actually read is up to it**:

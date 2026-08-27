@@ -374,8 +374,8 @@ describe('Sessions de dev de bout en bout', () => {
 
     const detail = await app.api('GET', `/api/tasks/${taskId}`);
     assert.equal(detail.body.images.length, 1);
-    assert.equal((await app.api('GET', `/api/tasks/${taskId}/image/0`)).status, 200);
-    assert.equal((await app.api('GET', `/api/tasks/${taskId}/image/9`)).status, 404);
+    assert.equal((await app.api('GET', `/api/pieces/task/${detail.body.images[0].id}`)).status, 200);
+    assert.equal((await app.api('GET', '/api/pieces/task/999999')).status, 404);
 
     // Exécution : l'agent est en dry-run, le commit et le diff sont bien réels.
     await app.api('POST', `/api/tasks/${taskId}/run`);
@@ -515,7 +515,7 @@ describe('Sessions de dev de bout en bout', () => {
     const detail = await app.api('GET', `/api/tasks/${task.id}`);
     assert.equal(detail.body.images.length, 2);
     const imgId = (await app.api('GET', `/api/tasks/${task.id}`)).body.images[0].id;
-    assert.equal((await app.api('DELETE', `/api/tasks/${task.id}/image/${imgId}`)).body.ok, true);
+    assert.equal((await app.api('DELETE', `/api/pieces/task/${imgId}`)).body.ok, true);
     assert.equal((await app.api('GET', `/api/tasks/${task.id}`)).body.images.length, 1);
 
     assert.equal((await app.api('DELETE', `/api/tasks/${task.id}`)).body.ok, true);

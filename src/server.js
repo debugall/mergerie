@@ -1632,9 +1632,6 @@ function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) 
 function taskById(id) {
   return db.prepare(`SELECT task.*, repo.project AS project, repo.forge AS forge FROM task JOIN repo ON repo.id = task.repo_id WHERE task.id = ?`).get(id);
 }
-function taskImages(id) {
-  return piecesDe('task', id);
-}
 // Les projets d'une session, avec leur état d'exécution propre (commit, diff, MR…).
 function taskTargets(taskId) {
   const rows = db.prepare(`SELECT tt.*, repo.project AS project, repo.forge AS forge,
@@ -1825,6 +1822,40 @@ const piecesDe = (scope, ownerId) => db
   .prepare('SELECT id, path, name, mime, followup FROM piece_jointe WHERE scope = ? AND owner_id = ? ORDER BY id')
   .all(scope, Number(ownerId) || 0);
 
+/* CE QUE L'ÉCRAN A LE DROIT DE VOIR d'une pièce jointe : de quoi l'afficher (un nom, un type),
+   de quoi la demander (son id), et à quelle passe elle appartient — la consigne initiale (0) ou
+   un suivi. Jamais le `path` : c'est un chemin sur le disque de la machine, il ne sert à rien
+   au navigateur et il n'a rien à faire dans une réponse HTTP. */
+const piecesExposees = (scope, ownerId) => piecesDe(scope, ownerId)
+  .map((pj) => ({ id: pj.id, name: pj.name, mime: pj.mime, followup: pj.followup || 0 }));
+
+/* SERVIR ET RETIRER une pièce jointe, quelle que soit la saveur de session. Une seule paire de
+   routes pour les quatre : c'est la même table, le même disque et le même geste à l'écran — trois
+   variantes finiraient par diverger, et l'une des trois par ne pas supprimer le fichier. */
+const PJ_SCOPES_LUS = new Set(['task', 'local', 'ask']);
+const pieceDemandee = (req) => (PJ_SCOPES_LUS.has(req.params.scope)
+  ? db.prepare('SELECT * FROM piece_jointe WHERE id = ? AND scope = ?').get(Number(req.params.id), req.params.scope)
+  : null);
+
+app.get('/api/pieces/:scope/:id', (req, res) => {
+  const pj = pieceDemandee(req);
+  if (!pj || !fs.existsSync(pj.path)) return res.status(404).end();
+  // Le nom d'origine suit le fichier : `pj_2.pdf` ne dit rien à qui l'enregistre.
+  res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(pj.name || 'piece')}`);
+  return res.sendFile(path.resolve(pj.path));
+});
+
+/* Le fichier part avec la ligne : une pièce détachée resterait sur le disque pour toujours,
+   invisible et impossible à retrouver depuis l'écran. */
+app.delete('/api/pieces/:scope/:id', wrap((req, res) => {
+  const pj = pieceDemandee(req);
+  if (pj) {
+    try { fs.rmSync(pj.path, { force: true }); } catch { /* déjà parti */ }
+    db.prepare('DELETE FROM piece_jointe WHERE id = ?').run(pj.id);
+  }
+  res.json({ ok: true });
+}));
+
 app.get('/api/tasks', wrap((req, res) => {
   /* En tête, ce qui vient de se passer : les sessions qui TOURNENT, puis les plus récemment
      exécutées. `finished_at` plutôt qu'`updated_at`, qui bouge aussi quand on corrige un
@@ -1845,7 +1876,7 @@ app.get('/api/tasks/:id', wrap((req, res) => {
   if (!tache) throw new Error(t('err.session-introuvable'));
   res.json({
     task: { ...tache, targets: taskTargets(tache.id) },
-    images: taskImages(tache.id).map((im, i) => ({ id: im.id, idx: i })),
+    images: piecesExposees('task', tache.id),
   });
 }));
 
@@ -1970,24 +2001,6 @@ app.post('/api/tasks/:id/hidden', wrap((req, res) => {
     .run(hidden, new Date().toISOString(), t2.id);
   res.json({ ok: true, hidden });
 }));
-
-/* Retirer UNE pièce jointe. La route garde son nom historique (`/image/`) : elle sert aux
-   captures comme aux documents, et la renommer casserait les liens déjà en circulation pour
-   rien. Le fichier part avec la ligne — une pièce détachée resterait sur le disque pour
-   toujours, invisible. */
-app.delete('/api/tasks/:id/image/:imgId', wrap((req, res) => {
-  const pj = db.prepare('SELECT * FROM piece_jointe WHERE id = ? AND scope = ? AND owner_id = ?')
-    .get(Number(req.params.imgId), 'task', Number(req.params.id));
-  if (pj) { try { fs.rmSync(pj.path, { force: true }); } catch { /* déjà parti */ } db.prepare('DELETE FROM piece_jointe WHERE id = ?').run(pj.id); }
-  res.json({ ok: true });
-}));
-
-app.get('/api/tasks/:id/image/:idx', (req, res) => {
-  const imgs = taskImages(Number(req.params.id));
-  const im = imgs[Number(req.params.idx)];
-  if (!im || !fs.existsSync(im.path)) return res.status(404).end();
-  return res.sendFile(path.resolve(im.path));
-});
 
 // Diff d'UN projet de la session.
 app.get('/api/tasks/:id/targets/:tid/diff', wrap((req, res) => {
@@ -2152,7 +2165,7 @@ app.post('/api/local-tasks', wrap((req, res) => {
 app.get('/api/local-tasks/:id', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
-  res.json({ task: lt, images: piecesDe('local', lt.id) });
+  res.json({ task: lt, images: piecesExposees('local', lt.id) });
 }));
 
 /* Édition d'une session hors dépôt — même contrat que PUT /api/tasks/:id.
@@ -2329,7 +2342,7 @@ app.post('/api/questions', wrap((req, res) => {
 
 app.get('/api/questions/:id', wrap((req, res) => {
   const q = exigerQuestion(req.params.id);
-  res.json({ task: q, images: piecesDe('ask', q.id) });
+  res.json({ task: q, images: piecesExposees('ask', q.id) });
 }));
 
 /* Édition : le prompt et le libellé. La SESSION D'AGENT est volontairement conservée —

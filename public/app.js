@@ -4163,6 +4163,55 @@ function renderTaskPreviews() {
     taskNewImages.splice(Number(b.dataset.rmimg), 1); renderTaskPreviews();
   }));
 }
+/* ---- Pièces DÉJÀ jointes (édition) ---- */
+/* À la création, on voit ce qu'on vient de joindre. À l'édition, on ne voyait qu'une phrase :
+   « 2 captures déjà jointes » — impossible de savoir LESQUELLES, de les rouvrir, ni d'en retirer
+   une. On montre donc les vraies pièces : la vignette pour une image, le nom pour un document,
+   les deux ouvrables, et la croix retire pour de bon (fichier compris).
+   Le `scope` suit la saveur de la session ouverte : le formulaire est le même pour les quatre,
+   la route l'est aussi, seul le mot change. */
+let taskPieces = [];
+let taskPiecesScope = 'task';
+const pieceEstImage = (pj) => /^image\//i.test(pj.mime || '');
+function renderTaskPieces() {
+  const box = $('#taskPieces');
+  if (!box) return;
+  box.innerHTML = taskPieces.map((pj) => {
+    const url = `/api/pieces/${taskPiecesScope}/${pj.id}`;
+    /* Une pièce arrivée AVEC UN SUIVI n'a pas été jointe à la consigne qu'on est en train de
+       modifier : la montrer sans le dire ferait croire qu'on peut la remplacer en réécrivant
+       le prompt. */
+    const titre = esc(pj.name + (pj.followup ? ` — ${tr('task.piece.from-followup')}` : ''));
+    const dedans = pieceEstImage(pj)
+      ? `<img src="${url}" alt="${titre}" />`
+      : `${svgIco('doc')}<span class="task-prev-nom">${esc(pj.name)}</span>`;
+    return `<span class="task-prev${pieceEstImage(pj) ? '' : ' task-prev-doc'}${pj.followup ? ' task-prev-suivi' : ''}" title="${titre}">`
+      + `<a href="${url}" target="_blank" rel="noopener noreferrer">${dedans}</a>`
+      + `<button type="button" data-rmpj="${pj.id}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`;
+  }).join('');
+  $$('#taskPieces [data-rmpj]').forEach((b) => b.addEventListener('click', async () => {
+    const pj = taskPieces.find((x) => String(x.id) === b.dataset.rmpj);
+    if (!pj) return;
+    // Le fichier part du disque : irréversible, donc on demande — comme partout ailleurs.
+    if (!await confirmDialog({
+      title: tr('task.piece.remove'), text: tr('task.piece.remove-confirm', { name: pj.name }),
+      confirmLabel: tr('ui.remove'),
+    })) return;
+    try {
+      await api(`/pieces/${taskPiecesScope}/${pj.id}`, { method: 'DELETE' });
+      taskPieces = taskPieces.filter((x) => x.id !== pj.id);
+      renderTaskPieces();
+    } catch (e) { toast(explainError(e.message), true); }
+  }));
+}
+function setTaskPieces(scope, liste) {
+  taskPiecesScope = scope || 'task';
+  taskPieces = Array.isArray(liste) ? liste : [];
+  renderTaskPieces();
+}
+// Remet à neuf les DEUX listes du formulaire : ce qu'on vient de choisir, et ce qui est déjà là.
+function resetTaskFiles() { taskNewImages = []; renderTaskPreviews(); setTaskPieces('task', []); }
+
 function readFileDataURL(file) {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
 }
@@ -4265,7 +4314,7 @@ document.addEventListener('change', (e) => {
 async function openTaskModal(kind = taskKind) {
   editingTaskId = null; launchAfterCreate = false; convergeAfterCreate = false;
   const f = $('#taskForm');
-  f.reset(); taskNewImages = []; renderTaskPreviews();
+  f.reset(); resetTaskFiles();
   taskKind = kind;
   if (kind !== 'local' && kind !== 'ask') await loadRepoOptions();
   if (kind === 'local') { localPicks = ['']; await loadLocalRoots(); }
@@ -4304,7 +4353,7 @@ function showTaskModal() {
 
 async function openTaskForMr(m, opts = {}) {
   const f = $('#taskForm');
-  f.reset(); taskNewImages = []; renderTaskPreviews();
+  f.reset(); resetTaskFiles();
   editingTaskId = null; taskKind = 'code';
   await loadRepoOptions();
   applyKindToModal('code');
@@ -4336,7 +4385,7 @@ async function openTaskForMr(m, opts = {}) {
    maintenir. La branche est proposée d'après la clé du ticket, jamais imposée. */
 async function openTaskForJira(key) {
   const f = $('#taskForm');
-  f.reset(); taskNewImages = []; renderTaskPreviews();
+  f.reset(); resetTaskFiles();
   editingTaskId = null; taskKind = 'code';
   launchAfterCreate = false; convergeAfterCreate = false;   // on prépare, l'utilisateur lance
   await loadRepoOptions();
@@ -4370,7 +4419,7 @@ async function openTaskForJira(key) {
 
 async function openTaskEdit(id) {
   const f = $('#taskForm');
-  f.reset(); taskNewImages = []; renderTaskPreviews();
+  f.reset(); resetTaskFiles();
   try {
     const d = await api(`/tasks/${id}`);
     const t = d.task;
@@ -4388,7 +4437,7 @@ async function openTaskEdit(id) {
     await majVerificateursSession(t.verifier_id || '');
     if (f.session_id) f.session_id.value = sharedSessionKey(t.targets);
     $('#taskModalTitle').textContent = tr(taskKind === 'code' ? 'task.edit.code-title' : 'task.edit.explore-title');
-    $('#taskExistingImgs').textContent = (d.images && d.images.length) ? tr('task.images-attached', { n: d.images.length, count: d.images.length }) : '';
+    setTaskPieces('task', d.images);      // les pièces, pas leur compte : on veut les VOIR
     $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
     $('#taskSubmitOnly').hidden = true;
     showTaskModal();
@@ -4424,7 +4473,7 @@ function brancheLibreSession(repoId, branche) {
      - les IMAGES attachées, qui vivent sur disque et appartiennent à la session d'origine. */
 async function dupliquerTask(id) {
   const f = $('#taskForm');
-  f.reset(); taskNewImages = []; renderTaskPreviews();
+  f.reset(); resetTaskFiles();
   const d = await api(`/tasks/${id}`);
   const t = d.task;
   editingTaskId = null; launchAfterCreate = false; convergeAfterCreate = false;
@@ -4479,7 +4528,7 @@ function boutonsCreation(kind) {
    décaler, les dossiers sont ceux qu'on veut retraiter. */
 async function dupliquerLocalTask(id) {
   const f = $('#taskForm');
-  f.reset(); taskNewImages = []; renderTaskPreviews();
+  f.reset(); resetTaskFiles();
   const d = await api(`/local-tasks/${id}`);
   const t = d.task;
   editingTaskId = null; launchAfterCreate = false; convergeAfterCreate = false;
@@ -4520,7 +4569,7 @@ function sharedSessionKey(units) {
    dossier venu d'ailleurs est signalé à l'enregistrement plutôt que perdu en silence. */
 async function openLocalTaskEdit(id) {
   const f = $('#taskForm');
-  f.reset(); taskNewImages = []; renderTaskPreviews();
+  f.reset(); resetTaskFiles();
   const d = await api(`/local-tasks/${id}`);
   const t = d.task;
   editingTaskId = id; launchAfterCreate = false; convergeAfterCreate = false;
@@ -4538,8 +4587,7 @@ async function openLocalTaskEdit(id) {
   if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
   if (f.session_id) f.session_id.value = sharedSessionKey(t.dirs);
   $('#taskModalTitle').textContent = tr('local.edit-title');
-  $('#taskExistingImgs').textContent = (d.images && d.images.length)
-    ? tr('task.images-attached', { n: d.images.length, count: d.images.length }) : '';
+  setTaskPieces('local', d.images);
   $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
   $('#taskSubmitOnly').hidden = true;   // on modifie une session existante : rien à créer
   showTaskModal();
@@ -4550,8 +4598,9 @@ async function openLocalTaskEdit(id) {
    pas touchée — corriger une formulation ne doit pas faire perdre le fil de l'échange. */
 async function openQuestionEdit(id) {
   const f = $('#taskForm');
-  f.reset(); taskNewImages = []; renderTaskPreviews();
-  const { task: q } = await api(`/questions/${id}`);
+  f.reset(); resetTaskFiles();
+  const d = await api(`/questions/${id}`);
+  const q = d.task;
   editingTaskId = id; launchAfterCreate = false; convergeAfterCreate = false;
   taskKind = 'ask';
   applyKindToModal('ask');
@@ -4559,6 +4608,7 @@ async function openQuestionEdit(id) {
   if (f.label) f.label.value = q.label || '';
   $('#taskModalTitle').textContent = tr('ask.edit-title');
   $('#taskExistingImgs').textContent = '';
+  setTaskPieces('ask', d.images);       // le codage libre joint des fichiers lui aussi
   $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
   $('#taskSubmitOnly').hidden = true;   // on modifie une question existante : rien à créer
   showTaskModal();
@@ -4654,7 +4704,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
           ask_questions: f.ask_questions ? f.ask_questions.checked : false,
         } }));
         toast(tr('toast.session-mise-a-jour'));
-        taskNewImages = []; renderTaskPreviews(); closeTaskModal(); loadTasks();
+        resetTaskFiles(); closeTaskModal(); loadTasks();
         return;
       }
       const created = await busy(btn, () => api('/local-tasks', { method: 'POST', body: {
@@ -4669,7 +4719,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
         // Créée en statut « new » : la carte affiche « Lancer », le geste reste à un clic.
         toast(tr('toast.local-session-created'));
       }
-      taskNewImages = []; renderTaskPreviews(); closeTaskModal(); loadTasks();
+      resetTaskFiles(); closeTaskModal(); loadTasks();
     } catch (err) { toast(explainError(err.message), true); }
     return;
   }
@@ -4730,7 +4780,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
           : tr('toast.exploration-created'));
       }
     });
-    taskNewImages = []; renderTaskPreviews();
+    resetTaskFiles();
     closeTaskModal();
     loadTasks();
     if (convergeId) { convergeAfterCreate = false; openConvergeModal({ type: 'task', id: convergeId }); }

@@ -2356,6 +2356,11 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 /* La croix d'une vignette est POSÉE sur l'image (il n'y a pas d'autre place) ; sur une puce
    nommée, elle se range à la suite du nom — perchée dans le coin, elle en mangeait la fin. */
 .task-prev-doc button { position: static; width: 18px; height: 18px; flex: none; }
+/* Pièces DÉJÀ jointes : elles s'ouvrent (le lien enveloppe la vignette comme la puce), et celles
+   arrivées avec un suivi se distinguent — elles n'appartiennent pas à la consigne qu'on édite. */
+.task-prev > a { display: block; color: inherit; text-decoration: none; }
+.task-prev-doc > a { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.task-prev-suivi img, .task-prev-suivi.task-prev-doc { border-style: dashed; }
 
 /* Captures d'une demande de suivi : même vignette que celles du formulaire de session. */
 .followup-imgs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 2px; }
