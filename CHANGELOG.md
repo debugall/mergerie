@@ -166,6 +166,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A review always gets asked for its overall score, and a report without one no longer vanishes.**
+  The score is read back from the report, never computed — so a custom template that forgets to ask
+  for one produced reports the score filter silently left out, and you could not tell them from
+  merge requests that were never reviewed. The instruction is now added at run time, like the line
+  numbers and the findings block, whatever the template says; if the AI still writes no score, the
+  job log says so. And the filter gained a fourth box, **“— no score”**, with its own counter: those
+  reports are now somewhere, instead of nowhere.
+
 - **The shipped review template no longer invokes a skill you do not have.** It opened with “use
   the git-review skill”, which whoever installs Mergerie has no reason to own: the very first
   review asked the agent for something that does not exist — ignored at best, refused at worst,

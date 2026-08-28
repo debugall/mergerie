@@ -213,6 +213,13 @@
                         <span class="note bad" data-i18n="review.filter.bad">&lt; 4</span>
                         <span class="nf-count" data-nf-count="bad"></span>
                     </label>
+                    <!-- Sans note : un rapport dont l'IA n'a pas produit de note globale. Sans
+                         cette case, il sortait de la liste dès qu'on filtrait, sans rien dire. -->
+                    <label class="nf-item" title="Rapports dont aucune note globale n'a pu être lue" data-i18n-title="review.filter.none-title">
+                        <input type="checkbox" class="note-pick" value="none" checked />
+                        <span class="note none" data-i18n="review.filter.none">— sans note</span>
+                        <span class="nf-count" data-nf-count="none"></span>
+                    </label>
                 </div>
                 <div id="reportList" class="list"></div>
             </div>

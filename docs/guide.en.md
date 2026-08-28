@@ -126,12 +126,16 @@ shared search (title, author, project, ticket).
   prompt template is not modified**, the instruction is added on the fly. The Stats tab turns this into
   a **resolution rate per project**.
 - An MR that is no longer open on the forge carries the **merged** badge; the Merge button disappears.
-- **Filter by score colour.** Under *Reviewed* and *Done*, three checkboxes above the list — green
-  (≥ 7/10), amber (4 to 6.9), red (< 4) — **combine**: “show me the red and the amber ones” is two clicks,
+- **Filter by score colour.** Under *Reviewed* and *Done*, four checkboxes above the list — green
+  (≥ 7/10), amber (4 to 6.9), red (< 4) and **`— no score`** — **combine**: “show me the red and the amber ones” is two clicks,
   and each carries the number of merge requests it will bring up. The choice is remembered between visits;
   unticking the last box brings everything back, rather than leaving an empty list with no way out. The
   summary on the right follows the filter. The *To review* stage has no such boxes: an MR only returns
   there once its report has been deleted, so there is no score left to filter on.
+  - **`— no score`** is a box like the others, and it exists for a reason: the score is not computed, it
+    is **read back from the report**. When the AI writes none, the card shows `—` — and without that box
+    it left the list at the first filter, with no counter and no box to call it back. You then took it
+    for lost, or never reviewed.
 - **List and report scroll independently.** Going down the list to pick another merge request no longer
   carries the report off the screen — you look at both together.
 
@@ -1397,7 +1401,7 @@ the same path can exist on both —, plus the **local directories** — a folder
 subfolder per git project, which feeds the *Git → Navigate* tab and *Out-of-repo coding*; the displayed
 count “n git projects out of m folders” confirms at a glance that you pointed at the right level of the
 tree) ·
-**Merge Request** (automatic refresh, convergence, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one) ·
+**Merge Request** (automatic refresh, convergence, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
 **Specific review rules** (criteria added to the prompt when the branch name contains a given
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more
 precise; a rule on a path can carry a **“risk” badge** shown on the merge requests concerned, computed

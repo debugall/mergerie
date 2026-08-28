@@ -46,7 +46,9 @@
   To replay work that is **not committed yet** (the normal case here, since commits come last),
   `git archive HEAD` archives the version from BEFORE and replays it for nothing: use
   `C=$(git stash create); git archive ${C:-HEAD}`, which makes a commit of the working tree
-  without touching it.
+  without touching it. It builds from the index, so a **brand-new file must be `git add`-ed
+  first** — otherwise the replay silently runs without it, and the count is the only clue (931
+  instead of 935: exactly the new test file, and it was the one being checked).
 
   A cheaper first filter: run the file under CPU load (`for i in $(seq 8); do (yes >/dev/null &); done`,
   then `pkill yes`). It catches the coarsest races in seconds.

@@ -202,8 +202,13 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
     /* Ajoutée à l'EXÉCUTION, comme les constats : le gabarit de l'utilisateur n'a pas à
        connaître ce fichier, et un gabarit personnalisé doit en profiter aussi. */
     const li = (kind === 'review') ? `\n\n${t('review.lines-instruction', { file: lignesName })}` : '';
+    /* LA NOTE EST UNE DONNÉE DE L'APPLICATION, pas une coquetterie du rapport : la liste s'en
+       sert pour colorer, trier et FILTRER. Un gabarit personnalisé qui oublie de la demander
+       produit des rapports que le filtre par note laisse de côté — on la réclame donc ici,
+       comme les numéros de ligne et les constats, pour tous les gabarits. */
+    const ni = (kind === 'review') ? `\n\n${t('review.note-instruction')}` : '';
     const lb = (kind === 'review') ? linkedBlock : ''; // analyse d'impact = review uniquement
-    const prompt = fillTemplate(promptTemplate, { ...baseVars, out_file: outRel }) + ticketBlock + rb + lb + extra + li + fi + instruction;
+    const prompt = fillTemplate(promptTemplate, { ...baseVars, out_file: outRel }) + ticketBlock + rb + lb + extra + li + ni + fi + instruction;
     // extraInput : le diff n'est PAS dans le prompt (on ne passe que son chemin),
     // mais l'agent le lit — il doit donc compter dans la consommation.
     // Continuité : la review/modif tourne dans une session reprenable par MR (« Relancer la
@@ -339,6 +344,10 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
       reviewContent, explainContent, diffStorePath, kind: 'review', noExplain: !explain,
     });
     onLog(t('log.review.saved', { version }));
+    /* Aucune note extraite : le rapport existe, mais la liste ne saura ni le colorer ni le
+       classer. Le dire ICI, dans le journal du job, plutôt que de laisser découvrir un « — »
+       trois jours plus tard en se demandant si la review a échoué. */
+    if (noteValue == null) onLog(t('log.review.note-missing'));
     // Note pour la notif « review sous un seuil » (le client décide selon SON seuil).
     notify.push('review_done', { mr_id: mr.id, iid: mr.iid, note10: noteValue == null ? null : Math.round(noteValue * 1000) / 100 });
 

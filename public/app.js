@@ -2244,19 +2244,27 @@ let reportRows = [];
    Une carte SANS note (rapport dont aucune note n'a pu être extraite) n'appartient à aucune
    des trois couleurs. Elle reste visible tant qu'on ne filtre pas ; dès qu'on choisit des
    couleurs, elle sort — demander « les rouges » ne doit pas ramener des cartes grises. */
-const NOTE_CLASSES = ['good', 'mid', 'bad'];
+/* `none` = rapport dont AUCUNE note n'a pu être lue. C'est une classe comme les autres, sans
+   quoi ces rapports quittaient la liste au premier filtre posé — sans case pour les rappeler,
+   et sans que rien ne dise qu'ils existaient. */
+const NOTE_CLASSES = ['good', 'mid', 'bad', 'none'];
+const ANCIENNES_NOTE_CLASSES = ['good', 'mid', 'bad'];
 let noteFilter = new Set(NOTE_CLASSES);
 try {
   const brut = JSON.parse(localStorage.getItem('aidevtools_note_filter') || 'null');
   if (Array.isArray(brut)) {
     const garde = brut.filter((c) => NOTE_CLASSES.includes(c));
+    /* Un filtre enregistré AVANT l'arrivée de « sans note » et qui portait les trois couleurs
+       voulait dire « tout » : le relire à la lettre décocherait la nouvelle case et masquerait
+       ces rapports sans que personne l'ait demandé. */
+    const toutAvant = ANCIENNES_NOTE_CLASSES.every((c) => garde.includes(c));
     // Un filtre vide n'afficherait rien et n'aurait pas d'issue évidente : on revient à tout.
-    if (garde.length) noteFilter = new Set(garde);
+    if (garde.length && !toutAvant) noteFilter = new Set(garde);
   }
 } catch { /* stockage indisponible ou valeur illisible : filtre par défaut */ }
 
 const filtreNoteActif = () => noteFilter.size < NOTE_CLASSES.length;
-const passeFiltreNote = (m) => !filtreNoteActif() || noteFilter.has(noteClass(m.note));
+const passeFiltreNote = (m) => !filtreNoteActif() || noteFilter.has(noteClass(m.note) || 'none');
 
 async function loadReports(status = 'reviewed') {
   reportRows = await api(`/mrs?status=${status}`);
@@ -2338,8 +2346,8 @@ function majFiltreNote() {
   const base = q ? reportRows.filter((m) => matchMr(m, q)) : reportRows;
   const parCouleur = {};
   for (const m of base) {
-    const c = noteClass(m.note);
-    if (c) parCouleur[c] = (parCouleur[c] || 0) + 1;
+    const c = noteClass(m.note) || 'none';   // les sans-note se comptent aussi : ils existent
+    parCouleur[c] = (parCouleur[c] || 0) + 1;
   }
   $$('.note-pick', boite).forEach((c) => { c.checked = noteFilter.has(c.value); });
   $$('[data-nf-count]', boite).forEach((s) => { s.textContent = parCouleur[s.dataset.nfCount] || 0; });

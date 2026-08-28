@@ -55,9 +55,13 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
        La note est relue du FICHIER à chaque appel (`extractNote`), pas stockée : réécrire
        suffit, et on exerce au passage le vrai chemin d'extraction. */
     const NOTES = ['9,1', '7,5', '6,0', '4,2', '3,3', '1,8']; // 2 vertes, 2 oranges, 2 rouges
-    app.db.prepare('SELECT mr_id, md_path FROM review ORDER BY mr_id').all().forEach((rv, i) => {
+    const rapports = app.db.prepare('SELECT mr_id, md_path FROM review ORDER BY mr_id').all();
+    rapports.forEach((rv, i) => {
       fs.writeFileSync(rv.md_path, `# Revue\n\nDu texte.\n\n## Note globale\n\n**${NOTES[i % NOTES.length]}/10**\n`, 'utf8');
     });
+    /* …et UN rapport sans note du tout. L'IA n'en met pas toujours : ce rapport-là existe, se
+       lit, et doit rester atteignable — il sortait de la liste au premier filtre posé. */
+    fs.writeFileSync(rapports[rapports.length - 1].md_path, '# Revue\n\nDu texte, et pas de note.\n', 'utf8');
 
     navigateur = await chromium.launch();
     // Fenêtre volontairement courte : sans elle, la liste tiendrait à l'écran et il n'y
@@ -180,15 +184,15 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
         `le compteur ${couleur} doit annoncer ce que la case fera apparaître`);
     }
 
-    // Une seule couleur : rien d'autre ne subsiste.
+    // Une seule couleur : rien d'autre ne subsiste — « sans note » est une case comme les autres.
     const majoritaire = ['good', 'mid', 'bad'].find((c) => compteurs[c] > 0);
-    for (const c of ['good', 'mid', 'bad']) await cocher(c, c === majoritaire);
+    for (const c of ['good', 'mid', 'bad', 'none']) await cocher(c, c === majoritaire);
     const restant = await notesAffichees();
     assert.ok(restant.length, 'la couleur choisie reste visible');
     assert.deepEqual([...new Set(restant)], [majoritaire], 'et elle seule');
 
     // Deux couleurs cochées : l'union, pas l'une ou l'autre.
-    const seconde = ['good', 'mid', 'bad'].find((c) => c !== majoritaire && compteurs[c] > 0);
+    const seconde = ['good', 'mid', 'bad', 'none'].find((c) => c !== majoritaire && compteurs[c] > 0);
     if (seconde) {
       await cocher(seconde, true);
       const deux = new Set(await notesAffichees());
@@ -196,12 +200,40 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
     }
   });
 
+  /* UN RAPPORT SANS NOTE N'EST PAS UN RAPPORT ABSENT. L'IA n'en produit pas toujours : la
+     carte affiche « — ». Tant que « sans note » n'était pas une case, ces rapports quittaient
+     la liste dès qu'on filtrait par couleur, sans compteur ni case pour les rappeler — on les
+     croyait perdus, ou jamais reviewés. */
+  test('un rapport sans note reste atteignable, et sa case le compte', async () => {
+    await ouvrirStade('done');
+    // Le test précédent a laissé un filtre posé : le compteur se lit « tout coché », sinon il
+    // annonce ce qui apparaîtrait, pas ce qui est affiché.
+    for (const c of ['good', 'mid', 'bad', 'none']) await cocher(c, true);
+    const compteurs = await page.$$eval('#noteFilters [data-nf-count]',
+      (s2) => Object.fromEntries(s2.map((x) => [x.dataset.nfCount, Number(x.textContent)])));
+    assert.equal(compteurs.none, (await notesAffichees()).filter((c) => c === 'none').length,
+      'la case « sans note » annonce ce qu’elle fera apparaître');
+    assert.ok(compteurs.none > 0, 'le décor porte bien un rapport sans note');
+
+    for (const c of ['good', 'mid', 'bad', 'none']) await cocher(c, c === 'none');
+    const restant = await notesAffichees();
+    assert.deepEqual([...new Set(restant)], ['none'], 'seule la case cochée subsiste');
+    assert.equal(restant.length, compteurs.none, 'et tous ceux qu’elle annonçait sont là');
+
+    // Filtrer sur une couleur ne doit PAS faire disparaître les sans-note en silence : ils
+    // sont simplement rangés sous leur propre case, qu'on peut cocher avec.
+    await cocher('good', true);
+    const deux = new Set(await notesAffichees());
+    assert.ok(deux.has('none') && deux.has('good'), 'les cases s’additionnent, celle-ci comprise');
+    for (const c of ['good', 'mid', 'bad', 'none']) await cocher(c, true);
+  });
+
   test('le choix survit au rechargement, et tout décocher n’enferme personne', async () => {
     await ouvrirStade('done');
     const compteurs = await page.$$eval('#noteFilters [data-nf-count]',
       (s) => Object.fromEntries(s.map((x) => [x.dataset.nfCount, Number(x.textContent)])));
     const garde = ['good', 'mid', 'bad'].find((c) => compteurs[c] > 0);
-    for (const c of ['good', 'mid', 'bad']) await cocher(c, c === garde);
+    for (const c of ['good', 'mid', 'bad', 'none']) await cocher(c, c === garde);
     const avant = await notesAffichees();
 
     await page.reload();
@@ -212,11 +244,12 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
 
     /* Décocher la DERNIÈRE case : la liste deviendrait vide et plus aucune case ne
        permettrait de la rouvrir. On revient donc à tout afficher. */
+    await cocher('none', false);
     await page.locator(`#noteFilters input[value="${garde}"]`).click();
     // Décocher la dernière remet TOUT : on attend cet effet-là, qui est l'objet du test.
     await page.waitForFunction(() => [...document.querySelectorAll('#noteFilters .note-pick')].every((c) => c.checked));
     const cases = await page.$$eval('#noteFilters .note-pick', (cs) => cs.map((c) => c.checked));
-    assert.deepEqual(cases, [true, true, true], 'tout revient coché');
+    assert.deepEqual(cases, [true, true, true, true], 'tout revient coché, « sans note » comprise');
     assert.ok((await notesAffichees()).length >= avant.length, 'et la liste entière réapparaît');
   });
 

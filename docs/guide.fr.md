@@ -131,12 +131,16 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   **ton template de prompt de review n'est pas modifié**, l'instruction est ajoutée à la volée.
   L'onglet Stats en tire un **taux de résolution par projet**.
 - Une MR qui n'est plus ouverte sur la forge porte le badge **mergée** ; le bouton Merger disparaît.
-- **Filtrer par couleur de note.** Sous *Reviewées* et *Traitées*, trois cases au-dessus de la liste —
-  vert (≥ 7/10), orange (4 à 6,9), rouge (< 4) — **se cumulent** : « montre-moi les rouges et les
+- **Filtrer par couleur de note.** Sous *Reviewées* et *Traitées*, quatre cases au-dessus de la liste —
+  vert (≥ 7/10), orange (4 à 6,9), rouge (< 4) et **`— sans note`** — **se cumulent** : « montre-moi les rouges et les
   oranges » tient en deux clics, et chacune porte le nombre de merge requests qu'elle fera apparaître.
   Le choix est retenu d'une visite à l'autre ; décocher la dernière case ramène tout, plutôt que de
   laisser une liste vide sans issue. Le résumé de droite suit le filtre. Le stade *À traiter* n'a pas
   ces cases : une MR n'y revient qu'après suppression de son rapport, donc sans note à filtrer.
+  - **`— sans note`** est une case comme les autres, et elle existe pour une raison : la note n'est pas
+    calculée, elle est **relue du rapport**. Quand l'IA n'en écrit pas, la carte affiche `—` — et sans
+    cette case, elle quittait la liste au premier filtre posé, sans compteur ni case pour la rappeler.
+    On la croyait alors perdue, ou jamais reviewée.
 - **Liste et rapport défilent chacun pour soi.** Descendre la liste pour changer de merge request
   n'emporte plus le rapport hors de l'écran — on regarde les deux ensemble.
 
@@ -1450,7 +1454,7 @@ commandes *nom + commande figée*). C'est le **premier** onglet, et celui qui s'
 première fois : sans jeton, aucun autre réglage ne sert à rien ·
 **Dépôts** (ajout un par un ou en masse **depuis GitLab** ou **depuis GitHub** — chaque dépôt porte un badge
 de forge, et un même chemin peut exister sur les deux —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ·
-**Merge Request** (rafraîchissement auto, convergence, templates de prompt — le gabarit livré n'invoque **aucun skill**, celui qui en a un l'y écrit) ·
+**Merge Request** (rafraîchissement auto, convergence, templates de prompt — le gabarit livré n'invoque **aucun skill**, celui qui en a un l'y écrit ; la **note globale**, elle, est réclamée par l'application quel que soit le gabarit, parce que la liste s'en sert pour filtrer) ·
 **Règles de review spécifiques** (critères ajoutés au prompt quand le nom de
 branche contient un fragment donné **ou quand le diff touche un chemin** — glob type `**/migrations/**`,
 `*.sql` —, plus précis ; une règle par chemin peut porter un **badge « risque »** affiché sur les MR
