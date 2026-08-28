@@ -1397,7 +1397,7 @@ the same path can exist on both —, plus the **local directories** — a folder
 subfolder per git project, which feeds the *Git → Navigate* tab and *Out-of-repo coding*; the displayed
 count “n git projects out of m folders” confirms at a glance that you pointed at the right level of the
 tree) ·
-**Merge Request** (automatic refresh, convergence, prompt templates — the review **skill** is written in the template) ·
+**Merge Request** (automatic refresh, convergence, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one) ·
 **Specific review rules** (criteria added to the prompt when the branch name contains a given
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more
 precise; a rule on a path can carry a **“risk” badge** shown on the merge requests concerned, computed

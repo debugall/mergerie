@@ -697,7 +697,7 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_git_op_batch ON git_op(batch_id)');
 
 // Ligne de config unique (id=1). Les gabarits de prompt par défaut vivent dans
 // prompts.js, qui les tient dans les deux langues (i18n.md lot 5).
-const { PROMPTS } = require('./prompts');
+const { PROMPTS, ANCIENS_PROMPTS } = require('./prompts');
 // Convergence (« Converger ») : réglages par défaut (surchargeables au lancement).
 // Seuil cible en /10, plafond de passes de correction.
 try { db.exec("ALTER TABLE config ADD COLUMN converge_threshold TEXT DEFAULT '8'"); } catch { /* déjà présente */ }
@@ -1113,6 +1113,22 @@ db.exec(`UPDATE config SET
   prompt_explain = REPLACE(prompt_explain, '{skill}', COALESCE(NULLIF(TRIM(review_skill), ''), 'git-review')),
   prompt_modify  = REPLACE(prompt_modify,  '{skill}', COALESCE(NULLIF(TRIM(review_skill), ''), 'git-review'))
   WHERE prompt_review LIKE '%{skill}%' OR prompt_explain LIKE '%{skill}%' OR prompt_modify LIKE '%{skill}%'`);
+
+/* LE GABARIT LIVRÉ N'INVOQUE PLUS DE SKILL. Celui qui installe Mergerie n'a pas `git-review`,
+   et sa première review demandait pourtant à l'agent de s'en servir. Les installations
+   existantes portent encore cet ancien texte : on le remplace par le nouveau défaut de la MÊME
+   langue, mais UNIQUEMENT s'il est resté rigoureusement identique — un gabarit modifié, ne
+   serait-ce que d'un caractère, appartient à son auteur et n'est pas touché.
+
+   Sans cela il resterait tel quel pour toujours : ne correspondant plus à aucun défaut connu,
+   il serait tenu pour personnalisé et ne suivrait même plus les changements de langue.
+
+   Rejouable : après le premier passage, plus aucune ligne ne correspond.
+   Placée APRÈS le `CREATE TABLE config`, comme la précédente. */
+for (const lang of ['fr', 'en']) {
+  db.prepare('UPDATE config SET prompt_review = ? WHERE prompt_review = ?')
+    .run(PROMPTS[lang].prompt_review, ANCIENS_PROMPTS[lang].prompt_review);
+}
 
 const DEFAULT_PROMPT_REVIEW = PROMPTS.fr.prompt_review;
 const DEFAULT_PROMPT_EXPLAIN = PROMPTS.fr.prompt_explain;

@@ -1,7 +1,7 @@
 # Mergerie — Architecture
 
 Application locale mono-utilisateur (Node + Express + SQLite + front vanilla) pour :
-1. **Reviewer** les merge requests GitLab **et les pull requests GitHub** assisté par IA (skill `git-review` via un CLI d'agent).
+1. **Reviewer** les merge requests GitLab **et les pull requests GitHub** assisté par IA (via un CLI d'agent ; le gabarit de prompt peut invoquer un skill, il n'en impose aucun).
 2. Piloter des **sessions de dev** automatisées (l'IA modifie le code, commit, push, ouvre/merge la MR).
 3. **Explorer du code en lecture seule** : poser une question sur un ou plusieurs dépôts et obtenir une réponse de synthèse en Markdown.
 

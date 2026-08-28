@@ -20,7 +20,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const RACINE = path.resolve(__dirname, '..');
-const { PROMPTS } = require('../src/prompts');
+const { PROMPTS, ANCIENS_PROMPTS } = require('../src/prompts');
 
 // La table `config` telle qu'elle était, avec le champ et les gabarits à trous.
 const ANCIEN = `
@@ -56,7 +56,7 @@ describe('Migration : le skill de review passe dans le gabarit', () => {
   /* LE CAS DE PRESQUE TOUT LE MONDE : gabarit jamais touché, skill jamais changé. Le gabarit
      doit redevenir EXACTEMENT le défaut, sinon il serait considéré comme personnalisé et
      cesserait de suivre les changements de langue. */
-  test('un gabarit au défaut redevient le défaut, avec le skill écrit dedans', () => {
+  test('un gabarit au défaut redevient le défaut du jour', () => {
     const dir = semer({
       review: 'Utilise le skill {skill} pour faire la revue de code UNIQUEMENT des changements '
         + 'de la branche {source} par rapport à {target} (le diff est dans le fichier {diff_file}). '
@@ -115,6 +115,35 @@ describe('Migration : le skill de review passe dans le gabarit', () => {
     for (const champ of ['prompt_review', 'prompt_explain', 'prompt_modify']) {
       assert.doesNotMatch(cfg[champ], /\{skill\}/, champ);
     }
-    assert.match(cfg.prompt_review, /skill git-review/, 'le skill est nommé dans le gabarit livré');
+    assert.doesNotMatch(cfg.prompt_review, /git-review/,
+      'le gabarit livré n’invoque AUCUN skill : celui qui installe l’outil ne l’a pas');
+  });
+
+  /* LE GABARIT LIVRÉ N'INVOQUE PLUS DE SKILL — et les installations existantes non plus.
+     Celui qui installe Mergerie n'a pas `git-review` : sa première review demandait à l'agent
+     de se servir d'un skill inexistant, sans que rien ne l'explique dans le rapport. */
+  for (const lang of ['fr', 'en']) {
+    test(`(${lang}) l’ancien gabarit livré est remplacé par le nouveau, dans SA langue`, () => {
+      const dir = semer({ review: ANCIENS_PROMPTS[lang].prompt_review, explain: '', modify: '' }, 'git-review');
+      const cfg = migrer(dir);
+      assert.equal(cfg.prompt_review, PROMPTS[lang].prompt_review,
+        'un gabarit jamais touché suit l’application : sinon il garderait le skill pour toujours');
+      assert.doesNotMatch(cfg.prompt_review, /git-review/);
+    });
+  }
+
+  /* Et il s'arrête là. Un gabarit que quelqu'un a écrit lui appartient — même s'il nomme
+     `git-review`, précisément parce qu'il a peut-être ce skill, lui. */
+  test('un gabarit personnalisé qui nomme git-review n’est pas touché', () => {
+    const perso = `${ANCIENS_PROMPTS.fr.prompt_review} Et sois bref.`;
+    const dir = semer({ review: perso, explain: '', modify: '' }, 'git-review');
+    assert.equal(migrer(dir).prompt_review, perso, 'un caractère de différence suffit à le protéger');
+  });
+
+  /* Rejouée à chaque démarrage : le deuxième passage ne doit plus rien trouver à faire. */
+  test('rejouée, la sortie du skill ne touche plus à rien', () => {
+    const dir = semer({ review: ANCIENS_PROMPTS.fr.prompt_review, explain: '', modify: '' }, 'git-review');
+    assert.equal(migrer(dir).prompt_review, PROMPTS.fr.prompt_review);
+    assert.equal(migrer(dir).prompt_review, PROMPTS.fr.prompt_review);
   });
 });

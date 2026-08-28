@@ -166,6 +166,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The shipped review template no longer invokes a skill you do not have.** It opened with “use
+  the git-review skill”, which whoever installs Mergerie has no reason to own: the very first
+  review asked the agent for something that does not exist — ignored at best, refused at worst,
+  and nothing in the report said why. The default now assumes nothing about the machine; anyone
+  with a skill writes it into the template, which is where the rest of the request already lives.
+  An existing install still carrying the old template word for word is moved to the new one, in
+  its own language; a template you have edited is left alone.
+
 - **Attachments are visible again when you reopen a session.** Attach a quote to a coding session,
   reopen it to edit: the form only said “2 screenshots attached” — not *which* ones, with no way to
   open one, check you picked the right file, or drop one that had no business being there. The edit

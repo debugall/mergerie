@@ -1450,7 +1450,7 @@ commandes *nom + commande figée*). C'est le **premier** onglet, et celui qui s'
 première fois : sans jeton, aucun autre réglage ne sert à rien ·
 **Dépôts** (ajout un par un ou en masse **depuis GitLab** ou **depuis GitHub** — chaque dépôt porte un badge
 de forge, et un même chemin peut exister sur les deux —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ·
-**Merge Request** (rafraîchissement auto, convergence, templates de prompt — le **skill** de review s'écrit dans le gabarit) ·
+**Merge Request** (rafraîchissement auto, convergence, templates de prompt — le gabarit livré n'invoque **aucun skill**, celui qui en a un l'y écrit) ·
 **Règles de review spécifiques** (critères ajoutés au prompt quand le nom de
 branche contient un fragment donné **ou quand le diff touche un chemin** — glob type `**/migrations/**`,
 `*.sql` —, plus précis ; une règle par chemin peut porter un **badge « risque »** affiché sur les MR
