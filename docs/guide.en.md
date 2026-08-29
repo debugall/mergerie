@@ -126,12 +126,16 @@ shared search (title, author, project, ticket).
   prompt template is not modified**, the instruction is added on the fly. The Stats tab turns this into
   a **resolution rate per project**.
 - An MR that is no longer open on the forge carries the **merged** badge; the Merge button disappears.
-- **Filter by score colour.** Under *Reviewed* and *Done*, three checkboxes above the list — green
-  (≥ 7/10), amber (4 to 6.9), red (< 4) — **combine**: “show me the red and the amber ones” is two clicks,
+- **Filter by score colour.** Under *Reviewed* and *Done*, four checkboxes above the list — green
+  (≥ 7/10), amber (4 to 6.9), red (< 4) and **`— no score`** — **combine**: “show me the red and the amber ones” is two clicks,
   and each carries the number of merge requests it will bring up. The choice is remembered between visits;
   unticking the last box brings everything back, rather than leaving an empty list with no way out. The
   summary on the right follows the filter. The *To review* stage has no such boxes: an MR only returns
   there once its report has been deleted, so there is no score left to filter on.
+  - **`— no score`** is a box like the others, and it exists for a reason: the score is not computed, it
+    is **read back from the report**. When the AI writes none, the card shows `—` — and without that box
+    it left the list at the first filter, with no counter and no box to call it back. You then took it
+    for lost, or never reviewed.
 - **List and report scroll independently.** Going down the list to pick another merge request no longer
   carries the report off the screen — you look at both together.
 
@@ -139,6 +143,14 @@ shared search (title, author, project, ticket).
 Project tree plus the file shown **in full with the diff in place**, syntax highlighting, a **mini-map** of
 the changes, navigation between modifications, collapsible panels. **Inline comments** per line and
 **replies** to threads, synchronised with the forge — and **editable** as long as they are yours.
+
+**The whole screen speaks of the REVIEWED version**, not of the branch head: tree, file content and
+line numbers all come from the commit the report describes. That is what makes a “`src/foo.js` line
+137” read in the report land on the right line on the right-hand side, even if the branch has moved
+since (in which case the merge request is flagged **stale** anyway). If that commit has disappeared
+from the repository — a force-push — the screen falls back to the branch head.
+On the report side, the AI receives the diff **already numbered**: every line carries its real
+number in the final version of the file, instead of being left to recount from the `@@` headers.
 
 **Two ways to comment, your choice.** `Comment on GitLab` publishes right away, as before.
 **`Save`** keeps the remark **pending**, locally: you review a merge request file by file, and
@@ -193,6 +205,17 @@ session** — the agent keeps what it read. Two differences worth knowing: an **
 question stands, **nothing has been done**: no summary saved for an exploration, no file touched
 out of a repository.
 
+**And if you answered in your terminal?** “Resume in terminal” copies the agent session, so you can
+answer there and let the agent carry on — inside Mergerie's clone, which knows nothing about it. The
+**`I answered in the terminal`** button, next to `Answer and resume`, settles that wait: the
+questions go away, the todo closes, and **nothing is re-run**. The state is not guessed: on a
+repository session Mergerie **re-reads the branch** (the same machinery as `Check branch state`) —
+commits ahead and the project goes back to *committed* or *pushed* with its diff, nothing at all and
+it returns to *to do*. Out of a repository there is neither branch nor commit to question: the
+folder is returned to *done*, and what it contains is what your terminal made of it. Without this
+gesture the project stayed waiting forever, and the form offered to answer a second time — which
+would have sent the agent back over work already finished.
+
 **A session stopped on a question raises its own todo.** When the AI interrupts itself to ask
 something, a **high-priority todo** is created automatically — "Reply to the AI — session #12",
 with the projects concerned in its note. The queue is free, nothing will restart, and the
@@ -204,6 +227,35 @@ brief. **Answering closes it** (ticked, not deleted: what you did with your day 
 answering the first does not settle the work, and a todo ticked too early makes you forget the
 other four. It stays an **ordinary** todo — you can tick, edit or delete it: the tool raises it
 and closes it, it does not take over what you did with it.
+
+**Duplicate a session.** On the card, next to *Edit*, a button opens the form **pre-filled** from
+that session — **coding, exploration and out-of-repo coding**. There is no identifier behind it:
+**saving creates a new session** instead of overwriting the one you copied. This is the gesture of
+running the same instruction on another repository, or starting from a past session with two words
+changed. Everything is copied — prompt, label, commit message, repositories or folders, base
+branch, options, verifier — except the following, stated under the prompt:
+- the **agent session** is never resumed: a copy starts a fresh conversation, not the continuation
+  of the original one;
+- in **coding**, the **working branch** is shifted (`feature/x` → `feature/x-2`, then `-3` if that
+  one is taken) because two sessions on the same branch would tread on each other, the second
+  committing on top of the first's work. In **exploration**, the branch is the one you **read**: it
+  is copied as is, shifting it would point at a branch that does not exist;
+- the **images** attached to the original are not copied; their number is stated.
+
+The buttons are those of creating a session of that flavour — `Save` for coding and exploration,
+`Run` alongside `Create without running` for out-of-repo: a button that changed meaning depending
+on whether you create or copy would be a trap. Everything stays editable before saving: it is a
+proposal, not a carbon copy.
+
+**The form tells four things, in order.** It is the same form for all four flavours and rearranges
+itself for the one you are creating — but the sequence does not change: **where** (the projects and
+their branches, or the root folder and its projects — the “the AI edits in place, no commit” warning
+follows *that* choice, not the bottom of the form), **what** (the Jira ticket that fills the prompt,
+the prompt, the attachments, then the label — optional, so after what it summarises), **how the AI
+works** (questions, resuming an agent session) and finally **once the code is written** (commit
+message, auto-push, verifier) — last because it is chronologically last, and it disappears whole as
+soon as there is nothing to commit. Two discreet captions separate the last three groups; a **free
+question** shows none of them, it only has the request.
 
 **A label, optional.** A short title when creating a session — coding, out-of-repo or exploration.
 A list is otherwise read through its prompt, three folded lines whose first words look alike from one
@@ -240,6 +292,34 @@ follow-up`** instead of `Send`: the text stays **on the card**, under your eyes,
 not gone out. You can **reword** it, **delete** it (clearing the text is enough), and **`Send the
 follow-up`** fires it in one click once the session is over. Applies to coding, out-of-repo and
 exploration sessions.
+
+**An attachment can be pasted or picked, in a follow-up as at creation time.** The
+**`Attach a file`** button, or **Ctrl+V** for a screenshot. An image shows a thumbnail, a document
+shows a **named chip** — and that is the only difference between them: to the agent, a screenshot
+and a PDF are the same thing, a file to open. Works for **all four flavours**: coding, out-of-repo
+coding, exploration **and** the free question.
+Accepted: **images**, **PDF**, **text** (`.txt`, `.md`, `.log`), **data** (`.csv`, `.tsv`, `.json`,
+`.yml`, `.xml`, `.html`) and **Office documents** (`.docx`, `.xlsx`, `.pptx`, `.odt`, `.ods`,
+`.odp`, `.rtf`), up to **10 MB** each. Anything else is refused **with its reason**, before
+anything is stored.
+The attachment belongs to **that request**: the follow-up prompt gets the ones from the initial
+instruction plus the one you just attached, but **not** those of an earlier follow-up — they
+illustrated something else, and a prompt announcing “here are the attachments” while showing the
+wrong one sends the agent off course.
+⚠ **A *saved* follow-up (draft) only keeps the text** — that is what the database stores. The
+attachments stay on the open form and go out with the follow-up itself; a message says so when you
+save, rather than making them vanish silently.
+**Reopening a session shows what is actually attached to it.** The edit form does not show a count
+(“2 screenshots attached”) but the **attachments themselves** — a thumbnail for an image, a name for
+a document — **openable** in one click and **removable** with a cross, in all four flavours.
+Removing deletes the file **from disk**: that is irreversible, so it is confirmed. An attachment
+that came **with a follow-up** is drawn dashed: it does not belong to the instruction being edited.
+
+⚠ **The original NAME travels with the file into the prompt** (“devis-client.pdf”), because
+`pj_2.pdf` teaches the agent nothing. On disk, however, the file carries a made-up name: a name
+coming from a form has no business in a path. And **what the agent can actually read is up to it**:
+a `.txt` or a `.csv` are safe, an `.xlsx` much less so — Mergerie provides the file, it does not
+convert it.
 
 **Or it goes out by itself, if you ask.** A checkbox **`Send it automatically when the session
 finishes`**, under the text, arms the follow-up: it leaves as soon as the session has finished
@@ -288,6 +368,13 @@ an error would misrepresent what happened.
 out-of-repo, exploration) makes the AI work **inside that session** instead of opening a new one — so it
 keeps all the context it has already built. Filled in, it also enables the **“Resume in terminal”** button.
 The field can be edited afterwards too.
+
+⚠ **The identifier FOLLOWS the passes.** Resuming an agent session does not always continue under the
+same identifier: `claude --resume` opens a **new** one, carrying the whole exchange plus the turn just
+made. Mergerie therefore records, after **every** pass, the one the agent reports — otherwise two
+follow-ups in a row on the same project would both start from the initial state, and the second would
+ignore the first. It is also what makes **“Resume in terminal”** open the conversation **as it stands**,
+not as it was three follow-ups ago.
 
 **Enrich from a Jira ticket (optional).** If Jira is configured (Settings → Jira), the dialog offers a
 **ticket number** field with a **Fetch** button: the ticket's **title + description** are pulled through the
@@ -359,10 +446,21 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   content.
 - **Every iteration is kept.** A session iterates (launch, `Send a follow-up`, answers to questions,
   convergence passes): each pass keeps **the prompt actually sent** and **the matching AI output**. An
-  **iteration selector** appears at the top of `AI output` from the second pass on (“Iteration 2 · fix
-  requested · 29/07 00:42”) and lets you re-read any of them. Re-reading an answer without knowing which
-  request it answered teaches nothing: the two are therefore shown together. Applies to **out-of-repo
-  coding** too, folder by folder.
+  From the second pass on, `AI output` lists the iterations **in a column on the left** — each with its
+  number, kind, date and **the request that produced it** — and shows the one you pick **on the right**.
+  Nobody remembers an iteration by its number; you remember what you asked: a **search field** at the top
+  of the column therefore searches those requests and **hides** the iterations that do not match, losing
+  none of them — and the filter survives switching iterations. Re-reading an answer without knowing which
+  request it answered teaches nothing: the two are therefore shown together. A single iteration shows no
+  column — there is nothing to pick. Applies to **out-of-repo coding** too, folder by folder.
+  **Pin and name.** Past a few passes, neither the number nor the date says what happened in
+  them. Every iteration therefore carries two gestures: a **tag** that lifts it to the **top of
+  the column** (the number stays visible, so the chronology still reads), and a **name** typed in
+  place — Enter confirms, Escape gives up. The name shows in bold under the header and **joins
+  the search**, like the request does. ⚠ Neither the tag nor the name **goes to the AI**: it is
+  filing, written for the human scanning the column — the same rule as a session's label. An
+  iteration **predating the pass history** has no row in the database: it can be neither named
+  nor pinned, and the screen says so rather than offering a gesture with no effect.
 - **⌨️ Resume the session in a terminal.** Every project of a coding session (repository **or** out-of-repo),
   and the reviews too, exposes a **“Resume in terminal”** button that copies the **ready-to-paste command**:
   a `cd` to the right folder plus the agent launched with the **session identifier** (claude
@@ -388,7 +486,7 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   (scripts, experiments, a local mono-repo…). The working folder is no longer **typed in**: you pick a
   **local directory** (declared in *Settings → Repositories*) then **the project or projects** it contains —
   the path follows, and a hand-typed path is a typo you only discover halfway through the run. The form
-  (projects + prompt) lives in **the same dialog as coding** — so you can also **attach screenshots**
+  (projects + prompt) lives in **the same dialog as coding** — so you can also **attach files** (screenshots, PDFs, spreadsheets, text)
   (button or Ctrl+V) to enrich the prompt. The same prompt is applied to **each folder**, one after another
   — a failing folder does not stop the others, and the status is shown per folder. As with repository
   coding, each folder exposes **`AI output`** — what the agent says it did, useful when the folder has not
@@ -410,8 +508,19 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   re-injecting its previous answer: the AI remembers its exploration instead of re-reading a summary of it.
   The repositories are reset afterwards: **no modification survives**. Each exploration also exposes
   **“Resume in terminal”** so you can continue the conversation yourself. **Every question is kept**: a
-  follow-up question overwrites the answer file, but the pass is archived — `View answer` offers an
-  **iteration selector** that replays each question with the answer it got.
+  follow-up question overwrites the answer file, but the pass is archived — `View answer` lines the
+  iterations up on the left, with the search over the questions asked, and replays the one you pick on
+  the right with the answer it got.
+- **Free question** — the same thing, **with no repository at all**. You ask the AI something — a notion to
+  dig into, two options to compare, a plan to challenge — and the answer is kept here. Nothing on the
+  machine is read or changed: no clone, no folder, none of your files. An optional **label** files the
+  study away (“Concurrency”, “Payment architecture”), and the search covers the question and the label.
+  As everywhere else, a **follow-up question resumes the same agent session** — which is what makes a
+  five-question study possible instead of one — every pass is **archived** with its question, and
+  **“Resume in terminal”** hands the thread back so you can continue it yourself. The answer exports
+  (HTML, Word, PDF) like an exploration's. A free question reserves no repository: it never blocks a
+  review or a coding session, and nothing blocks it.
+  (Dedicated sub-tab, after *Exploration*.)
 
 ### Notes
 The sticky notes and the notepad tab of everyday work, **inside the tool** — so **anchored** to what it
@@ -514,9 +623,16 @@ renderer as the review reports, hence the same escaping).
 - **Autosave** as you type, with a one-second delay and a discreet “Saved” indicator. Saving on every
   character would mean one request per letter; saving only on close would lose the work of a page left
   open.
+- **Pasting a screenshot** (Ctrl+V) into the editor **inserts it at the caret**, on its own line, and
+  the preview shows it right away. The image goes **to disk** (`data/notes/<page>/`) and the page only
+  keeps a link: putting the screenshot into the content as base64 would swell the row by several
+  megabytes, resent in full on every autosave — that is, about every second while you write.
 - **Pin** keeps a page at the top of the list.
-- **Export** downloads the page as `.md`, under a name **slugified** from the title.
-- **Delete** asks for confirmation — it is the only irreversible action of the tab.
+- **Export** downloads the page as `.md`, under a name **slugified** from the title. ⚠ Screenshots are
+  referenced by their **address inside Mergerie**: the `.md` read elsewhere will show the text, not the
+  images.
+- **Delete** asks for confirmation — it is the only irreversible action of the tab. The page's
+  **screenshots go with it**, files included.
 
 #### Autolink — `!214` and `PROJ-720` become links
 What you write in a note are the identifiers of everyday work. They become clickable **at render time**
@@ -726,6 +842,20 @@ Operations across **several repositories at once**, and branch exploration.
   **opens its block** to show why instead of leaving it shut. The **tag list** shows the date, the **branch(es) that carry the tag** and the author of the
   pointed commit — with a `Tag author` button that reads the **real *tagger*** of an annotated tag in the
   local clone (neither forge API exposes it).
+- **Compare** — two repositories, **one branch or tag on each side**, and the question “what exists here
+  and not there?” (comparing two released versions means comparing two tags; both live in the same
+  searchable list, marked, because a branch and a tag may carry the same name).
+  This is **not** a `git diff`: the two repositories need no common history (a service extracted into its
+  own repository, a fork gone its own way). The tool reads both **trees** and sorts every file into one of
+  three columns: **left only**, **on both sides but different** (same path, different content), **right
+  only**. **Identical** files are not listed — only counted, so the screen shows what is missing rather
+  than what is fine. **Clicking a file shows its differences**: both versions as a unified diff, with a
+  reminder of which side is the red one and which is the green one. A file present on one side only is
+  read against the void — all of its content as removals (or additions), which is precisely what the
+  other side is missing. A binary file says so instead of dumping its bytes, and a file over one megabyte
+  is not loaded — stated, not hidden. A **filter** searches all three columns at once. Both sides may point at the **same
+  repository** on two branches. Beyond 2,000 files per column the lists are **truncated and the truncation
+  is announced** — never silent.
 - **Find a ref** — you type a tag **or** branch name (free text) and the tool says, **across every active
   repository** (GitLab and GitHub alike), which ones have it: type, commit + link to the forge, date, the
   branch(es) carrying the tag, the author — with the same `Tag author` button. An unreachable repository is
@@ -805,10 +935,15 @@ Two sub-views, like Coding/Exploration in AI Dev.
   (all)* — along with a **search** by name. Confirming groups the services **by project** and runs one
   `docker compose` per project (one failure does not stop the others).
 - **Health badges on the Docker tab**: the **number of containers in error** — *restarting*, *dead*, and
-  those that **exited with an error** (a non-zero exit code) — in **red**. A container stopped **cleanly**
-  (code 0: you stopped it yourself, or a job finished its work) does not count: counting it in red set the
-  alarm off every day, and an alarm that always rings stops being read. It is still named in the tooltip. An
-  unreadable exit code stays out of the alarm — we do not cry wolf on a guess. Plus the **number of
+  those that **exited with an error** — in **red**. A container **you stopped** does not count: neither a
+  clean exit (code 0: you stopped it yourself, or a job finished its work) nor one that `docker stop` /
+  `docker compose stop` had to kill by signal — an untrapped SIGTERM (**143**), then SIGKILL once the grace
+  period runs out (**137**), which is the fate of many perfectly healthy images. Counting those in red set
+  the alarm off on every deliberate stop, and an alarm that always rings stops being read; they are still
+  named in the tooltip and in the *Exited* filter. Two exceptions, kept: a 137 caused by **running out of
+  memory** (OOM, read from `docker inspect`) stays red — same code, opposite meaning — and so do the signals
+  that really do mean a crash (**139** SIGSEGV, **134** SIGABRT). An unreadable exit code stays out of the
+  alarm — we do not cry wolf on a guess. Plus the **number of
   unhealthy containers** in **orange**, right in the menu — visible at startup and refreshed
   **automatically every 30 s** (and every time the tab is opened) — so a container flipping to *restarting*
   shows up in the menu title **even when you are not on the Docker tab**. The poll is light (a single
@@ -893,12 +1028,21 @@ Jenkins already does well, and which there is no point redoing.
   the tab's own refresh — Jenkins is not queried from the other tabs. Nothing today means no
   badge at all: a zero in a menu teaches nothing. A job that ran five times counts once — the
   list only carries each job's last build, so the tooltip says "jobs", not "runs".
+  **And a RED badge beside it: the jobs that failed today.** The blue count also goes up when all
+  is well; the red one answers the other question — "did something fall over this morning?" —
+  from any tab. Three deliberate limits: **failure only** (unstable has its own colour and its own
+  filter in the tab; painting it red would set the alarm off for a flaky test), **today only** (a
+  failure from yesterday does not count — it sits at the top of the tab, where you go looking for
+  it), and **not while it is re-running** (a restarted job is not announced as broken while it
+  builds). Nothing broken: the badge disappears.
 - **Told when what YOU started is done.** A desktop notification when a job you started from
   Mergerie finishes, with its verdict; one click opens its page. Yours only: being told about
   the team's nightly build would be noise, and you would turn the whole thing off within two
   days. Can be switched off in *Settings → Notifications*. The wait survives closing the tab —
   that is precisely the point.
-- **A job's page** (`Open`), as **three separated blocks** — the launch form, the history, the
+- **A job's page** (`Open`, or a click on the **job's name** — the whole row does not open it:
+  the buttons on the right run, re-run or leave for Jenkins, and clicking them must not drop a
+  window on top), as **three separated blocks** — the launch form, the history, the
   details of the selected run. Each is a card on a recessed background: the boundary is **seen**
   rather than inferred. The history is a real list (rules between rows, the date on its own line
   so verdicts line up), the selected run carries an **accent bar** and a bold number — not just a
@@ -1267,18 +1411,18 @@ the same path can exist on both —, plus the **local directories** — a folder
 subfolder per git project, which feeds the *Git → Navigate* tab and *Out-of-repo coding*; the displayed
 count “n git projects out of m folders” confirms at a glance that you pointed at the right level of the
 tree) ·
-**Merge Request** (automatic refresh, convergence, prompt templates — the review **skill** is written in the template) ·
+**Merge Request** (automatic refresh, convergence, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
 **Specific review rules** (criteria added to the prompt when the branch name contains a given
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more
 precise; a rule on a path can carry a **“risk” badge** shown on the merge requests concerned, computed
 **without AI** just from the diff's paths, to see at a glance which one to review first) ·
-**Verifiers** (your test scripts, and the repositories each of them can test — see *Objective verification*
+**Verifiers** (your test commands, and the repositories each of them can test — see *Objective verification*
 below; the page shows **the list** first, and the form opens on *Add a verifier*, *Edit* or
 **`Duplicate`** — the latter reopens it **prefilled** with no id, so saving **creates** instead of
 overwriting the original, with a free name proposed ("X (copy)", since names are unique) and the
 field selected: renaming is the first gesture) ·
 **Notifications** (a dedicated sub-tab, see below) ·
-**General** (light/dark/auto theme, language, density, morning brief, data retention, backup,
+**General** (light/dark/auto theme, language, density, **menu arrangement**, morning brief, data retention, backup,
 and a **danger zone** for a full reset) ·
 **Jira** (the **Jira connection** —
 URL + email + API token, with a *Test Jira* button —; feeds the *Jira* tab and the enrichment of a session
@@ -1338,6 +1482,13 @@ else**: no search, no dialog, no open report, because a stale state is worse tha
 found, timeout, network) · a **3-step onboarding** as long as the connection and the repositories are not
 configured · every form field carries an **i icon** whose hover (or keyboard focus) explains what it is for.
 
+- **The menu bar can be arranged** (Settings → General). Move **up** what you open ten times a day,
+  **hide** what you never use: drag and drop or arrows, applied at once. A hidden menu also leaves
+  the **palette** and the **number shortcuts** — `3` opens the third *shown* menu, not the third
+  original one; offering a screen whose menu entry has gone would be a one-way ticket. The
+  **feature itself stays**: nothing is disabled, only filed away. ⚠ **Settings cannot be hidden**
+  (it is the way back), and the arrangement is remembered **in this browser**, like the theme —
+  not in the database.
 - **Command palette — `Ctrl`/`Cmd` + `K`.** You type a fragment and jump wherever you want: a tab, a stage,
   a merge request, a session — the search covers what is already loaded, so it answers without calling the
   server. `?` shows the full list of shortcuts.
@@ -1378,7 +1529,7 @@ configured · every form field carries an **i icon** whose hover (or keyboard fo
 ## Objective verification (verifiers)
 
 A review says *what it thinks* of the code. A **verifier** says **what happens when you run it**: it is
-**your** test script, Mergerie prepares the repositories for it and reads its verdict. The two complement
+**your** test commands, Mergerie prepares the repositories for them and reads their verdict. The two complement
 each other — a 9/10 score on an MR whose integration tests break means nothing any more once you know it.
 
 **What it changes in practice**: a badge on each merge request (`✓ verified`, `✗ 2 tests broken`,
@@ -1386,11 +1537,15 @@ each other — a 9/10 score on an MR whose integration tests break means nothing
 repositories that are only worth anything together — the front-end MR and the API one that only pass when
 combined.
 
-### Two families of verifiers
+### What a verifier is
 
-**Commands** — you give a list (`npm ci`, then `npm test`), Mergerie runs it in the prepared repository and
-**the verdict comes from the exit codes**. Nothing to write, nothing to install. This is the common case,
-and the right starting point.
+You give a **list of commands** (`npm ci`, then `npm test`), Mergerie runs it in the prepared repository and
+**the verdict comes from the exit codes**. Nothing to write, nothing to install.
+
+> A second family existed up to 1.2: an **executable** committing to a JSON contract. It has been removed —
+> it asked you to write and maintain a program to get what three lines of commands give. A verifier of that
+> family still on file stays visible in the settings, marked as such, and **refuses to run**: rewrite it as
+> a list of commands, then delete it.
 
 The **order matters** — `npm ci` before `npm test` — and is corrected in one click: each row carries its
 rank and two arrows to move it.
@@ -1409,14 +1564,7 @@ When several repositories are tested, the failures are **prefixed with the repos
 (`grp/lib › cart › discount`): without that, two projects each having a test of the same name would be
 indistinguishable — and the base/head comparison would confuse them.
 
-**Script** — an executable of your own that commits to the JSON contract described below. More work, but it
-receives **every targeted repository at once** and decides itself what to do with them: that is the shape of
-a real **integration** test, where “commands” simply replays the same list in each. It also returns named
-tests whatever way your suite expresses itself.
-
-The two share everything else: git preparation, the double base/head run, badges, report, “Fix”.
-
-#### What “commands” can say, and what it cannot
+#### What a verifier can say, and what it cannot
 
 The list stops **at the first command that fails**: after a failed `npm ci`, the output of `npm test` is
 just noise. The report then shows the sequence — which command, which code, how long, and its output.
@@ -1463,13 +1611,13 @@ works. Launched by a service or a desktop launcher, `npm` will not be found — 
 
 ### How the roles are shared
 
-**Mergerie does all the git.** Your script does no checkout and knows no branch: it receives directories
-already positioned on the right commits and answers “do the tests pass”. That is what lets the same script
+**Mergerie does all the git.** Your commands do no checkout and know no branch: they run in directories
+already positioned on the right commits and answer “do the tests pass”. That is what lets the same list
 serve in a throwaway worktree as well as in your own working directory.
 
 **Declarative coverage ≠ actual checkout.** In *Settings → Verifiers*, declaring a repository only says
-“this script knows how to test that repository”. Only the repositories **actually targeted** by a
-verification are prepared and passed to the script. The other covered repositories configured *in place* are
+“this verifier knows how to test that repository”. Only the repositories **actually targeted** by a
+verification are prepared. The other covered repositories configured *in place* are
 read **read-only** and appear as **context** in the report (with a ⚠ if they are off their default branch or
 modified): a green obtained thanks to a neighbour left on an old branch must not go unnoticed.
 
@@ -1500,100 +1648,11 @@ The **“Test the directory”** button answers while the form is still in front
 current branch, and the two possible reservations — tracked modifications (which would get the run refused)
 and untracked files (which do not block, but will be there during the tests).
 
-### Script contract (v1) — the “script” family only
-
-**Which file?** Any **executable** — the extension does not matter at all (`.sh`, `.py`, `.js`, a binary).
-Two technical conditions: the **execute bit** (`chmod +x`), and a **shebang** (`#!/bin/sh`,
-`#!/usr/bin/env python3`…) if it is a script, since it is launched directly and nothing guesses what to
-interpret it with. The *Command* field expects an **absolute path**, not a command line: **no argument is
-passed**, and pipes, redirections and variables would not be interpreted — options go inside the script.
-
-The script is launched **without a shell**, once per run (`base` then `head`), with a **minimal
-environment** (`PATH`, `HOME`, `LANG`, `MERGERIE_VERIFY=1`): **no token**, no Mergerie variable. Its `cwd`
-is the first directory of the list. Its `stderr` is streamed into the job's log panel.
-
-**Input** (JSON on stdin):
-
-```json
-{
-  "version": 1,
-  "verifier": "integ",
-  "role": "head",
-  "repos": [
-    { "name": "group/webapp-front", "dir": "/abs/path", "sha": "a1b2c3…",
-      "branch": "feat/PROJ-720", "mode": "worktree", "changed": true }
-  ]
-}
-```
-
-**Output**: the **last valid JSON line** of stdout.
-
-```json
-{
-  "version": 1,
-  "status": "pass",
-  "total": 218,
-  "failed": [
-    { "test": "checkout › server total", "message": "expected 42, got 41", "log_excerpt": "…" }
-  ],
-  "duration_ms": 42000
-}
-```
-
-The **exit code is indicative**: stdout is what counts (a script that exits 1 because tests failed has
-delivered its verdict perfectly well). An unreadable, truncated or off-schema answer, on the other hand,
-**never becomes a green**: it gives `⚠ verification in error`. Bounds: `failed` ≤ 50 entries, `log_excerpt`
-≤ 4 kB each, the whole response ≤ 256 kB.
-
-### Example A — worktree + an ephemeral docker compose
-
-```sh
-#!/bin/sh
-# Integration verifier: a throwaway stack per run, destroyed whatever happens.
-set -eu
-INPUT=$(cat)
-FRONT=$(printf '%s' "$INPUT" | jq -r '.repos[] | select(.name|endswith("webapp-front")) | .dir')
-API=$(printf '%s' "$INPUT" | jq -r '.repos[] | select(.name|endswith("api-core")) | .dir')
-
-PROJECT="mergerie-verify-$$"
-trap 'docker compose -p "$PROJECT" down --remove-orphans >&2 || true' EXIT
-
-docker compose -p "$PROJECT" --env-file ./integ.env \
-  -f "$API/docker-compose.yml" -f "$FRONT/docker-compose.yml" up -d --build >&2
-
-# The JUnit report is turned into a contract response. `total`/`failed` come from it.
-if docker compose -p "$PROJECT" run --rm tests >/tmp/out-$$ 2>&1; then
-  printf '{"version":1,"status":"pass","total":%s}\n' "$(grep -c '^ok ' /tmp/out-$$)"
-else
-  printf '{"version":1,"status":"fail","failed":%s}\n' "$(./junit2json.sh /tmp/out-$$)"
-fi
-```
-
-Two points that matter: `-p` **isolates the compose project** (two runs do not tread on each other), and the
-`trap EXIT` guarantees the stack is destroyed **even if the script is killed** on a timeout.
-
-### Example B — in place + an HTTP adapter
-
-When the suite already runs in a local orchestrator, the script only has to trigger it and **translate its
-answer** into the contract:
-
-```sh
-#!/bin/sh
-set -eu
-cat >/dev/null            # the input is unused: the orchestrator already knows the folders
-curl -sf --max-time 900 -X POST http://127.0.0.1:9099/run \
-  | jq -c '{version:1,
-            status: (if .failures == 0 then "pass" else "fail" end),
-            total: .tests,
-            failed: [.results[] | select(.ok|not)
-                     | {test: .name, message: .message, log_excerpt: .output}][:50]}'
-```
-
 ### `node_modules`, and why the base is sometimes red
 
 **`node_modules` strategy.** A fresh worktree has no dependencies installed. Two answers: a **symlink** from
 a shared cache (fast, but assumes the `lock` has not changed), or an **install** in the worktree (slow, but
-faithful). The choice is yours — it lives in your script. An
+faithful). The choice is yours — it lives in your commands. An
 `ln -s "$CACHE/node_modules" "$dir/node_modules"` does the job as long as you invalidate the cache when
 `package-lock.json` changes.
 
@@ -1624,7 +1683,7 @@ faithful). The choice is yours — it lives in your script. An
 The **Verify** button is present on the merge requests to review **as well as on those already reviewed**
 (in the list and in the report panel): a review is an opinion, a verdict is a fact, and the second keeps all
 its value once the first has been given. A click opens a **confirmation** announcing what is going to run —
-the commands or the script, the repository, the mode, the timeout — before launching anything. It appears
+the commands, the repository, the mode, the timeout — before launching anything. It appears
 even when a single verifier covers the repository: running commands on your machine deserves a screen, not a
 silent click.
 
@@ -1634,12 +1693,89 @@ automatic verifiers covering its repository start, with no click. Only a **new**
 triggers them — a known one is seen again at every sync, and re-running it every time would keep
 the battery running on everyone forever.
 
-⚠ **Five verifications at most per discovery run.** On a Monday morning discovery can bring back
-fifteen merge requests; fifteen functional batteries saturate the machine for an hour and block the
-queue shared with reviews. Beyond that, the merge requests keep their **`Verify`** button and the
-**server log says what did not start** — a silent cap would read as “everything was verified”.
-Verifications of the same repository **queue up** instead of being refused: they will never run at
-the same time, but none is lost.
+**Re-running when the verdict goes stale.** A second checkbox, **`Re-run when a verified merge
+request gets new commits`**: a green given on commits that are no longer the latest is worth
+nothing. It is SEPARATE from the first one because it is a different appetite — on a branch that
+moves ten times a day, that is ten batteries. Unticked, the badge simply says “stale” and you
+re-run it yourself.
+
+⚠ **Five verifications at most per discovery run**, and that cap is a **setting**
+(*Settings → Merge Request*). On a Monday morning discovery can bring back fifteen merge requests;
+fifteen functional batteries saturate the machine for an hour and block the queue shared with
+reviews. Beyond that, the merge requests keep their **`Verify`** button and the **server log says
+what did not start** — a silent cap would read as “everything was verified”. `0` means “no limit”,
+a choice that should be made on purpose. Verifications of the same repository **queue up** instead
+of being refused: they will never run at the same time, but none is lost.
+
+### Publishing the verdict on the merge request
+
+Two paths, and they do not blur into one.
+
+**By hand, after reading it.** From the report, **`Publish as a comment`** opens the **pre-filled**
+body — exactly the one automatic publication would send — in an **editable** field. A confirmation
+**names the merge request** before sending, and once published the screen says so (date,
+recipients) instead of offering the button again as if nothing had happened: that is what stops
+the same verdict being posted twice on someone's merge request. If publishing fails, **the text
+stays on screen** — you never lose what you have just written.
+
+**By itself**, if the `Publish the verdict as a comment` box is ticked on the verifier — **as
+long as the base run is green**. It is the base that gives the verdict its meaning:
+
+| Base | Head | Published? |
+|---|---|---|
+| green | red | **yes** — “it passed before, this branch breaks it” |
+| green | green | **yes** — “verified, and it holds”: on a merge request you are about to review, a written green beats a badge you have to go and find |
+| red | — | no — it is not this branch's doing; writing it on ITS merge request would blame it for what someone else broke |
+| absent | — | no — without a base run we do not KNOW whether it was already red, and publishing would assert what we have not checked |
+
+The **server log says why** nothing went out: silence reads as “published”. Unticked by default:
+writing on other people's work is a decision. Publishing **by hand** stays available in every
+case — there, a human decides, with the text in front of them.
+
+**The comment template** can be edited (it appears under the box). What each field produces:
+
+| Field | What it produces |
+|---|---|
+| `{verdict}` | the verdict line, with the verifier's name — `**integ**: ✗ 2 test(s) broken by this branch`. On a branch verification, “by this branch” disappears |
+| `{tests}` | the broken tests, one per line, with their message when the output gives one. Cut past twenty, and it says so. **Empty when everything passes** |
+| `{commandes}` | the commands that failed, with their exit code (prefixed with the repository when there are several). It answers what `{tests}` leaves open when the output **names** the tests: which ones broke, yes — but which command did. Empty when nothing failed |
+| `{commits}` | the commits actually tested: one per repository, `repository · branch @ sha`. That is what makes the verdict checkable |
+| `{mentions}` | the people declared on the verifier (*People to ping when it breaks*), **only on a red verdict**. Empty on a green one |
+| `{verificateur}` | the verifier's name alone — useful if you write your own verdict sentence |
+| `{date}` | the date the comment is **published** (`17/08/2026`), not the date of the run |
+| `{heure}` | the time it is published (`14:12`) |
+
+**Pinging someone.** The *People to ping when it breaks* field takes **handles** (`@amady @bruno`)
+or a **group** (`@my-team`, which ages better than a list of people), written as is wherever you
+put `{mentions}`. The **forge** resolves the mention and sends the mail — Mergerie only writes it.
+Two things to know: it must be the handle, not the numeric id (GitLab does not resolve `@42`), and
+you will not be notified of **your own** mentions, since the comment is posted with your token.
+Nothing is mentioned on a green verdict: pinging someone to say all is well is the surest way to
+end up in a mail filter.
+
+Everything else is written as is, and an unknown field **stays visible** rather than disappearing:
+a typo should show in the preview, not turn into a hole in the comment. An empty block leaves no
+extra blank line. Under the field, **“See an example comment”** shows YOUR template rendered on
+sample data — composed by the same engine as the real comment, otherwise the preview would end up
+lying. Left empty, the default template is used, and it then benefits from later improvements.
+
+### Verifying a branch, with no merge request
+
+Back from holiday, several merge requests have been merged: the question is no longer “what does
+this branch break?” but **“is `develop` still green?”**. The **`Verify a branch`** button lives in
+the **Git** tab and on every verifier's card. One row per covered repository, each on its **default
+branch**, picked from a searchable selector — an active repository lines up hundreds of them. The
+last branch verified is remembered.
+
+Two things change meaning, and the tool deduces both from the absence of a merge request:
+
+- **the causal double run switches off** — on an integration branch, the branch IS the base;
+  leaving it on would run the battery twice to compare `develop` with `develop`;
+- **attribution disappears**: nothing is “broken by this branch”, what is red is red. The report
+  and the comment word it differently.
+
+There is no merge request card to carry the badge: the result lives in the verification history
+and in the **morning brief**, where the line reads “repository · branch”.
 
 **Seeing what ran, even when it is green.** A **`See the verifiers' results`** button on the merge
 request opens the details of **each** verifier that ran on it — verdict, tested commits, broken
@@ -1680,7 +1816,7 @@ everybody — two in parallel would return reds that teach nothing.
 In both cases the refusal is immediate and says which of the two reasons applies.
 
 **Dry-run mode**: it only concerns the AI agent. A verification **stays real** if it is configured. In
-**demo mode**, on the other hand, no script is run at all: the verdict is simulated.
+**demo mode**, on the other hand, no command is run at all: the verdict is simulated.
 
 ## Configuration (.env)
 
@@ -1847,10 +1983,10 @@ the **accepted trade-off** of a **local single-user** tool: to be known before u
 to expose the server.
 
 **Verifiers.** Running a repository's tests **is running that repository's code**: the same level of trust
-as the agent session, and the script executes with **your** rights on the machine. The command is an
-**absolute path coming from the configuration** — never a file from the cloned repository —, it is launched
-**without a shell**, with a **minimal environment containing no token**. The script's answer is treated as
-**untrusted data**: schema validated, sizes bounded, systematic escaping on display. Worktrees are created
+as the agent session, and the commands execute with **your** rights on the machine. Each command comes
+**from the configuration** — never from a file of the cloned repository —, it is launched **without a
+shell**, with a **minimal environment containing no token**. Their output is treated as **untrusted data**:
+sizes bounded, systematic escaping on display. Worktrees are created
 **under `data/` only**, and *in place* mode only writes in a directory of yours after **explicit consent**
 (see *Objective verification*).
 

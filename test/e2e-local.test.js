@@ -112,9 +112,11 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
     // PNG 1×1 transparent (data URL) — enrichit le prompt.
     const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
     const created = (await app.api('POST', '/api/local-tasks', { prompt: 'Corrige selon la capture', dirs: [d], images: [png] })).body;
-    // le fichier image est écrit sous data/tasks/local/<id>/
-    const imgFile = path.join(app.dataDir, 'tasks', 'local', String(created.id), 'img_1.png');
+    /* Le fichier est écrit sous data/tasks/local/<id>/ — on lit son chemin en base plutôt que
+       de le deviner : le nommage est un détail d'implémentation, l'existence n'en est pas un. */
+    const imgFile = app.db.prepare("SELECT path FROM piece_jointe WHERE scope = 'local' AND owner_id = ?").get(created.id).path;
     assert.ok(fs.existsSync(imgFile), 'la capture est stockée sur disque');
+    assert.match(imgFile, new RegExp(`tasks/local/${created.id}/`), 'rangée avec la session');
 
     await app.api('POST', `/api/local-tasks/${created.id}/run`);
     await waitForJobs(app.api);
@@ -175,6 +177,10 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
     assert.equal(hist.body.passes.length, 2);
     assert.deepEqual(hist.body.passes.map((p) => p.kind), ['run', 'followup']);
     assert.equal(hist.body.current.n, 2);
+    /* La LISTE porte les prompts, pas seulement la passe courante : la colonne de gauche montre
+       chaque itération par la demande qui l'a produite, et sa recherche cherche là-dedans. */
+    assert.match(hist.body.passes[0].prompt, /Première passe/);
+    assert.match(hist.body.passes[1].prompt, /Corrige le titre/);
     assert.match(hist.body.current.prompt, /Corrige le titre/, 'le prompt de correction est conservé');
     const first = await app.api('GET', `/api/local-tasks/${created.id}/dirs/${lt.dirs[0].id}/passes?n=1`);
     assert.match(first.body.current.prompt, /Première passe/, 'la 1re passe garde le prompt initial');

@@ -79,10 +79,19 @@ describe('Réglages → Vérificateurs : le formulaire s’ouvre à la demande',
     assert.ok(carte.y < 900, `le premier vérificateur doit être visible d’emblée (y=${Math.round(carte.y)})`);
   });
 
+  /* Le formulaire s'ouvre et se referme par un rendu : on attend cet ÉTAT-LÀ. Un délai fixe
+     tient en local et lâche sur un runner à deux cœurs — et l'échec accuse alors le bouton. */
+  const attendreForm = (ouvert) => page.waitForFunction(
+    (o) => {
+      const f = document.querySelector('#verifierForm');
+      return !!f && (f.offsetParent !== null) === o;
+    }, ouvert,
+  );
+
   test('« Ajouter » ouvre un formulaire vierge, « Annuler » le referme', async () => {
     await ouvrirOnglet();
     await page.locator('#btnNewVerifier').click();
-    await page.waitForTimeout(300);
+    await attendreForm(true);
     let v = await visible();
     assert.equal(v.form, true);
     assert.equal(v.ajouter, false, 'le bouton d’ouverture s’efface : un seul formulaire à la fois');
@@ -95,7 +104,7 @@ describe('Réglages → Vérificateurs : le formulaire s’ouvre à la demande',
        part alors dans le vide. Le test cliquait juste au-dessus du bandeau par chance. */
     await page.locator('#btnVerifierCancel').evaluate((el) => el.scrollIntoView({ block: 'center' }));
     await page.locator('#btnVerifierCancel').click();
-    await page.waitForTimeout(300);
+    await attendreForm(false);
     v = await visible();
     assert.equal(v.form, false, 'refermé');
     assert.equal(v.ajouter, true);
@@ -104,12 +113,35 @@ describe('Réglages → Vérificateurs : le formulaire s’ouvre à la demande',
   test('« Modifier » ouvre le formulaire déjà rempli', async () => {
     await ouvrirOnglet();
     await page.locator('#verifierList [data-vedit]').first().click();
-    await page.waitForTimeout(300);
+    await attendreForm(true);
     assert.equal((await visible()).form, true, 'modifier doit ouvrir le formulaire, sinon le clic ne fait rien de visible');
     assert.equal(await page.locator('#verifierForm input[name=name]').inputValue(), 'tests unitaires');
     assert.equal(await page.locator('#verifierForm input[name=id]').inputValue(), '1');
     // Les commandes du vérificateur sont là, pas seulement son nom.
     assert.deepEqual(await page.$$eval('#verifierCommandList .vc-cmd', (i) => i.map((x) => x.value)), ['npm ci', 'npm test']);
+  });
+
+  /* UN RAFRAÎCHISSEMENT QUI TOMBE PENDANT L'ÉDITION. Ouvrir l'onglet lance le chargement de la
+     liste ; cliquer « Modifier » avant qu'il ne soit revenu remplit le formulaire, puis le
+     chargement se termine et remet les commandes et les dépôts à zéro — le nom reste, le reste
+     disparaît sous les doigts. Sur cette machine le chargement gagne toujours la course ; sur un
+     runner à deux cœurs, non. On ne parie donc pas sur la vitesse : on déclenche le
+     rafraîchissement NOUS-MÊMES, formulaire ouvert, et on attend qu'il ait fini. */
+  test('un rafraîchissement de la liste ne vide pas le formulaire ouvert', async () => {
+    await ouvrirOnglet();
+    await page.locator('#verifierList [data-vedit]').first().click();
+    await attendreForm(true);
+    await page.locator('#verifierRepoBox .vr-pick').first().waitFor();
+
+    await page.evaluate(() => loadVerifiers());
+
+    assert.equal(await page.locator('#verifierForm input[name=name]').inputValue(), 'tests unitaires',
+      'le nom tient déjà — c’est ce qui rendait la perte invisible');
+    assert.deepEqual(await page.$$eval('#verifierCommandList .vc-cmd', (i) => i.map((x) => x.value)),
+      ['npm ci', 'npm test'], 'les commandes en cours d’édition ne sont pas à la liste : elle n’a pas à les effacer');
+    assert.equal(await page.locator('#verifierRepoBox .vr-pick').first().isChecked(), true,
+      'ni les dépôts cochés');
+    assert.equal((await visible()).form, true, 'et le formulaire reste ouvert');
   });
 
   /* DUPLIQUER : le geste de qui doit couvrir dix dépôts avec la même commande à un détail près.
@@ -120,7 +152,7 @@ describe('Réglages → Vérificateurs : le formulaire s’ouvre à la demande',
     await ouvrirOnglet();
     const avant = await page.locator('#verifierList .card').count();
     await page.locator('#verifierList [data-vcopy]').first().click();
-    await page.waitForTimeout(300);
+    await attendreForm(true);
 
     assert.equal((await visible()).form, true);
     assert.equal(await page.locator('#verifierForm input[name=id]').inputValue(), '',
@@ -136,7 +168,8 @@ describe('Réglages → Vérificateurs : le formulaire s’ouvre à la demande',
     assert.equal(nom, 'tests unitaires (copie)');
 
     await page.locator('#verifierForm button[type=submit]').click();
-    await page.waitForTimeout(800);
+    // L'enregistrement recharge la liste : on attend la carte de plus, pas huit dixièmes.
+    await page.waitForFunction((n) => document.querySelectorAll('#verifierList .card').length === n, avant + 1);
     assert.equal(await page.locator('#verifierList .card').count(), avant + 1, 'un vérificateur de PLUS');
     const noms = await page.$$eval('#verifierList .card .title', (cs) => cs.map((c) => c.textContent));
     assert.ok(noms.includes('tests unitaires'), 'l’original est intact');
@@ -144,7 +177,7 @@ describe('Réglages → Vérificateurs : le formulaire s’ouvre à la demande',
 
     // Dupliquer une deuxième fois ne rebutera pas sur le nom déjà pris.
     await page.locator('#verifierList [data-vcopy]').first().click();
-    await page.waitForTimeout(300);
+    await page.waitForFunction(() => document.querySelector('#verifierForm input[name=name]').value.includes('copie 2'));
     assert.equal(await page.locator('#verifierForm input[name=name]').inputValue(), 'tests unitaires (copie 2)');
     await page.locator('#btnVerifierCancel').click();
   });
@@ -157,7 +190,7 @@ describe('Réglages → Vérificateurs : le formulaire s’ouvre à la demande',
     await page.locator('#verifierCommandList .vc-cmd').first().fill('npm run lint');
     await page.locator('#verifierRepoBox .vr-pick').first().check();
     await page.locator('#verifierForm button[type=submit]').click();
-    await page.waitForTimeout(800);
+    await attendreForm(false);
 
     assert.equal((await visible()).form, false, 'le travail est fini : le formulaire se referme');
     assert.equal((await visible()).ajouter, true);
@@ -166,7 +199,7 @@ describe('Réglages → Vérificateurs : le formulaire s’ouvre à la demande',
 
     // Et le formulaire rouvert repart vierge, sans traîner la saisie précédente.
     await page.locator('#btnNewVerifier').click();
-    await page.waitForTimeout(300);
+    await attendreForm(true);
     assert.equal(await page.locator('#verifierForm input[name=name]').inputValue(), '');
     // Une ligne, vide : la liste de commandes en propose toujours une, sinon il n'y aurait
     // rien à remplir. Ce qui compte est qu'elle ne porte plus la saisie précédente.

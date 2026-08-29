@@ -161,14 +161,15 @@ describe('Docker — découverte compose', () => {
       { state: 'dead', status: 'Dead' },
       { state: 'exited', status: 'Exited (0) 2 hours ago' },
       { state: 'exited', status: 'Exited (137) 5 min ago' },
+      { state: 'exited', status: 'Exited (1) 5 min ago' },
     ]);
     assert.equal(s.error, 2, 'restarting + dead');
     /* Les arrêtés sont comptés À PART, quel que soit leur code de sortie — mais `crashed`
        isole ceux qui sont sortis EN ERREUR. C'est cette distinction qui permet au badge rouge
        de ne pas sonner pour un container qu'on a arrêté soi-même : une alarme qui sonne tous
        les jours n'est plus lue. */
-    assert.equal(s.exited, 2, 'exited (0) comme exited (137)');
-    assert.equal(s.crashed, 1, 'seul le (137) est une sortie en erreur');
+    assert.equal(s.exited, 3, 'les trois sorties, quel que soit leur code');
+    assert.equal(s.crashed, 1, 'seul le (1) est une sortie en erreur — le (137) est un arrêt demandé');
     assert.equal(s.unhealthy, 1, 'seulement le (unhealthy) — pas le (healthy)');
 
     // Un container restarting ET unhealthy compte comme erreur (rouge), pas deux fois.
@@ -180,7 +181,36 @@ describe('Docker — découverte compose', () => {
     // Code de sortie ILLISIBLE : on ne crie pas au loup sur une supposition.
     assert.deepEqual(docker.healthSummary([{ state: 'exited', status: 'Exited' }]),
       { error: 0, exited: 1, crashed: 0, unhealthy: 0 });
+
+    /* ARRÊT DEMANDÉ. `docker compose stop` envoie SIGTERM puis SIGKILL : un container qui ne
+       piège pas SIGTERM sort en 143 ou 137 sans que rien ne soit cassé. C'est le cas qui
+       faisait sonner le badge rouge à chaque arrêt volontaire. */
+    for (const code of [137, 143]) {
+      assert.deepEqual(docker.healthSummary([{ state: 'exited', status: `Exited (${code}) 1 min ago` }]),
+        { error: 0, exited: 1, crashed: 0, unhealthy: 0 }, `code ${code} : arrêt demandé, pas une avarie`);
+    }
+    // …mais un 137 dû au manque de MÉMOIRE reste une avarie : c'est `inspect` qui le dit.
+    assert.deepEqual(docker.healthSummary([{ state: 'exited', status: 'Exited (137) 1 min ago', oom: true }]),
+      { error: 0, exited: 1, crashed: 1, unhealthy: 0 });
+    // Les signaux qui, eux, disent bien un plantage.
+    for (const code of [1, 134, 139]) {
+      assert.equal(docker.healthSummary([{ state: 'exited', status: `Exited (${code})` }]).crashed, 1,
+        `code ${code} : sortie en erreur`);
+    }
     assert.deepEqual(docker.healthSummary([]), { error: 0, exited: 0, crashed: 0, unhealthy: 0 });
+  });
+
+  /* Le 137 d'un OOM et celui d'un `docker stop` sont le MÊME code : seul `inspect` les sépare,
+     et c'est cette lecture-là qui décide si le badge rouge sonne ou se tait. */
+  test('oomDepuisInspect rapproche les ids courts des ids complets', () => {
+    const long = 'a'.repeat(64); const autre = 'b'.repeat(64);
+    const sortie = `${long} true\n${autre} false\n`;
+    const tues = docker.oomDepuisInspect(sortie, ['a'.repeat(12), 'b'.repeat(12)]);
+    assert.deepEqual([...tues], ['a'.repeat(12)], 'seul celui marqué true');
+    assert.equal(docker.oomDepuisInspect(sortie, []).size, 0);
+    // Sortie illisible (démon muet, format changé) : on n'invente pas d'OOM.
+    assert.equal(docker.oomDepuisInspect('', ['a'.repeat(12)]).size, 0);
+    assert.equal(docker.oomDepuisInspect('bruit sans rapport', ['a'.repeat(12)]).size, 0);
   });
 
   test('exitCodeOf lit le code de sortie dans le Status', () => {
@@ -246,7 +276,7 @@ describe('front : filtre d’état des services Docker', () => {
        alarme qu'un container tombé. Le filtre doit la refléter, sinon on ouvre la liste des
        « arrêtés » et on retrouve le mélange qu'on voulait fuir. */
     const propre = svc('exited', { exitCode: 0 });
-    const plante = svc('exited', { exitCode: 137 });
+    const plante = svc('exited', { exitCode: 1 });
     const inconnu = svc('exited');            // code non renseigné
 
     assert.ok(match('crashed', plante), 'un code de sortie non nul est un plantage');
@@ -254,7 +284,18 @@ describe('front : filtre d’état des services Docker', () => {
     assert.equal(match('crashed', inconnu), false, 'code inconnu : on ne suppose pas');
     assert.equal(match('crashed', svc('running')), false);
 
-    // « Arrêtés (exited) » reste le chapeau : les deux y figurent toujours.
+    /* ARRÊT DEMANDÉ : `docker compose stop` tue par SIGTERM puis SIGKILL, d'où 143 et 137 sur
+       les images qui ne piègent pas le signal. Ce n'est pas un plantage — et le filtre doit
+       le voir comme le badge du menu, sinon cliquer le chiffre rouge ouvre une autre liste. */
+    for (const code of [137, 143]) {
+      assert.equal(match('crashed', svc('exited', { exitCode: code })), false,
+        `code ${code} : arrêt demandé`);
+      assert.ok(match('exited', svc('exited', { exitCode: code })), 'il reste un arrêté');
+    }
+    // …sauf tué faute de mémoire : même code, sens opposé.
+    assert.ok(match('crashed', svc('exited', { exitCode: 137, oom: true })));
+
+    // « Arrêtés (exited) » reste le chapeau : tous y figurent toujours.
     assert.ok(match('exited', propre) && match('exited', plante) && match('exited', inconnu));
   });
 

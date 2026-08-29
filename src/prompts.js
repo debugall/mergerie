@@ -11,14 +11,18 @@
    n'a jamais été touché. Dès qu'un caractère diffère, le prompt est considéré
    comme personnalisé et laissé intact. */
 
-/* Le nom du skill est ÉCRIT DANS LE GABARIT, il n'a plus de champ à lui. Un réglage séparé
-   obligeait à comprendre qu'il alimentait un `{skill}` caché dans un texte qu'on peut de toute
-   façon réécrire : le gabarit est l'endroit où l'on choisit ce qu'on demande à l'IA, le nom du
-   skill en fait partie. Les gabarits déjà personnalisés sont migrés (voir `src/db.js`). */
+/* Le nom du skill s'ÉCRIT DANS LE GABARIT, il n'a plus de champ à lui : le gabarit est l'endroit
+   où l'on choisit ce qu'on demande à l'IA, et le nom du skill en fait partie. Les gabarits déjà
+   personnalisés sont migrés (voir `src/db.js`).
+
+   ⚠ Mais le gabarit LIVRÉ n'en nomme aucun. Il en nommait un (`git-review`) : celui qui installe
+   Mergerie ne l'a pas, et sa toute première review demandait donc à l'agent d'utiliser un skill
+   inexistant — au mieux ignoré, au pire refusé, et rien dans le rapport n'expliquait pourquoi. Le
+   défaut ne suppose donc rien de la machine ; qui a un skill l'écrit dans le gabarit. */
 const PROMPTS = {
   fr: {
     prompt_review:
-      'Utilise le skill git-review pour faire la revue de code UNIQUEMENT des changements ' +
+      'Fais la revue de code UNIQUEMENT des changements ' +
       'de la branche {source} par rapport à {target} (le diff est dans le fichier {diff_file}). ' +
       'Ne parse pas tout le dépôt, concentre-toi sur ces changements. ' +
       'Produis un rapport de revue clair en Markdown (français) : problèmes, risques, ' +
@@ -34,7 +38,7 @@ const PROMPTS = {
   },
   en: {
     prompt_review:
-      'Use the git-review skill to code-review ONLY the changes ' +
+      'Code-review ONLY the changes ' +
       'on branch {source} compared to {target} (the diff is in the file {diff_file}). ' +
       'Do not parse the whole repository, focus on these changes. ' +
       'Produce a clear review report in Markdown (English): problems, risks, ' +
@@ -64,6 +68,30 @@ function avecConsignes(prompt, consignes) {
   return c ? `${prompt}\n\nConsignes permanentes, valables pour toutes les sessions :\n${c}` : prompt;
 }
 
+/* LES DÉFAUTS D'AVANT, gardés pour une seule raison : reconnaître un gabarit que personne n'a
+   touché. Sans cette liste, l'installation existante garderait pour toujours un gabarit qui
+   invoque `git-review` — jamais réécrit, puisqu'il ne correspond plus à aucun défaut connu, donc
+   traité comme personnalisé. La migration de `src/db.js` s'en sert pour le remplacer ; ce qui a
+   été modifié, ne serait-ce que d'un caractère, n'y figure pas et n'est pas touché. */
+const ANCIENS_PROMPTS = {
+  fr: {
+    prompt_review:
+      'Utilise le skill git-review pour faire la revue de code UNIQUEMENT des changements '
+      + 'de la branche {source} par rapport à {target} (le diff est dans le fichier {diff_file}). '
+      + 'Ne parse pas tout le dépôt, concentre-toi sur ces changements. '
+      + 'Produis un rapport de revue clair en Markdown (français) : problèmes, risques, '
+      + "suggestions concrètes avec fichier et ligne quand c'est possible, et une note globale.",
+  },
+  en: {
+    prompt_review:
+      'Use the git-review skill to code-review ONLY the changes '
+      + 'on branch {source} compared to {target} (the diff is in the file {diff_file}). '
+      + 'Do not parse the whole repository, focus on these changes. '
+      + 'Produce a clear review report in Markdown (English): problems, risks, '
+      + 'concrete suggestions with file and line where possible, and an overall score.',
+  },
+};
+
 const FIELDS = ['prompt_review', 'prompt_explain', 'prompt_modify'];
 
 // Un gabarit est « au défaut » s'il correspond au défaut de N'IMPORTE quelle langue
@@ -86,4 +114,4 @@ function promptsFor(lang, current) {
   return patch;
 }
 
-module.exports = { PROMPTS, FIELDS, isDefault, promptsFor, avecConsignes };
+module.exports = { PROMPTS, ANCIENS_PROMPTS, FIELDS, isDefault, promptsFor, avecConsignes };

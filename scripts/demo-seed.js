@@ -22,6 +22,45 @@ const { REVIEWS_DIR, TASKS_DIR, ensureDir, slugify, initDirs } = require('../src
 const { diffPour } = require('../src/demo-diff');
 initDirs();
 
+/* Un PNG uni, fabriqué à la main : la démo a besoin d'une image, pas d'un binaire versionné.
+   Un PNG = signature + IHDR + IDAT (zlib) + IEND, chaque bloc préfixé de sa taille et suivi
+   de son CRC32 — c'est tout ce que réclame le format pour une image sans transparence. */
+function pngUni(w, h, [r, v, b]) {
+  const zlib = require('zlib');
+  const brut = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y += 1) {
+    const ligne = y * (w * 3 + 1);
+    brut[ligne] = 0;                                  // filtre « aucun »
+    for (let x = 0; x < w; x += 1) {
+      brut[ligne + 1 + x * 3] = r; brut[ligne + 2 + x * 3] = v; brut[ligne + 3 + x * 3] = b;
+    }
+  }
+  const crcTable = [];
+  for (let n = 0; n < 256; n += 1) {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    crcTable[n] = c >>> 0;
+  }
+  const crc32 = (buf) => {
+    let c = 0xffffffff;
+    for (const octet of buf) c = crcTable[(c ^ octet) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const bloc = (type, data) => {
+    const t = Buffer.from(type, 'ascii');
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(Buffer.concat([t, data])));
+    return Buffer.concat([len, t, data, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;   // 8 bits, RVB
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    bloc('IHDR', ihdr), bloc('IDAT', zlib.deflateSync(brut)), bloc('IEND', Buffer.alloc(0)),
+  ]);
+}
+
 const day = 86400000;
 const iso = (daysAgo, h = 10) => new Date(Date.now() - daysAgo * day + h * 3600000 - 30 * day).toISOString();
 // (les dates s'étalent sur ~8 semaines pour peupler courbes hebdo et tendances)
@@ -417,13 +456,30 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
 // ---------- codage hors dépôt (« Codage personnalisé ») ----------
 // Session de codage IA dans des dossiers locaux, SANS git : remplit l'onglet dédié.
 // (Une réussie sur deux dossiers, une en erreur, pour montrer les deux états agrégés.)
+const lt1prompt = 'Ajoute un logger structuré (niveau + timestamp ISO), remplace les console.log de ces utilitaires et écris un test pour chacun.';
 const lt1 = db.prepare('INSERT INTO local_task (prompt, status, created_at, updated_at) VALUES (?,?,?,?)')
-  .run('Ajoute un logger structuré (niveau + timestamp ISO), remplace les console.log de ces utilitaires et écris un test pour chacun.', 'done', at(2), at(2));
+  .run(lt1prompt, 'done', at(2), at(2));
 // Chaque dossier porte le RETOUR DE L'IA (fichier sur disque, comme en vrai) : le bouton
 // « Retour de l'IA » et « Envoyer un suivi » sont donc démontrables sans agent.
 const LOCAL_OUT = {
   '/home/moi/dev/backup-tool': `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` : niveau (\`debug\`/\`info\`/\`warn\`/\`error\`) + timestamp ISO.\n- Remplacé les 14 \`console.log\` de \`backup.js\` et \`restore.js\`.\n- Ajouté \`test/logger.test.js\` (4 cas : format, niveaux, filtrage, sortie stderr).\n\n## Points d'attention\n\n- \`restore.js\` écrivait sur \`stdout\` des données consommées par un script appelant : j'ai gardé \`stdout\` pour celles-là et routé les logs vers \`stderr\`.\n`,
   '/home/moi/dev/csv-cleaner': `## Ce que j'ai fait\n\n- Ajouté le même \`src/logger.js\` (copie locale, ce dossier n'est pas un paquet partagé).\n- Remplacé les 6 \`console.log\` de \`clean.js\`.\n- Ajouté \`test/logger.test.js\`.\n\n## Question\n\nLes deux outils dupliquent maintenant le logger. Si tu veux, je peux extraire un petit paquet commun — dis-moi où le placer.\n`,
+};
+/* Les ITÉRATIONS de chaque dossier. Sans elles, « Retour de l'IA » n'aurait qu'une entrée et la
+   colonne de gauche — la liste des demandes, avec sa recherche — ne se montrerait jamais. Le
+   premier dossier en compte trois, le second deux : c'est en les comparant qu'on voit que la
+   liste suit le dossier choisi. La DERNIÈRE reprend le texte de `output.md`, qui reste le
+   retour courant pour toutes les autres vues. */
+const LOCAL_PASSES = {
+  '/home/moi/dev/backup-tool': [
+    { kind: 'run', prompt: lt1prompt, jours: 2.4, out: `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` avec les quatre niveaux.\n- Remplacé les \`console.log\` de \`backup.js\`.\n\n## Reste à faire\n\n\`restore.js\` n'est pas traité : ses sorties sont lues par un script appelant, je préfère une consigne avant d'y toucher.\n` },
+    { kind: 'followup', favori: true, titre: 'stdout gardé pour les données', prompt: 'Les sorties de restore.js sont consommées par un script appelant : garde stdout pour ces données-là et route les logs vers stderr.', jours: 2.2, out: `## Ce que j'ai fait\n\n- \`restore.js\` : logs vers \`stderr\`, données utiles laissées sur \`stdout\`.\n- Vérifié les 14 appels remplacés.\n` },
+    { kind: 'followup', prompt: 'Ajoute un test par cas : format, niveaux, filtrage, sortie stderr.', jours: 2 },
+  ],
+  '/home/moi/dev/csv-cleaner': [
+    { kind: 'run', prompt: lt1prompt, jours: 2.4, out: `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` (copie locale).\n- Remplacé les 6 \`console.log\` de \`clean.js\`.\n` },
+    { kind: 'followup', prompt: 'Ajoute aussi un test du logger, comme dans backup-tool.', jours: 2 },
+  ],
 };
 for (const p of Object.keys(LOCAL_OUT)) {
   const info = db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
@@ -433,6 +489,16 @@ for (const p of Object.keys(LOCAL_OUT)) {
   fs.writeFileSync(out, LOCAL_OUT[p], 'utf8');
   db.prepare('UPDATE local_task_dir SET output_path = ?, session_key = ?, session_backend = ? WHERE id = ?')
     .run(out, `demo-local-${info.lastInsertRowid}`, 'claude', info.lastInsertRowid);
+  (LOCAL_PASSES[p] || []).forEach((passe, i) => {
+    const fichier = path.join(dir, `output-v${i + 1}.md`);
+    fs.writeFileSync(fichier, passe.out || LOCAL_OUT[p], 'utf8');
+    /* Une itération ÉPINGLÉE ET NOMMÉE : c'est le geste qui rend une longue colonne
+       praticable, et sans exemple semé la démo ne montrerait que des « Itération 2 ». */
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at, favori, titre)
+      VALUES ('local',?,?,?,?,?,?,?,?,?)`)
+      .run(lt1.lastInsertRowid, info.lastInsertRowid, i + 1, passe.kind, passe.prompt, fichier, at(passe.jours),
+        passe.favori ? 1 : 0, passe.titre || null);
+  });
 }
 /* Codage hors dépôt CRÉÉ MAIS PAS LANCÉ (« Créer sans lancer ») : la carte porte alors un
    bouton « Lancer », et le badge du menu compte le travail en attente. Sans cet exemple,
@@ -441,6 +507,52 @@ const lt0 = db.prepare('INSERT INTO local_task (prompt, status, created_at, upda
   .run('Passe ces scripts en ES modules et remplace les require() restants.', 'new', at(0.4), at(0.4));
 db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
   .run(lt0.lastInsertRowid, '/home/moi/dev/scripts', 'new', at(0.4));
+
+/* ---------- Questions libres ----------
+   La quatrième saveur de Dev IA : une question posée à l'IA hors de tout dépôt, et sa réponse
+   gardée. Trois états sèment ce qu'il faut voir : une étude déjà répondue (avec sa trace de
+   suivi, ce qui est TOUT l'intérêt de l'onglet), une question posée mais pas encore lancée, et
+   une question dont un suivi attend d'être envoyé. */
+{
+  const poser = ({ prompt, label, status, jours, reponse, suivi }) => {
+    const id = db.prepare(`INSERT INTO question (prompt, label, status, created_at, updated_at, finished_at, followup_draft)
+      VALUES (?,?,?,?,?,?,?)`)
+      .run(prompt, label || null, status, at(jours), at(jours), status === 'done' ? at(jours) : null, suivi || null)
+      .lastInsertRowid;
+    if (!reponse) return id;
+    const dir = ensureDir(path.join(TASKS_DIR, 'ask', String(id)));
+    const md = path.join(dir, 'question.md');
+    fs.writeFileSync(md, `# ${prompt}\n\n> Question libre du ${new Date().toLocaleDateString('fr-FR')}\n\n---\n\n${reponse}`, 'utf8');
+    db.prepare('UPDATE question SET md_path = ? WHERE id = ?').run(md, id);
+    return id;
+  };
+
+  poser({
+    label: 'Concurrence',
+    prompt: 'Quelles différences entre un mutex et un sémaphore, et lequel choisir pour limiter à 5 appels simultanés sortants ?',
+    status: 'done', jours: 0.6,
+    reponse: '## En deux mots\n\nUn **mutex** protège une ressource : un seul détenteur à la fois, et c\'est celui qui '
+      + 'a pris qui rend. Un **sémaphore** compte des jetons : il en distribue N, et n\'importe qui peut en rendre un.\n\n'
+      + '## Pour ton cas\n\nLimiter à cinq appels sortants simultanés, c\'est **compter des places**, pas protéger une '
+      + 'ressource unique : c\'est un sémaphore à 5 jetons.\n\n> ⚠️ Le piège classique : libérer le jeton dans un `finally`. '
+      + 'Sans ça, une exception fuit une place, et au bout de cinq erreurs le service se bloque définitivement.\n',
+    suivi: 'Et comment on teste qu’aucune place ne fuit ?',
+  });
+  poser({
+    label: 'Architecture',
+    prompt: 'Explique le théorème CAP avec un exemple concret, et ce que « choisir AP » implique au quotidien.',
+    status: 'done', jours: 2,
+    reponse: '## Le théorème\n\nEn cas de **partition réseau**, il faut choisir : rester **cohérent** (refuser de répondre) '
+      + 'ou rester **disponible** (répondre avec une donnée peut-être périmée). Hors partition, la question ne se pose pas.\n\n'
+      + '## Choisir AP, concrètement\n\nLe panier d\'un utilisateur reste modifiable pendant l\'incident, et deux versions '
+      + 'divergentes devront être **réconciliées** ensuite. C\'est un choix de produit avant d\'être un choix technique : '
+      + 'quelqu\'un doit décider ce qui gagne quand les deux paniers se contredisent.\n',
+  });
+  poser({
+    prompt: 'Quelles questions poser en entretien pour évaluer quelqu’un sur l’observabilité ?',
+    status: 'new', jours: 0.2,
+  });
+}
 
 const lt2 = db.prepare('INSERT INTO local_task (prompt, status, last_error, created_at, updated_at) VALUES (?,?,?,?,?)')
   .run('Convertis ce petit script Python en module réutilisable avec des tests pytest.', 'error', 'Le dossier n’a pas pu être traité (agent indisponible en démo).', at(1.2), at(1.2));
@@ -508,22 +620,32 @@ db.prepare(`INSERT OR IGNORE INTO jira_watch (key, summary, status, status_categ
    L'histoire qu'on montre est celle qui donne son sens à la fonctionnalité : deux merge
    requests de dépôts différents qui ne valent qu'ensemble, un premier verdict ROUGE avec les
    tests nommés, puis un second VERT après correction. Un écran vide n'aurait rien dit. */
-const verifierId = db.prepare(`INSERT INTO verifier (name, command, timeout_s, run_base, comment_on_forge, created_at)
-  VALUES (?,?,?,?,?,?)`).run('integ (démo)', '/usr/local/bin/integ-demo.sh', 900, 1, 0, at(20)).lastInsertRowid;
+/* Le vérificateur d'INTÉGRATION : la même liste de commandes rejouée dans deux dépôts, pour
+   les merge requests qui ne valent qu'ensemble. */
+const verifierId = db.prepare(`INSERT INTO verifier
+  (name, kind, command, timeout_s, run_base, comment_on_forge, parse_tap, created_at)
+  VALUES (?, 'commands', '', ?,?,?,1,?)`).run('integ (démo)', 900, 1, 0, at(20)).lastInsertRowid;
 for (const projet of ['groupe/api-core', 'groupe/webapp-front']) {
   db.prepare("INSERT INTO verifier_repo (verifier_id, repo_id, mode, workdir, checkout_allowed) VALUES (?,?,'worktree',NULL,0)")
     .run(verifierId, repoIds[projet]);
 }
+['npm ci', 'npm run test:integ'].forEach((c, i) => {
+  db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)').run(verifierId, i, c);
+});
 
-/* Le second genre de vérificateur, celui qui ne demande rien à écrire : une liste de
-   commandes sur UN dépôt. Sa présence rend la modale de confirmation représentative — on y
-   choisit entre les deux familles, ce qui est le geste réel. */
 /* Celui-ci part TOUT SEUL sur les nouvelles merge requests (`auto_on_mr`). C'est la
    fonctionnalité qu'on ne peut pas montrer autrement : sans un vérificateur coché, l'écran
    des réglages ne dit rien de ce que la découverte sait déclencher. */
+/* Celui-ci publie aussi son verdict, avec un GABARIT personnalisé : sans exemple, le champ
+   reste une case à cocher dont personne ne voit ce qu'elle produit. Et il se relance quand une
+   merge request vérifiée reçoit de nouveaux commits. */
 const cmdId = db.prepare(`INSERT INTO verifier
-  (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, parse_tap, created_at)
-  VALUES (?,?,'',?,?,?,1,1,?)`).run('tests front (démo)', 'commands', 600, 1, 0, at(18)).lastInsertRowid;
+  (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, auto_on_stale,
+   comment_template, mentions, parse_tap, created_at)
+  VALUES (?,?,'',?,?,?,1,1,?,?,1,?)`).run('tests front (démo)', 'commands', 600, 1, 1,
+  '{verdict}\n\n{tests}\n\n{commandes}\n\n{commits}\n\n{mentions}\n\n_Vérification automatique du {date} à {heure} — relancez-la depuis Mergerie._',
+  '@equipe-front',
+  at(18)).lastInsertRowid;
 /* Deux dépôts pour ce vérificateur : la même liste est rejouée dans chacun. C'est le cas
    des projets qui se testent de la même façon, et ça se voit dans la modale. */
 for (const projet of ['groupe/webapp-front', 'groupe/batch-jobs']) {
@@ -614,6 +736,24 @@ db.prepare(`INSERT INTO verification
       '## À ne pas oublier',
       'Le point archi de jeudi porte sur le cache : préparer deux chiffres.'].join('\n'),
     1, at(3), at(0.2));
+  /* Une page AVEC UNE CAPTURE : coller une image est un geste de l'onglet Notes, et sans un
+     exemple semé la démo ne montrerait qu'un éditeur de texte. L'image est fabriquée ici même
+     (un PNG uni, quelques dizaines d'octets) : pas de binaire à versionner, et le fichier vit
+     où l'application le range, `data/notes/<page>/`. */
+  {
+    const id = insPage.run('Bug du tunnel de paiement',
+      ['Le total affiché à l’étape 3 ne correspond pas au panier — reproduit deux fois ce matin.',
+        '',
+        'Capture :',
+        ''].join('\n'), 0, at(1), at(0.5)).lastInsertRowid;
+    const dossier = ensureDir(path.join(DEMO_DIR, 'notes', String(id)));
+    const fichier = path.join(dossier, 'img_1.png');
+    fs.writeFileSync(fichier, pngUni(360, 120, [79, 156, 249]));
+    const imgId = db.prepare('INSERT INTO note_image (page_id, path, created_at) VALUES (?,?,?)')
+      .run(id, fichier, at(0.5)).lastInsertRowid;
+    db.prepare('UPDATE note_page SET content = content || ? WHERE id = ?')
+      .run(`![capture](/api/notes/${id}/images/${imgId})\n`, id);
+  }
   insPage.run('Notes migration TypeORM',
     ['Bilan de l’essai de la semaine dernière.',
       '',
@@ -737,6 +877,7 @@ const counts = {
   localTasks: db.prepare('SELECT COUNT(*) c FROM local_task').get().c,
   jiraWatch: db.prepare('SELECT COUNT(*) c FROM jira_watch').get().c,
   verifications: db.prepare('SELECT COUNT(*) c FROM verification').get().c,
+  questions: db.prepare('SELECT COUNT(*) c FROM question').get().c,
   notePages: db.prepare('SELECT COUNT(*) c FROM note_page').get().c,
   todos: db.prepare('SELECT COUNT(*) c FROM todo').get().c,
   services: db.prepare('SELECT COUNT(*) c FROM service').get().c,

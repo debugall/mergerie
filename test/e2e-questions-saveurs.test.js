@@ -20,6 +20,17 @@ const {
   startApp, makeRemoteRepo, waitForJobs, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
 } = require('./helpers/app');
 
+/* Attend qu'une condition côté SERVEUR devienne vraie : un délai fixe est un pari sur la
+   vitesse de la machine. */
+async function attendreServeur(cond, quoi, ms = 20000) {
+  const fin = Date.now() + ms;
+  for (;;) {
+    if (await cond()) return;
+    if (Date.now() > fin) throw new Error(`délai dépassé : ${quoi}`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 describe('Questions de l’agent : exploration et hors dépôt', () => {
   let app; let repoId;
 
@@ -47,6 +58,11 @@ describe('Questions de l’agent : exploration et hors dépôt', () => {
     let task = (await app.api('GET', `/api/tasks/${t.id}`)).body.task;
     assert.equal(task.status, 'needs_input', 'la session attend, elle n’est ni finie ni en erreur');
     const tg = task.targets[0];
+    /* LÀ OÙ L'AGENT ÉCRIT. Le prompt d'exploration lui demande de tout mettre dans le fichier
+       de réponse et de ne rien dupliquer sur la sortie standard : c'est donc dans ce FICHIER
+       qu'il pose ses questions. Ne relire que la sortie standard laissait l'exploration se
+       terminer « normalement », le bloc <<<QUESTIONS>>> brut en guise de réponse et aucun
+       formulaire à l'écran — le défaut se voyait à l'écran, pas dans les tests. */
     assert.equal(tg.questions.length, 2, 'les questions sont exposées à l’écran');
 
     /* Le point qui compte : RIEN n'a été archivé. Une exploration qui s'arrête pour demander
@@ -68,7 +84,10 @@ describe('Questions de l’agent : exploration et hors dépôt', () => {
 
     task = (await app.api('GET', `/api/tasks/${t.id}`)).body.task;
     assert.equal(task.status, 'done', 'après réponses, l’exploration va au bout');
-    assert.ok((await app.api('GET', `/api/tasks/${t.id}/md`)).body.md, 'et la synthèse existe');
+    const md = (await app.api('GET', `/api/tasks/${t.id}/md`)).body.md;
+    assert.ok(md, 'et la synthèse existe');
+    // Et la réponse est une RÉPONSE : jamais le protocole rendu tel quel, comme un texte à lire.
+    assert.ok(!md.includes('<<<QUESTIONS'), 'le bloc de protocole ne doit pas se retrouver dans la réponse');
   });
 
   test('sans la case, une exploration ne pose rien et répond du premier coup', async () => {
@@ -171,19 +190,20 @@ describe('Questions de l’agent : exploration et hors dépôt', () => {
       await page.locator('[data-tab="task"]').click();
       for (const kind of ['code', 'local', 'explore']) {
         await page.locator(`#tab-task .subnav [data-kind="${kind}"]`).click();
-        await page.waitForTimeout(200);
+        await page.waitForSelector('#btnNewTask:not([hidden])');
         await page.locator('#btnNewTask').click();
         await page.waitForSelector('#taskModal:not([hidden])');
         assert.equal(await page.locator('#taskForm [name="ask_questions"]').isVisible(), true,
           `la case doit être proposée en « ${kind} » — elle ne vaut pas que pour le codage sur dépôt`);
         await page.locator('#taskCancel, #taskModal .modal-actions .btn').first().click();
-        await page.waitForTimeout(200);
+        // La modale est refermée : la rouvrir avant qu'elle ne le soit ne rouvrirait rien.
+        await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
       }
 
       /* Le vrai piège : le hors dépôt a son PROPRE envoi. On coche, on enregistre, et on
          regarde ce que la BASE a retenu — pas ce que l'écran affiche. */
       await page.locator('#tab-task .subnav [data-kind="local"]').click();
-      await page.waitForTimeout(200);
+      await page.waitForSelector('#btnNewTask:not([hidden])');
       await page.locator('#btnNewTask').click();
       await page.waitForSelector('#taskModal:not([hidden])');
       await page.locator('#taskForm [name="prompt"]').fill('Range les imports');
@@ -197,6 +217,122 @@ describe('Questions de l’agent : exploration et hors dépôt', () => {
       const cree = app.db.prepare('SELECT ask_questions FROM local_task ORDER BY id DESC LIMIT 1').get();
       assert.equal(cree.ask_questions, 1, 'la case cochée à l’écran doit arriver jusqu’à la base');
     } finally { await nav.close(); }
+  });
+
+  /* RÉPONDRE, DEPUIS L'ÉCRAN. Le formulaire de réponses est rendu à trois endroits ; son bouton
+     n'était câblé que sur la liste des sessions de dépôt. Sur une session hors dépôt, on
+     répondait à tout, on cliquait « Répondre et reprendre » — et il ne se passait RIEN : pas de
+     reprise, pas même un message. Un test d'API ne pouvait pas le voir, puisque la route, elle,
+     marchait très bien. */
+  for (const [saveur, liste, creer] of [
+    ['hors dépôt', '#localList', 'local'],
+    ['codage', '#taskList', 'code'],
+  ]) {
+    test(`${saveur} : répondre depuis l’écran relance vraiment la session`, async (t) => {
+      if (!navigateurDispo().dispo) { t.skip(MSG_NAVIGATEUR); return; }
+      let id;
+      if (creer === 'local') {
+        const dossier = fs.mkdtempSync(path.join(app.dataDir, 'ecran-'));
+        id = (await app.api('POST', '/api/local-tasks', { prompt: 'Range les imports', dirs: [dossier], ask_questions: true })).body.id;
+        await app.api('POST', `/api/local-tasks/${id}/run`);
+      } else {
+        id = (await app.api('POST', '/api/tasks', {
+          kind: 'code', prompt: 'Ajoute un retry', ask_questions: true,
+          targets: [{ repo_id: repoId, branch: 'feat/ecran-questions', base_branch: 'main' }],
+        })).body.id;
+        await app.api('POST', `/api/tasks/${id}/run`);
+      }
+      await waitForJobs(app.api);
+
+      const nav = await lancerNavigateur();
+      const page = await nav.newPage({ viewport: { width: 1400, height: 950 } });
+      const erreurs = [];
+      page.on('pageerror', (e) => erreurs.push(e.message));
+      try {
+        await page.goto(app.base);
+        await page.locator('nav button[data-tab="task"]').click();
+        await page.locator(`#tab-task .subnav [data-kind="${creer === 'local' ? 'local' : 'code'}"]`).click();
+        await page.waitForSelector(`${liste} .questions-box`);
+
+        // On répond à TOUT : un choix fermé et une réponse libre, comme le fait l'agent en dry-run.
+        await page.locator(`${liste} .questions-box .q-opts input[type="radio"]`).first().check();
+        await page.locator(`${liste} .questions-box .q-free`).first().fill('Oui, avec une migration');
+
+        await page.locator(`${liste} [data-qsubmit]`).first().click();
+        /* On vérifie l'EFFET, pas l'état transitoire de l'écran : le formulaire annonce
+           « reprise en cours », puis le rafraîchissement de la liste le fait disparaître —
+           attendre la mention perdait la course une fois sur deux. Ce qui compte est que le
+           serveur ait repris la session. */
+        await attendreServeur(async () => {
+          const r = creer === 'local'
+            ? (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === id)
+            : (await app.api('GET', `/api/tasks/${id}`)).body.task;
+          return r && r.status !== 'needs_input';
+        }, 'la session est repartie');
+        // Et le formulaire ne reste pas là à proposer de répondre une seconde fois.
+        await page.waitForFunction((sel) => {
+          const box = document.querySelector(`${sel} .questions-box`);
+          return !box || box.classList.contains('resuming');
+        }, liste);
+        assert.deepEqual(erreurs, []);
+      } finally { await nav.close(); }
+    });
+  }
+
+  /* RÉPONDU AU TERMINAL. « Reprendre au terminal » copie la session d'agent : on peut répondre
+     dans son propre terminal, et l'agent y poursuit le travail — dans le clone de Mergerie, qui
+     n'en sait rien. Sans un geste pour le dire, le projet restait en attente pour toujours, et le
+     formulaire proposait de répondre une deuxième fois : l'agent serait reparti sur du travail
+     déjà fait. */
+  test('hors dépôt : « j’ai répondu au terminal » retire les questions sans rien relancer', async () => {
+    const dossier = fs.mkdtempSync(path.join(app.dataDir, 'term-'));
+    const { body: lt } = await app.api('POST', '/api/local-tasks', { prompt: 'Range', dirs: [dossier], ask_questions: true });
+    await app.api('POST', `/api/local-tasks/${lt.id}/run`);
+    await waitForJobs(app.api);
+    const lire = async () => (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === lt.id);
+    const d = (await lire()).dirs[0];
+    assert.equal(d.status, 'needs_input');
+    const marqueur = path.join(dossier, 'PROJ_LOCAL_DRYRUN.md');
+    const avant = fs.existsSync(marqueur) ? fs.readFileSync(marqueur, 'utf8').length : 0;
+
+    const r = await app.api('POST', `/api/local-tasks/${lt.id}/dirs/${d.id}/answer`, { elsewhere: true });
+    assert.equal(r.status, 200);
+
+    const apres = (await lire());
+    assert.equal(apres.dirs[0].status, 'done', 'le dossier ne réclame plus rien');
+    assert.equal(apres.dirs[0].questions, null, 'et l’écran n’a plus de questions à afficher');
+    assert.equal(apres.status, 'done', 'la session non plus');
+    // RIEN n'a été relancé : l'agent a travaillé dans le terminal, pas ici.
+    const { body: st } = await app.api('GET', '/api/status');
+    assert.ok(!st.running && !st.queued, 'aucun job n’a été mis en file');
+    const apresTaille = fs.existsSync(marqueur) ? fs.readFileSync(marqueur, 'utf8').length : 0;
+    assert.equal(apresTaille, avant, 'et l’agent n’a pas retravaillé le dossier');
+
+    // Le geste ne vaut qu'une fois : il n'y a plus rien en attente.
+    assert.equal((await app.api('POST', `/api/local-tasks/${lt.id}/dirs/${d.id}/answer`, { elsewhere: true })).status, 400);
+  });
+
+  test('codage : « j’ai répondu au terminal » relit l’état depuis la branche', async () => {
+    const { body: t } = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Ajoute un cache', ask_questions: true,
+      targets: [{ repo_id: repoId, branch: 'feat/terminal', base_branch: 'main' }],
+    });
+    await app.api('POST', `/api/tasks/${t.id}/run`);
+    await waitForJobs(app.api);
+    let tg = (await app.api('GET', `/api/tasks/${t.id}`)).body.task.targets[0];
+    assert.equal(tg.status, 'needs_input');
+
+    const r = await app.api('POST', `/api/tasks/${t.id}/targets/${tg.id}/answer`, { elsewhere: true });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.kind, 'reconcile', 'on INSPECTE la branche, on ne relance pas l’agent');
+    await waitForJobs(app.api);
+
+    tg = (await app.api('GET', `/api/tasks/${t.id}`)).body.task.targets[0];
+    assert.notEqual(tg.status, 'needs_input', 'le projet ne réclame plus de réponse');
+    assert.equal(tg.questions, null, 'et les questions ont disparu de l’écran');
+    /* La branche ne porte rien (l'agent s'était arrêté pour demander) : on le dit en rendant le
+       projet à « à faire », plutôt que de le laisser en attente d'une réponse déjà donnée. */
+    assert.equal(tg.status, 'new');
   });
 
   test('sans la case, une session hors dépôt code directement', async () => {

@@ -78,7 +78,8 @@ async function applyFixAndPush(repo, mr, reviewMd, message, onLog, ctx = {}) {
     agentText = r.text || '';
     copilot.recordUsage('task', prompt, agentText);
     taskrunner.saveAgentOutput(ctx.task.id, ctx.targetId, agentText, { kind: 'converge-fix', prompt }); // passe consultable
-    if (created) db.prepare('UPDATE task_target SET session_key = ?, session_backend = ?, session_cwd = ?, updated_at = ? WHERE id = ?').run(r.handle, r.backend, cwd, new Date().toISOString(), ctx.targetId);
+    // Le handle est réenregistré à CHAQUE passe : une reprise peut en rendre un nouveau.
+    db.prepare('UPDATE task_target SET session_key = ?, session_backend = ?, session_cwd = ?, updated_at = ? WHERE id = ?').run(r.handle, r.backend, cwd, new Date().toISOString(), ctx.targetId);
   } else {
     await copilot.runPrompt(prompt, cwd, { kind: 'task' }, onLog);
   }

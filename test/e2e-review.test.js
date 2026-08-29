@@ -119,6 +119,35 @@ describe('Review de bout en bout', () => {
     assert.equal((await app.api('GET', `/api/mrs/${mrId}/versions/99`)).status, 400);
   });
 
+  /* LES NUMÉROS DE LIGNE QUE CITE LE RAPPORT. L'IA ne reçoit qu'un patch, où les numéros ne
+     vivent que dans les en-têtes `@@` : les recompter à la main marche souvent et rate parfois,
+     et le lecteur qui suit un numéro faux jusqu'au code affiché à droite doute ensuite du
+     rapport entier. On lui pose donc, à côté du diff, le même diff NUMÉROTÉ. */
+  test('la review reçoit le diff numéroté, à côté du patch', async () => {
+    const interne = path.join(app.dataDir, 'clones');
+    const trouver = (nom) => {
+      const pile = [interne];
+      while (pile.length) {
+        const d = pile.pop();
+        for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+          const p2 = path.join(d, e.name);
+          if (e.isDirectory()) { if (e.name !== '.git') pile.push(p2); } else if (e.name === nom) return p2;
+        }
+      }
+      return null;
+    };
+    const patch = trouver('diff.patch');
+    const numerote = trouver('diff-lignes.txt');
+    assert.ok(patch, 'le patch est bien déposé dans le clone');
+    assert.ok(numerote, 'le diff numéroté l’accompagne — sinon l’IA n’a que les en-têtes @@');
+
+    const vue = fs.readFileSync(numerote, 'utf8');
+    assert.match(vue, /^=== .+ ===$/m, 'chaque fichier est annoncé');
+    // Une ligne ajoutée porte SON numéro dans la version finale.
+    const ajout = vue.split('\n').find((l) => /^\s*\d+ \+/.test(l));
+    assert.ok(ajout, `au moins une ligne ajoutée numérotée : ${vue.slice(0, 200)}`);
+  });
+
   test('le log du job est consultable après coup, avec ses horodatages', async () => {
     const { body } = await app.api('GET', '/api/jobs/current/log');
     assert.ok(body.lines.length > 0);
@@ -149,6 +178,28 @@ describe('Review de bout en bout', () => {
 
     const fd = await app.api('GET', `/api/mrs/${mrId}/filediff?path=src/app.js`);
     assert.match(fd.body.diff, /const b = 2;/);
+  });
+
+  /* LA VUE PLEIN ÉCRAN PARLE D'UNE SEULE VERSION. Le rapport décrit le commit REVIEWÉ, et
+     `/file` comme `/filediff` servent ce commit-là. `/diffview`, lui, listait l'arborescence de
+     la TÊTE de branche : dès qu'un commit arrivait après la review, l'écran mélangeait deux
+     versions — des fichiers venus de la tête, un contenu et des numéros de ligne venus du
+     commit reviewé. C'est exactement ce qui fait qu'un numéro cité dans le rapport tombe à
+     côté du code affiché. */
+  test('diffview montre l’arborescence du commit REVIEWÉ, même si la branche a avancé', async () => {
+    const avant = await app.api('GET', `/api/mrs/${mrId}/diffview`);
+    assert.ok(!avant.body.files.some((f) => f.path === 'src/apres.js'));
+
+    const sha = pushChange(repo, 'src/apres.js', '// arrivé après la review\n', 'feat: après la review');
+    app.state.mrs['grp/app'][0].sha = sha;
+    await app.api('POST', '/api/discover');
+
+    const apres = await app.api('GET', `/api/mrs/${mrId}/diffview`);
+    assert.ok(!apres.body.files.some((f) => f.path === 'src/apres.js'),
+      'un fichier arrivé après la review n’apparaît pas dans une vue qui décrit la review');
+    // …et l'arborescence reste celle que servent les autres routes du viewer.
+    const tree = await app.api('GET', `/api/mrs/${mrId}/tree`);
+    assert.deepEqual(apres.body.files.map((f) => f.path).sort(), tree.body.files.map((f) => f.path).sort());
   });
 
   test('2e passe : suivi de résolution vérifié par git', async () => {

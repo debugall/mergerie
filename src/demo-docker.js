@@ -69,13 +69,13 @@ function composeProjects() {
         {
           name: 'alertmanager', image: 'prom/alertmanager:v0.27.0',
           // Arrêté après avoir tourné (filtre « Arrêtés (exited) »).
-          container: { id: 'ab77aa', name: 'monitoring-alertmanager-1', state: 'exited', exitCode: 0, image: 'prom/alertmanager:v0.27.0', created: iso(12) },
+          container: { id: 'ab77aa', name: 'monitoring-alertmanager-1', state: 'exited', exitCode: 143, image: 'prom/alertmanager:v0.27.0', created: iso(12) },
           envDiffs: [], imgDrift: false, composeModified: false, badge: 'stopped',
         },
         {
           name: 'ingest', image: 'registry.demo/ingest:2.1.0',
           // Sorti EN ERREUR (filtre « Sortis en erreur ») : c'est le seul arrêté qui alerte.
-          container: { id: 'in44cc', name: 'monitoring-ingest-1', state: 'exited', exitCode: 137, image: 'registry.demo/ingest:2.1.0', created: iso(4) },
+          container: { id: 'in44cc', name: 'monitoring-ingest-1', state: 'exited', exitCode: 137, oom: true, image: 'registry.demo/ingest:2.1.0', created: iso(4) },
           envDiffs: [], imgDrift: false, composeModified: false, badge: 'stopped',
         },
         {
@@ -129,11 +129,15 @@ function containers() {
     { id: 'demo_db', name: 'boutique-db-1', state: 'running', status: 'Up 3 hours (healthy)', image: 'postgres:16', project: 'boutique', service: 'db', running: true },
     { id: 'demo_cache', name: 'boutique-cache-1', state: 'restarting', status: 'Restarting (1) 5 seconds ago', image: 'redis:7', project: 'boutique', service: 'cache', running: false },
     { id: 'demo_worker', name: 'labo-worker', state: 'exited', status: 'Exited (0) 1 hour ago', image: 'python:3.12', project: null, service: null, running: false },
-  /* Sorti EN ERREUR : c'est le seul « exited » qui doit rejoindre le badge rouge. Sans lui, la
-     démo ne montrerait pas la différence entre un arrêt volontaire et un plantage. */
-  { id: 'demo_crash', name: 'labo-importeur', state: 'exited', status: 'Exited (137) 20 minutes ago', image: 'node:22', project: null, service: null, running: false },
-  { id: 'in44cc', name: 'monitoring-ingest-1', state: 'exited', status: 'Exited (137) 4 hours ago', image: 'registry.demo/ingest:2.1.0', project: 'monitoring', service: 'ingest', running: false },
-    { id: 'ab77aa', name: 'monitoring-alertmanager-1', state: 'exited', status: 'Exited (0) 12 hours ago', image: 'prom/alertmanager:v0.27.0', project: 'monitoring', service: 'alertmanager', running: false },
+  /* Sorti EN ERREUR (code 1) : c'est lui qui doit rejoindre le badge rouge. Sans lui, la démo
+     ne montrerait pas la différence entre un arrêt volontaire et un plantage. */
+  { id: 'demo_crash', name: 'labo-importeur', state: 'exited', status: 'Exited (1) 20 minutes ago', image: 'node:22', project: null, service: null, running: false },
+  /* Tué faute de MÉMOIRE : 137 comme un arrêt demandé, mais `oom` le distingue — et c'est la
+     seule chose qui remet ce 137-là dans le rouge. */
+  { id: 'in44cc', name: 'monitoring-ingest-1', state: 'exited', status: 'Exited (137) 4 hours ago', oom: true, image: 'registry.demo/ingest:2.1.0', project: 'monitoring', service: 'ingest', running: false },
+  /* ARRÊTÉ À LA MAIN (`docker compose stop`) : SIGTERM non piégé → 143. Rien n'est cassé, le
+     badge rouge doit rester muet — c'est le cas qui le faisait sonner tous les jours. */
+    { id: 'ab77aa', name: 'monitoring-alertmanager-1', state: 'exited', status: 'Exited (143) 12 hours ago', image: 'prom/alertmanager:v0.27.0', project: 'monitoring', service: 'alertmanager', running: false },
     { id: 'lo9911', name: 'monitoring-loki-1', state: 'created', status: 'Created', image: 'grafana/loki:3.0.0', project: 'monitoring', service: 'loki', running: false },
   ];
 }

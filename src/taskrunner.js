@@ -10,6 +10,7 @@ const agentsession = require('./agentsession');
 const questions = require('./questions');
 const { avecConsignes } = require('./prompts');
 const agentpass = require('./agentpass');
+const pieces = require('./pieces');
 const { t } = require('../public/i18n-runtime.js');
 
 const WORK_REL = 'ai-dev-tools-internal';
@@ -64,19 +65,12 @@ function syncTaskStatus(taskId) {
     .run(status, new Date().toISOString(), taskId);
 }
 
-// Bloc « captures » : les images de la tâche sont copiées dans le cwd de l'agent.
-function attachImages(task, cwd, onLog) {
+/* Les pièces jointes de la session, copiées dans le dossier de travail de l'agent : il ne voit
+   que son clone. La règle « consigne initiale + suivi en cours » vit dans `pieces.js`, partagée
+   avec les trois autres saveurs. */
+function attachImages(task, cwd, onLog, { imageIds } = {}) {
   ensureDir(path.join(cwd, WORK_REL));
-  const images = db.prepare('SELECT * FROM task_image WHERE task_id = ? ORDER BY id').all(task.id);
-  let imgBlock = '';
-  images.forEach((im, i) => {
-    if (!fs.existsSync(im.path)) return;
-    const ext = path.extname(im.path) || '.png';
-    const rel = `${WORK_REL}/img_${i + 1}${ext}`;
-    try { fs.copyFileSync(im.path, path.join(cwd, rel)); imgBlock += `\n- capture jointe : \`${rel}\``; } catch { /* ignore */ }
-  });
-  if (imgBlock) { imgBlock = `\n\nDes captures d'écran sont fournies (ouvre-les) :${imgBlock}`; onLog(t('log.task.images', { n: images.length, count: images.length })); }
-  return imgBlock;
+  return pieces.blocPrompt('task', task.id, { ids: imageIds, dest: cwd, sousDossier: WORK_REL, onLog });
 }
 
 /* ---------- Réconcilier l'état affiché avec l'état réel des branches ----------
@@ -86,9 +80,15 @@ function attachImages(task, cwd, onLog) {
    Ici on ne fait que REGARDER : la branche a-t-elle des commits d'avance sur sa base ? Si oui, on
    rétablit l'état qui aurait dû être écrit. Aucun appel IA, et rien n'est maquillé : une branche
    réellement vide reste en erreur. */
-async function reconcileTargets(task, onLog = () => {}) {
+/* `statuts` : quels projets inspecter (par défaut ceux en erreur — le cas d'origine). `siRien` :
+   statut à poser quand la branche ne porte RIEN. Sert au « j'ai répondu au terminal » : un projet
+   qui attendait une réponse ne doit pas rester en attente quand on vient de dire le contraire, et
+   la branche est le seul témoin de ce qui s'est passé dehors. */
+async function reconcileTargets(task, onLog = () => {}, { statuts = ['error'], targetIds = null, siRien = null } = {}) {
   const cfg = getConfig();
-  const cibles = targetsOf(task.id).filter((tg) => tg.status === 'error');
+  const voulus = Array.isArray(targetIds) && targetIds.length ? targetIds.map(Number) : null;
+  const cibles = targetsOf(task.id)
+    .filter((tg) => statuts.includes(tg.status) && (!voulus || voulus.includes(tg.id)));
   if (!cibles.length) { onLog(t('log.task.reconcile-none')); return { repaired: 0, checked: 0 }; }
   let repaired = 0;
   for (const tg of cibles) {
@@ -107,7 +107,12 @@ async function reconcileTargets(task, onLog = () => {}) {
       else { onLog(t('log.task.branch-nowhere')); continue; }
 
       const avance = await git.aheadOf(cwd, base);
-      if (!avance) { onLog(t('log.task.no-ahead', { base })); continue; }
+      if (!avance) {
+        onLog(t('log.task.no-ahead', { base }));
+        // Rien sur la branche : on ne laisse pas le projet dans un état qu'il n'a plus.
+        if (siRien) setTarget(tg.id, { status: siRien, last_error: null });
+        continue;
+      }
 
       const sha = await git.headSha(cwd);
       const diff = await git.branchDiff(cwd, base);
@@ -186,7 +191,7 @@ function commitMessageFor(task, defaut) {
    cette correction ») ne se comprend pas sans la tâche d'origine, que la session perdue
    portait. Le défaut réinjecte donc ce contexte — mais un premier run le contient déjà, et le
    lui ajouter enverrait deux fois la même consigne, prompt de la tâche compris. */
-async function execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, forcePush, resume, passKind }) {
+async function execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, forcePush, resume, passKind, imageIds }) {
   // On REPREND la session dès qu'un handle existe pour cette cible : la continuité vaut pour
   // le run initial, « Demander une correction » (followup), une relance, la reprise après
   // questions et les passes de convergence. Le 1er passage la crée.
@@ -227,7 +232,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     throw new Error(t('err.branch-missing-run-first', { branch: tg.branch }));
   }
 
-  const imgBlock = attachImages(task, cwd, onLog);
+  const imgBlock = attachImages(task, cwd, onLog, { imageIds });
 
   onLog(t('log.task.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai') }));
   let agentText = '';
@@ -270,9 +275,15 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     }
     agentText = r.text || '';
     copilot.recordUsage('task', promptText + imgBlock, agentText); // le run en session compte aussi
-    // La note est posée AVEC le nouveau handle, et effacée dès qu'une reprise réussit.
-    if (created) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: cwd, session_note: note });
-    else if (tg.session_note) setTarget(tg.id, { session_note: null });
+    /* On enregistre le handle À CHAQUE passe, pas seulement à la création : l'agent peut rendre
+       un identifiant DIFFÉRENT après une reprise (claude en ouvre un nouveau, qui porte tout
+       l'échange). Garder l'ancien faisait repartir la passe suivante de l'état d'avant — deux
+       suivis d'affilée sur le même projet s'ignoraient. La note, elle, n'accompagne que le
+       repli, et s'efface dès qu'une reprise réussit. */
+    setTarget(tg.id, {
+      session_key: r.handle, session_backend: r.backend, session_cwd: cwd,
+      ...(created ? { session_note: note } : (tg.session_note ? { session_note: null } : {})),
+    });
   } else {
     // Backend non reconnu (ni claude ni copilot) : pas de reprise possible, appel one-shot.
     agentText = (await copilot.runPrompt(promptText + imgBlock, cwd, { kind: 'task' }, onLog)) || '';
@@ -338,7 +349,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
 
 // Session de codage : chaque projet est traité l'un après l'autre. Un projet en échec
 // n'interrompt pas les suivants — son erreur est consignée sur SA ligne.
-async function runCodeTask(task, { promptText, promptRepli, message, allowCreate, onLog, passKind, targetIds }) {
+async function runCodeTask(task, { promptText, promptRepli, message, allowCreate, onLog, passKind, targetIds, imageIds }) {
   /* `targetIds` restreint la passe à certains projets. Une session multi-dépôts se relançait
      forcément EN ENTIER : sur dix dépôts dont six ont réussi, cela coûtait six appels IA pour
      refaire un travail bon, et faisait repasser l'agent sur du code qu'on ne voulait plus voir
@@ -353,7 +364,7 @@ async function runCodeTask(task, { promptText, promptRepli, message, allowCreate
     onLog(`──────── ${tg.project} · ${tg.branch} ────────`);
     setTarget(tg.id, { status: 'running', last_error: null });
     try {
-      const r = await execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, passKind });
+      const r = await execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, passKind, imageIds });
       if (r && r.needsInput) waiting += 1; else ok += 1;
     } catch (e) {
       setTarget(tg.id, { status: 'error', last_error: e.message });
@@ -383,7 +394,7 @@ async function runCodeTask(task, { promptText, promptRepli, message, allowCreate
 /* `apresReponses` : cette passe fait suite aux réponses de l'utilisateur. C'est le seul moyen
    FIABLE de savoir qu'on n'est plus au premier tour — l'absence de synthèse précédente n'en est
    pas un, puisqu'une exploration arrêtée sur une question n'en a jamais écrit. */
-async function runExploration(task, { question, previous, onLog, apresReponses = false }) {
+async function runExploration(task, { question, previous, onLog, apresReponses = false, imageIds }) {
   const cfg = getConfig();
   const targets = targetsOf(task.id);
   if (!targets.length) throw new Error(t('err.aucun-projet-selectionne-pour-cette-2'));
@@ -420,7 +431,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
   ensureDir(path.join(root, WORK_REL));
   try { fs.rmSync(outAbs, { force: true }); } catch { /* pas de fichier précédent */ }
 
-  const imgBlock = attachImages(task, root, onLog);
+  const imgBlock = attachImages(task, root, onLog, { imageIds });
   const listing = dirs.map((d) => `- \`${d.dir}/\` → projet **${d.project}**, branche \`${d.branch}\``).join('\n');
 
   /* Une exploration tourne dans une SESSION reprenable, comme un codage : la question de
@@ -455,7 +466,12 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
     + `Ne duplique pas ce contenu sur la sortie standard.`
     /* Option « l'IA peut poser des questions » : une exploration hésite comme un codage —
        « de quel des trois services parles-tu ? » vaut mieux qu'une synthèse à côté du sujet. */
-    + (task.ask_questions ? questions.QUESTIONS_INSTRUCTION : '');
+    /* …et on lève la CONTRADICTION avec la consigne ci-dessus : « n'écris rien sur la sortie
+       standard » d'un côté, « émets ce bloc à la fin de ta sortie » de l'autre. Un agent doit
+       pouvoir poser sa question sans se demander où la mettre. Les deux endroits sont lus. */
+    + (task.ask_questions ? `${questions.QUESTIONS_INSTRUCTION}\n\nCe bloc est la SEULE exception `
+      + `à la consigne ci-dessus : émets-le sur la sortie standard OU dans \`${outRel}\`, et `
+      + `n'écris alors pas de réponse de synthèse — tu la rédigeras une fois les réponses reçues.` : '');
 
   onLog(t('log.explore.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai'), n: dirs.length, count: dirs.length }));
   let stdout = '';
@@ -479,12 +495,19 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
       }
       stdout = r.text || '';
       copilot.recordUsage('explore', prompt, stdout);
-      // Les cibles d'une exploration partagent la session : toutes portent le même handle.
-      if (created) for (const tg of targets) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: root });
+      /* Les cibles d'une exploration partagent la session : toutes portent le même handle — et
+         on le réenregistre à chaque passe, l'agent pouvant en rendre un nouveau après reprise. */
+      for (const tg of targets) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: root });
     } else if (copilot.isDryRun() && task.ask_questions && !apresReponses) {
-      // Dry-run, première passe : l'agent simule ses questions au lieu de répondre.
+      /* Dry-run, première passe : l'agent simule ses questions au lieu de répondre — et il les
+         écrit DANS LE FICHIER de réponse, pas sur la sortie standard. C'est ce que fait un
+         agent qui suit ce prompt-ci, qui lui demande justement de tout écrire dans ce fichier :
+         la simulation doit reproduire le vrai comportement, sinon elle valide un chemin que
+         personne n'emprunte. (Le codage et le hors dépôt, eux, répondent sur la sortie
+         standard : les deux chemins restent couverts.) */
       onLog('$ (DRY-RUN — l’agent pose des questions)');
-      stdout = questions.DRYRUN_QUESTIONS;
+      fs.writeFileSync(outAbs, questions.DRYRUN_QUESTIONS, 'utf8');
+      stdout = 'J’ai besoin de précisions avant de répondre.';
     } else {
       stdout = await copilot.runPrompt(prompt, root, { kind: 'explore' }, onLog);
     }
@@ -503,8 +526,17 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
   /* Volontairement SANS `apresReponses` : un agent a le droit de reposer une question après
      avoir lu les réponses — c'est même le signe qu'il les a prises au sérieux. Seule la
      simulation du dry-run est bornée, sinon elle bouclerait sur elle-même. */
+  let content = '';
+  if (fs.existsSync(outAbs)) content = fs.readFileSync(outAbs, 'utf8').trim();
+
   if (task.ask_questions) {
-    const qs = questions.parseQuestions(stdout);
+    /* Le bloc peut arriver par DEUX chemins, et ce n'est pas un détail d'implémentation : le
+       prompt d'exploration demande d'écrire la réponse dans un FICHIER et de ne rien dupliquer
+       sur la sortie standard, quand la consigne des questions, elle, parle de « la fin de ta
+       sortie ». Un agent qui hésite pose donc sa question là où on lui a dit d'écrire — dans le
+       fichier. Ne lire que la sortie standard laissait l'exploration se terminer « normalement »,
+       avec le bloc brut en guise de réponse et aucun formulaire à l'écran. */
+    const qs = questions.parseQuestions(stdout) || questions.parseQuestions(content);
     if (qs && qs.length) {
       for (const tg of targets) {
         setTarget(tg.id, { questions_json: JSON.stringify(qs), status: 'needs_input', last_error: null });
@@ -517,8 +549,6 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
     }
   }
 
-  let content = '';
-  if (fs.existsSync(outAbs)) content = fs.readFileSync(outAbs, 'utf8').trim();
   if (content) {
     onLog(t('log.explore.answer-read', { path: outRel, n: content.length }));
     copilot.addOutputToLastUsage(content);
@@ -557,20 +587,20 @@ async function runTask(task, onLog = () => {}, opts = {}) {
 
 // `targetIds` : correction limitée à certains projets d'une session multi-dépôts. Une
 // remarque porte presque toujours sur UN dépôt ; la passer à tous refait du travail bon.
-async function runTaskFollowup(task, instruction, onLog = () => {}, { targetIds } = {}) {
+async function runTaskFollowup(task, instruction, onLog = () => {}, { targetIds, imageIds } = {}) {
   const instr = String(instruction || '').trim();
   if (!instr) throw new Error(t('err.demande-de-suivi-vide'));
 
   if (task.kind === 'explore') {
     const previous = task.md_path && fs.existsSync(task.md_path) ? fs.readFileSync(task.md_path, 'utf8') : '';
-    return runExploration(task, { question: instr, previous, onLog });
+    return runExploration(task, { question: instr, previous, onLog, imageIds });
   }
   const message = commitMessageFor(task, instr.split('\n')[0].slice(0, 72));
   const promptText = avecConsignes(
     'Tu travailles sur une branche existante de ce projet ; le travail précédent est déjà '
     + `committé. Applique la demande de suivi ci-dessous en modifiant directement les fichiers.\n\n`
     + `Demande de suivi : ${instr}`, consignesPermanentes());
-  return runCodeTask(task, { promptText, message, allowCreate: false, onLog, passKind: 'followup', targetIds });
+  return runCodeTask(task, { promptText, message, allowCreate: false, onLog, passKind: 'followup', targetIds, imageIds });
 }
 
 // Reprise après réponses de l'utilisateur (ask → stop → resume). Cible UN projet précis :

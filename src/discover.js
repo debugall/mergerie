@@ -39,7 +39,11 @@ async function discoverAll() {
      permette de ne déclencher les vérifications automatiques que sur elles — une MR déjà
      connue est revue à chaque découverte, et la relancer à chaque fois ferait tourner la
      batterie sur tout le monde en permanence. */
-  const result = { repos: repos.length, found: 0, created: 0, updated: 0, errors: [], new_mr_ids: [] };
+  /* `stale_mr_ids` : les MR CONNUES dont le SHA vient de changer. C'est le seul moment où
+     l'outil apprend qu'un verdict rendu ne vaut plus rien — la péremption, elle, se CALCULE à
+     l'affichage et ne déclenche donc rien. Séparé de `new_mr_ids` : arriver et bouger sont deux
+     événements, et un vérificateur peut vouloir l'un sans l'autre. */
+  const result = { repos: repos.length, found: 0, created: 0, updated: 0, errors: [], new_mr_ids: [], stale_mr_ids: [] };
 
   /* En démo, la forge n'existe pas : interroger GitLab rendait une erreur par dépôt, sur un
      bouton mis en avant de la page d'accueil. Un scan y trouve légitimement ce qui est déjà
@@ -79,6 +83,8 @@ async function discoverAll() {
           author: m.author || '', updated_at: now,
         };
         if (existing) {
+          // Le SHA a bougé → tout verdict déjà rendu sur cette MR est périmé.
+          if (m.sha && existing.current_sha && m.sha !== existing.current_sha) result.stale_mr_ids.push(existing.id);
           updateMr.run({ ...base, id: existing.id }); // reset closed_seen si réapparue
           result.updated += 1;
         } else {

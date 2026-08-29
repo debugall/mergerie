@@ -91,12 +91,6 @@ CREATE TABLE IF NOT EXISTS task (
   updated_at TEXT
 );
 
-CREATE TABLE IF NOT EXISTS task_image (
-  id INTEGER PRIMARY KEY,
-  task_id INTEGER NOT NULL REFERENCES task(id) ON DELETE CASCADE,
-  path TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS review_rule (
   id INTEGER PRIMARY KEY,
   branch_match TEXT NOT NULL,
@@ -219,6 +213,11 @@ try { db.exec("ALTER TABLE config ADD COLUMN jenkins_token TEXT DEFAULT ''"); } 
    localStorage, comme celle des MR et celle de Jira : c'est un réglage de l'OUTIL, et il doit
    valoir quel que soit le navigateur d'où on le regarde. */
 try { db.exec('ALTER TABLE config ADD COLUMN jenkins_refresh_minutes INTEGER DEFAULT 1'); } catch { /* déjà présente */ }
+/* Plafond de vérifications automatiques par tour de découverte. Un lundi matin en ramène
+   quinze : quinze batteries fonctionnelles saturent la machine et bloquent la file partagée
+   avec les reviews. Le bon chiffre dépend de la machine et de la durée des suites — il se règle
+   donc, au lieu d'être une constante que seul le code connaît. 0 = aucune limite (assumé). */
+try { db.exec('ALTER TABLE config ADD COLUMN verif_auto_max INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
 // Migration : message de commit personnalisable des tâches.
 /* LE VÉRIFICATEUR D'UNE SESSION, facultatif. Rattaché à la session et non au lancement :
    relancer la même session doit revérifier de la même façon, sans qu'on ait à s'en souvenir.
@@ -384,6 +383,35 @@ try { db.exec('ALTER TABLE local_task_dir ADD COLUMN output_path TEXT'); } catch
 try { db.exec('ALTER TABLE local_task ADD COLUMN ask_questions INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE local_task_dir ADD COLUMN questions_json TEXT'); } catch { /* déjà présente */ }
 // Rangement d'une session hors dépôt — même principe que `task.hidden`.
+
+/* ---------- Question libre ----------
+   Poser une question à l'IA SANS dépôt ni dossier, et garder la trace de la réponse.
+
+   POURQUOI UNE TABLE À ELLE : `task` porte un `repo_id NOT NULL` (une session de codage ou
+   une exploration parle toujours d'un dépôt), et `local_task` agrège son statut depuis ses
+   DOSSIERS — une question n'a ni l'un ni l'autre. La greffer sur l'une des deux aurait
+   demandé de rendre optionnel ce qui fait justement leur nature, et chaque écran des trois
+   saveurs existantes aurait eu à gérer un cas « sans cible » qui ne le concerne pas.
+
+   Tout est dans le CREATE : une table neuve n'a pas d'historique à rattraper. Une colonne
+   ajoutée plus tard devra l'être en ALTER, APRÈS ce bloc. */
+db.exec(`CREATE TABLE IF NOT EXISTS question (
+  id INTEGER PRIMARY KEY,
+  prompt TEXT NOT NULL,
+  label TEXT,
+  status TEXT DEFAULT 'new',        -- new | running | done | error
+  md_path TEXT,                     -- la réponse, en Markdown (comme une exploration)
+  last_error TEXT,
+  session_key TEXT,                 -- session d'agent reprenable : un suivi la reprend
+  session_backend TEXT,
+  session_cwd TEXT,
+  followup_draft TEXT,
+  followup_auto INTEGER DEFAULT 0,
+  hidden INTEGER DEFAULT 0,
+  created_at TEXT,
+  updated_at TEXT,
+  finished_at TEXT
+)`);
 /* Activité mensuelle d'un dépôt (onglet Statistiques). Mise en cache parce qu'elle coûte
    cher à récupérer — six mois d'un dépôt vivant, c'est des centaines de commits paginés —
    et qu'un mois CLOS ne change plus jamais : seul le mois courant se recalcule.
@@ -436,7 +464,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS agent_pass (
   created_at TEXT
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_agent_pass_unit ON agent_pass(scope, task_id, unit_id, n)');
-// Captures jointes au prompt d'un codage hors dépôt (mêmes que task_image, table dédiée).
+
+/* REPÉRER UNE ITÉRATION PARMI VINGT. Le numéro et la date ne disent rien de ce qui s'y est
+   joué : on marque donc les quelques passes qui comptent (`favori`) et on leur donne un nom
+   (`titre`). Ni l'un ni l'autre ne part à l'agent — c'est du rangement, écrit pour l'humain
+   qui parcourt la colonne. Migrations APRÈS le `CREATE TABLE` : plus haut, l'ALTER échoue sur
+   une table absente et le `catch` l'avale sans un mot. */
+try { db.exec('ALTER TABLE agent_pass ADD COLUMN favori INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE agent_pass ADD COLUMN titre TEXT'); } catch { /* déjà présente */ }
 /* APRÈS la création de la table, et pas avant : un `ALTER` posé plus haut dans ce fichier
    échoue sur une table qui n'existe pas encore, et le `catch` l'avale sans un mot. La colonne
    n'apparaît alors que sur les bases où la table préexistait — le genre de différence qui ne
@@ -445,11 +480,57 @@ try { db.exec('ALTER TABLE local_task ADD COLUMN label TEXT'); } catch { /* déj
 try { db.exec('ALTER TABLE local_task ADD COLUMN followup_draft TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE local_task ADD COLUMN followup_auto INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
 
-db.exec(`CREATE TABLE IF NOT EXISTS local_task_image (
+
+/* LES PIÈCES JOINTES D'UNE SESSION — captures ET documents, une seule table.
+ *
+ * Une capture d'écran et un PDF de spécification sont la même chose pour l'agent : un fichier
+ * à ouvrir. Les tenir dans deux familles de tables aurait fait deux enregistrements, deux
+ * lectures, deux blocs de prompt et quatre saveurs à recâbler à chaque fois — pour une
+ * distinction qui ne compte qu'à l'affichage (vignette ou nom de fichier).
+ *
+ * `scope` distingue les familles, comme `agent_pass` : 'task' (codage sur dépôt et
+ * exploration), 'local' (hors dépôt), 'ask' (question libre). Pas de clé étrangère possible —
+ * trois tables parentes — donc le ménage est explicite à la suppression.
+ *
+ * `name` est le nom D'ORIGINE, montré à l'écran et donné à l'agent ; le fichier sur disque, lui,
+ * porte un nom fabriqué : un nom venu de l'extérieur n'a rien à faire dans un chemin. */
+db.exec(`CREATE TABLE IF NOT EXISTS piece_jointe (
   id INTEGER PRIMARY KEY,
-  task_id INTEGER NOT NULL REFERENCES local_task(id) ON DELETE CASCADE,
-  path TEXT NOT NULL
+  scope TEXT NOT NULL,
+  owner_id INTEGER NOT NULL,
+  path TEXT NOT NULL,
+  name TEXT NOT NULL,
+  mime TEXT,
+  followup INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT
 )`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_piece_jointe_owner ON piece_jointe(scope, owner_id)');
+
+/* Reprise des captures déjà en base. Les deux anciennes tables sont recopiées puis RETIRÉES :
+   laisser une table morte derrière soi, c'est garantir qu'un jour quelqu'un l'interrogera et
+   lira un état d'il y a six mois. Les fichiers sur disque, eux, ne bougent pas — seule la ligne
+   change de table. Idempotent : la table disparue, la reprise ne se pose plus. */
+for (const [ancienne, scope] of [['task_image', 'task'], ['local_task_image', 'local']]) {
+  try {
+    const existe = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(ancienne);
+    if (!existe) continue;
+    /* `followup` est arrivée en cours de route : une base plus ancienne ne l'a pas, et le
+       SELECT échouerait dessus. On lit les colonnes réellement présentes plutôt que d'ajouter
+       une colonne à une table qu'on s'apprête à supprimer. */
+    const colonnes = db.prepare(`PRAGMA table_info(${ancienne})`).all().map((c) => c.name);
+    const suivi = colonnes.includes('followup') ? 'followup' : '0';
+    db.exec(`INSERT INTO piece_jointe (scope, owner_id, path, name, mime, followup, created_at)
+      SELECT '${scope}', task_id, path, path, NULL, ${suivi}, NULL FROM ${ancienne}`);
+    db.exec(`DROP TABLE ${ancienne}`);
+    /* Le nom affiché est le nom de FICHIER, pas le chemin : ces captures-là n'en avaient pas
+       d'autre (elles étaient collées, sans nom d'origine), et montrer `/Users/…/img_3.png`
+       dans une puce de formulaire n'apprend rien. */
+    const majNom = db.prepare('UPDATE piece_jointe SET name = ? WHERE id = ?');
+    for (const l of db.prepare("SELECT id, name FROM piece_jointe WHERE scope = ? AND name LIKE '%/%'").all(scope)) {
+      majNom.run(l.name.split('/').filter(Boolean).pop() || l.name, l.id);
+    }
+  } catch { /* reprise best-effort : une capture perdue ne doit pas empêcher l'app de démarrer */ }
+}
 
 /* « Répertoires locaux » : un dossier de la machine contenant un sous-dossier par
    projet git déjà cloné à la main (~/dev). Sert à l'onglet Git → Navigation et au
@@ -616,7 +697,7 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_git_op_batch ON git_op(batch_id)');
 
 // Ligne de config unique (id=1). Les gabarits de prompt par défaut vivent dans
 // prompts.js, qui les tient dans les deux langues (i18n.md lot 5).
-const { PROMPTS } = require('./prompts');
+const { PROMPTS, ANCIENS_PROMPTS } = require('./prompts');
 // Convergence (« Converger ») : réglages par défaut (surchargeables au lancement).
 // Seuil cible en /10, plafond de passes de correction.
 try { db.exec("ALTER TABLE config ADD COLUMN converge_threshold TEXT DEFAULT '8'"); } catch { /* déjà présente */ }
@@ -633,24 +714,43 @@ try { db.exec("ALTER TABLE config ADD COLUMN converge_max_passes TEXT DEFAULT '3
 db.exec(`CREATE TABLE IF NOT EXISTS verifier (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
-  command TEXT NOT NULL,               -- kind 'script' : chemin absolu. kind 'commands' : ''
+  command TEXT NOT NULL,               -- toujours '' : les commandes vivent dans verifier_command
   timeout_s INTEGER NOT NULL DEFAULT 900,
   run_base INTEGER NOT NULL DEFAULT 1, -- double run causal : la base était-elle déjà rouge ?
   comment_on_forge INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 )`);
-/* Deux familles de vérificateurs, même verdict, même rapport, mêmes badges :
-     'script'   — un exécutable qui s'engage sur le contrat JSON. Multi-dépôts.
-     'commands' — une liste de commandes ; le verdict vient des CODES DE SORTIE. Multi-dépôts
-                  aussi : la liste est rejouée dans CHAQUE dépôt visé, le verdict est le ET.
-   Colonnes idempotentes plutôt qu'une table à part : ce sont des attributs du vérificateur,
-   et les bases existantes n'ont qu'à recevoir le défaut 'script' pour rester exactes. */
+/* `kind` vaut désormais TOUJOURS 'commands' : une liste de commandes rejouée dans chaque dépôt
+   visé, le verdict venant des CODES DE SORTIE.
+
+   La colonne SURVIT à la disparition de l'autre famille ('script' : un exécutable s'engageant
+   sur un contrat JSON, retirée en 2.0). Les lignes héritées gardent donc leur valeur : elles
+   restent visibles dans les réglages, marquées comme telles, et le serveur REFUSE de les
+   lancer. Supprimer la colonne aurait effacé la distinction — et avec elle la seule chose qui
+   permet d'expliquer à quelqu'un pourquoi son vérificateur ne part plus.
+   Le DÉFAUT reste 'script' : il ne s'applique qu'aux lignes créées avant cette migration, et
+   le changer réécrirait leur histoire. Toute création passe par le serveur, qui impose
+   'commands'. */
 try { db.exec("ALTER TABLE verifier ADD COLUMN kind TEXT NOT NULL DEFAULT 'script'"); } catch { /* déjà présente */ }
 /* « Automatique » : ce vérificateur part sur toute NOUVELLE merge request des dépôts qu'il
    couvre. Sur le vérificateur et non sur chaque ligne de couverture — automatique ici et
    manuel là est un besoin qu'on n'a pas, et la colonne se déplacera sans casser les données
    le jour où il apparaît. Défaut 0 : rien ne se met à tourner tout seul sans qu'on le demande. */
 try { db.exec('ALTER TABLE verifier ADD COLUMN auto_on_mr INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+/* « Relancer quand le verdict se périme » : la MR a reçu de nouveaux commits, le vert obtenu
+   sur l'ancien SHA ne vaut plus rien. Séparé de `auto_on_mr` — vérifier une MR à son arrivée et
+   la revérifier à chaque poussée sont deux appétits différents : la seconde multiplie la charge
+   par le nombre de commits, et c'est un choix qui doit s'assumer ligne par ligne. */
+try { db.exec('ALTER TABLE verifier ADD COLUMN auto_on_stale INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+/* Le gabarit du commentaire publié sur la merge request. Vide = le gabarit par défaut, qui vit
+   dans `verify.js` — on ne le recopie PAS en base : un défaut recopié se fige, et l'améliorer
+   n'atteindrait plus personne. */
+try { db.exec("ALTER TABLE verifier ADD COLUMN comment_template TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+/* Les personnes à prévenir quand ça casse — du texte libre repris tel quel dans le commentaire
+   (`@amady @bruno`, ou `@mon-groupe`, plus robuste qu'une liste qui bouge). C'est la FORGE qui
+   résout les mentions et envoie les mails ; Mergerie ne fait que les écrire. Un identifiant
+   numérique ne marche pas : GitLab résout le handle, pas l'id. */
+try { db.exec("ALTER TABLE verifier ADD COLUMN mentions TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 // Ajoutées à l'environnement minimal. Sans elles, un `npm` installé par nvm reste introuvable
 // quand Mergerie est lancé par un service plutôt que depuis un terminal.
 try { db.exec('ALTER TABLE verifier ADD COLUMN env_json TEXT'); } catch { /* déjà présente */ }
@@ -720,6 +820,10 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_verification_lot ON verification(lot_id,
 /* Échec de restauration d'un répertoire « in place » : signalé de façon PERSISTANTE, jamais
    noyé dans un journal. Le dépôt de l'utilisateur est resté sur un commit détaché. */
 try { db.exec('ALTER TABLE verification ADD COLUMN restore_error TEXT'); } catch { /* déjà présente */ }
+/* Ce qui a été PUBLIÉ, et quand. Sans cette trace, l'écran repropose « Publier » comme si de
+   rien n'était et on poste deux fois le même verdict sur la merge request de quelqu'un. */
+try { db.exec('ALTER TABLE verification ADD COLUMN comment_posted_at TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE verification ADD COLUMN comment_targets TEXT'); } catch { /* déjà présente */ }
 
 /* Bases créées avant que le rapport ne devienne une archive : la table portait des clés
    étrangères bloquantes vers `verifier` et `lot`. SQLite ne sait pas modifier une contrainte,
@@ -901,6 +1005,19 @@ db.exec(`CREATE TABLE IF NOT EXISTS note_page (
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_note_page_ordre ON note_page(pinned DESC, updated_at DESC)');
 
+/* Captures collées DANS une page de notes. Le fichier vit sur disque, la page ne garde qu'un
+   lien Markdown : mettre l'image en base64 dans `content` ferait grossir la ligne de plusieurs
+   mégaoctets et la renverrait en entier à chaque sauvegarde automatique — c'est-à-dire toutes
+   les secondes pendant qu'on écrit. La suppression de la page emporte les lignes (cascade) ;
+   les fichiers, eux, sont retirés explicitement (voir la route DELETE). */
+db.exec(`CREATE TABLE IF NOT EXISTS note_image (
+  id INTEGER PRIMARY KEY,
+  page_id INTEGER NOT NULL REFERENCES note_page(id) ON DELETE CASCADE,
+  path TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_note_image_page ON note_image(page_id)');
+
 /* `due_at` porte À LA FOIS l'échéance et le rappel — une seule vérité plutôt qu'une entité
    `reminder` séparée qu'il faudrait réconcilier. `reminded_at` empêche la re-notification,
    et tout changement de `due_at` le remet à NULL (voir src/notes.js). `archived_at` sort des
@@ -996,6 +1113,22 @@ db.exec(`UPDATE config SET
   prompt_explain = REPLACE(prompt_explain, '{skill}', COALESCE(NULLIF(TRIM(review_skill), ''), 'git-review')),
   prompt_modify  = REPLACE(prompt_modify,  '{skill}', COALESCE(NULLIF(TRIM(review_skill), ''), 'git-review'))
   WHERE prompt_review LIKE '%{skill}%' OR prompt_explain LIKE '%{skill}%' OR prompt_modify LIKE '%{skill}%'`);
+
+/* LE GABARIT LIVRÉ N'INVOQUE PLUS DE SKILL. Celui qui installe Mergerie n'a pas `git-review`,
+   et sa première review demandait pourtant à l'agent de s'en servir. Les installations
+   existantes portent encore cet ancien texte : on le remplace par le nouveau défaut de la MÊME
+   langue, mais UNIQUEMENT s'il est resté rigoureusement identique — un gabarit modifié, ne
+   serait-ce que d'un caractère, appartient à son auteur et n'est pas touché.
+
+   Sans cela il resterait tel quel pour toujours : ne correspondant plus à aucun défaut connu,
+   il serait tenu pour personnalisé et ne suivrait même plus les changements de langue.
+
+   Rejouable : après le premier passage, plus aucune ligne ne correspond.
+   Placée APRÈS le `CREATE TABLE config`, comme la précédente. */
+for (const lang of ['fr', 'en']) {
+  db.prepare('UPDATE config SET prompt_review = ? WHERE prompt_review = ?')
+    .run(PROMPTS[lang].prompt_review, ANCIENS_PROMPTS[lang].prompt_review);
+}
 
 const DEFAULT_PROMPT_REVIEW = PROMPTS.fr.prompt_review;
 const DEFAULT_PROMPT_EXPLAIN = PROMPTS.fr.prompt_explain;

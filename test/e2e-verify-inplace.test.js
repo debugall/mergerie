@@ -68,11 +68,14 @@ describe('Vérification objective — mode in place', () => {
     fs.writeFileSync(p, `#!/bin/sh\n${corps}\n`, { mode: 0o755 });
     return p;
   };
-  const repond = (obj) => `cat >/dev/null\nprintf '%s\\n' '${JSON.stringify(obj)}'`;
+  /* Le verdict vient du CODE DE SORTIE : la famille « script » et son contrat JSON n'existent
+     plus. `PASSE`/`CASSE` sont donc de simples `exit 0` / `exit 1`. */
+  const PASSE = 'exit 0';
+  const CASSE = 'exit 1';
 
   async function poserVerifier(nom, corps, opts = {}) {
     const r = await app.api('POST', '/api/verifiers', {
-      name: nom, command: script(corps, nom), timeout_s: opts.timeout_s || 60, run_base: false,
+      name: nom, kind: 'commands', commands: [script(corps, nom)], timeout_s: opts.timeout_s || 60, run_base: false,
       repos: [{ repo_id: repoId, mode: 'in_place', workdir: opts.workdir || workdir, checkout_allowed: true }],
     });
     assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -121,7 +124,7 @@ describe('Vérification objective — mode in place', () => {
   });
 
   test('un run in place remet le répertoire sur sa branche d’origine', async () => {
-    const v = await poserVerifier('ip-vert', repond({ version: 1, status: 'pass' }));
+    const v = await poserVerifier('ip-vert', PASSE);
     const avant = git(workdir, 'rev-parse', '--abbrev-ref', 'HEAD');
     assert.equal(avant, 'main');
 
@@ -135,14 +138,14 @@ describe('Vérification objective — mode in place', () => {
   });
 
   test('la restauration a lieu même quand les tests échouent, et même sur timeout', async () => {
-    const rouge = await poserVerifier('ip-rouge', repond({ version: 1, status: 'fail', failed: [{ test: 'a' }] }));
+    const rouge = await poserVerifier('ip-rouge', CASSE);
     const d1 = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: rouge.id })).body.verification.id);
     assert.equal(d1.verdict, 'verified_fail');
     assert.equal(git(workdir, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
     await app.api('DELETE', `/api/verifiers/${rouge.id}`);
 
     // Un script qui ne rend jamais la main : la restauration doit survivre à son arrêt forcé.
-    const bloque = await poserVerifier('ip-bloque', 'cat >/dev/null\nsleep 60', { timeout_s: 10 });
+    const bloque = await poserVerifier('ip-bloque', 'sleep 60', { timeout_s: 10 });
     const d2 = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: bloque.id })).body.verification.id);
     assert.equal(d2.verdict, 'verify_error');
     assert.equal(git(workdir, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main',
@@ -154,7 +157,7 @@ describe('Vérification objective — mode in place', () => {
      modifié — pas la simple présence de quelque chose dans le répertoire. */
   test('un fichier SUIVI modifié fait REFUSER le run — jamais de stash automatique', async () => {
     fs.writeFileSync(path.join(workdir, 'a.txt'), 'travail en cours\n'); // a.txt est commité
-    const v = await poserVerifier('ip-dirty', repond({ version: 1, status: 'pass' }));
+    const v = await poserVerifier('ip-dirty', PASSE);
     const d = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id })).body.verification.id);
     assert.equal(d.verdict, 'verify_error');
     assert.match(d.log_excerpt || '', /non commitées/);
@@ -181,7 +184,7 @@ describe('Vérification objective — mode in place', () => {
     assert.equal(t.body.untracked, 2, '…mais les deux fichiers sont comptés et annoncés');
 
     // Et le run va au bout.
-    const v = await poserVerifier('ip-untracked', repond({ version: 1, status: 'pass' }));
+    const v = await poserVerifier('ip-untracked', PASSE);
     const d = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id })).body.verification.id);
     assert.equal(d.verdict, 'verified_pass', d.log_excerpt || '');
     assert.match(d.log_excerpt || '', /non suivi/, 'le journal dit qu’ils étaient là pendant les tests');
@@ -210,7 +213,7 @@ describe('Vérification objective — mode in place', () => {
     await app.api('POST', '/api/discover');
 
     fs.writeFileSync(encombrant, 'à moi\n');
-    const v = await poserVerifier('ip-collision', repond({ version: 1, status: 'pass' }));
+    const v = await poserVerifier('ip-collision', PASSE);
     const d = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id })).body.verification.id);
     assert.equal(d.verdict, 'verify_error', 'on ne rend pas un verdict sur un checkout qui n’a pas eu lieu');
     assert.equal(fs.readFileSync(encombrant, 'utf8'), 'à moi\n', 'le fichier de l’utilisateur n’a pas été écrasé');
@@ -225,7 +228,7 @@ describe('Vérification objective — mode in place', () => {
 
   test('sans consentement de checkout, la ligne in place est refusée à l’enregistrement', async () => {
     const r = await app.api('POST', '/api/verifiers', {
-      name: 'ip-sans-accord', command: script(repond({ version: 1, status: 'pass' }), 'x'),
+      name: 'ip-sans-accord', kind: 'commands', commands: [script(PASSE, 'x')],
       repos: [{ repo_id: repoId, mode: 'in_place', workdir }],
     });
     assert.equal(r.status, 400);
@@ -255,7 +258,7 @@ describe('Vérification objective — mode in place', () => {
 
     const v = (await app.api('POST', '/api/verifiers', {
       name: 'ip-contexte', run_base: false,
-      command: script(repond({ version: 1, status: 'pass' }), 'ip-contexte'),
+      kind: 'commands', commands: [script(PASSE, 'ip-contexte')],
       repos: [
         { repo_id: repoId, mode: 'in_place', workdir, checkout_allowed: true },
         { repo_id: voisinId, mode: 'in_place', workdir: voisinWd, checkout_allowed: true },
@@ -281,7 +284,7 @@ describe('Vérification objective — mode in place', () => {
 
   test('un workdir devenu invalide arrête le run proprement, sans toucher au dépôt', async () => {
     const perdu = path.join(os.tmpdir(), 'ip-inexistant-xyz');
-    const v = await poserVerifier('ip-perdu', repond({ version: 1, status: 'pass' }), { workdir: perdu });
+    const v = await poserVerifier('ip-perdu', PASSE, { workdir: perdu });
     const d = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id })).body.verification.id);
     assert.equal(d.verdict, 'verify_error');
     assert.match(d.log_excerpt || '', /pas un dépôt git/);
@@ -303,7 +306,7 @@ describe('Vérification objective — mode in place', () => {
     await app.api('POST', '/api/discover');
 
     const r = await app.api('POST', '/api/verifiers', {
-      name: 'ip-avec-base', command: script(repond({ version: 1, status: 'pass' }), 'ip-avec-base'),
+      name: 'ip-avec-base', kind: 'commands', commands: [script(PASSE, 'ip-avec-base')],
       timeout_s: 60, run_base: true,
       repos: [{ repo_id: repoId, mode: 'in_place', workdir, checkout_allowed: true }],
     });

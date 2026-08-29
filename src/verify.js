@@ -507,7 +507,98 @@ const memeDepot = (a, b) => {
   return !!na && na === normaliserRemote(b);
 };
 
+/* ---------------------------------------------------------------- commentaire de forge
+
+   LE CORPS PUBLIÉ SUR LA MERGE REQUEST. Isolé ici — pas de base, pas de réseau — parce que
+   c'est du TEXTE que des gens vont lire sur leur MR : il doit se prouver sans monter un serveur.
+
+   Un GABARIT, et non une chaîne en dur : le ton d'une équipe n'est pas celui d'une autre, et
+   quelqu'un voudra y mettre le lien de son tableau de bord ou retirer la liste des commits.
+   Les champs absents laissent une ligne vide plutôt qu'un `{trou}` : un gabarit qui affiche ses
+   propres marqueurs sur une vraie merge request est pire que pas de gabarit. */
+const GABARIT_COMMENTAIRE_DEFAUT = [
+  '{verdict}',
+  '',
+  '{tests}',
+  '',
+  '{commandes}',
+  '',
+  '{commits}',
+  '',
+  '{mentions}',
+  '',
+  '_Vérifié le {date} à {heure}._',
+].join('\n');
+
+const CHAMPS_COMMENTAIRE = ['verdict', 'tests', 'commandes', 'commits', 'mentions', 'verificateur', 'date', 'heure'];
+
+/* DES BLOCS D'EXEMPLE, pour montrer à quoi ressemble un gabarit une fois rempli. Ils passent
+   par la MÊME fonction que le vrai commentaire : un aperçu composé autrement finirait par
+   mentir sur ce qui part. Un cas rouge, parce que c'est celui où le contenu compte. */
+const EXEMPLE_COMMENTAIRE = {
+  verificateur: 'integ',
+  verdict: '**integ** : ✗ 2 test(s) cassé(s) par cette branche',
+  tests: ['Tests cassés :',
+    '- `panier › total` — attendu 42, reçu 41',
+    '- `paiement › devise absente`'].join('\n'),
+  commandes: ['Commandes en échec :',
+    '- grp/api › `npm test` — code de sortie 1'].join('\n'),
+  mentions: '@amady @bruno',
+  commits: ['Commits testés :',
+    '- grp/api · `feat/PROJ-720-checkout` @ `a1b2c3d4`',
+    '- grp/front · `feat/PROJ-720-tunnel` @ `9f8e7d6c`'].join('\n'),
+};
+
+/* PUBLIER TOUT SEUL, OU SE TAIRE. La case « Publier le verdict en commentaire » n'écrit sur la
+   merge request que si LA BASE EST VERTE — et elle publie alors le verdict, vert comme rouge :
+
+     · base verte, tête rouge → « ce qui marchait avant ne marche plus, et c'est cette branche » ;
+     · base verte, tête verte → « vérifié, et ça tient » : sur une merge request qu'on va relire,
+       un vert ÉCRIT vaut mieux qu'un badge qu'il faut aller chercher dans un autre outil.
+
+   Ce qui reste tu, et pourquoi :
+     · la base est déjà rouge → ce n'est pas imputable à la branche, et le dire sur SA merge
+       request revient à l'accuser de ce que quelqu'un d'autre a cassé ;
+     · pas de run base (double run désactivé, ou vérification de branche) → on ne SAIT PAS si
+       c'était déjà rouge. Publier reviendrait à affirmer ce qu'on n'a pas vérifié.
+     · run en erreur (commande introuvable, délai dépassé) → il n'y a pas de verdict à publier.
+
+   C'est donc la BASE qui décide de publier, et la tête de ce qu'on écrit. La publication À LA
+   MAIN, depuis le rapport, reste possible dans tous les cas : là, c'est un humain qui décide, et
+   il a le texte sous les yeux. */
+function doitCommenterAuto(base, head) {
+  if (!base || base.status !== 'pass') return false;
+  return !!head && (head.status === 'pass' || head.status === 'fail');
+}
+
+/* Rend le corps du commentaire. `donnees` porte déjà les blocs composés (verdict, tests,
+   commits) : cette fonction ne fait que les poser dans le gabarit, et c'est voulu — le QUOI se
+   décide ailleurs, le COMMENT s'écrit ici.
+
+   L'horodatage est celui de l'INSTANT où le corps est composé, passé en paramètre plutôt que lu
+   de l'horloge : une fonction qui lit l'heure toute seule ne se teste pas. */
+function composerCommentaire(donnees, gabarit, maintenant = new Date()) {
+  const modele = String(gabarit || '').trim() || GABARIT_COMMENTAIRE_DEFAUT;
+  const valeurs = {
+    verdict: donnees.verdict || '',
+    tests: donnees.tests || '',
+    commandes: donnees.commandes || '',
+    mentions: donnees.mentions || '',
+    commits: donnees.commits || '',
+    verificateur: donnees.verificateur || '',
+    date: maintenant.toLocaleDateString('fr-FR'),
+    heure: maintenant.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+  };
+  const rendu = modele.replace(/\{(\w+)\}/g, (brut, cle) => (
+    CHAMPS_COMMENTAIRE.includes(cle) ? valeurs[cle] : brut
+  ));
+  /* Un bloc vide (aucun test cassé sur un verdict vert) laisserait trois sauts de ligne au
+     milieu du commentaire : on les ramène à un paragraphe, et on retire les blancs de bout. */
+  return rendu.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 module.exports = {
+  GABARIT_COMMENTAIRE_DEFAUT, CHAMPS_COMMENTAIRE, EXEMPLE_COMMENTAIRE, composerCommentaire, doitCommenterAuto,
   VERDICTS, MAX_FAILED, MAX_LOG, MAX_REPONSE,
   validerReponse, derniereLigneJson, deltaImputable, composerVerdict, estPerime,
   normaliserRemote, memeDepot, tronquer, queue,

@@ -193,7 +193,9 @@ function enrichCopilotError(e, bootstrap, home) {
  * - resume=false : crée la session (claude --session-id / copilot home neuf + bootstrap).
  * - resume=true  : reprend la session (claude --resume / copilot --continue), en passant le
  *   `handle` renvoyé au premier run.
- * Renvoie { text, sessionId, handle, backend }. Le handle et le cwd sont à PERSISTER par
+ * Renvoie { text, sessionId, handle, backend }. `handle` est l'identifiant À REPRENDRE la
+ * prochaine fois — il peut différer de celui passé en entrée (cf. claude --resume, qui forke).
+ * Le handle et le cwd sont à PERSISTER par
  * l'appelant (le cwd fait partie de l'identité de session — refuser une reprise si mismatch).
  */
 async function runInSession({ key, handle, prompt, cwd, resume = false, onLog = () => {} }) {
@@ -207,7 +209,13 @@ async function runInSession({ key, handle, prompt, cwd, resume = false, onLog = 
     const sess = resume ? ['--resume', id] : ['--session-id', id];
     const args = [...EXTRA, ...sess, '--output-format', 'stream-json', '--verbose', '-p', prompt];
     const out = await runClaudeStream(args, cwd, onLog);
-    return { text: out.text, sessionId: out.sessionId, handle: id, backend };
+    /* LE HANDLE À GARDER EST CELUI QUE L'AGENT ANNONCE, pas celui qu'on lui a passé. `claude
+       --resume <id>` ne poursuit pas l'échange sous le même identifiant : il en ouvre un
+       nouveau, qui porte l'ancien plus le tour qu'on vient de faire. Rendre l'ancien faisait
+       repartir la passe suivante de l'état d'AVANT — deux suivis d'affilée sur le même projet
+       ne se voyaient donc pas l'un l'autre. On rend l'identifiant courant ; si le backend garde
+       le même (création, ou reprise qui ne forke pas), rien ne change. */
+    return { text: out.text, sessionId: out.sessionId, handle: out.sessionId || id, backend };
   }
 
   // copilot : home isolé par clé (persistant entre les passes d'une même session).

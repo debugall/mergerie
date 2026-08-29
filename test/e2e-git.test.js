@@ -402,8 +402,12 @@ describe('Opérations Git de bout en bout', () => {
   test('Le job en cours peut être arrêté, et se termine en « stopped » (pas « error »)', async () => {
     const { body: job } = await app.api('POST', '/api/git/execute', { action: 'new_branch', name: 'a-arreter', targets: [{ repo_id: repoId, ref: 'main' }] });
     const stop = await app.api('POST', '/api/jobs/stop');
-    assert.equal(stop.status, 200);
-    assert.equal(stop.body.ok, true);
+    /* Le job a pu se TERMINER avant que le Stop n'arrive — une opération git sur un dépôt de
+       test dure quelques millisecondes. « Rien à arrêter » (409) est alors la bonne réponse,
+       et l'invariant qu'on vérifie plus bas reste le même. Exiger 200 faisait échouer la suite
+       sur une machine chargée, pour un comportement pourtant correct. */
+    assert.ok([200, 409].includes(stop.status), `réponse inattendue au Stop : ${stop.status}`);
+    if (stop.status === 200) assert.equal(stop.body.ok, true);
     await waitForJobs(app.api);
     const apres = app.db.prepare('SELECT status, message FROM job WHERE id = ?').get(job.id);
     /* ⚠ Ce test ne PROUVE pas la distinction : une opération git est rapide, le job aboutit

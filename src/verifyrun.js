@@ -43,76 +43,6 @@ function envMinimal() {
   };
 }
 
-/* Lance le vérificateur pour un rôle ('base' | 'head') et rend { run } ou { erreur }.
- * `repos` : [{ name, dir, sha, branch, mode }] — les dépôts CIBLES uniquement.
- *
- * `spawn` sans shell : la commande vient de la configuration, pas d'une chaîne à interpréter.
- * Un shell ici transformerait un nom de répertoire biscornu en exécution arbitraire.
- */
-function appelerScript(verifier, role, repos, onLog = () => {}) {
-  return new Promise((resolve) => {
-    const entree = JSON.stringify({ version: 1, verifier: verifier.name, role, repos });
-    let child;
-    try {
-      child = spawn(verifier.command, [], {
-        cwd: repos[0] ? repos[0].dir : DATA_DIR,
-        env: envMinimal(),
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-    } catch (e) {
-      return resolve({ erreur: `impossible de lancer ${verifier.command} : ${e.message}` });
-    }
-    proc.setActive(child);   // le bouton Stop doit pouvoir l'interrompre comme le reste
-
-    let stdout = '';
-    let stderr = '';
-    let fini = false;
-    let tueur = null;
-
-    /* `tueur` n'est PAS désarmé ici : au timeout, `terminer` résout la promesse avant que le
-       processus ne soit mort — annuler l'escalade à ce moment laisserait un script qui ignore
-       SIGTERM tourner indéfiniment. Il est désarmé à `close`, quand le processus a fini. */
-    const terminer = (r) => {
-      if (fini) return;
-      fini = true;
-      clearTimeout(minuteur);
-      proc.clearActive(child);
-      resolve(r);
-    };
-
-    /* Timeout : SIGTERM d'abord — un script de test a souvent des enfants à ramasser et un
-       rapport à écrire — puis SIGKILL s'il s'accroche. Sans le second, un script bloqué
-       retiendrait la file pour toujours. */
-    const minuteur = setTimeout(() => {
-      onLog(t('log.verify.timeout', { n: verifier.timeout_s }));
-      try { child.kill('SIGTERM'); } catch { /* déjà mort */ }
-      tueur = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* déjà mort */ } }, GRACE_KILL_MS);
-      terminer({ erreur: `délai dépassé (${verifier.timeout_s} s)`, stderr });
-    }, Math.max(1, verifier.timeout_s) * 1000);
-
-    // Au-delà de MAX_REPONSE la réponse est déjà invalide : inutile d'accumuler des Mo en mémoire.
-    child.stdout.on('data', (c) => { if (stdout.length <= verify.MAX_REPONSE) stdout += c; });
-    child.stderr.on('data', (c) => {
-      const bloc = String(c);
-      stderr += bloc;
-      if (stderr.length > verify.MAX_LOG) stderr = stderr.slice(-verify.MAX_LOG);
-      for (const l of bloc.split('\n')) if (l.trim()) onLog(l.trim());
-    });
-    child.on('error', (e) => terminer({ erreur: `échec du lancement : ${e.message}`, stderr }));
-    child.on('close', (code) => {
-      if (tueur) clearTimeout(tueur);   // le processus est vraiment mort : l'escalade n'a plus d'objet
-      // Le code de sortie est INDICATIF : c'est stdout qui fait foi (§4). Un script qui sort
-      // en 1 parce que des tests échouent a parfaitement rendu son verdict.
-      const r = verify.validerReponse(stdout);
-      if (!r.ok) return terminer({ erreur: `${r.erreur} (code de sortie ${code})`, stderr });
-      terminer({ run: r.run, stderr });
-    });
-
-    child.stdin.on('error', () => { /* script qui ne lit pas stdin : ce n'est pas une erreur */ });
-    child.stdin.end(entree);
-  });
-}
-
 /* ---------------------------------------------------------------- vérificateur « commandes »
 
    L'autre famille : une liste de commandes lancées dans le dépôt préparé, et le verdict vient
@@ -490,7 +420,14 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
         for (const c of cibles) {
           const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(c.repo_id);
           if (!repo) throw new Error(t('err.verify.repo-gone', { id: c.repo_id }));
-          ciblesResolues.push({ ...c, base_sha: await resoudre(repo, c.base_sha), head_sha: await resoudre(repo, c.head_sha) });
+          /* `base_sha` est NUL sur une vérification de branche : il n'y a pas de base à
+             comparer. Le résoudre quand même donnerait `git rev-parse null`, c'est-à-dire une
+             vérification en erreur là où il n'y a rien à faire. */
+          ciblesResolues.push({
+            ...c,
+            base_sha: c.base_sha ? await resoudre(repo, c.base_sha) : null,
+            head_sha: await resoudre(repo, c.head_sha),
+          });
         }
         db.prepare('UPDATE verification SET targets_json = ? WHERE id = ?')
           .run(JSON.stringify(ciblesResolues), verificationId);
@@ -530,11 +467,9 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
       return repos;
     };
 
-    /* Le genre du vérificateur ne change QUE la façon d'obtenir un `run` : tout le reste —
-       préparation, cache, composition du verdict, rapport, badges — est commun. */
-    const lancer = (role, reposPrets) => (verifier.kind === 'commands'
-      ? lancerCommandes(verifier, commandes, reposPrets, noter)
-      : appelerScript(verifier, role, reposPrets, noter));
+    /* Une seule famille depuis la 2.0 : la liste de commandes. Le `role` ('base' | 'head') ne
+       sert plus qu'à préparer les dépôts — il ne change rien à la façon de lancer. */
+    const lancer = (role, reposPrets) => lancerCommandes(verifier, commandes, reposPrets, noter);
 
     /* Run BASE : il répond à « était-ce déjà rouge avant ? ». Sans lui, un test cassé par
        quelqu'un d'autre serait imputé à cette branche.
@@ -551,7 +486,13 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
            pour éviter.
        Un run qui coûte deux fois plus longtemps vaut mieux qu'un verdict faux en silence. */
     let base = null;
-    if (verifier.run_base) {
+    /* VÉRIFICATION DE BRANCHE : aucune cible ne porte de merge request. « La base était-elle
+       déjà rouge ? » n'a alors pas de sens — sur une branche d'intégration, la branche EST la
+       base, et lancer le run base ferait tourner la batterie deux fois pour comparer `develop`
+       à `develop`. On le DÉDUIT des cibles plutôt que de le stocker : une colonne « type » se
+       désynchronise, une donnée déduite jamais. */
+    const surBranches = !cibles.some((c) => c.mr_id);
+    if (verifier.run_base && !surBranches) {
       const reposBase = await preparer('base_sha');
       noter('run base…');
       const r = await lancer('base', reposBase);
@@ -599,6 +540,100 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
    Décoché par défaut : écrire chez les autres est une décision, pas un réglage par défaut.
    Le corps porte les FAITS (quels tests, quels commits) ; sans eux, un « ✗ » sur une MR est
    une accusation sans dossier. */
+/* LES BLOCS DU COMMENTAIRE, séparés de leur mise en forme. Ici on lit la base (verdict, tests,
+   commits) ; `verify.composerCommentaire` les pose dans le gabarit. Cette séparation est ce qui
+   permet à la modale de PRÉ-REMPLIR exactement ce que la publication automatique enverrait. */
+function blocsCommentaire(v, verifier) {
+  const lire = (j) => { try { return j ? JSON.parse(j) : null; } catch { return null; } };
+  const cibles = lire(v.targets_json) || [];
+  const imputable = lire(v.imputable_json) || [];
+  const nom = (verifier && verifier.name) || v.verifier_name;
+  /* Sur une vérification de BRANCHE (aucune MR parmi les cibles), rien n'est « cassé par cette
+     branche » : la branche EST la base. Le libellé le dit autrement, sinon on accuse un auteur
+     qui n'existe pas. */
+  const surMr = cibles.some((c) => c.mr_id);
+  const verdict = {
+    verified_pass: `**${nom}** : ✓ vérifié`,
+    verified_fail: surMr
+      ? `**${nom}** : ✗ ${imputable.length} test(s) cassé(s) par cette branche`
+      : `**${nom}** : ✗ ${imputable.length} test(s) cassé(s)`,
+    broken_base: `**${nom}** : ⚠ la base était déjà rouge — rien n'est imputable à cette branche`,
+  }[v.verdict] || `**${nom}** : ⚠ vérification en erreur`;
+
+  const tests = [];
+  if (imputable.length) {
+    tests.push('Tests cassés :');
+    for (const f of imputable.slice(0, 20)) tests.push(`- \`${f.test}\`${f.message ? ` — ${f.message}` : ''}`);
+    if (imputable.length > 20) tests.push(`- … et ${imputable.length - 20} de plus`);
+  }
+
+  /* LES COMMANDES QUI ONT CASSÉ. Quand la sortie nomme les tests (TAP, JUnit), le bloc
+     `{tests}` ne dit pas QUELLE commande a échoué — utile quand la liste en compte cinq. Vide
+     s'il n'y a rien en échec : le gabarit s'en accommode, la ligne disparaît. */
+  const head = lire(v.head_run_json);
+  const rates = ((head && head.commands) || []).filter((c) => c.code !== 0);
+  const plusieurs = new Set(((head && head.commands) || []).map((c) => c.repo).filter(Boolean)).size > 1;
+  const commandes = rates.length
+    ? ['Commandes en échec :', ...rates.map((c) => `- ${plusieurs && c.repo ? `${c.repo} › ` : ''}\`${c.command}\` — code de sortie ${c.code}`)].join('\n')
+    : '';
+
+  const commits = ['Commits testés :'];
+  for (const c of cibles) {
+    const repo = db.prepare('SELECT project FROM repo WHERE id = ?').get(c.repo_id);
+    commits.push(`- ${(repo && repo.project) || c.repo_id} · \`${c.branch || ''}\` @ \`${String(c.head_sha || '').slice(0, 8)}\``);
+  }
+  /* LES MENTIONS NE PARTENT QUE SI QUELQUE CHOSE CASSE. Écrire `@amady` sur chaque merge
+     request vérifiée, y compris pour dire que tout va bien, envoie un mail à quelqu'un pour
+     rien — et c'est exactement comme ça qu'un signal utile finit dans un filtre. Vert, donc
+     vide : le badge et le commentaire suffisent. */
+  const mentions = (v.verdict === 'verified_pass' || !verifier || !verifier.mentions)
+    ? ''
+    : String(verifier.mentions).trim();
+
+  return {
+    verdict, tests: tests.join('\n'), commandes, commits: commits.join('\n'), mentions, verificateur: nom,
+  };
+}
+
+// Le corps prêt à publier : les blocs, posés dans le gabarit du vérificateur (ou le défaut).
+function corpsCommentaire(verificationId, maintenant = new Date()) {
+  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
+  if (!v) return null;
+  const verifier = db.prepare('SELECT * FROM verifier WHERE id = ?').get(v.verifier_id);
+  return verify.composerCommentaire(blocsCommentaire(v, verifier), verifier && verifier.comment_template, maintenant);
+}
+
+/* Publie un corps sur les merge requests de la vérification, et GARDE LA TRACE de l'envoi.
+   `body` fourni = texte relu et modifié par l'utilisateur ; absent = le corps composé. */
+async function publierCommentaire(verificationId, cfg, { body = null, onLog } = {}) {
+  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
+  if (!v) return null;
+  const texte = String(body == null ? corpsCommentaire(verificationId) : body).trim();
+  if (!texte) throw new Error(t('err.verify.comment-empty'));
+
+  let cibles = [];
+  try { cibles = JSON.parse(v.targets_json || '[]'); } catch { cibles = []; }
+  const postees = [];
+  for (const c of cibles) {
+    if (!c.mr_id) continue;
+    const mr = db.prepare(`SELECT mr.*, repo.project AS project, repo.forge AS forge
+      FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?`).get(c.mr_id);
+    if (!mr) continue;
+    await forge.clientFor(mr).postMrNote(cfg, mr.project, mr.iid, texte);
+    postees.push(`${mr.project}!${mr.iid}`);
+  }
+  /* La trace n'est posée QUE si quelque chose est parti : marquer « publié » après un échec
+     réseau ferait disparaître le bouton sans que personne n'ait rien lu. */
+  if (postees.length) {
+    db.prepare('UPDATE verification SET comment_posted_at = ?, comment_targets = ? WHERE id = ?')
+      .run(new Date().toISOString(), JSON.stringify(postees), verificationId);
+    if (onLog) onLog(t('log.verify.commented', { liste: postees.join(', ') }));
+  }
+  return postees;
+}
+
+/* Le verdict publié sur la merge request PAR LE VÉRIFICATEUR LUI-MÊME, si — et seulement si —
+   il le demande. Décoché par défaut : écrire chez les autres est une décision. */
 async function commenterSurForge(verificationId, cfg, onLog) {
   const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
   if (!v) return null;
@@ -606,45 +641,19 @@ async function commenterSurForge(verificationId, cfg, onLog) {
   if (!verifier || !verifier.comment_on_forge) return null;
 
   const lire = (j) => { try { return j ? JSON.parse(j) : null; } catch { return null; } };
-  const cibles = lire(v.targets_json) || [];
-  const imputable = lire(v.imputable_json) || [];
-  const nom = verifier.name || v.verifier_name;
-  const entete = {
-    verified_pass: `**${nom}** : ✓ vérifié`,
-    verified_fail: `**${nom}** : ✗ ${imputable.length} test(s) cassé(s) par cette branche`,
-    broken_base: `**${nom}** : ⚠ la base était déjà rouge — rien n'est imputable à cette branche`,
-  }[v.verdict] || `**${nom}** : ⚠ vérification en erreur`;
-
-  const corps = [entete, ''];
-  if (imputable.length) {
-    corps.push('Tests cassés :');
-    for (const f of imputable.slice(0, 20)) corps.push(`- \`${f.test}\`${f.message ? ` — ${f.message}` : ''}`);
-    if (imputable.length > 20) corps.push(`- … et ${imputable.length - 20} de plus`);
-    corps.push('');
+  /* Un seul cas mérite d'écrire chez quelqu'un : la base passait, la branche casse (voir
+     `verify.doitCommenterAuto`). On DIT pourquoi on se tait — un silence se lit comme « publié ». */
+  if (!verify.doitCommenterAuto(lire(v.base_run_json), lire(v.head_run_json))) {
+    if (onLog) onLog(t('log.verify.comment-skipped'));
+    return null;
   }
-  corps.push('Commits testés :');
-  for (const c of cibles) {
-    const repo = db.prepare('SELECT project FROM repo WHERE id = ?').get(c.repo_id);
-    corps.push(`- ${(repo && repo.project) || c.repo_id} · \`${c.branch || ''}\` @ \`${String(c.head_sha || '').slice(0, 8)}\``);
-  }
-  const body = corps.join('\n');
-
-  const postees = [];
-  for (const c of cibles) {
-    if (!c.mr_id) continue;
-    const mr = db.prepare(`SELECT mr.*, repo.project AS project, repo.forge AS forge
-      FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?`).get(c.mr_id);
-    if (!mr) continue;
-    await forge.clientFor(mr).postMrNote(cfg, mr.project, mr.iid, body);
-    postees.push(`${mr.project}!${mr.iid}`);
-  }
-  if (postees.length && onLog) onLog(t('log.verify.commented', { liste: postees.join(', ') }));
-  return postees;
+  return publierCommentaire(verificationId, cfg, { onLog });
 }
 
 module.exports = {
   WORKTREES_DIR, cheminWorktree, executerVerification, commenterSurForge,
-  appelerScript, lancerCommandes, envVerifier, ajouterWorktree, retirerWorktree, gcWorktrees,
+  corpsCommentaire, publierCommentaire, blocsCommentaire,
+  lancerCommandes, envVerifier, ajouterWorktree, retirerWorktree, gcWorktrees,
   inspecterWorkdir, preparerInPlace, restaurerInPlace, lireContexte,
   envMinimal,
 };

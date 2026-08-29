@@ -131,18 +131,30 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   **ton template de prompt de review n'est pas modifié**, l'instruction est ajoutée à la volée.
   L'onglet Stats en tire un **taux de résolution par projet**.
 - Une MR qui n'est plus ouverte sur la forge porte le badge **mergée** ; le bouton Merger disparaît.
-- **Filtrer par couleur de note.** Sous *Reviewées* et *Traitées*, trois cases au-dessus de la liste —
-  vert (≥ 7/10), orange (4 à 6,9), rouge (< 4) — **se cumulent** : « montre-moi les rouges et les
+- **Filtrer par couleur de note.** Sous *Reviewées* et *Traitées*, quatre cases au-dessus de la liste —
+  vert (≥ 7/10), orange (4 à 6,9), rouge (< 4) et **`— sans note`** — **se cumulent** : « montre-moi les rouges et les
   oranges » tient en deux clics, et chacune porte le nombre de merge requests qu'elle fera apparaître.
   Le choix est retenu d'une visite à l'autre ; décocher la dernière case ramène tout, plutôt que de
   laisser une liste vide sans issue. Le résumé de droite suit le filtre. Le stade *À traiter* n'a pas
   ces cases : une MR n'y revient qu'après suppression de son rapport, donc sans note à filtrer.
+  - **`— sans note`** est une case comme les autres, et elle existe pour une raison : la note n'est pas
+    calculée, elle est **relue du rapport**. Quand l'IA n'en écrit pas, la carte affiche `—` — et sans
+    cette case, elle quittait la liste au premier filtre posé, sans compteur ni case pour la rappeler.
+    On la croyait alors perdue, ou jamais reviewée.
 - **Liste et rapport défilent chacun pour soi.** Descendre la liste pour changer de merge request
   n'emporte plus le rapport hors de l'écran — on regarde les deux ensemble.
 
 ### ⛶ Ouvrir le code (explorateur plein écran)
 Arbre du projet + fichier affiché **entier avec le diff en place**, coloration syntaxique,
 **mini-carte** des changements, navigation entre modifications, panneaux repliables.
+
+**Tout l'écran parle de la version REVIEWÉE**, pas de la tête de branche : arbre, contenu du
+fichier et numéros de ligne viennent du commit que le rapport décrit. C'est ce qui fait qu'un
+« `src/foo.js` ligne 137 » lu dans le rapport tombe sur la bonne ligne à droite, même si la
+branche a avancé depuis (auquel cas la MR est de toute façon signalée **périmée**). Si ce commit
+a disparu du dépôt — force-push —, l'écran retombe sur la tête de branche.
+Côté rapport, l'IA reçoit le diff **déjà numéroté** : chaque ligne y porte son numéro réel dans
+la version finale du fichier, plutôt que de la laisser recompter depuis les en-têtes `@@`.
 **Commentaire inline** par ligne et **réponses** aux fils, synchronisés avec la forge — et
 **modifiables** tant qu'ils sont de toi.
 
@@ -199,6 +211,17 @@ dépôt** chaque **dossier** a la sienne, et répondre à l'un **ne fait pas ret
 ⚠ Tant qu'une question tient, **rien n'a été fait** : pas de synthèse enregistrée en exploration,
 aucun fichier touché hors dépôt.
 
+**Et si tu as répondu dans ton terminal ?** « Reprendre au terminal » copie la session d'agent : on
+peut donc répondre là-bas, et l'agent y poursuit le travail — dans le clone de Mergerie, qui n'en
+sait rien. Le bouton **`J'ai répondu au terminal`**, à côté de `Répondre et reprendre`, solde cette
+attente : les questions disparaissent, la todo se referme, et **rien n'est relancé**. L'état, lui,
+n'est pas deviné : sur une session de dépôt, Mergerie **relit la branche** (la même mécanique que
+`Vérifier l'état des branches`) — des commits d'avance et le projet repasse en *commité* ou *poussé*
+avec son diff, rien du tout et il revient à *à faire*. Hors dépôt, il n'y a ni branche ni commit à
+interroger : le dossier est rendu à l'état *fait*, et ce qu'il contient est ce que ton terminal en a
+fait. Sans ce geste, le projet restait en attente pour toujours, et le formulaire proposait de
+répondre une seconde fois — ce qui aurait relancé l'agent sur un travail déjà terminé.
+
 **Une session arrêtée sur une question pose sa todo.** Quand l'IA s'interrompt pour demander
 quelque chose, une **todo de priorité haute** est créée automatiquement — « Répondre à l'IA —
 session #12 », avec les projets concernés en note. La file est libre, plus rien ne repartira, et
@@ -210,6 +233,36 @@ journée se relit dans « Faites »).
 répondre au premier ne solde pas le travail, et une todo cochée trop tôt fait oublier les quatre
 autres. Elle reste une todo **ordinaire** — on peut la cocher, l'éditer, la supprimer : l'outil la
 pose et la referme, il ne reprend pas la main sur ce qu'on en a fait.
+
+**Dupliquer une session.** Sur la carte, à côté de *Modifier*, un bouton ouvre le formulaire
+**pré-rempli** de la session — **codage, exploration et codage hors dépôt**. Il n'y a pas
+d'identifiant derrière : **enregistrer crée une nouvelle session** au lieu d'écraser celle qu'on
+copiait. C'est le geste de qui relance la même consigne sur un autre dépôt, ou repart d'une session
+passée en changeant deux mots. Tout se recopie — consigne, libellé, message de commit, dépôts ou
+dossiers, branche de départ, options, vérificateur — sauf ce qui suit, dit sous le prompt :
+- la **session d'agent** n'est jamais reprise : une copie démarre une conversation neuve, pas la
+  suite de celle de l'originale ;
+- en **codage**, la **branche de travail** est décalée (`feature/x` → `feature/x-2`, puis `-3` si
+  elle est déjà prise) parce que deux sessions sur la même branche se marcheraient dessus, la
+  seconde commitant par-dessus le travail de la première. En **exploration**, la branche est celle
+  qu'on **lit** : elle se recopie telle quelle, la décaler pointerait vers une branche inexistante ;
+- les **images** attachées à l'originale ne sont pas copiées ; leur nombre est rappelé.
+
+Les boutons sont ceux d'une création de cette saveur — `Enregistrer` en codage et exploration,
+`Lancer` accompagné de `Créer sans lancer` hors dépôt : un bouton qui changerait de sens selon qu'on
+crée ou qu'on copie serait un piège. Tout reste modifiable avant d'enregistrer : c'est une
+proposition, pas un décalque.
+
+**Le formulaire raconte quatre choses, dans l'ordre.** Il est le même pour les quatre saveurs et
+se réarrange selon celle qu'on crée — mais l'enchaînement ne change pas : **où** (les projets et
+leurs branches, ou le répertoire et ses dossiers — l'avertissement « l'IA modifie en place, sans
+commit » suit ce choix-là, pas la fin du formulaire), **quoi** (le ticket Jira qui remplit le
+prompt, le prompt, les pièces jointes, puis le libellé — facultatif, donc après ce qu'il résume),
+**comment l'IA travaille** (les questions, la reprise d'une session d'agent) et enfin **une fois le
+code écrit** (message de commit, auto-push, vérificateur) — le dernier groupe parce qu'il est
+chronologiquement le dernier, et il disparaît entier dès qu'il n'y a rien à commiter. Deux
+intertitres discrets séparent les trois derniers groupes ; une **question libre** n'en montre aucun,
+elle n'a que la demande.
 
 **Un libellé, facultatif.** Un titre court à la création d'une session — codage, hors dépôt ou
 exploration. Une liste se lit sinon par son prompt, trois lignes repliées dont les premiers mots se
@@ -246,6 +299,35 @@ avec **`Enregistrer le suivi`** au lieu d'`Envoyer` : le texte reste **sur la ca
 tant qu'il n'est pas parti. On le **corrige**, on le **supprime** (l'effacer suffit), et **`Envoyer le
 suivi`** le lance en un geste une fois la session terminée. Vaut pour le codage, le codage hors dépôt
 et l'exploration.
+
+**Une pièce jointe se colle ou se choisit, dans le suivi comme à la création.** Bouton
+**`Joindre un fichier`** ou **Ctrl+V** pour une capture. Une image montre sa vignette, un document
+sa **puce nommée** — et c'est la seule différence entre les deux : pour l'agent, une capture et un
+PDF sont la même chose, un fichier à ouvrir. Vaut pour les **quatre saveurs** : codage, codage hors
+dépôt, exploration **et** question libre.
+Sont acceptés les **images**, **PDF**, **texte** (`.txt`, `.md`, `.log`), **données** (`.csv`,
+`.tsv`, `.json`, `.yml`, `.xml`, `.html`) et **documents Office** (`.docx`, `.xlsx`, `.pptx`,
+`.odt`, `.ods`, `.odp`, `.rtf`), jusqu'à **10 Mo** pièce. Le reste est refusé **avec sa raison**,
+avant que rien ne soit enregistré.
+La pièce accompagne **cette demande-là** : le prompt du suivi reçoit celles de la consigne initiale
+plus celle qu'on vient de joindre, mais **pas** celles d'un suivi précédent — elles illustraient
+autre chose, et un prompt qui annonce « voici les pièces jointes » en montrant la mauvaise envoie
+l'agent dans le décor.
+⚠ **Un suivi *enregistré* (brouillon) ne garde que le texte** — c'est ce que sait stocker la base.
+Les pièces restent attachées au formulaire ouvert et partent avec l'envoi ; un message le rappelle
+au moment d'enregistrer, plutôt que de les faire disparaître en silence.
+**Rouvrir une session montre ce qui y est vraiment joint.** Le formulaire d'édition n'affiche pas
+un compte (« 2 captures jointes ») mais les **pièces elles-mêmes** — vignette pour une image, nom
+pour un document — **ouvrables** d'un clic et **retirables** d'une croix, dans les quatre saveurs.
+Retirer supprime le fichier **du disque** : c'est irréversible, donc c'est confirmé. Une pièce
+arrivée **avec un suivi** est montrée en pointillés : elle n'appartient pas à la consigne qu'on est
+en train de modifier.
+
+⚠ **Le NOM d'origine accompagne le fichier dans le prompt** (« devis-client.pdf »), parce que
+`pj_2.pdf` n'apprend rien à l'agent. Sur disque, en revanche, le fichier porte un nom fabriqué : un
+nom venu d'un formulaire n'a rien à faire dans un chemin. Et **ce que l'agent sait lire dépend de
+lui** : un `.txt` ou un `.csv` sont sûrs, un `.xlsx` beaucoup moins — Mergerie fournit le fichier,
+il ne le convertit pas.
 
 **Ou il part tout seul, si tu le demandes.** Une case **`L'envoyer automatiquement à la fin de la
 session`**, sous le texte, arme le suivi : il partira dès que la session aura fini de travailler, sans
@@ -294,6 +376,13 @@ poussé, annoncer une erreur mentirait sur ce qui s'est passé.
 création (codage, hors dépôt, exploration) fait travailler l'IA **dans cette session-là** au lieu d'en
 ouvrir une nouvelle — elle garde donc tout le contexte déjà acquis. Renseigné, il rend aussi disponible
 le bouton **« Reprendre au terminal »**. Le champ est également modifiable après coup.
+
+⚠ **L'identifiant SUIT les passes.** Reprendre une session d'agent n'en poursuit pas toujours
+l'identifiant : `claude --resume` en ouvre un **nouveau**, qui porte l'échange entier plus le tour
+qu'on vient de faire. Mergerie enregistre donc, après **chaque** passe, celui que l'agent annonce —
+sinon deux suivis d'affilée sur le même projet repartiraient tous deux de l'état initial, et le
+second ignorerait le premier. C'est aussi ce qui fait que **« Reprendre au terminal »** ouvre la
+conversation **telle qu'elle est**, et non son état d'il y a trois suivis.
 
 **Enrichir depuis un ticket Jira (optionnel).** Si Jira est configuré (Réglages → Jira), la modale
 propose un champ **N° de ticket** avec un bouton **Récupérer** : le **titre + la description** du ticket
@@ -371,10 +460,24 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   son titre et sa date : un fichier transféré perd son nom bien avant son contenu.
 - **Toutes les itérations sont conservées.** Une session s'itère (lancement, `Envoyer un suivi`,
   réponses aux questions, passes de convergence) : chaque passe garde **le prompt réellement envoyé** et
-  **le retour de l'IA correspondant**. Un **sélecteur d'itération** apparaît en haut de `Retour de l'IA`
-  dès la deuxième passe (« Itération 2 · correction demandée · 29/07 00:42 ») et permet de relire
-  n'importe laquelle. Relire une réponse sans savoir à quelle demande elle répondait n'apprend rien : les
-  deux sont donc affichés ensemble. Vaut aussi pour le **codage hors dépôt**, dossier par dossier.
+  **le retour de l'IA correspondant**. Dès la deuxième passe, `Retour de l'IA` affiche les itérations
+  **en colonne à gauche** — chacune avec son numéro, son genre, sa date et **la demande qui l'a
+  produite** — et le contenu de celle qu'on choisit **à droite**. On ne se souvient pas du numéro d'une
+  itération, on se souvient de ce qu'on a demandé : un **champ de recherche** en tête de la colonne
+  cherche donc dans ces demandes et **masque** les itérations qui ne correspondent pas, sans en perdre
+  aucune — et le filtre survit au passage d'une itération à l'autre. Relire une réponse sans savoir à
+  quelle demande elle répondait n'apprend rien : les deux sont donc affichés ensemble. Une seule
+  itération n'affiche aucune colonne — il n'y a rien à choisir. Vaut aussi pour le **codage hors
+  dépôt**, dossier par dossier.
+  **Épingler et nommer.** Au-delà de quelques passes, ni le numéro ni la date ne disent ce qui
+  s'y est joué. Chaque itération porte donc deux gestes : une **étiquette** qui la remonte **en
+  tête de colonne** (le numéro reste affiché, la chronologie se lit encore), et un **nom** qu'on
+  écrit sur place — Entrée valide, Échap renonce. Le nom s'affiche en gras sous l'en-tête et
+  **entre dans la recherche**, comme la demande. ⚠ Ni l'étiquette ni le nom **ne partent à
+  l'IA** : c'est du rangement, écrit pour l'humain qui parcourt la colonne — même règle que le
+  libellé d'une session. Une itération **antérieure à l'historique des passes** n'a pas de ligne
+  en base : elle ne peut être ni nommée ni épinglée, et l'écran le dit au lieu de proposer un
+  geste sans effet.
 - **⌨️ Reprendre la session au terminal.** Chaque projet d'une session de codage (dépôt **ou** hors dépôt),
   ainsi que les reviews, expose un bouton **« Reprendre au terminal »** qui copie la **commande prête à
   coller** : `cd` vers le bon dossier + lancement de l'agent avec l'**identifiant de session** (claude
@@ -403,7 +506,7 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   on choisit un **répertoire local** (déclaré dans *Réglages → Dépôts*) puis **le ou les projets** qu'il
   contient — le chemin en découle, et un chemin tapé à la main est une faute de frappe qu'on ne découvre
   qu'au milieu du traitement. Le formulaire (projets + prompt) vit dans **la même modale que le codage** — tu peux donc
-  aussi **joindre des captures d'écran** (bouton ou Ctrl+V) pour enrichir le prompt. Le même prompt est
+  aussi **joindre des fichiers** — captures, PDF, tableurs, texte (bouton ou Ctrl+V) — pour enrichir le prompt. Le même prompt est
   appliqué à **chaque dossier**, l'un après l'autre — un dossier en échec n'interrompt pas les autres, et
   son statut est indiqué par dossier. Comme pour le codage sur dépôt, chaque dossier expose
   **`Retour de l'IA`** — ce que l'agent dit avoir fait, utile quand le dossier n'a pas bougé (prompt
@@ -427,8 +530,18 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   **aucune modification ne subsiste**. Chaque exploration expose elle aussi
   **« Reprendre au terminal »** pour continuer la conversation toi-même.
   **Chaque question est conservée** : une question de suivi écrase le fichier de réponse, mais la passe
-  est archivée — `Voir la réponse` propose un **sélecteur d'itération** qui rejoue chaque question avec
-  la réponse qu'elle a obtenue.
+  est archivée — `Voir la réponse` aligne les itérations à gauche, avec la recherche sur les questions
+  posées, et rejoue à droite celle qu'on choisit avec la réponse qu'elle a obtenue.
+- **Question libre** — la même chose, **sans aucun dépôt**. On pose une question à l'IA — une notion à
+  creuser, deux options à comparer, un plan à challenger — et la réponse est gardée ici. Rien n'est lu ni
+  modifié sur la machine : ni clone, ni dossier, ni fichier de ton code. Un **libellé** facultatif range
+  l'étude (« Concurrence », « Archi paiement »), et la recherche porte sur la question et le libellé.
+  Comme partout, une **question de suivi reprend la même session d'agent** — c'est ce qui permet de mener
+  une étude en cinq questions plutôt qu'une —, chaque passe est **archivée** avec sa question, et
+  **« Reprendre au terminal »** rend la main pour continuer l'échange soi-même. La réponse s'exporte
+  (HTML, Word, PDF) comme celle d'une exploration. Une question libre ne réserve aucun dépôt : elle ne
+  bloque jamais une review ni une session de codage, et rien ne la bloque.
+  (Sous-onglet dédié, après *Exploration*.)
 
 ### Notes
 Les post-it et l'onglet bloc-notes du quotidien, **dans l'outil** — donc **ancrés** à ce qu'on y suit
@@ -533,9 +646,16 @@ Markdown côte à côte** (le même rendu que les rapports de review, donc le m�
 - **Autosauvegarde** à la frappe, avec un délai d'une seconde et un indicateur discret « Enregistré ».
   Enregistrer à chaque caractère ferait une requête par lettre ; n'enregistrer qu'à la fermeture perdrait
   le travail d'une page restée ouverte.
+- **Coller une capture** (Ctrl+V) dans l'éditeur l'**insère au curseur**, sur sa propre ligne, et
+  l'aperçu l'affiche aussitôt. L'image part **sur le disque** (`data/notes/<page>/`) et la page ne garde
+  qu'un lien : mettre la capture en base64 dans le contenu gonflerait la ligne de plusieurs mégaoctets,
+  renvoyés en entier à chaque autosauvegarde — c'est-à-dire toutes les secondes pendant qu'on écrit.
 - **Épingler** garde une page en tête de liste.
-- **Exporter** télécharge la page en `.md`, au nom **slugifié** depuis le titre.
-- **Supprimer** demande confirmation — c'est la seule action irréversible de l'onglet.
+- **Exporter** télécharge la page en `.md`, au nom **slugifié** depuis le titre. ⚠ Les captures y sont
+  référencées par leur **adresse dans Mergerie** : le `.md` relu ailleurs affichera le texte, pas les
+  images.
+- **Supprimer** demande confirmation — c'est la seule action irréversible de l'onglet. Les **captures de
+  la page partent avec elle**, fichiers compris.
 
 #### Autolink — `!214` et `PROJ-720` deviennent des liens
 Ce qu'on écrit dans une note, ce sont les identifiants du quotidien. Ils deviennent cliquables **au rendu**
@@ -759,6 +879,20 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   la raison au lieu de la laisser enfermée. La **liste des tags** affiche la date, la (les)
   **branche(s) qui portent le tag**, l'auteur du commit pointé — avec un bouton `Auteur du tag`
   qui va lire le **vrai *tagger*** d'un tag annoté dans le clone local (aucune des deux API de forge ne l'expose).
+- **Comparer** — deux dépôts, **une branche ou un tag** de chaque côté, et la question « qu'est-ce qui
+  existe ici et pas là ? » (comparer deux versions livrées, c'est comparer deux tags ; les deux vivent
+  dans la même liste à recherche, marqués, parce qu'une branche et un tag peuvent porter le même nom). Ce n'est **pas** un `git diff` : les deux dépôts n'ont pas besoin d'une histoire commune
+  (un service extrait dans son propre dépôt, un fork parti vivre sa vie). L'outil lit les deux
+  **arborescences** et range chaque fichier dans une des trois colonnes : **à gauche seulement**, **des
+  deux côtés mais différents** (même chemin, contenu différent), **à droite seulement**. Les fichiers
+  **identiques** ne sont pas listés — seulement comptés, pour que l'écran montre ce qui manque plutôt que
+  ce qui va bien. **Cliquer un fichier montre ses différences** : les deux versions en diff unifié, avec un
+  rappel de quel côté est le rouge et lequel est le vert. Un fichier présent d'un seul côté se lit contre
+  le vide — tout son contenu en retrait (ou en ajout), c'est-à-dire exactement ce qui manque à l'autre.
+  Un binaire s'annonce au lieu de déverser ses octets, et un fichier de plus d'un mégaoctet n'est pas
+  chargé — c'est dit, pas caché. Un **filtre** cherche un fichier dans les trois colonnes à la fois. Les deux côtés
+  peuvent désigner le **même dépôt** sur deux branches. Au-delà de 2 000 fichiers par colonne, les listes
+  sont **coupées et la troncature est annoncée** — jamais silencieuse.
 - **Trouver une ref** — on saisit un nom de tag **ou** de branche (saisie libre) et l'outil dit,
   **à travers tous les dépôts actifs** (GitLab et GitHub confondus), lesquels le possèdent : type, commit +
   lien vers la forge, date,
@@ -841,11 +975,15 @@ Deux sous-vues, comme Codage/Exploration en Dev IA.
   **recherche** par nom. La validation regroupe les services **par projet** et lance un `docker compose`
   par projet (un échec n'interrompt pas les autres).
 - **Badges de santé sur l'onglet Docker** : le **nombre de containers en erreur** — *restarting*,
-  *dead*, et ceux **sortis en erreur** (code de sortie non nul) — en **rouge**. Un container arrêté
-  **proprement** (code 0 : on l'a arrêté soi-même, ou un job a fini son travail) n'y entre pas : le
-  compter en rouge faisait sonner l'alarme tous les jours, et une alarme qui sonne toujours n'est
-  plus lue. Il reste nommé dans la bulle. Un code de sortie illisible reste hors alarme — on ne crie
-  pas au loup sur une supposition et le **nombre d'unhealthy** en **orange**, directement dans le menu — visibles au démarrage et
+  *dead*, et ceux **sortis en erreur** — en **rouge**. Un container **arrêté par toi** n'y entre pas :
+  ni l'arrêt propre (code 0 : on l'a arrêté soi-même, ou un job a fini son travail), ni celui que
+  `docker stop` / `docker compose stop` a dû tuer par signal — SIGTERM non piégé (**143**) puis SIGKILL
+  au bout du délai (**137**), ce qui est le lot de beaucoup d'images parfaitement saines. Le compter en
+  rouge faisait sonner l'alarme à chaque arrêt volontaire, et une alarme qui sonne toujours n'est plus
+  lue ; il reste nommé dans la bulle et dans le filtre *Arrêtés*. Deux réserves, tenues : un 137 dû au
+  **manque de mémoire** (OOM, lu dans `docker inspect`) reste rouge — même code, sens opposé — et les
+  signaux qui disent bien un plantage (**139** SIGSEGV, **134** SIGABRT) aussi. Un code de sortie
+  illisible reste hors alarme — on ne crie pas au loup sur une supposition et le **nombre d'unhealthy** en **orange**, directement dans le menu — visibles au démarrage et
   rafraîchis **automatiquement toutes les 30 s** (et à chaque ouverture de l'onglet) — donc un container qui
   bascule en *restarting* apparaît dans le titre du menu **même sans être sur l'onglet Docker**. Le poll est
   léger (un seul `docker ps -a`) et se met en pause quand l'onglet du navigateur est masqué.
@@ -932,12 +1070,21 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   interrogé depuis les autres onglets. Rien aujourd'hui : pas de badge du tout, un zéro dans un
   menu n'apprend rien. Un job lancé cinq fois compte pour un — la liste ne porte que le dernier
   build de chacun, et la bulle dit donc « jobs », pas « lancements ».
+  **Et une pastille ROUGE à côté : les jobs en échec du jour.** Le compte bleu monte aussi quand
+  tout va bien ; le rouge répond à l'autre question — « est-ce que quelque chose est tombé ce
+  matin ? » —, de n'importe quel onglet. Trois bornes, assumées : **l'échec seul** (l'instable a
+  sa couleur et son filtre dans l'onglet ; le peindre en rouge ferait sonner l'alarme pour un
+  test capricieux), **le jour seul** (un échec d'hier ne compte pas — il est en tête de l'onglet,
+  là où on va le chercher), et **pas pendant qu'il se rejoue** (un job relancé n'est pas annoncé
+  cassé tant qu'il tourne). Plus rien de cassé : la pastille disparaît.
 - **Prévenu à la fin de ce que TU as lancé.** Une notification bureau quand un job que tu as
   lancé depuis Mergerie se termine, avec son verdict ; un clic ouvre sa fiche. Uniquement les
   tiens : être prévenu du build nocturne de l'équipe serait du bruit, et on couperait tout au
   bout de deux jours. Débrayable dans *Réglages → Notifications*. L'attente survit à la
   fermeture de l'onglet — c'est justement le cas d'usage.
-- **La fiche d'un job** (`Ouvrir`), en **trois blocs séparés** — le formulaire de lancement,
+- **La fiche d'un job** (`Ouvrir`, ou un clic sur le **nom du job** — la ligne entière ne
+  l'ouvre pas : les boutons de droite lancent, relancent ou sortent vers Jenkins, et le clic
+  ne doit pas leur poser une fenêtre par-dessus), en **trois blocs séparés** — le formulaire de lancement,
   l'historique, le détail de l'exécution choisie. Chacun est une carte sur un fond en retrait :
   la frontière se **voit** au lieu de se deviner. L'historique est une vraie liste (des filets
   entre les lignes, la date sur son propre étage pour que les verdicts s'alignent), la ligne
@@ -1318,18 +1465,18 @@ commandes *nom + commande figée*). C'est le **premier** onglet, et celui qui s'
 première fois : sans jeton, aucun autre réglage ne sert à rien ·
 **Dépôts** (ajout un par un ou en masse **depuis GitLab** ou **depuis GitHub** — chaque dépôt porte un badge
 de forge, et un même chemin peut exister sur les deux —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ·
-**Merge Request** (rafraîchissement auto, convergence, templates de prompt — le **skill** de review s'écrit dans le gabarit) ·
+**Merge Request** (rafraîchissement auto, convergence, templates de prompt — le gabarit livré n'invoque **aucun skill**, celui qui en a un l'y écrit ; la **note globale**, elle, est réclamée par l'application quel que soit le gabarit, parce que la liste s'en sert pour filtrer) ·
 **Règles de review spécifiques** (critères ajoutés au prompt quand le nom de
 branche contient un fragment donné **ou quand le diff touche un chemin** — glob type `**/migrations/**`,
 `*.sql` —, plus précis ; une règle par chemin peut porter un **badge « risque »** affiché sur les MR
 concernées, calculé **sans IA** juste sur les chemins du diff, pour voir d'un coup d'œil laquelle reviewer en premier) ·
-**Vérificateurs** (tes scripts de tests, et les dépôts que chacun sait tester — voir *Vérification
+**Vérificateurs** (tes commandes de tests, et les dépôts que chacun sait tester — voir *Vérification
 objective* plus bas ; la page montre d'abord **la liste**, et le formulaire s'ouvre sur *Ajouter un
 vérificateur*, *Modifier* ou **`Dupliquer`** — celui-ci le rouvre **pré-rempli** sans identifiant,
 donc enregistrer **crée** au lieu d'écraser l'original, avec un nom libre proposé (« X (copie) »,
 les noms étant uniques) et le champ sélectionné : renommer est le premier geste) ·
 **Notifications** (sous-onglet dédié, voir ci-dessous) ·
-**Général** (thème clair/sombre/auto, langue, densité, brief du matin, conservation des données, sauvegarde, et une **zone dangereuse** pour la remise à zéro) ·
+**Général** (thème clair/sombre/auto, langue, densité, **arrangement des menus**, brief du matin, conservation des données, sauvegarde, et une **zone dangereuse** pour la remise à zéro) ·
 **Jira** (**connexion Jira** — URL + email + jeton d'API, avec un bouton *Tester Jira* — ; alimente l'onglet
 *Jira* et l'enrichissement d'une session depuis un ticket) ·
 **Jenkins** (URL, utilisateur et jeton d'API, avec un bouton de test, et la **fréquence de
@@ -1391,6 +1538,13 @@ ni recherche, ni modale, ni rapport ouvert, car un état périmé est pire qu'un
 connexion et les dépôts ne sont pas configurés · chaque champ de formulaire porte une **icône i** dont
 le survol (ou le focus clavier) explique à quoi il sert.
 
+- **La barre de menus se range** (Réglages → Général). On **remonte** ce qu'on ouvre dix fois par
+  jour et on **masque** ce dont on ne se sert pas : glisser-déposer ou flèches, appliqué tout de
+  suite. Un menu masqué quitte aussi la **palette** et les **raccourcis chiffrés** — `3` ouvre le
+  troisième menu *affiché*, pas le troisième d'origine ; proposer un écran dont l'entrée de menu a
+  disparu serait offrir un aller sans retour. La **fonctionnalité, elle, reste** : rien n'est
+  désactivé, seulement rangé. ⚠ **Réglages ne se masque pas** (c'est le chemin du retour), et
+  l'arrangement est mémorisé **dans ce navigateur**, comme le thème — pas dans la base.
 - **Palette de commandes — `Ctrl`/`Cmd` + `K`.** On tape un fragment et on saute où l'on veut : un
   onglet, un stade, une merge request, une session — la recherche porte sur ce qui est déjà chargé,
   donc elle répond sans appeler le serveur. `?` affiche la liste complète des raccourcis.
@@ -1432,18 +1586,22 @@ le survol (ou le focus clavier) explique à quoi il sert.
 ## Vérification objective (vérificateurs)
 
 Une review dit *ce qu'elle pense* du code. Un **vérificateur** dit **ce qui se passe quand on le lance** :
-c'est **ton** script de tests, Mergerie lui prépare les dépôts et lit son verdict. Les deux se complètent —
+ce sont **tes** commandes de tests, Mergerie prépare les dépôts et lit leur verdict. Les deux se complètent —
 une note de 9/10 sur une MR dont les tests d'intégration cassent ne veut plus rien dire une fois qu'on le sait.
 
 **Ce que ça change concrètement** : un badge sur chaque merge request (`✓ vérifié`, `✗ 2 tests cassés`,
 `⚠ base rouge`, `⟳ périmé`), et surtout la possibilité de **vérifier ensemble** des MR de dépôts
 différents qui ne valent qu'ensemble — la MR du front et celle de l'API qui ne passent que réunies.
 
-### Deux familles de vérificateurs
+### Ce qu'est un vérificateur
 
-**Commandes** — tu donnes une liste (`npm ci`, puis `npm test`), Mergerie la lance dans le dépôt préparé
-et **le verdict vient des codes de sortie**. Rien à écrire, rien à installer. C'est le cas courant, et le
-bon point de départ.
+Tu donnes une **liste de commandes** (`npm ci`, puis `npm test`), Mergerie la lance dans le dépôt préparé
+et **le verdict vient des codes de sortie**. Rien à écrire, rien à installer.
+
+> Une seconde famille a existé jusqu'à la 1.2 : un **exécutable** s'engageant sur un contrat JSON. Elle a
+> été retirée — elle demandait d'écrire et de maintenir un programme pour obtenir ce que trois lignes de
+> commandes donnent. Un vérificateur de cette famille encore enregistré reste visible dans les réglages,
+> marqué comme tel, et **refuse de tourner** : réécris-le en liste de commandes, puis supprime-le.
 
 L'**ordre compte** — `npm ci` avant `npm test` — et se corrige d'un clic : chaque ligne porte son rang et
 deux flèches pour la déplacer.
@@ -1461,14 +1619,7 @@ Quand plusieurs dépôts sont testés, les échecs sont **préfixés du dépôt*
 sans ça, deux projets ayant chacun un test du même nom seraient indiscernables — et la comparaison
 base/tête les confondrait.
 
-**Script** — un exécutable à toi qui s'engage sur le contrat JSON décrit plus bas. Plus de travail, mais il
-reçoit **tous les dépôts visés d'un coup** et décide lui-même quoi en faire : c'est la forme d'un vrai test
-d'**intégration**, là où « commandes » rejoue simplement la même liste dans chacun. Il rend aussi des tests
-nommés quelle que soit la façon dont ta suite s'exprime.
-
-Les deux partagent tout le reste : préparation git, double run base/tête, badges, rapport, « Corriger ».
-
-#### Ce que « commandes » sait dire, et ce qu'il ne sait pas dire
+#### Ce qu'un vérificateur sait dire, et ce qu'il ne sait pas dire
 
 La liste s'arrête **à la première commande qui échoue** : après un `npm ci` raté, la sortie de `npm test`
 n'est que du bruit. Le rapport montre alors le déroulé — quelle commande, quel code, combien de temps,
@@ -1518,13 +1669,14 @@ marche. Lancé par un service ou un lanceur de bureau, `npm` sera introuvable �
 
 ### Le partage des rôles
 
-**Mergerie fait tout le git.** Ton script ne fait aucun checkout, ne connaît aucune branche : il reçoit des
-répertoires déjà positionnés sur les bons commits et répond « les tests passent-ils ». C'est ce qui permet
-au même script de servir en worktree jetable comme dans ton propre répertoire de travail.
+**Mergerie fait tout le git.** Tes commandes ne font aucun checkout et ne connaissent aucune branche :
+elles tournent dans des répertoires déjà positionnés sur les bons commits et répondent « les tests
+passent-ils ». C'est ce qui permet à la même liste de servir en worktree jetable comme dans ton propre
+répertoire de travail.
 
 **Couverture déclarative ≠ checkout effectif.** Dans *Réglages → Vérificateurs*, déclarer un dépôt dit
-seulement « ce script sait tester ce dépôt-là ». Seuls les dépôts **effectivement visés** par une
-vérification sont préparés et transmis au script. Les autres dépôts couverts et configurés *in place* sont
+seulement « ce vérificateur sait tester ce dépôt-là ». Seuls les dépôts **effectivement visés** par une
+vérification sont préparés. Les autres dépôts couverts et configurés *in place* sont
 lus **en lecture seule** et apparaissent comme **contexte** dans le rapport (avec un ⚠ s'ils sont hors de
 leur branche par défaut ou modifiés) : un vert obtenu grâce à un voisin resté sur une vieille branche ne
 doit pas passer inaperçu.
@@ -1558,101 +1710,11 @@ Le bouton **« Tester le répertoire »** répond pendant que le formulaire est 
 répertoire reconnu, branche courante, et les deux réserves possibles — des modifications suivies (qui
 feraient refuser le run) et des fichiers non suivis (qui ne bloquent pas, mais seront là pendant les tests).
 
-### Contrat du script (v1) — famille « script » uniquement
-
-**Quel fichier ?** N'importe quel **exécutable** — l'extension n'a aucune importance (`.sh`, `.py`, `.js`,
-un binaire). Deux conditions techniques : le **bit d'exécution** (`chmod +x`), et un **shebang**
-(`#!/bin/sh`, `#!/usr/bin/env python3`…) s'il s'agit d'un script, puisqu'il est lancé directement et que
-rien ne devine avec quoi l'interpréter. Le champ *Commande* attend un **chemin absolu**, pas une ligne de
-commande : **aucun argument n'est transmis**, et tubes, redirections et variables ne seraient pas
-interprétés — les options se mettent dans le script.
-
-Le script est lancé **sans shell**, une fois par run (`base` puis `head`), avec un **environnement minimal**
-(`PATH`, `HOME`, `LANG`, `MERGERIE_VERIFY=1`) : **aucun jeton**, aucune variable de Mergerie. Son `cwd` est
-le premier répertoire de la liste. Son `stderr` est streamé dans le panneau de log du job.
-
-**Entrée** (JSON sur stdin) :
-
-```json
-{
-  "version": 1,
-  "verifier": "integ",
-  "role": "head",
-  "repos": [
-    { "name": "groupe/webapp-front", "dir": "/abs/path", "sha": "a1b2c3…",
-      "branch": "feat/PROJ-720", "mode": "worktree", "changed": true }
-  ]
-}
-```
-
-**Sortie** : la **dernière ligne JSON valide** de stdout.
-
-```json
-{
-  "version": 1,
-  "status": "pass",
-  "total": 218,
-  "failed": [
-    { "test": "checkout › total serveur", "message": "attendu 42, reçu 41", "log_excerpt": "…" }
-  ],
-  "duration_ms": 42000
-}
-```
-
-Le **code de sortie est indicatif** : c'est stdout qui fait foi (un script qui sort en 1 parce que des
-tests échouent a parfaitement rendu son verdict). En revanche une réponse illisible, tronquée ou hors
-schéma ne devient **jamais un vert** : elle donne `⚠ vérification en erreur`. Bornes : `failed` ≤ 50
-entrées, `log_excerpt` ≤ 4 ko chacun, réponse totale ≤ 256 ko.
-
-### Exemple A — worktree + docker compose éphémère
-
-```sh
-#!/bin/sh
-# Vérificateur d'intégration : une stack jetable par run, détruite quoi qu'il arrive.
-set -eu
-ENTREE=$(cat)
-FRONT=$(printf '%s' "$ENTREE" | jq -r '.repos[] | select(.name|endswith("webapp-front")) | .dir')
-API=$(printf '%s' "$ENTREE" | jq -r '.repos[] | select(.name|endswith("api-core")) | .dir')
-
-PROJET="mergerie-verify-$$"
-trap 'docker compose -p "$PROJET" down --remove-orphans >&2 || true' EXIT
-
-docker compose -p "$PROJET" --env-file ./integ.env \
-  -f "$API/docker-compose.yml" -f "$FRONT/docker-compose.yml" up -d --build >&2
-
-# Le rapport JUnit est converti en réponse du contrat. `total`/`failed` viennent de lui.
-if docker compose -p "$PROJET" run --rm tests >/tmp/out-$$ 2>&1; then
-  printf '{"version":1,"status":"pass","total":%s}\n' "$(grep -c '^ok ' /tmp/out-$$)"
-else
-  printf '{"version":1,"status":"fail","failed":%s}\n' "$(./junit2json.sh /tmp/out-$$)"
-fi
-```
-
-Deux points qui comptent : `-p` **isole le projet compose** (deux runs ne se marchent pas dessus), et le
-`trap EXIT` garantit la destruction de la stack **même si le script est tué** au timeout.
-
-### Exemple B — in place + adaptateur HTTP
-
-Quand la suite tourne déjà dans un orchestrateur local, le script n'a plus qu'à la déclencher et à
-**traduire sa réponse** dans le contrat :
-
-```sh
-#!/bin/sh
-set -eu
-cat >/dev/null            # l'entrée ne sert pas : l'orchestrateur connaît déjà les dossiers
-curl -sf --max-time 900 -X POST http://127.0.0.1:9099/run \
-  | jq -c '{version:1,
-            status: (if .failures == 0 then "pass" else "fail" end),
-            total: .tests,
-            failed: [.results[] | select(.ok|not)
-                     | {test: .name, message: .message, log_excerpt: .output}][:50]}'
-```
-
 ### `node_modules`, et pourquoi la base est parfois rouge
 
 **Stratégie `node_modules`.** Un worktree neuf n'a pas de dépendances installées. Deux réponses :
 un **symlink** depuis un cache partagé (rapide, mais suppose que le `lock` n'a pas changé), ou une
-**installation** dans le worktree (lente, mais fidèle). Le choix t'appartient — il vit dans ton script.
+**installation** dans le worktree (lente, mais fidèle). Le choix t'appartient — il vit dans tes commandes.
 Un `ln -s "$CACHE/node_modules" "$dir/node_modules"` fait l'affaire tant que tu invalides le cache sur
 changement de `package-lock.json`.
 
@@ -1683,7 +1745,7 @@ changement de `package-lock.json`.
 Le bouton **Vérifier** est présent sur les merge requests à traiter **comme sur celles déjà reviewées**
 (dans la liste et dans le panneau de rapport) : une review est un avis, un verdict est un fait, et le
 second garde tout son intérêt une fois le premier rendu. Un clic ouvre une **confirmation** qui annonce ce
-qui va tourner — les commandes ou le script, le dépôt, le mode, le délai — avant de lancer quoi que ce
+qui va tourner — les commandes, le dépôt, le mode, le délai — avant de lancer quoi que ce
 soit. Elle apparaît même quand un seul vérificateur couvre le dépôt : exécuter des commandes sur sa
 machine mérite un écran, pas un clic silencieux.
 
@@ -1693,12 +1755,92 @@ vérificateurs automatiques qui couvrent son dépôt partent, sans clic. Seule u
 déclenche — une MR déjà connue est revue à chaque synchronisation, la relancer à chaque fois
 ferait tourner la batterie sur tout le monde en permanence.
 
-⚠ **Cinq vérifications au maximum par tour de découverte.** Un lundi matin, la découverte peut
-ramener quinze merge requests ; quinze batteries fonctionnelles saturent la machine pour une heure
-et bloquent la file partagée avec les reviews. Au-delà, les MR gardent leur bouton **`Vérifier`**,
-et le **journal du serveur dit ce qui n'est pas parti** — un plafond silencieux se lirait comme
-« tout a été vérifié ». Les vérifications d'un même dépôt **s'empilent dans la file** au lieu
-d'être refusées : elles ne tourneront jamais en même temps, mais aucune n'est perdue.
+**Relancer quand le verdict se périme.** Une seconde case, **`Relancer quand une merge request
+vérifiée reçoit de nouveaux commits`** : un vert rendu sur des commits qui ne sont plus les
+derniers ne vaut rien. Elle est SÉPARÉE de la première parce que c'est un appétit différent —
+sur une branche qui bouge dix fois par jour, ça fait dix batteries. Décochée, le badge dit
+simplement « périmé » et c'est toi qui relances.
+
+⚠ **Cinq vérifications au maximum par tour de découverte**, et ce plafond se **règle**
+(*Réglages → Merge Request*). Un lundi matin, la découverte peut ramener quinze merge requests ;
+quinze batteries fonctionnelles saturent la machine pour une heure et bloquent la file partagée
+avec les reviews. Au-delà, les MR gardent leur bouton **`Vérifier`**, et le **journal du serveur
+dit ce qui n'est pas parti** — un plafond silencieux se lirait comme « tout a été vérifié ».
+`0` signifie « sans limite », et c'est un choix qui doit pouvoir s'assumer. Les vérifications
+d'un même dépôt **s'empilent dans la file** au lieu d'être refusées : elles ne tourneront jamais
+en même temps, mais aucune n'est perdue.
+
+### Publier le verdict sur la merge request
+
+Deux chemins, et ils ne se confondent pas.
+
+**À la main, après relecture.** Depuis le rapport, **`Publier en commentaire`** ouvre le corps
+**pré-rempli** — exactement celui que la publication automatique enverrait — dans un champ
+**modifiable**. Une confirmation **nomme la merge request** avant l'envoi, et une fois publié
+l'écran le dit (date, destinataires) au lieu de reproposer le bouton comme si de rien n'était :
+c'est ce qui évite de poster deux fois le même verdict chez quelqu'un. Si la publication échoue,
+**le texte reste sous les yeux** — on ne perd jamais ce qu'on vient d'écrire.
+
+**Tout seul**, si la case `Publier le verdict en commentaire` est cochée sur le vérificateur —
+**à condition que le run base soit vert**. C'est lui qui donne son sens au verdict :
+
+| Base | Tête | Publié ? |
+|---|---|---|
+| verte | rouge | **oui** — « ça passait avant, cette branche casse » |
+| verte | verte | **oui** — « vérifié, et ça tient » : sur une MR qu'on va relire, un vert écrit vaut mieux qu'un badge à aller chercher |
+| rouge | — | non — ce n'est pas imputable à cette branche ; l'écrire sur SA merge request reviendrait à l'accuser de ce que quelqu'un d'autre a cassé |
+| absente | — | non — sans run base, on ne SAIT PAS si c'était déjà rouge, et publier serait affirmer ce qu'on n'a pas vérifié |
+
+Le **journal du serveur dit pourquoi** rien n'est parti : un silence se lit comme « publié ».
+Décochée par défaut : écrire chez les autres est une décision. La publication **à la main** reste
+possible dans tous les cas — là, c'est un humain qui décide, avec le texte sous les yeux.
+
+**Le gabarit du commentaire** se modifie (il apparaît sous la case). Ce que contient chaque
+champ :
+
+| Champ | Ce qu'il produit |
+|---|---|
+| `{verdict}` | la ligne de verdict, avec le nom du vérificateur — `**integ** : ✗ 2 test(s) cassé(s) par cette branche`. Sur une vérification de branche, « par cette branche » disparaît |
+| `{tests}` | les tests cassés, un par ligne, avec leur message quand la sortie en donne un. Coupé au-delà de vingt, et il le dit. **Vide si tout passe** |
+| `{commandes}` | les commandes qui ont échoué, avec leur code de sortie (préfixées du dépôt s'il y en a plusieurs). Elle répond à ce que `{tests}` laisse ouvert quand la sortie **nomme** les tests : lesquels cassent, oui — mais laquelle des commandes. Vide si rien n'a échoué |
+| `{commits}` | les commits réellement testés : un par dépôt, `dépôt · branche @ sha`. C'est ce qui rend le verdict vérifiable |
+| `{mentions}` | les personnes déclarées sur le vérificateur (champ *Personnes à prévenir quand ça casse*), **uniquement sur un verdict rouge**. Vide sur un vert |
+| `{verificateur}` | le nom du vérificateur, seul — utile si tu écris ta propre phrase de verdict |
+| `{date}` | la date de **publication** du commentaire (`17/08/2026`), pas celle du run |
+| `{heure}` | l'heure de publication (`14:12`) |
+
+**Prévenir quelqu'un.** Le champ *Personnes à prévenir quand ça casse* prend des **handles**
+(`@amady @bruno`) ou un **groupe** (`@mon-equipe`, qui vieillit mieux qu'une liste de personnes),
+repris tels quels là où tu places `{mentions}`. C'est la **forge** qui résout la mention et envoie
+le mail — Mergerie ne fait que l'écrire. Deux choses à savoir : il faut le handle, pas
+l'identifiant numérique (GitLab ne résout pas `@42`), et tu ne seras pas notifié de **tes** propres
+mentions, le commentaire étant posté avec ton jeton. Rien n'est mentionné sur un verdict vert :
+prévenir quelqu'un pour dire que tout va bien est le plus sûr moyen de finir dans un filtre.
+
+Tout le reste est écrit tel quel, et un champ inconnu **reste visible** au lieu de disparaître :
+une faute de frappe doit se voir dans l'aperçu, pas se traduire par un trou dans le commentaire.
+Un bloc vide ne laisse pas de ligne blanche en trop. Sous le champ, **« Voir un exemple de
+commentaire »** montre le rendu de TON gabarit sur des données d'exemple — composé par le même
+moteur que le vrai commentaire, sinon l'aperçu finirait par mentir. Laissé vide, c'est le gabarit
+par défaut qui sert, et il profite alors des améliorations à venir.
+
+### Vérifier une branche, sans merge request
+
+Au retour de congés, plusieurs merge requests ont été mergées : la question n'est plus « qu'est-ce
+que cette branche casse ? » mais **« est-ce que `develop` est encore vert ? »**. Le bouton
+**`Vérifier une branche`** vit dans l'onglet **Git** et sur la carte de chaque vérificateur. Une
+ligne par dépôt couvert, chacune sur sa **branche par défaut**, choisie dans un sélecteur à
+recherche — un dépôt actif en aligne des centaines. La dernière branche vérifiée est mémorisée.
+
+Deux choses changent de sens, et l'outil les déduit de l'absence de merge request :
+
+- **le double run causal s'éteint** — sur une branche d'intégration, la branche EST la base ;
+  le laisser actif ferait tourner la batterie deux fois pour comparer `develop` à `develop` ;
+- **l'imputabilité disparaît** : rien n'est « cassé par cette branche », ce qui est rouge est
+  rouge. Le rapport et le commentaire l'écrivent autrement.
+
+Il n'y a pas de carte de MR pour porter le badge : le résultat vit dans l'historique des
+vérifications et dans le **brief du matin**, où la ligne s'écrit « dépôt · branche ».
 
 **Voir ce qui a tourné, même quand c'est vert.** Un bouton **`Voir le résultat des vérificateurs`**
 sur la merge request ouvre le détail de **chaque** vérificateur passé dessus — verdict, commits
@@ -1740,7 +1882,7 @@ par tout le monde — deux en parallèle rendraient des rouges qui n'apprennent 
 Dans les deux cas le refus est immédiat et dit laquelle des deux raisons s'applique.
 
 **Mode dry-run** : il ne concerne que l'agent IA. Une vérification, elle, **reste réelle** si elle est
-configurée. En **mode démo**, en revanche, aucun script n'est lancé : le verdict est simulé.
+configurée. En **mode démo**, en revanche, aucune commande n'est lancée : le verdict est simulé.
 
 ## Configuration (.env)
 
@@ -1908,10 +2050,10 @@ sur la machine** — rien ne l'empêche techniquement d'agir hors du clone. C'es
 outil **local mono-utilisateur** : à connaître avant usage, et une raison de plus de ne pas exposer le serveur.
 
 **Vérificateurs.** Lancer les tests d'un dépôt, **c'est exécuter le code de ce dépôt** : même niveau de
-confiance que la session d'agent, et le script s'exécute avec **tes** droits sur la machine. La commande
-est un **chemin absolu venant de la configuration** — jamais un fichier du dépôt cloné —, elle est lancée
-**sans shell**, avec un **environnement minimal sans aucun jeton**. La réponse du script est traitée comme
-une **donnée non fiable** : schéma validé, tailles bornées, échappement systématique à l'affichage. Les
+confiance que la session d'agent, et les commandes s'exécutent avec **tes** droits sur la machine. Chaque
+commande vient de la **configuration** — jamais d'un fichier du dépôt cloné —, elle est lancée **sans
+shell**, avec un **environnement minimal sans aucun jeton**. Leur sortie est traitée comme une **donnée non
+fiable** : tailles bornées, échappement systématique à l'affichage. Les
 worktrees sont créés **sous `data/` uniquement**, et le mode *in place* n'écrit dans un répertoire à toi
 qu'après **consentement explicite** (voir *Vérification objective*).
 

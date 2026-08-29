@@ -98,7 +98,10 @@ describe('Jira · Surveillés — le ticket s’ouvre à droite', { skip: dispo 
   test('les contrôles de la carte gardent leur effet', async () => {
     await ouvrirSurveilles();
     await page.locator('#jiraWatchList [data-jiranote]').first().click();
-    await page.waitForTimeout(300);
+    /* On attend l'effet ATTENDU (le champ s'ouvre) plutôt qu'un délai : c'est aussi ce qui
+       donne au chargement indésirable tout le temps de se produire, s'il devait se produire —
+       l'assertion négative qui suit n'a de valeur que si l'écran a fini de réagir. */
+    await page.waitForSelector('#jiraWatchList .jira-note-form:not([hidden])');
     assert.equal(await page.locator('#jiraWatchList .jira-note-form:not([hidden])').count(), 1,
       'le crayon ouvre bien le champ de raison');
     assert.equal((await page.locator('#jiraWatchDetail').textContent()).trim(), '',
@@ -108,7 +111,8 @@ describe('Jira · Surveillés — le ticket s’ouvre à droite', { skip: dispo 
        pas déclencher le chargement du ticket. C'est ce que l'exclusion des contrôles protège. */
     await page.locator('#jiraWatchList .jira-note-input').first().click();
     await page.keyboard.type(' (précisé)');
-    await page.waitForTimeout(300);
+    // La frappe a bien atteint le champ : à partir de là, ce qui devait se déclencher l'est.
+    await page.waitForFunction(() => /précisé/.test(document.querySelector('#jiraWatchList .jira-note-input').value));
     assert.equal((await page.locator('#jiraWatchDetail').textContent()).trim(), '',
       'écrire dans la raison n’ouvre pas le ticket');
     assert.equal(await page.locator('#jiraWatchList .jira-item.active').count(), 0,
@@ -309,10 +313,14 @@ describe('Jira · Surveillés — le ticket s’ouvre à droite', { skip: dispo 
     await page.waitForSelector('#jiraWatchDetail .jira-detail-inner');
     const cote = await page.locator('#jiraWatchDetail').textContent();
 
+    /* Aller et retour : on attend que chaque panneau soit VISIBLE — revenir avant que
+       « Surveillés » ne soit rechargé lirait l'ancien contenu et le test passerait pour de
+       mauvaises raisons. Le retour recharge la liste (`loadJiraWatch`), d'où l'attente du
+       détail plutôt que du seul panneau. */
     await page.locator('#tab-jira .subnav [data-jsub="mine"]').click();
-    await page.waitForTimeout(400);
+    await page.locator('#jiraSubMine').waitFor({ state: 'visible' });
     await page.locator('#tab-jira .subnav [data-jsub="watch"]').click();
-    await page.waitForTimeout(300);
+    await page.waitForSelector('#jiraWatchDetail .jira-detail-inner');
     assert.equal(await page.locator('#jiraWatchDetail').textContent(), cote,
       'le ticket lu dans « Surveillés » est toujours là au retour');
   });

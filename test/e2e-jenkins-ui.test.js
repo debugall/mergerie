@@ -22,7 +22,43 @@ try {
   dispo = fs.existsSync(chromium.executablePath());
 } catch { /* playwright absent */ }
 
+/* Une attente d'écran généreuse. Ces suites tournent à plusieurs sur un runner CI de
+   quatre cœurs : un délai calibré sur une machine de développement y échoue sans que rien
+   ne soit cassé, et l'échec du premier test entraîne tous les suivants qui dépendent de
+   son état. Mieux vaut attendre longtemps pour rien que rendre un rouge qui ne veut rien dire. */
+const ATTENTE_ECRAN = 20000;
+
+/* Attend qu'une condition côté SERVEUR devienne vraie. Un `waitForTimeout` fixe est un pari
+   sur la vitesse de la machine : il tient en local et lâche sur un runner à deux cœurs. */
+async function attendreServeur(cond, quoi, ms = 15000) {
+  const fin = Date.now() + ms;
+  for (;;) {
+    if (await cond()) return;
+    if (Date.now() > fin) throw new Error(`délai dépassé : ${quoi}`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx playwright install chromium' }, () => {
+  /* POSER UN FILTRE, ET S'ASSURER QU'IL A PRIS. La liste Jenkins se recharge toute seule
+     pendant qu'on la regarde (`loadJenkins({ silencieux: true })`) et chaque rendu REMPLACE les
+     champs de filtre. Si le rendu tombe entre le moment où la frappe pose la valeur et celui où
+     l'événement `input` part, la frappe atterrit sur un champ détaché : rien ne se filtre, et
+     l'attente du résultat expire au bout de trente secondes — un échec qui accuse le filtre
+     alors que c'est le chronomètre. On repose donc la valeur tant que l'effet n'est pas là. */
+  async function poserFiltreParam(nom, valeur, lignesAttendues, essais = 5) {
+    for (let i = 1; i <= essais; i += 1) {
+      await page.locator(`[data-jkpf="${nom}"]`).fill(valeur);
+      try {
+        await page.waitForFunction(
+          (n) => document.querySelectorAll('#jenkinsBox .jk-row').length === n,
+          lignesAttendues, { timeout: 3000 },
+        );
+        return;
+      } catch (e) { if (i === essais) throw e; }
+    }
+  }
+
   let app;
   let srv;
   let navigateur;
@@ -132,10 +168,15 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.locator('[name="jenkins_token"]').fill(mock.state.token);
     await page.locator('#btnTestJenkins').click();
     await page.waitForFunction(() => /Moi Même/.test(document.querySelector('#configInfoJenkins').textContent),
-      null, { timeout: 5000 });
+      null, { timeout: ATTENTE_ECRAN });
 
     await page.locator('#sub-jenkinscfg button[type="submit"]').first().click();
-    await page.waitForTimeout(300);
+    /* On attend que le SERVEUR ait la valeur, pas un délai. Recharger 300 ms après le clic
+       marche sur une machine rapide et perd l'enregistrement sur un runner chargé : la page
+       repart alors sans jeton, la liste reste vide, et l'échec accuse le jeton au lieu du
+       chronomètre. */
+    await attendreServeur(async () => (await app.api('GET', '/api/config')).body.jenkins_url === srv.url,
+      'les identifiants Jenkins sont enregistrés côté serveur');
     await page.reload();
     await allerJenkins();
     await page.waitForSelector('#jenkinsBox .jk-row');
@@ -242,8 +283,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
   test('un filtre non pertinent se masque, sa valeur avec, et se remet', async () => {
     await allerJenkins();
     await page.waitForSelector('#jenkinsParamFiltres [data-jkpf="VERSION"]');
-    await page.locator('[data-jkpf="VERSION"]').fill('9.9');
-    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
+    await poserFiltreParam('VERSION', '9.9', 1);
 
     await page.locator('[data-jkpfhide="VERSION"]').click();
     await page.waitForFunction(() => !document.querySelector('[data-jkpf="VERSION"]'));
@@ -274,20 +314,17 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     assert.deepEqual(await page.locator('#jenkinsParamFiltres .jk-pf-k').allTextContents(), ['ENV', 'VERSION'],
       'ENV sur quatre jobs et VERSION sur trois ; LOT sur deux et SEUL sur un n’en méritent pas');
 
-    await page.locator('[data-jkpf="ENV"]').fill('dev');
-    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
+    await poserFiltreParam('ENV', 'dev', 1);
     assert.match(await page.locator('#jenkinsBox .jk-row').first().textContent(), /front-build/);
 
     /* Une valeur portée par deux jobs les garde tous les deux — et un job qui n'a PAS le
        paramètre est écarté : il ne répond pas à la question posée. */
-    await page.locator('[data-jkpf="ENV"]').fill('prod');
-    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 2);
+    await poserFiltreParam('ENV', 'prod', 2);
 
     /* Les colonnes ne bougent PAS quand on filtre : elles sont calculées sur TOUS les jobs.
        Calculées sur ce qui reste, une liste réduite à un job ferait tomber tout le monde sous
        le seuil — les colonnes disparaîtraient sous les yeux à chaque frappe. */
-    await page.locator('[data-jkpf="ENV"]').fill('dev');
-    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 1);
+    await poserFiltreParam('ENV', 'dev', 1);
     assert.equal(await page.locator('#jenkinsParamFiltres [data-jkpf]').count(), 2,
       'un seul job affiché, et pourtant les deux colonnes tiennent');
     /* SUGGÉRER SANS ENFERMER. Les valeurs proposées sont celles des DERNIERS lancements : une
@@ -298,12 +335,10 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     });
     assert.ok(propose && propose.includes('prod'), 'ce qu’on a vu passer reste proposé d’un clic');
     assert.ok(!propose.includes('preprod'), 'aucun job n’a tourné en préprod récemment : la valeur n’est pas proposée');
-    await page.locator('[data-jkpf="ENV"]').fill('preprod');
-    await page.waitForFunction(() => !document.querySelector('#jenkinsBox .jk-row'));
+    await poserFiltreParam('ENV', 'preprod', 0);
     // Une liste fermée aurait refusé la frappe et rien filtré du tout : les six jobs seraient restés.
 
-    await page.locator('[data-jkpf="ENV"]').fill('');
-    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 6);
+    await poserFiltreParam('ENV', '', 6);
   });
 
   /* LE FILTRE PAR DOSSIERS. Il est mémorisé — sinon il faudrait le refaire à chaque
@@ -483,6 +518,53 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
 
     const sansParams = page.locator('[data-jkrun="boutique/api-build"]');
     assert.doesNotMatch(await sansParams.textContent(), /…/, 'sans paramètre, rien ne s’ouvre : le bouton lance');
+  });
+
+  /* LE CLIC DE DROITE N'OUVRE PAS LA FENÊTRE DE GAUCHE. La ligne entière ouvrait la fiche :
+     le lien « ouvrir dans Jenkins » sortait vers Jenkins ET posait la fiche par-dessus, et
+     « Lancer » sur un job sans paramètre la faisait clignoter avant de la refermer. La fiche
+     s'ouvre par le nom du job, et par lui seul. */
+  test('la fiche ne s’ouvre qu’en cliquant le nom du job', async () => {
+    await allerJenkins();
+    await page.waitForSelector('#jenkinsBox .jk-row');
+    const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'api-build' }).first();
+    assert.equal(await ligne.locator('.jk-open-ext').count(), 1, 'le décor doit bien porter le lien externe');
+    assert.equal(await ligne.locator('[data-jkjob] .jk-open-ext, [data-jkjob] [data-jkrun], [data-jkjob] [data-jkopen]').count(), 0,
+      'les commandes de droite sont HORS du bouton qui ouvre : un clic ne peut plus remonter jusqu’à lui');
+
+    /* On empêche la NAVIGATION du lien (il ouvrirait un onglet vers Jenkins), pas sa
+       propagation : le gestionnaire de l'application reçoit le clic exactement comme en vrai. */
+    await page.evaluate(() => {
+      document.addEventListener('click', (e) => { if (e.target.closest('a')) e.preventDefault(); }, true);
+    });
+    await ligne.locator('.jk-open-ext').click();
+    assert.ok(await page.locator('#jenkinsModal').isHidden(),
+      'sortir vers Jenkins ne doit pas ouvrir la fiche par-dessus');
+
+    /* Le clignotement ne se voit pas après coup : on surveille l'attribut pendant le geste. */
+    await page.evaluate(() => {
+      window.__ficheVue = false;
+      const m = document.querySelector('#jenkinsModal');
+      new MutationObserver(() => { if (!m.hidden) window.__ficheVue = true; })
+        .observe(m, { attributes: true, attributeFilter: ['hidden'] });
+    });
+    await ligne.locator('[data-jkrun]').click();
+    await page.waitForSelector('#confirmModal:not([hidden])');
+    assert.equal(await page.evaluate(() => window.__ficheVue), false,
+      'un job sans paramètre part : sa fiche n’a rien à montrer et ne doit pas clignoter');
+    await page.locator('#confirmCancel').click();
+    await page.waitForSelector('#confirmModal[hidden]', { state: 'attached' });
+
+    // Et le nom, lui, ouvre — au clavier comme à la souris, c'est un vrai bouton.
+    await ligne.locator('[data-jkjob]').click();
+    await page.waitForSelector('#jenkinsModal:not([hidden])');
+    assert.match(await page.locator('#jenkinsModalTitle').textContent(), /api-build/);
+    await page.locator('#jenkinsClose').click();
+    await page.waitForSelector('#jenkinsModal[hidden]', { state: 'attached' });
+    await ligne.locator('[data-jkjob]').press('Enter');
+    await page.waitForSelector('#jenkinsModal:not([hidden])');
+    await page.locator('#jenkinsClose').click();
+    await page.waitForSelector('#jenkinsModal[hidden]', { state: 'attached' });
   });
 
   /* UN JOB PARAMÉTRÉ NE SE LANCE PAS À L'AVEUGLE. Le bouton de la liste ouvre sa fiche : on
@@ -859,6 +941,44 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 6);
   });
 
+  /* LA PASTILLE ROUGE : ce qui a CASSÉ aujourd'hui. C'est la question qu'on se pose de
+     n'importe quel onglet — « est-ce que quelque chose est tombé ce matin ? » — et à laquelle
+     le compte bleu ne répond pas : il monte aussi quand tout va bien. */
+  test('le badge rouge compte les jobs en échec du jour, et eux seuls', async (t) => {
+    const decor = mock.state.jobs;
+    t.after(() => { mock.state.jobs = decor; });
+    const minuit = new Date(); minuit.setHours(0, 0, 0, 0);
+    const hier = minuit.getTime() - 8 * 86400000;
+    const cesMatin = minuit.getTime() + 60000;
+    mock.state.jobs = [
+      { name: 'casse', color: 'red', buildable: true, lastBuild: { number: 1, timestamp: cesMatin, actions: [] } },
+      { name: 'casse2', color: 'red', buildable: true, lastBuild: { number: 2, timestamp: cesMatin, actions: [] } },
+      // Un échec d'HIER : la pastille dit « aujourd'hui », elle ne raconte pas la semaine.
+      { name: 'casse-hier', color: 'red', buildable: true, lastBuild: { number: 3, timestamp: hier, actions: [] } },
+      // L'INSTABLE a sa propre couleur et son propre filtre : le rouge est réservé à l'échec.
+      { name: 'instable', color: 'yellow', buildable: true, lastBuild: { number: 4, timestamp: cesMatin, actions: [] } },
+      // Reparti depuis : il tourne, on ne l'annonce pas cassé pendant qu'il se rejoue.
+      { name: 'relance', color: 'red_anime', buildable: true, lastBuild: { number: 5, timestamp: cesMatin, actions: [] } },
+      { name: 'vert', color: 'blue', buildable: true, lastBuild: { number: 6, timestamp: cesMatin, actions: [] } },
+    ];
+    await allerJenkins();
+    await page.locator('#jenkinsReload').click();
+    await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 6);
+
+    const rouge = page.locator('#navJenkinsFail');
+    await page.waitForFunction(() => document.querySelector('#navJenkinsFail').textContent === '2');
+    assert.equal(await rouge.isHidden(), false);
+    assert.match(await rouge.getAttribute('data-tip'), /2/, 'la bulle dit de quoi le chiffre est fait');
+    // Le compte bleu, lui, tient tout ce qui a tourné : cinq jobs, échecs compris.
+    assert.equal(await page.locator('#navCountJenkins').textContent(), '5');
+
+    // Plus rien de cassé aujourd'hui : la pastille disparaît au lieu d'afficher « 0 ».
+    mock.state.jobs = [{ name: 'vert', color: 'blue', buildable: true, lastBuild: { number: 6, timestamp: cesMatin, actions: [] } }];
+    await page.locator('#jenkinsReload').click();
+    await page.waitForFunction(() => document.querySelector('#navJenkinsFail').hidden);
+    assert.equal(await page.locator('#navCountJenkins').textContent(), '1', 'le compte du jour, lui, reste');
+  });
+
   /* LE LIEN VERS JENKINS. Il s'ouvre dans un nouvel onglet, et il ne relaie que du http(s) :
      l'URL vient de Jenkins, donc de l'extérieur. */
   test('chaque ligne porte un lien vers le job dans Jenkins', async () => {
@@ -953,7 +1073,11 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
       return r.top < window.innerHeight && r.bottom > 0 && r.height > 0;
     });
     await page.locator('#jenkinsModalBody').evaluate((el) => { el.scrollTop = el.scrollHeight; });
-    await page.waitForTimeout(150);
+    // Attendre que le défilement ait ABOUTI, pas un délai : c'est la position qui compte ici.
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#jenkinsModalBody');
+      return el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+    });
     assert.equal(await visible('#jenkinsRun'), true, '« Lancer » reste à l’écran, sous l’historique déroulé');
     assert.equal(await visible('#jenkinsFiche .jk-col-detail .jk-build-detail'), true,
       'le détail de l’exécution suit la descente au lieu de filer vers le haut');

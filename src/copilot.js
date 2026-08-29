@@ -147,14 +147,14 @@ function mockReport(prompt, cwd, meta = {}) {
       ...(files.length ? files.map((f) => `- \`${f}\``) : ['- (aucun changement détecté)']),
       '',
       `## Pour progresser`,
-      `Regarde comment les changements ci-dessus s'articulent ; en dry-run, l'analyse réelle sera produite par le skill \`${meta.skill || 'git-review'}\`.`,
+      `Regarde comment les changements ci-dessus s'articulent ; en dry-run, l'analyse réelle sera produite par l'agent${meta.skill ? ` via le skill \`${meta.skill}\`` : ''}.`,
     ].join('\n');
   }
 
   return [
     `# Rapport de revue (mock)`,
     '',
-    `> Généré en **dry-run** (copilot indisponible). Skill visé : \`${meta.skill || 'git-review'}\`.`,
+    `> Généré en **dry-run** (copilot indisponible).${meta.skill ? ` Skill visé : \`${meta.skill}\`.` : ''}`,
     `> Branche \`${meta.source || '?'}\` → \`${meta.target || '?'}\`.`,
     '',
     `## Résumé`,
@@ -165,7 +165,7 @@ function mockReport(prompt, cwd, meta = {}) {
     ...(files.length ? files.map((f) => `- \`${f}\``) : ['- (aucun changement détecté dans le diff)']),
     '',
     `## Constats (placeholder)`,
-    `Aucune analyse réelle en dry-run. Installe/configure \`copilot\` puis relance pour obtenir la revue via le skill \`${meta.skill || 'git-review'}\`.`,
+    `Aucune analyse réelle en dry-run. Installe/configure \`copilot\` puis relance pour obtenir la revue${meta.skill ? ` via le skill \`${meta.skill}\`` : ''}.`,
     '',
     `## Note globale`,
     `${files.length ? Math.max(2, 9 - files.length) : 8}/10 (dry-run).`,

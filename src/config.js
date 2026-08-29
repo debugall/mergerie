@@ -16,6 +16,7 @@ const ALLOWED = [
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
   'brief_on_open',
   'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
+  'verif_auto_max',
 ];
 
 function updateConfig(patch) {
@@ -73,6 +74,13 @@ function updateConfig(patch) {
     const mp = parseInt(next.converge_max_passes, 10);
     next.converge_max_passes = String(Number.isFinite(mp) ? Math.min(10, Math.max(1, mp)) : 3);
   }
+  /* Plafond des vérifications automatiques : entier borné [0, 50]. 0 signifie « sans limite »
+     et doit s'écrire — une case vide se lirait comme « valeur par défaut ». Une saisie
+     illisible retombe sur 5 plutôt que de désactiver le garde-fou en silence. */
+  if ('verif_auto_max' in patch) {
+    const vm = parseInt(patch.verif_auto_max, 10);
+    next.verif_auto_max = Number.isFinite(vm) && vm >= 0 ? Math.min(50, vm) : 5;
+  }
   // Les rapports produits par l'IA suivent la langue de l'interface (i18n.md lot 5,
   // option 1). On n'aligne QUE les gabarits restés au défaut : un prompt que
   // l'utilisateur a personnalisé n'est jamais écrasé (piège n°4 du plan).
@@ -102,7 +110,8 @@ function updateConfig(patch) {
       jenkins_url = @jenkins_url,
       jenkins_user = @jenkins_user,
       jenkins_token = @jenkins_token,
-      jenkins_refresh_minutes = @jenkins_refresh_minutes
+      jenkins_refresh_minutes = @jenkins_refresh_minutes,
+      verif_auto_max = @verif_auto_max
     WHERE id = 1`).run(next);
   return getConfig();
 }

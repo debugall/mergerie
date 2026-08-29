@@ -25,6 +25,12 @@ try {
   dispo = fs.existsSync(chromium.executablePath());
 } catch { /* playwright absent */ }
 
+/* Une attente d'écran généreuse. Ces suites tournent à plusieurs sur un runner CI de
+   quatre cœurs : un délai calibré sur une machine de développement y échoue sans que rien
+   ne soit cassé, et l'échec du premier test entraîne tous les suivants qui dépendent de
+   son état. Mieux vaut attendre longtemps pour rien que rendre un rouge qui ne veut rien dire. */
+const ATTENTE_ECRAN = 20000;
+
 describe('Commentaire en ligne — le bouton reste sous les yeux', { skip: dispo ? false : 'chromium absent — npx playwright install chromium' }, () => {
   let app;
   let navigateur;
@@ -134,7 +140,8 @@ describe('Commentaire en ligne — le bouton reste sous les yeux', { skip: dispo
   test('il le reste après un défilement horizontal', async () => {
     await ouvrirEditeur();
     await page.evaluate(() => { document.querySelector('#fileContent').scrollLeft = 1200; });
-    await page.waitForTimeout(200);
+    // Le défilement a ABOUTI : c'est la position qui décide de ce que la mesure va lire.
+    await page.waitForFunction(() => document.querySelector('#fileContent').scrollLeft >= 1200);
     const m = await mesurer();
     assert.equal(m.boutonDansLaVue, true, 'le bouton doit suivre le bord visible');
     assert.equal(m.champDansLaVue, true, 'le champ aussi');
@@ -144,7 +151,7 @@ describe('Commentaire en ligne — le bouton reste sous les yeux', { skip: dispo
     await ouvrirEditeur();
     await page.locator('#fileContent .cmt-editor textarea').fill('Attention à ce cas limite.');
     // Un clic Playwright échoue si l'élément n'est pas atteignable : c'est la preuve utile.
-    await page.locator('#fileContent .cmt-send').click({ timeout: 5000 });
+    await page.locator('#fileContent .cmt-send').click({ timeout: ATTENTE_ECRAN });
     await page.waitForSelector('#fileContent .cmt-editor', { state: 'detached' });
     // Le commentaire est bien parti (et l'éditeur s'est refermé).
     const posts = await app.api('GET', '/api/mrs');
@@ -199,12 +206,12 @@ describe('Commentaire en ligne — le bouton reste sous les yeux', { skip: dispo
     await page.waitForSelector('#confirmModal:not([hidden])');
     await page.locator('#confirmOk').click();
     await page.waitForFunction(() => document.querySelector('#draftsSend').hidden,
-      null, { timeout: 5000 });
+      null, { timeout: ATTENTE_ECRAN });
     assert.equal(posts(), avant + 2, 'les deux sont partis, en une fois');
     /* Le bouton disparaît avant que le fichier soit redessiné : on attend le compte ATTENDU
        plutôt que de le lire au vol, sinon le test échoue une fois sur vingt, sous charge. */
     await page.waitForFunction(() => !document.querySelector('#fileContent .cmt-draft'),
-      null, { timeout: 5000 });
+      null, { timeout: ATTENTE_ECRAN });
     assert.equal(await page.locator('#fileContent .cmt-draft').count(), 0,
       'partis = plus en attente sous la ligne');
   });

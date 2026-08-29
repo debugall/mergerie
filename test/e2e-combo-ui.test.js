@@ -76,12 +76,20 @@ describe('Combo — le menu ne se fait ni rogner ni détacher', { skip: dispo ? 
     const ligne = page.locator('#verifierRepoBox .vr-row').nth(indexLigne);
     if (!(await ligne.locator('.vr-pick').isChecked())) await ligne.locator('.vr-pick').check();
     await ligne.locator('.vr-mode').selectOption('in_place');
-    await page.waitForTimeout(200);
+    // C'est ce mode qui fait apparaître le combo : on attend l'effet, pas un délai.
+    await ligne.locator('.vr-local-combo .cb-search').waitFor();
     // Défiler la liste jusqu'en bas : c'est là que le menu manquait de place.
     await page.evaluate(() => { const l = document.querySelector('#verifierRepoBox .vr-list'); l.scrollTop = l.scrollHeight; });
-    await page.waitForTimeout(200);
+    await attendreDefilement('#verifierRepoBox .vr-list');
     return ligne;
   }
+
+  /* Attendre que le DÉFILEMENT ait abouti, pas un délai : c'est la position qui compte pour
+     tout ce que ce fichier mesure. */
+  const attendreDefilement = (sel) => page.waitForFunction((s2) => {
+    const el = document.querySelector(s2);
+    return el && el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+  }, sel);
 
   const geometrie = () => page.evaluate(() => {
     const r = (e) => (e ? e.getBoundingClientRect() : null);
@@ -110,7 +118,7 @@ describe('Combo — le menu ne se fait ni rogner ni détacher', { skip: dispo ? 
     const ligne = await ouvrirCombo(NB_DEPOTS - 2);
     const avant = await geometrie();
     await ligne.locator('.vr-local-combo .cb-search').click();
-    await page.waitForTimeout(600);
+    await page.waitForSelector('.combo-options:not([hidden]) .combo-opt');
     const g = await geometrie();
 
     assert.ok(g.menu, 'le menu est ouvert');
@@ -136,9 +144,9 @@ describe('Combo — le menu ne se fait ni rogner ni détacher', { skip: dispo ? 
     // On amène le champ tout en bas de la fenêtre.
     await ligne.locator('.vr-local-combo .cb-search').scrollIntoViewIfNeeded();
     await page.evaluate(() => window.scrollBy(0, -220));
-    await page.waitForTimeout(200);
+    await page.waitForFunction((y) => Math.abs(window.scrollY - y) < 2, await page.evaluate(() => window.scrollY));
     await ligne.locator('.vr-local-combo .cb-search').click();
-    await page.waitForTimeout(600);
+    await page.waitForSelector('.combo-options:not([hidden]) .combo-opt');
     const g = await geometrie();
 
     assert.ok(g.menu, 'le menu est ouvert');
@@ -157,7 +165,7 @@ describe('Combo — le menu ne se fait ni rogner ni détacher', { skip: dispo ? 
   test('dans une modale, le menu passe au-dessus et reste cliquable', async () => {
     await page.locator('[data-tab="task"]').click();
     await page.locator('#tab-task .subnav [data-kind="local"]').click();
-    await page.waitForTimeout(300);
+    await page.waitForSelector('#btnNewTask:not([hidden])');
     await page.locator('#btnNewTask').click();
     await page.waitForSelector('#taskModal:not([hidden])');
     await page.waitForSelector('#taskLocalDirRows .cb-search');
@@ -173,7 +181,7 @@ describe('Combo — le menu ne se fait ni rogner ni détacher', { skip: dispo ? 
     const choix = page.locator('.combo-options:not([hidden]) .combo-opt[data-v]').first();
     const valeur = await choix.getAttribute('data-v');
     await choix.click();
-    await page.waitForTimeout(300);
+    await page.waitForFunction((v) => document.querySelector('#taskLocalDirRows .cb-search').value === v, valeur);
     assert.equal(await page.locator('#taskLocalDirRows .cb-search').first().inputValue(), valeur);
     assert.equal(await page.locator('#taskModal').isVisible(), true, 'et la modale ne s’est pas fermée en route');
     await page.locator('#taskCancel').click();
@@ -186,7 +194,7 @@ describe('Combo — le menu ne se fait ni rogner ni détacher', { skip: dispo ? 
     const choix = page.locator('.combo-options:not([hidden]) .combo-opt[data-v]').first();
     const chemin = await choix.getAttribute('data-v');
     await choix.click();
-    await page.waitForTimeout(300);
+    await page.waitForFunction((c) => [...document.querySelectorAll('.vr-workdir')].some((e) => e.value === c), chemin);
     assert.equal(await ligne.locator('.vr-workdir').inputValue(), chemin,
       'le clic sur une option doit rester possible — c’est ce qu’un menu recouvert empêche');
   });

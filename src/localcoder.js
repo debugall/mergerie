@@ -16,6 +16,7 @@ const agentpass = require('./agentpass');
 const { getConfig } = require('./config');
 const { avecConsignes } = require('./prompts');
 const questions = require('./questions');
+const pieces = require('./pieces');
 const { t } = require('../public/i18n-runtime.js');
 
 const now = () => new Date().toISOString();
@@ -75,11 +76,11 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
 
   // Captures jointes : référencées par chemin ABSOLU (l'agent tourne en place dans le
   // dossier de l'utilisateur, sans clone — on ne copie donc rien dans ses dossiers).
-  const imgs = db.prepare('SELECT path FROM local_task_image WHERE task_id = ? ORDER BY id').all(taskId)
-    .filter((im) => { try { return fs.existsSync(im.path); } catch { return false; } });
-  const imgBlock = imgs.length
-    ? `\n\nDes captures d'écran sont fournies (ouvre-les) :${imgs.map((im) => `\n- \`${im.path}\``).join('')}`
-    : '';
+  /* Pièces jointes : chemins ABSOLUS, jamais copiées. L'agent travaille EN PLACE dans le
+     dossier de l'utilisateur — y déposer des fichiers de travail y laisserait des traces que
+     personne n'a demandées. La règle « consigne initiale + suivi en cours » vit dans
+     `pieces.js`, partagée avec les autres saveurs. */
+  const imgBlock = pieces.blocPrompt('local', taskId, { ids: opts.imageIds, onLog });
 
   // Suivi : même esprit que `taskrunner.runTaskFollowup`, sans la mention de git
   // (ici l'IA travaille EN PLACE, il n'y a ni branche ni commit précédent).
@@ -152,7 +153,8 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
         }
         copilot.recordUsage('task', promptText, r.text || '');
         saveAgentOutput(taskId, d.id, r.text, { kind: passKind, prompt: promptText });
-        if (created) setDir(d.id, { session_key: r.handle, session_backend: r.backend, session_cwd: d.path });
+        // À chaque passe : une reprise peut rendre un identifiant nouveau (cf. agentsession).
+        setDir(d.id, { session_key: r.handle, session_backend: r.backend, session_cwd: d.path });
         if (attendQuestions(task, taskId, d, r.text, onLog)) continue;
       } else {
         // Backend non reprenable → appel one-shot (pas de commande de reprise possible).
@@ -186,4 +188,4 @@ async function runLocalFollowup(taskId, instruction, onLog = () => {}) {
   return runLocal(taskId, onLog, { instruction: instr });
 }
 
-module.exports = { runLocal, runLocalFollowup, saveAgentOutput };
+module.exports = { runLocal, runLocalFollowup, saveAgentOutput, syncStatus };

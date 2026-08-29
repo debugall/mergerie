@@ -157,4 +157,88 @@ function listsFor(project) {
 
 const isDemo = () => process.env.MERGERIE_DEMO === '1';
 
-module.exports = { isDemo, refs, branches, tagAuthor, findRef, listsFor };
+/* --- /api/git/compare (comparaison de contenu entre deux dépôts) ---
+   Les arborescences fictives vivent dans `demo-diff.js` : un seul jeu de vérité par projet,
+   comme partout ailleurs en démo. On y ajoute une différence de CONTENU sur les fichiers
+   homonymes les plus évidents — sinon la troisième colonne (« des deux côtés, mais
+   différents ») resterait vide et la démo ne montrerait pas ce qu'elle sert à montrer. */
+const DIFFERENTS_EN_DEMO = new Set(['README.md', 'package.json', 'src/main.js']);
+
+/* Les deux côtés arrivent sous la forme { ref, kind } : en démo la résolution ne coûte rien,
+   mais l'écran affiche le genre, et une démo qui rendrait « branche » pour un tag mentirait. */
+function compare(projetA, coteA, projetB, coteB) {
+  // eslint-disable-next-line global-require
+  const { arbreDeProjet } = require('./demo-diff');
+  const a = arbreDeProjet(projetA);
+  const b = arbreDeProjet(projetB);
+  const setB = new Set(b);
+  const setA = new Set(a);
+  const communs = a.filter((f) => setB.has(f));
+  return {
+    a: { project: projetA, ref: coteA.ref, kind: coteA.kind, files: a.length },
+    b: { project: projetB, ref: coteB.ref, kind: coteB.kind, files: b.length },
+    only_a: a.filter((f) => !setB.has(f)),
+    only_b: b.filter((f) => !setA.has(f)),
+    differ: communs.filter((f) => DIFFERENTS_EN_DEMO.has(f)),
+    same: communs.filter((f) => !DIFFERENTS_EN_DEMO.has(f)).length,
+    tronque: false,
+  };
+}
+
+/* Un diff unifié entre deux textes. On rogne les lignes identiques en tête et en queue, et
+   le reste part en un seul bloc : ce n'est pas le diff MINIMAL qu'un algorithme LCS rendrait,
+   mais c'en est un vrai, calculé sur le contenu réellement servi par la démo — pas un texte
+   inventé qui finirait par contredire ce que l'écran affiche à côté. */
+function diffUnifie(texteA, texteB) {
+  if (texteA === texteB) return '';
+  const a = texteA ? texteA.replace(/\n$/, '').split('\n') : [];
+  const b = texteB ? texteB.replace(/\n$/, '').split('\n') : [];
+  let tete = 0;
+  while (tete < a.length && tete < b.length && a[tete] === b[tete]) tete += 1;
+  let queue = 0;
+  while (queue < a.length - tete && queue < b.length - tete
+    && a[a.length - 1 - queue] === b[b.length - 1 - queue]) queue += 1;
+
+  const contexte = Math.min(3, tete);
+  const debut = tete - contexte;
+  const finA = a.length - queue; const finB = b.length - queue;
+  const apresA = a.slice(finA, finA + Math.min(3, queue));
+  const lgA = finA - debut + apresA.length;
+  const lgB = finB - debut + apresA.length;
+  // Un côté vide se numérote à partir de 0, comme le fait git : « @@ -1,10 +0,0 @@ ».
+  const lignes = [
+    `@@ -${lgA ? debut + 1 : 0},${lgA} +${lgB ? debut + 1 : 0},${lgB} @@`,
+    ...a.slice(debut, tete).map((l) => ` ${l}`),
+    ...a.slice(tete, finA).map((l) => `-${l}`),
+    ...b.slice(tete, finB).map((l) => `+${l}`),
+    ...apresA.map((l) => ` ${l}`),
+  ];
+  return `${lignes.join('\n')}\n`;
+}
+
+// --- /api/git/compare/file : les deux versions d'un même chemin, en diff.
+function compareFile(projetA, coteA, projetB, coteB, chemin) {
+  // eslint-disable-next-line global-require
+  const { arbreDeProjet, corpsDeProjet } = require('./demo-diff');
+  const presentA = arbreDeProjet(projetA).includes(chemin);
+  const presentB = arbreDeProjet(projetB).includes(chemin);
+  if (!presentA && !presentB) throw new Error(`fichier absent des deux côtés : ${chemin}`);
+  /* Un fichier homonyme n'est « différent » que s'il est dans la liste : ailleurs, les deux
+     côtés doivent rendre EXACTEMENT le même corps, sinon l'écran dirait « identiques » d'un
+     côté et montrerait un diff de l'autre. */
+  const memeContenu = presentA && presentB && !DIFFERENTS_EN_DEMO.has(chemin);
+  const corpsA = presentA ? corpsDeProjet(chemin, projetA, coteA.ref) : '';
+  const corpsB = presentB ? corpsDeProjet(chemin, memeContenu ? projetA : projetB, memeContenu ? coteA.ref : coteB.ref) : '';
+  const diff = diffUnifie(corpsA, corpsB);
+  return {
+    path: chemin,
+    a: { project: projetA, ref: coteA.ref, kind: coteA.kind, exists: presentA, size: corpsA.length },
+    b: { project: projetB, ref: coteB.ref, kind: coteB.kind, exists: presentB, size: corpsB.length },
+    diff,
+    binaire: false,
+    identique: !diff,
+    trop_gros: false,
+  };
+}
+
+module.exports = { isDemo, refs, branches, tagAuthor, findRef, listsFor, compare, compareFile };

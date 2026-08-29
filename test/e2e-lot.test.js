@@ -112,11 +112,19 @@ describe('Vérification objective — lots', () => {
     assert.equal(lot.status, 200);
     assert.equal(lot.body.members.length, 2);
 
+    /* Le nom du test cassé n'est plus déclaré par un contrat JSON — la famille « script » a été
+       retirée : il est LU dans la sortie TAP des commandes. C'est ce qui doit finir dans le
+       prompt de correction, et c'est donc ce que ce test vérifie. */
     const v = (await app.api('POST', '/api/verifiers', {
-      name: 'integ-lot', run_base: false,
-      command: script(`cat >/dev/null\nprintf '%s\\n' '${JSON.stringify({
-        version: 1, status: 'fail', failed: [{ test: 'integ › panier', message: 'total faux' }],
-      })}'`, 'lot-rouge'),
+      name: 'integ-lot', kind: 'commands', run_base: false,
+      commands: [script([
+        "printf 'TAP version 13\\n'",
+        "printf 'not ok 1 - integ › panier\\n'",
+        // Bloc YAML TAP : c'est là que le MESSAGE d'échec est lu, comme le ferait un vrai runner.
+        "printf '  ---\\n  message: total faux\\n  ...\\n'",
+        "printf '1..1\\n'",
+        'exit 1',
+      ].join('\n'), 'lot-rouge')],
       repos: [{ repo_id: repos.app.id, mode: 'worktree' }, { repo_id: repos.lib.id, mode: 'worktree' }],
     })).body;
 
@@ -154,7 +162,7 @@ describe('Vérification objective — lots', () => {
   test('« Corriger » est refusé quand l’échec n’est pas imputable aux branches', async () => {
     const v = (await app.api('POST', '/api/verifiers', {
       name: 'integ-vert', run_base: false,
-      command: script(`cat >/dev/null\nprintf '%s\\n' '{"version":1,"status":"pass"}'`, 'lot-vert'),
+      kind: 'commands', commands: [script('exit 0', 'lot-vert')],
       repos: [{ repo_id: repos.app.id, mode: 'worktree' }, { repo_id: repos.lib.id, mode: 'worktree' }],
     })).body;
     const lance = await app.api('POST', '/api/verify/mrs', { mr_ids: [mrs.app.id, mrs.lib.id] });
@@ -167,7 +175,7 @@ describe('Vérification objective — lots', () => {
 
   test('un vérificateur qui ne couvre qu’un dépôt sur deux est refusé', async () => {
     const v = (await app.api('POST', '/api/verifiers', {
-      name: 'partiel', command: script('exit 0', 'partiel'),
+      name: 'partiel', kind: 'commands', commands: [script('exit 0', 'partiel')],
       repos: [{ repo_id: repos.app.id, mode: 'worktree' }],
     })).body;
     const r = await app.api('POST', '/api/verify/mrs', { mr_ids: [mrs.app.id, mrs.lib.id] });
@@ -182,7 +190,7 @@ describe('Vérification objective — lots', () => {
     const lot = (await app.api('POST', '/api/lots', { name: 'archive', members: [mrs.app.id, mrs.lib.id] })).body;
     const v = (await app.api('POST', '/api/verifiers', {
       name: 'jetable', run_base: false,
-      command: script(`cat >/dev/null\nprintf '%s\\n' '{"version":1,"status":"pass"}'`, 'jetable'),
+      kind: 'commands', commands: [script('exit 0', 'jetable')],
       repos: [{ repo_id: repos.app.id, mode: 'worktree' }, { repo_id: repos.lib.id, mode: 'worktree' }],
     })).body;
     const d = await attendre((await app.api('POST', `/api/lots/${lot.id}/verify`)).body.verification.id);

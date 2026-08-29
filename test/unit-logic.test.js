@@ -809,16 +809,21 @@ describe('jobs : objets marqués « en cours »', () => {
     assert.deepEqual(jobTargets(entry, undefined).mrs, []);
   });
 
+  /* Chaque saveur a SON seau : les listes sont distinctes à l'écran, et marquer une session de
+     codage parce qu'une question tourne ferait clignoter la mauvaise carte. */
+  const seaux = (p = {}) => ({ mrs: [], tasks: [], locals: [], questions: [], verifying: [], ...p });
+
   test('chaque famille d’objet tombe dans son propre seau', () => {
-    assert.deepEqual(jobTargets({ kind: 'local', taskId: 7 }), { mrs: [], tasks: [], locals: [7], verifying: [] });
-    assert.deepEqual(jobTargets({ kind: 'task', taskId: 4 }), { mrs: [], tasks: [4], locals: [], verifying: [] });
-    assert.deepEqual(jobTargets({ kind: 'converge-session', taskId: 5 }), { mrs: [], tasks: [5], locals: [], verifying: [] });
-    assert.deepEqual(jobTargets({ kind: 'converge', mrId: 9 }), { mrs: [9], tasks: [], locals: [], verifying: [] });
+    assert.deepEqual(jobTargets({ kind: 'local', taskId: 7 }), seaux({ locals: [7] }));
+    assert.deepEqual(jobTargets({ kind: 'ask', taskId: 3 }), seaux({ questions: [3] }));
+    assert.deepEqual(jobTargets({ kind: 'task', taskId: 4 }), seaux({ tasks: [4] }));
+    assert.deepEqual(jobTargets({ kind: 'converge-session', taskId: 5 }), seaux({ tasks: [5] }));
+    assert.deepEqual(jobTargets({ kind: 'converge', mrId: 9 }), seaux({ mrs: [9] }));
   });
 
   test('un job sans cible identifiable ne marque rien plutôt que n’importe quoi', () => {
-    assert.deepEqual(jobTargets({ kind: 'docker' }), { mrs: [], tasks: [], locals: [], verifying: [] });
-    assert.deepEqual(jobTargets(null), { mrs: [], tasks: [], locals: [], verifying: [] });
+    assert.deepEqual(jobTargets({ kind: 'docker' }), seaux());
+    assert.deepEqual(jobTargets(null), seaux());
   });
 
   /* UNE VÉRIFICATION MARQUE LES MR QU'ELLE PORTE. Sans ça, cliquer « Vérifier » ne changeait

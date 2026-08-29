@@ -157,7 +157,7 @@
         <button data-tab="jira" title="Mes tickets Jira affectés : contenu, métadonnées, commentaires" data-i18n-title="jira.tab.title"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="nav.jira">Jira</span><span class="nav-count" id="navCountJira" hidden>0</span></button>
         <button data-tab="git" title="Opérations sur les dépôts : branches et tags" data-i18n-title="git.tab.title"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="nav.git">Git</span></button>
         <button data-tab="docker" title="Projets Docker Compose et containers : drift .env, actions" data-i18n-title="docker.tab.title"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="nav.docker">Docker</span><span class="nav-health err" id="dockerErrBadge" hidden>0</span><span class="nav-health warn" id="dockerUnhealthyBadge" hidden>0</span></button>
-        <button data-tab="jenkins" title="Jenkins : voir l'état des jobs et les lancer" data-i18n-title="jenkins.tab.title"><svg class="ico"><use href="#i-pipeline"/></svg><span data-i18n="nav.jenkins">Jenkins</span><span class="nav-count" id="navCountJenkins" hidden>0</span></button>
+        <button data-tab="jenkins" title="Jenkins : voir l'état des jobs et les lancer" data-i18n-title="jenkins.tab.title"><svg class="ico"><use href="#i-pipeline"/></svg><span data-i18n="nav.jenkins">Jenkins</span><span class="nav-health err" id="navJenkinsFail" hidden>0</span><span class="nav-count" id="navCountJenkins" hidden>0</span></button>
         <button data-tab="links" title="Liens de travail : grille services × environnements, liens libres" data-i18n-title="links.tab.title"><svg class="ico"><use href="#i-link"/></svg><span data-i18n="nav.links">Liens</span></button>
         <button data-tab="dashboard" title="Statistiques et activité" data-i18n-title="ui.title.statistiques-et-activite"><svg class="ico"><use href="#i-chart"/></svg><span data-i18n="ui.btn.statistiques">Statistiques</span></button>
         <button data-tab="admin" title="Dépôts, token, règles de review, thème" data-i18n-title="ui.title.depots-token-regles-de-review"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="ui.btn.reglages">Réglages</span></button>
@@ -213,6 +213,13 @@
                         <span class="note bad" data-i18n="review.filter.bad">&lt; 4</span>
                         <span class="nf-count" data-nf-count="bad"></span>
                     </label>
+                    <!-- Sans note : un rapport dont l'IA n'a pas produit de note globale. Sans
+                         cette case, il sortait de la liste dès qu'on filtrait, sans rien dire. -->
+                    <label class="nf-item" title="Rapports dont aucune note globale n'a pu être lue" data-i18n-title="review.filter.none-title">
+                        <input type="checkbox" class="note-pick" value="none" checked />
+                        <span class="note none" data-i18n="review.filter.none">— sans note</span>
+                        <span class="nf-count" data-nf-count="none"></span>
+                    </label>
                 </div>
                 <div id="reportList" class="list"></div>
             </div>
@@ -228,6 +235,7 @@
             <button data-kind="code" class="active" role="tab" title="L'IA modifie le code, commite et ouvre les MR" data-i18n-title="ui.title.l-ia-modifie-le-code">Codage<span class="seg-count" id="kindCountCode">0</span></button>
             <button data-kind="local" role="tab" title="L'IA code dans des dossiers locaux, en place, sans git (ni commit ni push)" data-i18n-title="local.tab-title">Codage hors dépôt<span class="seg-count" id="kindCountLocal">0</span></button>
             <button data-kind="explore" role="tab" title="L'IA répond à une question sur le code, sans rien modifier" data-i18n-title="ui.title.l-ia-repond-a-une">Exploration<span class="seg-count" id="kindCountExplore">0</span></button>
+            <button data-kind="ask" role="tab" title="Poser une question à l'IA sans lien avec un dépôt, et garder la réponse" data-i18n-title="ask.tab-title">Question libre<span class="seg-count" id="kindCountAsk">0</span></button>
         </div>
         <div id="taskToolbar" class="toolbar">
             <button id="btnNewTask" class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg><span id="btnNewTaskLabel" data-i18n="ui.span.nouvelle-session-de-codage">Nouvelle session de codage</span></button>
@@ -243,6 +251,11 @@
         <!-- Codage hors dépôt : liste des sessions (le formulaire vit dans la modale de codage) -->
         <div id="localPanel" hidden>
             <div id="localList" class="list"></div>
+        </div>
+
+        <!-- Question libre : ni dépôt ni dossier. Le formulaire vit dans la modale commune. -->
+        <div id="askPanel" hidden>
+            <div id="askList" class="list"></div>
         </div>
 
         <!-- Lots : des merge requests qui ne valent qu'ensemble, nommées une fois pour toutes. -->
@@ -266,12 +279,16 @@
             <button data-gsub="navigate" role="tab"><svg class="ico"><use href="#i-repeat"/></svg><span data-i18n="git.sub.navigate">Navigation</span></button>
             <button data-gsub="commands" role="tab"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.sub.commands">Commandes Git</span></button>
             <button data-gsub="explore" role="tab"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="git.sub.explorer">Explorateur de branches</span></button>
+            <button data-gsub="compare" role="tab"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="git.sub.compare">Comparer</span></button>
             <button data-gsub="findref" role="tab"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.sub.findref">Trouver une ref</span></button>
             <button data-gsub="history" role="tab"><svg class="ico"><use href="#i-clock"/></svg><span data-i18n="git.sub.history">Historique</span></button>
         </div>
 
         <!-- Sous-onglet : actions multi-dépôts -->
         <div id="gsub-actions" class="subtab active">
+            <!-- « Est-ce que develop est encore vert ? » : la question du retour de congés se
+                 pose devant un dépôt et ses branches, c'est-à-dire ici. -->
+            <p><button type="button" class="btn" id="btnVerifyBranch"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="verify.branch.btn">Vérifier une branche</span></button></p>
             <p class="muted" style="max-width:760px" data-i18n="git.actions.intro">Applique la même opération à plusieurs dépôts d'un coup. Rien n'est exécuté sans un aperçu préalable.</p>
             <div class="form" style="max-width:760px">
                 <label><span data-i18n="git.lbl.action">Action</span>
@@ -378,6 +395,18 @@
         </div>
 
         <!-- Sous-onglet : trouver une ref (tag ou branche) dans tous les dépôts -->
+        <!-- Sous-onglet : comparer le CONTENU de deux dépôts. Deux dépôts n'ont pas d'histoire
+             commune : ce qu'on compare, ce sont les fichiers de chaque branche. -->
+        <div id="gsub-compare" class="subtab">
+            <p class="muted" style="max-width:760px" data-i18n="git.compare.intro">Compare le contenu de deux dépôts, branche par branche : ce qui existe d'un côté et pas de l'autre, et ce qui porte le même chemin mais un contenu différent. Aucune histoire commune n'est requise.</p>
+            <div class="form" style="max-width:900px">
+                <div id="compareCotes" class="compare-cotes"></div>
+                <p><button type="button" class="btn btn-primary" id="btnCompare"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="git.compare.go">Comparer</span></button>
+                   <span id="compareInfo" class="muted"></span></p>
+            </div>
+            <div id="compareResult"></div>
+        </div>
+
         <div id="gsub-findref" class="subtab">
             <p class="muted" style="max-width:760px" data-i18n="git.findref.intro">Saisis un nom de tag ou de branche : l'outil cherche dans tous les dépôts actifs lesquels le possèdent.</p>
             <form id="findRefForm" class="form inline" style="max-width:none">
@@ -762,96 +791,7 @@
             <h2 data-i18n="settings.sub.verifiers">Vérificateurs</h2>
             <p class="muted" style="max-width:760px" data-i18n-html="settings.verifier.intro">Un vérificateur donne à une merge request un verdict qui n'est pas un avis. Deux familles : une <strong>liste de commandes</strong> (<code>npm ci</code>, <code>npm test</code>), rejouée dans chaque dépôt qu'elle couvre — rien à écrire, le verdict vient des codes de sortie —, ou <strong>ton script</strong>, qui reçoit tous les dépôts d'un coup et rend un verdict JSON, forme d'un vrai test d'intégration. Dans les deux cas Mergerie fait tout le git, lance <strong>sans shell</strong> avec un environnement minimal, et n'exécute jamais rien depuis le dépôt cloné.</p>
 
-            <!-- Le contrat, sous les yeux au moment d'écrire le script. Le renvoyer au guide
-                 obligerait à changer d'écran précisément quand on a besoin du format exact. -->
-            <details class="verifier-doc">
-                <summary data-i18n="settings.verifier.doc.title">Vérificateur « script » : format du fichier, de l'entrée et de la sortie (avec exemples)</summary>
 
-                <h4 data-i18n="settings.verifier.doc.file.title">Quel fichier ?</h4>
-                <p data-i18n-html="settings.verifier.doc.file.text"><strong>N'importe quel exécutable</strong> : l'extension n'a aucune importance. Un <code>.sh</code>, un <code>.py</code>, un <code>.js</code>, un binaire compilé — tous conviennent. Deux conditions, et elles sont techniques :</p>
-                <ul>
-                    <li data-i18n-html="settings.verifier.doc.file.exec">le fichier doit porter le <strong>bit d'exécution</strong> (<code>chmod +x /home/moi/bin/integ.sh</code>) ;</li>
-                    <li data-i18n-html="settings.verifier.doc.file.shebang">s'il s'agit d'un script, il doit commencer par un <strong>shebang</strong> (<code>#!/bin/sh</code>, <code>#!/usr/bin/env python3</code>…) — il est lancé <strong>directement</strong>, pas par un shell, donc rien ne devine avec quoi l'interpréter.</li>
-                </ul>
-                <p data-i18n-html="settings.verifier.doc.file.noargs">Le champ <em>Commande</em> attend un <strong>chemin absolu</strong>, pas une ligne de commande : <strong>aucun argument n'est transmis</strong>, et les tubes, redirections et variables (<code>|</code>, <code>&gt;</code>, <code>$VAR</code>) ne seraient pas interprétés. Pour passer des options, mets-les dans le script.</p>
-
-                <h4 data-i18n="settings.verifier.doc.in.title">Ce que Mergerie envoie sur l'entrée standard</h4>
-                <p data-i18n-html="settings.verifier.doc.in.text">Un objet JSON, sur une ligne. <code>role</code> vaut <code>base</code> (les branches cibles, avant tes changements) puis <code>head</code> (avec). <code>repos</code> ne contient que les dépôts <strong>visés par cette vérification</strong>, déjà positionnés sur les bons commits — tu n'as aucun git à faire.</p>
-<pre><code>{
-  "version": 1,
-  "verifier": "intégration",
-  "role": "head",
-  "repos": [
-    {
-      "name": "groupe/webapp-front",
-      "dir": "/abs/chemin/vers/le/repertoire",
-      "sha": "a1b2c3d4e5f6…",
-      "branch": "feat/PROJ-720",
-      "mode": "worktree",
-      "changed": true
-    }
-  ]
-}</code></pre>
-                <p data-i18n-html="settings.verifier.doc.in.env">Le répertoire courant du script est le <code>dir</code> du premier dépôt. Son environnement est <strong>minimal</strong> — <code>PATH</code>, <code>HOME</code>, <code>LANG</code>, <code>MERGERIE_VERIFY=1</code> — et ne contient <strong>aucun jeton</strong>. Tout ce qu'il écrit sur <code>stderr</code> apparaît dans le panneau de log du job.</p>
-
-                <h4 data-i18n="settings.verifier.doc.out.title">Ce que Mergerie attend sur la sortie standard</h4>
-                <p data-i18n-html="settings.verifier.doc.out.text">La <strong>dernière ligne JSON valide</strong> de <code>stdout</code> : ton script peut donc bavarder avant, seule cette ligne compte.</p>
-<pre><code>{"version":1,"status":"pass","total":218,"duration_ms":42000}</code></pre>
-                <p data-i18n="settings.verifier.doc.out.fail">…ou, quand des tests échouent :</p>
-<pre><code>{
-  "version": 1,
-  "status": "fail",
-  "total": 218,
-  "failed": [
-    {
-      "test": "commande › total serveur",
-      "message": "attendu 42, reçu 41",
-      "log_excerpt": "…quelques lignes de contexte…"
-    }
-  ]
-}</code></pre>
-                <ul>
-                    <li data-i18n-html="settings.verifier.doc.out.status"><code>status</code> vaut <code>pass</code>, <code>fail</code> ou <code>error</code>. <code>total</code>, <code>duration_ms</code> et <code>failed</code> sont facultatifs — un <code>fail</code> sans détail est accepté.</li>
-                    <li data-i18n-html="settings.verifier.doc.out.exit">Le <strong>code de sortie est indicatif</strong> : c'est <code>stdout</code> qui fait foi. Un script qui sort en 1 parce que des tests échouent a parfaitement rendu son verdict.</li>
-                    <li data-i18n-html="settings.verifier.doc.out.limits">Bornes : <code>failed</code> ≤ 50 entrées, chaque <code>log_excerpt</code> ≤ 4 ko, réponse totale ≤ 256 ko.</li>
-                    <li data-i18n-html="settings.verifier.doc.out.strict">Une réponse illisible, tronquée ou hors schéma ne devient <strong>jamais un vert</strong> : elle donne « vérification en erreur ».</li>
-                </ul>
-
-                <h4 data-i18n="settings.verifier.doc.ex.title">Exemples complets</h4>
-                <p data-i18n-html="settings.verifier.doc.ex.sh">Shell — la suite tourne, sa sortie est traduite dans le contrat :</p>
-<pre><code>#!/bin/sh
-set -eu
-ENTREE=$(cat)                                    # le JSON arrive sur stdin
-DIR=$(printf '%s' "$ENTREE" | jq -r '.repos[0].dir')
-
-cd "$DIR"
-if npm test >/tmp/verif.$$ 2>&amp;1; then
-  printf '{"version":1,"status":"pass"}\n'
-else
-  cat /tmp/verif.$$ >&amp;2                          # stderr → panneau de log du job
-  printf '{"version":1,"status":"fail"}\n'
-fi</code></pre>
-                <p data-i18n-html="settings.verifier.doc.ex.py">Python — même chose, avec le détail des tests cassés :</p>
-<pre><code>#!/usr/bin/env python3
-import json, subprocess, sys
-
-entree = json.load(sys.stdin)
-dossier = entree["repos"][0]["dir"]
-
-r = subprocess.run(["npm", "test", "--", "--reporter=json"],
-                   cwd=dossier, capture_output=True, text=True)
-print(r.stderr, file=sys.stderr)
-
-casses = [
-    {"test": t["fullTitle"], "message": t.get("err", {}).get("message", "")}
-    for t in json.loads(r.stdout).get("failures", [])
-]
-print(json.dumps({
-    "version": 1,
-    "status": "pass" if not casses else "fail",
-    "failed": casses[:50],
-}))</code></pre>
-            </details>
             <div class="toolbar">
                 <button id="btnNewVerifier" class="btn btn-primary" type="button"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="verify.verifier.btn.add">Ajouter un vérificateur</span></button>
             </div>
@@ -860,15 +800,6 @@ print(json.dumps({
                 <label><span data-i18n="settings.verifier.lbl.name">Nom</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.name" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input name="name" required placeholder="ex. intégration" data-i18n-placeholder="settings.verifier.ph.name" />
                 </label>
-                <!-- Deux familles : une liste de commandes rejouée dans chaque dépôt visé
-                     (rien à écrire) ou un script qui s'engage sur le contrat JSON. -->
-                <label><span data-i18n="settings.verifier.lbl.kind">Genre</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.kind" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                    <select name="kind">
-                        <option value="commands" data-i18n="settings.verifier.kind.commands">Commandes — une liste rejouée dans chaque dépôt</option>
-                        <option value="script" data-i18n="settings.verifier.kind.script">Script — un exécutable qui rend un verdict JSON (multi-dépôts)</option>
-                    </select>
-                </label>
-
                 <div id="verifierCommandsBlock">
                     <label><span data-i18n="settings.verifier.lbl.commands">Commandes, dans l'ordre</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.commands" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                     <div id="verifierCommandList"></div>
@@ -883,9 +814,6 @@ print(json.dumps({
                         <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.parse-tap" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                 </div>
 
-                <label id="verifierScriptBlock"><span data-i18n="settings.verifier.lbl.command">Commande (chemin absolu)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.command" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                    <input name="command" placeholder="/home/moi/bin/integ.sh" data-i18n-placeholder="settings.verifier.ph.command" />
-                </label>
                 <label><span data-i18n="settings.verifier.lbl.timeout">Délai maximum (secondes)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.timeout" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input name="timeout_s" type="number" min="10" step="10" placeholder="900" />
                 </label>
@@ -893,8 +821,31 @@ print(json.dumps({
                     <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.run-base" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                 <label class="inline-check"><input name="comment_on_forge" type="checkbox" /> <span data-i18n="settings.verifier.lbl.comment">Publier le verdict en commentaire sur la merge request</span>
                     <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.comment" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+                <!-- Le gabarit n'a de sens que si l'on publie : il apparaît avec la case. -->
+                <div id="verifierCommentBlock" hidden>
+                    <label><span data-i18n="settings.verifier.lbl.mentions">Personnes à prévenir quand ça casse</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.mentions" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <input name="mentions" autocomplete="off" placeholder="@amady @bruno ou @mon-groupe" data-i18n-placeholder="settings.verifier.ph.mentions" />
+                    </label>
+                    <label><span data-i18n="settings.verifier.lbl.comment-template">Gabarit du commentaire</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.comment-template" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <textarea name="comment_template" rows="6" spellcheck="false"></textarea>
+                    </label>
+                    <p class="field-note" data-i18n="settings.verifier.comment-template.fields">Ce que contient chaque champ, tel qu'il sera remplacé à l'envoi :</p>
+                    <dl id="verifierCommentFields" class="champs-gabarit"></dl>
+                    <p class="field-note" data-i18n="settings.verifier.comment-template.empty">Laissé vide, c'est le gabarit par défaut qui sert.</p>
+                    <!-- REPLIÉ : l'aperçu répond à « ça donne quoi ? », une question qu'on ne se
+                         pose qu'une fois. Ouvert par défaut, il pousserait le formulaire vers le bas
+                         à chaque visite. Il est composé par le moteur, avec des données d'exemple. -->
+                    <details id="verifierCommentPreview" class="apercu-gabarit">
+                        <summary data-i18n="settings.verifier.comment-template.preview">Voir un exemple de commentaire</summary>
+                        <p class="field-note" data-i18n="settings.verifier.comment-template.preview-note">Composé avec des données d'exemple (deux dépôts, deux tests cassés), par le même moteur que le vrai commentaire.</p>
+                        <pre id="verifierCommentPreviewBody" class="verify-log"></pre>
+                    </details>
+                    <p><button type="button" class="btn btn-sm" id="btnCommentTemplateDefaut" data-i18n="settings.verifier.comment-template.reset">Repartir du gabarit par défaut</button></p>
+                </div>
                 <label class="inline-check"><input name="auto_on_mr" type="checkbox" /> <span data-i18n="settings.verifier.lbl.auto">Lancer sur toute nouvelle merge request des dépôts couverts</span>
                     <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.auto" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+                <label class="inline-check"><input name="auto_on_stale" type="checkbox" /> <span data-i18n="settings.verifier.lbl.auto-stale">Relancer quand une merge request vérifiée reçoit de nouveaux commits</span>
+                    <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.verifier.tip.auto-stale" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                 <h3 data-i18n="settings.verifier.repos">Dépôts couverts</h3>
                 <p class="muted" data-i18n="settings.verifier.repos.help">Déclarer un dépôt dit que ce vérificateur sait le tester. Seuls les dépôts effectivement visés par une vérification lui sont mis à disposition.</p>
                 <p class="muted" id="verifierRepoHint"></p>
@@ -993,6 +944,15 @@ print(json.dumps({
                     <option value="light" data-i18n="settings.opt.clair">Clair</option>
                 </select>
             </label>
+            <!-- LA BARRE DE MENUS : son ordre et ce qu'on y montre. Préférence de ce navigateur,
+                 comme le thème juste au-dessus — c'est un arrangement d'écran, pas un réglage de
+                 l'outil, et deux postes n'ont pas les mêmes habitudes. -->
+            <div class="nav-prefs-wrap">
+                <span class="nav-prefs-lbl" data-i18n="settings.nav.title">Menus</span>
+                <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.nav.tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <button type="button" id="navPrefsReset" class="btn btn-sm" data-i18n="settings.nav.reset">Rétablir l'ordre d'origine</button>
+                <div id="navPrefs" class="nav-prefs"></div>
+            </div>
             <!-- Données : ce qu'on garde, et comment on l'emporte. Placé dans « Général »
                  parce que ça ne concerne ni les MR ni une forge en particulier. -->
             <label><span data-i18n="settings.lbl.retention">Conserver l'historique (jours, 0 = sans limite)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.retention" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
@@ -1133,6 +1093,9 @@ print(json.dumps({
             <label><span data-i18n="settings.lbl.converge-passes">Convergence — plafond de passes</span> <button type="button" class="hint" tabindex="0" aria-label="Nombre maximal de corrections IA par défaut avant d'arrêter la boucle « Converger ». Garde-fou anti-emballement. Surchargeable au lancement." data-tip="Nombre maximal de corrections IA par défaut avant d'arrêter la boucle « Converger ». Garde-fou anti-emballement. Surchargeable au lancement." data-i18n-tip="settings.tip.converge-passes"><svg class="ico"><use href="#i-info"/></svg></button>
                 <input form="configForm" name="converge_max_passes" type="number" min="1" max="10" step="1" placeholder="3" />
             </label>
+            <label><span data-i18n="settings.lbl.verif-auto-max">Vérifications automatiques — plafond par découverte</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.verif-auto-max" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="verif_auto_max" type="number" min="0" max="50" step="1" placeholder="5" />
+            </label>
         </div>
         <!-- Templates : hors du formulaire plafonné à 520px pour laisser les textarea
              s'élargir (prompts multi-lignes) — leur propre .form plus large les habille. -->
@@ -1213,6 +1176,11 @@ print(json.dumps({
                 <div id="taskLocalDirRows"></div>
                 <p class="muted" style="margin:6px 0 0" data-i18n="local.dirs-hint">Les projets du répertoire choisi. Le même prompt est appliqué à chacun, l'un après l'autre.</p>
             </div>
+            <!-- L'avertissement suit le choix qu'il qualifie : lu en bas du formulaire, il
+                 arrivait après la décision, une fois le prompt déjà écrit. -->
+            <p id="taskLocalWarn" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span data-i18n-html="local.warn">L'IA modifie les fichiers <strong>en place</strong>, sans commit. Si le dossier est un <strong>dépôt git</strong>, tu peux relire et annuler toi-même (git diff / git checkout) ; sinon, <strong>aucune annulation</strong> n'est possible.</span></p>
+            <!-- CE QU'ON DEMANDE. Le ticket Jira REMPLIT le prompt : il se lit donc juste
+                 au-dessus de lui, pas trois champs plus haut. -->
             <div id="taskJiraRow" class="task-jira" hidden>
                 <label><span data-i18n="task.lbl.jira-ticket">Enrichir depuis un ticket Jira (optionnel)</span> <button type="button" class="hint" tabindex="0" aria-label="Récupère le titre et la description du ticket via l'API Jira et les ajoute en tête du prompt, comme contexte. Le numéro est pré-rempli si la branche de travail contient une clé (ex. PROJ-1234)." data-tip="Récupère le titre et la description du ticket via l'API Jira et les ajoute en tête du prompt, comme contexte. Le numéro est pré-rempli si la branche de travail contient une clé (ex. PROJ-1234)." data-i18n-tip="task.tip.jira-ticket"><svg class="ico"><use href="#i-info"/></svg></button>
                     <span class="jira-fetch">
@@ -1222,22 +1190,39 @@ print(json.dumps({
                 </label>
                 <span id="taskJiraStatus" class="muted"></span>
             </div>
+            <label><span data-i18n="task.lbl.tache-a-realiser-prompt">Tâche à réaliser (prompt)</span> <button type="button" class="hint" tabindex="0" aria-label="En codage : ce que l'IA doit implémenter, appliqué à chaque projet sélectionné. En exploration : la question posée sur le code, sans aucune modification." data-tip="En codage : ce que l'IA doit implémenter, appliqué à chaque projet sélectionné. En exploration : la question posée sur le code, sans aucune modification." data-i18n-tip="task.tip.en-codage-ce-que-l"><svg class="ico"><use href="#i-info"/></svg></button>
+                <textarea name="prompt" rows="5" placeholder="Décris la tâche de dev à faire… (ex. Ajouter un endpoint /health qui renvoie le statut)" data-i18n-placeholder="task.ph.decris-la-tache-de-dev" required></textarea>
+            </label>
+            <div id="taskImages" class="ticket-drop">
+                <!-- Captures ET documents : pour l'agent, c'est la même chose — un fichier à ouvrir. -->
+                <label class="ticket-file"><svg class="ico"><use href="#i-clip"/></svg><span data-i18n="task.lbl.add-piece">Joindre un fichier</span><input type="file" id="taskFile" accept="image/*,.pdf,.txt,.md,.csv,.tsv,.json,.yml,.yaml,.xml,.html,.log,.docx,.xlsx,.pptx,.odt,.ods,.odp,.rtf" hidden multiple /></label>
+                <span class="muted" data-i18n="task.span.ou-colle-des-captures-ctrl">…ou colle des captures (Ctrl+V) pour enrichir le prompt</span>
+                <span id="taskExistingImgs" class="muted"></span>
+                <!-- Les pièces DÉJÀ jointes (édition) : les vraies, ouvrables et retirables —
+                     avant celles qu'on est en train d'ajouter. -->
+                <div id="taskPieces" class="task-previews"></div>
+                <div id="taskPreviews" class="task-previews"></div>
+            </div>
             <!-- UN TITRE COURT, FACULTATIF. Une liste de sessions se lit par son prompt — trois
                  lignes repliées dont les premiers mots se ressemblent d'une session à l'autre.
                  Vide, la carte retombe sur le prompt : rien ne se perd. -->
             <label><span data-i18n="task.lbl.label">Libellé (optionnel)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="task.tip.label" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <input name="label" maxlength="120" placeholder="ex. Migration TypeORM des entités" data-i18n-placeholder="task.ph.label" />
             </label>
-            <label><span data-i18n="task.lbl.tache-a-realiser-prompt">Tâche à réaliser (prompt)</span> <button type="button" class="hint" tabindex="0" aria-label="En codage : ce que l'IA doit implémenter, appliqué à chaque projet sélectionné. En exploration : la question posée sur le code, sans aucune modification." data-tip="En codage : ce que l'IA doit implémenter, appliqué à chaque projet sélectionné. En exploration : la question posée sur le code, sans aucune modification." data-i18n-tip="task.tip.en-codage-ce-que-l"><svg class="ico"><use href="#i-info"/></svg></button>
-                <textarea name="prompt" rows="5" placeholder="Décris la tâche de dev à faire… (ex. Ajouter un endpoint /health qui renvoie le statut)" data-i18n-placeholder="task.ph.decris-la-tache-de-dev" required></textarea>
-            </label>
-            <div id="taskImages" class="ticket-drop">
-                <label class="ticket-file"><svg class="ico"><use href="#i-clip"/></svg><span data-i18n="task.lbl.add-screenshot">Ajouter une capture</span><input type="file" id="taskFile" accept="image/*" hidden multiple /></label>
-                <span class="muted" data-i18n="task.span.ou-colle-des-captures-ctrl">…ou colle des captures (Ctrl+V) pour enrichir le prompt</span>
-                <span id="taskExistingImgs" class="muted"></span>
-                <div id="taskPreviews" class="task-previews"></div>
+            <!-- COMMENT L'IA TRAVAILLE : deux options qui portent sur la passe elle-même.
+                 Le groupe entier disparaît pour une question libre, qui n'a ni cible ni passe. -->
+            <div id="taskAgentFields">
+                <p class="form-group-title" data-i18n="task.group.agent">Comment l’IA travaille</p>
+            <label id="taskAskQuestionsRow" class="inline-check"><input type="checkbox" name="ask_questions" /> <span data-i18n="task.lbl.ask-questions">L'IA peut me poser des questions quand elle hésite</span> <button type="button" class="hint" tabindex="0" aria-label="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-tip="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-i18n-tip="task.tip.ask-questions"><svg class="ico"><use href="#i-info"/></svg></button></label>
+                <label id="taskSessionRow"><span data-i18n="task.lbl.session-id">Reprendre une session d'agent existante (optionnel)</span> <button type="button" class="hint" tabindex="0" aria-label="Laisse vide pour ouvrir une nouvelle session. Renseigné, l'IA travaille DANS cette session et garde donc tout son contexte : rien de neuf n'est créé. L'identifiant est celui affiché par « Reprendre au terminal » sur une session existante — un UUID avec claude, un chemin de home avec copilot. Une session appartient à un dossier de travail : si la reprise est refusée, une session neuve prend le relais avec le contexte réinjecté." data-tip="Laisse vide pour ouvrir une nouvelle session. Renseigné, l'IA travaille DANS cette session et garde donc tout son contexte : rien de neuf n'est créé. L'identifiant est celui affiché par « Reprendre au terminal » sur une session existante — un UUID avec claude, un chemin de home avec copilot. Une session appartient à un dossier de travail : si la reprise est refusée, une session neuve prend le relais avec le contexte réinjecté." data-i18n-tip="task.tip.session-id"><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input name="session_id" id="taskSessionId" autocomplete="off" placeholder="vide = nouvelle session" data-i18n-placeholder="task.ph.session-id" />
+                    <span id="taskSessionHint" class="field-note" hidden></span>
+                </label>
             </div>
+            <!-- CE QUI ARRIVE UNE FOIS LE CODE ÉCRIT : commit, push, vérification. Ce groupe
+                 ferme le formulaire parce qu'il est chronologiquement le dernier. -->
             <div id="codeOnlyFields">
+                <p class="form-group-title" data-i18n="task.group.after">Une fois le code écrit</p>
                 <label><span data-i18n="task.lbl.message-de-commit-optionnel">Message de commit (optionnel)</span> <button type="button" class="hint" tabindex="0" aria-label="Message du commit créé par l'IA. Vide = la première ligne du prompt est utilisée." data-tip="Message du commit créé par l'IA. Vide = la première ligne du prompt est utilisée." data-i18n-tip="task.tip.message-du-commit-cree-par"><svg class="ico"><use href="#i-info"/></svg></button>
                     <input name="commit_message" placeholder="défaut : 1ère ligne du prompt" data-i18n-placeholder="task.ph.defaut-1ere-ligne-du-prompt" />
                 </label>
@@ -1250,12 +1235,6 @@ print(json.dumps({
                 </label>
                 <p id="taskVerifierNote" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span data-i18n="task.verifier.push-note">Un vérificateur travaille sur le code poussé : l'auto-push est donc activé. Le décocher retirera le vérificateur.</span></p>
             </div>
-            <label class="inline-check"><input type="checkbox" name="ask_questions" /> <span data-i18n="task.lbl.ask-questions">L'IA peut me poser des questions quand elle hésite</span> <button type="button" class="hint" tabindex="0" aria-label="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-tip="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-i18n-tip="task.tip.ask-questions"><svg class="ico"><use href="#i-info"/></svg></button></label>
-            <label><span data-i18n="task.lbl.session-id">Reprendre une session d'agent existante (optionnel)</span> <button type="button" class="hint" tabindex="0" aria-label="Laisse vide pour ouvrir une nouvelle session. Renseigné, l'IA travaille DANS cette session et garde donc tout son contexte : rien de neuf n'est créé. L'identifiant est celui affiché par « Reprendre au terminal » sur une session existante — un UUID avec claude, un chemin de home avec copilot. Une session appartient à un dossier de travail : si la reprise est refusée, une session neuve prend le relais avec le contexte réinjecté." data-tip="Laisse vide pour ouvrir une nouvelle session. Renseigné, l'IA travaille DANS cette session et garde donc tout son contexte : rien de neuf n'est créé. L'identifiant est celui affiché par « Reprendre au terminal » sur une session existante — un UUID avec claude, un chemin de home avec copilot. Une session appartient à un dossier de travail : si la reprise est refusée, une session neuve prend le relais avec le contexte réinjecté." data-i18n-tip="task.tip.session-id"><svg class="ico"><use href="#i-info"/></svg></button>
-                <input name="session_id" id="taskSessionId" autocomplete="off" placeholder="vide = nouvelle session" data-i18n-placeholder="task.ph.session-id" />
-                <span id="taskSessionHint" class="field-note" hidden></span>
-            </label>
-            <p id="taskLocalWarn" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span data-i18n-html="local.warn">L'IA modifie les fichiers <strong>en place</strong>, sans commit. Si le dossier est un <strong>dépôt git</strong>, tu peux relire et annuler toi-même (git diff / git checkout) ; sinon, <strong>aucune annulation</strong> n'est possible.</span></p>
             <div class="modal-actions">
                 <button type="button" id="taskCancel" class="btn" title="Fermer sans enregistrer" data-i18n-title="task.title.fermer-sans-enregistrer" data-i18n="task.btn.annuler">Annuler</button>
                 <button type="button" id="taskSubmitOnly" class="btn" hidden title="Créer la session sans l'exécuter — tu la lanceras quand tu veux depuis Dev IA" data-i18n-title="task.title.creer-la-session-sans-l"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="task.btn.creer-sans-lancer">Créer sans lancer</span></button>
@@ -1592,8 +1571,18 @@ print(json.dumps({
     <div class="modal-box modal-wide">
         <h3 id="verifyModalTitle" data-i18n="verify.report.title">Rapport de vérification</h3>
         <div id="verifyReport"></div>
+        <!-- Publication en commentaire : le corps est PRÉ-REMPLI puis relu. Il n'apparaît qu'à
+             la demande — un champ de texte ouvert sous chaque rapport inviterait à publier par
+             réflexe, alors que ça écrit sur la merge request que d'autres lisent. -->
+        <div id="verifyCommentBox" hidden>
+            <p id="verifyCommentWhere" class="muted"></p>
+            <textarea id="verifyCommentBody" rows="10" spellcheck="false"></textarea>
+            <p id="verifyCommentPosted" class="field-note" hidden></p>
+        </div>
         <div class="modal-actions">
             <button id="verifyClose" type="button" class="btn" data-i18n="ui.close">Fermer</button>
+            <button id="verifyComment" type="button" class="btn" hidden><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="verify.btn.comment">Publier en commentaire</span></button>
+            <button id="verifyCommentSend" type="button" class="btn btn-primary" hidden><svg class="ico"><use href="#i-upload"/></svg><span data-i18n="verify.btn.comment-send">Publier sur la merge request</span></button>
             <button id="verifyFix" type="button" class="btn btn-primary" hidden><svg class="ico"><use href="#i-bot"/></svg><span data-i18n="verify.btn.fix">Corriger (session IA)</span></button>
         </div>
     </div>
@@ -1611,6 +1600,38 @@ print(json.dumps({
         <div class="modal-actions">
             <button id="verifyPickCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
             <button id="verifyPickGo" type="button" class="btn btn-primary"><svg class="ico"><use href="#i-play"/></svg><span data-i18n="verify.pick.go">Lancer</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- Vérifier une BRANCHE, sans merge request : « est-ce que develop est encore vert ? ».
+     Une ligne par dépôt couvert par le vérificateur, chacune sur sa branche par défaut. Le
+     choix passe par un sélecteur À RECHERCHE : un dépôt actif aligne des centaines de branches. -->
+<!-- Comparer : le contenu d'un fichier des deux côtés. Ouverte en cliquant un fichier de
+     l'une des trois colonnes — c'est la question qui suit immédiatement « il est des deux
+     côtés mais différent » : différent COMMENT ? -->
+<div id="compareFileModal" class="modal" hidden>
+    <div class="modal-box cmp-file-box">
+        <h3 id="compareFilePath"></h3>
+        <p id="compareFileSides" class="muted"></p>
+        <div id="compareFileBody" class="cmp-diff"></div>
+        <div class="modal-actions">
+            <button id="compareFileClose" type="button" class="btn" data-i18n="context.title.fermer-echap">Fermer (Échap)</button>
+        </div>
+    </div>
+</div>
+
+<div id="branchVerifyModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 data-i18n="verify.branch.title">Vérifier une branche</h3>
+        <p class="muted" data-i18n="verify.branch.help">Le verdict porte sur la branche elle-même : pas de comparaison avec une base, et rien n'est imputé à personne.</p>
+        <label><span data-i18n="verify.branch.verifier">Vérificateur</span>
+            <select id="branchVerifySelect"></select>
+        </label>
+        <div id="branchVerifyRows" class="modal-fields"></div>
+        <div class="modal-actions">
+            <button id="branchVerifyCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="branchVerifyGo" type="button" class="btn btn-primary"><svg class="ico"><use href="#i-play"/></svg><span data-i18n="verify.pick.go">Lancer</span></button>
         </div>
     </div>
 </div>
@@ -1710,7 +1731,6 @@ print(json.dumps({
         <!-- Codage hors dépôt : une session porte plusieurs DOSSIERS, chacun avec son
              retour d'agent. On passe de l'un à l'autre ici plutôt qu'en refermant la vue. -->
         <select id="taskPassDir" class="md-version" title="Choisir le dossier" data-i18n-title="local.pass.dir-title" hidden></select>
-        <select id="taskPassVersion" class="md-version" title="Choisir l'itération à relire" data-i18n-title="task.pass.select-title" hidden></select>
         <button id="taskMdCopy" class="btn btn-sm" title="Copier la réponse en Markdown" data-i18n-title="context.title.copier-la-reponse-en-markdown"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="settings.btn.copier">Copier</span></button>
         <div class="split-menu-wrap">
             <button id="taskMdExport" class="btn btn-sm" aria-haspopup="true" aria-expanded="false" title="Exporter la réponse" data-i18n-title="export.title"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="export.btn">Exporter</span></button>
@@ -1722,7 +1742,19 @@ print(json.dumps({
         </div>
         <button id="taskMdClose" class="btn" title="Fermer (Échap)" data-i18n-title="context.title.fermer-echap"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>
     </div>
-    <div class="split-body"><div class="split-pane" style="grid-column:1 / -1;overflow:auto"><div id="taskMdBody" class="md" style="padding:18px 24px;max-width:900px;margin:0 auto"></div></div></div>
+    <!-- Les ITÉRATIONS sont une liste à gauche, pas une liste déroulante : on les lit toutes
+         d'un coup d'œil, avec la demande qui a produit chacune, et on cherche dedans. -->
+    <div class="split-body pass-body no-list">
+        <aside id="taskPassAside" class="split-pane pass-aside" hidden>
+            <div class="pass-aside-head">
+                <h4 id="taskPassTitle"></h4>
+                <input id="taskPassSearch" class="search" type="search" placeholder="Chercher dans mes demandes…" data-i18n-placeholder="task.pass.search-ph" />
+            </div>
+            <div id="taskPassList" class="pass-list"></div>
+            <p id="taskPassNoMatch" class="muted" hidden data-i18n="task.pass.no-match">Aucune demande ne correspond.</p>
+        </aside>
+        <div class="split-pane" style="overflow:auto"><div id="taskMdBody" class="md" style="padding:18px 24px;max-width:900px;margin:0 auto"></div></div>
+    </div>
 </div>
 
 <!-- Vue plein écran : diff d'une tâche -->
