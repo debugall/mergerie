@@ -202,12 +202,12 @@ describe('Jira · Surveillés — le ticket s’ouvre à droite', { skip: dispo 
      arrivait sur une seule ligne, indentations écrasées par le repli HTML et incopiable.
      On vérifie ici ce que l'utilisateur VOIT, pas seulement le Markdown intermédiaire. */
   test('un gabarit de code dans un tableau Jira s’affiche en bloc, lignes et indentations gardées', async () => {
-    const JSON_GABARIT = '{\n    "partner": "LIN",\n    "version": 8\n}';
+    const JSON_GABARIT = '{\n    "source": "orders-service",\n    "version": 3\n}';
     await poserTicketTechnique({
       type: 'doc',
       version: 1,
       content: [{ type: 'table', content: [{ type: 'tableRow', content: [
-        { type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'NP15_Suppression_IN' }] }] },
+        { type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'commande_expediee' }] }] },
         { type: 'tableCell', content: [{ type: 'codeBlock', attrs: { language: 'json' }, content: [{ type: 'text', text: JSON_GABARIT }] }] },
       ] }] }],
     });
@@ -216,7 +216,7 @@ describe('Jira · Surveillés — le ticket s’ouvre à droite', { skip: dispo 
     const bloc = page.locator('#jiraWatchDetail pre').first();
     assert.equal((await bloc.textContent()).trim(), JSON_GABARIT,
       'le contenu du bloc est celui de Jira, retours à la ligne compris');
-    assert.match(await page.locator('#jiraWatchDetail').innerText(), /NP15_Suppression_IN/,
+    assert.match(await page.locator('#jiraWatchDetail').innerText(), /commande_expediee/,
       'l’étiquette de la cellule voisine n’est pas perdue');
 
     /* Un bloc de code doit se DISTINGUER du texte et garder son propre ascenseur : sans

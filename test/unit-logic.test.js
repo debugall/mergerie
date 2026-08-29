@@ -230,17 +230,17 @@ describe('jira : clé de ticket et conversion ADF → Markdown', () => {
       type: 'doc',
       content: [{ type: 'table', content: [
         { type: 'tableRow', content: [
-          cell([para('NP15_Suppression_IN')]),
-          cell([{ type: 'codeBlock', attrs: { language: 'json' }, content: [{ type: 'text', text: '{\n    "partner": "LIN",\n    "version": 8\n}' }] }]),
+          cell([para('commande_expediee')]),
+          cell([{ type: 'codeBlock', attrs: { language: 'json' }, content: [{ type: 'text', text: '{\n    "source": "orders-service",\n    "version": 3\n}' }] }]),
         ] },
         { type: 'tableRow', content: [
-          cell([para('NP15-1_Suppression_IN')]),
+          cell([para('commande_annulee')]),
           cell([{ type: 'codeBlock', content: [{ type: 'text', text: '{\n    "version": 1\n}' }] }]),
         ] },
       ] }],
     });
     assert.doesNotMatch(md, /^\|/m, 'aucune ligne de tableau : le contenu ne tenait pas dedans');
-    assert.match(md, /NP15_Suppression_IN\n\n```json\n\{\n {4}"partner": "LIN",/,
+    assert.match(md, /commande_expediee\n\n```json\n\{\n {4}"source": "orders-service",/,
       'l’étiquette, puis le bloc de code avec ses indentations');
     assert.match(md, /\n---\n/, 'les lignes du tableau restent distinguables');
     assert.match(md, /"version": 1/, 'la seconde ligne est là aussi');
