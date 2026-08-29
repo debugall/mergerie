@@ -77,6 +77,12 @@ const PROJECTS = [
   { project: 'groupe/webapp-front', url: 'https://gitlab.demo/groupe/webapp-front.git', forge: 'gitlab' },
   { project: 'groupe/batch-jobs', url: 'https://gitlab.demo/groupe/batch-jobs.git', forge: 'gitlab' },
   { project: 'acme/design-system', url: 'https://github.com/acme/design-system.git', forge: 'github', fetch_mrs: 0 },
+  /* Deux services de plus : le changement transverse du ticket PROJ-1408 (le paiement en 3×)
+     touche CINQ dépôts. Sans eux, la démo ne peut montrer ni une session à cinq
+     projets, ni un lot de cinq merge requests vérifiées ensemble — la situation qui justifie
+     l'outil, et celle que trois dépôts ne racontent pas. */
+  { project: 'groupe/notif-service', url: 'https://gitlab.demo/groupe/notif-service.git', forge: 'gitlab' },
+  { project: 'groupe/orders-service', url: 'https://gitlab.demo/groupe/orders-service.git', forge: 'gitlab' },
 ];
 
 // ---------- config : GitLab factice, pas de token (démo hors-ligne) ----------
@@ -171,7 +177,7 @@ function insertMr(m, extra = {}) {
       current_sha: sha, reviewed_sha: extra.reviewed_sha || null,
       status: m.status, updated_at: extra.date || at(1),
       gitlab_created_at: extra.date || at(2),
-      author: AUTHORS[iid % AUTHORS.length], changed_paths: (m.changed || []).join('\n'),
+      author: extra.author || AUTHORS[iid % AUTHORS.length], changed_paths: (m.changed || []).join('\n'),
     });
   return { id: info.lastInsertRowid, iid, sha, source_branch: m.branch, target_branch: extra.target || 'main', ...m };
 }
@@ -717,6 +723,96 @@ db.prepare(`INSERT INTO verification
       { command: 'npm test', code: 1, duration_ms: 54000,
         output_tail: 'TAP version 13\nok 1 - export › écrit le fichier\nnot ok 2 - export › reprend après une coupure réseau\n# fail 1' }] }),
   JSON.stringify(echecsCmd), at(0.15), at(0.15), at(0.15));
+
+/* ---------- LE CHANGEMENT TRANSVERSE : un ticket, cinq dépôts, cinq merge requests ----------
+   C'est le scénario que trois dépôts ne savent pas raconter : le ticket PROJ-1408 (le paiement
+   en 3× sans frais, déjà dans le jeu Jira fictif) demande la même chose dans cinq services —
+   le partenaire de paiement, l'éligibilité des commandes, l'échéancier à l'écran, la
+   notification au client, la relance des impayés. Une session de codage porte les cinq projets,
+   chacun rend sa merge request sur la MÊME branche, et un seul vérificateur les rejoue
+   ENSEMBLE : un verdict vert qui ne vaut que collectivement. Sans ce lot, l'écran ne montre que
+   des merge requests indépendantes. */
+const P3X_BRANCHE = 'feat/PROJ-1408-paiement-3x';
+const P3X = [
+  { project: 'groupe/api-core', title: 'Paiement 3× : intégration du partenaire de paiement',
+    changed: ['src/payment/provider.js', 'src/payment/schedule.js'], summary: 'branche le partenaire de paiement en trois fois' },
+  { project: 'groupe/orders-service', title: 'Paiement 3× : éligibilité des commandes > 100 €',
+    changed: ['src/orders/eligibility.js'], summary: 'ouvre le paiement fractionné aux commandes éligibles' },
+  { project: 'groupe/webapp-front', title: 'Paiement 3× : échéancier affiché avant validation',
+    changed: ['src/checkout/Schedule.jsx', 'src/i18n/fr.json'], summary: 'affiche l’échéancier avant de valider' },
+  { project: 'groupe/notif-service', title: 'Paiement 3× : e-mail de confirmation de l’échéancier',
+    changed: ['src/templates/schedule.html', 'src/sender/notify.js'], summary: 'confirme l’échéancier par e-mail' },
+  { project: 'groupe/batch-jobs', title: 'Paiement 3× : relance des échéances impayées',
+    changed: ['jobs/dunning.js'], summary: 'relance les échéances non honorées' },
+];
+/* Des auteurs entièrement inventés : ces cinq merge requests servent aussi de captures
+   publiées, et rien de ce qui s'y lit ne doit renvoyer à une personne réelle. */
+const P3X_AUTEURS = ['lina', 'karim', 'noah', 'sofia', 'inès'];
+/* Elles sont « à traiter » : la session vient de les pousser, le vérificateur les a rejouées
+   ensemble, et c'est maintenant à l'humain de lire et de merger. Les reviewer ici les ferait
+   changer d'étage et casserait la lecture du lot d'un seul coup d'œil. */
+const mrsP3x = P3X.map((m, idx) => insertMr(
+  { ...m, branch: P3X_BRANCHE, status: 'to_review' },
+  { date: at(0.4 + idx * 0.01), author: P3X_AUTEURS[idx] },
+));
+
+/* Le vérificateur qui couvre les CINQ dépôts : la même liste de commandes rejouée dans chacun.
+   C'est ce qui rend le verdict collectif — cinq merge requests qui ne valent qu'ensemble. */
+const p3xVerifId = db.prepare(`INSERT INTO verifier
+  (name, kind, command, timeout_s, run_base, comment_on_forge, parse_tap, created_at)
+  VALUES (?, 'commands', '', ?,?,?,1,?)`).run('intégration paiement (démo)', 1200, 1, 1, at(6)).lastInsertRowid;
+for (const m of P3X) {
+  db.prepare("INSERT INTO verifier_repo (verifier_id, repo_id, mode, workdir, checkout_allowed) VALUES (?,?,'worktree',NULL,0)")
+    .run(p3xVerifId, repoIds[m.project]);
+}
+['npm ci', 'npm run test:integ -- --tag paiement-3x'].forEach((c, i) => {
+  db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)').run(p3xVerifId, i, c);
+});
+
+const lotP3x = db.prepare('INSERT INTO lot (name, kind, created_at) VALUES (?,?,?)')
+  .run('Paiement en 3× — tunnel complet', 'mr', at(0.5)).lastInsertRowid;
+for (const mr of mrsP3x) {
+  db.prepare("INSERT INTO lot_member (lot_id, kind, ref_id) VALUES (?, 'mr', ?)").run(lotP3x, mr.id);
+}
+const ciblesP3x = mrsP3x.map((mr) => ({
+  repo_id: repoIds[mr.project], mr_id: mr.id, head_sha: mr.sha,
+  base_sha: 'b' + require('crypto').randomBytes(19).toString('hex'),
+  branch: P3X_BRANCHE, mode: 'worktree',
+}));
+/* Verdict VERT, et il a un sens : la base est verte AUSSI (444 tests), donc le vert du head
+   n'est pas celui d'une suite déjà cassée avant la branche. */
+db.prepare(`INSERT INTO verification
+  (verifier_id, verifier_name, lot_id, lot_name, status, verdict, targets_json, base_run_json,
+   head_run_json, imputable_json, started_at, finished_at, created_at)
+  VALUES (?,?,?,?,'done','verified_pass',?,?,?,?,?,?,?)`).run(
+  p3xVerifId, 'intégration paiement (démo)', lotP3x, 'Paiement en 3× — tunnel complet',
+  JSON.stringify(ciblesP3x),
+  JSON.stringify({ version: 1, status: 'pass', total: 444, duration_ms: 128000,
+    commands: [{ command: 'npm ci', code: 0, duration_ms: 41000, output_tail: 'ajout de 512 paquets en 41 s' },
+      { command: 'npm run test:integ -- --tag paiement-3x', code: 0, duration_ms: 87000, output_tail: '# pass 444\n# fail 0' }] }),
+  JSON.stringify({ version: 1, status: 'pass', total: 452, duration_ms: 131000, failed: [],
+    commands: [{ command: 'npm ci', code: 0, duration_ms: 42000, output_tail: 'ajout de 512 paquets en 42 s' },
+      { command: 'npm run test:integ -- --tag paiement-3x', code: 0, duration_ms: 89000, output_tail: '# pass 452\n# fail 0' }] }),
+  JSON.stringify([]), at(0.3515), at(0.35), at(0.35));
+
+/* La session de codage qui a produit les cinq branches : un prompt, cinq projets, cinq MR. */
+const tP3x = db.prepare(`INSERT INTO task
+  (repo_id, prompt, label, branch, base_branch, status, kind, auto_push, created_at, updated_at)
+  VALUES (?,?,?,?,?,?,?,1,?,?)`).run(
+  repoIds['groupe/api-core'],
+  'PROJ-1408 — Ajoute le paiement en 3× sans frais pour les commandes de plus de 100 € : '
+  + 'intègre le partenaire de paiement, calcule l’échéancier côté serveur et affiche-le AVANT '
+  + 'la validation de la commande. Même contrat d’échéancier partout, un test couvre le calcul, '
+  + 'et rien ne change pour les commandes en dessous du seuil.',
+  'Paiement en 3× — tunnel complet', P3X_BRANCHE, 'main', 'pushed', 'code', at(0.55), at(0.5));
+mrsP3x.forEach((mr) => {
+  db.prepare(`INSERT INTO task_target
+    (task_id, repo_id, branch, base_branch, status, commit_sha, mr_iid, mr_url, updated_at)
+    VALUES (?,?,?,?,'pushed',?,?,?,?)`).run(
+    tP3x.lastInsertRowid, repoIds[mr.project], P3X_BRANCHE, 'main',
+    mr.sha.slice(0, 7), mr.iid, mr.web_url
+      || `https://gitlab.demo/${mr.project}/-/merge_requests/${mr.iid}`, at(0.5));
+});
 
 /* ---------- Notes, todos et rappels (plan_add_notes.md §10) ----------
    La démo doit montrer l'onglet VIVANT, brief compris : une page avec des références
