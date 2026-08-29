@@ -11,6 +11,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-29
+
 ### Added
 
 - **Tell Mergerie you answered the AI's questions in your terminal.** “Resume in terminal” hands
@@ -101,8 +103,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   repositories and one branch each, and answers the question a `git diff` cannot: these two
   repositories share no history — a service extracted into its own repository, a fork gone its own
   way — so what exists here and not there? Each side takes **a branch or a tag** (comparing two
-  released versions means comparing two tags), and the two are never confused when they share a name. Three columns: **left only**, **on both sides but
-  different**, **right only**, with a filter that searches all three at once. Files that are
+  released versions means comparing two tags), and the two are never confused when they share a
+  name. Three columns: **left only**, **on both sides but different**, **right only**, with a
+  filter that searches all three at once. Files that are
   identical are counted, not listed, so the screen shows what is missing instead of drowning it in
   what is fine. **Click any file to see its differences** — both versions in a unified diff, with a
   file that exists on one side only read against the void, so you see exactly what the other side is
@@ -135,8 +138,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 - **The published comment has an editable template.** Under `Publish the verdict as a comment`,
   a template with fields replaced when it is sent: `{verdict}`, `{tests}`, `{commits}`,
-  `{verificateur}`, `{commandes}`, `{date}` and `{heure}` — so the comment carries **the date and time it was
-  published**. Each field is **explained on the spot**, with what it actually produces (a field
+  `{verificateur}`, `{commandes}`, `{date}` and `{heure}` — so the comment carries **the date and
+  time it was published**. Each field is **explained on the spot**, with what it actually produces (a field
   name teaches nothing: between `{tests}` and `{commits}`, nobody guesses which one carries the
   broken test names — and `{commandes}`, part of the default template, names the failing commands
   with their exit code, which `{tests}` cannot say when the output names the tests itself), and a
@@ -164,6 +167,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   only the code knew; the right number depends on the machine and on how long the suites take.
   It now lives in *Settings → Merge Request*, and `0` means “no limit”.
 
+- **A fourth kind of AI session: the free question.** *AI Dev* gains a `Free question` sub-tab for
+  everything you ask an AI outside any repository — a notion to dig into, two options to compare,
+  a plan to challenge. Nothing on your machine is read or changed: no clone, no folder, none of
+  your files. The point is what happens next: the answer is **kept**, an optional label files the
+  study away, and a **follow-up resumes the same agent session**, so a subject can be worked
+  through in five questions instead of one — each of them archived with the answer it got, and
+  replayable from the iteration selector. `Resume in terminal` hands the thread back to you, and
+  the answer exports to HTML, Word or PDF like any other. A free question reserves no repository:
+  it never blocks a review or a coding session, and nothing blocks it.
+
 ### Changed
 
 - **The session form now reads in the order things happen.** Same form for all four flavours, but
@@ -175,6 +188,21 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   auto-push, verifier), the last two groups under a discreet caption. A free question shows the
   request alone.
 
+### Removed
+
+- **“Script” verifiers are gone; a verifier is a list of commands.** Writing an executable that
+  speaks a JSON contract was a lot of work for what three lines — `npm ci`, `npm test` — already
+  give, and that contract was the part of the tool nobody read until they needed it. Everything
+  it fed still exists: the causal base/head double run, the named broken tests (read from TAP or
+  a JUnit report), multi-repository coverage, batches, `Fix (AI session)`. **What is lost**: a
+  script could *declare* its own failed test names whatever its output looked like — a suite that
+  prints neither TAP nor JUnit now yields a verdict from exit codes alone, and the report names
+  the failing **command** instead of the failing test.
+  A verifier of that family still on file **is not deleted and not converted**: it stays visible
+  in *Settings → Verifiers*, marked `family removed`, and refuses to run — converting it into a
+  single command would have kept it running while silently changing what its verdict meant.
+  Rewrite it as a list of commands, then delete it.
+
 ### Fixed
 
 - **A review always gets asked for its overall score, and a report without one no longer vanishes.**
@@ -182,8 +210,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   for one produced reports the score filter silently left out, and you could not tell them from
   merge requests that were never reviewed. The instruction is now added at run time, like the line
   numbers and the findings block, whatever the template says; if the AI still writes no score, the
-  job log says so. And the filter gained a fourth box, **“— no score”**, with its own counter: those
-  reports are now somewhere, instead of nowhere.
+  job log says so. And the filter gained a fourth box, **“— no score”**, with its own counter:
+  those reports are now somewhere, instead of nowhere.
 
 - **The shipped review template no longer invokes a skill you do not have.** It opened with “use
   the git-review skill”, which whoever installs Mergerie has no reason to own: the very first
@@ -250,33 +278,6 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   by running out of memory**, which `docker inspect` distinguishes from a requested kill. The menu
   badge and the *Exited with an error* filter apply the same rule, so clicking the red count opens
   exactly the containers it counted.
-
-### Removed
-
-- **“Script” verifiers are gone; a verifier is a list of commands.** Writing an executable that
-  speaks a JSON contract was a lot of work for what three lines — `npm ci`, `npm test` — already
-  give, and that contract was the part of the tool nobody read until they needed it. Everything
-  it fed still exists: the causal base/head double run, the named broken tests (read from TAP or
-  a JUnit report), multi-repository coverage, batches, `Fix (AI session)`. **What is lost**: a
-  script could *declare* its own failed test names whatever its output looked like — a suite that
-  prints neither TAP nor JUnit now yields a verdict from exit codes alone, and the report names
-  the failing **command** instead of the failing test.
-  A verifier of that family still on file **is not deleted and not converted**: it stays visible
-  in *Settings → Verifiers*, marked `family removed`, and refuses to run — converting it into a
-  single command would have kept it running while silently changing what its verdict meant.
-  Rewrite it as a list of commands, then delete it.
-
-### Added
-
-- **A fourth kind of AI session: the free question.** *AI Dev* gains a `Free question` sub-tab for
-  everything you ask an AI outside any repository — a notion to dig into, two options to compare,
-  a plan to challenge. Nothing on your machine is read or changed: no clone, no folder, none of
-  your files. The point is what happens next: the answer is **kept**, an optional label files the
-  study away, and a **follow-up resumes the same agent session**, so a subject can be worked
-  through in five questions instead of one — each of them archived with the answer it got, and
-  replayable from the iteration selector. `Resume in terminal` hands the thread back to you, and
-  the answer exports to HTML, Word or PDF like any other. A free question reserves no repository:
-  it never blocks a review or a coding session, and nothing blocks it.
 
 ## [1.2.0] - 2026-08-16
 
@@ -1676,7 +1677,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/debugall/mergerie/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/debugall/mergerie/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/debugall/mergerie/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/debugall/mergerie/releases/tag/v1.0.0
