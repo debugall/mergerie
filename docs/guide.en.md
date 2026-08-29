@@ -247,6 +247,16 @@ The buttons are those of creating a session of that flavour — `Save` for codin
 on whether you create or copy would be a trap. Everything stays editable before saving: it is a
 proposal, not a carbon copy.
 
+**The form tells four things, in order.** It is the same form for all four flavours and rearranges
+itself for the one you are creating — but the sequence does not change: **where** (the projects and
+their branches, or the root folder and its projects — the “the AI edits in place, no commit” warning
+follows *that* choice, not the bottom of the form), **what** (the Jira ticket that fills the prompt,
+the prompt, the attachments, then the label — optional, so after what it summarises), **how the AI
+works** (questions, resuming an agent session) and finally **once the code is written** (commit
+message, auto-push, verifier) — last because it is chronologically last, and it disappears whole as
+soon as there is nothing to commit. Two discreet captions separate the last three groups; a **free
+question** shows none of them, it only has the request.
+
 **A label, optional.** A short title when creating a session — coding, out-of-repo or exploration.
 A list is otherwise read through its prompt, three folded lines whose first words look alike from one
 session to the next; the label says **what it is about** where the prompt says **what to do**. It

@@ -164,6 +164,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   only the code knew; the right number depends on the machine and on how long the suites take.
   It now lives in *Settings → Merge Request*, and `0` means “no limit”.
 
+### Changed
+
+- **The session form now reads in the order things happen.** Same form for all four flavours, but
+  the optional label came before the required prompt, the Jira ticket that fills the prompt sat
+  three fields above it, the “edits in place, no commit” warning waited at the very bottom — after
+  the choice it qualifies — and commit/push/verifier were wedged between the request and the agent
+  options. It now goes: **where** → **what** (Jira, prompt, attachments, label) → **how the AI
+  works** (questions, resuming a session) → **once the code is written** (commit message,
+  auto-push, verifier), the last two groups under a discreet caption. A free question shows the
+  request alone.
+
 ### Fixed
 
 - **A review always gets asked for its overall score, and a report without one no longer vanishes.**

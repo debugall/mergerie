@@ -4263,8 +4263,7 @@ function applyKindToModal(kind) {
   /* La case « l'IA peut me poser des questions » et l'identifiant de session supposent une
      cible sur laquelle l'agent hésite ou travaille : sans dépôt ni dossier, elles n'ont rien
      à quoi se rattacher. */
-  const qRow = $('#taskAskQuestionsRow'); if (qRow) qRow.hidden = isAsk;
-  const sRow = $('#taskSessionRow'); if (sRow) sRow.hidden = isAsk;
+  const gRow = $('#taskAgentFields'); if (gRow) gRow.hidden = isAsk;
   const ta = $('#taskForm').prompt;
   ta.placeholder = isAsk ? tr('ask.prompt-ph')
     : (isLocal ? tr('local.prompt-ph') : (kind === 'code' ? tr('task.ph.prompt-code') : tr('task.ph.prompt-explore')));

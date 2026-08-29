@@ -1176,6 +1176,11 @@
                 <div id="taskLocalDirRows"></div>
                 <p class="muted" style="margin:6px 0 0" data-i18n="local.dirs-hint">Les projets du répertoire choisi. Le même prompt est appliqué à chacun, l'un après l'autre.</p>
             </div>
+            <!-- L'avertissement suit le choix qu'il qualifie : lu en bas du formulaire, il
+                 arrivait après la décision, une fois le prompt déjà écrit. -->
+            <p id="taskLocalWarn" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span data-i18n-html="local.warn">L'IA modifie les fichiers <strong>en place</strong>, sans commit. Si le dossier est un <strong>dépôt git</strong>, tu peux relire et annuler toi-même (git diff / git checkout) ; sinon, <strong>aucune annulation</strong> n'est possible.</span></p>
+            <!-- CE QU'ON DEMANDE. Le ticket Jira REMPLIT le prompt : il se lit donc juste
+                 au-dessus de lui, pas trois champs plus haut. -->
             <div id="taskJiraRow" class="task-jira" hidden>
                 <label><span data-i18n="task.lbl.jira-ticket">Enrichir depuis un ticket Jira (optionnel)</span> <button type="button" class="hint" tabindex="0" aria-label="Récupère le titre et la description du ticket via l'API Jira et les ajoute en tête du prompt, comme contexte. Le numéro est pré-rempli si la branche de travail contient une clé (ex. PROJ-1234)." data-tip="Récupère le titre et la description du ticket via l'API Jira et les ajoute en tête du prompt, comme contexte. Le numéro est pré-rempli si la branche de travail contient une clé (ex. PROJ-1234)." data-i18n-tip="task.tip.jira-ticket"><svg class="ico"><use href="#i-info"/></svg></button>
                     <span class="jira-fetch">
@@ -1185,12 +1190,6 @@
                 </label>
                 <span id="taskJiraStatus" class="muted"></span>
             </div>
-            <!-- UN TITRE COURT, FACULTATIF. Une liste de sessions se lit par son prompt — trois
-                 lignes repliées dont les premiers mots se ressemblent d'une session à l'autre.
-                 Vide, la carte retombe sur le prompt : rien ne se perd. -->
-            <label><span data-i18n="task.lbl.label">Libellé (optionnel)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="task.tip.label" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                <input name="label" maxlength="120" placeholder="ex. Migration TypeORM des entités" data-i18n-placeholder="task.ph.label" />
-            </label>
             <label><span data-i18n="task.lbl.tache-a-realiser-prompt">Tâche à réaliser (prompt)</span> <button type="button" class="hint" tabindex="0" aria-label="En codage : ce que l'IA doit implémenter, appliqué à chaque projet sélectionné. En exploration : la question posée sur le code, sans aucune modification." data-tip="En codage : ce que l'IA doit implémenter, appliqué à chaque projet sélectionné. En exploration : la question posée sur le code, sans aucune modification." data-i18n-tip="task.tip.en-codage-ce-que-l"><svg class="ico"><use href="#i-info"/></svg></button>
                 <textarea name="prompt" rows="5" placeholder="Décris la tâche de dev à faire… (ex. Ajouter un endpoint /health qui renvoie le statut)" data-i18n-placeholder="task.ph.decris-la-tache-de-dev" required></textarea>
             </label>
@@ -1204,7 +1203,26 @@
                 <div id="taskPieces" class="task-previews"></div>
                 <div id="taskPreviews" class="task-previews"></div>
             </div>
+            <!-- UN TITRE COURT, FACULTATIF. Une liste de sessions se lit par son prompt — trois
+                 lignes repliées dont les premiers mots se ressemblent d'une session à l'autre.
+                 Vide, la carte retombe sur le prompt : rien ne se perd. -->
+            <label><span data-i18n="task.lbl.label">Libellé (optionnel)</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="task.tip.label" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input name="label" maxlength="120" placeholder="ex. Migration TypeORM des entités" data-i18n-placeholder="task.ph.label" />
+            </label>
+            <!-- COMMENT L'IA TRAVAILLE : deux options qui portent sur la passe elle-même.
+                 Le groupe entier disparaît pour une question libre, qui n'a ni cible ni passe. -->
+            <div id="taskAgentFields">
+                <p class="form-group-title" data-i18n="task.group.agent">Comment l’IA travaille</p>
+            <label id="taskAskQuestionsRow" class="inline-check"><input type="checkbox" name="ask_questions" /> <span data-i18n="task.lbl.ask-questions">L'IA peut me poser des questions quand elle hésite</span> <button type="button" class="hint" tabindex="0" aria-label="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-tip="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-i18n-tip="task.tip.ask-questions"><svg class="ico"><use href="#i-info"/></svg></button></label>
+                <label id="taskSessionRow"><span data-i18n="task.lbl.session-id">Reprendre une session d'agent existante (optionnel)</span> <button type="button" class="hint" tabindex="0" aria-label="Laisse vide pour ouvrir une nouvelle session. Renseigné, l'IA travaille DANS cette session et garde donc tout son contexte : rien de neuf n'est créé. L'identifiant est celui affiché par « Reprendre au terminal » sur une session existante — un UUID avec claude, un chemin de home avec copilot. Une session appartient à un dossier de travail : si la reprise est refusée, une session neuve prend le relais avec le contexte réinjecté." data-tip="Laisse vide pour ouvrir une nouvelle session. Renseigné, l'IA travaille DANS cette session et garde donc tout son contexte : rien de neuf n'est créé. L'identifiant est celui affiché par « Reprendre au terminal » sur une session existante — un UUID avec claude, un chemin de home avec copilot. Une session appartient à un dossier de travail : si la reprise est refusée, une session neuve prend le relais avec le contexte réinjecté." data-i18n-tip="task.tip.session-id"><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input name="session_id" id="taskSessionId" autocomplete="off" placeholder="vide = nouvelle session" data-i18n-placeholder="task.ph.session-id" />
+                    <span id="taskSessionHint" class="field-note" hidden></span>
+                </label>
+            </div>
+            <!-- CE QUI ARRIVE UNE FOIS LE CODE ÉCRIT : commit, push, vérification. Ce groupe
+                 ferme le formulaire parce qu'il est chronologiquement le dernier. -->
             <div id="codeOnlyFields">
+                <p class="form-group-title" data-i18n="task.group.after">Une fois le code écrit</p>
                 <label><span data-i18n="task.lbl.message-de-commit-optionnel">Message de commit (optionnel)</span> <button type="button" class="hint" tabindex="0" aria-label="Message du commit créé par l'IA. Vide = la première ligne du prompt est utilisée." data-tip="Message du commit créé par l'IA. Vide = la première ligne du prompt est utilisée." data-i18n-tip="task.tip.message-du-commit-cree-par"><svg class="ico"><use href="#i-info"/></svg></button>
                     <input name="commit_message" placeholder="défaut : 1ère ligne du prompt" data-i18n-placeholder="task.ph.defaut-1ere-ligne-du-prompt" />
                 </label>
@@ -1217,12 +1235,6 @@
                 </label>
                 <p id="taskVerifierNote" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span data-i18n="task.verifier.push-note">Un vérificateur travaille sur le code poussé : l'auto-push est donc activé. Le décocher retirera le vérificateur.</span></p>
             </div>
-            <label id="taskAskQuestionsRow" class="inline-check"><input type="checkbox" name="ask_questions" /> <span data-i18n="task.lbl.ask-questions">L'IA peut me poser des questions quand elle hésite</span> <button type="button" class="hint" tabindex="0" aria-label="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-tip="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-i18n-tip="task.tip.ask-questions"><svg class="ico"><use href="#i-info"/></svg></button></label>
-            <label id="taskSessionRow"><span data-i18n="task.lbl.session-id">Reprendre une session d'agent existante (optionnel)</span> <button type="button" class="hint" tabindex="0" aria-label="Laisse vide pour ouvrir une nouvelle session. Renseigné, l'IA travaille DANS cette session et garde donc tout son contexte : rien de neuf n'est créé. L'identifiant est celui affiché par « Reprendre au terminal » sur une session existante — un UUID avec claude, un chemin de home avec copilot. Une session appartient à un dossier de travail : si la reprise est refusée, une session neuve prend le relais avec le contexte réinjecté." data-tip="Laisse vide pour ouvrir une nouvelle session. Renseigné, l'IA travaille DANS cette session et garde donc tout son contexte : rien de neuf n'est créé. L'identifiant est celui affiché par « Reprendre au terminal » sur une session existante — un UUID avec claude, un chemin de home avec copilot. Une session appartient à un dossier de travail : si la reprise est refusée, une session neuve prend le relais avec le contexte réinjecté." data-i18n-tip="task.tip.session-id"><svg class="ico"><use href="#i-info"/></svg></button>
-                <input name="session_id" id="taskSessionId" autocomplete="off" placeholder="vide = nouvelle session" data-i18n-placeholder="task.ph.session-id" />
-                <span id="taskSessionHint" class="field-note" hidden></span>
-            </label>
-            <p id="taskLocalWarn" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span data-i18n-html="local.warn">L'IA modifie les fichiers <strong>en place</strong>, sans commit. Si le dossier est un <strong>dépôt git</strong>, tu peux relire et annuler toi-même (git diff / git checkout) ; sinon, <strong>aucune annulation</strong> n'est possible.</span></p>
             <div class="modal-actions">
                 <button type="button" id="taskCancel" class="btn" title="Fermer sans enregistrer" data-i18n-title="task.title.fermer-sans-enregistrer" data-i18n="task.btn.annuler">Annuler</button>
                 <button type="button" id="taskSubmitOnly" class="btn" hidden title="Créer la session sans l'exécuter — tu la lanceras quand tu veux depuis Dev IA" data-i18n-title="task.title.creer-la-session-sans-l"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="task.btn.creer-sans-lancer">Créer sans lancer</span></button>

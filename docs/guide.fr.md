@@ -253,6 +253,17 @@ Les boutons sont ceux d'une création de cette saveur — `Enregistrer` en codag
 crée ou qu'on copie serait un piège. Tout reste modifiable avant d'enregistrer : c'est une
 proposition, pas un décalque.
 
+**Le formulaire raconte quatre choses, dans l'ordre.** Il est le même pour les quatre saveurs et
+se réarrange selon celle qu'on crée — mais l'enchaînement ne change pas : **où** (les projets et
+leurs branches, ou le répertoire et ses dossiers — l'avertissement « l'IA modifie en place, sans
+commit » suit ce choix-là, pas la fin du formulaire), **quoi** (le ticket Jira qui remplit le
+prompt, le prompt, les pièces jointes, puis le libellé — facultatif, donc après ce qu'il résume),
+**comment l'IA travaille** (les questions, la reprise d'une session d'agent) et enfin **une fois le
+code écrit** (message de commit, auto-push, vérificateur) — le dernier groupe parce qu'il est
+chronologiquement le dernier, et il disparaît entier dès qu'il n'y a rien à commiter. Deux
+intertitres discrets séparent les trois derniers groupes ; une **question libre** n'en montre aucun,
+elle n'a que la demande.
+
 **Un libellé, facultatif.** Un titre court à la création d'une session — codage, hors dépôt ou
 exploration. Une liste se lit sinon par son prompt, trois lignes repliées dont les premiers mots se
 ressemblent d'une session à l'autre ; le libellé dit **de quoi il s'agit** quand le prompt dit **ce
