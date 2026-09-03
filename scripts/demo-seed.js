@@ -83,6 +83,14 @@ const PROJECTS = [
      l'outil, et celle que trois dépôts ne racontent pas. */
   { project: 'groupe/notif-service', url: 'https://gitlab.demo/groupe/notif-service.git', forge: 'gitlab' },
   { project: 'groupe/orders-service', url: 'https://gitlab.demo/groupe/orders-service.git', forge: 'gitlab' },
+  /* QUATRE SERVICES PHP qui consomment la même librairie interne. Un parc réel n'est pas
+     monolingue, et la corvée la plus courante — monter la version d'une dépendance partout —
+     ne se montre qu'avec plusieurs projets qui la partagent. Leur arborescence commune est
+     dans `src/demo-diff.js`. */
+  { project: 'groupe/facturation', url: 'https://gitlab.demo/groupe/facturation.git', forge: 'gitlab' },
+  { project: 'groupe/portail-client', url: 'https://gitlab.demo/groupe/portail-client.git', forge: 'gitlab' },
+  { project: 'groupe/back-office', url: 'https://gitlab.demo/groupe/back-office.git', forge: 'gitlab' },
+  { project: 'groupe/webhooks-php', url: 'https://gitlab.demo/groupe/webhooks-php.git', forge: 'gitlab' },
 ];
 
 // ---------- config : GitLab factice, pas de token (démo hors-ligne) ----------

@@ -11,6 +11,8 @@ const { extractNote } = require('./note');
 const resolution = require('./resolution');
 const glob = require('./glob');
 const diffnum = require('./diffnum');
+const demoReview = require('./demo-review');
+const demoDiff = require('./demo-diff');
 const notify = require('./notify');
 const { t } = require('../public/i18n-runtime.js');
 
@@ -42,7 +44,11 @@ function reviewDirFor(repo, mr) {
 // Utilisé aussi bien par la review que par la modification (même comportement).
 async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   onLog(t('log.review.prepare', { project: repo.project }));
-  const cwd = await git.ensureRepo(cfg, repo, onLog);
+  /* En démo, `gitlab.demo` n'existe pas : cloner échouait, et la fonctionnalité centrale de
+     l'outil était la seule qu'on ne pouvait pas montrer. On travaille alors dans un dossier
+     sans git, avec le diff fictif de `demo-diff.js` — voir `demo-review.js`. */
+  const enDemo = demoReview.isDemo();
+  const cwd = enDemo ? demoReview.dossierTravail(repo) : await git.ensureRepo(cfg, repo, onLog);
 
   // Re-review incrémentale : ne diffuser que le DELTA depuis le dernier SHA reviewé
   // (best-effort ; en cas d'échec — SHA absent après force-push, etc. — on retombe sur
@@ -61,7 +67,8 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   }
   if (diff == null) {
     onLog(`calcul du diff ${mr.source_branch}...${mr.target_branch}`);
-    diff = await git.targetedDiff(cwd, mr.source_branch, mr.target_branch, onLog);
+    diff = enDemo ? demoDiff.diffPour(mr)
+      : await git.targetedDiff(cwd, mr.source_branch, mr.target_branch, onLog);
   }
 
   const outDir = reviewDirFor(repo, mr);
@@ -191,6 +198,14 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   // puis lit ce fichier (contenu propre). extra = bloc additionnel (ex: modif).
   // Fallback sur stdout si le fichier est absent/vide.
   async function generate(promptTemplate, outRel, kind, extra = '') {
+    /* Démo : aucun agent n'est appelé. On rend le document que l'IA aurait écrit, bâti sur le
+       diff fictif — les constats citent donc des lignes qui existent à l'écran. */
+    if (enDemo) {
+      onLog(t('log.review.run', { mode: 'démo', incremental: '' }));
+      return kind === 'explain'
+        ? demoReview.explication(mr, diff)
+        : demoReview.rapport(mr, diff, { START: resolution.START, END: resolution.END });
+    }
     const outAbs = path.join(cwd, outRel);
     try { fs.rmSync(outAbs, { force: true }); } catch { /* pas de fichier précédent */ }
     const instruction =

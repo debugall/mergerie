@@ -118,6 +118,9 @@ FR = [
     (r'(?i)\bcommit\b', 'commite'),
     (r'(?i)\bbuild\b', 'bilde'),
     (r'(?i)\blint\b', 'linnte'),
+    # Le PLURIEL d'abord, comme pour `commits`/`commit` : `\bcheckout\b` ne mord pas sur
+    # « checkouts », et le mot repartait alors en phonèmes français.
+    (r'(?i)\bcheckouts\b', 'tchèk-aoutes'),
     (r'(?i)\bcheckout\b', 'tchèk-aoute'),
     (r'(?i)\bsquash\b', 'skouache'),
     (r'(?i)\bskill\b', 'skile'),
