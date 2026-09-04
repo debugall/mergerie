@@ -1656,9 +1656,23 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 /* Création : dépôt · ref source · nom à créer. Les deux derniers se partagent la
    place restante et se replient sous le dépôt quand la fenêtre est étroite. */
 /* La ref source est un combo (recherche), pas un <select> : la largeur se pose donc sur
-   son enveloppe et non sur l'input caché qui porte la classe `git-ref`. */
-.git-row > .git-ref-combo { flex: 1 1 180px; min-width: 140px; }
-.git-row > .git-name { flex: 1 1 180px; min-width: 140px; width: auto; }
+   son enveloppe et non sur l'input caché qui porte la classe `git-ref`.
+
+   ELLE PREND LA PLUS GROSSE PART, et devant le dépôt. Un nom de branche est plus long
+   qu'un nom de projet — `hotfix/COMPTA-2210-correction-arrondi-echeances` en fait deux
+   fois. Le champ tenait 180 px de base et gagnait autant que le dépôt : au-delà d'une
+   quarantaine de caractères, la fin du nom sortait du champ, sans coupure visible ni
+   info-bulle qui s'impose — on ne voyait pas qu'il manquait quelque chose. */
+.git-row > .repo-combo { flex: 1 1 240px; }
+.git-row > .git-ref-combo { flex: 2 1 300px; min-width: 240px; }
+/* Le nom à CRÉER passe à la ligne, avec le bouton de suppression : sur la même ligne que
+   les deux combos, il reprenait à la branche les 150 px qu'on vient de lui donner. Ce n'est
+   pas un sélecteur mais une saisie libre — sa place est en dessous, pas en concurrence.
+   `calc(100% - 40px)` laisse exactement le bouton (32 px + gouttière) à côté de lui. */
+.git-row > .git-name { flex: 1 1 calc(100% - 40px); min-width: 160px; width: auto; }
+/* Fenêtre étroite : dépôt et branche ne tiennent plus côte à côte sans recouper les noms
+   longs — la branche prend la ligne entière plutôt que de rétrécir sous les 400 px. */
+@media (max-width: 1000px) { .git-row > .git-ref-combo { flex: 1 1 100%; } }
 
 /* Sélection multiple des refs à supprimer : une liste qui défile plutôt qu'un
    champ de saisie — on ne tape jamais le nom de ce qu'on s'apprête à détruire.

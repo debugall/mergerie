@@ -11,6 +11,18 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Fixed
+
+- **Git → Actions: long branch names no longer run off the edge of the field.** The branch
+  picker shared its width evenly with the project picker, though a branch name is routinely
+  twice as long as a project name. Past roughly forty characters the end of the name simply
+  left the field — no ellipsis, no wrap, nothing saying anything was missing — so
+  `hotfix/COMPTA-2210-correction-arrondi-echeances` and
+  `hotfix/COMPTA-2210-correction-arrondi-echeances-fractionnees` looked identical, and you could
+  preview an operation on the wrong branch. The branch field now takes the larger share, the
+  per-project name box moves to its own line instead of squeezing it, and on a narrow window the
+  branch takes the full row.
+
 ## [1.3.0] - 2026-08-29
 
 ### Added

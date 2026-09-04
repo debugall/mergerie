@@ -289,8 +289,10 @@
             <!-- « Est-ce que develop est encore vert ? » : la question du retour de congés se
                  pose devant un dépôt et ses branches, c'est-à-dire ici. -->
             <p><button type="button" class="btn" id="btnVerifyBranch"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="verify.branch.btn">Vérifier une branche</span></button></p>
-            <p class="muted" style="max-width:760px" data-i18n="git.actions.intro">Applique la même opération à plusieurs dépôts d'un coup. Rien n'est exécuté sans un aperçu préalable.</p>
-            <div class="form" style="max-width:760px">
+            <p class="muted" style="max-width:900px" data-i18n="git.actions.intro">Applique la même opération à plusieurs dépôts d'un coup. Rien n'est exécuté sans un aperçu préalable.</p>
+            <!-- 900 px comme les sous-onglets voisins (Navigation, Commandes) : à 760, le
+                 champ de branche tombait sous les 330 px et coupait les noms longs. -->
+            <div class="form" style="max-width:900px">
                 <label><span data-i18n="git.lbl.action">Action</span>
                     <button type="button" class="hint" tabindex="0" data-i18n-tip="git.tip.action" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <select id="gitAction">
