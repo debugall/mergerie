@@ -156,6 +156,10 @@ try { db.exec('ALTER TABLE mr ADD COLUMN author TEXT'); } catch { /* déjà pré
 try { db.exec('ALTER TABLE review ADD COLUMN diff_path TEXT'); } catch { /* déjà présente */ }
 // Migration : note globale numérique (0..1) pour le dashboard.
 try { db.exec('ALTER TABLE review ADD COLUMN note_value REAL'); } catch { /* déjà présente */ }
+/* Migration : quand le rapport a été publié en commentaire sur la merge request. Une trace,
+   pas un drapeau : le bouton « Publier » doit pouvoir dire ce qui est DÉJÀ parti chez les
+   autres, sinon on republie le même rapport en croyant que le premier envoi a échoué. */
+try { db.exec('ALTER TABLE review ADD COLUMN comment_posted_at TEXT'); } catch { /* déjà présente */ }
 // Migration : contexte du ticket (texte + capture) fourni par le relecteur.
 try { db.exec('ALTER TABLE mr ADD COLUMN ticket_text TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN ticket_image TEXT'); } catch { /* déjà présente */ }
@@ -1154,6 +1158,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS git_command (
 // Amorçage UNE SEULE FOIS (drapeau en config) : quelques commandes usuelles. Supprimer
 // toutes les entrées ne les réintroduit donc pas — c'est un choix de l'utilisateur.
 try { db.exec("ALTER TABLE config ADD COLUMN git_commands_seeded INTEGER DEFAULT 0"); } catch { /* déjà présente */ }
+/* Publication automatique du rapport de review sur la merge request. DÉCOCHÉ PAR DÉFAUT,
+   contrairement à `review_explain` : écrire chez les autres est une décision, et une
+   installation neuve ne doit surprendre personne au premier lancement de review. */
+try { db.exec("ALTER TABLE config ADD COLUMN auto_post_review TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
 const seeded = db.prepare('SELECT git_commands_seeded AS s FROM config WHERE id = 1').get();
 if (seeded && !seeded.s) {
   const ins = db.prepare('INSERT INTO git_command (label, command, sort_order, created_at) VALUES (?, ?, ?, ?)');
@@ -1178,10 +1186,46 @@ try { db.exec('ALTER TABLE config DROP COLUMN health_check'); } catch { /* déj�
 try { db.exec('ALTER TABLE config DROP COLUMN health_minutes'); } catch { /* déjà retirée */ }
 
 // Au démarrage : tout job resté "running" a été coupé -> interrupted.
+// Ce que ces jobs PORTAIENT (sessions, vérifications) est remis debout par
+// `reconcilierTravauxCoupes`, appelée par le serveur une fois la langue posée.
 db.prepare(`UPDATE job SET status = 'interrupted', finished_at = ?
             WHERE status IN ('running', 'queued')`).run(new Date().toISOString());
 
+/* REMETTRE DEBOUT CE QUE L'ARRÊT A COUPÉ EN PLEIN VOL.
+ *
+ * Un job resté « running » n'existe plus : le processus est mort avec le serveur, et on vient
+ * de le marquer `interrupted`. Mais le job n'était que le porteur — la SESSION, la tâche hors
+ * dépôt ou la vérification qu'il faisait tourner, elles, restaient « running » pour toujours.
+ * Or l'écran n'offre « Relancer » que sur `new`, `error`, `committed` ou `pushed` : une session
+ * figée à « en cours » n'avait plus aucun bouton, ni pour repartir, ni pour s'arrêter — le job
+ * à arrêter n'existait plus. L'outil se bloquait tout seul en s'arrêtant au mauvais moment.
+ *
+ * On les repose en `error`, avec la RAISON écrite noir sur blanc : « error » est un état d'où
+ * l'on peut repartir, et le message évite de croire que l'IA a échoué alors que c'est le
+ * serveur qui s'est arrêté. Ce qui avait déjà abouti n'est pas touché — les statuts par projet
+ * (`committed`, `pushed`) portent le travail réellement fait.
+ *
+ * Appelée par le serveur APRÈS `i18n.setLang`, sinon le message sortirait toujours en français.
+ * Renvoie ce qui a été repris, pour que le démarrage puisse le dire. */
+function reconcilierTravauxCoupes(raison) {
+  const maintenant = new Date().toISOString();
+  const compte = { sessions: 0, projets: 0, horsDepot: 0, verifications: 0 };
+  const maj = (sql, ...args) => { try { return db.prepare(sql).run(...args).changes; } catch { return 0; } };
+  compte.sessions = maj(`UPDATE task SET status = 'error', last_error = ?, updated_at = ?
+                         WHERE status = 'running'`, raison, maintenant);
+  compte.projets = maj(`UPDATE task_target SET status = 'error', last_error = ?, updated_at = ?
+                        WHERE status = 'running'`, raison, maintenant);
+  compte.horsDepot = maj(`UPDATE local_task SET status = 'error', last_error = ?, updated_at = ?
+                          WHERE status = 'running'`, raison, maintenant);
+  /* Une vérification coupée n'a pas de verdict : `verify_error` est ce que pose déjà `jobs.js`
+     quand son exécution échoue, et c'est lui qui rend la relance possible. */
+  compte.verifications = maj(`UPDATE verification SET status = 'error', verdict = 'verify_error',
+                              finished_at = ? WHERE status = 'running'`, maintenant);
+  return compte;
+}
+
 module.exports = db;
+module.exports.reconcilierTravauxCoupes = reconcilierTravauxCoupes;
 module.exports.DEFAULTS = {
   DEFAULT_PROMPT_REVIEW, DEFAULT_PROMPT_EXPLAIN, DEFAULT_PROMPT_MODIFY,
 };

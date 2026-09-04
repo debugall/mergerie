@@ -14,7 +14,7 @@ const ALLOWED = [
   'github_url', 'github_token',
   'prompt_review', 'prompt_explain', 'prompt_modify', 'language', 'ai_extra_instructions',
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
-  'brief_on_open',
+  'brief_on_open', 'auto_post_review',
   'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'verif_auto_max',
 ];
@@ -67,6 +67,10 @@ function updateConfig(patch) {
   if (!['fr', 'en'].includes(next.language)) next.language = 'fr';
   // Explication : booléen stocké en texte, normalisé à '0'/'1' (défaut '1').
   next.review_explain = next.review_explain === '0' ? '0' : '1';
+  /* Publication automatique du rapport sur la merge request : même stockage, DÉFAUT INVERSE.
+     Le doute profite au silence — un réglage illisible ne doit pas se mettre à écrire chez
+     les collègues à la prochaine review. */
+  next.auto_post_review = next.auto_post_review === '1' ? '1' : '0';
   // Convergence : seuil /10 borné [1,10] (défaut 8) ; plafond de passes borné [1,10] (défaut 3).
   {
     const th = parseFloat(String(next.converge_threshold).replace(',', '.'));
@@ -100,6 +104,7 @@ function updateConfig(patch) {
       jira_email = @jira_email,
       jira_token = @jira_token,
       review_explain = @review_explain,
+      auto_post_review = @auto_post_review,
       converge_threshold = @converge_threshold,
       converge_max_passes = @converge_max_passes,
       auto_refresh_minutes = @auto_refresh_minutes,

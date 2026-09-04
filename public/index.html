@@ -1089,6 +1089,11 @@
             </label>
             <label class="inline-check"><input form="configForm" name="review_explain" type="checkbox" /> <span data-i18n="settings.lbl.review-explain">Générer l'explication pédagogique lors d'une review</span>
                 <button type="button" class="hint" tabindex="0" aria-label="Un 2e appel IA après la review, qui alimente l'onglet Explication du rapport. Décoché : review seule (plus rapide, moins de tokens) — l'explication reste générable à la demande depuis le rapport." data-tip="Un 2e appel IA après la review, qui alimente l'onglet Explication du rapport. Décoché : review seule (plus rapide, moins de tokens) — l'explication reste générable à la demande depuis le rapport." data-i18n-tip="settings.tip.review-explain"><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- ÉCRIRE CHEZ LES AUTRES SE DÉCIDE : décoché par défaut, contrairement à
+                 l'explication ci-dessus. Le rapport reste publiable au coup par coup depuis
+                 le bouton du rapport, ce que dit l'info-bulle. -->
+            <label class="inline-check"><input form="configForm" name="auto_post_review" type="checkbox" /> <span data-i18n="settings.lbl.auto-post-review">Publier automatiquement le rapport de review sur la MR</span>
+                <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.auto-post-review" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
             <label><span data-i18n="settings.lbl.converge-threshold">Convergence — seuil cible (/10)</span> <button type="button" class="hint" tabindex="0" aria-label="Note cible par défaut de la boucle « Converger ». La boucle s'arrête dès que la note atteint ce seuil. Surchargeable au lancement." data-tip="Note cible par défaut de la boucle « Converger ». La boucle s'arrête dès que la note atteint ce seuil. Surchargeable au lancement." data-i18n-tip="settings.tip.converge-threshold"><svg class="ico"><use href="#i-info"/></svg></button>
                 <input form="configForm" name="converge_threshold" type="number" min="1" max="10" step="0.5" placeholder="8" />
             </label>

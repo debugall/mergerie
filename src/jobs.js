@@ -620,9 +620,13 @@ function rememberRetry(jobId, spec) {
   try { db.prepare('UPDATE job SET retry = ? WHERE id = ?').run(JSON.stringify(spec), jobId); }
   catch { /* colonne absente sur une base très ancienne : la relance sera juste indisponible */ }
 }
-// Un job est rejouable s'il a fini sans aller au bout, et si son intention est connue.
+/* Un job est rejouable s'il a fini sans aller au bout, et si son intention est connue.
+   `interrupted` EN FAIT PARTIE : c'est le statut que la base pose au démarrage sur les jobs
+   que l'arrêt précédent a coupés. Il était absent de cette liste, si bien que le seul job
+   qu'on n'avait PAS choisi d'arrêter était aussi le seul qu'on ne pouvait pas rejouer. */
 function canRetry(job) {
-  return !!(job && job.retry && RETRYABLE.has(job.kind) && ['stopped', 'error'].includes(job.status));
+  return !!(job && job.retry && RETRYABLE.has(job.kind)
+    && ['stopped', 'error', 'interrupted'].includes(job.status));
 }
 function retryJob(jobId) {
   const job = db.prepare('SELECT * FROM job WHERE id = ?').get(Number(jobId));

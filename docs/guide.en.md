@@ -43,6 +43,16 @@ shared search (title, author, project, ticket).
   (`Review + explanation` / `Review without explanation`). If the explanation is missing, a
   **`Generate the explanation`** button on the report produces it on demand (a single AI call, without
   re-running the review or creating a new version).
+- **Publish the report on the merge request.** A review report stays **with you** by default: it lives
+  in Mergerie and nobody else sees it. The report's **`Publish to GitLab` / `Publish to GitHub`** button
+  posts it **as a comment on the MR**, exactly as it sits on disk — that is how you hand the review back
+  to its author without copying it over. A confirmation spells it out: what goes out is read by the whole
+  team. Once published, the button becomes **`Publish again`** and carries the date of the first send, so
+  you do not post the same text twice believing the first one failed.
+  The setting **Settings → Merge Request → “Automatically post the review report on the MR”** does it at
+  the end of every review. It is **unchecked by default**: writing on other people's work is a decision.
+  If it is checked and the forge refuses, the review is **not** lost — the report stays saved, and the
+  job log says why publishing did not happen.
 - `View diff` opens the MR's diff **before any review**, in the full-screen viewer (tree, inline diff,
   navigation) — the repository is cloned on demand if needed. The left panel becomes a **decision panel**:
   if the MR is trivial, `Dismiss without review`; otherwise `Review`. The point is to **not spend an AI

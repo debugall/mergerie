@@ -3874,6 +3874,9 @@ app.get('/api/mrs/:id', wrap((req, res) => {
       md: readFileSafe(rev.md_path),
       explanation: readFileSafe(rev.explanation_path),
       updated_at: rev.updated_at,
+      // Ce qui est DÉJÀ parti sur la merge request : le bouton « Publier » le dit, pour
+      // qu'on ne poste pas deux fois le même rapport en croyant au premier échec.
+      comment_posted_at: rev.comment_posted_at || null,
     } : null,
     comments,
     ticket: {
@@ -4262,6 +4265,17 @@ app.post('/api/mrs/:id/comment', wrap(async (req, res) => {
   db.prepare('INSERT INTO comment_log (mr_id, body, gitlab_note_id, sent_at) VALUES (?,?,?,?)')
     .run(mr.id, body, note && note.id, new Date().toISOString());
   res.json({ ok: true, note_id: note && note.id });
+}));
+
+/* PUBLIER LE RAPPORT DE REVIEW sur la merge request, à la demande.
+ *
+ * Le corps n'est PAS reçu du navigateur : la route relit le rapport sur le disque, par la
+ * même fonction que la publication automatique (`reviewer.publierRapport`). Accepter un texte
+ * du client ouvrirait la porte à publier autre chose que le rapport, sous son nom. */
+app.post('/api/mrs/:id/publish-review', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  res.json({ ok: true, ...(await reviewer.publierRapport(mr, getConfig())) });
 }));
 
 /* Compte associé au jeton d'une forge. Sert à reconnaître MES commentaires, donc ceux que
@@ -4903,6 +4917,20 @@ app.post('/api/git/mr', wrap(async (req, res) => {
 // La langue est posée avant la première requête : les messages d’erreur du serveur
 // sont de l’interface, ils doivent sortir dans la bonne langue dès le démarrage.
 i18n.setLang(getConfig().language);
+
+/* CE QUE L'ARRÊT PRÉCÉDENT A COUPÉ EN PLEIN VOL. Les jobs ont été marqués `interrupted` au
+   chargement de la base ; les sessions et vérifications qu'ils portaient, elles, seraient
+   restées « en cours » à jamais — sans bouton pour repartir ni pour arrêter. On le fait ici,
+   après `setLang`, pour que la raison inscrite sur la carte sorte dans la bonne langue. */
+{
+  const repris = db.reconcilierTravauxCoupes(t('err.interrompu-par-arret'));
+  const total = repris.sessions + repris.horsDepot + repris.verifications;
+  if (total) {
+    console.log(t('log.start.reconciled', {
+      sessions: repris.sessions, horsDepot: repris.horsDepot, verifications: repris.verifications,
+    }));
+  }
+}
 
 // Bind sûr par défaut : localhost SEULEMENT. HOST=0.0.0.0 est un opt-in explicite pour exposer
 // sur le réseau (voir la section Sécurité du README).

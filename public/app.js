@@ -1435,7 +1435,7 @@ async function refreshStatus() {
       $('#progressBar').style.width = '0%';
       document.title = 'Mergerie';
       setFavicon(job && job.status === 'error' ? 'error' : 'idle');
-      if (job && ['done', 'stopped', 'error'].includes(job.status) && pollTimer) {
+      if (job && JOB_FINI.includes(job.status) && pollTimer) {
         // job vient de finir : rafraîchir les listes ET le détail ouvert
         const avant = new Map(reportRows.map((m) => [m.id, m.note && m.note.raw]));
         loadToReview();
@@ -1758,14 +1758,17 @@ const HIST_KEY = 'aidevtools_hist_vu';
 const histVu = () => { try { return Number(localStorage.getItem(HIST_KEY)) || 0; } catch { return 0; } };
 const setHistVu = (id) => { try { localStorage.setItem(HIST_KEY, String(id)); } catch { /* ignore */ } };
 
-const JOB_FINI = ['done', 'stopped', 'error'];
+/* `interrupted` est un job FINI : la base le pose au démarrage sur ce que l'arrêt précédent a
+   coupé, et le processus n'existe plus. Absent d'ici, il restait éternellement « en cours »
+   pour le client, qui continuait de l'interroger. */
+const JOB_FINI = ['done', 'stopped', 'error', 'interrupted'];
 function jobDuree(j) {
   if (!j.started_at || !j.finished_at) return '';
   const ms = new Date(j.finished_at) - new Date(j.started_at);
   if (!(ms > 0)) return '';
   return ms < 60000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60000)} min`;
 }
-const JOB_STATUT = { done: 'ok', error: 'bad', stopped: 'mid', running: 'mid', queued: '' };
+const JOB_STATUT = { done: 'ok', error: 'bad', stopped: 'mid', interrupted: 'mid', running: 'mid', queued: '' };
 
 async function renderLogHist() {
   const box = $('#logHist');
@@ -2574,6 +2577,9 @@ let reportShown = { id: null, sig: null, stamp: null };
 function reportSig(d) {
   const m = d.mr; const r = d.review; const t2 = d.ticket || {};
   return [m.status, m.closed_seen, m.squash, m.remove_source_branch, r && r.updated_at,
+    // La publication du rapport change le libellé du bouton (« Publier » → « Republier ») :
+    // sans elle ici, une publication automatique laissait l'ancien libellé à l'écran.
+    r && r.comment_posted_at,
     d.convergence && d.convergence.status, d.stale, t2.text && t2.text.length, t2.has_image,
     t2.jira_text && t2.jira_text.length, (d.comments || []).length, d.resume_cmd].join('\u0001');
 }
@@ -2629,6 +2635,17 @@ async function openReport(id, opts = {}) {
       </div>
       <div class="btn-group">
         ${m.status !== 'done' ? `<button id="aDone" class="btn btn-ok" title="${tr('report.btn.done-title')}"><svg class=\"ico\"><use href=\"#i-check\"/></svg>${tr('report.btn.done')}</button>` : `<button id="aReopen" class="btn" title="${tr('report.btn.reopen-title')}"><svg class=\"ico\"><use href=\"#i-reset\"/></svg>${tr('report.btn.reopen')}</button>`}
+        ${d.review ? (() => {
+          /* PUBLIER LE RAPPORT SUR LA MERGE REQUEST. Le libellé change quand c'est déjà
+             parti : republier n'est pas une correction, ça pose une SECONDE copie sous les
+             yeux de l'équipe, et le bouton doit le dire avant qu'on clique. */
+          const dejaPublie = d.review.comment_posted_at;
+          return `<button id="aPublish" class="btn" data-posted="${esc(dejaPublie || '')}" title="${dejaPublie
+            ? tr('report.btn.publish-again-title', { date: fmtDate(dejaPublie) })
+            : tr('report.btn.publish-title')}"><svg class="ico"><use href="#i-doc"/></svg>${dejaPublie
+            ? tr('report.btn.publish-again', { forge: forgeLabel(m.forge) })
+            : tr('report.btn.publish', { forge: forgeLabel(m.forge) })}</button>`;
+        })() : ''}
         ${m.closed_seen ? '' : `<button id="aMerge" class="btn btn-danger" data-target="${esc(m.target_branch || '')}" title="${tr('report.btn.merge-title', { forge: forgeLabel(m.forge) })}"><svg class=\"ico\"><use href=\"#i-merge\"/></svg>${tr('task.btn.merge')}</button>`}
         <button id="aDelReport" class="btn btn-danger" data-iid="${m.iid}" title="${tr('mr.btn.delete-report-title')}"><svg class=\"ico\"><use href=\"#i-trash\"/></svg>${tr('report.btn.delete')}</button>
       </div>
@@ -2762,6 +2779,30 @@ async function openReport(id, opts = {}) {
       sessionId: d.origin_session || '',
     }).catch((e) => toast(tr('toast.ouverture-impossible', { message: e.message }), true));
   });
+  /* On DEMANDE avant d'écrire chez les autres. Le rapport part sous le nom de l'utilisateur
+     sur la merge request d'un collègue : c'est le même niveau d'engagement que l'envoi des
+     brouillons de commentaires, qui se confirme déjà. */
+  const aPublish = $('#aPublish');   // absent tant qu'aucun rapport n'existe
+  if (aPublish) aPublish.addEventListener('click', async () => {
+    const forge = forgeLabel(m.forge);
+    const ok = await confirmDialog({
+      title: tr('report.publish.confirm.title', { forge }),
+      text: tr('report.publish.confirm.text', { forge, mr: `${m.project} !${m.iid}` }),
+      detail: aPublish.dataset.posted ? tr('report.btn.publish-again-title', { date: fmtDate(aPublish.dataset.posted) }) : '',
+      confirmLabel: tr('report.btn.publish', { forge }),
+      danger: false,
+    });
+    if (!ok) return;
+    try {
+      await busy(aPublish, () => api(`/mrs/${id}/publish-review`, { method: 'POST' }));
+      toast(tr('toast.review.published', { forge }));
+      /* On relit le rapport : le bouton doit passer à « Republier », et le commentaire
+         apparaître dans le fil en dessous. Réécrire le libellé à la main mentirait le jour
+         où le serveur aurait refusé sans lever d'erreur. */
+      await openReport(id);
+    } catch (e) { toast(e.message, true); }
+  });
+
   const aMerge = $('#aMerge'); // absent si la MR n'est plus ouverte sur GitLab
   if (aMerge) aMerge.addEventListener('click', () => {
     openMergeModal({
@@ -3581,6 +3622,8 @@ async function loadConfig() {
   // Idem : 0 signifie « sans limite », il doit s'écrire plutôt que rester vide.
   if (f.retention_days) f.retention_days.value = Number(c.retention_days) || 0;
   if (f.review_explain) f.review_explain.checked = c.review_explain !== '0'; // défaut : activé
+  // Publication automatique : défaut DÉSACTIVÉ — le test est donc `=== '1'`, pas `!== '0'`.
+  if (f.auto_post_review) f.auto_post_review.checked = c.auto_post_review === '1';
   // Atterrissage sur le brief : coché par défaut, comme côté serveur.
   if (f.brief_on_open) f.brief_on_open.checked = c.brief_on_open !== '0';
   if (f.stale_mr_days) f.stale_mr_days.value = Number(c.stale_mr_days) || 5;
@@ -3594,6 +3637,7 @@ $('#configForm').addEventListener('submit', async (e) => {
   for (const k of CONFIG_FIELDS) { if (f[k]) body[k] = f[k].value; }
   body.auto_refresh_minutes = f.auto_refresh_minutes.value;
   if (f.review_explain) body.review_explain = f.review_explain.checked ? '1' : '0';
+  if (f.auto_post_review) body.auto_post_review = f.auto_post_review.checked ? '1' : '0';
   if (f.brief_on_open) body.brief_on_open = f.brief_on_open.checked ? '1' : '0';
   // '***' = champ non touché (on n'écrase pas le secret) ; '' = effacement volontaire.
   if (body.access_token === '***') delete body.access_token;

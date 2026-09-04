@@ -13,6 +13,8 @@ const glob = require('./glob');
 const diffnum = require('./diffnum');
 const demoReview = require('./demo-review');
 const demoDiff = require('./demo-diff');
+const demoComments = require('./demo-comments');
+const forge = require('./forge');
 const notify = require('./notify');
 const { t } = require('../public/i18n-runtime.js');
 
@@ -316,6 +318,39 @@ function saveReviewVersion(mr, outDir, { reviewContent, explainContent, diffStor
   return { version, mdPath, explPath, noteValue, now };
 }
 
+/* PUBLIER LE RAPPORT EN COMMENTAIRE SUR LA MERGE REQUEST.
+ *
+ * Un seul chemin pour les deux façons de le déclencher — le bouton « Publier sur … » d'un
+ * rapport existant, et le réglage « publier automatiquement ». Deux chemins auraient fini par
+ * poster deux textes différents, et c'est précisément ce qui ne doit pas arriver quand on
+ * écrit chez les autres : ce que le bouton envoie doit être ce que l'automatisme envoie.
+ *
+ * Ce qui part, c'est le rapport TEL QU'IL EST SUR LE DISQUE, pas un texte reçu du navigateur.
+ * L'écran affiche peut-être une version antérieure, ou un rendu HTML : la source de vérité
+ * est le fichier que la review a écrit.
+ */
+async function publierRapport(mr, cfg, { onLog = () => {} } = {}) {
+  const rev = db.prepare('SELECT * FROM review WHERE mr_id = ?').get(mr.id);
+  const chemin = rev && rev.md_path;
+  if (!chemin || !fs.existsSync(chemin)) throw new Error(t('err.review.no-report'));
+  const corps = fs.readFileSync(chemin, 'utf8').trim();
+  if (!corps) throw new Error(t('err.review.empty-report'));
+
+  const now = new Date().toISOString();
+  /* En démo la forge n'existe pas : on écrit dans le fil de commentaires simulé, celui-là
+     même que l'écran relit. Sans quoi le bouton serait le seul de l'écran à ne mener qu'à
+     une erreur — c'est déjà ce qui était arrivé au bouton « Reviewer ». */
+  const note = demoReview.isDemo()
+    ? { id: demoComments.post(mr.id, corps, null).notes[0].id }
+    : await forge.clientFor(mr).postMrNote(cfg, mr.project, mr.iid, corps);
+
+  db.prepare('INSERT INTO comment_log (mr_id, body, gitlab_note_id, sent_at) VALUES (?,?,?,?)')
+    .run(mr.id, corps, note && note.id, now);
+  db.prepare('UPDATE review SET comment_posted_at = ? WHERE mr_id = ?').run(now, mr.id);
+  onLog(t('log.review.posted', { forge: forge.label(forge.forgeOf(mr)) }));
+  return { posted_at: now, note_id: note && note.id };
+}
+
 // Produit (ou reproduit) la review pour une MR. L'explication pédagogique (2e appel IA)
 // est optionnelle : `opts.explain` la force (true/false) ; sinon on suit le réglage global
 // `review_explain`. En review seule, l'explication reste disponible à la demande (explainMr).
@@ -371,6 +406,15 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
 
     db.prepare(`UPDATE mr SET reviewed_sha = current_sha, status = 'reviewed', last_error = NULL, updated_at = ? WHERE id = ?`)
       .run(now, mr.id);
+
+    /* Publication automatique, si — et seulement si — le réglage le demande. Elle a lieu APRÈS
+       l'enregistrement : le rapport est acquis, et une forge injoignable ne doit pas le faire
+       disparaître. D'où le `catch` qui se contente de le dire dans le journal du job, comme
+       pour le verdict d'un vérificateur (`jobs.js`). */
+    if (cfg.auto_post_review === '1') {
+      try { await publierRapport(mr, cfg, { onLog }); }
+      catch (e) { onLog(t('log.review.post-failed', { message: e.message })); }
+    }
 
     return { mdPath, explPath, version };
   } finally {
@@ -471,4 +515,4 @@ async function explainMr(repo, mr, onLog = () => {}) {
   }
 }
 
-module.exports = { reviewMr, modifyReview, explainMr, fillTemplate };
+module.exports = { reviewMr, modifyReview, explainMr, fillTemplate, publierRapport };

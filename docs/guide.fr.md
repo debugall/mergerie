@@ -46,6 +46,16 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   permet de **surcharger ponctuellement** une MR (`Review + explication` / `Review sans explication`).
   Si l'explication manque, un bouton **`Générer l'explication`** sur le rapport la produit à la demande
   (un seul appel IA, sans relancer la review ni créer de nouvelle version).
+- **Publier le rapport sur la merge request.** Un rapport de review reste par défaut **chez toi** :
+  il vit dans Mergerie, personne d'autre ne le voit. Le bouton **`Publier sur GitLab` / `Publier sur
+  GitHub`** du rapport le poste **en commentaire sur la MR**, tel qu'il est sur le disque — c'est la
+  façon de rendre la review à l'auteur sans la recopier. Une confirmation le rappelle : ce qui part est
+  lu par toute l'équipe. Une fois publié, le bouton devient **`Republier`** et porte la date du premier
+  envoi, pour qu'on ne poste pas deux fois le même texte en croyant à un échec.
+  Le réglage **Réglages → Merge Request → « Publier automatiquement le rapport de review sur la MR »**
+  le fait **à la fin de chaque review**. Il est **décoché par défaut** : écrire chez les autres est une
+  décision. S'il est coché et que la forge refuse, la review n'est **pas** perdue pour autant — le
+  rapport reste enregistré, et le journal du job dit pourquoi la publication n'a pas eu lieu.
 - `Voir le diff` ouvre le diff de la MR **avant toute review**, dans le viewer plein écran (arbre,
   diff inline, navigation) — le dépôt est cloné à la demande si besoin. Le panneau de gauche devient un
   **panneau de décision** : si la MR est triviale, `Classer sans review` ; sinon `Reviewer`. Objectif :

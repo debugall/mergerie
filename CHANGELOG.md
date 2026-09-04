@@ -11,7 +11,33 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Added
+
+- **Hand the review back to its author: publish the report on the merge request.** Until now a
+  review report lived in Mergerie and nowhere else — to share it you copied it by hand. The
+  report now carries a **`Publish to GitLab` / `Publish to GitHub`** button that posts it as a
+  comment on the merge request, exactly as it was written. It asks first, because what goes out
+  is read by the whole team; and once it is out the button says **`Publish again`** and carries
+  the date of the first send, so you do not post the same text twice believing the first one
+  failed. Settings → Merge Request has a matching **“Automatically post the review report on the
+  MR”**, which does it at the end of every review. It is **unchecked by default**, and stays
+  unchecked if the value is ever unreadable: writing on other people's work is a decision, not a
+  default. A forge that refuses does not cost you the review — the report stays saved and the job
+  log says why nothing was published.
+
 ### Fixed
+
+- **A session frozen on “running” after the server stopped can be started again.** When
+  Mergerie is stopped mid-run — a restart, a laptop closing — the job it was carrying is marked
+  `interrupted` on the next boot. The *session* it was running, however, stayed “running”
+  forever, and the card only offers `Run again` on `new`, `error`, `committed` or `pushed`: no
+  button to restart it, and none to stop it either, since the job to stop no longer existed.
+  The tool blocked itself by shutting down at the wrong moment. Sessions, off-repo tasks and
+  verifications left mid-flight now come back as `error` **with the reason written on the card**
+  (“the server stopped while this was running”), which is a state you can start again from —
+  and whatever had already been committed or pushed is left exactly as it was. The interrupted
+  job itself is replayable too, and the Activity panel finally shows *interrompu* / *interrupted*
+  instead of a raw status it had no translation for.
 
 - **Git → Actions: long branch names no longer run off the edge of the field.** The branch
   picker shared its width evenly with the project picker, though a branch name is routinely
