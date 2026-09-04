@@ -43,6 +43,14 @@ shared search (title, author, project, ticket).
   (`Review + explanation` / `Review without explanation`). If the explanation is missing, a
   **`Generate the explanation`** button on the report produces it on demand (a single AI call, without
   re-running the review or creating a new version).
+- **Review without thinking about it.** **Settings → Merge Request → “Automatically review a merge
+  request when it arrives”** sends every newly discovered merge request out for review, unasked.
+  **Unchecked by default**, and **capped** even when checked (**“Automatic reviews — cap per
+  discovery”**, 5 by default): each review is a billed AI call, and the *first* discovery of a fresh
+  install brings in **every** open merge request you have. Merge requests beyond the cap keep their
+  `Review` button, and the server log says how many did not start. `0` = no limit. **“When it
+  arrives” means when it arrives**: a branch moving forward triggers nothing — re-reviewing stays a
+  deliberate gesture, and an incremental one.
 - **Publish the report on the merge request.** A review report stays **with you** by default: it lives
   in Mergerie and nobody else sees it. The report's **`Publish to GitLab` / `Publish to GitHub`** button
   posts it **as a comment on the MR**, exactly as it sits on disk — that is how you hand the review back

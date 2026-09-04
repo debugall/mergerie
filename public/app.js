@@ -3612,7 +3612,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'clone_path', 'prompt_review', 'prompt_explain', 'prompt_modify', 'ai_extra_instructions',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
-  'verif_auto_max',
+  'verif_auto_max', 'review_auto_max',
   'stale_mr_days'];
 async function loadConfig() {
   const c = await api('/config');
@@ -3624,6 +3624,9 @@ async function loadConfig() {
   if (f.review_explain) f.review_explain.checked = c.review_explain !== '0'; // défaut : activé
   // Publication automatique : défaut DÉSACTIVÉ — le test est donc `=== '1'`, pas `!== '0'`.
   if (f.auto_post_review) f.auto_post_review.checked = c.auto_post_review === '1';
+  if (f.auto_review_new) f.auto_review_new.checked = c.auto_review_new === '1';
+  // 0 = « sans limite » : il doit s'ÉCRIRE, une case vide se lirait comme « valeur par défaut ».
+  if (f.review_auto_max) f.review_auto_max.value = Number(c.review_auto_max) || 0;
   // Atterrissage sur le brief : coché par défaut, comme côté serveur.
   if (f.brief_on_open) f.brief_on_open.checked = c.brief_on_open !== '0';
   if (f.stale_mr_days) f.stale_mr_days.value = Number(c.stale_mr_days) || 5;
@@ -3638,6 +3641,7 @@ $('#configForm').addEventListener('submit', async (e) => {
   body.auto_refresh_minutes = f.auto_refresh_minutes.value;
   if (f.review_explain) body.review_explain = f.review_explain.checked ? '1' : '0';
   if (f.auto_post_review) body.auto_post_review = f.auto_post_review.checked ? '1' : '0';
+  if (f.auto_review_new) body.auto_review_new = f.auto_review_new.checked ? '1' : '0';
   if (f.brief_on_open) body.brief_on_open = f.brief_on_open.checked ? '1' : '0';
   // '***' = champ non touché (on n'écrase pas le secret) ; '' = effacement volontaire.
   if (body.access_token === '***') delete body.access_token;

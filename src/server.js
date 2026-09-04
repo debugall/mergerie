@@ -3317,11 +3317,50 @@ function lancerVerificationsAuto(mrIds, { colonne = 'auto_on_mr' } = {}) {
   return bilan;
 }
 
+/* LA REVIEW LANCÉE TOUTE SEULE À L'ARRIVÉE D'UNE MERGE REQUEST.
+ *
+ * Décochée par défaut, et PLAFONNÉE même une fois cochée — contrairement au bouton « Reviewer
+ * les N MR », que l'on presse en connaissance de cause. Ici personne ne regarde : la découverte
+ * tourne toute seule, et la PREMIÈRE d'une installation neuve ramène d'un coup toutes les MR
+ * ouvertes du parc. Sans plafond, cocher la case reviendrait à signer un chèque en blanc en
+ * appels IA. Les MR au-delà du plafond gardent leur bouton « Reviewer ».
+ *
+ * Un SEUL job pour le lot, comme le bouton « Reviewer les N MR » : N jobs pour N merge requests
+ * satureraient la file et rendraient le journal illisible. */
+const plafondReviewAuto = () => {
+  const v = Number(getConfig().review_auto_max);
+  return Number.isFinite(v) && v >= 0 ? v : 5;
+};
+
+function lancerReviewsAuto(mrIds) {
+  const bilan = { lancees: 0, plafonnees: 0 };
+  if (getConfig().auto_review_new !== '1') return bilan;
+  if (!Array.isArray(mrIds) || !mrIds.length) return bilan;
+  const plafond = plafondReviewAuto();
+  const retenues = plafond ? mrIds.slice(0, plafond) : mrIds;
+  bilan.plafonnees = mrIds.length - retenues.length;
+  try {
+    jobs.startJob('review', retenues);
+    bilan.lancees = retenues.length;
+  } catch (e) {
+    /* Best-effort, comme pour les vérifications : la découverte a fait son travail — trouver
+       les MR —, elle ne doit pas échouer parce que la file a refusé le lot. */
+    bilan.lancees = 0;
+    console.log(`[review-auto] lot refusé : ${e.message}`);
+  }
+  /* UN PLAFOND SILENCIEUX SE LIT COMME « TOUT A ÉTÉ REVIEWÉ ». */
+  if (bilan.plafonnees) {
+    console.log(`[review-auto] plafond atteint (${plafond}) : ${bilan.plafonnees} merge request(s) non reviewée(s) — bouton « Reviewer » sur les MR concernées`);
+  }
+  return bilan;
+}
+
 /* Le SEUL chemin de découverte côté serveur : la route et le rafraîchissement automatique
    passent par lui, donc les vérifications automatiques ne peuvent pas être oubliées d'un côté. */
 async function decouvrir() {
   const result = await discoverAll();
   result.auto_verify = lancerVerificationsAuto(result.new_mr_ids);
+  result.auto_review = lancerReviewsAuto(result.new_mr_ids);
   /* Les MR dont le SHA vient de bouger : leur verdict est périmé. Deux appels séparés et deux
      plafonds distincts — une poussée massive sur des MR connues ne doit pas manger le budget
      des MR nouvelles, qui est le cas d'usage principal. */

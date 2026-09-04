@@ -46,6 +46,14 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   permet de **surcharger ponctuellement** une MR (`Review + explication` / `Review sans explication`).
   Si l'explication manque, un bouton **`Générer l'explication`** sur le rapport la produit à la demande
   (un seul appel IA, sans relancer la review ni créer de nouvelle version).
+- **Reviewer sans y penser.** **Réglages → Merge Request → « Lancer automatiquement la review à
+  l'arrivée d'une MR »** met en review toute merge request nouvellement découverte, sans qu'on la
+  demande. **Décoché par défaut**, et **plafonné** même une fois coché (**« Reviews automatiques —
+  plafond par découverte »**, 5 par défaut) : chaque review est un appel IA facturé, et la
+  *première* découverte d'une installation neuve ramène d'un coup **toutes** les MR ouvertes du
+  parc. Les MR au-delà du plafond gardent leur bouton `Reviewer`, et le journal du serveur dit
+  combien n'ont pas démarré. `0` = sans limite. **« À l'arrivée » veut dire à l'arrivée** : une
+  branche qui avance ne relance rien — la re-review reste un geste, et elle est incrémentale.
 - **Publier le rapport sur la merge request.** Un rapport de review reste par défaut **chez toi** :
   il vit dans Mergerie, personne d'autre ne le voit. Le bouton **`Publier sur GitLab` / `Publier sur
   GitHub`** du rapport le poste **en commentaire sur la MR**, tel qu'il est sur le disque — c'est la

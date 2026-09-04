@@ -165,4 +165,46 @@ describe('Publier le rapport de review — écran', { skip: dispo ? false : MSG_
     await page.locator('#confirmModal:not([hidden])').waitFor({ state: 'detached' });
     assert.equal(app.state.calls.filter((c) => c.method === 'POST' && /\/notes$/.test(c.path)).length, avant);
   });
+
+  /* ------------------------------------ l'autre case du même panneau ---- */
+
+  /* Elle vit ici parce que le harnais démarre le serveur EN PROCESSUS : un second `startApp()`
+     dans le même fichier attend un `listening` qui ne viendra jamais. Deux cases du même
+     panneau partagent donc la même application — et c'est le même câblage qu'on vérifie :
+     un champ peut s'afficher, accepter la souris et n'être jamais enregistré. */
+  test('« Lancer automatiquement la review » s’enregistre, avec son plafond', async () => {
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    const auto = page.locator('#sub-mr input[name="auto_review_new"]');
+    await auto.waitFor();
+    assert.equal(await auto.isChecked(), false, 'décochée par défaut : elle dépense des appels IA');
+
+    await auto.click();
+    await page.locator('#sub-mr input[name="review_auto_max"]').fill('3');
+    await page.locator('#sub-mr .form-actions button[type="submit"]').click();
+    await page.waitForFunction(async () => {
+      const c = await (await fetch('/api/config')).json();
+      return c.auto_review_new === '1' && Number(c.review_auto_max) === 3;
+    }, null, { timeout: 15000 });
+
+    // L'autre moitié du câblage : sauvegardé mais jamais relu, le champ repartirait vide.
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    assert.equal(await page.locator('#sub-mr input[name="auto_review_new"]').isChecked(), true);
+    assert.equal(await page.locator('#sub-mr input[name="review_auto_max"]').inputValue(), '3');
+    await app.api('PUT', '/api/config', { auto_review_new: '0' });
+  });
+
+  test('un plafond à 0 se RÉAFFICHE « 0 », pas vide', async () => {
+    // 0 veut dire « sans limite ». Affiché vide, il se lirait comme « valeur par défaut », et
+    // on croirait le garde-fou en place alors qu'on vient de le retirer.
+    await app.api('PUT', '/api/config', { review_auto_max: '0' });
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    assert.equal(await page.locator('#sub-mr input[name="review_auto_max"]').inputValue(), '0');
+    await app.api('PUT', '/api/config', { review_auto_max: '5' });
+  });
 });

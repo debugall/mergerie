@@ -13,6 +13,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Review new merge requests on arrival, without asking.** Settings → Merge Request →
+  **“Automatically review a merge request when it arrives”** puts every newly discovered merge
+  request into review by itself. It is **unchecked by default**, and it comes with a **cap per
+  discovery** (5 by default) that applies even once ticked — because unlike the `Review the N MRs`
+  button, nobody is watching when discovery runs, and the *first* discovery of a fresh install
+  brings in every open merge request you have. Merge requests beyond the cap keep their `Review`
+  button and the server log says how many did not start, so a silent cap can never read as
+  “everything was reviewed”. `0` means no limit. And “when it arrives” means exactly that: a
+  branch moving forward on a merge request you already know triggers nothing — re-reviewing stays
+  a deliberate gesture, and an incremental one.
+
 - **Hand the review back to its author: publish the report on the merge request.** Until now a
   review report lived in Mergerie and nowhere else — to share it you copied it by hand. The
   report now carries a **`Publish to GitLab` / `Publish to GitHub`** button that posts it as a

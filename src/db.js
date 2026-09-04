@@ -1158,6 +1158,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS git_command (
 // Amorçage UNE SEULE FOIS (drapeau en config) : quelques commandes usuelles. Supprimer
 // toutes les entrées ne les réintroduit donc pas — c'est un choix de l'utilisateur.
 try { db.exec("ALTER TABLE config ADD COLUMN git_commands_seeded INTEGER DEFAULT 0"); } catch { /* déjà présente */ }
+/* Review automatique à l'arrivée d'une merge request, et son plafond par tour de découverte.
+   Décochée par défaut, et plafonnée même une fois cochée : chaque review est un appel IA
+   facturé, et la PREMIÈRE découverte d'une installation neuve ramène toutes les MR ouvertes
+   du parc d'un coup. Un lundi matin ne doit pas se solder par trente appels non demandés. */
+try { db.exec("ALTER TABLE config ADD COLUMN auto_review_new TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE config ADD COLUMN review_auto_max INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
 /* Publication automatique du rapport de review sur la merge request. DÉCOCHÉ PAR DÉFAUT,
    contrairement à `review_explain` : écrire chez les autres est une décision, et une
    installation neuve ne doit surprendre personne au premier lancement de review. */
