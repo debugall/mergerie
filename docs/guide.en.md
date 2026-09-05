@@ -51,6 +51,25 @@ shared search (title, author, project, ticket).
   `Review` button, and the server log says how many did not start. `0` = no limit. **“When it
   arrives” means when it arrives**: a branch moving forward triggers nothing — re-reviewing stays a
   deliberate gesture, and an incremental one.
+- **Merge one branch into another, conflicts included.** `Git → Merge`: pick a repository, the
+  branch to merge and the one to merge it into, and the tool prepares the merge. **The shared
+  clone is never touched** — everything happens in a workspace of its own, so a review or a
+  session running alongside never finds a half-merged repository.
+  When there are conflicts, the screen takes them **file by file** and **conflict by conflict**:
+  the destination branch's version and the merged branch's version, one under the other, each
+  with `Keep`, plus `Keep both`. What you keep is highlighted, so you never have to re-read the
+  buttons to know where you stand. No `<<<<<<<` marker is ever left for you to decipher. If
+  neither side will do, **`Write it myself`** opens the result of your choices in a free text
+  field: you fix it, and that text is what gets saved.
+  Once everything is resolved, **`Commit`** opens a dialog with the message **already filled in**
+  (`Merge branch 'x' into y`, plus the list of files that were in conflict) — you read it and
+  confirm. Then **`Push`**, after a confirmation, sends the merge to the destination branch. The
+  two gestures are separate, and nothing goes out before the second one.
+  `Abandon` puts everything back: the destination branch has not moved an inch until you push.
+  If the two branches share **no common ancestor** — a reinitialised repository, a branch made
+  with `--orphan`, `master` and `main` each with their own root — the tool says so in plain
+  words and offers to do it anyway. Git refuses by default, and rightly so: merging two
+  unrelated histories juxtaposes two projects, usually with conflicts everywhere.
 - **Pull the verification report into a follow-up.** The verification broke tests and you want
   the AI to fix them. `Fix (AI session)`, from the report, opens a **new** session; from the
   session that produced the branch, what you want is a **follow-up**. So `Send a follow-up`

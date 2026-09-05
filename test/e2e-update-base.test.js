@@ -23,7 +23,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const {
-  startApp, poserIdentiteGit, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
+  startApp, poserIdentiteGit, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, attendreServeur,
 } = require('./helpers/app');
 
 const { dispo } = navigateurDispo();
@@ -436,10 +436,10 @@ describe('Rattraper la branche de départ', () => {
       await ouvrirLaModale();
       /* On attend un aller-retour COMPLET avec la forge avant de conclure à l'absence : le
          serveur vient de réécrire le drapeau, c'est lui qui fait foi. */
-      await page.waitForFunction(async () => {
-        const d = await (await fetch(`/api/mrs/${(await (await fetch('/api/mrs')).json()).find((m) => m.iid === 88).id}/merge-check`)).json();
-        return d.has_conflicts === false;
-      }, null, { timeout: 20000 });
+      await attendreServeur(async () => {
+        const id = (await app.api('GET', '/api/mrs')).body.find((m) => m.iid === 88).id;
+        return (await app.api('GET', `/api/mrs/${id}/merge-check`)).body.has_conflicts === false;
+      }, 'la forge ne signale plus de conflit');
       assert.equal(await page.locator('#mergeConflictNote').isVisible(), false);
       assert.equal(await page.locator('#mergeRebase').isVisible(), false);
       await page.locator('#mergeCancel').click();

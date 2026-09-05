@@ -54,6 +54,26 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   parc. Les MR au-delà du plafond gardent leur bouton `Reviewer`, et le journal du serveur dit
   combien n'ont pas démarré. `0` = sans limite. **« À l'arrivée » veut dire à l'arrivée** : une
   branche qui avance ne relance rien — la re-review reste un geste, et elle est incrémentale.
+- **Merger une branche dans une autre, conflits compris.** `Git → Merge` : tu choisis un dépôt,
+  la branche à fusionner et celle où la fusionner, et l'outil prépare le merge. **Le clone
+  partagé n'est jamais touché** — tout se passe dans un espace de travail à part, pour qu'une
+  review ou une session lancée en parallèle ne tombe pas sur un dépôt à moitié fusionné.
+  S'il y a des conflits, l'écran les prend **fichier par fichier**, et **conflit par conflit** :
+  la version de la branche de destination et celle de la branche fusionnée, l'une sous l'autre,
+  avec `Garder` sur chacune et `Garder les deux`. Ce que tu retiens se colore, tu n'as pas à
+  relire les boutons pour savoir où tu en es. Aucun marqueur `<<<<<<<` n'est jamais à
+  déchiffrer. Si ni l'une ni l'autre ne convient, **`Écrire moi-même`** ouvre le résultat de tes
+  choix dans un champ libre : tu le corriges, et c'est ce texte qui est enregistré.
+  Quand tout est résolu, **`Commiter`** ouvre une fenêtre avec le message **déjà rempli**
+  (`Merge branch 'x' into y`, plus la liste des fichiers qui ont été en conflit) — tu le relis,
+  tu valides. Puis **`Pousser`**, après confirmation, envoie le merge sur la branche de
+  destination. Les deux gestes sont séparés, et rien ne part avant le second.
+  `Abandonner` remet tout comme avant : la branche de destination n'a pas bougé d'un pouce tant
+  que tu n'as pas poussé.
+  Si les deux branches n'ont **aucun ancêtre commun** — dépôt réinitialisé, branche créée avec
+  `--orphan`, `master` et `main` avec chacun leur racine —, l'outil le dit en clair et propose
+  de le faire quand même. Git refuse par défaut, à juste titre : fusionner deux histoires
+  étrangères juxtapose deux projets, souvent avec des conflits partout.
 - **Reprendre le rapport de vérification dans un suivi.** La vérification a cassé des tests, et
   on veut que l'IA les répare. `Corriger (session IA)`, depuis le rapport, ouvre une **nouvelle**
   session ; depuis la session qui a produit la branche, c'est un **suivi** qu'on veut. Sur

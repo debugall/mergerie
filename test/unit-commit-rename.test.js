@@ -19,6 +19,12 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
+/* LE DOSSIER DE DONNÉES SE POSE AVANT L'IMPORT. `src/taskrunner` require `src/db`, qui OUVRE
+   la base au chargement : sans cette ligne, c'est la base RÉELLE de l'utilisateur qui s'ouvre,
+   avec ses migrations — et le moindre écrit y atterrirait. Ce test ne s'en sert pas, mais il
+   l'ouvrait quand même. */
+process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-rename-'));
+
 const git = require('../src/git');
 const taskrunner = require('../src/taskrunner');
 const { poserIdentiteGit } = require('./helpers/app');

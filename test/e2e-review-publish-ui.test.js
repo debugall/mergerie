@@ -17,7 +17,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { startApp, poserIdentiteGit, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR } = require('./helpers/app');
+const {
+  startApp, poserIdentiteGit, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, attendreServeur,
+} = require('./helpers/app');
 
 const { dispo } = navigateurDispo();
 
@@ -83,21 +85,15 @@ describe('Publier le rapport de review — écran', { skip: dispo ? false : MSG_
     await page.locator('#sub-mr input[name="auto_post_review"]').click();
     await page.locator('#sub-mr .form-actions button[type="submit"]').click();
     /* On attend l'état du SERVEUR, pas le mot « enregistré » : le libellé s'affiche avant que
-       la réponse soit arrivée, et un champ jamais sauvegardé l'affiche aussi. */
-    await page.waitForFunction(async () => {
-      const c = await (await fetch('/api/config')).json();
-      return c.auto_post_review === '1';
-    }, null, { timeout: 15000 });
-    assert.equal(await reglage(), '1');
+       la réponse soit arrivée, et un champ jamais sauvegardé l'affiche aussi. Depuis Node, pas
+       depuis la page : `waitForFunction` ne déroule pas un prédicat `async`. */
+    await attendreServeur(async () => await reglage() === '1', 'la case cochée est enregistrée');
   });
 
   test('la décocher la remet à zéro, et l’écran la relit ainsi après rechargement', async () => {
     await page.locator('#sub-mr input[name="auto_post_review"]').click();
     await page.locator('#sub-mr .form-actions button[type="submit"]').click();
-    await page.waitForFunction(async () => {
-      const c = await (await fetch('/api/config')).json();
-      return c.auto_post_review === '0';
-    }, null, { timeout: 15000 });
+    await attendreServeur(async () => await reglage() === '0', 'la case décochée est enregistrée');
     // Le chargement du formulaire est l'autre moitié du câblage : sauvegardé mais jamais
     // relu, le champ repartirait décoché à chaque ouverture.
     await page.reload();
@@ -132,10 +128,8 @@ describe('Publier le rapport de review — écran', { skip: dispo ? false : MSG_
 
     /* L'effet qui compte est côté forge : le commentaire est-il parti ? On l'attend, plutôt
        que de parier sur la vitesse du rendu. */
-    await page.waitForFunction(async (id) => {
-      const d = await (await fetch(`/api/mrs/${id}`)).json();
-      return !!(d.review && d.review.comment_posted_at);
-    }, mrId, { timeout: 20000 });
+    await attendreServeur(async () => !!(await app.api('GET', `/api/mrs/${mrId}`)).body.review.comment_posted_at,
+      'le rapport est publié');
 
     const postees = app.state.calls.filter((c) => c.method === 'POST' && /\/notes$/.test(c.path));
     assert.equal(postees.length, 1, 'un commentaire, et un seul');
@@ -183,10 +177,10 @@ describe('Publier le rapport de review — écran', { skip: dispo ? false : MSG_
     await auto.click();
     await page.locator('#sub-mr input[name="review_auto_max"]').fill('3');
     await page.locator('#sub-mr .form-actions button[type="submit"]').click();
-    await page.waitForFunction(async () => {
-      const c = await (await fetch('/api/config')).json();
+    await attendreServeur(async () => {
+      const c = (await app.api('GET', '/api/config')).body;
       return c.auto_review_new === '1' && Number(c.review_auto_max) === 3;
-    }, null, { timeout: 15000 });
+    }, 'la case et son plafond sont enregistrés');
 
     // L'autre moitié du câblage : sauvegardé mais jamais relu, le champ repartirait vide.
     await page.reload();
@@ -208,10 +202,8 @@ describe('Publier le rapport de review — écran', { skip: dispo ? false : MSG_
     assert.equal(await perime.isChecked(), false, 'décochée par défaut');
     await perime.click();
     await page.locator('#sub-mr .form-actions button[type="submit"]').click();
-    await page.waitForFunction(async () => {
-      const c = await (await fetch('/api/config')).json();
-      return c.auto_rereview_stale === '1';
-    }, null, { timeout: 15000 });
+    await attendreServeur(async () => (await app.api('GET', '/api/config')).body.auto_rereview_stale === '1',
+      'la case « rapport périmé » est enregistrée');
 
     await page.reload();
     await page.locator('[data-tab="admin"]').click();

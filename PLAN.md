@@ -121,6 +121,15 @@ Application locale mono-utilisateur (Node + Express + SQLite + front vanilla) po
    - vérification : `GET /api/tasks/:id/verify-prompt` rend `promptCorrectionVerif(d, v)` — **la fonction même** qu'emploie `POST /api/verifications/:id/fix`, extraite pour que le suivi et la session neuve ne puissent pas donner deux textes différents. Filtré sur `verdict = 'verified_fail'` ET `imputable` non vide, exactement comme le drapeau qui décide de l'affichage du bouton.
 9. **Rapport publié sur la merge request** : `reviewer.publierRapport(mr, cfg)` relit le rapport **sur le disque** (`review.md_path`), le poste via `forge.clientFor(mr).postMrNote`, l'inscrit dans `comment_log` et horodate `review.comment_posted_at`. Un seul chemin pour les deux déclencheurs — le bouton `Publier sur …` du rapport (`POST /api/mrs/:id/publish-review`, qui n'accepte **aucun corps** du client) et le réglage `auto_post_review`, appliqué en fin de `reviewMr` dans un `try/catch` : une forge injoignable est journalisée, elle ne fait pas échouer la review. En mode démo, la note part dans le fil simulé de `demo-comments`.
 
+## Merge de branche à branche (`gitmerge.js`, onglet Git → Merge)
+
+1. **Un worktree dédié**, jamais le clone partagé : un merge se résout sur plusieurs requêtes, et laisser le clone à moitié fusionné bloquerait reviews, sessions et vérifications — le premier `ensureCleanWorktree` venu l'annulerait sans prévenir. Répertoire `data/merges/`, distinct de `data/worktrees/` que `verifyrun.gcWorktrees` vide à chaque démarrage : un merge se REPREND après un redémarrage.
+2. **Détaché sur `origin/<destination>`**, `merge --no-commit --no-ff origin/<source>`, puis `push HEAD:refs/heads/<destination>`. Aucune branche locale créée ni déplacée : pas de collision avec la branche que le clone principal a sortie, et rien qui reste en avance après coup.
+3. **Git fait foi** : les fichiers en conflit se relisent (`--diff-filter=U`), la résolution est un `write` + `git add`, le message part de `MERGE_MSG`. La table `git_merge` ne retient que le lien demande ↔ worktree.
+4. **Un seul assembleur** : `src/conflits.js` (module PUR, sans base ni disque) découpe les marqueurs et recolle selon les choix. L'écran envoie des CHOIX, le serveur recolle ; l'édition libre envoie du texte. Deux assembleurs auraient fini par ne plus dire la même chose.
+5. **Histoires sans ancêtre commun** : `git merge-base` est interrogé AVANT le worktree ; sans ancêtre, refus portant `code: 'UNRELATED'` (exposé par `wrap`, lu par `api()` côté écran) et message explicatif, plus une relance possible avec `--allow-unrelated-histories`.
+6. **Deux gestes séparés** : `POST …/commit` refuse tant qu'un conflit reste, `POST …/push` refuse tant que rien n'est commité. `DELETE` retire le worktree et la ligne.
+
 ## Convergence (« Converger », `converge.js`)
 
 Machine à états qui **orchestre les briques existantes** dans un **seul job de fond** (kind `converge`, tient la file — sous-étapes séquentielles). Boucle pour une MR :

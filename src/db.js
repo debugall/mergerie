@@ -44,6 +44,21 @@ CREATE TABLE IF NOT EXISTS mr (
   UNIQUE(repo_id, iid)
 );
 
+/* Un merge de branche à branche EN COURS (onglet Git → Merge). La table ne retient que ce que
+   git ne sait pas : quel worktree appartient à quelle demande. Tout le reste — fichiers en
+   conflit, contenu, message par défaut — se relit dans le worktree, qui fait foi. */
+CREATE TABLE IF NOT EXISTS git_merge (
+  id INTEGER PRIMARY KEY,
+  repo_id INTEGER NOT NULL REFERENCES repo(id) ON DELETE CASCADE,
+  source_branch TEXT NOT NULL,
+  target_branch TEXT NOT NULL,
+  dir TEXT NOT NULL,
+  status TEXT NOT NULL,                 -- conflict | ready | committed | pushed
+  commit_sha TEXT,
+  created_at TEXT,
+  updated_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS review (
   id INTEGER PRIMARY KEY,
   mr_id INTEGER NOT NULL UNIQUE REFERENCES mr(id) ON DELETE CASCADE,

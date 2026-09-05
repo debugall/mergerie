@@ -100,5 +100,65 @@ coupables.length
     : ok(`Toute migration suit son CREATE TABLE (${cree.size} tables)`);
 }
 
+/* UN TEST NE DOIT PAS OUVRIR LA BASE RÉELLE.
+ *
+ * `src/db` ouvre `data/reviewer.db` AU CHARGEMENT. Le harnais pose `MERGERIE_DATA_DIR` dans
+ * `startApp()`, pas à l'import : un `require('../src/x')` en tête d'un fichier de test, où `x`
+ * atteint `db`, ouvre donc la base de l'utilisateur — et le serveur de test, servi par le cache
+ * de `require`, écrit dedans. C'est arrivé : un fichier de test a inséré un dépôt et écrasé la
+ * configuration (jeton GitLab compris) de l'installation réelle.
+ *
+ * Ce qui est PUR (aucun chemin vers `db`) reste importable librement — c'est pour ça que
+ * `src/conflits.js` existe séparément de `src/gitmerge.js`. */
+{
+  const SRC = path.join(ROOT, 'src');
+  const atteintDb = new Map();
+  const versDb = (nom, vus = new Set()) => {
+    if (nom === 'db') return true;
+    if (atteintDb.has(nom)) return atteintDb.get(nom);
+    if (vus.has(nom)) return false;
+    vus.add(nom);
+    let code = '';
+    try { code = fs.readFileSync(path.join(SRC, `${nom}.js`), 'utf8'); } catch { return false; }
+    const r = [...code.matchAll(/require\('\.\/([\w-]+)'\)/g)].some((m) => versDb(m[1], vus));
+    atteintDb.set(nom, r);
+    return r;
+  };
+  const fautifs = [];
+  for (const f of fs.readdirSync(path.join(ROOT, 'test')).filter((x) => x.endsWith('.test.js'))) {
+    const lignes = fs.readFileSync(path.join(ROOT, 'test', f), 'utf8').split('\n');
+    /* POSER LE DOSSIER SOI-MÊME, AVANT L'IMPORT, est la façon correcte de faire — c'est ce que
+       font les tests unitaires. Ce qui est fautif, c'est l'import qui précède : rien n'a alors
+       défini `MERGERIE_DATA_DIR`, et `startApp()`, qui le posera, arrive trop tard. */
+    const posé = lignes.findIndex((l) => /^\s*process\.env\.MERGERIE_DATA_DIR\s*=/.test(l));
+    lignes.forEach((l, i) => {
+      if (/^\s/.test(l)) return;                 // dans une fonction : l'env est déjà posé
+      const m = /require\('\.\.\/src\/([\w-]+)'\)/.exec(l);
+      if (!m || !versDb(m[1])) return;
+      if (posé !== -1 && posé < i) return;        // le dossier est posé avant : rien à signaler
+      fautifs.push(`test/${f}:${i + 1}  require('../src/${m[1]}') avant tout MERGERIE_DATA_DIR — ouvre la base RÉELLE`);
+    });
+  }
+  fautifs.length
+    ? fail('Un test importe un module qui ouvre la base, avant que le harnais n’ait posé son dossier', fautifs)
+    : ok('Aucun test n’ouvre la base réelle au chargement');
+}
+
+/* UNE ATTENTE QUI N'ATTEND PAS. `page.waitForFunction(async () => …)` rend la main au PREMIER
+   tour : Playwright ne déroule pas la promesse, il la voit « truthy ». L'attente est un no-op
+   déguisé, et le test continue trop tôt — mesuré : 62 ms au lieu d'expirer. Côté serveur, on
+   interroge l'API depuis Node (`attendreServeur`), où `await` veut dire `await`. */
+{
+  const creuses = [];
+  for (const f of fs.readdirSync(path.join(ROOT, 'test')).filter((x) => x.endsWith('.test.js'))) {
+    fs.readFileSync(path.join(ROOT, 'test', f), 'utf8').split('\n').forEach((l, i) => {
+      if (/waitForFunction\(\s*async/.test(l)) creuses.push(`test/${f}:${i + 1}  waitForFunction(async …) — rend la main aussitôt, utiliser attendreServeur()`);
+    });
+  }
+  creuses.length
+    ? fail('Attente de test qui n’attend rien', creuses)
+    : ok('Aucune attente creuse (waitForFunction async)');
+}
+
 console.log(failures ? '\nContrôles serveur : ÉCHEC\n' : '\nContrôles serveur : OK\n');
 process.exit(failures ? 1 : 0);

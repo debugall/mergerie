@@ -13,6 +13,20 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Merge a branch into another, conflicts and all, without leaving the tool.** A new `Git →
+  Merge` tab: pick a repository, a branch to merge, a branch to merge it into. The merge is
+  prepared in a workspace of its own, so the shared clone is never left half-merged under a
+  review or a coding session running alongside. Conflicts are resolved on screen, one conflict at
+  a time: the destination's version and the incoming version shown one under the other, `Keep` on
+  each, `Keep both` under them, and the side you keep highlighted so you can see where you stand
+  without re-reading the buttons. You never see a `<<<<<<<` marker. When neither side fits,
+  `Write it myself` hands you the result of your choices in a plain text field and saves what you
+  write. Then `Commit` — with the message already filled in from what git itself wrote — and
+  `Push`, each behind its own confirmation, in that order. `Abandon` restores everything; until
+  you push, the destination branch has not moved. When the two branches share no common ancestor,
+  the tool explains what that means and offers to go ahead anyway, instead of passing on git's
+  bare `fatal: refusing to merge unrelated histories`.
+
 - **Pull the verification report into a follow-up too.** When a verification breaks tests, the
   report's `Fix (AI session)` button opens a brand-new coding session that rediscovers the code.
   From the session that produced the branch, `Send a follow-up` now carries **`Use the

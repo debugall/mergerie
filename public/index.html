@@ -276,6 +276,7 @@
     <section id="tab-git" class="tab">
         <div class="segmented subnav" role="tablist">
             <button data-gsub="actions" class="active" role="tab"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.sub.actions">Actions</span></button>
+            <button data-gsub="merge" role="tab"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="git.sub.merge">Merge</span></button>
             <button data-gsub="navigate" role="tab"><svg class="ico"><use href="#i-repeat"/></svg><span data-i18n="git.sub.navigate">Navigation</span></button>
             <button data-gsub="commands" role="tab"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.sub.commands">Commandes Git</span></button>
             <button data-gsub="explore" role="tab"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="git.sub.explorer">Explorateur de branches</span></button>
@@ -332,6 +333,39 @@
                 </div>
             </div>
             <div id="gitPreviewBox" hidden></div>
+        </div>
+
+        <!-- Sous-onglet : MERGE de branche à branche, conflits résolus à l'écran.
+             Le travail se fait dans un worktree dédié (cf. src/gitmerge.js) : le clone partagé
+             n'est jamais laissé à moitié fusionné pendant qu'on résout. -->
+        <div id="gsub-merge" class="subtab">
+            <p class="muted" style="max-width:900px" data-i18n="git.merge.intro">Fusionne une branche dans une autre. Les conflits se résolvent ici, fichier par fichier : tu vois les deux versions, tu choisis celle que tu gardes — ou tu écris la tienne. Rien n'est commité ni poussé sans ton clic.</p>
+            <div class="form" style="max-width:900px">
+                <div class="target-row merge-pick" data-row="0">
+                    <label class="merge-lbl"><span data-i18n="git.merge.repo">Dépôt</span></label>
+                    <div id="mergeRepoBox"></div>
+                </div>
+                <div class="target-row merge-pick" data-row="0">
+                    <label class="merge-lbl"><span data-i18n="git.merge.source">Branche à fusionner</span></label>
+                    <div id="mergeSourceBox"></div>
+                    <span class="merge-arrow" aria-hidden="true">→</span>
+                    <label class="merge-lbl"><span data-i18n="git.merge.target">Dans la branche</span></label>
+                    <div id="mergeTargetBox"></div>
+                </div>
+                <div class="form-actions">
+                    <button id="mergeStart" class="btn btn-primary" data-i18n-title="git.merge.start-title"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="git.merge.start">Préparer le merge</span></button>
+                    <span id="mergeStartInfo" class="muted"></span>
+                </div>
+            </div>
+            <!-- Refus « historiques sans ancêtre commun » : une question, pas une panne. Le bloc
+                 n'apparaît qu'après le refus, pour ne pas encombrer un formulaire de trois champs. -->
+            <p id="mergeUnrelated" class="converge-note note-bad" hidden style="max-width:900px">
+                <svg class="ico ico-sm"><use href="#i-alert"/></svg>
+                <span class="mu-text"></span>
+                <button type="button" id="mergeUnrelatedGo" class="btn btn-sm"><span data-i18n="git.merge.unrelated-check">Fusionner sans ancêtre commun (--allow-unrelated-histories)</span></button>
+            </p>
+            <div id="mergeRunning"></div>
+            <div id="mergeWork" hidden></div>
         </div>
 
         <!-- Sous-onglet : navigation — positionner des projets LOCAUX sur une branche -->
@@ -1588,6 +1622,23 @@
             <button id="mergeRebase" type="button" class="btn" hidden><svg class="ico"><use href="#i-repeat"/></svg><span></span></button>
             <button id="mergeCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
             <button id="mergeGo" type="button" class="btn btn-danger btn-solid"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="merge.modal.go">Merger</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- Commit du merge : le message arrive PRÉ-REMPLI avec celui que git a écrit lui-même
+     (`MERGE_MSG`), conventions du dépôt comprises. On le relit, on le corrige, on valide. -->
+<div id="mergeCommitModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 data-i18n="git.merge.commit.title">Commiter le merge</h3>
+        <p id="mergeCommitIntro" class="muted"></p>
+        <div class="modal-fields">
+            <label><span data-i18n="git.merge.commit.msg">Message de commit</span>
+                <textarea id="mergeCommitMsg" rows="5"></textarea></label>
+        </div>
+        <div class="modal-actions">
+            <button id="mergeCommitCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="mergeCommitGo" type="button" class="btn btn-primary"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="git.merge.commit.go">Commiter</span></button>
         </div>
     </div>
 </div>
