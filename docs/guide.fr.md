@@ -70,10 +70,17 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   destination. Les deux gestes sont séparés, et rien ne part avant le second.
   `Abandonner` remet tout comme avant : la branche de destination n'a pas bougé d'un pouce tant
   que tu n'as pas poussé.
+  Le rattrapage se propose aussi **depuis la fenêtre de merge** : elle interroge la forge en
+  s'ouvrant, dit en rouge que la merge request est en conflit, et porte le même bouton. Les deux
+  chemins demandent la même confirmation — c'est la même réécriture d'historique, l'endroit du
+  clic ne change pas l'engagement.
   Si les deux branches n'ont **aucun ancêtre commun** — dépôt réinitialisé, branche créée avec
   `--orphan`, `master` et `main` avec chacun leur racine —, l'outil le dit en clair et propose
   de le faire quand même. Git refuse par défaut, à juste titre : fusionner deux histoires
   étrangères juxtapose deux projets, souvent avec des conflits partout.
+  **En mode démo**, l'onglet Merge fonctionne pour de vrai : le décor contient un petit dépôt git
+  réel (`groupe/tarification`) avec deux branches qui modifient la même ligne. Les autres dépôts
+  de la démo pointent vers une forge fictive et ne peuvent pas être clonés ; celui-ci, si.
 - **Reprendre le rapport de vérification dans un suivi.** La vérification a cassé des tests, et
   on veut que l'IA les répare. `Corriger (session IA)`, depuis le rapport, ouvre une **nouvelle**
   session ; depuis la session qui a produit la branche, c'est un **suivi** qu'on veut. Sur

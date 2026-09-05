@@ -66,10 +66,17 @@ shared search (title, author, project, ticket).
   confirm. Then **`Push`**, after a confirmation, sends the merge to the destination branch. The
   two gestures are separate, and nothing goes out before the second one.
   `Abandon` puts everything back: the destination branch has not moved an inch until you push.
+  The catch-up is also offered **from the merge dialog**: it asks the forge as it opens, says in
+  red that the merge request is in conflict, and carries the same button. Both paths ask for the
+  same confirmation — it is the same history rewrite, and where you clicked does not change what
+  you are committing to.
   If the two branches share **no common ancestor** — a reinitialised repository, a branch made
   with `--orphan`, `master` and `main` each with their own root — the tool says so in plain
   words and offers to do it anyway. Git refuses by default, and rightly so: merging two
   unrelated histories juxtaposes two projects, usually with conflicts everywhere.
+  **In demo mode** the Merge tab genuinely works: the demo data includes a small real git
+  repository (`groupe/tarification`) with two branches editing the same line. The other demo
+  repositories point at a fictional forge and cannot be cloned; this one can.
 - **Pull the verification report into a follow-up.** The verification broke tests and you want
   the AI to fix them. `Fix (AI session)`, from the report, opens a **new** session; from the
   session that produced the branch, what you want is a **follow-up**. So `Send a follow-up`

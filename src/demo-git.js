@@ -10,6 +10,7 @@
    Un seul jeu de vérité par dépôt (branches + tags) ; les différentes formes de réponse
    (refs, explorateur, trouver-une-ref, aperçu d'action) en dérivent pour rester cohérentes. */
 
+const fs = require('fs');
 const BASE = 'https://gitlab.demo';
 const iso = (days) => new Date(Date.now() - days * 86400000).toISOString();
 const refUrl = (project, kind, name) => `${BASE}/${project}/${kind === 'tag' ? '-/tags/' : '-/tree/'}${encodeURIComponent(name)}`;
@@ -69,7 +70,31 @@ const branchTipDate = (proj, name) => {
 };
 
 // --- /api/git/refs (listes des Actions + rechargement explorateur) ---
-function refs(project, kind) {
+/* UN DÉPÔT QUI EXISTE VRAIMENT ne se raconte pas : on lit ses refs.
+ *
+ * Le décor contient un dépôt git réel sur le disque (`groupe/tarification`), pour que l'onglet
+ * Git → Merge soit utilisable en démo. Lui servir des branches inventées serait pire que de
+ * n'en servir aucune : le merge clone POUR DE BON, et échouerait sur une branche qui n'existe
+ * pas — après que l'utilisateur l'a choisie dans une liste. */
+function refsReelles(url, kind) {
+  try {
+    if (!url || !fs.existsSync(url)) return null;
+    const { execFileSync } = require('child_process');
+    const sortie = execFileSync('git', ['for-each-ref', '--format=%(refname:short) %(objectname)',
+      kind === 'tags' ? 'refs/tags' : 'refs/heads'], { cwd: url, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    const lignes = sortie.split('\n').map((l) => l.trim()).filter(Boolean)
+      .map((l) => { const [name, sha] = l.split(' '); return { name, sha }; });
+    if (!lignes.length) return null;
+    const defaut = lignes.some((b) => b.name === 'main') ? 'main' : lignes[0].name;
+    return kind === 'tags'
+      ? { kind, refs: lignes.map((r) => ({ ...r, protected: false, annotated: false, date: null })) }
+      : { kind, default: defaut, refs: lignes.map((r) => ({ ...r, default: r.name === defaut, protected: false, merged: false, date: null, author: '' })) };
+  } catch { return null; }
+}
+
+function refs(project, kind, url) {
+  const vraies = refsReelles(url, kind);
+  if (vraies) return vraies;
   const p = dataset()[project];
   if (!p) return { kind, refs: [] };
   if (kind === 'tags') {

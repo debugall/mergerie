@@ -372,3 +372,54 @@ describe('Git · Merge de branche à branche', () => {
     });
   });
 });
+
+/* ------------------------------------------------- le décor de la démo ---- */
+
+/* LE DÉPÔT RÉEL DU MODE DÉMO. Tous les autres pointent vers `gitlab.demo`, qui n'existe pas :
+ * sans celui-ci, l'onglet Git → Merge est inutilisable en `npm run demo`, c'est-à-dire
+ * invisible pour qui découvre l'outil. Ce test protège les trois propriétés dont l'écran
+ * dépend : le dépôt existe, ses deux branches se marchent dessus, et l'application voit ses
+ * VRAIES refs — lui en servir d'inventées ferait choisir une branche qui n'existe pas, et le
+ * merge, qui clone pour de bon, échouerait après le choix. */
+describe('Le dépôt local du décor de démo', () => {
+  const DEMO = path.resolve(__dirname, '..', 'data-demo');
+  const bareDemo = path.join(DEMO, 'depots', 'tarification.git');
+  const g = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' }).toString().trim();
+  let seme = false;
+
+  before(() => {
+    /* Le semis efface `data-demo/` : on ne le lance QUE s'il n'a pas déjà tourné, pour ne pas
+       détruire un décor que quelqu'un est en train de filmer. */
+    if (!fs.existsSync(bareDemo)) {
+      execFileSync('node', [path.resolve(__dirname, '..', 'scripts', 'demo-seed.js')], { stdio: 'pipe' });
+      seme = true;
+    }
+    void seme;
+  });
+
+  test('le dépôt existe vraiment, avec ses deux branches', () => {
+    assert.ok(fs.existsSync(bareDemo), 'sans dépôt joignable, l’onglet Merge est mort en démo');
+    const branches = g(bareDemo, 'for-each-ref', '--format=%(refname:short)', 'refs/heads').split('\n');
+    assert.deepEqual(branches.sort(), ['feature/remise-fidelite', 'main']);
+  });
+
+  test('les deux branches touchent la MÊME ligne — sinon il n’y a rien à résoudre', () => {
+    const surMain = g(bareDemo, 'show', 'main:tarification.js');
+    const surBranche = g(bareDemo, 'show', 'feature/remise-fidelite:tarification.js');
+    assert.match(surMain, /REMISE_FIDELITE = 0\.07/);
+    assert.match(surBranche, /REMISE_FIDELITE = 0\.10/);
+    // Et un ancêtre commun : c'est un conflit, pas deux projets étrangers.
+    assert.ok(g(bareDemo, 'merge-base', 'main', 'feature/remise-fidelite'));
+  });
+
+  test('en démo, ce dépôt rend ses VRAIES refs, les autres gardent les leurs', () => {
+    const demoGit = require('../src/demo-git');
+    const vraies = demoGit.refs('groupe/tarification', 'branch', bareDemo);
+    assert.deepEqual(vraies.refs.map((r) => r.name).sort(), ['feature/remise-fidelite', 'main']);
+    assert.equal(vraies.default, 'main');
+    // Un dépôt fictif, lui, garde le jeu inventé : son URL ne mène à aucun dossier.
+    const fictif = demoGit.refs('groupe/api-core', 'branch', 'https://gitlab.demo/groupe/api-core.git');
+    assert.ok(fictif.refs.length > 1);
+    assert.ok(!fictif.refs.some((r) => r.name === 'feature/remise-fidelite'));
+  });
+});

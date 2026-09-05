@@ -698,6 +698,17 @@ async function demanderEtatFusion(ctx) {
   bouton.title = tr('task.title.update-base', { base });
   bouton.hidden = false;
   bouton.onclick = async () => {
+    /* LA MÊME ACTION DEMANDE LA MÊME CHOSE. Depuis la ligne du projet, le rattrapage se
+       confirme — il réécrit l'historique de la branche. Partir sans rien demander parce qu'on
+       a cliqué depuis la modale serait la même opération avec deux poids : c'est l'endroit du
+       clic qui changerait le niveau d'engagement, pas ce qui se passe ensuite. */
+    const base = d.base_branch || d.target_branch;
+    if (!await confirmDialog({
+      title: tr('confirm.update-base.title', { branch: d.branch || '', base }),
+      text: tr('confirm.update-base.text', { branch: d.branch || '', base }),
+      confirmLabel: tr('task.btn.update-base', { base }),
+      danger: false,
+    })) return;
     try {
       await busy(bouton, () => api(ctx.rebase, { method: 'POST' }));
       closeMergeModal();
@@ -3685,8 +3696,30 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
   'verif_auto_max', 'review_auto_max',
   'stale_mr_days'];
+/* CE QUI EST TAPÉ NE DOIT PAS ÊTRE EFFACÉ PAR UN CHARGEMENT EN RETARD.
+ *
+ * `loadConfig()` part à chaque ouverture d'un sous-onglet de réglages, et sa réponse revient
+ * quelques dizaines de millisecondes plus tard. Entre les deux, l'utilisateur peut déjà avoir
+ * commencé à taper : la réponse écrase alors ses champs avec ce que le serveur avait, sans un
+ * mot. Sur une machine chargée, la fenêtre s'élargit — c'est ainsi qu'un test collait son
+ * jeton Jenkins et cliquait « Tester » sur trois champs redevenus vides.
+ *
+ * On note donc l'instant de la dernière frappe : si elle est postérieure au DÉPART de la
+ * requête, on ne touche à rien.
+ *
+ * Le rechargement qui SUIT une sauvegarde passe naturellement : la dernière frappe est alors
+ * antérieure à son départ. Et s'il se trouve que l'utilisateur tape PENDANT l'enregistrement,
+ * s'abstenir est encore le bon geste — c'est sa saisie la plus récente, pas celle du serveur,
+ * qu'il faut garder. */
+let configFrappe = 0;
+document.addEventListener('input', (e) => {
+  if (e.target && e.target.form && e.target.form.id === 'configForm') configFrappe = Date.now();
+}, true);
+
 async function loadConfig() {
+  const depart = Date.now();
   const c = await api('/config');
+  if (configFrappe >= depart) return;      // l'utilisateur a tapé pendant ce temps : on s'abstient
   const f = $('#configForm');
   for (const k of CONFIG_FIELDS) { if (f[k]) f[k].value = c[k] || ''; }
   f.auto_refresh_minutes.value = Number(c.auto_refresh_minutes) || 0; // 0 affiché explicitement

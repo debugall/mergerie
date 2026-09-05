@@ -28,6 +28,12 @@ try {
    son état. Mieux vaut attendre longtemps pour rien que rendre un rouge qui ne veut rien dire. */
 const ATTENTE_ECRAN = 20000;
 
+/* Le PREMIER aller-retour réseau du fichier mérite plus large : il paie le démarrage du faux
+   serveur, la première requête du navigateur et, sur un runner à deux cœurs, la contention de
+   toutes les suites qui tournent en même temps. Vingt secondes suffisent d'ordinaire et pas
+   toujours — et son échec entraîne les vingt-neuf tests suivants, qui dépendent de son état. */
+const ATTENTE_RESEAU = 60000;
+
 /* Attend qu'une condition côté SERVEUR devienne vraie. Un `waitForTimeout` fixe est un pari
    sur la vitesse de la machine : il tient en local et lâche sur un runner à deux cœurs. */
 async function attendreServeur(cond, quoi, ms = 15000) {
@@ -167,8 +173,21 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.locator('[name="jenkins_user"]').fill(mock.state.user);
     await page.locator('[name="jenkins_token"]').fill(mock.state.token);
     await page.locator('#btnTestJenkins').click();
-    await page.waitForFunction(() => /Moi Même/.test(document.querySelector('#configInfoJenkins').textContent),
-      null, { timeout: ATTENTE_ECRAN });
+    /* CE QUE L'ÉCRAN A VRAIMENT MONTRÉ, quand l'attente échoue.
+       Ce test est le premier du fichier à toucher le réseau, et son échec entraîne les vingt-neuf
+       suivants : sans ce message, on lit « Timeout 20000ms » et on ne sait pas si la requête a
+       échoué, si le bouton n'a rien déclenché, ou si la machine était simplement lente. Le
+       gestionnaire vide le libellé et affiche une bulle en cas d'erreur : on relève les deux. */
+    try {
+      await page.waitForFunction(() => /Moi Même/.test(document.querySelector('#configInfoJenkins').textContent),
+        null, { timeout: ATTENTE_RESEAU });
+    } catch (e) {
+      const vu = await page.evaluate(() => ({
+        info: (document.querySelector('#configInfoJenkins') || {}).textContent,
+        toasts: [...document.querySelectorAll('#toasts .toast')].map((t) => t.textContent).join(' | '),
+      }));
+      throw new Error(`${e.message}\n  #configInfoJenkins = ${JSON.stringify(vu.info)}\n  bulles = ${JSON.stringify(vu.toasts)}`);
+    }
 
     await page.locator('#sub-jenkinscfg button[type="submit"]').first().click();
     /* On attend que le SERVEUR ait la valeur, pas un délai. Recharger 300 ms après le clic

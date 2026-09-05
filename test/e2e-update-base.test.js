@@ -377,11 +377,17 @@ describe('Rattraper la branche de départ', () => {
       await page.locator('#mergeCancel').click();
     });
 
-    test('le bouton de la modale lance bien le rattrapage', async () => {
+    test('le bouton de la modale lance bien le rattrapage, APRÈS confirmation', async () => {
+      /* Le même geste que depuis la ligne du projet doit demander la même chose : il réécrit
+         l'historique de la branche. L'endroit du clic ne change pas l'engagement. */
       await ouvrirLaModale();
       await page.locator('#mergeRebase').waitFor({ state: 'visible', timeout: 20000 });
       const avant = nbJobsTask();
       await page.locator('#mergeRebase').click();
+      await page.locator('#confirmModal:not([hidden])').waitFor({ timeout: 10000 });
+      assert.match(await page.locator('#confirmText').innerText(), /RÉÉCRIT|réécrit/,
+        'la confirmation doit dire que l’historique est réécrit');
+      await page.locator('#confirmOk').click();
       await page.locator('#mergeModal:not([hidden])').waitFor({ state: 'detached' });
       for (let i = 0; i < 200 && nbJobsTask() === avant; i += 1) {
         await new Promise((r) => setTimeout(r, 50));

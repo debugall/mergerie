@@ -213,6 +213,43 @@ describe('Publier le rapport de review — écran', { skip: dispo ? false : MSG_
     await app.api('PUT', '/api/config', { auto_rereview_stale: '0' });
   });
 
+  test('ce qu’on tape n’est pas effacé par le chargement des réglages', async () => {
+    /* `loadConfig()` part à chaque ouverture d'un sous-onglet et revient quelques dizaines de
+       millisecondes plus tard. S'il écrase ce qui a été tapé entre-temps, un jeton collé juste
+       après l'ouverture disparaît sans un mot — et c'est ce qui faisait échouer, une fois sur
+       deux sur un runner à deux cœurs, le test qui saisit les identifiants Jenkins. */
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    // On tape TOUT DE SUITE, sans attendre que le formulaire soit peuplé : c'est le cas réel.
+    await page.locator('#sub-mr input[name="review_auto_max"]').fill('42');
+    await attendreServeur(async () => true, 'laisser la réponse de /config revenir');
+    await page.waitForFunction(() => document.querySelector('[name="converge_threshold"]').value !== '',
+      null, { timeout: 15000 });   // preuve que le chargement est bien passé
+    assert.equal(await page.locator('#sub-mr input[name="review_auto_max"]').inputValue(), '42',
+      'la frappe doit survivre au chargement qui revient après elle');
+  });
+
+  test('après une sauvegarde, le secret saisi repasse sous « *** »', async () => {
+    /* Le garde-fou ci-dessus s'abstient quand l'utilisateur a tapé — mais le rechargement qui
+       SUIT une sauvegarde est voulu : c'est lui qui remasque le jeton. Sans la remise à zéro du
+       compteur de frappe, le jeton resterait affiché en clair après l'enregistrement. */
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="gitcfg"]').click();
+    const champ = page.locator('#configForm [name="access_token"], [name="access_token"]').first();
+    await champ.waitFor();
+    await champ.fill('glpat-secret-de-test');
+    await page.locator('#sub-gitcfg button[type="submit"]').first().click();
+    await attendreServeur(async () => (await app.api('GET', '/api/config')).body.access_token === '***',
+      'le jeton est enregistré côté serveur');
+    await page.waitForFunction(
+      () => (document.querySelector('[name="access_token"]') || {}).value === '***',
+      null, { timeout: 15000 },
+    );
+    assert.equal(await champ.inputValue(), '***', 'le jeton ne doit pas rester en clair à l’écran');
+  });
+
   test('un plafond à 0 se RÉAFFICHE « 0 », pas vide', async () => {
     // 0 veut dire « sans limite ». Affiché vide, il se lirait comme « valeur par défaut », et
     // on croirait le garde-fou en place alors qu'on vient de le retirer.

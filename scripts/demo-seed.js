@@ -72,6 +72,65 @@ const AUTHORS = ['amady', 'lina', 'karim', 'sofia', 'noah'];
 /* `fetch_mrs: 0` sur un dépôt : la démo doit MONTRER qu'on peut cesser de ramener les MR
    d'un dépôt sans le désactiver. Ses MR déjà semées restent dans la file — c'est exactement
    le comportement réel, et c'est ce qui rend la case compréhensible. */
+/* UN DÉPÔT GIT RÉEL DANS LE DÉCOR.
+ *
+ * `main` et `feature/remise-fidelite` modifient la MÊME ligne du même fichier : le merge de
+ * l'une dans l'autre s'arrête sur un conflit, et l'écran de résolution a quelque chose à
+ * montrer. Le conflit porte sur du code lisible en trois secondes — un taux de remise —, parce
+ * qu'une démonstration de résolution de conflit ne doit pas d'abord demander de comprendre le
+ * code.
+ *
+ * Le dépôt est un `--bare` : c'est ce que l'application clone. Il est refait à chaque semis,
+ * comme le reste du décor. */
+const DEPOT_LOCAL = path.join(DEMO_DIR, 'depots', 'tarification.git');
+
+function depotLocalDeDemo() {
+  const { execFileSync } = require('child_process');
+  const travail = path.join(DEMO_DIR, 'depots', 'tarification-travail');
+  const g = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' });
+  ensureDir(path.dirname(DEPOT_LOCAL));
+  fs.mkdirSync(DEPOT_LOCAL, { recursive: true });
+  fs.mkdirSync(travail, { recursive: true });
+  g(DEPOT_LOCAL, 'init', '-q', '--bare', '-b', 'main', '.');
+  g(travail, 'init', '-q', '-b', 'main', '.');
+  /* Identité posée sur CE dépôt : la machine qui joue la démo n'a pas forcément de
+     `user.email` global, et `git commit` refuserait. */
+  g(travail, 'config', 'user.email', 'demo@mergerie.local');
+  g(travail, 'config', 'user.name', 'Démo Mergerie');
+  g(travail, 'remote', 'add', 'origin', DEPOT_LOCAL);
+
+  const tarif = (remise, note) => `// Tarification des abonnements\n`
+    + `const REMISE_FIDELITE = ${remise};   // ${note}\n`
+    + `\nfunction prixAnnuel(base, anciennete) {\n`
+    + `  const remise = anciennete >= 2 ? REMISE_FIDELITE : 0;\n`
+    + `  return Math.round(base * 12 * (1 - remise));\n`
+    + `}\n\nmodule.exports = { prixAnnuel, REMISE_FIDELITE };\n`;
+
+  fs.writeFileSync(path.join(travail, 'tarification.js'), tarif('0.05', 'remise fidélité : 5 %'));
+  fs.writeFileSync(path.join(travail, 'README.md'), '# Tarification\n\nLe calcul des prix d’abonnement.\n');
+  g(travail, 'add', '-A'); g(travail, 'commit', '-qm', 'tarification : calcul du prix annuel');
+  g(travail, 'push', '-q', '-u', 'origin', 'main');
+
+  // La branche : la remise passe à 10 %, et un plafond apparaît.
+  g(travail, 'checkout', '-q', '-b', 'feature/remise-fidelite');
+  fs.writeFileSync(path.join(travail, 'tarification.js'),
+    tarif('0.10', 'remise fidélité : 10 % à partir de 2 ans'));
+  fs.writeFileSync(path.join(travail, 'plafond.js'),
+    '// Plafond de remise, ajouté par la branche\nmodule.exports = { PLAFOND: 200 };\n');
+  g(travail, 'add', '-A'); g(travail, 'commit', '-qm', 'remise fidélité portée à 10 %');
+  g(travail, 'push', '-q', '-u', 'origin', 'feature/remise-fidelite');
+
+  // Pendant ce temps, `main` a bougé sur LA MÊME LIGNE : voilà le conflit.
+  g(travail, 'checkout', '-q', 'main');
+  fs.writeFileSync(path.join(travail, 'tarification.js'),
+    tarif('0.07', 'remise fidélité : 7 % (décision du comité tarifaire)'));
+  g(travail, 'add', '-A'); g(travail, 'commit', '-qm', 'remise fidélité portée à 7 %');
+  g(travail, 'push', '-q', 'origin', 'main');
+  fs.rmSync(travail, { recursive: true, force: true });   // seul le bare sert ensuite
+}
+
+depotLocalDeDemo();
+
 const PROJECTS = [
   { project: 'groupe/api-core', url: 'https://gitlab.demo/groupe/api-core.git', forge: 'gitlab' },
   { project: 'groupe/webapp-front', url: 'https://gitlab.demo/groupe/webapp-front.git', forge: 'gitlab' },
@@ -91,6 +150,13 @@ const PROJECTS = [
   { project: 'groupe/portail-client', url: 'https://gitlab.demo/groupe/portail-client.git', forge: 'gitlab' },
   { project: 'groupe/back-office', url: 'https://gitlab.demo/groupe/back-office.git', forge: 'gitlab' },
   { project: 'groupe/webhooks-php', url: 'https://gitlab.demo/groupe/webhooks-php.git', forge: 'gitlab' },
+  /* UN VRAI DÉPÔT, sur le disque. Tous les autres pointent vers `gitlab.demo`, qui n'existe
+     pas : c'est sans importance pour les écrans qui lisent la base, mais l'onglet Git → Merge,
+     lui, CLONE et FUSIONNE pour de bon. Sans dépôt joignable, son écran de résolution de
+     conflits reste inaccessible en `npm run demo` — c'est-à-dire invisible pour qui découvre
+     l'outil. Celui-ci est fabriqué par `depotLocalDeDemo()` avec deux branches qui se marchent
+     dessus, pour que le conflit soit là dès la première visite. */
+  { project: 'groupe/tarification', url: DEPOT_LOCAL, forge: 'gitlab', fetch_mrs: 0 },
 ];
 
 // ---------- config : GitLab factice, pas de token (démo hors-ligne) ----------
@@ -601,6 +667,20 @@ if (someMr) {
       'L’arrondi est fait ligne par ligne : sur un gros panier, les centimes s’accumulent. Arrondis le total, pas chaque ligne.', at(2), at(2));
     ins.run(mrPaiement.id, 'src/checkout/tunnel.js', 12,
       'Cette erreur réseau devient un message générique : on perd la cause, et un paiement déjà encaissé se rejouerait.', at(2), at(2));
+  }
+}
+
+/* UNE MERGE REQUEST EN CONFLIT. Le cas le plus banal d'une branche ouverte depuis quelques
+   jours : la branche de départ a avancé dessous, et la forge refuse de fusionner. C'est ce qui
+   fait apparaître, sur la ligne du projet et dans la modale de merge, le bouton « Mettre à jour
+   avec … ». Sans cet état dans le décor, la fonctionnalité est invisible à la démo — et c'est
+   pourtant le moment où l'outil rend le plus de service. */
+{
+  const mrConflit = db.prepare("SELECT id, repo_id, source_branch FROM mr WHERE source_branch = 'feat/PROJ-720-checkout' LIMIT 1").get();
+  if (mrConflit) {
+    db.prepare('UPDATE mr SET has_conflicts = 1 WHERE id = ?').run(mrConflit.id);
+    db.prepare('UPDATE task_target SET mr_conflicts = 1 WHERE repo_id = ? AND branch = ?')
+      .run(mrConflit.repo_id, mrConflit.source_branch);
   }
 }
 

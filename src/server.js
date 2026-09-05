@@ -5028,7 +5028,8 @@ app.get('/api/git/refs', wrap(async (req, res) => {
   if (!repo) throw new Error(t('err.depot-introuvable'));
   const cfg = getConfig();
   const kind = req.query.kind === 'tags' ? 'tags' : 'branches';
-  if (demoGit.isDemo()) return res.json(demoGit.refs(repo.project, kind));
+  // `repo.url` : un dépôt de démo peut être un VRAI dépôt sur le disque — on lit alors ses refs.
+  if (demoGit.isDemo()) return res.json(demoGit.refs(repo.project, kind, repo.url));
   if (kind === 'tags') {
     const api = forge.clientFor(repo);
     const [tags, prot] = await Promise.all([api.listTags(cfg, repo.project), api.listProtectedTags(cfg, repo.project)]);

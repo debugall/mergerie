@@ -13,6 +13,28 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **What you type in Settings is no longer wiped by a late load.** Opening a Settings sub-tab
+  fires a request for the current configuration, and its answer lands a few dozen milliseconds
+  later — overwriting whatever you had started typing in the meantime, without a word. On a
+  loaded machine the window widens: a token pasted right after opening the page could simply
+  vanish. The form now ignores an answer that comes back after you started typing. This was found
+  by a test that pasted Jenkins credentials and clicked “Test the connection” on three fields
+  that had silently gone empty again — it failed about one CI run in two, and the message said
+  only “timeout”.
+
+- **The demo can actually show all this.** Every repository in the demo data points at a
+  fictional forge, which is fine for screens that read the database but leaves anything that
+  really clones — the Merge tab above all — unreachable in `npm run demo`. The demo now ships a
+  small **real** git repository with two branches editing the same line, so conflict resolution
+  can be tried out on first contact; and one merge request is seeded **in conflict**, so the
+  catch-up button is visible where it matters. In demo mode a repository that exists on disk
+  serves its **real** branches rather than invented ones — offering a branch that does not exist
+  would fail the moment it is picked.
+
+- **Asking to catch a branch up now confirms from the merge dialog too**, as it already did from
+  the project's line. Same history rewrite, same question: where you clicked should not change
+  what you are committing to.
+
 - **Merge a branch into another, conflicts and all, without leaving the tool.** A new `Git →
   Merge` tab: pick a repository, a branch to merge, a branch to merge it into. The merge is
   prepared in a workspace of its own, so the shared clone is never left half-merged under a

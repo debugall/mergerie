@@ -130,6 +130,8 @@ Application locale mono-utilisateur (Node + Express + SQLite + front vanilla) po
 5. **Histoires sans ancêtre commun** : `git merge-base` est interrogé AVANT le worktree ; sans ancêtre, refus portant `code: 'UNRELATED'` (exposé par `wrap`, lu par `api()` côté écran) et message explicatif, plus une relance possible avec `--allow-unrelated-histories`.
 6. **Deux gestes séparés** : `POST …/commit` refuse tant qu'un conflit reste, `POST …/push` refuse tant que rien n'est commité. `DELETE` retire le worktree et la ligne.
 
+**Décor de démo** : `scripts/demo-seed.js` fabrique un dépôt git RÉEL (`data-demo/depots/tarification.git`, deux branches sur la même ligne) et marque une merge request `has_conflicts = 1`. Sans lui, l'onglet Merge et le bouton de rattrapage sont inatteignables en `npm run demo`. `demo-git.refs(project, kind, url)` lit les VRAIES refs quand l'URL désigne un dossier existant.
+
 ## Convergence (« Converger », `converge.js`)
 
 Machine à états qui **orchestre les briques existantes** dans un **seul job de fond** (kind `converge`, tient la file — sous-étapes séquentielles). Boucle pour une MR :

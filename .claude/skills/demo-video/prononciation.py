@@ -120,6 +120,21 @@ FR = [
     (r'(?i)\blint\b', 'linnte'),
     # Le PLURIEL d'abord, comme pour `commits`/`commit` : `\bcheckout\b` ne mord pas sur
     # « checkouts », et le mot repartait alors en phonèmes français.
+    # `--force-with-lease` : espeak BASCULE EN ANGLAIS au milieu du mot composé — il rend
+    # « f'Ors(en)wIDl'i:s(fr) », et le modèle français n'a jamais entendu ces phonèmes-là. Le
+    # résultat est inintelligible, comme pour `token` ou `merge request` avant lui.
+    # « ouiz lisse » reste en français d'un bout à l'autre : /w'iz l'is/, l'approximation
+    # habituelle de /wɪð liːs/ — le /ð/ anglais n'existe pas en français, et `lisse` garde le
+    # `s` sourd de `lease` là où `lise` le sonoriserait en /z/.
+    # La règle prend AUSSI la forme avec tirets d'option, qu'on écrit telle quelle à l'écran.
+    (r'(?i)-{0,2}\bforce-with-lease\b', 'force ouiz lisse'),
+    # `main`, LA BRANCHE — pas la main. La voix française lit « main » /mɛ̃/, le mot français :
+    # « l'historique de main » devient « l'historique de la main ». `meïne` donne /mɛjn/, une
+    # syllabe avec la glissée, la même forme que l'anglais /meɪn/ ; `mène` (/mɛn/) perd la
+    # glissée, et `méine` déplace l'accent sur la seconde syllabe.
+    # Le `(?<!la )` est indispensable : « fini la résolution à la main » doit rester le MOT
+    # français. C'est la seule règle du fichier qui dépende de ce qui précède.
+    (r'(?i)(?<!la )\bmain\b', 'meïne'),
     (r'(?i)\bcheckouts\b', 'tchèk-aoutes'),
     (r'(?i)\bcheckout\b', 'tchèk-aoute'),
     (r'(?i)\bsquash\b', 'skouache'),
