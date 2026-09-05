@@ -13,6 +13,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Re-review by itself when a report goes stale.** After a review the branch keeps moving, and
+  the report stops describing the code that is actually there — that is the `stale` badge. Settings
+  → Merge Request → **“Automatically re-review when the report goes stale”** restarts the review at
+  the next discovery, **incrementally**: the AI only reads what changed and gets the previous report
+  as context, which is what makes this affordable on a branch that moves ten times a day. It is
+  **unchecked by default** and **independent** of the arrival checkbox — arriving and moving are two
+  different costs — and it gets its own share of the per-discovery cap, so a big push on merge
+  requests you already know cannot eat the budget of the new ones. Merge requests that were never
+  reviewed are left alone: no report, nothing to go stale.
+
 - **Review new merge requests on arrival, without asking.** Settings → Merge Request →
   **“Automatically review a merge request when it arrives”** puts every newly discovered merge
   request into review by itself. It is **unchecked by default**, and it comes with a **cap per

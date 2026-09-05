@@ -3625,6 +3625,7 @@ async function loadConfig() {
   // Publication automatique : défaut DÉSACTIVÉ — le test est donc `=== '1'`, pas `!== '0'`.
   if (f.auto_post_review) f.auto_post_review.checked = c.auto_post_review === '1';
   if (f.auto_review_new) f.auto_review_new.checked = c.auto_review_new === '1';
+  if (f.auto_rereview_stale) f.auto_rereview_stale.checked = c.auto_rereview_stale === '1';
   // 0 = « sans limite » : il doit s'ÉCRIRE, une case vide se lirait comme « valeur par défaut ».
   if (f.review_auto_max) f.review_auto_max.value = Number(c.review_auto_max) || 0;
   // Atterrissage sur le brief : coché par défaut, comme côté serveur.
@@ -3642,6 +3643,7 @@ $('#configForm').addEventListener('submit', async (e) => {
   if (f.review_explain) body.review_explain = f.review_explain.checked ? '1' : '0';
   if (f.auto_post_review) body.auto_post_review = f.auto_post_review.checked ? '1' : '0';
   if (f.auto_review_new) body.auto_review_new = f.auto_review_new.checked ? '1' : '0';
+  if (f.auto_rereview_stale) body.auto_rereview_stale = f.auto_rereview_stale.checked ? '1' : '0';
   if (f.brief_on_open) body.brief_on_open = f.brief_on_open.checked ? '1' : '0';
   // '***' = champ non touché (on n'écrase pas le secret) ; '' = effacement volontaire.
   if (body.access_token === '***') delete body.access_token;

@@ -3332,27 +3332,59 @@ const plafondReviewAuto = () => {
   return Number.isFinite(v) && v >= 0 ? v : 5;
 };
 
-function lancerReviewsAuto(mrIds) {
+/* Le lot, borné et journalisé. Les deux automatismes — à l'arrivée, et quand le rapport se
+   périme — passent par ici : deux copies auraient fini par ne plus plafonner pareil, et c'est
+   celle qu'on oublie qui dépense. Chacun garde en revanche son PROPRE budget : une poussée
+   massive sur des merge requests connues ne doit pas manger celui des nouvelles, qui est le
+   cas d'usage principal (même parti pris que les vérifications automatiques). */
+function lancerLotReview(mrIds, { kind, opts = {}, etiquette }) {
   const bilan = { lancees: 0, plafonnees: 0 };
-  if (getConfig().auto_review_new !== '1') return bilan;
   if (!Array.isArray(mrIds) || !mrIds.length) return bilan;
   const plafond = plafondReviewAuto();
   const retenues = plafond ? mrIds.slice(0, plafond) : mrIds;
   bilan.plafonnees = mrIds.length - retenues.length;
   try {
-    jobs.startJob('review', retenues);
+    jobs.startJob(kind, retenues, opts);
     bilan.lancees = retenues.length;
   } catch (e) {
     /* Best-effort, comme pour les vérifications : la découverte a fait son travail — trouver
        les MR —, elle ne doit pas échouer parce que la file a refusé le lot. */
     bilan.lancees = 0;
-    console.log(`[review-auto] lot refusé : ${e.message}`);
+    console.log(`[${etiquette}] lot refusé : ${e.message}`);
   }
   /* UN PLAFOND SILENCIEUX SE LIT COMME « TOUT A ÉTÉ REVIEWÉ ». */
   if (bilan.plafonnees) {
-    console.log(`[review-auto] plafond atteint (${plafond}) : ${bilan.plafonnees} merge request(s) non reviewée(s) — bouton « Reviewer » sur les MR concernées`);
+    console.log(`[${etiquette}] plafond atteint (${plafond}) : ${bilan.plafonnees} merge request(s) laissée(s) de côté — bouton « Reviewer » sur les MR concernées`);
   }
   return bilan;
+}
+
+function lancerReviewsAuto(mrIds) {
+  if (getConfig().auto_review_new !== '1') return { lancees: 0, plafonnees: 0 };
+  return lancerLotReview(mrIds, { kind: 'review', etiquette: 'review-auto' });
+}
+
+/* LA RE-REVIEW QUAND LE RAPPORT SE PÉRIME.
+ *
+ * « Périmé » a un sens précis : la merge request a DÉJÀ un rapport, et la branche a avancé
+ * depuis (`reviewed_sha !== current_sha`) — c'est le badge « périmé » de l'écran. `stale_mr_ids`
+ * est plus large : il contient toute MR connue dont le SHA a bougé, reviewée ou non. On filtre
+ * donc, sinon la case « rapport périmé » lancerait des PREMIÈRES reviews, ce qu'elle ne promet
+ * pas et ce que l'autre case est là pour faire.
+ *
+ * En INCRÉMENTAL, comme le bouton « Relancer (incrémental) » qu'elle remplace : l'IA ne voit
+ * que le delta depuis le dernier SHA reviewé et reçoit le rapport précédent en contexte. Sur
+ * une branche qui bouge dix fois par jour, la différence de coût n'est pas un détail. */
+function lancerRereviewsAuto(mrIds) {
+  if (getConfig().auto_rereview_stale !== '1') return { lancees: 0, plafonnees: 0 };
+  if (!Array.isArray(mrIds) || !mrIds.length) return { lancees: 0, plafonnees: 0 };
+  const perimees = mrIds.filter((id) => db.prepare(`SELECT 1 FROM mr
+    JOIN review ON review.mr_id = mr.id
+    WHERE mr.id = ? AND mr.status != 'done'
+      AND mr.reviewed_sha IS NOT NULL AND mr.reviewed_sha != mr.current_sha`).get(Number(id)));
+  return lancerLotReview(perimees, {
+    kind: 'rereview', opts: { incremental: true }, etiquette: 'rereview-auto',
+  });
 }
 
 /* Le SEUL chemin de découverte côté serveur : la route et le rafraîchissement automatique
@@ -3361,6 +3393,7 @@ async function decouvrir() {
   const result = await discoverAll();
   result.auto_verify = lancerVerificationsAuto(result.new_mr_ids);
   result.auto_review = lancerReviewsAuto(result.new_mr_ids);
+  result.auto_rereview = lancerRereviewsAuto(result.stale_mr_ids);
   /* Les MR dont le SHA vient de bouger : leur verdict est périmé. Deux appels séparés et deux
      plafonds distincts — une poussée massive sur des MR connues ne doit pas manger le budget
      des MR nouvelles, qui est le cas d'usage principal. */

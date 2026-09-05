@@ -1164,6 +1164,10 @@ try { db.exec("ALTER TABLE config ADD COLUMN git_commands_seeded INTEGER DEFAULT
    du parc d'un coup. Un lundi matin ne doit pas se solder par trente appels non demandés. */
 try { db.exec("ALTER TABLE config ADD COLUMN auto_review_new TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE config ADD COLUMN review_auto_max INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
+/* Re-review automatique quand le rapport se périme (la branche a avancé depuis la review).
+   Séparée de la précédente et décochée elle aussi : reviewer à l'arrivée et suivre une branche
+   qui bouge sont deux dépenses différentes, et la seconde se répète à chaque poussée. */
+try { db.exec("ALTER TABLE config ADD COLUMN auto_rereview_stale TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
 /* Publication automatique du rapport de review sur la merge request. DÉCOCHÉ PAR DÉFAUT,
    contrairement à `review_explain` : écrire chez les autres est une décision, et une
    installation neuve ne doit surprendre personne au premier lancement de review. */

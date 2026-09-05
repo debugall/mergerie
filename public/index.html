@@ -1099,6 +1099,8 @@
                  installation neuve ramène tout le parc d'un coup. -->
             <label class="inline-check"><input form="configForm" name="auto_review_new" type="checkbox" /> <span data-i18n="settings.lbl.auto-review-new">Lancer automatiquement la review à l'arrivée d'une MR</span>
                 <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.auto-review-new" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <label class="inline-check"><input form="configForm" name="auto_rereview_stale" type="checkbox" /> <span data-i18n="settings.lbl.auto-rereview-stale">Relancer automatiquement la review quand le rapport est périmé</span>
+                <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.auto-rereview-stale" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
             <label><span data-i18n="settings.lbl.review-auto-max">Reviews automatiques — plafond par découverte</span> <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.tip.review-auto-max" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <input form="configForm" name="review_auto_max" type="number" min="0" max="50" step="1" placeholder="5" />
             </label>

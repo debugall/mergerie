@@ -51,6 +51,15 @@ shared search (title, author, project, ticket).
   `Review` button, and the server log says how many did not start. `0` = no limit. **“When it
   arrives” means when it arrives**: a branch moving forward triggers nothing — re-reviewing stays a
   deliberate gesture, and an incremental one.
+- **Follow a branch that keeps moving.** Once the review is done the branch carries on: the report
+  no longer describes the code that is there, and the merge request gets the **`stale`** badge.
+  **Settings → Merge Request → “Automatically re-review when the report goes stale”** makes the
+  review start again by itself at the next discovery, **incrementally** — the AI only reads what
+  changed and gets the previous report as context. **Unchecked by default**: on a branch that moves
+  ten times a day, that is ten calls. It is **independent** of the previous checkbox (arriving and
+  moving are two different costs) and shares the same per-discovery cap **with its own budget**: a
+  big push on merge requests you already know does not eat the budget of the new ones. A merge
+  request that was never reviewed is not concerned — no report, nothing to go stale.
 - **Publish the report on the merge request.** A review report stays **with you** by default: it lives
   in Mergerie and nobody else sees it. The report's **`Publish to GitLab` / `Publish to GitHub`** button
   posts it **as a comment on the MR**, exactly as it sits on disk — that is how you hand the review back

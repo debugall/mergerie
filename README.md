@@ -55,7 +55,7 @@ Ten tabs in a left sidebar, each one line — plus the objective verification, w
 - **Docker** — compose project health and `.env` drift, batch actions, live multi-container logs, error badges in the menu.
 - **Links** — the work links your bookmarks cannot structure: a **services × environments grid** (one URL per cell, written out — no guessing an address from another), free links found by tag, and a **global palette** (`Ctrl`/`Cmd`+`K`) that searches links, MRs, tickets, notes and todos at once, ranked by frecency. A service linked to a repository puts buttons straight on its merge requests, including **templated** ones (`{env}`, `{branch}`, `{mr_iid}`) resolved on click. Chrome bookmarks import with a preview.
 - **Stats** — MR funnel, score trends, per-project resolution rate, token cost.
-- **Settings** — GitLab / GitHub / Jira connections, repositories (each one can opt out of MR fetching while staying usable for git and coding sessions), review rules, automatic review of merge requests on arrival (capped, off by default), automatic publishing of review reports on the MR, prompt templates, theme and language.
+- **Settings** — GitLab / GitHub / Jira connections, repositories (each one can opt out of MR fetching while staying usable for git and coding sessions), review rules, automatic review of merge requests on arrival and automatic re-review when a report goes stale (both capped, both off by default), automatic publishing of review reports on the MR, prompt templates, theme and language.
 
 Everywhere: `Ctrl`/`Cmd` + `K` opens a command palette (jump to a tab, a merge request, a session by
 name), `j` / `k` walk the current list, `?` lists every shortcut. The tool reopens on the tab and

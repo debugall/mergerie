@@ -54,6 +54,15 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   parc. Les MR au-delà du plafond gardent leur bouton `Reviewer`, et le journal du serveur dit
   combien n'ont pas démarré. `0` = sans limite. **« À l'arrivée » veut dire à l'arrivée** : une
   branche qui avance ne relance rien — la re-review reste un geste, et elle est incrémentale.
+- **Suivre une branche qui bouge.** Une fois la review faite, la branche continue d'avancer : le
+  rapport ne parle alors plus du code en place, et la merge request porte le badge **`périmé`**.
+  **Réglages → Merge Request → « Relancer automatiquement la review quand le rapport est périmé »**
+  fait repartir la review d'elle-même à la découverte suivante, **en incrémental** — l'IA ne relit
+  que ce qui a changé et reçoit le rapport précédent en contexte. **Décoché par défaut** : sur une
+  branche qui bouge dix fois par jour, ça fait dix appels. Elle est **indépendante** de la case
+  précédente (arriver et bouger sont deux dépenses différentes) et partage le même plafond par
+  découverte, **avec son propre budget** : une poussée massive sur des MR connues ne mange pas
+  celui des nouvelles. Une MR jamais reviewée n'est pas concernée — sans rapport, rien à périmer.
 - **Publier le rapport sur la merge request.** Un rapport de review reste par défaut **chez toi** :
   il vit dans Mergerie, personne d'autre ne le voit. Le bouton **`Publier sur GitLab` / `Publier sur
   GitHub`** du rapport le poste **en commentaire sur la MR**, tel qu'il est sur le disque — c'est la

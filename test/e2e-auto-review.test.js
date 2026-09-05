@@ -71,12 +71,16 @@ describe('Review automatique à l’arrivée d’une MR', () => {
   }
   const reviewees = () => app.db.prepare("SELECT COUNT(*) n FROM review").get().n;
 
-  test('décochée par défaut, et une valeur douteuse ne l’active pas', async () => {
-    assert.equal((await app.api('GET', '/api/config')).body.auto_review_new, '0');
-    for (const valeur of ['oui', 'true', '2', '']) {
-      await app.api('PUT', '/api/config', { auto_review_new: valeur });
-      assert.equal((await app.api('GET', '/api/config')).body.auto_review_new, '0',
-        `« ${valeur} » ne doit pas lancer des appels IA`);
+  test('les DEUX cases sont décochées par défaut, et une valeur douteuse ne les active pas', async () => {
+    /* Elles dépensent toutes les deux des appels IA sans que personne regarde : le doute doit
+       profiter au silence, dans un sens comme dans l'autre. */
+    for (const cle of ['auto_review_new', 'auto_rereview_stale']) {
+      assert.equal((await app.api('GET', '/api/config')).body[cle], '0', `${cle} par défaut`);
+      for (const valeur of ['oui', 'true', '2', '']) {
+        await app.api('PUT', '/api/config', { [cle]: valeur });
+        assert.equal((await app.api('GET', '/api/config')).body[cle], '0',
+          `${cle} : « ${valeur} » ne doit pas lancer des appels IA`);
+      }
     }
   });
 
@@ -134,7 +138,7 @@ describe('Review automatique à l’arrivée d’une MR', () => {
        qui arrive : brancher la review sur les MR dont le SHA a bougé ferait repayer un appel IA
        complet à chaque push, sans que personne l'ait demandé. La re-review reste un geste — le
        bouton du rapport, incrémental de surcroît. */
-    await app.api('PUT', '/api/config', { auto_review_new: '1', review_auto_max: '5' });
+    await app.api('PUT', '/api/config', { auto_review_new: '1', auto_rereview_stale: '0', review_auto_max: '5' });
     const git = (...a) => execFileSync('git', a, { cwd: distant, stdio: 'pipe' }).toString().trim();
     const connue = app.state.mrs['grp/app'][app.state.mrs['grp/app'].length - 1];
     git('checkout', '-q', connue.source_branch);
@@ -150,5 +154,79 @@ describe('Review automatique à l’arrivée d’une MR', () => {
     await fileVide();
     assert.equal(reviewees(), avant, 'aucun rapport de plus');
     await app.api('PUT', '/api/config', { auto_review_new: '0' });
+  });
+
+  /* ------------------------------ le rapport qui se périme ---- */
+
+  /* L'AUTRE MOITIÉ, ET ELLE SE DÉCIDE À PART. Reviewer une merge request qui arrive est une
+     dépense unique ; suivre une branche qui bouge se répète à chaque poussée. Les deux cases
+     sont donc indépendantes, et ce qui suit le prouve dans les deux sens. */
+
+  /** Fait avancer la branche d'une MR connue, puis redécouvre. */
+  async function pousserSur(mr) {
+    const git = (...a) => execFileSync('git', a, { cwd: distant, stdio: 'pipe' }).toString().trim();
+    git('checkout', '-q', mr.source_branch);
+    fs.writeFileSync(path.join(distant, 'a.txt'), `suite ${Math.random()}\n`);
+    git('add', '-A'); git('commit', '-qm', 'suite');
+    mr.sha = git('rev-parse', 'HEAD');
+    git('checkout', '-q', 'main');
+    return (await app.api('POST', '/api/discover')).body;
+  }
+
+  /** Une MR arrivée ET reviewée : c'est la seule qui peut avoir un rapport périmé. */
+  async function mrReviewee() {
+    await app.api('PUT', '/api/config', { auto_review_new: '1', auto_rereview_stale: '0', review_auto_max: '5' });
+    await arriver(1);
+    await fileVide();
+    await app.api('PUT', '/api/config', { auto_review_new: '0' });
+    return app.state.mrs['grp/app'][app.state.mrs['grp/app'].length - 1];
+  }
+  const versions = (iidMr) => app.db.prepare(`SELECT COUNT(*) n FROM review_version rv
+    JOIN mr ON mr.id = rv.mr_id WHERE mr.iid = ?`).get(iidMr).n;
+
+  test('décochée : un rapport périmé le reste', async () => {
+    const mr = await mrReviewee();
+    await app.api('PUT', '/api/config', { auto_rereview_stale: '0' });
+    const avant = versions(mr.iid);
+    const bilan = await pousserSur(mr);
+    assert.equal(bilan.auto_rereview.lancees, 0);
+    await fileVide();
+    assert.equal(versions(mr.iid), avant, 'aucune version de plus');
+  });
+
+  test('cochée : le rapport périmé repart tout seul, en incrémental', async () => {
+    const mr = await mrReviewee();
+    await app.api('PUT', '/api/config', { auto_rereview_stale: '1', review_auto_max: '5' });
+    const avant = versions(mr.iid);
+    const bilan = await pousserSur(mr);
+    assert.equal(bilan.auto_rereview.lancees, 1);
+    await fileVide();
+    assert.equal(versions(mr.iid), avant + 1, 'une nouvelle version du rapport');
+    /* L'incrémental n'est pas un détail de confort : c'est ce qui rend l'automatisme tenable
+       sur une branche qui bouge dix fois par jour. Le job doit l'avoir demandé. */
+    const job = app.db.prepare("SELECT retry FROM job WHERE kind = 'rereview' ORDER BY id DESC LIMIT 1").get();
+    assert.equal(JSON.parse(job.retry).opts.incremental, true);
+    await app.api('PUT', '/api/config', { auto_rereview_stale: '0' });
+  });
+
+  test('une MR JAMAIS reviewée qui bouge n’est pas « périmée » — elle n’a pas de rapport', async () => {
+    /* Sans ce filtre, la case « rapport périmé » lancerait des PREMIÈRES reviews : ce n'est pas
+       ce qu'elle promet, et c'est l'autre case qui est là pour ça. */
+    await app.api('PUT', '/api/config', { auto_review_new: '0', auto_rereview_stale: '1' });
+    await arriver(1);
+    const jamais = app.state.mrs['grp/app'][app.state.mrs['grp/app'].length - 1];
+    const bilan = await pousserSur(jamais);
+    assert.equal(bilan.auto_rereview.lancees, 0, 'pas de rapport, donc rien à périmer');
+    await app.api('PUT', '/api/config', { auto_rereview_stale: '0' });
+  });
+
+  test('les deux cases sont indépendantes : « périmé » seule ne reviewe pas les arrivées', async () => {
+    await app.api('PUT', '/api/config', { auto_review_new: '0', auto_rereview_stale: '1' });
+    const avant = reviewees();
+    const bilan = await arriver(1);
+    assert.equal(bilan.auto_review.lancees, 0);
+    await fileVide();
+    assert.equal(reviewees(), avant, 'une arrivée n’est pas un rapport périmé');
+    await app.api('PUT', '/api/config', { auto_rereview_stale: '0' });
   });
 });

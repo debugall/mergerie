@@ -197,6 +197,30 @@ describe('Publier le rapport de review — écran', { skip: dispo ? false : MSG_
     await app.api('PUT', '/api/config', { auto_review_new: '0' });
   });
 
+  test('« Relancer quand le rapport est périmé » s’enregistre elle aussi', async () => {
+    // Chaque case a SON câblage : celle-ci pourrait manquer à la sauvegarde sans que la
+    // précédente en souffre, et rien à l'écran ne le dirait.
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    const perime = page.locator('#sub-mr input[name="auto_rereview_stale"]');
+    await perime.waitFor();
+    assert.equal(await perime.isChecked(), false, 'décochée par défaut');
+    await perime.click();
+    await page.locator('#sub-mr .form-actions button[type="submit"]').click();
+    await page.waitForFunction(async () => {
+      const c = await (await fetch('/api/config')).json();
+      return c.auto_rereview_stale === '1';
+    }, null, { timeout: 15000 });
+
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    assert.equal(await page.locator('#sub-mr input[name="auto_rereview_stale"]').isChecked(), true,
+      'sauvegardée mais jamais relue, elle repartirait décochée à chaque ouverture');
+    await app.api('PUT', '/api/config', { auto_rereview_stale: '0' });
+  });
+
   test('un plafond à 0 se RÉAFFICHE « 0 », pas vide', async () => {
     // 0 veut dire « sans limite ». Affiché vide, il se lirait comme « valeur par défaut », et
     // on croirait le garde-fou en place alors qu'on vient de le retirer.
