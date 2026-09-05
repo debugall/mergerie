@@ -434,8 +434,19 @@ async function branchDiff(cwd, base) {
 }
 
 // Pousse la branche vers origin (avec les réglages TLS).
-async function pushBranch(cwd, branch, onLog, secrets = []) {
-  await run('git', [...gitTlsArgs(), 'push', '-u', 'origin', branch], { cwd, onLog, redactSecrets: secrets });
+/* `force` : `--force-with-lease`, JAMAIS `--force`.
+ *
+ * Après un rebase, la branche ne descend plus de ce qui est publié : un push normal est refusé,
+ * à juste titre. Mais écraser sans condition écraserait aussi le commit qu'un collègue vient de
+ * pousser sur la même branche, sans que rien ne le dise. `--force-with-lease` refuse dès que la
+ * distante a bougé depuis notre dernier fetch : il réécrit ce qu'on connaît, et seulement ça.
+ * `--force-if-includes` (git ≥ 2.30) referme la dernière fenêtre — un fetch fait entre-temps par
+ * autre chose que nous rendrait le « lease » périmé sans qu'on ait vu les nouveaux commits. */
+async function pushBranch(cwd, branch, onLog, secrets = [], { force = false } = {}) {
+  const args = force
+    ? ['push', '--force-with-lease', '--force-if-includes', '-u', 'origin', branch]
+    : ['push', '-u', 'origin', branch];
+  await run('git', [...gitTlsArgs(), ...args], { cwd, onLog, redactSecrets: secrets });
 }
 
 

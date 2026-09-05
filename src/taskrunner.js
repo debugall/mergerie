@@ -338,9 +338,14 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   });
 
   if (task.auto_push || forcePush) {
-    onLog(`push : ${pushCommand}`);
-    await git.pushBranch(cwd, tg.branch, onLog, git.secretsOf(cfg));
-    setTarget(tg.id, { status: 'pushed' });
+    /* Une branche rattrapée reste réécrite tant qu'elle n'a pas été repoussée : un suivi qui
+       commite par-dessus et pousse automatiquement se ferait refuser comme le bouton. On relit
+       le drapeau en base plutôt que la copie chargée au début — le rattrapage a pu passer entre
+       les deux. */
+    const doitForcer = !!(db.prepare('SELECT force_push FROM task_target WHERE id = ?').get(tg.id) || {}).force_push;
+    onLog(`push : ${doitForcer ? `git push --force-with-lease origin ${tg.branch}` : pushCommand}`);
+    await git.pushBranch(cwd, tg.branch, onLog, git.secretsOf(cfg), { force: doitForcer });
+    setTarget(tg.id, { status: 'pushed', force_push: 0 });
     onLog(t('log.task.pushed'));
   } else {
     onLog(t('log.task.commit-ready'));
@@ -735,6 +740,10 @@ async function mettreAJourDepuisBase(taskId, targetId, onLog = () => {}) {
   setTarget(tg.id, {
     base_branch: base, commit_sha: sha, diff_path: dpath,
     push_command: `git push --force-with-lease origin ${tg.branch}`,
+    /* Le rebase a réécrit l'historique : la branche ne descend plus de ce qui est publié, et
+       un push normal sera refusé. On le RETIENT, au lieu de laisser l'utilisateur buter sur le
+       refus puis chercher comment forcer — le bouton « Pousser » le fera de lui-même. */
+    force_push: 1,
     status: 'committed', last_error: null,
   });
   syncTaskStatus(task.id);
@@ -751,16 +760,31 @@ function marqueursDeConflit(fichier) {
   } catch { return false; }
 }
 
-async function pushTarget(taskId, targetId, onLog = () => {}) {
+/* `force` : décidé par la case de la confirmation. `undefined` (« Pousser tout », auto-push,
+   appel interne) → on retombe sur le drapeau posé par le rattrapage, qui sait qu'un push normal
+   serait refusé. Un `false` EXPLICITE, lui, est respecté : refuser de forcer est une décision
+   aussi, et la forge dira non — ce qui est la bonne réponse. */
+async function pushTarget(taskId, targetId, onLog = () => {}, { force } = {}) {
   const cfg = getConfig();
   const tg = db.prepare(`SELECT tt.*, repo.project, repo.forge FROM task_target tt
     JOIN repo ON repo.id = tt.repo_id WHERE tt.id = ? AND tt.task_id = ?`).get(targetId, taskId);
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session-2'));
   const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
   const cwd = git.cloneDirFor(cfg, repo);
-  onLog(`push ${tg.project} : git push -u origin ${tg.branch}`);
-  await git.pushBranch(cwd, tg.branch, onLog, git.secretsOf(cfg));
-  setTarget(tg.id, { status: 'pushed' });
+  const forcer = force === undefined ? !!tg.force_push : !!force;
+  onLog(`push ${tg.project} : git push ${forcer ? '--force-with-lease ' : ''}-u origin ${tg.branch}`);
+  /* L'ÉCHEC S'INSCRIT SUR LA LIGNE DU PROJET, comme le fait déjà « Pousser tout ». Sans ça,
+     un refus — le bail qui protège le commit d'un collègue, typiquement — n'apparaissait qu'au
+     niveau de la session : on cliquait « Pousser » sur une ligne et le message s'affichait
+     ailleurs. `pushTargets` rattrape déjà le sien ; il n'écrase pas celui-ci. */
+  try {
+    await git.pushBranch(cwd, tg.branch, onLog, git.secretsOf(cfg), { force: forcer });
+  } catch (e) {
+    setTarget(tg.id, { last_error: String(e.message).slice(0, 2000) });
+    throw e;
+  }
+  // Le drapeau décrit l'état de la branche, pas une préférence : une fois poussée, il tombe.
+  setTarget(tg.id, { status: 'pushed', force_push: 0, last_error: null });
   syncTaskStatus(taskId);
   onLog(t('log.task.pushed'));
 }

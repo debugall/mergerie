@@ -1515,6 +1515,11 @@
         <h3 id="confirmTitle"></h3>
         <p id="confirmText" class="confirm-text"></p>
         <pre id="confirmDetail" class="confirm-detail" hidden></pre>
+        <!-- Case OPTIONNELLE : une confirmation qui porte une décision de plus. Le premier
+             usage est le push forcé, qu'on ne veut ni imposer ni cacher dans un bouton à part.
+             Absente par défaut : les confirmations existantes ne changent pas d'aspect. -->
+        <label id="confirmCheckRow" class="inline-check inline-check-mid" hidden>
+            <input id="confirmCheck" type="checkbox" /> <span></span></label>
         <div class="modal-actions">
             <button id="confirmCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
             <button id="confirmOk" type="button" class="btn"></button>

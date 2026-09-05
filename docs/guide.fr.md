@@ -71,6 +71,14 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   concernée — et porte le bouton. On apprend le conflit **avant** de cliquer « Merger », pas
   dans le refus qui suivrait. Depuis la file (une MR qui ne vient pas d'une session), le conflit
   est annoncé de la même façon, sans le bouton : il n'y a pas de branche de session à rejouer.
+  **Le forçage se décide dans la confirmation de `Pousser`**, par une case
+  **« Forcer le push (--force-with-lease) »**. Elle est **décochée par défaut** : forcer réécrit
+  une branche publiée, ça ne se fait pas à ta place. Elle n'arrive **pré-cochée** que dans le cas
+  où l'on sait que le push normal sera refusé — la branche vient d'être rattrapée, son historique
+  a été réécrit. Décochée, le push part normalement et la forge le refuse : c'est la bonne
+  réponse, et le refus s'affiche sur la ligne du projet. Cochée, c'est `--force-with-lease` —
+  jamais `--force` : un commit poussé sur la branche depuis le dernier fetch fait **échouer** le
+  push au lieu de disparaître. Le travail d'un collègue n'est jamais effacé en silence.
 - **Reprendre le rapport de review dans un suivi.** Une fois la merge request reviewée, on veut
   souvent que l'IA traite les constats. Le bouton `Faire corriger le code par l'IA` du rapport
   ouvre pour cela une **nouvelle** session ; depuis la session qui a produit la branche, c'est un

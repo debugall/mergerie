@@ -199,6 +199,73 @@ describe('Rattraper la branche de départ', () => {
       assert.equal(cible(targetId).commit_sha, null);
     });
 
+    test('la confirmation de push porte la case « forcer », décochée par défaut', async () => {
+      /* Le forçage est une décision : il se prend dans la confirmation, pas dans un bouton à
+         part, et surtout pas à la place de l'utilisateur. */
+      const propre = await sessionPoussee('feature/case-decochee', { conflits: 0 });
+      app.db.prepare("UPDATE task_target SET status = 'committed' WHERE id = ?").run(propre.targetId);
+      await page.reload();
+      await page.locator('nav button[data-tab="task"]').click();
+      await page.locator(`#taskList [data-tgpush="${propre.targetId}"]`).waitFor({ state: 'visible', timeout: 20000 });
+      await page.locator(`#taskList [data-tgpush="${propre.targetId}"]`).click();
+      await page.locator('#confirmModal:not([hidden])').waitFor();
+      assert.equal(await page.locator('#confirmCheckRow').isVisible(), true, 'la case doit être là');
+      assert.equal(await page.locator('#confirmCheck').isChecked(), false, 'décochée par défaut');
+      assert.match(await page.locator('#confirmCheckRow').innerText(), /force-with-lease/);
+      await page.locator('#confirmCancel').click();
+      await page.locator('#confirmModal:not([hidden])').waitFor({ state: 'detached' });
+    });
+
+    test('après un rattrapage, la case arrive PRÉ-COCHÉE — le push normal serait refusé', async () => {
+      const rattrapee = await sessionPoussee('feature/case-prechochee');
+      mainAvance('j.txt', 'main bouge\n', 'main avance pour la case');
+      await lancer(rattrapee.taskId, rattrapee.targetId);
+      await page.reload();
+      await page.locator('nav button[data-tab="task"]').click();
+      await page.locator(`#taskList [data-tgpush="${rattrapee.targetId}"]`).waitFor({ state: 'visible', timeout: 20000 });
+      await page.locator(`#taskList [data-tgpush="${rattrapee.targetId}"]`).click();
+      await page.locator('#confirmModal:not([hidden])').waitFor();
+      assert.equal(await page.locator('#confirmCheck').isChecked(), true,
+        'on SAIT que le push normal sera refusé : laisser la case vide enverrait dans le mur');
+
+      // Et cocher la case fait bien partir un push forcé, qui aboutit.
+      const avant = git(distant, 'rev-parse', 'feature/case-prechochee');
+      await page.locator('#confirmOk').click();
+      for (let i = 0; i < 900; i += 1) {
+        const { body: st } = await app.api('GET', '/api/status');
+        if (!st.running && !st.queued) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      assert.equal(cible(rattrapee.targetId).last_error, null);
+      assert.notEqual(git(distant, 'rev-parse', 'feature/case-prechochee'), avant);
+    });
+
+    test('décocher la case pré-cochée envoie bien un push NORMAL — qui se fait refuser', async () => {
+      /* C'est la seule chose qui distingue « la case décide » de « on force toujours » : sans
+         ce test, un client qui enverrait `force: true` quoi qu'il arrive passerait inaperçu. */
+      const t2 = await sessionPoussee('feature/case-decochee-main');
+      mainAvance('k.txt', 'main bouge\n', 'main avance encore');
+      await lancer(t2.taskId, t2.targetId);
+      const avant = git(distant, 'rev-parse', 'feature/case-decochee-main');
+
+      await page.reload();
+      await page.locator('nav button[data-tab="task"]').click();
+      await page.locator(`#taskList [data-tgpush="${t2.targetId}"]`).waitFor({ state: 'visible', timeout: 20000 });
+      await page.locator(`#taskList [data-tgpush="${t2.targetId}"]`).click();
+      await page.locator('#confirmModal:not([hidden])').waitFor();
+      assert.equal(await page.locator('#confirmCheck').isChecked(), true);
+      await page.locator('#confirmCheck').uncheck();
+      await page.locator('#confirmOk').click();
+      for (let i = 0; i < 900; i += 1) {
+        const { body: st } = await app.api('GET', '/api/status');
+        if (!st.running && !st.queued) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      assert.ok(cible(t2.targetId).last_error, 'sans la case, la forge refuse — et on le dit');
+      assert.equal(git(distant, 'rev-parse', 'feature/case-decochee-main'), avant,
+        'la branche distante est intacte : décocher veut dire décocher');
+    });
+
     test('confirmer lance vraiment le rattrapage', async () => {
       await page.locator(`#taskList [data-tgrebase="${targetId}"]`).click();
       await page.locator('#confirmModal:not([hidden])').waitFor();
@@ -377,5 +444,114 @@ describe('Rattraper la branche de départ', () => {
       assert.equal(await page.locator('#mergeRebase').isVisible(), false);
       await page.locator('#mergeCancel').click();
     });
+  });
+
+  /* ------------------------------------------- pousser après coup ---- */
+
+  /* LE POINT D'ARRIVÉE DE TOUT LE PARCOURS. Le rattrapage réécrit l'historique : le push qui
+     suit est refusé par la forge, et l'utilisateur se retrouve devant un échec sans savoir
+     quoi faire. C'est ce que ces tests empêchent de revenir. */
+
+  test('après un rattrapage, pousser passe — et la branche distante prend la nouvelle histoire', async () => {
+    const { taskId, targetId } = await sessionPoussee('feature/push-apres-rebase');
+    /* La branche existe DÉJÀ dans le dépôt distant — `sessionPoussee` l'y crée, comme après un
+       run suivi d'un push. C'est ce qui rend le push d'après le rebase non fast-forward. */
+    const avant = git(distant, 'rev-parse', 'feature/push-apres-rebase');
+    mainAvance('f.txt', 'main bouge\n', 'main avance avant le push');
+
+    await lancer(taskId, targetId);
+    assert.equal(cible(targetId).force_push, 1, 'le rattrapage doit retenir qu’un push forcé s’impose');
+
+    const r = await app.api('POST', `/api/tasks/${taskId}/targets/${targetId}/push`, { force: true });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    for (let i = 0; i < 900; i += 1) {
+      const { body: st } = await app.api('GET', '/api/status');
+      if (!st.running && !st.queued) break;
+      await new Promise((res) => setTimeout(res, 50));
+    }
+    const tg = cible(targetId);
+    assert.equal(tg.last_error, null, `le push ne doit plus être refusé : ${tg.last_error}`);
+    assert.equal(tg.status, 'pushed');
+    assert.notEqual(git(distant, 'rev-parse', 'feature/push-apres-rebase'), avant,
+      'la branche distante doit porter l’histoire rejouée');
+    assert.equal(tg.force_push, 0, 'le drapeau décrit l’état de la branche : une fois poussée, il tombe');
+  });
+
+  test('sans rattrapage, le push reste un push normal', async () => {
+    /* Le forçage doit rester l'exception : un push ordinaire qui se mettrait à forcer
+       écraserait un jour le travail de quelqu'un sans que personne l'ait demandé. */
+    const { targetId } = await sessionPoussee('feature/push-normal');
+    assert.ok(!cible(targetId).force_push);
+  });
+
+  test('le push forcé REFUSE d’écraser un commit apparu entre-temps', async () => {
+    /* C'est tout l'écart entre `--force-with-lease` et `--force`. Un collègue pousse sur la
+       branche pendant qu'on rattrape : `--force` effacerait son commit sans un mot, le bail
+       refuse. Ce test est la seule chose qui distingue les deux — et la seule qui empêche de
+       « simplifier » un jour en `--force`. */
+    const { taskId, targetId } = await sessionPoussee('feature/push-concurrent');
+    mainAvance('g.txt', 'main bouge\n', 'main avance');
+    await lancer(taskId, targetId);
+    assert.equal(cible(targetId).force_push, 1);
+
+    // Quelqu'un d'autre pousse sur la MÊME branche, après notre dernier fetch.
+    git(distant, 'checkout', '-q', 'feature/push-concurrent');
+    fs.writeFileSync(path.join(distant, 'collegue.txt'), 'travail d’un collègue\n');
+    git(distant, 'add', '-A'); git(distant, 'commit', '-qm', 'commit d’un collègue');
+    const duCollegue = git(distant, 'rev-parse', 'HEAD');
+    git(distant, 'checkout', '-q', 'main');
+
+    await app.api('POST', `/api/tasks/${taskId}/targets/${targetId}/push`, { force: true });
+    for (let i = 0; i < 900; i += 1) {
+      const { body: st } = await app.api('GET', '/api/status');
+      if (!st.running && !st.queued) break;
+      await new Promise((res) => setTimeout(res, 50));
+    }
+    assert.ok(cible(targetId).last_error, 'le push doit être REFUSÉ, pas passé en force');
+    assert.equal(git(distant, 'rev-parse', 'feature/push-concurrent'), duCollegue,
+      'le commit du collègue doit être intact — c’est exactement ce que --force détruirait');
+  });
+
+  test('l’auto-push d’un suivi force aussi, et le drapeau retombe', async () => {
+    /* L'autre chemin de push. Une branche rattrapée reste réécrite tant qu'elle n'a pas été
+       repoussée : un suivi qui commite par-dessus et pousse tout seul se ferait refuser comme
+       le bouton, et l'échec serait d'autant plus opaque que personne ne l'a demandé. */
+    const { taskId, targetId } = await sessionPoussee('feature/push-auto');
+    app.db.prepare('UPDATE task SET auto_push = 1 WHERE id = ?').run(taskId);
+    mainAvance('h.txt', 'main bouge\n', 'main avance encore');
+    await lancer(taskId, targetId);
+    assert.equal(cible(targetId).force_push, 1);
+
+    const avant = git(distant, 'rev-parse', 'feature/push-auto');
+    await app.api('POST', `/api/tasks/${taskId}/followup`, { instruction: 'ajoute une ligne' });
+    for (let i = 0; i < 1800; i += 1) {
+      const { body: st } = await app.api('GET', '/api/status');
+      if (!st.running && !st.queued) break;
+      await new Promise((res) => setTimeout(res, 50));
+    }
+    const tg = cible(targetId);
+    assert.equal(tg.last_error, null, `l’auto-push ne doit pas être refusé : ${tg.last_error}`);
+    assert.equal(tg.status, 'pushed');
+    assert.equal(tg.force_push, 0, 'poussée, la branche n’a plus besoin d’être forcée');
+    assert.notEqual(git(distant, 'rev-parse', 'feature/push-auto'), avant);
+  });
+
+  test('sans cocher la case, le push d’une branche rattrapée est refusé — et le dit', async () => {
+    /* Le forçage appartient à celui qui pousse. Ne pas le demander doit donner le refus de la
+       forge, clairement, sur la ligne du projet — pas un forçage décidé à sa place. */
+    const { taskId, targetId } = await sessionPoussee('feature/push-sans-case');
+    mainAvance('i.txt', 'main bouge\n', 'main avance');
+    await lancer(taskId, targetId);
+    const avant = git(distant, 'rev-parse', 'feature/push-sans-case');
+
+    await app.api('POST', `/api/tasks/${taskId}/targets/${targetId}/push`, { force: false });
+    for (let i = 0; i < 900; i += 1) {
+      const { body: st } = await app.api('GET', '/api/status');
+      if (!st.running && !st.queued) break;
+      await new Promise((res) => setTimeout(res, 50));
+    }
+    assert.ok(cible(targetId).last_error, 'le refus doit s’afficher là où l’on a cliqué');
+    assert.equal(git(distant, 'rev-parse', 'feature/push-sans-case'), avant,
+      'la branche distante est intacte : rien n’a été forcé sans qu’on le demande');
   });
 });

@@ -603,12 +603,20 @@ let convergeTarget = null; // { type: 'mr' | 'task', id }
    `danger` (par défaut) rend l'action de confirmation reconnaissable AU REPOS : une
    suppression ne doit pas ressembler à un bouton neutre. */
 let confirmResolve = null;
-function confirmDialog({ title, text, detail, confirmLabel, danger = true } = {}) {
+/* `check` : { label, checked, danger } ajoute une CASE À COCHER à la confirmation, et la
+   promesse rend alors `{ ok, checked }` au lieu d'un booléen. Sert au push forcé — une décision
+   qui appartient à celui qui pousse, et qui n'a pas à se cacher dans un second bouton. */
+function confirmDialog({ title, text, detail, confirmLabel, danger = true, check = null } = {}) {
   $('#confirmTitle').textContent = title || tr('confirm.default-title');
   $('#confirmText').textContent = text || '';
   const d = $('#confirmDetail');
   d.hidden = !detail;
   d.textContent = detail || '';
+  const row = $('#confirmCheckRow');
+  const box = $('#confirmCheck');
+  row.hidden = !check;
+  box.checked = !!(check && check.checked);
+  if (check) row.querySelector('span').textContent = check.label || '';
   const ok = $('#confirmOk');
   ok.textContent = confirmLabel || tr('confirm.default-ok');
   ok.className = danger ? 'btn btn-danger btn-solid' : 'btn btn-primary';
@@ -618,8 +626,15 @@ function confirmDialog({ title, text, detail, confirmLabel, danger = true } = {}
 }
 function closeConfirm(answer) {
   $('#confirmModal').hidden = true;
+  /* Une confirmation SANS case rend un booléen, comme avant : les dizaines d'appels existants
+     ne changent pas. Avec case, elle rend un objet — l'appelant qui a demandé la case sait
+     qu'il doit le lire. Rendre toujours un objet aurait fait passer tous les `if (!await …)`
+     à « toujours vrai », et une suppression se serait confirmée toute seule. */
+  const avecCase = !$('#confirmCheckRow').hidden;
+  const coche = $('#confirmCheck').checked;
+  $('#confirmCheckRow').hidden = true;
   const r = confirmResolve; confirmResolve = null;
-  if (r) r(answer);
+  if (r) r(avecCase ? { ok: !!answer, checked: !!answer && coche } : answer);
 }
 $('#confirmCancel') && $('#confirmCancel').addEventListener('click', () => closeConfirm(false));
 $('#confirmOk') && $('#confirmOk').addEventListener('click', () => closeConfirm(true));
@@ -5785,7 +5800,7 @@ function targetLine(t, tg) {
       const dep = tg.base_branch || 'main';
       return `<button class="btn btn-sm" data-tgrebase="${tg.id}" data-task="${t.id}" data-branch="${esc(tg.branch || '')}" data-base="${esc(dep)}" title="${esc(tr('task.title.update-base', { base: dep }))}"><svg class="ico ico-sm"><use href="#i-repeat"/></svg>${tr('task.btn.update-base', { base: dep })}</button>`;
     })() : ''}
-    ${showPush ? `<button class="btn btn-sm btn-primary" data-tgpush="${tg.id}" data-task="${t.id}" data-project="${esc(tg.project)}" data-branch="${esc(tg.branch || '')}" title="${tr('task.btn.push-title')}"><svg class="ico ico-sm"><use href="#i-upload"/></svg>${tr('task.btn.push')}</button>` : ''}
+    ${showPush ? `<button class="btn btn-sm btn-primary" data-tgpush="${tg.id}" data-task="${t.id}" data-project="${esc(tg.project)}" data-branch="${esc(tg.branch || '')}" data-force="${tg.force_push ? '1' : ''}" title="${esc(tg.force_push ? tr('task.title.push-force') : tr('task.btn.push-title'))}"><svg class="ico ico-sm"><use href="#i-upload"/></svg>${tr('task.btn.push')}</button>` : ''}
     ${canMr ? `<button class="btn btn-sm btn-primary" data-tgmr="${tg.id}" data-task="${t.id}" data-title="${esc(defaultMrTitle)}" data-branch="${esc(tg.branch || '')}" data-target="${esc(tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.open-mr'))}"><svg class="ico ico-sm"><use href="#i-branch"/></svg>${tr('task.btn.create-mr')}</button>` : ''}
     ${mrIid && !tg.mr_merged ? `<button class="btn btn-sm btn-danger" data-tgmerge="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-target="${esc(tg.mr_target || tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.merge-mr'))}"><svg class="ico ico-sm"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>` : ''}
     ${tg.last_error ? `<span class="t-err" title="${esc(tg.last_error)}">${svgIco('alert')} ${tr('task.failed')}</span>` : ''}
@@ -5986,8 +6001,20 @@ function wireTaskActions() {
   on('[data-tgout]', (b) => openTargetOutput(b.dataset.task, b.dataset.tgout));
   on('[data-tgpush]', async (b) => {
     const where = `${b.dataset.project} · ${b.dataset.branch}`;
-    if (!await confirmDialog({ text: tr('confirm.push-branch', { branch: b.dataset.branch, project: b.dataset.project }), confirmLabel: tr('task.btn.push'), danger: false })) return;
-    busy(b, () => api(`/tasks/${b.dataset.task}/targets/${b.dataset.tgpush}/push`, { method: 'POST' }))
+    /* LE FORÇAGE EST UNE DÉCISION, ET ELLE SE PREND ICI. La case est décochée par défaut ; elle
+       n'arrive pré-cochée que dans le cas où l'on SAIT que le push normal sera refusé — la
+       branche vient d'être rattrapée, son historique a été réécrit. Le texte le dit alors. */
+    const rattrapee = !!b.dataset.force;
+    const r = await confirmDialog({
+      text: rattrapee
+        ? tr('confirm.push-force', { branch: b.dataset.branch, project: b.dataset.project })
+        : tr('confirm.push-branch', { branch: b.dataset.branch, project: b.dataset.project }),
+      confirmLabel: tr('task.btn.push'),
+      danger: false,
+      check: { label: tr('confirm.push.force-check'), checked: rattrapee },
+    });
+    if (!r.ok) return;
+    busy(b, () => api(`/tasks/${b.dataset.task}/targets/${b.dataset.tgpush}/push`, { method: 'POST', body: { force: r.checked } }))
       .then(() => { toast(tr('toast.push-lance', { where: where })); refreshStatus(); })
       .catch((e) => toast(explainError(e.message), true));
   });

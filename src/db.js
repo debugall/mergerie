@@ -343,6 +343,10 @@ try { db.exec('ALTER TABLE task_target ADD COLUMN session_note TEXT'); } catch {
    jamais). Rempli par la passe de découverte qui interroge DÉJÀ ces merge requests une par
    une : le bouton « Mettre à jour avec … » ne coûte donc aucun appel d'API de plus. */
 try { db.exec('ALTER TABLE task_target ADD COLUMN mr_conflicts INTEGER'); } catch { /* déjà présente */ }
+/* Ce projet a-t-il besoin d'un push FORCÉ ? Posé par le rattrapage de la branche de départ,
+   qui réécrit l'historique : le push normal est alors refusé par la forge, à juste titre.
+   Effacé dès qu'un push réussit — l'état est celui de la branche, pas une préférence. */
+try { db.exec('ALTER TABLE task_target ADD COLUMN force_push INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task_target ADD COLUMN session_key TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task_target ADD COLUMN session_backend TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task_target ADD COLUMN session_cwd TEXT'); } catch { /* déjà présente */ }

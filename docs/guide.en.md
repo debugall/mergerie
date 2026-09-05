@@ -67,6 +67,14 @@ shared search (title, author, project, ticket).
   the button. You learn about the conflict **before** clicking “Merge”, not in the refusal that
   would follow. From the queue (a merge request that did not come from a session) the conflict is
   announced the same way, without the button: there is no session branch to replay.
+  **Forcing is decided in the `Push` confirmation**, by a **“Force the push
+  (--force-with-lease)”** checkbox. It is **unchecked by default**: forcing rewrites a published
+  branch, and that is not decided for you. It arrives **pre-checked** only when we know a normal
+  push will be refused — the branch has just been caught up, its history was rewritten. Left
+  unchecked, the push goes out normally and the forge refuses it: that is the right answer, and
+  the refusal shows on the project's line. Checked, it is `--force-with-lease` — never `--force`:
+  a commit pushed to the branch since the last fetch makes the push **fail** instead of
+  disappearing. A teammate's work is never silently erased.
 - **Pull the review report into a follow-up.** Once the merge request has been reviewed you often
   want the AI to work through the findings. The report's `Let the AI fix the code` button opens a
   **new** session for that; from the session that produced the branch, what you want is a

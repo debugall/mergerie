@@ -2564,7 +2564,11 @@ app.post('/api/tasks/:id/targets/:tid/push', wrap((req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
   if (tg.status !== 'committed') throw new Error(t('err.ce-projet-doit-etre-execute'));
-  res.json(jobs.startTaskJob(Number(req.params.id), 'push', { targetId: tg.id }));
+  /* `force` vient de la CASE de la confirmation : c'est celui qui pousse qui décide, pas un
+     drapeau posé plus tôt. Absent = push normal, y compris sur une branche rattrapée — le
+     refus de la forge est alors la bonne réponse, et il se lit sur la ligne du projet. */
+  const force = !!(req.body && (req.body.force === true || req.body.force === '1'));
+  res.json(jobs.startTaskJob(Number(req.params.id), 'push', { targetId: tg.id, force }));
 }));
 
 /* Rattraper la branche de départ sur UN projet de la session.

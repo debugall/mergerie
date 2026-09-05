@@ -412,7 +412,7 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
   const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   if (action !== 'push') db.prepare("UPDATE task SET status='running', last_error=NULL, updated_at=? WHERE id=?").run(new Date().toISOString(), task.id);
   try {
-    if (action === 'push') await taskrunner.pushTarget(task.id, opts.targetId, onLog);
+    if (action === 'push') await taskrunner.pushTarget(task.id, opts.targetId, onLog, { force: opts.force });
     else if (action === 'push-all') await taskrunner.pushTargets(task, opts.targetIds, onLog);
     else if (action === 'followup') await taskrunner.runTaskFollowup(task, opts.instruction, onLog, { targetIds: opts.targetIds, imageIds: opts.imageIds });
     else if (action === 'answer') await taskrunner.runTaskAnswer(task, opts.targetId, onLog);

@@ -33,7 +33,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   opens: a merge request in conflict now says so in red, naming the branch it clashes with, and
   carries the same catch-up button — you find out before clicking “Merge”, instead of in the
   refusal that would follow. For a merge request that did not come from a session the conflict is
-  reported all the same, without the button: there is no session branch to replay.
+  reported all the same, without the button: there is no session branch to replay. The `Push`
+  confirmation also grows a **“Force the push (--force-with-lease)”** checkbox, unchecked by
+  default — forcing rewrites a published branch, and that is yours to decide. It comes
+  pre-checked only when the branch has just been caught up, because there we know a normal push
+  will be refused. Ticked, it uses `--force-with-lease --force-if-includes`, never a bare
+  `--force`: a teammate's commit that landed on the branch since the last fetch makes the push
+  fail instead of disappearing, and the refusal now shows on the project's line rather than only
+  at session level.
 
 - **Pull the review report straight into a follow-up.** After a merge request is reviewed, the
   obvious next move is to have the AI work through the findings. Until now the only button for that
