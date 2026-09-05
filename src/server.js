@@ -111,6 +111,18 @@ app.use((req, res, next) => {
   res.status(403).json({ error: i18n.t('err.origine-etrangere') });
 });
 
+/* Mémo d'UNE requête : la table des dernières vérifications par merge request, qui balaie
+   trois cents lignes. Déclaré ICI, au-dessus du middleware qui le vide, plutôt qu'à côté de la
+   fonction qui le remplit huit cents lignes plus bas : un état de module doit se lire là où on
+   le remet à zéro. */
+let cacheVerifs = null;
+
+/* Les mémos qui ne valent que le temps d'une requête sont vidés ICI, en entrée. Les garder
+   plus longtemps ferait servir un instantané périmé — une vérification qui vient de finir
+   resterait invisible —, les recalculer à chaque appel referait N fois le même balayage sur
+   une liste de sessions. */
+app.use((req, res, next) => { cacheVerifs = null; next(); });
+
 app.use(express.json({ limit: '20mb' })); // marge pour les captures de ticket (base64)
 /* Fichiers statiques. `no-cache` = le navigateur peut mettre en cache mais DOIT
    revalider avant chaque usage (requête conditionnelle → 304 si inchangé, contenu
@@ -1644,7 +1656,10 @@ function taskTargets(taskId) {
       mr.iid AS existing_mr_iid, mr.web_url AS existing_mr_url,
       (SELECT 1 FROM review r2 JOIN mr m2 ON m2.id = r2.mr_id
         WHERE m2.repo_id = tt.repo_id AND (m2.iid = tt.mr_iid OR m2.source_branch = tt.branch)
-        LIMIT 1) AS has_review
+        LIMIT 1) AS has_review,
+      (SELECT m3.id FROM mr m3
+        WHERE m3.repo_id = tt.repo_id AND (m3.iid = tt.mr_iid OR m3.source_branch = tt.branch)
+        LIMIT 1) AS mr_row_id
     FROM task_target tt
     JOIN repo ON repo.id = tt.repo_id
     LEFT JOIN mr ON mr.repo_id = tt.repo_id AND mr.source_branch = tt.branch
@@ -1652,10 +1667,28 @@ function taskTargets(taskId) {
     WHERE tt.task_id = ? ORDER BY tt.id`).all(taskId);
   // `questions_json` (bloc <<<QUESTIONS>>>) exposé parsé pour le formulaire de réponses.
   // `resume_cmd` : commande à copier pour reprendre la session d'agent dans un terminal.
+  /* `has_verify_fail` : la vérification la plus récente de la merge request de ce projet
+     a-t-elle CASSÉ quelque chose, et par la faute de cette branche ? C'est ce qui décide de
+     l'apparition du bouton « Reprendre le rapport de vérif » sur le formulaire de suivi.
+     La table des dernières vérifications balaie trois cents lignes : la RECALCULER pour chaque
+     session ferait N fois ce travail sur l'écran qui en liste vingt, et cet écran se redessine
+     toutes les secondes et demie pendant un job. On la mémorise donc le temps d'une requête —
+     `cacheVerifs` est vidé à chaque entrée de route. */
+  const parMr = rows.some((r) => r.mr_row_id) ? verifsParMrDuTour() : new Map();
   return rows.map((r) => {
     let questions = null;
     try { questions = r.questions_json ? JSON.parse(r.questions_json) : null; } catch { questions = null; }
-    return { ...r, questions, resume_cmd: agentsession.resumeCommand(r.session_backend, r.session_key, r.session_cwd) };
+    const v = r.mr_row_id ? parMr.get(r.mr_row_id) : null;
+    /* MÊME condition que la route qui rend le prompt : verdict rouge ET des tests imputables à
+       ces branches. Un bouton qui répondrait « rien à reprendre » une fois cliqué ferait perdre
+       un geste — et une base déjà rouge n'est pas de notre fait. */
+    let imputables = [];
+    try { imputables = v && v.imputable_json ? JSON.parse(v.imputable_json) : []; } catch { imputables = []; }
+    const echec = !!(v && v.verdict === 'verified_fail' && imputables.length);
+    return {
+      ...r, questions, has_verify_fail: echec ? 1 : 0,
+      resume_cmd: agentsession.resumeCommand(r.session_backend, r.session_key, r.session_cwd),
+    };
   });
 }
 // MR effectivement rattachée à un projet de session : celle créée par l'app, sinon
@@ -2115,6 +2148,41 @@ app.get('/api/tasks/:id/review-prompt', wrap((req, res) => {
       blocs: projets.map((p) => t('prompt.apply-review-bloc', { project: p.project, iid: p.iid, md: p.md })).join('\n\n'),
     });
   res.json({ prompt, projets: projets.map((p) => ({ project: p.project, iid: p.iid })) });
+}));
+
+/* LE PROMPT « CORRIGE CE QUE LA VÉRIFICATION A CASSÉ », prêt à coller dans un suivi.
+ *
+ * Exactement celui de « Corriger (session IA) » — même fonction —, mais destiné au champ de
+ * suivi : depuis la session qui a produit la branche, on veut que l'agent reprenne SON fil au
+ * lieu d'ouvrir une session neuve qui redécouvre le code.
+ *
+ * On ne retient que les vérifications ÉCHOUÉES et IMPUTABLES à ces branches : une base déjà
+ * rouge n'est pas de notre fait, et demander à l'agent de corriger ce qu'il n'a pas cassé lui
+ * ferait toucher du code qui n'a rien à voir. */
+app.get('/api/tasks/:id/verify-prompt', wrap((req, res) => {
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  const cibleId = req.query.target_id ? Number(req.query.target_id) : null;
+  const parMr = dernieresVerificationsParMr();
+  const vues = new Set();
+  const blocs = [];
+  for (const tg of taskTargets(tache.id)) {
+    if (cibleId && tg.id !== cibleId) continue;
+    const iid = tg.mr_iid || tg.existing_mr_iid;
+    if (!iid) continue;
+    const mr = db.prepare('SELECT id FROM mr WHERE repo_id = ? AND iid = ?').get(tg.repo_id, iid);
+    const v = mr && parMr.get(mr.id);
+    if (!v || vues.has(v.id)) continue;          // une vérification de lot couvre plusieurs projets
+    const d = detailVerification(v);
+    if (d.verdict !== 'verified_fail' || !(d.imputable || []).length) continue;
+    vues.add(v.id);
+    blocs.push({ prompt: promptCorrectionVerif(d, v), verifier: d.verifier_name });
+  }
+  if (!blocs.length) throw new Error(t('err.task.no-failed-verification'));
+  res.json({
+    prompt: blocs.map((b) => b.prompt).join('\n\n'),
+    verificateurs: blocs.map((b) => b.verifier),
+  });
 }));
 
 // Réponse .md d'une exploration.
@@ -3105,6 +3173,11 @@ function resumeVerification(d) {
 /* Dernier verdict par MR. Une vérification porte sur PLUSIEURS merge requests quand c'est un
    lot : le lien vit dans `targets_json`, pas dans une colonne — d'où le parcours. La borne à
    300 suffit largement pour couvrir les MR ouvertes, et évite de relire tout l'historique. */
+function verifsParMrDuTour() {
+  if (!cacheVerifs) cacheVerifs = dernieresVerificationsParMr();
+  return cacheVerifs;
+}
+
 function dernieresVerificationsParMr() {
   const par = new Map();
   const lignes = db.prepare(`SELECT * FROM verification WHERE status IN ('done','error')
@@ -3248,15 +3321,16 @@ app.post('/api/lots/:id/verify', wrap((req, res) => {
    UNE session multi-dépôts couvrant TOUS les dépôts du lot — pas seulement les « fautifs ».
    L'imputabilité d'un échec d'intégration est indécidable a priori : le test qui casse est
    souvent dans un dépôt, la cause dans un autre. L'agent voit tout le lot et décide. */
-app.post('/api/verifications/:id/fix', wrap((req, res) => {
-  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(Number(req.params.id));
-  if (!v) throw new Error(t('err.verify.not-found'));
-  const d = detailVerification(v);
-  if (d.verdict !== 'verified_fail') throw new Error(t('err.verify.fix-only-on-fail'));
-
-  const cibles = d.targets.map((c) => ({ repo_id: c.repo_id, branch: c.branch, base_branch: null }));
-  const list = normalizeTargets(cibles, 'code');
-
+/* LE PROMPT DE CORRECTION D'UNE VÉRIFICATION ÉCHOUÉE.
+ *
+ * Il porte les FAITS : quels tests, quels messages, quels commits. Sans eux l'agent repart de
+ * zéro et redécouvre au prix d'un aller-retour ce que la vérification sait déjà.
+ *
+ * Extrait en fonction parce que deux boutons l'emploient : « Corriger (session IA) », qui ouvre
+ * une session neuve, et « Reprendre le rapport de vérif », qui remplit un champ de suivi pour
+ * que l'agent reprenne SON fil. Deux copies auraient fini par diverger, et c'est celle qu'on
+ * oublie qui donnerait un prompt appauvri. */
+function promptCorrectionVerif(d, v) {
   const lignes = (d.imputable || []).map((f) => {
     const bouts = [`- ${f.test}`];
     if (f.message) bouts.push(`  ${f.message}`);
@@ -3264,10 +3338,8 @@ app.post('/api/verifications/:id/fix', wrap((req, res) => {
     return bouts.join('\n');
   });
   const shas = d.targets.map((c) => `- ${c.branch} @ ${String(c.head_sha).slice(0, 8)}`);
-  /* Le prompt porte les FAITS : quels tests, quels messages, quels commits. Sans eux l'agent
-     repart de zéro et redécouvre au prix d'un aller-retour ce que la vérification sait déjà. */
-  const prompt = [
-    `La vérification « ${d.verifier_name} » a échoué${v.lot_id ? ' sur le lot' : ''}.`,
+  return [
+    `La vérification « ${d.verifier_name} » a échoué${v && v.lot_id ? ' sur le lot' : ''}.`,
     '',
     'Tests cassés par ces branches (et par elles seules — la base passait ou les échouait déjà) :',
     lignes.length ? lignes.join('\n') : '- (le vérificateur n’a pas détaillé les échecs)',
@@ -3278,6 +3350,18 @@ app.post('/api/verifications/:id/fix', wrap((req, res) => {
     'Corrige la cause dans le ou les dépôts concernés. Ne touche que ce qui est nécessaire.',
     'Commit et push sur les branches existantes : les merge requests seront mises à jour en place.',
   ].join('\n');
+}
+
+app.post('/api/verifications/:id/fix', wrap((req, res) => {
+  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(Number(req.params.id));
+  if (!v) throw new Error(t('err.verify.not-found'));
+  const d = detailVerification(v);
+  if (d.verdict !== 'verified_fail') throw new Error(t('err.verify.fix-only-on-fail'));
+
+  const cibles = d.targets.map((c) => ({ repo_id: c.repo_id, branch: c.branch, base_branch: null }));
+  const list = normalizeTargets(cibles, 'code');
+
+  const prompt = promptCorrectionVerif(d, v);
 
   const now = new Date().toISOString();
   const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message,

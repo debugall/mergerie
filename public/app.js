@@ -5675,6 +5675,14 @@ const projetsVisibles = (famille, id, n) => n <= 1 || estDeplie(famille, id);
  * — l'agent reprend son propre fil au lieu de redécouvrir le code. Le bouton ne fait donc que
  * remplir le champ : ce qui part reste relu, et modifiable, avant d'être envoyé. */
 const aUnRapport = (cibles) => (cibles || []).some((tg) => tg.has_review);
+/* MÊME GESTE POUR LE RAPPORT DE VÉRIFICATION. La vérification a cassé des tests, et on veut
+   que l'agent les répare — mais dans SA session, pas dans une nouvelle. « Corriger (session
+   IA) », depuis le rapport, ouvre une session neuve ; ici on remplit un suivi avec le même
+   prompt, qui porte les mêmes faits (tests cassés, messages, commits testés). */
+const boutonSuiviVerif = (taskId, targetId = null) => `<button class="btn" data-followverif="${taskId}"`
+  + (targetId ? ` data-followveriftarget="${targetId}"` : '')
+  + ` title="${esc(tr('task.title.followup-verify'))}"><svg class="ico"><use href="#i-check"/></svg>`
+  + `${tr('task.btn.followup-verify')}</button>`;
 const boutonSuiviReview = (taskId, targetId = null) => `<button class="btn" data-followreview="${taskId}"`
   + (targetId ? ` data-followreviewtarget="${targetId}"` : '')
   + ` title="${esc(tr('task.title.followup-review'))}"><svg class="ico"><use href="#i-bot"/></svg>`
@@ -5705,6 +5713,7 @@ function codeCard(t) {
         ${suiviCapturesHtml()}
         ${autoSuiviCase(t)}
         ${aUnRapport(cibles) ? boutonSuiviReview(t.id) : ''}
+        ${(cibles || []).some((tg) => tg.has_verify_fail) ? boutonSuiviVerif(t.id) : ''}
         <button class="btn" data-followcancel="${t.id}">${tr('ui.cancel')}</button>
         <button class="btn" data-followsave="${t.id}">${tr('task.btn.save-followup')}</button>
         ${enCours ? '' : `<button class="btn btn-primary" data-followsubmit="${t.id}">${tr('task.btn.run-iteration')}</button>`}
@@ -5809,6 +5818,7 @@ function targetLine(t, tg) {
     <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph-target', { project: tg.project }))}"></textarea>
     ${suiviCapturesHtml()}
     ${tg.has_review ? boutonSuiviReview(t.id, tg.id) : ''}
+    ${tg.has_verify_fail ? boutonSuiviVerif(t.id, tg.id) : ''}
     <button class="btn" data-followcancel="tg${tg.id}">${tr('ui.cancel')}</button>
     <button class="btn btn-primary" data-followsubmit="${t.id}" data-followtarget="${tg.id}">${tr('task.btn.run-iteration')}</button>
   </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg, `/tasks/${t.id}/targets/${tg.id}/answer`) : ''}`;
@@ -6047,29 +6057,42 @@ function wireTaskActions() {
     const form = $(`#taskList .followup[data-followform="tg${b.dataset.tgfollow}"]`);
     if (form) { form.hidden = false; form.querySelector('.followup-text').focus(); }
   });
-  /* Remplir le champ de suivi avec le prompt du rapport. Le prompt est RENDU PAR LE SERVEUR :
-     il lit les rapports sur le disque, que le navigateur n'a pas. */
-  on('[data-followreview]', async (b) => {
-    const cle = b.dataset.followreviewtarget ? `tg${b.dataset.followreviewtarget}` : b.dataset.followreview;
+  /* Remplir le champ de suivi avec un prompt RENDU PAR LE SERVEUR : rapport de review ou
+     rapport de vérification. Lui seul a les fichiers et les verdicts ; le navigateur, non.
+     Un seul chemin pour les deux boutons — deux copies auraient fini par ne plus demander
+     confirmation du même côté. */
+  const remplirSuivi = async (b, { taskAttr, targetAttr, url, label, compteur }) => {
+    const idTache = b.dataset[taskAttr];
+    const idCible = b.dataset[targetAttr];
+    const cle = idCible ? `tg${idCible}` : idTache;
     const champ = $(`#taskList .followup[data-followform="${cle}"] .followup-text`);
     if (!champ) return;
     try {
-      const q = b.dataset.followreviewtarget ? `?target_id=${b.dataset.followreviewtarget}` : '';
-      const d = await busy(b, () => api(`/tasks/${b.dataset.followreview}/review-prompt${q}`));
+      const q = idCible ? `?target_id=${idCible}` : '';
+      const d = await busy(b, () => api(`/tasks/${idTache}/${url}${q}`));
       /* On ne détruit pas ce qui est écrit sans demander : le champ garde un brouillon
          enregistré, parfois rédigé plusieurs jours plus tôt. */
       if (champ.value.trim() && !await confirmDialog({
         title: tr('confirm.followup-review.title'),
         text: tr('confirm.followup-review.text'),
-        confirmLabel: tr('task.btn.followup-review'),
+        confirmLabel: tr(label),
         danger: false,
       })) return;
       champ.value = d.prompt;
       champ.focus();
       champ.dispatchEvent(new Event('input', { bubbles: true }));   // l'autosave doit le voir
-      toast(tr('toast.followup-review.filled', { n: d.projets.length, count: d.projets.length }));
+      const n = compteur(d);
+      toast(tr('toast.followup-review.filled', { n, count: n }));
     } catch (e) { toast(e.message, true); }
-  });
+  };
+  on('[data-followreview]', (b) => remplirSuivi(b, {
+    taskAttr: 'followreview', targetAttr: 'followreviewtarget', url: 'review-prompt',
+    label: 'task.btn.followup-review', compteur: (d) => d.projets.length,
+  }));
+  on('[data-followverif]', (b) => remplirSuivi(b, {
+    taskAttr: 'followverif', targetAttr: 'followveriftarget', url: 'verify-prompt',
+    label: 'task.btn.followup-verify', compteur: (d) => d.verificateurs.length,
+  }));
   /* Le rebase RÉÉCRIT l'historique de la branche : on le dit avant, pas après. Le push qui
      suivra devra être forcé, et une branche que d'autres ont pu tirer n'est pas un détail. */
   on('[data-tgrebase]', async (b) => {

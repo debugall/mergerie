@@ -13,6 +13,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Pull the verification report into a follow-up too.** When a verification breaks tests, the
+  report's `Fix (AI session)` button opens a brand-new coding session that rediscovers the code.
+  From the session that produced the branch, `Send a follow-up` now carries **`Use the
+  verification report`**, filling the field with the very same prompt — the broken tests, their
+  messages, the commits that were tested — so the agent picks up its own thread instead. Both
+  buttons build that prompt from one function, so the two can never drift apart. The button only
+  appears when the latest verification is red *and* attributable to these branches: an already-red
+  base is not yours to fix, and pointing the agent at it would send it into unrelated code.
+
 - **Catch a session's branch up with the branch it started from.** A coding session opens its
   merge request, then `main` moves on and the forge starts showing conflicts — until now the only
   way out was to leave the tool and rebase by hand. Each project line now grows an **`Update with

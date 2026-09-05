@@ -54,6 +54,14 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   parc. Les MR au-delà du plafond gardent leur bouton `Reviewer`, et le journal du serveur dit
   combien n'ont pas démarré. `0` = sans limite. **« À l'arrivée » veut dire à l'arrivée** : une
   branche qui avance ne relance rien — la re-review reste un geste, et elle est incrémentale.
+- **Reprendre le rapport de vérification dans un suivi.** La vérification a cassé des tests, et
+  on veut que l'IA les répare. `Corriger (session IA)`, depuis le rapport, ouvre une **nouvelle**
+  session ; depuis la session qui a produit la branche, c'est un **suivi** qu'on veut. Sur
+  `Envoyer un suivi`, un bouton **`Reprendre le rapport de vérif`** remplit donc le champ avec
+  **exactement le même prompt** — les tests cassés, leurs messages, les commits testés. Il
+  n'apparaît que si la dernière vérification est rouge **et imputable à ces branches** : une base
+  déjà rouge n'est pas de ton fait, et demander à l'agent de corriger ce qu'il n'a pas cassé lui
+  ferait toucher du code sans rapport.
 - **Rattraper la branche de départ.** La session a produit sa branche et sa merge request, puis
   `main` a avancé : la forge affiche des conflits. Le bouton **`Mettre à jour avec main`** apparaît alors sur la
   ligne du projet — **seulement quand la forge signale des conflits**, jamais en permanence — et

@@ -1,5 +1,5 @@
 'use strict';
-/* REPRENDRE LE RAPPORT DE REVIEW DANS UN SUIVI.
+/* REPRENDRE UN RAPPORT DANS UN SUIVI — celui de la review, celui de la vérification.
  *
  * Le trajet naturel après une review : la merge request a un rapport, on veut que l'IA en
  * traite les constats. Le bouton du rapport (« Faire corriger le code par l'IA ») ouvre pour
@@ -128,6 +128,35 @@ describe('Suivi pré-rempli avec le rapport de review', () => {
     assert.equal(status, 400, 'un projet sans rapport ne rend rien, même dans une session qui en a un');
   });
 
+  /* --------------------------------------- le rapport de VÉRIFICATION ---- */
+
+  /* MÊME GESTE, AUTRE RAPPORT. La vérification a cassé des tests : on veut que l'agent les
+     répare dans SA session, pas dans une session neuve qui redécouvre le code. Le prompt doit
+     être EXACTEMENT celui de « Corriger (session IA) » — deux textes différents pour le même
+     travail finiraient par diverger, et c'est celui qu'on oublie qui appauvrirait la demande.
+
+     Tests à plat, pas dans un `describe` imbriqué : le harnais ferme l'application dans le
+     `after` du describe parent, et des enfants déclarés après le navigateur se faisaient
+     annuler avant d'avoir tourné. */
+  let echouee = null;
+
+  /** Une vérification rouge sur la merge request de la session, écrite en base : faire tourner
+      un vrai vérificateur ici testerait le vérificateur, pas ce bouton. */
+  function verificationRouge({ imputable = null } = {}) {
+    const now = new Date().toISOString();
+    const mr = app.db.prepare('SELECT id, repo_id FROM mr WHERE iid = 42').get();
+    const cibles = [{ mr_id: mr.id, repo_id: mr.repo_id, branch: branche, head_sha: 'abcdef1234567890' }];
+    const faits = imputable || [
+      { test: 'panier › total', message: 'attendu 30, obtenu 29', log_excerpt: 'AssertionError' },
+    ];
+    if (echouee) app.db.prepare('DELETE FROM verification WHERE id = ?').run(echouee);
+    echouee = app.db.prepare(`INSERT INTO verification
+      (verifier_name, status, verdict, targets_json, imputable_json, created_at, finished_at)
+      VALUES ('integ', 'done', 'verified_fail', ?, ?, ?, ?)`)
+      .run(JSON.stringify(cibles), JSON.stringify(faits), now, now).lastInsertRowid;
+    return echouee;
+  }
+
   /* ------------------------------------------------------------- l'écran ---- */
 
   describe('dans le navigateur', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
@@ -181,5 +210,79 @@ describe('Suivi pré-rempli avec le rapport de review', () => {
       );
       assert.ok((await champ.inputValue()).includes(rapportSurDisque()));
     });
+
+    test('le bouton du rapport de vérif apparaît et remplit le champ', async () => {
+      /* Le même geste que pour la review, sur l'autre rapport. La vérification est écrite en
+         base juste avant : c'est ce que voit la carte au rafraîchissement suivant. */
+      verificationRouge();
+      await page.reload();
+      await page.locator('nav button[data-tab="task"]').click();
+      await page.waitForSelector(`#taskList .card[data-task="${avecRapport}"]`, { state: 'visible' });
+      await page.locator(`#taskList .card[data-task="${avecRapport}"] [data-tfollow]`).first().click();
+      const f = page.locator(`.followup[data-followform="${avecRapport}"]`);
+      await f.waitFor();
+      const b = f.locator('[data-followverif]');
+      await b.waitFor({ timeout: 20000 });
+      assert.match(await b.innerText(), /vérif/i);
+
+      await f.locator('.followup-text').fill('');
+      await b.click();
+      await page.waitForFunction(
+        (id) => (document.querySelector(`.followup[data-followform="${id}"] .followup-text`).value || '')
+          .includes('panier › total'),
+        avecRapport, { timeout: 20000 },
+      );
+      const v = await f.locator('.followup-text').inputValue();
+      assert.match(v, /La vérification/, 'le prompt de correction doit atterrir dans le champ');
+    });
+
+    test('sans vérification rouge, pas de bouton', async () => {
+      app.db.prepare("UPDATE verification SET verdict = 'verified_pass' WHERE id = ?").run(echouee);
+      await page.reload();
+      await page.locator('nav button[data-tab="task"]').click();
+      await page.waitForSelector(`#taskList .card[data-task="${avecRapport}"]`, { state: 'visible' });
+      await page.locator(`#taskList .card[data-task="${avecRapport}"] [data-tfollow]`).first().click();
+      const f = page.locator(`.followup[data-followform="${avecRapport}"]`);
+      await f.waitFor();
+      assert.equal(await f.locator('[data-followverif]').count(), 0);
+      app.db.prepare("UPDATE verification SET verdict = 'verified_fail' WHERE id = ?").run(echouee);
+    });
+  });
+
+  const cibleDe = async (taskId) => (await app.api('GET', '/api/tasks')).body
+    .find((t) => t.id === taskId).targets[0];
+
+  test('la session sait qu’une de ses merge requests a une vérification rouge', async () => {
+    verificationRouge();
+    assert.ok((await cibleDe(avecRapport)).has_verify_fail, 'le bouton doit pouvoir apparaître');
+    assert.ok(!(await cibleDe(sansRapport)).has_verify_fail);
+  });
+
+  test('le prompt est EXACTEMENT celui de « Corriger (session IA) »', async () => {
+    const id = verificationRouge();
+    const { body } = await app.api('GET', `/api/tasks/${avecRapport}/verify-prompt`);
+    // La session que crée le bouton du rapport porte le prompt de référence.
+    const creee = (await app.api('POST', `/api/verifications/${id}/fix`)).body;
+    assert.equal(body.prompt, creee.prompt,
+      'deux textes différents pour le même travail finiraient par diverger');
+    assert.match(body.prompt, /panier › total/, 'les faits doivent y être');
+    assert.match(body.prompt, /attendu 30, obtenu 29/);
+    assert.deepEqual(body.verificateurs, ['integ']);
+  });
+
+  test('une vérification VERTE ne donne rien à reprendre', async () => {
+    const id = verificationRouge();
+    app.db.prepare("UPDATE verification SET verdict = 'verified_pass' WHERE id = ?").run(id);
+    assert.equal((await app.api('GET', `/api/tasks/${avecRapport}/verify-prompt`)).status, 400);
+    assert.ok(!(await cibleDe(avecRapport)).has_verify_fail);
+  });
+
+  test('un échec NON imputable à la branche ne donne rien non plus', async () => {
+    /* Une base déjà rouge n'est pas de notre fait : demander à l'agent de corriger ce qu'il
+       n'a pas cassé lui ferait toucher du code qui n'a rien à voir. */
+    verificationRouge({ imputable: [] });
+    assert.equal((await app.api('GET', `/api/tasks/${avecRapport}/verify-prompt`)).status, 400);
+    assert.ok(!(await cibleDe(avecRapport)).has_verify_fail,
+      'le bouton ne doit pas être là : la route refuserait');
   });
 });

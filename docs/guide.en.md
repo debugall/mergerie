@@ -51,6 +51,14 @@ shared search (title, author, project, ticket).
   `Review` button, and the server log says how many did not start. `0` = no limit. **“When it
   arrives” means when it arrives**: a branch moving forward triggers nothing — re-reviewing stays a
   deliberate gesture, and an incremental one.
+- **Pull the verification report into a follow-up.** The verification broke tests and you want
+  the AI to fix them. `Fix (AI session)`, from the report, opens a **new** session; from the
+  session that produced the branch, what you want is a **follow-up**. So `Send a follow-up`
+  carries a **`Use the verification report`** button that fills the field with **exactly the same
+  prompt** — the broken tests, their messages, the commits that were tested. It only shows up if
+  the latest verification is red **and attributable to these branches**: an already-red base is
+  not your doing, and asking the agent to fix what it did not break would send it into unrelated
+  code.
 - **Catch up with the starting branch.** The session produced its branch and its merge request,
   then `main` moved on: the forge shows conflicts. The **`Update with main`** button then appears on the
   project's line — **only when the forge reports conflicts**, never permanently — and **replays
