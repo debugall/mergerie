@@ -54,6 +54,27 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   parc. Les MR au-delà du plafond gardent leur bouton `Reviewer`, et le journal du serveur dit
   combien n'ont pas démarré. `0` = sans limite. **« À l'arrivée » veut dire à l'arrivée** : une
   branche qui avance ne relance rien — la re-review reste un geste, et elle est incrémentale.
+- **Rattraper la branche de départ.** La session a produit sa branche et sa merge request, puis
+  `main` a avancé : la forge affiche des conflits. Le bouton **`Mettre à jour avec main`** apparaît alors sur la
+  ligne du projet — **seulement quand la forge signale des conflits**, jamais en permanence — et
+  **rejoue les commits de la session par-dessus la branche de départ à jour** —
+  un `rebase`, pas une fusion : l'historique de `main` est conservé tel quel et tes changements
+  repassent au-dessus. Quand git s'arrête sur un conflit, **c'est l'IA qui tranche**, avec pour
+  consigne de garder ce que `main` apporte et d'y réappliquer l'intention de la branche ; c'est
+  tout l'intérêt du bouton, sinon `git rebase` suffirait. **Rien n'est poussé** : un rebase
+  réécrit l'historique, l'envoyer demande un push forcé, et c'est le bouton `Pousser` — un second
+  geste — qui décide. Si la résolution n'aboutit pas (ou s'il n'y a pas d'agent configuré), la
+  branche est **remise exactement comme elle était** : un rebase laissé en plan bloquerait le
+  clone pour tout le reste.
+- **Reprendre le rapport de review dans un suivi.** Une fois la merge request reviewée, on veut
+  souvent que l'IA traite les constats. Le bouton `Faire corriger le code par l'IA` du rapport
+  ouvre pour cela une **nouvelle** session ; depuis la session qui a produit la branche, c'est un
+  **suivi** qu'on veut — l'agent reprend son propre fil au lieu de redécouvrir le code. Sur
+  `Envoyer un suivi`, un bouton **`Reprendre le rapport de review`** remplit donc le champ avec le
+  même prompt (« applique les corrections pertinentes de cette revue », rapport inclus). Il
+  n'apparaît que s'il y a un rapport, et **demande avant d'écraser** un brouillon déjà écrit. Le
+  texte reste relu et modifiable : le bouton remplit, c'est toi qui envoies. Une session
+  multi-projets reprend le rapport de **chaque** projet, nommé — son suivi part à tous.
 - **Suivre une branche qui bouge.** Une fois la review faite, la branche continue d'avancer : le
   rapport ne parle alors plus du code en place, et la merge request porte le badge **`périmé`**.
   **Réglages → Merge Request → « Relancer automatiquement la review quand le rapport est périmé »**

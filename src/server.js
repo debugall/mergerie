@@ -1634,8 +1634,17 @@ function taskById(id) {
 }
 // Les projets d'une session, avec leur état d'exécution propre (commit, diff, MR…).
 function taskTargets(taskId) {
+  /* `has_review` : la merge request de ce projet porte-t-elle un rapport ? C'est ce qui décide
+     de l'apparition du bouton « Reprendre le rapport de review » sur le formulaire de suivi.
+     Un booléen, pas le rapport lui-même — la liste des sessions n'a pas à charrier le Markdown
+     de chaque rapport à chaque rafraîchissement, c'est-à-dire toutes les secondes et demie.
+     On accepte les DEUX rattachements, comme `effectiveMr` : la MR ouverte par l'application
+     (`tt.mr_iid`) ou celle déjà connue sur la même branche. */
   const rows = db.prepare(`SELECT tt.*, repo.project AS project, repo.forge AS forge,
-      mr.iid AS existing_mr_iid, mr.web_url AS existing_mr_url
+      mr.iid AS existing_mr_iid, mr.web_url AS existing_mr_url,
+      (SELECT 1 FROM review r2 JOIN mr m2 ON m2.id = r2.mr_id
+        WHERE m2.repo_id = tt.repo_id AND (m2.iid = tt.mr_iid OR m2.source_branch = tt.branch)
+        LIMIT 1) AS has_review
     FROM task_target tt
     JOIN repo ON repo.id = tt.repo_id
     LEFT JOIN mr ON mr.repo_id = tt.repo_id AND mr.source_branch = tt.branch
@@ -2069,6 +2078,43 @@ app.get('/api/tasks/:id/passes', wrap((req, res) => {
   const tk = taskById(Number(req.params.id));
   if (!tk) throw new Error(t('err.session-introuvable'));
   res.json(passesPayload('task', 0, tk.id, req.query.n, tk.prompt || '', tk.md_path));
+}));
+
+/* LE PROMPT « TRAITE LE RAPPORT DE REVIEW », prêt à coller dans un suivi.
+ *
+ * Le même texte que le bouton « Faire corriger le code par l'IA » du rapport (`prompt.apply-review`),
+ * mais rendu ICI, côté serveur : le rapport est un fichier sur le disque, et la liste des sessions
+ * ne doit pas charrier le Markdown de chaque rapport à chaque rafraîchissement — elle se redessine
+ * toutes les secondes et demie pendant un job.
+ *
+ * Une session multi-projets envoie son suivi à TOUS ses projets : le prompt reprend donc le rapport
+ * de chacun, nommé, plutôt que d'en choisir un au hasard. `?target_id=` restreint à un projet —
+ * c'est ce dont se sert le formulaire de suivi par projet.
+ */
+app.get('/api/tasks/:id/review-prompt', wrap((req, res) => {
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  const cibleId = req.query.target_id ? Number(req.query.target_id) : null;
+  const projets = [];
+  for (const tg of taskTargets(tache.id)) {
+    if (cibleId && tg.id !== cibleId) continue;
+    const iid = tg.mr_iid || tg.existing_mr_iid;
+    if (!iid) continue;
+    const rev = db.prepare(`SELECT review.md_path FROM review
+      JOIN mr ON mr.id = review.mr_id
+      WHERE mr.repo_id = ? AND mr.iid = ?`).get(tg.repo_id, iid);
+    const md = rev && readFileSafe(rev.md_path);
+    if (md && md.trim()) projets.push({ project: tg.project, iid, branch: tg.branch, md: md.trim() });
+  }
+  if (!projets.length) throw new Error(t('err.task.no-review-report'));
+  /* Un seul projet : le prompt est exactement celui du bouton du rapport. Plusieurs : on empile
+     les rapports sous un titre par projet, sinon l'agent ne sait pas quel constat va où. */
+  const prompt = projets.length === 1
+    ? t('prompt.apply-review', { branch: projets[0].branch, md: projets[0].md })
+    : t('prompt.apply-review-multi', {
+      blocs: projets.map((p) => t('prompt.apply-review-bloc', { project: p.project, iid: p.iid, md: p.md })).join('\n\n'),
+    });
+  res.json({ prompt, projets: projets.map((p) => ({ project: p.project, iid: p.iid })) });
 }));
 
 // Réponse .md d'une exploration.
@@ -2519,6 +2565,21 @@ app.post('/api/tasks/:id/targets/:tid/push', wrap((req, res) => {
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
   if (tg.status !== 'committed') throw new Error(t('err.ce-projet-doit-etre-execute'));
   res.json(jobs.startTaskJob(Number(req.params.id), 'push', { targetId: tg.id }));
+}));
+
+/* Rattraper la branche de départ sur UN projet de la session.
+ *
+ * Ouvert dès que le travail est commité ou poussé — c'est-à-dire dès qu'il y a une branche à
+ * rattraper. On ne restreint pas aux MR « en conflit » : les conflits se découvrent sur la
+ * forge, souvent avant que l'application les connaisse, et un bouton qui n'apparaît qu'après
+ * coup arrive toujours trop tard. Si la branche est déjà à jour, le job le dit et s'arrête. */
+app.post('/api/tasks/:id/targets/:tid/update-base', wrap((req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  if (!['committed', 'pushed', 'error'].includes(tg.status)) {
+    throw new Error(t('err.ce-projet-doit-etre-execute'));
+  }
+  res.json(jobs.startTaskJob(Number(req.params.id), 'update-base', { targetId: tg.id }));
 }));
 
 // Crée la MR d'UN projet de la session.

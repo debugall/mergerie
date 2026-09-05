@@ -152,6 +152,14 @@ async function discoverAll() {
         db.prepare('UPDATE task_target SET mr_merged = 1, updated_at = ? WHERE id = ?').run(now, t.id);
         insertFeed.run('mr_merged', t.mr_iid, t.project, '', t.branch || '', now);
         result.tasksMerged += 1;
+      } else if (m) {
+        /* CONFLITS : l'appel est DÉJÀ fait ci-dessus pour savoir si la MR est mergée — on lit
+           la réponse au passage. Le bouton « Mettre à jour avec … » ne coûte ainsi aucun appel
+           d'API supplémentaire. `null` = pas encore su (GitHub calcule `mergeable` de façon
+           asynchrone) : on l'écrit tel quel, pour ne pas confondre avec « pas de conflit ». */
+        const enConflit = m.has_conflicts === true ? 1 : (m.has_conflicts === false ? 0 : null);
+        db.prepare('UPDATE task_target SET mr_conflicts = ? WHERE id = ?').run(enConflit, t.id);
+        if (enConflit) result.mrConflicts = (result.mrConflicts || 0) + 1;
       }
     } catch (e) {
       // une MR inaccessible/supprimée ne doit pas casser la découverte

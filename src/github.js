@@ -149,6 +149,13 @@ function toMr(pr) {
     created_at: pr.created_at,
     merged_at: pr.merged_at || null,
     author: pr.user ? (pr.user.login || '') : '',
+    /* CONFLITS. `mergeable` est calculé de façon ASYNCHRONE par GitHub : il vaut `null` tant
+       que le calcul n'a pas tourné, et il n'est renvoyé que par la route d'une PR unique —
+       jamais par la liste. On rend donc trois valeurs et pas deux : `true` (conflits), `false`
+       (aucun), `null` (on ne sait pas encore). Confondre « on ne sait pas » avec « non »
+       ferait disparaître le bouton précisément quand il sert. */
+    has_conflicts: pr.mergeable === false || pr.mergeable_state === 'dirty' ? true
+      : (pr.mergeable === true ? false : null),
     // Équivalent des diff_refs GitLab : seul head_sha est requis (commentaire inline).
     diff_refs: {
       base_sha: (pr.base && pr.base.sha) || null,

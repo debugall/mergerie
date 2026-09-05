@@ -350,6 +350,74 @@ async function nonPousses(cwd, branch) {
   } catch { return 0; }
 }
 
+/* Combien de commits `origin/base` porte que la branche courante n'a pas — c'est-à-dire de
+   combien la branche de départ a avancé sous nos pieds depuis qu'on en est parti. C'est ce
+   nombre qui dit s'il y a quelque chose à rattraper. */
+async function behindOf(cwd, base) {
+  try {
+    const { stdout } = await run('git', ['rev-list', '--count', `HEAD..origin/${base}`], { cwd });
+    return Number(stdout.trim()) || 0;
+  } catch { return 0; } // base inconnue localement : on ne conclut rien
+}
+
+/* REJOUER NOS COMMITS PAR-DESSUS LA BRANCHE DE DÉPART À JOUR.
+ *
+ * `rebase`, pas `merge` : l'historique de `origin/base` est conservé tel quel, et nos commits
+ * repassent au-dessus — c'est exactement « garder l'historique distant et réappliquer les
+ * changements par-dessus ». Un merge, lui, fabriquerait un commit de fusion et laisserait la
+ * branche de départ mêlée à la nôtre.
+ *
+ * Renvoie `{ ok: true }` si tout est passé, `{ ok: false, conflits: [...] }` si git s'est
+ * arrêté sur un conflit — le rebase reste alors EN COURS, à l'appelant de le terminer ou de
+ * l'abandonner. On ne décide pas ici : résoudre est un travail d'IA, abandonner est un échec. */
+async function rebaseSur(cwd, base, onLog = () => {}) {
+  try {
+    await run('git', ['rebase', `origin/${base}`], { cwd, onLog });
+    return { ok: true, conflits: [] };
+  } catch (e) {
+    const conflits = await fichiersEnConflit(cwd);
+    if (!conflits.length) throw e;            // échec pour une autre raison : on ne le masque pas
+    return { ok: false, conflits };
+  }
+}
+
+// Les fichiers que git a laissés en conflit (« unmerged »), chemins relatifs au dépôt.
+async function fichiersEnConflit(cwd) {
+  try {
+    const { stdout } = await run('git', ['diff', '--name-only', '--diff-filter=U'], { cwd });
+    return stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+  } catch { return []; }
+}
+
+// Un rebase est-il en cours ? (répertoires posés par git, `rebase-merge` ou `rebase-apply`)
+function rebaseEnCours(cwd) {
+  return ['rebase-merge', 'rebase-apply'].some((d) => fs.existsSync(path.join(cwd, '.git', d)));
+}
+
+/* Poursuit le rebase après résolution. Renvoie le même contrat que `rebaseSur` : terminé, ou
+   arrêté sur le conflit SUIVANT — un rebase de dix commits peut s'arrêter dix fois. */
+async function rebaseContinuer(cwd, onLog = () => {}) {
+  await run('git', ['add', '-A'], { cwd });
+  /* `GIT_EDITOR=true` : sans lui, `rebase --continue` ouvre l'éditeur du message de commit et
+     le processus attend indéfiniment un humain qui n'est pas là. */
+  try {
+    await run('git', ['rebase', '--continue'], { cwd, onLog, env: { ...process.env, GIT_EDITOR: 'true' } });
+    return { ok: true, conflits: [] };
+  } catch (e) {
+    if (!rebaseEnCours(cwd)) throw e;
+    const conflits = await fichiersEnConflit(cwd);
+    if (!conflits.length) throw e;
+    return { ok: false, conflits };
+  }
+}
+
+/* Remet la branche exactement là où elle était. Appelé quand la résolution n'aboutit pas :
+   laisser un rebase en plan bloquerait tout ce qui touche ensuite à ce clone. */
+async function rebaseAbandonner(cwd, onLog = () => {}) {
+  if (!rebaseEnCours(cwd)) return;
+  try { await run('git', ['rebase', '--abort'], { cwd, onLog }); } catch { /* déjà défait */ }
+}
+
 // La branche est-elle déjà sur origin, au même commit que HEAD ?
 async function isPushed(cwd, branch) {
   try {
@@ -416,7 +484,8 @@ async function ensureCleanWorktree(cwd, onLog = () => {}) {
 }
 
 module.exports = {
-  aheadOf, isPushed, renommerDernierCommit, nonPousses,
+  aheadOf, behindOf, isPushed, renommerDernierCommit, nonPousses,
+  rebaseSur, rebaseContinuer, rebaseAbandonner, rebaseEnCours, fichiersEnConflit,
   resetWorktree,
   ensureRepo, targetedDiff, diffRange, tagAuthor, branchesForCommit, branchesForCommitDetailed, cloneDirFor, authUrl, run, secretsOf, tokenFor,
   defaultBranch, ensureCleanWorktree, refExists, createBranchFrom, checkoutBranch, commitAll, headSha, branchDiff, pushBranch, gitTlsArgs,

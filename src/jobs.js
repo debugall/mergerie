@@ -416,6 +416,7 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
     else if (action === 'push-all') await taskrunner.pushTargets(task, opts.targetIds, onLog);
     else if (action === 'followup') await taskrunner.runTaskFollowup(task, opts.instruction, onLog, { targetIds: opts.targetIds, imageIds: opts.imageIds });
     else if (action === 'answer') await taskrunner.runTaskAnswer(task, opts.targetId, onLog);
+    else if (action === 'update-base') await taskrunner.mettreAJourDepuisBase(task.id, opts.targetId, onLog);
     else await taskrunner.runTask(task, onLog, { targetIds: opts.targetIds });
     setJob(jobId, { status: 'done', done_count: 1, current_mr_id: null, finished_at: new Date().toISOString(), message: '' });
     // La session peut s'être mise EN ATTENTE (l'agent a posé des questions) : notif dédiée,

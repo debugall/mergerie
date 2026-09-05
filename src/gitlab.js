@@ -238,7 +238,20 @@ async function mergeMergeRequest(cfg, project, iid, opts = {}) {
 // Récupère une MR complète (pour ses diff_refs : base_sha, start_sha, head_sha).
 async function getMergeRequest(cfg, project, iid) {
   const enc = encodeProject(project);
-  return gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}`);
+  const m = await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}`);
+  return m && typeof m === 'object' ? { ...m, has_conflicts: conflitsDe(m) } : m;
+}
+
+/* CONFLITS, vus de GitLab. Trois sources, par ordre de fiabilité décroissante — et trois
+   valeurs en sortie : `true`, `false`, ou `null` quand la réponse ne permet pas de conclure.
+   Confondre « on ne sait pas » avec « non » ferait disparaître le bouton de rattrapage
+   précisément quand il sert. `merge_status` est déprécié mais reste renvoyé par les instances
+   plus anciennes, où `detailed_merge_status` n'existe pas encore. */
+function conflitsDe(m) {
+  if (typeof m.has_conflicts === 'boolean') return m.has_conflicts;
+  if (m.detailed_merge_status) return m.detailed_merge_status === 'conflict';
+  if (m.merge_status) return m.merge_status === 'cannot_be_merged';
+  return null;
 }
 
 /* Modifie une note déjà postée. GitLab n'a qu'une route, quel que soit le type de note

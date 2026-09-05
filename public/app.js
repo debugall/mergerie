@@ -5602,6 +5602,19 @@ function toggleProjetsHtml(famille, id, n) {
 // Les projets sont-ils visibles ? Dépliés explicitement, ou seuls (rien à replier).
 const projetsVisibles = (famille, id, n) => n <= 1 || estDeplie(famille, id);
 
+/* REPRENDRE LE RAPPORT DE REVIEW DANS UN SUIVI.
+ *
+ * Le trajet naturel après une review : la MR a un rapport, on veut que l'IA en traite les
+ * constats. Le bouton « Faire corriger le code par l'IA » du rapport ouvre pour cela une
+ * NOUVELLE session ; depuis la session qui a produit la branche, on veut au contraire un SUIVI
+ * — l'agent reprend son propre fil au lieu de redécouvrir le code. Le bouton ne fait donc que
+ * remplir le champ : ce qui part reste relu, et modifiable, avant d'être envoyé. */
+const aUnRapport = (cibles) => (cibles || []).some((tg) => tg.has_review);
+const boutonSuiviReview = (taskId, targetId = null) => `<button class="btn" data-followreview="${taskId}"`
+  + (targetId ? ` data-followreviewtarget="${targetId}"` : '')
+  + ` title="${esc(tr('task.title.followup-review'))}"><svg class="ico"><use href="#i-bot"/></svg>`
+  + `${tr('task.btn.followup-review')}</button>`;
+
 // Carte CODAGE : une ligne par projet, avec ses propres actions.
 function codeCard(t) {
   const cibles = t.targets || [];
@@ -5626,6 +5639,7 @@ function codeCard(t) {
         <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph'))}">${esc(t.followup_draft || '')}</textarea>
         ${suiviCapturesHtml()}
         ${autoSuiviCase(t)}
+        ${aUnRapport(cibles) ? boutonSuiviReview(t.id) : ''}
         <button class="btn" data-followcancel="${t.id}">${tr('ui.cancel')}</button>
         <button class="btn" data-followsave="${t.id}">${tr('task.btn.save-followup')}</button>
         ${enCours ? '' : `<button class="btn btn-primary" data-followsubmit="${t.id}">${tr('task.btn.run-iteration')}</button>`}
@@ -5676,6 +5690,14 @@ function targetLine(t, tg) {
   const st = TASK_STATUS[tg.status] || { label: tg.status, cls: '' };
   const showDiff = !!tg.diff_path && ['committed', 'pushed'].includes(tg.status);
   const showPush = tg.status === 'committed';
+  /* Le rattrapage ne s'offre QUE si la merge request est réellement en conflit — c'est la
+     forge qui le dit (`mr_conflicts`, relevé par la découverte sur l'appel qu'elle fait déjà).
+     Un bouton qui réécrit une branche n'a pas à être proposé en permanence : la plupart du
+     temps il n'y a rien à rattraper, et le proposer quand même invite à rebaser pour rien.
+     `null` = la forge n'a pas encore tranché (GitHub calcule `mergeable` en différé) : on
+     s'abstient plutôt que de deviner. */
+  const peutRattraper = tg.mr_conflicts === 1 && !!tg.branch
+    && ['committed', 'pushed', 'error'].includes(tg.status);
   // une MR peut préexister sur la branche (session lancée depuis une MR) :
   // dans ce cas il ne faut pas proposer d'en créer une seconde.
   const mrIid = tg.mr_iid || tg.existing_mr_iid;
@@ -5707,6 +5729,12 @@ function targetLine(t, tg) {
     ${showDiff ? `<button class="btn btn-sm" data-tgdiff="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-diff'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>` : ''}
     ${runTarget ? `<button class="btn btn-sm" data-tgrun="${tg.id}" data-task="${t.id}" title="${esc(tg.status === 'new' ? tr('task.title.run-target') : tr('task.title.rerun-target'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${tr('task.btn.run-target')}</button>` : ''}
     ${followTarget ? `<button class="btn btn-sm" data-tgfollow="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.request-fix-target', { project: tg.project }))}"><svg class="ico ico-sm"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : ''}
+    ${peutRattraper ? (() => {
+      /* RATTRAPER LA BRANCHE DE DÉPART. Le cas : la merge request existe, la branche de départ
+         a avancé, la forge affiche des conflits. On rejoue nos commits par-dessus elle. */
+      const dep = tg.base_branch || 'main';
+      return `<button class="btn btn-sm" data-tgrebase="${tg.id}" data-task="${t.id}" data-branch="${esc(tg.branch || '')}" data-base="${esc(dep)}" title="${esc(tr('task.title.update-base', { base: dep }))}"><svg class="ico ico-sm"><use href="#i-repeat"/></svg>${tr('task.btn.update-base', { base: dep })}</button>`;
+    })() : ''}
     ${showPush ? `<button class="btn btn-sm btn-primary" data-tgpush="${tg.id}" data-task="${t.id}" data-project="${esc(tg.project)}" data-branch="${esc(tg.branch || '')}" title="${tr('task.btn.push-title')}"><svg class="ico ico-sm"><use href="#i-upload"/></svg>${tr('task.btn.push')}</button>` : ''}
     ${canMr ? `<button class="btn btn-sm btn-primary" data-tgmr="${tg.id}" data-task="${t.id}" data-title="${esc(defaultMrTitle)}" data-branch="${esc(tg.branch || '')}" data-target="${esc(tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.open-mr'))}"><svg class="ico ico-sm"><use href="#i-branch"/></svg>${tr('task.btn.create-mr')}</button>` : ''}
     ${mrIid && !tg.mr_merged ? `<button class="btn btn-sm btn-danger" data-tgmerge="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-target="${esc(tg.mr_target || tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.merge-mr'))}"><svg class="ico ico-sm"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>` : ''}
@@ -5715,6 +5743,7 @@ function targetLine(t, tg) {
   <div class="mr-create followup followup-target" data-followform="tg${tg.id}" hidden>
     <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph-target', { project: tg.project }))}"></textarea>
     ${suiviCapturesHtml()}
+    ${tg.has_review ? boutonSuiviReview(t.id, tg.id) : ''}
     <button class="btn" data-followcancel="tg${tg.id}">${tr('ui.cancel')}</button>
     <button class="btn btn-primary" data-followsubmit="${t.id}" data-followtarget="${tg.id}">${tr('task.btn.run-iteration')}</button>
   </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg, `/tasks/${t.id}/targets/${tg.id}/answer`) : ''}`;
@@ -5937,6 +5966,45 @@ function wireTaskActions() {
   on('[data-tgfollow]', (b) => {
     const form = $(`#taskList .followup[data-followform="tg${b.dataset.tgfollow}"]`);
     if (form) { form.hidden = false; form.querySelector('.followup-text').focus(); }
+  });
+  /* Remplir le champ de suivi avec le prompt du rapport. Le prompt est RENDU PAR LE SERVEUR :
+     il lit les rapports sur le disque, que le navigateur n'a pas. */
+  on('[data-followreview]', async (b) => {
+    const cle = b.dataset.followreviewtarget ? `tg${b.dataset.followreviewtarget}` : b.dataset.followreview;
+    const champ = $(`#taskList .followup[data-followform="${cle}"] .followup-text`);
+    if (!champ) return;
+    try {
+      const q = b.dataset.followreviewtarget ? `?target_id=${b.dataset.followreviewtarget}` : '';
+      const d = await busy(b, () => api(`/tasks/${b.dataset.followreview}/review-prompt${q}`));
+      /* On ne détruit pas ce qui est écrit sans demander : le champ garde un brouillon
+         enregistré, parfois rédigé plusieurs jours plus tôt. */
+      if (champ.value.trim() && !await confirmDialog({
+        title: tr('confirm.followup-review.title'),
+        text: tr('confirm.followup-review.text'),
+        confirmLabel: tr('task.btn.followup-review'),
+        danger: false,
+      })) return;
+      champ.value = d.prompt;
+      champ.focus();
+      champ.dispatchEvent(new Event('input', { bubbles: true }));   // l'autosave doit le voir
+      toast(tr('toast.followup-review.filled', { n: d.projets.length, count: d.projets.length }));
+    } catch (e) { toast(e.message, true); }
+  });
+  /* Le rebase RÉÉCRIT l'historique de la branche : on le dit avant, pas après. Le push qui
+     suivra devra être forcé, et une branche que d'autres ont pu tirer n'est pas un détail. */
+  on('[data-tgrebase]', async (b) => {
+    const { branch, base } = b.dataset;
+    if (!await confirmDialog({
+      title: tr('confirm.update-base.title', { branch, base }),
+      text: tr('confirm.update-base.text', { branch, base }),
+      confirmLabel: tr('task.btn.update-base', { base }),
+      danger: false,
+    })) return;
+    try {
+      await api(`/tasks/${b.dataset.task}/targets/${b.dataset.tgrebase}/update-base`, { method: 'POST' });
+      toast(tr('toast.update-base.started', { branch }));
+      refreshStatus(); loadTasks();
+    } catch (e) { toast(e.message, true); }
   });
   on('[data-followcancel]', (b) => {
     const form = $(`#taskList .followup[data-followform="${b.dataset.followcancel}"]`);

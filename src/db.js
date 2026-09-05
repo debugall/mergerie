@@ -334,6 +334,11 @@ try { db.exec('ALTER TABLE task ADD COLUMN ask_questions INTEGER DEFAULT 0'); } 
    identifiant que l'utilisateur a saisi lui-même : le taire reviendrait à lui faire croire que
    sa session continue. Une ligne de journal ne suffit pas — elle défile. */
 try { db.exec('ALTER TABLE task_target ADD COLUMN session_note TEXT'); } catch { /* déjà présente */ }
+/* La merge request de ce projet est-elle en conflit ? Trois états : 1 (oui), 0 (non), NULL
+   (pas encore su — GitHub calcule `mergeable` de façon asynchrone, et la liste ne le donne
+   jamais). Rempli par la passe de découverte qui interroge DÉJÀ ces merge requests une par
+   une : le bouton « Mettre à jour avec … » ne coûte donc aucun appel d'API de plus. */
+try { db.exec('ALTER TABLE task_target ADD COLUMN mr_conflicts INTEGER'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task_target ADD COLUMN session_key TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task_target ADD COLUMN session_backend TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task_target ADD COLUMN session_cwd TEXT'); } catch { /* déjà présente */ }

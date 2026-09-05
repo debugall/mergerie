@@ -13,6 +13,35 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Catch a session's branch up with the branch it started from.** A coding session opens its
+  merge request, then `main` moves on and the forge starts showing conflicts — until now the only
+  way out was to leave the tool and rebase by hand. Each project line now grows an **`Update with
+  main`** button — **only when the forge says the merge request is in conflict**, so it is not
+  sitting there inviting you to rebase for nothing — that replays the session's commits on top of an up-to-date starting branch:
+  a rebase, so `main`'s history is kept exactly as it is and your changes go back on top of it.
+  When git stops on a conflict the AI resolves it, told to keep what the starting branch brings
+  and reapply the branch's intent over it — that is what the button adds over plain `git rebase`.
+  It refuses to commit a file that still has conflict markers in it, and if the resolution does
+  not converge it puts the branch back exactly as it was rather than leaving a half-done rebase
+  behind. Nothing is pushed: rewriting a branch other people may have pulled is a second,
+  deliberate gesture, so the existing `Push` button takes over — with `--force-with-lease`.
+  The conflict flag is read from the forge (`has_conflicts` on GitLab, `mergeable` on GitHub)
+  during the discovery pass that **already** fetches those merge requests to see whether they
+  were merged, so the button costs no extra API call. GitHub computes `mergeable` lazily and
+  answers `null` at first: while the answer is unknown the button stays hidden rather than
+  guessing, and appears at the next discovery.
+
+- **Pull the review report straight into a follow-up.** After a merge request is reviewed, the
+  obvious next move is to have the AI work through the findings. Until now the only button for that
+  — `Let the AI fix the code`, on the report — opened a **new** coding session, which rediscovers
+  the code from scratch. From the session that produced the branch you want a **follow-up** instead,
+  so the agent picks up its own thread. `Send a follow-up` now carries a **`Use the review report`**
+  button that fills the field with exactly the same prompt, report included. It only appears when
+  there is a report to use, it **asks before overwriting** a draft you had already written, and it
+  only fills the field — the text stays readable and editable, and you are still the one who sends
+  it. On a multi-project session it pulls in every project's report, each one named, since the
+  follow-up goes out to all of them.
+
 - **Re-review by itself when a report goes stale.** After a review the branch keeps moving, and
   the report stops describing the code that is actually there — that is the `stale` badge. Settings
   → Merge Request → **“Automatically re-review when the report goes stale”** restarts the review at

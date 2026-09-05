@@ -51,6 +51,26 @@ shared search (title, author, project, ticket).
   `Review` button, and the server log says how many did not start. `0` = no limit. **“When it
   arrives” means when it arrives**: a branch moving forward triggers nothing — re-reviewing stays a
   deliberate gesture, and an incremental one.
+- **Catch up with the starting branch.** The session produced its branch and its merge request,
+  then `main` moved on: the forge shows conflicts. The **`Update with main`** button then appears on the
+  project's line — **only when the forge reports conflicts**, never permanently — and **replays
+  the session's commits on top of an up-to-date starting branch** — a
+  `rebase`, not a merge: `main`'s history is kept exactly as it is and your changes go back on
+  top. When git stops on a conflict, **the AI settles it**, told to keep what `main` brings and
+  reapply the branch's intent on top; that is the whole point of the button, otherwise `git
+  rebase` would do. **Nothing is pushed**: a rebase rewrites history, sending it needs a force
+  push, and the `Push` button — a second, deliberate gesture — is what decides. If the resolution
+  does not converge (or no agent is configured), the branch is **put back exactly as it was**: a
+  rebase left half-done would block the clone for everything else.
+- **Pull the review report into a follow-up.** Once the merge request has been reviewed you often
+  want the AI to work through the findings. The report's `Let the AI fix the code` button opens a
+  **new** session for that; from the session that produced the branch, what you want is a
+  **follow-up** — the agent picks up its own thread instead of rediscovering the code. So on
+  `Send a follow-up` a **`Use the review report`** button fills the field with the same prompt
+  (“apply the relevant fixes from this review”, report included). It only shows up when there is a
+  report, and it **asks before overwriting** a draft you already wrote. The text stays readable and
+  editable: the button fills, you send. A multi-project session pulls in **each** project's report,
+  named — its follow-up goes to all of them.
 - **Follow a branch that keeps moving.** Once the review is done the branch carries on: the report
   no longer describes the code that is there, and the merge request gets the **`stale`** badge.
   **Settings → Merge Request → “Automatically re-review when the report goes stale”** makes the
