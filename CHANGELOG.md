@@ -29,7 +29,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   during the discovery pass that **already** fetches those merge requests to see whether they
   were merged, so the button costs no extra API call. GitHub computes `mergeable` lazily and
   answers `null` at first: while the answer is unknown the button stays hidden rather than
-  guessing, and appears at the next discovery.
+  guessing, and appears at the next discovery. **The merge dialog asks the forge too**, when it
+  opens: a merge request in conflict now says so in red, naming the branch it clashes with, and
+  carries the same catch-up button — you find out before clicking “Merge”, instead of in the
+  refusal that would follow. For a merge request that did not come from a session the conflict is
+  reported all the same, without the button: there is no session branch to replay.
 
 - **Pull the review report straight into a follow-up.** After a merge request is reviewed, the
   obvious next move is to have the AI work through the findings. Until now the only button for that

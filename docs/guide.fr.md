@@ -66,6 +66,11 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   geste — qui décide. Si la résolution n'aboutit pas (ou s'il n'y a pas d'agent configuré), la
   branche est **remise exactement comme elle était** : un rebase laissé en plan bloquerait le
   clone pour tout le reste.
+  Le même rattrapage est proposé **dans la modale de merge** : à l'ouverture, la forge est
+  interrogée, et si la merge request est en conflit la modale le dit en rouge — avec la branche
+  concernée — et porte le bouton. On apprend le conflit **avant** de cliquer « Merger », pas
+  dans le refus qui suivrait. Depuis la file (une MR qui ne vient pas d'une session), le conflit
+  est annoncé de la même façon, sans le bouton : il n'y a pas de branche de session à rejouer.
 - **Reprendre le rapport de review dans un suivi.** Une fois la merge request reviewée, on veut
   souvent que l'IA traite les constats. Le bouton `Faire corriger le code par l'IA` du rapport
   ouvre pour cela une **nouvelle** session ; depuis la session qui a produit la branche, c'est un

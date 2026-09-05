@@ -1575,7 +1575,12 @@
                 <span data-i18n="merge.modal.remove-branch">Supprimer la branche source après le merge</span></label>
         </div>
         <p id="mergeModalNote" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span></span></p>
+        <!-- CE QUE LA FORGE DIT DE CETTE MERGE REQUEST, demandé à l'ouverture de la modale.
+             On est à un clic d'une action irréversible : « elle est en conflit » se dit AVANT,
+             pas dans le message d'erreur qui suivra le refus. -->
+        <p id="mergeConflictNote" class="converge-note note-bad" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span></span></p>
         <div class="modal-actions">
+            <button id="mergeRebase" type="button" class="btn" hidden><svg class="ico"><use href="#i-repeat"/></svg><span></span></button>
             <button id="mergeCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
             <button id="mergeGo" type="button" class="btn btn-danger btn-solid"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="merge.modal.go">Merger</span></button>
         </div>

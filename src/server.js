@@ -4405,6 +4405,56 @@ app.post('/api/mrs/:id/comment', wrap(async (req, res) => {
  * Le corps n'est PAS reçu du navigateur : la route relit le rapport sur le disque, par la
  * même fonction que la publication automatique (`reviewer.publierRapport`). Accepter un texte
  * du client ouvrirait la porte à publier autre chose que le rapport, sous son nom. */
+/* CE QUE LA FORGE DIT DE CETTE MERGE REQUEST, MAINTENANT.
+ *
+ * Interrogée à l'ouverture de la modale de merge : on est à un clic d'une action irréversible
+ * et visible de toute l'équipe. « Elle est en conflit » doit se lire AVANT, pas dans le message
+ * d'erreur qui suivra le refus. Un appel d'API à ce moment-là est largement payé.
+ *
+ * Ce qu'on apprend est ÉCRIT : la merge request le garde, et les projets de session qui
+ * pointent la même branche aussi — leur bouton « Mettre à jour avec … » apparaît donc sans
+ * attendre la prochaine découverte. */
+async function etatFusion(mr) {
+  const reponse = (c) => ({
+    has_conflicts: c === null || c === undefined ? null : !!c,
+    target_branch: mr.target_branch,
+  });
+  // En démo, la forge n'existe pas : on rend ce qui est en base plutôt qu'une erreur.
+  if (demoDocker.isDemo()) return reponse(mr.has_conflicts);
+  const m = await forge.clientFor(mr).getMergeRequest(getConfig(), mr.project, mr.iid);
+  const c = m && m.has_conflicts === true ? 1 : (m && m.has_conflicts === false ? 0 : null);
+  db.prepare('UPDATE mr SET has_conflicts = ? WHERE id = ?').run(c, mr.id);
+  db.prepare('UPDATE task_target SET mr_conflicts = ? WHERE repo_id = ? AND branch = ?')
+    .run(c, mr.repo_id, mr.source_branch);
+  return { ...reponse(c), target_branch: (m && m.target_branch) || mr.target_branch };
+}
+
+app.get('/api/mrs/:id/merge-check', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  res.json(await etatFusion(mr));
+}));
+
+/* Même question, posée depuis un projet de session — c'est le seul chemin où l'on peut aussi
+   proposer le rattrapage, puisqu'il faut une session pour rejouer la branche. */
+app.get('/api/tasks/:id/targets/:tid/merge-check', wrap(async (req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  const iid = tg.mr_iid || tg.existing_mr_iid;
+  const mr = iid && db.prepare(`SELECT mr.*, repo.project AS project, repo.forge AS forge
+    FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.repo_id = ? AND mr.iid = ?`).get(tg.repo_id, iid);
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const etat = await etatFusion(mr);
+  /* Le rattrapage n'est proposé que s'il y a de quoi le faire : une branche de travail, une
+     branche de départ, et un projet dont le travail est posé. */
+  return res.json({
+    ...etat,
+    base_branch: tg.base_branch || mr.target_branch,
+    branch: tg.branch,
+    rebasable: !!tg.branch && ['committed', 'pushed', 'error'].includes(tg.status),
+  });
+}));
+
 app.post('/api/mrs/:id/publish-review', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));

@@ -62,6 +62,11 @@ shared search (title, author, project, ticket).
   push, and the `Push` button — a second, deliberate gesture — is what decides. If the resolution
   does not converge (or no agent is configured), the branch is **put back exactly as it was**: a
   rebase left half-done would block the clone for everything else.
+  The same catch-up is offered **inside the merge dialog**: on opening, the forge is asked, and
+  if the merge request is in conflict the dialog says so in red — naming the branch — and carries
+  the button. You learn about the conflict **before** clicking “Merge”, not in the refusal that
+  would follow. From the queue (a merge request that did not come from a session) the conflict is
+  announced the same way, without the button: there is no session branch to replay.
 - **Pull the review report into a follow-up.** Once the merge request has been reviewed you often
   want the AI to work through the findings. The report's `Let the AI fix the code` button opens a
   **new** session for that; from the session that produced the branch, what you want is a

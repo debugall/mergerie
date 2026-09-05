@@ -270,4 +270,112 @@ describe('Rattraper la branche de départ', () => {
     assert.equal(app.db.prepare('SELECT mr_conflicts c FROM task_target WHERE id = ?').get(tg.id).c, 0);
     assert.ok(app.state.calls.length > appels, 'la découverte a bien interrogé la forge');
   });
+
+  /* ------------------------------------ la modale de merge ---- */
+
+  /* ON EST À UN CLIC D'UN MERGE. « Elle est en conflit » doit se lire là, pas dans le refus
+     qui suivrait — et quand la merge request vient d'une session, la modale porte de quoi y
+     remédier. La forge est interrogée à l'ouverture : c'est le moment où l'appel se justifie. */
+  describe('la modale de merge dit le conflit', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
+    let taskId; let targetId;
+
+    const ouvrirLaModale = async () => {
+      await page.reload();
+      await page.locator('nav button[data-tab="task"]').click();
+      await page.locator(`#taskList [data-tgmerge="${targetId}"]`).waitFor({ state: 'visible', timeout: 20000 });
+      await page.locator(`#taskList [data-tgmerge="${targetId}"]`).click();
+      await page.locator('#mergeModal:not([hidden])').waitFor();
+    };
+
+    before(async () => {
+      ({ taskId, targetId } = await sessionPoussee('feature/modale-merge', { conflits: 1 }));
+      app.db.prepare('UPDATE task_target SET mr_iid = 88 WHERE id = ?').run(targetId);
+      app.state.mrs['grp/app'] = [{
+        iid: 88, title: 'X', state: 'opened', source_branch: 'feature/modale-merge',
+        target_branch: 'main', web_url: 'http://x/88', sha: 'abc',
+        created_at: new Date().toISOString(), author: { name: 'A' }, has_conflicts: true,
+      }];
+      await app.api('POST', '/api/discover');
+    });
+
+    test('conflit : la modale le dit, et propose le rattrapage', async () => {
+      await ouvrirLaModale();
+      const note = page.locator('#mergeConflictNote');
+      await note.waitFor({ state: 'visible', timeout: 20000 });
+      assert.match(await note.innerText(), /CONFLIT|CONFLICT/, 'le mot doit y être, en clair');
+      assert.match(await note.innerText(), /main/, 'et la branche avec laquelle ça coince');
+      const b = page.locator('#mergeRebase');
+      await b.waitFor({ state: 'visible' });
+      assert.match(await b.innerText(), /main/, 'le bouton nomme la branche à rattraper');
+      await page.locator('#mergeCancel').click();
+    });
+
+    test('le bouton de la modale lance bien le rattrapage', async () => {
+      await ouvrirLaModale();
+      await page.locator('#mergeRebase').waitFor({ state: 'visible', timeout: 20000 });
+      const avant = nbJobsTask();
+      await page.locator('#mergeRebase').click();
+      await page.locator('#mergeModal:not([hidden])').waitFor({ state: 'detached' });
+      for (let i = 0; i < 200 && nbJobsTask() === avant; i += 1) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      assert.equal(nbJobsTask(), avant + 1, 'un job de session doit être parti');
+    });
+
+    test('depuis la file, le conflit se dit AUSSI — mais sans rattrapage', async () => {
+      /* Une merge request de la file n'est pas forcément issue d'une session : il n'y a alors
+         aucune branche à rejouer. Le conflit, lui, se dit quand même — c'est l'information qui
+         évite de cliquer « Merger » pour rien. */
+      await page.reload();
+      await page.locator('nav button[data-tab="review"]').click();
+      await page.locator('[data-seg="to_review"]').click();
+      const mrId = (await app.api('GET', '/api/mrs')).body.find((m) => m.iid === 88).id;
+      await page.locator(`#toReviewList [data-merge="${mrId}"]`).click();
+      await page.locator('#mergeModal:not([hidden])').waitFor();
+      await page.locator('#mergeConflictNote').waitFor({ state: 'visible', timeout: 20000 });
+      assert.equal(await page.locator('#mergeRebase').isVisible(), false,
+        'pas de session, donc rien à rattraper — proposer le bouton mènerait à une erreur');
+      await page.locator('#mergeCancel').click();
+    });
+
+    test('la note d’une merge request ne survit pas à la modale suivante', async () => {
+      /* Sans remise à zéro à la fermeture, la note de conflit resterait affichée sur la merge
+         request d'après, qui n'a rien demandé. On enchaîne donc les deux SANS recharger. */
+      await page.reload();
+      await page.locator('nav button[data-tab="task"]').click();
+      await page.locator(`#taskList [data-tgmerge="${targetId}"]`).waitFor({ state: 'visible', timeout: 20000 });
+      await page.locator(`#taskList [data-tgmerge="${targetId}"]`).click();
+      await page.locator('#mergeConflictNote').waitFor({ state: 'visible', timeout: 20000 });
+      await page.locator('#mergeCancel').click();
+      await page.locator('#mergeModal:not([hidden])').waitFor({ state: 'detached' });
+
+      // Une autre merge request, celle-là sans conflit connu et sans `check`.
+      const propre = await sessionPoussee('feature/sans-note', { conflits: 0 });
+      await page.locator('nav button[data-tab="task"]').click();
+      await page.waitForFunction(
+        (id) => !!document.querySelector(`#taskList .card[data-task="${id}"]`),
+        propre.taskId, { timeout: 20000 },
+      );
+      await page.evaluate((ctx) => window.openMergeModal({
+        url: '/x', label: '!0', target: 'main', forge: 'gitlab',
+      }), null);
+      assert.equal(await page.locator('#mergeConflictNote').isVisible(), false,
+        'la note de la merge request précédente ne doit pas reparaître ici');
+      await page.locator('#mergeCancel').click();
+    });
+
+    test('plus de conflit : ni note ni bouton — et la note ne survit pas à la modale d’avant', async () => {
+      app.state.mrs['grp/app'][0].has_conflicts = false;
+      await ouvrirLaModale();
+      /* On attend un aller-retour COMPLET avec la forge avant de conclure à l'absence : le
+         serveur vient de réécrire le drapeau, c'est lui qui fait foi. */
+      await page.waitForFunction(async () => {
+        const d = await (await fetch(`/api/mrs/${(await (await fetch('/api/mrs')).json()).find((m) => m.iid === 88).id}/merge-check`)).json();
+        return d.has_conflicts === false;
+      }, null, { timeout: 20000 });
+      assert.equal(await page.locator('#mergeConflictNote').isVisible(), false);
+      assert.equal(await page.locator('#mergeRebase').isVisible(), false);
+      await page.locator('#mergeCancel').click();
+    });
+  });
 });

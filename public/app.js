@@ -647,8 +647,54 @@ function openMergeModal(ctx) {
   note.querySelector('span').textContent = tr('merge.modal.warn', { forge: forgeLabel(ctx.forge) });
   $('#mergeGo').disabled = false;
   $('#mergeModal').hidden = false;
+  demanderEtatFusion(ctx);
 }
-function closeMergeModal() { $('#mergeModal').hidden = true; mergeCtx = null; }
+
+/* CE QUE LA FORGE DIT DE CETTE MERGE REQUEST, demandé à l'ouverture.
+ *
+ * On est à un clic d'un merge : « elle est en conflit » se lit ICI, pas dans le refus qui
+ * suivrait. Et quand la merge request vient d'une session de codage, la modale porte de quoi y
+ * remédier — le même rattrapage que la ligne du projet.
+ *
+ * `ctx.check` absent (ou la forge muette) : on ne dit rien plutôt que de rassurer à tort. Une
+ * absence de nouvelle n'est pas une bonne nouvelle, mais l'inventer serait pire. */
+async function demanderEtatFusion(ctx) {
+  const note = $('#mergeConflictNote');
+  const bouton = $('#mergeRebase');
+  note.hidden = true; bouton.hidden = true;
+  if (!ctx.check) return;
+  let d;
+  try { d = await api(ctx.check); } catch { return; }
+  if (mergeCtx !== ctx) return;            // la modale a été fermée entre-temps
+  if (!d || d.has_conflicts !== true) return;
+  note.querySelector('span').textContent = tr('merge.modal.conflicts', {
+    target: d.target_branch || ctx.target || '',
+  });
+  note.hidden = false;
+  if (!d.rebasable) return;
+  const base = d.base_branch || d.target_branch;
+  bouton.querySelector('span').textContent = tr('task.btn.update-base', { base });
+  bouton.title = tr('task.title.update-base', { base });
+  bouton.hidden = false;
+  bouton.onclick = async () => {
+    try {
+      await busy(bouton, () => api(ctx.rebase, { method: 'POST' }));
+      closeMergeModal();
+      toast(tr('toast.update-base.started', { branch: d.branch || '' }));
+      refreshStatus(); loadTasks();
+    } catch (e) { toast(e.message, true); }
+  };
+}
+function closeMergeModal() {
+  $('#mergeModal').hidden = true;
+  mergeCtx = null;
+  /* La remise à zéro de la note et du bouton se fait à l'OUVERTURE (`demanderEtatFusion`, dès
+     sa première ligne), pas ici : un seul endroit, celui qui s'exécute forcément. La refaire à
+     la fermeture était indétectable — deux mutations distinctes donnaient le même écran, ce qui
+     est la définition d'un code mort. Reste ce que la fermeture est seule à pouvoir faire :
+     lâcher le gestionnaire, qui retient sinon le contexte de la merge request précédente. */
+  $('#mergeRebase').onclick = null;
+}
 $('#mergeCancel') && $('#mergeCancel').addEventListener('click', closeMergeModal);
 fermerAuFond('#mergeModal', closeMergeModal);
 $('#mergeGo') && $('#mergeGo').addEventListener('click', async () => {
@@ -2139,6 +2185,7 @@ function mergeMrFromQueue(m, onMerged) {
     label: `!${m.iid}`,
     target: m.target_branch,
     forge: m.forge,
+    check: `/mrs/${m.id}/merge-check`,
     squash: m.squash, removeSourceBranch: m.remove_source_branch,
     onDone: async (r) => {
       if (!r.merged) return;                                  // pipeline en attente : reste en file
@@ -2808,6 +2855,9 @@ async function openReport(id, opts = {}) {
     openMergeModal({
       url: `/mrs/${id}/merge`, label: `!${m.iid}`, target: m.target_branch, forge: m.forge,
       squash: m.squash, removeSourceBranch: m.remove_source_branch,
+      /* Pas de rattrapage ici : cette merge request n'est pas forcément issue d'une session,
+         il n'y a donc pas de branche à rejouer. Le conflit, lui, se dit quand même. */
+      check: `/mrs/${id}/merge-check`,
       onDone: () => openReport(id),          // recharge le détail (badge « mergée »)
     });
   });
@@ -5953,6 +6003,9 @@ function wireTaskActions() {
     openMergeModal({
       url: `/tasks/${b.dataset.task}/targets/${b.dataset.tgmerge}/merge`,
       label: `!${b.dataset.iid}`, target: b.dataset.target, forge: b.dataset.forge,
+      // Seul chemin où le rattrapage a un sens : il faut une session pour rejouer la branche.
+      check: `/tasks/${b.dataset.task}/targets/${b.dataset.tgmerge}/merge-check`,
+      rebase: `/tasks/${b.dataset.task}/targets/${b.dataset.tgmerge}/update-base`,
       onDone: () => loadTasks(),
     });
   });

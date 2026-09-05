@@ -172,6 +172,10 @@ try { db.exec('ALTER TABLE mr ADD COLUMN ticket_jira_at TEXT'); } catch { /* dé
 try { db.exec('ALTER TABLE mr ADD COLUMN review_session_key TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN review_session_backend TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN review_session_cwd TEXT'); } catch { /* déjà présente */ }
+/* La forge refuse-t-elle de fusionner cette merge request ? 1 / 0 / NULL (pas encore su).
+   Relevé au moment où l'on ouvre la modale de merge : on est alors à un clic d'une action
+   irréversible, un appel d'API pour le dire avant vaut mieux qu'un refus après. */
+try { db.exec('ALTER TABLE mr ADD COLUMN has_conflicts INTEGER'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN ticket_jira_error TEXT'); } catch { /* déjà présente */ }
 // Migration : chemins des fichiers modifiés par la MR (pour le badge « risque » et
 // les règles par chemin), un par ligne. Rempli au discover / à la review.
