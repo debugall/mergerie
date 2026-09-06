@@ -701,9 +701,36 @@ function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
     });
   }
 
-  // 5. Navigation et actions — fournies par le client, qui seul sait ce qu'il sait faire.
+  // 5. Sessions de dev — retrouvées par leur libellé, leur prompt ou leur branche.
+  const fTask = preFiltre(requete, ['label', 'prompt', 'branch']);
+  for (const r of db.prepare(`SELECT id, kind, label, prompt, branch FROM task
+      ${fTask.cond ? `WHERE ${fTask.cond}` : ''} ORDER BY id DESC LIMIT ?`).all(...fTask.args, PAR_SOURCE)) {
+    const titre = (r.label || r.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 70);
+    pousser({
+      kind: 'task', ref: String(r.id), group: 'tasks',
+      label: titre || r.branch, detail: r.branch || '',
+      nav: { tab: 'task', task_id: r.id, task_kind: r.kind || 'code' },
+      texte: `${r.label || ''} ${r.prompt || ''} ${r.branch || ''}`,
+    });
+  }
+
+  // 6. Navigation et actions — fournies par le client, qui seul sait ce qu'il sait faire.
   for (const a of actions) {
     pousser({ kind: 'nav', ref: a.id, group: 'nav', label: a.label, detail: '', action: a.id, texte: a.label });
+  }
+
+  /* PALETTE OUVERTE, RIEN DE TAPÉ : on ne rend pas « les douze premiers de tout ». Sans
+     requête, le score de correspondance est le même partout et c'est la source la plus
+     nombreuse — les liens de la grille — qui prend les douze places : on ouvrait la palette
+     sur huit URL Kibana, aucune merge request, aucune session, alors que tout cela se trouve
+     dès qu'on tape une lettre. On propose donc un ÉCHANTILLON des trois choses qu'on vient
+     y chercher, trois de chaque, dans un ordre fixe. */
+  if (!requete) {
+    const parGroupe = (g, n) => out.filter((o) => o.group === g)
+      .sort((a, b) => frecence(use.get(`${b.kind}:${b.ref}`)) - frecence(use.get(`${a.kind}:${a.ref}`)))
+      .slice(0, n);
+    return [...parGroupe('nav', 3), ...parGroupe('mrs', 3), ...parGroupe('tasks', 3)]
+      .map(({ texte, ...reste }) => reste);
   }
 
   const notes = out.map((o) => {

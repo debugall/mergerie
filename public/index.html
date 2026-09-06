@@ -109,13 +109,20 @@
         <kbd id="paletteKbd">Ctrl K</kbd>
     </button>
     <div class="header-right">
+        <span id="dryBadge" class="badge" hidden title="Mode dry-run : les rapports sont simulés, l'IA n'est pas appelée" data-i18n-title="ui.title.mode-dry-run-les-rapports">dry-run</span>
+        <!-- CHRONO DE SESSION DE TRAVAIL. Il occupait le coin de l'écran sur les dix onglets,
+             en gros chiffres, sans dire de quoi il parlait : « 00:00 ▶ ↺ » ressemble à un
+             minuteur du produit. Il porte maintenant une icône qui le nomme, il passe APRÈS
+             les badges d'état (qui, eux, parlent de l'application), et il se réduit à l'icône
+             et au bouton de départ tant qu'il est à zéro — la remise à zéro d'un zéro ne
+             servait à rien et faisait la moitié de son encombrement. -->
         <div id="chrono" class="chrono" title="Chrono de session de travail" data-i18n-title="ui.title.chrono-de-session-de-travail">
+            <svg class="ico ico-sm chrono-ico" aria-hidden="true"><use href="#i-clock"/></svg>
             <span id="chronoTime">00:00</span>
             <button id="chronoStart" title="Démarrer" data-i18n-title="ui.title.demarrer"><svg class="ico ico-sm"><use href="#i-play"/></svg></button>
             <button id="chronoPause" title="Pause" data-i18n-title="ui.title.pause" hidden><svg class="ico ico-sm"><use href="#i-pause"/></svg></button>
             <button id="chronoReset" title="Remettre à zéro" data-i18n-title="ui.title.remettre-a-zero"><svg class="ico ico-sm"><use href="#i-reset"/></svg></button>
         </div>
-        <span id="dryBadge" class="badge" hidden title="Mode dry-run : les rapports sont simulés, l'IA n'est pas appelée" data-i18n-title="ui.title.mode-dry-run-les-rapports">dry-run</span>
     </div>
 </header>
 
@@ -127,7 +134,8 @@
         <span id="logElapsed" class="logelapsed" hidden></span>
         <span class="spacer"></span>
         <button id="logStop" class="btn btn-sm btn-danger" hidden title="Arrêter immédiatement le job en cours" data-i18n-title="ui.title.arreter-immediatement-le-job-en"><svg class="ico"><use href="#i-stop"/></svg><span data-i18n="ui.btn.stop">Stop</span></button>
-        <button id="logRetry" class="btn btn-sm" hidden title="Rejouer ce job sur le même objet — une review reprend là où elle s'est arrêtée" data-i18n-title="job.retry.title"><svg class="ico"><use href="#i-repeat"/></svg><span data-i18n="job.retry.btn">Relancer</span></button>
+        <button id="logResult" class="btn btn-sm btn-primary" type="button" hidden><svg class="ico ico-sm"><use href="#i-eye"/></svg><span data-i18n="job.result.open">Voir le rapport</span></button>
+    <button id="logRetry" class="btn btn-sm" hidden title="Rejouer ce job sur le même objet — une review reprend là où elle s'est arrêtée" data-i18n-title="job.retry.title"><svg class="ico"><use href="#i-repeat"/></svg><span data-i18n="job.retry.btn">Relancer</span></button>
         <label class="muted"><input type="checkbox" id="logAutoscroll" checked /><span data-i18n="ui.lbl.auto-defilement">auto-défilement</span></label>
         <button id="logCopy" class="btn btn-sm btn-ghost" title="Copier tout le journal dans le presse-papier" data-i18n-title="ui.title.copier-tout-le-journal-dans" data-i18n="ui.btn.copier">copier</button>
         <button id="logQueueBtn" class="btn btn-sm btn-ghost" hidden title="Voir les jobs en attente" data-i18n-title="job.queue.title"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="job.queue.btn">En attente</span><span id="logQueueCount" class="nav-health warn">0</span></button>
@@ -172,9 +180,9 @@
             <span id="discoverInfo" class="muted"></span>
         </div>
         <div class="segmented" role="tablist">
-            <button data-seg="to_review" class="active" role="tab"><span data-i18n="review.seg.to-review">À traiter</span> <span class="seg-count" id="segCountToReview">0</span></button>
-            <button data-seg="reviewed" role="tab"><span data-i18n="review.seg.reviewed">Reviewées</span> <span class="seg-count" id="segCountReviewed">0</span></button>
-            <button data-seg="done" role="tab"><span data-i18n="review.seg.done">Traitées</span> <span class="seg-count" id="segCountDone">0</span></button>
+            <button data-seg="to_review" class="active" role="tab"><span data-i18n="review.seg.to-review">À traiter</span> <span class="seg-count is-waiting" id="segCountToReview"></span></button>
+            <button data-seg="reviewed" role="tab"><span data-i18n="review.seg.reviewed">Reviewées</span> <span class="seg-count is-waiting" id="segCountReviewed"></span></button>
+            <button data-seg="done" role="tab"><span data-i18n="review.seg.done">Traitées</span> <span class="seg-count is-waiting" id="segCountDone"></span></button>
         </div>
         <input id="searchReview" class="search" type="search" placeholder="Rechercher (titre, auteur, projet, ticket)…" data-i18n-placeholder="ui.ph.rechercher-titre-auteur-projet-ticket" />
         <div id="reviewErrors"></div>
@@ -232,10 +240,10 @@
     <!-- Dev IA -->
     <section id="tab-task" class="tab">
         <div class="segmented subnav" role="tablist">
-            <button data-kind="code" class="active" role="tab" title="L'IA modifie le code, commite et ouvre les MR" data-i18n-title="ui.title.l-ia-modifie-le-code">Codage<span class="seg-count" id="kindCountCode">0</span></button>
-            <button data-kind="local" role="tab" title="L'IA code dans des dossiers locaux, en place, sans git (ni commit ni push)" data-i18n-title="local.tab-title">Codage hors dépôt<span class="seg-count" id="kindCountLocal">0</span></button>
-            <button data-kind="explore" role="tab" title="L'IA répond à une question sur le code, sans rien modifier" data-i18n-title="ui.title.l-ia-repond-a-une">Exploration<span class="seg-count" id="kindCountExplore">0</span></button>
-            <button data-kind="ask" role="tab" title="Poser une question à l'IA sans lien avec un dépôt, et garder la réponse" data-i18n-title="ask.tab-title">Question libre<span class="seg-count" id="kindCountAsk">0</span></button>
+            <button data-kind="code" class="active" role="tab" title="L'IA modifie le code, commite et ouvre les MR" data-i18n-title="ui.title.l-ia-modifie-le-code"><span data-i18n="task.kind.code">Codage</span><span class="seg-count" id="kindCountCode">0</span></button>
+            <button data-kind="local" role="tab" title="L'IA code dans des dossiers locaux, en place, sans git (ni commit ni push)" data-i18n-title="local.tab-title"><span data-i18n="task.kind.local">Codage hors dépôt</span><span class="seg-count" id="kindCountLocal">0</span></button>
+            <button data-kind="explore" role="tab" title="L'IA répond à une question sur le code, sans rien modifier" data-i18n-title="ui.title.l-ia-repond-a-une"><span data-i18n="task.kind.explore">Exploration</span><span class="seg-count" id="kindCountExplore">0</span></button>
+            <button data-kind="ask" role="tab" title="Poser une question à l'IA sans lien avec un dépôt, et garder la réponse" data-i18n-title="ask.tab-title"><span data-i18n="task.kind.ask">Question libre</span><span class="seg-count" id="kindCountAsk">0</span></button>
         </div>
         <div id="taskToolbar" class="toolbar">
             <button id="btnNewTask" class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg><span id="btnNewTaskLabel" data-i18n="ui.span.nouvelle-session-de-codage">Nouvelle session de codage</span></button>
@@ -545,12 +553,12 @@
                         <option value="pull" data-i18n="docker.act.pull">Pull</option>
                     </select>
                 </label>
-                <label class="dact-action"><span data-i18n="docker.actions.filter">N'afficher que</span>
-                    <!-- Options peuplées par app.js depuis DOCKER_STATE_FILTERS : la MÊME liste
-                         que le filtre de l'onglet Compose. Deux menus « N'afficher que » côte à
+                <div class="dact-action"><span data-i18n="docker.actions.filter">N'afficher que</span>
+                    <!-- Pastilles peuplées par app.js depuis DOCKER_STATE_FILTERS : la MÊME liste
+                         que le filtre de l'onglet Compose. Deux filtres « N'afficher que » côte à
                          côte qui divergeraient seraient un piège. -->
-                    <select id="dactFilter"></select>
-                </label>
+                    <div id="dactFilter" class="chips" role="group" data-state="all"></div>
+                </div>
                 <input id="dactSearch" class="dact-search" type="search" placeholder="Rechercher un service…" data-i18n-placeholder="docker.actions.search" />
             </div>
             <p class="muted" data-i18n="docker.actions.hint">Coche les containers auxquels appliquer l'action, puis valide. La liste ne montre que les services concernés par l'action choisie.</p>
@@ -1885,6 +1893,10 @@
     <span id="footerTokens" class="footer-tokens" title="Tokens IA consommés (cumul estimé)" data-i18n-title="context.title.tokens-ia-consommes-cumul-estime"><svg class="ico ico-sm"><use href="#i-zap"/></svg> <b id="footerTokCount">0</b> tok</span>
     <button id="footerLogs" class="footer-mode footer-logs" type="button" hidden title="Réafficher le journal du dernier job (raccourci : l)" data-i18n-title="context.title.reafficher-le-journal"><span class="footer-logs-dot"></span><svg class="ico ico-sm"><use href="#i-doc"/></svg><span data-i18n="context.btn.journal">journal</span></button>
     <button id="footerMute" class="footer-mode" type="button" title="Mode silencieux (notifications bureau)"><svg class="ico ico-sm"><use href="#i-bell"/></svg></button>
+    <!-- LA COUCHE CLAVIER SE VOIT. Onze raccourcis existent — dont `j`/`k` et `1`–`9`, ceux qui
+         rendent la densité tenable — et rien à l'écran ne les annonçait : personne ne les
+         trouvait. Le bandeau du bas est le seul endroit présent sur les dix onglets. -->
+    <button id="footerHelp" class="footer-mode" type="button" title="Raccourcis clavier (?)" data-i18n-title="context.title.raccourcis-clavier">?</button>
     <button id="footerMode" class="footer-mode" type="button" title="Mode d'affichage du bandeau" data-i18n-title="context.title.mode-d-affichage-du-bandeau" data-i18n="context.btn.live">live</button>
     <button id="footerHide" class="footer-hide" type="button" title="Masquer le bandeau" data-i18n-title="context.title.masquer-le-bandeau">✕</button>
 </footer>

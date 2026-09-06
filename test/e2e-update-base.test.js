@@ -403,6 +403,10 @@ describe('Rattraper la branche de départ', () => {
       await page.locator('nav button[data-tab="review"]').click();
       await page.locator('[data-seg="to_review"]').click();
       const mrId = (await app.api('GET', '/api/mrs')).body.find((m) => m.iid === 88).id;
+      /* « Merger » est une action secondaire de la carte : elle vit dans le menu « ⋯ », que
+         l'utilisateur ouvre avant de la cliquer. */
+      const carte = page.locator(`#toReviewList .card[data-id="${mrId}"]`);
+      await carte.locator('[data-more]').click();
       await page.locator(`#toReviewList [data-merge="${mrId}"]`).click();
       await page.locator('#mergeModal:not([hidden])').waitFor();
       await page.locator('#mergeConflictNote').waitFor({ state: 'visible', timeout: 20000 });

@@ -22,7 +22,11 @@ const { t } = require('../public/i18n-runtime.js');
 // Mode démo : dépôts locaux FICTIFS (la machine réelle n'existe pas en démo) pour que
 // Navigation et « Commandes Git » restent consultables. Séquence figée.
 const isDemo = () => process.env.MERGERIE_DEMO === '1';
-const DEMO_ROOT = { id: 901, path: '/home/moi/dev', label: 'Mes dépôts (démo)' };
+/* Le libellé passe par le dictionnaire : en anglais, « Mes dépôts (démo) » restait français
+   au milieu d'une interface traduite. C'est une FONCTION, pas une constante — la langue peut
+   changer sans redémarrer le serveur (`i18n.setLang` au moment où on l'enregistre). */
+const DEMO_ROOT_PATH = '/home/moi/dev';
+const demoRoot = () => ({ id: 901, path: DEMO_ROOT_PATH, label: `${t('demo.root-label')} ${t('demo.suffix')}` });
 const DEMO_PROJECTS = [
   { name: 'boutique-api', git: true, branch: 'main' },
   { name: 'boutique-web', git: true, branch: 'develop' },
@@ -44,7 +48,7 @@ const BRANCH_RE = /^(?!-)(?!.*\.\.)[A-Za-z0-9._/-]{1,200}$/;
 /* ---------- Répertoires ---------- */
 
 function roots() {
-  if (isDemo()) return [{ ...DEMO_ROOT }];
+  if (isDemo()) return [demoRoot()];
   return db.prepare('SELECT * FROM local_root ORDER BY id').all();
 }
 
@@ -98,7 +102,7 @@ function currentBranch(dir) {
 }
 
 function projects(rootId) {
-  if (isDemo()) return DEMO_PROJECTS.map((p) => ({ ...p, path: `${DEMO_ROOT.path}/${p.name}` }));
+  if (isDemo()) return DEMO_PROJECTS.map((p) => ({ ...p, path: `${DEMO_ROOT_PATH}/${p.name}` }));
   const root = rootById(rootId);
   if (!root) throw new Error(t('err.local-root.unknown'));
   let entries;
@@ -146,7 +150,7 @@ async function fetchRemote(dir, out, onLog) {
 }
 
 async function branches(rootId, name, { fetch = true, onLog = () => {} } = {}) {
-  if (isDemo()) return { project: name, path: `${DEMO_ROOT.path}/${name}`, current: 'main', fetch_error: null, branches: [{ name: 'main', date: '2026-07-20T10:00:00Z' }, { name: 'develop', date: '2026-07-18T09:00:00Z' }, { name: 'release/2.0', date: '2026-07-10T14:00:00Z' }] };
+  if (isDemo()) return { project: name, path: `${DEMO_ROOT_PATH}/${name}`, current: 'main', fetch_error: null, branches: [{ name: 'main', date: '2026-07-20T10:00:00Z' }, { name: 'develop', date: '2026-07-18T09:00:00Z' }, { name: 'release/2.0', date: '2026-07-10T14:00:00Z' }] };
   const dir = projectDir(rootId, name);
   if (!isGitRepo(dir)) throw new Error(t('err.local-project.not-git', { name }));
   const out = { project: name, path: dir, current: currentBranch(dir), branches: [], fetch_error: null };
@@ -229,7 +233,7 @@ async function checkout(targets, onLog = () => {}) {
     // Démo : bilan fictif « déjà à jour » (aucune machine réelle à manipuler).
     const results = targets.map((tg) => ({
       root_id: Number(tg.root_id), project: String(tg.name || ''), branch: String(tg.branch || ''),
-      path: `${DEMO_ROOT.path}/${tg.name}`, from: String(tg.branch || ''), files: [], state: 'already',
+      path: `${DEMO_ROOT_PATH}/${tg.name}`, from: String(tg.branch || ''), files: [], state: 'already',
     }));
     return { results, counts: { done: results.length, dirty: 0, failed: 0 } };
   }
@@ -323,9 +327,9 @@ async function runCommand(targets, command) {
 
   if (isDemo()) {
     const results = list.map((tg) => ({
-      root_id: Number(tg.root_id), project: String(tg.name), path: `${DEMO_ROOT.path}/${tg.name}`,
+      root_id: Number(tg.root_id), project: String(tg.name), path: `${DEMO_ROOT_PATH}/${tg.name}`,
       code: 0, ok: true, truncated: false,
-      output: `$ ${full}\n(demo) exécuté dans ${DEMO_ROOT.path}/${tg.name}\nAlready up to date.`,
+      output: `$ ${full}\n(demo) exécuté dans ${DEMO_ROOT_PATH}/${tg.name}\nAlready up to date.`,
     }));
     return { command: full, results, counts: { ok: results.length, failed: 0 } };
   }

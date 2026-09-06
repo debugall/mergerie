@@ -11,6 +11,70 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Changed
+
+- **Une passe de design et d'ergonomie sur toute l'application**, à la suite d'une revue écran
+  par écran. Ce qui change, dans l'ordre où on le rencontre :
+
+  - **Le premier lancement s'ouvre là où l'on peut commencer.** Sur une installation neuve,
+    l'application ouvrait le brief du matin — qui annonce « rien ne réclame ton attention » à
+    quelqu'un qui n'a encore rien branché. Elle ouvre maintenant sur Reviews et son assistant en
+    trois étapes, et le brief reprend sa place dès le lendemain, une fois la forge connectée.
+  - **« Tester la connexion » teste ce qui est à l'écran.** Il lisait la configuration
+    *enregistrée* : on saisissait l'URL et le jeton, on cliquait, et on se faisait répondre
+    « Token GitLab non configuré » par une application qui avait la valeur sous les yeux.
+    Il envoie désormais les valeurs du formulaire, comme le faisait déjà « Tester GitHub », et
+    dit quoi faire quand il manque quelque chose.
+  - **Les étapes de l'assistant se cochent** au fur et à mesure : forge connectée, dépôts
+    ajoutés, merge requests récupérées. Trois boutons deviennent une progression.
+  - **Le panneau de job ne pousse plus la page.** Il s'insérait dans le flux : tout descendait
+    de 78 px à l'ouverture et remontait à la fermeture, deux sauts par job, pendant qu'on lit ou
+    qu'on vise un bouton. Il flotte maintenant en bas de l'écran.
+  - **La carte d'une merge request tient sur une ligne d'actions** : *Voir le diff · Contexte ·
+    Reviewer ▾ · ⋯*. Les sept boutons de même poids sont regroupés dans le menu « ⋯ », et la
+    colonne d'actions redevient un rail — le même bouton au même endroit d'une carte à l'autre.
+  - **Le rapport de review commence dans le premier écran.** Onze boutons sur trois rangées le
+    repoussaient hors de vue ; il en reste trois — *Ouvrir le code · Faire corriger le code par
+    l'IA · Merger* — et le menu « ⋯ », où « Supprimer le rapport » est descendu, en dernier et
+    derrière un séparateur : il portait le même rouge que « Merger », à un centimètre de lui.
+  - **Un seul idiome de filtre.** Règle écrite et appliquée : pastilles quand les valeurs sont
+    peu nombreuses et stables, liste à cocher avec champ de recherche au-delà. Les deux menus
+    déroulants « N'afficher que » de Docker passent en pastilles ; les tranches de note des
+    Reviews reprennent le même dessin.
+  - **Deux niveaux de titre au lieu de cinq, et une seule largeur de contenu.** Les marges ne
+    sautent plus d'un onglet à l'autre.
+  - **Docker parle français.** `running`, `exited`, `created`, `restarting` s'affichaient tels
+    quels à côté de « non créé » et « arrêté ». Et « Non Démarré » perd sa majuscule fautive.
+  - **Les rangées d'actions de Docker et de Jenkins ne bougent plus** : ordre fixe, actions
+    indisponibles désactivées plutôt qu'absentes — avec une infobulle qui dit pourquoi. Un
+    bouton coloré désactivé a maintenant le même gris que les autres.
+  - **Le chrono de session de travail** porte une icône qui le nomme, passe après les badges
+    d'état et se réduit tant qu'il est à zéro.
+  - **La fenêtre de session** garde son pied à l'écran (« Annuler » et le bouton principal
+    tombaient sous la ligne de flottaison), ses trois champs par projet ont enfin une ligne
+    d'en-têtes, et « Enregistrer » devient « Créer la session ».
+  - **Un compteur ne s'affiche plus avant sa donnée**, la file des merge requests montre un
+    squelette pendant son premier chargement, et une barre de statistiques à zéro ne dessine
+    plus un moignon coloré.
+  - **Quand le serveur ne répond pas**, l'écran le dit en français — « Mergerie ne répond pas —
+    vérifie que le serveur tourne » — et propose « Réessayer » au lieu d'afficher
+    « Failed to fetch ».
+  - **Dans la fenêtre de vérification, `!204` ramène à sa merge request** au lieu d'être du
+    texte mort.
+  - **La palette ne s'ouvre plus sur huit URL Kibana.** Sans requête, tout se valait et c'est
+    la source la plus nombreuse — les liens de la grille — qui prenait toutes les places : ni
+    merge request, ni session, alors que les deux se trouvent dès qu'on tape une lettre. À
+    l'ouverture, elle propose maintenant trois sections courtes — **Actions**, **Merge requests
+    récentes**, **Sessions récentes** — et chaque ligne porte son type. Les **sessions de dev**
+    y sont d'ailleurs cherchables pour la première fois, par leur libellé, leur prompt ou leur
+    branche, et le résultat ouvre le bon sous-onglet de Dev IA.
+  - Détails : le badge « à traiter » de la colonne de navigation dit enfin ce qu'il compte, une
+    confirmation en masse pose la question dans son titre (« Reviewer 11 merge requests ? »
+    plutôt que « Confirmer l'action »), le compteur « 8 jobs sur 8 » de Jenkins ne se casse plus
+    en quatre lignes, son badge d'état dupliqué a été retiré de la rangée d'actions, et les deux
+    libellés que le mode démo fabrique lui-même (« Mes dépôts », « (démo) ») suivent enfin la
+    langue de l'interface.
+
 ### Added
 
 - **What you type in Settings is no longer wiped by a late load.** Opening a Settings sub-tab

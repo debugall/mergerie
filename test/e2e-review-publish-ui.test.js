@@ -110,6 +110,15 @@ describe('Publier le rapport de review — écran', { skip: dispo ? false : MSG_
     await app.api('PUT', '/api/config', { auto_post_review: '0' });
   });
 
+  /* Ouvre le menu « ⋯ » du rapport s'il ne l'est pas déjà : une action qui y vit ne peut pas
+     être cliquée les volets fermés, pas plus par le test que par l'utilisateur. */
+  async function ouvrirMenu() {
+    const menu = page.locator('#reportDetail .split-menu');
+    if (await menu.isVisible()) return;
+    await page.locator('#aMore').click();
+    await menu.waitFor();
+  }
+
   /* ------------------------------------------------------------- le bouton ---- */
 
   test('le rapport porte un bouton « Publier », qui poste après confirmation', async () => {
@@ -117,8 +126,11 @@ describe('Publier le rapport de review — écran', { skip: dispo ? false : MSG_
     await page.locator('[data-tab="review"]').click();
     await page.locator('[data-seg="reviewed"]').click();
     await page.locator('#reportList .card').first().click();
+    /* « Publier » est une action secondaire : elle vit dans le menu « ⋯ » du rapport, avec
+       tout ce qui n'est ni « Ouvrir le code », ni « Faire corriger », ni « Merger ». */
     const bouton = page.locator('#aPublish');
-    await bouton.waitFor({ timeout: 15000 });
+    await bouton.waitFor({ state: 'attached', timeout: 15000 });
+    await ouvrirMenu();
     assert.match(await bouton.innerText(), /GitLab/, 'le bouton nomme la forge du dépôt');
 
     // On confirme : écrire chez les autres ne doit pas partir sur un clic isolé.
@@ -141,7 +153,8 @@ describe('Publier le rapport de review — écran', { skip: dispo ? false : MSG_
   test('une fois publié, le bouton propose de REpublier — il ne se tait pas', async () => {
     // Sans ce changement de libellé, on reclique en croyant que le premier envoi a échoué,
     // et l'équipe reçoit deux fois le même rapport.
-    await page.locator('#aPublish').waitFor({ timeout: 15000 });
+    await page.locator('#aPublish').waitFor({ state: 'attached', timeout: 15000 });
+    await ouvrirMenu();
     await page.waitForFunction(
       () => /republier/i.test(document.querySelector('#aPublish').innerText),
       null, { timeout: 15000 },
@@ -151,6 +164,7 @@ describe('Publier le rapport de review — écran', { skip: dispo ? false : MSG_
 
   test('annuler la confirmation ne publie rien', async () => {
     const avant = app.state.calls.filter((c) => c.method === 'POST' && /\/notes$/.test(c.path)).length;
+    await ouvrirMenu();
     await page.locator('#aPublish').click();
     await page.locator('#confirmModal:not([hidden])').waitFor();
     await page.locator('#confirmCancel').click();

@@ -166,6 +166,9 @@ function debounce(fn, ms = 120) {
    Le drapeau est posé par les fonctions de CHARGEMENT et consommé ici — c'est le seul endroit
    qui sait distinguer « les données sont arrivées » de « on a re-rendu ». */
 let listeChargee = false;
+// « La file n'a jamais été peuplée » — distinct de `listeChargee` ci-dessus, qui est un
+// drapeau d'ANIMATION consommé à chaque rendu. Sert au squelette du premier affichage.
+let fileJamaisChargee = true;
 function stagger(sel) {
   const nodes = $$(sel);
   nodes.forEach((c, i) => c.style.setProperty('--i', Math.min(i, 10)));
@@ -258,6 +261,10 @@ document.addEventListener('click', (e) => {
 // Traduit les erreurs techniques en message actionnable, SANS masquer l'original
 // (le message brut reste affiché et copiable — il sert au diagnostic).
 const ERROR_HINTS = [
+  /* LE SERVEUR NE RÉPOND PAS. `fetch` rend « Failed to fetch » (Chrome) ou « Load failed »
+     (Safari) — deux messages en anglais, sans sujet ni verbe utile, affichés tels quels à
+     quelqu'un dont l'application tourne sur SA machine et qu'il suffit de relancer. */
+  [/Failed to fetch|Load failed|NetworkError|network error/i, 'err.hint.offline'],
   [/UNABLE_TO_GET_ISSUER_CERT|self.signed|CERT_|DEPTH_ZERO/i, 'err.hint.cert'],
   [/\b401\b|\b403\b|Unauthorized|Forbidden|invalid.token/i, 'err.hint.token'],
   [/ENOENT|command not found|copilot.*introuvable|spawn .* ENOENT/i, 'err.hint.cli'],
@@ -279,15 +286,33 @@ function explainError(msg) {
    suivant — le bouton avait l'air de marcher, ce qui est pire que pas de bouton. */
 function errorBox(text, mrId, taskId, localId, askId) {
   const hint = errorHint(text);
-  const hintHtml = hint ? `<div class="errhint">${esc(hint)}</div>` : '';
+  /* `errorBox(explainError(msg))` est un appel courant : `explainError` a DÉJÀ mis l'indice en
+     tête du texte, et le recalculer ici l'affichait une seconde fois, mot pour mot, deux lignes
+     plus bas. On ne le pose que s'il n'y est pas encore. */
+  const hintHtml = hint && !String(text || '').includes(hint) ? `<div class="errhint">${esc(hint)}</div>` : '';
   const clear = mrId ? ` data-clear-mr="${mrId}"`
     : (taskId ? ` data-clear-task="${taskId}"`
       : (localId ? ` data-clear-local="${localId}"` : (askId ? ` data-clear-ask="${askId}"` : '')));
+  /* RÉESSAYER, dans le bloc. Une panne de connexion se répare à côté (on relance le serveur)
+     et l'écran, lui, restait sur son message : il fallait recharger la page pour en sortir,
+     ce que rien ne disait. Le bouton n'apparaît que là où il a un sens — pas sur une erreur
+     de jeton ou de certificat, qu'un nouvel essai ne changera pas. */
+  const reessayer = /Failed to fetch|Load failed|NetworkError|network error/i.test(String(text || ''))
+    ? `<button class="btn btn-sm errretry" title="${esc(tr('err.retry-title'))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg>${tr('err.retry')}</button>` : '';
   return `<div class="errbox"><div class="errhead"><span>${svgIco('alert')} ${tr('ui.error')}</span>`
-    + `<span class="errbtns"><button class="btn btn-sm errcopy" title="${esc(tr('err.copy-title'))}">${tr('ui.copy')}</button>`
+    + `<span class="errbtns">${reessayer}<button class="btn btn-sm errcopy" title="${esc(tr('err.copy-title'))}">${tr('ui.copy')}</button>`
     + `<button class="btn btn-icon btn-sm btn-danger errclear"${clear} title="${esc(tr('err.clear-title'))}"><svg class=\"ico ico-sm\"><use href=\"#i-close\"/></svg></button></span></div>`
     + `${hintHtml}<pre>${esc(text)}</pre></div>`;
 }
+
+/* Rejouer le chargement de l'onglet courant — exactement ce que fait un clic sur son bouton
+   de navigation, la seule voie qui remette AUSSI la vue dans son état de départ. */
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('.errretry');
+  if (!b) return;
+  const actif = $('nav button[data-tab].active');
+  if (actif) actif.click(); else window.location.reload();
+});
 
 // Délégation : bouton "copier" de n'importe quel errbox (liste, détail, discover).
 document.addEventListener('click', (e) => {
@@ -349,6 +374,18 @@ function mrLinks(m) {
 // Date courte lisible (JJ/MM/AAAA) à partir d'un ISO GitLab.
 // Séparateur de milliers, partagé par les cartes du tableau de bord.
 const fmtNum = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+/* UNE SEULE ÉCRITURE POUR UNE NOTE. `note.raw` est le texte que l'IA a écrit : selon la passe,
+   « 7,4/10 » ou « 8.4/10 ». Les afficher tels quels mettait les deux formats dans la même liste,
+   à six lignes d'écart, plus un troisième dans les filtres. On rend donc TOUJOURS la valeur
+   numérique, écrite dans la langue de l'interface. */
+function fmtNote10(x) {
+  if (x == null || !Number.isFinite(Number(x))) return '—';
+  const n = Number(x);
+  return `${n.toLocaleString(I18Nrt.currentLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}/10`;
+}
+// `note` = { raw, value } rendu par l'API, `value` dans [0,1].
+const fmtNote = (note) => (note && note.value != null ? fmtNote10(note.value * 10) : '—');
 
 function fmtDate(iso) {
   try {
@@ -534,7 +571,7 @@ function aiSessionResultHtml(d) {
 // Bandeau d'état de la dernière boucle de convergence d'une MR.
 function convergeBoxHtml(run) {
   if (!run) return '';
-  const n = (v) => (v == null ? '—' : `${v}/10`);
+  const n = (v) => fmtNote10(v);
   const cls = { converged: 'ok', capped: 'warn', regressed: 'warn', no_change: 'warn', stopped: 'muted', error: 'danger', running: 'run' }[run.status] || 'muted';
   const icon = { converged: 'i-check', capped: 'i-clock', regressed: 'i-reset', no_change: 'i-info', stopped: 'i-stop', error: 'i-close', running: 'i-zap' }[run.status] || 'i-info';
   const label = tr(`converge.status.${run.status}`, { note: n(run.best_note), passes: run.passes_done, threshold: run.threshold });
@@ -908,11 +945,11 @@ function renderReportPlaceholder() {
         <ul>${delta.slice(1).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
       </div>` : ''}
       <div class="empty-t">${tr('report.ph.count', { n: rows.length, total: rows.length })}</div>
-      <p class="empty-s">${avg != null ? tr('report.ph.avg', { avg }) : tr('report.ph.no-note')}${stale ? tr('report.ph.stale', { stale }) : ''}</p>
+      <p class="empty-s">${avg != null ? tr('report.ph.avg', { avg: fmtNote10(avg).replace('/10', '') }) : tr('report.ph.no-note')}${stale ? tr('report.ph.stale', { stale }) : ''}</p>
       ${worst.length ? `<div class="ph-worst">
         <div class="step-s">${tr('report.ph.priority')}</div>
         ${worst.map((m) => `<button class="ph-item" data-open-mr="${m.id}">
-            <span class="note ${noteClass(m.note)}">${esc(m.note.raw)}</span>
+            <span class="note ${noteClass(m.note)}">${esc(fmtNote(m.note))}</span>
             <span class="ph-item-t">!${m.iid} — ${esc((m.title || '').slice(0, 48))}</span>
           </button>`).join('')}
       </div>` : ''}
@@ -936,17 +973,33 @@ function emptyState({ icon = 'inbox', title, text = '', actions = [] }) {
 
 // Onboarding : tant que GitLab n'est pas connecté ou qu'aucun dépôt n'est suivi,
 // on remplace la liste par les 3 étapes de démarrage, chacune avec son action directe.
-let setupState = { configured: false, hasRepos: false, checked: false };
+let setupState = { configured: false, hasRepos: false, hasMrs: false, checked: false };
 async function checkSetup() {
   try {
-    const [cfg, repos] = await Promise.all([api('/config'), api('/repos')]);
+    /* `hasMrs` couvre la TROISIÈME étape. Sans elle, l'assistant disparaissait dès la
+       deuxième franchie — on connectait la forge, on ajoutait un dépôt, et l'écran passait à
+       « aucune merge request » sans jamais montrer qu'il restait un geste à faire ni que les
+       deux premiers avaient réussi. Une progression qui s'évanouit aux deux tiers ne se lit
+       pas comme une progression.
+       Le compte porte sur TOUS les stades : une file vide après une découverte est un état
+       légitime (« tout est traité »), à ne pas confondre avec « on n'a jamais cherché ». */
+    const [cfg, repos, stats] = await Promise.all([api('/config'), api('/repos'), api('/stats')]);
+    const f = (stats && stats.funnel) || {};
     setupState = {
       configured: !!(cfg.gitlab_url && cfg.access_token),
       hasRepos: Array.isArray(repos) && repos.length > 0,
+      hasMrs: ((f.to_review || 0) + (f.reviewed || 0) + (f.done || 0)) > 0,
       checked: true,
     };
   } catch { setupState.checked = true; }
   return setupState;
+}
+
+/* Relit l'état du démarrage et redessine l'assistant s'il est à l'écran. Appelé au chargement,
+   après un enregistrement de configuration et après un ajout de dépôt — les trois moments où
+   une étape peut basculer de « à faire » à « fait ». */
+function rafraichirDemarrage() {
+  return checkSetup().then(() => { if (currentSeg === 'to_review') renderToReview(); });
 }
 
 // Jira configuré côté serveur ? Pilote l'affichage du bloc « enrichir depuis Jira »
@@ -976,7 +1029,10 @@ function onboardingHtml() {
     <div class="steps">
       ${step(1, s.configured, tr('onboard.s1.title'), tr('onboard.s1.text'), 'go-config', tr('onboard.s1.btn'))}
       ${step(2, s.hasRepos, tr('onboard.s2.title'), tr('onboard.s2.text'), 'go-repos', tr('onboard.s2.btn'))}
-      ${step(3, false, tr('onboard.s3.title'), tr('onboard.s3.text'), 'discover', tr('onboard.s3.btn'))}
+      ${/* La troisième se coche quand des merge requests sont VRAIMENT arrivées : c'est la
+             seule des trois dont on connaît le résultat sans rien redemander au serveur —
+             si cet écran s'affiche avec des cartes, c'est que la recherche a rapporté. */''}
+      ${step(3, s.hasMrs, tr('onboard.s3.title'), tr('onboard.s3.text'), 'discover', tr('onboard.s3.btn'))}
     </div>
   </div>`;
 }
@@ -1021,7 +1077,12 @@ async function refreshCounts() {
     const set = (id, n) => {
       const el = $(id); if (!el) return;
       const cible = n || 0; const depart = Number(el.textContent) || 0;
-      if (cible === depart || document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      /* Le compteur naît VIDE et le reste jusqu'à sa donnée : affirmer « 0 » pendant que la
+         requête est en vol, c'est dire « rien à traiter » à quelqu'un qui a onze merge
+         requests — et sous latence, c'est ce qu'il lit en premier. */
+      const premier = el.classList.contains('is-waiting');
+      el.classList.remove('is-waiting');
+      if (premier || cible === depart || document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches) {
         el.textContent = cible; return;
       }
       const t0 = performance.now(); const dur = 600;
@@ -1034,7 +1095,17 @@ async function refreshCounts() {
     };
     set('#segCountToReview', f.to_review); set('#segCountReviewed', f.reviewed); set('#segCountDone', f.done);
     const nav = $('#navCountReview');
-    if (nav) { nav.textContent = f.to_review || 0; nav.hidden = !f.to_review; }
+    if (nav) {
+      const n = f.to_review || 0;
+      nav.textContent = n;
+      nav.hidden = !n;
+      /* Le seul badge de la colonne qui ne disait pas ce qu'il comptait. Même bulle maison que
+         ses voisins — et `title = ''`, sinon le navigateur remonterait à celui du bouton. */
+      const bulle = tr('nav.reviews.to-review', { n, count: n });
+      nav.dataset.tip = bulle;
+      nav.title = '';
+      nav.setAttribute('aria-label', bulle);
+    }
     /* Badge ORANGE : les rapports faibles qui attendent encore une décision. Il complète le
        badge neutre (« à traiter ») sans le remplacer — l'un dit combien de merge requests
        n'ont pas été lues, l'autre lesquelles méritent d'être lues en premier. */
@@ -1104,13 +1175,15 @@ async function loadDashboard() {
   const maxB = Math.max(1, ...s.notes.buckets.map((b) => b.count), s.notes.noNote);
   const notesHtml = `<div class="dash-card"><h3>${tr('stats.notes.title')} ${s.notes.avg != null ? `<span class="muted">${tr('stats.notes.avg', { avg: s.notes.avg })}</span>` : ''}</h3>${cap('stats.help.notes')}
     <div class="hbars">
-      ${s.notes.buckets.map((b, i) => `<div class="hbar"><span class="hbar-lbl">${b.label}</span><div class="hbar-track"><div class="hbar-fill" style="width:${(b.count / maxB) * 100}%;background:${noteColors[i]}"></div></div><span class="hbar-val">${b.count}</span></div>`).join('')}
-      <div class="hbar"><span class="hbar-lbl muted">${tr('stats.notes.none')}</span><div class="hbar-track"><div class="hbar-fill" style="width:${(s.notes.noNote / maxB) * 100}%;background:var(--line)"></div></div><span class="hbar-val">${s.notes.noNote}</span></div>
+      ${/* `is-zero` retire le `min-width` : à 0, la barre dessinait un moignon coloré de 2 px,
+           qui se lit comme « il y en a un peu » alors qu'il n'y en a aucun. */''}
+      ${s.notes.buckets.map((b, i) => `<div class="hbar"><span class="hbar-lbl">${b.label}</span><div class="hbar-track"><div class="hbar-fill${b.count ? '' : ' is-zero'}" style="width:${(b.count / maxB) * 100}%;background:${noteColors[i]}"></div></div><span class="hbar-val">${b.count}</span></div>`).join('')}
+      <div class="hbar"><span class="hbar-lbl muted">${tr('stats.notes.none')}</span><div class="hbar-track"><div class="hbar-fill${s.notes.noNote ? '' : ' is-zero'}" style="width:${(s.notes.noNote / maxB) * 100}%;background:var(--line)"></div></div><span class="hbar-val">${s.notes.noNote}</span></div>
     </div></div>`;
 
   const maxW = Math.max(1, ...s.weekly.map((w) => w.count));
   const weeklyHtml = `<div class="dash-card"><h3>${tr('stats.weekly.title')}</h3>${cap('stats.help.weekly')}
-    <div class="vbars">${s.weekly.map((w) => `<div class="vbar" title="${tr('stats.weekly.tooltip', { week: w.week, count: w.count })}"><div class="vbar-fill" style="height:${(w.count / maxW) * 100}%"></div><span class="vbar-val">${w.count || ''}</span></div>`).join('')}</div>
+    <div class="vbars">${s.weekly.map((w) => `<div class="vbar" title="${tr('stats.weekly.tooltip', { week: w.week, count: w.count })}"><div class="vbar-fill${w.count ? '' : ' is-zero'}" style="height:${(w.count / maxW) * 100}%"></div><span class="vbar-val">${w.count || ''}</span></div>`).join('')}</div>
     <div class="vbars-x">${s.weekly.map((w) => `<span>${w.week.slice(8, 10)}-${w.week.slice(5, 7)}</span>`).join('')}</div></div>`;
 
   // Taux de résolution : la mesure la plus parlante de ce que l'outil apporte.
@@ -1140,7 +1213,9 @@ async function loadDashboard() {
     <div class="vbars">${scoreTrend.map((w) => w.avg == null
       ? `<div class="vbar vbar-empty" title="${tr('stats.trend.no-data', { week: w.week })}"></div>`
       : `<div class="vbar" title="${tr('stats.trend.tooltip', { week: w.week, avg: w.avg, count: w.count })}"><div class="vbar-fill ${w.avg >= 7 ? 'vf-good' : w.avg >= 4 ? 'vf-mid' : 'vf-bad'}" style="height:${(w.avg / 10) * 100}%"></div><span class="vbar-val">${w.avg}</span></div>`).join('')}</div>
-    <div class="vbars-x">${scoreTrend.map((w) => `<span>${w.week.slice(8, 10)}-${w.week.slice(5, 7)}</span>`).join('')}</div></div>`;
+    ${/* Une semaine sans review n'est pas une semaine à zéro : sa date passe en gris pâle et
+          le dit avec des mots, plutôt que de laisser une colonne vide se lire comme un creux. */''}
+    <div class="vbars-x">${scoreTrend.map((w) => `<span${w.avg == null ? ` class="no-data" title="${esc(tr('stats.trend.no-data', { week: w.week }))}"` : ''}>${w.week.slice(8, 10)}-${w.week.slice(5, 7)}</span>`).join('')}</div></div>`;
 
   // Tokens : où part le quota. Camembert par type (conic-gradient, pas de calcul d'arc)
   // + coût moyen par MR reviewée. Le total est un MINORANT, dit dans la légende.
@@ -1433,7 +1508,12 @@ function objetsTermines(avant, apres) {
 function marquerEnCours(targets) {
   const fini = objetsTermines(ciblesEnCours, targets);
   if (fini.tasks.length || fini.locals.length) { if ($('#tab-task').classList.contains('active')) loadTasks(); }
-  if (fini.mrs.length && $('#tab-review').classList.contains('active')) loadSegment(currentSeg);
+  if (fini.mrs.length) {
+    if ($('#tab-review').classList.contains('active')) loadSegment(currentSeg);
+    // Les compteurs ne sont pas dans la liste : sans ça, ils gardent la valeur d'avant.
+    refreshCounts();
+    if ($('#tab-notes').classList.contains('active')) loadBrief();
+  }
   ciblesEnCours = targets;
   const t = targets || { mrs: [], tasks: [], locals: [], verifying: [] };
   const veut = new Set([
@@ -1518,6 +1598,13 @@ async function refreshStatus() {
         const avant = new Map(reportRows.map((m) => [m.id, m.note && m.note.raw]));
         loadToReview();
         if (currentSeg !== 'to_review') loadReports(currentSeg).then(() => signalerAtterrissage(avant));
+        /* LES COMPTEURS AUSSI. Les listes se rechargeaient déjà, pas les segments : après une
+           review, l'écran affichait encore « À traiter 10 / Reviewées 7 » quand l'API répondait
+           9/8, et il fallait changer d'onglet pour voir son propre travail. C'est la seule part
+           visible du résultat sur cet écran. */
+        refreshCounts();
+        // Et le brief, qui compte les MR fraîches et les rapports qui attendent une décision.
+        if ($('#tab-notes').classList.contains('active')) loadBrief();
         if ($('#tab-task').classList.contains('active')) loadTasks();
         // action Docker terminée (up/restart/down…) → recharger la liste pour voir le nouvel état
         if ($('#tab-docker').classList.contains('active')) loadDocker();
@@ -1795,7 +1882,21 @@ async function pumpLog() {
   // Repli auto quelques secondes après un job TERMINÉ (succès ou arrêt) : le panneau ne doit
   // pas rester collé en haut de tous les onglets. On garde l'ERREUR affichée (elle appelle une
   // action) et on ne masque pas si l'utilisateur a déplié le journal pour le lire.
+  /* UN JOB QUI A PRODUIT QUELQUE CHOSE NE S'EFFACE PAS TOUT SEUL. Il se repliait six secondes
+     après la fin, sans laisser de lien vers son résultat : le seul reste était une pastille de
+     onze pixels dans le pied de page. Quand le job désigne un objet — la MR reviewée, la session
+     — le bandeau garde un bouton qui y mène, et attend qu'on le ferme. */
+  const res = $('#logResult');
+  const menePar = !running && d.status === 'done' && d.target_kind && d.target_id;
+  if (res) {
+    res.hidden = !menePar;
+    if (menePar) {
+      res.dataset.kind = d.target_kind; res.dataset.id = d.target_id;
+      res.querySelector('span').textContent = tr(d.target_kind === 'mr' ? 'job.result.open' : 'job.result.open-task');
+    }
+  }
   if (running) { autoHideJobId = null; clearTimeout(autoHideTimer); }
+  else if (menePar) { clearTimeout(autoHideTimer); autoHideJobId = d.job_id; }
   else if ((d.status === 'done' || d.status === 'stopped') && d.job_id && autoHideJobId !== d.job_id) {
     autoHideJobId = d.job_id;
     clearTimeout(autoHideTimer);
@@ -2094,7 +2195,16 @@ function matchMr(m, q) {
 /* ---------- À reviewer ---------- */
 let toReviewRows = [];
 async function loadToReview() {
+  /* SQUELETTE AU PREMIER AFFICHAGE SEULEMENT. Sans lui, sous latence, l'écran reste vide et
+     dit « aucune merge request » alors que la requête est encore en vol. Aux rafraîchissements
+     suivants on garde la liste affichée : la remplacer par un squelette toutes les minutes
+     ferait clignoter ce qu'on est en train de lire.
+     ⚠ `listeChargee` ne convient PAS ici : il ne dit pas « déjà chargée » mais « anime la
+     prochaine entrée », et `stagger()` le remet à false à chaque rendu — s'en servir reposait
+     un squelette par-dessus la liste à chaque rafraîchissement. */
+  if (fileJamaisChargee) $('#toReviewList').innerHTML = skeleton(3);
   toReviewRows = await api('/mrs?status=to_review');
+  fileJamaisChargee = false;
   listeChargee = true;
   renderToReview();
 }
@@ -2103,7 +2213,7 @@ function renderToReview() {
   const q = ($('#searchReview').value || '').toLowerCase().trim();
   if (!toReviewRows.length) {
     // pas encore configuré → onboarding ; configuré et vide → file à jour
-    el.innerHTML = (setupState.checked && (!setupState.configured || !setupState.hasRepos))
+    el.innerHTML = (setupState.checked && (!setupState.configured || !setupState.hasRepos || !setupState.hasMrs))
       ? onboardingHtml()
       : emptyState({
         icon: 'check',
@@ -2150,6 +2260,15 @@ function renderToReview() {
   $$('#toReviewList [data-review]').forEach((b) => b.addEventListener('click', async () => {
     try { await busy(b, () => api(`/mrs/${b.dataset.review}/review`, { method: 'POST' })); toast(tr('toast.review-de-lancee', { iid: b.dataset.iid })); refreshStatus(); }
     catch (e) { toast(explainError(e.message), true); }
+  }));
+  $$('#toReviewList [data-more]').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const menu = b.parentElement.querySelector('.split-menu');
+    const ouvrir = menu.hidden;
+    closeSplitMenus();
+    menu.hidden = !ouvrir;
+    b.setAttribute('aria-expanded', String(ouvrir));
+    if (ouvrir) { b.closest('.card').classList.add('menu-open'); placerMenu(b, menu); }
   }));
   // Split-button : le caret ouvre le menu de surcharge ponctuelle (avec/sans explication).
   $$('#toReviewList [data-review-menu]').forEach((b) => b.addEventListener('click', (e) => {
@@ -2230,7 +2349,7 @@ function mergeMrFromQueue(m, onMerged) {
 // Ferme tous les menus déroulants des split-buttons (review avec/sans explication).
 function closeSplitMenus() {
   $$('.split-menu').forEach((m) => { m.hidden = true; });
-  $$('[data-review-menu], #taskMdExport').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+  $$('[data-review-menu], [data-more], #aMore, #taskMdExport').forEach((b) => b.setAttribute('aria-expanded', 'false'));
   // Retire l'élévation (carte) et le déblocage d'overflow (liste) posés à l'ouverture.
   $$('.menu-open').forEach((el) => el.classList.remove('menu-open'));
 }
@@ -2263,7 +2382,6 @@ function mrCard(m) {
     <button class="btn" data-ticket="${m.id}" data-title="!${m.iid} — ${esc(m.title || '')}" title="${tr('mr.btn.context-title')}"><svg class="ico"><use href="#i-doc"/></svg>${m.has_ticket ? tr('mr.btn.context-done') : tr('mr.btn.context')}</button>
     </div>
     <div class="btn-group">
-    <button class="btn" data-dev="${m.id}" data-branch="${esc(m.source_branch)}" title="${tr('mr.btn.code-title')}"><svg class=\"ico\"><use href=\"#i-bot\"/></svg>${tr('mr.btn.code')}</button>
     <span class="btn-split">
       <button class="btn btn-primary" data-review="${m.id}" data-iid="${m.iid}" title="${tr('mr.btn.review-title')}"><svg class=\"ico\"><use href=\"#i-play\"/></svg>${tr('mr.btn.review')}</button>
       <button class="btn btn-primary btn-split-caret" data-review-menu="${m.id}" title="${tr('mr.btn.review-opts-title')}" aria-haspopup="true" aria-expanded="false">▾</button>
@@ -2273,14 +2391,23 @@ function mrCard(m) {
       </div>
     </span>
     </div>
-    <div class="btn-group">
-    <button class="btn" data-verify="${m.id}" ${m.verifiable ? '' : 'disabled'} title="${m.verifiable ? tr('verify.btn.verify-title') : tr('err.verify.no-verifier')}"><svg class="ico"><use href="#i-check"/></svg>${tr('verify.btn.verify')}</button>
-    ${/* Dès qu'un résultat EXISTE — pas seulement quand c'est rouge : « c'est vert, mais
-          qu'est-ce qui a tourné exactement ? » est une question légitime, et depuis que des
-          vérificateurs partent tout seuls on n'a pas vu passer le lancement. */''}
-    ${m.verification ? `<button class="btn" data-vresults="${m.id}" title="${esc(tr('verify.btn.results-title'))}"><svg class="ico"><use href="#i-doc"/></svg>${tr('verify.btn.results')}</button>` : ''}
-    <button class="btn" data-done="${m.id}" data-iid="${m.iid}" title="${tr('mr.btn.dismiss-title')}"><svg class=\"ico\"><use href=\"#i-archive\"/></svg>${tr('mr.btn.dismiss')}</button>
-    ${m.closed_seen ? '' : `<button class="btn btn-danger" data-merge="${m.id}" title="${tr('mr.btn.merge-title')}"><svg class="ico"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>`}
+    ${/* LE RESTE DANS UN MENU. La carte portait sept actions de même poids, dont un bouton
+          conditionnel : « Vérifier », « Classer » et « Merger » changeaient d'abscisse d'une
+          carte à l'autre, et la liste devenait une suite de rangées à relire au lieu d'une
+          colonne à balayer. Trois actions fixes + « ⋯ » : la colonne redevient un rail, et
+          rien n'est perdu — tout est à un clic, dans un ordre stable.
+          Les attributs `data-*` sont IDENTIQUES à ceux d'avant : les écouteurs délégués les
+          retrouvent dans le menu comme ils les trouvaient sur la carte. */''}
+    <span class="btn-split">
+      <button class="btn" data-more="${m.id}" title="${esc(tr('mr.btn.more-title'))}" aria-haspopup="true" aria-expanded="false">⋯</button>
+      <div class="split-menu" hidden role="menu">
+        <button role="menuitem" data-dev="${m.id}" data-branch="${esc(m.source_branch)}">${tr('mr.btn.code')}</button>
+        <button role="menuitem" data-verify="${m.id}" ${m.verifiable ? '' : 'disabled'} title="${m.verifiable ? '' : esc(tr('err.verify.no-verifier'))}">${tr('verify.btn.verify')}</button>
+        ${m.verification ? `<button role="menuitem" data-vresults="${m.id}">${tr('verify.btn.results')}</button>` : ''}
+        <button role="menuitem" data-done="${m.id}" data-iid="${m.iid}">${tr('mr.btn.dismiss')}</button>
+        ${m.closed_seen ? '' : `<button role="menuitem" class="danger" data-merge="${m.id}">${tr('task.btn.merge')}</button>`}
+      </div>
+    </span>
     </div>
     </div>
   </div>${m.last_error ? errorBox(m.last_error, m.id) : ''}`;
@@ -2304,7 +2431,12 @@ $('#btnDiscover').addEventListener('click', async () => {
 
 $('#btnReview').addEventListener('click', async () => {
   const n = toReviewRows.length;
-  if (n > 5 && !await confirmDialog({ text: tr('confirm.review-all', { n }), confirmLabel: tr('mr.btn.review'), danger: false })) return;
+  /* LE TITRE PORTE LA QUESTION. « Confirmer l'action » ne dit ni quoi ni combien : sur une
+     action en masse, c'est le nombre qui fait hésiter, et il était noyé dans le paragraphe. */
+  if (n > 5 && !await confirmDialog({
+    title: tr('confirm.review-all.title', { n, count: n }),
+    text: tr('confirm.review-all', { n }), confirmLabel: tr('mr.btn.review'), danger: false,
+  })) return;
   const b = $('#btnReview');
   try {
     await busy(b, () => api('/jobs/review', { method: 'POST' }));
@@ -2471,7 +2603,7 @@ function noteClass(note) {
 function noteBadge(note) {
   const cls = noteClass(note);
   if (!cls) return `<span class="note none" title="${tr('review.note.none')}">—</span>`;
-  return `<span class="note ${cls}" title="${esc(tr('review.note.title'))}">${esc(note.raw)}</span>`;
+  return `<span class="note ${cls}" title="${esc(tr('review.note.title'))}">${esc(fmtNote(note))}</span>`;
 }
 
 $('#btnResetReports').addEventListener('click', async () => {
@@ -2698,35 +2830,42 @@ async function openReport(id, opts = {}) {
       ${m.web_url ? `<a href="${esc(m.web_url)}" target="_blank">${forgeLabel(m.forge)} ↗</a>` : ''}
     </div>
 
+    ${/* TROIS ACTIONS VISIBLES, le reste dans le menu « ⋯ ». Onze boutons sur trois rangées
+          repoussaient la première ligne du rapport hors du premier écran — on venait pour LIRE.
+          Les trois retenues sont celles du parcours : ouvrir le code, le faire corriger, merger.
+          « Supprimer le rapport » descend dans le menu, en dernier et derrière un séparateur :
+          il portait le même rouge que « Merger », à un centimètre de lui. */''}
     <div class="detail-actions">
       <div class="btn-group">
         <button id="aSplit" class="btn btn-primary" title="${tr('report.btn.split-title')}"><svg class=\"ico\"><use href=\"#i-expand\"/></svg>${tr('report.btn.split')}</button>
-        <button id="aTicket" class="btn" title="${tr('report.btn.context-title')}"><svg class="ico"><use href="#i-doc"/></svg>${tr('mr.btn.context')}${d.ticket && (d.ticket.text || d.ticket.has_image) ? ` ${svgIco('check')}` : ''}</button>
-        ${addTodoBtn('mr', m.id, tr('notes.add-todo.mr', { iid: m.iid, title: String(m.title || '').slice(0, 60) }))}
-      </div>
-      <div class="btn-group">
-        ${d.review && m.status !== 'done' && !m.closed_seen ? `<button id="aConverge" class="btn btn-converge" title="${tr('report.btn.converge-title')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : ''}
         ${d.review ? `<button id="aFix" class="btn" title="${tr('report.btn.fix-title')}"><svg class="ico"><use href="#i-bot"/></svg>${tr('report.btn.fix')}</button>` : ''}
-        ${d.verifiable ? `<button id="aVerify" class="btn" title="${tr('verify.btn.verify-title')}"><svg class="ico"><use href="#i-check"/></svg>${tr('verify.btn.verify')}</button>` : ''}
-        ${m.status !== 'done' ? `<button id="aRe" class="btn" title="${tr('report.btn.rerun-title')}"><svg class=\"ico\"><use href=\"#i-repeat\"/></svg>${tr('report.btn.rerun')}</button>` : ''}
-        ${m.status !== 'done' && d.stale ? `<button id="aReInc" class="btn" title="${tr('report.btn.rerun-inc-title')}"><svg class=\"ico\"><use href=\"#i-repeat\"/></svg>${tr('report.btn.rerun-inc')}</button>` : ''}
-        ${resumeCmdBtn(d.resume_cmd)}
-      </div>
-      <div class="btn-group">
-        ${m.status !== 'done' ? `<button id="aDone" class="btn btn-ok" title="${tr('report.btn.done-title')}"><svg class=\"ico\"><use href=\"#i-check\"/></svg>${tr('report.btn.done')}</button>` : `<button id="aReopen" class="btn" title="${tr('report.btn.reopen-title')}"><svg class=\"ico\"><use href=\"#i-reset\"/></svg>${tr('report.btn.reopen')}</button>`}
-        ${d.review ? (() => {
-          /* PUBLIER LE RAPPORT SUR LA MERGE REQUEST. Le libellé change quand c'est déjà
-             parti : republier n'est pas une correction, ça pose une SECONDE copie sous les
-             yeux de l'équipe, et le bouton doit le dire avant qu'on clique. */
-          const dejaPublie = d.review.comment_posted_at;
-          return `<button id="aPublish" class="btn" data-posted="${esc(dejaPublie || '')}" title="${dejaPublie
-            ? tr('report.btn.publish-again-title', { date: fmtDate(dejaPublie) })
-            : tr('report.btn.publish-title')}"><svg class="ico"><use href="#i-doc"/></svg>${dejaPublie
-            ? tr('report.btn.publish-again', { forge: forgeLabel(m.forge) })
-            : tr('report.btn.publish', { forge: forgeLabel(m.forge) })}</button>`;
-        })() : ''}
         ${m.closed_seen ? '' : `<button id="aMerge" class="btn btn-danger" data-target="${esc(m.target_branch || '')}" title="${tr('report.btn.merge-title', { forge: forgeLabel(m.forge) })}"><svg class=\"ico\"><use href=\"#i-merge\"/></svg>${tr('task.btn.merge')}</button>`}
-        <button id="aDelReport" class="btn btn-danger" data-iid="${m.iid}" title="${tr('mr.btn.delete-report-title')}"><svg class=\"ico\"><use href=\"#i-trash\"/></svg>${tr('report.btn.delete')}</button>
+        <div class="split-menu-wrap">
+          <button id="aMore" class="btn btn-icon" aria-haspopup="true" aria-expanded="false" title="${tr('report.btn.more-title')}">⋯</button>
+          <div class="split-menu" hidden role="menu">
+            <button id="aTicket" role="menuitem" title="${tr('report.btn.context-title')}">${tr('mr.btn.context')}${d.ticket && (d.ticket.text || d.ticket.has_image) ? ' ✓' : ''}</button>
+            ${d.review && m.status !== 'done' && !m.closed_seen ? `<button id="aConverge" role="menuitem" title="${tr('report.btn.converge-title')}">${tr('report.btn.converge')}</button>` : ''}
+            ${d.verifiable ? `<button id="aVerify" role="menuitem" title="${tr('verify.btn.verify-title')}">${tr('verify.btn.verify')}</button>` : ''}
+            ${m.status !== 'done' ? `<button id="aRe" role="menuitem" title="${tr('report.btn.rerun-title')}">${tr('report.btn.rerun')}</button>` : ''}
+            ${m.status !== 'done' && d.stale ? `<button id="aReInc" role="menuitem" title="${tr('report.btn.rerun-inc-title')}">${tr('report.btn.rerun-inc')}</button>` : ''}
+            ${m.status !== 'done' ? `<button id="aDone" role="menuitem" title="${tr('report.btn.done-title')}">${tr('report.btn.done')}</button>` : `<button id="aReopen" role="menuitem" title="${tr('report.btn.reopen-title')}">${tr('report.btn.reopen')}</button>`}
+            ${d.review ? (() => {
+              /* PUBLIER LE RAPPORT SUR LA MERGE REQUEST. Le libellé change quand c'est déjà
+                 parti : republier n'est pas une correction, ça pose une SECONDE copie sous les
+                 yeux de l'équipe, et le bouton doit le dire avant qu'on clique. */
+              const dejaPublie = d.review.comment_posted_at;
+              return `<button id="aPublish" role="menuitem" data-posted="${esc(dejaPublie || '')}" title="${dejaPublie
+                ? tr('report.btn.publish-again-title', { date: fmtDate(dejaPublie) })
+                : tr('report.btn.publish-title')}">${dejaPublie
+                ? tr('report.btn.publish-again', { forge: forgeLabel(m.forge) })
+                : tr('report.btn.publish', { forge: forgeLabel(m.forge) })}</button>`;
+            })() : ''}
+            ${addTodoBtn('mr', m.id, tr('notes.add-todo.mr', { iid: m.iid, title: String(m.title || '').slice(0, 60) }))}
+            ${resumeCmdBtn(d.resume_cmd)}
+            <div class="menu-sep"></div>
+            <button id="aDelReport" role="menuitem" class="danger" data-iid="${m.iid}" title="${tr('mr.btn.delete-report-title')}">${tr('report.btn.delete')}</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2799,7 +2938,7 @@ async function openReport(id, opts = {}) {
     const latest = versions[0].version;
     sel.innerHTML = versions.map((v) => {
       const d = new Date(v.created_at);
-      const note = v.note10 != null ? ` · ${v.note10}/10` : '';
+      const note = v.note10 != null ? ` · ${fmtNote10(v.note10)}` : '';
       const tag = v.kind === 'modify' ? tr('report.version.regen') : '';
       return `<option value="${v.version}">v${v.version}${v.version === latest ? ' — actuelle' : ''} · ${d.toLocaleDateString(I18Nrt.currentLocale())} ${d.toLocaleTimeString(I18Nrt.currentLocale(), { hour: '2-digit', minute: '2-digit' })}${note}${tag}</option>`;
     }).join('');
@@ -2845,6 +2984,22 @@ async function openReport(id, opts = {}) {
   });
 
   $('#aSplit').addEventListener('click', () => openSplit(id, m));
+  /* Le menu « ⋯ » du rapport. Même mécanique que sur les cartes, sans `placerMenu` :
+     ici le menu n'est rogné par aucun `overflow: hidden`, le positionnement CSS suffit. */
+  const aMore = $('#aMore');
+  aMore.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const menu = aMore.parentElement.querySelector('.split-menu');
+    const ouvrir = menu.hidden;
+    closeSplitMenus();
+    menu.hidden = !ouvrir;
+    aMore.setAttribute('aria-expanded', String(ouvrir));
+  });
+  /* Un item cliqué referme le menu : sans ça il reste ouvert par-dessus la modale de
+     confirmation que l'item vient d'ouvrir. */
+  aMore.parentElement.querySelector('.split-menu').addEventListener('click', (e) => {
+    if (e.target.closest('button')) closeSplitMenus();
+  });
   $('#aTicket').addEventListener('click', () => openTicket(id, `!${m.iid} — ${m.title || ''}`));
   const aFix = $('#aFix');
   if (aFix) aFix.addEventListener('click', () => {
@@ -3765,6 +3920,11 @@ $('#configForm').addEventListener('submit', async (e) => {
       : $('#configInfo');
     info.textContent = tr('ui.saved'); setTimeout(() => { info.textContent = ''; }, 2000);
     loadConfig(); refreshStatus();
+    /* L'ASSISTANT DE DÉMARRAGE SUIT. Il coche ses étapes depuis `setupState`, qui n'était lu
+       qu'au chargement de la page : on connectait la forge, on revenait sur Reviews, et
+       l'étape 1 était toujours à faire. Trois boutons sans progression ne sont pas un
+       assistant. */
+    rafraichirDemarrage();
   } catch (err) { toast(err.message, true); }
 });
 
@@ -3813,6 +3973,9 @@ function forgeBadge(forge) {
 
 async function loadRepos() {
   const rows = await api('/repos');
+  /* Le seul endroit qui sait vraiment s'il y a des dépôts. On en profite pour tenir
+     l'assistant de démarrage à jour, sans requête supplémentaire. */
+  if (setupState.hasRepos !== (rows.length > 0)) rafraichirDemarrage();
   const el = $('#repoList');
   el.innerHTML = rows.length ? rows.map((r) => `
     <div class="card repo-row" data-repo="${r.id}">
@@ -4202,9 +4365,30 @@ function readTargetRows() {
     };
   }).filter((t) => t.repo_id);
 }
+/* UNE LIGNE D'EN-TÊTES, une seule fois, au-dessus des champs. Trois champs par projet, tous
+   identifiés par leur seul texte d'invite : dès qu'on tape, plus rien ne dit ce qu'on remplit,
+   et « branche à créer » ressemble à « branche de départ » quand les deux sont pleines.
+   Elle réutilise le gabarit flex de la ligne (mêmes classes) pour tomber sur les mêmes
+   colonnes, avec un espaceur là où la ligne porte un « ? » ou la croix de suppression. */
+function targetHeadHtml() {
+  const col = (k) => `<span class="combo t-lab">${esc(tr(k))}</span>`;
+  /* La colonne « branche de travail » n'a pas la même largeur selon la saveur : en codage
+     c'est un champ libre (`.t-branch`), en exploration un sélecteur (`.combo`). L'en-tête
+     porte donc la classe du champ qu'il coiffe, sinon il tombe 120 px à côté. */
+  const colTravail = taskKind === 'code'
+    ? `<span class="t-branch t-lab">${esc(tr('task.col.work-branch'))}</span>`
+    : col('task.col.read-branch');
+  return `<div class="target-head-row" aria-hidden="true">
+    <span class="combo repo-combo t-lab">${esc(tr('task.col.repo'))}</span><span class="t-lab-hint"></span>
+    ${colTravail}<span class="t-lab-hint"></span>
+    ${taskKind === 'code' ? `${col('task.col.base-branch')}<span class="t-lab-hint"></span>` : ''}
+    <span class="t-lab-rm"></span>
+  </div>`;
+}
+
 function renderTargetRows(list) {
   const el = $('#targetRows');
-  el.innerHTML = (list.length ? list : [{}]).map((t, i) => targetRowHtml(i, t)).join('');
+  el.innerHTML = targetHeadHtml() + (list.length ? list : [{}]).map((t, i) => targetRowHtml(i, t)).join('');
   $$('#targetRows [data-rmrow]').forEach((b) => b.addEventListener('click', () => {
     const cur = readTargetRows();
     if (cur.length <= 1) { toast(tr('toast.au-moins-un-projet-est'), true); return; }
@@ -4492,9 +4676,13 @@ async function openTaskModal(kind = taskKind) {
   /* Une question libre se pose POUR obtenir la réponse : le bouton principal crée et lance,
      comme hors dépôt. « Créer sans lancer » reste disponible à côté. */
   launchAfterCreate = kind === 'local' || kind === 'ask';
+  /* « Enregistrer » ne disait pas ce qu'on enregistrait, sur une fenêtre qui en fait bien plus
+     qu'un formulaire de réglage. Pas « Lancer la session » pour autant : sur une session de
+     codage ce bouton CRÉE sans lancer — c'est la carte de Dev IA qui lance ensuite —, et le
+     libellé mentirait à l'endroit exact où l'on hésite. */
   $('#taskSubmit').innerHTML = launchAfterCreate
     ? `<svg class="ico"><use href="#i-play"/></svg>${tr(kind === 'ask' ? 'ask.run' : 'local.run')}`
-    : `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
+    : `<svg class="ico"><use href="#i-save"/></svg>${tr('task.btn.create-session')}`;
   $('#taskSubmitOnly').hidden = !launchAfterCreate;
   showTaskModal();
   f.prompt.focus();
@@ -4677,9 +4865,13 @@ function infoDuplication(brancheDecalee, nImages) {
    bouton qui changerait de sens selon qu'on crée ou qu'on copie serait un piège. */
 function boutonsCreation(kind) {
   launchAfterCreate = kind === 'local' || kind === 'ask';
+  /* « Enregistrer » ne disait pas ce qu'on enregistrait, sur une fenêtre qui en fait bien plus
+     qu'un formulaire de réglage. Pas « Lancer la session » pour autant : sur une session de
+     codage ce bouton CRÉE sans lancer — c'est la carte de Dev IA qui lance ensuite —, et le
+     libellé mentirait à l'endroit exact où l'on hésite. */
   $('#taskSubmit').innerHTML = launchAfterCreate
     ? `<svg class="ico"><use href="#i-play"/></svg>${tr(kind === 'ask' ? 'ask.run' : 'local.run')}`
-    : `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
+    : `<svg class="ico"><use href="#i-save"/></svg>${tr('task.btn.create-session')}`;
   $('#taskSubmitOnly').hidden = !launchAfterCreate;
 }
 
@@ -5985,7 +6177,7 @@ function wireTaskActions() {
   on('[data-tfold]', (b) => basculerProjets(b.dataset.tfold));
 
   on('[data-tpushall]', async (b) => {
-    if (!await confirmDialog({ text: tr('confirm.push-all'), confirmLabel: tr('task.btn.push') })) return;
+    if (!await confirmDialog({ title: tr('confirm.push-all.title'), text: tr('confirm.push-all'), confirmLabel: tr('task.btn.push') })) return;
     busy(b, () => api(`/tasks/${b.dataset.tpushall}/push-all`, { method: 'POST' }))
       .then(() => { toast(tr('toast.push-all-lance')); loadTasks(); refreshStatus(); })
       .catch((e) => toast(explainError(e.message), true));
@@ -6738,11 +6930,17 @@ $('#ruleForm').addEventListener('submit', async (e) => {
     return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s % 60)}` : `${pad(m)}:${pad(s % 60)}`;
   };
   const render = () => {
-    $('#chronoTime').textContent = fmt(elapsed());
+    const ms = elapsed();
+    $('#chronoTime').textContent = fmt(ms);
     const running = !!startedAt;
     $('#chrono').classList.toggle('running', running);
+    /* À zéro et à l'arrêt, il se réduit : l'heure ne dit rien et la remise à zéro n'a rien à
+       remettre. C'est l'état dans lequel il passe l'essentiel du temps, en haut à droite de
+       tous les écrans. */
+    $('#chrono').classList.toggle('idle', !running && ms === 0);
     $('#chronoStart').hidden = running;
     $('#chronoPause').hidden = !running;
+    $('#chronoReset').hidden = !running && ms === 0;
   };
   const beat = () => { render(); save(); };               // chaque battement met à jour ET sauvegarde
   const startTick = () => { if (!tick) tick = setInterval(beat, 1000); };
@@ -6852,7 +7050,7 @@ $('#ruleForm').addEventListener('submit', async (e) => {
     }),
     // Une frame PAR review récente
     (d) => (d.recentReviews || []).map((r) => ({
-      t: tr('footer.reviewed', { iid: r.iid, note: r.note10 != null ? ` · ${r.note10}/10` : '', project: r.project, when: r.at ? ` · ${humanAgo(agoMin(r.at, d.now))}` : '' }),
+      t: tr('footer.reviewed', { iid: r.iid, note: r.note10 != null ? ` · ${fmtNote10(r.note10)}` : '', project: r.project, when: r.at ? ` · ${humanAgo(agoMin(r.at, d.now))}` : '' }),
       w: 2,
     })),
     // Plusieurs frames PAR projet (volume, note moyenne, meilleure, pire)
@@ -8994,16 +9192,20 @@ const DOCKER_STATE_FILTERS = [
   ['restarting', 'docker.actions.f-restarting'],
   ['drift', 'docker.actions.f-drift'],
 ];
-const dockerStateOptions = (cur) => DOCKER_STATE_FILTERS
-  .map(([v, k]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${esc(tr(k))}</option>`).join('');
-// Le menu d'Actions est bâti une fois, depuis cette liste (celui de Compose l'est à chaque
+/* DIX VALEURS FIXES, UN SEUL CHOIX : des pastilles, pas un menu déroulant. Un menu cache son
+   état derrière un clic — sur un filtre qu'on manipule en boucle, c'est un clic par coup d'œil.
+   C'est la règle écrite dans style.css (`.chip`), déjà tenue par Liens et par les tranches de
+   note des Reviews ; Docker était le dernier à s'en écarter. */
+const dockerStateChips = (cur) => DOCKER_STATE_FILTERS
+  .map(([v, k]) => `<button type="button" class="chip${cur === v ? ' active' : ''}" data-dstate="${v}" aria-pressed="${cur === v}">${esc(tr(k))}</button>`).join('');
+// Le groupe d'Actions est bâti une fois, depuis cette liste (celui de Compose l'est à chaque
 // rendu, dans son gabarit). Un changement de langue recharge la page : rien à retraduire.
-(() => { const el = $('#dactFilter'); if (el) el.innerHTML = dockerStateOptions('all'); })();
+(() => { const el = $('#dactFilter'); if (el) { el.innerHTML = dockerStateChips('all'); el.dataset.state = 'all'; } })();
 // Clés i18n complètes (littérales) pour réutiliser EXACTEMENT le libellé de l'onglet Compose.
 const DACT_DRIFT_LABEL = { 'drift-config': 'docker.badge.drift-config', 'drift-image': 'docker.badge.drift-image', 'compose-modified': 'docker.badge.compose-modified' };
 function dactItems() {
   const action = $('#dactAction').value;
-  const filter = $('#dactFilter') ? $('#dactFilter').value : 'all';
+  const filter = $('#dactFilter') ? ($('#dactFilter').dataset.state || 'all') : 'all';
   const q = ($('#dactSearch').value || '').toLowerCase();
   const out = [];
   for (const p of DACT.projects) {
@@ -9095,7 +9297,13 @@ async function dactApply() {
 // Changer d'action réinitialise la sélection (elle appartient à une action) ; le filtre d'état
 // et la recherche ne font que masquer/afficher — ils préservent la sélection.
 $('#dactAction') && $('#dactAction').addEventListener('change', () => { DACT.selected.clear(); dactSyncApply(); renderDockerActions(); });
-$('#dactFilter') && $('#dactFilter').addEventListener('change', renderDockerActions);
+$('#dactFilter') && $('#dactFilter').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-dstate]'); if (!c) return;
+  const grp = $('#dactFilter');
+  grp.dataset.state = c.dataset.dstate;
+  grp.innerHTML = dockerStateChips(c.dataset.dstate);
+  renderDockerActions();
+});
 $('#dactSearch') && $('#dactSearch').addEventListener('input', renderDockerActions);
 $('#dactApply') && $('#dactApply').addEventListener('click', dactApply);
 $('#dactList') && $('#dactList').addEventListener('change', (e) => {
@@ -9155,15 +9363,31 @@ function envDiffHtml(diffs) {
   return `<ul class="env-diff">${diffs.map(one).join('')}</ul>`;
 }
 
+/* Les états que Docker sait rendre. Un état hors liste (une version future du démon)
+   s'affiche tel quel plutôt que de laisser une clé de traduction à l'écran. */
+const DOCKER_STATES = ['running', 'exited', 'created', 'restarting', 'paused', 'dead', 'removing', 'unknown'];
+function dockerStateLabel(state) {
+  if (state === 'none') return tr('docker.not-started');
+  return DOCKER_STATES.includes(state) ? tr(`docker.state.${state}`) : state;
+}
+
 function dockerServiceRow(proj, s) {
   const b = (DOCKER_BADGE()[s.badge]) || { label: s.badge, cls: '' };
   const canRecreate = ['drift-config', 'drift-image', 'compose-modified'].includes(s.badge);
-  const act = (a, label, cls) => `<button class="btn btn-sm${cls ? ` ${cls}` : ''}" data-dockeract="${a}" data-dir="${esc(proj.dir)}" data-svc="${esc(s.name)}">${esc(label)}</button>`;
+  /* ORDRE FIXE, LES ACTIONS INDISPONIBLES DÉSACTIVÉES. Auparavant elles étaient absentes :
+     la rangée changeait de composition d'un container à l'autre (`Stop · Redémarrer · Pull ·
+     Build · Recréer` puis `Pull · Build · Démarrer`), donc « Recréer », bleu et primaire,
+     tombait sous « Stop » de la ligne précédente. Une colonne d'actions doit être un rail :
+     on vise la même position sur toutes les lignes. */
+  const act = (a, label, cls, actif) => `<button class="btn btn-sm${cls ? ` ${cls}` : ''}" data-dockeract="${a}" data-dir="${esc(proj.dir)}" data-svc="${esc(s.name)}"${actif ? '' : ` disabled title="${esc(tr('docker.act.unavailable'))}"`}>${esc(label)}</button>`;
   // État du container MIS EN ÉVIDENCE : pastille colorée + libellé (vert = running, rouge =
   // exited/dead, ambre = paused/restarting/created, pointillé = non démarré).
   const state = s.container ? (s.container.state || 'unknown') : 'none';
   const isRunning = state === 'running';
-  const stateLabel = state === 'none' ? tr('docker.not-started') : state;
+  /* Le libellé passe par le dictionnaire. Docker rend son état en anglais (`running`,
+     `exited`, `created`…) et il s'affichait tel quel, dans la même colonne que « non créé »
+     et « arrêté » : trois langues pour une seule information. */
+  const stateLabel = dockerStateLabel(state);
   const stateChip = `<span class="docker-state docker-state-${esc(state)}" title="${esc(stateLabel)}"><span class="docker-dot"></span>${esc(stateLabel)}</span>`;
   return `<div class="docker-svc">
       <div class="docker-svc-head">
@@ -9173,11 +9397,17 @@ function dockerServiceRow(proj, s) {
         ${s.image ? `<code class="muted">${esc(s.image)}</code>` : ''}
         ${s.container && s.container.name ? `<span class="muted">${esc(s.container.name)}</span>` : ''}
         <span class="spacer"></span>
-        ${isRunning ? act('stop', tr('docker.act.stop'), 'btn-danger') : ''}
-        ${isRunning ? act('restart', tr('docker.act.restart')) : ''}
-        ${act('pull', tr('docker.act.pull'))}
-        ${act('build', tr('docker.act.build'))}
-        ${canRecreate ? act('recreate', tr('docker.act.recreate'), 'btn-primary') : (isRunning ? '' : act('up', tr('docker.act.up')))}
+        ${/* Les six actions dans leur PROPRE bloc, insécable : dans la tête de ligne elles se
+             repliaient à un endroit qui dépendait de la longueur du nom du container, si bien
+             que « Stop » n'était jamais deux fois à la même abscisse d'une ligne à l'autre. */''}
+        <div class="docker-svc-actions">
+          ${act('stop', tr('docker.act.stop'), 'btn-danger', isRunning)}
+          ${act('restart', tr('docker.act.restart'), '', isRunning)}
+          ${act('pull', tr('docker.act.pull'), '', true)}
+          ${act('build', tr('docker.act.build'), '', true)}
+          ${act('up', tr('docker.act.up'), '', !isRunning)}
+          ${act('recreate', tr('docker.act.recreate'), 'btn-primary', canRecreate)}
+        </div>
       </div>
       ${s.imgDrift && s.container ? `<div class="muted docker-imgdrift">${esc(tr('docker.imgdrift', { compose: s.image || '?', running: (s.container.image || '?') }))}</div>` : ''}
       ${envDiffHtml(s.envDiffs)}
@@ -9304,9 +9534,9 @@ function renderComposeTab() {
         <input id="dcSearch" class="dact-search" type="search" value="${esc(sf.q || '')}"
           placeholder="${esc(tr('docker.compose.search'))}" />
       </label>
-      <label class="dact-action"><span>${esc(tr('docker.actions.filter'))}</span>
-        <select id="dcState">${dockerStateOptions(sf.state)}</select>
-      </label>
+      <div class="dact-action"><span>${esc(tr('docker.actions.filter'))}</span>
+        <div id="dcState" class="chips" role="group" aria-label="${esc(tr('docker.actions.filter'))}" data-state="${esc(sf.state)}">${dockerStateChips(sf.state)}</div>
+      </div>
     </div>`;
   // Filtre persistant : une case par fichier compose (cochée = affiché).
   const filter = `<div class="docker-filter"><span class="muted">${esc(tr('docker.filter.label'))}</span>${COMPOSE.files.map((f) => `
@@ -9336,7 +9566,10 @@ function renderComposeTab() {
     search.addEventListener('input', () => { setComposeSvcFilter({ q: search.value }); apply(); });
   }
   const stateSel = $('#dcState', box);
-  if (stateSel) stateSel.addEventListener('change', () => { setComposeSvcFilter({ state: stateSel.value }); renderComposeTab(); });
+  if (stateSel) stateSel.addEventListener('click', (e) => {
+    const c = e.target.closest('[data-dstate]'); if (!c) return;
+    setComposeSvcFilter({ state: c.dataset.dstate }); renderComposeTab();
+  });
   $$('.docker-filter-cb', box).forEach((cb) => cb.addEventListener('change', () => {
     const set = dockerHidden();
     if (cb.checked) set.delete(cb.value); else set.add(cb.value);
@@ -9392,15 +9625,16 @@ function renderDockerOrphans(d) {
   if (!orphans.length) { box.innerHTML = emptyState({ icon: 'inbox', title: tr('docker.orphans.empty.title'), text: tr('docker.orphans.empty.text') }); return; }
   box.innerHTML = `<p class="muted">${esc(tr('docker.orphans.intro'))}</p>` + orphans.map((c) => {
     const state = c.state || 'unknown';
+    const label = dockerStateLabel(state);   // même libellé traduit que dans Compose
     return `
     <div class="card docker-orphan">
       <div style="flex:1;min-width:0">
-        <div class="title"><span class="docker-state docker-state-${esc(state)}" title="${esc(state)}"><span class="docker-dot"></span>${esc(state)}</span> ${esc(c.name)} <code class="muted">${esc(c.image)}</code></div>
+        <div class="title"><span class="docker-state docker-state-${esc(state)}" title="${esc(label)}"><span class="docker-dot"></span>${esc(label)}</span> ${esc(c.name)} <code class="muted">${esc(c.image)}</code></div>
         <div class="meta muted">${esc(c.status || '')}${c.ports ? ` · ${esc(c.ports)}` : ''}</div>
         <pre class="docker-run" data-run="${esc(c.id)}" hidden></pre>
       </div>
       <div class="task-actions">
-        ${state === 'running' ? `<button class="btn btn-sm btn-danger" data-dockerstop="${esc(c.id)}" title="${esc(tr('docker.orphan.stop-title'))}"><svg class="ico ico-sm"><use href="#i-stop"/></svg>${esc(tr('docker.orphan.stop'))}</button>` : ''}
+        <button class="btn btn-sm btn-danger" data-dockerstop="${esc(c.id)}"${state === 'running' ? ` title="${esc(tr('docker.orphan.stop-title'))}"` : ` disabled title="${esc(tr('docker.act.unavailable'))}"`}><svg class="ico ico-sm"><use href="#i-stop"/></svg>${esc(tr('docker.orphan.stop'))}</button>
         <button class="btn btn-sm" data-dockerrun="${esc(c.id)}" title="${esc(tr('docker.orphan.reconstitute-title'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${esc(tr('docker.orphan.reconstitute'))}</button>
         <button class="btn btn-sm btn-danger" data-dockerrm="${esc(c.id)}" data-name="${esc(c.name)}" title="${esc(tr('docker.orphan.remove-title'))}"><svg class="ico ico-sm"><use href="#i-trash"/></svg>${esc(tr('docker.orphan.remove'))}</button>
       </div>
@@ -10579,6 +10813,8 @@ const PALETTE_ACTIONS = [
 ];
 
 let paletteItems = [];
+// La palette est-elle ouverte SANS requête ? Pilote l'affichage des en-têtes de section.
+let paletteVide = true;
 let paletteIdx = 0;
 let paletteSeq = 0;
 
@@ -10603,9 +10839,14 @@ async function paletteChercher(q) {
   try { d = await api('/launcher', { method: 'POST', body: { q, actions: paletteActions() } }); }
   catch { return; }
   if (seq !== paletteSeq) return;              // une frappe plus récente a déjà répondu
+  paletteVide = !String(q || '').trim();
   paletteItems = (d.results || []).map((r) => ({
     label: r.label,
-    kind: r.detail || tr(`palette.group.${r.group}`),
+    /* L'ÉTIQUETTE DE TYPE, toujours. Une ligne de merge request n'affichait que son projet :
+       à côté d'une action et d'un ticket qui, eux, disent « Action » et « À faire », on ne
+       savait pas ce qu'on s'apprêtait à ouvrir. */
+    kind: r.detail ? `${r.detail} · ${tr(`palette.group.${r.group}`)}` : tr(`palette.group.${r.group}`),
+    group: r.group,
     run: () => ouvrirResultatPalette(r),
   }));
   paletteIdx = 0;
@@ -10629,19 +10870,27 @@ function ouvrirResultatPalette(r) {
   if (n.ticket) { navTab('jira'); showJiraSub('mine'); selectJiraIssue(n.ticket, 'mine'); return; }
   if (n.page_id) { navTab('notes'); showNotesSub('pages'); openNotePage(n.page_id); return; }
   if (n.todo_id) { navTab('notes'); showNotesSub('todos'); return; }
+  /* Une session : on ouvre Dev IA sur la SAVEUR de cette session, sans quoi on atterrit sur
+     le sous-onglet consulté la dernière fois, où elle n'est pas. */
+  if (n.task_id) {
+    navTab('task');
+    const sous = $(`#tab-task .subnav [data-kind="${n.task_kind === 'explore' ? 'explore' : n.task_kind === 'local' ? 'local' : n.task_kind === 'ask' ? 'ask' : 'code'}"]`);
+    if (sous) sous.click();
+    return;
+  }
   if (n.tab) navTab(n.tab);
 }
 
 // Conservé pour les tests hors ligne et l'ouverture instantanée : les actions locales.
 function paletteMatches(q) {
   const out = PALETTE_ACTIONS.filter((a) => tr(a.key).toLowerCase().includes(q))
-    .map((a) => ({ label: tr(a.key), kind: tr('palette.kind.action'), run: a.run }));
+    .map((a) => ({ label: tr(a.key), kind: tr('palette.kind.action'), group: 'nav', run: a.run }));
   if (q.length >= 2) {
     for (const m of [...toReviewRows, ...reportRows]) {
       if (!matchMr(m, q)) continue;
       out.push({
         label: `!${m.iid} — ${m.title || ''}`,
-        kind: m.project,
+        kind: `${m.project} · ${tr('palette.group.mrs')}`, group: 'mrs',
         run: () => {
           $('nav button[data-tab="review"]').click();
           loadSegment(m.status === 'to_review' ? 'to_review' : (m.status === 'done' ? 'done' : 'reviewed'))
@@ -10653,7 +10902,7 @@ function paletteMatches(q) {
       if (!taskMatches(t2, q, (t2.targets || []).map((x) => x.project))) continue;
       out.push({
         label: (t2.prompt || '').slice(0, 70),
-        kind: tr(t2.kind === 'explore' ? 'task.kind.explore.btn' : 'task.kind.code.btn'),
+        kind: tr(t2.kind === 'explore' ? 'task.kind.explore.btn' : 'task.kind.code.btn'), group: 'tasks',
         run: () => { $('nav button[data-tab="task"]').click(); $(`[data-kind="${t2.kind === 'explore' ? 'explore' : 'code'}"]`).click(); },
       });
     }
@@ -10664,7 +10913,19 @@ function paletteMatches(q) {
 function renderPalette() {
   const box = $('#paletteList');
   if (!paletteItems.length) { box.innerHTML = `<div class="palette-empty muted">${esc(tr('palette.empty'))}</div>`; return; }
-  box.innerHTML = paletteItems.map((it, i) => `<div class="palette-item${i === paletteIdx ? ' active' : ''}" role="option" data-i="${i}">`
+  /* À VIDE, ON MONTRE TROIS SECTIONS TITRÉES — Actions, Merge requests, Sessions — plutôt
+     qu'une liste plate où l'on ne sait pas de quoi chaque ligne parle. Dès qu'on tape, les
+     en-têtes disparaissent : le classement est alors par pertinence, pas par famille. */
+  const sections = !paletteVide ? null : (() => {
+    const vus = new Set(); const groupes = [];
+    paletteItems.forEach((it, i) => {
+      if (!vus.has(it.group)) { vus.add(it.group); groupes.push(i); }
+    });
+    return new Set(groupes);
+  })();
+  box.innerHTML = paletteItems.map((it, i) => (sections && sections.has(i)
+    ? `<div class="palette-head">${esc(tr(`palette.section.${it.group}`))}</div>` : '')
+    + `<div class="palette-item${i === paletteIdx ? ' active' : ''}" role="option" data-i="${i}">`
     + `<span class="palette-label">${esc(it.label)}</span><span class="palette-kind muted">${esc(it.kind)}</span></div>`).join('');
   const act = $('#paletteList .palette-item.active');
   if (act) act.scrollIntoView({ block: 'nearest' });
@@ -10765,6 +11026,15 @@ function openShortcuts() {
     .map(([k, key]) => `<div class="shortcut-row"><kbd>${esc(k || plage)}</kbd><span>${esc(tr(key))}</span></div>`).join('');
   m.hidden = false;
 }
+/* Le bouton du bandeau mène à ce que le job a produit — et le referme, puisqu'on l'a lu. */
+$('#logResult') && $('#logResult').addEventListener('click', () => {
+  const b = $('#logResult');
+  const id = Number(b.dataset.id);
+  if (b.dataset.kind === 'mr') { navTab('review'); openReport(id); }
+  else { navTab('task'); loadTasks(); }
+  const panel = $('#logPanel'); if (panel) { panel.hidden = true; logHidden = true; updateFooterLogs(); }
+});
+$('#footerHelp') && $('#footerHelp').addEventListener('click', openShortcuts);
 $('#shortcutsClose') && $('#shortcutsClose').addEventListener('click', () => { $('#shortcutsModal').hidden = true; });
 fermerAuFond('#shortcutsModal', () => { $('#shortcutsModal').hidden = true; }, { salissable: false });
 
@@ -11126,7 +11396,7 @@ function renderBrief(d) {
         <div class="brief-item-title">${esc(String(s.prompt || '').slice(0, 120))}</div>
         <div class="meta">${esc(tr('notes.brief.session.targets', { n: s.targets, count: s.targets }))}</div>
       </div>
-      <button type="button" class="btn btn-sm btn-primary" data-brief-session="${s.task_id}">${esc(tr('notes.brief.session.go'))}</button>
+      <button type="button" class="btn btn-primary" data-brief-session="${s.task_id}">${esc(tr('notes.brief.session.go'))}</button>
       ${briefHideBtn('session', s.task_id)}
     </div>`).join('');
 
@@ -11140,7 +11410,7 @@ function renderBrief(d) {
     ? ` · !${c.iid}`
     : ` · ${esc(c.project || '')}${c.branch ? ` · ${esc(c.branch)}` : ''}`)).join('')}</div>
       </div>
-      <button type="button" class="btn btn-sm" data-brief-verif="${v.verification_id}">${esc(tr('notes.brief.verif.go'))}</button>
+      <button type="button" class="btn" data-brief-verif="${v.verification_id}">${esc(tr('notes.brief.verif.go'))}</button>
       ${briefHideBtn('verification', v.verification_id)}
     </div>`).join('');
 
@@ -13176,8 +13446,15 @@ if (btnTestGitlab) btnTestGitlab.addEventListener('click', async () => {
   const info = $('#configInfoGit') || $('#configInfo');
   btnTestGitlab.disabled = true; info.textContent = tr('settings.test.running');
   try {
-    const r = await api('/gitlab/projects');
-    const n = (r.projects || r || []).length;
+    /* On teste CE QUI EST À L'ÉCRAN, pas ce qui est en base : au premier lancement, on vient
+       tout juste de taper l'URL et le jeton, et rien ne dit qu'il faut enregistrer d'abord.
+       C'est déjà ce que fait « Tester GitHub », deux boutons plus bas. */
+    const f = $('#configForm');
+    const r = await api('/gitlab/test', { method: 'POST', body: {
+      gitlab_url: f.gitlab_url.value.trim(),
+      access_token: f.access_token.value,
+    } });
+    const n = r.count || 0;
     info.textContent = tr('settings.conn.ok', { n, count: n });
   } catch (e) {
     info.textContent = '';
@@ -13830,7 +14107,12 @@ function verifyReportHtml(d) {
     <code>${esc(f.test || '')}</code>${f.message ? ` — ${esc(f.message)}` : ''}
     ${f.log_excerpt ? `<pre class="verify-log">${esc(f.log_excerpt)}</pre>` : ''}
   </li>`;
-  const cible = (c) => `<li>${esc(c.project || `#${c.repo_id}`)}${c.iid ? ` !${c.iid}` : ''} · <code>${esc(c.branch || '')}</code> @ <code>${esc(String(c.head_sha || '').slice(0, 8))}</code>${c.mode === 'in_place' ? ` <span class="tag warn">${esc(tr('verify.mode.in-place-short'))}</span>` : ''}</li>`;
+  /* L'IDENTIFIANT RAMÈNE À SA MERGE REQUEST. « !204 » était du texte mort : on lisait qu'un
+     test casse sur cette MR sans pouvoir y aller — il fallait retenir le numéro, fermer, et
+     la retrouver à la main dans la liste. */
+  const cible = (c) => `<li>${esc(c.project || `#${c.repo_id}`)}${c.iid ? (c.mr_id
+    ? ` <button type="button" class="lien-mr" data-vmr="${c.mr_id}" title="${esc(tr('verify.report.open-mr', { iid: c.iid }))}">!${esc(c.iid)}</button>`
+    : ` !${esc(c.iid)}`) : ''} · <code>${esc(c.branch || '')}</code> @ <code>${esc(String(c.head_sha || '').slice(0, 8))}</code>${c.mode === 'in_place' ? ` <span class="tag warn">${esc(tr('verify.mode.in-place-short'))}</span>` : ''}</li>`;
   const duree = d.started_at && d.finished_at
     ? tr('verify.report.duration', { s: Math.max(1, Math.round((new Date(d.finished_at) - new Date(d.started_at)) / 1000)) }) : '';
   return `
@@ -13898,6 +14180,21 @@ document.addEventListener('click', async (e) => {
     const sub = $('#tab-task .subnav [data-kind="code"]');
     if (sub) sub.click();
   } catch (err) { toast(explainError(err.message), true); }
+});
+
+/* Le clic sur « !204 » : on ferme, on va dans Reviews, et on ouvre CE rapport. Le stade
+   « Reviewées » d'abord — c'est là que vit un rapport, et ouvrir sans changer de stade
+   laisserait la colonne de gauche sur une liste où la carte n'apparaît pas. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-vmr]');
+  if (!b) return;
+  const id = Number(b.dataset.vmr);
+  $('#verifyModal').hidden = true;
+  const nav = $('nav button[data-tab="review"]');
+  if (nav) nav.click();
+  const seg = $('[data-seg="reviewed"]');
+  if (seg) seg.click();
+  try { await openReport(id, { force: true }); } catch (err) { toast(explainError(err.message), true); }
 });
 
 $('#verifyClose') && $('#verifyClose').addEventListener('click', () => { $('#verifyModal').hidden = true; });
@@ -14211,6 +14508,11 @@ function renderLots() {
   if (briefDejaVuAujourdHui()) { queueMicrotask(atterrir); return; }
   api('/config').then((c) => {
     if (c.brief_on_open === '0') { atterrir(); return; }
+    /* PREMIÈRE OUVERTURE, RIEN DE CONFIGURÉ : on n'ouvre pas sur le brief. Il dirait « rien ne
+       réclame ton attention » à quelqu'un qui n'a encore rien branché, et le seul écran qui
+       explique par où commencer — les trois étapes de démarrage — est celui des Reviews. Le
+       brief est le bon écran d'accueil À PARTIR DU DEUXIÈME JOUR, pas à la première seconde. */
+    if (!(c.gitlab_url && c.access_token)) { atterrir(); return; }
     marquerBriefVu();
     tab = 'notes';
     atterrir();
@@ -14220,7 +14522,7 @@ function renderLots() {
     showNotesSub('today');
   }).catch(atterrir);   // configuration illisible : on ne bloque jamais le démarrage
 })();
-checkSetup().then(() => { if (currentSeg === 'to_review') renderToReview(); });
+rafraichirDemarrage();
 refreshCounts();
 refreshStatus();
 rafraichirHistCount();
@@ -14513,7 +14815,6 @@ function jkLienExterne(url) {
 }
 
 function jkRow(j, colonnes = []) {
-  const ennui = JK_ENNUI.includes(j.statut);
   const params = jkParams(j);
   const infos = [
     jkStatutLabel(j),
@@ -14533,11 +14834,26 @@ function jkRow(j, colonnes = []) {
       <span class="jk-meta" title="${esc(j.last ? jkQuand(j.last) : '')}">${infos.map(esc).join(' · ')}</span>
       ${jkParamPastilles(params, colonnes)}
     </button>
-    ${ennui ? `<span class="tag stale">${esc(jkStatutLabel(j))}</span>` : ''}
-    ${jkLienExterne(j.url)}
-    <button type="button" class="btn btn-sm" data-jkopen="${esc(j.path)}">${esc(tr('jenkins.open'))}</button>
-    ${(j.buildable && j.last && (j.lastParams || []).length) ? `<button type="button" class="btn btn-sm" data-jkrerun="${esc(j.path)}" title="${esc(tr('jenkins.rerun.title-btn'))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg>${esc(tr('jenkins.rerun'))}</button>` : ''}
-    ${j.buildable ? `<button type="button" class="btn btn-sm btn-primary" data-jkrun="${esc(j.path)}" title="${esc(j.params ? tr('jenkins.run.params-title', { n: j.params, count: j.params }) : tr('jenkins.run.title'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(j.params ? tr('jenkins.run.params') : tr('jenkins.run'))}</button>` : ''}
+    ${/* Le badge d'état a été retiré d'ici : il reprenait MOT POUR MOT le `jkStatutLabel`
+          déjà écrit dans `.jk-meta`, à côté d'une pastille qui porte la même couleur.
+          Trois fois la même information, dont une au milieu des boutons d'action. */''}
+    ${/* MÊME RAIL QUE DOCKER : ordre fixe, actions indisponibles DÉSACTIVÉES et non absentes.
+          « Relancer » manquait sur les jobs sans paramètres et « Lancer » sur les jobs
+          désactivés : « Lancer », bleu, se retrouvait à trois abscisses différentes d'une
+          ligne à l'autre, exactement là où l'œil venait de cliquer sur autre chose. */''}
+    <div class="jk-actions">
+      ${jkLienExterne(j.url)}
+      <button type="button" class="btn btn-sm" data-jkopen="${esc(j.path)}">${esc(tr('jenkins.open'))}</button>
+      ${(() => {
+        const peutRelancer = !!(j.buildable && j.last && (j.lastParams || []).length);
+        return `<button type="button" class="btn btn-sm" data-jkrerun="${esc(j.path)}"${peutRelancer
+          ? ` title="${esc(tr('jenkins.rerun.title-btn'))}"`
+          : ` disabled title="${esc(tr('jenkins.rerun.unavailable'))}"`}><svg class="ico ico-sm"><use href="#i-refresh"/></svg>${esc(tr('jenkins.rerun'))}</button>`;
+      })()}
+      <button type="button" class="btn btn-sm btn-primary" data-jkrun="${esc(j.path)}"${j.buildable
+        ? ` title="${esc(j.params ? tr('jenkins.run.params-title', { n: j.params, count: j.params }) : tr('jenkins.run.title'))}"`
+        : ` disabled title="${esc(tr('jenkins.run.unavailable'))}"`}><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(j.params ? tr('jenkins.run.params') : tr('jenkins.run'))}</button>
+    </div>
   </div>`;
 }
 

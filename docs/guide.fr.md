@@ -142,6 +142,12 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   le fait **à la fin de chaque review**. Il est **décoché par défaut** : écrire chez les autres est une
   décision. S'il est coché et que la forge refuse, la review n'est **pas** perdue pour autant — le
   rapport reste enregistré, et le journal du job dit pourquoi la publication n'a pas eu lieu.
+- **La carte tient sur une ligne d'actions** : `Voir le diff` · `Contexte` | `Reviewer ▾` | `⋯`.
+  Le menu **`⋯`** rassemble tout le reste — *Faire coder l'IA*, *Vérifier*, *Voir les résultats*,
+  *Classer sans review*, *Merger*. Sept boutons de même poids par carte ne disaient pas lequel
+  était le chemin normal, et leur nombre changeait d'une carte à l'autre : la colonne d'actions
+  n'était jamais deux fois au même endroit. Les gestes sont les mêmes, un clic de plus pour les
+  moins fréquents.
 - `Voir le diff` ouvre le diff de la MR **avant toute review**, dans le viewer plein écran (arbre,
   diff inline, navigation) — le dépôt est cloné à la demande si besoin. Le panneau de gauche devient un
   **panneau de décision** : si la MR est triviale, `Classer sans review` ; sinon `Reviewer`. Objectif :
@@ -1390,9 +1396,15 @@ la même adresse.
 #### La palette — `Ctrl`/`Cmd` + `K`, ou la touche `o`
 Le champ de recherche de l'en-tête ouvre la **palette globale**, qui cherche **partout à la fois** :
 les cases de la grille (« kibana preprod »), les liens libres, les merge requests (par numéro ou par
-mots du titre), les tickets surveillés, les pages de notes, les todos ouvertes, et les actions de
+mots du titre), les **sessions de dev** (libellé, prompt ou branche), les tickets surveillés, les
+pages de notes, les todos ouvertes, et les actions de
 navigation. Entrée ouvre — un lien externe dans un nouvel onglet, un objet interne à sa place.
 
+- **À l'ouverture, sans rien taper**, elle propose trois sections courtes : **Actions**, **Merge
+  requests récentes**, **Sessions récentes**, trois de chacune. Sans requête tout se vaut, et
+  c'était la source la plus nombreuse — les liens de la grille — qui prenait toutes les places :
+  on ouvrait la palette sur huit adresses Kibana, sans une seule merge request. Dès la première
+  lettre, les sections disparaissent et le classement redevient celui de la pertinence.
 - **Recherche floue**, insensible aux accents et à la casse — `generation` trouve « Génération du
   rapport », et inversement. On abrège **par mots** : `kib pre` trouve « Kibana · preprod », chaque
   mot tapé devant se retrouver *entier* quelque part dans la cible. Sauter une lettre au milieu
@@ -1630,9 +1642,13 @@ Onglet, sous-onglet **et stade de Reviews mémorisés** d'une session à l'autre
 ni recherche, ni modale, ni rapport ouvert, car un état périmé est pire qu'un démarrage propre ·
 **raccourcis clavier** (`1`-`9` puis `0` pour les dix onglets, `/` recherche, `n` nouvelle todo, `r` chercher les MR, `l` logs, `?` aide,
 `Échap` ferme) · **favicon dynamique** pendant un job · messages d'erreur **traduits en actions**
-(certificat, token, CLI introuvable, timeout, réseau) · **onboarding en 3 étapes** tant que la
-connexion et les dépôts ne sont pas configurés · chaque champ de formulaire porte une **icône i** dont
-le survol (ou le focus clavier) explique à quoi il sert.
+(certificat, token, CLI introuvable, timeout, réseau — dont **« Mergerie ne répond pas »** avec un
+bouton *Réessayer* quand le serveur est arrêté) · **onboarding en 3 étapes** tant que la
+connexion et les dépôts ne sont pas configurés, **étapes cochées au fur et à mesure**, et tant que
+rien n'est configuré c'est cet écran qui s'ouvre au démarrage (le brief du matin prend le relais
+dès le lendemain) · chaque champ de formulaire porte une **icône i** dont
+le survol (ou le focus clavier) explique à quoi il sert · **aucun compteur n'est affiché avant sa
+donnée** : squelette pendant le chargement, jamais un « 0 » qui voudrait dire « rien à traiter ».
 
 - **La barre de menus se range** (Réglages → Général). On **remonte** ce qu'on ouvre dix fois par
   jour et on **masque** ce dont on ne se sert pas : glisser-déposer ou flèches, appliqué tout de

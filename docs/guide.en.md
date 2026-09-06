@@ -137,6 +137,12 @@ shared search (title, author, project, ticket).
   the end of every review. It is **unchecked by default**: writing on other people's work is a decision.
   If it is checked and the forge refuses, the review is **not** lost — the report stays saved, and the
   job log says why publishing did not happen.
+- **The card holds a single row of actions**: `View diff` · `Context` | `Review ▾` | `⋯`.
+  The **`⋯`** menu gathers everything else — *Let the AI code it*, *Verify*, *See results*,
+  *Dismiss without review*, *Merge*. Seven buttons of equal weight per card said nothing about
+  which one was the normal path, and their number changed from one card to the next: the action
+  column was never twice in the same place. The gestures are unchanged, one extra click for the
+  less frequent ones.
 - `View diff` opens the MR's diff **before any review**, in the full-screen viewer (tree, inline diff,
   navigation) — the repository is cloned on demand if needed. The left panel becomes a **decision panel**:
   if the MR is trivial, `Dismiss without review`; otherwise `Review`. The point is to **not spend an AI
@@ -1334,9 +1340,15 @@ both fit. The free link then disappears: keeping it would make two entries for t
 #### The palette — `Ctrl`/`Cmd` + `K`, or the `o` key
 The search field in the header opens the **global palette**, which searches **everything at once**:
 the grid's cells (“kibana staging”), free links, merge requests (by number or by words of the
-title), watched tickets, note pages, open todos, and navigation actions. Enter opens — an external
+title), **dev sessions** (label, prompt or branch), watched tickets, note pages, open todos, and
+navigation actions. Enter opens — an external
 link in a new tab, an internal object in its own place.
 
+- **On opening, with nothing typed**, it offers three short sections: **Actions**, **Recent merge
+  requests**, **Recent sessions**, three of each. With no query everything scores the same, and it
+  was the most numerous source — the grid's links — that took every slot: the palette opened on
+  eight Kibana addresses without a single merge request. From the first letter the headings go
+  away and ranking is by relevance again.
 - **Fuzzy search**, accent- and case-insensitive — `generation` finds “Génération du rapport”, and
   the other way round. You abbreviate **by words**: `kib pre` finds “Kibana · preprod”, each word
   you type having to appear *whole* somewhere in the target. Dropping a letter inside a word
@@ -1573,8 +1585,12 @@ The tab, the sub-tab **and the Reviews stage are remembered** from one session t
 else**: no search, no dialog, no open report, because a stale state is worse than a clean start ·
 **keyboard shortcuts** (`1`-`9` then `0` for the ten tabs, `/` search, `n` new todo, `r` fetch MRs, `l` logs, `?` help, `Esc` closes) · a
 **dynamic favicon** during a job · error messages **translated into actions** (certificate, token, CLI not
-found, timeout, network) · a **3-step onboarding** as long as the connection and the repositories are not
-configured · every form field carries an **i icon** whose hover (or keyboard focus) explains what it is for.
+found, timeout, network — including **“Mergerie is not responding”** with a *Try again* button when the
+server is down) · a **3-step onboarding** as long as the connection and the repositories are not
+configured, **with the steps ticked off as you go**, and as long as nothing is configured that is the
+screen the app opens on (the morning brief takes over from the next day) · every form field carries an
+**i icon** whose hover (or keyboard focus) explains what it is for · **no counter is shown before its
+data**: a skeleton while it loads, never a “0” that would read as “nothing to review”.
 
 - **The menu bar can be arranged** (Settings → General). Move **up** what you open ten times a day,
   **hide** what you never use: drag and drop or arrows, applied at once. A hidden menu also leaves

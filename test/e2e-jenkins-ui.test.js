@@ -493,11 +493,23 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 6);
   });
 
-  test('un job désactivé n’a pas de bouton « Lancer »', async () => {
+  /* Le bouton reste À SA PLACE mais inerte : absent, il décalait « Lancer » d'une ligne à
+     l'autre, et c'est le bleu qu'on vise sans relire. Ce qui compte est qu'il soit
+     incliquable — proposer de lancer ce que Jenkins refusera est une promesse qu'on ne tient
+     pas — et qu'il DISE pourquoi. */
+  test('un job désactivé porte un « Lancer » inerte, qui dit pourquoi', async () => {
     await allerJenkins();
-    const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'archive' }).first();
-    assert.equal(await ligne.locator('[data-jkrun]').count(), 0,
-      'proposer de lancer ce que Jenkins refusera est une promesse qu’on ne tient pas');
+    /* Un test précédent a laissé des dossiers décochés : sans ce retour à zéro, la ligne
+       cherchée n'est pas dans la liste et l'ancienne version de ce test — qui n'attendait
+       AUCUN bouton — passait sur une ligne absente. */
+    await page.locator('#jenkinsFolderSearch').fill('');
+    await page.locator('#jenkinsFoldersAll').click();
+    const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'archive' });
+    await ligne.first().waitFor();
+    const run = ligne.first().locator('[data-jkrun]');
+    assert.equal(await run.count(), 1, 'la colonne d’actions garde sa forme, ligne après ligne');
+    assert.equal(await run.isDisabled(), true);
+    assert.match(await run.getAttribute('title'), /désactivé/i);
   });
 
   /* Lancer un job sans paramètre : confirmation, puis la requête part vraiment. Le témoin est
@@ -896,11 +908,39 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     assert.ok(!/MDP/.test(post.body), 'le secret n’est pas inventé');
   });
 
-  test('un job sans paramètre n’a pas de bouton « Relancer » (ce serait « Lancer »)', async () => {
+  /* LA COLONNE D'ACTIONS EST UN RAIL. Les boutons manquaient selon l'état du job, si bien que
+     « Lancer » — le bleu, celui qu'on vise sans relire — se retrouvait à trois abscisses
+     différentes d'une ligne à l'autre. On vise alors « Relancer » en croyant lancer. */
+  test('« Lancer » tombe à la même abscisse sur toutes les lignes', async () => {
     await allerJenkins();
-    const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'simple' }).first();
-    assert.equal(await ligne.locator('.jk-chip').count(), 0, 'ce job est bien parti sans paramètre');
-    assert.equal(await ligne.locator('[data-jkrerun]').count(), 0);
+    await page.locator('#jenkinsFolderSearch').fill('');
+    await page.locator('#jenkinsFoldersAll').click();
+    await page.locator('#jenkinsBox .jk-row').first().waitFor();
+    const abscisses = await page.evaluate(() => [...document.querySelectorAll('#jenkinsBox .jk-row')]
+      .map((r) => {
+        const b = r.querySelector('[data-jkrun]');
+        return b ? Math.round(b.getBoundingClientRect().right) : null;
+      }));
+    assert.ok(abscisses.length >= 4, 'il faut plusieurs lignes pour que la question se pose');
+    assert.equal(abscisses.filter((x) => x === null).length, 0,
+      'chaque ligne porte le bouton, même quand il est inerte : c’est ce qui tient la colonne');
+    assert.equal(new Set(abscisses).size, 1,
+      `le bord droit doit être unique, vu : ${JSON.stringify(abscisses)}`);
+  });
+
+  test('un job sans paramètre porte un « Relancer » inerte (ce serait « Lancer »)', async () => {
+    await allerJenkins();
+    /* Retour à zéro des filtres, comme plus haut : un test précédent peut avoir laissé des
+       dossiers décochés, et la ligne cherchée serait alors simplement absente — ce que
+       l'ancienne version de ce test, qui n'attendait AUCUN bouton, prenait pour un succès. */
+    await page.locator('#jenkinsFolderSearch').fill('');
+    await page.locator('#jenkinsFoldersAll').click();
+    const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'simple' });
+    await ligne.first().waitFor();
+    assert.equal(await ligne.first().locator('.jk-chip').count(), 0, 'ce job est bien parti sans paramètre');
+    const rerun = ligne.first().locator('[data-jkrerun]');
+    assert.equal(await rerun.count(), 1);
+    assert.equal(await rerun.isDisabled(), true, 'relancer sans paramètre à reprendre, ce serait lancer');
   });
 
   /* Et depuis l'historique : les valeurs de CETTE exécution, pas celles du dernier lancement —

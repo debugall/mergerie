@@ -143,8 +143,58 @@ describe('Palette', () => {
     assert.equal(apres[0].ref, cible2.ref, 'vingt ouvertures le placent en tête à match comparable');
   });
 
+  /* La palette s'ouvre PLEINE, mais de ce qu'on vient y chercher. Sans requête elle ne rend
+     plus les liens de la grille — c'est la coupe éprouvée par le test suivant —, donc ce sont
+     les actions du client qui la remplissent : l'application en envoie toujours. */
   test('une requête vide rend quand même des résultats — la palette s’ouvre pleine', async () => {
-    assert.ok((await app.api('POST', '/api/launcher', { q: '' })).body.results.length > 0);
+    const r = (await app.api('POST', '/api/launcher', {
+      q: '', actions: [{ id: 'act:0', label: 'Aller aux reviews' }],
+    })).body.results;
+    assert.ok(r.length > 0, 'une palette qui s’ouvre vide se referme sans avoir servi');
+    assert.equal(r[0].group, 'nav');
+  });
+
+  /* PALETTE OUVERTE, RIEN DE TAPÉ. Sans requête, tout se vaut : c'était la source la plus
+     nombreuse — les liens de la grille — qui prenait les douze places, et on ouvrait la
+     palette sur huit URL Kibana sans une seule merge request ni session. On y montre
+     maintenant un échantillon des trois choses qu'on vient y chercher. */
+  test('à vide : trois actions, trois merge requests, trois sessions — et pas de liens', async () => {
+    const repo = app.db.prepare('SELECT id FROM repo LIMIT 1').get()
+      || { id: (await app.api('POST', '/api/repos', { project: 'grp/palette', url: 'https://x.test/p.git' })).body.id };
+    const now = new Date().toISOString();
+    // Quatre de chaque, pour que le plafond de trois soit une VRAIE coupe, pas un hasard.
+    for (let i = 0; i < 4; i += 1) {
+      app.db.prepare(`INSERT INTO mr (repo_id, iid, title, source_branch, status, updated_at)
+        VALUES (?, ?, ?, 'main', 'to_review', ?)`).run(repo.id, 900 + i, `MR palette ${i}`, now);
+      app.db.prepare(`INSERT INTO task (repo_id, prompt, branch, kind, label, created_at, updated_at)
+        VALUES (?, ?, ?, 'code', ?, ?, ?)`).run(repo.id, `prompt ${i}`, `feat/pal-${i}`, `Session palette ${i}`, now, now);
+    }
+    const actions = [{ id: 'act:0', label: 'A' }, { id: 'act:1', label: 'B' },
+      { id: 'act:2', label: 'C' }, { id: 'act:3', label: 'D' }];
+    const r = (await app.api('POST', '/api/launcher', { q: '', actions })).body.results;
+
+    const groupes = r.map((x) => x.group);
+    assert.deepEqual(groupes, ['nav', 'nav', 'nav', 'mrs', 'mrs', 'mrs', 'tasks', 'tasks', 'tasks'],
+      `trois de chaque, dans l'ordre Actions → MR → Sessions, vu : ${JSON.stringify(groupes)}`);
+    assert.ok(!r.some((x) => x.group === 'links'),
+      'les liens de la grille ne prennent plus toute la place : ils se cherchent, ils ne s’affichent pas');
+    // Les plus RÉCENTES : c'est ce qu'on vient rouvrir.
+    assert.match(r.find((x) => x.group === 'mrs').label, /903/);
+    assert.match(r.find((x) => x.group === 'tasks').label, /Session palette 3/);
+  });
+
+  /* Une session se retrouve par son libellé, son prompt ou sa branche — elle n'était
+     cherchable nulle part, alors que c'est l'objet qu'on rouvre le plus après une MR. */
+  test('une session se cherche par son libellé et ramène à son sous-onglet', async () => {
+    const r = (await app.api('POST', '/api/launcher', { q: 'Session palette 2' })).body.results;
+    const s = r.find((x) => x.kind === 'task');
+    assert.ok(s, `la session doit sortir, vu : ${JSON.stringify(r.map((x) => x.label))}`);
+    assert.equal(s.nav.tab, 'task');
+    assert.equal(s.nav.task_kind, 'code', 'la saveur voyage avec le résultat : sans elle on ouvre le mauvais sous-onglet');
+    assert.ok(s.nav.task_id > 0);
+
+    const parBranche = (await app.api('POST', '/api/launcher', { q: 'feat/pal-1' })).body.results;
+    assert.ok(parBranche.some((x) => x.kind === 'task'), 'la branche aussi désigne la session');
   });
 });
 

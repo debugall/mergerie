@@ -1535,6 +1535,22 @@ app.get('/api/gitlab/projects', wrap(async (req, res) => {
   res.json(projects.map((p) => ({ ...p, already: existing.has(p.project) })));
 }));
 
+/* TEST DE LA CONNEXION GITLAB, SUR LES VALEURS DU FORMULAIRE — comme le fait déjà
+   `/github/test`. La version précédente lisait la configuration ENREGISTRÉE : au premier
+   lancement, on saisissait l'URL et le jeton, on cliquait « Tester la connexion », et on se
+   faisait répondre « Token GitLab non configuré » par une application qui avait la valeur sous
+   les yeux. Deux boutons jumeaux ne peuvent pas avoir deux comportements.
+   Le masque `***` signifie « champ non touché » : on teste alors avec le jeton en base. */
+app.post('/api/gitlab/test', wrap(async (req, res) => {
+  const cfg = getConfig();
+  const test = { ...cfg };
+  if (req.body && req.body.gitlab_url != null) test.gitlab_url = req.body.gitlab_url;
+  if (req.body && req.body.access_token && req.body.access_token !== '***') test.access_token = req.body.access_token;
+  if (!forge.isConfigured(test, 'gitlab')) throw new Error(t('err.gitlab-test-incomplet'));
+  const projects = await forge.gitlab.listAccessibleProjects(test);
+  res.json({ ok: true, count: projects.length });
+}));
+
 // Liste les branches d'un dépôt (pour choisir la branche de base d'une tâche).
 app.get('/api/gitlab/branches', wrap(async (req, res) => {
   const repo = repoById(Number(req.query.repo_id));
@@ -3675,6 +3691,11 @@ function jobLogPayload(job, after) {
     finished_at: job.finished_at,
     // Le serveur décide de ce qui est rejouable — le front n'a pas à connaître la liste.
     can_retry: jobs.canRetry(job),
+    /* CE QUE LE JOB A PRODUIT, pour que le bandeau puisse y mener. Un job qui se terminait
+       s'effaçait tout seul six secondes plus tard sans laisser de lien vers son résultat : il
+       ne restait qu'une pastille de onze pixels dans le pied de page. */
+    target_kind: job.target_kind || null,
+    target_id: job.target_id || null,
     lines,
   };
 }

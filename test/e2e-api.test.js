@@ -146,6 +146,37 @@ describe('API de bout en bout', () => {
 
   /* ---------- Dépôts ---------- */
 
+  /* TESTER LA CONNEXION AVANT D'ENREGISTRER. Au premier lancement on saisit l'URL et le
+     jeton, puis on clique « Tester la connexion » — le geste évident. La route lisait la
+     configuration ENREGISTRÉE et répondait « Token GitLab non configuré » à quelqu'un qui
+     venait de le taper. Elle accepte maintenant les valeurs du formulaire, comme le fait
+     `/github/test` depuis toujours : deux boutons jumeaux, un seul comportement. */
+  test('POST /api/gitlab/test valide ce qui est À L’ÉCRAN, pas ce qui est enregistré', async () => {
+    const vraiUrl = app.gitlabUrl;
+    const vraiToken = app.state.token;
+
+    // Base vidée de sa connexion : c'est l'état d'une installation neuve.
+    await app.api('PUT', '/api/config', { gitlab_url: '', access_token: '' });
+    const rienDuTout = await app.api('POST', '/api/gitlab/test', {});
+    assert.equal(rienDuTout.status, 400);
+    assert.match(rienDuTout.body.error, /Renseigne/i,
+      'le message dit quoi faire, il n’accuse pas l’utilisateur d’une case interne');
+
+    // Les valeurs du formulaire suffisent : rien n'a été enregistré entre-temps.
+    const duFormulaire = await app.api('POST', '/api/gitlab/test', { gitlab_url: vraiUrl, access_token: vraiToken });
+    assert.equal(duFormulaire.status, 200, JSON.stringify(duFormulaire.body));
+    assert.ok(duFormulaire.body.count >= 1, 'il rend le nombre de projets joignables');
+    assert.equal((await app.api('GET', '/api/config')).body.gitlab_url, '',
+      'tester n’enregistre rien : c’est « Enregistrer » qui enregistre');
+
+    // Une URL fausse échoue, avec le détail — et non un « non configuré » trompeur.
+    const mauvaise = await app.api('POST', '/api/gitlab/test', { gitlab_url: 'http://127.0.0.1:1', access_token: vraiToken });
+    assert.equal(mauvaise.status, 400);
+    assert.doesNotMatch(String(mauvaise.body.error), /non configuré/i);
+
+    await app.configure();   // on remet la connexion pour la suite du fichier
+  });
+
   test('GET /api/gitlab/projects marque les dépôts déjà ajoutés', async () => {
     const { body } = await app.api('GET', '/api/gitlab/projects');
     assert.equal(body.length, 2);

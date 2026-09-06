@@ -68,6 +68,44 @@ describe('Modales : le clic sur le fond', { skip: dispo ? false : 'chromium abse
     await page.waitForFunction(() => document.querySelector('#taskModal').dataset.saisi === '1');
   };
 
+  /* LE PIED RESTE À L'ÉCRAN. La boîte défile (max-height 90vh) et le formulaire de session
+     fait 720 px sur un écran de 800 : « Annuler » et le bouton principal tombaient sous la
+     ligne de flottaison. On ouvrait une fenêtre dont on ne voyait aucune issue, et rien ne
+     disait qu'elle défilait. */
+  test('le pied de la modale de session reste visible à l’ouverture', async () => {
+    const avant = page.viewportSize();
+    await page.setViewportSize({ width: 1280, height: 800 });   // l'écran de la revue
+    await ouvrir();
+    const pied = await page.locator('#taskModal .modal-actions').boundingBox();
+    const h = await page.evaluate(() => window.innerHeight);
+    assert.ok(pied.y + pied.height <= h + 1,
+      `le pied doit tenir dans l’écran (bas à ${Math.round(pied.y + pied.height)}, fenêtre ${h})`);
+    assert.equal(await page.locator('#taskSubmit').isVisible(), true);
+    assert.equal(await page.locator('#taskCancel').isVisible(), true);
+    await page.keyboard.press('Escape');
+    await page.setViewportSize(avant);
+  });
+
+  /* Trois champs par projet et rien pour les nommer : dès qu'on tape, l'invite disparaît et
+     « branche à créer » ne se distingue plus de « branche de départ ». */
+  test('les champs d’un projet portent une ligne d’en-têtes, alignée sur eux', async () => {
+    await ouvrir();
+    const cols = await page.evaluate(() => {
+      const x = (el) => Math.round(el.getBoundingClientRect().left);
+      const tetes = [...document.querySelectorAll('.target-head-row > *')].map(x);
+      const ligne = document.querySelector('#targetRows .target-row');
+      return { tetes, champs: [...ligne.children].map(x) };
+    });
+    assert.equal(cols.tetes.length, cols.champs.length, 'une colonne d’en-tête par colonne de champ');
+    cols.tetes.forEach((t, i) => {
+      assert.ok(Math.abs(t - cols.champs[i]) <= 2,
+        `l’en-tête ${i} doit coiffer son champ (${t} vs ${cols.champs[i]})`);
+    });
+    assert.equal(await page.locator('#targetRows .target-row').count(), 1,
+      'la ligne d’en-têtes ne compte pas pour un projet');
+    await page.keyboard.press('Escape');
+  });
+
   test('un clic franc sur le fond ferme une modale intacte', async () => {
     await ouvrir();
     const { x, y } = await coinDuFond();
