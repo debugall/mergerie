@@ -31,6 +31,10 @@ une todo normale dont l'échéance est dépassée réclame autant, et c'est just
 ### Reviews
 Les trois stades d'une même merge request, réunis derrière un filtre segmenté —
 **À traiter · Reviewées · Traitées** — avec une recherche commune (titre, auteur, projet, ticket).
+Trois pastilles au-dessus de la file trient par **auteur** : **Toutes · Les miennes · Celles des autres**.
+Un tech lead regarde d'abord ce que l'équipe attend de lui, un développeur ce qu'il a poussé. Le compte du
+jeton est lu **une fois par forge** ; sans lui — un jeton qui ne permet pas de lire son propre compte — les
+pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité devinée.
 
 - `Chercher les nouvelles MR` interroge la forge et remplit la liste (filtrée par pattern).
   Un **rafraîchissement automatique** optionnel le fait pour toi (voir Réglages).
@@ -497,6 +501,11 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   facultative (liste déroulante avec recherche ; vide = branche par défaut du dépôt). Le prompt est
   appliqué à chaque projet, séquentiellement — **un projet en échec n'interrompt pas les autres**.
   Chaque projet a ensuite ses propres actions : **Voir le diff · Pousser · Créer la MR · Merger**.
+  Une fois la merge request ouverte, la ligne du projet dit **ce qu'elle est devenue** — note, verdict,
+  commentaires en attente — au lieu d'un `MR !216 ↗` qui renvoyait dans Reviews, et **`Prévenir Jira`**
+  commente le ticket avec le lien de la MR puis le passe en revue quand Jira propose la transition,
+  derrière une confirmation qui nomme le ticket. Une case de la modale de session, **décochée par
+  défaut**, le fait à chaque création de merge request.
   **`Voir le diff`** ouvre le **même explorateur plein écran que celui des merge requests** —
   arborescence complète du projet au milieu, fichier entier avec les changements en place à droite
   (navigation d'un changement à l'autre, mini-carte) — avec, à gauche, le **retour de l'IA** au lieu
@@ -636,6 +645,9 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   **Chaque question est conservée** : une question de suivi écrase le fichier de réponse, mais la passe
   est archivée — `Voir la réponse` aligne les itérations à gauche, avec la recherche sur les questions
   posées, et rejoue à droite celle qu'on choisit avec la réponse qu'elle a obtenue.
+  **`Faire coder`** transforme une exploration en session de codage : la modale s'ouvre sur **les mêmes
+  dépôts**, la question et sa réponse en contexte, et **la session d'agent de l'exploration** placée en
+  « reprendre une session existante » — l'agent garde ce qu'il a lu au lieu de relire trois dépôts.
 - **Question libre** — la même chose, **sans aucun dépôt**. On pose une question à l'IA — une notion à
   creuser, deux options à comparer, un plan à challenger — et la réponse est gardée ici. Rien n'est lu ni
   modifié sur la machine : ni clone, ni dossier, ni fichier de ton code. Un **libellé** facultatif range
@@ -727,7 +739,13 @@ chronologique : on n'arrange pas son tiroir.
   n'est pas une alarme.
 - **Report** en un clic : **+1 h** ou **demain 9 h**. « Demain 9 h » veut dire 9 h **au cadran**, pas
   « dans 24 heures » — un changement d'heure ne doit pas décaler le rendez-vous.
-- **Lien optionnel** vers une merge request, un ticket ou un dépôt : la ligne devient cliquable.
+- **Lien optionnel** vers une merge request, un ticket ou un dépôt : la ligne devient cliquable. Une todo
+  liée à une merge request affiche **l'état de cette MR** sous son titre (note, verdict, ouverte depuis
+  combien de temps) : on sait si elle a encore une raison d'exister.
+- **Une todo liée à une merge request se coche quand la MR est mergée**, avec une note disant ce qui l'a
+  fermée — « Fermée automatiquement : la merge request !201 a été mergée ou fermée ». Rien n'est supprimé
+  et elle se rouvre ; *Réglages → Général* porte l'interrupteur (**« Cocher les todos liées quand leur
+  merge request est mergée »**) pour qui préfère fermer à la main.
 - **Rien n'est supprimé.** Une todo faite reste **barrée sept jours** — on veut voir ce qu'on a fait cette
   semaine — puis passe dans **Archivées**, où elle reste consultable. La rouvrir la sort du tiroir.
   Le bouton *Supprimer* existe, mais cocher « fait » est le geste normal.
@@ -882,11 +900,18 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   promu en titre à tort : seule une ligne dont **toutes** les cellules sont des en-têtes en devient
   un. Un tableau sans en-tête garde donc sa première ligne, et un tableau clé/valeur (en-tête en
   première **colonne**) garde sa première paire, la clé en gras faute d'équivalent en Markdown.
+- **Section `Dans Mergerie`.** Ce que l'outil sait déjà de ce ticket, sans aller le chercher : les **merge
+  requests qui portent sa clé** (avec leur note et leur verdict de vérification) et les **sessions de
+  codage parties de lui**. La liste des tickets porte le même marqueur en une ligne, de sorte qu'on voit
+  d'un coup d'œil lequel est déjà engagé dans Mergerie et lequel n'a encore rien.
 - **`Faire coder l'IA` depuis le ticket.** Le bouton en tête du détail ouvre la **modale de session de
   codage déjà remplie** : le contenu du ticket (titre + description) est mis en tête du prompt, le message
   de commit et le **nom de branche** (`feature/PROJ-1421-…`) sont proposés d'après la clé et le résumé, et
   le numéro de ticket est renseigné. Il ne reste qu'à choisir le dépôt et à préciser ta demande sous le
   contexte — le curseur y est déjà placé. La session n'est **pas lancée automatiquement** : tu relis avant.
+  Le **dépôt proposé** est le dernier utilisé pour ce projet Jira, et les **captures d'écran du ticket**
+  sont offertes en cases à cocher (les trois premières cochées) : les images retenues partent en pièces
+  jointes de la session, sans détour par le dossier des téléchargements.
 - **Changer l'état du ticket** : un sélecteur dans l'en-tête liste les **transitions autorisées** (ce que Jira
   permet pour toi sur ce ticket) ; en choisir une **applique la transition** et rafraîchit le statut (détail
   + liste). Rien n'est proposé si tu n'as pas les droits.
@@ -950,6 +975,29 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   dans son clone local**, puis enregistre le SHA. L'onglet **Historique** propose alors
   `Restaurer` — et ça fonctionne **même après le passage du ramasse-miettes de la forge**, puisque
   c'est le clone local qui sert de filet, pas le serveur.
+- **Les branches de merge requests mergées se ramassent en un lot.** Un bouton en tête d'*Actions* remplit
+  la suppression avec **toutes les branches dont la merge request a été mergée** — l'aperçu habituel dit
+  ensuite, branche par branche, si elle existe encore et si la supprimer est sans risque. Passé une
+  dizaine, le brief du matin le rappelle.
+- **Merge** — fusionne **une branche dans une autre**, conflits compris, sans quitter l'outil. On choisit
+  un dépôt, la **branche à fusionner** et la **branche de destination** (les deux avec recherche : un dépôt
+  actif porte des centaines de branches), puis `Préparer le merge`. À ce stade **rien n'est commité ni
+  poussé** : le merge est préparé dans un **espace de travail à part**, jamais dans le clone partagé — une
+  review, une session de codage ou une vérification qui tourne à côté ne doit pas trouver le dépôt à moitié
+  fusionné. Un merge **se reprend** après un redémarrage de l'outil.
+  - **Les conflits se résolvent à l'écran, un par un.** Pour chaque conflit : la **version de la
+    destination** et la **version entrante**, l'une sous l'autre, avec `Garder` sur chacune et
+    `Garder les deux, dans cet ordre` en dessous ; le côté retenu est mis en évidence, pour voir où l'on
+    en est sans relire les boutons. **Aucun marqueur `<<<<<<<` n'est jamais montré.** Quand aucun des deux
+    ne convient, `Écrire moi-même` donne le **résultat de tes choix** dans un champ texte libre et
+    enregistre ce que tu écris.
+  - **Puis deux gestes séparés, dans cet ordre.** `Commiter` — le message est déjà rempli avec celui que
+    git a écrit — puis `Pousser`, chacun derrière sa propre confirmation. `Commiter` refuse tant qu'un
+    conflit reste ; `Pousser` refuse tant que rien n'est commité. `Abandonner` remet tout en état :
+    **tant que tu n'as pas poussé, la branche de destination n'a pas bougé.**
+  - Quand les deux branches **n'ont aucun ancêtre commun**, l'outil explique ce que ça signifie et propose
+    de continuer quand même (`--allow-unrelated-histories`), au lieu de renvoyer tel quel le
+    `fatal: refusing to merge unrelated histories` de git.
 - **Navigation** — positionne **plusieurs projets de ta machine** (pas les clones de l'outil : tes
   propres dépôts) sur la branche de ton choix, en un geste. On choisit un **répertoire local** — un
   dossier contenant un sous-dossier par projet git, déclaré dans *Réglages → Dépôts* —, puis ligne par
@@ -1157,6 +1205,15 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   aligne des centaines de jobs. Elle porte sur le **chemin entier**, donc « boutique » retrouve
   tout un projet. Une case **`Seulement ce qui ne va pas`** ne garde que l'échec, l'instable et
   ce qui tourne.
+- **Ne garder que ce qu'on a déclenché soi-même.** Une case **`Mes lancements`** ne laisse que les jobs
+  lancés **depuis Mergerie** — la liste servait déjà à la notification de fin de run, elle devient un
+  filtre. C'est la réponse à « qu'est-ce que j'ai envoyé, et où ça en est ? ».
+- **Épingler les trois jobs du quotidien.** `Épingler ce job` le fait remonter en tête de liste, à côté
+  des dossiers rangés ; `Détacher ce job` le remet dans le rang. Dans deux cents jobs, les trois qu'on
+  ouvre tous les jours cessent de se chercher.
+- **La fin de la console, sans ouvrir Jenkins.** Le panneau de détail d'un build affiche ses **30
+  dernières lignes de console** en clair : sur un build rouge, l'erreur se lit là où on l'a trouvée. La
+  console n'est demandée **que si le détail en montre l'emplacement**, jamais pour une liste entière.
 - **Rafraîchi à la cadence que tu choisis, et seulement quand tu regardes.** *Réglages →
   Jenkins* porte le réglage — **toutes les N minutes, 0 = jamais**, une minute par défaut,
   plafonné à une heure. Il est en **base**, comme celui des MR et celui de Jira : c'est un
@@ -1511,6 +1568,17 @@ le même jour, et sans l'heure le classement paraît arbitraire —, auteur, lie
 récupération des MR est décochée en sont exclus, comme les dépôts inactifs : on ne les suit plus), **coût en tokens** (camembert par
 type d'appel + **coût moyen par MR reviewée**), résumé des sessions. L'activité de commits est récupérée
 **en direct depuis la forge de chaque dépôt, toutes branches confondues** (chargée à part, best-effort : rien ne casse si une forge est injoignable).
+**Les sessions les plus coûteuses.** Cinq sessions, du plus au moins cher en **tokens estimés**. Un prompt
+qui fait relire trois dépôts pour rien s'y voit immédiatement. La consommation est désormais rattachée à
+**la session qui l'a dépensée**, ce qui est aussi ce qui rend ce classement possible.
+
+**Constats qui reviennent.** Le même constat relevé sur **au moins trois merge requests d'un même dépôt** :
+c'est la matière première d'une règle de review, et `En faire une règle` ouvre le formulaire pré-rempli —
+le `path_match` déduit des fichiers concernés, le constat comme contenu.
+
+**Chaque nombre est une porte.** Cliquer « pire 5,5 » ou « en attente 3 » ouvre Reviews filtré sur ce dépôt,
+au bon stade — au lieu de laisser retrouver à la main ce que le chiffre désigne.
+
 **Activité des projets — 6 derniers mois.** Répond à « quels dépôts vivent, lesquels dorment ». **Une barre
 horizontale par dépôt suivi** (actif ET récupération des MR cochée), rangées de la plus longue à la plus
 courte, **nom en clair à gauche** et total à droite. Le graphe a une **hauteur fixe et défile** : vingt
@@ -1574,7 +1642,9 @@ et la **palette de commandes git** de l'onglet *Git → Commandes Git* : ajout/�
 commandes *nom + commande figée*). C'est le **premier** onglet, et celui qui s'ouvre d'office la
 première fois : sans jeton, aucun autre réglage ne sert à rien ·
 **Dépôts** (ajout un par un ou en masse **depuis GitLab** ou **depuis GitHub** — chaque dépôt porte un badge
-de forge, et un même chemin peut exister sur les deux —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ·
+de forge, et un même chemin peut exister sur les deux —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ; chaque dépôt affiche aussi **ses merge requests ouvertes**, **la date de la dernière
+recherche** et **l'état de son clone**, avec un bouton **`Re-cloner`** — rien n'est perdu côté forge, mais
+les modifications non poussées du clone local le sont, d'où la confirmation) ·
 **Merge Request** (rafraîchissement auto, convergence, templates de prompt — le gabarit livré n'invoque **aucun skill**, celui qui en a un l'y écrit ; la **note globale**, elle, est réclamée par l'application quel que soit le gabarit, parce que la liste s'en sert pour filtrer) ·
 **Règles de review spécifiques** (critères ajoutés au prompt quand le nom de
 branche contient un fragment donné **ou quand le diff touche un chemin** — glob type `**/migrations/**`,
@@ -1584,13 +1654,18 @@ concernées, calculé **sans IA** juste sur les chemins du diff, pour voir d'un 
 objective* plus bas ; la page montre d'abord **la liste**, et le formulaire s'ouvre sur *Ajouter un
 vérificateur*, *Modifier* ou **`Dupliquer`** — celui-ci le rouvre **pré-rempli** sans identifiant,
 donc enregistrer **crée** au lieu d'écraser l'original, avec un nom libre proposé (« X (copie) »,
-les noms étant uniques) et le champ sélectionné : renommer est le premier geste) ·
+les noms étant uniques) et le champ sélectionné : renommer est le premier geste ; le formulaire
+**propose les commandes que les dépôts couverts savent déjà lancer** — scripts `package.json`, scripts
+`composer.json`, cibles du Makefile, lus dans le clone sur disque, **rien n'est exécuté** — à ajouter
+d'un clic) ·
 **Notifications** (sous-onglet dédié, voir ci-dessous) ·
 **Général** (thème clair/sombre/auto, langue, densité, **arrangement des menus**, brief du matin, conservation des données, sauvegarde, et une **zone dangereuse** pour la remise à zéro) ·
 **Jira** (**connexion Jira** — URL + email + jeton d'API, avec un bouton *Tester Jira* — ; alimente l'onglet
 *Jira* et l'enrichissement d'une session depuis un ticket) ·
-**Jenkins** (URL, utilisateur et jeton d'API, avec un bouton de test, et la **fréquence de
-rafraîchissement** des jobs) ·
+**Jenkins** (URL, utilisateur et jeton d'API, avec un bouton de test, la **fréquence de
+rafraîchissement** des jobs, et les **jobs liés aux dépôts** : un job déclaré pour un dépôt est proposé
+sur ses merge requests **vérifiées vertes**, avec la branche pré-remplie dans le paramètre que tu
+désignes — la page du job s'ouvre, rien n'est lancé sans la confirmation habituelle) ·
 **AI sessions** (les **consignes permanentes**, voir ci-dessous, et un test technique : deux passes
 dans la même session d'agent — mémorise un marqueur
 puis le rappelle en reprise — pour vérifier que la **reprise de session** fonctionne avec ton CLI ;

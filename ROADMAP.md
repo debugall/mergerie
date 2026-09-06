@@ -21,7 +21,10 @@ operation instead of a manual repo-by-repo chore.
 
 - 🟡 **Trigger and watch CI pipelines** — done **for Jenkins** (1.2.0): a tab listing every job the account
   sees, its latest verdict, its run history parameter by parameter, and the run button. **GitLab CI and
-  GitHub Actions are still to do**, and are the remaining half of this item.
+  GitHub Actions are still to do**, and are the remaining half of this item. Since 1.4.0 a job can be
+  **linked to a repository**: a verified-green merge request then offers to run it with its branch already
+  filled in, and the last build carrying a branch is written on the merge request card and on a coding
+  session's project line — the CI verdict meets the review without leaving the tool.
 - **See what version runs where** — a clear view of which build is deployed on each environment, so "is my
   fix live?" is answered at a glance.
 
