@@ -420,9 +420,11 @@ rognerait), marque le champ `.is-invalid` + `aria-describedby` + `aria-invalid`,
 plus à demeure : huit secondes, minuteur suspendu tant que la souris ou le clavier est dessus, et
 un `MutationObserver` sur l'attribut `hidden` de toutes les `.modal` les efface quand le
 formulaire qui les a produits se ferme. Les ⓘ des libellés portent `tabindex="-1"` (six arrêts de
-tabulation sur seize, dans la seule modale de session) : la délégation `focusin` remonte du champ
-à son ⓘ (`hintDuChamp` : frère suivant, sinon le `[data-tip]` du `<label>` englobant), donc
-l'explication arrive **au focus du champ**.
+tabulation sur seize, dans la seule modale de session). **La bulle ne s'ouvre que sur son ⓘ** —
+survol, clic, ou focus de l'icône elle-même. Une version l'ouvrait aussi au focus du CHAMP, pour
+compenser ces icônes sorties du parcours : elle s'affichait alors par-dessus le champ qu'on venait
+de cliquer, masquant ce qu'on allait y écrire. Une explication qu'on n'a pas demandée et qui cache
+la saisie coûte plus qu'elle n'apporte.
 
 **#configForm est un formulaire ANCRE** : ses champs vivent dans six sous-onglets de Réglages et
 s'y rattachent par l'attribut `form=`. Deux conséquences que le code doit tenir explicitement —

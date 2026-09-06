@@ -82,12 +82,19 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     await fermerSession();
   });
 
-  test('l’avancé est replié, et il contient les trois champs qu’on ne touche pas', async () => {
+  test('l’avancé groupe les trois champs qu’on ne touche pas, et reste déplié', async () => {
     await ouvrirSession('code');
-    assert.equal(await page.locator('#taskAdvanced').evaluate((e) => e.open), false, 'replié à l’ouverture');
+    /* REGROUPÉS, PAS CACHÉS. Ils s'intercalaient entre le libellé et la décision de vérifier ;
+       ils ferment maintenant le formulaire, sous un titre qui dit ce qu'ils sont — et le bloc
+       s'ouvre déplié : ce qui compte est qu'ils ne coupent plus le parcours principal, pas
+       qu'ils disparaissent. Le repli reste à la main de qui veut de l'air. */
+    assert.equal(await page.locator('#taskAdvanced').evaluate((e) => e.open), true,
+      'déplié par défaut : on doit voir ce qu’on peut régler sans avoir à le chercher');
     const dedans = await page.$$eval('#taskAdvanced input, #taskAdvanced textarea',
       (els) => els.map((e) => e.name).filter(Boolean));
     assert.deepEqual(dedans.sort(), ['ask_questions', 'commit_message', 'session_id']);
+    assert.equal(await page.locator('#taskAdvanced [name="session_id"]').isVisible(), true,
+      'et ils sont vraiment à l’écran, pas seulement dans le DOM');
     await fermerSession();
   });
 
@@ -118,12 +125,21 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     await fermerSession();
   });
 
-  test('les ⓘ ne sont plus des arrêts de tabulation, et le focus du champ montre leur bulle', async () => {
+  test('les ⓘ ne sont plus des arrêts de tabulation, et leur bulle n’ouvre que sur eux', async () => {
     await ouvrirSession('code');
     assert.equal(await page.$$eval('#taskModal .hint',
       (els) => els.filter((e) => e.offsetParent !== null && e.tabIndex >= 0).length), 0,
     'seize arrêts pour huit champs : les ⓘ sortent du parcours');
-    await page.focus('#taskForm textarea[name="prompt"]');
+
+    /* CLIQUER DANS UN CHAMP N'OUVRE RIEN. Une version montrait la bulle au focus du champ pour
+       compenser les icônes sorties du parcours : elle s'affichait par-dessus le champ qu'on
+       venait de cliquer, masquant ce qu'on allait y écrire. */
+    await page.click('#taskForm textarea[name="prompt"]');
+    assert.equal(await page.locator('#tip').evaluate((e) => e.classList.contains('on')), false,
+      'la bulle ne s’ouvre pas sur un champ qu’on vient de cliquer');
+
+    // …et le survol de l'ⓘ, lui, l'ouvre toujours.
+    await page.locator('#taskForm label:has(textarea[name="prompt"]) .hint').hover();
     await page.waitForFunction(() => {
       const t = document.querySelector('#tip');
       return t && t.classList.contains('on') && t.textContent.trim().length > 0;

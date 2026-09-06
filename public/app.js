@@ -7718,19 +7718,13 @@ document.addEventListener('mouseover', (e) => {
 document.addEventListener('mouseout', (e) => {
   if (e.target.closest && e.target.closest('[data-tip]')) hideTip();
 });
-/* LE FOCUS D'UN CHAMP MONTRE SON ⓘ. Les icônes sont hors du parcours de tabulation : sans
-   cela, l'explication ne serait plus atteignable au clavier du tout. On la cherche là où elle
-   se trouve — juste après le champ (lignes de projet) ou dans le <label> qui l'enveloppe. */
-function hintDuChamp(el) {
-  if (!el || !el.closest) return null;
-  if (el.classList && el.classList.contains('hint')) return el;
-  const suivant = el.nextElementSibling;
-  if (suivant && suivant.matches && suivant.matches('[data-tip]')) return suivant;
-  const lab = el.closest('label');
-  return lab ? lab.querySelector('[data-tip]') : null;
-}
+/* LA BULLE NE S'OUVRE QUE SUR SON ⓘ — au survol, au clic, ou quand l'icône elle-même prend le
+   focus. Une version l'ouvrait aussi au focus du CHAMP, pour compenser les icônes sorties du
+   parcours de tabulation : elle s'affichait alors par-dessus le champ qu'on venait de cliquer,
+   masquant ce qu'on allait y écrire. Une explication qu'on n'a pas demandée et qui cache la
+   saisie coûte plus qu'elle n'apporte. */
 document.addEventListener('focusin', (e) => {
-  const h = (e.target.closest && e.target.closest('[data-tip]')) || hintDuChamp(e.target);
+  const h = e.target.closest && e.target.closest('[data-tip]');
   if (h) showTip(h); else hideTip();
 });
 document.addEventListener('focusout', hideTip);

@@ -11,8 +11,9 @@
  *   3. LE NOM        le libellé — facultatif, et il nomme la carte : après ce qu'il résume ;
  *   4. APRÈS         ce qui change le RÉSULTAT une fois le code écrit : le vérificateur, la
  *                    convergence, l'auto-push. Puis les pièces jointes, qui sont une possibilité ;
- *   5. AVANCÉ        replié : questions de l'IA, message de commit, reprise d'une session
- *                    d'agent — trois champs qu'on ne touche pas une fois sur dix.
+ *   5. AVANCÉ        questions de l'IA, message de commit, reprise d'une session d'agent —
+ *                    trois champs qu'on ne touche pas une fois sur dix. Regroupés et repliables,
+ *                    mais DÉPLIÉS : ils ne coupent plus le parcours principal, ils le ferment.
  *
  * Le bloc gris des projets ouvrait ce formulaire : on choisissait des dépôts avant d'avoir
  * formulé la tâche. Un champ qui remonte ou qui descend d'un cran ne casse rien et ne se voit
@@ -96,7 +97,7 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
       'taskConvergeRow',
       'auto_push',
       'taskImages',                    // une possibilité, pas une étape
-      'taskAdvanced',                  // replié : questions, message de commit, session d'agent
+      'taskAdvanced',                  // questions, message de commit, session d'agent
     ]);
     assert.deepEqual(erreurs, []);
   });

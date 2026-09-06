@@ -128,8 +128,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
     reçoit le curseur ; le choix des projets, qui occupait la première place, vient dessous ;
     « Vérifier après » et l'auto-push remontent avant les pièces jointes, parce qu'ils changent
     le résultat ; et trois champs qu'on ne touche pas une fois sur dix (questions de l'IA,
-    message de commit, reprise d'une session d'agent) se replient dans **Avancé**. Joindre un
-    fichier redevient une ligne au lieu d'une zone pointillée vide de 80 pixels.
+    message de commit, reprise d'une session d'agent) sont regroupés sous **Avancé**, qui ferme
+    le formulaire — déplié, mais repliable d'un clic. Joindre un fichier redevient une ligne au
+    lieu d'une zone pointillée vide de 80 pixels.
   - **Un verbe par effet.** La même fenêtre disait « Lancer le codage », « Poser la question » et
     « Créer et lancer » pour un seul et même geste, selon la saveur de session. Deux libellés
     suffisent désormais et se lisent l'un contre l'autre : **« Créer et lancer »** lance,
@@ -155,8 +156,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
     le dit — il ne se passait rien), et le bouton principal fait le parcours nominal en un clic :
     **« Enregistrer et tester »**.
   - **Les ⓘ sortent du parcours de tabulation.** Six arrêts sur seize, dans la modale de session,
-    pour la même icône. L'explication apparaît désormais au **focus du champ**, là où on en a
-    besoin.
+    pour la même icône. Et la bulle ne s'ouvre **que sur l'ⓘ** — jamais au focus d'un champ, où
+    elle recouvrait ce qu'on venait de cliquer.
   - **Le badge de verdict est un vrai bouton** — il n'existait pas pour le clavier — et il dit la
     porte qu'il ouvre : « ✗ 1 test cassé · voir le rapport ». Le bandeau de job propose « Voir le
     rapport » après une vérification, au lieu d'une « session » qui n'existe pas. Côté Jenkins,

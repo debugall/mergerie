@@ -1373,9 +1373,10 @@
                 <div id="taskPieces" class="task-previews"></div>
                 <div id="taskPreviews" class="task-previews"></div>
             </div>
-            <!-- TROIS CHAMPS QU'ON NE TOUCHE PAS UNE FOIS SUR DIX. Dépliés, ils s'intercalaient
-                 entre le libellé et la décision de vérifier. -->
-            <details id="taskAdvanced" class="task-avance">
+            <!-- TROIS CHAMPS QU'ON NE TOUCHE PAS UNE FOIS SUR DIX — mais qui restent SOUS LES
+                 YEUX : ils sont regroupés et repliables, pas cachés. Ils s'intercalaient entre
+                 le libellé et la décision de vérifier ; ils ferment maintenant le formulaire. -->
+            <details id="taskAdvanced" class="task-avance" open>
                 <summary data-i18n="task.group.advanced">Avancé</summary>
                 <div id="taskAgentFields">
                     <label id="taskAskQuestionsRow" class="inline-check"><input type="checkbox" name="ask_questions" /> <span data-i18n="task.lbl.ask-questions">L'IA peut me poser des questions quand elle hésite</span> <button type="button" class="hint" tabindex="-1" aria-label="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-tip="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-i18n-tip="task.tip.ask-questions"><svg class="ico"><use href="#i-info"/></svg></button></label>
