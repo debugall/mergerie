@@ -27,7 +27,9 @@ const ISSUES = [
     key: 'PROJ-1408', summary: 'Ajouter le paiement en 3× sans frais', type: 'Story', typeIcon: '',
     sprints: [{ v: '42', l: 'Sprint 42', d: '2026-07-20T08:00:00.000Z', etat: 'future' }],
     epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
-    status: 'À faire', statusCategory: 'new', priority: 'Moyenne',
+    /* « En revue » : c'est l'état qui fait remonter ses merge requests en tête de la file —
+       la QA attend, et la carte le dit. Le décor doit montrer ce croisement. */
+    status: 'En revue', statusCategory: 'indeterminate', priority: 'Moyenne',
     assignee: { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
     reporter: { name: 'Product Owner', email: 'po@demo', avatar: '' },
     project: 'PROJ — Boutique en ligne', labels: ['paiement'],

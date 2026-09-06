@@ -68,8 +68,11 @@ Application locale mono-utilisateur (Node + Express + SQLite + front vanilla) po
 
 - **config** (row unique) — `gitlab_url`, `access_token`, `clone_path`, `ai_extra_instructions` (consignes permanentes ajoutées au prompt de TOUTES les sessions de codage, dépôt et hors dépôt, run comme suivi — une seule fonction `prompts.avecConsignes` pour les deux chemins), `auto_refresh_minutes` (0 = désactivé), `language`, `review_explain` (`'1'`/`'0'` : générer l'explication pédagogique lors d'une review), `auto_post_review` (`'1'`/`'0'`, **défaut `'0'`** : publier le rapport de review en commentaire sur la MR à la fin de chaque review), `auto_review_new` (`'1'`/`'0'`, **défaut `'0'`** : reviewer toute MR nouvellement découverte) `auto_rereview_stale` (`'1'`/`'0'`, **défaut `'0'`** : relancer la review quand le rapport se périme) et `review_auto_max` (plafond par découverte, défaut 5, `0` = sans limite), `converge_threshold` (seuil cible /10, défaut 8) et `converge_max_passes` (plafond de passes, défaut 3), templates de prompt ; **GitHub** : `github_url` (vide = github.com, sinon GitHub Enterprise) et `github_token` (secret masqué) ; **Jira** : `jira_url`, `jira_email`, `jira_token` (secret masqué).
 - **repo** — `project`, `url`, `branch_pattern` (vide = toutes les MR), `enabled`, **`fetch_mrs`** (1 par défaut : décoché, la découverte ignore le dépôt sans le désactiver ailleurs), **`forge`** (`'gitlab'` par défaut | `'github'`). L'unicité d'un dépôt est le **couple `(forge, project)`** : `acme/web` peut exister sur les deux forges.
-- **mr** — MR découverte : `squash` / `remove_source_branch` (options choisies à la création, appliquées au merge — indispensable pour GitHub dont l'API de création ne les accepte pas), `iid`, `title`, `source_branch`, `target_branch`, `author`, `gitlab_created_at`, `current_sha`, `reviewed_sha`, `status` (`to_review`/`reviewed`/`done`), `last_error`, `closed_seen`, `ticket_text`/`ticket_image` (contexte manuel), **contexte Jira** `ticket_jira_text`/`ticket_jira_key`/`ticket_jira_at`/`ticket_jira_error` (récupéré au discover, distinct du manuel — concaténés à la review), et **session de review** `review_session_key`/`review_session_backend`/`review_session_cwd` (continuité : « Relancer la review » reprend la même session).
+- **mr** — MR découverte : `changed_files` / `changed_additions` / `changed_deletions` (taille du changement, relevée avec `changed_paths` dans le MÊME appel) ; `squash` / `remove_source_branch` (options choisies à la création, appliquées au merge — indispensable pour GitHub dont l'API de création ne les accepte pas), `iid`, `title`, `source_branch`, `target_branch`, `author`, `gitlab_created_at`, `current_sha`, `reviewed_sha`, `status` (`to_review`/`reviewed`/`done`), `last_error`, `closed_seen`, `ticket_text`/`ticket_image` (contexte manuel), **contexte Jira** `ticket_jira_text`/`ticket_jira_key`/`ticket_jira_at`/`ticket_jira_error` (récupéré au discover, distinct du manuel — concaténés à la review), et **session de review** `review_session_key`/`review_session_backend`/`review_session_cwd` (continuité : « Relancer la review » reprend la même session).
 - **review** — `md_path`, `explanation_path`, `diff_path` (fichiers sur disque).
+- **make_run** (clé `dir` + `target`) — la DERNIÈRE exécution d'une cible Makefile : `started_at`, `finished_at`, `ok`. Écrasée à chaque lancement — ce qui compte est la dernière, pas l'historique.
+- **repo_jenkins** — quel job Jenkins déploie quel dépôt (`repo_id`, `job_path`, `param` = le paramètre qui recevra la branche). Déclaré dans Réglages → Jenkins ; proposé sur les merge requests vérifiées vertes du dépôt.
+- **usage** — porte désormais `owner_kind` / `owner_id` : une dépense se rattache à SA session (task / ask / local). Les lignes antérieures gardent des colonnes nulles et restent comptées dans leur famille.
 - **review_version** — **historique des reviews** : une ligne par passe (`version`, `md_path`, `explanation_path`, `note_value`, `reviewed_sha`, `kind` review/modify). Chaque review écrit `review-v<N>.md` au lieu d'écraser ; la table `review` pointe la version la plus récente, donc rien d'autre ne change. Migration idempotente : les reviews existantes deviennent leur version 1. Porte aussi l'**instruction** de la demande quand `kind = 'modify'` (l'historique des régénérations, affiché dans la section « Demander une modification »), et les **agrégats de résolution** `n_new/n_persistent/n_resolved/n_disappeared` (renseignés dès la 2ᵉ passe).
 - **finding** — **suivi de résolution** : les constats structurés d'une passe de review (`version`, `fingerprint` = hash(fichier+titre normalisé, SANS la ligne), `file`, `line`, `severity`, `title`, `status`). `status` ∈ new/persistent/resolved/disappeared, calculé en comparant à la passe précédente. « resolved » n'est posé que si la ligne a **changé entre les deux `reviewed_sha`** (garde-fou git) ; sinon « disappeared ». Agrégats (`n_new/n_persistent/n_resolved/n_disappeared`) portés par `review_version` pour le bandeau et le taux de résolution.
 - **commit_activity** — activité mensuelle d'un dépôt (`repo_id`, `month`, `commits`, **`active_days`** = journées distinctes où un commit est tombé, c'est ce que le graphe met en hauteur, `authors` = contributeurs distincts, `partiel` = plafond de pagination atteint donc minorant, `fetched_at`). Cache, pas source de vérité : reconstructible depuis la forge.
@@ -425,6 +428,24 @@ survol, clic, ou focus de l'icône elle-même. Une version l'ouvrait aussi au fo
 compenser ces icônes sorties du parcours : elle s'affichait alors par-dessus le champ qu'on venait
 de cliquer, masquant ce qu'on allait y écrire. Une explication qu'on n'a pas demandée et qui cache
 la saisie coûte plus qu'elle n'apporte.
+
+**Les croisements entre onglets.** Ce qui fait la valeur de l'outil n'est pas la somme de ses
+écrans mais ce qu'ils se disent. Règle : un croisement lit ce qui est DÉJÀ en base ou déjà
+chargé, jamais un sondage de plus.
+- `discover.js` ferme les todos liées à une merge request vue mergée (`notes.fermerTodosDeMr`,
+  réglage `todo_close_on_merge`, coché par défaut).
+- `/api/mrs` porte, pour chaque ligne : `size` (fichiers, +/−, relevés avec les chemins
+  modifiés), `note_detail` (dernière `review_version`), `ticket_status` / `ticket_category`
+  (depuis `jira_watch`, seule source Jira hors ligne), `jenkins_jobs` (table `repo_jenkins`).
+  Le badge CI, lui, est composé côté écran à partir de la liste Jenkins déjà chargée — croisée
+  sur le NOM DE BRANCHE (`job.ref`), jamais confondue avec le verdict objectif.
+- `usage` porte `owner_kind`/`owner_id` : le coût se rattache à SA session, ce qui fait exister
+  « les sessions les plus coûteuses » et la ligne `3 min · ~13 500 tokens` des cartes.
+- `make_run` (une ligne par répertoire × cible) répond à « ai-je déjà passé les migrations ce
+  matin ? ». `repo_jenkins` déclare quel job déploie quel dépôt.
+- Les appels COÛTEUX sont faits à la demande, jamais pour une liste : `commitsSince` (au survol
+  du badge « périmé »), `/api/docker/dir-state` (à l'ouverture de la confirmation d'une
+  vérification in place), `/api/jenkins/console` (sur un build rouge sélectionné).
 
 **#configForm est un formulaire ANCRE** : ses champs vivent dans six sous-onglets de Réglages et
 s'y rattachent par l'attribut `form=`. Deux conséquences que le code doit tenir explicitement —

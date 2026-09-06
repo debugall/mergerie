@@ -4,6 +4,8 @@ const { getConfig } = require('./config');
 const forge = require('./forge');
 const jira = require('./jira');
 const notify = require('./notify');
+const notes = require('./notes');
+const { t } = require('../public/i18n-runtime.js');
 
 /* Récupère le contexte Jira d'une MR nouvelle et le range dans ticket_jira_*.
    Best-effort ABSOLU : toute erreur est capturée et stockée, jamais propagée —
@@ -108,6 +110,13 @@ async function discoverAll() {
         const recent = g.updated_at && (Date.parse(now) - Date.parse(g.updated_at)) < FRESH_MS;
         if (recent) { insertFeed.run('mr_merged', g.iid, repo.project, g.author || '', g.title || '', now); notify.push('mr_merged', { iid: g.iid, project: repo.project, title: g.title || '' }); } // 🔀 vient d'être mergée
         markClosed.run(g.id); // dans tous les cas : ne pas re-signaler
+        /* B1 — LA TODO QUI SUIVAIT CETTE MERGE REQUEST N'A PLUS DE RAISON D'ÊTRE. Elle se
+           coche, avec la mention de ce qui l'a fermée ; rien n'est supprimé. Débrayable
+           (Réglages → Général) pour qui veut cocher lui-même. */
+        if (cfg.todo_close_on_merge !== '0') {
+          const n = notes.fermerTodosDeMr(g.id, t('notes.todo.closed-by-merge', { iid: g.iid }));
+          if (n) result.todos_closed = (result.todos_closed || 0) + n;
+        }
       }
     } catch (e) {
       // fetch en échec : NE PAS considérer les MR de ce repo comme disparues.
@@ -131,8 +140,10 @@ async function discoverAll() {
       ORDER BY mr.updated_at DESC LIMIT ?`).all(MAX_PATH_FETCHES);
   for (const m of needPaths) {
     try {
-      const paths = await forge.clientFor(m).listMrChangedPaths(cfg, m.project, m.iid);
-      db.prepare('UPDATE mr SET changed_paths = ? WHERE id = ?').run(paths.join('\n'), m.id);
+      const ch = await forge.clientFor(m).listMrChanges(cfg, m.project, m.iid);
+      db.prepare(`UPDATE mr SET changed_paths = ?, changed_files = ?, changed_additions = ?,
+        changed_deletions = ? WHERE id = ?`)
+        .run(ch.paths.join('\n'), ch.files, ch.additions, ch.deletions, m.id);
     } catch { /* best-effort : pas de badge pour cette MR, on continue */ }
   }
 
@@ -145,12 +156,14 @@ async function discoverAll() {
       WHERE tt.mr_iid IS NOT NULL AND (tt.mr_merged IS NULL OR tt.mr_merged = 0)
       ORDER BY tt.updated_at DESC LIMIT ?`).all(MAX_TASK_CHECKS);
   result.tasksMerged = 0;
-  for (const t of pendingTasks) {
+  /* `cible` et non `t` : le nom `t` est celui de la fonction de traduction dans ce module —
+     le masquer ferait échouer chaque message d'erreur du bloc. */
+  for (const cible of pendingTasks) {
     try {
-      const m = await forge.clientFor(t).getMergeRequest(cfg, t.project, t.mr_iid);
+      const m = await forge.clientFor(cible).getMergeRequest(cfg, cible.project, cible.mr_iid);
       if (m && m.state === 'merged') {
-        db.prepare('UPDATE task_target SET mr_merged = 1, updated_at = ? WHERE id = ?').run(now, t.id);
-        insertFeed.run('mr_merged', t.mr_iid, t.project, '', t.branch || '', now);
+        db.prepare('UPDATE task_target SET mr_merged = 1, updated_at = ? WHERE id = ?').run(now, cible.id);
+        insertFeed.run('mr_merged', cible.mr_iid, cible.project, '', cible.branch || '', now);
         result.tasksMerged += 1;
       } else if (m) {
         /* CONFLITS : l'appel est DÉJÀ fait ci-dessus pour savoir si la MR est mergée — on lit
@@ -158,12 +171,12 @@ async function discoverAll() {
            d'API supplémentaire. `null` = pas encore su (GitHub calcule `mergeable` de façon
            asynchrone) : on l'écrit tel quel, pour ne pas confondre avec « pas de conflit ». */
         const enConflit = m.has_conflicts === true ? 1 : (m.has_conflicts === false ? 0 : null);
-        db.prepare('UPDATE task_target SET mr_conflicts = ? WHERE id = ?').run(enConflit, t.id);
+        db.prepare('UPDATE task_target SET mr_conflicts = ? WHERE id = ?').run(enConflit, cible.id);
         if (enConflit) result.mrConflicts = (result.mrConflicts || 0) + 1;
       }
     } catch (e) {
       // une MR inaccessible/supprimée ne doit pas casser la découverte
-      result.errors.push({ repo: t.project, error: `MR !${t.mr_iid} : ${e.message}` });
+      result.errors.push({ repo: cible.project, error: `MR !${cible.mr_iid} : ${e.message}` });
     }
   }
 

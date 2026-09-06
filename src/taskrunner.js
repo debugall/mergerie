@@ -274,7 +274,8 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
       created = true;
     }
     agentText = r.text || '';
-    copilot.recordUsage('task', promptText + imgBlock, agentText); // le run en session compte aussi
+    // `owner` : la dépense se rattache à SA session — c'est ce qui permet de dire laquelle coûte.
+    copilot.recordUsage('task', promptText + imgBlock, agentText, null, { kind: 'task', id: task.id });
     /* On enregistre le handle À CHAQUE passe, pas seulement à la création : l'agent peut rendre
        un identifiant DIFFÉRENT après une reprise (claude en ouvre un nouveau, qui porte tout
        l'échange). Garder l'ancien faisait repartir la passe suivante de l'état d'avant — deux
@@ -499,7 +500,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
         created = true;
       }
       stdout = r.text || '';
-      copilot.recordUsage('explore', prompt, stdout);
+      copilot.recordUsage('explore', prompt, stdout, null, { kind: 'task', id: task.id });
       /* Les cibles d'une exploration partagent la session : toutes portent le même handle — et
          on le réenregistre à chaque passe, l'agent pouvant en rendre un nouveau après reprise. */
       for (const tg of targets) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: root });

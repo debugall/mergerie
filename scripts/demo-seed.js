@@ -322,7 +322,7 @@ for (const m of REVIEWED) {
 // panneau de run affiche « convergé ». reviewed_sha = tête courante → MR non périmée.
 {
   const rnd8 = () => require('crypto').randomBytes(8).toString('hex');
-  const base = { project: 'groupe/webapp-front', title: 'Refonte du tunnel de paiement', branch: 'feat/PROJ-720-checkout', status: 'reviewed', changed: ['src/checkout/cart.js', 'src/checkout/payment.js', 'src/checkout/validation.js'], summary: 'refond le panier et sécurise le tunnel de paiement' };
+  const base = { project: 'groupe/webapp-front', title: 'Refonte du tunnel de paiement', branch: 'feat/PROJ-720-checkout', status: 'reviewed', changed: ['src/checkout/total.js', 'src/checkout/tunnel.js'], summary: 'refond le panier et sécurise le tunnel de paiement' };
   const headSha = 'c' + rnd8() + rnd8();
   const mr = insertMr(base, { date: iso(1), reviewed_sha: headSha });
   db.prepare('UPDATE mr SET current_sha = ? WHERE id = ?').run(headSha, mr.id); // non périmée : reviewed == current
@@ -330,17 +330,17 @@ for (const m of REVIEWED) {
 
   // Chaque passe résout des constats → la note monte. (severity, fichier, ligne, titre)
   const v1f = [
-    { file: 'src/checkout/payment.js', line: 31, severity: 'blocker', title: 'ne pas journaliser le numéro de carte' },
-    { file: 'src/checkout/payment.js', line: 58, severity: 'major', title: 'gérer l’échec réseau du PSP' },
-    { file: 'src/checkout/cart.js', line: 44, severity: 'major', title: 'recalculer le total côté serveur' },
-    { file: 'src/checkout/validation.js', line: 12, severity: 'minor', title: 'valider la devise' },
+    { file: 'src/checkout/tunnel.js', line: 12, severity: 'blocker', title: 'ne pas journaliser le numéro de carte' },
+    { file: 'src/checkout/tunnel.js', line: 24, severity: 'major', title: 'gérer l’échec réseau du PSP' },
+    { file: 'src/checkout/total.js', line: 8, severity: 'major', title: 'recalculer le total côté serveur' },
+    { file: 'src/checkout/total.js', line: 14, severity: 'minor', title: 'valider la devise' },
   ];
   const v2f = [
-    { file: 'src/checkout/payment.js', line: 58, severity: 'major', title: 'gérer l’échec réseau du PSP' },
-    { file: 'src/checkout/cart.js', line: 44, severity: 'major', title: 'recalculer le total côté serveur' },
+    { file: 'src/checkout/tunnel.js', line: 24, severity: 'major', title: 'gérer l’échec réseau du PSP' },
+    { file: 'src/checkout/total.js', line: 8, severity: 'major', title: 'recalculer le total côté serveur' },
   ];
   const v3f = [
-    { file: 'src/checkout/cart.js', line: 44, severity: 'minor', title: 'recalculer le total côté serveur' },
+    { file: 'src/checkout/total.js', line: 8, severity: 'minor', title: 'recalculer le total côté serveur' },
   ];
   const writeVer = (v, note, findings, daysAgo, agg) => {
     const md = path.join(dir, `review-v${v}.md`); fs.writeFileSync(md, reviewMd(mr, note, findings), 'utf8');
@@ -707,7 +707,7 @@ db.prepare(`INSERT OR IGNORE INTO jira_watch (key, summary, status, status_categ
    autre ticket : on se retrouve avec une ligne qui dit autre chose que ce qu'on a semé. */
 db.prepare(`INSERT OR IGNORE INTO jira_watch (key, summary, status, status_category, added_at, checked_at, note)
             VALUES (?,?,?,?,?,?,?)`)
-  .run('PROJ-1408', 'Ajouter le paiement en 3× sans frais', 'À faire', 'new', at(11), at(0.2),
+  .run('PROJ-1408', 'Ajouter le paiement en 3× sans frais', 'En revue', 'indeterminate', at(11), at(0.2),
     'dépend du tunnel refondu par !216.\nÀ replanifier si la recette de vendredi glisse.');
 
 /* ---------- vérification objective (plan_add_verify.md §12) ----------
@@ -1068,4 +1068,50 @@ const counts = {
   freeLinks: db.prepare('SELECT COUNT(*) c FROM free_link').get().c,
   commentDrafts: db.prepare('SELECT COUNT(*) c FROM mr_comment_draft').get().c,
 };
+/* ---------- des branches mortes à nettoyer (décor Git) ----------
+   Une merge request vue fermée porte encore sa branche source : c'est ce que « Supprimer les
+   N branches de merge requests mergées » ramasse. Sans elles, le bouton n'existerait pas dans
+   la démo — et c'est exactement le geste de fin de sprint qu'on vient y voir. */
+{
+  const fermer = db.prepare('UPDATE mr SET closed_seen = 1 WHERE id = ?');
+  for (const m of db.prepare("SELECT id FROM mr WHERE status = 'done' ORDER BY id LIMIT 4").all()) fermer.run(m.id);
+}
+
+/* ---------- dernières exécutions des cibles Makefile (décor Docker) ----------
+   « Ai-je déjà passé les migrations ce matin ? » n'a de sens que si quelque chose a tourné. */
+{
+  const mk = db.prepare('INSERT INTO make_run (dir, target, started_at, finished_at, ok) VALUES (?,?,?,?,?)');
+  const dir = '/home/moi/dev/boutique';
+  const ilYA = (min) => new Date(Date.now() - min * 60000).toISOString();
+  mk.run(dir, 'migrate', ilYA(42), ilYA(41), 1);
+  mk.run(dir, 'up', ilYA(180), ilYA(179), 1);
+  mk.run(dir, 'test', ilYA(1500), ilYA(1480), 0);
+}
+
+/* ---------- ce que CHAQUE session a coûté ----------
+   Les lignes ci-dessus comptent par FAMILLE ; celles-ci se rattachent à une session précise.
+   C'est ce qui fait exister « les cinq sessions les plus coûteuses » dans Stats, et la ligne
+   « 2 min · ~12 400 tokens » sous chaque carte de Dev IA. */
+{
+  const usageSession = db.prepare(`INSERT INTO usage (kind, prompt_chars, output_chars, tokens_est, created_at, owner_kind, owner_id)
+    VALUES (?,?,?,?,?,?,?)`);
+  // La table `job` n'a pas de `created_at` : `started_at` fait foi.
+  const jobSession = db.prepare(`INSERT INTO job (kind, status, started_at, finished_at, target_kind, target_id)
+    VALUES (?,?,?,?,?,?)`);
+  const seances = [
+    ...db.prepare("SELECT id, kind FROM task WHERE status != 'new'").all().map((r) => ({ ...r, owner: 'task' })),
+    ...db.prepare("SELECT id FROM question WHERE status != 'new'").all().map((r) => ({ ...r, owner: 'ask', kind: 'ask' })),
+    ...db.prepare("SELECT id FROM local_task WHERE status != 'new'").all().map((r) => ({ ...r, owner: 'local', kind: 'task' })),
+  ];
+  seances.forEach((se, i) => {
+    const tok = 4200 + ((se.id * 1300 + i * 700) % 21000);
+    usageSession.run(se.kind === 'explore' ? 'explore' : se.kind, tok * 3, tok, tok, iso(i % 12), se.owner, se.id);
+    const debut = new Date(Date.now() - (i + 1) * 3600 * 1000);
+    const fin = new Date(debut.getTime() + (45 + (se.id * 23) % 400) * 1000);
+    jobSession.run(se.kind === 'explore' ? 'explain' : 'task', 'done',
+      debut.toISOString(), fin.toISOString(), se.owner, se.id);
+  });
+}
+
+
 console.log('Base de démo semée dans data-demo/ :', JSON.stringify(counts));

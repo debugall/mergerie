@@ -1663,7 +1663,23 @@ donnée** : squelette pendant le chargement, jamais un « 0 » qui voudrait dire
   onglet, un stade, une merge request, une session — la recherche porte sur ce qui est déjà chargé,
   donc elle répond sans appeler le serveur. `?` affiche la liste complète des raccourcis.
 - **Parcourir la liste au clavier** : `j` / `k` descendent et remontent dans la liste visible, `Entrée`
-  ouvre, `Échap` relâche. Aucun cadre de focus n'apparaît tant qu'on n'a pas appuyé sur une touche.
+  ouvre, `Échap` relâche. Sur la carte au focus : `d` le diff, `v` vérifier, `c` le contexte,
+  `m` marquer traitée, `x` cocher pour une vérification commune — chacun clique le bouton
+  RENDU, donc ce qui est grisé le reste. Aucun cadre de focus n'apparaît tant qu'on n'a pas
+  appuyé sur une touche.
+- **Copier plutôt que retaper.** Le nom d'une branche se copie au clic partout où il s'affiche
+  (carte de merge request, ligne de projet d'une session, explorateur, rapport) ; **⇧-clic**
+  copie `git fetch origin && git checkout <branche>`. Le menu ⋯ d'une merge request porte
+  **« Copier la référence »** — `!217 — Paiement 3× (8,1/10 · vérifié) <url>`, le message tout
+  fait. Côté Docker, chaque service, chaque flux de logs et chaque cible Make portent la
+  commande équivalente, à copier pour continuer au terminal.
+- **La palette ouvre une référence tapée seule** : `!217` ou `PROJ-1408` y vont directement à
+  `Entrée` ; `⌘`/`Ctrl` + `Entrée` sur une merge request ouvre son diff plutôt que son rapport.
+- **La capture rapide (`n`) comprend une syntaxe courte** : `!217 relire le calcul @demain !!`
+  crée une todo liée à !217, échéance demain 9 h, priorité haute. `@lundi` et `@12/09` marchent
+  aussi ; ce qui n'est pas reconnu **reste dans le titre**, tel qu'écrit.
+- **Une date absolue porte son « il y a 3 h » au survol** — cartes de session, merge requests,
+  builds Jenkins.
 - **L'interface se tient tranquille.** Un rafraîchissement qui ne change rien ne reconstruit plus la
   liste : la page ne cligne pas pendant qu'on la lit. Quand une liste se charge vraiment, ses cartes
   arrivent en cascade — une fois, au chargement, pas à chaque caractère tapé dans un filtre.

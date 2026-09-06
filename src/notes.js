@@ -220,6 +220,30 @@ function fermerTodoAuto(kind, ref) {
     .run(now, now, kind, String(ref)).changes;
 }
 
+/* ---------- B1 : une todo liée à une merge request se ferme avec elle ----------
+   « Suivre !201 » restait en rappel échu des jours après le merge : on ouvrait Reviews pour
+   vérifier, puis on revenait cocher. Quand la découverte voit une merge request mergée ou
+   fermée, la todo qui LUI est liée (`link_kind = 'mr'`) se coche, avec la mention de ce qui
+   l'a fermée. Rien n'est supprimé : la todo barrée reste sept jours comme les autres, et on
+   peut la rouvrir. Distinct de `fermerTodoAuto`, qui ne concerne que les todos POSÉES par
+   l'outil (`auto_kind`) — celle-ci a été écrite à la main, et c'est justement pour ça qu'on
+   ne la supprime pas.
+
+   Opt-in : coché par défaut (`todo_close_on_merge`), débrayable dans Réglages → Général. */
+function fermerTodosDeMr(mrId, mention) {
+  const now = nowIso();
+  const rows = db.prepare("SELECT id, note FROM todo WHERE link_kind = 'mr' AND link_ref = ? AND status = 'open'")
+    .all(String(mrId));
+  const maj = db.prepare(`UPDATE todo SET status = 'done', done_at = ?, updated_at = ?, note = ?
+    WHERE id = ?`);
+  for (const todo of rows) {
+    // La mention s'AJOUTE à la note : ce qui y était écrit reste, c'est le travail de quelqu'un.
+    const note = [String(todo.note || '').trim(), mention].filter(Boolean).join('\n');
+    maj.run(now, now, note.slice(0, MAX_NOTE), todo.id);
+  }
+  return rows.length;
+}
+
 /* Réordonner : l'écran envoie l'ordre COMPLET de ce qu'il affiche, on numérote 1..n. Envoyer
    « telle todo passe avant telle autre » obligerait à recalculer les voisines côté serveur et
    à gérer les égalités ; la liste entière est courte, non ambiguë, et rejouable telle quelle.
@@ -396,7 +420,7 @@ function indexAutolink({ maintenant = Date.now() } = {}) {
 }
 
 module.exports = {
-  reordonnerTodos, todoAuto, fermerTodoAuto,
+  reordonnerTodos, todoAuto, fermerTodoAuto, fermerTodosDeMr,
   MAX_TITLE, MAX_NOTE, MAX_PAGE, PRIORITES, LINK_KINDS, JOURS_AVANT_ARCHIVE, JOURS_AUTOLINK,
   listerPages, lirePage, creerPage, majPage, supprimerPage, slugifier,
   listerTodos, lireTodo, creerTodo, majTodo, supprimerTodo, calculerSnooze,

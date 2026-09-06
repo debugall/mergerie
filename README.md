@@ -54,12 +54,19 @@ Ten tabs in a left sidebar, each one line — plus the objective verification, w
 - **Git** — multi-repo branch/tag/command operations across both forges, a **branch merge with on-screen conflict resolution** (both versions side by side, keep one, keep both, or write your own; then commit and push, each behind its own confirmation), branch explorer, ref finder and a **two-repository compare** (no common history required), **restorable** deletions, always with a preview.
 - **Docker** — compose project health and `.env` drift, batch actions, live multi-container logs, error badges in the menu.
 - **Links** — the work links your bookmarks cannot structure: a **services × environments grid** (one URL per cell, written out — no guessing an address from another), free links found by tag, and a **global palette** (`Ctrl`/`Cmd`+`K`) that searches links, MRs, tickets, notes and todos at once, ranked by frecency. A service linked to a repository puts buttons straight on its merge requests, including **templated** ones (`{env}`, `{branch}`, `{mr_iid}`) resolved on click. Chrome bookmarks import with a preview.
-- **Stats** — MR funnel, score trends, per-project resolution rate, token cost.
+- **Stats** — MR funnel, score trends, per-project resolution rate, token cost, **the five most expensive sessions** and **the findings that keep coming back** — the same finding raised on three merge requests of one repository turns into a review rule in one click. Every number is a door: it opens Reviews filtered on that repository, at the right stage.
 - **Settings** — GitLab / GitHub / Jira connections, repositories (each one can opt out of MR fetching while staying usable for git and coding sessions), review rules, automatic review of merge requests on arrival and automatic re-review when a report goes stale (both capped, both off by default), automatic publishing of review reports on the MR, prompt templates, theme and language.
 
 Everywhere: `Ctrl`/`Cmd` + `K` opens a command palette (jump to a tab, a merge request, a session by
-name), `j` / `k` walk the current list, `?` lists every shortcut. The tool reopens on the tab and
-review stage you left, and the report panel opens on what changed since your last visit.
+name — `!217` or `PROJ-1408` typed alone go straight there), `j` / `k` walk the current list,
+`v` / `c` / `m` / `x` act on the focused card, `?` lists every shortcut. The tool reopens on the tab
+and review stage you left, and the report panel opens on what changed since your last visit.
+
+**The tabs talk to each other.** A todo tied to a merge request ticks itself when that merge request
+is merged; the last Jenkins build carrying a branch is written on its merge request card; a ticket
+moved to review pushes its merge requests to the top; an exploration turns into a coding session
+**in the same agent session**; the branches of merged merge requests gather into one lot; and a
+verification that runs in place says the state of the Docker services before it starts.
 
 ## Learn more
 

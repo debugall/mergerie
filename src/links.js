@@ -426,11 +426,21 @@ function grille() {
 
   /* `urls[envId]` est une LISTE, même à un seul élément : un client qui doit traiter deux
      formes selon le nombre finit toujours par en oublier une. */
+  /* La DERNIÈRE OUVERTURE de chaque adresse, telle que la frécence la note déjà. Elle sert à
+     la bulle de la case : « vérifier l'adresse avant de cliquer » veut aussi dire savoir si
+     c'est bien celle qu'on a ouverte hier. */
+  const derniere = new Map();
+  for (const u of db.prepare("SELECT ref, last_used_at FROM launcher_usage WHERE kind = 'service_url'").all()) {
+    derniere.set(u.ref, u.last_used_at);
+  }
   const parService = new Map();
   for (const u of urls) {
     if (!parService.has(u.service_id)) parService.set(u.service_id, {});
     const par = parService.get(u.service_id);
-    (par[u.environment_id] = par[u.environment_id] || []).push({ id: u.id, label: u.label, url: u.url });
+    (par[u.environment_id] = par[u.environment_id] || []).push({
+      id: u.id, label: u.label, url: u.url,
+      last_used_at: derniere.get(`${u.service_id}:${u.environment_id}:${u.id}`) || null,
+    });
   }
   const ctxParService = new Map(ctx.map((c) => [c.service_id, c.n]));
 
@@ -457,6 +467,11 @@ function grille() {
    au dépôt, plus ses gabarits résolus. Un gabarit non résoluble donne un bouton GRISÉ avec
    sa raison — pas une URL à trous, pas un bouton absent : on veut savoir qu'il existe et
    pourquoi il ne marche pas ici. */
+/* Les boutons contextuels ne dépendent que de TROIS choses : un dépôt (qui désigne le
+   service), une branche, et éventuellement un numéro de merge request. Une ligne de projet de
+   session a les deux premières ; un ticket Jira a une branche probable et un dépôt probable.
+   La fonction prend donc un « porteur » — `{ repo_id, source_branch, iid }` — et la route des
+   merge requests lui passe la MR telle quelle : même contrat, trois appelants. */
 function liensDeMr(mr) {
   if (!mr || !mr.repo_id) return { service: null, envs: [], context: [] };
   const service = db.prepare('SELECT * FROM service WHERE repo_id = ? ORDER BY id LIMIT 1').get(mr.repo_id);
@@ -663,7 +678,8 @@ function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
     pousser({
       kind: 'mr', ref: String(r.id), group: 'mrs',
       label: `!${r.iid} — ${r.title || ''}`, detail: r.project,
-      nav: { tab: 'review', mr_id: r.id, status: r.status },
+      // `mr_iid` : le NUMÉRO tel qu'on le tape — la palette y saute directement (« !217 »).
+      nav: { tab: 'review', mr_id: r.id, mr_iid: r.iid, status: r.status },
       texte: `!${r.iid} ${r.iid} ${r.title || ''} ${r.project}`,
     });
   }

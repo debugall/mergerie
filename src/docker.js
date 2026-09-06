@@ -460,6 +460,36 @@ function defaultProjectName(dir) {
   return path.basename(String(dir || '')).toLowerCase().replace(/[^a-z0-9_-]/g, '');
 }
 
+/* ---------- QU'EST-CE QUE JE SUIS EN TRAIN DE TESTER ? ----------
+   Un projet compose vit dans un répertoire, et ce répertoire est presque toujours un dépôt
+   git : la branche et le commit courts répondent à la question qu'on se pose EN DÉMARRANT la
+   stack. Deux lectures de fichier — `.git/HEAD` et la ref pointée —, aucun processus lancé,
+   aucun sondage : on lit ce que git a déjà écrit sur le disque. Pas un dépôt git, `.git`
+   illisible, dépôt fraîchement initialisé sans commit : on ne rend rien, et l'écran n'affiche
+   rien — c'est une information de plus, jamais une condition. */
+function gitDuRepertoire(dir) {
+  try {
+    const gitDir = path.join(dir, '.git');
+    const st = fs.statSync(gitDir);
+    // Un worktree ou un sous-module écrit « gitdir: … » dans un FICHIER `.git`.
+    const base = st.isDirectory() ? gitDir
+      : path.resolve(dir, String(fs.readFileSync(gitDir, 'utf8')).replace(/^gitdir:\s*/, '').trim());
+    const head = String(fs.readFileSync(path.join(base, 'HEAD'), 'utf8')).trim();
+    const m = head.match(/^ref:\s*refs\/heads\/(.+)$/);
+    if (!m) return { branch: null, sha: head.slice(0, 8) };     // tête détachée
+    const branche = m[1];
+    let sha = '';
+    try { sha = String(fs.readFileSync(path.join(base, 'refs', 'heads', branche), 'utf8')).trim(); }
+    catch {
+      // Ref empaquetée (`git gc`) : on la cherche dans `packed-refs`.
+      const packed = String(fs.readFileSync(path.join(base, 'packed-refs'), 'utf8'));
+      const ligne = packed.split('\n').find((l) => l.endsWith(` refs/heads/${branche}`));
+      sha = ligne ? ligne.split(' ')[0] : '';
+    }
+    return { branch: branche, sha: sha.slice(0, 8) };
+  } catch { return null; }
+}
+
 async function composeProject({ dir, file, path: composePath, rootLabel }, sharedPs) {
   let cfg;
   try { cfg = await composeConfig(dir); }
@@ -499,7 +529,10 @@ async function composeProject({ dir, file, path: composePath, rootLabel }, share
     const badge = serviceBadge({ container, envDiffs, imgDrift, composeModified });
     return { name: svcName, image: svc.image || null, container, envDiffs, imgDrift, composeModified, badge };
   }));
-  return { name: projectName, dir, file, path: composePath, rootLabel, error: null, services, makefile: makefileFor(dir) };
+  return {
+    name: projectName, dir, file, path: composePath, rootLabel, error: null, services,
+    makefile: makefileFor(dir), git: gitDuRepertoire(dir),
+  };
 }
 
 // Tous les projets compose. UN SEUL `docker ps -a` partagé + projets calculés en parallèle borné.

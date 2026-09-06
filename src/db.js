@@ -195,6 +195,11 @@ try { db.exec('ALTER TABLE mr ADD COLUMN ticket_jira_error TEXT'); } catch { /* 
 // Migration : chemins des fichiers modifiés par la MR (pour le badge « risque » et
 // les règles par chemin), un par ligne. Rempli au discover / à la review.
 try { db.exec('ALTER TABLE mr ADD COLUMN changed_paths TEXT'); } catch { /* déjà présente */ }
+/* La TAILLE du changement, relevée avec les chemins (même appel) : « 12 fichiers · +340 −80 »
+   sur la carte, c'est ce qui décide par quoi commencer sans ouvrir trois merge requests. */
+try { db.exec('ALTER TABLE mr ADD COLUMN changed_files INTEGER'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN changed_additions INTEGER'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN changed_deletions INTEGER'); } catch { /* déjà présente */ }
 /* Options de merge choisies à la création de la MR. GitLab les applique nativement dès
    la création ; GitHub ne sait pas les exprimer là (ce sont des décisions de merge), on
    les mémorise donc ici pour pré-cocher — et appliquer — la modale de merge. */
@@ -313,6 +318,28 @@ db.exec(`CREATE TABLE IF NOT EXISTS usage (
   tokens_est INTEGER,
   created_at TEXT
 )`);
+/* ---------- La dernière exécution d'une cible Makefile ----------
+   « Ai-je déjà passé les migrations ce matin ? » se répondait en relisant un journal de jobs.
+   Une ligne par (répertoire, cible), écrasée à chaque lancement : ce qui compte est le
+   DERNIER, pas l'historique. Purement local — Docker et make n'en savent rien. */
+db.exec(`CREATE TABLE IF NOT EXISTS make_run (
+  dir TEXT NOT NULL,
+  target TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  ok INTEGER,
+  PRIMARY KEY (dir, target)
+)`);
+
+/* À QUOI SE RATTACHE UNE DÉPENSE. La table comptait des tokens PAR FAMILLE (review, task,
+   explore…) : on savait combien coûtaient les sessions, jamais LESQUELLES. Deux colonnes
+   suffisent — l'objet et son identifiant —, et le classement des sessions les plus chères
+   devient une requête au lieu d'une estimation. Anciennes lignes : colonnes nulles, elles
+   restent comptées dans leur famille. */
+try { db.exec('ALTER TABLE usage ADD COLUMN owner_kind TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE usage ADD COLUMN owner_id INTEGER'); } catch { /* déjà présente */ }
+db.exec('CREATE INDEX IF NOT EXISTS idx_usage_owner ON usage(owner_kind, owner_id)');
+
 // Type de session de dev : 'code' (l'IA modifie le code) ou 'explore' (lecture seule,
 // l'IA répond à une question et sa réponse est stockée dans un .md).
 try { db.exec("ALTER TABLE task ADD COLUMN kind TEXT DEFAULT 'code'"); } catch { /* déjà présente */ }
@@ -375,6 +402,10 @@ try { db.exec('ALTER TABLE task_target ADD COLUMN output_path TEXT'); } catch { 
    consultables en cochant « afficher les sessions masquées ». C'est un rangement, pas une
    suppression : aucune donnée n'est touchée. */
 try { db.exec('ALTER TABLE task ADD COLUMN hidden INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+/* Prévenir Jira à la création de chaque merge request de cette session : commentaire avec le
+   lien + transition « en revue » si Jira la propose. DÉCOCHÉ par défaut — écrire chez les
+   autres se décide, session par session. */
+try { db.exec('ALTER TABLE task ADD COLUMN notify_jira INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 
 /* De quoi REJOUER un job : l'intention (quelle fonction, sur quel objet), pas son état.
    Sans ça, un job arrêté ne laisse qu'un `kind` — impossible de savoir quelle session ou
@@ -1124,6 +1155,24 @@ db.exec(`CREATE TABLE IF NOT EXISTS brief_hidden (
    pour un navigateur. La date du dernier affichage, elle, reste locale — deux navigateurs
    ouverts n'ont pas à se voler le brief l'un l'autre. */
 try { db.exec("ALTER TABLE config ADD COLUMN brief_on_open TEXT DEFAULT '1'"); } catch { /* déjà présente */ }
+/* ---------- B8 : quel job Jenkins déploie quel dépôt ----------
+   « La QA veut !217 en recette » : on ouvrait Jenkins, on cherchait `api-deploy-recette` dans
+   deux cents jobs, on recopiait la branche sans faute de frappe. Le lien dépôt ↔ job se
+   déclare une fois — comme service ↔ dépôt dans Liens — et la carte d'une merge request
+   VÉRIFIÉE VERTE propose alors le job, la branche pré-remplie. `param` : le nom du paramètre
+   Jenkins qui reçoit la branche (souvent `BRANCH`, parfois `VERSION`) ; vide, on ne
+   pré-remplit rien et la fiche s'ouvre telle quelle. */
+db.exec(`CREATE TABLE IF NOT EXISTS repo_jenkins (
+  id INTEGER PRIMARY KEY,
+  repo_id INTEGER NOT NULL REFERENCES repo(id) ON DELETE CASCADE,
+  job_path TEXT NOT NULL,
+  param TEXT,
+  UNIQUE(repo_id, job_path)
+)`);
+
+/* Cocher une todo liée quand sa merge request est mergée. Coché par défaut : la todo perd sa
+   raison d'être au merge, et la cocher soi-même après coup est le geste qu'on oublie. */
+try { db.exec("ALTER TABLE config ADD COLUMN todo_close_on_merge TEXT DEFAULT '1'"); } catch { /* déjà présente */ }
 /* Au-delà de combien de jours une MR reviewée et toujours ouverte est « dormante ». Cinq
    jours : au-dessous, on signalerait la MR d'avant-hier, qu'on n'a pas oubliée. */
 try { db.exec('ALTER TABLE config ADD COLUMN stale_mr_days INTEGER DEFAULT 5'); } catch { /* déjà présente */ }

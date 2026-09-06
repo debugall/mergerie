@@ -168,6 +168,23 @@ async function latestCommit(cfg, project) {
    travail vit sur des branches de feature paraîtrait sinon endormi.
    Le plafond de pages est une sécurité, pas une limite attendue : au-delà, le compte est
    MARQUÉ tronqué (`partiel`) plutôt que présenté comme exact. */
+/* LES COMMITS ARRIVÉS DEPUIS LA REVIEW. Le badge « périmé » ne disait pas de combien : trois
+   lignes ou un refactoring, la décision de relancer n'est pas la même. `compare` répond en un
+   appel, et c'est le SEUL moment où on le demande — au survol du badge, pas dans la liste.
+   Un `from` inconnu (branche réécrite, force-push) fait échouer l'appel : l'appelant traite
+   l'absence de réponse comme « on ne sait pas », ce qui est exact. */
+async function commitsSince(cfg, project, fromSha, toSha) {
+  const enc = encodeProject(project);
+  const q = `from=${encodeURIComponent(fromSha)}&to=${encodeURIComponent(toSha)}`;
+  const d = await gitlabFetch(cfg, `/projects/${enc}/repository/compare?${q}`);
+  return ((d && d.commits) || []).map((c) => ({
+    sha: String(c.short_id || c.id || '').slice(0, 8),
+    title: c.title || String(c.message || '').split('\n')[0],
+    author: c.author_name || '',
+    date: c.committed_date || c.created_at || null,
+  }));
+}
+
 async function commitsBetween(cfg, project, sinceIso, untilIso, maxPages = 12) {
   const enc = encodeProject(project);
   const out = [];
@@ -264,10 +281,11 @@ async function updateNote(cfg, project, iid, noteId, body) {
   });
 }
 
-// Compte associé au jeton — sert à savoir quels commentaires sont les miens.
+/* Compte associé au jeton — sert à savoir quels commentaires sont les miens, et quelles merge
+   requests. Le NOM AFFICHÉ vient avec : c'est lui que `listOpenMRs` stocke dans `author`. */
 async function currentUser(cfg) {
   const u = await gitlabFetch(cfg, '/user');
-  return { username: (u && u.username) || '' };
+  return { username: (u && u.username) || '', name: (u && u.name) || '' };
 }
 
 // Répond à une discussion existante (ajoute une note au fil).
@@ -392,11 +410,33 @@ async function deleteTag(cfg, project, tag) {
 // certaine de « cette branche a été mergée dans X » (git ne l'enregistre pas).
 // Chemins des fichiers modifiés par une MR (pour le badge « risque » et les règles
 // par chemin). Endpoint /changes : le plus compatible entre versions de GitLab.
-async function listMrChangedPaths(cfg, project, iid) {
+/* Les chemins ET la TAILLE du changement, en un seul appel : « 12 fichiers · +340 −80 » se lit
+   sur la carte avant de l'ouvrir, et c'est ce qui décide par quoi commencer. GitLab ne compte
+   pas les lignes ; il rend les diffs, on compte dessus — les lignes `+++` / `---` d'en-tête
+   sont exclues, ce sont des noms de fichiers, pas des modifications. */
+function compterLignes(diff) {
+  let plus = 0; let moins = 0;
+  for (const l of String(diff || '').split('\n')) {
+    if (l.startsWith('+') && !l.startsWith('+++')) plus += 1;
+    else if (l.startsWith('-') && !l.startsWith('---')) moins += 1;
+  }
+  return { plus, moins };
+}
+
+async function listMrChanges(cfg, project, iid) {
   const enc = encodeProject(project);
   const data = await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/changes`);
   const changes = (data && data.changes) || [];
-  return [...new Set(changes.map((x) => x.new_path || x.old_path).filter(Boolean))];
+  let additions = 0; let deletions = 0;
+  for (const c of changes) { const n = compterLignes(c.diff); additions += n.plus; deletions += n.moins; }
+  return {
+    paths: [...new Set(changes.map((x) => x.new_path || x.old_path).filter(Boolean))],
+    files: changes.length, additions, deletions,
+  };
+}
+
+async function listMrChangedPaths(cfg, project, iid) {
+  return (await listMrChanges(cfg, project, iid)).paths;
 }
 
 async function listAllMRs(cfg, project) {
@@ -407,6 +447,6 @@ async function listAllMRs(cfg, project) {
   }));
 }
 
-module.exports = { listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, commitsBetween, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
-  listBranchesFull, listTags, listProtectedBranches, listProtectedTags, listMrChangedPaths,
+module.exports = { listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
+  listBranchesFull, listTags, listProtectedBranches, listProtectedTags, listMrChangedPaths, listMrChanges,
   createBranch, deleteBranch, createTag, deleteTag, listAllMRs };

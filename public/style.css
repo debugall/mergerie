@@ -505,14 +505,126 @@ body { padding-bottom: 36px; } /* réserve la place du footer fixe */
    tombe pile dessous se clique à moitié — on garde donc sa hauteur de dégagement quand un
    défilement l'amène à l'écran. */
 /* Le message d'erreur d'un champ : sous lui, dans sa couleur, à sa largeur. */
-/* La rangée d'ajout d'un dépôt : trois champs libellés sur une ligne, l'URL prend la place
-   qui reste, et le bouton s'aligne sur le bas des champs (les libellés les décalent). */
-.repo-add { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
-.repo-add > label { display: flex; flex-direction: column; gap: 4px; flex: 1 1 200px; font-size: var(--fs-sm); color: var(--muted); }
-.repo-add > label.repo-add-url { flex: 2 1 320px; }
-.repo-add .repo-add-field { display: flex; align-items: center; gap: 5px; }
-.repo-add .repo-add-field input { flex: 1 1 auto; min-width: 0; }
-.repo-add > button { flex: 0 0 auto; }
+/* La rangée d'ajout d'un dépôt : trois champs libellés SUR UNE LIGNE, l'URL prend la place qui
+   reste, et le bouton s'aligne sur le bas des champs (les libellés les décalent).
+
+   `.form.repo-add` et non `.repo-add` : ce formulaire porte les DEUX classes, et `.form`
+   (`flex-direction: column`, et ses `label { flex-direction: row }`) est déclaré plus bas dans
+   la feuille. À spécificité égale, c'est le dernier qui gagne — la rangée retombait donc en
+   colonne, et les `flex-basis: 320px` des champs, lus comme des HAUTEURS, étalaient les trois
+   libellés sur 780 px de haut avec 200 px de vide entre chacun. On tranche par la
+   spécificité (deux classes), pas par l'ordre : le fichier peut être réordonné sans casser. */
+/* `max-width: none` : `.form` plafonne à 720 px, largeur d'un formulaire EN COLONNE. Sur une
+   rangée de trois champs plus un bouton, ce plafond forçait un retour à la ligne même sur un
+   écran large — la rangée n'a de sens que si elle tient sur une ligne. */
+.form.repo-add { display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-end;
+  gap: 10px; max-width: none; }
+.form.repo-add > label { display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  flex: 1 1 200px; font-size: var(--fs-sm); color: var(--muted); }
+.form.repo-add > label.repo-add-url { flex: 2 1 320px; }
+.form.repo-add .repo-add-field { display: flex; flex-direction: row; align-items: center; gap: 5px; }
+/* `.form label:not(.inline-check) > input` impose `flex: 0 0 100%` ailleurs : ici l'input
+   partage sa ligne avec l'ⓘ, il prend donc la place restante et pas la ligne entière. */
+.form.repo-add .repo-add-field > input { flex: 1 1 auto; min-width: 0; width: auto; }
+.form.repo-add > button { flex: 0 0 auto; }
+/* LE CHIP DE BRANCHE EST COPIABLE. Il garde l'allure d'un <code> — c'est un nom technique —
+   mais il se signale au survol : curseur de copie, fond légèrement appuyé. */
+/* Une date absolue qui porte son « il y a … » au survol : le pointillé discret dit qu'il y a
+   quelque chose de plus à lire, sans peser dans une ligne de méta déjà dense. */
+.date-abs, [data-when] { border-bottom: 1px dotted var(--line); cursor: help; }
+
+/* Les commandes suggérées : des pastilles cliquables, en monospace — c'est du shell. */
+.vc-sugg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: -4px 0 4px; }
+.vc-sugg > .field-note { flex: 0 0 100%; margin: 0; }
+.vc-sugg-btn { font-family: var(--ff-mono); font-size: 12px; cursor: pointer; }
+
+/* La taille d'un changement : les deux chiffres se lisent d'un coup d'œil, en couleur —
+   c'est le seul endroit de la carte où le vert et le rouge disent « ajouté / retiré ». */
+/* Le chapeau de réponse sur une carte : UNE ligne repliée. Une carte reste une carte — on
+   reconnaît la réponse qu'on cherche, on ne la lit pas ici. */
+.task-chapeau > summary { cursor: pointer; color: var(--muted); font-size: var(--fs-sm, 13px);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.task-chapeau[open] > summary { white-space: normal; color: var(--text); }
+.task-cout { display: block; font-size: var(--fs-xs, 11px); margin-top: 2px; }
+/* Les captures d'un ticket Jira, à cocher dans la modale de session : des vignettes, pas des
+   images — on reconnaît laquelle, on ne la lit pas ici. */
+.jira-pieces { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.jira-pieces > .field-note { flex: 0 0 100%; margin: 0; }
+.jira-piece { display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer;
+  font-size: var(--fs-xs, 11px); max-width: 110px; }
+.jira-piece img { max-width: 100px; max-height: 70px; border: 1px solid var(--line); border-radius: var(--r-md); }
+.jira-piece span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+
+/* L'état du clone d'un dépôt : présent (vert), absent (gris), modifié (ambre). */
+.repo-etat { margin-top: 2px; }
+.repo-clone-present { color: var(--green-text, var(--green)); }
+.repo-clone-dirty { color: var(--amber-text, var(--amber)); }
+/* Une règle qui ne touche plus rien se signale : elle n'est pas fausse, elle est morte. */
+.rule-vide { color: var(--amber-text, var(--amber)); }
+
+/* Un chiffre de statistiques qui est une PORTE : il se signale sans devenir un lien bleu. */
+.stat-porte { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.stat-porte:hover { text-decoration: underline; }
+.stat-porte:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.stats-top-tok { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); }
+.stats-rec-files { font-size: var(--fs-xs, 11px); margin-top: 2px; }
+
+/* Un job épinglé : l'étoile s'allume, la ligne se marque d'un liseré — elle est en tête, il
+   faut qu'on voie POURQUOI. */
+.jk-pin { color: var(--muted); flex: 0 0 auto; }
+.jk-pin.active { color: var(--amber-text, var(--amber)); }
+.jk-row.jk-pinned { border-left: 2px solid var(--amber); }
+/* La fin de la console d'un build rouge : du log, donc monospace et défilement propre. */
+.jk-tail { max-height: 220px; overflow: auto; }
+
+/* La dernière exécution d'une cible Make, sous son bouton : discrète, rouge si elle a raté. */
+.mk-last { font-size: var(--fs-xs, 11px); white-space: nowrap; }
+.mk-last-ko { color: var(--red-text, var(--red)); }
+
+/* La branche qui tourne, dans l'en-tête d'un projet compose. */
+.docker-git { font-size: var(--fs-xs, 11px); white-space: nowrap; }
+.docker-git .ico { width: 12px; height: 12px; vertical-align: -1px; }
+
+/* Ce qu'une branche porte, dans l'explorateur : la note de sa review, la session qui l'a
+   créée. Discret — la colonne reste celle du NOM de la branche. */
+.git-ex-note { font-size: var(--fs-xs, 11px); color: var(--muted); }
+.git-ex-sess { font-size: var(--fs-xs, 11px); }
+.git-ex-sess .ico { width: 12px; height: 12px; vertical-align: -1px; }
+
+/* L'aperçu d'une suppression dit si c'est sûr : trois états, trois couleurs. */
+.git-sur { font-size: var(--fs-xs, 11px); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
+.git-sur-ok { color: var(--green-text, var(--green)); border-color: var(--green); }
+.git-sur-mr { color: var(--amber-text, var(--amber)); border-color: var(--amber); }
+.git-sur-non { color: var(--muted); }
+
+/* « Dans Mergerie » : une liste courte de portes, pas un tableau. */
+.jira-eng { margin: 0; padding-left: 18px; }
+.jira-eng li { margin: 2px 0; }
+
+/* Une porte au milieu d'une phrase : un lien, pas un bouton — c'est une navigation. */
+.lien-reglage { background: none; border: 0; padding: 0; margin-left: 4px; font: inherit;
+  color: var(--accent-text, var(--accent)); text-decoration: underline; cursor: pointer; }
+
+/* L'état de la merge request sur la ligne d'un projet de session : discret, à côté du lien. */
+.tmr-etat { font-size: var(--fs-xs, 11px); }
+.tmr-verdict.v-verified_pass { color: var(--green-text, var(--green)); }
+.tmr-verdict.v-verified_fail { color: var(--red-text, var(--red)); }
+.tmr-verdict.v-broken_base, .tmr-verdict.v-verify_error { color: var(--amber-text, var(--amber)); }
+
+.mr-taille { margin-top: 2px; }
+/* Le chemin d'un constat EST une porte : il se signale comme telle (curseur, soulignement au
+   survol) sans devenir un lien bleu au milieu d'une ligne déjà dense. */
+.f-loc { background: none; border: 0; padding: 0; margin: 0; color: inherit; font: inherit; cursor: pointer; }
+.f-loc:hover code { text-decoration: underline; color: var(--accent-text, var(--accent)); }
+.f-loc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.tag.stale[data-stale-mr] { cursor: help; }
+.diffstat .plus { color: var(--green-text, var(--green)); }
+.diffstat .moins { color: var(--red-text, var(--red)); }
+
+.branch-chip { cursor: copy; border-radius: 4px; padding: 0 3px; margin: 0 -3px; }
+.branch-chip:hover { background: var(--panel2); color: var(--text); }
+.branch-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 .field-error { margin: 4px 0 0; font-size: 12px; color: var(--danger-text); line-height: 1.35; }
 /* Dans une rangée de projet (ligne flex qui passe à la ligne), le message prend une LARGEUR
    PLEINE : sans ça il se rangeait comme une colonne de plus, entre deux champs. */
@@ -1797,6 +1909,9 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
   opacity: 0; transform: translateY(3px); transition: opacity .12s, transform .12s;
 }
 #tip.on { opacity: 1; transform: none; }
+/* Une bulle peut porter PLUSIEURS LIGNES — les messages des commits arrivés depuis la review.
+   `pre-line` garde les retours voulus sans figer les espaces d'indentation. */
+#tip { white-space: pre-line; }
 /* Variante « code » : le contenu d'une commande Makefile, large et monospace pour tenir sur
    peu de lignes. Les retours à la ligne de la recette sont préservés (pre-wrap). */
 #tip.tip-code { max-width: min(820px, 92vw); white-space: pre-wrap; text-align: left;

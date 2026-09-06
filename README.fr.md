@@ -97,13 +97,23 @@ et un **lot** de merge requests vérifiées ensemble.
   MR, les tickets, les notes et les todos, classés par frécence. Un service associé à un dépôt pose ses
   boutons directement sur ses merge requests, y compris des liens **templatés** (`{env}`, `{branch}`,
   `{mr_iid}`) résolus au clic. Les favoris Chrome s'importent avec aperçu.
-- **Stats** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens.
+- **Stats** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens,
+  **les cinq sessions les plus coûteuses** et **les constats qui reviennent** — le même constat
+  relevé sur trois merge requests d'un même dépôt se transforme en règle de review d'un clic.
+  Chaque nombre est une porte : il ouvre Reviews filtré sur ce projet, au bon stade.
 - **Réglages** — connexions GitLab / GitHub / Jira, dépôts, règles de review, templates de prompt, thème et langue.
 
 Partout : `Ctrl`/`Cmd` + `K` ouvre une **palette de commandes** (sauter à un onglet, une MR, une session
-en tapant son nom), `j` / `k` parcourent la liste courante, `?` liste tous les raccourcis. L'outil
+en tapant son nom — `!217` ou `PROJ-1408` tapés seuls y vont directement), `j` / `k` parcourent la liste
+courante, `v` / `c` / `m` / `x` agissent sur la carte au focus, `?` liste tous les raccourcis. L'outil
 rouvre sur l'onglet et le stade que tu as quittés, et le panneau de rapport ouvre sur **ce qui a changé
 depuis ta dernière visite**.
+
+**Les onglets se parlent.** Une todo liée à une merge request se coche quand celle-ci est mergée ;
+le dernier build Jenkins qui porte une branche s'écrit sur la carte de sa merge request ; un ticket
+passé « en revue » fait remonter ses merge requests ; une exploration se transforme en session de
+codage **dans la même session d'agent** ; les branches des merge requests mergées se ramassent en
+un lot ; et une vérification qui tourne « in place » dit l'état des services Docker avant de partir.
 
 Les badges signalent le **travail en attente** (MR à traiter, sessions non lancées), pas des totaux.
 

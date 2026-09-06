@@ -98,6 +98,16 @@ function commandsFor(action, row, name, message) {
 }
 
 /* Aperçu : une ligne par (projet, ref). Ne modifie RIEN. */
+/* La merge request OUVERTE dont cette branche est la source, si Mergerie la connaît. Le
+   `closed_seen` écarte celles qu'on a vues fermées : supprimer une branche dont la MR est
+   mergée est justement ce qu'on vient faire. */
+function mrOuverteSurBranche(repoId, branche) {
+  const m = db.prepare(`SELECT iid, web_url, title FROM mr
+    WHERE repo_id = ? AND source_branch = ? AND (closed_seen IS NULL OR closed_seen = 0)
+    ORDER BY id DESC LIMIT 1`).get(repoId, branche);
+  return m ? { iid: m.iid, url: m.web_url, title: m.title } : null;
+}
+
 async function preview({ action, targets, name, message }) {
   if (!ACTIONS.includes(action)) throw new Error(t('err.git.unknown-action'));
   const cfg = getConfig();
@@ -180,7 +190,16 @@ async function preview({ action, targets, name, message }) {
             if (!b) { rows.push({ ...base, state: 'missing' }); continue; }
             if (b.default || rname === defBranch) { rows.push({ ...base, sha: b.sha, state: 'is_default' }); continue; }
             if (b.protected || protBranches.includes(rname)) { rows.push({ ...base, sha: b.sha, state: 'protected' }); continue; }
-            rows.push({ ...base, sha: b.sha, committed_date: b.committed_date, author: b.author, merged: b.merged, state: 'ok' });
+            /* EST-CE SÛR ? La décision se prenait après la suppression : on cliquait, puis on
+               allait voir sur la forge si la branche était bien mergée. La ligne le dit —
+               mergée (et où), ou portée par une merge request encore ouverte, ou ni l'un ni
+               l'autre. Ce sont des faits déjà connus : `merged` vient du listing des branches,
+               la merge request de la base locale. */
+            rows.push({
+              ...base, sha: b.sha, committed_date: b.committed_date, author: b.author,
+              merged: b.merged, merged_into: b.merged ? defBranch : null,
+              open_mr: mrOuverteSurBranche(repo.id, rname), state: 'ok',
+            });
           } else {
             const tg2 = tags.find((x) => x.name === rname);
             if (!tg2) { rows.push({ ...base, state: 'missing' }); continue; }

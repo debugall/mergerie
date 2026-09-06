@@ -81,6 +81,9 @@
     <symbol id="i-fold" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4l5 5 5-5M7 20l5-5 5 5"/></symbol>
     <symbol id="i-more" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <!-- L'épingle d'un job Jenkins : creuse quand il ne l'est pas, pleine quand il l'est. -->
+    <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5-5.8-3-5.8 3 1.1-6.5L2.6 9.8l6.5-.9z"/></symbol>
+    <symbol id="i-star-filled" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5-5.8-3-5.8 3 1.1-6.5L2.6 9.8l6.5-.9z"/></symbol>
 </svg>
 
 <header>
@@ -184,6 +187,10 @@
             <button data-seg="reviewed" role="tab"><span data-i18n="review.seg.reviewed">Reviewées</span> <span class="seg-count is-waiting" id="segCountReviewed"></span></button>
             <button data-seg="done" role="tab"><span data-i18n="review.seg.done">Traitées</span> <span class="seg-count is-waiting" id="segCountDone"></span></button>
         </div>
+        <!-- QUI ATTEND QUOI. Onze merge requests à traiter dont quatre à soi : ce que
+             l'équipe attend, ce sont les sept autres. Le compte du jeton est connu des deux
+             forges ; les pastilles n'apparaissent que si on a pu le lire. -->
+        <div id="mrAuteurFiltre" class="chips" role="group" hidden></div>
         <input id="searchReview" class="search" type="search" placeholder="Rechercher (titre, auteur, projet, ticket)…" data-i18n-placeholder="ui.ph.rechercher-titre-auteur-projet-ticket" />
         <div id="reviewErrors"></div>
         <!-- Sélection multiple : vérifier ENSEMBLE des MR qui ne valent qu'ensemble.
@@ -308,6 +315,9 @@
                  ligne désactivée invitant à « ajouter d'abord un dépôt » et un « chargement… »
                  qui ne finissait jamais : trois impasses au lieu d'une porte. -->
             <div id="gitNoRepo" hidden></div>
+            <!-- B7 : les branches des merge requests mergées, en un lot pré-rempli. Le bouton
+                 n'apparaît que s'il y en a — un bouton qui annonce « 0 » n'apprend rien. -->
+            <p id="gitMergedBar" hidden><button type="button" class="btn" id="gitMergedFill"></button></p>
             <p class="muted" style="max-width:900px" data-i18n="git.actions.intro">Applique la même opération à plusieurs dépôts d'un coup. Rien n'est exécuté sans un aperçu préalable.</p>
             <!-- 900 px comme les sous-onglets voisins (Navigation, Commandes) : à 760, le
                  champ de branche tombait sous les 330 px et coupait les noms longs. -->
@@ -727,6 +737,9 @@
         <div class="toolbar">
             <input id="jenkinsSearch" type="search" class="jira-search" placeholder="Rechercher un job, un dossier…" data-i18n-placeholder="jenkins.search" />
             <label class="inline-check"><input type="checkbox" id="jenkinsFailOnly" /> <span data-i18n="jenkins.fail-only">Seulement ce qui ne va pas</span></label>
+            <!-- CE QUE J'AI DÉCLENCHÉ. La liste des jobs lancés depuis Mergerie existait déjà
+                 pour la notification de fin : elle devient un filtre. -->
+            <label class="inline-check"><input type="checkbox" id="jenkinsMineOnly" /> <span data-i18n="jenkins.filter.mine">Mes lancements</span></label>
             <label class="inline-check"><input type="checkbox" id="jenkinsNoAuto" /> <span data-i18n="jenkins.no-auto">Ne pas rafraîchir tout seul</span></label>
             <span class="spacer"></span>
             <span id="jenkinsCount" class="muted"></span>
@@ -889,6 +902,10 @@
                     <label><span data-i18n="settings.verifier.lbl.commands">Commandes, dans l'ordre</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.commands" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                     <div id="verifierCommandList"></div>
                     <p><button type="button" class="btn" id="btnAddCommand"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="settings.verifier.btn.add-command">Ajouter une commande</span></button></p>
+                    <!-- CE QUE LES DÉPÔTS SAVENT DÉJÀ LANCER. Les scripts de `package.json`,
+                         de `composer.json` et les cibles du Makefile sont lus sur le clone,
+                         sans réseau et sans rien exécuter. On clique, on ne recopie pas. -->
+                    <div id="verifierSuggestions" class="vc-sugg" hidden></div>
 
                 </div>
 
@@ -1069,6 +1086,10 @@
             <!-- Brief du matin : l'atterrissage est un réglage de l'OUTIL (comme la langue),
                  pas du navigateur — d'où la base et non le localStorage. -->
             <label class="inline-check"><input form="configForm" name="brief_on_open" type="checkbox" /> <span data-i18n="settings.lbl.brief-on-open">Brief du matin à la première ouverture</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.brief-on-open" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- B1 : une todo « suivre !201 » n'a plus de raison d'être une fois !201 mergée.
+                 Cochée, jamais supprimée — et débrayable pour qui préfère cocher lui-même. -->
+            <label class="inline-check"><input form="configForm" name="todo_close_on_merge" type="checkbox" /> <span data-i18n="settings.lbl.todo-close-on-merge">Cocher les todos liées quand leur merge request est mergée</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.todo-close-on-merge" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
             <label><span data-i18n="settings.lbl.stale-mr-days">MR dormante au bout de (jours)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.stale-mr-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <input form="configForm" name="stale_mr_days" type="number" min="1" max="90" step="1" placeholder="5" />
             </label>
@@ -1193,6 +1214,24 @@
                 <span id="configInfoJenkins" class="muted"></span>
             </div>
         </div>
+
+        <!-- B8 : quel job déploie quel dépôt. Déclaré une fois ici, proposé sur les merge
+             requests vérifiées vertes du dépôt — comme service ↔ dépôt dans Liens. -->
+        <h2 data-i18n="settings.jenkins.links.title">Jobs liés aux dépôts</h2>
+        <p class="muted" style="max-width:760px" data-i18n="settings.jenkins.links.intro">Un job déclaré ici est proposé sur les merge requests vérifiées vertes du dépôt, avec la branche pré-remplie.</p>
+        <form id="jenkinsLinkForm" class="form repo-add" autocomplete="off">
+            <label class="repo-add-url"><span data-i18n="settings.jenkins.links.repo">Dépôt</span>
+                <div id="jenkinsLinkRepo" class="repo-add-field"></div>
+            </label>
+            <label><span data-i18n="settings.jenkins.links.job">Job Jenkins</span>
+                <div class="repo-add-field"><input name="job_path" placeholder="boutique/api-deploy-recette" required /></div>
+            </label>
+            <label><span data-i18n="settings.jenkins.links.param">Paramètre qui reçoit la branche (optionnel)</span>
+                <div class="repo-add-field"><input name="param" placeholder="BRANCH" /></div>
+            </label>
+            <button class="btn btn-primary" type="submit"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="settings.jenkins.links.add">Lier</span></button>
+        </form>
+        <div id="jenkinsLinkList" class="list"></div>
         </div><!-- /sub-jenkinscfg -->
 
         <!-- Sous-onglet : Merge Request (review, convergence, templates) -->
@@ -1311,6 +1350,9 @@
                     </span>
                 </label>
                 <span id="taskJiraStatus" class="muted"></span>
+                <!-- B10 : les captures du ticket, à cocher — plutôt qu'un aller-retour par le
+                     dossier Téléchargements pour chaque bug d'affichage. -->
+                <div id="taskJiraPieces" class="jira-pieces" hidden></div>
             </div>
             <div id="taskReposWrap" class="targets-editor">
                 <div class="targets-head">
@@ -1355,9 +1397,14 @@
                     <select name="verifier_id" id="taskVerifier"></select>
                 </label>
                 <p id="taskVerifierNote" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span data-i18n="task.verifier.push-note">Un vérificateur travaille sur le code poussé : l'auto-push est donc activé. Le décocher retirera le vérificateur.</span></p>
+                <!-- UNE LISTE VIDE DIT POURQUOI : quel vérificateur couvre quoi, et ce qui lui
+                     manque pour couvrir la sélection. Avec la porte pour aller le compléter. -->
+                <p id="taskVerifierMissing" class="field-note" hidden></p>
                 <!-- « CONVERGER » N'EST PLUS UN SECOND BOUTON PRIMAIRE au pied de la modale,
                      sans un mot sur ce qu'il ferait de plus. C'est la suite du vérificateur :
                      une case qui dit son seuil et son plafond de passes. -->
+                <!-- B5 : opt-in, décoché par défaut — écrire chez les autres se décide. -->
+                <label id="taskNotifyJiraRow" class="inline-check"><input type="checkbox" name="notify_jira" /> <span data-i18n="task.lbl.notify-jira">Prévenir Jira à la création de la merge request</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="task.tip.notify-jira" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                 <label id="taskConvergeRow" class="inline-check"><input type="checkbox" name="converge_after" /> <span id="taskConvergeLbl" data-i18n="task.lbl.converge-after">…puis converger</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="task.tip.converge-after" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                 <label class="inline-check"><input type="checkbox" name="auto_push" /> <span data-i18n="task.lbl.auto-push">Auto-push (pousser automatiquement après le commit, sans validation)</span> <button type="button" class="hint" tabindex="-1" aria-label="Coché, la branche est poussée dès la fin du commit. Décoché, tu relis le diff puis pousses toi-même depuis Dev IA." data-tip="Coché, la branche est poussée dès la fin du commit. Décoché, tu relis le diff puis pousses toi-même depuis Dev IA." data-i18n-tip="task.tip.coche-la-branche-est-poussee"><svg class="ico"><use href="#i-info"/></svg></button></label>
             </div>
@@ -1429,7 +1476,7 @@
                placeholder="Aller à… ou chercher une MR, une session" data-i18n-placeholder="palette.ph"
                aria-label="Palette de commandes" data-i18n-aria="palette.aria" />
         <div id="paletteList" class="palette-list" role="listbox"></div>
-        <p class="palette-hint muted" data-i18n="palette.hint">↑ ↓ pour choisir · Entrée pour ouvrir · Échap pour fermer · ⌘K ou o pour rouvrir cette palette</p>
+        <p class="palette-hint muted" data-i18n="palette.hint">↑ ↓ choisir · Entrée ouvrir (⌘/Ctrl+Entrée : le diff) · « !217 » ou « PROJ-1408 » ouvre directement · Échap fermer · ⌘K ou o rouvrir</p>
     </div>
 </div>
 
@@ -1623,6 +1670,9 @@
     <div class="modal-box modal-capture">
         <h3 data-i18n="notes.capture.title">Nouvelle todo</h3>
         <input id="captureTitle" type="text" maxlength="200" autocomplete="off" placeholder="Que faut-il faire ?" data-i18n-placeholder="notes.capture.ph" />
+        <!-- LA SYNTAXE COURTE SE DIT, sinon personne ne la découvre. Une ligne sous le champ,
+             pas une aide à ouvrir : ce qu'on peut écrire est ce qu'on lit en écrivant. -->
+        <p class="field-note" data-i18n-html="notes.capture.syntax">Raccourcis : <code>!217</code> ou <code>PROJ-1408</code> pour lier · <code>@demain</code>, <code>@lundi</code>, <code>@12/09</code> pour l'échéance · <code>!!</code> priorité haute, <code>!</code> basse</p>
         <button type="button" id="captureMore" class="btn btn-sm btn-ghost" data-i18n="notes.capture.more">+ détails</button>
         <div id="captureDetails" hidden>
             <label><span data-i18n="notes.todo.prio-label">Priorité</span>

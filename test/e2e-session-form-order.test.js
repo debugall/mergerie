@@ -94,6 +94,12 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
       'label',                         // LE NOM : facultatif, après ce qu'il résume
       'groupe:task.group.after',       // APRÈS : les décisions qui changent le résultat
       'verifier_id',
+      /* La liste des vérificateurs est vide ici (aucun ne couvre le dépôt) : elle DIT pourquoi,
+         juste dessous, au lieu de laisser un menu muet. */
+      'taskVerifierMissing',
+      /* « Prévenir Jira » vit avec les décisions qui portent sur la merge request : il
+         n'apparaît qu'en codage, et seulement si Jira est connecté. */
+      'taskNotifyJiraRow',
       'taskConvergeRow',
       'auto_push',
       'taskImages',                    // une possibilité, pas une étape

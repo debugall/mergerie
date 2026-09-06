@@ -798,7 +798,22 @@ async function runDockerJob(jobId, payload) {
     } else if (payload.op === 'orphan-stop') {
       await docker.stopContainer(payload.id, onLog);
     } else if (payload.op === 'make') {
-      await docker.runMake(payload.dir, payload.target, onLog);
+      /* On NOTE la cible avant de la lancer et on complète à la fin : « ai-je déjà passé les
+         migrations ce matin ? » se lit alors sous le bouton, sans relire un journal. Un échec
+         est noté comme tel — savoir que ça a tourné ne dit pas que ça a marché. */
+      const debut = new Date().toISOString();
+      db.prepare(`INSERT INTO make_run (dir, target, started_at, finished_at, ok) VALUES (?,?,?,NULL,NULL)
+        ON CONFLICT(dir, target) DO UPDATE SET started_at = excluded.started_at, finished_at = NULL, ok = NULL`)
+        .run(payload.dir, payload.target, debut);
+      try {
+        await docker.runMake(payload.dir, payload.target, onLog);
+        db.prepare('UPDATE make_run SET finished_at = ?, ok = 1 WHERE dir = ? AND target = ?')
+          .run(new Date().toISOString(), payload.dir, payload.target);
+      } catch (e) {
+        db.prepare('UPDATE make_run SET finished_at = ?, ok = 0 WHERE dir = ? AND target = ?')
+          .run(new Date().toISOString(), payload.dir, payload.target);
+        throw e;
+      }
     }
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
   } catch (e) {

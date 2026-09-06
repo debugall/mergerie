@@ -1606,7 +1606,22 @@ data**: a skeleton while it loads, never a “0” that would read as “nothing
   a merge request, a session — the search covers what is already loaded, so it answers without calling the
   server. `?` shows the full list of shortcuts.
 - **Browse the list from the keyboard**: `j` / `k` move down and up in the visible list, `Enter` opens, `Esc`
-  releases. No focus outline appears until you have pressed a key.
+  releases. On the focused card: `d` the diff, `v` verify, `c` the context, `m` mark handled,
+  `x` tick for a joint verification — each one clicks the RENDERED button, so what is disabled
+  stays disabled. No focus outline appears until you have pressed a key.
+- **Copy instead of retyping.** A branch name copies on click everywhere it shows (merge request
+  card, a session's project line, the explorer, the report); **Shift-click** copies
+  `git fetch origin && git checkout <branch>`. A merge request's ⋯ menu carries **"Copy the
+  reference"** — `!217 — 3× payment (8.1/10 · verified) <url>`, the message already written. On
+  the Docker side, every service, every log stream and every Make target carries its equivalent
+  command, to copy and continue in a terminal.
+- **The palette opens a reference typed alone**: `!217` or `PROJ-1408` go straight there on
+  `Enter`; `⌘`/`Ctrl` + `Enter` on a merge request opens its diff rather than its report.
+- **The quick capture (`n`) understands a short syntax**: `!217 reread the total @tomorrow !!`
+  creates a todo linked to !217, due tomorrow at 9, high priority. `@monday` and `@12/09` work
+  too; anything not recognised **stays in the title**, as written.
+- **An absolute date carries its "3 hours ago" on hover** — session cards, merge requests,
+  Jenkins builds.
 - **The interface keeps still.** A refresh that changes nothing no longer rebuilds the list: the page does
   not blink while you read it. When a list really does load, its cards arrive in a cascade — once, on load,
   not on every character typed into a filter.

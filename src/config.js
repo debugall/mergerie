@@ -16,7 +16,7 @@ const ALLOWED = [
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
   'brief_on_open', 'auto_post_review', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
   'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
-  'verif_auto_max',
+  'verif_auto_max', 'todo_close_on_merge',
 ];
 
 function updateConfig(patch) {
@@ -63,6 +63,9 @@ function updateConfig(patch) {
   }
   // Brief à la première ouverture de la journée : booléen en texte, comme review_explain.
   next.brief_on_open = next.brief_on_open === '0' ? '0' : '1';
+  /* Coché par défaut : une todo « suivre !201 » n'a plus de raison d'être une fois !201
+     mergée, et la cocher soi-même après coup est le geste qu'on oublie. */
+  next.todo_close_on_merge = next.todo_close_on_merge === '0' ? '0' : '1';
   // Langue : on refuse silencieusement une valeur inconnue plutôt que de casser l'interface.
   if (!['fr', 'en'].includes(next.language)) next.language = 'fr';
   // Explication : booléen stocké en texte, normalisé à '0'/'1' (défaut '1').
@@ -124,6 +127,7 @@ function updateConfig(patch) {
       jira_watch_minutes = @jira_watch_minutes,
       retention_days = @retention_days,
       brief_on_open = @brief_on_open,
+      todo_close_on_merge = @todo_close_on_merge,
       stale_mr_days = @stale_mr_days,
       jenkins_url = @jenkins_url,
       jenkins_user = @jenkins_user,
