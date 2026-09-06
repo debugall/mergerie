@@ -252,13 +252,18 @@ describe('Questions de l’agent : exploration et hors dépôt', () => {
         await page.goto(app.base);
         await page.locator('nav button[data-tab="task"]').click();
         await page.locator(`#tab-task .subnav [data-kind="${creer === 'local' ? 'local' : 'code'}"]`).click();
-        await page.waitForSelector(`${liste} .questions-box`);
+        /* LA CARTE DE CETTE SESSION, pas la première venue. La liste en contient d'autres, et
+           certaines attendent aussi des réponses : un sélecteur à l'échelle de la liste
+           tombait sur la boîte du voisin dès que le rafraîchissement de fin de job la faisait
+           apparaître — et le test accusait la reprise qu'il venait de demander. */
+        const carte = `${liste} [data-${creer === 'local' ? 'local' : 'task'}="${id}"]`;
+        await page.waitForSelector(`${carte} .questions-box`);
 
         // On répond à TOUT : un choix fermé et une réponse libre, comme le fait l'agent en dry-run.
-        await page.locator(`${liste} .questions-box .q-opts input[type="radio"]`).first().check();
-        await page.locator(`${liste} .questions-box .q-free`).first().fill('Oui, avec une migration');
+        await page.locator(`${carte} .questions-box .q-opts input[type="radio"]`).first().check();
+        await page.locator(`${carte} .questions-box .q-free`).first().fill('Oui, avec une migration');
 
-        await page.locator(`${liste} [data-qsubmit]`).first().click();
+        await page.locator(`${carte} [data-qsubmit]`).first().click();
         /* On vérifie l'EFFET, pas l'état transitoire de l'écran : le formulaire annonce
            « reprise en cours », puis le rafraîchissement de la liste le fait disparaître —
            attendre la mention perdait la course une fois sur deux. Ce qui compte est que le
@@ -273,7 +278,7 @@ describe('Questions de l’agent : exploration et hors dépôt', () => {
         await page.waitForFunction((sel) => {
           const box = document.querySelector(`${sel} .questions-box`);
           return !box || box.classList.contains('resuming');
-        }, liste);
+        }, carte);
         assert.deepEqual(erreurs, []);
       } finally { await nav.close(); }
     });

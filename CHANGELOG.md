@@ -11,6 +11,40 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Fixed
+
+- **Reviewer une merge request se voit enfin à l'écran.** C'était le point faible n°1 de l'audit,
+  et il restait entier : on cliquait « Reviewer », le bandeau annonçait « terminé », et la carte
+  restait en tête des « à traiter » avec des compteurs inchangés — l'écran affichant 10/7 quand
+  le serveur répondait déjà 9/8, indéfiniment. La détection reposait sur « un sondage était en
+  cours », donc jamais pour un job qui finit avant le premier tour de boucle : c'est le cas d'une
+  review courte. Elle repose maintenant sur l'identifiant du job. **Mesuré : l'écran se met à
+  jour en 0,2 s** au lieu de ne jamais le faire. Dans la foulée, le lien « Voir le rapport » du
+  bandeau bascule sur le bon stade — il ouvrait le rapport dans un panneau masqué —, et deux
+  chargements de sessions en vol ne peuvent plus se recouvrir dans le désordre.
+
+- **Le contraste tient WCAG AA partout**, dans les deux thèmes. Le motif le plus courant de
+  l'interface — une couleur de marque posée sur un fond teinté de cette même couleur — se lit
+  très bien en gros et échouait en petit : dix-neuf libellés de 10 à 12 px étaient sous le
+  seuil en thème clair (états Docker, statuts et étiquettes Jira, paramètres Jenkins, tags
+  « poussée » et « en attente de réponses », bandeau d'erreur). Les couleurs sémantiques ont
+  désormais une variante réglée pour le texte, par thème. **Un test le mesure à chaque build** :
+  il parcourt les dix onglets dans les deux thèmes, compose les fonds semi-transparents et
+  refuse tout texte sous son seuil.
+
+- **Les stades « Reviewées » et « Traitées » montrent un squelette pendant leur chargement.**
+  Les faux « 0 » avaient disparu, mais la colonne restait un blanc muet sous latence — on ne
+  pouvait pas distinguer « ça charge » de « il n'y a rien ».
+
+- **La langue de l'écran vaut aussi pour le serveur.** Elle vit dans le navigateur ; le serveur
+  lisait la configuration enregistrée. Passer l'interface en anglais laissait donc en français
+  tout ce que le serveur fabrique — « Mes dépôts (démo) » au milieu d'un onglet traduit, et les
+  messages d'erreur. Et dans l'autre sens, les filtres Docker gardaient « Arrêtés (exited) »,
+  « Unhealthy » et « En restarting » dans une interface française.
+
+- **Les titres des neuf cartes de Statistiques** rejoignent le niveau de section unique : la
+  chrome de l'application ne connaît plus que deux traitements de titre, partout.
+
 ### Changed
 
 - **Une passe de design et d'ergonomie sur toute l'application**, à la suite d'une revue écran

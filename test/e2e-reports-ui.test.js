@@ -145,6 +145,34 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
     });
   }
 
+  /* SOUS LATENCE, LA COLONNE N'EST PAS UN BLANC MUET. Les faux « 0 » avaient disparu, mais
+     « Reviewées » et « Traitées » n'avaient aucun squelette : pendant les quelques secondes
+     d'une instance lente, on ne pouvait pas distinguer « ça charge » de « il n'y a rien ».
+     On RECHARGE la page pour retrouver un stade jamais ouvert (le drapeau qui pilote le
+     squelette est en mémoire), et on bloque la réponse jusqu'à un feu vert plutôt que de
+     parier sur un délai. */
+  test('un stade jamais ouvert montre un squelette pendant son chargement', async () => {
+    /* La route est posée AVANT le rechargement : l'application restaure son dernier stade au
+       démarrage, donc la requête à intercepter part immédiatement. */
+    let liberer;
+    const feuVert = new Promise((r) => { liberer = r; });
+    await page.route('**/api/mrs?status=reviewed', async (route) => {
+      await feuVert;
+      await route.continue().catch(() => { /* page déjà partie */ });
+    });
+    await page.reload();
+    await page.waitForSelector('nav button[data-tab="review"]');
+    await page.locator('nav button[data-tab="review"]').click();
+    await page.locator('[data-seg="reviewed"]').click();
+    await page.waitForSelector('#reportList .sk', { timeout: 10000 });
+    assert.equal(await page.locator('#reportList .sk').count(), 3, 'trois cartes fantômes, pas un blanc');
+
+    liberer();
+    await page.unroute('**/api/mrs?status=reviewed').catch(() => {});
+    await page.waitForSelector('#reportList .card', { timeout: 15000 });
+    assert.equal(await page.locator('#reportList .sk').count(), 0, 'le squelette laisse la place aux vraies cartes');
+  });
+
   /* LE MUR D'ACTIONS. Onze boutons sur trois rangées précédaient la première ligne du rapport :
      à 1280×800 on ne lisait rien sans faire défiler, alors qu'on vient pour LIRE. Et « Merger »
      (irréversible) jouxtait « Supprimer le rapport » (destructif) dans exactement le même rouge. */

@@ -19,7 +19,10 @@ I18Nrt.setLang(readLang());
 async function api(path, opts = {}) {
   const res = await fetch(`/api${path}`, {
     cache: 'no-store', // jamais de cache : on veut toujours le contenu à jour
-    headers: { 'Content-Type': 'application/json' },
+    /* LA LANGUE VOYAGE AVEC LA REQUÊTE. Elle vit dans le navigateur (localStorage), le serveur
+       la lisait en base : changer de langue à l'écran laissait les messages du serveur — et les
+       libellés qu'il fabrique, comme ceux du mode démo — dans l'ancienne. */
+    headers: { 'Content-Type': 'application/json', 'X-Mergerie-Lang': readLang(), ...(opts.headers || {}) },
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
@@ -169,6 +172,8 @@ let listeChargee = false;
 // « La file n'a jamais été peuplée » — distinct de `listeChargee` ci-dessus, qui est un
 // drapeau d'ANIMATION consommé à chaque rendu. Sert au squelette du premier affichage.
 let fileJamaisChargee = true;
+// Les stades déjà peuplés au moins une fois : voir le squelette de `loadReports`.
+const stadeDejaCharge = new Set();
 function stagger(sel) {
   const nodes = $$(sel);
   nodes.forEach((c, i) => c.style.setProperty('--i', Math.min(i, 10)));
@@ -1470,6 +1475,16 @@ let pollTimer = null;
 // fin) pour rafraîchir les listes — sans ça, lancer une itération laissait la carte sur
 // son ancien statut (« poussée ») jusqu'au rechargement de la page.
 let lastSeenJobId = null;
+/* Le dernier job dont on a DÉJÀ traité la fin. La détection reposait sur `pollTimer` : « il y
+   avait un sondage en cours, donc un job vient de finir ». C'est faux pour un job court — une
+   review qui dure moins d'un tour de boucle n'a jamais fait naître le timer, et rien ne
+   rafraîchissait la liste ni les compteurs. L'écran affichait alors « À traiter 10 » quand
+   l'API répondait 9, indéfiniment : la première action du produit paraissait sans effet.
+   L'identifiant, lui, ne dépend d'aucune cadence. `null` tant qu'on n'a rien vu ; le PREMIER
+   état reçu ne déclenche rien (au chargement, le dernier job de la base est fini depuis
+   longtemps et son annonce n'aurait aucun sens). */
+let dernierJobFini = null;
+let premierStatutRecu = false;
 
 // Polling auto des listes, à l'intervalle configuré (auto_refresh_minutes). Le serveur
 // interroge GitLab de son côté ; le front ne fait que relire la base locale (pas d'appel
@@ -1573,6 +1588,13 @@ async function refreshStatus() {
     const job = s.job;
     const running = s.running;
     const queued = s.queued || 0;
+    /* PREMIER ÉTAT REÇU : on note ce qui était déjà fini avant notre arrivée, et on ne
+       déclenche rien. Sans ça, ouvrir la page annoncerait la fin du dernier job de la base —
+       terminé la veille — et rafraîchirait des listes qu'on vient tout juste de charger. */
+    if (!premierStatutRecu) {
+      premierStatutRecu = true;
+      if (job && JOB_FINI.includes(job.status)) dernierJobFini = job.id;
+    }
     /* Un nouveau job vient de démarrer : les statuts affichés (session, projet) sont
        déjà périmés. On recharge la liste concernée tout de suite, comme on le fait
        déjà à la fin d'un job. */
@@ -1593,7 +1615,8 @@ async function refreshStatus() {
       $('#progressBar').style.width = '0%';
       document.title = 'Mergerie';
       setFavicon(job && job.status === 'error' ? 'error' : 'idle');
-      if (job && JOB_FINI.includes(job.status) && pollTimer) {
+      if (job && JOB_FINI.includes(job.status) && premierStatutRecu && job.id !== dernierJobFini) {
+        dernierJobFini = job.id;
         // job vient de finir : rafraîchir les listes ET le détail ouvert
         const avant = new Map(reportRows.map((m) => [m.id, m.note && m.note.raw]));
         loadToReview();
@@ -2481,7 +2504,13 @@ const filtreNoteActif = () => noteFilter.size < NOTE_CLASSES.length;
 const passeFiltreNote = (m) => !filtreNoteActif() || noteFilter.has(noteClass(m.note) || 'none');
 
 async function loadReports(status = 'reviewed') {
+  /* SQUELETTE AU PREMIER AFFICHAGE DE CE STADE. « Reviewées » et « Traitées » n'en avaient
+     pas : sous latence, la colonne restait un blanc muet — impossible de distinguer « ça
+     charge » de « il n'y a rien ». Un drapeau PAR STADE, parce qu'on passe de l'un à l'autre
+     et que chacun a son premier affichage. */
+  if (!stadeDejaCharge.has(status)) $('#reportList').innerHTML = skeleton(3);
   reportRows = await api(`/mrs?status=${status}`);
+  stadeDejaCharge.add(status);
   listeChargee = true;
   renderReports();
 }
@@ -5345,13 +5374,21 @@ const followBtn = (t, attr, titreFini, libelleFini = 'task.btn.request-fix') => 
   return `<button class="btn" data-${attr}="${t.id}" title="${esc(tr(enCours ? 'task.title.draft-followup' : titreFini))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr(enCours ? 'task.btn.draft-followup' : libelleFini)}</button>`;
 };
 
+/* Le rang du dernier chargement lancé. Deux appels peuvent être en vol — un clic et un
+   rafraîchissement de fin de job, par exemple — et rien ne garantit qu'ils reviennent dans
+   l'ordre. Sans ce garde, la réponse la plus ANCIENNE écrasait la plus récente : on répondait
+   à l'IA, la session repartait, et la boîte de questions se réaffichait intacte quelques
+   dizaines de millisecondes plus tard. Même parade que pour la palette. */
+let tasksSeq = 0;
 async function loadTasks() {
+  const seq = ++tasksSeq;
   try {
     const [tasks, locals, asks] = await Promise.all([
       api('/tasks'), api('/local-tasks').catch(() => []), api('/questions').catch(() => []),
     ]);
+    if (seq !== tasksSeq) return;          // un chargement plus récent a déjà répondu
     allTasks = tasks; localTasks = locals; questions = asks;
-  } catch (e) { $('#taskList').innerHTML = errorBox(e.message); return; }
+  } catch (e) { if (seq === tasksSeq) $('#taskList').innerHTML = errorBox(e.message); return; }
   listeChargee = true;
   renderTasks();
   loadLots();
@@ -10664,7 +10701,19 @@ surLeDetailJira('submit', async (e) => {
 });
 function navTab(tab) { const b = $(`nav button[data-tab="${tab}"]`); if (b) b.click(); }
 function navReviews(seg) { navTab('review'); loadSegment(seg); }
-function navMrReport(id) { navTab('review'); loadSegment('reviewed'); setTimeout(() => { try { openReport(id); } catch { /* liste pas prête */ } }, 300); }
+/* Ouvrir un rapport depuis AILLEURS (palette, bandeau de job, notification). Deux pièges :
+   — le stade. `#reportSplit` est masqué tant qu'on est sur « à traiter » : ouvrir le rapport
+     sans changer de stade affiche un panneau invisible, et l'écran a l'air de n'avoir rien fait.
+   — le moment. La version précédente attendait 300 ms « le temps que la liste arrive » ; sur une
+     machine chargée elle n'était pas là. `loadSegment` rend une promesse : on l'attend.
+   Une merge request classée vit dans « Traitées » : si elle n'est pas dans les reviewées, on y
+   passe plutôt que d'ouvrir un rapport dans une liste où sa carte n'apparaît pas. */
+async function navMrReport(id) {
+  navTab('review');
+  await loadSegment('reviewed');
+  if (!reportRows.some((m) => m.id === id)) await loadSegment('done');
+  try { await openReport(id); } catch { /* rapport illisible : la liste reste utilisable */ }
+}
 
 let notifSeq = 0;
 function showNotif(title, body, onclick) {
@@ -11030,7 +11079,9 @@ function openShortcuts() {
 $('#logResult') && $('#logResult').addEventListener('click', () => {
   const b = $('#logResult');
   const id = Number(b.dataset.id);
-  if (b.dataset.kind === 'mr') { navTab('review'); openReport(id); }
+  // `navMrReport` et non `openReport` seul : il faut AUSSI le bon stade, sinon le rapport
+  // s'ouvre dans un panneau masqué et le lien paraît sans effet.
+  if (b.dataset.kind === 'mr') { navMrReport(id); }
   else { navTab('task'); loadTasks(); }
   const panel = $('#logPanel'); if (panel) { panel.hidden = true; logHidden = true; updateFooterLogs(); }
 });

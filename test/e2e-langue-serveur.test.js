@@ -80,4 +80,31 @@ describe('Le serveur parle la langue choisie', () => {
 
     await app.api('PUT', '/api/config', { language: 'fr' });   // on rend le décor
   });
+
+  /* LA LANGUE DE L'ÉCRAN L'EMPORTE SUR CELLE DE LA BASE, le temps d'une requête. La langue de
+     l'interface vit dans le navigateur ; le serveur, lui, lisait la configuration enregistrée.
+     Passer l'écran en anglais laissait donc en français tout ce que le serveur FABRIQUE — les
+     libellés du mode démo (« Mes dépôts (démo) ») au milieu d'un onglet traduit, et les
+     messages d'erreur. L'en-tête `X-Mergerie-Lang` corrige les deux d'un coup. */
+  test('l’en-tête de langue de l’écran prime sur la langue enregistrée', async () => {
+    await app.api('PUT', '/api/config', { language: 'fr' });
+
+    const enTete = async (lang) => {
+      const res = await fetch(`${app.base}/api/tasks/999999`, { headers: { 'X-Mergerie-Lang': lang } });
+      return (await res.json()).error || '';
+    };
+    const fr = await enTete('fr');
+    const en = await enTete('en');
+    assert.ok(fr && en, 'les deux appels doivent rendre une erreur');
+    assert.notEqual(fr, en, 'la même route doit répondre dans deux langues différentes');
+    /* On compare aux MOTS, pas aux accents : « session introuvable » n'en porte aucun, et une
+       sonde par accents aurait déclaré ce français anglais. */
+    assert.match(fr, /introuvable/i, `le français attendu, vu : ${fr}`);
+    assert.match(en, /not found/i, `l’anglais attendu, vu : ${en}`);
+
+    // Sans en-tête, on retombe sur la langue enregistrée : un script qui appelle l'API garde
+    // le comportement d'avant.
+    const sansEnTete = (await app.api('GET', '/api/tasks/999999')).body.error || '';
+    assert.equal(sansEnTete, fr);
+  });
 });

@@ -34,6 +34,10 @@
      échouant AA en sombre). Aliaser les tokens du socle règle 32 usages d'un coup ; comme var() est
      résolu à l'usage, l'alias hérite du thème clair (où --line/--green/--red sont surchargés). */
   --border: var(--line); --ok: var(--green); --danger: var(--red);
+  /* LES MÊMES COULEURS, RÉGLÉES POUR DU TEXTE. Le motif « couleur de marque sur un fond teinté
+     de cette même couleur » se lit bien en gros ; sur les puces de 10 à 12 px il tombait entre
+     2,86:1 et 3,9:1, sous les 4,5:1 exigés. Ces alias suivent le thème comme les autres. */
+  --ok-text: var(--green-text); --danger-text: var(--red-text);
   --line-soft: #212a3a; --hover: rgba(255,255,255,.045);
   /* Loupe des champs de recherche (V2.8 : remplace l'emoji 🔍, mal rendu sur WSL/Linux).
      Gris médian lisible sur les deux thèmes ; mutualisée entre .search et .jira-search. */
@@ -68,6 +72,10 @@
   --diff-del-bg: rgba(224,90,90,.14); --diff-del-text: #f0a3a3;
   --c-com: #6a9955; --c-str: #ce9178; --c-num: #b5cea8; --c-kw: #569cd6;
   --log-cmd: #7fd6a0;
+  --amber-text: #e8b356;   /* orange lisible sur fond sombre (cf. --red-text) */
+  --green-text: #35c07f;
+  --accent-text: #79a8ff;   /* l'accent, éclairci pour porter du texte sur fond sombre */
+  --muted-text: #98a4b9;    /* le gris discret, relevé pour rester lisible sur un fond teinté */
   --row-alt: rgba(255,255,255,.02); --minimap-bg: rgba(255,255,255,.03);
 }
 
@@ -77,6 +85,11 @@
   --text: #1b2230; --muted: #5d6a80; --accent: #2563eb; --green: #14804a;
   --amber: #a15c00; --red: #c62d2d; --purple: #7c3aed;
   --red-text: #c62d2d;   /* 4.87:1 sur --panel2 (AA) */
+  --amber-text: #8a5200;   /* l'ambre du thème clair, assombri pour tenir 4,5:1 en 12 px */
+  --green-text: #0f6b3d;   /* le vert de marque assombri : 4,4:1 → au-dessus du seuil en 11 px */
+  --accent-text: #1d4ed8;  /* l'accent, assombri pour porter du texte sur fond clair */
+  --muted-text: #46536b;   /* le gris discret, assombri : #5d6a80 rendait 3,59:1 sur les puces */
+  --danger-text: #a81f1f;  /* plus foncé que --red-text : celui-ci est réglé pour --panel2 */
   --accent-hi: #1d4ed8;
   /* Mêmes teintes, assombries : sur fond blanc, les tons du thème sombre passeraient pour
      des pastels indistincts. */
@@ -234,7 +247,7 @@ h3 { font-size: var(--fs-md); font-weight: var(--fw-sem); margin: 0 0 var(--s-3)
    coexistaient pour ce même rang, et les marges changeaient d'un onglet à l'autre.
    `h3` reste le titre de MODALE (`.modal-box h3`) : renommer 23 modales pour respecter la
    numérotation des balises aurait coûté plus que le désordre qu'on corrige. */
-h4, .brief-sec h3, .link-free-head {
+h4, .brief-sec h3, .link-free-head, .dash-card > h3 {
      margin: 0 0 8px; font-size: var(--fs-sm); font-weight: var(--fw-bold);
      text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
 
@@ -328,7 +341,8 @@ main { padding: 0 var(--s-6) var(--s-12); max-width: var(--content-w); margin-in
 .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
 @media (max-width: 800px) { .dash-grid { grid-template-columns: 1fr; } }
 .dash-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin: 12px 0; }
-.dash-card h3 { margin: 0 0 12px; font-size: 14px; }
+/* La taille vient du niveau unique déclaré plus haut ; ici on ne garde que la marge. */
+.dash-card h3 { margin: 0 0 12px; }
 .hbars { display: flex; flex-direction: column; gap: 8px; }
 .hbar { display: flex; align-items: center; gap: 8px; }
 .hbar-lbl { flex: 0 0 64px; font-size: 12px; color: var(--muted); }
@@ -519,7 +533,9 @@ body.footer-hidden { padding-bottom: 0; }
 .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; flex-shrink: 0; }
 .tag.to_review { color: var(--amber); border-color: var(--amber); }
 .tag.reviewed { color: var(--accent); border-color: var(--accent); }
-.tag.done { color: var(--green); border-color: var(--green); }
+/* 11 px : le vert de marque rendait 4,4:1 en clair. `--green-text` est le même vert, réglé
+   pour le texte — la bordure, elle, garde la teinte de marque. */
+.tag.done { color: var(--green-text); border-color: var(--green); }
 .tag.stale { color: var(--red); border-color: var(--red); }
 .tag.merged { color: var(--purple); border-color: var(--purple); } /* n'est plus ouverte sur GitLab */
 .muted { color: var(--muted); font-size: 13px; }
@@ -899,7 +915,7 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 
 .jk-chip { display: inline-flex; align-items: baseline; gap: 5px; padding: 1px 7px; border-radius: 999px;
   background: var(--panel2); border: 1px solid var(--line); font-size: 11.5px; max-width: 100%; }
-.jk-chip-k { color: var(--muted); }
+.jk-chip-k { color: var(--muted-text); }
 .jk-chip-v { color: var(--text); overflow-wrap: anywhere; }
 /* Les filtres vivent DANS l'en-tête de la carte : c'est lui qui porte la marge. */
 .jk-fiche-filtres { margin-bottom: 0; }
@@ -1231,7 +1247,9 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 .toast .toast-btn { background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
 
 .errbox { border: 1px solid var(--red); border-radius: var(--radius); background: rgba(224,90,90,.06); margin: 4px 0 10px; overflow: hidden; }
-.errbox .errhead { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; color: var(--red); font-size: 12px; font-weight: 600; border-bottom: 1px solid rgba(224,90,90,.3); }
+/* `--red-text` (et non `--red`) : le rouge de marque sur le fond rosé du bloc rendait 4,36:1
+   en thème sombre, sous le seuil pour 12 px. La bordure, elle, garde la teinte de marque. */
+.errbox .errhead { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; color: var(--red-text); font-size: 12px; font-weight: 600; border-bottom: 1px solid rgba(224,90,90,.3); }
 .errbox .errbtns { display: flex; gap: 6px; }
 .errbox pre { margin: 0; padding: 10px 12px; overflow-x: auto; font-size: 12px; color: var(--text); white-space: pre-wrap; word-break: break-word; user-select: text; }
 
@@ -1977,7 +1995,9 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .findref-tip { color: var(--ok, #2e7d32); font-weight: 600; }
 
 /* « L'IA pose une question » : bandeau de statut + formulaire de réponses sur la carte. */
-.tag.needs-input { background: color-mix(in srgb, var(--accent, #7c5cff) 20%, transparent); color: var(--accent, #7c5cff); }
+/* L'accent de marque sur un fond teinté du même accent : 2,86:1 en clair pour 11 px de texte.
+   Le fond s'allège et la couleur passe par la teinte réglée pour le texte. */
+.tag.needs-input { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-text); }
 .questions-box { margin: 8px 0 4px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--accent, #7c5cff) 45%, var(--border, #ccc)); border-radius: 10px; background: color-mix(in srgb, var(--accent, #7c5cff) 7%, transparent); }
 .questions-box .q-head { font-size: 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
 .q-item { margin: 10px 0; }
@@ -2006,9 +2026,13 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
    ce que le français n'écrit pas. Les libellés viennent du dictionnaire, ils sont déjà casés. */
 .docker-state { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
 .docker-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
-.docker-state-running { color: var(--ok, #2e7d32); background: color-mix(in srgb, var(--ok, #2e7d32) 15%, transparent); }
-.docker-state-exited, .docker-state-dead { color: var(--danger, #c62828); background: color-mix(in srgb, var(--danger, #c62828) 15%, transparent); }
-.docker-state-paused, .docker-state-restarting, .docker-state-created { color: #b26a00; background: color-mix(in srgb, #b26a00 15%, transparent); }
+.docker-state-running { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.docker-state-exited, .docker-state-dead { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+/* `--amber-text` et non un `#b26a00` en dur : le même orange ne peut pas tenir le contraste
+   sur fond clair ET sur fond sombre. Mesuré, il rendait 4,24:1 en clair et 3,97:1 en sombre
+   pour un texte de 12 px, sous les 4,5:1 exigés. */
+.docker-state-paused, .docker-state-restarting, .docker-state-created {
+  color: var(--amber-text); background: color-mix(in srgb, var(--amber-text) 14%, transparent); }
 .docker-state-none, .docker-state-unknown { color: var(--muted, #888); background: transparent; border: 1px dashed var(--border, #ccc); }
 
 .docker-orphan { align-items: flex-start; }
@@ -2040,8 +2064,8 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .env-diff { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
 .env-diff li { font-size: 13px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .env-kind { font-size: 11px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
-.env-added { background: color-mix(in srgb, var(--ok, #2e7d32) 18%, transparent); color: var(--ok, #2e7d32); }
-.env-modified { background: color-mix(in srgb, var(--accent, #7c5cff) 18%, transparent); color: var(--accent, #7c5cff); }
+.env-added { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok-text); }
+.env-modified { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-text); }
 .env-removed { background: color-mix(in srgb, var(--danger, #c62828) 18%, transparent); color: var(--danger, #c62828); }
 .env-name { font-weight: 600; }
 .docker-run { background: var(--code-bg, #f4f4f4); padding: 10px 12px; border-radius: 8px; white-space: pre-wrap; word-break: break-all; margin-top: 8px; font-size: 12px; }
@@ -2072,7 +2096,7 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .dlog-dot.run { background: var(--ok, #2e7d32); }
 .dlog-dot.stop { background: var(--muted, #999); }
 .dlog-cname { font-weight: 600; }
-.dlog-cproj { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--accent, #7c5cff) 14%, transparent); color: var(--accent, #7c5cff); }
+.dlog-cproj { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-text); }
 .dlog-run { flex: 0 0 auto; display: flex; flex-direction: column; gap: 10px; }
 .dlog-tail { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .dlog-tail input { width: 150px; }
@@ -2329,9 +2353,9 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-key { font-family: var(--ff-mono); font-size: 12px; font-weight: 700; letter-spacing: .3px; }
 
 .jira-status { font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 999px; white-space: nowrap; text-transform: uppercase; letter-spacing: .3px; }
-.jira-status-todo { background: color-mix(in srgb, var(--muted, #888) 18%, transparent); color: var(--muted, #888); }
-.jira-status-progress { background: color-mix(in srgb, var(--accent, #4f9cf9) 20%, transparent); color: var(--accent, #4f9cf9); }
-.jira-status-done { background: color-mix(in srgb, var(--ok, #2e7d32) 20%, transparent); color: var(--ok, #2e7d32); }
+.jira-status-todo { background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--muted-text); }
+.jira-status-progress { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-text); }
+.jira-status-done { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok-text); }
 
 /* Détail : liseré de catégorie en tête, sections aérées. */
 /* Colonne de droite : la ligne de filtres, puis le détail. Les filtres y ont toute la largeur —
@@ -2364,7 +2388,7 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-meta { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 13px; }
 .jira-meta-row { display: contents; }
 .jira-meta-label { white-space: nowrap; }
-.jira-label { display: inline-block; font-size: 11px; padding: 1px 9px; border-radius: 999px; margin: 1px; background: color-mix(in srgb, var(--accent, #7c5cff) 14%, transparent); color: var(--accent, #7c5cff); }
+.jira-label { display: inline-block; font-size: 11px; padding: 1px 9px; border-radius: 999px; margin: 1px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-text); }
 
 /* Pièces jointes : « chips fichier » cliquables (téléchargement via le proxy serveur). */
 .jira-attachments { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -2399,7 +2423,7 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-comment { display: flex; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
 .jira-comment:first-of-type { border-top: none; }
 .jira-avatar { flex: 0 0 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: 700; background: color-mix(in srgb, var(--accent, #7c5cff) 22%, transparent); color: var(--accent, #7c5cff); }
+  font-size: 12px; font-weight: 700; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-text); }
 .jira-comment-main { flex: 1; min-width: 0; }
 .jira-comment-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; font-size: 13px; }
 /* Composer : ajouter un commentaire. */
@@ -2412,7 +2436,10 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 @media (max-width: 900px) { .jira-layout { flex-direction: column; } .jira-list-col { flex-basis: auto; max-width: none; width: 100%; } .jira-list { max-height: 40vh; } }
 
 /* Bannière du mode démo (npm run demo). */
-#demoBanner { background: var(--accent); color: var(--on-accent); text-align: center; padding: 6px 12px; font-size: var(--fs-sm); font-weight: 600; }
+/* `--accent-btn` et non `--accent` : c'est la teinte réglée pour porter du blanc (4,70:1),
+   quand l'accent de marque n'en rendait que 3,22 en thème sombre. Même bandeau, même bleu
+   perçu, lisible. */
+#demoBanner { background: var(--accent-btn); color: var(--on-accent); text-align: center; padding: 6px 12px; font-size: var(--fs-sm); font-weight: 600; }
 
 /* ---------- Vérification objective (plan_add_verify.md §8) ----------
    Les couleurs portent le verdict : vert = vérifié, rouge = cassé par la branche, ambre =

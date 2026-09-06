@@ -124,6 +124,18 @@ let cacheVerifs = null;
    une liste de sessions. */
 app.use((req, res, next) => { cacheVerifs = null; next(); });
 
+/* LA LANGUE DE L'ÉCRAN, POUR LA DURÉE DE LA REQUÊTE. Elle vit dans le navigateur, pas en base :
+   ce qui se règle dans l'interface doit valoir tout de suite, y compris pour les libellés que
+   le serveur fabrique (messages d'erreur, jeu de démo). Sans cet en-tête, passer l'écran en
+   anglais laissait « Mes dépôts (démo) » en français au milieu d'un onglet traduit.
+   Un état de module suffit : Mergerie est mono-utilisateur, une requête à la fois côté écran.
+   L'absence d'en-tête (appel direct à l'API, script) retombe sur la langue enregistrée. */
+app.use((req, res, next) => {
+  const l = String(req.headers['x-mergerie-lang'] || '').trim();
+  i18n.setLang(l === 'en' || l === 'fr' ? l : getConfig().language);
+  next();
+});
+
 app.use(express.json({ limit: '20mb' })); // marge pour les captures de ticket (base64)
 /* Fichiers statiques. `no-cache` = le navigateur peut mettre en cache mais DOIT
    revalider avant chaque usage (requête conditionnelle → 304 si inchangé, contenu
