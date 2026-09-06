@@ -48,8 +48,8 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   (un seul appel IA, sans relancer la review ni créer de nouvelle version).
 - **Reviewer sans y penser.** **Réglages → Merge Request → « Lancer automatiquement la review à
   l'arrivée d'une MR »** met en review toute merge request nouvellement découverte, sans qu'on la
-  demande. **Décoché par défaut**, et **plafonné** même une fois coché (**« Reviews automatiques —
-  plafond par découverte »**, 5 par défaut) : chaque review est un appel IA facturé, et la
+  demande. **Décoché par défaut**, et **plafonné** même une fois coché (**« Au plus N reviews automatiques par
+  recherche de MR »**, juste sous la case, 5 par défaut) : chaque review est un appel IA facturé, et la
   *première* découverte d'une installation neuve ramène d'un coup **toutes** les MR ouvertes du
   parc. Les MR au-delà du plafond gardent leur bouton `Reviewer`, et le journal du serveur dit
   combien n'ont pas démarré. `0` = sans limite. **« À l'arrivée » veut dire à l'arrivée** : une
@@ -204,8 +204,8 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   chaque commit de correction lisible). **Garde-fous** : arrêt si la note **baisse ou stagne**, plafond de
   passes strict, et **jamais de fusion automatique** — la boucle *prépare*, c'est **toi qui valides et
   merges** (review et correction viennent du même modèle : une note obtenue en autonomie n'est pas une note
-  validée par un humain). Seuil et plafond sont réglables globalement (Réglages → Général) et **surchargeables
-  au lancement**. Une **notification** t'avertit à la fin (« Convergence terminée : 8,4/10 en 3 passes »).
+  validée par un humain). Seuil et plafond sont réglables globalement (Réglages → Merge Request → *Convergence*)
+  et **surchargeables au lancement**. Une **notification** t'avertit à la fin (« Convergence terminée : 8,4/10 en 3 passes »).
   Si l'option « l'IA peut poser des questions » est active et que l'IA hésite pendant une passe, la boucle
   **se met en attente** (notification) au lieu de deviner : tu réponds, puis tu relances Converger — qui
   **reprend la même session**.
@@ -593,8 +593,9 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   valides, le formulaire laisse place à un **« reprise en cours… »** (plus d'attente sans retour visuel).
   L'option se **mémorise** quand tu modifies une session existante. La reprise a d'abord été validée par
   un banc d'essai dans *Réglages → AI sessions*.
-- **⚡ Converger depuis une session — *du prompt à la MR convergée*.** Le bouton `Converger` (sur la
-  **modale de nouvelle session** et sur une **session existante**) enchaîne **tout le chemin** sans
+- **⚡ Converger depuis une session — *du prompt à la MR convergée*.** La case
+  `…puis converger jusqu’à 8/10 (3 passes max)` de la **modale de nouvelle session** — et le bouton
+  `Converger` d’une **session existante** — enchaînent **tout le chemin** sans
   intervention : l'IA **code** la tâche → **commit** → **push** → **crée la MR** (cible = la branche de
   départ) → puis lance la **boucle de convergence** (review → correction → re-review) jusqu'au seuil.
   Tu écris une intention, tu reviens : une **MR ouverte, testée, notée et convergée** t'attend — il ne
@@ -1874,7 +1875,7 @@ sur une branche qui bouge dix fois par jour, ça fait dix batteries. Décochée,
 simplement « périmé » et c'est toi qui relances.
 
 ⚠ **Cinq vérifications au maximum par tour de découverte**, et ce plafond se **règle**
-(*Réglages → Merge Request*). Un lundi matin, la découverte peut ramener quinze merge requests ;
+(*Réglages → Vérificateurs*, juste au-dessus de la liste — à côté de la case qui les déclenche). Un lundi matin, la découverte peut ramener quinze merge requests ;
 quinze batteries fonctionnelles saturent la machine pour une heure et bloquent la file partagée
 avec les reviews. Au-delà, les MR gardent leur bouton **`Vérifier`**, et le **journal du serveur
 dit ce qui n'est pas parti** — un plafond silencieux se lirait comme « tout a été vérifié ».

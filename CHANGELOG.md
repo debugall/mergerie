@@ -13,6 +13,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Un chemin local redevient une URL de dépôt valide.** La garde posée sur l'ajout d'un dépôt
+  ne connaissait que `http(s)` et `ssh` : elle refusait `/srv/depots/projet.git`, qui est
+  pourtant une source de clonage parfaitement ordinaire.
+
 - **Reviewer une merge request se voit enfin à l'écran.** C'était le point faible n°1 de l'audit,
   et il restait entier : on cliquait « Reviewer », le bandeau annonçait « terminé », et la carte
   restait en tête des « à traiter » avec des compteurs inchangés — l'écran affichant 10/7 quand
@@ -116,6 +120,56 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
     en quatre lignes, son badge d'état dupliqué a été retiré de la rangée d'actions, et les deux
     libellés que le mode démo fabrique lui-même (« Mes dépôts », « (démo) ») suivent enfin la
     langue de l'interface.
+
+- **Une seconde passe, sur les formulaires.** Vingt-deux formulaires, un seul modèle de
+  validation — et il était faux partout. Ce qui change :
+
+  - **La modale de session commence par ce qu'on vient dire.** Le prompt ouvre le formulaire et
+    reçoit le curseur ; le choix des projets, qui occupait la première place, vient dessous ;
+    « Vérifier après » et l'auto-push remontent avant les pièces jointes, parce qu'ils changent
+    le résultat ; et trois champs qu'on ne touche pas une fois sur dix (questions de l'IA,
+    message de commit, reprise d'une session d'agent) se replient dans **Avancé**. Joindre un
+    fichier redevient une ligne au lieu d'une zone pointillée vide de 80 pixels.
+  - **Un verbe par effet.** La même fenêtre disait « Lancer le codage », « Poser la question » et
+    « Créer et lancer » pour un seul et même geste, selon la saveur de session. Deux libellés
+    suffisent désormais et se lisent l'un contre l'autre : **« Créer et lancer »** lance,
+    **« Créer la session »** ne lance pas, **« Créer sans lancer »** le répète à côté.
+  - **« Converger » quitte le pied de la modale** — deux boutons pleins côte à côte, dont un sans
+    un mot d'explication. C'est maintenant une case sous « Vérifier après », qui annonce ce
+    qu'elle promet : « …puis converger jusqu'à 8/10 (3 passes max) », seuil et plafond lus dans
+    les réglages. La convergence d'une session déjà écrite reste sur sa carte.
+  - **Une erreur de champ s'affiche sous le champ.** C'est la règle, et elle s'applique
+    maintenant aux quatre boutons « tester une connexion », au lien libre et au nom de branche
+    d'une session : un toast n'annonce plus qu'un **résultat d'action**. Et un toast d'erreur ne
+    s'installe plus à demeure — il part au bout de huit secondes, s'arrête tant que la souris est
+    dessus, et **meurt avec la modale qui l'a produit**.
+  - **Réglages → Merge Request se lit en trois groupes titrés** — Review, Automatisation,
+    Convergence — au lieu de neuf réglages à la file. Le plafond des reviews automatiques est
+    passé sous sa propre case, indenté et grisé tant qu'elle est décochée ; le plafond des
+    **vérifications** automatiques a déménagé dans Réglages → Vérificateurs, auprès de
+    l'interrupteur qui les déclenche. Le bouton « Enregistrer » porte un état **« modifications
+    non enregistrées »** qui suit d'un sous-onglet à l'autre — et changer de sous-onglet
+    n'écrase plus ce qui vient d'être tapé.
+  - **Les connexions Git, Jira et Jenkins répondent pareil.** Même garde à vide dans les quatre,
+    champs obligatoires marqués, `autocomplete="off"` sur les jetons, **Entrée enregistre** (et
+    le dit — il ne se passait rien), et le bouton principal fait le parcours nominal en un clic :
+    **« Enregistrer et tester »**.
+  - **Les ⓘ sortent du parcours de tabulation.** Six arrêts sur seize, dans la modale de session,
+    pour la même icône. L'explication apparaît désormais au **focus du champ**, là où on en a
+    besoin.
+  - **Le badge de verdict est un vrai bouton** — il n'existait pas pour le clavier — et il dit la
+    porte qu'il ouvre : « ✗ 1 test cassé · voir le rapport ». Le bandeau de job propose « Voir le
+    rapport » après une vérification, au lieu d'une « session » qui n'existe pas. Côté Jenkins,
+    « Ouvrir » devient « Détails » : il restait dans Mergerie, à côté d'une icône qui, elle,
+    ouvre vraiment Jenkins.
+  - Détails : l'onglet Git sans dépôt suivi affiche un vide guidé au lieu d'un champ désactivé et
+    d'un « chargement… » sans fin, et « Vérifier une branche » descend à côté de
+    « Prévisualiser » ; l'onglet Docker n'affiche plus de badge rouge avant d'avoir été ouvert
+    une première fois ; l'assistant de démarrage et l'ajout en masse posent le curseur sur leur
+    premier champ ; le lien libre marque ses champs obligatoires et donne un exemple de tags ; la
+    palette rappelle en pied qu'on la rouvre par ⌘K ou `o` ; et en mode démo, la modale de session
+    présélectionne le seul dépôt réellement clonable, les autres étant marqués « non exécutable
+    en démo » plutôt que de mourir sur une pile Node au premier clonage.
 
 ### Added
 

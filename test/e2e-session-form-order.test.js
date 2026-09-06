@@ -2,17 +2,22 @@
 /* L'ORDRE DES CHAMPS DU FORMULAIRE DE SESSION, DANS SES QUATRE SAVEURS.
  *
  * Le formulaire est unique et se réarrange par saveur : codage, hors dépôt, exploration,
- * question libre. Il raconte quatre choses, et l'ordre EST le propos —
+ * question libre. Il raconte cinq choses, et l'ordre EST le propos —
  *
- *   1. OÙ            projets et branches, ou répertoire et dossiers (et l'avertissement
+ *   1. QUOI          le prompt, d'abord : c'est ce que l'utilisateur vient dire, et c'est là
+ *                    que se pose le curseur. Le ticket Jira, qui le REMPLIT, se lit juste après ;
+ *   2. OÙ            projets et branches, ou répertoire et dossiers (et l'avertissement
  *                    « en place », qui qualifie ce choix-là) ;
- *   2. QUOI          le ticket Jira qui remplit le prompt, le prompt, les pièces jointes,
- *                    puis le libellé — facultatif, donc après ce qu'il résume ;
- *   3. COMMENT       les options qui portent sur la passe : questions, reprise de session ;
- *   4. APRÈS         ce qui arrive une fois le code écrit : commit, push, vérification.
+ *   3. LE NOM        le libellé — facultatif, et il nomme la carte : après ce qu'il résume ;
+ *   4. APRÈS         ce qui change le RÉSULTAT une fois le code écrit : le vérificateur, la
+ *                    convergence, l'auto-push. Puis les pièces jointes, qui sont une possibilité ;
+ *   5. AVANCÉ        replié : questions de l'IA, message de commit, reprise d'une session
+ *                    d'agent — trois champs qu'on ne touche pas une fois sur dix.
  *
- * Un champ qui remonte ou qui descend d'un cran ne casse rien et ne se voit dans aucun autre
- * test : c'est exactement ce qui laisse un formulaire redevenir une pile de champs.
+ * Le bloc gris des projets ouvrait ce formulaire : on choisissait des dépôts avant d'avoir
+ * formulé la tâche. Un champ qui remonte ou qui descend d'un cran ne casse rien et ne se voit
+ * dans aucun autre test : c'est exactement ce qui laisse un formulaire redevenir une pile de
+ * champs.
  */
 
 const { test, before, after, describe } = require('node:test');
@@ -67,7 +72,7 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
       const marche = (parent) => {
         for (const el of parent.children) {
           if (el.hidden || el.getClientRects().length === 0) continue;
-          if (el.id === 'taskAgentFields' || el.id === 'codeOnlyFields') { marche(el); continue; }
+          if (el.id === 'codeOnlyFields') { marche(el); continue; }
           if (el.classList.contains('modal-actions')) continue;
           out.push(cle(el));
         }
@@ -80,20 +85,18 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
     return vu;
   };
 
-  test('codage : où → quoi → comment l’IA travaille → une fois le code écrit', async () => {
+  test('codage : quoi → où → le nom → ce qui change le résultat → avancé', async () => {
     assert.deepEqual(await ordreAffiche('code'), [
+      'prompt',                        // QUOI : ce qu'on vient dire ouvre le formulaire
+      'taskJiraRow',                   // le ticket le remplit : il se lit contre lui
       'taskReposWrap',                 // OÙ
-      'taskJiraRow',                   // QUOI : le ticket remplit le prompt, il le précède
-      'prompt',
-      'taskImages',
-      'label',                         // facultatif : après ce qu'il résume
-      'groupe:task.group.agent',       // COMMENT
-      'taskAskQuestionsRow',
-      'taskSessionRow',
-      'groupe:task.group.after',       // APRÈS
-      'commit_message',
-      'auto_push',
+      'label',                         // LE NOM : facultatif, après ce qu'il résume
+      'groupe:task.group.after',       // APRÈS : les décisions qui changent le résultat
       'verifier_id',
+      'taskConvergeRow',
+      'auto_push',
+      'taskImages',                    // une possibilité, pas une étape
+      'taskAdvanced',                  // replié : questions, message de commit, session d'agent
     ]);
     assert.deepEqual(erreurs, []);
   });
@@ -103,31 +106,28 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
   test('hors dépôt : l’avertissement suit le choix des dossiers', async () => {
     const ordre = await ordreAffiche('local');
     assert.deepEqual(ordre, [
+      'prompt',
       'taskLocalWrap',
       'taskLocalWarn',
-      'prompt',
-      'taskImages',
       'label',
-      'groupe:task.group.agent',
-      'taskAskQuestionsRow',
-      'taskSessionRow',
+      'taskImages',
+      'taskAdvanced',
     ]);
-    assert.ok(ordre.indexOf('taskLocalWarn') < ordre.indexOf('prompt'),
-      'on prévient AVANT de faire écrire la demande, pas après');
+    assert.equal(ordre[ordre.indexOf('taskLocalWrap') + 1], 'taskLocalWarn',
+      '« l’IA modifie en place, sans commit » qualifie le choix des dossiers : il le suit '
+      + 'immédiatement, au lieu d’attendre le bas du formulaire');
     assert.ok(!ordre.includes('taskJiraRow'), 'pas de ticket Jira hors dépôt : il n’y a pas de branche');
   });
 
   test('exploration : rien de ce qui suppose un commit', async () => {
     const ordre = await ordreAffiche('explore');
     assert.deepEqual(ordre, [
-      'taskReposWrap',
-      'taskJiraRow',
       'prompt',
-      'taskImages',
+      'taskJiraRow',
+      'taskReposWrap',
       'label',
-      'groupe:task.group.agent',
-      'taskAskQuestionsRow',
-      'taskSessionRow',
+      'taskImages',
+      'taskAdvanced',
     ]);
     assert.ok(!ordre.includes('groupe:task.group.after'),
       'une exploration ne commite rien : le groupe entier disparaît, intertitre compris');
@@ -136,7 +136,9 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
   /* La question libre n'a ni cible, ni passe sur un dépôt : il ne reste que la demande. Un
      intertitre « comment l'IA travaille » qui surmonterait le vide serait pire que rien. */
   test('question libre : la demande, et rien d’autre', async () => {
-    assert.deepEqual(await ordreAffiche('ask'), ['prompt', 'taskImages', 'label']);
+    /* L'accordéon « Avancé » disparaît lui aussi : ses trois champs supposent une cible sur
+       laquelle l'agent hésite ou travaille. Un accordéon vide serait pire que rien. */
+    assert.deepEqual(await ordreAffiche('ask'), ['prompt', 'label', 'taskImages']);
     assert.deepEqual(erreurs, []);
   });
 });

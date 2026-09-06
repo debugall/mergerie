@@ -1209,9 +1209,19 @@ app.get('/api/repos', wrap((req, res) => {
   res.json(db.prepare('SELECT * FROM repo ORDER BY id').all());
 }));
 
+/* CE QUI RESSEMBLE À UNE URL DE DÉPÔT. Le serveur acceptait n'importe quelle chaîne : « toto »
+   devenait un dépôt suivi, et l'erreur ne se voyait qu'au premier clonage — après une découverte
+   qui ne rapportait rien. Le front valide déjà ; le serveur ne s'y fie pas (l'API est appelable
+   directement, et un `POST` malformé ne doit pas polluer la liste). */
+/* Un chemin ABSOLU est une source de clonage parfaitement valide — `git clone /srv/depots/x.git`
+   marche, c'est ce que fait le décor de démo, et c'est ce que font les tests. La première
+   version de cette garde ne connaissait que http(s) et ssh : elle refusait un dépôt local. */
+const RE_URL_DEPOT = /^(https?:\/\/\S+|file:\/\/\S+|\/\S+|(ssh:\/\/)?[\w.-]+@[\w.-]+[:/]\S+)$/i;
+
 app.post('/api/repos', wrap((req, res) => {
   const { url, branch_pattern } = req.body || {};
   if (!url) throw new Error(t('err.l-url-du-depot-est'));
+  if (!RE_URL_DEPOT.test(String(url).trim())) throw new Error(t('err.repo-url-invalide'));
   // Forge du dépôt : explicite, sinon déduite de l'URL (github.com → github).
   const forgeName = req.body.forge ? forge.normalizeForge(req.body.forge)
     : (/github/i.test(String(url)) ? 'github' : 'gitlab');

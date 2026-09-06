@@ -45,8 +45,8 @@ shared search (title, author, project, ticket).
   re-running the review or creating a new version).
 - **Review without thinking about it.** **Settings → Merge Request → “Automatically review a merge
   request when it arrives”** sends every newly discovered merge request out for review, unasked.
-  **Unchecked by default**, and **capped** even when checked (**“Automatic reviews — cap per
-  discovery”**, 5 by default): each review is a billed AI call, and the *first* discovery of a fresh
+  **Unchecked by default**, and **capped** even when checked (**“At most N automatic reviews per MR
+  discovery”**, right under the checkbox, 5 by default): each review is a billed AI call, and the *first* discovery of a fresh
   install brings in **every** open merge request you have. Merge requests beyond the cap keep their
   `Review` button, and the server log says how many did not start. `0` = no limit. **“When it
   arrives” means when it arrives**: a branch moving forward triggers nothing — re-reviewing stays a
@@ -198,7 +198,8 @@ shared search (title, author, project, ticket).
   each fix commit readable). **Guard rails**: it stops if the score **drops or stalls**, the pass ceiling is
   strict, and there is **never an automatic merge** — the loop *prepares*, **you** review and merge (the
   review and the fix come from the same model: a score reached autonomously is not a score validated by a
-  human). Threshold and ceiling are set globally (Settings → General) and **can be overridden at launch**. A
+  human). Threshold and ceiling are set globally (Settings → Merge Request → *Convergence*) and **can be
+overridden at launch**. A
   **notification** tells you when it ends (“Convergence finished: 8.4/10 in 3 passes”). If the “the AI may
   ask questions” option is on and the AI hesitates during a pass, the loop **pauses** (notification) instead
   of guessing: you answer, then you start Converge again — which **resumes the same session**.
@@ -573,8 +574,9 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   **resumes the same session** where it stopped. As soon as you confirm, the form gives way to a
   **“resuming…”** (no more waiting without visual feedback). The option is **remembered** when you edit an
   existing session. Resuming was first validated by a test bench in *Settings → AI sessions*.
-- **⚡ Converge from a session — *from prompt to converged MR*.** The `Converge` button (on the **new session
-  dialog** and on an **existing session**) chains **the whole path** without intervention: the AI **codes**
+- **⚡ Converge from a session — *from prompt to converged MR*.** The
+  `…then converge up to 8/10 (3 passes max)` checkbox of the **new session dialog** — and the
+  `Converge` button of an **existing session** — chain **the whole path** without intervention: the AI **codes**
   the task → **commit** → **push** → **creates the MR** (target = the starting branch) → then starts the
   **convergence loop** (review → fix → re-review) until the threshold. You write an intention, you come
   back: an **open, tested, scored and converged MR** is waiting — all that is left is to read it and merge.
@@ -1810,7 +1812,7 @@ moves ten times a day, that is ten batteries. Unticked, the badge simply says �
 re-run it yourself.
 
 ⚠ **Five verifications at most per discovery run**, and that cap is a **setting**
-(*Settings → Merge Request*). On a Monday morning discovery can bring back fifteen merge requests;
+(*Settings → Verifiers*, just above the list — next to the checkbox that triggers them). On a Monday morning discovery can bring back fifteen merge requests;
 fifteen functional batteries saturate the machine for an hour and block the queue shared with
 reviews. Beyond that, the merge requests keep their **`Verify`** button and the **server log says
 what did not start** — a silent cap would read as “everything was verified”. `0` means “no limit”,

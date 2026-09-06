@@ -235,12 +235,15 @@ describe('Publier le rapport de review — écran', { skip: dispo ? false : MSG_
     await page.reload();
     await page.locator('[data-tab="admin"]').click();
     await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
-    // On tape TOUT DE SUITE, sans attendre que le formulaire soit peuplé : c'est le cas réel.
-    await page.locator('#sub-mr input[name="review_auto_max"]').fill('42');
+    /* On tape TOUT DE SUITE, sans attendre que le formulaire soit peuplé : c'est le cas réel.
+       Le plafond des reviews automatiques ne convient plus pour ça — il est désactivé tant que
+       sa case est décochée —, et le plafond de passes de convergence fait exactement le même
+       office : un champ nombre de #configForm, peuplé par le même chargement. */
+    await page.locator('#sub-mr input[name="converge_max_passes"]').fill('7');
     await attendreServeur(async () => true, 'laisser la réponse de /config revenir');
     await page.waitForFunction(() => document.querySelector('[name="converge_threshold"]').value !== '',
       null, { timeout: 15000 });   // preuve que le chargement est bien passé
-    assert.equal(await page.locator('#sub-mr input[name="review_auto_max"]').inputValue(), '42',
+    assert.equal(await page.locator('#sub-mr input[name="converge_max_passes"]').inputValue(), '7',
       'la frappe doit survivre au chargement qui revient après elle');
   });
 

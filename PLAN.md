@@ -411,6 +411,28 @@ centaines) : la ref source de Git → Actions est un `comboHtml('git-ref')`, la 
 supprimer et le tableau de l'explorateur ont un filtre qui **masque des lignes sans toucher aux
 cases cochées** — on coche, on filtre autre chose, on coche encore, puis on supprime d'un coup.
 Le sélecteur de branche de Git → Navigation et ceux de la modale de session étaient déjà des combos.
+**Validation des formulaires — une seule règle.** *Une erreur de champ s'affiche SOUS le champ,
+un toast n'annonce qu'un résultat d'action.* `erreurChamp(champ, message)` pose un `.field-error`
+de 12 px après le champ (ou après son enveloppe `.combo` / `.inline-check`, sinon l'`overflow` le
+rognerait), marque le champ `.is-invalid` + `aria-describedby` + `aria-invalid`, et efface le tout
+à la première frappe. `signalerChamp` y ajoute le focus et le défilement ;
+`viderErreursChamps(racine)` remet à zéro avant de revalider. Les toasts d'ERREUR ne s'installent
+plus à demeure : huit secondes, minuteur suspendu tant que la souris ou le clavier est dessus, et
+un `MutationObserver` sur l'attribut `hidden` de toutes les `.modal` les efface quand le
+formulaire qui les a produits se ferme. Les ⓘ des libellés portent `tabindex="-1"` (six arrêts de
+tabulation sur seize, dans la seule modale de session) : la délégation `focusin` remonte du champ
+à son ⓘ (`hintDuChamp` : frère suivant, sinon le `[data-tip]` du `<label>` englobant), donc
+l'explication arrive **au focus du champ**.
+
+**#configForm est un formulaire ANCRE** : ses champs vivent dans six sous-onglets de Réglages et
+s'y rattachent par l'attribut `form=`. Deux conséquences que le code doit tenir explicitement —
+le navigateur ne trouve aucun bouton par défaut *dans* le formulaire, donc la soumission implicite
+n'arrive jamais (un `keydown` sur Entrée appelle `requestSubmit()`) ; et chaque sous-onglet
+rappelle `loadConfig` en s'ouvrant, ce qui écrasait une saisie non enregistrée (`configSale`
+l'en empêche). L'état « modifications non enregistrées » est posé sur **tous** les boutons et
+mentions du formulaire, dans tous les sous-onglets : c'est lui, l'avertissement au changement
+d'onglet.
+
 **Calme et repères** (issu de l'étude `ludique.md`, dont le fil conducteur est : *rien qui
 n'apporte pas d'information*).
 *Calme* — `titrerTextesTronques()` pose une info-bulle sur les lignes de carte réellement

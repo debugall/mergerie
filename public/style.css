@@ -22,10 +22,9 @@
   --mois-1: #7c8cf8; --mois-2: #4f9cf0; --mois-3: #2fb5c4;
   --mois-4: #4bb56d; --mois-5: #d0a53a; --mois-6: #e2864a;
   --accent-btn: #2f6fe0; --accent-btn-hi: #2b64d4; /* fond des boutons : blanc dessus = 4,70:1 */
-  --purple-btn: #7c3aed; /* fond du bouton Converger : blanc dessus = 5,70:1 (--purple #b47ce6 échouait à 3,0:1) */
   /* B4 : texte sur fond coloré — jamais #fff en dur (échouait AA : 3,22:1) */
   --on-amber: #1a1400; --on-green: #0a1e12; --on-accent: #ffffff; --on-red: #ffffff;
-  --on-purple: #ffffff; --on-overlay: #ffffff;
+  --on-overlay: #ffffff;
   /* Badges d'alerte du header : texte blanc constant sur fond fort (identique clair/sombre).
      V2.2 : --danger/--amber sont calibrés comme couleurs de TEXTE (trop clairs en fond blanc-dessus) ;
      ces fonds dédiés passent AA — err 5,62:1, warn 4,83:1 (l'ancien #d97706 échouait à 3,18:1). */
@@ -49,6 +48,7 @@
   --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px;
   --fs-lg: 16px;  --fs-xl: 20px; --fs-3xl: 28px;
   --content-w: 1400px;   /* la seule largeur de contenu : tous les onglets s'y tiennent */
+  --footer-h: 30px;      /* le bandeau « live » du bas, fixe : ce qui flotte doit passer au-dessus */
   --fw-med: 500; --fw-sem: 620; --fw-bold: 700;
   --ff-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
@@ -95,7 +95,7 @@
      des pastels indistincts. */
   --mois-1: #5b63d6; --mois-2: #2b7fd4; --mois-3: #0e8f9e;
   --mois-4: #2f8f52; --mois-5: #a97c12; --mois-6: #c05f22;
-  --accent-btn: #2563eb; --accent-btn-hi: #1d4ed8; --purple-btn: #6d28d9;
+  --accent-btn: #2563eb; --accent-btn-hi: #1d4ed8;
   --on-amber: #ffffff; --on-green: #ffffff; --on-accent: #ffffff; --on-red: #ffffff;
   --line-soft: #e6eaf2; --hover: rgba(16,24,40,.04);
   --sh-1: 0 1px 2px rgba(16,24,40,.06);
@@ -234,10 +234,10 @@ button { font-family: inherit; }
    « Recréer » désactivé gardait son bleu simplement désaturé — un gris foncé plein, à côté
    d'un « Démarrer » désactivé gris clair : deux dessins pour le même état inerte.
    Visible depuis que les actions indisponibles sont désactivées au lieu d'être absentes. */
-.btn:disabled, .btn-primary:disabled, .btn-danger:disabled, .btn-ok:disabled, .btn-converge:disabled {
+.btn:disabled, .btn-primary:disabled, .btn-danger:disabled, .btn-ok:disabled {
   background: var(--panel2); border-color: var(--line); color: var(--muted);
 }
-.btn:disabled .ico, .btn-primary:disabled .ico, .btn-danger:disabled .ico, .btn-ok:disabled .ico, .btn-converge:disabled .ico { color: var(--muted); }
+.btn:disabled .ico, .btn-primary:disabled .ico, .btn-danger:disabled .ico, .btn-ok:disabled .ico { color: var(--muted); }
 
 /* Titres : sans ça un <h2> non stylé était plus gros que le nom de l'app. */
 h2 { font-size: var(--fs-xl); font-weight: var(--fw-sem); margin: var(--s-6) 0 var(--s-3); letter-spacing: -.01em; }
@@ -262,7 +262,6 @@ h4, .brief-sec h3, .link-free-head, .dash-card > h3 {
    Une couleur qui ne veut rien dire de stable ne se lit plus. Règle du socle :
 
      .btn-primary   l'action PAR DÉFAUT du conteneur — au plus UNE par rangée, carte ou modale
-     .btn-converge  la convergence (parcours produit signature) — au plus une
      .btn-danger    destructif ou irréversible — autant que nécessaire
      .btn-ok        confirme un aboutissement positif (« Marquer traitée »), pas un « je passe »
      .btn           tout le reste, y compris une liste d'actions équivalentes
@@ -505,9 +504,45 @@ body { padding-bottom: 36px; } /* réserve la place du footer fixe */
 /* Le bandeau du bas est FIXE : il recouvre les 30 derniers pixels. Une rangée d'actions qui
    tombe pile dessous se clique à moitié — on garde donc sa hauteur de dégagement quand un
    défilement l'amène à l'écran. */
+/* Le message d'erreur d'un champ : sous lui, dans sa couleur, à sa largeur. */
+/* La rangée d'ajout d'un dépôt : trois champs libellés sur une ligne, l'URL prend la place
+   qui reste, et le bouton s'aligne sur le bas des champs (les libellés les décalent). */
+.repo-add { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.repo-add > label { display: flex; flex-direction: column; gap: 4px; flex: 1 1 200px; font-size: var(--fs-sm); color: var(--muted); }
+.repo-add > label.repo-add-url { flex: 2 1 320px; }
+.repo-add .repo-add-field { display: flex; align-items: center; gap: 5px; }
+.repo-add .repo-add-field input { flex: 1 1 auto; min-width: 0; }
+.repo-add > button { flex: 0 0 auto; }
+.field-error { margin: 4px 0 0; font-size: 12px; color: var(--danger-text); line-height: 1.35; }
+:is(input, select, textarea).is-invalid { border-color: var(--danger); }
+:is(input, select, textarea).is-invalid:focus { border-color: var(--danger); outline-color: var(--danger); }
+/* Le champ marqué obligatoire porte une étoile dans son libellé, pas seulement dans le DOM. */
+.req::after { content: ' *'; color: var(--danger-text); font-weight: 700; }
+
+/* UN INTERRUPTEUR ET SA LIMITE. Le plafond n'existe que si l'automatisme est allumé :
+   indenté sous sa case, et grisé tant qu'elle est décochée, il ne se lit plus comme un
+   dixième réglage indépendant. */
+.sous-reglage { margin-left: 26px; border-left: 2px solid var(--line); padding-left: 12px; }
+.sous-reglage.is-off { opacity: .5; }
+/* Les titres de groupe d'un formulaire de réglages : même niveau que les h4 du système
+   (13 px, 700, capitales), avec de l'air au-dessus sauf pour le premier. */
+.form > h3 { font-size: var(--fs-sm, 13px); font-weight: 700; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--muted); margin: 14px 0 2px; }
+.form > h3:first-child { margin-top: 0; }
+/* « Modifications non enregistrées » : le bouton se colore, la mention le dit en toutes
+   lettres. Un formulaire de neuf réglages sur un seul bouton ne disait pas ce qu'on perdait. */
+.btn.is-dirty { border-color: var(--amber); }
+.form-info-dirty { color: var(--amber-text, var(--amber)); }
+
 .form-actions, .modal-actions { scroll-margin-bottom: 48px; }
+/* L'EN-TÊTE EST FIXE : un `scrollIntoView({block:'start'})` amène le haut de la cible au haut
+   de la FENÊTRE, donc sous l'en-tête. Tout formulaire qu'on fait défiler à l'ouverture garde
+   sa hauteur de dégagement. */
+form.form { scroll-margin-top: calc(var(--header-h, 56px) + 18px); }
+/* Les commandes d'un vérificateur sont du SHELL : elles se lisent en chasse fixe, comme
+   partout ailleurs dans l'application (journaux, aperçus, commandes git). */
 .footer {
-  position: fixed; left: 0; right: 0; bottom: 0; height: 30px; z-index: 40;
+  position: fixed; left: 0; right: 0; bottom: 0; height: var(--footer-h); z-index: 40;
   display: flex; align-items: center; gap: 12px; padding: 0 14px;
   background: #070b07; border-top: 1px solid #1c3b26;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px;
@@ -522,7 +557,9 @@ body { padding-bottom: 36px; } /* réserve la place du footer fixe */
 .footer-hide { display: inline-flex; align-items: center; min-height: 24px; background: transparent; border: 1px solid #1c3b26; color: #3f8f5c; border-radius: var(--radius); padding: 2px 9px; cursor: pointer; font-size: 12px; line-height: 1.2; }
 .footer-hide:hover { border-color: #7ee39a; color: #7ee39a; }
 /* bandeau masqué : plus de réserve de place, et pastille de rappel en bas à droite */
-body.footer-hidden { padding-bottom: 0; }
+/* Bandeau masqué : sa hauteur de dégagement tombe à zéro, et ce qui flotte au-dessus
+   redescend avec — sinon le panneau de job garderait 30 px de vide sous lui. */
+body.footer-hidden { padding-bottom: 0; --footer-h: 0px; }
 .footer-show {
   position: fixed; right: 14px; bottom: 14px; z-index: 41; cursor: pointer;
   background: #070b07; border: 1px solid #1c3b26; color: #ffd166;
@@ -676,8 +713,14 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; width: 640px; max-width: 100%; max-height: 90vh; overflow-y: auto; }
 .modal-box h3 { margin: 0 0 4px; font-size: 16px; }
 .modal-box textarea { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 10px; font: inherit; margin: 8px 0; }
-.ticket-drop { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border: 1px dashed var(--line); border-radius: var(--radius); padding: 10px; }
-.ticket-file { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 12px; cursor: pointer; }
+/* JOINDRE UN FICHIER EST UNE POSSIBILITÉ, PAS UNE ÉTAPE. C'était une zone pointillée de
+   80 px, vide neuf fois sur dix, au milieu du formulaire. Une ligne : un lien à l'icône
+   trombone, sa phrase à côté. Le cadre ne revient QUE s'il y a des pièces à montrer. */
+.ticket-drop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0; }
+.ticket-drop:has(.task-previews > *) { border: 1px dashed var(--line); border-radius: var(--radius); padding: 10px; }
+.ticket-file { display: inline-flex; align-items: center; gap: 5px; color: var(--accent-text, var(--accent));
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.ticket-file:hover { color: var(--accent); }
 .ticket-preview-wrap { display: flex; align-items: flex-start; gap: 8px; width: 100%; }
 .ticket-preview-wrap img { max-width: 100%; max-height: 300px; border: 1px solid var(--line); border-radius: 6px; }
 /* PIED COLLANT. `.modal-box` défile (max-height 90vh) : sur un formulaire long — la session
@@ -976,7 +1019,23 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 /* Un champ dont Jenkins n'a pas su calculer les valeurs : dit, et non laissé vide sans
    explication — un champ vide inexpliqué se remplit au jugé. */
 .jk-param-warn { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--amber); }
-.jk-param input[type="text"], .jk-param input:not([type]), .jk-param select { width: 100%; margin-top: 4px; }
+/* LES PARAMÈTRES D'UN JOB SONT DES CHAMPS DE L'APPLICATION, pas des contrôles natifs. Ils
+   étaient les seuls à l'être : 21 px de haut, bordure `inset`, Arial, rayon 0, dans un écran
+   dont tous les autres champs font 36 px avec le rayon du système — et c'est le formulaire qui
+   déclenche un déploiement. Les valeurs (versions, branches, drapeaux) sont techniques : chasse
+   fixe, comme les commandes d'un vérificateur. */
+.jk-param input[type="text"], .jk-param input:not([type]), .jk-param select {
+  width: 100%; margin-top: 4px;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--radius); padding: 8px 10px; font: inherit;
+  font-family: var(--ff-mono); font-size: 13px; min-height: 36px;
+}
+.jk-param select { cursor: pointer; }
+/* L'historique replié : un simple bandeau cliquable, dans la forme des autres `<details>`. */
+.jk-fiche-repli > summary { cursor: pointer; padding: 8px 0; font-size: 13px; color: var(--muted); }
+.jk-fiche-repli > summary:hover { color: var(--text); }
+.jk-param select[multiple] { min-height: 0; padding: 4px; }
+.jk-param input:focus, .jk-param select:focus { border-color: var(--accent); }
 /* Une liste à choix multiple garde sa hauteur : repliée en une ligne, on ne voit pas qu'on
    peut en choisir plusieurs, ni ce qui est déjà choisi. */
 .jk-param select[multiple] { min-height: 92px; padding: 4px; }
@@ -1005,6 +1064,9 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
    si le menu s'affichait avant d'être placé. */
 .combo-options { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin-top: 2px; max-height: 240px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--sh-2); }
 .combo-opt { padding: 7px 10px; cursor: pointer; font-size: 13px; }
+/* Mention accolée à une option de liste : « non exécutable en démo », le suffixe par défaut
+   d'une branche. Discrète — elle qualifie l'option, elle ne la remplace pas. */
+.combo-hint { color: var(--muted); font-size: 11px; margin-left: 6px; }
 .combo-opt:hover { background: var(--panel2); }
 .combo-opt.muted { color: var(--muted); cursor: default; }
 /* Alignement vertical par défaut des cases (contextes inline : bascules « Activé »
@@ -1251,6 +1313,10 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
    en thème sombre, sous le seuil pour 12 px. La bordure, elle, garde la teinte de marque. */
 .errbox .errhead { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; color: var(--red-text); font-size: 12px; font-weight: 600; border-bottom: 1px solid rgba(224,90,90,.3); }
 .errbox .errbtns { display: flex; gap: 6px; }
+/* La pile repliée : un bandeau discret, ouvert à la demande. */
+.err-stack > summary { cursor: pointer; padding: 6px 12px; font-size: 12px; color: var(--muted); }
+.err-stack > summary:hover { color: var(--text); }
+.err-stack pre { border-top: 1px solid var(--line); }
 .errbox pre { margin: 0; padding: 10px 12px; overflow-x: auto; font-size: 12px; color: var(--text); white-space: pre-wrap; word-break: break-word; user-select: text; }
 
 /* Le panneau de logs reste FIGÉ sous l'en-tête (lui aussi sticky) quand on scrolle : on suit
@@ -1267,9 +1333,14 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
    sous-onglets, ce qui est pire : on ne peut plus cliquer ce qu'on voit. En bas, il ne cache
    que la fin de la page, l'endroit conventionnel d'un indicateur de tâche de fond. */
 .logpanel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden;
-  position: fixed; bottom: 12px;
+  /* AU-DESSUS DU BANDEAU DU BAS, pas dessous. Celui-ci est fixe, haut de 30 px et en
+     `z-index: 40` : un panneau posé à 12 px du bord perdait ses 18 px inférieurs, dont la
+     moitié du bouton « Voir le rapport » — le seul lien vers ce que le job vient de produire.
+     La hauteur du bandeau est une variable, pas un nombre recopié. */
+  position: fixed; bottom: calc(var(--footer-h, 30px) + 12px);
   left: calc(var(--sidebar-w, 194px) + 18px); right: 18px; margin: 0;
-  max-height: calc(100vh - var(--header-h, 56px) - 24px); display: flex; flex-direction: column;
+  max-height: calc(100vh - var(--header-h, 56px) - var(--footer-h, 30px) - 24px);
+  display: flex; flex-direction: column;
   z-index: 30; box-shadow: var(--sh-2); }
 /* Déplié, c'est le JOURNAL qui défile — pas le panneau, dont la tête doit rester atteignable. */
 .logpanel #logBox { flex: 1 1 auto; min-height: 0; overflow: auto; }
@@ -1592,9 +1663,11 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 
 /* ---------- Converger (boucle de qualité autonome) ---------- */
 /* Bouton phare : distinct des autres actions (violet), il déclenche la boucle. */
-.btn-converge { background: var(--purple-btn); border-color: var(--purple-btn); color: var(--on-purple); }
-.btn-converge:hover { filter: brightness(1.1); border-color: var(--purple-btn); }
-.btn-converge .ico { color: var(--on-purple); }
+/* `.btn-converge` a été retiré : le système ne connaît que deux poids d'action — l'accent
+   pour le chemin normal, le rouge en bordure pour ce qui détruit. Un troisième, violet et
+   plein, pesait plus lourd que « Lancer » sur la même carte alors qu'il désigne le parcours
+   avancé. « Converger » est un bouton standard sur la carte, et le bouton primaire de sa
+   propre modale — là où il EST le chemin normal. */
 
 /* Bandeau d'état de la run (rapport). */
 .converge-box { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); margin: 4px 0 10px; font-size: 13px; background: var(--panel2); }
@@ -2450,8 +2523,16 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .tag.verify.warn { color: var(--amber); border-color: var(--amber); }
 .tag.verify.stale { color: var(--muted); border-color: var(--line); }
 .tag.verify.none { color: var(--muted); border-color: var(--line); }
+/* Le badge de verdict est un vrai <button> (atteignable au clavier) : on lui rend l'allure
+   d'un .tag, que l'agent utilisateur habille autrement. */
+button.tag { font: inherit; font-size: 11px; line-height: 1.5; background: none; display: inline-flex;
+  align-items: center; gap: 4px; }
 .tag.verify[data-vreport] { cursor: pointer; }
 .tag.verify[data-vreport]:hover { background: var(--panel2); }
+.tag.verify[data-vreport]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* « · voir le rapport » : présent mais discret — le verdict reste ce qu'on lit en premier. */
+.tag-cta { opacity: .75; }
+.tag-cta::before { content: '· '; }
 
 /* Barre d'actions de la sélection multiple de merge requests. */
 .bulk-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; margin-bottom: 8px;
@@ -2635,8 +2716,14 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 @media (max-width: 700px) { .champ-gabarit { grid-template-columns: 1fr; gap: 2px; } }
 
 .vc-row { display: flex; gap: 6px; margin-bottom: 6px; }
+/* C'est du SHELL : chasse fixe, comme les journaux et les commandes git ailleurs dans
+   l'application. En police proportionnelle, `-- --reporter=tap` se lit mal et les espaces
+   ne se comptent pas. */
 .vc-row .vc-cmd { flex: 1; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
-  border-radius: var(--radius); padding: 7px 10px; font: inherit; font-size: 13px; }
+  border-radius: var(--radius); padding: 7px 10px; font: inherit;
+  /* APRÈS le raccourci `font`, qui réinitialise la famille : posé avant, il était écrasé
+     dans la même déclaration — le champ restait en police proportionnelle. */
+  font-family: var(--ff-mono); font-size: 13px; }
 .vc-row .vc-del { flex: 0 0 auto; }
 /* Mono-dépôt : les cases se comportent en radio, la bordure le rappelle sans texte en plus. */
 

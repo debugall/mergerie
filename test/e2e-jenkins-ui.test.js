@@ -657,10 +657,13 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     // Ce qui part à Jenkins : les valeurs choisies, séparées par des virgules.
     await page.locator('[data-jkparam="Branche"]').selectOption(['refs/heads/develop', 'refs/heads/master']);
     const avant = mock.state.calls.filter((c) => c.method === 'POST').length;
+    /* REMPLIR LES PARAMÈTRES *EST* LA CONFIRMATION. La modale demandait ensuite « Lancer ce
+       job ? » — une seconde question à qui vient de composer sa réponse. Elle reste sur le
+       « Lancer » DIRECT de la liste, où l'on n'a rien composé du tout. */
     await page.locator('#jenkinsRun').click();
-    await page.waitForSelector('#confirmModal:not([hidden])');
-    await page.locator('#confirmOk').click();
     await page.waitForFunction((n) => document.querySelectorAll('#toasts .toast').length >= n, 1);
+    assert.equal(await page.locator('#confirmModal').isHidden(), true,
+      'pas de seconde confirmation après la fiche de paramètres');
     const post = mock.state.calls.filter((c) => c.method === 'POST').slice(avant)[0];
     assert.match(decodeURIComponent(post.body), /Branche=refs\/heads\/develop,refs\/heads\/master/,
       'un choix multiple part en une valeur séparée par des virgules, la forme qu’attend le plugin');
@@ -673,6 +676,23 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
      dernière fois, et avec quelle version ? » est la question qu'on se pose devant l'historique
      d'un job de déploiement. Et une fois le bon lancement retrouvé, on repart de SES valeurs —
      en en changeant une, sinon « Relancer » suffisait. */
+  /* L'HISTORIQUE SE REPLIE sur un job PARAMÉTRÉ : la fenêtre sert alors à lancer, et
+     « Derniers builds » déplié repoussait le pied de modale à plus d'un écran. Les tests qui
+     portent sur l'historique le déplient donc, comme le ferait quelqu'un qui vient le lire.
+     Sans paramètre, la fiche EST l'historique : rien à déplier, et l'appel ne fait rien. */
+  async function deplierHistorique() {
+    /* On attend d'abord que la fiche SOIT RENDUE : la fenêtre affiche un squelette le temps de
+       l'appel, et chercher le repli avant son arrivée ne trouverait rien. `attached` et non
+       `visible` — repliée, la fiche existe sans occuper de place, c'est tout le propos. */
+    await page.waitForSelector('#jenkinsFiche', { state: 'attached', timeout: 15000 });
+    const repli = page.locator('#jenkinsModalBody details.jk-fiche-repli');
+    // Un clic sur un <summary> BASCULE : on ne clique que s'il est fermé.
+    if (await repli.count() && !await repli.evaluate((e) => e.open)) {
+      await repli.locator('> summary').click();
+    }
+    await page.waitForSelector('#jenkinsFiche [data-jkbuild], #jenkinsFiche .jk-vide', { timeout: 15000 });
+  }
+
   test('l’historique se filtre par valeur, et ses paramètres se reprennent dans le formulaire', async (t) => {
     const decor = mock.state.details['/job/boutique/job/deploy-prod'];
     // Le décor est rendu même si le test échoue, sinon la panne se propage aux suivants.
@@ -700,7 +720,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
 
     await allerJenkins();
     await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
-    await page.waitForSelector('#jenkinsFiche [data-jkbuild]');
+    await deplierHistorique();
     assert.equal(await page.locator('#jenkinsFiche [data-jkbuild]').count(), 10,
       'à l’ouverture, on ne charge que les dix derniers — c’est ce qui doit s’afficher vite');
 
@@ -776,6 +796,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     };
     await allerJenkins();
     await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
+    await deplierHistorique();
     await page.waitForSelector('#jenkinsFiche [data-jkreuse="20"]');
     await page.locator('[data-jkreuse="20"]').click();
     await page.waitForFunction(() => document.querySelector('[data-jkparam="ENV"]').value === 'bac-a-sable');
@@ -830,9 +851,9 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.locator('[data-jkparam="VERSION"]').fill('2.4.1');
     await page.locator('[data-jkparam="ENV"]').selectOption('prod');
     await page.locator('#jenkinsRun').click();
-    await page.waitForSelector('#confirmModal:not([hidden])');
-    await page.locator('#confirmOk').click();
     await page.waitForFunction((n) => document.querySelectorAll('#toasts .toast').length >= n, 1);
+    assert.equal(await page.locator('#confirmModal').isHidden(), true,
+      'remplir les paramètres est la confirmation : on n’en pose pas une seconde');
 
     const post = mock.state.calls.filter((c) => c.method === 'POST').slice(avant);
     assert.equal(post.length, 1);
@@ -851,7 +872,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
   test('la fiche montre l’historique à gauche et le détail de l’exécution choisie à droite', async () => {
     await allerJenkins();
     await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
-    await page.waitForSelector('#jenkinsFiche [data-jkbuild]');
+    await deplierHistorique();
 
     // Le plus récent est choisi d'office : c'est celui qu'on vient voir neuf fois sur dix.
     assert.equal(await page.locator('#jenkinsFiche .jk-build.selected [data-jkbuild]').getAttribute('data-jkbuild'), '11');
@@ -948,6 +969,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
   test('relancer une exécution précise reprend SES valeurs', async () => {
     await allerJenkins();
     await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
+    await deplierHistorique();
     await page.waitForSelector('#jenkinsFiche [data-jkrerunbuild="10"]');
     const avant = mock.state.calls.filter((c) => c.method === 'POST').length;
 
@@ -1104,7 +1126,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
 
     await allerJenkins();
     await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
-    await page.waitForSelector('#jenkinsFiche [data-jkbuild]');
+    await deplierHistorique();
 
     /* Chaque zone est une carte, et une carte se voit : un fond distinct de celui de la
        modale, et une bordure. Sans ça, il ne reste que du blanc entre deux sujets. */

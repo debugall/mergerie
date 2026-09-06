@@ -58,6 +58,65 @@ document.addEventListener('click', (e) => {
   if (b) { e.preventDefault(); copyText(b.dataset.resumeCmd, null); toast(tr('resume.cmd.copied')); }
 });
 
+/* ---------- L'ERREUR D'UN CHAMP S'AFFICHE SOUS LE CHAMP ----------
+   Vingt-deux formulaires validaient par toast, en bas à droite, à sept cents pixels du champ
+   fautif et sans rien surligner : on lisait « nom de branche requis pour chaque projet » et il
+   fallait chercher lequel. La règle est maintenant : une erreur de CHAMP se dit sous le champ,
+   un toast n'annonce qu'un RÉSULTAT d'action (« session créée », « job mis en file »).
+   `aria-describedby` relie le message au champ pour les lecteurs d'écran ; il s'efface à la
+   première frappe, sinon il contredit ce qu'on vient de corriger. */
+function erreurChamp(champ, message) {
+  if (!champ) return;
+  const id = champ.id || `f-${Math.random().toString(36).slice(2, 9)}`;
+  champ.id = id;
+  const idErr = `${id}-err`;
+  let p = document.getElementById(idErr);
+  if (!p) {
+    p = document.createElement('p');
+    p.className = 'field-error';
+    p.id = idErr;
+    /* Après le champ, ou après son enveloppe quand il en a une (un combo, une case dans un
+       label) : glissé DANS le combo, le message serait rogné par son `overflow`. */
+    const apres = champ.closest('.combo, .inline-check') || champ;
+    apres.insertAdjacentElement('afterend', p);
+  }
+  p.textContent = message;
+  champ.classList.add('is-invalid');
+  champ.setAttribute('aria-describedby', idErr);
+  champ.setAttribute('aria-invalid', 'true');
+  const effacer = () => {
+    p.remove();
+    champ.classList.remove('is-invalid');
+    champ.removeAttribute('aria-describedby');
+    champ.removeAttribute('aria-invalid');
+  };
+  champ.addEventListener('input', effacer, { once: true });
+  champ.addEventListener('change', effacer, { once: true });
+}
+
+/* Efface les messages d'un formulaire (ou de tout l'écran) avant de le revalider : sans ça,
+   corriger un champ laisserait l'ancien message des autres. */
+function viderErreursChamps(racine) {
+  const r = racine || document;
+  $$('.field-error', r).forEach((p) => p.remove());
+  $$('.is-invalid', r).forEach((c) => {
+    c.classList.remove('is-invalid');
+    c.removeAttribute('aria-describedby');
+    c.removeAttribute('aria-invalid');
+  });
+}
+
+/* Signale le PREMIER champ fautif : message dessous, focus dedans, remonté à l'écran. Rend
+   `false` pour que l'appelant s'arrête d'une ligne — `if (!signalerChamp(…)) return;`. */
+function signalerChamp(champ, message) {
+  erreurChamp(champ, message);
+  if (champ) {
+    champ.focus({ preventScroll: true });
+    champ.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+  return false;
+}
+
 function toast(msg, isErr = false) {
   const t = document.createElement('div');
   t.className = 'toast' + (isErr ? ' err' : '');
@@ -66,7 +125,7 @@ function toast(msg, isErr = false) {
   span.textContent = msg;
   t.appendChild(span);
   if (isErr) {
-    // erreur : reste affichée jusqu'à fermeture manuelle, texte sélectionnable + copier
+    // erreur : texte sélectionnable + copier, et une fermeture manuelle toujours possible
     const copy = document.createElement('button');
     copy.className = 'toast-btn'; copy.textContent = tr('ui.copy');
     copy.addEventListener('click', () => copyText(msg, copy));
@@ -74,12 +133,39 @@ function toast(msg, isErr = false) {
     close.className = 'toast-btn'; close.innerHTML = svgIco('close');
     close.addEventListener('click', () => t.remove());
     t.appendChild(copy); t.appendChild(close);
+    /* UN TOAST D'ERREUR NE S'INSTALLE PLUS À DEMEURE. Il ne partait qu'à la main : on en
+       empilait quatre, ils survivaient au changement d'onglet et à la fermeture de la modale
+       qui les avait produits, et ils cachaient l'écran qu'on venait corriger. Huit secondes —
+       et le compte s'arrête tant que la souris ou le clavier est dessus, le temps de lire une
+       pile Node ou de la copier. */
+    let minuteur = setTimeout(() => dismissToast(t), 8000);
+    const suspendre = () => { clearTimeout(minuteur); minuteur = null; };
+    const reprendre = () => { if (!minuteur) minuteur = setTimeout(() => dismissToast(t), 8000); };
+    t.addEventListener('mouseenter', suspendre);
+    t.addEventListener('mouseleave', reprendre);
+    t.addEventListener('focusin', suspendre);
+    t.addEventListener('focusout', reprendre);
   } else {
     setTimeout(() => dismissToast(t), 3500);
   }
   toastHost().appendChild(t);
   return t;
 }
+/* … ET IL MEURT AVEC LE FORMULAIRE QUI L'A PRODUIT. Une modale qu'on ferme emporte l'erreur
+   qu'elle avait levée : la garder sur l'écran suivant, c'est accuser un écran qui n'y est pour
+   rien. L'observateur couvre TOUS les chemins de fermeture (bouton, Échap, clic au fond),
+   qu'aucune fonction unique ne centralise. */
+function viderToastsErreur() { $$('.toast.err').forEach((t) => t.remove()); }
+(() => {
+  const obs = new MutationObserver((muts) => {
+    for (const m of muts) { if (m.target.hidden) { viderToastsErreur(); return; } }
+  });
+  /* Le script est en fin de <body> : le DOM est déjà là, et `DOMContentLoaded` peut être
+     passé. On branche tout de suite, en gardant le repli pour un chargement plus tôt. */
+  const brancher = () => $$('.modal').forEach((m) => obs.observe(m, { attributes: true, attributeFilter: ['hidden'] }));
+  if (document.readyState === 'loading') addEventListener('DOMContentLoaded', brancher);
+  else brancher();
+})();
 // B3 : les toasts s'empilent dans un conteneur au lieu de se superposer au même pixel.
 function toastHost() {
   let host = $('#toasts');
@@ -304,10 +390,21 @@ function errorBox(text, mrId, taskId, localId, askId) {
      de jeton ou de certificat, qu'un nouvel essai ne changera pas. */
   const reessayer = /Failed to fetch|Load failed|NetworkError|network error/i.test(String(text || ''))
     ? `<button class="btn btn-sm errretry" title="${esc(tr('err.retry-title'))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg>${tr('err.retry')}</button>` : '';
-  return `<div class="errbox"><div class="errhead"><span>${svgIco('alert')} ${tr('ui.error')}</span>`
+  /* UNE PILE D'APPELS N'EST PAS UN MESSAGE D'ERREUR. Une session en échec affichait quarante
+     lignes de `at runCodeTask (…/taskrunner.js:388:35)` dans un bloc de 400 px, en tête de
+     carte : la cause tient sur la première ligne, le reste ne sert qu'à qui va lire le code.
+     On garde donc la première ligne à l'écran et on replie la pile derrière « Détails » —
+     rien n'est perdu, et « Copier » copie toujours le texte entier. */
+  const lignes = String(text || '').split('\n');
+  const iPile = lignes.findIndex((l) => /^\s+at\s/.test(l));
+  const tete = iPile > 0 ? lignes.slice(0, iPile).join('\n').trimEnd() : String(text || '');
+  const pile = iPile > 0 ? lignes.slice(iPile).join('\n') : '';
+  const corps = `<pre>${esc(tete)}</pre>`
+    + (pile ? `<details class="err-stack"><summary>${esc(tr('err.details'))}</summary><pre>${esc(pile)}</pre></details>` : '');
+  return `<div class="errbox" data-full="${esc(text)}"><div class="errhead"><span>${svgIco('alert')} ${tr('ui.error')}</span>`
     + `<span class="errbtns">${reessayer}<button class="btn btn-sm errcopy" title="${esc(tr('err.copy-title'))}">${tr('ui.copy')}</button>`
     + `<button class="btn btn-icon btn-sm btn-danger errclear"${clear} title="${esc(tr('err.clear-title'))}"><svg class=\"ico ico-sm\"><use href=\"#i-close\"/></svg></button></span></div>`
-    + `${hintHtml}<pre>${esc(text)}</pre></div>`;
+    + `${hintHtml}${corps}</div>`;
 }
 
 /* Rejouer le chargement de l'onglet courant — exactement ce que fait un clic sur son bouton
@@ -323,8 +420,10 @@ document.addEventListener('click', (e) => {
 document.addEventListener('click', (e) => {
   const b = e.target.closest('.errcopy');
   if (!b) return;
-  const pre = b.closest('.errbox').querySelector('pre');
-  copyText(pre.textContent, b);
+  const box = b.closest('.errbox');
+  // Le texte COMPLET, pile comprise : c'est ce qu'on colle dans un ticket, replié ou non.
+  const pre = box.querySelector('pre');
+  copyText(box.dataset.full || pre.textContent, b);
 });
 
 // Délégation : bouton "✕" pour fermer un errbox (et effacer en base si MR).
@@ -500,7 +599,7 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
   if (b.dataset.tab === 'review') loadSegment();
   if (b.dataset.tab === 'dashboard') loadDashboard();
   if (b.dataset.tab === 'git') loadGit();
-  if (b.dataset.tab === 'docker') loadDocker();
+  if (b.dataset.tab === 'docker') { marquerDockerVu(); loadDocker(); }
   else dlogStop(); // en quittant Docker, on coupe le tail live (et ses process serveur)
   if (b.dataset.tab === 'jira') loadJira();
   if (b.dataset.tab === 'notes') loadNotes();
@@ -517,7 +616,7 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
    envoie sa première étape. */
 // `mr` partage la logique de `config` : ses champs sont rattachés à #configForm (attribut form=),
 // donc loadConfig les peuple et le submit les enregistre — un seul /config pour les deux onglets.
-const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadGeneralSettings, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadConfig, verifiers: loadVerifiers, aisession: loadAiSessionSettings };
+const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadGeneralSettings, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadConfig, verifiers: loadVerifiersEtPlafond, aisession: loadAiSessionSettings };
 /* Ce panneau porte à la fois un réglage du formulaire global (les consignes permanentes) et un
    banc d'essai. Il lui faut donc `loadConfig` comme aux autres, sinon le champ s'affiche vide
    quoi qu'il y ait en base — et le premier « Enregistrer » l'efface sans rien demander. */
@@ -525,6 +624,10 @@ function loadAiSessionSettings() { loadConfig(); renderAiSessionSettings(); }
 /* « Général » porte les réglages de l'outil ET l'arrangement de la barre de menus, qui vit dans
    le navigateur : deux sources, un seul panneau, donc les deux chargements. */
 function loadGeneralSettings() { loadConfig(); renderNavPrefs(); }
+/* Le panneau des vérificateurs porte AUSSI un champ de #configForm (le plafond des
+   vérifications automatiques, venu de Merge Request rejoindre son interrupteur) : sans
+   `loadConfig` il s'afficherait vide quoi qu'il y ait en base. */
+function loadVerifiersEtPlafond() { loadConfig(); loadVerifiers(); }
 function showAdminSub(sub) {
   if (!sub) { try { sub = localStorage.getItem('aidevtools_admin_sub') || 'gitcfg'; } catch { sub = 'gitcfg'; } }
   if (!ADMIN_SUBS[sub]) sub = 'gitcfg';
@@ -1011,11 +1114,23 @@ function rafraichirDemarrage() {
 // de la modale de session. Mis à jour à chaque /status.
 let jiraConfigured = false;
 
+/* MODE DÉMO : le décor ne contient qu'un seul dépôt réellement clonable — celui qui vit sur
+   le disque. Les autres pointent vers `gitlab.demo`, qui n'existe pas : une session créée
+   dessus mourait en 1,6 s sur une pile Node `git clone git@gitlab.demo…`, et c'était le dépôt
+   proposé par défaut, donc le premier essai de qui découvre l'outil. */
+let modeDemo = false;
+const depotClonableEnDemo = (r) => /^(\/|file:)/.test(String((r && r.url) || ''));
+/* Hors démo rien ne change — le premier de la liste. En démo, celui qui peut vraiment tourner. */
+function depotParDefaut() {
+  if (modeDemo) { const local = repoOptions.find(depotClonableEnDemo); if (local) return local; }
+  return repoOptions[0] || null;
+}
+
 // Bannière « mode démo » : affichée si le serveur tourne en mode démo (npm run demo).
 (async () => {
   try {
     const s = await api('/status');
-    if (s && s.demo) { const b = $('#demoBanner'); if (b) b.hidden = false; }
+    if (s && s.demo) { modeDemo = true; const b = $('#demoBanner'); if (b) b.hidden = false; }
     if (s) jiraConfigured = !!s.jiraConfigured;
   } catch { /* status indisponible : pas de bannière */ }
 })();
@@ -1046,16 +1161,20 @@ document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-empty-act]');
   if (!b) return;
   const go = (tab) => { const t = $(`nav button[data-tab="${tab}"]`); if (t) t.click(); };
+  /* ARRIVER QUELQUE PART, C'EST ARRIVER SUR UN CHAMP. L'assistant envoyait sur Réglages → Git
+     sans focus : l'écran change, le curseur reste sur un bouton qui n'existe plus, et il faut
+     viser à la souris le premier champ d'un formulaire qu'on vient de demander. */
+  const viser = (sel) => { const c = $(sel); if (c) c.focus({ preventScroll: true }); };
   switch (b.dataset.emptyAct) {
-    case 'go-config': closeBulk(); go('admin'); showAdminSub('gitcfg'); break;
-    case 'go-repos': go('admin'); showAdminSub('repos'); break;
+    case 'go-config': closeBulk(); go('admin'); showAdminSub('gitcfg'); viser('[name="gitlab_url"]'); break;
+    case 'go-repos': go('admin'); showAdminSub('repos'); viser('#repoForm [name="url"]'); break;
     case 'go-rules': go('admin'); showAdminSub('rules'); break;
     case 'discover': go('review'); $('#btnDiscover').click(); break;
     case 'new-task': go('task'); $('#btnNewTask').click(); break;
     case 'seg-to-review': loadSegment('to_review'); break;
     case 'seg-reviewed': loadSegment('reviewed'); break;
-    case 'go-jira-config': go('admin'); showAdminSub('jiracfg'); break;
-    case 'jenkins-config': go('admin'); showAdminSub('jenkinscfg'); break;
+    case 'go-jira-config': go('admin'); showAdminSub('jiracfg'); viser('[name="jira_url"]'); break;
+    case 'jenkins-config': go('admin'); showAdminSub('jenkinscfg'); viser('[name="jenkins_url"]'); break;
     case 'clear-search': $('#searchReview').value = ''; loadSegment(currentSeg); break;
     case 'clear-note-filter': reinitFiltreNote(); break;
     default: break;
@@ -1923,7 +2042,10 @@ async function pumpLog() {
     res.hidden = !menePar;
     if (menePar) {
       res.dataset.kind = d.target_kind; res.dataset.id = d.target_id;
-      res.querySelector('span').textContent = tr(d.target_kind === 'mr' ? 'job.result.open' : 'job.result.open-task');
+      /* Une VÉRIFICATION produit un rapport, pas une session : le bouton disait « Voir la
+         session » et menait à Dev IA, où il n'y avait rien à voir. */
+      res.querySelector('span').textContent = tr(
+        d.target_kind === 'mr' || d.target_kind === 'verification' ? 'job.result.open' : 'job.result.open-task');
     }
   }
   if (running) { autoHideJobId = null; clearTimeout(autoHideTimer); }
@@ -3914,10 +4036,68 @@ document.addEventListener('input', (e) => {
   if (e.target && e.target.form && e.target.form.id === 'configForm') configFrappe = Date.now();
 }, true);
 
+/* ---------- « Modifications non enregistrées » ----------
+   Neuf réglages, un seul bouton, aucun indicateur : on changeait un plafond, on passait à un
+   autre sous-onglet, et rien ne disait que rien n'était parti. Les champs de #configForm sont
+   éclatés sur six sous-onglets — chacun a son bouton « Enregistrer » et sa mention : on les
+   marque TOUS, pour que l'avertissement suive celui qui change d'écran. */
+let configSale = false;
+const boutonsConfig = () => $$('button[form="configForm"][type="submit"]');
+const mentionsConfig = () => $$('#configInfo, #configInfoMr, #configInfoGit, #configInfoGithub, #configInfoJira, #configInfoJenkins, #configInfoAi, #configInfoVerif').filter(Boolean);
+
+function marquerConfig(sale) {
+  configSale = sale;
+  for (const b of boutonsConfig()) b.classList.toggle('is-dirty', sale);
+  for (const m of mentionsConfig()) {
+    if (sale) { m.textContent = tr('settings.unsaved'); m.classList.add('form-info-dirty'); }
+    else if (m.classList.contains('form-info-dirty')) { m.textContent = ''; m.classList.remove('form-info-dirty'); }
+  }
+}
+/* `change` autant qu'`input` : une case à cocher et un <select> ne produisent que le premier. */
+for (const ev of ['input', 'change']) {
+  document.addEventListener(ev, (e) => {
+    if (e.target && e.target.form && e.target.form.id === 'configForm') marquerConfig(true);
+  }, true);
+}
+
+/* ENTRÉE ENREGISTRE, ET LE DIT. Les champs de réglages vivent HORS de #configForm (ils s'y
+   rattachent par `form=`), et le bouton « Enregistrer » aussi : le navigateur ne trouve alors
+   aucun bouton par défaut dans le formulaire et la soumission implicite n'arrive jamais. On
+   tapait son jeton, on appuyait sur Entrée, et il ne se passait rien — ni enregistrement, ni
+   message. Les zones de texte gardent Entrée pour aller à la ligne. */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.shiftKey || e.altKey) return;
+  const c = e.target;
+  if (!c || !c.form || c.form.id !== 'configForm') return;
+  if (c.tagName === 'TEXTAREA' && !(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault();
+  c.form.requestSubmit();
+});
+
+/* Le plafond des reviews automatiques ne veut rien dire quand l'automatisme est éteint :
+   il s'indente sous sa case et se désactive avec elle. */
+function syncReviewAutoMax() {
+  const c = $('#configForm') && $('#configForm').auto_review_new;
+  const rang = $('#reviewAutoMaxRow');
+  if (!c || !rang) return;
+  rang.classList.toggle('is-off', !c.checked);
+  const n = rang.querySelector('input');
+  if (n) n.disabled = !c.checked;
+}
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.name === 'auto_review_new') syncReviewAutoMax();
+});
+
 async function loadConfig() {
   const depart = Date.now();
   const c = await api('/config');
   if (configFrappe >= depart) return;      // l'utilisateur a tapé pendant ce temps : on s'abstient
+  /* ET S'IL A TAPÉ AVANT ? Chaque sous-onglet de Réglages rappelle `loadConfig` en s'ouvrant :
+     une valeur modifiée puis non enregistrée était écrasée par le serveur au premier changement
+     de sous-onglet, sans un mot. Tant que le formulaire est sale, ce qui est à l'écran gagne —
+     et la mention « modifications non enregistrées » reste sur les boutons, dans TOUS les
+     sous-onglets : c'est elle, l'avertissement au changement d'onglet. */
+  if (configSale) return;
   const f = $('#configForm');
   for (const k of CONFIG_FIELDS) { if (f[k]) f[k].value = c[k] || ''; }
   f.auto_refresh_minutes.value = Number(c.auto_refresh_minutes) || 0; // 0 affiché explicitement
@@ -3934,6 +4114,11 @@ async function loadConfig() {
   if (f.brief_on_open) f.brief_on_open.checked = c.brief_on_open !== '0';
   if (f.stale_mr_days) f.stale_mr_days.value = Number(c.stale_mr_days) || 5;
   if (f.jenkins_refresh_minutes) f.jenkins_refresh_minutes.value = Number(c.jenkins_refresh_minutes) || 0;
+  syncReviewAutoMax();
+  convDefauts = { seuil: c.converge_threshold || '8', passes: c.converge_max_passes || '3' };
+  /* Ce qui vient du serveur n'est pas une modification : le rechargement qui suit un
+     enregistrement effacerait sinon la mention qu'il vient tout juste de justifier. */
+  marquerConfig(false);
   renderNotifSettings();
 }
 $('#configForm').addEventListener('submit', async (e) => {
@@ -3957,10 +4142,13 @@ $('#configForm').addEventListener('submit', async (e) => {
     // Le formulaire est éclaté sur deux sous-onglets (Général / Merge Request) : on affiche
     // la confirmation dans l'onglet visible (chaque onglet a son propre `configInfo*`).
     const info = $('#sub-mr').classList.contains('active') ? $('#configInfoMr')
+      : $('#sub-verifiers').classList.contains('active') ? $('#configInfoVerif')
       : $('#sub-gitcfg').classList.contains('active') ? $('#configInfoGit')
       : $('#sub-jiracfg').classList.contains('active') ? $('#configInfoJira')
       : $('#sub-aisession').classList.contains('active') ? $('#configInfoAi')
       : $('#configInfo');
+    marquerConfig(false);   // avant la mention : elle porterait sinon la classe « non enregistré »
+    f.dispatchEvent(new Event('mergerie:config-saved'));   // « Enregistrer et tester » enchaîne
     info.textContent = tr('ui.saved'); setTimeout(() => { info.textContent = ''; }, 2000);
     loadConfig(); refreshStatus();
     /* L'ASSISTANT DE DÉMARRAGE SUIT. Il coche ses étapes depuis `setupState`, qui n'était lu
@@ -4079,14 +4267,39 @@ async function loadRepos() {
   // Les répertoires locaux vivent dans le même panneau : ils se chargent avec lui.
   loadLocalRootSettings();
 }
+/* CE QUI RESSEMBLE À UNE URL DE DÉPÔT. Ni le champ ni le serveur ne vérifiaient quoi que ce
+   soit : « toto » devenait un dépôt suivi, et l'erreur ne se voyait qu'au premier clonage.
+   Deux formes acceptées, celles que les forges donnent à copier — HTTP(S) et SSH. */
+/* Un chemin ABSOLU est une source de clonage parfaitement valide — `git clone /srv/depots/x.git`
+   marche, c'est ce que fait le décor de démo, et c'est ce que font les tests. La première
+   version de cette garde ne connaissait que http(s) et ssh : elle refusait un dépôt local. */
+const RE_URL_DEPOT = /^(https?:\/\/\S+|file:\/\/\S+|\/\S+|(ssh:\/\/)?[\w.-]+@[\w.-]+[:/]\S+)$/i;
+
 $('#repoForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
+  viderErreursChamps(f);
+  const url = f.url.value.trim();
+  if (!RE_URL_DEPOT.test(url)) { signalerChamp(f.url, tr('err.repo-url-invalide')); return; }
   try {
-    await api('/repos', { method: 'POST', body: { project: f.project.value, url: f.url.value, branch_pattern: f.branch_pattern.value } });
-    f.project.value = ''; f.url.value = ''; loadRepos();
-  } catch (err) { toast(err.message, true); }
+    await api('/repos', { method: 'POST', body: { project: f.project.value, url, branch_pattern: f.branch_pattern.value } });
+    f.project.value = ''; f.url.value = ''; f.branch_pattern.value = ''; loadRepos();
+  } catch (err) { signalerChamp(f.url, explainError(err.message)); }
 });
+
+/* La recherche filtre la liste des dépôts suivis, sans rien décocher — même règle que partout
+   ailleurs dans l'application. */
+$('#repoSearch') && $('#repoSearch').addEventListener('input', debounce(() => {
+  const q = ($('#repoSearch').value || '').toLowerCase().trim();
+  let vus = 0;
+  $$('#repoList .repo-row').forEach((row) => {
+    const ok = !q || row.textContent.toLowerCase().includes(q);
+    row.hidden = !ok;
+    if (ok) vus += 1;
+  });
+  const vide = $('#repoSearchNone');
+  if (vide) vide.hidden = vus > 0 || !q;
+}));
 
 /* ---- Réglages → Dépôts : les répertoires LOCAUX ----
    Rien n'est cloné ici : on déclare un dossier déjà présent sur la machine. Le
@@ -4162,6 +4375,11 @@ async function loadRepoOptions() {
   return repoOptions;
 }
 
+/* En démo, un dépôt injoignable reste choisissable — mais il le dit. Promettre une session
+   qui mourra au clonage est pire que de l'annoncer avant le clic. */
+const marqueDemo = (r) => (modeDemo && !depotClonableEnDemo(r)
+  ? `<span class="combo-hint">${esc(tr('demo.repo.not-runnable'))}</span>` : '');
+
 /* ---- Sélecteur de dépôt réutilisable (recherche à la frappe) ----
    Un <select> natif devient inutilisable dès quelques dizaines de dépôts : ce
    combo filtre à la frappe. Il expose un input caché (la valeur réellement
@@ -4172,7 +4390,7 @@ async function loadRepoOptions() {
 function repoComboHtml(currentId, { idClass = '', idAttr = '', defaultFirst = true } = {}) {
   // Comme le <select> natif qu'il remplace : à défaut de sélection, le 1er dépôt
   // (sauf pour l'explorateur, où on ne veut rien analyser tant qu'on n'a pas choisi).
-  const cur = repoOptions.find((r) => r.id === Number(currentId)) || (defaultFirst ? repoOptions[0] : null) || null;
+  const cur = repoOptions.find((r) => r.id === Number(currentId)) || (defaultFirst ? depotParDefaut() : null) || null;
   const dis = repoOptions.length ? '' : 'disabled';
   const ph = repoOptions.length ? tr('task.ph.search-repo') : tr('task.ph.no-repo');
   return `<div class="combo repo-combo">
@@ -4192,7 +4410,7 @@ function wireRepoCombos(root) {
     const open = () => {
       const q = input.value.trim().toLowerCase();
       const list = repoOptions.filter((r) => r.project.toLowerCase().includes(q)).slice(0, 200);
-      box.innerHTML = list.map((r) => `<div class="combo-opt" data-r="${r.id}">${esc(r.project)}</div>`).join('')
+      box.innerHTML = list.map((r) => `<div class="combo-opt" data-r="${r.id}">${esc(r.project)}${marqueDemo(r)}</div>`).join('')
         || `<div class="combo-opt muted">${tr('task.combo.no-repo')}</div>`;
       box.hidden = false;
     };
@@ -4364,9 +4582,13 @@ function localProjectBranch(rootId, name) {
 /* ---- Éditeur « projets et branches » de la modale ---- */
 // Icône « i » + explication du champ. Même markup que les champs statiques
 // d'index.html ; l'affichage est géré par la délégation en bas de fichier.
+/* `tabindex="-1"` : une ligne de projet porte trois ⓘ pour trois champs, soit six arrêts de
+   tabulation sur seize dans la modale, tous pour la même icône. L'explication vient désormais
+   au FOCUS DU CHAMP (voir la délégation `focusin` en bas de fichier) — elle arrive là où on
+   en a besoin, et le clavier va de champ en champ. */
 function hint(text) {
   const t = esc(text);
-  return `<button type="button" class="hint" tabindex="0" aria-label="${t}" data-tip="${t}"><svg class="ico"><use href="#i-info"/></svg></button>`;
+  return `<button type="button" class="hint" tabindex="-1" aria-label="${t}" data-tip="${t}"><svg class="ico"><use href="#i-info"/></svg></button>`;
 }
 
 function targetRowHtml(idx, sel = {}) {
@@ -4374,7 +4596,7 @@ function targetRowHtml(idx, sel = {}) {
   // même composant combo que les branches, avec filtre à la frappe.
   // Comme avant, une nouvelle ligne présélectionne le 1er dépôt (sinon elle serait
   // silencieusement ignorée par readTargetRows, qui écarte les lignes sans repo_id).
-  const cur = repoOptions.find((r) => r.id === Number(sel.repo_id)) || repoOptions[0] || null;
+  const cur = repoOptions.find((r) => r.id === Number(sel.repo_id)) || depotParDefaut() || null;
   // Le champ qui désigne une branche EXISTANTE est un sélecteur avec recherche :
   // en codage la branche de départ, en exploration la branche à regarder.
   // La branche de travail (codage) reste libre : elle est souvent à créer.
@@ -4413,13 +4635,50 @@ function readTargetRows() {
    et « branche à créer » ressemble à « branche de départ » quand les deux sont pleines.
    Elle réutilise le gabarit flex de la ligne (mêmes classes) pour tomber sur les mêmes
    colonnes, avec un espaceur là où la ligne porte un « ? » ou la croix de suppression. */
+/* Un morceau de texte → un fragment de nom de branche : sans accent, sans majuscule, sans
+   ponctuation, borné. Sert au pré-remplissage depuis le libellé ou le prompt, et à la reprise
+   d'un ticket Jira — une seule règle, pour que deux chemins ne produisent pas deux formes. */
+function slugBranche(texte, mots = 6) {
+  return String(texte || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ').trim()
+    .split(/\s+/).filter(Boolean).slice(0, mots)
+    .join('-').slice(0, 40);
+}
+
+/* LA BRANCHE DE TRAVAIL SE PROPOSE. C'est le seul champ obligatoire de la modale que rien ne
+   remplit, et la source est sous la main : le libellé de la session, sinon les premiers mots
+   du prompt. Proposée seulement — on n'écrase JAMAIS ce qui a été tapé, et un champ vidé
+   volontairement le reste (`data-touche`). */
+function proposerBranche() {
+  if (taskKind !== 'code') return;
+  const f = $('#taskForm');
+  if (!f) return;
+  const source = (f.label && f.label.value.trim()) || (f.prompt && f.prompt.value.trim()) || '';
+  const slug = slugBranche(source);
+  if (!slug) return;
+  /* `.target-row` : la ligne d'EN-TÊTE porte la même classe pour s'aligner sur la colonne,
+     et n'est pas un champ. */
+  for (const champ of $$('#targetRows .target-row .t-branch')) {
+    /* Une valeur DÉJÀ PROPOSÉE se remplace — le libellé arrive souvent après le prompt, et la
+       proposition doit suivre. Une valeur TAPÉE, jamais : `data-touche` la protège, y compris
+       quand on l'a volontairement vidée. */
+    if (champ.dataset.touche === '1') continue;
+    if (champ.value.trim() && champ.dataset.propose !== '1') continue;
+    champ.value = `ai/${slug}`;
+    champ.dataset.propose = '1';
+  }
+}
+
 function targetHeadHtml() {
   const col = (k) => `<span class="combo t-lab">${esc(tr(k))}</span>`;
   /* La colonne « branche de travail » n'a pas la même largeur selon la saveur : en codage
      c'est un champ libre (`.t-branch`), en exploration un sélecteur (`.combo`). L'en-tête
      porte donc la classe du champ qu'il coiffe, sinon il tombe 120 px à côté. */
+  /* L'ÉTOILE DIT L'OBLIGATION. En codage, la branche de travail est refusée vide par le
+     serveur ; rien à l'écran ne l'annonçait, et on ne l'apprenait qu'au moment du refus. */
   const colTravail = taskKind === 'code'
-    ? `<span class="t-branch t-lab">${esc(tr('task.col.work-branch'))}</span>`
+    ? `<span class="t-branch t-lab req">${esc(tr('task.col.work-branch'))}</span>`
     : col('task.col.read-branch');
   return `<div class="target-head-row" aria-hidden="true">
     <span class="combo repo-combo t-lab">${esc(tr('task.col.repo'))}</span><span class="t-lab-hint"></span>
@@ -4438,8 +4697,12 @@ function renderTargetRows(list) {
     cur.splice(Number(b.dataset.rmrow), 1);
     renderTargetRows(cur);
   }));
+  /* Une saisie manuelle gèle le champ : la proposition ne doit jamais écraser ce que
+     l'utilisateur a écrit, ni revenir après qu'il l'a effacé. */
+  $$('#targetRows .target-row .t-branch').forEach((c) => c.addEventListener('input', () => { c.dataset.touche = '1'; delete c.dataset.propose; }));
   wireRepoPickers();
   wireBranchPickers();
+  proposerBranche();
   $('#targetsHint').textContent = taskKind === 'code'
     ? tr('task.hint.code')
     : tr('task.hint.explore');
@@ -4469,7 +4732,7 @@ function wireRepoPickers() {
     const open = () => {
       const q = input.value.trim().toLowerCase();
       const list = repoOptions.filter((r) => r.project.toLowerCase().includes(q)).slice(0, 200);
-      box.innerHTML = list.map((r) => `<div class="combo-opt" data-r="${r.id}">${esc(r.project)}</div>`).join('')
+      box.innerHTML = list.map((r) => `<div class="combo-opt" data-r="${r.id}">${esc(r.project)}${marqueDemo(r)}</div>`).join('')
         || `<div class="combo-opt muted">${tr('task.combo.no-repo')}</div>`;
       box.hidden = false;
     };
@@ -4624,7 +4887,6 @@ document.addEventListener('paste', (e) => {
 /* ---- Modale ---- */
 let editingTaskId = null;
 let launchAfterCreate = false;
-let convergeAfterCreate = false; // « Converger » depuis la modale : créer puis ouvrir la modale de convergence
 
 function applyKindToModal(kind) {
   const isLocal = kind === 'local';
@@ -4633,8 +4895,15 @@ function applyKindToModal(kind) {
      ne s'en sert pas ferait croire que la réponse portera dessus. */
   const isAsk = kind === 'ask';
   $('#codeOnlyFields').hidden = kind !== 'code';
-  // « Converger » : sessions de CODAGE GitLab, et seulement à la création (pas en édition).
-  const cv = $('#taskConverge'); if (cv) cv.hidden = kind !== 'code' || !!editingTaskId;
+  /* « puis converger » : sessions de CODAGE, et seulement à la création — sur une session
+     déjà écrite, la convergence se lance depuis sa carte. */
+  const cv = $('#taskConvergeRow'); if (cv) cv.hidden = kind !== 'code' || !!editingTaskId;
+  majLibelleConverge();
+  // Le message de commit ne veut rien dire hors codage : l'exploration ne commit pas.
+  const cm = $('#taskCommitRow'); if (cm) cm.hidden = kind !== 'code';
+  /* L'accordéon « Avancé » ne s'affiche que s'il lui reste quelque chose : une question libre
+     n'a ni session d'agent, ni message de commit, ni question à poser. */
+  const av = $('#taskAdvanced'); if (av) av.hidden = isAsk;
   // Codage hors dépôt : dossiers locaux à la place des projets, Jira & avertissement.
   $('#taskReposWrap').hidden = isLocal || isAsk;
   $('#taskLocalWrap').hidden = !isLocal;
@@ -4699,8 +4968,28 @@ document.addEventListener('change', (e) => {
   majLienVerifPush();
 });
 
+/* LE SEUIL ET LE PLAFOND DE LA CONVERGENCE, tels que les Réglages les fixent. La case
+   « puis converger » les ANNONCE dans son libellé : promettre « jusqu'à 8/10 » quand le
+   réglage dit 7 serait pire que de ne rien dire. Lus une fois, rafraîchis à chaque
+   `loadConfig` — donc dès qu'on les change dans Réglages → Merge Request. */
+let convDefauts = null;
+async function defautsConvergence() {
+  if (convDefauts) return convDefauts;
+  try {
+    const c = await api('/config');
+    convDefauts = { seuil: c.converge_threshold || '8', passes: c.converge_max_passes || '3' };
+  } catch { convDefauts = { seuil: '8', passes: '3' }; }
+  return convDefauts;
+}
+async function majLibelleConverge() {
+  const l = $('#taskConvergeLbl');
+  if (!l) return;
+  const d = await defautsConvergence();
+  l.textContent = tr('task.lbl.converge-after', { seuil: d.seuil, passes: d.passes });
+}
+
 async function openTaskModal(kind = taskKind) {
-  editingTaskId = null; launchAfterCreate = false; convergeAfterCreate = false;
+  editingTaskId = null; launchAfterCreate = false;
   const f = $('#taskForm');
   f.reset(); resetTaskFiles();
   taskKind = kind;
@@ -4722,9 +5011,13 @@ async function openTaskModal(kind = taskKind) {
   /* « Enregistrer » ne disait pas ce qu'on enregistrait, sur une fenêtre qui en fait bien plus
      qu'un formulaire de réglage. Pas « Lancer la session » pour autant : sur une session de
      codage ce bouton CRÉE sans lancer — c'est la carte de Dev IA qui lance ensuite —, et le
-     libellé mentirait à l'endroit exact où l'on hésite. */
+     libellé mentirait à l'endroit exact où l'on hésite.
+     UN VERBE PAR EFFET : la même modale disait « Lancer le codage », « Poser la question » et
+     « Créer et lancer » pour un seul et même effet, selon la saveur. Deux libellés suffisent et
+     se lisent l'un contre l'autre — « Créer et lancer » lance, « Créer la session » ne lance
+     pas, et le secondaire « Créer sans lancer » dit la même chose que le second. */
   $('#taskSubmit').innerHTML = launchAfterCreate
-    ? `<svg class="ico"><use href="#i-play"/></svg>${tr(kind === 'ask' ? 'ask.run' : 'local.run')}`
+    ? `<svg class="ico"><use href="#i-play"/></svg>${tr('task.btn.create-run')}`
     : `<svg class="ico"><use href="#i-save"/></svg>${tr('task.btn.create-session')}`;
   $('#taskSubmitOnly').hidden = !launchAfterCreate;
   showTaskModal();
@@ -4752,7 +5045,7 @@ async function openTaskForMr(m, opts = {}) {
   // branche de travail = la branche de la MR ; départ = sa branche cible
   renderTargetRows([{ repo_id: m.repo_id, branch: m.source_branch, base_branch: m.target_branch }]);
   setupTaskJira(m.source_branch);
-  launchAfterCreate = true; convergeAfterCreate = false;
+  launchAfterCreate = true;
   if (opts.prompt) f.prompt.value = opts.prompt;
   if (opts.commitMessage && f.commit_message) f.commit_message.value = opts.commitMessage;
   /* Reprendre la session de codage d'origine évite à l'IA de redécouvrir un code qu'elle vient
@@ -4779,7 +5072,7 @@ async function openTaskForJira(key) {
   const f = $('#taskForm');
   f.reset(); resetTaskFiles();
   editingTaskId = null; taskKind = 'code';
-  launchAfterCreate = false; convergeAfterCreate = false;   // on prépare, l'utilisateur lance
+  launchAfterCreate = false;   // on prépare, l'utilisateur lance
   await loadRepoOptions();
   applyKindToModal('code');
 
@@ -4787,9 +5080,7 @@ async function openTaskForJira(key) {
   try { issue = await api('/jira/fetch', { method: 'POST', body: { key } }); }
   catch (e) { toast(explainError(e.message), true); }      // le ticket reste ouvrable sans contexte
 
-  const slug = String((issue && issue.summary) || '').toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')      // sans accents (noms de branche)
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  const slug = slugBranche((issue && issue.summary) || '');
   const branch = `feature/${key}${slug ? `-${slug}` : ''}`;
   renderTargetRows([{ branch }]);                           // dépôt à choisir : on ne peut pas le deviner
   setupTaskJira(branch);
@@ -4815,7 +5106,7 @@ async function openTaskEdit(id) {
   try {
     const d = await api(`/tasks/${id}`);
     const t = d.task;
-    editingTaskId = id; launchAfterCreate = false; convergeAfterCreate = false;
+    editingTaskId = id; launchAfterCreate = false;
     taskKind = t.kind || 'code';
     await loadRepoOptions();
     applyKindToModal(taskKind);
@@ -4868,7 +5159,7 @@ async function dupliquerTask(id) {
   f.reset(); resetTaskFiles();
   const d = await api(`/tasks/${id}`);
   const t = d.task;
-  editingTaskId = null; launchAfterCreate = false; convergeAfterCreate = false;
+  editingTaskId = null; launchAfterCreate = false;
   taskKind = t.kind || 'code';
   await loadRepoOptions();
   applyKindToModal(taskKind);
@@ -4911,9 +5202,13 @@ function boutonsCreation(kind) {
   /* « Enregistrer » ne disait pas ce qu'on enregistrait, sur une fenêtre qui en fait bien plus
      qu'un formulaire de réglage. Pas « Lancer la session » pour autant : sur une session de
      codage ce bouton CRÉE sans lancer — c'est la carte de Dev IA qui lance ensuite —, et le
-     libellé mentirait à l'endroit exact où l'on hésite. */
+     libellé mentirait à l'endroit exact où l'on hésite.
+     UN VERBE PAR EFFET : la même modale disait « Lancer le codage », « Poser la question » et
+     « Créer et lancer » pour un seul et même effet, selon la saveur. Deux libellés suffisent et
+     se lisent l'un contre l'autre — « Créer et lancer » lance, « Créer la session » ne lance
+     pas, et le secondaire « Créer sans lancer » dit la même chose que le second. */
   $('#taskSubmit').innerHTML = launchAfterCreate
-    ? `<svg class="ico"><use href="#i-play"/></svg>${tr(kind === 'ask' ? 'ask.run' : 'local.run')}`
+    ? `<svg class="ico"><use href="#i-play"/></svg>${tr('task.btn.create-run')}`
     : `<svg class="ico"><use href="#i-save"/></svg>${tr('task.btn.create-session')}`;
   $('#taskSubmitOnly').hidden = !launchAfterCreate;
 }
@@ -4927,7 +5222,7 @@ async function dupliquerLocalTask(id) {
   f.reset(); resetTaskFiles();
   const d = await api(`/local-tasks/${id}`);
   const t = d.task;
-  editingTaskId = null; launchAfterCreate = false; convergeAfterCreate = false;
+  editingTaskId = null; launchAfterCreate = false;
   taskKind = 'local';
   await loadLocalRoots();
   const paths = (t.dirs || []).map((x) => x.path);
@@ -4968,7 +5263,7 @@ async function openLocalTaskEdit(id) {
   f.reset(); resetTaskFiles();
   const d = await api(`/local-tasks/${id}`);
   const t = d.task;
-  editingTaskId = id; launchAfterCreate = false; convergeAfterCreate = false;
+  editingTaskId = id; launchAfterCreate = false;
   taskKind = 'local';
   await loadLocalRoots();
   const paths = (t.dirs || []).map((x) => x.path);
@@ -4997,7 +5292,7 @@ async function openQuestionEdit(id) {
   f.reset(); resetTaskFiles();
   const d = await api(`/questions/${id}`);
   const q = d.task;
-  editingTaskId = id; launchAfterCreate = false; convergeAfterCreate = false;
+  editingTaskId = id; launchAfterCreate = false;
   taskKind = 'ask';
   applyKindToModal('ask');
   f.prompt.value = q.prompt || '';
@@ -5014,7 +5309,7 @@ async function openQuestionEdit(id) {
 function closeTaskModal() {
   // Les deux drapeaux vont de pair : un « Converger » dont le POST a échoué détournerait
   // sinon le submit suivant (session non lancée, modale de convergence à la place).
-  editingTaskId = null; launchAfterCreate = false; convergeAfterCreate = false;
+  editingTaskId = null; launchAfterCreate = false;
   $('#taskModal').hidden = true;
   $('#taskSubmitOnly').hidden = true;
   $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
@@ -5062,15 +5357,31 @@ $('#taskSessionId') && $('#taskSessionId').addEventListener('input', (e) => {
 
 $('#taskCancel').addEventListener('click', closeTaskModal);
 $('#taskSubmitOnly').addEventListener('click', () => {
-  launchAfterCreate = false; convergeAfterCreate = false; // on crée, on ne lance pas
+  launchAfterCreate = false; // on crée, on ne lance pas
   $('#taskForm').requestSubmit();            // passe par la validation native du formulaire
 });
-// « Converger » : créer la session PUIS ouvrir la modale de convergence (kind code uniquement).
-$('#taskConverge') && $('#taskConverge').addEventListener('click', () => {
-  convergeAfterCreate = true; launchAfterCreate = false;
-  $('#taskForm').requestSubmit();
-});
 fermerAuFond('#taskModal', closeTaskModal);
+
+/* La proposition de branche suit le libellé et le prompt tant qu'on n'a pas touché au champ.
+   Débouncée : recalculer à chaque touche pendant qu'on écrit un prompt de cinq lignes ferait
+   défiler un nom de branche sous les yeux. */
+(() => {
+  const f = $('#taskForm');
+  if (!f) return;
+  const maj = debounce(() => proposerBranche(), 250);
+  if (f.label) f.label.addEventListener('input', maj);
+  if (f.prompt) f.prompt.addEventListener('input', maj);
+  /* CTRL/⌘ + ENTRÉE SOUMET DEPUIS LE PROMPT. Entrée y insère une ligne — c'est ce qu'on veut
+     dans une zone de texte —, mais il faut alors viser le bouton à la souris pour partir. */
+  if (f.prompt) {
+    f.prompt.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        if (typeof f.requestSubmit === 'function') f.requestSubmit(); else f.dispatchEvent(new Event('submit', { cancelable: true }));
+      }
+    });
+  }
+})();
 
 $('#taskForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -5144,6 +5455,22 @@ $('#taskForm').addEventListener('submit', async (e) => {
   }
   const targets = readTargetRows();
   if (!targets.length) { toast(tr('toast.selectionne-au-moins-un-projet'), true); return; }
+  /* LA BRANCHE DE TRAVAIL EST OBLIGATOIRE EN CODAGE, et on le dit SOUS le champ concerné.
+     Le serveur la refusait vide, le client envoyait quand même, et un toast rouge annonçait
+     « nom de branche requis pour chaque projet » à sept cents pixels de la ligne fautive —
+     sans dire laquelle. C'est la première friction du parcours principal de Dev IA. */
+  if (taskKind === 'code') {
+    viderErreursChamps($('#targetRows'));
+    const lignes = $$('#targetRows .target-row');
+    for (let i = 0; i < targets.length; i += 1) {
+      if (targets[i].branch) continue;
+      const ligne = lignes[i];
+      const champ = ligne && ligne.querySelector('.t-branch');
+      const projet = (repoOptions.find((r) => r.id === targets[i].repo_id) || {}).project || '';
+      signalerChamp(champ, tr('err.branche-requise', { project: projet }));
+      return;
+    }
+  }
   const body = {
     kind: taskKind,
     label: f.label ? f.label.value : '',
@@ -5160,13 +5487,18 @@ $('#taskForm').addEventListener('submit', async (e) => {
     targets,
   };
   const btn = $('#taskSubmit');
+  /* CONVERGER EST DEVENU UNE CASE, plus un second bouton primaire : c'est donc l'état de la
+     case qui décide, et non plus lequel des deux boutons a été cliqué. Elle annonce son seuil
+     et son plafond dans son libellé — la convergence part directement avec ces valeurs, sans
+     seconde fenêtre pour redemander ce qui vient d'être affiché. */
+  const veutConverger = !editingTaskId && taskKind === 'code' && !!(f.converge_after && f.converge_after.checked);
   let convergeId = null;
   try {
     await busy(btn, async () => {
       if (editingTaskId) { await api(`/tasks/${editingTaskId}`, { method: 'PUT', body }); toast(tr('toast.session-mise-a-jour')); return; }
       const created = await api('/tasks', { method: 'POST', body });
-      if (convergeAfterCreate) {
-        convergeId = created.id; // on ne lance PAS le run : la modale de convergence pilote tout
+      if (veutConverger) {
+        convergeId = created.id; // on ne lance PAS le run : la convergence pilote tout
       } else if (launchAfterCreate) {
         await api(`/tasks/${created.id}/run`, { method: 'POST' });
         toast(tr('toast.session-lancee')); refreshStatus();
@@ -5179,7 +5511,11 @@ $('#taskForm').addEventListener('submit', async (e) => {
     resetTaskFiles();
     closeTaskModal();
     loadTasks();
-    if (convergeId) { convergeAfterCreate = false; openConvergeModal({ type: 'task', id: convergeId }); }
+    if (convergeId) {
+      const d = await defautsConvergence();
+      await api(`/tasks/${convergeId}/converge`, { method: 'POST', body: { threshold: d.seuil, maxPasses: d.passes } });
+      toast(tr('toast.converge-lancee')); refreshStatus();
+    }
   } catch (err) { toast(explainError(err.message), true); }
 });
 
@@ -6002,8 +6338,12 @@ function codeCard(t) {
       </div>
     </div>
     ${taskActions([
-    canRun ? `<button class="btn" data-trun="${t.id}" title="${t.status === 'new' ? tr('task.title.run-all') : tr('task.title.rerun-all')}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
-    canRun ? `<button class="btn btn-converge" data-tconverge="${t.id}" data-label="${esc(tr('task.projects', { n: (t.targets || []).length, count: (t.targets || []).length }))}" title="${tr('task.title.converge')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : '',
+    /* LE CHEMIN NORMAL EST LE BOUTON FORT. « Lancer » était en secondaire gris juste au-dessus
+       d'un « Converger » violet plein : le chemin avancé pesait plus lourd que celui qu'on
+       prend neuf fois sur dix, et le violet était une TROISIÈME couleur d'action dans un
+       système qui n'en connaît que deux (accent, destructif). */
+    canRun ? `<button class="btn btn-primary" data-trun="${t.id}" title="${t.status === 'new' ? tr('task.title.run-all') : tr('task.title.rerun-all')}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
+    canRun ? `<button class="btn" data-tconverge="${t.id}" data-label="${esc(tr('task.projects', { n: (t.targets || []).length, count: (t.targets || []).length }))}" title="${tr('task.title.converge')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : '',
     canFollow ? followBtn(t, 'tfollow', 'task.title.request-fix') : '',
     /* N'apparaît que s'il y a quelque chose à réparer : un projet en erreur dont le travail
        peut très bien être déjà commité. Relancer coûterait un appel IA par dépôt pour refaire
@@ -6851,6 +7191,10 @@ async function openBulk(forge = 'gitlab') {
   const title = $('#bulkTitle');
   if (title) title.textContent = tr(`settings.bulk.title.${bulkForge}`);
   $('#bulkModal').hidden = false;
+  /* LE FOCUS SUIT LA MODALE. Il restait sur le bouton « Ajout en masse », derrière le voile :
+     la première frappe ne filtrait rien, et Tab repartait du haut de la page. Une liste de
+     cinquante dépôts s'aborde par son filtre. */
+  $('#bulkSearch').focus({ preventScroll: true });
   try {
     bulkProjects = await api(`/${bulkForge}/projects`);
     renderBulk();
@@ -7374,8 +7718,19 @@ document.addEventListener('mouseover', (e) => {
 document.addEventListener('mouseout', (e) => {
   if (e.target.closest && e.target.closest('[data-tip]')) hideTip();
 });
+/* LE FOCUS D'UN CHAMP MONTRE SON ⓘ. Les icônes sont hors du parcours de tabulation : sans
+   cela, l'explication ne serait plus atteignable au clavier du tout. On la cherche là où elle
+   se trouve — juste après le champ (lignes de projet) ou dans le <label> qui l'enveloppe. */
+function hintDuChamp(el) {
+  if (!el || !el.closest) return null;
+  if (el.classList && el.classList.contains('hint')) return el;
+  const suivant = el.nextElementSibling;
+  if (suivant && suivant.matches && suivant.matches('[data-tip]')) return suivant;
+  const lab = el.closest('label');
+  return lab ? lab.querySelector('[data-tip]') : null;
+}
 document.addEventListener('focusin', (e) => {
-  const h = e.target.closest && e.target.closest('[data-tip]');
+  const h = (e.target.closest && e.target.closest('[data-tip]')) || hintDuChamp(e.target);
   if (h) showTip(h); else hideTip();
 });
 document.addEventListener('focusout', hideTip);
@@ -8363,6 +8718,7 @@ function renderGitExploreRepos() {
 async function loadGit() {
   await loadRepoOptions();
   await loadLocalRoots();
+  gitMajVide();
   renderGitExploreRepos();
   navRenderRoot();
   navRenderTargets();
@@ -8370,6 +8726,28 @@ async function loadGit() {
   let sub = 'actions';
   try { sub = localStorage.getItem('aidevtools_gitsub') || 'actions'; } catch { /* stockage indisponible */ }
   showGitSub(sub);
+}
+
+/* SANS DÉPÔT SUIVI, CET ÉCRAN N'A RIEN À DIRE — et il le disait mal : une ligne de projet
+   désactivée portant « (ajoute d'abord un dépôt) », un combo de branches bloqué sur
+   « chargement… », et un bouton « Vérifier une branche » seul en haut. Le même vide guidé que
+   partout ailleurs, avec la porte qui va avec. */
+function gitMajVide() {
+  const vide = $('#gitNoRepo');
+  if (!vide) return;
+  const sans = !repoOptions.length;
+  vide.hidden = !sans;
+  if (sans) {
+    vide.innerHTML = emptyState({ icon: 'branch', title: tr('git.norepo.title'),
+      text: tr('git.norepo.text'),
+      actions: [{ act: 'go-repos', label: tr('git.norepo.action') }] });
+  }
+  /* Le formulaire disparaît AVEC ses impasses : le laisser grisé sous le vide guidé donnerait
+     deux réponses à la même question. */
+  const form = $('#gsub-actions .form');
+  if (form) form.hidden = sans;
+  const intro = $('#gsub-actions > p.muted');
+  if (intro) intro.hidden = sans;
 }
 
 $$('#tab-git .subnav [data-gsub]').forEach((b) => b.addEventListener('click', () => showGitSub(b.dataset.gsub)));
@@ -8878,9 +9256,24 @@ $('#dockerRefresh') && $('#dockerRefresh').addEventListener('click', () => loadD
    elle, garde la distinction : « 2 arrêtés · 1 en erreur ». ORANGE = unhealthy.
    Rafraîchi au démarrage, à l'ouverture de l'onglet ET toutes les 30 s (cf. plus bas) via
    /docker/summary = un seul `docker ps -a` (léger). */
+/* PAS D'ALARME AVANT LA PREMIÈRE VISITE. Sur une installation neuve, l'onglet Docker
+   affichait « 7 » en rouge : sept containers d'autres projets, sur la machine, que Mergerie
+   n'a jamais gérés et que rien dans l'écran ne demande de réparer. Un badge rouge est une
+   dette qu'on doit à quelqu'un — pas un inventaire de la machine. Il n'apparaît donc qu'une
+   fois l'onglet ouvert au moins une fois : à ce moment-là, on sait ce qu'il compte. */
+let dockerVu = false;
+try { dockerVu = localStorage.getItem('aidevtools_docker_vu') === '1'; } catch { /* ignore */ }
+function marquerDockerVu() {
+  if (dockerVu) return;
+  dockerVu = true;
+  try { localStorage.setItem('aidevtools_docker_vu', '1'); } catch { /* ignore */ }
+  refreshDockerBadges();
+}
+
 async function refreshDockerBadges() {
   const eB = $('#dockerErrBadge'); const uB = $('#dockerUnhealthyBadge');
   if (!eB || !uB) return;
+  if (!dockerVu) { eB.hidden = true; uB.hidden = true; return; }
   try {
     const s = await api('/docker/summary');
     const err = s.error || 0; const exited = s.exited || 0; const un = s.unhealthy || 0;
@@ -11096,6 +11489,7 @@ $('#logResult') && $('#logResult').addEventListener('click', () => {
   // `navMrReport` et non `openReport` seul : il faut AUSSI le bon stade, sinon le rapport
   // s'ouvre dans un panneau masqué et le lien paraît sans effet.
   if (b.dataset.kind === 'mr') { navMrReport(id); }
+  else if (b.dataset.kind === 'verification') { openVerifyReport(id); }
   else { navTab('task'); loadTasks(); }
   const panel = $('#logPanel'); if (panel) { panel.hidden = true; logHidden = true; updateFooterLogs(); }
 });
@@ -13064,6 +13458,11 @@ $('#linkNewFree') && $('#linkNewFree').addEventListener('click', () => openFreeM
 $('#freeCancel') && $('#freeCancel').addEventListener('click', () => { $('#freeLinkModal').hidden = true; });
 fermerAuFond('#freeLinkModal', () => { $('#freeLinkModal').hidden = true; }, { salissable: true });
 $('#freeSave') && $('#freeSave').addEventListener('click', async () => {
+  /* La modale n'est pas un <form> : `required` y est un marquage, pas une garde. Les deux
+     champs sans lesquels le lien n'existe pas se signalent donc SOUS le champ. */
+  viderErreursChamps($('#freeLinkModal'));
+  if (!$('#freeLabel').value.trim()) return void signalerChamp($('#freeLabel'), tr('err.lien-sans-libelle'));
+  if (!$('#freeUrl').value.trim()) return void signalerChamp($('#freeUrl'), tr('err.lien-sans-url'));
   const body = { label: $('#freeLabel').value, url: $('#freeUrl').value, tags: $('#freeTags').value, folder: $('#freeFolder').value };
   try {
     if (freeEnCours) await api(`/free-links/${freeEnCours.id}`, { method: 'PUT', body });
@@ -13505,11 +13904,45 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+/* ENREGISTRER ET TESTER, EN UN GESTE. Le parcours nominal d'une connexion est toujours le
+   même : coller l'URL et le jeton, enregistrer, vérifier. Deux boutons de même poids
+   laissaient le choix de l'ordre — et tester sans enregistrer donnait un vert qui ne
+   survivait pas au rechargement. Le primaire fait les deux ; « Enregistrer seulement » reste
+   pour qui ne veut pas d'appel réseau. */
+function enregistrerConfig() {
+  const f = $('#configForm');
+  return new Promise((resolve) => {
+    if (!f) { resolve(); return; }
+    f.addEventListener('mergerie:config-saved', resolve, { once: true });
+    f.requestSubmit();
+    // Filet : si l'enregistrement échoue, le test part quand même sur les valeurs de l'écran.
+    setTimeout(resolve, 4000);
+  });
+}
+
+/* ---------- La garde à vide, commune aux quatre boutons « Tester » ----------
+   Trois boutons jumeaux (Git, Jira, Jenkins) répondaient de trois façons : GitLab appelait
+   l'API avec des champs vides et rendait l'erreur du serveur, Jira ne répondait rien du tout,
+   Jenkins renvoyait un libellé de serveur. Une seule garde, et l'erreur se pose SOUS le
+   premier champ manquant — un test de connexion échoue à cause d'un champ, pas d'un écran. */
+function gardeConnexion(champs, message, info) {
+  const vide = champs.find((c) => c && !String(c.value || '').trim());
+  if (!vide) return true;
+  if (info) { info.textContent = ''; info.className = 'muted'; }
+  signalerChamp(vide, message);
+  return false;
+}
+
 /* ---------- Test de connexion GitLab (réutilise un endpoint existant) ---------- */
 const btnTestGitlab = $('#btnTestGitlab');
 if (btnTestGitlab) btnTestGitlab.addEventListener('click', async () => {
   const info = $('#configInfoGit') || $('#configInfo');
-  btnTestGitlab.disabled = true; info.textContent = tr('settings.test.running');
+  const fg = $('#configForm');
+  viderErreursChamps($('#sub-gitcfg'));
+  if (!gardeConnexion([fg.gitlab_url, fg.access_token], tr('err.gitlab-test-incomplet'), info)) return;
+  btnTestGitlab.disabled = true;
+  await enregistrerConfig();
+  info.textContent = tr('settings.test.running');
   try {
     /* On teste CE QUI EST À L'ÉCRAN, pas ce qui est en base : au premier lancement, on vient
        tout juste de taper l'URL et le jeton, et rien ne dit qu'il faut enregistrer d'abord.
@@ -13530,7 +13963,13 @@ if (btnTestGitlab) btnTestGitlab.addEventListener('click', async () => {
 const btnTestGithub = $('#btnTestGithub');
 if (btnTestGithub) btnTestGithub.addEventListener('click', async () => {
   const info = $('#configInfoGithub');
-  btnTestGithub.disabled = true; info.textContent = tr('settings.test.running');
+  const fh = $('#configForm');
+  viderErreursChamps($('#sub-gitcfg'));
+  /* L'URL GitHub, elle, peut rester vide : c'est github.com. Le jeton, non. */
+  if (!gardeConnexion([fh.github_token], tr('err.github-test-incomplet'), info)) return;
+  btnTestGithub.disabled = true;
+  await enregistrerConfig();
+  info.textContent = tr('settings.test.running');
   try {
     const f = $('#configForm');
     const r = await api('/github/test', { method: 'POST', body: {
@@ -13547,9 +13986,16 @@ if (btnTestGithub) btnTestGithub.addEventListener('click', async () => {
 const btnTestJira = $('#btnTestJira');
 if (btnTestJira) btnTestJira.addEventListener('click', async () => {
   const f = $('#configForm');
-  const key = prompt(tr('settings.jira.test-prompt'));
-  if (!key) return;
   const info = $('#configInfoJira') || $('#configInfo');
+  /* LA MÊME GARDE QUE GITLAB, avant tout appel. Le bouton ouvrait un `prompt()` du navigateur
+     et sortait sans un mot si on l'annulait — à vide il ne faisait donc rien du tout, au moment
+     précis où l'on cherche à savoir si la connexion marche. Trois boutons jumeaux (Git, Jira,
+     Jenkins) doivent répondre pareil. */
+  const champ = $('#jiraTestKey');
+  const key = (champ && champ.value.trim()) || '';
+  viderErreursChamps($('#sub-jiracfg'));
+  if (!gardeConnexion([f.jira_url, f.jira_email, f.jira_token], tr('err.jira-test-incomplet'), info)) return;
+  if (!key) { info.textContent = ''; signalerChamp(champ, tr('err.jira-test-sans-cle')); return; }
   info.textContent = tr('settings.jira.testing');
   try {
     // On envoie les valeurs SAISIES (URL/email/token) pour tester avant d'enregistrer.
@@ -13573,6 +14019,12 @@ const btnTestJenkins = $('#btnTestJenkins');
 if (btnTestJenkins) btnTestJenkins.addEventListener('click', async () => {
   const f = $('#configForm');
   const info = $('#configInfoJenkins') || $('#configInfo');
+  /* MÊME GARDE, MÊME PHRASE que Git et Jira. Le serveur répondait « Jenkins non configuré
+     (URL, utilisateur, jeton requis) » — une catégorie interne, et une formulation à part sur
+     trois boutons jumeaux. */
+  viderErreursChamps($('#sub-jenkinscfg'));
+  if (!gardeConnexion([f.jenkins_url, f.jenkins_user, f.jenkins_token], tr('err.jenkins-test-incomplet'), info)) return;
+  await enregistrerConfig();
   info.textContent = tr('settings.jenkins.testing');
   try {
     const r = await busy(btnTestJenkins, () => api('/jenkins/test', { method: 'POST', body: {
@@ -13764,7 +14216,9 @@ function renderCommandList(commands) {
     <input class="vc-cmd" type="text" value="${esc(c)}" placeholder="${esc(tr('settings.verifier.ph.command-line'))}" />
     <button type="button" class="btn vc-move" data-dir="-1" ${i === 0 ? 'disabled' : ''} title="${esc(tr('settings.verifier.btn.move-up'))}">${svgIco('up')}</button>
     <button type="button" class="btn vc-move" data-dir="1" ${i === liste.length - 1 ? 'disabled' : ''} title="${esc(tr('settings.verifier.btn.move-down'))}">${svgIco('down')}</button>
-    <button type="button" class="btn btn-danger vc-del" title="${esc(tr('ui.delete'))}">${svgIco('trash')}</button>
+    ${/* La corbeille n'apparaît qu'à partir de deux lignes : sur une commande unique, elle
+          propose de vider le seul champ obligatoire du bloc. */''}
+    ${liste.length > 1 ? `<button type="button" class="btn btn-danger vc-del" title="${esc(tr('ui.delete'))}">${svgIco('trash')}</button>` : ''}
   </div>`).join('');
 }
 
@@ -13978,8 +14432,11 @@ $('#btnNewVerifier') && $('#btnNewVerifier').addEventListener('click', () => {
   viderFormVerifier();
   ouvrirFormVerifier(true);
   const f = $('#verifierForm');
+  /* `preventScroll` : sans lui, le focus redéfile de son côté et annule le dégagement que
+     `scroll-margin-top` vient de ménager sous l'en-tête fixe — le champ « Nom » finissait
+     caché derrière, et on croyait que le formulaire commençait à « Commandes ». */
   f.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  f.name.focus();
+  f.name.focus({ preventScroll: true });
 });
 
 $('#btnVerifierCancel') && $('#btnVerifierCancel').addEventListener('click', () => {
@@ -13990,9 +14447,25 @@ $('#btnVerifierCancel') && $('#btnVerifierCancel').addEventListener('click', () 
 $('#verifierForm') && $('#verifierForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
+  /* UN VÉRIFICATEUR SANS DÉPÔT NE SERT À RIEN, et s'enregistrait sans un mot : il n'apparaît
+     ensuite dans aucune modale de lancement, et on cherche pourquoi. Même chose pour les
+     commandes — le serveur les refusait vides, mais en exposant son type interne
+     (« un vérificateur "commandes" a besoin… ») dans un toast à l'autre bout de l'écran. */
+  viderErreursChamps(f);
+  const commandes = commandesDuFormulaire();
+  if (!commandes.length) {
+    signalerChamp($('#verifierCommandList .vc-cmd'), tr('err.verifier-sans-commande'));
+    return;
+  }
+  if (!verifierReposFromForm().length) {
+    const boite = $('#verifierRepoBox');
+    erreurChamp(boite && boite.querySelector('input'), tr('err.verifier-sans-depot'));
+    if (boite) boite.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return;
+  }
   const body = {
     name: f.name.value.trim(),
-    commands: commandesDuFormulaire(),
+    commands: commandes,
     report_path: f.report_path.value.trim(),
     env: f.env.value,
     parse_tap: f.parse_tap.checked ? 1 : 0,
@@ -14025,7 +14498,7 @@ function verifyBadge(v) {
   if (!v) return `<span class="tag verify none" title="${esc(tr('verify.badge.none.title'))}">${esc(tr('verify.badge.none'))}</span>`;
   const suffixe = v.in_place ? ` ${tr('verify.badge.in-place')}` : '';
   if (v.stale) {
-    return `<span class="tag verify stale" data-vreport="${v.id}" title="${esc(tr('verify.badge.stale.title'))}">${svgIco('refresh')}${esc(tr('verify.badge.stale') + suffixe)}</span>`;
+    return `<button type="button" class="tag verify stale" data-vreport="${v.id}" title="${esc(tr('verify.badge.stale.title'))}">${svgIco('refresh')}${esc(tr('verify.badge.stale') + suffixe)} <span class="tag-cta">${esc(tr('verify.badge.see-report'))}</span></button>`;
   }
   /* Sans nom de test, on ne prétend pas en compter : le badge nomme la COMMANDE qui a
      échoué. Annoncer « 1 test cassé » là où on ne sait rien des tests serait une invention. */
@@ -14040,7 +14513,10 @@ function verifyBadge(v) {
     verify_error: ['warn', tr('verify.badge.error'), tr('verify.badge.error.title')],
   }[v.verdict];
   if (!par) return '';
-  return `<span class="tag verify ${par[0]}" data-vreport="${v.id}" title="${esc(par[2])}">${esc(par[1] + suffixe)}</span>`;
+  /* Le badge OUVRE le rapport : c'était un <span> cliquable, invisible au clavier et muet sur
+     ce qu'il fait. Un <button> le rend atteignable par Tab, et « · voir le rapport » dit la
+     porte au lieu de la laisser deviner au survol. */
+  return `<button type="button" class="tag verify ${par[0]}" data-vreport="${v.id}" title="${esc(par[2])}">${esc(par[1] + suffixe)} <span class="tag-cta">${esc(tr('verify.badge.see-report'))}</span></button>`;
 }
 
 /* ---------- Rapport de vérification ---------- */
@@ -14908,6 +15384,8 @@ function jkRow(j, colonnes = []) {
           ligne à l'autre, exactement là où l'œil venait de cliquer sur autre chose. */''}
     <div class="jk-actions">
       ${jkLienExterne(j.url)}
+      ${/* « Ouvrir » à côté d'une icône « ouvrir dans Jenkins » : deux fois le même verbe pour
+            deux destinations. Celui-ci reste DANS Mergerie et montre la fiche — « Détails ». */''}
       <button type="button" class="btn btn-sm" data-jkopen="${esc(j.path)}">${esc(tr('jenkins.open'))}</button>
       ${(() => {
         const peutRelancer = !!(j.buildable && j.last && (j.lastParams || []).length);
@@ -15322,9 +15800,27 @@ async function openJenkinsJob(chemin, { siParams = false } = {}) {
       : '';
     JENKINS.build = null;
     JENKINS.ficheFiltres = {};          // les filtres d'une fiche ne suivent pas d'un job à l'autre
-    $('#jenkinsModalBody').innerHTML = `${params}<div class="jk-fiche" id="jenkinsFiche"></div>`;
+    /* L'HISTORIQUE SE REPLIE QUAND IL Y A DES PARAMÈTRES À REMPLIR. Sur un job paramétré, la
+       fenêtre sert à lancer : déplié, « Derniers builds » repoussait le pied de modale à plus
+       d'un écran, et il fallait défiler pour trouver le bouton qu'on venait chercher. Sans
+       paramètre, la fiche EST l'historique : elle reste ouverte. */
+    const replie = d.parameters.length && d.buildable;
+    $('#jenkinsModalBody').innerHTML = params + (replie
+      ? `<details class="jk-fiche-repli"><summary>${esc(tr('jenkins.builds.show'))}</summary><div class="jk-fiche" id="jenkinsFiche"></div></details>`
+      : '<div class="jk-fiche" id="jenkinsFiche"></div>');
     renderJenkinsFiche();
     $('#jenkinsRun').hidden = !d.buildable;
+    /* LE TITRE PORTE LE VERBE quand la fenêtre sert à lancer : « boutique/api-deploy-prod »
+       seul ne dit pas ce qui va se passer. Et le focus va sur le PREMIER PARAMÈTRE — il
+       restait sur le bouton de la liste, donc hors de la fenêtre qui venait de s'ouvrir. */
+    if (d.parameters.length && d.buildable) {
+      $('#jenkinsModalTitle').textContent = tr('jenkins.modal.run-title', { job: chemin });
+      $('#jenkinsRun').querySelector('span').textContent = tr('jenkins.run.with-params');
+      const premier = $('#jenkinsModalBody .jk-param input, #jenkinsModalBody .jk-param select');
+      if (premier) premier.focus();
+    } else {
+      $('#jenkinsRun').querySelector('span').textContent = tr('jenkins.run');
+    }
   } catch (e) {
     // Une erreur se montre TOUJOURS : sinon le clic sur « Lancer » resterait sans réponse.
     modal.hidden = false;
@@ -15379,8 +15875,13 @@ async function relancerJenkins(chemin, params, caches) {
 /* LANCER DEMANDE CONFIRMATION. Un job Jenkins n'est pas une page qu'on ouvre : il déploie,
    il publie, il tourne sur une machine partagée. Le clic de trop n'est pas rattrapable
    depuis ici, et le nom du job dans la question est ce qui permet de s'en apercevoir. */
-async function lancerJenkins(chemin, parametres) {
-  if (!await confirmDialog({
+/* `confirmer` : la fiche paramétrée ne repose PAS la question. Remplir les paramètres d'un
+   déploiement, les relire et cliquer « Lancer avec ces paramètres » est déjà un geste
+   délibéré ; une seconde fenêtre qui redemande « lancer ce job ? » se clique sans la lire et
+   n'apprend plus rien. La confirmation reste pour le « Lancer » direct de la liste, où l'on
+   n'a rien vu du job. */
+async function lancerJenkins(chemin, parametres, { confirmer = true } = {}) {
+  if (confirmer && !await confirmDialog({
     title: tr('jenkins.confirm.title'), text: tr('jenkins.confirm.text', { job: chemin }),
     confirmLabel: tr('jenkins.run'),
   })) return false;
@@ -15526,7 +16027,7 @@ $('#jenkinsRun') && $('#jenkinsRun').addEventListener('click', async () => {
   const j = JENKINS.job;
   if (!j) return;
   // Lancé depuis la fiche : on la referme, le geste est fait et la liste redemande l'état.
-  if (await lancerJenkins(j.path, jkParamsSaisis())) $('#jenkinsModal').hidden = true;
+  if (await lancerJenkins(j.path, jkParamsSaisis(), { confirmer: !j.parameters.length })) $('#jenkinsModal').hidden = true;
 });
 
 document.addEventListener('click', (e) => {

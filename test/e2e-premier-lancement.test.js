@@ -164,17 +164,22 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
     assert.deepEqual(vide.map((s) => s.texte), ['0', '0', '0'], 'et le vrai zéro, lui, s’affiche');
   });
 
-  /* LE DÉCROCHAGE LE PLUS GRAVE : on saisit l'URL et le jeton, on clique « Tester la
-     connexion » — le bouton le plus engageant de l'écran — et on se fait répondre que le
-     jeton n'est pas configuré. Le test doit porter sur CE QUI EST À L'ÉCRAN. */
-  test('« Tester la connexion » teste le formulaire, et dit quoi faire quand il est vide', async () => {
+  /* LE DÉCROCHAGE LE PLUS GRAVE : on saisit l'URL et le jeton, on clique le bouton le plus
+     engageant de l'écran — et on se fait répondre que le jeton n'est pas configuré. Le test
+     doit porter sur CE QUI EST À L'ÉCRAN. Et l'arrivée depuis l'assistant pose le curseur :
+     l'écran changeait sans que le curseur suive, il fallait viser le premier champ. */
+  test('« Enregistrer et tester » part du formulaire, et dit sous le champ ce qui manque', async () => {
     await page.locator('#toReviewList [data-empty-act="go-config"]').click();
     await page.waitForSelector('#btnTestGitlab', { timeout: ATTENTE });
+    assert.equal(await page.evaluate(() => document.activeElement.name), 'gitlab_url',
+      'on arrive sur le champ, pas sur un bouton qui n’existe plus');
 
     await page.locator('#btnTestGitlab').click();
-    await page.waitForSelector('#toasts .toast', { timeout: ATTENTE });
-    assert.match(await page.locator('#toasts .toast').first().innerText(), /Renseigne/i,
-      'champs vides : on dit quoi faire, on n’expose pas une catégorie interne');
+    await page.waitForSelector('#sub-gitcfg .field-error', { timeout: ATTENTE });
+    assert.match(await page.locator('#sub-gitcfg .field-error').first().innerText(), /Renseigne/i,
+      'champs vides : on dit quoi faire, sous le champ, sans exposer de catégorie interne');
+    assert.equal(await page.locator('#toasts .toast').count(), 0,
+      'une erreur de champ n’est pas un toast : le toast annonce un RÉSULTAT d’action');
 
     await page.locator('input[name="gitlab_url"]').fill(app.gitlabUrl);
     await page.locator('input[name="access_token"]').fill(app.state.token);
@@ -185,8 +190,11 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
       null, { timeout: ATTENTE },
     );
     assert.match(await page.locator('#configInfoGit').innerText(), /projet/i);
-    assert.equal((await app.api('GET', '/api/config')).body.gitlab_url, '',
-      'tester n’enregistre rien — sinon le bouton « Enregistrer » ne voudrait plus rien dire');
+    /* LE PARCOURS NOMINAL EN UN CLIC : le bouton principal ENREGISTRE puis teste. Deux boutons
+       de même poids laissaient le choix de l'ordre — et tester sans enregistrer donnait un vert
+       qui ne survivait pas au rechargement. « Enregistrer seulement » reste à côté. */
+    assert.equal((await app.api('GET', '/api/config')).body.gitlab_url, app.gitlabUrl,
+      '« Enregistrer et tester » fait bien les deux');
   });
 
   test('l’étape 1 se coche dès que la connexion est enregistrée', async () => {
@@ -208,6 +216,23 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
       'trois boutons sans progression ne sont pas un assistant');
     assert.equal(await premiere.locator('button').count(), 0,
       'une étape faite ne propose plus de la faire');
+  });
+
+  test('l’onglet Git sans dépôt suivi montre un vide guidé, pas trois impasses', async () => {
+    /* AVANT le test qui ajoute un dépôt : c'est justement l'écran « aucun dépôt suivi » qu'on
+       éprouve. Il affichait une ligne de projet désactivée portant « (ajoute d'abord un dépôt) »,
+       un combo de branches bloqué sur « chargement… » et un bouton « Vérifier une branche » seul
+       en haut — trois impasses au lieu d'une porte. */
+    await page.locator('nav button[data-tab="git"]').click();
+    await page.waitForSelector('#gitNoRepo .empty', { timeout: ATTENTE });
+    assert.match(await page.locator('#gitNoRepo .empty-t').textContent(), /Aucun dépôt suivi/);
+    assert.equal(await page.locator('#gitNoRepo [data-empty-act="go-repos"]').count(), 1,
+      'et la porte est là : Réglages → Dépôts');
+    assert.equal(await page.locator('#gsub-actions .form').evaluate((e) => e.hidden), true,
+      'le formulaire disparaît avec ses impasses : deux réponses à la même question en font une de trop');
+    /* « Vérifier une branche » a quitté le haut de l'écran pour la rangée d'actions, à côté de
+       « Prévisualiser » : un bouton se lit avec ce sur quoi il porte. */
+    assert.equal(await page.locator('#gsub-actions .form-actions #btnVerifyBranch').count(), 1);
   });
 
   test('l’étape 2 se coche dès qu’un dépôt est ajouté', async () => {
