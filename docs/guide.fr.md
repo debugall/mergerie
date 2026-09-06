@@ -219,8 +219,7 @@ Les trois stades d'une même merge request, réunis derrière un filtre segment�
   injecté dans le prompt, pour ajuster avant de lancer. Si la branche vient d'une **session de codage**,
   son **identifiant de session est pré-rempli** : l'IA reprend le fil de son propre travail au lieu de
   redécouvrir un code qu'elle vient d'écrire. C'est une proposition, pas une règle — le lien est déduit
-  du dépôt et de la branche, ce qui n'est pas une preuve : vider le champ repart d'une session neuve. Les sessions ouvertes depuis une MR proposent
-  **Créer sans lancer** en plus de **Créer et lancer**, pour préparer maintenant et exécuter plus tard.
+  du dépôt et de la branche, ce qui n'est pas une preuve : vider le champ repart d'une session neuve.
 - **Chaque passe de review est conservée.** Relancer une review ou régénérer un rapport n'écrase plus
   le précédent : un **sélecteur de version** apparaît dans le rapport dès la deuxième passe
   (`v2 — actuelle · 20/07 14:30 · 7,8/10`) et permet de **relire une review antérieure**, avec un
@@ -350,9 +349,9 @@ dossiers, branche de départ, options, vérificateur — sauf ce qui suit, dit s
   qu'on **lit** : elle se recopie telle quelle, la décaler pointerait vers une branche inexistante ;
 - les **images** attachées à l'originale ne sont pas copiées ; leur nombre est rappelé.
 
-Les boutons sont ceux d'une création de cette saveur — `Enregistrer` en codage et exploration,
-`Lancer` accompagné de `Créer sans lancer` hors dépôt : un bouton qui changerait de sens selon qu'on
-crée ou qu'on copie serait un piège. Tout reste modifiable avant d'enregistrer : c'est une
+Les boutons sont ceux d'une création — `Créer et lancer` accompagné de `Créer sans lancer`,
+comme partout ailleurs : un bouton qui changerait de sens selon qu'on crée ou qu'on copie serait un
+piège. Tout reste modifiable avant d'enregistrer : c'est une
 proposition, pas un décalque.
 
 **Le formulaire raconte quatre choses, dans l'ordre.** Il est le même pour les quatre saveurs et
@@ -452,8 +451,10 @@ voisine avec ceux dont on se sert tout le temps, et le clic de trop coûte une s
 **toute première** mise en route, elle, reste un seul clic : il n'y a rien à protéger. Vaut aussi pour
 le `Relancer` d'un projet en particulier.
 
-**Créer maintenant, lancer plus tard.** Les trois types de session proposent **`Créer sans lancer`** à
-côté de **`Créer et lancer`** : on prépare le prompt et les cibles, on lance quand on veut.
+**Créer maintenant, lancer plus tard.** Les **quatre** saveurs de session — codage, codage hors
+dépôt, exploration, question libre — et les sessions ouvertes depuis une merge request portent les
+deux mêmes boutons : **`Créer et lancer`** (le geste principal, en un clic) et **`Créer sans
+lancer`** à côté, pour préparer le prompt et les cibles et lancer quand on veut.
 
 **Vérifier après, sans y penser.** Un champ facultatif **`Vérifier après`** à la création d'une
 session de codage : le vérificateur choisi part **tout seul, une fois, à la fin** — après la

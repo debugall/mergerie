@@ -213,8 +213,7 @@ overridden at launch**. A
   adjust before launching. If the branch came from a **coding session**, its **session id is pre-filled**:
   the AI picks up the thread of its own work instead of rediscovering code it just wrote. It is a
   suggestion, not a rule — the link is inferred from the repository and the branch, which is not proof:
-  clearing the field starts from a fresh session. Sessions opened from an MR offer **Create without
-  running** alongside **Create and run**, to prepare now and execute later.
+  clearing the field starts from a fresh session.
 - **Every review pass is kept.** Re-running a review or regenerating a report no longer overwrites the
   previous one: a **version selector** appears in the report from the second pass on
   (`v2 — current · 20/07 14:30 · 7.8/10`) and lets you **re-read an earlier review**, with a banner
@@ -343,9 +342,9 @@ branch, options, verifier — except the following, stated under the prompt:
   is copied as is, shifting it would point at a branch that does not exist;
 - the **images** attached to the original are not copied; their number is stated.
 
-The buttons are those of creating a session of that flavour — `Save` for coding and exploration,
-`Run` alongside `Create without running` for out-of-repo: a button that changed meaning depending
-on whether you create or copy would be a trap. Everything stays editable before saving: it is a
+The buttons are those of a creation — `Create and run` alongside `Create without running`, as
+everywhere else: a button that changed meaning depending on whether you create or copy would be a
+trap. Everything stays editable before saving: it is a
 proposal, not a carbon copy.
 
 **The form tells four things, in order.** It is the same form for all four flavours and rearranges
@@ -444,8 +443,10 @@ The button sits next to the ones you use all the time, and one click too many co
 The **very first** run stays a single click: there is nothing to protect. The same applies to the
 `Run again` of one particular project.
 
-**Create now, run later.** All three session types offer **`Create without running`** next to
-**`Create and run`**: you prepare the prompt and the targets, and launch when you want.
+**Create now, run later.** All **four** session flavours — coding, out-of-repo coding, exploration,
+free question — and sessions opened from a merge request carry the same two buttons:
+**`Create and run`** (the main gesture, one click) and **`Create without running`** next to it, to
+prepare the prompt and the targets and launch when you want.
 
 **Verify afterwards, without thinking about it.** An optional **`Verify afterwards`** field when
 creating a coding session: the chosen verifier runs **by itself, once, at the end** — after

@@ -131,17 +131,24 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
     message de commit, reprise d'une session d'agent) sont regroupés sous **Avancé**, qui ferme
     le formulaire — déplié, mais repliable d'un clic. Joindre un fichier redevient une ligne au
     lieu d'une zone pointillée vide de 80 pixels.
-  - **Un verbe par effet.** La même fenêtre disait « Lancer le codage », « Poser la question » et
-    « Créer et lancer » pour un seul et même geste, selon la saveur de session. Deux libellés
-    suffisent désormais et se lisent l'un contre l'autre : **« Créer et lancer »** lance,
-    **« Créer la session »** ne lance pas, **« Créer sans lancer »** le répète à côté.
+  - **Un verbe par effet, et le parcours principal en un geste.** La même fenêtre disait
+    « Lancer le codage », « Poser la question » et « Créer et lancer » pour un seul et même
+    geste, selon la saveur de session — et deux saveurs sur quatre (codage, exploration)
+    n'offraient **aucun** lancement : on créait, on fermait la fenêtre, on retrouvait la carte
+    dans Dev IA, on cliquait « Lancer ». Les quatre saveurs portent maintenant les deux mêmes
+    boutons, qui se lisent l'un contre l'autre : **« Créer et lancer »** (principal) crée puis
+    lance, **« Créer sans lancer »** crée et s'arrête — préparer maintenant et déclencher plus
+    tard reste possible, c'est même le seul endroit qui le permet.
   - **« Converger » quitte le pied de la modale** — deux boutons pleins côte à côte, dont un sans
     un mot d'explication. C'est maintenant une case sous « Vérifier après », qui annonce ce
     qu'elle promet : « …puis converger jusqu'à 8/10 (3 passes max) », seuil et plafond lus dans
     les réglages. La convergence d'une session déjà écrite reste sur sa carte.
-  - **Une erreur de champ s'affiche sous le champ.** C'est la règle, et elle s'applique
-    maintenant aux quatre boutons « tester une connexion », au lien libre et au nom de branche
-    d'une session : un toast n'annonce plus qu'un **résultat d'action**. Et un toast d'erreur ne
+  - **Une erreur de champ s'affiche sous le champ** — sous la *rangée* quand le champ vit dans
+    une ligne de projet, où le message se rangeait comme une colonne de plus : il écrasait
+    « Branche de départ » de 285 à 157 px et renvoyait le « × » du projet à la ligne suivante.
+    C'est la règle, et elle s'applique maintenant aux quatre boutons « tester une connexion »,
+    au lien libre et au nom de branche d'une session : un toast n'annonce plus qu'un
+    **résultat d'action**. Et un toast d'erreur ne
     s'installe plus à demeure — il part au bout de huit secondes, s'arrête tant que la souris est
     dessus, et **meurt avec la modale qui l'a produit**.
   - **Réglages → Merge Request se lit en trois groupes titrés** — Review, Automatisation,

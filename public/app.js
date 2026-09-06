@@ -75,10 +75,17 @@ function erreurChamp(champ, message) {
     p = document.createElement('p');
     p.className = 'field-error';
     p.id = idErr;
-    /* Après le champ, ou après son enveloppe quand il en a une (un combo, une case dans un
-       label) : glissé DANS le combo, le message serait rogné par son `overflow`. */
+    /* OÙ SE POSE LE MESSAGE. Après le champ, ou après son enveloppe quand il en a une (un
+       combo, une case dans un label) : glissé DANS le combo, il serait rogné par son
+       `overflow`.
+       SAUF DANS UNE RANGÉE DE PROJET, qui est une ligne flex : inséré au milieu, le message
+       devenait une COLONNE de plus — il écrasait « Branche de départ » de 285 à 157 px et
+       renvoyait le « × » à la ligne suivante. Il va donc à la FIN de la rangée, où il occupe
+       sa propre ligne sous les champs qu'il concerne (le champ fautif reste bordé de rouge et
+       lié par `aria-describedby`). */
+    const rangee = champ.closest('.target-row');
     const apres = champ.closest('.combo, .inline-check') || champ;
-    apres.insertAdjacentElement('afterend', p);
+    if (rangee) rangee.appendChild(p); else apres.insertAdjacentElement('afterend', p);
   }
   p.textContent = message;
   champ.classList.add('is-invalid');
@@ -5000,26 +5007,7 @@ async function openTaskModal(kind = taskKind) {
   if (kind !== 'ask') await majVerificateursSession('');
   $('#taskModalTitle').textContent = KIND_LABEL[kind].title;
   $('#taskExistingImgs').textContent = '';
-  /* Codage hors dépôt : le bouton principal crée ET lance, c'est le geste courant. Mais
-     « Créer sans lancer » l'accompagne, comme pour une session de codage ouverte depuis
-     une MR — préparer un traitement et le déclencher plus tard est un besoin légitime, et
-     rien ne le permettait ici. Codage et exploration, eux, enregistrent sans lancer : leur
-     bouton principal EST déjà le « sans lancer ». */
-  /* Une question libre se pose POUR obtenir la réponse : le bouton principal crée et lance,
-     comme hors dépôt. « Créer sans lancer » reste disponible à côté. */
-  launchAfterCreate = kind === 'local' || kind === 'ask';
-  /* « Enregistrer » ne disait pas ce qu'on enregistrait, sur une fenêtre qui en fait bien plus
-     qu'un formulaire de réglage. Pas « Lancer la session » pour autant : sur une session de
-     codage ce bouton CRÉE sans lancer — c'est la carte de Dev IA qui lance ensuite —, et le
-     libellé mentirait à l'endroit exact où l'on hésite.
-     UN VERBE PAR EFFET : la même modale disait « Lancer le codage », « Poser la question » et
-     « Créer et lancer » pour un seul et même effet, selon la saveur. Deux libellés suffisent et
-     se lisent l'un contre l'autre — « Créer et lancer » lance, « Créer la session » ne lance
-     pas, et le secondaire « Créer sans lancer » dit la même chose que le second. */
-  $('#taskSubmit').innerHTML = launchAfterCreate
-    ? `<svg class="ico"><use href="#i-play"/></svg>${tr('task.btn.create-run')}`
-    : `<svg class="ico"><use href="#i-save"/></svg>${tr('task.btn.create-session')}`;
-  $('#taskSubmitOnly').hidden = !launchAfterCreate;
+  boutonsCreation();
   showTaskModal();
   f.prompt.focus();
 }
@@ -5045,7 +5033,6 @@ async function openTaskForMr(m, opts = {}) {
   // branche de travail = la branche de la MR ; départ = sa branche cible
   renderTargetRows([{ repo_id: m.repo_id, branch: m.source_branch, base_branch: m.target_branch }]);
   setupTaskJira(m.source_branch);
-  launchAfterCreate = true;
   if (opts.prompt) f.prompt.value = opts.prompt;
   if (opts.commitMessage && f.commit_message) f.commit_message.value = opts.commitMessage;
   /* Reprendre la session de codage d'origine évite à l'IA de redécouvrir un code qu'elle vient
@@ -5057,8 +5044,7 @@ async function openTaskForMr(m, opts = {}) {
   if (hint && opts.sessionId) { hint.textContent = tr('task.session-id.from-mr'); hint.hidden = false; hint.dataset.keep = '1'; }
   $('#taskModalTitle').textContent = opts.title || `Faire coder l'IA sur ${m.source_branch}`;
   $('#taskExistingImgs').textContent = tr('task.from-mr', { branch: m.source_branch, iid: m.iid });
-  $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-play"/></svg>${tr('task.btn.create-run')}`;
-  $('#taskSubmitOnly').hidden = false;
+  boutonsCreation();
   showTaskModal();
   f.prompt.focus();
 }
@@ -5091,8 +5077,7 @@ async function openTaskForJira(key) {
   }
   $('#taskModalTitle').textContent = tr('jira.code-modal-title', { key });
   $('#taskExistingImgs').textContent = issue ? tr('jira.code-from', { key: issue.key, summary: issue.summary || '' }) : '';
-  $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-play"/></svg>${tr('task.btn.create-run')}`;
-  $('#taskSubmitOnly').hidden = false;
+  boutonsCreation();
   showTaskModal();
   f.prompt.focus();
   // Curseur après le bloc de contexte : on écrit SA demande, pas au milieu du ticket.
@@ -5181,7 +5166,7 @@ async function dupliquerTask(id) {
   if (f.session_id) f.session_id.value = '';
   $('#taskModalTitle').textContent = tr(decale ? 'task.duplicate.title' : 'task.duplicate.title-explore');
   infoDuplication(decale, (d.images && d.images.length) || 0);
-  boutonsCreation(taskKind);
+  boutonsCreation();
   showTaskModal();
   f.prompt.focus();
 }
@@ -5195,22 +5180,26 @@ function infoDuplication(brancheDecalee, nImages) {
   $('#taskExistingImgs').textContent = bouts.join(' ');
 }
 
-/* Les boutons d'une CRÉATION, exactement comme pour une session neuve de cette saveur : un
-   bouton qui changerait de sens selon qu'on crée ou qu'on copie serait un piège. */
-function boutonsCreation(kind) {
-  launchAfterCreate = kind === 'local' || kind === 'ask';
-  /* « Enregistrer » ne disait pas ce qu'on enregistrait, sur une fenêtre qui en fait bien plus
-     qu'un formulaire de réglage. Pas « Lancer la session » pour autant : sur une session de
-     codage ce bouton CRÉE sans lancer — c'est la carte de Dev IA qui lance ensuite —, et le
-     libellé mentirait à l'endroit exact où l'on hésite.
-     UN VERBE PAR EFFET : la même modale disait « Lancer le codage », « Poser la question » et
-     « Créer et lancer » pour un seul et même effet, selon la saveur. Deux libellés suffisent et
-     se lisent l'un contre l'autre — « Créer et lancer » lance, « Créer la session » ne lance
-     pas, et le secondaire « Créer sans lancer » dit la même chose que le second. */
-  $('#taskSubmit').innerHTML = launchAfterCreate
-    ? `<svg class="ico"><use href="#i-play"/></svg>${tr('task.btn.create-run')}`
-    : `<svg class="ico"><use href="#i-save"/></svg>${tr('task.btn.create-session')}`;
-  $('#taskSubmitOnly').hidden = !launchAfterCreate;
+/* Les boutons d'une CRÉATION, quelle que soit la saveur et quel que soit le point d'entrée
+   (session neuve, duplication) : un bouton qui changerait de sens selon qu'on crée ou qu'on
+   copie serait un piège.
+
+   UN VERBE PAR EFFET, ET LE PARCOURS PRINCIPAL EN UN GESTE. La modale disait « Lancer le
+   codage », « Poser la question » et « Créer et lancer » pour un seul et même effet, selon la
+   saveur ; et deux saveurs sur quatre n'offraient PAS de lancement du tout — on créait, on
+   fermait, on retrouvait la carte dans Dev IA, on cliquait « Lancer ». Deux boutons suffisent,
+   les mêmes partout, et ils se lisent l'un contre l'autre :
+
+     — « Créer et lancer »  (primaire)   crée PUIS lance : c'est ce qu'on vient faire ;
+     — « Créer sans lancer » (secondaire) crée et s'arrête : préparer maintenant, déclencher
+       plus tard reste un besoin légitime, et c'est le seul endroit qui le permet.
+
+   L'ÉDITION n'a ni l'un ni l'autre : elle enregistre (voir les appelants qui posent
+   `launchAfterCreate = false` et masquent le secondaire). */
+function boutonsCreation() {
+  launchAfterCreate = true;
+  $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-play"/></svg>${tr('task.btn.create-run')}`;
+  $('#taskSubmitOnly').hidden = false;
 }
 
 /* DUPLIQUER une session HORS DÉPÔT. Même geste, mais son propre câblage : les dossiers sont
@@ -5238,7 +5227,7 @@ async function dupliquerLocalTask(id) {
   if (f.session_id) f.session_id.value = '';
   $('#taskModalTitle').textContent = tr('task.duplicate.title-local');
   infoDuplication(false, (d.images && d.images.length) || 0);
-  boutonsCreation('local');
+  boutonsCreation();
   showTaskModal();
   f.prompt.focus();
 }

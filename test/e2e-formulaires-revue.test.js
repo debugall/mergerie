@@ -52,7 +52,23 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
      ouverte au suivant, qui échouerait alors pour une autre raison que la sienne — et le
      diagnostic porterait sur le mauvais écran. */
   async function ecranPropre() {
-    await page.evaluate(() => document.querySelectorAll('.modal').forEach((m) => { m.hidden = true; }));
+    await page.evaluate(() => {
+      document.querySelectorAll('.modal').forEach((m) => { m.hidden = true; });
+      // Le toast de SUCCÈS du test précédent vit 3,5 s : sans ça, il se compte dans le suivant.
+      document.querySelectorAll('.toast').forEach((t) => t.remove());
+    });
+  }
+
+  /* Attendre une CONDITION DU SERVEUR depuis le test, jamais depuis la page : un prédicat
+     `async` passé à `page.waitForFunction` n'est jamais attendu par Playwright. */
+  async function attendre(cond, quoi, ms = ATTENTE) {
+    const fin = Date.now() + ms;
+    for (;;) {
+      const v = await cond();
+      if (v) return v;
+      if (Date.now() > fin) throw new Error(`délai dépassé : ${quoi}`);
+      await new Promise((r) => setTimeout(r, 100));
+    }
   }
 
   async function ouvrirSession(kind = 'code') {
@@ -98,21 +114,40 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     await fermerSession();
   });
 
-  test('un verbe par effet : « Créer et lancer » lance, « Créer la session » non', async () => {
-    await ouvrirSession('code');
-    assert.deepEqual(await page.$$eval('#taskModal .modal-actions button',
-      (els) => els.filter((e) => !e.hidden).map((e) => e.textContent.trim())),
-    ['Annuler', 'Créer la session'], 'une session de codage se crée sans se lancer');
-    await fermerSession();
-
-    for (const kind of ['local', 'ask']) {
+  test('un verbe par effet, et le même pied dans les quatre saveurs', async () => {
+    /* Deux saveurs sur quatre n'offraient AUCUN lancement : on créait, on fermait, on
+       retrouvait la carte dans Dev IA, on cliquait « Lancer ». Le parcours principal doit
+       tenir en un geste — et le second bouton dit exactement ce qu'il fait de moins. */
+    for (const kind of ['code', 'explore', 'local', 'ask']) {
       await ouvrirSession(kind);
       assert.deepEqual(await page.$$eval('#taskModal .modal-actions button',
         (els) => els.filter((e) => !e.hidden).map((e) => e.textContent.trim())),
       ['Annuler', 'Créer sans lancer', 'Créer et lancer'],
       `${kind} : le même effet porte le même mot, quelle que soit la saveur`);
+      assert.equal(await page.locator('#taskSubmit').evaluate((e) => e.classList.contains('btn-primary')), true,
+        `${kind} : c’est le lancement qui est le geste principal`);
       await fermerSession();
     }
+  });
+
+  test('« Créer et lancer » lance vraiment une session de codage', async () => {
+    /* Le libellé promet deux effets : le test les constate tous les deux côté serveur — la
+       session existe, et un job la fait tourner. Lire le toast prouverait le toast. */
+    await ouvrirSession('code');
+    await page.fill('#taskForm textarea[name="prompt"]', 'ajoute un endpoint /health');
+    await page.fill('#targetRows .target-row input.t-branch', 'ai/health');
+    await page.click('#taskSubmit');
+    await page.waitForFunction(() => document.querySelector('#taskModal').hidden, null, { timeout: ATTENTE });
+
+    const creee = await attendre(async () => {
+      const r = await app.api('GET', '/api/tasks');
+      return (r.body || []).find((t) => /health/.test(t.prompt || ''));
+    }, 'la session est créée');
+    await attendre(async () => {
+      const r = await app.api('GET', `/api/tasks/${creee.id}`);
+      // « new » = créée et jamais lancée : c'est exactement ce que le bouton promet d'éviter.
+      return r.body && r.body.status !== 'new';
+    }, 'elle est partie sans qu’on ait à la relancer depuis sa carte');
   });
 
   test('« Converger » quitte le pied et devient une case qui dit son seuil', async () => {
@@ -221,12 +256,12 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     await page.click('#btnTestGitlab');
     await page.waitForSelector('#sub-gitcfg .field-error', { timeout: ATTENTE });
     assert.match(await page.locator('#sub-gitcfg .field-error').first().textContent(), /URL GitLab/);
-    assert.equal(await page.locator('.toast').count(), 0, 'une erreur de champ n’est pas un toast');
+    assert.equal(await page.locator('.toast.err').count(), 0, 'une erreur de champ n’est pas un toast');
 
     await ouvrirReglages('jenkinscfg');
     await page.click('#btnTestJenkins');
     await page.waitForSelector('#sub-jenkinscfg .field-error', { timeout: ATTENTE });
-    assert.equal(await page.locator('.toast').count(), 0);
+    assert.equal(await page.locator('.toast.err').count(), 0);
   });
 
   test('Entrée enregistre, et le dit', async () => {
@@ -308,8 +343,36 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     await page.click('#freeSave');
     await page.waitForSelector('#freeLinkModal .field-error', { timeout: ATTENTE });
     assert.match(await page.locator('#freeLinkModal .field-error').first().textContent(), /libellé/i);
-    assert.equal(await page.locator('.toast').count(), 0);
+    assert.equal(await page.locator('.toast.err').count(), 0);
     await page.click('#freeCancel');
+  });
+
+  test('l’erreur de branche se pose SOUS la rangée, sans écraser les champs voisins', async () => {
+    /* Elle s'insérait entre « Branche de travail » et « Branche de départ », dans une ligne
+       flex : elle devenait une colonne de plus, écrasait la branche de départ de 285 à 157 px
+       et renvoyait le « × » du projet à la ligne suivante. */
+    await ouvrirSession('code');
+    const geo = () => page.$$eval('#targetRows .target-row > *', (els) => els.map((x) => {
+      const r = x.getBoundingClientRect();
+      return { cls: (x.className || '').split(' ')[0] || x.tagName, y: Math.round(r.y), w: Math.round(r.width) };
+    }));
+    const avant = await geo();
+
+    await page.fill('#taskForm textarea[name="prompt"]', 'une tâche');
+    await page.fill('#targetRows .target-row input.t-branch', '');
+    await page.click('#taskSubmit');
+    await page.waitForSelector('#targetRows .field-error', { timeout: ATTENTE });
+
+    const apres = await geo();
+    assert.deepEqual(apres.slice(0, avant.length), avant,
+      'aucun champ de la rangée ne bouge ni ne rétrécit : le message n’est pas une colonne');
+    const err = apres[apres.length - 1];
+    assert.equal(err.cls, 'field-error', 'le message ferme la rangée');
+    const branche = await page.locator('#targetRows .target-row input.t-branch')
+      .evaluate((e) => Math.round(e.getBoundingClientRect().bottom));
+    assert.ok(err.y >= branche, `le message est sous le champ (${err.y} ≥ ${branche})`);
+    assert.equal(await page.locator('.toast.err').count(), 0);
+    await fermerSession();
   });
 
   test('la palette dit comment la rouvrir', async () => {
