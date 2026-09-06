@@ -435,7 +435,15 @@ async function enregistrer(lang) {
         return;
       }
       await cap(page, T.verifAuto);
-      await clickEl(page, page.locator('#toReviewList [data-vresults]').first());
+      /* « Voir le résultat » a quitté la carte pour le menu « ⋯ » (trois actions fixes + un
+         menu : la colonne de boutons redevient un rail). L'entrée existe donc dans le DOM
+         mais reste INVISIBLE tant que le menu est fermé — la cliquer directement expirait.
+         On ouvre le menu de LA carte qui porte le résultat, pas d'une carte voisine. */
+      const carteVerif = page.locator('#toReviewList .card').filter({ has: page.locator('[data-vresults]') }).first();
+      await clickEl(page, carteVerif.locator('[data-more]').first());
+      await page.waitForSelector('#toReviewList .split-menu:not([hidden])', { state: 'visible', timeout: 6000 }).catch(() => {});
+      await sleep(650);
+      await clickEl(page, carteVerif.locator('[data-vresults]').first());
       await page.waitForSelector('#verifyModal .verify-bloc', { state: 'visible', timeout: 8000 }).catch(() => {});
       await glide(page, W * 0.5, H * 0.45);
       await sleep(4200);
@@ -617,11 +625,18 @@ async function enregistrer(lang) {
          chacun » : ouvert sur un job qui n'en a pas, l'écran dit « cette exécution est partie
          sans paramètre » pendant qu'on affirme le contraire. */
       await cap(page, T.jenkinsDetail);
-      const parametre = page.locator('#jenkinsBox .jk-row[data-jkjob="boutique/api-deploy-prod"]');
+      // `data-jkjob` porte sur le bouton du NOM, à l'intérieur de la ligne — pas sur la ligne.
+      const parametre = page.locator('#jenkinsBox [data-jkjob="boutique/api-deploy-prod"]');
       const cible = (await parametre.count()) ? parametre.first() : jobs.first();
       if (!(await parametre.count())) warnings.push('« Jenkins · historique » : job paramétré absent, ouvert sur le premier de la liste');
       await clickEl(page, cible);
-      await page.waitForSelector('#jenkinsFiche', { state: 'visible', timeout: 10000 }).catch(() => {});
+      await page.waitForSelector('#jenkinsFiche', { state: 'attached', timeout: 10000 }).catch(() => {});
+      /* SUR UN JOB PARAMÉTRÉ, L'HISTORIQUE EST REPLIÉ à l'ouverture (la fenêtre sert alors à
+         lancer, et « Derniers builds » déplié repoussait le bouton hors écran). La légende,
+         elle, annonce « l'historique run par run » : on le déplie donc avant de filmer,
+         sinon on commente un panneau fermé. */
+      const repli = page.locator('.jk-fiche-repli:not([open]) > summary');
+      if (await repli.count()) { await clickEl(page, repli.first()); await sleep(800); }
       await sleep(1200);
       await glide(page, W * 0.35, H * 0.5);
       await sleep(2600);
