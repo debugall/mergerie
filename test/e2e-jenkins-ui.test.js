@@ -28,6 +28,12 @@ try {
    son état. Mieux vaut attendre longtemps pour rien que rendre un rouge qui ne veut rien dire. */
 const ATTENTE_ECRAN = 20000;
 
+/* Le PREMIER aller-retour réseau du fichier mérite plus large : il paie le démarrage du faux
+   serveur, la première requête du navigateur et, sur un runner à deux cœurs, la contention de
+   toutes les suites qui tournent en même temps. Vingt secondes suffisent d'ordinaire et pas
+   toujours — et son échec entraîne les vingt-neuf tests suivants, qui dépendent de son état. */
+const ATTENTE_RESEAU = 60000;
+
 /* Attend qu'une condition côté SERVEUR devienne vraie. Un `waitForTimeout` fixe est un pari
    sur la vitesse de la machine : il tient en local et lâche sur un runner à deux cœurs. */
 async function attendreServeur(cond, quoi, ms = 15000) {
@@ -167,8 +173,21 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.locator('[name="jenkins_user"]').fill(mock.state.user);
     await page.locator('[name="jenkins_token"]').fill(mock.state.token);
     await page.locator('#btnTestJenkins').click();
-    await page.waitForFunction(() => /Moi Même/.test(document.querySelector('#configInfoJenkins').textContent),
-      null, { timeout: ATTENTE_ECRAN });
+    /* CE QUE L'ÉCRAN A VRAIMENT MONTRÉ, quand l'attente échoue.
+       Ce test est le premier du fichier à toucher le réseau, et son échec entraîne les vingt-neuf
+       suivants : sans ce message, on lit « Timeout 20000ms » et on ne sait pas si la requête a
+       échoué, si le bouton n'a rien déclenché, ou si la machine était simplement lente. Le
+       gestionnaire vide le libellé et affiche une bulle en cas d'erreur : on relève les deux. */
+    try {
+      await page.waitForFunction(() => /Moi Même/.test(document.querySelector('#configInfoJenkins').textContent),
+        null, { timeout: ATTENTE_RESEAU });
+    } catch (e) {
+      const vu = await page.evaluate(() => ({
+        info: (document.querySelector('#configInfoJenkins') || {}).textContent,
+        toasts: [...document.querySelectorAll('#toasts .toast')].map((t) => t.textContent).join(' | '),
+      }));
+      throw new Error(`${e.message}\n  #configInfoJenkins = ${JSON.stringify(vu.info)}\n  bulles = ${JSON.stringify(vu.toasts)}`);
+    }
 
     await page.locator('#sub-jenkinscfg button[type="submit"]').first().click();
     /* On attend que le SERVEUR ait la valeur, pas un délai. Recharger 300 ms après le clic
@@ -474,11 +493,23 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 6);
   });
 
-  test('un job désactivé n’a pas de bouton « Lancer »', async () => {
+  /* Le bouton reste À SA PLACE mais inerte : absent, il décalait « Lancer » d'une ligne à
+     l'autre, et c'est le bleu qu'on vise sans relire. Ce qui compte est qu'il soit
+     incliquable — proposer de lancer ce que Jenkins refusera est une promesse qu'on ne tient
+     pas — et qu'il DISE pourquoi. */
+  test('un job désactivé porte un « Lancer » inerte, qui dit pourquoi', async () => {
     await allerJenkins();
-    const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'archive' }).first();
-    assert.equal(await ligne.locator('[data-jkrun]').count(), 0,
-      'proposer de lancer ce que Jenkins refusera est une promesse qu’on ne tient pas');
+    /* Un test précédent a laissé des dossiers décochés : sans ce retour à zéro, la ligne
+       cherchée n'est pas dans la liste et l'ancienne version de ce test — qui n'attendait
+       AUCUN bouton — passait sur une ligne absente. */
+    await page.locator('#jenkinsFolderSearch').fill('');
+    await page.locator('#jenkinsFoldersAll').click();
+    const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'archive' });
+    await ligne.first().waitFor();
+    const run = ligne.first().locator('[data-jkrun]');
+    assert.equal(await run.count(), 1, 'la colonne d’actions garde sa forme, ligne après ligne');
+    assert.equal(await run.isDisabled(), true);
+    assert.match(await run.getAttribute('title'), /désactivé/i);
   });
 
   /* Lancer un job sans paramètre : confirmation, puis la requête part vraiment. Le témoin est
@@ -626,10 +657,13 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     // Ce qui part à Jenkins : les valeurs choisies, séparées par des virgules.
     await page.locator('[data-jkparam="Branche"]').selectOption(['refs/heads/develop', 'refs/heads/master']);
     const avant = mock.state.calls.filter((c) => c.method === 'POST').length;
+    /* REMPLIR LES PARAMÈTRES *EST* LA CONFIRMATION. La modale demandait ensuite « Lancer ce
+       job ? » — une seconde question à qui vient de composer sa réponse. Elle reste sur le
+       « Lancer » DIRECT de la liste, où l'on n'a rien composé du tout. */
     await page.locator('#jenkinsRun').click();
-    await page.waitForSelector('#confirmModal:not([hidden])');
-    await page.locator('#confirmOk').click();
     await page.waitForFunction((n) => document.querySelectorAll('#toasts .toast').length >= n, 1);
+    assert.equal(await page.locator('#confirmModal').isHidden(), true,
+      'pas de seconde confirmation après la fiche de paramètres');
     const post = mock.state.calls.filter((c) => c.method === 'POST').slice(avant)[0];
     assert.match(decodeURIComponent(post.body), /Branche=refs\/heads\/develop,refs\/heads\/master/,
       'un choix multiple part en une valeur séparée par des virgules, la forme qu’attend le plugin');
@@ -642,6 +676,23 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
      dernière fois, et avec quelle version ? » est la question qu'on se pose devant l'historique
      d'un job de déploiement. Et une fois le bon lancement retrouvé, on repart de SES valeurs —
      en en changeant une, sinon « Relancer » suffisait. */
+  /* L'HISTORIQUE SE REPLIE sur un job PARAMÉTRÉ : la fenêtre sert alors à lancer, et
+     « Derniers builds » déplié repoussait le pied de modale à plus d'un écran. Les tests qui
+     portent sur l'historique le déplient donc, comme le ferait quelqu'un qui vient le lire.
+     Sans paramètre, la fiche EST l'historique : rien à déplier, et l'appel ne fait rien. */
+  async function deplierHistorique() {
+    /* On attend d'abord que la fiche SOIT RENDUE : la fenêtre affiche un squelette le temps de
+       l'appel, et chercher le repli avant son arrivée ne trouverait rien. `attached` et non
+       `visible` — repliée, la fiche existe sans occuper de place, c'est tout le propos. */
+    await page.waitForSelector('#jenkinsFiche', { state: 'attached', timeout: 15000 });
+    const repli = page.locator('#jenkinsModalBody details.jk-fiche-repli');
+    // Un clic sur un <summary> BASCULE : on ne clique que s'il est fermé.
+    if (await repli.count() && !await repli.evaluate((e) => e.open)) {
+      await repli.locator('> summary').click();
+    }
+    await page.waitForSelector('#jenkinsFiche [data-jkbuild], #jenkinsFiche .jk-vide', { timeout: 15000 });
+  }
+
   test('l’historique se filtre par valeur, et ses paramètres se reprennent dans le formulaire', async (t) => {
     const decor = mock.state.details['/job/boutique/job/deploy-prod'];
     // Le décor est rendu même si le test échoue, sinon la panne se propage aux suivants.
@@ -669,7 +720,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
 
     await allerJenkins();
     await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
-    await page.waitForSelector('#jenkinsFiche [data-jkbuild]');
+    await deplierHistorique();
     assert.equal(await page.locator('#jenkinsFiche [data-jkbuild]').count(), 10,
       'à l’ouverture, on ne charge que les dix derniers — c’est ce qui doit s’afficher vite');
 
@@ -745,6 +796,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     };
     await allerJenkins();
     await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
+    await deplierHistorique();
     await page.waitForSelector('#jenkinsFiche [data-jkreuse="20"]');
     await page.locator('[data-jkreuse="20"]').click();
     await page.waitForFunction(() => document.querySelector('[data-jkparam="ENV"]').value === 'bac-a-sable');
@@ -799,9 +851,9 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.locator('[data-jkparam="VERSION"]').fill('2.4.1');
     await page.locator('[data-jkparam="ENV"]').selectOption('prod');
     await page.locator('#jenkinsRun').click();
-    await page.waitForSelector('#confirmModal:not([hidden])');
-    await page.locator('#confirmOk').click();
     await page.waitForFunction((n) => document.querySelectorAll('#toasts .toast').length >= n, 1);
+    assert.equal(await page.locator('#confirmModal').isHidden(), true,
+      'remplir les paramètres est la confirmation : on n’en pose pas une seconde');
 
     const post = mock.state.calls.filter((c) => c.method === 'POST').slice(avant);
     assert.equal(post.length, 1);
@@ -820,7 +872,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
   test('la fiche montre l’historique à gauche et le détail de l’exécution choisie à droite', async () => {
     await allerJenkins();
     await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
-    await page.waitForSelector('#jenkinsFiche [data-jkbuild]');
+    await deplierHistorique();
 
     // Le plus récent est choisi d'office : c'est celui qu'on vient voir neuf fois sur dix.
     assert.equal(await page.locator('#jenkinsFiche .jk-build.selected [data-jkbuild]').getAttribute('data-jkbuild'), '11');
@@ -877,11 +929,39 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     assert.ok(!/MDP/.test(post.body), 'le secret n’est pas inventé');
   });
 
-  test('un job sans paramètre n’a pas de bouton « Relancer » (ce serait « Lancer »)', async () => {
+  /* LA COLONNE D'ACTIONS EST UN RAIL. Les boutons manquaient selon l'état du job, si bien que
+     « Lancer » — le bleu, celui qu'on vise sans relire — se retrouvait à trois abscisses
+     différentes d'une ligne à l'autre. On vise alors « Relancer » en croyant lancer. */
+  test('« Lancer » tombe à la même abscisse sur toutes les lignes', async () => {
     await allerJenkins();
-    const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'simple' }).first();
-    assert.equal(await ligne.locator('.jk-chip').count(), 0, 'ce job est bien parti sans paramètre');
-    assert.equal(await ligne.locator('[data-jkrerun]').count(), 0);
+    await page.locator('#jenkinsFolderSearch').fill('');
+    await page.locator('#jenkinsFoldersAll').click();
+    await page.locator('#jenkinsBox .jk-row').first().waitFor();
+    const abscisses = await page.evaluate(() => [...document.querySelectorAll('#jenkinsBox .jk-row')]
+      .map((r) => {
+        const b = r.querySelector('[data-jkrun]');
+        return b ? Math.round(b.getBoundingClientRect().right) : null;
+      }));
+    assert.ok(abscisses.length >= 4, 'il faut plusieurs lignes pour que la question se pose');
+    assert.equal(abscisses.filter((x) => x === null).length, 0,
+      'chaque ligne porte le bouton, même quand il est inerte : c’est ce qui tient la colonne');
+    assert.equal(new Set(abscisses).size, 1,
+      `le bord droit doit être unique, vu : ${JSON.stringify(abscisses)}`);
+  });
+
+  test('un job sans paramètre porte un « Relancer » inerte (ce serait « Lancer »)', async () => {
+    await allerJenkins();
+    /* Retour à zéro des filtres, comme plus haut : un test précédent peut avoir laissé des
+       dossiers décochés, et la ligne cherchée serait alors simplement absente — ce que
+       l'ancienne version de ce test, qui n'attendait AUCUN bouton, prenait pour un succès. */
+    await page.locator('#jenkinsFolderSearch').fill('');
+    await page.locator('#jenkinsFoldersAll').click();
+    const ligne = page.locator('#jenkinsBox .jk-row').filter({ hasText: 'simple' });
+    await ligne.first().waitFor();
+    assert.equal(await ligne.first().locator('.jk-chip').count(), 0, 'ce job est bien parti sans paramètre');
+    const rerun = ligne.first().locator('[data-jkrerun]');
+    assert.equal(await rerun.count(), 1);
+    assert.equal(await rerun.isDisabled(), true, 'relancer sans paramètre à reprendre, ce serait lancer');
   });
 
   /* Et depuis l'historique : les valeurs de CETTE exécution, pas celles du dernier lancement —
@@ -889,6 +969,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
   test('relancer une exécution précise reprend SES valeurs', async () => {
     await allerJenkins();
     await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
+    await deplierHistorique();
     await page.waitForSelector('#jenkinsFiche [data-jkrerunbuild="10"]');
     const avant = mock.state.calls.filter((c) => c.method === 'POST').length;
 
@@ -1045,7 +1126,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
 
     await allerJenkins();
     await page.locator('[data-jkopen="boutique/deploy-prod"]').click();
-    await page.waitForSelector('#jenkinsFiche [data-jkbuild]');
+    await deplierHistorique();
 
     /* Chaque zone est une carte, et une carte se voit : un fond distinct de celui de la
        modale, et une bordure. Sans ça, il ne reste que du blanc entre deux sujets. */

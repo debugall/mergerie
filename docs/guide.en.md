@@ -29,6 +29,10 @@ whose due date has passed asks just as much, and lateness is exactly what gets f
 ### Reviews
 The three stages of one merge request, behind a segmented filter — **To review · Reviewed · Done** — with a
 shared search (title, author, project, ticket).
+Three chips above the queue sort by **author**: **All · Mine · Other people's**. A tech lead looks first at
+what the team is waiting on, a developer at what they pushed. The token's account is read **once per
+forge**; without it — a token that cannot read its own account — the chips do not appear at all, rather
+than sorting on a guessed identity.
 
 - `Fetch new MRs` queries the forge and fills the list (filtered by pattern). An optional **automatic
   refresh** does it for you (see Settings). Repositories whose **fetch MRs** box is unticked (Settings →
@@ -43,6 +47,106 @@ shared search (title, author, project, ticket).
   (`Review + explanation` / `Review without explanation`). If the explanation is missing, a
   **`Generate the explanation`** button on the report produces it on demand (a single AI call, without
   re-running the review or creating a new version).
+- **Review without thinking about it.** **Settings → Merge Request → “Automatically review a merge
+  request when it arrives”** sends every newly discovered merge request out for review, unasked.
+  **Unchecked by default**, and **capped** even when checked (**“At most N automatic reviews per MR
+  discovery”**, right under the checkbox, 5 by default): each review is a billed AI call, and the *first* discovery of a fresh
+  install brings in **every** open merge request you have. Merge requests beyond the cap keep their
+  `Review` button, and the server log says how many did not start. `0` = no limit. **“When it
+  arrives” means when it arrives**: a branch moving forward triggers nothing — re-reviewing stays a
+  deliberate gesture, and an incremental one.
+- **Merge one branch into another, conflicts included.** `Git → Merge`: pick a repository, the
+  branch to merge and the one to merge it into, and the tool prepares the merge. **The shared
+  clone is never touched** — everything happens in a workspace of its own, so a review or a
+  session running alongside never finds a half-merged repository.
+  When there are conflicts, the screen takes them **file by file** and **conflict by conflict**:
+  the destination branch's version and the merged branch's version, one under the other, each
+  with `Keep`, plus `Keep both`. What you keep is highlighted, so you never have to re-read the
+  buttons to know where you stand. No `<<<<<<<` marker is ever left for you to decipher. If
+  neither side will do, **`Write it myself`** opens the result of your choices in a free text
+  field: you fix it, and that text is what gets saved.
+  Once everything is resolved, **`Commit`** opens a dialog with the message **already filled in**
+  (`Merge branch 'x' into y`, plus the list of files that were in conflict) — you read it and
+  confirm. Then **`Push`**, after a confirmation, sends the merge to the destination branch. The
+  two gestures are separate, and nothing goes out before the second one.
+  `Abandon` puts everything back: the destination branch has not moved an inch until you push.
+  The catch-up is also offered **from the merge dialog**: it asks the forge as it opens, says in
+  red that the merge request is in conflict, and carries the same button. Both paths ask for the
+  same confirmation — it is the same history rewrite, and where you clicked does not change what
+  you are committing to.
+  If the two branches share **no common ancestor** — a reinitialised repository, a branch made
+  with `--orphan`, `master` and `main` each with their own root — the tool says so in plain
+  words and offers to do it anyway. Git refuses by default, and rightly so: merging two
+  unrelated histories juxtaposes two projects, usually with conflicts everywhere.
+  **In demo mode** the Merge tab genuinely works: the demo data includes a small real git
+  repository (`groupe/tarification`) with two branches editing the same line. The other demo
+  repositories point at a fictional forge and cannot be cloned; this one can.
+- **Pull the verification report into a follow-up.** The verification broke tests and you want
+  the AI to fix them. `Fix (AI session)`, from the report, opens a **new** session; from the
+  session that produced the branch, what you want is a **follow-up**. So `Send a follow-up`
+  carries a **`Use the verification report`** button that fills the field with **exactly the same
+  prompt** — the broken tests, their messages, the commits that were tested. It only shows up if
+  the latest verification is red **and attributable to these branches**: an already-red base is
+  not your doing, and asking the agent to fix what it did not break would send it into unrelated
+  code.
+- **Catch up with the starting branch.** The session produced its branch and its merge request,
+  then `main` moved on: the forge shows conflicts. The **`Update with main`** button then appears on the
+  project's line — **only when the forge reports conflicts**, never permanently — and **replays
+  the session's commits on top of an up-to-date starting branch** — a
+  `rebase`, not a merge: `main`'s history is kept exactly as it is and your changes go back on
+  top. When git stops on a conflict, **the AI settles it**, told to keep what `main` brings and
+  reapply the branch's intent on top; that is the whole point of the button, otherwise `git
+  rebase` would do. **Nothing is pushed**: a rebase rewrites history, sending it needs a force
+  push, and the `Push` button — a second, deliberate gesture — is what decides. If the resolution
+  does not converge (or no agent is configured), the branch is **put back exactly as it was**: a
+  rebase left half-done would block the clone for everything else.
+  The same catch-up is offered **inside the merge dialog**: on opening, the forge is asked, and
+  if the merge request is in conflict the dialog says so in red — naming the branch — and carries
+  the button. You learn about the conflict **before** clicking “Merge”, not in the refusal that
+  would follow. From the queue (a merge request that did not come from a session) the conflict is
+  announced the same way, without the button: there is no session branch to replay.
+  **Forcing is decided in the `Push` confirmation**, by a **“Force the push
+  (--force-with-lease)”** checkbox. It is **unchecked by default**: forcing rewrites a published
+  branch, and that is not decided for you. It arrives **pre-checked** only when we know a normal
+  push will be refused — the branch has just been caught up, its history was rewritten. Left
+  unchecked, the push goes out normally and the forge refuses it: that is the right answer, and
+  the refusal shows on the project's line. Checked, it is `--force-with-lease` — never `--force`:
+  a commit pushed to the branch since the last fetch makes the push **fail** instead of
+  disappearing. A teammate's work is never silently erased.
+- **Pull the review report into a follow-up.** Once the merge request has been reviewed you often
+  want the AI to work through the findings. The report's `Let the AI fix the code` button opens a
+  **new** session for that; from the session that produced the branch, what you want is a
+  **follow-up** — the agent picks up its own thread instead of rediscovering the code. So on
+  `Send a follow-up` a **`Use the review report`** button fills the field with the same prompt
+  (“apply the relevant fixes from this review”, report included). It only shows up when there is a
+  report, and it **asks before overwriting** a draft you already wrote. The text stays readable and
+  editable: the button fills, you send. A multi-project session pulls in **each** project's report,
+  named — its follow-up goes to all of them.
+- **Follow a branch that keeps moving.** Once the review is done the branch carries on: the report
+  no longer describes the code that is there, and the merge request gets the **`stale`** badge.
+  **Settings → Merge Request → “Automatically re-review when the report goes stale”** makes the
+  review start again by itself at the next discovery, **incrementally** — the AI only reads what
+  changed and gets the previous report as context. **Unchecked by default**: on a branch that moves
+  ten times a day, that is ten calls. It is **independent** of the previous checkbox (arriving and
+  moving are two different costs) and shares the same per-discovery cap **with its own budget**: a
+  big push on merge requests you already know does not eat the budget of the new ones. A merge
+  request that was never reviewed is not concerned — no report, nothing to go stale.
+- **Publish the report on the merge request.** A review report stays **with you** by default: it lives
+  in Mergerie and nobody else sees it. The report's **`Publish to GitLab` / `Publish to GitHub`** button
+  posts it **as a comment on the MR**, exactly as it sits on disk — that is how you hand the review back
+  to its author without copying it over. A confirmation spells it out: what goes out is read by the whole
+  team. Once published, the button becomes **`Publish again`** and carries the date of the first send, so
+  you do not post the same text twice believing the first one failed.
+  The setting **Settings → Merge Request → “Automatically post the review report on the MR”** does it at
+  the end of every review. It is **unchecked by default**: writing on other people's work is a decision.
+  If it is checked and the forge refuses, the review is **not** lost — the report stays saved, and the
+  job log says why publishing did not happen.
+- **The card holds a single row of actions**: `View diff` · `Context` | `Review ▾` | `⋯`.
+  The **`⋯`** menu gathers everything else — *Let the AI code it*, *Verify*, *See results*,
+  *Dismiss without review*, *Merge*. Seven buttons of equal weight per card said nothing about
+  which one was the normal path, and their number changed from one card to the next: the action
+  column was never twice in the same place. The gestures are unchanged, one extra click for the
+  less frequent ones.
 - `View diff` opens the MR's diff **before any review**, in the full-screen viewer (tree, inline diff,
   navigation) — the repository is cloned on demand if needed. The left panel becomes a **decision panel**:
   if the MR is trivial, `Dismiss without review`; otherwise `Review`. The point is to **not spend an AI
@@ -98,7 +202,8 @@ shared search (title, author, project, ticket).
   each fix commit readable). **Guard rails**: it stops if the score **drops or stalls**, the pass ceiling is
   strict, and there is **never an automatic merge** — the loop *prepares*, **you** review and merge (the
   review and the fix come from the same model: a score reached autonomously is not a score validated by a
-  human). Threshold and ceiling are set globally (Settings → General) and **can be overridden at launch**. A
+  human). Threshold and ceiling are set globally (Settings → Merge Request → *Convergence*) and **can be
+overridden at launch**. A
   **notification** tells you when it ends (“Convergence finished: 8.4/10 in 3 passes”). If the “the AI may
   ask questions” option is on and the AI hesitates during a pass, the loop **pauses** (notification) instead
   of guessing: you answer, then you start Converge again — which **resumes the same session**.
@@ -112,8 +217,7 @@ shared search (title, author, project, ticket).
   adjust before launching. If the branch came from a **coding session**, its **session id is pre-filled**:
   the AI picks up the thread of its own work instead of rediscovering code it just wrote. It is a
   suggestion, not a rule — the link is inferred from the repository and the branch, which is not proof:
-  clearing the field starts from a fresh session. Sessions opened from an MR offer **Create without
-  running** alongside **Create and run**, to prepare now and execute later.
+  clearing the field starts from a fresh session.
 - **Every review pass is kept.** Re-running a review or regenerating a report no longer overwrites the
   previous one: a **version selector** appears in the report from the second pass on
   (`v2 — current · 20/07 14:30 · 7.8/10`) and lets you **re-read an earlier review**, with a banner
@@ -242,9 +346,9 @@ branch, options, verifier — except the following, stated under the prompt:
   is copied as is, shifting it would point at a branch that does not exist;
 - the **images** attached to the original are not copied; their number is stated.
 
-The buttons are those of creating a session of that flavour — `Save` for coding and exploration,
-`Run` alongside `Create without running` for out-of-repo: a button that changed meaning depending
-on whether you create or copy would be a trap. Everything stays editable before saving: it is a
+The buttons are those of a creation — `Create and run` alongside `Create without running`, as
+everywhere else: a button that changed meaning depending on whether you create or copy would be a
+trap. Everything stays editable before saving: it is a
 proposal, not a carbon copy.
 
 **The form tells four things, in order.** It is the same form for all four flavours and rearranges
@@ -343,8 +447,10 @@ The button sits next to the ones you use all the time, and one click too many co
 The **very first** run stays a single click: there is nothing to protect. The same applies to the
 `Run again` of one particular project.
 
-**Create now, run later.** All three session types offer **`Create without running`** next to
-**`Create and run`**: you prepare the prompt and the targets, and launch when you want.
+**Create now, run later.** All **four** session flavours — coding, out-of-repo coding, exploration,
+free question — and sessions opened from a merge request carry the same two buttons:
+**`Create and run`** (the main gesture, one click) and **`Create without running`** next to it, to
+prepare the prompt and the targets and launch when you want.
 
 **Verify afterwards, without thinking about it.** An optional **`Verify afterwards`** field when
 creating a coding session: the chosen verifier runs **by itself, once, at the end** — after
@@ -385,7 +491,11 @@ launch. The number is **pre-filled** if the working branch already contains a ke
 - **Coding** — the AI modifies the code. For each project: a working branch, and an optional **starting
   branch** (a dropdown with search; empty = the repository's default branch). The prompt is applied to each
   project, sequentially — **one failing project does not stop the others**. Each project then carries its
-  own actions: **Diff · Push · Create MR · Merge**. **`Diff`** opens the **same full-screen explorer as the
+  own actions: **Diff · Push · Create MR · Merge**. Once the merge request is open, the project's line says
+  **what it became** — score, verdict, pending comments — instead of a bare `MR !216 ↗` that sent you back
+  to Reviews, and **`Tell Jira`** comments the ticket with the merge request link then moves it to review
+  when Jira offers the transition, behind a confirmation that names the ticket. A checkbox in the session
+  dialog, **unchecked by default**, does it at every merge request creation. **`Diff`** opens the **same full-screen explorer as the
   merge requests** — the whole project tree in the middle, the entire file with the changes in place on the
   right (navigation from one change to the next, mini-map) — with, on the left, the **AI's report** instead
   of the review report. So you read what the AI says it did *and* what it actually wrote, side by side, in
@@ -473,8 +583,9 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   **resumes the same session** where it stopped. As soon as you confirm, the form gives way to a
   **“resuming…”** (no more waiting without visual feedback). The option is **remembered** when you edit an
   existing session. Resuming was first validated by a test bench in *Settings → AI sessions*.
-- **⚡ Converge from a session — *from prompt to converged MR*.** The `Converge` button (on the **new session
-  dialog** and on an **existing session**) chains **the whole path** without intervention: the AI **codes**
+- **⚡ Converge from a session — *from prompt to converged MR*.** The
+  `…then converge up to 8/10 (3 passes max)` checkbox of the **new session dialog** — and the
+  `Converge` button of an **existing session** — chain **the whole path** without intervention: the AI **codes**
   the task → **commit** → **push** → **creates the MR** (target = the starting branch) → then starts the
   **convergence loop** (review → fix → re-review) until the threshold. You write an intention, you come
   back: an **open, tested, scored and converged MR** is waiting — all that is left is to read it and merge.
@@ -511,6 +622,10 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   follow-up question overwrites the answer file, but the pass is archived — `View answer` lines the
   iterations up on the left, with the search over the questions asked, and replays the one you pick on
   the right with the answer it got.
+  **`Turn into code`** makes a coding session out of an exploration: the dialog opens on **the same
+  repositories**, with the question and its answer as context, and the exploration's **agent session**
+  placed in “resume an existing session” — the agent keeps what it has read instead of re-reading three
+  repositories.
 - **Free question** — the same thing, **with no repository at all**. You ask the AI something — a notion to
   dig into, two options to compare, a plan to challenge — and the answer is kept here. Nothing on the
   machine is read or changed: no clone, no folder, none of your files. An optional **label** files the
@@ -601,7 +716,13 @@ drawer.
   “in 3 days”), and **in red only once it has passed**: a due date ahead is not an alarm.
 - **Snooze** in one click: **+1 h** or **tomorrow 9 am**. “Tomorrow 9 am” means 9 am **on the clock**, not
   “in 24 hours” — a daylight-saving change must not shift the appointment.
-- **Optional link** to a merge request, a ticket or a repository: the line becomes clickable.
+- **Optional link** to a merge request, a ticket or a repository: the line becomes clickable. A todo linked
+  to a merge request shows **that MR's state** under its title (score, verdict, how long it has been open):
+  you can tell whether it still has a reason to exist.
+- **A todo tied to a merge request ticks itself when that MR is merged**, with a note saying what closed it
+  — “Closed automatically: merge request !201 was merged or closed”. Nothing is deleted and it can be
+  reopened; *Settings → General* carries the switch (**“Tick linked todos when their merge request is
+  merged”**) for anyone who would rather close them by hand.
 - **Nothing is deleted.** A finished todo stays **struck through for seven days** — you want to see what
   you did this week — then moves to **Archived**, where it stays readable. Reopening it takes it out of the
   drawer. A *Delete* button exists, but ticking “done” is the normal gesture.
@@ -746,12 +867,19 @@ recent assignees; **you ticked by default**, a **persisted** choice). A **list �
   nothing in them is wrongly promoted to a title: only a row whose cells are **all** headers becomes one.
   A table with no header therefore keeps its first row, and a key/value table (header in the first
   **column**) keeps its first pair, the key in bold for want of a Markdown equivalent.
+- **An `In Mergerie` section.** What the tool already knows about this ticket, without going to fetch it:
+  the **merge requests carrying its key** (with their score and verification verdict) and the **coding
+  sessions started from it**. The ticket list carries the same marker in one line, so you see at a glance
+  which ticket is already under way in Mergerie and which one has nothing yet.
 - **`Let the AI code it` from the ticket.** The button at the head of the detail opens the **coding session
   dialog already filled in**: the ticket's content (title + description) is placed at the top of the prompt,
   the commit message and the **branch name** (`feature/PROJ-1421-…`) are proposed from the key and the
   summary, and the ticket number is filled in. All that is left is to pick the repository and to spell out
   your request under the context — the cursor is already there. The session is **not launched
   automatically**: you read it over first.
+  The **repository proposed** is the last one used for that Jira project, and the ticket's **screenshots**
+  are offered as checkboxes (the first three ticked): the images you keep are attached to the session,
+  without a round trip through the Downloads folder.
 - **Change the ticket's state**: a selector in the header lists the **allowed transitions** (what Jira lets
   *you* do on this ticket); picking one **applies the transition** and refreshes the status (detail + list).
   Nothing is offered if you do not have the rights.
@@ -812,6 +940,28 @@ Operations across **several repositories at once**, and branch exploration.
 - **Deletions are restorable.** Before every deletion, the tool **pulls the objects into its local clone**,
   then records the SHA. The **History** tab then offers `Restore` — and it works **even after the forge's
   garbage collector has run**, since it is the local clone that acts as the safety net, not the server.
+- **The branches of merged merge requests gather into one lot.** A button at the head of *Actions* fills
+  the deletion with **every branch whose merge request was merged** — the usual preview then says, branch
+  by branch, whether it still exists and whether deleting it is safe. Past ten or so, the morning brief
+  mentions it.
+- **Merge** — merges **one branch into another**, conflicts and all, without leaving the tool. You pick a
+  repository, the **branch to merge** and the **branch to merge it into** (both with a search field: an
+  active repository carries hundreds of branches), then `Prepare the merge`. At that point **nothing is
+  committed or pushed**: the merge is prepared in a **workspace of its own**, never in the shared clone — a
+  review, a coding session or a verification running alongside must not find the repository half-merged. A
+  merge **can be resumed** after the tool restarts.
+  - **Conflicts are resolved on screen, one at a time.** For each conflict: the **destination's version**
+    and the **incoming version**, one under the other, with `Keep` on each and `Keep both, in this order`
+    below them; the side you keep is highlighted, so you can see where you stand without re-reading the
+    buttons. **You never see a `<<<<<<<` marker.** When neither side fits, `Write it myself` hands you the
+    **result of your choices** in a plain text field and saves what you write.
+  - **Then two separate gestures, in that order.** `Commit` — the message is already filled in with the one
+    git itself wrote — then `Push`, each behind its own confirmation. `Commit` refuses while a conflict
+    remains; `Push` refuses while nothing is committed. `Abandon` restores everything: **until you push,
+    the destination branch has not moved.**
+  - When the two branches **share no common ancestor**, the tool explains what that means and offers to go
+    ahead anyway (`--allow-unrelated-histories`), instead of passing on git's bare
+    `fatal: refusing to merge unrelated histories`.
 - **Navigate** — checks out **several projects on your machine** (not the tool's clones: your own
   repositories) on the branch of your choice, in one gesture. You pick a **local directory** — a folder
   holding one subfolder per git project, declared in *Settings → Repositories* — then, row by row, a
@@ -1012,6 +1162,15 @@ Jenkins already does well, and which there is no point redoing.
 - **Finding a job.** A **search** — mandatory here: a company installation lines up hundreds of
   jobs. It matches the **whole path**, so "shop" brings back a whole project. A checkbox,
   **`Only what is not fine`**, keeps failures, unstable results and what is running.
+- **Keep only what you triggered yourself.** A **`My runs`** box keeps only the jobs launched **from
+  Mergerie** — the list already existed for the end-of-run notification, and becomes a filter. It answers
+  “what did I send, and where is it?”.
+- **Pin the three jobs of your day.** `Pin this job` moves it to the top of the list, next to the tidied
+  folders; `Unpin this job` puts it back in the ranks. Among two hundred jobs, the three you open every
+  day stop having to be searched for.
+- **The end of the console, without opening Jenkins.** A build's detail panel shows its **last 30 console
+  lines** in plain text: on a red build, the error reads where you found it. The console is fetched **only
+  when the detail shows a place for it**, never for a whole list.
 - **Refreshed at the pace you choose, and only while you are looking.** *Settings → Jenkins*
   holds the setting — **every N minutes, 0 = never**, one minute by default, capped at an hour.
   It lives in the **database**, like the merge request and Jira ones: it is a setting of the
@@ -1240,9 +1399,15 @@ both fit. The free link then disappears: keeping it would make two entries for t
 #### The palette — `Ctrl`/`Cmd` + `K`, or the `o` key
 The search field in the header opens the **global palette**, which searches **everything at once**:
 the grid's cells (“kibana staging”), free links, merge requests (by number or by words of the
-title), watched tickets, note pages, open todos, and navigation actions. Enter opens — an external
+title), **dev sessions** (label, prompt or branch), watched tickets, note pages, open todos, and
+navigation actions. Enter opens — an external
 link in a new tab, an internal object in its own place.
 
+- **On opening, with nothing typed**, it offers three short sections: **Actions**, **Recent merge
+  requests**, **Recent sessions**, three of each. With no query everything scores the same, and it
+  was the most numerous source — the grid's links — that took every slot: the palette opened on
+  eight Kibana addresses without a single merge request. From the first letter the headings go
+  away and ranking is by relevance again.
 - **Fuzzy search**, accent- and case-insensitive — `generation` finds “Génération du rapport”, and
   the other way round. You abbreviate **by words**: `kib pre` finds “Kibana · preprod”, each word
   you type having to appear *whole* somewhere in the target. Dropping a letter inside a word
@@ -1344,6 +1509,17 @@ call type + the **average cost per reviewed MR**), a summary of the sessions. Co
 **live from each repository's forge, across all branches** (loaded separately, best-effort: nothing breaks
 if a forge is unreachable).
 
+**The most expensive sessions.** Five sessions, most to least expensive in **estimated tokens**. A prompt
+that makes the AI re-read three repositories for nothing shows up straight away. Token usage is now
+attached to **the session that spent it**, which is also what makes this ranking possible.
+
+**Findings that keep coming back.** The same finding raised on **at least three merge requests of the same
+repository**: that is the raw material of a review rule, and `Make it a rule` opens the form pre-filled —
+the `path_match` derived from the files involved, the finding as the content.
+
+**Every number is a door.** Clicking “worst 5.5” or “pending 3” opens Reviews filtered on that repository,
+at the right stage — instead of leaving you to find by hand what the figure points at.
+
 **Project activity — last 6 months.** Answers “which repositories are alive, which are asleep”. **One
 horizontal bar per tracked repository** (active AND MR fetching ticked), ordered from the longest to the
 shortest, with the **name in full on the left** and the total on the right. The chart has a **fixed height
@@ -1410,7 +1586,9 @@ that opens on a fresh install: without a token no other setting is worth anythin
 the same path can exist on both —, plus the **local directories** — a folder on your machine holding one
 subfolder per git project, which feeds the *Git → Navigate* tab and *Out-of-repo coding*; the displayed
 count “n git projects out of m folders” confirms at a glance that you pointed at the right level of the
-tree) ·
+tree; each repository also shows **its open merge requests**, **the date of the last discovery** and **the
+state of its clone**, with a **`Re-clone`** button — nothing is lost on the forge, but unpushed changes in
+the local clone are, so it asks first) ·
 **Merge Request** (automatic refresh, convergence, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
 **Specific review rules** (criteria added to the prompt when the branch name contains a given
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more
@@ -1420,14 +1598,19 @@ precise; a rule on a path can carry a **“risk” badge** shown on the merge re
 below; the page shows **the list** first, and the form opens on *Add a verifier*, *Edit* or
 **`Duplicate`** — the latter reopens it **prefilled** with no id, so saving **creates** instead of
 overwriting the original, with a free name proposed ("X (copy)", since names are unique) and the
-field selected: renaming is the first gesture) ·
+field selected: renaming is the first gesture; the form **suggests the commands the covered repositories
+already declare** — `package.json` scripts, `composer.json` scripts, Makefile targets, read from the clone
+on disk, **nothing is executed** — to add in one click) ·
 **Notifications** (a dedicated sub-tab, see below) ·
 **General** (light/dark/auto theme, language, density, **menu arrangement**, morning brief, data retention, backup,
 and a **danger zone** for a full reset) ·
 **Jira** (the **Jira connection** —
 URL + email + API token, with a *Test Jira* button —; feeds the *Jira* tab and the enrichment of a session
 from a ticket) ·
-**Jenkins** (URL, user and API token, with a test button, and the jobs' **refresh interval**) ·
+**Jenkins** (URL, user and API token, with a test button, the jobs' **refresh interval**, and the **jobs
+linked to repositories**: a job declared for a repository is offered on its **verified green** merge
+requests, with the branch prefilled into the parameter you name — the job page opens, nothing is launched
+without the usual confirmation) ·
 **AI sessions** (the **standing instructions**, see below, and a technical test: two passes inside the
 same agent session — it memorises a marker then
 recalls it on resume — to check that **session resuming** works with your CLI; it is the foundation of
@@ -1479,8 +1662,12 @@ The tab, the sub-tab **and the Reviews stage are remembered** from one session t
 else**: no search, no dialog, no open report, because a stale state is worse than a clean start ·
 **keyboard shortcuts** (`1`-`9` then `0` for the ten tabs, `/` search, `n` new todo, `r` fetch MRs, `l` logs, `?` help, `Esc` closes) · a
 **dynamic favicon** during a job · error messages **translated into actions** (certificate, token, CLI not
-found, timeout, network) · a **3-step onboarding** as long as the connection and the repositories are not
-configured · every form field carries an **i icon** whose hover (or keyboard focus) explains what it is for.
+found, timeout, network — including **“Mergerie is not responding”** with a *Try again* button when the
+server is down) · a **3-step onboarding** as long as the connection and the repositories are not
+configured, **with the steps ticked off as you go**, and as long as nothing is configured that is the
+screen the app opens on (the morning brief takes over from the next day) · every form field carries an
+**i icon** whose hover (or keyboard focus) explains what it is for · **no counter is shown before its
+data**: a skeleton while it loads, never a “0” that would read as “nothing to review”.
 
 - **The menu bar can be arranged** (Settings → General). Move **up** what you open ten times a day,
   **hide** what you never use: drag and drop or arrows, applied at once. A hidden menu also leaves
@@ -1493,7 +1680,22 @@ configured · every form field carries an **i icon** whose hover (or keyboard fo
   a merge request, a session — the search covers what is already loaded, so it answers without calling the
   server. `?` shows the full list of shortcuts.
 - **Browse the list from the keyboard**: `j` / `k` move down and up in the visible list, `Enter` opens, `Esc`
-  releases. No focus outline appears until you have pressed a key.
+  releases. On the focused card: `d` the diff, `v` verify, `c` the context, `m` mark handled,
+  `x` tick for a joint verification — each one clicks the RENDERED button, so what is disabled
+  stays disabled. No focus outline appears until you have pressed a key.
+- **Copy instead of retyping.** A branch name copies on click everywhere it shows (merge request
+  card, a session's project line, the explorer, the report); **Shift-click** copies
+  `git fetch origin && git checkout <branch>`. A merge request's ⋯ menu carries **"Copy the
+  reference"** — `!217 — 3× payment (8.1/10 · verified) <url>`, the message already written. On
+  the Docker side, every service, every log stream and every Make target carries its equivalent
+  command, to copy and continue in a terminal.
+- **The palette opens a reference typed alone**: `!217` or `PROJ-1408` go straight there on
+  `Enter`; `⌘`/`Ctrl` + `Enter` on a merge request opens its diff rather than its report.
+- **The quick capture (`n`) understands a short syntax**: `!217 reread the total @tomorrow !!`
+  creates a todo linked to !217, due tomorrow at 9, high priority. `@monday` and `@12/09` work
+  too; anything not recognised **stays in the title**, as written.
+- **An absolute date carries its "3 hours ago" on hover** — session cards, merge requests,
+  Jenkins builds.
 - **The interface keeps still.** A refresh that changes nothing no longer rebuilds the list: the page does
   not blink while you read it. When a list really does load, its cards arrive in a cascade — once, on load,
   not on every character typed into a filter.
@@ -1700,7 +1902,7 @@ moves ten times a day, that is ten batteries. Unticked, the badge simply says �
 re-run it yourself.
 
 ⚠ **Five verifications at most per discovery run**, and that cap is a **setting**
-(*Settings → Merge Request*). On a Monday morning discovery can bring back fifteen merge requests;
+(*Settings → Verifiers*, just above the list — next to the checkbox that triggers them). On a Monday morning discovery can bring back fifteen merge requests;
 fifteen functional batteries saturate the machine for an hour and block the queue shared with
 reviews. Beyond that, the merge requests keep their **`Verify`** button and the **server log says
 what did not start** — a silent cap would read as “everything was verified”. `0` means “no limit”,

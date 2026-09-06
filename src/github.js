@@ -149,6 +149,13 @@ function toMr(pr) {
     created_at: pr.created_at,
     merged_at: pr.merged_at || null,
     author: pr.user ? (pr.user.login || '') : '',
+    /* CONFLITS. `mergeable` est calculé de façon ASYNCHRONE par GitHub : il vaut `null` tant
+       que le calcul n'a pas tourné, et il n'est renvoyé que par la route d'une PR unique —
+       jamais par la liste. On rend donc trois valeurs et pas deux : `true` (conflits), `false`
+       (aucun), `null` (on ne sait pas encore). Confondre « on ne sait pas » avec « non »
+       ferait disparaître le bouton précisément quand il sert. */
+    has_conflicts: pr.mergeable === false || pr.mergeable_state === 'dirty' ? true
+      : (pr.mergeable === true ? false : null),
     // Équivalent des diff_refs GitLab : seul head_sha est requis (commentaire inline).
     diff_refs: {
       base_sha: (pr.base && pr.base.sha) || null,
@@ -220,14 +227,23 @@ async function mergeMergeRequest(cfg, project, iid, opts = {}) {
 }
 
 // Fichiers modifiés par une PR (badge « risque » + règles par chemin).
-async function listMrChangedPaths(cfg, project, iid) {
+/* Même contrat que côté GitLab : les chemins ET la taille du changement en un appel. GitHub,
+   lui, compte les lignes pour nous (`additions` / `deletions` par fichier). */
+async function listMrChanges(cfg, project, iid) {
   const files = await fetchAllPages(cfg, `/repos/${encodeProject(project)}/pulls/${iid}/files`);
   const out = [];
+  let additions = 0; let deletions = 0;
   for (const f of files) {
     if (f.filename) out.push(f.filename);
     if (f.previous_filename) out.push(f.previous_filename);   // renommage : les deux chemins comptent
+    additions += Number(f.additions) || 0;
+    deletions += Number(f.deletions) || 0;
   }
-  return [...new Set(out)];
+  return { paths: [...new Set(out)], files: files.length, additions, deletions };
+}
+
+async function listMrChangedPaths(cfg, project, iid) {
+  return (await listMrChanges(cfg, project, iid)).paths;
 }
 
 /* ---------- Commentaires ----------
@@ -322,10 +338,11 @@ async function updateNote(cfg, project, iid, noteId, body, opts = {}) {
   });
 }
 
-// Compte associé au jeton — sert à savoir quels commentaires sont les miens.
+/* Compte associé au jeton — sert à savoir quels commentaires sont les miens, et quelles pull
+   requests. Le nom affiché vient avec, pour la même raison que côté GitLab (même contrat). */
 async function currentUser(cfg) {
   const u = await githubFetch(cfg, '/user');
-  return { username: (u && u.login) || '' };
+  return { username: (u && u.login) || '', name: (u && u.name) || '' };
 }
 
 // Réponse à un fil : `discussionId` est l'id de la note RACINE (ou `issue-<id>`).
@@ -476,6 +493,22 @@ async function latestCommit(cfg, project) {
    faudrait énumérer les branches puis paginer chacune — des dizaines d'appels par dépôt,
    pour un compte qui compterait plusieurs fois les commits partagés. On s'en tient donc à
    la branche par défaut, et l'écran le dit plutôt que de laisser croire à un compte complet. */
+/* Pendant GitHub de `gitlab.commitsSince` : les commits arrivés depuis la review, même forme
+   en sortie. `compare` répond en un appel — et c'est le seul moment où on le demande. */
+async function commitsSince(cfg, project, fromSha, toSha) {
+  const enc = encodeProject(project);
+  const d = await githubFetch(cfg, `/repos/${enc}/compare/${encodeURIComponent(fromSha)}...${encodeURIComponent(toSha)}`);
+  return ((d && d.commits) || []).map((c) => {
+    const cm = (c && c.commit) || {};
+    return {
+      sha: String(c.sha || '').slice(0, 8),
+      title: String(cm.message || '').split('\n')[0],
+      author: (cm.author && cm.author.name) || (c.author && c.author.login) || '',
+      date: (cm.author && cm.author.date) || null,
+    };
+  });
+}
+
 async function commitsBetween(cfg, project, sinceIso, untilIso, maxPages = 12) {
   const enc = encodeProject(project);
   const out = [];
@@ -602,9 +635,9 @@ module.exports = {
   // mêmes noms que gitlab.js (contrat commun consommé via src/forge.js)
   listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches,
   updateNote, currentUser,
-  latestCommit, commitsBetween, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion,
+  latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion,
   listMrDiscussions, replyToDiscussion, listBranchesFull, listTags, listProtectedBranches,
-  listProtectedTags, listMrChangedPaths, createBranch, deleteBranch, createTag, deleteTag, listAllMRs,
+  listProtectedTags, listMrChangedPaths, listMrChanges, createBranch, deleteBranch, createTag, deleteTag, listAllMRs,
   // propres à GitHub
   isConfigured, testConnection, apiBase, webBase, refWebUrl,
 };

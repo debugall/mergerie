@@ -151,7 +151,7 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
           r = await agentsession.runInSession({ key, prompt: promptText, cwd: d.path, resume: false, onLog });
           created = true;
         }
-        copilot.recordUsage('task', promptText, r.text || '');
+        copilot.recordUsage('task', promptText, r.text || '', null, { kind: 'local', id: taskId });
         saveAgentOutput(taskId, d.id, r.text, { kind: passKind, prompt: promptText });
         // À chaque passe : une reprise peut rendre un identifiant nouveau (cf. agentsession).
         setDir(d.id, { session_key: r.handle, session_backend: r.backend, session_cwd: d.path });

@@ -11,6 +11,439 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-06
+
+### Added
+
+- **A third pass: what the tool already knew but did not say, and what it did not cross.**
+  Fifty-two changes from a walk through the whole demo, tab by tab. Nothing new to configure —
+  almost all of it reads data that was already in the database.
+
+  **Deciding without opening anything**
+
+  - A merge request card carries **its size and its age**: `12 files · +340 −80 · last activity
+    2 d ago`. Both are taken in the same call that already fetched the changed paths, so the
+    queue says which one to start with without opening three cards.
+  - The **"out of date" badge says by how much**: `out of date · 3 commits`, and hovering it
+    lists their messages. One call to the forge, made on hover only — never for a whole list.
+  - The **score badge says which pass it comes from**: `v3 · 07/08 · 1 resolved · 1 still there`
+    — what the version selector says once the report is open.
+  - Two chips above the queue: **Mine / Other people's**. A tech lead sorts first for what the
+    team is waiting on. The token's account is read once from each forge; without it the chips
+    do not appear at all.
+
+  **Turning a reading into a gesture**
+
+  - **A finding is a door.** Clicking `src/checkout/total.js:8` opens the code viewer on that
+    line with the comment box open and pre-filled with the finding — a draft, like every inline
+    comment, so you reread and adjust instead of retyping what the AI just wrote.
+  - **A branch name copies in one click**, everywhere it shows (merge request card, session
+    project line, branch explorer, report). Shift-click copies
+    `git fetch origin && git checkout <branch>` — the gesture that follows the copy nine times
+    out of ten.
+  - **"Copy the reference"** in the ⋯ menu: `!217 — 3× payment (8.1/10 · verified) <url>`, the
+    Slack message already written.
+  - **The morning brief carries the action, not just the link**: *Fix* on a failed verification,
+    *Review* on a fresh merge request, *Run / Push / Create the MR* on waiting sessions. One
+    action per line, the one that closes it.
+  - **Every statistics number is a door**: clicking "worst 5.5" or "pending 3" opens Reviews
+    filtered on that repository, at the right stage.
+  - **Keyboard**: `v` verify, `c` context, `m` mark handled, `x` tick for a joint verification,
+    on the focused card — next to the `j/k/Enter/d` that already existed. They click the
+    rendered button, so what is disabled stays disabled.
+  - **The palette opens a reference typed alone**: `!217` or `PROJ-1408` go straight there on
+    Enter, ⌘/Ctrl+Enter opening the diff instead of the report.
+  - **A quick capture understands a short syntax**: `!217 reread the total @tomorrow !!` becomes
+    a todo linked to !217, due tomorrow at 9, high priority. What is not recognised stays in the
+    title, as written.
+
+  **Saying what was already known**
+
+  - A session's project line shows **what its merge request became**: score, verdict, pending
+    comments — instead of a bare `MR !216 ↗` that sent you back to Reviews.
+  - Exploration, free-question and out-of-repo cards show **the first lines of the answer**
+    (expandable) and **what the pass cost**: `3 min · ~13,500 tokens`. Token usage is now
+    attached to the session that spent it, which is also what makes the new **five most
+    expensive sessions** ranking possible.
+  - An empty **"Verify afterwards"** list explains itself: which verifier covers what, what it is
+    missing, and the door to Settings → Verifiers.
+  - A todo linked to a merge request shows **the state of that merge request**; hovering an
+    autolink `!214` or `PROJ-720` in a note shows title, score, verdict and state.
+  - A Jira ticket gains a **"In Mergerie"** section — the merge requests carrying its key, with
+    score and verdict, and the sessions started from it — and the list cards carry the same
+    marker in one line. **"Have the AI code this"** now proposes the last repository used for
+    that Jira project.
+  - **The deletion preview says whether it is safe**: per branch, `merged into main` /
+    `MR !217 still open` / `not merged`. And a branch is no longer anonymous in the explorer: the
+    score of its merge request's review, and the coding session that created it.
+  - A **compose project says which branch is running** (branch and short commit of the directory
+    that carries the compose, read from `.git` on disk — no process, no polling), **each Makefile
+    target says when it last ran** (`migrate · 40 min ago · ✓`), and **every Docker command
+    copies** — service, logs, Make target — to continue in a terminal exactly where Mergerie
+    stops.
+  - **Jenkins**: the last 30 console lines of a red build inside "Details", a **My runs** filter
+    (the list of jobs launched from Mergerie already existed for the end-of-run notification),
+    and **pinning** a job to the top of a two-hundred-job list.
+  - **Links**: hovering a cell shows the full URL and when it was last opened; **"Open this whole
+    environment"** in a column header; and the contextual buttons now also appear on a session's
+    project line and on a Jira ticket — same `{env}` / `{branch}` resolution as on a merge
+    request.
+  - **Settings**: each verifier shows its last verdict and how many merge requests to handle it
+    covers; each review rule shows how many open merge requests it matches (locally, without the
+    AI) — a rule that no longer matches anything stands out; each repository shows its open merge
+    requests, the date of the last discovery and the state of its clone, with **Re-clone**.
+
+  **Crossings that did not exist**
+
+  - **A todo tied to a merge request ticks itself when that merge request is merged**, with a
+    note saying what closed it. Nothing is deleted, and it can be reopened; a general setting
+    turns it off. A session whose projects are all merged offers **Put away**.
+  - **The last Jenkins build carrying a branch is written on it**: `CI #40 ✗` on the merge
+    request card and on the session's project line, clickable through to Details. No new request
+    — the list Jenkins already loads — and never confused with Mergerie's own verdict.
+  - **A ticket in review pushes its merge requests to the top** of the queue, with a
+    `ticket in review` badge; a ticket closed while its merge request is still open says so too.
+  - **A finding that comes back on three merge requests of the same repository** offers
+    *Make it a rule*, opening the review-rule form pre-filled — `path_match` derived from the
+    files, the finding as the content.
+  - **"Tell Jira"** on a session's project line: a comment carrying the merge request link plus
+    the transition to review when Jira offers one, behind a confirmation that names the ticket.
+    A checkbox in the session dialog, unchecked by default, does it at every merge request
+    creation.
+  - **A verification that runs in place says the state of the services** of the compose project
+    its working directory carries, at the moment of the click, with an **Up** button — instead of
+    dying three seconds later on `ECONNREFUSED`.
+  - **The branches of merged merge requests gather into one lot**: a button fills Git → Actions
+    with all of them, and the usual preview then says, branch by branch, whether it still exists
+    and whether it is safe. The brief mentions it past ten.
+  - **A Jenkins job links to a repository** (Settings → Jenkins). A **verified green** merge
+    request then offers *Run <job>* with its branch pre-filled — the job page opens, nothing is
+    launched without the usual confirmation.
+  - **An exploration turns into code**: *Turn into code* opens the coding dialog on the same
+    repositories, with the question and the answer as context, and the exploration's **agent
+    session** in "resume an existing session" — the agent keeps what it has read instead of
+    re-reading three repositories.
+  - **A ticket's screenshots come with it**: "Have the AI code this" proposes the Jira images as
+    checkboxes (ticked by default up to three) and attaches the ones you keep, without a round
+    trip through the Downloads folder.
+
+  **Remembered instead of retyped**
+
+  - The starting branch, per repository, in the session dialog. The merge options (squash, delete
+    the source branch), per repository. The projects ticked and the last command, per local
+    directory, in Git → Commands and Git → Navigation. The containers ticked, per compose
+    project, in Docker logs. Your last entry per Jenkins job — and, failing that, the parameters
+    of the last build, instead of the job's bare defaults.
+  - The **verifier form suggests the commands the repositories already declare** — `package.json`
+    scripts, `composer.json` scripts, Makefile targets — read from the clone on disk, nothing
+    executed.
+  - **"Add to todos" from a Jira ticket carries the ticket's due date and priority.**
+  - **Absolute dates carry their "3 hours ago" on hover**, on session cards, merge requests and
+    builds.
+
+- **What you type in Settings is no longer wiped by a late load.** Opening a Settings sub-tab
+  fires a request for the current configuration, and its answer lands a few dozen milliseconds
+  later — overwriting whatever you had started typing in the meantime, without a word. On a
+  loaded machine the window widens: a token pasted right after opening the page could simply
+  vanish. The form now ignores an answer that comes back after you started typing. This was found
+  by a test that pasted Jenkins credentials and clicked “Test the connection” on three fields
+  that had silently gone empty again — it failed about one CI run in two, and the message said
+  only “timeout”.
+
+- **The demo can actually show all this.** Every repository in the demo data points at a
+  fictional forge, which is fine for screens that read the database but leaves anything that
+  really clones — the Merge tab above all — unreachable in `npm run demo`. The demo now ships a
+  small **real** git repository with two branches editing the same line, so conflict resolution
+  can be tried out on first contact; and one merge request is seeded **in conflict**, so the
+  catch-up button is visible where it matters. In demo mode a repository that exists on disk
+  serves its **real** branches rather than invented ones — offering a branch that does not exist
+  would fail the moment it is picked.
+
+- **Asking to catch a branch up now confirms from the merge dialog too**, as it already did from
+  the project's line. Same history rewrite, same question: where you clicked should not change
+  what you are committing to.
+
+- **Merge a branch into another, conflicts and all, without leaving the tool.** A new `Git →
+  Merge` tab: pick a repository, a branch to merge, a branch to merge it into. The merge is
+  prepared in a workspace of its own, so the shared clone is never left half-merged under a
+  review or a coding session running alongside. Conflicts are resolved on screen, one conflict at
+  a time: the destination's version and the incoming version shown one under the other, `Keep` on
+  each, `Keep both` under them, and the side you keep highlighted so you can see where you stand
+  without re-reading the buttons. You never see a `<<<<<<<` marker. When neither side fits,
+  `Write it myself` hands you the result of your choices in a plain text field and saves what you
+  write. Then `Commit` — with the message already filled in from what git itself wrote — and
+  `Push`, each behind its own confirmation, in that order. `Abandon` restores everything; until
+  you push, the destination branch has not moved. When the two branches share no common ancestor,
+  the tool explains what that means and offers to go ahead anyway, instead of passing on git's
+  bare `fatal: refusing to merge unrelated histories`.
+
+- **Pull the verification report into a follow-up too.** When a verification breaks tests, the
+  report's `Fix (AI session)` button opens a brand-new coding session that rediscovers the code.
+  From the session that produced the branch, `Send a follow-up` now carries **`Use the
+  verification report`**, filling the field with the very same prompt — the broken tests, their
+  messages, the commits that were tested — so the agent picks up its own thread instead. Both
+  buttons build that prompt from one function, so the two can never drift apart. The button only
+  appears when the latest verification is red *and* attributable to these branches: an already-red
+  base is not yours to fix, and pointing the agent at it would send it into unrelated code.
+
+- **Catch a session's branch up with the branch it started from.** A coding session opens its
+  merge request, then `main` moves on and the forge starts showing conflicts — until now the only
+  way out was to leave the tool and rebase by hand. Each project line now grows an **`Update with
+  main`** button — **only when the forge says the merge request is in conflict**, so it is not
+  sitting there inviting you to rebase for nothing — that replays the session's commits on top of an up-to-date starting branch:
+  a rebase, so `main`'s history is kept exactly as it is and your changes go back on top of it.
+  When git stops on a conflict the AI resolves it, told to keep what the starting branch brings
+  and reapply the branch's intent over it — that is what the button adds over plain `git rebase`.
+  It refuses to commit a file that still has conflict markers in it, and if the resolution does
+  not converge it puts the branch back exactly as it was rather than leaving a half-done rebase
+  behind. Nothing is pushed: rewriting a branch other people may have pulled is a second,
+  deliberate gesture, so the existing `Push` button takes over — with `--force-with-lease`.
+  The conflict flag is read from the forge (`has_conflicts` on GitLab, `mergeable` on GitHub)
+  during the discovery pass that **already** fetches those merge requests to see whether they
+  were merged, so the button costs no extra API call. GitHub computes `mergeable` lazily and
+  answers `null` at first: while the answer is unknown the button stays hidden rather than
+  guessing, and appears at the next discovery. **The merge dialog asks the forge too**, when it
+  opens: a merge request in conflict now says so in red, naming the branch it clashes with, and
+  carries the same catch-up button — you find out before clicking “Merge”, instead of in the
+  refusal that would follow. For a merge request that did not come from a session the conflict is
+  reported all the same, without the button: there is no session branch to replay. The `Push`
+  confirmation also grows a **“Force the push (--force-with-lease)”** checkbox, unchecked by
+  default — forcing rewrites a published branch, and that is yours to decide. It comes
+  pre-checked only when the branch has just been caught up, because there we know a normal push
+  will be refused. Ticked, it uses `--force-with-lease --force-if-includes`, never a bare
+  `--force`: a teammate's commit that landed on the branch since the last fetch makes the push
+  fail instead of disappearing, and the refusal now shows on the project's line rather than only
+  at session level.
+
+- **Pull the review report straight into a follow-up.** After a merge request is reviewed, the
+  obvious next move is to have the AI work through the findings. Until now the only button for that
+  — `Let the AI fix the code`, on the report — opened a **new** coding session, which rediscovers
+  the code from scratch. From the session that produced the branch you want a **follow-up** instead,
+  so the agent picks up its own thread. `Send a follow-up` now carries a **`Use the review report`**
+  button that fills the field with exactly the same prompt, report included. It only appears when
+  there is a report to use, it **asks before overwriting** a draft you had already written, and it
+  only fills the field — the text stays readable and editable, and you are still the one who sends
+  it. On a multi-project session it pulls in every project's report, each one named, since the
+  follow-up goes out to all of them.
+
+- **Re-review by itself when a report goes stale.** After a review the branch keeps moving, and
+  the report stops describing the code that is actually there — that is the `stale` badge. Settings
+  → Merge Request → **“Automatically re-review when the report goes stale”** restarts the review at
+  the next discovery, **incrementally**: the AI only reads what changed and gets the previous report
+  as context, which is what makes this affordable on a branch that moves ten times a day. It is
+  **unchecked by default** and **independent** of the arrival checkbox — arriving and moving are two
+  different costs — and it gets its own share of the per-discovery cap, so a big push on merge
+  requests you already know cannot eat the budget of the new ones. Merge requests that were never
+  reviewed are left alone: no report, nothing to go stale.
+
+- **Review new merge requests on arrival, without asking.** Settings → Merge Request →
+  **“Automatically review a merge request when it arrives”** puts every newly discovered merge
+  request into review by itself. It is **unchecked by default**, and it comes with a **cap per
+  discovery** (5 by default) that applies even once ticked — because unlike the `Review the N MRs`
+  button, nobody is watching when discovery runs, and the *first* discovery of a fresh install
+  brings in every open merge request you have. Merge requests beyond the cap keep their `Review`
+  button and the server log says how many did not start, so a silent cap can never read as
+  “everything was reviewed”. `0` means no limit. And “when it arrives” means exactly that: a
+  branch moving forward on a merge request you already know triggers nothing — re-reviewing stays
+  a deliberate gesture, and an incremental one.
+
+- **Hand the review back to its author: publish the report on the merge request.** Until now a
+  review report lived in Mergerie and nowhere else — to share it you copied it by hand. The
+  report now carries a **`Publish to GitLab` / `Publish to GitHub`** button that posts it as a
+  comment on the merge request, exactly as it was written. It asks first, because what goes out
+  is read by the whole team; and once it is out the button says **`Publish again`** and carries
+  the date of the first send, so you do not post the same text twice believing the first one
+  failed. Settings → Merge Request has a matching **“Automatically post the review report on the
+  MR”**, which does it at the end of every review. It is **unchecked by default**, and stays
+  unchecked if the value is ever unreadable: writing on other people's work is a decision, not a
+  default. A forge that refuses does not cost you the review — the report stays saved and the job
+  log says why nothing was published.
+
+### Changed
+
+- **A design and usability pass over the whole application**, following a screen-by-screen
+  review. What changes, in the order you meet it:
+
+  - **A fresh install opens where you can start.** On a new installation the application opened
+    the morning brief — which announces "nothing needs your attention" to someone who has not
+    plugged anything in yet. It now opens on Reviews and its three-step assistant, and the brief
+    takes its place back the next day, once the forge is connected.
+  - **"Test the connection" tests what is on screen.** It read the *stored* configuration: you
+    typed the URL and the token, clicked, and were told "GitLab token not configured" by an
+    application that had the value in front of it. It now sends the form values, as "Test GitHub"
+    already did, and says what to do when something is missing.
+  - **The assistant's steps tick themselves** as you go: forge connected, repositories added,
+    merge requests fetched. Three buttons become a progression.
+  - **The job panel no longer pushes the page.** It sat in the flow: everything moved down 78 px
+    when it opened and back up when it closed, two jumps per job, while you read or aimed at a
+    button. It now floats at the bottom of the screen.
+  - **A merge request card holds one row of actions**: *See the diff · Context · Review ▾ · ⋯*.
+    The seven same-weight buttons are grouped in the "⋯" menu, and the action column becomes a
+    rail again — the same button in the same place from one card to the next.
+  - **The review report starts inside the first screen.** Eleven buttons on three rows pushed it
+    out of sight; three remain — *Open the code · Have the AI fix it · Merge* — plus the "⋯"
+    menu, where "Delete the report" moved down, last and behind a separator: it wore the same red
+    as "Merge", a centimetre away from it.
+  - **A single filter idiom.** Rule written and applied: chips when values are few and stable, a
+    checkbox list with a search field beyond that. Docker's two "Show only" dropdowns become
+    chips; the Reviews score brackets take the same shape.
+  - **Two heading levels instead of five, and a single content width.** Margins no longer jump
+    from one tab to the next.
+  - **Docker speaks French too.** `running`, `exited`, `created`, `restarting` were shown as-is
+    next to "non créé" and "arrêté".
+  - **Docker's and Jenkins's action rows no longer move**: fixed order, unavailable actions
+    disabled rather than absent — with a tooltip that says why. A disabled coloured button now
+    wears the same grey as the others.
+  - **The work-session clock** carries an icon that names it, comes after the state badges and
+    shrinks while it reads zero.
+  - **The session dialog** keeps its footer on screen ("Cancel" and the main button fell below
+    the fold), its three per-project fields finally have a header row, and "Save" becomes
+    "Create the session".
+  - **A counter no longer shows before its data**, the merge request queue shows a skeleton
+    during its first load, and a statistics bar at zero no longer draws a coloured stub.
+  - **When the server does not answer**, the screen says so in plain words — "Mergerie is not
+    answering — check that the server is running" — and offers "Retry" instead of showing
+    "Failed to fetch".
+  - **In the verification dialog, `!204` leads back to its merge request** instead of being dead
+    text.
+  - **The palette no longer opens on eight Kibana URLs.** With no query everything ranked the
+    same, and the most numerous source — the grid links — took every slot: no merge request, no
+    session, although both are found the moment you type a letter. On opening it now offers three
+    short sections — **Actions**, **Recent merge requests**, **Recent sessions** — and every line
+    carries its type. **Dev sessions** became searchable for the first time, by label, prompt or
+    branch, and the result opens the right AI Dev sub-tab.
+  - Details: the navigation column's "to handle" badge finally says what it counts, a bulk
+    confirmation asks its question in its title ("Review 11 merge requests?" rather than "Confirm
+    the action"), Jenkins's "8 jobs out of 8" counter no longer breaks into four lines, its
+    duplicated state badge was removed from the action row, and the two labels demo mode builds
+    itself ("My repositories", "(demo)") finally follow the interface language.
+
+- **A second pass, on the forms.** Twenty-two forms, a single validation model — and it was wrong
+  everywhere. What changes:
+
+  - **The session dialog starts with what you came to say.** The prompt opens the form and takes
+    the cursor; picking the projects, which held first place, comes below it; "Verify afterwards"
+    and auto-push move above the attachments, because they change the outcome; and three fields
+    you do not touch one time in ten (AI questions, commit message, resuming an agent session)
+    are grouped under **Advanced**, which closes the form — expanded, but collapsible in one
+    click. Attaching a file is a line again instead of an empty 80-pixel dashed box.
+  - **One verb per effect, and the main path in one gesture.** The same window said "Start
+    coding", "Ask the question" and "Create and run" for one and the same gesture, depending on
+    the session flavour — and two flavours out of four (coding, exploration) offered **no** run at
+    all: you created, closed the window, found the card in AI Dev, clicked "Run". All four
+    flavours now carry the same two buttons, which read against each other: **"Create and run"**
+    (primary) creates then runs, **"Create without running"** creates and stops — preparing now
+    and triggering later stays possible, and this is the only place that allows it.
+  - **"Converge" leaves the dialog footer** — two solid buttons side by side, one of them without
+    a word of explanation. It is now a checkbox under "Verify afterwards" that announces what it
+    promises: "…then converge up to 8/10 (3 passes max)", threshold and cap read from the
+    settings. Converging a session already written stays on its card.
+  - **A field error shows under the field** — under the *row* when the field lives in a project
+    line, where the message used to line up as one more column: it squeezed "Starting branch"
+    from 285 to 157 px and pushed the project's "×" onto the next line. That is the rule, and it
+    now applies to the four "test a connection" buttons, to the free link and to a session's
+    branch name: a toast only announces the **result of an action**. And an error toast no longer
+    settles in for good — it leaves after eight seconds, pauses while the mouse is on it, and
+    **dies with the dialog that produced it**.
+  - **Settings → Merge Request reads as three titled groups** — Review, Automation, Convergence —
+    instead of nine settings in a row. The automatic-review cap moved under its own checkbox,
+    indented and greyed out while it is unchecked; the automatic **verification** cap moved to
+    Settings → Verifiers, next to the switch that triggers them. The "Save" button carries an
+    **"unsaved changes"** state that follows you from one sub-tab to the next — and switching
+    sub-tabs no longer overwrites what you have just typed.
+  - **The Git, Jira and Jenkins connections answer alike.** The same empty guard in all four,
+    required fields marked, `autocomplete="off"` on the tokens, **Enter saves** (and says so — it
+    used to do nothing), and the main button does the nominal path in one click: **"Save and
+    test"**.
+  - **The ⓘ icons leave the tab order.** Six stops out of sixteen, in the session dialog alone,
+    for the same icon. And the bubble opens **only on the ⓘ** — never on focusing a field, where
+    it covered what you had just clicked.
+  - **The verdict badge is a real button** — it did not exist for the keyboard — and it says the
+    door it opens: "✗ 1 broken test · see the report". The job banner offers "See the report"
+    after a verification, instead of a "session" that does not exist. On the Jenkins side, "Open"
+    becomes "Details": it stayed inside Mergerie, next to an icon that really does open Jenkins.
+  - Details: the Git tab with no tracked repository shows a guided empty state instead of a
+    disabled field and a "loading…" that never ends, and "Verify a branch" moves down next to
+    "Preview"; the Docker tab no longer shows a red badge before being opened once; the start
+    assistant and bulk import put the cursor on their first field; the free link marks its
+    required fields and gives an example of tags; the palette's footer recalls that ⌘K or `o`
+    reopens it; and in demo mode the session dialog preselects the only genuinely clonable
+    repository, the others being marked "not runnable in demo mode" rather than dying on a Node
+    stack at the first clone.
+
+### Fixed
+
+- **A local path is a valid repository URL again.** The guard added on adding a repository only
+  knew `http(s)` and `ssh`: it rejected `/srv/repos/project.git`, which is a perfectly ordinary
+  clone source.
+
+- **Settings → Repositories: the add row is a row again.** Its three labelled fields were laid
+  out down the page, 780 px tall with 200 px of empty space between each, the button stranded
+  at the bottom. The form carries two classes, and the one that says "column" is declared later
+  in the stylesheet: at equal specificity the last one wins, so the row fell back to a column
+  and each field's `flex-basis: 320px` was read as a *height*. Settled by specificity now, not
+  by ordering — the file can be reordered without breaking it.
+
+- **Reviewing a merge request finally shows on screen.** This was the audit's number-one
+  weakness and it was still whole: you clicked "Review", the banner said "finished", and the
+  card stayed at the top of "to handle" with unchanged counters — the screen showing 10/7 while
+  the server already answered 9/8, indefinitely. Detection relied on "a poll was running", so
+  never for a job that finishes before the first loop turn: which is what a short review is. It
+  now relies on the job id. **Measured: the screen updates in 0.2 s** instead of never. In the
+  same pass, the banner's "See the report" link switches to the right stage — it used to open
+  the report in a hidden panel — and server answers can no longer overwrite each other out of
+  order: a stale request put the previous numbers back over the good ones, and the screen went
+  from 3 back to 4 a second after telling the truth (seen on a two-core runner, not in theory).
+  Same guard on the counters, the session list and the palette.
+
+- **Contrast holds WCAG AA everywhere**, in both themes. The interface's most common pattern — a
+  brand colour on a background tinted with that same colour — reads fine when large and failed
+  when small: nineteen labels between 10 and 12 px were under the threshold in the light theme
+  (Docker states, Jira statuses and labels, Jenkins parameters, the "pushed" and "waiting for
+  answers" tags, the error banner). Semantic colours now have a variant tuned for text, per
+  theme. **A test measures it on every build**: it walks the ten tabs in both themes, composes
+  semi-transparent backgrounds and refuses any text under its threshold.
+
+- **A list that is loading says so, from the first paint.** The fake "0"s were gone, but the
+  column stayed a silent blank under latency — no way to tell "loading" from "there is nothing".
+  The skeleton is now written in the page itself: posting it from JavaScript was not enough,
+  since the request that triggers it only leaves after the configuration one. Measured under 5 s
+  of latency, the list area held nothing at all at 400, 900, 1600, 2600 and 3600 ms; it now
+  shows three grey cards throughout. And until the queue has answered, the screen no longer
+  concludes anything about its content — the welcome screen used to take its place as soon as
+  the configuration came back first.
+
+- **The interface language now applies to the server too.** It lives in the browser; the server
+  read the stored configuration. Switching the interface to English therefore left everything
+  the server composes in French — "Mes dépôts (démo)" in the middle of a translated tab, and the
+  error messages. The other way round, Docker filters kept "Arrêtés (exited)", "Unhealthy" and
+  "En restarting" inside a French interface.
+
+- **The nine Statistics card titles** join the single section level: the application's chrome now
+  knows only two title treatments, everywhere.
+
+- **A session frozen on “running” after the server stopped can be started again.** When
+  Mergerie is stopped mid-run — a restart, a laptop closing — the job it was carrying is marked
+  `interrupted` on the next boot. The *session* it was running, however, stayed “running”
+  forever, and the card only offers `Run again` on `new`, `error`, `committed` or `pushed`: no
+  button to restart it, and none to stop it either, since the job to stop no longer existed.
+  The tool blocked itself by shutting down at the wrong moment. Sessions, off-repo tasks and
+  verifications left mid-flight now come back as `error` **with the reason written on the card**
+  (“the server stopped while this was running”), which is a state you can start again from —
+  and whatever had already been committed or pushed is left exactly as it was. The interrupted
+  job itself is replayable too, and the Activity panel finally shows *interrompu* / *interrupted*
+  instead of a raw status it had no translation for.
+
+- **Git → Actions: long branch names no longer run off the edge of the field.** The branch
+  picker shared its width evenly with the project picker, though a branch name is routinely
+  twice as long as a project name. Past roughly forty characters the end of the name simply
+  left the field — no ellipsis, no wrap, nothing saying anything was missing — so
+  `hotfix/COMPTA-2210-correction-arrondi-echeances` and
+  `hotfix/COMPTA-2210-correction-arrondi-echeances-fractionnees` looked identical, and you could
+  preview an operation on the wrong branch. The branch field now takes the larger share, the
+  per-project name box moves to its own line instead of squeezing it, and on a narrow window the
+  branch takes the full row.
+
 ## [1.3.0] - 2026-08-29
 
 ### Added
@@ -1677,7 +2110,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/debugall/mergerie/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/debugall/mergerie/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/debugall/mergerie/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/debugall/mergerie/compare/v1.0.0...v1.1.0

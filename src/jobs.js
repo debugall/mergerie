@@ -412,10 +412,11 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
   const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   if (action !== 'push') db.prepare("UPDATE task SET status='running', last_error=NULL, updated_at=? WHERE id=?").run(new Date().toISOString(), task.id);
   try {
-    if (action === 'push') await taskrunner.pushTarget(task.id, opts.targetId, onLog);
+    if (action === 'push') await taskrunner.pushTarget(task.id, opts.targetId, onLog, { force: opts.force });
     else if (action === 'push-all') await taskrunner.pushTargets(task, opts.targetIds, onLog);
     else if (action === 'followup') await taskrunner.runTaskFollowup(task, opts.instruction, onLog, { targetIds: opts.targetIds, imageIds: opts.imageIds });
     else if (action === 'answer') await taskrunner.runTaskAnswer(task, opts.targetId, onLog);
+    else if (action === 'update-base') await taskrunner.mettreAJourDepuisBase(task.id, opts.targetId, onLog);
     else await taskrunner.runTask(task, onLog, { targetIds: opts.targetIds });
     setJob(jobId, { status: 'done', done_count: 1, current_mr_id: null, finished_at: new Date().toISOString(), message: '' });
     // La session peut s'être mise EN ATTENTE (l'agent a posé des questions) : notif dédiée,
@@ -620,9 +621,13 @@ function rememberRetry(jobId, spec) {
   try { db.prepare('UPDATE job SET retry = ? WHERE id = ?').run(JSON.stringify(spec), jobId); }
   catch { /* colonne absente sur une base très ancienne : la relance sera juste indisponible */ }
 }
-// Un job est rejouable s'il a fini sans aller au bout, et si son intention est connue.
+/* Un job est rejouable s'il a fini sans aller au bout, et si son intention est connue.
+   `interrupted` EN FAIT PARTIE : c'est le statut que la base pose au démarrage sur les jobs
+   que l'arrêt précédent a coupés. Il était absent de cette liste, si bien que le seul job
+   qu'on n'avait PAS choisi d'arrêter était aussi le seul qu'on ne pouvait pas rejouer. */
 function canRetry(job) {
-  return !!(job && job.retry && RETRYABLE.has(job.kind) && ['stopped', 'error'].includes(job.status));
+  return !!(job && job.retry && RETRYABLE.has(job.kind)
+    && ['stopped', 'error', 'interrupted'].includes(job.status));
 }
 function retryJob(jobId) {
   const job = db.prepare('SELECT * FROM job WHERE id = ?').get(Number(jobId));
@@ -793,7 +798,22 @@ async function runDockerJob(jobId, payload) {
     } else if (payload.op === 'orphan-stop') {
       await docker.stopContainer(payload.id, onLog);
     } else if (payload.op === 'make') {
-      await docker.runMake(payload.dir, payload.target, onLog);
+      /* On NOTE la cible avant de la lancer et on complète à la fin : « ai-je déjà passé les
+         migrations ce matin ? » se lit alors sous le bouton, sans relire un journal. Un échec
+         est noté comme tel — savoir que ça a tourné ne dit pas que ça a marché. */
+      const debut = new Date().toISOString();
+      db.prepare(`INSERT INTO make_run (dir, target, started_at, finished_at, ok) VALUES (?,?,?,NULL,NULL)
+        ON CONFLICT(dir, target) DO UPDATE SET started_at = excluded.started_at, finished_at = NULL, ok = NULL`)
+        .run(payload.dir, payload.target, debut);
+      try {
+        await docker.runMake(payload.dir, payload.target, onLog);
+        db.prepare('UPDATE make_run SET finished_at = ?, ok = 1 WHERE dir = ? AND target = ?')
+          .run(new Date().toISOString(), payload.dir, payload.target);
+      } catch (e) {
+        db.prepare('UPDATE make_run SET finished_at = ?, ok = 0 WHERE dir = ? AND target = ?')
+          .run(new Date().toISOString(), payload.dir, payload.target);
+        throw e;
+      }
     }
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
   } catch (e) {

@@ -274,7 +274,8 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
       created = true;
     }
     agentText = r.text || '';
-    copilot.recordUsage('task', promptText + imgBlock, agentText); // le run en session compte aussi
+    // `owner` : la dépense se rattache à SA session — c'est ce qui permet de dire laquelle coûte.
+    copilot.recordUsage('task', promptText + imgBlock, agentText, null, { kind: 'task', id: task.id });
     /* On enregistre le handle À CHAQUE passe, pas seulement à la création : l'agent peut rendre
        un identifiant DIFFÉRENT après une reprise (claude en ouvre un nouveau, qui porte tout
        l'échange). Garder l'ancien faisait repartir la passe suivante de l'état d'avant — deux
@@ -338,9 +339,14 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   });
 
   if (task.auto_push || forcePush) {
-    onLog(`push : ${pushCommand}`);
-    await git.pushBranch(cwd, tg.branch, onLog, git.secretsOf(cfg));
-    setTarget(tg.id, { status: 'pushed' });
+    /* Une branche rattrapée reste réécrite tant qu'elle n'a pas été repoussée : un suivi qui
+       commite par-dessus et pousse automatiquement se ferait refuser comme le bouton. On relit
+       le drapeau en base plutôt que la copie chargée au début — le rattrapage a pu passer entre
+       les deux. */
+    const doitForcer = !!(db.prepare('SELECT force_push FROM task_target WHERE id = ?').get(tg.id) || {}).force_push;
+    onLog(`push : ${doitForcer ? `git push --force-with-lease origin ${tg.branch}` : pushCommand}`);
+    await git.pushBranch(cwd, tg.branch, onLog, git.secretsOf(cfg), { force: doitForcer });
+    setTarget(tg.id, { status: 'pushed', force_push: 0 });
     onLog(t('log.task.pushed'));
   } else {
     onLog(t('log.task.commit-ready'));
@@ -494,7 +500,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
         created = true;
       }
       stdout = r.text || '';
-      copilot.recordUsage('explore', prompt, stdout);
+      copilot.recordUsage('explore', prompt, stdout, null, { kind: 'task', id: task.id });
       /* Les cibles d'une exploration partagent la session : toutes portent le même handle — et
          on le réenregistre à chaque passe, l'agent pouvant en rendre un nouveau après reprise. */
       for (const tg of targets) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: root });
@@ -642,16 +648,144 @@ async function runTaskAnswer(task, targetId, onLog = () => {}) {
 }
 
 // Pousse UN projet d'une session (validation manuelle du push).
-async function pushTarget(taskId, targetId, onLog = () => {}) {
+/* METTRE LA BRANCHE DE TRAVAIL À JOUR AVEC LA BRANCHE DE DÉPART.
+ *
+ * Le cas : la session a produit sa branche et sa merge request, puis la branche de départ a
+ * avancé — et la MR affiche des conflits. On rejoue nos commits par-dessus `origin/<départ>`
+ * à jour : l'historique de la branche de départ est CONSERVÉ tel quel, nos changements
+ * repassent au-dessus. C'est un `rebase`, pas un `merge` : une fusion fabriquerait un commit
+ * de plus et laisserait les deux histoires mêlées.
+ *
+ * Quand git s'arrête sur un conflit, c'est l'IA qui le tranche — c'est tout l'intérêt du
+ * bouton, sinon `git rebase` suffirait. Elle voit les fichiers marqués, avec la consigne :
+ * garder ce que la branche de départ a apporté, et y réappliquer notre intention.
+ *
+ * ON NE POUSSE PAS. Le rebase réécrit l'historique de la branche : l'envoyer demanderait un
+ * push forcé, c'est-à-dire réécrire une branche que d'autres ont peut-être déjà tirée. La
+ * branche locale est mise à jour, la carte repasse en « commité », et c'est le bouton
+ * « Pousser » — un second geste, délibéré — qui l'envoie.
+ */
+const REBASE_MAX_PASSES = 5;
+
+async function mettreAJourDepuisBase(taskId, targetId, onLog = () => {}) {
+  const task = db.prepare('SELECT * FROM task WHERE id = ?').get(Number(taskId));
+  if (!task) throw new Error(t('err.session-introuvable'));
+  const tg = db.prepare('SELECT * FROM task_target WHERE id = ? AND task_id = ?').get(Number(targetId), task.id);
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  const cfg = getConfig();
+  const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
+  if (!repo) throw new Error(t('err.depot-introuvable'));
+
+  const cwd = await git.ensureRepo(cfg, repo, onLog);
+  // Un rebase laissé en plan par une exécution coupée empêcherait tout checkout.
+  await git.rebaseAbandonner(cwd, onLog);
+  await git.ensureCleanWorktree(cwd, onLog);
+  const base = tg.base_branch || await git.defaultBranch(cwd);
+
+  if (!await git.refExists(cwd, `refs/heads/${tg.branch}`)) {
+    if (!await git.refExists(cwd, `origin/${tg.branch}`)) {
+      throw new Error(t('err.branch-missing-run-first', { branch: tg.branch }));
+    }
+    await git.createBranchFrom(cwd, tg.branch, `origin/${tg.branch}`, onLog);
+  } else {
+    await git.checkoutBranch(cwd, tg.branch, onLog);
+  }
+
+  /* L'ÉCHEC S'INSCRIT SUR LA LIGNE DU PROJET. C'est une action par projet : le message doit
+     s'afficher là où l'on a cliqué, pas seulement au niveau de la session — sur une session de
+     dix dépôts, une erreur globale ne dit pas lequel a résisté. */
+  const echouer = (e) => { setTarget(tg.id, { last_error: String(e.message).slice(0, 2000) }); throw e; };
+  const retard = await git.behindOf(cwd, base);
+  if (!retard) {
+    /* Rien à rattraper. On le DIT plutôt que de rejouer un rebase à vide : « rien ne s'est
+       passé » et « tout était déjà bon » se ressemblent trop dans un journal. */
+    onLog(t('log.task.rebase.up-to-date', { base }));
+    setTarget(tg.id, { last_error: null });
+    return { aJour: true, passes: 0 };
+  }
+  onLog(t('log.task.rebase.start', { branch: tg.branch, base, n: retard, count: retard }));
+
+  let r = await git.rebaseSur(cwd, base, onLog);
+  let passes = 0;
+  while (!r.ok) {
+    if (passes >= REBASE_MAX_PASSES) {
+      await git.rebaseAbandonner(cwd, onLog);
+      echouer(new Error(t('err.rebase.too-many', { n: REBASE_MAX_PASSES, count: REBASE_MAX_PASSES })));
+    }
+    passes += 1;
+    onLog(t('log.task.rebase.conflict', { n: r.conflits.length, count: r.conflits.length, fichiers: r.conflits.join(', ') }));
+    const prompt = t('prompt.rebase-conflicts', {
+      branch: tg.branch, base, fichiers: r.conflits.map((f) => `- ${f}`).join('\n'),
+    });
+    if (copilot.isDryRun()) {
+      /* Sans agent, personne ne peut trancher : on remet la branche exactement où elle était.
+         Un rebase laissé en plan bloquerait ce clone pour tout le reste. */
+      await git.rebaseAbandonner(cwd, onLog);
+      echouer(new Error(t('err.rebase.dry-run', { fichiers: r.conflits.join(', ') })));
+    }
+    await copilot.runPrompt(prompt, cwd, { kind: 'rebase' }, onLog);
+    const restants = await git.fichiersEnConflit(cwd);
+    if (restants.length && restants.some((f) => marqueursDeConflit(path.join(cwd, f)))) {
+      await git.rebaseAbandonner(cwd, onLog);
+      echouer(new Error(t('err.rebase.markers-left', { fichiers: restants.join(', ') })));
+    }
+    r = await git.rebaseContinuer(cwd, onLog);
+  }
+
+  const sha = await git.headSha(cwd);
+  const diff = await git.branchDiff(cwd, base);
+  const dpath = path.join(ensureDir(path.join(taskDir(task.id), String(tg.id))), 'diff.patch');
+  fs.writeFileSync(dpath, diff, 'utf8');
+  /* Retour en « commité » : la branche locale porte désormais autre chose que ce qui est
+     poussé, et c'est le bouton « Pousser » qui doit reprendre la main. */
+  setTarget(tg.id, {
+    base_branch: base, commit_sha: sha, diff_path: dpath,
+    push_command: `git push --force-with-lease origin ${tg.branch}`,
+    /* Le rebase a réécrit l'historique : la branche ne descend plus de ce qui est publié, et
+       un push normal sera refusé. On le RETIENT, au lieu de laisser l'utilisateur buter sur le
+       refus puis chercher comment forcer — le bouton « Pousser » le fera de lui-même. */
+    force_push: 1,
+    status: 'committed', last_error: null,
+  });
+  syncTaskStatus(task.id);
+  onLog(t('log.task.rebase.done', { base, n: retard, count: retard, passes }));
+  return { aJour: false, passes };
+}
+
+/* Un fichier porte-t-il encore des marqueurs de conflit ? L'agent peut très bien dire qu'il a
+   résolu et laisser un `<<<<<<<` : `rebase --continue` commiterait alors les marqueurs dans la
+   branche, et personne ne le verrait avant la relecture de la merge request. */
+function marqueursDeConflit(fichier) {
+  try {
+    return /^(<{7}|>{7}|={7})( |$)/m.test(fs.readFileSync(fichier, 'utf8'));
+  } catch { return false; }
+}
+
+/* `force` : décidé par la case de la confirmation. `undefined` (« Pousser tout », auto-push,
+   appel interne) → on retombe sur le drapeau posé par le rattrapage, qui sait qu'un push normal
+   serait refusé. Un `false` EXPLICITE, lui, est respecté : refuser de forcer est une décision
+   aussi, et la forge dira non — ce qui est la bonne réponse. */
+async function pushTarget(taskId, targetId, onLog = () => {}, { force } = {}) {
   const cfg = getConfig();
   const tg = db.prepare(`SELECT tt.*, repo.project, repo.forge FROM task_target tt
     JOIN repo ON repo.id = tt.repo_id WHERE tt.id = ? AND tt.task_id = ?`).get(targetId, taskId);
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session-2'));
   const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
   const cwd = git.cloneDirFor(cfg, repo);
-  onLog(`push ${tg.project} : git push -u origin ${tg.branch}`);
-  await git.pushBranch(cwd, tg.branch, onLog, git.secretsOf(cfg));
-  setTarget(tg.id, { status: 'pushed' });
+  const forcer = force === undefined ? !!tg.force_push : !!force;
+  onLog(`push ${tg.project} : git push ${forcer ? '--force-with-lease ' : ''}-u origin ${tg.branch}`);
+  /* L'ÉCHEC S'INSCRIT SUR LA LIGNE DU PROJET, comme le fait déjà « Pousser tout ». Sans ça,
+     un refus — le bail qui protège le commit d'un collègue, typiquement — n'apparaissait qu'au
+     niveau de la session : on cliquait « Pousser » sur une ligne et le message s'affichait
+     ailleurs. `pushTargets` rattrape déjà le sien ; il n'écrase pas celui-ci. */
+  try {
+    await git.pushBranch(cwd, tg.branch, onLog, git.secretsOf(cfg), { force: forcer });
+  } catch (e) {
+    setTarget(tg.id, { last_error: String(e.message).slice(0, 2000) });
+    throw e;
+  }
+  // Le drapeau décrit l'état de la branche, pas une préférence : une fois poussée, il tombe.
+  setTarget(tg.id, { status: 'pushed', force_push: 0, last_error: null });
   syncTaskStatus(taskId);
   onLog(t('log.task.pushed'));
 }
@@ -680,6 +814,6 @@ async function pushTargets(task, targetIds, onLog = () => {}) {
 
 module.exports = {
   reconcileTargets, pushTargets,
-  runTask, runTaskFollowup, runTaskAnswer, pushTarget, targetsOf, setTarget, syncTaskStatus,
+  runTask, runTaskFollowup, mettreAJourDepuisBase, runTaskAnswer, pushTarget, targetsOf, setTarget, syncTaskStatus,
   execOnTarget, buildCodePrompt, commitMessageFor, saveAgentOutput, reappliquerMessage,
 };

@@ -44,6 +44,21 @@ CREATE TABLE IF NOT EXISTS mr (
   UNIQUE(repo_id, iid)
 );
 
+/* Un merge de branche à branche EN COURS (onglet Git → Merge). La table ne retient que ce que
+   git ne sait pas : quel worktree appartient à quelle demande. Tout le reste — fichiers en
+   conflit, contenu, message par défaut — se relit dans le worktree, qui fait foi. */
+CREATE TABLE IF NOT EXISTS git_merge (
+  id INTEGER PRIMARY KEY,
+  repo_id INTEGER NOT NULL REFERENCES repo(id) ON DELETE CASCADE,
+  source_branch TEXT NOT NULL,
+  target_branch TEXT NOT NULL,
+  dir TEXT NOT NULL,
+  status TEXT NOT NULL,                 -- conflict | ready | committed | pushed
+  commit_sha TEXT,
+  created_at TEXT,
+  updated_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS review (
   id INTEGER PRIMARY KEY,
   mr_id INTEGER NOT NULL UNIQUE REFERENCES mr(id) ON DELETE CASCADE,
@@ -156,6 +171,10 @@ try { db.exec('ALTER TABLE mr ADD COLUMN author TEXT'); } catch { /* déjà pré
 try { db.exec('ALTER TABLE review ADD COLUMN diff_path TEXT'); } catch { /* déjà présente */ }
 // Migration : note globale numérique (0..1) pour le dashboard.
 try { db.exec('ALTER TABLE review ADD COLUMN note_value REAL'); } catch { /* déjà présente */ }
+/* Migration : quand le rapport a été publié en commentaire sur la merge request. Une trace,
+   pas un drapeau : le bouton « Publier » doit pouvoir dire ce qui est DÉJÀ parti chez les
+   autres, sinon on republie le même rapport en croyant que le premier envoi a échoué. */
+try { db.exec('ALTER TABLE review ADD COLUMN comment_posted_at TEXT'); } catch { /* déjà présente */ }
 // Migration : contexte du ticket (texte + capture) fourni par le relecteur.
 try { db.exec('ALTER TABLE mr ADD COLUMN ticket_text TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN ticket_image TEXT'); } catch { /* déjà présente */ }
@@ -168,10 +187,19 @@ try { db.exec('ALTER TABLE mr ADD COLUMN ticket_jira_at TEXT'); } catch { /* dé
 try { db.exec('ALTER TABLE mr ADD COLUMN review_session_key TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN review_session_backend TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN review_session_cwd TEXT'); } catch { /* déjà présente */ }
+/* La forge refuse-t-elle de fusionner cette merge request ? 1 / 0 / NULL (pas encore su).
+   Relevé au moment où l'on ouvre la modale de merge : on est alors à un clic d'une action
+   irréversible, un appel d'API pour le dire avant vaut mieux qu'un refus après. */
+try { db.exec('ALTER TABLE mr ADD COLUMN has_conflicts INTEGER'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN ticket_jira_error TEXT'); } catch { /* déjà présente */ }
 // Migration : chemins des fichiers modifiés par la MR (pour le badge « risque » et
 // les règles par chemin), un par ligne. Rempli au discover / à la review.
 try { db.exec('ALTER TABLE mr ADD COLUMN changed_paths TEXT'); } catch { /* déjà présente */ }
+/* La TAILLE du changement, relevée avec les chemins (même appel) : « 12 fichiers · +340 −80 »
+   sur la carte, c'est ce qui décide par quoi commencer sans ouvrir trois merge requests. */
+try { db.exec('ALTER TABLE mr ADD COLUMN changed_files INTEGER'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN changed_additions INTEGER'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN changed_deletions INTEGER'); } catch { /* déjà présente */ }
 /* Options de merge choisies à la création de la MR. GitLab les applique nativement dès
    la création ; GitHub ne sait pas les exprimer là (ce sont des décisions de merge), on
    les mémorise donc ici pour pré-cocher — et appliquer — la modale de merge. */
@@ -290,6 +318,28 @@ db.exec(`CREATE TABLE IF NOT EXISTS usage (
   tokens_est INTEGER,
   created_at TEXT
 )`);
+/* ---------- La dernière exécution d'une cible Makefile ----------
+   « Ai-je déjà passé les migrations ce matin ? » se répondait en relisant un journal de jobs.
+   Une ligne par (répertoire, cible), écrasée à chaque lancement : ce qui compte est le
+   DERNIER, pas l'historique. Purement local — Docker et make n'en savent rien. */
+db.exec(`CREATE TABLE IF NOT EXISTS make_run (
+  dir TEXT NOT NULL,
+  target TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  ok INTEGER,
+  PRIMARY KEY (dir, target)
+)`);
+
+/* À QUOI SE RATTACHE UNE DÉPENSE. La table comptait des tokens PAR FAMILLE (review, task,
+   explore…) : on savait combien coûtaient les sessions, jamais LESQUELLES. Deux colonnes
+   suffisent — l'objet et son identifiant —, et le classement des sessions les plus chères
+   devient une requête au lieu d'une estimation. Anciennes lignes : colonnes nulles, elles
+   restent comptées dans leur famille. */
+try { db.exec('ALTER TABLE usage ADD COLUMN owner_kind TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE usage ADD COLUMN owner_id INTEGER'); } catch { /* déjà présente */ }
+db.exec('CREATE INDEX IF NOT EXISTS idx_usage_owner ON usage(owner_kind, owner_id)');
+
 // Type de session de dev : 'code' (l'IA modifie le code) ou 'explore' (lecture seule,
 // l'IA répond à une question et sa réponse est stockée dans un .md).
 try { db.exec("ALTER TABLE task ADD COLUMN kind TEXT DEFAULT 'code'"); } catch { /* déjà présente */ }
@@ -330,6 +380,15 @@ try { db.exec('ALTER TABLE task ADD COLUMN ask_questions INTEGER DEFAULT 0'); } 
    identifiant que l'utilisateur a saisi lui-même : le taire reviendrait à lui faire croire que
    sa session continue. Une ligne de journal ne suffit pas — elle défile. */
 try { db.exec('ALTER TABLE task_target ADD COLUMN session_note TEXT'); } catch { /* déjà présente */ }
+/* La merge request de ce projet est-elle en conflit ? Trois états : 1 (oui), 0 (non), NULL
+   (pas encore su — GitHub calcule `mergeable` de façon asynchrone, et la liste ne le donne
+   jamais). Rempli par la passe de découverte qui interroge DÉJÀ ces merge requests une par
+   une : le bouton « Mettre à jour avec … » ne coûte donc aucun appel d'API de plus. */
+try { db.exec('ALTER TABLE task_target ADD COLUMN mr_conflicts INTEGER'); } catch { /* déjà présente */ }
+/* Ce projet a-t-il besoin d'un push FORCÉ ? Posé par le rattrapage de la branche de départ,
+   qui réécrit l'historique : le push normal est alors refusé par la forge, à juste titre.
+   Effacé dès qu'un push réussit — l'état est celui de la branche, pas une préférence. */
+try { db.exec('ALTER TABLE task_target ADD COLUMN force_push INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task_target ADD COLUMN session_key TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task_target ADD COLUMN session_backend TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE task_target ADD COLUMN session_cwd TEXT'); } catch { /* déjà présente */ }
@@ -343,6 +402,10 @@ try { db.exec('ALTER TABLE task_target ADD COLUMN output_path TEXT'); } catch { 
    consultables en cochant « afficher les sessions masquées ». C'est un rangement, pas une
    suppression : aucune donnée n'est touchée. */
 try { db.exec('ALTER TABLE task ADD COLUMN hidden INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+/* Prévenir Jira à la création de chaque merge request de cette session : commentaire avec le
+   lien + transition « en revue » si Jira la propose. DÉCOCHÉ par défaut — écrire chez les
+   autres se décide, session par session. */
+try { db.exec('ALTER TABLE task ADD COLUMN notify_jira INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 
 /* De quoi REJOUER un job : l'intention (quelle fonction, sur quel objet), pas son état.
    Sans ça, un job arrêté ne laisse qu'un `kind` — impossible de savoir quelle session ou
@@ -1092,6 +1155,24 @@ db.exec(`CREATE TABLE IF NOT EXISTS brief_hidden (
    pour un navigateur. La date du dernier affichage, elle, reste locale — deux navigateurs
    ouverts n'ont pas à se voler le brief l'un l'autre. */
 try { db.exec("ALTER TABLE config ADD COLUMN brief_on_open TEXT DEFAULT '1'"); } catch { /* déjà présente */ }
+/* ---------- B8 : quel job Jenkins déploie quel dépôt ----------
+   « La QA veut !217 en recette » : on ouvrait Jenkins, on cherchait `api-deploy-recette` dans
+   deux cents jobs, on recopiait la branche sans faute de frappe. Le lien dépôt ↔ job se
+   déclare une fois — comme service ↔ dépôt dans Liens — et la carte d'une merge request
+   VÉRIFIÉE VERTE propose alors le job, la branche pré-remplie. `param` : le nom du paramètre
+   Jenkins qui reçoit la branche (souvent `BRANCH`, parfois `VERSION`) ; vide, on ne
+   pré-remplit rien et la fiche s'ouvre telle quelle. */
+db.exec(`CREATE TABLE IF NOT EXISTS repo_jenkins (
+  id INTEGER PRIMARY KEY,
+  repo_id INTEGER NOT NULL REFERENCES repo(id) ON DELETE CASCADE,
+  job_path TEXT NOT NULL,
+  param TEXT,
+  UNIQUE(repo_id, job_path)
+)`);
+
+/* Cocher une todo liée quand sa merge request est mergée. Coché par défaut : la todo perd sa
+   raison d'être au merge, et la cocher soi-même après coup est le geste qu'on oublie. */
+try { db.exec("ALTER TABLE config ADD COLUMN todo_close_on_merge TEXT DEFAULT '1'"); } catch { /* déjà présente */ }
 /* Au-delà de combien de jours une MR reviewée et toujours ouverte est « dormante ». Cinq
    jours : au-dessous, on signalerait la MR d'avant-hier, qu'on n'a pas oubliée. */
 try { db.exec('ALTER TABLE config ADD COLUMN stale_mr_days INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
@@ -1154,6 +1235,20 @@ db.exec(`CREATE TABLE IF NOT EXISTS git_command (
 // Amorçage UNE SEULE FOIS (drapeau en config) : quelques commandes usuelles. Supprimer
 // toutes les entrées ne les réintroduit donc pas — c'est un choix de l'utilisateur.
 try { db.exec("ALTER TABLE config ADD COLUMN git_commands_seeded INTEGER DEFAULT 0"); } catch { /* déjà présente */ }
+/* Review automatique à l'arrivée d'une merge request, et son plafond par tour de découverte.
+   Décochée par défaut, et plafonnée même une fois cochée : chaque review est un appel IA
+   facturé, et la PREMIÈRE découverte d'une installation neuve ramène toutes les MR ouvertes
+   du parc d'un coup. Un lundi matin ne doit pas se solder par trente appels non demandés. */
+try { db.exec("ALTER TABLE config ADD COLUMN auto_review_new TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE config ADD COLUMN review_auto_max INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
+/* Re-review automatique quand le rapport se périme (la branche a avancé depuis la review).
+   Séparée de la précédente et décochée elle aussi : reviewer à l'arrivée et suivre une branche
+   qui bouge sont deux dépenses différentes, et la seconde se répète à chaque poussée. */
+try { db.exec("ALTER TABLE config ADD COLUMN auto_rereview_stale TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
+/* Publication automatique du rapport de review sur la merge request. DÉCOCHÉ PAR DÉFAUT,
+   contrairement à `review_explain` : écrire chez les autres est une décision, et une
+   installation neuve ne doit surprendre personne au premier lancement de review. */
+try { db.exec("ALTER TABLE config ADD COLUMN auto_post_review TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
 const seeded = db.prepare('SELECT git_commands_seeded AS s FROM config WHERE id = 1').get();
 if (seeded && !seeded.s) {
   const ins = db.prepare('INSERT INTO git_command (label, command, sort_order, created_at) VALUES (?, ?, ?, ?)');
@@ -1178,10 +1273,46 @@ try { db.exec('ALTER TABLE config DROP COLUMN health_check'); } catch { /* déj�
 try { db.exec('ALTER TABLE config DROP COLUMN health_minutes'); } catch { /* déjà retirée */ }
 
 // Au démarrage : tout job resté "running" a été coupé -> interrupted.
+// Ce que ces jobs PORTAIENT (sessions, vérifications) est remis debout par
+// `reconcilierTravauxCoupes`, appelée par le serveur une fois la langue posée.
 db.prepare(`UPDATE job SET status = 'interrupted', finished_at = ?
             WHERE status IN ('running', 'queued')`).run(new Date().toISOString());
 
+/* REMETTRE DEBOUT CE QUE L'ARRÊT A COUPÉ EN PLEIN VOL.
+ *
+ * Un job resté « running » n'existe plus : le processus est mort avec le serveur, et on vient
+ * de le marquer `interrupted`. Mais le job n'était que le porteur — la SESSION, la tâche hors
+ * dépôt ou la vérification qu'il faisait tourner, elles, restaient « running » pour toujours.
+ * Or l'écran n'offre « Relancer » que sur `new`, `error`, `committed` ou `pushed` : une session
+ * figée à « en cours » n'avait plus aucun bouton, ni pour repartir, ni pour s'arrêter — le job
+ * à arrêter n'existait plus. L'outil se bloquait tout seul en s'arrêtant au mauvais moment.
+ *
+ * On les repose en `error`, avec la RAISON écrite noir sur blanc : « error » est un état d'où
+ * l'on peut repartir, et le message évite de croire que l'IA a échoué alors que c'est le
+ * serveur qui s'est arrêté. Ce qui avait déjà abouti n'est pas touché — les statuts par projet
+ * (`committed`, `pushed`) portent le travail réellement fait.
+ *
+ * Appelée par le serveur APRÈS `i18n.setLang`, sinon le message sortirait toujours en français.
+ * Renvoie ce qui a été repris, pour que le démarrage puisse le dire. */
+function reconcilierTravauxCoupes(raison) {
+  const maintenant = new Date().toISOString();
+  const compte = { sessions: 0, projets: 0, horsDepot: 0, verifications: 0 };
+  const maj = (sql, ...args) => { try { return db.prepare(sql).run(...args).changes; } catch { return 0; } };
+  compte.sessions = maj(`UPDATE task SET status = 'error', last_error = ?, updated_at = ?
+                         WHERE status = 'running'`, raison, maintenant);
+  compte.projets = maj(`UPDATE task_target SET status = 'error', last_error = ?, updated_at = ?
+                        WHERE status = 'running'`, raison, maintenant);
+  compte.horsDepot = maj(`UPDATE local_task SET status = 'error', last_error = ?, updated_at = ?
+                          WHERE status = 'running'`, raison, maintenant);
+  /* Une vérification coupée n'a pas de verdict : `verify_error` est ce que pose déjà `jobs.js`
+     quand son exécution échoue, et c'est lui qui rend la relance possible. */
+  compte.verifications = maj(`UPDATE verification SET status = 'error', verdict = 'verify_error',
+                              finished_at = ? WHERE status = 'running'`, maintenant);
+  return compte;
+}
+
 module.exports = db;
+module.exports.reconcilierTravauxCoupes = reconcilierTravauxCoupes;
 module.exports.DEFAULTS = {
   DEFAULT_PROMPT_REVIEW, DEFAULT_PROMPT_EXPLAIN, DEFAULT_PROMPT_MODIFY,
 };

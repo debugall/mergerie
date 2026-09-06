@@ -1,5 +1,6 @@
 'use strict';
 const { healthSummary } = require('./docker');
+const { t } = require('../public/i18n-runtime.js');
 /* Données Docker STATIQUES pour le mode démo (MERGERIE_DEMO=1), sur le modèle de demo-git.js.
    L'onglet Docker interroge un vrai démon en direct ; hors-ligne il serait vide. Ici un jeu
    fictif cohérent : deux projets compose (dont un service en DRIFT config avec son diff de
@@ -8,14 +9,31 @@ const { healthSummary } = require('./docker');
 const iso = (days) => new Date(Date.now() - days * 86400000).toISOString();
 const isDemo = () => process.env.MERGERIE_DEMO === '1';
 
-function status() { return { ok: true, version: '27.1.1 (démo)' }; }
+/* Les deux libellés que le mode démo FABRIQUE (le reste du jeu est de la donnée semée, en
+   français par nature) passent par le dictionnaire : en anglais, ils s'affichaient tels quels
+   au milieu d'une interface traduite. */
+/* B6 : l'état des services d'un répertoire, pour la confirmation d'une vérification « in
+   place ». Le décor rend une base ARRÊTÉE — c'est justement la situation que le croisement
+   existe pour éviter. */
+function dirState(dir) {
+  const p = composeProjects().find((x) => x.dir === dir);
+  if (!p) return { found: false, services: [] };
+  return {
+    found: true, dir, project: p.name,
+    services: (p.services || []).map((sv) => ({ name: sv.name, state: sv.container ? (sv.container.state || 'unknown') : 'none' })),
+  };
+}
+
+function status() { return { ok: true, version: `27.1.1 ${t('demo.suffix')}` }; }
 
 function composeProjects() {
   return [
     {
       name: 'boutique',
       dir: '/home/moi/dev/boutique', file: 'compose.yaml', path: '/home/moi/dev/boutique/compose.yaml',
-      rootLabel: 'Mes dépôts', error: null,
+      rootLabel: t('demo.root-label'), error: null,
+      // « Qu'est-ce que je suis en train de tester ? » : le décor a sa branche, comme en vrai.
+      git: { branch: 'develop', sha: '4f2c9a1b' },
       makefile: { file: 'Makefile', path: '/home/moi/dev/boutique/Makefile', targets: [
         { name: 'up', desc: 'Démarre la stack en arrière-plan', recipe: 'docker compose up -d\ndocker compose ps' },
         { name: 'logs', desc: 'Suit les logs de tous les services', recipe: 'docker compose logs -f --tail=100' },
@@ -53,7 +71,7 @@ function composeProjects() {
     {
       name: 'monitoring',
       dir: '/home/moi/dev/monitoring', file: 'docker-compose.yml', path: '/home/moi/dev/monitoring/docker-compose.yml',
-      rootLabel: 'Mes dépôts', error: null,
+      rootLabel: t('demo.root-label'), error: null,
       services: [
         {
           name: 'grafana', image: 'grafana/grafana:11.1.0',
@@ -179,4 +197,4 @@ function streamLogs(ids, res) {
   res.on('close', () => clearInterval(timer));
 }
 
-module.exports = { isDemo, status, composeProjects, composeList, orphans, reconstituteDemo, previewDown, containers, streamLogs, summary };
+module.exports = { isDemo, status, dirState, composeProjects, composeList, orphans, reconstituteDemo, previewDown, containers, streamLogs, summary };

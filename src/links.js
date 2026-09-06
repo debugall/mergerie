@@ -426,11 +426,21 @@ function grille() {
 
   /* `urls[envId]` est une LISTE, même à un seul élément : un client qui doit traiter deux
      formes selon le nombre finit toujours par en oublier une. */
+  /* La DERNIÈRE OUVERTURE de chaque adresse, telle que la frécence la note déjà. Elle sert à
+     la bulle de la case : « vérifier l'adresse avant de cliquer » veut aussi dire savoir si
+     c'est bien celle qu'on a ouverte hier. */
+  const derniere = new Map();
+  for (const u of db.prepare("SELECT ref, last_used_at FROM launcher_usage WHERE kind = 'service_url'").all()) {
+    derniere.set(u.ref, u.last_used_at);
+  }
   const parService = new Map();
   for (const u of urls) {
     if (!parService.has(u.service_id)) parService.set(u.service_id, {});
     const par = parService.get(u.service_id);
-    (par[u.environment_id] = par[u.environment_id] || []).push({ id: u.id, label: u.label, url: u.url });
+    (par[u.environment_id] = par[u.environment_id] || []).push({
+      id: u.id, label: u.label, url: u.url,
+      last_used_at: derniere.get(`${u.service_id}:${u.environment_id}:${u.id}`) || null,
+    });
   }
   const ctxParService = new Map(ctx.map((c) => [c.service_id, c.n]));
 
@@ -457,6 +467,11 @@ function grille() {
    au dépôt, plus ses gabarits résolus. Un gabarit non résoluble donne un bouton GRISÉ avec
    sa raison — pas une URL à trous, pas un bouton absent : on veut savoir qu'il existe et
    pourquoi il ne marche pas ici. */
+/* Les boutons contextuels ne dépendent que de TROIS choses : un dépôt (qui désigne le
+   service), une branche, et éventuellement un numéro de merge request. Une ligne de projet de
+   session a les deux premières ; un ticket Jira a une branche probable et un dépôt probable.
+   La fonction prend donc un « porteur » — `{ repo_id, source_branch, iid }` — et la route des
+   merge requests lui passe la MR telle quelle : même contrat, trois appelants. */
 function liensDeMr(mr) {
   if (!mr || !mr.repo_id) return { service: null, envs: [], context: [] };
   const service = db.prepare('SELECT * FROM service WHERE repo_id = ? ORDER BY id LIMIT 1').get(mr.repo_id);
@@ -663,7 +678,8 @@ function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
     pousser({
       kind: 'mr', ref: String(r.id), group: 'mrs',
       label: `!${r.iid} — ${r.title || ''}`, detail: r.project,
-      nav: { tab: 'review', mr_id: r.id, status: r.status },
+      // `mr_iid` : le NUMÉRO tel qu'on le tape — la palette y saute directement (« !217 »).
+      nav: { tab: 'review', mr_id: r.id, mr_iid: r.iid, status: r.status },
       texte: `!${r.iid} ${r.iid} ${r.title || ''} ${r.project}`,
     });
   }
@@ -701,9 +717,36 @@ function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
     });
   }
 
-  // 5. Navigation et actions — fournies par le client, qui seul sait ce qu'il sait faire.
+  // 5. Sessions de dev — retrouvées par leur libellé, leur prompt ou leur branche.
+  const fTask = preFiltre(requete, ['label', 'prompt', 'branch']);
+  for (const r of db.prepare(`SELECT id, kind, label, prompt, branch FROM task
+      ${fTask.cond ? `WHERE ${fTask.cond}` : ''} ORDER BY id DESC LIMIT ?`).all(...fTask.args, PAR_SOURCE)) {
+    const titre = (r.label || r.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 70);
+    pousser({
+      kind: 'task', ref: String(r.id), group: 'tasks',
+      label: titre || r.branch, detail: r.branch || '',
+      nav: { tab: 'task', task_id: r.id, task_kind: r.kind || 'code' },
+      texte: `${r.label || ''} ${r.prompt || ''} ${r.branch || ''}`,
+    });
+  }
+
+  // 6. Navigation et actions — fournies par le client, qui seul sait ce qu'il sait faire.
   for (const a of actions) {
     pousser({ kind: 'nav', ref: a.id, group: 'nav', label: a.label, detail: '', action: a.id, texte: a.label });
+  }
+
+  /* PALETTE OUVERTE, RIEN DE TAPÉ : on ne rend pas « les douze premiers de tout ». Sans
+     requête, le score de correspondance est le même partout et c'est la source la plus
+     nombreuse — les liens de la grille — qui prend les douze places : on ouvrait la palette
+     sur huit URL Kibana, aucune merge request, aucune session, alors que tout cela se trouve
+     dès qu'on tape une lettre. On propose donc un ÉCHANTILLON des trois choses qu'on vient
+     y chercher, trois de chaque, dans un ordre fixe. */
+  if (!requete) {
+    const parGroupe = (g, n) => out.filter((o) => o.group === g)
+      .sort((a, b) => frecence(use.get(`${b.kind}:${b.ref}`)) - frecence(use.get(`${a.kind}:${a.ref}`)))
+      .slice(0, n);
+    return [...parGroupe('nav', 3), ...parGroupe('mrs', 3), ...parGroupe('tasks', 3)]
+      .map(({ texte, ...reste }) => reste);
   }
 
   const notes = out.map((o) => {

@@ -52,7 +52,11 @@ describe('Vérification : ce qui se voit pendant qu’elle tourne', { skip: disp
     navigateur = await chromium.launch();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 900 } });
     await page.goto(app.base);
-    await page.waitForSelector('#toReviewList .card [data-verify]');
+    /* « Vérifier » est une action secondaire de la carte : elle vit dans le menu « ⋯ », donc
+       repliée. Ce que ce fichier observe est l'ÉTAT du bouton (il tourne, il se désactive),
+       lu en JavaScript ; le repère visible sans rien ouvrir, lui, est la carte `running-now`,
+       et c'est ce que les tests ci-dessous exigent en premier. */
+    await page.waitForSelector('#toReviewList .card [data-verify]', { state: 'attached' });
   });
 
   after(async () => {

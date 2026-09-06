@@ -55,6 +55,7 @@ const { t } = i18n;
 const { discoverAll } = require('./discover');
 const jobs = require('./jobs');
 const reviewer = require('./reviewer');
+const gitmerge = require('./gitmerge');
 const converge = require('./converge');
 const forge = require('./forge');
 const git = require('./git');
@@ -111,6 +112,30 @@ app.use((req, res, next) => {
   res.status(403).json({ error: i18n.t('err.origine-etrangere') });
 });
 
+/* Mémo d'UNE requête : la table des dernières vérifications par merge request, qui balaie
+   trois cents lignes. Déclaré ICI, au-dessus du middleware qui le vide, plutôt qu'à côté de la
+   fonction qui le remplit huit cents lignes plus bas : un état de module doit se lire là où on
+   le remet à zéro. */
+let cacheVerifs = null;
+
+/* Les mémos qui ne valent que le temps d'une requête sont vidés ICI, en entrée. Les garder
+   plus longtemps ferait servir un instantané périmé — une vérification qui vient de finir
+   resterait invisible —, les recalculer à chaque appel referait N fois le même balayage sur
+   une liste de sessions. */
+app.use((req, res, next) => { cacheVerifs = null; next(); });
+
+/* LA LANGUE DE L'ÉCRAN, POUR LA DURÉE DE LA REQUÊTE. Elle vit dans le navigateur, pas en base :
+   ce qui se règle dans l'interface doit valoir tout de suite, y compris pour les libellés que
+   le serveur fabrique (messages d'erreur, jeu de démo). Sans cet en-tête, passer l'écran en
+   anglais laissait « Mes dépôts (démo) » en français au milieu d'un onglet traduit.
+   Un état de module suffit : Mergerie est mono-utilisateur, une requête à la fois côté écran.
+   L'absence d'en-tête (appel direct à l'API, script) retombe sur la langue enregistrée. */
+app.use((req, res, next) => {
+  const l = String(req.headers['x-mergerie-lang'] || '').trim();
+  i18n.setLang(l === 'en' || l === 'fr' ? l : getConfig().language);
+  next();
+});
+
 app.use(express.json({ limit: '20mb' })); // marge pour les captures de ticket (base64)
 /* Fichiers statiques. `no-cache` = le navigateur peut mettre en cache mais DOIT
    revalider avant chaque usage (requête conditionnelle → 304 si inchangé, contenu
@@ -126,7 +151,9 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
    temps » au lieu de « saisie invalide ». */
 const wrap = (fn) => (req, res) => Promise.resolve().then(() => fn(req, res)).catch((e) => {
   const status = e.code === 'BUSY' ? 409 : (Number.isInteger(e.status) && e.status >= 400 && e.status < 600 ? e.status : 400);
-  res.status(status).json({ error: e.message });
+  /* `code` : un refus que l'écran doit pouvoir RECONNAÎTRE pour proposer autre chose qu'un
+     toast rouge. Chercher un mot dans le message ne marcherait pas — il est traduit. */
+  res.status(status).json({ error: e.message, ...(e.code ? { code: e.code } : {}) });
 });
 
 // Options de convergence depuis un body : réglages globaux par défaut, surcharge
@@ -357,8 +384,42 @@ app.get('/api/stats', wrap((req, res) => {
     FROM review JOIN mr ON mr.id = review.mr_id
     WHERE mr.status = 'reviewed' AND review.note_value IS NOT NULL AND review.note_value < 0.7`).get().c;
 
+  /* LES SESSIONS LES PLUS COÛTEUSES. « Le coût par famille » disait combien coûtent les
+     sessions ; il ne disait pas LESQUELLES. Depuis que chaque dépense porte son propriétaire,
+     le classement est une requête — et un prompt qui fait relire trois dépôts pour rien se
+     voit avant de se voir sur la facture. */
+  const topTasks = db.prepare(`SELECT u.owner_kind AS kind, u.owner_id AS id, SUM(u.tokens_est) AS tokens
+    FROM usage u WHERE u.owner_kind IS NOT NULL AND u.owner_id IS NOT NULL
+    GROUP BY u.owner_kind, u.owner_id ORDER BY tokens DESC LIMIT 5`).all()
+    .map((r) => {
+      const table = r.kind === 'ask' ? 'question' : (r.kind === 'local' ? 'local_task' : 'task');
+      const row = db.prepare(`SELECT label, prompt FROM ${table} WHERE id = ?`).get(r.id) || {};
+      return { ...r, label: row.label || '', prompt: String(row.prompt || '').slice(0, 120) };
+    })
+    .filter((r) => r.prompt || r.label);
+
+  /* LES CONSTATS QUI REVIENNENT. Le même constat relevé sur au moins trois merge requests d'un
+     même dépôt : c'est la matière première d'une règle de review, qu'on retapait jusque-là
+     dans le contexte manuel de chaque merge request. Le titre est normalisé (minuscules,
+     ponctuation de fin retirée) pour que « Le numéro de carte est loggé » et « le numéro de
+     carte est loggé. » comptent pour un. */
+  const recurrents = db.prepare(`SELECT repo.project AS project,
+      LOWER(TRIM(RTRIM(f.title, '. '))) AS titre,
+      COUNT(DISTINCT f.mr_id) AS n,
+      GROUP_CONCAT(DISTINCT f.file) AS fichiers,
+      MAX(f.title) AS exemple
+    FROM finding f JOIN mr ON mr.id = f.mr_id JOIN repo ON repo.id = mr.repo_id
+    WHERE f.title IS NOT NULL AND f.title != ''
+    GROUP BY repo.id, titre HAVING n >= 3
+    ORDER BY n DESC, project LIMIT 10`).all()
+    .map((r) => ({
+      project: r.project, title: r.exemple, count: r.n,
+      files: String(r.fichiers || '').split(',').filter(Boolean).slice(0, 6),
+    }));
+
   res.json({
     funnel, notes, projects, weekly, scoreTrend, tokens, tasks, resolution,
+    topTasks, recurrents,
     lowScores: faibles,
     commentsPosted: db.prepare('SELECT COUNT(*) c FROM comment_log').get().c,
   });
@@ -925,15 +986,21 @@ app.post('/api/jira/fetch', wrap(async (req, res) => {
   if (!key) throw new Error(t('err.jira.test-key-required'));
   // En démo, comme les autres routes Jira : le contexte vient du jeu fictif, sinon
   // « Faire coder l'IA » et « Récupérer » seraient les seuls boutons Jira inertes.
+  /* B10 : les PIÈCES JOINTES viennent avec le contexte. La modale de session les propose en
+     cases à cocher ; elles ne sont téléchargées qu'à la création, et seulement si on coche. */
+  const pieces = (liste) => (liste || []).map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType }));
   if (demoDocker.isDemo()) {
     const d = demoJira.issue(key);
     const body = [`# ${d.summary}`, '', d.descriptionMd || ''].join('\n');
-    return res.json({ key: d.key, summary: d.summary, context: body });
+    return res.json({ key: d.key, summary: d.summary, context: body, attachments: pieces(d.attachments) });
   }
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const issue = await jira.fetchIssue(cfg, key);
-  res.json({ key: issue.key, summary: issue.summary, context: jira.issueToContext(issue) });
+  res.json({
+    key: issue.key, summary: issue.summary, context: jira.issueToContext(issue),
+    attachments: pieces(issue.attachments),
+  });
 }));
 
 /* ---------- Tickets Jira surveillés ----------------------------------------
@@ -1058,6 +1125,67 @@ async function faireCheckJiraWatch() {
   return resultat;
 }
 
+/* ---------- « Dans Mergerie » : ce qui est déjà engagé sur un ticket ----------
+   « Où en est PROJ-1408 ? » se répondait en ouvrant le ticket (rien), puis Reviews, puis en
+   cherchant « 1408 », puis en revenant à Jira. Tout est en base : les merge requests portent
+   la clé (relevée à la découverte, `ticket_jira_key`) ou l'ont dans leur branche ou leur
+   titre, et les sessions de codage la portent dans le nom de branche qu'on leur a donné. */
+function engagementsSurTicket(cle) {
+  const k = String(cle || '').toUpperCase();
+  if (!/^[A-Z][A-Z0-9]+-\d+$/.test(k)) return { mrs: [], tasks: [] };
+  const motif = `%${k}%`;
+  const mrs = db.prepare(`SELECT mr.id, mr.iid, mr.title, mr.status, mr.closed_seen, mr.web_url, repo.project
+    FROM mr JOIN repo ON repo.id = mr.repo_id
+    WHERE UPPER(COALESCE(mr.ticket_jira_key, '')) = ?
+       OR UPPER(mr.source_branch) LIKE ? OR UPPER(COALESCE(mr.title, '')) LIKE ?
+    ORDER BY mr.id DESC LIMIT 20`).all(k, motif, motif);
+  const notes = {};
+  if (mrs.length) {
+    const trous = mrs.map(() => '?').join(',');
+    const ids = mrs.map((m) => m.id);
+    for (const v of db.prepare(`SELECT mr_id, note_value FROM review_version rv WHERE mr_id IN (${trous})
+      AND version = (SELECT MAX(v2.version) FROM review_version v2 WHERE v2.mr_id = rv.mr_id)`).all(...ids)) {
+      notes[v.mr_id] = v.note_value;
+    }
+  }
+  const verifs = dernieresVerificationsParMr();
+  const tasks = db.prepare(`SELECT DISTINCT task.id, task.prompt, task.label, task.status, task.kind
+    FROM task JOIN task_target tt ON tt.task_id = task.id
+    WHERE UPPER(COALESCE(tt.branch, '')) LIKE ? OR UPPER(COALESCE(task.prompt, '')) LIKE ?
+       OR UPPER(COALESCE(task.label, '')) LIKE ?
+    ORDER BY task.id DESC LIMIT 10`).all(motif, motif, motif);
+  return {
+    mrs: mrs.map((m) => ({
+      ...m, closed: !!m.closed_seen,
+      note: notes[m.id] != null ? notes[m.id] : null,
+      verdict: (verifs.get(m.id) || {}).verdict || null,
+    })),
+    tasks,
+  };
+}
+
+app.get('/api/jira/issues/:key/mergerie', wrap((req, res) => {
+  res.json(engagementsSurTicket(req.params.key));
+}));
+
+/* Le même relevé, en RACCOURCI, pour toute une liste de tickets : « !218 · 7,9 » ou « session
+   en cours » en pied de carte, pour voir en parcourant ses tickets lesquels ont déjà avancé
+   côté code. Un appel pour la liste entière, jamais un par carte. */
+app.get('/api/jira/engagements', wrap((req, res) => {
+  const cles = String(req.query.keys || '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 60);
+  const out = {};
+  for (const cle of cles) {
+    const d = engagementsSurTicket(cle);
+    const enCours = d.tasks.filter((x) => ['running', 'needs_input'].includes(x.status)).length;
+    if (!d.mrs.length && !d.tasks.length) continue;
+    out[cle.toUpperCase()] = {
+      mr: d.mrs[0] ? { iid: d.mrs[0].iid, note: d.mrs[0].note, closed: d.mrs[0].closed } : null,
+      mrs: d.mrs.length, tasks: d.tasks.length, running: enCours,
+    };
+  }
+  res.json({ engagements: out });
+}));
+
 app.post('/api/jira/watch/check', wrap(async (req, res) => { res.json(await checkJiraWatch()); }));
 
 // Compteur « en cours qui me sont affectés » : valeur en cache, jamais un appel Jira ici.
@@ -1179,12 +1307,55 @@ app.put('/api/config', wrap((req, res) => {
 
 /* ---------- Repos (admin) ---------- */
 app.get('/api/repos', wrap((req, res) => {
-  res.json(db.prepare('SELECT * FROM repo ORDER BY id').all());
+  /* L'ÉTAT DE CHAQUE DÉPÔT, sur sa propre ligne. « Pourquoi cette review échoue ? » commence
+     presque toujours par « le clone est-il là, et à jour ? » : le nombre de merge requests
+     ouvertes, la date de la dernière découverte, et l'état du clone (présent, absent,
+     modifié) répondent avant d'ouvrir un terminal. Tout est LOCAL — un `statSync` et une
+     requête —, jamais un appel à la forge : cette liste s'ouvre à chaque visite. */
+  const cfg = getConfig();
+  const ouvertes = {};
+  for (const r of db.prepare(`SELECT repo_id AS id, COUNT(*) n, MAX(updated_at) AS at FROM mr
+    WHERE (closed_seen IS NULL OR closed_seen = 0) GROUP BY repo_id`).all()) {
+    ouvertes[r.id] = r;
+  }
+  res.json(db.prepare('SELECT * FROM repo ORDER BY id').all().map((repo) => {
+    const dir = git.cloneDirFor(cfg, repo);
+    let clone = 'absent';
+    try {
+      if (fs.statSync(path.join(dir, '.git')).isDirectory() || fs.statSync(path.join(dir, '.git')).isFile()) clone = 'present';
+    } catch { clone = 'absent'; }
+    const o = ouvertes[repo.id] || {};
+    return { ...repo, open_mrs: o.n || 0, last_seen_at: o.at || null, clone_state: clone, clone_dir: dir };
+  }));
 }));
+
+/* RE-CLONER. Le premier réflexe quand une review échoue sur un clone abîmé : on le supprimait
+   à la main dans un terminal. Le geste est DESTRUCTEUR pour ce qui n'a pas été poussé — d'où
+   la confirmation côté écran, et le fait qu'on ne touche qu'au répertoire de clonage calculé,
+   jamais à un chemin fourni par l'appelant. */
+app.post('/api/repos/:id/reclone', wrap(async (req, res) => {
+  const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(Number(req.params.id));
+  if (!repo) throw new Error(t('err.depot-introuvable'));
+  const cfg = getConfig();
+  const dir = git.cloneDirFor(cfg, repo);
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* déjà absent */ }
+  await git.ensureRepo(cfg, repo, () => {});
+  res.json({ ok: true, dir });
+}));
+
+/* CE QUI RESSEMBLE À UNE URL DE DÉPÔT. Le serveur acceptait n'importe quelle chaîne : « toto »
+   devenait un dépôt suivi, et l'erreur ne se voyait qu'au premier clonage — après une découverte
+   qui ne rapportait rien. Le front valide déjà ; le serveur ne s'y fie pas (l'API est appelable
+   directement, et un `POST` malformé ne doit pas polluer la liste). */
+/* Un chemin ABSOLU est une source de clonage parfaitement valide — `git clone /srv/depots/x.git`
+   marche, c'est ce que fait le décor de démo, et c'est ce que font les tests. La première
+   version de cette garde ne connaissait que http(s) et ssh : elle refusait un dépôt local. */
+const RE_URL_DEPOT = /^(https?:\/\/\S+|file:\/\/\S+|\/\S+|(ssh:\/\/)?[\w.-]+@[\w.-]+[:/]\S+)$/i;
 
 app.post('/api/repos', wrap((req, res) => {
   const { url, branch_pattern } = req.body || {};
   if (!url) throw new Error(t('err.l-url-du-depot-est'));
+  if (!RE_URL_DEPOT.test(String(url).trim())) throw new Error(t('err.repo-url-invalide'));
   // Forge du dépôt : explicite, sinon déduite de l'URL (github.com → github).
   const forgeName = req.body.forge ? forge.normalizeForge(req.body.forge)
     : (/github/i.test(String(url)) ? 'github' : 'gitlab');
@@ -1378,6 +1549,66 @@ app.post('/api/docker/compose/action', wrap((req, res) => {
   res.json(jobs.startDockerJob({ op: 'compose', dir, action, services: Array.isArray(services) ? services : [] }));
 }));
 
+/* ---------- B6 : l'état des services compose d'un répertoire ----------
+   On lance la vérification « in place », elle meurt en trois secondes sur `ECONNREFUSED 5432`,
+   on va dans Docker, on fait Up, on revient, on relance : quatre écrans pour un oubli. La
+   fenêtre de confirmation dit donc l'état des services du projet compose que porte CE
+   répertoire, au moment du clic. Un `docker ps` à la demande, jamais un sondage — et rien du
+   tout si le répertoire ne porte pas de compose. */
+app.get('/api/docker/dir-state', wrap(async (req, res) => {
+  const dir = String(req.query.dir || '');
+  if (!dir) { res.json({ found: false, services: [] }); return; }
+  if (demoDocker.isDemo()) { res.json(demoDocker.dirState(dir)); return; }
+  try {
+    const roots = db.prepare('SELECT * FROM local_root').all();
+    const projets = await docker.composeProjects(roots);
+    const p = projets.find((x) => x.dir === dir);
+    if (!p) { res.json({ found: false, services: [] }); return; }
+    res.json({
+      found: true, dir, project: p.name,
+      services: (p.services || []).map((sv) => ({
+        name: sv.name,
+        state: sv.container ? (sv.container.state || 'unknown') : 'none',
+      })),
+    });
+  } catch { res.json({ found: false, services: [] }); }
+}));
+
+/* ---------- B8 : les jobs Jenkins liés à un dépôt ----------
+   Déclaré une fois dans Réglages → Jenkins, comme service ↔ dépôt dans Liens. Rien n'est
+   lancé ici : ces routes ne font que tenir la liste. */
+app.get('/api/jenkins/links', wrap((req, res) => {
+  res.json({
+    links: db.prepare(`SELECT rj.*, repo.project FROM repo_jenkins rj
+      JOIN repo ON repo.id = rj.repo_id ORDER BY repo.project, rj.job_path`).all(),
+  });
+}));
+app.post('/api/jenkins/links', wrap((req, res) => {
+  const repoId = Number((req.body && req.body.repo_id) || 0);
+  const job = String((req.body && req.body.job_path) || '').trim();
+  if (!repoId || !db.prepare('SELECT 1 FROM repo WHERE id = ?').get(repoId)) throw new Error(t('err.depot-introuvable'));
+  if (!job) throw new Error(t('err.jenkins.job-required'));
+  db.prepare('INSERT OR REPLACE INTO repo_jenkins (repo_id, job_path, param) VALUES (?,?,?)')
+    .run(repoId, job, String((req.body && req.body.param) || '').trim() || null);
+  res.json({ ok: true });
+}));
+app.delete('/api/jenkins/links/:id', wrap((req, res) => {
+  db.prepare('DELETE FROM repo_jenkins WHERE id = ?').run(Number(req.params.id) || 0);
+  res.json({ ok: true });
+}));
+
+/* La dernière exécution de chaque cible d'un répertoire : « migrate · il y a 40 min · ✓ ».
+   Purement local, une ligne par cible, écrasée à chaque lancement. */
+app.get('/api/docker/make/runs', wrap((req, res) => {
+  const dir = String(req.query.dir || '');
+  if (!dir) throw new Error(t('err.docker.dir-required'));
+  const out = {};
+  for (const r of db.prepare('SELECT * FROM make_run WHERE dir = ?').all(dir)) {
+    out[r.target] = { started_at: r.started_at, finished_at: r.finished_at, ok: r.ok };
+  }
+  res.json({ runs: out });
+}));
+
 // Exécute une commande (cible) du Makefile situé à côté du compose → file de jobs, log streamé.
 app.post('/api/docker/make/run', wrap((req, res) => {
   const { dir, target } = req.body || {};
@@ -1520,6 +1751,22 @@ app.get('/api/gitlab/projects', wrap(async (req, res) => {
   res.json(projects.map((p) => ({ ...p, already: existing.has(p.project) })));
 }));
 
+/* TEST DE LA CONNEXION GITLAB, SUR LES VALEURS DU FORMULAIRE — comme le fait déjà
+   `/github/test`. La version précédente lisait la configuration ENREGISTRÉE : au premier
+   lancement, on saisissait l'URL et le jeton, on cliquait « Tester la connexion », et on se
+   faisait répondre « Token GitLab non configuré » par une application qui avait la valeur sous
+   les yeux. Deux boutons jumeaux ne peuvent pas avoir deux comportements.
+   Le masque `***` signifie « champ non touché » : on teste alors avec le jeton en base. */
+app.post('/api/gitlab/test', wrap(async (req, res) => {
+  const cfg = getConfig();
+  const test = { ...cfg };
+  if (req.body && req.body.gitlab_url != null) test.gitlab_url = req.body.gitlab_url;
+  if (req.body && req.body.access_token && req.body.access_token !== '***') test.access_token = req.body.access_token;
+  if (!forge.isConfigured(test, 'gitlab')) throw new Error(t('err.gitlab-test-incomplet'));
+  const projects = await forge.gitlab.listAccessibleProjects(test);
+  res.json({ ok: true, count: projects.length });
+}));
+
 // Liste les branches d'un dépôt (pour choisir la branche de base d'une tâche).
 app.get('/api/gitlab/branches', wrap(async (req, res) => {
   const repo = repoById(Number(req.query.repo_id));
@@ -1634,8 +1881,20 @@ function taskById(id) {
 }
 // Les projets d'une session, avec leur état d'exécution propre (commit, diff, MR…).
 function taskTargets(taskId) {
+  /* `has_review` : la merge request de ce projet porte-t-elle un rapport ? C'est ce qui décide
+     de l'apparition du bouton « Reprendre le rapport de review » sur le formulaire de suivi.
+     Un booléen, pas le rapport lui-même — la liste des sessions n'a pas à charrier le Markdown
+     de chaque rapport à chaque rafraîchissement, c'est-à-dire toutes les secondes et demie.
+     On accepte les DEUX rattachements, comme `effectiveMr` : la MR ouverte par l'application
+     (`tt.mr_iid`) ou celle déjà connue sur la même branche. */
   const rows = db.prepare(`SELECT tt.*, repo.project AS project, repo.forge AS forge,
-      mr.iid AS existing_mr_iid, mr.web_url AS existing_mr_url
+      mr.iid AS existing_mr_iid, mr.web_url AS existing_mr_url,
+      (SELECT 1 FROM review r2 JOIN mr m2 ON m2.id = r2.mr_id
+        WHERE m2.repo_id = tt.repo_id AND (m2.iid = tt.mr_iid OR m2.source_branch = tt.branch)
+        LIMIT 1) AS has_review,
+      (SELECT m3.id FROM mr m3
+        WHERE m3.repo_id = tt.repo_id AND (m3.iid = tt.mr_iid OR m3.source_branch = tt.branch)
+        LIMIT 1) AS mr_row_id
     FROM task_target tt
     JOIN repo ON repo.id = tt.repo_id
     LEFT JOIN mr ON mr.repo_id = tt.repo_id AND mr.source_branch = tt.branch
@@ -1643,10 +1902,47 @@ function taskTargets(taskId) {
     WHERE tt.task_id = ? ORDER BY tt.id`).all(taskId);
   // `questions_json` (bloc <<<QUESTIONS>>>) exposé parsé pour le formulaire de réponses.
   // `resume_cmd` : commande à copier pour reprendre la session d'agent dans un terminal.
+  /* `has_verify_fail` : la vérification la plus récente de la merge request de ce projet
+     a-t-elle CASSÉ quelque chose, et par la faute de cette branche ? C'est ce qui décide de
+     l'apparition du bouton « Reprendre le rapport de vérif » sur le formulaire de suivi.
+     La table des dernières vérifications balaie trois cents lignes : la RECALCULER pour chaque
+     session ferait N fois ce travail sur l'écran qui en liste vingt, et cet écran se redessine
+     toutes les secondes et demie pendant un job. On la mémorise donc le temps d'une requête —
+     `cacheVerifs` est vidé à chaque entrée de route. */
+  const parMr = rows.some((r) => r.mr_row_id) ? verifsParMrDuTour() : new Map();
+  /* CE QUE LA MERGE REQUEST DE CE PROJET EST DEVENUE. Il fallait retourner dans Reviews pour
+     savoir où en était ce que la session avait produit : la note, le verdict, et s'il y a des
+     commentaires en attente d'envoi. Tout est déjà en base — une requête pour toute la liste,
+     pas une par ligne, sur un écran qui se redessine toutes les secondes et demie. */
+  const notesParMr = {};
+  const cmtParMr = {};
+  if (rows.some((r) => r.mr_row_id)) {
+    const ids = [...new Set(rows.map((r) => r.mr_row_id).filter(Boolean))];
+    const trous = ids.map(() => '?').join(',');
+    for (const rv of db.prepare(`SELECT mr_id, note_value FROM review_version rv
+      WHERE mr_id IN (${trous}) AND version = (SELECT MAX(v2.version) FROM review_version v2 WHERE v2.mr_id = rv.mr_id)`).all(...ids)) {
+      notesParMr[rv.mr_id] = rv.note_value;
+    }
+    for (const c of db.prepare(`SELECT mr_id, COUNT(*) n FROM mr_comment_draft
+      WHERE mr_id IN (${trous}) GROUP BY mr_id`).all(...ids)) cmtParMr[c.mr_id] = c.n;
+  }
   return rows.map((r) => {
     let questions = null;
     try { questions = r.questions_json ? JSON.parse(r.questions_json) : null; } catch { questions = null; }
-    return { ...r, questions, resume_cmd: agentsession.resumeCommand(r.session_backend, r.session_key, r.session_cwd) };
+    const v = r.mr_row_id ? parMr.get(r.mr_row_id) : null;
+    /* MÊME condition que la route qui rend le prompt : verdict rouge ET des tests imputables à
+       ces branches. Un bouton qui répondrait « rien à reprendre » une fois cliqué ferait perdre
+       un geste — et une base déjà rouge n'est pas de notre fait. */
+    let imputables = [];
+    try { imputables = v && v.imputable_json ? JSON.parse(v.imputable_json) : []; } catch { imputables = []; }
+    const echec = !!(v && v.verdict === 'verified_fail' && imputables.length);
+    return {
+      ...r, questions, has_verify_fail: echec ? 1 : 0,
+      mr_note: r.mr_row_id != null ? (notesParMr[r.mr_row_id] != null ? notesParMr[r.mr_row_id] : null) : null,
+      mr_verdict: v ? v.verdict : null,
+      mr_drafts: r.mr_row_id ? (cmtParMr[r.mr_row_id] || 0) : 0,
+      resume_cmd: agentsession.resumeCommand(r.session_backend, r.session_key, r.session_cwd),
+    };
   });
 }
 // MR effectivement rattachée à un projet de session : celle créée par l'app, sinon
@@ -1856,6 +2152,46 @@ app.delete('/api/pieces/:scope/:id', wrap((req, res) => {
   res.json({ ok: true });
 }));
 
+/* ---------- Les deux premières lignes de la réponse, et ce qu'elle a coûté ----------
+   Une exploration, une question libre, un codage hors dépôt : on retrouvait sa réponse en
+   ouvrant « Voir la réponse », carte par carte. Les deux premières lignes utiles suffisent à
+   reconnaître laquelle on cherche. On lit le fichier déjà écrit sur le disque — aucun calcul,
+   et on s'arrête aux premiers milliers de caractères : la liste n'a pas à charrier des
+   rapports entiers à chaque rafraîchissement, c'est-à-dire toutes les secondes et demie. */
+function chapeauReponse(mdPath) {
+  const texte = mdPath ? readFileSafe(mdPath) : null;
+  if (!texte) return '';
+  const lignes = String(texte).slice(0, 4000).split('\n')
+    // On saute les titres, les traits et le vide : ce qu'on veut, c'est la première PHRASE.
+    .map((l) => l.trim())
+    .filter((l) => l && !/^#{1,6}\s/.test(l) && !/^[-=*_]{3,}$/.test(l));
+  return lignes.slice(0, 2).join(' ').slice(0, 220);
+}
+
+/* Ce que la dernière passe a coûté : sa durée et ses tokens estimés. La durée vient du job qui
+   l'a portée, les tokens de la ligne d'usage rattachée à la session. Deux `LEFT JOIN` pour
+   toute la liste, pas une requête par carte. */
+function coutParSession(kind) {
+  const out = {};
+  for (const r of db.prepare(`SELECT owner_id AS id, SUM(tokens_est) AS tokens, MAX(created_at) AS at
+    FROM usage WHERE owner_kind = ? AND owner_id IS NOT NULL GROUP BY owner_id`).all(kind)) {
+    out[r.id] = { tokens: r.tokens || 0, at: r.at };
+  }
+  return out;
+}
+function dureeParSession(kind) {
+  const out = {};
+  const cible = kind === 'ask' ? 'ask' : (kind === 'local' ? 'local' : 'task');
+  for (const j of db.prepare(`SELECT target_id AS id, started_at, finished_at FROM job
+    WHERE target_kind = ? AND finished_at IS NOT NULL AND target_id IS NOT NULL
+    ORDER BY id DESC`).all(cible)) {
+    if (out[j.id]) continue;                                  // on garde la PLUS RÉCENTE
+    const d = Date.parse(j.finished_at) - Date.parse(j.started_at);
+    out[j.id] = Number.isFinite(d) && d >= 0 ? d : null;
+  }
+  return out;
+}
+
 app.get('/api/tasks', wrap((req, res) => {
   /* En tête, ce qui vient de se passer : les sessions qui TOURNENT, puis les plus récemment
      exécutées. `finished_at` plutôt qu'`updated_at`, qui bouge aussi quand on corrige un
@@ -1864,9 +2200,15 @@ app.get('/api/tasks', wrap((req, res) => {
      créer tomberait tout en bas. */
   const rows = db.prepare(`SELECT * FROM task
     ORDER BY (status = 'running') DESC, COALESCE(finished_at, created_at) DESC, id DESC`).all();
+  const couts = coutParSession('task');
+  const durees = dureeParSession('task');
   res.json(rows.map((tache) => ({
     ...tache,
     image_count: db.prepare('SELECT COUNT(*) c FROM piece_jointe WHERE scope = ? AND owner_id = ?').get('task', tache.id).c,
+    // Le chapeau ne sert qu'aux explorations : une session de codage se lit à ses projets.
+    answer_head: tache.kind === 'explore' ? chapeauReponse(tache.md_path) : '',
+    tokens_est: (couts[tache.id] || {}).tokens || null,
+    duration_ms: durees[tache.id] != null ? durees[tache.id] : null,
     targets: taskTargets(tache.id),
   })));
 }));
@@ -1923,14 +2265,17 @@ app.post('/api/tasks', wrap((req, res) => {
      hésite de la même façon — « de quel des trois services parles-tu ? » vaut mieux qu'une
      synthèse à côté du sujet. Le codage hors dépôt a sa propre table, et sa propre route. */
   const ask = ask_questions ? 1 : 0;
-  const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message, auto_push, ask_questions, verifier_id, label, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 'new', ?, ?)`).run(
+  const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message, auto_push, ask_questions, verifier_id, label, notify_jira, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 'new', ?, ?)`).run(
     // `task.branch` est un héritage mono-projet (la vérité est dans task_target) et
     // la colonne est NOT NULL : en exploration la branche est facultative, on y range
     // donc '' plutôt que NULL — sinon la création échoue sur une erreur SQL brute.
     list[0].repo_id, k, prompt.trim(), list[0].branch || '',
     (commit_message || '').trim() || null, auto_push ? 1 : 0, ask, lireVerifierSession(k, auto_push, verifier_id),
-    lireLibelle(label), now, now);
+    lireLibelle(label),
+    // B5 : décoché par défaut — écrire chez les autres se décide, session par session.
+    req.body && req.body.notify_jira ? 1 : 0,
+    now, now);
   const taskId = info.lastInsertRowid;
   insertTargets(taskId, list, sessionId);
   savePiecesEtImages('task', taskId, req.body || {});
@@ -1961,7 +2306,7 @@ app.put('/api/tasks/:id', wrap((req, res) => {
       insertTargets(tache.id, list);
     }
   }
-  db.prepare('UPDATE task SET prompt = ?, commit_message = ?, auto_push = ?, ask_questions = ?, verifier_id = ?, label = ?, updated_at = ? WHERE id = ?').run(
+  db.prepare('UPDATE task SET prompt = ?, commit_message = ?, auto_push = ?, ask_questions = ?, verifier_id = ?, label = ?, notify_jira = ?, updated_at = ? WHERE id = ?').run(
     prompt != null ? String(prompt).trim() : tache.prompt,
     commit_message != null ? (String(commit_message).trim() || null) : tache.commit_message,
     auto_push == null ? tache.auto_push : (auto_push ? 1 : 0),
@@ -1973,6 +2318,8 @@ app.put('/api/tasks/:id', wrap((req, res) => {
     lireVerifierSession(tache.kind, auto_push == null ? tache.auto_push : auto_push,
       verifier_id === undefined ? tache.verifier_id : verifier_id),
     label === undefined ? tache.label : lireLibelle(label),
+    // Absent du body → on garde la valeur actuelle, comme les autres cases de la modale.
+    (req.body && req.body.notify_jira) === undefined ? tache.notify_jira : (req.body.notify_jira ? 1 : 0),
     new Date().toISOString(), tache.id,
   );
   savePiecesEtImages('task', tache.id, req.body || {});
@@ -2071,6 +2418,78 @@ app.get('/api/tasks/:id/passes', wrap((req, res) => {
   res.json(passesPayload('task', 0, tk.id, req.query.n, tk.prompt || '', tk.md_path));
 }));
 
+/* LE PROMPT « TRAITE LE RAPPORT DE REVIEW », prêt à coller dans un suivi.
+ *
+ * Le même texte que le bouton « Faire corriger le code par l'IA » du rapport (`prompt.apply-review`),
+ * mais rendu ICI, côté serveur : le rapport est un fichier sur le disque, et la liste des sessions
+ * ne doit pas charrier le Markdown de chaque rapport à chaque rafraîchissement — elle se redessine
+ * toutes les secondes et demie pendant un job.
+ *
+ * Une session multi-projets envoie son suivi à TOUS ses projets : le prompt reprend donc le rapport
+ * de chacun, nommé, plutôt que d'en choisir un au hasard. `?target_id=` restreint à un projet —
+ * c'est ce dont se sert le formulaire de suivi par projet.
+ */
+app.get('/api/tasks/:id/review-prompt', wrap((req, res) => {
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  const cibleId = req.query.target_id ? Number(req.query.target_id) : null;
+  const projets = [];
+  for (const tg of taskTargets(tache.id)) {
+    if (cibleId && tg.id !== cibleId) continue;
+    const iid = tg.mr_iid || tg.existing_mr_iid;
+    if (!iid) continue;
+    const rev = db.prepare(`SELECT review.md_path FROM review
+      JOIN mr ON mr.id = review.mr_id
+      WHERE mr.repo_id = ? AND mr.iid = ?`).get(tg.repo_id, iid);
+    const md = rev && readFileSafe(rev.md_path);
+    if (md && md.trim()) projets.push({ project: tg.project, iid, branch: tg.branch, md: md.trim() });
+  }
+  if (!projets.length) throw new Error(t('err.task.no-review-report'));
+  /* Un seul projet : le prompt est exactement celui du bouton du rapport. Plusieurs : on empile
+     les rapports sous un titre par projet, sinon l'agent ne sait pas quel constat va où. */
+  const prompt = projets.length === 1
+    ? t('prompt.apply-review', { branch: projets[0].branch, md: projets[0].md })
+    : t('prompt.apply-review-multi', {
+      blocs: projets.map((p) => t('prompt.apply-review-bloc', { project: p.project, iid: p.iid, md: p.md })).join('\n\n'),
+    });
+  res.json({ prompt, projets: projets.map((p) => ({ project: p.project, iid: p.iid })) });
+}));
+
+/* LE PROMPT « CORRIGE CE QUE LA VÉRIFICATION A CASSÉ », prêt à coller dans un suivi.
+ *
+ * Exactement celui de « Corriger (session IA) » — même fonction —, mais destiné au champ de
+ * suivi : depuis la session qui a produit la branche, on veut que l'agent reprenne SON fil au
+ * lieu d'ouvrir une session neuve qui redécouvre le code.
+ *
+ * On ne retient que les vérifications ÉCHOUÉES et IMPUTABLES à ces branches : une base déjà
+ * rouge n'est pas de notre fait, et demander à l'agent de corriger ce qu'il n'a pas cassé lui
+ * ferait toucher du code qui n'a rien à voir. */
+app.get('/api/tasks/:id/verify-prompt', wrap((req, res) => {
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  const cibleId = req.query.target_id ? Number(req.query.target_id) : null;
+  const parMr = dernieresVerificationsParMr();
+  const vues = new Set();
+  const blocs = [];
+  for (const tg of taskTargets(tache.id)) {
+    if (cibleId && tg.id !== cibleId) continue;
+    const iid = tg.mr_iid || tg.existing_mr_iid;
+    if (!iid) continue;
+    const mr = db.prepare('SELECT id FROM mr WHERE repo_id = ? AND iid = ?').get(tg.repo_id, iid);
+    const v = mr && parMr.get(mr.id);
+    if (!v || vues.has(v.id)) continue;          // une vérification de lot couvre plusieurs projets
+    const d = detailVerification(v);
+    if (d.verdict !== 'verified_fail' || !(d.imputable || []).length) continue;
+    vues.add(v.id);
+    blocs.push({ prompt: promptCorrectionVerif(d, v), verifier: d.verifier_name });
+  }
+  if (!blocs.length) throw new Error(t('err.task.no-failed-verification'));
+  res.json({
+    prompt: blocs.map((b) => b.prompt).join('\n\n'),
+    verificateurs: blocs.map((b) => b.verifier),
+  });
+}));
+
 // Réponse .md d'une exploration.
 app.get('/api/tasks/:id/md', wrap((req, res) => {
   const tache = taskById(Number(req.params.id));
@@ -2140,7 +2559,17 @@ app.get('/api/local-tasks', wrap((req, res) => {
   // Même tri que les sessions de codage : d'abord ce qui tourne, puis ce qui vient de finir.
   const list = db.prepare(`SELECT * FROM local_task
     ORDER BY (status = 'running') DESC, COALESCE(finished_at, created_at) DESC, id DESC`).all();
-  for (const lt of list) lt.dirs = localDirsFor(lt.id);
+  const couts = coutParSession('local');
+  const durees = dureeParSession('local');
+  for (const lt of list) {
+    lt.dirs = localDirsFor(lt.id);
+    /* Hors dépôt, la réponse vit PAR DOSSIER : on prend celle du premier qui en a une — la
+       carte porte un chapeau, pas un rapport, et l'ouvrir donne toujours le détail complet. */
+    const avecReponse = (lt.dirs || []).find((d) => d.output_path);
+    lt.answer_head = avecReponse ? chapeauReponse(avecReponse.output_path) : '';
+    lt.tokens_est = (couts[lt.id] || {}).tokens || null;
+    lt.duration_ms = durees[lt.id] != null ? durees[lt.id] : null;
+  }
   res.json(list);
 }));
 app.post('/api/local-tasks', wrap((req, res) => {
@@ -2327,7 +2756,15 @@ app.get('/api/questions', wrap((req, res) => {
   // Même tri que les autres listes de sessions : ce qui tourne, puis ce qui vient de finir.
   const rows = db.prepare(`SELECT * FROM question
     ORDER BY (status = 'running') DESC, COALESCE(finished_at, created_at) DESC, id DESC`).all();
-  res.json(rows.map((q) => ({ ...q, resume_cmd: agentsession.resumeCommand(q.session_backend, q.session_key, q.session_cwd) })));
+  const couts = coutParSession('ask');
+  const durees = dureeParSession('ask');
+  res.json(rows.map((q) => ({
+    ...q,
+    answer_head: chapeauReponse(q.md_path),
+    tokens_est: (couts[q.id] || {}).tokens || null,
+    duration_ms: durees[q.id] != null ? durees[q.id] : null,
+    resume_cmd: agentsession.resumeCommand(q.session_backend, q.session_key, q.session_cwd),
+  })));
 }));
 
 app.post('/api/questions', wrap((req, res) => {
@@ -2518,7 +2955,26 @@ app.post('/api/tasks/:id/targets/:tid/push', wrap((req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
   if (tg.status !== 'committed') throw new Error(t('err.ce-projet-doit-etre-execute'));
-  res.json(jobs.startTaskJob(Number(req.params.id), 'push', { targetId: tg.id }));
+  /* `force` vient de la CASE de la confirmation : c'est celui qui pousse qui décide, pas un
+     drapeau posé plus tôt. Absent = push normal, y compris sur une branche rattrapée — le
+     refus de la forge est alors la bonne réponse, et il se lit sur la ligne du projet. */
+  const force = !!(req.body && (req.body.force === true || req.body.force === '1'));
+  res.json(jobs.startTaskJob(Number(req.params.id), 'push', { targetId: tg.id, force }));
+}));
+
+/* Rattraper la branche de départ sur UN projet de la session.
+ *
+ * Ouvert dès que le travail est commité ou poussé — c'est-à-dire dès qu'il y a une branche à
+ * rattraper. On ne restreint pas aux MR « en conflit » : les conflits se découvrent sur la
+ * forge, souvent avant que l'application les connaisse, et un bouton qui n'apparaît qu'après
+ * coup arrive toujours trop tard. Si la branche est déjà à jour, le job le dit et s'arrête. */
+app.post('/api/tasks/:id/targets/:tid/update-base', wrap((req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  if (!['committed', 'pushed', 'error'].includes(tg.status)) {
+    throw new Error(t('err.ce-projet-doit-etre-execute'));
+  }
+  res.json(jobs.startTaskJob(Number(req.params.id), 'update-base', { targetId: tg.id }));
 }));
 
 // Crée la MR d'UN projet de la session.
@@ -2582,7 +3038,12 @@ app.post('/api/tasks/:id/targets/:tid/mr', wrap(async (req, res) => {
   db.prepare('UPDATE task_target SET mr_iid = ?, mr_url = ?, mr_target = ?, mr_merged = 0, updated_at = ? WHERE id = ?')
     .run(mr.iid, mr.web_url, target, new Date().toISOString(), tg.id);
   rememberMergeOpts(tg.repo_id, mr.iid, squash, removeSourceBranch);
-  res.json({ iid: mr.iid, url: mr.web_url });
+  /* B5 — PRÉVENIR JIRA, si la session le demande. Best-effort et jamais bloquant : la merge
+     request EST créée, et un Jira injoignable ne doit pas faire croire le contraire. Le
+     résultat est rendu avec la réponse, pour que l'écran puisse le dire. */
+  let jiraNotifie = null;
+  if (tache.notify_jira) jiraNotifie = await prevenirJira(tg).catch(() => null);
+  res.json({ iid: mr.iid, url: mr.web_url, jira: jiraNotifie });
 }));
 
 // Merge la MR d'UN projet de la session.
@@ -2611,7 +3072,29 @@ app.post('/api/tasks/:id/targets/:tid/merge', wrap(async (req, res) => {
 
 /* ---------- Règles de review spécifiques ---------- */
 app.get('/api/rules', wrap((req, res) => {
-  res.json(db.prepare('SELECT * FROM review_rule ORDER BY id').all());
+  /* COMBIEN DE MERGE REQUESTS OUVERTES CETTE RÈGLE TOUCHE-T-ELLE ? Une règle qui ne matche
+     plus rien reste dans la liste sans qu'on le sache. Le calcul est LOCAL et sans IA : les
+     chemins modifiés sont en base, le nom de branche aussi — exactement ce que la règle
+     regarde. Sur quelques centaines de merge requests, c'est instantané. */
+  const ouvertes = db.prepare(`SELECT id, source_branch, changed_paths FROM mr
+    WHERE status IN ('to_review','reviewed') AND (closed_seen IS NULL OR closed_seen = 0)`).all();
+  const regles = db.prepare('SELECT * FROM review_rule ORDER BY id').all().map((r) => {
+    let n = 0;
+    for (const m of ouvertes) {
+      /* Le nom de branche se compare comme `reviewer.js` le fait : par INCLUSION, pas par
+         glob — c'est une sous-chaîne (« hotfix », « PROJ- »), et deux règles de comparaison
+         pour un même champ donneraient deux comptes différents du même fait. */
+      if (r.branch_match && !String(m.source_branch || '').includes(r.branch_match)) continue;
+      if (r.path_match) {
+        const chemins = String(m.changed_paths || '').split('\n').filter(Boolean);
+        if (!chemins.length || !glob.matchingPaths(r.path_match, chemins).length) continue;
+      }
+      if (!r.branch_match && !r.path_match) continue;   // une règle sans critère ne « touche » rien
+      n += 1;
+    }
+    return { ...r, open_mrs: n };
+  });
+  res.json(regles);
 }));
 
 /* ---------- Vérificateurs (plan_add_verify.md §3) --------------------------
@@ -2745,8 +3228,27 @@ function ecrireRepos(verifierId, repos) {
 }
 
 app.get('/api/verifiers', wrap((req, res) => {
+  /* CE QUE CHAQUE VÉRIFICATEUR A DONNÉ, et ce qui l'attend. Une liste de vérificateurs sans
+     verdict ne dit pas lesquels servent : le dernier verdict avec sa date, et le nombre de
+     merge requests à traiter que sa couverture concerne. Deux requêtes pour toute la liste. */
+  const dernieres = {};
+  for (const v of db.prepare(`SELECT verifier_id, verdict, finished_at FROM verification v
+    WHERE verifier_id IS NOT NULL AND status IN ('done','error')
+      AND id = (SELECT MAX(v2.id) FROM verification v2 WHERE v2.verifier_id = v.verifier_id)`).all()) {
+    dernieres[v.verifier_id] = { verdict: v.verdict, at: v.finished_at };
+  }
+  const enAttente = {};
+  for (const r of db.prepare(`SELECT vr.verifier_id AS id, COUNT(DISTINCT mr.id) AS n
+    FROM verifier_repo vr JOIN mr ON mr.repo_id = vr.repo_id
+    WHERE mr.status = 'to_review' AND (mr.closed_seen IS NULL OR mr.closed_seen = 0)
+    GROUP BY vr.verifier_id`).all()) {
+    enAttente[r.id] = r.n;
+  }
   res.json(db.prepare('SELECT * FROM verifier ORDER BY name').all()
-    .map((v) => ({ ...v, repos: verifierRepos(v.id), commands: verifierCommandes(v.id) })));
+    .map((v) => ({
+      ...v, repos: verifierRepos(v.id), commands: verifierCommandes(v.id),
+      last: dernieres[v.id] || null, pending_mrs: enAttente[v.id] || 0,
+    })));
 }));
 
 app.post('/api/verifiers', wrap((req, res) => {
@@ -3040,6 +3542,11 @@ function resumeVerification(d) {
 /* Dernier verdict par MR. Une vérification porte sur PLUSIEURS merge requests quand c'est un
    lot : le lien vit dans `targets_json`, pas dans une colonne — d'où le parcours. La borne à
    300 suffit largement pour couvrir les MR ouvertes, et évite de relire tout l'historique. */
+function verifsParMrDuTour() {
+  if (!cacheVerifs) cacheVerifs = dernieresVerificationsParMr();
+  return cacheVerifs;
+}
+
 function dernieresVerificationsParMr() {
   const par = new Map();
   const lignes = db.prepare(`SELECT * FROM verification WHERE status IN ('done','error')
@@ -3051,6 +3558,47 @@ function dernieresVerificationsParMr() {
   }
   return par;
 }
+
+/* ---------- Ce qu'un dépôt sait déjà lancer ----------
+   Un vérificateur, c'est une liste de commandes ; on les recopiait depuis un terminal, en se
+   trompant d'un tiret. Or le dépôt les DÉCLARE : `package.json` a ses scripts, `composer.json`
+   les siens, et le Makefile ses cibles. On lit ce qui est SUR LE DISQUE (le clone déjà fait),
+   sans réseau et sans rien exécuter — ce sont des suggestions à cliquer, rien de plus.
+   Un dépôt jamais cloné n'a rien à proposer : ce n'est pas une erreur, c'est un silence. */
+function suggestionsDeDepot(cfg, repo) {
+  const dir = git.cloneDirFor(cfg, repo);
+  const out = [];
+  const lireJson = (nom) => {
+    try { return JSON.parse(fs.readFileSync(path.join(dir, nom), 'utf8')); } catch { return null; }
+  };
+  const pkg = lireJson('package.json');
+  for (const nom of Object.keys((pkg && pkg.scripts) || {})) out.push({ command: `npm run ${nom}`, source: 'package.json' });
+  if (pkg) out.unshift({ command: 'npm ci', source: 'package.json' });
+  const comp = lireJson('composer.json');
+  for (const nom of Object.keys((comp && comp.scripts) || {})) out.push({ command: `composer run ${nom}`, source: 'composer.json' });
+  if (comp) out.unshift({ command: 'composer install --no-interaction', source: 'composer.json' });
+  const mk = docker.makefileFor(dir);
+  for (const cible of (mk && mk.targets) || []) out.push({ command: `make ${cible.name}`, source: 'Makefile', desc: cible.desc || '' });
+  return out;
+}
+
+app.get('/api/verifiers/command-suggestions', wrap((req, res) => {
+  const ids = String(req.query.repo_ids || '').split(',').map((x) => Number(x)).filter(Boolean);
+  const cfg = getConfig();
+  const vus = new Map();
+  for (const id of ids) {
+    const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(id);
+    if (!repo) continue;
+    for (const sug of suggestionsDeDepot(cfg, repo)) {
+      /* La même commande proposée par deux dépôts n'est qu'une suggestion : on garde la
+         première et on cite les dépôts qui la portent, pour qu'on sache si elle est commune. */
+      const cle = sug.command;
+      if (!vus.has(cle)) vus.set(cle, { ...sug, repos: [] });
+      vus.get(cle).repos.push(repo.project);
+    }
+  }
+  res.json({ suggestions: [...vus.values()] });
+}));
 
 app.get('/api/verifications', wrap((req, res) => {
   const mrId = Number(req.query.mr_id) || null;
@@ -3183,15 +3731,16 @@ app.post('/api/lots/:id/verify', wrap((req, res) => {
    UNE session multi-dépôts couvrant TOUS les dépôts du lot — pas seulement les « fautifs ».
    L'imputabilité d'un échec d'intégration est indécidable a priori : le test qui casse est
    souvent dans un dépôt, la cause dans un autre. L'agent voit tout le lot et décide. */
-app.post('/api/verifications/:id/fix', wrap((req, res) => {
-  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(Number(req.params.id));
-  if (!v) throw new Error(t('err.verify.not-found'));
-  const d = detailVerification(v);
-  if (d.verdict !== 'verified_fail') throw new Error(t('err.verify.fix-only-on-fail'));
-
-  const cibles = d.targets.map((c) => ({ repo_id: c.repo_id, branch: c.branch, base_branch: null }));
-  const list = normalizeTargets(cibles, 'code');
-
+/* LE PROMPT DE CORRECTION D'UNE VÉRIFICATION ÉCHOUÉE.
+ *
+ * Il porte les FAITS : quels tests, quels messages, quels commits. Sans eux l'agent repart de
+ * zéro et redécouvre au prix d'un aller-retour ce que la vérification sait déjà.
+ *
+ * Extrait en fonction parce que deux boutons l'emploient : « Corriger (session IA) », qui ouvre
+ * une session neuve, et « Reprendre le rapport de vérif », qui remplit un champ de suivi pour
+ * que l'agent reprenne SON fil. Deux copies auraient fini par diverger, et c'est celle qu'on
+ * oublie qui donnerait un prompt appauvri. */
+function promptCorrectionVerif(d, v) {
   const lignes = (d.imputable || []).map((f) => {
     const bouts = [`- ${f.test}`];
     if (f.message) bouts.push(`  ${f.message}`);
@@ -3199,10 +3748,8 @@ app.post('/api/verifications/:id/fix', wrap((req, res) => {
     return bouts.join('\n');
   });
   const shas = d.targets.map((c) => `- ${c.branch} @ ${String(c.head_sha).slice(0, 8)}`);
-  /* Le prompt porte les FAITS : quels tests, quels messages, quels commits. Sans eux l'agent
-     repart de zéro et redécouvre au prix d'un aller-retour ce que la vérification sait déjà. */
-  const prompt = [
-    `La vérification « ${d.verifier_name} » a échoué${v.lot_id ? ' sur le lot' : ''}.`,
+  return [
+    `La vérification « ${d.verifier_name} » a échoué${v && v.lot_id ? ' sur le lot' : ''}.`,
     '',
     'Tests cassés par ces branches (et par elles seules — la base passait ou les échouait déjà) :',
     lignes.length ? lignes.join('\n') : '- (le vérificateur n’a pas détaillé les échecs)',
@@ -3213,6 +3760,18 @@ app.post('/api/verifications/:id/fix', wrap((req, res) => {
     'Corrige la cause dans le ou les dépôts concernés. Ne touche que ce qui est nécessaire.',
     'Commit et push sur les branches existantes : les merge requests seront mises à jour en place.',
   ].join('\n');
+}
+
+app.post('/api/verifications/:id/fix', wrap((req, res) => {
+  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(Number(req.params.id));
+  if (!v) throw new Error(t('err.verify.not-found'));
+  const d = detailVerification(v);
+  if (d.verdict !== 'verified_fail') throw new Error(t('err.verify.fix-only-on-fail'));
+
+  const cibles = d.targets.map((c) => ({ repo_id: c.repo_id, branch: c.branch, base_branch: null }));
+  const list = normalizeTargets(cibles, 'code');
+
+  const prompt = promptCorrectionVerif(d, v);
 
   const now = new Date().toISOString();
   const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message,
@@ -3317,11 +3876,83 @@ function lancerVerificationsAuto(mrIds, { colonne = 'auto_on_mr' } = {}) {
   return bilan;
 }
 
+/* LA REVIEW LANCÉE TOUTE SEULE À L'ARRIVÉE D'UNE MERGE REQUEST.
+ *
+ * Décochée par défaut, et PLAFONNÉE même une fois cochée — contrairement au bouton « Reviewer
+ * les N MR », que l'on presse en connaissance de cause. Ici personne ne regarde : la découverte
+ * tourne toute seule, et la PREMIÈRE d'une installation neuve ramène d'un coup toutes les MR
+ * ouvertes du parc. Sans plafond, cocher la case reviendrait à signer un chèque en blanc en
+ * appels IA. Les MR au-delà du plafond gardent leur bouton « Reviewer ».
+ *
+ * Un SEUL job pour le lot, comme le bouton « Reviewer les N MR » : N jobs pour N merge requests
+ * satureraient la file et rendraient le journal illisible. */
+const plafondReviewAuto = () => {
+  const v = Number(getConfig().review_auto_max);
+  return Number.isFinite(v) && v >= 0 ? v : 5;
+};
+
+/* Le lot, borné et journalisé. Les deux automatismes — à l'arrivée, et quand le rapport se
+   périme — passent par ici : deux copies auraient fini par ne plus plafonner pareil, et c'est
+   celle qu'on oublie qui dépense. Chacun garde en revanche son PROPRE budget : une poussée
+   massive sur des merge requests connues ne doit pas manger celui des nouvelles, qui est le
+   cas d'usage principal (même parti pris que les vérifications automatiques). */
+function lancerLotReview(mrIds, { kind, opts = {}, etiquette }) {
+  const bilan = { lancees: 0, plafonnees: 0 };
+  if (!Array.isArray(mrIds) || !mrIds.length) return bilan;
+  const plafond = plafondReviewAuto();
+  const retenues = plafond ? mrIds.slice(0, plafond) : mrIds;
+  bilan.plafonnees = mrIds.length - retenues.length;
+  try {
+    jobs.startJob(kind, retenues, opts);
+    bilan.lancees = retenues.length;
+  } catch (e) {
+    /* Best-effort, comme pour les vérifications : la découverte a fait son travail — trouver
+       les MR —, elle ne doit pas échouer parce que la file a refusé le lot. */
+    bilan.lancees = 0;
+    console.log(`[${etiquette}] lot refusé : ${e.message}`);
+  }
+  /* UN PLAFOND SILENCIEUX SE LIT COMME « TOUT A ÉTÉ REVIEWÉ ». */
+  if (bilan.plafonnees) {
+    console.log(`[${etiquette}] plafond atteint (${plafond}) : ${bilan.plafonnees} merge request(s) laissée(s) de côté — bouton « Reviewer » sur les MR concernées`);
+  }
+  return bilan;
+}
+
+function lancerReviewsAuto(mrIds) {
+  if (getConfig().auto_review_new !== '1') return { lancees: 0, plafonnees: 0 };
+  return lancerLotReview(mrIds, { kind: 'review', etiquette: 'review-auto' });
+}
+
+/* LA RE-REVIEW QUAND LE RAPPORT SE PÉRIME.
+ *
+ * « Périmé » a un sens précis : la merge request a DÉJÀ un rapport, et la branche a avancé
+ * depuis (`reviewed_sha !== current_sha`) — c'est le badge « périmé » de l'écran. `stale_mr_ids`
+ * est plus large : il contient toute MR connue dont le SHA a bougé, reviewée ou non. On filtre
+ * donc, sinon la case « rapport périmé » lancerait des PREMIÈRES reviews, ce qu'elle ne promet
+ * pas et ce que l'autre case est là pour faire.
+ *
+ * En INCRÉMENTAL, comme le bouton « Relancer (incrémental) » qu'elle remplace : l'IA ne voit
+ * que le delta depuis le dernier SHA reviewé et reçoit le rapport précédent en contexte. Sur
+ * une branche qui bouge dix fois par jour, la différence de coût n'est pas un détail. */
+function lancerRereviewsAuto(mrIds) {
+  if (getConfig().auto_rereview_stale !== '1') return { lancees: 0, plafonnees: 0 };
+  if (!Array.isArray(mrIds) || !mrIds.length) return { lancees: 0, plafonnees: 0 };
+  const perimees = mrIds.filter((id) => db.prepare(`SELECT 1 FROM mr
+    JOIN review ON review.mr_id = mr.id
+    WHERE mr.id = ? AND mr.status != 'done'
+      AND mr.reviewed_sha IS NOT NULL AND mr.reviewed_sha != mr.current_sha`).get(Number(id)));
+  return lancerLotReview(perimees, {
+    kind: 'rereview', opts: { incremental: true }, etiquette: 'rereview-auto',
+  });
+}
+
 /* Le SEUL chemin de découverte côté serveur : la route et le rafraîchissement automatique
    passent par lui, donc les vérifications automatiques ne peuvent pas être oubliées d'un côté. */
 async function decouvrir() {
   const result = await discoverAll();
   result.auto_verify = lancerVerificationsAuto(result.new_mr_ids);
+  result.auto_review = lancerReviewsAuto(result.new_mr_ids);
+  result.auto_rereview = lancerRereviewsAuto(result.stale_mr_ids);
   /* Les MR dont le SHA vient de bouger : leur verdict est périmé. Deux appels séparés et deux
      plafonds distincts — une poussée massive sur des MR connues ne doit pas manger le budget
      des MR nouvelles, qui est le cas d'usage principal. */
@@ -3451,6 +4082,11 @@ function jobLogPayload(job, after) {
     finished_at: job.finished_at,
     // Le serveur décide de ce qui est rejouable — le front n'a pas à connaître la liste.
     can_retry: jobs.canRetry(job),
+    /* CE QUE LE JOB A PRODUIT, pour que le bandeau puisse y mener. Un job qui se terminait
+       s'effaçait tout seul six secondes plus tard sans laisser de lien vers son résultat : il
+       ne restait qu'une pastille de onze pixels dans le pied de page. */
+    target_kind: job.target_kind || null,
+    target_id: job.target_id || null,
     lines,
   };
 }
@@ -3613,8 +4249,32 @@ app.get('/api/notes/:id/export', wrap((req, res) => {
   res.send(`# ${page.title}\n\n${page.content || ''}\n`);
 }));
 
+/* CE QUE LA MERGE REQUEST LIÉE EST DEVENUE. « Suivre !201 » restait dans la liste des mois
+   après le merge : on ouvrait Reviews pour vérifier, puis on revenait cocher. La todo porte
+   donc l'état de sa merge request — note, verdict, âge, et si elle est fermée. Une requête
+   pour toute la liste : ces lignes se redessinent à chaque ouverture de l'onglet. */
+function etatMrDesTodos(todos) {
+  const ids = [...new Set(todos.filter((x) => x.link_kind === 'mr').map((x) => Number(x.link_ref)).filter(Boolean))];
+  if (!ids.length) return {};
+  const trous = ids.map(() => '?').join(',');
+  const out = {};
+  for (const m of db.prepare(`SELECT mr.id, mr.iid, mr.title, mr.status, mr.closed_seen, mr.gitlab_created_at,
+      repo.project FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id IN (${trous})`).all(...ids)) {
+    out[m.id] = { iid: m.iid, title: m.title, status: m.status, closed: !!m.closed_seen, project: m.project, created_at: m.gitlab_created_at };
+  }
+  for (const rv of db.prepare(`SELECT mr_id, note_value FROM review_version rv WHERE mr_id IN (${trous})
+    AND version = (SELECT MAX(v2.version) FROM review_version v2 WHERE v2.mr_id = rv.mr_id)`).all(...ids)) {
+    if (out[rv.mr_id]) out[rv.mr_id].note = rv.note_value;
+  }
+  const verifs = dernieresVerificationsParMr();
+  for (const id of ids) { const v = verifs.get(id); if (out[id] && v) out[id].verdict = v.verdict; }
+  return out;
+}
+
 app.get('/api/todos', wrap((req, res) => {
-  res.json({ todos: notes.listerTodos(req.query.status) });
+  const todos = notes.listerTodos(req.query.status);
+  const etats = etatMrDesTodos(todos);
+  res.json({ todos: todos.map((x) => ({ ...x, mr: x.link_kind === 'mr' ? (etats[Number(x.link_ref)] || null) : null })) });
 }));
 
 app.post('/api/todos', wrap((req, res) => {
@@ -3666,7 +4326,13 @@ app.get('/api/notes-index', wrap((req, res) => {
 }));
 
 app.get('/api/brief', wrap((req, res) => {
-  res.json(brief.construire({ staleDays: getConfig().stale_mr_days }));
+  const d = brief.construire({ staleDays: getConfig().stale_mr_days });
+  /* Les lignes de todo du brief sont les MÊMES que celles de la liste : elles portent donc le
+     même état de merge request. Enrichi ici et pas dans `brief.js`, qui compose le brief et
+     n'a pas à connaître les rapports de review. */
+  const etats = etatMrDesTodos([...(d.reminders || []), ...(d.todos || [])]);
+  const poser = (x) => ({ ...x, mr: x.link_kind === 'mr' ? (etats[Number(x.link_ref)] || null) : null });
+  res.json({ ...d, reminders: (d.reminders || []).map(poser), todos: (d.todos || []).map(poser) });
 }));
 
 /* Écarter une ligne du brief. On garde l'objet ÉCARTÉ, pas le sujet : cette vérification-ci,
@@ -3776,6 +4442,65 @@ app.get('/api/mrs/:id/links', wrap((req, res) => {
   res.json(links.liensDeMr(mr));
 }));
 
+/* LES MÊMES BOUTONS, SUR UNE LIGNE DE PROJET DE SESSION. Elle a un dépôt et une branche : les
+   deux valeurs dont `{env}` et `{branch}` ont besoin. `{mr_iid}` n'est résolu que si la
+   session a déjà ouvert sa merge request — sinon le gabarit qui la cite reste « incomplet »,
+   ce que l'écran dit déjà. */
+/* ---------- B5 : prévenir Jira quand la session ouvre sa merge request ----------
+   La session multi-dépôts ouvre cinq merge requests ; on passait dix minutes dans Jira à
+   coller cinq liens et à bouger cinq tickets. Un commentaire, et la transition vers l'état
+   « en revue » si elle existe — en un appel, DERRIÈRE CONFIRMATION côté écran.
+
+   La transition n'est pas devinée : on lit celles que Jira propose pour CE ticket et on prend
+   la première dont l'état d'arrivée est de catégorie « en cours » (`indeterminate`). Aucune ne
+   correspond ? On commente quand même et on le dit — écrire chez les autres est déjà le
+   principal, et inventer un état serait pire que de n'en changer aucun. */
+async function prevenirJira(cible) {
+  const cle = jira.ticketKey(cible.branch || '', cible.branch || '');
+  if (!cle) throw new Error(t('err.jira.no-key-in-branch'));
+  const iid = cible.mr_iid || cible.existing_mr_iid;
+  if (!iid) throw new Error(t('err.jira.no-mr-yet'));
+  const cfg = getConfig();
+  const texte = t('jira.notify.body', { iid, project: cible.project, url: cible.mr_url || '' });
+  if (demoDocker.isDemo()) return { demo: true, key: cle, commented: true, transitioned: true };
+  if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  await jira.addComment(cfg, cle, texte);
+  let transitioned = false;
+  try {
+    const dispo = await jira.transitions(cfg, cle);
+    const vers = dispo.find((x) => x.to && x.to.statusCategory === 'indeterminate');
+    if (vers) { await jira.transitionIssue(cfg, cle, vers.id); transitioned = true; }
+  } catch { transitioned = false; }   // commenter a réussi : c'est l'essentiel, on le dit
+  return { key: cle, commented: true, transitioned };
+}
+
+app.post('/api/tasks/:id/targets/:tid/notify-jira', wrap(async (req, res) => {
+  const cible = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!cible) throw new Error(t('err.session-introuvable'));
+  res.json(await prevenirJira(cible));
+}));
+
+app.get('/api/tasks/:id/targets/:tid/links', wrap((req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw Object.assign(new Error(t('err.links.unknown')), { status: 404 });
+  res.json(links.liensDeMr({ repo_id: tg.repo_id, source_branch: tg.branch, iid: tg.mr_iid || null }));
+}));
+
+/* ET SUR UN TICKET JIRA. Le dépôt n'y est pas écrit : on le déduit de ce qui est déjà
+   engagé — la merge request qui porte la clé, sinon la session de codage. Rien de deviné :
+   sans engagement, il n'y a pas de boutons, et c'est exact. */
+app.get('/api/jira/issues/:key/links', wrap((req, res) => {
+  const d = engagementsSurTicket(req.params.key);
+  const mr = d.mrs[0] ? mrById(d.mrs[0].id) : null;
+  if (mr) { res.json(links.liensDeMr(mr)); return; }
+  const tache = d.tasks[0]
+    ? db.prepare(`SELECT tt.repo_id, tt.branch, tt.mr_iid FROM task_target tt
+      WHERE tt.task_id = ? ORDER BY tt.id LIMIT 1`).get(d.tasks[0].id)
+    : null;
+  if (!tache) { res.json({ service: null, envs: [], context: [] }); return; }
+  res.json(links.liensDeMr({ repo_id: tache.repo_id, source_branch: tache.branch, iid: tache.mr_iid || null }));
+}));
+
 // Vérifier maintenant : le même code que le minuteur, donc ce que le bouton montre est
 // exactement ce que fait la surveillance.
 
@@ -3793,6 +4518,18 @@ app.get('/api/mrs', wrap((req, res) => {
     rows = db.prepare(`
       SELECT mr.*, repo.project AS project, repo.forge AS forge FROM mr JOIN repo ON repo.id = mr.repo_id
       ${order}`).all();
+  }
+  /* CE QUE LE BADGE DE NOTE DIRA AU SURVOL. Le sélecteur de version porte déjà ces chiffres,
+     mais il faut ouvrir le rapport pour les lire : « v3 · 07/08 · 1 résolu · 1 persistant » se
+     décide avant d'ouvrir. Une seule requête pour toute la liste — la dernière version de
+     chaque merge request —, pas une par carte. */
+  const derniereVersion = {};
+  for (const v of db.prepare(`SELECT rv.* FROM review_version rv
+    WHERE rv.version = (SELECT MAX(v2.version) FROM review_version v2 WHERE v2.mr_id = rv.mr_id)`).all()) {
+    derniereVersion[v.mr_id] = {
+      version: v.version, at: v.created_at,
+      n_new: v.n_new, n_persistent: v.n_persistent, n_resolved: v.n_resolved, n_disappeared: v.n_disappeared,
+    };
   }
   // marque celles qui ont un rapport + extrait la note globale du rapport
   const reviews = db.prepare('SELECT mr_id, md_path FROM review').all();
@@ -3813,6 +4550,18 @@ app.get('/api/mrs', wrap((req, res) => {
       .filter((rule) => glob.matchingPaths(rule.path_match, paths).length > 0)
       .map((rule) => ({ label: rule.label || rule.path_match, path_match: rule.path_match }));
   };
+  /* Les tickets SURVEILLÉS, avec leur état : la seule information Jira que le serveur possède
+     hors ligne. Une requête pour toute la liste. */
+  const etatsTickets = {};
+  for (const w of db.prepare('SELECT key, status, status_category FROM jira_watch').all()) {
+    etatsTickets[String(w.key).toUpperCase()] = { status: w.status, cat: w.status_category };
+  }
+  /* B8 — les jobs Jenkins déclarés pour chaque dépôt. Une requête pour toute la liste ; le
+     bouton n'apparaît que sur une merge request VÉRIFIÉE VERTE, ce que l'écran décide. */
+  const jobsParDepot = {};
+  for (const l of db.prepare('SELECT repo_id, job_path, param FROM repo_jenkins').all()) {
+    (jobsParDepot[l.repo_id] = jobsParDepot[l.repo_id] || []).push({ path: l.job_path, param: l.param });
+  }
   const verifs = dernieresVerificationsParMr();
   /* Un dépôt qu'aucun vérificateur ne couvre : le bouton « Vérifier » sera GRISÉ, avec la raison
      en info-bulle. Proposer un bouton qui répond « impossible » une fois cliqué fait perdre un
@@ -3826,6 +4575,22 @@ app.get('/api/mrs', wrap((req, res) => {
       verifiable: couverts.has(r.repo_id),
       has_review: hasReview.has(r.id),
       note: noteByMr[r.id] || null,
+      note_detail: derniereVersion[r.id] || null,
+      /* B3 — L'ÉTAT DU TICKET, quand on le connaît. Vendredi la QA passe PROJ-1408 en « En
+         revue » ; la merge request attend depuis trois jours au milieu de onze cartes et
+         personne ne fait le lien. On ne SONDE pas Jira pour autant : on lit ce que la
+         surveillance des tickets a déjà relevé — c'est la seule liste connue hors ligne. */
+      jenkins_jobs: jobsParDepot[r.repo_id] || [],
+      ticket_status: (etatsTickets[String(r.ticket_jira_key || jira.ticketKey(r.title, r.source_branch) || '').toUpperCase()] || {}).status || null,
+      ticket_category: (etatsTickets[String(r.ticket_jira_key || jira.ticketKey(r.title, r.source_branch) || '').toUpperCase()] || {}).cat || null,
+      /* TAILLE ET FRAÎCHEUR : de quoi choisir par quoi commencer sans ouvrir la carte. Le
+         nombre de fichiers se déduit des chemins quand le relevé date d'avant la mesure. */
+      size: {
+        files: r.changed_files != null ? r.changed_files
+          : (r.changed_paths ? String(r.changed_paths).split('\n').filter(Boolean).length : null),
+        additions: r.changed_additions != null ? r.changed_additions : null,
+        deletions: r.changed_deletions != null ? r.changed_deletions : null,
+      },
       has_ticket: !!(r.ticket_text || r.ticket_image || r.ticket_jira_text),
       ticket_key: key,
       ticket_url: ticketUrl(cfg, key),
@@ -3874,6 +4639,9 @@ app.get('/api/mrs/:id', wrap((req, res) => {
       md: readFileSafe(rev.md_path),
       explanation: readFileSafe(rev.explanation_path),
       updated_at: rev.updated_at,
+      // Ce qui est DÉJÀ parti sur la merge request : le bouton « Publier » le dit, pour
+      // qu'on ne poste pas deux fois le même rapport en croyant au premier échec.
+      comment_posted_at: rev.comment_posted_at || null,
     } : null,
     comments,
     ticket: {
@@ -4131,6 +4899,43 @@ app.post('/api/mrs/:id/fix-review', wrap((req, res) => {
 }));
 
 // Historique des reviews d'une MR : chaque passe est conservée.
+/* DE COMBIEN UNE REVIEW EST-ELLE PÉRIMÉE ? Le badge disait « périmé » sans dire l'ampleur :
+   trois lignes ou un refactoring, on ne relance pas pour la même raison. La réponse coûte un
+   appel à la forge : on ne la demande donc QU'AU SURVOL du badge, jamais pour la liste
+   entière. Une comparaison impossible (branche réécrite, force-push) n'est pas une erreur —
+   c'est « on ne sait pas », et le badge reste ce qu'il était. */
+/* ---------- Le résumé d'une merge request, pour une bulle ----------
+   Un autolien `!214` dans une note ou une todo ne disait que son numéro : on cliquait, on
+   changeait d'écran, on lisait, on revenait. Quatre faits suffisent — titre, note, verdict,
+   état — et ils tiennent dans une bulle. Route à part et minuscule : le détail complet
+   (`/api/mrs/:id`) charrie le rapport entier, ce qui n'a pas sa place au survol. */
+app.get('/api/mrs/:id/resume', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const v = db.prepare(`SELECT note_value FROM review_version WHERE mr_id = ?
+    ORDER BY version DESC LIMIT 1`).get(mr.id);
+  const verif = dernieresVerificationsParMr().get(mr.id);
+  res.json({
+    iid: mr.iid, title: mr.title, project: mr.project, status: mr.status,
+    closed: !!mr.closed_seen, author: mr.author || '',
+    note: v ? v.note_value : null, verdict: verif ? verif.verdict : null,
+    created_at: mr.gitlab_created_at || null,
+  });
+}));
+
+app.get('/api/mrs/:id/stale-commits', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  if (!mr.reviewed_sha || !mr.current_sha || mr.reviewed_sha === mr.current_sha) {
+    res.json({ known: true, count: 0, commits: [] });
+    return;
+  }
+  try {
+    const commits = await forge.clientFor(mr).commitsSince(getConfig(), mr.project, mr.reviewed_sha, mr.current_sha);
+    res.json({ known: true, count: commits.length, commits: commits.slice(0, 10) });
+  } catch { res.json({ known: false, count: 0, commits: [] }); }
+}));
+
 app.get('/api/mrs/:id/versions', wrap((req, res) => {
   const rows = db.prepare(`SELECT version, note_value, reviewed_sha, kind, created_at, instruction,
     n_new, n_persistent, n_resolved, n_disappeared
@@ -4264,22 +5069,102 @@ app.post('/api/mrs/:id/comment', wrap(async (req, res) => {
   res.json({ ok: true, note_id: note && note.id });
 }));
 
+/* PUBLIER LE RAPPORT DE REVIEW sur la merge request, à la demande.
+ *
+ * Le corps n'est PAS reçu du navigateur : la route relit le rapport sur le disque, par la
+ * même fonction que la publication automatique (`reviewer.publierRapport`). Accepter un texte
+ * du client ouvrirait la porte à publier autre chose que le rapport, sous son nom. */
+/* CE QUE LA FORGE DIT DE CETTE MERGE REQUEST, MAINTENANT.
+ *
+ * Interrogée à l'ouverture de la modale de merge : on est à un clic d'une action irréversible
+ * et visible de toute l'équipe. « Elle est en conflit » doit se lire AVANT, pas dans le message
+ * d'erreur qui suivra le refus. Un appel d'API à ce moment-là est largement payé.
+ *
+ * Ce qu'on apprend est ÉCRIT : la merge request le garde, et les projets de session qui
+ * pointent la même branche aussi — leur bouton « Mettre à jour avec … » apparaît donc sans
+ * attendre la prochaine découverte. */
+async function etatFusion(mr) {
+  const reponse = (c) => ({
+    has_conflicts: c === null || c === undefined ? null : !!c,
+    target_branch: mr.target_branch,
+  });
+  // En démo, la forge n'existe pas : on rend ce qui est en base plutôt qu'une erreur.
+  if (demoDocker.isDemo()) return reponse(mr.has_conflicts);
+  const m = await forge.clientFor(mr).getMergeRequest(getConfig(), mr.project, mr.iid);
+  const c = m && m.has_conflicts === true ? 1 : (m && m.has_conflicts === false ? 0 : null);
+  db.prepare('UPDATE mr SET has_conflicts = ? WHERE id = ?').run(c, mr.id);
+  db.prepare('UPDATE task_target SET mr_conflicts = ? WHERE repo_id = ? AND branch = ?')
+    .run(c, mr.repo_id, mr.source_branch);
+  return { ...reponse(c), target_branch: (m && m.target_branch) || mr.target_branch };
+}
+
+app.get('/api/mrs/:id/merge-check', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  res.json(await etatFusion(mr));
+}));
+
+/* Même question, posée depuis un projet de session — c'est le seul chemin où l'on peut aussi
+   proposer le rattrapage, puisqu'il faut une session pour rejouer la branche. */
+app.get('/api/tasks/:id/targets/:tid/merge-check', wrap(async (req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  const iid = tg.mr_iid || tg.existing_mr_iid;
+  const mr = iid && db.prepare(`SELECT mr.*, repo.project AS project, repo.forge AS forge
+    FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.repo_id = ? AND mr.iid = ?`).get(tg.repo_id, iid);
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const etat = await etatFusion(mr);
+  /* Le rattrapage n'est proposé que s'il y a de quoi le faire : une branche de travail, une
+     branche de départ, et un projet dont le travail est posé. */
+  return res.json({
+    ...etat,
+    base_branch: tg.base_branch || mr.target_branch,
+    branch: tg.branch,
+    rebasable: !!tg.branch && ['committed', 'pushed', 'error'].includes(tg.status),
+  });
+}));
+
+app.post('/api/mrs/:id/publish-review', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  res.json({ ok: true, ...(await reviewer.publierRapport(mr, getConfig())) });
+}));
+
 /* Compte associé au jeton d'une forge. Sert à reconnaître MES commentaires, donc ceux que
    je peux modifier. Mis en cache : sans cela, chaque ouverture de rapport ajouterait un
    aller-retour réseau pour une réponse qui ne change jamais. Un échec n'est pas une erreur —
    il rend simplement les commentaires non modifiables, ce qui est le repli sûr. */
-const meCache = new Map();               // forge -> { username, at }
+const meCache = new Map();               // forge -> { username, name, at }
 const ME_TTL_MS = 30 * 60 * 1000;
-async function forgeUsername(mr) {
-  const f = forge.forgeOf(mr);
-  const hit = meCache.get(f);
-  if (hit && Date.now() - hit.at < ME_TTL_MS) return hit.username;
+/* Le compte du jeton, par forge. On garde le PSEUDO **et** le nom affiché : les merge requests
+   stockent l'un ou l'autre selon la forge (GitLab pose `author.name`, GitHub le `login`), et
+   savoir « est-ce la mienne ? » demande de pouvoir reconnaître les deux. */
+async function forgeIdentite(nomForge) {
+  const hit = meCache.get(nomForge);
+  if (hit && Date.now() - hit.at < ME_TTL_MS) return hit;
   try {
-    const { username } = await forge.clientFor(mr).currentUser(getConfig());
-    meCache.set(f, { username: username || '', at: Date.now() });
-    return username || '';
-  } catch { return ''; }
+    const u = await forge.clientFor(nomForge).currentUser(getConfig());
+    const ident = { username: (u && u.username) || '', name: (u && u.name) || '', at: Date.now() };
+    meCache.set(nomForge, ident);
+    return ident;
+  } catch { return { username: '', name: '', at: 0 }; }
 }
+async function forgeUsername(mr) {
+  return (await forgeIdentite(forge.forgeOf(mr))).username;
+}
+
+/* QUI SUIS-JE, SUR CHAQUE FORGE. Sert au filtre « mes merge requests / les autres » : un tech
+   lead trie d'abord ce que les AUTRES attendent de lui. Route à part et appelée une fois au
+   démarrage — jamais depuis `/status`, qui est sondé toutes les deux secondes. Un échec n'est
+   pas une erreur : la réponse est vide, et le filtre ne s'affiche simplement pas. */
+app.get('/api/me', wrap(async (req, res) => {
+  const cfg = getConfig();
+  const out = {};
+  if (cfg.gitlab_url && cfg.access_token) out.gitlab = await forgeIdentite('gitlab');
+  if (cfg.github_token) out.github = await forgeIdentite('github');
+  for (const k of Object.keys(out)) delete out[k].at;
+  res.json(out);
+}));
 
 // Liste les discussions (commentaires) de la MR : inline (avec position) + générales.
 app.get('/api/mrs/:id/discussions', wrap(async (req, res) => {
@@ -4740,7 +5625,8 @@ app.get('/api/git/refs', wrap(async (req, res) => {
   if (!repo) throw new Error(t('err.depot-introuvable'));
   const cfg = getConfig();
   const kind = req.query.kind === 'tags' ? 'tags' : 'branches';
-  if (demoGit.isDemo()) return res.json(demoGit.refs(repo.project, kind));
+  // `repo.url` : un dépôt de démo peut être un VRAI dépôt sur le disque — on lit alors ses refs.
+  if (demoGit.isDemo()) return res.json(demoGit.refs(repo.project, kind, repo.url));
   if (kind === 'tags') {
     const api = forge.clientFor(repo);
     const [tags, prot] = await Promise.all([api.listTags(cfg, repo.project), api.listProtectedTags(cfg, repo.project)]);
@@ -4755,7 +5641,84 @@ app.get('/api/git/refs', wrap(async (req, res) => {
   });
 }));
 
+/* ---------- Git · Merge de branche à branche (onglet Git → Merge) ----------
+   Toutes ces routes travaillent dans le worktree du merge, jamais dans le clone partagé —
+   voir l'en-tête de `src/gitmerge.js` pour le pourquoi. */
+
+app.get('/api/git/merges', wrap((req, res) => res.json(gitmerge.enCours())));
+
+app.post('/api/git/merges', wrap(async (req, res) => {
+  const b = req.body || {};
+  res.json(await gitmerge.demarrer(getConfig(), {
+    repo_id: b.repo_id,
+    source: b.source,
+    target: b.target,
+    // Fusionner deux histoires sans ancêtre commun se DEMANDE : voir `gitmerge.demarrer`.
+    allow_unrelated: b.allow_unrelated === true || b.allow_unrelated === '1',
+  }));
+}));
+
+app.get('/api/git/merges/:id', wrap(async (req, res) => {
+  res.json(await gitmerge.etat(Number(req.params.id)));
+}));
+
+/* Le contenu d'un fichier en conflit, DÉCOUPÉ. L'écran reçoit les morceaux (stables et
+   conflits) plutôt que du texte brut : c'est ce qui lui permet d'offrir « garder celle-ci /
+   celle-là / les deux » par conflit, sans reparser les marqueurs de son côté. */
+app.get('/api/git/merges/:id/file', wrap((req, res) => {
+  const fichier = String((req.query && req.query.path) || '');
+  const texte = gitmerge.contenu(Number(req.params.id), fichier);
+  res.json({ path: fichier, texte, morceaux: gitmerge.decouper(texte) });
+}));
+
+app.post('/api/git/merges/:id/resolve', wrap(async (req, res) => {
+  const { path: fichier, content, choices } = req.body || {};
+  res.json(await gitmerge.resoudre(Number(req.params.id), String(fichier || ''), {
+    contenu: content == null ? null : content,
+    choix: Array.isArray(choices) ? choices : null,
+  }));
+}));
+
+app.post('/api/git/merges/:id/commit', wrap(async (req, res) => {
+  res.json(await gitmerge.commiter(Number(req.params.id), (req.body && req.body.message) || ''));
+}));
+
+app.post('/api/git/merges/:id/push', wrap(async (req, res) => {
+  res.json(await gitmerge.pousser(getConfig(), Number(req.params.id)));
+}));
+
+app.delete('/api/git/merges/:id', wrap(async (req, res) => {
+  res.json(await gitmerge.abandonner(getConfig(), Number(req.params.id)));
+}));
+
 // Aperçu : ne modifie rien, sert de confirmation.
+/* ---------- B7 : les branches des merge requests mergées ----------
+   Fin de sprint, trente branches mortes dans quatre dépôts : on les supprimait une à une dans
+   l'interface de la forge, ou on les laissait pourrir. Elles sont TOUTES connues ici — une
+   merge request vue fermée porte sa branche source. On rend la liste, groupée par dépôt ;
+   l'écran la charge dans le lot de suppression, et c'est l'APERÇU habituel qui dit, branche
+   par branche, si elle existe encore, si elle est protégée et si c'est sûr. Rien n'est
+   supprimé sans passer par là. */
+app.get('/api/git/merged-branches', wrap((req, res) => {
+  const rows = db.prepare(`SELECT mr.repo_id, repo.project, mr.source_branch AS branch,
+      COUNT(*) AS n, MAX(mr.iid) AS iid
+    FROM mr JOIN repo ON repo.id = mr.repo_id
+    WHERE mr.closed_seen = 1 AND mr.source_branch IS NOT NULL AND mr.source_branch != ''
+      AND repo.enabled = 1
+      /* Une branche encore portée par une merge request OUVERTE n'est pas morte : deux merge
+         requests ont pu se succéder sur la même branche. */
+      AND NOT EXISTS (SELECT 1 FROM mr m2 WHERE m2.repo_id = mr.repo_id
+        AND m2.source_branch = mr.source_branch AND (m2.closed_seen IS NULL OR m2.closed_seen = 0))
+    GROUP BY mr.repo_id, mr.source_branch
+    ORDER BY repo.project, mr.source_branch`).all();
+  const parDepot = new Map();
+  for (const r of rows) {
+    if (!parDepot.has(r.repo_id)) parDepot.set(r.repo_id, { repo_id: r.repo_id, project: r.project, refs: [] });
+    parDepot.get(r.repo_id).refs.push({ name: r.branch, iid: r.iid });
+  }
+  res.json({ total: rows.length, repos: [...parDepot.values()] });
+}));
+
 app.post('/api/git/preview', wrap(async (req, res) => {
   res.json(await gitops.preview(req.body || {}));
 }));
@@ -4807,8 +5770,34 @@ app.get('/api/git/branches', wrap(async (req, res) => {
   await Promise.all(tagsSorted.slice(0, 200).map(async (tg) => {
     tg.branches = await git.branchesForCommit(cwd, tg.sha, defaultBranch);
   }));
+  nommerBranches(repo.id, rows);
   res.json({ project: repo.project, repo_id: repo.id, forge: forge.forgeOf(repo), default: defaultBranch, branches: rows, tags: tagsSorted });
 }));
+
+/* ---------- Une branche n'est pas anonyme ----------
+   Le graphe des branches disait « ahead 3, behind 12 » et rien de ce qu'elles PORTENT. Ce que
+   Mergerie sait d'elles est en base : la note de la review de sa merge request, et la session
+   de codage qui l'a créée (une branche `ai/…` vient de quelque part). Le graphe devient alors
+   un plan de travail. Deux requêtes pour tout le dépôt, jamais une par branche. */
+function nommerBranches(repoId, rows) {
+  if (!rows || !rows.length) return;
+  const notes = {};
+  for (const r of db.prepare(`SELECT mr.source_branch AS br, rv.note_value AS note FROM mr
+    JOIN review_version rv ON rv.mr_id = mr.id
+    WHERE mr.repo_id = ? AND rv.version = (SELECT MAX(v2.version) FROM review_version v2 WHERE v2.mr_id = mr.id)`).all(repoId)) {
+    notes[r.br] = r.note;
+  }
+  const sessions = {};
+  for (const r of db.prepare(`SELECT tt.branch AS br, task.id, task.label, task.prompt, task.status
+    FROM task_target tt JOIN task ON task.id = tt.task_id
+    WHERE tt.repo_id = ? AND tt.branch IS NOT NULL ORDER BY task.id DESC`).all(repoId)) {
+    if (!sessions[r.br]) sessions[r.br] = { id: r.id, label: r.label || String(r.prompt || '').slice(0, 60), status: r.status };
+  }
+  for (const b of rows) {
+    if (notes[b.name] != null) b.mr_note = notes[b.name];
+    if (sessions[b.name]) b.session = sessions[b.name];
+  }
+}
 
 // Auteur PRÉCIS d'un tag, à la demande (l'API GitLab n'expose pas le tagger d'un tag
 // annoté). Lu dans le clone local via git ; le clone est déjà présent quand on est
@@ -4903,6 +5892,20 @@ app.post('/api/git/mr', wrap(async (req, res) => {
 // La langue est posée avant la première requête : les messages d’erreur du serveur
 // sont de l’interface, ils doivent sortir dans la bonne langue dès le démarrage.
 i18n.setLang(getConfig().language);
+
+/* CE QUE L'ARRÊT PRÉCÉDENT A COUPÉ EN PLEIN VOL. Les jobs ont été marqués `interrupted` au
+   chargement de la base ; les sessions et vérifications qu'ils portaient, elles, seraient
+   restées « en cours » à jamais — sans bouton pour repartir ni pour arrêter. On le fait ici,
+   après `setLang`, pour que la raison inscrite sur la carte sorte dans la bonne langue. */
+{
+  const repris = db.reconcilierTravauxCoupes(t('err.interrompu-par-arret'));
+  const total = repris.sessions + repris.horsDepot + repris.verifications;
+  if (total) {
+    console.log(t('log.start.reconciled', {
+      sessions: repris.sessions, horsDepot: repris.horsDepot, verifications: repris.verifications,
+    }));
+  }
+}
 
 // Bind sûr par défaut : localhost SEULEMENT. HOST=0.0.0.0 est un opt-in explicite pour exposer
 // sur le réseau (voir la section Sécurité du README).

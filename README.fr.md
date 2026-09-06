@@ -82,8 +82,11 @@ et un **lot** de merge requests vérifiées ensemble.
   aucun appel IA**. `!214` et `PROJ-720` écrits dans une note deviennent des liens, et une merge request ou un
   ticket s'ajoute aux todos d'un clic.
 - **Jira** — tes tickets récupérés automatiquement, détail + pièces jointes, changement d'état et commentaires ; **tickets surveillés** (affectés ou non) avec notification à chaque changement d'état, et une pastille au menu = tes tickets en cours.
-- **Git** — opérations multi-dépôts (branches, tags, commandes git) sur les deux forges, navigation de branches
-  et recherche de refs, suppressions **restaurables**, tout **avec aperçu**.
+- **Git** — opérations multi-dépôts (branches, tags, commandes git) sur les deux forges, un **merge de
+  branche à branche avec résolution des conflits à l'écran** (les deux versions l'une sous l'autre, garder
+  l'une, garder les deux, ou écrire soi-même ; puis commit et push, chacun derrière sa confirmation),
+  explorateur de branches, recherche de refs et **comparaison de deux dépôts** (sans histoire commune
+  nécessaire), suppressions **restaurables**, tout **avec aperçu**.
 - **Docker** — état des projets compose (drift `.env`, santé), actions par lot, **logs live** multi-containers,
   badges d'erreur dans le menu.
 - **Jenkins** — l'état de tes jobs CI et leur lancement, sans quitter l'outil : tous les jobs que ton compte
@@ -97,13 +100,27 @@ et un **lot** de merge requests vérifiées ensemble.
   MR, les tickets, les notes et les todos, classés par frécence. Un service associé à un dépôt pose ses
   boutons directement sur ses merge requests, y compris des liens **templatés** (`{env}`, `{branch}`,
   `{mr_iid}`) résolus au clic. Les favoris Chrome s'importent avec aperçu.
-- **Stats** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens.
-- **Réglages** — connexions GitLab / GitHub / Jira, dépôts, règles de review, templates de prompt, thème et langue.
+- **Stats** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens,
+  **les cinq sessions les plus coûteuses** et **les constats qui reviennent** — le même constat
+  relevé sur trois merge requests d'un même dépôt se transforme en règle de review d'un clic.
+  Chaque nombre est une porte : il ouvre Reviews filtré sur ce projet, au bon stade.
+- **Réglages** — connexions GitLab / GitHub / Jira, dépôts (chacun peut cesser de fournir des MR tout en
+  restant utilisable pour git et les sessions de codage), règles de review, **review automatique des merge
+  requests à l'arrivée** et **re-review automatique quand un rapport se périme** (toutes deux plafonnées et
+  décochées par défaut), **publication automatique du rapport sur la MR**, templates de prompt, thème et
+  langue.
 
 Partout : `Ctrl`/`Cmd` + `K` ouvre une **palette de commandes** (sauter à un onglet, une MR, une session
-en tapant son nom), `j` / `k` parcourent la liste courante, `?` liste tous les raccourcis. L'outil
+en tapant son nom — `!217` ou `PROJ-1408` tapés seuls y vont directement), `j` / `k` parcourent la liste
+courante, `v` / `c` / `m` / `x` agissent sur la carte au focus, `?` liste tous les raccourcis. L'outil
 rouvre sur l'onglet et le stade que tu as quittés, et le panneau de rapport ouvre sur **ce qui a changé
 depuis ta dernière visite**.
+
+**Les onglets se parlent.** Une todo liée à une merge request se coche quand celle-ci est mergée ;
+le dernier build Jenkins qui porte une branche s'écrit sur la carte de sa merge request ; un ticket
+passé « en revue » fait remonter ses merge requests ; une exploration se transforme en session de
+codage **dans la même session d'agent** ; les branches des merge requests mergées se ramassent en
+un lot ; et une vérification qui tourne « in place » dit l'état des services Docker avant de partir.
 
 Les badges signalent le **travail en attente** (MR à traiter, sessions non lancées), pas des totaux.
 

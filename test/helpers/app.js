@@ -17,6 +17,24 @@ const mockGh = require('./mock-github');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 
+/* ATTENDRE UNE CONDITION CÔTÉ SERVEUR, depuis Node — jamais depuis la page.
+ *
+ * `page.waitForFunction(async () => …)` NE FONCTIONNE PAS : Playwright ne déroule pas la
+ * promesse rendue, il la voit comme une valeur « truthy » et rend la main au premier tour. Une
+ * attente écrite ainsi est un `no-op` déguisé — le test continue, et c'est l'assertion suivante
+ * qui échoue ou passe au hasard. Vérifié : un prédicat `async` qui renvoie `false` rend la main
+ * en 62 ms au lieu d'expirer.
+ *
+ * On interroge donc l'API depuis le test, où `await` veut dire `await`. */
+async function attendreServeur(cond, quoi, ms = 20000) {
+  const fin = Date.now() + ms;
+  for (;;) {
+    if (await cond()) return;
+    if (Date.now() > fin) throw new Error(`délai dépassé : ${quoi}`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 function prepareEnv() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-e2e-'));
   process.env.MERGERIE_DATA_DIR = dataDir;
@@ -227,5 +245,5 @@ async function waitForJobs(api, { timeout = 60000 } = {}) {
 module.exports = {
   startApp, makeRemoteRepo, pushChange, waitForJobs, git, ROOT,
   poserIdentiteGit, ARGS_IDENTITE_GIT, IDENTITE_GIT,
-  navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
+  navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, attendreServeur,
 };

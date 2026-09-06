@@ -57,6 +57,20 @@ const ARBRES = {
   ],
 };
 
+/* Les quatre services PHP qui consomment la même librairie interne. Leur arborescence est
+   volontairement identique d'un projet à l'autre : c'est CE QUI REND le changement transverse
+   crédible — une montée de version se fait au même endroit partout. */
+for (const projet of ['groupe/facturation', 'groupe/portail-client', 'groupe/back-office', 'groupe/webhooks-php']) {
+  ARBRES[projet] = [
+    'README.md',
+    'composer.json',
+    'composer.lock',
+    'src/Kernel.php',
+    'src/Service/Facture.php',
+    'tests/FactureTest.php',
+  ];
+}
+
 const ARBRE_DEFAUT = ['README.md', 'src/index.js', 'test/index.test.js'];
 
 /* Un diff unifié par merge request, référencé par son numéro. Ce sont de vrais diffs :
@@ -333,8 +347,55 @@ index 0000000..5c4b3a2 100644
 
 /* Diff de repli, construit à partir de l'arborescence du projet : une MR de démo ajoutée
    plus tard doit montrer QUELQUE CHOSE plutôt qu'un viewer vide. */
+/* La montée de version d'une librairie interne : deux fichiers, `composer.json` pour la
+   contrainte et `composer.lock` pour la version résolue. C'est exactement ce qu'on relit dans
+   une MR de ce genre — et ce qu'on veut voir identique dans les quatre projets. */
+function diffComposer(branche) {
+  return `diff --git a/composer.json b/composer.json
+index 3a1f2b4..8c7d9e1 100644
+--- a/composer.json
++++ b/composer.json
+@@ -12,7 +12,7 @@
+     "require": {
+         "php": ">=8.2",
+-        "groupe/noyau-commun": "^3.4",
++        "groupe/noyau-commun": "^4.0",
+         "symfony/http-client": "^7.0"
+     },
+diff --git a/composer.lock b/composer.lock
+index 5e2a1c8..9b4f3d7 100644
+--- a/composer.lock
++++ b/composer.lock
+@@ -41,8 +41,8 @@
+         {
+             "name": "groupe/noyau-commun",
+-            "version": "3.4.2",
++            "version": "4.0.1",
+             "source": {
+                 "type": "git",
+-                "reference": "a7c1e93f2b4d8e6a5c0b9d7f3e1a2c4b6d8f0e2a"
++                "reference": "f2e8b1a4c6d093857e2b4a6c8d0f1e3a5b7c9d1f"
+             }
+         },
+diff --git a/src/Kernel.php b/src/Kernel.php
+index 2b4c6d8..7e9f1a3 100644
+--- a/src/Kernel.php
++++ b/src/Kernel.php
+@@ -18,7 +18,7 @@ final class Kernel extends BaseKernel
+     public function registerBundles(): iterable
+     {
+-        yield new NoyauCommunBundle();
++        yield new NoyauCommunBundle(strict: true);
+     }
+ }
+`;
+}
+
 function diffDeRepli(projet, branche) {
   const fichiers = ARBRES[projet] || ARBRE_DEFAUT;
+  /* Un projet PHP ne se relit pas avec un diff JavaScript : la montée de version d'une
+     dépendance se voit dans `composer.json`, et c'est ce qu'on montre. */
+  if (fichiers.includes('composer.json')) return diffComposer(branche);
   const cible = fichiers.find((f) => f.endsWith('.js')) || fichiers[fichiers.length - 1];
   return `diff --git a/${cible} b/${cible}
 index 1111111..2222222 100644

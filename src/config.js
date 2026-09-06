@@ -14,9 +14,9 @@ const ALLOWED = [
   'github_url', 'github_token',
   'prompt_review', 'prompt_explain', 'prompt_modify', 'language', 'ai_extra_instructions',
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
-  'brief_on_open',
+  'brief_on_open', 'auto_post_review', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
   'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
-  'verif_auto_max',
+  'verif_auto_max', 'todo_close_on_merge',
 ];
 
 function updateConfig(patch) {
@@ -63,10 +63,21 @@ function updateConfig(patch) {
   }
   // Brief à la première ouverture de la journée : booléen en texte, comme review_explain.
   next.brief_on_open = next.brief_on_open === '0' ? '0' : '1';
+  /* Coché par défaut : une todo « suivre !201 » n'a plus de raison d'être une fois !201
+     mergée, et la cocher soi-même après coup est le geste qu'on oublie. */
+  next.todo_close_on_merge = next.todo_close_on_merge === '0' ? '0' : '1';
   // Langue : on refuse silencieusement une valeur inconnue plutôt que de casser l'interface.
   if (!['fr', 'en'].includes(next.language)) next.language = 'fr';
   // Explication : booléen stocké en texte, normalisé à '0'/'1' (défaut '1').
   next.review_explain = next.review_explain === '0' ? '0' : '1';
+  /* Publication automatique du rapport sur la merge request : même stockage, DÉFAUT INVERSE.
+     Le doute profite au silence — un réglage illisible ne doit pas se mettre à écrire chez
+     les collègues à la prochaine review. */
+  next.auto_post_review = next.auto_post_review === '1' ? '1' : '0';
+  /* Review automatique à l'arrivée d'une MR : même stockage, même défaut prudent. Une case mal
+     lue ne doit pas se mettre à dépenser des appels IA à chaque découverte. */
+  next.auto_review_new = next.auto_review_new === '1' ? '1' : '0';
+  next.auto_rereview_stale = next.auto_rereview_stale === '1' ? '1' : '0';
   // Convergence : seuil /10 borné [1,10] (défaut 8) ; plafond de passes borné [1,10] (défaut 3).
   {
     const th = parseFloat(String(next.converge_threshold).replace(',', '.'));
@@ -77,6 +88,12 @@ function updateConfig(patch) {
   /* Plafond des vérifications automatiques : entier borné [0, 50]. 0 signifie « sans limite »
      et doit s'écrire — une case vide se lirait comme « valeur par défaut ». Une saisie
      illisible retombe sur 5 plutôt que de désactiver le garde-fou en silence. */
+  /* Plafond des reviews automatiques : même barème que celui des vérifications. 0 signifie
+     « sans limite » et doit s'écrire — une case vide se lirait comme « valeur par défaut ». */
+  if ('review_auto_max' in patch) {
+    const rm = parseInt(patch.review_auto_max, 10);
+    next.review_auto_max = Number.isFinite(rm) && rm >= 0 ? Math.min(50, rm) : 5;
+  }
   if ('verif_auto_max' in patch) {
     const vm = parseInt(patch.verif_auto_max, 10);
     next.verif_auto_max = Number.isFinite(vm) && vm >= 0 ? Math.min(50, vm) : 5;
@@ -100,12 +117,17 @@ function updateConfig(patch) {
       jira_email = @jira_email,
       jira_token = @jira_token,
       review_explain = @review_explain,
+      auto_post_review = @auto_post_review,
+      auto_review_new = @auto_review_new,
+      auto_rereview_stale = @auto_rereview_stale,
+      review_auto_max = @review_auto_max,
       converge_threshold = @converge_threshold,
       converge_max_passes = @converge_max_passes,
       auto_refresh_minutes = @auto_refresh_minutes,
       jira_watch_minutes = @jira_watch_minutes,
       retention_days = @retention_days,
       brief_on_open = @brief_on_open,
+      todo_close_on_merge = @todo_close_on_merge,
       stale_mr_days = @stale_mr_days,
       jenkins_url = @jenkins_url,
       jenkins_user = @jenkins_user,

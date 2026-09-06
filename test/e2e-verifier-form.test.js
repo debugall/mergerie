@@ -194,8 +194,15 @@ describe('Réglages → Vérificateurs : le formulaire s’ouvre à la demande',
 
     assert.equal((await visible()).form, false, 'le travail est fini : le formulaire se referme');
     assert.equal((await visible()).ajouter, true);
-    const noms = await page.$$eval('#verifierList .card', (cs) => cs.map((c) => c.textContent));
-    assert.ok(noms.some((t) => t.includes('lint')), 'le nouveau vérificateur apparaît dans la liste');
+    /* LA LISTE SE RECHARGE APRÈS LA FERMETURE, PAS AVEC ELLE : la soumission fait
+       `ouvrirFormVerifier(false)` PUIS `await loadVerifiers()`. `attendreForm(false)` rend donc
+       la main pendant que la requête est encore en vol, et lire la liste à cet instant, c'est la
+       lire avant son rafraîchissement — vert sur cette machine, rouge sur un runner à deux cœurs.
+       On attend l'effet qu'on veut prouver ; l'assertion ne fait plus que le constater. */
+    const apparu = await page.waitForFunction(
+      () => [...document.querySelectorAll('#verifierList .card')].some((c) => c.textContent.includes('lint')),
+    ).then(() => true).catch(() => false);
+    assert.ok(apparu, 'le nouveau vérificateur apparaît dans la liste');
 
     // Et le formulaire rouvert repart vierge, sans traîner la saisie précédente.
     await page.locator('#btnNewVerifier').click();

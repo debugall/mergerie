@@ -19,12 +19,21 @@ I18Nrt.setLang(readLang());
 async function api(path, opts = {}) {
   const res = await fetch(`/api${path}`, {
     cache: 'no-store', // jamais de cache : on veut toujours le contenu à jour
-    headers: { 'Content-Type': 'application/json' },
+    /* LA LANGUE VOYAGE AVEC LA REQUÊTE. Elle vit dans le navigateur (localStorage), le serveur
+       la lisait en base : changer de langue à l'écran laissait les messages du serveur — et les
+       libellés qu'il fabrique, comme ceux du mode démo — dans l'ancienne. */
+    headers: { 'Content-Type': 'application/json', 'X-Mergerie-Lang': readLang(), ...(opts.headers || {}) },
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  if (!res.ok) {
+    const e = new Error(data.error || res.statusText);
+    /* Le CODE du refus, quand le serveur en donne un. Reconnaître un cas particulier au mot
+       près dans le message ne marcherait pas : il est traduit. */
+    if (data.code) e.code = data.code;
+    throw e;
+  }
   return data;
 }
 
@@ -38,6 +47,38 @@ async function copyText(text, btn) {
   }
 }
 
+/* ---------- Le nom d'une branche se copie ----------
+   On sélectionnait `feat/PROJ-1408-paiement-3x` à la souris, en ratant le premier caractère une
+   fois sur deux, pour le coller dans un terminal. Le chip devient donc copiable au clic, partout
+   où il apparaît — carte de merge request, ligne de projet d'une session, explorateur de
+   branches, en-tête de rapport. ⇧-clic copie la commande de récupération complète : c'est
+   toujours la même, et la retaper est le geste qui suit le copier neuf fois sur dix. */
+const CMD_CHECKOUT = (b) => `git fetch origin && git checkout ${b}`;
+function chipBranche(nom, { cible = false } = {}) {
+  if (!nom) return '';
+  return `<code class="branch-chip${cible ? ' branch-chip-cible' : ''}" data-copy-branch="${esc(nom)}" role="button" tabindex="0" title="${esc(tr('branch.copy.title'))}">${esc(nom)}</code>`;
+}
+document.addEventListener('click', (e) => {
+  const c = e.target.closest && e.target.closest('[data-copy-branch]');
+  if (!c) return;
+  /* Le chip vit dans des cartes cliquables : sans ça, copier ouvrirait aussi le rapport. */
+  e.preventDefault(); e.stopPropagation();
+  const nom = c.dataset.copyBranch;
+  const cmd = e.shiftKey;
+  copyText(cmd ? CMD_CHECKOUT(nom) : nom, null);
+  toast(tr(cmd ? 'branch.copy.cmd-done' : 'branch.copy.done', { branch: nom }));
+});
+/* Au clavier : Entrée copie le nom, ⇧+Entrée la commande — mêmes deux gestes que la souris. */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const c = e.target.closest && e.target.closest('[data-copy-branch]');
+  if (!c) return;
+  e.preventDefault(); e.stopPropagation();
+  const nom = c.dataset.copyBranch;
+  copyText(e.shiftKey ? CMD_CHECKOUT(nom) : nom, null);
+  toast(tr(e.shiftKey ? 'branch.copy.cmd-done' : 'branch.copy.done', { branch: nom }));
+});
+
 // Bouton « copier la commande de reprise » (session de codage/review/hors-dépôt). Le clic est
 // géré par délégation ci-dessous : il copie la commande `cd … && claude/copilot …` du terminal.
 function resumeCmdBtn(cmd) {
@@ -49,6 +90,72 @@ document.addEventListener('click', (e) => {
   if (b) { e.preventDefault(); copyText(b.dataset.resumeCmd, null); toast(tr('resume.cmd.copied')); }
 });
 
+/* ---------- L'ERREUR D'UN CHAMP S'AFFICHE SOUS LE CHAMP ----------
+   Vingt-deux formulaires validaient par toast, en bas à droite, à sept cents pixels du champ
+   fautif et sans rien surligner : on lisait « nom de branche requis pour chaque projet » et il
+   fallait chercher lequel. La règle est maintenant : une erreur de CHAMP se dit sous le champ,
+   un toast n'annonce qu'un RÉSULTAT d'action (« session créée », « job mis en file »).
+   `aria-describedby` relie le message au champ pour les lecteurs d'écran ; il s'efface à la
+   première frappe, sinon il contredit ce qu'on vient de corriger. */
+function erreurChamp(champ, message) {
+  if (!champ) return;
+  const id = champ.id || `f-${Math.random().toString(36).slice(2, 9)}`;
+  champ.id = id;
+  const idErr = `${id}-err`;
+  let p = document.getElementById(idErr);
+  if (!p) {
+    p = document.createElement('p');
+    p.className = 'field-error';
+    p.id = idErr;
+    /* OÙ SE POSE LE MESSAGE. Après le champ, ou après son enveloppe quand il en a une (un
+       combo, une case dans un label) : glissé DANS le combo, il serait rogné par son
+       `overflow`.
+       SAUF DANS UNE RANGÉE DE PROJET, qui est une ligne flex : inséré au milieu, le message
+       devenait une COLONNE de plus — il écrasait « Branche de départ » de 285 à 157 px et
+       renvoyait le « × » à la ligne suivante. Il va donc à la FIN de la rangée, où il occupe
+       sa propre ligne sous les champs qu'il concerne (le champ fautif reste bordé de rouge et
+       lié par `aria-describedby`). */
+    const rangee = champ.closest('.target-row');
+    const apres = champ.closest('.combo, .inline-check') || champ;
+    if (rangee) rangee.appendChild(p); else apres.insertAdjacentElement('afterend', p);
+  }
+  p.textContent = message;
+  champ.classList.add('is-invalid');
+  champ.setAttribute('aria-describedby', idErr);
+  champ.setAttribute('aria-invalid', 'true');
+  const effacer = () => {
+    p.remove();
+    champ.classList.remove('is-invalid');
+    champ.removeAttribute('aria-describedby');
+    champ.removeAttribute('aria-invalid');
+  };
+  champ.addEventListener('input', effacer, { once: true });
+  champ.addEventListener('change', effacer, { once: true });
+}
+
+/* Efface les messages d'un formulaire (ou de tout l'écran) avant de le revalider : sans ça,
+   corriger un champ laisserait l'ancien message des autres. */
+function viderErreursChamps(racine) {
+  const r = racine || document;
+  $$('.field-error', r).forEach((p) => p.remove());
+  $$('.is-invalid', r).forEach((c) => {
+    c.classList.remove('is-invalid');
+    c.removeAttribute('aria-describedby');
+    c.removeAttribute('aria-invalid');
+  });
+}
+
+/* Signale le PREMIER champ fautif : message dessous, focus dedans, remonté à l'écran. Rend
+   `false` pour que l'appelant s'arrête d'une ligne — `if (!signalerChamp(…)) return;`. */
+function signalerChamp(champ, message) {
+  erreurChamp(champ, message);
+  if (champ) {
+    champ.focus({ preventScroll: true });
+    champ.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+  return false;
+}
+
 function toast(msg, isErr = false) {
   const t = document.createElement('div');
   t.className = 'toast' + (isErr ? ' err' : '');
@@ -57,7 +164,7 @@ function toast(msg, isErr = false) {
   span.textContent = msg;
   t.appendChild(span);
   if (isErr) {
-    // erreur : reste affichée jusqu'à fermeture manuelle, texte sélectionnable + copier
+    // erreur : texte sélectionnable + copier, et une fermeture manuelle toujours possible
     const copy = document.createElement('button');
     copy.className = 'toast-btn'; copy.textContent = tr('ui.copy');
     copy.addEventListener('click', () => copyText(msg, copy));
@@ -65,12 +172,39 @@ function toast(msg, isErr = false) {
     close.className = 'toast-btn'; close.innerHTML = svgIco('close');
     close.addEventListener('click', () => t.remove());
     t.appendChild(copy); t.appendChild(close);
+    /* UN TOAST D'ERREUR NE S'INSTALLE PLUS À DEMEURE. Il ne partait qu'à la main : on en
+       empilait quatre, ils survivaient au changement d'onglet et à la fermeture de la modale
+       qui les avait produits, et ils cachaient l'écran qu'on venait corriger. Huit secondes —
+       et le compte s'arrête tant que la souris ou le clavier est dessus, le temps de lire une
+       pile Node ou de la copier. */
+    let minuteur = setTimeout(() => dismissToast(t), 8000);
+    const suspendre = () => { clearTimeout(minuteur); minuteur = null; };
+    const reprendre = () => { if (!minuteur) minuteur = setTimeout(() => dismissToast(t), 8000); };
+    t.addEventListener('mouseenter', suspendre);
+    t.addEventListener('mouseleave', reprendre);
+    t.addEventListener('focusin', suspendre);
+    t.addEventListener('focusout', reprendre);
   } else {
     setTimeout(() => dismissToast(t), 3500);
   }
   toastHost().appendChild(t);
   return t;
 }
+/* … ET IL MEURT AVEC LE FORMULAIRE QUI L'A PRODUIT. Une modale qu'on ferme emporte l'erreur
+   qu'elle avait levée : la garder sur l'écran suivant, c'est accuser un écran qui n'y est pour
+   rien. L'observateur couvre TOUS les chemins de fermeture (bouton, Échap, clic au fond),
+   qu'aucune fonction unique ne centralise. */
+function viderToastsErreur() { $$('.toast.err').forEach((t) => t.remove()); }
+(() => {
+  const obs = new MutationObserver((muts) => {
+    for (const m of muts) { if (m.target.hidden) { viderToastsErreur(); return; } }
+  });
+  /* Le script est en fin de <body> : le DOM est déjà là, et `DOMContentLoaded` peut être
+     passé. On branche tout de suite, en gardant le repli pour un chargement plus tôt. */
+  const brancher = () => $$('.modal').forEach((m) => obs.observe(m, { attributes: true, attributeFilter: ['hidden'] }));
+  if (document.readyState === 'loading') addEventListener('DOMContentLoaded', brancher);
+  else brancher();
+})();
 // B3 : les toasts s'empilent dans un conteneur au lieu de se superposer au même pixel.
 function toastHost() {
   let host = $('#toasts');
@@ -160,6 +294,11 @@ function debounce(fn, ms = 120) {
    Le drapeau est posé par les fonctions de CHARGEMENT et consommé ici — c'est le seul endroit
    qui sait distinguer « les données sont arrivées » de « on a re-rendu ». */
 let listeChargee = false;
+// « La file n'a jamais été peuplée » — distinct de `listeChargee` ci-dessus, qui est un
+// drapeau d'ANIMATION consommé à chaque rendu. Sert au squelette du premier affichage.
+let fileJamaisChargee = true;
+// Les stades déjà peuplés au moins une fois : voir le squelette de `loadReports`.
+const stadeDejaCharge = new Set();
 function stagger(sel) {
   const nodes = $$(sel);
   nodes.forEach((c, i) => c.style.setProperty('--i', Math.min(i, 10)));
@@ -252,6 +391,10 @@ document.addEventListener('click', (e) => {
 // Traduit les erreurs techniques en message actionnable, SANS masquer l'original
 // (le message brut reste affiché et copiable — il sert au diagnostic).
 const ERROR_HINTS = [
+  /* LE SERVEUR NE RÉPOND PAS. `fetch` rend « Failed to fetch » (Chrome) ou « Load failed »
+     (Safari) — deux messages en anglais, sans sujet ni verbe utile, affichés tels quels à
+     quelqu'un dont l'application tourne sur SA machine et qu'il suffit de relancer. */
+  [/Failed to fetch|Load failed|NetworkError|network error/i, 'err.hint.offline'],
   [/UNABLE_TO_GET_ISSUER_CERT|self.signed|CERT_|DEPTH_ZERO/i, 'err.hint.cert'],
   [/\b401\b|\b403\b|Unauthorized|Forbidden|invalid.token/i, 'err.hint.token'],
   [/ENOENT|command not found|copilot.*introuvable|spawn .* ENOENT/i, 'err.hint.cli'],
@@ -273,22 +416,53 @@ function explainError(msg) {
    suivant — le bouton avait l'air de marcher, ce qui est pire que pas de bouton. */
 function errorBox(text, mrId, taskId, localId, askId) {
   const hint = errorHint(text);
-  const hintHtml = hint ? `<div class="errhint">${esc(hint)}</div>` : '';
+  /* `errorBox(explainError(msg))` est un appel courant : `explainError` a DÉJÀ mis l'indice en
+     tête du texte, et le recalculer ici l'affichait une seconde fois, mot pour mot, deux lignes
+     plus bas. On ne le pose que s'il n'y est pas encore. */
+  const hintHtml = hint && !String(text || '').includes(hint) ? `<div class="errhint">${esc(hint)}</div>` : '';
   const clear = mrId ? ` data-clear-mr="${mrId}"`
     : (taskId ? ` data-clear-task="${taskId}"`
       : (localId ? ` data-clear-local="${localId}"` : (askId ? ` data-clear-ask="${askId}"` : '')));
-  return `<div class="errbox"><div class="errhead"><span>${svgIco('alert')} ${tr('ui.error')}</span>`
-    + `<span class="errbtns"><button class="btn btn-sm errcopy" title="${esc(tr('err.copy-title'))}">${tr('ui.copy')}</button>`
+  /* RÉESSAYER, dans le bloc. Une panne de connexion se répare à côté (on relance le serveur)
+     et l'écran, lui, restait sur son message : il fallait recharger la page pour en sortir,
+     ce que rien ne disait. Le bouton n'apparaît que là où il a un sens — pas sur une erreur
+     de jeton ou de certificat, qu'un nouvel essai ne changera pas. */
+  const reessayer = /Failed to fetch|Load failed|NetworkError|network error/i.test(String(text || ''))
+    ? `<button class="btn btn-sm errretry" title="${esc(tr('err.retry-title'))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg>${tr('err.retry')}</button>` : '';
+  /* UNE PILE D'APPELS N'EST PAS UN MESSAGE D'ERREUR. Une session en échec affichait quarante
+     lignes de `at runCodeTask (…/taskrunner.js:388:35)` dans un bloc de 400 px, en tête de
+     carte : la cause tient sur la première ligne, le reste ne sert qu'à qui va lire le code.
+     On garde donc la première ligne à l'écran et on replie la pile derrière « Détails » —
+     rien n'est perdu, et « Copier » copie toujours le texte entier. */
+  const lignes = String(text || '').split('\n');
+  const iPile = lignes.findIndex((l) => /^\s+at\s/.test(l));
+  const tete = iPile > 0 ? lignes.slice(0, iPile).join('\n').trimEnd() : String(text || '');
+  const pile = iPile > 0 ? lignes.slice(iPile).join('\n') : '';
+  const corps = `<pre>${esc(tete)}</pre>`
+    + (pile ? `<details class="err-stack"><summary>${esc(tr('err.details'))}</summary><pre>${esc(pile)}</pre></details>` : '');
+  return `<div class="errbox" data-full="${esc(text)}"><div class="errhead"><span>${svgIco('alert')} ${tr('ui.error')}</span>`
+    + `<span class="errbtns">${reessayer}<button class="btn btn-sm errcopy" title="${esc(tr('err.copy-title'))}">${tr('ui.copy')}</button>`
     + `<button class="btn btn-icon btn-sm btn-danger errclear"${clear} title="${esc(tr('err.clear-title'))}"><svg class=\"ico ico-sm\"><use href=\"#i-close\"/></svg></button></span></div>`
-    + `${hintHtml}<pre>${esc(text)}</pre></div>`;
+    + `${hintHtml}${corps}</div>`;
 }
+
+/* Rejouer le chargement de l'onglet courant — exactement ce que fait un clic sur son bouton
+   de navigation, la seule voie qui remette AUSSI la vue dans son état de départ. */
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('.errretry');
+  if (!b) return;
+  const actif = $('nav button[data-tab].active');
+  if (actif) actif.click(); else window.location.reload();
+});
 
 // Délégation : bouton "copier" de n'importe quel errbox (liste, détail, discover).
 document.addEventListener('click', (e) => {
   const b = e.target.closest('.errcopy');
   if (!b) return;
-  const pre = b.closest('.errbox').querySelector('pre');
-  copyText(pre.textContent, b);
+  const box = b.closest('.errbox');
+  // Le texte COMPLET, pile comprise : c'est ce qu'on colle dans un ticket, replié ou non.
+  const pre = box.querySelector('pre');
+  copyText(box.dataset.full || pre.textContent, b);
 });
 
 // Délégation : bouton "✕" pour fermer un errbox (et effacer en base si MR).
@@ -343,6 +517,42 @@ function mrLinks(m) {
 // Date courte lisible (JJ/MM/AAAA) à partir d'un ISO GitLab.
 // Séparateur de milliers, partagé par les cartes du tableau de bord.
 const fmtNum = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+/* UNE SEULE ÉCRITURE POUR UNE NOTE. `note.raw` est le texte que l'IA a écrit : selon la passe,
+   « 7,4/10 » ou « 8.4/10 ». Les afficher tels quels mettait les deux formats dans la même liste,
+   à six lignes d'écart, plus un troisième dans les filtres. On rend donc TOUJOURS la valeur
+   numérique, écrite dans la langue de l'interface. */
+function fmtNote10(x) {
+  if (x == null || !Number.isFinite(Number(x))) return '—';
+  const n = Number(x);
+  return `${n.toLocaleString(I18Nrt.currentLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}/10`;
+}
+// `note` = { raw, value } rendu par l'API, `value` dans [0,1].
+const fmtNote = (note) => (note && note.value != null ? fmtNote10(note.value * 10) : '—');
+
+/* « il y a 3 h » plutôt qu'une date : ce qu'on lit sur une liste triée par date, c'est la
+   FRAÎCHEUR, pas le jour exact. `Intl` s'en charge dans la langue courante — une table de
+   traductions maison pour « minute / heure / jour » n'aurait rien apporté. */
+function depuis(iso) {
+  const t = Date.parse(iso);
+  if (!t) return '';
+  const paliers = [['second', 60], ['minute', 60], ['hour', 24], ['day', 7], ['week', 4.35], ['month', 12], ['year', Infinity]];
+  let v = Math.round((t - Date.now()) / 1000);
+  for (const [unite, taille] of paliers) {
+    if (Math.abs(v) < taille) return new Intl.RelativeTimeFormat(I18Nrt.currentLocale(), { numeric: 'auto' }).format(Math.round(v), unite);
+    v /= taille;
+  }
+  return '';
+}
+
+/* UNE DATE ABSOLUE DIT QUAND, PAS DEPUIS COMBIEN DE TEMPS. « 06/09/26 05:35 » demande un calcul
+   mental ; « il y a 3 h » est la réponse qu'on cherchait. On garde l'absolu à l'écran — il est
+   exact, il se compare, il se copie — et le relatif arrive au survol. Il est calculé AU SURVOL
+   et non au rendu : une carte qui vit une heure mentirait sinon. */
+function dateHtml(iso, texte) {
+  if (!iso) return esc(texte || '');
+  return `<span class="date-abs" data-when="${esc(iso)}">${esc(texte)}</span>`;
+}
 
 function fmtDate(iso) {
   try {
@@ -452,7 +662,7 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
   if (b.dataset.tab === 'review') loadSegment();
   if (b.dataset.tab === 'dashboard') loadDashboard();
   if (b.dataset.tab === 'git') loadGit();
-  if (b.dataset.tab === 'docker') loadDocker();
+  if (b.dataset.tab === 'docker') { marquerDockerVu(); loadDocker(); }
   else dlogStop(); // en quittant Docker, on coupe le tail live (et ses process serveur)
   if (b.dataset.tab === 'jira') loadJira();
   if (b.dataset.tab === 'notes') loadNotes();
@@ -469,7 +679,7 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
    envoie sa première étape. */
 // `mr` partage la logique de `config` : ses champs sont rattachés à #configForm (attribut form=),
 // donc loadConfig les peuple et le submit les enregistre — un seul /config pour les deux onglets.
-const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadGeneralSettings, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadConfig, verifiers: loadVerifiers, aisession: loadAiSessionSettings };
+const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadGeneralSettings, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadJenkinsConfig, verifiers: loadVerifiersEtPlafond, aisession: loadAiSessionSettings };
 /* Ce panneau porte à la fois un réglage du formulaire global (les consignes permanentes) et un
    banc d'essai. Il lui faut donc `loadConfig` comme aux autres, sinon le champ s'affiche vide
    quoi qu'il y ait en base — et le premier « Enregistrer » l'efface sans rien demander. */
@@ -477,6 +687,13 @@ function loadAiSessionSettings() { loadConfig(); renderAiSessionSettings(); }
 /* « Général » porte les réglages de l'outil ET l'arrangement de la barre de menus, qui vit dans
    le navigateur : deux sources, un seul panneau, donc les deux chargements. */
 function loadGeneralSettings() { loadConfig(); renderNavPrefs(); }
+/* Le panneau Jenkins porte AUSSI la liste des jobs liés aux dépôts (B8) : deux sources, un
+   seul écran, donc les deux chargements — comme « Général » et sa barre de menus. */
+function loadJenkinsConfig() { loadConfig(); loadJenkinsLinks(); }
+/* Le panneau des vérificateurs porte AUSSI un champ de #configForm (le plafond des
+   vérifications automatiques, venu de Merge Request rejoindre son interrupteur) : sans
+   `loadConfig` il s'afficherait vide quoi qu'il y ait en base. */
+function loadVerifiersEtPlafond() { loadConfig(); loadVerifiers(); }
 function showAdminSub(sub) {
   if (!sub) { try { sub = localStorage.getItem('aidevtools_admin_sub') || 'gitcfg'; } catch { sub = 'gitcfg'; } }
   if (!ADMIN_SUBS[sub]) sub = 'gitcfg';
@@ -528,7 +745,7 @@ function aiSessionResultHtml(d) {
 // Bandeau d'état de la dernière boucle de convergence d'une MR.
 function convergeBoxHtml(run) {
   if (!run) return '';
-  const n = (v) => (v == null ? '—' : `${v}/10`);
+  const n = (v) => fmtNote10(v);
   const cls = { converged: 'ok', capped: 'warn', regressed: 'warn', no_change: 'warn', stopped: 'muted', error: 'danger', running: 'run' }[run.status] || 'muted';
   const icon = { converged: 'i-check', capped: 'i-clock', regressed: 'i-reset', no_change: 'i-info', stopped: 'i-stop', error: 'i-close', running: 'i-zap' }[run.status] || 'i-info';
   const label = tr(`converge.status.${run.status}`, { note: n(run.best_note), passes: run.passes_done, threshold: run.threshold });
@@ -603,12 +820,20 @@ let convergeTarget = null; // { type: 'mr' | 'task', id }
    `danger` (par défaut) rend l'action de confirmation reconnaissable AU REPOS : une
    suppression ne doit pas ressembler à un bouton neutre. */
 let confirmResolve = null;
-function confirmDialog({ title, text, detail, confirmLabel, danger = true } = {}) {
+/* `check` : { label, checked, danger } ajoute une CASE À COCHER à la confirmation, et la
+   promesse rend alors `{ ok, checked }` au lieu d'un booléen. Sert au push forcé — une décision
+   qui appartient à celui qui pousse, et qui n'a pas à se cacher dans un second bouton. */
+function confirmDialog({ title, text, detail, confirmLabel, danger = true, check = null } = {}) {
   $('#confirmTitle').textContent = title || tr('confirm.default-title');
   $('#confirmText').textContent = text || '';
   const d = $('#confirmDetail');
   d.hidden = !detail;
   d.textContent = detail || '';
+  const row = $('#confirmCheckRow');
+  const box = $('#confirmCheck');
+  row.hidden = !check;
+  box.checked = !!(check && check.checked);
+  if (check) row.querySelector('span').textContent = check.label || '';
   const ok = $('#confirmOk');
   ok.textContent = confirmLabel || tr('confirm.default-ok');
   ok.className = danger ? 'btn btn-danger btn-solid' : 'btn btn-primary';
@@ -618,8 +843,15 @@ function confirmDialog({ title, text, detail, confirmLabel, danger = true } = {}
 }
 function closeConfirm(answer) {
   $('#confirmModal').hidden = true;
+  /* Une confirmation SANS case rend un booléen, comme avant : les dizaines d'appels existants
+     ne changent pas. Avec case, elle rend un objet — l'appelant qui a demandé la case sait
+     qu'il doit le lire. Rendre toujours un objet aurait fait passer tous les `if (!await …)`
+     à « toujours vrai », et une suppression se serait confirmée toute seule. */
+  const avecCase = !$('#confirmCheckRow').hidden;
+  const coche = $('#confirmCheck').checked;
+  $('#confirmCheckRow').hidden = true;
   const r = confirmResolve; confirmResolve = null;
-  if (r) r(answer);
+  if (r) r(avecCase ? { ok: !!answer, checked: !!answer && coche } : answer);
 }
 $('#confirmCancel') && $('#confirmCancel').addEventListener('click', () => closeConfirm(false));
 $('#confirmOk') && $('#confirmOk').addEventListener('click', () => closeConfirm(true));
@@ -632,29 +864,105 @@ fermerAuFond('#confirmModal', () => closeConfirm(false), { salissable: false });
    note, puis Annuler + action à droite. */
 let mergeCtx = null;
 
-/* `ctx` : { url, label, target, forge, squash, removeSourceBranch, onDone }.
+/* LES OPTIONS DE MERGE SONT UNE HABITUDE DE DÉPÔT. « Squasher » et « supprimer la branche »
+   se décident une fois par dépôt et ne changent plus : un projet squashe tout, un autre garde
+   l'historique. Les merge requests NÉES D'UNE SESSION portent déjà le choix fait à leur
+   création (mémorisé côté serveur, `ctx.squash`) ; les autres partaient de zéro à chaque fois.
+   On retient donc le dernier choix PAR DÉPÔT, et il ne sert que de proposition — ce que le
+   serveur sait de cette merge request-là garde toujours le dernier mot. */
+const MERGE_MEMO = 'aidevtools_merge_opts';
+const memoMerge = () => { try { return JSON.parse(localStorage.getItem(MERGE_MEMO) || '{}'); } catch { return {}; } };
+function memoriserMerge(projet, opts) {
+  if (!projet) return;
+  try {
+    const m = memoMerge(); m[projet] = opts;
+    localStorage.setItem(MERGE_MEMO, JSON.stringify(m));
+  } catch { /* stockage indisponible : on perd le confort, pas la fonction */ }
+}
+
+/* `ctx` : { url, label, target, forge, project, squash, removeSourceBranch, onDone }.
    `squash`/`removeSourceBranch` pré-cochent d'après ce qui avait été choisi à la
-   création de la MR (mémorisé côté serveur). */
+   création de la MR (mémorisé côté serveur), sinon d'après le dernier merge de ce dépôt. */
 function openMergeModal(ctx) {
   mergeCtx = ctx;
   $('#mergeModalIntro').textContent = tr('merge.modal.intro', {
     what: ctx.label, target: ctx.target || tr('report.merge.target-fallback'),
   });
-  $('#mergeSquash').checked = !!ctx.squash;
-  $('#mergeRemoveBranch').checked = !!ctx.removeSourceBranch;
+  const habitude = (ctx.project && memoMerge()[ctx.project]) || null;
+  const defaut = (champ) => (ctx[champ] != null ? !!ctx[champ] : !!(habitude && habitude[champ]));
+  $('#mergeSquash').checked = defaut('squash');
+  $('#mergeRemoveBranch').checked = defaut('removeSourceBranch');
   const note = $('#mergeModalNote');
   note.hidden = false;
   note.querySelector('span').textContent = tr('merge.modal.warn', { forge: forgeLabel(ctx.forge) });
   $('#mergeGo').disabled = false;
   $('#mergeModal').hidden = false;
+  demanderEtatFusion(ctx);
 }
-function closeMergeModal() { $('#mergeModal').hidden = true; mergeCtx = null; }
+
+/* CE QUE LA FORGE DIT DE CETTE MERGE REQUEST, demandé à l'ouverture.
+ *
+ * On est à un clic d'un merge : « elle est en conflit » se lit ICI, pas dans le refus qui
+ * suivrait. Et quand la merge request vient d'une session de codage, la modale porte de quoi y
+ * remédier — le même rattrapage que la ligne du projet.
+ *
+ * `ctx.check` absent (ou la forge muette) : on ne dit rien plutôt que de rassurer à tort. Une
+ * absence de nouvelle n'est pas une bonne nouvelle, mais l'inventer serait pire. */
+async function demanderEtatFusion(ctx) {
+  const note = $('#mergeConflictNote');
+  const bouton = $('#mergeRebase');
+  note.hidden = true; bouton.hidden = true;
+  if (!ctx.check) return;
+  let d;
+  try { d = await api(ctx.check); } catch { return; }
+  if (mergeCtx !== ctx) return;            // la modale a été fermée entre-temps
+  if (!d || d.has_conflicts !== true) return;
+  note.querySelector('span').textContent = tr('merge.modal.conflicts', {
+    target: d.target_branch || ctx.target || '',
+  });
+  note.hidden = false;
+  if (!d.rebasable) return;
+  const base = d.base_branch || d.target_branch;
+  bouton.querySelector('span').textContent = tr('task.btn.update-base', { base });
+  bouton.title = tr('task.title.update-base', { base });
+  bouton.hidden = false;
+  bouton.onclick = async () => {
+    /* LA MÊME ACTION DEMANDE LA MÊME CHOSE. Depuis la ligne du projet, le rattrapage se
+       confirme — il réécrit l'historique de la branche. Partir sans rien demander parce qu'on
+       a cliqué depuis la modale serait la même opération avec deux poids : c'est l'endroit du
+       clic qui changerait le niveau d'engagement, pas ce qui se passe ensuite. */
+    const base = d.base_branch || d.target_branch;
+    if (!await confirmDialog({
+      title: tr('confirm.update-base.title', { branch: d.branch || '', base }),
+      text: tr('confirm.update-base.text', { branch: d.branch || '', base }),
+      confirmLabel: tr('task.btn.update-base', { base }),
+      danger: false,
+    })) return;
+    try {
+      await busy(bouton, () => api(ctx.rebase, { method: 'POST' }));
+      closeMergeModal();
+      toast(tr('toast.update-base.started', { branch: d.branch || '' }));
+      refreshStatus(); loadTasks();
+    } catch (e) { toast(e.message, true); }
+  };
+}
+function closeMergeModal() {
+  $('#mergeModal').hidden = true;
+  mergeCtx = null;
+  /* La remise à zéro de la note et du bouton se fait à l'OUVERTURE (`demanderEtatFusion`, dès
+     sa première ligne), pas ici : un seul endroit, celui qui s'exécute forcément. La refaire à
+     la fermeture était indétectable — deux mutations distinctes donnaient le même écran, ce qui
+     est la définition d'un code mort. Reste ce que la fermeture est seule à pouvoir faire :
+     lâcher le gestionnaire, qui retient sinon le contexte de la merge request précédente. */
+  $('#mergeRebase').onclick = null;
+}
 $('#mergeCancel') && $('#mergeCancel').addEventListener('click', closeMergeModal);
 fermerAuFond('#mergeModal', closeMergeModal);
 $('#mergeGo') && $('#mergeGo').addEventListener('click', async () => {
   const ctx = mergeCtx; if (!ctx) return;
   const b = $('#mergeGo');
   const body = { squash: $('#mergeSquash').checked, removeSourceBranch: $('#mergeRemoveBranch').checked };
+  memoriserMerge(ctx.project, body);   // la prochaine fois, ce dépôt repart de ce choix
   /* Un merge passe par la forge : ça prend une seconde ou deux, et la modale reste à l'écran
      pendant ce temps. Sans indicateur, le bouton paraît n'avoir rien fait — on reclique.
      `busy()` met le compte à rebours ET désactive, et rend la main dans tous les cas. */
@@ -830,11 +1138,11 @@ function renderReportPlaceholder() {
         <ul>${delta.slice(1).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
       </div>` : ''}
       <div class="empty-t">${tr('report.ph.count', { n: rows.length, total: rows.length })}</div>
-      <p class="empty-s">${avg != null ? tr('report.ph.avg', { avg }) : tr('report.ph.no-note')}${stale ? tr('report.ph.stale', { stale }) : ''}</p>
+      <p class="empty-s">${avg != null ? tr('report.ph.avg', { avg: fmtNote10(avg).replace('/10', '') }) : tr('report.ph.no-note')}${stale ? tr('report.ph.stale', { stale }) : ''}</p>
       ${worst.length ? `<div class="ph-worst">
         <div class="step-s">${tr('report.ph.priority')}</div>
         ${worst.map((m) => `<button class="ph-item" data-open-mr="${m.id}">
-            <span class="note ${noteClass(m.note)}">${esc(m.note.raw)}</span>
+            <span class="note ${noteClass(m.note)}">${esc(fmtNote(m.note))}</span>
             <span class="ph-item-t">!${m.iid} — ${esc((m.title || '').slice(0, 48))}</span>
           </button>`).join('')}
       </div>` : ''}
@@ -858,28 +1166,56 @@ function emptyState({ icon = 'inbox', title, text = '', actions = [] }) {
 
 // Onboarding : tant que GitLab n'est pas connecté ou qu'aucun dépôt n'est suivi,
 // on remplace la liste par les 3 étapes de démarrage, chacune avec son action directe.
-let setupState = { configured: false, hasRepos: false, checked: false };
+let setupState = { configured: false, hasRepos: false, hasMrs: false, checked: false };
 async function checkSetup() {
   try {
-    const [cfg, repos] = await Promise.all([api('/config'), api('/repos')]);
+    /* `hasMrs` couvre la TROISIÈME étape. Sans elle, l'assistant disparaissait dès la
+       deuxième franchie — on connectait la forge, on ajoutait un dépôt, et l'écran passait à
+       « aucune merge request » sans jamais montrer qu'il restait un geste à faire ni que les
+       deux premiers avaient réussi. Une progression qui s'évanouit aux deux tiers ne se lit
+       pas comme une progression.
+       Le compte porte sur TOUS les stades : une file vide après une découverte est un état
+       légitime (« tout est traité »), à ne pas confondre avec « on n'a jamais cherché ». */
+    const [cfg, repos, stats] = await Promise.all([api('/config'), api('/repos'), api('/stats')]);
+    const f = (stats && stats.funnel) || {};
     setupState = {
       configured: !!(cfg.gitlab_url && cfg.access_token),
       hasRepos: Array.isArray(repos) && repos.length > 0,
+      hasMrs: ((f.to_review || 0) + (f.reviewed || 0) + (f.done || 0)) > 0,
       checked: true,
     };
   } catch { setupState.checked = true; }
   return setupState;
 }
 
+/* Relit l'état du démarrage et redessine l'assistant s'il est à l'écran. Appelé au chargement,
+   après un enregistrement de configuration et après un ajout de dépôt — les trois moments où
+   une étape peut basculer de « à faire » à « fait ». */
+function rafraichirDemarrage() {
+  return checkSetup().then(() => { if (currentSeg === 'to_review') renderToReview(); });
+}
+
 // Jira configuré côté serveur ? Pilote l'affichage du bloc « enrichir depuis Jira »
 // de la modale de session. Mis à jour à chaque /status.
 let jiraConfigured = false;
+
+/* MODE DÉMO : le décor ne contient qu'un seul dépôt réellement clonable — celui qui vit sur
+   le disque. Les autres pointent vers `gitlab.demo`, qui n'existe pas : une session créée
+   dessus mourait en 1,6 s sur une pile Node `git clone git@gitlab.demo…`, et c'était le dépôt
+   proposé par défaut, donc le premier essai de qui découvre l'outil. */
+let modeDemo = false;
+const depotClonableEnDemo = (r) => /^(\/|file:)/.test(String((r && r.url) || ''));
+/* Hors démo rien ne change — le premier de la liste. En démo, celui qui peut vraiment tourner. */
+function depotParDefaut() {
+  if (modeDemo) { const local = repoOptions.find(depotClonableEnDemo); if (local) return local; }
+  return repoOptions[0] || null;
+}
 
 // Bannière « mode démo » : affichée si le serveur tourne en mode démo (npm run demo).
 (async () => {
   try {
     const s = await api('/status');
-    if (s && s.demo) { const b = $('#demoBanner'); if (b) b.hidden = false; }
+    if (s && s.demo) { modeDemo = true; const b = $('#demoBanner'); if (b) b.hidden = false; }
     if (s) jiraConfigured = !!s.jiraConfigured;
   } catch { /* status indisponible : pas de bannière */ }
 })();
@@ -898,7 +1234,10 @@ function onboardingHtml() {
     <div class="steps">
       ${step(1, s.configured, tr('onboard.s1.title'), tr('onboard.s1.text'), 'go-config', tr('onboard.s1.btn'))}
       ${step(2, s.hasRepos, tr('onboard.s2.title'), tr('onboard.s2.text'), 'go-repos', tr('onboard.s2.btn'))}
-      ${step(3, false, tr('onboard.s3.title'), tr('onboard.s3.text'), 'discover', tr('onboard.s3.btn'))}
+      ${/* La troisième se coche quand des merge requests sont VRAIMENT arrivées : c'est la
+             seule des trois dont on connaît le résultat sans rien redemander au serveur —
+             si cet écran s'affiche avec des cartes, c'est que la recherche a rapporté. */''}
+      ${step(3, s.hasMrs, tr('onboard.s3.title'), tr('onboard.s3.text'), 'discover', tr('onboard.s3.btn'))}
     </div>
   </div>`;
 }
@@ -907,17 +1246,22 @@ document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-empty-act]');
   if (!b) return;
   const go = (tab) => { const t = $(`nav button[data-tab="${tab}"]`); if (t) t.click(); };
+  /* ARRIVER QUELQUE PART, C'EST ARRIVER SUR UN CHAMP. L'assistant envoyait sur Réglages → Git
+     sans focus : l'écran change, le curseur reste sur un bouton qui n'existe plus, et il faut
+     viser à la souris le premier champ d'un formulaire qu'on vient de demander. */
+  const viser = (sel) => { const c = $(sel); if (c) c.focus({ preventScroll: true }); };
   switch (b.dataset.emptyAct) {
-    case 'go-config': closeBulk(); go('admin'); showAdminSub('gitcfg'); break;
-    case 'go-repos': go('admin'); showAdminSub('repos'); break;
+    case 'go-config': closeBulk(); go('admin'); showAdminSub('gitcfg'); viser('[name="gitlab_url"]'); break;
+    case 'go-repos': go('admin'); showAdminSub('repos'); viser('#repoForm [name="url"]'); break;
     case 'go-rules': go('admin'); showAdminSub('rules'); break;
     case 'discover': go('review'); $('#btnDiscover').click(); break;
     case 'new-task': go('task'); $('#btnNewTask').click(); break;
     case 'seg-to-review': loadSegment('to_review'); break;
     case 'seg-reviewed': loadSegment('reviewed'); break;
-    case 'go-jira-config': go('admin'); showAdminSub('jiracfg'); break;
-    case 'jenkins-config': go('admin'); showAdminSub('jenkinscfg'); break;
+    case 'go-jira-config': go('admin'); showAdminSub('jiracfg'); viser('[name="jira_url"]'); break;
+    case 'jenkins-config': go('admin'); showAdminSub('jenkinscfg'); viser('[name="jenkins_url"]'); break;
     case 'clear-search': $('#searchReview').value = ''; loadSegment(currentSeg); break;
+    case 'clear-auteur': filtreAuteur = 'tous'; try { localStorage.setItem('aidevtools_mr_auteur', 'tous'); } catch { /* ignore */ } renderFiltreAuteur(); loadSegment(currentSeg); break;
     case 'clear-note-filter': reinitFiltreNote(); break;
     default: break;
   }
@@ -933,9 +1277,17 @@ const MR_STATUS = {
 const mrStatus = (s) => MR_STATUS[s] || { label: s, cls: '' };
 
 // Compteurs des segments + libellé du bouton de review globale (dit ce qui sera consommé).
+/* Même parade que pour les sessions et la palette : plusieurs demandes de compteurs peuvent
+   être en vol (fin de job, changement de stade, rafraîchissement périodique), et rien ne
+   garantit l'ordre de retour. Sans ce rang, une réponse dépassée reposait les chiffres
+   d'AVANT par-dessus les bons — l'écran affichait de nouveau « 4 à traiter » une seconde
+   après être passé à 3. */
+let countsSeq = 0;
 async function refreshCounts() {
+  const seq = ++countsSeq;
   try {
     const s = await api('/stats');
+    if (seq !== countsSeq) return;          // une demande plus récente a déjà répondu
     const f = s.funnel || {};
     /* Un compteur qui saute de 12 à 13 ne se remarque pas ; un compteur qui COMPTE, si.
        C'est la seule part visible du travail qui vient de se terminer. Animation courte,
@@ -943,7 +1295,12 @@ async function refreshCounts() {
     const set = (id, n) => {
       const el = $(id); if (!el) return;
       const cible = n || 0; const depart = Number(el.textContent) || 0;
-      if (cible === depart || document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      /* Le compteur naît VIDE et le reste jusqu'à sa donnée : affirmer « 0 » pendant que la
+         requête est en vol, c'est dire « rien à traiter » à quelqu'un qui a onze merge
+         requests — et sous latence, c'est ce qu'il lit en premier. */
+      const premier = el.classList.contains('is-waiting');
+      el.classList.remove('is-waiting');
+      if (premier || cible === depart || document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches) {
         el.textContent = cible; return;
       }
       const t0 = performance.now(); const dur = 600;
@@ -956,7 +1313,17 @@ async function refreshCounts() {
     };
     set('#segCountToReview', f.to_review); set('#segCountReviewed', f.reviewed); set('#segCountDone', f.done);
     const nav = $('#navCountReview');
-    if (nav) { nav.textContent = f.to_review || 0; nav.hidden = !f.to_review; }
+    if (nav) {
+      const n = f.to_review || 0;
+      nav.textContent = n;
+      nav.hidden = !n;
+      /* Le seul badge de la colonne qui ne disait pas ce qu'il comptait. Même bulle maison que
+         ses voisins — et `title = ''`, sinon le navigateur remonterait à celui du bouton. */
+      const bulle = tr('nav.reviews.to-review', { n, count: n });
+      nav.dataset.tip = bulle;
+      nav.title = '';
+      nav.setAttribute('aria-label', bulle);
+    }
     /* Badge ORANGE : les rapports faibles qui attendent encore une décision. Il complète le
        badge neutre (« à traiter ») sans le remplacer — l'un dit combien de merge requests
        n'ont pas été lues, l'autre lesquelles méritent d'être lues en premier. */
@@ -1005,6 +1372,52 @@ function loadSegment(seg = currentSeg) {
 $$('.segmented [data-seg]').forEach((b) => b.addEventListener('click', () => loadSegment(b.dataset.seg)));
 
 /* ---------- Dashboard ---------- */
+/* ---------- D'un constat qui revient à une règle de review ----------
+   Quatrième merge request d'affilée où l'IA relève « le numéro de carte est loggé » : on
+   retapait la consigne dans le contexte manuel de chacune. La règle s'écrit une fois. Le
+   formulaire s'ouvre PRÉ-REMPLI et rien n'est enregistré sans clic — un `path_match` déduit de
+   trois fichiers est une proposition, pas une vérité. */
+function motifDepuisFichiers(fichiers) {
+  const liste = (fichiers || []).filter(Boolean);
+  if (!liste.length) return '';
+  // Le plus long préfixe de RÉPERTOIRE commun : `src/checkout/**` plutôt que trois chemins.
+  const parts = liste.map((f) => f.split('/').slice(0, -1));
+  let commun = parts[0] || [];
+  for (const p of parts.slice(1)) {
+    let i = 0;
+    while (i < commun.length && i < p.length && commun[i] === p[i]) i += 1;
+    commun = commun.slice(0, i);
+  }
+  return commun.length ? `${commun.join('/')}/**` : liste.map((f) => f.split('/').pop()).join(',');
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-rec-rule]');
+  if (!b) return;
+  navTab('admin');
+  showAdminSub('rules');
+  const f = $('#ruleForm');
+  if (!f) return;
+  f.reset();
+  if (f.path_match) f.path_match.value = motifDepuisFichiers(String(b.dataset.recFiles || '').split(','));
+  if (f.label) f.label.value = b.dataset.recRule.slice(0, 60);
+  if (f.content) f.content.value = b.dataset.recRule;
+  f.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  if (f.content) f.content.focus({ preventScroll: true });
+  toast(tr('stats.recurring.prefilled', { project: b.dataset.recProject }));
+});
+
+/* La porte d'un chiffre de statistiques : Reviews, au bon stade, filtré sur ce projet. On
+   réutilise le champ de recherche de la file — c'est la même recherche, avec le même
+   comportement, et l'on voit d'où vient le filtre plutôt que d'atterrir sur une liste
+   mystérieusement raccourcie. */
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-stat-projet]');
+  if (!b) return;
+  navReviews(b.dataset.statSeg || 'to_review');
+  const champ = $('#searchReview');
+  if (champ) { champ.value = b.dataset.statProjet; champ.dispatchEvent(new Event('input')); }
+});
+
 async function loadDashboard() {
   const el = $('#dashboard');
   el.innerHTML = skeleton(4);
@@ -1026,13 +1439,15 @@ async function loadDashboard() {
   const maxB = Math.max(1, ...s.notes.buckets.map((b) => b.count), s.notes.noNote);
   const notesHtml = `<div class="dash-card"><h3>${tr('stats.notes.title')} ${s.notes.avg != null ? `<span class="muted">${tr('stats.notes.avg', { avg: s.notes.avg })}</span>` : ''}</h3>${cap('stats.help.notes')}
     <div class="hbars">
-      ${s.notes.buckets.map((b, i) => `<div class="hbar"><span class="hbar-lbl">${b.label}</span><div class="hbar-track"><div class="hbar-fill" style="width:${(b.count / maxB) * 100}%;background:${noteColors[i]}"></div></div><span class="hbar-val">${b.count}</span></div>`).join('')}
-      <div class="hbar"><span class="hbar-lbl muted">${tr('stats.notes.none')}</span><div class="hbar-track"><div class="hbar-fill" style="width:${(s.notes.noNote / maxB) * 100}%;background:var(--line)"></div></div><span class="hbar-val">${s.notes.noNote}</span></div>
+      ${/* `is-zero` retire le `min-width` : à 0, la barre dessinait un moignon coloré de 2 px,
+           qui se lit comme « il y en a un peu » alors qu'il n'y en a aucun. */''}
+      ${s.notes.buckets.map((b, i) => `<div class="hbar"><span class="hbar-lbl">${b.label}</span><div class="hbar-track"><div class="hbar-fill${b.count ? '' : ' is-zero'}" style="width:${(b.count / maxB) * 100}%;background:${noteColors[i]}"></div></div><span class="hbar-val">${b.count}</span></div>`).join('')}
+      <div class="hbar"><span class="hbar-lbl muted">${tr('stats.notes.none')}</span><div class="hbar-track"><div class="hbar-fill${s.notes.noNote ? '' : ' is-zero'}" style="width:${(s.notes.noNote / maxB) * 100}%;background:var(--line)"></div></div><span class="hbar-val">${s.notes.noNote}</span></div>
     </div></div>`;
 
   const maxW = Math.max(1, ...s.weekly.map((w) => w.count));
   const weeklyHtml = `<div class="dash-card"><h3>${tr('stats.weekly.title')}</h3>${cap('stats.help.weekly')}
-    <div class="vbars">${s.weekly.map((w) => `<div class="vbar" title="${tr('stats.weekly.tooltip', { week: w.week, count: w.count })}"><div class="vbar-fill" style="height:${(w.count / maxW) * 100}%"></div><span class="vbar-val">${w.count || ''}</span></div>`).join('')}</div>
+    <div class="vbars">${s.weekly.map((w) => `<div class="vbar" title="${tr('stats.weekly.tooltip', { week: w.week, count: w.count })}"><div class="vbar-fill${w.count ? '' : ' is-zero'}" style="height:${(w.count / maxW) * 100}%"></div><span class="vbar-val">${w.count || ''}</span></div>`).join('')}</div>
     <div class="vbars-x">${s.weekly.map((w) => `<span>${w.week.slice(8, 10)}-${w.week.slice(5, 7)}</span>`).join('')}</div></div>`;
 
   // Taux de résolution : la mesure la plus parlante de ce que l'outil apporte.
@@ -1043,7 +1458,10 @@ async function loadDashboard() {
     : `<span class="proj-trend ${pt.dir}" title="${esc(tr('stats.trend.delta', { delta: (pt.delta > 0 ? '+' : '') + pt.delta }))}">${pt.dir === 'up' ? '▲' : pt.dir === 'down' ? '▼' : '→'} ${pt.delta > 0 ? '+' : ''}${pt.delta}</span>`;
   const projHtml = `<div class="dash-card"><h3>${tr('stats.proj.title')} <span class="muted">${tr('stats.proj.subtitle')}</span></h3>${cap('stats.help.proj')}
     <div class="md-tablewrap"><table class="md-table"><thead><tr><th>${tr('stats.col.project')}</th><th>${tr('stats.col.reviewed')}</th><th>${tr('stats.col.pending')}</th><th>${tr('stats.col.avg')}</th><th>${tr('stats.col.worst')}</th><th title="${esc(tr('stats.col.resolution-hint'))}">${tr('stats.col.resolution')}</th><th title="${esc(tr('stats.col.trend-hint'))}">${tr('stats.col.trend')}</th><th>${tr('stats.col.last-commit')}</th></tr></thead>
-    <tbody>${s.projects.length ? s.projects.map((p) => `<tr><td>${esc(p.project)}</td><td>${p.reviewed}</td><td>${p.pending || ''}</td><td>${noteBadge(p.avg)}</td><td>${noteBadge(p.worst)}</td><td>${rateCell(p.resolution)}</td><td>${trendCell(p.trend)}</td><td class="dash-lastcommit" data-project="${esc(p.project)}"><span class="muted">…</span></td></tr>`).join('') : `<tr><td colspan="8" class="muted">${tr('stats.empty')}</td></tr>`}</tbody></table></div>
+    ${/* CHAQUE NOMBRE EST UNE PORTE. Un tableau qui décrit sans donner de chemin fait relire
+          des chiffres qu'on ne peut pas suivre : « pire 5,5 » et « en attente 3 » ouvrent
+          Reviews sur CE projet, au bon stade. Les statistiques déclenchent le travail. */''}
+    <tbody>${s.projects.length ? s.projects.map((p) => `<tr><td>${esc(p.project)}</td><td>${p.reviewed}</td><td>${p.pending ? `<button type="button" class="stat-porte" data-stat-projet="${esc(p.project)}" data-stat-seg="to_review" title="${esc(tr('stats.go.pending'))}">${p.pending}</button>` : ''}</td><td>${noteBadge(p.avg)}</td><td>${p.worst != null ? `<button type="button" class="stat-porte" data-stat-projet="${esc(p.project)}" data-stat-seg="reviewed" title="${esc(tr('stats.go.worst'))}">${noteBadge(p.worst)}</button>` : noteBadge(p.worst)}</td><td>${rateCell(p.resolution)}</td><td>${trendCell(p.trend)}</td><td class="dash-lastcommit" data-project="${esc(p.project)}"><span class="muted">…</span></td></tr>`).join('') : `<tr><td colspan="8" class="muted">${tr('stats.empty')}</td></tr>`}</tbody></table></div>
     ${s.resolution ? `<p class="muted stats-res-global">${tr('stats.resolution.global', { rate: s.resolution.rate, resolved: s.resolution.resolved, prior: s.resolution.prior })}</p>` : ''}</div>`;
 
   const t = s.tasks;
@@ -1062,7 +1480,9 @@ async function loadDashboard() {
     <div class="vbars">${scoreTrend.map((w) => w.avg == null
       ? `<div class="vbar vbar-empty" title="${tr('stats.trend.no-data', { week: w.week })}"></div>`
       : `<div class="vbar" title="${tr('stats.trend.tooltip', { week: w.week, avg: w.avg, count: w.count })}"><div class="vbar-fill ${w.avg >= 7 ? 'vf-good' : w.avg >= 4 ? 'vf-mid' : 'vf-bad'}" style="height:${(w.avg / 10) * 100}%"></div><span class="vbar-val">${w.avg}</span></div>`).join('')}</div>
-    <div class="vbars-x">${scoreTrend.map((w) => `<span>${w.week.slice(8, 10)}-${w.week.slice(5, 7)}</span>`).join('')}</div></div>`;
+    ${/* Une semaine sans review n'est pas une semaine à zéro : sa date passe en gris pâle et
+          le dit avec des mots, plutôt que de laisser une colonne vide se lire comme un creux. */''}
+    <div class="vbars-x">${scoreTrend.map((w) => `<span${w.avg == null ? ` class="no-data" title="${esc(tr('stats.trend.no-data', { week: w.week }))}"` : ''}>${w.week.slice(8, 10)}-${w.week.slice(5, 7)}</span>`).join('')}</div></div>`;
 
   // Tokens : où part le quota. Camembert par type (conic-gradient, pas de calcul d'arc)
   // + coût moyen par MR reviewée. Le total est un MINORANT, dit dans la légende.
@@ -1081,9 +1501,31 @@ async function loadDashboard() {
     <div class="stat-row">${tile(tr('stats.tokens.avg-per-mr'), tk.avgPerReviewedMr != null ? fmtNum(tk.avgPerReviewedMr) : '—', 'accent')}${tile(tr('stats.tokens.total-label'), fmtNum(tk.total))}</div>
     <p class="muted dash-floor">${tr('stats.tokens.floor')}</p></div>` : '';
 
+  /* LES SESSIONS LES PLUS COÛTEUSES. « Combien coûtent les sessions » ne dit pas lesquelles :
+     ce classement-là se lit en une ligne par session, prompt tronqué, du plus cher au moins. */
+  const top = s.topTasks || [];
+  const topHtml = `<div class="dash-card"><h3>${tr('stats.top-tasks.title')}</h3>${cap('stats.top-tasks.help')}
+    ${top.length ? `<div class="md-tablewrap"><table class="md-table"><tbody>${top.map((x) => `<tr>
+        <td class="stats-top-tok">${esc(fmtNum(x.tokens))}</td>
+        <td>${esc(x.label || x.prompt)}</td></tr>`).join('')}</tbody></table></div>`
+    : `<p class="muted">${esc(tr('stats.top-tasks.empty'))}</p>`}</div>`;
+
+  /* LES CONSTATS QUI REVIENNENT — et le geste qui les fait cesser : en faire une règle de
+     review, écrite une fois, plutôt que de la retaper dans chaque merge request. */
+  const rec = s.recurrents || [];
+  const recHtml = `<div class="dash-card"><h3>${tr('stats.recurring.title')}</h3>${cap('stats.recurring.help')}
+    ${rec.length ? `<div class="md-tablewrap"><table class="md-table"><tbody>${rec.map((r) => `<tr>
+        <td>${esc(r.project)}</td>
+        <td>${esc(r.title)}<div class="muted stats-rec-files">${r.files.map((f) => `<code>${esc(f)}</code>`).join(' ')}</div></td>
+        <td>${esc(tr('stats.recurring.count', { n: r.count, count: r.count }))}</td>
+        <td><button type="button" class="btn btn-sm" data-rec-rule="${esc(r.title)}" data-rec-files="${esc(r.files.join(','))}" data-rec-project="${esc(r.project)}">${esc(tr('stats.recurring.rule'))}</button></td>
+      </tr>`).join('')}</tbody></table></div>`
+    : `<p class="muted">${esc(tr('stats.recurring.empty'))}</p>`}</div>`;
+
   el.innerHTML = `<div id="dashTop5" class="dash-card">${skeleton(2)}</div>`
     + funnelHtml + `<div class="dash-grid">${notesHtml}${trendHtml}${weeklyHtml}${tokHtml}</div>`
-    + `<div id="dashActivity" class="dash-card">${skeleton(3)}</div>` + projHtml + devHtml;
+    + `<div id="dashActivity" class="dash-card">${skeleton(3)}</div>` + projHtml + devHtml
+    + `<div class="dash-grid">${topHtml}${recHtml}</div>`;
 
   // Activité GitLab en direct (dernier commit par projet) : chargée à part pour ne pas
   // ralentir le dashboard ni le faire échouer si GitLab est injoignable.
@@ -1317,6 +1759,16 @@ let pollTimer = null;
 // fin) pour rafraîchir les listes — sans ça, lancer une itération laissait la carte sur
 // son ancien statut (« poussée ») jusqu'au rechargement de la page.
 let lastSeenJobId = null;
+/* Le dernier job dont on a DÉJÀ traité la fin. La détection reposait sur `pollTimer` : « il y
+   avait un sondage en cours, donc un job vient de finir ». C'est faux pour un job court — une
+   review qui dure moins d'un tour de boucle n'a jamais fait naître le timer, et rien ne
+   rafraîchissait la liste ni les compteurs. L'écran affichait alors « À traiter 10 » quand
+   l'API répondait 9, indéfiniment : la première action du produit paraissait sans effet.
+   L'identifiant, lui, ne dépend d'aucune cadence. `null` tant qu'on n'a rien vu ; le PREMIER
+   état reçu ne déclenche rien (au chargement, le dernier job de la base est fini depuis
+   longtemps et son annonce n'aurait aucun sens). */
+let dernierJobFini = null;
+let premierStatutRecu = false;
 
 // Polling auto des listes, à l'intervalle configuré (auto_refresh_minutes). Le serveur
 // interroge GitLab de son côté ; le front ne fait que relire la base locale (pas d'appel
@@ -1355,7 +1807,12 @@ function objetsTermines(avant, apres) {
 function marquerEnCours(targets) {
   const fini = objetsTermines(ciblesEnCours, targets);
   if (fini.tasks.length || fini.locals.length) { if ($('#tab-task').classList.contains('active')) loadTasks(); }
-  if (fini.mrs.length && $('#tab-review').classList.contains('active')) loadSegment(currentSeg);
+  if (fini.mrs.length) {
+    if ($('#tab-review').classList.contains('active')) loadSegment(currentSeg);
+    // Les compteurs ne sont pas dans la liste : sans ça, ils gardent la valeur d'avant.
+    refreshCounts();
+    if ($('#tab-notes').classList.contains('active')) loadBrief();
+  }
   ciblesEnCours = targets;
   const t = targets || { mrs: [], tasks: [], locals: [], verifying: [] };
   const veut = new Set([
@@ -1415,6 +1872,13 @@ async function refreshStatus() {
     const job = s.job;
     const running = s.running;
     const queued = s.queued || 0;
+    /* PREMIER ÉTAT REÇU : on note ce qui était déjà fini avant notre arrivée, et on ne
+       déclenche rien. Sans ça, ouvrir la page annoncerait la fin du dernier job de la base —
+       terminé la veille — et rafraîchirait des listes qu'on vient tout juste de charger. */
+    if (!premierStatutRecu) {
+      premierStatutRecu = true;
+      if (job && JOB_FINI.includes(job.status)) dernierJobFini = job.id;
+    }
     /* Un nouveau job vient de démarrer : les statuts affichés (session, projet) sont
        déjà périmés. On recharge la liste concernée tout de suite, comme on le fait
        déjà à la fin d'un job. */
@@ -1435,11 +1899,19 @@ async function refreshStatus() {
       $('#progressBar').style.width = '0%';
       document.title = 'Mergerie';
       setFavicon(job && job.status === 'error' ? 'error' : 'idle');
-      if (job && ['done', 'stopped', 'error'].includes(job.status) && pollTimer) {
+      if (job && JOB_FINI.includes(job.status) && premierStatutRecu && job.id !== dernierJobFini) {
+        dernierJobFini = job.id;
         // job vient de finir : rafraîchir les listes ET le détail ouvert
         const avant = new Map(reportRows.map((m) => [m.id, m.note && m.note.raw]));
         loadToReview();
         if (currentSeg !== 'to_review') loadReports(currentSeg).then(() => signalerAtterrissage(avant));
+        /* LES COMPTEURS AUSSI. Les listes se rechargeaient déjà, pas les segments : après une
+           review, l'écran affichait encore « À traiter 10 / Reviewées 7 » quand l'API répondait
+           9/8, et il fallait changer d'onglet pour voir son propre travail. C'est la seule part
+           visible du résultat sur cet écran. */
+        refreshCounts();
+        // Et le brief, qui compte les MR fraîches et les rapports qui attendent une décision.
+        if ($('#tab-notes').classList.contains('active')) loadBrief();
         if ($('#tab-task').classList.contains('active')) loadTasks();
         // action Docker terminée (up/restart/down…) → recharger la liste pour voir le nouvel état
         if ($('#tab-docker').classList.contains('active')) loadDocker();
@@ -1717,7 +2189,24 @@ async function pumpLog() {
   // Repli auto quelques secondes après un job TERMINÉ (succès ou arrêt) : le panneau ne doit
   // pas rester collé en haut de tous les onglets. On garde l'ERREUR affichée (elle appelle une
   // action) et on ne masque pas si l'utilisateur a déplié le journal pour le lire.
+  /* UN JOB QUI A PRODUIT QUELQUE CHOSE NE S'EFFACE PAS TOUT SEUL. Il se repliait six secondes
+     après la fin, sans laisser de lien vers son résultat : le seul reste était une pastille de
+     onze pixels dans le pied de page. Quand le job désigne un objet — la MR reviewée, la session
+     — le bandeau garde un bouton qui y mène, et attend qu'on le ferme. */
+  const res = $('#logResult');
+  const menePar = !running && d.status === 'done' && d.target_kind && d.target_id;
+  if (res) {
+    res.hidden = !menePar;
+    if (menePar) {
+      res.dataset.kind = d.target_kind; res.dataset.id = d.target_id;
+      /* Une VÉRIFICATION produit un rapport, pas une session : le bouton disait « Voir la
+         session » et menait à Dev IA, où il n'y avait rien à voir. */
+      res.querySelector('span').textContent = tr(
+        d.target_kind === 'mr' || d.target_kind === 'verification' ? 'job.result.open' : 'job.result.open-task');
+    }
+  }
   if (running) { autoHideJobId = null; clearTimeout(autoHideTimer); }
+  else if (menePar) { clearTimeout(autoHideTimer); autoHideJobId = d.job_id; }
   else if ((d.status === 'done' || d.status === 'stopped') && d.job_id && autoHideJobId !== d.job_id) {
     autoHideJobId = d.job_id;
     clearTimeout(autoHideTimer);
@@ -1758,14 +2247,17 @@ const HIST_KEY = 'aidevtools_hist_vu';
 const histVu = () => { try { return Number(localStorage.getItem(HIST_KEY)) || 0; } catch { return 0; } };
 const setHistVu = (id) => { try { localStorage.setItem(HIST_KEY, String(id)); } catch { /* ignore */ } };
 
-const JOB_FINI = ['done', 'stopped', 'error'];
+/* `interrupted` est un job FINI : la base le pose au démarrage sur ce que l'arrêt précédent a
+   coupé, et le processus n'existe plus. Absent d'ici, il restait éternellement « en cours »
+   pour le client, qui continuait de l'interroger. */
+const JOB_FINI = ['done', 'stopped', 'error', 'interrupted'];
 function jobDuree(j) {
   if (!j.started_at || !j.finished_at) return '';
   const ms = new Date(j.finished_at) - new Date(j.started_at);
   if (!(ms > 0)) return '';
   return ms < 60000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60000)} min`;
 }
-const JOB_STATUT = { done: 'ok', error: 'bad', stopped: 'mid', running: 'mid', queued: '' };
+const JOB_STATUT = { done: 'ok', error: 'bad', stopped: 'mid', interrupted: 'mid', running: 'mid', queued: '' };
 
 async function renderLogHist() {
   const box = $('#logHist');
@@ -2013,16 +2505,80 @@ function matchMr(m, q) {
 /* ---------- À reviewer ---------- */
 let toReviewRows = [];
 async function loadToReview() {
+  /* SQUELETTE AU PREMIER AFFICHAGE SEULEMENT. Sans lui, sous latence, l'écran reste vide et
+     dit « aucune merge request » alors que la requête est encore en vol. Aux rafraîchissements
+     suivants on garde la liste affichée : la remplacer par un squelette toutes les minutes
+     ferait clignoter ce qu'on est en train de lire.
+     ⚠ `listeChargee` ne convient PAS ici : il ne dit pas « déjà chargée » mais « anime la
+     prochaine entrée », et `stagger()` le remet à false à chaque rendu — s'en servir reposait
+     un squelette par-dessus la liste à chaque rafraîchissement. */
+  if (fileJamaisChargee) $('#toReviewList').innerHTML = skeleton(3);
   toReviewRows = await api('/mrs?status=to_review');
+  fileJamaisChargee = false;
   listeChargee = true;
   renderToReview();
 }
+/* ---------- « Mes merge requests » / « Les autres » ----------
+   Onze cartes à traiter dont quatre à soi : ce que l'équipe attend, ce sont les sept autres, et
+   on les repérait à l'auteur, carte par carte. Le compte du jeton est lu UNE fois au démarrage
+   (`/api/me`, jamais depuis `/status` qui est sondé toutes les deux secondes) ; sans réponse —
+   jeton absent, forge injoignable — les pastilles ne s'affichent pas du tout plutôt que de
+   proposer un tri qui trierait mal. */
+let moiSurLesForges = null;
+let filtreAuteur = 'tous';
+try { filtreAuteur = localStorage.getItem('aidevtools_mr_auteur') || 'tous'; } catch { /* ignore */ }
+
+/* La forge stocke tantôt le pseudo, tantôt le nom affiché : on reconnaît les deux, pour les
+   deux forges — une installation peut suivre des dépôts GitLab ET GitHub. */
+function estDeMoi(m) {
+  if (!moiSurLesForges) return false;
+  const a = String(m.author || '').trim().toLowerCase();
+  if (!a) return false;
+  return Object.values(moiSurLesForges).some((id) => id
+    && [id.username, id.name].filter(Boolean).some((v) => String(v).trim().toLowerCase() === a));
+}
+
+function renderFiltreAuteur() {
+  const box = $('#mrAuteurFiltre');
+  if (!box) return;
+  box.hidden = !moiSurLesForges;
+  if (!moiSurLesForges) return;
+  const opts = [['tous', 'review.auteur.tous'], ['moi', 'review.auteur.moi'], ['autres', 'review.auteur.autres']];
+  box.innerHTML = opts.map(([v, k]) => `<button type="button" class="chip${filtreAuteur === v ? ' active' : ''}" data-mr-auteur="${v}">${esc(tr(k))}</button>`).join('');
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-mr-auteur]');
+  if (!b) return;
+  filtreAuteur = b.dataset.mrAuteur;
+  try { localStorage.setItem('aidevtools_mr_auteur', filtreAuteur); } catch { /* ignore */ }
+  renderFiltreAuteur();
+  loadSegment(currentSeg);
+});
+const filtrerAuteur = (rows) => (filtreAuteur === 'moi' ? rows.filter(estDeMoi)
+  : (filtreAuteur === 'autres' ? rows.filter((m) => !estDeMoi(m)) : rows));
+
+(async () => {
+  try {
+    const d = await api('/me');
+    if (d && Object.keys(d).length && Object.values(d).some((i) => i && (i.username || i.name))) {
+      moiSurLesForges = d;
+    }
+  } catch { /* pas d'identité : pas de filtre, et rien à signaler */ }
+  renderFiltreAuteur();
+})();
+
 function renderToReview() {
   const el = $('#toReviewList');
   const q = ($('#searchReview').value || '').toLowerCase().trim();
+  /* TANT QUE LA FILE N'A JAMAIS RÉPONDU, on ne conclut rien. `renderToReview` est aussi
+     appelée par l'assistant de démarrage, qui relit l'état de la configuration : sur une
+     instance lente, cette réponse-là arrive AVANT celle des merge requests, et elle
+     remplaçait le squelette par « aucune merge request » — un état vide affirmé sur une
+     liste qu'on n'avait pas encore reçue. */
+  if (fileJamaisChargee) return;
   if (!toReviewRows.length) {
     // pas encore configuré → onboarding ; configuré et vide → file à jour
-    el.innerHTML = (setupState.checked && (!setupState.configured || !setupState.hasRepos))
+    el.innerHTML = (setupState.checked && (!setupState.configured || !setupState.hasRepos || !setupState.hasMrs))
       ? onboardingHtml()
       : emptyState({
         icon: 'check',
@@ -2035,8 +2591,18 @@ function renderToReview() {
       });
     return;
   }
-  const rows = q ? toReviewRows.filter((m) => matchMr(m, q)) : toReviewRows;
+  assurerJenkinsPourCI();          // une fois par page : le badge CI a besoin de la liste
+  const rows = filtrerAuteur(q ? toReviewRows.filter((m) => matchMr(m, q)) : toReviewRows)
+    .slice().sort((a, b) => rangTicket(a) - rangTicket(b));
   if (!rows.length) {
+    /* Filtrer sur « les autres » quand tout est à soi donne une liste vide qui n'est pas une
+       recherche infructueuse : on dit laquelle des deux, sinon on croit avoir tout traité. */
+    if (!q && filtreAuteur !== 'tous') {
+      el.innerHTML = emptyState({ icon: 'search', title: tr(`review.auteur.vide.${filtreAuteur}`),
+        text: tr('review.search.count', { n: toReviewRows.length, total: toReviewRows.length }),
+        actions: [{ act: 'clear-auteur', label: tr('review.auteur.tous') }] });
+      return;
+    }
     el.innerHTML = emptyState({ icon: 'search', title: tr('report.search.none', { q: esc(q) }),
       text: tr('review.search.count', { n: toReviewRows.length, total: toReviewRows.length }),
       actions: [{ act: 'clear-search', label: tr('report.search.clear') }] });
@@ -2050,7 +2616,8 @@ function renderToReview() {
      branche cible changée passeraient inaperçus. */
   const sig = rows.map((m) => [m.id, m.status, m.iid, m.title, m.project, m.author, m.gitlab_created_at,
     m.has_ticket, m.ticket_key, m.ticket_url, m.web_url, m.forge, m.source_branch, m.target_branch,
-    (m.risk || []).map((r) => r.label).join(','), m.closed_seen, m.stale, m.last_error,
+    m.size && [m.size.files, m.size.additions, m.size.deletions].join(','), m.updated_at,
+    (m.risk || []).map((r) => r.label).join(','), m.closed_seen, m.stale, m.last_error, m.ticket_category,
     /* Le badge de vérification fait partie de ce que la carte affiche : sans lui dans la
        signature, un verdict qui vient de tomber resterait invisible jusqu'au prochain
        changement d'un autre champ. */
@@ -2069,6 +2636,15 @@ function renderToReview() {
   $$('#toReviewList [data-review]').forEach((b) => b.addEventListener('click', async () => {
     try { await busy(b, () => api(`/mrs/${b.dataset.review}/review`, { method: 'POST' })); toast(tr('toast.review-de-lancee', { iid: b.dataset.iid })); refreshStatus(); }
     catch (e) { toast(explainError(e.message), true); }
+  }));
+  $$('#toReviewList [data-more]').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const menu = b.parentElement.querySelector('.split-menu');
+    const ouvrir = menu.hidden;
+    closeSplitMenus();
+    menu.hidden = !ouvrir;
+    b.setAttribute('aria-expanded', String(ouvrir));
+    if (ouvrir) { b.closest('.card').classList.add('menu-open'); placerMenu(b, menu); }
   }));
   // Split-button : le caret ouvre le menu de surcharge ponctuelle (avec/sans explication).
   $$('#toReviewList [data-review-menu]').forEach((b) => b.addEventListener('click', (e) => {
@@ -2136,6 +2712,8 @@ function mergeMrFromQueue(m, onMerged) {
     label: `!${m.iid}`,
     target: m.target_branch,
     forge: m.forge,
+    check: `/mrs/${m.id}/merge-check`,
+    project: m.project,
     squash: m.squash, removeSourceBranch: m.remove_source_branch,
     onDone: async (r) => {
       if (!r.merged) return;                                  // pipeline en attente : reste en file
@@ -2148,7 +2726,7 @@ function mergeMrFromQueue(m, onMerged) {
 // Ferme tous les menus déroulants des split-buttons (review avec/sans explication).
 function closeSplitMenus() {
   $$('.split-menu').forEach((m) => { m.hidden = true; });
-  $$('[data-review-menu], #taskMdExport').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+  $$('[data-review-menu], [data-more], #aMore, #taskMdExport').forEach((b) => b.setAttribute('aria-expanded', 'false'));
   // Retire l'élévation (carte) et le déblocage d'overflow (liste) posés à l'ouverture.
   $$('.menu-open').forEach((el) => el.classList.remove('menu-open'));
 }
@@ -2162,14 +2740,17 @@ function mrCard(m) {
     <label class="mr-pick-box" title="${esc(tr('verify.pick.mr-title'))}"><input type="checkbox" class="mr-pick" value="${m.id}" ${mrSelection.has(m.id) ? 'checked' : ''} /></label>
     <div class="card-main">
       <div class="title">!${m.iid} — ${esc(m.title || '')}</div>
-      <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}${m.gitlab_created_at ? ` · ${fmtDate(m.gitlab_created_at)}` : ''}</div>
+      <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}${m.gitlab_created_at ? ` · ${dateHtml(m.gitlab_created_at, fmtDate(m.gitlab_created_at))}` : ''}</div>
       ${mrLinks(m)}
-      <div class="meta branches"><code>${esc(m.source_branch)}</code> <span class="branch-arrow">→</span> <code>${esc(m.target_branch)}</code></div>
+      <div class="meta branches">${chipBranche(m.source_branch)} <span class="branch-arrow">→</span> ${chipBranche(m.target_branch, { cible: true })}</div>
+      ${tailleMr(m)}
       ${/* Les tags sont des MÉTADONNÉES, pas des actions : les laisser dans la rangée de
             boutons décalait celle-ci d'une carte à l'autre selon le nombre de tags. */''}
       <div class="card-tags">
         ${(m.risk || []).map((r) => `<span class="tag risk" title="${esc(tr('mr.risk-title', { pattern: r.path_match }))}">${svgIco('alert')} ${esc(r.label)}</span>`).join('')}
         <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
+        ${badgeTicket(m)}
+        ${badgeCI(m.source_branch)}
         ${verifyBadge(m.verification)}
         ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
         ${m.last_error ? `<span class="tag stale">${tr('mr.tag.error')}</span>` : ''}
@@ -2181,7 +2762,6 @@ function mrCard(m) {
     <button class="btn" data-ticket="${m.id}" data-title="!${m.iid} — ${esc(m.title || '')}" title="${tr('mr.btn.context-title')}"><svg class="ico"><use href="#i-doc"/></svg>${m.has_ticket ? tr('mr.btn.context-done') : tr('mr.btn.context')}</button>
     </div>
     <div class="btn-group">
-    <button class="btn" data-dev="${m.id}" data-branch="${esc(m.source_branch)}" title="${tr('mr.btn.code-title')}"><svg class=\"ico\"><use href=\"#i-bot\"/></svg>${tr('mr.btn.code')}</button>
     <span class="btn-split">
       <button class="btn btn-primary" data-review="${m.id}" data-iid="${m.iid}" title="${tr('mr.btn.review-title')}"><svg class=\"ico\"><use href=\"#i-play\"/></svg>${tr('mr.btn.review')}</button>
       <button class="btn btn-primary btn-split-caret" data-review-menu="${m.id}" title="${tr('mr.btn.review-opts-title')}" aria-haspopup="true" aria-expanded="false">▾</button>
@@ -2191,18 +2771,58 @@ function mrCard(m) {
       </div>
     </span>
     </div>
-    <div class="btn-group">
-    <button class="btn" data-verify="${m.id}" ${m.verifiable ? '' : 'disabled'} title="${m.verifiable ? tr('verify.btn.verify-title') : tr('err.verify.no-verifier')}"><svg class="ico"><use href="#i-check"/></svg>${tr('verify.btn.verify')}</button>
-    ${/* Dès qu'un résultat EXISTE — pas seulement quand c'est rouge : « c'est vert, mais
-          qu'est-ce qui a tourné exactement ? » est une question légitime, et depuis que des
-          vérificateurs partent tout seuls on n'a pas vu passer le lancement. */''}
-    ${m.verification ? `<button class="btn" data-vresults="${m.id}" title="${esc(tr('verify.btn.results-title'))}"><svg class="ico"><use href="#i-doc"/></svg>${tr('verify.btn.results')}</button>` : ''}
-    <button class="btn" data-done="${m.id}" data-iid="${m.iid}" title="${tr('mr.btn.dismiss-title')}"><svg class=\"ico\"><use href=\"#i-archive\"/></svg>${tr('mr.btn.dismiss')}</button>
-    ${m.closed_seen ? '' : `<button class="btn btn-danger" data-merge="${m.id}" title="${tr('mr.btn.merge-title')}"><svg class="ico"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>`}
+    ${/* LE RESTE DANS UN MENU. La carte portait sept actions de même poids, dont un bouton
+          conditionnel : « Vérifier », « Classer » et « Merger » changeaient d'abscisse d'une
+          carte à l'autre, et la liste devenait une suite de rangées à relire au lieu d'une
+          colonne à balayer. Trois actions fixes + « ⋯ » : la colonne redevient un rail, et
+          rien n'est perdu — tout est à un clic, dans un ordre stable.
+          Les attributs `data-*` sont IDENTIQUES à ceux d'avant : les écouteurs délégués les
+          retrouvent dans le menu comme ils les trouvaient sur la carte. */''}
+    <span class="btn-split">
+      <button class="btn" data-more="${m.id}" title="${esc(tr('mr.btn.more-title'))}" aria-haspopup="true" aria-expanded="false">⋯</button>
+      <div class="split-menu" hidden role="menu">
+        <button role="menuitem" data-dev="${m.id}" data-branch="${esc(m.source_branch)}">${tr('mr.btn.code')}</button>
+        <button role="menuitem" data-verify="${m.id}" ${m.verifiable ? '' : 'disabled'} title="${m.verifiable ? '' : esc(tr('err.verify.no-verifier'))}">${tr('verify.btn.verify')}</button>
+        ${m.verification ? `<button role="menuitem" data-vresults="${m.id}">${tr('verify.btn.results')}</button>` : ''}
+        ${/* LE MESSAGE SLACK TOUT FAIT. « Où en est !217 ? » se répond en collant une ligne
+              qui porte l'essentiel : le numéro, le titre, la note, le verdict, l'adresse. */''}
+        ${/* B8 — LA QA VEUT !217 EN RECETTE. Le job est déclaré pour ce dépôt : il apparaît
+              quand la merge request est VÉRIFIÉE VERTE, avec sa branche pré-remplie. Ni avant
+              (on ne déploie pas ce qui n'est pas vérifié), ni sans confirmation. */''}
+        ${(m.verification && m.verification.verdict === 'verified_pass' && !m.verification.stale)
+    ? (m.jenkins_jobs || []).map((j) => `<button role="menuitem" data-mr-jenkins="${esc(j.path)}" data-param="${esc(j.param || '')}" data-branch="${esc(m.source_branch)}" title="${esc(tr('mr.title.jenkins-run'))}">${esc(tr('mr.btn.jenkins-run', { job: j.path }))}</button>`).join('')
+    : ''}
+        <button role="menuitem" data-copy-ref="${m.id}">${tr('mr.btn.copy-ref')}</button>
+        <button role="menuitem" data-done="${m.id}" data-iid="${m.iid}">${tr('mr.btn.dismiss')}</button>
+        ${m.closed_seen ? '' : `<button role="menuitem" class="danger" data-merge="${m.id}">${tr('task.btn.merge')}</button>`}
+      </div>
+    </span>
     </div>
     </div>
   </div>${m.last_error ? errorBox(m.last_error, m.id) : ''}`;
 }
+
+/* La référence se compose de ce que la LISTE porte déjà — aucune requête : la note et le
+   verdict sont dans la charge utile de la carte, l'adresse aussi. */
+function refMr(m) {
+  const bouts = [];
+  if (m.note != null) bouts.push(`${String(m.note).replace('.', ',')}/10`);
+  const v = m.verification && m.verification.verdict;
+  if (v) bouts.push(tr(`mr.ref.verdict.${v}`));
+  const qualif = bouts.length ? ` (${bouts.join(' · ')})` : '';
+  return `!${m.iid} — ${m.title || ''}${qualif} ${m.web_url || ''}`.trim();
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-copy-ref]');
+  if (!b) return;
+  /* La carte peut venir de l'une ou l'autre file : « à traiter » et « reviewées / traitées »
+     sont deux tableaux distincts, et le menu ⋯ existe dans les deux. */
+  const id = Number(b.dataset.copyRef);
+  const m = (toReviewRows || []).concat(reportRows || []).find((x) => x.id === id);
+  if (!m) return;
+  copyText(refMr(m), null);
+  toast(tr('mr.ref.copied'));
+});
 
 $('#btnDiscover').addEventListener('click', async () => {
   const db_ = $('#btnDiscover');
@@ -2222,7 +2842,12 @@ $('#btnDiscover').addEventListener('click', async () => {
 
 $('#btnReview').addEventListener('click', async () => {
   const n = toReviewRows.length;
-  if (n > 5 && !await confirmDialog({ text: tr('confirm.review-all', { n }), confirmLabel: tr('mr.btn.review'), danger: false })) return;
+  /* LE TITRE PORTE LA QUESTION. « Confirmer l'action » ne dit ni quoi ni combien : sur une
+     action en masse, c'est le nombre qui fait hésiter, et il était noyé dans le paragraphe. */
+  if (n > 5 && !await confirmDialog({
+    title: tr('confirm.review-all.title', { n, count: n }),
+    text: tr('confirm.review-all', { n }), confirmLabel: tr('mr.btn.review'), danger: false,
+  })) return;
   const b = $('#btnReview');
   try {
     await busy(b, () => api('/jobs/review', { method: 'POST' }));
@@ -2267,7 +2892,13 @@ const filtreNoteActif = () => noteFilter.size < NOTE_CLASSES.length;
 const passeFiltreNote = (m) => !filtreNoteActif() || noteFilter.has(noteClass(m.note) || 'none');
 
 async function loadReports(status = 'reviewed') {
+  /* SQUELETTE AU PREMIER AFFICHAGE DE CE STADE. « Reviewées » et « Traitées » n'en avaient
+     pas : sous latence, la colonne restait un blanc muet — impossible de distinguer « ça
+     charge » de « il n'y a rien ». Un drapeau PAR STADE, parce qu'on passe de l'un à l'autre
+     et que chacun a son premier affichage. */
+  if (!stadeDejaCharge.has(status)) $('#reportList').innerHTML = skeleton(3);
   reportRows = await api(`/mrs?status=${status}`);
+  stadeDejaCharge.add(status);
   listeChargee = true;
   renderReports();
 }
@@ -2282,7 +2913,7 @@ function renderReports() {
       actions: [{ act: 'seg-to-review', label: tr('report.empty.action'), primary: true }] });
     return;
   }
-  const cherchees = q ? reportRows.filter((m) => matchMr(m, q)) : reportRows;
+  const cherchees = filtrerAuteur(q ? reportRows.filter((m) => matchMr(m, q)) : reportRows);
   if (!cherchees.length) {
     el.innerHTML = emptyState({
       icon: 'search',
@@ -2306,21 +2937,25 @@ function renderReports() {
   }
   const sig = [selectedMr, ...rows.map((m) => [m.id, m.status, m.iid, m.title, m.project, m.author,
     m.gitlab_created_at, m.ticket_key, m.ticket_url, m.forge, m.note && m.note.raw, m.closed_seen,
+    m.note_detail && [m.note_detail.version, m.note_detail.n_resolved, m.note_detail.n_persistent, m.note_detail.n_new].join(','),
+    m.size && [m.size.files, m.size.additions, m.size.deletions].join(','), m.updated_at,
     m.stale, m.verifiable, m.verification && [m.verification.id, m.verification.verdict, m.verification.stale,
       m.verification.failed_count, m.verification.detail_source].join(',')].join('\u0001'))].join('\u0002');
   const html = rows.map((m) => `
     <div class="card selectable report-card ${selectedMr === m.id ? 'active' : ''}" data-id="${m.id}">
-      ${noteBadge(m.note)}
+      ${noteBadge(m.note, m)}
       <div class="report-main">
         <div class="title">!${m.iid} — ${esc(m.title || '')}</div>
-        <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}${m.gitlab_created_at ? ` · ${fmtDate(m.gitlab_created_at)}` : ''}${ticketLink(m.ticket_url, m.ticket_key)}</div>
+        <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}${m.gitlab_created_at ? ` · ${dateHtml(m.gitlab_created_at, fmtDate(m.gitlab_created_at))}` : ''}${ticketLink(m.ticket_url, m.ticket_key)}</div>
         <div class="report-tags">
           <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
+          ${badgeTicket(m)}
+          ${badgeCI(m.source_branch)}
           ${verifyBadge(m.verification)}
           ${/* Une MR déjà reviewée se vérifie aussi : la review est un avis, le verdict un fait. */''}
           ${m.verifiable ? `<button class="btn btn-sm" data-verify-report="${m.id}" title="${tr('verify.btn.verify-title')}">${svgIco('check')}${tr('verify.btn.verify')}</button>` : ''}
           ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
-          ${m.stale ? `<span class="tag stale">${tr('mr.tag.stale')}</span>` : ''}
+          ${m.stale ? `<span class="tag stale" data-stale-mr="${m.id}">${tr('mr.tag.stale')}</span>` : ''}
         </div>
       </div>
     </div>`).join('');
@@ -2386,10 +3021,158 @@ function noteClass(note) {
 }
 
 // Pastille de note globale colorée (vert = bon, orange = moyen, rouge = mauvais).
-function noteBadge(note) {
+/* CE QUE LE SÉLECTEUR DE VERSION DIT UNE FOIS LE RAPPORT OUVERT. Le badge portait la note et
+   rien d'autre : pour savoir de quelle passe elle vient, ce qu'elle a résolu et si elle porte
+   encore sur le code actuel, il fallait ouvrir. Le survol le dit — c'est déjà dans la charge
+   utile de la liste, aucune requête de plus. */
+function detailNote(m) {
+  const d = m && m.note_detail;
+  const bouts = [];
+  if (d && d.version) bouts.push(`v${d.version}`);
+  if (d && d.at) bouts.push(fmtDate(d.at));
+  if (d && d.n_resolved) bouts.push(tr('review.note.detail.resolved', { n: d.n_resolved, count: d.n_resolved }));
+  if (d && d.n_persistent) bouts.push(tr('review.note.detail.persistent', { n: d.n_persistent, count: d.n_persistent }));
+  if (d && d.n_new) bouts.push(tr('review.note.detail.new', { n: d.n_new, count: d.n_new }));
+  if (m && m.stale) bouts.push(tr('review.note.detail.stale'));
+  return bouts.join(' · ');
+}
+/* B8 — ouvrir le job Jenkins avec la branche de la merge request. On ouvre la FICHE (jamais
+   un lancement direct) : les paramètres se lisent, et le bouton « Lancer avec ces paramètres »
+   reste à cliquer. Le paramètre qui reçoit la branche est celui déclaré dans le lien ; sans
+   lui, la fiche s'ouvre telle quelle — mieux qu'un pré-remplissage deviné. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-mr-jenkins]');
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  navTab('jenkins');
+  await openJenkinsJob(b.dataset.mrJenkins);
+  const nom = b.dataset.param;
+  if (!nom) return;
+  const champ = $(`#jenkinsModalBody [data-jkparam="${CSS.escape(nom)}"]`);
+  if (champ) jkPoserParams([{ name: nom, value: b.dataset.branch }]);
+});
+
+/* ---------- B2 : le dernier build Jenkins qui porte CETTE branche ----------
+   On pousse depuis la session, `front-build` casse sur la branche, et la carte de !219 dit
+   « vérifié » — le vérificateur de Mergerie est vert, Jenkins fait autre chose. On le
+   découvrait une heure plus tard en ouvrant l'onglet.
+
+   Aucun appel de plus : la liste Jenkins est déjà chargée (ouverture de l'onglet ou intervalle
+   réglé), et chaque job porte la branche de son dernier build. On croise sur le NOM DE BRANCHE,
+   et on l'écrit sur la carte — sans jamais le confondre avec le verdict objectif, qui est un
+   autre badge, d'une autre couleur, avec un autre mot. */
+/* La liste Jenkins est chargée à l'ouverture de SON onglet. Pour que le badge existe sur une
+   carte de merge request sans y être passé, on la demande UNE FOIS par chargement de page —
+   et seulement si Jenkins est configuré. C'est le même appel que fait l'onglet, fait plus tôt :
+   pas un sondage, et rien de plus quand on ouvre ensuite Jenkins (la liste est déjà là). */
+let jenkinsPourCI = false;
+async function assurerJenkinsPourCI() {
+  if (jenkinsPourCI || (JENKINS.jobs || []).length) return;
+  jenkinsPourCI = true;
+  try {
+    const d = await api('/jenkins/jobs');
+    if (!d || !d.configured) return;
+    JENKINS.jobs = d.jobs || [];
+    JENKINS.configured = true;
+    // La file est peut-être déjà affichée : elle se redessine avec les badges.
+    if ($('#tab-review').classList.contains('active')) loadSegment(currentSeg);
+  } catch { /* Jenkins injoignable : pas de badge, et rien à signaler ici */ }
+}
+
+function ciDeLaBranche(branche) {
+  const b = String(branche || '').trim();
+  if (!b || !(JENKINS.jobs || []).length) return null;
+  const j = (JENKINS.jobs || []).find((x) => String(x.ref || '').trim() === b);
+  if (!j || !j.lastNumber) return null;
+  return { path: j.path, number: j.lastNumber, statut: j.statut, enCours: !!j.enCours };
+}
+function badgeCI(branche) {
+  const ci = ciDeLaBranche(branche);
+  if (!ci) return '';
+  const ok = ci.statut === 'ok';
+  const cls = ci.enCours ? 'to_review' : (ok ? 'done' : (ci.statut === 'ko' ? 'stale' : ''));
+  const signe = ci.enCours ? '⋯' : (ok ? '✓' : '✗');
+  return `<button type="button" class="tag ${cls}" data-ci-job="${esc(ci.path)}" title="${esc(tr('mr.ci.title', { job: ci.path }))}">CI #${ci.number} ${signe}</button>`;
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-ci-job]');
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  navTab('jenkins');
+  openJenkinsJob(b.dataset.ciJob);
+});
+
+/* ---------- B3 : ce que le TICKET dit de cette merge request ----------
+   Vendredi la QA passe PROJ-1408 en « En revue » : la merge request attend depuis trois jours
+   au milieu de onze cartes, et personne ne fait le lien. Deux situations méritent un mot, et
+   deux seulement :
+     — le ticket est passé EN REVUE et la merge request est encore à traiter : elle remonte ;
+     — le ticket est TERMINÉ et la merge request est encore ouverte : quelque chose cloche.
+   L'état vient des tickets SURVEILLÉS, la seule liste que le serveur connaisse hors ligne :
+   aucun appel à Jira n'est fait pour dessiner une liste. */
+function badgeTicket(m) {
+  if (!m || !m.ticket_category) return '';
+  if (m.ticket_category === 'indeterminate' && m.status === 'to_review') {
+    return `<span class="tag to_review" title="${esc(tr('mr.ticket.in-review.title', { key: m.ticket_key || '', status: m.ticket_status || '' }))}">${esc(tr('mr.ticket.in-review'))}</span>`;
+  }
+  if (m.ticket_category === 'done' && !m.closed_seen) {
+    return `<span class="tag stale" title="${esc(tr('mr.ticket.done-open.title', { key: m.ticket_key || '', status: m.ticket_status || '' }))}">${esc(tr('mr.ticket.done-open'))}</span>`;
+  }
+  return '';
+}
+/* Le classement de la file : une merge request dont le ticket est passé en revue passe DEVANT.
+   Tri stable — à état de ticket égal, l'ordre du serveur est conservé. */
+const rangTicket = (m) => (m && m.ticket_category === 'indeterminate' && m.status === 'to_review' ? 0 : 1);
+
+/* ---------- « Périmé », mais de combien ? ----------
+   Le badge portait un mot sans mesure. Le compte des commits arrivés depuis la review, et
+   leurs messages, disent si la re-review incrémentale coûtera trois lignes ou un refactoring.
+   Demandé AU SURVOL seulement — c'est un appel à la forge par merge request — et mis en cache
+   pour la durée de la page : on survole le même badge dix fois en parcourant une liste. */
+const cacheStale = new Map();
+async function chargerStale(id) {
+  if (cacheStale.has(id)) return cacheStale.get(id);
+  let d = { known: false, count: 0, commits: [] };
+  try { d = await api(`/mrs/${id}/stale-commits`); } catch { /* forge injoignable : on ne sait pas */ }
+  cacheStale.set(id, d);
+  return d;
+}
+document.addEventListener('mouseover', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-stale-mr]');
+  if (!b || b.dataset.staleFait === '1') return;
+  b.dataset.staleFait = '1';
+  const d = await chargerStale(Number(b.dataset.staleMr));
+  if (!d.known || !d.count) return;
+  b.textContent = `${tr('mr.tag.stale')} · ${tr('mr.stale.commits', { n: d.count, count: d.count })}`;
+  /* Les messages en info-bulle : c'est ce qui dit la NATURE du changement, pas seulement son
+     volume. Dix au plus — au-delà, la réponse est de toute façon « il faut relire ». */
+  b.dataset.tip = d.commits.map((c) => `${c.sha} ${c.title}`).join('\n');
+  showTip(b);            // on survole déjà : la bulle doit apparaître maintenant, pas au suivant
+});
+
+/* ---------- La taille d'une merge request, sur sa carte ----------
+   « Par laquelle commencer ? » se répondait en ouvrant trois cartes. Le nombre de fichiers, le
+   volume de lignes et la date de dernière activité tiennent sur une ligne — et ce sont
+   exactement les trois choses qu'on allait chercher. Rien n'est calculé ici : tout vient du
+   relevé fait à la découverte, dans le même appel que les chemins modifiés. */
+function tailleMr(m) {
+  const s = m && m.size;
+  const bouts = [];
+  if (s && s.files) bouts.push(tr('mr.size.files', { n: s.files, count: s.files }));
+  if (s && (s.additions || s.deletions)) {
+    bouts.push(`<span class="diffstat"><span class="plus">+${s.additions || 0}</span> <span class="moins">−${s.deletions || 0}</span></span>`);
+  }
+  if (m && m.updated_at) bouts.push(`<span data-when="${esc(m.updated_at)}">${esc(tr('mr.size.activity', { when: depuis(m.updated_at) }))}</span>`);
+  if (!bouts.length) return '';
+  return `<div class="meta mr-taille">${bouts.join(' · ')}</div>`;
+}
+
+function noteBadge(note, m) {
   const cls = noteClass(note);
   if (!cls) return `<span class="note none" title="${tr('review.note.none')}">—</span>`;
-  return `<span class="note ${cls}" title="${esc(tr('review.note.title'))}">${esc(note.raw)}</span>`;
+  const detail = detailNote(m);
+  const bulle = detail ? ` data-tip="${esc(detail)}"` : '';
+  return `<span class="note ${cls}" title="${esc(tr('review.note.title'))}"${bulle}>${esc(fmtNote(note))}</span>`;
 }
 
 $('#btnResetReports').addEventListener('click', async () => {
@@ -2551,7 +3334,14 @@ async function renderResolution(id, versions) {
   list.innerHTML = data.findings.map((f) => {
     const st = FINDING_STATUS[f.status] || { icon: '·', cls: '', key: null };
     const sv = SEV[f.severity] || SEV.minor;
-    const loc = f.file ? `<code>${esc(f.file)}${f.line ? ':' + f.line : ''}</code>` : '';
+    /* UN CONSTAT EST UNE PORTE. Il nommait un fichier et une ligne, et il fallait ouvrir le
+       code, chercher le fichier dans l'arbre, descendre à la ligne, cliquer « + » et retaper
+       le constat en le reformulant. Le chemin devient un lien : la visionneuse s'ouvre sur
+       cette ligne, l'éditeur de commentaire dessous, pré-rempli du constat. Il reste un
+       BROUILLON comme tout commentaire inline — on relit, on ajuste, on envoie groupé. */
+    const loc = f.file
+      ? `<button type="button" class="f-loc" data-finding-go="${esc(f.file)}" data-fline="${f.line || ''}" data-ftitle="${esc(f.title || '')}" title="${esc(tr('report.finding.go-title'))}"><code>${esc(f.file)}${f.line ? ':' + f.line : ''}</code></button>`
+      : '';
     return `<div class="finding f-${st.cls}">
         <span class="f-mark" title="${st.key ? esc(tr(st.key)) : ''}">${st.icon}</span>
         <span class="f-sev sev-${sv.cls}">${esc(tr(sv.key))}</span>
@@ -2574,6 +3364,9 @@ let reportShown = { id: null, sig: null, stamp: null };
 function reportSig(d) {
   const m = d.mr; const r = d.review; const t2 = d.ticket || {};
   return [m.status, m.closed_seen, m.squash, m.remove_source_branch, r && r.updated_at,
+    // La publication du rapport change le libellé du bouton (« Publier » → « Republier ») :
+    // sans elle ici, une publication automatique laissait l'ancien libellé à l'écran.
+    r && r.comment_posted_at,
     d.convergence && d.convergence.status, d.stale, t2.text && t2.text.length, t2.has_image,
     t2.jira_text && t2.jira_text.length, (d.comments || []).length, d.resume_cmd].join('\u0001');
 }
@@ -2605,7 +3398,7 @@ async function openReport(id, opts = {}) {
     <div class="card" style="margin-bottom:12px">
       <div>
         <div class="title">!${m.iid} — ${esc(m.title || '')}</div>
-        <div class="meta">${esc(m.project)}${ticketLink(d.ticket_url, d.ticket_key)} · <code>${esc(m.source_branch)}</code> → <code>${esc(m.target_branch)}</code>
+        <div class="meta">${esc(m.project)}${ticketLink(d.ticket_url, d.ticket_key)} · ${chipBranche(m.source_branch)} → ${chipBranche(m.target_branch, { cible: true })}
           ${d.stale ? `<span class="tag stale">${tr('report.tag.stale')}</span>` : ''}</div>
       </div>
       <div class="spacer"></div>
@@ -2613,24 +3406,42 @@ async function openReport(id, opts = {}) {
       ${m.web_url ? `<a href="${esc(m.web_url)}" target="_blank">${forgeLabel(m.forge)} ↗</a>` : ''}
     </div>
 
+    ${/* TROIS ACTIONS VISIBLES, le reste dans le menu « ⋯ ». Onze boutons sur trois rangées
+          repoussaient la première ligne du rapport hors du premier écran — on venait pour LIRE.
+          Les trois retenues sont celles du parcours : ouvrir le code, le faire corriger, merger.
+          « Supprimer le rapport » descend dans le menu, en dernier et derrière un séparateur :
+          il portait le même rouge que « Merger », à un centimètre de lui. */''}
     <div class="detail-actions">
       <div class="btn-group">
         <button id="aSplit" class="btn btn-primary" title="${tr('report.btn.split-title')}"><svg class=\"ico\"><use href=\"#i-expand\"/></svg>${tr('report.btn.split')}</button>
-        <button id="aTicket" class="btn" title="${tr('report.btn.context-title')}"><svg class="ico"><use href="#i-doc"/></svg>${tr('mr.btn.context')}${d.ticket && (d.ticket.text || d.ticket.has_image) ? ` ${svgIco('check')}` : ''}</button>
-        ${addTodoBtn('mr', m.id, tr('notes.add-todo.mr', { iid: m.iid, title: String(m.title || '').slice(0, 60) }))}
-      </div>
-      <div class="btn-group">
-        ${d.review && m.status !== 'done' && !m.closed_seen ? `<button id="aConverge" class="btn btn-converge" title="${tr('report.btn.converge-title')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : ''}
         ${d.review ? `<button id="aFix" class="btn" title="${tr('report.btn.fix-title')}"><svg class="ico"><use href="#i-bot"/></svg>${tr('report.btn.fix')}</button>` : ''}
-        ${d.verifiable ? `<button id="aVerify" class="btn" title="${tr('verify.btn.verify-title')}"><svg class="ico"><use href="#i-check"/></svg>${tr('verify.btn.verify')}</button>` : ''}
-        ${m.status !== 'done' ? `<button id="aRe" class="btn" title="${tr('report.btn.rerun-title')}"><svg class=\"ico\"><use href=\"#i-repeat\"/></svg>${tr('report.btn.rerun')}</button>` : ''}
-        ${m.status !== 'done' && d.stale ? `<button id="aReInc" class="btn" title="${tr('report.btn.rerun-inc-title')}"><svg class=\"ico\"><use href=\"#i-repeat\"/></svg>${tr('report.btn.rerun-inc')}</button>` : ''}
-        ${resumeCmdBtn(d.resume_cmd)}
-      </div>
-      <div class="btn-group">
-        ${m.status !== 'done' ? `<button id="aDone" class="btn btn-ok" title="${tr('report.btn.done-title')}"><svg class=\"ico\"><use href=\"#i-check\"/></svg>${tr('report.btn.done')}</button>` : `<button id="aReopen" class="btn" title="${tr('report.btn.reopen-title')}"><svg class=\"ico\"><use href=\"#i-reset\"/></svg>${tr('report.btn.reopen')}</button>`}
         ${m.closed_seen ? '' : `<button id="aMerge" class="btn btn-danger" data-target="${esc(m.target_branch || '')}" title="${tr('report.btn.merge-title', { forge: forgeLabel(m.forge) })}"><svg class=\"ico\"><use href=\"#i-merge\"/></svg>${tr('task.btn.merge')}</button>`}
-        <button id="aDelReport" class="btn btn-danger" data-iid="${m.iid}" title="${tr('mr.btn.delete-report-title')}"><svg class=\"ico\"><use href=\"#i-trash\"/></svg>${tr('report.btn.delete')}</button>
+        <div class="split-menu-wrap">
+          <button id="aMore" class="btn btn-icon" aria-haspopup="true" aria-expanded="false" title="${tr('report.btn.more-title')}">⋯</button>
+          <div class="split-menu" hidden role="menu">
+            <button id="aTicket" role="menuitem" title="${tr('report.btn.context-title')}">${tr('mr.btn.context')}${d.ticket && (d.ticket.text || d.ticket.has_image) ? ' ✓' : ''}</button>
+            ${d.review && m.status !== 'done' && !m.closed_seen ? `<button id="aConverge" role="menuitem" title="${tr('report.btn.converge-title')}">${tr('report.btn.converge')}</button>` : ''}
+            ${d.verifiable ? `<button id="aVerify" role="menuitem" title="${tr('verify.btn.verify-title')}">${tr('verify.btn.verify')}</button>` : ''}
+            ${m.status !== 'done' ? `<button id="aRe" role="menuitem" title="${tr('report.btn.rerun-title')}">${tr('report.btn.rerun')}</button>` : ''}
+            ${m.status !== 'done' && d.stale ? `<button id="aReInc" role="menuitem" title="${tr('report.btn.rerun-inc-title')}">${tr('report.btn.rerun-inc')}</button>` : ''}
+            ${m.status !== 'done' ? `<button id="aDone" role="menuitem" title="${tr('report.btn.done-title')}">${tr('report.btn.done')}</button>` : `<button id="aReopen" role="menuitem" title="${tr('report.btn.reopen-title')}">${tr('report.btn.reopen')}</button>`}
+            ${d.review ? (() => {
+              /* PUBLIER LE RAPPORT SUR LA MERGE REQUEST. Le libellé change quand c'est déjà
+                 parti : republier n'est pas une correction, ça pose une SECONDE copie sous les
+                 yeux de l'équipe, et le bouton doit le dire avant qu'on clique. */
+              const dejaPublie = d.review.comment_posted_at;
+              return `<button id="aPublish" role="menuitem" data-posted="${esc(dejaPublie || '')}" title="${dejaPublie
+                ? tr('report.btn.publish-again-title', { date: fmtDate(dejaPublie) })
+                : tr('report.btn.publish-title')}">${dejaPublie
+                ? tr('report.btn.publish-again', { forge: forgeLabel(m.forge) })
+                : tr('report.btn.publish', { forge: forgeLabel(m.forge) })}</button>`;
+            })() : ''}
+            ${addTodoBtn('mr', m.id, tr('notes.add-todo.mr', { iid: m.iid, title: String(m.title || '').slice(0, 60) }))}
+            ${resumeCmdBtn(d.resume_cmd)}
+            <div class="menu-sep"></div>
+            <button id="aDelReport" role="menuitem" class="danger" data-iid="${m.iid}" title="${tr('mr.btn.delete-report-title')}">${tr('report.btn.delete')}</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2703,7 +3514,7 @@ async function openReport(id, opts = {}) {
     const latest = versions[0].version;
     sel.innerHTML = versions.map((v) => {
       const d = new Date(v.created_at);
-      const note = v.note10 != null ? ` · ${v.note10}/10` : '';
+      const note = v.note10 != null ? ` · ${fmtNote10(v.note10)}` : '';
       const tag = v.kind === 'modify' ? tr('report.version.regen') : '';
       return `<option value="${v.version}">v${v.version}${v.version === latest ? ' — actuelle' : ''} · ${d.toLocaleDateString(I18Nrt.currentLocale())} ${d.toLocaleTimeString(I18Nrt.currentLocale(), { hour: '2-digit', minute: '2-digit' })}${note}${tag}</option>`;
     }).join('');
@@ -2749,6 +3560,22 @@ async function openReport(id, opts = {}) {
   });
 
   $('#aSplit').addEventListener('click', () => openSplit(id, m));
+  /* Le menu « ⋯ » du rapport. Même mécanique que sur les cartes, sans `placerMenu` :
+     ici le menu n'est rogné par aucun `overflow: hidden`, le positionnement CSS suffit. */
+  const aMore = $('#aMore');
+  aMore.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const menu = aMore.parentElement.querySelector('.split-menu');
+    const ouvrir = menu.hidden;
+    closeSplitMenus();
+    menu.hidden = !ouvrir;
+    aMore.setAttribute('aria-expanded', String(ouvrir));
+  });
+  /* Un item cliqué referme le menu : sans ça il reste ouvert par-dessus la modale de
+     confirmation que l'item vient d'ouvrir. */
+  aMore.parentElement.querySelector('.split-menu').addEventListener('click', (e) => {
+    if (e.target.closest('button')) closeSplitMenus();
+  });
   $('#aTicket').addEventListener('click', () => openTicket(id, `!${m.iid} — ${m.title || ''}`));
   const aFix = $('#aFix');
   if (aFix) aFix.addEventListener('click', () => {
@@ -2762,11 +3589,39 @@ async function openReport(id, opts = {}) {
       sessionId: d.origin_session || '',
     }).catch((e) => toast(tr('toast.ouverture-impossible', { message: e.message }), true));
   });
+  /* On DEMANDE avant d'écrire chez les autres. Le rapport part sous le nom de l'utilisateur
+     sur la merge request d'un collègue : c'est le même niveau d'engagement que l'envoi des
+     brouillons de commentaires, qui se confirme déjà. */
+  const aPublish = $('#aPublish');   // absent tant qu'aucun rapport n'existe
+  if (aPublish) aPublish.addEventListener('click', async () => {
+    const forge = forgeLabel(m.forge);
+    const ok = await confirmDialog({
+      title: tr('report.publish.confirm.title', { forge }),
+      text: tr('report.publish.confirm.text', { forge, mr: `${m.project} !${m.iid}` }),
+      detail: aPublish.dataset.posted ? tr('report.btn.publish-again-title', { date: fmtDate(aPublish.dataset.posted) }) : '',
+      confirmLabel: tr('report.btn.publish', { forge }),
+      danger: false,
+    });
+    if (!ok) return;
+    try {
+      await busy(aPublish, () => api(`/mrs/${id}/publish-review`, { method: 'POST' }));
+      toast(tr('toast.review.published', { forge }));
+      /* On relit le rapport : le bouton doit passer à « Republier », et le commentaire
+         apparaître dans le fil en dessous. Réécrire le libellé à la main mentirait le jour
+         où le serveur aurait refusé sans lever d'erreur. */
+      await openReport(id);
+    } catch (e) { toast(e.message, true); }
+  });
+
   const aMerge = $('#aMerge'); // absent si la MR n'est plus ouverte sur GitLab
   if (aMerge) aMerge.addEventListener('click', () => {
     openMergeModal({
       url: `/mrs/${id}/merge`, label: `!${m.iid}`, target: m.target_branch, forge: m.forge,
+      project: m.project,
       squash: m.squash, removeSourceBranch: m.remove_source_branch,
+      /* Pas de rattrapage ici : cette merge request n'est pas forcément issue d'une session,
+         il n'y a donc pas de branche à rejouer. Le conflit, lui, se dit quand même. */
+      check: `/mrs/${id}/merge-check`,
       onDone: () => openReport(id),          // recharge le détail (badge « mergée »)
     });
   });
@@ -3244,6 +4099,61 @@ $('#prevChange').addEventListener('click', () => goToChange(split.changeIdx - 1)
 $('#nextChange').addEventListener('click', () => goToChange(split.changeIdx + 1));
 $('#minimap').addEventListener('click', (e) => { const m = e.target.closest('.minimap-mark'); if (m) goToChange(Number(m.dataset.ci)); });
 
+/* ---------- Un constat mène à sa ligne, l'éditeur pré-rempli ----------
+   Le rapport relève « payment.js:58 — gérer l'échec réseau du PSP ». On ouvrait le code, on
+   cherchait le fichier dans l'arbre, on descendait à la ligne 58, on cliquait « + », et on
+   retapait le constat en le reformulant. Un clic suffit désormais — et ce qui en sort est un
+   BROUILLON, comme tout commentaire inline : on relit, on ajuste, on envoie groupé. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-finding-go]');
+  if (!b) return;
+  const id = selectedMr;
+  if (!id) return;
+  const chemin = b.dataset.findingGo;
+  const ligne = Number(b.dataset.fline) || 0;
+  const texte = b.dataset.ftitle || '';
+  // La visionneuse peut déjà être ouverte sur cette merge request : on ne la recharge pas.
+  if ($('#splitView').hidden || split.mrId !== id) await openSplit(id);
+  /* Le constat peut nommer un fichier ABSENT du diff (l'IA cite parfois un chemin voisin) :
+     on le dit plutôt que d'ouvrir un fichier au hasard. */
+  const dansArbre = (split.files || []).find((f) => f.path === chemin)
+    || (split.files || []).find((f) => f.path.endsWith(`/${chemin}`));
+  /* L'ARBRE PEUT MANQUER sans que le diff manque : `/tree` est un appel séparé, et il peut
+     échouer (clone occupé) là où le diff, lui, est déjà chargé. Un constat qui porte sur un
+     fichier du diff doit s'ouvrir quand même — c'est le fichier qu'on vient lire. */
+  const dansDiff = Object.keys(split.diffByFile || {}).find((f) => f === chemin || f.endsWith(`/${chemin}`));
+  const chemAffiche = (dansArbre && dansArbre.path) || dansDiff;
+  if (!chemAffiche) { toast(tr('report.finding.no-file', { file: chemin }), true); return; }
+  await selectFile(chemAffiche);
+  ouvrirCommentaireSurLigne(ligne, texte);
+});
+
+/* Ouvre l'éditeur de commentaire sur la ligne demandée, pré-rempli. La ligne peut ne pas être
+   dans le diff affiché (constat sur du code inchangé) : on prend alors la plus proche, et à
+   défaut la première du fichier — mieux vaut un commentaire à trois lignes près qu'aucun. */
+function ouvrirCommentaireSurLigne(ligne, texte) {
+  const rows = $$('#fileContent .dl-row');
+  if (!rows.length) return;
+  let cible = rows.find((r) => Number(r.dataset.new) === ligne);
+  if (!cible && ligne) {
+    let ecart = Infinity;
+    for (const r of rows) {
+      const n = Number(r.dataset.new);
+      if (!n) continue;
+      const d = Math.abs(n - ligne);
+      if (d < ecart) { ecart = d; cible = r; }
+    }
+  }
+  cible = cible || rows[0];
+  cible.scrollIntoView({ block: 'center' });
+  const bouton = cible.querySelector('.ln-comment');
+  if (!bouton) return;
+  bouton.click();
+  const ed = cible.nextElementSibling;
+  const ta = ed && ed.classList.contains('cmt-editor') && ed.querySelector('textarea');
+  if (ta && texte && !ta.value) { ta.value = texte; ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+
 // Commentaire inline : bouton « ＋ » d'une ligne de diff -> éditeur -> discussion GitLab.
 $('#fileContent').addEventListener('click', (e) => {
   const btn = e.target.closest('.ln-comment');
@@ -3571,20 +4481,113 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'clone_path', 'prompt_review', 'prompt_explain', 'prompt_modify', 'ai_extra_instructions',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
-  'verif_auto_max',
+  'verif_auto_max', 'review_auto_max', 'todo_close_on_merge',
   'stale_mr_days'];
+/* CE QUI EST TAPÉ NE DOIT PAS ÊTRE EFFACÉ PAR UN CHARGEMENT EN RETARD.
+ *
+ * `loadConfig()` part à chaque ouverture d'un sous-onglet de réglages, et sa réponse revient
+ * quelques dizaines de millisecondes plus tard. Entre les deux, l'utilisateur peut déjà avoir
+ * commencé à taper : la réponse écrase alors ses champs avec ce que le serveur avait, sans un
+ * mot. Sur une machine chargée, la fenêtre s'élargit — c'est ainsi qu'un test collait son
+ * jeton Jenkins et cliquait « Tester » sur trois champs redevenus vides.
+ *
+ * On note donc l'instant de la dernière frappe : si elle est postérieure au DÉPART de la
+ * requête, on ne touche à rien.
+ *
+ * Le rechargement qui SUIT une sauvegarde passe naturellement : la dernière frappe est alors
+ * antérieure à son départ. Et s'il se trouve que l'utilisateur tape PENDANT l'enregistrement,
+ * s'abstenir est encore le bon geste — c'est sa saisie la plus récente, pas celle du serveur,
+ * qu'il faut garder. */
+let configFrappe = 0;
+document.addEventListener('input', (e) => {
+  if (e.target && e.target.form && e.target.form.id === 'configForm') configFrappe = Date.now();
+}, true);
+
+/* ---------- « Modifications non enregistrées » ----------
+   Neuf réglages, un seul bouton, aucun indicateur : on changeait un plafond, on passait à un
+   autre sous-onglet, et rien ne disait que rien n'était parti. Les champs de #configForm sont
+   éclatés sur six sous-onglets — chacun a son bouton « Enregistrer » et sa mention : on les
+   marque TOUS, pour que l'avertissement suive celui qui change d'écran. */
+let configSale = false;
+const boutonsConfig = () => $$('button[form="configForm"][type="submit"]');
+const mentionsConfig = () => $$('#configInfo, #configInfoMr, #configInfoGit, #configInfoGithub, #configInfoJira, #configInfoJenkins, #configInfoAi, #configInfoVerif').filter(Boolean);
+
+function marquerConfig(sale) {
+  configSale = sale;
+  for (const b of boutonsConfig()) b.classList.toggle('is-dirty', sale);
+  for (const m of mentionsConfig()) {
+    if (sale) { m.textContent = tr('settings.unsaved'); m.classList.add('form-info-dirty'); }
+    else if (m.classList.contains('form-info-dirty')) { m.textContent = ''; m.classList.remove('form-info-dirty'); }
+  }
+}
+/* `change` autant qu'`input` : une case à cocher et un <select> ne produisent que le premier. */
+for (const ev of ['input', 'change']) {
+  document.addEventListener(ev, (e) => {
+    if (e.target && e.target.form && e.target.form.id === 'configForm') marquerConfig(true);
+  }, true);
+}
+
+/* ENTRÉE ENREGISTRE, ET LE DIT. Les champs de réglages vivent HORS de #configForm (ils s'y
+   rattachent par `form=`), et le bouton « Enregistrer » aussi : le navigateur ne trouve alors
+   aucun bouton par défaut dans le formulaire et la soumission implicite n'arrive jamais. On
+   tapait son jeton, on appuyait sur Entrée, et il ne se passait rien — ni enregistrement, ni
+   message. Les zones de texte gardent Entrée pour aller à la ligne. */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.shiftKey || e.altKey) return;
+  const c = e.target;
+  if (!c || !c.form || c.form.id !== 'configForm') return;
+  if (c.tagName === 'TEXTAREA' && !(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault();
+  c.form.requestSubmit();
+});
+
+/* Le plafond des reviews automatiques ne veut rien dire quand l'automatisme est éteint :
+   il s'indente sous sa case et se désactive avec elle. */
+function syncReviewAutoMax() {
+  const c = $('#configForm') && $('#configForm').auto_review_new;
+  const rang = $('#reviewAutoMaxRow');
+  if (!c || !rang) return;
+  rang.classList.toggle('is-off', !c.checked);
+  const n = rang.querySelector('input');
+  if (n) n.disabled = !c.checked;
+}
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.name === 'auto_review_new') syncReviewAutoMax();
+});
+
 async function loadConfig() {
+  const depart = Date.now();
   const c = await api('/config');
+  if (configFrappe >= depart) return;      // l'utilisateur a tapé pendant ce temps : on s'abstient
+  /* ET S'IL A TAPÉ AVANT ? Chaque sous-onglet de Réglages rappelle `loadConfig` en s'ouvrant :
+     une valeur modifiée puis non enregistrée était écrasée par le serveur au premier changement
+     de sous-onglet, sans un mot. Tant que le formulaire est sale, ce qui est à l'écran gagne —
+     et la mention « modifications non enregistrées » reste sur les boutons, dans TOUS les
+     sous-onglets : c'est elle, l'avertissement au changement d'onglet. */
+  if (configSale) return;
   const f = $('#configForm');
   for (const k of CONFIG_FIELDS) { if (f[k]) f[k].value = c[k] || ''; }
   f.auto_refresh_minutes.value = Number(c.auto_refresh_minutes) || 0; // 0 affiché explicitement
   // Idem : 0 signifie « sans limite », il doit s'écrire plutôt que rester vide.
   if (f.retention_days) f.retention_days.value = Number(c.retention_days) || 0;
   if (f.review_explain) f.review_explain.checked = c.review_explain !== '0'; // défaut : activé
+  // Publication automatique : défaut DÉSACTIVÉ — le test est donc `=== '1'`, pas `!== '0'`.
+  if (f.auto_post_review) f.auto_post_review.checked = c.auto_post_review === '1';
+  if (f.auto_review_new) f.auto_review_new.checked = c.auto_review_new === '1';
+  if (f.auto_rereview_stale) f.auto_rereview_stale.checked = c.auto_rereview_stale === '1';
+  // 0 = « sans limite » : il doit s'ÉCRIRE, une case vide se lirait comme « valeur par défaut ».
+  if (f.review_auto_max) f.review_auto_max.value = Number(c.review_auto_max) || 0;
   // Atterrissage sur le brief : coché par défaut, comme côté serveur.
   if (f.brief_on_open) f.brief_on_open.checked = c.brief_on_open !== '0';
+  // Coché par défaut, comme côté serveur : le test est donc `!== '0'`.
+  if (f.todo_close_on_merge) f.todo_close_on_merge.checked = c.todo_close_on_merge !== '0';
   if (f.stale_mr_days) f.stale_mr_days.value = Number(c.stale_mr_days) || 5;
   if (f.jenkins_refresh_minutes) f.jenkins_refresh_minutes.value = Number(c.jenkins_refresh_minutes) || 0;
+  syncReviewAutoMax();
+  convDefauts = { seuil: c.converge_threshold || '8', passes: c.converge_max_passes || '3' };
+  /* Ce qui vient du serveur n'est pas une modification : le rechargement qui suit un
+     enregistrement effacerait sinon la mention qu'il vient tout juste de justifier. */
+  marquerConfig(false);
   renderNotifSettings();
 }
 $('#configForm').addEventListener('submit', async (e) => {
@@ -3594,7 +4597,11 @@ $('#configForm').addEventListener('submit', async (e) => {
   for (const k of CONFIG_FIELDS) { if (f[k]) body[k] = f[k].value; }
   body.auto_refresh_minutes = f.auto_refresh_minutes.value;
   if (f.review_explain) body.review_explain = f.review_explain.checked ? '1' : '0';
+  if (f.auto_post_review) body.auto_post_review = f.auto_post_review.checked ? '1' : '0';
+  if (f.auto_review_new) body.auto_review_new = f.auto_review_new.checked ? '1' : '0';
+  if (f.auto_rereview_stale) body.auto_rereview_stale = f.auto_rereview_stale.checked ? '1' : '0';
   if (f.brief_on_open) body.brief_on_open = f.brief_on_open.checked ? '1' : '0';
+  if (f.todo_close_on_merge) body.todo_close_on_merge = f.todo_close_on_merge.checked ? '1' : '0';
   // '***' = champ non touché (on n'écrase pas le secret) ; '' = effacement volontaire.
   if (body.access_token === '***') delete body.access_token;
   if (body.jira_token === '***') delete body.jira_token;
@@ -3605,12 +4612,20 @@ $('#configForm').addEventListener('submit', async (e) => {
     // Le formulaire est éclaté sur deux sous-onglets (Général / Merge Request) : on affiche
     // la confirmation dans l'onglet visible (chaque onglet a son propre `configInfo*`).
     const info = $('#sub-mr').classList.contains('active') ? $('#configInfoMr')
+      : $('#sub-verifiers').classList.contains('active') ? $('#configInfoVerif')
       : $('#sub-gitcfg').classList.contains('active') ? $('#configInfoGit')
       : $('#sub-jiracfg').classList.contains('active') ? $('#configInfoJira')
       : $('#sub-aisession').classList.contains('active') ? $('#configInfoAi')
       : $('#configInfo');
+    marquerConfig(false);   // avant la mention : elle porterait sinon la classe « non enregistré »
+    f.dispatchEvent(new Event('mergerie:config-saved'));   // « Enregistrer et tester » enchaîne
     info.textContent = tr('ui.saved'); setTimeout(() => { info.textContent = ''; }, 2000);
     loadConfig(); refreshStatus();
+    /* L'ASSISTANT DE DÉMARRAGE SUIT. Il coche ses étapes depuis `setupState`, qui n'était lu
+       qu'au chargement de la page : on connectait la forge, on revenait sur Reviews, et
+       l'étape 1 était toujours à faire. Trois boutons sans progression ne sont pas un
+       assistant. */
+    rafraichirDemarrage();
   } catch (err) { toast(err.message, true); }
 });
 
@@ -3657,8 +4672,28 @@ function forgeBadge(forge) {
   return `<svg class="ico forge-ico" title="${tr(`repo.forge.${f}`)}"><use href="#i-${f}"/></svg> `;
 }
 
+/* Re-cloner : geste destructeur pour ce qui n'a pas été poussé, donc confirmation explicite
+   qui le DIT. Le serveur ne touche qu'au répertoire de clonage qu'il calcule lui-même. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-reclone]');
+  if (!b) return;
+  if (!await confirmDialog({
+    title: tr('settings.repo.reclone'),
+    text: tr('settings.repo.reclone.confirm', { project: b.dataset.project }),
+    confirmLabel: tr('settings.repo.reclone'),
+  })) return;
+  try {
+    await busy(b, () => api(`/repos/${b.dataset.reclone}/reclone`, { method: 'POST' }));
+    toast(tr('settings.repo.reclone.done', { project: b.dataset.project }));
+    loadRepos();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
 async function loadRepos() {
   const rows = await api('/repos');
+  /* Le seul endroit qui sait vraiment s'il y a des dépôts. On en profite pour tenir
+     l'assistant de démarrage à jour, sans requête supplémentaire. */
+  if (setupState.hasRepos !== (rows.length > 0)) rafraichirDemarrage();
   const el = $('#repoList');
   el.innerHTML = rows.length ? rows.map((r) => `
     <div class="card repo-row" data-repo="${r.id}">
@@ -3666,6 +4701,14 @@ async function loadRepos() {
         <div style="min-width:0">
           <div class="title">${forgeBadge(r.forge)}${esc(r.project)}</div>
           <div class="meta">${esc(r.url)} · ${tr('settings.repo.pattern')} <code>${r.branch_pattern ? esc(r.branch_pattern) : tr('settings.repo.all-mrs')}</code></div>
+          ${/* CE QU'IL EN EST DE CE DÉPÔT. « Pourquoi cette review échoue ? » commence presque
+                toujours par « le clone est-il là ? » : on répond ici, et on propose le geste. */''}
+          <div class="meta muted repo-etat">${[
+    r.open_mrs ? esc(tr('settings.repo.open-mrs', { n: r.open_mrs, count: r.open_mrs })) : '',
+    r.last_seen_at ? `<span data-when="${esc(r.last_seen_at)}">${esc(tr('settings.repo.last-fetch', { when: depuis(r.last_seen_at) }))}</span>` : '',
+    `<span class="repo-clone repo-clone-${esc(r.clone_state)}" title="${esc(r.clone_dir || '')}">${esc(tr(`settings.repo.clone.${r.clone_state}`))}</span>`,
+    `<button type="button" class="lien-reglage" data-reclone="${r.id}" data-project="${esc(r.project)}">${esc(tr('settings.repo.reclone'))}</button>`,
+  ].filter(Boolean).join(' · ')}</div>
         </div>
         <div class="spacer"></div>
         <label class="muted" title="${esc(tr('settings.repo.fetch-mrs-title'))}"><input type="checkbox" data-fetch="${r.id}" ${r.fetch_mrs == null || r.fetch_mrs ? 'checked' : ''}/> ${tr('settings.repo.fetch-mrs')}</label>
@@ -3719,14 +4762,39 @@ async function loadRepos() {
   // Les répertoires locaux vivent dans le même panneau : ils se chargent avec lui.
   loadLocalRootSettings();
 }
+/* CE QUI RESSEMBLE À UNE URL DE DÉPÔT. Ni le champ ni le serveur ne vérifiaient quoi que ce
+   soit : « toto » devenait un dépôt suivi, et l'erreur ne se voyait qu'au premier clonage.
+   Deux formes acceptées, celles que les forges donnent à copier — HTTP(S) et SSH. */
+/* Un chemin ABSOLU est une source de clonage parfaitement valide — `git clone /srv/depots/x.git`
+   marche, c'est ce que fait le décor de démo, et c'est ce que font les tests. La première
+   version de cette garde ne connaissait que http(s) et ssh : elle refusait un dépôt local. */
+const RE_URL_DEPOT = /^(https?:\/\/\S+|file:\/\/\S+|\/\S+|(ssh:\/\/)?[\w.-]+@[\w.-]+[:/]\S+)$/i;
+
 $('#repoForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
+  viderErreursChamps(f);
+  const url = f.url.value.trim();
+  if (!RE_URL_DEPOT.test(url)) { signalerChamp(f.url, tr('err.repo-url-invalide')); return; }
   try {
-    await api('/repos', { method: 'POST', body: { project: f.project.value, url: f.url.value, branch_pattern: f.branch_pattern.value } });
-    f.project.value = ''; f.url.value = ''; loadRepos();
-  } catch (err) { toast(err.message, true); }
+    await api('/repos', { method: 'POST', body: { project: f.project.value, url, branch_pattern: f.branch_pattern.value } });
+    f.project.value = ''; f.url.value = ''; f.branch_pattern.value = ''; loadRepos();
+  } catch (err) { signalerChamp(f.url, explainError(err.message)); }
 });
+
+/* La recherche filtre la liste des dépôts suivis, sans rien décocher — même règle que partout
+   ailleurs dans l'application. */
+$('#repoSearch') && $('#repoSearch').addEventListener('input', debounce(() => {
+  const q = ($('#repoSearch').value || '').toLowerCase().trim();
+  let vus = 0;
+  $$('#repoList .repo-row').forEach((row) => {
+    const ok = !q || row.textContent.toLowerCase().includes(q);
+    row.hidden = !ok;
+    if (ok) vus += 1;
+  });
+  const vide = $('#repoSearchNone');
+  if (vide) vide.hidden = vus > 0 || !q;
+}));
 
 /* ---- Réglages → Dépôts : les répertoires LOCAUX ----
    Rien n'est cloné ici : on déclare un dossier déjà présent sur la machine. Le
@@ -3802,6 +4870,11 @@ async function loadRepoOptions() {
   return repoOptions;
 }
 
+/* En démo, un dépôt injoignable reste choisissable — mais il le dit. Promettre une session
+   qui mourra au clonage est pire que de l'annoncer avant le clic. */
+const marqueDemo = (r) => (modeDemo && !depotClonableEnDemo(r)
+  ? `<span class="combo-hint">${esc(tr('demo.repo.not-runnable'))}</span>` : '');
+
 /* ---- Sélecteur de dépôt réutilisable (recherche à la frappe) ----
    Un <select> natif devient inutilisable dès quelques dizaines de dépôts : ce
    combo filtre à la frappe. Il expose un input caché (la valeur réellement
@@ -3812,7 +4885,7 @@ async function loadRepoOptions() {
 function repoComboHtml(currentId, { idClass = '', idAttr = '', defaultFirst = true } = {}) {
   // Comme le <select> natif qu'il remplace : à défaut de sélection, le 1er dépôt
   // (sauf pour l'explorateur, où on ne veut rien analyser tant qu'on n'a pas choisi).
-  const cur = repoOptions.find((r) => r.id === Number(currentId)) || (defaultFirst ? repoOptions[0] : null) || null;
+  const cur = repoOptions.find((r) => r.id === Number(currentId)) || (defaultFirst ? depotParDefaut() : null) || null;
   const dis = repoOptions.length ? '' : 'disabled';
   const ph = repoOptions.length ? tr('task.ph.search-repo') : tr('task.ph.no-repo');
   return `<div class="combo repo-combo">
@@ -3832,7 +4905,7 @@ function wireRepoCombos(root) {
     const open = () => {
       const q = input.value.trim().toLowerCase();
       const list = repoOptions.filter((r) => r.project.toLowerCase().includes(q)).slice(0, 200);
-      box.innerHTML = list.map((r) => `<div class="combo-opt" data-r="${r.id}">${esc(r.project)}</div>`).join('')
+      box.innerHTML = list.map((r) => `<div class="combo-opt" data-r="${r.id}">${esc(r.project)}${marqueDemo(r)}</div>`).join('')
         || `<div class="combo-opt muted">${tr('task.combo.no-repo')}</div>`;
       box.hidden = false;
     };
@@ -4001,12 +5074,28 @@ function localProjectBranch(rootId, name) {
   return (p && p.branch) || '';
 }
 
+/* La dernière branche de DÉPART retenue par dépôt. Confort pur : perdre ce stockage ne fait
+   perdre que la proposition, jamais une session. */
+const BASE_MEMO = 'aidevtools_session_base';
+const memoBaseSession = () => { try { return JSON.parse(localStorage.getItem(BASE_MEMO) || '{}'); } catch { return {}; } };
+function memoriserBaseSession(lignes) {
+  try {
+    const m = memoBaseSession();
+    for (const t of lignes) if (t.repo_id && t.base_branch) m[t.repo_id] = t.base_branch;
+    localStorage.setItem(BASE_MEMO, JSON.stringify(m));
+  } catch { /* stockage indisponible : on perd le confort, pas la fonction */ }
+}
+
 /* ---- Éditeur « projets et branches » de la modale ---- */
 // Icône « i » + explication du champ. Même markup que les champs statiques
 // d'index.html ; l'affichage est géré par la délégation en bas de fichier.
+/* `tabindex="-1"` : une ligne de projet porte trois ⓘ pour trois champs, soit six arrêts de
+   tabulation sur seize dans la modale, tous pour la même icône. L'explication vient désormais
+   au FOCUS DU CHAMP (voir la délégation `focusin` en bas de fichier) — elle arrive là où on
+   en a besoin, et le clavier va de champ en champ. */
 function hint(text) {
   const t = esc(text);
-  return `<button type="button" class="hint" tabindex="0" aria-label="${t}" data-tip="${t}"><svg class="ico"><use href="#i-info"/></svg></button>`;
+  return `<button type="button" class="hint" tabindex="-1" aria-label="${t}" data-tip="${t}"><svg class="ico"><use href="#i-info"/></svg></button>`;
 }
 
 function targetRowHtml(idx, sel = {}) {
@@ -4014,7 +5103,7 @@ function targetRowHtml(idx, sel = {}) {
   // même composant combo que les branches, avec filtre à la frappe.
   // Comme avant, une nouvelle ligne présélectionne le 1er dépôt (sinon elle serait
   // silencieusement ignorée par readTargetRows, qui écarte les lignes sans repo_id).
-  const cur = repoOptions.find((r) => r.id === Number(sel.repo_id)) || repoOptions[0] || null;
+  const cur = repoOptions.find((r) => r.id === Number(sel.repo_id)) || depotParDefaut() || null;
   // Le champ qui désigne une branche EXISTANTE est un sélecteur avec recherche :
   // en codage la branche de départ, en exploration la branche à regarder.
   // La branche de travail (codage) reste libre : elle est souvent à créer.
@@ -4024,8 +5113,12 @@ function targetRowHtml(idx, sel = {}) {
   const workField = taskKind === 'code'
     ? `<input class="t-branch" value="${esc(sel.branch || '')}" placeholder="${tr('task.ph.work-branch')}" />`
     : `<div class="combo"><input class="t-branch" data-pick="1" autocomplete="off" value="${esc(sel.branch || '')}" placeholder="${tr('task.ph.read-branch')}" /><div class="combo-options" hidden></div></div>`;
+  /* LA BRANCHE DE DÉPART N'EST PAS `main` PARTOUT. Un dépôt part de `develop`, un autre de
+     `master` ; on la retapait à chaque session. On propose donc la dernière retenue POUR CE
+     DÉPÔT — modifiable, comme le fait déjà « Vérifier une branche ». */
+  const baseMemo = sel.base_branch || (cur ? (memoBaseSession()[cur.id] || '') : '');
   const baseField = taskKind === 'code'
-    ? `<div class="combo"><input class="t-base" data-pick="1" autocomplete="off" value="${esc(sel.base_branch || '')}" placeholder="${tr('task.ph.base-branch')}" /><div class="combo-options" hidden></div></div>`
+    ? `<div class="combo"><input class="t-base" data-pick="1" autocomplete="off" value="${esc(baseMemo)}" placeholder="${tr('task.ph.base-branch')}" /><div class="combo-options" hidden></div></div>`
     : '';
   return `<div class="target-row" data-row="${idx}">
     <div class="combo repo-combo">
@@ -4048,17 +5141,79 @@ function readTargetRows() {
     };
   }).filter((t) => t.repo_id);
 }
+/* UNE LIGNE D'EN-TÊTES, une seule fois, au-dessus des champs. Trois champs par projet, tous
+   identifiés par leur seul texte d'invite : dès qu'on tape, plus rien ne dit ce qu'on remplit,
+   et « branche à créer » ressemble à « branche de départ » quand les deux sont pleines.
+   Elle réutilise le gabarit flex de la ligne (mêmes classes) pour tomber sur les mêmes
+   colonnes, avec un espaceur là où la ligne porte un « ? » ou la croix de suppression. */
+/* Un morceau de texte → un fragment de nom de branche : sans accent, sans majuscule, sans
+   ponctuation, borné. Sert au pré-remplissage depuis le libellé ou le prompt, et à la reprise
+   d'un ticket Jira — une seule règle, pour que deux chemins ne produisent pas deux formes. */
+function slugBranche(texte, mots = 6) {
+  return String(texte || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ').trim()
+    .split(/\s+/).filter(Boolean).slice(0, mots)
+    .join('-').slice(0, 40);
+}
+
+/* LA BRANCHE DE TRAVAIL SE PROPOSE. C'est le seul champ obligatoire de la modale que rien ne
+   remplit, et la source est sous la main : le libellé de la session, sinon les premiers mots
+   du prompt. Proposée seulement — on n'écrase JAMAIS ce qui a été tapé, et un champ vidé
+   volontairement le reste (`data-touche`). */
+function proposerBranche() {
+  if (taskKind !== 'code') return;
+  const f = $('#taskForm');
+  if (!f) return;
+  const source = (f.label && f.label.value.trim()) || (f.prompt && f.prompt.value.trim()) || '';
+  const slug = slugBranche(source);
+  if (!slug) return;
+  /* `.target-row` : la ligne d'EN-TÊTE porte la même classe pour s'aligner sur la colonne,
+     et n'est pas un champ. */
+  for (const champ of $$('#targetRows .target-row .t-branch')) {
+    /* Une valeur DÉJÀ PROPOSÉE se remplace — le libellé arrive souvent après le prompt, et la
+       proposition doit suivre. Une valeur TAPÉE, jamais : `data-touche` la protège, y compris
+       quand on l'a volontairement vidée. */
+    if (champ.dataset.touche === '1') continue;
+    if (champ.value.trim() && champ.dataset.propose !== '1') continue;
+    champ.value = `ai/${slug}`;
+    champ.dataset.propose = '1';
+  }
+}
+
+function targetHeadHtml() {
+  const col = (k) => `<span class="combo t-lab">${esc(tr(k))}</span>`;
+  /* La colonne « branche de travail » n'a pas la même largeur selon la saveur : en codage
+     c'est un champ libre (`.t-branch`), en exploration un sélecteur (`.combo`). L'en-tête
+     porte donc la classe du champ qu'il coiffe, sinon il tombe 120 px à côté. */
+  /* L'ÉTOILE DIT L'OBLIGATION. En codage, la branche de travail est refusée vide par le
+     serveur ; rien à l'écran ne l'annonçait, et on ne l'apprenait qu'au moment du refus. */
+  const colTravail = taskKind === 'code'
+    ? `<span class="t-branch t-lab req">${esc(tr('task.col.work-branch'))}</span>`
+    : col('task.col.read-branch');
+  return `<div class="target-head-row" aria-hidden="true">
+    <span class="combo repo-combo t-lab">${esc(tr('task.col.repo'))}</span><span class="t-lab-hint"></span>
+    ${colTravail}<span class="t-lab-hint"></span>
+    ${taskKind === 'code' ? `${col('task.col.base-branch')}<span class="t-lab-hint"></span>` : ''}
+    <span class="t-lab-rm"></span>
+  </div>`;
+}
+
 function renderTargetRows(list) {
   const el = $('#targetRows');
-  el.innerHTML = (list.length ? list : [{}]).map((t, i) => targetRowHtml(i, t)).join('');
+  el.innerHTML = targetHeadHtml() + (list.length ? list : [{}]).map((t, i) => targetRowHtml(i, t)).join('');
   $$('#targetRows [data-rmrow]').forEach((b) => b.addEventListener('click', () => {
     const cur = readTargetRows();
     if (cur.length <= 1) { toast(tr('toast.au-moins-un-projet-est'), true); return; }
     cur.splice(Number(b.dataset.rmrow), 1);
     renderTargetRows(cur);
   }));
+  /* Une saisie manuelle gèle le champ : la proposition ne doit jamais écraser ce que
+     l'utilisateur a écrit, ni revenir après qu'il l'a effacé. */
+  $$('#targetRows .target-row .t-branch').forEach((c) => c.addEventListener('input', () => { c.dataset.touche = '1'; delete c.dataset.propose; }));
   wireRepoPickers();
   wireBranchPickers();
+  proposerBranche();
   $('#targetsHint').textContent = taskKind === 'code'
     ? tr('task.hint.code')
     : tr('task.hint.explore');
@@ -4088,7 +5243,7 @@ function wireRepoPickers() {
     const open = () => {
       const q = input.value.trim().toLowerCase();
       const list = repoOptions.filter((r) => r.project.toLowerCase().includes(q)).slice(0, 200);
-      box.innerHTML = list.map((r) => `<div class="combo-opt" data-r="${r.id}">${esc(r.project)}</div>`).join('')
+      box.innerHTML = list.map((r) => `<div class="combo-opt" data-r="${r.id}">${esc(r.project)}${marqueDemo(r)}</div>`).join('')
         || `<div class="combo-opt muted">${tr('task.combo.no-repo')}</div>`;
       box.hidden = false;
     };
@@ -4243,7 +5398,6 @@ document.addEventListener('paste', (e) => {
 /* ---- Modale ---- */
 let editingTaskId = null;
 let launchAfterCreate = false;
-let convergeAfterCreate = false; // « Converger » depuis la modale : créer puis ouvrir la modale de convergence
 
 function applyKindToModal(kind) {
   const isLocal = kind === 'local';
@@ -4252,8 +5406,18 @@ function applyKindToModal(kind) {
      ne s'en sert pas ferait croire que la réponse portera dessus. */
   const isAsk = kind === 'ask';
   $('#codeOnlyFields').hidden = kind !== 'code';
-  // « Converger » : sessions de CODAGE GitLab, et seulement à la création (pas en édition).
-  const cv = $('#taskConverge'); if (cv) cv.hidden = kind !== 'code' || !!editingTaskId;
+  /* « puis converger » : sessions de CODAGE, et seulement à la création — sur une session
+     déjà écrite, la convergence se lance depuis sa carte. */
+  const cv = $('#taskConvergeRow'); if (cv) cv.hidden = kind !== 'code' || !!editingTaskId;
+  /* « Prévenir Jira » n'a de sens qu'en codage (il faut une merge request) et que si Jira est
+     connecté : proposer d'écrire dans un Jira absent serait une case qui ne fait rien. */
+  const nj = $('#taskNotifyJiraRow'); if (nj) nj.hidden = kind !== 'code' || !jiraConfigured;
+  majLibelleConverge();
+  // Le message de commit ne veut rien dire hors codage : l'exploration ne commit pas.
+  const cm = $('#taskCommitRow'); if (cm) cm.hidden = kind !== 'code';
+  /* L'accordéon « Avancé » ne s'affiche que s'il lui reste quelque chose : une question libre
+     n'a ni session d'agent, ni message de commit, ni question à poser. */
+  const av = $('#taskAdvanced'); if (av) av.hidden = isAsk;
   // Codage hors dépôt : dossiers locaux à la place des projets, Jira & avertissement.
   $('#taskReposWrap').hidden = isLocal || isAsk;
   $('#taskLocalWrap').hidden = !isLocal;
@@ -4285,12 +5449,45 @@ async function majVerificateursSession(choisi = null) {
   const couvrants = liste.filter((v) => repos.every((id) => (v.repos || []).some((r) => r.repo_id === id)));
   sel.innerHTML = `<option value="">${esc(tr('task.verifier.none'))}</option>`
     + couvrants.map((v) => `<option value="${v.id}">${esc(v.name)}</option>`).join('');
+  /* UNE LISTE VIDE DOIT DIRE POURQUOI. « Aucun vérificateur ne couvre ces dépôts » laissait
+     deviner lequel manquait : on dit, pour chaque vérificateur qui couvre au moins un des
+     dépôts choisis, ce qu'il couvre et ce qui lui manque — et on donne la porte pour le
+     compléter. Sans cela, le seul chemin était d'aller lire les vérificateurs un par un. */
+  const note = $('#taskVerifierMissing');
+  if (note) {
+    const nomDe = (id) => (repoOptions.find((r) => r.id === id) || {}).project || `#${id}`;
+    const partiels = repos.length && !couvrants.length
+      ? liste.map((v) => {
+        const couverts = repos.filter((id) => (v.repos || []).some((r) => r.repo_id === id));
+        return { v, couverts, manquants: repos.filter((id) => !couverts.includes(id)) };
+      }).filter((x) => x.couverts.length)
+      : [];
+    note.hidden = !(repos.length && !couvrants.length);
+    note.innerHTML = !note.hidden
+      ? `${partiels.length
+        ? partiels.map((x) => esc(tr('task.verifier.partial', {
+          name: x.v.name, covers: x.couverts.map(nomDe).join(', '), missing: x.manquants.map(nomDe).join(', '),
+        }))).join('<br>')
+        : esc(tr('task.verifier.none-at-all'))}
+        <button type="button" class="lien-reglage" data-go-verifiers>${esc(tr('task.verifier.go-settings'))}</button>`
+      : '';
+  }
   if (!couvrants.length && repos.length) {
     sel.innerHTML = `<option value="">${esc(tr('task.verifier.none-covering'))}</option>`;
   }
   sel.value = couvrants.some((v) => String(v.id) === garde) ? garde : '';
   majLienVerifPush();
 }
+
+/* La porte : Réglages → Vérificateurs, la modale refermée — on y va pour compléter une
+   couverture, pas pour lire. Ce qui a été saisi reste dans le formulaire, qui n'est pas remis
+   à zéro : on rouvre, on retrouve son prompt. */
+document.addEventListener('click', (e) => {
+  if (!(e.target.closest && e.target.closest('[data-go-verifiers]'))) return;
+  closeTaskModal();
+  navTab('admin');
+  showAdminSub('verifiers');
+});
 
 /* LES DEUX CASES SONT LIÉES, dans les deux sens. Un vérificateur ne peut pas travailler sur du
    code qui n'est pas poussé : le choisir coche l'auto-push, et retirer l'auto-push retire le
@@ -4318,8 +5515,28 @@ document.addEventListener('change', (e) => {
   majLienVerifPush();
 });
 
+/* LE SEUIL ET LE PLAFOND DE LA CONVERGENCE, tels que les Réglages les fixent. La case
+   « puis converger » les ANNONCE dans son libellé : promettre « jusqu'à 8/10 » quand le
+   réglage dit 7 serait pire que de ne rien dire. Lus une fois, rafraîchis à chaque
+   `loadConfig` — donc dès qu'on les change dans Réglages → Merge Request. */
+let convDefauts = null;
+async function defautsConvergence() {
+  if (convDefauts) return convDefauts;
+  try {
+    const c = await api('/config');
+    convDefauts = { seuil: c.converge_threshold || '8', passes: c.converge_max_passes || '3' };
+  } catch { convDefauts = { seuil: '8', passes: '3' }; }
+  return convDefauts;
+}
+async function majLibelleConverge() {
+  const l = $('#taskConvergeLbl');
+  if (!l) return;
+  const d = await defautsConvergence();
+  l.textContent = tr('task.lbl.converge-after', { seuil: d.seuil, passes: d.passes });
+}
+
 async function openTaskModal(kind = taskKind) {
-  editingTaskId = null; launchAfterCreate = false; convergeAfterCreate = false;
+  editingTaskId = null; launchAfterCreate = false; cleJiraDeLaSession = null;
   const f = $('#taskForm');
   f.reset(); resetTaskFiles();
   taskKind = kind;
@@ -4330,18 +5547,7 @@ async function openTaskModal(kind = taskKind) {
   if (kind !== 'ask') await majVerificateursSession('');
   $('#taskModalTitle').textContent = KIND_LABEL[kind].title;
   $('#taskExistingImgs').textContent = '';
-  /* Codage hors dépôt : le bouton principal crée ET lance, c'est le geste courant. Mais
-     « Créer sans lancer » l'accompagne, comme pour une session de codage ouverte depuis
-     une MR — préparer un traitement et le déclencher plus tard est un besoin légitime, et
-     rien ne le permettait ici. Codage et exploration, eux, enregistrent sans lancer : leur
-     bouton principal EST déjà le « sans lancer ». */
-  /* Une question libre se pose POUR obtenir la réponse : le bouton principal crée et lance,
-     comme hors dépôt. « Créer sans lancer » reste disponible à côté. */
-  launchAfterCreate = kind === 'local' || kind === 'ask';
-  $('#taskSubmit').innerHTML = launchAfterCreate
-    ? `<svg class="ico"><use href="#i-play"/></svg>${tr(kind === 'ask' ? 'ask.run' : 'local.run')}`
-    : `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
-  $('#taskSubmitOnly').hidden = !launchAfterCreate;
+  boutonsCreation();
   showTaskModal();
   f.prompt.focus();
 }
@@ -4367,7 +5573,6 @@ async function openTaskForMr(m, opts = {}) {
   // branche de travail = la branche de la MR ; départ = sa branche cible
   renderTargetRows([{ repo_id: m.repo_id, branch: m.source_branch, base_branch: m.target_branch }]);
   setupTaskJira(m.source_branch);
-  launchAfterCreate = true; convergeAfterCreate = false;
   if (opts.prompt) f.prompt.value = opts.prompt;
   if (opts.commitMessage && f.commit_message) f.commit_message.value = opts.commitMessage;
   /* Reprendre la session de codage d'origine évite à l'IA de redécouvrir un code qu'elle vient
@@ -4379,8 +5584,7 @@ async function openTaskForMr(m, opts = {}) {
   if (hint && opts.sessionId) { hint.textContent = tr('task.session-id.from-mr'); hint.hidden = false; hint.dataset.keep = '1'; }
   $('#taskModalTitle').textContent = opts.title || `Faire coder l'IA sur ${m.source_branch}`;
   $('#taskExistingImgs').textContent = tr('task.from-mr', { branch: m.source_branch, iid: m.iid });
-  $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-play"/></svg>${tr('task.btn.create-run')}`;
-  $('#taskSubmitOnly').hidden = false;
+  boutonsCreation();
   showTaskModal();
   f.prompt.focus();
 }
@@ -4390,11 +5594,105 @@ async function openTaskForMr(m, opts = {}) {
    contenu (summary + description convertie en Markdown) et on le met en tête du prompt,
    comme le fait le bouton « Récupérer » de la modale — un seul format de contexte à
    maintenir. La branche est proposée d'après la clé du ticket, jamais imposée. */
+/* Le dernier dépôt choisi POUR UN PROJET JIRA. Confort pur, mémorisé dans ce navigateur : le
+   perdre ne fait perdre que la proposition. Retenu à la création, pas à l'ouverture — un
+   formulaire abandonné ne fait pas une habitude. */
+const DEPOT_JIRA_MEMO = 'aidevtools_jira_depot';
+const memoDepotJira = () => { try { return JSON.parse(localStorage.getItem(DEPOT_JIRA_MEMO) || '{}'); } catch { return {}; } };
+function memoriserDepotJira(cle, repoId) {
+  const projet = String(cle || '').split('-')[0].toUpperCase();
+  if (!projet || !repoId) return;
+  try {
+    const m = memoDepotJira(); m[projet] = repoId;
+    localStorage.setItem(DEPOT_JIRA_MEMO, JSON.stringify(m));
+  } catch { /* stockage indisponible : on perd le confort, pas la fonction */ }
+}
+// La clé du ticket dont la modale de session est issue, le temps de la création.
+let cleJiraDeLaSession = null;
+
+/* ---------- B9 : « Faire coder à partir de cette réponse » ----------
+   L'exploration a lu trois dépôts et répondu. Le codage qui suit part des MÊMES dépôts, avec
+   la question et la réponse en contexte, et surtout DANS LA SESSION D'AGENT de l'exploration :
+   l'agent garde ce qu'il a lu au lieu de tout relire. Le mécanisme de reprise fournie à la
+   création existe déjà — on ne fait que le pré-remplir. */
+async function coderDepuisExploration(id) {
+  const f = $('#taskForm');
+  let d;
+  try { d = await api(`/tasks/${id}`); } catch (e) { toast(explainError(e.message), true); return; }
+  const t = d.task || {};
+  let reponse = '';
+  // `current` est la passe la plus récente : c'est son `output` qui est la réponse.
+  try { reponse = ((await api(`/tasks/${id}/passes`)).current || {}).output || ''; } catch { reponse = ''; }
+
+  f.reset(); resetTaskFiles();
+  editingTaskId = null; cleJiraDeLaSession = null; taskKind = 'code';
+  await loadRepoOptions();
+  applyKindToModal('code');
+  /* Mêmes dépôts, branche de travail à nommer : une exploration lit une branche existante,
+     un codage en crée une — proposer celle qu'on vient de LIRE ferait écrire dessus. */
+  renderTargetRows((t.targets || []).map((tg) => ({ repo_id: tg.repo_id, base_branch: tg.branch || '' })));
+  proposerBranche();
+  f.prompt.value = `${tr('task.explore-to-code.header')}\n\n> ${String(t.prompt || '').trim().replace(/\n/g, '\n> ')}\n\n${String(reponse).trim()}\n\n---\n\n`;
+  /* La session d'agent de l'exploration : c'est TOUTE la valeur du geste. Les cibles d'une
+     exploration partagent le même handle — on prend le premier qui en a un. */
+  const handle = (t.targets || []).map((tg) => tg.session_key).filter(Boolean)[0] || '';
+  if (f.session_id) f.session_id.value = handle;
+  const hint = $('#taskSessionHint');
+  if (hint && handle) { hint.textContent = tr('task.explore-to-code.session'); hint.hidden = false; hint.dataset.keep = '1'; }
+  if (handle) { const av = $('#taskAdvanced'); if (av) av.open = true; }   // on doit VOIR la reprise
+  $('#taskModalTitle').textContent = tr('task.explore-to-code.title');
+  $('#taskExistingImgs').textContent = '';
+  boutonsCreation();
+  showTaskModal();
+  f.prompt.focus();
+  const fin = f.prompt.value.length;
+  try { f.prompt.setSelectionRange(fin, fin); } catch { /* champ non focusable */ }
+}
+
+/* Les images d'un ticket Jira, proposées à joindre à la session. Elles ne sont TÉLÉCHARGÉES
+   qu'au moment de la création (quand la case est cochée) : ouvrir la modale ne doit pas tirer
+   cinq pièces jointes qu'on ne joindra peut-être pas. */
+let piecesJiraProposees = [];
+async function proposerPiecesJira(issue) {
+  const box = $('#taskJiraPieces');
+  piecesJiraProposees = [];
+  if (!box) return;
+  const images = ((issue && issue.attachments) || [])
+    .filter((a) => /^image\//i.test(a.mimeType || '') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(a.filename || ''));
+  box.hidden = !images.length;
+  if (!images.length) { box.innerHTML = ''; return; }
+  piecesJiraProposees = images;
+  const defaut = images.length <= 3;
+  box.innerHTML = `<p class="field-note">${esc(tr('task.jira.pieces.intro'))}</p>`
+    + images.map((a, i) => `<label class="jira-piece"><input type="checkbox" data-jira-piece="${i}"${defaut ? ' checked' : ''} />
+        <img src="/api/jira/attachment/${encodeURIComponent(a.id)}" alt="${esc(a.filename)}" loading="lazy" />
+        <span class="muted">${esc(a.filename)}</span></label>`).join('');
+}
+
+/* Au moment de créer : on télécharge CE QUI EST COCHÉ et on le joint comme une capture collée.
+   Un téléchargement qui échoue ne fait pas échouer la session — on le dit, et on continue. */
+async function piecesJiraCochees() {
+  const choisies = $$('#taskJiraPieces [data-jira-piece]:checked').map((c) => piecesJiraProposees[Number(c.dataset.jiraPiece)]).filter(Boolean);
+  const out = [];
+  for (const a of choisies) {
+    try {
+      const rep = await fetch(`/api/jira/attachment/${encodeURIComponent(a.id)}`);
+      if (!rep.ok) continue;
+      const blob = await rep.blob();
+      const data = await new Promise((res2, rej) => {
+        const r = new FileReader(); r.onload = () => res2(r.result); r.onerror = rej; r.readAsDataURL(blob);
+      });
+      out.push({ name: a.filename || 'capture.png', data });
+    } catch { /* pièce injoignable : la session part sans elle */ }
+  }
+  return out;
+}
+
 async function openTaskForJira(key) {
   const f = $('#taskForm');
   f.reset(); resetTaskFiles();
   editingTaskId = null; taskKind = 'code';
-  launchAfterCreate = false; convergeAfterCreate = false;   // on prépare, l'utilisateur lance
+  launchAfterCreate = false;   // on prépare, l'utilisateur lance
   await loadRepoOptions();
   applyKindToModal('code');
 
@@ -4402,21 +5700,32 @@ async function openTaskForJira(key) {
   try { issue = await api('/jira/fetch', { method: 'POST', body: { key } }); }
   catch (e) { toast(explainError(e.message), true); }      // le ticket reste ouvrable sans contexte
 
-  const slug = String((issue && issue.summary) || '').toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')      // sans accents (noms de branche)
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  const slug = slugBranche((issue && issue.summary) || '');
   const branch = `feature/${key}${slug ? `-${slug}` : ''}`;
-  renderTargetRows([{ branch }]);                           // dépôt à choisir : on ne peut pas le deviner
+  /* LE DÉPÔT EST LE SEUL CHAMP QU'ON REMPLISSAIT ENCORE À LA MAIN. On ne peut pas le deviner —
+     mais on peut se souvenir : le dernier dépôt choisi pour le MÊME projet Jira (le préfixe de
+     la clé, `PROJ-1408` → `PROJ`) est proposé, et reste modifiable comme n'importe quelle
+     ligne. Sans souvenir, on retombe sur le comportement d'avant : à choisir. */
+  const projetJira = String(key).split('-')[0].toUpperCase();
+  const memo = memoDepotJira()[projetJira];
+  const connu = memo && repoOptions.some((r) => r.id === Number(memo));
+  renderTargetRows([connu ? { branch, repo_id: Number(memo) } : { branch }]);
   setupTaskJira(branch);
 
   if (issue) {
     f.prompt.value = `${tr('task.jira.context-header', { key: issue.key })}\n\n${(issue.context || '').trim()}\n\n---\n\n`;
     if (f.commit_message) f.commit_message.value = `${key} ${issue.summary || ''}`.trim();
   }
+  cleJiraDeLaSession = key;
+  /* B10 — LES CAPTURES DU TICKET, SANS PASSER PAR LE DOSSIER TÉLÉCHARGEMENTS. Un bug
+     d'affichage vient avec sa capture : on la téléchargeait depuis Jira, on la retrouvait dans
+     Téléchargements, on la collait dans la modale — pour chaque ticket. Elles sont proposées
+     en cases à cocher, cochées d'office s'il y en a trois ou moins (au-delà, choisir est le
+     geste utile). Le téléchargement passe par le proxy existant. */
+  await proposerPiecesJira(issue);
   $('#taskModalTitle').textContent = tr('jira.code-modal-title', { key });
   $('#taskExistingImgs').textContent = issue ? tr('jira.code-from', { key: issue.key, summary: issue.summary || '' }) : '';
-  $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-play"/></svg>${tr('task.btn.create-run')}`;
-  $('#taskSubmitOnly').hidden = false;
+  boutonsCreation();
   showTaskModal();
   f.prompt.focus();
   // Curseur après le bloc de contexte : on écrit SA demande, pas au milieu du ticket.
@@ -4430,7 +5739,7 @@ async function openTaskEdit(id) {
   try {
     const d = await api(`/tasks/${id}`);
     const t = d.task;
-    editingTaskId = id; launchAfterCreate = false; convergeAfterCreate = false;
+    editingTaskId = id; launchAfterCreate = false;
     taskKind = t.kind || 'code';
     await loadRepoOptions();
     applyKindToModal(taskKind);
@@ -4441,6 +5750,7 @@ async function openTaskEdit(id) {
     if (f.commit_message) f.commit_message.value = t.commit_message || '';
     if (f.auto_push) f.auto_push.checked = !!t.auto_push;
     if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
+  if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
     await majVerificateursSession(t.verifier_id || '');
     if (f.session_id) f.session_id.value = sharedSessionKey(t.targets);
     $('#taskModalTitle').textContent = tr(taskKind === 'code' ? 'task.edit.code-title' : 'task.edit.explore-title');
@@ -4483,7 +5793,7 @@ async function dupliquerTask(id) {
   f.reset(); resetTaskFiles();
   const d = await api(`/tasks/${id}`);
   const t = d.task;
-  editingTaskId = null; launchAfterCreate = false; convergeAfterCreate = false;
+  editingTaskId = null; launchAfterCreate = false;
   taskKind = t.kind || 'code';
   await loadRepoOptions();
   applyKindToModal(taskKind);
@@ -4501,11 +5811,12 @@ async function dupliquerTask(id) {
   if (f.commit_message) f.commit_message.value = t.commit_message || '';
   if (f.auto_push) f.auto_push.checked = !!t.auto_push;
   if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
+  if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
   await majVerificateursSession(t.verifier_id || '');
   if (f.session_id) f.session_id.value = '';
   $('#taskModalTitle').textContent = tr(decale ? 'task.duplicate.title' : 'task.duplicate.title-explore');
   infoDuplication(decale, (d.images && d.images.length) || 0);
-  boutonsCreation(taskKind);
+  boutonsCreation();
   showTaskModal();
   f.prompt.focus();
 }
@@ -4519,14 +5830,26 @@ function infoDuplication(brancheDecalee, nImages) {
   $('#taskExistingImgs').textContent = bouts.join(' ');
 }
 
-/* Les boutons d'une CRÉATION, exactement comme pour une session neuve de cette saveur : un
-   bouton qui changerait de sens selon qu'on crée ou qu'on copie serait un piège. */
-function boutonsCreation(kind) {
-  launchAfterCreate = kind === 'local' || kind === 'ask';
-  $('#taskSubmit').innerHTML = launchAfterCreate
-    ? `<svg class="ico"><use href="#i-play"/></svg>${tr(kind === 'ask' ? 'ask.run' : 'local.run')}`
-    : `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
-  $('#taskSubmitOnly').hidden = !launchAfterCreate;
+/* Les boutons d'une CRÉATION, quelle que soit la saveur et quel que soit le point d'entrée
+   (session neuve, duplication) : un bouton qui changerait de sens selon qu'on crée ou qu'on
+   copie serait un piège.
+
+   UN VERBE PAR EFFET, ET LE PARCOURS PRINCIPAL EN UN GESTE. La modale disait « Lancer le
+   codage », « Poser la question » et « Créer et lancer » pour un seul et même effet, selon la
+   saveur ; et deux saveurs sur quatre n'offraient PAS de lancement du tout — on créait, on
+   fermait, on retrouvait la carte dans Dev IA, on cliquait « Lancer ». Deux boutons suffisent,
+   les mêmes partout, et ils se lisent l'un contre l'autre :
+
+     — « Créer et lancer »  (primaire)   crée PUIS lance : c'est ce qu'on vient faire ;
+     — « Créer sans lancer » (secondaire) crée et s'arrête : préparer maintenant, déclencher
+       plus tard reste un besoin légitime, et c'est le seul endroit qui le permet.
+
+   L'ÉDITION n'a ni l'un ni l'autre : elle enregistre (voir les appelants qui posent
+   `launchAfterCreate = false` et masquent le secondaire). */
+function boutonsCreation() {
+  launchAfterCreate = true;
+  $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-play"/></svg>${tr('task.btn.create-run')}`;
+  $('#taskSubmitOnly').hidden = false;
 }
 
 /* DUPLIQUER une session HORS DÉPÔT. Même geste, mais son propre câblage : les dossiers sont
@@ -4538,7 +5861,7 @@ async function dupliquerLocalTask(id) {
   f.reset(); resetTaskFiles();
   const d = await api(`/local-tasks/${id}`);
   const t = d.task;
-  editingTaskId = null; launchAfterCreate = false; convergeAfterCreate = false;
+  editingTaskId = null; launchAfterCreate = false;
   taskKind = 'local';
   await loadLocalRoots();
   const paths = (t.dirs || []).map((x) => x.path);
@@ -4551,10 +5874,11 @@ async function dupliquerLocalTask(id) {
   f.prompt.value = t.prompt || '';
   if (f.label) f.label.value = t.label || '';
   if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
+  if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
   if (f.session_id) f.session_id.value = '';
   $('#taskModalTitle').textContent = tr('task.duplicate.title-local');
   infoDuplication(false, (d.images && d.images.length) || 0);
-  boutonsCreation('local');
+  boutonsCreation();
   showTaskModal();
   f.prompt.focus();
 }
@@ -4579,7 +5903,7 @@ async function openLocalTaskEdit(id) {
   f.reset(); resetTaskFiles();
   const d = await api(`/local-tasks/${id}`);
   const t = d.task;
-  editingTaskId = id; launchAfterCreate = false; convergeAfterCreate = false;
+  editingTaskId = id; launchAfterCreate = false;
   taskKind = 'local';
   await loadLocalRoots();
   const paths = (t.dirs || []).map((x) => x.path);
@@ -4592,6 +5916,7 @@ async function openLocalTaskEdit(id) {
   f.prompt.value = t.prompt || '';
   if (f.label) f.label.value = t.label || '';
   if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
+  if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
   if (f.session_id) f.session_id.value = sharedSessionKey(t.dirs);
   $('#taskModalTitle').textContent = tr('local.edit-title');
   setTaskPieces('local', d.images);
@@ -4608,7 +5933,7 @@ async function openQuestionEdit(id) {
   f.reset(); resetTaskFiles();
   const d = await api(`/questions/${id}`);
   const q = d.task;
-  editingTaskId = id; launchAfterCreate = false; convergeAfterCreate = false;
+  editingTaskId = id; launchAfterCreate = false;
   taskKind = 'ask';
   applyKindToModal('ask');
   f.prompt.value = q.prompt || '';
@@ -4625,7 +5950,7 @@ async function openQuestionEdit(id) {
 function closeTaskModal() {
   // Les deux drapeaux vont de pair : un « Converger » dont le POST a échoué détournerait
   // sinon le submit suivant (session non lancée, modale de convergence à la place).
-  editingTaskId = null; launchAfterCreate = false; convergeAfterCreate = false;
+  editingTaskId = null; launchAfterCreate = false;
   $('#taskModal').hidden = true;
   $('#taskSubmitOnly').hidden = true;
   $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
@@ -4673,15 +5998,31 @@ $('#taskSessionId') && $('#taskSessionId').addEventListener('input', (e) => {
 
 $('#taskCancel').addEventListener('click', closeTaskModal);
 $('#taskSubmitOnly').addEventListener('click', () => {
-  launchAfterCreate = false; convergeAfterCreate = false; // on crée, on ne lance pas
+  launchAfterCreate = false; // on crée, on ne lance pas
   $('#taskForm').requestSubmit();            // passe par la validation native du formulaire
 });
-// « Converger » : créer la session PUIS ouvrir la modale de convergence (kind code uniquement).
-$('#taskConverge') && $('#taskConverge').addEventListener('click', () => {
-  convergeAfterCreate = true; launchAfterCreate = false;
-  $('#taskForm').requestSubmit();
-});
 fermerAuFond('#taskModal', closeTaskModal);
+
+/* La proposition de branche suit le libellé et le prompt tant qu'on n'a pas touché au champ.
+   Débouncée : recalculer à chaque touche pendant qu'on écrit un prompt de cinq lignes ferait
+   défiler un nom de branche sous les yeux. */
+(() => {
+  const f = $('#taskForm');
+  if (!f) return;
+  const maj = debounce(() => proposerBranche(), 250);
+  if (f.label) f.label.addEventListener('input', maj);
+  if (f.prompt) f.prompt.addEventListener('input', maj);
+  /* CTRL/⌘ + ENTRÉE SOUMET DEPUIS LE PROMPT. Entrée y insère une ligne — c'est ce qu'on veut
+     dans une zone de texte —, mais il faut alors viser le bouton à la souris pour partir. */
+  if (f.prompt) {
+    f.prompt.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        if (typeof f.requestSubmit === 'function') f.requestSubmit(); else f.dispatchEvent(new Event('submit', { cancelable: true }));
+      }
+    });
+  }
+})();
 
 $('#taskForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -4755,6 +6096,22 @@ $('#taskForm').addEventListener('submit', async (e) => {
   }
   const targets = readTargetRows();
   if (!targets.length) { toast(tr('toast.selectionne-au-moins-un-projet'), true); return; }
+  /* LA BRANCHE DE TRAVAIL EST OBLIGATOIRE EN CODAGE, et on le dit SOUS le champ concerné.
+     Le serveur la refusait vide, le client envoyait quand même, et un toast rouge annonçait
+     « nom de branche requis pour chaque projet » à sept cents pixels de la ligne fautive —
+     sans dire laquelle. C'est la première friction du parcours principal de Dev IA. */
+  if (taskKind === 'code') {
+    viderErreursChamps($('#targetRows'));
+    const lignes = $$('#targetRows .target-row');
+    for (let i = 0; i < targets.length; i += 1) {
+      if (targets[i].branch) continue;
+      const ligne = lignes[i];
+      const champ = ligne && ligne.querySelector('.t-branch');
+      const projet = (repoOptions.find((r) => r.id === targets[i].repo_id) || {}).project || '';
+      signalerChamp(champ, tr('err.branche-requise', { project: projet }));
+      return;
+    }
+  }
   const body = {
     kind: taskKind,
     label: f.label ? f.label.value : '',
@@ -4762,6 +6119,8 @@ $('#taskForm').addEventListener('submit', async (e) => {
     commit_message: f.commit_message ? f.commit_message.value : '',
     auto_push: f.auto_push ? f.auto_push.checked : false,
     ask_questions: f.ask_questions ? f.ask_questions.checked : false,
+    // B5 : prévenir Jira à la création de chaque merge request de cette session.
+    notify_jira: f.notify_jira ? f.notify_jira.checked : false,
     verifier_id: f.verifier_id ? Number(f.verifier_id.value) || null : null,
     // Session existante à reprendre. Vide = nouvelle session, le cas courant. Le champ
     // n'est lu qu'à la CRÉATION : la modale d'édition ne réaffecte pas une session déjà
@@ -4770,14 +6129,27 @@ $('#taskForm').addEventListener('submit', async (e) => {
     files: taskNewImages,
     targets,
   };
+  // B10 : les captures du ticket cochées viennent s'ajouter aux pièces déjà choisies.
+  if (cleJiraDeLaSession) {
+    const pieces = await piecesJiraCochees();
+    if (pieces.length) body.files = [...(body.files || []), ...pieces];
+  }
+  memoriserBaseSession(targets);   // la prochaine session partira de la même branche, par dépôt
+  // Session née d'un ticket : le dépôt retenu servira de proposition au prochain de ce projet.
+  if (cleJiraDeLaSession && targets[0]) memoriserDepotJira(cleJiraDeLaSession, targets[0].repo_id);
   const btn = $('#taskSubmit');
+  /* CONVERGER EST DEVENU UNE CASE, plus un second bouton primaire : c'est donc l'état de la
+     case qui décide, et non plus lequel des deux boutons a été cliqué. Elle annonce son seuil
+     et son plafond dans son libellé — la convergence part directement avec ces valeurs, sans
+     seconde fenêtre pour redemander ce qui vient d'être affiché. */
+  const veutConverger = !editingTaskId && taskKind === 'code' && !!(f.converge_after && f.converge_after.checked);
   let convergeId = null;
   try {
     await busy(btn, async () => {
       if (editingTaskId) { await api(`/tasks/${editingTaskId}`, { method: 'PUT', body }); toast(tr('toast.session-mise-a-jour')); return; }
       const created = await api('/tasks', { method: 'POST', body });
-      if (convergeAfterCreate) {
-        convergeId = created.id; // on ne lance PAS le run : la modale de convergence pilote tout
+      if (veutConverger) {
+        convergeId = created.id; // on ne lance PAS le run : la convergence pilote tout
       } else if (launchAfterCreate) {
         await api(`/tasks/${created.id}/run`, { method: 'POST' });
         toast(tr('toast.session-lancee')); refreshStatus();
@@ -4790,7 +6162,11 @@ $('#taskForm').addEventListener('submit', async (e) => {
     resetTaskFiles();
     closeTaskModal();
     loadTasks();
-    if (convergeId) { convergeAfterCreate = false; openConvergeModal({ type: 'task', id: convergeId }); }
+    if (convergeId) {
+      const d = await defautsConvergence();
+      await api(`/tasks/${convergeId}/converge`, { method: 'POST', body: { threshold: d.seuil, maxPasses: d.passes } });
+      toast(tr('toast.converge-lancee')); refreshStatus();
+    }
   } catch (err) { toast(explainError(err.message), true); }
 });
 
@@ -4999,13 +6375,21 @@ const followBtn = (t, attr, titreFini, libelleFini = 'task.btn.request-fix') => 
   return `<button class="btn" data-${attr}="${t.id}" title="${esc(tr(enCours ? 'task.title.draft-followup' : titreFini))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr(enCours ? 'task.btn.draft-followup' : libelleFini)}</button>`;
 };
 
+/* Le rang du dernier chargement lancé. Deux appels peuvent être en vol — un clic et un
+   rafraîchissement de fin de job, par exemple — et rien ne garantit qu'ils reviennent dans
+   l'ordre. Sans ce garde, la réponse la plus ANCIENNE écrasait la plus récente : on répondait
+   à l'IA, la session repartait, et la boîte de questions se réaffichait intacte quelques
+   dizaines de millisecondes plus tard. Même parade que pour la palette. */
+let tasksSeq = 0;
 async function loadTasks() {
+  const seq = ++tasksSeq;
   try {
     const [tasks, locals, asks] = await Promise.all([
       api('/tasks'), api('/local-tasks').catch(() => []), api('/questions').catch(() => []),
     ]);
+    if (seq !== tasksSeq) return;          // un chargement plus récent a déjà répondu
     allTasks = tasks; localTasks = locals; questions = asks;
-  } catch (e) { $('#taskList').innerHTML = errorBox(e.message); return; }
+  } catch (e) { if (seq === tasksSeq) $('#taskList').innerHTML = errorBox(e.message); return; }
   listeChargee = true;
   renderTasks();
   loadLots();
@@ -5103,6 +6487,7 @@ function renderTasks() {
   wirePromptToggles('#taskList');
   wireTaskActions();
   restoreTaskForms(openForms);
+  remplirLiensDifferes(el);      // les boutons contextuels des lignes de projet
 }
 
 /* ---------- Codage hors dépôt (projets d'un répertoire local, sans git) ----------
@@ -5183,10 +6568,12 @@ function localCard(t) {
       <div class="title">
         <span class="tag ${st.cls}">${st.label}</span>
         <span class="task-projects">${tr('local.dirs-count', { n, count: n })}</span>
-        <span class="task-date" title="${tr('task.created-at')}">${fmtDateTime(t.created_at)}</span>
+        <span class="task-date" title="${tr('task.created-at')}" data-when="${esc(t.created_at || '')}">${esc(fmtDateTime(t.created_at))}</span>
       </div>
       ${libelleBlock(t)}
       ${promptBlock(t.prompt)}
+      ${chapeauCarte(t)}
+      ${coutCarte(t)}
       ${toggleProjetsHtml('local', t.id, n)}
       <div class="targets"${projetsVisibles('local', t.id, n) ? '' : ' hidden'}>${(t.dirs || []).map((d) => localDirLine(d, t)).join('')}</div>
       ${suiviBlock(t, 'l')}
@@ -5339,10 +6726,12 @@ function askCard(q) {
     <div style="min-width:0;flex:1">
       <div class="title">
         <span class="tag ${st.cls}">${st.label}</span>
-        <span class="task-date" title="${tr('task.created-at')}">${fmtDateTime(q.created_at)}</span>
+        <span class="task-date" title="${tr('task.created-at')}" data-when="${esc(q.created_at || '')}">${esc(fmtDateTime(q.created_at))}</span>
       </div>
       ${libelleBlock(q)}
       ${promptBlock(q.prompt)}
+      ${chapeauCarte(q)}
+      ${coutCarte(q)}
       ${suiviBlock(q, 'q')}
       <div class="mr-create followup" data-qfollowform="${q.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('ask.followup.ph'))}">${esc(q.followup_draft || '')}</textarea>
@@ -5502,10 +6891,12 @@ function taskHead(t) {
       <span class="tag ${st.cls}">${st.label}</span>
       <span class="task-projects">${tr('task.projects', { n: nb, count: nb })}</span>
       ${t.auto_push && t.kind !== 'explore' ? '<span class="tag">auto-push</span>' : ''}
-      <span class="task-date" title="${tr('task.created-at')}">${fmtDateTime(t.created_at)}</span>
+      <span class="task-date" title="${tr('task.created-at')}" data-when="${esc(t.created_at || '')}">${esc(fmtDateTime(t.created_at))}</span>
     </div>
     ${libelleBlock(t)}
-    ${promptBlock(t.prompt)}`;
+    ${promptBlock(t.prompt)}
+    ${chapeauCarte(t)}
+    ${coutCarte(t)}`;
 }
 
 /* Repli de la liste de projets, PARTAGÉ par les trois familles de sessions (codage,
@@ -5552,6 +6943,27 @@ function toggleProjetsHtml(famille, id, n) {
 // Les projets sont-ils visibles ? Dépliés explicitement, ou seuls (rien à replier).
 const projetsVisibles = (famille, id, n) => n <= 1 || estDeplie(famille, id);
 
+/* REPRENDRE LE RAPPORT DE REVIEW DANS UN SUIVI.
+ *
+ * Le trajet naturel après une review : la MR a un rapport, on veut que l'IA en traite les
+ * constats. Le bouton « Faire corriger le code par l'IA » du rapport ouvre pour cela une
+ * NOUVELLE session ; depuis la session qui a produit la branche, on veut au contraire un SUIVI
+ * — l'agent reprend son propre fil au lieu de redécouvrir le code. Le bouton ne fait donc que
+ * remplir le champ : ce qui part reste relu, et modifiable, avant d'être envoyé. */
+const aUnRapport = (cibles) => (cibles || []).some((tg) => tg.has_review);
+/* MÊME GESTE POUR LE RAPPORT DE VÉRIFICATION. La vérification a cassé des tests, et on veut
+   que l'agent les répare — mais dans SA session, pas dans une nouvelle. « Corriger (session
+   IA) », depuis le rapport, ouvre une session neuve ; ici on remplit un suivi avec le même
+   prompt, qui porte les mêmes faits (tests cassés, messages, commits testés). */
+const boutonSuiviVerif = (taskId, targetId = null) => `<button class="btn" data-followverif="${taskId}"`
+  + (targetId ? ` data-followveriftarget="${targetId}"` : '')
+  + ` title="${esc(tr('task.title.followup-verify'))}"><svg class="ico"><use href="#i-check"/></svg>`
+  + `${tr('task.btn.followup-verify')}</button>`;
+const boutonSuiviReview = (taskId, targetId = null) => `<button class="btn" data-followreview="${taskId}"`
+  + (targetId ? ` data-followreviewtarget="${targetId}"` : '')
+  + ` title="${esc(tr('task.title.followup-review'))}"><svg class="ico"><use href="#i-bot"/></svg>`
+  + `${tr('task.btn.followup-review')}</button>`;
+
 // Carte CODAGE : une ligne par projet, avec ses propres actions.
 function codeCard(t) {
   const cibles = t.targets || [];
@@ -5576,14 +6988,20 @@ function codeCard(t) {
         <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph'))}">${esc(t.followup_draft || '')}</textarea>
         ${suiviCapturesHtml()}
         ${autoSuiviCase(t)}
+        ${aUnRapport(cibles) ? boutonSuiviReview(t.id) : ''}
+        ${(cibles || []).some((tg) => tg.has_verify_fail) ? boutonSuiviVerif(t.id) : ''}
         <button class="btn" data-followcancel="${t.id}">${tr('ui.cancel')}</button>
         <button class="btn" data-followsave="${t.id}">${tr('task.btn.save-followup')}</button>
         ${enCours ? '' : `<button class="btn btn-primary" data-followsubmit="${t.id}">${tr('task.btn.run-iteration')}</button>`}
       </div>
     </div>
     ${taskActions([
-    canRun ? `<button class="btn" data-trun="${t.id}" title="${t.status === 'new' ? tr('task.title.run-all') : tr('task.title.rerun-all')}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
-    canRun ? `<button class="btn btn-converge" data-tconverge="${t.id}" data-label="${esc(tr('task.projects', { n: (t.targets || []).length, count: (t.targets || []).length }))}" title="${tr('task.title.converge')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : '',
+    /* LE CHEMIN NORMAL EST LE BOUTON FORT. « Lancer » était en secondaire gris juste au-dessus
+       d'un « Converger » violet plein : le chemin avancé pesait plus lourd que celui qu'on
+       prend neuf fois sur dix, et le violet était une TROISIÈME couleur d'action dans un
+       système qui n'en connaît que deux (accent, destructif). */
+    canRun ? `<button class="btn btn-primary" data-trun="${t.id}" title="${t.status === 'new' ? tr('task.title.run-all') : tr('task.title.rerun-all')}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
+    canRun ? `<button class="btn" data-tconverge="${t.id}" data-label="${esc(tr('task.projects', { n: (t.targets || []).length, count: (t.targets || []).length }))}" title="${tr('task.title.converge')}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : '',
     canFollow ? followBtn(t, 'tfollow', 'task.title.request-fix') : '',
     /* N'apparaît que s'il y a quelque chose à réparer : un projet en erreur dont le travail
        peut très bien être déjà commité. Relancer coûterait un appel IA par dépôt pour refaire
@@ -5592,6 +7010,12 @@ function codeCard(t) {
     aOuvrir > 1 ? `<button class="btn btn-primary" data-tmrall="${t.id}" title="${esc(tr('task.title.mr-all'))}"><svg class="ico"><use href="#i-branch"/></svg>${tr('task.btn.mr-all', { n: aOuvrir, count: aOuvrir })}</button>` : '',
     (t.targets || []).filter((tg) => tg.status === 'error').length > 1
       ? `<button class="btn" data-trunfailed="${t.id}" title="${esc(tr('task.title.rerun-failed'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.rerun-failed')}</button>` : '',
+    /* B1 — TOUS LES PROJETS SONT MERGÉS : la session a fini sa vie. Elle restait en tête de
+       la liste, terminée, à côté de celles qui attendent encore quelque chose. « Ranger » est
+       le geste qui existe déjà (masquer) — il est simplement PROPOSÉ ici, au moment où il a
+       un sens, et rien ne se range tout seul. */
+    (!t.hidden && (t.targets || []).length && (t.targets || []).every((tg) => tg.mr_merged))
+      ? `<button class="btn" data-hide="${t.id}" data-scope="task" data-on="0" title="${esc(tr('task.title.archive-merged'))}"><svg class="ico"><use href="#i-archive"/></svg>${esc(tr('task.btn.archive-merged'))}</button>` : '',
     (t.targets || []).some((tg) => tg.status === 'error')
       ? `<button class="btn" data-treconcile="${t.id}" title="${esc(tr('task.title.reconcile'))}"><svg class="ico"><use href="#i-branch"/></svg>${tr('task.btn.reconcile')}</button>` : '',
   ], [
@@ -5622,10 +7046,57 @@ function targetStepper(tg) {
   }).join('');
   return `<span class="tstepper${merged ? ' merged' : ''}" aria-label="${esc(labels.slice(0, done).join(' → '))}">${pips}</span>`;
 }
+/* ---------- Ce qu'une session a répondu, et ce qu'elle a coûté ----------
+   Les deux premières lignes de la réponse sur la carte : on retrouve celle qu'on cherche sans
+   ouvrir « Voir la réponse » l'une après l'autre. Repliées par défaut sur une ligne — la carte
+   reste une carte — et dépliables d'un clic pour lire le chapeau entier. */
+function chapeauCarte(t) {
+  if (!t || !t.answer_head) return '';
+  return `<details class="task-chapeau"><summary>${esc(t.answer_head)}</summary><p class="muted">${esc(tr('task.head.more'))}</p></details>`;
+}
+
+/* Durée et tokens de la dernière passe : « quels prompts font relire trois dépôts pour rien »
+   se répond ici, avant les statistiques. Absents (session jamais lancée, comptage indisponible)
+   ils ne s'affichent pas — un « 0 token » se lirait comme une mesure, pas comme une absence. */
+function coutCarte(t) {
+  const bouts = [];
+  if (t && t.duration_ms) bouts.push(esc(dureeCourte(t.duration_ms)));
+  if (t && t.tokens_est) bouts.push(esc(tr('task.cost.tokens', { n: fmtMilliers(t.tokens_est) })));
+  return bouts.length ? `<span class="task-cout muted">${bouts.join(' · ')}</span>` : '';
+}
+const fmtMilliers = (n) => Number(n).toLocaleString(I18Nrt.currentLocale());
+function dureeCourte(ms) {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return tr('task.cost.sec', { n: s });
+  const m = Math.round(s / 60);
+  return m < 60 ? tr('task.cost.min', { n: m }) : tr('task.cost.hour', { n: (m / 60).toFixed(1) });
+}
+
+/* CE QUE LA MERGE REQUEST EST DEVENUE, SUR LA LIGNE DU PROJET. « MR !216 ↗ » ne disait rien
+   de ce qu'elle vaut : il fallait retourner dans Reviews pour lire la note et le verdict de ce
+   que la session venait de produire. Trois faits, aucun calcul — ils viennent avec la ligne. */
+function etatMrDeLaLigne(tg) {
+  const bouts = [];
+  // `note_value` est une FRACTION [0,1] en base : la note sur 10 vaut dix fois.
+  if (tg.mr_note != null) bouts.push(`<span class="tmr-note">${esc(fmtNote10(tg.mr_note * 10))}</span>`);
+  if (tg.mr_verdict) bouts.push(`<span class="tmr-verdict v-${esc(tg.mr_verdict)}">${esc(tr(`mr.ref.verdict.${tg.mr_verdict}`))}</span>`);
+  if (tg.mr_drafts) bouts.push(esc(tr('task.mr.drafts', { n: tg.mr_drafts, count: tg.mr_drafts })));
+  if (!bouts.length) return '';
+  return ` <span class="tmr-etat muted">${bouts.join(' · ')}</span>`;
+}
+
 function targetLine(t, tg) {
   const st = TASK_STATUS[tg.status] || { label: tg.status, cls: '' };
   const showDiff = !!tg.diff_path && ['committed', 'pushed'].includes(tg.status);
   const showPush = tg.status === 'committed';
+  /* Le rattrapage ne s'offre QUE si la merge request est réellement en conflit — c'est la
+     forge qui le dit (`mr_conflicts`, relevé par la découverte sur l'appel qu'elle fait déjà).
+     Un bouton qui réécrit une branche n'a pas à être proposé en permanence : la plupart du
+     temps il n'y a rien à rattraper, et le proposer quand même invite à rebaser pour rien.
+     `null` = la forge n'a pas encore tranché (GitHub calcule `mergeable` en différé) : on
+     s'abstient plutôt que de deviner. */
+  const peutRattraper = tg.mr_conflicts === 1 && !!tg.branch
+    && ['committed', 'pushed', 'error'].includes(tg.status);
   // une MR peut préexister sur la branche (session lancée depuis une MR) :
   // dans ce cas il ne faut pas proposer d'en créer une seconde.
   const mrIid = tg.mr_iid || tg.existing_mr_iid;
@@ -5645,11 +7116,22 @@ function targetLine(t, tg) {
     <span class="tag ${st.cls}">${st.label}</span>
     ${tg.status === 'error' ? '' : targetStepper(tg)}
     <span class="t-name">${esc(tg.project)}</span>
-    <code>${esc(tg.branch || '')}</code>
+    ${chipBranche(tg.branch || '')}
     ${/* La session demandée n'a pas pu être reprise : on le dit ICI, pas seulement dans un
           journal qui défile — sinon l'écran affiche un identifiant que personne n'a saisi. */''}
     ${tg.session_note ? `<span class="t-note" title="${esc(tr('task.session.fallback-title', { detail: tg.session_note }))}">${svgIco('alert')} ${esc(tr('task.session.fallback'))}</span>` : ''}
     ${mrIid ? (mrUrl ? ` <a href="${esc(mrUrl)}" target="_blank">MR !${mrIid} ↗</a>` : ` <span class="muted">MR !${mrIid}</span>`) : ''}
+    ${etatMrDeLaLigne(tg)}
+    ${badgeCI(tg.branch)}
+    ${/* B5 — PRÉVENIR JIRA. La merge request est ouverte et la branche porte une clé : un
+          commentaire avec le lien, et la transition « en revue » si Jira la propose. Derrière
+          confirmation — c'est écrire chez les autres. */''}
+    ${mrIid && jiraConfigured && /[A-Z][A-Z0-9]+-\d+/i.test(tg.branch || '')
+    ? `<button class="btn btn-sm" data-tgjira="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-key="${esc((String(tg.branch || '').match(/[A-Z][A-Z0-9]+-\d+/i) || [''])[0].toUpperCase())}" title="${esc(tr('task.title.notify-jira'))}"><svg class="ico ico-sm"><use href="#i-tag"/></svg>${esc(tr('task.btn.notify-jira'))}</button>` : ''}
+    ${/* LES BOUTONS CONTEXTUELS, ICI AUSSI. La ligne a un dépôt et une branche : `{env}` et
+          `{branch}` s'y résolvent exactement comme sur une carte de merge request. Le bloc
+          arrive vide et se remplit — un projet sans service lié n'affiche rien. */''}
+    <span class="tg-liens" data-liens-task="${t.id}" data-liens-target="${tg.id}"></span>
     ${tg.mr_merged ? `<span class="tag merged" title="${tr('task.tag.merged-title', { forge: forgeLabel(tg.forge) })}">${tr('task.tag.merged')}</span>` : ''}
     <span class="spacer"></span>
     ${resumeCmdBtn(tg.resume_cmd)}
@@ -5657,14 +7139,22 @@ function targetLine(t, tg) {
     ${showDiff ? `<button class="btn btn-sm" data-tgdiff="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-diff'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>` : ''}
     ${runTarget ? `<button class="btn btn-sm" data-tgrun="${tg.id}" data-task="${t.id}" title="${esc(tg.status === 'new' ? tr('task.title.run-target') : tr('task.title.rerun-target'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${tr('task.btn.run-target')}</button>` : ''}
     ${followTarget ? `<button class="btn btn-sm" data-tgfollow="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.request-fix-target', { project: tg.project }))}"><svg class="ico ico-sm"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : ''}
-    ${showPush ? `<button class="btn btn-sm btn-primary" data-tgpush="${tg.id}" data-task="${t.id}" data-project="${esc(tg.project)}" data-branch="${esc(tg.branch || '')}" title="${tr('task.btn.push-title')}"><svg class="ico ico-sm"><use href="#i-upload"/></svg>${tr('task.btn.push')}</button>` : ''}
+    ${peutRattraper ? (() => {
+      /* RATTRAPER LA BRANCHE DE DÉPART. Le cas : la merge request existe, la branche de départ
+         a avancé, la forge affiche des conflits. On rejoue nos commits par-dessus elle. */
+      const dep = tg.base_branch || 'main';
+      return `<button class="btn btn-sm" data-tgrebase="${tg.id}" data-task="${t.id}" data-branch="${esc(tg.branch || '')}" data-base="${esc(dep)}" title="${esc(tr('task.title.update-base', { base: dep }))}"><svg class="ico ico-sm"><use href="#i-repeat"/></svg>${tr('task.btn.update-base', { base: dep })}</button>`;
+    })() : ''}
+    ${showPush ? `<button class="btn btn-sm btn-primary" data-tgpush="${tg.id}" data-task="${t.id}" data-project="${esc(tg.project)}" data-branch="${esc(tg.branch || '')}" data-force="${tg.force_push ? '1' : ''}" title="${esc(tg.force_push ? tr('task.title.push-force') : tr('task.btn.push-title'))}"><svg class="ico ico-sm"><use href="#i-upload"/></svg>${tr('task.btn.push')}</button>` : ''}
     ${canMr ? `<button class="btn btn-sm btn-primary" data-tgmr="${tg.id}" data-task="${t.id}" data-title="${esc(defaultMrTitle)}" data-branch="${esc(tg.branch || '')}" data-target="${esc(tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.open-mr'))}"><svg class="ico ico-sm"><use href="#i-branch"/></svg>${tr('task.btn.create-mr')}</button>` : ''}
-    ${mrIid && !tg.mr_merged ? `<button class="btn btn-sm btn-danger" data-tgmerge="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-target="${esc(tg.mr_target || tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.merge-mr'))}"><svg class="ico ico-sm"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>` : ''}
+    ${mrIid && !tg.mr_merged ? `<button class="btn btn-sm btn-danger" data-tgmerge="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-target="${esc(tg.mr_target || tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" data-project="${esc(tg.project || '')}" title="${esc(tr('task.title.merge-mr'))}"><svg class="ico ico-sm"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>` : ''}
     ${tg.last_error ? `<span class="t-err" title="${esc(tg.last_error)}">${svgIco('alert')} ${tr('task.failed')}</span>` : ''}
   </div>${followTarget ? `
   <div class="mr-create followup followup-target" data-followform="tg${tg.id}" hidden>
     <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph-target', { project: tg.project }))}"></textarea>
     ${suiviCapturesHtml()}
+    ${tg.has_review ? boutonSuiviReview(t.id, tg.id) : ''}
+    ${tg.has_verify_fail ? boutonSuiviVerif(t.id, tg.id) : ''}
     <button class="btn" data-followcancel="tg${tg.id}">${tr('ui.cancel')}</button>
     <button class="btn btn-primary" data-followsubmit="${t.id}" data-followtarget="${tg.id}">${tr('task.btn.run-iteration')}</button>
   </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg, `/tasks/${t.id}/targets/${tg.id}/answer`) : ''}`;
@@ -5725,7 +7215,7 @@ function exploreCard(t) {
         ${(t.targets || []).map((tg) => `<div class="target-line">
           <span class="tag ${(TASK_STATUS[tg.status] || {}).cls || ''}">${(TASK_STATUS[tg.status] || {}).label || tg.status}</span>
           <span class="t-name">${esc(tg.project)}</span>
-          <code>${esc(tg.branch || tr('task.default-branch'))}</code>
+          ${tg.branch ? chipBranche(tg.branch) : `<code>${esc(tr('task.default-branch'))}</code>`}
           ${tg.last_error ? `<span class="t-err" title="${esc(tg.last_error)}">${svgIco('alert')} ${tr('task.failed')}</span>` : ''}
         </div>`).join('')}
       </div>
@@ -5750,6 +7240,12 @@ function exploreCard(t) {
     t.md_path ? `<button class="btn btn-primary" data-tmd="${t.id}" title="${tr('task.title.view-answer')}"><svg class="ico"><use href="#i-doc"/></svg>${tr('task.btn.view-answer')}</button>` : '',
     canRun ? `<button class="btn" data-trun="${t.id}" title="${t.status === 'new' ? tr('task.title.run-explore') : tr('task.title.rerun-explore')}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
     (t.md_path || t.status === 'running') ? followBtn(t, 'tfollow', 'task.title.follow-up', 'task.btn.follow-up') : '',
+    /* B9 — DE LA RÉPONSE AU CODE, SANS RELIRE. On demandait « où est vérifié le jeton » sur
+       trois dépôts, la réponse était bonne, et on rouvrait une session de codage à la main :
+       mêmes dépôts à re-sélectionner, réponse à recopier, et l'agent relisait tout ce qu'il
+       venait de lire. Ce bouton ouvre la modale de codage avec les mêmes projets, la question
+       et la réponse en contexte, et la SESSION D'AGENT de l'exploration en reprise. */
+    t.md_path ? `<button class="btn" data-tcode="${t.id}" title="${esc(tr('task.title.explore-to-code'))}"><svg class="ico"><use href="#i-bot"/></svg>${esc(tr('task.btn.explore-to-code'))}</button>` : '',
     resumeCmdBtn(resume),
   ], [
     `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
@@ -5792,7 +7288,7 @@ function wireTaskActions() {
   on('[data-tfold]', (b) => basculerProjets(b.dataset.tfold));
 
   on('[data-tpushall]', async (b) => {
-    if (!await confirmDialog({ text: tr('confirm.push-all'), confirmLabel: tr('task.btn.push') })) return;
+    if (!await confirmDialog({ title: tr('confirm.push-all.title'), text: tr('confirm.push-all'), confirmLabel: tr('task.btn.push') })) return;
     busy(b, () => api(`/tasks/${b.dataset.tpushall}/push-all`, { method: 'POST' }))
       .then(() => { toast(tr('toast.push-all-lance')); loadTasks(); refreshStatus(); })
       .catch((e) => toast(explainError(e.message), true));
@@ -5851,14 +7347,41 @@ function wireTaskActions() {
   on('[data-tedit]', (b) => openTaskEdit(Number(b.dataset.tedit)).catch((e) => toast(tr('toast.ouverture-impossible', { message: e.message }), true)));
   on('[data-tcopy]', (b) => dupliquerTask(Number(b.dataset.tcopy)).catch((e) => toast(explainError(e.message), true)));
   on('[data-tmd]', (b) => openTaskMd(Number(b.dataset.tmd)));
+  on('[data-tcode]', (b) => coderDepuisExploration(Number(b.dataset.tcode)));
+  on('[data-tgjira]', async (b) => {
+    /* La confirmation NOMME le ticket : « prévenir Jira » sans dire lequel se clique sans
+       réfléchir, et c'est un commentaire chez quelqu'un d'autre. La clé est relue côté
+       serveur — celle-ci ne sert qu'à la question. */
+    if (!await confirmDialog({
+      title: tr('task.btn.notify-jira'),
+      text: tr('task.notify-jira.confirm', { key: b.dataset.key || '?', iid: b.dataset.iid }),
+      confirmLabel: tr('task.btn.notify-jira'),
+    })) return;
+    try {
+      const r = await busy(b, () => api(`/tasks/${b.dataset.task}/targets/${b.dataset.tgjira}/notify-jira`, { method: 'POST' }));
+      toast(tr(r.transitioned ? 'task.notify-jira.done-moved' : 'task.notify-jira.done', { key: r.key }));
+    } catch (e) { toast(explainError(e.message), true); }
+  });
 
   // --- actions PAR PROJET (codage) ---
   on('[data-tgdiff]', (b) => openTargetDiff(b.dataset.task, b.dataset.tgdiff));
   on('[data-tgout]', (b) => openTargetOutput(b.dataset.task, b.dataset.tgout));
   on('[data-tgpush]', async (b) => {
     const where = `${b.dataset.project} · ${b.dataset.branch}`;
-    if (!await confirmDialog({ text: tr('confirm.push-branch', { branch: b.dataset.branch, project: b.dataset.project }), confirmLabel: tr('task.btn.push'), danger: false })) return;
-    busy(b, () => api(`/tasks/${b.dataset.task}/targets/${b.dataset.tgpush}/push`, { method: 'POST' }))
+    /* LE FORÇAGE EST UNE DÉCISION, ET ELLE SE PREND ICI. La case est décochée par défaut ; elle
+       n'arrive pré-cochée que dans le cas où l'on SAIT que le push normal sera refusé — la
+       branche vient d'être rattrapée, son historique a été réécrit. Le texte le dit alors. */
+    const rattrapee = !!b.dataset.force;
+    const r = await confirmDialog({
+      text: rattrapee
+        ? tr('confirm.push-force', { branch: b.dataset.branch, project: b.dataset.project })
+        : tr('confirm.push-branch', { branch: b.dataset.branch, project: b.dataset.project }),
+      confirmLabel: tr('task.btn.push'),
+      danger: false,
+      check: { label: tr('confirm.push.force-check'), checked: rattrapee },
+    });
+    if (!r.ok) return;
+    busy(b, () => api(`/tasks/${b.dataset.task}/targets/${b.dataset.tgpush}/push`, { method: 'POST', body: { force: r.checked } }))
       .then(() => { toast(tr('toast.push-lance', { where: where })); refreshStatus(); })
       .catch((e) => toast(explainError(e.message), true));
   });
@@ -5874,6 +7397,10 @@ function wireTaskActions() {
     openMergeModal({
       url: `/tasks/${b.dataset.task}/targets/${b.dataset.tgmerge}/merge`,
       label: `!${b.dataset.iid}`, target: b.dataset.target, forge: b.dataset.forge,
+      project: b.dataset.project || '',
+      // Seul chemin où le rattrapage a un sens : il faut une session pour rejouer la branche.
+      check: `/tasks/${b.dataset.task}/targets/${b.dataset.tgmerge}/merge-check`,
+      rebase: `/tasks/${b.dataset.task}/targets/${b.dataset.tgmerge}/update-base`,
       onDone: () => loadTasks(),
     });
   });
@@ -5887,6 +7414,58 @@ function wireTaskActions() {
   on('[data-tgfollow]', (b) => {
     const form = $(`#taskList .followup[data-followform="tg${b.dataset.tgfollow}"]`);
     if (form) { form.hidden = false; form.querySelector('.followup-text').focus(); }
+  });
+  /* Remplir le champ de suivi avec un prompt RENDU PAR LE SERVEUR : rapport de review ou
+     rapport de vérification. Lui seul a les fichiers et les verdicts ; le navigateur, non.
+     Un seul chemin pour les deux boutons — deux copies auraient fini par ne plus demander
+     confirmation du même côté. */
+  const remplirSuivi = async (b, { taskAttr, targetAttr, url, label, compteur }) => {
+    const idTache = b.dataset[taskAttr];
+    const idCible = b.dataset[targetAttr];
+    const cle = idCible ? `tg${idCible}` : idTache;
+    const champ = $(`#taskList .followup[data-followform="${cle}"] .followup-text`);
+    if (!champ) return;
+    try {
+      const q = idCible ? `?target_id=${idCible}` : '';
+      const d = await busy(b, () => api(`/tasks/${idTache}/${url}${q}`));
+      /* On ne détruit pas ce qui est écrit sans demander : le champ garde un brouillon
+         enregistré, parfois rédigé plusieurs jours plus tôt. */
+      if (champ.value.trim() && !await confirmDialog({
+        title: tr('confirm.followup-review.title'),
+        text: tr('confirm.followup-review.text'),
+        confirmLabel: tr(label),
+        danger: false,
+      })) return;
+      champ.value = d.prompt;
+      champ.focus();
+      champ.dispatchEvent(new Event('input', { bubbles: true }));   // l'autosave doit le voir
+      const n = compteur(d);
+      toast(tr('toast.followup-review.filled', { n, count: n }));
+    } catch (e) { toast(e.message, true); }
+  };
+  on('[data-followreview]', (b) => remplirSuivi(b, {
+    taskAttr: 'followreview', targetAttr: 'followreviewtarget', url: 'review-prompt',
+    label: 'task.btn.followup-review', compteur: (d) => d.projets.length,
+  }));
+  on('[data-followverif]', (b) => remplirSuivi(b, {
+    taskAttr: 'followverif', targetAttr: 'followveriftarget', url: 'verify-prompt',
+    label: 'task.btn.followup-verify', compteur: (d) => d.verificateurs.length,
+  }));
+  /* Le rebase RÉÉCRIT l'historique de la branche : on le dit avant, pas après. Le push qui
+     suivra devra être forcé, et une branche que d'autres ont pu tirer n'est pas un détail. */
+  on('[data-tgrebase]', async (b) => {
+    const { branch, base } = b.dataset;
+    if (!await confirmDialog({
+      title: tr('confirm.update-base.title', { branch, base }),
+      text: tr('confirm.update-base.text', { branch, base }),
+      confirmLabel: tr('task.btn.update-base', { base }),
+      danger: false,
+    })) return;
+    try {
+      await api(`/tasks/${b.dataset.task}/targets/${b.dataset.tgrebase}/update-base`, { method: 'POST' });
+      toast(tr('toast.update-base.started', { branch }));
+      refreshStatus(); loadTasks();
+    } catch (e) { toast(e.message, true); }
   });
   on('[data-followcancel]', (b) => {
     const form = $(`#taskList .followup[data-followform="${b.dataset.followcancel}"]`);
@@ -6348,6 +7927,10 @@ async function openBulk(forge = 'gitlab') {
   const title = $('#bulkTitle');
   if (title) title.textContent = tr(`settings.bulk.title.${bulkForge}`);
   $('#bulkModal').hidden = false;
+  /* LE FOCUS SUIT LA MODALE. Il restait sur le bouton « Ajout en masse », derrière le voile :
+     la première frappe ne filtrait rien, et Tab repartait du haut de la page. Une liste de
+     cinquante dépôts s'aborde par son filtre. */
+  $('#bulkSearch').focus({ preventScroll: true });
   try {
     bulkProjects = await api(`/${bulkForge}/projects`);
     renderBulk();
@@ -6428,6 +8011,12 @@ async function loadRules() {
         <button class="btn btn-icon btn-sm btn-danger" data-rdel="${r.id}" title="${tr('settings.rule.del-title')}"><svg class=\"ico\"><use href=\"#i-close\"/></svg></button>
       </div>
       <textarea data-f="content" rows="3" class="rule-content">${esc(r.content)}</textarea>
+      ${/* COMBIEN DE MERGE REQUESTS OUVERTES CETTE RÈGLE TOUCHE-T-ELLE ? Une règle qui ne
+            matche plus rien reste dans la liste sans qu'on le sache. Calculé localement,
+            sans IA : les chemins modifiés et le nom de branche sont en base. */''}
+      <p class="field-note${r.open_mrs ? '' : ' rule-vide'}">${esc(r.open_mrs
+    ? tr('settings.rule.reach', { n: r.open_mrs, count: r.open_mrs })
+    : tr('settings.rule.reach-none'))}</p>
     </div>`).join('') : emptyState({ icon: 'sliders', title: tr('settings.rule.empty.title'), text: tr('settings.rule.empty.text') });
 
   const ruleEl = (id) => $(`#ruleList .repo-row[data-rule="${id}"]`);
@@ -6478,11 +8067,17 @@ $('#ruleForm').addEventListener('submit', async (e) => {
     return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s % 60)}` : `${pad(m)}:${pad(s % 60)}`;
   };
   const render = () => {
-    $('#chronoTime').textContent = fmt(elapsed());
+    const ms = elapsed();
+    $('#chronoTime').textContent = fmt(ms);
     const running = !!startedAt;
     $('#chrono').classList.toggle('running', running);
+    /* À zéro et à l'arrêt, il se réduit : l'heure ne dit rien et la remise à zéro n'a rien à
+       remettre. C'est l'état dans lequel il passe l'essentiel du temps, en haut à droite de
+       tous les écrans. */
+    $('#chrono').classList.toggle('idle', !running && ms === 0);
     $('#chronoStart').hidden = running;
     $('#chronoPause').hidden = !running;
+    $('#chronoReset').hidden = !running && ms === 0;
   };
   const beat = () => { render(); save(); };               // chaque battement met à jour ET sauvegarde
   const startTick = () => { if (!tick) tick = setInterval(beat, 1000); };
@@ -6592,7 +8187,7 @@ $('#ruleForm').addEventListener('submit', async (e) => {
     }),
     // Une frame PAR review récente
     (d) => (d.recentReviews || []).map((r) => ({
-      t: tr('footer.reviewed', { iid: r.iid, note: r.note10 != null ? ` · ${r.note10}/10` : '', project: r.project, when: r.at ? ` · ${humanAgo(agoMin(r.at, d.now))}` : '' }),
+      t: tr('footer.reviewed', { iid: r.iid, note: r.note10 != null ? ` · ${fmtNote10(r.note10)}` : '', project: r.project, when: r.at ? ` · ${humanAgo(agoMin(r.at, d.now))}` : '' }),
       w: 2,
     })),
     // Plusieurs frames PAR projet (volume, note moyenne, meilleure, pire)
@@ -6839,7 +8434,9 @@ tipEl.setAttribute('role', 'tooltip');
 document.body.appendChild(tipEl);
 
 function showTip(el) {
-  tipEl.textContent = el.dataset.tip;
+  // `data-when` : le texte est calculé maintenant, pas au rendu (cf. `dateHtml`).
+  tipEl.textContent = el.dataset.tip || (el.dataset.when ? depuis(el.dataset.when) : '');
+  if (!tipEl.textContent) return;
   // Tooltip « code » (large, monospace, multi-ligne) pour le contenu d'une commande Makefile.
   tipEl.classList.toggle('tip-code', el.classList.contains('hint-code'));
   tipEl.classList.add('on');
@@ -6859,14 +8456,19 @@ const hideTip = () => tipEl.classList.remove('on');
    des éléments non cliquables (badges de santé du menu) ont aussi besoin d'expliquer
    ce qu'ils affichent. */
 document.addEventListener('mouseover', (e) => {
-  const h = e.target.closest && e.target.closest('[data-tip]');
+  const h = e.target.closest && e.target.closest('[data-tip], [data-when]');
   if (h) showTip(h);
 });
 document.addEventListener('mouseout', (e) => {
-  if (e.target.closest && e.target.closest('[data-tip]')) hideTip();
+  if (e.target.closest && e.target.closest('[data-tip], [data-when]')) hideTip();
 });
+/* LA BULLE NE S'OUVRE QUE SUR SON ⓘ — au survol, au clic, ou quand l'icône elle-même prend le
+   focus. Une version l'ouvrait aussi au focus du CHAMP, pour compenser les icônes sorties du
+   parcours de tabulation : elle s'affichait alors par-dessus le champ qu'on venait de cliquer,
+   masquant ce qu'on allait y écrire. Une explication qu'on n'a pas demandée et qui cache la
+   saisie coûte plus qu'elle n'apporte. */
 document.addEventListener('focusin', (e) => {
-  const h = e.target.closest && e.target.closest('[data-tip]');
+  const h = e.target.closest && e.target.closest('[data-tip], [data-when]');
   if (h) showTip(h); else hideTip();
 });
 document.addEventListener('focusout', hideTip);
@@ -7132,6 +8734,15 @@ function gitRenderPreview(pv) {
       + (r.target ? ' <span class="muted git-pv-arrow">→</span> <code class="git-pv-target">' + esc(r.target) + '</code>' : '');
     const sha = r.sha ? '<span class="muted git-sha">' + esc(String(r.sha).slice(0, 8)) + '</span>' : '';
     const when = r.committed_date ? '<span class="muted">' + fmtDate(r.committed_date) + '</span>' : '';
+    /* CE QUI DIT SI C'EST SÛR. Trois cas, trois couleurs : mergée (vert, on peut y aller),
+       merge request encore ouverte (ambre, on va casser quelque chose), ni l'un ni l'autre
+       (ambre aussi — « non mergée » est une information, pas un blocage). */
+    const surete = r.state !== 'ok' || !gitIsDelete() ? ''
+      : (r.open_mr
+        ? '<span class="git-sur git-sur-mr">' + esc(tr('git.safe.open-mr', { iid: r.open_mr.iid })) + '</span>'
+        : (r.merged
+          ? '<span class="git-sur git-sur-ok">' + esc(tr('git.safe.merged', { branch: r.merged_into || '' })) + '</span>'
+          : '<span class="git-sur git-sur-non">' + esc(tr('git.safe.not-merged')) + '</span>'));
     // La commande n'est affichée que sur les lignes qui vont s'exécuter : la
     // montrer sur une ligne bloquée laisserait croire qu'elle passe.
     const cmd = r.cmd ? '<tr class="git-cmd-row"><td></td><td colspan="2">' +
@@ -7139,7 +8750,7 @@ function gitRenderPreview(pv) {
       '<div class="git-cmd"><span class="git-cmd-tag">' + esc(tr('git.cmd.equiv')) + '</span><code>' + esc(r.cmd.equiv) + '</code></div>' +
       '<div class="git-cmd git-cmd-api"><span class="git-cmd-tag">' + esc(tr('git.cmd.api')) + '</span><code>' + esc(r.cmd.api) + '</code></div>' +
       '</td></tr>' : '';
-    return '<tr class="git-pv-' + st.cls + '"><td>' + esc(r.project) + '</td><td>' + ref + ' ' + sha + ' ' + when + '</td>' +
+    return '<tr class="git-pv-' + st.cls + '"><td>' + esc(r.project) + '</td><td>' + ref + ' ' + sha + ' ' + when + ' ' + surete + '</td>' +
       '<td>' + st.icon + ' ' + esc(label) + (r.error ? ' <span class="muted">' + esc(r.error) + '</span>' : '') + '</td></tr>' + cmd;
   }).join('');
   const c2 = pv.counts;
@@ -7196,6 +8807,14 @@ async function gitExecute() {
 }
 
 /* ---- Explorateur de branches ---- */
+/* La session qui a créé la branche mène à Dev IA — c'est là qu'on la relance ou qu'on la lit. */
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-git-sess]');
+  if (!b) return;
+  navTab('task');
+  loadTasks();
+});
+
 function gitOriginCell(b) {
   if (!b.origin) return '<span class="muted">—</span>';
   const name = '<code>' + esc(b.origin) + '</code>';
@@ -7269,9 +8888,15 @@ function gitRenderExplorer(d, box) {
           ? '<button class="btn btn-sm" data-gitmr="' + esc(b.name) + '" data-target="' + esc(mrTarget) + '" title="' + esc(tr('git.mr.title', { target: mrTarget })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>' + esc(tr('git.btn.create-mr')) + '</button>'
           : '');
       return '<tr' + (b.default ? ' class="git-ex-default"' : '') + '><td>' + pick + '</td>' +
-        '<td><code>' + esc(b.name) + '</code>' + (b.default ? ' <span class="tag">' + esc(tr('git.tag.default')) + '</span>' : '') +
+        '<td>' + chipBranche(b.name) + (b.default ? ' <span class="tag">' + esc(tr('git.tag.default')) + '</span>' : '') +
           (b.protected ? ' <span class="tag stale">' + esc(tr('git.tag.protected')) + '</span>' : '') +
-          (cleanable ? ' ' + svgIco('trash') : '') + (stale && !b.merged_into ? ' ' + svgIco('alert') : '') + '</td>' +
+          (cleanable ? ' ' + svgIco('trash') : '') + (stale && !b.merged_into ? ' ' + svgIco('alert') : '') +
+          /* CE QUE LA BRANCHE PORTE. Le graphe disait « ahead 3, behind 12 » et rien d'autre :
+             la note de la review de sa merge request et la session de codage qui l'a créée
+             sont en base, et ce sont elles qui font d'une ligne un plan de travail. */
+          (b.mr_note != null ? ' <span class="git-ex-note">' + esc(fmtNote10(b.mr_note * 10)) + '</span>' : '') +
+          (b.session ? ' <button type="button" class="lien-reglage git-ex-sess" data-git-sess="' + b.session.id + '" title="'
+            + esc(tr('git.branch.session-title')) + '">' + svgIco('bot') + ' ' + esc(String(b.session.label || '').slice(0, 40)) + '</button>' : '') + '</td>' +
         '<td>' + ab + '</td><td>' + gitOriginCell(b) + '</td><td>' + merged + '</td>' +
         '<td class="muted">' + (b.committed_date ? fmtDate(b.committed_date) : '—') + (b.author ? ' · ' + esc(b.author) : '') + '</td>' +
         '<td class="git-ex-actions">' + mrBtn + '</td></tr>';
@@ -7515,6 +9140,7 @@ function navRenderRoot() {
   $('.nav-root', box).addEventListener('change', (e) => {
     navRootId = e.target.value;
     navTargets = [{}];        // les projets choisis appartenaient à l'autre répertoire
+    navMemoriser();
     navDropResult();
     navRenderTargets();
   });
@@ -7532,6 +9158,32 @@ function navTargetRow(idx, sel) {
     ${comboHtml('nav-branch', { value: sel.branch || '', label: sel.branch || '', ph: tr('git.navigate.ph.branch') })}
     <button type="button" class="btn btn-icon btn-sm btn-danger" data-navrm="${idx}" title="${esc(tr('git.navigate.remove-row'))}"><svg class="ico ico-sm"><use href="#i-close"/></svg></button>
   </div>`;
+}
+
+/* Les projets de la Navigation se retiennent AUSSI, par répertoire : « checkout develop sur
+   ces trois-là » est le geste du lundi matin, et on re-choisissait les trois. On ne retient
+   que les NOMS de projet, pas la branche : elle, on la choisit à chaque fois — c'est même tout
+   le propos de l'écran. */
+const NAV_MEMO = 'aidevtools_git_nav_memo';
+const navMemo = () => { try { return JSON.parse(localStorage.getItem(NAV_MEMO) || '{}'); } catch { return {}; } };
+function navMemoriser() {
+  if (!navRootId) return;
+  try {
+    const m = navMemo();
+    m[navRootId] = navTargets.map((x) => x.name).filter(Boolean);
+    localStorage.setItem(NAV_MEMO, JSON.stringify(m));
+  } catch { /* stockage indisponible : on perd le confort, pas la fonction */ }
+}
+async function navRestaurer() {
+  if (!navRootId || navTargets.some((x) => x.name)) return;
+  const noms = navMemo()[navRootId] || [];
+  if (!noms.length) return;
+  let dispo = [];
+  try { dispo = (await localProjectsOf(navRootId)).filter((p) => p.git).map((p) => p.name); } catch { return; }
+  const gardes = noms.filter((n) => dispo.includes(n));   // un projet disparu ne revient pas
+  if (!gardes.length) return;
+  navTargets = gardes.map((name) => ({ name }));
+  navRenderTargets();
 }
 
 function navRenderTargets() {
@@ -7559,6 +9211,14 @@ function navReadTargets() {
     branch: row.querySelector('.nav-branch').value,
   })).filter((t) => t.name);
 }
+
+/* Le choix d'un projet met à jour l'état ET la mémoire : sans lire l'écran ici, `navTargets`
+   ne connaîtrait que les lignes ajoutées, pas les projets qu'on y a mis. */
+$('#navTargetRows') && $('#navTargetRows').addEventListener('change', (e) => {
+  if (!e.target.classList || !e.target.classList.contains('nav-project')) return;
+  navTargets = navReadTargets().map((x) => ({ name: x.name, branch: x.branch }));
+  navMemoriser();
+});
 
 const NAV_STATE = {
   done: { cls: 'ok', icon: svgIco('check'), key: 'git.navigate.state.done' },
@@ -7620,7 +9280,7 @@ async function navCheckout() {
   finally { $('#navInfo').textContent = ''; }
 }
 
-$('#navAddTarget') && $('#navAddTarget').addEventListener('click', () => { navTargets.push({}); navDropResult(); navRenderTargets(); });
+$('#navAddTarget') && $('#navAddTarget').addEventListener('click', () => { navTargets.push({}); navDropResult(); navRenderTargets(); navMemoriser(); });
 $('#navGo') && $('#navGo').addEventListener('click', navCheckout);
 document.addEventListener('change', (e) => {
   const row = e.target.closest && e.target.closest('.nav-row');
@@ -7644,7 +9304,7 @@ document.addEventListener('click', (e) => {
   const rm = e.target.closest && e.target.closest('[data-navrm]');
   if (!rm) return;
   const i = Number(rm.dataset.navrm);
-  if (navTargets.length > 1) { navTargets.splice(i, 1); navDropResult(); navRenderTargets(); }
+  if (navTargets.length > 1) { navTargets.splice(i, 1); navDropResult(); navRenderTargets(); navMemoriser(); }
 });
 
 /* ---------- Comparer le contenu de deux dépôts ----------
@@ -7832,6 +9492,7 @@ function showGitSub(name) {
   if (name === 'history') gitLoadHistory();
   if (name === 'commands') loadGitCommands();
   if (name === 'compare') renderCompareCotes();
+  if (name === 'merge') mergeLoad();
 }
 
 // Explorateur : sélection MULTIPLE de dépôts (cases à cocher) avec recherche à la frappe
@@ -7853,23 +9514,375 @@ function renderGitExploreRepos() {
 async function loadGit() {
   await loadRepoOptions();
   await loadLocalRoots();
+  gitMajVide();
+  majBranchesMergees();
   renderGitExploreRepos();
   navRenderRoot();
   navRenderTargets();
+  navRestaurer();          // les projets du dernier passage, s'ils existent encore
   gitRenderTargets();
   let sub = 'actions';
   try { sub = localStorage.getItem('aidevtools_gitsub') || 'actions'; } catch { /* stockage indisponible */ }
   showGitSub(sub);
 }
 
+/* SANS DÉPÔT SUIVI, CET ÉCRAN N'A RIEN À DIRE — et il le disait mal : une ligne de projet
+   désactivée portant « (ajoute d'abord un dépôt) », un combo de branches bloqué sur
+   « chargement… », et un bouton « Vérifier une branche » seul en haut. Le même vide guidé que
+   partout ailleurs, avec la porte qui va avec. */
+/* ---------- B7 : « Supprimer les N branches de MR mergées » ----------
+   Le bouton n'apparaît QUE s'il y a quelque chose à nettoyer, et il ne supprime rien : il
+   REMPLIT le lot, puis lance l'aperçu habituel — qui dit branche par branche si elle existe
+   encore, si elle est protégée, et si c'est sûr (« mergée dans main » / « MR ouverte »). */
+let brMergees = { total: 0, repos: [] };
+async function majBranchesMergees() {
+  const bar = $('#gitMergedBar');
+  const btn = $('#gitMergedFill');
+  if (!bar || !btn) return;
+  try { brMergees = await api('/git/merged-branches'); } catch { brMergees = { total: 0, repos: [] }; }
+  bar.hidden = !brMergees.total;
+  btn.textContent = tr('git.merged.fill', { n: brMergees.total, count: brMergees.total });
+}
+$('#gitMergedFill') && $('#gitMergedFill').addEventListener('click', () => {
+  if (!brMergees.total) return;
+  $('#gitAction').value = 'delete_branch';
+  gitApplyAction();
+  gitTargets = brMergees.repos.map((r) => ({ repo_id: r.repo_id, refs: r.refs.map((x) => x.name) }));
+  gitRenderTargets();
+  // Les refs de chaque ligne se chargent après le rendu : l'aperçu attend qu'elles soient là.
+  setTimeout(gitDoPreview, 600);
+});
+
+function gitMajVide() {
+  const vide = $('#gitNoRepo');
+  if (!vide) return;
+  const sans = !repoOptions.length;
+  vide.hidden = !sans;
+  if (sans) {
+    vide.innerHTML = emptyState({ icon: 'branch', title: tr('git.norepo.title'),
+      text: tr('git.norepo.text'),
+      actions: [{ act: 'go-repos', label: tr('git.norepo.action') }] });
+  }
+  /* Le formulaire disparaît AVEC ses impasses : le laisser grisé sous le vide guidé donnerait
+     deux réponses à la même question. */
+  const form = $('#gsub-actions .form');
+  if (form) form.hidden = sans;
+  const intro = $('#gsub-actions > p.muted');
+  if (intro) intro.hidden = sans;
+}
+
 $$('#tab-git .subnav [data-gsub]').forEach((b) => b.addEventListener('click', () => showGitSub(b.dataset.gsub)));
 $('#gitAction').addEventListener('change', gitApplyAction);
+
+/* ============ Git · Merge de branche à branche (onglet Git → Merge) ============
+ *
+ * L'écran de conflits est le cœur : il doit se comprendre sans mode d'emploi. Le parti pris est
+ * de ne JAMAIS montrer un fichier entier avec des marqueurs `<<<<<<<` à déchiffrer. On montre,
+ * conflit par conflit, les deux versions face à face, chacune avec son bouton « Garder ». Trois
+ * lignes de contexte de part et d'autre situent le passage sans noyer l'écran.
+ *
+ * Qui assemble quoi : les boutons envoient des CHOIX au serveur, qui recolle (`gitmerge.recoller`).
+ * L'écran calcule bien un aperçu, mais pour l'AFFICHER seulement — la version qui part sur le
+ * disque est toujours celle du serveur. L'édition à la main, elle, envoie le texte.
+ */
+let mergeEtat = null;              // état du merge ouvert
+let mergeFichier = null;           // { path, morceaux, choix: [], edite: bool, texte }
+
+const mergeRefsCache = new Map();  // repoId -> [{ value, label }]
+async function mergeRefs(repoId) {
+  if (!repoId) return [];
+  if (mergeRefsCache.has(repoId)) return mergeRefsCache.get(repoId);
+  const d = await api(`/git/refs?repo_id=${repoId}&kind=branch`);
+  const opts = (d.refs || []).map((r) => ({ value: r.name, label: r.name, hint: r.default ? tr('git.refs.default-suffix') : '' }));
+  mergeRefsCache.set(repoId, opts);
+  return opts;
+}
+const mergeRepoId = () => Number(($('#mergeRepoBox .rc-id') || {}).value || 0);
+
+/* Les trois choix passent par des combos AVEC RECHERCHE : un dépôt actif compte des centaines
+   de branches, et `npm run check` refuse une liste de refs sans champ de recherche. */
+function mergeRenderPickers() {
+  const rb = $('#mergeRepoBox'); if (!rb) return;
+  rb.innerHTML = repoComboHtml(mergeRepoId() || null, { idClass: 'merge-repo' });
+  $('#mergeSourceBox').innerHTML = comboHtml('merge-source', { ph: tr('git.merge.ph-branch') });
+  $('#mergeTargetBox').innerHTML = comboHtml('merge-target', { ph: tr('git.merge.ph-branch') });
+  wireRepoCombos($('#gsub-merge'));
+  wireCombo($('#gsub-merge'), 'merge-source', () => mergeRefs(mergeRepoId()));
+  wireCombo($('#gsub-merge'), 'merge-target', () => mergeRefs(mergeRepoId()));
+}
+
+/* Changer de dépôt vide les deux branches : garder « main » d'un autre dépôt donnerait un
+   formulaire qui a l'air valide et une erreur au lancement. */
+document.addEventListener('change', (e) => {
+  if (!e.target.classList || !e.target.classList.contains('merge-repo')) return;
+  for (const cls of ['merge-source', 'merge-target']) {
+    const h = $(`.${cls}`, $('#gsub-merge')); const vis = $(`[data-combo="${cls}"]`, $('#gsub-merge'));
+    if (h) { h.value = ''; h.dataset.label = ''; }
+    if (vis) vis.value = '';
+  }
+});
+
+async function mergeLoad() {
+  mergeRenderPickers();
+  await mergeRenderRunning();
+}
+
+/** Les merges non soldés : on peut en reprendre un, ou l'abandonner. */
+async function mergeRenderRunning() {
+  const box = $('#mergeRunning'); if (!box) return;
+  let liste = [];
+  try { liste = await api('/git/merges'); } catch { liste = []; }
+  if (!liste.length) { box.innerHTML = ''; if (!mergeEtat) $('#mergeWork').hidden = true; return; }
+  box.innerHTML = `<div class="box merge-running"><h4>${esc(tr('git.merge.running'))}</h4>${liste.map((m) => `
+    <div class="merge-run-row">
+      <span><strong>${esc(m.project)}</strong> <code>${esc(m.source_branch)}</code> → <code>${esc(m.target_branch)}</code>
+      <span class="tag ${m.status === 'conflict' ? 'stale' : 'reviewed'}">${esc(tr(`git.merge.status.${m.status}`))}</span></span>
+      <span class="spacer"></span>
+      <button class="btn btn-sm btn-primary" data-mopen="${m.id}">${esc(tr('git.merge.resume'))}</button>
+      <button class="btn btn-sm btn-danger" data-mdrop="${m.id}">${esc(tr('git.merge.abandon'))}</button>
+    </div>`).join('')}</div>`;
+}
+
+async function mergeOuvrir(id) {
+  mergeEtat = await api(`/git/merges/${id}`);
+  mergeFichier = null;
+  const premier = mergeEtat.conflits[0];
+  if (premier) await mergeOuvrirFichier(premier); else mergeRenderWork();
+}
+
+/* Le fichier ouvert : ses morceaux, et un choix par conflit. « ours » d'office — la destination
+   est ce qui existe déjà, c'est le repli le moins surprenant, et chaque conflit reste à
+   confirmer avant que le fichier ne soit marqué résolu. */
+async function mergeOuvrirFichier(chemin) {
+  const d = await api(`/git/merges/${mergeEtat.id}/file?path=${encodeURIComponent(chemin)}`);
+  const nb = d.morceaux.filter((m) => m.type === 'conflit').length;
+  mergeFichier = { path: chemin, morceaux: d.morceaux, texte: d.texte, choix: Array(nb).fill('ours'), edite: false };
+  mergeRenderWork();
+}
+
+const mergeApercu = () => {
+  /* AFFICHAGE SEULEMENT. Ce que le serveur écrira vient de `gitmerge.recoller`, à qui l'on
+     envoie les choix : deux assembleurs finiraient par ne plus dire la même chose. */
+  let n = 0;
+  return mergeFichier.morceaux.map((m) => {
+    if (m.type === 'stable') return m.lignes.join('\n');
+    const c = mergeFichier.choix[n]; n += 1;
+    return (c === 'theirs' ? m.theirs : c === 'deux' ? [...m.ours, ...m.theirs] : m.ours).join('\n');
+  }).join('\n');
+};
+
+function mergeRenderWork() {
+  const box = $('#mergeWork'); if (!box) return;
+  if (!mergeEtat) { box.hidden = true; return; }
+  box.hidden = false;
+  const e = mergeEtat;
+  const reste = e.conflits.length;
+  const fini = e.status === 'committed' || e.status === 'pushed';
+  box.innerHTML = `
+    <div class="box merge-head">
+      <div>
+        <strong>${esc(e.project)}</strong> — <code>${esc(e.source_branch)}</code> → <code>${esc(e.target_branch)}</code>
+        <span class="tag ${reste ? 'stale' : 'done'}">${esc(reste
+    ? tr('git.merge.left', { n: reste, count: reste })
+    : tr(`git.merge.status.${e.status}`))}</span>
+      </div>
+      <div class="spacer"></div>
+      ${fini ? '' : `<button class="btn btn-danger" id="mergeAbandon">${esc(tr('git.merge.abandon'))}</button>`}
+      ${e.status === 'ready' ? `<button class="btn btn-primary" id="mergeCommit"><svg class="ico"><use href="#i-save"/></svg>${esc(tr('git.merge.commit.go'))}</button>` : ''}
+      ${e.status === 'committed' ? `<button class="btn btn-primary" id="mergePush"><svg class="ico"><use href="#i-upload"/></svg>${esc(tr('git.merge.push'))}</button>` : ''}
+    </div>
+    ${e.status === 'pushed' ? `<p class="converge-note">${svgIco('check')} <span>${esc(tr('git.merge.pushed', { target: e.target_branch }))}</span></p>` : ''}
+    ${reste || mergeFichier ? `<div class="merge-body">
+      <div class="merge-files">${(e.conflits.length ? e.conflits : [mergeFichier && mergeFichier.path].filter(Boolean)).map((f) => `
+        <button class="mf-item${mergeFichier && mergeFichier.path === f ? ' active' : ''}" data-mfile="${esc(f)}">
+          ${svgIco('alert')} <span>${esc(f)}</span></button>`).join('')}
+        ${e.prets.length ? `<div class="mf-done">${esc(tr('git.merge.done-files', { n: e.prets.length, count: e.prets.length }))}</div>` : ''}
+      </div>
+      <div class="merge-pane" id="mergePane">${mergeFichier ? mergePaneHtml() : `<p class="muted">${esc(tr('git.merge.pick-file'))}</p>`}</div>
+    </div>` : ''}`;
+}
+
+function mergePaneHtml() {
+  const f = mergeFichier;
+  const e = mergeEtat;
+  if (f.edite) {
+    return `<div class="mp-head"><code>${esc(f.path)}</code>
+        <span class="spacer"></span>
+        <button class="btn btn-sm" data-medit="0">${esc(tr('git.merge.back-to-choices'))}</button>
+        <button class="btn btn-sm btn-primary" id="mergeResolveText">${esc(tr('git.merge.resolve'))}</button></div>
+      <p class="muted">${esc(tr('git.merge.edit-hint'))}</p>
+      <textarea id="mergeEditor" class="merge-editor" spellcheck="false">${esc(mergeApercu())}</textarea>`;
+  }
+  let n = -1;
+  const corps = f.morceaux.map((m, i) => {
+    if (m.type === 'stable') {
+      /* Trois lignes de contexte de chaque côté : de quoi se situer, pas de quoi relire le
+         fichier. Un conflit se juge sur ses bords, pas sur les deux cents lignes d'avant. */
+      const avant = i === 0 ? [] : m.lignes.slice(0, 3);
+      const apres = m.lignes.slice(-3);
+      const bouts = m.lignes.length <= 6 ? [m.lignes] : [avant, apres];
+      return `<pre class="cf-ctx">${bouts.map((b) => esc(b.join('\n'))).join('\n<span class="cf-gap">⋯</span>\n')}</pre>`;
+    }
+    n += 1;
+    const c = f.choix[n];
+    const bloc = (cote, lignes, libelle) => `<div class="cf-side cf-${cote}${c === cote || (c === 'deux') ? ' cf-keep' : ''}">
+        <div class="cf-lab"><span>${esc(libelle)}</span>
+          <button class="btn btn-sm${c === cote ? ' btn-primary' : ''}" data-keep="${cote}" data-h="${n}">${esc(tr('git.merge.keep'))}</button></div>
+        <pre>${esc(lignes.join('\n')) || `<span class="muted">${esc(tr('git.merge.empty-side'))}</span>`}</pre></div>`;
+    return `<div class="cf-hunk" data-hunk="${n}">
+      <div class="cf-num">${esc(tr('git.merge.hunk', { n: n + 1, total: f.choix.length }))}</div>
+      ${bloc('ours', m.ours, tr('git.merge.side-ours', { branch: e.target_branch }))}
+      ${bloc('theirs', m.theirs, tr('git.merge.side-theirs', { branch: e.source_branch }))}
+      <div class="cf-both"><button class="btn btn-sm${c === 'deux' ? ' btn-primary' : ''}" data-keep="deux" data-h="${n}">${esc(tr('git.merge.keep-both'))}</button></div>
+    </div>`;
+  }).join('');
+  return `<div class="mp-head"><code>${esc(f.path)}</code>
+      <span class="spacer"></span>
+      <button class="btn btn-sm" data-medit="1">${esc(tr('git.merge.edit'))}</button>
+      <button class="btn btn-sm btn-primary" id="mergeResolveChoices">${esc(tr('git.merge.resolve'))}</button></div>
+    ${corps}`;
+}
+
+/* Toute l'interaction de l'écran passe par ici : le contenu est réécrit à chaque clic, des
+   écouteurs posés sur les boutons seraient perdus au rendu suivant. */
+document.addEventListener('click', async (e) => {
+  const dans = (sel) => e.target.closest && e.target.closest(sel);
+  const open = dans('[data-mopen]');
+  if (open) { try { await mergeOuvrir(Number(open.dataset.mopen)); } catch (err) { toast(explainError(err.message), true); } return; }
+  const drop = dans('[data-mdrop]');
+  if (drop) {
+    if (!await confirmDialog({ text: tr('git.merge.abandon-confirm'), confirmLabel: tr('git.merge.abandon') })) return;
+    try {
+      await api(`/git/merges/${drop.dataset.mdrop}`, { method: 'DELETE' });
+      mergeEtat = null; mergeFichier = null; $('#mergeWork').hidden = true;
+      await mergeRenderRunning();
+    } catch (err) { toast(explainError(err.message), true); }
+    return;
+  }
+  if (!mergeEtat) return;
+  const fich = dans('[data-mfile]');
+  if (fich) { try { await mergeOuvrirFichier(fich.dataset.mfile); } catch (err) { toast(explainError(err.message), true); } return; }
+  const keep = dans('[data-keep]');
+  if (keep && mergeFichier) {
+    mergeFichier.choix[Number(keep.dataset.h)] = keep.dataset.keep;
+    $('#mergePane').innerHTML = mergePaneHtml();
+    return;
+  }
+  const edit = dans('[data-medit]');
+  if (edit && mergeFichier) { mergeFichier.edite = edit.dataset.medit === '1'; $('#mergePane').innerHTML = mergePaneHtml(); return; }
+  if (dans('#mergeResolveChoices')) { await mergeResoudre({ choices: mergeFichier.choix }); return; }
+  if (dans('#mergeResolveText')) { await mergeResoudre({ content: $('#mergeEditor').value }); return; }
+  if (dans('#mergeAbandon')) {
+    if (!await confirmDialog({ text: tr('git.merge.abandon-confirm'), confirmLabel: tr('git.merge.abandon') })) return;
+    try {
+      await api(`/git/merges/${mergeEtat.id}`, { method: 'DELETE' });
+      mergeEtat = null; mergeFichier = null; $('#mergeWork').hidden = true;
+      await mergeRenderRunning();
+    } catch (err) { toast(explainError(err.message), true); }
+    return;
+  }
+  if (dans('#mergeCommit')) { mergeOuvrirCommit(); return; }
+  if (dans('#mergePush')) {
+    const ok = await confirmDialog({
+      title: tr('git.merge.push.confirm.title', { target: mergeEtat.target_branch }),
+      text: tr('git.merge.push.confirm.text', { target: mergeEtat.target_branch, project: mergeEtat.project }),
+      confirmLabel: tr('git.merge.push'), danger: false,
+    });
+    if (!ok) return;
+    try {
+      mergeEtat = await busy($('#mergePush'), () => api(`/git/merges/${mergeEtat.id}/push`, { method: 'POST' }));
+      toast(tr('git.merge.pushed', { target: mergeEtat.target_branch }));
+      mergeRenderWork(); await mergeRenderRunning();
+    } catch (err) { toast(explainError(err.message), true); }
+  }
+});
+
+async function mergeResoudre(body) {
+  try {
+    mergeEtat = await api(`/git/merges/${mergeEtat.id}/resolve`, {
+      method: 'POST', body: { path: mergeFichier.path, ...body },
+    });
+    const suivant = mergeEtat.conflits[0];
+    mergeFichier = null;
+    if (suivant) await mergeOuvrirFichier(suivant); else mergeRenderWork();
+    await mergeRenderRunning();
+    if (!mergeEtat.conflits.length) toast(tr('git.merge.all-resolved'));
+  } catch (err) { toast(explainError(err.message), true); }
+}
+
+function mergeOuvrirCommit() {
+  $('#mergeCommitIntro').textContent = tr('git.merge.commit.intro', {
+    source: mergeEtat.source_branch, target: mergeEtat.target_branch, project: mergeEtat.project,
+  });
+  $('#mergeCommitMsg').value = mergeEtat.message || '';
+  $('#mergeCommitModal').hidden = false;
+  setTimeout(() => $('#mergeCommitMsg').focus(), 0);
+}
+$('#mergeCommitCancel') && $('#mergeCommitCancel').addEventListener('click', () => { $('#mergeCommitModal').hidden = true; });
+fermerAuFond('#mergeCommitModal', () => { $('#mergeCommitModal').hidden = true; });
+$('#mergeCommitGo') && $('#mergeCommitGo').addEventListener('click', async () => {
+  try {
+    mergeEtat = await busy($('#mergeCommitGo'), () => api(`/git/merges/${mergeEtat.id}/commit`, {
+      method: 'POST', body: { message: $('#mergeCommitMsg').value },
+    }));
+    $('#mergeCommitModal').hidden = true;
+    toast(tr('git.merge.committed'));
+    mergeRenderWork(); await mergeRenderRunning();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
+async function mergeDemarrer({ sansAncetre = false } = {}) {
+  const repoId = mergeRepoId();
+  const source = ($('.merge-source', $('#gsub-merge')) || {}).value || '';
+  const target = ($('.merge-target', $('#gsub-merge')) || {}).value || '';
+  $('#mergeStartInfo').textContent = tr('git.merge.preparing');
+  try {
+    mergeEtat = await busy($('#mergeStart'), () => api('/git/merges', {
+      method: 'POST', body: { repo_id: repoId, source, target, allow_unrelated: sansAncetre },
+    }));
+    $('#mergeUnrelated').hidden = true;
+    mergeFichier = null;
+    const premier = mergeEtat.conflits[0];
+    if (premier) await mergeOuvrirFichier(premier); else mergeRenderWork();
+    await mergeRenderRunning();
+  } catch (err) {
+    /* DEUX BRANCHES SANS ANCÊTRE COMMUN : ce n'est pas une panne, c'est une question. Git
+       refuse par défaut, à juste titre — fusionner deux histoires étrangères juxtapose deux
+       projets. On explique, et on propose de le demander explicitement, plutôt que de laisser
+       un toast rouge sans suite. */
+    if (err.code === 'UNRELATED') {
+      const bloc = $('#mergeUnrelated');
+      bloc.querySelector('.mu-text').textContent = err.message;
+      bloc.hidden = false;
+      return;
+    }
+    toast(explainError(err.message), true);
+  } finally { $('#mergeStartInfo').textContent = ''; }
+}
+$('#mergeStart') && $('#mergeStart').addEventListener('click', () => mergeDemarrer());
+$('#mergeUnrelatedGo') && $('#mergeUnrelatedGo').addEventListener('click', () => mergeDemarrer({ sansAncetre: true }));
 
 /* ============ Git · Commandes multi-projets (onglet « Commandes Git ») ============
  * Choisir un répertoire local → cocher des projets → une commande git (palette ou libre) →
  * prévisualiser → exécuter à la racine de chacun → sortie par projet. Réutilise localRoots /
  * localProjectsOf de la Navigation. Palette alimentée par Réglages → Git (/git-commands). */
 const CMD = { rootId: null, selected: new Set(), palette: [], projects: [] };
+
+/* ---------- Ce qu'on refait tous les matins se retient ----------
+   `git fetch --all --prune` sur les mêmes cinq projets, tous les jours : on re-cochait les
+   cinq, on re-choisissait la commande. Les deux se mémorisent PAR RÉPERTOIRE LOCAL — deux
+   racines n'ont ni les mêmes projets ni les mêmes habitudes. Confort pur : perdre ce stockage
+   ne fait perdre que la pré-sélection. */
+const CMD_MEMO = 'aidevtools_git_cmd_memo';
+const cmdMemo = () => { try { return JSON.parse(localStorage.getItem(CMD_MEMO) || '{}'); } catch { return {}; } };
+function cmdMemoriser(patch) {
+  if (!CMD.rootId) return;
+  try {
+    const m = cmdMemo();
+    m[CMD.rootId] = { ...(m[CMD.rootId] || {}), ...patch };
+    localStorage.setItem(CMD_MEMO, JSON.stringify(m));
+  } catch { /* stockage indisponible : on perd le confort, pas la fonction */ }
+}
 
 function cmdRenderRoot() {
   const box = $('#cmdRootBox'); if (!box) return;
@@ -7890,6 +9903,12 @@ async function cmdRenderProjects() {
   try { projects = (await localProjectsOf(CMD.rootId)).filter((p) => p.git); }
   catch (e) { box.innerHTML = errorBox(explainError(e.message)); return; }
   CMD.projects = projects;
+  /* La sélection retenue pour CETTE racine, filtrée sur ce qui existe encore : un projet
+     supprimé depuis ne doit pas revenir coché — ni compter dans « 5 projets choisis ». */
+  if (!CMD.selected.size) {
+    const gardes = (cmdMemo()[CMD.rootId] || {}).projects || [];
+    for (const nom of gardes) if (projects.some((p) => p.name === nom)) CMD.selected.add(nom);
+  }
   if (!projects.length) { box.innerHTML = `<p class="muted">${esc(tr('git.commands.no-project'))}</p>`; cmdUpdateCount(); return; }
   box.innerHTML = `<div class="cmd-picker-top">
       <input class="cmd-search" type="search" placeholder="${esc(tr('git.commands.search-ph'))}" />
@@ -7898,6 +9917,11 @@ async function cmdRenderProjects() {
     <div class="cmd-plist">${projects.map((p) => `<label class="cmd-pitem"><input type="checkbox" value="${esc(p.name)}"${CMD.selected.has(p.name) ? ' checked' : ''}/>
       <span class="cmd-pname">${esc(p.name)}</span>${p.branch ? `<span class="cmd-pbranch muted">${esc(p.branch)}</span>` : ''}</label>`).join('')}</div>`;
   cmdUpdateCount();
+  /* La dernière commande de CE répertoire est reproposée dans le champ — vide seulement, pour
+     ne jamais écraser ce qu'on est en train d'écrire. */
+  const champ = $('#cmdInput');
+  const derniere = (cmdMemo()[CMD.rootId] || {}).command;
+  if (champ && !champ.value && derniere) champ.value = derniere;
 }
 
 function cmdUpdateCount() {
@@ -7937,6 +9961,8 @@ function cmdPreview() {
   const command = ($('#cmdInput').value || '').trim();
   if (!targets.length) { toast(tr('err.gitcmd.no-target'), true); return; }
   if (!command) { toast(tr('err.gitcmd.empty'), true); return; }
+  // La commande qu'on vient d'aller jusqu'à prévisualiser est celle qu'on refera demain.
+  cmdMemoriser({ command });
   const box = $('#cmdPreviewBox'); box.hidden = false; $('#cmdResultBox').hidden = true;
   box.innerHTML = `<div class="box cmd-preview">
     <h4>${esc(tr('git.commands.preview-h'))}</h4>
@@ -7988,11 +10014,12 @@ $('#cmdPreview') && $('#cmdPreview').addEventListener('click', cmdPreview);
 $('#cmdProjectBox') && $('#cmdProjectBox').addEventListener('change', (e) => {
   if (e.target.id === 'cmdSelAll') {
     for (const cb of $('#cmdProjectBox .cmd-plist input[type="checkbox"]')) { cb.checked = e.target.checked; if (e.target.checked) CMD.selected.add(cb.value); else CMD.selected.delete(cb.value); }
-    cmdUpdateCount(); return;
+    cmdUpdateCount(); cmdMemoriser({ projects: [...CMD.selected] }); return;
   }
   const cb = e.target.closest('.cmd-plist input[type="checkbox"]'); if (!cb) return;
   if (cb.checked) CMD.selected.add(cb.value); else CMD.selected.delete(cb.value);
   cmdUpdateCount();
+  cmdMemoriser({ projects: [...CMD.selected] });   // demain, les mêmes cinq seront déjà cochés
 });
 $('#cmdProjectBox') && $('#cmdProjectBox').addEventListener('input', (e) => {
   if (!e.target.classList || !e.target.classList.contains('cmd-search')) return;
@@ -8080,9 +10107,24 @@ $('#dockerRefresh') && $('#dockerRefresh').addEventListener('click', () => loadD
    elle, garde la distinction : « 2 arrêtés · 1 en erreur ». ORANGE = unhealthy.
    Rafraîchi au démarrage, à l'ouverture de l'onglet ET toutes les 30 s (cf. plus bas) via
    /docker/summary = un seul `docker ps -a` (léger). */
+/* PAS D'ALARME AVANT LA PREMIÈRE VISITE. Sur une installation neuve, l'onglet Docker
+   affichait « 7 » en rouge : sept containers d'autres projets, sur la machine, que Mergerie
+   n'a jamais gérés et que rien dans l'écran ne demande de réparer. Un badge rouge est une
+   dette qu'on doit à quelqu'un — pas un inventaire de la machine. Il n'apparaît donc qu'une
+   fois l'onglet ouvert au moins une fois : à ce moment-là, on sait ce qu'il compte. */
+let dockerVu = false;
+try { dockerVu = localStorage.getItem('aidevtools_docker_vu') === '1'; } catch { /* ignore */ }
+function marquerDockerVu() {
+  if (dockerVu) return;
+  dockerVu = true;
+  try { localStorage.setItem('aidevtools_docker_vu', '1'); } catch { /* ignore */ }
+  refreshDockerBadges();
+}
+
 async function refreshDockerBadges() {
   const eB = $('#dockerErrBadge'); const uB = $('#dockerUnhealthyBadge');
   if (!eB || !uB) return;
+  if (!dockerVu) { eB.hidden = true; uB.hidden = true; return; }
   try {
     const s = await api('/docker/summary');
     const err = s.error || 0; const exited = s.exited || 0; const un = s.unhealthy || 0;
@@ -8121,7 +10163,40 @@ const DLOG = {
   containers: [], selected: new Set(), include: [], exclude: [],
   MAX_RAW: 5000, MAX_DOM: 2000, PALETTE: ['#4f9cf9', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#eab308', '#ec4899'],
 };
-const DLOG_K = { inc: 'aidevtools_docker_log_include', exc: 'aidevtools_docker_log_exclude', tail: 'aidevtools_docker_log_tail', color: 'aidevtools_docker_log_color' };
+const DLOG_K = { inc: 'aidevtools_docker_log_include', exc: 'aidevtools_docker_log_exclude', tail: 'aidevtools_docker_log_tail', color: 'aidevtools_docker_log_color', sel: 'aidevtools_docker_log_selection' };
+
+/* ---------- Les containers cochés se retiennent, PAR PROJET COMPOSE ----------
+   Les filtres inclure / exclure, la couleur et le tail survivaient au rechargement ; la
+   sélection, non — et c'est elle qu'on refait à chaque fois : « api + worker + db », les
+   mêmes trois containers, tous les matins. On retient par PROJET (et non globalement) parce
+   qu'on ne suit pas les mêmes services d'une stack à l'autre. On retient des NOMS, pas des
+   identifiants : un `docker compose up` recrée les containers avec de nouveaux ids, et une
+   sélection mémorisée par id serait vide au premier redémarrage — c'est-à-dire toujours. */
+const dlogSelMemo = () => { try { return JSON.parse(localStorage.getItem(DLOG_K.sel) || '{}'); } catch { return {}; } };
+function dlogMemoriserSelection() {
+  try {
+    const m = dlogSelMemo();
+    const parProjet = {};
+    for (const c of DLOG.containers) {
+      if (!DLOG.selected.has(c.id)) continue;
+      const k = c.project || '';
+      (parProjet[k] = parProjet[k] || []).push(c.name);
+    }
+    /* Un projet dont plus rien n'est coché perd son entrée : garder l'ancienne ferait
+       revenir demain une sélection qu'on vient de défaire. */
+    for (const c of DLOG.containers) { const k = c.project || ''; if (!parProjet[k]) delete m[k]; }
+    Object.assign(m, parProjet);
+    localStorage.setItem(DLOG_K.sel, JSON.stringify(m));
+  } catch { /* stockage indisponible : on perd le confort, pas la fonction */ }
+}
+function dlogRestaurerSelection() {
+  const m = dlogSelMemo();
+  if (!Object.keys(m).length) return;
+  for (const c of DLOG.containers) {
+    const noms = m[c.project || ''];
+    if (noms && noms.includes(c.name)) DLOG.selected.add(c.id);
+  }
+}
 /* Couleurs de l'application dans ses propres lignes : DÉSACTIVÉES par défaut. Le texte nu
    c'est un nœud de texte par ligne ; colorer, c'est un nœud par segment — sur un flux qui
    débite en rafale la différence se voit. Le choix est persisté comme les filtres. */
@@ -8282,6 +10357,8 @@ function dlogRenderContainers() {
       <span class="dlog-dot ${c.running ? 'run' : 'stop'}" title="${esc(c.status || c.state)}"></span>
       <span class="dlog-cname">${esc(c.name)}</span>
       ${c.project ? `<span class="dlog-cproj">${esc(c.project)}</span>` : ''}
+      ${/* La même commande, au terminal : `docker logs -f` sur CE container. */''}
+      <button type="button" class="btn btn-sm btn-ghost" data-copy-cmd="docker logs -f --tail=200 ${esc(c.name)}" title="${esc(tr('docker.copy-cmd'))}" aria-label="${esc(tr('docker.copy-cmd'))}"><svg class="ico ico-sm"><use href="#i-copy"/></svg></button>
     </label>`).join('');
 }
 
@@ -8292,6 +10369,7 @@ async function loadDockerLogs() {
   try {
     const { containers } = await api('/docker/containers');
     DLOG.containers = containers || [];
+    dlogRestaurerSelection();
     dlogRenderContainers();
   } catch (e) { box.innerHTML = errorBox(explainError(e.message)); }
 }
@@ -8351,6 +10429,7 @@ $('#dlogView') && $('#dlogView').addEventListener('scroll', () => {
 $('#dlogContainers') && $('#dlogContainers').addEventListener('change', (e) => {
   const cb = e.target.closest('input[type="checkbox"]'); if (!cb) return;
   if (cb.checked) DLOG.selected.add(cb.value); else DLOG.selected.delete(cb.value);
+  dlogMemoriserSelection();
 });
 for (const [kind, form, input] of [['inc', '#dlogIncludeForm', '#dlogIncludeInput'], ['exc', '#dlogExcludeForm', '#dlogExcludeInput']]) {
   const f = $(form);
@@ -8445,16 +10524,20 @@ const DOCKER_STATE_FILTERS = [
   ['restarting', 'docker.actions.f-restarting'],
   ['drift', 'docker.actions.f-drift'],
 ];
-const dockerStateOptions = (cur) => DOCKER_STATE_FILTERS
-  .map(([v, k]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${esc(tr(k))}</option>`).join('');
-// Le menu d'Actions est bâti une fois, depuis cette liste (celui de Compose l'est à chaque
+/* DIX VALEURS FIXES, UN SEUL CHOIX : des pastilles, pas un menu déroulant. Un menu cache son
+   état derrière un clic — sur un filtre qu'on manipule en boucle, c'est un clic par coup d'œil.
+   C'est la règle écrite dans style.css (`.chip`), déjà tenue par Liens et par les tranches de
+   note des Reviews ; Docker était le dernier à s'en écarter. */
+const dockerStateChips = (cur) => DOCKER_STATE_FILTERS
+  .map(([v, k]) => `<button type="button" class="chip${cur === v ? ' active' : ''}" data-dstate="${v}" aria-pressed="${cur === v}">${esc(tr(k))}</button>`).join('');
+// Le groupe d'Actions est bâti une fois, depuis cette liste (celui de Compose l'est à chaque
 // rendu, dans son gabarit). Un changement de langue recharge la page : rien à retraduire.
-(() => { const el = $('#dactFilter'); if (el) el.innerHTML = dockerStateOptions('all'); })();
+(() => { const el = $('#dactFilter'); if (el) { el.innerHTML = dockerStateChips('all'); el.dataset.state = 'all'; } })();
 // Clés i18n complètes (littérales) pour réutiliser EXACTEMENT le libellé de l'onglet Compose.
 const DACT_DRIFT_LABEL = { 'drift-config': 'docker.badge.drift-config', 'drift-image': 'docker.badge.drift-image', 'compose-modified': 'docker.badge.compose-modified' };
 function dactItems() {
   const action = $('#dactAction').value;
-  const filter = $('#dactFilter') ? $('#dactFilter').value : 'all';
+  const filter = $('#dactFilter') ? ($('#dactFilter').dataset.state || 'all') : 'all';
   const q = ($('#dactSearch').value || '').toLowerCase();
   const out = [];
   for (const p of DACT.projects) {
@@ -8546,7 +10629,13 @@ async function dactApply() {
 // Changer d'action réinitialise la sélection (elle appartient à une action) ; le filtre d'état
 // et la recherche ne font que masquer/afficher — ils préservent la sélection.
 $('#dactAction') && $('#dactAction').addEventListener('change', () => { DACT.selected.clear(); dactSyncApply(); renderDockerActions(); });
-$('#dactFilter') && $('#dactFilter').addEventListener('change', renderDockerActions);
+$('#dactFilter') && $('#dactFilter').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-dstate]'); if (!c) return;
+  const grp = $('#dactFilter');
+  grp.dataset.state = c.dataset.dstate;
+  grp.innerHTML = dockerStateChips(c.dataset.dstate);
+  renderDockerActions();
+});
 $('#dactSearch') && $('#dactSearch').addEventListener('input', renderDockerActions);
 $('#dactApply') && $('#dactApply').addEventListener('click', dactApply);
 $('#dactList') && $('#dactList').addEventListener('change', (e) => {
@@ -8606,15 +10695,31 @@ function envDiffHtml(diffs) {
   return `<ul class="env-diff">${diffs.map(one).join('')}</ul>`;
 }
 
+/* Les états que Docker sait rendre. Un état hors liste (une version future du démon)
+   s'affiche tel quel plutôt que de laisser une clé de traduction à l'écran. */
+const DOCKER_STATES = ['running', 'exited', 'created', 'restarting', 'paused', 'dead', 'removing', 'unknown'];
+function dockerStateLabel(state) {
+  if (state === 'none') return tr('docker.not-started');
+  return DOCKER_STATES.includes(state) ? tr(`docker.state.${state}`) : state;
+}
+
 function dockerServiceRow(proj, s) {
   const b = (DOCKER_BADGE()[s.badge]) || { label: s.badge, cls: '' };
   const canRecreate = ['drift-config', 'drift-image', 'compose-modified'].includes(s.badge);
-  const act = (a, label, cls) => `<button class="btn btn-sm${cls ? ` ${cls}` : ''}" data-dockeract="${a}" data-dir="${esc(proj.dir)}" data-svc="${esc(s.name)}">${esc(label)}</button>`;
+  /* ORDRE FIXE, LES ACTIONS INDISPONIBLES DÉSACTIVÉES. Auparavant elles étaient absentes :
+     la rangée changeait de composition d'un container à l'autre (`Stop · Redémarrer · Pull ·
+     Build · Recréer` puis `Pull · Build · Démarrer`), donc « Recréer », bleu et primaire,
+     tombait sous « Stop » de la ligne précédente. Une colonne d'actions doit être un rail :
+     on vise la même position sur toutes les lignes. */
+  const act = (a, label, cls, actif) => `<button class="btn btn-sm${cls ? ` ${cls}` : ''}" data-dockeract="${a}" data-dir="${esc(proj.dir)}" data-svc="${esc(s.name)}"${actif ? '' : ` disabled title="${esc(tr('docker.act.unavailable'))}"`}>${esc(label)}</button>`;
   // État du container MIS EN ÉVIDENCE : pastille colorée + libellé (vert = running, rouge =
   // exited/dead, ambre = paused/restarting/created, pointillé = non démarré).
   const state = s.container ? (s.container.state || 'unknown') : 'none';
   const isRunning = state === 'running';
-  const stateLabel = state === 'none' ? tr('docker.not-started') : state;
+  /* Le libellé passe par le dictionnaire. Docker rend son état en anglais (`running`,
+     `exited`, `created`…) et il s'affichait tel quel, dans la même colonne que « non créé »
+     et « arrêté » : trois langues pour une seule information. */
+  const stateLabel = dockerStateLabel(state);
   const stateChip = `<span class="docker-state docker-state-${esc(state)}" title="${esc(stateLabel)}"><span class="docker-dot"></span>${esc(stateLabel)}</span>`;
   return `<div class="docker-svc">
       <div class="docker-svc-head">
@@ -8624,11 +10729,21 @@ function dockerServiceRow(proj, s) {
         ${s.image ? `<code class="muted">${esc(s.image)}</code>` : ''}
         ${s.container && s.container.name ? `<span class="muted">${esc(s.container.name)}</span>` : ''}
         <span class="spacer"></span>
-        ${isRunning ? act('stop', tr('docker.act.stop'), 'btn-danger') : ''}
-        ${isRunning ? act('restart', tr('docker.act.restart')) : ''}
-        ${act('pull', tr('docker.act.pull'))}
-        ${act('build', tr('docker.act.build'))}
-        ${canRecreate ? act('recreate', tr('docker.act.recreate'), 'btn-primary') : (isRunning ? '' : act('up', tr('docker.act.up')))}
+        ${/* Les six actions dans leur PROPRE bloc, insécable : dans la tête de ligne elles se
+             repliaient à un endroit qui dépendait de la longueur du nom du container, si bien
+             que « Stop » n'était jamais deux fois à la même abscisse d'une ligne à l'autre. */''}
+        <div class="docker-svc-actions">
+          ${/* CONTINUER AU TERMINAL. Mergerie fait le geste courant ; pour le reste — un
+                `exec`, un flag de plus — on repart de la commande exacte plutôt que de la
+                reconstruire de mémoire. */''}
+          <button type="button" class="btn btn-sm btn-ghost" data-copy-cmd="docker compose -f ${esc(proj.path)} up -d ${esc(s.name)}" title="${esc(tr('docker.copy-cmd'))}" aria-label="${esc(tr('docker.copy-cmd'))}"><svg class="ico ico-sm"><use href="#i-copy"/></svg></button>
+          ${act('stop', tr('docker.act.stop'), 'btn-danger', isRunning)}
+          ${act('restart', tr('docker.act.restart'), '', isRunning)}
+          ${act('pull', tr('docker.act.pull'), '', true)}
+          ${act('build', tr('docker.act.build'), '', true)}
+          ${act('up', tr('docker.act.up'), '', !isRunning)}
+          ${act('recreate', tr('docker.act.recreate'), 'btn-primary', canRecreate)}
+        </div>
       </div>
       ${s.imgDrift && s.container ? `<div class="muted docker-imgdrift">${esc(tr('docker.imgdrift', { compose: s.image || '?', running: (s.container.image || '?') }))}</div>` : ''}
       ${envDiffHtml(s.envDiffs)}
@@ -8683,15 +10798,47 @@ function dockerMakefileBlock(p) {
       <code class="mk-name">${esc(t.name)}</code>
       ${t.recipe ? `<button type="button" class="hint hint-code mk-eye" tabindex="0" aria-label="${esc(tr('docker.make.view-cmd'))}" data-tip="${esc(t.recipe.slice(0, 1400))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg></button>` : ''}
       ${t.desc ? `<span class="muted mk-desc">${esc(t.desc)}</span>` : ''}
+      ${/* CONTINUER AU TERMINAL exactement là où Mergerie s'arrête : la commande se copie. */''}
+      <button type="button" class="btn btn-sm btn-ghost mk-copy" data-copy-cmd="cd ${esc(p.dir)} &amp;&amp; make ${esc(t.name)}" title="${esc(tr('docker.copy-cmd'))}" aria-label="${esc(tr('docker.copy-cmd'))}"><svg class="ico ico-sm"><use href="#i-copy"/></svg></button>
+      ${/* « Ai-je déjà passé les migrations ce matin ? » : rempli après coup, par répertoire. */''}
+      <span class="mk-last muted" data-mk-last="${esc(t.name)}" hidden></span>
     </div>`;
   // Ouvert par défaut : dans sa colonne, le bloc est en haut à gauche → visible sans scroller.
   return `<details class="docker-make" open>
       <summary><svg class="ico ico-sm"><use href="#i-doc"/></svg> ${esc(tr('docker.make.title', { n: mk.targets.length, count: mk.targets.length }))} <span class="muted">· ${esc(mk.file)}</span></summary>
       <input type="search" class="search mk-search" placeholder="${esc(tr('docker.make.search-ph'))}" />
-      <div class="mk-list">${mk.targets.map(item).join('')}</div>
+      <div class="mk-list" data-mk-dir="${esc(p.dir)}">${mk.targets.map(item).join('')}</div>
       <p class="muted mk-none" hidden>${esc(tr('docker.make.no-match'))}</p>
     </details>`;
 }
+
+/* Les dernières exécutions des cibles d'un répertoire, posées APRÈS le rendu : la carte ne
+   doit pas attendre cette réponse, et un répertoire dont aucune cible n'a jamais tourné
+   n'affiche rien du tout. */
+async function majDernieresCibles() {
+  for (const liste of $$('[data-mk-dir]')) {
+    if (liste.dataset.mkFait === '1') continue;
+    liste.dataset.mkFait = '1';
+    let d;
+    try { d = await api(`/docker/make/runs?dir=${encodeURIComponent(liste.dataset.mkDir)}`); } catch { continue; }
+    for (const el of $$('[data-mk-last]', liste)) {
+      const r = (d.runs || {})[el.dataset.mkLast];
+      if (!r) { el.hidden = true; continue; }
+      const etat = r.finished_at == null ? '⋯' : (r.ok ? '✓' : '✗');
+      el.hidden = false;
+      el.textContent = `${depuis(r.finished_at || r.started_at)} ${etat}`;
+      el.classList.toggle('mk-last-ko', r.finished_at != null && !r.ok);
+    }
+  }
+}
+/* Le bouton « copier » d'une commande : service Docker, logs, cible Make — un seul écouteur. */
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-copy-cmd]');
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  copyText(b.dataset.copyCmd, null);
+  toast(tr('docker.copy-cmd.done'));
+});
 
 function dockerProjectCard(p) {
   const make = dockerMakefileBlock(p);
@@ -8706,7 +10853,12 @@ function dockerProjectCard(p) {
       + (hiddenCount > 0 ? `<p class="muted docker-svc-hidden">${esc(tr('docker.filter.svc-hidden', { n: hiddenCount, count: hiddenCount }))}</p>` : '');
   return `<div class="card docker-project">
       <div class="docker-project-head">
-        <div class="title" style="flex:1;min-width:0"><code>${esc(p.name)}</code> <span class="muted">${esc(p.file)} · ${esc(p.rootLabel || p.dir)}</span></div>
+        <div class="title" style="flex:1;min-width:0"><code>${esc(p.name)}</code> <span class="muted">${esc(p.file)} · ${esc(p.rootLabel || p.dir)}</span>
+          ${/* QU'EST-CE QUE JE SUIS EN TRAIN DE TESTER ? La branche et le commit du répertoire
+                qui porte le compose répondent à la question là où on démarre la stack. Lu dans
+                `.git` sur le disque, sans processus ni sondage — absent, rien ne s'affiche. */''}
+          ${p.git && p.git.branch ? ` <span class="docker-git">${svgIco('branch')} ${chipBranche(p.git.branch)}${p.git.sha ? ` <span class="git-sha muted">${esc(p.git.sha)}</span>` : ''}</span>` : ''}
+        </div>
         <div class="docker-project-actions">
           <button class="btn btn-sm" data-dockeract="up" data-dir="${esc(p.dir)}" title="${esc(tr('docker.act.up-all-title'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr('docker.act.up-all'))}</button>
           <button class="btn btn-sm btn-danger" data-dockerdown data-dir="${esc(p.dir)}" data-project="${esc(p.name)}" title="${esc(tr('docker.act.down-title'))}"><svg class="ico ico-sm"><use href="#i-stop"/></svg>${esc(tr('docker.act.down'))}</button>
@@ -8755,9 +10907,9 @@ function renderComposeTab() {
         <input id="dcSearch" class="dact-search" type="search" value="${esc(sf.q || '')}"
           placeholder="${esc(tr('docker.compose.search'))}" />
       </label>
-      <label class="dact-action"><span>${esc(tr('docker.actions.filter'))}</span>
-        <select id="dcState">${dockerStateOptions(sf.state)}</select>
-      </label>
+      <div class="dact-action"><span>${esc(tr('docker.actions.filter'))}</span>
+        <div id="dcState" class="chips" role="group" aria-label="${esc(tr('docker.actions.filter'))}" data-state="${esc(sf.state)}">${dockerStateChips(sf.state)}</div>
+      </div>
     </div>`;
   // Filtre persistant : une case par fichier compose (cochée = affiché).
   const filter = `<div class="docker-filter"><span class="muted">${esc(tr('docker.filter.label'))}</span>${COMPOSE.files.map((f) => `
@@ -8774,6 +10926,7 @@ function renderComposeTab() {
     ? (composeFilterActive() ? `<p class="muted">${esc(tr('docker.filter.no-svc-match'))}</p>` : '')
     : `<p class="muted">${esc(tr('docker.filter.all-hidden'))}</p>`;
   box.innerHTML = svcBar + filter + (slots || empty);
+  majDernieresCibles();          // « migrate · il y a 40 min · ✓ », posé après le rendu
   wireDockerActions(box);
   const search = $('#dcSearch', box);
   if (search) {
@@ -8787,7 +10940,10 @@ function renderComposeTab() {
     search.addEventListener('input', () => { setComposeSvcFilter({ q: search.value }); apply(); });
   }
   const stateSel = $('#dcState', box);
-  if (stateSel) stateSel.addEventListener('change', () => { setComposeSvcFilter({ state: stateSel.value }); renderComposeTab(); });
+  if (stateSel) stateSel.addEventListener('click', (e) => {
+    const c = e.target.closest('[data-dstate]'); if (!c) return;
+    setComposeSvcFilter({ state: c.dataset.dstate }); renderComposeTab();
+  });
   $$('.docker-filter-cb', box).forEach((cb) => cb.addEventListener('change', () => {
     const set = dockerHidden();
     if (cb.checked) set.delete(cb.value); else set.add(cb.value);
@@ -8807,6 +10963,7 @@ function fillComposeSlot(path) {
   if (!html) { slot.remove(); return; }
   slot.innerHTML = html;
   wireDockerActions(slot);
+  majDernieresCibles();     // le détail arrive après coup : ses cibles aussi
 }
 
 async function fetchVisibleComposeDetails() {
@@ -8843,15 +11000,16 @@ function renderDockerOrphans(d) {
   if (!orphans.length) { box.innerHTML = emptyState({ icon: 'inbox', title: tr('docker.orphans.empty.title'), text: tr('docker.orphans.empty.text') }); return; }
   box.innerHTML = `<p class="muted">${esc(tr('docker.orphans.intro'))}</p>` + orphans.map((c) => {
     const state = c.state || 'unknown';
+    const label = dockerStateLabel(state);   // même libellé traduit que dans Compose
     return `
     <div class="card docker-orphan">
       <div style="flex:1;min-width:0">
-        <div class="title"><span class="docker-state docker-state-${esc(state)}" title="${esc(state)}"><span class="docker-dot"></span>${esc(state)}</span> ${esc(c.name)} <code class="muted">${esc(c.image)}</code></div>
+        <div class="title"><span class="docker-state docker-state-${esc(state)}" title="${esc(label)}"><span class="docker-dot"></span>${esc(label)}</span> ${esc(c.name)} <code class="muted">${esc(c.image)}</code></div>
         <div class="meta muted">${esc(c.status || '')}${c.ports ? ` · ${esc(c.ports)}` : ''}</div>
         <pre class="docker-run" data-run="${esc(c.id)}" hidden></pre>
       </div>
       <div class="task-actions">
-        ${state === 'running' ? `<button class="btn btn-sm btn-danger" data-dockerstop="${esc(c.id)}" title="${esc(tr('docker.orphan.stop-title'))}"><svg class="ico ico-sm"><use href="#i-stop"/></svg>${esc(tr('docker.orphan.stop'))}</button>` : ''}
+        <button class="btn btn-sm btn-danger" data-dockerstop="${esc(c.id)}"${state === 'running' ? ` title="${esc(tr('docker.orphan.stop-title'))}"` : ` disabled title="${esc(tr('docker.act.unavailable'))}"`}><svg class="ico ico-sm"><use href="#i-stop"/></svg>${esc(tr('docker.orphan.stop'))}</button>
         <button class="btn btn-sm" data-dockerrun="${esc(c.id)}" title="${esc(tr('docker.orphan.reconstitute-title'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${esc(tr('docker.orphan.reconstitute'))}</button>
         <button class="btn btn-sm btn-danger" data-dockerrm="${esc(c.id)}" data-name="${esc(c.name)}" title="${esc(tr('docker.orphan.remove-title'))}"><svg class="ico ico-sm"><use href="#i-trash"/></svg>${esc(tr('docker.orphan.remove'))}</button>
       </div>
@@ -9352,7 +11510,35 @@ function renderJiraList() {
       ${it.epic ? `<span class="jira-item-epic" title="${esc(tr('jira.epic-of', { key: it.epic.key, summary: it.epic.summary }))}"><svg class="ico ico-sm"><use href="#i-tag"/></svg><code>${esc(it.epic.key)}</code> ${esc(it.epic.summary)}</span>` : ''}
       <div class="jira-item-summary">${esc(it.summary)}</div>
       <div class="jira-item-foot muted">${esc(it.type || '')}${it.priority ? ` · ${esc(it.priority)}` : ''} · ${esc(fmtDate(it.updated))}</div>
+      ${/* Ce qui a déjà avancé côté code, en pied de carte : rempli après coup par
+            `majEngagementsListe`, en un appel pour toute la liste. */''}
+      <div class="jira-item-eng muted" data-eng-key="${esc(it.key)}" hidden></div>
     </button>`).join('');
+  majEngagementsListe(items.map((x) => x.key));
+}
+
+/* CE QUI EST DÉJÀ ENGAGÉ, SUR CHAQUE CARTE DE LA LISTE. En parcourant ses tickets on voit
+   lesquels ont une merge request et lesquels ont une session en cours — sans les ouvrir un par
+   un. Un seul appel pour la liste ; un ticket sans engagement n'affiche rien du tout. */
+let engSeq = 0;
+async function majEngagementsListe(cles) {
+  if (!cles.length) return;
+  const seq = ++engSeq;
+  let d;
+  try { d = await api(`/jira/engagements?keys=${encodeURIComponent(cles.join(','))}`); } catch { return; }
+  if (seq !== engSeq) return;
+  for (const el of $$('[data-eng-key]')) {
+    const e2 = (d.engagements || {})[String(el.dataset.engKey).toUpperCase()];
+    const bouts = [];
+    if (e2 && e2.mr) {
+      bouts.push(`!${e2.mr.iid}${e2.mr.note != null ? ` · ${fmtNote10(e2.mr.note * 10)}` : ''}`);
+      if (e2.mrs > 1) bouts.push(tr('jira.eng.more-mrs', { n: e2.mrs - 1, count: e2.mrs - 1 }));
+    }
+    if (e2 && e2.running) bouts.push(tr('jira.eng.running'));
+    else if (e2 && e2.tasks) bouts.push(tr('jira.eng.tasks', { n: e2.tasks, count: e2.tasks }));
+    el.hidden = !bouts.length;
+    el.textContent = bouts.join(' · ');
+  }
 }
 
 function jiraMetaRow(label, valueHtml) {
@@ -9435,13 +11621,25 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
           </select>` : ''}
           <span class="spacer"></span>
           <button type="button" class="btn btn-sm${jiraIsWatched(it.key) ? ' active' : ''}" data-jirawatch="${esc(it.key)}" title="${esc(tr(jiraIsWatched(it.key) ? 'jira.watch.stop-title' : 'jira.watch.start-title'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${esc(tr(jiraIsWatched(it.key) ? 'jira.watch.stop' : 'jira.watch.start'))}</button>
-          ${addTodoBtn('ticket', it.key, tr('notes.add-todo.ticket', { key: it.key, title: String(it.summary || '').slice(0, 60) }))}
+          ${/* L'ÉCHÉANCE ET LA PRIORITÉ DU TICKET VIENNENT AVEC : le rappel bureau tombe le bon
+                jour sans ressaisie, et une todo « haute » née d'un ticket bloquant se range
+                d'elle-même là où on la cherchera. */''}
+          ${addTodoBtn('ticket', it.key, tr('notes.add-todo.ticket', { key: it.key, title: String(it.summary || '').slice(0, 60) }), {
+    due: echeanceDepuisJira(it.duedate), priority: prioriteDepuisJira(it.priority),
+  })}
           <button type="button" class="btn btn-sm btn-primary" data-jiracode="${esc(it.key)}" title="${esc(tr('jira.code-title'))}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${esc(tr('jira.code'))}</button>
           <a href="${esc(it.url)}" target="_blank" rel="noopener" class="jira-open">${esc(tr('jira.open'))} ↗</a>
         </div>
         <h2 class="jira-title">${esc(it.summary)}</h2>
         <div class="jira-chips">${chips}</div>
       </header>
+      ${/* CE QUI EST DÉJÀ ENGAGÉ. Le ticket ne disait rien du code : on allait le chercher dans
+             Reviews à la main. La section arrive vide et se remplit — l'appel est court, et un
+             ticket sans engagement n'affiche rien plutôt qu'une section vide. */''}
+      <div class="jira-section jira-mergerie" id="jiraMergerie" hidden></div>
+      ${/* Le ticket a un dépôt PROBABLE — celui de la merge request ou de la session qui porte
+            sa clé : les mêmes boutons y mènent aux mêmes environnements. */''}
+      <div class="jira-section jira-liens" data-liens-ticket="${esc(it.key)}"></div>
       <div class="jira-section"><h4>${esc(tr('jira.description'))}</h4>
         <div class="jira-card md-body">${it.descriptionMd ? mdToHtml(it.descriptionMd) : `<p class="muted">${esc(tr('jira.no-description'))}</p>`}</div>
       </div>
@@ -9449,7 +11647,44 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
       <div class="jira-section"><h4>${esc(tr('jira.details'))}</h4><div class="jira-meta">${meta}</div></div>
       ${comments}
     </article>`;
+  chargerEngagements(it.key);
+  remplirLiensDifferes(box);     // les boutons contextuels du ticket
 }
+
+/* Ce que Mergerie porte déjà sur ce ticket : les merge requests qui en viennent (par la clé
+   relevée, la branche ou le titre) et les sessions de codage lancées dessus. Chargé APRÈS le
+   rendu du ticket : la fiche ne doit pas attendre cette réponse pour s'afficher. */
+let jiraMergerieSeq = 0;
+async function chargerEngagements(cle) {
+  const box = $('#jiraMergerie');
+  if (!box) return;
+  const seq = ++jiraMergerieSeq;
+  let d;
+  try { d = await api(`/jira/issues/${encodeURIComponent(cle)}/mergerie`); } catch { return; }
+  if (seq !== jiraMergerieSeq) return;          // un autre ticket a été ouvert entre-temps
+  const rien = !(d.mrs || []).length && !(d.tasks || []).length;
+  box.hidden = rien;
+  if (rien) { box.innerHTML = ''; return; }
+  const ligneMr = (m) => {
+    const bouts = [esc(m.project)];
+    if (m.note != null) bouts.push(esc(fmtNote10(m.note * 10)));
+    if (m.verdict) bouts.push(esc(tr(`mr.ref.verdict.${m.verdict}`)));
+    bouts.push(esc(tr(m.closed ? 'notes.todo.mr.closed' : `mr.status.${String(m.status).replace('_', '-')}`)));
+    return `<li><button type="button" class="lien-reglage" data-jira-mr="${m.id}">!${m.iid} — ${esc(m.title || '')}</button> <span class="muted">${bouts.join(' · ')}</span></li>`;
+  };
+  const ligneTache = (x) => `<li><button type="button" class="lien-reglage" data-jira-task="${x.id}">${esc(x.label || String(x.prompt || '').slice(0, 70))}</button> <span class="muted">${esc(tr(`task.status.${x.status}`, {}) || x.status)}</span></li>`;
+  box.innerHTML = `<h4>${esc(tr('jira.mergerie.title'))}</h4>
+    <div class="jira-card">
+      ${(d.mrs || []).length ? `<ul class="jira-eng">${d.mrs.map(ligneMr).join('')}</ul>` : ''}
+      ${(d.tasks || []).length ? `<ul class="jira-eng">${d.tasks.map(ligneTache).join('')}</ul>` : ''}
+    </div>`;
+}
+document.addEventListener('click', (e) => {
+  const m = e.target.closest && e.target.closest('[data-jira-mr]');
+  if (m) { navMrReport(Number(m.dataset.jiraMr)); return; }
+  const t2 = e.target.closest && e.target.closest('[data-jira-task]');
+  if (t2) { navTab('task'); loadTasks(); }
+});
 
 /* `ou` : 'mine' (Mes tickets) ou 'watch' (Surveillés). Les deux sous-onglets ont leur propre
    liste et leur propre sélection — passer de l'un à l'autre ne doit pas déplacer le curseur
@@ -9881,7 +12116,19 @@ surLeDetailJira('submit', async (e) => {
 });
 function navTab(tab) { const b = $(`nav button[data-tab="${tab}"]`); if (b) b.click(); }
 function navReviews(seg) { navTab('review'); loadSegment(seg); }
-function navMrReport(id) { navTab('review'); loadSegment('reviewed'); setTimeout(() => { try { openReport(id); } catch { /* liste pas prête */ } }, 300); }
+/* Ouvrir un rapport depuis AILLEURS (palette, bandeau de job, notification). Deux pièges :
+   — le stade. `#reportSplit` est masqué tant qu'on est sur « à traiter » : ouvrir le rapport
+     sans changer de stade affiche un panneau invisible, et l'écran a l'air de n'avoir rien fait.
+   — le moment. La version précédente attendait 300 ms « le temps que la liste arrive » ; sur une
+     machine chargée elle n'était pas là. `loadSegment` rend une promesse : on l'attend.
+   Une merge request classée vit dans « Traitées » : si elle n'est pas dans les reviewées, on y
+   passe plutôt que d'ouvrir un rapport dans une liste où sa carte n'apparaît pas. */
+async function navMrReport(id) {
+  navTab('review');
+  await loadSegment('reviewed');
+  if (!reportRows.some((m) => m.id === id)) await loadSegment('done');
+  try { await openReport(id); } catch { /* rapport illisible : la liste reste utilisable */ }
+}
 
 let notifSeq = 0;
 function showNotif(title, body, onclick) {
@@ -10030,6 +12277,8 @@ const PALETTE_ACTIONS = [
 ];
 
 let paletteItems = [];
+// La palette est-elle ouverte SANS requête ? Pilote l'affichage des en-têtes de section.
+let paletteVide = true;
 let paletteIdx = 0;
 let paletteSeq = 0;
 
@@ -10054,9 +12303,18 @@ async function paletteChercher(q) {
   try { d = await api('/launcher', { method: 'POST', body: { q, actions: paletteActions() } }); }
   catch { return; }
   if (seq !== paletteSeq) return;              // une frappe plus récente a déjà répondu
+  paletteVide = !String(q || '').trim();
   paletteItems = (d.results || []).map((r) => ({
     label: r.label,
-    kind: r.detail || tr(`palette.group.${r.group}`),
+    /* L'ÉTIQUETTE DE TYPE, toujours. Une ligne de merge request n'affichait que son projet :
+       à côté d'une action et d'un ticket qui, eux, disent « Action » et « À faire », on ne
+       savait pas ce qu'on s'apprêtait à ouvrir. */
+    kind: r.detail ? `${r.detail} · ${tr(`palette.group.${r.group}`)}` : tr(`palette.group.${r.group}`),
+    group: r.group,
+    // Ce qu'il faut pour reconnaître une référence tapée seule, et pour ouvrir le diff.
+    iid: r.nav && r.nav.mr_iid ? Number(r.nav.mr_iid) : null,
+    mrId: r.nav && r.nav.mr_id ? Number(r.nav.mr_id) : null,
+    ref: r.ref || '',
     run: () => ouvrirResultatPalette(r),
   }));
   paletteIdx = 0;
@@ -10080,19 +12338,27 @@ function ouvrirResultatPalette(r) {
   if (n.ticket) { navTab('jira'); showJiraSub('mine'); selectJiraIssue(n.ticket, 'mine'); return; }
   if (n.page_id) { navTab('notes'); showNotesSub('pages'); openNotePage(n.page_id); return; }
   if (n.todo_id) { navTab('notes'); showNotesSub('todos'); return; }
+  /* Une session : on ouvre Dev IA sur la SAVEUR de cette session, sans quoi on atterrit sur
+     le sous-onglet consulté la dernière fois, où elle n'est pas. */
+  if (n.task_id) {
+    navTab('task');
+    const sous = $(`#tab-task .subnav [data-kind="${n.task_kind === 'explore' ? 'explore' : n.task_kind === 'local' ? 'local' : n.task_kind === 'ask' ? 'ask' : 'code'}"]`);
+    if (sous) sous.click();
+    return;
+  }
   if (n.tab) navTab(n.tab);
 }
 
 // Conservé pour les tests hors ligne et l'ouverture instantanée : les actions locales.
 function paletteMatches(q) {
   const out = PALETTE_ACTIONS.filter((a) => tr(a.key).toLowerCase().includes(q))
-    .map((a) => ({ label: tr(a.key), kind: tr('palette.kind.action'), run: a.run }));
+    .map((a) => ({ label: tr(a.key), kind: tr('palette.kind.action'), group: 'nav', run: a.run }));
   if (q.length >= 2) {
     for (const m of [...toReviewRows, ...reportRows]) {
       if (!matchMr(m, q)) continue;
       out.push({
         label: `!${m.iid} — ${m.title || ''}`,
-        kind: m.project,
+        kind: `${m.project} · ${tr('palette.group.mrs')}`, group: 'mrs',
         run: () => {
           $('nav button[data-tab="review"]').click();
           loadSegment(m.status === 'to_review' ? 'to_review' : (m.status === 'done' ? 'done' : 'reviewed'))
@@ -10104,7 +12370,7 @@ function paletteMatches(q) {
       if (!taskMatches(t2, q, (t2.targets || []).map((x) => x.project))) continue;
       out.push({
         label: (t2.prompt || '').slice(0, 70),
-        kind: tr(t2.kind === 'explore' ? 'task.kind.explore.btn' : 'task.kind.code.btn'),
+        kind: tr(t2.kind === 'explore' ? 'task.kind.explore.btn' : 'task.kind.code.btn'), group: 'tasks',
         run: () => { $('nav button[data-tab="task"]').click(); $(`[data-kind="${t2.kind === 'explore' ? 'explore' : 'code'}"]`).click(); },
       });
     }
@@ -10115,7 +12381,19 @@ function paletteMatches(q) {
 function renderPalette() {
   const box = $('#paletteList');
   if (!paletteItems.length) { box.innerHTML = `<div class="palette-empty muted">${esc(tr('palette.empty'))}</div>`; return; }
-  box.innerHTML = paletteItems.map((it, i) => `<div class="palette-item${i === paletteIdx ? ' active' : ''}" role="option" data-i="${i}">`
+  /* À VIDE, ON MONTRE TROIS SECTIONS TITRÉES — Actions, Merge requests, Sessions — plutôt
+     qu'une liste plate où l'on ne sait pas de quoi chaque ligne parle. Dès qu'on tape, les
+     en-têtes disparaissent : le classement est alors par pertinence, pas par famille. */
+  const sections = !paletteVide ? null : (() => {
+    const vus = new Set(); const groupes = [];
+    paletteItems.forEach((it, i) => {
+      if (!vus.has(it.group)) { vus.add(it.group); groupes.push(i); }
+    });
+    return new Set(groupes);
+  })();
+  box.innerHTML = paletteItems.map((it, i) => (sections && sections.has(i)
+    ? `<div class="palette-head">${esc(tr(`palette.section.${it.group}`))}</div>` : '')
+    + `<div class="palette-item${i === paletteIdx ? ' active' : ''}" role="option" data-i="${i}">`
     + `<span class="palette-label">${esc(it.label)}</span><span class="palette-kind muted">${esc(it.kind)}</span></div>`).join('');
   const act = $('#paletteList .palette-item.active');
   if (act) act.scrollIntoView({ block: 'nearest' });
@@ -10154,6 +12432,17 @@ function openPalette() {
   inp.focus();
   paletteChercher('');
 }
+/* Ouvrir le DIFF d'une merge request depuis ailleurs (palette). Il faut d'abord la file qui la
+   porte : `openDiffPreview` travaille sur la ligne chargée, pas sur un identifiant. */
+async function ouvrirDiffMr(id) {
+  navTab('review');
+  await loadSegment('to_review');
+  let m = (toReviewRows || []).find((x) => x.id === id);
+  if (!m) { await loadSegment('reviewed'); m = (reportRows || []).find((x) => x.id === id); }
+  if (!m) { await loadSegment('done'); m = (reportRows || []).find((x) => x.id === id); }
+  if (m) await openDiffPreview(m);
+}
+
 function runPaletteItem(i) {
   const it = paletteItems[i];
   if (!it) return;
@@ -10168,11 +12457,45 @@ $('#paletteInput') && $('#paletteInput').addEventListener('input', () => {
   // 120 ms : assez pour ne pas interroger à chaque lettre, assez peu pour ne pas se sentir.
   paletteTimer = setTimeout(() => paletteChercher(q), 120);
 });
+/* UNE RÉFÉRENCE TAPÉE SEULE EST UNE ADRESSE. « !217 » ou « PROJ-1408 » ne se cherchent pas :
+   on sait déjà ce qu'on veut. Entrée y va directement, sans attendre que la liste se compose
+   ni viser la bonne ligne. On ne saute que si la référence est SANS AMBIGUÏTÉ (une seule
+   merge request porte ce numéro) — sinon la liste reste la bonne réponse. */
+const RE_REF_MR = /^!?(\d{1,6})$/;
+const RE_REF_TICKET = /^[A-Z][A-Z0-9]+-\d+$/i;
+function refDirecte(q) {
+  const t = String(q || '').trim();
+  const mr = t.match(RE_REF_MR);
+  if (mr) {
+    const iid = Number(mr[1]);
+    const cands = paletteItems.filter((it) => it.group === 'mrs' && it.iid === iid);
+    return cands.length === 1 ? cands[0] : null;
+  }
+  if (RE_REF_TICKET.test(t)) {
+    const cle = t.toUpperCase();
+    const cands = paletteItems.filter((it) => it.group === 'tickets' && String(it.ref || '').toUpperCase() === cle);
+    return cands.length === 1 ? cands[0] : null;
+  }
+  return null;
+}
 $('#paletteInput') && $('#paletteInput').addEventListener('keydown', (e) => {
   if (e.key === 'ArrowDown') { e.preventDefault(); paletteIdx = Math.min(paletteIdx + 1, paletteItems.length - 1); renderPalette(); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); paletteIdx = Math.max(paletteIdx - 1, 0); renderPalette(); }
-  else if (e.key === 'Enter') { e.preventDefault(); runPaletteItem(paletteIdx); }
-  else if (e.key === 'Escape') { e.preventDefault(); closePalette(); }
+  else if (e.key === 'Enter') {
+    e.preventDefault();
+    const direct = refDirecte($('#paletteInput').value);
+    const cible = direct || paletteItems[paletteIdx];
+    if (!cible) return;
+    /* ⌘/Ctrl + Entrée sur une merge request ouvre le DIFF plutôt que le rapport : quand on
+       cherche une MR par son numéro, c'est souvent le code qu'on vient voir. */
+    if ((e.metaKey || e.ctrlKey) && cible.group === 'mrs' && cible.mrId) {
+      closePalette();
+      ouvrirDiffMr(cible.mrId);
+      return;
+    }
+    closePalette();
+    cible.run();
+  } else if (e.key === 'Escape') { e.preventDefault(); closePalette(); }
 });
 $('#paletteList') && $('#paletteList').addEventListener('click', (e) => {
   const it = e.target.closest('.palette-item');
@@ -10200,6 +12523,10 @@ const SHORTCUTS = [
   ['j / k', 'shortcuts.jk'],
   ['Entrée', 'shortcuts.enter'],
   ['d', 'shortcuts.diff'],
+  ['v', 'shortcuts.verify'],
+  ['c', 'shortcuts.context'],
+  ['m', 'shortcuts.done'],
+  ['x', 'shortcuts.pick'],
   ['r', 'shortcuts.discover'],
   ['n', 'shortcuts.notes'],
   ['o', 'shortcuts.palette-o'],
@@ -10216,6 +12543,18 @@ function openShortcuts() {
     .map(([k, key]) => `<div class="shortcut-row"><kbd>${esc(k || plage)}</kbd><span>${esc(tr(key))}</span></div>`).join('');
   m.hidden = false;
 }
+/* Le bouton du bandeau mène à ce que le job a produit — et le referme, puisqu'on l'a lu. */
+$('#logResult') && $('#logResult').addEventListener('click', () => {
+  const b = $('#logResult');
+  const id = Number(b.dataset.id);
+  // `navMrReport` et non `openReport` seul : il faut AUSSI le bon stade, sinon le rapport
+  // s'ouvre dans un panneau masqué et le lien paraît sans effet.
+  if (b.dataset.kind === 'mr') { navMrReport(id); }
+  else if (b.dataset.kind === 'verification') { openVerifyReport(id); }
+  else { navTab('task'); loadTasks(); }
+  const panel = $('#logPanel'); if (panel) { panel.hidden = true; logHidden = true; updateFooterLogs(); }
+});
+$('#footerHelp') && $('#footerHelp').addEventListener('click', openShortcuts);
 $('#shortcutsClose') && $('#shortcutsClose').addEventListener('click', () => { $('#shortcutsModal').hidden = true; });
 fermerAuFond('#shortcutsModal', () => { $('#shortcutsModal').hidden = true; }, { salissable: false });
 
@@ -10429,6 +12768,16 @@ function listeCourante() {
   return null;
 }
 const carteFocus = () => $('.card.focused');
+/* Le bouton d'une action SUR LA CARTE AU FOCUS — y compris quand il vit dans le menu « ⋯ »,
+   présent dans le DOM même replié. On clique le BOUTON RENDU, jamais une route en double : ce
+   qui est désactivé le reste (« Vérifier » sans vérificateur couvrant), et ce qui n'existe pas
+   sur cette carte-là ne fait rien. */
+function boutonDeCarte(sel) {
+  const c = carteFocus();
+  if (!c) return null;
+  const b = c.querySelector(sel);
+  return b && !b.disabled ? b : null;
+}
 
 /* AUCUN anneau au départ : il n'apparaît qu'à la première pression de `j` ou `k`. Un
    raccourci invisible qui agit sur un élément qu'on n'a pas désigné est un piège. */
@@ -10520,6 +12869,46 @@ function renderNoteMd(md) {
     .join('');
 }
 
+/* ---------- Un autolien dit ce qu'il désigne, au survol ----------
+   `!214` dans une note du daily ne portait que son numéro : on cliquait, on changeait d'écran,
+   on lisait, on revenait. Titre, note, verdict, état — quatre faits, une bulle, et la note se
+   relit sans la quitter. Le résumé est demandé UNE fois par objet et gardé pour la page. */
+const cacheResume = new Map();
+async function resumeAutolien(el) {
+  const cle = el.dataset.noteMr ? `mr:${el.dataset.noteMr}` : `ticket:${el.dataset.noteTicket}`;
+  if (cacheResume.has(cle)) return cacheResume.get(cle);
+  let texte = '';
+  try {
+    if (el.dataset.noteMr) {
+      const d = await api(`/mrs/${el.dataset.noteMr}/resume`);
+      const bouts = [`!${d.iid} — ${d.title || ''}`, d.project];
+      if (d.note != null) bouts.push(fmtNote10(d.note * 10));
+      if (d.verdict) bouts.push(tr(`mr.ref.verdict.${d.verdict}`));
+      bouts.push(tr(d.closed ? 'notes.todo.mr.closed' : 'notes.todo.mr.open-since', { when: depuis(d.created_at) }));
+      texte = bouts.filter(Boolean).join('\n');
+    } else if (el.dataset.noteTicket) {
+      /* Les tickets SURVEILLÉS sont la seule liste que le serveur connaisse hors ligne : on y
+         cherche la clé. Un ticket non surveillé n'a pas de bulle — mieux que d'aller interroger
+         Jira au survol, ce qui ferait un appel réseau par passage de souris. */
+      const cle = el.dataset.noteTicket.toUpperCase();
+      const d = await api('/jira/watch');
+      const w = (d.watched || d.rows || []).find((x) => String(x.key).toUpperCase() === cle);
+      texte = w ? [`${w.key} — ${w.summary || ''}`, w.status || ''].filter(Boolean).join('\n') : '';
+    }
+  } catch { texte = ''; }         // objet inconnu ou hors ligne : pas de bulle, pas d'erreur
+  cacheResume.set(cle, texte);
+  return texte;
+}
+document.addEventListener('mouseover', async (e) => {
+  const a = e.target.closest && e.target.closest('.note-link[data-note-mr], .note-link[data-note-ticket]');
+  if (!a || a.dataset.resumeFait === '1') return;
+  a.dataset.resumeFait = '1';
+  const texte = await resumeAutolien(a);
+  if (!texte) return;
+  a.dataset.tip = texte;
+  showTip(a);              // on survole déjà : la bulle doit s'ouvrir maintenant
+});
+
 /* Clic sur un lien d'autolink : la navigation vit ici, pas dans le module de rendu, qui ne
    sait pas où sont les onglets. Délégation, comme partout ailleurs. */
 document.addEventListener('click', (e) => {
@@ -10577,7 +12966,7 @@ function renderBrief(d) {
         <div class="brief-item-title">${esc(String(s.prompt || '').slice(0, 120))}</div>
         <div class="meta">${esc(tr('notes.brief.session.targets', { n: s.targets, count: s.targets }))}</div>
       </div>
-      <button type="button" class="btn btn-sm btn-primary" data-brief-session="${s.task_id}">${esc(tr('notes.brief.session.go'))}</button>
+      <button type="button" class="btn btn-primary" data-brief-session="${s.task_id}">${esc(tr('notes.brief.session.go'))}</button>
       ${briefHideBtn('session', s.task_id)}
     </div>`).join('');
 
@@ -10591,7 +12980,11 @@ function renderBrief(d) {
     ? ` · !${c.iid}`
     : ` · ${esc(c.project || '')}${c.branch ? ` · ${esc(c.branch)}` : ''}`)).join('')}</div>
       </div>
-      <button type="button" class="btn btn-sm" data-brief-verif="${v.verification_id}">${esc(tr('notes.brief.verif.go'))}</button>
+      ${/* LE BRIEF PORTE L'ACTION, PAS SEULEMENT LE LIEN. Chaque ligne se fermait en trois
+             gestes : « voir », changer d'onglet, retrouver la carte, cliquer le vrai bouton.
+             Une action par ligne — celle qui la ferme —, jamais deux. */''}
+      <button type="button" class="btn btn-primary" data-brief-verif-fix="${v.verification_id}" title="${esc(tr('notes.brief.verif.fix-title'))}">${esc(tr('notes.brief.verif.fix'))}</button>
+      <button type="button" class="btn" data-brief-verif="${v.verification_id}">${esc(tr('notes.brief.verif.go'))}</button>
       ${briefHideBtn('verification', v.verification_id)}
     </div>`).join('');
 
@@ -10600,6 +12993,7 @@ function renderBrief(d) {
         <div class="brief-item-title">!${m.iid} — ${esc(m.title || '')}</div>
         <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}</div>
       </div>
+      <button type="button" class="btn btn-primary" data-brief-review="${m.id}" data-iid="${m.iid}">${esc(tr('mr.btn.review'))}</button>
       ${briefHideBtn('mr', m.id)}
     </div>`).join('');
 
@@ -10621,8 +13015,19 @@ function renderBrief(d) {
     ['to_mr', 'notes.brief.sess.to-mr', ps.to_mr],
   ].filter(([, , n]) => n > 0).map(([cle, k, n]) => `<div class="brief-item brief-clickable" data-brief-sess="${cle}">
       <div class="brief-item-main"><div class="brief-item-title">${esc(tr(k, { n, count: n }))}</div></div>
+      ${/* Le VERBE de l'attente : lancer, pousser, créer la MR. Il mène à Dev IA filtré sur
+            ces sessions-là — le geste lui-même reste sur la carte, qui seule sait sur quel
+            projet il porte. */''}
+      <button type="button" class="btn btn-primary" data-brief-sess-go="${cle}">${esc(tr(`notes.brief.sess.${cle.replace('_', '-')}.action`))}</button>
       ${briefHideBtn('sess', cle)}
     </div>`).join('');
+
+  /* B7 — LE BRIEF SIGNALE LE NETTOYAGE quand il y a vraiment de quoi. En dessous de dix, ce
+     serait un rappel de plus pour trois branches : le bouton de l'onglet Git suffit. */
+  const branches = (brMergees.total >= 10) ? `<div class="brief-item">
+      <div class="brief-item-main"><div class="brief-item-title">${esc(tr('notes.brief.branches', { n: brMergees.total, count: brMergees.total }))}</div></div>
+      <button type="button" class="btn btn-primary" data-brief-branches>${esc(tr('notes.brief.branches.go'))}</button>
+    </div>` : '';
 
   const a = d.activity;
   const activite = a ? `<p class="brief-activity">${[
@@ -10639,6 +13044,7 @@ function renderBrief(d) {
     briefSection(tr('notes.brief.sec.pending'), attentes, { icon: 'bot', hint: tr('notes.brief.pending.hint') }),
     briefSection(tr('notes.brief.sec.fresh'), fresh, { icon: 'merge', hint: tr('notes.brief.fresh.hint') }),
     briefSection(tr('notes.brief.sec.stale'), stale, { icon: 'clock', hint: tr('notes.brief.stale.hint', { n: d.stale_days }) }),
+    briefSection(tr('notes.brief.sec.cleanup'), branches, { icon: 'branch' }),
     briefSection(tr('notes.brief.sec.activity'), activite, { icon: 'chart' }),
   ].join('');
 
@@ -10658,7 +13064,7 @@ function briefTodoRow(t, avecSnooze) {
     <input type="checkbox" class="todo-check" data-todo-check="${t.id}" aria-label="${esc(tr('notes.todo.done'))}" />
     <div class="brief-item-main">
       <div class="brief-item-title">${esc(t.title)}</div>
-      <div class="meta">${todoPrioBadge(t.priority)}${todoDueHtml(t)}${todoLinkHtml(t)}</div>
+      <div class="meta">${todoPrioBadge(t.priority)}${todoDueHtml(t)}${todoLinkHtml(t)}${todoEtatMr(t)}</div>
     </div>
     ${avecSnooze ? todoSnoozeHtml(t.id) : ''}
   </div>`;
@@ -10722,6 +13128,47 @@ document.addEventListener('click', async (e) => {
   }
   const s = e.target.closest && e.target.closest('[data-brief-session]');
   if (s) { navTab('task'); return; }
+  /* CORRIGER, depuis le brief. Le rapport de vérification a déjà son bouton « Corriger » —
+     on l'ouvre, et on clique le VRAI bouton : une seule implémentation du geste, et ce qui
+     est impossible (verdict autre qu'un échec) reste impossible. */
+  const vf = e.target.closest && e.target.closest('[data-brief-verif-fix]');
+  if (vf) {
+    e.stopPropagation();
+    await openVerifyReport(Number(vf.dataset.briefVerifFix));
+    const fix = $('#verifyFix');
+    if (fix && !fix.hidden) fix.click();
+    return;
+  }
+  // Reviewer une merge request fraîche, sans quitter le brief : c'est le geste qui la ferme.
+  const rv = e.target.closest && e.target.closest('[data-brief-review]');
+  if (rv) {
+    e.stopPropagation();
+    try {
+      await busy(rv, () => api(`/mrs/${rv.dataset.briefReview}/review`, { method: 'POST' }));
+      toast(tr('toast.review-de-lancee', { iid: rv.dataset.iid })); refreshStatus();
+    } catch (err) { toast(explainError(err.message), true); }
+    return;
+  }
+  /* Les trois attentes mènent à Dev IA sur la saveur « codage » — c'est là que vivent les
+     sessions à lancer, à pousser, à transformer en merge request. */
+  // Le nettoyage des branches mène à Git → Actions, où le lot se pré-remplit.
+  const br = e.target.closest && e.target.closest('[data-brief-branches]');
+  if (br) {
+    e.stopPropagation();
+    navTab('git');
+    showGitSub('actions');
+    const b2 = $('#gitMergedFill');
+    if (b2) b2.click();
+    return;
+  }
+  const sg = e.target.closest && e.target.closest('[data-brief-sess-go]');
+  if (sg) {
+    e.stopPropagation();
+    navTab('task');
+    const sous = $('#tab-task .subnav [data-kind="code"]');
+    if (sous) sous.click();
+    return;
+  }
   const att = e.target.closest && e.target.closest('[data-brief-sess]');
   if (att) { navTab('task'); return; }
   const v = e.target.closest && e.target.closest('[data-brief-verif]');
@@ -10770,6 +13217,21 @@ const todoSnoozeHtml = (id) => `<span class="todo-snooze">
 
 /* Le lien vers l'objet suivi. Une MR dont l'id ne résout plus (rapport supprimé, dépôt
    retiré) reste affichée comme telle plutôt que de disparaître : la todo, elle, existe. */
+/* CE QUE LA MERGE REQUEST LIÉE EST DEVENUE. « Suivre !201 » restait à l'écran des jours après
+   le merge : on ouvrait Reviews pour vérifier, puis on revenait cocher. La ligne le dit —
+   note, verdict, âge, et « mergée » quand elle l'est : on sait si la todo a encore une raison
+   d'exister sans quitter la liste. */
+function todoEtatMr(t) {
+  const m = t && t.mr;
+  if (!m) return '';
+  const bouts = [];
+  if (m.note != null) bouts.push(esc(fmtNote10(m.note * 10)));
+  if (m.verdict) bouts.push(esc(tr(`mr.ref.verdict.${m.verdict}`)));
+  if (m.closed) bouts.push(esc(tr('notes.todo.mr.closed')));
+  else if (m.created_at) bouts.push(esc(tr('notes.todo.mr.open-since', { when: depuis(m.created_at) })));
+  return bouts.length ? ` <span class="todo-mr-etat muted">${bouts.join(' · ')}</span>` : '';
+}
+
 function todoLinkHtml(t) {
   if (!t.link_kind || !t.link_ref) return '';
   if (t.link_kind === 'mr') {
@@ -10831,7 +13293,7 @@ function renderTodos(rows) {
       <input type="checkbox" class="todo-check" data-todo-check="${t.id}"${t.status === 'done' ? ' checked' : ''} aria-label="${esc(tr('notes.todo.done'))}" />
       <div class="brief-item-main">
         <div class="brief-item-title">${esc(t.title)}</div>
-        <div class="meta">${todoPrioBadge(t.priority)}${todoDueHtml(t)}${todoLinkHtml(t)}
+        <div class="meta">${todoPrioBadge(t.priority)}${todoDueHtml(t)}${todoLinkHtml(t)}${todoEtatMr(t)}
           ${t.archived_at ? `<span class="muted">${esc(tr('notes.todo.archived-at', { date: fmtDate(t.archived_at) }))}</span>` : ''}</div>
         ${t.note ? `<div class="todo-note md-body">${renderNoteMd(t.note)}</div>` : ''}
       </div>
@@ -11181,8 +13643,10 @@ function openCapture(ctx = {}) {
   $('#capturePriority').value = source.priority || 'normal';
   $('#captureNote').value = source.note || '';
   $('#captureDue').value = source.due_at ? isoVersLocal(source.due_at) : '';
-  // Une todo qu'on édite s'ouvre dépliée : on vient justement changer un de ces champs.
-  details.hidden = !ctx.editId;
+  /* Une todo qu'on édite s'ouvre dépliée : on vient justement changer un de ces champs. Et une
+     todo qui ARRIVE avec une échéance ou une priorité reprises d'ailleurs aussi — sans quoi
+     elles seraient posées à l'insu de celui qui valide. */
+  details.hidden = !(ctx.editId || source.due_at || (source.priority && source.priority !== 'normal'));
   $('#captureMore').textContent = tr(details.hidden ? 'notes.capture.more' : 'notes.capture.less');
   modal.hidden = false;
   setTimeout(() => { titre.focus(); titre.select(); }, 0);
@@ -11197,13 +13661,102 @@ function isoVersLocal(iso) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/* ---------- La syntaxe courte de la capture rapide ----------
+   `n` ouvre une boîte pour noter ce qui vient de passer, sans changer d'écran. Trois choses
+   revenaient à chaque fois — à quoi ça se rapporte, pour quand, et si ça presse — et il fallait
+   déplier « détails » pour les trois. On les écrit donc DANS la phrase :
+
+     !217  ou  PROJ-1408   ce à quoi la todo se rattache (merge request, ticket)
+     @demain @lundi @12/09 l'échéance, posée à 9 h — l'heure où l'on lit ses rappels
+     !!  /  !               priorité haute / basse
+
+   Rien n'est deviné : ce qui n'est pas reconnu RESTE dans le titre, tel quel. Une note qui
+   parlerait de « la version 1.2 » ne devient pas une échéance, et « !important » (deux
+   caractères de plus) n'est pas la priorité `!!`. */
+const RE_CAP_MR = /(?:^|\s)!(\d{1,6})(?=\s|$)/;
+const RE_CAP_TICKET = /(?:^|\s)([A-Z][A-Z0-9]+-\d+)(?=\s|$)/;
+const RE_CAP_HAUTE = /(?:^|\s)!!(?=\s|$)/;
+const RE_CAP_BASSE = /(?:^|\s)!(?=\s|$)/;
+const RE_CAP_QUAND = /(?:^|\s)@(\S+)(?=\s|$)/;
+
+const JOURS_SEMAINE = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+const JOURS_SEMAINE_EN = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+/* Une échéance est un JOUR : on la pose à 9 h locales. « demain », un jour de la semaine (le
+   prochain à venir), ou une date `12/09` / `12/09/2026` / `2026-09-12`. */
+function quandDepuisMot(mot) {
+  const m = String(mot || '').trim().toLowerCase();
+  if (!m) return null;
+  const a9h = (d) => { d.setHours(9, 0, 0, 0); return d.toISOString(); };
+  const now = new Date();
+  if (m === "aujourd'hui" || m === 'aujourdhui' || m === 'today') return a9h(new Date(now));
+  if (m === 'demain' || m === 'tomorrow') { const d = new Date(now); d.setDate(d.getDate() + 1); return a9h(d); }
+  const ij = JOURS_SEMAINE.indexOf(m) >= 0 ? JOURS_SEMAINE.indexOf(m) : JOURS_SEMAINE_EN.indexOf(m);
+  if (ij >= 0) {
+    const d = new Date(now);
+    // Le PROCHAIN : « @lundi » dit lundi, aujourd'hui compris s'il est encore devant nous.
+    d.setDate(d.getDate() + ((ij - d.getDay() + 7) % 7 || 7));
+    return a9h(d);
+  }
+  let g = m.match(/^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?$/);
+  if (g) {
+    const an = g[3] ? (g[3].length === 2 ? 2000 + Number(g[3]) : Number(g[3])) : now.getFullYear();
+    const d = new Date(an, Number(g[2]) - 1, Number(g[1]));
+    if (!isNaN(d)) {
+      // Sans année, une date déjà passée désigne l'an prochain : on ne pose pas un rappel mort.
+      if (!g[3] && d < now) d.setFullYear(an + 1);
+      return a9h(d);
+    }
+  }
+  g = m.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (g) { const d = new Date(Number(g[1]), Number(g[2]) - 1, Number(g[3])); if (!isNaN(d)) return a9h(d); }
+  return null;
+}
+
+function lireCaptureCourte(texte) {
+  let t = String(texte || '');
+  const out = { title: '', priority: '', due_at: '', link_kind: '', link_ref: '' };
+  const mr = t.match(RE_CAP_MR);
+  if (mr) { out.link_kind = 'mr'; out.link_ref = mr[1]; t = t.replace(mr[0], ' '); }
+  if (!out.link_kind) {
+    const tk = t.match(RE_CAP_TICKET);
+    if (tk) { out.link_kind = 'ticket'; out.link_ref = tk[1].toUpperCase(); t = t.replace(tk[0], ' '); }
+  }
+  const q = t.match(RE_CAP_QUAND);
+  if (q) {
+    const iso = quandDepuisMot(q[1]);
+    // Un `@mot` qu'on ne sait pas lire reste dans le titre : mieux vaut le voir que le perdre.
+    if (iso) { out.due_at = iso; t = t.replace(q[0], ' '); }
+  }
+  if (RE_CAP_HAUTE.test(t)) { out.priority = 'high'; t = t.replace(RE_CAP_HAUTE, ' '); }
+  else if (RE_CAP_BASSE.test(t)) { out.priority = 'low'; t = t.replace(RE_CAP_BASSE, ' '); }
+  out.title = t.replace(/\s+/g, ' ').trim();
+  return out;
+}
+
+/* `!217` désigne un NUMÉRO de merge request ; la todo, elle, se lie à son identifiant interne.
+   Sans correspondance connue, on ne lie rien plutôt que de lier à côté. */
+function idMrDepuisIid(iid) {
+  const m = (toReviewRows || []).concat(reportRows || []).find((x) => Number(x.iid) === Number(iid));
+  return m ? String(m.id) : '';
+}
+
 async function submitCapture() {
+  const brut = $('#captureTitle').value;
+  /* La syntaxe courte ne s'applique qu'à une capture NEUVE et non pré-liée : sur une édition,
+     ou sur une todo créée depuis une merge request, le titre est déjà ce qu'il doit être. */
+  const court = (captureCtx && (captureCtx.editId || captureCtx.link_kind)) ? null : lireCaptureCourte(brut);
   const body = {
-    title: $('#captureTitle').value,
-    priority: $('#capturePriority').value,
+    title: court && court.title ? court.title : brut,
+    priority: (court && court.priority) || $('#capturePriority').value,
     note: $('#captureNote').value,
-    due_at: $('#captureDue').value || null,
+    due_at: (court && court.due_at) || $('#captureDue').value || null,
   };
+  if (court && court.link_kind) {
+    const ref = court.link_kind === 'mr' ? idMrDepuisIid(court.link_ref) : court.link_ref;
+    if (ref) { body.link_kind = court.link_kind; body.link_ref = ref; }
+    else { body.title = brut.trim(); }   // référence inconnue : on garde la phrase entière
+  }
   if (captureCtx && captureCtx.link_kind) { body.link_kind = captureCtx.link_kind; body.link_ref = captureCtx.link_ref; }
   const edit = captureCtx && captureCtx.editId;
   try {
@@ -11236,12 +13789,31 @@ fermerAuFond('#captureModal', () => closeCapture(), { salissable: true });
    liste inutilisable au bout d'une semaine. */
 const todoLie = (kind, ref) => NOTES.open.find((t) => t.link_kind === kind && String(t.link_ref) === String(ref));
 
-function addTodoBtn(kind, ref, titre) {
+/* PRIORITÉ JIRA → PRIORITÉ DE TODO. Les noms varient d'une instance à l'autre (« Highest »,
+   « Bloquant », « P1 »…) : on reconnaît les familles courantes dans les deux langues et, dans
+   le doute, on ne décide pas — « normal » est le défaut du formulaire, et se change d'un clic. */
+function prioriteDepuisJira(nom) {
+  const n = String(nom || '').trim().toLowerCase();
+  if (!n) return '';
+  if (/^(highest|high|urgent|bloquant|blocker|critical|critique|haute|majeur|major|p0|p1)/.test(n)) return 'high';
+  if (/^(lowest|low|basse|mineur|minor|trivial|p4|p5)/.test(n)) return 'low';
+  return '';
+}
+/* L'échéance d'un ticket Jira est une DATE (`2026-09-12`), le rappel de Mergerie un INSTANT :
+   on le pose à 9 h locales, l'heure à laquelle on lit ses rappels. */
+function echeanceDepuisJira(date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return '';
+  const [a, m, j] = String(date).split('-').map(Number);
+  return new Date(a, m - 1, j, 9, 0, 0).toISOString();
+}
+
+function addTodoBtn(kind, ref, titre, extra = {}) {
   const existante = todoLie(kind, ref);
   if (existante) {
     return `<button type="button" class="btn btn-sm" data-see-todo="${existante.id}" title="${esc(tr('notes.view-todo-title'))}">${svgIco('check')}${esc(tr('notes.view-todo'))}</button>`;
   }
-  return `<button type="button" class="btn btn-sm" data-add-todo="${esc(kind)}" data-add-ref="${esc(ref)}" data-add-title="${esc(titre)}" title="${esc(tr('notes.add-todo-title'))}">${svgIco('clip')}${esc(tr('notes.add-todo'))}</button>`;
+  const sup = `${extra.due ? ` data-add-due="${esc(extra.due)}"` : ''}${extra.priority ? ` data-add-priority="${esc(extra.priority)}"` : ''}`;
+  return `<button type="button" class="btn btn-sm" data-add-todo="${esc(kind)}" data-add-ref="${esc(ref)}" data-add-title="${esc(titre)}"${sup} title="${esc(tr('notes.add-todo-title'))}">${svgIco('clip')}${esc(tr('notes.add-todo'))}</button>`;
 }
 
 // Après création, le bouton encore à l'écran doit basculer : sinon on clique deux fois et
@@ -11257,7 +13829,10 @@ function majBoutonsTodo() {
 document.addEventListener('click', (e) => {
   const add = e.target.closest && e.target.closest('[data-add-todo]');
   if (add) {
-    openCapture({ title: add.dataset.addTitle, link_kind: add.dataset.addTodo, link_ref: add.dataset.addRef });
+    openCapture({
+      title: add.dataset.addTitle, link_kind: add.dataset.addTodo, link_ref: add.dataset.addRef,
+      due_at: add.dataset.addDue || '', priority: add.dataset.addPriority || 'normal',
+    });
     return;
   }
   const see = e.target.closest && e.target.closest('[data-see-todo]');
@@ -11488,6 +14063,10 @@ function renderLinkGrid() {
     + `<span class="link-env-dot" style="background:${esc(e.color)}"></span>`
     + `<button type="button" class="link-env-name" data-envedit="${e.id}" title="${esc(tr('links.env.settings'))}">${esc(e.name)}</button>`
     + `<span class="link-env-acts">`
+    + `${/* LE GESTE D'AVANT DÉMO : ouvrir toute la colonne, dans l'ordre de la grille. Derrière
+            confirmation dès qu'il y a plus de trois onglets à ouvrir — vingt onglets d'un coup
+            n'est pas ce qu'on voulait, et le navigateur les bloquerait de toute façon. */''}`
+    + `<button type="button" class="link-icon" data-envopen="${e.id}" title="${esc(tr('links.env.open-all'))}" aria-label="${esc(tr('links.env.open-all'))}">${svgIco('external')}</button>`
     + `<button type="button" class="link-icon" data-envmove="${e.id}" data-dir="-1"${rang(e.id) === 0 ? ' disabled' : ''} title="${esc(tr('links.env.move-left'))}" aria-label="${esc(tr('links.env.move-left'))}">${svgIco('left')}</button>`
     + `<button type="button" class="link-icon" data-envmove="${e.id}" data-dir="1"${rang(e.id) === toutesEnvs.length - 1 ? ' disabled' : ''} title="${esc(tr('links.env.move-right'))}" aria-label="${esc(tr('links.env.move-right'))}">${svgIco('right')}</button>`
     + `</span></span></th>`).join('');
@@ -11516,8 +14095,13 @@ function renderLinkGrid() {
       const montrees = deplie ? retenues : retenues.slice(0, 2);
       /* `rel="noopener noreferrer"` sur TOUTES les ouvertures externes : l'onglet ouvert ne
          doit rien pouvoir faire de la page qui l'a ouvert. */
+      /* LA BULLE DIT L'ADRESSE COMPLÈTE ET SA DERNIÈRE OUVERTURE. Le libellé est court par
+         nature (« api », « admin ») : on cliquait sans savoir sur quoi, et sans savoir si
+         c'était bien celle d'hier. L'URL entière et « il y a 3 h » répondent aux deux. */
+      const bulle = (u) => [u.label || '', u.url, u.last_used_at ? tr('links.last-open', { when: depuis(u.last_used_at) }) : '']
+        .filter(Boolean).join('\n');
       const lignes = montrees.map((u) => `<a class="link-open" href="${esc(u.url)}" target="_blank" rel="noopener noreferrer"
-          data-usekind="service_url" data-useref="${s.id}:${e.id}:${u.id}" title="${esc(u.url)}">
+          data-usekind="service_url" data-useref="${s.id}:${e.id}:${u.id}" data-tip="${esc(bulle(u))}">
           <span>${esc(u.label || urlCourte(u.url))}</span></a>`).join('');
       const caches = retenues.slice(montrees.length);
       /* Le « +N » DIT CE QU'IL CACHE au survol. Un compteur seul oblige à déplier pour savoir
@@ -11857,6 +14441,28 @@ function ligneEdition(u = { label: '', url: '' }) {
     <button type="button" class="link-icon lce-del" title="${esc(tr('ui.delete'))}" aria-label="${esc(tr('ui.delete'))}">${svgIco('trash')}</button>
   </div>`;
 }
+/* Ouvrir TOUTES les adresses d'un environnement, dans l'ordre de la grille. Le navigateur
+   bloque les fenêtres non demandées : on ouvre depuis le CLIC, sans await entre deux, et on
+   prévient quand il y en a beaucoup — c'est le seul moment où l'on peut encore reculer. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-envopen]');
+  if (!b) return;
+  const envId = Number(b.dataset.envopen);
+  const services = ((LINKS.grid && LINKS.grid.services) || []);
+  const adresses = [];
+  for (const s of services) for (const u of (((s.urls || {})[envId]) || [])) adresses.push({ s, u });
+  if (!adresses.length) { toast(tr('links.env.open-none'), true); return; }
+  if (adresses.length > 3 && !await confirmDialog({
+    title: tr('links.env.open-all'),
+    text: tr('links.env.open-confirm', { n: adresses.length, count: adresses.length }),
+    confirmLabel: tr('links.env.open-go'),
+  })) return;
+  for (const { s, u } of adresses) {
+    api('/launcher/used', { method: 'POST', body: { kind: 'service_url', ref: `${s.id}:${envId}:${u.id}` } }).catch(() => {});
+    window.open(u.url, '_blank', 'noopener,noreferrer');
+  }
+});
+
 function ouvrirCase(td, sid, eid, liste = []) {
   const lignes = (liste.length ? liste : [{ label: '', url: '' }]).map(ligneEdition).join('');
   td.innerHTML = `<div class="link-cell-edit" data-cellfor="${sid}" data-env="${eid}">
@@ -12180,6 +14786,11 @@ $('#linkNewFree') && $('#linkNewFree').addEventListener('click', () => openFreeM
 $('#freeCancel') && $('#freeCancel').addEventListener('click', () => { $('#freeLinkModal').hidden = true; });
 fermerAuFond('#freeLinkModal', () => { $('#freeLinkModal').hidden = true; }, { salissable: true });
 $('#freeSave') && $('#freeSave').addEventListener('click', async () => {
+  /* La modale n'est pas un <form> : `required` y est un marquage, pas une garde. Les deux
+     champs sans lesquels le lien n'existe pas se signalent donc SOUS le champ. */
+  viderErreursChamps($('#freeLinkModal'));
+  if (!$('#freeLabel').value.trim()) return void signalerChamp($('#freeLabel'), tr('err.lien-sans-libelle'));
+  if (!$('#freeUrl').value.trim()) return void signalerChamp($('#freeUrl'), tr('err.lien-sans-url'));
   const body = { label: $('#freeLabel').value, url: $('#freeUrl').value, tags: $('#freeTags').value, folder: $('#freeFolder').value };
   try {
     if (freeEnCours) await api(`/free-links/${freeEnCours.id}`, { method: 'PUT', body });
@@ -12509,10 +15120,39 @@ $('#linkGrid') && $('#linkGrid').addEventListener('click', (e) => {
 /* Les liens du service associé au dépôt de la MR : ses URLs de grille, puis ses gabarits
    résolus avec la branche et le numéro. Un gabarit non résoluble ICI reste affiché, GRISÉ,
    avec sa raison — le faire disparaître laisserait croire qu'il n'existe pas. */
+/* Les boutons contextuels, quelle que soit LEUR SOURCE : une merge request, la ligne de projet
+   d'une session, ou un ticket Jira. Le serveur résout `{env}` / `{branch}` / `{mr_iid}` de la
+   même façon dans les trois cas — c'est le même geste, il porte donc les mêmes boutons. */
+/* Les blocs de liens rendus DANS UNE LISTE se remplissent après coup, une fois par ligne :
+   les demander pendant le rendu ferait attendre la liste pour un ornement. */
+function remplirLiensDifferes(racine) {
+  for (const el of $$('[data-liens-task]', racine || document)) {
+    if (el.dataset.liensFait === '1') continue;
+    el.dataset.liensFait = '1';
+    renderLiensContextuels(`/tasks/${el.dataset.liensTask}/targets/${el.dataset.liensTarget}/links`, el);
+  }
+  for (const el of $$('[data-liens-ticket]', racine || document)) {
+    if (el.dataset.liensFait === '1') continue;
+    el.dataset.liensFait = '1';
+    renderLiensContextuels(`/jira/issues/${encodeURIComponent(el.dataset.liensTicket)}/links`, el);
+  }
+}
+
+async function renderLiensContextuels(route, box) {
+  if (!box) return;
+  let d;
+  try { d = await api(route); } catch { return; }
+  return renderBoutonsLiens(d, box);
+}
+
 async function renderMrLinks(mrId, box) {
   if (!box) return;
   let d;
   try { d = await api(`/mrs/${mrId}/links`); } catch { return; }
+  return renderBoutonsLiens(d, box);
+}
+
+function renderBoutonsLiens(d, box) {
   if (!d.service || (!d.envs.length && !d.context.length)) return;
   const boutons = [
     /* Un bouton PAR ADRESSE : une case qui porte « erreurs paiement » et « latence API » en
@@ -12536,6 +15176,50 @@ async function renderMrLinks(mrId, box) {
   ];
   box.innerHTML = `<div class="mr-links"><span class="muted">${esc(d.service.name)}</span>${boutons.join('')}</div>`;
 }
+
+/* ---------- B8 : la liste des jobs Jenkins liés aux dépôts ---------- */
+async function loadJenkinsLinks() {
+  const box = $('#jenkinsLinkRepo');
+  if (box) {
+    // Choix de dépôt AVEC RECHERCHE, comme partout : `npm run check` refuse une liste sans.
+    await loadRepoOptions();
+    box.innerHTML = repoComboHtml(null, { idClass: 'jl-repo', defaultFirst: true });
+    wireRepoCombos(box);
+  }
+  const el = $('#jenkinsLinkList');
+  if (!el) return;
+  let d;
+  try { d = await api('/jenkins/links'); } catch { d = { links: [] }; }
+  el.innerHTML = (d.links || []).length
+    ? (d.links || []).map((l) => `<div class="card repo-row">
+        <div class="repo-view"><div style="min-width:0">
+          <div class="title">${esc(l.project)} <span class="muted">→</span> <code>${esc(l.job_path)}</code></div>
+          ${l.param ? `<div class="meta muted">${esc(tr('settings.jenkins.links.param'))} : <code>${esc(l.param)}</code></div>` : ''}
+        </div>
+        <div class="spacer"></div>
+        <button class="btn btn-icon btn-sm btn-danger" data-jl-del="${l.id}" title="${esc(tr('ui.delete'))}"><svg class="ico"><use href="#i-close"/></svg></button>
+        </div></div>`).join('')
+    : `<p class="muted">${esc(tr('settings.jenkins.links.empty'))}</p>`;
+}
+$('#jenkinsLinkForm') && $('#jenkinsLinkForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  viderErreursChamps(f);
+  const repoId = Number(($('#jenkinsLinkRepo .jl-repo') || {}).value || 0);
+  if (!repoId) { toast(tr('err.depot-introuvable'), true); return; }
+  if (!f.job_path.value.trim()) return void signalerChamp(f.job_path, tr('err.jenkins.job-required'));
+  try {
+    await api('/jenkins/links', { method: 'POST', body: { repo_id: repoId, job_path: f.job_path.value.trim(), param: f.param.value.trim() } });
+    f.job_path.value = ''; f.param.value = '';
+    loadJenkinsLinks();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-jl-del]');
+  if (!b) return;
+  try { await api(`/jenkins/links/${b.dataset.jlDel}`, { method: 'DELETE' }); loadJenkinsLinks(); }
+  catch (err) { toast(explainError(err.message), true); }
+});
 
 /* ---------- Sidebar ---------- */
 
@@ -12616,19 +15300,68 @@ document.addEventListener('keydown', (e) => {
     case 'k': e.preventDefault(); bougerFocusCarte(-1); break;
     case 'Enter': { const c = carteFocus(); if (c) { e.preventDefault(); const b = c.querySelector('.btn-primary'); if (b) b.click(); } break; }
     case 'd': { const c = carteFocus(); if (c) { e.preventDefault(); const b = c.querySelector('[data-diff]'); if (b) b.click(); } break; }
+    /* LE RESTE DU RAIL AU CLAVIER. `j/k/Entrée/d` existaient ; traiter vingt merge requests
+       demandait quand même la souris pour vérifier, ouvrir le contexte, classer ou cocher.
+       Les actions vivent dans le menu ⋯ : on clique le BOUTON RENDU, jamais une route en
+       double — ce qui est grisé le reste, et ce qui n'existe pas ne fait rien. */
+    case 'v': { const b = boutonDeCarte('[data-verify]'); if (b) { e.preventDefault(); b.click(); } break; }
+    case 'c': { const b = boutonDeCarte('[data-ticket]'); if (b) { e.preventDefault(); b.click(); } break; }
+    case 'm': { const b = boutonDeCarte('[data-done]'); if (b) { e.preventDefault(); b.click(); } break; }
+    case 'x': { const b = boutonDeCarte('.mr-pick'); if (b) { e.preventDefault(); b.click(); } break; }
     case 'Escape': { const c = carteFocus(); if (c) c.classList.remove('focused'); break; }
     default: break;
   }
 });
 
+/* ENREGISTRER ET TESTER, EN UN GESTE. Le parcours nominal d'une connexion est toujours le
+   même : coller l'URL et le jeton, enregistrer, vérifier. Deux boutons de même poids
+   laissaient le choix de l'ordre — et tester sans enregistrer donnait un vert qui ne
+   survivait pas au rechargement. Le primaire fait les deux ; « Enregistrer seulement » reste
+   pour qui ne veut pas d'appel réseau. */
+function enregistrerConfig() {
+  const f = $('#configForm');
+  return new Promise((resolve) => {
+    if (!f) { resolve(); return; }
+    f.addEventListener('mergerie:config-saved', resolve, { once: true });
+    f.requestSubmit();
+    // Filet : si l'enregistrement échoue, le test part quand même sur les valeurs de l'écran.
+    setTimeout(resolve, 4000);
+  });
+}
+
+/* ---------- La garde à vide, commune aux quatre boutons « Tester » ----------
+   Trois boutons jumeaux (Git, Jira, Jenkins) répondaient de trois façons : GitLab appelait
+   l'API avec des champs vides et rendait l'erreur du serveur, Jira ne répondait rien du tout,
+   Jenkins renvoyait un libellé de serveur. Une seule garde, et l'erreur se pose SOUS le
+   premier champ manquant — un test de connexion échoue à cause d'un champ, pas d'un écran. */
+function gardeConnexion(champs, message, info) {
+  const vide = champs.find((c) => c && !String(c.value || '').trim());
+  if (!vide) return true;
+  if (info) { info.textContent = ''; info.className = 'muted'; }
+  signalerChamp(vide, message);
+  return false;
+}
+
 /* ---------- Test de connexion GitLab (réutilise un endpoint existant) ---------- */
 const btnTestGitlab = $('#btnTestGitlab');
 if (btnTestGitlab) btnTestGitlab.addEventListener('click', async () => {
   const info = $('#configInfoGit') || $('#configInfo');
-  btnTestGitlab.disabled = true; info.textContent = tr('settings.test.running');
+  const fg = $('#configForm');
+  viderErreursChamps($('#sub-gitcfg'));
+  if (!gardeConnexion([fg.gitlab_url, fg.access_token], tr('err.gitlab-test-incomplet'), info)) return;
+  btnTestGitlab.disabled = true;
+  await enregistrerConfig();
+  info.textContent = tr('settings.test.running');
   try {
-    const r = await api('/gitlab/projects');
-    const n = (r.projects || r || []).length;
+    /* On teste CE QUI EST À L'ÉCRAN, pas ce qui est en base : au premier lancement, on vient
+       tout juste de taper l'URL et le jeton, et rien ne dit qu'il faut enregistrer d'abord.
+       C'est déjà ce que fait « Tester GitHub », deux boutons plus bas. */
+    const f = $('#configForm');
+    const r = await api('/gitlab/test', { method: 'POST', body: {
+      gitlab_url: f.gitlab_url.value.trim(),
+      access_token: f.access_token.value,
+    } });
+    const n = r.count || 0;
     info.textContent = tr('settings.conn.ok', { n, count: n });
   } catch (e) {
     info.textContent = '';
@@ -12639,7 +15372,13 @@ if (btnTestGitlab) btnTestGitlab.addEventListener('click', async () => {
 const btnTestGithub = $('#btnTestGithub');
 if (btnTestGithub) btnTestGithub.addEventListener('click', async () => {
   const info = $('#configInfoGithub');
-  btnTestGithub.disabled = true; info.textContent = tr('settings.test.running');
+  const fh = $('#configForm');
+  viderErreursChamps($('#sub-gitcfg'));
+  /* L'URL GitHub, elle, peut rester vide : c'est github.com. Le jeton, non. */
+  if (!gardeConnexion([fh.github_token], tr('err.github-test-incomplet'), info)) return;
+  btnTestGithub.disabled = true;
+  await enregistrerConfig();
+  info.textContent = tr('settings.test.running');
   try {
     const f = $('#configForm');
     const r = await api('/github/test', { method: 'POST', body: {
@@ -12656,9 +15395,16 @@ if (btnTestGithub) btnTestGithub.addEventListener('click', async () => {
 const btnTestJira = $('#btnTestJira');
 if (btnTestJira) btnTestJira.addEventListener('click', async () => {
   const f = $('#configForm');
-  const key = prompt(tr('settings.jira.test-prompt'));
-  if (!key) return;
   const info = $('#configInfoJira') || $('#configInfo');
+  /* LA MÊME GARDE QUE GITLAB, avant tout appel. Le bouton ouvrait un `prompt()` du navigateur
+     et sortait sans un mot si on l'annulait — à vide il ne faisait donc rien du tout, au moment
+     précis où l'on cherche à savoir si la connexion marche. Trois boutons jumeaux (Git, Jira,
+     Jenkins) doivent répondre pareil. */
+  const champ = $('#jiraTestKey');
+  const key = (champ && champ.value.trim()) || '';
+  viderErreursChamps($('#sub-jiracfg'));
+  if (!gardeConnexion([f.jira_url, f.jira_email, f.jira_token], tr('err.jira-test-incomplet'), info)) return;
+  if (!key) { info.textContent = ''; signalerChamp(champ, tr('err.jira-test-sans-cle')); return; }
   info.textContent = tr('settings.jira.testing');
   try {
     // On envoie les valeurs SAISIES (URL/email/token) pour tester avant d'enregistrer.
@@ -12682,6 +15428,12 @@ const btnTestJenkins = $('#btnTestJenkins');
 if (btnTestJenkins) btnTestJenkins.addEventListener('click', async () => {
   const f = $('#configForm');
   const info = $('#configInfoJenkins') || $('#configInfo');
+  /* MÊME GARDE, MÊME PHRASE que Git et Jira. Le serveur répondait « Jenkins non configuré
+     (URL, utilisateur, jeton requis) » — une catégorie interne, et une formulation à part sur
+     trois boutons jumeaux. */
+  viderErreursChamps($('#sub-jenkinscfg'));
+  if (!gardeConnexion([f.jenkins_url, f.jenkins_user, f.jenkins_token], tr('err.jenkins-test-incomplet'), info)) return;
+  await enregistrerConfig();
   info.textContent = tr('settings.jenkins.testing');
   try {
     const r = await busy(btnTestJenkins, () => api('/jenkins/test', { method: 'POST', body: {
@@ -12764,6 +15516,8 @@ function renderVerifierRepoBox(lignes = []) {
     $$('.vr-row', box).forEach((it) => { it.hidden = !!q && !$('.repo-multi-item span', it).textContent.toLowerCase().includes(q); });
   });
   cablerChoixLocal(box);
+  // À l'ouverture d'un vérificateur existant, les dépôts sont déjà cochés : on propose d'emblée.
+  majSuggestionsCommandes();
 }
 
 /* Le sélecteur de projet local. Il liste TOUS les projets git de TOUTES les racines : ce
@@ -12873,9 +15627,46 @@ function renderCommandList(commands) {
     <input class="vc-cmd" type="text" value="${esc(c)}" placeholder="${esc(tr('settings.verifier.ph.command-line'))}" />
     <button type="button" class="btn vc-move" data-dir="-1" ${i === 0 ? 'disabled' : ''} title="${esc(tr('settings.verifier.btn.move-up'))}">${svgIco('up')}</button>
     <button type="button" class="btn vc-move" data-dir="1" ${i === liste.length - 1 ? 'disabled' : ''} title="${esc(tr('settings.verifier.btn.move-down'))}">${svgIco('down')}</button>
-    <button type="button" class="btn btn-danger vc-del" title="${esc(tr('ui.delete'))}">${svgIco('trash')}</button>
+    ${/* La corbeille n'apparaît qu'à partir de deux lignes : sur une commande unique, elle
+          propose de vider le seul champ obligatoire du bloc. */''}
+    ${liste.length > 1 ? `<button type="button" class="btn btn-danger vc-del" title="${esc(tr('ui.delete'))}">${svgIco('trash')}</button>` : ''}
   </div>`).join('');
 }
+
+/* ---------- Les commandes que les dépôts couverts savent déjà lancer ----------
+   On recopiait `npm run test:integ -- --tag paiement-3x` depuis un terminal, en se trompant
+   d'un tiret. Le dépôt les DÉCLARE : on les propose, on ne les invente pas. La liste suit les
+   dépôts cochés — cocher un dépôt de plus ajoute ses commandes, en décocher retire les
+   siennes ; une commande déjà dans le formulaire n'est plus proposée. */
+let verifSuggSeq = 0;
+async function majSuggestionsCommandes() {
+  const box = $('#verifierSuggestions');
+  if (!box) return;
+  const ids = $$('#verifierRepoBox .vr-row').filter((row) => $('.vr-pick', row) && $('.vr-pick', row).checked)
+    .map((row) => Number(row.dataset.repo)).filter(Boolean);
+  if (!ids.length) { box.hidden = true; box.innerHTML = ''; return; }
+  const seq = ++verifSuggSeq;
+  let liste = [];
+  try { liste = (await api(`/verifiers/command-suggestions?repo_ids=${ids.join(',')}`)).suggestions || []; } catch { liste = []; }
+  if (seq !== verifSuggSeq) return;            // une coche plus récente a déjà répondu
+  const deja = new Set($$('#verifierCommandList .vc-cmd').map((x) => x.value.trim()).filter(Boolean));
+  const restantes = liste.filter((s) => !deja.has(s.command));
+  box.hidden = !restantes.length;
+  if (!restantes.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<p class="field-note">${esc(tr('settings.verifier.sugg.intro'))}</p>`
+    + restantes.map((s) => `<button type="button" class="chip vc-sugg-btn" data-sugg="${esc(s.command)}" title="${esc([s.source, s.desc, s.repos.join(', ')].filter(Boolean).join(' · '))}">${esc(s.command)}</button>`).join('');
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-sugg]');
+  if (!b) return;
+  /* On AJOUTE à la suite, sans rien écraser : la première ligne vide d'un formulaire neuf est
+     remplie, sinon on en ouvre une nouvelle. L'ordre des commandes est celui du clic. */
+  const vals = $$('#verifierCommandList .vc-cmd').map((x) => x.value);
+  const vide = vals.findIndex((v) => !v.trim());
+  if (vide >= 0) vals[vide] = b.dataset.sugg; else vals.push(b.dataset.sugg);
+  renderCommandList(vals);
+  majSuggestionsCommandes();
+});
 
 /* Déplace la ligne `i` d'un cran. On relit les valeurs À L'ÉCRAN avant de réordonner : une
    commande en cours de frappe, pas encore enregistrée, ne doit pas être perdue par le
@@ -12910,7 +15701,11 @@ function verifierReposFromForm() {
 $('#verifierRepoBox') && $('#verifierRepoBox').addEventListener('change', (e) => {
   const row = e.target.closest && e.target.closest('.vr-row');
   if (!row) return;
-  if (e.target.classList.contains('vr-pick')) $('.vr-cfg', row).hidden = !e.target.checked;
+  if (e.target.classList.contains('vr-pick')) {
+    $('.vr-cfg', row).hidden = !e.target.checked;
+    // Les commandes proposées suivent les dépôts couverts : cocher en ajoute, décocher en retire.
+    majSuggestionsCommandes();
+  }
   if (e.target.classList.contains('vr-mode')) $('.vr-ip', row).hidden = e.target.value !== 'in_place';
 });
 
@@ -12964,6 +15759,13 @@ function renderVerifierList() {
     const p = (repoOptions.find((x) => x.id === r.repo_id) || {}).project || `#${r.repo_id}`;
     return `<span class="tag">${esc(p)} · ${esc(r.mode === 'in_place' ? tr('verify.mode.in-place-short') : tr('verify.mode.worktree-short'))}</span>`;
   }).join(' ')}</div>
+      ${/* CE QU'IL A DONNÉ, ET CE QUI L'ATTEND. Une liste de vérificateurs sans verdict ne dit
+            pas lesquels servent : le dernier verdict avec sa date, et le nombre de merge
+            requests à traiter que sa couverture concerne. */''}
+      <div class="meta muted">${[
+    v.last ? `<span class="tmr-verdict v-${esc(v.last.verdict)}">${esc(tr(`mr.ref.verdict.${v.last.verdict}`))}</span>${v.last.at ? ` <span data-when="${esc(v.last.at)}">${esc(fmtDate(v.last.at))}</span>` : ''}` : esc(tr('verify.verifier.never')),
+    v.pending_mrs ? esc(tr('verify.verifier.pending', { n: v.pending_mrs, count: v.pending_mrs })) : '',
+  ].filter(Boolean).join(' · ')}</div>
       ${herite
     ? `<p class="field-note">${esc(tr('verify.kind.script-removed.hint'))}</p>`
     : `<div class="meta muted">${esc(tr('verify.kind.commands'))} · ${esc(tr('verify.verifier.meta', { timeout: v.timeout_s }))}${v.run_base ? ` · ${esc(tr('verify.verifier.with-base'))}` : ''}${v.comment_on_forge ? ` · ${esc(tr('verify.verifier.comments'))}` : ''}${v.auto_on_mr ? ` · ${esc(tr('verify.verifier.auto'))}` : ''}</div>`}
@@ -13087,8 +15889,11 @@ $('#btnNewVerifier') && $('#btnNewVerifier').addEventListener('click', () => {
   viderFormVerifier();
   ouvrirFormVerifier(true);
   const f = $('#verifierForm');
+  /* `preventScroll` : sans lui, le focus redéfile de son côté et annule le dégagement que
+     `scroll-margin-top` vient de ménager sous l'en-tête fixe — le champ « Nom » finissait
+     caché derrière, et on croyait que le formulaire commençait à « Commandes ». */
   f.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  f.name.focus();
+  f.name.focus({ preventScroll: true });
 });
 
 $('#btnVerifierCancel') && $('#btnVerifierCancel').addEventListener('click', () => {
@@ -13099,9 +15904,25 @@ $('#btnVerifierCancel') && $('#btnVerifierCancel').addEventListener('click', () 
 $('#verifierForm') && $('#verifierForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
+  /* UN VÉRIFICATEUR SANS DÉPÔT NE SERT À RIEN, et s'enregistrait sans un mot : il n'apparaît
+     ensuite dans aucune modale de lancement, et on cherche pourquoi. Même chose pour les
+     commandes — le serveur les refusait vides, mais en exposant son type interne
+     (« un vérificateur "commandes" a besoin… ») dans un toast à l'autre bout de l'écran. */
+  viderErreursChamps(f);
+  const commandes = commandesDuFormulaire();
+  if (!commandes.length) {
+    signalerChamp($('#verifierCommandList .vc-cmd'), tr('err.verifier-sans-commande'));
+    return;
+  }
+  if (!verifierReposFromForm().length) {
+    const boite = $('#verifierRepoBox');
+    erreurChamp(boite && boite.querySelector('input'), tr('err.verifier-sans-depot'));
+    if (boite) boite.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return;
+  }
   const body = {
     name: f.name.value.trim(),
-    commands: commandesDuFormulaire(),
+    commands: commandes,
     report_path: f.report_path.value.trim(),
     env: f.env.value,
     parse_tap: f.parse_tap.checked ? 1 : 0,
@@ -13134,7 +15955,7 @@ function verifyBadge(v) {
   if (!v) return `<span class="tag verify none" title="${esc(tr('verify.badge.none.title'))}">${esc(tr('verify.badge.none'))}</span>`;
   const suffixe = v.in_place ? ` ${tr('verify.badge.in-place')}` : '';
   if (v.stale) {
-    return `<span class="tag verify stale" data-vreport="${v.id}" title="${esc(tr('verify.badge.stale.title'))}">${svgIco('refresh')}${esc(tr('verify.badge.stale') + suffixe)}</span>`;
+    return `<button type="button" class="tag verify stale" data-vreport="${v.id}" title="${esc(tr('verify.badge.stale.title'))}">${svgIco('refresh')}${esc(tr('verify.badge.stale') + suffixe)} <span class="tag-cta">${esc(tr('verify.badge.see-report'))}</span></button>`;
   }
   /* Sans nom de test, on ne prétend pas en compter : le badge nomme la COMMANDE qui a
      échoué. Annoncer « 1 test cassé » là où on ne sait rien des tests serait une invention. */
@@ -13149,7 +15970,10 @@ function verifyBadge(v) {
     verify_error: ['warn', tr('verify.badge.error'), tr('verify.badge.error.title')],
   }[v.verdict];
   if (!par) return '';
-  return `<span class="tag verify ${par[0]}" data-vreport="${v.id}" title="${esc(par[2])}">${esc(par[1] + suffixe)}</span>`;
+  /* Le badge OUVRE le rapport : c'était un <span> cliquable, invisible au clavier et muet sur
+     ce qu'il fait. Un <button> le rend atteignable par Tab, et « · voir le rapport » dit la
+     porte au lieu de la laisser deviner au survol. */
+  return `<button type="button" class="tag verify ${par[0]}" data-vreport="${v.id}" title="${esc(par[2])}">${esc(par[1] + suffixe)} <span class="tag-cta">${esc(tr('verify.badge.see-report'))}</span></button>`;
 }
 
 /* ---------- Rapport de vérification ---------- */
@@ -13281,7 +16105,12 @@ function verifyReportHtml(d) {
     <code>${esc(f.test || '')}</code>${f.message ? ` — ${esc(f.message)}` : ''}
     ${f.log_excerpt ? `<pre class="verify-log">${esc(f.log_excerpt)}</pre>` : ''}
   </li>`;
-  const cible = (c) => `<li>${esc(c.project || `#${c.repo_id}`)}${c.iid ? ` !${c.iid}` : ''} · <code>${esc(c.branch || '')}</code> @ <code>${esc(String(c.head_sha || '').slice(0, 8))}</code>${c.mode === 'in_place' ? ` <span class="tag warn">${esc(tr('verify.mode.in-place-short'))}</span>` : ''}</li>`;
+  /* L'IDENTIFIANT RAMÈNE À SA MERGE REQUEST. « !204 » était du texte mort : on lisait qu'un
+     test casse sur cette MR sans pouvoir y aller — il fallait retenir le numéro, fermer, et
+     la retrouver à la main dans la liste. */
+  const cible = (c) => `<li>${esc(c.project || `#${c.repo_id}`)}${c.iid ? (c.mr_id
+    ? ` <button type="button" class="lien-mr" data-vmr="${c.mr_id}" title="${esc(tr('verify.report.open-mr', { iid: c.iid }))}">!${esc(c.iid)}</button>`
+    : ` !${esc(c.iid)}`) : ''} · <code>${esc(c.branch || '')}</code> @ <code>${esc(String(c.head_sha || '').slice(0, 8))}</code>${c.mode === 'in_place' ? ` <span class="tag warn">${esc(tr('verify.mode.in-place-short'))}</span>` : ''}</li>`;
   const duree = d.started_at && d.finished_at
     ? tr('verify.report.duration', { s: Math.max(1, Math.round((new Date(d.finished_at) - new Date(d.started_at)) / 1000)) }) : '';
   return `
@@ -13349,6 +16178,21 @@ document.addEventListener('click', async (e) => {
     const sub = $('#tab-task .subnav [data-kind="code"]');
     if (sub) sub.click();
   } catch (err) { toast(explainError(err.message), true); }
+});
+
+/* Le clic sur « !204 » : on ferme, on va dans Reviews, et on ouvre CE rapport. Le stade
+   « Reviewées » d'abord — c'est là que vit un rapport, et ouvrir sans changer de stade
+   laisserait la colonne de gauche sur une liste où la carte n'apparaît pas. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-vmr]');
+  if (!b) return;
+  const id = Number(b.dataset.vmr);
+  $('#verifyModal').hidden = true;
+  const nav = $('nav button[data-tab="review"]');
+  if (nav) nav.click();
+  const seg = $('[data-seg="reviewed"]');
+  if (seg) seg.click();
+  try { await openReport(id, { force: true }); } catch (err) { toast(explainError(err.message), true); }
 });
 
 $('#verifyClose') && $('#verifyClose').addEventListener('click', () => { $('#verifyModal').hidden = true; });
@@ -13520,6 +16364,41 @@ function choisirVerifier(listeBrute, mrIds) {
   return new Promise((resolve) => { verifyPickResolve = resolve; });
 }
 
+/* ---------- B6 : l'état des services au moment du clic ----------
+   La vérification « in place » tourne DANS un répertoire de travail. Si ce répertoire porte un
+   projet compose et que sa base est arrêtée, elle mourra en trois secondes sur un
+   `ECONNREFUSED` — et on l'apprendra après. La fenêtre le dit avant, avec le bouton qui
+   répare. Demandé À L'OUVERTURE de la fenêtre, pas en boucle : c'est un `docker ps`. */
+async function majEtatDockerDuChoix(v) {
+  const box = $('#verifyDockerEtat');
+  if (!box) return;
+  const dirs = [...new Set((v.repos || []).filter((r) => r.mode === 'in_place' && r.workdir).map((r) => r.workdir))];
+  box.innerHTML = '';
+  for (const dir of dirs) {
+    let d;
+    try { d = await api(`/docker/dir-state?dir=${encodeURIComponent(dir)}`); } catch { d = null; }
+    if (!d || !d.found || !d.services.length) continue;
+    const arretes = d.services.filter((sv) => sv.state !== 'running');
+    if (!arretes.length) continue;      // tout tourne : rien à dire, et le silence est la bonne réponse
+    const el = document.createElement('p');
+    el.className = 'converge-note';
+    el.innerHTML = `${svgIco('alert')} <span>${esc(tr('verify.pick.docker-down', {
+      project: d.project,
+      list: arretes.map((sv) => `${sv.name} : ${dockerStateLabel(sv.state)}`).join(', '),
+    }))}</span> <button type="button" class="btn btn-sm" data-verify-up="${esc(dir)}">${esc(tr('docker.act.up'))}</button>`;
+    box.appendChild(el);
+  }
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-verify-up]');
+  if (!b) return;
+  try {
+    await busy(b, () => api('/docker/compose/action', { method: 'POST', body: { action: 'up', dir: b.dataset.verifyUp, services: [] } }));
+    toast(tr('docker.up.started'));
+    b.disabled = true;
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
 // Ce qui va réellement tourner : les commandes, le mode, le délai.
 function majDetailChoix() {
   const sel = $('#verifyPickList input:checked');
@@ -13532,7 +16411,9 @@ function majDetailChoix() {
     <p class="muted">${esc(tr('verify.pick.commands'))}</p><pre class="verify-log">${(v.commands || []).map((c) => `$ ${esc(c)}`).join('\n')}</pre>
     <p class="muted">${modes}</p>
     <p class="muted">${esc(v.run_base ? tr('verify.pick.with-base') : tr('verify.pick.no-base'))} · ${esc(tr('verify.verifier.meta', { timeout: v.timeout_s }))}</p>
-    ${(v.repos || []).some((r) => r.mode === 'in_place') ? `<p class="converge-note">${svgIco('alert')} <span>${esc(tr('verify.pick.in-place-warn'))}</span></p>` : ''}`;
+    ${(v.repos || []).some((r) => r.mode === 'in_place') ? `<div id="verifyDockerEtat"></div><p class="converge-note">${svgIco('alert')} <span>${esc(tr('verify.pick.in-place-warn'))}</span></p>` : ''}`;
+  // L'état des services du répertoire « in place », demandé maintenant (cf. B6).
+  majEtatDockerDuChoix(v);
 }
 
 function fermerChoixVerifier(v) {
@@ -13662,6 +16543,11 @@ function renderLots() {
   if (briefDejaVuAujourdHui()) { queueMicrotask(atterrir); return; }
   api('/config').then((c) => {
     if (c.brief_on_open === '0') { atterrir(); return; }
+    /* PREMIÈRE OUVERTURE, RIEN DE CONFIGURÉ : on n'ouvre pas sur le brief. Il dirait « rien ne
+       réclame ton attention » à quelqu'un qui n'a encore rien branché, et le seul écran qui
+       explique par où commencer — les trois étapes de démarrage — est celui des Reviews. Le
+       brief est le bon écran d'accueil À PARTIR DU DEUXIÈME JOUR, pas à la première seconde. */
+    if (!(c.gitlab_url && c.access_token)) { atterrir(); return; }
     marquerBriefVu();
     tab = 'notes';
     atterrir();
@@ -13671,7 +16557,7 @@ function renderLots() {
     showNotesSub('today');
   }).catch(atterrir);   // configuration illisible : on ne bloque jamais le démarrage
 })();
-checkSetup().then(() => { if (currentSeg === 'to_review') renderToReview(); });
+rafraichirDemarrage();
 refreshCounts();
 refreshStatus();
 rafraichirHistCount();
@@ -13720,7 +16606,20 @@ document.addEventListener('keydown', (e) => {
    ne porte pas de pastille : elle supposerait d'interroger Jenkins à chaque ouverture de
    l'application, et un compteur figé depuis la dernière visite ment plus qu'il n'informe. */
 
-const JENKINS = { jobs: [], configured: true, q: '', echecsSeuls: false, job: null, build: null, qDossier: '', horsDossiers: new Set(), masques: new Set(), paramFiltres: {}, paramsMasques: new Set() };
+const JENKINS = { jobs: [], configured: true, q: '', echecsSeuls: false, miensSeuls: false, job: null, build: null, qDossier: '', horsDossiers: new Set(), masques: new Set(), paramFiltres: {}, paramsMasques: new Set() };
+
+/* ---------- Les jobs épinglés ----------
+   Trois jobs du quotidien dans une liste de deux cents : on les cherchait à chaque fois. Une
+   épingle les remonte en tête — c'est un arrangement d'écran, il vit donc dans le navigateur,
+   comme les dossiers rangés et l'ordre des menus. */
+const JENKINS_EPINGLES = 'mergerie_jenkins_epingles';
+const jkEpingles = () => { try { return new Set(JSON.parse(localStorage.getItem(JENKINS_EPINGLES) || '[]')); } catch { return new Set(); } };
+function jkBasculerEpingle(chemin) {
+  const e = jkEpingles();
+  if (e.has(chemin)) e.delete(chemin); else e.add(chemin);
+  try { localStorage.setItem(JENKINS_EPINGLES, JSON.stringify([...e])); } catch { /* stockage indisponible */ }
+  renderJenkins();
+}
 
 /* Les dossiers DÉCOCHÉS sont mémorisés, pas les cochés. La différence compte le jour où
    l'équipe crée un dossier : mémoriser les cochés le rendrait invisible jusqu'à ce qu'on
@@ -13845,19 +16744,9 @@ function jkStatutLabel(j) {
   return tr(`jenkins.st.${j.statut}`);
 }
 
-/* « il y a 3 h » plutôt qu'une date : sur une liste triée par date, c'est la FRAÎCHEUR qu'on
-   lit, pas le jour exact. `Intl` s'en charge dans la langue courante — une table de
-   traductions maison pour « minute/heure/jour » n'aurait rien apporté. */
+// Cf. `depuis()` : ici on part d'un horodatage en millisecondes (ce que rend l'API Jenkins).
 function jkQuand(ms) {
-  if (!ms) return tr('jenkins.st.jamais');
-  const s = Math.round((ms - Date.now()) / 1000);
-  const paliers = [['second', 60], ['minute', 60], ['hour', 24], ['day', 7], ['week', 4.35], ['month', 12], ['year', Infinity]];
-  let v = s;
-  for (const [unite, taille] of paliers) {
-    if (Math.abs(v) < taille) return new Intl.RelativeTimeFormat(I18Nrt.currentLocale(), { numeric: 'auto' }).format(Math.round(v), unite);
-    v /= taille;
-  }
-  return '';
+  return ms ? depuis(new Date(ms).toISOString()) : tr('jenkins.st.jamais');
 }
 
 // « Qui a lancé » : un nom, ou la nature du déclencheur — jamais un blanc, qui laisserait
@@ -13964,7 +16853,6 @@ function jkLienExterne(url) {
 }
 
 function jkRow(j, colonnes = []) {
-  const ennui = JK_ENNUI.includes(j.statut);
   const params = jkParams(j);
   const infos = [
     jkStatutLabel(j),
@@ -13977,18 +16865,38 @@ function jkRow(j, colonnes = []) {
   /* La fiche s'ouvre en cliquant le NOM, pas la ligne entière : les boutons de droite lancent,
      relancent ou sortent vers Jenkins, et le clic ne doit pas leur ajouter une fenêtre par-dessus.
      Un vrai <button> — donc au clavier aussi, et le curseur dit où ça se passe. */
-  return `<div class="card jk-row">
+  const epingle = jkEpingles().has(j.path);
+  return `<div class="card jk-row${epingle ? ' jk-pinned' : ''}">
     <span class="jk-dot ${esc(j.statut)}${j.enCours ? ' encours' : ''}" aria-hidden="true"></span>
+    ${/* L'ÉPINGLE : trois jobs du quotidien ne se cherchent plus dans deux cents. */''}
+    <button type="button" class="btn btn-icon btn-sm btn-ghost jk-pin${epingle ? ' active' : ''}" data-jkpin="${esc(j.path)}" title="${esc(tr(epingle ? 'jenkins.unpin' : 'jenkins.pin'))}" aria-label="${esc(tr(epingle ? 'jenkins.unpin' : 'jenkins.pin'))}"><svg class="ico ico-sm"><use href="#i-${epingle ? 'star-filled' : 'star'}"/></svg></button>
     <button type="button" class="jk-ident" data-jkjob="${esc(j.path)}" title="${esc(tr('jenkins.open.title'))}">
       <span class="jk-name">${j.folder ? `<span class="jk-path">${esc(j.folder)}/</span>` : ''}${esc(j.name)}${j.lastNumber ? ` <span class="jk-path">#${j.lastNumber}</span>` : ''}</span>
       <span class="jk-meta" title="${esc(j.last ? jkQuand(j.last) : '')}">${infos.map(esc).join(' · ')}</span>
       ${jkParamPastilles(params, colonnes)}
     </button>
-    ${ennui ? `<span class="tag stale">${esc(jkStatutLabel(j))}</span>` : ''}
-    ${jkLienExterne(j.url)}
-    <button type="button" class="btn btn-sm" data-jkopen="${esc(j.path)}">${esc(tr('jenkins.open'))}</button>
-    ${(j.buildable && j.last && (j.lastParams || []).length) ? `<button type="button" class="btn btn-sm" data-jkrerun="${esc(j.path)}" title="${esc(tr('jenkins.rerun.title-btn'))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg>${esc(tr('jenkins.rerun'))}</button>` : ''}
-    ${j.buildable ? `<button type="button" class="btn btn-sm btn-primary" data-jkrun="${esc(j.path)}" title="${esc(j.params ? tr('jenkins.run.params-title', { n: j.params, count: j.params }) : tr('jenkins.run.title'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(j.params ? tr('jenkins.run.params') : tr('jenkins.run'))}</button>` : ''}
+    ${/* Le badge d'état a été retiré d'ici : il reprenait MOT POUR MOT le `jkStatutLabel`
+          déjà écrit dans `.jk-meta`, à côté d'une pastille qui porte la même couleur.
+          Trois fois la même information, dont une au milieu des boutons d'action. */''}
+    ${/* MÊME RAIL QUE DOCKER : ordre fixe, actions indisponibles DÉSACTIVÉES et non absentes.
+          « Relancer » manquait sur les jobs sans paramètres et « Lancer » sur les jobs
+          désactivés : « Lancer », bleu, se retrouvait à trois abscisses différentes d'une
+          ligne à l'autre, exactement là où l'œil venait de cliquer sur autre chose. */''}
+    <div class="jk-actions">
+      ${jkLienExterne(j.url)}
+      ${/* « Ouvrir » à côté d'une icône « ouvrir dans Jenkins » : deux fois le même verbe pour
+            deux destinations. Celui-ci reste DANS Mergerie et montre la fiche — « Détails ». */''}
+      <button type="button" class="btn btn-sm" data-jkopen="${esc(j.path)}">${esc(tr('jenkins.open'))}</button>
+      ${(() => {
+        const peutRelancer = !!(j.buildable && j.last && (j.lastParams || []).length);
+        return `<button type="button" class="btn btn-sm" data-jkrerun="${esc(j.path)}"${peutRelancer
+          ? ` title="${esc(tr('jenkins.rerun.title-btn'))}"`
+          : ` disabled title="${esc(tr('jenkins.rerun.unavailable'))}"`}><svg class="ico ico-sm"><use href="#i-refresh"/></svg>${esc(tr('jenkins.rerun'))}</button>`;
+      })()}
+      <button type="button" class="btn btn-sm btn-primary" data-jkrun="${esc(j.path)}"${j.buildable
+        ? ` title="${esc(j.params ? tr('jenkins.run.params-title', { n: j.params, count: j.params }) : tr('jenkins.run.title'))}"`
+        : ` disabled title="${esc(tr('jenkins.run.unavailable'))}"`}><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(j.params ? tr('jenkins.run.params') : tr('jenkins.run'))}</button>
+    </div>
   </div>`;
 }
 
@@ -14008,7 +16916,8 @@ function renderJenkins() {
   const vus = JENKINS.jobs.filter((j) => (!q || jkCherchable(j).includes(q))
     && !JENKINS.horsDossiers.has(j.folder) && !JENKINS.masques.has(j.folder)
     && jkPasseFiltresParam(j)
-    && (!JENKINS.echecsSeuls || JK_ENNUI.includes(j.statut) || j.enCours));
+    && (!JENKINS.echecsSeuls || JK_ENNUI.includes(j.statut) || j.enCours)
+    && (!JENKINS.miensSeuls || Object.prototype.hasOwnProperty.call(jkLances(), j.path)));
   $('#jenkinsCount').textContent = tr('jenkins.count', { n: vus.length, count: vus.length, total: JENKINS.jobs.length });
 
   if (!JENKINS.jobs.length) {
@@ -14025,7 +16934,11 @@ function renderJenkins() {
   /* Calculés sur TOUS les jobs, pas sur ceux qui restent après filtrage : sinon une teinte
      changerait de sens à chaque frappe, et un filtre disparaîtrait au moment où l'on s'en sert. */
   const colonnes = jkColonnes(JENKINS.jobs);
-  box.innerHTML = vus.map((j) => jkRow(j, colonnes)).join('');
+  /* LES ÉPINGLÉS EN TÊTE, dans l'ordre du serveur pour le reste. Un tri stable : deux jobs
+     épinglés gardent entre eux l'ordre « dernier lancement d'abord ». */
+  const epingles = jkEpingles();
+  const ordonnes = [...vus].sort((a, b) => (epingles.has(b.path) ? 1 : 0) - (epingles.has(a.path) ? 1 : 0));
+  box.innerHTML = ordonnes.map((j) => jkRow(j, colonnes)).join('');
 }
 
 /* FILTRER SUR LES VALEURS D'UN PARAMÈTRE FRÉQUENT. C'est la question qu'on se pose devant une
@@ -14193,7 +17106,7 @@ const jkPastilleBuild = (b) => (b.building ? 'succes encours'
    Console : c'est le geste le plus fréquent, il ne doit pas coûter une sélection de plus. */
 function jkBuildLigne(chemin, b, choisi) {
   const etat = b.building ? tr('jenkins.st.running') : (b.result || '—');
-  const quand = b.timestamp ? fmtDateTime(new Date(b.timestamp).toISOString()) : '';
+  const quand = b.timestamp ? dateHtml(new Date(b.timestamp).toISOString(), fmtDateTime(new Date(b.timestamp).toISOString())) : '';
   /* LES PARAMÈTRES SOUS LA LIGNE, ET DE LA MÊME COULEUR QUE DANS LA LISTE. C'est avec quoi
      l'exécution est partie qui distingue deux lignes autrement identiques : sans ça, retrouver
      « celle de la 1.5.2 en prod » demande de cliquer chaque ligne l'une après l'autre. La
@@ -14208,7 +17121,7 @@ function jkBuildLigne(chemin, b, choisi) {
         <span class="jk-dot ${jkPastilleBuild(b)}"></span>
         <strong>#${b.number}</strong>
         <span class="jk-verdict">${esc(etat)}</span>
-        <span class="jk-meta">${esc(quand)}${b.duration ? ` · ${Math.round(b.duration / 1000)} s` : ''}</span>
+        <span class="jk-meta">${quand}${b.duration ? ` · ${Math.round(b.duration / 1000)} s` : ''}</span>
       </button>
       <span class="jk-build-actions">
         <button type="button" class="btn btn-sm" data-jklog="${b.number}" data-jkpath="${esc(chemin)}">${esc(tr('jenkins.console'))}</button>
@@ -14221,6 +17134,21 @@ function jkBuildLigne(chemin, b, choisi) {
 }
 
 // Le détail de l'exécution sélectionnée : avec quoi elle est partie, et ce qu'elle a donné.
+/* Les dernières lignes de la console d'un build rouge. Un seul appel, à la demande, et le
+   résultat est gardé pour la page : on revient sur le même build en comparant deux échecs. */
+const cacheTail = new Map();
+async function chargerTailJenkins(chemin, numero, el) {
+  const cle = `${chemin}#${numero}`;
+  if (!cacheTail.has(cle)) {
+    cacheTail.set(cle, api(`/jenkins/console?path=${encodeURIComponent(chemin)}&build=${encodeURIComponent(numero)}`)
+      .then((d) => String(d.text || '').split('\n').filter((l) => l.trim()).slice(-30).join('\n'))
+      .catch(() => ''));
+  }
+  const texte = await cacheTail.get(cle);
+  if (!el.isConnected) return;
+  el.textContent = texte || tr('jenkins.build.tail-empty');
+}
+
 function jkBuildDetail(d, b) {
   if (!b) return `<p class="muted">${esc(tr('jenkins.build.pick'))}</p>`;
   const ligne = (k, v) => (v ? `<div class="jk-detail-row"><span class="jk-detail-k">${esc(k)}</span><span class="jk-detail-v">${esc(v)}</span></div>` : '');
@@ -14235,6 +17163,11 @@ function jkBuildDetail(d, b) {
     ${ligne(tr('jenkins.build.ref'), b.ref || '')}
     <h4>${esc(tr('jenkins.params.used'))}</h4>
     ${params}
+    ${/* LA FIN DE LA CONSOLE, POUR UN BUILD ROUGE. L'erreur se lit ici, sans ouvrir Jenkins :
+          c'est la seule chose qu'on va y chercher neuf fois sur dix. Chargée à la demande —
+          uniquement sur un échec, uniquement pour le build sélectionné. */''}
+    ${b.result && b.result !== 'SUCCESS' && !b.building
+    ? `<h4>${esc(tr('jenkins.build.tail'))}</h4><pre class="jk-tail verify-log" data-jk-tail="${b.number}">${esc(tr('ui.combo.loading'))}</pre>` : ''}
   </div>`;
 }
 
@@ -14302,6 +17235,9 @@ function renderJenkinsFiche() {
   if (zone) {
     zone.innerHTML = `<div class="jk-fiche-col jk-bloc jk-col-histo">${gauche}</div>`
       + `<div class="jk-fiche-col jk-bloc jk-col-detail">${jkBuildDetail(d, choisi)}</div>`;
+    // La fin de la console n'est demandée QUE si le détail en montre l'emplacement.
+    const tail = $('[data-jk-tail]', zone);
+    if (tail && choisi) chargerTailJenkins(d.path, choisi.number, tail);
   }
 }
 
@@ -14324,12 +17260,12 @@ async function approfondirFiche() {
   } catch (e) { toast(explainError(e.message), true); }
 }
 
-function jkReprendreParams(numero) {
-  const d = JENKINS.job;
-  const b = d && (d.builds || []).find((x) => x.number === Number(numero));
-  if (!b) return;
-  let repris = 0;
-  for (const p of b.params || []) {
+/* Poser un jeu de valeurs dans le formulaire de paramètres. Une valeur qui ne fait PLUS partie
+   des choix du job est ajoutée à la liste et signalée comme telle : la perdre en silence ferait
+   repartir un lancement sur autre chose que ce qu'on croit relancer. */
+function jkPoserParams(params) {
+  let posés = 0;
+  for (const p of params || []) {
     const champ = $(`#jenkinsModalBody [data-jkparam="${CSS.escape(p.name)}"]`);
     if (!champ) continue;
     const valeur = String(p.value);
@@ -14341,11 +17277,44 @@ function jkReprendreParams(numero) {
       }
       [...champ.options].forEach((o) => { o.selected = voulues.includes(o.value); });
     } else champ.value = valeur;
-    repris += 1;
+    posés += 1;
   }
+  return posés;
+}
+
+function jkReprendreParams(numero) {
+  const d = JENKINS.job;
+  const b = d && (d.builds || []).find((x) => x.number === Number(numero));
+  if (!b) return;
+  const repris = jkPoserParams(b.params);
   const zone = $('#jenkinsModalBody');
   if (zone) zone.scrollTop = 0;         // le formulaire est en haut de la fiche : on y remonte
   toast(repris ? tr('jenkins.reuse.done', { n: numero }) : tr('jenkins.reuse.none'), !repris);
+}
+
+/* ---------- Ce que la fiche propose À L'OUVERTURE ----------
+   Le formulaire s'ouvrait sur les défauts DU JOB. Or on relance presque toujours ce qu'on
+   vient de lancer : il fallait déplier l'historique et cliquer « reprendre » pour retrouver
+   ses propres valeurs. L'ordre est donc, du plus proche au plus lointain :
+     1. MA DERNIÈRE SAISIE sur ce job, dans ce navigateur — c'est mon habitude ;
+     2. les paramètres du DERNIER BUILD — l'habitude de l'équipe ;
+     3. les défauts déclarés par Jenkins — le repli.
+   Rien n'est envoyé pour autant : c'est une proposition dans un formulaire, et le bouton
+   reste à cliquer. */
+const JK_SAISIE = 'aidevtools_jenkins_saisie';
+const jkSaisies = () => { try { return JSON.parse(localStorage.getItem(JK_SAISIE) || '{}'); } catch { return {}; } };
+function jkMemoriserSaisie(chemin, params) {
+  try {
+    const m = jkSaisies(); m[chemin] = params;
+    localStorage.setItem(JK_SAISIE, JSON.stringify(m));
+  } catch { /* stockage indisponible : on perd le confort, pas la fonction */ }
+}
+function jkPreremplir(d) {
+  if (!d || !(d.parameters || []).length) return;
+  const mienne = jkSaisies()[d.path];
+  if (mienne && mienne.length) { jkPoserParams(mienne); return; }
+  const dernier = (d.builds || []).find((b) => (b.params || []).length);
+  if (dernier) jkPoserParams(dernier.params);
 }
 
 // Un paramètre, rendu selon SON type : un booléen se coche, un choix se choisit. Les
@@ -14392,9 +17361,28 @@ async function openJenkinsJob(chemin, { siParams = false } = {}) {
       : '';
     JENKINS.build = null;
     JENKINS.ficheFiltres = {};          // les filtres d'une fiche ne suivent pas d'un job à l'autre
-    $('#jenkinsModalBody').innerHTML = `${params}<div class="jk-fiche" id="jenkinsFiche"></div>`;
+    /* L'HISTORIQUE SE REPLIE QUAND IL Y A DES PARAMÈTRES À REMPLIR. Sur un job paramétré, la
+       fenêtre sert à lancer : déplié, « Derniers builds » repoussait le pied de modale à plus
+       d'un écran, et il fallait défiler pour trouver le bouton qu'on venait chercher. Sans
+       paramètre, la fiche EST l'historique : elle reste ouverte. */
+    const replie = d.parameters.length && d.buildable;
+    $('#jenkinsModalBody').innerHTML = params + (replie
+      ? `<details class="jk-fiche-repli"><summary>${esc(tr('jenkins.builds.show'))}</summary><div class="jk-fiche" id="jenkinsFiche"></div></details>`
+      : '<div class="jk-fiche" id="jenkinsFiche"></div>');
     renderJenkinsFiche();
+    jkPreremplir(d);            // ma dernière saisie, sinon le dernier build, sinon les défauts
     $('#jenkinsRun').hidden = !d.buildable;
+    /* LE TITRE PORTE LE VERBE quand la fenêtre sert à lancer : « boutique/api-deploy-prod »
+       seul ne dit pas ce qui va se passer. Et le focus va sur le PREMIER PARAMÈTRE — il
+       restait sur le bouton de la liste, donc hors de la fenêtre qui venait de s'ouvrir. */
+    if (d.parameters.length && d.buildable) {
+      $('#jenkinsModalTitle').textContent = tr('jenkins.modal.run-title', { job: chemin });
+      $('#jenkinsRun').querySelector('span').textContent = tr('jenkins.run.with-params');
+      const premier = $('#jenkinsModalBody .jk-param input, #jenkinsModalBody .jk-param select');
+      if (premier) premier.focus();
+    } else {
+      $('#jenkinsRun').querySelector('span').textContent = tr('jenkins.run');
+    }
   } catch (e) {
     // Une erreur se montre TOUJOURS : sinon le clic sur « Lancer » resterait sans réponse.
     modal.hidden = false;
@@ -14449,8 +17437,13 @@ async function relancerJenkins(chemin, params, caches) {
 /* LANCER DEMANDE CONFIRMATION. Un job Jenkins n'est pas une page qu'on ouvre : il déploie,
    il publie, il tourne sur une machine partagée. Le clic de trop n'est pas rattrapable
    depuis ici, et le nom du job dans la question est ce qui permet de s'en apercevoir. */
-async function lancerJenkins(chemin, parametres) {
-  if (!await confirmDialog({
+/* `confirmer` : la fiche paramétrée ne repose PAS la question. Remplir les paramètres d'un
+   déploiement, les relire et cliquer « Lancer avec ces paramètres » est déjà un geste
+   délibéré ; une seconde fenêtre qui redemande « lancer ce job ? » se clique sans la lire et
+   n'apprend plus rien. La confirmation reste pour le « Lancer » direct de la liste, où l'on
+   n'a rien vu du job. */
+async function lancerJenkins(chemin, parametres, { confirmer = true } = {}) {
+  if (confirmer && !await confirmDialog({
     title: tr('jenkins.confirm.title'), text: tr('jenkins.confirm.text', { job: chemin }),
     confirmLabel: tr('jenkins.run'),
   })) return false;
@@ -14480,6 +17473,13 @@ async function openJenkinsLog(chemin, numero) {
 
 $('#jenkinsSearch') && $('#jenkinsSearch').addEventListener('input', (e) => { JENKINS.q = e.target.value; renderJenkins(); });
 $('#jenkinsFailOnly') && $('#jenkinsFailOnly').addEventListener('change', (e) => { JENKINS.echecsSeuls = e.target.checked; renderJenkins(); });
+$('#jenkinsMineOnly') && $('#jenkinsMineOnly').addEventListener('change', (e) => { JENKINS.miensSeuls = e.target.checked; renderJenkins(); });
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-jkpin]');
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  jkBasculerEpingle(b.dataset.jkpin);
+});
 $('#jenkinsReload') && $('#jenkinsReload').addEventListener('click', () => loadJenkins());
 $('#jenkinsNoAuto') && $('#jenkinsNoAuto').addEventListener('change', (e) => {
   try { localStorage.setItem(JENKINS_AUTO, e.target.checked ? '0' : '1'); } catch { /* stockage indisponible */ }
@@ -14595,8 +17595,14 @@ fermerAuFond('#jenkinsLogModal', () => { $('#jenkinsLogModal').hidden = true; },
 $('#jenkinsRun') && $('#jenkinsRun').addEventListener('click', async () => {
   const j = JENKINS.job;
   if (!j) return;
+  const saisis = jkParamsSaisis();
   // Lancé depuis la fiche : on la referme, le geste est fait et la liste redemande l'état.
-  if (await lancerJenkins(j.path, jkParamsSaisis())) $('#jenkinsModal').hidden = true;
+  if (await lancerJenkins(j.path, saisis, { confirmer: !j.parameters.length })) {
+    /* CE QU'ON VIENT DE TAPER SERA PROPOSÉ LA PROCHAINE FOIS. Mémorisé APRÈS le lancement
+       seulement : un formulaire abandonné en cours de saisie ne fait pas une habitude. */
+    if (j.parameters.length) jkMemoriserSaisie(j.path, Object.entries(saisis).map(([name, value]) => ({ name, value })));
+    $('#jenkinsModal').hidden = true;
+  }
 });
 
 document.addEventListener('click', (e) => {

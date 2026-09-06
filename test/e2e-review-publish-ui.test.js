@@ -1,0 +1,280 @@
+'use strict';
+/* PUBLIER LE RAPPORT — LES DEUX COMMANDES, DANS LE NAVIGATEUR.
+ *
+ * Le comportement serveur est prouvé ailleurs (`e2e-review-publish`). Ce qui se prouve ICI et
+ * nulle part ailleurs, c'est le CÂBLAGE : un champ de réglage peut s'afficher, accepter la
+ * souris et n'être jamais enregistré — il suffit qu'il manque à la liste blanche qui pilote la
+ * sauvegarde, et rien à l'écran ne le dit. C'est arrivé à jira_email, puis à github_url.
+ *
+ * Même chose pour le bouton du rapport : une route qui répond ne prouve pas qu'un bouton
+ * l'appelle. On vérifie donc la case ET le bouton depuis l'écran, en relisant chaque fois
+ * l'ÉTAT DU SERVEUR — pas le libellé affiché, qui dit « enregistré » avant de savoir.
+ */
+
+const { test, before, after, describe } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+const {
+  startApp, poserIdentiteGit, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, attendreServeur,
+} = require('./helpers/app');
+
+const { dispo } = navigateurDispo();
+
+describe('Publier le rapport de review — écran', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
+  let app; let navigateur; let page; let mrId;
+
+  before(async () => {
+    app = await startApp();
+    const distant = fs.mkdtempSync(path.join(os.tmpdir(), 'depot-'));
+    const git = (...a) => execFileSync('git', a, { cwd: distant, stdio: 'pipe' }).toString().trim();
+    git('init', '-q', '-b', 'main');
+    poserIdentiteGit(distant);
+    fs.writeFileSync(path.join(distant, 'a.txt'), 'base\n');
+    git('add', '-A'); git('commit', '-qm', 'base');
+    git('checkout', '-q', '-b', 'feature/x');
+    fs.writeFileSync(path.join(distant, 'a.txt'), 'tete\n');
+    git('add', '-A'); git('commit', '-qm', 'tete');
+    const head = git('rev-parse', 'HEAD');
+    git('checkout', '-q', 'main');
+
+    await app.configure();
+    await app.api('POST', '/api/repos', { project: 'grp/app', url: distant });
+    app.state.projects = [{ id: 1, path_with_namespace: 'grp/app', http_url_to_repo: distant }];
+    app.state.mrs['grp/app'] = [{
+      iid: 7, title: 'Sujet', state: 'opened', source_branch: 'feature/x', target_branch: 'main',
+      web_url: 'http://x/7', sha: head, created_at: new Date().toISOString(), author: { name: 'A' },
+    }];
+    await app.api('POST', '/api/discover');
+    mrId = (await app.api('GET', '/api/mrs')).body.find((m) => m.iid === 7).id;
+
+    // Un vrai rapport, produit par la vraie review (COPILOT_DRY_RUN) : le bouton n'apparaît
+    // qu'en présence d'un rapport, et on veut le voir apparaître pour de bon.
+    await app.api('POST', `/api/mrs/${mrId}/review`);
+    for (let i = 0; i < 900; i += 1) {
+      const { body: st } = await app.api('GET', '/api/status');
+      if (!st.running && !st.queued) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+
+    navigateur = await lancerNavigateur();
+    page = await navigateur.newPage({ viewport: { width: 1400, height: 900 } });
+    await page.goto(app.base);
+  });
+
+  after(async () => {
+    if (navigateur) await navigateur.close();
+    if (app) await app.stop();
+  });
+
+  const reglage = async () => (await app.api('GET', '/api/config')).body.auto_post_review;
+
+  /* --------------------------------------------------------------- la case ---- */
+
+  test('la case existe dans Réglages → Merge request, et elle est décochée', async () => {
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    const case_ = page.locator('#sub-mr input[name="auto_post_review"]');
+    await case_.waitFor();
+    assert.equal(await case_.isChecked(), false, 'décochée par défaut');
+  });
+
+  test('la cocher et enregistrer l’écrit VRAIMENT côté serveur', async () => {
+    await page.locator('#sub-mr input[name="auto_post_review"]').click();
+    await page.locator('#sub-mr .form-actions button[type="submit"]').click();
+    /* On attend l'état du SERVEUR, pas le mot « enregistré » : le libellé s'affiche avant que
+       la réponse soit arrivée, et un champ jamais sauvegardé l'affiche aussi. Depuis Node, pas
+       depuis la page : `waitForFunction` ne déroule pas un prédicat `async`. */
+    await attendreServeur(async () => await reglage() === '1', 'la case cochée est enregistrée');
+  });
+
+  test('la décocher la remet à zéro, et l’écran la relit ainsi après rechargement', async () => {
+    await page.locator('#sub-mr input[name="auto_post_review"]').click();
+    await page.locator('#sub-mr .form-actions button[type="submit"]').click();
+    await attendreServeur(async () => await reglage() === '0', 'la case décochée est enregistrée');
+    // Le chargement du formulaire est l'autre moitié du câblage : sauvegardé mais jamais
+    // relu, le champ repartirait décoché à chaque ouverture.
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    assert.equal(await page.locator('#sub-mr input[name="auto_post_review"]').isChecked(), false);
+
+    await app.api('PUT', '/api/config', { auto_post_review: '1' });
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    assert.equal(await page.locator('#sub-mr input[name="auto_post_review"]').isChecked(), true,
+      'une case sauvegardée doit se rouvrir cochée');
+    await app.api('PUT', '/api/config', { auto_post_review: '0' });
+  });
+
+  /* Ouvre le menu « ⋯ » du rapport s'il ne l'est pas déjà : une action qui y vit ne peut pas
+     être cliquée les volets fermés, pas plus par le test que par l'utilisateur. */
+  async function ouvrirMenu() {
+    const menu = page.locator('#reportDetail .split-menu');
+    if (await menu.isVisible()) return;
+    await page.locator('#aMore').click();
+    await menu.waitFor();
+  }
+
+  /* ------------------------------------------------------------- le bouton ---- */
+
+  test('le rapport porte un bouton « Publier », qui poste après confirmation', async () => {
+    await page.reload();
+    await page.locator('[data-tab="review"]').click();
+    await page.locator('[data-seg="reviewed"]').click();
+    await page.locator('#reportList .card').first().click();
+    /* « Publier » est une action secondaire : elle vit dans le menu « ⋯ » du rapport, avec
+       tout ce qui n'est ni « Ouvrir le code », ni « Faire corriger », ni « Merger ». */
+    const bouton = page.locator('#aPublish');
+    await bouton.waitFor({ state: 'attached', timeout: 15000 });
+    await ouvrirMenu();
+    assert.match(await bouton.innerText(), /GitLab/, 'le bouton nomme la forge du dépôt');
+
+    // On confirme : écrire chez les autres ne doit pas partir sur un clic isolé.
+    await bouton.click();
+    await page.locator('#confirmModal:not([hidden])').waitFor();
+    await page.locator('#confirmOk').click();
+
+    /* L'effet qui compte est côté forge : le commentaire est-il parti ? On l'attend, plutôt
+       que de parier sur la vitesse du rendu. */
+    await attendreServeur(async () => !!(await app.api('GET', `/api/mrs/${mrId}`)).body.review.comment_posted_at,
+      'le rapport est publié');
+
+    const postees = app.state.calls.filter((c) => c.method === 'POST' && /\/notes$/.test(c.path));
+    assert.equal(postees.length, 1, 'un commentaire, et un seul');
+    const surDisque = fs.readFileSync(
+      app.db.prepare('SELECT md_path FROM review WHERE mr_id = ?').get(mrId).md_path, 'utf8').trim();
+    assert.equal(postees[0].body.body, surDisque, 'c’est le rapport qui part, pas autre chose');
+  });
+
+  test('une fois publié, le bouton propose de REpublier — il ne se tait pas', async () => {
+    // Sans ce changement de libellé, on reclique en croyant que le premier envoi a échoué,
+    // et l'équipe reçoit deux fois le même rapport.
+    await page.locator('#aPublish').waitFor({ state: 'attached', timeout: 15000 });
+    await ouvrirMenu();
+    await page.waitForFunction(
+      () => /republier/i.test(document.querySelector('#aPublish').innerText),
+      null, { timeout: 15000 },
+    );
+    assert.ok(await page.locator('#aPublish').getAttribute('data-posted'), 'la date publiée est portée par le bouton');
+  });
+
+  test('annuler la confirmation ne publie rien', async () => {
+    const avant = app.state.calls.filter((c) => c.method === 'POST' && /\/notes$/.test(c.path)).length;
+    await ouvrirMenu();
+    await page.locator('#aPublish').click();
+    await page.locator('#confirmModal:not([hidden])').waitFor();
+    await page.locator('#confirmCancel').click();
+    /* `waitFor()` attend « visible » par défaut, et un élément `[hidden]` ne l'est jamais :
+       on attend donc que le sélecteur « modale OUVERTE » cesse d'exister. */
+    await page.locator('#confirmModal:not([hidden])').waitFor({ state: 'detached' });
+    assert.equal(app.state.calls.filter((c) => c.method === 'POST' && /\/notes$/.test(c.path)).length, avant);
+  });
+
+  /* ------------------------------------ l'autre case du même panneau ---- */
+
+  /* Elle vit ici parce que le harnais démarre le serveur EN PROCESSUS : un second `startApp()`
+     dans le même fichier attend un `listening` qui ne viendra jamais. Deux cases du même
+     panneau partagent donc la même application — et c'est le même câblage qu'on vérifie :
+     un champ peut s'afficher, accepter la souris et n'être jamais enregistré. */
+  test('« Lancer automatiquement la review » s’enregistre, avec son plafond', async () => {
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    const auto = page.locator('#sub-mr input[name="auto_review_new"]');
+    await auto.waitFor();
+    assert.equal(await auto.isChecked(), false, 'décochée par défaut : elle dépense des appels IA');
+
+    await auto.click();
+    await page.locator('#sub-mr input[name="review_auto_max"]').fill('3');
+    await page.locator('#sub-mr .form-actions button[type="submit"]').click();
+    await attendreServeur(async () => {
+      const c = (await app.api('GET', '/api/config')).body;
+      return c.auto_review_new === '1' && Number(c.review_auto_max) === 3;
+    }, 'la case et son plafond sont enregistrés');
+
+    // L'autre moitié du câblage : sauvegardé mais jamais relu, le champ repartirait vide.
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    assert.equal(await page.locator('#sub-mr input[name="auto_review_new"]').isChecked(), true);
+    assert.equal(await page.locator('#sub-mr input[name="review_auto_max"]').inputValue(), '3');
+    await app.api('PUT', '/api/config', { auto_review_new: '0' });
+  });
+
+  test('« Relancer quand le rapport est périmé » s’enregistre elle aussi', async () => {
+    // Chaque case a SON câblage : celle-ci pourrait manquer à la sauvegarde sans que la
+    // précédente en souffre, et rien à l'écran ne le dirait.
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    const perime = page.locator('#sub-mr input[name="auto_rereview_stale"]');
+    await perime.waitFor();
+    assert.equal(await perime.isChecked(), false, 'décochée par défaut');
+    await perime.click();
+    await page.locator('#sub-mr .form-actions button[type="submit"]').click();
+    await attendreServeur(async () => (await app.api('GET', '/api/config')).body.auto_rereview_stale === '1',
+      'la case « rapport périmé » est enregistrée');
+
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    assert.equal(await page.locator('#sub-mr input[name="auto_rereview_stale"]').isChecked(), true,
+      'sauvegardée mais jamais relue, elle repartirait décochée à chaque ouverture');
+    await app.api('PUT', '/api/config', { auto_rereview_stale: '0' });
+  });
+
+  test('ce qu’on tape n’est pas effacé par le chargement des réglages', async () => {
+    /* `loadConfig()` part à chaque ouverture d'un sous-onglet et revient quelques dizaines de
+       millisecondes plus tard. S'il écrase ce qui a été tapé entre-temps, un jeton collé juste
+       après l'ouverture disparaît sans un mot — et c'est ce qui faisait échouer, une fois sur
+       deux sur un runner à deux cœurs, le test qui saisit les identifiants Jenkins. */
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    /* On tape TOUT DE SUITE, sans attendre que le formulaire soit peuplé : c'est le cas réel.
+       Le plafond des reviews automatiques ne convient plus pour ça — il est désactivé tant que
+       sa case est décochée —, et le plafond de passes de convergence fait exactement le même
+       office : un champ nombre de #configForm, peuplé par le même chargement. */
+    await page.locator('#sub-mr input[name="converge_max_passes"]').fill('7');
+    await attendreServeur(async () => true, 'laisser la réponse de /config revenir');
+    await page.waitForFunction(() => document.querySelector('[name="converge_threshold"]').value !== '',
+      null, { timeout: 15000 });   // preuve que le chargement est bien passé
+    assert.equal(await page.locator('#sub-mr input[name="converge_max_passes"]').inputValue(), '7',
+      'la frappe doit survivre au chargement qui revient après elle');
+  });
+
+  test('après une sauvegarde, le secret saisi repasse sous « *** »', async () => {
+    /* Le garde-fou ci-dessus s'abstient quand l'utilisateur a tapé — mais le rechargement qui
+       SUIT une sauvegarde est voulu : c'est lui qui remasque le jeton. Sans la remise à zéro du
+       compteur de frappe, le jeton resterait affiché en clair après l'enregistrement. */
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="gitcfg"]').click();
+    const champ = page.locator('#configForm [name="access_token"], [name="access_token"]').first();
+    await champ.waitFor();
+    await champ.fill('glpat-secret-de-test');
+    await page.locator('#sub-gitcfg button[type="submit"]').first().click();
+    await attendreServeur(async () => (await app.api('GET', '/api/config')).body.access_token === '***',
+      'le jeton est enregistré côté serveur');
+    await page.waitForFunction(
+      () => (document.querySelector('[name="access_token"]') || {}).value === '***',
+      null, { timeout: 15000 },
+    );
+    assert.equal(await champ.inputValue(), '***', 'le jeton ne doit pas rester en clair à l’écran');
+  });
+
+  test('un plafond à 0 se RÉAFFICHE « 0 », pas vide', async () => {
+    // 0 veut dire « sans limite ». Affiché vide, il se lirait comme « valeur par défaut », et
+    // on croirait le garde-fou en place alors qu'on vient de le retirer.
+    await app.api('PUT', '/api/config', { review_auto_max: '0' });
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    assert.equal(await page.locator('#sub-mr input[name="review_auto_max"]').inputValue(), '0');
+    await app.api('PUT', '/api/config', { review_auto_max: '5' });
+  });
+});

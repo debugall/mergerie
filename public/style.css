@@ -22,10 +22,9 @@
   --mois-1: #7c8cf8; --mois-2: #4f9cf0; --mois-3: #2fb5c4;
   --mois-4: #4bb56d; --mois-5: #d0a53a; --mois-6: #e2864a;
   --accent-btn: #2f6fe0; --accent-btn-hi: #2b64d4; /* fond des boutons : blanc dessus = 4,70:1 */
-  --purple-btn: #7c3aed; /* fond du bouton Converger : blanc dessus = 5,70:1 (--purple #b47ce6 échouait à 3,0:1) */
   /* B4 : texte sur fond coloré — jamais #fff en dur (échouait AA : 3,22:1) */
   --on-amber: #1a1400; --on-green: #0a1e12; --on-accent: #ffffff; --on-red: #ffffff;
-  --on-purple: #ffffff; --on-overlay: #ffffff;
+  --on-overlay: #ffffff;
   /* Badges d'alerte du header : texte blanc constant sur fond fort (identique clair/sombre).
      V2.2 : --danger/--amber sont calibrés comme couleurs de TEXTE (trop clairs en fond blanc-dessus) ;
      ces fonds dédiés passent AA — err 5,62:1, warn 4,83:1 (l'ancien #d97706 échouait à 3,18:1). */
@@ -34,6 +33,10 @@
      échouant AA en sombre). Aliaser les tokens du socle règle 32 usages d'un coup ; comme var() est
      résolu à l'usage, l'alias hérite du thème clair (où --line/--green/--red sont surchargés). */
   --border: var(--line); --ok: var(--green); --danger: var(--red);
+  /* LES MÊMES COULEURS, RÉGLÉES POUR DU TEXTE. Le motif « couleur de marque sur un fond teinté
+     de cette même couleur » se lit bien en gros ; sur les puces de 10 à 12 px il tombait entre
+     2,86:1 et 3,9:1, sous les 4,5:1 exigés. Ces alias suivent le thème comme les autres. */
+  --ok-text: var(--green-text); --danger-text: var(--red-text);
   --line-soft: #212a3a; --hover: rgba(255,255,255,.045);
   /* Loupe des champs de recherche (V2.8 : remplace l'emoji 🔍, mal rendu sur WSL/Linux).
      Gris médian lisible sur les deux thèmes ; mutualisée entre .search et .jira-search. */
@@ -44,6 +47,8 @@
   /* ---- Typographie : 7 pas, ratio ~1.2 ---- */
   --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px;
   --fs-lg: 16px;  --fs-xl: 20px; --fs-3xl: 28px;
+  --content-w: 1400px;   /* la seule largeur de contenu : tous les onglets s'y tiennent */
+  --footer-h: 30px;      /* le bandeau « live » du bas, fixe : ce qui flotte doit passer au-dessus */
   --fw-med: 500; --fw-sem: 620; --fw-bold: 700;
   --ff-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
@@ -67,6 +72,10 @@
   --diff-del-bg: rgba(224,90,90,.14); --diff-del-text: #f0a3a3;
   --c-com: #6a9955; --c-str: #ce9178; --c-num: #b5cea8; --c-kw: #569cd6;
   --log-cmd: #7fd6a0;
+  --amber-text: #e8b356;   /* orange lisible sur fond sombre (cf. --red-text) */
+  --green-text: #35c07f;
+  --accent-text: #79a8ff;   /* l'accent, éclairci pour porter du texte sur fond sombre */
+  --muted-text: #98a4b9;    /* le gris discret, relevé pour rester lisible sur un fond teinté */
   --row-alt: rgba(255,255,255,.02); --minimap-bg: rgba(255,255,255,.03);
 }
 
@@ -76,12 +85,17 @@
   --text: #1b2230; --muted: #5d6a80; --accent: #2563eb; --green: #14804a;
   --amber: #a15c00; --red: #c62d2d; --purple: #7c3aed;
   --red-text: #c62d2d;   /* 4.87:1 sur --panel2 (AA) */
+  --amber-text: #8a5200;   /* l'ambre du thème clair, assombri pour tenir 4,5:1 en 12 px */
+  --green-text: #0f6b3d;   /* le vert de marque assombri : 4,4:1 → au-dessus du seuil en 11 px */
+  --accent-text: #1d4ed8;  /* l'accent, assombri pour porter du texte sur fond clair */
+  --muted-text: #46536b;   /* le gris discret, assombri : #5d6a80 rendait 3,59:1 sur les puces */
+  --danger-text: #a81f1f;  /* plus foncé que --red-text : celui-ci est réglé pour --panel2 */
   --accent-hi: #1d4ed8;
   /* Mêmes teintes, assombries : sur fond blanc, les tons du thème sombre passeraient pour
      des pastels indistincts. */
   --mois-1: #5b63d6; --mois-2: #2b7fd4; --mois-3: #0e8f9e;
   --mois-4: #2f8f52; --mois-5: #a97c12; --mois-6: #c05f22;
-  --accent-btn: #2563eb; --accent-btn-hi: #1d4ed8; --purple-btn: #6d28d9;
+  --accent-btn: #2563eb; --accent-btn-hi: #1d4ed8;
   --on-amber: #ffffff; --on-green: #ffffff; --on-accent: #ffffff; --on-red: #ffffff;
   --line-soft: #e6eaf2; --hover: rgba(16,24,40,.04);
   --sh-1: 0 1px 2px rgba(16,24,40,.06);
@@ -179,6 +193,10 @@ body.sidebar-compacte .sidebar button[data-tab] { position: relative; }
 .chrono #chronoTime { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 14px; min-width: 54px; text-align: center; letter-spacing: .5px; color: var(--text); }
 .chrono button { background: transparent; border: none; color: var(--text); cursor: pointer; font-size: 13px; width: 26px; height: 26px; border-radius: 50%; line-height: 1; display: flex; align-items: center; justify-content: center; }
 .chrono button:hover { background: var(--line); }
+.chrono .chrono-ico { color: var(--muted); flex: 0 0 auto; }
+/* Au repos et à zéro : l'icône dit ce que c'est, le temps s'efface. */
+.chrono.idle { padding-left: 8px; }
+.chrono.idle #chronoTime { display: none; }
 .chrono.running { border-color: var(--green); }
 .chrono.running #chronoTime { color: var(--green); }
 
@@ -212,10 +230,26 @@ button { font-family: inherit; }
   background: var(--panel2); border-color: var(--line); color: var(--muted);
   filter: saturate(.15);
 }
+/* Les boutons COLORÉS aussi. `:where()` ne pèse rien face à `.btn-primary`, si bien qu'un
+   « Recréer » désactivé gardait son bleu simplement désaturé — un gris foncé plein, à côté
+   d'un « Démarrer » désactivé gris clair : deux dessins pour le même état inerte.
+   Visible depuis que les actions indisponibles sont désactivées au lieu d'être absentes. */
+.btn:disabled, .btn-primary:disabled, .btn-danger:disabled, .btn-ok:disabled {
+  background: var(--panel2); border-color: var(--line); color: var(--muted);
+}
+.btn:disabled .ico, .btn-primary:disabled .ico, .btn-danger:disabled .ico, .btn-ok:disabled .ico { color: var(--muted); }
 
 /* Titres : sans ça un <h2> non stylé était plus gros que le nom de l'app. */
 h2 { font-size: var(--fs-xl); font-weight: var(--fw-sem); margin: var(--s-6) 0 var(--s-3); letter-spacing: -.01em; }
 h3 { font-size: var(--fs-md); font-weight: var(--fw-sem); margin: 0 0 var(--s-3); }
+/* DEUX NIVEAUX DE TITRE, pas cinq. `h2` = un bloc de page (20 px) ; `h4` = une section interne
+   (13 px / 700 / majuscules — le traitement de Jira, le plus lisible en dense). Cinq réglages
+   coexistaient pour ce même rang, et les marges changeaient d'un onglet à l'autre.
+   `h3` reste le titre de MODALE (`.modal-box h3`) : renommer 23 modales pour respecter la
+   numérotation des balises aurait coûté plus que le désordre qu'on corrige. */
+h4, .brief-sec h3, .link-free-head, .dash-card > h3 {
+     margin: 0 0 8px; font-size: var(--fs-sm); font-weight: var(--fw-bold);
+     text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
 
 /* Code inline hors markdown (noms de branche des cartes : l'info la plus consultée). */
 :where(.meta, .card, .task-pushcmd) code {
@@ -228,7 +262,6 @@ h3 { font-size: var(--fs-md); font-weight: var(--fw-sem); margin: 0 0 var(--s-3)
    Une couleur qui ne veut rien dire de stable ne se lit plus. Règle du socle :
 
      .btn-primary   l'action PAR DÉFAUT du conteneur — au plus UNE par rangée, carte ou modale
-     .btn-converge  la convergence (parcours produit signature) — au plus une
      .btn-danger    destructif ou irréversible — autant que nécessaire
      .btn-ok        confirme un aboutissement positif (« Marquer traitée »), pas un « je passe »
      .btn           tout le reste, y compris une liste d'actions équivalentes
@@ -284,17 +317,14 @@ button[data-busy]::after {
 
 .toolbar { display: flex; gap: 8px; align-items: center; padding: 14px 18px; }
 
-main { padding: 0 var(--s-6) var(--s-12); max-width: none; margin: 0; width: 100%; flex: 1; min-width: 0; }
+main { padding: 0 var(--s-6) var(--s-12); max-width: var(--content-w); margin-inline: auto; width: 100%; flex: 1; min-width: 0; }
 .tab { display: none; }
 .tab.active { display: block; }
-/* V2.6 : les onglets de LECTURE (reviews, stats) sont bornés en largeur — au-delà, les lignes
-   d'un rapport deviennent trop longues sur grand écran. Docker/Git/Logs, eux, gardent la pleine
-   largeur de `main` (tables et logs profitent de l'espace). Le cap sur la colonne du rapport
-   (~900px, voir #reportSplit) tient la mesure de lecture. */
-/* Reviews : cap plus serré — sur grand écran, une ligne de MR (titre à gauche, actions à droite)
-   s'étirait avec un grand vide au milieu. Le dashboard garde 1400 (ses graphes profitent de l'espace). */
-#tab-review { max-width: 1200px; margin-inline: auto; }
-#tab-dashboard { max-width: 1400px; margin-inline: auto; }
+/* UNE SEULE LARGEUR DE CONTENU, portée par `main` (--content-w). Reviews plafonnait à 1200 et
+   le dashboard à 1400 pendant que les huit autres prenaient toute la place : les marges
+   sautaient à chaque changement d'onglet, sur une colonne de navigation qui, elle, ne bouge
+   pas. Le cap de LECTURE, lui, reste sur la colonne du rapport (~900px, voir #reportSplit) :
+   c'est la mesure de la ligne de texte qui compte, pas celle de la page. */
 
 .logbar { height: 3px; background: var(--line); }
 .logbar #progressBar { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
@@ -310,7 +340,8 @@ main { padding: 0 var(--s-6) var(--s-12); max-width: none; margin: 0; width: 100
 .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
 @media (max-width: 800px) { .dash-grid { grid-template-columns: 1fr; } }
 .dash-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin: 12px 0; }
-.dash-card h3 { margin: 0 0 12px; font-size: 14px; }
+/* La taille vient du niveau unique déclaré plus haut ; ici on ne garde que la marge. */
+.dash-card h3 { margin: 0 0 12px; }
 .hbars { display: flex; flex-direction: column; gap: 8px; }
 .hbar { display: flex; align-items: center; gap: 8px; }
 .hbar-lbl { flex: 0 0 64px; font-size: 12px; color: var(--muted); }
@@ -323,6 +354,11 @@ main { padding: 0 var(--s-6) var(--s-12); max-width: none; margin: 0; width: 100
 .vbar-val { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
 .vbars-x { display: flex; gap: 6px; margin-top: 4px; }
 .vbars-x span { flex: 1; text-align: center; font-size: 10px; color: var(--muted); }
+/* Une barre à ZÉRO ne dessine rien. `min-width`/`min-height` servent à garder visible une
+   valeur très petite mais non nulle ; à 0 ils inventaient une quantité. */
+.hbar-fill.is-zero { min-width: 0; }
+.vbar-fill.is-zero { min-height: 0; }
+.vbars-x span.no-data { opacity: .4; }
 
 /* Activité par projet sur six mois — une LIGNE par dépôt, barres horizontales.
    En colonnes, vingt dépôts se partageaient la largeur : 65 px chacun, donc des noms
@@ -380,7 +416,9 @@ button.pab:hover .pab-name { color: var(--accent); }
 }
 
 .search { width: 100%; background: var(--panel2) var(--icon-search) no-repeat 11px center; background-size: 15px; border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 9px 12px 9px 34px; font: inherit; margin: 4px 0 8px; }
-.search:focus { outline: none; border-color: var(--accent); }
+/* Le champ de recherche garde l'anneau commun. Il était le SEUL à l'annuler, alors qu'il est la
+   cible de `/` et de ⌘K : au clavier, on ne savait pas qu'on y était arrivé. */
+.search:focus { border-color: var(--accent); }
 
 .list { display: flex; flex-direction: column; gap: 8px; padding: 6px 0; }
 .card {
@@ -401,7 +439,10 @@ button.pab:hover .pab-name { color: var(--accent); }
    intentions, toujours dans cet ordre : consulter, agir, clore.
    L'écart INTERNE reste à 6 px, l'écart ENTRE groupes passe à 20 px : c'est ce seul
    contraste qui les fait lire comme des groupes, sans ajouter de trait ni de titre. */
-.btn-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* `flex-start` : quand un groupe se replie, sa seconde rangée se collait à droite (le parent
+   est justifié à droite), et le même bouton se retrouvait à 780 px d'écart d'une carte à la
+   suivante. Une colonne d'actions doit rester un rail vertical. */
+.btn-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-content: flex-start; }
 .card-actions:has(.btn-group), .detail-actions:has(.btn-group) { gap: 20px; }
 /* Tags de la carte : métadonnées, sous l'identité — jamais dans la rangée d'actions,
    dont le point de départ deviendrait dépendant de leur nombre (R2 de l'étude). */
@@ -463,9 +504,160 @@ body { padding-bottom: 36px; } /* réserve la place du footer fixe */
 /* Le bandeau du bas est FIXE : il recouvre les 30 derniers pixels. Une rangée d'actions qui
    tombe pile dessous se clique à moitié — on garde donc sa hauteur de dégagement quand un
    défilement l'amène à l'écran. */
+/* Le message d'erreur d'un champ : sous lui, dans sa couleur, à sa largeur. */
+/* La rangée d'ajout d'un dépôt : trois champs libellés SUR UNE LIGNE, l'URL prend la place qui
+   reste, et le bouton s'aligne sur le bas des champs (les libellés les décalent).
+
+   `.form.repo-add` et non `.repo-add` : ce formulaire porte les DEUX classes, et `.form`
+   (`flex-direction: column`, et ses `label { flex-direction: row }`) est déclaré plus bas dans
+   la feuille. À spécificité égale, c'est le dernier qui gagne — la rangée retombait donc en
+   colonne, et les `flex-basis: 320px` des champs, lus comme des HAUTEURS, étalaient les trois
+   libellés sur 780 px de haut avec 200 px de vide entre chacun. On tranche par la
+   spécificité (deux classes), pas par l'ordre : le fichier peut être réordonné sans casser. */
+/* `max-width: none` : `.form` plafonne à 720 px, largeur d'un formulaire EN COLONNE. Sur une
+   rangée de trois champs plus un bouton, ce plafond forçait un retour à la ligne même sur un
+   écran large — la rangée n'a de sens que si elle tient sur une ligne. */
+.form.repo-add { display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-end;
+  gap: 10px; max-width: none; }
+.form.repo-add > label { display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  flex: 1 1 200px; font-size: var(--fs-sm); color: var(--muted); }
+.form.repo-add > label.repo-add-url { flex: 2 1 320px; }
+.form.repo-add .repo-add-field { display: flex; flex-direction: row; align-items: center; gap: 5px; }
+/* `.form label:not(.inline-check) > input` impose `flex: 0 0 100%` ailleurs : ici l'input
+   partage sa ligne avec l'ⓘ, il prend donc la place restante et pas la ligne entière. */
+.form.repo-add .repo-add-field > input { flex: 1 1 auto; min-width: 0; width: auto; }
+.form.repo-add > button { flex: 0 0 auto; }
+/* LE CHIP DE BRANCHE EST COPIABLE. Il garde l'allure d'un <code> — c'est un nom technique —
+   mais il se signale au survol : curseur de copie, fond légèrement appuyé. */
+/* Une date absolue qui porte son « il y a … » au survol : le pointillé discret dit qu'il y a
+   quelque chose de plus à lire, sans peser dans une ligne de méta déjà dense. */
+.date-abs, [data-when] { border-bottom: 1px dotted var(--line); cursor: help; }
+
+/* Les commandes suggérées : des pastilles cliquables, en monospace — c'est du shell. */
+.vc-sugg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: -4px 0 4px; }
+.vc-sugg > .field-note { flex: 0 0 100%; margin: 0; }
+.vc-sugg-btn { font-family: var(--ff-mono); font-size: 12px; cursor: pointer; }
+
+/* La taille d'un changement : les deux chiffres se lisent d'un coup d'œil, en couleur —
+   c'est le seul endroit de la carte où le vert et le rouge disent « ajouté / retiré ». */
+/* Le chapeau de réponse sur une carte : UNE ligne repliée. Une carte reste une carte — on
+   reconnaît la réponse qu'on cherche, on ne la lit pas ici. */
+.task-chapeau > summary { cursor: pointer; color: var(--muted); font-size: var(--fs-sm, 13px);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.task-chapeau[open] > summary { white-space: normal; color: var(--text); }
+.task-cout { display: block; font-size: var(--fs-xs, 11px); margin-top: 2px; }
+/* Les captures d'un ticket Jira, à cocher dans la modale de session : des vignettes, pas des
+   images — on reconnaît laquelle, on ne la lit pas ici. */
+.jira-pieces { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.jira-pieces > .field-note { flex: 0 0 100%; margin: 0; }
+.jira-piece { display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer;
+  font-size: var(--fs-xs, 11px); max-width: 110px; }
+.jira-piece img { max-width: 100px; max-height: 70px; border: 1px solid var(--line); border-radius: var(--r-md); }
+.jira-piece span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+
+/* L'état du clone d'un dépôt : présent (vert), absent (gris), modifié (ambre). */
+.repo-etat { margin-top: 2px; }
+.repo-clone-present { color: var(--green-text, var(--green)); }
+.repo-clone-dirty { color: var(--amber-text, var(--amber)); }
+/* Une règle qui ne touche plus rien se signale : elle n'est pas fausse, elle est morte. */
+.rule-vide { color: var(--amber-text, var(--amber)); }
+
+/* Un chiffre de statistiques qui est une PORTE : il se signale sans devenir un lien bleu. */
+.stat-porte { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.stat-porte:hover { text-decoration: underline; }
+.stat-porte:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.stats-top-tok { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); }
+.stats-rec-files { font-size: var(--fs-xs, 11px); margin-top: 2px; }
+
+/* Un job épinglé : l'étoile s'allume, la ligne se marque d'un liseré — elle est en tête, il
+   faut qu'on voie POURQUOI. */
+.jk-pin { color: var(--muted); flex: 0 0 auto; }
+.jk-pin.active { color: var(--amber-text, var(--amber)); }
+.jk-row.jk-pinned { border-left: 2px solid var(--amber); }
+/* La fin de la console d'un build rouge : du log, donc monospace et défilement propre. */
+.jk-tail { max-height: 220px; overflow: auto; }
+
+/* La dernière exécution d'une cible Make, sous son bouton : discrète, rouge si elle a raté. */
+.mk-last { font-size: var(--fs-xs, 11px); white-space: nowrap; }
+.mk-last-ko { color: var(--red-text, var(--red)); }
+
+/* La branche qui tourne, dans l'en-tête d'un projet compose. */
+.docker-git { font-size: var(--fs-xs, 11px); white-space: nowrap; }
+.docker-git .ico { width: 12px; height: 12px; vertical-align: -1px; }
+
+/* Ce qu'une branche porte, dans l'explorateur : la note de sa review, la session qui l'a
+   créée. Discret — la colonne reste celle du NOM de la branche. */
+.git-ex-note { font-size: var(--fs-xs, 11px); color: var(--muted); }
+.git-ex-sess { font-size: var(--fs-xs, 11px); }
+.git-ex-sess .ico { width: 12px; height: 12px; vertical-align: -1px; }
+
+/* L'aperçu d'une suppression dit si c'est sûr : trois états, trois couleurs. */
+.git-sur { font-size: var(--fs-xs, 11px); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
+.git-sur-ok { color: var(--green-text, var(--green)); border-color: var(--green); }
+.git-sur-mr { color: var(--amber-text, var(--amber)); border-color: var(--amber); }
+.git-sur-non { color: var(--muted); }
+
+/* « Dans Mergerie » : une liste courte de portes, pas un tableau. */
+.jira-eng { margin: 0; padding-left: 18px; }
+.jira-eng li { margin: 2px 0; }
+
+/* Une porte au milieu d'une phrase : un lien, pas un bouton — c'est une navigation. */
+.lien-reglage { background: none; border: 0; padding: 0; margin-left: 4px; font: inherit;
+  color: var(--accent-text, var(--accent)); text-decoration: underline; cursor: pointer; }
+
+/* L'état de la merge request sur la ligne d'un projet de session : discret, à côté du lien. */
+.tmr-etat { font-size: var(--fs-xs, 11px); }
+.tmr-verdict.v-verified_pass { color: var(--green-text, var(--green)); }
+.tmr-verdict.v-verified_fail { color: var(--red-text, var(--red)); }
+.tmr-verdict.v-broken_base, .tmr-verdict.v-verify_error { color: var(--amber-text, var(--amber)); }
+
+.mr-taille { margin-top: 2px; }
+/* Le chemin d'un constat EST une porte : il se signale comme telle (curseur, soulignement au
+   survol) sans devenir un lien bleu au milieu d'une ligne déjà dense. */
+.f-loc { background: none; border: 0; padding: 0; margin: 0; color: inherit; font: inherit; cursor: pointer; }
+.f-loc:hover code { text-decoration: underline; color: var(--accent-text, var(--accent)); }
+.f-loc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.tag.stale[data-stale-mr] { cursor: help; }
+.diffstat .plus { color: var(--green-text, var(--green)); }
+.diffstat .moins { color: var(--red-text, var(--red)); }
+
+.branch-chip { cursor: copy; border-radius: 4px; padding: 0 3px; margin: 0 -3px; }
+.branch-chip:hover { background: var(--panel2); color: var(--text); }
+.branch-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.field-error { margin: 4px 0 0; font-size: 12px; color: var(--danger-text); line-height: 1.35; }
+/* Dans une rangée de projet (ligne flex qui passe à la ligne), le message prend une LARGEUR
+   PLEINE : sans ça il se rangeait comme une colonne de plus, entre deux champs. */
+.target-row > .field-error { flex: 0 0 100%; margin: 2px 0 0; }
+:is(input, select, textarea).is-invalid { border-color: var(--danger); }
+:is(input, select, textarea).is-invalid:focus { border-color: var(--danger); outline-color: var(--danger); }
+/* Le champ marqué obligatoire porte une étoile dans son libellé, pas seulement dans le DOM. */
+.req::after { content: ' *'; color: var(--danger-text); font-weight: 700; }
+
+/* UN INTERRUPTEUR ET SA LIMITE. Le plafond n'existe que si l'automatisme est allumé :
+   indenté sous sa case, et grisé tant qu'elle est décochée, il ne se lit plus comme un
+   dixième réglage indépendant. */
+.sous-reglage { margin-left: 26px; border-left: 2px solid var(--line); padding-left: 12px; }
+.sous-reglage.is-off { opacity: .5; }
+/* Les titres de groupe d'un formulaire de réglages : même niveau que les h4 du système
+   (13 px, 700, capitales), avec de l'air au-dessus sauf pour le premier. */
+.form > h3 { font-size: var(--fs-sm, 13px); font-weight: 700; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--muted); margin: 14px 0 2px; }
+.form > h3:first-child { margin-top: 0; }
+/* « Modifications non enregistrées » : le bouton se colore, la mention le dit en toutes
+   lettres. Un formulaire de neuf réglages sur un seul bouton ne disait pas ce qu'on perdait. */
+.btn.is-dirty { border-color: var(--amber); }
+.form-info-dirty { color: var(--amber-text, var(--amber)); }
+
 .form-actions, .modal-actions { scroll-margin-bottom: 48px; }
+/* L'EN-TÊTE EST FIXE : un `scrollIntoView({block:'start'})` amène le haut de la cible au haut
+   de la FENÊTRE, donc sous l'en-tête. Tout formulaire qu'on fait défiler à l'ouverture garde
+   sa hauteur de dégagement. */
+form.form { scroll-margin-top: calc(var(--header-h, 56px) + 18px); }
+/* Les commandes d'un vérificateur sont du SHELL : elles se lisent en chasse fixe, comme
+   partout ailleurs dans l'application (journaux, aperçus, commandes git). */
 .footer {
-  position: fixed; left: 0; right: 0; bottom: 0; height: 30px; z-index: 40;
+  position: fixed; left: 0; right: 0; bottom: 0; height: var(--footer-h); z-index: 40;
   display: flex; align-items: center; gap: 12px; padding: 0 14px;
   background: #070b07; border-top: 1px solid #1c3b26;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px;
@@ -480,7 +672,9 @@ body { padding-bottom: 36px; } /* réserve la place du footer fixe */
 .footer-hide { display: inline-flex; align-items: center; min-height: 24px; background: transparent; border: 1px solid #1c3b26; color: #3f8f5c; border-radius: var(--radius); padding: 2px 9px; cursor: pointer; font-size: 12px; line-height: 1.2; }
 .footer-hide:hover { border-color: #7ee39a; color: #7ee39a; }
 /* bandeau masqué : plus de réserve de place, et pastille de rappel en bas à droite */
-body.footer-hidden { padding-bottom: 0; }
+/* Bandeau masqué : sa hauteur de dégagement tombe à zéro, et ce qui flotte au-dessus
+   redescend avec — sinon le panneau de job garderait 30 px de vide sous lui. */
+body.footer-hidden { padding-bottom: 0; --footer-h: 0px; }
 .footer-show {
   position: fixed; right: 14px; bottom: 14px; z-index: 41; cursor: pointer;
   background: #070b07; border: 1px solid #1c3b26; color: #ffd166;
@@ -491,7 +685,9 @@ body.footer-hidden { padding-bottom: 0; }
 .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; flex-shrink: 0; }
 .tag.to_review { color: var(--amber); border-color: var(--amber); }
 .tag.reviewed { color: var(--accent); border-color: var(--accent); }
-.tag.done { color: var(--green); border-color: var(--green); }
+/* 11 px : le vert de marque rendait 4,4:1 en clair. `--green-text` est le même vert, réglé
+   pour le texte — la bordure, elle, garde la teinte de marque. */
+.tag.done { color: var(--green-text); border-color: var(--green); }
 .tag.stale { color: var(--red); border-color: var(--red); }
 .tag.merged { color: var(--purple); border-color: var(--purple); } /* n'est plus ouverte sur GitLab */
 .muted { color: var(--muted); font-size: 13px; }
@@ -514,9 +710,14 @@ body.footer-hidden { padding-bottom: 0; }
 
 .note-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 2px 0 10px; }
 .note-filters .nf-label { color: var(--muted); font-size: var(--fs-xs); }
+/* Même dessin que `.chip` (bord arrondi complet, fond `panel2`) : ces tranches sont un filtre
+   à valeurs peu nombreuses et stables, la règle leur donne donc la pastille. La case reste,
+   elle : le choix est MULTIPLE ici (« les rouges ET les oranges »), et la pastille seule ne
+   dit pas qu'on peut en cocher plusieurs. */
 .nf-item { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none;
-  border: 1px solid transparent; border-radius: var(--r-sm); padding: 2px 6px 2px 3px; }
-.nf-item:hover { border-color: var(--line); }
+  border: 1px solid var(--line); border-radius: var(--r-full); padding: 2px 10px 2px 6px;
+  background: var(--panel2); }
+.nf-item:hover { color: var(--text); }
 .nf-item input { cursor: pointer; margin: 0; }
 .nf-item .note { min-width: 0; padding: 2px 6px; font-size: 11px; }
 .nf-count { color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
@@ -557,6 +758,10 @@ body.footer-hidden { padding-bottom: 0; }
 .md { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; }
 .md h1 { font-size: 18px; } .md h2 { font-size: 15px; margin-top: 16px; } .md h3 { font-size: 14px; }
 .md-body h1 { font-size: 17px; } .md-body h2 { font-size: 15px; } .md-body h3, .md-body h4 { font-size: 14px; }
+/* Le markdown rendu écrit ses propres titres : ce sont ceux de l'AUTEUR du rapport, pas des
+   sections d'interface. Ils reprennent donc la couleur et la casse du texte, pas le traitement
+   de section posé plus haut sur `h4`. */
+.md h4, .md-body h4 { text-transform: none; letter-spacing: normal; color: var(--text); font-weight: var(--fw-sem); }
 .md code, .md-body code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
 .md pre, .md-body pre { background: var(--code-bg); padding: 10px; border-radius: 6px; overflow-x: auto; }
 /* Dans un bloc, le code ne reprend pas la pastille du code INLINE : deux fonds l'un sur
@@ -604,7 +809,6 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 
 .detail-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
 .box { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; margin-top: 14px; }
-.box h4 { margin: 0 0 8px; font-size: 13px; }
 .box textarea { min-height: 70px; margin-bottom: 8px; }
 .tabbar { display: flex; gap: 4px; margin: 14px 0 8px; }
 .tabbar button { background: transparent; border: 1px solid var(--line); color: var(--muted); padding: 5px 12px; border-radius: var(--radius); cursor: pointer; transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast); }
@@ -624,11 +828,26 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; width: 640px; max-width: 100%; max-height: 90vh; overflow-y: auto; }
 .modal-box h3 { margin: 0 0 4px; font-size: 16px; }
 .modal-box textarea { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 10px; font: inherit; margin: 8px 0; }
-.ticket-drop { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border: 1px dashed var(--line); border-radius: var(--radius); padding: 10px; }
-.ticket-file { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 12px; cursor: pointer; }
+/* JOINDRE UN FICHIER EST UNE POSSIBILITÉ, PAS UNE ÉTAPE. C'était une zone pointillée de
+   80 px, vide neuf fois sur dix, au milieu du formulaire. Une ligne : un lien à l'icône
+   trombone, sa phrase à côté. Le cadre ne revient QUE s'il y a des pièces à montrer. */
+.ticket-drop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0; }
+.ticket-drop:has(.task-previews > *) { border: 1px dashed var(--line); border-radius: var(--radius); padding: 10px; }
+.ticket-file { display: inline-flex; align-items: center; gap: 5px; color: var(--accent-text, var(--accent));
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.ticket-file:hover { color: var(--accent); }
 .ticket-preview-wrap { display: flex; align-items: flex-start; gap: 8px; width: 100%; }
 .ticket-preview-wrap img { max-width: 100%; max-height: 300px; border: 1px solid var(--line); border-radius: 6px; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+/* PIED COLLANT. `.modal-box` défile (max-height 90vh) : sur un formulaire long — la session
+   de dev en fait 720 px sur un écran de 800 —, « Annuler » et le bouton principal tombaient
+   sous la ligne de flottaison. On ouvrait une fenêtre dont on ne voyait aucune issue, et il
+   fallait deviner qu'elle défilait. Le fond est opaque, sinon le contenu passe dessous. */
+.modal-actions {
+  display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;
+  position: sticky; bottom: -18px;                 /* -18 = le padding du .modal-box */
+  padding: 12px 0 0; margin-bottom: -18px; padding-bottom: 18px;
+  background: var(--panel); border-top: 1px solid var(--line); z-index: 1;
+}
 
 /* Clic sur le fond alors qu'une saisie est en cours : la modale se signale au lieu de se
    fermer. Pas de tremblement horizontal — celui-ci dit « erreur », or rien n'est faux ici :
@@ -850,11 +1069,11 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .jk-pf-hide:hover { opacity: 1; color: var(--text); }
 @media (hover: none) { .jk-pf-hide { opacity: .6; } }
 .jk-pf-caches { font-size: 12px; color: var(--muted); }
-.jk-hidden-list h4 { margin: 6px 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.jk-hidden-list h4 { margin: 6px 0 2px; }
 
 .jk-chip { display: inline-flex; align-items: baseline; gap: 5px; padding: 1px 7px; border-radius: 999px;
   background: var(--panel2); border: 1px solid var(--line); font-size: 11.5px; max-width: 100%; }
-.jk-chip-k { color: var(--muted); }
+.jk-chip-k { color: var(--muted-text); }
 .jk-chip-v { color: var(--text); overflow-wrap: anywhere; }
 /* Les filtres vivent DANS l'en-tête de la carte : c'est lui qui porte la marge. */
 .jk-fiche-filtres { margin-bottom: 0; }
@@ -915,7 +1134,23 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 /* Un champ dont Jenkins n'a pas su calculer les valeurs : dit, et non laissé vide sans
    explication — un champ vide inexpliqué se remplit au jugé. */
 .jk-param-warn { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--amber); }
-.jk-param input[type="text"], .jk-param input:not([type]), .jk-param select { width: 100%; margin-top: 4px; }
+/* LES PARAMÈTRES D'UN JOB SONT DES CHAMPS DE L'APPLICATION, pas des contrôles natifs. Ils
+   étaient les seuls à l'être : 21 px de haut, bordure `inset`, Arial, rayon 0, dans un écran
+   dont tous les autres champs font 36 px avec le rayon du système — et c'est le formulaire qui
+   déclenche un déploiement. Les valeurs (versions, branches, drapeaux) sont techniques : chasse
+   fixe, comme les commandes d'un vérificateur. */
+.jk-param input[type="text"], .jk-param input:not([type]), .jk-param select {
+  width: 100%; margin-top: 4px;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--radius); padding: 8px 10px; font: inherit;
+  font-family: var(--ff-mono); font-size: 13px; min-height: 36px;
+}
+.jk-param select { cursor: pointer; }
+/* L'historique replié : un simple bandeau cliquable, dans la forme des autres `<details>`. */
+.jk-fiche-repli > summary { cursor: pointer; padding: 8px 0; font-size: 13px; color: var(--muted); }
+.jk-fiche-repli > summary:hover { color: var(--text); }
+.jk-param select[multiple] { min-height: 0; padding: 4px; }
+.jk-param input:focus, .jk-param select:focus { border-color: var(--accent); }
 /* Une liste à choix multiple garde sa hauteur : repliée en une ligne, on ne voit pas qu'on
    peut en choisir plusieurs, ni ce qui est déjà choisi. */
 .jk-param select[multiple] { min-height: 92px; padding: 4px; }
@@ -927,8 +1162,8 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 #taskModal .modal-box textarea[name="prompt"] { min-height: 200px; }
 /* Les combos projet/branche remplissent la largeur disponible ; base réduite pour
    que les 3 combos + icônes d'aide + bouton « retirer » tiennent sur UNE ligne. */
-#taskModal .target-row .repo-combo { flex: 3 1 200px; }
-#taskModal .target-row .combo { flex: 2 1 150px; }
+#taskModal :is(.target-row, .target-head-row) .repo-combo { flex: 3 1 200px; }
+#taskModal :is(.target-row, .target-head-row) .combo { flex: 2 1 150px; }
 /* Champ « ticket Jira » : occupe la largeur restante avant le bouton Récupérer. */
 #taskModal .task-jira .jira-fetch { flex-wrap: nowrap; }
 #taskModal .task-jira .jira-fetch input { flex: 1 1 auto; min-width: 160px; }
@@ -944,6 +1179,9 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
    si le menu s'affichait avant d'être placé. */
 .combo-options { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin-top: 2px; max-height: 240px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--sh-2); }
 .combo-opt { padding: 7px 10px; cursor: pointer; font-size: 13px; }
+/* Mention accolée à une option de liste : « non exécutable en démo », le suffixe par défaut
+   d'une branche. Discrète — elle qualifie l'option, elle ne la remplace pas. */
+.combo-hint { color: var(--muted); font-size: 11px; margin-left: 6px; }
 .combo-opt:hover { background: var(--panel2); }
 .combo-opt.muted { color: var(--muted); cursor: default; }
 /* Alignement vertical par défaut des cases (contextes inline : bascules « Activé »
@@ -1186,15 +1424,42 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 .toast .toast-btn { background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
 
 .errbox { border: 1px solid var(--red); border-radius: var(--radius); background: rgba(224,90,90,.06); margin: 4px 0 10px; overflow: hidden; }
-.errbox .errhead { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; color: var(--red); font-size: 12px; font-weight: 600; border-bottom: 1px solid rgba(224,90,90,.3); }
+/* `--red-text` (et non `--red`) : le rouge de marque sur le fond rosé du bloc rendait 4,36:1
+   en thème sombre, sous le seuil pour 12 px. La bordure, elle, garde la teinte de marque. */
+.errbox .errhead { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; color: var(--red-text); font-size: 12px; font-weight: 600; border-bottom: 1px solid rgba(224,90,90,.3); }
 .errbox .errbtns { display: flex; gap: 6px; }
+/* La pile repliée : un bandeau discret, ouvert à la demande. */
+.err-stack > summary { cursor: pointer; padding: 6px 12px; font-size: 12px; color: var(--muted); }
+.err-stack > summary:hover { color: var(--text); }
+.err-stack pre { border-top: 1px solid var(--line); }
 .errbox pre { margin: 0; padding: 10px 12px; overflow-x: auto; font-size: 12px; color: var(--text); white-space: pre-wrap; word-break: break-word; user-select: text; }
 
 /* Le panneau de logs reste FIGÉ sous l'en-tête (lui aussi sticky) quand on scrolle : on suit
    la progression / on garde le bouton Stop même en parcourant le contenu. `--header-h` est
    mesuré en JS (hauteur réelle de l'en-tête, qui varie si la nav passe à la ligne). */
-.logpanel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); margin: 8px 18px 14px; overflow: hidden;
-  position: sticky; top: calc(var(--header-h, 56px) + 6px); z-index: 9; box-shadow: var(--sh-2); }
+/* LE BANDEAU DE JOB NE POUSSE PLUS LA PAGE. En `sticky`, il occupait sa place dans le flux :
+   son ouverture faisait descendre tout le contenu de ~78 px et sa fermeture le faisait remonter
+   — deux sauts de mise en page par job, y compris pendant qu'on lit ou qu'on vise un bouton.
+   En `fixed`, il flotte au-dessus du contenu, qui défile dessous : rien ne bouge. Il part du
+   bord de la colonne latérale pour ne pas la recouvrir, et suit son repli par la variable. */
+/* HORS DU FLUX, ET EN BAS. Dans le flux, l'ouverture d'un job faisait descendre toute la page
+   de 78 px et sa fermeture la faisait remonter — deux sauts par job, pendant qu'on lit ou qu'on
+   vise un bouton. En haut, flottant, il ne bougeait plus rien mais recouvrait la barre de
+   sous-onglets, ce qui est pire : on ne peut plus cliquer ce qu'on voit. En bas, il ne cache
+   que la fin de la page, l'endroit conventionnel d'un indicateur de tâche de fond. */
+.logpanel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden;
+  /* AU-DESSUS DU BANDEAU DU BAS, pas dessous. Celui-ci est fixe, haut de 30 px et en
+     `z-index: 40` : un panneau posé à 12 px du bord perdait ses 18 px inférieurs, dont la
+     moitié du bouton « Voir le rapport » — le seul lien vers ce que le job vient de produire.
+     La hauteur du bandeau est une variable, pas un nombre recopié. */
+  position: fixed; bottom: calc(var(--footer-h, 30px) + 12px);
+  left: calc(var(--sidebar-w, 194px) + 18px); right: 18px; margin: 0;
+  max-height: calc(100vh - var(--header-h, 56px) - var(--footer-h, 30px) - 24px);
+  display: flex; flex-direction: column;
+  z-index: 30; box-shadow: var(--sh-2); }
+/* Déplié, c'est le JOURNAL qui défile — pas le panneau, dont la tête doit rester atteignable. */
+.logpanel #logBox { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.logpanel .loghead { flex: 0 0 auto; }
 .logpanel .loghead { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
 .logpanel .loghead .spacer { flex: 1; }
 .logstatus { font-weight: 600; }
@@ -1270,6 +1535,10 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 #paletteModal { background: transparent; align-items: flex-start; justify-content: flex-start; }
 .palette-input { width: 100%; border: none; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; font-size: 15px; padding: 14px 16px; outline: none; }
 .palette-list { max-height: 320px; overflow-y: auto; }
+/* En-tête de section de la palette (état vide seulement). */
+.palette-head { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+  padding: 8px 10px 3px; }
+.palette-head:first-child { padding-top: 3px; }
 .palette-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px; cursor: pointer; font-size: 13.5px; }
 .palette-item.active, .palette-item:hover { background: var(--panel2); }
 .palette-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1465,6 +1734,15 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .notif-status { font-size: 13px; }
 .notif-status.notif-granted { color: var(--ok, #2e7d46); }
 .notif-status.notif-denied { color: var(--danger, #c0392b); }
+/* « 8 jobs sur 8 » : quatre lignes à 1280 px, la barre d'outils étant serrée. Un compteur
+   court n'a aucune raison d'être coupé — c'est au reste de la barre de céder. */
+#jenkinsCount { white-space: nowrap; }
+/* Un compteur en attente de sa donnée : il garde sa place (sinon l'onglet s'élargit d'un
+   demi-caractère quand le chiffre arrive) mais n'affirme rien. */
+.seg-count.is-waiting { min-width: 1.2em; color: transparent; }
+/* La rangée d'actions d'un job : un rail, comme celle d'un service Docker. */
+.jk-actions { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; flex-shrink: 0; margin-left: auto; }
+
 .notif-threshold { width: 58px !important; flex: 0 0 auto !important; margin: 0 2px; padding: 5px 8px !important; text-align: center; }
 
 /* ---------- Split-button « Review » (défaut + surcharge avec/sans explication) ---------- */
@@ -1492,15 +1770,19 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 }
 .split-menu button:hover { background: var(--hover); }
 .split-menu button.danger { color: var(--danger); }
+/* Séparateur avant l'action destructrice, pour qu'elle ne se clique pas par inertie. */
+.split-menu .menu-sep { height: 1px; background: var(--line); margin: 4px 6px; }
 
 /* Onglet Explication vide → invite à générer à la demande. */
 .empty-explain { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 18px 4px; }
 
 /* ---------- Converger (boucle de qualité autonome) ---------- */
 /* Bouton phare : distinct des autres actions (violet), il déclenche la boucle. */
-.btn-converge { background: var(--purple-btn); border-color: var(--purple-btn); color: var(--on-purple); }
-.btn-converge:hover { filter: brightness(1.1); border-color: var(--purple-btn); }
-.btn-converge .ico { color: var(--on-purple); }
+/* `.btn-converge` a été retiré : le système ne connaît que deux poids d'action — l'accent
+   pour le chemin normal, le rouge en bordure pour ce qui détruit. Un troisième, violet et
+   plein, pesait plus lourd que « Lancer » sur la même carte alors qu'il désigne le parcours
+   avancé. « Converger » est un bouton standard sur la carte, et le bouton primaire de sa
+   propre modale — là où il EST le chemin normal. */
 
 /* Bandeau d'état de la run (rapport). */
 .converge-box { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); margin: 4px 0 10px; font-size: 13px; background: var(--panel2); }
@@ -1529,6 +1811,10 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 
 .converge-note { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent); border-radius: var(--radius); padding: 8px 10px; margin: 4px 0 0; }
 .converge-note .ico { flex: 0 0 auto; margin-top: 1px; }
+/* Un conflit n'est pas un avertissement de plus : il empêche le merge. Rouge, donc, et non
+   ambre — la modale porte déjà une note ambre juste au-dessus, et deux encadrés de la même
+   couleur se lisent comme un seul. Les jetons servent les deux thèmes sans les nommer. */
+.converge-note.note-bad { color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); border-color: color-mix(in srgb, var(--red) 35%, transparent); }
 
 /* ---------- Codage hors dépôt : éditeur de dossiers locaux ---------- */
 .local-dir-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
@@ -1549,8 +1835,20 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .target-row { flex-wrap: wrap; align-items: flex-start; }
 .target-row .t-repo { flex: 1 1 28%; min-width: 140px; }
 /* les champs de branche sont enveloppés dans .combo : c'est lui qui porte le flex */
-.target-row .combo { flex: 1 1 30%; min-width: 150px; }
-.target-row > .t-branch { flex: 1 1 30%; min-width: 150px; }
+:is(.target-row, .target-head-row) .combo { flex: 1 1 30%; min-width: 150px; }
+:is(.target-row, .target-head-row) > .t-branch { flex: 1 1 30%; min-width: 150px; }
+/* La ligne d'en-têtes : mêmes colonnes que la ligne de champs, sans champ. Les espaceurs
+   valent exactement la largeur du « ? » (16 px) et de la croix (32 px, .btn-icon).
+   Elle ne porte PAS la classe `.target-row` : une dizaine de sélecteurs — dans le code comme
+   dans les tests — comptent les lignes de projet par cette classe, et une ligne de titres s'y
+   serait ajoutée comme un projet fantôme. */
+.target-head-row { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; margin-bottom: 2px; }
+/* Pas de `min-width: 0` ici : les min-width des colonnes participent à la répartition flex,
+   et les écraser décalait l'en-tête de 60 px par rapport aux champs qu'il coiffe. */
+.target-head-row .t-lab { font-size: 11px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.target-head-row .t-lab-hint { flex: 0 0 16px; }
+.target-head-row .t-lab-rm { flex: 0 0 32px; }
 
 /* Ligne d'un projet dans une carte de session */
 .targets { display: flex; flex-direction: column; gap: 4px; margin: var(--s-2) 0; }
@@ -1611,6 +1909,9 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
   opacity: 0; transform: translateY(3px); transition: opacity .12s, transform .12s;
 }
 #tip.on { opacity: 1; transform: none; }
+/* Une bulle peut porter PLUSIEURS LIGNES — les messages des commits arrivés depuis la review.
+   `pre-line` garde les retours voulus sans figer les espaces d'indentation. */
+#tip { white-space: pre-line; }
 /* Variante « code » : le contenu d'une commande Makefile, large et monospace pour tenir sur
    peu de lignes. Les retours à la ligne de la recette sont préservés (pre-wrap). */
 #tip.tip-code { max-width: min(820px, 92vw); white-space: pre-wrap; text-align: left;
@@ -1648,7 +1949,7 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 
 /* Le sélecteur de dépôt est passé en combo avec recherche : il reprend la largeur
    qu'avait le <select> (28 %), un peu plus étroite que les champs de branche. */
-.target-row .repo-combo { flex: 1 1 240px; min-width: 200px; }
+:is(.target-row, .target-head-row) .repo-combo { flex: 1 1 240px; min-width: 200px; }
 
 /* ---------- Onglet Git ---------- */
 .git-row { align-items: flex-start; }
@@ -1656,9 +1957,23 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 /* Création : dépôt · ref source · nom à créer. Les deux derniers se partagent la
    place restante et se replient sous le dépôt quand la fenêtre est étroite. */
 /* La ref source est un combo (recherche), pas un <select> : la largeur se pose donc sur
-   son enveloppe et non sur l'input caché qui porte la classe `git-ref`. */
-.git-row > .git-ref-combo { flex: 1 1 180px; min-width: 140px; }
-.git-row > .git-name { flex: 1 1 180px; min-width: 140px; width: auto; }
+   son enveloppe et non sur l'input caché qui porte la classe `git-ref`.
+
+   ELLE PREND LA PLUS GROSSE PART, et devant le dépôt. Un nom de branche est plus long
+   qu'un nom de projet — `hotfix/COMPTA-2210-correction-arrondi-echeances` en fait deux
+   fois. Le champ tenait 180 px de base et gagnait autant que le dépôt : au-delà d'une
+   quarantaine de caractères, la fin du nom sortait du champ, sans coupure visible ni
+   info-bulle qui s'impose — on ne voyait pas qu'il manquait quelque chose. */
+.git-row > .repo-combo { flex: 1 1 240px; }
+.git-row > .git-ref-combo { flex: 2 1 300px; min-width: 240px; }
+/* Le nom à CRÉER passe à la ligne, avec le bouton de suppression : sur la même ligne que
+   les deux combos, il reprenait à la branche les 150 px qu'on vient de lui donner. Ce n'est
+   pas un sélecteur mais une saisie libre — sa place est en dessous, pas en concurrence.
+   `calc(100% - 40px)` laisse exactement le bouton (32 px + gouttière) à côté de lui. */
+.git-row > .git-name { flex: 1 1 calc(100% - 40px); min-width: 160px; width: auto; }
+/* Fenêtre étroite : dépôt et branche ne tiennent plus côte à côte sans recouper les noms
+   longs — la branche prend la ligne entière plutôt que de rétrécir sous les 400 px. */
+@media (max-width: 1000px) { .git-row > .git-ref-combo { flex: 1 1 100%; } }
 
 /* Sélection multiple des refs à supprimer : une liste qui défile plutôt qu'un
    champ de saisie — on ne tape jamais le nom de ce qu'on s'apprête à détruire.
@@ -1862,7 +2177,6 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 
 /* Liste des tags dans l'explorateur de branches. */
 .git-tags { margin-top: 22px; }
-.git-tags h4 { margin: 0 0 8px; }
 .git-tag-msg { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Branche(s) portant un tag : pastilles qui s'enroulent sur plusieurs lignes. */
 .git-tag-branches { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; max-width: 260px; }
@@ -1872,7 +2186,9 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .findref-tip { color: var(--ok, #2e7d32); font-weight: 600; }
 
 /* « L'IA pose une question » : bandeau de statut + formulaire de réponses sur la carte. */
-.tag.needs-input { background: color-mix(in srgb, var(--accent, #7c5cff) 20%, transparent); color: var(--accent, #7c5cff); }
+/* L'accent de marque sur un fond teinté du même accent : 2,86:1 en clair pour 11 px de texte.
+   Le fond s'allège et la couleur passe par la teinte réglée pour le texte. */
+.tag.needs-input { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-text); }
 .questions-box { margin: 8px 0 4px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--accent, #7c5cff) 45%, var(--border, #ccc)); border-radius: 10px; background: color-mix(in srgb, var(--accent, #7c5cff) 7%, transparent); }
 .questions-box .q-head { font-size: 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
 .q-item { margin: 10px 0; }
@@ -1897,11 +2213,17 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 /* Noms de projet : toujours sur une ligne → case et libellé centrés l'un sur l'autre. */
 .docker-filter .inline-check > span { line-height: 1; }
 /* État du container, bien visible : pastille colorée + libellé. */
-.docker-state { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; text-transform: capitalize; white-space: nowrap; }
+/* Pas de `capitalize` : il forçait une majuscule sur CHAQUE mot (« Non Démarré », « En Cours »),
+   ce que le français n'écrit pas. Les libellés viennent du dictionnaire, ils sont déjà casés. */
+.docker-state { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
 .docker-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
-.docker-state-running { color: var(--ok, #2e7d32); background: color-mix(in srgb, var(--ok, #2e7d32) 15%, transparent); }
-.docker-state-exited, .docker-state-dead { color: var(--danger, #c62828); background: color-mix(in srgb, var(--danger, #c62828) 15%, transparent); }
-.docker-state-paused, .docker-state-restarting, .docker-state-created { color: #b26a00; background: color-mix(in srgb, #b26a00 15%, transparent); }
+.docker-state-running { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.docker-state-exited, .docker-state-dead { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+/* `--amber-text` et non un `#b26a00` en dur : le même orange ne peut pas tenir le contraste
+   sur fond clair ET sur fond sombre. Mesuré, il rendait 4,24:1 en clair et 3,97:1 en sombre
+   pour un texte de 12 px, sous les 4,5:1 exigés. */
+.docker-state-paused, .docker-state-restarting, .docker-state-created {
+  color: var(--amber-text); background: color-mix(in srgb, var(--amber-text) 14%, transparent); }
 .docker-state-none, .docker-state-unknown { color: var(--muted, #888); background: transparent; border: 1px dashed var(--border, #ccc); }
 
 .docker-orphan { align-items: flex-start; }
@@ -1924,12 +2246,17 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .docker-svcs-col .docker-svcs { margin-top: 0; }
 .docker-svc { border: 1px solid var(--border, #ccc); border-radius: 10px; padding: 10px 12px; }
 .docker-svc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* La colonne d'actions : un rail. Elle ne se replie pas et ne se comprime pas — c'est la
+   partie gauche (nom, image, nom du container) qui cède la place, sinon les six boutons
+   changeaient d'abscisse à chaque ligne. */
+.docker-svc-actions { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; flex-shrink: 0; margin-left: auto; }
+@media (max-width: 900px) { .docker-svc-actions { flex-wrap: wrap; } }
 .docker-imgdrift { font-size: 13px; margin-top: 6px; }
 .env-diff { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
 .env-diff li { font-size: 13px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .env-kind { font-size: 11px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
-.env-added { background: color-mix(in srgb, var(--ok, #2e7d32) 18%, transparent); color: var(--ok, #2e7d32); }
-.env-modified { background: color-mix(in srgb, var(--accent, #7c5cff) 18%, transparent); color: var(--accent, #7c5cff); }
+.env-added { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok-text); }
+.env-modified { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-text); }
 .env-removed { background: color-mix(in srgb, var(--danger, #c62828) 18%, transparent); color: var(--danger, #c62828); }
 .env-name { font-weight: 600; }
 .docker-run { background: var(--code-bg, #f4f4f4); padding: 10px 12px; border-radius: 8px; white-space: pre-wrap; word-break: break-all; margin-top: 8px; font-size: 12px; }
@@ -1960,7 +2287,7 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .dlog-dot.run { background: var(--ok, #2e7d32); }
 .dlog-dot.stop { background: var(--muted, #999); }
 .dlog-cname { font-weight: 600; }
-.dlog-cproj { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--accent, #7c5cff) 14%, transparent); color: var(--accent, #7c5cff); }
+.dlog-cproj { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-text); }
 .dlog-run { flex: 0 0 auto; display: flex; flex-direction: column; gap: 10px; }
 .dlog-tail { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .dlog-tail input { width: 150px; }
@@ -2033,6 +2360,9 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 }
 .dact-action select:hover, .dact-search:hover { border-color: var(--muted); }
 .dact-search { min-width: 220px; }
+/* Les pastilles d'état tiennent la hauteur du champ voisin : sinon le libellé « N'afficher
+   que » remonte de 12 px par rapport à « Rechercher un service » dans la même rangée. */
+.dact-action .chips { min-height: 36px; }
 .dact-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 8px 0; }
 .dact-list { display: flex; flex-direction: column; gap: 12px; }
 .dact-proj { border: 1px solid var(--border, #ccc); border-radius: 10px; padding: 8px 12px; }
@@ -2089,7 +2419,6 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .ai-verdict.bad { background: color-mix(in srgb, var(--danger, #c62828) 15%, transparent); color: var(--danger, #c62828); }
 .ai-meta { margin: 6px 0 14px; }
 .ai-pass { border: 1px solid var(--border, #ccc); border-radius: 10px; padding: 12px 14px; margin: 10px 0; }
-.ai-pass h4 { margin: 0 0 8px; }
 .ai-prompt { font-size: 14px; margin-bottom: 8px; }
 .ai-output { background: var(--code-bg, #f4f4f4); padding: 10px 12px; border-radius: 8px; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; margin: 0; }
 
@@ -2215,9 +2544,9 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-key { font-family: var(--ff-mono); font-size: 12px; font-weight: 700; letter-spacing: .3px; }
 
 .jira-status { font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 999px; white-space: nowrap; text-transform: uppercase; letter-spacing: .3px; }
-.jira-status-todo { background: color-mix(in srgb, var(--muted, #888) 18%, transparent); color: var(--muted, #888); }
-.jira-status-progress { background: color-mix(in srgb, var(--accent, #4f9cf9) 20%, transparent); color: var(--accent, #4f9cf9); }
-.jira-status-done { background: color-mix(in srgb, var(--ok, #2e7d32) 20%, transparent); color: var(--ok, #2e7d32); }
+.jira-status-todo { background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--muted-text); }
+.jira-status-progress { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-text); }
+.jira-status-done { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok-text); }
 
 /* Détail : liseré de catégorie en tête, sections aérées. */
 /* Colonne de droite : la ligne de filtres, puis le détail. Les filtres y ont toute la largeur —
@@ -2245,13 +2574,12 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-transition:hover { border-color: var(--accent); }
 
 .jira-section { margin-top: 18px; }
-.jira-section > h4 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
 .jira-card { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
 
 .jira-meta { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 13px; }
 .jira-meta-row { display: contents; }
 .jira-meta-label { white-space: nowrap; }
-.jira-label { display: inline-block; font-size: 11px; padding: 1px 9px; border-radius: 999px; margin: 1px; background: color-mix(in srgb, var(--accent, #7c5cff) 14%, transparent); color: var(--accent, #7c5cff); }
+.jira-label { display: inline-block; font-size: 11px; padding: 1px 9px; border-radius: 999px; margin: 1px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-text); }
 
 /* Pièces jointes : « chips fichier » cliquables (téléchargement via le proxy serveur). */
 .jira-attachments { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -2286,7 +2614,7 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-comment { display: flex; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
 .jira-comment:first-of-type { border-top: none; }
 .jira-avatar { flex: 0 0 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: 700; background: color-mix(in srgb, var(--accent, #7c5cff) 22%, transparent); color: var(--accent, #7c5cff); }
+  font-size: 12px; font-weight: 700; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-text); }
 .jira-comment-main { flex: 1; min-width: 0; }
 .jira-comment-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; font-size: 13px; }
 /* Composer : ajouter un commentaire. */
@@ -2299,7 +2627,10 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 @media (max-width: 900px) { .jira-layout { flex-direction: column; } .jira-list-col { flex-basis: auto; max-width: none; width: 100%; } .jira-list { max-height: 40vh; } }
 
 /* Bannière du mode démo (npm run demo). */
-#demoBanner { background: var(--accent); color: var(--on-accent); text-align: center; padding: 6px 12px; font-size: var(--fs-sm); font-weight: 600; }
+/* `--accent-btn` et non `--accent` : c'est la teinte réglée pour porter du blanc (4,70:1),
+   quand l'accent de marque n'en rendait que 3,22 en thème sombre. Même bandeau, même bleu
+   perçu, lisible. */
+#demoBanner { background: var(--accent-btn); color: var(--on-accent); text-align: center; padding: 6px 12px; font-size: var(--fs-sm); font-weight: 600; }
 
 /* ---------- Vérification objective (plan_add_verify.md §8) ----------
    Les couleurs portent le verdict : vert = vérifié, rouge = cassé par la branche, ambre =
@@ -2310,8 +2641,16 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .tag.verify.warn { color: var(--amber); border-color: var(--amber); }
 .tag.verify.stale { color: var(--muted); border-color: var(--line); }
 .tag.verify.none { color: var(--muted); border-color: var(--line); }
+/* Le badge de verdict est un vrai <button> (atteignable au clavier) : on lui rend l'allure
+   d'un .tag, que l'agent utilisateur habille autrement. */
+button.tag { font: inherit; font-size: 11px; line-height: 1.5; background: none; display: inline-flex;
+  align-items: center; gap: 4px; }
 .tag.verify[data-vreport] { cursor: pointer; }
 .tag.verify[data-vreport]:hover { background: var(--panel2); }
+.tag.verify[data-vreport]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* « · voir le rapport » : présent mais discret — le verdict reste ce qu'on lit en premier. */
+.tag-cta { opacity: .75; }
+.tag-cta::before { content: '· '; }
 
 /* Barre d'actions de la sélection multiple de merge requests. */
 .bulk-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; margin-bottom: 8px;
@@ -2337,6 +2676,11 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .modal-box.modal-wide { width: 860px; }
 .verify-list { margin: 4px 0 12px; padding-left: 20px; font-size: 13px; }
 .verify-list li { margin: 3px 0; }
+/* Un identifiant de merge request qui RAMÈNE à elle : dessiné comme un lien, pas comme un
+   bouton — c'est une navigation, et une rangée de boutons dans une liste de cibles ferait
+   croire à des actions. */
+.lien-mr { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }
+.lien-mr:hover { text-decoration: underline; }
 .verify-log { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r-md, 8px);
   padding: 8px 10px; margin: 4px 0; font-size: 12px; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
 /* Restauration ratée : le répertoire de l'utilisateur est resté sur un commit détaché.
@@ -2401,7 +2745,6 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .pass-body.no-list { grid-template-columns: 1fr; }
 .pass-aside { border-right: 1px solid var(--line); padding: 0; display: flex; flex-direction: column; overflow: hidden; }
 .pass-aside-head { padding: 12px 12px 8px; border-bottom: 1px solid var(--line); }
-.pass-aside-head h4 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 .pass-aside-head .search { width: 100%; margin: 0; }
 .pass-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 /* La ligne porte DEUX gestes : ouvrir l'itération (toute la surface du texte) et la ranger
@@ -2446,7 +2789,6 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
    long, et le tronquer dans un champ étroit fait perdre justement ce qu'on cherchait. */
 .compare-cotes { display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: stretch; }
 .compare-cote { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 12px 14px; min-width: 0; }
-.compare-cote h4 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 .form .compare-cote label { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin-bottom: 10px; font-size: 12px; }
 .form .compare-cote label:last-child { margin-bottom: 0; }
 .compare-cote .combo { width: 100%; }
@@ -2456,7 +2798,7 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .compare-head .search { flex: 1; min-width: 220px; margin: 0; }
 .compare-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; }
 .compare-col { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 10px 12px; min-width: 0; }
-.compare-col h4 { margin: 0 0 4px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.compare-col h4 { margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
 .compare-col > p.muted { margin: 0 0 8px; font-size: 12px; }
 .compare-list { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow: auto; }
 .compare-list li { border-bottom: 1px solid var(--line); }
@@ -2492,8 +2834,14 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 @media (max-width: 700px) { .champ-gabarit { grid-template-columns: 1fr; gap: 2px; } }
 
 .vc-row { display: flex; gap: 6px; margin-bottom: 6px; }
+/* C'est du SHELL : chasse fixe, comme les journaux et les commandes git ailleurs dans
+   l'application. En police proportionnelle, `-- --reporter=tap` se lit mal et les espaces
+   ne se comptent pas. */
 .vc-row .vc-cmd { flex: 1; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
-  border-radius: var(--radius); padding: 7px 10px; font: inherit; font-size: 13px; }
+  border-radius: var(--radius); padding: 7px 10px; font: inherit;
+  /* APRÈS le raccourci `font`, qui réinitialise la famille : posé avant, il était écrasé
+     dans la même déclaration — le champ restait en police proportionnelle. */
+  font-family: var(--ff-mono); font-size: 13px; }
 .vc-row .vc-del { flex: 0 0 auto; }
 /* Mono-dépôt : les cases se comportent en radio, la bordure le rappelle sans texte en plus. */
 
@@ -2545,8 +2893,7 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
    minuscules. L'anglais, lui, les capitalise déjà à la source. */
 .brief-date::first-letter { text-transform: uppercase; }
 .brief-sec { margin-bottom: 22px; }
-.brief-sec h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 14px;
-  text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.brief-sec h3 { display: flex; align-items: center; gap: 8px; }
 .brief-sec h3 .ico { width: 15px; height: 15px; }
 .brief-hint { margin: -4px 0 8px; font-size: 12px; }
 .brief-item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px;
@@ -2699,12 +3046,19 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .link-free-group .link-free-group { margin-left: 14px; }
 
 
-.link-tag {
+/* LA PASTILLE DE FILTRE, une seule fois pour toute l'application. Règle : pastilles quand les
+   valeurs sont peu nombreuses et stables (environnements, tags, états Docker, tranches de note),
+   liste à cocher avec champ de filtre au-delà (dépôts, dossiers, branches, personnes) — c'est ce
+   que font déjà Jenkins et Jira. `.link-tag` est le nom historique du même objet, gardé pour ne
+   pas réécrire l'onglet Liens et ses tests. */
+.chip, .link-tag {
   padding: 3px 10px; border-radius: var(--r-full); font-size: 12px; cursor: pointer;
   background: var(--panel2); border: 1px solid var(--line); color: var(--muted);
 }
-.link-tag:hover { color: var(--text); }
-.link-tag.active { background: var(--accent-btn); border-color: var(--accent-btn); color: var(--on-accent); }
+.chip:hover, .link-tag:hover { color: var(--text); }
+.chip.active, .link-tag.active { background: var(--accent-btn); border-color: var(--accent-btn); color: var(--on-accent); }
+/* Un groupe de pastilles : même gouttière partout, et il se replie plutôt que de déborder. */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
 /* La grille défile HORIZONTALEMENT dans son cadre : à six environnements, elle dépasse, et
    c'est elle qui doit défiler — pas la page entière. */
@@ -2757,7 +3111,7 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
   border: 1px solid var(--accent); border-radius: var(--radius); color: var(--text);
 }
 
-.link-free-head { margin: 26px 0 8px; font-size: 15px; }
+.link-free-head { margin-top: 26px; }
 
 /* ---- Onglet Liens : ce qui se fait, et ce qui se voit ------------------------------------
    Les boutons d'action de la grille (crayon, flèches, réglages) restent INVISIBLES au repos
@@ -2861,3 +3215,49 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
   body:not(.sidebar-large) .sidebar button[data-tab] { justify-content: center; padding: 9px 0; position: relative; }
   body:not(.sidebar-large) .sidebar-toggle { justify-content: center; }
 }
+
+
+/* ---------- Git · Merge : le choix des branches et l'écran de conflits ----------
+   L'écran doit se comprendre sans mode d'emploi : deux versions face à face, un bouton
+   « Garder » sur chacune, et la version retenue qui se voit d'un coup d'œil. */
+.merge-pick { align-items: center; gap: 8px; }
+.merge-pick .merge-lbl { font-size: 13px; color: var(--muted); flex: 0 0 auto; margin: 0; }
+.merge-pick > div { flex: 1 1 260px; min-width: 200px; }
+.merge-arrow { color: var(--muted); flex: 0 0 auto; font-size: 18px; }
+@media (max-width: 1000px) { .merge-pick > div { flex: 1 1 100%; } }
+
+.merge-running .merge-run-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; flex-wrap: wrap; }
+.merge-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* Deux colonnes : la liste des fichiers reste sous les yeux pendant qu'on résout. */
+.merge-body { display: flex; gap: 12px; align-items: flex-start; margin-top: 10px; }
+.merge-files { flex: 0 0 260px; display: flex; flex-direction: column; gap: 4px; max-height: 70vh; overflow: auto; }
+.merge-pane { flex: 1 1 auto; min-width: 0; max-height: 70vh; overflow: auto; }
+@media (max-width: 1000px) { .merge-body { flex-direction: column; } .merge-files { flex: 1 1 auto; width: 100%; } }
+
+.mf-item { display: flex; align-items: center; gap: 6px; text-align: left; width: 100%; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text);
+  cursor: pointer; font-size: 13px; }
+.mf-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mf-item .ico { color: var(--amber); flex: 0 0 auto; }
+.mf-item.active { border-color: var(--accent); background: var(--panel2); }
+.mf-done { font-size: 12px; color: var(--ok); padding: 6px 8px; }
+
+.mp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.merge-editor { width: 100%; min-height: 320px; font-family: var(--ff-mono); font-size: 12.5px; }
+
+/* Un conflit = un bloc encadré. La version RETENUE est colorée, l'autre reste neutre : on voit
+   ce qu'on garde sans avoir à relire les boutons. */
+.cf-hunk { border: 1px solid var(--line); border-radius: var(--radius); margin: 10px 0; overflow: hidden; }
+.cf-num { font-size: 12px; color: var(--muted); padding: 4px 8px; background: var(--panel2); }
+.cf-side { border-top: 1px solid var(--line); }
+.cf-lab { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 12.5px; color: var(--muted); }
+.cf-lab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cf-side pre { margin: 0; padding: 6px 10px; font-family: var(--ff-mono); font-size: 12.5px;
+  white-space: pre-wrap; word-break: break-word; }
+.cf-ours.cf-keep pre { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.cf-theirs.cf-keep pre { background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.cf-both { padding: 6px 8px; border-top: 1px solid var(--line); }
+.cf-ctx { margin: 0; padding: 4px 10px; color: var(--muted); font-family: var(--ff-mono); font-size: 12px;
+  white-space: pre-wrap; word-break: break-word; }
+.cf-gap { color: var(--muted); }

@@ -72,11 +72,91 @@ const AUTHORS = ['amady', 'lina', 'karim', 'sofia', 'noah'];
 /* `fetch_mrs: 0` sur un dépôt : la démo doit MONTRER qu'on peut cesser de ramener les MR
    d'un dépôt sans le désactiver. Ses MR déjà semées restent dans la file — c'est exactement
    le comportement réel, et c'est ce qui rend la case compréhensible. */
+/* UN DÉPÔT GIT RÉEL DANS LE DÉCOR.
+ *
+ * `main` et `feature/remise-fidelite` modifient la MÊME ligne du même fichier : le merge de
+ * l'une dans l'autre s'arrête sur un conflit, et l'écran de résolution a quelque chose à
+ * montrer. Le conflit porte sur du code lisible en trois secondes — un taux de remise —, parce
+ * qu'une démonstration de résolution de conflit ne doit pas d'abord demander de comprendre le
+ * code.
+ *
+ * Le dépôt est un `--bare` : c'est ce que l'application clone. Il est refait à chaque semis,
+ * comme le reste du décor. */
+const DEPOT_LOCAL = path.join(DEMO_DIR, 'depots', 'tarification.git');
+
+function depotLocalDeDemo() {
+  const { execFileSync } = require('child_process');
+  const travail = path.join(DEMO_DIR, 'depots', 'tarification-travail');
+  const g = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' });
+  ensureDir(path.dirname(DEPOT_LOCAL));
+  fs.mkdirSync(DEPOT_LOCAL, { recursive: true });
+  fs.mkdirSync(travail, { recursive: true });
+  g(DEPOT_LOCAL, 'init', '-q', '--bare', '-b', 'main', '.');
+  g(travail, 'init', '-q', '-b', 'main', '.');
+  /* Identité posée sur CE dépôt : la machine qui joue la démo n'a pas forcément de
+     `user.email` global, et `git commit` refuserait. */
+  g(travail, 'config', 'user.email', 'demo@mergerie.local');
+  g(travail, 'config', 'user.name', 'Démo Mergerie');
+  g(travail, 'remote', 'add', 'origin', DEPOT_LOCAL);
+
+  const tarif = (remise, note) => `// Tarification des abonnements\n`
+    + `const REMISE_FIDELITE = ${remise};   // ${note}\n`
+    + `\nfunction prixAnnuel(base, anciennete) {\n`
+    + `  const remise = anciennete >= 2 ? REMISE_FIDELITE : 0;\n`
+    + `  return Math.round(base * 12 * (1 - remise));\n`
+    + `}\n\nmodule.exports = { prixAnnuel, REMISE_FIDELITE };\n`;
+
+  fs.writeFileSync(path.join(travail, 'tarification.js'), tarif('0.05', 'remise fidélité : 5 %'));
+  fs.writeFileSync(path.join(travail, 'README.md'), '# Tarification\n\nLe calcul des prix d’abonnement.\n');
+  g(travail, 'add', '-A'); g(travail, 'commit', '-qm', 'tarification : calcul du prix annuel');
+  g(travail, 'push', '-q', '-u', 'origin', 'main');
+
+  // La branche : la remise passe à 10 %, et un plafond apparaît.
+  g(travail, 'checkout', '-q', '-b', 'feature/remise-fidelite');
+  fs.writeFileSync(path.join(travail, 'tarification.js'),
+    tarif('0.10', 'remise fidélité : 10 % à partir de 2 ans'));
+  fs.writeFileSync(path.join(travail, 'plafond.js'),
+    '// Plafond de remise, ajouté par la branche\nmodule.exports = { PLAFOND: 200 };\n');
+  g(travail, 'add', '-A'); g(travail, 'commit', '-qm', 'remise fidélité portée à 10 %');
+  g(travail, 'push', '-q', '-u', 'origin', 'feature/remise-fidelite');
+
+  // Pendant ce temps, `main` a bougé sur LA MÊME LIGNE : voilà le conflit.
+  g(travail, 'checkout', '-q', 'main');
+  fs.writeFileSync(path.join(travail, 'tarification.js'),
+    tarif('0.07', 'remise fidélité : 7 % (décision du comité tarifaire)'));
+  g(travail, 'add', '-A'); g(travail, 'commit', '-qm', 'remise fidélité portée à 7 %');
+  g(travail, 'push', '-q', 'origin', 'main');
+  fs.rmSync(travail, { recursive: true, force: true });   // seul le bare sert ensuite
+}
+
+depotLocalDeDemo();
+
 const PROJECTS = [
   { project: 'groupe/api-core', url: 'https://gitlab.demo/groupe/api-core.git', forge: 'gitlab' },
   { project: 'groupe/webapp-front', url: 'https://gitlab.demo/groupe/webapp-front.git', forge: 'gitlab' },
   { project: 'groupe/batch-jobs', url: 'https://gitlab.demo/groupe/batch-jobs.git', forge: 'gitlab' },
   { project: 'acme/design-system', url: 'https://github.com/acme/design-system.git', forge: 'github', fetch_mrs: 0 },
+  /* Deux services de plus : le changement transverse du ticket PROJ-1408 (le paiement en 3×)
+     touche CINQ dépôts. Sans eux, la démo ne peut montrer ni une session à cinq
+     projets, ni un lot de cinq merge requests vérifiées ensemble — la situation qui justifie
+     l'outil, et celle que trois dépôts ne racontent pas. */
+  { project: 'groupe/notif-service', url: 'https://gitlab.demo/groupe/notif-service.git', forge: 'gitlab' },
+  { project: 'groupe/orders-service', url: 'https://gitlab.demo/groupe/orders-service.git', forge: 'gitlab' },
+  /* QUATRE SERVICES PHP qui consomment la même librairie interne. Un parc réel n'est pas
+     monolingue, et la corvée la plus courante — monter la version d'une dépendance partout —
+     ne se montre qu'avec plusieurs projets qui la partagent. Leur arborescence commune est
+     dans `src/demo-diff.js`. */
+  { project: 'groupe/facturation', url: 'https://gitlab.demo/groupe/facturation.git', forge: 'gitlab' },
+  { project: 'groupe/portail-client', url: 'https://gitlab.demo/groupe/portail-client.git', forge: 'gitlab' },
+  { project: 'groupe/back-office', url: 'https://gitlab.demo/groupe/back-office.git', forge: 'gitlab' },
+  { project: 'groupe/webhooks-php', url: 'https://gitlab.demo/groupe/webhooks-php.git', forge: 'gitlab' },
+  /* UN VRAI DÉPÔT, sur le disque. Tous les autres pointent vers `gitlab.demo`, qui n'existe
+     pas : c'est sans importance pour les écrans qui lisent la base, mais l'onglet Git → Merge,
+     lui, CLONE et FUSIONNE pour de bon. Sans dépôt joignable, son écran de résolution de
+     conflits reste inaccessible en `npm run demo` — c'est-à-dire invisible pour qui découvre
+     l'outil. Celui-ci est fabriqué par `depotLocalDeDemo()` avec deux branches qui se marchent
+     dessus, pour que le conflit soit là dès la première visite. */
+  { project: 'groupe/tarification', url: DEPOT_LOCAL, forge: 'gitlab', fetch_mrs: 0 },
 ];
 
 // ---------- config : GitLab factice, pas de token (démo hors-ligne) ----------
@@ -171,7 +251,7 @@ function insertMr(m, extra = {}) {
       current_sha: sha, reviewed_sha: extra.reviewed_sha || null,
       status: m.status, updated_at: extra.date || at(1),
       gitlab_created_at: extra.date || at(2),
-      author: AUTHORS[iid % AUTHORS.length], changed_paths: (m.changed || []).join('\n'),
+      author: extra.author || AUTHORS[iid % AUTHORS.length], changed_paths: (m.changed || []).join('\n'),
     });
   return { id: info.lastInsertRowid, iid, sha, source_branch: m.branch, target_branch: extra.target || 'main', ...m };
 }
@@ -242,7 +322,7 @@ for (const m of REVIEWED) {
 // panneau de run affiche « convergé ». reviewed_sha = tête courante → MR non périmée.
 {
   const rnd8 = () => require('crypto').randomBytes(8).toString('hex');
-  const base = { project: 'groupe/webapp-front', title: 'Refonte du tunnel de paiement', branch: 'feat/PROJ-720-checkout', status: 'reviewed', changed: ['src/checkout/cart.js', 'src/checkout/payment.js', 'src/checkout/validation.js'], summary: 'refond le panier et sécurise le tunnel de paiement' };
+  const base = { project: 'groupe/webapp-front', title: 'Refonte du tunnel de paiement', branch: 'feat/PROJ-720-checkout', status: 'reviewed', changed: ['src/checkout/total.js', 'src/checkout/tunnel.js'], summary: 'refond le panier et sécurise le tunnel de paiement' };
   const headSha = 'c' + rnd8() + rnd8();
   const mr = insertMr(base, { date: iso(1), reviewed_sha: headSha });
   db.prepare('UPDATE mr SET current_sha = ? WHERE id = ?').run(headSha, mr.id); // non périmée : reviewed == current
@@ -250,17 +330,17 @@ for (const m of REVIEWED) {
 
   // Chaque passe résout des constats → la note monte. (severity, fichier, ligne, titre)
   const v1f = [
-    { file: 'src/checkout/payment.js', line: 31, severity: 'blocker', title: 'ne pas journaliser le numéro de carte' },
-    { file: 'src/checkout/payment.js', line: 58, severity: 'major', title: 'gérer l’échec réseau du PSP' },
-    { file: 'src/checkout/cart.js', line: 44, severity: 'major', title: 'recalculer le total côté serveur' },
-    { file: 'src/checkout/validation.js', line: 12, severity: 'minor', title: 'valider la devise' },
+    { file: 'src/checkout/tunnel.js', line: 12, severity: 'blocker', title: 'ne pas journaliser le numéro de carte' },
+    { file: 'src/checkout/tunnel.js', line: 24, severity: 'major', title: 'gérer l’échec réseau du PSP' },
+    { file: 'src/checkout/total.js', line: 8, severity: 'major', title: 'recalculer le total côté serveur' },
+    { file: 'src/checkout/total.js', line: 14, severity: 'minor', title: 'valider la devise' },
   ];
   const v2f = [
-    { file: 'src/checkout/payment.js', line: 58, severity: 'major', title: 'gérer l’échec réseau du PSP' },
-    { file: 'src/checkout/cart.js', line: 44, severity: 'major', title: 'recalculer le total côté serveur' },
+    { file: 'src/checkout/tunnel.js', line: 24, severity: 'major', title: 'gérer l’échec réseau du PSP' },
+    { file: 'src/checkout/total.js', line: 8, severity: 'major', title: 'recalculer le total côté serveur' },
   ];
   const v3f = [
-    { file: 'src/checkout/cart.js', line: 44, severity: 'minor', title: 'recalculer le total côté serveur' },
+    { file: 'src/checkout/total.js', line: 8, severity: 'minor', title: 'recalculer le total côté serveur' },
   ];
   const writeVer = (v, note, findings, daysAgo, agg) => {
     const md = path.join(dir, `review-v${v}.md`); fs.writeFileSync(md, reviewMd(mr, note, findings), 'utf8');
@@ -590,6 +670,20 @@ if (someMr) {
   }
 }
 
+/* UNE MERGE REQUEST EN CONFLIT. Le cas le plus banal d'une branche ouverte depuis quelques
+   jours : la branche de départ a avancé dessous, et la forge refuse de fusionner. C'est ce qui
+   fait apparaître, sur la ligne du projet et dans la modale de merge, le bouton « Mettre à jour
+   avec … ». Sans cet état dans le décor, la fonctionnalité est invisible à la démo — et c'est
+   pourtant le moment où l'outil rend le plus de service. */
+{
+  const mrConflit = db.prepare("SELECT id, repo_id, source_branch FROM mr WHERE source_branch = 'feat/PROJ-720-checkout' LIMIT 1").get();
+  if (mrConflit) {
+    db.prepare('UPDATE mr SET has_conflicts = 1 WHERE id = ?').run(mrConflit.id);
+    db.prepare('UPDATE task_target SET mr_conflicts = 1 WHERE repo_id = ? AND branch = ?')
+      .run(mrConflit.repo_id, mrConflit.source_branch);
+  }
+}
+
 /* ---------- tickets Jira surveillés ----------
    Un ticket qui n'est PAS affecté à « moi » : c'est le cas d'usage réel de la surveillance —
    suivre un ticket tenu par quelqu'un d'autre parce qu'il débloque le sien.
@@ -613,7 +707,7 @@ db.prepare(`INSERT OR IGNORE INTO jira_watch (key, summary, status, status_categ
    autre ticket : on se retrouve avec une ligne qui dit autre chose que ce qu'on a semé. */
 db.prepare(`INSERT OR IGNORE INTO jira_watch (key, summary, status, status_category, added_at, checked_at, note)
             VALUES (?,?,?,?,?,?,?)`)
-  .run('PROJ-1408', 'Ajouter le paiement en 3× sans frais', 'À faire', 'new', at(11), at(0.2),
+  .run('PROJ-1408', 'Ajouter le paiement en 3× sans frais', 'En revue', 'indeterminate', at(11), at(0.2),
     'dépend du tunnel refondu par !216.\nÀ replanifier si la recette de vendredi glisse.');
 
 /* ---------- vérification objective (plan_add_verify.md §12) ----------
@@ -717,6 +811,96 @@ db.prepare(`INSERT INTO verification
       { command: 'npm test', code: 1, duration_ms: 54000,
         output_tail: 'TAP version 13\nok 1 - export › écrit le fichier\nnot ok 2 - export › reprend après une coupure réseau\n# fail 1' }] }),
   JSON.stringify(echecsCmd), at(0.15), at(0.15), at(0.15));
+
+/* ---------- LE CHANGEMENT TRANSVERSE : un ticket, cinq dépôts, cinq merge requests ----------
+   C'est le scénario que trois dépôts ne savent pas raconter : le ticket PROJ-1408 (le paiement
+   en 3× sans frais, déjà dans le jeu Jira fictif) demande la même chose dans cinq services —
+   le partenaire de paiement, l'éligibilité des commandes, l'échéancier à l'écran, la
+   notification au client, la relance des impayés. Une session de codage porte les cinq projets,
+   chacun rend sa merge request sur la MÊME branche, et un seul vérificateur les rejoue
+   ENSEMBLE : un verdict vert qui ne vaut que collectivement. Sans ce lot, l'écran ne montre que
+   des merge requests indépendantes. */
+const P3X_BRANCHE = 'feat/PROJ-1408-paiement-3x';
+const P3X = [
+  { project: 'groupe/api-core', title: 'Paiement 3× : intégration du partenaire de paiement',
+    changed: ['src/payment/provider.js', 'src/payment/schedule.js'], summary: 'branche le partenaire de paiement en trois fois' },
+  { project: 'groupe/orders-service', title: 'Paiement 3× : éligibilité des commandes > 100 €',
+    changed: ['src/orders/eligibility.js'], summary: 'ouvre le paiement fractionné aux commandes éligibles' },
+  { project: 'groupe/webapp-front', title: 'Paiement 3× : échéancier affiché avant validation',
+    changed: ['src/checkout/Schedule.jsx', 'src/i18n/fr.json'], summary: 'affiche l’échéancier avant de valider' },
+  { project: 'groupe/notif-service', title: 'Paiement 3× : e-mail de confirmation de l’échéancier',
+    changed: ['src/templates/schedule.html', 'src/sender/notify.js'], summary: 'confirme l’échéancier par e-mail' },
+  { project: 'groupe/batch-jobs', title: 'Paiement 3× : relance des échéances impayées',
+    changed: ['jobs/dunning.js'], summary: 'relance les échéances non honorées' },
+];
+/* Des auteurs entièrement inventés : ces cinq merge requests servent aussi de captures
+   publiées, et rien de ce qui s'y lit ne doit renvoyer à une personne réelle. */
+const P3X_AUTEURS = ['lina', 'karim', 'noah', 'sofia', 'inès'];
+/* Elles sont « à traiter » : la session vient de les pousser, le vérificateur les a rejouées
+   ensemble, et c'est maintenant à l'humain de lire et de merger. Les reviewer ici les ferait
+   changer d'étage et casserait la lecture du lot d'un seul coup d'œil. */
+const mrsP3x = P3X.map((m, idx) => insertMr(
+  { ...m, branch: P3X_BRANCHE, status: 'to_review' },
+  { date: at(0.4 + idx * 0.01), author: P3X_AUTEURS[idx] },
+));
+
+/* Le vérificateur qui couvre les CINQ dépôts : la même liste de commandes rejouée dans chacun.
+   C'est ce qui rend le verdict collectif — cinq merge requests qui ne valent qu'ensemble. */
+const p3xVerifId = db.prepare(`INSERT INTO verifier
+  (name, kind, command, timeout_s, run_base, comment_on_forge, parse_tap, created_at)
+  VALUES (?, 'commands', '', ?,?,?,1,?)`).run('intégration paiement (démo)', 1200, 1, 1, at(6)).lastInsertRowid;
+for (const m of P3X) {
+  db.prepare("INSERT INTO verifier_repo (verifier_id, repo_id, mode, workdir, checkout_allowed) VALUES (?,?,'worktree',NULL,0)")
+    .run(p3xVerifId, repoIds[m.project]);
+}
+['npm ci', 'npm run test:integ -- --tag paiement-3x'].forEach((c, i) => {
+  db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)').run(p3xVerifId, i, c);
+});
+
+const lotP3x = db.prepare('INSERT INTO lot (name, kind, created_at) VALUES (?,?,?)')
+  .run('Paiement en 3× — tunnel complet', 'mr', at(0.5)).lastInsertRowid;
+for (const mr of mrsP3x) {
+  db.prepare("INSERT INTO lot_member (lot_id, kind, ref_id) VALUES (?, 'mr', ?)").run(lotP3x, mr.id);
+}
+const ciblesP3x = mrsP3x.map((mr) => ({
+  repo_id: repoIds[mr.project], mr_id: mr.id, head_sha: mr.sha,
+  base_sha: 'b' + require('crypto').randomBytes(19).toString('hex'),
+  branch: P3X_BRANCHE, mode: 'worktree',
+}));
+/* Verdict VERT, et il a un sens : la base est verte AUSSI (444 tests), donc le vert du head
+   n'est pas celui d'une suite déjà cassée avant la branche. */
+db.prepare(`INSERT INTO verification
+  (verifier_id, verifier_name, lot_id, lot_name, status, verdict, targets_json, base_run_json,
+   head_run_json, imputable_json, started_at, finished_at, created_at)
+  VALUES (?,?,?,?,'done','verified_pass',?,?,?,?,?,?,?)`).run(
+  p3xVerifId, 'intégration paiement (démo)', lotP3x, 'Paiement en 3× — tunnel complet',
+  JSON.stringify(ciblesP3x),
+  JSON.stringify({ version: 1, status: 'pass', total: 444, duration_ms: 128000,
+    commands: [{ command: 'npm ci', code: 0, duration_ms: 41000, output_tail: 'ajout de 512 paquets en 41 s' },
+      { command: 'npm run test:integ -- --tag paiement-3x', code: 0, duration_ms: 87000, output_tail: '# pass 444\n# fail 0' }] }),
+  JSON.stringify({ version: 1, status: 'pass', total: 452, duration_ms: 131000, failed: [],
+    commands: [{ command: 'npm ci', code: 0, duration_ms: 42000, output_tail: 'ajout de 512 paquets en 42 s' },
+      { command: 'npm run test:integ -- --tag paiement-3x', code: 0, duration_ms: 89000, output_tail: '# pass 452\n# fail 0' }] }),
+  JSON.stringify([]), at(0.3515), at(0.35), at(0.35));
+
+/* La session de codage qui a produit les cinq branches : un prompt, cinq projets, cinq MR. */
+const tP3x = db.prepare(`INSERT INTO task
+  (repo_id, prompt, label, branch, base_branch, status, kind, auto_push, created_at, updated_at)
+  VALUES (?,?,?,?,?,?,?,1,?,?)`).run(
+  repoIds['groupe/api-core'],
+  'PROJ-1408 — Ajoute le paiement en 3× sans frais pour les commandes de plus de 100 € : '
+  + 'intègre le partenaire de paiement, calcule l’échéancier côté serveur et affiche-le AVANT '
+  + 'la validation de la commande. Même contrat d’échéancier partout, un test couvre le calcul, '
+  + 'et rien ne change pour les commandes en dessous du seuil.',
+  'Paiement en 3× — tunnel complet', P3X_BRANCHE, 'main', 'pushed', 'code', at(0.55), at(0.5));
+mrsP3x.forEach((mr) => {
+  db.prepare(`INSERT INTO task_target
+    (task_id, repo_id, branch, base_branch, status, commit_sha, mr_iid, mr_url, updated_at)
+    VALUES (?,?,?,?,'pushed',?,?,?,?)`).run(
+    tP3x.lastInsertRowid, repoIds[mr.project], P3X_BRANCHE, 'main',
+    mr.sha.slice(0, 7), mr.iid, mr.web_url
+      || `https://gitlab.demo/${mr.project}/-/merge_requests/${mr.iid}`, at(0.5));
+});
 
 /* ---------- Notes, todos et rappels (plan_add_notes.md §10) ----------
    La démo doit montrer l'onglet VIVANT, brief compris : une page avec des références
@@ -884,4 +1068,50 @@ const counts = {
   freeLinks: db.prepare('SELECT COUNT(*) c FROM free_link').get().c,
   commentDrafts: db.prepare('SELECT COUNT(*) c FROM mr_comment_draft').get().c,
 };
+/* ---------- des branches mortes à nettoyer (décor Git) ----------
+   Une merge request vue fermée porte encore sa branche source : c'est ce que « Supprimer les
+   N branches de merge requests mergées » ramasse. Sans elles, le bouton n'existerait pas dans
+   la démo — et c'est exactement le geste de fin de sprint qu'on vient y voir. */
+{
+  const fermer = db.prepare('UPDATE mr SET closed_seen = 1 WHERE id = ?');
+  for (const m of db.prepare("SELECT id FROM mr WHERE status = 'done' ORDER BY id LIMIT 4").all()) fermer.run(m.id);
+}
+
+/* ---------- dernières exécutions des cibles Makefile (décor Docker) ----------
+   « Ai-je déjà passé les migrations ce matin ? » n'a de sens que si quelque chose a tourné. */
+{
+  const mk = db.prepare('INSERT INTO make_run (dir, target, started_at, finished_at, ok) VALUES (?,?,?,?,?)');
+  const dir = '/home/moi/dev/boutique';
+  const ilYA = (min) => new Date(Date.now() - min * 60000).toISOString();
+  mk.run(dir, 'migrate', ilYA(42), ilYA(41), 1);
+  mk.run(dir, 'up', ilYA(180), ilYA(179), 1);
+  mk.run(dir, 'test', ilYA(1500), ilYA(1480), 0);
+}
+
+/* ---------- ce que CHAQUE session a coûté ----------
+   Les lignes ci-dessus comptent par FAMILLE ; celles-ci se rattachent à une session précise.
+   C'est ce qui fait exister « les cinq sessions les plus coûteuses » dans Stats, et la ligne
+   « 2 min · ~12 400 tokens » sous chaque carte de Dev IA. */
+{
+  const usageSession = db.prepare(`INSERT INTO usage (kind, prompt_chars, output_chars, tokens_est, created_at, owner_kind, owner_id)
+    VALUES (?,?,?,?,?,?,?)`);
+  // La table `job` n'a pas de `created_at` : `started_at` fait foi.
+  const jobSession = db.prepare(`INSERT INTO job (kind, status, started_at, finished_at, target_kind, target_id)
+    VALUES (?,?,?,?,?,?)`);
+  const seances = [
+    ...db.prepare("SELECT id, kind FROM task WHERE status != 'new'").all().map((r) => ({ ...r, owner: 'task' })),
+    ...db.prepare("SELECT id FROM question WHERE status != 'new'").all().map((r) => ({ ...r, owner: 'ask', kind: 'ask' })),
+    ...db.prepare("SELECT id FROM local_task WHERE status != 'new'").all().map((r) => ({ ...r, owner: 'local', kind: 'task' })),
+  ];
+  seances.forEach((se, i) => {
+    const tok = 4200 + ((se.id * 1300 + i * 700) % 21000);
+    usageSession.run(se.kind === 'explore' ? 'explore' : se.kind, tok * 3, tok, tok, iso(i % 12), se.owner, se.id);
+    const debut = new Date(Date.now() - (i + 1) * 3600 * 1000);
+    const fin = new Date(debut.getTime() + (45 + (se.id * 23) % 400) * 1000);
+    jobSession.run(se.kind === 'explore' ? 'explain' : 'task', 'done',
+      debut.toISOString(), fin.toISOString(), se.owner, se.id);
+  });
+}
+
+
 console.log('Base de démo semée dans data-demo/ :', JSON.stringify(counts));

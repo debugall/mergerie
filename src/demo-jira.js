@@ -27,7 +27,9 @@ const ISSUES = [
     key: 'PROJ-1408', summary: 'Ajouter le paiement en 3× sans frais', type: 'Story', typeIcon: '',
     sprints: [{ v: '42', l: 'Sprint 42', d: '2026-07-20T08:00:00.000Z', etat: 'future' }],
     epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
-    status: 'À faire', statusCategory: 'new', priority: 'Moyenne',
+    /* « En revue » : c'est l'état qui fait remonter ses merge requests en tête de la file —
+       la QA attend, et la carte le dit. Le décor doit montrer ce croisement. */
+    status: 'En revue', statusCategory: 'indeterminate', priority: 'Moyenne',
     assignee: { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
     reporter: { name: 'Product Owner', email: 'po@demo', avatar: '' },
     project: 'PROJ — Boutique en ligne', labels: ['paiement'],
@@ -52,13 +54,13 @@ const ISSUES = [
     comments: [],
   },
   {
-    key: 'PROJ-1402', summary: 'Ajouter les gabarits de notification NP15', type: 'Tâche', typeIcon: '',
+    key: 'PROJ-1402', summary: 'Ajouter les gabarits d’événement au journal structuré', type: 'Tâche', typeIcon: '',
     sprints: [{ v: '43', l: 'Sprint 43', d: '2026-07-06T08:00:00.000Z', etat: 'active' }],
     epic: { key: 'PROJ-1050', summary: 'Observabilité : logs et métriques', color: 'blue' },
     status: 'À faire', statusCategory: 'new', priority: 'Moyenne',
     assignee: { accountId: 'me-001', name: 'Toi (démo)', email: 'toi@demo', avatar: '' },
     reporter: { name: 'Alex Martin', email: 'alex@demo', avatar: '' },
-    project: 'PROJ — Plateforme', labels: ['notification'],
+    project: 'PROJ — Plateforme', labels: ['observabilité'],
     created: '2026-07-18T09:00:00.000+0000', updated: '2026-07-24T16:10:00.000+0000',
     duedate: '', components: [], fixVersions: [],
     /* Une description dont la source Jira est un TABLEAU portant des blocs de code : c'est la
@@ -66,7 +68,7 @@ const ISSUES = [
        Aplati en cellules, le JSON se retrouvait sur une seule ligne, indentations écrasées et
        incopiable ; ces tableaux sont désormais dépliés (voir `renderTable` dans src/jira.js),
        et c'est ce rendu-là que la démo montre. */
-    descriptionMd: "Ajouter les templates suivant dans l'appel d'envoi de notification.\n\nNP15_Suppression_IN\n\n```json\n{\n    \"partner\": \"LIN\",\n    \"model\": { \"code\": \"LIN_NP15_SUPPRESSION_IN\", \"version\": 8 },\n    \"recipients\": [\n        { \"media\": \"EMAIL\", \"email\": \"{{EMAIL}}\" }\n    ],\n    \"data\": { \"dest\": \"STRING\", \"prenom\": \"STRING\" }\n}\n```\n\n---\n\nNP15-1_Suppression_IN\n\n```json\n{\n    \"partner\": \"LIN\",\n    \"model\": { \"code\": \"LIN_NP15-1_SUPPRESSION_IN\", \"version\": 1 },\n    \"recipients\": [\n        { \"media\": \"EMAIL\", \"email\": \"{{EMAIL}}\" }\n    ]\n}\n```",
+    descriptionMd: "Ajouter les gabarits suivants dans l'émetteur d'événements.\n\ncommande_expediee\n\n```json\n{\n    \"source\": \"orders-service\",\n    \"event\": { \"code\": \"COMMANDE_EXPEDIEE\", \"version\": 3 },\n    \"channels\": [\n        { \"media\": \"EMAIL\", \"to\": \"{{EMAIL}}\" }\n    ],\n    \"data\": { \"commande\": \"STRING\", \"prenom\": \"STRING\" }\n}\n```\n\n---\n\ncommande_annulee\n\n```json\n{\n    \"source\": \"orders-service\",\n    \"event\": { \"code\": \"COMMANDE_ANNULEE\", \"version\": 1 },\n    \"channels\": [\n        { \"media\": \"EMAIL\", \"to\": \"{{EMAIL}}\" }\n    ]\n}\n```",
     comments: [],
   },
 ];

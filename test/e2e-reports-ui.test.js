@@ -81,8 +81,17 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
     await page.waitForSelector('#reportSplit:not([hidden]) #reportList .card');
     await page.locator('#reportList .card').first().click();
     /* Le rapport de droite est chargé : ses actions n'existent que là (« Marquer traitée » ou
-       « Rouvrir » selon le stade). C'est l'effet qu'on attend, pas un délai. */
-    await page.waitForSelector('#aDone, #aReopen');
+       « Rouvrir » selon le stade). C'est l'effet qu'on attend, pas un délai. Elles vivent dans
+       le menu « ⋯ », donc repliées : on attend leur PRÉSENCE, pas leur visibilité. */
+    await page.waitForSelector('#aDone, #aReopen', { state: 'attached' });
+  }
+
+  /* Les actions secondaires du rapport vivent maintenant dans le menu « ⋯ » : trois actions
+     seulement restent visibles (ouvrir le code, faire corriger, merger). Les cliquer suppose
+     donc d'ouvrir le menu — comme le fait l'utilisateur. */
+  async function ouvrirMenuRapport() {
+    await page.locator('#aMore').click();
+    await page.waitForSelector('#reportDetail .split-menu:not([hidden])');
   }
 
   /* MARQUER TRAITÉE FAIT CHANGER DE STADE : la MR quitte « Reviewées » pour « Traitées ». Le
@@ -98,6 +107,7 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
     const avant = await cartes();
     assert.ok(avant >= 2, 'il faut de quoi observer un retrait');
 
+    await ouvrirMenuRapport();
     await page.locator('#aDone').click();
     await page.waitForFunction((n) => document.querySelectorAll('#reportList .card').length === n - 1, avant);
     // Le compteur est rafraîchi à part : on l'attend plutôt que de l'affirmer dans la foulée.
@@ -105,30 +115,131 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
       .test(document.querySelector('[data-seg="reviewed"]').textContent), avant - 1);
     assert.equal(await page.locator('#aReopen').count(), 1, 'le rapport propose maintenant de rouvrir');
 
+    await ouvrirMenuRapport();
     await page.locator('#aReopen').click();
     await page.waitForFunction((n) => document.querySelectorAll('#reportList .card').length === n, avant);
   });
 
+  /* LA LISTE FINIT DE SE POSER AVANT QU'ON LA TOUCHE. Les cartes entrent avec une animation
+     (`animate-in`) : leur hauteur, donc `scrollHeight`, grandit encore quelques dizaines de
+     millisecondes après que la première carte est apparue. Défiler pendant ce temps, c'est
+     défiler une liste qui n'a pas encore sa taille — la molette délivrait 84 px sur une marge
+     de 84, puis la marge passait à 628 et l'assertion accusait le défilement.
+     On attend donc DEUX mesures identiques de `scrollHeight` à une image d'intervalle. */
+  async function attendreListeStable() {
+    /* Le prédicat est SYNCHRONE : `waitForFunction` n'attend pas une promesse rendue par le
+       prédicat (il la voit comme une valeur vraie et sort aussitôt). La mesure précédente est
+       donc mémorisée sur l'élément, et c'est le rythme de sondage de Playwright qui fait
+       l'intervalle entre deux relevés. */
+    await page.evaluate(() => {
+      const l = document.querySelector('#reportSplit .col-list');
+      if (l) delete l.dataset.hMesure;              // une liste d'avant ne valide pas celle-ci
+    });
+    await page.waitForFunction(() => {
+      const l = document.querySelector('#reportSplit .col-list');
+      if (!l) return false;
+      const h = String(l.scrollHeight);
+      const stable = l.dataset.hMesure === h;
+      l.dataset.hMesure = h;
+      return stable;
+    });
+  }
+
+  /* SOUS LATENCE, LA COLONNE N'EST PAS UN BLANC MUET. Les faux « 0 » avaient disparu, mais
+     « Reviewées » et « Traitées » n'avaient aucun squelette : pendant les quelques secondes
+     d'une instance lente, on ne pouvait pas distinguer « ça charge » de « il n'y a rien ».
+     On RECHARGE la page pour retrouver un stade jamais ouvert (le drapeau qui pilote le
+     squelette est en mémoire), et on bloque la réponse jusqu'à un feu vert plutôt que de
+     parier sur un délai. */
+  test('un stade jamais ouvert montre un squelette pendant son chargement', async () => {
+    /* La route est posée AVANT le rechargement : l'application restaure son dernier stade au
+       démarrage, donc la requête à intercepter part immédiatement. */
+    let liberer;
+    const feuVert = new Promise((r) => { liberer = r; });
+    await page.route('**/api/mrs?status=reviewed', async (route) => {
+      await feuVert;
+      await route.continue().catch(() => { /* page déjà partie */ });
+    });
+    await page.reload();
+    await page.waitForSelector('nav button[data-tab="review"]');
+    await page.locator('nav button[data-tab="review"]').click();
+    await page.locator('[data-seg="reviewed"]').click();
+    await page.waitForSelector('#reportList .sk', { timeout: 10000 });
+    assert.equal(await page.locator('#reportList .sk').count(), 3, 'trois cartes fantômes, pas un blanc');
+
+    liberer();
+    await page.unroute('**/api/mrs?status=reviewed').catch(() => {});
+    await page.waitForSelector('#reportList .card', { timeout: 15000 });
+    assert.equal(await page.locator('#reportList .sk').count(), 0, 'le squelette laisse la place aux vraies cartes');
+  });
+
+  /* LE MUR D'ACTIONS. Onze boutons sur trois rangées précédaient la première ligne du rapport :
+     à 1280×800 on ne lisait rien sans faire défiler, alors qu'on vient pour LIRE. Et « Merger »
+     (irréversible) jouxtait « Supprimer le rapport » (destructif) dans exactement le même rouge. */
+  test('le rapport porte trois actions et commence dans le premier écran', async () => {
+    await ouvrirStade('reviewed');
+    const visibles = await page.evaluate(() => [...document.querySelectorAll(
+      '#reportDetail .detail-actions .btn-group > button, #reportDetail .detail-actions .split-menu-wrap > button',
+    )].map((b) => b.id));
+    assert.deepEqual(visibles, ['aSplit', 'aFix', 'aMerge', 'aMore'],
+      `trois actions et le menu, pas onze boutons — vu : ${JSON.stringify(visibles)}`);
+
+    const y = await page.locator('#mdView').evaluate((el) => el.getBoundingClientRect().top);
+    const h = await page.evaluate(() => window.innerHeight);
+    assert.ok(y < h, `la première ligne du rapport doit être dans l’écran (y=${Math.round(y)}, fenêtre ${h})`);
+
+    // Le menu contient bien le reste, dont la suppression — en dernier, derrière un séparateur.
+    await page.locator('#aMore').click();
+    await page.waitForSelector('#reportDetail .split-menu:not([hidden])');
+    const items = await page.evaluate(() => [...document.querySelectorAll('#reportDetail .split-menu > *')]
+      .map((e) => (e.tagName === 'BUTTON' ? (e.id || e.className) : e.className)));
+    assert.equal(items[items.length - 1], 'aDelReport', 'la suppression est la dernière du menu');
+    assert.equal(items[items.length - 2], 'menu-sep', 'et elle est séparée : on ne la clique pas par inertie');
+    await page.keyboard.press('Escape');
+  });
+
+  /* AMENER LE CURSEUR SUR LA PARTIE VISIBLE DE LA COLONNE. Viser « le haut de #reportList
+     plus 60 px » suppose que ce haut est dans la fenêtre : à 420 px de hauteur il est à
+     y=366 et le point visé tombait à 426, hors écran — la molette ne touchait alors aucun
+     élément défilable, et le test accusait le défilement. */
+  async function curseurSurLaListe() {
+    const pt = await page.evaluate(() => {
+      const l = document.querySelector('#reportSplit .col-list');
+      const r = l.getBoundingClientRect();
+      const haut = Math.max(0, r.top);
+      const bas = Math.min(window.innerHeight, r.bottom);
+      return { x: Math.round(r.left + r.width / 2), y: Math.round((haut + bas) / 2) };
+    });
+    await page.mouse.move(pt.x, pt.y);
+  }
+
   // Fait tourner la molette AU-DESSUS de la liste et rend compte de ce qui a bougé.
   async function moletteSurLaListe() {
+    await attendreListeStable();
     const avant = await page.evaluate(() => ({
       rapport: Math.round(document.querySelector('#reportDetail').getBoundingClientRect().top),
       page: Math.round(window.scrollY),
     }));
-    const boite = await page.locator('#reportList').boundingBox();
-    await page.mouse.move(boite.x + boite.width / 2, boite.y + 60);
+    await curseurSurLaListe();
     await page.mouse.wheel(0, 800);
-    /* La molette est asynchrone : on attend que le défilement ait ABOUTI (la liste a bougé, ou
-       elle est déjà au bout — c'est le cas que le test d'à côté éprouve), pas un délai fixe. */
+    /* La molette est asynchrone, et elle ne délivre pas ses 800 px d'un coup : on attend que
+       le défilement ait ABOUTI — arrivé aux 800 px demandés, ou au bout de la liste s'il y en
+       avait moins. `scrollTop > 0` ne suffisait pas : sur un runner lent, le premier cran
+       (84 px) satisfaisait l'attente pendant que le reste était encore en route. */
     await page.waitForFunction(() => {
       const l = document.querySelector('#reportSplit .col-list');
-      return l.scrollTop > 0 || l.scrollHeight <= l.clientHeight + 2;
+      const marge = l.scrollHeight - l.clientHeight;
+      return marge <= 2 || l.scrollTop >= Math.min(800, marge) - 1;
     });
-    return page.evaluate((av) => ({
-      liste: Math.round(document.querySelector('#reportSplit .col-list').scrollTop),
-      rapportBouge: Math.round(document.querySelector('#reportDetail').getBoundingClientRect().top) - av.rapport,
-      pageBouge: Math.round(window.scrollY) - av.page,
-    }), avant);
+    return page.evaluate((av) => {
+      const l = document.querySelector('#reportSplit .col-list');
+      return {
+        liste: Math.round(l.scrollTop),
+        marge: Math.round(l.scrollHeight - l.clientHeight),   // ce qu'il y avait à défiler
+        rapportBouge: Math.round(document.querySelector('#reportDetail').getBoundingClientRect().top) - av.rapport,
+        pageBouge: Math.round(window.scrollY) - av.page,
+      };
+    }, avant);
   }
 
   /* Marquer les rapports « traités » les fait passer du premier stade au second : les tests
@@ -144,7 +255,14 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
       if (seg === 'done') await toutMarquerTraite();
       await ouvrirStade(seg);
       const r = await moletteSurLaListe();
-      assert.ok(r.liste > 100, `la liste doit défirer pour de bon (vu ${r.liste} px)`);
+      /* On mesure ce qui est VÉRIFIABLE : la liste avait de quoi défiler, et elle a défilé de
+         tout ce qu'elle pouvait (ou des 800 px demandés si elle en avait davantage). Un seuil
+         en dur — « plus de 100 px » — dépendait de la hauteur des cartes, donc de la largeur
+         de la colonne : élargir la page d'un onglet suffisait à le faire échouer, sans que
+         rien du comportement éprouvé ici n'ait changé. */
+      assert.ok(r.marge > 0, 'la liste doit avoir de quoi défiler pour que le test ait un sens');
+      assert.ok(r.liste >= Math.min(800, r.marge) - 1,
+        `la liste doit défiler pour de bon (vu ${r.liste} px sur ${r.marge} possibles)`);
       assert.equal(r.rapportBouge, 0, 'le rapport ne doit pas bouger d’un pixel');
       assert.equal(r.pageBouge, 0, 'et la page non plus');
     });
@@ -253,31 +371,66 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
     assert.ok((await notesAffichees()).length >= avant.length, 'et la liste entière réapparaît');
   });
 
-  /* Le pendant du test de défilement : arrivé au bas de la liste, la molette ne doit pas
-     enchaîner sur la page. Sans `overscroll-behavior`, l'écran se met à glisser au moment
-     précis où on croit encore parcourir la liste. */
+  /* Le pendant du test de défilement : arrivé au bas de la liste, la page ne doit pas bouger.
+     (L'intention derrière la règle CSS est d'empêcher le chaînage de la molette ; voir la
+     limite mesurée, notée dans le corps du test.) */
   test('la fin de la liste n’entraîne pas la page', async () => {
     await toutMarquerTraite(); // idempotent : le test reste jouable seul
+    /* FENÊTRE COURTE : pour que « la page ne suit pas » veuille dire quelque chose, il faut
+       au moins que la page AIT de quoi défiler — à pleine hauteur elle tient dans l'écran.
+       ⚠ Mesuré : même ainsi, retirer `overscroll-behavior: contain` ne fait pas échouer ce
+       test. Le chaînage du défilement est une mécanique du compositeur que `mouse.wheel`, qui
+       synthétise l'événement, ne déclenche pas en Chromium headless. Ce que ce test prouve
+       donc vraiment : la colonne se parcourt jusqu'au bout, et la page reste où elle est.
+       La règle CSS, elle, n'a pas de filet automatique — la toucher demande un contrôle à
+       l'œil, dans un vrai navigateur. */
+    const tailleAvant = page.viewportSize();
+    await page.setViewportSize({ width: 1280, height: 420 });
     await ouvrirStade('done');
+    await attendreListeStable();   // les cartes entrent en s'animant : la liste grandit encore
+    assert.ok(await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight + 20),
+      'la page doit pouvoir défiler pour que le test ait un sens');
     // Position de départ mesurée, pas supposée : sélectionner une carte peut déjà avoir
     // déplacé la page de quelques pixels. Ce qu'on défend, c'est qu'elle ne bouge PLUS.
     const depart = await page.evaluate(() => Math.round(window.scrollY));
-    const boite = await page.locator('#reportList').boundingBox();
-    await page.mouse.move(boite.x + boite.width / 2, boite.y + 60);
-    /* Six coups de molette, chacun ATTENDU : on veut atteindre le bas de la liste, et une
-       molette lancée avant que la précédente n'ait pris ne défile pas deux fois. */
-    for (let i = 0; i < 6; i += 1) {
-      const avantTour = await page.evaluate(() => document.querySelector('#reportSplit .col-list').scrollTop);
-      await page.mouse.wheel(0, 1200);
-      await page.waitForFunction((av) => {
+    await curseurSurLaListe();
+    /* On descend jusqu'au bout, un cran à la fois, en attendant à chaque tour que le
+       défilement SE STABILISE — pas qu'il « ait bougé ». Attendre un mouvement suppose qu'il
+       en reste : sur un runner lent, la molette du tour précédent était encore en route quand
+       on relevait la position de départ, si bien qu'un tour ne changeait plus rien et que
+       l'attente expirait au lieu de constater qu'on était arrivé. */
+    const enBas = () => page.evaluate(() => {
+      const l = document.querySelector('#reportSplit .col-list');
+      return l.scrollTop + l.clientHeight >= l.scrollHeight - 2;
+    });
+    for (let i = 0; i < 20 && !(await enBas()); i += 1) {
+      await page.evaluate(() => {
         const l = document.querySelector('#reportSplit .col-list');
-        return l.scrollTop !== av || l.scrollTop + l.clientHeight >= l.scrollHeight - 2;
-      }, avantTour);
+        if (l) delete l.dataset.sMesure;
+      });
+      await page.mouse.wheel(0, 1200);
+      await page.waitForFunction(() => {
+        const l = document.querySelector('#reportSplit .col-list');
+        const v = String(l.scrollTop);
+        const stable = l.dataset.sMesure === v;
+        l.dataset.sMesure = v;
+        return stable;
+      });
     }
+    // Et on insiste UNE FOIS DE PLUS, arrivé en bas : c'est ce coup-là qui entraînerait la page.
+    await page.mouse.wheel(0, 1200);
+    await page.waitForFunction(() => {
+      const l = document.querySelector('#reportSplit .col-list');
+      const v = String(l.scrollTop);
+      const stable = l.dataset.sMesure === v;
+      l.dataset.sMesure = v;
+      return stable;
+    });
     const fin = await page.evaluate((d) => {
       const l = document.querySelector('#reportSplit .col-list');
       return { enBas: l.scrollTop + l.clientHeight >= l.scrollHeight - 2, bouge: Math.round(window.scrollY) - d };
     }, depart);
+    await page.setViewportSize(tailleAvant);
     assert.ok(fin.enBas, 'la liste a bien été parcourue jusqu’en bas');
     assert.equal(fin.bouge, 0, 'la page n’a pas suivi');
   });
