@@ -20,8 +20,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   cours », donc jamais pour un job qui finit avant le premier tour de boucle : c'est le cas d'une
   review courte. Elle repose maintenant sur l'identifiant du job. **Mesuré : l'écran se met à
   jour en 0,2 s** au lieu de ne jamais le faire. Dans la foulée, le lien « Voir le rapport » du
-  bandeau bascule sur le bon stade — il ouvrait le rapport dans un panneau masqué —, et deux
-  chargements de sessions en vol ne peuvent plus se recouvrir dans le désordre.
+  bandeau bascule sur le bon stade — il ouvrait le rapport dans un panneau masqué —, et les
+  réponses du serveur ne peuvent plus se recouvrir dans le désordre : une demande dépassée
+  reposait les chiffres d'avant par-dessus les bons, et l'écran repassait de 3 à 4 une seconde
+  après avoir dit vrai (vu sur un runner à deux cœurs, pas en théorie). Même garde sur les
+  compteurs, la liste des sessions et la palette.
 
 - **Le contraste tient WCAG AA partout**, dans les deux thèmes. Le motif le plus courant de
   l'interface — une couleur de marque posée sur un fond teinté de cette même couleur — se lit
@@ -32,9 +35,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   il parcourt les dix onglets dans les deux thèmes, compose les fonds semi-transparents et
   refuse tout texte sous son seuil.
 
-- **Les stades « Reviewées » et « Traitées » montrent un squelette pendant leur chargement.**
-  Les faux « 0 » avaient disparu, mais la colonne restait un blanc muet sous latence — on ne
-  pouvait pas distinguer « ça charge » de « il n'y a rien ».
+- **Une liste qui charge le dit, dès la première image.** Les faux « 0 » avaient disparu, mais
+  la colonne restait un blanc muet sous latence — impossible de distinguer « ça charge » de
+  « il n'y a rien ». Le squelette est maintenant écrit dans la page elle-même : le poser en
+  JavaScript ne suffisait pas, puisque la requête qui le déclenchait ne part qu'après celle de
+  la configuration. Mesuré sous 5 s de latence, la zone de liste ne contenait rien du tout à
+  400, 900, 1600, 2600 et 3600 ms ; elle montre désormais trois cartes grises tout du long.
+  Et tant que la file n'a pas répondu, l'écran ne conclut plus rien sur son contenu — l'écran
+  d'accueil s'affichait à sa place dès que la configuration revenait la première.
 
 - **La langue de l'écran vaut aussi pour le serveur.** Elle vit dans le navigateur ; le serveur
   lisait la configuration enregistrée. Passer l'interface en anglais laissait donc en français

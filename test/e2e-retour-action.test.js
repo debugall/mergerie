@@ -165,6 +165,45 @@ describe('Retour d’action après une review', { skip: dispo ? false : 'chromiu
     await page.unroute('**/api/tasks').catch(() => {});
   });
 
+  /* MÊME COURSE, SUR LES COMPTEURS. Plusieurs demandes de chiffres partent ensemble (fin de
+     job, changement de stade, rafraîchissement périodique) : sans rang, une réponse dépassée
+     reposait les valeurs d'avant par-dessus les bonnes, et l'écran repassait de 3 à 4 une
+     seconde après avoir dit vrai. Vu sur un runner à deux cœurs, pas en théorie. */
+  test('une réponse de compteurs dépassée ne réécrit pas les segments', async () => {
+    let liberer;
+    const retenue = new Promise((r) => { liberer = r; });
+    let premier = true;
+    await page.route('**/api/stats', async (route) => {
+      const dabord = premier;
+      premier = false;
+      if (dabord) await retenue;
+      await route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ funnel: dabord ? { to_review: 99, reviewed: 0, done: 0 } : { to_review: 7, reviewed: 2, done: 1 } }),
+      }).catch(() => { /* page déjà partie */ });
+    });
+
+    const lent = page.evaluate(() => refreshCounts());       // eslint-disable-line no-undef
+    await new Promise((r) => { setTimeout(r, 50); });        // la première demande est partie
+    await page.evaluate(() => refreshCounts());              // eslint-disable-line no-undef
+    await page.waitForFunction(() => document.querySelector('#segCountToReview').textContent.trim() === '7');
+
+    liberer();
+    await lent;
+    /* Les compteurs s'ANIMENT (600 ms) : lire dans la foulée montrerait une valeur en cours de
+       route. On attend deux relevés identiques, puis on compare. */
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#segCountToReview');
+      const v = el.textContent.trim();
+      const stable = el.dataset.vMesure === v;
+      el.dataset.vMesure = v;
+      return stable;
+    });
+    assert.deepEqual(await compteurs(), ['7', '2', '1'],
+      'la réponse retardée (99) ne doit pas revenir par-dessus la plus récente');
+    await page.unroute('**/api/stats').catch(() => {});
+  });
+
   test('aucune erreur JavaScript pendant le parcours', async () => {
     await waitForJobs(app.api);
     assert.deepEqual(erreurs, []);

@@ -61,6 +61,67 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
     assert.equal(await page.locator('#toReviewList .step.done').count(), 0, 'rien n’est fait, rien n’est coché');
   });
 
+  /* TROIS CARTES GRISES PLUTÔT QU'UN BLANC MUET. Le squelette était posé par le JavaScript,
+     au moment où partait la requête des merge requests — mais celle-ci ne part qu'APRÈS la
+     configuration, qui décide de l'onglet à ouvrir. Sur une instance lente, cela laissait
+     plusieurs secondes de vide : mesuré à 400, 900, 1600, 2600 et 3600 ms, la zone de liste
+     ne contenait rien du tout. Il est désormais écrit dans le HTML, donc à l'écran dès le
+     premier rendu, avant la moindre réponse du serveur. */
+  test('la file montre un squelette avant même la première réponse du serveur', async () => {
+    let liberer;
+    const feuVert = new Promise((r) => { liberer = r; });
+    await page.route('**/api/**', async (route) => {
+      await feuVert;
+      await route.continue().catch(() => { /* page déjà partie */ });
+    });
+    await page.goto(app.base, { waitUntil: 'domcontentloaded' });
+
+    /* Aucune réponse n'est encore arrivée — c'est tout l'objet du test : ce qu'on voit à cet
+       instant ne peut venir que du HTML. */
+    assert.equal(await page.locator('#toReviewList .sk').count(), 3,
+      'trois cartes fantômes, pas un blanc');
+    assert.equal(await page.locator('#reportList .sk').count(), 3);
+
+    liberer();
+    await page.unroute('**/api/**').catch(() => {});
+    /* Et il laisse la place : ici la base est vierge, donc c'est l'assistant qui vient. */
+    await page.waitForSelector('#toReviewList .steps', { timeout: ATTENTE });
+    assert.equal(await page.locator('#toReviewList .sk').count(), 0,
+      'le squelette ne doit pas rester coincé par-dessus le contenu réel');
+  });
+
+  /* LA CONFIGURATION RÉPOND AVANT LA FILE. C'est le cas courant — trois petites requêtes
+     contre une liste de merge requests — et l'assistant de démarrage redessine la file dès
+     qu'il connaît l'état. Sans garde, il concluait « aucune merge request » sur une liste
+     qu'on n'avait pas encore reçue : le squelette laissait place à un écran d'accueil qui
+     mentait, puis les cartes arrivaient. Mesuré : sans le garde, l'assistant s'affiche à
+     1,5 s alors que la file n'a pas répondu. */
+  test('un écran d’accueil ne s’affiche pas à la place d’une file encore en vol', async () => {
+    let libererMrs;
+    const feuVertMrs = new Promise((r) => { libererMrs = r; });
+    await page.route('**/api/mrs**', async (route) => {
+      await feuVertMrs;
+      await route.continue().catch(() => { /* page déjà partie */ });
+    });
+    await page.goto(app.base, { waitUntil: 'domcontentloaded' });
+
+    /* Le reste de l'API répond normalement. Le témoin que les petites requêtes SONT revenues :
+       les compteurs de segment ont quitté leur état d'attente — ils viennent de `/api/stats`,
+       de la même famille que celles qui alimentent l'assistant. */
+    await page.waitForFunction(
+      () => [...document.querySelectorAll('#tab-review .segmented .seg-count')]
+        .every((e) => !e.classList.contains('is-waiting')),
+      null, { timeout: ATTENTE },
+    );
+    await page.waitForSelector('#toReviewList .sk', { timeout: ATTENTE });
+    assert.equal(await page.locator('#toReviewList .steps').count(), 0,
+      'tant que la file n’a pas répondu, on ne conclut rien sur son contenu');
+
+    libererMrs();
+    await page.unroute('**/api/mrs**').catch(() => {});
+    await page.waitForSelector('#toReviewList .steps', { timeout: ATTENTE });
+  });
+
   /* Le compteur affichait « 0 » pendant que la requête était en vol : sur une instance lente,
      on lit « rien à traiter » et on conclut que la recherche n'a rien trouvé. On RALENTIT donc
      `/api/stats` pour observer l'état d'attente — sans quoi le test ne prouverait que l'état

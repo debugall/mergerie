@@ -198,7 +198,14 @@
             <button id="btnBulkClear" class="btn" type="button" data-i18n="verify.btn.clear-selection">Tout décocher</button>
         </div>
         <!-- stade « à traiter » : liste simple -->
-        <div id="toReviewList" class="list"></div>
+        <!-- SQUELETTE DE DÉPART, ÉCRIT DANS LE HTML. Le poser en JavaScript ne suffisait pas :
+             au démarrage, l'application demande d'abord la configuration (pour savoir quel
+             onglet ouvrir), et la requête des merge requests — celle qui posait le squelette —
+             ne partait qu'après. Sur une instance lente, cela laissait plusieurs secondes de
+             blanc muet là où trois cartes grises disent « je charge ». Ici, il est à l'écran
+             dès le premier rendu, sans une ligne de script. Le premier rendu de la liste le
+             remplace. -->
+        <div id="toReviewList" class="list"><div class="sk-wrap"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div>
         <!-- stades « reviewées » / « traitées » : liste + rapport -->
         <div id="reportSplit" class="split" hidden>
             <div class="col-list">
@@ -229,7 +236,7 @@
                         <span class="nf-count" data-nf-count="none"></span>
                     </label>
                 </div>
-                <div id="reportList" class="list"></div>
+                <div id="reportList" class="list"><div class="sk-wrap"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div>
             </div>
             <div class="col-detail" id="reportDetail">
                 <p class="muted" data-i18n="ui.p.selectionne-un-rapport-a-gauche">Sélectionne un rapport à gauche.</p>

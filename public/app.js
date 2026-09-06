@@ -1072,9 +1072,17 @@ const MR_STATUS = {
 const mrStatus = (s) => MR_STATUS[s] || { label: s, cls: '' };
 
 // Compteurs des segments + libellé du bouton de review globale (dit ce qui sera consommé).
+/* Même parade que pour les sessions et la palette : plusieurs demandes de compteurs peuvent
+   être en vol (fin de job, changement de stade, rafraîchissement périodique), et rien ne
+   garantit l'ordre de retour. Sans ce rang, une réponse dépassée reposait les chiffres
+   d'AVANT par-dessus les bons — l'écran affichait de nouveau « 4 à traiter » une seconde
+   après être passé à 3. */
+let countsSeq = 0;
 async function refreshCounts() {
+  const seq = ++countsSeq;
   try {
     const s = await api('/stats');
+    if (seq !== countsSeq) return;          // une demande plus récente a déjà répondu
     const f = s.funnel || {};
     /* Un compteur qui saute de 12 à 13 ne se remarque pas ; un compteur qui COMPTE, si.
        C'est la seule part visible du travail qui vient de se terminer. Animation courte,
@@ -2234,6 +2242,12 @@ async function loadToReview() {
 function renderToReview() {
   const el = $('#toReviewList');
   const q = ($('#searchReview').value || '').toLowerCase().trim();
+  /* TANT QUE LA FILE N'A JAMAIS RÉPONDU, on ne conclut rien. `renderToReview` est aussi
+     appelée par l'assistant de démarrage, qui relit l'état de la configuration : sur une
+     instance lente, cette réponse-là arrive AVANT celle des merge requests, et elle
+     remplaçait le squelette par « aucune merge request » — un état vide affirmé sur une
+     liste qu'on n'avait pas encore reçue. */
+  if (fileJamaisChargee) return;
   if (!toReviewRows.length) {
     // pas encore configuré → onboarding ; configuré et vide → file à jour
     el.innerHTML = (setupState.checked && (!setupState.configured || !setupState.hasRepos || !setupState.hasMrs))
