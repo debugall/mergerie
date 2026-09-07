@@ -2114,6 +2114,14 @@ que cette branche casse ? » mais **« est-ce que `develop` est encore vert ? »
 ligne par dépôt couvert, chacune sur sa **branche par défaut**, choisie dans un sélecteur à
 recherche — un dépôt actif en aligne des centaines. La dernière branche vérifiée est mémorisée.
 
+**On coche les dépôts qu'on veut, pas toute la couverture.** Chaque ligne porte une case, cochée
+d'emblée : un vérificateur qui couvre cinq dépôts peut donc n'en vérifier qu'un, sans avoir à
+donner les quatre autres branches — et une ligne dont la branche par défaut ne se lit pas (dépôt
+injoignable) ne bloque plus le lancement des autres. La sélection est **mémorisée par
+vérificateur** : « seulement `api-core` » est une habitude, pas une envie du jour. Le filtre
+au-dessus de la liste **masque** des lignes sans jamais les décocher — ce qui est coché part,
+visible ou non.
+
 Deux choses changent de sens, et l'outil les déduit de l'absence de merge request :
 
 - **le double run causal s'éteint** — sur une branche d'intégration, la branche EST la base ;

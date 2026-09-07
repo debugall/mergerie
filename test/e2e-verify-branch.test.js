@@ -209,6 +209,97 @@ describe('Vérification d’une branche', () => {
     } finally { await nav.close(); }
   });
 
+  /* CHOISIR SES DÉPÔTS. Un vérificateur qui en couvre plusieurs imposait ses lignes toutes
+     obligatoires : cinq dépôts couverts, cinq branches à donner, même pour ne vérifier que
+     `develop` sur un seul — et une ligne dont la branche par défaut ne se lisait pas bloquait
+     le lancement des autres. Le serveur, lui, acceptait déjà un sous-ensemble ; c'est l'écran
+     qui refusait de le former. Ce test tient les trois promesses de la correction : le choix
+     part vraiment, la recherche n'y touche pas, et rien ne part sans dépôt. */
+  test('depuis l’écran : on ne vérifie que les dépôts cochés', async (t) => {
+    if (!navigateurDispo().dispo) { t.skip(MSG_NAVIGATEUR); return; }
+    // Un SECOND dépôt, pour qu'il y ait un choix à faire.
+    const autre = fs.mkdtempSync(path.join(os.tmpdir(), 'vb-depot2-'));
+    git(autre, 'init', '-q', '-b', 'main');
+    poserIdentiteGit(autre);
+    fs.writeFileSync(path.join(autre, 'b.txt'), 'base\n');
+    git(autre, 'add', '-A'); git(autre, 'commit', '-qm', 'base');
+    const autreId = (await app.api('POST', '/api/repos', { project: 'grp/lib', url: autre })).body.id;
+    for (const [projet, chemin] of [['grp/app', distant], ['grp/lib', autre]]) {
+      app.state.branches[projet] = [{ name: 'main', default: true, protected: false, merged: false, commit: { id: git(chemin, 'rev-parse', 'main') } }];
+    }
+    const v = await poser('deux', 'exit 0', {
+      repos: [{ repo_id: repoId, mode: 'worktree' }, { repo_id: autreId, mode: 'worktree' }],
+    });
+
+    const nav = await lancerNavigateur();
+    const page = await nav.newPage({ viewport: { width: 1400, height: 950 } });
+    const erreurs = [];
+    page.on('pageerror', (e) => erreurs.push(e.message));
+    const ouvrir = async () => {
+      await page.locator(`#verifierList .card[data-id="${v.id}"] [data-vbranch]`).click();
+      await page.waitForSelector('#branchVerifyModal:not([hidden])');
+      await page.waitForFunction(() => document.querySelectorAll('#branchVerifyRows .verif-branche-row').length === 2);
+      /* Les branches par défaut arrivent APRÈS le rendu, dépôt par dépôt : attendre les lignes
+         ne suffit pas, il faut attendre que les lignes COCHÉES soient remplies — sinon on
+         lance sur du vide. Les décochées, elles, restent vides exprès : rien n'ira les
+         chercher tant qu'on ne les coche pas. */
+      await page.waitForFunction(() => [...document.querySelectorAll('#branchVerifyRows .verif-branche-row')]
+        .filter((r) => r.querySelector('.vb-pick').checked)
+        .every((r) => r.querySelector('.cb-search').value));
+    };
+    const lignes = () => page.locator('#branchVerifyRows .verif-branche-row');
+    try {
+      await page.goto(app.base);
+      await page.locator('[data-tab="admin"]').click();
+      await page.locator('#tab-admin .subnav [data-sub="verifiers"]').click();
+      await page.waitForSelector('#verifierList .card');
+      await ouvrir();
+
+      // Par défaut, TOUT est coché : le cas multi-dépôts ne change pas de comportement.
+      assert.deepEqual(await lignes().locator('.vb-pick').evaluateAll((els) => els.map((e) => e.checked)),
+        [true, true], 'à la première ouverture, la couverture entière est proposée');
+
+      // On décoche le second dépôt…
+      const second = lignes().nth(1);
+      const nomSecond = await second.locator('.repo-multi-item span').innerText();
+      await second.locator('.vb-pick').click();
+      // …et son champ de branche se désactive : une ligne qui ne partira pas ne se remplit pas.
+      await page.waitForFunction(() => document.querySelectorAll('#branchVerifyRows .verif-branche-row')[1]
+        .querySelector('.cb-search').disabled);
+
+      /* LA RECHERCHE MASQUE, ELLE NE DÉSÉLECTIONNE PAS. On filtre sur le dépôt DÉCOCHÉ : la
+         ligne cochée disparaît de l'écran — et doit tout de même partir. C'est la règle du
+         projet, et c'est le piège classique d'un filtre posé sur une liste à cocher. */
+      await page.locator('#branchVerifyRows .vb-search').fill(nomSecond.split('/').pop());
+      await page.waitForFunction(() => document.querySelectorAll('#branchVerifyRows .verif-branche-row')[0].hidden);
+
+      const avant = app.db.prepare('SELECT COUNT(*) c FROM verification').get().c;
+      await page.locator('#branchVerifyGo').click();
+      await page.waitForSelector('#branchVerifyModal[hidden]', { state: 'attached' });
+      assert.equal(app.db.prepare('SELECT COUNT(*) c FROM verification').get().c, avant + 1);
+      const cibles = JSON.parse(app.db.prepare('SELECT targets_json t FROM verification ORDER BY id DESC LIMIT 1').get().t);
+      assert.equal(cibles.length, 1, 'une seule cible : le dépôt décoché ne part pas');
+      assert.equal(cibles[0].repo_id, repoId, 'et c’est bien le dépôt COCHÉ, même masqué par la recherche');
+      await attendre(app.db.prepare('SELECT id FROM verification ORDER BY id DESC LIMIT 1').get().id);
+
+      // La sélection est RETENUE : « seulement api-core » est une habitude, pas une envie du jour.
+      await ouvrir();
+      assert.deepEqual(await lignes().locator('.vb-pick').evaluateAll((els) => els.map((e) => e.checked)),
+        [true, false], 'la modale se rouvre sur le choix de la dernière fois');
+
+      // Rien de coché : on refuse, sans rien lancer.
+      await lignes().nth(0).locator('.vb-pick').click();
+      const avant2 = app.db.prepare('SELECT COUNT(*) c FROM verification').get().c;
+      await page.locator('#branchVerifyGo').click();
+      await page.waitForSelector('.toast');
+      assert.equal(app.db.prepare('SELECT COUNT(*) c FROM verification').get().c, avant2,
+        'aucun dépôt coché : rien ne part');
+      assert.equal(await page.locator('#branchVerifyModal').evaluate((e) => e.hidden), false,
+        'et la modale reste ouverte, sur le choix à corriger');
+      assert.equal(erreurs.length, 0, `aucune erreur JS : ${erreurs.join(' | ')}`);
+    } finally { await nav.close(); }
+  });
+
   /* Le même vérificateur doit continuer à faire son double run causal sur une merge request :
      l'extinction ne vaut que pour CETTE vérification-là, et elle est déduite des cibles. */
   test('sur une merge request, le même vérificateur relance bien sa base', async () => {

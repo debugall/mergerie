@@ -2025,6 +2025,18 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .repo-multi-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 5px; cursor: pointer; font-size: 13px; }
 .repo-multi-item:hover { background: var(--panel); }
 .repo-multi-item input { flex: 0 0 auto; }
+/* « Vérifier une branche » réemploie cette liste : un dépôt à cocher, puis SA branche en
+   dessous, indentée sous son libellé. Décochée, la ligne s'éteint — on veut continuer à lire
+   ce qu'on ne vérifie pas, sans le confondre avec ce qui va partir. */
+/* Deux lignes par dépôt ici (le libellé, puis sa branche) : les 220 px de la liste partagée
+   n'en montreraient que deux et demi, et on ferait défiler pour trouver quoi décocher. */
+.vb-list { max-height: 340px; }
+.vb-list .verif-branche-row { padding: 4px 2px 8px; border-bottom: 1px solid var(--line); }
+.vb-list .verif-branche-row:last-child { border-bottom: 0; padding-bottom: 2px; }
+.vb-list .verif-branche-row.is-off { opacity: .55; }
+.vb-list .verif-branche-row .combo { margin-left: 26px; }
+.vb-list .verif-branche-row .combo input { padding: 6px 10px; font-size: 13px; }
+
 /* Un bloc de résultat par dépôt, replié par défaut. */
 .git-ex-project { border: 1px solid var(--line); border-radius: var(--r-md); margin: 8px 0; background: var(--panel); }
 .git-ex-project > summary { padding: 10px 12px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 10px; list-style: none; }

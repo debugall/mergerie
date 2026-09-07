@@ -2042,6 +2042,13 @@ the **Git** tab and on every verifier's card. One row per covered repository, ea
 branch**, picked from a searchable selector — an active repository lines up hundreds of them. The
 last branch verified is remembered.
 
+**You tick the repositories you want, not the whole coverage.** Every row carries a checkbox,
+ticked to start with: a verifier covering five repositories can therefore verify just one, without
+having to supply the other four branches — and a row whose default branch cannot be read (an
+unreachable repository) no longer blocks the others from starting. The selection is **remembered
+per verifier**: “only `api-core`” is a habit, not a whim of the day. The filter above the list
+**hides** rows without ever unticking them — what is ticked goes out, visible or not.
+
 Two things change meaning, and the tool deduces both from the absence of a merge request:
 
 - **the causal double run switches off** — on an integration branch, the branch IS the base;

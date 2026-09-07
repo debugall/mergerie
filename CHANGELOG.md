@@ -66,6 +66,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **“Verify a branch” no longer forces you to take every covered repository.** Each row now
+  carries a checkbox, ticked to start with, so a verifier covering five repositories can
+  verify just one — previously all five branches had to be supplied, and a row whose default
+  branch could not be read (an unreachable repository) blocked the launch of the others. The
+  selection is remembered per verifier, because “only `api-core`” is a habit rather than a
+  whim of the day, and a filter above the list hides rows without unticking them: what is
+  ticked goes out, visible or not. The server already accepted a subset — it is the screen
+  that refused to form one.
+
 - **Automatic publishing can now be limited to reports that block.** *Settings → Merge Request*:
   when "Automatically post the review report on the MR" is ticked, a second checkbox appears
   under it — **"Only post when there are blocking findings"**. The report is then posted only
