@@ -13,6 +13,21 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The "⋯" menu of a merge request card opened off-screen.** It really did open — `hidden`
+  flipped, the button reported itself expanded — but it was placed with the rules written for
+  the *combo boxes*: the left edge and the **width** of its trigger, a 39-pixel button pinned to
+  the right of a card. With its 210-pixel minimum width, the box ended past the edge of the
+  window, at every window size. From where you sit: you click, nothing happens. The menu is now
+  anchored by the stylesheet, as the "Review ▾" caret next to it already was — and the list
+  unclips its overflow, so the menu is not cropped from below either.
+
+- **A filter that leaves nothing, then removed, gives the list back.** Filtering on "Other
+  people's" (or searching for something absent) until the queue was empty, then going back to
+  the whole list, left the screen empty: the "nothing to show" branches wrote the DOM without
+  recording their signature, so the stored one stayed that of the last *non-empty* render.
+  Coming back computed exactly that signature again, and the render was skipped — no error, and
+  nothing left to click to get out of it.
+
 - **Every comment posted to Jira sent the source code of a function.** `addComment` built its
   body from the translation function instead of the text you typed, so the "Comment" button on a
   ticket and "Tell Jira" on a session both posted a block of JavaScript to your colleagues. Demo

@@ -195,6 +195,52 @@ describe('Améliorations — seconde passe', { skip: dispo ? false : MSG_NAVIGAT
     assert.equal(c.jira_test_key, 'PROJ-1234', 'accepté ET écrit — la moitié du chemin ne suffit pas');
   });
 
+  /* ---------- Deux régressions signalées à l'usage ---------- */
+
+  test('le menu « ⋯ » d’une carte s’ouvre DANS la fenêtre, et se clique', async () => {
+    /* Il s'ouvrait vraiment — `hidden` passait à faux — mais hors du cadre : `placerMenu`, écrit
+       pour les COMBOS, lui donnait le `left` et la LARGEUR du déclencheur, un bouton de 39 px
+       collé au bord droit d'une carte. Avec ses 210 px de `min-width`, la boîte se terminait
+       au-delà de la fenêtre. Vu de l'utilisateur : « je clique, il ne se passe rien ».
+       On n'éprouve donc pas l'état du DOM (il était déjà bon), mais la GÉOMÉTRIE : dans la
+       vue, et l'élément sous le curseur appartient bien au menu. */
+    await page.locator('nav button[data-tab="review"]').click();
+    await page.waitForSelector('#toReviewList .card');
+    await page.locator('#toReviewList [data-more]').first().click();
+    const g = await page.evaluate(() => {
+      const btn = document.querySelector('#toReviewList [data-more]');
+      const menu = btn.parentElement.querySelector('.split-menu');
+      const r = menu.getBoundingClientRect();
+      const sous = document.elementFromPoint(r.x + r.width / 2, r.y + 12);
+      return {
+        ouvert: !menu.hidden,
+        dansLaVue: r.left >= 0 && r.right <= window.innerWidth && r.top >= 0 && r.width > 0,
+        cliquable: !!(sous && menu.contains(sous)),
+      };
+    });
+    assert.equal(g.ouvert, true, 'le menu est ouvert');
+    assert.equal(g.dansLaVue, true, 'il tient dans la fenêtre');
+    assert.equal(g.cliquable, true, 'ce qui est sous le curseur appartient au menu');
+    await page.keyboard.press('Escape');
+  });
+
+  test('un filtre qui ne laisse rien puis qu’on retire redonne la liste', async () => {
+    /* Les branches « rien à afficher » écrivaient le DOM sans poser leur signature : la
+       signature mémorisée restait celle du dernier rendu NON vide. Revenir à la liste entière
+       recalculait donc exactement celle-là, et le rendu était sauté — la liste restait vide,
+       sans erreur et sans rien à cliquer. Éprouvé par la recherche, qui emprunte le même
+       chemin que les pastilles d'auteur. */
+    await page.locator('nav button[data-tab="review"]').click();
+    await page.waitForSelector('#toReviewList .card');
+    const n0 = await page.locator('#toReviewList .card').count();
+    assert.ok(n0 > 0, 'la file n’est pas vide au départ');
+    await page.fill('#searchReview', 'zzz-aucune-chance');
+    await page.waitForFunction(() => document.querySelectorAll('#toReviewList .card').length === 0);
+    await page.fill('#searchReview', '');
+    await page.waitForFunction((n) => document.querySelectorAll('#toReviewList .card').length === n, n0);
+    assert.equal(await page.locator('#toReviewList .card').count(), n0, 'la liste revient entière');
+  });
+
   test('aucune erreur de page sur tout le parcours', () => {
     assert.deepEqual(erreurs, []);
   });

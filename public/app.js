@@ -338,6 +338,22 @@ function titrerTextesTronques(racine = document) {
 // fenêtre étroite, et inversement. On repasse donc à chaque redimensionnement, groupé.
 window.addEventListener('resize', debounce(() => titrerTextesTronques(), 200));
 
+/* UN ÉTAT VIDE EST UN RENDU COMME UN AUTRE — et il doit poser sa signature. Les branches
+   « rien à afficher » écrivaient le DOM directement puis sortaient : la signature mémorisée
+   restait celle du DERNIER rendu non vide. Filtrer sur « celles des autres » jusqu'à une liste
+   vide, puis revenir à « toutes », recalculait donc exactement cette signature-là — et
+   `renderIfChanged` concluait « identique, on ne touche à rien ». La liste restait vide, sans
+   erreur, sans rien à cliquer pour s'en sortir.
+
+   On signe donc l'état vide par son HTML : deux vides différents (recherche infructueuse,
+   filtre d'auteur, filtre de note) se distinguent, un même vide ne clignote pas, et tout
+   retour à une liste non vide redessine. */
+function rendreVide(el, html) {
+  if (domSig.get(el.id) === `vide\u0003${html}`) return;
+  domSig.set(el.id, `vide\u0003${html}`);
+  el.innerHTML = html;
+}
+
 function renderIfChanged(el, sig, html) {
   if (domSig.get(el.id) === sig) return false;
   domSig.set(el.id, sig);
@@ -2789,14 +2805,14 @@ function renderToReview() {
     /* Filtrer sur « les autres » quand tout est à soi donne une liste vide qui n'est pas une
        recherche infructueuse : on dit laquelle des deux, sinon on croit avoir tout traité. */
     if (!q && filtreAuteur !== 'tous') {
-      el.innerHTML = emptyState({ icon: 'search', title: tr(`review.auteur.vide.${filtreAuteur}`),
+      rendreVide(el, emptyState({ icon: 'search', title: tr(`review.auteur.vide.${filtreAuteur}`),
         text: tr('review.search.count', { n: toReviewRows.length, total: toReviewRows.length }),
-        actions: [{ act: 'clear-auteur', label: tr('review.auteur.tous') }] });
+        actions: [{ act: 'clear-auteur', label: tr('review.auteur.tous') }] }));
       return;
     }
-    el.innerHTML = emptyState({ icon: 'search', title: tr('report.search.none', { q: esc(q) }),
+    rendreVide(el, emptyState({ icon: 'search', title: tr('report.search.none', { q: esc(q) }),
       text: tr('review.search.count', { n: toReviewRows.length, total: toReviewRows.length }),
-      actions: [{ act: 'clear-search', label: tr('report.search.clear') }] });
+      actions: [{ act: 'clear-search', label: tr('report.search.clear') }] }));
     return;
   }
   /* Signature : tout ce que la carte affiche. Si le rendu est identique on ne touche pas au
@@ -2835,7 +2851,22 @@ function renderToReview() {
     closeSplitMenus();
     menu.hidden = !ouvrir;
     b.setAttribute('aria-expanded', String(ouvrir));
-    if (ouvrir) { b.closest('.card').classList.add('menu-open'); placerMenu(b, menu); }
+    /* LE MENU EST ANCRÉ PAR LE CSS, pas replacé à la main. `placerMenu` est écrit pour les
+       COMBOS : il repasse la boîte en `fixed`, lui donne le `left` ET la largeur du
+       déclencheur. Sur un champ de recherche large c'est juste ; sur un bouton « ⋯ » de
+       39 px collé au bord droit d'une carte, la boîte part de x = 1420, réclame ses 210 px
+       de `min-width` et se termine à 1630 — hors d'une fenêtre de 1500. Le menu s'ouvrait
+       donc vraiment, invisible, et le clic paraissait sans effet. Sur une fenêtre étroite il
+       rentrait : d'où l'intermittence. `.btn-split` est `position: relative` et
+       `.split-menu` est `absolute; right: 0` — l'ancrage était déjà correct, il suffisait de
+       ne pas l'écraser. C'est ce que fait déjà le menu du caret « Reviewer ▾ », juste à côté.
+
+       Et on débloque l'overflow de la LISTE, comme lui : sans ça, `overflow: hidden` (les
+       coins arrondis) rogne le menu par le bas. */
+    if (ouvrir) {
+      b.closest('.card').classList.add('menu-open');
+      const liste = b.closest('.list'); if (liste) liste.classList.add('menu-open');
+    }
   }));
   // Split-button : le caret ouvre le menu de surcharge ponctuelle (avec/sans explication).
   $$('#toReviewList [data-review-menu]').forEach((b) => b.addEventListener('click', (e) => {
@@ -3129,33 +3160,33 @@ function renderReports() {
   const q = ($('#searchReview').value || '').toLowerCase().trim();
   majFiltreNote();
   if (!reportRows.length) {
-    el.innerHTML = emptyState({ icon: 'doc',
+    rendreVide(el, emptyState({ icon: 'doc',
       title: currentSeg === 'done' ? tr('report.empty.done.title') : tr('report.empty.none.title'),
       text: currentSeg === 'done' ? tr('report.empty.done.text') : tr('report.empty.none.text'),
-      actions: [{ act: 'seg-to-review', label: tr('report.empty.action'), primary: true }] });
+      actions: [{ act: 'seg-to-review', label: tr('report.empty.action'), primary: true }] }));
     return;
   }
   renderFiltreTri();
   const cherchees = ordonnerFile(filtrerPretes(filtrerAuteur(q ? reportRows.filter((m) => matchMr(m, q)) : reportRows)));
   if (!cherchees.length) {
-    el.innerHTML = emptyState({
+    rendreVide(el, emptyState({
       icon: 'search',
       title: tr('report.search.none', { q: esc(q) }),
       text: tr('report.search.count', { n: reportRows.length, total: reportRows.length }),
       actions: [{ act: 'clear-search', label: tr('report.search.clear') }],
-    });
+    }));
     return;
   }
   const rows = cherchees.filter(passeFiltreNote);
   /* Tout masqué par les couleurs : le dire, et proposer la sortie. Une liste vide sans
      explication au-dessus de trois cases décochées se lit comme « il n'y a rien ». */
   if (!rows.length) {
-    el.innerHTML = emptyState({
+    rendreVide(el, emptyState({
       icon: 'search',
       title: tr('review.filter.empty.title'),
       text: tr('review.filter.empty.text', { n: cherchees.length, count: cherchees.length }),
       actions: [{ act: 'clear-note-filter', label: tr('review.filter.clear'), primary: true }],
-    });
+    }));
     return;
   }
   const sig = [selectedMr, ...rows.map((m) => [m.id, m.status, m.iid, m.title, m.project, m.author,
