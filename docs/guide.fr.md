@@ -31,12 +31,14 @@ une todo normale dont l'échéance est dépassée réclame autant, et c'est just
 ### Reviews
 Les trois stades d'une même merge request, réunis derrière un filtre segmenté —
 **À traiter · Reviewées · Traitées** — avec une recherche commune (titre, auteur, projet, ticket).
-**Trois ordres et une porte.** Une rangée de puces range la file : **ordre habituel** (le ticket en
-revue passe devant), **petites d'abord**, **plus anciennes**, **note la plus basse** — la taille et l'âge
-sont écrits sur chaque carte, encore fallait-il pouvoir s'en servir. L'ordre choisi est mémorisé.
-La puce verte **« Prêtes à merger »** ne filtre sur rien de neuf : une note au-dessus du seuil de
-convergence, un verdict vert non périmé, aucun ticket qui s'y oppose. L'outil ne merge rien — il dit
-lesquelles ne demandent plus rien, et le brief en donne le nombre.
+**Par quoi commencer.** Une liste déroulante range la file — **ordre habituel** (le ticket en revue
+passe devant), **petites d'abord**, **plus anciennes**, **note la plus basse**. La taille et l'âge sont
+écrits sur chaque carte ; il manquait de pouvoir s'en servir. Le choix est mémorisé, et il se lit sur la
+même ligne que les pastilles d'auteur : qui, et dans quel ordre, sont deux façons de réduire la même file.
+
+**Ce qui ne demande plus rien se compte dans le brief** : note au-dessus du seuil de convergence,
+verdict vert non périmé, aucun ticket qui s'y oppose — trois colonnes déjà en base. L'outil ne merge
+rien ; il dit combien de merge requests n'attendent plus qu'une décision.
 
 **Une merge request en conflit le dit sur sa carte**, et le badge ouvre `Git → Merge` pré-rempli dans le
 sens qui débloque (la branche cible dans la branche de la MR). *Mettre à jour avec main* n'existe que

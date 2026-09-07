@@ -68,20 +68,20 @@ describe('Améliorations — seconde passe', { skip: dispo ? false : MSG_NAVIGAT
 
   /* ---------- Axe A ---------- */
 
-  test('A/Reviews 1 — la file se trie, et le tri survit à un rechargement', async () => {
+  test('A/Reviews 1 — l’ordre de la file se choisit, et survit à un rechargement', async () => {
+    /* Un ordre est un choix UNIQUE : c'est une liste déroulante, pas une rangée de pastilles
+       — sept pastilles côte à côte se lisent comme des filtres cumulables. Et un tri qu'il
+       faut reposer à chaque visite ne sert qu'une fois : c'est la mémoire qu'on éprouve ici,
+       pas l'ordre lui-même (une seule merge request ne prouverait rien d'un ordre). */
     await page.locator('nav button[data-tab="review"]').click();
-    await page.waitForSelector('#mrTriFiltre .chip');
-    await page.locator('[data-mr-tri="anciennes"]').click();
-    await page.waitForFunction(() => document.querySelector('[data-mr-tri="anciennes"]').classList.contains('active'));
+    await page.waitForSelector('#mrTri');
+    await page.selectOption('#mrTri', 'anciennes');
+    await page.waitForFunction(() => document.querySelector('#mrTri').value === 'anciennes');
     await page.reload();
     await page.locator('nav button[data-tab="review"]').click();
-    /* Un tri qu'il faut reposer à chaque visite ne sert qu'une fois : c'est la mémoire qu'on
-       éprouve, pas l'ordre lui-même (une seule merge request ne prouverait rien de l'ordre). */
-    await page.waitForFunction(() => {
-      const b = document.querySelector('[data-mr-tri="anciennes"]');
-      return b && b.classList.contains('active');
-    });
-    assert.ok(true);
+    await page.waitForFunction(() => document.querySelector('#mrTri').value === 'anciennes');
+    assert.equal(await page.locator('#mrTri').inputValue(), 'anciennes');
+    await page.selectOption('#mrTri', 'defaut');   // on rend l'écran à son état d'origine
   });
 
   test('A/Réglages 2 — une règle limitée à un dépôt ne sort pas de ce dépôt', async () => {

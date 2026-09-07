@@ -21,6 +21,18 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   anchored by the stylesheet, as the "Review ▾" caret next to it already was — and the list
   unclips its overflow, so the menu is not cropped from below either.
 
+- **A late file render no longer wipes the one you are reading.** Opening a file in the code
+  viewer empties the pane, *awaits* its diff, then writes it back — so two renders could overlap
+  (opening the viewer starts one, clicking a finding starts another on a different file). The
+  slower one won: it rewrote the pane with its own content, erasing the file you had just opened
+  **and any inline comment editor open on it** — that is, what you were in the middle of writing.
+  A render that is no longer the latest now stands down.
+
+- **Clicking a finding always does something.** It could land on a line that carries no "＋"
+  button (a deleted line, a hunk header), or on a row detached by a re-render between aiming and
+  clicking — and in both cases the function gave up without a word. It now retries on the effect
+  and, when a file genuinely has no commentable line in this diff, says so.
+
 - **A filter that leaves nothing, then removed, gives the list back.** Filtering on "Other
   people's" (or searching for something absent) until the queue was empty, then going back to
   the whole list, left the screen empty: the "nothing to show" branches wrote the DOM without
@@ -60,13 +72,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
   **Deciding faster in the queue**
 
-  - **The queue sorts**: smallest first, oldest first, lowest score. The size and the age were
-    written on each card since 1.4.0 but could not be used to choose what to start with. The
-    order you pick is remembered.
-  - **A chip says what is ready to merge**: score above the convergence threshold, verified
-    green and not stale, and no ticket standing in the way — three columns already in the
-    database. The morning brief counts them. Nothing is merged: the tool says which ones ask for
-    nothing more.
+  - **The queue sorts**: usual order, smallest first, oldest first, lowest score — a dropdown
+    on the same row as the author chips, because who and in which order are two ways of
+    narrowing the same queue. The size and the age were written on every card since 1.4.0 but
+    could not be used to choose what to start with. The order you pick is remembered.
+  - **The morning brief counts what is ready to merge**: score above the convergence threshold,
+    verified green and not stale, and no ticket standing in the way — three columns already in
+    the database. Nothing is merged: the tool says how many merge requests are only waiting for
+    a decision.
   - **A merge request in conflict says so on its card**, and the badge opens `Git → Merge`
     prefilled to catch the branch up — where *Update with main* only ever existed for merge
     requests born from a session.

@@ -3061,8 +3061,6 @@ button.tag { font: inherit; font-size: 11px; line-height: 1.5; background: none;
   background: var(--panel2); border: 1px solid var(--line); color: var(--muted);
 }
 .chip:hover, .link-tag:hover { color: var(--text); }
-/* « Prêtes à merger » se détache de la rangée de TRIS : ce n'est pas un ordre de plus, c'est
-   un filtre. Le compte est dans la puce parce que c'est le chiffre qu'on vient chercher. */
 /* Le nom d'un container devient un bouton : il doit rester un NOM à l'œil — pas de cadre,
    pas de fond, juste le curseur qui dit qu'il se copie. */
 button.dlog-cname { font: inherit; background: none; border: 0; padding: 0; color: inherit;
@@ -3097,11 +3095,14 @@ button.dlog-cname:focus-visible { outline: 2px solid var(--accent); outline-offs
   outline: 2px solid var(--accent); outline-offset: 2px; }
 .jira-watch-err { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--red-text); }
 .jira-insert-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; font-size: 12px; }
+/* QUI et DANS QUEL ORDRE, sur une seule ligne. Les pastilles d'auteur peuvent être masquées
+   (jeton dont on ne lit pas le compte) : le tri reste alors seul, à gauche, sans trou. */
+.mr-filtres { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 6px 0; }
+.mr-filtres .chips { margin: 0; }
+.mr-tri { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.mr-tri select { font: inherit; font-size: 12px; padding: 3px 6px; }
 .dk-backup { display: flex; align-items: flex-start; gap: 8px; }
 .dk-backup-cmd { margin: 4px 0 0; font-size: 11px; white-space: pre-wrap; opacity: .8; max-height: 6.5em; overflow: auto; }
-.chip-pret { margin-left: 10px; border-color: var(--green); color: var(--green); }
-.chip-pret.active { background: var(--green); border-color: var(--green); color: var(--on-green); }
-.chip-n { font-variant-numeric: tabular-nums; opacity: .85; }
 .chip.active, .link-tag.active { background: var(--accent-btn); border-color: var(--accent-btn); color: var(--on-accent); }
 /* Un groupe de pastilles : même gouttière partout, et il se replie plutôt que de déborder. */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

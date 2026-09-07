@@ -29,12 +29,15 @@ whose due date has passed asks just as much, and lateness is exactly what gets f
 ### Reviews
 The three stages of one merge request, behind a segmented filter — **To review · Reviewed · Done** — with a
 shared search (title, author, project, ticket).
-**Three orders and a door.** A row of chips arranges the queue: **usual order** (a ticket in review
-comes first), **smallest first**, **oldest first**, **lowest score** — the size and the age have been
-written on every card since 1.4.0, what was missing was being able to use them. The order you pick is
-remembered. The green **“Ready to merge”** chip filters on nothing new: a score above the convergence
-threshold, a green verdict that is not stale, and no ticket standing in the way. The tool merges
-nothing — it says which ones ask for nothing more, and the morning brief gives the count.
+**Where to start.** A dropdown arranges the queue — **usual order** (a ticket in review comes first),
+**smallest first**, **oldest first**, **lowest score**. The size and the age are written on every card;
+what was missing was being able to use them. The choice is remembered, and it sits on the same row as the
+author chips: who, and in which order, are two ways of narrowing the same queue.
+
+**What asks for nothing more is counted in the morning brief**: a score above the convergence
+threshold, a green verdict that is not stale, and no ticket standing in the way — three columns already
+in the database. The tool merges nothing; it says how many merge requests are only waiting for a
+decision.
 
 **A merge request in conflict says so on its card**, and the badge opens `Git → Merge` prefilled in the
 direction that unblocks it (the target branch into the MR's branch). *Update with main* only ever

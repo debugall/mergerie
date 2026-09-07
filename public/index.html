@@ -190,12 +190,21 @@
         <!-- QUI ATTEND QUOI. Onze merge requests à traiter dont quatre à soi : ce que
              l'équipe attend, ce sont les sept autres. Le compte du jeton est connu des deux
              forges ; les pastilles n'apparaissent que si on a pu le lire. -->
-        <div id="mrAuteurFiltre" class="chips" role="group" hidden></div>
-        <!-- PAR QUOI COMMENCER. La taille et l'âge sont écrits sur chaque carte depuis 1.4.0,
-             mais la file restait dans un ordre qu'on ne pouvait pas interroger. Et « prêtes »
-             ne filtre sur rien de neuf : une note au-dessus du seuil, un verdict vert non
-             périmé, un ticket qui ne s'y oppose pas — trois colonnes déjà en base. -->
-        <div id="mrTriFiltre" class="chips" role="group"></div>
+        <!-- QUI, et DANS QUEL ORDRE, sur une seule ligne : ce sont deux façons de réduire la
+             même file, elles se lisent ensemble. Le tri est une LISTE DÉROULANTE et non des
+             pastilles — quatre ordres dont un seul actif, c'est la forme d'un choix unique, et
+             une rangée de sept pastilles se lisait comme sept filtres cumulables. -->
+        <div class="mr-filtres">
+            <div id="mrAuteurFiltre" class="chips" role="group" hidden></div>
+            <label class="mr-tri"><span data-i18n="review.tri.label">Trier</span>
+                <select id="mrTri">
+                    <option value="defaut" data-i18n="review.tri.defaut">Ordre habituel</option>
+                    <option value="petites" data-i18n="review.tri.petites">Petites d'abord</option>
+                    <option value="anciennes" data-i18n="review.tri.anciennes">Plus anciennes</option>
+                    <option value="note" data-i18n="review.tri.note">Note la plus basse</option>
+                </select>
+            </label>
+        </div>
         <input id="searchReview" class="search" type="search" placeholder="Rechercher (titre, auteur, projet, ticket)…" data-i18n-placeholder="ui.ph.rechercher-titre-auteur-projet-ticket" />
         <div id="reviewErrors"></div>
         <!-- Sélection multiple : vérifier ENSEMBLE des MR qui ne valent qu'ensemble.

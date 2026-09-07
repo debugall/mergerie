@@ -2693,38 +2693,18 @@ document.addEventListener('click', (e) => {
 const filtrerAuteur = (rows) => (filtreAuteur === 'moi' ? rows.filter(estDeMoi)
   : (filtreAuteur === 'autres' ? rows.filter((m) => !estDeMoi(m)) : rows));
 
-/* ── PAR QUOI COMMENCER, ET CE QUI EST PRÊT ────────────────────────────────────────────────
-   La taille et l'âge sont sur chaque carte depuis 1.4.0 ; il manquait de pouvoir s'en servir.
-   Quatre ordres, un seul actif, mémorisé — un tri qu'on doit reposer à chaque visite ne sert
-   qu'une fois. L'ordre par défaut reste celui d'avant (le ticket en revue passe devant), pour
-   que ne rien choisir ne change rien. */
+/* ── PAR QUOI COMMENCER ────────────────────────────────────────────────────────────────────
+   La taille et l'âge sont écrits sur chaque carte depuis 1.4.0 ; il manquait de pouvoir s'en
+   servir pour choisir. Quatre ordres, UN SEUL actif : c'est un choix unique, donc une liste
+   déroulante — une rangée de pastilles se lit comme des filtres cumulables, ce qu'un ordre
+   n'est pas. Mémorisé : un tri qu'on repose à chaque visite ne sert qu'une fois. L'ordre par
+   défaut reste celui d'avant (le ticket en revue passe devant), pour que ne rien choisir ne
+   change rien. */
 let triFile = (() => { try { return localStorage.getItem('aidevtools_mr_tri') || 'defaut'; } catch { return 'defaut'; } })();
-let seulementPretes = (() => { try { return localStorage.getItem('aidevtools_mr_pretes') === '1'; } catch { return false; } })();
-
-/* Le seuil de « prête » est celui de la CONVERGENCE : c'est la note que l'utilisateur a
-   lui-même déclarée suffisante. En reprendre un autre ici inventerait une seconde définition
-   du mot « assez bonne ». Lu une fois, avec un défaut si les réglages ne répondent pas. */
-let seuilPret = 8;
-(async () => { try { const d = await defautsConvergence(); seuilPret = Number(d.seuil) || 8; } catch { /* défaut */ } })();
-
-/* PRÊTE À MERGER — une lecture de trois colonnes, rien de plus. L'outil ne merge pas : il dit
-   lesquelles ne demandent plus rien. Un ticket « terminé » alors que la MR est ouverte n'est
-   pas un feu vert, c'est une anomalie signalée ailleurs : il ne compte pas comme prêt. */
-function estPrete(m) {
-  if (!m) return false;
-  if (m.closed_seen) return false;
-  if (m.has_conflicts) return false;
-  const note = m.note == null ? null : Number(m.note);
-  if (note == null || note < seuilPret) return false;
-  const v = m.verification;
-  if (!v || v.verdict !== 'verified_pass' || v.stale) return false;
-  if (m.ticket_category && m.ticket_category !== 'indeterminate') return false;
-  return true;
-}
 
 const TRIS = {
   defaut: (a, b) => rangTicket(a) - rangTicket(b),
-  // « petites d'abord » : les lignes changées, à défaut les fichiers. Une MR sans mesure passe après.
+  // « Petites d'abord » : les lignes changées, à défaut les fichiers. Sans mesure, on passe après.
   petites: (a, b) => tailleNum(a) - tailleNum(b),
   anciennes: (a, b) => String(a.updated_at || a.gitlab_created_at || '').localeCompare(String(b.updated_at || b.gitlab_created_at || '')),
   note: (a, b) => (a.note == null ? 99 : Number(a.note)) - (b.note == null ? 99 : Number(b.note)),
@@ -2736,33 +2716,19 @@ function tailleNum(m) {
   return s.files != null ? s.files : Number.MAX_SAFE_INTEGER;
 }
 const ordonnerFile = (rows) => rows.slice().sort(TRIS[triFile] || TRIS.defaut);
-const filtrerPretes = (rows) => (seulementPretes ? rows.filter(estPrete) : rows);
 
-function renderFiltreTri() {
-  const box = $('#mrTriFiltre');
-  if (!box) return;
-  const opts = [['defaut', 'review.tri.defaut'], ['petites', 'review.tri.petites'],
-    ['anciennes', 'review.tri.anciennes'], ['note', 'review.tri.note']];
-  const n = toReviewRows.concat(reportRows).filter(estPrete).length;
-  box.innerHTML = opts.map(([v, k]) => `<button type="button" class="chip${triFile === v ? ' active' : ''}" data-mr-tri="${v}">${esc(tr(k))}</button>`).join('')
-    + `<button type="button" class="chip chip-pret${seulementPretes ? ' active' : ''}" data-mr-pretes`
-    + ` title="${esc(tr('review.pretes.title', { seuil: seuilPret }))}">${esc(tr('review.pretes'))}`
-    + (n ? ` <span class="chip-n">${n}</span>` : '') + '</button>';
-}
-document.addEventListener('click', (e) => {
-  const t = e.target.closest && e.target.closest('[data-mr-tri]');
-  if (t) {
-    triFile = t.dataset.mrTri;
-    try { localStorage.setItem('aidevtools_mr_tri', triFile); } catch { /* ignore */ }
-    renderFiltreTri(); loadSegment(currentSeg);
-    return;
-  }
-  const p = e.target.closest && e.target.closest('[data-mr-pretes]');
-  if (!p) return;
-  seulementPretes = !seulementPretes;
-  try { localStorage.setItem('aidevtools_mr_pretes', seulementPretes ? '1' : '0'); } catch { /* ignore */ }
-  renderFiltreTri(); loadSegment(currentSeg);
-});
+/* Le tri restauré doit SE VOIR dans la liste déroulante : une file rangée autrement que ce
+   que le contrôle affiche ferait douter de la liste avant de douter du contrôle. */
+(() => {
+  const sel = $('#mrTri');
+  if (!sel) return;
+  if ([...sel.options].some((o) => o.value === triFile)) sel.value = triFile;
+  sel.addEventListener('change', () => {
+    triFile = sel.value;
+    try { localStorage.setItem('aidevtools_mr_tri', triFile); } catch { /* stockage indisponible */ }
+    loadSegment(currentSeg);
+  });
+})();
 
 (async () => {
   try {
@@ -2799,8 +2765,7 @@ function renderToReview() {
     return;
   }
   assurerJenkinsPourCI();          // une fois par page : le badge CI a besoin de la liste
-  renderFiltreTri();
-  const rows = ordonnerFile(filtrerPretes(filtrerAuteur(q ? toReviewRows.filter((m) => matchMr(m, q)) : toReviewRows)));
+  const rows = ordonnerFile(filtrerAuteur(q ? toReviewRows.filter((m) => matchMr(m, q)) : toReviewRows));
   if (!rows.length) {
     /* Filtrer sur « les autres » quand tout est à soi donne une liste vide qui n'est pas une
        recherche infructueuse : on dit laquelle des deux, sinon on croit avoir tout traité. */
@@ -3166,8 +3131,7 @@ function renderReports() {
       actions: [{ act: 'seg-to-review', label: tr('report.empty.action'), primary: true }] }));
     return;
   }
-  renderFiltreTri();
-  const cherchees = ordonnerFile(filtrerPretes(filtrerAuteur(q ? reportRows.filter((m) => matchMr(m, q)) : reportRows)));
+  const cherchees = ordonnerFile(filtrerAuteur(q ? reportRows.filter((m) => matchMr(m, q)) : reportRows));
   if (!cherchees.length) {
     rendreVide(el, emptyState({
       icon: 'search',
@@ -3300,12 +3264,10 @@ document.addEventListener('click', (e) => {
 
 document.addEventListener('click', (e) => {
   if (!(e.target.closest && e.target.closest('[data-brief-pretes]'))) return;
-  /* On ALLUME la puce en y allant : arriver dans une file de onze cartes après avoir cliqué
-     « 3 prêtes » obligerait à refaire le tri à la main. */
-  seulementPretes = true;
-  try { localStorage.setItem('aidevtools_mr_pretes', '1'); } catch { /* ignore */ }
+  /* Le brief COMPTE ce qui ne demande plus rien ; la file, elle, n'a plus de puce pour les
+     isoler. On mène donc au stade où elles vivent — « Reviewées » — et c'est là qu'on lit
+     les badges carte par carte. */
   navReviews('reviewed');
-  renderFiltreTri();
 });
 
 /* B7 — UNE MR EN CONFLIT QUI N'EST PAS NÉE D'UNE SESSION. « Mettre à jour avec main » n'existe
@@ -4142,7 +4104,17 @@ function highlightCode(code) {
   return out;
 }
 
+/* UNE RÉPONSE EN RETARD NE DOIT PAS ÉCRASER L'ÉCRAN. `renderFile` vide le panneau, ATTEND le
+   diff du fichier, puis réécrit. Deux rendus peuvent donc se chevaucher — l'ouverture de la
+   visionneuse en lance un, et un clic sur un constat en lance aussitôt un autre sur un autre
+   fichier. Le plus LENT gagnait : il réécrivait `#fileContent` avec son contenu, effaçant le
+   fichier qu'on venait d'ouvrir ET tout éditeur de commentaire ouvert dessus — c'est-à-dire ce
+   qu'on était en train d'écrire. Silencieux, et intermittent par nature. Un numéro d'ordre
+   suffit : un rendu qui n'est plus le dernier s'abstient. */
+let renderFileSeq = 0;
 async function renderFile() {
+  const seq = ++renderFileSeq;
+  const perime = () => seq !== renderFileSeq;
   const path = split.path;
   $('#fileName').textContent = path || '';
   const el = $('#fileContent');
@@ -4155,6 +4127,7 @@ async function renderFile() {
       try { const r = await api(`${splitBase()}/filediff?path=${encodeURIComponent(path)}`); split.diffFullCache[path] = r.diff || split.diffByFile[path] || ''; }
       catch { split.diffFullCache[path] = split.diffByFile[path] || ''; }
     }
+    if (perime()) return;
     const rd = renderDiffLines(split.diffFullCache[path]);
     split.fileOldPath = rd.oldPath || path;
     split.fileNewPath = rd.newPath || path;
@@ -4170,8 +4143,9 @@ async function renderFile() {
   $('#minimap').hidden = true;
   if (split.fullCache[path] == null) {
     try { const r = await api(`${splitBase()}/file?path=${encodeURIComponent(path)}`); split.fullCache[path] = r.content || ''; }
-    catch (e) { el.innerHTML = errorBox(e.message); return; }
+    catch (e) { if (!perime()) el.innerHTML = errorBox(e.message); return; }
   }
+  if (perime()) return;
   el.innerHTML = `<pre class="code">${highlightCode(split.fullCache[path])}</pre>`;
   el.scrollTop = 0;
 }
@@ -4440,33 +4414,58 @@ document.addEventListener('click', async (e) => {
   const chemAffiche = (dansArbre && dansArbre.path) || dansDiff;
   if (!chemAffiche) { toast(tr('report.finding.no-file', { file: chemin }), true); return; }
   await selectFile(chemAffiche);
-  ouvrirCommentaireSurLigne(ligne, texte);
+  await ouvrirCommentaireSurLigne(ligne, texte);
 });
 
 /* Ouvre l'éditeur de commentaire sur la ligne demandée, pré-rempli. La ligne peut ne pas être
    dans le diff affiché (constat sur du code inchangé) : on prend alors la plus proche, et à
    défaut la première du fichier — mieux vaut un commentaire à trois lignes près qu'aucun. */
-function ouvrirCommentaireSurLigne(ligne, texte) {
-  const rows = $$('#fileContent .dl-row');
-  if (!rows.length) return;
-  let cible = rows.find((r) => Number(r.dataset.new) === ligne);
-  if (!cible && ligne) {
-    let ecart = Infinity;
-    for (const r of rows) {
-      const n = Number(r.dataset.new);
-      if (!n) continue;
-      const d = Math.abs(n - ligne);
-      if (d < ecart) { ecart = d; cible = r; }
+async function ouvrirCommentaireSurLigne(ligne, texte) {
+  /* ON CLIQUE JUSQU'À L'EFFET, et on re-résout la ligne à chaque essai. Trois pièges, tous
+     silencieux, se cumulaient ici :
+       — `selectFile` rend la main avant que les lignes soient peintes (gros diff, rendu
+         différé) : on trouvait zéro ligne et on sortait sans rien dire ;
+       — toutes les lignes ne se commentent pas — une ligne SUPPRIMÉE ou un en-tête de section
+         n'ont pas de bouton « ＋ ». Le repli prenait `rows[0]` sans regarder ;
+       — et surtout, le fichier se RE-REND (les brouillons arrivent après coup) : la ligne
+         visée est alors détachée du document entre la visée et le clic, et cliquer un nœud
+         détaché ne remonte à aucun gestionnaire. Aucune erreur, aucun éditeur.
+     Vu de l'utilisateur, les trois donnent la même chose : je clique un constat, il ne se
+     passe rien. On boucle donc sur l'EFFET — l'éditeur est là — plutôt que sur le geste. */
+  const commentablesMaintenant = () => $$('#fileContent .dl-row').filter((r) => r.querySelector('.ln-comment'));
+  const viser = (rows) => {
+    let cible = rows.find((r) => Number(r.dataset.new) === ligne);
+    if (!cible && ligne) {
+      let ecart = Infinity;
+      for (const r of rows) {
+        const n = Number(r.dataset.new);
+        if (!n) continue;
+        const d = Math.abs(n - ligne);
+        if (d < ecart) { ecart = d; cible = r; }
+      }
     }
+    return cible || rows[0];
+  };
+
+  for (let essai = 0; essai < 40; essai += 1) {
+    const rows = commentablesMaintenant();
+    if (rows.length) {
+      const cible = viser(rows);
+      cible.scrollIntoView({ block: 'center' });
+      cible.querySelector('.ln-comment').click();
+      const ed = cible.nextElementSibling;
+      if (ed && ed.classList.contains('cmt-editor')) {
+        const ta = ed.querySelector('textarea');
+        if (ta && texte && !ta.value) { ta.value = texte; ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+        return;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 50));
   }
-  cible = cible || rows[0];
-  cible.scrollIntoView({ block: 'center' });
-  const bouton = cible.querySelector('.ln-comment');
-  if (!bouton) return;
-  bouton.click();
-  const ed = cible.nextElementSibling;
-  const ta = ed && ed.classList.contains('cmt-editor') && ed.querySelector('textarea');
-  if (ta && texte && !ta.value) { ta.value = texte; ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  /* Deux secondes sans une seule ligne commentable : le fichier n'en a pas dans ce diff (un
+     constat sur du code supprimé n'a pas de ligne où se poser). On le DIT — c'est la seule
+     chose qu'on ne doit jamais faire en silence. */
+  toast(tr('report.finding.no-line'), true);
 }
 
 // Commentaire inline : bouton « ＋ » d'une ligne de diff -> éditeur -> discussion GitLab.
