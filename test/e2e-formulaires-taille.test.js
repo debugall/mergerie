@@ -88,9 +88,11 @@ describe('Champs de saisie — taille', { skip: dispo ? false : MSG_NAVIGATEUR }
     await page.waitForSelector('#linkGrid .link-grid');
     await page.locator('#linkGrid [data-editservice]').first().click();
     await page.waitForSelector('#serviceModal:not([hidden])');
-    /* Une ligne par environnement, fabriquée à l'ouverture : c'est le cas qui a motivé ce
-       fichier — ces champs faisaient 21 px de haut sous un « Nom » de 38. */
-    await page.waitForFunction(() => document.querySelectorAll('#serviceUrlsList input').length === 6);
+    /* Une ligne par ADRESSE, fabriquée à l'ouverture (nom + URL), plus une ligne vide par
+       environnement : c'est le cas qui a motivé ce fichier — ces champs faisaient 21 px de
+       haut sous un « Nom » de 38. Le compte exact dépend des adresses posées ; ce qui se
+       vérifie ici, c'est qu'il y en a et qu'ils font la taille de l'application. */
+    await page.waitForFunction(() => document.querySelectorAll('#serviceUrlsList input').length >= 2);
     const tailles = await page.locator('#serviceUrlsList input')
       .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
     assert.ok(tailles.every((h) => h >= CHAMP_FORME), `hauteurs : ${tailles.join(', ')}`);
@@ -111,9 +113,9 @@ describe('Champs de saisie — taille', { skip: dispo ? false : MSG_NAVIGATEUR }
       await page.locator('nav button[data-tab="links"]').click();
       await page.waitForSelector('#linkGrid .link-grid');
       await page.locator('#linkGrid .link-add').first().click();
-      await page.waitForSelector('.link-cell-edit');
+      await page.waitForSelector('.link-cell-panel');
       const m = await page.evaluate(() => {
-        const p = document.querySelector('.link-cell-edit').getBoundingClientRect();
+        const p = document.querySelector('.link-cell-panel').getBoundingClientRect();
         const u = document.querySelector('.lce-url').getBoundingClientRect();
         return {
           url: Math.round(u.width), hauteurUrl: Math.round(u.height),
@@ -125,7 +127,7 @@ describe('Champs de saisie — taille', { skip: dispo ? false : MSG_NAVIGATEUR }
       assert.ok(m.hauteurUrl >= CHAMP_FORME, `le champ d’URL fait ${m.hauteurUrl}px de haut`);
       assert.ok(m.dedans, `le panneau sort de l’écran : ${m.bords}`);
       await page.keyboard.press('Escape');
-      await page.waitForSelector('.link-cell-edit', { state: 'detached' });
+      await page.waitForSelector('.link-cell-panel', { state: 'detached' });
     });
   }
 
@@ -137,9 +139,9 @@ describe('Champs de saisie — taille', { skip: dispo ? false : MSG_NAVIGATEUR }
     await page.locator('#linkGrid tbody tr').first().locator('td.link-cell').last()
       .locator('.link-add, .link-edit').first()
       .click({ force: true });
-    await page.waitForSelector('.link-cell-edit');
+    await page.waitForSelector('.link-cell-panel');
     const ok = await page.evaluate(() => {
-      const p = document.querySelector('.link-cell-edit').getBoundingClientRect();
+      const p = document.querySelector('.link-cell-panel').getBoundingClientRect();
       return { dedans: p.right <= window.innerWidth, droite: Math.round(p.right), ecran: window.innerWidth };
     });
     assert.ok(ok.dedans, `le panneau dépasse : bord droit ${ok.droite} pour ${ok.ecran}px d’écran`);
@@ -154,10 +156,10 @@ describe('Champs de saisie — taille', { skip: dispo ? false : MSG_NAVIGATEUR }
     const cell = page.locator('#linkGrid td.link-cell').filter({ has: page.locator('.link-open') }).first();
     await cell.hover();
     await cell.locator('.link-edit').click();
-    await page.waitForSelector('.link-cell-edit');
+    await page.waitForSelector('.link-cell-panel');
     assert.equal(await cell.locator('.link-open').count(), 1, 'l’adresse reste affichée sous l’éditeur');
     assert.ok(await cell.evaluate((e) => e.classList.contains('en-edition')), 'la case en cours d’édition se souligne');
     await page.keyboard.press('Escape');
-    await page.waitForSelector('.link-cell-edit', { state: 'detached' });
+    await page.waitForSelector('.link-cell-panel', { state: 'detached' });
   });
 });

@@ -1407,81 +1407,136 @@ ce qui correspond** — afficher ses huit adresses pour une seule trouvée oblig
 au lieu de lire la réponse. Une requête peut mélanger les deux niveaux : `logs apache` prend `logs`
 sur la ligne et `apache` sur l'adresse, et seules les adresses apache s'affichent ; `logs` seul, à
 l'inverse, laisse passer toute la ligne — c'est elle qu'on a demandée. Chercher `kibana` ou un morceau d'URL suffit ; on n'a pas à décider dans quelle moitié
-regarder avant de savoir où est la réponse. Quand la grille ne rend rien mais que les liens libres
+regarder avant de savoir où est la réponse. `Entrée` **ouvre le premier résultat**, `↓` entre dans
+la grille au clavier. Quand la grille ne rend rien mais que les liens libres
 si, le message le dit et renvoie plus bas, au lieu d'annoncer « rien ne correspond » au-dessus de
 résultats bien présents.
 
-Sous la barre, **les filtres, étiquetés et toujours à l'écran** — ils servent tous les jours :
+Sous la barre, **une seule ligne** : les colonnes. Il y en avait trois — environnements, services,
+tags —, toutes allumées, et le contenu commençait au tiers de l'écran. Les pastilles de services
+répétaient les lignes de la grille visibles cinq centimètres plus bas ; « tout allumé » voulait dire
+« aucun filtre » mais se peignait comme une sélection.
 
-- **Environnements**, en pastilles colorées : elles masquent des **colonnes**. Depuis « tout
-  affiché », un clic veut dire *celle-là* — on part travailler sur un environnement ; ensuite les
-  clics ajoutent et retirent. Retirer la dernière ramène à tout, une grille sans colonne ne
-  montrant rien. Un service sans aucune adresse dans les colonnes retenues **sort de la liste** :
-  filtrer sur la prod pour voir dix lignes vides ne montre pas la prod, ça montre ce qu'elle n'a pas.
-- **Services**, en pastilles eux aussi : ouvrir un menu pour voir sur quoi on filtre est un clic de
-  trop sur un geste quotidien. Au-delà d'une douzaine, un champ apparaît pour les **tamiser** — il
-  masque des pastilles sans jamais en décocher, et le compte des sélectionnés hors de vue le
-  rappelle.
-- **Tags**, chacun avec **son compte** : une rangée sans chiffres ne dit pas où est la matière.
+- **Colonnes** : un interrupteur par environnement, avec un état lisible. Il masque une **colonne**,
+  jamais une ligne — voir les trous de prod redevient possible, et un service créé sous filtre
+  apparaît. Une case `Masquer les services sans adresse visible`, **décochée par défaut**, rend
+  l'ancien comportement à qui le veut : la surprise se demande, elle ne s'impose plus.
+- **`Tag ▾`** : un menu, avec le **compte détaillé** de chaque tag (« 3 services · 2 liens ») —
+  « produit 3 » ne disait pas trois quoi. Le filtre posé s'affiche en pastille à côté du champ, et
+  porte sur les deux moitiés de l'écran.
+- **`Tout afficher`** n'apparaît qu'une fois quelque chose posé, et vide **tout**, la recherche
+  comprise.
 
-Les trois **survivent au rechargement**, et `Tout afficher` les relâche d'un clic.
+Les filtres **survivent au rechargement**.
 
-À côté : **`+ Ajouter`** (un lien simple, un service, un environnement) et un menu **`⋯`** pour
-l'import de marque-pages. Ces gestes se font une fois dans la vie de l'outil ; retrouver un lien se
-fait tous les jours, et c'est ce qui occupe la place.
+À côté : **`+ Coller une adresse`**, la porte d'entrée unique, et un menu **`⋯`** pour ce qui se
+fait une fois dans la vie de l'outil — créer un service ou un environnement, importer des
+marque-pages, sélectionner des liens libres, tout effacer.
+
+#### Coller une adresse
+Ce qu'on a en main, neuf fois sur dix, c'est **une URL dans le presse-papiers**. L'ancien menu
+`Ajouter` demandait de **classer avant de coller** — un lien simple, un service, un environnement —
+et sur une base neuve il fallait trois écrans avant la première adresse.
+
+`+ Coller une adresse` ouvre une zone de texte, **une URL par ligne**. Pour chacune, l'outil
+**propose** :
+
+- **le nom**, tiré du dernier segment du chemin (`/app/logs?q=checkout` → « logs ») ;
+- **le service**, si l'hôte cite le nom d'un service existant ou celui de son dépôt ;
+- **l'environnement**, si l'hôte cite le nom d'un environnement existant (`-dev`, `preprod`,
+  `localhost` → *local*).
+
+**Rien n'est deviné en silence** : chaque proposition est un sélecteur visible et modifiable, dans
+le même esprit que l'aperçu d'import. Une adresse dont l'hôte ne cite **aucun environnement connu**
+tombe en **lien libre**, avec un tag proposé — jamais dans une colonne « probable » : une URL ne se
+déduit pas, c'est la première règle de l'onglet. Les sélecteurs portent `＋ nouveau service` et
+`＋ nouvel environnement` : créer les colonnes n'est plus un préalable.
+
+`Ctrl`/`Cmd` + `V` **sur l'onglet**, hors d'un champ, ouvre le même dialogue pré-rempli.
 
 #### La grille
-- **Lignes = services**, épinglés en tête puis par ordre alphabétique. Chaque ligne porte le nom,
-  ses **tags**, et le **dépôt Mergerie associé** quand il y en a un. `Épingler en tête de grille`
-  est une case de la fiche du service : c'est ainsi qu'on remonte ce qu'on ouvre tous les jours.
-- **Colonnes = environnements**, dans l'ordre que tu leur donnes, chacun avec sa **couleur**
-  d'en-tête (la prod en rouge invite à réfléchir avant de cliquer). **Le nom de la colonne ouvre
-  son réglage** — renommer, changer la couleur, supprimer ; et au survol, deux flèches la
-  **déplacent** d'un cran. La suppression annonce **combien d'adresses partent avec elle**.
+- **Lignes = services**, épinglés en tête — un **trait** les sépare du reste — puis dans l'ordre que
+  tu leur donnes. Chaque ligne tient sur **une ligne** : une lettre teintée par le nom, le nom, le
+  **dépôt Mergerie associé** en gris, les **tags**. L'**épingle** est dans la ligne, au survol, et
+  c'est une épingle : elle se réglait dans la fiche du service et s'affichait avec une icône
+  *étiquette*, deux raisons de ne pas la trouver. Une **poignée** les réordonne au glisser ; l'ordre
+  posé remplace l'alphabétique, et on ne traverse pas la frontière des épinglés.
+- **Colonnes = environnements**, chacune **teintée** par sa couleur : *preprod* se reconnaît sans
+  lire son en-tête. **Le nom de la colonne ouvre son réglage** — renommer, changer la couleur,
+  supprimer ; deux flèches la **déplacent** d'un cran au clavier, et l'en-tête se **glisse** à la
+  souris (un seul enregistrement à la dépose, là où cinq clics et cinq rechargements étaient
+  nécessaires pour passer de la sixième place à la première). La suppression annonce **combien
+  d'adresses partent avec elle**.
 - **Une case = une ou plusieurs adresses, écrites.** On aurait pu deviner l'adresse de preprod
   depuis celle de dev en remplaçant un morceau de domaine ; c'est exactement la magie qui envoie un
-  jour sur le mauvais environnement sans prévenir. Une case vide affiche un `+`, une case remplie un
-  **crayon** au survol : on saisit **dans la case**, Entrée enregistre, Échap annule, et **tout
-  vider efface la case** — pas de modale pour coller une adresse. Le panneau de saisie s'ouvre
-  **sous la case, à sa propre largeur** : une colonne d'environnement fait 190 px quand il y en a
-  six, et le champ d'une adresse y tenait en 90 px. Il nomme le service et l'environnement qu'il
-  modifie, souligne la case concernée, et **la case garde ce qu'elle affichait** — on voit ce
-  qu'on corrige.
-- **Plusieurs adresses au même endroit**, parce que c'est le cas réel : un Kibana de production,
-  ce sont autant d'adresses que de filtres enregistrés. Chacune porte un **nom** (« erreurs
-  paiement », « latence API »), sans quoi la seconde serait indiscernable de la première. **Combien la case en
-  montre se juge sur la LIGNE** : tant que sa case la plus fournie reste sous cinq adresses, tout
-  s'affiche — la hauteur reste raisonnable et rien n'est caché. Au-delà, la case en montre deux et
-  un `+N` déplie sur place ; **son info-bulle nomme ce qu'il cache**, pour ne pas avoir à déplier
-  juste pour savoir si ça valait la peine. Et `Tout déplier`, dans la barre de filtres, ouvre toutes
-  les cases d'un coup — le choix est **retenu**. Le crayon ouvre **une ligne par adresse**, dans le panneau
-  décrit plus haut. La **palette** trouve chacune par son nom, et la frécence se compte par
-  adresse : on ouvre toujours les deux mêmes sur les dix.
-- **Filtre par tag** au-dessus de la grille : un service appartient souvent à deux familles à la
-  fois (*backend* et *paiement*), ce qu'un arbre de dossiers l'obligerait à trancher.
+  jour sur le mauvais environnement sans prévenir. **Une case à une seule adresse est cliquable en
+  entier** — viser un chip de 120 px au milieu de 190 px était une visée pour rien. Une case vide ne
+  montre **rien au repos** : le `+` revient au survol de la ligne, faute de quoi il dominait
+  visuellement les adresses sur une grille où la moitié des cases sont légitimement vides (il n'y a
+  pas de Kibana en local).
+- **Une adresse sans nom s'affiche par ce qui la distingue**, et non par son URL raccourcie :
+  `api-preprod.demo.invalid/health` répétait la colonne (*preprod*) et la ligne (*api-core*) et
+  noyait le seul mot utile. La règle, dans l'ordre : le dernier segment du chemin (`/health` →
+  « health », `/d/home` → « home ») ; sinon l'hôte débarrassé de ce que la ligne et la colonne
+  disent déjà (`api-preprod.demo.invalid` → « demo.invalid ») ; sinon l'hôte. L'URL entière reste
+  dans l'info-bulle, dans la copie, et dans la palette.
+- **Trois adresses au plus, toujours.** Un Kibana de production, ce sont autant d'adresses que de
+  filtres enregistrés : dépliées sur place, cinquante d'entre elles faisaient une ligne de sept
+  cents pixels, le nom du service flottant au milieu d'un vide et les liens libres poussés sous
+  l'écran. La case montre les **trois plus ouvertes** (la frécence est comptée par adresse) puis
+  `▸ 50 adresses`. **La hauteur d'une ligne ne dépend plus de son contenu.**
+- **Le panneau d'une case.** `▸ 50 adresses` ouvre la liste **ancrée sur la case**, en lecture : une
+  ligne par adresse — nom, URL abrégée, dernière ouverture, copier, ouvrir —, un **tamis** qui filtre
+  dedans, `↑` `↓` pour parcourir, `Entrée` pour ouvrir, `Échap` ou un clic extérieur pour fermer.
+  Un point marque les trois que la case montre. L'ordre reste **celui qu'on a posé** : pas de tri
+  caché. La liste **défile dans le panneau** — la grille, elle, ne bouge pas.
+- **`✎ Modifier`** bascule la même liste en édition : un nom (facultatif), l'URL, des flèches pour
+  **réordonner**, une corbeille, et **`Coller plusieurs adresses`** — une par ligne, le nom proposé
+  depuis le chemin. `Entrée` enregistre, `Échap` annule, **tout vider efface la case**. Le focus
+  arrive **sur une ligne vide**, jamais sur une adresse existante sélectionnée : on venait ajouter
+  une adresse, on tapait, et on écrasait la première sans l'avoir vue partir.
 - Seules les adresses **`http` ou `https`** sont acceptées, ici comme partout dans cet onglet : ces
   liens s'ouvrent d'un clic depuis l'application.
+- **Au clavier** : `/` met le curseur dans la recherche, `↓` entre dans la grille, `j` / `k`
+  parcourent les lignes, `←` / `→` les cases, `Entrée` ouvre (l'adresse, ou le panneau si la case en
+  porte plusieurs), `e` modifie, `c` copie.
+- L'icône **⚡** d'une ligne montre ses **liens contextuels résolus sur un exemple**, et le clic
+  ouvre la fiche du service à la bonne section. Le chip « 1 lien contextuel » avait le style d'un
+  tag et ne menait nulle part.
 
-**Créer un service, c'est aussi poser ses adresses.** La fiche liste **une ligne par
-environnement**, toutes facultatives. Enregistrer rendait auparavant une ligne vide qu'il fallait
-retrouver dans la grille pour la remplir case par case ; le service naît maintenant utilisable, et
-l'écran **descend jusqu'à sa ligne** en la soulignant une seconde — une grille alphabétique le fait
-atterrir n'importe où.
+**Créer un service, c'est aussi poser ses adresses.** La fiche liste **toutes** les adresses de
+chaque environnement, une par ligne, plus une vide pour en ajouter — elle n'en montrait que la
+première et annonçait le reste par un compte qu'on ne pouvait pas ouvrir. Les **liens contextuels**
+s'y règlent **dès la création**, et le **dépôt se propose depuis le nom tapé** quand un seul lui
+correspond. Deux services sur le même dépôt restent possibles, mais l'écran le **dit avant** :
+seul le premier alimente les boutons des merge requests. Enregistrer **descend jusqu'à la ligne** en
+la soulignant une seconde.
 
 #### Liens libres
-Une liste sous la grille : libellé, URL, tags, **dossier**. Ajout et édition au clic, et la recherche
-du haut les filtre avec le reste. C'est là qu'atterrit l'import de marque-pages. Le formulaire
-s'ouvre sur l'**adresse** — c'est ce qu'on colle — et le **libellé se déduit de l'hôte** au fur et
-à mesure (`grafana.interne.example` → « grafana ») tant qu'on n'y a pas écrit soi-même ; **Entrée
-enregistre**. Coller et valider suffit donc à poser un lien.
+Une **liste**, sous la grille : une lettre teintée, le nom, l'hôte abrégé, les tags — vingt-huit
+pixels par ligne. C'étaient des cartes de quarante-cinq pixels avec l'URL entière en clair, si bien
+que soixante liens faisaient deux écrans et demi pour soixante lignes de texte. Le tri suit la
+**frécence**, comme la palette : ce qu'on ouvre souvent *et* récemment remonte, l'alphabétique
+départage.
+
+Au survol : **copier**, **ranger dans la grille** (l'icône était une *archive*, qui n'archivait
+rien), **modifier**, et **supprimer avec annulation** — il fallait le crayon, puis `Supprimer`, puis
+confirmer, trois écrans pour retirer un favori importé par erreur. Une **coche** apparaît aussi au
+survol pour en traiter plusieurs d'un coup ; `Sélectionner`, dans le menu `⋯`, les fixe à l'écran.
+
+Le formulaire d'édition s'ouvre sur l'**adresse** — c'est ce qu'on colle — et le **libellé se déduit
+de l'hôte** au fur et à mesure (`grafana.interne.example` → « grafana ») tant qu'on n'y a pas écrit
+soi-même ; **Entrée enregistre**.
 
 Le champ **Dossier** propose les dossiers existants **et accepte les nouveaux** — choisir dans une
 liste interdirait d'en créer un, un champ nu obligerait à retaper un chemin qu'on a déjà. Une barre
 oblique crée le sous-dossier au passage (`doc/astreinte/2026`), et les niveaux intermédiaires sont
 proposés même si aucun lien n'y est posé directement. Laisser vide range le lien à la racine.
 
-Au-delà d'une douzaine, elle se **groupe par dossier**, en reprenant **l'arbre tel qu'il était dans
-le navigateur** — chemin complet, profondeur comprise — avec le compte de chacun. Regrouper sur le
+**Dès qu'un dossier existe**, la liste se **groupe**, en reprenant **l'arbre tel qu'il était dans
+le navigateur** — chemin complet, profondeur comprise — avec le compte de chacun. Le seuil de douze
+laissait les premiers dossiers importés à plat, c'est-à-dire au moment précis où l'on cherchait à
+reconnaître son propre rangement. Regrouper sur le
 seul dernier segment faisait fusionner `seres/prod` et `logs/prod` dans un même « prod » : l'outil
 détruisait une structure que le navigateur, lui, préserve. **Le premier niveau est ouvert, les suivants non** : tout
 déplier à cinq niveaux redonne la liste plate qu'on cherchait à quitter, tout replier oblige à
@@ -1500,10 +1555,10 @@ nombre** (« supprimer tous les liens ? » ne dit pas s'il y en a trois ou deux 
 **la grille n'est pas touchée**. Le bouton n'apparaît pas quand il n'y a rien à supprimer.
 
 **Les ranger dans un service.** C'est le geste d'après l'import : deux cents adresses arrivent à
-plat, et il faut les classer. Chaque ligne porte un bouton `Ranger` ; pour en traiter plusieurs d'un
-coup, `Sélectionner` fait apparaître les cases à cocher — elles ne sont pas là en permanence,
-l'opération est rare et le bruit quotidien se paie cher. `Tout sélectionner` coche alors **ce que
-le filtre a laissé** : on tamise (« confluence »), on coche tout, on range, et on recommence. Un lien
+plat, et il faut les classer. Chaque ligne porte son bouton `Ranger` ; pour en traiter plusieurs
+d'un coup, on coche. `Tout sélectionner` coche alors **ce que
+le filtre a laissé** : on tamise (« confluence »), on coche tout, on range, et on recommence. Le
+compteur du bouton **suit les coches**. Un lien
 coché puis filtré hors de vue **sort de la sélection** — sinon il partirait avec les autres sans que
 rien ne l'ait annoncé.
 

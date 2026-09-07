@@ -35,6 +35,9 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     await app.api('POST', '/api/repos', { url: 'https://gitlab.test/groupe/webapp.git', project: 'groupe/webapp' });
     await app.api('POST', '/api/discover');
     mrId = (await app.api('GET', '/api/mrs')).body[0].id;
+    /* La modale d'un lien libre ne s'ouvre plus QUE sur un lien existant : on ajoute désormais
+       en collant, et « Nouveau lien » a disparu de la barre. Il en faut donc un à modifier. */
+    await app.api('POST', '/api/free-links', { label: 'Confluence', url: 'https://confluence.demo.invalid/x', tags: 'doc' });
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 950 } });
     page.on('pageerror', (e) => erreurs.push(String(e)));
@@ -316,13 +319,20 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     await page.evaluate(() => { document.querySelector('#verifyModal').hidden = true; });
   });
 
+  /* La modale d'un lien libre s'ouvre par le crayon de sa ligne : c'est la seule porte depuis
+     que l'ajout passe par « Coller une adresse ». */
+  async function ouvrirLienLibre() {
+    await ecranPropre();
+    await page.click('nav button[data-tab="links"]');
+    await page.waitForSelector('#linkFreeList [data-editfree]', { timeout: ATTENTE });
+    await page.locator('#linkFreeList [data-editfree]').first().click();
+    await page.waitForSelector('#freeLinkModal:not([hidden])', { timeout: ATTENTE });
+  }
+
   test('un toast d’erreur meurt avec la modale qui l’a produit', async () => {
     /* Le chemin est celui de l'application : une session de codage sans branche de travail est
        refusée EN LIGNE ; ce qu'on veut ici, c'est un toast produit par un refus du serveur. */
-    await ecranPropre();
-    await page.click('nav button[data-tab="links"]');
-    await page.click('#linkNewFree');
-    await page.waitForSelector('#freeLinkModal:not([hidden])', { timeout: ATTENTE });
+    await ouvrirLienLibre();
     await page.fill('#freeLabel', 'Tableau de bord');
     await page.fill('#freeUrl', 'pas-une-url');
     await page.click('#freeSave');
@@ -335,11 +345,11 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
   /* ---------- L'annexe ---------- */
 
   test('le lien libre marque ses champs obligatoires et refuse sous le champ', async () => {
-    await ecranPropre();
-    await page.click('nav button[data-tab="links"]');
-    await page.click('#linkNewFree');
-    await page.waitForSelector('#freeLinkModal:not([hidden])', { timeout: ATTENTE });
+    await ouvrirLienLibre();
     assert.equal(await page.locator('#freeTags').getAttribute('placeholder'), 'doc, astreinte');
+    // Vider les deux champs obligatoires : la modale s'ouvre désormais sur un lien existant.
+    await page.fill('#freeUrl', '');
+    await page.fill('#freeLabel', '');
     await page.click('#freeSave');
     await page.waitForSelector('#freeLinkModal .field-error', { timeout: ATTENTE });
     /* DANS L'ORDRE DES CHAMPS, et l'adresse est passée devant : c'est elle qu'on colle, et

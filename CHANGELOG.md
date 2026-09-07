@@ -11,7 +11,80 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Changed
+
+- **The Links tab has been rebuilt around what it actually is: a place you read, and a place you
+  write.** It presented itself as a search engine — one field and three rows of pills, all lit, so
+  the grid started a third of the way down the screen — while its grid, designed for one address
+  per cell, could not hold a list. Three rows of filters become one: a switch per column, and a
+  `Tag ▾` menu that says what it will find on each half of the screen ("3 services · 2 links").
+  Hiding a column now hides **a column** and never a row, so looking for the holes in prod is
+  possible again; the old behaviour is a checkbox you tick yourself. The service pills are gone —
+  they repeated the rows visible five centimetres below.
+
+- **A cell with fifty addresses no longer makes a seven-hundred-pixel row.** Expanding in place
+  pushed the service name into a void and the free links off the screen, and the way back was an
+  eleven-pixel "Collapse". A cell shows the **three most opened** — frecency has always been
+  counted per address, it just never showed — then `▸ 50 addresses`, which opens the list in a
+  panel anchored on the cell: one line per address with its last opening, a filter, `↑` `↓`,
+  `Enter` to open. The list scrolls inside the panel; the grid does not move. `✎ Edit` switches
+  the same list to editing, with arrows to reorder and a `Paste several addresses` box.
+  **A row's height no longer depends on its content.**
+
+- **Adding starts from the address.** `+ Paste an address` replaces the menu that asked you to
+  file before pasting. One URL per line; for each one the tool suggests a name (from the path),
+  a service (if the host names one, or its repository) and an environment (if the host names one).
+  Nothing is guessed silently — every suggestion is a selector you can change — and an address
+  whose host names no known environment falls into a free link rather than a "likely" column.
+  The selectors carry `＋ new service` and `＋ new environment`, so creating the columns is no
+  longer a prerequisite: on an empty database, one paste is enough. `Ctrl`/`Cmd` + `V` on the tab
+  opens the same dialog pre-filled, and the empty state is now a single field.
+
+- **An address with no name is shown by what tells it apart.** The cell printed a shortened URL:
+  `api-preprod.demo.invalid/health` repeated the column (*preprod*) and the row (*api-core*) and
+  drowned the only useful word at the end of forty characters. It now reads `health`. The rule —
+  last path segment, else the host stripped of what the row and column already say, else the host
+  — applies in the palette too. The full URL stays in the tooltip and in the copy.
+
+- **A grid row fits on one line, and can be reordered.** The name, the repository and the tags took
+  three lines of text, so a row was 90 pixels tall for one address per cell; they now sit on one
+  line behind a letter tinted from the name, and the column carries its environment's colour so
+  *preprod* is recognisable without reading. Rows and columns are **dragged** into place with one
+  save on release — moving a column from sixth to first cost five clicks and five reloads. Pinned
+  services are separated by a rule, and the pin is in the row (it was set in the service sheet, and
+  drawn with a *tag* icon).
+
+- **Free links are a list, not cards.** Forty-five pixels and a border per link meant sixty links
+  took two and a half screens for sixty lines of text. Twenty-eight pixels, a letter, the name, the
+  shortened host, the tags — and on hover: copy, file into the grid, edit, and **delete with an
+  undo** instead of pencil → Delete → confirm. Sorting follows frecency, like the palette, rather
+  than a raw counter that kept last month's favourite on top for six months. The grouping by folder
+  starts as soon as a folder exists, instead of past twelve links — that is, exactly when you are
+  trying to recognise your own filing.
+
+- **The Links tab has a keyboard.** `/` puts the cursor in the search, `Enter` opens the first
+  result, `↓` moves into the grid, `j` / `k` walk the rows, `←` / `→` the cells, `Enter` opens,
+  `e` edits, `c` copies. A cell with a single address is clickable as a whole, and an empty cell's
+  `+` only appears when its row is hovered — it used to dominate the addresses on a grid where half
+  the cells are legitimately empty.
+
+- **The service sheet shows all the addresses of a cell**, one line per address plus an empty one,
+  instead of the first followed by a count of the rest that you could not open. Context links can
+  be set from creation, the repository is suggested from the name you type when exactly one
+  matches, and a repository already used by another service is announced before saving — only the
+  first one feeds the merge request buttons.
+
 ### Fixed
+
+- **Opening a link from a merge request was not counted.** The buttons carried a two-segment
+  reference (`service:environment`) where frecency counts three (`service:environment:address`):
+  every opening from a merge request was lost — neither the palette nor "last opened" ever saw it.
+
+- **A context link's ⚡ now shows what it opens.** The "1 context link" chip had a tag's styling and
+  led nowhere; hovering it now resolves each template on an example, and clicking opens the service
+  sheet at the right section.
+
+- **The "File N links" counter follows the ticks**, instead of catching up at the next render.
 
 - **Fields you type in were sometimes the browser's, not the app's.** A field built in JavaScript
   outside a `.form` block inherited nothing: 21 pixels tall with one pixel of padding, next to

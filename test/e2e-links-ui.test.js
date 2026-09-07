@@ -85,7 +85,7 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
   test('une URL s’ajoute dans la case, sans modale', async () => {
     await ouvrirLiens();
     await page.locator('.link-add').first().click();
-    const champ = page.locator('.link-cell-edit .lce-url');
+    const champ = page.locator('.link-cell-panel .lce-url').first();
     await champ.waitFor();
     await champ.fill('https://api-preprod.demo.invalid/health');
     await champ.press('Enter');
@@ -97,16 +97,23 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await app.api('PUT', `/api/services/${svc.id}/urls`, { environment_id: svc.urls ? Object.keys(svc.urls)[1] : env.id, url: '' });
   });
 
+  /* LES TAGS SONT DANS UN MENU, avec leur compte DÉTAILLÉ : « produit 3 » ne disait pas trois
+     quoi — trois services, trois liens libres, ou deux et un. Le filtre porte sur les deux
+     moitiés de l'écran, il doit dire ce qu'il va trouver de chaque côté. */
   test('le filtre par tag masque les services qui ne le portent pas', async () => {
     await ouvrirLiens();
-    await page.locator('#linkTags .link-tag', { hasText: 'confluence' }).click();
+    await page.locator('#linkTagBtn').click();
+    assert.match(await page.locator('#linkTagMenu [data-linktag="confluence"]').innerText(), /1 lien/,
+      'le compte dit de quel côté de l’écran le tag se trouve');
+    await page.locator('#linkTagMenu [data-linktag="confluence"]').click();
     await page.waitForSelector('#linkGrid .link-grid-empty');
     /* Le message ne répète plus le filtre : il renvoie vers l'autre moitié de l'écran, où le
        lien tagué « confluence » se trouve bel et bien. Dire « rien ne correspond » au-dessus
        de résultats présents était un mensonge d'affichage. */
     assert.match(await page.locator('.link-grid-empty').innerText(), /liens libres/i, 'le vide dit où regarder');
     assert.ok(await page.locator('.link-free-row').count() >= 1);
-    await page.locator('#linkTags .link-tag.active').click();   // on relâche le filtre — CELUI DES TAGS
+    // Le filtre posé s'affiche en pastille à côté du champ, et se retire de là.
+    await page.locator('#linkFilterChips [data-untag]').click();
     await page.waitForSelector('#linkGrid .link-grid');
   });
 
@@ -210,34 +217,51 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     const cell = () => page.locator('.link-grid tbody tr').first().locator('td.link-cell').first();
     await cell().hover();
     await cell().locator('.link-edit').click();
-    const champ = page.locator('.link-cell-edit .lce-url');
+    const champ = page.locator('.link-cell-panel .lce-url').first();
     await champ.waitFor();
-    assert.match(await champ.inputValue(), /^https?:\/\//, 'le champ s’ouvre PRÉ-REMPLI, pas vide');
+    assert.match(await champ.inputValue(), /^https?:\/\//, 'la ligne existante s’ouvre PRÉ-REMPLIE');
+    /* …ET LE FOCUS N'EST PAS DESSUS. `focus()` puis `select()` sur la première URL d'une case
+       remplie : on venait AJOUTER une adresse, on tapait, et on écrasait la première sans
+       l'avoir vue partir. Le curseur arrive sur une ligne vide, ajoutée à la fin. */
+    assert.equal(await page.evaluate(() => document.activeElement.classList.contains('lce-url')
+      && document.activeElement.value === ''), true, 'le curseur est sur une ligne VIDE');
 
     await champ.fill('https://corrige.demo.invalid/x');
     await champ.press('Enter');
-    await page.waitForFunction(() => /corrige\.demo/.test(document.querySelector('#linkGrid').textContent));
+    /* La case affiche ce qui DISTINGUE l'adresse — le dernier segment du chemin —, pas son URL
+       raccourcie : `corrige.demo.invalid/x` répéterait la colonne et la ligne écrites à côté. */
+    await page.waitForFunction(() => {
+      const c = document.querySelector('#linkGrid tbody tr td.link-cell .link-open');
+      return c && c.textContent.trim() === 'x';
+    });
+    await attendreServeur(async () => (await app.api('GET', '/api/links/grid')).body.services
+      .some((svc) => Object.values(svc.urls || {}).flat().some((u) => /corrige\.demo/.test(u.url))),
+    'l’adresse corrigée est enregistrée');
 
     // Tout vider efface la case : c'est ce que le guide promet, et c'est le geste naturel.
     await cell().hover();
     await cell().locator('.link-edit').click();
-    await page.locator('.link-cell-edit .lce-url').fill('');
-    await page.locator('.link-cell-edit .lce-url').press('Enter');
+    await page.locator('.link-cell-panel .lce-url').first().fill('');
+    await page.locator('.link-cell-panel .lce-url').first().press('Enter');
     await page.waitForFunction(() => document.querySelectorAll('#linkGrid .link-add').length > 0);
 
     // …et on doit pouvoir changer d'avis sans rien écrire.
     await cell().locator('.link-add').click();
-    await page.locator('.link-cell-edit .lce-url').fill('https://jamais.demo.invalid');
-    await page.locator('.link-cell-edit .lce-url').press('Escape');
+    await page.locator('.link-cell-panel .lce-url').first().fill('https://jamais.demo.invalid');
+    await page.locator('.link-cell-panel .lce-url').first().press('Escape');
     // Échap referme l'édition : c'est cet effet-là qui dit que le geste a été pris en compte.
-    await page.waitForSelector('.link-cell-edit', { state: 'detached' });
+    await page.waitForSelector('.link-cell-panel', { state: 'detached' });
     assert.doesNotMatch(await page.locator('#linkGrid').innerText(), /jamais\.demo/);
 
     // On rend le décor tel qu'on l'a trouvé : les tests de ce fichier se suivent.
     await cell().locator('.link-add').click();
-    await page.locator('.link-cell-edit .lce-url').fill('https://api-dev.demo.invalid/health');
-    await page.locator('.link-cell-edit .lce-url').press('Enter');
-    await page.waitForFunction(() => /api-dev\.demo/.test(document.querySelector('#linkGrid').textContent));
+    await page.locator('.link-cell-panel .lce-url').first().fill('https://api-dev.demo.invalid/health');
+    await page.locator('.link-cell-panel .lce-url').first().press('Enter');
+    // La case dit « health », pas l'URL : c'est le dernier segment du chemin qu'on y lit.
+    await page.waitForFunction(() => {
+      const c = document.querySelector('#linkGrid tbody tr td.link-cell .link-open');
+      return c && c.textContent.trim() === 'health';
+    });
   });
 
   /* Une recherche pour les DEUX moitiés de l'écran. Deux champs obligeaient à choisir où
@@ -261,15 +285,13 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     });
     await page.reload();
     await ouvrirLiens();
-    assert.ok(await page.locator('.link-plus').count() > 0, 'au repos, la case en cache une partie');
+    assert.ok(await page.locator('.link-more-addr').count() > 0, 'au repos, la case en cache une partie');
 
     await page.locator('#linkSearch').fill('webhooks');
     await page.waitForFunction(() => document.querySelectorAll('#linkGrid tbody tr').length === 1);
     /* LA CASE NE MONTRE QUE CE QUI CORRESPOND : afficher les six adresses pour une seule trouvée
        obligerait à relire la case au lieu de lire la réponse. */
     assert.deepEqual(await page.locator('#linkGrid .link-open').allInnerTexts(), ['webhooks rejetés']);
-    assert.equal(await page.locator('.link-plus').count(), 0,
-      'et aucun bouton inerte : le dépliage vient de la recherche, pas d’un clic');
 
     /* « nom-du-service adresse » : un mot vient de la ligne, l'autre de l'adresse. Exiger que
        chaque mot tienne dans l'adresse seule ne rendrait jamais rien. */
@@ -278,15 +300,19 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await page.waitForFunction(() => document.querySelectorAll('#linkGrid .link-open').length === 1);
     assert.deepEqual(await page.locator('#linkGrid .link-open').allInnerTexts(), ['latence API']);
 
-    // Chercher la ligne elle-même, en revanche, laisse passer toutes ses adresses.
+    /* Chercher la ligne elle-même laisse passer toutes ses adresses — mais la CASE en montre
+       toujours trois au plus : c'est ce qui borne la hauteur d'une ligne de grille, quoi qu'on
+       cherche. Le reste s'ouvre dans le panneau. */
     await page.locator('#linkSearch').fill(nom);
-    await page.waitForFunction(() => document.querySelectorAll('#linkGrid .link-open').length === 6);
+    await page.waitForFunction(() => document.querySelectorAll('#linkGrid .link-open').length === 3);
+    assert.match(await page.locator('#linkGrid .link-more-addr').first().innerText(), /6/,
+      'et le bouton dit combien il en reste');
 
     // L'URL compte aussi : on cherche parfois par le domaine qu'on a en tête.
     await page.locator('#linkSearch').fill('k5.demo');
     await page.waitForFunction(() => document.querySelectorAll('#linkGrid tbody tr').length === 1);
     await page.locator('#linkSearch').fill('');
-    await page.waitForFunction(() => document.querySelectorAll('#linkGrid .link-plus').length > 0);
+    await page.waitForFunction(() => document.querySelectorAll('#linkGrid .link-more-addr').length > 0);
   });
 
   test('une seule recherche filtre la grille et les liens libres', async () => {
@@ -304,18 +330,33 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await page.waitForSelector('#linkGrid .link-grid');
   });
 
-  // Les cases à cocher ne servent qu'à une action rare : elles ne coûtent plus rien au repos.
-  test('les cases à cocher n’apparaissent qu’en mode sélection', async () => {
+  /* LA COCHE EST LÀ, MAIS ELLE NE SE VOIT QU'AU SURVOL. Un mode « Sélectionner » à activer
+     d'abord faisait payer chaque jour le prix d'un geste rare ; toujours visible, elle ajoutait
+     une colonne de cases à un écran qui sert d'abord à lire. */
+  test('la coche d’un lien libre apparaît au survol, et le compte suit', async () => {
     await ouvrirLiens();
-    assert.equal(await page.locator('#linkFreeList input[type=checkbox]').count(), 0);
-    assert.equal(await page.locator('#linkFreeAll').isHidden(), true);
-    await page.locator('#linkFreeSelect').click();
-    await page.waitForFunction(() => document.querySelectorAll('#linkFreeList input[type=checkbox]').length > 0);
-    await page.locator('#linkFreeList input[type=checkbox]').first().check();
-    assert.equal(await page.locator('#linkToService').isVisible(), true);
-    await page.locator('#linkFreeSelect').click();
-    await page.waitForFunction(() => document.querySelectorAll('#linkFreeList input[type=checkbox]').length === 0);
-    assert.equal(await page.locator('#linkToService').isHidden(), true, 'sortir du mode oublie la sélection');
+    /* On ÉLOIGNE LE POINTEUR avant de regarder le repos : Playwright le laisse où le test
+       précédent l'a posé, et une ligne survolée par accident rendrait « au repos » faux. */
+    await page.mouse.move(0, 0);
+    const ligne = page.locator('#linkFreeList .link-free-row').first();
+    await page.waitForFunction(() => {
+      const c = document.querySelector('#linkFreeList .lfr-pick');
+      return c && getComputedStyle(c).opacity === '0';
+    });
+    assert.equal(await ligne.locator('.lfr-pick').evaluate((e) => getComputedStyle(e).opacity), '0',
+      'au repos, la coche ne coûte rien');
+    assert.equal(await page.locator('#linkToService').isHidden(), true);
+    await ligne.hover();
+    await page.waitForFunction(() => {
+      const c = document.querySelector('#linkFreeList .lfr-pick');
+      return c && getComputedStyle(c).opacity === '1';
+    });
+    await ligne.locator('.lfr-pick').click();
+    await page.waitForFunction(() => !document.querySelector('#linkToService').hidden);
+    // Le compte est SUR le bouton, et il suit la coche — il ne rattrapait qu'au rendu suivant.
+    assert.match(await page.locator('#linkToService').innerText(), /1/);
+    await page.locator('#linkFreeList .lfr-pick:checked').click();
+    await page.waitForFunction(() => document.querySelector('#linkToService').hidden);
   });
 
   /* Après un import, ranger se fait par paquets : on tamise (« confluence »), on coche tout ce
@@ -325,7 +366,8 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await app.api('POST', '/api/free-links', { label: 'Confluence — archi', url: 'https://c2.demo.invalid/a', tags: 'confluence' });
     await page.reload();
     await ouvrirLiens();
-    await page.locator('#linkFreeSelect').click();
+    await page.locator('#linkMore').click();
+    await page.locator('#linkMoreMenu [data-more="select"]').click();
     await page.waitForSelector('#linkFreeAll:not([hidden])');
 
     await page.locator('#linkSearch').fill('confluence');
@@ -342,7 +384,8 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     assert.equal(await page.locator('#linkToService').isHidden(), true);
 
     await page.locator('#linkSearch').fill('');
-    await page.locator('#linkFreeSelect').click();
+    await page.locator('#linkMore').click();
+    await page.locator('#linkMoreMenu [data-more="select"]').click();
   });
 
   /* L'ordre des colonnes ne se corrigeait pas, et l'en-tête était cliquable sans que rien
@@ -381,14 +424,13 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
   });
 
   /* PLUSIEURS ADRESSES DANS UNE CASE. Un Kibana de production, ce sont autant d'adresses que
-     de filtres enregistrés ; la case n'en portait qu'une et poser la seconde écrasait la
-     première sans rien dire. Au repos on en montre deux, puis « +N » déplie SUR PLACE. */
-  test('une case porte plusieurs adresses, dépliables et modifiables', async () => {
+     de filtres enregistrés. Dépliées SUR PLACE, cinquante d'entre elles faisaient une ligne de
+     sept cents pixels : le nom du service flottait au milieu d'un vide et la section des liens
+     libres partait sous l'écran. La case en montre trois et ouvre le reste dans un panneau. */
+  test('une case chargée montre trois adresses, et ouvre le reste dans un panneau', async () => {
     const g = (await app.api('GET', '/api/links/grid')).body;
     await app.api('PUT', `/api/services/${g.services[0].id}/urls`, {
       environment_id: env.id,
-      /* SIX adresses : au-delà du seuil de la ligne, sinon la case les montrerait toutes —
-         c'est justement ce que fait une ligne peu chargée, et c'est éprouvé plus bas. */
       urls: [
         { label: 'erreurs paiement', url: 'https://kib.demo.invalid/?q=paiement' },
         { label: 'latence API', url: 'https://kib.demo.invalid/?q=latence' },
@@ -401,86 +443,108 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await page.reload();
     await ouvrirLiens();
     const cell = page.locator('.link-grid tbody tr').first().locator('td.link-cell').first();
-    assert.equal(await cell.locator('.link-open').count(), 2, 'deux au repos : la ligne reste régulière');
+    assert.equal(await cell.locator('.link-open').count(), 3, 'trois au plus, toujours');
     assert.match(await cell.innerText(), /erreurs paiement/, 'le nom prime sur l’URL');
 
-    /* La PREMIÈRE case d'une ligne n'est pas son premier `td` : celui-là porte le service.
-       Et la condition doit survivre à l'instant où la grille est réécrite — sinon elle lève
-       au lieu de rendre `false`, et l'attente s'arrête au lieu de patienter. */
-    const nbOuvrables = () => page.evaluate(() => {
-      const td = document.querySelectorAll('#linkGrid tbody tr:first-child td.link-cell')[0];
-      return td ? td.querySelectorAll('.link-open').length : -1;
-    });
-    const attendreOuvrables = (n) => page.waitForFunction((k) => {
-      const td = document.querySelectorAll('#linkGrid tbody tr:first-child td.link-cell')[0];
-      return !!td && td.querySelectorAll('.link-open').length === k;
-    }, n);
-    await cell.locator('[data-cellopen]').click();
-    await attendreOuvrables(6);
+    /* LA HAUTEUR D'UNE LIGNE NE DÉPEND PLUS DE SON CONTENU : c'est tout l'intérêt, et c'est ce
+       qu'il faut mesurer. Une ligne chargée reste comparable à une ligne à une seule adresse. */
+    const hauteurs = await page.locator('#linkGrid tr.link-grid-row')
+      .evaluateAll((rs) => rs.map((r) => Math.round(r.getBoundingClientRect().height)));
+    assert.ok(Math.max(...hauteurs) < 200, `une ligne monte à ${Math.max(...hauteurs)}px`);
 
-    // L'éditeur tient DANS la case : une ligne par adresse, et la case s'étire.
-    await cell.hover();
-    await cell.locator('.link-edit').click();
-    await page.waitForSelector('.link-cell-edit');
-    assert.equal(await page.locator('.lce-row').count(), 6);
+    // `▸ 6 adresses` ouvre la liste, ancrée sur la case, SANS bouger la grille.
+    const avant = await page.locator('#linkGrid .link-grid').evaluate((e) => Math.round(e.getBoundingClientRect().height));
+    await cell.locator('.link-more-addr').click();
+    await page.waitForSelector('.link-cell-panel');
+    assert.equal(await page.locator('.lcp-row').count(), 6, 'le panneau montre TOUT');
+    assert.equal(await page.locator('#linkGrid .link-grid').evaluate((e) => Math.round(e.getBoundingClientRect().height)), avant,
+      'la grille ne bouge pas sous les doigts');
+    // Un point marque les trois que la case montre : pas un tri caché, une explication.
+    assert.equal(await page.locator('.lcp-dot.on').count(), 3);
+
+    // Le tamis filtre DANS le panneau — cinquante adresses se réduisent à une en trois lettres.
+    await page.locator('.lcp-search').fill('lat');
+    await page.waitForFunction(() => [...document.querySelectorAll('.lcp-row')].filter((r) => !r.hidden).length === 1);
+    assert.match(await page.locator('.lcp-row:not([hidden])').innerText(), /latence API/);
+    await page.locator('.lcp-search').fill('');
+
+    // `✎ Modifier` bascule la MÊME liste en édition.
+    await page.locator('.lcp-edit').click();
+    await page.waitForSelector('.link-cell-panel.en-edition');
+    assert.equal(await page.locator('.lce-row').count(), 7, 'six adresses, plus la ligne vide où écrire');
+    // Les flèches réordonnent : « supprimer puis ressaisir » n'était pas un ordre, c'était une perte.
+    await page.locator('.lce-row').nth(1).locator('.lce-up').click();
+    assert.equal(await page.locator('.lce-row').first().locator('.lce-label').inputValue(), 'latence API');
     await page.locator('.lce-row').nth(5).locator('.lce-del').click();
-    /* Cinq après suppression, et la case reste DÉPLIÉE : on l'a ouverte, enregistrer n'est pas
-       une raison de la refermer sous les doigts. */
     await page.locator('.lce-save').click();
-    await attendreOuvrables(5);
-    assert.doesNotMatch(await page.locator('#linkGrid').innerText(), /lenteurs base/, 'la ligne retirée disparaît');
-
-    // Repliée, elle revient à deux et compte le reste.
-    await cell.locator('[data-cellopen]').click();
-    await attendreOuvrables(2);
+    await page.waitForFunction(() => !/lenteurs base/.test(document.querySelector('#linkGrid').textContent));
+    const liste = (await app.api('GET', '/api/links/grid')).body.services
+      .find((x) => x.id === g.services[0].id).urls[env.id];
+    assert.equal(liste.length, 5, 'la ligne retirée est partie');
+    assert.equal(liste[0].label, 'latence API', 'et l’ordre posé est celui qu’on a enregistré');
   });
 
-  /* LES FILTRES SERVENT TOUS LES JOURS. Les environnements en pastilles, les services dans une
-     liste à cocher — avec sa recherche, parce qu'ils peuvent être trente. */
-  test('les pastilles filtrent les colonnes, la liste filtre les lignes', async () => {
-    // Un second service : à une seule ligne, un filtre de lignes ne se voit pas.
+  /* COLLER PLUSIEURS ADRESSES D'UN COUP. Ajouter trois adresses à la même case demandait sept
+     clics et deux écrans : ouvrir, ajouter une ligne, coller, ajouter une ligne, coller… */
+  test('le panneau colle plusieurs adresses d’un coup', async () => {
+    await ouvrirLiens();
+    const cell = page.locator('.link-grid tbody tr').first().locator('td.link-cell').first();
+    await cell.hover();
+    await cell.locator('.link-edit').click();
+    await page.waitForSelector('.link-cell-panel.en-edition');
+    const avant = await page.locator('.lce-row').count();
+    await page.locator('.lcp-multi-on').click();
+    await page.locator('.lcp-paste').fill('https://p1.demo.invalid/alpha\nhttps://p2.demo.invalid/beta');
+    await page.locator('.lcp-paste-add').click();
+    await page.waitForFunction((n) => document.querySelectorAll('.lce-row').length === n, avant + 1);
+    /* LE NOM SE PROPOSE DEPUIS LE CHEMIN : c'est ce qui distingue une adresse d'une autre au
+       même endroit. L'hôte, lui, est le même pour toutes. */
+    const noms = await page.locator('.lce-label').evaluateAll((els) => els.map((e) => e.value));
+    assert.ok(noms.includes('alpha') && noms.includes('beta'), `noms proposés : ${noms.join(', ')}`);
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('.link-cell-panel', { state: 'detached' });
+  });
+
+  /* DES FILTRES À UNE SEULE SÉMANTIQUE. Une pastille d'environnement masquait des colonnes ET
+     les lignes sans adresse dedans : filtrer sur la prod pour repérer les trous de prod était
+     donc impossible — c'étaient exactement les lignes qui disparaissaient. */
+  test('un interrupteur masque une colonne, jamais une ligne', async () => {
     const autre = (await app.api('POST', '/api/services', { name: 'zeta-front' })).body;
     await app.api('PUT', `/api/services/${autre.id}/urls`, { environment_id: env.id, url: 'https://zeta.demo.invalid' });
     await page.reload();
     await ouvrirLiens();
     await page.waitForFunction(() => document.querySelectorAll('#linkGrid tbody tr').length === 2);
-    const cols = async () => (await page.locator('.link-grid thead th').allInnerTexts()).slice(1).map((t) => t.trim().split('\n')[0]);
+    const cols = () => page.locator('.link-grid thead th.link-col').count();
     const toutes = await cols();
-    assert.ok(toutes.length >= 2);
+    assert.ok(toutes >= 2);
 
-    // Depuis « tout affiché », un clic veut dire « celle-là » : c'est le geste courant.
-    await page.locator(`[data-linkenv="${env.id}"]`).click();
-    await page.waitForFunction((n) => document.querySelectorAll('.link-grid thead th').length === n, 2);
-    assert.deepEqual(await cols(), [toutes[0]]);
+    // On masque la colonne qui porte TOUTES les adresses : les lignes doivent rester.
+    await page.locator(`#linkCols [data-linkenv="${env.id}"]`).click();
+    await page.waitForFunction((n) => document.querySelectorAll('.link-grid thead th.link-col').length === n, toutes - 1);
+    assert.equal(await page.locator('#linkGrid tbody tr').count(), 2,
+      'les lignes restent : c’est ainsi qu’on voit les trous d’un environnement');
 
-    await page.locator('#linkClearFilters').click();
-    await page.waitForFunction((n) => document.querySelectorAll('.link-grid thead th').length === n, toutes.length + 1);
-
-    /* Les services sont À PLAT : ouvrir un menu pour voir sur quoi on filtre était un clic de
-       trop sur un geste quotidien. Le champ qui les tamise n'apparaît qu'au-delà d'une douzaine. */
-    assert.equal(await page.locator('#linkSvcChips button').count(), 2);
-    assert.equal(await page.locator('#linkSvcSearch').isHidden(), true, 'à deux services, pas de tamis');
-    await page.locator('#linkSvcChips button').first().click();
+    /* L'ancien comportement reste atteignable — mais il se DEMANDE, il ne surprend plus. */
+    await page.locator('#linkHideEmpty').click();
     await page.waitForFunction(() => document.querySelectorAll('#linkGrid tbody tr').length === 1);
-    assert.equal(await page.locator('#linkSvcChips button.active').count(), 1);
+    assert.match(await page.locator('#linkGrid tbody tr').innerText(), /rien|match|correspond/i);
 
     // …et le choix survit au rechargement : on le repose sinon chaque matin.
     await page.reload();
     await ouvrirLiens();
-    assert.equal(await page.locator('#linkGrid tbody tr').count(), 1, 'le filtre est encore posé');
+    assert.equal(await cols(), toutes - 1, 'le filtre est encore posé');
     await page.locator('#linkClearFilters').click();
-    await page.waitForFunction(() => document.querySelectorAll('#linkGrid tbody tr').length === 2);
+    await page.waitForFunction((n) => document.querySelectorAll('.link-grid thead th.link-col').length === n, toutes);
     assert.equal(await page.locator('#linkClearFilters').isHidden(), true,
       'plus de filtre actif, plus de bouton pour les relâcher');
 
     await app.api('DELETE', `/api/services/${autre.id}`);
   });
 
-  /* COMBIEN MONTRER. Un chiffre en dur ne convient à personne : à deux, une grille dont chaque
-     case en porte trois se déplie sans arrêt ; à dix, une seule case chargée fait une ligne
-     haute comme un écran. Le seuil se juge donc sur la LIGNE. */
-  test('une ligne peu chargée montre tout ; au-delà, le « +N » dit ce qu’il cache', async () => {
-    const g = (await app.api('GET', '/api/links/grid')).body;
+  /* LA LIGNE EST BORNÉE, QUOI QU'ELLE PORTE. Le seuil se jugeait « sur la ligne » : sous cinq
+     adresses tout s'affichait, au-delà on retombait à deux et un `+N` de 11 px dépliait sur
+     place. Le résultat dépendait donc du contenu, ce qui est exactement ce qu'on ne veut pas. */
+  test('une case en montre trois, jamais plus, et le dit', async () => {
     const svc = (await app.api('POST', '/api/services', { name: 'petite-ligne' })).body;
     await app.api('PUT', `/api/services/${svc.id}/urls`, {
       environment_id: env.id,
@@ -491,24 +555,19 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await ouvrirLiens();
 
     const petite = page.locator('.link-grid tbody tr').filter({ hasText: 'petite-ligne' });
-    assert.equal(await petite.locator('.link-open').count(), 3, 'trois adresses tiennent sans être repliées');
-    assert.equal(await petite.locator('.link-plus').count(), 0, '…et sans bouton à cliquer');
+    assert.equal(await petite.locator('.link-open').count(), 3, 'trois adresses tiennent entièrement');
+    assert.equal(await petite.locator('.link-more-addr').count(), 0, '…et sans bouton à cliquer');
 
-    // La ligne chargée, elle, se replie — et son bouton NOMME ce qu'il cache.
-    const chargee = page.locator('.link-grid tbody tr')
-      .filter({ has: page.locator(`[data-editservice="${g.services[0].id}"]`) });
-    const plus = chargee.locator('.link-plus').first();
-    assert.match(await plus.getAttribute('title'), /journal complet/,
-      'un compteur seul obligerait à déplier pour savoir si ça valait la peine');
-
-    // « Tout déplier » : un seul geste, et il est retenu.
-    await page.locator('#linkExpandAll').click();
-    await page.waitForFunction(() => document.querySelectorAll('#linkGrid .link-plus').length === 0);
+    // La quatrième bascule la case dans le panneau, et le bouton NOMME ce qu'il ouvre.
+    await app.api('PUT', `/api/services/${svc.id}/urls`, {
+      environment_id: env.id,
+      urls: [{ label: 'un', url: 'https://u1.demo.invalid' }, { label: 'deux', url: 'https://u2.demo.invalid' },
+        { label: 'trois', url: 'https://u3.demo.invalid' }, { label: 'quatre', url: 'https://u4.demo.invalid' }],
+    });
     await page.reload();
     await ouvrirLiens();
-    assert.equal(await page.locator('#linkGrid .link-plus').count(), 0, 'le choix survit au rechargement');
-    await page.locator('#linkExpandAll').click();
-    await page.waitForFunction(() => document.querySelectorAll('#linkGrid .link-plus').length > 0);
+    assert.equal(await petite.locator('.link-open').count(), 3);
+    assert.match(await petite.locator('.link-more-addr').innerText(), /4/);
 
     await app.api('DELETE', `/api/services/${svc.id}`);
   });
@@ -600,8 +659,14 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await page.reload();
     await ouvrirLiens();
 
-    await page.locator('#linksAdd').click();
-    await page.locator('#linkAddMenu [data-add="free"]').click();
+    /* La modale d'un lien libre s'ouvre par le CRAYON de sa ligne : c'est la seule porte depuis
+       que l'ajout passe par « Coller une adresse ». La liste se groupe dès qu'un dossier
+       existe, et seul le premier niveau est ouvert : on déplie avant de viser. */
+    if (await page.locator('#linkFreeExpand').isVisible()) {
+      await page.locator('#linkFreeExpand').click();
+      await page.waitForFunction(() => [...document.querySelectorAll('.link-free-group')].every((d) => d.open));
+    }
+    await page.locator('.link-free-row').filter({ hasText: 'Runbook' }).locator('[data-editfree]').click();
     await page.waitForSelector('#freeLinkModal:not([hidden])');
     const proposes = await page.locator('#freeFolders option').evaluateAll((els) => els.map((e) => e.value));
     assert.ok(proposes.includes('doc'), 'les niveaux INTERMÉDIAIRES sont proposés, pas seulement les feuilles');
@@ -611,35 +676,44 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await page.locator('#freeUrl').fill('https://run2.demo.invalid');
     await page.locator('#freeFolder').fill('doc/astreinte/2026');
     await page.locator('#freeSave').click();
-    await page.waitForFunction(() => !document.querySelector('#freeLinkModal').hidden === false);
+    await attendreServeur(async () => (await app.api('GET', '/api/links/grid')).body.free_links
+      .some((x) => x.label === 'Nouveau'), 'le lien est enregistré');
 
     const l = (await app.api('GET', '/api/links/grid')).body.free_links.find((x) => x.label === 'Nouveau');
     assert.equal(l.folder, 'doc/astreinte/2026', 'le sous-sous-dossier est créé au passage');
   });
 
-  /* COLLER, ENTRÉE. Le chemin le plus court pour poser un lien, et il tient trois promesses à
-     la fois : le curseur ouvre sur l'ADRESSE (c'est ce qu'on colle), le libellé se DÉDUIT de
-     l'hôte, et Entrée vaut « Enregistrer ». Avant, la modale ouvrait sur le libellé — donc on
-     le tapait, ce qui désactivait la proposition — puis il fallait viser un bouton. */
-  test('coller une adresse et faire Entrée suffit à poser un lien', async () => {
+  /* AJOUTER, C'EST COLLER. Le menu demandait de CLASSER avant de coller — un lien simple, un
+     service, un environnement — alors que ce qu'on a en main, neuf fois sur dix, c'est une URL
+     dans le presse-papiers. Ce qui se vérifie ici n'est pas que la proposition soit juste, mais
+     qu'elle ne DÉCIDE rien : elle arrive dans un sélecteur qu'on peut changer, et ce qui n'a pas
+     d'environnement reconnu tombe en lien libre plutôt que dans une colonne « probable ». */
+  test('coller une adresse propose son rangement, et le pose', async () => {
     await ouvrirLiens();
-    await page.locator('#linksAdd').click();
-    await page.locator('#linkAddMenu [data-add="free"]').click();
-    await page.waitForSelector('#freeLinkModal:not([hidden])');
-    // Le curseur est DÉJÀ dans le champ d'adresse : on tape sans viser.
-    await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'freeUrl');
-    await page.keyboard.type('https://grafana.demo.invalid/d/home');
-    // Le libellé se remplit tout seul, depuis l'hôte.
-    await page.waitForFunction(() => document.querySelector('#freeLabel').value === 'grafana');
-    await page.keyboard.press('Enter');
-    /* L'effet qui compte est côté serveur : la modale se referme aussi quand on annule. */
+    const nomEnv = env.name;
+    await page.locator('#linkPaste').click();
+    await page.waitForSelector('#pasteModal:not([hidden])');
+    await page.locator('#pasteText').fill(
+      `https://petite-ligne-${nomEnv}.demo.invalid/sante\nhttps://wiki-maison.demo.invalid/page`);
+    await page.waitForFunction(() => document.querySelectorAll('#pasteRows .paste-row').length === 2);
+
+    const lignes = await page.locator('#pasteRows .paste-row').evaluateAll((rs) => rs.map((r) => ({
+      cible: r.dataset.target, nom: r.querySelector('.pr-label').value,
+    })));
+    assert.equal(lignes[0].cible, 'cell', 'l’hôte cite un environnement connu : il va dans la grille');
+    assert.equal(lignes[0].nom, 'sante', 'le nom vient du dernier segment du chemin');
+    assert.equal(lignes[1].cible, 'free',
+      'aucun environnement dans l’hôte : lien libre, jamais une colonne « probable »');
+
+    await page.locator('#pasteOk').click();
     await attendreServeur(async () => (await app.api('GET', '/api/links/grid')).body.free_links
-      .some((l) => l.url === 'https://grafana.demo.invalid/d/home' && l.label === 'grafana'),
-    'le lien est enregistré');
-    /* …et la modale se referme. On l'ATTEND : elle se ferme après la réponse du serveur, donc
-       une fraction de seconde après que la lecture ci-dessus a vu le lien. L'affirmer tout de
-       suite, c'est affirmer un état que l'écran n'a pas encore atteint — une fois sur quatre. */
-    await page.waitForFunction(() => document.querySelector('#freeLinkModal').hidden);
+      .some((l) => l.url === 'https://wiki-maison.demo.invalid/page'), 'le lien libre est posé');
+    const g = (await app.api('GET', '/api/links/grid')).body;
+    const cellules = g.services.flatMap((svc) => Object.values(svc.urls || {}).flat());
+    assert.ok(cellules.some((u) => u.label === 'sante'), 'et l’adresse est dans une case');
+    // Le service n'existait pas : il a été créé au passage, sans qu'on ait eu à le poser avant.
+    assert.ok(g.services.some((svc) => svc.name === 'petite-ligne'), 'le service proposé est créé');
+    await page.waitForFunction(() => document.querySelector('#pasteModal').hidden);
   });
 
   /* L'IMPORT NE DÉVERSE PLUS TOUT. Deux cents favoris cochés d'office entraient d'un clic ;
@@ -673,7 +747,7 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
 
     /* Le tag racine n'est PAS créé : « barre-de-favoris » se retrouverait sur chaque lien, et
        un filtre présent partout ne filtre rien. */
-    const tags = await page.locator('#linkTags').innerText();
+    const tags = await page.locator('#linkTagMenu').evaluate((e) => e.textContent);
     assert.match(tags, /recettes/);
     assert.doesNotMatch(tags, /barre-de-favoris/);
   });

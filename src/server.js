@@ -4633,6 +4633,14 @@ app.delete('/api/environments/:id', wrap((req, res) => { res.json(links.supprime
 app.post('/api/environments/:id/move', wrap((req, res) => {
   res.json(links.deplacerEnvironnement(req.params.id, (req.body || {}).dir, msgLinks()));
 }));
+/* L'ORDRE ENTIER, en un appel : c'est ce que produit un glisser-déposer. Les flèches restent
+   pour le clavier, et parlent au même stockage. */
+app.post('/api/environments/reorder', wrap((req, res) => {
+  res.json(links.reordonnerEnvironnements((req.body || {}).ids));
+}));
+app.post('/api/services/reorder', wrap((req, res) => {
+  res.json(links.reordonnerServices((req.body || {}).ids));
+}));
 
 app.post('/api/services', wrap((req, res) => { res.json(links.creerService(req.body || {}, msgLinks())); }));
 app.put('/api/services/:id', wrap((req, res) => { res.json(links.majService(req.params.id, req.body || {}, msgLinks())); }));
@@ -4682,6 +4690,16 @@ app.post('/api/links/import', wrap((req, res) => {
 }));
 app.post('/api/links/import/apply', wrap((req, res) => {
   res.json(links.appliquerImport(req.body || {}, msgLinks()));
+}));
+
+/* COLLER DES ADRESSES : analyse d'abord (on ne crée rien, on propose), application ensuite —
+   exactement comme l'import de marque-pages. La proposition est faite pour être corrigée à
+   l'écran : c'est le client qui renvoie ce qu'il a confirmé, pas le serveur qui décide. */
+app.post('/api/links/paste/analyse', wrap((req, res) => {
+  res.json({ items: links.analyserCollage((req.body || {}).text) });
+}));
+app.post('/api/links/paste', wrap((req, res) => {
+  res.json(links.appliquerCollage(req.body || {}, msgLinks()));
 }));
 
 // Les boutons contextuels d'une merge request : URLs de grille du service + gabarits résolus.

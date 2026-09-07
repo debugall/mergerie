@@ -82,6 +82,8 @@
     <symbol id="i-more" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
     <!-- L'épingle d'un job Jenkins : creuse quand il ne l'est pas, pleine quand il l'est. -->
+    <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l-1 5 3.5 3.5V14H6.5v-2.5L10 8z"/><path d="M12 14v7"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></symbol>
     <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5-5.8-3-5.8 3 1.1-6.5L2.6 9.8l6.5-.9z"/></symbol>
     <symbol id="i-star-filled" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5-5.8-3-5.8 3 1.1-6.5L2.6 9.8l6.5-.9z"/></symbol>
 </svg>
@@ -814,17 +816,25 @@
              où chercher avant de savoir où était la réponse. -->
         <div class="toolbar">
             <input id="linkSearch" type="search" class="jira-search" placeholder="Rechercher un service, un lien, une URL…" data-i18n-placeholder="links.search" />
+            <!-- UNE SEULE PORTE POUR AJOUTER, ET ELLE PART DE L'URL. Le menu demandait de
+                 CLASSER avant de coller — un lien simple, un service, un environnement — alors
+                 que ce qu'on a en main, neuf fois sur dix, c'est une adresse dans le
+                 presse-papiers. Créer une colonne ou une ligne reste dans « Autres actions » :
+                 ce sont des gestes d'installation, pas des gestes quotidiens. -->
+            <button id="linkPaste" class="btn btn-primary" data-i18n-title="links.paste.title"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="links.paste">Coller une adresse</span></button>
             <div class="split-menu-wrap">
-                <button id="linksAdd" class="btn btn-primary" aria-haspopup="true" aria-expanded="false" data-i18n-title="links.add-title"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="links.add">Ajouter</span></button>
-                <div id="linkAddMenu" class="split-menu" hidden>
-                    <button type="button" data-add="free"><span data-i18n="links.add.free">Un lien simple</span></button>
-                    <button type="button" data-add="service"><span data-i18n="links.add.service">Un service</span></button>
-                    <button type="button" data-add="env"><span data-i18n="links.add.env">Un environnement</span></button>
-                </div>
+                <button id="linkTagBtn" class="btn" aria-haspopup="true" aria-expanded="false" data-i18n-title="links.filter.tag-title" hidden><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="links.filter.tag">Tag</span></button>
+                <div id="linkTagMenu" class="split-menu" hidden></div>
             </div>
+            <span id="linkFilterChips" class="link-filter-chips"></span>
+            <button id="linkClearFilters" class="btn btn-sm btn-ghost" hidden><span data-i18n="links.filter.clear">Tout afficher</span></button>
+            <span class="spacer"></span>
             <div class="split-menu-wrap">
                 <button id="linkMore" class="btn" aria-haspopup="true" aria-expanded="false" data-i18n-title="links.more" aria-label="Autres actions"><svg class="ico"><use href="#i-more"/></svg></button>
                 <div id="linkMoreMenu" class="split-menu" hidden>
+                    <button type="button" data-more="newservice"><span data-i18n="links.add.service">Un service</span></button>
+                    <button type="button" data-more="newenv"><span data-i18n="links.add.env">Un environnement</span></button>
+                    <button type="button" data-more="select" hidden><span data-i18n="links.select">Sélectionner</span></button>
                     <button type="button" data-more="import"><span data-i18n="links.import.btn">Importer depuis Chrome</span></button>
                     <!-- La sortie de secours d'un import raté. Rouge, en dernier, et masqué
                          quand il n'y a rien à supprimer : un bouton destructeur ne se propose
@@ -832,45 +842,23 @@
                     <button type="button" data-more="wipe" class="danger" hidden><span data-i18n="links.free.delete-all">Supprimer tous les liens libres</span></button>
                 </div>
             </div>
-            <span class="spacer"></span>
-            <span id="linkInfo" class="muted"></span>
         </div>
-        <!-- LES FILTRES, ÉTIQUETÉS ET TOUJOURS À L'ÉCRAN. Ils servent tous les jours ; les
-             laisser flotter sans dire sur quoi ils portent obligeait à cliquer pour comprendre.
-             Les environnements en pastilles parce qu'ils sont trois à six et qu'un menu coûte
-             un clic rien que pour voir son état ; les services dans une liste à cocher parce
-             qu'ils peuvent être trente — avec son champ de recherche, comme partout ici. -->
-        <div class="link-filters">
-            <span class="lf-lab" data-i18n="links.filter.envs">Environnements</span>
-            <div id="linkEnvChips" class="link-tags"></div>
-            <span class="lf-lab" data-i18n="links.filter.services">Services</span>
-            <!-- À PLAT, comme les environnements : ouvrir un menu pour voir sur quoi on filtre
-                 est un clic de trop sur un geste quotidien. Le champ qui les tamise n'apparaît
-                 qu'au-delà d'une douzaine, et il MASQUE des pastilles sans jamais en décocher —
-                 sinon chercher reviendrait à défaire ce qu'on venait de choisir. -->
-            <input id="linkSvcSearch" type="search" class="jira-search link-svc-filter" placeholder="Filtrer les services…" data-i18n-placeholder="links.filter.service-search" hidden />
-            <div id="linkSvcChips" class="link-tags"></div>
-            <span class="lf-lab" data-i18n="links.filter.tags">Tags</span>
-            <div id="linkTags" class="link-tags"></div>
-            <!-- Le dépliage se faisait case par case et se perdait au rechargement : le mauvais
-                 défaut pour qui a toujours six adresses par case. -->
-            <button id="linkExpandAll" class="btn btn-sm" aria-pressed="false"><svg class="ico"><use href="#i-unfold"/></svg><span data-i18n="links.url.expand-all">Tout déplier</span></button>
-            <button id="linkClearFilters" class="btn btn-sm btn-ghost" hidden><span data-i18n="links.filter.clear">Tout afficher</span></button>
-        </div>
+        <!-- LES COLONNES, ET RIEN D'AUTRE TANT QU'AUCUN FILTRE N'EST POSÉ. Trois rangées de
+             pastilles précédaient la grille : les services y répétaient les lignes visibles
+             cinq centimètres plus bas, « tout allumé » se peignait comme une sélection, et le
+             contenu commençait au tiers de l'écran. Un interrupteur d'environnement masque une
+             COLONNE, jamais une ligne — voir les trous de prod redevient possible. -->
+        <div id="linkCols" class="link-cols"></div>
         <div id="linkGrid" class="link-grid-wrap"></div>
 
-        <div class="toolbar toolbar-tight link-free-bar">
+        <div class="toolbar toolbar-tight link-free-bar" hidden>
             <h3 class="link-free-head" data-i18n="links.free.title">Liens libres</h3>
             <span id="linkFreeCount" class="muted"></span>
             <span class="spacer"></span>
-            <!-- Les cases à cocher ne servent qu'à « Convertir en service », geste rare. Les
-                 laisser en permanence faisait payer chaque jour le prix d'une action annuelle. -->
             <button id="linkFreeExpand" class="btn btn-sm" hidden><svg class="ico"><use href="#i-unfold"/></svg><span data-i18n="links.free.expand-all">Tout déplier</span></button>
             <button id="linkFreeFold" class="btn btn-sm" hidden><svg class="ico"><use href="#i-fold"/></svg><span data-i18n="links.free.collapse-all">Tout replier</span></button>
-            <button id="linkFreeSelect" class="btn btn-sm" data-i18n-title="links.select-title"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="links.select">Sélectionner</span></button>
             <button id="linkFreeAll" class="btn btn-sm" hidden><span data-i18n="links.select.all">Tout sélectionner</span></button>
-            <button id="linkToService" class="btn btn-sm" data-i18n-title="links.free.to-service-title" hidden><svg class="ico"><use href="#i-archive"/></svg><span data-i18n="links.free.file">Ranger dans un service</span></button>
-            <button id="linkNewFree" class="btn btn-sm" data-i18n-title="links.free.new-title"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="links.free.new">Nouveau lien</span></button>
+            <button id="linkToService" class="btn btn-sm" data-i18n-title="links.free.to-service-title" hidden><svg class="ico"><use href="#i-grid"/></svg><span data-i18n="links.free.file">Ranger dans un service</span></button>
         </div>
         <div id="linkFreeList" class="link-free-list"></div>
     </section>
@@ -1624,7 +1612,10 @@
             <p class="muted" data-i18n="links.service.urls-help">Facultatif, et modifiable ensuite dans la grille. Les remplir ici évite d’avoir à retrouver la ligne.</p>
             <div id="serviceUrlsList" class="link-urls-list"></div>
         </div>
-        <div id="serviceCtxBox" hidden>
+        <!-- LES GABARITS SE RÈGLENT AUSSI À LA CRÉATION. La section était masquée tant que le
+             service n'existait pas : on posait le service, on rouvrait sa fiche, on ajoutait
+             le gabarit. Ce qu'on saisit ici est posé juste après la création. -->
+        <div id="serviceCtxBox">
             <h4 data-i18n="links.ctx.title">Liens contextuels (sur les merge requests)</h4>
             <p class="muted" data-i18n-html="links.ctx.help">Variables : <code>{env}</code>, <code>{branch}</code>, <code>{mr_iid}</code>, <code>{service}</code>. Chaque valeur est URL-encodée.</p>
             <div id="serviceCtxList"></div>
@@ -1677,6 +1668,30 @@
             <span class="spacer"></span>
             <button id="freeCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
             <button id="freeSave" type="button" class="btn btn-primary" data-i18n="ui.save">Enregistrer</button>
+        </div>
+    </div>
+</div>
+
+<!-- COLLER UNE ADRESSE. La porte d'entrée unique de l'onglet : une zone de texte, une URL
+     par ligne, et pour chacune une proposition de rangement — le nom, le service, la colonne.
+     Rien n'est deviné en silence : chaque proposition est un sélecteur visible et modifiable,
+     dans le même esprit que l'aperçu d'import. Une adresse dont l'hôte ne cite aucun
+     environnement connu tombe en LIEN LIBRE, jamais dans une colonne « probable » : une URL
+     ne se déduit pas, c'est la première règle du module. -->
+<div id="pasteModal" class="modal" hidden>
+    <div class="modal-box paste-modal">
+        <h3 data-i18n="links.paste.title">Coller une adresse</h3>
+        <div class="form">
+            <label><span class="req" data-i18n="links.paste.urls">Adresses (une par ligne)</span>
+                <textarea id="pasteText" rows="4" placeholder="https://…" data-i18n-placeholder="links.paste.ph"></textarea>
+            </label>
+        </div>
+        <div id="pasteRows" class="paste-rows"></div>
+        <p id="pasteEmpty" class="muted" data-i18n="links.paste.empty">Colle une ou plusieurs adresses : l'outil propose où les ranger.</p>
+        <div class="modal-actions">
+            <span class="spacer"></span>
+            <button id="pasteCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="pasteOk" type="button" class="btn btn-primary" disabled><span data-i18n="ui.add">Ajouter</span></button>
         </div>
     </div>
 </div>

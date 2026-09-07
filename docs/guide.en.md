@@ -1348,119 +1348,173 @@ doc, a tool) stays a **free link**, flat, found by its tags.
 
 #### The top bar
 **One search field**, and it covers **both halves of the screen** — the grid and the free links. It
-matches the service's name, its tags, its repository, **each address's name** and the URLs
-themselves: searching `payment errors` finds the cell that holds it. Under a search, a cell **shows only what
-matches** — displaying its eight addresses for one hit would make you re-read the cell instead of
-reading the answer. A query can mix both levels: `logs apache` takes `logs` from the row and `apache`
-from the address, and only the apache addresses show; `logs` alone, conversely, lets the whole row
-through — the row is what you asked for. Searching `kibana` or a fragment of a URL is enough; you do not have to decide which half to look
-in before knowing where the answer is. When the grid has nothing but the free links do, the message
-says so and points you down, instead of announcing “nothing matches” above results that are right
-there.
+matches the service name, its tags, its repository, **each address's name** and the URLs themselves:
+searching `payment errors` finds the cell holding it. Under a search, a cell **shows only what
+matches** — displaying its eight addresses for a single hit would force you to re-read the cell
+instead of reading the answer. A query can mix both levels: `logs apache` takes `logs` from the row
+and `apache` from the address, and only the apache addresses show; `logs` alone, conversely, lets
+the whole row through — the row is what you asked for. Searching `kibana` or a fragment of a URL is
+enough; you don't have to decide which half to look in before knowing where the answer is. `Enter`
+**opens the first result**, `↓` moves into the grid from the keyboard. When the grid returns nothing
+but the free links do, the message says so and points further down, instead of announcing "nothing
+matches" above results that are right there.
 
-Below the bar, **the filters, labelled and always on screen** — they are used every day:
+Below the bar, **a single line**: the columns. There used to be three — environments, services, tags
+—, all lit, and the content started a third of the way down the screen. The service pills repeated
+the grid rows visible five centimetres below; "all lit" meant "no filter" but was painted like a
+selection.
 
-- **Environments**, as coloured chips: they hide **columns**. From “everything shown”, one click
-  means *that one* — you set out to work on an environment; after that, clicks add and remove.
-  Removing the last one goes back to all, since a grid with no column shows nothing. A service with
-  no address in the kept columns **drops out of the list**: filtering on production to see ten empty
-  rows does not show production, it shows what production lacks.
-- **Services**, as chips too: opening a menu to see what you are filtering on is one click too many
-  on an everyday gesture. Past a dozen, a field appears to **sift** them — it hides chips without
-  ever unticking one, and a count reminds you of the selected ones out of sight.
-- **Tags**, each with **its count**: a row of chips without numbers does not say where the substance is.
+- **Columns**: one switch per environment, with a readable state. It hides a **column**, never a
+  row — spotting the holes in prod becomes possible again, and a service created under a filter
+  shows up. A `Hide services with no visible address` checkbox, **unticked by default**, gives the
+  old behaviour back to whoever wants it: the surprise is now asked for, not imposed.
+- **`Tag ▾`**: a menu, with each tag's **detailed count** ("3 services · 2 links") — "product 3"
+  didn't say three of what. The filter, once set, shows as a pill next to the field, and covers both
+  halves of the screen.
+- **`Show everything`** only appears once something is set, and clears **everything**, the search
+  included.
 
-All three **survive a reload**, and `Show everything` releases them in one click.
+The filters **survive a reload**.
 
-Next to it: **`+ Add`** (a plain link, a service, an environment) and a **`⋯`** menu for bookmark
-import. Those gestures happen once in the tool's lifetime; finding a link happens every day, and
-that is what gets the space.
+Next to them: **`+ Paste an address`**, the single front door, and a **`⋯`** menu for what you do
+once in the tool's lifetime — create a service or an environment, import bookmarks, select free
+links, wipe everything.
+
+#### Paste an address
+What you have in hand, nine times out of ten, is **a URL in the clipboard**. The old `Add` menu
+asked you to **file before pasting** — a plain link, a service, an environment — and on a fresh
+database it took three screens to get to the first address.
+
+`+ Paste an address` opens a text area, **one URL per line**. For each one, the tool **suggests**:
+
+- **the name**, from the last path segment (`/app/logs?q=checkout` → "logs");
+- **the service**, if the host names an existing service or its repository;
+- **the environment**, if the host names an existing environment (`-dev`, `preprod`, `localhost` →
+  *local*).
+
+**Nothing is guessed silently**: every suggestion is a visible, editable selector, in the same
+spirit as the import preview. An address whose host names **no known environment** falls into a
+**free link**, with a suggested tag — never into a "likely" column: a URL is not deduced, that is
+the tab's first rule. The selectors carry `＋ new service` and `＋ new environment`: creating the
+columns is no longer a prerequisite.
+
+`Ctrl`/`Cmd` + `V` **on the tab**, outside a field, opens the same dialog pre-filled.
 
 #### The grid
-- **Rows are services**, pinned first then alphabetical. Each row carries the name, its **tags**,
-  and the **linked Mergerie repository** when there is one. `Pin to the top of the grid` is a
-  checkbox on the service's own form: that is how you raise what you open every day.
-- **Columns are environments**, in the order you give them, each with its own header **colour**
-  (production in red invites a second thought before clicking). **The column's name opens its settings** —
-  rename, recolour, delete; and on hover, two arrows **move it** one step. Deleting says **how many
-  addresses go with it**.
-- **A cell is one or several addresses, written out.** We could have guessed the staging address
-  from the dev one by swapping a piece of domain; that is exactly the magic that one day sends you
-  to the wrong environment without a word. An empty cell shows a `+`, a filled one a **pencil** on
-  hover: you type **in the cell**, Enter saves, Esc cancels, and **clearing everything clears the
-  cell** — no dialog to paste an address. The editing panel opens **under the cell, at its own
-  width**: an environment column is 190 px wide once there are six of them, and an address field
-  fitted in 90 px of that. It names the service and the environment it edits, underlines the cell
-  in question, and **the cell keeps what it displayed** — you see what you are correcting.
-- **Several addresses in the same place**, because that is the real case: a production Kibana is as
-  many addresses as it has saved filters. Each carries a **name** (“payment errors”, “API latency”),
-  without which the second would be indistinguishable from the first. **How many a cell shows is judged on the
-  ROW**: as long as its fullest cell stays under five addresses, everything is displayed — the height
-  stays reasonable and nothing is hidden. Past that, the cell shows two and a `+N` expands in place;
-  **its tooltip names what it hides**, so you never expand just to find out whether it was worth it.
-  And `Expand all`, in the filter bar, opens every cell at once — the choice is **remembered**. The pencil opens **one row per address**, in the panel described above. The
-  **palette** finds each by its name, and frecency is counted per address: you always open the same
-  two out of ten.
-- **Filter by tag** above the grid: a service often belongs to two families at once (*backend* and
-  *payment*), which a folder tree would force it to choose between.
+- **Rows = services**, pinned ones first — a **rule** separates them from the rest — then in the
+  order you give them. Each row fits on **one line**: a letter tinted from the name, the name, the
+  associated **Mergerie repository** in grey, the **tags**. The **pin** lives in the row, on hover,
+  and it is a pin: it used to be set in the service sheet and displayed with a *tag* icon, two
+  reasons not to find it. A **handle** reorders rows by dragging; the order you set replaces the
+  alphabetical one, and you don't cross the pinned boundary.
+- **Columns = environments**, each **tinted** with its colour: *preprod* is recognisable without
+  reading its header. **The column name opens its settings** — rename, change the colour, delete;
+  two arrows **move** it one step from the keyboard, and the header **drags** with the mouse (one
+  single save on drop, where five clicks and five reloads were needed to go from sixth place to
+  first). Deleting announces **how many addresses go with it**.
+- **A cell = one or more addresses, written down.** The preprod address could have been guessed from
+  the dev one by swapping part of the domain; that is exactly the magic that one day sends you to
+  the wrong environment without warning. **A cell with a single address is clickable as a whole** —
+  aiming at a 120 px chip in the middle of 190 px was aiming for nothing. An empty cell shows
+  **nothing at rest**: the `+` comes back when the row is hovered, otherwise it visually dominated
+  the addresses on a grid where half the cells are legitimately empty (there is no Kibana locally).
+- **An address with no name is shown by what tells it apart**, not by its shortened URL:
+  `api-preprod.demo.invalid/health` repeated the column (*preprod*) and the row (*api-core*) and
+  drowned the only useful word. The rule, in order: the last path segment (`/health` → "health",
+  `/d/home` → "home"); otherwise the host stripped of what the row and the column already say
+  (`api-preprod.demo.invalid` → "demo.invalid"); otherwise the host. The full URL stays in the
+  tooltip, in the copy, and in the palette.
+- **Three addresses at most, always.** A production Kibana means as many addresses as there are
+  saved filters: expanded in place, fifty of them made a seven-hundred-pixel row, with the service
+  name floating in a void and the free links pushed off the screen. The cell shows the **three most
+  opened** (frecency is counted per address) then `▸ 50 addresses`. **A row's height no longer
+  depends on its content.**
+- **A cell's panel.** `▸ 50 addresses` opens the list **anchored on the cell**, read-only: one line
+  per address — name, shortened URL, last opening, copy, open —, a **filter** that narrows it down,
+  `↑` `↓` to move, `Enter` to open, `Esc` or a click outside to close. A dot marks the three the
+  cell shows. The order stays **the one you set**: no hidden sort. The list **scrolls inside the
+  panel** — the grid itself does not move.
+- **`✎ Edit`** switches the same list to editing: a name (optional), the URL, arrows to **reorder**,
+  a bin, and **`Paste several addresses`** — one per line, the name suggested from the path. `Enter`
+  saves, `Esc` cancels, **emptying everything clears the cell**. The focus lands **on an empty row**,
+  never on an existing selected address: you came to add an address, you typed, and you overwrote
+  the first one without seeing it go.
 - Only **`http` or `https`** addresses are accepted, here as everywhere in this tab: these links
-  open in one click from the application.
+  open with one click from the application.
+- **From the keyboard**: `/` puts the cursor in the search, `↓` moves into the grid, `j` / `k` walk
+  the rows, `←` / `→` the cells, `Enter` opens (the address, or the panel if the cell holds
+  several), `e` edits, `c` copies.
+- A row's **⚡** icon shows its **context links resolved on an example**, and clicking opens the
+  service sheet at the right section. The "1 context link" chip looked like a tag and led nowhere.
 
-**Creating a service means setting its addresses too.** The form lists **one row per environment**,
-all optional. Saving used to produce an empty row you then had to find in the grid to fill cell by
-cell; a service now comes into being usable, and the screen **scrolls to its row** and highlights it
-for a second — an alphabetical grid drops it anywhere.
+**Creating a service also means setting its addresses.** The sheet lists **all** the addresses of
+each environment, one per line, plus an empty one to add — it used to show only the first and
+announce the rest with a count you could not open. **Context links** are set there **from creation
+on**, and the **repository is suggested from the name you type** when exactly one matches. Two
+services on the same repository are still possible, but the screen **says so beforehand**: only the
+first feeds the merge request buttons. Saving **scrolls down to the row** and underlines it for a
+second.
 
 #### Free links
-A list under the grid: label, URL, tags, **folder**. Add and edit in place, and the search at the top
-filters them along with everything else. This is where imported bookmarks land. The form opens on the
-**address** — that is what you paste — and the **label is derived from the host** as you go
-(`grafana.internal.example` → “grafana”) for as long as you have not written in it yourself; **Enter
-saves**. Pasting and confirming is therefore enough to file a link.
+A **list**, under the grid: a tinted letter, the name, the shortened host, the tags — twenty-eight
+pixels per row. They were forty-five-pixel cards with the full URL spelled out, so sixty links took
+two and a half screens for sixty lines of text. Sorting follows **frecency**, like the palette: what
+you open often *and* recently comes up, alphabetical order breaks ties.
 
-The **Folder** field offers the existing folders **and accepts new ones** — picking from a list would
-forbid creating one, a bare field would make you retype a path you already have. A slash creates the
-sub-folder on the way (`doc/oncall/2026`), and intermediate levels are offered even when no link sits
-directly in them. Leaving it empty files the link at the root.
+On hover: **copy**, **file into the grid** (the icon was an *archive*, which archived nothing),
+**edit**, and **delete with an undo** — it used to take the pencil, then `Delete`, then a
+confirmation, three screens to remove a bookmark imported by mistake. A **checkbox** also appears on
+hover to handle several at once; `Select`, in the `⋯` menu, pins them on screen.
 
-Past a dozen, it **groups by folder**, reproducing **the tree as it was in the browser** — full
-path, depth included — with a count for each. Grouping on the last segment alone made `seres/prod`
-and `logs/prod` merge into a single “prod”: the tool was destroying a structure the browser
-preserves. **The first level is open, the ones below are not**: expanding
-five levels gives back the flat list you were trying to leave, collapsing everything makes you open
-ten folders to find one link. `Expand all` and `Collapse all` say explicitly one or the other;
-clicking the active one again returns to the first level, and the choice is remembered. Every folder
-that holds others carries **its own** fold button, to open or close that branch without touching the
-rest — a glance, not a preference: that one is not remembered. Under a search or a tag it goes back to flat: the filter IS the
-arrangement, and two levels of sorting at once hide what you just asked for.
+The edit form opens on the **address** — that is what you paste — and the **label is derived from
+the host** as you go (`grafana.internal.example` → "grafana") as long as you have not written one
+yourself; **Enter saves**.
 
-**Wiping the list.** The `⋯` menu carries `Delete every free link` — the escape hatch from a bad
-import: you dump two hundred in, realise it was not what you wanted, and taking them back one by one
-would be two hundred confirmations. The confirmation **states the count** (“delete all links?” does
-not say whether there are three or two hundred) and reminds you that **the grid is left alone**. The
-button does not appear when there is nothing to delete.
+The **Folder** field suggests existing folders **and accepts new ones** — picking from a list would
+forbid creating one, a bare field would force you to retype a path you already have. A slash creates
+the subfolder along the way (`doc/oncall/2026`), and intermediate levels are suggested even if no
+link sits directly in them. Leaving it empty files the link at the root.
 
-**Filing them into a service.** This is the gesture that follows an import: two hundred addresses
-arrive flat and have to be filed. Every row carries a `File` button; to handle several at once,
-`Select` reveals the checkboxes — they are not there permanently, the operation is rare and everyday
-noise is expensive. `Select all` then ticks **whatever the filter left**: you sift (“confluence”),
-tick everything, file, and start again. A link ticked and then filtered out of sight **leaves the
-selection** — otherwise it would go along with the others without anything saying so.
+**As soon as a folder exists**, the list is **grouped**, reusing **the tree as it was in the
+browser** — full path, depth included — with each one's count. The threshold of twelve left the
+first imported folders flat, that is, at the very moment you were trying to recognise your own
+filing. Grouping on the last segment alone merged `seres/prod` and `logs/prod` into a single "prod":
+the tool destroyed a structure the browser does preserve. **The first level is open, the rest are
+not**: expanding everything five levels deep gives back the flat list you were trying to leave,
+collapsing everything forces you to open ten folders to find one link. `Expand all` and `Collapse
+all` say one or the other explicitly; clicking the active one again returns to the first level, and
+the choice is remembered. Every folder that contains others carries **its own** folding button, to
+open or close its branch without touching the rest — a glance, not a preference: that one is not
+remembered. Under a search or a tag, we go back to flat: the filter IS the filing, and two levels of
+sorting at once hide what you have just asked for.
 
-Either way, the same dialog:
+**Wipe everything.** The `⋯` menu carries `Delete all free links` — the emergency exit of a botched
+import: you dump two hundred of them, you realise it was not what you wanted, and taking them back
+one by one would be two hundred confirmations. The confirmation **announces the number** ("delete
+all links?" doesn't say whether there are three or two hundred) and recalls that **the grid is not
+touched**. The button does not appear when there is nothing to delete.
 
-- **An existing service or a new one**, your choice, in a searchable picker. Only being able to
-  create forced you to file everything in one go; you can now file three links today and two more
-  tomorrow, into the same service.
-- **An environment**, with a `File everything into` that sets the same one on every row — redoing it
-  row by row across twelve links is exactly what makes people give up. The mapping stays
-  **explicit**: guessing “dev” from a URL containing `-dev` would work nine times out of ten, and the
-  tenth would put a production address in the development column.
-- **The link's label becomes the address's name.** “payment errors” filed into Kibana × production
-  keeps its name — that is exactly what tells one address from another in the same place, and it was
+**Filing them into a service.** This is the gesture after an import: two hundred addresses land
+flat, and they need filing. Each row carries its `File` button; to handle several at once, you tick
+them. `Select all` then ticks **what the filter left**: you narrow down ("confluence"), tick
+everything, file, and start again. The button's counter **follows the ticks**. A link ticked then
+filtered out of view **leaves the selection** — otherwise it would go with the others without
+anything having announced it.
+
+In both cases, the same window:
+
+- **An existing service or a new one**, your choice, in a searchable selector. Only being able to
+  create forced filing everything in one go; today you file three links, tomorrow two more, into the
+  same service.
+- **An environment**, with a `File everything into` that sets the same one for every row — redoing
+  it row by row over twelve links is exactly what makes people give up. The mapping stays
+  **explicit**: guessing "dev" from a URL containing `-dev` would work nine times out of ten, and
+  the tenth would put a production address in the development column.
+- **The link's label becomes the address's name.** "payment errors" filed into Kibana × prod keeps
+  its name — that is exactly what tells one address from another in the same place, and it was
   already written.
 
-Addresses are **appended** to the cell, they do not replace it; two links filed into the same place
+The addresses are **added** to the cell, they do not replace it; two links filed in the same place
 both fit. The free link then disappears: keeping it would make two entries for the same address.
 
 #### The palette — `Ctrl`/`Cmd` + `K`, or the `o` key

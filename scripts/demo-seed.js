@@ -1044,20 +1044,41 @@ mrsP3x.forEach((mr) => {
   db.prepare('INSERT INTO context_link (service_id, label, url_template) VALUES (?,?,?)')
     .run(svcIds['api-core'], 'Logs', 'https://kibana-{env}.demo.invalid/app/logs?q={service}%20{branch}');
 
-  const insFree = db.prepare('INSERT INTO free_link (label, url, tags, created_at) VALUES (?,?,?,?)');
+  /* LES DOSSIERS, tels qu'un import de marque-pages les aurait posés : la liste des liens
+     libres se regroupe dès qu'un dossier existe, et sans exemple on ne verrait jamais l'arbre. */
+  const insFree = db.prepare('INSERT INTO free_link (label, url, tags, folder, created_at) VALUES (?,?,?,?,?)');
+  const freeIds = {};
   [
-    ['Confluence — specs paiement', 'https://confluence.demo.invalid/paiement', ['confluence', 'produit']],
-    ['Confluence — runbook astreinte', 'https://confluence.demo.invalid/runbook', ['confluence', 'astreinte']],
-    ['Doc API publique', 'https://docs.demo.invalid/api', ['doc']],
-    ['Portail SSO', 'https://sso.demo.invalid', ['outils']],
-    ['Statut fournisseur PSP', 'https://status.demo.invalid/psp', ['outils', 'astreinte']],
-    ['Tableau de bord coûts cloud', 'https://cloud.demo.invalid/couts', ['outils']],
-  ].forEach(([label, url, tags]) => insFree.run(label, url, JSON.stringify(tags), at(20)));
+    ['Confluence — specs paiement', 'https://confluence.demo.invalid/paiement', ['confluence', 'produit'], 'doc/specs'],
+    ['Confluence — runbook astreinte', 'https://confluence.demo.invalid/runbook', ['confluence', 'astreinte'], 'doc/astreinte'],
+    ['Doc API publique', 'https://docs.demo.invalid/api', ['doc'], 'doc'],
+    ['Portail SSO', 'https://sso.demo.invalid', ['outils'], 'outils'],
+    ['Statut fournisseur PSP', 'https://status.demo.invalid/psp', ['outils', 'astreinte'], 'outils'],
+    ['Tableau de bord coûts cloud', 'https://cloud.demo.invalid/couts', ['outils'], 'outils'],
+  ].forEach(([label, url, tags, dossier]) => {
+    freeIds[label] = insFree.run(label, url, JSON.stringify(tags), dossier, at(20)).lastInsertRowid;
+  });
 
-  // De quoi que la palette classe : ce qu'on ouvre le plus se retrouve en tête.
+  /* LA FRÉCENCE, PAR ADRESSE (`service:environnement:adresse`). Les références à deux segments
+     ne désignaient plus rien depuis qu'une case porte une liste : ni la palette, ni l'ordre des
+     trois adresses montrées par une case, ni « dernière ouverture » n'en voyaient la couleur. */
   const insUsage = db.prepare('INSERT INTO launcher_usage (kind, ref, uses, last_used_at) VALUES (?,?,?,?)');
-  insUsage.run('service_url', `${svcIds['api-core']}:${envIds.dev}`, 42, at(0.1));
-  insUsage.run('service_url', `${svcIds['webapp-front']}:${envIds.local}`, 17, at(0.4));
+  const adresse = (svc, env, rang = 0) => db.prepare(`SELECT id FROM service_url
+    WHERE service_id = ? AND environment_id = ? ORDER BY position, id LIMIT 1 OFFSET ?`).get(svcIds[svc], envIds[env], rang);
+  const noter = (svc, env, rang, uses, jours) => {
+    const u = adresse(svc, env, rang);
+    if (u) insUsage.run('service_url', `${svcIds[svc]}:${envIds[env]}:${u.id}`, uses, at(jours));
+  };
+  noter('api-core', 'dev', 0, 42, 0.1);
+  noter('webapp-front', 'local', 0, 17, 0.4);
+  /* Kibana · preprod porte six adresses : sans usages, la case en montrerait trois au hasard.
+     Avec eux, elle montre celles qu'on ouvre — et le panneau les marque d'un point. */
+  noter('Kibana', 'preprod', 1, 31, 0.2);
+  noter('Kibana', 'preprod', 3, 12, 1.2);
+  noter('Kibana', 'preprod', 0, 5, 6);
+  // Les liens libres se classent aussi par frécence : le runbook d'astreinte passe devant.
+  insUsage.run('free_link', String(freeIds['Confluence — runbook astreinte']), 23, at(0.3));
+  insUsage.run('free_link', String(freeIds['Portail SSO']), 9, at(2));
 }
 
 /* ── CE QUE LA SECONDE PASSE A AJOUTÉ, RENDU VISIBLE ────────────────────────────────────────

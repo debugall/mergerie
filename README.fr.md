@@ -95,10 +95,13 @@ et un **lot** de merge requests vérifiées ensemble.
   Lancer demande toujours confirmation et nomme le job ; un job paramétré ouvre sa page, pour voir ce qu'on
   s'apprête à envoyer. Rien n'est interrogé en boucle : l'écran demande quand on ouvre l'onglet.
 - **Liens** — les liens de travail que les marque-pages ne savent pas structurer : une **grille services ×
-  environnements** (une URL par case, écrite — aucune adresse devinée depuis une autre), des liens libres
-  retrouvés par tag, et une **palette globale** (`Ctrl`/`Cmd`+`K`) qui cherche d'un coup dans les liens, les
-  MR, les tickets, les notes et les todos, classés par frécence. Un service associé à un dépôt pose ses
-  boutons directement sur ses merge requests, y compris des liens **templatés** (`{env}`, `{branch}`,
+  environnements** (des adresses écrites — aucune devinée depuis une autre), où une case montre ses trois
+  plus ouvertes et ouvre le reste dans un panneau ancré sur elle : la hauteur d'une ligne ne dépend plus de
+  son contenu. On ajoute en **collant** — une URL par ligne, et l'outil propose le nom, le service et
+  l'environnement, jamais en silence et jamais dans une colonne « probable ». Les liens libres forment une
+  liste compacte retrouvée par tag, et une **palette globale** (`Ctrl`/`Cmd`+`K`) cherche d'un coup dans les
+  liens, les MR, les tickets, les notes et les todos, classés par frécence. Un service associé à un dépôt pose
+  ses boutons directement sur ses merge requests, y compris des liens **templatés** (`{env}`, `{branch}`,
   `{mr_iid}`) résolus au clic. Les favoris Chrome s'importent avec aperçu.
 - **Stats** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens,
   **les cinq sessions les plus coûteuses** et **les constats qui reviennent** — le même constat

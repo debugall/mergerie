@@ -1003,6 +1003,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS service (
   created_at TEXT NOT NULL
 )`);
 
+/* L'ORDRE DES LIGNES, posé à la main. La grille était alphabétique et rien d'autre : on ne
+   pouvait pas mettre en tête les trois services qu'on ouvre tous les jours sans les renommer.
+   `0` partout signifie « jamais touché » — et l'alphabétique reprend la main derrière, ce qui
+   laisse une grille neuve exactement comme avant. */
+try { db.exec('ALTER TABLE service ADD COLUMN position INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+
 /* Une URL par (service, environnement) — EXPLICITE. On aurait pu deviner une URL de preprod
    depuis celle de dev en remplaçant un morceau de domaine ; c'est exactement le genre de
    magie qui envoie un jour sur le mauvais environnement sans prévenir. */
