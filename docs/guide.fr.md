@@ -1442,7 +1442,11 @@ fait tous les jours, et c'est ce qui occupe la place.
   depuis celle de dev en remplaçant un morceau de domaine ; c'est exactement la magie qui envoie un
   jour sur le mauvais environnement sans prévenir. Une case vide affiche un `+`, une case remplie un
   **crayon** au survol : on saisit **dans la case**, Entrée enregistre, Échap annule, et **tout
-  vider efface la case** — pas de modale pour coller une adresse.
+  vider efface la case** — pas de modale pour coller une adresse. Le panneau de saisie s'ouvre
+  **sous la case, à sa propre largeur** : une colonne d'environnement fait 190 px quand il y en a
+  six, et le champ d'une adresse y tenait en 90 px. Il nomme le service et l'environnement qu'il
+  modifie, souligne la case concernée, et **la case garde ce qu'elle affichait** — on voit ce
+  qu'on corrige.
 - **Plusieurs adresses au même endroit**, parce que c'est le cas réel : un Kibana de production,
   ce sont autant d'adresses que de filtres enregistrés. Chacune porte un **nom** (« erreurs
   paiement », « latence API »), sans quoi la seconde serait indiscernable de la première. **Combien la case en
@@ -1450,8 +1454,8 @@ fait tous les jours, et c'est ce qui occupe la place.
   s'affiche — la hauteur reste raisonnable et rien n'est caché. Au-delà, la case en montre deux et
   un `+N` déplie sur place ; **son info-bulle nomme ce qu'il cache**, pour ne pas avoir à déplier
   juste pour savoir si ça valait la peine. Et `Tout déplier`, dans la barre de filtres, ouvre toutes
-  les cases d'un coup — le choix est **retenu**. Le crayon ouvre **une ligne par adresse**, et la case s'étire le
-  temps de la saisie. La **palette** trouve chacune par son nom, et la frécence se compte par
+  les cases d'un coup — le choix est **retenu**. Le crayon ouvre **une ligne par adresse**, dans le panneau
+  décrit plus haut. La **palette** trouve chacune par son nom, et la frécence se compte par
   adresse : on ouvre toujours les deux mêmes sur les dix.
 - **Filtre par tag** au-dessus de la grille : un service appartient souvent à deux familles à la
   fois (*backend* et *paiement*), ce qu'un arbre de dossiers l'obligerait à trancher.

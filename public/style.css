@@ -782,13 +782,29 @@ body.footer-hidden { padding-bottom: 0; --footer-h: 0px; }
 .form { display: flex; flex-direction: column; gap: 10px; max-width: 720px; margin-bottom: 24px; }
 .form.inline { flex-direction: row; flex-wrap: wrap; align-items: center; max-width: none; }
 .form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
-.form input, .form textarea, .box textarea, .box input {
+/* UNE MODALE D'AJOUT OU D'ÉDITION EST UN FORMULAIRE, même quand ses champs ne sont pas
+   enveloppés dans un `.form` et même quand ses lignes sont fabriquées en JS. Sans
+   `.modal-box` dans cette liste, ces champs-là tombaient sur le défaut du navigateur —
+   21 px de haut, 1 px de marge intérieure — à côté de champs de 38 px dans la MÊME boîte :
+   les adresses par environnement d'un service, un lien contextuel, une liste déroulante de
+   vérificateur. On y saisit pourtant une URL, c'est-à-dire le champ le plus long de l'écran. */
+.form input, .form textarea, .box textarea, .box input,
+.modal-box input, .modal-box textarea, .modal-box select {
   background: var(--panel2); border: 1px solid var(--line); color: var(--text);
   padding: 8px 10px; border-radius: var(--radius); font: inherit; width: 100%;
 }
 /* Cases à cocher / radios : JAMAIS en largeur 100% (sinon la case occupe toute la
    ligne et écrase le libellé). Elles gardent leur taille intrinsèque. */
-.form input[type="checkbox"], .form input[type="radio"] { width: auto; padding: 0; }
+.form input[type="checkbox"], .form input[type="radio"],
+.modal-box input[type="checkbox"], .modal-box input[type="radio"] { width: auto; padding: 0; }
+/* Champs dessinés par le système : on leur donne la HAUTEUR des autres, pas leur habillage —
+   une pastille de couleur ou un sélecteur de fichier repeints à la main se reconnaissent mal. */
+.modal-box input[type="color"] { padding: 2px; height: 38px; cursor: pointer; }
+.modal-box input[type="file"] { padding: 7px 10px; }
+.modal-box select { cursor: pointer; }
+/* …sauf dans une barre d'outils : une rangée « Tout ranger dans [ dev ] » n'est pas une
+   colonne de formulaire, et un champ pleine largeur y casserait la phrase. */
+.modal-box .toolbar input, .modal-box .toolbar select { width: auto; }
 .form.inline input { width: auto; flex: 1; min-width: 160px; }
 details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 /* Templates de prompt (Réglages → Merge Request) : plus large que le formulaire courant
@@ -804,7 +820,10 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .repo-edit-actions { display: flex; gap: 8px; }
 
 .rule-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.rule-match { flex: 0 1 260px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 7px 10px; font: inherit; font-weight: 600; }
+/* Les TROIS champs de l'en-tête d'une règle, pas seulement deux : `rule-label` n'avait que sa
+   largeur maximale et tombait sur le champ par défaut du navigateur — 21 px de haut à côté de
+   ses deux voisins de 35 px, dans la même ligne, sur un formulaire d'édition. */
+.rule-match, .rule-label { flex: 0 1 260px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 7px 10px; font: inherit; font-weight: 600; }
 .rule-content { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
 
 .detail-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
@@ -2209,7 +2228,11 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .q-opts { display: flex; flex-direction: column; gap: 4px; }
 .q-opt { display: flex; align-items: center; gap: 6px; }
 .q-opt input[type=radio] { width: auto; }
-.q-other-text { flex: 1; min-width: 120px; margin-left: 6px; }
+/* « Autre : … » est une RÉPONSE qu'on tape, au milieu d'options qu'on coche : le champ était
+   celui du navigateur, 21 px, dans un panneau dont tous les autres champs en font 38. */
+.q-other-text { flex: 1; min-width: 160px; margin-left: 6px;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--radius); padding: 7px 10px; font: inherit; }
 .q-free { width: 100%; min-height: 54px; }
 .q-actions { margin-top: 10px; }
 
@@ -2291,6 +2314,14 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .dlog-picker { flex: 1 1 300px; min-width: 280px; border: 1px solid var(--border, #ccc); border-radius: 10px; padding: 10px 12px; }
 .dlog-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .dlog-search { width: 190px; max-width: 55%; }
+/* Les trois champs du tail — chercher un container, ajouter un mot à filtrer, dire combien de
+   lignes — étaient les champs du NAVIGATEUR : 21 px de haut, bordure creuse, à côté de boutons
+   de 30. Ils prennent l'habillage des champs de l'application, à la taille des barres d'outils. */
+.dlog-search, .dlog-chipform input, .dlog-tail input {
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--radius); padding: 6px 10px; font: inherit; font-size: 13px;
+}
+.dlog-search:focus, .dlog-chipform input:focus, .dlog-tail input:focus { border-color: var(--accent); }
 .dlog-clist { display: flex; flex-direction: column; gap: 2px; max-height: 210px; overflow: auto; }
 .dlog-citem { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 8px; font-size: 13px; cursor: pointer; }
 .dlog-citem:hover { background: color-mix(in srgb, var(--accent, #7c5cff) 8%, transparent); }
@@ -3191,10 +3222,13 @@ button.dlog-cname:focus-visible { outline: 2px solid var(--accent); outline-offs
   border-radius: var(--radius); color: var(--muted); cursor: pointer; font-size: 12.5px; text-align: left;
 }
 .link-add:hover { border-color: var(--accent); color: var(--text); }
+/* Les champs de l'éditeur portent la taille des champs de formulaire de l'application : on y
+   saisit une URL, pas une abréviation. Ils faisaient 12,5 px sur 5 px de marge intérieure. */
 .link-cell input {
-  width: 100%; padding: 5px 8px; font: inherit; font-size: 12.5px; background: var(--panel2);
-  border: 1px solid var(--accent); border-radius: var(--radius); color: var(--text);
+  width: 100%; padding: 8px 10px; font: inherit; font-size: 13px; background: var(--panel2);
+  border: 1px solid var(--line); border-radius: var(--radius); color: var(--text);
 }
+.link-cell input:focus { border-color: var(--accent); }
 
 .link-free-head { margin-top: 26px; }
 
@@ -3240,14 +3274,32 @@ button.dlog-cname:focus-visible { outline: 2px solid var(--accent); outline-offs
 }
 .link-plus:hover { border-color: var(--accent); color: var(--text); }
 
-/* L'éditeur d'une case : une ligne par adresse, la case s'étire le temps de la saisie. */
-/* L'éditeur s'adapte à la colonne au lieu de l'élargir : à l'étroit, le nom passe au-dessus
-   de l'URL plutôt que de forcer un défilement horizontal sur toute la grille. */
-.link-cell-edit { display: flex; flex-direction: column; gap: 6px; padding: 4px 2px; min-width: 0; }
+/* L'éditeur d'une case : un panneau posé SOUS sa case, à une largeur où l'on peut lire une
+   URL. Encastré dans la colonne, il héritait de ses 190 px — le champ d'URL en faisait 90.
+   Voir `placerEditeurCase` pour le pourquoi du `fixed` (une grille qui défile rogne l'absolu). */
+.link-cell-edit {
+  position: fixed; z-index: 40; width: min(520px, calc(100vw - 24px));
+  display: flex; flex-direction: column; gap: 8px; padding: 12px;
+  background: var(--panel); border: 1px solid var(--accent); border-radius: var(--r-md);
+  box-shadow: var(--sh-2); text-align: left;
+}
+/* La case en cours d'édition se souligne : le panneau flotte à côté d'elle, il faut pouvoir
+   dire d'un coup d'œil de laquelle il parle. */
+.link-cell.en-edition { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lce-head { display: flex; align-items: center; gap: 8px; font-weight: var(--fw-sem); font-size: 13px; }
+.lce-env { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; font-size: 12px; color: var(--muted); }
 .lce-row > input { min-width: 0; }
-.lce-rows { display: flex; flex-direction: column; gap: 4px; }
-.lce-row { display: grid; grid-template-columns: 34% 1fr 24px; gap: 4px; align-items: center; }
-@media (max-width: 1400px) { .lce-row { grid-template-columns: 1fr 24px; } .lce-row .lce-label { grid-column: 1 / -1; } }
+.lce-rows { display: flex; flex-direction: column; gap: 6px; }
+/* Le nom d'une adresse est court (« api », « admin ») ; l'URL ne l'est jamais. La colonne
+   fixe va au nom, le reste à l'adresse. */
+.lce-row { display: grid; grid-template-columns: 150px 1fr 28px; gap: 6px; align-items: center; }
+/* Fenêtre étroite : le panneau ne peut plus faire ses 520 px, et deux colonnes ne laisseraient
+   plus rien à l'adresse. Le nom repasse alors AU-DESSUS d'elle, comme il le faisait dans la
+   case — c'est la seule disposition où les deux restent lisibles. */
+@media (max-width: 560px) {
+  .lce-row { grid-template-columns: 1fr 28px; }
+  .lce-row .lce-label { grid-column: 1 / -1; }
+}
 .lce-row .lce-del { opacity: .55; }
 .lce-row:hover .lce-del { opacity: 1; }
 .lce-actions { display: flex; align-items: center; gap: 6px; }
@@ -3275,7 +3327,7 @@ button.dlog-cname:focus-visible { outline: 2px solid var(--accent); outline-offs
 .link-free-row .link-free-label { font-weight: var(--fw-sem); }
 .link-free-row .link-free-url { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 .link-ctx-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.link-ctx-form input { flex: 1 1 220px; min-width: 0; padding: 6px 10px; font: inherit; font-size: 12.5px;
+.link-ctx-form input { flex: 1 1 220px; min-width: 0; padding: 8px 10px; font: inherit; font-size: 13px;
   background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); }
 .link-ctx-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12.5px; }
 .link-ctx-row code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

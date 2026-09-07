@@ -1388,14 +1388,17 @@ that is what gets the space.
   from the dev one by swapping a piece of domain; that is exactly the magic that one day sends you
   to the wrong environment without a word. An empty cell shows a `+`, a filled one a **pencil** on
   hover: you type **in the cell**, Enter saves, Esc cancels, and **clearing everything clears the
-  cell** — no dialog to paste an address.
+  cell** — no dialog to paste an address. The editing panel opens **under the cell, at its own
+  width**: an environment column is 190 px wide once there are six of them, and an address field
+  fitted in 90 px of that. It names the service and the environment it edits, underlines the cell
+  in question, and **the cell keeps what it displayed** — you see what you are correcting.
 - **Several addresses in the same place**, because that is the real case: a production Kibana is as
   many addresses as it has saved filters. Each carries a **name** (“payment errors”, “API latency”),
   without which the second would be indistinguishable from the first. **How many a cell shows is judged on the
   ROW**: as long as its fullest cell stays under five addresses, everything is displayed — the height
   stays reasonable and nothing is hidden. Past that, the cell shows two and a `+N` expands in place;
   **its tooltip names what it hides**, so you never expand just to find out whether it was worth it.
-  And `Expand all`, in the filter bar, opens every cell at once — the choice is **remembered**. The pencil opens **one row per address**, and the cell stretches while you type. The
+  And `Expand all`, in the filter bar, opens every cell at once — the choice is **remembered**. The pencil opens **one row per address**, in the panel described above. The
   **palette** finds each by its name, and frecency is counted per address: you always open the same
   two out of ten.
 - **Filter by tag** above the grid: a service often belongs to two families at once (*backend* and

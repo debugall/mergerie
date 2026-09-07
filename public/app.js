@@ -15583,9 +15583,57 @@ document.addEventListener('click', async (e) => {
   }
 });
 
+/* OÙ SE POSE L'ÉDITEUR D'UNE CASE.
+ *
+ * Il vit dans la case — un clic sur `+`, on tape, Entrée : c'est le geste le plus fréquent de
+ * l'onglet, et une modale lui coûterait trois clics. Mais une case de grille fait 190 px de
+ * large à six environnements, et on y saisit une URL : le champ mesurait 90 px, l'éditeur
+ * débordait sur les colonnes voisines et sa phrase d'aide tenait sur trois lignes.
+ *
+ * Il reste donc DANS la case (même `+`, mêmes touches, même délégation d'événements) mais
+ * quitte le flux : posé en `position: fixed` sous sa case, à sa vraie largeur. C'est ce que
+ * font déjà les menus des combos, et pour la même raison — un conteneur qui défile rogne tout
+ * ce qui est en absolu. Il bascule au-dessus quand le bas de l'écran manque, et se recale sur
+ * sa case tant qu'il est ouvert : sinon un défilement le laisserait planté au milieu de rien. */
+function placerEditeurCase(td, box) {
+  const r = td.getBoundingClientRect();
+  const marge = 8;
+  const l = box.getBoundingClientRect();
+  box.style.left = `${Math.max(marge, Math.min(r.left, window.innerWidth - l.width - marge))}px`;
+  const dessous = window.innerHeight - r.bottom - marge;
+  if (dessous < l.height && r.top - marge > dessous) {
+    box.style.top = 'auto';
+    box.style.bottom = `${window.innerHeight - r.top + 2}px`;
+  } else {
+    box.style.bottom = 'auto';
+    box.style.top = `${r.bottom + 2}px`;
+  }
+}
+
 function ouvrirCase(td, sid, eid, liste = []) {
+  /* UNE SEULE CASE EN ÉDITION À LA FOIS. Deux panneaux flottants de cases voisines se
+     recouvriraient, et on ne saurait plus lequel enregistre quoi. On referme donc l'autre en
+     redessinant la grille — ce qui déplace la case visée : on la retrouve par ses attributs. */
+  if ($('.link-cell-edit')) {
+    renderLinkGrid();
+    const ancre = $(`#linkGrid [data-addurl="${sid}"][data-env="${eid}"], #linkGrid [data-editurl="${sid}"][data-env="${eid}"]`);
+    if (ancre) td = ancre.closest('.link-cell');
+  }
+  const svc = ((LINKS.grid && LINKS.grid.services) || []).find((x) => String(x.id) === String(sid));
+  const env = ((LINKS.grid && LINKS.grid.environments) || []).find((x) => String(x.id) === String(eid));
   const lignes = (liste.length ? liste : [{ label: '', url: '' }]).map(ligneEdition).join('');
-  td.innerHTML = `<div class="link-cell-edit" data-cellfor="${sid}" data-env="${eid}">
+  /* L'ÉDITEUR DIT SUR QUELLE CASE IL PORTE. Tant qu'il était encastré dans la colonne, la
+     colonne le disait ; flottant, il ne le dirait plus — et on corrigerait « preprod » en
+     croyant corriger « dev ». */
+  const tete = (svc && env)
+    ? `<div class="lce-head">${esc(svc.name)} <span class="lce-env"><span class="link-env-dot" style="background:${esc(env.color)}"></span>${esc(env.name)}</span></div>`
+    : '';
+  /* Le panneau S'AJOUTE à la case, il ne la remplace pas : en la vidant, on faisait disparaître
+     ce qu'on venait ouvrir pour corriger, et la ligne se rétractait sous l'éditeur. La case
+     garde donc son contenu et se souligne — c'est ce qui dit laquelle est en cours d'édition. */
+  td.classList.add('en-edition');
+  td.insertAdjacentHTML('beforeend', `<div class="link-cell-edit" data-cellfor="${sid}" data-env="${eid}">
+    ${tete}
     <div class="lce-rows">${lignes}</div>
     <div class="lce-actions">
       <button type="button" class="btn btn-sm btn-ghost lce-add">${svgIco('plus')}<span>${esc(tr('links.url.add'))}</span></button>
@@ -15594,7 +15642,23 @@ function ouvrirCase(td, sid, eid, liste = []) {
       <button type="button" class="btn btn-sm btn-primary lce-save">${esc(tr('ui.save'))}</button>
     </div>
     <p class="muted lce-hint">${esc(tr('links.url.edit-hint'))}</p>
-  </div>`;
+  </div>`);
+  const box = $('.link-cell-edit', td);
+  placerEditeurCase(td, box);
+  /* Le panneau ne fait plus partie du flux : il faut le suivre à la main. En capture, pour
+     attraper AUSSI le défilement de la grille, qui ne remonte pas jusqu'à `window`. Le
+     suiveur se retire tout seul quand la grille est redessinée — c'est ce que font Échap,
+     Annuler et l'enregistrement, et il n'y a pas d'autre chemin de sortie. */
+  const suivre = () => {
+    if (!document.body.contains(box)) {
+      window.removeEventListener('scroll', suivre, true);
+      window.removeEventListener('resize', suivre);
+      return;
+    }
+    placerEditeurCase(td, box);
+  };
+  window.addEventListener('scroll', suivre, true);
+  window.addEventListener('resize', suivre);
   const i = $('.lce-url', td);
   i.focus();
   i.select();

@@ -13,6 +13,21 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Fields you type in were sometimes the browser's, not the app's.** A field built in JavaScript
+  outside a `.form` block inherited nothing: 21 pixels tall with one pixel of padding, next to
+  38-pixel fields in the same box. It hit the per-environment addresses of a service — where you
+  paste a URL — the label of a review rule, the free answer to a question from the agent, and the
+  three fields of the Docker log tail. Every field of every add/edit dialog now carries the app's
+  own size, and a test measures them so the next one cannot slip through.
+
+- **Adding an address in the links grid gave you a 90-pixel field.** The editor lives in the cell —
+  one click, type, Enter, which is the point of it — but a column is 190 pixels wide once you have
+  six environments, and the editor inherited that: the address field was 90 pixels, the panel
+  spilled over the neighbouring columns and its hint wrapped onto three lines. It still opens from
+  the same `+`, with the same keys, but as a panel anchored under the cell at its own width (a
+  304-pixel address field), naming the service and environment it edits and underlining the cell.
+  The cell keeps what it was showing, so you can see what you are correcting.
+
 - **The "⋯" menu of a merge request card opened off-screen.** It really did open — `hidden`
   flipped, the button reported itself expanded — but it was placed with the rules written for
   the *combo boxes*: the left edge and the **width** of its trigger, a 39-pixel button pinned to
