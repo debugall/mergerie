@@ -162,6 +162,13 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
   le fait **à la fin de chaque review**. Il est **décoché par défaut** : écrire chez les autres est une
   décision. S'il est coché et que la forge refuse, la review n'est **pas** perdue pour autant — le
   rapport reste enregistré, et le journal du job dit pourquoi la publication n'a pas eu lieu.
+  Sous cette case en apparaît une seconde : **« Envoyer uniquement s'il y a des points bloquants »**.
+  Le rapport ne part alors que s'il porte au moins un constat de sévérité **bloquant** ; les autres
+  restent enregistrés et lisibles dans l'onglet, simplement personne n'est dérangé sur sa MR pour
+  trois remarques mineures. Un rapport **sans aucun constat** ne part pas non plus — le journal du
+  job écrit combien la passe en comptait, ce qui distingue « rien de bloquant » d'un rapport dont
+  le bloc de constats manque. Le bouton `Publier`, lui, ignore ce filtre : un geste explicite part
+  toujours.
 - **La carte tient sur une ligne d'actions** : `Voir le diff` · `Contexte` | `Reviewer ▾` | `⋯`.
   Le menu **`⋯`** rassemble tout le reste — *Faire coder l'IA*, *Vérifier*, *Voir les résultats*,
   *Classer sans review*, *Merger*. Sept boutons de même poids par carte ne disaient pas lequel

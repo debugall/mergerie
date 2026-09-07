@@ -4873,8 +4873,22 @@ function syncReviewAutoMax() {
   const n = rang.querySelector('input');
   if (n) n.disabled = !c.checked;
 }
+/* Le filtre « uniquement s'il y a des points bloquants » ne veut rien dire quand la
+   publication automatique est éteinte : il n'est pas grisé, il DISPARAÎT. Le plafond des
+   reviews automatiques, lui, reste visible parce qu'il porte une valeur qu'on veut relire ;
+   celui-ci n'est qu'un oui/non, et une case inerte dans un écran de neuf réglages se lit
+   comme un réglage qu'on aurait oublié de cocher. */
+function syncAutoPostBlocking() {
+  const f = $('#configForm');
+  const c = f && f.auto_post_review;
+  const rang = $('#autoPostBlockingRow');
+  if (!c || !rang) return;
+  rang.hidden = !c.checked;
+}
 document.addEventListener('change', (e) => {
-  if (e.target && e.target.name === 'auto_review_new') syncReviewAutoMax();
+  if (!e.target) return;
+  if (e.target.name === 'auto_review_new') syncReviewAutoMax();
+  if (e.target.name === 'auto_post_review') syncAutoPostBlocking();
 });
 
 async function loadConfig() {
@@ -4895,6 +4909,7 @@ async function loadConfig() {
   if (f.review_explain) f.review_explain.checked = c.review_explain !== '0'; // défaut : activé
   // Publication automatique : défaut DÉSACTIVÉ — le test est donc `=== '1'`, pas `!== '0'`.
   if (f.auto_post_review) f.auto_post_review.checked = c.auto_post_review === '1';
+  if (f.auto_post_blocking_only) f.auto_post_blocking_only.checked = c.auto_post_blocking_only === '1';
   if (f.auto_review_new) f.auto_review_new.checked = c.auto_review_new === '1';
   if (f.auto_rereview_stale) f.auto_rereview_stale.checked = c.auto_rereview_stale === '1';
   // 0 = « sans limite » : il doit s'ÉCRIRE, une case vide se lirait comme « valeur par défaut ».
@@ -4916,6 +4931,7 @@ async function loadConfig() {
   if (f.verif_auto_max) f.verif_auto_max.value = Number(c.verif_auto_max) || 5;
   if (f.jenkins_refresh_minutes) f.jenkins_refresh_minutes.value = Number(c.jenkins_refresh_minutes) || 0;
   syncReviewAutoMax();
+  syncAutoPostBlocking();
   convDefauts = { seuil: c.converge_threshold || '8', passes: c.converge_max_passes || '3' };
   /* Ce qui vient du serveur n'est pas une modification : le rechargement qui suit un
      enregistrement effacerait sinon la mention qu'il vient tout juste de justifier. */
@@ -4930,6 +4946,7 @@ $('#configForm').addEventListener('submit', async (e) => {
   body.auto_refresh_minutes = f.auto_refresh_minutes.value;
   if (f.review_explain) body.review_explain = f.review_explain.checked ? '1' : '0';
   if (f.auto_post_review) body.auto_post_review = f.auto_post_review.checked ? '1' : '0';
+  if (f.auto_post_blocking_only) body.auto_post_blocking_only = f.auto_post_blocking_only.checked ? '1' : '0';
   if (f.auto_review_new) body.auto_review_new = f.auto_review_new.checked ? '1' : '0';
   if (f.auto_rereview_stale) body.auto_rereview_stale = f.auto_rereview_stale.checked ? '1' : '0';
   if (f.brief_on_open) body.brief_on_open = f.brief_on_open.checked ? '1' : '0';

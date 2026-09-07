@@ -45,6 +45,28 @@ describe('Rapport de review publié sur la merge request', () => {
     return (await app.api('GET', '/api/mrs')).body.find((m) => m.iid === iid).id;
   }
 
+  /* Une MR dont le diff n'AJOUTE aucune ligne : elle supprime un fichier. La review dry-run
+     pose un constat par fichier ayant une ligne ajoutée — ici aucune, donc un rapport SANS
+     constat, donc sans point bloquant. C'est le seul moyen honnête d'obtenir ce cas ici : en
+     dry-run le premier constat d'une passe est toujours un « blocker ». */
+  async function nouvelleMrSansBloquant() {
+    iid += 1;
+    const git = (...a) => execFileSync('git', a, { cwd: distant, stdio: 'pipe' }).toString().trim();
+    git('checkout', '-q', 'main');
+    git('checkout', '-q', '-b', `menage/x${iid}`);
+    git('rm', '-q', 'a.txt');
+    git('commit', '-qm', `ménage ${iid}`);
+    const head = git('rev-parse', 'HEAD');
+    git('checkout', '-q', 'main');
+    app.state.mrs['grp/app'] = [{
+      iid, title: `Ménage ${iid}`, state: 'opened', source_branch: `menage/x${iid}`,
+      target_branch: 'main', web_url: `http://x/${iid}`, sha: head,
+      created_at: new Date().toISOString(), author: { name: 'A' },
+    }];
+    await app.api('POST', '/api/discover');
+    return (await app.api('GET', '/api/mrs')).body.find((m) => m.iid === iid).id;
+  }
+
   /** Lance une review et attend que la file soit vide — le job fait foi, pas un délai. */
   async function reviewer(id) {
     assert.equal((await app.api('POST', `/api/mrs/${id}/review`)).status, 200);
@@ -163,6 +185,66 @@ describe('Rapport de review publié sur la merge request', () => {
       app.db.prepare('SELECT md_path FROM review WHERE mr_id = ?').get(id).md_path, 'utf8').trim();
     assert.equal(parties[parties.length - 1], surDisque);
     assert.ok((await app.api('GET', `/api/mrs/${id}`)).body.review.comment_posted_at);
+  });
+
+  /* ------------------------------------------ le filtre « uniquement si bloquant » ---- */
+
+  test('le filtre est décoché par défaut, et une valeur douteuse ne l’active pas', async () => {
+    assert.equal((await app.api('GET', '/api/config')).body.auto_post_blocking_only, '0');
+    for (const valeur of ['oui', 'true', '2', '']) {
+      await app.api('PUT', '/api/config', { auto_post_blocking_only: valeur });
+      assert.equal((await app.api('GET', '/api/config')).body.auto_post_blocking_only, '0',
+        `« ${valeur} » ne doit pas activer le filtre`);
+    }
+    await app.api('PUT', '/api/config', { auto_post_blocking_only: '1' });
+    assert.equal((await app.api('GET', '/api/config')).body.auto_post_blocking_only, '1');
+    await app.api('PUT', '/api/config', { auto_post_blocking_only: '0' });
+  });
+
+  test('filtre coché : un rapport sans point bloquant ne part pas, mais reste acquis', async () => {
+    await app.api('PUT', '/api/config', { auto_post_review: '1', auto_post_blocking_only: '1' });
+    const id = await nouvelleMrSansBloquant();
+    const avant = notesPostees().length;
+    await reviewer(id);
+    assert.equal(notesPostees().length, avant, 'rien ne doit partir sans point bloquant');
+    const { body } = await app.api('GET', `/api/mrs/${id}`);
+    assert.equal(body.review.comment_posted_at, null, 'et rien ne doit être marqué « publié »');
+    // Le point du réglage : il décide de ce qui PART, jamais de ce qui est produit.
+    assert.ok(body.review && body.review.md, 'le rapport est enregistré comme n’importe quel autre');
+    assert.equal(body.mr.status, 'reviewed');
+  });
+
+  test('filtre coché : un rapport qui porte un point bloquant part quand même', async () => {
+    await app.api('PUT', '/api/config', { auto_post_review: '1', auto_post_blocking_only: '1' });
+    const id = await nouvelleMr();
+    const avant = notesPostees().length;
+    await reviewer(id);
+    assert.ok(app.db.prepare(
+      "SELECT COUNT(*) c FROM finding WHERE mr_id = ? AND severity = 'blocker'").get(id).c > 0,
+    'cette MR doit bien produire un constat bloquant, sinon le test ne prouve rien');
+    assert.equal(notesPostees().length, avant + 1, 'un rapport bloquant doit partir');
+  });
+
+  test('filtre décoché : le MÊME rapport sans bloquant part — c’est le filtre qui retient', async () => {
+    await app.api('PUT', '/api/config', { auto_post_review: '1', auto_post_blocking_only: '0' });
+    const id = await nouvelleMrSansBloquant();
+    const avant = notesPostees().length;
+    await reviewer(id);
+    assert.equal(app.db.prepare(
+      "SELECT COUNT(*) c FROM finding WHERE mr_id = ? AND severity = 'blocker'").get(id).c, 0,
+    'cette MR ne doit porter aucun constat bloquant');
+    assert.equal(notesPostees().length, avant + 1,
+      'sans le filtre, un rapport sans bloquant part comme les autres');
+  });
+
+  test('le bouton Publier ignore le filtre : un geste explicite n’a pas de garde-fou', async () => {
+    await app.api('PUT', '/api/config', { auto_post_review: '0', auto_post_blocking_only: '1' });
+    const id = await nouvelleMrSansBloquant();
+    await reviewer(id);
+    const avant = notesPostees().length;
+    assert.equal((await app.api('POST', `/api/mrs/${id}/publish-review`)).status, 200);
+    assert.equal(notesPostees().length, avant + 1, 'ce qu’on publie soi-même part toujours');
+    await app.api('PUT', '/api/config', { auto_post_blocking_only: '0' });
   });
 
   test('forge injoignable : le rapport reste acquis, la review n’échoue pas', async () => {

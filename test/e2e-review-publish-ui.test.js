@@ -110,6 +110,50 @@ describe('Publier le rapport de review — écran', { skip: dispo ? false : MSG_
     await app.api('PUT', '/api/config', { auto_post_review: '0' });
   });
 
+  /* ------------------------------------------------- le filtre sous la case ---- */
+
+  /** Ouvre Réglages → Merge request sur une page fraîchement chargée. */
+  async function ouvrirReglagesMr() {
+    await page.reload();
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="mr"]').click();
+    await page.locator('#sub-mr input[name="auto_post_review"]').waitFor();
+  }
+
+  test('le filtre « uniquement si bloquant » n’apparaît qu’avec la publication automatique', async () => {
+    await app.api('PUT', '/api/config', { auto_post_review: '0', auto_post_blocking_only: '0' });
+    await ouvrirReglagesMr();
+    const filtre = page.locator('#autoPostBlockingRow');
+    assert.equal(await filtre.isVisible(), false,
+      'un filtre qui n’a rien à filtrer n’a pas à occuper une ligne');
+    // Il suit la case au clic, sans passer par un enregistrement : c'est un affichage.
+    await page.locator('#sub-mr input[name="auto_post_review"]').click();
+    await filtre.waitFor({ state: 'visible' });
+    await page.locator('#sub-mr input[name="auto_post_review"]').click();
+    await filtre.waitFor({ state: 'hidden' });
+  });
+
+  test('le filtre s’enregistre VRAIMENT, et se rouvre coché et visible', async () => {
+    await ouvrirReglagesMr();
+    await page.locator('#sub-mr input[name="auto_post_review"]').click();
+    await page.locator('#autoPostBlockingRow').waitFor({ state: 'visible' });
+    await page.locator('#autoPostBlockingRow input').click();
+    await page.locator('#sub-mr .form-actions button[type="submit"]').click();
+    /* L'état du serveur, pas le libellé de l'écran : c'est exactement le défaut que ce
+       fichier existe pour attraper — une case qui s'affiche, se coche, et n'arrive nulle part. */
+    await attendreServeur(
+      async () => (await app.api('GET', '/api/config')).body.auto_post_blocking_only === '1',
+      'le filtre coché est enregistré',
+    );
+    // L'autre moitié du câblage : la relecture. Sans elle, la case repart décochée.
+    await ouvrirReglagesMr();
+    const filtre = page.locator('#autoPostBlockingRow');
+    await filtre.waitFor({ state: 'visible' });
+    assert.equal(await filtre.locator('input').isChecked(), true,
+      'un filtre sauvegardé doit se rouvrir coché');
+    await app.api('PUT', '/api/config', { auto_post_review: '0', auto_post_blocking_only: '0' });
+  });
+
   /* Ouvre le menu « ⋯ » du rapport s'il ne l'est pas déjà : une action qui y vit ne peut pas
      être cliquée les volets fermés, pas plus par le test que par l'utilisateur. */
   async function ouvrirMenu() {

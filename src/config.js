@@ -14,7 +14,7 @@ const ALLOWED = [
   'github_url', 'github_token',
   'prompt_review', 'prompt_explain', 'prompt_modify', 'language', 'ai_extra_instructions',
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
-  'brief_on_open', 'auto_post_review', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
+  'brief_on_open', 'auto_post_review', 'auto_post_blocking_only', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
   'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'verif_auto_max', 'todo_close_on_merge', 'jira_test_key',
   'task_default_auto_push', 'task_default_ask_questions',
@@ -76,6 +76,10 @@ function updateConfig(patch) {
      Le doute profite au silence — un réglage illisible ne doit pas se mettre à écrire chez
      les collègues à la prochaine review. */
   next.auto_post_review = next.auto_post_review === '1' ? '1' : '0';
+  /* Et son filtre : ne publier que les rapports qui portent au moins un constat bloquant.
+     Décoché par défaut, sinon activer la publication automatique se mettrait à taire la
+     plupart des rapports sans qu'on l'ait demandé. Il ne vaut que sous la case ci-dessus. */
+  next.auto_post_blocking_only = next.auto_post_blocking_only === '1' ? '1' : '0';
   /* Review automatique à l'arrivée d'une MR : même stockage, même défaut prudent. Une case mal
      lue ne doit pas se mettre à dépenser des appels IA à chaque découverte. */
   next.auto_review_new = next.auto_review_new === '1' ? '1' : '0';
@@ -125,6 +129,7 @@ function updateConfig(patch) {
       jira_token = @jira_token,
       review_explain = @review_explain,
       auto_post_review = @auto_post_review,
+      auto_post_blocking_only = @auto_post_blocking_only,
       auto_review_new = @auto_review_new,
       auto_rereview_stale = @auto_rereview_stale,
       review_auto_max = @review_auto_max,

@@ -321,6 +321,19 @@ function saveReviewVersion(mr, outDir, { reviewContent, explainContent, diffStor
   return { version, mdPath, explPath, noteValue, now };
 }
 
+/* La publication automatique part-elle, pour CE rapport ? Deux réglages, dans cet ordre :
+   `auto_post_review` dit si l'on écrit chez les autres, `auto_post_blocking_only` filtre ce
+   qui mérite de les déranger — au moins un constat de sévérité « blocker ». Une passe sans
+   aucun constat ne contient, par définition, aucun bloquant : elle ne part pas non plus.
+   La règle est ici, isolée et exportée, parce qu'elle décide de ce qui est lu par des
+   collègues : elle se teste ligne à ligne, sans faire tourner une review entière. Le bouton
+   « Publier » du rapport, lui, ne la consulte jamais — un geste explicite n'a pas de filtre. */
+function publicationAutoRequise(cfg, findings) {
+  if (cfg.auto_post_review !== '1') return false;
+  if (cfg.auto_post_blocking_only !== '1') return true;
+  return (findings || []).some((f) => f && f.severity === 'blocker');
+}
+
 /* PUBLIER LE RAPPORT EN COMMENTAIRE SUR LA MERGE REQUEST.
  *
  * Un seul chemin pour les deux façons de le déclencher — le bouton « Publier sur … » d'un
@@ -414,9 +427,19 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
        l'enregistrement : le rapport est acquis, et une forge injoignable ne doit pas le faire
        disparaître. D'où le `catch` qui se contente de le dire dans le journal du job, comme
        pour le verdict d'un vérificateur (`jobs.js`). */
+    /* Et son filtre : `auto_post_blocking_only` ne laisse passer que les rapports portant au
+       moins un constat « blocker ». Le rapport lui-même est enregistré dans tous les cas —
+       ce réglage décide de ce qui part chez les autres, jamais de ce qui est produit. Le
+       journal du job dit quand une publication a été retenue, et combien de constats la
+       passe comptait : « 0 constat » signale un bloc de constats absent du rapport, ce qui
+       est un tout autre problème que « rien de bloquant ». */
     if (cfg.auto_post_review === '1') {
-      try { await publierRapport(mr, cfg, { onLog }); }
-      catch (e) { onLog(t('log.review.post-failed', { message: e.message })); }
+      if (publicationAutoRequise(cfg, findings)) {
+        try { await publierRapport(mr, cfg, { onLog }); }
+        catch (e) { onLog(t('log.review.post-failed', { message: e.message })); }
+      } else {
+        onLog(t('log.review.post-skipped', { total: findings.length }));
+      }
     }
 
     return { mdPath, explPath, version };
@@ -518,4 +541,4 @@ async function explainMr(repo, mr, onLog = () => {}) {
   }
 }
 
-module.exports = { reviewMr, modifyReview, explainMr, fillTemplate, publierRapport };
+module.exports = { reviewMr, modifyReview, explainMr, fillTemplate, publierRapport, publicationAutoRequise };

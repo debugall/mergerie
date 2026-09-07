@@ -66,6 +66,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Automatic publishing can now be limited to reports that block.** *Settings → Merge Request*:
+  when "Automatically post the review report on the MR" is ticked, a second checkbox appears
+  under it — **"Only post when there are blocking findings"**. The report is then posted only
+  when it holds at least one finding of severity *blocker*; the others stay saved and readable
+  in the tab, they just do not land on someone's merge request for three minor remarks. A report
+  with no finding at all does not go out either, and the job log writes how many the pass held —
+  "nothing blocking" and "the findings block is missing" are not the same event. The `Publish`
+  button on a report ignores the filter: an explicit gesture always goes out. Unticked by
+  default, so turning automatic publishing on keeps behaving exactly as before.
+
 - **A second pass over the whole tool: 59 changes, from the three defects found while reading
   the code to eleven crossings that did not exist.** Nothing new to configure; almost all of it
   reads data that was already in the database.

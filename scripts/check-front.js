@@ -141,7 +141,7 @@ const declared = new Set(
 );
 // Champs libres du formulaire : on exclut ceux traités à part (cases à cocher,
 // nombres) car ils ont leur propre ligne dans le chargement/enregistrement.
-const HANDLED_APART = new Set(['auto_refresh_minutes', 'review_explain', 'brief_on_open', 'auto_post_review', 'auto_review_new', 'auto_rereview_stale']);
+const HANDLED_APART = new Set(['auto_refresh_minutes', 'review_explain', 'brief_on_open', 'auto_post_review', 'auto_post_blocking_only', 'auto_review_new', 'auto_rereview_stale']);
 const orphanFields = [];
 for (const m of html.matchAll(/<input[^>]*\bform="configForm"[^>]*>/g)) {
   const tag = m[0];
@@ -152,6 +152,23 @@ for (const m of html.matchAll(/<input[^>]*\bform="configForm"[^>]*>/g)) {
 orphanFields.length
   ? fail('Champ de #configForm absent de CONFIG_FIELDS', orphanFields)
   : ok(`Tous les champs de #configForm sont enregistrés (${declared.size} déclarés)`);
+
+/* 8 bis. …et le trou que laisse cette liste d'exception. `HANDLED_APART` désactive le
+   contrôle ci-dessus pour un champ, à charge pour l'auteur d'écrire à la main SES deux
+   lignes : une dans `loadConfig` (relecture) et une dans le `submit` (envoi). Écrire la
+   première et oublier la seconde donne exactement le défaut que le contrôle n°8 existe pour
+   attraper — la case se coche, l'écran dit « enregistré », et rien n'est parti. On vérifie
+   donc que chaque nom exempté est bien cité des DEUX côtés. */
+const submitBloc = (app.match(/#configForm'\)\.addEventListener\('submit'[\s\S]*?\n\}\);/) || [''])[0];
+const loadBloc = (app.match(/async function loadConfig\(\)[\s\S]*?\n\}\n/) || [''])[0];
+const demiCables = [];
+for (const name of HANDLED_APART) {
+  if (!loadBloc.includes(name)) demiCables.push(`public/app.js  ${name} — exempté de CONFIG_FIELDS mais jamais relu dans loadConfig()`);
+  if (!submitBloc.includes(name)) demiCables.push(`public/app.js  ${name} — exempté de CONFIG_FIELDS mais jamais envoyé par le submit de #configForm`);
+}
+demiCables.length
+  ? fail('Champ exempté de CONFIG_FIELDS et câblé à moitié', demiCables)
+  : ok(`Les ${HANDLED_APART.size} champs traités à part sont relus ET envoyés`);
 
 /* 9. Liste de refs git sans recherche.
    Même raison que le contrôle n°7 pour les dépôts : un dépôt actif compte souvent des

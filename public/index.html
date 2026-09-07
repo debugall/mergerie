@@ -1307,6 +1307,12 @@
                  le bouton du rapport, ce que dit l'info-bulle. -->
             <label class="inline-check"><input form="configForm" name="auto_post_review" type="checkbox" /> <span data-i18n="settings.lbl.auto-post-review">Publier automatiquement le rapport de review sur la MR</span>
                 <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.auto-post-review" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- LE FILTRE DE CETTE PUBLICATION, et rien d'autre : il DISPARAÎT quand la case
+                 ci-dessus est décochée, au lieu de rester grisé comme le plafond des reviews
+                 automatiques. Un réglage qui ne peut rien faire n'a pas à occuper une ligne
+                 dans un écran qui en compte déjà neuf. -->
+            <label class="inline-check sous-reglage" id="autoPostBlockingRow" hidden><input form="configForm" name="auto_post_blocking_only" type="checkbox" /> <span data-i18n="settings.lbl.auto-post-blocking-only">Envoyer uniquement s'il y a des points bloquants</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.auto-post-blocking-only" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
 
             <h3 data-i18n="settings.mr.group.auto">Automatisation</h3>
             <label><span data-i18n="settings.lbl.rafraichir-les-mr-automatiquement-minutes">Rafraîchir les MR automatiquement (minutes, 0 = désactivé)</span> <button type="button" class="hint" tabindex="-1" aria-label="Découverte automatique des nouvelles MR à intervalle régulier. 0 = désactivé. Minimum 1 minute, pour éviter les rate limits de l'API GitLab." data-tip="Découverte automatique des nouvelles MR à intervalle régulier. 0 = désactivé. Minimum 1 minute, pour éviter les rate limits de l'API GitLab." data-i18n-tip="settings.tip.decouverte-automatique-des-nouvelles-mr"><svg class="ico"><use href="#i-info"/></svg></button>

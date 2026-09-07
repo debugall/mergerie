@@ -1281,6 +1281,10 @@ try { db.exec("ALTER TABLE config ADD COLUMN auto_rereview_stale TEXT DEFAULT '0
    contrairement à `review_explain` : écrire chez les autres est une décision, et une
    installation neuve ne doit surprendre personne au premier lancement de review. */
 try { db.exec("ALTER TABLE config ADD COLUMN auto_post_review TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
+/* Filtre de cette publication : n'envoyer que les rapports qui contiennent au moins un
+   constat « blocker ». Décoché par défaut — la publication automatique existante ne doit pas
+   se mettre à taire des rapports du seul fait d'une migration. */
+try { db.exec("ALTER TABLE config ADD COLUMN auto_post_blocking_only TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
 const seeded = db.prepare('SELECT git_commands_seeded AS s FROM config WHERE id = 1').get();
 if (seeded && !seeded.s) {
   const ins = db.prepare('INSERT INTO git_command (label, command, sort_order, created_at) VALUES (?, ?, ?, ?)');

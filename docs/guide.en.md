@@ -158,6 +158,12 @@ than sorting on a guessed identity.
   the end of every review. It is **unchecked by default**: writing on other people's work is a decision.
   If it is checked and the forge refuses, the review is **not** lost — the report stays saved, and the
   job log says why publishing did not happen.
+  A second checkbox appears underneath it: **“Only post when there are blocking findings”**. The report
+  then goes out only when it holds at least one finding of severity **blocker**; the others are still
+  saved and readable in the tab — nobody is simply disturbed on their MR over three minor remarks. A
+  report with **no finding at all** does not go out either: the job log writes how many the pass held,
+  which tells “nothing blocking” apart from a report whose findings block is missing. The `Publish`
+  button ignores this filter — an explicit gesture always goes out.
 - **The card holds a single row of actions**: `View diff` · `Context` | `Review ▾` | `⋯`.
   The **`⋯`** menu gathers everything else — *Let the AI code it*, *Verify*, *See results*,
   *Dismiss without review*, *Merge*. Seven buttons of equal weight per card said nothing about
