@@ -2722,10 +2722,16 @@ const ordonnerFile = (rows) => rows.slice().sort(TRIS[triFile] || TRIS.defaut);
 (() => {
   const sel = $('#mrTri');
   if (!sel) return;
+  /* L'ordre ACTIF se marque, comme une pastille : une file rangée par « note la plus basse »
+     ressemble sinon à une file en désordre, et on cherche pourquoi la première carte n'est pas
+     celle qu'on attendait. L'ordre habituel, lui, ne marque rien — c'est le défaut. */
+  const marquer = () => { const l = sel.closest('.mr-tri'); if (l) l.classList.toggle('actif', sel.value !== 'defaut'); };
   if ([...sel.options].some((o) => o.value === triFile)) sel.value = triFile;
+  marquer();
   sel.addEventListener('change', () => {
     triFile = sel.value;
     try { localStorage.setItem('aidevtools_mr_tri', triFile); } catch { /* stockage indisponible */ }
+    marquer();
     loadSegment(currentSeg);
   });
 })();

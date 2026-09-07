@@ -75,7 +75,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   - **The queue sorts**: usual order, smallest first, oldest first, lowest score — a dropdown
     on the same row as the author chips, because who and in which order are two ways of
     narrowing the same queue. The size and the age were written on every card since 1.4.0 but
-    could not be used to choose what to start with. The order you pick is remembered.
+    could not be used to choose what to start with. The order you pick is remembered, and it
+    wears the same pill as the chips beside it — an unusual order is highlighted like an active
+    chip, because a queue sorted by lowest score otherwise just looks out of order.
   - **The morning brief counts what is ready to merge**: score above the convergence threshold,
     verified green and not stale, and no ticket standing in the way — three columns already in
     the database. Nothing is merged: the tool says how many merge requests are only waiting for
