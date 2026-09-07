@@ -312,8 +312,18 @@ function supprimerContextLink(id, msgs) {
 /* ---------------------------------------------------- liens libres ---- */
 
 function listerFreeLinks({ q = '', tag = '' } = {}) {
+  /* A/Liens 2 — LES PLUS OUVERTS EN TÊTE. `launcher_usage.uses` était écrit à chaque
+     ouverture et ne servait qu'au classement de la PALETTE : la liste des liens libres, elle,
+     restait alphabétique, et les trois qu'on ouvre tous les jours se cherchaient au milieu de
+     soixante. On garde l'alphabétique comme départage — deux liens jamais ouverts doivent
+     rester dans un ordre stable, sinon la liste bouge sans raison d'une visite à l'autre. */
+  const ouvertures = new Map();
+  for (const u of db.prepare("SELECT ref, uses FROM launcher_usage WHERE kind = 'free_link'").all()) {
+    ouvertures.set(String(u.ref), u.uses || 0);
+  }
   const rows = db.prepare('SELECT * FROM free_link ORDER BY label COLLATE NOCASE').all()
-    .map((r) => ({ ...r, tags: litTags(r.tags) }));
+    .map((r) => ({ ...r, tags: litTags(r.tags), uses: ouvertures.get(String(r.id)) || 0 }))
+    .sort((a, b) => (b.uses - a.uses) || String(a.label).localeCompare(String(b.label), undefined, { sensitivity: 'base' }));
   const s = String(q || '').trim().toLowerCase();
   const t = normaliserTag(tag);
   return rows.filter((r) => (!t || r.tags.includes(t))

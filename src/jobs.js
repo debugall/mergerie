@@ -797,6 +797,11 @@ async function runDockerJob(jobId, payload) {
       await docker.removeContainer(payload.id, onLog);
     } else if (payload.op === 'orphan-stop') {
       await docker.stopContainer(payload.id, onLog);
+    } else if (payload.op === 'orphan-restore') {
+      /* A/Docker 1 — la sauvegarde était ÉCRITE avant chaque suppression et n'était relue par
+         aucun écran : un container hors-compose supprimé par erreur était perdu, alors que de
+         quoi le refaire dormait en base. */
+      await docker.restoreContainer(payload.inspect, onLog);
     } else if (payload.op === 'make') {
       /* On NOTE la cible avant de la lancer et on complète à la fin : « ai-je déjà passé les
          migrations ce matin ? » se lit alors sous le bouton, sans relire un journal. Un échec

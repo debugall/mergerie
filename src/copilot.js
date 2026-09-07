@@ -219,7 +219,10 @@ async function runPrompt(prompt, cwd, meta = {}, onLog = () => {}) {
   } else {
     output = await runReal(prompt, cwd, onLog);
   }
-  recordUsage(meta.kind, prompt, output, meta.extraInput);
+  /* `meta.owner` : à QUI imputer cet appel. Sans lui, une review coûtait « la moyenne » et
+     on ne pouvait pas dire laquelle avait été chère — alors que les sessions, elles, portent
+     leur coût depuis 1.4.0. Facultatif : les appels sans propriétaire restent comptés. */
+  recordUsage(meta.kind, prompt, output, meta.extraInput, meta.owner);
   return output;
 }
 

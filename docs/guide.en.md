@@ -29,6 +29,20 @@ whose due date has passed asks just as much, and lateness is exactly what gets f
 ### Reviews
 The three stages of one merge request, behind a segmented filter — **To review · Reviewed · Done** — with a
 shared search (title, author, project, ticket).
+**Three orders and a door.** A row of chips arranges the queue: **usual order** (a ticket in review
+comes first), **smallest first**, **oldest first**, **lowest score** — the size and the age have been
+written on every card since 1.4.0, what was missing was being able to use them. The order you pick is
+remembered. The green **“Ready to merge”** chip filters on nothing new: a score above the convergence
+threshold, a green verdict that is not stale, and no ticket standing in the way. The tool merges
+nothing — it says which ones ask for nothing more, and the morning brief gives the count.
+
+**A merge request in conflict says so on its card**, and the badge opens `Git → Merge` prefilled in the
+direction that unblocks it (the target branch into the MR's branch). *Update with main* only ever
+existed for merge requests born from a session; a colleague's had nothing.
+
+**The ticket's status reaches every merge request**, not just watched tickets: discovery already reads
+the whole issue for its context, so it keeps its status too — at no extra call.
+
 Three chips above the queue sort by **author**: **All · Mine · Other people's**. A tech lead looks first at
 what the team is waiting on, a developer at what they pushed. The token's account is read **once per
 forge**; without it — a token that cannot read its own account — the chips do not appear at all, rather
@@ -491,7 +505,12 @@ launch. The number is **pre-filled** if the working branch already contains a ke
 - **Coding** — the AI modifies the code. For each project: a working branch, and an optional **starting
   branch** (a dropdown with search; empty = the repository's default branch). The prompt is applied to each
   project, sequentially — **one failing project does not stop the others**. Each project then carries its
-  own actions: **Diff · Push · Create MR · Merge**. Once the merge request is open, the project's line says
+  own actions: **Diff · Push · Create MR · Merge**. The line also offers **`Review`** as soon as the merge
+  request exists and has no report yet — the obvious next move, which meant going to find it in
+  Reviews — and **`Use the console`** when a linked Jenkins job is red on that branch: the follow-up is
+  filled with the last thirty console lines and the build number, exactly as *Use the verification
+  report*. Jenkins keeps the verdict; the agent only receives the text to fix.
+  Once the merge request is open, the project's line says
   **what it became** — score, verdict, pending comments — instead of a bare `MR !216 ↗` that sent you back
   to Reviews, and **`Tell Jira`** comments the ticket with the merge request link then moves it to review
   when Jira offers the transition, behind a confirmation that names the ticket. A checkbox in the session
@@ -719,6 +738,9 @@ drawer.
 - **Optional link** to a merge request, a ticket or a repository: the line becomes clickable. A todo linked
   to a merge request shows **that MR's state** under its title (score, verdict, how long it has been open):
   you can tell whether it still has a reason to exist.
+- **A todo linked to a ticket says what it became**: its Jira status, and the merge requests carrying
+  its key. Nothing is asked of the network — the state comes from watching, or from what discovery
+  filed away.
 - **A todo tied to a merge request ticks itself when that MR is merged**, with a note saying what closed it
   — “Closed automatically: merge request !201 was merged or closed”. Nothing is deleted and it can be
   reopened; *Settings → General* carries the switch (**“Tick linked todos when their merge request is
@@ -867,6 +889,13 @@ recent assignees; **you ticked by default**, a **persisted** choice). A **list �
   nothing in them is wrongly promoted to a title: only a row whose cells are **all** headers becomes one.
   A table with no header therefore keeps its first row, and a key/value table (header in the first
   **column**) keeps its first pair, the key in bold for want of a Markdown equivalent.
+- **Changing a ticket's state asks first**, naming the ticket and the state: a native `<select>`
+  applies on `change`, so an arrow key was enough to move PROJ-1408 to “Done” in front of the whole
+  team. The comment field sends on **`Ctrl`/`⌘ + Enter`** and keeps a draft that survives a reload;
+  buttons **insert the link of a known merge request** at the cursor.
+- **Watching a ticket can raise a todo** when its state changes (a checkbox per ticket, unticked by
+  default): a desktop notification dies with the tab, a todo stays in sight — and it carries the reason
+  you wrote for watching. A watch that **fails** now says so instead of silently freezing.
 - **An `In Mergerie` section.** What the tool already knows about this ticket, without going to fetch it:
   the **merge requests carrying its key** (with their score and verification verdict) and the **coding
   sessions started from it**. The ticket list carries the same marker in one line, so you see at a glance
@@ -944,6 +973,16 @@ Operations across **several repositories at once**, and branch exploration.
   the deletion with **every branch whose merge request was merged** — the usual preview then says, branch
   by branch, whether it still exists and whether deleting it is safe. Past ten or so, the morning brief
   mentions it.
+- **Three sub-tabs that remember.** *Merge* keeps its repository and both branches, *Actions* its
+  operation and its repositories — as *Compare*, *Navigate* and *Commands* already did. Neither branch
+  names nor the refs ticked for a deletion are restored: re-ticking is precisely the gesture that makes
+  you re-read what you are about to delete.
+- **A branch name proposes itself**: the last name created with its number incremented
+  (`release/1.4` → `release/1.5`), or the ticket key from the clipboard — read **on a click**, never in
+  the background.
+- **Two gestures from the explorer**: `Verify this branch` and `Coding session on it` start with the
+  repository and the branch already filled in. And *Find a ref* offers **`Check my projects out on it`**,
+  which opens *Navigate* with the ref set on every row.
 - **Merge** — merges **one branch into another**, conflicts and all, without leaving the tool. You pick a
   repository, the **branch to merge** and the **branch to merge it into** (both with a search field: an
   active repository carries hundreds of branches), then `Prepare the merge`. At that point **nothing is
@@ -1018,6 +1057,12 @@ Operations across **several repositories at once**, and branch exploration.
 
 ### Docker
 Two sub-views, like Coding/Exploration in AI Dev.
+
+**What the compose already knows.** A service publishing a port **opens it in one click** (`:3000`), and
+offers to **fill the empty “local” cell of the Links grid** with that address. A container's name
+**copies on its own**, not only wrapped in a `docker logs -f`. *Actions* remembers its action and its
+filter — it was the only Docker screen without a memory. A non-compose container deleted by mistake can
+be **restored**: the tool saved its full `inspect` before every deletion, and no screen ever read it.
 
 - **Compose** — the **local directories** (Settings → Repositories) are scanned for `compose.yaml` /
   `docker-compose.yml` files; each file becomes a **compose project** with its services. The list is
@@ -1162,6 +1207,13 @@ Jenkins already does well, and which there is no point redoing.
 - **Finding a job.** A **search** — mandatory here: a company installation lines up hundreds of
   jobs. It matches the **whole path**, so "shop" brings back a whole project. A checkbox,
   **`Only what is not fine`**, keeps failures, unstable results and what is running.
+- **A row says which repository it is linked to** (Settings → Jenkins) and **which open merge request
+  carries the branch of its last build** — clickable through to its report. `repo_jenkins` was only ever
+  read the other way round.
+- **A “My branches” filter** next to “My runs”: what runs on MY work, including triggered by a push or
+  the scheduler — that is where the CI that breaks unwatched lives. The volatile filters (search,
+  checkboxes, parameter values) are now **remembered** like the tab's four other states.
+- **The console copies**, and the build opens in Jenkins from the detail panel.
 - **Keep only what you triggered yourself.** A **`My runs`** box keeps only the jobs launched **from
   Mergerie** — the list already existed for the end-of-run notification, and becomes a filter. It answers
   “what did I send, and where is it?”.
@@ -1509,6 +1561,17 @@ call type + the **average cost per reviewed MR**), a summary of the sessions. Co
 **live from each repository's forge, across all branches** (loaded separately, best-effort: nothing breaks
 if a forge is unreachable).
 
+**The most expensive reviews**, next to the sessions: a review carried “the average” for want of an
+owner on its calls, and there was no way to say which one had eaten the budget. Each row opens its
+report, and the report itself says what it cost.
+
+**What goes in versus what comes back**: characters sent per character received, per call family. A ratio
+that climbs points at an over-long template or a linked repository tripling every prompt — not an
+unavoidable cost. Both columns had been written since forever and read by nobody.
+
+**Verifications: green rate per repository**, least green first — “which repository breaks the most?” had
+no answer.
+
 **The most expensive sessions.** Five sessions, most to least expensive in **estimated tokens**. A prompt
 that makes the AI re-read three repositories for nothing shows up straight away. Token usage is now
 attached to **the session that spent it**, which is also what makes this ranking possible.
@@ -1590,7 +1653,8 @@ tree; each repository also shows **its open merge requests**, **the date of the 
 state of its clone**, with a **`Re-clone`** button — nothing is lost on the forge, but unpushed changes in
 the local clone are, so it asks first) ·
 **Merge Request** (automatic refresh, convergence, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
-**Specific review rules** (criteria added to the prompt when the branch name contains a given
+**Specific review rules** (a rule can be **limited to one repository** — without which you had to guess a
+`path_match` only that repository would satisfy; criteria added to the prompt when the branch name contains a given
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more
 precise; a rule on a path can carry a **“risk” badge** shown on the merge requests concerned, computed
 **without AI** just from the diff's paths, to see at a glance which one to review first) ·
@@ -1602,7 +1666,7 @@ field selected: renaming is the first gesture; the form **suggests the commands 
 already declare** — `package.json` scripts, `composer.json` scripts, Makefile targets, read from the clone
 on disk, **nothing is executed** — to add in one click) ·
 **Notifications** (a dedicated sub-tab, see below) ·
-**General** (light/dark/auto theme, language, density, **menu arrangement**, morning brief, data retention, backup,
+**General** (the **four boxes ticked by default** on a new session — auto-push, AI questions, tell Jira, converge afterwards: these are working habits, set once instead of starting unticked at every opening; light/dark/auto theme, language, density, **menu arrangement**, morning brief, data retention, backup,
 and a **danger zone** for a full reset) ·
 **Jira** (the **Jira connection** —
 URL + email + API token, with a *Test Jira* button —; feeds the *Jira* tab and the enrichment of a session

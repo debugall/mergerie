@@ -857,6 +857,49 @@ $('#confirmCancel') && $('#confirmCancel').addEventListener('click', () => close
 $('#confirmOk') && $('#confirmOk').addEventListener('click', () => closeConfirm(true));
 fermerAuFond('#confirmModal', () => closeConfirm(false), { salissable: false });
 
+/* ── C8 · UN CHAMP QUI SE SOUVIENT, ET QUI S'ENVOIE AU CLAVIER ─────────────────────────────
+   Trois champs de l'application demandent d'écrire plusieurs phrases : le commentaire de
+   merge request, le commentaire Jira et « Demander une modification » du rapport. Les trois
+   perdaient tout à un rechargement, un onglet fermé ou un clic à côté — et les trois
+   obligeaient à viser un bouton pour envoyer, alors que le champ de surveillance Jira, lui,
+   partait déjà à Ctrl+Entrée.
+
+   Le brouillon vit dans le NAVIGATEUR : c'est un filet, pas une donnée. Il est effacé à
+   l'envoi réussi — un brouillon qui survit à son envoi ferait renvoyer deux fois. */
+const BROUILLON_PREFIXE = 'aidevtools_brouillon_';
+const lireBrouillon = (cle) => { try { return localStorage.getItem(BROUILLON_PREFIXE + cle) || ''; } catch { return ''; } };
+const ecrireBrouillon = (cle, v) => {
+  try {
+    if (v) localStorage.setItem(BROUILLON_PREFIXE + cle, v);
+    else localStorage.removeItem(BROUILLON_PREFIXE + cle);
+  } catch { /* stockage indisponible : on perd le filet, pas le champ */ }
+};
+/* `envoyer` est appelé à Ctrl/⌘+Entrée. On ne vide PAS le brouillon ici : c'est l'appelant
+   qui sait si l'envoi a réussi — vider avant la réponse perdrait le texte sur une panne
+   réseau, c'est-à-dire exactement le jour où le filet sert. */
+function champAvecBrouillon(champ, cle, envoyer) {
+  if (!champ || champ.dataset.brouillon === cle) return;
+  champ.dataset.brouillon = cle;
+  const garde = lireBrouillon(cle);
+  if (garde && !champ.value) champ.value = garde;
+  champ.addEventListener('input', () => ecrireBrouillon(cle, champ.value.trim()));
+  champ.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); envoyer(); }
+  });
+}
+
+/* B2 — « prévenir Jira au merge », mémorisé PAR PROJET JIRA (le préfixe de la clé). */
+const MEMO_JIRA_MERGE = 'aidevtools_merge_jira';
+const memoJiraMerge = () => { try { return JSON.parse(localStorage.getItem(MEMO_JIRA_MERGE) || '{}'); } catch { return {}; } };
+function memoriserJiraMerge(cle, valeur) {
+  const projet = String(cle || '').split('-')[0].toUpperCase();
+  if (!projet) return;
+  try {
+    const m = memoJiraMerge(); m[projet] = !!valeur;
+    localStorage.setItem(MEMO_JIRA_MERGE, JSON.stringify(m));
+  } catch { /* stockage indisponible */ }
+}
+
 /* ---------- Modales de merge et de création de MR ----------
    Elles remplacent les `confirm()`/`prompt()` natifs : ceux-ci ne permettaient aucune
    option, et une décision irréversible (merge) mérite mieux qu'un « OK / Annuler ».
@@ -895,6 +938,21 @@ function openMergeModal(ctx) {
   const note = $('#mergeModalNote');
   note.hidden = false;
   note.querySelector('span').textContent = tr('merge.modal.warn', { forge: forgeLabel(ctx.forge) });
+  /* B2 — LA CASE JIRA. Elle n'existe que si Jira est connecté ET qu'une clé de ticket a été
+     trouvée : proposer de « prévenir le ticket » sans ticket serait une case morte. Le
+     souvenir est PAR PROJET JIRA (le préfixe de la clé) : une équipe qui veut la transition
+     la veut sur tous ses tickets, une autre n'en veut sur aucun. */
+  const cleJira = ctx.ticketKey || '';
+  const ligneJira = $('#mergeJiraRow');
+  if (ligneJira) {
+    const visible = !!(cleJira && jiraConfigured);
+    ligneJira.hidden = !visible;
+    if (visible) {
+      const projet = String(cleJira).split('-')[0].toUpperCase();
+      $('#mergeJiraLbl').textContent = tr('merge.modal.jira.key', { key: cleJira });
+      $('#mergeJira').checked = !!memoJiraMerge()[projet];
+    }
+  }
   $('#mergeGo').disabled = false;
   $('#mergeModal').hidden = false;
   demanderEtatFusion(ctx);
@@ -963,6 +1021,8 @@ $('#mergeGo') && $('#mergeGo').addEventListener('click', async () => {
   const b = $('#mergeGo');
   const body = { squash: $('#mergeSquash').checked, removeSourceBranch: $('#mergeRemoveBranch').checked };
   memoriserMerge(ctx.project, body);   // la prochaine fois, ce dépôt repart de ce choix
+  const prevenir = !!(ctx.ticketKey && $('#mergeJira') && !$('#mergeJiraRow').hidden && $('#mergeJira').checked);
+  if (ctx.ticketKey) memoriserJiraMerge(ctx.ticketKey, prevenir);
   /* Un merge passe par la forge : ça prend une seconde ou deux, et la modale reste à l'écran
      pendant ce temps. Sans indicateur, le bouton paraît n'avoir rien fait — on reclique.
      `busy()` met le compte à rebours ET désactive, et rend la main dans tous les cas. */
@@ -970,6 +1030,15 @@ $('#mergeGo') && $('#mergeGo').addEventListener('click', async () => {
     const r = await busy(b, () => api(ctx.url, { method: 'POST', body }));
     closeMergeModal();
     toast(r.merged ? tr('toast.mr-merged-ok') : tr('toast.merge-requested'));
+    /* Le merge A EU LIEU : prévenir Jira est un APRÈS, best-effort. Un Jira injoignable ne
+       doit pas faire croire que le merge a échoué — on le dit à part, en rouge, sans toucher
+       au message qui précède. */
+    if (prevenir && ctx.mrId) {
+      try {
+        const j = await api(`/mrs/${ctx.mrId}/notify-jira`, { method: 'POST' });
+        toast(j.transitioned ? tr('toast.jira-notified-moved', { key: j.key }) : tr('toast.jira-notified', { key: j.key }));
+      } catch (err) { toast(tr('toast.jira-notify-failed', { detail: explainError(err.message) }), true); }
+    }
     if (ctx.onDone) await ctx.onDone(r);
   } catch (e) { toast(explainError(e.message), true); }
 });
@@ -988,8 +1057,15 @@ function openMrModal(ctx) {
   const champ = $('#mrTitle').closest('label') || $('#mrTitle');
   champ.hidden = enLot;
   $('#mrTitle').value = ctx.title || ctx.source || '';
-  $('#mrSquash').checked = false;
-  $('#mrRemoveBranch').checked = false;
+  /* C2 — LA MÊME HABITUDE DE DÉPÔT QUE LA MODALE DE MERGE. « Squasher » et « supprimer la
+     branche » se décident une fois par projet et ne changent plus ; la modale de MERGE s'en
+     souvenait, celle de CRÉATION forçait les deux à décoché. Deux fenêtres voisines, deux
+     réponses différentes à la même question. Une valeur donnée par l'appelant reste
+     prioritaire : elle vient d'un choix déjà fait ailleurs. */
+  const habitudeMr = (ctx.project && memoMerge()[ctx.project]) || null;
+  const dft = (champ) => (ctx[champ] != null ? !!ctx[champ] : !!(habitudeMr && habitudeMr[champ]));
+  $('#mrSquash').checked = dft('squash');
+  $('#mrRemoveBranch').checked = dft('removeSourceBranch');
   const note = $('#mrModalNote');
   const isGithub = forgeLabel(ctx.forge) === 'GitHub';
   note.hidden = !isGithub;
@@ -1011,6 +1087,9 @@ $('#mrGo') && $('#mrGo').addEventListener('click', async () => {
   // Même raison qu'au merge : l'appel part vers la forge et la modale reste affichée.
   try {
     const r = await busy(b, () => api(ctx.url, { method: 'POST', body }));
+    /* Retenu APRÈS le succès, comme au merge : un choix qui n'a rien produit n'est pas une
+       habitude. Même clé, même mémoire — les deux fenêtres parlent enfin de la même chose. */
+    memoriserMerge(ctx.project, { squash: body.squash, removeSourceBranch: body.removeSourceBranch });
     closeMrModal();
     toast(tr('toast.mr-creee', { iid: r.iid }));
     if (ctx.onDone) await ctx.onDone(r);
@@ -1522,10 +1601,51 @@ async function loadDashboard() {
       </tr>`).join('')}</tbody></table></div>`
     : `<p class="muted">${esc(tr('stats.recurring.empty'))}</p>`}</div>`;
 
+  /* A/Stats 1 — LES REVIEWS LES PLUS CHÈRES, à côté des sessions : même question, autre
+     famille. Chaque ligne mène à son rapport, comme partout ailleurs un nombre est une porte. */
+  const tr5 = s.topReviews || [];
+  const trevHtml = `<div class="dash-card"><h3>${tr('stats.top-reviews.title')}</h3>${cap('stats.top-reviews.help')}
+    ${tr5.length ? `<div class="md-tablewrap"><table class="md-table"><tbody>${tr5.map((x) => `<tr>
+        <td class="stats-top-tok">${esc(fmtNum(x.tokens))}</td>
+        <td><button type="button" class="lien-reglage" data-stat-mr="${x.id}">!${esc(String(x.iid))}</button> ${esc(x.title)}
+          <div class="muted">${esc(x.project)}</div></td></tr>`).join('')}</tbody></table></div>`
+    : `<p class="muted">${esc(tr('stats.top-reviews.empty'))}</p>`}</div>`;
+
+  /* Les familles d'appels que le tableau sait nommer. */
+  const STATS_KIND = ['review', 'task', 'explore', 'ask'];
+
+  /* A/Stats 2 — CE QU'ON ENVOIE CONTRE CE QU'ON REÇOIT. Deux colonnes écrites depuis toujours,
+     lues par personne : un ratio qui s'envole désigne un gabarit ou un dépôt lié, pas une
+     dépense inévitable. */
+  const rat = s.ratio || [];
+
+  const ratHtml = `<div class="dash-card"><h3>${tr('stats.ratio.title')}</h3>${cap('stats.ratio.help')}
+    ${rat.length ? `<div class="md-tablewrap"><table class="md-table"><tbody>${rat.map((r) => `<tr>
+        ${/* Une famille inconnue (une future saveur d'appel) doit s'afficher telle quelle :
+              `tr` rend la CLÉ quand elle manque, ce qui donnerait « stats.kind.xxx » à
+              l'écran. On ne traduit donc que ce qu'on connaît. */''}
+        <td>${esc(STATS_KIND.includes(r.kind) ? tr(`stats.kind.${r.kind}`) : r.kind)}</td>
+        <td class="stats-top-tok">${esc(String(r.ratio))}×</td>
+        <td class="muted">${esc(tr('stats.ratio.detail', { entree: fmtNum(r.entree), sortie: fmtNum(r.sortie), n: r.n }))}</td>
+      </tr>`).join('')}</tbody></table></div>`
+    : `<p class="muted">${esc(tr('stats.ratio.empty'))}</p>`}</div>`;
+
+  /* A/Stats 3 — LE TAUX DE VERT PAR DÉPÔT. Un verdict se lit une merge request à la fois ;
+     « quel dépôt casse le plus ? » n'avait pas de réponse. Les moins verts en tête : c'est
+     là qu'il y a quelque chose à faire. */
+  const vpd = s.verifsParDepot || [];
+  const vpdHtml = `<div class="dash-card"><h3>${tr('stats.verifs.title')}</h3>${cap('stats.verifs.help')}
+    ${vpd.length ? `<div class="md-tablewrap"><table class="md-table"><tbody>${vpd.map((v) => `<tr>
+        <td>${esc(v.project)}</td>
+        <td class="stats-top-tok">${esc(String(v.taux))} %</td>
+        <td class="muted">${esc(tr('stats.verifs.detail', { verts: v.verts, total: v.total }))}</td>
+      </tr>`).join('')}</tbody></table></div>`
+    : `<p class="muted">${esc(tr('stats.verifs.empty'))}</p>`}</div>`;
+
   el.innerHTML = `<div id="dashTop5" class="dash-card">${skeleton(2)}</div>`
     + funnelHtml + `<div class="dash-grid">${notesHtml}${trendHtml}${weeklyHtml}${tokHtml}</div>`
     + `<div id="dashActivity" class="dash-card">${skeleton(3)}</div>` + projHtml + devHtml
-    + `<div class="dash-grid">${topHtml}${recHtml}</div>`;
+    + `<div class="dash-grid">${topHtml}${trevHtml}${ratHtml}${vpdHtml}${recHtml}</div>`;
 
   // Activité GitLab en direct (dernier commit par projet) : chargée à part pour ne pas
   // ralentir le dashboard ni le faire échouer si GitLab est injoignable.
@@ -2557,6 +2677,77 @@ document.addEventListener('click', (e) => {
 const filtrerAuteur = (rows) => (filtreAuteur === 'moi' ? rows.filter(estDeMoi)
   : (filtreAuteur === 'autres' ? rows.filter((m) => !estDeMoi(m)) : rows));
 
+/* ── PAR QUOI COMMENCER, ET CE QUI EST PRÊT ────────────────────────────────────────────────
+   La taille et l'âge sont sur chaque carte depuis 1.4.0 ; il manquait de pouvoir s'en servir.
+   Quatre ordres, un seul actif, mémorisé — un tri qu'on doit reposer à chaque visite ne sert
+   qu'une fois. L'ordre par défaut reste celui d'avant (le ticket en revue passe devant), pour
+   que ne rien choisir ne change rien. */
+let triFile = (() => { try { return localStorage.getItem('aidevtools_mr_tri') || 'defaut'; } catch { return 'defaut'; } })();
+let seulementPretes = (() => { try { return localStorage.getItem('aidevtools_mr_pretes') === '1'; } catch { return false; } })();
+
+/* Le seuil de « prête » est celui de la CONVERGENCE : c'est la note que l'utilisateur a
+   lui-même déclarée suffisante. En reprendre un autre ici inventerait une seconde définition
+   du mot « assez bonne ». Lu une fois, avec un défaut si les réglages ne répondent pas. */
+let seuilPret = 8;
+(async () => { try { const d = await defautsConvergence(); seuilPret = Number(d.seuil) || 8; } catch { /* défaut */ } })();
+
+/* PRÊTE À MERGER — une lecture de trois colonnes, rien de plus. L'outil ne merge pas : il dit
+   lesquelles ne demandent plus rien. Un ticket « terminé » alors que la MR est ouverte n'est
+   pas un feu vert, c'est une anomalie signalée ailleurs : il ne compte pas comme prêt. */
+function estPrete(m) {
+  if (!m) return false;
+  if (m.closed_seen) return false;
+  if (m.has_conflicts) return false;
+  const note = m.note == null ? null : Number(m.note);
+  if (note == null || note < seuilPret) return false;
+  const v = m.verification;
+  if (!v || v.verdict !== 'verified_pass' || v.stale) return false;
+  if (m.ticket_category && m.ticket_category !== 'indeterminate') return false;
+  return true;
+}
+
+const TRIS = {
+  defaut: (a, b) => rangTicket(a) - rangTicket(b),
+  // « petites d'abord » : les lignes changées, à défaut les fichiers. Une MR sans mesure passe après.
+  petites: (a, b) => tailleNum(a) - tailleNum(b),
+  anciennes: (a, b) => String(a.updated_at || a.gitlab_created_at || '').localeCompare(String(b.updated_at || b.gitlab_created_at || '')),
+  note: (a, b) => (a.note == null ? 99 : Number(a.note)) - (b.note == null ? 99 : Number(b.note)),
+};
+function tailleNum(m) {
+  const s = m && m.size;
+  if (!s) return Number.MAX_SAFE_INTEGER;
+  if (s.additions != null || s.deletions != null) return (s.additions || 0) + (s.deletions || 0);
+  return s.files != null ? s.files : Number.MAX_SAFE_INTEGER;
+}
+const ordonnerFile = (rows) => rows.slice().sort(TRIS[triFile] || TRIS.defaut);
+const filtrerPretes = (rows) => (seulementPretes ? rows.filter(estPrete) : rows);
+
+function renderFiltreTri() {
+  const box = $('#mrTriFiltre');
+  if (!box) return;
+  const opts = [['defaut', 'review.tri.defaut'], ['petites', 'review.tri.petites'],
+    ['anciennes', 'review.tri.anciennes'], ['note', 'review.tri.note']];
+  const n = toReviewRows.concat(reportRows).filter(estPrete).length;
+  box.innerHTML = opts.map(([v, k]) => `<button type="button" class="chip${triFile === v ? ' active' : ''}" data-mr-tri="${v}">${esc(tr(k))}</button>`).join('')
+    + `<button type="button" class="chip chip-pret${seulementPretes ? ' active' : ''}" data-mr-pretes`
+    + ` title="${esc(tr('review.pretes.title', { seuil: seuilPret }))}">${esc(tr('review.pretes'))}`
+    + (n ? ` <span class="chip-n">${n}</span>` : '') + '</button>';
+}
+document.addEventListener('click', (e) => {
+  const t = e.target.closest && e.target.closest('[data-mr-tri]');
+  if (t) {
+    triFile = t.dataset.mrTri;
+    try { localStorage.setItem('aidevtools_mr_tri', triFile); } catch { /* ignore */ }
+    renderFiltreTri(); loadSegment(currentSeg);
+    return;
+  }
+  const p = e.target.closest && e.target.closest('[data-mr-pretes]');
+  if (!p) return;
+  seulementPretes = !seulementPretes;
+  try { localStorage.setItem('aidevtools_mr_pretes', seulementPretes ? '1' : '0'); } catch { /* ignore */ }
+  renderFiltreTri(); loadSegment(currentSeg);
+});
+
 (async () => {
   try {
     const d = await api('/me');
@@ -2592,8 +2783,8 @@ function renderToReview() {
     return;
   }
   assurerJenkinsPourCI();          // une fois par page : le badge CI a besoin de la liste
-  const rows = filtrerAuteur(q ? toReviewRows.filter((m) => matchMr(m, q)) : toReviewRows)
-    .slice().sort((a, b) => rangTicket(a) - rangTicket(b));
+  renderFiltreTri();
+  const rows = ordonnerFile(filtrerPretes(filtrerAuteur(q ? toReviewRows.filter((m) => matchMr(m, q)) : toReviewRows)));
   if (!rows.length) {
     /* Filtrer sur « les autres » quand tout est à soi donne une liste vide qui n'est pas une
        recherche infructueuse : on dit laquelle des deux, sinon on croit avoir tout traité. */
@@ -2714,6 +2905,8 @@ function mergeMrFromQueue(m, onMerged) {
     forge: m.forge,
     check: `/mrs/${m.id}/merge-check`,
     project: m.project,
+    // B2 : de quoi proposer la case Jira — la clé telle que l'écran la connaît déjà.
+    mrId: m.id, ticketKey: m.ticket_key || jiraCleDe(m),
     squash: m.squash, removeSourceBranch: m.remove_source_branch,
     onDone: async (r) => {
       if (!r.merged) return;                                  // pipeline en attente : reste en file
@@ -2750,6 +2943,8 @@ function mrCard(m) {
         ${(m.risk || []).map((r) => `<span class="tag risk" title="${esc(tr('mr.risk-title', { pattern: r.path_match }))}">${svgIco('alert')} ${esc(r.label)}</span>`).join('')}
         <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
         ${badgeTicket(m)}
+        ${badgeConflit(m)}
+        ${(m.lots || []).slice(0, 2).map((l) => `<span class="tag" title="${esc(tr('mr.lot.title', { name: l.name }))}">${svgIco('inbox')} ${esc(l.name)}</span>`).join('')}
         ${badgeCI(m.source_branch)}
         ${verifyBadge(m.verification)}
         ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
@@ -2793,6 +2988,12 @@ function mrCard(m) {
     ? (m.jenkins_jobs || []).map((j) => `<button role="menuitem" data-mr-jenkins="${esc(j.path)}" data-param="${esc(j.param || '')}" data-branch="${esc(m.source_branch)}" title="${esc(tr('mr.title.jenkins-run'))}">${esc(tr('mr.btn.jenkins-run', { job: j.path }))}</button>`).join('')
     : ''}
         <button role="menuitem" data-copy-ref="${m.id}">${tr('mr.btn.copy-ref')}</button>
+        ${/* C11 — SURVEILLER LE TICKET DE CETTE MR. La clé est déjà déduite (elle est écrite
+              sur la carte) ; il fallait pourtant aller dans Jira → Surveillés et la retaper.
+              L'entrée n'apparaît que si Jira est connecté et qu'une clé a été trouvée. */''}
+        ${jiraConfigured && (m.ticket_key || jiraCleDe(m))
+    ? `<button role="menuitem" data-jira-watch="${esc(m.ticket_key || jiraCleDe(m))}">${tr('mr.btn.watch-ticket', { key: m.ticket_key || jiraCleDe(m) })}</button>`
+    : ''}
         <button role="menuitem" data-done="${m.id}" data-iid="${m.iid}">${tr('mr.btn.dismiss')}</button>
         ${m.closed_seen ? '' : `<button role="menuitem" class="danger" data-merge="${m.id}">${tr('task.btn.merge')}</button>`}
       </div>
@@ -2812,6 +3013,27 @@ function refMr(m) {
   const qualif = bouts.length ? ` (${bouts.join(' · ')})` : '';
   return `!${m.iid} — ${m.title || ''}${qualif} ${m.web_url || ''}`.trim();
 }
+/* La clé de ticket d'une merge request, telle que l'écran la connaît déjà : le serveur la
+   pose (`ticket_key`), et à défaut on la relit dans la branche — la même règle que partout. */
+function jiraCleDe(m) {
+  const src = `${(m && m.title) || ''} ${(m && m.source_branch) || ''}`;
+  const mm = src.match(/[A-Z][A-Z0-9]+-\d+/);
+  return mm ? mm[0] : '';
+}
+/* C11 — surveiller depuis la carte. On NAVIGUE vers la liste des surveillés après coup :
+   ajouter en silence laisserait douter que quelque chose se soit passé. */
+document.addEventListener('click', async (e) => {
+  const w = e.target.closest && e.target.closest('[data-jira-watch]');
+  if (!w) return;
+  const cle = w.dataset.jiraWatch;
+  try {
+    await api('/jira/watch', { method: 'POST', body: { key: cle } });
+    toast(tr('jira.watch.added', { key: cle }));
+  } catch (err) { toast(explainError(err.message), true); return; }
+  navTab('jira');
+  showJiraSub('watch');
+});
+
 document.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-copy-ref]');
   if (!b) return;
@@ -2913,7 +3135,8 @@ function renderReports() {
       actions: [{ act: 'seg-to-review', label: tr('report.empty.action'), primary: true }] });
     return;
   }
-  const cherchees = filtrerAuteur(q ? reportRows.filter((m) => matchMr(m, q)) : reportRows);
+  renderFiltreTri();
+  const cherchees = ordonnerFile(filtrerPretes(filtrerAuteur(q ? reportRows.filter((m) => matchMr(m, q)) : reportRows)));
   if (!cherchees.length) {
     el.innerHTML = emptyState({
       icon: 'search',
@@ -2950,6 +3173,7 @@ function renderReports() {
         <div class="report-tags">
           <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
           ${badgeTicket(m)}
+          ${badgeConflit(m)}
           ${badgeCI(m.source_branch)}
           ${verifyBadge(m.verification)}
           ${/* Une MR déjà reviewée se vérifie aussi : la review est un avis, le verdict un fait. */''}
@@ -3036,6 +3260,40 @@ function detailNote(m) {
   if (m && m.stale) bouts.push(tr('review.note.detail.stale'));
   return bouts.join(' · ');
 }
+/* Un nombre est une porte, ici aussi : la review la plus chère s'ouvre. */
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-stat-mr]');
+  if (!b) return;
+  navTab('review'); openReport(Number(b.dataset.statMr));
+});
+
+document.addEventListener('click', (e) => {
+  if (!(e.target.closest && e.target.closest('[data-brief-pretes]'))) return;
+  /* On ALLUME la puce en y allant : arriver dans une file de onze cartes après avoir cliqué
+     « 3 prêtes » obligerait à refaire le tri à la main. */
+  seulementPretes = true;
+  try { localStorage.setItem('aidevtools_mr_pretes', '1'); } catch { /* ignore */ }
+  navReviews('reviewed');
+  renderFiltreTri();
+});
+
+/* B7 — UNE MR EN CONFLIT QUI N'EST PAS NÉE D'UNE SESSION. « Mettre à jour avec main » n'existe
+   que pour les branches que l'outil a écrites : pour celle d'un collègue, il n'y avait rien —
+   on allait la résoudre dans un terminal alors que l'écran de résolution vit deux onglets plus
+   loin. Le badge y mène, pré-rempli dans le sens qui débloque : on fusionne la branche CIBLE
+   (`main`) DANS la branche de la merge request, ce qui est exactement le rattrapage. Rien
+   n'est lancé : le formulaire est posé, « Préparer le merge » reste à cliquer. */
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-mr-conflit]');
+  if (!b) return;
+  const m = (toReviewRows.concat(reportRows)).find((x) => String(x.id) === b.dataset.mrConflit);
+  if (!m) return;
+  mergeMemoriser({ repo_id: m.repo_id, source: m.target_branch, target: m.source_branch });
+  navTab('git');
+  showGitSub('merge');
+  toast(tr('toast.conflict-to-merge', { iid: m.iid, base: m.target_branch || '' }));
+});
+
 /* B8 — ouvrir le job Jenkins avec la branche de la merge request. On ouvre la FICHE (jamais
    un lancement direct) : les paramètres se lisent, et le bouton « Lancer avec ces paramètres »
    reste à cliquer. Le paramètre qui reçoit la branche est celui déclaré dans le lien ; sans
@@ -3089,9 +3347,13 @@ function ciDeLaBranche(branche) {
 function badgeCI(branche) {
   const ci = ciDeLaBranche(branche);
   if (!ci) return '';
-  const ok = ci.statut === 'ok';
-  const cls = ci.enCours ? 'to_review' : (ok ? 'done' : (ci.statut === 'ko' ? 'stale' : ''));
-  const signe = ci.enCours ? '⋯' : (ok ? '✓' : '✗');
+  /* LE VOCABULAIRE DE JENKINS, PAS UN AUTRE. `jenkins.js` normalise les couleurs de l'API en
+     `succes` / `echec` / `instable` / `desactive` / `inconnu` ; comparer à « ok » et « ko »
+     ne matchait JAMAIS — un build vert portait donc une croix, et sans couleur. */
+  const ok = ci.statut === 'succes';
+  const rouge = ci.statut === 'echec';
+  const cls = ci.enCours ? 'to_review' : (ok ? 'done' : (rouge ? 'stale' : (ci.statut === 'instable' ? 'to_review' : '')));
+  const signe = ci.enCours ? '⋯' : (ok ? '✓' : (rouge ? '✗' : '~'));
   return `<button type="button" class="tag ${cls}" data-ci-job="${esc(ci.path)}" title="${esc(tr('mr.ci.title', { job: ci.path }))}">CI #${ci.number} ${signe}</button>`;
 }
 document.addEventListener('click', (e) => {
@@ -3110,6 +3372,17 @@ document.addEventListener('click', (e) => {
      — le ticket est TERMINÉ et la merge request est encore ouverte : quelque chose cloche.
    L'état vient des tickets SURVEILLÉS, la seule liste que le serveur connaisse hors ligne :
    aucun appel à Jira n'est fait pour dessiner une liste. */
+/* EN CONFLIT — lu de `mr.has_conflicts`, que la forge a dit et que l'outil écrivait déjà
+   (à la découverte, et à l'ouverture de la modale de merge). Personne ne le relisait entre
+   deux ouvertures : on ouvrait la modale pour apprendre qu'on ne pouvait pas merger. Le badge
+   porte le geste qui débloque — résoudre dans Git → Merge — parce qu'un badge qui constate
+   sans offrir de suite ne fait qu'ajouter une mauvaise nouvelle. */
+function badgeConflit(m) {
+  if (!m || !m.has_conflicts) return '';
+  return `<button type="button" class="tag conflit" data-mr-conflit="${m.id}"`
+    + ` title="${esc(tr('mr.tag.conflict-title', { target: m.target_branch || '' }))}">`
+    + `${svgIco('alert')} ${esc(tr('mr.tag.conflict'))}</button>`;
+}
 function badgeTicket(m) {
   if (!m || !m.ticket_category) return '';
   if (m.ticket_category === 'indeterminate' && m.status === 'to_review') {
@@ -3347,6 +3620,10 @@ async function renderResolution(id, versions) {
         <span class="f-sev sev-${sv.cls}">${esc(tr(sv.key))}</span>
         ${loc}
         <span class="f-title">${esc(f.title || '')}</span>
+        ${/* DEPUIS QUAND. « Persistant » dit « déjà là à la passe d'avant » ; il ne dit pas
+              qu'un constat traîne depuis la première review. Trois passes plus tard, c'est
+              exactement la différence entre « pas encore corrigé » et « jamais corrigé ». */''}
+        ${f.since && f.since < data.version ? `<span class="f-since muted" title="${esc(tr('report.finding.since.title', { v: f.since }))}">${esc(tr('report.finding.since', { v: f.since }))}</span>` : ''}
       </div>`;
   }).join('');
   list.hidden = false;
@@ -3399,7 +3676,10 @@ async function openReport(id, opts = {}) {
       <div>
         <div class="title">!${m.iid} — ${esc(m.title || '')}</div>
         <div class="meta">${esc(m.project)}${ticketLink(d.ticket_url, d.ticket_key)} · ${chipBranche(m.source_branch)} → ${chipBranche(m.target_branch, { cible: true })}
-          ${d.stale ? `<span class="tag stale">${tr('report.tag.stale')}</span>` : ''}</div>
+          ${d.stale ? `<span class="tag stale">${tr('report.tag.stale')}</span>` : ''}
+          ${/* CE QUE CETTE REVIEW A COÛTÉ. Les statistiques n'en donnaient qu'une moyenne :
+                « celle-ci a-t-elle coûté cher ? » n'avait pas de réponse là où on la lit. */''}
+          ${d.tokens_est ? ` · <span class="muted" title="${esc(tr('report.cost.title'))}">${esc(tr('task.cost.tokens', { n: fmtMilliers(d.tokens_est) }))}</span>` : ''}</div>
       </div>
       <div class="spacer"></div>
       ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
@@ -3618,6 +3898,7 @@ async function openReport(id, opts = {}) {
     openMergeModal({
       url: `/mrs/${id}/merge`, label: `!${m.iid}`, target: m.target_branch, forge: m.forge,
       project: m.project,
+      mrId: id, ticketKey: m.ticket_key || jiraCleDe(m),
       squash: m.squash, removeSourceBranch: m.remove_source_branch,
       /* Pas de rattrapage ici : cette merge request n'est pas forcément issue d'une session,
          il n'y a donc pas de branche à rejouer. Le conflit, lui, se dit quand même. */
@@ -3667,6 +3948,7 @@ async function openReport(id, opts = {}) {
     } catch (e) { toast(explainError(e.message), true); }
   });
 
+  champAvecBrouillon($('#modifyInput'), `modify:${id}`, () => $('#btnModify').click());
   $('#btnModify').addEventListener('click', async () => {
     const instruction = $('#modifyInput').value.trim();
     if (!instruction) return;
@@ -3676,17 +3958,19 @@ async function openReport(id, opts = {}) {
       // affiché se recharge automatiquement à la fin du job.
       await api(`/mrs/${id}/modify`, { method: 'POST', body: { instruction } });
       $('#modifyInput').value = '';
+      ecrireBrouillon(`modify:${id}`, '');   // parti : le filet n'a plus lieu d'être
       toast(tr('toast.modification-lancee-suivez-le-log'));
       refreshStatus();
     } catch (e) { toast(e.message, true); }
     finally { btn.disabled = false; }
   });
 
+  champAvecBrouillon($('#commentInput'), `comment:${id}`, () => $('#btnComment').click());
   $('#btnComment').addEventListener('click', async () => {
     const body = $('#commentInput').value.trim();
     if (!body) return;
     const btn = $('#btnComment'); btn.disabled = true;
-    try { await api(`/mrs/${id}/comment`, { method: 'POST', body: { body } }); $('#commentInput').value = ''; toast(tr('toast.commentaire-poste-sur-gitlab')); loadMrComments(id); }
+    try { await api(`/mrs/${id}/comment`, { method: 'POST', body: { body } }); $('#commentInput').value = ''; ecrireBrouillon(`comment:${id}`, ''); toast(tr('toast.commentaire-poste-sur-gitlab')); loadMrComments(id); }
     catch (e) { toast(e.message, true); }
     finally { btn.disabled = false; }
   });
@@ -4481,7 +4765,9 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'clone_path', 'prompt_review', 'prompt_explain', 'prompt_modify', 'ai_extra_instructions',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
-  'verif_auto_max', 'review_auto_max', 'todo_close_on_merge',
+  'verif_auto_max', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key',
+  'task_default_auto_push', 'task_default_ask_questions',
+  'task_default_notify_jira', 'task_default_converge',
   'stale_mr_days'];
 /* CE QUI EST TAPÉ NE DOIT PAS ÊTRE EFFACÉ PAR UN CHARGEMENT EN RETARD.
  *
@@ -4581,7 +4867,17 @@ async function loadConfig() {
   if (f.brief_on_open) f.brief_on_open.checked = c.brief_on_open !== '0';
   // Coché par défaut, comme côté serveur : le test est donc `!== '0'`.
   if (f.todo_close_on_merge) f.todo_close_on_merge.checked = c.todo_close_on_merge !== '0';
+  // A/Réglages 1 : décochés par défaut, donc `=== '1'` — poser le réglage ne change rien
+  // tant qu'on n'y a pas touché.
+  for (const k of ['task_default_auto_push', 'task_default_ask_questions', 'task_default_notify_jira', 'task_default_converge']) {
+    if (f[k]) f[k].checked = c[k] === '1';
+  }
   if (f.stale_mr_days) f.stale_mr_days.value = Number(c.stale_mr_days) || 5;
+  /* C15 — LE DÉFAUT EFFECTIF S'ÉCRIT, il ne se devine pas dans un `placeholder`. Un champ vide
+     avec « 5 » en gris se lit « rien n'est réglé », alors que 5 EST la valeur appliquée : on
+     ne sait pas si l'on regarde un réglage ou une suggestion. `retention_days` et
+     `stale_mr_days` le faisaient déjà ; le plafond de vérification automatique non. */
+  if (f.verif_auto_max) f.verif_auto_max.value = Number(c.verif_auto_max) || 5;
   if (f.jenkins_refresh_minutes) f.jenkins_refresh_minutes.value = Number(c.jenkins_refresh_minutes) || 0;
   syncReviewAutoMax();
   convDefauts = { seuil: c.converge_threshold || '8', passes: c.converge_max_passes || '3' };
@@ -4848,6 +5144,7 @@ $('#localRootForm') && $('#localRootForm').addEventListener('submit', async (e) 
    - Exploration : lecture seule, l'IA répond à une question sur l'ensemble des projets
      et sa réponse est enregistrée dans un .md consultable. Ni diff ni merge. */
 let taskNewImages = [];        // captures du formulaire (data URLs)
+let piecesNoteProposees = [];   // B6 : captures d'une page de notes proposées à la session
 let taskKind = 'code';         // sous-onglet courant : 'code' | 'local' | 'explore'
 // Sessions rangées : masquées par défaut, la préférence est relue au démarrage.
 let showHiddenTasks = (() => { try { return localStorage.getItem('aidevtools_show_hidden') === '1'; } catch { return false; } })();
@@ -5373,7 +5670,10 @@ function setTaskPieces(scope, liste) {
   renderTaskPieces();
 }
 // Remet à neuf les DEUX listes du formulaire : ce qu'on vient de choisir, et ce qui est déjà là.
-function resetTaskFiles() { taskNewImages = []; renderTaskPreviews(); setTaskPieces('task', []); }
+/* `piecesNoteProposees` est remis à zéro ICI, avec les autres pièces : c'est le passage
+   obligé de TOUTES les ouvertures de la modale. Le laisser traîner ferait joindre les
+   captures d'une note à la session suivante, qui n'a rien demandé. */
+function resetTaskFiles() { taskNewImages = []; piecesNoteProposees = []; renderTaskPreviews(); setTaskPieces('task', []); }
 
 function readFileDataURL(file) {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
@@ -5409,6 +5709,10 @@ function applyKindToModal(kind) {
   /* « puis converger » : sessions de CODAGE, et seulement à la création — sur une session
      déjà écrite, la convergence se lance depuis sa carte. */
   const cv = $('#taskConvergeRow'); if (cv) cv.hidden = kind !== 'code' || !!editingTaskId;
+  /* La review d'une MR n'a de sens que pour une session de CODAGE. Contrairement à la
+     convergence, elle reste offerte à l'édition : la merge request n'est souvent pas encore
+     créée quand on rouvre la session pour corriger son prompt. */
+  const ra = $('#taskReviewAfterRow'); if (ra) ra.hidden = kind !== 'code';
   /* « Prévenir Jira » n'a de sens qu'en codage (il faut une merge request) et que si Jira est
      connecté : proposer d'écrire dans un Jira absent serait une case qui ne fait rien. */
   const nj = $('#taskNotifyJiraRow'); if (nj) nj.hidden = kind !== 'code' || !jiraConfigured;
@@ -5476,6 +5780,12 @@ async function majVerificateursSession(choisi = null) {
     sel.innerHTML = `<option value="">${esc(tr('task.verifier.none-covering'))}</option>`;
   }
   sel.value = couvrants.some((v) => String(v.id) === garde) ? garde : '';
+  /* UN SEUL VÉRIFICATEUR COUVRE TOUS LES DÉPÔTS : il se choisit tout seul. Sans ça, on lit le
+     rapport, on clique « Faire corriger », on lance — et la session finit « poussée » sans
+     verdict, parce qu'un sélecteur vide ne se remarque pas. Un clic suffit à le retirer.
+     Seulement à l'INITIALISATION (`choisi` non nul) : sur un simple changement de projets
+     (`null`), re-choisir écraserait un retrait délibéré à chaque ligne ajoutée. */
+  if (!sel.value && choisi !== null && couvrants.length === 1) sel.value = String(couvrants[0].id);
   majLienVerifPush();
 }
 
@@ -5528,12 +5838,79 @@ async function defautsConvergence() {
   } catch { convDefauts = { seuil: '8', passes: '3' }; }
   return convDefauts;
 }
+/* A/Réglages 1 — les quatre cases de session partent des défauts réglés dans Réglages →
+   Général. Lus une fois par page, comme le seuil de convergence : c'est un réglage, il ne
+   change pas entre deux ouvertures de la modale. */
+let taskDefauts = null;
+async function defautsSession() {
+  if (taskDefauts) return taskDefauts;
+  try {
+    const c = await api('/config');
+    taskDefauts = {
+      auto_push: c.task_default_auto_push === '1',
+      ask_questions: c.task_default_ask_questions === '1',
+      notify_jira: c.task_default_notify_jira === '1',
+      converge_after: c.task_default_converge === '1',
+    };
+  } catch { taskDefauts = { auto_push: false, ask_questions: false, notify_jira: false, converge_after: false }; }
+  return taskDefauts;
+}
+/* Posés APRÈS `f.reset()` et seulement sur une session NEUVE : rouvrir une session existante
+   doit montrer ce qu'elle porte, pas ce qu'on aime cocher d'habitude. */
+async function appliquerDefautsSession(f) {
+  const d = await defautsSession();
+  for (const [k, v] of Object.entries(d)) { if (f[k] && v) f[k].checked = true; }
+  majLienVerifPush();
+}
 async function majLibelleConverge() {
   const l = $('#taskConvergeLbl');
   if (!l) return;
   const d = await defautsConvergence();
   l.textContent = tr('task.lbl.converge-after', { seuil: d.seuil, passes: d.passes });
 }
+
+/* A/Dev IA 2 — « LES MÊMES PROJETS QUE LA DERNIÈRE FOIS ». Avec quarante dépôts, la ligne
+   proposée d'office était le premier de la liste : faux trente-neuf fois sur quarante. Trois
+   sessions sur quatre dépôts font douze sélections par jour, toujours les mêmes. On retient
+   donc le dernier jeu PAR SAVEUR (coder et explorer n'ont pas les mêmes habitudes), retenu à
+   la CRÉATION et pas à la saisie : un formulaire abandonné ne fait pas une habitude.
+   Les branches ne sont pas reprises — elles, elles changent à chaque fois. */
+const PROJETS_MEMO = 'aidevtools_task_projets';
+const projetsMemo = () => { try { return JSON.parse(localStorage.getItem(PROJETS_MEMO) || '{}'); } catch { return {}; } };
+function memoriserProjets(kind, cibles) {
+  const ids = [...new Set((cibles || []).map((t) => Number(t.repo_id)).filter(Boolean))];
+  if (!ids.length) return;
+  try { localStorage.setItem(PROJETS_MEMO, JSON.stringify({ ...projetsMemo(), [kind]: ids })); } catch { /* ignore */ }
+}
+/* Un dépôt retiré depuis (désactivé, supprimé) est écarté en silence : proposer une ligne
+   qui ne peut pas être choisie serait pire que ne rien proposer. */
+function lignesProposees(kind) {
+  const ids = (projetsMemo()[kind] || []).filter((id) => repoOptions.some((r) => r.id === Number(id)));
+  return ids.length ? ids.map((id) => ({ repo_id: Number(id) })) : [{}];
+}
+
+/* LES SESSIONS D'AGENT REPRENABLES, proposées. Le champ attendait un identifiant qu'on allait
+   chercher dans un terminal ; l'outil les connaît toutes. Chargées UNE fois par page et
+   seulement quand le bloc « Avancé » sert — c'est une liste de confort, pas un écran. */
+let sessionsAgent = null;
+async function remplirSessionsAgent() {
+  const box = $('#taskSessionPick');
+  if (!box) return;
+  if (!sessionsAgent) {
+    try { sessionsAgent = await api('/agent-sessions'); } catch { sessionsAgent = []; }
+  }
+  box.hidden = !sessionsAgent.length;
+  if (!sessionsAgent.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<span class="muted">${esc(tr('task.session-pick.intro'))}</span> `
+    + sessionsAgent.slice(0, 6).map((x) => `<button type="button" class="btn btn-sm" data-sesskey="${esc(x.key)}"
+        title="${esc(tr('task.session-pick.title', { where: x.where || '', when: x.when ? depuis(x.when) : '' }))}">${esc(String(x.label || x.key).slice(0, 40))}</button>`).join('');
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-sesskey]');
+  if (!b) return;
+  const champ = $('#taskSessionId');
+  if (champ) { champ.value = b.dataset.sesskey; champ.focus(); }
+});
 
 async function openTaskModal(kind = taskKind) {
   editingTaskId = null; launchAfterCreate = false; cleJiraDeLaSession = null;
@@ -5543,8 +5920,10 @@ async function openTaskModal(kind = taskKind) {
   if (kind !== 'local' && kind !== 'ask') await loadRepoOptions();
   if (kind === 'local') { localPicks = ['']; await loadLocalRoots(); }
   applyKindToModal(kind);
-  if (kind !== 'local' && kind !== 'ask') { renderTargetRows([{}]); setupTaskJira(''); }
+  if (kind !== 'local' && kind !== 'ask') { renderTargetRows(lignesProposees(kind)); setupTaskJira(''); }
   if (kind !== 'ask') await majVerificateursSession('');
+  await appliquerDefautsSession(f);
+  remplirSessionsAgent();
   $('#taskModalTitle').textContent = KIND_LABEL[kind].title;
   $('#taskExistingImgs').textContent = '';
   boutonsCreation();
@@ -5582,6 +5961,10 @@ async function openTaskForMr(m, opts = {}) {
   if (f.session_id) f.session_id.value = opts.sessionId || '';
   const hint = $('#taskSessionHint');
   if (hint && opts.sessionId) { hint.textContent = tr('task.session-id.from-mr'); hint.hidden = false; hint.dataset.keep = '1'; }
+  /* §0 — LES DEUX ENTRÉES LES PLUS FRÉQUENTES DE LA MODALE ne rafraîchissaient jamais
+     « Vérifier après » : le sélecteur restait vide, ou gardait la liste de l'ouverture
+     précédente — celle d'autres dépôts. On le remplit ici, comme le fait une ouverture neuve. */
+  await majVerificateursSession('');
   $('#taskModalTitle').textContent = opts.title || `Faire coder l'IA sur ${m.source_branch}`;
   $('#taskExistingImgs').textContent = tr('task.from-mr', { branch: m.source_branch, iid: m.iid });
   boutonsCreation();
@@ -5688,6 +6071,70 @@ async function piecesJiraCochees() {
   return out;
 }
 
+/* B6 — DEPUIS UNE PAGE DE NOTES. Le prompt est le contenu de la page, titre compris : c'est
+   ce qui a été écrit en réunion, et le réécrire dans la modale est exactement la corvée qu'on
+   supprime. Les captures collées dans la page sont proposées en pièces jointes, comme celles
+   d'un ticket Jira — cochées d'office jusqu'à trois, au-delà choisir est le geste utile. */
+async function openTaskForNote(page) {
+  if (!page) return;
+  const f = $('#taskForm');
+  f.reset(); resetTaskFiles();
+  editingTaskId = null; taskKind = 'code';
+  launchAfterCreate = false;          // on prépare, l'utilisateur lance
+  cleJiraDeLaSession = null;
+  await loadRepoOptions();
+  applyKindToModal('code');
+  renderTargetRows(lignesProposees('code'));
+  setupTaskJira('');
+  f.prompt.value = `${tr('task.note.context-header', { title: page.title || '' })}\n\n${(page.content || '').trim()}\n\n---\n\n`;
+  await proposerPiecesNote(page.id);
+  await majVerificateursSession('');
+  await appliquerDefautsSession(f);
+  $('#taskModalTitle').textContent = tr('task.note.modal-title', { title: page.title || '' });
+  $('#taskExistingImgs').textContent = tr('task.note.from', { title: page.title || '' });
+  boutonsCreation();
+  showTaskModal();
+  f.prompt.focus();
+  f.prompt.setSelectionRange(f.prompt.value.length, f.prompt.value.length);
+}
+
+/* Les captures de la page, en cases à cocher. On réutilise le bloc des pièces Jira : c'est le
+   même geste et le même endroit à l'écran — en avoir deux ferait deux vies à maintenir. */
+async function proposerPiecesNote(pageId) {
+  const box = $('#taskJiraPieces');
+  piecesNoteProposees = [];
+  if (!box) return;
+  let images = [];
+  try { images = await api(`/notes/${pageId}/images`); } catch { images = []; }
+  box.hidden = !images.length;
+  if (!images.length) { box.innerHTML = ''; return; }
+  piecesNoteProposees = images.map((im) => ({ ...im, url: `/api/notes/${pageId}/images/${im.id}` }));
+  const defaut = images.length <= 3;
+  box.innerHTML = `<p class="field-note">${esc(tr('task.note.pieces.intro'))}</p>`
+    + piecesNoteProposees.map((a, i) => `<label class="jira-piece"><input type="checkbox" data-note-piece="${i}"${defaut ? ' checked' : ''} />
+        <img src="${esc(a.url)}" alt="${esc(a.name)}" loading="lazy" />
+        <span class="muted">${esc(a.name)}</span></label>`).join('');
+}
+
+/* Même mécanique que pour Jira : on télécharge CE QUI EST COCHÉ au moment de créer. */
+async function piecesNoteCochees() {
+  const choisies = $$('#taskJiraPieces [data-note-piece]:checked')
+    .map((c) => piecesNoteProposees[Number(c.dataset.notePiece)]).filter(Boolean);
+  const out = [];
+  for (const a of choisies) {
+    try {
+      const rep = await fetch(a.url);
+      if (!rep.ok) continue;
+      const blob = await rep.blob();
+      const data = await new Promise((res2, rej) => {
+        const r = new FileReader(); r.onload = () => res2(r.result); r.onerror = rej; r.readAsDataURL(blob);
+      });
+      out.push({ name: a.name || 'capture.png', data });
+    } catch { /* pièce injoignable : la session part sans elle */ }
+  }
+  return out;
+}
+
 async function openTaskForJira(key) {
   const f = $('#taskForm');
   f.reset(); resetTaskFiles();
@@ -5723,6 +6170,7 @@ async function openTaskForJira(key) {
      en cases à cocher, cochées d'office s'il y en a trois ou moins (au-delà, choisir est le
      geste utile). Le téléchargement passe par le proxy existant. */
   await proposerPiecesJira(issue);
+  await majVerificateursSession('');   // §0 — idem depuis un ticket
   $('#taskModalTitle').textContent = tr('jira.code-modal-title', { key });
   $('#taskExistingImgs').textContent = issue ? tr('jira.code-from', { key: issue.key, summary: issue.summary || '' }) : '';
   boutonsCreation();
@@ -5751,6 +6199,7 @@ async function openTaskEdit(id) {
     if (f.auto_push) f.auto_push.checked = !!t.auto_push;
     if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
   if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
+  if (f.review_after) f.review_after.checked = !!t.review_after;
     await majVerificateursSession(t.verifier_id || '');
     if (f.session_id) f.session_id.value = sharedSessionKey(t.targets);
     $('#taskModalTitle').textContent = tr(taskKind === 'code' ? 'task.edit.code-title' : 'task.edit.explore-title');
@@ -5812,6 +6261,7 @@ async function dupliquerTask(id) {
   if (f.auto_push) f.auto_push.checked = !!t.auto_push;
   if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
   if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
+  if (f.review_after) f.review_after.checked = !!t.review_after;
   await majVerificateursSession(t.verifier_id || '');
   if (f.session_id) f.session_id.value = '';
   $('#taskModalTitle').textContent = tr(decale ? 'task.duplicate.title' : 'task.duplicate.title-explore');
@@ -5875,6 +6325,7 @@ async function dupliquerLocalTask(id) {
   if (f.label) f.label.value = t.label || '';
   if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
   if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
+  if (f.review_after) f.review_after.checked = !!t.review_after;
   if (f.session_id) f.session_id.value = '';
   $('#taskModalTitle').textContent = tr('task.duplicate.title-local');
   infoDuplication(false, (d.images && d.images.length) || 0);
@@ -5917,6 +6368,7 @@ async function openLocalTaskEdit(id) {
   if (f.label) f.label.value = t.label || '';
   if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
   if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
+  if (f.review_after) f.review_after.checked = !!t.review_after;
   if (f.session_id) f.session_id.value = sharedSessionKey(t.dirs);
   $('#taskModalTitle').textContent = tr('local.edit-title');
   setTaskPieces('local', d.images);
@@ -6121,6 +6573,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
     ask_questions: f.ask_questions ? f.ask_questions.checked : false,
     // B5 : prévenir Jira à la création de chaque merge request de cette session.
     notify_jira: f.notify_jira ? f.notify_jira.checked : false,
+    review_after: f.review_after ? f.review_after.checked : false,
     verifier_id: f.verifier_id ? Number(f.verifier_id.value) || null : null,
     // Session existante à reprendre. Vide = nouvelle session, le cas courant. Le champ
     // n'est lu qu'à la CRÉATION : la modale d'édition ne réaffecte pas une session déjà
@@ -6134,7 +6587,12 @@ $('#taskForm').addEventListener('submit', async (e) => {
     const pieces = await piecesJiraCochees();
     if (pieces.length) body.files = [...(body.files || []), ...pieces];
   }
+  if (piecesNoteProposees.length) {
+    const pieces = await piecesNoteCochees();
+    if (pieces.length) body.files = [...(body.files || []), ...pieces];
+  }
   memoriserBaseSession(targets);   // la prochaine session partira de la même branche, par dépôt
+  memoriserProjets(taskKind, targets);   // …et sur les mêmes projets, par saveur
   // Session née d'un ticket : le dépôt retenu servira de proposition au prochain de ce projet.
   if (cleJiraDeLaSession && targets[0]) memoriserDepotJira(cleJiraDeLaSession, targets[0].repo_id);
   const btn = $('#taskSubmit');
@@ -6573,7 +7031,7 @@ function localCard(t) {
       ${libelleBlock(t)}
       ${promptBlock(t.prompt)}
       ${chapeauCarte(t)}
-      ${coutCarte(t)}
+      ${coutCarte(t)}${badgeTodoAttente(t)}
       ${toggleProjetsHtml('local', t.id, n)}
       <div class="targets"${projetsVisibles('local', t.id, n) ? '' : ' hidden'}>${(t.dirs || []).map((d) => localDirLine(d, t)).join('')}</div>
       ${suiviBlock(t, 'l')}
@@ -6731,7 +7189,7 @@ function askCard(q) {
       ${libelleBlock(q)}
       ${promptBlock(q.prompt)}
       ${chapeauCarte(q)}
-      ${coutCarte(q)}
+      ${coutCarte(q)}${badgeTodoAttente(q)}
       ${suiviBlock(q, 'q')}
       <div class="mr-create followup" data-qfollowform="${q.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('ask.followup.ph'))}">${esc(q.followup_draft || '')}</textarea>
@@ -6896,7 +7354,7 @@ function taskHead(t) {
     ${libelleBlock(t)}
     ${promptBlock(t.prompt)}
     ${chapeauCarte(t)}
-    ${coutCarte(t)}`;
+    ${coutCarte(t)}${badgeTodoAttente(t)}`;
 }
 
 /* Repli de la liste de projets, PARTAGÉ par les trois familles de sessions (codage,
@@ -7062,8 +7520,37 @@ function coutCarte(t) {
   const bouts = [];
   if (t && t.duration_ms) bouts.push(esc(dureeCourte(t.duration_ms)));
   if (t && t.tokens_est) bouts.push(esc(tr('task.cost.tokens', { n: fmtMilliers(t.tokens_est) })));
+  /* QUAND ÇA S'EST TERMINÉ. `finished_at` était stocké, servait au TRI de la liste, et
+     n'apparaissait nulle part : on lisait « terminée » sans savoir si c'était il y a trois
+     minutes ou trois semaines. Relatif, avec la date exacte au survol comme partout. */
+  if (t && t.finished_at && t.status !== 'running') {
+    bouts.push(`<span data-when="${esc(t.finished_at)}">${esc(tr('task.finished-ago', { when: depuis(t.finished_at) }))}</span>`);
+  }
   return bouts.length ? `<span class="task-cout muted">${bouts.join(' · ')}</span>` : '';
 }
+/* UNE TODO T'ATTEND — l'agent s'est arrêté sur une question, l'outil a posé la todo, et la
+   carte n'en disait rien : on la retrouvait dans Notes, ou pas. Le badge y mène. */
+function badgeTodoAttente(t) {
+  if (!t || !t.todo_waiting) return '';
+  return `<button type="button" class="tag to_review" data-todo-attente`
+    + ` title="${esc(tr('task.todo-waiting.title'))}">${svgIco('clip')} ${esc(tr('task.todo-waiting'))}</button>`;
+}
+/* B9 — lancer la review depuis la ligne de projet. Le MÊME appel que la file : il n'y a
+   qu'une façon de reviewer, et c'est celle-là. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-tgreview]');
+  if (!b) return;
+  try {
+    await busy(b, () => api(`/mrs/${b.dataset.tgreview}/review`, { method: 'POST' }));
+    toast(tr('toast.review-de-lancee', { iid: b.dataset.iid || '' }));
+    refreshStatus();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
+document.addEventListener('click', (e) => {
+  if (!(e.target.closest && e.target.closest('[data-todo-attente]'))) return;
+  navTab('notes'); showNotesSub('todos');
+});
 const fmtMilliers = (n) => Number(n).toLocaleString(I18Nrt.currentLocale());
 function dureeCourte(ms) {
   const s = Math.round(ms / 1000);
@@ -7122,6 +7609,13 @@ function targetLine(t, tg) {
     ${tg.session_note ? `<span class="t-note" title="${esc(tr('task.session.fallback-title', { detail: tg.session_note }))}">${svgIco('alert')} ${esc(tr('task.session.fallback'))}</span>` : ''}
     ${mrIid ? (mrUrl ? ` <a href="${esc(mrUrl)}" target="_blank">MR !${mrIid} ↗</a>` : ` <span class="muted">MR !${mrIid}</span>`) : ''}
     ${etatMrDeLaLigne(tg)}
+    ${/* B9 — REVIEWER LA MR QUE CETTE SESSION VIENT D'OUVRIR. Le geste suivant évident, et il
+          fallait aller dans Reviews, retrouver !250 dans la file, cliquer, puis revenir ici
+          pour la suite. Le bouton ne s'affiche que si la MR existe ET n'a pas encore de
+          rapport : proposer de reviewer ce qui est déjà reviewé n'aide personne. */''}
+    ${tg.mr_row_id && !tg.has_review
+    ? `<button class="btn btn-sm" data-tgreview="${tg.mr_row_id}" data-iid="${mrIid || ''}" title="${esc(tr('task.title.review-mr'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${esc(tr('mr.btn.review'))}</button>`
+    : ''}
     ${badgeCI(tg.branch)}
     ${/* B5 — PRÉVENIR JIRA. La merge request est ouverte et la branche porte une clé : un
           commentaire avec le lien, et la transition « en revue » si Jira la propose. Derrière
@@ -7146,7 +7640,7 @@ function targetLine(t, tg) {
       return `<button class="btn btn-sm" data-tgrebase="${tg.id}" data-task="${t.id}" data-branch="${esc(tg.branch || '')}" data-base="${esc(dep)}" title="${esc(tr('task.title.update-base', { base: dep }))}"><svg class="ico ico-sm"><use href="#i-repeat"/></svg>${tr('task.btn.update-base', { base: dep })}</button>`;
     })() : ''}
     ${showPush ? `<button class="btn btn-sm btn-primary" data-tgpush="${tg.id}" data-task="${t.id}" data-project="${esc(tg.project)}" data-branch="${esc(tg.branch || '')}" data-force="${tg.force_push ? '1' : ''}" title="${esc(tg.force_push ? tr('task.title.push-force') : tr('task.btn.push-title'))}"><svg class="ico ico-sm"><use href="#i-upload"/></svg>${tr('task.btn.push')}</button>` : ''}
-    ${canMr ? `<button class="btn btn-sm btn-primary" data-tgmr="${tg.id}" data-task="${t.id}" data-title="${esc(defaultMrTitle)}" data-branch="${esc(tg.branch || '')}" data-target="${esc(tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.open-mr'))}"><svg class="ico ico-sm"><use href="#i-branch"/></svg>${tr('task.btn.create-mr')}</button>` : ''}
+    ${canMr ? `<button class="btn btn-sm btn-primary" data-tgmr="${tg.id}" data-task="${t.id}" data-project="${esc(tg.project || '')}" data-title="${esc(defaultMrTitle)}" data-branch="${esc(tg.branch || '')}" data-target="${esc(tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.open-mr'))}"><svg class="ico ico-sm"><use href="#i-branch"/></svg>${tr('task.btn.create-mr')}</button>` : ''}
     ${mrIid && !tg.mr_merged ? `<button class="btn btn-sm btn-danger" data-tgmerge="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-target="${esc(tg.mr_target || tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" data-project="${esc(tg.project || '')}" title="${esc(tr('task.title.merge-mr'))}"><svg class="ico ico-sm"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>` : ''}
     ${tg.last_error ? `<span class="t-err" title="${esc(tg.last_error)}">${svgIco('alert')} ${tr('task.failed')}</span>` : ''}
   </div>${followTarget ? `
@@ -7155,6 +7649,18 @@ function targetLine(t, tg) {
     ${suiviCapturesHtml()}
     ${tg.has_review ? boutonSuiviReview(t.id, tg.id) : ''}
     ${tg.has_verify_fail ? boutonSuiviVerif(t.id, tg.id) : ''}
+    ${/* B3 — LA CONSOLE JENKINS ENTRE DANS LE SUIVI. `CI #42 ✗ · Module not found` : on
+          ouvrait Détails, on sélectionnait la console à la souris, on copiait, on ouvrait
+          « Envoyer un suivi », on collait, on expliquait. Le bouton fait le même chemin que
+          « Reprendre le rapport de vérif », avec le texte que Jenkins a écrit. Le verdict
+          reste celui de Jenkins : l'agent ne reçoit que le texte à corriger. */''}
+    ${(() => {
+    const ci = ciDeLaBranche(tg.branch);
+    return ci && ci.statut === 'echec' && !ci.enCours && ['committed', 'pushed', 'error'].includes(tg.status)
+      ? `<button class="btn btn-sm" data-followci="${t.id}" data-tgci="${tg.id}" data-job="${esc(ci.path)}" data-build="${ci.number}"
+           title="${esc(tr('task.title.followup-ci', { job: ci.path, n: ci.number }))}">${svgIco('bot')}${esc(tr('task.btn.followup-ci'))}</button>`
+      : '';
+  })()}
     <button class="btn" data-followcancel="tg${tg.id}">${tr('ui.cancel')}</button>
     <button class="btn btn-primary" data-followsubmit="${t.id}" data-followtarget="${tg.id}">${tr('task.btn.run-iteration')}</button>
   </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg, `/tasks/${t.id}/targets/${tg.id}/answer`) : ''}`;
@@ -7389,7 +7895,7 @@ function wireTaskActions() {
     openMrModal({
       url: `/tasks/${b.dataset.task}/targets/${b.dataset.tgmr}/mr`,
       title: b.dataset.title, source: b.dataset.branch, target: b.dataset.target || '',
-      forge: b.dataset.forge,
+      forge: b.dataset.forge, project: b.dataset.project || '',
       onDone: () => loadTasks(),
     });
   });
@@ -7451,6 +7957,30 @@ function wireTaskActions() {
     taskAttr: 'followverif', targetAttr: 'followveriftarget', url: 'verify-prompt',
     label: 'task.btn.followup-verify', compteur: (d) => d.verificateurs.length,
   }));
+  /* B3 — la console de Jenkins, dans le champ de suivi. Elle n'est pas composée par le
+     serveur comme les deux autres : elle ne vient pas de nous, elle vient de Jenkins. On la
+     demande à la route qui la sert déjà, on garde les trente dernières lignes utiles — la
+     même borne que le panneau de détail — et on écrit un prompt qui DIT d'où ça sort. */
+  on('[data-followci]', async (b) => {
+    const cle = b.dataset.tgci ? `tg${b.dataset.tgci}` : b.dataset.followci;
+    const champ = $(`#taskList .followup[data-followform="${cle}"] .followup-text`);
+    if (!champ) return;
+    try {
+      const d = await busy(b, () => api(`/jenkins/console?path=${encodeURIComponent(b.dataset.job)}&build=${encodeURIComponent(b.dataset.build)}`));
+      const lignes = String((d && d.text) || '').split('\n').filter((l) => l.trim()).slice(-30).join('\n');
+      if (!lignes) { toast(tr('jenkins.build.tail-empty'), true); return; }
+      if (champ.value.trim() && !await confirmDialog({
+        title: tr('confirm.followup-review.title'),
+        text: tr('confirm.followup-review.text'),
+        confirmLabel: tr('task.btn.followup-ci'),
+        danger: false,
+      })) return;
+      champ.value = tr('task.followup-ci.prompt', { job: b.dataset.job, n: b.dataset.build, log: lignes });
+      champ.focus();
+      champ.dispatchEvent(new Event('input', { bubbles: true }));   // l'autosave doit le voir
+      toast(tr('task.followup-ci.filled', { n: b.dataset.build }));
+    } catch (e) { toast(explainError(e.message), true); }
+  });
   /* Le rebase RÉÉCRIT l'historique de la branche : on le dit avant, pas après. Le push qui
      suivra devra être forcé, et une branche que d'autres ont pu tirer n'est pas un détail. */
   on('[data-tgrebase]', async (b) => {
@@ -7997,6 +8527,14 @@ $('#bulkAdd').addEventListener('click', async () => {
 
 /* ---------- Règles de review spécifiques ---------- */
 async function loadRules() {
+  /* A/Réglages 2 — le dépôt se CHOISIT, avec recherche : `npm run check` refuse une liste de
+     dépôts sans champ de recherche, et pour cause — un parc en compte quarante. Vide = tous. */
+  const boxRegle = $('#ruleRepoBox');
+  if (boxRegle) {
+    await loadRepoOptions();
+    boxRegle.innerHTML = repoComboHtml(null, { idClass: 'rule-repo' });
+    wireRepoCombos(boxRegle);
+  }
   const rows = await api('/rules');
   const el = $('#ruleList');
   el.innerHTML = rows.length ? rows.map((r) => `
@@ -8014,6 +8552,7 @@ async function loadRules() {
       ${/* COMBIEN DE MERGE REQUESTS OUVERTES CETTE RÈGLE TOUCHE-T-ELLE ? Une règle qui ne
             matche plus rien reste dans la liste sans qu'on le sache. Calculé localement,
             sans IA : les chemins modifiés et le nom de branche sont en base. */''}
+      ${r.repo_id ? `<p class="field-note">${esc(tr('settings.rule.scoped', { project: (repoOptions.find((x) => x.id === r.repo_id) || {}).project || `#${r.repo_id}` }))}</p>` : ''}
       <p class="field-note${r.open_mrs ? '' : ' rule-vide'}">${esc(r.open_mrs
     ? tr('settings.rule.reach', { n: r.open_mrs, count: r.open_mrs })
     : tr('settings.rule.reach-none'))}</p>
@@ -8045,6 +8584,7 @@ $('#ruleForm').addEventListener('submit', async (e) => {
   try {
     await api('/rules', { method: 'POST', body: {
       branch_match: f.branch_match.value, path_match: f.path_match.value, label: f.label.value, content: f.content.value,
+      repo_id: Number(($('#ruleRepoBox .rule-repo') || {}).value || 0) || null,
     } });
     f.branch_match.value = ''; f.path_match.value = ''; f.label.value = ''; f.content.value = ''; loadRules(); toast(tr('toast.regle-ajoutee'));
   } catch (err) { toast(err.message, true); }
@@ -8523,9 +9063,33 @@ window.addEventListener('unhandledrejection', (e) => {
      c'est la faute de frappe qui touche juste sans qu'on s'en aperçoive ;
    - rien ne s'exécute sans aperçu. L'aperçu EST la confirmation. */
 
-let gitTargets = [{}];          // [{ repo_id, ref, refs: [], name }]
+/* A/Git 1 — les dépôts de la dernière fois, s'ils existent encore. Un dépôt retiré depuis
+   est écarté en silence : proposer une ligne qu'on ne peut pas choisir vaut moins que rien. */
+let gitTargets = (() => {
+  try {
+    const ids = (JSON.parse(localStorage.getItem('aidevtools_git_actions') || '{}').repos) || [];
+    return ids.length ? ids.map((id) => ({ repo_id: Number(id) })) : [{}];
+  } catch { return [{}]; }
+})();          // [{ repo_id, ref, refs: [], name }]
 let gitRefsCache = {};          // "repoId|kind" -> { refs, default }
 let gitPreviewData = null;
+
+/* A/Git 1 — ACTIONS SE SOUVIENT, comme Navigation et Commandes. Trois sous-onglets voisins,
+   deux politiques de mémoire : on rouvrait « Actions » sur « Créer une branche » et une ligne
+   vide, alors qu'on y vient presque toujours pour la même opération sur les mêmes dépôts.
+   L'action et les DÉPÔTS sont retenus ; ni les noms de branche (ils changent à chaque fois)
+   ni les refs cochées pour une suppression — recocher est justement le geste qui fait relire
+   ce qu'on s'apprête à supprimer. */
+const GIT_ACT_MEMO = 'aidevtools_git_actions';
+const gitActMemo = () => { try { return JSON.parse(localStorage.getItem(GIT_ACT_MEMO) || '{}'); } catch { return {}; } };
+function gitActMemoriser() {
+  try {
+    localStorage.setItem(GIT_ACT_MEMO, JSON.stringify({
+      action: ($('#gitAction') || {}).value || 'new_branch',
+      repos: $$('#gitTargetRows .git-repo').map((el) => Number(el.value)).filter(Boolean),
+    }));
+  } catch { /* stockage indisponible */ }
+}
 
 const gitAction = () => ($('#gitAction') || {}).value || 'new_branch';
 const gitIsDelete = () => /^delete_/.test(gitAction());
@@ -8686,10 +9250,46 @@ function gitDropPreview() {
 }
 
 // Le formulaire change de forme selon l'action : c'est le même écran, pas quatre.
+/* A/Git 2 — LE NOM SUIVANT. `release/1.4` puis `release/1.5` : le dernier nom créé porte
+   presque toujours la réponse, à un chiffre près. On retient donc le dernier nom validé et on
+   propose son incrément — bouton, pas remplissage automatique : deviner un nom de branche à
+   la place de quelqu'un est le genre de service qu'on regrette. */
+const GIT_DERNIER_NOM = 'aidevtools_git_dernier_nom';
+function nomSuivant(nom) {
+  const m = String(nom || '').match(/^(.*?)(\d+)(\D*)$/);
+  if (!m) return '';
+  return `${m[1]}${String(Number(m[2]) + 1)}${m[3]}`;
+}
+function majPropositionNom() {
+  const b = $('#gitNameSuivant');
+  if (!b) return;
+  let dernier = '';
+  try { dernier = localStorage.getItem(GIT_DERNIER_NOM) || ''; } catch { dernier = ''; }
+  const suivant = nomSuivant(dernier);
+  b.hidden = !suivant || gitIsDelete();
+  if (suivant) { b.textContent = suivant; b.title = tr('git.name.next-title', { nom: suivant }); }
+}
+$('#gitNameSuivant') && $('#gitNameSuivant').addEventListener('click', () => {
+  const champ = $('#gitRefName');
+  if (champ) { champ.value = $('#gitNameSuivant').textContent; champ.focus(); }
+});
+/* Le presse-papiers est lu AU CLIC et nulle part ailleurs : c'est une lecture de ce que
+   l'utilisateur a copié, elle ne se fait pas en fond. Un contenu sans clé de ticket ne
+   remplit rien — on le dit plutôt que de coller n'importe quoi. */
+$('#gitNameColler') && $('#gitNameColler').addEventListener('click', async () => {
+  let texte = '';
+  try { texte = await navigator.clipboard.readText(); } catch { toast(tr('git.name.clipboard-denied'), true); return; }
+  const m = String(texte || '').match(/[A-Z][A-Z0-9]+-\d+/);
+  if (!m) { toast(tr('git.name.clipboard-no-key'), true); return; }
+  const champ = $('#gitRefName');
+  if (champ) { champ.value = `feature/${m[0]}`; champ.focus(); }
+});
+
 function gitApplyAction() {
   const del = gitIsDelete();
   const tag = gitIsTag();
   $('#gitNameField').hidden = del;                  // on ne saisit rien pour supprimer
+  majPropositionNom();
   $('#gitSameNameField').hidden = del;
   $('#gitNameRow').hidden = del || !gitSameName();  // saisi par projet → plus de champ global
   $('#gitMsgField').hidden = !(tag && !del);
@@ -8732,7 +9332,10 @@ function gitRenderPreview(pv) {
     // diffère d'un projet à l'autre avant de l'écrire.
     const ref = (r.ref ? '<code>' + esc(r.ref) + '</code>' : '<span class="muted">—</span>')
       + (r.target ? ' <span class="muted git-pv-arrow">→</span> <code class="git-pv-target">' + esc(r.target) + '</code>' : '');
-    const sha = r.sha ? '<span class="muted git-sha">' + esc(String(r.sha).slice(0, 8)) + '</span>' : '';
+    /* C7 — le SHA s'affiche court (huit caractères se lisent) mais se COPIE entier : un
+       `git show` ou un message d'incident veut le complet, et il n'existait nulle part. */
+    const sha = r.sha ? '<button type="button" class="muted git-sha git-sha-copy" data-copy-txt="' + esc(r.sha)
+      + '" title="' + esc(tr('git.copy-sha')) + '">' + esc(String(r.sha).slice(0, 8)) + '</button>' : '';
     const when = r.committed_date ? '<span class="muted">' + fmtDate(r.committed_date) + '</span>' : '';
     /* CE QUI DIT SI C'EST SÛR. Trois cas, trois couleurs : mergée (vert, on peut y aller),
        merge request encore ouverte (ambre, on va casser quelque chose), ni l'un ni l'autre
@@ -8781,6 +9384,11 @@ async function gitDoPreview() {
     const names = gitNameBody(targets);
     if (!names) { toast(tr('err.git.name-per-project'), true); return; }
     Object.assign(body, names);
+  }
+  gitActMemoriser();   // retenu à l'APERÇU : c'est le moment où l'intention est formée
+  if (!gitIsDelete()) {
+    const n = ($('#gitRefName') || {}).value || '';
+    if (n.trim()) { try { localStorage.setItem(GIT_DERNIER_NOM, n.trim()); } catch { /* ignore */ } }
   }
   try { gitRenderPreview(await busy(btn, () => api('/git/preview', { method: 'POST', body }))); }
   catch (e) { toast(explainError(e.message), true); }
@@ -8882,6 +9490,16 @@ function gitRenderExplorer(d, box) {
       // Si une MR ouverte existe, on montre le lien vers elle à la place du bouton.
       const mrTarget = (b.origin && b.origin !== b.name) ? b.origin : d.default;
       const canMr = !b.default && b.ahead > 0 && mrTarget && mrTarget !== b.name && !b.open_mr;
+      /* A/Git 3 — DEUX GESTES QUI MANQUAIENT. La ligne dit déjà la note de la review de sa
+         merge request et la session qui l'a créée : c'est un plan de travail, mais il n'y
+         avait rien à faire depuis là. Vérifier une branche et coder dessus existent tous les
+         deux ailleurs — ils partent d'ici avec le dépôt et la branche déjà renseignés. Pas
+         sur la branche par défaut : on ne code pas « sur main » depuis un explorateur. */
+      const gestes = b.default ? '' :
+        '<button class="btn btn-sm btn-ghost" data-gitverif="' + esc(b.name) + '" data-repo="' + d.repo_id + '" title="'
+        + esc(tr('git.br.verify-title', { branch: b.name })) + '">' + svgIco('check') + '</button>'
+        + '<button class="btn btn-sm btn-ghost" data-gitcode="' + esc(b.name) + '" data-repo="' + d.repo_id + '" title="'
+        + esc(tr('git.br.code-title', { branch: b.name })) + '">' + svgIco('bot') + '</button>';
       const mrBtn = b.open_mr
         ? '<a class="btn btn-sm" href="' + esc(b.open_mr.url) + '" target="_blank" title="' + esc(tr('git.mr.open-title', { target: b.open_mr.target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + b.open_mr.iid + ' ↗</a>'
         : (canMr
@@ -8899,7 +9517,7 @@ function gitRenderExplorer(d, box) {
             + esc(tr('git.branch.session-title')) + '">' + svgIco('bot') + ' ' + esc(String(b.session.label || '').slice(0, 40)) + '</button>' : '') + '</td>' +
         '<td>' + ab + '</td><td>' + gitOriginCell(b) + '</td><td>' + merged + '</td>' +
         '<td class="muted">' + (b.committed_date ? fmtDate(b.committed_date) : '—') + (b.author ? ' · ' + esc(b.author) : '') + '</td>' +
-        '<td class="git-ex-actions">' + mrBtn + '</td></tr>';
+        '<td class="git-ex-actions">' + gestes + mrBtn + '</td></tr>';
     }).join('') + '</tbody></table></div>' +
     '<p class="muted git-ex-nomatch" hidden>' + esc(tr('git.refs.no-match')) + '</p>' +
     '<div class="form-actions"><button class="btn btn-danger git-ex-delete" disabled><svg class="ico"><use href="#i-trash"/></svg>' + esc(tr('git.btn.delete-selected')) + '</button>' +
@@ -8933,7 +9551,7 @@ function gitRenderExplorer(d, box) {
     const target = b.dataset.target;
     openMrModal({
       url: '/git/mr', body: { repo_id: d.repo_id, source, target },
-      title: source, source, target, forge: d.forge,
+      title: source, source, target, forge: d.forge, project: d.project || '',
       onDone: (r) => {
         // Remplace le bouton par le lien vers la MR : l'écran reflète la réalité
         // sans re-analyser tout le dépôt (coûteux).
@@ -9057,10 +9675,32 @@ async function findRefSearch(e) {
           : '<span class="muted">—</span>'}</td></tr>`).join('')).join('')
       + '</tbody></table></div>'
     : emptyState({ icon: 'search', title: tr('git.findref.none.title', { name: esc(d.name) }), text: tr('git.findref.none.text') });
+  /* A/Git 3 — « POSITIONNER MES PROJETS DESSUS ». Trouver une ref répond à « qui l'a ? » ;
+     la question suivante est toujours « mets-moi dessus ». Elle vit dans Navigation, avec les
+     mêmes dépôts et la même ref — on y va pré-rempli plutôt que de retaper les deux. Seulement
+     s'il y a des branches trouvées : Navigation positionne des branches, pas des tags. */
+  const branchesTrouvees = found.flatMap((r) => r.matches.filter((m) => m.kind === 'branch').map(() => r));
+  if (branchesTrouvees.length) {
+    html += `<p style="margin-top:10px"><button type="button" class="btn" id="findRefToNav"
+      data-ref="${esc(d.name)}" title="${esc(tr('git.findref.to-nav.title', { name: d.name, n: branchesTrouvees.length }))}">${svgIco('repeat')}${esc(tr('git.findref.to-nav'))}</button></p>`;
+  }
   if (errored.length) {
     html += `<p class="muted" style="margin-top:8px">${svgIco('alert')} ${tr('git.findref.errors', { n: errored.length, count: errored.length })} : ${errored.map((r) => esc(r.project)).join(', ')}</p>`;
   }
   $('#findRefBox').innerHTML = html;
+  const versNav = $('#findRefToNav');
+  if (versNav) {
+    versNav.addEventListener('click', () => {
+      /* On passe par la MÊME mémoire que Navigation lit à son ouverture : poser l'écran
+         autrement ferait deux façons de dire « les projets et leur branche ». */
+      /* Navigation garde ses PROJETS en mémoire ; la branche, elle, se pose sur les lignes
+         affichées — c'est la même ref pour tous, c'est justement ce qu'on vient demander. */
+      showGitSub('navigate');
+      navTargets = navTargets.map((t) => ({ ...t, branch: versNav.dataset.ref }));
+      navRenderTargets();
+      toast(tr('git.findref.to-nav.done', { name: versNav.dataset.ref }));
+    });
+  }
   // Auteur PRÉCIS du tag à la demande (le tagger annoté n'est pas dans l'API GitLab).
   $$('[data-findref-author]', $('#findRefBox')).forEach((b) => b.addEventListener('click', async () => {
     try {
@@ -9489,6 +10129,17 @@ function showGitSub(name) {
   $$('#tab-git .subnav [data-gsub]').forEach((b) => b.classList.toggle('active', b.dataset.gsub === name));
   $$('#tab-git .subtab').forEach((s) => s.classList.toggle('active', s.id === 'gsub-' + name));
   try { localStorage.setItem('aidevtools_gitsub', name); } catch { /* stockage indisponible */ }
+  /* A/Git 1 — l'action retenue s'applique à l'ouverture, une seule fois : la reposer à chaque
+     visite écraserait un changement fait juste avant de partir dans un autre sous-onglet. */
+  if (name === 'actions') {
+    const sel = $('#gitAction');
+    const m = gitActMemo();
+    if (sel && m.action && !sel.dataset.restaure && [...sel.options].some((o) => o.value === m.action)) {
+      sel.dataset.restaure = '1';
+      sel.value = m.action;
+      gitApplyAction();
+    }
+  }
   if (name === 'history') gitLoadHistory();
   if (name === 'commands') loadGitCommands();
   if (name === 'compare') renderCompareCotes();
@@ -9572,7 +10223,7 @@ function gitMajVide() {
 }
 
 $$('#tab-git .subnav [data-gsub]').forEach((b) => b.addEventListener('click', () => showGitSub(b.dataset.gsub)));
-$('#gitAction').addEventListener('change', gitApplyAction);
+$('#gitAction').addEventListener('change', () => { gitActMemoriser(); gitApplyAction(); });
 
 /* ============ Git · Merge de branche à branche (onglet Git → Merge) ============
  *
@@ -9601,11 +10252,27 @@ const mergeRepoId = () => Number(($('#mergeRepoBox .rc-id') || {}).value || 0);
 
 /* Les trois choix passent par des combos AVEC RECHERCHE : un dépôt actif compte des centaines
    de branches, et `npm run check` refuse une liste de refs sans champ de recherche. */
+/* A/Git 1 — MERGE SE SOUVIENT, comme *Comparer* le fait déjà. Trois sous-onglets voisins et
+   deux politiques de mémoire, c'était la seule raison de retaper `develop → main` sur le même
+   dépôt tous les matins. Mémoire de navigateur : la perdre ne perd qu'une proposition. */
+const MERGE_FORM_MEMO = 'aidevtools_merge_form_memo';   // ≠ MERGE_MEMO, qui retient squash/suppression PAR DÉPÔT
+const mergeMemo = () => { try { return JSON.parse(localStorage.getItem(MERGE_FORM_MEMO) || '{}'); } catch { return {}; } };
+const mergeMemoriser = (etat) => {
+  try { localStorage.setItem(MERGE_FORM_MEMO, JSON.stringify(etat)); } catch { /* stockage indisponible */ }
+};
+
 function mergeRenderPickers() {
   const rb = $('#mergeRepoBox'); if (!rb) return;
-  rb.innerHTML = repoComboHtml(mergeRepoId() || null, { idClass: 'merge-repo' });
-  $('#mergeSourceBox').innerHTML = comboHtml('merge-source', { ph: tr('git.merge.ph-branch') });
-  $('#mergeTargetBox').innerHTML = comboHtml('merge-target', { ph: tr('git.merge.ph-branch') });
+  const memo = mergeMemo();
+  const repo = mergeRepoId() || Number(memo.repo_id) || null;
+  rb.innerHTML = repoComboHtml(repo, { idClass: 'merge-repo' });
+  /* Les branches ne sont reproposées QUE pour le dépôt qui les a vues : une branche d'un autre
+     dépôt donnerait un formulaire qui a l'air valide et une erreur au lancement. */
+  const meme = repo && Number(memo.repo_id) === Number(repo);
+  $('#mergeSourceBox').innerHTML = comboHtml('merge-source', {
+    ph: tr('git.merge.ph-branch'), value: meme ? (memo.source || '') : '', label: meme ? (memo.source || '') : '' });
+  $('#mergeTargetBox').innerHTML = comboHtml('merge-target', {
+    ph: tr('git.merge.ph-branch'), value: meme ? (memo.target || '') : '', label: meme ? (memo.target || '') : '' });
   wireRepoCombos($('#gsub-merge'));
   wireCombo($('#gsub-merge'), 'merge-source', () => mergeRefs(mergeRepoId()));
   wireCombo($('#gsub-merge'), 'merge-target', () => mergeRefs(mergeRepoId()));
@@ -9835,6 +10502,7 @@ async function mergeDemarrer({ sansAncetre = false } = {}) {
   const repoId = mergeRepoId();
   const source = ($('.merge-source', $('#gsub-merge')) || {}).value || '';
   const target = ($('.merge-target', $('#gsub-merge')) || {}).value || '';
+  mergeMemoriser({ repo_id: repoId, source, target });   // retenu au LANCEMENT, pas à la saisie
   $('#mergeStartInfo').textContent = tr('git.merge.preparing');
   try {
     mergeEtat = await busy($('#mergeStart'), () => api('/git/merges', {
@@ -10355,7 +11023,10 @@ function dlogRenderContainers() {
   box.innerHTML = list.map((c) => `<label class="dlog-citem">
       <input type="checkbox" value="${esc(c.id)}"${DLOG.selected.has(c.id) ? ' checked' : ''}/>
       <span class="dlog-dot ${c.running ? 'run' : 'stop'}" title="${esc(c.status || c.state)}"></span>
-      <span class="dlog-cname">${esc(c.name)}</span>
+      ${/* A/Docker 2 — LE NOM SEUL, COPIABLE. Il n'était copiable qu'ENROBÉ dans un
+            `docker logs -f` : pour un `docker exec`, un `docker inspect` ou un grep dans un
+            journal d'équipe, on le resélectionnait à la souris. */''}
+      <button type="button" class="dlog-cname" data-copy-txt="${esc(c.name)}" title="${esc(tr('docker.copy-name'))}">${esc(c.name)}</button>
       ${c.project ? `<span class="dlog-cproj">${esc(c.project)}</span>` : ''}
       ${/* La même commande, au terminal : `docker logs -f` sur CE container. */''}
       <button type="button" class="btn btn-sm btn-ghost" data-copy-cmd="docker logs -f --tail=200 ${esc(c.name)}" title="${esc(tr('docker.copy-cmd'))}" aria-label="${esc(tr('docker.copy-cmd'))}"><svg class="ico ico-sm"><use href="#i-copy"/></svg></button>
@@ -10532,7 +11203,28 @@ const dockerStateChips = (cur) => DOCKER_STATE_FILTERS
   .map(([v, k]) => `<button type="button" class="chip${cur === v ? ' active' : ''}" data-dstate="${v}" aria-pressed="${cur === v}">${esc(tr(k))}</button>`).join('');
 // Le groupe d'Actions est bâti une fois, depuis cette liste (celui de Compose l'est à chaque
 // rendu, dans son gabarit). Un changement de langue recharge la page : rien à retraduire.
-(() => { const el = $('#dactFilter'); if (el) { el.innerHTML = dockerStateChips('all'); el.dataset.state = 'all'; } })();
+/* A/Docker 2 — LE SEUL ÉCRAN DOCKER SANS MÉMOIRE. Compose retient son filtre, les logs
+   retiennent leurs containers cochés, la couleur et le tail ; Actions repartait sur
+   « Recréer » et « tous » à chaque visite, alors que c'est l'écran le plus répétitif des
+   quatre. Les SÉLECTIONS, elles, ne sont pas retenues : appliquer « stop » à des services
+   cochés hier, sans les revoir, serait une action à l'aveugle. */
+const DACT_MEMO = 'aidevtools_docker_actions';
+const dactMemo = () => { try { return JSON.parse(localStorage.getItem(DACT_MEMO) || '{}'); } catch { return {}; } };
+function dactMemoriser() {
+  try {
+    localStorage.setItem(DACT_MEMO, JSON.stringify({
+      action: ($('#dactAction') || {}).value || 'recreate',
+      state: ($('#dactFilter') && $('#dactFilter').dataset.state) || 'all',
+    }));
+  } catch { /* stockage indisponible */ }
+}
+(() => {
+  const m = dactMemo();
+  const el = $('#dactFilter');
+  if (el) { el.innerHTML = dockerStateChips(m.state || 'all'); el.dataset.state = m.state || 'all'; }
+  const sel = $('#dactAction');
+  if (sel && m.action && [...sel.options].some((o) => o.value === m.action)) sel.value = m.action;
+})();
 // Clés i18n complètes (littérales) pour réutiliser EXACTEMENT le libellé de l'onglet Compose.
 const DACT_DRIFT_LABEL = { 'drift-config': 'docker.badge.drift-config', 'drift-image': 'docker.badge.drift-image', 'compose-modified': 'docker.badge.compose-modified' };
 function dactItems() {
@@ -10628,12 +11320,13 @@ async function dactApply() {
 }
 // Changer d'action réinitialise la sélection (elle appartient à une action) ; le filtre d'état
 // et la recherche ne font que masquer/afficher — ils préservent la sélection.
-$('#dactAction') && $('#dactAction').addEventListener('change', () => { DACT.selected.clear(); dactSyncApply(); renderDockerActions(); });
+$('#dactAction') && $('#dactAction').addEventListener('change', () => { DACT.selected.clear(); dactMemoriser(); dactSyncApply(); renderDockerActions(); });
 $('#dactFilter') && $('#dactFilter').addEventListener('click', (e) => {
   const c = e.target.closest('[data-dstate]'); if (!c) return;
   const grp = $('#dactFilter');
   grp.dataset.state = c.dataset.dstate;
   grp.innerHTML = dockerStateChips(c.dataset.dstate);
+  dactMemoriser();
   renderDockerActions();
 });
 $('#dactSearch') && $('#dactSearch').addEventListener('input', renderDockerActions);
@@ -10675,8 +11368,12 @@ async function loadDocker(force) {
     // En cas d'échec, ne pas laisser le squelette des orphelins tourner en boucle.
     const orphP = api('/docker/orphans').then((orph) => renderDockerOrphans(orph))
       .catch((e) => { const ob = $('#dockerOrphansBox'); if (ob) ob.innerHTML = errorBox(explainError(e.message)); });
+    /* Les sauvegardes arrivent à part et ne bloquent rien : c'est un filet, pas l'écran
+       principal. Sans sauvegarde, le bloc n'existe pas. */
+    const bkP = chargerSauvegardesDocker().catch(() => {});
     await loadComposeProgressive();
     await orphP;
+    await bkP;
   } catch (e) {
     errBox.innerHTML = errorBox(e.message);
     $('#dockerInfo').textContent = '';
@@ -10703,6 +11400,45 @@ function dockerStateLabel(state) {
   return DOCKER_STATES.includes(state) ? tr(`docker.state.${state}`) : state;
 }
 
+/* B8 — proposer de poser l'adresse locale dans la grille. Une requête par projet compose et
+   par page (mémorisée) : elle ne sort pas de la base, et elle ne rend rien dans l'immense
+   majorité des cas — d'où le remplissage APRÈS le rendu, jamais pendant. */
+const cacheGrilleLocale = new Map();
+async function remplirGrilleLocale(projets) {
+  for (const zone of $$('[data-dk-grille]')) {
+    const dir = zone.dataset.dkGrille;
+    const p = (projets || []).find((x) => x.dir === dir);
+    if (!p) continue;
+    const port = (p.services || []).filter((s) => s.container && s.container.state === 'running')
+      .flatMap((s) => s.ports || [])[0];
+    if (!port) continue;
+    if (!cacheGrilleLocale.has(dir)) {
+      cacheGrilleLocale.set(dir, api(`/docker/local-links?dir=${encodeURIComponent(dir)}`).catch(() => ({ service: null })));
+    }
+    const d = await cacheGrilleLocale.get(dir);
+    if (!d || !d.service || !d.environment || d.filled || !zone.isConnected) continue;
+    zone.innerHTML = `<button type="button" class="btn btn-sm" data-dk-poser="${esc(dir)}"
+        data-service="${d.service.id}" data-env="${d.environment.id}" data-url="http://localhost:${port}"
+        title="${esc(tr('docker.grid.fill.title', { service: d.service.name, env: d.environment.name, url: `http://localhost:${port}` }))}">${svgIco('link')}${esc(tr('docker.grid.fill'))}</button>`;
+  }
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-dk-poser]');
+  if (!b) return;
+  try {
+    /* La MÊME route que la grille elle-même : il n'y a qu'une façon d'écrire une case, et
+       c'est celle-là. Elle remplace le contenu de la case — d'où la garde côté serveur qui
+       ne propose ce bouton que sur une case VIDE. */
+    await busy(b, () => api(`/services/${b.dataset.service}/urls`, {
+      method: 'PUT',
+      body: { environment_id: Number(b.dataset.env), url: b.dataset.url, label: 'local' },
+    }));
+    cacheGrilleLocale.delete(b.dataset.dkPoser);
+    b.remove();
+    toast(tr('docker.grid.filled', { url: b.dataset.url }));
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
 function dockerServiceRow(proj, s) {
   const b = (DOCKER_BADGE()[s.badge]) || { label: s.badge, cls: '' };
   const canRecreate = ['drift-config', 'drift-image', 'compose-modified'].includes(s.badge);
@@ -10726,6 +11462,12 @@ function dockerServiceRow(proj, s) {
         ${stateChip}
         <strong>${esc(s.name)}</strong>
         <span class="tag ${b.cls}">${esc(b.label)}</span>
+        ${/* B8 — LE PORT PUBLIÉ EST UNE ADRESSE. Le compose déclare `3000:3000` : on ouvrait
+              quand même un onglet à la main en tapant localhost:3000. Le bouton n'apparaît
+              que si le service TOURNE — proposer d'ouvrir un service arrêté mènerait à une
+              page d'erreur, ce qui est pire que ne rien proposer. */''}
+        ${isRunning ? (s.ports || []).slice(0, 3).map((port) => `<a class="btn btn-sm btn-ghost dk-port" href="http://localhost:${port}"
+            target="_blank" rel="noopener noreferrer" title="${esc(tr('docker.open-local', { port }))}">${svgIco('external')}:${port}</a>`).join('') : ''}
         ${s.image ? `<code class="muted">${esc(s.image)}</code>` : ''}
         ${s.container && s.container.name ? `<span class="muted">${esc(s.container.name)}</span>` : ''}
         <span class="spacer"></span>
@@ -10833,6 +11575,13 @@ async function majDernieresCibles() {
 }
 /* Le bouton « copier » d'une commande : service Docker, logs, cible Make — un seul écouteur. */
 document.addEventListener('click', (e) => {
+  const txt = e.target.closest && e.target.closest('[data-copy-txt]');
+  if (txt) {
+    e.preventDefault(); e.stopPropagation();
+    copyText(txt.dataset.copyTxt, null);
+    toast(tr('toast.copied-value', { valeur: txt.dataset.copyTxt }));
+    return;
+  }
   const b = e.target.closest && e.target.closest('[data-copy-cmd]');
   if (!b) return;
   e.preventDefault(); e.stopPropagation();
@@ -10860,6 +11609,11 @@ function dockerProjectCard(p) {
           ${p.git && p.git.branch ? ` <span class="docker-git">${svgIco('branch')} ${chipBranche(p.git.branch)}${p.git.sha ? ` <span class="git-sha muted">${esc(p.git.sha)}</span>` : ''}</span>` : ''}
         </div>
         <div class="docker-project-actions">
+          ${/* B8 — LA CASE « LOCAL » DE LA GRILLE, que ce compose sait déjà remplir. Le bloc
+                arrive vide et se remplit après le rendu : il n'apparaît QUE si le dossier
+                porte le dépôt d'un service de la grille, que l'environnement « local »
+                existe, et que sa case est VIDE. Rien n'est écrit sans clic. */''}
+          <span class="dk-grille" data-dk-grille="${esc(p.dir)}"></span>
           <button class="btn btn-sm" data-dockeract="up" data-dir="${esc(p.dir)}" title="${esc(tr('docker.act.up-all-title'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr('docker.act.up-all'))}</button>
           <button class="btn btn-sm btn-danger" data-dockerdown data-dir="${esc(p.dir)}" data-project="${esc(p.name)}" title="${esc(tr('docker.act.down-title'))}"><svg class="ico ico-sm"><use href="#i-stop"/></svg>${esc(tr('docker.act.down'))}</button>
         </div>
@@ -10964,6 +11718,7 @@ function fillComposeSlot(path) {
   slot.innerHTML = html;
   wireDockerActions(slot);
   majDernieresCibles();     // le détail arrive après coup : ses cibles aussi
+  remplirGrilleLocale([d]); // B8 : idem — la case « local » de la grille, si elle est vide
 }
 
 async function fetchVisibleComposeDetails() {
@@ -10992,6 +11747,51 @@ async function loadComposeProgressive() {
   renderComposeTab();
   await fetchVisibleComposeDetails();
 }
+
+/* A/Docker 1 — CE QU'ON PEUT ENCORE REFAIRE. Avant chaque suppression d'un container
+   hors-compose, l'outil sauvegarde son `inspect` complet ; personne ne le relisait. Le bloc
+   n'apparaît que s'il y a quelque chose à restaurer — un cadre vide sur chaque visite
+   ferait passer un filet pour une corvée. */
+async function chargerSauvegardesDocker() {
+  const box = $('#dockerBackupsBox');
+  if (!box) return;
+  let liste = [];
+  try { liste = await api('/docker/backups'); } catch { liste = []; }
+  if (!Array.isArray(liste) || !liste.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<h3 class="bloc-t">${esc(tr('docker.backups.title'))}</h3>
+    <p class="muted">${esc(tr('docker.backups.intro'))}</p>
+    <div class="list">${liste.map((b) => `<div class="card dk-backup">
+      <div class="dk-backup-main">
+        <strong>${esc(b.name || b.container_id.slice(0, 12))}</strong>
+        <span class="muted"> · ${esc(b.image || '')} · <span data-when="${esc(b.created_at)}">${esc(fmtDate(b.created_at))}</span></span>
+        <pre class="dk-backup-cmd">${esc(b.run_command || '')}</pre>
+      </div>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn-sm" data-copy-cmd="${esc(b.run_command || '')}" title="${esc(tr('docker.backups.copy'))}">${svgIco('copy')}</button>
+      <button type="button" class="btn btn-sm btn-primary" data-dk-restore="${b.id}">${esc(tr('docker.backups.restore'))}</button>
+      <button type="button" class="btn btn-sm btn-ghost" data-dk-bk-del="${b.id}" title="${esc(tr('docker.backups.forget'))}">${svgIco('close')}</button>
+    </div>`).join('')}</div>`;
+}
+document.addEventListener('click', async (e) => {
+  const r = e.target.closest && e.target.closest('[data-dk-restore]');
+  if (r) {
+    /* Recréer un container est une écriture sur la machine : on nomme ce qui va être refait,
+       comme toute action Docker de l'outil. */
+    if (!await confirmDialog({
+      title: tr('docker.backups.confirm.title'),
+      text: tr('docker.backups.confirm.text'),
+      confirmLabel: tr('docker.backups.restore'), danger: false,
+    })) return;
+    try { await busy(r, () => api(`/docker/backups/${r.dataset.dkRestore}/restore`, { method: 'POST' })); refreshStatus(); }
+    catch (err) { toast(explainError(err.message), true); }
+    return;
+  }
+  const d = e.target.closest && e.target.closest('[data-dk-bk-del]');
+  if (!d) return;
+  if (!await confirmDialog({ text: tr('docker.backups.forget.confirm'), confirmLabel: tr('ui.delete') })) return;
+  try { await api(`/docker/backups/${d.dataset.dkBkDel}`, { method: 'DELETE' }); await chargerSauvegardesDocker(); }
+  catch (err) { toast(explainError(err.message), true); }
+});
 
 function renderDockerOrphans(d) {
   const box = $('#dockerOrphansBox');
@@ -11605,15 +12405,25 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
           </div></div>`).join('')
     : `<p class="muted">${esc(tr('jira.no-comment'))}</p>`;
   // Composer : poster un commentaire (texte simple → converti en ADF côté serveur).
+  /* A/Jira 3 — LE LIEN DE LA MR, D'UN CLIC. « J'ai poussé, voici la MR » est le commentaire
+     Jira le plus fréquent, et il obligeait à retourner dans Reviews chercher l'adresse pour
+     la recoller ici. L'outil connaît déjà les merge requests qui portent cette clé (section
+     « Dans Mergerie ») : le bouton insère la ligne au curseur, et on écrit autour. */
+  const mrsDuTicket = (it.mergerie && it.mergerie.mrs) || [];
+  const boutonsLien = mrsDuTicket.filter((m) => m.url).slice(0, 4).map((m) => `<button type="button" class="btn btn-sm"
+      data-jira-insert="${esc(`!${m.iid} ${m.url}`)}" title="${esc(tr('jira.insert-mr.title', { iid: m.iid }))}">!${esc(String(m.iid))}</button>`).join('');
   const composer = `<form class="jira-comment-form" data-key="${esc(it.key)}" autocomplete="off">
       <textarea class="jira-comment-input" rows="3" placeholder="${esc(tr('jira.comment-ph'))}"></textarea>
+      ${boutonsLien ? `<div class="jira-insert-row"><span class="muted">${esc(tr('jira.insert-mr'))}</span> ${boutonsLien}</div>` : ''}
       <div class="jira-comment-actions"><button class="btn btn-primary btn-sm" type="submit"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr('jira.add-comment'))}</button></div>
     </form>`;
   const comments = `<div class="jira-section"><h4>${esc(tr('jira.comments', { n: (it.comments || []).length, count: (it.comments || []).length }))}</h4>${cList}${composer}</div>`;
   box.innerHTML = `<article class="jira-detail-inner jira-cat-${JIRA_CAT[it.statusCategory] || 'todo'}">
       <header class="jira-dhead">
         <div class="jira-dhead-top">
-          <code class="jira-key">${esc(it.key)}</code>
+          ${/* C7 — la clé se colle partout : Slack, un commit, une recherche. Elle était
+                à resélectionner à la souris. */''}
+          <button type="button" class="jira-key jira-key-copy" data-copy-txt="${esc(it.key)}" title="${esc(tr('jira.copy-key'))}">${esc(it.key)}</button>
           ${jiraStatusChip(it)}
           ${(it.transitions && it.transitions.length) ? `<select class="jira-transition" data-key="${esc(it.key)}" aria-label="${esc(tr('jira.change-status'))}">
             <option value="">${esc(tr('jira.change-status'))}</option>
@@ -11649,6 +12459,10 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
     </article>`;
   chargerEngagements(it.key);
   remplirLiensDifferes(box);     // les boutons contextuels du ticket
+  /* C8 — le champ de commentaire se souvient et part à Ctrl+Entrée, comme celui de la
+     surveillance. Armé APRÈS le rendu : le textarea vient d'être recréé. */
+  const taJ = $('.jira-comment-input', box);
+  if (taJ) champAvecBrouillon(taJ, `jira:${it.key}`, () => { const f = taJ.closest('form'); if (f) f.requestSubmit(); });
 }
 
 /* Ce que Mergerie porte déjà sur ce ticket : les merge requests qui en viennent (par la clé
@@ -11673,12 +12487,43 @@ async function chargerEngagements(cle) {
     return `<li><button type="button" class="lien-reglage" data-jira-mr="${m.id}">!${m.iid} — ${esc(m.title || '')}</button> <span class="muted">${bouts.join(' · ')}</span></li>`;
   };
   const ligneTache = (x) => `<li><button type="button" class="lien-reglage" data-jira-task="${x.id}">${esc(x.label || String(x.prompt || '').slice(0, 70))}</button> <span class="muted">${esc(tr(`task.status.${x.status}`, {}) || x.status)}</span></li>`;
+  /* B1 — VÉRIFIER ENSEMBLE, DEPUIS LE TICKET. Cinq merge requests dans cinq dépôts pour un
+     seul ticket : la fiche les liste déjà. Pour les vérifier ensemble il fallait pourtant
+     retourner dans Reviews, cocher les cinq à la main, taper un nom de lot, puis retrouver ce
+     lot dans Dev IA. Le bouton fait les trois d'un coup, avec la clé du ticket comme nom.
+
+     Il n'apparaît qu'à partir de DEUX merge requests OUVERTES de dépôts DIFFÉRENTS : deux du
+     même dépôt rendraient le verdict ininterprétable — c'est déjà la règle de la sélection
+     multiple, et elle ne change pas parce qu'on part du ticket. */
+  const ouvertes = (d.mrs || []).filter((m) => !m.closed);
+  const depots = new Set(ouvertes.map((m) => m.project));
+  const groupables = ouvertes.length >= 2 && depots.size === ouvertes.length;
   box.innerHTML = `<h4>${esc(tr('jira.mergerie.title'))}</h4>
     <div class="jira-card">
       ${(d.mrs || []).length ? `<ul class="jira-eng">${d.mrs.map(ligneMr).join('')}</ul>` : ''}
       ${(d.tasks || []).length ? `<ul class="jira-eng">${d.tasks.map(ligneTache).join('')}</ul>` : ''}
+      ${groupables ? `<button type="button" class="btn btn-primary" data-jira-lot="${esc(cle)}"
+          data-mrs="${esc(ouvertes.map((m) => m.id).join(','))}"
+          title="${esc(tr('jira.verify-together.title', { n: ouvertes.length, key: cle }))}">${svgIco('check')}${esc(tr('jira.verify-together', { n: ouvertes.length, count: ouvertes.length }))}</button>` : ''}
     </div>`;
 }
+/* B1 — le lot, puis la vérification, en un geste. Le lot est nommé par la clé : c'est ce
+   qu'on aurait tapé, et c'est ce qui le rendra reconnaissable dans Dev IA trois jours plus
+   tard. Si le lot existe déjà (on a cliqué deux fois), l'erreur du serveur est dite telle
+   quelle et la vérification ne part pas : mieux vaut ça qu'un second lot homonyme. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-jira-lot]');
+  if (!b) return;
+  const ids = String(b.dataset.mrs || '').split(',').map(Number).filter(Boolean);
+  if (!ids.length) return;
+  try {
+    const lot = await busy(b, () => api('/lots', { method: 'POST', body: { name: b.dataset.jiraLot, members: ids } }));
+    toast(tr('verify.toast.lot-created', { name: b.dataset.jiraLot }));
+    const repoIds = toReviewRows.concat(reportRows).filter((m) => ids.includes(m.id)).map((m) => m.repo_id).filter(Boolean);
+    lancerVerification(ids, { lotId: lot && lot.id, repoIds });
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
 document.addEventListener('click', (e) => {
   const m = e.target.closest && e.target.closest('[data-jira-mr]');
   if (m) { navMrReport(Number(m.dataset.jiraMr)); return; }
@@ -11831,8 +12676,16 @@ function renderJiraWatch() {
         <button type="button" class="btn btn-icon btn-sm btn-danger" data-jiraunwatch="${esc(r.key)}" title="${esc(tr('jira.watch.stop-title'))}"><svg class="ico"><use href="#i-close"/></svg></button>
       </div>
       <div class="jira-item-summary">${esc(r.summary || '')}</div>
+      ${/* A/Jira 3 — L'ERREUR DE SURVEILLANCE ÉTAIT ÉCRITE ET JAMAIS AFFICHÉE : un ticket dont
+            la vérification échoue (clé renommée, accès retiré, Jira injoignable) restait figé
+            sur son dernier état connu, en silence, et on le croyait simplement immobile. */''}
+      ${r.error ? `<div class="jira-watch-err"><svg class="ico ico-sm"><use href="#i-alert"/></svg> ${esc(tr('jira.watch.error', { detail: String(r.error).slice(0, 200) }))}</div>` : ''}
       ${/* La raison de surveiller. Absente, on propose de la dire : trois mois plus tard, une
             clé et un résumé ne rappellent plus pourquoi ce ticket est là. */''}
+      ${/* B5 — la case qui transforme un changement d'état en todo. Décochée par défaut :
+            une todo par mouvement de chaque ticket surveillé serait du bruit. */''}
+      <label class="inline-check jira-watch-todo"><input type="checkbox" data-jiratodo="${esc(r.key)}"${r.todo_on_change ? ' checked' : ''} />
+        <span>${esc(tr('jira.watch.todo-on-change'))}</span></label>
       <div class="jira-watch-note-row">
         ${r.note
     ? `<span class="jira-watch-note">${esc(r.note)}</span>`
@@ -11897,6 +12750,13 @@ $('#jiraWatchList') && $('#jiraWatchList').addEventListener('keydown', (e) => {
     e.preventDefault();
     const b = $('[data-jiranotecancel]', f); if (b) b.click();
   }
+});
+$('#jiraWatchList') && $('#jiraWatchList').addEventListener('change', async (e) => {
+  const c = e.target.closest && e.target.closest('[data-jiratodo]');
+  if (!c) return;
+  try {
+    await api(`/jira/watch/${encodeURIComponent(c.dataset.jiratodo)}`, { method: 'PATCH', body: { todo_on_change: c.checked } });
+  } catch (err) { toast(explainError(err.message), true); c.checked = !c.checked; }
 });
 $('#jiraWatchList') && $('#jiraWatchList').addEventListener('click', async (e) => {
   const form = (key) => $(`#jiraWatchList .jira-note-form[data-jiranoteform="${key}"]`);
@@ -12086,6 +12946,17 @@ $('#jiraLightbox') && $('#jiraLightbox').addEventListener('click', (e) => {
 surLeDetailJira('change', async (e) => {
   const sel = e.target.closest('.jira-transition'); if (!sel || !sel.value) return;
   const key = sel.dataset.key; const transitionId = sel.value;
+  /* A/Jira 2 (C9) — CHANGER L'ÉTAT D'UN TICKET EST UNE ÉCRITURE CHEZ LES AUTRES, et c'était
+     la seule de l'outil sans confirmation : un `<select>` natif applique au `change`, donc
+     une flèche du clavier suffisait à faire passer PROJ-1408 en « Terminé » devant toute
+     l'équipe. Le lancement Jenkins, la publication d'un rapport et « Prévenir Jira »
+     demandent tous ; celui-ci demande aussi, et NOMME le ticket et l'état visé. */
+  const versEtat = (sel.options[sel.selectedIndex] || {}).textContent || '';
+  if (!await confirmDialog({
+    title: tr('jira.transition.confirm.title', { key }),
+    text: tr('jira.transition.confirm.text', { key, etat: String(versEtat).replace(/^→\s*/, '') }),
+    confirmLabel: tr('jira.transition.confirm.ok'), danger: false,
+  })) { sel.value = ''; return; }
   sel.disabled = true;
   try {
     await api(`/jira/issue/${encodeURIComponent(key)}/transition`, { method: 'POST', body: { transitionId } });
@@ -12096,6 +12967,26 @@ surLeDetailJira('change', async (e) => {
     refreshJiraBadge();
   } catch (err) { toast(explainError(err.message), true); sel.disabled = false; }
 });
+/* Insérer une référence AU CURSEUR, sans écraser ce qui est déjà écrit : on commente
+   rarement avec un lien seul — « c'est parti en recette, voir !217 ». */
+surLeDetailJira('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-jira-insert]');
+  if (!b) return;
+  const form = b.closest('.jira-comment-form');
+  const ta = form && $('.jira-comment-input', form);
+  if (!ta) return;
+  const t = b.dataset.jiraInsert;
+  const i = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+  const j = ta.selectionEnd == null ? i : ta.selectionEnd;
+  const avant = ta.value.slice(0, i);
+  const sep = avant && !/\s$/.test(avant) ? ' ' : '';
+  ta.value = avant + sep + t + ta.value.slice(j);
+  ta.focus();
+  const pos = (avant + sep + t).length;
+  ta.setSelectionRange(pos, pos);
+  ecrireBrouillon(`jira:${form.dataset.key}`, ta.value.trim());
+});
+
 // Poster un commentaire : on l'ajoute au détail affiché sans tout recharger.
 surLeDetailJira('submit', async (e) => {
   const form = e.target.closest('.jira-comment-form'); if (!form) return;
@@ -12108,6 +12999,7 @@ surLeDetailJira('submit', async (e) => {
   try {
     const d = await busy(btn, () => api(`/jira/issue/${encodeURIComponent(key)}/comment`, { method: 'POST', body: { text } }));
     toast(tr('jira.comment-added'));
+    ecrireBrouillon(`jira:${key}`, '');   // parti : le filet n'a plus lieu d'être
     if (JIRA.current && JIRA.current.key === key && d.comment) {
       JIRA.current.comments = [...(JIRA.current.comments || []), d.comment];
       renderJiraDetail(JIRA.current, JIRA.currentBox);
@@ -12526,13 +13418,21 @@ const SHORTCUTS = [
   ['v', 'shortcuts.verify'],
   ['c', 'shortcuts.context'],
   ['m', 'shortcuts.done'],
+  ['f', 'shortcuts.fix'],
   ['x', 'shortcuts.pick'],
   ['r', 'shortcuts.discover'],
   ['n', 'shortcuts.notes'],
+  ['N', 'shortcuts.new-task'],
   ['o', 'shortcuts.palette-o'],
   ['l', 'shortcuts.logs'],
   ['?', 'shortcuts.help'],
   ['Échap', 'shortcuts.escape'],
+  /* C12 — LES DEUX GESTES QUE PERSONNE NE DEVINE. `Ctrl+Entrée` envoie un champ de texte
+     (commentaire, suivi) et `⇧-clic` sur une branche copie la commande de checkout : ils
+     existaient sans être écrits nulle part, donc sans exister pour qui ne lit pas le
+     CHANGELOG. Le panneau `?` est l'endroit où on les cherche. */
+  ['Ctrl/Cmd + Entrée', 'shortcuts.ctrl-enter'],
+  ['⇧ + clic', 'shortcuts.shift-click'],
 ];
 function openShortcuts() {
   const m = $('#shortcutsModal'); if (!m) return;
@@ -12761,7 +13661,12 @@ appliquerNav();
 
 /* Liste actuellement visible : celle dans laquelle `j`/`k` se déplacent. */
 function listeCourante() {
-  for (const sel of ['#toReviewList', '#reportList', '#taskList', '#localList']) {
+  /* C12 — `j`/`k` ne connaissaient que quatre listes : Jira, Jenkins, les todos et les lots
+     s'arpentaient à la souris, alors que ce sont exactement les écrans qu'on descend ligne à
+     ligne. L'ordre compte : la PREMIÈRE liste visible et non vide gagne, donc une liste d'un
+     autre onglet ne capte jamais les touches. */
+  for (const sel of ['#toReviewList', '#reportList', '#taskList', '#localList',
+    '#jiraList', '#jiraWatchList', '#jenkinsBox', '#todoList', '#lotList']) {
     const el = $(sel);
     if (el && !el.hidden && el.offsetParent !== null && el.querySelector('.card')) return el;
   }
@@ -12784,7 +13689,10 @@ function boutonDeCarte(sel) {
 function bougerFocusCarte(pas) {
   const liste = listeCourante();
   if (!liste) return;
-  const cartes = $$('.card', liste);
+  /* Les listes n'ont pas toutes des `.card` : les todos sont des `.todo-row`, les tickets des
+     `.jira-item`. On prend ce que la liste contient réellement, sinon `j` reste muet là où on
+     l'attend le plus. */
+  const cartes = $$('.card, .todo-row, .jira-item', liste).filter((el) => el.offsetParent !== null);
   if (!cartes.length) return;
   const cur = cartes.indexOf(carteFocus());
   const next = cur === -1 ? (pas > 0 ? 0 : cartes.length - 1) : Math.min(cartes.length - 1, Math.max(0, cur + pas));
@@ -12799,7 +13707,11 @@ function bougerFocusCarte(pas) {
    l'ouverture, avant même le premier café. */
 const NOTES = {
   sub: 'today',
-  filter: 'open',       // open | done | archived
+  /* C6 — LE SEUL FILTRE QUOTIDIEN DE L'APPLICATION QUI REPARTAIT À ZÉRO. Reviews, Docker,
+     Jenkins et Git retiennent le leur ; celui des todos revenait à « À faire » à chaque
+     visite, y compris pour qui vit dans « Faites » en fin de semaine. Mémoire de navigateur :
+     la perdre ne perd qu'un confort. */
+  filter: (() => { try { return localStorage.getItem('aidevtools_todo_filtre') || 'open'; } catch { return 'open'; } })(),
   pages: [],
   pageId: null,
   page: null,
@@ -12935,6 +13847,39 @@ async function loadBrief() {
   let d;
   try { d = await api('/brief'); } catch (err) { box.innerHTML = `<p class="err">${esc(explainError(err.message))}</p>`; return; }
   renderBrief(d);
+  /* B4 — LA LISTE JENKINS ARRIVE APRÈS, ET LE BRIEF SE REDESSINE. On ne fait pas attendre le
+     brief pour une CI : il s'affiche d'abord, et la section « CI rouge » apparaît quand la
+     liste est là. Un seul appel par page (`assurerJenkinsPourCI` se garde lui-même), et rien
+     n'est sondé — c'est la même liste que celle de l'onglet Jenkins. */
+  if (!(JENKINS.jobs || []).length) {
+    await assurerJenkinsPourCI();
+    if ((JENKINS.jobs || []).length && $('#briefBox')) renderBrief(d);
+  }
+}
+
+/* A/Notes 3 — LE TEXTE DU DAILY. Composé à partir de ce que le brief affiche DÉJÀ : rien
+   n'est recalculé, et ce qu'on colle est donc exactement ce qu'on vient de lire. Volontairement
+   pauvre — trois lignes, pas un rapport : un daily se dit en trente secondes. */
+function texteDuDaily(d) {
+  const l = [];
+  const a = d.activity;
+  if (a && (a.merged || a.opened || a.verified)) {
+    l.push(`${tr('notes.brief.sec.activity')} : ${[
+      a.merged ? tr('notes.brief.activity.merged', { n: a.merged, count: a.merged }) : '',
+      a.opened ? tr('notes.brief.activity.opened', { n: a.opened, count: a.opened }) : '',
+      a.verified ? tr('notes.brief.activity.verified', { n: a.verified, count: a.verified }) : '',
+    ].filter(Boolean).join(' · ')}`);
+  }
+  const fresh = (d.fresh_mrs || []).length;
+  const stale = (d.stale_mrs || []).length;
+  if (fresh) l.push(`${tr('notes.brief.sec.fresh')} : ${fresh}`);
+  if (stale) l.push(`${tr('notes.brief.sec.stale')} : ${stale}`);
+  if (d.ready_to_merge) l.push(`${tr('notes.brief.sec.ready')} : ${d.ready_to_merge}`);
+  const enAttente = Object.values(d.pending_sessions || {}).reduce((t, n) => t + (Number(n) || 0), 0);
+  if (enAttente) l.push(`${tr('notes.brief.sec.pending')} : ${enAttente}`);
+  const verifs = (d.verifications || []).length;
+  if (verifs) l.push(`${tr('notes.brief.sec.verifications')} : ${verifs}`);
+  return l.length ? l.join('\n') : tr('notes.brief.empty.title');
 }
 
 /* Une section vide n'est pas rendue. Un écran qui affiche sept titres dont six sous-titrés
@@ -13029,6 +13974,37 @@ function renderBrief(d) {
       <button type="button" class="btn btn-primary" data-brief-branches>${esc(tr('notes.brief.branches.go'))}</button>
     </div>` : '';
 
+  /* B4 — CE QUE JENKINS A CASSÉ SUR MES BRANCHES. Le brief listait les vérifications rouges
+     de l'outil et ignorait la CI de l'équipe : le nightly cassait à 23 h et on l'apprenait à
+     11 h par un collègue. Calculé À L'OUVERTURE, depuis la liste que l'onglet Jenkins charge
+     déjà — aucun sondage, aucune requête de plus : on croise les jobs rouges avec les branches
+     de mes merge requests ouvertes. Sans Jenkins configuré, la section n'existe pas. */
+  const rougesCI = (JENKINS.jobs || []).length
+    ? toReviewRows.concat(reportRows)
+      .filter((m) => !m.closed_seen)
+      .map((m) => ({ m, ci: ciDeLaBranche(m.source_branch) }))
+      .filter((x) => x.ci && x.ci.statut === 'echec' && !x.ci.enCours)
+      // une même branche peut porter deux MR : on ne le dit qu'une fois
+      .filter((x, i, tous) => tous.findIndex((y) => y.ci.path === x.ci.path && y.m.source_branch === x.m.source_branch) === i)
+      .slice(0, 8)
+    : [];
+  const ciCasse = rougesCI.map(({ m, ci }) => `<div class="brief-item">
+      <div class="brief-item-main">
+        <div class="brief-item-title">${esc(ci.path)} <span class="muted">#${esc(String(ci.number))}</span></div>
+        <div class="brief-item-meta muted">${esc(tr('notes.brief.ci.on', { branch: m.source_branch, iid: m.iid }))}</div>
+      </div>
+      <button type="button" class="btn btn-primary" data-ci-job="${esc(ci.path)}">${esc(tr('notes.brief.ci.details'))}</button>
+      <button type="button" class="btn" data-brief-review="${m.id}" data-iid="${m.iid}">${esc(tr('mr.btn.review'))}</button>
+    </div>`).join('');
+
+  /* B11 — CE QUE JE PEUX MERGER MAINTENANT. Une ligne, un nombre, une porte : le brief ne
+     refait pas la file, il dit combien ne demandent plus rien. Rien n'est mergé d'ici. */
+  const pretes = d.ready_to_merge ? `<div class="brief-item">
+      <div class="brief-item-main"><div class="brief-item-title">${esc(tr('notes.brief.ready', { n: d.ready_to_merge, count: d.ready_to_merge }))}</div>
+        <div class="brief-item-meta muted">${esc(tr('notes.brief.ready.hint', { seuil: d.ready_threshold }))}</div></div>
+      <button type="button" class="btn btn-primary" data-brief-pretes>${esc(tr('notes.brief.ready.go'))}</button>
+    </div>` : '';
+
   const a = d.activity;
   const activite = a ? `<p class="brief-activity">${[
     a.merged ? esc(tr('notes.brief.activity.merged', { n: a.merged, count: a.merged })) : '',
@@ -13044,6 +14020,8 @@ function renderBrief(d) {
     briefSection(tr('notes.brief.sec.pending'), attentes, { icon: 'bot', hint: tr('notes.brief.pending.hint') }),
     briefSection(tr('notes.brief.sec.fresh'), fresh, { icon: 'merge', hint: tr('notes.brief.fresh.hint') }),
     briefSection(tr('notes.brief.sec.stale'), stale, { icon: 'clock', hint: tr('notes.brief.stale.hint', { n: d.stale_days }) }),
+    briefSection(tr('notes.brief.sec.ci'), ciCasse, { icon: 'alert' }),
+    briefSection(tr('notes.brief.sec.ready'), pretes, { icon: 'merge' }),
     briefSection(tr('notes.brief.sec.cleanup'), branches, { icon: 'branch' }),
     briefSection(tr('notes.brief.sec.activity'), activite, { icon: 'chart' }),
   ].join('');
@@ -13051,10 +14029,23 @@ function renderBrief(d) {
   box.innerHTML = `<header class="brief-head">
       <div class="brief-hello">${esc(tr('notes.brief.hello'))}</div>
       <div class="brief-date">${esc(jour)}</div>
+      <span class="spacer"></span>
+      ${/* A/Notes 3 — LE DAILY. « Hier j'ai mergé deux MR, aujourd'hui il m'en reste trois à
+            traiter » se retape tous les matins alors que le brief l'a sous les yeux. Cinq
+            lignes de texte brut, prêtes à coller dans un canal ou un document — pas un
+            export, un presse-papiers. */''}
+      <button type="button" class="btn btn-sm" id="briefCopy" title="${esc(tr('notes.brief.copy.title'))}">${svgIco('copy')}${esc(tr('notes.brief.copy'))}</button>
     </header>
     ${corps || emptyState({ icon: 'check', title: esc(tr('notes.brief.empty.title')), text: esc(tr('notes.brief.empty.text')) })}
     ${d.hidden_count ? `<p class="brief-hidden-foot muted">${esc(tr('notes.brief.hidden', { n: d.hidden_count, count: d.hidden_count }))}
       <button type="button" class="btn btn-sm" id="briefRestore">${esc(tr('notes.brief.restore'))}</button></p>` : ''}`;
+  const btnCopie = $('#briefCopy');
+  if (btnCopie) {
+    btnCopie.addEventListener('click', () => {
+      copyText(texteDuDaily(d), null);
+      toast(tr('notes.brief.copied'));
+    });
+  }
 }
 
 // Une ligne de todo dans le brief : cochable et snoozable sur place — c'est tout l'intérêt
@@ -13064,7 +14055,7 @@ function briefTodoRow(t, avecSnooze) {
     <input type="checkbox" class="todo-check" data-todo-check="${t.id}" aria-label="${esc(tr('notes.todo.done'))}" />
     <div class="brief-item-main">
       <div class="brief-item-title">${esc(t.title)}</div>
-      <div class="meta">${todoPrioBadge(t.priority)}${todoDueHtml(t)}${todoLinkHtml(t)}${todoEtatMr(t)}</div>
+      <div class="meta">${todoPrioBadge(t.priority)}${todoDueHtml(t)}${todoLinkHtml(t)}${todoEtatMr(t)}${todoEtatTicket(t)}</div>
     </div>
     ${avecSnooze ? todoSnoozeHtml(t.id) : ''}
   </div>`;
@@ -13232,6 +14223,19 @@ function todoEtatMr(t) {
   return bouts.length ? ` <span class="todo-mr-etat muted">${bouts.join(' · ')}</span>` : '';
 }
 
+/* A/Notes 1 — CE QUE LE TICKET LIÉ EST DEVENU. Sa sœur liée à une merge request disait tout ;
+   celle-ci ne disait rien, et on rouvrait Jira pour savoir si elle avait encore une raison
+   d'exister. Rien n'est demandé au réseau : l'état vient de la surveillance ou de ce que la
+   découverte a rangé sur les merge requests portant la clé. */
+function todoEtatTicket(t) {
+  const k = t && t.ticket;
+  if (!k) return '';
+  const bouts = [];
+  if (k.status) bouts.push(esc(k.status));
+  for (const m of (k.mrs || [])) bouts.push(esc(tr('notes.todo.ticket.mr', { iid: m.iid, project: m.project })));
+  return bouts.length ? ` <span class="todo-mr-etat muted">${bouts.join(' · ')}</span>` : '';
+}
+
 function todoLinkHtml(t) {
   if (!t.link_kind || !t.link_ref) return '';
   if (t.link_kind === 'mr') {
@@ -13255,6 +14259,9 @@ function todoMrIid(mrId) {
 async function loadTodos() {
   const box = $('#todoList');
   if (!box) return;
+  /* Le filtre restauré doit se VOIR : afficher « Faites » avec « À faire » en surbrillance
+     ferait douter de la liste avant de douter du bouton. */
+  $$('#tab-notes .todo-filter button').forEach((x) => x.classList.toggle('active', x.dataset.tfilter === NOTES.filter));
   box.innerHTML = skeleton(4);
   await notesIndex();
   let d;
@@ -13293,7 +14300,7 @@ function renderTodos(rows) {
       <input type="checkbox" class="todo-check" data-todo-check="${t.id}"${t.status === 'done' ? ' checked' : ''} aria-label="${esc(tr('notes.todo.done'))}" />
       <div class="brief-item-main">
         <div class="brief-item-title">${esc(t.title)}</div>
-        <div class="meta">${todoPrioBadge(t.priority)}${todoDueHtml(t)}${todoLinkHtml(t)}${todoEtatMr(t)}
+        <div class="meta">${todoPrioBadge(t.priority)}${todoDueHtml(t)}${todoLinkHtml(t)}${todoEtatMr(t)}${todoEtatTicket(t)}
           ${t.archived_at ? `<span class="muted">${esc(tr('notes.todo.archived-at', { date: fmtDate(t.archived_at) }))}</span>` : ''}</div>
         ${t.note ? `<div class="todo-note md-body">${renderNoteMd(t.note)}</div>` : ''}
       </div>
@@ -13367,6 +14374,7 @@ $('#todoList') && $('#todoList').addEventListener('dragend', () => {
 
 $$('#tab-notes .todo-filter button').forEach((b) => b.addEventListener('click', () => {
   NOTES.filter = b.dataset.tfilter;
+  try { localStorage.setItem('aidevtools_todo_filtre', NOTES.filter); } catch { /* ignore */ }
   $$('#tab-notes .todo-filter button').forEach((x) => x.classList.toggle('active', x === b));
   loadTodos();
 }));
@@ -13536,6 +14544,12 @@ function renderPageEditor() {
       <span id="pageSaved" class="note-saved"></span>
       <span class="spacer"></span>
       <button type="button" id="pagePin" class="btn btn-sm${p.pinned ? ' active' : ''}" title="${esc(tr('notes.page.pin-title'))}">${svgIco('tag')}<span>${esc(tr(p.pinned ? 'notes.page.unpin' : 'notes.page.pin'))}</span></button>
+      ${/* B6 — UNE NOTE DEVIENT UNE SESSION. La page « Bug du tunnel de paiement » est écrite
+            en réunion, avec sa capture collée. Pour la faire corriger : copier le texte,
+            ouvrir la modale, retrouver la capture dans Téléchargements, la ré-attacher. Or
+            c'est exactement ce que « Faire coder l'IA » fait déjà depuis un ticket Jira —
+            même chemin, autre source. Rien n'est lancé : on relit avant. */''}
+      <button type="button" id="pageToCode" class="btn btn-sm" title="${esc(tr('notes.page.to-code-title'))}">${svgIco('bot')}<span>${esc(tr('notes.page.to-code'))}</span></button>
       <button type="button" id="pageExport" class="btn btn-sm" title="${esc(tr('notes.page.export-title'))}">${svgIco('download')}<span>${esc(tr('notes.page.export'))}</span></button>
       <button type="button" id="pageDelete" class="btn btn-sm btn-danger">${svgIco('trash')}<span>${esc(tr('notes.page.delete'))}</span></button>
     </div>
@@ -13592,6 +14606,10 @@ function renderPageEditor() {
     } catch (e) { toast(explainError(e.message), true); }
   });
   $('#pageExport').addEventListener('click', () => { window.location.href = `/api/notes/${p.id}/export`; });
+  /* B6 — la page devient une session de codage. On PRÉPARE, on ne lance pas : le prompt est
+     la page, les pièces jointes ses captures, le dépôt le dernier utilisé. C'est le même
+     chemin que depuis un ticket Jira, et il se relit avant de partir. */
+  $('#pageToCode') && $('#pageToCode').addEventListener('click', () => openTaskForNote(p));
   $('#pageDelete').addEventListener('click', async () => {
     if (!await confirmDialog({
       title: tr('notes.page.delete'),
@@ -13640,7 +14658,11 @@ function openCapture(ctx = {}) {
   if (ctx.editId && !existante) { toast(tr('err.notes.unknown'), true); return; }
   const source = existante || ctx;
   titre.value = source.title || '';
-  $('#capturePriority').value = source.priority || 'normal';
+  /* C14 — LA PRIORITÉ PAR DÉFAUT EST LA DERNIÈRE CHOISIE. Quelqu'un qui pose surtout des
+     todos « haute » repassait le sélecteur à chaque capture. Sur une todo qu'on ÉDITE ou qui
+     arrive avec une priorité, c'est la sienne qui gagne — évidemment. */
+  $('#capturePriority').value = source.priority
+    || (() => { try { return localStorage.getItem('aidevtools_todo_prio') || 'normal'; } catch { return 'normal'; } })();
   $('#captureNote').value = source.note || '';
   $('#captureDue').value = source.due_at ? isoVersLocal(source.due_at) : '';
   /* Une todo qu'on édite s'ouvre dépliée : on vient justement changer un de ces champs. Et une
@@ -13684,6 +14706,26 @@ const JOURS_SEMAINE_EN = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'
 
 /* Une échéance est un JOUR : on la pose à 9 h locales. « demain », un jour de la semaine (le
    prochain à venir), ou une date `12/09` / `12/09/2026` / `2026-09-12`. */
+/* C14 — LES TROIS ÉCHÉANCES DU QUOTIDIEN, en un clic. La syntaxe courte (`@demain`, `@lundi`,
+   `+1h`) les connaît déjà : le formulaire, lui, obligeait à passer par un sélecteur de date
+   pour dire « demain matin ». On réutilise le MÊME calcul — deux façons de dire « demain » qui
+   ne tomberaient pas le même jour seraient un piège. */
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-due-quick]');
+  if (!b) return;
+  const champ = $('#captureDue');
+  if (!champ) return;
+  const quoi = b.dataset.dueQuick;
+  if (!quoi) { champ.value = ''; return; }
+  if (quoi === '1h') {
+    const d = new Date(Date.now() + 3600 * 1000);
+    champ.value = isoVersLocal(d.toISOString());
+    return;
+  }
+  const iso = quandDepuisMot(quoi);
+  if (iso) champ.value = isoVersLocal(iso);
+});
+
 function quandDepuisMot(mot) {
   const m = String(mot || '').trim().toLowerCase();
   if (!m) return null;
@@ -13758,6 +14800,11 @@ async function submitCapture() {
     else { body.title = brut.trim(); }   // référence inconnue : on garde la phrase entière
   }
   if (captureCtx && captureCtx.link_kind) { body.link_kind = captureCtx.link_kind; body.link_ref = captureCtx.link_ref; }
+  /* La priorité retenue est celle qui a servi à CRÉER, pas celle d'une édition : corriger une
+     vieille todo en « basse » ne doit pas changer l'habitude de tous les jours. */
+  if (!(captureCtx && captureCtx.editId)) {
+    try { localStorage.setItem('aidevtools_todo_prio', body.priority || 'normal'); } catch { /* ignore */ }
+  }
   const edit = captureCtx && captureCtx.editId;
   try {
     if (edit) await api(`/todos/${edit}`, { method: 'PUT', body });
@@ -14100,9 +15147,14 @@ function renderLinkGrid() {
          c'était bien celle d'hier. L'URL entière et « il y a 3 h » répondent aux deux. */
       const bulle = (u) => [u.label || '', u.url, u.last_used_at ? tr('links.last-open', { when: depuis(u.last_used_at) }) : '']
         .filter(Boolean).join('\n');
-      const lignes = montrees.map((u) => `<a class="link-open" href="${esc(u.url)}" target="_blank" rel="noopener noreferrer"
+      /* A/Liens 1 — COPIER L'ADRESSE. La case s'ouvrait d'un clic, mais coller l'URL dans un
+         message demandait le menu contextuel du navigateur — et sur une case qui porte
+         plusieurs adresses, on ne savait pas laquelle on venait de copier. Le bouton la nomme
+         et la copie ; il reste discret, l'ouverture reste le geste principal. */
+      const lignes = montrees.map((u) => `<span class="link-line"><a class="link-open" href="${esc(u.url)}" target="_blank" rel="noopener noreferrer"
           data-usekind="service_url" data-useref="${s.id}:${e.id}:${u.id}" data-tip="${esc(bulle(u))}">
-          <span>${esc(u.label || urlCourte(u.url))}</span></a>`).join('');
+          <span>${esc(u.label || urlCourte(u.url))}</span></a><button type="button" class="link-copy" data-copy-txt="${esc(u.url)}"
+          title="${esc(tr('links.copy-url', { url: u.url }))}" aria-label="${esc(tr('links.copy-url', { url: u.url }))}">${svgIco('copy')}</button></span>`).join('');
       const caches = retenues.slice(montrees.length);
       /* Le « +N » DIT CE QU'IL CACHE au survol. Un compteur seul oblige à déplier pour savoir
          s'il valait la peine d'être déplié — sur une grille entière, c'est autant d'allers et
@@ -14269,6 +15321,21 @@ function arbreFreeLinks(liens) {
   };
   // La racine n'est pas un dossier : ses enfants sont le PREMIER niveau, donc profondeur 0.
   return rendre(racine, null, -1);
+}
+
+/* Le nom d'un service, tel que son hôte le dit : on retire le protocole, le `www.`, le port
+   et le chemin, puis on garde le premier segment — `https://grafana.interne.example/d/abc`
+   donne « grafana ». Une adresse IP ou un `localhost:3000` ne donnent rien d'utile : on
+   préfère alors ne rien proposer plutôt que d'écrire « 127 ». */
+function libelleDepuisUrl(brut) {
+  const v = String(brut || '').trim();
+  if (!v) return '';
+  let hote = '';
+  try { hote = new URL(v.includes('://') ? v : `https://${v}`).hostname; } catch { return ''; }
+  if (!hote || /^\d{1,3}(\.\d{1,3}){3}$/.test(hote)) return '';
+  const seg = hote.replace(/^www\./i, '').split('.')[0];
+  if (!seg || seg === 'localhost' || /^\d+$/.test(seg)) return '';
+  return seg;
 }
 
 const ligneFreeLink = (l) => `<div class="link-free-row">
@@ -14781,6 +15848,20 @@ function openFreeModal(id) {
   $('#freeDelete').hidden = !freeEnCours;
   $('#freeLinkModal').hidden = false;
   setTimeout(() => $('#freeLabel').focus(), 0);
+  /* A/Liens 1 — LE LIBELLÉ SE PROPOSE DEPUIS L'HÔTE. On colle une URL, on remonte au champ
+     précédent, on retape « grafana ». L'hôte le dit déjà : `grafana.interne.example` →
+     « grafana ». Proposé UNIQUEMENT si le libellé est vide et n'a pas été touché — écraser ce
+     qui est écrit serait pire que ne rien proposer. */
+  const champUrl = $('#freeUrl');
+  const champLbl = $('#freeLabel');
+  if (champUrl && champLbl && !champUrl.dataset.autoLabel) {
+    champUrl.dataset.autoLabel = '1';
+    champLbl.addEventListener('input', () => { champLbl.dataset.touche = '1'; });
+    champUrl.addEventListener('input', () => {
+      if (champLbl.value.trim() || champLbl.dataset.touche) return;
+      champLbl.value = libelleDepuisUrl(champUrl.value);
+    });
+  }
 }
 $('#linkNewFree') && $('#linkNewFree').addEventListener('click', () => openFreeModal(null));
 $('#freeCancel') && $('#freeCancel').addEventListener('click', () => { $('#freeLinkModal').hidden = true; });
@@ -15178,6 +16259,36 @@ function renderBoutonsLiens(d, box) {
 }
 
 /* ---------- B8 : la liste des jobs Jenkins liés aux dépôts ---------- */
+/* C10 — LE JOB ET SON PARAMÈTRE SE CHOISISSENT. Les deux étaient des champs libres, tapés à
+   la lettre près : une faute de frappe donnait un lien qui ne se déclencherait jamais, sans
+   rien pour le dire. La liste des jobs est déjà en mémoire (l'onglet Jenkins la charge), et
+   les paramètres du dernier lancement de chaque job avec elle. Un combo AVEC RECHERCHE, comme
+   partout où l'on choisit dans une longue liste — `npm run check` l'exige d'ailleurs. */
+function renderJenkinsLinkPickers() {
+  const boxJob = $('#jenkinsLinkJobBox');
+  const boxParam = $('#jenkinsLinkParamBox');
+  if (!boxJob || !boxParam) return;
+  boxJob.innerHTML = comboHtml('jl-job', { ph: tr('settings.jenkins.links.job-ph') });
+  boxParam.innerHTML = comboHtml('jl-param', { ph: tr('settings.jenkins.links.param-ph') });
+  /* Réglages peut s'ouvrir SANS être passé par l'onglet Jenkins : la liste est alors vide, et
+     un combo vide vaut moins qu'un champ libre. On la charge à la première ouverture du menu. */
+  wireCombo(boxJob, 'jl-job', async () => {
+    if (!(JENKINS.jobs || []).length) {
+      try { const d = await api('/jenkins/jobs'); if (d && d.configured) JENKINS.jobs = d.jobs || []; } catch { /* injoignable */ }
+    }
+    return (JENKINS.jobs || []).map((j) => ({ value: j.path, label: j.path }));
+  });
+  /* Les paramètres proposés sont ceux du job CHOISI : proposer ceux de tous les jobs
+     mélangerait `ENV` de l'un et `BRANCH` de l'autre, et on lierait sur un nom qui n'existe
+     pas dans ce job-là. */
+  wireCombo(boxParam, 'jl-param', () => {
+    const choisi = (($('#jenkinsLinkJobBox .jl-job') || {}).value || '').trim();
+    const j = (JENKINS.jobs || []).find((x) => x.path === choisi);
+    return [...new Set((j && j.lastParams ? j.lastParams : []).map((p) => p.name))]
+      .map((n) => ({ value: n, label: n }));
+  });
+}
+
 async function loadJenkinsLinks() {
   const box = $('#jenkinsLinkRepo');
   if (box) {
@@ -15186,6 +16297,7 @@ async function loadJenkinsLinks() {
     box.innerHTML = repoComboHtml(null, { idClass: 'jl-repo', defaultFirst: true });
     wireRepoCombos(box);
   }
+  renderJenkinsLinkPickers();
   const el = $('#jenkinsLinkList');
   if (!el) return;
   let d;
@@ -15207,10 +16319,19 @@ $('#jenkinsLinkForm') && $('#jenkinsLinkForm').addEventListener('submit', async 
   viderErreursChamps(f);
   const repoId = Number(($('#jenkinsLinkRepo .jl-repo') || {}).value || 0);
   if (!repoId) { toast(tr('err.depot-introuvable'), true); return; }
-  if (!f.job_path.value.trim()) return void signalerChamp(f.job_path, tr('err.jenkins.job-required'));
+  /* LE COMBO PROPOSE, IL N'IMPOSE PAS. Un job que le compte ne voit pas (droits, dossier
+     filtré) doit rester saisissable : on prend la valeur choisie, à défaut ce qui est TAPÉ. */
+  const saisi = (cls, box) => {
+    const cache = $(`.${cls}`, box);
+    const visible = $('[data-combo]', box);
+    return String((cache && cache.value) || (visible && visible.value) || '').trim();
+  };
+  const job = saisi('jl-job', $('#jenkinsLinkJobBox'));
+  const param = saisi('jl-param', $('#jenkinsLinkParamBox'));
+  if (!job) return void signalerChamp($('#jenkinsLinkJobBox [data-combo]'), tr('err.jenkins.job-required'));
   try {
-    await api('/jenkins/links', { method: 'POST', body: { repo_id: repoId, job_path: f.job_path.value.trim(), param: f.param.value.trim() } });
-    f.job_path.value = ''; f.param.value = '';
+    await api('/jenkins/links', { method: 'POST', body: { repo_id: repoId, job_path: job, param } });
+    renderJenkinsLinkPickers();
     loadJenkinsLinks();
   } catch (err) { toast(explainError(err.message), true); }
 });
@@ -15275,7 +16396,21 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   switch (e.key) {
-    case '/': e.preventDefault(); { const s = $('#searchReview'); if (s && !$('#tab-review').classList.contains('active')) $('nav button[data-tab="review"]').click(); if (s) s.focus(); } break;
+    /* C12 — « / » CHERCHE LÀ OÙ ON EST. Il éjectait vers Reviews : appuyer sur « / » dans
+       Jenkins pour filtrer deux cents jobs changeait d'onglet. Chaque onglet a sa recherche ;
+       on prend celle qui est visible, et on ne retombe sur Reviews que faute de mieux. */
+    case '/': {
+      e.preventDefault();
+      const champ = $$('#tab-review .search, #tab-task .search, #jiraSearch, #jiraWatchSearch, #jenkinsSearch, #pageSearch, #linkSearch, #dactSearch, #todoQuickAdd')
+        .find((el) => el.offsetParent !== null);
+      if (champ) { champ.focus(); if (champ.select) champ.select(); break; }
+      const s = $('#searchReview');
+      if (s) { $('nav button[data-tab="review"]').click(); s.focus(); }
+      break;
+    }
+    /* C12 — `N` : une nouvelle session sans passer par l'onglet. Majuscule, parce que `n`
+       est déjà la capture rapide et que les deux gestes ne se confondent pas. */
+    case 'N': e.preventDefault(); navTab('task'); openTaskModal('code'); break;
     case 'r': if ($('#tab-review').classList.contains('active')) { e.preventDefault(); $('#btnDiscover').click(); } break;
     case 'l': {
       e.preventDefault();
@@ -15296,6 +16431,9 @@ document.addEventListener('keydown', (e) => {
     /* Navigation au clavier dans la liste courante. Ce qu'elle procure n'est pas une
        surprise mais un RYTHME : traiter vingt MR au clavier, c'est de la cadence ; à la
        souris, c'est de la visée. Aucune logique dupliquée — on clique les boutons rendus. */
+    /* C12 — `f` comme « faire corriger » : le geste qui suit la lecture d'un rapport, au
+       même titre que `v` vérifier ou `c` contexte. On clique le bouton RENDU. */
+    case 'f': { const b = boutonDeCarte('[data-dev]'); if (b) { e.preventDefault(); b.click(); } break; }
     case 'j': e.preventDefault(); bougerFocusCarte(1); break;
     case 'k': e.preventDefault(); bougerFocusCarte(-1); break;
     case 'Enter': { const c = carteFocus(); if (c) { e.preventDefault(); const b = c.querySelector('.btn-primary'); if (b) b.click(); } break; }
@@ -15754,7 +16892,7 @@ function renderVerifierList() {
       <div class="title">${esc(v.name)}${herite ? ` <span class="tag stale">${esc(tr('verify.kind.script-removed.tag'))}</span>` : ''}</div>
       <div class="meta">${herite
     ? `<code>${esc(v.command || '')}</code>`
-    : (v.commands || []).map((c) => `<code>${esc(c)}</code>`).join(' <span class="muted">→</span> ')}</div>
+    : (v.commands || []).map((c) => `<button type="button" class="code-copy" data-copy-txt="${esc(c)}" title="${esc(tr('verify.copy-command'))}"><code>${esc(c)}</code></button>`).join(' <span class="muted">→</span> ')}</div>
       <div class="meta">${(v.repos || []).map((r) => {
     const p = (repoOptions.find((x) => x.id === r.repo_id) || {}).project || `#${r.repo_id}`;
     return `<span class="tag">${esc(p)} · ${esc(r.mode === 'in_place' ? tr('verify.mode.in-place-short') : tr('verify.mode.worktree-short'))}</span>`;
@@ -15765,6 +16903,9 @@ function renderVerifierList() {
       <div class="meta muted">${[
     v.last ? `<span class="tmr-verdict v-${esc(v.last.verdict)}">${esc(tr(`mr.ref.verdict.${v.last.verdict}`))}</span>${v.last.at ? ` <span data-when="${esc(v.last.at)}">${esc(fmtDate(v.last.at))}</span>` : ''}` : esc(tr('verify.verifier.never')),
     v.pending_mrs ? esc(tr('verify.verifier.pending', { n: v.pending_mrs, count: v.pending_mrs })) : '',
+    /* A/Réglages 3 — combien de sessions le portent. Renommer ou supprimer se faisait à
+       l'aveugle : douze sessions le relanceraient en finissant, et rien ne le disait. */
+    v.used_by_tasks ? esc(tr('verify.verifier.used-by', { n: v.used_by_tasks, count: v.used_by_tasks })) : '',
   ].filter(Boolean).join(' · ')}</div>
       ${herite
     ? `<p class="field-note">${esc(tr('verify.kind.script-removed.hint'))}</p>`
@@ -15878,6 +17019,9 @@ function ouvrirFormVerifier(ouvert) {
 function viderFormVerifier() {
   const f = $('#verifierForm');
   f.reset(); f.id.value = ''; f.run_base.checked = true; f.parse_tap.checked = true;
+  /* C15 — le délai effectif s'ÉCRIT. Vide, avec « 900 » en gris, on ne sait pas si le
+     vérificateur n'a pas de limite ou s'il en a une qu'on ne voit pas. */
+  if (f.timeout_s) f.timeout_s.value = 900;
   renderVerifierRepoBox([]);
   renderCommandList([]);
   appliquerKind();
@@ -15995,7 +17139,31 @@ async function openVerifyReport(id) {
     /* Publier n'a de sens que s'il y a une merge request où écrire : une vérification de
        BRANCHE n'en a pas, et proposer un bouton qui échouerait serait pire que rien. */
     $('#verifyComment').hidden = !(d.targets || []).some((c) => c.mr_id);
+    renderSuiteApresVerdict(d);
   } catch (e) { $('#verifyReport').innerHTML = errorBox(explainError(e.message)); }
+}
+
+/* A/Reviews 3 — CE QU'ON FAIT D'UN VERDICT VERT. On lit « ✓ vérifié », on ferme la fenêtre,
+   on retrouve la carte, on ouvre son menu « ⋯ », on clique « Merger ». Les deux gestes qui
+   suivent un vert existaient déjà — au même conditionnel exact — mais pas ici. Rien de neuf
+   n'est calculé : on retrouve la merge request dans les listes déjà chargées.
+
+   Vert NON PÉRIMÉ seulement : proposer de merger sur un verdict qui ne décrit plus le code
+   serait exactement le contraire de ce que la vérification promet. */
+function renderSuiteApresVerdict(d) {
+  const zone = $('#verifySuite');
+  if (!zone) return;
+  zone.innerHTML = '';
+  if (!d || d.verdict !== 'verified_pass' || d.stale) return;
+  const ids = [...new Set((d.targets || []).map((c) => c.mr_id).filter(Boolean))];
+  const mrs = toReviewRows.concat(reportRows).filter((m) => ids.includes(m.id) && !m.closed_seen);
+  if (!mrs.length) return;
+  zone.innerHTML = mrs.slice(0, 3).map((m) => {
+    const jobs = (m.jenkins_jobs || []).slice(0, 1).map((j) => `<button type="button" class="btn"
+        data-mr-jenkins="${esc(j.path)}" data-param="${esc(j.param || '')}" data-branch="${esc(m.source_branch)}"
+        title="${esc(tr('mr.title.jenkins-run'))}">${esc(tr('mr.btn.jenkins-run', { job: j.path }))}</button>`).join('');
+    return `<button type="button" class="btn btn-danger" data-merge="${m.id}">${esc(tr('report.btn.merge', { iid: m.iid }))}</button>${jobs}`;
+  }).join('');
 }
 
 const lireListe = (j) => { try { return j ? JSON.parse(j) : null; } catch { return null; } };
@@ -16309,6 +17477,29 @@ document.addEventListener('click', (e) => {
   if (b) ouvrirVerifBranche(Number(b.dataset.vbranch));
 });
 
+/* A/Git 3 — LES DEUX GESTES DE L'EXPLORATEUR. Ils n'inventent rien : ils ouvrent les écrans
+   qui existent, avec le dépôt et la branche déjà posés. La branche est écrite dans la MÊME
+   mémoire que « Vérifier une branche » utilise déjà — deux endroits pour dire « la branche du
+   dépôt X » se seraient contredits au premier changement. */
+document.addEventListener('click', (e) => {
+  const v = e.target.closest && e.target.closest('[data-gitverif]');
+  if (v) {
+    memoriserBranche(Number(v.dataset.repo), v.dataset.gitverif);
+    ouvrirVerifBranche();
+    return;
+  }
+  const c = e.target.closest && e.target.closest('[data-gitcode]');
+  if (!c) return;
+  /* Coder SUR une branche existante : la branche de travail est celle-là, et la branche de
+     départ reste vide (c'est-à-dire « celle-ci ») — proposer un départ ferait croire qu'on
+     va en créer une nouvelle. */
+  navTab('task');
+  openTaskModal('code').then(() => {
+    renderTargetRows([{ repo_id: Number(c.dataset.repo), branch: c.dataset.gitcode }]);
+    majVerificateursSession('');
+  });
+});
+
 /* ---------- Lancer une vérification ---------- */
 
 /* On CONFIRME toujours, même quand un seul vérificateur couvre le dépôt. La modale ne sert
@@ -16323,9 +17514,10 @@ async function lancerVerification(mrIds, { lotId = null, repoIds = null } = {}) 
   try {
     const r = await api(`/verifiers/for?repos=${repos.join(',')}`);
     if (!r.verifiers.length) { toast(tr('err.verify.no-verifier'), true); return; }
-    choix = await choisirVerifier(r.verifiers, mrIds);
+    choix = await choisirVerifier(r.verifiers, mrIds, lotId);
     if (!choix) return;
   } catch (e) { toast(explainError(e.message), true); return; }
+  memoriserVerifLot(lotId, choix);   // le même lot repartira sur le même vérificateur
   try {
     const body = { verifier_id: choix };
     if (lotId) await api(`/lots/${lotId}/verify`, { method: 'POST', body });
@@ -16343,7 +17535,21 @@ function mrRepoId(mrId) {
 let verifyPickResolve = null;
 let verifyPickListe = [];
 
-function choisirVerifier(listeBrute, mrIds) {
+/* A/Réglages 3 — LE VÉRIFICATEUR D'UN LOT SE RETIENT. Un lot se revérifie plusieurs fois
+   (après corrections, après rebase) et c'est chaque fois le même vérificateur : le proposer
+   d'office évite de le rechoisir dans une liste où un mauvais clic lance autre chose.
+   Mémoire de navigateur : la perdre ne perd qu'une présélection. */
+const LOT_VERIF_MEMO = 'aidevtools_lot_verif';
+const lotVerifMemo = () => { try { return JSON.parse(localStorage.getItem(LOT_VERIF_MEMO) || '{}'); } catch { return {}; } };
+function memoriserVerifLot(lotId, verifierId) {
+  if (!lotId || !verifierId) return;
+  try {
+    const m = lotVerifMemo(); m[lotId] = verifierId;
+    localStorage.setItem(LOT_VERIF_MEMO, JSON.stringify(m));
+  } catch { /* stockage indisponible */ }
+}
+
+function choisirVerifier(listeBrute, mrIds, lotId = null) {
   /* Les vérificateurs hérités de la famille « script » ne sont pas proposés : le serveur
      refuserait de les lancer, et offrir un choix qui échoue au clic suivant est pire que ne pas
      l'offrir. Ils restent visibles dans les Réglages, où l'on peut les réécrire. */
@@ -16355,8 +17561,10 @@ function choisirVerifier(listeBrute, mrIds) {
     : '';
   /* Radio et non bouton-qui-lance : on choisit d'abord, on voit ce que ça implique, puis on
      lance. Le détail change sous les yeux à chaque sélection. */
+  const dejaChoisi = lotId ? Number(lotVerifMemo()[lotId]) : 0;
+  const iDefaut = Math.max(0, liste.findIndex((v) => v.id === dejaChoisi));
   $('#verifyPickList').innerHTML = liste.map((v, i) => `<label class="inline-check verify-pick-opt">
-    <input type="radio" name="verifyPick" value="${v.id}" ${i === 0 ? 'checked' : ''} />
+    <input type="radio" name="verifyPick" value="${v.id}" ${i === iDefaut ? 'checked' : ''} />
     <span>${esc(v.name)}</span>
   </label>`).join('');
   majDetailChoix();
@@ -16441,6 +17649,23 @@ function mrSelectionRepos() {
   return par;
 }
 
+/* Le nom qu'un lot devrait porter, déduit de ce qui est coché. Deux règles, dans cet ordre :
+   la clé de ticket que TOUTES portent (c'est le cas d'usage : un ticket, cinq dépôts), sinon
+   le plus long préfixe commun des noms de branche, coupé proprement à un séparateur — un
+   préfixe tronqué au milieu d'un mot (`feat/PROJ-14`) est pire que pas de proposition. */
+function nomDeLotPropose(ids) {
+  const rows = toReviewRows.concat(reportRows).filter((m) => ids.includes(m.id));
+  if (rows.length < 2) return '';
+  const cles = rows.map((m) => (m.ticket_key || jiraCleDe(m) || '').toUpperCase());
+  if (cles.every((k) => k && k === cles[0])) return cles[0];
+  const branches = rows.map((m) => String(m.source_branch || ''));
+  if (branches.some((b) => !b)) return '';
+  let i = 0;
+  while (i < branches[0].length && branches.every((b) => b[i] === branches[0][i])) i += 1;
+  const commun = branches[0].slice(0, i).replace(/[^A-Za-z0-9]+$/, '');
+  return commun.length >= 4 ? commun : '';
+}
+
 function renderMrBulkBar() {
   const bar = $('#mrBulkBar');
   if (!bar) return;
@@ -16454,6 +17679,15 @@ function renderMrBulkBar() {
   $('#mrBulkWarn').hidden = !double;
   $('#mrBulkWarn').textContent = double ? tr('err.verify.repo-twice') : '';
   $('#btnBulkVerify').disabled = double;
+  /* C4 — LE NOM DU LOT SE DEVINE. On cochait cinq cartes puis on tapait « PROJ-1408 » à la
+     main, alors que les cinq le portent déjà. La clé de ticket commune si elle existe, sinon
+     le préfixe commun des branches. Proposé, jamais imposé : le champ reste modifiable, et
+     ce qui a été tapé n'est pas écrasé. */
+  const champLot = $('#mrBulkLotName');
+  if (champLot && !champLot.value.trim() && !champLot.dataset.touche) {
+    const propose = nomDeLotPropose([...mrSelection]);
+    if (propose) champLot.value = propose;
+  }
   $('#btnBulkLot').disabled = double;
 }
 
@@ -16465,12 +17699,31 @@ $('#btnBulkClear') && $('#btnBulkClear').addEventListener('click', () => {
 
 $('#btnBulkVerify') && $('#btnBulkVerify').addEventListener('click', () => lancerVerification([...mrSelection]));
 
+$('#mrBulkLotName') && $('#mrBulkLotName').addEventListener('input', (e) => { e.target.dataset.touche = '1'; });
+/* C4 — CRÉER ET VÉRIFIER, en un geste. On ne crée pas un lot pour le contempler : on le crée
+   pour lancer la vérification groupée, et il fallait ensuite aller le retrouver dans Dev IA.
+   Le bouton « Créer un lot » reste, pour préparer maintenant et lancer plus tard. */
+$('#btnBulkLotVerify') && $('#btnBulkLotVerify').addEventListener('click', async (e) => {
+  const champ = $('#mrBulkLotName');
+  const name = champ.value.trim();
+  if (!name) { toast(tr('err.lot.name-required'), true); champ.focus(); return; }
+  const ids = [...mrSelection];
+  try {
+    const lot = await busy(e.currentTarget, () => api('/lots', { method: 'POST', body: { name, members: ids } }));
+    champ.value = '';
+    delete champ.dataset.touche;
+    toast(tr('verify.toast.lot-created', { name }));
+    loadLots();
+    lancerVerification(ids, { lotId: lot && lot.id, repoIds: [...mrSelectionRepos().values()] });
+  } catch (err) { toast(explainError(err.message), true); }
+});
 $('#btnBulkLot') && $('#btnBulkLot').addEventListener('click', async (e) => {
   const name = $('#mrBulkLotName').value.trim();
   if (!name) { toast(tr('err.lot.name-required'), true); $('#mrBulkLotName').focus(); return; }
   try {
     await busy(e.currentTarget, () => api('/lots', { method: 'POST', body: { name, members: [...mrSelection] } }));
     $('#mrBulkLotName').value = '';
+    delete $('#mrBulkLotName').dataset.touche;
     toast(tr('verify.toast.lot-created', { name }));
     loadLots();
   } catch (err) { toast(explainError(err.message), true); }
@@ -16594,7 +17847,7 @@ document.addEventListener('keydown', (e) => {
      masquer sans passer par leur bouton d'annulation laisse l'appelant en attente pour
      toujours — le bouton qui a ouvert la modale reste alors en chargement, indéfiniment.
      On clique donc le vrai bouton quand il existe. */
-  const cancel = open.querySelector('#taskCancel, #ticketCancel, #bulkCancel, #verifyPickCancel');
+  const cancel = open.querySelector('#confirmCancel, #taskCancel, #ticketCancel, #bulkCancel, #verifyPickCancel');
   if (cancel) cancel.click(); else open.hidden = true;
 });
 
@@ -16606,7 +17859,22 @@ document.addEventListener('keydown', (e) => {
    ne porte pas de pastille : elle supposerait d'interroger Jenkins à chaque ouverture de
    l'application, et un compteur figé depuis la dernière visite ment plus qu'il n'informe. */
 
-const JENKINS = { jobs: [], configured: true, q: '', echecsSeuls: false, miensSeuls: false, job: null, build: null, qDossier: '', horsDossiers: new Set(), masques: new Set(), paramFiltres: {}, paramsMasques: new Set() };
+/* A/Jenkins 2 — LES QUATRE FILTRES VOLATILS REJOIGNENT LES QUATRE AUTRES. L'onglet retenait
+   déjà les dossiers rangés, les jobs épinglés, les paramètres masqués et l'ordre des menus,
+   mais oubliait la recherche, « seulement ce qui ne va pas », « mes lancements » et les valeurs
+   de paramètres — c'est-à-dire précisément ce qu'on repose à chaque visite. */
+const JENKINS_FILTRES = 'mergerie_jenkins_filtres';
+const jkFiltresMemo = () => { try { return JSON.parse(localStorage.getItem(JENKINS_FILTRES) || '{}'); } catch { return {}; } };
+function jkMemoriserFiltres() {
+  try {
+    localStorage.setItem(JENKINS_FILTRES, JSON.stringify({
+      q: JENKINS.q, echecsSeuls: JENKINS.echecsSeuls, miensSeuls: JENKINS.miensSeuls,
+      mesBranches: JENKINS.mesBranches, paramFiltres: JENKINS.paramFiltres,
+    }));
+  } catch { /* stockage indisponible */ }
+}
+const JK_MEMO0 = (() => { try { return JSON.parse(localStorage.getItem('mergerie_jenkins_filtres') || '{}'); } catch { return {}; } })();
+const JENKINS = { jobs: [], configured: true, q: JK_MEMO0.q || '', echecsSeuls: !!JK_MEMO0.echecsSeuls, miensSeuls: !!JK_MEMO0.miensSeuls, mesBranches: !!JK_MEMO0.mesBranches, job: null, build: null, qDossier: '', horsDossiers: new Set(), masques: new Set(), paramFiltres: JK_MEMO0.paramFiltres || {}, paramsMasques: new Set() };
 
 /* ---------- Les jobs épinglés ----------
    Trois jobs du quotidien dans une liste de deux cents : on les cherchait à chaque fois. Une
@@ -16883,6 +18151,13 @@ function jkRow(j, colonnes = []) {
           désactivés : « Lancer », bleu, se retrouvait à trois abscisses différentes d'une
           ligne à l'autre, exactement là où l'œil venait de cliquer sur autre chose. */''}
     <div class="jk-actions">
+      ${/* B10 — « EST-CE BIEN PARTI ? ». Le build est vert, il porte `ENV=préprod`, le job est
+            lié à un dépôt : l'adresse de cet environnement est dans la grille des liens. On
+            allait la chercher deux onglets plus loin. Le bloc arrive VIDE et se remplit après
+            le rendu (une requête par job lié, une seule fois) — un job sans lien, sans build
+            vert ou sans paramètre d'environnement n'affiche rien du tout. */''}
+      <span class="jk-depot" data-jk-depot="${esc(j.path)}"></span>
+      <span class="jk-liens" data-jk-liens="${esc(j.path)}"></span>
       ${jkLienExterne(j.url)}
       ${/* « Ouvrir » à côté d'une icône « ouvrir dans Jenkins » : deux fois le même verbe pour
             deux destinations. Celui-ci reste DANS Mergerie et montre la fiche — « Détails ». */''}
@@ -16900,8 +18175,88 @@ function jkRow(j, colonnes = []) {
   </div>`;
 }
 
+/* Les branches de MES merge requests ouvertes — celles dont je suis l'auteur si les forges
+   ont pu dire qui je suis, sinon toutes les ouvertes : mieux vaut un filtre un peu large
+   qu'un filtre vide sur un jeton qui ne lit pas son propre compte. */
+function mesBranchesOuvertes() {
+  const rows = toReviewRows.concat(reportRows).filter((m) => !m.closed_seen);
+  const miennes = moiSurLesForges ? rows.filter(estDeMoi) : rows;
+  return new Set(miennes.map((m) => String(m.source_branch || '').trim()).filter(Boolean));
+}
+
+/* A/Jenkins 1 — DE QUEL DÉPÔT PARLE CE JOB. `repo_jenkins` n'était lu que dans l'autre sens
+   (depuis une merge request, pour proposer « Lancer <job> ») : l'onglet Jenkins, lui, affichait
+   deux cents chemins sans jamais dire lequel concerne le code qu'on suit. La liste est
+   minuscule (quelques lignes) et chargée une fois par page. */
+let jenkinsLiensParJob = null;
+async function assurerLiensJenkins() {
+  if (jenkinsLiensParJob) return jenkinsLiensParJob;
+  jenkinsLiensParJob = new Map();
+  try {
+    const d = await api('/jenkins/links');
+    for (const l of (d.links || [])) jenkinsLiensParJob.set(l.job_path, l);
+  } catch { /* pas de lien : la colonne reste vide, c'est le cas courant */ }
+  return jenkinsLiensParJob;
+}
+
+/* B10 — remplir les boutons d'environnement APRÈS le rendu. Une requête par job LIÉ et par
+   page (mémorisée) : la liste en compte deux cents, mais deux ou trois seulement sont liés à
+   un dépôt, et eux seuls posent la question « c'est parti où ? ». */
+const cacheLiensJob = new Map();
+/* Le dépôt lié, et la merge request OUVERTE qui porte la branche du dernier build. Les deux
+   sont déjà en mémoire — les liens (une requête) et la file (chargée par l'onglet Reviews) :
+   on ne demande rien de plus, et un job sans lien n'affiche rien. */
+async function remplirDepotsJenkins() {
+  const liens = await assurerLiensJenkins();
+  if (!liens.size) return;
+  for (const zone of $$('[data-jk-depot]')) {
+    const chemin = zone.dataset.jkDepot;
+    const l = liens.get(chemin);
+    if (!l || !zone.isConnected) continue;
+    const j = (JENKINS.jobs || []).find((x) => x.path === chemin);
+    const ref = String((j && j.ref) || '').trim();
+    const mr = ref ? toReviewRows.concat(reportRows).find((m) => !m.closed_seen && m.source_branch === ref) : null;
+    zone.innerHTML = `<span class="tag jk-depot-tag" title="${esc(tr('jenkins.linked-repo.title', { project: l.project }))}">${svgIco('merge')} ${esc(l.project)}</span>`
+      + (mr ? `<button type="button" class="tag jk-depot-mr" data-jk-mr="${mr.id}" title="${esc(tr('jenkins.linked-mr.title', { iid: mr.iid, branch: ref }))}">!${esc(String(mr.iid))}</button>` : '');
+  }
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-jk-mr]');
+  if (!b) return;
+  navTab('review');
+  openReport(Number(b.dataset.jkMr));
+});
+
+async function remplirLiensJenkins() {
+  for (const zone of $$('[data-jk-liens]')) {
+    const chemin = zone.dataset.jkLiens;
+    const j = (JENKINS.jobs || []).find((x) => x.path === chemin);
+    if (!j || j.statut !== 'succes' || j.enCours) continue;
+    /* La valeur d'un paramètre qui NOMME un environnement : c'est le seul indice fiable
+       (`ENV=préprod`, `TARGET=prod`). On compare aux environnements de la grille, sans
+       deviner — un `ENV=dev-perso-karim` qui ne correspond à rien n'affiche rien. */
+    const valeurs = new Set((j.lastParams || []).map((p) => String(p.value || '').trim().toLowerCase()).filter(Boolean));
+    if (!valeurs.size) continue;
+    if (!cacheLiensJob.has(chemin)) {
+      cacheLiensJob.set(chemin, api(`/jenkins/build-links?path=${encodeURIComponent(chemin)}`).catch(() => ({ envs: [] })));
+    }
+    const d = await cacheLiensJob.get(chemin);
+    const cases = (d.envs || []).filter((c) => valeurs.has(String(c.env || '').trim().toLowerCase()));
+    if (!cases.length || !zone.isConnected) continue;
+    zone.innerHTML = cases.slice(0, 3).map((c) => `<a class="btn btn-sm" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer"
+        style="border-color:${esc(c.color || 'var(--line)')}"
+        title="${esc(tr('jenkins.open-env.title', { env: c.env, url: c.url }))}">${svgIco('external')}${esc(c.env)}</a>`).join('');
+  }
+}
+
 function renderJenkins() {
   const box = $('#jenkinsBox');
+  /* Les filtres restaurés doivent SE VOIR : une liste réduite par une recherche qu'on ne lit
+     nulle part passe pour une liste vide, et on la croit cassée. */
+  const champQ = $('#jenkinsSearch'); if (champQ && champQ.value !== JENKINS.q) champQ.value = JENKINS.q;
+  const cKo = $('#jenkinsFailOnly'); if (cKo) cKo.checked = !!JENKINS.echecsSeuls;
+  const cMoi = $('#jenkinsMineOnly'); if (cMoi) cMoi.checked = !!JENKINS.miensSeuls;
+  const cBr = $('#jenkinsMineBranches'); if (cBr) cBr.checked = !!JENKINS.mesBranches;
   if (!JENKINS.configured) {
     box.innerHTML = emptyState({
       icon: 'sliders', title: tr('jenkins.empty.title'), text: tr('jenkins.empty.text'),
@@ -16917,7 +18272,12 @@ function renderJenkins() {
     && !JENKINS.horsDossiers.has(j.folder) && !JENKINS.masques.has(j.folder)
     && jkPasseFiltresParam(j)
     && (!JENKINS.echecsSeuls || JK_ENNUI.includes(j.statut) || j.enCours)
-    && (!JENKINS.miensSeuls || Object.prototype.hasOwnProperty.call(jkLances(), j.path)));
+    && (!JENKINS.miensSeuls || Object.prototype.hasOwnProperty.call(jkLances(), j.path))
+    /* « Mes branches » : le dernier build porte la branche d'une de MES merge requests
+       ouvertes. Aucune requête de plus — la file est déjà chargée, et c'est elle qui dit ce
+       qui est à moi. Sans file chargée (onglet jamais ouvert), le filtre ne retient rien
+       plutôt que de tout retenir : une case qui ne filtre pas ment sur ce qu'elle promet. */
+    && (!JENKINS.mesBranches || mesBranchesOuvertes().has(String(j.ref || '').trim())));
   $('#jenkinsCount').textContent = tr('jenkins.count', { n: vus.length, count: vus.length, total: JENKINS.jobs.length });
 
   if (!JENKINS.jobs.length) {
@@ -16939,6 +18299,8 @@ function renderJenkins() {
   const epingles = jkEpingles();
   const ordonnes = [...vus].sort((a, b) => (epingles.has(b.path) ? 1 : 0) - (epingles.has(a.path) ? 1 : 0));
   box.innerHTML = ordonnes.map((j) => jkRow(j, colonnes)).join('');
+  remplirLiensJenkins();   // B10 : après le rendu, sans le retarder
+  remplirDepotsJenkins();  // A/Jenkins 1 : idem — le dépôt lié et sa merge request
 }
 
 /* FILTRER SUR LES VALEURS D'UN PARAMÈTRE FRÉQUENT. C'est la question qu'on se pose devant une
@@ -17167,9 +18529,25 @@ function jkBuildDetail(d, b) {
           c'est la seule chose qu'on va y chercher neuf fois sur dix. Chargée à la demande —
           uniquement sur un échec, uniquement pour le build sélectionné. */''}
     ${b.result && b.result !== 'SUCCESS' && !b.building
-    ? `<h4>${esc(tr('jenkins.build.tail'))}</h4><pre class="jk-tail verify-log" data-jk-tail="${b.number}">${esc(tr('ui.combo.loading'))}</pre>` : ''}
+    ? `<h4>${esc(tr('jenkins.build.tail'))}
+        ${/* A/Jenkins 3 (C7) — la console se COPIE et le build s'OUVRE. On lisait l'erreur ici
+              puis on la resélectionnait à la souris pour la coller à un collègue, et on
+              retournait dans Jenkins à la main pour la suite. */''}
+        <button type="button" class="btn btn-sm btn-ghost" data-jk-tail-copy="${b.number}" title="${esc(tr('jenkins.tail.copy'))}">${svgIco('copy')}</button>
+        ${b.url ? `<a class="btn btn-sm btn-ghost" href="${esc(b.url)}" target="_blank" rel="noopener" title="${esc(tr('jenkins.build.open'))}">${svgIco('external')}</a>` : ''}
+      </h4><pre class="jk-tail verify-log" data-jk-tail="${b.number}">${esc(tr('ui.combo.loading'))}</pre>` : ''}
   </div>`;
 }
+
+/* Copier la console affichée : elle est déjà chargée, il n'y a rien à redemander. */
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-jk-tail-copy]');
+  if (!b) return;
+  const pre = $(`[data-jk-tail="${CSS.escape(b.dataset.jkTailCopy)}"]`);
+  if (!pre) return;
+  copyText(pre.textContent || '', null);
+  toast(tr('jenkins.tail.copied'));
+});
 
 /* La fiche : l'historique à gauche, le détail du build choisi à droite. On sélectionne le
    plus récent d'office — c'est celui dont on vient chercher les paramètres neuf fois sur dix. */
@@ -17471,9 +18849,16 @@ async function openJenkinsLog(chemin, numero) {
   }
 }
 
-$('#jenkinsSearch') && $('#jenkinsSearch').addEventListener('input', (e) => { JENKINS.q = e.target.value; renderJenkins(); });
-$('#jenkinsFailOnly') && $('#jenkinsFailOnly').addEventListener('change', (e) => { JENKINS.echecsSeuls = e.target.checked; renderJenkins(); });
-$('#jenkinsMineOnly') && $('#jenkinsMineOnly').addEventListener('change', (e) => { JENKINS.miensSeuls = e.target.checked; renderJenkins(); });
+$('#jenkinsSearch') && $('#jenkinsSearch').addEventListener('input', (e) => { JENKINS.q = e.target.value; jkMemoriserFiltres(); renderJenkins(); });
+$('#jenkinsFailOnly') && $('#jenkinsFailOnly').addEventListener('change', (e) => { JENKINS.echecsSeuls = e.target.checked; jkMemoriserFiltres(); renderJenkins(); });
+$('#jenkinsMineOnly') && $('#jenkinsMineOnly').addEventListener('change', (e) => { JENKINS.miensSeuls = e.target.checked; jkMemoriserFiltres(); renderJenkins(); });
+$('#jenkinsMineBranches') && $('#jenkinsMineBranches').addEventListener('change', async (e) => {
+  JENKINS.mesBranches = e.target.checked;
+  jkMemoriserFiltres();
+  // La file n'est peut-être pas chargée : sans elle le filtre ne connaîtrait aucune branche.
+  if (JENKINS.mesBranches && !toReviewRows.length && !reportRows.length) { try { await loadSegment('to_review'); } catch { /* file indisponible */ } }
+  renderJenkins();
+});
 document.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-jkpin]');
   if (!b) return;
@@ -17494,6 +18879,7 @@ $('#jenkinsParamFiltres') && $('#jenkinsParamFiltres').addEventListener('click',
     /* On efface AUSSI sa valeur : un filtre invisible qui continue de filtrer est le meilleur
        moyen de chercher pendant dix minutes pourquoi la liste est vide. */
     JENKINS.paramFiltres = { ...JENKINS.paramFiltres, [nom]: '' };
+    jkMemoriserFiltres();
     sauverFiltreJenkins();
     renderJenkins();
     return;
@@ -17512,6 +18898,7 @@ $('#jenkinsParamFiltres') && $('#jenkinsParamFiltres').addEventListener('input',
   const valeur = champ.value.trim();
   jkApresFrappe(() => {
     JENKINS.paramFiltres = { ...JENKINS.paramFiltres, [nom]: valeur };
+    jkMemoriserFiltres();
     renderJenkins();
     const rendu = $(`#jenkinsParamFiltres [data-jkpf="${CSS.escape(nom)}"]`);
     if (rendu) { rendu.focus(); rendu.setSelectionRange(rendu.value.length, rendu.value.length); }

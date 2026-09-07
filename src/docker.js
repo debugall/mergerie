@@ -212,6 +212,57 @@ function reconstructRunCommand(inspect) {
   return parts.join(' \\\n  ');
 }
 
+/* LES ARGUMENTS DE RESTAURATION — à ne pas confondre avec `reconstructRunCommand`, qui
+   compose une ligne À LIRE. Deux différences, et elles comptent :
+     — celle-ci rend un TABLEAU d'arguments : ce module n'appelle jamais de shell, et
+       ré-analyser une chaîne pour la découper serait exactement le trou qu'on s'interdit ;
+     — elle porte les VRAIES valeurs d'environnement. La ligne affichée masque les secrets
+       (`-e TOKEN=***`) parce qu'elle est faite pour être montrée ; restaurer avec ces
+       astérisques recréerait un container qui démarre et ne fonctionne pas.
+   Une variable héritée de l'image est écartée ici aussi : la réinjecter la figerait à la
+   valeur du jour de la sauvegarde, alors que l'image, elle, a pu évoluer. */
+function restoreArgs(inspect) {
+  const cfg = (inspect && inspect.Config) || {};
+  const host = (inspect && inspect.HostConfig) || {};
+  const name = String((inspect && inspect.Name) || '').replace(/^\//, '');
+  const args = ['run', '-d'];
+  if (name) args.push('--name', name);
+  if (host.RestartPolicy && host.RestartPolicy.Name && host.RestartPolicy.Name !== 'no') {
+    args.push('--restart', host.RestartPolicy.Name);
+  }
+  for (const [containerPort, binds] of Object.entries(host.PortBindings || {})) {
+    for (const b of (binds || [])) {
+      const hostPart = [b.HostIp, b.HostPort].filter(Boolean).join(':');
+      args.push('-p', `${hostPart ? `${hostPart}:` : ''}${containerPort}`);
+    }
+  }
+  for (const m of ((inspect && inspect.Mounts) || [])) {
+    if (m.Type === 'bind') args.push('-v', `${m.Source}:${m.Destination}${m.RW === false ? ':ro' : ''}`);
+    else if (m.Type === 'volume' && m.Name) args.push('-v', `${m.Name}:${m.Destination}`);
+  }
+  const imgEnv = envArrayToMap((inspect && inspect.__imageEnv) || []);
+  for (const line of (cfg.Env || [])) {
+    const i = String(line).indexOf('=');
+    const k = i === -1 ? String(line) : String(line).slice(0, i);
+    const v = i === -1 ? '' : String(line).slice(i + 1);
+    if (Object.prototype.hasOwnProperty.call(imgEnv, k) && imgEnv[k] === v) continue;
+    args.push('-e', `${k}=${v}`);
+  }
+  args.push(cfg.Image || (inspect && inspect.Image) || '');
+  if (Array.isArray(cfg.Cmd) && cfg.Cmd.length) args.push(...cfg.Cmd.map(String));
+  return args;
+}
+
+/* Restaurer : on recrée le container à l'identique. Le nom peut être repris par un autre
+   depuis la suppression — docker refuse alors, et c'est la bonne réponse : écraser un
+   container homonyme serait pire que l'échec. */
+async function restoreContainer(inspect, onLog) {
+  const args = restoreArgs(inspect);
+  if (!args[args.length - 1]) throw new Error('La sauvegarde ne dit pas quelle image utiliser.');
+  await docker(args, { onLog });
+  return { ok: true };
+}
+
 // Labels d'une ligne `docker ps --format json` : "k1=v1,k2=v2" → { k1:'v1', ... }.
 function parseLabels(str) {
   const out = {};
@@ -467,6 +518,19 @@ function defaultProjectName(dir) {
    aucun sondage : on lit ce que git a déjà écrit sur le disque. Pas un dépôt git, `.git`
    illisible, dépôt fraîchement initialisé sans commit : on ne rend rien, et l'écran n'affiche
    rien — c'est une information de plus, jamais une condition. */
+/* L'URL du remote `origin`, lue dans `.git/config` — pas de processus, pas de réseau. C'est
+   ce qui permet de dire QUEL dépôt tourne dans ce dossier, et donc de retrouver son service
+   dans la grille des liens. Absente (dépôt sans remote), on ne devine pas. */
+function remoteOrigine(gitBase) {
+  try {
+    const conf = String(fs.readFileSync(path.join(gitBase, 'config'), 'utf8'));
+    const bloc = conf.split(/\[remote /).find((b) => b.startsWith('"origin"'));
+    if (!bloc) return null;
+    const m = bloc.match(/^\s*url\s*=\s*(.+)$/m);
+    return m ? m[1].trim() : null;
+  } catch { return null; }
+}
+
 function gitDuRepertoire(dir) {
   try {
     const gitDir = path.join(dir, '.git');
@@ -476,7 +540,7 @@ function gitDuRepertoire(dir) {
       : path.resolve(dir, String(fs.readFileSync(gitDir, 'utf8')).replace(/^gitdir:\s*/, '').trim());
     const head = String(fs.readFileSync(path.join(base, 'HEAD'), 'utf8')).trim();
     const m = head.match(/^ref:\s*refs\/heads\/(.+)$/);
-    if (!m) return { branch: null, sha: head.slice(0, 8) };     // tête détachée
+    if (!m) return { branch: null, sha: head.slice(0, 8), remote: remoteOrigine(base) };   // tête détachée
     const branche = m[1];
     let sha = '';
     try { sha = String(fs.readFileSync(path.join(base, 'refs', 'heads', branche), 'utf8')).trim(); }
@@ -486,7 +550,7 @@ function gitDuRepertoire(dir) {
       const ligne = packed.split('\n').find((l) => l.endsWith(` refs/heads/${branche}`));
       sha = ligne ? ligne.split(' ')[0] : '';
     }
-    return { branch: branche, sha: sha.slice(0, 8) };
+    return { branch: branche, sha: sha.slice(0, 8), remote: remoteOrigine(base) };
   } catch { return null; }
 }
 
@@ -527,7 +591,20 @@ async function composeProject({ dir, file, path: composePath, rootLabel }, share
       container = { id: psRow.ID, name: (psRow.Names || '').split(',')[0], state, health, exitCode, oom, image: det && det.Config && det.Config.Image, created: det && det.Created };
     }
     const badge = serviceBadge({ container, envDiffs, imgDrift, composeModified });
-    return { name: svcName, image: svc.image || null, container, envDiffs, imgDrift, composeModified, badge };
+    /* B8 — LES PORTS PUBLIÉS SUR L'HÔTE, tels que le compose les DÉCLARE. C'est ce qui
+       permet de proposer `http://localhost:3000` dans la grille des liens au lieu de le
+       faire retaper. On ne garde que la partie hôte d'un `3000:3000`, et seulement les
+       formes simples : un `127.0.0.1:8080:80` donne 8080, un port de conteneur seul (`80`,
+       sans publication) ne donne rien — il n'est joignable de nulle part. */
+    const ports = (Array.isArray(svc.ports) ? svc.ports : [])
+      .map((v) => {
+        // Forme longue : `{ published: 8080, target: 80 }` — `published` EST le port de l'hôte.
+        if (v && typeof v === 'object') return Number(String(v.published || '').replace(/\D/g, '')) || null;
+        const m = String(v || '').match(/(?:^|:)(\d{2,5}):\d{2,5}(?:\/|$)/);
+        return m ? Number(m[1]) : null;
+      })
+      .filter((n) => n && n > 0 && n < 65536);
+    return { name: svcName, image: svc.image || null, container, envDiffs, imgDrift, composeModified, badge, ports: [...new Set(ports)] };
   }));
   return {
     name: projectName, dir, file, path: composePath, rootLabel, error: null, services,
@@ -669,6 +746,7 @@ async function removeContainer(id, onLog) {
 }
 
 module.exports = {
+  restoreArgs, restoreContainer,
   status, explainDockerError,
   composeProjects, composeFileList, composeOne, orphans, previewDown, runCompose, runDown, stopContainer, removeContainer, composeArgs,
   inspect, imageEnv, reconstructRunCommand, makefileFor, runMake, listContainers, spawnLogs, summary,

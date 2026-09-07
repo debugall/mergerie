@@ -17,8 +17,9 @@ async function fetchJiraContext(cfg, mrId, title, branch) {
   try {
     const issue = await jira.fetchIssue(cfg, key);
     const text = jira.issueToContext(issue);
-    db.prepare('UPDATE mr SET ticket_jira_text = ?, ticket_jira_key = ?, ticket_jira_at = ?, ticket_jira_error = NULL WHERE id = ?')
-      .run(text || null, issue.key, now, mrId);
+    db.prepare(`UPDATE mr SET ticket_jira_text = ?, ticket_jira_key = ?, ticket_jira_at = ?,
+        ticket_jira_status = ?, ticket_jira_category = ?, ticket_jira_error = NULL WHERE id = ?`)
+      .run(text || null, issue.key, now, issue.status || null, issue.statusCategory || null, mrId);
   } catch (e) {
     // On stocke l'erreur pour que l'UI dise POURQUOI le contexte est vide
     // (ticket introuvable, accès refusé…) plutôt que de laisser croire à un oubli.

@@ -196,9 +196,41 @@ function activite(maintenant) {
   };
 }
 
+/* 8. PRÊTES À MERGER (B11) — pas une section, un NOMBRE. « Qu'est-ce que je peux merger
+   maintenant ? » se lisait en parcourant onze cartes et trois badges chacune. Trois colonnes
+   déjà en base suffisent : la note de la dernière review, le verdict de la dernière
+   vérification, l'état du ticket. L'outil ne merge rien — il compte ce qui ne demande plus
+   rien, et la file porte la même puce pour aller les voir. */
+function pretesAMerger(seuil) {
+  const n = Number(seuil) > 0 ? Number(seuil) : 8;
+  /* La PÉREMPTION d'un verdict ne se lit pas en SQL : les cibles d'une vérification vivent en
+     JSON (`targets_json`), et « périmé » veut dire que le SHA testé n'est plus le SHA courant.
+     On applique donc la règle de l'écran, mot pour mot — un second critère de péremption ici
+     ferait dire deux choses différentes au même mot. */
+  const lignes = db.prepare(`SELECT mr.id, mr.current_sha, review.note_value,
+      v.verdict, v.targets_json
+    FROM mr
+    JOIN review ON review.mr_id = mr.id
+    JOIN verification v ON v.id = (
+      SELECT id FROM verification WHERE mr_id = mr.id ORDER BY id DESC LIMIT 1)
+    WHERE COALESCE(mr.closed_seen, 0) = 0
+      AND COALESCE(mr.has_conflicts, 0) = 0
+      AND mr.status IN ('to_review','reviewed')
+      AND review.note_value >= ?
+      AND v.verdict = 'verified_pass'
+      AND (mr.ticket_jira_category IS NULL OR mr.ticket_jira_category = ''
+           OR mr.ticket_jira_category = 'indeterminate')`).all(n);
+  return lignes.filter((r) => {
+    let cibles = [];
+    try { cibles = JSON.parse(r.targets_json || '[]'); } catch { cibles = []; }
+    const perime = cibles.some((c) => c.mr_id === r.id && r.current_sha && c.head_sha && c.head_sha !== r.current_sha);
+    return !perime;
+  }).length;
+}
+
 /* Le brief complet. `sections` porte l'ordre ET le vide : le front n'a qu'à sauter ce qui
    est vide, sans avoir à connaître la règle de composition — elle est ici, en un endroit. */
-function construire({ maintenant = new Date(), staleDays = 5 } = {}) {
+function construire({ maintenant = new Date(), staleDays = 5, seuilPret = 8 } = {}) {
   const act = activite(maintenant);
   /* Le filtrage est posé ICI, après le calcul : chaque section garde une requête qui dit ce
      qui est VRAI, et l'écart se lit d'un seul endroit. Les sections plafonnent à huit lignes,
@@ -224,6 +256,8 @@ function construire({ maintenant = new Date(), staleDays = 5 } = {}) {
     stale_days: Number(staleDays) > 0 ? Number(staleDays) : 5,
     // Une activité toute à zéro est un vide : la section se masque comme les autres.
     activity: (act.merged || act.opened || act.verified) ? act : null,
+    ready_to_merge: pretesAMerger(seuilPret),
+    ready_threshold: Number(seuilPret) > 0 ? Number(seuilPret) : 8,
   };
 }
 

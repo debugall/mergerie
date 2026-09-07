@@ -31,6 +31,20 @@ une todo normale dont l'échéance est dépassée réclame autant, et c'est just
 ### Reviews
 Les trois stades d'une même merge request, réunis derrière un filtre segmenté —
 **À traiter · Reviewées · Traitées** — avec une recherche commune (titre, auteur, projet, ticket).
+**Trois ordres et une porte.** Une rangée de puces range la file : **ordre habituel** (le ticket en
+revue passe devant), **petites d'abord**, **plus anciennes**, **note la plus basse** — la taille et l'âge
+sont écrits sur chaque carte, encore fallait-il pouvoir s'en servir. L'ordre choisi est mémorisé.
+La puce verte **« Prêtes à merger »** ne filtre sur rien de neuf : une note au-dessus du seuil de
+convergence, un verdict vert non périmé, aucun ticket qui s'y oppose. L'outil ne merge rien — il dit
+lesquelles ne demandent plus rien, et le brief en donne le nombre.
+
+**Une merge request en conflit le dit sur sa carte**, et le badge ouvre `Git → Merge` pré-rempli dans le
+sens qui débloque (la branche cible dans la branche de la MR). *Mettre à jour avec main* n'existe que
+pour les merge requests nées d'une session ; celle d'un collègue n'avait rien.
+
+**Le statut du ticket arrive sur toutes les merge requests**, pas seulement sur les tickets surveillés :
+la découverte lit déjà l'issue en entier pour son contexte, elle en garde le statut — aucun appel de plus.
+
 Trois pastilles au-dessus de la file trient par **auteur** : **Toutes · Les miennes · Celles des autres**.
 Un tech lead regarde d'abord ce que l'équipe attend de lui, un développeur ce qu'il a poussé. Le compte du
 jeton est lu **une fois par forge** ; sans lui — un jeton qui ne permet pas de lire son propre compte — les
@@ -501,6 +515,11 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   facultative (liste déroulante avec recherche ; vide = branche par défaut du dépôt). Le prompt est
   appliqué à chaque projet, séquentiellement — **un projet en échec n'interrompt pas les autres**.
   Chaque projet a ensuite ses propres actions : **Voir le diff · Pousser · Créer la MR · Merger**.
+  La ligne offre aussi **`Reviewer`** dès que la merge request existe et n'a pas encore de rapport —
+  le geste suivant évident, qui demandait d'aller le chercher dans Reviews — et **`Reprendre la
+  console`** quand un job Jenkins lié est rouge sur cette branche : le suivi se remplit des trente
+  dernières lignes de console et du numéro de build, comme *Reprendre le rapport de vérif*. Le verdict
+  reste celui de Jenkins ; l'agent ne reçoit que le texte à corriger.
   Une fois la merge request ouverte, la ligne du projet dit **ce qu'elle est devenue** — note, verdict,
   commentaires en attente — au lieu d'un `MR !216 ↗` qui renvoyait dans Reviews, et **`Prévenir Jira`**
   commente le ticket avec le lien de la MR puis le passe en revue quand Jira propose la transition,
@@ -742,6 +761,9 @@ chronologique : on n'arrange pas son tiroir.
 - **Lien optionnel** vers une merge request, un ticket ou un dépôt : la ligne devient cliquable. Une todo
   liée à une merge request affiche **l'état de cette MR** sous son titre (note, verdict, ouverte depuis
   combien de temps) : on sait si elle a encore une raison d'exister.
+- **Une todo liée à un ticket dit ce qu'il est devenu** : son statut Jira, et les merge requests qui
+  portent sa clé. Rien n'est demandé au réseau — l'état vient de la surveillance ou de ce que la
+  découverte a rangé.
 - **Une todo liée à une merge request se coche quand la MR est mergée**, avec une note disant ce qui l'a
   fermée — « Fermée automatiquement : la merge request !201 a été mergée ou fermée ». Rien n'est supprimé
   et elle se rouvre ; *Réglages → Général* porte l'interrupteur (**« Cocher les todos liées quand leur
@@ -900,6 +922,15 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   promu en titre à tort : seule une ligne dont **toutes** les cellules sont des en-têtes en devient
   un. Un tableau sans en-tête garde donc sa première ligne, et un tableau clé/valeur (en-tête en
   première **colonne**) garde sa première paire, la clé en gras faute d'équivalent en Markdown.
+- **Changer l'état d'un ticket demande confirmation**, en nommant le ticket et l'état visé : un
+  `<select>` natif applique au `change`, donc une flèche du clavier suffisait à passer PROJ-1408 en
+  « Terminé » devant toute l'équipe. Le champ de commentaire, lui, part à **`Ctrl`/`⌘ + Entrée`** et
+  garde un brouillon qui survit à un rechargement ; des boutons y **insèrent le lien d'une merge
+  request connue**, au curseur.
+- **Une surveillance peut poser sa todo** au changement d'état (case par ticket, décochée par défaut) :
+  une notification bureau se ferme avec l'onglet, une todo reste sous les yeux — et elle porte le motif
+  qu'on avait écrit pour surveiller. Une surveillance **en échec** le dit désormais au lieu de rester
+  figée en silence.
 - **Section `Dans Mergerie`.** Ce que l'outil sait déjà de ce ticket, sans aller le chercher : les **merge
   requests qui portent sa clé** (avec leur note et leur verdict de vérification) et les **sessions de
   codage parties de lui**. La liste des tickets porte le même marqueur en une ligne, de sorte qu'on voit
@@ -979,6 +1010,16 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   la suppression avec **toutes les branches dont la merge request a été mergée** — l'aperçu habituel dit
   ensuite, branche par branche, si elle existe encore et si la supprimer est sans risque. Passé une
   dizaine, le brief du matin le rappelle.
+- **Trois sous-onglets qui se souviennent.** *Merge* retient son dépôt et ses deux branches, *Actions*
+  son opération et ses dépôts — comme *Comparer*, *Navigation* et *Commandes* le faisaient déjà. Ni les
+  noms de branche ni les refs cochées pour une suppression ne sont repris : recocher est justement le
+  geste qui fait relire ce qu'on s'apprête à supprimer.
+- **Le nom d'une branche se propose** : le dernier nom créé avec son numéro incrémenté
+  (`release/1.4` → `release/1.5`), ou la clé de ticket du presse-papiers — lu **au clic** sur un bouton,
+  jamais en fond.
+- **Depuis l'explorateur, deux gestes** : `Vérifier cette branche` et `Session de codage dessus`
+  partent avec le dépôt et la branche déjà renseignés. Et *Trouver une ref* offre
+  **`Positionner mes projets dessus`**, qui ouvre *Navigation* avec la ref posée sur chaque ligne.
 - **Merge** — fusionne **une branche dans une autre**, conflits compris, sans quitter l'outil. On choisit
   un dépôt, la **branche à fusionner** et la **branche de destination** (les deux avec recherche : un dépôt
   actif porte des centaines de branches), puis `Préparer le merge`. À ce stade **rien n'est commité ni
@@ -1058,6 +1099,13 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
 
 ### Docker
 Deux sous-vues, comme Codage/Exploration en Dev IA.
+
+**Ce que le compose sait déjà.** Un service qui publie un port l'**ouvre d'un clic** (`:3000`), et propose
+de **renseigner la case « local » de la grille des liens** avec cette adresse quand elle est vide. Le nom
+d'un container se **copie seul**, et non plus seulement enrobé dans un `docker logs -f`. *Actions* se
+souvient de son action et de son filtre — c'était le seul écran Docker sans mémoire. Un container
+hors-compose supprimé par erreur se **restaure** : l'outil sauvegardait son `inspect` complet avant chaque
+suppression, et aucun écran ne le relisait.
 
 - **Compose** — les **répertoires locaux** (Réglages → Dépôts) sont scannés pour les fichiers
   `compose.yaml` / `docker-compose.yml` ; chaque fichier devient un **projet compose** avec ses services.
@@ -1205,6 +1253,14 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   aligne des centaines de jobs. Elle porte sur le **chemin entier**, donc « boutique » retrouve
   tout un projet. Une case **`Seulement ce qui ne va pas`** ne garde que l'échec, l'instable et
   ce qui tourne.
+- **Une ligne dit à quel dépôt elle est lié** (Réglages → Jenkins) et **quelle merge request ouverte
+  porte la branche de son dernier build** — cliquable jusqu'à son rapport. `repo_jenkins` n'était lu que
+  dans l'autre sens.
+- **Filtre « mes branches »** à côté de « mes lancements » : ce qui tourne sur MON travail, y compris
+  déclenché par un push ou le planificateur — c'est là que se trouve la CI qui casse sans qu'on la
+  regarde. Les filtres volatils (recherche, cases, valeurs de paramètres) sont désormais **mémorisés**
+  comme les quatre autres états de l'onglet.
+- **La console se copie**, et le build s'ouvre dans Jenkins depuis le panneau de détail.
 - **Ne garder que ce qu'on a déclenché soi-même.** Une case **`Mes lancements`** ne laisse que les jobs
   lancés **depuis Mergerie** — la liste servait déjà à la notification de fin de run, elle devient un
   filtre. C'est la réponse à « qu'est-ce que j'ai envoyé, et où ça en est ? ».
@@ -1568,6 +1624,17 @@ le même jour, et sans l'heure le classement paraît arbitraire —, auteur, lie
 récupération des MR est décochée en sont exclus, comme les dépôts inactifs : on ne les suit plus), **coût en tokens** (camembert par
 type d'appel + **coût moyen par MR reviewée**), résumé des sessions. L'activité de commits est récupérée
 **en direct depuis la forge de chaque dépôt, toutes branches confondues** (chargée à part, best-effort : rien ne casse si une forge est injoignable).
+**Les reviews les plus coûteuses**, à côté des sessions : une review portait « la moyenne » faute de
+propriétaire sur ses appels, et on ne pouvait pas dire laquelle avait mangé le budget. Chaque ligne ouvre
+son rapport, et le rapport lui-même dit ce qu'il a coûté.
+
+**Ce qu'on envoie contre ce qu'on reçoit** : caractères envoyés pour un caractère reçu, par famille
+d'appel. Un rapport qui s'envole désigne un gabarit trop long ou un dépôt lié qui triple chaque prompt —
+pas une dépense inévitable. Les deux colonnes étaient écrites depuis toujours et lues par personne.
+
+**Vérifications : taux de vert par dépôt**, les moins verts en tête — « quel dépôt casse le plus ? »
+n'avait pas de réponse.
+
 **Les sessions les plus coûteuses.** Cinq sessions, du plus au moins cher en **tokens estimés**. Un prompt
 qui fait relire trois dépôts pour rien s'y voit immédiatement. La consommation est désormais rattachée à
 **la session qui l'a dépensée**, ce qui est aussi ce qui rend ce classement possible.
@@ -1646,7 +1713,8 @@ de forge, et un même chemin peut exister sur les deux —, plus les **répertoi
 recherche** et **l'état de son clone**, avec un bouton **`Re-cloner`** — rien n'est perdu côté forge, mais
 les modifications non poussées du clone local le sont, d'où la confirmation) ·
 **Merge Request** (rafraîchissement auto, convergence, templates de prompt — le gabarit livré n'invoque **aucun skill**, celui qui en a un l'y écrit ; la **note globale**, elle, est réclamée par l'application quel que soit le gabarit, parce que la liste s'en sert pour filtrer) ·
-**Règles de review spécifiques** (critères ajoutés au prompt quand le nom de
+**Règles de review spécifiques** (une règle peut être **limitée à un dépôt** — sans quoi il fallait
+deviner un `path_match` que seul ce dépôt satisferait ; critères ajoutés au prompt quand le nom de
 branche contient un fragment donné **ou quand le diff touche un chemin** — glob type `**/migrations/**`,
 `*.sql` —, plus précis ; une règle par chemin peut porter un **badge « risque »** affiché sur les MR
 concernées, calculé **sans IA** juste sur les chemins du diff, pour voir d'un coup d'œil laquelle reviewer en premier) ·
@@ -1659,7 +1727,7 @@ les noms étant uniques) et le champ sélectionné : renommer est le premier ges
 `composer.json`, cibles du Makefile, lus dans le clone sur disque, **rien n'est exécuté** — à ajouter
 d'un clic) ·
 **Notifications** (sous-onglet dédié, voir ci-dessous) ·
-**Général** (thème clair/sombre/auto, langue, densité, **arrangement des menus**, brief du matin, conservation des données, sauvegarde, et une **zone dangereuse** pour la remise à zéro) ·
+**Général** (les **quatre cases cochées d'office** d'une nouvelle session — auto-push, questions de l'IA, prévenir Jira, converger après : ce sont des habitudes de travail, elles se règlent une fois au lieu de repartir décochées à chaque ouverture ; thème clair/sombre/auto, langue, densité, **arrangement des menus**, brief du matin, conservation des données, sauvegarde, et une **zone dangereuse** pour la remise à zéro) ·
 **Jira** (**connexion Jira** — URL + email + jeton d'API, avec un bouton *Tester Jira* — ; alimente l'onglet
 *Jira* et l'enrichissement d'une session depuis un ticket) ·
 **Jenkins** (URL, utilisateur et jeton d'API, avec un bouton de test, la **fréquence de

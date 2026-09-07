@@ -11,6 +11,136 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every comment posted to Jira sent the source code of a function.** `addComment` built its
+  body from the translation function instead of the text you typed, so the "Comment" button on a
+  ticket and "Tell Jira" on a session both posted a block of JavaScript to your colleagues. Demo
+  mode does not go through that route, which is why nothing ever showed it.
+
+- **"Verify afterwards" is filled in when the dialog opens from a merge request or a ticket.**
+  Those are the two most frequent ways into the coding dialog, and neither refreshed the
+  selector: it stayed empty, or kept the list of the previous opening — the verifiers of other
+  repositories. You clicked *Have the AI fix it*, launched, and the session finished "pushed"
+  with no verdict.
+
+- **`Esc` on a confirmation answers it.** It hid the dialog without resolving the promise, so
+  the button that opened it stayed in its loading state for good, waiting for an answer that
+  could never come.
+
+- **The CI badge showed a cross on a green build.** It compared the build state against values
+  the Jenkins client never produces (`ok`/`ko` instead of `succes`/`echec`), so every build was
+  read as a failure and none carried a colour.
+
+- **`npm run check` now refuses a file that does not parse**, front and server. Every guard in
+  those two scripts reads the code as *text*: an unbalanced brace escaped all of them, and the
+  check answered OK on an `app.js` the browser refuses to run — or on a `server.js` that turns
+  the whole test suite into a hang with no error message.
+
+### Added
+
+- **A second pass over the whole tool: 59 changes, from the three defects found while reading
+  the code to eleven crossings that did not exist.** Nothing new to configure; almost all of it
+  reads data that was already in the database.
+
+  **Deciding faster in the queue**
+
+  - **The queue sorts**: smallest first, oldest first, lowest score. The size and the age were
+    written on each card since 1.4.0 but could not be used to choose what to start with. The
+    order you pick is remembered.
+  - **A chip says what is ready to merge**: score above the convergence threshold, verified
+    green and not stale, and no ticket standing in the way — three columns already in the
+    database. The morning brief counts them. Nothing is merged: the tool says which ones ask for
+    nothing more.
+  - **A merge request in conflict says so on its card**, and the badge opens `Git → Merge`
+    prefilled to catch the branch up — where *Update with main* only ever existed for merge
+    requests born from a session.
+  - **The ticket's status reaches every merge request**, not just watched ones. Discovery
+    already read the whole issue for its context; it now keeps its status too, at no extra call.
+  - **After a green verdict, the verification report offers what comes next** — *Merge*,
+    *Run &lt;job&gt;* — where until now you closed the window, found the card again and opened
+    its "⋯" menu.
+  - **A finding says how long it has been there**: `since v1` is not the same as "not fixed
+    yet", and three passes later that is the whole difference.
+
+  **What the session already knew**
+
+  - **The verifier picks itself** when exactly one covers every repository of the session.
+  - **The dialog proposes the repositories of your last session** of that flavour, instead of
+    the first of the list — wrong thirty-nine times out of forty on a forty-repository setup.
+  - **A card says when it finished** ("finished 3 h ago") and **when a todo is waiting for you**
+    because the AI stopped on a question.
+  - **A session offers to review the merge request it just opened**, and a checkbox in the
+    dialog does it at creation — the global "review on arrival" setting engages the whole
+    estate, this one only engages what this session wrote.
+  - **The resumable agent sessions are proposed** instead of asking for a UUID copied by hand
+    out of a resume command.
+  - **Four session defaults are settings** (auto-push, AI questions, tell Jira, converge
+    afterwards): they no longer start unticked at every opening for someone who ticks them
+    every day.
+
+  **Crossings that did not exist**
+
+  - **Merging closes the Jira loop**: a checkbox in the merge confirmation moves the ticket to
+    its next state and drops the merge request link there — the transition read from Jira, never
+    guessed, remembered per Jira project, unticked by default.
+  - **A ticket becomes a lot**: *Verify together* on a ticket carrying several merge requests
+    creates the lot named by the key and launches the joint verification, instead of going back
+    to Reviews to tick five cards and type a name.
+  - **The Jenkins console enters a follow-up**: `Use the console` fills the field with the last
+    thirty lines and the build number, exactly as *Use the verification report* does. Jenkins
+    keeps the verdict; the agent only receives the text to fix.
+  - **The morning brief says what CI broke on your branches**, computed when it opens from the
+    list Jenkins already loads — no polling.
+  - **A watched ticket can raise a todo when its state changes**, carrying the reason you wrote
+    for watching it: a desktop notification dies with the tab, a todo stays in sight.
+  - **A note becomes a coding session**: the page is the prompt, its screenshots are the
+    attachments — the same path as from a Jira ticket.
+  - **A compose service that publishes a port offers to open it**, and to fill the empty
+    "local" cell of the Links grid with the address it already publishes.
+  - **A green Jenkins build carrying `ENV=preprod` offers to open that environment** of the
+    linked repository — the same resolution already done on merge requests.
+
+  **Memories, copies and gestures**
+
+  - **Git → Merge and Git → Actions remember** their repository, branches, action and targets,
+    as *Compare*, *Navigate* and *Commands* already did. The create-MR dialog reads the same
+    per-project memory as the merge dialog for squash and branch deletion.
+  - **Three filters stop forgetting**: the todo filter, Jenkins's search and checkboxes, and
+    Docker → Actions.
+  - **Copy where you paste into Slack**: the full SHA (shown short), a Jira key, a verifier's
+    command, a Jenkins console, a container name, the address of a grid cell.
+  - **`Ctrl`/`⌘ + Enter` sends** the forge comment, the Jira comment and "Request a change" —
+    and all three keep a draft that survives a reload.
+  - **Changing a Jira status asks first**, naming the ticket and the state: a native `select`
+    applied on `change`, so an arrow key was enough to move a ticket in front of the whole team.
+  - **Shortcuts**: `/` searches the tab you are on instead of ejecting you to Reviews, `j`/`k`
+    walk Jira, Jenkins, todos and lots, `N` opens a session, `f` asks for a fix on the focused
+    card, and the `?` panel finally lists `Ctrl+Enter` and `⇧-click`.
+  - **Quick capture**: "tomorrow 9 am / Monday / +1 h" buttons, the last priority reused, and
+    the short syntax finally written under the add bar.
+
+  **Settings and lots**
+
+  - **A review rule can be limited to one repository**, instead of being guessed through a
+    `path_match` only that repository would satisfy.
+  - **A verifier says how many sessions carry it** — renaming or deleting one was done blind.
+  - **A lot's name is proposed** (the common Jira key, failing that the common branch prefix),
+    *Create and verify* does both in one gesture, and a lot remembers which verifier it uses.
+    A merge request says which lots it belongs to.
+  - **A deleted non-compose container can be restored**: the tool saved its full inspect before
+    every deletion and no screen ever read it.
+  - **The Jira witness ticket is a setting** instead of being retyped at every connection test,
+    and the effective defaults are written into the empty fields.
+
+  **Statistics**
+
+  - **The cost of a review**, on its report and in a "most expensive reviews" ranking next to
+    the sessions — reviews now carry their own token usage, as sessions have since 1.4.0.
+  - **What goes in versus what comes back**: characters sent per character received, which is
+    what points at an over-long template rather than at an unavoidable cost.
+  - **The green rate of verifications per repository**, least green first.
+
 ## [1.4.0] - 2026-09-06
 
 ### Added

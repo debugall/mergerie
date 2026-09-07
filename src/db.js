@@ -192,6 +192,11 @@ try { db.exec('ALTER TABLE mr ADD COLUMN review_session_cwd TEXT'); } catch { /*
    irréversible, un appel d'API pour le dire avant vaut mieux qu'un refus après. */
 try { db.exec('ALTER TABLE mr ADD COLUMN has_conflicts INTEGER'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN ticket_jira_error TEXT'); } catch { /* déjà présente */ }
+/* LE STATUT DU TICKET, POUR TOUTES LES MR — pas seulement celles dont le ticket est surveillé.
+   La découverte lit déjà l'issue en entier pour en tirer le contexte : ranger son statut à côté
+   ne coûte aucun appel, et fait apparaître « ticket en revue » là où on choisit quoi reviewer. */
+try { db.exec('ALTER TABLE mr ADD COLUMN ticket_jira_status TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN ticket_jira_category TEXT'); } catch { /* déjà présente */ }
 // Migration : chemins des fichiers modifiés par la MR (pour le badge « risque » et
 // les règles par chemin), un par ligne. Rempli au discover / à la review.
 try { db.exec('ALTER TABLE mr ADD COLUMN changed_paths TEXT'); } catch { /* déjà présente */ }
@@ -209,6 +214,11 @@ try { db.exec('ALTER TABLE mr ADD COLUMN remove_source_branch INTEGER'); } catch
 // branche. Une règle peut avoir branch_match et/ou path_match. label = badge court.
 try { db.exec('ALTER TABLE review_rule ADD COLUMN path_match TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE review_rule ADD COLUMN label TEXT'); } catch { /* déjà présente */ }
+/* A/Réglages 2 — UNE RÈGLE PEUT NE VALOIR QUE POUR UN DÉPÔT. Sans cette colonne, la seule
+   façon de limiter la portée d'une règle était de deviner un `path_match` que seul ce dépôt
+   satisferait — ce qui n'est pas toujours possible, et jamais lisible. NULL = tous les dépôts,
+   c'est-à-dire le comportement d'avant : les règles existantes ne changent pas de portée. */
+try { db.exec('ALTER TABLE review_rule ADD COLUMN repo_id INTEGER'); } catch { /* déjà présente */ }
 // Projets liés à une MR : l'IA analyse l'impact des changements sur ces dépôts
 // (lecture seule) lors de la review. Un lien = un dépôt connu + une branche.
 db.exec(`CREATE TABLE IF NOT EXISTS mr_link (
@@ -406,6 +416,28 @@ try { db.exec('ALTER TABLE task ADD COLUMN hidden INTEGER DEFAULT 0'); } catch {
    lien + transition « en revue » si Jira la propose. DÉCOCHÉ par défaut — écrire chez les
    autres se décide, session par session. */
 try { db.exec('ALTER TABLE task ADD COLUMN notify_jira INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+/* B9 — REVIEWER LA MR DÈS SA CRÉATION, par session. Sœur de « Vérifier après » : le réglage
+   global « reviewer à l'arrivée » engage TOUT le parc, alors qu'on veut souvent l'avis de l'IA
+   sur ce que CETTE session vient d'écrire. Décochée par défaut : une review coûte un appel. */
+try { db.exec('ALTER TABLE task ADD COLUMN review_after INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+/* B5 — UNE SURVEILLANCE QUI POSE SA TODO. La notification « À faire → En revue » passe pendant
+   une réunion et disparaît avec l'onglet ; le MOTIF de surveillance (« prévenir Sofia dès que
+   c'est en revue ») dort alors dans la carte. Opt-in, par ticket : on ne veut pas une todo à
+   chaque mouvement de chaque ticket surveillé. */
+try { db.exec('ALTER TABLE jira_watch ADD COLUMN todo_on_change INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+/* C15 — LE TICKET TÉMOIN JIRA se retapait à chaque test de connexion : le champ existait,
+   n'avait pas de `name`, et n'était donc dans aucune des trois listes qui font qu'un réglage
+   se garde. Un champ qu'on remplit à chaque fois n'est pas un réglage, c'est une corvée. */
+try { db.exec('ALTER TABLE config ADD COLUMN jira_test_key TEXT'); } catch { /* déjà présente */ }
+/* A/Réglages 1 — LES DÉFAUTS DE SESSION. Quatre cases repartaient décochées à chaque ouverture
+   de la modale, y compris chez quelqu'un qui les coche toutes, tous les jours. Ce ne sont pas
+   des habitudes de dépôt (celles-là sont mémorisées par dépôt) mais des habitudes de TRAVAIL :
+   elles se règlent une fois. Décochées par défaut, comme aujourd'hui — poser ces réglages ne
+   change rien tant qu'on n'y a pas touché. */
+try { db.exec('ALTER TABLE config ADD COLUMN task_default_auto_push INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE config ADD COLUMN task_default_ask_questions INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE config ADD COLUMN task_default_notify_jira INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE config ADD COLUMN task_default_converge INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 
 /* De quoi REJOUER un job : l'intention (quelle fonction, sur quel objet), pas son état.
    Sans ça, un job arrêté ne laisse qu'un `kind` — impossible de savoir quelle session ou

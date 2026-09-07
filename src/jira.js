@@ -241,6 +241,11 @@ async function fetchIssue(cfg, key) {
     key: data.key || key,
     summary: fields.summary || '',
     descriptionMd: adfToMarkdown(fields.description),
+    /* LE STATUT ÉTAIT DANS LA RÉPONSE ET PARTAIT À LA POUBELLE. On le garde : c'est ce qui
+       permet de dire « ticket en revue » sur une merge request SANS surveiller son ticket,
+       et sans un seul appel de plus — la découverte lit déjà l'issue en entier. */
+    status: (fields.status && fields.status.name) || '',
+    statusCategory: (fields.status && fields.status.statusCategory && fields.status.statusCategory.key) || '',
   };
 }
 
@@ -578,7 +583,7 @@ async function addComment(cfg, key, text) {
   const res = await request(jiraBase(cfg) + `/rest/api/3/issue/${encodeURIComponent(key)}/comment`, {
     method: 'POST',
     headers: { Authorization: authHeader(cfg), Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ body: textToAdf(t) }),
+    body: JSON.stringify({ body: textToAdf(corps) }),
   });
   if (res.status === 401 || res.status === 403) throw new Error(t('err.jira.comment-denied', { status: res.status }));
   if (res.status < 200 || res.status >= 300) throw new Error(`Jira ${res.status} ${res.statusText}${res.body ? ` : ${res.body.slice(0, 200)}` : ''}`);

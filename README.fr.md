@@ -108,7 +108,7 @@ et un **lot** de merge requests vérifiées ensemble.
   restant utilisable pour git et les sessions de codage), règles de review, **review automatique des merge
   requests à l'arrivée** et **re-review automatique quand un rapport se périme** (toutes deux plafonnées et
   décochées par défaut), **publication automatique du rapport sur la MR**, templates de prompt, thème et
-  langue.
+  langue, règles de review pouvant être **limitées à un dépôt**, cases cochées d'office d'une nouvelle session, et jobs Jenkins liés aux dépôts.
 
 Partout : `Ctrl`/`Cmd` + `K` ouvre une **palette de commandes** (sauter à un onglet, une MR, une session
 en tapant son nom — `!217` ou `PROJ-1408` tapés seuls y vont directement), `j` / `k` parcourent la liste

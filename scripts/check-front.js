@@ -20,6 +20,22 @@ const fail = (title, items) => {
 const ok = (t) => console.log(`✅ ${t}`);
 const lines = app.split('\n');
 
+/* 0. LA SYNTAXE, D'ABORD. Le commentaire d'en-tête dit que `node --check` « ne voit pas » ces
+   contrôles — c'est vrai, et l'inverse l'est aussi : aucun de ces contrôles ne voit une
+   accolade non fermée. Un `app.js` qui ne PARSE pas ne s'exécute pas du tout, et l'écran est
+   blanc — mais `npm run check` répondait OK, parce que chaque garde-fou lit le fichier comme
+   du TEXTE. Vu une fois : une signature de fonction dupliquée sur une seule ligne, invisible
+   au garde-fou « fonction redéfinie », qui compare des lignes. C'est le contrôle le moins cher
+   du fichier et le seul qui attrape la panne totale : il passe donc en premier. */
+for (const f of ['public/app.js', 'public/i18n.js', 'public/i18n-runtime.js']) {
+  try {
+    new (require('vm').Script)(fs.readFileSync(path.join(ROOT, f), 'utf8'), { filename: f });
+  } catch (e) {
+    fail(`${f} ne parse pas — l'application entière ne démarre pas`, [String(e.message)]);
+  }
+}
+if (!failures) ok('Le front parse (app.js, i18n.js, i18n-runtime.js)');
+
 /* 1. $ vs $$ — LE bug qui est passé deux fois.
    `$` renvoie UN élément, `$$` un tableau. Appeler .forEach/.map/.filter sur le
    résultat de `$` explose au clic. La cause récurrente : dans une chaîne de

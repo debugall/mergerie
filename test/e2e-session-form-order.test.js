@@ -100,6 +100,9 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
       /* « Prévenir Jira » vit avec les décisions qui portent sur la merge request : il
          n'apparaît qu'en codage, et seulement si Jira est connecté. */
       'taskNotifyJiraRow',
+      /* « Reviewer dès la création » précède « converger » : c'est la décision la plus simple
+         des deux (un avis sur ce qui vient d'être écrit), et la convergence l'englobe. */
+      'taskReviewAfterRow',
       'taskConvergeRow',
       'auto_push',
       'taskImages',                    // une possibilité, pas une étape

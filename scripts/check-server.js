@@ -28,6 +28,21 @@ const fail = (title, items) => {
 };
 const ok = (msg) => console.log(`✅ ${msg}`);
 
+/* 0. LA SYNTAXE, D'ABORD — même raison que côté front. Tous les contrôles de ce fichier lisent
+   le serveur comme du TEXTE : une accolade non fermée leur échappe entièrement, et
+   `npm run check` répondait OK sur un `server.js` que Node refuse de charger. Le symptôme est
+   alors une suite de tests qui se BLOQUE (le hook de démarrage échoue avant tout log), ce qui
+   ressemble à une lenteur et coûte une demi-heure à diagnostiquer. Vu une fois : une
+   substitution qui avait mangé le `}` d'un `if`. */
+for (const f of fs.readdirSync(SRC).filter((n) => n.endsWith('.js'))) {
+  try {
+    new (require('vm').Script)(fs.readFileSync(path.join(SRC, f), 'utf8'), { filename: f });
+  } catch (e) {
+    fail(`src/${f} ne parse pas — le serveur ne démarre pas`, [String(e.message)]);
+  }
+}
+if (!failures) ok(`Le serveur parse (${fs.readdirSync(SRC).filter((n) => n.endsWith('.js')).length} fichiers)`);
+
 const fichiers = fs.readdirSync(SRC).filter((f) => f.endsWith('.js'));
 
 /* Formes qui LIENT le nom `t` : déclaration, paramètre unique de flèche, premier

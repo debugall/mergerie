@@ -191,6 +191,11 @@
              l'équipe attend, ce sont les sept autres. Le compte du jeton est connu des deux
              forges ; les pastilles n'apparaissent que si on a pu le lire. -->
         <div id="mrAuteurFiltre" class="chips" role="group" hidden></div>
+        <!-- PAR QUOI COMMENCER. La taille et l'âge sont écrits sur chaque carte depuis 1.4.0,
+             mais la file restait dans un ordre qu'on ne pouvait pas interroger. Et « prêtes »
+             ne filtre sur rien de neuf : une note au-dessus du seuil, un verdict vert non
+             périmé, un ticket qui ne s'y oppose pas — trois colonnes déjà en base. -->
+        <div id="mrTriFiltre" class="chips" role="group"></div>
         <input id="searchReview" class="search" type="search" placeholder="Rechercher (titre, auteur, projet, ticket)…" data-i18n-placeholder="ui.ph.rechercher-titre-auteur-projet-ticket" />
         <div id="reviewErrors"></div>
         <!-- Sélection multiple : vérifier ENSEMBLE des MR qui ne valent qu'ensemble.
@@ -202,6 +207,9 @@
             <button id="btnBulkVerify" class="btn btn-primary" type="button"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="verify.btn.verify-together">Vérifier ensemble</span></button>
             <input id="mrBulkLotName" class="bulk-lot-name" type="text" placeholder="nom du lot" data-i18n-placeholder="verify.ph.lot-name" />
             <button id="btnBulkLot" class="btn" type="button"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="verify.btn.make-lot">Créer un lot</span></button>
+            <!-- C4 : créer un lot ET le vérifier est le geste réel — on ne crée pas un lot
+                 pour le regarder. Le bouton simple reste, pour préparer sans lancer. -->
+            <button id="btnBulkLotVerify" class="btn btn-primary" type="button"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="verify.btn.make-lot-verify">Créer et vérifier</span></button>
             <button id="btnBulkClear" class="btn" type="button" data-i18n="verify.btn.clear-selection">Tout décocher</button>
         </div>
         <!-- stade « à traiter » : liste simple -->
@@ -348,6 +356,14 @@
                     <label id="gitNameRow"><span id="gitNameLabel" data-i18n="git.lbl.branch-name">Nom de la branche à créer</span>
                         <button type="button" class="hint" tabindex="-1" data-i18n-tip="git.tip.name" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                         <input id="gitRefName" placeholder="release/1.0" data-i18n-placeholder="git.ph.name" />
+                        <!-- A/Git 2 : le nom d'une branche se retape rarement de zéro. Deux
+                             propositions, toutes deux à la demande : le dernier motif créé
+                             avec son numéro incrémenté, et la clé de ticket du presse-papiers
+                             (lue au CLIC — jamais en fond, ce serait lire par-dessus l'épaule). -->
+                        <span class="git-name-aide">
+                            <button type="button" class="btn btn-sm" id="gitNameSuivant" hidden></button>
+                            <button type="button" class="btn btn-sm" id="gitNameColler" data-i18n="git.name.from-clipboard">Depuis le presse-papiers</button>
+                        </span>
                     </label>
                     <label id="gitMsgField" hidden><span data-i18n="git.lbl.tag-message">Message du tag (facultatif)</span>
                         <button type="button" class="hint" tabindex="-1" data-i18n-tip="git.tip.tag-message" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
@@ -512,7 +528,11 @@
         </div>
         <div id="dockerError"></div>
         <div id="dsub-compose" class="subtab active"><div id="dockerComposeBox"></div></div>
-        <div id="dsub-orphans" class="subtab"><div id="dockerOrphansBox"></div></div>
+        <div id="dsub-orphans" class="subtab"><div id="dockerOrphansBox"></div>
+            <!-- A/Docker 1 : de quoi refaire un container supprimé par erreur. L'inspect était
+                 sauvegardé avant chaque suppression et aucun écran ne le lisait. -->
+            <div id="dockerBackupsBox"></div>
+        </div>
 
         <!-- Tail live multi-container : choix des containers + filtres inclure/exclure
              (persistés) + défilement auto pausable. Rendu optimisé (buffer borné + rAF). -->
@@ -711,6 +731,10 @@
                 </div>
                 <span id="todoInfo" class="muted"></span>
             </div>
+            <!-- C14 : la syntaxe courte existe depuis 1.4.0 et rien ne la disait. Une barre de
+                 saisie qui comprend `!217`, `@demain` et `!!` sans l'annoncer n'est comprise
+                 que par qui a lu le CHANGELOG. -->
+            <p class="muted todo-syntaxe" data-i18n="notes.todo.syntax-help">Astuce : <code>!217</code> lie à une MR, <code>PROJ-42</code> à un ticket, <code>@demain</code> pose l'échéance, <code>!!</code> la priorité haute.</p>
             <div id="todoList" class="todo-list"></div>
         </div>
 
@@ -740,6 +764,10 @@
             <!-- CE QUE J'AI DÉCLENCHÉ. La liste des jobs lancés depuis Mergerie existait déjà
                  pour la notification de fin : elle devient un filtre. -->
             <label class="inline-check"><input type="checkbox" id="jenkinsMineOnly" /> <span data-i18n="jenkins.filter.mine">Mes lancements</span></label>
+            <!-- A/Jenkins 2 : « mes lancements » dit ce que J'AI déclenché ; « mes branches »
+                 dit ce qui tourne sur MON travail, y compris déclenché par un push ou le
+                 planificateur — c'est là que se trouve la CI qui casse sans qu'on la regarde. -->
+            <label class="inline-check"><input type="checkbox" id="jenkinsMineBranches" /> <span data-i18n="jenkins.filter.my-branches">Mes branches</span></label>
             <label class="inline-check"><input type="checkbox" id="jenkinsNoAuto" /> <span data-i18n="jenkins.no-auto">Ne pas rafraîchir tout seul</span></label>
             <span class="spacer"></span>
             <span id="jenkinsCount" class="muted"></span>
@@ -1021,6 +1049,12 @@
                 <label><span data-i18n="settings.rule.lbl.path-match">…ou le diff touche un chemin</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.rule.tip.path-match" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input name="path_match" placeholder="ex. **/migrations/**, *.sql" data-i18n-placeholder="settings.rule.ph.path-match" />
                 </label>
+                <!-- A/Réglages 2 : limiter la portée d'une règle à UN dépôt. Sans ça, il fallait
+                     deviner un `path_match` que seul ce dépôt satisferait — pas toujours
+                     possible, jamais lisible. Vide = tous les dépôts, comme avant. -->
+                <label><span data-i18n="settings.rule.lbl.repo">Limiter à un dépôt (optionnel)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.rule.tip.repo" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <div id="ruleRepoBox"></div>
+                </label>
                 <label><span data-i18n="settings.rule.lbl.label">Badge « risque » (court, optionnel)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.rule.tip.label" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input name="label" placeholder="ex. migrations" data-i18n-placeholder="settings.rule.ph.label" />
                 </label>
@@ -1078,6 +1112,14 @@
                 <button type="button" id="navPrefsReset" class="btn btn-sm" data-i18n="settings.nav.reset">Rétablir l'ordre d'origine</button>
                 <div id="navPrefs" class="nav-prefs"></div>
             </div>
+            <!-- A/Réglages 1 : les quatre cases de la modale de session repartaient décochées
+                 à chaque ouverture. Ce sont des habitudes de TRAVAIL (les habitudes de dépôt,
+                 elles, sont déjà mémorisées par dépôt) : elles se règlent une fois. -->
+            <p class="form-group-title" data-i18n="settings.task-defaults.title">Nouvelle session — cases cochées d'office</p>
+            <label class="inline-check"><input form="configForm" name="task_default_auto_push" type="checkbox" /> <span data-i18n="settings.lbl.default-auto-push">Auto-push</span></label>
+            <label class="inline-check"><input form="configForm" name="task_default_ask_questions" type="checkbox" /> <span data-i18n="settings.lbl.default-ask">L'IA peut poser des questions</span></label>
+            <label class="inline-check"><input form="configForm" name="task_default_notify_jira" type="checkbox" /> <span data-i18n="settings.lbl.default-notify-jira">Prévenir Jira à la création de la MR</span></label>
+            <label class="inline-check"><input form="configForm" name="task_default_converge" type="checkbox" /> <span data-i18n="settings.lbl.default-converge">Converger après</span></label>
             <!-- Données : ce qu'on garde, et comment on l'emporte. Placé dans « Général »
                  parce que ça ne concerne ni les MR ni une forge en particulier. -->
             <label><span data-i18n="settings.lbl.retention">Conserver l'historique (jours, 0 = sans limite)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.retention" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
@@ -1187,7 +1229,7 @@
                      `prompt()` rendait le bouton muet dès qu'on annulait — et un dialogue
                      natif ne ressemble à rien du reste de l'application. -->
                 <label class="test-key"><span data-i18n="settings.jira.test-key">Ticket témoin</span>
-                    <input form="configForm" id="jiraTestKey" placeholder="PROJ-1234" data-i18n-placeholder="settings.jira.test-key-ph" />
+                    <input form="configForm" id="jiraTestKey" name="jira_test_key" placeholder="PROJ-1234" data-i18n-placeholder="settings.jira.test-key-ph" />
                 </label>
                 <button class="btn" type="button" id="btnTestJira" title="Vérifier l'accès Jira en récupérant un ticket témoin" data-i18n-title="settings.title.tester-jira"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.btn.tester-jira">Tester Jira</span></button>
                 <span id="configInfoJira" class="muted"></span>
@@ -1223,11 +1265,15 @@
             <label class="repo-add-url"><span data-i18n="settings.jenkins.links.repo">Dépôt</span>
                 <div id="jenkinsLinkRepo" class="repo-add-field"></div>
             </label>
+            <!-- C10 : la liste des jobs et leurs paramètres sont DÉJÀ chargés par l'onglet
+                 Jenkins. On tapait pourtant `boutique/api-deploy-recette` et `BRANCH` à
+                 l'aveugle, à la lettre près, sans rien pour dire qu'on s'était trompé. Le
+                 champ reste libre à la saisie (recherche), mais il PROPOSE ce qui existe. -->
             <label><span data-i18n="settings.jenkins.links.job">Job Jenkins</span>
-                <div class="repo-add-field"><input name="job_path" placeholder="boutique/api-deploy-recette" required /></div>
+                <div class="repo-add-field" id="jenkinsLinkJobBox"></div>
             </label>
             <label><span data-i18n="settings.jenkins.links.param">Paramètre qui reçoit la branche (optionnel)</span>
-                <div class="repo-add-field"><input name="param" placeholder="BRANCH" /></div>
+                <div class="repo-add-field" id="jenkinsLinkParamBox"></div>
             </label>
             <button class="btn btn-primary" type="submit"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="settings.jenkins.links.add">Lier</span></button>
         </form>
@@ -1405,6 +1451,10 @@
                      une case qui dit son seuil et son plafond de passes. -->
                 <!-- B5 : opt-in, décoché par défaut — écrire chez les autres se décide. -->
                 <label id="taskNotifyJiraRow" class="inline-check"><input type="checkbox" name="notify_jira" /> <span data-i18n="task.lbl.notify-jira">Prévenir Jira à la création de la merge request</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="task.tip.notify-jira" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+                <!-- B9 : sœur de « Vérifier après ». Le réglage global « reviewer à l'arrivée »
+                     engage TOUT le parc ; ici on ne demande l'avis de l'IA que sur ce que CETTE
+                     session vient d'écrire. Décochée par défaut — une review coûte un appel. -->
+                <label id="taskReviewAfterRow" class="inline-check"><input type="checkbox" name="review_after" /> <span data-i18n="task.lbl.review-after">Reviewer la merge request dès sa création</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="task.tip.review-after" data-tip="Dès que la session ouvre sa merge request, la review IA part. Sans attendre la prochaine découverte, et sans engager les autres dépôts.">ⓘ</button></label>
                 <label id="taskConvergeRow" class="inline-check"><input type="checkbox" name="converge_after" /> <span id="taskConvergeLbl" data-i18n="task.lbl.converge-after">…puis converger</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="task.tip.converge-after" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                 <label class="inline-check"><input type="checkbox" name="auto_push" /> <span data-i18n="task.lbl.auto-push">Auto-push (pousser automatiquement après le commit, sans validation)</span> <button type="button" class="hint" tabindex="-1" aria-label="Coché, la branche est poussée dès la fin du commit. Décoché, tu relis le diff puis pousses toi-même depuis Dev IA." data-tip="Coché, la branche est poussée dès la fin du commit. Décoché, tu relis le diff puis pousses toi-même depuis Dev IA." data-i18n-tip="task.tip.coche-la-branche-est-poussee"><svg class="ico"><use href="#i-info"/></svg></button></label>
             </div>
@@ -1429,6 +1479,11 @@
                     <label id="taskAskQuestionsRow" class="inline-check"><input type="checkbox" name="ask_questions" /> <span data-i18n="task.lbl.ask-questions">L'IA peut me poser des questions quand elle hésite</span> <button type="button" class="hint" tabindex="-1" aria-label="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-tip="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-i18n-tip="task.tip.ask-questions"><svg class="ico"><use href="#i-info"/></svg></button></label>
                     <label id="taskSessionRow"><span data-i18n="task.lbl.session-id">Reprendre une session d'agent existante (optionnel)</span> <button type="button" class="hint" tabindex="-1" aria-label="Laisse vide pour ouvrir une nouvelle session. Renseigné, l'IA travaille DANS cette session et garde donc tout son contexte : rien de neuf n'est créé. L'identifiant est celui affiché par « Reprendre au terminal » sur une session existante — un UUID avec claude, un chemin de home avec copilot. Une session appartient à un dossier de travail : si la reprise est refusée, une session neuve prend le relais avec le contexte réinjecté." data-tip="Laisse vide pour ouvrir une nouvelle session. Renseigné, l'IA travaille DANS cette session et garde donc tout son contexte : rien de neuf n'est créé. L'identifiant est celui affiché par « Reprendre au terminal » sur une session existante — un UUID avec claude, un chemin de home avec copilot. Une session appartient à un dossier de travail : si la reprise est refusée, une session neuve prend le relais avec le contexte réinjecté." data-i18n-tip="task.tip.session-id"><svg class="ico"><use href="#i-info"/></svg></button>
                     <input name="session_id" id="taskSessionId" autocomplete="off" placeholder="vide = nouvelle session" data-i18n-placeholder="task.ph.session-id" />
+                    <!-- On collait un UUID extrait à la main de la commande de reprise. Les
+                         sessions d'agent connues sont en base : elles se choisissent, nommées
+                         par ce qui les a produites. Le champ reste libre : une session d'un
+                         terminal, que l'outil n'a jamais vue, doit rester collable. -->
+                    <div id="taskSessionPick" class="session-pick" hidden></div>
                     <span id="taskSessionHint" class="field-note" hidden></span>
                 </label>
                 </div>
@@ -1685,6 +1740,15 @@
             <label><span data-i18n="notes.todo.due-label">Échéance (et rappel)</span>
                 <input id="captureDue" type="datetime-local" />
             </label>
+            <!-- C14 : les trois échéances qu'on pose neuf fois sur dix. La syntaxe courte les
+                 connaît déjà (`@demain`, `@lundi`, `+1h`) ; le formulaire, lui, obligeait à
+                 remplir un sélecteur de date pour dire « demain matin ». -->
+            <div class="capture-quick">
+                <button type="button" class="btn btn-sm" data-due-quick="demain">demain 9 h</button>
+                <button type="button" class="btn btn-sm" data-due-quick="lundi">lundi 9 h</button>
+                <button type="button" class="btn btn-sm" data-due-quick="1h">+1 h</button>
+                <button type="button" class="btn btn-sm btn-ghost" data-due-quick="">effacer</button>
+            </div>
             <label><span data-i18n="notes.todo.note-label">Note</span>
                 <textarea id="captureNote" rows="2" maxlength="2000" placeholder="précision, contexte…" data-i18n-placeholder="notes.todo.note-ph"></textarea>
             </label>
@@ -1765,6 +1829,11 @@
                 <span data-i18n="merge.modal.squash">Squash : réunir les commits de la branche en un seul</span></label>
             <label class="inline-check inline-check-mid"><input id="mergeRemoveBranch" type="checkbox" />
                 <span data-i18n="merge.modal.remove-branch">Supprimer la branche source après le merge</span></label>
+            <!-- B2 : fermer la boucle Jira au moment où on merge. Décochée par défaut et
+                 mémorisée par projet Jira — écrire chez les autres se décide, mais on ne
+                 redemande pas tous les jours à quelqu'un qui a déjà dit oui. -->
+            <label class="inline-check inline-check-mid" id="mergeJiraRow" hidden><input id="mergeJira" type="checkbox" />
+                <span id="mergeJiraLbl" data-i18n="merge.modal.jira">Passer le ticket à l’état suivant et y déposer le lien</span></label>
         </div>
         <p id="mergeModalNote" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span></span></p>
         <!-- CE QUE LA FORGE DIT DE CETTE MERGE REQUEST, demandé à l'ouverture de la modale.
@@ -1815,6 +1884,10 @@
             <button id="verifyComment" type="button" class="btn" hidden><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="verify.btn.comment">Publier en commentaire</span></button>
             <button id="verifyCommentSend" type="button" class="btn btn-primary" hidden><svg class="ico"><use href="#i-upload"/></svg><span data-i18n="verify.btn.comment-send">Publier sur la merge request</span></button>
             <button id="verifyFix" type="button" class="btn btn-primary" hidden><svg class="ico"><use href="#i-bot"/></svg><span data-i18n="verify.btn.fix">Corriger (session IA)</span></button>
+            <!-- A/Reviews 3 : après un verdict VERT, la suite. « Merger » et « Lancer <job> »
+                 existaient dans le menu ⋯ de la carte, sous exactement cette condition — mais
+                 pas là où l'on vient de lire le verdict, c'est-à-dire là où l'on décide. -->
+            <span id="verifySuite"></span>
         </div>
     </div>
 </div>

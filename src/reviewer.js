@@ -132,6 +132,9 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
      Le risque d'une MR vient de ce qu'elle touche, pas de comment elle s'appelle. */
   let rulesBlock = '';
   const rules = db.prepare('SELECT * FROM review_rule WHERE enabled = 1').all().filter((r) => {
+    /* Une règle limitée à un dépôt ne sort pas de ce dépôt, quel que soit son motif : c'est
+       la raison d'être de la limite. `repo_id` nul = toutes, comme avant. */
+    if (r.repo_id && Number(r.repo_id) !== Number(mr.repo_id)) return false;
     const branchHit = r.branch_match && (mr.source_branch || '').includes(r.branch_match);
     const pathHit = r.path_match && glob.matchingPaths(r.path_match, changedPaths).length > 0;
     return branchHit || pathHit;
@@ -253,7 +256,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
           .run(r.handle, r.backend, cwd, mr.id);
       }
     } else {
-      stdout = await copilot.runPrompt(prompt, cwd, { ...baseVars, out_file: outRel, kind, extraInput: diff }, onLog);
+      stdout = await copilot.runPrompt(prompt, cwd, { ...baseVars, out_file: outRel, kind, extraInput: diff, owner: { kind: 'mr', id: mr.id } }, onLog);
     }
     let content = '';
     if (fs.existsSync(outAbs)) content = fs.readFileSync(outAbs, 'utf8').trim();
@@ -267,7 +270,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
     }
     // Le run en session ne passe pas par copilot.runPrompt : on compte ici l'appel (prompt +
     // diff en entrée, rapport en sortie).
-    if (useSession) copilot.recordUsage(kind, prompt, content, diff);
+    if (useSession) copilot.recordUsage(kind, prompt, content, diff, { kind: 'mr', id: mr.id });
     return content || '_(aucun contenu produit)_';
   }
 

@@ -16,7 +16,9 @@ const ALLOWED = [
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
   'brief_on_open', 'auto_post_review', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
   'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
-  'verif_auto_max', 'todo_close_on_merge',
+  'verif_auto_max', 'todo_close_on_merge', 'jira_test_key',
+  'task_default_auto_push', 'task_default_ask_questions',
+  'task_default_notify_jira', 'task_default_converge',
 ];
 
 function updateConfig(patch) {
@@ -115,6 +117,11 @@ function updateConfig(patch) {
       ai_extra_instructions = @ai_extra_instructions,
       language = @language,
       jira_email = @jira_email,
+      jira_test_key = @jira_test_key,
+      task_default_auto_push = @task_default_auto_push,
+      task_default_ask_questions = @task_default_ask_questions,
+      task_default_notify_jira = @task_default_notify_jira,
+      task_default_converge = @task_default_converge,
       jira_token = @jira_token,
       review_explain = @review_explain,
       auto_post_review = @auto_post_review,

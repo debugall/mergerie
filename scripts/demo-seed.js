@@ -435,6 +435,16 @@ for (let d = 55; d >= 0; d -= 2) {
   }
 }
 
+/* UNE SAUVEGARDE DE CONTAINER HORS-COMPOSE, pour que le bloc « de quoi les refaire » existe :
+   il ne s'affiche que s'il y a quelque chose à restaurer, et la démo ne supprime rien. */
+db.prepare(`INSERT INTO docker_backup (container_id, name, image, inspect_json, run_command, created_at)
+  VALUES (?,?,?,?,?,?)`).run(
+  'a1b2c3d4e5f6', 'redis-perso', 'redis:7-alpine',
+  JSON.stringify({ Name: '/redis-perso', Config: { Image: 'redis:7-alpine', Env: ['REDIS_PASSWORD=demo'] },
+    HostConfig: { PortBindings: { '6379/tcp': [{ HostPort: '6379' }] }, RestartPolicy: { Name: 'unless-stopped' } }, Mounts: [] }),
+  'docker run -d \\\n  --name redis-perso \\\n  --restart unless-stopped \\\n  -p 6379:6379 \\\n  -e REDIS_PASSWORD=*** \\\n  redis:7-alpine',
+  iso(2));
+
 // ---------- feed (footer vivant) ----------
 db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)').run('mr_opened', 201, 'groupe/api-core', 'lina', 'Ajout endpoint /health', at(0.1));
 db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)').run('mr_merged', 190, 'groupe/webapp-front', 'sofia', 'Accessibilité : labels et focus', at(0.5));
@@ -1049,6 +1059,36 @@ mrsP3x.forEach((mr) => {
   insUsage.run('service_url', `${svcIds['api-core']}:${envIds.dev}`, 42, at(0.1));
   insUsage.run('service_url', `${svcIds['webapp-front']}:${envIds.local}`, 17, at(0.4));
 }
+
+/* ── CE QUE LA SECONDE PASSE A AJOUTÉ, RENDU VISIBLE ────────────────────────────────────────
+   Placé À LA FIN, et pas à côté des autres inserts : ces trois blocs LISENT ce que le seed
+   vient d'écrire (les merge requests reviewées, celles du ticket PROJ-1408, les tickets
+   surveillés). Posés plus haut, ils ne trouvaient rien et ne faisaient rien — en silence. */
+
+/* LES REVIEWS PORTENT LEUR COÛT. Sans propriétaire sur ces usages, le classement « les reviews
+   les plus coûteuses » et le coût affiché sur un rapport restent vides — c'est-à-dire que la
+   démo ne montre pas ce qu'elle vient d'ajouter. On rattache donc quelques appels aux merge
+   requests reviewées, avec des montants qui se distinguent (une grosse, deux moyennes). */
+{
+  const reviewees = db.prepare("SELECT id FROM mr WHERE status IN ('reviewed','done') ORDER BY id LIMIT 4").all();
+  const montants = [24800, 12300, 8100, 5400];
+  reviewees.forEach((m, i) => {
+    const tok = montants[i] || 4000;
+    db.prepare(`INSERT INTO usage (kind, prompt_chars, output_chars, tokens_est, created_at, owner_kind, owner_id)
+      VALUES ('review', ?, ?, ?, ?, 'mr', ?)`).run(tok * 4, tok, tok, iso(3 + i), m.id);
+  });
+}
+
+/* UNE SURVEILLANCE QUI POSE SA TODO au changement d'état : la case est décochée par défaut, et
+   la démo doit montrer à quoi elle sert — sinon on la lit sans comprendre ce qu'elle promet. */
+db.prepare("UPDATE jira_watch SET todo_on_change = 1 WHERE key = (SELECT key FROM jira_watch ORDER BY key LIMIT 1)").run();
+
+/* LE STATUT DU TICKET SUR DES MERGE REQUESTS NON SURVEILLÉES : c'est tout l'intérêt du
+   changement — « ticket en revue » n'existait que pour les tickets watchés, c'est-à-dire presque
+   jamais là où l'on choisit quoi reviewer. On le range comme la découverte le ferait. */
+db.prepare(`UPDATE mr SET ticket_jira_key = 'PROJ-1408', ticket_jira_status = 'En revue',
+    ticket_jira_category = 'indeterminate'
+  WHERE source_branch LIKE '%PROJ-1408%' AND COALESCE(closed_seen, 0) = 0`).run();
 
 const counts = {
   repos: db.prepare('SELECT COUNT(*) c FROM repo').get().c,
