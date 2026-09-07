@@ -28,6 +28,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   304-pixel address field), naming the service and environment it edits and underlining the cell.
   The cell keeps what it was showing, so you can see what you are correcting.
 
+- **The label of a free link stopped being suggested from the address.** It was proposed only on an
+  empty field: typing the URL character by character made "h" a valid host, so the label became
+  "h" and stayed there. And once you had typed a label by hand, the suggestion was dead for every
+  link afterwards until the page was reloaded. The suggestion now follows the address as you type
+  and steps aside for good the moment you write in the field yourself.
+
 - **The "⋯" menu of a merge request card opened off-screen.** It really did open — `hidden`
   flipped, the button reported itself expanded — but it was placed with the rules written for
   the *combo boxes*: the left edge and the **width** of its trigger, a 39-pixel button pinned to
@@ -80,6 +86,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   the whole test suite into a hang with no error message.
 
 ### Added
+
+- **Filing a link is now paste-and-Enter.** The free-link form opens on the address rather than the
+  label — the address is what you paste, the label is what the tool can guess from it — and Enter
+  saves, as it already did for a quick todo or a watched ticket. The same key saves a service, an
+  environment and a context link.
 
 - **“Verify a branch” no longer forces you to take every covered repository.** Each row now
   carries a checkbox, ticked to start with, so a verifier covering five repositories can

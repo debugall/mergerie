@@ -12,7 +12,7 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { startApp } = require('./helpers/app');
+const { startApp, attendreServeur } = require('./helpers/app');
 
 let chromium = null;
 let dispo = false;
@@ -615,6 +615,31 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
 
     const l = (await app.api('GET', '/api/links/grid')).body.free_links.find((x) => x.label === 'Nouveau');
     assert.equal(l.folder, 'doc/astreinte/2026', 'le sous-sous-dossier est créé au passage');
+  });
+
+  /* COLLER, ENTRÉE. Le chemin le plus court pour poser un lien, et il tient trois promesses à
+     la fois : le curseur ouvre sur l'ADRESSE (c'est ce qu'on colle), le libellé se DÉDUIT de
+     l'hôte, et Entrée vaut « Enregistrer ». Avant, la modale ouvrait sur le libellé — donc on
+     le tapait, ce qui désactivait la proposition — puis il fallait viser un bouton. */
+  test('coller une adresse et faire Entrée suffit à poser un lien', async () => {
+    await ouvrirLiens();
+    await page.locator('#linksAdd').click();
+    await page.locator('#linkAddMenu [data-add="free"]').click();
+    await page.waitForSelector('#freeLinkModal:not([hidden])');
+    // Le curseur est DÉJÀ dans le champ d'adresse : on tape sans viser.
+    await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'freeUrl');
+    await page.keyboard.type('https://grafana.demo.invalid/d/home');
+    // Le libellé se remplit tout seul, depuis l'hôte.
+    await page.waitForFunction(() => document.querySelector('#freeLabel').value === 'grafana');
+    await page.keyboard.press('Enter');
+    /* L'effet qui compte est côté serveur : la modale se referme aussi quand on annule. */
+    await attendreServeur(async () => (await app.api('GET', '/api/links/grid')).body.free_links
+      .some((l) => l.url === 'https://grafana.demo.invalid/d/home' && l.label === 'grafana'),
+    'le lien est enregistré');
+    /* …et la modale se referme. On l'ATTEND : elle se ferme après la réponse du serveur, donc
+       une fraction de seconde après que la lecture ci-dessus a vu le lien. L'affirmer tout de
+       suite, c'est affirmer un état que l'écran n'a pas encore atteint — une fois sur quatre. */
+    await page.waitForFunction(() => document.querySelector('#freeLinkModal').hidden);
   });
 
   /* L'IMPORT NE DÉVERSE PLUS TOUT. Deux cents favoris cochés d'office entraient d'un clic ;

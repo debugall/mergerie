@@ -1413,7 +1413,10 @@ for a second — an alphabetical grid drops it anywhere.
 
 #### Free links
 A list under the grid: label, URL, tags, **folder**. Add and edit in place, and the search at the top
-filters them along with everything else. This is where imported bookmarks land.
+filters them along with everything else. This is where imported bookmarks land. The form opens on the
+**address** — that is what you paste — and the **label is derived from the host** as you go
+(`grafana.internal.example` → “grafana”) for as long as you have not written in it yourself; **Enter
+saves**. Pasting and confirming is therefore enough to file a link.
 
 The **Folder** field offers the existing folders **and accepts new ones** — picking from a list would
 forbid creating one, a bare field would make you retype a path you already have. A slash creates the

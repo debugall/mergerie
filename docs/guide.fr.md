@@ -1470,7 +1470,10 @@ atterrir n'importe où.
 
 #### Liens libres
 Une liste sous la grille : libellé, URL, tags, **dossier**. Ajout et édition au clic, et la recherche
-du haut les filtre avec le reste. C'est là qu'atterrit l'import de marque-pages.
+du haut les filtre avec le reste. C'est là qu'atterrit l'import de marque-pages. Le formulaire
+s'ouvre sur l'**adresse** — c'est ce qu'on colle — et le **libellé se déduit de l'hôte** au fur et
+à mesure (`grafana.interne.example` → « grafana ») tant qu'on n'y a pas écrit soi-même ; **Entrée
+enregistre**. Coller et valider suffit donc à poser un lien.
 
 Le champ **Dossier** propose les dossiers existants **et accepte les nouveaux** — choisir dans une
 liste interdirait d'en créer un, un champ nu obligerait à retaper un chemin qu'on a déjà. Une barre

@@ -1647,11 +1647,16 @@
     <div class="modal-box">
         <h3 id="freeLinkTitle" data-i18n="links.free.new">Nouveau lien</h3>
         <div class="form">
-            <label><span class="req" data-i18n="links.free.label">Libellé</span>
-                <input id="freeLabel" type="text" maxlength="100" required placeholder="ex. Tableau de bord astreinte" data-i18n-placeholder="links.free.label-ph" />
-            </label>
+            <!-- L'ADRESSE D'ABORD : c'est elle qu'on colle, et c'est d'elle que le libellé se
+                 déduit — « grafana.interne.example » → « grafana ». En ouvrant sur le libellé,
+                 on tapait un nom à la main, ce qui DÉSACTIVE la proposition (elle ne remplace
+                 jamais ce qu'on a écrit) : la modale se battait contre son propre confort.
+                 Coller, Entrée : le lien est posé. -->
             <label><span class="req" data-i18n="links.free.url">URL</span>
                 <input id="freeUrl" type="url" maxlength="2000" required placeholder="https://…" />
+            </label>
+            <label><span class="req" data-i18n="links.free.label">Libellé</span>
+                <input id="freeLabel" type="text" maxlength="100" required placeholder="ex. Tableau de bord astreinte" data-i18n-placeholder="links.free.label-ph" />
             </label>
             <!-- UN CHAMP DE TAGS SANS EXEMPLE ne dit ni combien, ni sous quelle forme. -->
             <label><span data-i18n="links.service.tags">Tags (séparés par des virgules)</span>

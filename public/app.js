@@ -15964,22 +15964,70 @@ function openFreeModal(id) {
     .map((d) => `<option value="${esc(d)}"></option>`).join('');
   $('#freeDelete').hidden = !freeEnCours;
   $('#freeLinkModal').hidden = false;
-  setTimeout(() => $('#freeLabel').focus(), 0);
+  /* Le curseur se pose sur l'ADRESSE, premier champ du formulaire : c'est ce qu'on vient
+     coller. Sauf en modification, où l'on vient presque toujours corriger le nom. */
+  setTimeout(() => $(freeEnCours ? '#freeLabel' : '#freeUrl').focus(), 0);
   /* A/Liens 1 — LE LIBELLÉ SE PROPOSE DEPUIS L'HÔTE. On colle une URL, on remonte au champ
      précédent, on retape « grafana ». L'hôte le dit déjà : `grafana.interne.example` →
-     « grafana ». Proposé UNIQUEMENT si le libellé est vide et n'a pas été touché — écraser ce
-     qui est écrit serait pire que ne rien proposer. */
+     « grafana ». Jamais par-dessus ce que l'utilisateur a écrit lui-même — écraser sa saisie
+     serait pire que ne rien proposer. */
   const champUrl = $('#freeUrl');
   const champLbl = $('#freeLabel');
+  /* Les deux drapeaux valent pour LA SAISIE EN COURS, pas pour la session : `touche` dit que
+     l'utilisateur a écrit dans le libellé, `auto` que ce qui s'y trouve vient de nous. `touche`
+     n'était jamais remis — il suffisait d'avoir tapé un libellé une fois pour que la
+     proposition soit morte jusqu'au rechargement de la page, et pour tous les liens suivants. */
+  if (champLbl) { delete champLbl.dataset.touche; delete champLbl.dataset.auto; }
   if (champUrl && champLbl && !champUrl.dataset.autoLabel) {
     champUrl.dataset.autoLabel = '1';
     champLbl.addEventListener('input', () => { champLbl.dataset.touche = '1'; });
+    /* LA PROPOSITION SE MET À JOUR TANT QU'ELLE EST À NOUS. Elle ne se posait qu'une fois, sur
+       un libellé vide : à la frappe, le premier caractère de l'adresse — « h » de « https » —
+       faisait un hôte valide, donc un libellé « h », qui bloquait tout le reste (le champ
+       n'était plus vide). Collé d'un coup, cela marchait ; tapé, on repartait avec « h ».
+       On retient donc ce qu'on a proposé : tant que l'utilisateur n'a pas écrit LUI-MÊME dans
+       le champ, la proposition suit l'adresse ; dès qu'il y touche, on ne la touche plus. */
     champUrl.addEventListener('input', () => {
-      if (champLbl.value.trim() || champLbl.dataset.touche) return;
-      champLbl.value = libelleDepuisUrl(champUrl.value);
+      if (champLbl.dataset.touche) return;
+      if (champLbl.value.trim() && champLbl.dataset.auto !== '1') return;
+      const propose = libelleDepuisUrl(champUrl.value);
+      champLbl.value = propose;
+      if (propose) champLbl.dataset.auto = '1'; else delete champLbl.dataset.auto;
     });
   }
 }
+/* ENTRÉE VAUT « ENREGISTRER » dans une modale de trois champs. C'est déjà le geste de la
+   capture rapide d'une todo, de la surveillance d'un ticket Jira et de l'éditeur d'une case de
+   la grille : viser un bouton après avoir collé une adresse fait deux gestes là où il en faut
+   un. Champ par champ, jamais sur la modale entière — un `Enter` sur un sélecteur à recherche
+   choisit une option, et sur une zone de texte il va à la ligne. */
+function entreeEnregistre(champs, bouton) {
+  for (const sel of champs) {
+    const el = $(sel);
+    if (!el) continue;
+    el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const b = $(bouton);
+      if (b && !b.disabled) b.click();
+    });
+  }
+}
+/* `#freeFolder` en est exclu : il porte une liste de dossiers connus, et Entrée y sert d'abord
+   à valider la suggestion en cours — enregistrer dans la foulée poserait le lien dans un
+   dossier à moitié choisi. */
+entreeEnregistre(['#freeUrl', '#freeLabel', '#freeTags'], '#freeSave');
+entreeEnregistre(['#envName'], '#envSave');
+entreeEnregistre(['#serviceName', '#serviceTags'], '#serviceSave');
+entreeEnregistre(['#ctxLabel', '#ctxTemplate'], '#ctxAdd');
+/* Les adresses par environnement sont refaites à chaque ouverture de la modale : on écoute le
+   conteneur, qui lui ne bouge pas. */
+$('#serviceUrlsList') && $('#serviceUrlsList').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || !e.target.matches('input')) return;
+  e.preventDefault();
+  $('#serviceSave').click();
+});
+
 $('#linkNewFree') && $('#linkNewFree').addEventListener('click', () => openFreeModal(null));
 $('#freeCancel') && $('#freeCancel').addEventListener('click', () => { $('#freeLinkModal').hidden = true; });
 fermerAuFond('#freeLinkModal', () => { $('#freeLinkModal').hidden = true; }, { salissable: true });
@@ -15987,8 +16035,9 @@ $('#freeSave') && $('#freeSave').addEventListener('click', async () => {
   /* La modale n'est pas un <form> : `required` y est un marquage, pas une garde. Les deux
      champs sans lesquels le lien n'existe pas se signalent donc SOUS le champ. */
   viderErreursChamps($('#freeLinkModal'));
-  if (!$('#freeLabel').value.trim()) return void signalerChamp($('#freeLabel'), tr('err.lien-sans-libelle'));
+  // Dans l'ORDRE DES CHAMPS : un refus qui saute au second champ se lit comme un refus du premier.
   if (!$('#freeUrl').value.trim()) return void signalerChamp($('#freeUrl'), tr('err.lien-sans-url'));
+  if (!$('#freeLabel').value.trim()) return void signalerChamp($('#freeLabel'), tr('err.lien-sans-libelle'));
   const body = { label: $('#freeLabel').value, url: $('#freeUrl').value, tags: $('#freeTags').value, folder: $('#freeFolder').value };
   try {
     if (freeEnCours) await api(`/free-links/${freeEnCours.id}`, { method: 'PUT', body });

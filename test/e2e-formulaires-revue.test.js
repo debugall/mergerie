@@ -342,7 +342,20 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     assert.equal(await page.locator('#freeTags').getAttribute('placeholder'), 'doc, astreinte');
     await page.click('#freeSave');
     await page.waitForSelector('#freeLinkModal .field-error', { timeout: ATTENTE });
-    assert.match(await page.locator('#freeLinkModal .field-error').first().textContent(), /libellé/i);
+    /* DANS L'ORDRE DES CHAMPS, et l'adresse est passée devant : c'est elle qu'on colle, et
+       c'est d'elle que le libellé se déduit. Un refus qui saute au second champ se lirait
+       comme un refus du premier. */
+    assert.match(await page.locator('#freeLinkModal .field-error').first().textContent(), /url/i);
+    /* …et le libellé refuse à son tour, sous LUI. Il faut l'EFFACER après avoir donné
+       l'adresse : le formulaire le propose désormais depuis l'hôte, si bien qu'un libellé vide
+       ne s'obtient plus qu'en supprimant la proposition — ce que fait qui n'en veut pas. */
+    await page.fill('#freeUrl', 'https://exemple.demo.invalid');
+    await page.fill('#freeLabel', '');
+    await page.click('#freeSave');
+    await page.waitForFunction(() => {
+      const e = document.querySelector('#freeLinkModal .field-error');
+      return e && /libell/i.test(e.textContent);
+    }, null, { timeout: ATTENTE });
     assert.equal(await page.locator('.toast.err').count(), 0);
     await page.click('#freeCancel');
   });
