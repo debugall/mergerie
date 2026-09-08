@@ -76,6 +76,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Esc during the "warming up" moment now cancels dictation instead of closing the window
+  behind it.** Between the shortcut and the first "listening", dictation spends a second or two
+  opening the microphone: pressing Esc in that gap found nothing to stop, closed the session
+  dialog on its way through, and dictation then started into a field that was no longer there —
+  the microphone stayed lit with nowhere to write. A dictation that is opening is now a
+  dictation that can be cancelled, and it hands the microphone back.
+
 - **"Test" no longer turns red the moment dictation actually works.** The check probed the
   binary with `whisper-server --help`, and that call does not return while another
   whisper-server is alive — so the very first successful dictation made the next test report

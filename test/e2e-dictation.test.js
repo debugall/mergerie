@@ -238,6 +238,44 @@ describe('Dictée vocale · du micro au champ', { skip: dispo ? false : 'chromiu
     await fermerModale();
   });
 
+  /* LA COURSE QUI A CASSÉ LA CI. Entre le raccourci et « écoute », `demarrer()` attend le
+     micro puis le worklet. Sur un runner chargé, l'Échap tombait dans cet intervalle : rien
+     n'était encore « actif », l'Échap ne trouvait donc pas de dictée à arrêter, fermait la
+     modale au passage, et la dictée démarrait juste après — le micro restait à « écoute »
+     pour toujours. On tient l'intervalle ouvert à la main plutôt que d'espérer y tomber. */
+  test('Échap pendant la chauffe annule la dictée au lieu de fermer la modale', async () => {
+    await ouvrirModaleSession();
+    await page.evaluate(() => {
+      window.__piste = { arretee: false };
+      const vrai = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      window.__laisserPasser = null;
+      navigator.mediaDevices.getUserMedia = () => new Promise((res) => {
+        window.__laisserPasser = () => res({
+          getTracks: () => [{ stop() { window.__piste.arretee = true; } }],
+        });
+      });
+      window.__vraiGUM = vrai;
+    });
+    await page.focus('#taskModal textarea[name="prompt"]');
+    await page.waitForSelector('#dictationMic:not([hidden])');
+    await page.keyboard.press('Control+Shift+Space');
+    await page.waitForFunction(() => document.querySelector('#dictationMic').dataset.etat === 'warming'
+      && typeof window.__laisserPasser === 'function', null, { timeout: ATTENTE });
+
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.querySelector('#dictationMic').dataset.etat === 'ready', null, { timeout: ATTENTE });
+    assert.ok(await page.isVisible('#taskModal:not([hidden])'), 'l’Échap de la dictée ne ferme pas la modale');
+
+    // Le micro arrive APRÈS l'arrêt : il doit être rendu, et l'écran rester à « prêt ».
+    await page.evaluate(() => window.__laisserPasser());
+    await page.waitForFunction(() => window.__piste.arretee, null, { timeout: ATTENTE });
+    assert.equal(await page.getAttribute('#dictationMic', 'data-etat'), 'ready');
+    assert.equal(await page.evaluate(() => window.mergerieDictation.etat().actif), false);
+
+    await page.evaluate(() => { navigator.mediaDevices.getUserMedia = window.__vraiGUM; });
+    await fermerModale();
+  });
+
   test('le raccourci est écrit dans la modale « ? » — sinon il n’existe pour personne', async () => {
     await fermerModale();
     await page.click('nav button[data-tab="review"]');

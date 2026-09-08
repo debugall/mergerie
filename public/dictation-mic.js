@@ -132,6 +132,13 @@
        de l'application (⇧-clic copie la commande de checkout sur une branche), et un menu
        déroulant à une seule entrée serait plus lourd que ce qu'il propose. */
     forcee: '',
+    /* LE JETON D'UNE DICTÉE. `demarrer()` attend le micro puis le worklet ; pendant ces deux
+       attentes rien n'est encore « actif », et un Échap ne trouvait donc rien à arrêter — il
+       fermait la modale au passage, et la dictée démarrait derrière, dans un champ détaché.
+       Chaque départ prend un numéro, chaque arrêt l'invalide : au réveil, un démarrage périmé
+       rend le micro et s'en va. */
+    gen: 0,
+    demarrage: false,      // une dictée est en train de s'ouvrir (micro, worklet)
   };
 
   // La langue effectivement dictée : la surcharge d'un ⇧-clic, sinon celle du réglage.
@@ -391,7 +398,7 @@
 
   /* ---------- Démarrer / arrêter ---------- */
   async function demarrer(autreLangue) {
-    if (D.actif) { arreter(); return; }
+    if (D.actif || D.demarrage) { arreter(); return; }   // un clic pendant la chauffe annule
     if (!D.cible || !D.cible.isConnected) return;
     if (!window.isSecureContext) { erreur(tr('dictation.err.insecure')); return; }
     if (!D.statut || D.statut.provider === 'off') { erreur(tr('dictation.err.no-engine')); return; }
@@ -406,15 +413,24 @@
 
     if (D.statut.provider === 'browser') { demarrerNavigateur(); return; }
 
+    D.gen += 1;
+    const gen = D.gen;
+    D.demarrage = true;
     etat('warming', tr('dictation.warming'));
+    let obtenu = null;
     try {
-      flux = await navigator.mediaDevices.getUserMedia({
+      obtenu = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, sampleRate: 16000, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
     } catch (e) {
+      D.demarrage = false;
+      if (gen !== D.gen) return;
       erreur(/NotAllowed|Permission/i.test(String(e && e.name)) ? tr('dictation.err.denied') : tr('dictation.err.engine', { detail: e.message }));
       return;
     }
+    // Arrêtée pendant l'attente : on rend le micro, et surtout on n'écrit pas « écoute ».
+    if (gen !== D.gen) { D.demarrage = false; libererFlux(obtenu); return; }
+    flux = obtenu;
     try {
       ctxAudio = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: RT.SAMPLE_RATE });
       if (!ctxAudio.audioWorklet) throw new Error('AudioWorklet');
@@ -428,12 +444,26 @@
       muet.gain.value = 0;
       noeud.connect(muet).connect(ctxAudio.destination);
     } catch (e) {
+      D.demarrage = false;
+      if (gen !== D.gen) { libererFlux(flux); flux = null; return; }
       erreur(tr('dictation.err.unsupported'));
       return;
     }
+    D.demarrage = false;
+    if (gen !== D.gen) { demonterAudio(); return; }
     capture = nouvelleCapture();
     D.actif = true;
     etat('listening', libelleEcoute());
+  }
+
+  function libererFlux(f) {
+    if (f) f.getTracks().forEach((tk) => { try { tk.stop(); } catch { /* ok */ } });
+  }
+
+  function demonterAudio() {
+    if (noeud) { try { noeud.port.onmessage = null; noeud.disconnect(); } catch { /* détaché */ } noeud = null; }
+    if (ctxAudio) { try { ctxAudio.close(); } catch { /* déjà fermé */ } ctxAudio = null; }
+    libererFlux(flux); flux = null;
   }
 
   /* La bulle DIT dans quelle langue on dicte quand ce n'est pas celle de l'écran : sans ça,
@@ -443,14 +473,14 @@
   }
 
   function arreter(surErreur) {
+    D.gen += 1;                 // un démarrage encore en vol se saura périmé
+    D.demarrage = false;
     if (!D.actif && !flux && !D.reco) { if (!surErreur) etat('ready'); return; }
     const c = capture;
     D.actif = false;
     if (D.reco) { try { D.reco.stop(); } catch { /* déjà arrêtée */ } D.reco = null; }
     if (c && c.ouvert) fermerSegment();
-    if (noeud) { try { noeud.port.onmessage = null; noeud.disconnect(); } catch { /* détaché */ } noeud = null; }
-    if (ctxAudio) { try { ctxAudio.close(); } catch { /* déjà fermé */ } ctxAudio = null; }
-    if (flux) { flux.getTracks().forEach((tk) => { try { tk.stop(); } catch { /* ok */ } }); flux = null; }
+    demonterAudio();
     capture = null;
     if (!surErreur) etat('ready');
     // La seconde passe : l'audio complet, en arrière-plan, pendant qu'on relit.
@@ -551,7 +581,7 @@
     /* Échap pendant la dictée ARRÊTE LA DICTÉE, et rien d'autre : sans `stopPropagation`,
        le même Échap fermait aussi la modale par-dessus, emportant le texte qu'on venait de
        dicter. Un second Échap ferme la modale, comme d'habitude. */
-    if (e.key === 'Escape' && D.actif) { e.preventDefault(); e.stopPropagation(); arreter(); }
+    if (e.key === 'Escape' && (D.actif || D.demarrage)) { e.preventDefault(); e.stopPropagation(); arreter(); }
   }, true);
 
   // La chauffe au SURVOL : charger le modèle prend une à trois secondes, autant les payer
