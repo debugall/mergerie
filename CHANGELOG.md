@@ -76,6 +76,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **"Test" no longer turns red the moment dictation actually works.** The check probed the
+  binary with `whisper-server --help`, and that call does not return while another
+  whisper-server is alive — so the very first successful dictation made the next test report
+  "binary missing" while transcription was working. A running engine is now taken as its own
+  proof.
+
+- **The dictated context no longer pushes your glossary out of the engine's prompt.** The last
+  words spoken are appended after the vocabulary, and Whisper keeps only the last 224 tokens:
+  what fell off was the head — your glossary and your repository names, the very things with
+  the highest priority. Their room is now reserved in advance.
+
 - **Adding the first link on an empty Links tab no longer pops the "New environment" dialog.** An
   older click handler was still listening on the grid and answered the empty state's "Add" button
   as well as the paste dialog, so closing the one opened the other.

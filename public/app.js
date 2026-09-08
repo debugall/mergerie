@@ -731,25 +731,29 @@ const DICT_ETAPES = ['provider', 'binary', 'model', 'vad', 'start', 'transcribe'
 let dictationJobId = null;
 let dictationTimer = null;
 
-function loadDictationSettings() {
+async function loadDictationSettings() {
   loadConfig();
   syncDictationProvider();
+  /* Le statut porte la plateforme du serveur : on l'attend avant de dire ce que l'installation
+     va faire, plutôt que de le deviner. */
+  try { plateformeDuServeur = (await api('/dictation/status')).platform || ''; } catch { /* on gardera le repli */ }
   const box = $('#dictInstallGpuBox');
   // Sur macOS, Metal est actif d'office : il n'y a pas de GPU à choisir.
-  if (box) box.hidden = !/Linux|Windows/i.test(navigator.platform + navigator.userAgent) || /Mac/i.test(navigator.platform);
+  if (box) box.hidden = plateformeServeur() === 'darwin';
+  const gpuVulkan = $('#dictInstallGpu') && $('#dictInstallGpu').querySelector('option[value="vulkan"]');
+  // Sous Windows, seule la variante CUDA est publiée : proposer Vulkan serait un cul-de-sac.
+  if (gpuVulkan) gpuVulkan.hidden = plateformeServeur() === 'win32';
   const c = $('#dictInstallConfirm');
   if (c) c.textContent = tr(`settings.dictation.confirm.${plateformeServeur()}`);
 }
 
-/* La plateforme DU SERVEUR — c'est la machine qui héberge Mergerie qui dicte, pas celle du
-   navigateur. On ne l'a pas dans l'API de statut : on la déduit du chemin de données que
-   les réglages affichent déjà, et à défaut de celle du navigateur, qui est la même dans le
-   cas nominal (tout tourne en local). */
+/* La plateforme DU SERVEUR — c'est la machine qui héberge Mergerie qui installe le moteur,
+   pas celle du navigateur. Elle vient donc de l'API (`process.platform`), pas de l'agent
+   utilisateur : déduite du navigateur, elle se trompait dès qu'on ouvrait l'outil depuis une
+   autre machine, et la confirmation promettait Homebrew à un serveur Linux. */
+let plateformeDuServeur = '';
 function plateformeServeur() {
-  const ua = navigator.userAgent || '';
-  if (/Windows/i.test(ua)) return 'win32';
-  if (/Mac OS X|Macintosh/i.test(ua)) return 'darwin';
-  return 'linux';
+  return ['darwin', 'linux', 'win32'].includes(plateformeDuServeur) ? plateformeDuServeur : 'linux';
 }
 
 /* Les champs d'un fournisseur qui n'est pas choisi n'ont rien à faire à l'écran : ils

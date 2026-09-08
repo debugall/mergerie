@@ -147,13 +147,22 @@ function termesVocabulaire(cfg, language) {
   return out;
 }
 
+/* CE QUE LE CONTEXTE GLISSANT COÛTE, RÉSERVÉ D'AVANCE. Les derniers mots dictés sont ajoutés
+   APRÈS le prompt (§4.3) — et whisper ne garde que les 224 DERNIERS tokens : ajouter sans
+   réserver ne rognait donc pas la queue mais la TÊTE, c'est-à-dire le glossaire de
+   l'utilisateur et les noms de dépôts, exactement ce qui a la priorité la plus haute. La
+   réservation vaut TOUJOURS, même quand le contexte est vide : le nombre de termes affiché
+   dans les réglages est alors celui qui part réellement, à toutes les phrases. */
+const RESERVE_CONTEXTE = 70;
+
+
 /* Le prompt effectivement envoyé : les termes, puis l'amorce — c'est-à-dire le style AU PLUS
    PRÈS de ce qui va être transcrit. La troncature retire les termes par la fin (les moins
    prioritaires), jamais au milieu d'un terme, et l'amorce a sa place réservée. */
 function construirePrompt(cfg, language) {
   const lang = language === 'en' ? 'en' : 'fr';
   const amorce = AMORCE[lang];
-  const budget = MAX_PROMPT_TOKENS - countTokens(amorce) - 2;
+  const budget = MAX_PROMPT_TOKENS - countTokens(amorce) - RESERVE_CONTEXTE - 2;
   const tous = termesVocabulaire(cfg, lang);
   const gardes = [];
   let coût = 0;
@@ -348,12 +357,24 @@ async function tuerOrphelin() {
 
 /* JAMAIS D'ORPHELIN. Le moteur est un process enfant qui tient deux gigaoctets : arrêter
    Mergerie doit l'emporter avec lui. `exit` couvre la sortie normale et `process.exit()` ;
-   les signaux, eux, terminent le process SANS jouer les gestionnaires de `exit` — on les
-   intercepte donc, on tue l'enfant, et on rend la main au comportement attendu (128 + signal),
-   sinon un simple Ctrl-C ne quitterait plus. Installé une seule fois, au chargement. */
-process.on('exit', () => { const c = moteur.child; if (c) { try { c.kill('SIGKILL'); } catch { /* déjà mort */ } } });
-for (const sig of ['SIGTERM', 'SIGINT']) {
-  process.once(sig, () => { arreterMoteur(); process.exit(sig === 'SIGINT' ? 130 : 143); });
+   les signaux, eux, terminent le process SANS jouer les gestionnaires de `exit` — il faut donc
+   les intercepter.
+
+   MAIS PAS AU CHARGEMENT. Poser un gestionnaire de `SIGINT` supprime le comportement PAR DÉFAUT
+   de Node pour tout le serveur, et le simple fait d'importer ce module changeait ainsi la façon
+   dont Mergerie s'arrête, moteur ou pas. On ne les installe donc qu'à la naissance du PREMIER
+   moteur — il y a alors quelque chose à emporter —, et on ne décide pas du code de sortie à la
+   place de qui que ce soit : on se retire et on RENVOIE le signal, pour que le comportement par
+   défaut (ou un autre gestionnaire) s'applique tel quel. */
+let signauxPoses = false;
+function poserSignaux() {
+  if (signauxPoses) return;
+  signauxPoses = true;
+  process.on('exit', () => { const c = moteur.child; if (c) { try { c.kill('SIGKILL'); } catch { /* déjà mort */ } } });
+  for (const sig of ['SIGTERM', 'SIGINT']) {
+    const sur = () => { arreterMoteur(); process.removeListener(sig, sur); process.kill(process.pid, sig); };
+    process.on(sig, sur);
+  }
 }
 
 function armerInactivite(cfg) {
@@ -407,6 +428,7 @@ async function assurerMoteur(cfg) {
     });
     moteur.child = child; moteur.port = port; moteur.bin = cmd.programme; moteur.modele = modele;
     noterMoteur(child.pid, port);
+    poserSignaux();
     child.stdout.on('data', (d) => journaliser(String(d)));
     child.stderr.on('data', (d) => journaliser(String(d)));
     child.on('error', (e) => journaliser(`spawn: ${e.message}`));
@@ -497,14 +519,20 @@ async function transcrire({ wav, language, ctx, final } = {}) {
   };
 }
 
-/* Le contexte glissant : les soixante derniers mots déjà dictés, APRÈS le vocabulaire. Sans
-   lui, « API » redevient « à pied » au deuxième segment. Plafonné pour ne jamais évincer le
-   vocabulaire, et jamais alimenté par une sortie filtrée — un prompt qui contient une
-   hallucination la fait revenir. */
+/* Le contexte glissant : les derniers mots déjà dictés, APRÈS le vocabulaire. Sans lui,
+   « API » redevient « à pied » au deuxième segment. Il est PLAFONNÉ à la place qui lui a été
+   réservée dans le budget (`RESERVE_CONTEXTE`) — on retire des mots par le DÉBUT jusqu'à ce
+   qu'il tienne dedans —, et jamais alimenté par une sortie filtrée : un prompt qui contient
+   une hallucination la fait revenir. */
+function contexteGlissant(brut) {
+  let mots = String(brut || '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean).slice(-60);
+  while (mots.length && countTokens(mots.join(' ')) > RESERVE_CONTEXTE) mots = mots.slice(1);
+  return mots.join(' ');
+}
+
 function promptAvecContexte(prompt, ctx) {
-  const c = String(ctx || '').replace(/\s+/g, ' ').trim().split(' ').slice(-60).join(' ');
-  if (!c) return prompt;
-  return `${prompt} ${c}`;
+  const c = contexteGlissant(ctx);
+  return c ? `${prompt} ${c}` : prompt;
 }
 
 function prefixesJira() {
@@ -533,6 +561,11 @@ function statut() {
     ready: prov === 'demo' || (prov === 'local' ? !!moteur.child : prov !== 'off'),
     model: prov === 'openai' ? (cfg.dictation_remote_model || '') : path.basename(modele),
     language: lang,
+    /* LA PLATEFORME DU SERVEUR, pas celle du navigateur : c'est la machine qui HÉBERGE
+       Mergerie qui installe le moteur, et l'écran doit nommer ce qui va s'y passer. Déduite de
+       l'agent utilisateur, elle se trompait dès que l'on ouvrait l'outil depuis une autre
+       machine — la confirmation promettait alors Homebrew à un serveur Linux. */
+    platform: process.platform,
     silence_ms: Math.min(1500, Math.max(400, Number(cfg.dictation_silence_ms) || 700)),
     final_pass: cfg.dictation_final_pass !== '0',
     commands: rt.COMMANDES[lang].map(([, nom]) => nom),
@@ -592,7 +625,14 @@ async function diagnostic() {
   if (prov === 'local') {
     const cmd = commandeMoteur(cfg);
     if (!cmd.ok) ajouter('binary', 'fail', cmd.erreur, t('dictation.diag.remedy.binary'));
-    else {
+    else if (moteur.child) {
+      /* UN MOTEUR QUI TOURNE EST SA PROPRE PREUVE. `whisper-server --help` ne rend pas la main
+         tant qu'un autre whisper-server est en vie (mesuré : 71 ms seul, dix secondes de délai
+         dépassé avec un serveur en fond) : re-sonder le binaire faisait donc échouer l'étape
+         « Binaire » précisément quand la dictée marchait — vert à froid, rouge une fois chaud.
+         On ne relance pas une sonde pour redemander ce que l'on a déjà sous les yeux. */
+      ajouter('binary', 'ok', `${cmd.programme} — ${t('dictation.diag.running')}`);
+    } else {
       const b = binaireDispo(cmd.programme);
       if (b.ok) ajouter('binary', 'ok', `${cmd.programme}${b.sortie ? ` — ${(b.sortie.split('\n')[0] || '').trim().slice(0, 80)}` : ''}`);
       else ajouter('binary', 'fail', b.erreur || cmd.programme, t('dictation.diag.remedy.binary'));
@@ -756,6 +796,7 @@ module.exports = {
   validerWav, construirePrompt, termesVocabulaire, normaliserSegment, assembler,
   filtrerHallucination, parserRemplacements, similarite, compteRejets, resetRejets,
   commandeInstallation, envInstallation, lireResultatInstallation, reglagesDepuisResultat,
+  contexteGlissant, promptAvecContexte, RESERVE_CONTEXTE,
   langueDe, fournisseur, wavSilence, modeleParDefaut, appelerTranscription,
   tuerOrphelin, noterMoteur,
   MODELES, GPUS, MAX_WAV, SAMPLE_RATE, MAX_PROMPT_TOKENS,

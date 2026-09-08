@@ -3133,6 +3133,7 @@
       "settings.dictation.provider.browser": "Navigateur (l'audio part chez un tiers)",
       "settings.dictation.lang.auto": "Celle de l'interface",
       "dictation.listening-lang": "J'écoute ({lang})",
+      "dictation.diag.running": "déjà démarré",
     },
     en: {
       "palette.open": "Search a link, an MR, a ticket…",
@@ -6252,6 +6253,7 @@
       "settings.dictation.provider.browser": "Browser (audio goes to a third party)",
       "settings.dictation.lang.auto": "Same as the interface",
       "dictation.listening-lang": "Listening ({lang})",
+      "dictation.diag.running": "already running",
     },
   };
 }));

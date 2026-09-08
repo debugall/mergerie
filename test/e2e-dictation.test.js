@@ -73,10 +73,24 @@ describe('Dictée vocale · du micro au champ', { skip: dispo ? false : 'chromiu
   const fermerModale = async () => {
     await page.evaluate(() => { if (window.mergerieDictation) window.mergerieDictation.arreter(); });
     if (await page.isVisible('#taskModal:not([hidden])').catch(() => false)) {
-      await page.click('#taskCancel').catch(() => {});
-      await page.waitForSelector('#taskModal[hidden]', { timeout: ATTENTE }).catch(() => {});
+      await page.click('#taskCancel');
+      /* `state: 'hidden'` — et surtout PAS l'attente par défaut. Attendre `#taskModal[hidden]`
+         demandait un élément VISIBLE portant l'attribut `hidden` : une condition qui ne peut
+         jamais être vraie. Le délai expirait à chaque fermeture, un `.catch` l'avalait, et
+         chaque épreuve payait vingt secondes pour une attente qui ne prouvait rien. */
+      await page.waitForSelector('#taskModal', { state: 'hidden', timeout: ATTENTE });
     }
   };
+
+  /* ATTENDRE UN SEGMENT, PAS N'IMPORTE QUELLE RÉPONSE. À l'arrêt, la relecture finale poste
+     l'audio complet : elle porte `final=1`, et arrive souvent APRÈS que l'épreuve suivante a
+     armé son attente — qui attrapait alors la réponse de la dictée d'AVANT, dans sa langue à
+     elle. Le défaut ne se voyait pas tant qu'une attente cassée coûtait vingt secondes à
+     chaque fermeture de modale ; il est apparu dès que le fichier est redevenu rapide. */
+  const attendreSegment = () => page.waitForResponse(
+    (r) => r.url().includes('/api/dictation/transcribe') && /final=0/.test(r.url()) && r.status() === 200,
+    { timeout: ATTENTE },
+  );
 
   const ouvrirModaleSession = async () => {
     await fermerModale();
@@ -102,7 +116,7 @@ describe('Dictée vocale · du micro au champ', { skip: dispo ? false : 'chromiu
     // Un champ de recherche n'est pas un champ de rédaction : le micro s'en va.
     await fermerModale();
     await page.click('nav button[data-tab="links"]');
-    await page.focus('#linkSearch').catch(() => {});
+    await page.focus('#linkSearch');
     await page.waitForFunction(() => document.querySelector('#dictationMic').hidden, null, { timeout: ATTENTE });
   });
 
@@ -112,7 +126,7 @@ describe('Dictée vocale · du micro au champ', { skip: dispo ? false : 'chromiu
     await page.focus(champ);
     await page.waitForSelector('#dictationMic:not([hidden])');
 
-    const reponse = page.waitForResponse((r) => r.url().includes('/api/dictation/transcribe') && r.status() === 200, { timeout: ATTENTE });
+    const reponse = attendreSegment();
     await page.click('#dictationMic');
     const r = await reponse;
     const corps = await r.json();
@@ -257,7 +271,7 @@ describe('Dictée vocale · du micro au champ', { skip: dispo ? false : 'chromiu
     const champ = '#taskModal textarea[name="prompt"]';
     await page.focus(champ);
     await page.waitForSelector('#dictationMic:not([hidden])');
-    const reponse = page.waitForResponse((r) => r.url().includes('/api/dictation/transcribe') && r.status() === 200, { timeout: ATTENTE });
+    const reponse = attendreSegment();
     await page.click('#dictationMic');
     const corps = await (await reponse).json();
     assert.equal(corps.language, 'en', 'la langue forcée au moteur suit l’écran');
@@ -275,7 +289,7 @@ describe('Dictée vocale · du micro au champ', { skip: dispo ? false : 'chromiu
     const champ = '#taskModal textarea[name="prompt"]';
     await page.focus(champ);
     await page.waitForSelector('#dictationMic:not([hidden])');
-    const reponse = page.waitForResponse((r) => r.url().includes('/api/dictation/transcribe') && r.status() === 200, { timeout: ATTENTE });
+    const reponse = attendreSegment();
     await page.click('#dictationMic', { modifiers: ['Shift'] });
     await page.waitForFunction(() => /EN/.test(document.querySelector('#dictationHint').textContent), null, { timeout: ATTENTE });
     const corps = await (await reponse).json();
@@ -284,7 +298,7 @@ describe('Dictée vocale · du micro au champ', { skip: dispo ? false : 'chromiu
     // …et la dictée suivante retrouve la langue de l'écran : la surcharge ne dure qu'une fois.
     await ouvrirModaleSession();
     await page.focus(champ);
-    const suivante = page.waitForResponse((r) => r.url().includes('/api/dictation/transcribe') && r.status() === 200, { timeout: ATTENTE });
+    const suivante = attendreSegment();
     await page.click('#dictationMic');
     assert.equal((await (await suivante).json()).language, 'fr');
     await fermerModale();
@@ -392,6 +406,12 @@ describe('Dictée vocale · les réglages, « Tester » et « Installer »', { s
     await page.waitForSelector('#dictInstallModal:not([hidden])');
     const confirme = await page.textContent('#dictInstallConfirm');
     assert.ok(confirme.trim().length > 20, 'la confirmation NOMME ce qui va se passer');
+    /* …et elle nomme le système DU SERVEUR. Déduite du navigateur, elle promettait Homebrew à
+       un serveur Linux dès qu'on ouvrait l'outil depuis une autre machine. */
+    const attendu = { darwin: /Homebrew/, linux: /archive précompilée|prebuilt archive/, win32: /zip/i }[process.platform];
+    if (attendu) assert.match(confirme, attendu, `la confirmation parle bien de ${process.platform}`);
+    const gpuCache = await page.evaluate(() => document.querySelector('#dictInstallGpuBox').hidden);
+    assert.equal(gpuCache, process.platform === 'darwin', 'pas de choix de GPU sur macOS, où Metal est d’office');
     await page.selectOption('#dictInstallModel', 'large-v3-turbo');
     await page.click('#dictInstallGo');
     await page.waitForSelector('#dictationLog:not([hidden])');

@@ -30,6 +30,7 @@ const demo = require('../src/demo-dictation');
 const db = require('../src/db');
 const { updateConfig } = require('../src/config');
 const i18n = require('../public/i18n-runtime.js');
+const { countTokens } = require('../src/copilot');
 
 const NBSP = ' ';
 
@@ -89,6 +90,31 @@ describe('Dictée · le prompt de vocabulaire', () => {
 
   test('l’empreinte est stable à contenu égal', () => {
     assert.equal(dictation.construirePrompt(null, 'fr').sha, dictation.construirePrompt(null, 'fr').sha);
+  });
+
+  /* LE CONTEXTE GLISSANT NE MANGE PAS LE GLOSSAIRE. Whisper ne garde que les 224 DERNIERS
+     tokens : ajouter les soixante derniers mots dictés APRÈS un prompt déjà plein ne rognait
+     pas la queue mais la TÊTE — c'est-à-dire le glossaire de l'utilisateur, la priorité la
+     plus haute de toute la fonctionnalité. Sa place est donc réservée d'avance. */
+  test('prompt + contexte tiennent sous la limite du moteur, glossaire compris', () => {
+    updateConfig({ dictation_vocabulary: Array.from({ length: 300 }, (_, i) => `terme-tres-long-numero-${i}`).join('\n') });
+    const { prompt, terms } = dictation.construirePrompt(null, 'fr');
+    const ctx = Array.from({ length: 200 }, (_, i) => `motdicteassezlong${i}`).join(' ');
+    const complet = dictation.promptAvecContexte(prompt, ctx);
+    assert.ok(countTokens(complet) <= dictation.MAX_PROMPT_TOKENS,
+      `${countTokens(complet)} tokens envoyés pour un plafond de ${dictation.MAX_PROMPT_TOKENS}`);
+    assert.equal(terms[0], 'terme-tres-long-numero-0', 'le glossaire reste en tête');
+    assert.ok(complet.includes(terms[0]), 'et il est toujours dans ce qui part');
+    updateConfig({ dictation_vocabulary: '' });
+  });
+
+  test('le contexte est rogné par le DÉBUT, pour garder les mots les plus récents', () => {
+    const ctx = Array.from({ length: 200 }, (_, i) => `motdicteassezlong${i}`).join(' ');
+    const garde = dictation.contexteGlissant(ctx);
+    assert.ok(countTokens(garde) <= dictation.RESERVE_CONTEXTE);
+    assert.ok(garde.endsWith('motdicteassezlong199'), 'le dernier mot dicté est celui qui compte le plus');
+    assert.ok(!garde.includes('motdicteassezlong0 '), 'les plus anciens sont partis');
+    assert.equal(dictation.contexteGlissant(''), '');
   });
 });
 
@@ -307,6 +333,61 @@ describe('Dictée · le moteur simulé', () => {
     delete process.env.DICTATION_DRY_RUN;
     updateConfig({ dictation_provider: 'off' });
     await assert.rejects(() => dictation.transcrire({ wav: dictation.wavSilence(1) }), (e) => e.code === 'DICTATION_OFF');
+  });
+});
+
+/* LE MOTEUR LOCAL, POUR DE VRAI — avec un faux `whisper-server` qui répond comme le vrai.
+   C'est le seul endroit où le cycle de vie complet est éprouvé : port libre trouvé par Node,
+   attente du « prêt », chauffe, transcription, arrêt. Et surtout la règle née d'un défaut
+   mesuré : `whisper-server --help` NE REND PAS LA MAIN tant qu'un autre tourne, si bien que
+   re-sonder le binaire faisait échouer l'étape « Binaire » exactement quand la dictée
+   marchait. Le faux binaire reproduit ce piège : son `--help` dort pour toujours. */
+describe('Dictée · le moteur local et son diagnostic', () => {
+  const faux = path.join(__dirname, 'helpers', 'fake-whisper-server.js');
+  const modele = path.join(process.env.MERGERIE_DATA_DIR, 'ggml-faux.bin');
+
+  before(() => {
+    fs.writeFileSync(modele, Buffer.concat([Buffer.from('lmgg'), Buffer.alloc(64)]));
+    delete process.env.DICTATION_DRY_RUN;
+    updateConfig({
+      dictation_provider: 'local',
+      dictation_command: `${process.execPath} ${faux}`,
+      dictation_model: modele,
+      dictation_vad_model: '',
+    });
+  });
+  after(() => { dictation.arreterMoteur(); updateConfig({ dictation_provider: 'off', dictation_command: '' }); });
+
+  test('le moteur démarre sur un port libre, chauffe, et transcrit', async () => {
+    const r = await dictation.warmup();
+    assert.equal(r.warm, true);
+    const seg = await dictation.transcrire({ wav: dictation.wavSilence(2), language: 'fr' });
+    assert.equal(seg.provider, 'local');
+    assert.equal(seg.duration_ms, 2000);
+    assert.match(seg.text, /!214/, 'la normalisation s’applique aussi au fournisseur local');
+  });
+
+  test('le diagnostic ne re-sonde PAS un binaire déjà démarré — et reste rapide', async () => {
+    await dictation.warmup();                     // le moteur tourne : son --help dort désormais
+    const t0 = Date.now();
+    const d = await dictation.diagnostic();
+    const ms = Date.now() - t0;
+    const par = Object.fromEntries(d.steps.map((x) => [x.key, x]));
+    assert.equal(par.binary.status, 'ok', 'un moteur qui tourne EST la preuve que son binaire marche');
+    assert.match(par.binary.detail, /démarré|running/i);
+    assert.equal(par.start.status, 'ok');
+    assert.equal(d.verdict, 'ready');
+    /* La sonde bloquée coûtait dix secondes de délai dépassé : moins de cinq suffit à prouver
+       qu'elle n'a pas été lancée, même sur une machine chargée. */
+    assert.ok(ms < 5000, `diagnostic rendu en ${ms} ms — la sonde du binaire a dû être relancée`);
+  });
+
+  test('arrêter le moteur libère le port et efface sa note', async () => {
+    await dictation.warmup();
+    const note = path.join(process.env.MERGERIE_DATA_DIR, 'dictation-engine.json');
+    assert.equal(fs.existsSync(note), true, 'un moteur qui tourne laisse de quoi le retrouver');
+    dictation.arreterMoteur();
+    assert.equal(fs.existsSync(note), false, 'et l’arrêt reprend sa note avec lui');
   });
 });
 
