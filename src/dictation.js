@@ -749,6 +749,27 @@ function commandeInstallation(opts = {}) {
   throw e;
 }
 
+/* DES FINS DE LIGNE WINDOWS DANS UN SCRIPT SHELL. Un dépôt extrait avec `core.autocrlf=true`
+   — le défaut de Git pour Windows, hérité par WSL quand le clone vient de là — porte des CRLF,
+   et `sh` (dash) échoue alors dès la première ligne, sur un message tronqué par le retour
+   chariot lui-même : « 26: set: Illegal option - ». `.gitattributes` l'empêche pour les
+   prochains clones ; pour ceux qui existent, on n'exige pas un `dos2unix` : on écrit une copie
+   normalisée dans le dossier temporaire des données et on lance celle-là, en le disant. Le
+   chemin d'origine reste FIXE (celui du dépôt) : la copie n'est qu'une transcription. Sans
+   objet pour PowerShell, qui lit les deux. */
+function scriptSansCR(cmd, tmpDir) {
+  if (cmd.programme !== 'sh') return { cmd, normalise: false };
+  let contenu;
+  try { contenu = fs.readFileSync(cmd.script, 'utf8'); } catch { return { cmd, normalise: false }; }
+  if (!contenu.includes('\r')) return { cmd, normalise: false };
+  const dossier = tmpDir || path.join(DATA_DIR, 'tmp');
+  fs.mkdirSync(dossier, { recursive: true });
+  const copie = path.join(dossier, path.basename(cmd.script));
+  fs.writeFileSync(copie, contenu.replace(/\r\n?/g, '\n'), { mode: 0o755 });
+  const args = cmd.args.map((a) => (a === cmd.script ? copie : a));
+  return { cmd: { ...cmd, args, script: copie }, normalise: true, origine: cmd.script };
+}
+
 // L'environnement du script : le minimum, plus le marqueur qui lui dit qu'il tourne sans
 // terminal (pas de barre de progression, et une ligne MERGERIE_RESULT à la fin).
 function envInstallation(dataDir) {
@@ -795,7 +816,7 @@ module.exports = {
   transcrire, statut, warmup, diagnostic, arreterMoteur,
   validerWav, construirePrompt, termesVocabulaire, normaliserSegment, assembler,
   filtrerHallucination, parserRemplacements, similarite, compteRejets, resetRejets,
-  commandeInstallation, envInstallation, lireResultatInstallation, reglagesDepuisResultat,
+  commandeInstallation, scriptSansCR, envInstallation, lireResultatInstallation, reglagesDepuisResultat,
   contexteGlissant, promptAvecContexte, RESERVE_CONTEXTE,
   langueDe, fournisseur, wavSilence, modeleParDefaut, appelerTranscription,
   tuerOrphelin, noterMoteur,

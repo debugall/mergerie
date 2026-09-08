@@ -796,7 +796,9 @@ async function runInstallJob(jobId, payload) {
     // La dictée est SUSPENDUE le temps de l'installation : le binaire est en train d'être
     // remplacé sous les pieds du moteur qui tourne.
     dictation.arreterMoteur();
-    const cmd = dictation.commandeInstallation(payload);
+    const prep = dictation.scriptSansCR(dictation.commandeInstallation(payload));
+    if (prep.normalise) onLog(t('log.dictation.crlf', { script: prep.origine }));
+    const cmd = prep.cmd;
     const { stdout } = await git.run(cmd.programme, cmd.args, {
       env: dictation.envInstallation(DATA_DIR), onLog,
     });

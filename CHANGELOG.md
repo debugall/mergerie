@@ -76,6 +76,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **« Install » failed on WSL before doing anything.** A checkout made with Git for Windows
+  (`core.autocrlf=true`) gives the install script Windows line endings, and `sh` stops on its
+  first line with a message the carriage return itself truncates (`set: Illegal option -`). Shell
+  scripts are now pinned to LF in the repository, and when an existing checkout still carries
+  CRLF, the server runs a normalised copy and says so in the job log, with the two git commands
+  that fix the checkout for good.
 - **Esc during the "warming up" moment now cancels dictation instead of closing the window
   behind it.** Between the shortcut and the first "listening", dictation spends a second or two
   opening the microphone: pressing Esc in that gap found nothing to stop, closed the session

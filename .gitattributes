@@ -1,0 +1,3 @@
+# Les scripts shell doivent garder des fins de ligne LF, meme extraits depuis Windows :
+# avec CRLF, `sh` (dash) echoue des la premiere ligne sur « set: Illegal option - » (WSL).
+*.sh text eol=lf

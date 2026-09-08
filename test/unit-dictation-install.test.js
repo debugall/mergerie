@@ -233,3 +233,47 @@ describe('Diagnostic · le composeur', () => {
     updateConfig({ dictation_provider: 'off', dictation_command: '' });
   });
 });
+
+/* Un dépôt extrait avec `core.autocrlf=true` (Git pour Windows, hérité par WSL) porte des CRLF,
+   et `sh` échoue alors dès la première ligne. Vu chez un utilisateur : « 26: set: Illegal
+   option - » — le retour chariot tronquait le message lui-même. */
+describe('fins de ligne Windows dans le script shell', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dict-crlf-'));
+
+  test('un script CRLF est recopié en LF et c’est la copie qui est lancée', () => {
+    const crlf = path.join(tmp, 'install-whisper.sh');
+    fs.writeFileSync(crlf, '#!/bin/sh\r\nset -eu\r\necho "MERGERIE_RESULT {}"\r\n');
+    const cmd = { programme: 'sh', args: [crlf, '--dir', '/d'], script: crlf };
+    const r = dictation.scriptSansCR(cmd, path.join(tmp, 'out'));
+    assert.equal(r.normalise, true);
+    assert.equal(r.origine, crlf);
+    assert.notEqual(r.cmd.script, crlf);
+    assert.equal(r.cmd.args[0], r.cmd.script, 'l’argument du script pointe sur la copie');
+    assert.deepEqual(r.cmd.args.slice(1), ['--dir', '/d'], 'les autres arguments sont intacts');
+    const contenu = fs.readFileSync(r.cmd.script, 'utf8');
+    assert.ok(!contenu.includes('\r'), 'plus un seul retour chariot');
+    assert.equal(contenu, '#!/bin/sh\nset -eu\necho "MERGERIE_RESULT {}"\n');
+  });
+
+  test('un script déjà en LF est lancé tel quel, depuis le dépôt', () => {
+    const lf = path.join(tmp, 'propre.sh');
+    fs.writeFileSync(lf, '#!/bin/sh\nset -eu\n');
+    const cmd = { programme: 'sh', args: [lf], script: lf };
+    const r = dictation.scriptSansCR(cmd, path.join(tmp, 'out'));
+    assert.equal(r.normalise, false);
+    assert.equal(r.cmd, cmd);
+  });
+
+  test('PowerShell lit les deux : rien n’est recopié sous Windows', () => {
+    const ps1 = path.join(tmp, 'install-whisper.ps1');
+    fs.writeFileSync(ps1, 'param()\r\n');
+    const cmd = { programme: 'powershell.exe', args: ['-File', ps1], script: ps1 };
+    assert.equal(dictation.scriptSansCR(cmd, path.join(tmp, 'out')).normalise, false);
+  });
+
+  test('le vrai script du dépôt est en LF — sinon `.gitattributes` a été contourné', () => {
+    const vrai = fs.readFileSync(path.join(ROOT, 'scripts/install-whisper.sh'), 'utf8');
+    assert.ok(!vrai.includes('\r'));
+    assert.match(fs.readFileSync(path.join(ROOT, '.gitattributes'), 'utf8'), /\*\.sh text eol=lf/);
+  });
+});
