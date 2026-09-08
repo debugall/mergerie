@@ -160,10 +160,16 @@ const PROJECTS = [
 ];
 
 // ---------- config : GitLab factice, pas de token (démo hors-ligne) ----------
-db.prepare(`UPDATE config SET gitlab_url = ?, access_token = '', jira_url = ?, ai_extra_instructions = ? WHERE id = 1`)
+/* La DICTÉE est allumée en démo, avec un glossaire et une correction déjà remplis : le moteur
+   y est simulé, si bien que le micro marche vraiment sans rien installer — et c'est le seul
+   moyen de MONTRER ce que le vocabulaire apporte, plutôt que de l'écrire dans un guide. */
+db.prepare(`UPDATE config SET gitlab_url = ?, access_token = '', jira_url = ?, ai_extra_instructions = ?,
+    dictation_provider = 'local', dictation_vocabulary = ?, dictation_replacements = ? WHERE id = 1`)
   .run('https://gitlab.demo', 'https://jira.demo',
     // Des consignes permanentes remplies : un champ vide ne montrerait pas à quoi il sert.
-    'Commente en français.\nLance `npm run check` avant de committer.\nN’ajoute aucune dépendance sans le demander.');
+    'Commente en français.\nLance `npm run check` avant de committer.\nN’ajoute aucune dépendance sans le demander.',
+    'astreinte\nVoxtral\nMergerie',
+    'Jean-Kim => Jenkins\ngite lab => GitLab');
 
 // ---------- dépôts ----------
 const repoIds = {};

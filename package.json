@@ -38,6 +38,8 @@
     "check:server": "node scripts/check-server.js",
     "check:docs": "node scripts/check-docs.js",
     "check": "npm run check:front && npm run check:server && npm run check:docs && npm run i18n:check",
+    "install:whisper": "sh scripts/install-whisper.sh",
+    "bench:dictation": "node scripts/dictation-bench.js",
     "demo": "node scripts/demo-seed.js && MERGERIE_DEMO=1 MERGERIE_DATA_DIR=data-demo COPILOT_DRY_RUN=1 node src/server.js",
     "record:demo": "node scripts/record-demo.js",
     "demo:gif": "sh scripts/demo-gif.sh"

@@ -76,6 +76,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Adding the first link on an empty Links tab no longer pops the "New environment" dialog.** An
+  older click handler was still listening on the grid and answered the empty state's "Add" button
+  as well as the paste dialog, so closing the one opened the other.
+
+- **Esc closes a cell panel even after you have done something in it.** Pasting several addresses
+  redraws the panel's body and the focus falls back to the page; the key was only listened to
+  inside the panel, so from that moment on the panel could only be closed with the mouse.
+
 - **Opening a link from a merge request was not counted.** The buttons carried a two-segment
   reference (`service:environment`) where frecency counts three (`service:environment:address`):
   every opening from a merge request was lost — neither the palette nor "last opened" ever saw it.
@@ -159,6 +167,51 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   the whole test suite into a hang with no error message.
 
 ### Added
+
+- **You can dictate into any text field — and the transcription knows your repositories' names.**
+  A microphone appears on the field you are writing in; you speak, and the text lands at the caret,
+  exactly as if you had typed it (so drafts still autosave and "unsaved changes" still shows).
+  `Ctrl`/`Cmd` + `Shift` + `Space` starts and stops it, `Esc` stops. It works on session prompts,
+  follow-ups, answers to the agent, merge request comments, notes, todos, commit messages and
+  review rules — not on URL, token, path or search fields, where a microphone would just be noise.
+
+  What makes it usable on technical French or English is not the engine, it is what Mergerie sends
+  it with every sentence: the names of your **repositories**, the **services** and **environments**
+  of the Links tab, your **Jira key prefixes**, your **verifiers**, your linked **Jenkins jobs** and
+  the **branches of open merge requests**. The same audio that a bare engine writes as "the merge
+  rec west 244 on web app front" comes back as "merge request 244 on webapp-front". A **glossary**
+  and a list of **corrections** (`heard => written`) cover what the database cannot guess, and
+  `!214` / `PROJ-720` are rebuilt from their spoken forms — those are what become links in your
+  notes and targets in the palette.
+
+  A hiccup on one sentence no longer costs you the rest: a segment the engine could not answer
+  is dropped and the ones behind it still land, while a refusal that cannot be retried — the
+  dictation switched off, an audio format the engine will never take — stops the microphone and
+  says so on the button rather than leaving it listening into the void.
+
+  Sentences are sent as you pause (700 ms of silence, adjustable), so the text arrives while you
+  are still talking rather than ten seconds later; when you stop, the whole take is re-read in the
+  background and replaces what was inserted, unless you have already corrected it yourself. What
+  the engine invents over silence — "Sous-titres réalisés par la communauté d'Amara.org" and its
+  English cousins — is dropped by four successive guards, and what is dropped is **counted** on
+  screen: if that number climbs, the microphone is picking up noise.
+
+  One sentence in the other language does not need a settings trip: **⇧-click the microphone** and
+  that take alone is dictated in the other language, which the bubble announces.
+
+  Three providers, one setting, and the screen says where the audio goes before you choose:
+  **whisper.cpp running locally** (the recommendation — nothing leaves the machine, and the audio
+  is never written to disk), **any OpenAI-compatible API**, or the **browser's own recognition**
+  (nothing to install, but the audio goes to Google or Apple, said in plain words). Dictation is
+  **off by default**: until you pick a provider, no microphone appears anywhere.
+
+- **Installing the local dictation engine is a button, and it tells you what it is doing.** The
+  settings panel does not ping: it walks the whole chain — binary, model, voice detection, startup
+  (naming the acceleration it found: Metal, CUDA, Vulkan or CPU), a real transcription, vocabulary,
+  then the secure origin and the microphone — and names the first step that breaks with the gesture
+  that repairs it. "Install" runs as a job: its log shows live, "Stop" ends it cleanly, an
+  interrupted download resumes, nothing is asked as administrator, and a 1.6 GB download is
+  announced before it starts. When it finishes it fills in the settings itself and re-runs the test.
 
 - **Filing a link is now paste-and-Enter.** The free-link form opens on the address rather than the
   label — the address is what you paste, the label is what the tool can guess from it — and Enter

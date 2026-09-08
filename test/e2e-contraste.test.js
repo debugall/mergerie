@@ -85,7 +85,11 @@ describe('Contraste WCAG AA', { skip: dispo ? false : 'chromium absent — npx p
        portaient les fautes (puces d'état, statuts, paramètres de job). */
     process.env.MERGERIE_DEMO = '1';
     app = await startApp();
-    await app.configure();
+    /* La dictée ALLUMÉE : son panneau de diagnostic est fait de couleurs sémantiques posées sur
+       des fonds teintés de la même couleur — vert « prêt », rouge « installation incomplète »,
+       remède en rouge sur fond de panneau —, c'est-à-dire exactement le motif que ce fichier
+       existe pour mesurer. Éteinte, le panneau reste vide et n'est jamais éprouvé. */
+    await app.configure({ dictation_provider: 'local' });
     /* Des sessions dans les états qui PORTENT les couleurs : « poussée » (vert), « en attente
        de réponses » (accent) et « erreur » (rouge) étaient trois des libellés sous le seuil. */
     const repo = app.db.prepare("INSERT INTO repo (project, url, enabled) VALUES ('grp/app', 'https://x.test/a.git', 1)").run().lastInsertRowid;
@@ -125,8 +129,33 @@ describe('Contraste WCAG AA', { skip: dispo ? false : 'chromium absent — npx p
             return t && t.textContent.trim().length > 0;
           }, `#tab-${o}`, { timeout: 15000 }).catch(() => { /* onglet légitimement vide */ });
         }
-        const { vus, sous } = await page.evaluate(SONDE);
+        let { vus, sous } = await page.evaluate(SONDE);
         mesures += vus;
+        /* Les sous-onglets de Réglages ne s'ouvrent pas tout seuls, et « Dictée vocale » est le
+           seul qui porte un tableau de verdicts. On le déroule pour de vrai — le test le fait
+           passer par ses trois états d'étape (✓, ⚠, ✗ : le micro est refusé dans un navigateur
+           sans permission, ce qui est précisément le cas rouge à mesurer). */
+        if (o === 'admin') {
+          await page.click('#tab-admin .subnav [data-sub="dictation"]');
+          await page.waitForSelector('#sub-dictation.active');
+          await page.click('#dictationTest');
+          await page.waitForSelector('#dictationVerdict:not([hidden])', { timeout: 20000 });
+          await page.waitForFunction(() => document.querySelectorAll('#dictationSteps .dict-step').length >= 8, null, { timeout: 20000 })
+            .catch(() => { /* les étapes navigateur peuvent manquer : on mesure ce qui est là */ });
+          /* ON ATTEND QUE LE BOUTON AIT FINI DE REDEVENIR LUI-MÊME. Un bouton en cours porte
+             `data-busy`, qui met son libellé en `transparent` le temps du spinner — c'est
+             voulu. L'attribut retiré ne suffit pas : la couleur REVIENT PAR UNE TRANSITION, et
+             `getComputedStyle` rend pendant ce temps une valeur intermédiaire (mesuré : blanc à
+             5 % d'opacité). Mesurer un écran encore en train de se peindre n'apprend rien sur
+             ses couleurs — on attend donc que l'alpha soit revenu à 1. */
+          await page.waitForSelector('#dictationTest:not([data-busy])', { timeout: 20000 });
+          await page.waitForFunction(() => ['#dictationTest', '#dictationInstall']
+            .map((sel) => document.querySelector(`${sel} span`))
+            .every((el) => !el || !/rgba/.test(getComputedStyle(el).color)), null, { timeout: 20000 });
+          const dict = await page.evaluate(SONDE);
+          mesures += dict.vus;
+          sous = sous.concat(dict.sous);
+        }
         for (const x of sous) {
           const k = `${x.sel}|${x.txt}`;
           if (!fautes.has(k)) fautes.set(k, { ...x, onglet: o });

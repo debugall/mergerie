@@ -501,6 +501,11 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
        même endroit. L'hôte, lui, est le même pour toutes. */
     const noms = await page.locator('.lce-label').evaluateAll((els) => els.map((e) => e.value));
     assert.ok(noms.includes('alpha') && noms.includes('beta'), `noms proposés : ${noms.join(', ')}`);
+    /* ÉCHAP FERME LE PANNEAU MÊME APRÈS UNE ACTION. Coller redessine le corps du panneau et le
+       focus retombe sur le document : la touche n'arrivait plus au gestionnaire branché sur la
+       grille, et le panneau ne se refermait qu'à la souris. On tape donc volontairement sur le
+       `body`, pas dans le panneau. */
+    await page.evaluate(() => document.body.focus());
     await page.keyboard.press('Escape');
     await page.waitForSelector('.link-cell-panel', { state: 'detached' });
   });

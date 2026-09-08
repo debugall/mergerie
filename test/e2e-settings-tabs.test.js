@@ -56,8 +56,11 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
   test('la barre est rangée dans l’ordre du parcours', async () => {
     const ordre = await page.locator('#tab-admin .subnav [data-sub]')
       .evaluateAll((els) => els.map((e) => e.dataset.sub));
+    /* « Dictée vocale » ferme la marche, à côté de « AI sessions » : ce sont les deux panneaux
+       qui portent un BANC D'ESSAI plutôt qu'un simple réglage — on y vient pour éprouver une
+       installation, pas pour cocher une case en passant. */
     assert.deepEqual(ordre, ['gitcfg', 'repos', 'mr', 'rules', 'verifiers',
-      'notif', 'config', 'jiracfg', 'jenkinscfg', 'aisession']);
+      'notif', 'config', 'jiracfg', 'jenkinscfg', 'aisession', 'dictation']);
   });
 
   /* On revient dans Réglages pour finir ce qu'on y faisait : le dernier onglet consulté gagne

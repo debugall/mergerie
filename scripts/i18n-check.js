@@ -46,8 +46,15 @@ for (const k of base) {
 parity.length ? fail('Parité des dictionnaires', parity) : ok(`Parité des dictionnaires (${base.size} clés × ${langs.length} langues)`);
 
 /* ---------- 2. Clés utilisées mais absentes ---------- */
-const SOURCES = ['public/app.js', 'public/index.html', ...fs.readdirSync(path.join(ROOT, 'src')).map((f) => `src/${f}`)]
-  .filter((p) => /\.(js|html)$/.test(p));
+/* Tout le front, pas seulement `app.js` : la dictée vit dans ses propres fichiers
+   (`public/dictation-*.js`) et appelle `t()` comme les autres. Restreint à `app.js`, ce
+   contrôle ne voyait pas une clé manquante appelée depuis un de ces fichiers — c'est-à-dire
+   un libellé qui s'afficherait sous forme de clé à l'écran. */
+const SOURCES = [
+  'public/index.html',
+  ...fs.readdirSync(path.join(ROOT, 'public')).filter((f) => f.endsWith('.js')).map((f) => `public/${f}`),
+  ...fs.readdirSync(path.join(ROOT, 'src')).map((f) => `src/${f}`),
+].filter((p) => /\.(js|html)$/.test(p));
 const used = new Set();
 // Les commentaires sont retirés AVANT extraction : un exemple de code cité dans un
 // commentaire n'est pas un appel réel, et le compter produit un faux positif
@@ -97,6 +104,9 @@ const EXEMPT = [
   /^public\/i18n(-runtime)?\.js$/,   // le dictionnaire lui-même, évidemment
   /^src\/db\.js$/,                   // schéma SQL + commentaires de migration
   /^src\/cli\.js$/,                  // outil de dev en ligne de commande, jamais affiché dans l'UI
+  /^public\/dictation-runtime\.js$/, // les FORMES PARLÉES des commandes vocales (« annule ça ») sont
+  //                                    des données, pas des libellés : elles ne se traduisent pas,
+  //                                    elles se reconnaissent, et chaque langue a les siennes.
 ];
 const stripComments = (s) => s
   .replace(/\/\*[\s\S]*?\*\//g, '')

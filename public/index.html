@@ -85,6 +85,7 @@
     <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l-1 5 3.5 3.5V14H6.5v-2.5L10 8z"/><path d="M12 14v7"/></symbol>
     <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></symbol>
     <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5-5.8-3-5.8 3 1.1-6.5L2.6 9.8l6.5-.9z"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></symbol>
     <symbol id="i-star-filled" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5-5.8-3-5.8 3 1.1-6.5L2.6 9.8l6.5-.9z"/></symbol>
 </svg>
 
@@ -881,6 +882,7 @@
             <button data-sub="jiracfg" role="tab" title="Connexion Jira : URL, email et jeton d'API" data-i18n-title="settings.title.jira" data-i18n="settings.sub.jira">Jira</button>
             <button data-sub="jenkinscfg" role="tab" title="Connexion Jenkins : URL, utilisateur et jeton d'API" data-i18n-title="settings.title.jenkins" data-i18n="settings.sub.jenkins">Jenkins</button>
             <button data-sub="aisession" role="tab" title="Vérifier qu'on peut reprendre une session d'agent (test technique)" data-i18n-title="settings.aisession.tab-title" data-i18n="settings.sub.aisession">AI sessions</button>
+            <button data-sub="dictation" role="tab" title="Dicter dans n'importe quel champ de texte, avec le vocabulaire de tes dépôts" data-i18n-title="settings.title.dictation" data-i18n="settings.sub.dictation">Dictée vocale</button>
         </div>
 
         <!-- Sous-onglet : Vérificateurs (vérification objective) -->
@@ -1366,6 +1368,82 @@
             </p>
             <div id="aiSessionResult"></div>
         </div><!-- /sub-aisession -->
+
+        <!-- DICTÉE VOCALE (whisper.md §6.3, §6.5). Treize réglages et un panneau qui DÉROULE la
+             chaîne au lieu de la « pinguer » : binaire, modèle, VAD, démarrage, transcription
+             d'un échantillon, vocabulaire, fournisseur distant, puis les deux étapes que le
+             serveur ne peut pas connaître (origine sûre, micro). -->
+        <div id="sub-dictation" class="subtab">
+            <h2 data-i18n="settings.dictation.title">Dictée vocale</h2>
+            <p class="muted" style="max-width:760px" data-i18n="settings.dictation.intro">Un micro apparaît sur le champ où tu écris : tu parles, le texte s'écrit au curseur.</p>
+            <p class="muted" style="max-width:760px" data-i18n="settings.dictation.privacy">Avec le moteur local, l'audio ne quitte pas la machine.</p>
+
+            <div class="form" style="max-width:620px">
+                <label><span data-i18n="settings.dictation.lbl.provider">Fournisseur</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.dictation.tip.provider" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <select form="configForm" name="dictation_provider" id="dictationProvider">
+                        <option value="off" data-i18n="ui.off">Éteinte</option>
+                        <option value="local">whisper.cpp (local)</option>
+                        <option value="openai">API compatible OpenAI</option>
+                        <option value="browser" data-i18n="settings.dictation.provider.browser">Navigateur</option>
+                    </select>
+                </label>
+                <p id="dictationBrowserWarn" class="field-note warn" hidden data-i18n="settings.dictation.warn-browser">Le fournisseur « navigateur » envoie l'audio aux serveurs de Google ou d'Apple.</p>
+
+                <label><span data-i18n="settings.dictation.lbl.language">Langue dictée</span>
+                    <select form="configForm" name="dictation_language">
+                        <option value="auto" data-i18n="settings.dictation.lang.auto">Celle de l'interface</option>
+                        <option value="fr">Français</option>
+                        <option value="en">English</option>
+                    </select>
+                </label>
+
+                <div class="dictation-local">
+                    <label><span data-i18n="settings.dictation.lbl.model">Modèle local (chemin du fichier .bin)</span>
+                        <input form="configForm" name="dictation_model" placeholder="data/models/ggml-large-v3-turbo.bin" /></label>
+                    <label><span data-i18n="settings.dictation.lbl.vad">Modèle de détection de voix (Silero, facultatif)</span>
+                        <input form="configForm" name="dictation_vad_model" placeholder="data/models/ggml-silero-v5.1.2.bin" /></label>
+                    <label><span data-i18n="settings.dictation.lbl.command">Commande du moteur (vide = whisper-server du PATH)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.dictation.tip.command" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <input form="configForm" name="dictation_command" placeholder="whisper-server" /></label>
+                </div>
+
+                <div class="dictation-remote">
+                    <label><span data-i18n="settings.dictation.lbl.url">URL du fournisseur compatible OpenAI</span>
+                        <input form="configForm" name="dictation_url" placeholder="https://api.openai.com" /></label>
+                    <label><span data-i18n="settings.dictation.lbl.key">Clé d'API</span>
+                        <input form="configForm" name="dictation_api_key" type="password" autocomplete="off" placeholder="sk-…" /></label>
+                    <label><span data-i18n="settings.dictation.lbl.remote-model">Modèle distant</span>
+                        <input form="configForm" name="dictation_remote_model" placeholder="gpt-4o-mini-transcribe" /></label>
+                </div>
+
+                <label><span data-i18n="settings.dictation.lbl.vocabulary">Glossaire (un terme par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.dictation.tip.vocabulary" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea form="configForm" name="dictation_vocabulary" rows="4" spellcheck="false" data-i18n-placeholder="settings.dictation.ph.vocabulary" placeholder="webapp-front"></textarea></label>
+                <label><span data-i18n="settings.dictation.lbl.replacements">Corrections (entendu =&gt; écrit, une par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.dictation.tip.replacements" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea form="configForm" name="dictation_replacements" rows="3" spellcheck="false" data-i18n-placeholder="settings.dictation.ph.replacements" placeholder="Jean-Kim => Jenkins"></textarea></label>
+                <label><span data-i18n="settings.dictation.lbl.silence">Fin de phrase après (ms de silence)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.dictation.tip.silence" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input form="configForm" name="dictation_silence_ms" type="number" min="400" max="1500" step="50" placeholder="700" /></label>
+                <label><span data-i18n="settings.dictation.lbl.idle">Arrêter le moteur après (minutes sans dictée, 0 = jamais)</span>
+                    <input form="configForm" name="dictation_idle_minutes" type="number" min="0" max="240" step="1" placeholder="15" /></label>
+                <label class="check"><input form="configForm" type="checkbox" name="dictation_final_pass" />
+                    <span data-i18n="settings.dictation.lbl.final-pass">Relire l'audio complet à l'arrêt (plus précis)</span></label>
+
+                <div class="form-actions">
+                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                    <span id="configInfoDictation" class="muted"></span>
+                </div>
+            </div>
+
+            <div id="dictationPanel" class="dictation-panel">
+                <p>
+                    <button id="dictationTest" class="btn btn-primary" type="button"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.dictation.test">Tester</span></button>
+                    <button id="dictationInstall" class="btn" type="button"><svg class="ico"><use href="#i-download"/></svg><span id="dictationInstallLabel" data-i18n="settings.dictation.install">Installer</span></button>
+                    <span id="dictationInfo" class="muted"></span>
+                </p>
+                <div id="dictationVerdict" class="dictation-verdict" hidden></div>
+                <div id="dictationSteps"></div>
+                <p id="dictationDropped" class="muted" hidden></p>
+                <pre id="dictationLog" class="dictation-log" hidden></pre>
+            </div>
+        </div><!-- /sub-dictation -->
     </section>
 </main>
 </div><!-- /.shell -->
@@ -1539,6 +1617,63 @@
 </div>
 
 <!-- Feuille de raccourcis : persistante, parce qu'un toast de 3,5 s disparaît pendant qu'on le lit. -->
+<!-- DICTÉE VOCALE. Un SEUL micro pour toute l'application, posé à l'angle du champ qui a le
+     focus et repositionné au défilement : un micro par champ en parsèmerait l'écran, et il
+     faudrait le câbler dans vingt-cinq gabarits. Masqué tant qu'aucun fournisseur n'est réglé. -->
+<button id="dictationMic" type="button" data-etat="ready" hidden
+        title="Dicter — Ctrl/Cmd + Maj + Espace · ⇧-clic pour dicter dans l'autre langue" data-i18n-title="dictation.btn" aria-label="">
+    <svg class="ico"><use href="#i-mic"/></svg>
+    <span class="mic-vu" aria-hidden="true"><i></i><i></i><i></i></span>
+</button>
+<div id="dictationHint" class="dictation-hint" hidden></div>
+
+<!-- Le champ a disparu pendant qu'un segment était en vol (modale annulée, carte retirée) :
+     ce qui a été dit n'est pas jeté en silence, il est proposé. -->
+<div id="dictationLost" class="dictation-lost" hidden>
+    <p data-i18n="dictation.lost.title">Le champ a disparu — ce texte n'a pas été inséré :</p>
+    <blockquote id="dictationLostText"></blockquote>
+    <div class="modal-actions">
+        <button id="dictationLostCopy" type="button" class="btn btn-primary"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="dictation.lost.copy">Copier</span></button>
+        <button id="dictationLostClose" type="button" class="btn" data-i18n="dictation.lost.close">Abandonner</button>
+    </div>
+</div>
+
+<!-- Ce que l'installation va faire, AVANT de la lancer : le modèle (avec sa taille), la
+     détection de voix, et le GPU quand le système en propose un. La confirmation nomme ce
+     qui va se passer, système par système — un téléchargement de 1,6 Go ne se déclenche pas
+     d'un clic muet. -->
+<div id="dictInstallModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 data-i18n="settings.dictation.options.title">Installer le moteur de dictée</h3>
+        <div class="form">
+            <label><span data-i18n="settings.dictation.options.model">Modèle</span>
+                <select id="dictInstallModel">
+                    <option value="large-v3-turbo" data-i18n="settings.dictation.model.turbo">large-v3-turbo</option>
+                    <option value="large-v3-turbo-q8_0" data-i18n="settings.dictation.model.turbo-q8">large-v3-turbo-q8_0</option>
+                    <option value="large-v3-turbo-q5_0" data-i18n="settings.dictation.model.turbo-q5">large-v3-turbo-q5_0</option>
+                    <option value="large-v3" data-i18n="settings.dictation.model.large">large-v3</option>
+                    <option value="large-v3-q5_0" data-i18n="settings.dictation.model.large-q5">large-v3-q5_0</option>
+                </select>
+            </label>
+            <label class="check"><input type="checkbox" id="dictInstallVad" checked />
+                <span data-i18n="settings.dictation.options.vad">Télécharger aussi la détection de voix (recommandé)</span></label>
+            <label id="dictInstallGpuBox" hidden><span data-i18n="settings.dictation.options.gpu">Accélération</span>
+                <select id="dictInstallGpu">
+                    <option value="" data-i18n="settings.dictation.options.gpu-none">Aucune (processeur)</option>
+                    <option value="cuda" data-i18n="settings.dictation.options.gpu-cuda">CUDA (carte NVIDIA)</option>
+                    <option value="vulkan" data-i18n="settings.dictation.options.gpu-vulkan">Vulkan (toute carte)</option>
+                </select>
+            </label>
+            <h4 data-i18n="settings.dictation.confirm.title">Ce qui va se passer</h4>
+            <p id="dictInstallConfirm" class="muted"></p>
+        </div>
+        <div class="modal-actions">
+            <button id="dictInstallGo" type="button" class="btn btn-primary"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="settings.dictation.options.start">Installer</span></button>
+            <button id="dictInstallCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+        </div>
+    </div>
+</div>
+
 <div id="shortcutsModal" class="modal" hidden>
     <div class="modal-box">
         <h3 data-i18n="shortcuts.title">Raccourcis clavier</h3>
@@ -1911,7 +2046,7 @@
              réflexe, alors que ça écrit sur la merge request que d'autres lisent. -->
         <div id="verifyCommentBox" hidden>
             <p id="verifyCommentWhere" class="muted"></p>
-            <textarea id="verifyCommentBody" rows="10" spellcheck="false"></textarea>
+            <textarea id="verifyCommentBody" rows="10" spellcheck="false" data-dictation="1"></textarea>
             <p id="verifyCommentPosted" class="field-note" hidden></p>
         </div>
         <div class="modal-actions">
@@ -2159,6 +2294,9 @@
 <script src="/i18n-runtime.js"></script>
 <script src="/ansi-runtime.js"></script>
 <script src="/notes-runtime.js"></script>
+<script src="/dictation-runtime.js"></script>
 <script src="/app.js"></script>
+<!-- Après app.js : le micro s'appuie sur `toast` et `copyText`, qui y vivent. -->
+<script src="/dictation-mic.js"></script>
 </body>
 </html>

@@ -19,6 +19,9 @@ const ALLOWED = [
   'verif_auto_max', 'todo_close_on_merge', 'jira_test_key',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
+  'dictation_provider', 'dictation_model', 'dictation_vad_model', 'dictation_command',
+  'dictation_url', 'dictation_api_key', 'dictation_remote_model', 'dictation_language',
+  'dictation_vocabulary', 'dictation_replacements', 'dictation_final_pass',
 ];
 
 function updateConfig(patch) {
@@ -104,6 +107,29 @@ function updateConfig(patch) {
     const vm = parseInt(patch.verif_auto_max, 10);
     next.verif_auto_max = Number.isFinite(vm) && vm >= 0 ? Math.min(50, vm) : 5;
   }
+  /* ---------- Dictée vocale ----------
+     Le fournisseur est une ÉNUMÉRATION : une valeur inconnue retombe sur « éteint » plutôt
+     que d'être écrite telle quelle — un réglage illisible ne doit pas laisser croire qu'un
+     micro est actif. Même règle que pour la langue. */
+  if (!['off', 'local', 'openai', 'browser'].includes(next.dictation_provider)) next.dictation_provider = 'off';
+  if (!['auto', 'fr', 'en'].includes(next.dictation_language)) next.dictation_language = 'auto';
+  if (next.dictation_url) next.dictation_url = next.dictation_url.trim().replace(/\/+$/, '');
+  /* Fin de phrase : bornée [400, 1500] ms. En dessous, on coupe au milieu d'une respiration
+     et le moteur décode des bouts de mots ; au-dessus, le texte n'arrive plus « pendant
+     qu'on parle », ce qui est toute la promesse. */
+  if ('dictation_silence_ms' in patch) {
+    const ds = parseInt(patch.dictation_silence_ms, 10);
+    next.dictation_silence_ms = Number.isFinite(ds) ? Math.min(1500, Math.max(400, ds)) : 700;
+  }
+  /* Arrêt du moteur après inactivité : 0 = jamais (assumé), sinon au moins une minute.
+     turbo occupe deux gigaoctets de mémoire unifiée — le défaut d'un quart d'heure est là
+     pour ça, pas pour la vitesse. */
+  if ('dictation_idle_minutes' in patch) {
+    const di = parseInt(patch.dictation_idle_minutes, 10);
+    next.dictation_idle_minutes = (!Number.isFinite(di) || di <= 0) ? 0 : Math.min(240, Math.max(1, di));
+  }
+  // Seconde passe : booléen en texte, ACTIVÉE par défaut (elle ne coûte rien en local).
+  next.dictation_final_pass = next.dictation_final_pass === '0' ? '0' : '1';
   // Les rapports produits par l'IA suivent la langue de l'interface (i18n.md lot 5,
   // option 1). On n'aligne QUE les gabarits restés au défaut : un prompt que
   // l'utilisateur a personnalisé n'est jamais écrasé (piège n°4 du plan).
@@ -145,7 +171,20 @@ function updateConfig(patch) {
       jenkins_user = @jenkins_user,
       jenkins_token = @jenkins_token,
       jenkins_refresh_minutes = @jenkins_refresh_minutes,
-      verif_auto_max = @verif_auto_max
+      verif_auto_max = @verif_auto_max,
+      dictation_provider = @dictation_provider,
+      dictation_model = @dictation_model,
+      dictation_vad_model = @dictation_vad_model,
+      dictation_command = @dictation_command,
+      dictation_url = @dictation_url,
+      dictation_api_key = @dictation_api_key,
+      dictation_remote_model = @dictation_remote_model,
+      dictation_language = @dictation_language,
+      dictation_vocabulary = @dictation_vocabulary,
+      dictation_replacements = @dictation_replacements,
+      dictation_silence_ms = @dictation_silence_ms,
+      dictation_final_pass = @dictation_final_pass,
+      dictation_idle_minutes = @dictation_idle_minutes
     WHERE id = 1`).run(next);
   return getConfig();
 }

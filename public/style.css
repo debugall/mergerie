@@ -3545,3 +3545,110 @@ button.dlog-cname:focus-visible { outline: 2px solid var(--accent); outline-offs
 .cf-ctx { margin: 0; padding: 4px 10px; color: var(--muted); font-family: var(--ff-mono); font-size: 12px;
   white-space: pre-wrap; word-break: break-word; }
 .cf-gap { color: var(--muted); }
+
+/* ---------- Dictée vocale (whisper.md §6.2) ----------
+   UN seul micro pour toute l'application, posé à l'angle bas-droit du champ qui a le focus.
+   `position: fixed` parce qu'il doit survivre au défilement d'un panneau interne, et parce
+   qu'un micro par champ demanderait de câbler vingt-cinq gabarits. Aucune couleur en dur :
+   les deux thèmes suivent les mêmes jetons que le reste. */
+#dictationMic {
+  /* AU-DESSUS DES MODALES (110) et de la confirmation (150) : la moitié des champs où l'on
+     dicte vivent DANS une modale — le prompt d'une session, un commentaire de MR. À 60, le
+     micro se retrouvait sous le voile, et le clic partait dans le champ derrière lui.
+     En dessous des info-bulles (200) et des toasts (300), qui doivent le recouvrir. */
+  position: fixed; z-index: 160; width: 28px; height: 28px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--panel); color: var(--muted); cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+#dictationMic:hover { color: var(--accent-text); border-color: var(--accent); }
+#dictationMic:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#dictationMic .ico { width: 15px; height: 15px; }
+
+/* Chauffe : un anneau qui tourne — le modèle met une à trois secondes à se charger, et un
+   bouton qui ne dit rien pendant ce temps passe pour un bouton mort. */
+#dictationMic[data-etat="warming"] { color: var(--accent-text); border-color: var(--accent); }
+#dictationMic[data-etat="warming"]::after {
+  content: ''; position: absolute; inset: -3px; border-radius: 999px;
+  border: 2px solid transparent; border-top-color: var(--accent);
+  animation: dict-spin .8s linear infinite;
+}
+@keyframes dict-spin { to { transform: rotate(360deg); } }
+
+#dictationMic[data-etat="listening"] {
+  color: var(--on-accent); background: var(--danger); border-color: var(--danger);
+  animation: dict-pulse 1.4s ease-in-out infinite;
+}
+@keyframes dict-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 55%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--danger) 0%, transparent); } }
+#dictationMic[data-etat="transcribing"],
+#dictationMic[data-etat="final"] { color: var(--accent-text); border-color: var(--accent); }
+#dictationMic[data-etat="error"] { color: var(--danger-text); border-color: var(--danger); }
+
+/* Le vu-mètre : trois barres pilotées par `--vu`. Il ne sert pas à faire joli — c'est la
+   seule chose à l'écran qui dit « le micro t'entend » avant que le premier mot arrive. */
+.mic-vu { position: absolute; inset: 0; display: none; align-items: flex-end;
+  justify-content: center; gap: 2px; pointer-events: none; }
+#dictationMic[data-etat="listening"] .mic-vu { display: flex; }
+#dictationMic[data-etat="listening"] .ico { opacity: .25; }
+.mic-vu i { width: 3px; border-radius: 2px; background: currentColor;
+  height: calc(4px + var(--vu, 0) * 14px); transition: height .08s linear; }
+.mic-vu i:nth-child(2) { height: calc(6px + var(--vu, 0) * 18px); }
+.mic-vu i:nth-child(3) { height: calc(3px + var(--vu, 0) * 11px); }
+
+/* La bulle d'état, sous le champ : « J'écoute », « Transcription… ». Elle ne recouvre pas le
+   champ (leçon des bulles d'aide) — elle se pose dessous. */
+.dictation-hint {
+  position: fixed; z-index: 159; max-width: 320px; padding: 3px 8px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--panel2); color: var(--muted); font-size: 12px; pointer-events: none;
+}
+
+/* Le champ a disparu pendant qu'un segment était en vol : ce qui a été dit reste offert. */
+.dictation-lost {
+  position: fixed; right: 16px; bottom: 16px; z-index: 170; max-width: 420px; padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--panel); box-shadow: 0 8px 28px rgb(0 0 0 / .28);
+}
+.dictation-lost p { margin: 0 0 6px; color: var(--muted); font-size: 13px; }
+.dictation-lost blockquote {
+  margin: 0 0 10px; padding: 8px 10px; max-height: 30vh; overflow-y: auto;
+  border-left: 3px solid var(--accent); background: var(--panel2);
+  font-size: 13px; white-space: pre-wrap; word-break: break-word;
+}
+
+/* ---------- Réglages : le panneau de diagnostic ----------
+   Une ligne par étape, dans l'ordre de la chaîne : la première ✗ est celle qu'on va réparer,
+   et son remède est écrit à côté d'elle, pas dans un message ailleurs. */
+.dictation-panel { margin-top: 18px; max-width: 760px; }
+.dictation-panel.dictation-off { opacity: .6; }
+.dictation-verdict {
+  margin: 8px 0; padding: 8px 12px; border-radius: var(--r-sm);
+  border-left: 3px solid var(--line); background: var(--panel2); font-weight: 600;
+}
+.dictation-verdict.ok { border-left-color: var(--ok); color: var(--ok-text); }
+.dictation-verdict.ko { border-left-color: var(--danger); color: var(--danger-text); }
+.dictation-verdict[data-stale="1"] { opacity: .5; font-style: italic; }
+.dict-step {
+  display: grid; grid-template-columns: 20px 150px 1fr; gap: 4px 8px; align-items: baseline;
+  padding: 5px 0; border-top: 1px solid var(--line); font-size: 13px;
+}
+.dict-ico { text-align: center; font-weight: 700; }
+.dict-ok .dict-ico { color: var(--ok-text); }
+.dict-warn .dict-ico { color: var(--amber-text, var(--muted)); }
+.dict-fail .dict-ico { color: var(--danger-text); }
+.dict-skip { opacity: .5; }
+.dict-name { color: var(--muted); }
+.dict-detail { word-break: break-word; }
+.dict-remedy {
+  grid-column: 3; color: var(--muted); font-size: 12px;
+  white-space: pre-wrap; word-break: break-word;
+}
+.dict-fail .dict-remedy { color: var(--danger-text); }
+.dictation-log {
+  margin-top: 10px; max-height: 300px; overflow: auto; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--panel2); font-family: var(--ff-mono); font-size: 12px;
+  white-space: pre-wrap; word-break: break-word;
+}

@@ -41,3 +41,12 @@ publishes as a comment on the merge request, mentions the people who need to kno
 when it goes stale, and can be asked of a **branch with no merge request at all**. What remains is the
 wiring itself — making that verdict an **exit condition of the convergence loop**, instead of a check that
 runs beside it.
+
+## Word-by-word dictation
+
+Dictation landed in this cycle, and it cuts the audio at pauses: the text appears about a second after
+the end of a sentence. That is fast enough to write a prompt by voice, and slow enough to feel like a
+delay when you dictate a long note. **True streaming** — words appearing as they are spoken — needs a
+different kind of engine (Kyutai STT, or Voxtral Realtime if a light local runtime appears), behind the
+same provider abstraction, with the provisional text shown greyed **inside** the field. Worth doing only
+once the pause-based cut has proved to be a real irritation rather than a theoretical one.

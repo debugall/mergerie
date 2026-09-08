@@ -226,4 +226,4 @@ async function runPrompt(prompt, cwd, meta = {}, onLog = () => {}) {
   return output;
 }
 
-module.exports = { runPrompt, recordUsage, addOutputToLastUsage, isDryRun, binaryAvailable, COPILOT_BIN, EXTRA_ARGS };
+module.exports = { runPrompt, recordUsage, addOutputToLastUsage, isDryRun, binaryAvailable, countTokens, COPILOT_BIN, EXTRA_ARGS };

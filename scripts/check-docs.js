@@ -112,6 +112,28 @@ for (const src of SOURCES) {
 if (cassees.length) fail('Ancres de liens vers un guide qui ne mènent nulle part', cassees);
 else ok('Liens ancrés vers les guides : toutes les ancres existent');
 
+/* ---------- sections attendues ----------
+   La comparaison de STRUCTURE ci-dessus voit une section manquante d'UN côté ; elle ne voit pas
+   une fonctionnalité livrée sans être documentée NULLE PART — les deux guides restent alors
+   parfaitement alignés, et parfaitement muets. On nomme donc les sections dont l'absence est un
+   oubli, avec le fichier qui prouve que la fonctionnalité existe. */
+const ATTENDUES = [
+  { fichier: 'public/dictation-mic.js', fr: 'Dictée vocale', en: 'Voice dictation' },
+  { fichier: 'src/verify.js', fr: 'Vérification objective', en: 'Objective verification' },
+];
+const manquantes = [];
+for (const sec of ATTENDUES) {
+  if (!fs.existsSync(path.join(ROOT, sec.fichier))) continue;
+  for (const [rel, titre] of [[GUIDES[0], sec.fr], [GUIDES[1], sec.en]]) {
+    if (!titres(lire(rel)).some((t) => t.texte.includes(titre))) {
+      manquantes.push(`${rel} : aucune section « ${titre} » alors que ${sec.fichier} existe`);
+    }
+  }
+}
+manquantes.length
+  ? fail('Fonctionnalité livrée, guide muet', manquantes)
+  : ok(`Les sections attendues existent dans les deux guides (${ATTENDUES.length})`);
+
 if (failures) {
   console.log(`\n${failures} contrôle(s) en échec.`);
   process.exit(1);

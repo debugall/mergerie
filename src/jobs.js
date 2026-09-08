@@ -12,7 +12,9 @@ const localcoder = require('./localcoder');
 const asker = require('./asker');
 const docker = require('./docker');
 const verifyrun = require('./verifyrun');
-const { getConfig } = require('./config');
+const git = require('./git');            // `run` : spawn générique, journal ligne à ligne, Stop câblé
+const { DATA_DIR } = require('./paths');
+const { getConfig, updateConfig } = require('./config');
 const { t } = require('../public/i18n-runtime.js');
 
 /* File d'attente SÉQUENTIELLE : un job à la fois, les suivants attendent. L'état est
@@ -104,6 +106,10 @@ function jobKeys(entry) {
   const targetsOf = (taskId) => db.prepare('SELECT repo_id FROM task_target WHERE task_id = ?').all(taskId);
   switch (entry.kind) {
     case 'docker': return keys;                       // aucun dépôt : jamais en conflit
+    /* L'installation du moteur de dictée ne touche aucun dépôt, mais elle REMPLACE un
+       binaire : deux à la fois écriraient dans le même dossier. Une clé à elle seule suffit
+       à les sérialiser sans bloquer quoi que ce soit d'autre. */
+    case 'install': keys.add('dictation:install'); return keys;
     /* Une question libre ne touche NI dépôt NI dossier : rien à réserver, donc elle ne
        bloque personne et personne ne la bloque. C'est la seule saveur de session dans ce
        cas — les trois autres travaillent toujours dans des fichiers. */
@@ -646,6 +652,7 @@ function runEntry(e) {
   if (e.kind === 'task') return runTaskJob(e.jobId, e.taskId, e.action, e.opts);
   if (e.kind === 'gitops') return runGitJob(e.jobId, e.payload);
   if (e.kind === 'docker') return runDockerJob(e.jobId, e.payload);
+  if (e.kind === 'install') return runInstallJob(e.jobId, e.payload);
   if (e.kind === 'converge') return runConvergeJob(e.jobId, e.mrId, e.opts);
   if (e.kind === 'converge-session') return runConvergeSessionJob(e.jobId, e.taskId, e.opts);
   if (e.kind === 'local') return runLocalJob(e.jobId, e.taskId, e.opts);
@@ -761,6 +768,56 @@ async function runGitJob(jobId, payload) {
     setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
   }
   return null;
+}
+
+/* ---------- Installation du moteur de dictée (whisper.md §6.5) ----------
+   Un job comme les autres, et c'est tout l'intérêt : le journal s'affiche en direct sous le
+   bouton, « Stop » tue le script proprement (SIGTERM puis SIGKILL à +2 s, par `proc`), et un
+   téléchargement interrompu REPREND au lancement suivant — c'est le script qui le garantit.
+
+   À la fin, le script parle au serveur : sa dernière ligne est un `MERGERIE_RESULT {…}` que
+   l'on relit pour REMPLIR les réglages. Pas de ligne = erreur : un script qui ne rend pas de
+   résultat n'a pas fini son travail, et deviner les chemins à sa place les inventerait. */
+function startInstallJob(payload) {
+  const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
+    VALUES ('install', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
+  const jobId = info.lastInsertRowid;
+  queue.push({ jobId, kind: 'install', payload });
+  setImmediate(pump);
+  return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
+}
+
+async function runInstallJob(jobId, payload) {
+  setJob(jobId, { status: 'running', total: 1, done_count: 0, started_at: new Date().toISOString(), message: t('job.msg.starting') });
+  const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
+  try {
+    // eslint-disable-next-line global-require
+    const dictation = require('./dictation');
+    // La dictée est SUSPENDUE le temps de l'installation : le binaire est en train d'être
+    // remplacé sous les pieds du moteur qui tourne.
+    dictation.arreterMoteur();
+    const cmd = dictation.commandeInstallation(payload);
+    const { stdout } = await git.run(cmd.programme, cmd.args, {
+      env: dictation.envInstallation(DATA_DIR), onLog,
+    });
+    const res = dictation.lireResultatInstallation(stdout);
+    if (!res) throw new Error(t('err.dictation.resultat'));
+    const patch = dictation.reglagesDepuisResultat(res);
+    updateConfig(patch);
+    onLog(t('log.dictation.settings-filled', {
+      modele: patch.dictation_model,
+      backend: res.backend || 'CPU',
+    }));
+    setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
+  } catch (e) {
+    // Comme partout : un Stop demandé n'est pas une erreur.
+    if (proc.isCancelled()) {
+      logLine(jobId, null, `⏹ ${t('job.msg.stopped-by-user')}`);
+      setJob(jobId, { status: 'stopped', finished_at: new Date().toISOString(), message: '' });
+      return;
+    }
+    setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
+  }
 }
 
 // Actions Docker (compose up/restart/pull/recreate/down, suppression d'orphelin) → log streamé.
@@ -1082,7 +1139,7 @@ function isRunning() {
 
 module.exports = {
   startVerifyJob, verifyBloquePar, preparerVerificationApres,
-  startJob, startTaskJob, startGitJob, startDockerJob, startConvergeJob, startConvergeSessionJob,
+  startJob, startTaskJob, startGitJob, startDockerJob, startInstallJob, startConvergeJob, startConvergeSessionJob,
   startLocalJob, startAskJob, startReconcileJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
   queueCount, parallelBusy, runningCount, MAX_RUNNING, jobKeys, keysClash, retryJob, canRetry,
   jobTargets, runningTargets,

@@ -77,6 +77,7 @@ const localcoder = require('./localcoder');
 const pieces = require('./pieces');
 const localrepos = require('./localrepos');
 const copilot = require('./copilot');
+const dictation = require('./dictation');
 
 const app = express();
 
@@ -137,6 +138,12 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({ limit: '20mb' })); // marge pour les captures de ticket (base64)
+/* L'AUDIO DE LA DICTÉE arrive en corps BRUT, pas en multipart : Express 4 ne sait pas lire un
+   multipart sans dépendance, et les métadonnées d'un segment (numéro, contexte, langue)
+   tiennent très bien dans la query. Dix mégaoctets, soit un peu plus de cinq minutes de PCM
+   16 kHz mono — au-delà, ce n'est plus de la dictée dans un champ. Le corps n'est JAMAIS
+   écrit sur disque ni journalisé : il est relayé au moteur et libéré à la réponse. */
+app.use(express.raw({ type: 'audio/wav', limit: '10mb' }));
 /* Fichiers statiques. `no-cache` = le navigateur peut mettre en cache mais DOIT
    revalider avant chaque usage (requête conditionnelle → 304 si inchangé, contenu
    frais sinon). Évite le piège « je ne vois pas mes changements » sans forcer un
@@ -838,9 +845,23 @@ app.get('/api/footer', wrap((req, res) => {
   });
 }));
 
+/* Aucun jeton ne redescend au front : '***' dit « il y en a un », '' dit « il n'y en a
+   pas », et le front renvoie le masque tel quel quand il n'y a pas touché. La clé de dictée
+   suit la même règle que les jetons de forge et de Jira — c'en est un. */
+function sansSecrets(c) {
+  return {
+    ...c,
+    access_token: c.access_token ? '***' : '',
+    jira_token: c.jira_token ? '***' : '',
+    github_token: c.github_token ? '***' : '',
+    jenkins_token: c.jenkins_token ? '***' : '',
+    dictation_api_key: c.dictation_api_key ? '***' : '',
+  };
+}
+
 app.get('/api/config', wrap((req, res) => {
   const c = getConfig();
-  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '', jenkins_token: c.jenkins_token ? '***' : '' });
+  res.json(sansSecrets(c));
 }));
 
 /* ---------- Jenkins : voir et lancer des jobs -------------------------------
@@ -1369,13 +1390,57 @@ app.put('/api/config', wrap((req, res) => {
   if (patch.jira_token === '***') delete patch.jira_token;
   if (patch.github_token === '***') delete patch.github_token;
   if (patch.jenkins_token === '***') delete patch.jenkins_token;
+  if (patch.dictation_api_key === '***') delete patch.dictation_api_key;
   const c = updateConfig(patch);
   i18n.setLang(c.language);   // les messages d'erreur suivent la nouvelle langue
   restartAutoRefresh(); // prend en compte le nouvel intervalle
   restartJiraWatch(); // idem pour la surveillance Jira (et le compteur du menu)
   champSprint = null; // l'instance Jira visée a pu changer : on re-cherchera le champ sprint
   statutsParProjet.clear();
-  res.json({ ...c, access_token: c.access_token ? '***' : '', jira_token: c.jira_token ? '***' : '', github_token: c.github_token ? '***' : '', jenkins_token: c.jenkins_token ? '***' : '' });
+  res.json(sansSecrets(c));
+}));
+
+/* ---------- Dictée vocale (whisper.md) -------------------------------------
+   Quatre routes, aucune n'écrit l'audio sur disque. Le fournisseur « navigateur » ne passe
+   jamais par ici : il transcrit dans la page et n'envoie rien. */
+
+/* Un segment (ou, avec `final=1`, l'audio complet de la session pour la seconde passe).
+   Corps BRUT `audio/wav` ; le numéro de segment, le contexte glissant et la langue voyagent
+   en query — c'est ce qui évite d'écrire un parseur multipart ou d'ajouter une dépendance.
+   `seq` revient tel quel dans la réponse : deux segments peuvent se chevaucher en vol, et
+   c'est le front qui les remet en ordre avant d'insérer. */
+app.post('/api/dictation/transcribe', wrap(async (req, res) => {
+  const wav = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+  const r = await dictation.transcrire({
+    wav,
+    language: req.query.lang,
+    ctx: req.query.ctx,
+    final: req.query.final === '1',
+  });
+  res.json({ ...r, seq: Number(req.query.seq) || 0 });
+}));
+
+app.get('/api/dictation/status', wrap((req, res) => { res.json(dictation.statut()); }));
+
+/* Chauffe : appelée au survol du micro et à l'ouverture d'une modale de session quand la
+   dictée est active. Charger le modèle prend une à trois secondes ; les payer AVANT le
+   premier segment, c'est la différence entre « ça répond » et « ça rame ». */
+app.post('/api/dictation/warmup', wrap(async (req, res) => { res.json(await dictation.warmup()); }));
+
+/* Le diagnostic complet : binaire, modèle, VAD, démarrage, TRANSCRIPTION d'un échantillon
+   embarqué, vocabulaire, fournisseur distant. C'est l'étape « transcription » qui compte —
+   c'est elle qui transforme « installé » en « fonctionne ». */
+app.post('/api/dictation/test', wrap(async (req, res) => { res.json(await dictation.diagnostic()); }));
+
+/* Installation du moteur : un job, exactement comme une action Docker — donc un journal en
+   direct et un « Stop » qui tue proprement. Le corps ne choisit QUE le modèle (liste
+   fermée), le VAD (booléen) et le GPU (énumération) : le chemin du script est fixe. */
+app.post('/api/dictation/install', wrap((req, res) => {
+  const b = req.body || {};
+  // Validé ICI, avant de mettre quoi que ce soit en file : un corps hors liste doit répondre
+  // 400 tout de suite, pas créer un job qui échouera trois secondes plus tard.
+  dictation.commandeInstallation({ model: b.model, vad: b.vad !== false, gpu: b.gpu || '' });
+  res.json(jobs.startInstallJob({ model: b.model || 'large-v3-turbo', vad: b.vad !== false, gpu: b.gpu || '' }));
 }));
 
 /* ---------- Repos (admin) ---------- */
@@ -6271,6 +6336,9 @@ module.exports = {
     if (jiraWatchTimer) { clearInterval(jiraWatchTimer); jiraWatchTimer = null; }
     if (retentionTimer) { clearInterval(retentionTimer); retentionTimer = null; }
     if (archiveTimer) { clearInterval(archiveTimer); archiveTimer = null; }
+    /* Le moteur de dictée est un PROCESS ENFANT, pas un timer : oublié, il garde deux
+       gigaoctets et le process en vie — la suite de tests ne rendrait jamais la main. */
+    dictation.arreterMoteur();
     return new Promise((resolve) => server.close(resolve));
   },
 };

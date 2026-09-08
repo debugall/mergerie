@@ -141,7 +141,7 @@ const declared = new Set(
 );
 // Champs libres du formulaire : on exclut ceux traités à part (cases à cocher,
 // nombres) car ils ont leur propre ligne dans le chargement/enregistrement.
-const HANDLED_APART = new Set(['auto_refresh_minutes', 'review_explain', 'brief_on_open', 'auto_post_review', 'auto_post_blocking_only', 'auto_review_new', 'auto_rereview_stale']);
+const HANDLED_APART = new Set(['auto_refresh_minutes', 'review_explain', 'brief_on_open', 'auto_post_review', 'auto_post_blocking_only', 'auto_review_new', 'auto_rereview_stale', 'dictation_final_pass']);
 const orphanFields = [];
 for (const m of html.matchAll(/<input[^>]*\bform="configForm"[^>]*>/g)) {
   const tag = m[0];
@@ -243,6 +243,19 @@ const fondKo = [...fondManuel, ...fondInconnu];
 fondKo.length
   ? fail('Fermeture au clic sur le fond', fondKo)
   : ok(`Toutes les modales se ferment au fond par fermerAuFond() (${[...app.matchAll(/fermerAuFond\('#/g)].length})`);
+
+/* 12. La dictée existe, mais son raccourci n'est écrit nulle part.
+   `Ctrl/Cmd + Maj + Espace` ne se devine pas : c'est la modale `?` qu'on ouvre pour le
+   chercher. Le fichier de capture peut vivre sans que le raccourci y soit listé — et alors
+   la fonctionnalité n'existe que pour qui lit le CHANGELOG. */
+if (fs.existsSync(path.join(ROOT, 'public/dictation-mic.js'))) {
+  const manque = [];
+  if (!/shortcuts\.dictation/.test(app)) manque.push("public/app.js  SHORTCUTS ne cite pas 'shortcuts.dictation' — le raccourci de dictée n'est listé nulle part");
+  if (!html.includes('id="dictationMic"')) manque.push('public/index.html  #dictationMic absent — le micro n\'a nulle part où s\'afficher');
+  manque.length
+    ? fail('Dictée vocale câblée à moitié', manque)
+    : ok('Dictée vocale : le micro existe et son raccourci est documenté');
+}
 
 console.log('');
 if (failures) { console.log(`${failures} contrôle(s) en échec.`); process.exit(1); }

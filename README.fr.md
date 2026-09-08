@@ -34,6 +34,9 @@ npm install
 npm start          # http://localhost:4319
 ```
 
+Optionnel, pour la **dictée vocale** : `sh scripts/install-whisper.sh` (macOS/Linux) ou le bouton
+**Installer** de Réglages → Dictée vocale. Rien d'autre n'est nécessaire pour faire tourner l'outil.
+
 Au premier lancement, l'onglet **Reviews** affiche les trois étapes de démarrage, chacune avec son
 bouton. Elles correspondent à l'onglet **Réglages** :
 1. **Git** — URL GitLab + **access token** (PAT scopes `api` + `read_repository`) et/ou **token GitHub** (scope `repo`), dossier de clonage. Un bouton **Tester la connexion** par forge valide le tout. *(URL Jira et connexion Jira optionnelles : onglet **Jira**.)*
@@ -115,7 +118,12 @@ et un **lot** de merge requests vérifiées ensemble.
 
 Partout : `Ctrl`/`Cmd` + `K` ouvre une **palette de commandes** (sauter à un onglet, une MR, une session
 en tapant son nom — `!217` ou `PROJ-1408` tapés seuls y vont directement), `j` / `k` parcourent la liste
-courante, `v` / `c` / `m` / `x` agissent sur la carte au focus, `?` liste tous les raccourcis. L'outil
+courante, `v` / `c` / `m` / `x` agissent sur la carte au focus, `?` liste tous les raccourcis. Un
+**micro sur chaque champ de texte** (`Ctrl`/`Cmd` + `Maj` + `Espace`) écrit ce que tu dis au curseur :
+la transcription est **locale**, par whisper.cpp, et le moteur reçoit **ton** vocabulaire — dépôts,
+services, environnements, préfixes Jira, branches ouvertes —, ce qui lui fait écrire `webapp-front` et
+`!214` plutôt que « web app front » et « 214 ». Éteinte par défaut ; elle s'installe depuis l'écran de
+réglages, qui déroule toute la chaîne et nomme la première marche qui casse. L'outil
 rouvre sur l'onglet et le stade que tu as quittés, et le panneau de rapport ouvre sur **ce qui a changé
 depuis ta dernière visite**.
 
