@@ -1899,6 +1899,15 @@ screen the app opens on (the morning brief takes over from the next day) · ever
 **i icon** whose hover (or keyboard focus) explains what it is for · **no counter is shown before its
 data**: a skeleton while it loads, never a “0” that would read as “nothing to review”.
 
+- **A window can be set aside instead of lost.** Every window you type into carries a **`—`**
+  button in its top-right corner: it **minimises** to the bottom of the menu, the screen becomes
+  whole again, and you go and check whatever you needed to check — a branch name in *Git*, a
+  ticket's state in *Jira*. Clicking its chip **brings it back as it was**: the fields you filled,
+  the **cursor in the field you left**, and **the tab it started from** — that is where its result
+  will show. The chip's cross discards it for good, like *Cancel*. The button stays in the corner
+  even when the form scrolls, and a window brought back still **protects what you typed** against
+  a click outside. Windows that ask a **question** (a confirmation, picking a verifier) have no
+  such button: they keep their caller waiting, and setting one aside would keep it waiting forever.
 - **The menu bar can be arranged** (Settings → General). Move **up** what you open ten times a day,
   **hide** what you never use: drag and drop or arrows, applied at once. A hidden menu also leaves
   the **palette** and the **number shortcuts** — `3` opens the third *shown* menu, not the third

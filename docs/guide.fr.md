@@ -1965,6 +1965,16 @@ dès le lendemain) · chaque champ de formulaire porte une **icône i** dont
 le survol (ou le focus clavier) explique à quoi il sert · **aucun compteur n'est affiché avant sa
 donnée** : squelette pendant le chargement, jamais un « 0 » qui voudrait dire « rien à traiter ».
 
+- **Une fenêtre se met de côté au lieu d'être perdue.** Toute fenêtre où l'on saisit quelque
+  chose porte un bouton **`—`** à son coin haut-droit : elle se **réduit** dans le bas du menu,
+  l'écran redevient entier, et on va vérifier ce qu'on avait besoin de vérifier — le nom d'une
+  branche dans *Git*, l'état d'un ticket dans *Jira*. Un clic sur sa puce la **reprend telle
+  quelle** : les champs remplis, le **curseur dans le champ qu'on quittait**, et **l'onglet d'où
+  elle était partie** — c'est là que son résultat s'affichera. La croix de la puce l'abandonne
+  pour de bon, comme *Annuler*. Le bouton reste au coin même quand le formulaire défile, et une
+  fenêtre reprise **protège toujours sa saisie** contre un clic à côté. Les fenêtres qui posent
+  une **question** (confirmation, choix d'un vérificateur) n'ont pas ce bouton : elles font
+  attendre celui qui les a ouvertes, et les mettre de côté le laisserait attendre pour toujours.
 - **La barre de menus se range** (Réglages → Général). On **remonte** ce qu'on ouvre dix fois par
   jour et on **masque** ce dont on ne se sert pas : glisser-déposer ou flèches, appliqué tout de
   suite. Un menu masqué quitte aussi la **palette** et les **raccourcis chiffrés** — `3` ouvre le

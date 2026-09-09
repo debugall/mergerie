@@ -123,7 +123,9 @@ courante, `v` / `c` / `m` / `x` agissent sur la carte au focus, `?` liste tous l
 la transcription est **locale**, par whisper.cpp, et le moteur reçoit **ton** vocabulaire — dépôts,
 services, environnements, préfixes Jira, branches ouvertes —, ce qui lui fait écrire `webapp-front` et
 `!214` plutôt que « web app front » et « 214 ». Éteinte par défaut ; elle s'installe depuis l'écran de
-réglages, qui déroule toute la chaîne et nomme la première marche qui casse. L'outil
+réglages, qui déroule toute la chaîne et nomme la première marche qui casse. **Toute fenêtre où l'on
+saisit se réduit** dans le bas du menu par un `—` : on va vérifier un nom de branche ou un ticket sans
+perdre ce qu'on écrivait, et on la reprend telle quelle — champs, curseur et onglet compris. L'outil
 rouvre sur l'onglet et le stade que tu as quittés, et le panneau de rapport ouvre sur **ce qui a changé
 depuis ta dernière visite**.
 

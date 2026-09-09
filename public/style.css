@@ -150,6 +150,29 @@ header h1 { font-size: 16px; margin: 0; letter-spacing: .3px; }
    à l'autre — c'est ce qui rend la colonne lisible d'un coup d'œil. */
 .sidebar button[data-tab] > span:not([class]) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar .nav-count, .sidebar .nav-health { flex: none; margin-left: 0; }
+/* ---- Les fenêtres réduites, au bas du menu ----
+   Le dock prend l'espace libre du bas quand il existe ; sinon c'est « Réduire le menu » qui
+   le prend, comme avant. Une seule des deux règles s'applique à la fois, faute de quoi
+   l'espace se partagerait entre les deux et les deux flotteraient au milieu. */
+.modal-dock { margin-top: auto; display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); }
+.modal-dock:not([hidden]) ~ .sidebar-toggle { margin-top: 8px; }
+.dock-titre { font-size: 11px; text-transform: uppercase; letter-spacing: .3px; padding: 0 2px 2px; }
+.dock-chip { display: flex; align-items: center; gap: 2px; }
+.dock-open { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; font-size: 13px; text-align: left; cursor: pointer;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); }
+.dock-open:hover { border-color: var(--accent); }
+.dock-open .ico { flex: none; color: var(--muted); }
+.dock-open > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dock-close { flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; cursor: pointer;
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius); color: var(--muted); }
+.dock-close:hover { border-color: var(--danger); color: var(--danger-text, var(--danger)); }
+/* Menu compact : la puce se réduit à son icône, comme les onglets. Le titre reste dans le
+   `title` — et la croix disparaît : à 56 px, deux cibles côte à côte se manquent. */
+body.sidebar-compacte .modal-dock .dock-titre, body.sidebar-compacte .modal-dock .dock-close { display: none; }
+body.sidebar-compacte .modal-dock .dock-open { justify-content: center; padding: 8px 0; }
+
 .sidebar-toggle {
   margin-top: auto; background: transparent; border: 1px solid transparent; color: var(--muted);
   padding: 7px 10px; border-radius: var(--radius); cursor: pointer; font-size: 13px;
@@ -846,6 +869,17 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .modal { position: fixed; inset: 0; z-index: 110; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; padding: 20px; }
 .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; width: 640px; max-width: 100%; max-height: 90vh; overflow-y: auto; }
 .modal-box h3 { margin: 0 0 4px; font-size: 16px; }
+/* ---- Réduire une fenêtre ----
+   Le bandeau des outils est COLLANT et de hauteur nulle : le bouton reste au coin haut-droit
+   même après avoir fait défiler un long formulaire, sans réserver de ligne à lui tout seul.
+   Le titre lui cède la place à droite, sinon un titre long passerait dessous. */
+.modal-outils { position: sticky; top: 0; z-index: 2; height: 0; display: flex; justify-content: flex-end; }
+.modal-reduire { display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; margin: -6px -6px 0 0; border-radius: var(--radius);
+  background: var(--panel); border: 1px solid transparent; color: var(--muted); cursor: pointer; }
+.modal-reduire:hover { border-color: var(--line); background: var(--panel2); color: var(--text); }
+.modal-reduisible > h3:first-of-type { padding-right: 30px; }
+
 .modal-box textarea { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 10px; font: inherit; margin: 8px 0; }
 /* JOINDRE UN FICHIER EST UNE POSSIBILITÉ, PAS UNE ÉTAPE. C'était une zone pointillée de
    80 px, vide neuf fois sur dix, au milieu du formulaire. Une ligne : un lien à l'icône

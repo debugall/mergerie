@@ -1017,6 +1017,9 @@ function convergeBoxHtml(run) {
 function fermerAuFond(sel, close, { salissable = true } = {}) {
   const modal = $(sel);
   if (!modal) return;
+  // Sans fonction de fermeture, masquer SUFFIT — et un clic au fond ne doit pas jeter une
+  // erreur parce que l'appelant n'en avait pas à donner.
+  const fermer = close || (() => { modal.hidden = true; });
   let depart = null;
   modal.addEventListener('pointerdown', (e) => { depart = e.target; });
   if (salissable) {
@@ -1031,18 +1034,156 @@ function fermerAuFond(sel, close, { salissable = true } = {}) {
     };
     modal.addEventListener('input', marquer);
     modal.addEventListener('change', marquer);
-    // Chaque ouverture repart d'une modale vierge — et chaque fermeture aussi, au cas où
-    // elle serait rouverte sans repasser par sa fonction d'ouverture.
-    new MutationObserver(() => { delete modal.dataset.saisi; })
-      .observe(modal, { attributes: true, attributeFilter: ['hidden'] });
+    /* Chaque ouverture repart d'une modale vierge — et chaque fermeture aussi, au cas où
+       elle serait rouverte sans repasser par sa fonction d'ouverture. Une RÉDUCTION, elle,
+       n'est ni l'une ni l'autre : la saisie est toujours là, et son drapeau doit l'être
+       aussi, sinon la fenêtre reprise se laisserait fermer d'un clic au fond avec tout ce
+       qu'on y avait écrit. Reparaître, en revanche, la sort du dock quel que soit le chemin
+       (la puce, ou son ouvreur qui la remplit à neuf). */
+    new MutationObserver(() => {
+      if (modal.dataset.reduite) { if (!modal.hidden) sortirDuDock(modal); return; }
+      delete modal.dataset.saisi;
+    }).observe(modal, { attributes: true, attributeFilter: ['hidden'] });
   }
   modal.addEventListener('click', (e) => {
     if (e.target !== modal || depart !== modal) return;
     depart = null;
     if (modal.dataset.saisi) { refuserFermeture(modal); return; }
-    close();
+    fermer();
   });
+  /* Réductible = « saisissable ». Voir le bloc qui suit : la règle est une conséquence, pas
+     une liste à tenir à jour. */
+  if (salissable) poserBoutonReduire(modal, fermer);
 }
+
+/* ---------- METTRE UNE FENÊTRE DE CÔTÉ ---------------------------------------------------
+   Une modale prend tout l'écran et cache tout le reste. On ouvre « Nouvelle session », on
+   veut vérifier le nom exact d'une branche dans Git ou l'état d'un ticket dans Jira, et il
+   n'y avait que deux issues : renoncer à aller voir, ou fermer en perdant la saisie. La
+   fenêtre se RÉDUIT donc dans le menu, comme dans une barre des tâches : l'écran redevient
+   entier, et on la reprend là où on l'avait laissée.
+
+   « Là où on l'avait laissée » veut dire trois choses, et les trois comptent :
+   — les CHAMPS. La modale est masquée, jamais reconstruite : rien à sauvegarder ni à relire.
+   — le CURSEUR. Il retourne dans le champ qu'on quittait, pas au premier du formulaire.
+   — l'ONGLET. On est parti vérifier quelque chose ailleurs ; en reprenant, on veut retrouver
+     l'écran d'où la fenêtre était partie — c'est là que son résultat s'affichera.
+
+   CE QUI EST RÉDUCTIBLE : exactement les modales dont on protège déjà la saisie
+   (`salissable`). Une confirmation ou un choix qui rend une PROMESSE n'en est pas — la
+   réduire laisserait son appelant en attente pour toujours, et ces modales-là passent déjà
+   `salissable: false`. La règle est donc une conséquence de ce qui existe, pas une liste à
+   tenir à jour au fil des modales qu'on ajoutera. */
+const REDUITES = new Map();   // id de la modale -> { titre, onglet, focus, fermer }
+/* LE DERNIER CHAMP TOUCHÉ, suivi au fil de la frappe. À l'instant du clic sur « Réduire »,
+   l'élément actif est le BOUTON : rendre le curseur là-dessus ramènerait sur une commande,
+   pas dans le formulaire qu'on était en train de remplir. */
+const DERNIER_CHAMP = new WeakMap();
+
+function ongletCourant() { const b = $('nav button[data-tab].active'); return b ? b.dataset.tab : ''; }
+
+function titreModale(modal) {
+  const h = modal.querySelector('.modal-box > h3');
+  const t = h ? h.textContent.replace(/\s+/g, ' ').trim() : '';
+  return t || tr('dock.window');
+}
+
+/* Le bouton se pose dans un bandeau COLLANT de hauteur nulle, en tête de la boîte : il reste
+   donc au coin haut-droit même quand le formulaire est long et qu'on l'a fait défiler — une
+   fenêtre dont on ne peut plus atteindre la commande de réduction n'est pas réductible. */
+function poserBoutonReduire(modal, fermer) {
+  const boite = modal.querySelector('.modal-box');
+  if (!boite || boite.querySelector('.modal-reduire')) return;
+  boite.classList.add('modal-reduisible');
+  const rangee = document.createElement('div');
+  rangee.className = 'modal-outils';
+  modal.addEventListener('focusin', (e) => {
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) DERNIER_CHAMP.set(modal, e.target);
+  });
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'modal-reduire';
+  b.dataset.i18nTitle = 'dock.reduce.title';
+  b.dataset.i18nAria = 'dock.reduce';
+  b.title = tr('dock.reduce.title');
+  b.setAttribute('aria-label', tr('dock.reduce'));
+  b.innerHTML = '<svg class="ico ico-sm"><use href="#i-minimize"/></svg>';
+  b.addEventListener('click', () => reduireModale(modal, fermer));
+  rangee.appendChild(b);
+  boite.prepend(rangee);
+}
+
+function reduireModale(modal, fermer) {
+  if (!modal || modal.hidden) return;
+  const actif = document.activeElement;
+  const champ = DERNIER_CHAMP.get(modal);
+  REDUITES.set(modal.id, {
+    titre: titreModale(modal),
+    onglet: ongletCourant(),
+    focus: (champ && champ.isConnected) ? champ
+      : (modal.contains(actif) && !actif.classList.contains('modal-reduire') ? actif : null),
+    fermer,
+  });
+  modal.dataset.reduite = '1';
+  modal.hidden = true;
+  /* Une dictée en cours visait un champ qui vient de disparaître : elle parlerait dans le vide,
+     et son micro resterait posé sur un formulaire qui n'est plus là. (Un clic sur un bouton non
+     dictable range déjà le micro — sauf justement quand une dictée tourne, cas où il est gardé
+     exprès pour ne pas être perdu en cours de route.) */
+  if (window.mergerieDictation) {
+    window.mergerieDictation.arreter();
+    const mic = $('#dictationMic'); if (mic) mic.hidden = true;
+  }
+  rendreDock();
+}
+
+function restaurerModale(id) {
+  const modal = $(`#${id}`); const e = REDUITES.get(id);
+  if (!modal || !e) return;
+  if (e.onglet && ongletCourant() !== e.onglet) navTab(e.onglet);
+  modal.hidden = false;            // l'observateur de `fermerAuFond` la sort du dock
+  const cible = e.focus && e.focus.isConnected ? e.focus : null;
+  if (cible) setTimeout(() => { try { cible.focus(); } catch { /* champ devenu inatteignable */ } }, 0);
+}
+
+// Reparue par n'importe quel chemin : elle n'est plus une fenêtre réduite.
+function sortirDuDock(modal) {
+  delete modal.dataset.reduite;
+  if (REDUITES.delete(modal.id)) rendreDock();
+}
+
+/* Abandonner une fenêtre SANS la rouvrir. On passe par sa vraie fonction de fermeture : elle
+   seule remet à zéro ce qui vit en dehors du DOM (contexte de MR, cible de convergence…). */
+function fermerReduite(id) {
+  const e = REDUITES.get(id); if (!e) return;
+  const modal = $(`#${id}`);
+  REDUITES.delete(id);
+  if (modal) delete modal.dataset.reduite;
+  rendreDock();
+  try { e.fermer(); } catch { /* la modale était déjà défaite */ }
+}
+
+function rendreDock() {
+  const dock = $('#modalDock'); if (!dock) return;
+  dock.hidden = REDUITES.size === 0;
+  if (dock.hidden) { dock.innerHTML = ''; return; }
+  dock.innerHTML = `<div class="dock-titre muted"><span>${esc(tr('dock.title', { n: REDUITES.size, count: REDUITES.size }))}</span></div>`
+    + [...REDUITES.entries()].map(([id, e]) => `<div class="dock-chip">
+        <button type="button" class="dock-open" data-dock-open="${esc(id)}" title="${esc(tr('dock.restore', { titre: e.titre }))}">
+          <svg class="ico ico-sm"><use href="#i-expand"/></svg><span>${esc(e.titre)}</span>
+        </button>
+        <button type="button" class="dock-close" data-dock-close="${esc(id)}" title="${esc(tr('dock.close', { titre: e.titre }))}" aria-label="${esc(tr('dock.close', { titre: e.titre }))}">
+          <svg class="ico ico-sm"><use href="#i-close"/></svg>
+        </button>
+      </div>`).join('');
+}
+
+document.addEventListener('click', (e) => {
+  const o = e.target.closest && e.target.closest('[data-dock-open]');
+  if (o) { restaurerModale(o.dataset.dockOpen); return; }
+  const c = e.target.closest && e.target.closest('[data-dock-close]');
+  if (c) fermerReduite(c.dataset.dockClose);
+});
 
 function refuserFermeture(modal) {
   const boite = modal.querySelector('.modal-box') || modal;

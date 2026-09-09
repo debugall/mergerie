@@ -430,6 +430,17 @@ sur une barre d'onglets sombre. Les PNG (`favicon-32`, `logo-512`) servent de re
 Système de design à variables CSS (typographie, espacement, rayons, élévation, mouvement), composant
 `.btn` unique à hauteur fixe, sprite **SVG inline** (aucune icône emoji, rendu identique partout),
 thème clair/sombre/auto avec contrastes **WCAG AA vérifiés** dans les deux thèmes.
+**Réduire une fenêtre.** Toute modale à saisie porte un bouton `—` posé par `fermerAuFond` : la
+règle est « réductible = saisissable », pas une liste d'identifiants — une modale qui rend une
+PROMESSE (`confirmDialog`, choix d'un vérificateur) passe `salissable: false` et n'en reçoit donc
+pas, la réduire laisserait son appelant en attente pour toujours. La fenêtre est MASQUÉE (jamais
+reconstruite : la saisie ne peut pas se perdre), rangée dans `#modalDock` au bas du menu avec son
+titre, son onglet d'origine et le dernier champ touché (`DERNIER_CHAMP` — à l'instant du clic
+l'élément actif est le bouton, pas le formulaire). L'observateur de `hidden` de `fermerAuFond`
+distingue les trois cas : réduction (le drapeau `saisi` SURVIT, sinon la fenêtre reprise se
+laisserait fermer d'un clic au fond), réapparition (elle sort du dock, quel que soit le chemin :
+la puce ou son ouvreur), fermeture (remise à zéro). La croix de la puce passe par la vraie
+fonction de fermeture — elle seule remet à zéro ce qui vit hors du DOM.
 Règle globale `[hidden] { display: none !important }` : sans elle, toute règle posant un `display`
 neutralise silencieusement l'attribut — source récurrente de bugs.
 Toute liste où l'on choisit un dépôt utilise un **combo avec recherche** (un `<select>` natif

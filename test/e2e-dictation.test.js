@@ -300,6 +300,30 @@ describe('Dictée vocale · du micro au champ', { skip: dispo ? false : 'chromiu
   /* LA LANGUE DE L'ÉCRAN DÉCIDE DE CELLE QU'ON DICTE. Elle vit dans le navigateur et voyage
      par en-tête ; le serveur la FORCE au moteur. Sans l'en-tête, l'écran passait en anglais et
      l'on continuait de dicter en français — le moteur, obéissant, rendait du français. */
+  /* RÉDUIRE LA FENÊTRE ARRÊTE LA DICTÉE. Le micro est gardé exprès pendant qu'on dicte, même
+     si le focus part ailleurs — sans quoi on le perdrait en cours de route. Mais une fenêtre
+     mise de côté emporte le champ visé : la dictée parlerait dans le vide, et le micro
+     resterait posé sur un formulaire qui n'est plus à l'écran. */
+  test('mettre la fenêtre de côté arrête la dictée et range le micro', async () => {
+    await ouvrirModaleSession();
+    await page.focus('#taskModal textarea[name="prompt"]');
+    await page.waitForSelector('#dictationMic:not([hidden])');
+    await page.click('#dictationMic');
+    await page.waitForFunction(() => ['listening', 'warming', 'transcribing'].includes(document.querySelector('#dictationMic').dataset.etat), null, { timeout: ATTENTE });
+
+    await page.click('#taskModal .modal-reduire');
+    await page.waitForSelector('#dictationMic[hidden]', { state: 'attached', timeout: ATTENTE });
+    assert.equal(await page.evaluate(() => window.mergerieDictation.etat().actif), false,
+      'la dictée s’arrête avec la fenêtre qu’elle remplissait');
+
+    // Reprise : le micro revient quand on retrouve le champ, et rien n’a été perdu.
+    await page.click('#modalDock .dock-open');
+    await page.waitForSelector('#taskModal:not([hidden])');
+    await page.focus('#taskModal textarea[name="prompt"]');
+    await page.waitForSelector('#dictationMic:not([hidden])', { timeout: ATTENTE });
+    await fermerModale();
+  });
+
   test('l’écran en anglais fait dicter en anglais', async () => {
     await fermerModale();
     await page.evaluate(() => localStorage.setItem('aidevtools_lang', 'en'));

@@ -67,8 +67,11 @@ text field** (`Ctrl`/`Cmd` + `Shift` + `Space`) writes what you say at the caret
 **local**, by whisper.cpp, and the engine is fed **your** vocabulary — repositories, services,
 environments, Jira prefixes, open branches — which is what makes it write `webapp-front` and `!214`
 instead of "web app front" and "214". Off by default; installed from the settings screen, which
-walks the whole chain and names the first step that breaks. The tool reopens on the tab
-and review stage you left, and the report panel opens on what changed since your last visit.
+walks the whole chain and names the first step that breaks. **Any window you type into minimises**
+to the bottom of the menu with a `—`, so you can go and check a branch name or a ticket without
+losing what you had written, and come back to it — fields, cursor and tab included. The tool
+reopens on the tab and review stage you left, and the report panel opens on what changed since
+your last visit.
 
 **The tabs talk to each other.** A todo tied to a merge request ticks itself when that merge request
 is merged; the last Jenkins build carrying a branch is written on its merge request card; a ticket

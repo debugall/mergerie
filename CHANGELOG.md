@@ -13,6 +13,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Any window you type into can be set aside and picked back up.** A modal covered the whole
+  screen, so going to check a branch name or a ticket's state meant either giving up on checking
+  or closing the window and losing what you had written. Every window with fields now has a `—`
+  button in its corner: it minimises to the bottom of the menu, and one click brings it back
+  exactly as it was — the fields you filled, the cursor in the field you left, and the tab it
+  started from. The chip's cross discards it for good. Windows that ask a question (a
+  confirmation, picking a verifier) have no such button: setting one aside would keep whatever
+  opened it waiting forever.
+
 - **A Jira ticket's detail now shows the tickets it is linked to.** "is blocked by", "duplicates",
   "relates to" — those links are what says which part you cannot ship on your own, and the card said
   nothing about them: reading them meant reopening Jira. They now sit under the attachments, grouped
