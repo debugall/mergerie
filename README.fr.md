@@ -84,7 +84,7 @@ et un **lot** de merge requests vérifiées ensemble.
   attente de réponse, vérifications en échec, MR fraîches et MR dormantes, le tout calculé en local et **sans
   aucun appel IA**. `!214` et `PROJ-720` écrits dans une note deviennent des liens, et une merge request ou un
   ticket s'ajoute aux todos d'un clic.
-- **Jira** — tes tickets récupérés automatiquement, détail + pièces jointes, changement d'état et commentaires ; **tickets surveillés** (affectés ou non) avec notification à chaque changement d'état, et une pastille au menu = tes tickets en cours.
+- **Jira** — tes tickets récupérés automatiquement, détail + pièces jointes, tickets liés (groupés par relation, ouverts sans quitter l'onglet), changement d'état et commentaires ; **tickets surveillés** (affectés ou non) avec notification à chaque changement d'état, et une pastille au menu = tes tickets en cours.
 - **Git** — opérations multi-dépôts (branches, tags, commandes git) sur les deux forges, un **merge de
   branche à branche avec résolution des conflits à l'écran** (les deux versions l'une sous l'autre, garder
   l'une, garder les deux, ou écrire soi-même ; puis commit et push, chacun derrière sa confirmation),

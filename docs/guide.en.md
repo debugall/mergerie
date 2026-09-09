@@ -890,6 +890,16 @@ recent assignees; **you ticked by default**, a **persisted** choice). A **list �
   labels, components, fix versions), **all the comments** (author, date, body in Markdown) and the
   **attachments** — **downloaded on demand** through a **server proxy** that fetches the file with the token
   (a direct link would fail, since the Jira API requires auth). Plus an **Open in Jira** link.
+- **Linked tickets are on the card.** “is blocked by”, “duplicates”, “relates to”: those links are
+  what says which part you cannot ship on your own, and seeing them meant reopening Jira. They now
+  appear under the attachments, **grouped by relation** (five “is blocked by” make one label and five
+  rows), each with its **summary** and its **status** — a key on its own teaches nothing. The relation
+  wording is **your instance's**, in its own language, and it follows the **direction** of the link:
+  Jira describes it from both ends, and flipping it (“blocks” instead of “is blocked by”) would be
+  worse than saying nothing. **Sub-tasks** and the **parent** of a sub-task join the same list — a
+  parent that is an *epic* stays in the details, where it already has its row. A **done** link is
+  struck through: that dependency is lifted. The **key opens the ticket here**, in the column you are
+  reading; the arrow opens it in Jira.
 - **Code blocks stay code blocks.** A technical ticket often puts a template inside a Jira **table** — a
   label on the left, JSON on the right. A Markdown table holds one line per cell: the code ended up
   flattened there, its indentation crushed and uncopyable. Such tables are therefore **unfolded** — each

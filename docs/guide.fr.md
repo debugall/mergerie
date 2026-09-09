@@ -922,6 +922,16 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   Markdown) et les **pièces jointes** — **téléchargées à la demande** via un **proxy serveur** qui récupère
   le fichier avec le token (un lien direct échouerait, l'API Jira exigeant l'auth). Plus un lien **Ouvrir
   dans Jira**.
+- **Les tickets liés sont dans la fiche.** « Est bloqué par », « duplique », « est lié à » : ce sont
+  ces liens qui disent ce qu'on ne peut pas livrer seul, et il fallait rouvrir Jira pour les voir.
+  Ils s'affichent sous les pièces jointes, **groupés par relation** (cinq « est bloqué par » font une
+  étiquette et cinq lignes), avec pour chacun son **résumé** et son **statut** — une clé seule
+  n'apprend rien. Le libellé de la relation est celui de **ton instance**, dans sa langue, et il suit
+  le **sens** du lien : Jira le décrit depuis les deux bouts, et l'inverser (« bloque » au lieu de
+  « est bloqué par ») serait pire que se taire. Les **sous-tâches** et le **parent** d'une sous-tâche
+  arrivent dans la même liste — un parent qui est un *epic* reste dans les détails, où il a déjà sa
+  ligne. Un lien **terminé** est barré : c'est une dépendance levée. La **clé ouvre le ticket ici**,
+  dans la colonne où tu lis ; la flèche l'ouvre dans Jira.
 - **Les blocs de code restent des blocs de code.** Un ticket technique met souvent un gabarit dans un
   **tableau** Jira — une étiquette à gauche, du JSON à droite. Un tableau Markdown, lui, tient sur une
   ligne par cellule : le code s'y retrouvait aplati, indentations écrasées et incopiable. Ces tableaux

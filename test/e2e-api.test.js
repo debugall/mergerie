@@ -559,6 +559,61 @@ describe('API de bout en bout', () => {
     delete app.state.jiraIssues['PROJ-500'];
   });
 
+  /* LES TICKETS LIÉS. Jira décrit le lien depuis les DEUX bouts dans le même objet : le
+     libellé `outward` va avec `outwardIssue`, `inward` avec `inwardIssue`. Se tromper de moitié
+     inverse le sens — « bloque » au lieu de « est bloqué par » — et un lien inversé est pire
+     qu'un lien absent : c'est ce croisement-là que l'épreuve garde. */
+  test('Jira : les tickets liés arrivent avec le bon sens de relation', async () => {
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
+    const etat = (nom, cat) => ({ name: nom, statusCategory: { key: cat } });
+    const lie = (cle, resume, cat = 'new') => ({ key: cle, fields: { summary: resume, status: etat('À faire', cat), issuetype: { name: 'Tâche', iconUrl: 'https://jira/icone.png' }, priority: { name: 'Basse' } } });
+    app.state.jiraIssues['LINK-1'] = {
+      key: 'LINK-1',
+      fields: {
+        summary: 'Ticket avec des liens', status: etat('En cours', 'indeterminate'),
+        issuetype: { name: 'Bug' },
+        issuelinks: [
+          { id: '1', type: { name: 'Blocks', inward: 'est bloqué par', outward: 'bloque' }, inwardIssue: lie('LINK-2', 'Le ticket bloquant') },
+          { id: '2', type: { name: 'Blocks', inward: 'est bloqué par', outward: 'bloque' }, outwardIssue: lie('LINK-3', 'Le ticket bloqué') },
+          { id: '3', type: { name: 'Duplicate', inward: 'est dupliqué par', outward: 'duplique' }, outwardIssue: lie('LINK-4', 'Le doublon', 'done') },
+        ],
+        subtasks: [lie('LINK-5', 'La sous-tâche')],
+        // Un parent qui n'est PAS un epic : il a sa place ici, l'epic a la sienne dans les détails.
+        parent: { key: 'LINK-9', fields: { summary: 'La story parente', issuetype: { name: 'Story', hierarchyLevel: 0 } } },
+      },
+    };
+    const d = (await app.api('GET', '/api/jira/issue/LINK-1')).body.issue;
+    const par = Object.fromEntries((d.related || []).map((r) => [r.key, r]));
+    assert.equal(d.related.length, 5, 'liens, sous-tâche et parent, tous présents');
+    assert.equal(par['LINK-2'].relation, 'est bloqué par', 'le libellé ENTRANT va avec inwardIssue');
+    assert.equal(par['LINK-3'].relation, 'bloque', '…et le SORTANT avec outwardIssue');
+    assert.equal(par['LINK-2'].summary, 'Le ticket bloquant');
+    assert.equal(par['LINK-2'].status, 'À faire');
+    assert.equal(par['LINK-2'].typeIcon, 'https://jira/icone.png');
+    assert.match(par['LINK-2'].url, /\/browse\/LINK-2$/, 'chaque lien porte son adresse Jira');
+    assert.equal(par['LINK-4'].statusCategory, 'done', 'une dépendance levée se voit');
+    assert.equal(par['LINK-5'].direction, 'subtask');
+    assert.equal(par['LINK-9'].direction, 'parent');
+
+    // Un ticket sans le moindre lien renvoie une liste vide, pas une absence de champ.
+    app.state.jiraIssues['LINK-0'] = { key: 'LINK-0', fields: { summary: 'Ticket seul', status: etat('À faire', 'new') } };
+    assert.deepEqual((await app.api('GET', '/api/jira/issue/LINK-0')).body.issue.related, []);
+
+    /* Un parent QUI EST un epic reste dans les détails et ne se dédouble pas dans les liés :
+       la même information à deux endroits ferait croire à deux rattachements. */
+    app.state.jiraIssues['LINK-6'] = {
+      key: 'LINK-6',
+      fields: {
+        summary: 'Ticket d’un epic', status: etat('À faire', 'new'),
+        parent: { key: 'LINK-7', fields: { summary: 'L’epic', issuetype: { name: 'Epic', hierarchyLevel: 1 } } },
+      },
+    };
+    const e = (await app.api('GET', '/api/jira/issue/LINK-6')).body.issue;
+    assert.equal(e.epic.key, 'LINK-7');
+    assert.deepEqual(e.related, []);
+    for (const k of ['LINK-0', 'LINK-1', 'LINK-6']) delete app.state.jiraIssues[k];
+  });
+
   test('Jira : surveiller un ticket notifie son changement d’état, et seulement lui', async () => {
     await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
     const etat = (nom, cat) => ({ name: nom, statusCategory: { key: cat } });

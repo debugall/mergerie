@@ -539,7 +539,7 @@ async function countMineInProgress(cfg) {
 // + pièces jointes (métadonnées seulement ; le CONTENU se télécharge à la demande via le proxy).
 async function issueDetail(cfg, key) {
   if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
-  const fields = 'summary,description,status,priority,issuetype,assignee,reporter,created,updated,labels,project,duedate,components,fixVersions,attachment,parent';
+  const fields = 'summary,description,status,priority,issuetype,assignee,reporter,created,updated,labels,project,duedate,components,fixVersions,attachment,parent,issuelinks,subtasks';
   const data = await jiraGet(cfg, `/rest/api/3/issue/${encodeURIComponent(key)}?fields=${encodeURIComponent(fields)}`);
   const attachments = ((data.fields || {}).attachment || []).map((a) => ({
     id: String(a.id), filename: a.filename || `pièce-${a.id}`, size: a.size || 0,
@@ -560,7 +560,55 @@ async function issueDetail(cfg, key) {
   } catch { comments = []; } // les commentaires ne doivent pas faire échouer le détail
   let trans = [];
   try { trans = await transitions(cfg, key); } catch { trans = []; } // droits insuffisants → pas de changement d'état proposé
-  return { ...withUrls(cfg, issueMeta(data)), descriptionMd: adfToMarkdown((data.fields || {}).description, mdOpts), comments, attachments, transitions: trans };
+  return {
+    ...withUrls(cfg, issueMeta(data)),
+    descriptionMd: adfToMarkdown((data.fields || {}).description, mdOpts),
+    comments, attachments, transitions: trans, related: relatedOf(cfg, data.fields || {}),
+  };
+}
+
+/* ---------- Les tickets LIÉS ----------------------------------------------
+   « Bloque », « est bloqué par », « duplique » : ce sont les liens qui disent ce qu'on ne peut
+   pas livrer seul, et le détail les ignorait — il fallait ouvrir Jira pour les voir.
+
+   Jira donne le lien depuis LES DEUX BOUTS dans le même objet : `outwardIssue` va avec le
+   libellé `type.outward`, `inwardIssue` avec `type.inward`. Prendre le mauvais des deux
+   inverse le sens du lien — « bloque » au lieu de « est bloqué par » —, ce qui est pire que
+   ne rien afficher. Ces deux libellés viennent de l'instance, donc DÉJÀ dans sa langue : on
+   les reprend tels quels plutôt que d'inventer une traduction qui contredirait Jira.
+
+   Les sous-tâches et le parent d'une sous-tâche voyagent dans d'autres champs (`subtasks`,
+   `parent`) mais répondent à la même question, et arrivent donc dans la même liste. Le parent
+   n'est repris que s'il n'est PAS un epic : celui-là a déjà sa ligne dans les détails. */
+function ticketLie(cfg, brut, relation, sens) {
+  if (!brut || !brut.key) return null;
+  const f = brut.fields || {};
+  return {
+    key: brut.key,
+    relation,
+    direction: sens,
+    summary: f.summary || '',
+    status: (f.status && f.status.name) || '',
+    statusCategory: (f.status && f.status.statusCategory && f.status.statusCategory.key) || '',
+    type: (f.issuetype && f.issuetype.name) || '',
+    typeIcon: (f.issuetype && f.issuetype.iconUrl) || '',
+    priority: (f.priority && f.priority.name) || '',
+    url: issueUrl(cfg, brut.key),
+  };
+}
+
+function relatedOf(cfg, f) {
+  const out = [];
+  for (const l of (f.issuelinks || [])) {
+    const ty = (l && l.type) || {};
+    if (l && l.outwardIssue) out.push(ticketLie(cfg, l.outwardIssue, ty.outward || ty.name || '', 'outward'));
+    else if (l && l.inwardIssue) out.push(ticketLie(cfg, l.inwardIssue, ty.inward || ty.name || '', 'inward'));
+  }
+  for (const st of (f.subtasks || [])) out.push(ticketLie(cfg, st, t('jira.rel.subtask'), 'subtask'));
+  if (f.parent && f.parent.key && !epicOf(f)) out.push(ticketLie(cfg, f.parent, t('jira.rel.parent'), 'parent'));
+  // Un même ticket peut être lié deux fois (lien manuel + sous-tâche) : une ligne par ticket.
+  const vus = new Set();
+  return out.filter((x) => x && !vus.has(`${x.key}|${x.relation}`) && vus.add(`${x.key}|${x.relation}`));
 }
 
 // Texte brut → ADF minimal (Jira v3 exige l'ADF pour créer un commentaire). Les lignes vides

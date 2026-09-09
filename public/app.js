@@ -12650,6 +12650,35 @@ function jiraMetaRow(label, valueHtml) {
   return `<div class="jira-meta-row"><span class="jira-meta-label muted">${esc(label)}</span><span class="jira-meta-val">${valueHtml}</span></div>`;
 }
 
+/* LES TICKETS LIÉS. « Bloque », « est bloqué par », « duplique » : ce sont eux qui disent ce
+   qu'on ne peut pas livrer seul, et la fiche les taisait — il fallait rouvrir Jira pour les
+   voir. Le libellé de la relation vient de l'instance (donc déjà dans sa langue) et fait le
+   REGROUPEMENT : cinq « est bloqué par » sont une liste, pas cinq fois la même étiquette.
+   La clé ouvre le ticket ICI, sans quitter l'onglet ; la flèche l'ouvre dans Jira. */
+function jiraRelatedBlock(it) {
+  const list = (it.related || []).filter((r) => r && r.key);
+  if (!list.length) return '';
+  const groupes = new Map();
+  for (const r of list) {
+    const cle = r.relation || tr('jira.rel.parent');
+    if (!groupes.has(cle)) groupes.set(cle, []);
+    groupes.get(cle).push(r);
+  }
+  const ligne = (r) => `<li class="jira-rel-row${r.statusCategory === 'done' ? ' jira-rel-done' : ''}">
+      ${r.typeIcon ? `<img class="jira-rel-icon" src="${esc(r.typeIcon)}" alt="${esc(r.type)}" title="${esc(r.type)}" loading="lazy" />` : ''}
+      <button type="button" class="jira-rel-key" data-jira-open="${esc(r.key)}" title="${esc(tr('jira.related.open', { key: r.key, summary: r.summary }))}">${esc(r.key)}</button>
+      <span class="jira-rel-sum">${esc(r.summary)}</span>
+      <span class="spacer"></span>
+      ${jiraStatusChip(r)}
+      <a class="jira-rel-ext" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(tr('jira.related.jira', { key: r.key }))}" aria-label="${esc(tr('jira.related.jira', { key: r.key }))}">↗</a>
+    </li>`;
+  const corps = [...groupes.entries()].map(([rel, rows]) => `<div class="jira-rel-group">
+      <div class="jira-rel-rel muted">${esc(rel)}</div>
+      <ul class="jira-rel-list">${rows.map(ligne).join('')}</ul>
+    </div>`).join('');
+  return `<div class="jira-section jira-related"><h4>${esc(tr('jira.related', { n: list.length, count: list.length }))}</h4>${corps}</div>`;
+}
+
 function jiraAttachmentsBlock(it) {
   const list = it.attachments || [];
   if (!list.length) return '';
@@ -12758,6 +12787,7 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
         <div class="jira-card md-body">${it.descriptionMd ? mdToHtml(it.descriptionMd) : `<p class="muted">${esc(tr('jira.no-description'))}</p>`}</div>
       </div>
       ${jiraAttachmentsBlock(it)}
+      ${jiraRelatedBlock(it)}
       <div class="jira-section"><h4>${esc(tr('jira.details'))}</h4><div class="jira-meta">${meta}</div></div>
       ${comments}
     </article>`;
@@ -12831,6 +12861,14 @@ document.addEventListener('click', async (e) => {
 document.addEventListener('click', (e) => {
   const m = e.target.closest && e.target.closest('[data-jira-mr]');
   if (m) { navMrReport(Number(m.dataset.jiraMr)); return; }
+  /* Un ticket lié s'ouvre DANS la colonne où on l'a cliqué : la fiche surveillée reste dans
+     « Surveillés », celle de « Mes tickets » dans la sienne. */
+  const rel = e.target.closest && e.target.closest('[data-jira-open]');
+  if (rel) {
+    const box = rel.closest('#jiraWatchDetail') ? 'watch' : 'mine';
+    selectJiraIssue(rel.dataset.jiraOpen, box);
+    return;
+  }
   const t2 = e.target.closest && e.target.closest('[data-jira-task]');
   if (t2) { navTab('task'); loadTasks(); }
 });

@@ -305,6 +305,56 @@ describe('Jira · Surveillés — le ticket s’ouvre à droite', { skip: dispo 
     assert.deepEqual(vu.cles, ['Partenaire', 'Version']);
   });
 
+  /* LES TICKETS LIÉS, À L'ÉCRAN. « Est bloqué par » est ce qui explique pourquoi un ticket
+     n'avance pas, et la fiche n'en disait rien : il fallait rouvrir Jira. On garde ici les
+     trois choses qui font la valeur du bloc — le SENS de la relation (l'inverser serait pire
+     que se taire), le REGROUPEMENT (une étiquette pour plusieurs tickets), et le fait que la
+     clé ouvre le ticket DANS la colonne où on lit, sans quitter l'onglet. */
+  test('les tickets liés s’affichent, groupés par relation, et s’ouvrent sur place', async () => {
+    const lie = (cle, resume) => ({ key: cle, fields: { summary: resume, status: { name: 'À faire', statusCategory: { key: 'new' } }, issuetype: { name: 'Tâche' } } });
+    app.state.jiraIssues['WATCH-4'] = {
+      key: 'WATCH-4',
+      fields: {
+        summary: 'Ticket qui dépend d’autres', status: { name: 'En cours', statusCategory: { key: 'indeterminate' } },
+        issuetype: { name: 'Bug' },
+        issuelinks: [
+          { id: '1', type: { name: 'Blocks', inward: 'est bloqué par', outward: 'bloque' }, inwardIssue: lie('WATCH-2', 'Refondre le panier') },
+          { id: '2', type: { name: 'Blocks', inward: 'est bloqué par', outward: 'bloque' }, inwardIssue: lie('BLOQ-2', 'Second bloquant') },
+          { id: '3', type: { name: 'Relates', inward: 'est lié à', outward: 'est lié à' }, outwardIssue: lie('REL-1', 'Ticket voisin') },
+        ],
+      },
+    };
+    app.state.jiraIssues['WATCH-2'] = app.state.jiraIssues['WATCH-2'] || lie('WATCH-2', 'Refondre le panier');
+    await app.api('POST', '/api/jira/watch', { key: 'WATCH-4' });
+    await ouvrirSurveilles();
+    await page.locator('#jiraWatchList .jira-item', { hasText: 'dépend d’autres' }).click();
+    await page.waitForSelector('#jiraWatchDetail .jira-related');
+
+    const groupes = await page.locator('#jiraWatchDetail .jira-rel-group').evaluateAll((gs) => gs.map((g) => ({
+      relation: g.querySelector('.jira-rel-rel').textContent.trim(),
+      cles: [...g.querySelectorAll('.jira-rel-key')].map((b) => b.textContent.trim()),
+    })));
+    assert.deepEqual(groupes, [
+      { relation: 'est bloqué par', cles: ['WATCH-2', 'BLOQ-2'] },
+      { relation: 'est lié à', cles: ['REL-1'] },
+    ], 'le SENS vient du bout de lien que Jira a rempli, et deux bloquants font une seule étiquette');
+    assert.match(await page.locator('#jiraWatchDetail .jira-related').innerText(), /Refondre le panier/,
+      'le résumé du ticket lié est là : une clé seule n’apprend rien');
+
+    // Le lien vers Jira reste possible à côté du bouton qui ouvre ici.
+    assert.match(await page.locator('#jiraWatchDetail .jira-rel-row', { hasText: 'WATCH-2' }).locator('.jira-rel-ext').getAttribute('href'),
+      /\/browse\/WATCH-2$/);
+
+    // La clé ouvre le ticket lié DANS « Surveillés », pas dans l'autre colonne ni dans Jira.
+    await page.locator('#jiraWatchDetail .jira-rel-key', { hasText: 'WATCH-2' }).click();
+    await page.waitForFunction(() => /Refondre le panier/.test(document.querySelector('#jiraWatchDetail').textContent));
+    assert.match(await page.locator('#jiraWatchDetail .jira-title').textContent(), /Refondre le panier/);
+    assert.equal(await page.locator('#jiraSubMine').isVisible(), false, 'on n’a pas changé de sous-onglet');
+
+    await app.api('DELETE', '/api/jira/watch/WATCH-4');
+    delete app.state.jiraIssues['WATCH-4'];
+  });
+
   /* Les deux sous-onglets ont chacun leur sélection : revenir sur « Mes tickets » ne doit pas
      hériter du ticket qu'on lisait dans « Surveillés », ni l'inverse. */
   test('les deux panneaux gardent leur propre sélection', async () => {

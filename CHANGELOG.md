@@ -11,6 +11,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Added
+
+- **A Jira ticket's detail now shows the tickets it is linked to.** "is blocked by", "duplicates",
+  "relates to" — those links are what says which part you cannot ship on your own, and the card said
+  nothing about them: reading them meant reopening Jira. They now sit under the attachments, grouped
+  by relation, each with its summary and its status; the wording is your instance's own and follows
+  the direction of the link. Sub-tasks and the parent of a sub-task join the same list, a link that is
+  done is struck through, and clicking the key opens that ticket in the column you are reading rather
+  than in a Jira tab.
+
 ### Changed
 
 - **The Links tab has been rebuilt around what it actually is: a place you read, and a place you

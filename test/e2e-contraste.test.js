@@ -28,7 +28,12 @@ try {
    connaît. Rendue en chaîne parce qu'elle est passée à `page.evaluate`. */
 const SONDE = `(() => {
   const lum = (c) => { const [r, g, b] = c.map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
-  const parse = (s) => (s.match(/[\\d.]+/g) || []).map(Number);
+  /* Chrome rend un \`color-mix()\` sous la forme \`color(srgb 0.07 0.5 0.29 / 0.14)\` — des
+     FRACTIONS, là où \`rgb()\` donne des entiers 0-255. Lues telles quelles, ces trois valeurs
+     valaient un noir presque opaque : le fond composé virait au gris, et la sonde accusait des
+     couleurs qui n'existaient pas (le motif « teinte sur fond de la même teinte » est justement
+     celui qui passe par \`color-mix\` partout dans l'application). */
+  const parse = (s) => { const n = (s.match(/[\\d.]+/g) || []).map(Number); return /^color\\(/.test(s) ? n.map((v, i) => (i < 3 ? v * 255 : v)) : n; };
   const compose = (fg, bg) => { const a = fg[3] === undefined ? 1 : fg[3]; return [0, 1, 2].map((i) => fg[i] * a + bg[i] * (1 - a)); };
   const fondDe = (el) => {
     const pile = []; let e = el;

@@ -2634,6 +2634,26 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
 .jira-attach-size { font-size: 12px; flex-shrink: 0; }
 .jira-attach-dl { flex-shrink: 0; }
 
+/* Tickets liés : une ligne par ticket, regroupée par relation. La clé est un BOUTON (elle
+   ouvre la fiche ici) et la flèche un lien (elle ouvre Jira) — deux gestes différents, deux
+   cibles différentes. Les couleurs passent par les variables : le bloc suit les deux thèmes. */
+.jira-rel-group + .jira-rel-group { margin-top: 10px; }
+.jira-rel-rel { font-size: 11.5px; text-transform: uppercase; letter-spacing: .3px; margin-bottom: 3px; }
+.jira-rel-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.jira-rel-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px 8px;
+  border: 1px solid transparent; border-radius: 8px; transition: border-color var(--t-fast), background var(--t-fast); }
+.jira-rel-row:hover { border-color: var(--line); background: var(--panel2); }
+.jira-rel-icon { width: 14px; height: 14px; flex-shrink: 0; }
+.jira-rel-key { flex-shrink: 0; font-family: var(--ff-mono); font-size: 12.5px; font-weight: 700;
+  color: var(--accent, #4f9cf9); background: none; border: none; padding: 0; cursor: pointer; }
+.jira-rel-key:hover { text-decoration: underline; }
+/* Un ticket lié TERMINÉ ne se lit pas comme les autres : c'est une dépendance levée. */
+.jira-rel-done .jira-rel-key { text-decoration: line-through; opacity: .75; }
+.jira-rel-sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.jira-rel-row .jira-status { flex-shrink: 0; font-size: 10px; padding: 1px 8px; }
+.jira-rel-ext { flex-shrink: 0; color: var(--muted); text-decoration: none; }
+.jira-rel-ext:hover { color: var(--accent, #4f9cf9); }
+
 /* Aperçus d'IMAGES en pièce jointe : affichés directement (clic = plein écran). */
 .jira-img-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
 .jira-img { display: flex; flex-direction: column; gap: 4px; width: 160px; text-decoration: none; color: var(--text); }
