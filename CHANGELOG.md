@@ -95,6 +95,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The three fields of "Jobs linked to repositories" now fill the row instead of a third of
+  it.** Settings → Jenkins reserved three wide columns, but its fields are searchable pickers
+  whose box was not told to grow: each one fell back to the default width of a text input,
+  about twenty characters, so a job path like `boutique/api-deploy-recette` had to be read
+  through a slot half as wide as its own label. The job column is now the widest of the three
+  — it holds the longest value of the row.
+
 - **« Install » failed on WSL before doing anything.** A checkout made with Git for Windows
   (`core.autocrlf=true`) gives the install script Windows line endings, and `sh` stops on its
   first line with a message the carriage return itself truncates (`set: Illegal option -`). Shell

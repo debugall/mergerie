@@ -109,6 +109,30 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
     assert.equal(await champ.inputValue(), 'Commente en français.');
   });
 
+  /* UN CHAMP OCCUPE SA COLONNE. La rangée « Jobs liés aux dépôts » réserve trois colonnes
+     larges, mais ses trois champs sont des COMBOS : leur boîte n'était contrainte par rien, et
+     le `width: 100%` de leur input se mesurait donc sur la largeur par défaut d'un `<input>` —
+     une vingtaine de caractères. Résultat : des champs deux fois plus étroits que le libellé
+     qui les annonce, et la moitié de la rangée vide. La preuve se prend à la mesure, pas à
+     l'œil : chaque champ doit remplir son étiquette. */
+  test('les champs des jobs liés remplissent leur colonne', async () => {
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="jenkinscfg"]').click();
+    await page.waitForSelector('#jenkinsLinkForm .combo');
+    const cols = await page.locator('#jenkinsLinkForm').evaluate((f) => [...f.querySelectorAll(':scope > label')].map((l) => {
+      const champ = l.querySelector('.combo') || l.querySelector('input');
+      const r = l.getBoundingClientRect();
+      return { nom: l.textContent.trim().slice(0, 18), colonne: Math.round(r.width), champ: Math.round(champ.getBoundingClientRect().width), haut: Math.round(champ.getBoundingClientRect().top) };
+    }));
+    assert.equal(cols.length, 3);
+    assert.deepEqual(cols.filter((c) => c.colonne - c.champ > 2).map((c) => `${c.nom} : ${c.champ}/${c.colonne} px`), [],
+      'un champ plus étroit que son libellé laisse croire à une saisie courte');
+    /* …et sur un écran large la rangée reste UNE rangée : c'est ce qui la rend lisible. On
+       mesure les CHAMPS, pas les étiquettes — un libellé sur deux lignes commence plus haut
+       que les autres alors que la rangée est bien alignée (elle l'est par le bas). */
+    assert.equal(new Set(cols.map((c) => c.haut)).size, 1, 'les trois champs tiennent sur une ligne à 1400 px');
+  });
+
   /* Un nom mémorisé qui n'existe plus (un onglet supprimé depuis) ne doit pas laisser l'écran
      vide : on retombe sur le même repli que la première fois. */
   test('un sous-onglet mémorisé qui n’existe plus retombe sur Git', async () => {

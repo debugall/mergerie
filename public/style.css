@@ -544,11 +544,17 @@ body { padding-bottom: 36px; } /* réserve la place du footer fixe */
   gap: 10px; max-width: none; }
 .form.repo-add > label { display: flex; flex-direction: column; align-items: stretch; gap: 4px;
   flex: 1 1 200px; font-size: var(--fs-sm); color: var(--muted); }
-.form.repo-add > label.repo-add-url { flex: 2 1 320px; }
+.form.repo-add > label.repo-add-url, .form.repo-add > label.repo-add-wide { flex: 2 1 320px; }
 .form.repo-add .repo-add-field { display: flex; flex-direction: row; align-items: center; gap: 5px; }
 /* `.form label:not(.inline-check) > input` impose `flex: 0 0 100%` ailleurs : ici l'input
    partage sa ligne avec l'ⓘ, il prend donc la place restante et pas la ligne entière. */
 .form.repo-add .repo-add-field > input { flex: 1 1 auto; min-width: 0; width: auto; }
+/* …et un COMBO occupe sa colonne comme le ferait un input. Le `width: 100%` de son champ se
+   mesure sur la boîte du combo, qui n'était elle-même contrainte par rien : à défaut de
+   `flex-grow`, elle tombait sur la largeur par défaut d'un `<input>` (une vingtaine de
+   caractères) et laissait la moitié de la colonne vide — visible sur « Jobs liés aux dépôts »,
+   dont les trois champs sont des combos. */
+.form.repo-add .repo-add-field > .combo { flex: 1 1 auto; min-width: 0; }
 .form.repo-add > button { flex: 0 0 auto; }
 /* LE CHIP DE BRANCHE EST COPIABLE. Il garde l'allure d'un <code> — c'est un nom technique —
    mais il se signale au survol : curseur de copie, fond légèrement appuyé. */
