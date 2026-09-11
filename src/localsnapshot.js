@@ -30,6 +30,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const git = require('./git');
 const { TASKS_DIR, ensureDir } = require('./paths');
+const { t } = require('../public/i18n-runtime.js');
 
 /* Au-delà, on renonce : la mesure coûterait plus que ce qu'elle rend. Un objet plutôt que deux
    constantes, pour qu'un test puisse abaisser le plafond et vérifier le renoncement — atteindre
@@ -127,4 +128,49 @@ async function apres(taskId, dirId, shaAvant, onLog = () => {}) {
   }
 }
 
-module.exports = { avant, apres, dossierSuivi, LIMITES };
+/* ---------- LE MÉNAGE ----------
+ *
+ * Un dépôt de suivi contient une copie compressée du dossier au premier instantané, puis les
+ * seules différences (git dédoublonne par contenu). Ça ne grossit donc pas passe après passe —
+ * mais ça reste un poids, et il ne doit jamais rester de dépôt que PLUS RIEN ne peut ouvrir.
+ *
+ * Deux sources d'orphelins, toutes les deux ordinaires : changer la liste des dossiers d'une
+ * session recrée ses lignes avec de nouveaux identifiants, et une session supprimée pendant
+ * une coupure (ou une base restaurée d'une sauvegarde) laisse ses fichiers derrière elle. Le
+ * critère est donc net : pas de ligne `local_task_dir` portant cet identifiant, on supprime.
+ * Rien ne peut plus l'atteindre — les routes de relecture exigent ce dossier.
+ *
+ * Ce qui reste est COMPACTÉ, jamais supprimé : une itération se relit des mois plus tard, et
+ * c'est tout l'intérêt de la garder. `gc --auto` ne fait rien tant que les objets lâches
+ * n'ont pas dépassé le seuil de git — l'appeler sur tout est donc bon marché.
+ *
+ * Appelé au démarrage puis une fois par jour, sans être attendu : le ménage n'a aucune
+ * urgence, et un serveur qui démarre plus lentement pour ranger serait un mauvais échange. */
+async function menage(onLog = () => {}) {
+  const racine = path.join(TASKS_DIR, 'local');
+  let supprimes = 0; let compactes = 0;
+  const sousDossiers = (p) => {
+    try { return fs.readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name); }
+    catch { return []; }
+  };
+  const db = require('./db'); // tardif : `db` n'a pas à être chargé pour mesurer une passe.
+  const connu = db.prepare('SELECT 1 FROM local_task_dir WHERE id = ? AND task_id = ?');
+  for (const taskId of sousDossiers(racine)) {
+    for (const dirId of sousDossiers(path.join(racine, taskId))) {
+      const gitdir = path.join(racine, taskId, dirId, 'suivi.git');
+      if (!fs.existsSync(gitdir)) continue;
+      let existe = false;
+      try { existe = !!connu.get(Number(dirId), Number(taskId)); } catch { existe = true; } // dans le doute, on garde
+      if (!existe) {
+        try { fs.rmSync(gitdir, { recursive: true, force: true }); supprimes += 1; } catch { /* best-effort */ }
+        continue;
+      }
+      try { await git.run('git', ['--git-dir', gitdir, 'gc', '--auto', '--quiet'], {}); compactes += 1; }
+      catch { /* un dépôt abîmé ne doit pas arrêter le ménage des autres */ }
+    }
+  }
+  if (supprimes) onLog(t('log.snapshot.cleanup', { n: supprimes, count: supprimes, compactes }));
+  return { supprimes, compactes };
+}
+
+module.exports = { avant, apres, dossierSuivi, menage, LIMITES };

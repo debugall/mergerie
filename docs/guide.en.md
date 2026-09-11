@@ -620,6 +620,12 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   follow-up's diff would make it unreadable. And a **guard rail**: past 20,000 files or 512 MB the
   measurement is abandoned for that folder — once and for all — and the log says so. The coding
   itself carries on: slowing work down for a re-reading convenience would be the wrong trade.
+  **Cleanup is automatic.** Those tracking repositories live under `data/tasks/local/`; they go
+  with the session when it is deleted, and once a day (at startup, then every 24 h) Mergerie
+  removes the ones **no session folder references any more** — changing a session's folder list
+  leaves some behind, so does a database restored from a backup — and **compacts** the rest. Those
+  still referenced are never removed: an iteration gets re-read months later, and keeping it is
+  the whole point.
 - **⌨️ Resume the session in a terminal.** Every project of a coding session (repository **or** out-of-repo),
   and the reviews too, exposes a **“Resume in terminal”** button that copies the **ready-to-paste command**:
   a `cd` to the right folder plus the agent launched with the **session identifier** (claude

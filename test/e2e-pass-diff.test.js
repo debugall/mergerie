@@ -206,6 +206,32 @@ describe('Diff d’une itération de codage', () => {
       assert.match(r.body.content, /const a = 1/);
     });
 
+    /* LE MÉNAGE. Un dépôt de suivi ne doit jamais survivre à ce qu'il suivait : changer la
+       liste des dossiers d'une session recrée ses lignes avec de NOUVEAUX identifiants, et
+       l'ancien suivi n'est plus atteignable par personne. Ce qui est encore référencé, lui,
+       reste — une itération se relit des mois plus tard. */
+    test('le ménage emporte les dépôts de suivi que plus rien ne référence, et garde les autres', async () => {
+      const snapshot = require('../src/localsnapshot');
+      const vivant = snapshot.dossierSuivi(localId, dirId);
+      assert.equal(fs.existsSync(vivant), true);
+
+      // Un orphelin, tel qu'en fabrique une édition de la liste des dossiers.
+      const orphelin = snapshot.dossierSuivi(localId, 99999);
+      fs.mkdirSync(orphelin, { recursive: true });
+      fs.writeFileSync(path.join(orphelin, 'HEAD'), 'ref: refs/heads/main\n');
+
+      const r = await snapshot.menage();
+      assert.equal(fs.existsSync(orphelin), false, 'l’orphelin est parti');
+      assert.equal(fs.existsSync(vivant), true, 'celui d’une session vivante est resté');
+      assert.equal(r.supprimes, 1);
+      assert.ok(r.compactes >= 1, JSON.stringify(r));
+
+      // …et ce qu'il gardait se relit encore : compacter n'est pas perdre.
+      const apres = await vueLocale(2);
+      assert.equal(apres.status, 200);
+      assert.ok(apres.body.files.some((f) => f.changed));
+    });
+
     /* UN DOSSIER DÉMESURÉ NE DOIT PAS RALENTIR LE CODAGE. Au-delà du plafond, la mesure est
        abandonnée — une fois pour toutes sur ce dossier — et la session, elle, aboutit. */
     test('au-delà du plafond, on renonce à mesurer sans faire échouer la session', async () => {

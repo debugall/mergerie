@@ -640,6 +640,12 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   abandonnée pour ce dossier — une fois pour toutes — et le journal le dit. Le codage, lui, se
   poursuit normalement : ralentir un travail pour une commodité de relecture serait le mauvais
   échange.
+  **Le ménage est automatique.** Ces dépôts de suivi vivent sous `data/tasks/local/` ; ils
+  partent avec la session supprimée, et une fois par jour (au démarrage, puis toutes les 24 h)
+  Mergerie efface ceux que **plus aucun dossier de session ne référence** — changer la liste des
+  dossiers d'une session en laisse derrière, une base restaurée d'une sauvegarde aussi — et
+  **compacte** les autres. Ceux qui sont encore référencés ne sont jamais supprimés : une
+  itération se relit des mois plus tard, et c'est tout l'intérêt de la garder.
 - **⌨️ Reprendre la session au terminal.** Chaque projet d'une session de codage (dépôt **ou** hors dépôt),
   ainsi que les reviews, expose un bouton **« Reprendre au terminal »** qui copie la **commande prête à
   coller** : `cd` vers le bon dossier + lancement de l'agent avec l'**identifiant de session** (claude

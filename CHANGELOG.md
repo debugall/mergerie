@@ -21,7 +21,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   one pass. **Out-of-repo coding gets the same thing**, where there is no branch and no commit:
   Mergerie keeps a tracking repository whose `.git` lives in its own working directory, so your
   folder receives nothing — dependency and build folders stay out of the diff, and past a size
-  guard rail the measurement is dropped rather than slowing the coding down. An iteration that
+  guard rail the measurement is dropped rather than slowing the coding down. Those tracking
+  repositories clean themselves up: the ones no session references any more are removed daily,
+  the rest are compacted. An iteration that
   changed nothing says so; one older than this addition shows nothing rather than promise a diff
   it does not have.
 - **Agents — a new tab, and a different way of launching the AI.** An agent is a *session
