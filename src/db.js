@@ -573,6 +573,17 @@ try { db.exec('ALTER TABLE agent_pass ADD COLUMN titre TEXT'); } catch { /* déj
    flux `claude`). L'estimation en tokens reste : elle couvre les backends qui ne disent rien.
    Nulle sur toute passe antérieure, et sur tout backend muet — l'affichage doit le supporter. */
 try { db.exec('ALTER TABLE agent_pass ADD COLUMN cost_usd REAL'); } catch { /* déjà présente */ }
+/* LE DIFF D'UNE SEULE ITÉRATION. Relire une session de codage revenait à relire TOUT le diff
+   de la branche à chaque suivi : la correction de trois lignes qu'on vient de demander se
+   cherchait au milieu de deux cents. On retient donc les deux bornes de la passe — le HEAD
+   avant qu'elle ne commence, celui qu'elle laisse — et le patch qui les sépare. Nulles sur
+   toute passe antérieure, sur une passe qui n'a rien commité (l'agent a posé des questions) et
+   sur tout le hors-dépôt, qui n'a pas de git : l'affichage doit le supporter.
+   `head_sha` sans `diff_path` n'est pas une anomalie : c'est une itération qui n'a rien changé
+   au code, et le dire vaut mieux qu'ouvrir une vue vide. */
+try { db.exec('ALTER TABLE agent_pass ADD COLUMN base_sha TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE agent_pass ADD COLUMN head_sha TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE agent_pass ADD COLUMN diff_path TEXT'); } catch { /* déjà présente */ }
 /* APRÈS la création de la table, et pas avant : un `ALTER` posé plus haut dans ce fichier
    échoue sur une table qui n'existe pas encore, et le `catch` l'avale sans un mot. La colonne
    n'apparaît alors que sur les bases où la table préexistait — le genre de différence qui ne

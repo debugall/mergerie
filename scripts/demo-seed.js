@@ -464,6 +464,119 @@ const t1 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, s
 db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, mr_iid, mr_url, mr_merged, session_key, session_backend, session_cwd, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
   .run(t1.lastInsertRowid, repoIds['groupe/api-core'], 'ai/metrics-endpoint', 'main', 'pushed', 250, 'https://gitlab.demo/groupe/api-core/-/merge_requests/250', 1,
     '6ba7b810-9dad-11d1-80b4-00c04fd430c8', 'claude', '/home/moi/clones/groupe-api-core', at(4));
+/* LES ITÉRATIONS DE CETTE SESSION, avec le diff de CHACUNE. C'est ce qui rend démontrable la
+   relecture d'un seul suivi : le lancement pose l'endpoint, le premier suivi ajoute un label
+   par route, le second n'écrit qu'un paragraphe de README. Sans diffs séparés, relire ce
+   dernier suivi obligerait à relire les trois. Les chemins sont ceux de l'arborescence fictive
+   du projet (`src/demo-diff.js`) — un diff qui citerait un fichier absent de l'arbre ne serait
+   marqué nulle part dans la colonne de gauche. */
+const tgt1 = db.prepare('SELECT id FROM task_target WHERE task_id = ?').get(t1.lastInsertRowid).id;
+const PASSES_T1 = [
+  {
+    kind: 'run', jours: 4.3,
+    prompt: 'Ajouter un endpoint /metrics au format Prometheus',
+    out: `## Ce que j'ai fait\n\n- Ajouté \`src/metrics.js\` : registre en mémoire et rendu au format texte Prometheus.\n- Branché \`GET /metrics\` dans \`src/index.js\`.\n\n## Point d'attention\n\nLes compteurs sont globaux : aucune dimension par route pour l'instant.\n`,
+    diff: `diff --git a/src/metrics.js b/src/metrics.js
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/src/metrics.js
+@@ -0,0 +1,18 @@
++'use strict';
++
++const compteurs = new Map();
++
++function incrementer(nom) {
++  compteurs.set(nom, (compteurs.get(nom) || 0) + 1);
++}
++
++function rendu() {
++  const lignes = [];
++  for (const [nom, valeur] of compteurs) {
++    lignes.push(\`# TYPE \${nom} counter\`);
++    lignes.push(\`\${nom} \${valeur}\`);
++  }
++  return \`\${lignes.join('\\n')}\\n\`;
++}
++
++module.exports = { incrementer, rendu };
+diff --git a/src/index.js b/src/index.js
+index 4d5e6f7..8a9b0c1 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -12,6 +12,11 @@ const app = express();
+ app.get('/health', (req, res) => res.json({ ok: true }));
+ 
++app.get('/metrics', (req, res) => {
++  res.type('text/plain');
++  res.send(metrics.rendu());
++});
++
+ app.listen(process.env.PORT || 3000);
+`,
+  },
+  {
+    kind: 'followup', jours: 4.15, favori: true, titre: 'un label par route',
+    prompt: 'Les compteurs sont trop grossiers : mets un label par route, sinon on ne peut pas isoler /webhooks.',
+    out: `## Ce que j'ai fait\n\n- \`incrementer(nom, labels)\` accepte désormais un objet de labels, rendu au format Prometheus.\n- Le compteur de requêtes porte \`route\`.\n`,
+    diff: `diff --git a/src/metrics.js b/src/metrics.js
+index a1b2c3d..b2c3d4e 100644
+--- a/src/metrics.js
++++ b/src/metrics.js
+@@ -3,14 +3,20 @@
+ const compteurs = new Map();
+ 
+-function incrementer(nom) {
+-  compteurs.set(nom, (compteurs.get(nom) || 0) + 1);
++function cle(nom, labels) {
++  const paires = Object.entries(labels || {}).map(([k, v]) => \`\${k}="\${v}"\`);
++  return paires.length ? \`\${nom}{\${paires.join(',')}}\` : nom;
++}
++
++function incrementer(nom, labels) {
++  const k = cle(nom, labels);
++  compteurs.set(k, (compteurs.get(k) || 0) + 1);
+ }
+`,
+  },
+  {
+    kind: 'followup', jours: 4.05,
+    prompt: 'Ajoute un paragraphe dans le README qui explique ce qu\'expose /metrics.',
+    out: `## Ce que j'ai fait\n\n- Ajouté une section « Métriques » au README : ce qui est exposé, sous quels labels, et comment brancher Prometheus dessus.\n\nAucun changement de code.\n`,
+    diff: `diff --git a/README.md b/README.md
+index 1122334..5566778 100644
+--- a/README.md
++++ b/README.md
+@@ -24,6 +24,13 @@ npm start
+ 
++## Métriques
++
++\`GET /metrics\` expose les compteurs au format texte Prometheus. Chaque compteur de requêtes
++porte un label \`route\`, ce qui permet d'isoler \`/webhooks\` du reste du trafic.
++
++Aucune authentification : l'endpoint est destiné au réseau interne.
++
+ ## Tests
+`,
+  },
+];
+{
+  const dossier = ensureDir(path.join(TASKS_DIR, String(t1.lastInsertRowid), String(tgt1)));
+  PASSES_T1.forEach((passe, i) => {
+    const n = i + 1;
+    const sortie = path.join(dossier, `output-v${n}.md`);
+    fs.writeFileSync(sortie, passe.out, 'utf8');
+    const patch = path.join(dossier, `diff-v${n}.patch`);
+    fs.writeFileSync(patch, passe.diff, 'utf8');
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at,
+        favori, titre, base_sha, head_sha, diff_path)
+      VALUES ('task',?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(t1.lastInsertRowid, tgt1, n, passe.kind, passe.prompt, sortie, at(passe.jours),
+        passe.favori ? 1 : 0, passe.titre || null, `demo${n}base`, `demo${n}head`, patch);
+  });
+  db.prepare('UPDATE task_target SET output_path = ? WHERE id = ?')
+    .run(path.join(dossier, `output-v${PASSES_T1.length}.md`), tgt1);
+}
 /* Un suivi écrit PENDANT que la session travaillait, et toujours pas envoyé : c'est l'état
    qu'on veut montrer. Il attend un geste — la case « automatiquement » est décochée, donc rien
    ne le déclenche à la fin de la session. */

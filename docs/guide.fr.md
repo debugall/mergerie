@@ -618,6 +618,18 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   libellé d'une session. Une itération **antérieure à l'historique des passes** n'a pas de ligne
   en base : elle ne peut être ni nommée ni épinglée, et l'écran le dit au lieu de proposer un
   geste sans effet.
+  **Le diff de CETTE itération.** Le diff du projet montre tout ce que la branche apporte : au
+  troisième suivi, la correction de trois lignes qu'on vient de demander se cherche au milieu de
+  deux cents, et on relit tout à chaque fois. Chaque itération d'une session **sur dépôt** garde
+  donc ses deux bornes — le commit d'avant, celui d'après — et le patch entre les deux : sous la
+  demande, `Voir ce que cette itération a changé` ouvre **le même écran** que le diff du projet
+  (arborescence, fichier entier avec les changements en place), borné à cette passe-là. La demande
+  et le retour de l'IA restent à gauche : un diff relu sans savoir ce qu'on avait demandé n'apprend
+  rien de plus que le diff de la branche. `Échap` referme le diff et **rend l'itération**, pas la
+  liste des sessions. Une itération qui **n'a rien changé au code** (l'IA s'est arrêtée pour poser
+  ses questions, ou a constaté que tout était déjà fait) le dit au lieu d'ouvrir une vue vide ; une
+  itération **antérieure à cette mesure**, et tout le **hors dépôt** — qui code en place, sans git —
+  n'affichent rien : promettre un diff qu'on n'a pas est pire que se taire.
 - **⌨️ Reprendre la session au terminal.** Chaque projet d'une session de codage (dépôt **ou** hors dépôt),
   ainsi que les reviews, expose un bouton **« Reprendre au terminal »** qui copie la **commande prête à
   coller** : `cd` vers le bon dossier + lancement de l'agent avec l'**identifiant de session** (claude

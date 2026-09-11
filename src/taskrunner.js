@@ -28,10 +28,12 @@ function taskDir(taskId) {
 /* Retour de l'agent pour UNE passe. On enregistre l'itération complète (prompt envoyé +
    retour) dans l'historique, et `output_path` continue de pointer la plus récente. */
 function saveAgentOutput(taskId, targetId, text, meta = {}) {
-  const { outPath } = agentpass.record('task', taskId, targetId, {
+  const { n, outPath } = agentpass.record('task', taskId, targetId, {
     kind: meta.kind || 'run', prompt: meta.prompt, text, costUsd: meta.costUsd,
   });
   if (outPath) setTarget(targetId, { output_path: outPath });
+  // Le numéro sert à revenir annoter la passe une fois le commit fait (ses deux bornes).
+  return n;
 }
 
 // Les projets d'une session. Une session « codage » les traite l'un après l'autre ;
@@ -234,6 +236,14 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     throw new Error(t('err.branch-missing-run-first', { branch: tg.branch }));
   }
 
+  /* LE POINT DE DÉPART DE CETTE ITÉRATION, pris une fois la branche en place et avant que
+     l'agent n'y touche. C'est l'autre borne du diff de la passe : sans elle, relire un suivi
+     obligeait à relire tout le diff de la branche pour y retrouver les trois lignes qu'on
+     venait de demander. Best-effort — une branche qu'on vient de créer répond toujours, mais
+     rien ici ne vaut de faire échouer un codage. */
+  let shaDepart = null;
+  try { shaDepart = await git.headSha(cwd); } catch { shaDepart = null; }
+
   const imgBlock = attachImages(task, cwd, onLog, { imageIds });
 
   onLog(t('log.task.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai') }));
@@ -299,7 +309,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
 
   // Retour de l'agent (ce qu'il dit avoir fait), consultable en fin de session — comme la
   // réponse d'une exploration. Vide en dry-run (pas de vrai retour).
-  saveAgentOutput(task.id, tg.id, agentText, { kind: passKind || 'run', prompt: promptText + imgBlock, costUsd: coutUsd });
+  const passeN = saveAgentOutput(task.id, tg.id, agentText, { kind: passKind || 'run', prompt: promptText + imgBlock, costUsd: coutUsd });
 
   // L'agent a-t-il posé des questions ? Si oui → session en ATTENTE, sans commit (il s'est
   // arrêté avant d'implémenter). Un bloc malformé/absent est ignoré (parseQuestions → null).
@@ -338,6 +348,17 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   const diff = await git.branchDiff(cwd, base);
   const dpath = path.join(ensureDir(path.join(taskDir(task.id), String(tg.id))), 'diff.patch');
   fs.writeFileSync(dpath, diff, 'utf8');
+
+  /* …ET LE DIFF DE CETTE SEULE ITÉRATION, à côté de celui de la branche entière. Les deux
+     répondent à deux questions différentes : « qu'est-ce que cette branche apporte » et
+     « qu'est-ce que ce suivi a changé ». Un diff vide n'est pas écrit : `attacherDiff` garde
+     alors les deux SHA, qui disent que l'itération n'a rien changé au code. */
+  if (passeN && shaDepart) {
+    let dePasse = '';
+    try { dePasse = shaDepart === sha ? '' : await git.diffRange(cwd, shaDepart, sha); }
+    catch { dePasse = ''; }
+    agentpass.attacherDiff('task', task.id, tg.id, passeN, { baseSha: shaDepart, headSha: sha, diff: dePasse });
+  }
 
   const pushCommand = `git push -u origin ${tg.branch}`;
   setTarget(tg.id, {

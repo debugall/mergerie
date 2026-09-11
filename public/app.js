@@ -4989,7 +4989,17 @@ $('#treeToggle').addEventListener('click', () => {
   $('#treeToggle').classList.toggle('off', hidden);
 });
 $('#splitClose').addEventListener('click', closeSplit);
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#splitView').hidden) closeSplit(); });
+/* ÉCHAP DANS LES VUES PLEIN ÉCRAN : LE PLUS HAUT D'ABORD, et un seul gestionnaire pour en
+   décider. Le diff d'une itération s'ouvre PAR-DESSUS la liste des itérations ; avec deux
+   gestionnaires indépendants, le premier fermait le diff et le second, voyant le diff déjà
+   fermé, fermait la liste dans la même touche — on revenait à la liste des sessions au lieu de
+   revenir à l'itération qu'on relisait. Une garde dans le second n'y peut rien : il s'exécute
+   après. C'est donc ici, et ici seulement, que se tranche à qui Échap appartient. */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (!$('#splitView').hidden) { closeSplit(); return; }
+  if (!$('#taskMdView').hidden) $('#taskMdView').hidden = true;
+});
 
 /* ---------- Modale contexte de la review ---------- */
 let ticketState = { id: null, imageDataUrl: null, removeImage: false };
@@ -8674,6 +8684,8 @@ async function openPasses(base, n, dossiers = null) {
     }
     renderPassList(d.passes || [], d.current ? d.current.n : 0);
     $('#taskMdBody').innerHTML = passBodyHtml(d.current);
+    const bouton = $('#taskMdBody [data-passdiff]');
+    if (bouton) bouton.addEventListener('click', () => openPassDiff(base, d.current));
     currentMd = d.current ? passMarkdown(d.current) : '';
     $('#taskMdView').hidden = false;
   } catch (e) { toast(explainError(e.message), true); }
@@ -8795,9 +8807,49 @@ $('#taskPassSearch') && $('#taskPassSearch').addEventListener('input', debounce(
 function passBodyHtml(p) {
   if (!p) return `<p class="muted">${esc(tr('task.no-output'))}</p>`;
   const prompt = (p.prompt || '').trim();
+  /* CE QUE CETTE ITÉRATION-LÀ A CHANGÉ, juste sous la demande qui l'a produite. Le diff de la
+     branche, lui, ne distingue rien : au troisième suivi, les trois lignes qu'on vient de
+     demander se cherchent au milieu de deux cents. Une itération qui n'a rien changé le dit
+     plutôt que d'offrir un bouton qui ouvrirait une vue vide ; une itération sans mesure (le
+     hors-dépôt, une session d'avant) ne montre rien du tout — promettre un diff qu'on n'a pas
+     est pire que se taire. */
+  const diff = p.has_diff
+    ? `<p class="pass-diff-line"><button type="button" class="btn btn-sm" data-passdiff="${p.n}">${svgIco('eye')}<span>${esc(tr('task.pass.diff'))}</span></button></p>`
+    : (p.no_change ? `<p class="muted pass-diff-line">${esc(tr('task.pass.no-change'))}</p>` : '');
   return (prompt ? `<h3>${esc(tr('task.pass.prompt'))}</h3><pre class="pass-prompt">${esc(prompt)}</pre>` : '')
+    + diff
     + `<h3>${esc(tr('task.pass.answer'))}</h3>`
     + (p.output ? mdToHtml(p.output) : `<p class="muted">${esc(tr('task.no-output'))}</p>`);
+}
+
+/* LE DIFF D'UNE SEULE ITÉRATION, dans le viewer de tout le reste : même arbre, même fichier
+   entier avec les changements en place. Seule la base d'URL change — les routes de la passe
+   ont la même forme que celles d'un projet ou d'une merge request. Le panneau de gauche garde
+   la demande et le retour de CETTE itération : un diff relu sans savoir ce qu'on avait demandé
+   n'apprend rien de plus que le diff de la branche. */
+async function openPassDiff(base, passe) {
+  const url = `${base}/passes/${passe.n}`;
+  let dv;
+  try { dv = await api(`${url}/diffview`); }
+  catch (e) { toast(explainError(e.message), true); return; }
+  split = {
+    mrId: null, base: url, session: true,
+    md: '', explanation: '',
+    diffByFile: parseDiffByFile(dv.diff),
+    files: dv.files || [],
+    target: dv.target || '',
+    discussions: [],
+    path: null, fullCache: {}, diffFullCache: {},
+  };
+  $('#splitView').classList.add('session-mode');
+  const quoi = tr('task.pass.diff-title', { n: passe.n, kind: tr(`task.pass.kind.${passe.kind}`) });
+  $('#splitTitle').textContent = `${dv.project} — ${dv.branch} · ${quoi}`;
+  $('#splitMd').innerHTML = passBodyHtml({ ...passe, has_diff: 0, no_change: 0 });
+  renderTree();
+  $('#splitView').hidden = false;
+  const premier = split.files.find((f) => f.changed) || split.files[0];
+  if (premier) selectFile(premier.path);
+  else { $('#fileName').textContent = tr('preview.no-file'); $('#fileContent').innerHTML = `<p class="muted">${tr('preview.no-file')}</p>`; }
 }
 // Version copiable (le bouton Copier donne du Markdown, pas du HTML).
 function passMarkdown(p) {
@@ -8931,10 +8983,9 @@ $('#taskMdExportMenu') && $('#taskMdExportMenu').addEventListener('click', (e) =
   closeSplitMenus();
   busy(b, () => exporterReponse(b.dataset.export));
 });
-document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
-  if (!$('#taskMdView').hidden) $('#taskMdView').hidden = true;
-});
+/* Échap sur cette vue est traité AVEC celui du diff plein écran, là où l'ordre des deux se
+   décide (chercher « LE PLUS HAUT D'ABORD ») : un gestionnaire de plus ici refermerait les
+   deux vues d'un seul coup. */
 
 const taskSearchEl = $('#taskSearch');
 // Filtrage local (aucun appel serveur), regroupé : renderTasks reconstruit toute la liste.

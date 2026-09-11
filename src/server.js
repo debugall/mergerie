@@ -2068,6 +2068,11 @@ function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) 
     .map((p) => ({
       id: p.id, n: p.n, kind: p.kind, created_at: p.created_at, has_output: !!p.output_path,
       prompt: p.prompt || '', favori: p.favori ? 1 : 0, titre: p.titre || '',
+      /* CE QUE CETTE ITÉRATION A CHANGÉ, ou le fait qu'elle n'ait rien changé : deux états
+         distincts, et un troisième — on ne sait pas — pour tout ce qui n'a pas de git (le
+         hors-dépôt, une question libre) ou date d'avant la mesure. L'écran ne doit proposer
+         « voir le diff » que pour le premier. */
+      has_diff: !!p.diff_path, no_change: !!(p.head_sha && !p.diff_path),
     }));
 
   /* Sessions antérieures à l'historique des passes : elles n'ont aucune ligne
@@ -2094,6 +2099,7 @@ function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) 
     current: current ? {
       id: current.id, n: current.n, kind: current.kind, created_at: current.created_at,
       prompt: current.prompt, output: current.output, favori: current.favori ? 1 : 0, titre: current.titre || '',
+      has_diff: !!current.diff_path, no_change: !!(current.head_sha && !current.diff_path),
     } : null,
   };
 }
@@ -2832,6 +2838,62 @@ app.get('/api/tasks/:id/targets/:tid/passes', wrap((req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
   res.json(passesPayload('task', tg.id, Number(req.params.id), req.query.n, `${tg.project} — ${tg.branch}`, tg.output_path));
+}));
+
+/* ---------- LE DIFF D'UNE SEULE ITÉRATION ----------
+ *
+ * Une session de codage s'itère : un run, puis des suivis. Le diff de la branche, lui, ne
+ * distingue rien — au troisième suivi, la correction de trois lignes qu'on vient de demander
+ * se cherche au milieu de deux cents. Chaque passe garde donc ses deux bornes (le HEAD avant,
+ * celui d'après) et le patch entre les deux, et ces trois routes sont EXACTEMENT celles d'une
+ * merge request ou d'un projet de session : le front ne change que la base d'URL, et retrouve
+ * le même viewer (arbre, fichier entier, changements en place).
+ *
+ * Les bornes sont des COMMITS : d'où `shaRange`, qui dit aux routes de fichier de ne pas
+ * préfixer la base par `origin/`.
+ */
+function passeCodageDe(taskId, tg, n) {
+  const p = agentpass.get('task', taskId, tg.id, Number(n));
+  if (!p) throw new Error(t('err.task.pass-not-found'));
+  return p;
+}
+/* Le patch de la passe, ou la raison de ne rien montrer. Une itération qui n'a rien changé au
+   code (l'agent a posé des questions, ou a constaté que tout était déjà fait) n'ouvre pas une
+   vue vide : elle le dit. */
+function diffDePasse(p) {
+  const diff = agentpass.diffDe(p);
+  if (!diff) throw new Error(t(p.head_sha ? 'err.task.pass-no-change' : 'err.task.pass-no-diff'));
+  return diff;
+}
+function ctxDePasse(tg, p) {
+  return { ...targetCloneCtx(tg), ref: p.head_sha, target: p.base_sha, shaRange: true };
+}
+
+app.get('/api/tasks/:id/targets/:tid/passes/:n/diffview', wrap(async (req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  const p = passeCodageDe(Number(req.params.id), tg, req.params.n);
+  const diff = diffDePasse(p);
+  const entete = { project: tg.project, branch: tg.branch, pass: { n: p.n, kind: p.kind, titre: p.titre || '', prompt: p.prompt || '' } };
+  if (demoDiff.isDemo()) { res.json({ ...demoDiff.viewFor(demoMrDe(tg), diff), ...entete }); return; }
+  res.json({ ...(await viewerPayload(ctxDePasse(tg, p), { diff, source: tg.branch })), ...entete });
+}));
+app.get('/api/tasks/:id/targets/:tid/passes/:n/file', wrap(async (req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  const p = passeCodageDe(Number(req.params.id), tg, req.params.n);
+  if (demoDiff.isDemo()) { res.json(demoDiff.fileFor(demoMrDe(tg), String(req.query.path || ''))); return; }
+  res.json(await viewerFile(ctxDePasse(tg, p), String(req.query.path || '')));
+}));
+app.get('/api/tasks/:id/targets/:tid/passes/:n/filediff', wrap(async (req, res) => {
+  const tg = targetById(Number(req.params.id), Number(req.params.tid));
+  if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
+  const p = passeCodageDe(Number(req.params.id), tg, req.params.n);
+  if (demoDiff.isDemo()) {
+    res.json(demoDiff.fileDiffFor(demoMrDe(tg), String(req.query.path || ''), diffDePasse(p)));
+    return;
+  }
+  res.json(await viewerFileDiff(ctxDePasse(tg, p), String(req.query.path || '')));
 }));
 
 // Retour de l'agent pour un projet (ce qu'il dit avoir fait) — consultable en fin de session.
@@ -5398,7 +5460,14 @@ async function viewerFileDiff(ctx, p) {
   const files = await git.lsTree(ctx.cwd, ctx.ref).catch(() => []);
   if (!files.includes(p)) throw new Error(t('err.fichier-hors-arborescence'));
   let diff = '';
-  try { diff = await git.fileDiffFull(ctx.cwd, ctx.target, ctx.ref, p); } catch { diff = ''; }
+  /* `shaRange` : les deux bornes sont des COMMITS, pas une branche de départ. C'est le cas
+     quand on relit une seule itération de codage — `fileDiffFull` préfixerait la base par
+     `origin/`, et `origin/<sha>` n'existe pas. */
+  try {
+    diff = ctx.shaRange
+      ? await git.fileDiffRange(ctx.cwd, ctx.target, ctx.ref, p)
+      : await git.fileDiffFull(ctx.cwd, ctx.target, ctx.ref, p);
+  } catch { diff = ''; }
   return { diff };
 }
 // Charge utile d'ouverture du viewer : diff complet + arbre marqué + compteurs.

@@ -56,6 +56,7 @@ découvrir l'outil : **zéro configuration**. La démo inclut une **MR convergé
 la feature *Converger* en action, et une **session reliée à sa MR** — le chemin *du prompt à la MR convergée*.
 Elle porte aussi des **vérifications objectives** déjà rendues (dont une rouge, détaillée commande par commande)
 et un **lot** de merge requests vérifiées ensemble.
+Une session de codage y porte **trois itérations avec chacune son diff**, de quoi voir la relecture d'un seul suivi sans agent.
 Côté **Agents**, elle porte les trois agents livrés, deux **agents de domaine** avec leur connaissance
 versionnée — dont une version en attente de validation, un chemin non vérifié et un écart signalé — et un
 run déclenché par un **horaire** qui a réécrit une page de notes.
@@ -74,7 +75,9 @@ run déclenché par un **horaire** qui a réécrit une page de notes.
   (avec retour de l'IA et demande de correction), **exploration** de code en lecture seule et **questions
   libres** posées hors de tout dépôt (gardées, libellées, reprenables) ;
   *du prompt à la MR convergée* en un bouton. Sur une session multi-dépôts, chaque projet se lance — et se
-  fait corriger — **séparément**. Les sessions terminées se **rangent** sans être supprimées.
+  fait corriger — **séparément**. Chaque itération garde **le diff de ce qu'elle a changé** : relire
+  un suivi n'oblige plus à relire tout le diff de la branche. Les sessions terminées se **rangent**
+  sans être supprimées.
 - **Vérification objective** — une liste de commandes (`npm ci`, `npm test`) donne à
   une merge request un verdict qui n'est pas un avis : `✓ vérifié`, `✗ 2 tests cassés`, `⚠ base déjà rouge`. Les
   noms des tests cassés sont lus de la sortie **TAP** ou d'un rapport **JUnit** quand il y en a. Des merge requests

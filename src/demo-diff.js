@@ -441,9 +441,11 @@ function statsDe(diff) {
   };
 }
 
-// Charge utile d'ouverture du viewer, à la forme de `viewerPayload`.
-function viewFor(mr) {
-  const diff = diffPour(mr);
+/* Charge utile d'ouverture du viewer, à la forme de `viewerPayload`. Le diff peut être IMPOSÉ :
+   c'est ce dont se sert la relecture d'une seule itération de codage, dont le patch est semé
+   par la démo au lieu d'être déduit de la merge request. */
+function viewFor(mr, diffImpose) {
+  const diff = diffImpose || diffPour(mr);
   const touches = fichiersModifies(diff);
   return {
     diff,
@@ -501,10 +503,10 @@ function corpsDe(p, mr) {
 
 /* Diff d'un seul fichier : on extrait sa section du diff complet. Renvoyer le diff entier
    ferait croire à l'utilisateur que le fichier sélectionné change partout. */
-function fileDiffFor(mr, p) {
+function fileDiffFor(mr, p, diffImpose) {
   if (!p) throw new Error('path requis');
   if (!arbrePour(mr).includes(p)) throw new Error('fichier hors arborescence');
-  const sections = String(diffPour(mr)).split(/^(?=diff --git )/m);
+  const sections = String(diffImpose || diffPour(mr)).split(/^(?=diff --git )/m);
   const section = sections.find((s) => s.includes(`+++ b/${p}`));
   return { diff: section || '' };
 }

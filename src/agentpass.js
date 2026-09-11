@@ -56,8 +56,43 @@ function record(scope, taskId, unitId, { kind, prompt, text, costUsd }) {
 
 // Les passes d'une unité, de la plus ancienne à la plus récente (contenu lu à la demande).
 function list(scope, taskId, unitId) {
-  return db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre, cost_usd FROM agent_pass
+  return db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre, cost_usd,
+      base_sha, head_sha, diff_path FROM agent_pass
     WHERE scope = ? AND task_id = ? AND unit_id = ? ORDER BY n`).all(scope, taskId, unitId);
+}
+
+/* CE QUE CETTE ITÉRATION-LÀ A CHANGÉ. La passe est enregistrée avant le commit — c'est le
+   retour de l'agent qui la crée —, donc ses bornes ne sont connues qu'après. On revient donc
+   l'annoter : le HEAD d'avant, celui d'après, et le patch entre les deux.
+
+   Le patch n'est écrit QUE s'il y a quelque chose dedans. Une itération peut légitimement ne
+   rien changer (l'agent constate que tout est déjà fait, le commit est un simple renommage) :
+   les deux SHA suffisent alors à le dire, et c'est plus honnête qu'un fichier vide qui
+   ouvrirait une vue sans contenu.
+
+   Best-effort, comme `record` : un codage qui a réussi ne doit pas échouer parce que sa trace
+   n'a pas pu s'écrire. */
+function attacherDiff(scope, taskId, unitId, n, { baseSha, headSha, diff } = {}) {
+  const patch = String(diff || '');
+  let diffPath = null;
+  try {
+    if (patch.trim()) {
+      diffPath = path.join(unitDir(scope, taskId, unitId), `diff-v${n}.patch`);
+      fs.writeFileSync(diffPath, patch, 'utf8');
+    }
+    db.prepare(`UPDATE agent_pass SET base_sha = ?, head_sha = ?, diff_path = ?
+      WHERE scope = ? AND task_id = ? AND unit_id = ? AND n = ?`)
+      .run(baseSha || null, headSha || null, diffPath, scope, taskId, unitId, Number(n));
+  } catch { /* trace best-effort */ }
+  return { diffPath };
+}
+
+// Le patch d'une passe, lu sur disque. `null` = cette itération n'en a pas (ou plus).
+function diffDe(pass) {
+  try {
+    if (pass && pass.diff_path && fs.existsSync(pass.diff_path)) return fs.readFileSync(pass.diff_path, 'utf8');
+  } catch { /* fichier illisible */ }
+  return null;
 }
 
 /* Marquer une passe et la nommer. Deux champs de RANGEMENT : ni le favori ni le titre ne
@@ -76,7 +111,8 @@ function marquer(id, { favori, titre } = {}) {
 
 // Une passe précise, avec le retour de l'agent lu sur disque.
 function get(scope, taskId, unitId, n) {
-  const p = db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre, cost_usd FROM agent_pass
+  const p = db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre, cost_usd,
+      base_sha, head_sha, diff_path FROM agent_pass
     WHERE scope = ? AND task_id = ? AND unit_id = ? AND n = ?`).get(scope, taskId, unitId, Number(n));
   if (!p) return null;
   let output = '';
@@ -91,4 +127,4 @@ function removeTask(scope, taskId) {
   db.prepare('DELETE FROM agent_pass WHERE scope = ? AND task_id = ?').run(scope, taskId);
 }
 
-module.exports = { record, list, get, marquer, removeTask };
+module.exports = { record, list, get, marquer, removeTask, attacherDiff, diffDe };
