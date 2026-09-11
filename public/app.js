@@ -13905,24 +13905,33 @@ function acMaj(el) {
   acRendre();
 }
 
+/* CE QUI DÉCIDE EST LE MENU À L'ÉCRAN, PAS LE FOCUS.
+   Échap était intercepté à la condition que la frappe vienne du champ qui avait ouvert le
+   menu. Il suffisait alors que le focus glisse un instant — un rendu de liste, un
+   repositionnement — pour que le menu reste affiché et qu'Échap tombe sur le gestionnaire
+   global : la fenêtre se fermait, et la demande à moitié écrite partait avec elle. Tant qu'un
+   menu est SOUS LES YEUX, Échap le ferme, lui et rien d'autre. Les flèches et Entrée, qui
+   écrivent dans le champ, exigent en revanche que la frappe en vienne bien. */
 function acTouche(e) {
-  const el = e.target;
-  if (!el.matches || !el.matches('#taskPrompt, .followup-text')) return;
-  if (acCible !== el || !acOptions.length) return;
+  if (!acMenu || acMenu.hidden || !acOptions.length) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); acFermer(); return; }
+  if (e.target !== acCible) return;
   if (e.key === 'ArrowDown') { e.preventDefault(); acIndex = (acIndex + 1) % acOptions.length; acRendre(); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); acIndex = (acIndex - 1 + acOptions.length) % acOptions.length; acRendre(); }
   else if (e.key === 'Enter') { e.preventDefault(); acInserer(acOptions[acIndex].insert); }
-  /* Échap ferme le MENU et rien d'autre : sans `stopPropagation`, la même touche fermerait
-     aussi la modale de session — et la demande à moitié écrite partirait avec elle. */
-  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); acFermer(); }
 }
 
 document.addEventListener('input', (e) => {
   if (e.target.matches && e.target.matches('#taskPrompt, .followup-text')) acMaj(e.target);
 });
 document.addEventListener('keydown', acTouche, true);
+/* Le délai laisse au clic sur une option le temps d'arriver — et s'il a RENDU le focus au
+   champ entre-temps, on ne ferme pas : le menu qu'on vient de rouvrir disparaîtrait tout seul.
+   Même règle que les combos de l'outil, pour la même raison. */
 document.addEventListener('focusout', (e) => {
-  if (e.target.matches && e.target.matches('#taskPrompt, .followup-text')) setTimeout(acFermer, 150);
+  const el = e.target;
+  if (!el.matches || !el.matches('#taskPrompt, .followup-text')) return;
+  setTimeout(() => { if (document.activeElement !== el) acFermer(); }, 150);
 });
 
 /* ---------- Onglet Agents ---------- */

@@ -61,6 +61,9 @@ describe('Session : skills et sous-agents', { skip: dispo ? false : MSG_NAVIGATE
   });
 
   const ouvrirCodage = async () => {
+    /* Une modale restée ouverte pose un voile qui intercepte tous les clics : un test en échec
+       en ferait échouer quatre autres, et la vraie cause se perdrait dans la cascade. */
+    await page.evaluate(() => document.querySelectorAll('.modal:not([hidden])').forEach((m) => { m.hidden = true; }));
     await page.locator('nav button[data-tab="task"]').click();
     await page.locator('#tab-task .subnav [data-kind="code"]').click();
     await page.locator('#btnNewTask').click();
@@ -132,6 +135,33 @@ describe('Session : skills et sous-agents', { skip: dispo ? false : MSG_NAVIGATE
     assert.equal(await champ.inputValue(), 'Corrige le bug puis /re', 'Échap ne doit rien insérer');
     // …et la modale, elle, est restée ouverte : Échap n'a fermé que le menu.
     assert.equal(await page.locator('#taskModal').isVisible(), true);
+  });
+
+  test('un menu ouvert intercepte Échap même si le focus a glissé ailleurs', async () => {
+    /* LE DÉFAUT QUE CE TEST GARDE. Échap n'était intercepté qu'à la condition que la frappe
+       vienne du champ qui avait ouvert le menu. Il suffisait que le focus glisse un instant —
+       un rendu de liste, un repositionnement — pour que le menu reste affiché et qu'Échap
+       tombe sur le gestionnaire global : la fenêtre se fermait, et la demande à moitié écrite
+       partait avec elle. Vu sur un runner chargé, jamais sur une machine au repos.
+
+       La touche est envoyée depuis `document.body`, et non par le clavier : c'est exactement
+       la situation à décrire (« le menu est là, le focus n'y est plus »), et elle ne dure que
+       le temps du délai de fermeture — l'attendre au clavier serait un pari sur l'horloge. */
+    const champ = page.locator('#taskPrompt');
+    await champ.fill('Corrige le bug puis ');
+    await champ.type('/revu');
+    await page.waitForSelector('.ac-menu:not([hidden])');
+    const etat = await page.evaluate(() => {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      return {
+        menuFerme: document.querySelector('.ac-menu').hidden,
+        modaleOuverte: !document.querySelector('#taskModal').hidden,
+        texte: document.querySelector('#taskPrompt').value,
+      };
+    });
+    assert.deepEqual(etat, {
+      menuFerme: true, modaleOuverte: true, texte: 'Corrige le bug puis /revu',
+    });
   });
 
   test('Entrée insère le nom du skill dans la demande', async () => {
