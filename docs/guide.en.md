@@ -601,15 +601,20 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   nor pinned, and the screen says so rather than offering a gesture with no effect.
   **The diff of THIS iteration.** The project's diff shows everything the branch brings: by the
   third follow-up, the three-line fix you just asked for has to be found among two hundred, and
-  you re-read all of it every time. Every iteration of a session **on a repository** therefore
-  keeps its two bounds — the commit before, the commit after — and the patch between them: under
-  the request, `See what this iteration changed` opens **the same screen** as the project diff
-  (file tree, whole file with the changes in place), bounded to that pass. The request and the
-  AI's output stay on the left: a diff re-read without knowing what was asked teaches nothing more
-  than the branch diff does. `Escape` closes the diff and **gives the iteration back**, not the
-  session list. An iteration that **changed nothing in the code** (the AI stopped to ask its
-  questions, or found everything already done) says so instead of opening an empty view; an
-  iteration **predating this measurement** shows nothing: promising a diff you do not have is worse
+  you re-read all of it every time. The latest iteration of a session **on a repository**
+  therefore keeps its two bounds — the commit before, the commit after — and the patch between
+  them: under the request, `See what this iteration changed` opens **the same screen** as the
+  project diff (file tree, whole file with the changes in place), bounded to that pass. The
+  request and the AI's output stay on the left: a diff re-read without knowing what was asked
+  teaches nothing more than the branch diff does. `Escape` closes the diff and **gives the
+  iteration back**, not the session list.
+  ⚠ **Only the LATEST measurement is kept.** What you just asked for is what you re-read; the
+  diff of the next-to-last follow-up never gets reopened and would weigh for nothing. Every new
+  pass therefore erases the measurement of the ones before it, and the screen stays silent about
+  them — to compare two older follow-ups, the project diff is still there. An iteration that
+  **changed nothing in the code** (the AI stopped to ask its questions, or found everything
+  already done) says so instead of opening an empty view; a superseded iteration, or one
+  **predating this measurement**, shows nothing at all: promising a diff you do not have is worse
   than staying silent.
   **Out of repository too.** There is no branch and no commit there, so Mergerie keeps a **tracking
   repository** whose work tree is your folder but whose `.git` lives **in its own working

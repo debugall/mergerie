@@ -70,6 +70,13 @@ function list(scope, taskId, unitId) {
    les deux SHA suffisent alors à le dire, et c'est plus honnête qu'un fichier vide qui
    ouvrirait une vue sans contenu.
 
+   SEUL LE DERNIER SURVIT. Ce qu'on vient de demander est ce qu'on relit ; le diff de
+   l'avant-dernier suivi, lui, n'est jamais rouvert et pèse pour rien. Chaque nouvelle mesure
+   efface donc celles qui précèdent dans la même unité — le patch sur disque ET les deux
+   bornes en base. Effacer le patch en gardant les bornes ferait dire à l'écran « cette
+   itération n'a rien changé au code », ce qui serait faux : les trois partent ensemble, et
+   l'itération redevient une itération sans mesure, sur laquelle l'écran se tait.
+
    Best-effort, comme `record` : un codage qui a réussi ne doit pas échouer parce que sa trace
    n'a pas pu s'écrire. */
 function attacherDiff(scope, taskId, unitId, n, { baseSha, headSha, diff } = {}) {
@@ -83,8 +90,36 @@ function attacherDiff(scope, taskId, unitId, n, { baseSha, headSha, diff } = {})
     db.prepare(`UPDATE agent_pass SET base_sha = ?, head_sha = ?, diff_path = ?
       WHERE scope = ? AND task_id = ? AND unit_id = ? AND n = ?`)
       .run(baseSha || null, headSha || null, diffPath, scope, taskId, unitId, Number(n));
+    oublierDiffs(scope, taskId, unitId, Number(n));
   } catch { /* trace best-effort */ }
   return { diffPath };
+}
+
+/* Oublie les mesures des passes ANTÉRIEURES à `n` dans cette unité. Le fichier d'abord, la
+   ligne ensuite : l'inverse laisserait des patchs que plus rien ne nomme. */
+function oublierDiffs(scope, taskId, unitId, n) {
+  const anciennes = db.prepare(`SELECT diff_path FROM agent_pass
+    WHERE scope = ? AND task_id = ? AND unit_id = ? AND n < ? AND diff_path IS NOT NULL`)
+    .all(scope, taskId, unitId, n);
+  for (const a of anciennes) {
+    try { fs.rmSync(a.diff_path, { force: true }); } catch { /* déjà parti */ }
+  }
+  return db.prepare(`UPDATE agent_pass SET diff_path = NULL, base_sha = NULL, head_sha = NULL
+    WHERE scope = ? AND task_id = ? AND unit_id = ? AND n < ?
+      AND (diff_path IS NOT NULL OR base_sha IS NOT NULL OR head_sha IS NOT NULL)`)
+    .run(scope, taskId, unitId, n).changes;
+}
+
+/* LA MÊME RÈGLE, APPLIQUÉE À L'EXISTANT. Les sessions mesurées avant que cette règle n'existe
+   portent un patch par itération ; le ménage quotidien ne garde que le dernier de chaque
+   unité. Rien n'est reconstruit ni recalculé : on ne fait qu'oublier ce qui ne sera pas relu. */
+function purgerDiffsAnciens() {
+  let oublies = 0;
+  const unites = db.prepare(`SELECT scope, task_id, unit_id, MAX(n) AS dernier FROM agent_pass
+    WHERE diff_path IS NOT NULL OR base_sha IS NOT NULL OR head_sha IS NOT NULL
+    GROUP BY scope, task_id, unit_id`).all();
+  for (const u of unites) oublies += oublierDiffs(u.scope, u.task_id, u.unit_id, u.dernier);
+  return oublies;
 }
 
 // Le patch d'une passe, lu sur disque. `null` = cette itération n'en a pas (ou plus).
@@ -127,4 +162,4 @@ function removeTask(scope, taskId) {
   db.prepare('DELETE FROM agent_pass WHERE scope = ? AND task_id = ?').run(scope, taskId);
 }
 
-module.exports = { record, list, get, marquer, removeTask, attacherDiff, diffDe };
+module.exports = { record, list, get, marquer, removeTask, attacherDiff, diffDe, purgerDiffsAnciens };

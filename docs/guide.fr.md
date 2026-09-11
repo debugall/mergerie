@@ -620,16 +620,20 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   geste sans effet.
   **Le diff de CETTE itération.** Le diff du projet montre tout ce que la branche apporte : au
   troisième suivi, la correction de trois lignes qu'on vient de demander se cherche au milieu de
-  deux cents, et on relit tout à chaque fois. Chaque itération d'une session **sur dépôt** garde
-  donc ses deux bornes — le commit d'avant, celui d'après — et le patch entre les deux : sous la
-  demande, `Voir ce que cette itération a changé` ouvre **le même écran** que le diff du projet
-  (arborescence, fichier entier avec les changements en place), borné à cette passe-là. La demande
-  et le retour de l'IA restent à gauche : un diff relu sans savoir ce qu'on avait demandé n'apprend
-  rien de plus que le diff de la branche. `Échap` referme le diff et **rend l'itération**, pas la
-  liste des sessions. Une itération qui **n'a rien changé au code** (l'IA s'est arrêtée pour poser
-  ses questions, ou a constaté que tout était déjà fait) le dit au lieu d'ouvrir une vue vide ; une
-  itération **antérieure à cette mesure** n'affiche rien : promettre un diff qu'on n'a pas est pire
-  que se taire.
+  deux cents, et on relit tout à chaque fois. La dernière itération d'une session **sur dépôt**
+  garde donc ses deux bornes — le commit d'avant, celui d'après — et le patch entre les deux :
+  sous la demande, `Voir ce que cette itération a changé` ouvre **le même écran** que le diff du
+  projet (arborescence, fichier entier avec les changements en place), borné à cette passe-là. La
+  demande et le retour de l'IA restent à gauche : un diff relu sans savoir ce qu'on avait demandé
+  n'apprend rien de plus que le diff de la branche. `Échap` referme le diff et **rend
+  l'itération**, pas la liste des sessions.
+  ⚠ **Seule la DERNIÈRE mesure est gardée.** Ce qu'on vient de demander est ce qu'on relit ; le
+  diff de l'avant-dernier suivi n'est jamais rouvert et pèserait pour rien. Chaque nouvelle passe
+  efface donc la mesure de celles qui précèdent, et l'écran se tait sur elles — pour comparer deux
+  suivis anciens, c'est le diff du projet qui reste. Une itération qui **n'a rien changé au code**
+  (l'IA s'est arrêtée pour poser ses questions, ou a constaté que tout était déjà fait) le dit, au
+  lieu d'ouvrir une vue vide ; une itération dépassée, ou **antérieure à cette mesure**, n'affiche
+  rien du tout : promettre un diff qu'on n'a pas est pire que se taire.
   **Hors dépôt aussi.** Là, il n'y a ni branche ni commit : Mergerie tient un **dépôt de suivi**
   dont l'arbre de travail est ton dossier mais dont le `.git` vit **dans son propre dossier de
   travail** — ton dossier ne reçoit rien, pas même le git qui sert à mesurer, et s'il est déjà un

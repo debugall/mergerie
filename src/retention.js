@@ -21,6 +21,7 @@
 
 const db = require('./db');
 const localsnapshot = require('./localsnapshot');
+const agentpass = require('./agentpass');
 const { t } = require('../public/i18n-runtime.js');
 
 const JOUR_MS = 24 * 60 * 60 * 1000;
@@ -65,6 +66,14 @@ function demarrer(lireJours, onLog = () => {}) {
         onLog(t('log.retention.done', { jours: r.jours, logs: r.job_log, jobs: r.job, feed: r.feed }));
       }
     } catch (e) { onLog(t('log.retention.error', { message: e.message })); }   // jamais bloquant au démarrage
+    /* Un seul diff d'itération par unité — le DERNIER. La règle s'applique d'elle-même à
+       chaque nouvelle mesure ; ce passage-ci rattrape les sessions mesurées avant qu'elle
+       n'existe, sans code de migration à part. */
+    try {
+      const oublies = agentpass.purgerDiffsAnciens();
+      if (oublies) onLog(t('log.retention.diffs', { n: oublies, count: oublies }));
+    } catch (e) { onLog(t('log.retention.error', { message: e.message })); }
+
     /* LE MÉNAGE DES FICHIERS suit celui des tables, au même rythme : les dépôts de suivi des
        itérations hors dépôt (`localsnapshot`) dont plus aucun dossier de session ne répond.
        Pas attendu — il n'a aucune urgence, et le démarrage n'a pas à l'attendre pour servir. */

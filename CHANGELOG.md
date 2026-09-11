@@ -18,7 +18,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   two hundred. Every iteration of a coding session on a repository now keeps its own patch, and
   `AI output` offers, right under the request, **“See what this iteration changed”** — the same
   screen as the project diff (file tree, whole file with the changes in place), bounded to that
-  one pass. **Out-of-repo coding gets the same thing**, where there is no branch and no commit:
+  one pass. **Only the latest measurement is kept** — what you just asked for is what you re-read,
+  and every new pass erases the one before it. **Out-of-repo coding gets the same thing**, where
+  there is no branch and no commit:
   Mergerie keeps a tracking repository whose `.git` lives in its own working directory, so your
   folder receives nothing — dependency and build folders stay out of the diff, and past a size
   guard rail the measurement is dropped rather than slowing the coding down. Those tracking

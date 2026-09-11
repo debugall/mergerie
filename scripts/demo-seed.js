@@ -20,6 +20,7 @@ const { REVIEWS_DIR, TASKS_DIR, ensureDir, slugify, initDirs } = require('../src
    même merge request donnaient un fichier « non modifié » dans le viewer, donc pas de lignes
    numérotées — et les commentaires en attente, qui s'accrochent à une ligne, disparaissaient. */
 const { diffPour } = require('../src/demo-diff');
+const agentpassDemo = require('../src/agentpass');
 initDirs();
 
 /* Un PNG uni, fabriqué à la main : la démo a besoin d'une image, pas d'un binaire versionné.
@@ -566,13 +567,15 @@ index 1122334..5566778 100644
     const n = i + 1;
     const sortie = path.join(dossier, `output-v${n}.md`);
     fs.writeFileSync(sortie, passe.out, 'utf8');
-    const patch = path.join(dossier, `diff-v${n}.patch`);
-    fs.writeFileSync(patch, passe.diff, 'utf8');
-    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at,
-        favori, titre, base_sha, head_sha, diff_path)
-      VALUES ('task',?,?,?,?,?,?,?,?,?,?,?,?)`)
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at, favori, titre)
+      VALUES ('task',?,?,?,?,?,?,?,?,?)`)
       .run(t1.lastInsertRowid, tgt1, n, passe.kind, passe.prompt, sortie, at(passe.jours),
-        passe.favori ? 1 : 0, passe.titre || null, `demo${n}base`, `demo${n}head`, patch);
+        passe.favori ? 1 : 0, passe.titre || null);
+    /* SEULE LA DERNIÈRE ITÉRATION GARDE SON DIFF — et c'est `attacherDiff` qui applique la
+       règle, ici comme en production : semer les trois patchs à la main puis en effacer deux
+       aurait fabriqué à la main l'état que le code sait produire. */
+    agentpassDemo.attacherDiff('task', t1.lastInsertRowid, tgt1, n,
+      { baseSha: `demo${n}base`, headSha: `demo${n}head`, diff: passe.diff });
   });
   db.prepare('UPDATE task_target SET output_path = ? WHERE id = ?')
     .run(path.join(dossier, `output-v${PASSES_T1.length}.md`), tgt1);
@@ -714,7 +717,6 @@ const LOCAL_PASSES = {
    vit sous `data-demo/`, effacé et refait à chaque semis. Semer un patch à la main aurait
    fabriqué une forme cousine de la vraie, qui aurait fini par en diverger. */
 const localsnapshot = require('../src/localsnapshot');
-const agentpassDemo = require('../src/agentpass');
 const DOSSIERS_DEMO = path.join(DEMO_DIR, 'dossiers-demo');
 const aSemer = [];
 

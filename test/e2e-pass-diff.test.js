@@ -5,9 +5,14 @@
  * ne distingue rien — au troisième suivi, la correction de trois lignes qu'on vient de
  * demander se cherche au milieu de deux cents, et on relit tout à chaque fois.
  *
- * Ce que ce fichier surveille tient en une comparaison : le diff d'une ITÉRATION ne montre que
- * ce que cette itération-là a changé, là où le diff du PROJET montre tout. Prouver la première
- * moitié sans la seconde ne prouverait rien — un diff vide passerait le test.
+ * Ce que ce fichier surveille tient en une comparaison : le diff de la DERNIÈRE itération ne
+ * montre que ce que cette itération-là a changé, là où le diff du PROJET montre tout. Prouver la
+ * première moitié sans la seconde ne prouverait rien — un diff vide passerait le test.
+ *
+ * Et une règle d'économie : SEULE LA DERNIÈRE mesure est gardée. Ce qu'on vient de demander est
+ * ce qu'on relit ; le diff de l'avant-dernier suivi n'est jamais rouvert et pèse pour rien. Une
+ * itération dépassée redevient donc une itération SANS mesure — l'écran s'y tait, au lieu de
+ * prétendre qu'elle n'a rien changé.
  *
  * La même promesse vaut HORS DÉPÔT, là où il n'y a ni branche ni commit : les bornes viennent
  * d'un dépôt de suivi tenu à l'écart, et le dossier de l'utilisateur ne reçoit rien — pas même
@@ -62,23 +67,25 @@ describe('Diff d’une itération de codage', () => {
   const passes = async () => (await app.api('GET', `/api/tasks/${tacheId}/targets/${cibleId}/passes`)).body.passes;
   const vue = async (n) => app.api('GET', `/api/tasks/${tacheId}/targets/${cibleId}/passes/${n}/diffview`);
 
-  test('chaque itération porte son propre diff, et le dit', async () => {
+  test('seule la dernière itération garde son diff', async () => {
     const liste = await passes();
     assert.deepEqual(liste.map((p) => p.kind), ['run', 'followup']);
-    assert.deepEqual(liste.map((p) => p.has_diff), [true, true]);
+    assert.deepEqual(liste.map((p) => p.has_diff), [false, true]);
+    /* Et l'itération dépassée ne dit pas « rien changé » : elle ne dit rien. Garder ses bornes
+       en effaçant son patch lui ferait affirmer le contraire de ce qui s'est passé. */
+    assert.deepEqual(liste.map((p) => p.no_change), [false, false]);
+    const r = await vue(1);
+    assert.equal(r.status, 400);
+    assert.ok(!/^err\./.test(r.body.error), `clé brute renvoyée : ${r.body.error}`);
   });
 
   /* LE CŒUR. Le suivi n'a demandé qu'un renommage : son diff ne doit pas reparler de
      l'endpoint du lancement. Le diff du PROJET, lui, porte les deux — c'est la comparaison des
      deux qui prouve qu'on a bien deux vues différentes, et pas deux fois la même. */
-  test('le diff d’un suivi ne montre QUE ce que ce suivi a changé', async () => {
+  test('le diff du dernier suivi ne montre QUE ce que ce suivi a changé', async () => {
     const suivi = ajouts((await vue(2)).body.diff);
     assert.match(suivi, /compteur en total/, 'le suivi a bien écrit quelque chose');
     assert.doesNotMatch(suivi, /sante applicative/, 'le travail du lancement n’a rien à faire là');
-
-    const lancement = ajouts((await vue(1)).body.diff);
-    assert.match(lancement, /sante applicative/);
-    assert.doesNotMatch(lancement, /compteur en total/);
 
     // …et le diff du projet, lui, porte bien les deux : sans cela, on aurait juste perdu du diff.
     const projet = ajouts((await app.api('GET', `/api/tasks/${tacheId}/targets/${cibleId}/diff`)).body.diff);
@@ -139,6 +146,35 @@ describe('Diff d’une itération de codage', () => {
     assert.ok(!/^err\./.test(r.body.error), `clé brute renvoyée : ${r.body.error}`);
   });
 
+  /* LES SESSIONS MESURÉES AVANT QUE LA RÈGLE N'EXISTE portent un patch par itération. Le
+     ménage quotidien les ramène à la règle — un seul patch par unité, le dernier — sans code de
+     migration à part. On fabrique donc ici une unité « d'avant », à la main. */
+  test('le ménage ramène les mesures d’avant à un seul diff par unité', async () => {
+    const agentpass = require('../src/agentpass');
+    const dossier = path.join(app.dataDir, 'tasks', '424242', '7');
+    fs.mkdirSync(dossier, { recursive: true });
+    const patchs = [1, 2, 3].map((n) => {
+      const f = path.join(dossier, `diff-v${n}.patch`);
+      fs.writeFileSync(f, `diff --git a/x${n} b/x${n}\n`);
+      return f;
+    });
+    const db = require('../src/db');
+    patchs.forEach((f, i) => {
+      db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, created_at, base_sha, head_sha, diff_path)
+        VALUES ('task', 424242, 7, ?, 'followup', 'x', ?, ?, ?, ?)`)
+        .run(i + 1, new Date().toISOString(), `b${i}`, `h${i}`, f);
+    });
+
+    assert.ok(agentpass.purgerDiffsAnciens() >= 2);
+    const restantes = agentpass.list('task', 424242, 7);
+    assert.deepEqual(restantes.map((p) => !!p.diff_path), [false, false, true]);
+    assert.deepEqual(restantes.map((p) => !!p.head_sha), [false, false, true], 'les bornes partent avec le patch');
+    assert.deepEqual(patchs.map((f) => fs.existsSync(f)), [false, false, true]);
+
+    // Rejouable : un second passage ne trouve plus rien à oublier.
+    assert.equal(agentpass.purgerDiffsAnciens(), 0);
+  });
+
   /* LE HORS-DÉPÔT, qui code EN PLACE dans un dossier arbitraire. Il n'a ni branche ni commit :
      les bornes viennent d'un dépôt de SUIVI tenu à l'écart, dans le dossier de travail de
      Mergerie. La promesse est la même qu'au-dessus — et une promesse de plus, propre à cette
@@ -166,24 +202,25 @@ describe('Diff d’une itération de codage', () => {
 
     const vueLocale = async (n) => app.api('GET', `/api/local-tasks/${localId}/dirs/${dirId}/passes/${n}/diffview`);
 
-    test('chaque itération hors dépôt porte son propre diff', async () => {
+    test('hors dépôt aussi, seule la dernière itération garde son diff', async () => {
       const liste = (await app.api('GET', `/api/local-tasks/${localId}/dirs/${dirId}/passes`)).body.passes;
       assert.deepEqual(liste.map((p) => p.kind), ['run', 'followup']);
-      assert.deepEqual(liste.map((p) => p.has_diff), [true, true]);
+      assert.deepEqual(liste.map((p) => p.has_diff), [false, true]);
+      const patchs = fs.readdirSync(path.join(app.dataDir, 'tasks', 'local', String(localId), String(dirId)))
+        .filter((f) => f.endsWith('.patch'));
+      assert.deepEqual(patchs, ['diff-v2.patch'], 'le patch dépassé est parti du disque, pas seulement de la base');
     });
 
     /* Le point qui distingue un diff d'itération d'un diff cumulé : les deux passes écrivent
-       ici la MÊME ligne dans le même fichier. Le diff de la seconde ne doit donc porter QUE
-       l'ajout de la seconde — et le fichier, lui, en compte bien deux au bout. */
+       ici la MÊME ligne dans le même fichier. Le fichier en porte donc deux au bout, et le diff
+       de la dernière itération ne doit en montrer QU'UNE. */
     test('le diff d’un suivi hors dépôt ne porte que l’ajout de ce suivi', async () => {
-      const lignes = (d) => ajouts(d).split('\n').filter(Boolean).length;
-      const p1 = lignes((await vueLocale(1)).body.diff);
-      const p2 = lignes((await vueLocale(2)).body.diff);
-      assert.ok(p1 >= 1 && p2 >= 1, `${p1} / ${p2}`);
-      assert.equal(p2, p1, 'les deux passes ont écrit la même chose : autant de lignes chacune');
-
       const trace = fs.readFileSync(path.join(dossier, 'PROJ_LOCAL_DRYRUN.md'), 'utf8');
-      assert.equal(trace.split('## ').length - 1, 2, 'le fichier, lui, a bien reçu les deux passages');
+      assert.equal(trace.split('## ').length - 1, 2, 'le fichier a bien reçu les deux passages');
+
+      const ajoutees = ajouts((await vueLocale(2)).body.diff).split('\n').filter(Boolean);
+      assert.equal(ajoutees.filter((l) => l.startsWith('+## ')).length, 1,
+        `un seul passage dans le diff du dernier suivi :\n${ajoutees.join('\n')}`);
     });
 
     /* LA RÈGLE DU HORS-DÉPÔT : on ne dépose rien chez l'utilisateur. Pas même le `.git` qui
