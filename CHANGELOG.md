@@ -18,8 +18,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   two hundred. Every iteration of a coding session on a repository now keeps its own patch, and
   `AI output` offers, right under the request, **“See what this iteration changed”** — the same
   screen as the project diff (file tree, whole file with the changes in place), bounded to that
-  one pass. An iteration that changed nothing in the code says so; an iteration older than this
-  addition, and out-of-repo coding, show nothing rather than promise a diff they do not have.
+  one pass. **Out-of-repo coding gets the same thing**, where there is no branch and no commit:
+  Mergerie keeps a tracking repository whose `.git` lives in its own working directory, so your
+  folder receives nothing — dependency and build folders stay out of the diff, and past a size
+  guard rail the measurement is dropped rather than slowing the coding down. An iteration that
+  changed nothing says so; one older than this addition shows nothing rather than promise a diff
+  it does not have.
 - **Agents — a new tab, and a different way of launching the AI.** An agent is a *session
   profile*: a role, a scope of repositories, tools, skills, subagents, an output, sometimes a
   schedule. A session launched inside a clone already has the code, the repository's CLAUDE.md

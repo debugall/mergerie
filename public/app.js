@@ -8843,7 +8843,9 @@ async function openPassDiff(base, passe) {
   };
   $('#splitView').classList.add('session-mode');
   const quoi = tr('task.pass.diff-title', { n: passe.n, kind: tr(`task.pass.kind.${passe.kind}`) });
-  $('#splitTitle').textContent = `${dv.project} — ${dv.branch} · ${quoi}`;
+  // Hors dépôt, il n'y a pas de branche : le tiret qui l'annonce n'aurait rien à annoncer.
+  const ou = dv.branch ? `${dv.project} — ${dv.branch}` : dv.project;
+  $('#splitTitle').textContent = `${ou} · ${quoi}`;
   $('#splitMd').innerHTML = passBodyHtml({ ...passe, has_diff: 0, no_change: 0 });
   renderTree();
   $('#splitView').hidden = false;

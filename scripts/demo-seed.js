@@ -681,15 +681,43 @@ const LOCAL_OUT = {
    retour courant pour toutes les autres vues. */
 const LOCAL_PASSES = {
   '/home/moi/dev/backup-tool': [
-    { kind: 'run', prompt: lt1prompt, jours: 2.4, out: `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` avec les quatre niveaux.\n- Remplacé les \`console.log\` de \`backup.js\`.\n\n## Reste à faire\n\n\`restore.js\` n'est pas traité : ses sorties sont lues par un script appelant, je préfère une consigne avant d'y toucher.\n` },
-    { kind: 'followup', favori: true, titre: 'stdout gardé pour les données', prompt: 'Les sorties de restore.js sont consommées par un script appelant : garde stdout pour ces données-là et route les logs vers stderr.', jours: 2.2, out: `## Ce que j'ai fait\n\n- \`restore.js\` : logs vers \`stderr\`, données utiles laissées sur \`stdout\`.\n- Vérifié les 14 appels remplacés.\n` },
-    { kind: 'followup', prompt: 'Ajoute un test par cas : format, niveaux, filtrage, sortie stderr.', jours: 2 },
+    { kind: 'run', prompt: lt1prompt, jours: 2.4,
+      fichiers: {
+        'src/logger.js': "'use strict';\n\nconst NIVEAUX = ['debug', 'info', 'warn', 'error'];\n\nfunction log(niveau, message) {\n  if (!NIVEAUX.includes(niveau)) throw new Error(`niveau inconnu : ${niveau}`);\n  process.stderr.write(`${new Date().toISOString()} ${niveau.toUpperCase()} ${message}\\n`);\n}\n\nmodule.exports = { log, NIVEAUX };\n",
+        'backup.js': "'use strict';\nconst { log } = require('./src/logger');\n\nfunction sauvegarder(source, cible) {\n  log('info', `sauvegarde ${source} → ${cible}`);\n  return { source, cible };\n}\n\nmodule.exports = { sauvegarder };\n",
+      }, out: `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` avec les quatre niveaux.\n- Remplacé les \`console.log\` de \`backup.js\`.\n\n## Reste à faire\n\n\`restore.js\` n'est pas traité : ses sorties sont lues par un script appelant, je préfère une consigne avant d'y toucher.\n` },
+    { kind: 'followup', favori: true, titre: 'stdout gardé pour les données', prompt: 'Les sorties de restore.js sont consommées par un script appelant : garde stdout pour ces données-là et route les logs vers stderr.', jours: 2.2,
+      fichiers: {
+        'restore.js': "'use strict';\nconst { log } = require('./src/logger');\n\nfunction restaurer(archive) {\n  log('info', `restauration de ${archive}`);\n  // Les DONNÉES restent sur stdout : un script appelant les consomme.\n  process.stdout.write(JSON.stringify({ archive, ok: true }) + '\\n');\n}\n\nmodule.exports = { restaurer };\n",
+      }, out: `## Ce que j'ai fait\n\n- \`restore.js\` : logs vers \`stderr\`, données utiles laissées sur \`stdout\`.\n- Vérifié les 14 appels remplacés.\n` },
+    { kind: 'followup', prompt: 'Ajoute un test par cas : format, niveaux, filtrage, sortie stderr.', jours: 2,
+      fichiers: {
+        'test/logger.test.js': "'use strict';\nconst test = require('node:test');\nconst assert = require('node:assert/strict');\nconst { log, NIVEAUX } = require('../src/logger');\n\ntest('les quatre niveaux sont acceptés', () => {\n  for (const n of NIVEAUX) assert.doesNotThrow(() => log(n, 'coucou'));\n});\n\ntest('un niveau inconnu est refusé', () => {\n  assert.throws(() => log('verbeux', 'x'), /niveau inconnu/);\n});\n",
+      } },
   ],
   '/home/moi/dev/csv-cleaner': [
-    { kind: 'run', prompt: lt1prompt, jours: 2.4, out: `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` (copie locale).\n- Remplacé les 6 \`console.log\` de \`clean.js\`.\n` },
-    { kind: 'followup', prompt: 'Ajoute aussi un test du logger, comme dans backup-tool.', jours: 2 },
+    { kind: 'run', prompt: lt1prompt, jours: 2.4, out: `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` (copie locale).\n- Remplacé les 6 \`console.log\` de \`clean.js\`.\n`,
+      fichiers: {
+        'src/logger.js': "'use strict';\n\nfunction log(niveau, message) {\n  process.stderr.write(`${new Date().toISOString()} ${niveau.toUpperCase()} ${message}\\n`);\n}\n\nmodule.exports = { log };\n",
+        'clean.js': "'use strict';\nconst { log } = require('./src/logger');\n\nfunction nettoyer(lignes) {\n  log('info', `${lignes.length} lignes à nettoyer`);\n  return lignes.map((l) => l.trim()).filter(Boolean);\n}\n\nmodule.exports = { nettoyer };\n",
+      } },
+    { kind: 'followup', prompt: 'Ajoute aussi un test du logger, comme dans backup-tool.', jours: 2,
+      fichiers: {
+        'test/logger.test.js': "'use strict';\nconst test = require('node:test');\nconst { log } = require('../src/logger');\n\ntest('le logger écrit sur stderr', () => { log('info', 'ok'); });\n",
+      } },
   ],
 };
+/* LES DIFFS DES ITÉRATIONS HORS DÉPÔT, fabriqués par le CODE DE PRODUCTION. `localsnapshot`
+   tient un dépôt de suivi hors du dossier de travail : on rejoue donc ici, passe après passe,
+   ce que la vraie session fait — écrire des fichiers entre deux instantanés. Le dossier
+   montré à l'écran reste fictif (`/home/moi/dev/backup-tool`) ; celui qu'on écrit vraiment
+   vit sous `data-demo/`, effacé et refait à chaque semis. Semer un patch à la main aurait
+   fabriqué une forme cousine de la vraie, qui aurait fini par en diverger. */
+const localsnapshot = require('../src/localsnapshot');
+const agentpassDemo = require('../src/agentpass');
+const DOSSIERS_DEMO = path.join(DEMO_DIR, 'dossiers-demo');
+const aSemer = [];
+
 for (const p of Object.keys(LOCAL_OUT)) {
   const info = db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
     .run(lt1.lastInsertRowid, p, 'done', at(2));
@@ -708,6 +736,29 @@ for (const p of Object.keys(LOCAL_OUT)) {
       .run(lt1.lastInsertRowid, info.lastInsertRowid, i + 1, passe.kind, passe.prompt, fichier, at(passe.jours),
         passe.favori ? 1 : 0, passe.titre || null);
   });
+  aSemer.push({ dirId: info.lastInsertRowid, chemin: p, passes: LOCAL_PASSES[p] || [] });
+}
+
+/* Rejoue les passes d'un dossier hors dépôt dans un vrai dossier, pour que chaque itération
+   ait son diff comme en production. Asynchrone — d'où le `then` de la dernière ligne. */
+async function semerDiffsLocaux() {
+  for (const { dirId, chemin, passes } of aSemer) {
+    const reel = ensureDir(path.join(DOSSIERS_DEMO, path.basename(chemin)));
+    for (const [i, passe] of passes.entries()) {
+      if (!passe.fichiers) continue;
+      const avant = await localsnapshot.avant(lt1.lastInsertRowid, dirId, reel);
+      if (!avant) continue;
+      for (const [rel, contenu] of Object.entries(passe.fichiers)) {
+        ensureDir(path.dirname(path.join(reel, rel)));
+        fs.writeFileSync(path.join(reel, rel), contenu, 'utf8');
+      }
+      const apres = await localsnapshot.apres(lt1.lastInsertRowid, dirId, avant);
+      if (apres) {
+        agentpassDemo.attacherDiff('local', lt1.lastInsertRowid, dirId, i + 1,
+          { baseSha: avant, headSha: apres.sha, diff: apres.diff });
+      }
+    }
+  }
 }
 /* Codage hors dépôt CRÉÉ MAIS PAS LANCÉ (« Créer sans lancer ») : la carte porte alors un
    bouton « Lancer », et le badge du menu compte le travail en attente. Sans cet exemple,
@@ -1403,4 +1454,6 @@ const counts = {
 }
 
 
-console.log('Base de démo semée dans data-demo/ :', JSON.stringify(counts));
+semerDiffsLocaux().then(() => {
+  console.log('Base de démo semée dans data-demo/ :', JSON.stringify(counts));
+});

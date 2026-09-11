@@ -628,8 +628,18 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   rien de plus que le diff de la branche. `Échap` referme le diff et **rend l'itération**, pas la
   liste des sessions. Une itération qui **n'a rien changé au code** (l'IA s'est arrêtée pour poser
   ses questions, ou a constaté que tout était déjà fait) le dit au lieu d'ouvrir une vue vide ; une
-  itération **antérieure à cette mesure**, et tout le **hors dépôt** — qui code en place, sans git —
-  n'affichent rien : promettre un diff qu'on n'a pas est pire que se taire.
+  itération **antérieure à cette mesure** n'affiche rien : promettre un diff qu'on n'a pas est pire
+  que se taire.
+  **Hors dépôt aussi.** Là, il n'y a ni branche ni commit : Mergerie tient un **dépôt de suivi**
+  dont l'arbre de travail est ton dossier mais dont le `.git` vit **dans son propre dossier de
+  travail** — ton dossier ne reçoit rien, pas même le git qui sert à mesurer, et s'il est déjà un
+  dépôt le sien n'est ni lu ni écrit. Deux instantanés par passe, et le diff entre les deux. Ce que
+  ton dossier ignore déjà (`.gitignore`) est ignoré ici aussi, plus les dossiers de dépendances et
+  d'artefacts — `node_modules/`, `dist/`, `.venv/` et les autres : les voir dans le diff d'un suivi
+  le rendrait illisible. Et un **garde-fou** : au-delà de 20 000 fichiers ou 512 Mo, la mesure est
+  abandonnée pour ce dossier — une fois pour toutes — et le journal le dit. Le codage, lui, se
+  poursuit normalement : ralentir un travail pour une commodité de relecture serait le mauvais
+  échange.
 - **⌨️ Reprendre la session au terminal.** Chaque projet d'une session de codage (dépôt **ou** hors dépôt),
   ainsi que les reviews, expose un bouton **« Reprendre au terminal »** qui copie la **commande prête à
   coller** : `cd` vers le bon dossier + lancement de l'agent avec l'**identifiant de session** (claude

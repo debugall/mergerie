@@ -73,6 +73,7 @@ const { StringDecoder } = require('node:string_decoder');
 const aisession = require('./aisession');
 const agentsession = require('./agentsession');
 const agentpass = require('./agentpass');
+const localsnapshot = require('./localsnapshot');
 const localcoder = require('./localcoder');
 const pieces = require('./pieces');
 const localrepos = require('./localrepos');
@@ -3226,6 +3227,47 @@ app.get('/api/local-tasks/:id/dirs/:did/passes', wrap((req, res) => {
     .get(Number(req.params.did), Number(req.params.id));
   if (!d) throw new Error(t('err.local-dir-introuvable'));
   res.json(passesPayload('local', d.id, Number(req.params.id), req.query.n, d.path, d.output_path));
+}));
+
+/* LE DIFF D'UNE ITÉRATION HORS DÉPÔT. Mêmes trois routes, même viewer, même forme que côté
+   dépôt : seule la provenance du patch change. Ici il n'y a ni branche ni commit dans le
+   dossier de l'utilisateur — les deux bornes sont des commits du dépôt de SUIVI, qui vit dans
+   le dossier de travail de Mergerie (`localsnapshot`), et c'est lui qu'on interroge. */
+function dossierLocalOu404(taskId, dirId) {
+  const d = db.prepare('SELECT * FROM local_task_dir WHERE id = ? AND task_id = ?').get(Number(dirId), Number(taskId));
+  if (!d) throw new Error(t('err.local-dir-introuvable'));
+  return d;
+}
+function ctxPasseLocale(taskId, d, p) {
+  const gitdir = localsnapshot.dossierSuivi(Number(taskId), d.id);
+  if (!fs.existsSync(gitdir)) throw new Error(t('err.task.pass-no-diff'));
+  return { cwd: gitdir, ref: p.head_sha, target: p.base_sha, shaRange: true };
+}
+function passeLocaleDe(taskId, d, n) {
+  const p = agentpass.get('local', Number(taskId), d.id, Number(n));
+  if (!p) throw new Error(t('err.task.pass-not-found'));
+  return p;
+}
+
+app.get('/api/local-tasks/:id/dirs/:did/passes/:n/diffview', wrap(async (req, res) => {
+  const d = dossierLocalOu404(req.params.id, req.params.did);
+  const p = passeLocaleDe(req.params.id, d, req.params.n);
+  const diff = diffDePasse(p);
+  res.json({
+    ...(await viewerPayload(ctxPasseLocale(req.params.id, d, p), { diff, source: d.path })),
+    project: d.path, branch: '',
+    pass: { n: p.n, kind: p.kind, titre: p.titre || '', prompt: p.prompt || '' },
+  });
+}));
+app.get('/api/local-tasks/:id/dirs/:did/passes/:n/file', wrap(async (req, res) => {
+  const d = dossierLocalOu404(req.params.id, req.params.did);
+  const p = passeLocaleDe(req.params.id, d, req.params.n);
+  res.json(await viewerFile(ctxPasseLocale(req.params.id, d, p), String(req.query.path || '')));
+}));
+app.get('/api/local-tasks/:id/dirs/:did/passes/:n/filediff', wrap(async (req, res) => {
+  const d = dossierLocalOu404(req.params.id, req.params.did);
+  const p = passeLocaleDe(req.params.id, d, req.params.n);
+  res.json(await viewerFileDiff(ctxPasseLocale(req.params.id, d, p), String(req.query.path || '')));
 }));
 
 // Retour de l'agent pour UN dossier (ce qu'il dit avoir fait).

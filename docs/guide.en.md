@@ -609,8 +609,17 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   than the branch diff does. `Escape` closes the diff and **gives the iteration back**, not the
   session list. An iteration that **changed nothing in the code** (the AI stopped to ask its
   questions, or found everything already done) says so instead of opening an empty view; an
-  iteration **predating this measurement**, and all **out-of-repo** work — which codes in place,
-  with no git — show nothing: promising a diff you do not have is worse than staying silent.
+  iteration **predating this measurement** shows nothing: promising a diff you do not have is worse
+  than staying silent.
+  **Out of repository too.** There is no branch and no commit there, so Mergerie keeps a **tracking
+  repository** whose work tree is your folder but whose `.git` lives **in its own working
+  directory** — your folder receives nothing, not even the git used to measure, and if it already
+  is a repository its own `.git` is never read or written. Two snapshots per pass, and the diff
+  between them. Whatever your folder already ignores (`.gitignore`) is ignored here too, plus
+  dependency and build folders — `node_modules/`, `dist/`, `.venv/` and the rest: seeing those in a
+  follow-up's diff would make it unreadable. And a **guard rail**: past 20,000 files or 512 MB the
+  measurement is abandoned for that folder — once and for all — and the log says so. The coding
+  itself carries on: slowing work down for a re-reading convenience would be the wrong trade.
 - **⌨️ Resume the session in a terminal.** Every project of a coding session (repository **or** out-of-repo),
   and the reviews too, exposes a **“Resume in terminal”** button that copies the **ready-to-paste command**:
   a `cd` to the right folder plus the agent launched with the **session identifier** (claude
