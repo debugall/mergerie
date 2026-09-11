@@ -14367,9 +14367,26 @@ function appliquerAgent(a) {
   const f = $('#taskForm');
   if (f.ask_questions) f.ask_questions.checked = !!d.ask_questions;
   if (f.notify_jira) f.notify_jira.checked = !!d.notify_jira;
-  if (a.scope_kind === 'repos' && a.repos.length && taskKind !== 'code') {
-    renderTargetRows(a.repos.map((r) => ({ repo_id: r.repo_id, branch: r.branch || '' })));
+  if (taskKind !== 'code') {
+    const cibles = ciblesEcranDe(a);
+    /* Aucun dépôt à poser : on ne touche pas aux lignes en place. Un agent sans périmètre ne
+       doit pas effacer ce que l'écran montrait déjà. */
+    if (cibles.length) { renderTargetRows(cibles); majSkillsSession(); }
   }
+}
+
+/* LES DÉPÔTS D'UN AGENT, TELS QUE LA MODALE DOIT LES MONTRER. « Tous les dépôts actifs »
+   n'était traduit en lignes nulle part : le cartographe s'ouvrait sur une ligne vide, alors
+   qu'un run déclenché par l'horloge part, lui, sur tout le périmètre — l'écran démentait ce
+   qui allait partir, et il fallait re-choisir à la main ce qui était déjà choisi. Même ordre
+   que le serveur (par projet) : la liste qu'on lit est celle qui partira. */
+function ciblesEcranDe(a) {
+  if (a.scope_kind === 'all_repos') {
+    return repoOptions.filter((r) => r.enabled)
+      .slice().sort((x, y) => String(x.project).localeCompare(String(y.project)))
+      .map((r) => ({ repo_id: r.id, branch: '' }));
+  }
+  return (a.repos || []).map((r) => ({ repo_id: r.repo_id, branch: r.branch || '' }));
 }
 
 function rendreComboAgentSession() {

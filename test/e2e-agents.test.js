@@ -178,6 +178,28 @@ describe('Agents : l’onglet, les profils, les runs', { skip: dispo ? false : M
     assert.equal(hint.project, 'grp/app');
   });
 
+  test('un agent « tous les dépôts actifs » ouvre la session AVEC tous les dépôts actifs', async () => {
+    /* Le périmètre de l'agent n'est pas une note d'intention : c'est ce qui partira. La modale
+       ne posait de lignes que pour un périmètre nommé dépôt par dépôt, donc un cartographe
+       « tous les dépôts actifs » s'ouvrait sur une ligne vide — et il fallait re-choisir à la
+       main ce qui était déjà choisi. Un dépôt désactivé, lui, reste dehors : c'est le mot
+       « actifs » du périmètre. */
+    const autre = makeRemoteRepo(path.join(app.dataDir, 'depot2'));
+    await app.api('POST', '/api/repos', { url: autre.url, project: 'grp/autre' });
+    const eteint = await app.api('POST', '/api/repos', { url: 'https://gitlab.com/grp/eteint.git', project: 'grp/eteint' });
+    await app.api('PUT', `/api/repos/${eteint.body.id}`, { enabled: 0 });
+
+    await rechargerListe();
+    await page.locator('#agentList .agent-card', { hasText: 'Enquêteur' }).locator('.btn-agent-ask').click();
+    await page.waitForSelector('#taskModal:not([hidden])');
+    await page.waitForFunction(() => document.querySelectorAll('#targetRows .target-row').length === 2);
+    const projets = await page.$$eval('#targetRows .target-row .t-repo-search', (els) => els.map((e) => e.value));
+    assert.deepEqual(projets, ['grp/app', 'grp/autre']);
+
+    await page.locator('#taskCancel').click();
+    await page.waitForSelector('#taskModal', { state: 'hidden' });
+  });
+
   test('la carte de session porte la pastille de son agent', async () => {
     await page.locator('nav button[data-tab="task"]').click();
     await page.locator('#tab-task .subnav [data-kind="explore"]').click();
