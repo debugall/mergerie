@@ -36,15 +36,19 @@ let lastUsageId = null;
    question libre, un codage hors dépôt). Facultatif : sans lui la ligne reste comptée dans sa
    famille, comme avant. C'est ce qui permet de dire QUELLES sessions coûtent, pas seulement
    combien coûtent les sessions. */
-function recordUsage(kind, prompt, output, extraInput, owner) {
+/* `costUsd` : le coût ANNONCÉ par le backend, quand il en annonce un (le flux `claude` le
+   donne à la fin de chaque passe). L'estimation en tokens reste calculée dans tous les cas —
+   elle est le seul chiffre disponible sur un backend muet, et les deux se lisent côte à côte. */
+function recordUsage(kind, prompt, output, extraInput, owner, costUsd) {
   try {
     const inText = String(prompt || '') + (extraInput ? `\n${extraInput}` : '');
     const outText = String(output || '');
     const tokens = countTokens(inText) + countTokens(outText);
-    const info = db.prepare(`INSERT INTO usage (kind, prompt_chars, output_chars, tokens_est, created_at, owner_kind, owner_id)
-      VALUES (?,?,?,?,?,?,?)`)
+    const info = db.prepare(`INSERT INTO usage (kind, prompt_chars, output_chars, tokens_est, created_at, owner_kind, owner_id, cost_usd)
+      VALUES (?,?,?,?,?,?,?,?)`)
       .run(kind || null, inText.length, outText.length, tokens, new Date().toISOString(),
-        (owner && owner.kind) || null, (owner && owner.id) || null);
+        (owner && owner.kind) || null, (owner && owner.id) || null,
+        typeof costUsd === 'number' ? costUsd : null);
     lastUsageId = info.lastInsertRowid;
   } catch { /* usage best-effort */ }
 }

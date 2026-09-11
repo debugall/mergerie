@@ -27,6 +27,9 @@ operation instead of a manual repo-by-repo chore.
   session's project line — the CI verdict meets the review without leaving the tool.
 - **See what version runs where** — a clear view of which build is deployed on each environment, so "is my
   fix live?" is answered at a glance.
+- **CI diagnosis** — when a pipeline goes red, hand the failing job's log to the incident investigator
+  (Agents, since this release): it already knows how to find, across every clone, which repository and
+  which file the trace names. The missing half is reading the pipeline itself, which is the item above.
 
 ## Objective convergence anchors
 

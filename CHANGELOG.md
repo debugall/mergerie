@@ -13,6 +13,46 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Agents — a new tab, and a different way of launching the AI.** An agent is a *session
+  profile*: a role, a scope of repositories, tools, skills, subagents, an output, sometimes a
+  schedule. A session launched inside a clone already has the code, the repository's CLAUDE.md
+  and its skills; what it does not have, Mergerie does — the twenty other clones, what was just
+  merged, and cross-cutting knowledge that lives *between* repositories. An agent run is an
+  ordinary session: same follow-ups, same questions, same archived passes, same cost. Three
+  rules hold everywhere: an agent never pushes and never publishes on its own, never guesses a
+  repository, and never handles conversations between humans.
+- **Two agents ship with the tool.** The **incident investigator** takes a trace, a log or a
+  ticket excerpt, searches every clone, and names the repository, the file and the line with a
+  likely cause — and if nothing matches it says so instead of offering a plausible repository.
+  Its report carries a *Fix in <repository>* button that opens a coding session on the right
+  one. The **librarian** keeps the service map in a note page — created once, updated on every
+  run, never duplicated. Both are editable, and restorable with one button.
+- **Domain agents: “where do we handle notifications, here?”, answered once.** Give a subject;
+  the cartographer searches the repositories and writes the map — entry points, mechanisms,
+  types, configuration, tests, pitfalls. Every quoted path is opened inside the clone: one that
+  does not exist is marked *(unverified)* and counted. The agent can then be asked, or asked to
+  code with its repositories pre-ticked. It reports what it finds wrong in its own map rather
+  than silently fixing it.
+- **You know when a map has aged, for free.** The knowledge records each repository's SHA and
+  the paths it quotes; Mergerie counts the commits that touched *those paths* since — “7 commits
+  since the map”, with no AI call. *Update* relaunches the cartographer with the previous map,
+  the reported gaps and those commits (“look here first”); the result waits for you with a
+  readable diff, and the agent keeps working from the old one until you validate. The team's
+  hand-written notes are carried over by the code, not merely by the prompt.
+- **Your skills, listed instead of remembered.** A sub-tab shows the `.claude/skills/` and
+  `.claude/agents/` of your cloned repositories and of your home — read-only, Mergerie never
+  writes there. In a session they are ticked, and typing `/` in the request offers the skills,
+  `@` the subagents. Nothing is inserted without an explicit choice.
+- **The log finally says what the AI used, and what it cost.** A skill invocation now appears as
+  `» skill <name>`, a subagent as `» sous-agent <name> — <what it was asked>`, and what a
+  subagent says is indented so you can tell who is speaking. Actions blocked by permissions are
+  reported at the end of the run, and the real cost in dollars is kept alongside the token
+  estimate — including per agent, in the statistics.
+- **Agents can run on a schedule.** Every day, every week, or every month, at a set time. A slot
+  missed because the machine was off is caught up rather than lost, and a daily ceiling bounds
+  what may trigger on its own. The morning brief says what ran during the night, and what is
+  waiting for you.
+
 - **Any window you type into can be set aside and picked back up.** A modal covered the whole
   screen, so going to check a branch name or a ticket's state meant either giving up on checking
   or closing the window and losing what you had written. Every window with fields now has a `—`

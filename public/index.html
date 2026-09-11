@@ -168,6 +168,7 @@
 <nav class="sidebar" id="sidebar">
         <button data-tab="review" class="active" title="Merge requests : à traiter, reviewées, traitées" data-i18n-title="ui.title.merge-requests-a-traiter-reviewees"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="nav.reviews">Reviews</span><span class="nav-count" id="navCountReview" hidden>0</span><span class="nav-health warn" id="navLowScores" hidden>0</span></button>
         <button data-tab="task" title="Sessions de développement pilotées par l'IA" data-i18n-title="ui.title.sessions-de-developpement-pilotees-par"><svg class="ico"><use href="#i-bot"/></svg><span data-i18n="nav.tasks">Dev IA</span><span class="nav-count" id="navCountTask" hidden>0</span></button>
+        <button data-tab="agents" title="Agents : des profils de session outillés — enquêteur d'incident, documentaliste, agents de domaine" data-i18n-title="agents.tab.title"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="nav.agents">Agents</span><span class="nav-count" id="navCountAgents" hidden>0</span></button>
         <button data-tab="notes" title="Notes, todos et rappels — et le brief du matin" data-i18n-title="ui.title.notes"><svg class="ico"><use href="#i-clip"/></svg><span data-i18n="nav.notes">Notes</span><span class="nav-health err" id="navTodoUrgent" hidden>0</span><span class="nav-count" id="navCountNotes" hidden>0</span></button>
         <button data-tab="jira" title="Mes tickets Jira affectés : contenu, métadonnées, commentaires" data-i18n-title="jira.tab.title"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="nav.jira">Jira</span><span class="nav-count" id="navCountJira" hidden>0</span></button>
         <button data-tab="git" title="Opérations sur les dépôts : branches et tags" data-i18n-title="git.tab.title"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="nav.git">Git</span></button>
@@ -289,7 +290,10 @@
             <button id="btnNewTask" class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg><span id="btnNewTaskLabel" data-i18n="ui.span.nouvelle-session-de-codage">Nouvelle session de codage</span></button>
             <span id="taskKindHint" class="muted"></span>
         </div>
-        <input id="taskSearch" class="search" type="search" placeholder="Rechercher (prompt, projet, branche, dossier)…" data-i18n-placeholder="task.search.ph" aria-label="Rechercher une session" data-i18n-aria="task.search.aria" />
+        <div class="task-filters">
+            <input id="taskSearch" class="search" type="search" placeholder="Rechercher (prompt, projet, branche, dossier)…" data-i18n-placeholder="task.search.ph" aria-label="Rechercher une session" data-i18n-aria="task.search.aria" />
+            <div id="taskAgentFilterBox"></div>
+        </div>
         <div class="list-head">
             <label class="inline-check"><input type="checkbox" id="taskShowHidden" /> <span data-i18n="task.hidden.show">Afficher les sessions masquées</span></label>
             <span id="taskHiddenCount" class="muted"></span>
@@ -311,6 +315,44 @@
             <h2 data-i18n="verify.lots.title">Lots à vérifier ensemble</h2>
             <p class="muted" style="max-width:760px" data-i18n="verify.lots.intro">Un lot regroupe des merge requests de dépôts différents qui ne se tiennent que réunies. Le vérificateur les teste en une fois et le verdict vaut pour toutes. La sélection se fait depuis l'onglet Reviews.</p>
             <div id="lotList" class="list"></div>
+        </div>
+    </section>
+
+    <!-- AGENTS : des profils de session. Un agent Mergerie n'est pas un orchestrateur — c'est
+         ce qu'on met AUTOUR d'un lancement du CLI : un rôle, un périmètre, des outils, des
+         skills, des sous-agents, une sortie. Deux sous-onglets : les profils, et ce que le
+         disque offre (skills et sous-agents de fichier), qui se lit sans jamais s'écrire. -->
+    <section id="tab-agents" class="tab">
+        <div class="segmented subnav" role="tablist">
+            <button data-sub="list" class="active" role="tab" data-i18n-title="agents.sub.list-title" title="Les agents : profils de session, périmètre, sortie et horaire" data-i18n="agents.sub.list">Agents</button>
+            <button data-sub="skills" role="tab" data-i18n-title="agents.sub.skills-title" title="Ce que le disque offre : skills et sous-agents de fichier, en lecture seule" data-i18n="agents.sub.skills">Skills &amp; sous-agents</button>
+        </div>
+
+        <div id="sub-agents-list" class="subtab active">
+            <div class="toolbar">
+                <button id="btnNewDomainAgent" class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="agents.btn.new-domain">Nouvel agent de domaine</span></button>
+                <button id="btnNewAgent" class="btn"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="agents.btn.new">Nouvel agent</span></button>
+                <span class="spacer"></span>
+                <span id="agentListCopilotWarn" class="field-note" hidden data-i18n="agents.warn.copilot">Le backend configuré est copilot : seul le modèle est transmis, le reste du profil est ignoré.</span>
+            </div>
+            <div class="agent-filters">
+                <input id="agentFilter" class="search" type="search" placeholder="Rechercher un agent…" data-i18n-placeholder="agents.search.ph" data-i18n-aria="agents.search.aria" aria-label="Rechercher un agent" />
+                <div id="agentRepoFilterBox"></div>
+            </div>
+            <div id="agentList" class="list"></div>
+        </div>
+
+        <div id="sub-agents-skills" class="subtab">
+            <div class="toolbar">
+                <h2 style="margin:0" data-i18n="agents.skills.title">Skills &amp; sous-agents du disque</h2>
+                <span class="spacer"></span>
+                <button id="btnSkillRescan" class="btn" data-i18n-title="agents.skills.rescan-title" title="Relire les dossiers .claude des dépôts clonés et du home"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="agents.skills.rescan">Relire le disque</span></button>
+            </div>
+            <p class="muted" style="max-width:760px" data-i18n="agents.skills.intro">Mergerie lit les dossiers <code>.claude/skills/</code> et <code>.claude/agents/</code> des dépôts clonés et de ton home. Il ne les modifie jamais : cette liste est un miroir du disque.</p>
+            <div id="skillListBox">
+                <input id="skillFilter" class="search" type="search" placeholder="Filtrer par nom, description, dépôt…" data-i18n-placeholder="agents.skills.filter-ph" data-i18n-aria="agents.skills.filter-aria" aria-label="Filtrer les skills" />
+                <div id="skillList" class="list"></div>
+            </div>
         </div>
     </section>
 
@@ -1360,6 +1402,11 @@
             <div class="form">
                 <label><span data-i18n="settings.extra.lbl">Consignes ajoutées à chaque session</span>
                     <textarea form="configForm" name="ai_extra_instructions" rows="5" placeholder="Ex. : commente en français ; lance `npm run check` avant de committer." data-i18n-placeholder="settings.extra.ph"></textarea></label>
+                <!-- LE PLAFOND DES AGENTS AUTOMATIQUES, à côté de ce qui règle les sessions IA.
+                     Un horaire fait partir un agent sans qu'on soit là : ce chiffre est la
+                     limite qu'on met à ce qui peut se déclencher tout seul dans la journée. -->
+                <label><span data-i18n="ui.config.agent-auto-max">Runs d'agent automatiques par jour (0 = sans limite)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="ui.config.agent-auto-max-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input form="configForm" name="agent_auto_max" id="cfgAgentAutoMax" type="number" min="0" max="1000" step="1" placeholder="10" /></label>
                 <p>
                     <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
                     <span id="configInfoAi" class="muted"></span>
@@ -1471,7 +1518,7 @@
                  ouvrait la modale : on choisissait des dépôts avant d'avoir formulé la tâche,
                  et l'autofocus tombait dans un formulaire qu'il fallait redescendre. -->
             <label><span data-i18n="task.lbl.tache-a-realiser-prompt">Tâche à réaliser (prompt)</span> <button type="button" class="hint" tabindex="-1" aria-label="En codage : ce que l'IA doit implémenter, appliqué à chaque projet sélectionné. En exploration : la question posée sur le code, sans aucune modification." data-tip="En codage : ce que l'IA doit implémenter, appliqué à chaque projet sélectionné. En exploration : la question posée sur le code, sans aucune modification." data-i18n-tip="task.tip.en-codage-ce-que-l"><svg class="ico"><use href="#i-info"/></svg></button>
-                <textarea name="prompt" rows="5" placeholder="Décris la tâche de dev à faire… (ex. Ajouter un endpoint /health qui renvoie le statut)" data-i18n-placeholder="task.ph.decris-la-tache-de-dev" required></textarea>
+                <textarea id="taskPrompt" name="prompt" rows="5" placeholder="Décris la tâche de dev à faire… (ex. Ajouter un endpoint /health qui renvoie le statut)" data-i18n-placeholder="task.ph.decris-la-tache-de-dev" required></textarea>
             </label>
             <!-- CE QU'ON DEMANDE. Le ticket Jira REMPLIT le prompt : il se lit donc juste
                  au-dessus de lui, pas trois champs plus haut. -->
@@ -1487,6 +1534,14 @@
                      dossier Téléchargements pour chaque bug d'affichage. -->
                 <div id="taskJiraPieces" class="jira-pieces" hidden></div>
             </div>
+            <!-- QUEL AGENT PORTE CETTE SESSION. Juste APRÈS ce qu'on vient dire, et juste
+                 AVANT les dépôts : choisir un agent change les cibles, il faut donc l'avoir
+                 lu avant de les regarder. Pas plus haut — la première chose qu'on lit reste
+                 la demande, et c'est là que se pose le curseur. Masqué hors dépôt et en
+                 question libre : un profil parle de dépôts, et il n'y en a pas. -->
+            <label id="taskAgentRow"><span data-i18n="agents.task.agent">Agent (optionnel)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.task.agent-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <div id="taskAgentBox"></div>
+            </label>
             <div id="taskReposWrap" class="targets-editor">
                 <div class="targets-head">
                     <span id="targetsLabel" data-i18n="task.span.projets-et-branches">Projets et branches</span>
@@ -1574,6 +1629,22 @@
                     <span id="taskSessionHint" class="field-note" hidden></span>
                 </label>
                 </div>
+                <!-- CE QUE LA SESSION EMPORTE. Retrouver le nom exact d'un skill dans
+                     ~/.claude/skills/ se faisait au `ls` ; ici il se coche, et la ligne
+                     `/nom` part en tête du prompt. Les sous-agents de fichier cochés sont
+                     seulement NOMMÉS à l'agent — le CLI les charge lui-même depuis le dépôt. -->
+                <div id="taskSkillsRow">
+                    <p class="form-group-title" data-i18n="agents.task.skills">Skills et sous-agents disponibles</p>
+                    <div id="taskSkillsBox">
+                        <input id="taskSkillFilter" class="search" type="search" placeholder="Filtrer les skills…" data-i18n-placeholder="agents.task.skill-filter-ph" data-i18n-aria="agents.task.skill-filter-aria" aria-label="Filtrer les skills" />
+                        <div id="taskSkills" class="check-list"></div>
+                    </div>
+                    <div id="taskSubagentsBox">
+                        <input id="taskSubagentFilter" class="search" type="search" placeholder="Filtrer les sous-agents…" data-i18n-placeholder="agents.task.subagent-filter-ph" data-i18n-aria="agents.task.subagent-filter-aria" aria-label="Filtrer les sous-agents" />
+                        <div id="taskSubagents" class="check-list"></div>
+                    </div>
+                    <p class="muted" style="margin:4px 0 0" data-i18n="agents.task.skills-hint">Tape « / » dans la demande pour insérer un skill, « @ » pour nommer un sous-agent.</p>
+                </div>
                 <label id="taskCommitRow"><span data-i18n="task.lbl.message-de-commit-optionnel">Message de commit (optionnel)</span> <button type="button" class="hint" tabindex="-1" aria-label="Message du commit créé par l'IA. Vide = la première ligne du prompt est utilisée." data-tip="Message du commit créé par l'IA. Vide = la première ligne du prompt est utilisée." data-i18n-tip="task.tip.message-du-commit-cree-par"><svg class="ico"><use href="#i-info"/></svg></button>
                 <input name="commit_message" placeholder="défaut : 1ère ligne du prompt" data-i18n-placeholder="task.ph.defaut-1ere-ligne-du-prompt" />
             </label>
@@ -1584,6 +1655,174 @@
                 <button class="btn btn-primary" type="submit" id="taskSubmit" title="Enregistrer la tâche (ou la créer et la lancer selon le contexte)" data-i18n-title="task.title.enregistrer-la-tache-ou-la"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- ÉDITEUR D'AGENT. Un profil, c'est ce qu'on met AUTOUR d'un lancement du CLI. Les sections
+     suivent ce qu'on décide dans l'ordre : qui il est, où il regarde, ce qu'on lui dit, ce
+     qu'il a le droit de faire, ce qu'on fait de sa sortie, et quand il part tout seul.
+     L'aperçu de la ligne de commande ferme le formulaire : c'est la seule façon de voir ce que
+     tout cela produit VRAIMENT, et il est calculé par le serveur, pas deviné ici. -->
+<div id="agentModal" class="modal" hidden>
+    <div class="modal-box modal-lg">
+        <h3 id="agentModalTitle" data-i18n="agents.modal.title">Agent</h3>
+        <p id="agentCopilotWarn" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span data-i18n="agents.warn.copilot">Le backend configuré est copilot : seul le modèle est transmis, le reste du profil est ignoré.</span></p>
+        <form id="agentForm" class="form">
+            <label><span data-i18n="agents.f.name">Nom</span>
+                <input id="agentName" name="name" maxlength="120" required placeholder="ex. Enquêteur d'incident" data-i18n-placeholder="agents.f.name-ph" />
+            </label>
+            <label><span data-i18n="agents.f.description">À quoi il sert</span>
+                <input id="agentDesc" name="description" maxlength="300" placeholder="Une phrase, lue sur la carte" data-i18n-placeholder="agents.f.description-ph" />
+            </label>
+            <label><span data-i18n="agents.f.kind">Ce qu'il fait</span>
+                <select id="agentKind" name="kind">
+                    <option value="explore" data-i18n="agents.f.kind-explore">Explorer (lecture seule)</option>
+                    <option value="code" data-i18n="agents.f.kind-code">Coder (il modifie les fichiers)</option>
+                </select>
+            </label>
+
+            <details class="task-avance" open>
+                <summary data-i18n="agents.f.scope">Périmètre</summary>
+                <div class="seg-radios">
+                    <label class="inline-check"><input type="radio" name="scope_kind" value="all_repos" checked /> <span data-i18n="agents.f.scope-all">Tous les dépôts actifs</span></label>
+                    <label class="inline-check"><input type="radio" name="scope_kind" value="repos" /> <span data-i18n="agents.f.scope-list">Les dépôts choisis ci-dessous</span></label>
+                </div>
+                <div id="agentReposBox">
+                    <input id="agentRepoFilter" class="search" type="search" placeholder="Filtrer les dépôts…" data-i18n-placeholder="agents.f.repo-filter-ph" data-i18n-aria="agents.f.repo-filter-aria" aria-label="Filtrer les dépôts" />
+                    <div id="agentRepos" class="check-list"></div>
+                </div>
+            </details>
+
+            <details class="task-avance" open>
+                <summary data-i18n="agents.f.role">Rôle et demande</summary>
+                <label><span data-i18n="agents.f.system">Rôle (ajouté au prompt système)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.system-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea id="agentSystemPrompt" name="system_prompt" rows="4" placeholder="Tu es…" data-i18n-placeholder="agents.f.system-ph"></textarea>
+                </label>
+                <label><span data-i18n="agents.f.template">Gabarit de demande</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.template-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea id="agentTemplate" name="prompt_template" rows="5" placeholder="{question}" data-i18n-placeholder="agents.f.template-ph"></textarea>
+                </label>
+            </details>
+
+            <details class="task-avance">
+                <summary data-i18n="agents.f.caps">Capacités</summary>
+                <label><span data-i18n="agents.f.model">Modèle</span>
+                    <input id="agentModel" name="model" placeholder="vide = celui du CLI (sonnet, opus, haiku, ou un identifiant)" data-i18n-placeholder="agents.f.model-ph" />
+                </label>
+                <p class="form-group-title" data-i18n="agents.f.permission">Ce qu'il a le droit de faire sans demander</p>
+                <div id="agentPermission" class="seg-radios">
+                    <label class="inline-check"><input type="radio" name="permission_mode" value="" checked /> <span data-i18n="agents.permission.acceptEdits">Modifier les fichiers (défaut)</span></label>
+                    <label class="inline-check"><input type="radio" name="permission_mode" value="plan" /> <span data-i18n="agents.permission.plan">Plan seulement : il propose, il ne touche à rien</span></label>
+                    <label class="inline-check"><input type="radio" name="permission_mode" value="dontAsk" /> <span data-i18n="agents.permission.dontAsk">Ne rien demander</span></label>
+                    <label class="inline-check"><input type="radio" name="permission_mode" value="bypassPermissions" /> <span class="perm-warn" data-i18n="agents.permission.bypassPermissions">Tout, sans garde-fou — à réserver à un dépôt jetable</span></label>
+                </div>
+                <label><span data-i18n="agents.f.allowed">Outils autorisés (séparés par des virgules)</span>
+                    <input id="agentAllowed" name="allowed_tools" placeholder="vide = la liste par défaut de son type" data-i18n-placeholder="agents.f.allowed-ph" />
+                </label>
+                <label><span data-i18n="agents.f.disallowed">Outils interdits</span>
+                    <input id="agentDisallowed" name="disallowed_tools" placeholder="ex. Write, Bash(rm *)" data-i18n-placeholder="agents.f.disallowed-ph" />
+                </label>
+                <label><span data-i18n="agents.f.max-turns">Borne de tours</span>
+                    <input id="agentMaxTurns" name="max_turns" class="mini-num" type="number" min="1" max="500" step="1" />
+                </label>
+                <p class="form-group-title" data-i18n="agents.f.skills">Skills qu'il emporte</p>
+                <div id="agentSkillsBox">
+                    <input id="agentSkillFilter" class="search" type="search" placeholder="Filtrer les skills…" data-i18n-placeholder="agents.task.skill-filter-ph" data-i18n-aria="agents.task.skill-filter-aria" aria-label="Filtrer les skills" />
+                    <div id="agentSkills" class="check-list"></div>
+                </div>
+                <label><span data-i18n="agents.f.subagents">Sous-agents (JSON)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.subagents-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea id="agentSubagents" name="subagents_json" rows="6" spellcheck="false" placeholder='{ "chercheur": { "description": "…", "prompt": "…", "tools": ["Read"] } }'></textarea>
+                </label>
+                <p id="agentSubagentsErr" class="field-note" hidden></p>
+                <p id="agentSubagentShadow" class="field-note" hidden></p>
+            </details>
+
+            <details class="task-avance">
+                <summary data-i18n="agents.f.output">Sortie</summary>
+                <label><span data-i18n="agents.f.output-kind">Ce qu'on fait de sa réponse</span>
+                    <select id="agentOutputKind" name="output_kind">
+                        <option value="report" data-i18n="agents.output.report">Un rapport, gardé sur la session</option>
+                        <option value="note_page" data-i18n="agents.output.note_page">Une page de notes, réécrite à chaque run</option>
+                        <option value="agent" data-i18n="agents.output.agent">Un agent de domaine (cartographe)</option>
+                    </select>
+                </label>
+                <label id="agentOutputRefRow" hidden><span data-i18n="agents.f.output-ref">Page de notes</span>
+                    <div id="agentOutputRefBox"></div>
+                </label>
+            </details>
+
+            <details class="task-avance">
+                <summary data-i18n="agents.f.schedule">Horaire</summary>
+                <div class="sched-row">
+                    <select id="agentScheduleKind">
+                        <option value="" data-i18n="agents.schedule.none">À la main seulement</option>
+                        <option value="daily" data-i18n="agents.schedule.daily">Chaque jour</option>
+                        <option value="weekly" data-i18n="agents.schedule.weekly">Chaque semaine</option>
+                        <option value="monthly" data-i18n="agents.schedule.monthly">Chaque mois</option>
+                    </select>
+                    <select id="agentScheduleDow" hidden></select>
+                    <select id="agentScheduleDom" hidden></select>
+                    <input id="agentScheduleTime" type="time" value="07:00" hidden />
+                </div>
+                <p id="agentScheduleSaid" class="muted"></p>
+                <p id="agentScheduleNeeds" class="field-note" hidden data-i18n="agents.schedule.needs-max-turns">Un horaire exige une borne de tours : renseigne « Borne de tours » dans Capacités.</p>
+            </details>
+
+            <p class="form-group-title" data-i18n="agents.f.argv">Ce que ça donne en ligne de commande</p>
+            <pre id="agentArgvPreview" class="argv-preview"></pre>
+            <p id="agentFormErr" class="field-note" hidden></p>
+
+            <div class="modal-actions">
+                <button type="button" id="agentCancel" class="btn" data-i18n="task.btn.annuler">Annuler</button>
+                <button type="button" id="agentTry" class="btn" data-i18n-title="agents.btn.try-title" title="Ouvre une session pré-remplie avec ce profil, sans l'enregistrer"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="agents.btn.try">Essai</span></button>
+                <button type="submit" id="agentSave" class="btn btn-primary"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- CRÉER UN AGENT DE DOMAINE : on donne un SUJET, le cartographe fait le reste. Pas de
+     brouillon — l'agent créé n'a aucun effet tant qu'on ne le lance pas, et sa connaissance
+     se modifie. -->
+<div id="domainModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 data-i18n="agents.domain.title">Nouvel agent de domaine</h3>
+        <p class="muted" style="max-width:700px" data-i18n="agents.domain.intro">Donne un sujet. Le cartographe fouille les dépôts, écrit la carte du sujet — chemins, mécanismes, configuration, tests — et en fait un agent qu'on pourra interroger ou faire coder.</p>
+        <form id="domainForm" class="form">
+            <label><span data-i18n="agents.domain.subject">Sujet à cartographier</span>
+                <textarea id="domainSubject" rows="4" required placeholder="ex. les notifications : où elles sont émises, par quel mécanisme, quels types existent, où est la config, comment on les teste" data-i18n-placeholder="agents.domain.subject-ph"></textarea>
+            </label>
+            <p class="form-group-title" data-i18n="agents.domain.repos">Où chercher (vide = tous les dépôts)</p>
+            <div id="domainReposBox">
+                <input id="domainRepoFilter" class="search" type="search" placeholder="Filtrer les dépôts…" data-i18n-placeholder="agents.f.repo-filter-ph" data-i18n-aria="agents.f.repo-filter-aria" aria-label="Filtrer les dépôts" />
+                <div id="domainRepos" class="check-list"></div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" id="domainCancel" class="btn" data-i18n="task.btn.annuler">Annuler</button>
+                <button type="submit" id="domainStart" class="btn btn-primary"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="agents.domain.start">Cartographier</span></button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- LA CONNAISSANCE D'UN AGENT DE DOMAINE : ses versions, son contenu, son diff. -->
+<div id="knowledgeModal" class="modal" hidden>
+    <div class="modal-box modal-lg">
+        <h3 id="knowledgeTitle" data-i18n="agents.knowledge.title">Connaissance</h3>
+        <div class="knowledge-split">
+            <div id="knowledgeVersions" class="knowledge-versions"></div>
+            <div class="knowledge-main">
+                <div id="knowledgeBody" class="md-body"></div>
+                <textarea id="knowledgeEdit" rows="18" hidden spellcheck="false"></textarea>
+                <div id="knowledgeDiff" class="diff-body" hidden></div>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button type="button" id="knowledgeClose" class="btn" data-i18n="ui.close">Fermer</button>
+            <button type="button" id="knowledgePublish" class="btn"><svg class="ico"><use href="#i-clip"/></svg><span data-i18n="agents.btn.publish">Publier dans les notes</span></button>
+            <button type="button" id="knowledgeEditBtn" class="btn"><svg class="ico"><use href="#i-edit"/></svg><span data-i18n="ui.edit">Modifier</span></button>
+            <button type="button" id="knowledgeSave" class="btn btn-primary" hidden><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+            <button type="button" id="knowledgeValidate" class="btn btn-primary" hidden><svg class="ico"><use href="#i-check"/></svg><span data-i18n="agents.btn.validate">Valider cette version</span></button>
+        </div>
     </div>
 </div>
 
@@ -2211,6 +2450,9 @@
         <!-- Codage hors dépôt : une session porte plusieurs DOSSIERS, chacun avec son
              retour d'agent. On passe de l'un à l'autre ici plutôt qu'en refermant la vue. -->
         <select id="taskPassDir" class="md-version" title="Choisir le dossier" data-i18n-title="local.pass.dir-title" hidden></select>
+        <!-- L'ENQUÊTEUR A NOMMÉ UN DÉPÔT : le geste suivant est d'y coder. Le bouton n'existe
+             que si le rapport porte un bloc <<<REPO>>> qui désigne un dépôt connu. -->
+        <button id="taskMdFix" class="btn btn-sm btn-primary" hidden><svg class="ico"><use href="#i-bot"/></svg><span id="taskMdFixLabel"></span></button>
         <button id="taskMdCopy" class="btn btn-sm" title="Copier la réponse en Markdown" data-i18n-title="context.title.copier-la-reponse-en-markdown"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="settings.btn.copier">Copier</span></button>
         <div class="split-menu-wrap">
             <button id="taskMdExport" class="btn btn-sm" aria-haspopup="true" aria-expanded="false" title="Exporter la réponse" data-i18n-title="export.title"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="export.btn">Exporter</span></button>

@@ -675,6 +675,7 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
   $$('.tab').forEach((t) => t.classList.toggle('active', t.id === `tab-${b.dataset.tab}`));
   if (b.dataset.tab === 'admin') showAdminSub();
   if (b.dataset.tab === 'task') loadTasks();
+  if (b.dataset.tab === 'agents') loadAgents();
   if (b.dataset.tab === 'review') loadSegment();
   if (b.dataset.tab === 'dashboard') loadDashboard();
   if (b.dataset.tab === 'git') loadGit();
@@ -1974,6 +1975,17 @@ async function loadDashboard() {
         <td>${esc(x.label || x.prompt)}</td></tr>`).join('')}</tbody></table></div>`
     : `<p class="muted">${esc(tr('stats.top-tasks.empty'))}</p>`}</div>`;
 
+  /* LE COÛT PAR AGENT. Un agent tourne plusieurs fois — à la main, puis sur horaire — et
+     c'est la SOMME qui compte : « le documentaliste coûte tant par mois » est une phrase
+     qu'aucune ligne de session ne donne. La carte n'existe que s'il y a eu des runs d'agent :
+     une section à zéro n'apprend rien à qui n'en utilise pas. */
+  const ag = s.agentCosts || [];
+  const agHtml = ag.length ? `<div class="dash-card"><h3>${tr('agents.stats.title')}</h3>
+    <div class="md-tablewrap"><table class="md-table"><tbody>${ag.map((x) => `<tr>
+        <td class="stats-top-tok">${esc(fmtNum(x.tokens))}</td>
+        <td>${esc(x.name)}<div class="muted">${esc(tr('agents.stats.runs', { n: x.runs, count: x.runs }))}${x.cost_usd != null ? ` · ${esc(fmtCout(x.cost_usd))}` : ''}</div></td>
+      </tr>`).join('')}</tbody></table></div></div>` : '';
+
   /* LES CONSTATS QUI REVIENNENT — et le geste qui les fait cesser : en faire une règle de
      review, écrite une fois, plutôt que de la retaper dans chaque merge request. */
   const rec = s.recurrents || [];
@@ -2030,7 +2042,7 @@ async function loadDashboard() {
   el.innerHTML = `<div id="dashTop5" class="dash-card">${skeleton(2)}</div>`
     + funnelHtml + `<div class="dash-grid">${notesHtml}${trendHtml}${weeklyHtml}${tokHtml}</div>`
     + `<div id="dashActivity" class="dash-card">${skeleton(3)}</div>` + projHtml + devHtml
-    + `<div class="dash-grid">${topHtml}${trevHtml}${ratHtml}${vpdHtml}${recHtml}</div>`;
+    + `<div class="dash-grid">${topHtml}${trevHtml}${agHtml}${ratHtml}${vpdHtml}${recHtml}</div>`;
 
   // Activité GitLab en direct (dernier commit par projet) : chargée à part pour ne pas
   // ralentir le dashboard ni le faire échouer si GitLab est injoignable.
@@ -2361,9 +2373,13 @@ function marquerVerifEnCours(ids) {
 }
 document.addEventListener('visibilitychange', () => document.body.classList.toggle('tab-cachee', document.hidden));
 
+let copilotBinCourant = '';
 async function refreshStatus() {
   try {
     const s = await api('/status');
+    // Le binaire configuré : c'est lui qui décide si un profil d'agent s'applique en entier
+    // (claude) ou seulement par son modèle (copilot). L'éditeur le dit avant la sauvegarde.
+    copilotBinCourant = s.copilotBin || '';
     marquerEnCours(s.running ? s.targets : null);
     jiraConfigured = !!s.jiraConfigured;
     setupAutoRefreshPolling(s.autoRefreshMinutes); // (re)configure le polling front si besoin
@@ -5170,7 +5186,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'clone_path', 'prompt_review', 'prompt_explain', 'prompt_modify', 'ai_extra_instructions',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
-  'verif_auto_max', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key',
+  'verif_auto_max', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
   'stale_mr_days',
@@ -6177,6 +6193,10 @@ function applyKindToModal(kind) {
      cible sur laquelle l'agent hésite ou travaille : sans dépôt ni dossier, elles n'ont rien
      à quoi se rattacher. */
   const gRow = $('#taskAgentFields'); if (gRow) gRow.hidden = isAsk;
+  /* Le combo Agent est MASQUÉ hors dépôt et en question libre — un profil parle de dépôts, et
+     il n'y en a pas. Le champ reste dans le formulaire unique : il est simplement ignoré là. */
+  const agRow = $('#taskAgentRow'); if (agRow) agRow.hidden = isLocal || isAsk;
+  const skRow = $('#taskSkillsRow'); if (skRow) skRow.hidden = isAsk;
   const ta = $('#taskForm').prompt;
   ta.placeholder = isAsk ? tr('ask.prompt-ph')
     : (isLocal ? tr('local.prompt-ph') : (kind === 'code' ? tr('task.ph.prompt-code') : tr('task.ph.prompt-explore')));
@@ -6261,7 +6281,7 @@ $('#taskVerifier') && $('#taskVerifier').addEventListener('change', majLienVerif
 /* Changer les projets change la liste : un vérificateur qui couvrait les deux premiers dépôts
    ne couvre pas forcément le troisième, et le laisser sélectionné promettrait un verdict
    qu'on ne peut pas tenir. */
-$('#targetRows') && $('#targetRows').addEventListener('change', () => { majVerificateursSession(); });
+$('#targetRows') && $('#targetRows').addEventListener('change', () => { majVerificateursSession(); majSkillsSession(); });
 document.addEventListener('change', (e) => {
   if (!e.target.closest || !e.target.matches('#taskForm [name="auto_push"]')) return;
   const sel = $('#taskVerifier');
@@ -6382,6 +6402,9 @@ async function openTaskModal(kind = taskKind) {
    ne vaut que pour l'ouverture qui l'a posée, et cinq appelants qui pensent à l'effacer, c'est
    un sixième qui oubliera. */
 function showTaskModal() {
+  // Ce que le disque offre dépend des dépôts choisis : on le relit à chaque ouverture.
+  majSkillsSession();
+  rendreComboAgentSession();
   const hint = $('#taskSessionHint');
   if (hint && !hint.dataset.keep) { hint.textContent = ''; hint.hidden = true; }
   if (hint) delete hint.dataset.keep;
@@ -6652,6 +6675,10 @@ async function openTaskEdit(id) {
     $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
     $('#taskSubmitOnly').hidden = true;
     showTaskModal();
+    /* L'agent qui a porté la session, replacé dans le combo. Supprimé depuis, il garde son
+       NOM sur la session : on l'affiche quand même, et le combo reste inerte — sinon la
+       relecture d'une session ancienne perdrait l'information sans rien dire. */
+    poserAgentRelu(t);
   } catch (e) { toast(explainError(e.message), true); }
 }
 
@@ -7024,6 +7051,11 @@ $('#taskForm').addEventListener('submit', async (e) => {
     // n'est lu qu'à la CRÉATION : la modale d'édition ne réaffecte pas une session déjà
     // en cours, qui a son propre handle par projet.
     session_id: f.session_id ? f.session_id.value : '',
+    // Les skills cochés : le serveur les résout contre le disque et en fait la 1re ligne du prompt.
+    skills: skillsChoisis(),
+    /* L'agent qui porte la session. Dès qu'il est là, le serveur compose la demande selon son
+       profil et force `auto_push` à 0 — un agent ne pousse jamais de lui-même. */
+    agent_id: agentChoisiDansModale(),
     files: taskNewImages,
     targets,
   };
@@ -7365,8 +7397,12 @@ function renderTasks() {
   if (isLocal) { renderLocalTasks(); return; }
   if (isAsk) { renderQuestions(); return; }
 
+  rendreComboFiltreAgent();
   const q = taskQuery();
-  const all = allTasks.filter((t) => (t.kind === 'explore' ? 'explore' : 'code') === taskKind);
+  const all = allTasks
+    .filter((t) => (t.kind === 'explore' ? 'explore' : 'code') === taskKind)
+    // Les runs d'UN agent : c'est ce que « Ses sessions » ouvre depuis sa carte.
+    .filter((t) => !agentFiltreSessions || Number(t.agent_id) === Number(agentFiltreSessions));
   const visible = all.filter(taskVisible);
   reportHiddenCount(all.length - visible.length);
   const rows = visible.filter((t) => taskMatches(t, q, (t.targets || []).flatMap((x) => [x.project, x.branch])));
@@ -7793,6 +7829,8 @@ function taskHead(t) {
   return `<div class="title">
       <span class="tag ${st.cls}">${st.label}</span>
       <span class="task-projects">${tr('task.projects', { n: nb, count: nb })}</span>
+      ${t.agent_name ? `<span class="tag tag-agent" title="${esc(tr('agents.card.ran-by'))}">${svgIco('zap')} ${esc(t.agent_name)}</span>` : ''}
+      ${t.triggered_by === 'schedule' ? `<span class="tag" title="${esc(tr('agents.card.by-schedule'))}">${svgIco('clock')}</span>` : ''}
       ${t.auto_push && t.kind !== 'explore' ? '<span class="tag">auto-push</span>' : ''}
       <span class="task-date" title="${tr('task.created-at')}" data-when="${esc(t.created_at || '')}">${esc(fmtDateTime(t.created_at))}</span>
     </div>
@@ -8579,7 +8617,38 @@ async function openTargetDiff(taskId, targetId) {
 let currentMd = '';
 // Réponse d'une exploration : même vue à itérations que les sessions — chaque question
 // de suivi a sa propre entrée, avec la question posée et la réponse obtenue.
-const openTaskMd = (id) => openPasses(`/tasks/${id}`);
+const openTaskMd = async (id) => { await openPasses(`/tasks/${id}`); await majBoutonCorriger(id); };
+
+/* « Corriger sur <dépôt> ». L'enquêteur termine son rapport par un bloc qui NOMME le dépôt
+   trouvé ; le serveur le résout contre les dépôts connus — un dépôt inventé n'ouvre aucun
+   bouton. Le rapport devient alors la demande de la session de codage : c'est lui qui porte
+   le chemin, la ligne et l'hypothèse. */
+let indiceDepotCourant = null;
+async function majBoutonCorriger(taskId) {
+  const b = $('#taskMdFix');
+  if (!b) return;
+  b.hidden = true;
+  indiceDepotCourant = null;
+  try {
+    const hint = await api(`/tasks/${taskId}/repo-hint`);
+    if (!hint || !hint.repo_id) return;
+    indiceDepotCourant = { ...hint, task_id: taskId };
+    $('#taskMdFixLabel').textContent = tr('agents.fix-on', { project: hint.project });
+    b.hidden = false;
+  } catch { /* pas d'indice : pas de bouton */ }
+}
+
+onEl($('#taskMdFix'), 'click', async () => {
+  const h = indiceDepotCourant;
+  if (!h) return;
+  const d = await api(`/tasks/${h.task_id}/md`).catch(() => ({}));
+  $('#taskMdView').hidden = true;
+  await openTaskModal('code');
+  renderTargetRows([{ repo_id: h.repo_id, branch: '' }]);
+  $('#taskPrompt').value = `${tr('agents.fix-prompt', { path: h.path || '', line: h.line || '' })}\n\n${d.md || ''}`;
+  await majVerificateursSession('');
+  $('#taskPrompt').focus();
+});
 /* Retour de l'agent — même vue plein écran que la réponse d'une exploration, avec un
    sélecteur d'ITÉRATION quand la session en compte plusieurs (comme le sélecteur de
    versions d'un rapport de review). Chaque itération montre le prompt envoyé ET le
@@ -12911,6 +12980,10 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
           ${addTodoBtn('ticket', it.key, tr('notes.add-todo.ticket', { key: it.key, title: String(it.summary || '').slice(0, 60) }), {
     due: echeanceDepuisJira(it.duedate), priority: prioriteDepuisJira(it.priority),
   })}
+          ${/* UNE TRACE DANS LE TICKET : « quel dépôt ? quel fichier ? » se répondait au grep
+                dans douze clones. Le bouton n'apparaît QUE si le texte porte une trace —
+                sinon c'est un bouton qui ne sert à rien sur les neuf tickets sur dix. */''}
+          ${detecterTrace(`${it.summary || ''}\n${it.descriptionMd || ''}`) ? `<button type="button" class="btn btn-sm btn-jira-investigate" data-jirakey="${esc(it.key)}" title="${esc(tr('jira.investigate-title'))}"><svg class="ico ico-sm"><use href="#i-search"/></svg>${esc(tr('jira.investigate'))}</button>` : ''}
           <button type="button" class="btn btn-sm btn-primary" data-jiracode="${esc(it.key)}" title="${esc(tr('jira.code-title'))}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${esc(tr('jira.code'))}</button>
           <a href="${esc(it.url)}" target="_blank" rel="noopener" class="jira-open">${esc(tr('jira.open'))} ↗</a>
         </div>
@@ -13627,6 +13700,992 @@ function updateMuteBtn() {
    un bouton ou appeler une fonction de navigation qui existe déjà. Une palette qui
    réimplémente les actions devient une seconde interface, et elle dérive de la vraie au
    premier renommage. C'est aussi ce qui la rend testable par le contrôle statique des ids. */
+
+/* ==================== AGENTS — le disque : skills et sous-agents ====================
+   Un skill est un DOSSIER (`<nom>/SKILL.md`), un sous-agent de fichier un `.claude/agents/
+   <nom>.md`. Aucun des deux n'est en base : la vérité est le disque, et Mergerie ne fait que
+   la lire. Deux endroits s'en servent — le sous-onglet « Skills & sous-agents », qui montre
+   tout, et la modale de session, qui laisse cocher ce que CETTE session emporte. */
+
+let skillsCache = { cle: null, items: [], uncloned: [] };
+
+async function chargerSkills(repoIds) {
+  const cle = (repoIds || []).slice().sort((a, b) => a - b).join(',');
+  if (skillsCache.cle === cle) return skillsCache;
+  const q = cle ? `?repos=${encodeURIComponent(cle)}` : '';
+  try {
+    const d = await api(`/skills${q}`);
+    skillsCache = { cle, items: d.items || [], uncloned: d.uncloned || [] };
+  } catch { skillsCache = { cle, items: [], uncloned: [] }; }
+  return skillsCache;
+}
+
+/* Un filtre qui MASQUE les lignes sans jamais décocher : c'est la règle du projet pour toute
+   liste à cocher. Filtrer en retirant du DOM ferait perdre les cases cochées hors filtre —
+   et l'utilisateur ne saurait pas qu'il vient d'annuler son propre choix. */
+function filtrerLignes(input, liste, attr = 'data-cherche') {
+  if (!input || !liste) return;
+  const q = (input.value || '').trim().toLowerCase();
+  let visibles = 0;
+  $$(`[${attr}]`, liste).forEach((el) => {
+    const ok = !q || el.getAttribute(attr).includes(q);
+    el.hidden = !ok;
+    if (ok) visibles += 1;
+  });
+  const vide = liste.querySelector('[data-no-match]');
+  if (vide) vide.hidden = visibles > 0;
+}
+
+const skillCle = (s) => `${s.source}|${s.repo_id || ''}|${s.name}`;
+const skillCherche = (s) => `${s.name} ${s.description} ${s.project || ''} ${s.path}`.toLowerCase();
+
+/* ---------- Sous-onglet « Skills & sous-agents » ---------- */
+
+function skillLigneHtml(s) {
+  const badges = [
+    !s.userInvocable ? `<span class="badge">${esc(tr('agents.skills.not-user'))}</span>` : '',
+    !s.modelInvocable ? `<span class="badge">${esc(tr('agents.skills.not-model'))}</span>` : '',
+    (s.tools || []).length ? `<span class="muted">${esc(s.tools.join(', '))}</span>` : '',
+  ].join(' ');
+  return `<div class="skill-row" data-cherche="${esc(skillCherche(s))}">
+    <div class="skill-head">
+      <svg class="ico ico-sm"><use href="#i-${s.kind === 'agent' ? 'bot' : 'star'}"/></svg>
+      <strong>${esc(s.name)}</strong>
+      <span class="badge">${esc(tr(s.kind === 'agent' ? 'agents.skills.kind-agent' : 'agents.skills.kind-skill'))}</span>
+      ${badges}
+    </div>
+    ${s.description ? `<div class="muted skill-desc">${esc(s.description)}</div>` : ''}
+    <code class="skill-path">${esc(s.path)}</code>
+  </div>`;
+}
+
+async function loadSkillsPanel() {
+  const box = $('#skillList');
+  if (!box) return;
+  box.innerHTML = `<div class="muted">${esc(tr('ui.combo.loading'))}</div>`;
+  skillsCache = { cle: null, items: [], uncloned: [] };  // le panneau montre TOUT : cache neuf
+  const d = await chargerSkills([]);
+  const parSource = [
+    { titre: tr('agents.skills.source-repo'), items: d.items.filter((x) => x.source === 'repo') },
+    { titre: tr('agents.skills.source-user'), items: d.items.filter((x) => x.source === 'user') },
+  ];
+  const groupes = parSource.filter((g) => g.items.length).map((g) => `<div class="skill-group">
+      <h3>${esc(g.titre)}</h3>${g.items.map(skillLigneHtml).join('')}</div>`).join('');
+  /* UN DÉPÔT NON CLONÉ N'EST PAS UNE ERREUR — mais son silence en serait une : sans cette
+     ligne, ses skills manquent à la liste et rien ne dit pourquoi. */
+  const nonClones = d.uncloned.length
+    ? `<p class="field-note">${esc(tr('agents.skills.uncloned', { list: d.uncloned.join(', ') }))}</p>` : '';
+  box.innerHTML = (groupes || emptyState({ icon: 'star', title: esc(tr('agents.skills.empty')), text: esc(tr('agents.skills.empty-hint')) }))
+    + `<div class="muted" data-no-match hidden>${esc(tr('agents.skills.no-match'))}</div>` + nonClones;
+  filtrerLignes($('#skillFilter'), box);
+}
+
+/* ---------- Modale de session : ce que CETTE session emporte ---------- */
+
+// Cochés par l'utilisateur, conservés d'un rechargement de liste à l'autre (changer de
+// dépôt ne doit pas décocher un skill du home, qui n'a pas bougé).
+let taskSkillsCoches = new Set();
+
+function skillCaseHtml(s) {
+  const c = skillCle(s);
+  const ou = s.source === 'user' ? tr('agents.skills.source-user') : (s.project || '');
+  return `<label class="inline-check" data-cherche="${esc(skillCherche(s))}">
+    <input type="checkbox" data-skill="${esc(c)}"${taskSkillsCoches.has(c) ? ' checked' : ''} />
+    <span><strong>${esc(s.name)}</strong>${ou ? ` <span class="muted">${esc(ou)}</span>` : ''}${s.description ? `<br><span class="muted">${esc(s.description.slice(0, 120))}</span>` : ''}</span>
+  </label>`;
+}
+
+async function majSkillsSession() {
+  const boxS = $('#taskSkills'); const boxA = $('#taskSubagents');
+  if (!boxS || !boxA) return;
+  const repos = readTargetRows().map((t) => t.repo_id).filter(Boolean);
+  const d = await chargerSkills(repos);
+  const skills = d.items.filter((x) => x.kind === 'skill');
+  const sousAgents = d.items.filter((x) => x.kind === 'agent');
+  boxS.innerHTML = (skills.map(skillCaseHtml).join('') || `<div class="muted">${esc(tr('agents.task.no-skill'))}</div>`)
+    + `<div class="muted" data-no-match hidden>${esc(tr('agents.skills.no-match'))}</div>`;
+  boxA.innerHTML = (sousAgents.map(skillCaseHtml).join('') || `<div class="muted">${esc(tr('agents.task.no-subagent'))}</div>`)
+    + `<div class="muted" data-no-match hidden>${esc(tr('agents.skills.no-match'))}</div>`;
+  filtrerLignes($('#taskSkillFilter'), boxS);
+  filtrerLignes($('#taskSubagentFilter'), boxA);
+}
+
+// Ce qui part dans le corps de POST /api/tasks : le serveur en fait la première ligne du prompt.
+function skillsChoisis() {
+  const out = [];
+  for (const c of taskSkillsCoches) {
+    const s = skillsCache.items.find((x) => skillCle(x) === c);
+    if (s) out.push({ name: s.name, source: s.source, repo_id: s.repo_id, kind: s.kind });
+  }
+  return out;
+}
+
+/* ---------- Autocomplétion « / » et « @ » dans une demande ----------
+   Retrouver le nom exact d'un skill se faisait au `ls` dans ~/.claude/skills/. Le menu
+   réutilise `.combo-options` et `placerMenu` : même apparence, même comportement au clavier
+   que les combos du reste de l'outil. Rien ne s'insère sans une sélection EXPLICITE — un
+   menu qui complète tout seul écrirait dans la demande de qui tapait juste un slash. */
+let acMenu = null;
+let acCible = null;
+let acDebut = -1;
+let acIndex = 0;
+let acOptions = [];
+
+function acFermer() {
+  if (acMenu) acMenu.hidden = true;
+  acCible = null; acDebut = -1; acOptions = []; acIndex = 0;
+}
+
+function acBoite() {
+  if (!acMenu) {
+    acMenu = document.createElement('div');
+    acMenu.className = 'combo-options ac-menu';
+    acMenu.hidden = true;
+    document.body.appendChild(acMenu);
+    acMenu.addEventListener('mousedown', (e) => {
+      const o = e.target.closest('.combo-opt[data-v]');
+      if (!o) return;
+      e.preventDefault();
+      acInserer(o.dataset.v);
+    });
+  }
+  return acMenu;
+}
+
+function acRendre() {
+  const box = acBoite();
+  box.innerHTML = acOptions.map((o, i) => `<div class="combo-opt${i === acIndex ? ' is-sel' : ''}" data-v="${esc(o.insert)}">${esc(o.label)}${o.hint ? ` <span class="muted">${esc(o.hint)}</span>` : ''}</div>`).join('');
+  box.hidden = !acOptions.length;
+  if (acOptions.length && acCible) placerMenu(acCible, box);
+}
+
+function acInserer(texte) {
+  if (!acCible || acDebut < 0) return acFermer();
+  const el = acCible;
+  const avant = el.value.slice(0, acDebut);
+  const apres = el.value.slice(el.selectionStart);
+  el.value = avant + texte + apres;
+  const pos = (avant + texte).length;
+  el.setSelectionRange(pos, pos);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  acFermer();
+  el.focus();
+}
+
+/* Le jeton en cours de frappe : « / » ou « @ » en début de ligne ou après une espace, suivi
+   de ce qui a été tapé depuis. Ailleurs (au milieu d'un chemin, d'une adresse), il n'y a rien
+   à compléter — et un menu qui s'ouvrirait sur `src/app.js` serait insupportable. */
+function acJeton(el) {
+  const pos = el.selectionStart;
+  const avant = el.value.slice(0, pos);
+  const m = avant.match(/(^|[\s(])([/@])([\w.-]*)$/);
+  if (!m) return null;
+  return { signe: m[2], debut: pos - m[3].length - 1, q: m[3].toLowerCase() };
+}
+
+function acMaj(el) {
+  const j = acJeton(el);
+  if (!j) return acFermer();
+  const items = skillsCache.items || [];
+  const source = j.signe === '/'
+    // `user-invocable: false` interdit le `/nom` : le proposer serait proposer une commande
+    // que le CLI refusera.
+    ? items.filter((x) => x.kind === 'skill' && x.userInvocable)
+    : items.filter((x) => x.kind === 'agent');
+  acOptions = source
+    .filter((x) => x.name.toLowerCase().includes(j.q))
+    .slice(0, 20)
+    .map((x) => ({
+      label: (j.signe === '/' ? '/' : '@') + x.name,
+      hint: x.source === 'user' ? tr('agents.skills.source-user') : (x.project || ''),
+      insert: j.signe === '/' ? `/${x.name} ` : `@"${x.name} (agent)" `,
+    }));
+  if (!acOptions.length) return acFermer();
+  acCible = el; acDebut = j.debut; acIndex = 0;
+  acRendre();
+}
+
+function acTouche(e) {
+  const el = e.target;
+  if (!el.matches || !el.matches('#taskPrompt, .followup-text')) return;
+  if (acCible !== el || !acOptions.length) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); acIndex = (acIndex + 1) % acOptions.length; acRendre(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); acIndex = (acIndex - 1 + acOptions.length) % acOptions.length; acRendre(); }
+  else if (e.key === 'Enter') { e.preventDefault(); acInserer(acOptions[acIndex].insert); }
+  /* Échap ferme le MENU et rien d'autre : sans `stopPropagation`, la même touche fermerait
+     aussi la modale de session — et la demande à moitié écrite partirait avec elle. */
+  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); acFermer(); }
+}
+
+document.addEventListener('input', (e) => {
+  if (e.target.matches && e.target.matches('#taskPrompt, .followup-text')) acMaj(e.target);
+});
+document.addEventListener('keydown', acTouche, true);
+document.addEventListener('focusout', (e) => {
+  if (e.target.matches && e.target.matches('#taskPrompt, .followup-text')) setTimeout(acFermer, 150);
+});
+
+/* ---------- Onglet Agents ---------- */
+
+/* Les deux sous-onglets. Une FONCTION plutôt qu'un objet de premier niveau, pour la même
+   raison que `onEl` : le clic peut arriver avant que la ligne d'un `const` ait été évaluée. */
+function chargerSousOngletAgents(sub) {
+  if (sub === 'skills') return loadSkillsPanel();
+  return loadAgentList();
+}
+function showAgentsSub(sub) {
+  if (!sub) { try { sub = localStorage.getItem('mergerie_agents_sub') || 'list'; } catch { sub = 'list'; } }
+  if (!['list', 'skills'].includes(sub)) sub = 'list';
+  $$('#tab-agents .subnav [data-sub]').forEach((b) => b.classList.toggle('active', b.dataset.sub === sub));
+  $$('#tab-agents .subtab').forEach((p) => p.classList.toggle('active', p.id === `sub-agents-${sub}`));
+  try { localStorage.setItem('mergerie_agents_sub', sub); } catch { /* ignore */ }
+  try { chargerSousOngletAgents(sub); } catch { /* chargement best-effort */ }
+}
+
+function loadAgents() { showAgentsSub(); }
+
+/* Petit garde-fou : les éléments câblés ici vivent tous dans index.html, mais un id renommé
+   ne doit pas casser tout le script au chargement.
+   DÉCLARÉE `function` et non `const` : ce fichier est un seul script global, et les câblages
+   de premier niveau s'exécutent dans l'ordre du texte. Un `const` n'est utilisable qu'APRÈS
+   sa ligne — le premier appel écrit plus haut arrêtait l'évaluation du fichier entier, donc
+   tout ce qui suit cessait d'exister (« Cannot access X before initialization » en cascade).
+   Une déclaration de fonction, elle, est hissée. */
+function onEl(el, ev, fn) { if (el) el.addEventListener(ev, fn); }
+$$('#tab-agents .subnav [data-sub]').forEach((b) => b.addEventListener('click', () => showAgentsSub(b.dataset.sub)));
+onEl($('#skillFilter'), 'input', () => filtrerLignes($('#skillFilter'), $('#skillList')));
+onEl($('#taskSkillFilter'), 'input', () => filtrerLignes($('#taskSkillFilter'), $('#taskSkills')));
+onEl($('#taskSubagentFilter'), 'input', () => filtrerLignes($('#taskSubagentFilter'), $('#taskSubagents')));
+onEl($('#btnSkillRescan'), 'click', (e) => busy(e.currentTarget, async () => {
+  await api('/skills/rescan', { method: 'POST' });
+  skillsCache = { cle: null, items: [], uncloned: [] };
+  await loadSkillsPanel();
+  toast(tr('agents.skills.rescanned'));
+}));
+document.addEventListener('change', (e) => {
+  const c = e.target.closest && e.target.closest('[data-skill]');
+  if (!c) return;
+  if (c.checked) taskSkillsCoches.add(c.dataset.skill); else taskSkillsCoches.delete(c.dataset.skill);
+});
+
+
+/* ==================== AGENTS — les profils ====================
+   Un agent Mergerie est un profil de session. Cet écran fait trois gestes et rien d'autre :
+   le lister, le modifier, et le LANCER — « Demander » ouvre la modale de session déjà remplie
+   plutôt que de partir tout seul, parce qu'un agent qui se met à travailler sans qu'on ait vu
+   sur quels dépôts est exactement ce que la règle « un agent ne devine jamais un dépôt »
+   interdit. */
+
+let agents = [];
+let agentEditId = null;
+let agentFiltreDepot = '';
+
+const agentDe = (id) => agents.find((a) => a.id === Number(id));
+
+async function chargerAgents() {
+  try { agents = await api('/agents'); } catch { agents = []; }
+  return agents;
+}
+
+function agentPerimetre(a) {
+  if (a.scope_kind === 'all_repos') return tr('agents.card.scope-all');
+  return tr('agents.card.scope-n', { n: a.repos.length, count: a.repos.length });
+}
+
+function agentStatutHtml(a) {
+  if (!a.last_run) return `<span class="muted">${esc(tr('agents.card.never-run'))}</span>`;
+  const cout = a.last_run.cost_usd != null ? ` · ${fmtCout(a.last_run.cost_usd)}` : '';
+  return `<span class="badge-statut st-${esc(a.last_run.status)}">${esc(tr(`task.status.${a.last_run.status}`))}</span>`
+    + `<span class="muted">${esc(tr('agents.card.runs', { n: a.run_count, count: a.run_count }))}${esc(cout)}</span>`;
+}
+
+/* Le coût : quelques centimes ou quelques euros, jamais douze décimales. Déclarée `function`
+   et non `const` : elle sert AUSSI au tableau de bord, écrit douze mille lignes plus haut. */
+function fmtCout(v) { return v == null ? '' : `$${Number(v) < 1 ? Number(v).toFixed(3) : Number(v).toFixed(2)}`; }
+
+function agentKnowledgeHtml(a) {
+  if (!a.is_domain) return '';
+  const k = a.knowledge;
+  const bouts = [];
+  if (k && k.version) bouts.push(`<span class="badge k-active">v${k.version}</span>`);
+  if (k && k.unverified) bouts.push(`<span class="badge k-warn">${esc(tr('agents.card.unverified', { n: k.unverified, count: k.unverified }))}</span>`);
+  if (k && k.gaps) bouts.push(`<span class="badge k-warn">${esc(tr('agents.card.gaps', { n: k.gaps, count: k.gaps }))}</span>`);
+  if (k && k.pending_version) bouts.push(`<span class="badge k-pending">${esc(tr('agents.card.pending', { version: k.pending_version }))}</span>`);
+  /* L'ÂGE est chargé à part : il fait un fetch par dépôt, et la liste se recharge à chaque
+     passage sur l'onglet. Un point d'attente ici, le chiffre quand il arrive. */
+  bouts.push(`<span class="agent-age" data-agent-age="${a.id}">${esc(tr('agents.card.age-loading'))}</span>`);
+  return `<div class="agent-knowledge">${bouts.join(' ')}</div>`;
+}
+
+function agentCardHtml(a) {
+  const peutCoder = a.kind === 'code' || a.is_domain;
+  return `<div class="card agent-card" data-id="${a.id}" data-cherche="${esc(`${a.name} ${a.description} ${a.repos.map((r) => r.project).join(' ')}`.toLowerCase())}">
+    <div class="agent-head">
+      <strong>${esc(a.name)}</strong>
+      ${a.builtin_key ? `<span class="badge">${esc(tr('agents.card.builtin'))}</span>` : ''}
+      ${a.is_domain ? `<span class="badge">${esc(tr('agents.card.domain'))}</span>` : ''}
+      <span class="muted">${esc(agentPerimetre(a))}</span>
+      ${a.schedule ? `<span class="badge">${esc(a.schedule_said || a.schedule)}</span>` : ''}
+      <span class="spacer"></span>
+      ${agentStatutHtml(a)}
+    </div>
+    ${a.description ? `<div class="muted agent-desc">${esc(a.description)}</div>` : ''}
+    ${agentKnowledgeHtml(a)}
+    <div class="agent-actions">
+      <button class="btn btn-sm btn-primary btn-agent-ask" data-id="${a.id}"><svg class="ico ico-sm"><use href="#i-search"/></svg>${esc(tr('agents.btn.ask'))}</button>
+      ${peutCoder ? `<button class="btn btn-sm btn-agent-code" data-id="${a.id}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${esc(tr('agents.btn.code'))}</button>` : ''}
+      ${a.is_domain ? `<button class="btn btn-sm btn-agent-knowledge" data-id="${a.id}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${esc(tr('agents.btn.knowledge'))}</button>` : ''}
+      ${a.is_domain ? `<button class="btn btn-sm btn-agent-refresh" data-id="${a.id}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg>${esc(tr('agents.btn.refresh'))}</button>` : ''}
+      ${(a.knowledge && a.knowledge.pending_version) ? `<button class="btn btn-sm btn-agent-review" data-id="${a.id}"><svg class="ico ico-sm"><use href="#i-check"/></svg>${esc(tr('agents.btn.review'))}</button>` : ''}
+      <span class="spacer"></span>
+      <button class="btn btn-sm btn-agent-runs" data-id="${a.id}">${esc(tr('agents.btn.runs'))}</button>
+      <button class="btn btn-sm btn-agent-edit" data-id="${a.id}"><svg class="ico ico-sm"><use href="#i-edit"/></svg>${esc(tr('ui.edit'))}</button>
+      <button class="btn btn-sm btn-agent-dup" data-id="${a.id}">${esc(tr('agents.btn.duplicate'))}</button>
+      ${a.builtin_key ? `<button class="btn btn-sm btn-agent-restore" data-id="${a.id}">${esc(tr('agents.btn.restore'))}</button>` : ''}
+      <button class="btn btn-sm btn-danger btn-agent-del" data-id="${a.id}"><svg class="ico ico-sm"><use href="#i-trash"/></svg></button>
+    </div>
+  </div>`;
+}
+
+async function loadAgentList() {
+  const box = $('#agentList');
+  if (!box) return;
+  box.innerHTML = skeleton(3);
+  await Promise.all([chargerAgents(), loadRepoOptions()]);
+  const warn = $('#agentListCopilotWarn');
+  if (warn) warn.hidden = !/copilot/i.test(copilotBinCourant);
+  if (!agents.length) {
+    box.innerHTML = emptyState({
+      icon: 'zap', title: esc(tr('agents.empty')), text: esc(tr('agents.empty-hint')),
+      actions: [{ act: 'new-domain', label: esc(tr('agents.btn.new-domain')), primary: true }],
+    });
+    return;
+  }
+  box.innerHTML = agents.map(agentCardHtml).join('')
+    + `<div class="muted" data-no-match hidden>${esc(tr('agents.no-match'))}</div>`;
+  rendreComboDepotAgents();
+  filtrerAgents();
+  chargerAges();
+}
+
+// Le filtre : texte ET dépôt, tous deux en MASQUANT — jamais en retirant du DOM.
+function filtrerAgents() {
+  const q = (($('#agentFilter') || {}).value || '').trim().toLowerCase();
+  let visibles = 0;
+  $$('#agentList .agent-card').forEach((el) => {
+    const a = agentDe(el.dataset.id) || { repos: [], scope_kind: 'all_repos' };
+    const okTexte = !q || el.dataset.cherche.includes(q);
+    const okDepot = !agentFiltreDepot || a.scope_kind === 'all_repos'
+      || a.repos.some((r) => String(r.repo_id) === String(agentFiltreDepot));
+    el.hidden = !(okTexte && okDepot);
+    if (!el.hidden) visibles += 1;
+  });
+  const vide = $('#agentList [data-no-match]');
+  if (vide) vide.hidden = visibles > 0;
+}
+
+function rendreComboDepotAgents() {
+  const box = $('#agentRepoFilterBox');
+  if (!box || box.dataset.rendu) return;
+  box.dataset.rendu = '1';
+  box.innerHTML = comboHtml('agentRepoFilterVal', { ph: tr('agents.filter.repo-ph') });
+  wireCombo(box, 'agentRepoFilterVal', async () => [
+    { value: '', label: tr('agents.filter.repo-all') },
+    ...repoOptions.map((r) => ({ value: String(r.id), label: r.project })),
+  ]);
+  box.addEventListener('change', (e) => {
+    if (!e.target.classList.contains('agentRepoFilterVal')) return;
+    agentFiltreDepot = e.target.value;
+    filtrerAgents();
+  });
+}
+
+/* L'ÂGE d'une connaissance : combien de commits ont touché ses chemins depuis qu'elle a été
+   écrite. Calculé sans IA — c'est un `git log` — mais il fait un fetch, d'où la route à part. */
+async function chargerAges() {
+  for (const el of $$('#agentList [data-agent-age]')) {
+    const id = Number(el.dataset.agentAge);
+    try {
+      const lignes = await api(`/agents/${id}/age`);
+      const total = lignes.reduce((n, x) => n + (x.commits || 0), 0);
+      el.textContent = total
+        ? tr('agents.card.age', { n: total, count: total })
+        : tr('agents.card.age-fresh');
+      el.classList.toggle('agent-age-stale', total > 0);
+    } catch { el.textContent = ''; }
+  }
+}
+
+/* ---------- L'éditeur ---------- */
+
+function agentReposHtml(choisis) {
+  const parId = new Map((choisis || []).map((r) => [Number(r.repo_id), r]));
+  return repoOptions.map((r) => {
+    const c = parId.get(r.id);
+    return `<label class="inline-check agent-repo-row" data-cherche="${esc(r.project.toLowerCase())}">
+      <input type="checkbox" class="ag-repo" value="${r.id}"${c ? ' checked' : ''} />
+      <span>${esc(r.project)}</span>
+      <select class="ag-role">
+        <option value="readonly"${c && c.role === 'readonly' ? ' selected' : ''}>${esc(tr('agents.role.readonly'))}</option>
+        <option value="target"${c && c.role === 'target' ? ' selected' : ''}>${esc(tr('agents.role.target'))}</option>
+      </select>
+    </label>`;
+  }).join('');
+}
+
+function lireAgentForm() {
+  const f = $('#agentForm');
+  const liste = (v) => String(v || '').split(',').map((x) => x.trim()).filter(Boolean);
+  return {
+    name: $('#agentName').value,
+    description: $('#agentDesc').value,
+    kind: $('#agentKind').value,
+    scope_kind: (f.querySelector('input[name="scope_kind"]:checked') || {}).value || 'all_repos',
+    system_prompt: $('#agentSystemPrompt').value,
+    prompt_template: $('#agentTemplate').value,
+    model: $('#agentModel').value,
+    permission_mode: (f.querySelector('input[name="permission_mode"]:checked') || {}).value || '',
+    allowed_tools_json: liste($('#agentAllowed').value),
+    disallowed_tools_json: liste($('#agentDisallowed').value),
+    max_turns: $('#agentMaxTurns').value ? Number($('#agentMaxTurns').value) : null,
+    skills_json: skillsCochesDe('#agentSkills'),
+    subagents_json: lireSubagentsJson(),
+    output_kind: $('#agentOutputKind').value,
+    output_ref: (($('#agentOutputRefBox') || {}).querySelector ? ($('#agentOutputRefBox').querySelector('.agentOutputRefVal') || {}).value : '') || null,
+    schedule: lireHoraireForm(),
+    repos: $$('#agentRepos .ag-repo:checked').map((c) => ({
+      repo_id: Number(c.value), branch: '', role: c.closest('label').querySelector('.ag-role').value,
+    })),
+  };
+}
+
+function skillsCochesDe(sel) {
+  return $$(`${sel} [data-skill]:checked`).map((c) => {
+    const s = skillsCache.items.find((x) => skillCle(x) === c.dataset.skill);
+    return s ? { name: s.name, source: s.source, repo_id: s.repo_id } : null;
+  }).filter(Boolean);
+}
+
+// Le JSON des sous-agents est validé À LA FRAPPE : une accolade oubliée doit se voir là,
+// pas au moment où l'on comptait sur le profil.
+function lireSubagentsJson() {
+  const txt = $('#agentSubagents').value.trim();
+  if (!txt) return {};
+  try { const v = JSON.parse(txt); return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {}; }
+  catch { return null; }
+}
+
+function majErreurSubagents() {
+  const el = $('#agentSubagentsErr');
+  if (!el) return;
+  const v = lireSubagentsJson();
+  el.hidden = v !== null;
+  el.textContent = v === null ? tr('agents.err.subagents-json') : '';
+  majOmbreSousAgents(v);
+}
+
+/* `--agents` PRIME sur `.claude/agents/<nom>.md` : un sous-agent du profil qui porte le nom
+   d'un sous-agent de fichier le remplace, en silence. On le dit. */
+function majOmbreSousAgents(defs) {
+  const el = $('#agentSubagentShadow');
+  if (!el) return;
+  const noms = defs ? Object.keys(defs) : [];
+  const fichiers = (skillsCache.items || []).filter((x) => x.kind === 'agent').map((x) => x.name);
+  const collision = noms.filter((n) => fichiers.includes(n));
+  el.hidden = !collision.length;
+  el.textContent = collision.length ? tr('agents.warn.subagent-shadow', { list: collision.join(', ') }) : '';
+}
+
+function lireHoraireForm() {
+  const k = $('#agentScheduleKind').value;
+  if (!k) return '';
+  const t = $('#agentScheduleTime').value || '07:00';
+  if (k === 'daily') return `daily ${t}`;
+  if (k === 'weekly') return `weekly ${$('#agentScheduleDow').value} ${t}`;
+  return `monthly ${$('#agentScheduleDom').value} ${t}`;
+}
+
+const JOURS_SEM = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+function poserHoraireForm(texte) {
+  const m = String(texte || '').trim().match(/^(daily|weekly|monthly)\s+(?:(\w+)\s+)?(\d{1,2}:\d{2})$/);
+  $('#agentScheduleKind').value = m ? m[1] : '';
+  $('#agentScheduleDow').innerHTML = JOURS_SEM.map((j) => `<option value="${j}">${esc(tr(`agents.schedule.dow.${j}`))}</option>`).join('');
+  $('#agentScheduleDom').innerHTML = Array.from({ length: 28 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('');
+  if (m && m[1] === 'weekly') $('#agentScheduleDow').value = m[2];
+  if (m && m[1] === 'monthly') $('#agentScheduleDom').value = m[2];
+  $('#agentScheduleTime').value = m ? m[3] : '07:00';
+  majHoraireForm();
+}
+
+function majHoraireForm() {
+  const k = $('#agentScheduleKind').value;
+  $('#agentScheduleDow').hidden = k !== 'weekly';
+  $('#agentScheduleDom').hidden = k !== 'monthly';
+  $('#agentScheduleTime').hidden = !k;
+  const said = $('#agentScheduleSaid');
+  if (said) said.textContent = k ? tr('agents.schedule.said', { spec: lireHoraireForm() }) : '';
+  /* Un horaire sans borne de tours est refusé à la sauvegarde : on le dit AVANT, sous le
+     champ, plutôt qu'en toast rouge après le clic. */
+  const manque = $('#agentScheduleNeeds');
+  if (manque) manque.hidden = !k || !!$('#agentMaxTurns').value;
+}
+
+async function ouvrirAgentModal(a) {
+  agentEditId = a ? a.id : null;
+  await loadRepoOptions();
+  $('#agentModalTitle').textContent = a ? a.name : tr('agents.modal.new');
+  $('#agentName').value = a ? a.name : '';
+  $('#agentDesc').value = a ? a.description : '';
+  $('#agentKind').value = a ? a.kind : 'explore';
+  const scope = a ? a.scope_kind : 'all_repos';
+  $$('#agentForm input[name="scope_kind"]').forEach((r) => { r.checked = r.value === scope; });
+  $('#agentSystemPrompt').value = a ? a.system_prompt : '';
+  $('#agentTemplate').value = a ? a.prompt_template : '{question}';
+  $('#agentModel').value = a ? a.model : '';
+  const perm = a ? a.permission_mode : '';
+  $$('#agentPermission input[name="permission_mode"]').forEach((r) => { r.checked = r.value === perm; });
+  $('#agentAllowed').value = a ? (jsonListe(a.allowed_tools_json) || []).join(', ') : '';
+  $('#agentDisallowed').value = a ? (jsonListe(a.disallowed_tools_json) || []).join(', ') : '';
+  $('#agentMaxTurns').value = a && a.max_turns ? a.max_turns : '';
+  $('#agentSubagents').value = a && a.subagents_json && a.subagents_json !== '{}'
+    ? JSON.stringify(JSON.parse(a.subagents_json), null, 2) : '';
+  $('#agentOutputKind').value = a ? a.output_kind : 'report';
+  $('#agentRepos').innerHTML = agentReposHtml(a ? a.repos : []);
+  poserHoraireForm(a ? a.schedule : '');
+  majPerimetreVisible();
+  majSortieVisible(a ? a.output_ref : null);
+  await majSkillsAgent(a);
+  majErreurSubagents();
+  const warn = $('#agentCopilotWarn');
+  if (warn) warn.hidden = !/copilot/i.test(copilotBinCourant);
+  $('#agentFormErr').hidden = true;
+  $('#agentModal').hidden = false;
+  majApercuArgv();
+  $('#agentName').focus();
+}
+
+const jsonListe = (txt) => { try { return JSON.parse(txt); } catch { return []; } };
+
+function majPerimetreVisible() {
+  const liste = ($('#agentForm').querySelector('input[name="scope_kind"]:checked') || {}).value === 'repos';
+  const box = $('#agentReposBox');
+  if (box) box.hidden = !liste;
+}
+
+function majSortieVisible(refCourant) {
+  const est = $('#agentOutputKind').value === 'note_page';
+  const row = $('#agentOutputRefRow');
+  if (row) row.hidden = !est;
+  const box = $('#agentOutputRefBox');
+  if (est && box && !box.dataset.rendu) {
+    box.dataset.rendu = '1';
+    box.innerHTML = comboHtml('agentOutputRefVal', { ph: tr('agents.f.output-ref-ph') });
+    wireCombo(box, 'agentOutputRefVal', async () => {
+      // La route enveloppe la liste : `{ pages }`.
+      const d = await api('/notes').catch(() => ({}));
+      const pages = (d && d.pages) || [];
+      return [{ value: '', label: tr('agents.f.output-ref-new') },
+        ...pages.map((p) => ({ value: String(p.id), label: p.title }))];
+    });
+  }
+  if (est && box && refCourant) {
+    const h = box.querySelector('.agentOutputRefVal');
+    if (h) h.value = String(refCourant);
+  }
+}
+
+async function majSkillsAgent(a) {
+  const box = $('#agentSkills');
+  if (!box) return;
+  const d = await chargerSkills([]);
+  const choisis = new Set((a ? jsonListe(a.skills_json) : []).map((s) => `${s.source}|${s.repo_id || ''}|${s.name}`));
+  const sauve = taskSkillsCoches;
+  taskSkillsCoches = choisis;
+  box.innerHTML = (d.items.filter((x) => x.kind === 'skill').map(skillCaseHtml).join('')
+    || `<div class="muted">${esc(tr('agents.task.no-skill'))}</div>`)
+    + `<div class="muted" data-no-match hidden>${esc(tr('agents.skills.no-match'))}</div>`;
+  taskSkillsCoches = sauve;
+  filtrerLignes($('#agentSkillFilter'), box);
+}
+
+/* L'aperçu vient TOUJOURS du serveur : c'est lui qui fabrique l'argv, et un aperçu calculé
+   côté client finirait par mentir le jour où les deux divergent. */
+const majApercuArgv = debounce(async () => {
+  const el = $('#agentArgvPreview');
+  if (!el || $('#agentModal').hidden) return;
+  try {
+    const corps = { ...lireAgentForm(), id: agentEditId };
+    const r = await api('/agents/preview', { method: 'POST', body: corps });
+    el.textContent = r.argv || tr('agents.preview.none');
+    const err = $('#agentFormErr');
+    err.hidden = !r.errors.length;
+    err.textContent = r.errors.map((k) => tr(k)).join(' ');
+  } catch { el.textContent = ''; }
+}, 300);
+
+/* ---------- Lancer ---------- */
+
+async function agentDemander(a) {
+  await openTaskModal('explore');
+  appliquerAgent(a);
+  $('#taskPrompt').placeholder = tr('agents.ask.placeholder');
+  $('#taskPrompt').focus();
+}
+
+async function agentCoder(a) {
+  const r = await api(`/agents/${a.id}/run`, { method: 'POST', body: { mode: 'code' } });
+  const p = r.prefill;
+  await openTaskModal('code');
+  appliquerAgent(a);
+  renderTargetRows(p.targets.map((x) => ({ repo_id: x.repo_id, branch: x.branch || '' })));
+  $('#taskPrompt').value = p.prompt;
+  await majVerificateursSession('');
+  $('#taskPrompt').focus();
+}
+
+/* Choisir un agent dans la modale : on POSE ce qu'il implique (type, cibles, cases) et on
+   n'efface rien de ce qui a été tapé. Le désélectionner ne défait rien non plus — ce qui est
+   écrit appartient à qui l'a écrit. */
+function appliquerAgent(a) {
+  const box = $('#taskAgentBox');
+  const h = box && box.querySelector('.taskAgentVal');
+  if (h) { h.value = String(a.id); h.dataset.label = a.name; }
+  const champ = box && box.querySelector('[data-combo="taskAgentVal"]');
+  if (champ) { champ.value = a.name; champ.title = a.name; }
+  if (!a.id) return;
+  const d = (() => { try { return JSON.parse(a.defaults_json || '{}'); } catch { return {}; } })();
+  const f = $('#taskForm');
+  if (f.ask_questions) f.ask_questions.checked = !!d.ask_questions;
+  if (f.notify_jira) f.notify_jira.checked = !!d.notify_jira;
+  if (a.scope_kind === 'repos' && a.repos.length && taskKind !== 'code') {
+    renderTargetRows(a.repos.map((r) => ({ repo_id: r.repo_id, branch: r.branch || '' })));
+  }
+}
+
+function rendreComboAgentSession() {
+  const box = $('#taskAgentBox');
+  if (!box || box.dataset.rendu) return;
+  box.dataset.rendu = '1';
+  box.innerHTML = comboHtml('taskAgentVal', { ph: tr('agents.task.agent-ph') });
+  wireCombo(box, 'taskAgentVal', async () => {
+    if (!agents.length) await chargerAgents();
+    return [{ value: '', label: tr('agents.task.agent-none') },
+      ...agents.map((a) => ({ value: String(a.id), label: a.name, hint: agentPerimetre(a) }))];
+  });
+  box.addEventListener('change', (e) => {
+    if (!e.target.classList.contains('taskAgentVal')) return;
+    const a = agentDe(e.target.value);
+    if (a) appliquerAgent(a);
+  });
+}
+
+function poserAgentRelu(t) {
+  const box = $('#taskAgentBox');
+  if (!box) return;
+  rendreComboAgentSession();
+  const h = box.querySelector('.taskAgentVal');
+  const champ = box.querySelector('[data-combo="taskAgentVal"]');
+  const nom = t.agent_name || '';
+  if (h) { h.value = t.agent_id ? String(t.agent_id) : ''; h.dataset.label = nom; }
+  if (champ) {
+    champ.value = nom;
+    champ.title = nom;
+    // Agent supprimé : le nom reste lisible, mais on ne peut plus le choisir de nouveau.
+    champ.disabled = !!(nom && !t.agent_id);
+  }
+}
+
+/* Le filtre par agent de la liste Dev IA. Rendu une fois : la liste, elle, se redessine
+   toutes les secondes et demie, et recréer le combo à chaque fois emporterait la saisie. */
+function rendreComboFiltreAgent() {
+  const box = $('#taskAgentFilterBox');
+  if (!box || box.dataset.rendu) return;
+  box.dataset.rendu = '1';
+  box.innerHTML = comboHtml('taskAgentFilterVal', { ph: tr('agents.filter.agent-ph') });
+  wireCombo(box, 'taskAgentFilterVal', async () => {
+    if (!agents.length) await chargerAgents();
+    return [{ value: '', label: tr('agents.filter.agent-all') },
+      ...agents.map((a) => ({ value: String(a.id), label: a.name }))];
+  });
+  box.addEventListener('change', (e) => {
+    if (!e.target.classList.contains('taskAgentFilterVal')) return;
+    agentFiltreSessions = Number(e.target.value) || 0;
+    renderTasks();
+  });
+}
+
+/* UNE TRACE D'ERREUR, reconnue au motif. Ce n'est pas une analyse : c'est le signal qu'un
+   texte NOMME du code — une pile Java ou Python, un nom d'exception, un « Error: », un code
+   HTTP 4xx/5xx suivi d'une route. Faux positif : un bouton de plus, sans conséquence. Faux
+   négatif : la palette et l'onglet Agents restent des chemins. */
+function detecterTrace(texte) {
+  return /\bat .+\(.+:\d+\)|Traceback \(most recent|Exception\b|Error:|\b[45]\d\d\b .*\//.test(String(texte || ''));
+}
+
+/* « Enquêter » depuis un ticket : la modale de session s'ouvre en exploration, portée par
+   l'enquêteur, avec le TEXTE DU TICKET en demande. */
+async function enqueterSurTicket(cle) {
+  const enq = agents.find((a) => a.builtin_key === 'investigator') || (await chargerAgents()).find((a) => a.builtin_key === 'investigator');
+  if (!enq) { toast(tr('agents.err.no-investigator'), true); return; }
+  let texte = '';
+  try {
+    // La route enveloppe le ticket : `{ issue }`. Le lire à plat donnait « undefined — » en
+    // guise de demande, et l'enquête partait sans la trace.
+    const d = await api(`/jira/issue/${encodeURIComponent(cle)}`);
+    const it = d.issue || d;
+    texte = `${it.key} — ${it.summary || ''}\n\n${it.descriptionMd || ''}`.trim();
+  } catch { texte = cle; }
+  await agentDemander(enq);
+  $('#taskPrompt').value = texte;
+}
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('.btn-jira-investigate');
+  if (b) enqueterSurTicket(b.dataset.jirakey);
+});
+
+async function lancerAgentDepuisPalette(r) {
+  navTab('agents');
+  showAgentsSub('list');
+  await loadAgentList();
+  const carte = $(`#agentList .agent-card[data-id="${Number(r.id || r.ref)}"]`);
+  const b = carte && carte.querySelector('.btn-agent-ask');
+  if (b) b.click();
+}
+
+const agentChoisiDansModale = () => {
+  const h = $('#taskAgentBox') && $('#taskAgentBox').querySelector('.taskAgentVal');
+  return h && h.value ? Number(h.value) : null;
+};
+
+/* ---------- Câblages ---------- */
+
+onEl($('#agentFilter'), 'input', filtrerAgents);
+onEl($('#agentSkillFilter'), 'input', () => filtrerLignes($('#agentSkillFilter'), $('#agentSkills')));
+onEl($('#agentRepoFilter'), 'input', () => filtrerLignes($('#agentRepoFilter'), $('#agentRepos')));
+onEl($('#domainRepoFilter'), 'input', () => filtrerLignes($('#domainRepoFilter'), $('#domainRepos')));
+onEl($('#btnNewAgent'), 'click', () => ouvrirAgentModal(null));
+onEl($('#agentCancel'), 'click', () => { $('#agentModal').hidden = true; });
+onEl($('#agentKind'), 'change', majApercuArgv);
+onEl($('#agentOutputKind'), 'change', () => { majSortieVisible(null); majApercuArgv(); });
+onEl($('#agentScheduleKind'), 'change', majHoraireForm);
+onEl($('#agentScheduleDow'), 'change', majHoraireForm);
+onEl($('#agentScheduleDom'), 'change', majHoraireForm);
+onEl($('#agentScheduleTime'), 'change', majHoraireForm);
+onEl($('#agentMaxTurns'), 'input', () => { majHoraireForm(); majApercuArgv(); });
+onEl($('#agentSubagents'), 'input', () => { majErreurSubagents(); majApercuArgv(); });
+onEl($('#agentForm'), 'input', (e) => {
+  if (e.target.matches('#agentModel, #agentAllowed, #agentDisallowed, #agentSystemPrompt')) majApercuArgv();
+});
+onEl($('#agentForm'), 'change', (e) => {
+  if (e.target.name === 'scope_kind') majPerimetreVisible();
+  if (e.target.name === 'permission_mode') majApercuArgv();
+});
+
+onEl($('#agentForm'), 'submit', async (e) => {
+  e.preventDefault();
+  const corps = lireAgentForm();
+  if (corps.subagents_json === null) { toast(tr('agents.err.subagents-json'), true); return; }
+  try {
+    await busy($('#agentSave'), async () => {
+      if (agentEditId) await api(`/agents/${agentEditId}`, { method: 'PUT', body: corps });
+      else await api('/agents', { method: 'POST', body: corps });
+    });
+    $('#agentModal').hidden = true;
+    toast(tr('agents.saved'));
+    await loadAgentList();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
+/* « Essai » : la modale de session pré-remplie avec ce profil, SANS enregistrer. On règle un
+   rôle en le voyant tourner, pas en le relisant. */
+onEl($('#agentTry'), 'click', async () => {
+  const corps = lireAgentForm();
+  $('#agentModal').hidden = true;
+  await openTaskModal(corps.kind === 'code' ? 'code' : 'explore');
+  $('#taskPrompt').value = corps.prompt_template.replace('{question}', '').trim();
+  $('#taskPrompt').focus();
+});
+
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[class*="btn-agent-"]');
+  if (!b) return;
+  const a = agentDe(b.dataset.id);
+  if (!a) return;
+  if (b.classList.contains('btn-agent-ask')) return agentDemander(a);
+  if (b.classList.contains('btn-agent-code')) return agentCoder(a);
+  if (b.classList.contains('btn-agent-edit')) return ouvrirAgentModal(a);
+  if (b.classList.contains('btn-agent-knowledge')) return ouvrirConnaissance(a);
+  if (b.classList.contains('btn-agent-review')) return ouvrirConnaissance(a, { pending: true });
+  if (b.classList.contains('btn-agent-runs')) { navTab('task'); agentFiltreSessions = a.id; loadTasks(); return; }
+  if (b.classList.contains('btn-agent-refresh')) {
+    return busy(b, async () => {
+      try { await api(`/agents/${a.id}/knowledge/refresh`, { method: 'POST' }); toast(tr('agents.refresh.started')); refreshStatus(); }
+      catch (err) { toast(explainError(err.message), true); }
+    });
+  }
+  if (b.classList.contains('btn-agent-dup')) {
+    await api(`/agents/${a.id}/duplicate`, { method: 'POST' });
+    toast(tr('agents.duplicated')); return loadAgentList();
+  }
+  if (b.classList.contains('btn-agent-restore')) {
+    const ok = await confirmDialog({
+      title: tr('agents.restore.title'), text: tr('agents.restore.text', { name: a.name }),
+      confirmLabel: tr('agents.btn.restore'), danger: false,
+    });
+    if (!ok) return;
+    await api(`/agents/${a.id}/restore`, { method: 'POST' });
+    toast(tr('agents.restored')); return loadAgentList();
+  }
+  if (b.classList.contains('btn-agent-del')) {
+    const ok = await confirmDialog({
+      title: tr('agents.delete.title'), text: tr('agents.delete.text', { name: a.name }),
+      detail: tr('agents.delete.detail'), confirmLabel: tr('ui.delete'),
+    });
+    if (!ok) return;
+    await api(`/agents/${a.id}`, { method: 'DELETE' });
+    toast(tr('agents.deleted')); return loadAgentList();
+  }
+  return undefined;
+});
+
+// L'état vide propose le geste principal.
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-empty-act="new-domain"]');
+  if (b) ouvrirDomainModal();
+});
+
+/* ==================== AGENTS DE DOMAINE : créer, relire, mettre à jour ====================
+   Le cartographe est l'agent dont la SORTIE crée un autre agent. On lui donne un sujet ; il
+   rend un document à structure imposée précédé d'un en-tête que Mergerie parse. La création
+   est directe (l'agent créé n'a aucun effet tant qu'on ne le lance pas) ; la mise à jour, elle,
+   attend une validation — c'est la seule sortie d'agent qui le fasse. */
+
+let agentFiltreSessions = 0;
+let knowledgeAgent = null;
+let knowledgeVersion = null;
+
+async function ouvrirDomainModal() {
+  await loadRepoOptions();
+  $('#domainSubject').value = '';
+  $('#domainRepos').innerHTML = repoOptions.map((r) => `<label class="inline-check" data-cherche="${esc(r.project.toLowerCase())}">
+      <input type="checkbox" class="dom-repo" value="${r.id}" /><span>${esc(r.project)}</span></label>`).join('')
+    + `<div class="muted" data-no-match hidden>${esc(tr('agents.skills.no-match'))}</div>`;
+  $('#domainModal').hidden = false;
+  $('#domainSubject').focus();
+}
+
+onEl($('#btnNewDomainAgent'), 'click', ouvrirDomainModal);
+onEl($('#domainCancel'), 'click', () => { $('#domainModal').hidden = true; });
+onEl($('#domainForm'), 'submit', async (e) => {
+  e.preventDefault();
+  const subject = $('#domainSubject').value.trim();
+  if (!subject) return;
+  const repo_ids = $$('#domainRepos .dom-repo:checked').map((c) => Number(c.value));
+  try {
+    await busy($('#domainStart'), () => api('/agents/domain', { method: 'POST', body: { subject, repo_ids } }));
+    $('#domainModal').hidden = true;
+    toast(tr('agents.domain.started'));
+    // La cartographie est une session comme une autre : on va la regarder tourner.
+    navTab('task');
+    loadTasks();
+    refreshStatus();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
+async function ouvrirConnaissance(a, { pending = false } = {}) {
+  knowledgeAgent = a;
+  $('#knowledgeTitle').textContent = `${a.name} — ${tr('agents.knowledge.title')}`;
+  const vs = await api(`/agents/${a.id}/knowledge`).catch(() => []);
+  $('#knowledgeVersions').innerHTML = vs.map((v) => `<button type="button" class="knowledge-version" data-id="${v.version}">
+      <strong>v${v.version}</strong> <span class="badge k-${esc(v.status)}">${esc(tr(`agents.knowledge.status.${v.status}`))}</span>
+      <span class="muted">${esc(fmtDate(v.created_at))}</span>
+      ${v.unverified ? `<span class="badge k-warn">${esc(tr('agents.card.unverified', { n: v.unverified, count: v.unverified }))}</span>` : ''}
+    </button>`).join('') || `<div class="muted">${esc(tr('agents.knowledge.none'))}</div>`;
+  const choisie = pending ? (vs.find((v) => v.status === 'pending') || vs[0]) : (vs.find((v) => v.status === 'active') || vs[0]);
+  $('#knowledgeModal').hidden = false;
+  if (choisie) await montrerVersion(choisie.version);
+}
+
+async function montrerVersion(n) {
+  knowledgeVersion = n;
+  $$('#knowledgeVersions .knowledge-version').forEach((b) => b.classList.toggle('active', Number(b.dataset.id) === Number(n)));
+  const v = await api(`/agents/${knowledgeAgent.id}/knowledge/${n}`);
+  $('#knowledgeBody').innerHTML = mdToHtml(v.content || '');
+  $('#knowledgeBody').hidden = false;
+  $('#knowledgeEdit').hidden = true;
+  $('#knowledgeEdit').value = v.content || '';
+  $('#knowledgeSave').hidden = true;
+  $('#knowledgeValidate').hidden = v.status !== 'pending';
+  const box = $('#knowledgeDiff');
+  box.hidden = v.status !== 'pending';
+  if (v.status === 'pending') {
+    const active = await api(`/agents/${knowledgeAgent.id}/knowledge`).then((l) => l.find((x) => x.status === 'active'));
+    const avant = active ? (await api(`/agents/${knowledgeAgent.id}/knowledge/${active.version}`)).content : '';
+    box.innerHTML = `<p class="muted">${esc(v.diff_summary || '')}</p>${diffLignesHtml(avant, v.content || '')}`;
+  }
+}
+
+/* Un diff de LIGNES, calculé ici : la plus longue sous-séquence commune, puis ce qui reste de
+   part et d'autre. Une carte fait deux pages — pas la peine de charger une bibliothèque. */
+function diffLignesHtml(avant, apres) {
+  const a = String(avant || '').split('\n');
+  const b = String(apres || '').split('\n');
+  const n = a.length; const m = b.length;
+  const L = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i -= 1) {
+    for (let j = m - 1; j >= 0; j -= 1) {
+      L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    }
+  }
+  const out = [];
+  let i = 0; let j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { out.push(['=', a[i]]); i += 1; j += 1; }
+    else if (L[i + 1][j] >= L[i][j + 1]) { out.push(['-', a[i]]); i += 1; }
+    else { out.push(['+', b[j]]); j += 1; }
+  }
+  while (i < n) { out.push(['-', a[i]]); i += 1; }
+  while (j < m) { out.push(['+', b[j]]); j += 1; }
+  return out.map(([signe, texte]) => {
+    const cls = signe === '+' ? 'diff-add' : (signe === '-' ? 'diff-del' : '');
+    return `<div class="diff-line ${cls}">${esc(signe === '=' ? '  ' : `${signe} `)}${esc(texte)}</div>`;
+  }).join('');
+}
+
+onEl($('#knowledgeClose'), 'click', () => { $('#knowledgeModal').hidden = true; });
+onEl($('#knowledgeVersions'), 'click', (e) => {
+  const b = e.target.closest('.knowledge-version');
+  if (b) montrerVersion(Number(b.dataset.id));
+});
+onEl($('#knowledgeEditBtn'), 'click', () => {
+  $('#knowledgeBody').hidden = true;
+  $('#knowledgeEdit').hidden = false;
+  $('#knowledgeSave').hidden = false;
+  $('#knowledgeEdit').focus();
+});
+onEl($('#knowledgeSave'), 'click', (e) => busy(e.currentTarget, async () => {
+  try {
+    await api(`/agents/${knowledgeAgent.id}/knowledge`, { method: 'PUT', body: { content: $('#knowledgeEdit').value } });
+    toast(tr('agents.knowledge.saved'));
+    await ouvrirConnaissance(knowledgeAgent);
+    await loadAgentList();
+  } catch (err) { toast(explainError(err.message), true); }
+}));
+onEl($('#knowledgeValidate'), 'click', (e) => busy(e.currentTarget, async () => {
+  try {
+    await api(`/agents/${knowledgeAgent.id}/knowledge/${knowledgeVersion}/activate`, { method: 'POST' });
+    toast(tr('agents.knowledge.activated'));
+    await ouvrirConnaissance(knowledgeAgent);
+    await loadAgentList();
+  } catch (err) { toast(explainError(err.message), true); }
+}));
+onEl($('#knowledgePublish'), 'click', (e) => busy(e.currentTarget, async () => {
+  try { await api(`/agents/${knowledgeAgent.id}/knowledge/publish`, { method: 'POST' }); toast(tr('agents.knowledge.published')); }
+  catch (err) { toast(explainError(err.message), true); }
+}));
+
 const PALETTE_ACTIONS = [
   { key: 'palette.go.reviews', tab: 'review', run: () => $('nav button[data-tab="review"]').click() },
   { key: 'palette.go.to-review', tab: 'review', run: () => { $('nav button[data-tab="review"]').click(); loadSegment('to_review'); } },
@@ -13641,6 +14700,7 @@ const PALETTE_ACTIONS = [
   { key: 'palette.go.docker', tab: 'docker', run: () => $('nav button[data-tab="docker"]').click() },
   { key: 'palette.go.jenkins', tab: 'jenkins', run: () => $('nav button[data-tab="jenkins"]').click() },
   { key: 'palette.go.stats', tab: 'dashboard', run: () => $('nav button[data-tab="dashboard"]').click() },
+  { key: 'palette.go.agents', tab: 'agents', run: () => $('nav button[data-tab="agents"]').click() },
   { key: 'palette.go.settings', run: () => $('nav button[data-tab="admin"]').click() },
   { key: 'palette.act.discover', tab: 'review', run: () => { $('nav button[data-tab="review"]').click(); $('#btnDiscover').click(); } },
   { key: 'palette.act.review-all', tab: 'review', run: () => { $('nav button[data-tab="review"]').click(); $('#btnReview').click(); } },
@@ -13708,6 +14768,10 @@ function ouvrirResultatPalette(r) {
     if (a) a.run();
     return;
   }
+  /* UN AGENT : on ouvre sa carte et on clique SON bouton, plutôt que de refaire le geste ici.
+     La palette ne sait rien faire que l'écran ne sache déjà faire — c'est ce qui garantit
+     qu'elle ne se met pas à diverger de lui. */
+  if (r.kind === 'agent' || r.kind === 'agent-investigate') { lancerAgentDepuisPalette(r); return; }
   const n = r.nav || {};
   if (n.mr_id) { navMrReport(n.mr_id); return; }
   if (n.ticket) { navTab('jira'); showJiraSub('mine'); selectJiraIssue(n.ticket, 'mine'); return; }
@@ -13924,7 +14988,7 @@ const SHORTCUTS = [
 function openShortcuts() {
   const m = $('#shortcutsModal'); if (!m) return;
   const nbOnglets = $$('nav button[data-tab]').length;
-  // La plage annoncée doit être la VRAIE : au-delà de neuf onglets, le dixième est sur « 0 ».
+  // La plage annoncée doit être la VRAIE : au-delà de neuf onglets, le DERNIER est sur « 0 ».
   const plage = nbOnglets > 9 ? '1 – 9, 0' : `1 – ${nbOnglets}`;
   $('#shortcutsList').innerHTML = SHORTCUTS
     .map(([k, key]) => `<div class="shortcut-row"><kbd>${esc(k || plage)}</kbd><span>${esc(tr(key))}</span></div>`).join('');
@@ -14454,6 +15518,25 @@ function renderBrief(d) {
       ${briefHideBtn('sess', cle)}
     </div>`).join('');
 
+  /* CE QUE LES AGENTS ONT PRODUIT PENDANT LA NUIT. Le documentaliste planifié tourne à 7:00 :
+     sans cette section, personne ne saurait qu'il a réécrit « Carte des services », et une page
+     dont on ignore qu'elle vient de changer ne sert à rien. On dit aussi ce qui ATTEND — un run
+     arrêté sur une question, une connaissance à valider. */
+  const agentsBrief = (d.agents || []).map((a) => {
+    const bouton = a.kind === 'note_page'
+      ? `<button type="button" class="btn btn-primary" data-brief-agent-page="${a.page_id}">${esc(tr('agents.brief.open-page'))}</button>`
+      : (a.kind === 'pending'
+        ? `<button type="button" class="btn btn-primary" data-brief-agent-review="${a.agent_id}">${esc(tr('agents.btn.review'))}</button>`
+        : `<button type="button" class="btn" data-brief-session="${a.task_id}">${esc(tr('notes.brief.session.go'))}</button>`);
+    return `<div class="brief-item">
+      <div class="brief-item-main">
+        <div class="brief-item-title">${esc(tr(`agents.brief.kind.${a.kind}`, { name: a.name || '', title: a.title || '' }))}</div>
+        <div class="meta">${esc(a.name || '')}${a.at ? ` · ${esc(fmtDateTime(a.at))}` : ''}</div>
+      </div>
+      ${bouton}
+    </div>`;
+  }).join('');
+
   /* B7 — LE BRIEF SIGNALE LE NETTOYAGE quand il y a vraiment de quoi. En dessous de dix, ce
      serait un rappel de plus pour trois branches : le bouton de l'onglet Git suffit. */
   const branches = (brMergees.total >= 10) ? `<div class="brief-item">
@@ -14505,6 +15588,7 @@ function renderBrief(d) {
     briefSection(tr('notes.brief.sec.sessions'), sessions, { icon: 'bot' }),
     briefSection(tr('notes.brief.sec.verifications'), verifs, { icon: 'alert' }),
     briefSection(tr('notes.brief.sec.pending'), attentes, { icon: 'bot', hint: tr('notes.brief.pending.hint') }),
+    briefSection(tr('agents.brief.title'), agentsBrief, { icon: 'zap', hint: tr('agents.brief.hint') }),
     briefSection(tr('notes.brief.sec.fresh'), fresh, { icon: 'merge', hint: tr('notes.brief.fresh.hint') }),
     briefSection(tr('notes.brief.sec.stale'), stale, { icon: 'clock', hint: tr('notes.brief.stale.hint', { n: d.stale_days }) }),
     briefSection(tr('notes.brief.sec.ci'), ciCasse, { icon: 'alert' }),
@@ -14606,6 +15690,20 @@ document.addEventListener('click', async (e) => {
   }
   const s = e.target.closest && e.target.closest('[data-brief-session]');
   if (s) { navTab('task'); return; }
+  /* Une page écrite par un agent pendant la nuit : on l'ouvre là où elle vit. */
+  const ap = e.target.closest && e.target.closest('[data-brief-agent-page]');
+  if (ap) { navTab('notes'); showNotesSub('pages'); openNotePage(Number(ap.dataset.briefAgentPage)); return; }
+  /* Une connaissance à valider : on ouvre SA modale, et on clique le VRAI bouton — une seule
+     implémentation du geste, comme pour « Corriger » ci-dessous. */
+  const ar = e.target.closest && e.target.closest('[data-brief-agent-review]');
+  if (ar) {
+    navTab('agents');
+    showAgentsSub('list');
+    await loadAgentList();
+    const a = agentDe(ar.dataset.briefAgentReview);
+    if (a) await ouvrirConnaissance(a, { pending: true });
+    return;
+  }
   /* CORRIGER, depuis le brief. Le rapport de vérification a déjà son bouton « Corriger » —
      on l'ouvre, et on clique le VRAI bouton : une seule implémentation du geste, et ce qui
      est impossible (verdict autre qu'un échec) reste impossible. */
@@ -17569,8 +18667,10 @@ document.addEventListener('keydown', (e) => {
   /* Les chiffres suivent la BARRE, lue dans le DOM — jamais une liste recopiée à côté.
      Une copie se désynchronise au premier réordonnancement, et le décalage est silencieux :
      « 3 » ouvrirait un autre onglet que le troisième, sans que rien ne signale l'erreur. */
-  /* `0` prend le DIXIÈME onglet, faute de touche « 10 » — la convention des navigateurs.
-     Sans lui, ajouter un onglet retirait en silence son raccourci au dernier de la barre. */
+  /* `0` prend le DERNIER onglet, faute de touche « 10 » — la convention des navigateurs.
+     Le dixième tant qu'il y en a dix ; au-delà, c'est bien le dernier qu'il faut viser :
+     sinon ajouter un onglet retire en silence son raccourci à celui qui ferme la barre
+     (Réglages), et le onzième onglet en prendrait un qui ne lui était pas destiné. */
   /* L'ONGLET LIENS A SON PROPRE CLAVIER dès qu'une case a le focus : `j`/`k` les lignes,
      `←`/`→` les cases, `Entrée` ouvre, `e` modifie, `c` copie. Il passe avant les touches
      globales, qui parlent des cartes de merge requests et n'ont rien à faire ici. */
@@ -17578,7 +18678,8 @@ document.addEventListener('keydown', (e) => {
   if (/^[0-9]$/.test(e.key)) {
     // …et seulement ce qui est VISIBLE : un menu masqué n'a pas de numéro, sinon « 3 » ouvrirait
     // un onglet absent de la barre.
-    const t = $$('nav button[data-tab]:not([hidden])')[e.key === '0' ? 9 : +e.key - 1];
+    const onglets = $$('nav button[data-tab]:not([hidden])');
+    const t = onglets[e.key === '0' ? onglets.length - 1 : +e.key - 1];
     if (t) { e.preventDefault(); t.click(); }
     return;
   }

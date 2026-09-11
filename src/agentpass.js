@@ -35,7 +35,7 @@ function unitDir(scope, taskId, unitId) {
 
 /* Enregistre une passe et renvoie son numéro. Best-effort sur l'écriture du fichier :
    l'absence de trace ne doit jamais faire échouer un codage qui, lui, a réussi. */
-function record(scope, taskId, unitId, { kind, prompt, text }) {
+function record(scope, taskId, unitId, { kind, prompt, text, costUsd }) {
   const md = String(text || '').trim();
   const row = db.prepare('SELECT MAX(n) v FROM agent_pass WHERE scope = ? AND task_id = ? AND unit_id = ?')
     .get(scope, taskId, unitId);
@@ -46,16 +46,17 @@ function record(scope, taskId, unitId, { kind, prompt, text }) {
       outPath = path.join(unitDir(scope, taskId, unitId), `output-v${n}.md`);
       fs.writeFileSync(outPath, md, 'utf8');
     }
-    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
-      VALUES (?,?,?,?,?,?,?,?)`)
-      .run(scope, taskId, unitId, n, kind || 'run', String(prompt || ''), outPath, new Date().toISOString());
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at, cost_usd)
+      VALUES (?,?,?,?,?,?,?,?,?)`)
+      .run(scope, taskId, unitId, n, kind || 'run', String(prompt || ''), outPath, new Date().toISOString(),
+        typeof costUsd === 'number' ? costUsd : null);
   } catch { /* trace best-effort */ }
   return { n, outPath };
 }
 
 // Les passes d'une unité, de la plus ancienne à la plus récente (contenu lu à la demande).
 function list(scope, taskId, unitId) {
-  return db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre FROM agent_pass
+  return db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre, cost_usd FROM agent_pass
     WHERE scope = ? AND task_id = ? AND unit_id = ? ORDER BY n`).all(scope, taskId, unitId);
 }
 
@@ -75,7 +76,7 @@ function marquer(id, { favori, titre } = {}) {
 
 // Une passe précise, avec le retour de l'agent lu sur disque.
 function get(scope, taskId, unitId, n) {
-  const p = db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre FROM agent_pass
+  const p = db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre, cost_usd FROM agent_pass
     WHERE scope = ? AND task_id = ? AND unit_id = ? AND n = ?`).get(scope, taskId, unitId, Number(n));
   if (!p) return null;
   let output = '';

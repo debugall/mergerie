@@ -379,10 +379,18 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
        flex : elle devenait une colonne de plus, écrasait la branche de départ de 285 à 157 px
        et renvoyait le « × » du projet à la ligne suivante. */
     await ouvrirSession('code');
-    const geo = () => page.$$eval('#targetRows .target-row > *', (els) => els.map((x) => {
-      const r = x.getBoundingClientRect();
-      return { cls: (x.className || '').split(' ')[0] || x.tagName, y: Math.round(r.y), w: Math.round(r.width) };
-    }));
+    /* Les positions sont mesurées DANS la rangée, pas dans la page. La modale est centrée
+       verticalement : lui ajouter une ligne d'erreur change sa hauteur, donc décale tout son
+       contenu d'un demi-pixel — un décalage qui ne dit rien de ce qu'on veut prouver, et qui
+       faisait échouer le test au premier champ ajouté ailleurs dans le formulaire. Ce qu'on
+       vérifie est que les champs ne bougent pas LES UNS PAR RAPPORT AUX AUTRES. */
+    const geo = () => page.$$eval('#targetRows .target-row', (rows) => {
+      const base = rows[0].getBoundingClientRect().y;
+      return [...rows[0].children].map((x) => {
+        const r = x.getBoundingClientRect();
+        return { cls: (x.className || '').split(' ')[0] || x.tagName, y: Math.round(r.y - base), w: Math.round(r.width) };
+      });
+    });
     const avant = await geo();
 
     await page.fill('#taskForm textarea[name="prompt"]', 'une tâche');
@@ -395,9 +403,12 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
       'aucun champ de la rangée ne bouge ni ne rétrécit : le message n’est pas une colonne');
     const err = apres[apres.length - 1];
     assert.equal(err.cls, 'field-error', 'le message ferme la rangée');
-    const branche = await page.locator('#targetRows .target-row input.t-branch')
-      .evaluate((e) => Math.round(e.getBoundingClientRect().bottom));
-    assert.ok(err.y >= branche, `le message est sous le champ (${err.y} ≥ ${branche})`);
+    // …et il est SOUS le champ, mesuré dans la même page au même instant.
+    const { hautErreur, basBranche } = await page.evaluate(() => ({
+      hautErreur: Math.round(document.querySelector('#targetRows .field-error').getBoundingClientRect().y),
+      basBranche: Math.round(document.querySelector('#targetRows .target-row input.t-branch').getBoundingClientRect().bottom),
+    }));
+    assert.ok(hautErreur >= basBranche, `le message est sous le champ (${hautErreur} ≥ ${basBranche})`);
     assert.equal(await page.locator('.toast.err').count(), 0);
     await fermerSession();
   });

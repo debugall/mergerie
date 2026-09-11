@@ -30,6 +30,11 @@ const TASKS_DIR = path.join(DATA_DIR, 'tasks');
 const TMP_DIR = path.join(DATA_DIR, 'tmp');
 // Captures collées dans une page de notes : un sous-dossier par page.
 const NOTES_DIR = path.join(DATA_DIR, 'notes');
+// Un dossier par agent de domaine : ses versions de connaissance (`knowledge-v<N>.md`).
+const AGENTS_DIR = path.join(DATA_DIR, 'agents');
+
+// Le dossier de connaissance d'un agent, créé à la demande.
+function agentsDir(agentId) { return ensureDir(path.join(AGENTS_DIR, String(agentId))); }
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -44,6 +49,7 @@ function initDirs() {
   ensureDir(TASKS_DIR);
   ensureDir(NOTES_DIR);
   ensureDir(TMP_DIR);
+  ensureDir(AGENTS_DIR);
 }
 
 // slug sûr pour un chemin de dossier à partir d'un "group/sub/project"
@@ -54,6 +60,7 @@ function slugify(project) {
 }
 
 module.exports = {
-  ROOT, DATA_DIR, DB_PATH, DEFAULT_CLONE_DIR, REVIEWS_DIR, TICKETS_DIR, TASKS_DIR, NOTES_DIR, TMP_DIR,
+  ROOT, DATA_DIR, DB_PATH, DEFAULT_CLONE_DIR, REVIEWS_DIR, TICKETS_DIR, TASKS_DIR, NOTES_DIR, TMP_DIR, AGENTS_DIR,
+  agentsDir,
   ensureDir, initDirs, slugify,
 };

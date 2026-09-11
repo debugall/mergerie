@@ -157,13 +157,13 @@ describe('Liens · grille, palette et sidebar', { skip: dispo ? false : 'chromiu
     await page.locator('#linkSearch').fill('');
   });
 
-  /* La sidebar : neuf entrées, un bouton de compaction, un choix qui survit au rechargement.
+  /* La sidebar : ses entrées, un bouton de compaction, un choix qui survit au rechargement.
      Compacte, les libellés sont MASQUÉS et non retirés — le `title` continue de dire où l'on
      va, et les lecteurs d'écran aussi. */
   test('la sidebar se compacte, et s’en souvient', async () => {
     await page.reload();
     await page.waitForSelector('.sidebar button[data-tab]');
-    assert.equal(await page.locator('.sidebar button[data-tab]').count(), 10);
+    assert.equal(await page.locator('.sidebar button[data-tab]').count(), 11);
 
     const largeur = () => page.locator('#sidebar').evaluate((e) => e.getBoundingClientRect().width);
     const avant = await largeur();

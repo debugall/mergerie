@@ -687,6 +687,105 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   bloque jamais une review ni une session de codage, et rien ne la bloque.
   (Sous-onglet dédié, après *Exploration*.)
 
+### Agents
+Un **agent** est un **profil de session** : ce qu'on met *autour* d'un lancement de l'IA — un rôle, un
+périmètre de dépôts, des outils, des skills, des sous-agents, une sortie, parfois un horaire. Mergerie
+ne réinvente pas d'orchestrateur : l'intelligence reste dans le CLI. Un **run d'agent est une session**
+ordinaire — mêmes suivis, mêmes questions, mêmes passes archivées, même file de jobs, même coût.
+
+Une session lancée dans un clone a déjà beaucoup : le code, le `CLAUDE.md` du dépôt, ses skills. Ce
+qu'elle n'a pas, Mergerie l'a : **les vingt autres clones**, ce qui vient d'être mergé, et une
+**connaissance transverse** qu'aucun dépôt ne porte parce qu'elle est *entre* les dépôts.
+
+**Trois règles, jamais négociables.** Un agent ne **pousse** jamais et ne **publie** jamais de lui-même :
+l'auto-push est forcé à zéro sur toute session portée par un agent. Un agent ne **devine** jamais un
+dépôt : il lui est donné, ou il le trouve avec une preuve et le dit. Un agent ne traite pas les échanges
+entre humains.
+
+#### Les deux exemples livrés
+- **Enquêteur d'incident** — on lui colle une trace, un log, un extrait de ticket. Il la cherche dans
+  **tous les clones** avec un sous-agent `chercheur` par dépôt, puis nomme le dépôt, le fichier et la
+  ligne, avec une hypothèse de cause et les commits récents qui ont touché ces lignes. S'il ne trouve
+  rien, il le dit en toutes lettres au lieu de proposer un dépôt plausible. Son rapport se termine par
+  un bloc de service qui alimente le bouton **« Corriger sur *dépôt* »** : un clic ouvre une session de
+  codage sur le bon dépôt, avec le rapport en demande.
+- **Documentaliste** — il relit tous les dépôts et écrit la **carte des services** dans une page de
+  notes : ce que fait chaque dépôt, ce qu'il expose, ce qu'il consomme, comment on le lance en local, où
+  est sa configuration, et « qui appelle qui ». La page est **créée au premier run puis mise à jour**,
+  jamais dupliquée. Avec un horaire, le brief du matin annonce qu'elle a changé.
+
+Ces deux agents sont **modifiables** comme les autres — et **restaurables** d'un bouton si l'on va trop
+loin. Le troisième livré, le **cartographe**, ne se lance pas directement : c'est lui qui crée les agents
+de domaine.
+
+#### Les agents de domaine
+« Où est-ce qu'on gère les notifications, chez nous ? » se demandait au senior, ou s'explorait à neuf à
+chaque fois. Un **agent de domaine** porte la réponse.
+
+**Créer.** *Nouvel agent de domaine*, un **sujet** (« les notifications : où elles sont émises, par quel
+mécanisme, quels types existent, où est la config, comment on les teste »), et le cartographe part. Il
+demande à un `chercheur` par dépôt si celui-ci est concerné, puis écrit un document à structure
+imposée — périmètre, dépôts, points d'entrée, mécanismes, types, configuration, tests, pièges, non
+trouvé, notes de l'équipe. **Chaque chemin cité est ouvert sous le clone** ; un chemin qui n'existe pas
+est marqué *(non vérifié)* et compté sur la carte. L'agent est créé directement : il n'a aucun effet
+tant qu'on ne le lance pas, et sa connaissance se modifie.
+
+**Utiliser.** *Demander* lance une exploration sur ses dépôts, connaissance en tête. *Coder* ouvre la
+modale de session avec **ses dépôts pré-cochés** — on décoche et on confirme. Toute réponse peut se
+terminer par la liste de ce que l'agent a constaté de faux dans sa propre carte ; il ne la corrige pas
+lui-même, il la **signale**, et le compteur d'écarts monte sur sa carte.
+
+**Savoir qu'elle a vieilli, pour rien.** La connaissance enregistre le SHA de chaque dépôt et les chemins
+qu'elle cite. Mergerie compte les commits qui ont touché **ces chemins-là** depuis : « 7 commits depuis
+la carte » s'affiche sans aucun appel d'IA.
+
+**Mettre à jour.** *Mettre à jour* relance le cartographe avec le même sujet, la connaissance précédente,
+les écarts constatés et la liste des commits : « regarde d'abord là ». Le résultat est une version
+**en attente**, avec un **diff lisible** — l'agent continue de travailler sur l'ancienne jusqu'à
+*Relire et valider*. C'est la seule sortie d'agent qui attend une validation. La section « Notes de
+l'équipe » est recopiée d'une version à l'autre **par le code**, pas seulement par le prompt : ce que
+l'équipe a écrit à la main ne se perd pas. *Publier dans les notes* en fait une page consultable.
+
+#### Skills et sous-agents
+Le sous-onglet **Skills & sous-agents** liste ce que le disque offre : les `.claude/skills/<nom>/SKILL.md`
+et `.claude/agents/<nom>.md` des dépôts clonés et de ton home. Mergerie les **lit** — il n'y écrit
+jamais rien. Un dépôt non cloné est signalé plutôt que passé sous silence.
+
+Dans la modale de session, ils se **cochent** ; les skills cochés ouvrent la demande (`/mon-skill`), et
+ceux qui refusent le `/` sont nommés en toutes lettres. Dans le champ de demande comme dans un champ de
+suivi, taper **« / »** propose les skills, **« @ »** les sous-agents — rien ne s'insère sans une
+sélection explicite, et Échap ferme le menu sans fermer la fenêtre.
+
+#### L'éditeur d'un agent
+Six sections repliables, dans l'ordre des décisions : **identité** (nom, à quoi il sert, explorer ou
+coder), **périmètre** (tous les dépôts, ou une liste), **rôle et demande** (le texte ajouté au prompt
+système, et le gabarit — `{question}`, `{repos}`, `{today}`), **capacités** (modèle, ce qu'il a le droit
+de faire sans demander, outils autorisés et interdits, borne de tours, skills, sous-agents en JSON),
+**sortie** (un rapport, une page de notes, ou un agent de domaine), **horaire**.
+
+Le formulaire se termine par **l'argv réel**, calculé par le serveur : c'est la seule façon de voir ce
+que tout cela produit. Le rôle **s'ajoute** au prompt système du CLI — le `CLAUDE.md` du dépôt et ses
+skills restent chargés. Le bouton **Essai** ouvre une session pré-remplie sans rien enregistrer.
+
+Deux refus à la sauvegarde, pour ne pas les découvrir au moment où l'on comptait dessus : le mode de
+permission « poser la question » est impossible ici (l'entrée standard de l'agent est fermée, personne ne
+pourrait répondre), et un **horaire exige une borne de tours** — c'est la seule chose qui rende
+acceptable un agent qui part seul.
+
+#### Horaires
+Trois formes, écrites pour se relire sans manuel : **chaque jour**, **chaque semaine** (un jour), **chaque
+mois** (du 1 au 28 — au-delà, un mois sur deux serait sauté sans rien dire). Heure locale du serveur. Un
+créneau manqué parce que la machine était éteinte est **rattrapé** au démarrage suivant plutôt que perdu.
+Le plafond `Runs d'agent automatiques par jour` (Réglages → AI sessions) borne ce qui peut se déclencher
+tout seul ; atteint, les runs suivants sont sautés et le journal le dit.
+
+#### Ailleurs dans l'outil
+La **palette** propose « Demander à *agent* » et « Enquêter sur une trace d'erreur ». Un **ticket Jira**
+qui contient une trace affiche un bouton *Enquêter*. Les cartes de **Dev IA** portent la pastille de
+l'agent qui les a produites, et la liste se filtre par agent. Les **statistiques** ajoutent un coût par
+agent dès qu'un agent a tourné.
+
+
 ### Notes
 Les post-it et l'onglet bloc-notes du quotidien, **dans l'outil** — donc **ancrés** à ce qu'on y suit
 (merge requests, tickets) et **dans la sauvegarde**. Trois sous-onglets : **Aujourd'hui** (le brief),

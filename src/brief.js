@@ -230,6 +230,33 @@ function pretesAMerger(seuil) {
 
 /* Le brief complet. `sections` porte l'ordre ET le vide : le front n'a qu'à sauter ce qui
    est vide, sans avoir à connaître la règle de composition — elle est ici, en un endroit. */
+/* CE QUE LES AGENTS ONT PRODUIT DEPUIS HIER. Le documentaliste planifié tourne à 7:00 : sans
+   cette section, personne ne saurait qu'il a mis à jour « Carte des services » — et une page
+   dont on ignore qu'elle vient de changer ne sert à rien. On dit aussi ce qui ATTEND : un run
+   arrêté sur une question, une connaissance en attente de validation. */
+function agentsRecents(maintenant, limite = MAX_PAR_SECTION) {
+  const depuis = new Date(maintenant.getTime() - 24 * 3600 * 1000).toISOString();
+  const out = [];
+  for (const r of db.prepare(`SELECT t.id, t.agent_id, t.agent_name, t.status, t.md_path,
+      COALESCE(t.finished_at, t.updated_at) AS at, a.output_kind, a.output_ref
+    FROM task t LEFT JOIN agent a ON a.id = t.agent_id
+    WHERE t.agent_id IS NOT NULL AND COALESCE(t.finished_at, t.updated_at) >= ?
+    ORDER BY at DESC LIMIT ?`).all(depuis, limite * 2)) {
+    if (r.status === 'needs_input') { out.push({ agent_id: r.agent_id, name: r.agent_name, kind: 'needs_input', task_id: r.id, title: '', at: r.at }); continue; }
+    if (r.status !== 'done') continue;
+    if (r.output_kind === 'note_page' && r.output_ref) {
+      const page = db.prepare('SELECT title FROM note_page WHERE id = ?').get(Number(r.output_ref));
+      if (page) { out.push({ agent_id: r.agent_id, name: r.agent_name, kind: 'note_page', task_id: r.id, page_id: Number(r.output_ref), title: page.title, at: r.at }); continue; }
+    }
+    out.push({ agent_id: r.agent_id, name: r.agent_name, kind: 'report', task_id: r.id, title: '', at: r.at });
+  }
+  for (const k of db.prepare(`SELECT k.agent_id, k.version, k.created_at, a.name FROM agent_knowledge k
+      JOIN agent a ON a.id = k.agent_id WHERE k.status = 'pending' ORDER BY k.created_at DESC LIMIT ?`).all(limite)) {
+    out.push({ agent_id: k.agent_id, name: k.name, kind: 'pending', version: k.version, title: '', at: k.created_at });
+  }
+  return out.slice(0, limite);
+}
+
 function construire({ maintenant = new Date(), staleDays = 5, seuilPret = 8 } = {}) {
   const act = activite(maintenant);
   /* Le filtrage est posé ICI, après le calcul : chaque section garde une requête qui dit ce
@@ -258,6 +285,7 @@ function construire({ maintenant = new Date(), staleDays = 5, seuilPret = 8 } = 
     activity: (act.merged || act.opened || act.verified) ? act : null,
     ready_to_merge: pretesAMerger(seuilPret),
     ready_threshold: Number(seuilPret) > 0 ? Number(seuilPret) : 8,
+    agents: agentsRecents(maintenant),
   };
 }
 

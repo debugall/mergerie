@@ -78,6 +78,13 @@ const pieces = require('./pieces');
 const localrepos = require('./localrepos');
 const copilot = require('./copilot');
 const dictation = require('./dictation');
+const skillscan = require('./skillscan');
+const tasks = require('./tasks');
+const agentprofile = require('./agentprofile');
+const agentknowledge = require('./agentknowledge');
+const agentschedule = require('./agentschedule');
+const protocol = require('./protocol');
+const demoAgents = require('./demo-agents');
 
 const app = express();
 
@@ -395,7 +402,11 @@ app.get('/api/stats', wrap((req, res) => {
      sessions ; il ne disait pas LESQUELLES. Depuis que chaque dépense porte son propriétaire,
      le classement est une requête — et un prompt qui fait relire trois dépôts pour rien se
      voit avant de se voir sur la facture. */
-  const topTasks = db.prepare(`SELECT u.owner_kind AS kind, u.owner_id AS id, SUM(u.tokens_est) AS tokens
+  /* `cost_usd` : le coût ANNONCÉ par le backend quand il en annonce un, à côté de l'estimation
+     en tokens qui, elle, existe toujours. `SUM` d'une colonne nulle vaut NULL : le classement
+     reste ordonné sur les tokens, seul chiffre disponible partout. */
+  const topTasks = db.prepare(`SELECT u.owner_kind AS kind, u.owner_id AS id, SUM(u.tokens_est) AS tokens,
+      SUM(u.cost_usd) AS cost_usd
     FROM usage u WHERE u.owner_kind IN ('task','local','ask') AND u.owner_id IS NOT NULL
     GROUP BY u.owner_kind, u.owner_id ORDER BY tokens DESC LIMIT 5`).all()
     .map((r) => {
@@ -409,6 +420,16 @@ app.get('/api/stats', wrap((req, res) => {
      les reviews non : une review coûtait « la moyenne », et on ne pouvait pas dire laquelle
      avait mangé le budget. Elles portent maintenant leur propriétaire, comme les sessions —
      même requête, autre famille. */
+  /* LE COÛT PAR AGENT. Un agent tourne plusieurs fois — à la main, puis sur horaire — et
+     c'est la SOMME qui compte : « le documentaliste coûte trois euros par mois » est une
+     phrase qu'aucune ligne de session ne donne. Vide tant qu'aucun agent n'a tourné : une
+     section à zéro n'apprend rien. */
+  const parAgent = db.prepare(`SELECT t.agent_name AS name, SUM(u.tokens_est) AS tokens,
+      SUM(u.cost_usd) AS cost_usd, COUNT(DISTINCT t.id) AS runs
+    FROM usage u JOIN task t ON t.id = u.owner_id
+    WHERE u.owner_kind = 'task' AND t.agent_name IS NOT NULL
+    GROUP BY t.agent_name ORDER BY tokens DESC LIMIT 10`).all();
+
   const topReviews = db.prepare(`SELECT u.owner_id AS id, SUM(u.tokens_est) AS tokens
     FROM usage u WHERE u.owner_kind = 'mr' AND u.owner_id IS NOT NULL
     GROUP BY u.owner_id ORDER BY tokens DESC LIMIT 5`).all()
@@ -481,6 +502,7 @@ app.get('/api/stats', wrap((req, res) => {
   res.json({
     funnel, notes, projects, weekly, scoreTrend, tokens, tasks, resolution,
     topTasks, topReviews, ratio, verifsParDepot, recurrents,
+    agentCosts: parAgent,
     lowScores: faibles,
     commentsPosted: db.prepare('SELECT COUNT(*) c FROM comment_log').get().c,
   });
@@ -2082,6 +2104,9 @@ function taskById(id) {
 }
 // Les projets d'une session, avec leur état d'exécution propre (commit, diff, MR…).
 function taskTargets(taskId) {
+  /* Les options du profil, s'il y en a un : la commande « Reprendre au terminal » doit
+     reprendre LA MÊME session — sans son modèle ni son allowlist, ce serait une autre. */
+  const optionsAgent = agentprofile.optionsFor(db.prepare('SELECT * FROM task WHERE id = ?').get(taskId));
   /* `has_review` : la merge request de ce projet porte-t-elle un rapport ? C'est ce qui décide
      de l'apparition du bouton « Reprendre le rapport de review » sur le formulaire de suivi.
      Un booléen, pas le rapport lui-même — la liste des sessions n'a pas à charrier le Markdown
@@ -2142,7 +2167,7 @@ function taskTargets(taskId) {
       mr_note: r.mr_row_id != null ? (notesParMr[r.mr_row_id] != null ? notesParMr[r.mr_row_id] : null) : null,
       mr_verdict: v ? v.verdict : null,
       mr_drafts: r.mr_row_id ? (cmtParMr[r.mr_row_id] || 0) : 0,
-      resume_cmd: agentsession.resumeCommand(r.session_backend, r.session_key, r.session_cwd),
+      resume_cmd: agentsession.resumeCommand(r.session_backend, r.session_key, r.session_cwd, optionsAgent),
     };
   });
 }
@@ -2163,41 +2188,10 @@ function targetById(taskId, targetId) {
 }
 // Valide la liste des projets. En codage la branche de travail est obligatoire ;
 // en exploration elle est facultative (défaut : branche par défaut du dépôt).
-function normalizeTargets(targets, kind) {
-  if (!Array.isArray(targets) || !targets.length) throw new Error(t('err.selectionne-au-moins-un-projet'));
-  const seen = new Set();
-  /* Le paramètre ne s'appelle SURTOUT pas `t` : il masquerait la fonction de traduction du
-     module, et chaque `t('err.…')` de ce bloc appellerait l'objet au lieu de traduire —
-     « t is not a function » à la place du message d'erreur attendu. */
-  return targets.map((cible) => {
-    const repoId = Number(cible.repo_id);
-    if (!repoId || !repoById(repoId)) throw new Error(t('err.projet-inconnu'));
-    if (seen.has(repoId)) throw new Error(t('err.un-meme-projet-est-selectionne'));
-    seen.add(repoId);
-    const raw = (cible.branch || '').trim();
-    if (kind === 'code' && !raw) throw new Error(t('err.nom-de-branche-requis-pour'));
-    // branche de départ facultative : vide = branche par défaut du dépôt
-    const base = (cible.base_branch || '').trim();
-    return {
-      repo_id: repoId,
-      branch: raw ? assertValidBranch(raw) : null,
-      base_branch: base ? assertValidBranch(base) : null,
-    };
-  });
-}
-function insertTargets(taskId, list, sessionId) {
-  /* `sessionId` : session d'agent EXISTANTE fournie à la création. On la range comme si la
-     première passe l'avait créée — les exécutants reprennent déjà une session dès qu'un
-     handle est présent, il n'y a donc rien à changer chez eux. `session_cwd` reste NULL à
-     dessein : on ignore d'où vient cette session, et le garde-fou « même cwd » ne doit pas
-     refuser ce que l'utilisateur a explicitement demandé. Si la reprise échoue, le repli
-     existant repart sur une session neuve avec le contexte réinjecté. */
-  const ins = db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, session_key, session_backend, updated_at)
-    VALUES (?, ?, ?, ?, 'new', ?, ?, ?)`);
-  const now = new Date().toISOString();
-  const backend = sessionId ? agentsession.backendName() : null;
-  for (const cible of list) ins.run(taskId, cible.repo_id, cible.branch, cible.base_branch || null, sessionId || null, backend, now);
-}
+// Vérification et normalisation des projets d'une session — partagée avec les runs d'agent.
+const normalizeTargets = tasks.normalizeTargets;
+
+const insertTargets = tasks.insertTargets;
 
 /* Un identifiant de session est passé TEL QUEL à l'agent : `--resume <id>` pour claude,
    `COPILOT_HOME=<chemin>` pour copilot. Il ne doit donc jamais pouvoir passer pour un flag,
@@ -2229,13 +2223,7 @@ function normalizeSessionId(raw) {
 }
 // Nom de branche sûr : pas de flag (pas de `-` en tête), pas de `..`, caractères limités.
 // Empêche l'injection d'arguments dans les commandes git.
-function assertValidBranch(branch) {
-  const b = String(branch || '').trim();
-  if (!/^(?!-)(?!.*\.\.)[A-Za-z0-9._/-]{1,200}$/.test(b)) {
-    throw new Error(t('err.nom-de-branche-invalide-lettres'));
-  }
-  return b;
-}
+const assertValidBranch = tasks.assertValidBranch;
 /* ---------- PIÈCES JOINTES D'UNE SESSION ----------
    Captures ET documents, un seul mécanisme : pour l'agent, une capture d'écran et un PDF de
    spécification sont la même chose — un fichier à ouvrir. La distinction ne vaut qu'à
@@ -2374,9 +2362,9 @@ function chapeauReponse(mdPath) {
    toute la liste, pas une requête par carte. */
 function coutParSession(kind) {
   const out = {};
-  for (const r of db.prepare(`SELECT owner_id AS id, SUM(tokens_est) AS tokens, MAX(created_at) AS at
-    FROM usage WHERE owner_kind = ? AND owner_id IS NOT NULL GROUP BY owner_id`).all(kind)) {
-    out[r.id] = { tokens: r.tokens || 0, at: r.at };
+  for (const r of db.prepare(`SELECT owner_id AS id, SUM(tokens_est) AS tokens, SUM(cost_usd) AS cost_usd,
+    MAX(created_at) AS at FROM usage WHERE owner_kind = ? AND owner_id IS NOT NULL GROUP BY owner_id`).all(kind)) {
+    out[r.id] = { tokens: r.tokens || 0, cost_usd: r.cost_usd, at: r.at };
   }
   return out;
 }
@@ -2425,8 +2413,14 @@ app.get('/api/tasks', wrap((req, res) => {
      prompt ou qu'on pousse une branche — une session simplement relue remonterait alors en
      tête. Jamais exécutée : sa date de création fait foi, sinon une session qu'on vient de
      créer tomberait tout en bas. */
-  const rows = db.prepare(`SELECT * FROM task
-    ORDER BY (status = 'running') DESC, COALESCE(finished_at, created_at) DESC, id DESC`).all();
+  /* `agent_id` : les runs d'UN agent. Le filtre vit au serveur et non au client parce que la
+     carte d'un agent le demande directement, sans charger toute la liste des sessions. */
+  const idAgent = Number(req.query.agent_id) || 0;
+  const rows = idAgent
+    ? db.prepare(`SELECT * FROM task WHERE agent_id = ?
+        ORDER BY (status = 'running') DESC, COALESCE(finished_at, created_at) DESC, id DESC`).all(idAgent)
+    : db.prepare(`SELECT * FROM task
+        ORDER BY (status = 'running') DESC, COALESCE(finished_at, created_at) DESC, id DESC`).all();
   const couts = coutParSession('task');
   const durees = dureeParSession('task');
   res.json(rows.map((tache) => ({
@@ -2435,6 +2429,7 @@ app.get('/api/tasks', wrap((req, res) => {
     // Le chapeau ne sert qu'aux explorations : une session de codage se lit à ses projets.
     answer_head: tache.kind === 'explore' ? chapeauReponse(tache.md_path) : '',
     tokens_est: (couts[tache.id] || {}).tokens || null,
+    cost_usd: (couts[tache.id] || {}).cost_usd ?? null,
     duration_ms: durees[tache.id] != null ? durees[tache.id] : null,
     /* UNE TODO T'ATTEND. L'outil en pose une quand l'agent s'arrête sur une question — elle
        vit dans Notes, et la carte de session, elle, ne disait rien. On la signale là où on
@@ -2487,6 +2482,185 @@ function lireVerifierSession(kind, autoPush, verifierId) {
   return db.prepare('SELECT 1 FROM verifier WHERE id = ?').get(id) ? id : null;
 }
 
+/* ---------- AGENTS : les profils de session ----------
+   Toutes les routes rendent la MÊME forme (`agentprofile.lire`) : la liste et le détail ne
+   divergent pas, et l'écran n'a qu'un rendu à écrire. `age()` n'est PAS dedans — il fait un
+   fetch par dépôt, et la liste se recharge à chaque passage sur l'onglet. */
+function agentOu404(id) {
+  const a = agentprofile.lire(Number(id));
+  if (!a) { const e = new Error(t('agents.err.not-found')); e.status = 404; throw e; }
+  return a;
+}
+
+app.get('/api/agents', wrap((req, res) => { res.json(agentprofile.lister()); }));
+app.get('/api/agents/:id', wrap((req, res) => { res.json(agentOu404(req.params.id)); }));
+
+app.post('/api/agents', wrap((req, res) => {
+  const errs = agentprofile.valider(req.body || {});
+  if (errs.length) return res.status(400).json({ error: t(errs[0]), errors: errs });
+  res.status(201).json(agentprofile.creer(req.body || {}));
+}));
+
+app.put('/api/agents/:id', wrap((req, res) => {
+  const a = agentOu404(req.params.id);
+  const errs = agentprofile.valider({ ...a, ...(req.body || {}) }, a.id);
+  if (errs.length) return res.status(400).json({ error: t(errs[0]), errors: errs });
+  res.json(agentprofile.modifier(a.id, req.body || {}));
+}));
+
+app.delete('/api/agents/:id', wrap((req, res) => {
+  agentOu404(req.params.id);
+  agentprofile.supprimer(Number(req.params.id));
+  res.json({ ok: true });
+}));
+
+app.post('/api/agents/:id/duplicate', wrap((req, res) => {
+  agentOu404(req.params.id);
+  res.status(201).json(agentprofile.dupliquer(Number(req.params.id)));
+}));
+
+app.post('/api/agents/:id/restore', wrap((req, res) => {
+  const a = agentOu404(req.params.id);
+  if (!a.builtin_key) throw new Error(t('agents.err.not-builtin'));
+  res.json(agentprofile.restaurer(a.id));
+}));
+
+/* Lancer. `ask` PART ; `code` ne part pas — il rend de quoi PRÉ-REMPLIR la modale de session,
+   parce qu'un agent qui se met à écrire dans des dépôts sans qu'on ait vu lesquels serait
+   exactement ce que la règle « un agent ne devine jamais un dépôt » interdit. */
+app.post('/api/agents/:id/run', wrap((req, res) => {
+  const a = agentOu404(req.params.id);
+  const mode = (req.body && req.body.mode) === 'code' ? 'code' : 'ask';
+  if (mode === 'code' && a.kind !== 'code' && !a.is_domain) throw new Error(t('agents.err.no-code-mode'));
+  const question = String((req.body && req.body.question) || '');
+  const repoIds = (req.body && req.body.repo_ids) || null;
+  if (mode === 'code') {
+    const m = agentprofile.materialize(a, { mode, question, repoIds });
+    return res.json({ prefill: { kind: m.kind, targets: m.targets, prompt: m.prompt, agent_id: a.id, label: m.label } });
+  }
+  res.json(agentprofile.lancer(a, { mode, question, repoIds, triggeredBy: 'manual' }));
+}));
+
+/* ---------- La connaissance d'un agent de domaine ----------
+   Trois gestes : relire, corriger à la main, faire refaire. Le troisième est le seul qui coûte
+   un appel IA, et le seul dont le résultat ATTEND une validation. */
+app.get('/api/agents/:id/knowledge', wrap((req, res) => {
+  const a = agentOu404(req.params.id);
+  res.json(agentknowledge.versions(a.id));
+}));
+
+app.get('/api/agents/:id/knowledge/:version', wrap((req, res) => {
+  const a = agentOu404(req.params.id);
+  const v = agentknowledge.versionDe(a.id, req.params.version);
+  if (!v) throw new Error(t('agents.err.version-not-found'));
+  res.json(v);
+}));
+
+app.put('/api/agents/:id/knowledge', wrap((req, res) => {
+  const a = agentOu404(req.params.id);
+  const r = agentknowledge.editer(a, (req.body || {}).content);
+  agentknowledge.viderCacheAge(a.id);
+  res.json(r);
+}));
+
+app.post('/api/agents/:id/knowledge/refresh', wrap(async (req, res) => {
+  const a = agentOu404(req.params.id);
+  if (!a.is_domain) throw new Error(t('agents.err.not-domain'));
+  res.json(await agentknowledge.refresh(a, 'manual'));
+}));
+
+app.post('/api/agents/:id/knowledge/:version/activate', wrap((req, res) => {
+  const a = agentOu404(req.params.id);
+  const r = agentknowledge.activer(a, req.params.version);
+  if (r.error) throw new Error(t(r.error));
+  agentknowledge.viderCacheAge(a.id);
+  res.json(r);
+}));
+
+app.post('/api/agents/:id/knowledge/publish', wrap((req, res) => {
+  const a = agentOu404(req.params.id);
+  res.json(agentknowledge.publierDansNotes(a));
+}));
+
+/* L'ÂGE fait un fetch par dépôt : jamais dans la liste, qui se recharge à chaque passage sur
+   l'onglet. Route à part, appelée par la carte APRÈS son rendu, et mise en cache une heure. */
+app.get('/api/agents/:id/age', wrap(async (req, res) => {
+  const a = agentOu404(req.params.id);
+  if (!a.is_domain) return res.json([]);
+  if (demoAgents.isDemo()) return res.json(demoAgents.age(a));
+  res.json(await agentknowledge.age(a));
+}));
+
+/* Créer un agent de domaine : on donne un SUJET, le cartographe fait le reste. La route ne
+   crée aucun agent — elle lance une exploration dont la SORTIE en créera un. */
+app.post('/api/agents/domain', wrap((req, res) => {
+  const carto = agentprofile.parCle('cartographer');
+  if (!carto) throw new Error(t('agents.err.no-cartographer'));
+  const subject = String((req.body || {}).subject || '').trim();
+  if (!subject) throw new Error(t('agents.err.subject-required'));
+  const repoIds = (req.body || {}).repo_ids;
+  /* Un sous-ensemble de dépôts se traduit par un périmètre `repos` LE TEMPS DU RUN : le
+     cartographe est `all_repos` par défaut, et on ne modifie pas son profil pour un run. */
+  const perimetre = Array.isArray(repoIds) && repoIds.length
+    ? { ...carto, scope_kind: 'repos', repos: repoIds.map((id) => ({ repo_id: Number(id), branch: '', role: 'readonly' })) }
+    : carto;
+  res.json(agentprofile.lancer(perimetre, { mode: 'ask', question: subject, repoIds, triggeredBy: 'manual' }));
+}));
+
+/* Déclencher un tick d'horaire à la main. Attendre la minute dans un test serait un pari sur
+   l'horloge d'une machine chargée ; et sur une installation réelle, c'est le bouton qui répond
+   à « est-ce que mon horaire part vraiment ? » sans attendre demain matin. */
+app.post('/api/agents/tick', wrap((req, res) => {
+  const journal = [];
+  const lances = agentschedule.tick(new Date(), (m) => journal.push(m));
+  res.json({ started: lances.length, log: journal });
+}));
+
+app.get('/api/agents/:id/preview', wrap((req, res) => {
+  const a = agentOu404(req.params.id);
+  res.json({ argv: agentprofile.previewFor(a, agentsession.backendName()) });
+}));
+
+// L'aperçu d'un formulaire NON ENREGISTRÉ : l'éditeur montre ce que produirait la sauvegarde.
+app.post('/api/agents/preview', wrap((req, res) => {
+  const corps = req.body || {};
+  res.json({
+    argv: agentprofile.previewFor({
+      kind: corps.kind, model: corps.model, permission_mode: corps.permission_mode,
+      system_prompt: corps.system_prompt,
+      allowed_tools_json: JSON.stringify(corps.allowed_tools_json || []),
+      disallowed_tools_json: JSON.stringify(corps.disallowed_tools_json || []),
+      max_turns: corps.max_turns,
+      subagents_json: JSON.stringify(corps.subagents_json || {}),
+    }, agentsession.backendName()),
+    errors: agentprofile.valider(corps, corps.id || null),
+  });
+}));
+
+/* ---------- Skills et sous-agents de fichier (lecture seule) ----------
+   Le disque est la vérité : `.claude/skills/<nom>/SKILL.md` d'un dépôt cloné, et ceux du home.
+   Rien n'est écrit, jamais — ni ici, ni ailleurs (spec agents §18). `repos` restreint le scan
+   aux dépôts qui nous intéressent (les cibles d'une session) ; absent, tous les dépôts actifs. */
+function reposPourScan(param) {
+  const ids = String(param || '').split(',').map((x) => Number(x)).filter((n) => Number.isInteger(n) && n > 0);
+  if (ids.length) {
+    return db.prepare(`SELECT * FROM repo WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+  }
+  return db.prepare('SELECT * FROM repo WHERE enabled = 1 ORDER BY project').all();
+}
+
+app.get('/api/skills', wrap((req, res) => {
+  // En démo, aucun dépôt n'est cloné : le scan ne trouverait rien, et l'écran serait vide.
+  if (demoAgents.isDemo()) return res.json(demoAgents.scan());
+  const r = skillscan.scan({ repos: reposPourScan(req.query.repos), cfg: getConfig() });
+  res.json(r);
+}));
+
+app.post('/api/skills/rescan', wrap((req, res) => {
+  skillscan.invalidate();
+  res.json({ ok: true });
+}));
+
 app.post('/api/tasks', wrap((req, res) => {
   const { kind, prompt, commit_message, auto_push, images, targets, ask_questions, session_id, verifier_id, label } = req.body || {};
   const k = kind === 'explore' ? 'explore' : 'code';
@@ -2498,21 +2672,42 @@ app.post('/api/tasks', wrap((req, res) => {
      hésite de la même façon — « de quel des trois services parles-tu ? » vaut mieux qu'une
      synthèse à côté du sujet. Le codage hors dépôt a sa propre table, et sa propre route. */
   const ask = ask_questions ? 1 : 0;
-  const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message, auto_push, ask_questions, verifier_id, label, notify_jira, review_after, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)`).run(
+  /* LES SKILLS COCHÉS OUVRENT LA DEMANDE. `/mon-skill` est ce que le CLI attend pour en
+     invoquer un ; le nom seul, pour ceux qui refusent le `/`. La ligne est écrite DANS le
+     prompt (et non gardée à part) : c'est elle que l'agent lit, et c'est elle qu'on relit
+     en rouvrant la session pour comprendre ce qui a été demandé. */
+  const enTeteSkills = skillscan.ligneSkills(req.body && req.body.skills, {
+    repos: reposPourScan(list.map((x) => x.repo_id).join(',')), cfg: getConfig(),
+  });
+  const promptFinal = (enTeteSkills ? `${enTeteSkills}\n\n` : '') + prompt.trim();
+  /* UN RUN D'AGENT EST UNE SESSION : la route accepte `agent_id`, recopie le nom du profil et
+     compose sa demande. `auto_push` est alors forcé à 0 — un agent ne pousse jamais de
+     lui-même (spec agents, règle 1), quoi qu'ait coché le formulaire. */
+  const profil = req.body && req.body.agent_id ? agentprofile.lire(Number(req.body.agent_id)) : null;
+  const compose = profil ? agentprofile.composer(profil, { question: promptFinal, targets: list, kind: k }) : null;
+  const taskId = tasks.creerTask({
+    kind: k,
+    prompt: compose ? compose.prompt : promptFinal,
     // `task.branch` est un héritage mono-projet (la vérité est dans task_target) et
     // la colonne est NOT NULL : en exploration la branche est facultative, on y range
     // donc '' plutôt que NULL — sinon la création échoue sur une erreur SQL brute.
-    list[0].repo_id, k, prompt.trim(), list[0].branch || '',
-    (commit_message || '').trim() || null, auto_push ? 1 : 0, ask, lireVerifierSession(k, auto_push, verifier_id),
-    lireLibelle(label),
+    branch: list[0].branch || '',
+    commitMessage: (commit_message || '').trim() || null,
+    autoPush: profil ? 0 : (auto_push ? 1 : 0),
+    askQuestions: ask,
+    verifierId: lireVerifierSession(k, profil ? 0 : auto_push, verifier_id),
+    label: lireLibelle(label) || (profil ? profil.name : null),
     // B5 : décoché par défaut — écrire chez les autres se décide, session par session.
-    req.body && req.body.notify_jira ? 1 : 0,
+    notifyJira: req.body && req.body.notify_jira ? 1 : 0,
     // B9 : idem — une review coûte un appel IA, elle se demande.
-    req.body && req.body.review_after ? 1 : 0,
-    now, now);
-  const taskId = info.lastInsertRowid;
-  insertTargets(taskId, list, sessionId);
+    reviewAfter: req.body && req.body.review_after ? 1 : 0,
+    targets: list,
+    sessionId,
+    agentId: profil ? profil.id : null,
+    agentName: profil ? profil.name : null,
+    triggeredBy: 'manual',
+    agentQuestion: profil ? promptFinal : null,
+  });
   savePiecesEtImages('task', taskId, req.body || {});
   res.json({ ...taskById(taskId), targets: taskTargets(taskId) });
 }));
@@ -2730,7 +2925,30 @@ app.get('/api/tasks/:id/verify-prompt', wrap((req, res) => {
 app.get('/api/tasks/:id/md', wrap((req, res) => {
   const tache = taskById(Number(req.params.id));
   if (!tache) throw new Error(t('err.session-introuvable'));
-  res.json({ md: tache.md_path ? readFileSafe(tache.md_path) : null, prompt: tache.prompt, created_at: tache.created_at });
+  const brut = tache.md_path ? readFileSafe(tache.md_path) : null;
+  /* Les blocs de protocole sont un canal de SERVICE : ils nomment le dépôt trouvé, décrivent
+     l'agent à créer, signalent un écart. Ils n'ont rien à faire à l'écran — `?raw=1` les garde,
+     pour qui veut relire ce que l'agent a réellement émis. */
+  const md = (brut && !req.query.raw) ? protocol.nettoyer(brut) : brut;
+  res.json({ md, prompt: tache.prompt, created_at: tache.created_at, agent_name: tache.agent_name });
+}));
+
+/* « Corriger sur <dépôt> » : le bloc `<<<REPO>>>` de l'enquêteur, lu à la demande. Rien n'est
+   stocké — le rapport EST la source, et un dépôt recopié en base se périmerait tout seul. */
+app.get('/api/tasks/:id/repo-hint', wrap((req, res) => {
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  const brut = tache.md_path ? readFileSafe(tache.md_path) : '';
+  const { block } = protocol.extraire(brut || '', 'REPO');
+  if (!block) return res.json(null);
+  for (const champs of protocol.lignes(block)) {
+    const projet = champs[0];
+    if (!projet) continue;
+    const repo = db.prepare('SELECT id, project FROM repo WHERE project = ?').get(projet);
+    if (!repo) continue;                  // un dépôt inventé n'ouvre aucun bouton
+    return res.json({ repo_id: repo.id, project: repo.project, path: champs[1] || '', line: champs[2] || '' });
+  }
+  res.json(null);
 }));
 
 /* Réconcilier : relire l'état réel des branches d'une session et réparer les projets dont le
@@ -2804,6 +3022,7 @@ app.get('/api/local-tasks', wrap((req, res) => {
     const avecReponse = (lt.dirs || []).find((d) => d.output_path);
     lt.answer_head = avecReponse ? chapeauReponse(avecReponse.output_path) : '';
     lt.tokens_est = (couts[lt.id] || {}).tokens || null;
+    lt.cost_usd = (couts[lt.id] || {}).cost_usd ?? null;
     lt.duration_ms = durees[lt.id] != null ? durees[lt.id] : null;
     lt.todo_waiting = !!db.prepare(`SELECT 1 FROM todo
       WHERE auto_kind = 'local_question' AND auto_ref = ? AND status = 'open' AND archived_at IS NULL`)
@@ -3001,6 +3220,7 @@ app.get('/api/questions', wrap((req, res) => {
     ...q,
     answer_head: chapeauReponse(q.md_path),
     tokens_est: (couts[q.id] || {}).tokens || null,
+    cost_usd: (couts[q.id] || {}).cost_usd ?? null,
     duration_ms: durees[q.id] != null ? durees[q.id] : null,
     resume_cmd: agentsession.resumeCommand(q.session_backend, q.session_key, q.session_cwd),
   })));
@@ -4736,6 +4956,8 @@ app.post('/api/launcher', wrap((req, res) => {
     results: links.launcher(body.q, {
       jiraConfigure: demoDocker.isDemo() || jira.isConfigured(getConfig()),
       actions: Array.isArray(body.actions) ? body.actions.slice(0, 60) : [],
+      // Les libellés d'agent sont traduits ICI : `links.js` ne charge pas le dictionnaire.
+      agentsMsgs: { ask: t('agents.palette.ask', { name: '{name}' }), investigate: t('agents.palette.investigate') },
     }),
   });
 }));
@@ -6313,6 +6535,10 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`  dry-run : ${copilot.isDryRun()}  |  COPILOT_ARGS=${JSON.stringify(process.env.COPILOT_ARGS || '')}`);
   restartAutoRefresh();
   restartJiraWatch();
+  /* Les agents livrés, semés une fois. Jamais réécrits ensuite : le rôle a pu être affiné au
+     fil des runs, et un semis qui écrase serait une perte silencieuse à chaque redémarrage. */
+  try { agentprofile.seedBuiltins(); } catch (e) { console.log(`[agents] ${e.message}`); }
+  agentschedule.demarrer((m) => console.log(`[agents] ${m}`));
   verifyrun.gcWorktrees((m) => console.log(`[verify] ${m}`));
   // Ménage de l'historique : au démarrage, puis une fois par jour.
   retentionTimer = retention.demarrer(
@@ -6339,6 +6565,8 @@ module.exports = {
     /* Le moteur de dictée est un PROCESS ENFANT, pas un timer : oublié, il garde deux
        gigaoctets et le process en vie — la suite de tests ne rendrait jamais la main. */
     dictation.arreterMoteur();
+    // Même raison pour le tic des horaires d'agents.
+    agentschedule.arreter();
     return new Promise((resolve) => server.close(resolve));
   },
 };

@@ -257,6 +257,57 @@ if (fs.existsSync(path.join(ROOT, 'public/dictation-mic.js'))) {
     : ok('Dictée vocale : le micro existe et son raccourci est documenté');
 }
 
+/* 13. Une liste à cocher de skills, de sous-agents, de dépôts ou d'agents sans son filtre.
+   Même raison que les contrôles 7 et 9, pour les listes qu'ont amenées les agents : un home
+   d'utilisateur porte vite trente skills, et un parc, vingt dépôts. Le filtre doit être un
+   FRÈRE de la liste (même parent) et son id se terminer par `Filter` — c'est la convention
+   que suit `filtrerLignes()`, qui reçoit le couple. Une liste rendue sans lui redevient un
+   mur de cases où l'on cherche à l'œil. */
+const LISTES_A_FILTRER = ['skillList', 'taskSkills', 'taskSubagents', 'agentSkills', 'agentRepos', 'domainRepos'];
+const sansFiltre = [];
+for (const id of LISTES_A_FILTRER) {
+  const re = new RegExp(`<[^>]*\\bid="${id}"[^>]*>`);
+  const m = html.match(re);
+  if (!m) continue;                                   // liste pas encore posée : rien à exiger
+  // Le parent : le dernier <div ...> ouvert avant la liste, et ce qu'il contient jusqu'à elle.
+  const avant = html.slice(0, html.indexOf(m[0]));
+  const debutParent = avant.lastIndexOf('<div');
+  const bloc = html.slice(debutParent, html.indexOf(m[0]) + m[0].length);
+  if (!/<input[^>]*\bid="[\w-]*Filter"/.test(bloc)) {
+    sansFiltre.push(`public/index.html  #${id} — aucun <input id="…Filter"> frère : la liste n'a pas de recherche`);
+  }
+}
+sansFiltre.length
+  ? fail('Liste à cocher sans champ de recherche', sansFiltre)
+  : ok(`Toutes les listes à cocher ont leur filtre (${LISTES_A_FILTRER.filter((id) => html.includes(`id="${id}"`)).length})`);
+
+/* 14. Un helper de premier niveau APPELÉ plus haut que sa déclaration `const`.
+   `app.js` est un seul script global : les instructions de premier niveau s'exécutent dans
+   l'ordre du texte, et un `const` n'existe qu'à partir de sa ligne. Un appel écrit plus haut
+   lève « Cannot access X before initialization » — non pas au clic, mais PENDANT l'évaluation
+   du fichier : tout ce qui suit cesse d'exister, et l'écran est mort dans son ensemble. Le
+   contrôle n°10 ne voit que les doublons ; celui-ci voit l'ordre. Vu en vrai avec un `onEl`
+   déclaré au milieu du fichier et utilisé mille lignes plus haut. Le remède est une
+   déclaration de fonction, qui est hissée. */
+const declLine = new Map();
+lines.forEach((l, i) => {
+  const m = l.match(/^(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=/);
+  if (m && !declLine.has(m[1])) declLine.set(m[1], i + 1);
+});
+const avantDecl = [];
+lines.forEach((l, i) => {
+  // Un APPEL en tout début de ligne : c'est la forme d'un câblage de premier niveau.
+  const m = l.match(/^([A-Za-z_$][\w$]*)\(/);
+  if (!m) return;
+  const decl = declLine.get(m[1]);
+  if (decl && decl > i + 1) {
+    avantDecl.push(`public/app.js:${i + 1}  ${m[1]}(…) appelé avant sa déclaration ligne ${decl} — déclarer \`function ${m[1]}()\` (hissée)`);
+  }
+});
+avantDecl.length
+  ? fail('Helper appelé avant sa déclaration (l’évaluation d’app.js s’arrête là)', avantDecl)
+  : ok('Aucun helper de premier niveau appelé avant sa déclaration');
+
 console.log('');
 if (failures) { console.log(`${failures} contrôle(s) en échec.`); process.exit(1); }
 console.log('Contrôles front : OK');

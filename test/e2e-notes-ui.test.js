@@ -342,17 +342,21 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     const barre = await page.locator('nav button[data-tab]').evaluateAll(
       (els) => els.map((e) => e.dataset.tab),
     );
-    assert.equal(barre.length, 10);
-    assert.deepEqual(barre, ['review', 'task', 'notes', 'jira', 'git', 'docker', 'jenkins', 'links', 'dashboard', 'admin'],
+    assert.equal(barre.length, 11);
+    assert.deepEqual(barre, ['review', 'task', 'agents', 'notes', 'jira', 'git', 'docker', 'jenkins', 'links', 'dashboard', 'admin'],
       'le cœur · ce que j’ai à faire · ma machine, son intégration et ses liens · le méta');
 
-    for (let i = 0; i < barre.length; i += 1) {
+    /* Les neuf premiers sur leur chiffre ; le DERNIER sur « 0 », faute de touche « 10 » — et
+       c'est bien le dernier, pas le dixième : sinon un onglet ajouté retirerait en silence
+       son raccourci à Réglages, qui ferme la barre. Les onglets du milieu au-delà du neuvième
+       n'ont pas de chiffre, et la feuille d'aide annonce « 1 – 9, 0 ». */
+    const avecTouche = [...barre.slice(0, 9).map((tab, i) => [String(i + 1), tab]), ['0', barre[barre.length - 1]]];
+    for (const [touche, tab] of avecTouche) {
       await page.locator('body').click();          // le focus quitte tout champ de saisie
-      // Faute de touche « 10 », le dixième onglet est sur « 0 » — la convention des navigateurs.
-      await page.keyboard.press(i === 9 ? '0' : String(i + 1));
-      await page.waitForSelector(`#tab-${barre[i]}.active`);
-      assert.equal(await page.locator(`#tab-${barre[i]}`).isVisible(), true,
-        `la touche ${i === 9 ? '0' : i + 1} doit ouvrir le ${i + 1}ᵉ onglet de la barre (${barre[i]})`);
+      await page.keyboard.press(touche);
+      await page.waitForSelector(`#tab-${tab}.active`);
+      assert.equal(await page.locator(`#tab-${tab}`).isVisible(), true,
+        `la touche ${touche} doit ouvrir l’onglet ${tab}`);
     }
 
     // Et la feuille d'aide annonce la plage réelle, pas un « 1 – 8 » recopié une fois de plus.

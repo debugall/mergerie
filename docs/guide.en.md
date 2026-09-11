@@ -665,6 +665,103 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   review or a coding session, and nothing blocks it.
   (Dedicated sub-tab, after *Exploration*.)
 
+### Agents
+An **agent** is a **session profile**: what you put *around* an AI launch — a role, a scope of
+repositories, tools, skills, subagents, an output, sometimes a schedule. Mergerie does not reinvent an
+orchestrator: the intelligence stays in the CLI. An **agent run is an ordinary session** — same
+follow-ups, same questions, same archived passes, same job queue, same cost.
+
+A session launched inside a clone already has a lot: the code, the repository's `CLAUDE.md`, its skills.
+What it does not have, Mergerie has: **the twenty other clones**, what was just merged, and
+**cross-cutting knowledge** that no single repository carries because it lives *between* them.
+
+**Three rules, never negotiable.** An agent never **pushes** and never **publishes** on its own:
+auto-push is forced to zero on any session carried by an agent. An agent never **guesses** a repository:
+it is given one, or it finds one with evidence and says so. An agent does not handle conversations
+between humans.
+
+#### The two shipped examples
+- **Incident investigator** — paste a trace, a log, a ticket excerpt. It searches **every clone** with
+  one `chercheur` subagent per repository, then names the repository, the file and the line, with a
+  likely cause and the recent commits that touched those lines. If it finds nothing, it says so in plain
+  words instead of offering a plausible repository. Its report ends with a service block that feeds the
+  **“Fix in *repository*”** button: one click opens a coding session on the right repository, with the
+  report as the request.
+- **Librarian** — it reads every repository and writes the **service map** into a note page: what each
+  repository does, what it exposes, what it consumes, how to run it locally, where its configuration
+  lives, and “who calls whom”. The page is **created on the first run then updated**, never duplicated.
+  With a schedule, the morning brief announces that it changed.
+
+Both are **editable** like any other — and **restorable** with one button if you go too far. The third
+shipped agent, the **cartographer**, is not launched directly: it is the one that creates domain agents.
+
+#### Domain agents
+“Where do we handle notifications, here?” used to be asked to the senior, or explored from scratch every
+time. A **domain agent** carries the answer.
+
+**Create.** *New domain agent*, a **subject** (“notifications: where they are emitted, by which
+mechanism, which types exist, where the config lives, how they are tested”), and the cartographer starts.
+It asks one `chercheur` per repository whether it is involved, then writes a document with an imposed
+structure — scope, repositories, entry points, mechanisms, types, configuration, tests, pitfalls, not
+found, team notes. **Every quoted path is opened inside the clone**; a path that does not exist is marked
+*(unverified)* and counted on the card. The agent is created directly: it has no effect until you launch
+it, and its knowledge can be edited.
+
+**Use.** *Ask* launches an exploration over its repositories, knowledge first. *Code* opens the session
+window with **its repositories pre-ticked** — you untick and confirm. Any answer may end with the list of
+what the agent found to be wrong in its own map; it does not fix it itself, it **reports** it, and the
+gap counter goes up on its card.
+
+**Knowing it aged, for free.** The knowledge records each repository's SHA and the paths it quotes.
+Mergerie counts the commits that touched **those paths** since: “7 commits since the map” is shown
+without any AI call.
+
+**Update.** *Update* relaunches the cartographer with the same subject, the previous knowledge, the
+reported gaps and the list of commits: “look here first”. The result is a **pending** version, with a
+**readable diff** — the agent keeps working from the old one until *Review and validate*. It is the only
+agent output that waits for a validation. The “Team notes” section is copied from one version to the next
+**by the code**, not only by the prompt: what the team wrote by hand is not lost. *Publish to notes*
+turns it into a readable page.
+
+#### Skills and subagents
+The **Skills & subagents** sub-tab lists what the disk offers: the `.claude/skills/<name>/SKILL.md` and
+`.claude/agents/<name>.md` of cloned repositories and of your home. Mergerie **reads** them — it never
+writes anything there. A repository that is not cloned is reported rather than passed over in silence.
+
+In the session window they are **ticked**; the ticked skills open the request (`/my-skill`), and those
+that refuse the `/` are named in plain words. In the request field as in a follow-up field, typing
+**“/”** offers the skills, **“@”** the subagents — nothing is inserted without an explicit selection, and
+Escape closes the menu without closing the window.
+
+#### An agent's editor
+Six collapsible sections, in decision order: **identity** (name, what it is for, explore or code),
+**scope** (all repositories, or a list), **role and request** (the text added to the system prompt, and
+the template — `{question}`, `{repos}`, `{today}`), **capabilities** (model, what it may do without
+asking, allowed and forbidden tools, turn limit, skills, subagents as JSON), **output** (a report, a note
+page, or a domain agent), **schedule**.
+
+The form ends with the **real argv**, computed by the server: it is the only way to see what all of this
+actually produces. The role is **added** to the CLI's system prompt — the repository's `CLAUDE.md` and
+its skills stay loaded. The **Try** button opens a prefilled session without saving anything.
+
+Two refusals at save time, so you do not discover them when you were counting on them: the “ask the
+question” permission mode is impossible here (the agent's standard input is closed, nobody could answer),
+and a **schedule requires a turn limit** — it is the only thing that makes an agent starting on its own
+acceptable.
+
+#### Schedules
+Three forms, written to be read back without a manual: **every day**, **every week** (one day), **every
+month** (1 to 28 — beyond that, one month in two would be skipped silently). Server local time. A slot
+missed because the machine was off is **caught up** on the next start rather than lost. The
+`Automatic agent runs per day` ceiling (Settings → AI sessions) bounds what may trigger on its own; once
+reached, the remaining runs are skipped and the log says so.
+
+#### Elsewhere in the tool
+The **palette** offers “Ask *agent*” and “Investigate an error trace”. A **Jira ticket** containing a
+trace shows an *Investigate* button. The **AI Dev** cards carry the badge of the agent that produced
+them, and the list filters by agent. The **statistics** add a cost per agent as soon as one has run.
+
+
 ### Notes
 The sticky notes and the notepad tab of everyday work, **inside the tool** — so **anchored** to what it
 tracks (merge requests, tickets) and **inside the backup**. Three sub-tabs: **Today** (the brief),

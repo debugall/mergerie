@@ -3712,3 +3712,94 @@ button.dlog-cname:focus-visible { outline: 2px solid var(--accent); outline-offs
   background: var(--panel2); font-family: var(--ff-mono); font-size: 12px;
   white-space: pre-wrap; word-break: break-word;
 }
+
+/* ---------- Agents ----------
+   Les cartes reprennent le modèle des cartes de vérificateur ; les listes du disque, celui
+   des listes de réglages. Toutes les couleurs viennent des variables de thème : rien de
+   codé en dur, sinon le mode clair rendrait un texte gris sur gris. */
+.agent-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.agent-filters > .search { flex: 2 1 260px; min-width: 0; }
+.agent-filters > div { flex: 1 1 200px; min-width: 0; }
+
+.skill-group { margin-bottom: 14px; }
+.skill-group > h3 { margin: 10px 0 6px; font-size: 14px; color: var(--muted); }
+.skill-row {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--panel2); margin-bottom: 6px;
+}
+.skill-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.skill-desc { font-size: 12px; margin-top: 2px; word-break: break-word; }
+.skill-path { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); word-break: break-all; }
+
+/* Une liste à cocher défile plutôt que d'allonger la modale sans fin : trente skills
+   pousseraient les boutons hors de l'écran. */
+.check-list {
+  max-height: 190px; overflow: auto; margin: 4px 0 8px;
+  border: 1px solid var(--line); border-radius: var(--r-sm); padding: 6px 8px;
+  background: var(--panel2);
+}
+.check-list > label { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; }
+#taskSkillsRow > .search { width: 100%; box-sizing: border-box; }
+
+/* Le menu d'autocomplétion réutilise `.combo-options` ; seule la sélection au clavier
+   demande un état de plus, que les combos n'ont pas. */
+.ac-menu .combo-opt.is-sel { background: var(--panel); }
+
+/* ---------- Agents : cartes, éditeur, connaissance ---------- */
+/* `.card` centre ses enfants (align-items: center) : c'est ce qu'il faut à une ligne, pas à
+   une colonne — sans ce `stretch`, chaque bloc de la carte se retrouvait centré et la carte
+   n'avait plus de bord gauche à suivre. */
+.agent-card { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.agent-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.agent-desc { font-size: 13px; }
+.agent-knowledge { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.agent-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.agent-age { font-size: 12px; color: var(--muted); }
+.agent-age-stale { color: var(--amber-text, var(--muted)); font-weight: 600; }
+/* Le nom du dépôt prend la place, le rôle en prend juste assez : sans ces largeurs, le
+   `<select>` s'étalait et un `groupe/webapp-front` passait à la ligne. */
+.agent-repo-row { display: flex; gap: 8px; align-items: center; }
+.agent-repo-row > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-repo-row > .ag-role { flex: 0 0 auto; width: auto; min-width: 120px; }
+
+/* La pastille d'agent sur une carte de session : elle dit QUI a produit ce travail. */
+.tag-agent { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Les états d'une version de connaissance. Les trois couleurs viennent du thème : jamais
+   de valeur codée en dur, sinon le mode clair rend du gris sur gris. */
+.badge.k-active { background: var(--green); color: var(--on-green, #06210f); }
+.badge.k-pending { background: var(--amber); color: var(--on-amber); }
+.badge.k-superseded { background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
+.badge.k-warn { background: var(--amber); color: var(--on-amber); }
+.perm-warn { color: var(--amber-text, var(--muted)); font-weight: 600; }
+
+.seg-radios { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 8px; }
+.sched-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.argv-preview {
+  margin: 4px 0 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--panel2); font-family: var(--ff-mono); font-size: 12px;
+  white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow: auto;
+}
+.modal-lg > .modal-box, .modal-box.modal-lg { max-width: 980px; }
+
+.knowledge-split { display: flex; gap: 12px; align-items: stretch; min-height: 320px; }
+.knowledge-versions { flex: 0 0 220px; max-height: 60vh; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+.knowledge-version {
+  text-align: left; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--panel2); color: var(--text); cursor: pointer; display: flex; gap: 6px;
+  align-items: center; flex-wrap: wrap;
+}
+.knowledge-version.active { border-color: var(--accent); }
+.knowledge-main { flex: 1 1 auto; min-width: 0; max-height: 60vh; overflow: auto; }
+.knowledge-main > textarea { width: 100%; box-sizing: border-box; font-family: var(--ff-mono); font-size: 12px; }
+.diff-line { font-family: var(--ff-mono); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+
+/* Le filtre par agent, à côté de la recherche de sessions : ils se partagent la ligne. */
+.task-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.task-filters > .search { flex: 2 1 320px; min-width: 0; }
+.task-filters > div { flex: 1 1 220px; min-width: 0; }
+
+@media (max-width: 700px) {
+  .knowledge-split { flex-direction: column; }
+  .knowledge-versions { flex: 0 0 auto; max-height: 160px; }
+}

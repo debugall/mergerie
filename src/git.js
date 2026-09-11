@@ -135,6 +135,10 @@ async function ensureRepo(cfg, repo, onLog = () => {}) {
   }
   ensureInternalIgnore(dir); // ne jamais committer les dossiers de travail internes
   await updateSubmodules(dir, tls, secrets, onLog);
+  /* Le clone vient de bouger : un skill ajouté dans `.claude/skills/` doit apparaître au
+     prochain regard, pas cinq minutes plus tard. Require paresseux — `skillscan` dépend de
+     ce module, et le charger en tête ferait un cycle. */
+  try { require('./skillscan').invalidate(); } catch { /* module absent : rien à invalider */ }
   return dir;
 }
 

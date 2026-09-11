@@ -1117,8 +1117,117 @@ db.prepare(`UPDATE mr SET ticket_jira_key = 'PROJ-1408', ticket_jira_status = 'E
     ticket_jira_category = 'indeterminate'
   WHERE source_branch LIKE '%PROJ-1408%' AND COALESCE(closed_seen, 0) = 0`).run();
 
+/* ---------- LES AGENTS (spec agents §13) ----------
+   Trois agents livrés, deux agents de domaine avec leur connaissance versionnée, et pour
+   chacun une session terminée. Ce qu'on veut MONTRER, et qui n'existe qu'ici : une carte
+   avec un chemin non vérifié, un écart signalé par un run, une version en attente de
+   validation, et un run déclenché par un HORAIRE — l'état qu'aucun clic ne produit. */
+{
+  const agentprofile = require('../src/agentprofile');
+  const { agentsDir } = require('../src/paths');
+  agentprofile.seedBuiltins();
+
+  const doc = db.prepare("SELECT * FROM agent WHERE builtin_key = 'librarian'").get();
+  const enq = db.prepare("SELECT * FROM agent WHERE builtin_key = 'investigator'").get();
+
+  const insAgent = db.prepare(`INSERT INTO agent (name, description, kind, scope_kind, system_prompt,
+      prompt_template, model, permission_mode, allowed_tools_json, disallowed_tools_json, max_turns,
+      skills_json, subagents_json, output_kind, knowledge_prompt, defaults_json, created_at, updated_at)
+    VALUES (?,?,'explore','repos','', '{question}', '', '', '[]', '[]', 60, '[]', '{}', 'report', ?, '{}', ?, ?)`);
+  const insRepoAgent = db.prepare("INSERT INTO agent_repo (agent_id, repo_id, branch, role) VALUES (?,?,'','readonly')");
+  const insK = db.prepare(`INSERT INTO agent_knowledge (agent_id, version, md_path, repos_json, task_id,
+      diff_summary, gaps_json, status, created_at, activated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`);
+
+  const ecrireK = (agentId, n, contenu) => {
+    const f = path.join(agentsDir(agentId), `knowledge-v${n}.md`);
+    fs.writeFileSync(f, contenu, 'utf8');
+    return f;
+  };
+
+  // « Notifications » : trois versions — une remplacée, une en service, une à valider.
+  const notif = insAgent.run('Notifications', 'Où les notifications sont émises, par quel mécanisme, et comment on les teste.',
+    'les notifications : émission, routage, types, configuration, tests', at(20), at(1)).lastInsertRowid;
+  for (const projet of ['groupe/api-core', 'groupe/webapp-front']) insRepoAgent.run(notif, repoIds[projet]);
+  const reposNotif = JSON.stringify([
+    { repo_id: repoIds['groupe/api-core'], project: 'groupe/api-core', role: 'émission et routage', sha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678', paths: ['src/notify.js', 'src/templates/notifications'], unverified: ['src/notify-inexistant.js'] },
+    { repo_id: repoIds['groupe/webapp-front'], project: 'groupe/webapp-front', role: 'affichage', sha: 'b2c3d4e5f60718293a4b5c6d7e8f901234567890', paths: ['src/components/Toast.jsx'], unverified: [] },
+  ]);
+  const corpsNotif = (v) => [`# Les notifications`, '## Périmètre',
+    'Ce que le sujet couvre : l’émission, le routage et l’affichage. Ce qu’il ne couvre pas : les e-mails transactionnels.',
+    '## Dépôts concernés',
+    '- **groupe/api-core** — émission et routage — chemins clés : `src/notify.js`, `src/templates/notifications`',
+    '- **groupe/webapp-front** — affichage — chemins clés : `src/components/Toast.jsx`',
+    '## Points d’entrée', '- `src/notify.js` : `push(kind, payload)`.',
+    '## Mécanismes', '- Un bus interne, écouté par un worker qui appelle le canal choisi.',
+    '## Types / variantes', '- `queue_done`, `review_done`, `job_failed`, `session_done`.',
+    '## Configuration', '- Les canaux actifs vivent dans la table `config`.',
+    '## Tests', '- `test/unit-notify.test.js` couvre le routage, pas l’affichage.',
+    '## Pièges', '- Le worker avale les erreurs de canal.',
+    '## Non trouvé', '- `src/notify-inexistant.js` *(non vérifié)*',
+    '## Notes de l’équipe',
+    'Le canal Slack est désactivé depuis l’incident de mars — ne pas le rallumer sans prévenir l’astreinte.',
+    v === 3 ? '## Ce qui a changé\nLe dossier des gabarits a été renommé ; deux types de notification se sont ajoutés.' : '',
+  ].filter(Boolean).join('\n');
+  insK.run(notif, 1, ecrireK(notif, 1, corpsNotif(1)), reposNotif, null, null, '[]', 'superseded', at(20), at(20));
+  insK.run(notif, 2, ecrireK(notif, 2, corpsNotif(2)), reposNotif, null, null,
+    JSON.stringify([{ task_id: 0, project: 'groupe/api-core', path: 'src/templates/notifications', note: 'le dossier a été renommé en src/notifications/templates', at: at(2) }]),
+    'active', at(9), at(9));
+  insK.run(notif, 3, ecrireK(notif, 3, corpsNotif(3)), reposNotif, null,
+    'Dépôts ajoutés : aucun.\n2 chemins apparus.\nLe dossier des gabarits a été renommé.', '[]', 'pending', at(1), null);
+
+  // « BDD » : une seule version, en service.
+  const bdd = insAgent.run('Accès base de données', 'Comment on parle à la base : connexions, migrations, transactions.',
+    'l’accès à la base : connexions, migrations, transactions, jeux d’essai', at(12), at(12)).lastInsertRowid;
+  insRepoAgent.run(bdd, repoIds['groupe/api-core']);
+  insRepoAgent.run(bdd, repoIds['groupe/batch-jobs']);
+  insK.run(bdd, 1, ecrireK(bdd, 1, [`# L’accès à la base`, '## Périmètre',
+    'Ce que le sujet couvre : la connexion, les migrations et les transactions. Pas le schéma métier.',
+    '## Dépôts concernés',
+    '- **groupe/api-core** — connexion et transactions — chemins clés : `src/db.js`',
+    '- **groupe/batch-jobs** — migrations — chemins clés : `db/migrations`',
+    '## Points d’entrée', '- `src/db.js` ouvre un pool unique.',
+    '## Mécanismes', '- Les migrations sont jouées au démarrage, jamais à la main.',
+    '## Types / variantes', '## Configuration', '## Tests', '## Pièges', '## Non trouvé',
+    '## Notes de l’équipe', ''].join('\n')),
+    JSON.stringify([
+      { repo_id: repoIds['groupe/api-core'], project: 'groupe/api-core', role: 'connexion', sha: 'c3d4e5f60718293a4b5c6d7e8f90123456789012', paths: ['src/db.js'], unverified: [] },
+      { repo_id: repoIds['groupe/batch-jobs'], project: 'groupe/batch-jobs', role: 'migrations', sha: 'd4e5f60718293a4b5c6d7e8f9012345678901234', paths: ['db/migrations'], unverified: [] },
+    ]), null, null, '[]', 'active', at(12), at(12));
+
+  /* Une page de notes écrite par le documentaliste, et le run planifié D'HIER qui l'a
+     produite : c'est ce que le brief du matin annonce, et l'état qu'aucun clic ne fabrique. */
+  const pageCarte = db.prepare(`INSERT INTO note_page (title, content, pinned, created_at, updated_at)
+    VALUES (?,?,0,?,?)`).run('Documentaliste — sortie d’agent',
+    ['> Écrit par l’agent « Documentaliste ».', '', '# Carte des services', '',
+      '## groupe/api-core', '- **Rôle** : l’API métier.', '- **Expose** : HTTP + événements.',
+      '', '## groupe/webapp-front', '- **Rôle** : l’interface web.', '',
+      '## Qui appelle qui', '- groupe/webapp-front → groupe/api-core (HTTP)'].join('\n'),
+    at(1), at(1)).lastInsertRowid;
+  db.prepare('UPDATE agent SET output_ref = ?, schedule = ? WHERE id = ?').run(String(pageCarte), 'weekly mon 07:00', doc.id);
+
+  const runAgent = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, status, md_path,
+      agent_id, agent_name, triggered_by, created_at, updated_at, finished_at)
+    VALUES (?, 'explore', ?, '', '', 'done', ?, ?, ?, ?, ?, ?, ?)`);
+  const cibleAgent = db.prepare("INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, updated_at) VALUES (?,?,'','','done',?)");
+  const poserRun = (agent, prompt, md, quand, declencheur) => {
+    const f = path.join(TASKS_DIR, `demo-agent-${agent.id}-${quand}.md`);
+    fs.writeFileSync(f, md, 'utf8');
+    const id = runAgent.run(repoIds['groupe/api-core'], prompt, f, agent.id, agent.name, declencheur, at(quand), at(quand), at(quand)).lastInsertRowid;
+    for (const projet of ['groupe/api-core', 'groupe/webapp-front']) cibleAgent.run(id, repoIds[projet], at(quand));
+    return id;
+  };
+  poserRun(doc, 'Mets à jour la carte des services.', 'Carte des services mise à jour : trois dépôts, deux flux.', 1, 'schedule');
+  poserRun(enq, 'TypeError: cannot read property « items » of undefined\n  at CartSession.restore (src/cart/session.js:118)',
+    ['# Où est ce code', '', '## Dépôt et fichier', '**groupe/api-core** — `src/cart/session.js:118`', '',
+      '## Hypothèse de cause', 'Le TTL du cookie est plus court que celui de la session.', '',
+      '<<<REPO', 'groupe/api-core | src/cart/session.js | 118', 'REPO>>>'].join('\n'), 2, 'manual');
+  poserRun({ id: notif, name: 'Notifications' }, 'Comment ajouter un nouveau type de notification ?',
+    'Il faut déclarer le type dans `src/notify.js` puis ajouter son gabarit.', 3, 'manual');
+}
+
 const counts = {
   repos: db.prepare('SELECT COUNT(*) c FROM repo').get().c,
+  agents: db.prepare('SELECT COUNT(*) c FROM agent').get().c,
   mrs: db.prepare('SELECT COUNT(*) c FROM mr').get().c,
   reviews: db.prepare('SELECT COUNT(*) c FROM review').get().c,
   findings: db.prepare('SELECT COUNT(*) c FROM finding').get().c,

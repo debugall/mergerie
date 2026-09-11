@@ -10,6 +10,8 @@ const agentsession = require('./agentsession');
 const questions = require('./questions');
 const { avecConsignes } = require('./prompts');
 const agentpass = require('./agentpass');
+const agentprofile = require('./agentprofile');
+const demoAgents = require('./demo-agents');
 const pieces = require('./pieces');
 const { t } = require('../public/i18n-runtime.js');
 
@@ -27,7 +29,7 @@ function taskDir(taskId) {
    retour) dans l'historique, et `output_path` continue de pointer la plus récente. */
 function saveAgentOutput(taskId, targetId, text, meta = {}) {
   const { outPath } = agentpass.record('task', taskId, targetId, {
-    kind: meta.kind || 'run', prompt: meta.prompt, text,
+    kind: meta.kind || 'run', prompt: meta.prompt, text, costUsd: meta.costUsd,
   });
   if (outPath) setTarget(targetId, { output_path: outPath });
 }
@@ -236,6 +238,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
 
   onLog(t('log.task.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai') }));
   let agentText = '';
+  let coutUsd = null;
   if (copilot.isDryRun()) {
     if (task.ask_questions && !doResume) {
       onLog('$ (DRY-RUN — l’agent pose des questions)');
@@ -250,6 +253,9 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     // Session reprenable : 1re passe = création, reprise = --resume / --continue. Le cwd fait
     // partie de l'identité de session : on refuse une reprise depuis un autre cwd (§4.4).
     const key = `task-${task.id}-target-${tg.id}`;
+    /* Les options du PROFIL, relues à chaque passe : un agent modifié entre deux passes
+       s'applique à la suivante. Vide pour une session ordinaire — l'argv reste celui d'avant. */
+    const options = agentprofile.optionsFor(task);
     if (doResume && tg.session_cwd && path.resolve(tg.session_cwd) !== path.resolve(cwd)) {
       onLog(t('log.task.cwd-mismatch'));
       doResume = false;
@@ -257,7 +263,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     let r; let created = !doResume; // création = 1re passe OU repli après échec de reprise
     let note = null;
     try {
-      r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt: promptText + imgBlock, cwd, resume: doResume, onLog });
+      r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt: promptText + imgBlock, cwd, resume: doResume, onLog, options });
     } catch (e) {
       if (!doResume) throw e;
       // Fallback (§4.5) : reprise impossible → session neuve avec contexte réinjecté.
@@ -270,12 +276,13 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
          n'a jamais saisi, sans rien dire de la substitution. */
       note = `${tg.session_key} : ${raison}`;
       const complet = promptRepli != null ? promptRepli : `${buildCodePrompt(task)}\n\n${promptText}`;
-      r = await agentsession.runInSession({ key, prompt: complet + imgBlock, cwd, resume: false, onLog });
+      r = await agentsession.runInSession({ key, prompt: complet + imgBlock, cwd, resume: false, onLog, options });
       created = true;
     }
     agentText = r.text || '';
+    coutUsd = r.costUsd;
     // `owner` : la dépense se rattache à SA session — c'est ce qui permet de dire laquelle coûte.
-    copilot.recordUsage('task', promptText + imgBlock, agentText, null, { kind: 'task', id: task.id });
+    copilot.recordUsage('task', promptText + imgBlock, agentText, null, { kind: 'task', id: task.id }, r.costUsd);
     /* On enregistre le handle À CHAQUE passe, pas seulement à la création : l'agent peut rendre
        un identifiant DIFFÉRENT après une reprise (claude en ouvre un nouveau, qui porte tout
        l'échange). Garder l'ancien faisait repartir la passe suivante de l'état d'avant — deux
@@ -292,7 +299,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
 
   // Retour de l'agent (ce qu'il dit avoir fait), consultable en fin de session — comme la
   // réponse d'une exploration. Vide en dry-run (pas de vrai retour).
-  saveAgentOutput(task.id, tg.id, agentText, { kind: passKind || 'run', prompt: promptText + imgBlock });
+  saveAgentOutput(task.id, tg.id, agentText, { kind: passKind || 'run', prompt: promptText + imgBlock, costUsd: coutUsd });
 
   // L'agent a-t-il posé des questions ? Si oui → session en ATTENTE, sans commit (il s'est
   // arrêté avant d'implémenter). Un bloc malformé/absent est ignoré (parseQuestions → null).
@@ -423,7 +430,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
       } else {
         throw new Error(t('err.branch-missing-on-project', { branch, project: tg.project }));
       }
-      dirs.push({ dir: path.relative(root, cwd) || path.basename(cwd), project: tg.project, branch, cwd });
+      dirs.push({ dir: path.relative(root, cwd) || path.basename(cwd), project: tg.project, branch, cwd, repo_id: tg.repo_id });
       setTarget(tg.id, { base_branch: branch, status: 'done', last_error: null });
     } catch (e) {
       setTarget(tg.id, { status: 'error', last_error: e.message });
@@ -438,6 +445,12 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
   try { fs.rmSync(outAbs, { force: true }); } catch { /* pas de fichier précédent */ }
 
   const imgBlock = attachImages(task, root, onLog, { imageIds });
+  /* CE QUE MERGERIE ÉCRIT POUR L'AGENT. Une session lancée dans un clone a déjà le code ; ce
+     qu'elle n'a pas — les autres dépôts, ce qui vient d'être mergé, la connaissance d'un agent
+     de domaine — vit à la RACINE des clones, qui n'appartient à aucun dépôt. Rien n'est écrit
+     pour une session sans agent. */
+  const entrees = agentprofile.ecrireEntrees(task, root, dirs.map((d) => ({ repo_id: d.repo_id, project: d.project })));
+  const blocEntrees = agentprofile.blocEntrees(task, entrees);
   const listing = dirs.map((d) => `- \`${d.dir}/\` → projet **${d.project}**, branche \`${d.branch}\``).join('\n');
 
   /* Une exploration tourne dans une SESSION reprenable, comme un codage : la question de
@@ -463,7 +476,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
 
   const prompt =
     `Tu explores ${dirs.length} dépôt(s) de code, chacun dans un sous-dossier du répertoire courant :\n${listing}\n\n`
-    + `QUESTION : ${question}\n\n`
+    + `QUESTION : ${question}${blocEntrees}\n\n`
     + `Explore librement le code de ces dépôts (lecture de fichiers, recherche) pour y répondre.\n`
     + `IMPORTANT : c'est une exploration en LECTURE SEULE — ne modifie, ne crée et ne supprime AUCUN fichier `
     + `dans les dépôts, et ne fais aucun commit.${prev}${imgBlock}\n\n`
@@ -481,13 +494,15 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
 
   onLog(t('log.explore.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai'), n: dirs.length, count: dirs.length }));
   let stdout = '';
+  let coutUsd = null;
   try {
     if (sessionable) {
       const key = `explore-${task.id}`;
+      const options = agentprofile.optionsFor(task);
       let created = !doResume;
       let r;
       try {
-        r = await agentsession.runInSession({ key, handle: doResume ? known.session_key : null, prompt, cwd: root, resume: doResume, onLog });
+        r = await agentsession.runInSession({ key, handle: doResume ? known.session_key : null, prompt, cwd: root, resume: doResume, onLog, options });
       } catch (e) {
         if (!doResume) throw e;
         // Même repli que pour un codage : la session est perdue, pas l'exploration. On
@@ -496,14 +511,25 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
         const withPrev = previous
           ? `${prompt}\n\nTu avais déjà produit la réponse suivante :\n"""\n${previous}\n"""`
           : prompt;
-        r = await agentsession.runInSession({ key, prompt: withPrev, cwd: root, resume: false, onLog });
+        r = await agentsession.runInSession({ key, prompt: withPrev, cwd: root, resume: false, onLog, options });
         created = true;
       }
       stdout = r.text || '';
-      copilot.recordUsage('explore', prompt, stdout, null, { kind: 'task', id: task.id });
+      coutUsd = r.costUsd;
+      copilot.recordUsage('explore', prompt, stdout, null, { kind: 'task', id: task.id }, r.costUsd);
       /* Les cibles d'une exploration partagent la session : toutes portent le même handle — et
          on le réenregistre à chaque passe, l'agent pouvant en rendre un nouveau après reprise. */
       for (const tg of targets) setTarget(tg.id, { session_key: r.handle, session_backend: r.backend, session_cwd: root });
+    } else if (copilot.isDryRun() && task.agent_id) {
+      /* DRY-RUN + AGENT : la sortie vient du décor de démo, avec ses VRAIS blocs de protocole.
+         C'est le seul moyen de montrer — et de tester — ce que produit un agent sans binaire
+         d'IA : le cartographe qui crée un agent, l'enquêteur qui nomme un dépôt, l'agent de
+         domaine qui signale un écart. Le mock générique, lui, ne rendrait qu'un rapport de
+         revue sans rapport avec la demande. */
+      const agent = db.prepare('SELECT * FROM agent WHERE id = ?').get(task.agent_id) || {};
+      onLog('$ (DRY-RUN — sortie d’agent simulée)');
+      stdout = demoAgents.rapport(agent, 'ask', task.agent_question || question, prompt);
+      fs.writeFileSync(outAbs, stdout, 'utf8');
     } else if (copilot.isDryRun() && task.ask_questions && !apresReponses) {
       /* Dry-run, première passe : l'agent simule ses questions au lieu de répondre — et il les
          écrit DANS LE FICHIER de réponse, pas sur la sortie standard. C'est ce que fait un
@@ -564,13 +590,19 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
   }
 
   const mdPath = path.join(taskDir(task.id), 'exploration.md');
-  const header = `# ${question}\n\n> Exploration du ${new Date().toLocaleString('fr-FR')} · ${dirs.map((d) => `${d.project} (\`${d.branch}\`)`).join(' · ')}\n\n---\n\n`;
+  /* LE TITRE DU RAPPORT N'EST PAS LE PROMPT. Pour une exploration ordinaire les deux se
+     confondent — la question tient sur une ligne. Pour un run d'AGENT, la demande est
+     composée : gabarit, fichiers d'entrée, consignes permanentes et blocs de protocole. La
+     recopier en titre donnait quatre pages de H1, et faisait apparaître dans le rapport des
+     `<<<REPO>>>` d'exemple que le lecteur — et le parseur — prenaient pour de vrais. */
+  const titre = task.agent_id ? (task.agent_question || task.agent_name || question) : question;
+  const header = `# ${titre}\n\n> Exploration du ${new Date().toLocaleString('fr-FR')} · ${dirs.map((d) => `${d.project} (\`${d.branch}\`)`).join(' · ')}\n\n---\n\n`;
   fs.writeFileSync(mdPath, header + content, 'utf8');
   /* Chaque question de suivi ÉCRASE `exploration.md`. On archive donc la passe : la
      question posée et la réponse obtenue restent consultables ensuite. `unit_id = 0`
      marque une passe de NIVEAU SESSION — une exploration produit une seule réponse
      transversale aux dépôts, pas une par projet. */
-  agentpass.record('task', task.id, 0, { kind: previous ? 'followup' : 'run', prompt: question, text: content });
+  agentpass.record('task', task.id, 0, { kind: previous ? 'followup' : 'run', prompt: question, text: content, costUsd: coutUsd });
   db.prepare('UPDATE task SET md_path = ?, status = ?, last_error = NULL, updated_at = ? WHERE id = ?')
     .run(mdPath, 'done', new Date().toISOString(), task.id);
   onLog(t('log.explore.answer-saved'));

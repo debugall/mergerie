@@ -716,7 +716,10 @@ function preFiltre(requete, colonnes) {
   return { cond: groupes.join(' AND '), args };
 }
 
-function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
+/* `agentsMsgs` : les deux libellés d'agent, déjà traduits par l'appelant. Ce module ne charge
+   PAS `i18n-runtime` — il utilise `t` comme nom de variable locale à trois endroits, et le
+   garde-fou de `check-server` refuse (à raison) qu'un fichier qui traduit masque `t`. */
+function launcher(q, { jiraConfigure = false, actions = [], agentsMsgs = null } = {}) {
   const requete = String(q || '').trim();
   const use = usages();
   const out = [];
@@ -822,6 +825,29 @@ function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
   // 6. Navigation et actions — fournies par le client, qui seul sait ce qu'il sait faire.
   for (const a of actions) {
     pousser({ kind: 'nav', ref: a.id, group: 'nav', label: a.label, detail: '', action: a.id, texte: a.label });
+  }
+
+  /* 7. Les AGENTS. « Demander à l'enquêteur » se tapait en trois gestes : onglet Agents, la
+     bonne carte, le bouton. La palette est l'endroit où l'on va quand on sait ce qu'on veut. */
+  const fAg = preFiltre(requete, ['name', 'description']);
+  if (agentsMsgs) {
+    for (const a of db.prepare(`SELECT id, name, description, builtin_key FROM agent
+        ${fAg.cond ? `WHERE ${fAg.cond}` : ''} ORDER BY name LIMIT ?`).all(...fAg.args, PAR_SOURCE)) {
+      pousser({
+        kind: 'agent', ref: String(a.id), group: 'agents',
+        label: String(agentsMsgs.ask || '{name}').replace('{name}', a.name), detail: a.description || '', id: a.id,
+        texte: `${a.name} ${a.description || ''}`,
+      });
+      /* L'enquêteur a une SECONDE entrée : « enquêter sur une trace » est le geste, pas le nom
+         de l'agent — et c'est sous ce mot qu'on le cherche quand une trace vient d'arriver. */
+      if (a.builtin_key === 'investigator') {
+        pousser({
+          kind: 'agent-investigate', ref: String(a.id), group: 'agents',
+          label: agentsMsgs.investigate || '', detail: a.name, id: a.id,
+          texte: `${agentsMsgs.investigate || ''} ${a.name} trace erreur incident stack`,
+        });
+      }
+    }
   }
 
   /* PALETTE OUVERTE, RIEN DE TAPÉ : on ne rend pas « les douze premiers de tout ». Sans

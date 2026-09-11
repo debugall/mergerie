@@ -7,7 +7,7 @@
  * étaient sous les 4,5:1 exigés par WCAG AA en thème clair, sans que rien ne le signale : le
  * dark mode passait, les captures étaient jolies, et personne ne calculait.
  *
- * Ce fichier calcule. Il parcourt les dix onglets dans les deux thèmes, compose les fonds
+ * Ce fichier calcule. Il parcourt tous les onglets dans les deux thèmes, compose les fonds
  * semi-transparents jusqu'à la racine (un `color-mix(... 14%, transparent)` ne se lit pas sans
  * ce qu'il y a dessous) et refuse tout texte visible sous son seuil.
  */
@@ -70,6 +70,10 @@ const ONGLETS = [
   ['notes', '#briefBox'],
   ['review', null],
   ['task', '#taskList .card'],
+  /* Les cartes d'agent portent des badges de statut de connaissance (en service, à valider,
+     remplacée) et un âge en orange : exactement le genre de couleur qui tient en sombre et
+     tombe sous le seuil en clair. */
+  ['agents', '#agentList .agent-card'],
   ['git', null],
   ['docker', '.docker-svc'],
   ['jenkins', '#jenkinsBox .jk-row'],

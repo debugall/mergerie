@@ -16,7 +16,7 @@ const ALLOWED = [
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
   'brief_on_open', 'auto_post_review', 'auto_post_blocking_only', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
   'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
-  'verif_auto_max', 'todo_close_on_merge', 'jira_test_key',
+  'verif_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
   'dictation_provider', 'dictation_model', 'dictation_vad_model', 'dictation_command',
@@ -107,6 +107,13 @@ function updateConfig(patch) {
     const vm = parseInt(patch.verif_auto_max, 10);
     next.verif_auto_max = Number.isFinite(vm) && vm >= 0 ? Math.min(50, vm) : 5;
   }
+  /* Plafond des runs d'agent déclenchés par un HORAIRE, par jour. Même barème que les deux
+     précédents, sur une plage plus large : un documentaliste hebdomadaire et cinq agents de
+     domaine à rafraîchir tiennent sous dix, mais rien n'oblige à s'y tenir. 0 = illimité. */
+  if ('agent_auto_max' in patch) {
+    const am = parseInt(patch.agent_auto_max, 10);
+    next.agent_auto_max = Number.isFinite(am) && am >= 0 ? Math.min(1000, am) : 10;
+  }
   /* ---------- Dictée vocale ----------
      Le fournisseur est une ÉNUMÉRATION : une valeur inconnue retombe sur « éteint » plutôt
      que d'être écrite telle quelle — un réglage illisible ne doit pas laisser croire qu'un
@@ -172,6 +179,7 @@ function updateConfig(patch) {
       jenkins_token = @jenkins_token,
       jenkins_refresh_minutes = @jenkins_refresh_minutes,
       verif_auto_max = @verif_auto_max,
+      agent_auto_max = @agent_auto_max,
       dictation_provider = @dictation_provider,
       dictation_model = @dictation_model,
       dictation_vad_model = @dictation_vad_model,

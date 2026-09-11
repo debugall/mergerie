@@ -104,6 +104,10 @@ const EXEMPT = [
   /^public\/i18n(-runtime)?\.js$/,   // le dictionnaire lui-même, évidemment
   /^src\/db\.js$/,                   // schéma SQL + commentaires de migration
   /^src\/cli\.js$/,                  // outil de dev en ligne de commande, jamais affiché dans l'UI
+  /^src\/agentdefaults\.js$/,       // dictionnaire BILINGUE des textes d'agents livrés (DEFAULTS.fr /
+  //                                    DEFAULTS.en) : c'est un i18n.js de plus, pas du français en dur.
+  //                                    Ce sont des PROMPTS — ils ne s'affichent pas, ils partent à l'IA,
+  //                                    et la langue choisie décide lequel des deux jeux est semé.
   /^public\/dictation-runtime\.js$/, // les FORMES PARLÉES des commandes vocales (« annule ça ») sont
   //                                    des données, pas des libellés : elles ne se traduisent pas,
   //                                    elles se reconnaissent, et chaque langue a les siennes.

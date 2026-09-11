@@ -3,6 +3,7 @@ const db = require('./db');
 const { stripAnsi } = require('../public/ansi-runtime.js');
 const { reviewMr, modifyReview, explainMr } = require('./reviewer');
 const taskrunner = require('./taskrunner');
+const agentprofile = require('./agentprofile');
 const proc = require('./proc');
 const gitops = require('./gitops');
 const notify = require('./notify');
@@ -425,6 +426,15 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
     else if (action === 'update-base') await taskrunner.mettreAJourDepuisBase(task.id, opts.targetId, onLog);
     else await taskrunner.runTask(task, onLog, { targetIds: opts.targetIds });
     setJob(jobId, { status: 'done', done_count: 1, current_mr_id: null, finished_at: new Date().toISOString(), message: '' });
+    /* CE QU'ON FAIT DE LA SORTIE D'UN AGENT : page de notes, création d'un agent de domaine,
+       écarts constatés. AVANT le suivi automatique — un suivi enchaîne un second run, et la
+       sortie du premier serait rangée après celle du second, ou pas du tout.
+       Une erreur ici ne fait PAS échouer le job : le run a réussi, son Markdown est lisible ;
+       c'est la sortie qui a un problème, et perdre le run avec serait le pire des deux. */
+    if (task.agent_id) {
+      try { await agentprofile.apresRun(db.prepare('SELECT * FROM task WHERE id = ?').get(task.id), onLog); }
+      catch (e) { onLog(t('agents.log.output-failed', { message: e.message })); }
+    }
     // La session peut s'être mise EN ATTENTE (l'agent a posé des questions) : notif dédiée,
     // pas « prête à push ». Sinon, codage terminé → prêt à push/MR.
     const after = db.prepare('SELECT status FROM task WHERE id = ?').get(task.id);

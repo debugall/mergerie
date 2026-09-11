@@ -90,6 +90,10 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
     assert.deepEqual(await ordreAffiche('code'), [
       'prompt',                        // QUOI : ce qu'on vient dire ouvre le formulaire
       'taskJiraRow',                   // le ticket le remplit : il se lit contre lui
+      /* QUI la porte. Après la demande — la première chose qu'on lit reste ce qu'on vient
+         dire —, mais AVANT les dépôts : choisir un agent change les cibles, il faut donc
+         l'avoir lu avant de les regarder. */
+      'taskAgentRow',
       'taskReposWrap',                 // OÙ
       'label',                         // LE NOM : facultatif, après ce qu'il résume
       'groupe:task.group.after',       // APRÈS : les décisions qui changent le résultat
@@ -134,6 +138,7 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
     assert.deepEqual(ordre, [
       'prompt',
       'taskJiraRow',
+      'taskAgentRow',
       'taskReposWrap',
       'label',
       'taskImages',
