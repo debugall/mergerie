@@ -240,6 +240,19 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
   les demandes déjà faites sur ce rapport, **avec leur date**, et un bouton ouvre **le rapport que chacune
   a produit** (la version correspondante). On retrouve ainsi ce qui avait été demandé pour arriver à un
   rapport donné, au lieu de le reconstituer de mémoire.
+- **Poser une question sur la revue, sans la réécrire.** `Demander une modification à l'IA`
+  **régénère** le rapport et en fait une version de plus : demander pourquoi un constat est
+  bloquant coûtait donc le rapport qu'on était en train de lire, et la note pouvait bouger au
+  passage. La section `Poser une question sur cette revue` sert à demander sans rien risquer :
+  la réponse s'ajoute aux **échanges** sous le rapport — question et réponse ensemble, la plus
+  récente en tête — et **ni le rapport, ni sa note, ni ses versions ne changent**. Ce n'est pas
+  une consigne donnée à l'IA : le code qui répond n'écrit nulle part ailleurs, donc un agent qui
+  réécrirait le rapport de lui-même n'aurait aucun effet. La question **reprend la session de
+  review** quand il y en a une : l'IA a déjà lu le diff et son propre rapport, la réponse coûte
+  donc une question et non une relecture. `Relire tous les échanges` les ouvre dans la même vue
+  à colonnes que les itérations d'une session — avec sa recherche, ses épingles et ses noms. Les
+  échanges **partent avec le rapport** si on le supprime : ils le citent, et les relire sans lui
+  ne dirait plus rien de ce qui avait été demandé.
 - Sur un rapport : **régénérer** le rapport, **commenter** la MR, **merger**, **relancer la review**,
   **marquer traitée**, **supprimer le rapport** (la MR retourne « à traiter »), et surtout
   **Faire corriger le code par l'IA** — qui ouvre une session de codage pré-remplie avec le rapport

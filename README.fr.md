@@ -69,7 +69,9 @@ run déclenché par un **horaire** qui a réécrit une page de notes.
 
 - **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée,
   re-review incrémentale et **boucle de convergence autonome** (review → correction → re-review jusqu'au seuil).
-  Les listes se filtrent par **couleur de note**.
+  Les listes se filtrent par **couleur de note**. On peut **poser une question sur un rapport** —
+  pourquoi ce constat bloque, vaut-il pour l'autre appelant — et la réponse arrive sous le rapport
+  sans toucher ni à lui ni à sa note.
 - **Dev IA** — sessions de codage automatisées (l'IA code, commite, pousse, ouvre la MR), **codage hors dépôt**
 - **Agents** — des **profils de session** : un rôle, un périmètre, des outils, des skills, une sortie, parfois un horaire. Deux exemples livrés — l'**enquêteur d'incident**, qui trouve dans quel dépôt et quel fichier vit le code désigné par une trace, et le **documentaliste**, qui tient la carte des services dans une page de notes. Et les **agents de domaine** : on donne un sujet, le cartographe écrit la carte du sujet à travers les dépôts — chemins vérifiés un par un, âge de la carte compté sans IA, mise à jour relue et validée. Un agent ne pousse jamais et ne publie jamais de lui-même.
   (avec retour de l'IA et demande de correction), **exploration** de code en lecture seule et **questions

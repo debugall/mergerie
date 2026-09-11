@@ -2437,7 +2437,13 @@ async function refreshStatus() {
         // action Docker terminée (up/restart/down…) → recharger la liste pour voir le nouvel état
         if ($('#tab-docker').classList.contains('active')) loadDocker();
         // `keep` : ne réécrit l'écran que si quelque chose d'affiché a changé.
-        if (selectedMr) openReport(selectedMr, { keep: true });
+        if (selectedMr) {
+          const rendu = openReport(selectedMr, { keep: true });
+          /* UNE QUESTION NE CHANGE RIEN À CE QUI EST AFFICHÉ — c'est tout son intérêt. `keep`
+             ne réécrirait donc pas l'écran, et la réponse n'y arriverait jamais : on recharge
+             les échanges à part, APRÈS le rendu, pour ne pas se faire écraser par lui. */
+          if (job.kind === 'ask-review') Promise.resolve(rendu).then(() => chargerEchangesRevue(selectedMr));
+        }
         annoncerFinDeJob(job);
         rafraichirHistCount();          // « N terminés » sur le bouton Activité
         if (logHistOpen) renderLogHist();
@@ -4132,6 +4138,17 @@ async function openReport(id, opts = {}) {
       <button class="btn btn-primary" id="btnModify" title="${tr('report.btn.regen-title')}"><svg class=\"ico\"><use href=\"#i-repeat\"/></svg>${tr('report.btn.regen')}</button>
     </div>
 
+    <!-- DEMANDER SANS RISQUER DE PERDRE CE QU'ON LIT. « Demander une modification » régénère le
+         rapport et en fait une version de plus : poser une question coûtait donc le rapport
+         qu'on avait sous les yeux, et la note pouvait bouger au passage. Ici, rien ne bouge. -->
+    <div class="box">
+      <h4>${tr('report.ask.title')}</h4>
+      <p class="muted">${tr('report.ask.hint')}</p>
+      <div id="askHistory" class="ask-history"></div>
+      <textarea id="askInput" placeholder="${tr('report.ask.ph')}"></textarea>
+      <button class="btn btn-primary" id="btnAsk" title="${tr('report.ask.btn-title')}"><svg class="ico"><use href="#i-bot"/></svg>${tr('report.ask.btn')}</button>
+    </div>
+
     <div class="box">
       <h4>${tr('report.comments.title', { forge: forgeLabel(m.forge) })}</h4>
       <div id="mrComments" class="mr-comments"><p class="muted">${tr('ui.loading')}</p></div>
@@ -4346,6 +4363,28 @@ async function openReport(id, opts = {}) {
       toast(tr('toast.modification-lancee-suivez-le-log'));
       refreshStatus();
     } catch (e) { toast(e.message, true); }
+    finally { btn.disabled = false; }
+  });
+
+  /* Les échanges sont chargés à part du rapport : ils ne doivent pas retarder ce qu'on vient
+     lire, et ils se rechargent seuls quand une réponse arrive. */
+  chargerEchangesRevue(id);
+  champAvecBrouillon($('#askInput'), `ask:${id}`, () => $('#btnAsk').click());
+  $('#btnAsk').addEventListener('click', async () => {
+    const question = $('#askInput').value.trim();
+    if (!question) return;
+    const btn = $('#btnAsk'); btn.disabled = true;
+    try {
+      await api(`/mrs/${id}/ask`, { method: 'POST', body: { question } });
+      $('#askInput').value = '';
+      ecrireBrouillon(`ask:${id}`, '');
+      /* La réponse arrive par un job de fond : on POSE l'attente à l'écran plutôt que de
+         laisser la boîte inchangée, ce qui ferait croire que le clic n'a rien fait. */
+      const box = $('#askHistory');
+      if (box) box.insertAdjacentHTML('afterbegin', `<div class="ask-entry pending"><div class="ask-q">${esc(question)}</div><div class="muted"><span class="spin"></span> ${esc(tr('report.ask.running'))}</div></div>`);
+      toast(tr('report.ask.sent'));
+      refreshStatus();
+    } catch (e) { toast(explainError(e.message), true); }
     finally { btn.disabled = false; }
   });
 
@@ -4744,6 +4783,33 @@ function renderDecisionPanel(m, stats) {
 /* Historique des demandes de modification : chaque régénération a été déclenchée par une
    demande précise, et a produit SA version de rapport. Les afficher côte à côte évite de
    rejouer de tête « qu'est-ce que j'avais demandé pour arriver à ce rapport ? ». */
+/* LES ÉCHANGES D'UNE REVUE : chaque question posée et la réponse obtenue, la plus récente en
+   tête — c'est celle qu'on vient de poser qu'on attend. La réponse est rendue en Markdown, comme
+   le rapport : l'IA y cite des chemins et des extraits de code.
+   Aucune version n'apparaît ici, et c'est le point : une question ne fabrique pas de rapport. */
+async function chargerEchangesRevue(id) {
+  const box = $('#askHistory');
+  if (!box) return;
+  let d;
+  try { d = await api(`/mrs/${id}/passes`); } catch { box.innerHTML = ''; return; }
+  const echanges = (d.passes || []).filter((p) => p.id);
+  if (!echanges.length) { box.innerHTML = `<p class="muted">${esc(tr('report.ask.none'))}</p>`; return; }
+  /* Le contenu de CHAQUE échange est déjà sur le serveur, mais `passes` ne rend que le courant :
+     on relit donc chacun. Une revue en compte quelques-uns, pas des milliers. */
+  const complets = await Promise.all(echanges.map((p) => api(`/mrs/${id}/passes?n=${p.n}`)
+    .then((r) => ({ ...p, output: (r.current || {}).output || '' })).catch(() => p)));
+  box.innerHTML = `<p class="muted">${esc(tr('report.ask.history'))}</p>`
+    + complets.slice().reverse().map((p) => `<div class="ask-entry">
+        <div class="ask-entry-head"><span class="muted">${esc(fmtDateTime(p.created_at))}</span></div>
+        <div class="ask-q">${esc(p.prompt || '')}</div>
+        <div class="ask-a md">${p.output ? mdToHtml(p.output) : `<span class="muted">${esc(tr('report.ask.running'))}</span>`}</div>
+      </div>`).join('')
+    + `<button type="button" class="btn btn-sm btn-ghost" id="askSeeAll">${svgIco('doc')}<span>${esc(tr('report.ask.see-all'))}</span></button>`;
+  const tout = $('#askSeeAll');
+  // La même vue à itérations que les sessions : colonne, recherche, épingles et noms.
+  if (tout) tout.addEventListener('click', () => openPasses(`/mrs/${id}`));
+}
+
 function renderModifyHistory(versions) {
   const box = $('#modifyHistory');
   if (!box) return;

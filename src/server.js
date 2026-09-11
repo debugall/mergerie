@@ -5713,6 +5713,30 @@ app.post('/api/mrs/:id/modify', wrap((req, res) => {
   res.json(job);
 }));
 
+/* POSER UNE QUESTION SUR LE RAPPORT, sans le réécrire.
+ *
+ * « Demander une modification » (au-dessus) régénère le rapport et en fait une version de plus :
+ * demander un éclaircissement coûtait donc le rapport qu'on lisait, et la note pouvait bouger au
+ * passage. Une question ne produit ni version, ni note, ni fichier de rapport — juste un échange
+ * de plus dans l'historique. Ce n'est pas une promesse faite au prompt : `askReview` n'écrit
+ * nulle part ailleurs. */
+app.post('/api/mrs/:id/ask', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const question = (req.body && req.body.question || '').trim();
+  if (!question) throw new Error(t('err.question-requise'));
+  const job = jobs.startJob('ask-review', [mr.id], { question });
+  res.json(job);
+}));
+
+/* Les questions posées sur cette revue, et leurs réponses — même forme, même écran et même
+   recherche que les itérations d'une session : `passesPayload` ne connaît que des scopes. */
+app.get('/api/mrs/:id/passes', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  res.json(passesPayload('review', 0, mr.id, req.query.n, `!${mr.iid} — ${mr.title || ''}`.trim(), null));
+}));
+
 // B6 : symétrique de /mrs/:id/clear-error — sinon l'erreur d'une tâche revient à chaque refresh.
 app.post('/api/tasks/:id/clear-error', wrap((req, res) => {
   db.prepare('UPDATE task SET last_error = NULL WHERE id = ?').run(Number(req.params.id));
@@ -5771,6 +5795,11 @@ app.post('/api/mrs/:id/delete-review', wrap((req, res) => {
     }
     db.prepare('DELETE FROM review WHERE mr_id = ?').run(mr.id);
   }
+  /* Les questions posées SUR ce rapport partent avec lui : elles le citent, et les relire sans
+     lui ne dirait plus rien de ce qui a été demandé. Pas de clé étrangère (plusieurs tables
+     parentes selon le scope), donc le ménage est explicite — comme pour les sessions. */
+  agentpass.removeTask('review', mr.id);
+  try { fs.rmSync(path.join(TASKS_DIR, 'review', String(mr.id)), { recursive: true, force: true }); } catch { /* rien */ }
   db.prepare("UPDATE mr SET status = 'to_review', reviewed_sha = NULL, updated_at = ? WHERE id = ?")
     .run(new Date().toISOString(), mr.id);
   res.json({ ok: true });

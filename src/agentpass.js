@@ -22,8 +22,11 @@ const { TASKS_DIR, ensureDir } = require('./paths');
 // Dossier de travail d'une unité : <tasks>/<id>/<unit> ou <tasks>/local/<id>/<unit>.
 /* CHAQUE SCOPE A SON DOSSIER. Les identifiants sont propres à chaque table : la question n°3
    et la session de codage n°3 existent en même temps, et sans ce préfixe elles écriraient
-   leurs passes au même endroit — la seconde écrasant la première sans rien dire. */
-const RACINE_SCOPE = { local: 'local', ask: 'ask' };
+   leurs passes au même endroit — la seconde écrasant la première sans rien dire.
+   `review` : les questions posées SUR un rapport de revue (`unit_id = 0`, `task_id` = la MR).
+   Elles vivent ici et non dans `review_version` parce qu'elles ne changent rien au rapport —
+   c'est tout leur intérêt : demander sans risquer de faire réécrire ce qu'on relisait. */
+const RACINE_SCOPE = { local: 'local', ask: 'ask', review: 'review' };
 
 function unitDir(scope, taskId, unitId) {
   const racine = RACINE_SCOPE[scope];

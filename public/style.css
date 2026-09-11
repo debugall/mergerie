@@ -1943,6 +1943,17 @@ body.tab-cachee .card.running-now::before { animation-play-state: paused; }
    place, pour que l'œil trouve la réponse toujours au même endroit. */
 .pass-diff-line { margin: 8px 0 18px; }
 
+/* Les échanges d'une revue : une question et sa réponse. La question est mise en avant comme
+   une citation — c'est elle qu'on relit pour retrouver un échange —, la réponse se lit comme le
+   rapport, dont elle reprend la mise en forme. */
+.ask-history { display: flex; flex-direction: column; gap: 10px; margin-bottom: var(--s-3); }
+.ask-entry { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; background: var(--panel2); }
+.ask-entry-head { display: flex; justify-content: space-between; font-size: var(--fs-sm); margin-bottom: 6px; }
+.ask-q { border-left: 3px solid var(--accent); padding-left: 10px; white-space: pre-wrap; font-weight: 600; }
+.ask-a { margin-top: 8px; }
+.ask-a > :first-child { margin-top: 0; }
+.ask-entry.pending { opacity: .75; }
+
 /* Historique des demandes de modification d'un rapport : une entrée = la demande + sa date. */
 .modify-history { margin-bottom: var(--s-3); display: flex; flex-direction: column; gap: 8px; }
 .modify-entry { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; background: var(--panel2); }

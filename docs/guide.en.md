@@ -234,6 +234,19 @@ overridden at launch**. A
   on this report, **with their date**, and a button opens **the report each one produced** (the matching
   version). You can therefore find what was asked to arrive at a given report, instead of reconstructing it
   from memory.
+- **Ask a question about the review, without rewriting it.** `Ask the AI for a change`
+  **regenerates** the report and makes it one version more: asking why a finding is blocking
+  therefore cost you the report you were reading, and the score could move along the way. The
+  `Ask a question about this review` section is for asking without risking any of that: the
+  answer joins the **exchanges** under the report — question and answer together, most recent
+  first — and **neither the report, nor its score, nor its versions change**. This is not an
+  instruction given to the AI: the code that answers writes nowhere else, so an agent rewriting
+  the report of its own accord would have no effect. A question **resumes the review session**
+  when there is one: the AI has already read the diff and its own report, so the answer costs a
+  question rather than a fresh read. `Re-read every exchange` opens them in the same column view
+  as a session's iterations — with its search, its pins and its names. Exchanges **go with the
+  report** if you delete it: they quote it, and re-reading them without it would no longer say
+  anything about what had been asked.
 - On a report: **regenerate** the report, **comment** on the MR, **merge**, **re-run the review**, **mark
   done**, **delete the report** (the MR goes back to “to review”), and above all **Have the AI fix the
   code** — which opens a coding session pre-filled with the report injected into the prompt, so you can

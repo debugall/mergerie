@@ -12,6 +12,7 @@ const resolution = require('./resolution');
 const glob = require('./glob');
 const diffnum = require('./diffnum');
 const demoReview = require('./demo-review');
+const agentpass = require('./agentpass');
 const demoDiff = require('./demo-diff');
 const demoComments = require('./demo-comments');
 const forge = require('./forge');
@@ -202,14 +203,16 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   // Lance un prompt en demandant à l'IA d'ÉCRIRE sa sortie dans outRel (dans le clone),
   // puis lit ce fichier (contenu propre). extra = bloc additionnel (ex: modif).
   // Fallback sur stdout si le fichier est absent/vide.
-  async function generate(promptTemplate, outRel, kind, extra = '') {
+  async function generate(promptTemplate, outRel, kind, extra = '', opts = {}) {
     /* Démo : aucun agent n'est appelé. On rend le document que l'IA aurait écrit, bâti sur le
        diff fictif — les constats citent donc des lignes qui existent à l'écran. */
     if (enDemo) {
       onLog(t('log.review.run', { mode: 'démo', incremental: '' }));
-      return kind === 'explain'
-        ? demoReview.explication(mr, diff)
-        : demoReview.rapport(mr, diff, { START: resolution.START, END: resolution.END });
+      if (kind === 'explain') return demoReview.explication(mr, diff);
+      // Une question n'est pas un rapport : rendre le rapport ici aurait fait croire, en démo,
+      // qu'une question régénère la revue — exactement ce que la fonctionnalité évite.
+      if (kind === 'question') return demoReview.reponseQuestion(mr, diff, opts.question);
+      return demoReview.rapport(mr, diff, { START: resolution.START, END: resolution.END });
     }
     const outAbs = path.join(cwd, outRel);
     try { fs.rmSync(outAbs, { force: true }); } catch { /* pas de fichier précédent */ }
@@ -234,7 +237,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
     // Continuité : la review/modif tourne dans une session reprenable par MR (« Relancer la
     // review » reprend le contexte de la review précédente). Session seulement si un backend
     // reprenable est reconnu et hors dry-run ; sinon appel one-shot (comportement historique).
-    const useSession = !copilot.isDryRun() && (kind === 'review' || kind === 'modify') && agentsession.backendName() !== 'unknown';
+    const useSession = !copilot.isDryRun() && (kind === 'review' || kind === 'modify' || kind === 'question') && agentsession.backendName() !== 'unknown';
     let stdout = '';
     if (useSession) {
       const key = `review-mr-${mr.id}`;
@@ -514,6 +517,46 @@ async function modifyReview(repo, mr, instruction, onLog = () => {}) {
   }
 }
 
+/* POSER UNE QUESTION SUR UNE REVUE, sans y toucher.
+ *
+ * « Pourquoi ce constat ? », « le point 3 vaut-il aussi pour l'autre appelant ? » — on avait
+ * pour seul geste « Demander une modification », qui RÉÉCRIT le rapport et en fait une version
+ * de plus. Demander un éclaircissement coûtait donc le rapport qu'on était en train de lire,
+ * et la note pouvait changer au passage.
+ *
+ * Une question ne produit donc NI version, NI note, NI fichier de rapport : elle s'ajoute à
+ * l'historique des échanges (`agent_pass`, scope `review`) et c'est tout. La consigne le dit à
+ * l'agent, mais la garantie ne tient pas au prompt : ce code n'écrit simplement nulle part
+ * ailleurs — un agent qui réécrirait le rapport de son propre chef n'aurait aucun effet.
+ *
+ * Elle REPREND la session de review quand il y en a une : l'agent a déjà lu le diff et son
+ * propre rapport, donc la réponse coûte une question, pas une relecture complète. */
+async function askReview(repo, mr, question, onLog = () => {}) {
+  const cfg = getConfig();
+  const rev = db.prepare('SELECT * FROM review WHERE mr_id = ?').get(mr.id);
+  const rapport = (rev && rev.md_path && fs.existsSync(rev.md_path))
+    ? fs.readFileSync(rev.md_path, 'utf8') : '';
+
+  const { generate, cleanupLinked } = await prepareContext(cfg, repo, mr, onLog);
+  try {
+    const extra = `
+
+${t('review.ask.report', { rapport: rapport || t('review.ask.no-report') })}`
+      + `
+
+${t('review.ask.question', { question })}`;
+    onLog(t('log.review.ask', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai') }));
+    const reponse = await generate(t('review.ask.prompt'), 'ai-dev-tools-internal/question.md', 'question', extra, { question });
+    /* La question et sa réponse rejoignent l'historique des échanges. `unit_id = 0` : une MR
+       n'a qu'un fil, là où une session a une unité par projet. */
+    const { n } = agentpass.record('review', mr.id, 0, { kind: 'question', prompt: question, text: reponse });
+    onLog(t('log.review.ask-saved', { n }));
+    return { n, reponse };
+  } finally {
+    await cleanupLinked();
+  }
+}
+
 // Génère la SEULE explication pédagogique pour la version courante d'une MR déjà
 // reviewée (1 appel IA), sans retoucher au rapport. Sert au bouton « Générer
 // l'explication » quand la review a été lancée en mode « review seule ».
@@ -541,4 +584,4 @@ async function explainMr(repo, mr, onLog = () => {}) {
   }
 }
 
-module.exports = { reviewMr, modifyReview, explainMr, fillTemplate, publierRapport, publicationAutoRequise };
+module.exports = { reviewMr, modifyReview, askReview, explainMr, fillTemplate, publierRapport, publicationAutoRequise };

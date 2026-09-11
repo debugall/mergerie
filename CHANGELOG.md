@@ -13,6 +13,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Ask a question about a review without rewriting it.** Asking why a finding was blocking
+  meant `Ask the AI for a change`, which regenerates the report and makes it one version more —
+  so the question cost you the report you were reading, and the score could move with it. A
+  review now has its own **exchanges**: ask, get an answer under the report, and the report, its
+  score and its versions stay exactly as they were. The question resumes the review session when
+  there is one, so the AI answers from the diff and its own report rather than reading everything
+  again. Exchanges are searchable in the same column view as a session's iterations, and they are
+  deleted along with the report they quote.
 - **The diff of a single follow-up.** Seeing what one correction changed meant re-reading the
   whole branch diff: by the third follow-up, the three lines you had asked for were buried among
   two hundred. Every iteration of a coding session on a repository now keeps its own patch, and

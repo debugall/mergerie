@@ -322,6 +322,25 @@ for (const m of REVIEWED) {
   db.prepare('INSERT INTO finding (mr_id, version, fingerprint, file, line, severity, title, status, created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(mr.id, 2, fp('src/upload/handler.js', 'valider le type MIME réel'), 'src/upload/handler.js', 22, 'blocker', 'valider le type MIME réel', 'resolved', iso(2));
   db.prepare('INSERT INTO finding (mr_id, version, fingerprint, file, line, severity, title, status, created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(mr.id, 2, fp('src/upload/scan.js', 'journaliser le résultat du scan'), 'src/upload/scan.js', 8, 'minor', 'journaliser le résultat du scan', 'resolved', iso(2));
   db.prepare('INSERT INTO review (mr_id, md_path, explanation_path, diff_path, note_value, created_at, updated_at) VALUES (?,?,?,?,?,?,?)').run(mr.id, v2md, explPath, diffPath, 0.81, iso(2), iso(2));
+
+  /* DEUX QUESTIONS POSÉES SUR CETTE REVUE. Elles ne figurent dans AUCUNE version : c'est
+     exactement ce que la fonctionnalité promet, et sans exemple semé personne ne verrait la
+     différence avec « Demander une modification », qui, lui, ajoute une version. */
+  const ECHANGES = [
+    { jours: 1.8,
+      q: 'Le constat sur la taille du fichier est marqué « majeur » : qu’est-ce qui le rend bloquant en pratique ?',
+      r: `La limite manquante n’est pas un confort : \`src/upload/handler.js\` (ligne 40) lit le corps de la requête en entier avant tout contrôle, donc un envoi de plusieurs gigaoctets est accepté, mis en mémoire, puis rejeté. Le service tombe avant d’avoir pu refuser.\n\nC’est pour ça que le constat est classé « majeur » et pas « mineur » : le coût n’est pas la place occupée, c’est la disponibilité du service.\n\n*Le rapport n’a pas été modifié.*\n` },
+    { jours: 1.2,
+      q: 'La remarque vaut-elle aussi pour l’upload d’avatar, qui passe par un autre appelant ?',
+      r: `Oui. Les deux chemins finissent dans la même fonction \`recevoir()\` de \`src/upload/handler.js\`, et c’est elle qui lit le corps. L’avatar a bien une limite côté client, mais rien ne l’impose côté serveur — la contourner suffit à retomber sur le même cas.\n\nÀ noter : le rapport ne le dit pas, parce que le diff de cette merge request ne touche pas l’appelant avatar. La remarque le concerne quand même.\n\n*Le rapport n’a pas été modifié.*\n` },
+  ];
+  const dirEch = ensureDir(path.join(TASKS_DIR, 'review', String(mr.id), '0'));
+  ECHANGES.forEach((e, i) => {
+    const f = path.join(dirEch, `output-v${i + 1}.md`);
+    fs.writeFileSync(f, e.r, 'utf8');
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
+      VALUES ('review',?,0,?,'question',?,?,?)`).run(mr.id, i + 1, e.q, f, iso(e.jours));
+  });
 }
 
 // ---- une MR CONVERGÉE (« Converger ») : 3 passes autonomes 5,8 → 7,1 → 8,4 ----

@@ -1,7 +1,7 @@
 'use strict';
 const db = require('./db');
 const { stripAnsi } = require('../public/ansi-runtime.js');
-const { reviewMr, modifyReview, explainMr } = require('./reviewer');
+const { reviewMr, modifyReview, askReview, explainMr } = require('./reviewer');
 const taskrunner = require('./taskrunner');
 const agentprofile = require('./agentprofile');
 const proc = require('./proc');
@@ -147,7 +147,7 @@ function jobKeys(entry) {
       repo(mr && mr.repo_id);
       return keys;
     }
-    default:                                          // review / rereview / modify / explain
+    default:                                          // review / rereview / modify / ask-review / explain
       if (Array.isArray(entry.rows)) { for (const r of entry.rows) repo(r.repo_id); return keys; }
       keys.add('*');
       return keys;
@@ -234,6 +234,11 @@ async function processList(jobId, rows, kind, opts = {}) {
         if (kind === 'modify') {
           await modifyReview(repo, mr, opts.instruction || '', onLog);
           logLine(jobId, mr.id, t('log.job.report-updated', { iid: mr.iid }));
+        } else if (kind === 'ask-review') {
+          /* Une QUESTION : elle ne touche ni au rapport ni à sa note. Le job n'a donc rien à
+             invalider ni à recharger — seul l'historique des échanges s'allonge. */
+          await askReview(repo, mr, opts.question || '', onLog);
+          logLine(jobId, mr.id, t('log.job.review-answered', { iid: mr.iid }));
         } else if (kind === 'explain') {
           await explainMr(repo, mr, onLog);
           logLine(jobId, mr.id, t('log.job.explained', { iid: mr.iid }));
@@ -632,7 +637,7 @@ async function runAskJob(jobId, questionId, opts = {}) {
    Les opérations git en sont EXCLUES : rejouer « supprimer ces douze branches » depuis un
    bouton de bandeau, sans repasser par l'aperçu, est précisément ce qu'il ne faut pas
    permettre. Leur écran est à un clic. */
-const RETRYABLE = new Set(['review', 'rereview', 'modify', 'explain', 'task', 'local', 'converge', 'converge-session']);
+const RETRYABLE = new Set(['review', 'rereview', 'modify', 'ask-review', 'explain', 'task', 'local', 'converge', 'converge-session']);
 function rememberRetry(jobId, spec) {
   try { db.prepare('UPDATE job SET retry = ? WHERE id = ?').run(JSON.stringify(spec), jobId); }
   catch { /* colonne absente sur une base très ancienne : la relance sera juste indisponible */ }
