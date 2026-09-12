@@ -83,3 +83,10 @@
   call in the same file returns the already-stopped instance and waits for a `listening` event
   that will never come — the file then times out instead of failing, which reads like a hang.
   Several `describe` blocks in one file must share the same app and the same browser.
+
+- **No assistant attribution in commit messages** — neither `Co-Authored-By` nor
+  `Claude-Session`. Whatever attribution the assistant's own harness asks for, this repository's
+  history does not carry it: a commit here has one author, the person who asked for the work,
+  and a message that stands on its own. The message stays one line in English, committed with
+  `git commit -s`; the DCO `Signed-off-by` is required (see CONTRIBUTING.md) and is the only
+  trailer a commit carries.
