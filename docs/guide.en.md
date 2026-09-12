@@ -72,6 +72,11 @@ than sorting on a guessed identity.
   `Review` button, and the server log says how many did not start. `0` = no limit. **“When it
   arrives” means when it arrives**: a branch moving forward triggers nothing — re-reviewing stays a
   deliberate gesture, and an incremental one.
+- **A merge in progress says what it is catching up.** You arrive on this screen from a merge
+  request's “conflict” badge: the merge's row therefore carries its **number, its score and its
+  ticket**, and leads there. Once committed, a link opens the **merge's diff** in the same window as
+  “Compare” — after thirty conflicts resolved one by one, “what does it give, all told?” needed a
+  terminal.
 - **Merge one branch into another, conflicts included.** `Git → Merge`: pick a repository, the
   branch to merge and the one to merge it into, and the tool prepares the merge. **The shared
   clone is never touched** — everything happens in a workspace of its own, so a review or a
@@ -189,7 +194,11 @@ than sorting on a guessed identity.
   carries a ✓ once a context is saved.
 - **Merging opens a confirmation with its options.** Before merging, a dialog restates the MR and its
   target branch, and offers **Squash** (fold the commits into one) and **Delete the source branch after
-  merging**. Both boxes are pre-ticked from what was chosen when the MR was created.
+  merging**. Both boxes are pre-ticked from what was chosen when the MR was created. It also **restates
+  what is known**: the score, the blocking findings, the verification verdict, whether the report has gone
+  stale, and the **remarks written and never sent** — those would go out with the merge request. Nothing
+  is recomputed: these are the list's badges, under the same rules. Nothing known (a merge request opened
+  outside the queue): nothing shown, rather than a line that reassures.
 - **Creating an MR** opens the same family of dialog: pre-filled title, and the same two options. GitLab
   records them at creation time; **GitHub cannot express them at creation** — Mergerie then remembers them
   and applies them at merge, which the dialog says.
@@ -265,6 +274,30 @@ overridden at launch**. A
   come from a structured block the AI emits alongside the report (invisible when reading); **your review
   prompt template is not modified**, the instruction is added on the fly. The Stats tab turns this into
   a **resolution rate per project**.
+- **Findings become remarks in one gesture.** Eight findings meant eight trips through the viewer:
+  find the file, scroll to the line, click “+”, retype the finding. Two buttons above the list —
+  **`Turn into drafts`** and **`The N blocking ones`** — turn them into inline comments **as drafts**,
+  one per finding, attached to their line. Nothing is sent: you re-read, adjust, and send them as a
+  batch as usual. Four things are left aside, and the tool says so: **resolved** findings (commenting
+  what was just fixed is noise), those **without a file and a line** (they would have nowhere to
+  attach), those that **already** have an identical draft — clicking twice is the most natural gesture
+  in the world — and above all those that fall **outside the diff**.
+
+  That last case is the most frequent, and the only surprising one: a report has every right to talk
+  about a line the branch did not touch (“this function is now called with `null`”). An inline remark
+  does not: it attaches **to the diff**, the forge refuses a position that is not in it, and the screen
+  would meanwhile show it stuck to a line nobody modified. The crossing is done with the diff of **the
+  reviewed version** — the one the findings come from — and a line **unchanged but present in a hunk**
+  is anchored with both of its numbers, without which GitLab refuses the position.
+- **The header says which commit the report covers** (`cf4fea90`), and the version selector repeats it
+  for each one: two passes of the same afternoon differed only by the clock, while they describe two
+  states of the code.
+- **The convergence banner names its best version** (“best: v3”) and takes you there in one click —
+  after three passes, the report on screen is not necessarily the one holding the best score. When the
+  loop stopped on a question, it says that too: it will not resume on its own.
+- **`Review` applies to what is on screen** — and to the selection when there is one. It used to launch
+  the whole queue whatever the search and the filters: you searched “payment”, clicked, and
+  thirty-seven unrelated reviews went with it. The label says what is about to go.
 - An MR that is no longer open on the forge carries the **merged** badge; the Merge button disappears.
 - **Filter by score colour.** Under *Reviewed* and *Done*, four checkboxes above the list — green
   (≥ 7/10), amber (4 to 6.9), red (< 4) and **`— no score`** — **combine**: “show me the red and the amber ones” is two clicks,
@@ -283,6 +316,11 @@ overridden at launch**. A
 Project tree plus the file shown **in full with the diff in place**, syntax highlighting, a **mini-map** of
 the changes, navigation between modifications, collapsible panels. **Inline comments** per line and
 **replies** to threads, synchronised with the forge — and **editable** as long as they are yours.
+
+**The tree says what each file carries**: the number of unresolved findings (in red when one of them
+blocks), of discussion threads, of remarks in draft, and of changed lines. On a forty-file merge
+request, knowing which ones to open meant opening them one by one. The badges stay silent when there
+is nothing — a tree studded with zeros would be harder to read than the bare tree it replaces.
 
 **The whole screen speaks of the REVIEWED version**, not of the branch head: tree, file content and
 line numbers all come from the commit the report describes. That is what makes a “`src/foo.js` line
@@ -307,6 +345,12 @@ behind.
 take the first two, nor the half hour of review, with it. The **position** (file, line, SHAs) is
 resolved **at send time**, exactly as for a direct comment: a merge request that moved meanwhile
 does not receive remarks pinned to a state of the code that no longer exists.
+
+**`Delete all`**, next to it, empties the batch in one go. It is the emergency exit: a remark you no
+longer want — or one the forge refuses because its position is not in the diff — blocks the group send,
+and used to be removed one by one by reopening each file. The confirmation **says how many and which
+ones**: ten remarks written yesterday are not wiped on an anonymous “are you sure?”. Nothing is sent
+anywhere — these remarks only exist here — and nothing is recoverable afterwards.
 
 In the tree, folders **carrying a change are expanded by default** and the others are collapsed — but
 **whatever you open or close by hand is remembered** for the visit: clicking a file no longer collapses
@@ -752,6 +796,12 @@ found, team notes. **Every quoted path is opened inside the clone**; a path that
 *(unverified)* and counted on the card. The agent is created directly: it has no effect until you launch
 it, and its knowledge can be edited.
 
+**Trying before saving.** The editor's *Try* button opens a session carried by the profile **as it
+stands in the form** — its model, its tools, its subagents, its system prompt — without creating an
+agent: trying must leave nothing behind. A banner recalls it in the dialog, and whatever would fail at
+launch (an impossible permission mode, say) is refused right away rather than three minutes later in a
+log. A trial holds for the session you open: the next one starts clean.
+
 **Use.** *Ask* launches an exploration over its repositories, knowledge first. *Code* opens the session
 window with **its repositories pre-ticked** — you untick and confirm. Any answer may end with the list of
 what the agent found to be wrong in its own map; it does not fix it itself, it **reports** it, and the
@@ -767,6 +817,15 @@ reported gaps and the list of commits: “look here first”. The result is a **
 agent output that waits for a validation. The “Team notes” section is copied from one version to the next
 **by the code**, not only by the prompt: what the team wrote by hand is not lost. *Publish to notes*
 turns it into a readable page.
+
+**And the map joins the reviews.** The map quotes paths, a merge request carries its own: the crossing
+happens on its own, with no AI and no network — like the “risk” badge. A merge request that touches those
+paths therefore shows a **“⚡ *Notifications*”** badge on its card and in its report header; the badge
+opens the map, which is exactly what you would want to re-read at that moment. And the **review itself**
+receives the map's index as context, on the same footing as a linked project: the AI knows what that
+corner of the code does and what breaks when you touch it, instead of rediscovering it. The index only,
+not the whole map — a review prompt already carries the diff, the ticket, the rules and the linked
+projects, and three pages of domain context would drown what you came to add.
 
 #### Skills and subagents
 The **Skills & subagents** sub-tab lists what the disk offers: the `.claude/skills/<name>/SKILL.md` and
@@ -814,7 +873,7 @@ tracks (merge requests, tickets) and **inside the backup**. Three sub-tabs: **To
 this tab **spends no tokens at all**.
 
 #### Today — the morning brief
-Seven sections, **ordered action-first**: what calls for a gesture before what merely informs. Each is
+Sections **ordered action-first**: what calls for a gesture before what merely informs. Each is
 **hidden when empty** — a screen showing seven headings, six of them subtitled “nothing”, teaches you that
 nothing happened, which was not the question. Every line reaches its object in one click.
 
@@ -834,12 +893,34 @@ nothing happened, which was not the question. Every line reaches its object in o
 4. **Failed verifications** — the last red verdict per batch or per MR. **Stale** verdicts are left out:
    the branch has moved, the verdict covers code that is no longer there, and showing it would send you to
    fix a problem that may already be fixed.
+4 ter. **Remarks never sent** — the inline comments written in the viewer and left there. This is the
+   quietest loss of work in the tool: you write three remarks, close the window to check something else,
+   and the merge request is merged without them. Oldest first — age is what worries, not the count — and
+   the button reopens the viewer, where they are sent from.
+4 quater. **Follow-ups never sent** — same family, another screen: a correction written while the session
+   was running, then forgotten. The ones that leave on their own at the end (“automatically”) say so:
+   they are waiting for nobody.
+4 quinquies. **Git left hanging** — a merge half-resolved yesterday evening, and the failed Git
+   operations of the last 24 hours (a protected branch someone tried to delete, a refused tag). A
+   half-finished merge lives only in a working folder: no badge recalls it, and you find it three days
+   later while looking for something else. *Resume* reopens the merge screen, *See history* opens the Git
+   log filtered on the project and on failures only.
+4 sexies. **Containers down** — what the background watch saw on its last round. A container is *down*
+   when it is `restarting`, `dead`, or exited **in error**: a requested stop (`docker stop`) is not a
+   failure, and painting it red would sound the alarm every day. The section is **dated** — it is a
+   reading, not a live state — and absent until Docker has been looked at, rather than announcing
+   “0 containers down” without having looked at anything.
 5. **MRs to review** — the ones that **arrived since yesterday**, not the whole queue (which has its own
    tab and its own badge).
 6. **Dormant MRs** — reviewed more than **N days** ago (adjustable, 5 by default) and still open: the work
    is done, the decision is missing.
 7. **Activity since yesterday** — one line, three numbers. Deliberately poor: it is context, not a task;
    the detail lives in *Stats*.
+
+**Searching inside a job's log.** A verification run pours out two thousand lines: the field in the
+panel's toolbar **hides** those that do not contain what you are looking for, and the *Errors* box keeps
+only the red ones. Nothing is cut — the count says what is hidden, and unticking brings everything back.
+A **double-click** on a line that talks about a merge request opens its report.
 
 **Dismissing a line that comes back every morning.** The brief recomputes everything each time it opens:
 a fact that stays true reappears indefinitely, even once handled elsewhere — a red verification you have
@@ -948,11 +1029,26 @@ must not carry HTML.
 - The content is **escaped first**, the autolink applies **afterwards** and only injects tags it builds
   itself. No fragment of a note can become markup.
 
+**And the other way round: “1 note mentions it”.** The link only existed on one side — the note led to
+the merge request, and the merge request had no idea three paragraphs had been written about it on Monday.
+A review report and a Jira ticket sheet now list **the notes that cite them**, with the excerpt taken
+**around** the citation (a page title almost never says what was said about *that* object). The rule for
+“citing” is **the one used by the rendering**, not a second search: `a!=218` is a comparison, not a
+citation, and a list of incoming links that contains false ones is worth nothing.
+
 #### “Add to the todos”, from an MR or a ticket
 A button on the **detail of a merge request** and on that of a **Jira ticket** opens the quick capture
 **pre-filled**: proposed title (`Follow !214 — <title>`), link set, normal priority, no date — all of it
 still editable. If an open todo **already** follows that object, the button becomes **“See the todo”**:
 creating a silent duplicate would be the surest way to make the list useless within a week.
+
+**And from four other places.** “Rebase this branch before Monday”, “this verifier has been red since
+Tuesday”, “this build breaks one time in three”, “this container goes down every night” are exactly what
+you jot down — and nothing carried them: the button existed only on a merge request and a ticket, so you
+wrote free text with no link back. The same button now sits on a **branch row** (explorer), a
+**verification report**, a **Jenkins build row** and a **container row**. The todo keeps what it needs to
+go back: the explorer opens on the branch's repository, the verification report reopens, so does the
+Jenkins job sheet.
 
 #### Reminders
 The channel is the existing **desktop notifications**, with its own **“Reminders”** category (on by
@@ -1185,7 +1281,13 @@ Operations across **several repositories at once**, and branch exploration.
   Sorted **by last-commit date, most recent first**. From a branch, **`Create MR`** opens an MR between it
   and its source (the inferred origin, otherwise the default branch) — the same title popup as in AI Dev,
   offered only when the branch has commits ahead. Ticking branches then `Delete selection` opens the
-  pre-filled preview. You can also **explore several repositories at once** (each result in a collapsible
+  pre-filled preview. **Every row also carries what the database knows about the branch**: the score of its
+  merge request's review, the coding session that created it, **its Jira ticket and that ticket's state**,
+  the **last verification verdict** — and, when the repository has a declared Jenkins job, a button that
+  opens that job **with the branch already filled in**. The button existed only on a merge request verified
+  green: a branch you want to deploy to staging *before* turning it into a merge request had no right to
+  it. The sheet opens, never a run. The row finally takes a **todo** (“rebase before Monday”), which knows
+  how to bring you back. You can also **explore several repositories at once** (each result in a collapsible
   block, **folded** and marked with a chevron that rotates — repositories are analysed **one after
   another**, and each block says where it stands (*waiting*, then *analysing* with its spinner, then its
   branch count). A clone can take a minute: the button spins meanwhile, and a repository that fails
@@ -1691,6 +1793,14 @@ link in a new tab, an internal object in its own place.
 - **Ranked by frecency**: what you open *often* **and** *recently* comes up. A plain counter would
   keep whatever you hammered last month at the top forever; a plain date would lose what you have
   opened every day for a year.
+- **The palette ACTS, it no longer merely navigates.** Four everyday objects have joined it: a
+  **verifier** (“Verify with *payment integration*” opens the branch-verification screen with that
+  verifier picked), a **Jenkins job** attached to a repository (its sheet opens — never a run: a job
+  deploys, it gets started deliberately), a **compose project**, and a **saved git command**, dropped
+  into the *Git commands* field where the repositories remain to be chosen. The principle does not
+  change: the palette can do nothing the screen cannot already do, it takes you to the right place and
+  clicks the real button. A merge request is also found by its **ticket key** (`PROJ-1408`), the way half
+  a team refers to it.
 - The palette queries the **server**: it therefore sees everything, including what the current tab
   has not loaded — searching for a merge request from Docker works. Filtering happens **in the database**, not
   over a slice of it: a merge request three hundred older ones down is as findable as a fresh one.
@@ -1872,7 +1982,11 @@ subfolder per git project, which feeds the *Git → Navigate* tab and *Out-of-re
 count “n git projects out of m folders” confirms at a glance that you pointed at the right level of the
 tree; each repository also shows **its open merge requests**, **the date of the last discovery** and **the
 state of its clone**, with a **`Re-clone`** button — nothing is lost on the forge, but unpushed changes in
-the local clone are, so it asks first) ·
+the local clone are, so it asks first); a **`Sheet`** button unfolds **what is attached** to that
+repository — verifiers, Jenkins jobs, review rules limited to it, grid services, default linked projects,
+agents it belongs to. The row said what concerns IT; the sheet answers “what breaks if I remove it?” and
+“which verifier tests it, again?”. Every entry leads to the screen where the object is edited, and nothing
+is asked of the server until the panel is unfolded) ·
 **Merge Request** (automatic refresh, convergence, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
 **Specific review rules** (a rule can be **limited to one repository** — without which you had to guess a
 `path_match` only that repository would satisfy; criteria added to the prompt when the branch name contains a given
@@ -1887,7 +2001,8 @@ field selected: renaming is the first gesture; the form **suggests the commands 
 already declare** — `package.json` scripts, `composer.json` scripts, Makefile targets, read from the clone
 on disk, **nothing is executed** — to add in one click) ·
 **Notifications** (a dedicated sub-tab, see below) ·
-**General** (the **four boxes ticked by default** on a new session — auto-push, AI questions, tell Jira, converge afterwards: these are working habits, set once instead of starting unticked at every opening; light/dark/auto theme, language, density, **menu arrangement**, morning brief, data retention, backup,
+**General** (with its own **Save** button — the fields of every sub-tab belong to the same form,
+and this one had none: you ticked a box and nothing left; the **four boxes ticked by default** on a new session — auto-push, AI questions, tell Jira, converge afterwards: these are working habits, set once instead of starting unticked at every opening; light/dark/auto theme, language, density, **menu arrangement**, morning brief, data retention, backup,
 and a **danger zone** for a full reset) ·
 **Jira** (the **Jira connection** —
 URL + email + API token, with a *Test Jira* button —; feeds the *Jira* tab and the enrichment of a session
@@ -1921,8 +2036,19 @@ an orphan section heading. ⚠ It does **not** apply to exploration, which produ
 System notifications for the moments that **call for an action or close a wait** — not for atmosphere. On by
 default: **the end of the review queue** (the batch, not each MR), **a review under a score threshold**
 (“MR !142: 4.2/10”, adjustable threshold), **a job failure** (timeout, CLI, network), **a coding session
-finished** and **the AI has asked a question** (a session is waiting for your answers to resume). Off by
-default because they are informative: **a new MR discovered** and **an MR merged**. The notifications are
+finished** and **the AI has asked a question** (a session is waiting for your answers to resume). Also on: **a Git operation finished**
+(branch created, tag pushed — the most irreversible gesture in the tool, and it used to happen in silence),
+**a working folder not restored** after an *in place* verification (the worst state the tool can leave
+behind, until now visible only by opening the report) and **an automatic cap reached** (merge requests left
+aside: a silent cap reads as “everything was done”). Off by default because they are informative: **a new MR
+discovered**, **an MR merged** and **a container that went down** — on a development machine, containers
+stop every day for good reasons.
+
+**What the server now watches on its own.** The end of a Jenkins build *you started from Mergerie* was
+watched by the browser: it only arrived if the Jenkins tab had stayed open — when you start a build
+precisely to go and do something else. A background watch handles it server-side now, once a minute, and
+asks Jenkins nothing while no launch is pending. The same watch picks up fallen containers — a
+*transition*, never a state: a container stopped three days ago does not raise the alarm every morning. The notifications are
 **persistent**: they stay on screen until you click or dismiss them, so you do not miss them. A **click on
 the notification** brings you back to the right place (tab focus + opening the MR or the session concerned).
 A **“silent mode” toggle** in the bottom bar cuts everything in one click. Fine-grained settings live in the
@@ -2030,6 +2156,15 @@ onto memory after you close the tool.
 > out. If permission was denied once, it is restored in the site settings.
 
 ### Everyday comfort
+**Objects have an address.** A review report, a session and a note page are written `#/reviews/216`,
+`#/sessions/code/12`, `#/notes/4`: the link can be **pasted** into a note or a message (“Copy the
+reference” now gives both links — the forge shows the diff, Mergerie shows the report, the score and the
+verdict), the browser's **Back button** returns to the previous object instead of leaving the tool, and an
+address you receive **wins at load time** over the tab of your last visit — you open a link to go to
+*that* object. Tabs deliberately have no address: every menu click would become a history entry, and Back
+a “previous tab” nobody asked for. A link to an object that is gone does nothing rather than showing an
+error page.
+
 The tab, the sub-tab **and the Reviews stage are remembered** from one session to the next — and **nothing
 else**: no search, no dialog, no open report, because a stale state is worse than a clean start ·
 **keyboard shortcuts** (`1`-`9` then `0` for the ten tabs, `/` search, `n` new todo, `r` fetch MRs, `l` logs, `?` help, `Esc` closes) · a
@@ -2314,6 +2449,34 @@ long as the base run is green**. It is the base that gives the verdict its meani
 The **server log says why** nothing went out: silence reads as “published”. Unticked by default:
 writing on other people's work is a decision. Publishing **by hand** stays available in every
 case — there, a human decides, with the text in front of them.
+
+**And the Jira ticket, if you ask for it.** The forge comment addresses whoever reviews the code; the
+ticket is read by QA, the project manager, support — the people who ask “is it tested?” without ever
+opening the forge. A checkbox in *Settings → Jira* (**off by default**, like “Notify Jira”) makes the
+merge request's ticket receive a comment when a verification breaks. Same guards as the forge comment:
+only “the base passed, the branch breaks”, **never** on a green run nor on an already-red base, and **once
+per ticket** even when the batch holds five merge requests of the same one. Jira being unreachable does
+not call an acquired verdict into question: the failure is noted in the job log.
+
+**A red verdict leaves a todo behind.** The notification goes by and is forgotten; the badge assumes you
+reopen *Reviews*. Between the two, nothing carried “there is a broken test on !218” through to the next
+morning. A todo is therefore created **per merge request** (running the same verification three times
+updates the same row rather than stacking three), and a **green run closes it** — ticked, never deleted:
+what got fixed today is read back under the done ones.
+
+**What else the report says.** When the test output carries durations (vitest's `# time=`, node's
+`duration_ms`, JUnit's `time` attribute — until now thrown away with the rest of the comment), the
+report folds **the five slowest tests** at the bottom: a slow test is almost always GREEN, which is
+exactly why nobody notices it. And a red test **already green on this very code** in another run is
+marked **flaky**: there is then nothing the branch broke to look for. It takes at least two runs on the
+same commits to say so — one proves nothing, and doubting a test that never lied would cost more than
+silence.
+
+**And “Investigate” from the red.** A failed verification report carries an *Investigate* button next to
+*Fix*: the two do not address the same moment — a red test whose trace you do not understand is not fixed,
+it is searched for first. It opens the **incident investigator** with the broken tests and their log
+excerpts as the request. The same button sits on a **Jenkins build console**, at the exact place where you
+READ the trace, and only appears when the console actually holds one.
 
 **The comment template** can be edited (it appears under the box). What each field produces:
 

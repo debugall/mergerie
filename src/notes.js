@@ -22,6 +22,8 @@
  */
 
 const db = require('./db');
+// La MÊME définition de « citer » que le rendu des notes (cf. `citations`).
+const NOTESRT = require('../public/notes-runtime.js');
 const { t } = require('../public/i18n-runtime.js');
 
 const JOUR_MS = 24 * 60 * 60 * 1000;
@@ -35,7 +37,11 @@ const MAX_NOTE = 2000;
 const MAX_PAGE = 200 * 1024;
 
 const PRIORITES = ['high', 'normal', 'low'];
-const LINK_KINDS = ['mr', 'ticket', 'repo'];
+/* B16 — quatre objets de plus : une branche (`<dépôt>:<branche>`), une vérification, un build
+   Jenkins (`<job>#<numéro>`) et un conteneur. La liste doit rester alignée sur le `CHECK` de
+   la table (`db.js`, migration B16) : ce qui passe ici et que la table refuse ferait une
+   erreur SQLite brute à l'écran. */
+const LINK_KINDS = ['mr', 'ticket', 'repo', 'branch', 'verification', 'build', 'container'];
 // Combien de temps une todo faite reste visible, barrée, avant de s'archiver.
 const JOURS_AVANT_ARCHIVE = 7;
 
@@ -397,6 +403,51 @@ function demarrerArchivage(onLog = () => {}) {
 // Au-delà, une merge request fermée n'est plus une référence qu'on écrit dans une note.
 const JOURS_AUTOLINK = 180;
 
+/* B4 — QUI CITE CECI. L'autolien est à sens unique : une note qui parle de `!217` mène à la
+   merge request, et la merge request ignore qu'on a écrit trois paragraphes sur elle la
+   semaine dernière. C'est pourtant le sens le plus utile des deux — devant un rapport de
+   review, « on en avait parlé, où ? » est une question fréquente, et la réponse est une
+   recherche plein texte qu'on refait à la main.
+
+   DEUX ÉTAPES, et la seconde n'est pas un luxe : le `LIKE` est le FILTRE (il laisse SQLite
+   écarter l'immense majorité des pages), la regex de l'autolien est la RÈGLE. Sans elle,
+   `a!=217` et `PROJ-7200` compteraient comme des citations — et une liste de liens entrants
+   qui contient des faux est pire que pas de liste, parce qu'on la vérifie à la main.
+
+   La MÊME regex que le rendu, importée du même module : deux définitions de « citer »
+   finiraient par désigner des ensembles différents, et l'écran dirait « 2 notes citent !217 »
+   en menant à des pages où le lien n'est pas posé. */
+const MAX_CITATIONS = 20;
+
+function citations({ mr = null, ticket = null } = {}) {
+  const aiguille = mr ? `!${Number(mr)}` : String(ticket || '').trim().toUpperCase();
+  if (!aiguille || (mr && !Number.isFinite(Number(mr)))) return [];
+  if (ticket && !/^[A-Z][A-Z0-9]+-\d+$/.test(aiguille)) return [];
+  const motif = `%${aiguille.replace(/[%_]/g, '')}%`;
+  const out = [];
+  for (const p of db.prepare(`SELECT id, title, content, updated_at FROM note_page
+    WHERE content LIKE ? ESCAPE '\\' ORDER BY updated_at DESC LIMIT ?`).all(motif, MAX_CITATIONS * 3)) {
+    const re = mr ? new RegExp(NOTESRT.MR_RE.source, 'g') : new RegExp(NOTESRT.TICKET_RE.source, 'g');
+    let vraie = false; let m;
+    while ((m = re.exec(p.content)) !== null) {
+      const trouve = mr ? `!${m[2]}` : m[2];
+      if (trouve === aiguille) { vraie = true; break; }
+    }
+    if (!vraie) continue;
+    // L'EXTRAIT AUTOUR DE LA CITATION, pas le début de la page : ce qu'on veut savoir, c'est
+    // ce qui a été dit DE cet objet — le titre de la page ne le dit presque jamais.
+    const i = p.content.indexOf(aiguille);
+    /* Coupé sur des MOTS, pas sur des caractères : « t être prévenue dès la revue » se lit
+       comme une coquille de l'outil, là où « …doit être prévenue… » se lit comme un extrait. */
+    const brut = p.content.slice(Math.max(0, i - 70), i + 110).replace(/\s+/g, ' ');
+    const gauche = i > 70 ? brut.replace(/^\S*\s/, '…') : brut;
+    const extrait = (i + 110 < p.content.length ? gauche.replace(/\s\S*$/, ' …') : gauche).trim();
+    out.push({ id: p.id, title: p.title, excerpt: extrait, updated_at: p.updated_at });
+    if (out.length >= MAX_CITATIONS) break;
+  }
+  return out;
+}
+
 function indexAutolink({ maintenant = Date.now() } = {}) {
   const mrs = {};
   /* BORNÉ, et il faut qu'il le soit : sans clause, la requête sérialisait la table `mr`
@@ -424,5 +475,5 @@ module.exports = {
   MAX_TITLE, MAX_NOTE, MAX_PAGE, PRIORITES, LINK_KINDS, JOURS_AVANT_ARCHIVE, JOURS_AUTOLINK,
   listerPages, lirePage, creerPage, majPage, supprimerPage, slugifier,
   listerTodos, lireTodo, creerTodo, majTodo, supprimerTodo, calculerSnooze,
-  rappelsDus, marquerNotifie, archiver, demarrerArchivage, indexAutolink,
+  rappelsDus, marquerNotifie, archiver, demarrerArchivage, indexAutolink, citations,
 };

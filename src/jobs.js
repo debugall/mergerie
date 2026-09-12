@@ -117,8 +117,23 @@ function jobKeys(entry) {
     case 'ask': return keys;
     case 'verify': {
       // Le run crée des worktrees dans le clone : aucun autre job ne doit y toucher pendant.
-      const ver = db.prepare('SELECT targets_json FROM verification WHERE id = ?').get(entry.verificationId);
-      for (const c of JSON.parse((ver && ver.targets_json) || '[]')) repo(c.repo_id);
+      const ver = db.prepare('SELECT verifier_id, targets_json FROM verification WHERE id = ?').get(entry.verificationId);
+      const cibles = JSON.parse((ver && ver.targets_json) || '[]');
+      for (const c of cibles) repo(c.repo_id);
+      /* EN MODE « IN PLACE », LE RUN NE TRAVAILLE PAS DANS LE CLONE mais dans le répertoire de
+         l'utilisateur — celui-là même qu'une session hors dépôt réserve sous `dir:<chemin>`.
+         Réserver le dépôt ne protégeait donc rien : l'agent d'une session locale pouvait écrire
+         dans le dossier pendant que la vérification y faisait son `checkout --detach`. On pose
+         la même clé qu'elle, pour que les deux se sérialisent au lieu de se marcher dessus. */
+      if (ver && ver.verifier_id) {
+        const ids = [...new Set(cibles.map((c) => Number(c.repo_id)).filter(Boolean))];
+        if (ids.length) {
+          const lignes = db.prepare(`SELECT workdir FROM verifier_repo
+            WHERE verifier_id = ? AND mode = 'in_place' AND workdir IS NOT NULL AND workdir <> ''
+              AND repo_id IN (${ids.map(() => '?').join(',')})`).all(ver.verifier_id, ...ids);
+          for (const l of lignes) keys.add(`dir:${l.workdir}`);
+        }
+      }
       return keys;
     }
     case 'gitops':
@@ -770,6 +785,14 @@ async function runGitJob(jobId, payload) {
       ? await gitops.restore(payload.restoreOpId, onLog)
       : await gitops.execute(payload, onLog);
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
+    /* B14 — UNE OPÉRATION GIT NOTIFIE. Elle ne disait rien, ni en réussissant ni en échouant :
+       on supprimait douze branches, on changeait d'onglet, et on ne savait plus si c'était
+       passé. Ce sont pourtant les gestes les plus IRRÉVERSIBLES de l'outil — ceux dont on veut
+       une confirmation, justement parce qu'on est déjà parti voir ailleurs. */
+    notify.push('git_done', {
+      action: payload.restoreOpId ? 'restore' : payload.action,
+      n: (r && r.results ? r.results.filter((x) => x.ok).length : 1),
+    });
     return r;
   } catch (e) {
     // Un arrêt DEMANDÉ n'est pas un échec. Sans ce test, le Stop de l'utilisateur
@@ -781,6 +804,7 @@ async function runGitJob(jobId, payload) {
       return null;
     }
     setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
+    notify.push('job_failed', { message: String(e.message).slice(0, 200) });
   }
   return null;
 }
@@ -1008,6 +1032,13 @@ async function runVerifyJob(jobId, verificationId) {
        job ne se déclare fini : « terminé » doit vouloir dire que tout est fait. */
     try { await verifyrun.commenterSurForge(verificationId, getConfig(), onLog); }
     catch (e) { logLine(jobId, null, `commentaire sur la forge impossible : ${e.message}`); }
+    /* B10 — et le ticket, quand l'option est cochée. Même prudence : Jira injoignable ne
+       transforme pas un verdict acquis en échec de job. */
+    try { await verifyrun.commenterSurJira(verificationId, getConfig(), onLog); }
+    catch (e) { logLine(jobId, null, `commentaire Jira impossible : ${e.message}`); }
+    // B12 — le verdict laisse une trace qui survit à la notification : une todo par MR.
+    try { verifyrun.todosDuVerdict(verificationId, verdict); }
+    catch (e) { logLine(jobId, null, `todo de verdict impossible : ${e.message}`); }
     // Un verdict rouge n'est PAS une erreur de job : le job a parfaitement fait son travail.
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
     logLine(jobId, null, t('log.job.verify-end', { verdict }));

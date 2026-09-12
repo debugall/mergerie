@@ -144,6 +144,13 @@ le dernier build Jenkins qui porte une branche s'écrit sur la carte de sa merge
 passé « en revue » fait remonter ses merge requests ; une exploration se transforme en session de
 codage **dans la même session d'agent** ; les branches des merge requests mergées se ramassent en
 un lot ; et une vérification qui tourne « in place » dit l'état des services Docker avant de partir.
+Le rapport d'une review dit **quelles notes le citent** et **quelle carte de domaine il touche** — et
+donne cette carte à l'IA comme contexte de review ; un verdict rouge laisse une todo et, si tu le
+demandes, un commentaire sur le ticket Jira ; une console Jenkins en échec et une vérification rouge
+ouvrent l'**enquêteur d'incident**, la trace déjà dans la demande ; et le brief du matin rattrape **le
+merge laissé à moitié la veille**, les opérations Git qui ont échoué et les conteneurs tombés — ces
+derniers surveillés par le serveur lui-même, comme la fin d'un build Jenkins lancé d'ici, pour que ça
+t'atteigne l'onglet fermé.
 
 Les badges signalent le **travail en attente** (MR à traiter, sessions non lancées), pas des totaux.
 

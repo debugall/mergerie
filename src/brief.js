@@ -72,11 +72,23 @@ function todosDuJour() {
    items les plus coûteux à oublier : la session est bloquée, la file est libre, et rien ne
    repartira tant qu'on n'aura pas répondu. */
 function sessionsEnAttente(limite = MAX_PAR_SECTION) {
-  return db.prepare(`SELECT t.id, t.prompt, t.kind, COUNT(*) n
+  const out = db.prepare(`SELECT t.id, t.prompt, t.kind, COUNT(*) n
     FROM task_target tt JOIN task t ON t.id = tt.task_id
     WHERE tt.status = 'needs_input'
     GROUP BY t.id ORDER BY t.id DESC LIMIT ?`).all(limite)
     .map((r) => ({ task_id: r.id, prompt: r.prompt, kind: r.kind, targets: r.n }));
+  /* TOP 20 — ET LES SESSIONS HORS DÉPÔT, qui attendent exactement de la même façon. La requête
+     ne lisait que `task_target` : une session hors dépôt arrêtée sur une question n'a pas de
+     projet, elle n'apparaissait donc nulle part — alors que c'est la plus facile à oublier,
+     puisqu'elle ne laisse ni branche ni merge request pour la rappeler. Une question libre
+     bloquée compte pour la même raison. */
+  const autres = (table, kind) => {
+    try {
+      return db.prepare(`SELECT id, prompt FROM ${table} WHERE status = 'needs_input'
+        ORDER BY id DESC LIMIT ?`).all(limite).map((r) => ({ task_id: r.id, prompt: r.prompt, kind, targets: 0 }));
+    } catch { return []; }
+  };
+  return [...out, ...autres('local_task', 'local'), ...autres('question', 'ask')].slice(0, limite);
 }
 
 /* 4. VÉRIFICATIONS EN ÉCHEC — le dernier verdict rouge par lot / MR, périmés exclus.
@@ -202,30 +214,120 @@ function activite(maintenant) {
    vérification, l'état du ticket. L'outil ne merge rien — il compte ce qui ne demande plus
    rien, et la file porte la même puce pour aller les voir. */
 function pretesAMerger(seuil) {
-  const n = Number(seuil) > 0 ? Number(seuil) : 8;
+  /* LE SEUIL EST DONNÉ SUR 10, LA NOTE EST STOCKÉE SUR 1. `review.note_value` vaut 0,84 pour
+     une note de 8,4 — c'est la convention de toute la base (`note_value * 10` partout à
+     l'affichage). La comparaison se faisait sans conversion : `0,84 >= 8` est faux, et le
+     compte rendait donc TOUJOURS zéro, quelle que soit la file. Le défaut se cachait derrière
+     le précédent, qui, lui, élargissait à tort — les deux se compensaient en silence. */
+  const n = (Number(seuil) > 0 ? Number(seuil) : 8) / 10;
   /* La PÉREMPTION d'un verdict ne se lit pas en SQL : les cibles d'une vérification vivent en
      JSON (`targets_json`), et « périmé » veut dire que le SHA testé n'est plus le SHA courant.
      On applique donc la règle de l'écran, mot pour mot — un second critère de péremption ici
      ferait dire deux choses différentes au même mot. */
-  const lignes = db.prepare(`SELECT mr.id, mr.current_sha, review.note_value,
-      v.verdict, v.targets_json
+  /* LA DERNIÈRE VÉRIFICATION D'UNE MR NE SE JOINT PAS EN SQL. `verification` n'a pas de
+     colonne `mr_id` — ses cibles vivent dans `targets_json`. La sous-requête qui l'essayait
+     (`WHERE mr_id = mr.id`) ne portait donc pas sur `verification` : SQLite résolvait `mr_id`
+     sur le `review` de la requête externe, la condition devenait tautologique, et TOUTES les
+     merge requests héritaient de la dernière vérification de la base. Une seule verte quelque
+     part suffisait à déclarer « prête à merger » tout ce qui était noté au-dessus du seuil.
+     On relit donc les vérifications du plus récent au plus ancien et on retient la première
+     rencontrée pour chaque MR — le même geste que le reste du brief, qui lit déjà ses cibles
+     en JSON. Le volume est celui d'un outil mono-utilisateur : quelques centaines de lignes. */
+  const derniere = new Map();
+  for (const v of db.prepare("SELECT id, verdict, targets_json FROM verification WHERE status = 'done' ORDER BY id DESC").all()) {
+    let cibles = [];
+    try { cibles = JSON.parse(v.targets_json || '[]'); } catch { continue; }
+    for (const c of cibles) {
+      if (c.mr_id && !derniere.has(c.mr_id)) derniere.set(c.mr_id, { verdict: v.verdict, cibles });
+    }
+  }
+  const lignes = db.prepare(`SELECT mr.id, mr.current_sha, review.note_value
     FROM mr
     JOIN review ON review.mr_id = mr.id
-    JOIN verification v ON v.id = (
-      SELECT id FROM verification WHERE mr_id = mr.id ORDER BY id DESC LIMIT 1)
     WHERE COALESCE(mr.closed_seen, 0) = 0
       AND COALESCE(mr.has_conflicts, 0) = 0
       AND mr.status IN ('to_review','reviewed')
       AND review.note_value >= ?
-      AND v.verdict = 'verified_pass'
       AND (mr.ticket_jira_category IS NULL OR mr.ticket_jira_category = ''
            OR mr.ticket_jira_category = 'indeterminate')`).all(n);
   return lignes.filter((r) => {
-    let cibles = [];
-    try { cibles = JSON.parse(r.targets_json || '[]'); } catch { cibles = []; }
-    const perime = cibles.some((c) => c.mr_id === r.id && r.current_sha && c.head_sha && c.head_sha !== r.current_sha);
+    const v = derniere.get(r.id);
+    if (!v || v.verdict !== 'verified_pass') return false;
+    const perime = v.cibles.some((c) => c.mr_id === r.id && r.current_sha && c.head_sha && c.head_sha !== r.current_sha);
     return !perime;
   }).length;
+}
+
+/* TOP 1 — LES BROUILLONS DE COMMENTAIRES QUI DORMENT. Groupés par merge request, les plus
+   anciens d'abord : c'est l'ancienneté qui inquiète — trois remarques écrites hier se
+   retrouvent, trois remarques écrites il y a deux semaines sont perdues. */
+function brouillonsEnAttente(limite = MAX_PAR_SECTION) {
+  return db.prepare(`SELECT d.mr_id, COUNT(*) AS n, MIN(d.created_at) AS depuis,
+      mr.iid, mr.title, repo.project
+    FROM mr_comment_draft d
+    JOIN mr ON mr.id = d.mr_id
+    JOIN repo ON repo.id = mr.repo_id
+    WHERE COALESCE(mr.closed_seen, 0) = 0
+    GROUP BY d.mr_id ORDER BY depuis ASC LIMIT ?`).all(limite)
+    .map((r) => ({ mr_id: r.mr_id, iid: r.iid, title: r.title || '', project: r.project, n: r.n, depuis: r.depuis }));
+}
+
+/* TOP 20 — LES SUIVIS ÉCRITS ET JAMAIS ENVOYÉS, pour les trois saveurs qui en ont un. La
+   colonne existe depuis longtemps sur `task`, `local_task` et `question` ; personne ne la
+   relisait ailleurs que sur la carte elle-même. */
+function suivisEnAttente(limite = MAX_PAR_SECTION) {
+  const out = [];
+  const ajouter = (rows, kind) => {
+    for (const r of rows) {
+      out.push({
+        kind, id: r.id, label: r.label || String(r.prompt || '').slice(0, 60),
+        texte: String(r.followup_draft || '').split('\n')[0].slice(0, 120),
+        auto: !!r.followup_auto, at: r.updated_at,
+      });
+    }
+  };
+  const req = (table) => {
+    try {
+      return db.prepare(`SELECT id, label, prompt, followup_draft, followup_auto, updated_at FROM ${table}
+        WHERE followup_draft IS NOT NULL AND TRIM(followup_draft) <> ''
+          AND status <> 'running'
+        ORDER BY updated_at DESC LIMIT ?`).all(limite);
+    } catch { return []; }
+  };
+  ajouter(req('task'), 'task');
+  ajouter(req('local_task'), 'local');
+  ajouter(req('question'), 'ask');
+  return out.sort((a, b) => String(b.at || '').localeCompare(String(a.at || ''))).slice(0, limite);
+}
+
+/* B14 — CE QUE GIT A LAISSÉ EN PLAN. Un merge résolu à moitié la veille au soir est le seul
+   travail de l'outil qui vit dans un DOSSIER de travail et nulle part ailleurs : ni onglet
+   avec un badge, ni file de jobs, rien qui le rappelle le lendemain matin. Et une opération
+   git en échec (une branche non supprimée, un tag refusé) n'était visible qu'en rouvrant
+   l'historique du lot. Les deux réclament un geste : ils appartiennent au brief.
+
+   Un merge « pushed » est fini ; les autres états — `conflict`, `ready`, `committed` — disent
+   tous « le dossier attend quelque chose de toi ». */
+function gitEnSuspens(maintenant, limite = MAX_PAR_SECTION) {
+  const out = [];
+  for (const r of db.prepare(`SELECT m.id, m.source_branch, m.target_branch, m.status, m.updated_at, repo.project
+      FROM git_merge m JOIN repo ON repo.id = m.repo_id
+      WHERE m.status <> 'pushed' ORDER BY m.updated_at DESC LIMIT ?`).all(limite)) {
+    out.push({
+      kind: 'merge', merge_id: r.id, project: r.project, status: r.status,
+      source: r.source_branch, target: r.target_branch, at: r.updated_at,
+    });
+  }
+  const depuis = new Date(maintenant.getTime() - JOUR_MS).toISOString();
+  for (const r of db.prepare(`SELECT batch_id, action, project, ref_name, error, created_at, COUNT(*) AS n
+      FROM git_op WHERE status = 'error' AND created_at >= ?
+      GROUP BY batch_id ORDER BY created_at DESC LIMIT ?`).all(depuis, limite)) {
+    out.push({
+      kind: 'op', batch_id: r.batch_id, action: r.action, project: r.project, ref: r.ref_name,
+      n: r.n, error: String(r.error || '').slice(0, 120), at: r.created_at,
+    });
+  }
+  return out.sort((a, b) => String(b.at || '').localeCompare(String(a.at || ''))).slice(0, limite);
 }
 
 /* Le brief complet. `sections` porte l'ordre ET le vide : le front n'a qu'à sauter ce qui
@@ -257,7 +359,7 @@ function agentsRecents(maintenant, limite = MAX_PAR_SECTION) {
   return out.slice(0, limite);
 }
 
-function construire({ maintenant = new Date(), staleDays = 5, seuilPret = 8 } = {}) {
+function construire({ maintenant = new Date(), staleDays = 5, seuilPret = 8, dockerDown = null } = {}) {
   const act = activite(maintenant);
   /* Le filtrage est posé ICI, après le calcul : chaque section garde une requête qui dit ce
      qui est VRAI, et l'écart se lit d'un seul endroit. Les sections plafonnent à huit lignes,
@@ -286,6 +388,25 @@ function construire({ maintenant = new Date(), staleDays = 5, seuilPret = 8 } = 
     ready_to_merge: pretesAMerger(seuilPret),
     ready_threshold: Number(seuilPret) > 0 ? Number(seuilPret) : 8,
     agents: agentsRecents(maintenant),
+    /* TOP 1 — LES REMARQUES ÉCRITES ET JAMAIS ENVOYÉES. C'est la perte de travail la plus
+       silencieuse de l'outil : trois commentaires inline rédigés dans le viewer, la fenêtre
+       refermée, et la merge request qui se merge sans eux. Le brief est le bon endroit pour
+       les rattraper — c'est l'écran qui dit ce qui attend un geste. */
+    drafts: brouillonsEnAttente(),
+    /* TOP 20 — ET LES SUIVIS ÉCRITS, JAMAIS ENVOYÉS. Même famille : on rédige une correction
+       pendant que la session tourne, on passe à autre chose, et elle attend pour toujours si
+       la case « automatiquement » n'était pas cochée. */
+    followups: suivisEnAttente(),
+    /* B14 — les merges à finir et les opérations git en échec. */
+    git: gitEnSuspens(maintenant),
+    /* TOP 14 — LES CONTENEURS TOMBÉS, tels que la veille de fond les a vus au dernier tour.
+       Le brief n'interroge pas Docker lui-même : il reste sans réseau et sans attente, et ce
+       qu'il montre est daté (`at`) pour que personne ne prenne un relevé d'il y a une minute
+       pour un état live. Rien mesuré (Docker absent, serveur qui vient de démarrer) → pas de
+       section, plutôt qu'un « 0 conteneur tombé » qui prétendrait avoir regardé. */
+    docker: dockerDown && dockerDown.at
+      ? { at: dockerDown.at, containers: (dockerDown.containers || []).slice(0, MAX_PAR_SECTION) }
+      : null,
   };
 }
 

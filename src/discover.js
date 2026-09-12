@@ -58,11 +58,18 @@ async function discoverAll() {
 
   const selectMr = db.prepare('SELECT * FROM mr WHERE repo_id = ? AND iid = ?');
   const insertMr = db.prepare(`INSERT INTO mr
-    (repo_id, iid, title, source_branch, target_branch, web_url, current_sha, gitlab_created_at, author, status, updated_at)
-    VALUES (@repo_id, @iid, @title, @source_branch, @target_branch, @web_url, @current_sha, @gitlab_created_at, @author, 'to_review', @updated_at)`);
+    (repo_id, iid, title, source_branch, target_branch, web_url, current_sha, gitlab_created_at, author, status, updated_at,
+     has_conflicts, is_draft, reviewers, description)
+    VALUES (@repo_id, @iid, @title, @source_branch, @target_branch, @web_url, @current_sha, @gitlab_created_at, @author, 'to_review', @updated_at,
+     @has_conflicts, @is_draft, @reviewers, @description)`);
+  /* `has_conflicts` n'est écrasé QUE si la liste a une réponse : `COALESCE` garde ce qu'une
+     tentative de merge (ou le détail d'une MR de session) a appris, plutôt que de le remplacer
+     par « on ne sait pas » au prochain tour de découverte. */
   const updateMr = db.prepare(`UPDATE mr SET
     title = @title, source_branch = @source_branch, target_branch = @target_branch,
     web_url = @web_url, current_sha = @current_sha, gitlab_created_at = @gitlab_created_at, author = @author, updated_at = @updated_at,
+    has_conflicts = COALESCE(@has_conflicts, has_conflicts), is_draft = @is_draft, reviewers = @reviewers,
+    description = @description,
     closed_seen = 0
     WHERE id = @id`);
   const insertFeed = db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)');
@@ -84,6 +91,14 @@ async function discoverAll() {
           source_branch: m.source_branch, target_branch: m.target_branch,
           web_url: m.web_url, current_sha: m.sha, gitlab_created_at: m.created_at || null,
           author: m.author || '', updated_at: now,
+          /* CE QUE LA LISTE SAIT DÉJÀ : conflit, brouillon, reviewers demandés. `has_conflicts`
+             reste `null` quand la forge ne le dit pas à ce stade (GitHub ne le calcule que sur
+             le détail) — « on ne sait pas » n'est pas « pas de conflit », et le badge le
+             distingue. Sans ça, le conflit n'apparaissait qu'après une tentative de merge. */
+          description: String(m.description || '').slice(0, 4000),
+          has_conflicts: m.has_conflicts === true ? 1 : (m.has_conflicts === false ? 0 : null),
+          is_draft: m.draft ? 1 : 0,
+          reviewers: Array.isArray(m.reviewers) ? m.reviewers.join(',') : '',
         };
         if (existing) {
           // Le SHA a bougé → tout verdict déjà rendu sur cette MR est périmé.

@@ -160,6 +160,19 @@ function containers() {
   ];
 }
 
+/* Ce que le brief montre en démo : les conteneurs TOMBÉS, par le même tri que le mode réel
+   (`docker.estTombe`) — la démo ne doit pas inventer sa propre définition de « tombé », sinon
+   elle finit par montrer autre chose que ce que l'outil dit. Daté de maintenant : la veille de
+   fond ne tourne pas en démo, et une date figée ferait croire à un relevé vieux d'un an. */
+function briefTombes() {
+  const { estTombe } = require('./docker');
+  return {
+    at: new Date().toISOString(),
+    containers: containers().filter(estTombe)
+      .map((c) => ({ name: c.name, state: c.state, status: c.status, project: c.project || null })),
+  };
+}
+
 /* Résumé santé (démo) : on délègue au MÊME calcul que le mode réel. Il était réimplémenté ici,
    donc les deux divergeaient dès qu'on affinait la règle — la démo aurait continué de compter
    un arrêt propre comme une anomalie. */
@@ -197,4 +210,4 @@ function streamLogs(ids, res) {
   res.on('close', () => clearInterval(timer));
 }
 
-module.exports = { isDemo, status, dirState, composeProjects, composeList, orphans, reconstituteDemo, previewDown, containers, streamLogs, summary };
+module.exports = { isDemo, status, dirState, composeProjects, composeList, orphans, reconstituteDemo, previewDown, containers, streamLogs, summary, briefTombes };

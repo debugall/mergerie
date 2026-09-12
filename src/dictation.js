@@ -116,6 +116,8 @@ function termesVocabulaire(cfg, language) {
     out.push(s);
   };
   const req = (sql) => { try { return db.prepare(sql).all(); } catch { return []; } };
+  // Require tardif : `docker.js` n'a pas à être chargé pour installer le moteur de dictée.
+  const dockerNoms = () => { try { return require('./docker').nomsConnus(); } catch { return []; } };
 
   // 1. le glossaire : jamais évincé par la limite
   lignes(c.dictation_vocabulary).forEach(pousser);
@@ -135,6 +137,13 @@ function termesVocabulaire(cfg, language) {
     if (/^[A-Z][A-Z0-9]+$/.test(pref)) pousser(pref);
   }
   for (const v of req('SELECT name FROM verifier ORDER BY name')) pousser(v.name);
+  /* Les conteneurs et services compose DÉJÀ VUS par le badge de santé : « redis-cache » et
+     « webapp-front » se dictent tous les jours et s'écrivaient « Redis cash ». On ne sonde pas
+     Docker pour autant — on lit ce que l'écran a déjà listé (`docker.nomsConnus`). */
+  for (const n of dockerNoms()) {
+    pousser(n);
+    String(n).split(/[-_]/).filter((x) => x.length > 2).forEach(pousser);
+  }
   for (const j of req('SELECT DISTINCT job_path FROM repo_jenkins')) {
     String(j.job_path || '').split('/').filter(Boolean).forEach(pousser);
   }

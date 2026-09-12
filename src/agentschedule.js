@@ -80,6 +80,33 @@ function prochainCreneau(spec, now = new Date()) {
   return new Date(d.getFullYear(), d.getMonth() - 1, spec.dom, spec.hh, spec.mm, 0, 0);
 }
 
+/* LE PROCHAIN CRÉNEAU À VENIR — l'autre question, celle de l'écran. `prochainCreneau` (malgré
+   son nom, gardé pour ne pas casser ce qui l'appelle) rend le DERNIER créneau PASSÉ : c'est ce
+   qu'il faut pour rattraper un run manqué, et c'est inutilisable pour dire « il repasse à
+   7:00 demain ». Un agent planifié était donc invisible entre deux runs : sa carte ne disait
+   ni quand il avait tourné, ni quand il repasserait. */
+function creneauSuivant(spec, now = new Date()) {
+  if (!spec) return null;
+  const d = new Date(now.getTime());
+  d.setSeconds(0, 0);
+  const poser = (jour) => { const x = new Date(jour.getTime()); x.setHours(spec.hh, spec.mm, 0, 0); return x; };
+  if (spec.kind === 'daily') {
+    const aujourdhui = poser(d);
+    return aujourdhui > d ? aujourdhui : new Date(aujourdhui.getTime() + 86400000);
+  }
+  if (spec.kind === 'weekly') {
+    const cible = poser(d);
+    for (let i = 0; i < 8; i += 1) {
+      const c = new Date(cible.getTime() + i * 86400000);
+      if (c.getDay() === spec.dow && c > d) return c;
+    }
+    return null;
+  }
+  const ceMois = new Date(d.getFullYear(), d.getMonth(), spec.dom, spec.hh, spec.mm, 0, 0);
+  if (ceMois > d) return ceMois;
+  return new Date(d.getFullYear(), d.getMonth() + 1, spec.dom, spec.hh, spec.mm, 0, 0);
+}
+
 /* Les agents DUS : un horaire, une borne de tours (sans elle la sauvegarde a refusé, mais une
    base héritée pourrait en porter un), et un créneau passé plus récent que le dernier tir. */
 function dus(now = new Date()) {
@@ -162,4 +189,5 @@ function phrase(text) {
   return t('agents.schedule.said-monthly', { day: spec.dom, time: hhmm });
 }
 
-module.exports = { parse, canonique, prochainCreneau, dus, tick, demarrer, arreter, phrase, lancesAujourdhui, JOURS };
+module.exports = {
+  creneauSuivant, parse, canonique, prochainCreneau, dus, tick, demarrer, arreter, phrase, lancesAujourdhui, JOURS };

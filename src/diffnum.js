@@ -47,4 +47,48 @@ function annoterDiff(diff) {
   return out.join('\n');
 }
 
-module.exports = { annoterDiff, MAX_LIGNES };
+/* A7 — OÙ UN COMMENTAIRE PEUT S'ACCROCHER, et où il ne peut pas.
+ *
+ * Un constat cite une ligne de la VERSION FINALE du fichier (c'est ce que `annoterDiff` donne
+ * à l'IA). Mais un commentaire inline ne s'accroche pas n'importe où : la forge n'accepte
+ * qu'une ligne présente dans le diff. Trois cas, et ils ne s'écrivent pas pareil :
+ *
+ *   ligne AJOUTÉE   → `new_line` seul ;
+ *   ligne de CONTEXTE (inchangée, mais dans un hunk) → `new_line` ET `old_line`, sinon GitLab
+ *     refuse la position ;
+ *   ligne HORS DU DIFF → aucun ancrage possible. L'IA a parfaitement le droit de parler d'une
+ *     ligne qu'elle n'a pas vue changer (« cette fonction est maintenant appelée avec null ») ;
+ *     ce qui n'est pas permis, c'est d'en faire un commentaire posé sur une ligne que personne
+ *     n'a touchée.
+ *
+ * Rend `Map<fichier, Map<ligne finale, { old_line }>>`. `old_line` vaut `null` sur une ligne
+ * ajoutée — c'est exactement ce que la position attend.
+ */
+function lignesAncrables(diff) {
+  const out = new Map();
+  let fichier = null;
+  let n = 0;   // ligne courante dans la version finale
+  let o = 0;   // ligne courante dans l'ancienne version
+  for (const l of String(diff || '').split('\n')) {
+    const mf = /^\+\+\+ b\/(.+)$/.exec(l);
+    if (mf) {
+      fichier = mf[1] === '/dev/null' ? null : mf[1];
+      if (fichier && !out.has(fichier)) out.set(fichier, new Map());
+      continue;
+    }
+    /* Les en-têtes AVANT le test des préfixes : `--- a/x` commence par `-` et `+++ b/x` par
+       `+`. Les compter comme des lignes décalerait toute la numérotation du fichier suivant. */
+    if (/^(diff --git |index |--- |\+\+\+ |new file|deleted file|similarity index|rename |old mode|new mode|Binary files )/.test(l)) continue;
+    const mh = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(l);
+    if (mh) { o = Number(mh[1]); n = Number(mh[2]); continue; }
+    if (!fichier) continue;
+    if (l.startsWith('\\')) continue;                       // « \ No newline at end of file »
+    if (l.startsWith('+')) { out.get(fichier).set(n, { old_line: null }); n += 1; continue; }
+    if (l.startsWith('-')) { o += 1; continue; }            // absente de la version finale
+    out.get(fichier).set(n, { old_line: o });               // contexte : les DEUX numéros
+    n += 1; o += 1;
+  }
+  return out;
+}
+
+module.exports = { annoterDiff, lignesAncrables, MAX_LIGNES };

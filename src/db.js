@@ -191,6 +191,19 @@ try { db.exec('ALTER TABLE mr ADD COLUMN review_session_cwd TEXT'); } catch { /*
    Relevé au moment où l'on ouvre la modale de merge : on est alors à un clic d'une action
    irréversible, un appel d'API pour le dire avant vaut mieux qu'un refus après. */
 try { db.exec('ALTER TABLE mr ADD COLUMN has_conflicts INTEGER'); } catch { /* déjà présente */ }
+/* BROUILLON (« Draft »/« WIP ») et REVIEWERS DEMANDÉS, relevés à la découverte. Les deux
+   viennent de la liste déjà parcourue — on les jetait. Un brouillon n'est pas prêt à être
+   relu : la review automatique lui dépensait un appel IA, et rien à l'écran ne disait
+   pourquoi ce rapport semblait porter sur du travail inachevé. `reviewers` est stocké en
+   texte séparé par des virgules : on ne cherche jamais dedans, on ne fait que l'afficher et
+   dire « on m'a demandé de la relire ». */
+/* CE QUE LA MERGE REQUEST DIT D'ELLE-MÊME. Sans Jira configuré, l'IA ne connaissait que le
+   diff : elle jugeait du code sans savoir ce qu'il prétendait faire, et relevait comme des
+   manques des choix assumés, écrits dans la description. Bornée à 4 000 caractères à
+   l'écriture — au-delà, c'est le diff qu'on ampute. */
+try { db.exec("ALTER TABLE mr ADD COLUMN description TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN is_draft INTEGER'); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE mr ADD COLUMN reviewers TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN ticket_jira_error TEXT'); } catch { /* déjà présente */ }
 /* LE STATUT DU TICKET, POUR TOUTES LES MR — pas seulement celles dont le ticket est surveillé.
    La découverte lit déjà l'issue en entier pour en tirer le contexte : ranger son statut à côté
@@ -440,6 +453,20 @@ try { db.exec('ALTER TABLE config ADD COLUMN task_default_auto_push INTEGER DEFA
 try { db.exec('ALTER TABLE config ADD COLUMN task_default_ask_questions INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE config ADD COLUMN task_default_notify_jira INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE config ADD COLUMN task_default_converge INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+
+/* B10 — LE VERDICT REMONTE VERS JIRA. Opt-in, et décoché par défaut comme « Prévenir Jira » :
+   écrire chez quelqu'un d'autre (le ticket est lu par la QA, le chef de projet, le support)
+   ne se décide pas à notre place. Placée APRÈS le `CREATE TABLE config`, comme toutes les
+   migrations de ce fichier. */
+try { db.exec('ALTER TABLE config ADD COLUMN verify_jira_comment INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+
+/* A18 — « ESSAI » ESSAIE VRAIMENT LE PROFIL. Le bouton n'ouvrait qu'une session pré-remplie du
+   gabarit : le modèle, les outils, les sous-agents et le prompt système ne partaient pas,
+   puisque la session n'avait pas d'`agent_id` — on « essayait » donc tout sauf ce qu'on venait
+   de régler. La session porte maintenant le BROUILLON du profil, tel quel, sans créer d'agent :
+   essayer ne doit pas laisser derrière soi un profil qu'on n'a pas voulu enregistrer.
+   Placée APRÈS le `CREATE TABLE task`. */
+try { db.exec('ALTER TABLE task ADD COLUMN agent_draft_json TEXT'); } catch { /* déjà présente */ }
 
 /* De quoi REJOUER un job : l'intention (quelle fonction, sur quel objet), pas son état.
    Sans ça, un job arrêté ne laisse qu'un `kind` — impossible de savoir quelle session ou
@@ -819,6 +846,29 @@ try { db.exec("ALTER TABLE config ADD COLUMN converge_max_passes TEXT DEFAULT '3
 // review → correction IA (commit + push) → re-review incrémentale, jusqu'au seuil,
 // à la régression, ou au plafond de passes. L'historique fin (notes par passe) vit
 // déjà dans review_version ; cette table porte l'état global de la boucle.
+/* A26 — DÉTECTER LES TESTS INSTABLES, sans rien demander à personne. Un test rouge à un run
+   et vert au suivant SANS QUE LE CODE AIT BOUGÉ n'est pas un test qui casse : c'est un test
+   qui ment, et il coûte plus cher qu'un échec franc — on relance, on hausse les épaules, et le
+   jour où il dit vrai on ne le croit plus.
+
+   Ce qu'il faut pour le savoir tient en trois colonnes : le CODE testé (`targets_key` : les
+   couples dépôt:sha triés — deux runs sur le même code sont comparables, sur des codes
+   différents ils ne le sont pas), et le nom des tests ROUGES de ce run. Une ligne à `test`
+   NULL marque le run lui-même : sans elle, un run tout vert ne laisserait aucune trace et on
+   ne saurait pas qu'un test rouge ailleurs a été vert ici.
+
+   Seuls les runs qui NOMMENT leurs tests (TAP, JUnit) y entrent : sans noms, il n'y a rien à
+   apparier. Purgée par la rétention, comme les autres traces. */
+db.exec(`CREATE TABLE IF NOT EXISTS verify_run_test (
+  id INTEGER PRIMARY KEY,
+  verification_id INTEGER NOT NULL REFERENCES verification(id) ON DELETE CASCADE,
+  verifier_id INTEGER,
+  targets_key TEXT NOT NULL,
+  test TEXT,
+  created_at TEXT NOT NULL
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_verify_run_test ON verify_run_test(verifier_id, targets_key)');
+
 /* ---------- Vérification objective (plan_add_verify.md) ----------
    Un verdict de tests produit HORS du circuit IA : l'orchestrateur appelle un script de
    l'utilisateur, jamais l'agent. Le verdict est un FAIT attaché à des SHAs — il se périme
@@ -1146,7 +1196,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS todo (
   priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('high','normal','low')),
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','done')),
   note TEXT,
-  link_kind TEXT CHECK (link_kind IN ('mr','ticket','repo')),
+  link_kind TEXT CHECK (link_kind IN ('mr','ticket','repo','branch','verification','build','container')),  -- cf. B16 plus bas
   link_ref TEXT,
   due_at TEXT,
   reminded_at TEXT,
@@ -1189,6 +1239,54 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_todo_position ON todo(status, archived_a
 try { db.exec('ALTER TABLE todo ADD COLUMN auto_kind TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE todo ADD COLUMN auto_ref TEXT'); } catch { /* déjà présente */ }
 db.exec('CREATE INDEX IF NOT EXISTS idx_todo_auto ON todo(auto_kind, auto_ref)');
+
+/* B16 — CE À QUOI UNE TODO PEUT SE LIER. Le `CHECK` d'origine ne connaissait que trois objets
+   (`mr`, `ticket`, `repo`), et le bouton « Ajouter aux todos » n'existait donc que là où ils
+   vivent — la fiche de review et la carte Jira. Or « rebaser cette branche avant lundi »,
+   « ce vérificateur est rouge depuis mardi », « ce build casse une fois sur trois », « ce
+   conteneur retombe » sont exactement les choses qu'on se note, et elles n'avaient nulle part
+   où s'accrocher : on les écrivait en texte libre, sans lien pour y retourner.
+
+   SQLite ne sait pas modifier une contrainte : on RECONSTRUIT la table (deuxième et dernière
+   migration de ce fichier à le faire, cf. `service_url`). Tout est recopié tel quel — une todo
+   n'est jamais perdue par une migration —, et la table repart avec les mêmes index. */
+{
+  const sql = (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'todo'").get() || {}).sql || '';
+  if (sql.includes("link_kind IN ('mr','ticket','repo')")) {
+    db.pragma('foreign_keys = OFF');
+    db.transaction(() => {
+      db.exec(`CREATE TABLE todo_v2 (
+        id INTEGER PRIMARY KEY,
+        title TEXT NOT NULL,
+        priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('high','normal','low')),
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','done')),
+        note TEXT,
+        link_kind TEXT CHECK (link_kind IN ('mr','ticket','repo','branch','verification','build','container')),
+        link_ref TEXT,
+        due_at TEXT,
+        reminded_at TEXT,
+        done_at TEXT,
+        archived_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        position INTEGER,
+        auto_kind TEXT,
+        auto_ref TEXT
+      )`);
+      db.exec(`INSERT INTO todo_v2 (id, title, priority, status, note, link_kind, link_ref, due_at,
+          reminded_at, done_at, archived_at, created_at, updated_at, position, auto_kind, auto_ref)
+        SELECT id, title, priority, status, note, link_kind, link_ref, due_at,
+          reminded_at, done_at, archived_at, created_at, updated_at, position, auto_kind, auto_ref
+        FROM todo`);
+      db.exec('DROP TABLE todo');
+      db.exec('ALTER TABLE todo_v2 RENAME TO todo');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_todo_due ON todo(status, archived_at, due_at)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_todo_position ON todo(status, archived_at, position)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_todo_auto ON todo(auto_kind, auto_ref)');
+    })();
+    db.pragma('foreign_keys = ON');
+  }
+}
 
 /* CE QU'ON A ÉCARTÉ DU BRIEF. Le brief recalcule tout à chaque ouverture : un fait qui reste
    vrai reparaît tous les matins, même traité ailleurs — une vérification rouge dont on a déjà
@@ -1234,6 +1332,24 @@ try { db.exec('ALTER TABLE config ADD COLUMN stale_mr_days INTEGER DEFAULT 5'); 
 
 /* Consignes permanentes ajoutées à toutes les sessions de codage (dépôt et hors dépôt). */
 try { db.exec('ALTER TABLE config ADD COLUMN ai_extra_instructions TEXT'); } catch { /* déjà présente */ }
+
+/* LE GABARIT DE CORRECTION, qui applique un rapport de revue au code. Il vivait en dur et en
+   français, recopié à l'identique dans « Faire corriger par l'IA » et dans chaque passe de
+   Converger : ni traduit, ni éditable, et deux copies vouées à diverger. Vide = le défaut de
+   la langue courante s'applique (`src/prompts.js`), comme pour les trois autres gabarits. */
+try { db.exec("ALTER TABLE config ADD COLUMN prompt_fix TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+
+/* A38 — QUAND CHAQUE CONNEXION A ÉTÉ TESTÉE POUR LA DERNIÈRE FOIS, et avec quel résultat. Le
+   bouton « Tester » répondait à l'écran et n'en gardait rien : au retour dans les réglages, les
+   quatre connexions étaient muettes — « GitLab marche-t-il encore ? » se rejouait à chaque
+   fois. Une ligne par service, écrite par le test lui-même ; rien n'est sondé en fond, c'est le
+   souvenir d'un geste, pas une surveillance. */
+db.exec(`CREATE TABLE IF NOT EXISTS conn_test (
+  service TEXT PRIMARY KEY,            -- gitlab | github | jira | jenkins
+  ok INTEGER NOT NULL,
+  detail TEXT,                         -- ce que le service a répondu (compte, login, nb de jobs)
+  tested_at TEXT NOT NULL
+)`);
 
 /* LE SKILL DE REVIEW N'A PLUS DE CHAMP : il s'écrit dans le gabarit de prompt, là où l'on
    choisit déjà tout le reste de ce qu'on demande à l'IA. Les gabarits enregistrés portent

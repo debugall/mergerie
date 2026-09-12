@@ -93,6 +93,103 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   done is struck through, and clicking the key opens that ticket in the column you are reading rather
   than in a Jira tab.
 
+- **The remarks and follow-ups you wrote and never sent are picked up by the morning brief.** Three
+  inline comments written in the viewer, the window closed to check something else, and the merge
+  request merged without them — the quietest loss of work in the tool. The brief now has a section for
+  them, oldest first, and the button reopens the viewer where they are sent from. A **draft badge**
+  sits on the merge request card and in its report header as well. Same for the **follow-ups** written
+  while a session was running and then forgotten; the ones that leave on their own at the end say so.
+- **A review report shows the todos already open on that merge request.** It offered to add one
+  without showing what existed: two days later you had written the same note twice. They are ticked
+  right there — which is the whole point of showing them.
+- **A free question becomes an exploration or a coding session**, like an exploration already could:
+  the answer named the repository, and nothing carried it further than the screen it was on.
+- **“The AI has a question” leads to the session that asked it.** The notification opened AI Dev on
+  the sub-tab you last consulted, leaving you to find which of twelve sessions was waiting — while the
+  event has carried its identifier from the start. Every notification that names an object now opens
+  that object, from the branch explorer, the palette, the brief and the statistics alike.
+- **A review report says which notes cite it, and which domain map it touches.** The autolink ran one
+  way only: a note led to the merge request, and the merge request had no idea three paragraphs had
+  been written about it on Monday. Incoming links are now listed on the report and on the Jira ticket
+  sheet, with the excerpt taken around the citation. And a merge request whose diff touches the paths
+  a **domain map** quotes carries a badge to that map — which is also handed to the AI as review
+  context, so it knows what that corner of the code does instead of rediscovering it.
+- **“Investigate” now starts from a red Jenkins console and a failed verification**, not only from a
+  Jira ticket. Those are the two places where you actually read a trace; the incident investigator
+  opens with it already in the request. On a verification, it sits next to *Fix*: a red test whose
+  trace you do not understand is not fixed, it is searched for first.
+- **A red verdict leaves a todo behind, and can comment the Jira ticket.** The notification goes by
+  and is forgotten; the badge assumes you reopen Reviews. A todo is now created per merge request
+  (running the same verification three times updates one row rather than stacking three) and a green
+  run closes it. Optionally — unchecked by default, like “Notify Jira” — the merge request's ticket
+  also receives a comment when the branch breaks what the base passed: the ticket is read by QA and
+  support, who ask “is it tested?” without ever opening the forge.
+- **Git operations, fallen containers and finished Jenkins builds finally say something.** Deleting a
+  branch or pushing a tag is the most irreversible gesture in the tool and it happened in silence; a
+  container going down woke nobody; and the end of a build *you started from here* was only noticed
+  if the Jenkins tab had stayed open — when you start a build precisely to go and do something else.
+  A background watch on the server handles the last two, once a minute, asking Jenkins nothing while
+  no launch is pending and alerting on a *transition* rather than a state. The morning brief picks up
+  **the merge left half-resolved yesterday** and the Git operations that failed, and Statistics gained
+  an **Git operations** card — the last trace table it ignored: thirty deletions without a failure is
+  routine, ten with four refused says you are aiming at protected branches.
+- **A todo can be attached to a branch, a verification, a build or a container.** “Rebase this branch
+  before Monday”, “this build breaks one time in three” are exactly what you jot down, and nothing
+  carried them: the button existed on a merge request and a ticket only. It now sits on a branch row,
+  a verification report, a Jenkins build row and a container row — and the todo knows how to take you
+  back there.
+- **The palette acts, it no longer merely navigates.** A verifier, a Jenkins job, a compose project and
+  a saved git command joined it, each opening the screen that knows how to do it — never running
+  anything on its own: a job deploys, it gets started deliberately. A merge request is also found by
+  its **ticket key**, the way half a team refers to it.
+- **A repository's settings row carries a `Sheet`.** The row said what concerns the repository itself;
+  the sheet says what is *attached* to it — verifiers, Jenkins jobs, review rules limited to it, grid
+  services, default linked projects, agents it belongs to. Six answers to “what breaks if I remove
+  it?”, all of them joins that already existed.
+- **Reports, sessions and note pages have an address.** `#/reviews/216` can be pasted into a note
+  or a message, the browser's Back button returns to the previous object instead of leaving the
+  tool, and a link you receive wins over the tab of your last visit. “Copy the reference” now
+  hands over both links: the forge shows the diff, Mergerie shows the report, the score and the
+  verdict.
+- **The merge dialog restates what is known before the irreversible gesture** — score, blocking
+  findings, verdict, stale report, and the remarks written and never sent, which would go out with
+  the merge request. It asked “squash? branch?” and nothing else.
+- **The brief picks up out-of-repo sessions stopped on a question**, which no screen surfaced: they
+  have no branch and no merge request to remind you of them, which makes them the easiest to forget.
+- **A branch row carries what the database knows about it** — its Jira ticket and that ticket's
+  state, the last verification verdict, and the repository's Jenkins job with the branch already
+  filled in (that button existed only on a merge request verified green, when deploying a branch to
+  staging *before* opening a merge request is exactly the case).
+- **A report's findings become inline remarks in one gesture** — all of them, or only the
+  blocking ones. Eight findings meant eight trips through the viewer; they carry their file and
+  their line, which is exactly what an inline draft asks for. Only the findings that fall
+  **inside the diff** are turned into remarks: a report may well talk about a line the branch
+  never touched, but an inline comment attaches to the diff, and the forge refuses a position
+  that is not in it. What is left aside is counted and named. Nothing is sent: they are drafts,
+  re-read and sent as a batch like the others — and **`Delete all`** empties the batch in one go
+  when one of them blocks it, instead of reopening every file to remove them one by one.
+- **The viewer's tree says what each file carries**: unresolved findings, discussion threads,
+  remarks in draft, changed lines. On a forty-file merge request, knowing which ones to open
+  meant opening them one by one.
+- **A verification report shows the five slowest tests, and marks the flaky ones.** The
+  durations were in the runners' output all along and thrown away; a red test that was already
+  green on the very same code in another run now says so, instead of sending you looking for
+  what the branch broke.
+- **“Try” really tries an agent profile.** It opened a session pre-filled with the template
+  while the model, the tools and the subagents stayed behind — you were trying everything
+  except what you had just set. The draft now travels with the session, and no agent is
+  created: trying leaves nothing behind.
+- **A merge in progress says which merge request it is catching up** — number, score, ticket —
+  and, once committed, offers the **diff of the merge itself**: that SHA had been stored and read
+  by nobody, while it is the only way to check what you just assembled.
+- **A job's log can be searched**, and filtered down to its error lines. A verification run pours
+  out two thousand lines; finding `ECONNREFUSED` in them was done by scrolling.
+- **A dozen everyday frictions.** Searchable dropdowns answer the keyboard (`↓`/`↑`/`Enter`, and
+  `Escape` closes the list rather than the window you were filling in); `/` searches in the tab you
+  are in instead of throwing you back to Reviews; a job that cannot be replayed says why; the ticket
+  key in a report title is the one the server computed rather than a second rule; duplicating a
+  session keeps its agent; the dictation vocabulary knows your container names.
+
 ### Changed
 
 - **The Links tab has been rebuilt around what it actually is: a place you read, and a place you
@@ -156,7 +253,44 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   matches, and a repository already used by another service is announced before saving — only the
   first one feeds the merge request buttons.
 
+- **The “ticked by default” boxes of Settings → General were never saved.** Ticking “The AI may
+  ask questions” and coming back showed it unticked, and a new session ignored it. Two defects
+  one behind the other: a checkbox's `.value` is `"on"` whether it is ticked or not — so the
+  form sent `"on"` in both cases — and those five settings are stored as integers, so the
+  database hands back `1` where the screen compared against the string `'1'`. The screen also
+  had **no Save button at all** in General: its fields belong to the shared settings form, whose
+  only buttons live in the other sub-tabs. All three are fixed, and the confirmation now appears
+  in General like everywhere else.
+
+- **“Ready to merge” in the brief always counted zero.** Two defects at the same spot, each hiding
+  the other: the threshold arrives on a /10 scale while the score is stored on /1 (0.84 for 8.4), so
+  the comparison was never true — and the sub-query meant to check “this merge request has a green
+  verification” resolved against the outer row instead, which made a single green verification
+  anywhere enough for every well-scored merge request. Fixing one was needed to see the other. A
+  verdict on a SHA the branch has moved past no longer counts either.
+- **A JUnit report and a TAP report now count the same thing.** TAP excluded skipped tests from its
+  total, JUnit counted them: the same project announced two different totals depending on the format
+  its runner emits.
+- **A report left by the previous run is no longer read as this one's result.** In `in place` mode the
+  repository keeps its files between runs; a report file older than the run that was supposed to
+  produce it is now ignored, and says so, instead of passing for a fresh verdict.
+- **An `in place` verification reserves the folder it works in**, with the same key as an out-of-repo
+  session: both worked in the user's own working folder, and nothing stopped them from running at the
+  same time in it.
+- **The retention purge finally covers the Git operation history**, the only trace table that grew
+  without bound.
+- **“Waiting for answers” in the convergence banner showed a raw key** (`converge.status.needs_input`)
+  at the exact place an instruction is expected, and the correction prompt existed twice, in French,
+  in two files — it is now a template like the others: translated, editable, read in one place.
+
 ### Fixed
+
+- **The card kept counting pending remarks that had been deleted.** The viewer's counter and the
+  card's `n pending remarks` badge count the same thing, but only the first one redrew: delete a
+  remark — one by one, or with `Delete all` — and the viewer said `1` while the card behind it
+  still announced `3`. The badge exists precisely so that unsent work is not forgotten; stale, it
+  sent you back to re-read a batch that was already empty. Both now follow the same count, in the
+  queue, in the reviewed list and in the report header, without reloading the list.
 
 - **The three fields of "Jobs linked to repositories" now fill the row instead of a third of
   it.** Settings → Jenkins reserved three wide columns, but its fields are searchable pickers

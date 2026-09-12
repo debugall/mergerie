@@ -215,4 +215,48 @@ describe('Commentaire en ligne — le bouton reste sous les yeux', { skip: dispo
     assert.equal(await page.locator('#fileContent .cmt-draft').count(), 0,
       'partis = plus en attente sous la ligne');
   });
+
+  /* LE BADGE DE LA CARTE COMPTE LES MÊMES REMARQUES QUE LE VIEWER — et doit le faire APRÈS
+     une suppression, pas seulement après une création. Le compteur du viewer se redessinait
+     seul : on retirait une remarque, il affichait « 1 » et la carte, derrière, continuait
+     d'annoncer « 2 remarques en attente ». Le badge existe justement pour ne pas oublier ce
+     travail : périmé, il envoie relire un lot déjà vidé. On lit donc les DEUX. */
+  test('le badge de la carte suit quand on supprime une remarque, une par une ou toutes', async () => {
+    const surLaCarte = () => page.evaluate(() => {
+      const s = document.querySelector('#reportList [data-drafts-slot]');
+      return s === null ? 'AUCUNE FENTE' : s.textContent.replace(/\s+/g, ' ').trim();
+    });
+    assert.equal(await surLaCarte(), '', 'au départ tout est parti : pas de badge sur la carte');
+
+    await ouvrirEditeur();
+    await page.locator('.cmt-editor textarea').fill('première remarque en attente');
+    await page.locator('.cmt-editor .cmt-draft-save').click();
+    await page.waitForFunction(() => document.querySelector('#draftsCount').textContent === '1');
+    const ligne2 = page.locator('#fileContent .dl-row[data-new]:not([data-new=""])').nth(1);
+    await ligne2.hover();
+    await ligne2.locator('.ln-comment').click();
+    await page.waitForSelector('#fileContent .cmt-editor textarea');
+    await page.locator('.cmt-editor textarea').fill('seconde remarque en attente');
+    await page.locator('.cmt-editor .cmt-draft-save').click();
+    await page.waitForFunction(() => document.querySelector('#draftsCount').textContent === '2');
+    assert.match(await surLaCarte(), /2/, 'la carte annonce les deux');
+
+    // UNE suppression : le compteur descend, et la carte avec lui.
+    await page.locator('#fileContent [data-draftdel]').first().click();
+    await page.waitForFunction(() => document.querySelector('#draftsCount').textContent === '1');
+    const apres = await surLaCarte();
+    assert.match(apres, /1/, `la carte doit descendre à une (lu : « ${apres} »)`);
+    assert.doesNotMatch(apres, /2/, `la carte ne doit plus annoncer deux (lu : « ${apres} »)`);
+
+    // « Tout supprimer » : le badge disparaît, comme le bouton d'envoi.
+    await page.locator('#draftsWipe').click();
+    await page.waitForSelector('#confirmModal:not([hidden])');
+    await page.locator('#confirmOk').click();
+    await page.waitForFunction(() => document.querySelector('#draftsSend').hidden,
+      null, { timeout: ATTENTE_ECRAN });
+    await page.waitForFunction(() => {
+      const s = document.querySelector('#reportList [data-drafts-slot]');
+      return s !== null && !s.textContent.trim();
+    }, null, { timeout: ATTENTE_ECRAN });
+  });
 });

@@ -84,6 +84,25 @@
   that will never come — the file then times out instead of failing, which reads like a hang.
   Several `describe` blocks in one file must share the same app and the same browser.
 
+- **Nothing from `src/` gets loaded before `MERGERIE_DATA_DIR` is set.** `src/paths.js` reads
+  that variable **at load time**, once; with it unset, `DATA_DIR` falls back to the project's
+  `data/` — **the live database of the instance on port 4319**. Everything downstream then
+  points there: `db.js`, the server started in-process by the test harness, every write a test
+  makes.
+
+  - **In a test file**, `require('../src/…')` at the top runs BEFORE `startApp()` sets the
+    variable. Require those modules **inside `before()`, after `startApp()`**, and keep the
+    top of the file to `node:*` and `./helpers/*`. This is not theoretical: a test file that
+    did it wrote its fake GitLab URL and token into the production `config` row, and left four
+    fake repositories, eight `git_merge` and eight `git_op` rows behind — the real instance
+    then pointed at a dead `127.0.0.1` port. The values were recovered from the un-checkpointed
+    WAL; one preference could not be.
+  - **In a one-off command**, always `MERGERIE_DATA_DIR=$(mktemp -d) node -e "…"` — no
+    exception, including for a command that only means to READ. A read that loads `db.js` runs
+    the migrations on whatever database it opened.
+  - The tell-tale sign is a test that passes alone and fails in the suite, or row ids that grow
+    from one run to the next: a fresh temporary database always starts at 1.
+
 - **No assistant attribution in commit messages** — neither `Co-Authored-By` nor
   `Claude-Session`. Whatever attribution the assistant's own harness asks for, this repository's
   history does not carry it: a commit here has one author, the person who asked for the work,

@@ -107,6 +107,24 @@ async function listOpenMRs(cfg, project, pattern) {
       sha: m.sha,
       created_at: m.created_at,
       author: m.author ? (m.author.name || m.author.username || '') : '',
+      /* CE QUE LA LISTE DIT DÉJÀ, et qu'on jetait. Le badge « en conflit » n'apparaissait
+         qu'après une tentative de merge — donc jamais sur la merge request d'un collègue, où
+         c'est pourtant la première chose à savoir avant de la lire. `detailed_merge_status`
+         vient avec la liste depuis GitLab 15.6 ; `null` quand la version est plus ancienne,
+         ce qui n'est pas « pas de conflit » et ne doit donc rien afficher.
+         Le BROUILLON aussi : reviewer un brouillon dépense un appel IA sur une merge request
+         que personne ne veut encore relue. */
+      /* LA DESCRIPTION : ce que la merge request PRÉTEND faire. L'IA jugeait un diff sans
+         savoir ce qu'il était censé accomplir — elle relevait donc des « manques » qui étaient
+         des choix assumés, écrits noir sur blanc trois lignes plus haut. Elle vient avec la
+         liste, on la jetait. Bornée : une description de dix pages n'apporte plus rien au
+         prompt et mange le budget du diff. */
+      description: String(m.description || '').slice(0, 4000),
+      has_conflicts: conflitsDe(m),
+      draft: m.draft === true || m.work_in_progress === true
+        || (typeof m.title === 'string' && /^\s*(draft|wip)\s*:/i.test(m.title)),
+      reviewers: Array.isArray(m.reviewers)
+        ? m.reviewers.map((r) => (r && (r.username || r.name)) || '').filter(Boolean) : [],
     }));
 }
 

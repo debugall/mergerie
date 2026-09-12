@@ -143,15 +143,28 @@
         <button id="logStop" class="btn btn-sm btn-danger" hidden title="Arrêter immédiatement le job en cours" data-i18n-title="ui.title.arreter-immediatement-le-job-en"><svg class="ico"><use href="#i-stop"/></svg><span data-i18n="ui.btn.stop">Stop</span></button>
         <button id="logResult" class="btn btn-sm btn-primary" type="button" hidden><svg class="ico ico-sm"><use href="#i-eye"/></svg><span data-i18n="job.result.open">Voir le rapport</span></button>
     <button id="logRetry" class="btn btn-sm" hidden title="Rejouer ce job sur le même objet — une review reprend là où elle s'est arrêtée" data-i18n-title="job.retry.title"><svg class="ico"><use href="#i-repeat"/></svg><span data-i18n="job.retry.btn">Relancer</span></button>
+    <!-- Un « Relancer » absent sur un job en échec se lit comme un oubli : on dit pourquoi. -->
+    <span id="logNoRetry" class="muted" hidden></span>
         <label class="muted"><input type="checkbox" id="logAutoscroll" checked /><span data-i18n="ui.lbl.auto-defilement">auto-défilement</span></label>
         <button id="logCopy" class="btn btn-sm btn-ghost" title="Copier tout le journal dans le presse-papier" data-i18n-title="ui.title.copier-tout-le-journal-dans" data-i18n="ui.btn.copier">copier</button>
         <button id="logQueueBtn" class="btn btn-sm btn-ghost" hidden title="Voir les jobs en attente" data-i18n-title="job.queue.title"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="job.queue.btn">En attente</span><span id="logQueueCount" class="nav-health warn">0</span></button>
         <button id="logHistBtn" class="btn btn-sm btn-ghost" title="Ce que tu as lancé et ce qui s'est terminé" data-i18n-title="job.hist.title"><svg class="ico"><use href="#i-clock"/></svg><span data-i18n="job.hist.btn">Activité</span><span id="logHistCount" class="nav-health warn" hidden>0</span></button>
+        <!-- A41 : chercher DANS le journal. Un run de vérification déverse deux mille lignes ;
+             retrouver « ECONNREFUSED » ou ne garder que les erreurs se faisait au défilement,
+             à l'œil. Le champ MASQUE les lignes qui ne correspondent pas — il ne coupe rien. -->
+        <input id="logFilter" class="search log-filter" type="search" placeholder="Filtrer le journal…" data-i18n-placeholder="job.log.filter-ph" />
+        <label class="inline-check"><input type="checkbox" id="logErrOnly" /><span data-i18n="job.log.err-only">Erreurs</span></label>
+        <span id="logFilterInfo" class="muted"></span>
         <button id="logHide" class="btn btn-sm btn-ghost" title="Masquer le panneau de logs" data-i18n-title="ui.title.masquer-le-panneau-de-logs" data-i18n="ui.btn.masquer">masquer</button>
     </div>
     <!-- File d'attente : dépliée à la demande, au-dessus du journal. -->
     <div id="logQueue" class="log-queue" hidden></div>
     <!-- Journal d'activité : ce qui a tourné, dépliable à la demande, au même endroit que la file. -->
+    <!-- Quarante lignes de tous types mêlés : on cherchait « la review d'hier » à l'œil. -->
+    <div id="logHistBar" class="log-queue log-hist-bar" hidden>
+        <input id="histFilter" class="search" type="search" placeholder="Filtrer (objet, type, erreur)…" data-i18n-placeholder="job.hist.filter-ph" />
+        <label class="inline-check"><input type="checkbox" id="histErrOnly" /><span data-i18n="job.hist.err-only">Échecs seulement</span></label>
+    </div>
     <div id="logHist" class="log-queue" hidden></div>
     <!-- Onglets : un par job EN COURS. Masqués tant qu'il n'y en a qu'un — un onglet
          solitaire n'apprend rien et vole une ligne au journal. -->
@@ -212,6 +225,9 @@
                     <option value="petites" data-i18n="review.tri.petites">Petites d'abord</option>
                     <option value="anciennes" data-i18n="review.tri.anciennes">Plus anciennes</option>
                     <option value="note" data-i18n="review.tri.note">Note la plus basse</option>
+                    <!-- Une note de 7,2 avec un bloquant et une note de 7,2 sans aucun ne se
+                         traitent pas pareil : c'est la gravité qui décide par quoi commencer. -->
+                    <option value="bloquants" data-i18n="review.tri.bloquants">Bloquants d'abord</option>
                 </select>
             </label>
         </div>
@@ -268,6 +284,15 @@
                         <input type="checkbox" class="note-pick" value="none" checked />
                         <span class="note none" data-i18n="review.filter.none">— sans note</span>
                         <span class="nf-count" data-nf-count="none"></span>
+                    </label>
+                    <!-- CE QUI NE DEMANDE PLUS RIEN. Le brief compte les merge requests prêtes
+                         à merger et renvoie ici — où rien ne les isolait : il fallait relire
+                         quatre badges par carte pour retrouver les trois qu'il annonçait.
+                         Les quatre critères sont ceux du brief, mot pour mot. -->
+                    <label class="nf-item nf-pret" title="Note au-dessus du seuil, vérification verte et à jour, aucun conflit, aucun ticket en travers" data-i18n-title="review.filter.ready-title">
+                        <input type="checkbox" id="filtrePret" />
+                        <span class="note good" data-i18n="review.filter.ready">prêtes à merger</span>
+                        <span class="nf-count" data-nf-count="ready"></span>
                     </label>
                 </div>
                 <div id="reportList" class="list"><div class="sk-wrap"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div>
@@ -437,7 +462,6 @@
                          pose devant un dépôt et ses branches, c'est-à-dire ici. Le bouton flottait
                          seul en haut de l'écran, avant même de savoir de quoi il parlait. -->
                     <button type="button" class="btn" id="btnVerifyBranch" data-i18n-title="verify.branch.btn-title"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="verify.branch.btn">Vérifier une branche</span></button>
-                    <span id="gitActionInfo" class="muted"></span>
                 </div>
                 <p class="field-note" data-i18n="verify.branch.hint">« Vérifier une branche » ne touche à rien : il lance un vérificateur sur une branche et rend son verdict.</p>
             </div>
@@ -521,7 +545,6 @@
                 </label>
                 <div class="form-actions">
                     <button id="cmdPreview" class="btn btn-primary" data-i18n-title="git.commands.preview-title"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="git.commands.preview">Prévisualiser</span></button>
-                    <span id="cmdInfo" class="muted"></span>
                 </div>
             </div>
             <div id="cmdPreviewBox" hidden></div>
@@ -570,7 +593,14 @@
         <!-- Sous-onglet : historique -->
         <div id="gsub-history" class="subtab">
             <p class="muted" style="max-width:760px" data-i18n="git.history.intro">Chaque opération est journalisée. Une suppression reste restaurable tant que les objets existent — l'outil en garde une copie locale, faite juste avant.</p>
+            <!-- Deux cents lignes sans filtre : on cherchait « la branche supprimée jeudi » en
+                 faisant défiler. Il MASQUE, comme partout ailleurs dans l'outil. -->
+            <div class="toolbar">
+                <input id="gitHistFilter" class="search" type="search" placeholder="Filtrer (projet, ref, action)…" data-i18n-placeholder="git.history.filter-ph" />
+                <label class="inline-check"><input type="checkbox" id="gitHistErrOnly" /><span data-i18n="git.history.err-only">Échecs seulement</span></label>
+            </div>
             <div id="gitHistoryBox" class="list"></div>
+            <p id="gitHistNoMatch" class="muted" hidden data-i18n="git.history.no-match">Aucune opération ne correspond.</p>
         </div>
     </section>
 
@@ -1110,7 +1140,12 @@
                 </label>
                 <button class="btn btn-primary" type="submit" title="Ajouter cette règle de review spécifique" data-i18n-title="settings.rule.title.ajouter-cette-regle-de-review"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="settings.rule.btn.ajouter-la-regle">Ajouter la règle</span></button>
             </form>
+            <!-- A39 — une liste de règles se cherche, comme celle des vérificateurs juste à
+                 côté : au-delà de dix, on faisait défiler pour retrouver « celle sur les
+                 migrations ». Il MASQUE, il ne retire pas. -->
+            <input id="ruleSearch" class="search" type="search" placeholder="Filtrer les règles (branche, chemin, libellé, contenu)…" data-i18n-placeholder="settings.rule.search-ph" />
             <div id="ruleList" class="list"></div>
+            <p id="ruleNoMatch" class="muted" hidden data-i18n="settings.rule.no-match">Aucune règle ne correspond.</p>
         </div>
 
         <!-- Sous-onglet : Notifications bureau -->
@@ -1136,6 +1171,10 @@
                 <label class="inline-check"><input type="checkbox" data-notif="jenkins_done" /> <span data-i18n="settings.notif.jenkins-done">Un job Jenkins que j'ai lancé s'est terminé</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="mr_new" /> <span data-i18n="settings.notif.mr-new">Nouvelle MR découverte</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="mr_merged" /> <span data-i18n="settings.notif.mr-merged">MR mergée par quelqu'un</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="git_done" /> <span data-i18n="settings.notif.git-done">Une opération Git (branche, tag) s'est terminée</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="docker_down" /> <span data-i18n="settings.notif.docker-down">Un conteneur Docker est tombé</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="restore_error" /> <span data-i18n="settings.notif.restore-error">Un dossier de travail n'a pas été rendu dans son état</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="cap_reached" /> <span data-i18n="settings.notif.cap-reached">Un plafond automatique a laissé du travail de côté</span></label>
             </div>
         </div>
 
@@ -1203,6 +1242,17 @@
             <p class="muted" style="margin:0" data-i18n="settings.p.applique-immediatement-et-memorise-dans">Appliqué immédiatement et mémorisé dans ce navigateur (pas besoin d'enregistrer).</p>
         </div>
 
+        <!-- ENREGISTRER, DEPUIS GÉNÉRAL AUSSI. Ce sous-onglet porte huit réglages de base (brief
+             du matin, rétention, MR dormante, les quatre cases d'une nouvelle session…) et
+             n'avait AUCUN bouton d'enregistrement : les champs appartiennent au formulaire
+             ancre, dont le seul bouton vit dans les autres sous-onglets. On cochait une case,
+             on restait là, et rien ne partait — l'écran ne mentait pas, il ne proposait
+             simplement pas le geste. -->
+        <div class="form-actions">
+            <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+            <span id="configInfoGeneral" class="muted"></span>
+        </div>
+
         <!-- Formulaire ANCRE : tous les champs de config vivent dans les sous-onglets (Git, Jira,
              Merge Request) et s'y rattachent via l'attribut form= ; c'est ce <form> qui les soumet. -->
         <form id="configForm" class="form"><span id="configInfo" class="muted"></span></form>
@@ -1268,6 +1318,10 @@
             <label><span class="req" data-i18n="settings.lbl.jira-email">Email Jira</span> <button type="button" class="hint" tabindex="-1" aria-label="Email du compte Atlassian, utilisé avec le jeton d'API pour l'authentification Basic (Jira Cloud)." data-tip="Email du compte Atlassian, utilisé avec le jeton d'API pour l'authentification Basic (Jira Cloud)."><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_email" placeholder="prenom.nom@entreprise.fr" data-i18n-placeholder="settings.ph.jira-email" /></label>
             <label><span class="req" data-i18n="settings.lbl.jira-token">Jeton d'API Jira</span> <button type="button" class="hint" tabindex="-1" aria-label="Jeton d'API créé sur id.atlassian.com (Manage account → Security → API tokens). Stocké en local, masqué." data-tip="Jeton d'API créé sur id.atlassian.com (Manage account → Security → API tokens). Stocké en local, masqué."><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_token" type="password" autocomplete="off" placeholder="ATATT…" data-i18n-placeholder="settings.ph.jira-token" /></label>
             <label><span data-i18n="settings.lbl.jira-watch-minutes">Vérifier les tickets surveillés toutes les</span> <button type="button" class="hint" tabindex="-1" aria-label="Cadence de vérification des tickets surveillés, en minutes. 0 = surveillance désactivée. Alimente aussi le compteur du menu Jira." data-tip="Cadence de vérification des tickets surveillés, en minutes. 0 = surveillance désactivée. Alimente aussi le compteur du menu Jira." data-i18n-tip="settings.tip.jira-watch-minutes"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_watch_minutes" type="number" min="0" step="1" placeholder="5" /></label>
+            <!-- B10 : le verdict d'une vérification remonte vers le ticket. Décoché par
+                 défaut, comme « Prévenir Jira » : le ticket est lu par la QA et le support,
+                 écrire chez eux ne se décide pas à la place de l'utilisateur. -->
+            <label class="inline-check"><input form="configForm" name="verify_jira_comment" type="checkbox" /> <span data-i18n="settings.lbl.verify-jira-comment">Commenter le ticket quand une vérification casse</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.verify-jira-comment" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
             <p class="field-note" data-i18n="settings.conn.required-note">Toute cette connexion est facultative — mais renseignée, elle a besoin de tous ses champs marqués *.</p>
             <div class="form-actions">
                 <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
@@ -1384,6 +1438,7 @@
                 <label><span data-i18n="settings.lbl.prompt-review">Prompt review</span> <button type="button" class="hint" tabindex="-1" aria-label="Instruction envoyée à l'IA pour produire le rapport de review. Placeholders disponibles ci-dessous." data-tip="Instruction envoyée à l'IA pour produire le rapport de review. Placeholders disponibles ci-dessous." data-i18n-tip="settings.tip.instruction-envoyee-a-l-ia"><svg class="ico"><use href="#i-info"/></svg></button> <textarea form="configForm" name="prompt_review" rows="7"></textarea></label>
                 <label><span data-i18n="settings.lbl.prompt-explication">Prompt explication</span> <button type="button" class="hint" tabindex="-1" aria-label="Instruction pour l'onglet Explication du rapport : ce que fait la MR, en langage clair." data-tip="Instruction pour l'onglet Explication du rapport : ce que fait la MR, en langage clair." data-i18n-tip="settings.tip.instruction-pour-l-onglet-explication"><svg class="ico"><use href="#i-info"/></svg></button> <textarea form="configForm" name="prompt_explain" rows="7"></textarea></label>
                 <label><span data-i18n="settings.lbl.prompt-modification">Prompt modification</span> <button type="button" class="hint" tabindex="-1" aria-label="Instruction utilisée quand l'IA doit modifier du code (sessions de codage et corrections demandées depuis un rapport)." data-tip="Instruction utilisée quand l'IA doit modifier du code (sessions de codage et corrections demandées depuis un rapport)." data-i18n-tip="settings.tip.instruction-utilisee-quand-l-ia"><svg class="ico"><use href="#i-info"/></svg></button> <textarea form="configForm" name="prompt_modify" rows="7"></textarea></label>
+                <label><span data-i18n="settings.lbl.prompt-fix">Prompt correction depuis un rapport</span> <button type="button" class="hint" tabindex="-1" aria-label="Consigne donnée à l'IA quand elle applique un rapport de revue au code : « Faire corriger par l'IA » et chaque passe de Converger." data-tip="Consigne donnée à l'IA quand elle applique un rapport de revue au code : « Faire corriger par l'IA » et chaque passe de Converger. Variables : {source}, {target}, {report}." data-i18n-tip="settings.tip.prompt-fix"><svg class="ico"><use href="#i-info"/></svg></button> <textarea form="configForm" name="prompt_fix" rows="7"></textarea></label>
                 <p class="muted"><span data-i18n="settings.p.placeholders">Placeholders :</span> <code>{source} {target} {diff_file} {previous} {instruction}</code></p>
             </div>
         </details>
@@ -1539,6 +1594,11 @@
                  lu avant de les regarder. Pas plus haut — la première chose qu'on lit reste
                  la demande, et c'est là que se pose le curseur. Masqué hors dépôt et en
                  question libre : un profil parle de dépôts, et il n'y en a pas. -->
+            <!-- A18 : cette session ESSAIE un profil non enregistré. Le dire là où l'on choisit
+                 un agent : sans ce bandeau, rien à l'écran ne distinguerait un essai d'une
+                 session ordinaire, et l'on chercherait ensuite pourquoi elle se comporte
+                 autrement. -->
+            <p id="taskAgentEssai" class="field-note" hidden></p>
             <label id="taskAgentRow"><span data-i18n="agents.task.agent">Agent (optionnel)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.task.agent-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <div id="taskAgentBox"></div>
             </label>
@@ -1734,6 +1794,10 @@
                 </label>
                 <p id="agentSubagentsErr" class="field-note" hidden></p>
                 <p id="agentSubagentShadow" class="field-note" hidden></p>
+                <!-- Écrire du JSON à la main dans une textarea nue, c'est retrouver la syntaxe
+                     exacte avant d'écrire quoi que ce soit d'utile. Le bouton pose un exemple
+                     VALIDE, qu'on n'a plus qu'à renommer. -->
+                <button type="button" id="agentSubagentAdd" class="btn btn-sm"><svg class="ico ico-sm"><use href="#i-plus"/></svg><span data-i18n="agents.f.subagent-add">Ajouter un sous-agent</span></button>
             </details>
 
             <details class="task-avance">
@@ -2230,6 +2294,11 @@
         <pre id="jenkinsLogBody" class="jk-log"></pre>
         <div class="modal-actions">
             <button type="button" class="btn" id="jenkinsLogClose" data-i18n="ui.close">Fermer</button>
+            <!-- B9 : la console est l'endroit où l'on LIT la trace. L'enquêteur d'incident
+                 n'était proposé que depuis un ticket Jira, alors que c'est ici qu'on a le
+                 texte sous les yeux. Le bouton n'apparaît que si la console contient bien
+                 quelque chose qui ressemble à une trace. -->
+            <button type="button" class="btn btn-primary" id="jenkinsLogInvestigate" hidden><svg class="ico"><use href="#i-search"/></svg><span data-i18n="jenkins.log.investigate">Enquêter</span></button>
         </div>
     </div>
 </div>
@@ -2239,6 +2308,10 @@
     <div class="modal-box">
         <h3 data-i18n="merge.modal.title">Merger la merge request</h3>
         <p id="mergeModalIntro" class="muted"></p>
+        <!-- TOP 16 : ce qu'on sait de cette merge request, AVANT le geste irréversible. Note,
+             verdict, rapport périmé, constats bloquants, remarques jamais envoyées : tout est
+             déjà dans la charge utile de la liste, et rien de tout cela n'était rappelé ici. -->
+        <p id="mergeModalSavoir" class="card-tags" hidden></p>
         <div class="modal-fields">
             <label class="inline-check inline-check-mid"><input id="mergeSquash" type="checkbox" />
                 <span data-i18n="merge.modal.squash">Squash : réunir les commits de la branche en un seul</span></label>
@@ -2298,6 +2371,10 @@
             <button id="verifyClose" type="button" class="btn" data-i18n="ui.close">Fermer</button>
             <button id="verifyComment" type="button" class="btn" hidden><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="verify.btn.comment">Publier en commentaire</span></button>
             <button id="verifyCommentSend" type="button" class="btn btn-primary" hidden><svg class="ico"><use href="#i-upload"/></svg><span data-i18n="verify.btn.comment-send">Publier sur la merge request</span></button>
+            <!-- B9 : « Corriger » demande de réparer ; « Enquêter » demande OÙ ça casse. Les
+                 deux ne s'adressent pas au même moment — un test rouge dont on ne comprend pas
+                 la trace ne se corrige pas, il se cherche d'abord. -->
+            <button id="verifyInvestigate" type="button" class="btn" hidden><svg class="ico"><use href="#i-search"/></svg><span data-i18n="verify.btn.investigate">Enquêter</span></button>
             <button id="verifyFix" type="button" class="btn btn-primary" hidden><svg class="ico"><use href="#i-bot"/></svg><span data-i18n="verify.btn.fix">Corriger (session IA)</span></button>
             <!-- A/Reviews 3 : après un verdict VERT, la suite. « Merger » et « Lancer <job> »
                  existaient dans le menu ⋯ de la carte, sous exactement cette condition — mais
@@ -2491,6 +2568,11 @@
         <!-- LE RAPPEL. Sans compteur visible, on referme la MR en laissant ses remarques en
              local — et personne ne les lira jamais. -->
         <button id="draftsSend" class="btn btn-primary" hidden data-i18n-title="cmt.draft.send-title" title="Envoyer les commentaires en attente vers la forge"><svg class="ico"><use href="#i-upload"/></svg><span data-i18n="cmt.draft.send">Envoyer les commentaires</span> (<span id="draftsCount">0</span>)</button>
+        <!-- …ET LA SORTIE DE SECOURS. Une remarque qu'on ne veut plus, ou que la forge refuse
+             (une position hors du diff), bloque l'envoi groupé et se supprime une par une, dans
+             le fichier où elle se trouve — donc en les rouvrant tous. Ce bouton vide le lot
+             d'un coup, après confirmation qui dit combien partent à la corbeille. -->
+        <button id="draftsWipe" class="btn btn-danger" hidden data-i18n-title="cmt.draft.wipe-title" title="Supprimer tous les commentaires en attente"><svg class="ico"><use href="#i-trash"/></svg><span data-i18n="cmt.draft.wipe">Tout supprimer</span></button>
         <button id="splitClose" class="btn" title="Fermer la vue plein écran (Échap)" data-i18n-title="context.title.fermer-la-vue-plein-ecran"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>
     </div>
     <div class="split-body code-body">

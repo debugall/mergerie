@@ -52,7 +52,21 @@ function purger(jours, { maintenant = Date.now() } = {}) {
   try { feed = db.prepare('DELETE FROM feed WHERE at IS NOT NULL AND at < ?').run(limite).changes; }
   catch { /* table absente sur une base très ancienne */ }
 
-  return { jours: n, job_log: logs, job: jobs, feed };
+  /* L'HISTORIQUE DES OPÉRATIONS GIT vieillit comme les journaux : une branche supprimée il y a
+     huit mois ne se restaure plus (le SHA a été ramassé par le `gc` du clone bien avant), et la
+     ligne ne sert plus qu'à faire défiler. Elle échappait pourtant à la rétention, seule table
+     de trace à croître sans fin. */
+  let gitOps = 0;
+  try { gitOps = db.prepare('DELETE FROM git_op WHERE created_at IS NOT NULL AND created_at < ?').run(limite).changes; }
+  catch { /* table absente sur une base très ancienne */ }
+
+  /* A26 — les traces de tests instables vieillissent aussi : un test qui a clignoté il y a six
+     mois n'apprend plus rien, et la table grossit d'une ligne par test rouge et par run. */
+  let runTests = 0;
+  try { runTests = db.prepare('DELETE FROM verify_run_test WHERE created_at IS NOT NULL AND created_at < ?').run(limite).changes; }
+  catch { /* table absente sur une base très ancienne */ }
+
+  return { jours: n, job_log: logs, job: jobs, feed, git_op: gitOps, verify_run_test: runTests };
 }
 
 /* Branche la purge : une fois au démarrage, puis une fois par jour. `unref()` pour que le
@@ -62,8 +76,8 @@ function demarrer(lireJours, onLog = () => {}) {
   const passe = () => {
     try {
       const r = purger(lireJours());
-      if (r && (r.job_log || r.job || r.feed)) {
-        onLog(t('log.retention.done', { jours: r.jours, logs: r.job_log, jobs: r.job, feed: r.feed }));
+      if (r && (r.job_log || r.job || r.feed || r.git_op)) {
+        onLog(t('log.retention.done', { jours: r.jours, logs: r.job_log, jobs: r.job, feed: r.feed, gitops: r.git_op }));
       }
     } catch (e) { onLog(t('log.retention.error', { message: e.message })); }   // jamais bloquant au démarrage
     /* Un seul diff d'itération par unité — le DERNIER. La règle s'applique d'elle-même à

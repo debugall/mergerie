@@ -21,7 +21,8 @@ const discover = require('./discover');
 const agentsession = require('./agentsession');
 const questions = require('./questions');
 const { getConfig } = require('./config');
-const { reviewMr } = require('./reviewer');
+const { reviewMr, fillTemplate } = require('./reviewer');
+const prompts = require('./prompts');
 const { t } = require('../public/i18n-runtime.js');
 
 function latestVersion(mrId) {
@@ -54,11 +55,12 @@ async function applyFixAndPush(repo, mr, reviewMd, message, onLog, ctx = {}) {
   await git.createBranchFrom(cwd, mr.source_branch, `origin/${mr.source_branch}`, onLog);
 
   const ask = !!(ctx.task && ctx.task.ask_questions);
-  let prompt =
-    `Voici une revue de code de la branche ${mr.source_branch}. Applique directement dans les fichiers `
-    + `les corrections et suggestions PERTINENTES de cette revue (concentre-toi sur les vrais problèmes : `
-    + `bugs, sécurité, robustesse, correction fonctionnelle ; ignore le purement cosmétique ou ambigu).\n\n`
-    + `=== RAPPORT DE REVUE ===\n${reviewMd}`;
+  /* LE MÊME GABARIT QUE « FAIRE CORRIGER PAR L'IA ». Ce texte était recopié ici en français,
+     hors des réglages : ni traduit, ni éditable, et deux copies qui auraient divergé dès la
+     première retouche de l'une d'elles. */
+  let prompt = fillTemplate(prompts.gabarit('prompt_fix', cfg), {
+    source: mr.source_branch, target: mr.target_branch || '', report: reviewMd,
+  });
   if (ask) prompt += questions.QUESTIONS_INSTRUCTION;
 
   onLog(`correction IA (${copilot.isDryRun() ? 'dry-run' : 'copilot'})`);
@@ -76,12 +78,16 @@ async function applyFixAndPush(repo, mr, reviewMd, message, onLog, ctx = {}) {
     try { r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt, cwd, resume: doResume, onLog }); }
     catch (e) { if (!doResume) throw e; onLog('⚠ reprise de session impossible → session neuve'); r = await agentsession.runInSession({ key, prompt, cwd, resume: false, onLog }); created = true; }
     agentText = r.text || '';
-    copilot.recordUsage('task', prompt, agentText);
+    /* LA DÉPENSE SE RATTACHE À LA MERGE REQUEST. Sans `owner`, la passe de convergence
+       n'entrait dans aucun compte : le coût affiché sur un rapport ne lit que
+       `owner_kind = 'mr'`, si bien qu'une convergence de trois passes s'y affichait à zéro.
+       C'est pourtant le geste le plus cher de l'outil. */
+    copilot.recordUsage('task', prompt, agentText, null, { kind: 'mr', id: mr.id }, r.costUsd);
     taskrunner.saveAgentOutput(ctx.task.id, ctx.targetId, agentText, { kind: 'converge-fix', prompt }); // passe consultable
     // Le handle est réenregistré à CHAQUE passe : une reprise peut en rendre un nouveau.
     db.prepare('UPDATE task_target SET session_key = ?, session_backend = ?, session_cwd = ?, updated_at = ? WHERE id = ?').run(r.handle, r.backend, cwd, new Date().toISOString(), ctx.targetId);
   } else {
-    await copilot.runPrompt(prompt, cwd, { kind: 'task' }, onLog);
+    await copilot.runPrompt(prompt, cwd, { kind: 'task', owner: { kind: 'mr', id: mr.id } }, onLog);
   }
 
   if (ask) {

@@ -177,6 +177,17 @@ async function listOpenMRs(cfg, project, pattern) {
       return {
         iid: m.iid, title: m.title, source_branch: m.source_branch, target_branch: m.target_branch,
         web_url: m.web_url, sha: m.sha, created_at: m.created_at, author: m.author,
+        /* ⚠ GitHub ne calcule `mergeable` QUE sur le détail d'une pull request, jamais dans la
+           liste : `has_conflicts` vaut donc presque toujours `null` ici, et c'est exact — on
+           ne sait pas. Le champ est quand même transmis pour ne pas dépendre de ce détail
+           d'API, et parce que le badge sait déjà ne rien afficher sur un `null`.
+           `draft`, lui, EST dans la liste, et les demandes de review aussi. */
+        // Même chose côté GitHub : le corps de la pull request est dans la liste (`body`).
+        description: String(pr.body || '').slice(0, 4000),
+        has_conflicts: m.has_conflicts,
+        draft: pr.draft === true || /^\s*(draft|wip)\s*:/i.test(String(pr.title || '')),
+        reviewers: Array.isArray(pr.requested_reviewers)
+          ? pr.requested_reviewers.map((r) => (r && r.login) || '').filter(Boolean) : [],
       };
     });
 }

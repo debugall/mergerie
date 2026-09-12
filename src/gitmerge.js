@@ -89,8 +89,21 @@ async function etat(id) {
     return { ...m, project: repo.project, forge: repo.forge, perdu: true, conflits: [], prets: [] };
   }
   const conflits = m.status === 'committed' || m.status === 'pushed' ? [] : await enConflit(m.dir);
+  /* A31 — LA MERGE REQUEST QU'ON EST EN TRAIN DE RATTRAPER. On arrive souvent ici depuis un
+     badge « en conflit » d'une merge request : le worktree ne retient que dépôt/source/cible,
+     et l'écran ne disait donc plus ni `!iid`, ni sa note, ni son ticket — on résolvait des
+     conflits sans plus savoir sur quoi. La jointure est celle de partout : (dépôt, branche). */
+  const mr = db.prepare(`SELECT id, iid, title, web_url, ticket_jira_key FROM mr
+    WHERE repo_id = ? AND source_branch = ? AND (closed_seen IS NULL OR closed_seen = 0)
+    ORDER BY id DESC LIMIT 1`).get(m.repo_id, m.source_branch);
+  const note = mr ? db.prepare('SELECT note_value FROM review_version WHERE mr_id = ? ORDER BY version DESC LIMIT 1').get(mr.id) : null;
   return {
     ...m,
+    mr: mr ? {
+      id: mr.id, iid: mr.iid, title: mr.title || '', url: mr.web_url || '',
+      note: note && note.note_value != null ? note.note_value : null,
+      ticket: mr.ticket_jira_key || null,
+    } : null,
     project: repo.project,
     forge: repo.forge,
     perdu: false,
@@ -218,6 +231,25 @@ async function commiter(id, message, onLog = () => {}) {
   return etat(m.id);
 }
 
+/* A31 — LE DIFF DE CE QU'ON VIENT D'ASSEMBLER. `commit_sha` était écrit et relu par personne :
+   après trente conflits résolus un par un, la seule question qui reste est « qu'est-ce que ça
+   donne, au total ? » — et il fallait ouvrir un terminal pour y répondre. `git show` sur le
+   commit de merge, en mode `--first-parent` : sans lui, `git show` d'un merge ne rend RIEN
+   (il ne montre par défaut que les conflits résolus autrement que par un parent). */
+async function diffCommit(id) {
+  const m = ligne(id);
+  if (!m.commit_sha) throw new Error(t('err.merge.commit-first'));
+  const { stdout } = await git.run('git',
+    ['show', '--first-parent', '--format=%H%n%an%n%ad%n%s', m.commit_sha], { cwd: m.dir });
+  const [sha, auteur, date, ...reste] = String(stdout || '').split('\n');
+  const i = reste.findIndex((l) => /^diff --git /.test(l));
+  return {
+    sha, auteur, date,
+    sujet: i >= 0 ? reste.slice(0, i).join('\n').trim() : reste.join('\n').trim(),
+    diff: i >= 0 ? reste.slice(i).join('\n') : '',
+  };
+}
+
 /* POUSSER. `HEAD:refs/heads/<destination>` : on pousse le commit obtenu vers la branche visée,
    sans jamais avoir créé de branche locale. Pas de forçage — un merge AJOUTE un commit, il ne
    réécrit rien ; si la forge refuse, c'est que la destination a bougé, et il faut refaire le
@@ -250,14 +282,36 @@ async function abandonner(cfg, id) {
 }
 
 /** Les merges non soldés, pour que l'écran puisse en reprendre un. */
+/* A31 — UN MERGE SE SOUVIENT DE CE QU'IL RATTRAPE. On arrive ici depuis le badge « en
+   conflit » d'une merge request : le dossier de travail garde le dépôt et les deux branches,
+   mais plus rien ne dit DE QUELLE merge request il s'agit — ni son numéro, ni sa note, ni son
+   ticket. Or c'est précisément ce qu'on veut relire avant de résoudre trente conflits.
+
+   La jointure se fait sur la branche : le merge rattrape `main` DANS la branche de la MR, sa
+   `target_branch` est donc la `source_branch` de celle-ci. Merge request ouverte seulement —
+   une MR fermée ne rattrape plus rien. */
 function enCours() {
-  return db.prepare(`SELECT gm.*, repo.project, repo.forge FROM git_merge gm
+  const rows = db.prepare(`SELECT gm.*, repo.project, repo.forge FROM git_merge gm
     JOIN repo ON repo.id = gm.repo_id
     WHERE gm.status IN ('conflict','ready','committed') ORDER BY gm.id DESC`).all();
+  const mr = db.prepare(`SELECT mr.id, mr.iid, mr.title, mr.web_url, mr.ticket_jira_key, review.note_value AS note
+    FROM mr LEFT JOIN review ON review.mr_id = mr.id
+    WHERE mr.repo_id = ? AND mr.source_branch = ? AND COALESCE(mr.closed_seen, 0) = 0
+    ORDER BY mr.id DESC LIMIT 1`);
+  for (const r of rows) {
+    const m = mr.get(r.repo_id, r.target_branch);
+    if (m) {
+      r.mr = {
+        id: m.id, iid: m.iid, title: m.title || '', url: m.web_url || '',
+        note: m.note == null ? null : Math.round(m.note * 1000) / 100, ticket: m.ticket_jira_key || '',
+      };
+    }
+  }
+  return rows;
 }
 
 module.exports = {
-  MERGES_DIR, demarrer, etat, resoudre, contenu, commiter, pousser, abandonner, enCours,
+  MERGES_DIR, demarrer, etat, resoudre, contenu, commiter, pousser, abandonner, enCours, diffCommit,
   // Réexportés par commodité pour les routes ; ils vivent dans `conflits.js`, qui ne touche
   // NI la base NI le disque — c'est ce qui les rend testables sans démarrer l'application.
   decouper, recoller,

@@ -352,7 +352,12 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
        n'ont pas de chiffre, et la feuille d'aide annonce « 1 – 9, 0 ». */
     const avecTouche = [...barre.slice(0, 9).map((tab, i) => [String(i + 1), tab]), ['0', barre[barre.length - 1]]];
     for (const [touche, tab] of avecTouche) {
-      await page.locator('body').click();          // le focus quitte tout champ de saisie
+      /* LE FOCUS QUITTE TOUT CHAMP — mais PAS en cliquant `body` : Playwright clique le CENTRE
+         de l'élément, et le centre de la page est la zone de texte de la note ouverte. On
+         focalisait donc le champ qu'on voulait quitter, et les chiffres s'écrivaient dedans au
+         lieu d'ouvrir les onglets. Depuis que les objets ont une adresse (`#/notes/4`), un
+         rechargement rouvre la page et ce centre-là est toujours une zone de texte. */
+      await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
       await page.keyboard.press(touche);
       await page.waitForSelector(`#tab-${tab}.active`);
       assert.equal(await page.locator(`#tab-${tab}`).isVisible(), true,

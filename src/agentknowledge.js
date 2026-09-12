@@ -22,6 +22,7 @@ const db = require('./db');
 const git = require('./git');
 const notes = require('./notes');
 const protocol = require('./protocol');
+const glob = require('./glob');   // B7 : un chemin de carte peut porter une étoile
 const { getConfig } = require('./config');
 const { agentsDir } = require('./paths');
 const i18n = require('../public/i18n-runtime.js');
@@ -338,6 +339,62 @@ function addGaps(agent, task, gaps) {
   db.prepare('UPDATE agent_knowledge SET gaps_json = ? WHERE id = ?').run(JSON.stringify(liste.slice(-200)), v.id);
 }
 
+/* ---------- B7 : quelles cartes une merge request touche ---------- */
+
+/* La carte d'un agent de domaine cite des CHEMINS, dépôt par dépôt ; une merge request stocke
+   les chemins de son diff (`mr.changed_paths`, alimenté par la découverte). Les deux se
+   croisent depuis toujours sans que personne ne fasse le produit — alors que c'est exactement
+   la question qu'on se pose en ouvrant une merge request inconnue : « est-ce que ça touche un
+   domaine dont on a une carte ? ».
+
+   LE CROISEMENT SE FAIT PAR PRÉFIXE, pas par glob. Une carte cite `src/notifications/` ou
+   `src/notify.js` — ce qu'on écrit quand on décrit un domaine — et non un motif d'extension ; traiter
+   ces chemins comme des motifs ferait qu'un dossier ne matcherait aucun fichier dedans, c'est-
+   à-dire rien. Un chemin qui contient une étoile est quand même passé au glob : quelqu'un
+   finira par en écrire un, et l'ignorer silencieusement serait pire.
+
+   L'INDEX EST CONSTRUIT UNE FOIS pour toute une liste de merge requests : une requête par
+   carte × trente cartes de liste ferait quatre-vingt-dix lectures pour un badge. */
+function indexCartes() {
+  const out = [];
+  for (const a of db.prepare(`SELECT a.id, a.name FROM agent a
+      JOIN agent_knowledge k ON k.agent_id = a.id AND k.status = 'active' ORDER BY a.name`).all()) {
+    const v = versionActive(a.id);
+    for (const r of jsonOu((v || {}).repos_json, [])) {
+      const chemins = (r.paths || []).map((x) => String(x || '').replace(/^\.?\//, '').replace(/\/+$/, '')).filter(Boolean);
+      if (!chemins.length) continue;
+      out.push({ agent_id: a.id, name: a.name, repo_id: r.repo_id || null, project: r.project || '', paths: chemins });
+    }
+  }
+  return out;
+}
+
+function toucheCarte(carte, chemins) {
+  return (chemins || []).some((brut) => {
+    const p = String(brut || '').replace(/^\.?\//, '');
+    return carte.paths.some((c) => (c.includes('*')
+      ? glob.pathMatches(c, p)
+      : (p === c || p.startsWith(`${c}/`))));
+  });
+}
+
+/* Les cartes touchées par UNE merge request. `changed` est la colonne telle qu'elle est
+   stockée (des chemins séparés par des retours à la ligne) ; `null` tant que la découverte
+   n'a pas encore lu le diff — on ne dit alors rien, plutôt que « aucune carte ». */
+function cartesTouchees(index, repoId, changed) {
+  if (!changed) return [];
+  const chemins = String(changed).split('\n').filter(Boolean);
+  const vues = new Set();
+  const out = [];
+  for (const c of index) {
+    if (c.repo_id && repoId && c.repo_id !== repoId) continue;
+    if (vues.has(c.agent_id) || !toucheCarte(c, chemins)) continue;
+    vues.add(c.agent_id);
+    out.push({ agent_id: c.agent_id, name: c.name });
+  }
+  return out;
+}
+
 /* ---------- L'âge, sans IA ---------- */
 
 const cacheAge = new Map();   // agent_id → { at, valeur }
@@ -464,6 +521,7 @@ function publierDansNotes(agent) {
 
 module.exports = {
   ingest, parseHeader, verifierChemins, age, viderCacheAge, refresh, activer, editer, addGaps,
+  indexCartes, cartesTouchees, toucheCarte,
   indexFor, diffSummary, publierDansNotes, contenuActif, versions, versionDe, versionActive,
   versionEnAttente, conserverNotes, prendreContexteRefresh, marquerNonVerifies, section,
 };

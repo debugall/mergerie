@@ -61,6 +61,24 @@ function decorer(a) {
     repos: repos(a.id),
     is_domain: a.knowledge_prompt != null,
     last_run: dernier ? { ...dernier, cost_usd: (cout && cout.c) || null } : null,
+    /* L'HORAIRE EN TOUTES LETTRES. La carte affichait la SYNTAXE (`weekly mon 07:00`) : une
+       grammaire qu'on écrit dans le formulaire, pas une phrase qu'on lit sur une carte — et
+       elle ne suivait pas la langue. `phrase()` existait et n'était appelée nulle part. */
+    schedule_said: (() => {
+      if (!a.schedule) return '';
+      try { return require('./agentschedule').phrase(a.schedule) || ''; } catch { return ''; }
+    })(),
+    /* QUAND IL REPASSE. Un agent planifié ne montrait rien entre deux runs : ni la date du
+       dernier, ni celle du prochain. Calculé, jamais stocké — une date en base se
+       désynchroniserait du jour où l'horaire change. */
+    next_run: (() => {
+      if (!a.schedule) return null;
+      try {
+        const sch = require('./agentschedule');
+        const c = sch.creneauSuivant(sch.parse(a.schedule));
+        return c ? c.toISOString() : null;
+      } catch { return null; }
+    })(),
     run_count: db.prepare('SELECT COUNT(*) n FROM task WHERE agent_id = ?').get(a.id).n,
     knowledge: k ? {
       id: k.id,
@@ -129,6 +147,34 @@ function valider(body, id = null) {
     agents: sous,
   }));
   return [...new Set(errs)];
+}
+
+/* A18 — LE BROUILLON D'UN PROFIL QU'ON ESSAIE, réduit à ce qui CHANGE LE RUN. On ne recopie
+   pas le formulaire entier dans la session : ni l'horaire (un essai ne se planifie pas), ni la
+   sortie, ni le périmètre (les dépôts sont ceux que la modale a cochés). Le nom sert à
+   l'écran et au prompt système. La validation est celle d'un vrai profil : ce qui échouerait
+   au lancement doit échouer ici, pas trois minutes plus tard dans un journal.
+
+   `name` est le seul champ où la validation diffère : un brouillon n'entre pas dans la table,
+   il n'a donc pas à être unique — on refuse seulement le vide. */
+function brouillonValide(body) {
+  const nom = String((body && body.name) || '').trim();
+  if (!nom) throw Object.assign(new Error(i18n.t('agents.err.name-required')), { status: 400 });
+  const errs = valider({ ...body, name: `\u0000essai\u0000` }).filter((e) => !/name-(required|taken)/.test(e));
+  if (errs.length) throw Object.assign(new Error(errs.map((e) => i18n.t(e)).join(' · ')), { status: 400 });
+  const sous = (body.subagents_json && typeof body.subagents_json === 'object')
+    ? body.subagents_json : jsonOu(body.subagents_json, {});
+  return {
+    name: nom,
+    kind: body.kind === 'code' ? 'code' : 'explore',
+    model: String(body.model || ''),
+    permission_mode: String(body.permission_mode || ''),
+    allowed_tools_json: JSON.stringify(Array.isArray(body.allowed_tools_json) ? body.allowed_tools_json : jsonOu(body.allowed_tools_json, [])),
+    disallowed_tools_json: JSON.stringify(Array.isArray(body.disallowed_tools_json) ? body.disallowed_tools_json : jsonOu(body.disallowed_tools_json, [])),
+    max_turns: Number(body.max_turns) || null,
+    subagents_json: JSON.stringify(sous),
+    system_prompt: String(body.system_prompt || ''),
+  };
 }
 
 /* ---------- Écriture ---------- */
@@ -267,9 +313,13 @@ function cheminsLecture(agent) {
 }
 
 function optionsFor(task) {
-  if (!task || !task.agent_id) return {};
-  const a = db.prepare('SELECT * FROM agent WHERE id = ?').get(task.agent_id);
-  if (!a) return {};
+  if (!task) return {};
+  /* A18 — LE BROUILLON D'UN ESSAI vaut profil, le temps d'une session. Même fonction, même
+     argv : un second chemin d'options finirait par ne plus essayer ce qu'on croit essayer. */
+  const a = task.agent_id
+    ? db.prepare('SELECT * FROM agent WHERE id = ?').get(task.agent_id)
+    : (task.agent_draft_json ? { ...jsonOu(task.agent_draft_json, {}), id: null } : null);
+  if (!a || (!task.agent_id && !task.agent_draft_json)) return {};
   const allowed = jsonOu(a.allowed_tools_json, []);
   return {
     model: a.model,
@@ -561,6 +611,6 @@ function previewFor(agent, backend) {
 
 module.exports = {
   lister, lire, parCle, creer, modifier, supprimer, dupliquer, restaurer, seedBuiltins,
-  valider, optionsFor, systemPromptFor, composer, materialize, lancer, apresRun,
+  valider, brouillonValide, optionsFor, systemPromptFor, composer, materialize, lancer, apresRun,
   ecrireEntrees, blocEntrees, previewFor, repos, OUTILS_DEFAUT, jsonOu,
 };

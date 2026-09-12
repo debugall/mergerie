@@ -83,6 +83,13 @@ is merged; the last Jenkins build carrying a branch is written on its merge requ
 moved to review pushes its merge requests to the top; an exploration turns into a coding session
 **in the same agent session**; the branches of merged merge requests gather into one lot; and a
 verification that runs in place says the state of the Docker services before it starts.
+A review report says **which notes cite it** and **which domain map it touches** — and hands that map
+to the AI as review context; a red verdict leaves a todo behind and, if you ask, a comment on the
+Jira ticket; a failed Jenkins console and a red verification open the **incident investigator** with
+the trace already in the request; and the morning brief picks up **the merge left half-resolved
+yesterday**, the Git operations that failed and the containers that went down — the last of these
+watched by the server itself, like the end of a Jenkins build you started from here, so it reaches
+you with the tab closed.
 
 ## Learn more
 

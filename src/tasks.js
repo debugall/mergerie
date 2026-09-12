@@ -69,16 +69,19 @@ function creerTask(champs) {
   const {
     kind, prompt, branch, commitMessage, autoPush, askQuestions, verifierId, label,
     notifyJira, reviewAfter, targets, sessionId, agentId, agentName, triggeredBy, agentQuestion,
+    agentDraft,
   } = champs;
   const now = new Date().toISOString();
   const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message, auto_push,
       ask_questions, verifier_id, label, notify_jira, review_after, agent_id, agent_name, triggered_by,
-      agent_question, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)`).run(
+      agent_question, agent_draft_json, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)`).run(
     targets[0].repo_id, kind, prompt, branch || '',
     commitMessage || null, autoPush ? 1 : 0, askQuestions ? 1 : 0, verifierId || null, label || null,
     notifyJira ? 1 : 0, reviewAfter ? 1 : 0,
     agentId || null, agentName || null, triggeredBy || 'manual', agentQuestion || null,
+    // A18 : le brouillon d'un profil qu'on essaie, sans l'enregistrer comme agent.
+    agentDraft ? JSON.stringify(agentDraft) : null,
     now, now);
   const taskId = info.lastInsertRowid;
   insertTargets(taskId, targets, sessionId);

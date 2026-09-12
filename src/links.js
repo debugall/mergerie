@@ -719,7 +719,7 @@ function preFiltre(requete, colonnes) {
 /* `agentsMsgs` : les deux libellés d'agent, déjà traduits par l'appelant. Ce module ne charge
    PAS `i18n-runtime` — il utilise `t` comme nom de variable locale à trois endroits, et le
    garde-fou de `check-server` refuse (à raison) qu'un fichier qui traduit masque `t`. */
-function launcher(q, { jiraConfigure = false, actions = [], agentsMsgs = null } = {}) {
+function launcher(q, { jiraConfigure = false, actions = [], agentsMsgs = null, dockerProjets = [], msgs = {} } = {}) {
   const requete = String(q || '').trim();
   const use = usages();
   const out = [];
@@ -757,14 +757,17 @@ function launcher(q, { jiraConfigure = false, actions = [], agentsMsgs = null } 
   /* 2. Merge requests — par NUMÉRO ou par mots du titre. Le numéro passe par une égalité et
      non par un `LIKE` : `!214` ne se retrouve ni dans un titre ni dans un nom de projet, et
      c'est pourtant la façon la plus courante de désigner une merge request. */
-  const fMr = preFiltre(requete, ['m.title', 'p.project']);
+  /* B13 — …ET PAR SA CLÉ DE TICKET. « PROJ-1408 » est la façon dont la moitié d'une équipe
+     désigne un travail : elle ne trouvait rien ici alors que la colonne est remplie par la
+     découverte depuis longtemps. */
+  const fMr = preFiltre(requete, ['m.title', 'p.project', 'm.ticket_jira_key']);
   const iid = parseInt(String(requete).replace(/^!/, ''), 10);
   const parNum = Number.isFinite(iid);
   const condMr = fMr.cond
     ? (parNum ? `WHERE (m.iid = ? OR (${fMr.cond}))` : `WHERE ${fMr.cond}`)
     : '';
   const argsMr = condMr ? (parNum ? [iid, ...fMr.args] : fMr.args) : [];
-  for (const r of db.prepare(`SELECT m.id, m.iid, m.title, m.status, p.project FROM mr m
+  for (const r of db.prepare(`SELECT m.id, m.iid, m.title, m.status, m.ticket_jira_key, p.project FROM mr m
       JOIN repo p ON p.id = m.repo_id ${condMr} ORDER BY m.id DESC LIMIT ?`)
     .all(...argsMr, PAR_SOURCE * 3)) {
     pousser({
@@ -772,7 +775,7 @@ function launcher(q, { jiraConfigure = false, actions = [], agentsMsgs = null } 
       label: `!${r.iid} — ${r.title || ''}`, detail: r.project,
       // `mr_iid` : le NUMÉRO tel qu'on le tape — la palette y saute directement (« !217 »).
       nav: { tab: 'review', mr_id: r.id, mr_iid: r.iid, status: r.status },
-      texte: `!${r.iid} ${r.iid} ${r.title || ''} ${r.project}`,
+      texte: `!${r.iid} ${r.iid} ${r.title || ''} ${r.project} ${r.ticket_jira_key || ''}`,
     });
   }
 
@@ -819,6 +822,54 @@ function launcher(q, { jiraConfigure = false, actions = [], agentsMsgs = null } 
       label: titre || r.branch, detail: r.branch || '',
       nav: { tab: 'task', task_id: r.id, task_kind: r.kind || 'code' },
       texte: `${r.label || ''} ${r.prompt || ''} ${r.branch || ''}`,
+    });
+  }
+
+  /* B13/TOP 12 — LA PALETTE AGIT, elle ne fait plus seulement naviguer. Quatre objets du
+     quotidien n'y étaient pas, et chacun se cherchait à la souris : un vérificateur, un job
+     Jenkins, un projet compose, une commande git enregistrée. Le principe ne change pas — la
+     palette ne sait rien faire que l'écran ne sache déjà faire, elle emmène au bon endroit et
+     clique le vrai bouton. */
+  const fVerif = preFiltre(requete, ['name']);
+  for (const r of db.prepare(`SELECT id, name FROM verifier
+      ${fVerif.cond ? `WHERE ${fVerif.cond}` : ''} ORDER BY name LIMIT ?`).all(...fVerif.args, PAR_SOURCE)) {
+    pousser({
+      kind: 'verifier', ref: String(r.id), group: 'actions',
+      label: String(msgs.verify || '{name}').replace('{name}', r.name), detail: '',
+      nav: { verifier_id: r.id },
+      texte: `${r.name} verifier verification`,
+    });
+  }
+  /* Les jobs Jenkins RATTACHÉS à un dépôt : la seule liste de jobs que le serveur connaisse
+     sans appeler Jenkins — et la palette ne doit jamais appeler le CI de l'équipe pour
+     remplir une liste de suggestions. */
+  const fJk = preFiltre(requete, ['job_path']);
+  for (const r of db.prepare(`SELECT DISTINCT job_path FROM repo_jenkins
+      ${fJk.cond ? `WHERE ${fJk.cond}` : ''} ORDER BY job_path LIMIT ?`).all(...fJk.args, PAR_SOURCE)) {
+    pousser({
+      kind: 'jenkins', ref: r.job_path, group: 'actions',
+      label: String(msgs.jenkins || '{job}').replace('{job}', r.job_path), detail: '',
+      nav: { jenkins_path: r.job_path },
+      texte: `${r.job_path} jenkins build ci`,
+    });
+  }
+  // Les projets compose DÉJÀ VUS par la veille (aucun `docker ps` déclenché par la palette).
+  for (const nom of dockerProjets.slice(0, PAR_SOURCE)) {
+    pousser({
+      kind: 'compose', ref: String(nom), group: 'actions',
+      label: String(msgs.compose || '{name}').replace('{name}', nom), detail: '',
+      nav: { compose: String(nom) },
+      texte: `${nom} docker compose conteneur container`,
+    });
+  }
+  const fCmd = preFiltre(requete, ['label', 'command']);
+  for (const r of db.prepare(`SELECT id, label, command FROM git_command
+      ${fCmd.cond ? `WHERE ${fCmd.cond}` : ''} ORDER BY sort_order, id LIMIT ?`).all(...fCmd.args, PAR_SOURCE)) {
+    pousser({
+      kind: 'gitcmd', ref: String(r.id), group: 'actions',
+      label: String(msgs.gitcmd || '{label}').replace('{label}', r.label), detail: `git ${r.command}`,
+      nav: { git_command: r.command },
+      texte: `${r.label} git ${r.command}`,
     });
   }
 

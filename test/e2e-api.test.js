@@ -1075,6 +1075,12 @@ describe('API de bout en bout', () => {
     assert.equal(ok.body.merged, true);
     const footer = await app.api('GET', '/api/footer');
     assert.ok(footer.body.feed.some((f) => f.type === 'mr_merged' && f.mr_iid === 7));
+    /* TOP 14 — et l'ÉVÉNEMENT, pas seulement la ligne de journal. `closed_seen` vient d'être
+       posé : la découverte ne signalera donc jamais ce merge-là, et sans cette émission le seul
+       merge muet de l'outil serait celui qu'on a fait soi-même. */
+    const evts = (await app.api('GET', '/api/notifications?after=0')).body.events;
+    assert.ok(evts.some((n) => n.type === 'mr_merged' && n.iid === 7 && n.mine),
+      `aucun événement mr_merged : ${evts.map((n) => n.type).join(', ')}`);
   });
 
   test('Une MR disparue de GitLab est signalée mergée puis oubliée', async () => {

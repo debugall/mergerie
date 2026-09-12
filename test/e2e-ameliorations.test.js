@@ -100,6 +100,10 @@ describe('Améliorations — croisements et raccourcis', { skip: dispo ? false :
     }, 'la référence est copiée');
     assert.match(ref, /^!217 — Paiement 3×/);
     assert.match(ref, /merge_requests\/217/, 'avec l’adresse : c’est ce qu’on colle dans Slack');
+    /* TOP 5 — ET LE LIEN MERGERIE, depuis que les objets ont une adresse. Les deux
+       destinations ne disent pas la même chose : la forge montre le diff, Mergerie le rapport,
+       la note et le verdict. */
+    assert.match(ref, /#\/reviews\/\d+/, 'et le lien interne, qui ouvre le rapport');
   });
 
   test('la capture rapide comprend « !217 relire @demain !! »', async () => {

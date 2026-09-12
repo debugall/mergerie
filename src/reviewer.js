@@ -13,6 +13,7 @@ const glob = require('./glob');
 const diffnum = require('./diffnum');
 const demoReview = require('./demo-review');
 const agentpass = require('./agentpass');
+const agentknowledge = require('./agentknowledge');   // B7 : la carte du domaine touché
 const demoDiff = require('./demo-diff');
 const demoComments = require('./demo-comments');
 const forge = require('./forge');
@@ -97,12 +98,30 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
     diff_file: diffName,
     lines_file: lignesName,
     project: repo.project,
+    /* CE QUE LA MERGE REQUEST PRÉTEND FAIRE. Le gabarit peut désormais l'écrire lui-même
+       (`{title}`, `{description}`) ; et qu'il le fasse ou non, le bloc ci-dessous l'ajoute au
+       prompt — un gabarit personnalisé, écrit avant que ces variables n'existent, doit en
+       profiter aussi. C'est la même règle que les constats et les numéros de ligne. */
+    title: mr.title || '',
+    description: mr.description || '',
   };
 
   // Contexte du ticket. DEUX sources distinctes réunies ici :
   //  - ticket_jira_text : récupéré automatiquement depuis Jira au discover ;
   //  - ticket_text      : le complément saisi à la main par le relecteur.
   // Les deux sont concaténés — l'un n'écrase jamais l'autre (ideas.md « Fetch Jira »).
+  /* L'INTENTION DÉCLARÉE, avant le contexte du ticket. Sans Jira configuré, l'IA ne connaissait
+     que le diff : elle relevait comme des manques des choix assumés, écrits dans la description
+     — « le cache n'est volontairement pas invalidé ici, voir le ticket ». Le titre seul vaut
+     déjà beaucoup ; la description, quand elle existe, vaut le reste. */
+  let intentionBlock = '';
+  if (mr.title && String(mr.title).trim()) {
+    intentionBlock += `\n\n${t('review.intent.title', { title: String(mr.title).trim() })}`;
+  }
+  if (mr.description && String(mr.description).trim()) {
+    intentionBlock += `\n\n${t('review.intent.description', { description: String(mr.description).trim() })}`;
+  }
+
   let ticketBlock = '';
   if (mr.ticket_jira_text && mr.ticket_jira_text.trim()) {
     ticketBlock += `\n\nContexte du ticket ${mr.ticket_jira_key || ''} (récupéré depuis Jira), à prendre en compte dans l'analyse :\n"""\n${mr.ticket_jira_text.trim()}\n"""`;
@@ -149,6 +168,29 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
     }
     onLog(t('log.review.rules', { n: rules.length, count: rules.length }));
   }
+
+  /* B7 — LA CARTE DU DOMAINE TOUCHÉ, comme contexte de review. Un agent de domaine a écrit
+     ce que fait ce coin du code, ce qui l'appelle et ce qui casse quand on y touche ; cette
+     connaissance existait et ne servait qu'à l'onglet Agents. Or c'est exactement ce qu'un
+     relecteur voudrait avoir sous les yeux — et c'est du texte déjà écrit, sans un appel de
+     plus ni un token de production.
+
+     Le croisement est celui du badge (`agentknowledge.cartesTouchees`) : les chemins du diff
+     contre ceux que la carte cite. Deux cartes au plus, et l'index seulement — pas la carte
+     entière : un prompt de review a déjà le diff, le ticket, les règles et les projets liés,
+     et le noyer sous trois pages de contexte de domaine ferait perdre ce qu'on venait ajouter.
+     La carte est DISPONIBLE en entier dans les notes ; on dit où. */
+  let carteBlock = '';
+  try {
+    const cartes = agentknowledge.cartesTouchees(agentknowledge.indexCartes(), mr.repo_id, changedPaths.join('\n'));
+    for (const c of cartes.slice(0, 2)) {
+      const ag = db.prepare('SELECT * FROM agent WHERE id = ?').get(c.agent_id);
+      const idx = ag ? agentknowledge.indexFor(ag) : '';
+      if (!idx) continue;
+      carteBlock += `\n\n${t('review.card-context', { name: c.name })}\n"""\n${idx}\n"""`;
+    }
+    if (carteBlock) onLog(t('log.review.cards', { n: cartes.length, count: cartes.length }));
+  } catch { /* best-effort : une carte illisible ne fait pas échouer une review */ }
 
   /* Projets liés : l'IA analyse l'impact des changements de la MR sur d'autres dépôts.
      Choix d'archi retenu : la review tourne dans le clone principal (cwd inchangé,
@@ -231,7 +273,12 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
        comme les numéros de ligne et les constats, pour tous les gabarits. */
     const ni = (kind === 'review') ? `\n\n${t('review.note-instruction')}` : '';
     const lb = (kind === 'review') ? linkedBlock : ''; // analyse d'impact = review uniquement
-    const prompt = fillTemplate(promptTemplate, { ...baseVars, out_file: outRel }) + ticketBlock + rb + lb + extra + li + ni + fi + instruction;
+    const cb = (kind === 'review') ? carteBlock : ''; // contexte de domaine = review uniquement
+    /* `intentionBlock` n'accompagne que la REVIEW et la modification : une explication
+       pédagogique reçoit déjà le diff et n'a pas à juger l'intention, une question porte sur le
+       rapport. */
+    const ib = (kind === 'review' || kind === 'modify') ? intentionBlock : '';
+    const prompt = fillTemplate(promptTemplate, { ...baseVars, out_file: outRel }) + ib + ticketBlock + rb + cb + lb + extra + li + ni + fi + instruction;
     // extraInput : le diff n'est PAS dans le prompt (on ne passe que son chemin),
     // mais l'agent le lit — il doit donc compter dans la consommation.
     // Continuité : la review/modif tourne dans une session reprenable par MR (« Relancer la

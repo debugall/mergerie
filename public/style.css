@@ -471,6 +471,10 @@ button.pab:hover .pab-name { color: var(--accent); }
    dont le point de départ deviendrait dépendant de leur nombre (R2 de l'étude). */
 .card-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .card-tags:empty { display: none; }
+/* La fente du badge « remarques en attente » : le viewer la réécrit quand le lot change. Elle
+   ne doit pas peser dans la rangée — `contents` laisse le badge lui-même être l'élément flex,
+   et une fente vide n'ouvre donc pas un écart de 6 px entre deux tags. */
+.draft-slot { display: contents; }
 /* évite les débordements de texte dans les listes (colonne étroite) */
 .list .card > div:not(.spacer) { min-width: 0; }
 
@@ -842,8 +846,34 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .prompt-templates .form { max-width: none; margin-bottom: 8px; }
 .prompt-templates textarea { min-height: 150px; resize: vertical; line-height: 1.5; }
 
-.repo-row { flex-direction: column; align-items: stretch; }
+/* `nowrap` : la carte générique porte `flex-wrap: wrap`, utile en ligne, absurde en colonne —
+   un conteneur colonne qui enveloppe répartit ses blocs en COLONNES dès qu'ils dépassent, et
+   la fiche dépliée (B17) faisait alors monter la carte à 377 px pour 79 px de contenu. */
+.repo-row { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
 .repo-view { display: flex; align-items: center; gap: 12px; }
+/* B17 — la fiche d'un dépôt, dépliée sous sa ligne. Deux colonnes quand la place le permet,
+   une seule sur un écran étroit : six sections courtes empilées feraient descendre la ligne
+   suivante hors de l'écran. Les couleurs viennent des variables de thème — la fiche doit se
+   lire aussi bien en clair qu'en sombre. */
+/* A8 — les pastilles de l'arbre du viewer. Discrètes par construction : ce sont des repères
+   qu'on balaie du regard, pas des chiffres qu'on lit. Un bloquant se distingue par sa teinte,
+   parce que c'est le seul qui change l'ordre dans lequel on ouvre les fichiers. */
+.tree-file { display: flex; align-items: center; gap: 6px; }
+.tree-file .tf-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tf-badges { flex: 0 0 auto; display: inline-flex; gap: 3px; }
+.tf-badge { font-size: 10px; line-height: 1.5; padding: 0 4px; border-radius: 6px;
+  background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
+.tf-badge.tf-blocker { color: var(--red-text, var(--red)); border-color: currentColor; }
+.tf-badge.tf-draft { color: var(--accent-text, var(--accent)); }
+.tf-badge.tf-lines { opacity: .75; }
+
+.repo-sheet { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 18px;
+  align-items: start; }
+.repo-sheet-sec h5 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--muted); }
+.repo-sheet-sec ul { margin: 0; padding-left: 16px; }
+.repo-sheet-sec li { margin: 2px 0; }
 .repo-edit { display: flex; flex-direction: column; gap: 8px; }
 .repo-edit input { background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
 .repo-edit-actions { display: flex; gap: 8px; }
@@ -1242,6 +1272,10 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
    d'une branche. Discrète — elle qualifie l'option, elle ne la remplace pas. */
 .combo-hint { color: var(--muted); font-size: 11px; margin-left: 6px; }
 .combo-opt:hover { background: var(--panel2); }
+/* L'option désignée AU CLAVIER. Même fond que le survol — c'est le même état, atteint par un
+   autre moyen —, plus une barre d'accent : sans elle, dans une liste de trois cents branches,
+   on ne saurait pas ce qu'Entrée va choisir. */
+.combo-opt.active { background: var(--panel2); box-shadow: inset 2px 0 0 var(--accent); }
 .combo-opt.muted { color: var(--muted); cursor: default; }
 /* Alignement vertical par défaut des cases (contextes inline : bascules « Activé »
    des dépôts/règles, auto-défilement du log…). Sans effet en contexte flex, donc
@@ -1518,6 +1552,9 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
   z-index: 30; box-shadow: var(--sh-2); }
 /* Déplié, c'est le JOURNAL qui défile — pas le panneau, dont la tête doit rester atteignable. */
 .logpanel #logBox { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* A41 — le filtre du journal vit dans sa barre d'outils : étroit (il ne doit pas pousser les
+   boutons hors de la ligne) et discret tant qu'il est vide. */
+.logpanel .log-filter { max-width: 180px; padding: 2px 8px; font-size: 12px; }
 .logpanel .loghead { flex: 0 0 auto; }
 .logpanel .loghead { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
 .logpanel .loghead .spacer { flex: 1; }
@@ -1616,6 +1653,10 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 @keyframes landed { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
   100% { box-shadow: 0 0 0 10px transparent; } }
 .note.just-landed { animation: landed .9s ease-out 1; }
+/* …et la même chose sur une CARTE, quand on arrive dessus depuis ailleurs (une notification,
+   l'explorateur de branches, la palette) : sans elle, la liste s'ouvre au bon endroit sans que
+   rien ne dise laquelle des douze cartes on était venu voir. Un balayage, une fois. */
+.card.just-landed { animation: landed .9s ease-out 1; }
 
 @keyframes card-in { from { opacity: 0; transform: translateY(6px); } }
 /* L'entrée en cascade est portée par la LISTE (`animate-in`, posée par `stagger`), pas par la
@@ -3819,3 +3860,60 @@ button.dlog-cname:focus-visible { outline: 2px solid var(--accent); outline-offs
   .knowledge-split { flex-direction: column; }
   .knowledge-versions { flex: 0 0 auto; max-height: 160px; }
 }
+
+/* Historique Git : un LOT se lit comme un bloc, ses opérations comme des lignes. Sans ce
+   groupement, dix suppressions d'un même geste se lisaient comme dix décisions séparées. */
+.git-op-groupe { display: block; }
+.git-op-groupe .git-op-l { display: block; }
+.git-op-lot { font-size: var(--fs-sm); margin-bottom: 6px; }
+.git-op-groupe .git-op-l + .git-op-l { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
+.git-op-err { font-size: var(--fs-sm); color: var(--danger); margin-top: 4px; white-space: pre-wrap; }
+
+/* Une commande d'aperçu est un bouton de copie qui ne s'annonce pas comme tel : le code garde
+   son apparence, le curseur et le survol disent qu'il se clique. */
+.git-cmd-copy { background: none; border: 0; padding: 0; margin: 0; cursor: copy; text-align: left; font: inherit; color: inherit; }
+.git-cmd-copy:hover code { text-decoration: underline dotted; }
+
+/* Le panneau « ? » ne parlait que de touches : la section des pastilles s'en détache. */
+.shortcut-titre { margin: 18px 0 8px; font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+
+/* « brouillon » : une métadonnée, pas une alerte — elle ne bloque rien, elle prévient. */
+.tag.draft { background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--muted); }
+
+/* Gravité des constats qui restent : le bloquant crie, le majeur prévient. */
+.tag.sev-blocker { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
+.tag.sev-major { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+
+/* Les chips de gravité au-dessus des constats : MASQUER, pas retirer — une gravité écartée
+   revient à un clic, et son compte reste lisible. */
+.findings-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+.findings-chips .chip { opacity: .45; }
+.findings-chips .chip.active { opacity: 1; }
+/* Les deux gestes d'un constat, discrets jusqu'au survol de sa ligne. */
+.f-actions { display: inline-flex; gap: 2px; opacity: 0; transition: opacity .12s; }
+.finding:hover .f-actions, .finding:focus-within .f-actions { opacity: 1; }
+
+/* Le libellé d'une session se renomme sur place : le crayon n'apparaît qu'au survol de la
+   carte, pour ne pas transformer une ligne de lecture en barre d'outils. */
+.task-label { display: flex; align-items: center; gap: 6px; }
+.task-label-edit { background: none; border: 0; padding: 0 2px; cursor: pointer; color: var(--muted); opacity: 0; transition: opacity .12s; }
+.card:hover .task-label-edit, .task-label:focus-within .task-label-edit { opacity: 1; }
+.task-label-input { flex: 1; min-width: 0; font: inherit; }
+
+/* Le remède proposé sous une erreur : une action, pas un paragraphe de plus. */
+.err-remede { margin: 6px 0 2px; }
+
+/* Le titre de la merge request sur une ligne de branche : il informe sans voler la vedette au
+   nom de la branche, qui reste ce qu'on cherche du regard. */
+.git-ex-titre { font-size: var(--fs-sm); }
+
+/* La barre de période du tableau de bord : elle donne son sens à tout ce qui suit, donc elle
+   passe en tête et se lit d'un trait. */
+.dash-periode { display: flex; align-items: center; gap: 8px; margin-bottom: var(--s-3); flex-wrap: wrap; }
+
+/* La barre de filtre du journal d'activité, au-dessus de ses lignes. */
+.log-hist-bar { display: flex; gap: 10px; align-items: center; }
+.hist-raison { font-size: var(--fs-sm); }
+
+/* Les remarques jamais envoyées : ambre, comme tout ce qui attend un geste de l'utilisateur. */
+.tag.draft-pending { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); cursor: pointer; }

@@ -229,6 +229,12 @@ const MRS = [
   { project: 'groupe/batch-jobs', title: 'Hotfix : timeout export nocturne', branch: 'hotfix/export-timeout', status: 'to_review', changed: ['jobs/nightlyExport.js'], summary: 'corrige un timeout sur l\'export de nuit' },
   { project: 'groupe/webapp-front', title: 'Ajout du dark mode', branch: 'feat/PROJ-701-dark', status: 'to_review', changed: ['src/theme.js', 'src/components/Toggle.jsx'], summary: 'introduit un thème sombre configurable' },
   { project: 'acme/design-system', title: 'Tokens de couleur : passage en HSL', branch: 'feat/DS-118-hsl-tokens', status: 'to_review', changed: ['src/tokens/color.ts', 'docs/theming.md'], summary: 'convertit les tokens de couleur en HSL' },
+  /* B7 — CELLE-CI TOUCHE LA CARTE « Notifications » : ses chemins sont exactement ceux que la
+     carte de l'agent de domaine cite (`src/notify.js`, `src/templates/notifications`). Sans
+     elle, le badge « touche la carte … » et le contexte de domaine ajouté au prompt de review
+     n'auraient rien à montrer en démo — et une fonctionnalité qu'on ne voit pas en démo est
+     une fonctionnalité qu'on croit cassée. */
+  { project: 'groupe/api-core', title: 'Notifications : canal Slack pour les alertes', branch: 'feat/PROJ-845-slack', status: 'to_review', changed: ['src/notify.js', 'src/templates/notifications/slack.md'], summary: 'ajoute un canal Slack aux notifications' },
 ];
 // MR déjà reviewées / traitées, réparties dans le temps pour les stats
 const REVIEWED = [
@@ -243,30 +249,41 @@ const REVIEWED = [
 ];
 
 let iid = 200;
+/* Le NUMÉRO peut être imposé. Les diffs taillés à la main (`src/demo-diff.js`) sont indexés
+   PAR IID : ajouter une merge request au milieu de la liste décale tous les suivants et les
+   sépare silencieusement de leur diff — ils retombent alors sur le diff générique, et l'écran
+   montre un fichier qui n'a rien à voir avec les constats du rapport. Une merge request ajoutée
+   après coup prend donc un numéro libre, à la fin. */
 function insertMr(m, extra = {}) {
-  iid += 1;
+  const numero = extra.iid || (iid += 1);
   const sha = require('crypto').randomBytes(20).toString('hex');
   const info = db.prepare(`INSERT INTO mr
     (repo_id, iid, title, source_branch, target_branch, web_url, current_sha, reviewed_sha, status, updated_at, gitlab_created_at, author, changed_paths)
     VALUES (@repo_id, @iid, @title, @source_branch, @target_branch, @web_url, @current_sha, @reviewed_sha, @status, @updated_at, @gitlab_created_at, @author, @changed_paths)`)
     .run({
-      repo_id: repoIds[m.project], iid, title: m.title,
+      repo_id: repoIds[m.project], iid: numero, title: m.title,
       source_branch: m.branch, target_branch: extra.target || 'main',
       web_url: (PROJECTS.find((p) => p.project === m.project) || {}).forge === 'github'
-        ? `https://github.com/${m.project}/pull/${iid}`
-        : `https://gitlab.demo/${m.project}/-/merge_requests/${iid}`,
+        ? `https://github.com/${m.project}/pull/${numero}`
+        : `https://gitlab.demo/${m.project}/-/merge_requests/${numero}`,
       current_sha: sha, reviewed_sha: extra.reviewed_sha || null,
       status: m.status, updated_at: extra.date || at(1),
       gitlab_created_at: extra.date || at(2),
-      author: extra.author || AUTHORS[iid % AUTHORS.length], changed_paths: (m.changed || []).join('\n'),
+      author: extra.author || AUTHORS[numero % AUTHORS.length], changed_paths: (m.changed || []).join('\n'),
     });
-  return { id: info.lastInsertRowid, iid, sha, source_branch: m.branch, target_branch: extra.target || 'main', ...m };
+  return { id: info.lastInsertRowid, iid: numero, sha, source_branch: m.branch, target_branch: extra.target || 'main', ...m };
 }
 
 // MR à traiter
 /* Les deux premières arrivent dans les DERNIÈRES 24 H : c'est ce que le brief appelle
    « MR à traiter », et une section vide n'aurait rien montré. */
-const mrsAtraiter = MRS.map((m) => insertMr(m, { date: at(0.2 + (MRS.indexOf(m) % 4)) }));
+const mrsAtraiter = MRS.map((m) => insertMr(m, {
+  date: at(0.2 + (MRS.indexOf(m) % 4)),
+  /* Celle des notifications a été ajoutée APRÈS coup (B7) : elle prend un numéro libre, en
+     fin de plage. Au milieu, elle décalerait toutes les suivantes — et les séparerait des
+     diffs taillés à la main, qui sont indexés par iid. */
+  iid: m.branch === 'feat/PROJ-845-slack' ? 230 : undefined,
+}));
 
 // MR reviewées/traitées + rapports sur disque + versions + constats
 for (const m of REVIEWED) {
@@ -1008,10 +1025,39 @@ db.prepare(`INSERT INTO verification
       { command: 'npm test', code: 0, duration_ms: 51000, output_tail: '# pass 96\n# fail 0' }] }),
   JSON.stringify({ version: 1, status: 'fail', total: 96, duration_ms: 94000,
     failed: echecsCmd, detail_source: 'tap', detail_partiel: false, incoherence: false,
+    /* A25 — les cinq plus lents, tels que la sortie du runner les donne (`# time=`). Sans eux,
+       la démo ne montrerait pas que la donnée existe — et un test lent est presque toujours
+       VERT, ce qui est exactement la raison pour laquelle personne ne le voit. */
+    slowest: [
+      { test: 'export › rejoue un mois complet', ms: 18450 },
+      { test: 'export › écrit le fichier', ms: 9120 },
+      { test: 'import › lit un CSV de 200 Mo', ms: 4310 },
+      { test: 'export › reprend après une coupure réseau', ms: 880 },
+      { test: 'santé › ping', ms: 12.4 },
+    ],
     commands: [{ command: 'npm ci', code: 0, duration_ms: 40000, output_tail: 'ajout de 384 paquets en 40 s' },
       { command: 'npm test', code: 1, duration_ms: 54000,
         output_tail: 'TAP version 13\nok 1 - export › écrit le fichier\nnot ok 2 - export › reprend après une coupure réseau\n# fail 1' }] }),
   JSON.stringify(echecsCmd), at(0.15), at(0.15), at(0.15));
+
+/* A26 — UN TEST INSTABLE, pour que la démo le montre. Deux runs sur le MÊME code : le premier
+   trouve deux tests rouges, le second un seul. Celui qui a été vert une fois sans que rien
+   n'ait bougé est instable — et le rapport le dit à côté de son nom. Les lignes à `test` NULL
+   sont les runs eux-mêmes : sans elles, un run tout vert ne laisserait aucune trace. */
+{
+  const vRouge = db.prepare("SELECT id FROM verification WHERE verifier_name = 'tests front (démo)' ORDER BY id DESC LIMIT 1").get();
+  const cle = `${repoIds['groupe/batch-jobs']}:${String(mrRouge.sha).slice(0, 12)}`;
+  const ins = db.prepare(`INSERT INTO verify_run_test (verification_id, verifier_id, targets_key, test, created_at)
+    VALUES (?,?,?,?,?)`);
+  /* Un run PRÉCÉDENT sur le même code où « reprend après une coupure réseau » était VERT : il
+     est donc rouge AUJOURD'HUI sans que rien n'ait bougé — c'est la définition d'un test
+     instable, et c'est bien lui qu'on veut voir marqué sur le rapport courant. */
+  ins.run(vRouge.id, cmdId, cle, null, at(0.9));
+  ins.run(vRouge.id, cmdId, cle, 'export › écrit le fichier', at(0.9));
+  // Le run courant : « reprend après une coupure réseau » est rouge.
+  ins.run(vRouge.id, cmdId, cle, null, at(0.15));
+  ins.run(vRouge.id, cmdId, cle, 'export › reprend après une coupure réseau', at(0.15));
+}
 
 /* ---------- LE CHANGEMENT TRANSVERSE : un ticket, cinq dépôts, cinq merge requests ----------
    C'est le scénario que trois dépôts ne savent pas raconter : le ticket PROJ-1408 (le paiement
@@ -1111,12 +1157,18 @@ mrsP3x.forEach((mr) => {
    sessions en attente, verdict rouge, MR fraîches et MR dormantes comprises. */
 {
   const mrHealth = mrsAtraiter.find((m) => m.project === 'groupe/api-core');
+  /* B4 — une note cite aussi une merge request DÉJÀ REVIEWÉE : c'est sur le rapport que
+     « 2 notes en parlent » s'affiche, et une citation qui ne vise que des MR à traiter ne
+     montrerait jamais le lien entrant. */
+  const mrCitee = db.prepare(`SELECT mr.iid FROM mr JOIN repo ON repo.id = mr.repo_id
+    WHERE repo.project = 'groupe/api-core' AND mr.status = 'reviewed' ORDER BY mr.iid LIMIT 1`).get();
   const insPage = db.prepare(`INSERT INTO note_page (title, content, pinned, created_at, updated_at)
     VALUES (?,?,?,?,?)`);
   insPage.run('Points à aborder au daily',
     ['- Relancer le PSP sur le retry : la session IA attend une réponse.',
       `- Reparler de !${mrHealth.iid} — la sonde de santé change le readiness du déploiement.`,
       '- PROJ-1390 bloque la facturation ; Sofia doit être prévenue dès la revue.',
+      `- La validation des webhooks (!${mrCitee.iid}) reste à trancher : on garde le schéma strict ?`,
       '',
       '## À ne pas oublier',
       'Le point archi de jeudi porte sur le cache : préparer deux chiffres.'].join('\n'),
@@ -1410,6 +1462,40 @@ db.prepare(`UPDATE mr SET ticket_jira_key = 'PROJ-1408', ticket_jira_status = 'E
     'Il faut déclarer le type dans `src/notify.js` puis ajouter son gabarit.', 3, 'manual');
 }
 
+/* ---------- B14/B15 : ce que Git a laissé en plan, et ce qu'il a fait ----------
+   Trois choses n'existaient pas en démo et sont devenues visibles dans l'outil : le merge
+   résolu à moitié qui attend dans un dossier de travail (brief), les opérations git en échec
+   (brief, et « Opérations Git » dans Statistiques), et les jobs Jenkins RATTACHÉS à un dépôt —
+   ceux-là alimentent le bouton Jenkins d'une merge request et l'entrée de la palette. */
+{
+  const merge = db.prepare(`INSERT INTO git_merge (repo_id, source_branch, target_branch, dir, status, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?)`);
+  // Hier soir, à moitié résolu : c'est exactement ce que le brief doit rappeler le matin.
+  merge.run(repoIds['groupe/api-core'], 'main', 'feat/PROJ-833-order-index',
+    path.join(DEMO_DIR, 'merges', 'api-core-order-index'), 'conflict', at(0.8), at(0.8));
+  // …et un merge terminé : il ne doit PAS apparaître, c'est la moitié du sens de la section.
+  merge.run(repoIds['groupe/webapp-front'], 'main', 'feat/PROJ-701-dark',
+    path.join(DEMO_DIR, 'merges', 'webapp-dark'), 'pushed', at(3), at(3));
+
+  const op = db.prepare(`INSERT INTO git_op (batch_id, created_at, action, repo_id, project, ref_name, source_ref, status, error, fetched)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`);
+  const lot = `demo-${Date.now().toString(36)}`;
+  for (const [i, ref] of ['feat/PROJ-500-retry', 'feat/PROJ-540-a11y', 'feat/PROJ-560-ratelimit'].entries()) {
+    op.run(lot, at(0.5 + i * 0.01), 'delete_branch', repoIds['groupe/api-core'], 'groupe/api-core', ref, null, 'done', null, 1);
+  }
+  // Une branche protégée refuse d'être supprimée : l'échec entre au brief et dans le taux.
+  op.run(lot, at(0.5), 'delete_branch', repoIds['groupe/api-core'], 'groupe/api-core', 'release/1.4', null,
+    'error', 'protected branch cannot be deleted', 1);
+  op.run(`${lot}-tag`, at(2), 'create_tag', repoIds['groupe/webapp-front'], 'groupe/webapp-front', 'v2.0.1', 'main', 'done', null, 1);
+
+  /* Les jobs Jenkins d'un dépôt. La démo servait déjà une liste de jobs (module `demo-jenkins`),
+     mais AUCUN n'était rattaché à un dépôt : le bouton « Lancer <job> » d'une merge request
+     verte et l'entrée de palette n'avaient donc rien à proposer. */
+  const jk = db.prepare('INSERT OR IGNORE INTO repo_jenkins (repo_id, job_path, param) VALUES (?,?,?)');
+  jk.run(repoIds['groupe/api-core'], 'boutique/api-build', 'BRANCHE');
+  jk.run(repoIds['groupe/webapp-front'], 'boutique/front-build', 'BRANCHE');
+}
+
 const counts = {
   repos: db.prepare('SELECT COUNT(*) c FROM repo').get().c,
   agents: db.prepare('SELECT COUNT(*) c FROM agent').get().c,
@@ -1425,6 +1511,7 @@ const counts = {
   questions: db.prepare('SELECT COUNT(*) c FROM question').get().c,
   notePages: db.prepare('SELECT COUNT(*) c FROM note_page').get().c,
   todos: db.prepare('SELECT COUNT(*) c FROM todo').get().c,
+  gitOps: db.prepare('SELECT COUNT(*) c FROM git_op').get().c,
   services: db.prepare('SELECT COUNT(*) c FROM service').get().c,
   freeLinks: db.prepare('SELECT COUNT(*) c FROM free_link').get().c,
   commentDrafts: db.prepare('SELECT COUNT(*) c FROM mr_comment_draft').get().c,
