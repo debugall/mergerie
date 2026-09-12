@@ -2080,8 +2080,11 @@ function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) 
      `agent_pass`, mais leur `output_path` pointe toujours un retour valide. On le
      présente comme une passe unique — sans lui, « Retour de l'IA » deviendrait vide
      sur tout l'existant. Le prompt de l'époque, lui, n'a pas été conservé. */
+  /* Les blocs de protocole (`<<<REPO>>>`, `<<<STALE>>>`, `<<<AGENT>>>`) sont un canal de
+     service entre l'agent et le code : ils ne s'affichent pas plus ici que dans `/md`. */
   if (!passes.length) {
-    const output = legacyOutputPath ? readFileSafe(legacyOutputPath) : null;
+    const brut = legacyOutputPath ? readFileSafe(legacyOutputPath) : null;
+    const output = brut ? protocol.nettoyer(brut) : null;
     if (!output) return { title, passes: [], current: null };
     return {
       title,
@@ -2099,7 +2102,7 @@ function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) 
     passes,
     current: current ? {
       id: current.id, n: current.n, kind: current.kind, created_at: current.created_at,
-      prompt: current.prompt, output: current.output, favori: current.favori ? 1 : 0, titre: current.titre || '',
+      prompt: current.prompt, output: current.output ? protocol.nettoyer(current.output) : current.output, favori: current.favori ? 1 : 0, titre: current.titre || '',
       has_diff: !!current.diff_path, no_change: !!(current.head_sha && !current.diff_path),
     } : null,
   };
