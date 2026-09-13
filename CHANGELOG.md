@@ -33,6 +33,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Answering an exploration's question now closes the todo it left behind.** A session that
+  stops to ask puts a high-priority todo in your list — the queue is free and nothing will
+  restart on its own. It was closed only once no repository of the session was waiting any
+  more, which is right for coding, where each repository has its own session and its own
+  questions: answering the first does not settle the four others. An exploration is the
+  opposite — **one session for all its repositories** — so the question is written on every
+  target, and answering once answers for the whole session, which is exactly what the resume
+  does when it unblocks the others before relaunching. The count still saw them waiting, and
+  the todo stayed open forever as soon as there were two repositories: that is, for the three
+  shipped agents, all scoped to every repository.
 - **The demo now writes its review in the language of the screen.** The simulated report,
   the explanation and the answer to a question were written in French, hard-coded: an
   interface switched to English showed “Revue — Paiement 3×”, “Points d’attention” and

@@ -3708,6 +3708,22 @@ app.post('/api/tasks/:id/targets/:tid/answer', wrap((req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
   if (tg.status !== 'needs_input') throw new Error(t('err.session-pas-en-attente'));
+  const tache = taskById(Number(req.params.id));
+
+  /* UNE EXPLORATION N'A QU'UNE SESSION POUR TOUS SES DÉPÔTS. La question est donc posée sur
+     CHAQUE cible — c'est ce qui la fait apparaître où qu'on regarde — mais y répondre répond
+     pour la session ENTIÈRE : la reprise débloque d'elle-même les autres cibles avant de
+     relancer l'agent. Le décompte plus bas les voyait encore en attente et laissait la todo
+     posée par l'outil ouverte pour toujours dès qu'il y avait deux dépôts — c'est-à-dire pour
+     les trois agents livrés, tous en périmètre « tous les dépôts ». On solde donc l'attente
+     ici, APRÈS validation (une demande refusée ne doit rien changer) et avant de compter.
+     En CODAGE la condition reste entière : chaque dépôt y a sa propre session et ses propres
+     questions, et répondre au premier ne solde pas les quatre autres. */
+  const solderExploration = () => {
+    if (!tache || tache.kind !== 'explore') return;
+    db.prepare(`UPDATE task_target SET status = 'running', last_error = NULL, updated_at = ?
+      WHERE task_id = ? AND status = 'needs_input'`).run(new Date().toISOString(), Number(req.params.id));
+  };
 
   /* RÉPONDU AILLEURS. « Reprendre au terminal » copie la session d'agent : on peut donc
      répondre aux questions dans son propre terminal, et l'agent y poursuit le travail — dans le
@@ -3720,6 +3736,7 @@ app.post('/api/tasks/:id/targets/:tid/answer', wrap((req, res) => {
   if (req.body && req.body.elsewhere) {
     db.prepare("UPDATE task_target SET questions_json = NULL, status = 'running', last_error = NULL, updated_at = ? WHERE id = ?")
       .run(new Date().toISOString(), tg.id);
+    solderExploration();
     const attendent = db.prepare("SELECT COUNT(*) c FROM task_target WHERE task_id = ? AND status = 'needs_input'")
       .get(Number(req.params.id)).c;
     if (!attendent) notes.fermerTodoAuto('session_question', Number(req.params.id));
@@ -3745,6 +3762,7 @@ app.post('/api/tasks/:id/targets/:tid/answer', wrap((req, res) => {
   /* La todo posée par l'outil se referme ici — mais SEULEMENT si plus aucun projet de la
      session n'attend : sur une session multi-dépôts, répondre au premier ne solde pas le
      travail, et une todo cochée trop tôt fait oublier les quatre autres. */
+  solderExploration();
   const encore = db.prepare("SELECT COUNT(*) c FROM task_target WHERE task_id = ? AND status = 'needs_input'")
     .get(Number(req.params.id)).c;
   if (!encore) notes.fermerTodoAuto('session_question', Number(req.params.id));
