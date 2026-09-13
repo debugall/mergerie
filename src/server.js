@@ -2836,13 +2836,13 @@ app.post('/api/agents/domain', wrap((req, res) => {
   if (!carto) throw new Error(t('agents.err.no-cartographer'));
   const subject = String((req.body || {}).subject || '').trim();
   if (!subject) throw new Error(t('agents.err.subject-required'));
-  const repoIds = (req.body || {}).repo_ids;
-  /* Un sous-ensemble de dépôts se traduit par un périmètre `repos` LE TEMPS DU RUN : le
-     cartographe est `all_repos` par défaut, et on ne modifie pas son profil pour un run. */
-  const perimetre = Array.isArray(repoIds) && repoIds.length
-    ? { ...carto, scope_kind: 'repos', repos: repoIds.map((id) => ({ repo_id: Number(id), branch: '', role: 'readonly' })) }
-    : carto;
-  res.json(agentprofile.lancer(perimetre, { mode: 'ask', question: subject, repoIds, triggeredBy: 'manual' }));
+  /* Un sous-ensemble de dépôts restreint le RUN, jamais le profil : le cartographe est
+     `all_repos` et le reste — on ne modifie pas un profil livré pour un lancement. C'est
+     `ciblesDe` qui applique la restriction, une fois, pour tous les appelants : la
+     cartographie comme les mises à jour de connaissance qui la relanceront. */
+  res.json(agentprofile.lancer(carto, {
+    mode: 'ask', question: subject, repoIds: (req.body || {}).repo_ids, triggeredBy: 'manual',
+  }));
 }));
 
 /* Déclencher un tick d'horaire à la main. Attendre la minute dans un test serait un pari sur

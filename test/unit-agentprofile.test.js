@@ -68,6 +68,23 @@ describe('agentprofile : les cibles d’un run', () => {
     assert.deepEqual(m2.targets, []);
   });
 
+  /* LA MÊME RESTRICTION EN LECTURE. Une mise à jour de connaissance est exécutée par le
+     cartographe — « tous les dépôts » — POUR un agent de domaine qui, lui, n'en couvre qu'un.
+     Sans cette garantie, cocher un seul dépôt à la création tenait pour la cartographie et se
+     perdait à la première mise à jour : les vingt autres dépôts étaient clonés et relus. */
+  test('les dépôts reçus restreignent AUSSI une exploration, même pour un agent « tous les dépôts »', () => {
+    const a = creer({ name: 'Cartographe bis' });
+    const m = agentprofile.materialize(a, { mode: 'ask', question: 'q', repoIds: [idFront] });
+    assert.deepEqual(m.targets.map((x) => x.repo_id), [idFront]);
+    // Et la demande ne NOMME que ce dépôt-là : l'agent ne part pas à la pêche dans les autres.
+    assert.ok(!m.prompt.includes('grp/api'), m.prompt);
+  });
+
+  test('un dépôt désactivé reste hors de portée, même explicitement demandé', () => {
+    const a = creer({ name: 'Tout bis' });
+    assert.deepEqual(agentprofile.materialize(a, { mode: 'ask', question: 'q', repoIds: [idOff] }).targets, []);
+  });
+
   test('auto_push est toujours 0 — un agent ne pousse jamais de lui-même', () => {
     const a = creer({ name: 'Poussif', kind: 'code' });
     assert.equal(agentprofile.materialize(a, { mode: 'code', question: 'q' }).auto_push, 0);

@@ -188,6 +188,48 @@ describe('Agents de domaine', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
     });
   });
 
+  /* LA RESTRICTION TIENT DANS LE TEMPS. Cocher un seul dépôt à la création tenait pour la
+     cartographie et se perdait ensuite : une mise à jour de connaissance est exécutée par le
+     CARTOGRAPHE, qui, lui, voit tous les dépôts. Un dépôt ajouté à Mergerie après coup se
+     retrouvait donc cloné et relu à chaque mise à jour d'un agent qu'il ne concerne pas —
+     du temps et de l'argent, sur un sujet dont l'utilisateur avait justement dit le périmètre. */
+  test('une mise à jour ne lit QUE les dépôts de l’agent, pas ceux ajoutés depuis', async () => {
+    const d3 = makeRemoteRepo(path.join(app.dataDir, 'r3'));
+    const hs = (await app.api('POST', '/api/repos', { url: d3.url, project: 'groupe/hors-sujet' })).body.id;
+    const a = (await app.api('GET', '/api/agents')).body.find((x) => x.is_domain);
+    assert.ok(!a.repos.some((r) => r.repo_id === hs), 'le nouveau dépôt n’est pas au périmètre de l’agent');
+
+    // La route rend la session qu'elle vient de créer : ses cibles sont déjà écrites.
+    const r = await app.api('POST', `/api/agents/${a.id}/knowledge/refresh`);
+    assert.equal(r.status, 200, r.text);
+    const vue = (await app.api('GET', `/api/tasks/${r.body.task.id}`)).body.task;
+    assert.deepEqual(vue.targets.map((x) => x.project).sort(),
+      ['groupe/api-core', 'groupe/webapp-front'],
+      'la mise à jour part sur les dépôts de l’agent, et sur eux seuls');
+    await waitForJobs(app.api, { timeout: 120000 });
+  });
+
+  /* …ET LE GESTE LUI-MÊME, depuis le formulaire. Cocher un dépôt dans « Où chercher » n'est
+     prouvé par aucun appel d'API : la case, son `value` et le corps posté forment une chaîne
+     qui peut casser à elle seule, sans que la route bouge d'une ligne. */
+  test('« Où chercher » : un seul dépôt coché, un seul dépôt lu', async () => {
+    await allerAgents();
+    await page.locator('#btnNewDomainAgent').click();
+    await page.waitForSelector('#domainModal:not([hidden])');
+    await page.waitForFunction(() => document.querySelectorAll('#domainRepos .dom-repo').length >= 3);
+    await page.locator('#domainSubject').fill('la facturation : calcul, remises, export comptable');
+    await page.locator(`#domainRepos .dom-repo[value="${idApi}"]`).click();
+    await page.locator('#domainStart').click();
+    await page.waitForSelector('#domainModal', { state: 'hidden' });
+    await attendreServeur(async () => (await app.api('GET', '/api/tasks')).body.some((x) => /facturation/i.test(x.prompt)),
+      'la cartographie restreinte est partie');
+    const t = (await app.api('GET', '/api/tasks')).body.find((x) => /facturation/i.test(x.prompt));
+    const vue = (await app.api('GET', `/api/tasks/${t.id}`)).body.task;
+    assert.deepEqual(vue.targets.map((x) => x.project), ['groupe/api-core'],
+      'les deux autres dépôts ne sont ni clonés ni lus');
+    await waitForJobs(app.api, { timeout: 120000 });
+  });
+
   test('aucune erreur JavaScript pendant tout ce parcours', () => {
     assert.deepEqual(erreurs, []);
   });

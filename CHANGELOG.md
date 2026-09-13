@@ -285,6 +285,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A domain agent stopped reading every repository behind your back.** `New domain agent` asks
+  where to look, and ticking a single repository held for the initial mapping — then quietly
+  stopped holding. A knowledge update is run by the **Cartographer**, whose own scope is *all
+  repositories*, so every update cloned, read and paid for the whole estate on a subject you had
+  said concerned one repository; a repository added to Mergerie months later joined in too. The
+  repositories a run is given now restrict it always, whatever the profile's scope and whatever
+  the mode, and they still never widen it: a repository outside the scope, or disabled, does not
+  become a target because someone named it.
+
 - **Every field of the agent forms now says what it is for.** The form asks for a model, a
   permission mode, a tool list, a turn bound — settings you cannot guess, and where being wrong
   is expensive: an agent that writes where you thought it only read. Three fields out of
