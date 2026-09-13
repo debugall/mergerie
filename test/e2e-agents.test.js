@@ -402,6 +402,41 @@ describe('Agents : l’onglet, les profils, les runs', { skip: dispo ? false : M
       'la page générale non plus');
   });
 
+  /* LES TROIS MODALES DE CRÉATION FONT LA MÊME LARGEUR. Celles des agents étaient plus
+     étroites — un `max-width: 980px` ajouté après coup ramenait toutes les modales larges à
+     980 sans le dire, en contredisant la règle déclarée au-dessus. Et une boîte élargie ne
+     suffit pas : `.form` reste plafonné à 720 px, si bien que la modale grandissait sans que
+     son contenu suive. On mesure donc les deux. */
+  test('les modales d’agent font la même largeur que celle d’une session de codage', async () => {
+    const largeurs = async (sel) => page.evaluate((s) => {
+      const b = document.querySelector(`${s} .modal-box`);
+      const f = b.querySelector('.form') || b;
+      return { boite: Math.round(b.getBoundingClientRect().width), form: Math.round(f.getBoundingClientRect().width) };
+    }, sel);
+
+    await page.locator('nav button[data-tab="task"]').click();
+    await page.waitForSelector('#tab-task.active');
+    await page.locator('#btnNewTask').click();
+    await page.waitForSelector('#taskModal:not([hidden])');
+    const session = await largeurs('#taskModal');
+    await page.locator('#taskCancel').click();
+    await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
+    assert.ok(session.boite > 900, `référence trop étroite pour prouver quoi que ce soit : ${session.boite}`);
+
+    await rechargerListe();
+    await page.locator('#btnNewAgent').click();
+    await page.waitForSelector('#agentModal:not([hidden])');
+    assert.deepEqual(await largeurs('#agentModal'), session, 'la modale « Nouvel agent »');
+    await page.locator('#agentCancel').click();
+    await page.waitForSelector('#agentModal[hidden]', { state: 'attached' });
+
+    await page.locator('#btnNewDomainAgent').click();
+    await page.waitForSelector('#domainModal:not([hidden])');
+    assert.deepEqual(await largeurs('#domainModal'), session, 'la modale « Nouvel agent de domaine »');
+    await page.locator('#domainCancel').click();
+    await page.waitForSelector('#domainModal[hidden]', { state: 'attached' });
+  });
+
   test('aucune erreur JavaScript pendant tout ce parcours', () => {
     assert.deepEqual(erreurs, []);
   });

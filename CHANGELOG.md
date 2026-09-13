@@ -40,6 +40,19 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   the only way to notice a v4 that swelled from eight to thirty thousand tokens before every run
   pays for it. Every button on the screen explains itself on hover, saying in particular which
   ones start a session that costs.
+- **The two agent modals are as wide as the coding-session one.** `New agent` and `New domain
+  agent` opened narrower — a `max-width: 980px` added later silently pulled every wide modal
+  back to 980, Jenkins included, contradicting the rule declared right above it. Widening the
+  box was not enough: the form inside stayed capped at 720px, so the window grew and its content
+  did not. Both now fill the same width, and a repository checklist flows into columns instead of
+  scrolling as one tall narrow strip.
+- **A job panel no longer swallows the clicks meant for the bottom of the page.** The panel is
+  fixed, spans the whole column and stands a hundred and seventy pixels tall; the end of every
+  page passed underneath it. It happens for real — a job that ends **in error** never folds away
+  on its own, by design, so you can read the error — and what it covered included the action bar
+  of the Settings form, hence the `Save` button: measured at 769→801 for the button against
+  787→958 for the panel. The page now reserves the panel's measured height, so anything under it
+  can always be scrolled clear.
 - **Statistics count in tokens too.** The dashboard showed dollars next to the costliest
   sessions and next to each agent; it now reads in tokens like the agents screen, for the same
   reason — a dollar figure exists only on the backends that announce one.
@@ -320,13 +333,6 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
-- **A job panel no longer swallows the clicks meant for the bottom of the page.** The panel is
-  fixed, spans the whole column and stands a hundred and seventy pixels tall; the end of every
-  page passed underneath it. It happens for real — a job that ends **in error** never folds away
-  on its own, by design, so you can read the error — and what it covered included the action bar
-  of the Settings form, hence the `Save` button: measured at 769→801 for the button against
-  787→958 for the panel. The page now reserves the panel's measured height, so anything under it
-  can always be scrolled clear.
 - **An up-to-date map no longer claims one commit has aged it.** `N commits since the map` read
   `1 commit` on a repository where nothing had moved. On an empty `git log`, a fallback landed on
   the command object itself and `[object Object]` counted as a line — so as a commit. The same

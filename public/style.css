@@ -1257,7 +1257,11 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 #tab-jenkins .toolbar .inline-check { white-space: nowrap; }
 /* Le formulaire est plafonné à 720px par défaut (.form) : on lève ce plafond dans ces
    modales pour que le contenu remplisse toute la largeur (sinon grand blanc à droite). */
-#taskModal .modal-box .form, #ticketModal .modal-box .form { max-width: none; }
+/* Le formulaire remplit la modale large. Sans cela, `.form { max-width: 720px }` laissait
+   une colonne de 720 px au milieu d'une boîte de 1180 — la modale s'élargissait, pas son
+   contenu, et l'écran était plus vide qu'avant. */
+#taskModal .modal-box .form, #ticketModal .modal-box .form,
+#agentModal .modal-box .form, #domainModal .modal-box .form { max-width: none; }
 #taskModal .modal-box textarea[name="prompt"] { min-height: 200px; }
 /* Les combos projet/branche remplissent la largeur disponible ; base réduite pour
    que les 3 combos + icônes d'aide + bouton « retirer » tiennent sur UNE ligne. */
@@ -3850,12 +3854,17 @@ button.dlog-cname:focus-visible { outline: 2px solid var(--accent); outline-offs
 
 /* Une liste à cocher défile plutôt que d'allonger la modale sans fin : trente skills
    pousseraient les boutons hors de l'écran. */
+/* Les cases sur PLUSIEURS COLONNES dès qu'il y a la place : vingt dépôts en une colonne de
+   1180 px de large font une liste haute et étroite au milieu du vide, qu'on fait défiler pour
+   rien. `columns` coupe là où il faut sans imposer un nombre. */
 .check-list {
+  columns: 220px auto; column-gap: 18px;
   max-height: 190px; overflow: auto; margin: 4px 0 8px;
   border: 1px solid var(--line); border-radius: var(--r-sm); padding: 6px 8px;
   background: var(--panel2);
 }
-.check-list > label { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; }
+.check-list > label { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0;
+  break-inside: avoid; }
 #taskSkillsRow > .search { width: 100%; box-sizing: border-box; }
 
 /* Le menu d'autocomplétion réutilise `.combo-options` ; seule la sélection au clavier
@@ -3913,7 +3922,12 @@ button.dlog-cname:focus-visible { outline: 2px solid var(--accent); outline-offs
   background: var(--panel2); font-family: var(--ff-mono); font-size: 12px;
   white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow: auto;
 }
-.modal-lg > .modal-box, .modal-box.modal-lg { max-width: 980px; }
+/* CE PLAFOND CONTREDISAIT SA PROPRE RÈGLE. `.modal-box.modal-lg` est déclarée plus haut à
+   `width: min(1180px, 95vw)` — le commentaire y dit pourquoi : 900 px repliaient l'historique
+   Jenkins en accordéon. Ce `max-width: 980px`, ajouté ensuite pour le formulaire d'agent,
+   ramenait TOUTES les modales larges à 980 sans le dire, Jenkins compris. Les deux règles
+   n'en font plus qu'une, et une modale large fait la même largeur que la session de codage. */
+.modal-lg > .modal-box { width: min(1180px, 95vw); }
 
 .knowledge-split { display: flex; gap: 12px; align-items: stretch; min-height: 320px; }
 .knowledge-versions { flex: 0 0 220px; max-height: 60vh; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
