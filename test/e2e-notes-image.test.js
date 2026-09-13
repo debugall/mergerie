@@ -124,6 +124,10 @@ describe('Captures dans une page de notes', () => {
     test('coller dans une page neuve insère le lien au curseur et affiche l’image', async () => {
       await page.locator('#pageNew').click();
       await page.waitForSelector('#pageContent');
+      /* Une page neuve s'ouvre sur le Markdown seul — il n'y a rien à lire. Ce test regarde
+         le RENDU de la capture : il lui faut les deux colonnes, comme à qui colle une image
+         en voulant la voir apparaître. */
+      await page.locator('.note-panes-pick [data-panes="both"]').click();
       await page.locator('#pageContent').fill('Avant.\n\nAprès.');
       /* Curseur juste après « Avant. » (6 caractères) : la capture s'insère LÀ, pas à la fin
          du document — et sur sa propre ligne, sinon elle couperait le paragraphe au rendu. */

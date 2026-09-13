@@ -73,6 +73,14 @@ npm test
 - The end-to-end UI suites drive a real Chromium. `npm ci` installs the `playwright` package but **not**
   the browsers, so without that first command those suites skip themselves — and say so, naming the
   command to run. A green run that skipped them proves nothing about the screen.
+- The **voice-dictation suite needs neither a microphone nor a 1.6 GB model.** Chromium is launched
+  with `--use-fake-device-for-media-stream` and `--use-file-for-fake-audio-capture`, fed by
+  `test/fixtures/dictation/phrase-fr.wav` (a synthetic three-second file, versioned), and the server
+  runs with `DICTATION_DRY_RUN=1`, which substitutes a simulated engine. That engine returns a
+  scripted sentence **and the real duration of the WAV it received** — which is what proves, in test,
+  that audio actually crossed the chain. What is *not* versioned is the reference recordings the
+  measurement bench and the diagnostic sample want: system voices are not clearly redistributable, so
+  `test/fixtures/dictation/README.md` explains how to record your own in three commands.
 - A **git identity is not required**. The suites build real git repositories and run real commits, but
   each fixture repository carries its own local `user.name` / `user.email`
   (`poserIdentiteGit` in `test/helpers/app.js`). Nothing reads — or writes — your global git

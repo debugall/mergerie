@@ -20,12 +20,18 @@ DST="${2:-docs/demo.gif}"
 FPS="${FPS:-6}"
 # 640 px : la largeur d'affichage du README. Au-delà, on paie des pixels que personne ne voit.
 LARGE="${LARGE:-640}"
-# 64 couleurs plutôt que 256. C'est le réglage qui rapporte le plus sans toucher à la
+# 32 couleurs plutôt que 256. C'est le réglage qui rapporte le plus sans toucher à la
 # lisibilité : l'interface est en aplats, et sur une capture de l'onglet Notes le texte reste
 # aussi lisible qu'à 128. Mesuré sur la visite guidée de 163 s : 256 → hors sujet,
 # 128 → 5235 Ko, 96 → 4659 Ko, 64 → 3455 Ko. La marge compte, la vidéo s'allonge à chaque
 # fonctionnalité ajoutée et le budget, lui, ne bouge pas.
-COULEURS="${COULEURS:-64}"
+#
+# ET ELLE S'EST ALLONGÉE : 207 s (l'onglet Agents est entré dans la visite) et un thème
+# SOMBRE, qui dithere plus mal qu'un fond clair. Re-mesuré sur cette version : 64 → 6681 Ko,
+# 48 → 5969 Ko, 32 → 4528 Ko, et baisser les images par seconde ne rapporte presque rien
+# (5 im/s à 48 couleurs : 5926 Ko) tout en faisant saccader le curseur. C'est donc la palette
+# qui a été resserrée. À 640 px de large, 32 couleurs restent lisibles — légendes comprises.
+COULEURS="${COULEURS:-32}"
 
 [ -f "$SRC" ] || { echo "Enregistrement absent : $SRC (lance d'abord « npm run record:demo »)" >&2; exit 1; }
 command -v ffmpeg >/dev/null || { echo "ffmpeg est nécessaire (brew install ffmpeg)" >&2; exit 1; }

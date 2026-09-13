@@ -114,7 +114,14 @@ function lancerUne(programme, args, { cwd, env, resteMs, onLog }) {
    `prefixe` : le nom du dépôt, quand plusieurs sont testés. Sans lui, deux dépôts qui ont
    chacun un test `panier › total` produiraient deux entrées indiscernables — et le delta
    base/tête les confondrait. */
-function detailDesTests(verifier, dir, resultats, onLog, prefixe = null) {
+/* MARGE D'UNE SECONDE : certains systèmes de fichiers datent à la seconde, et un rapport écrit
+   dans la même seconde que le démarrage serait rejeté à tort. Le doute profite au rapport —
+   se tromper d'une seconde est moins grave que de perdre le détail des tests. */
+function estFrais(abs, depuis) {
+  try { return fs.statSync(abs).mtimeMs >= depuis - 1000; } catch { return false; }
+}
+
+function detailDesTests(verifier, dir, resultats, onLog, prefixe = null, depuis = 0) {
   const nommer = (d) => (!d || !prefixe ? d : { ...d, tests: (d.tests || []).map((x) => ({ ...x, test: `${prefixe} › ${x.test}` })) });
   const ou = prefixe ? `${prefixe} : ` : '';
 
@@ -126,6 +133,15 @@ function detailDesTests(verifier, dir, resultats, onLog, prefixe = null) {
       onLog(t('log.verify.report-outside', { ou, rel }));
     } else if (!fs.existsSync(abs)) {
       onLog(`${ou}rapport ${rel} absent — les commandes ne l'ont pas produit`);
+    } else if (depuis && !estFrais(abs, depuis)) {
+      /* UN RAPPORT PLUS VIEUX QUE LE RUN N'EST PAS LE SIEN. En mode « in place », le dépôt de
+         l'utilisateur garde ses fichiers d'un run à l'autre : si les commandes de ce run-ci
+         échouent AVANT de régénérer le rapport (un `npm ci` qui casse, par exemple), le
+         `report.xml` laissé par le run précédent — celui de la base — était relu comme s'il
+         venait d'être produit. Le run tête héritait alors des tests de la base, et le delta
+         imputable devenait vide : une branche cassée passait pour propre. Sans rapport frais,
+         on retombe sur TAP ou sur les codes de sortie, qui, eux, ne mentent pas. */
+      onLog(`${ou}rapport ${rel} plus ancien que ce run — ignoré (les commandes ne l'ont pas régénéré)`);
     } else {
       const j = verify.parserJUnit(fs.readFileSync(abs, 'utf8'));
       if (j) {
@@ -164,6 +180,8 @@ async function lancerCommandes(verifier, commandes, repos, onLog = () => {}) {
 
   for (const r of repos) {
     if (multi) onLog(`— ${r.name}`);
+    // L'instant d'avant la première commande : c'est lui qui dira si le rapport lu est le nôtre.
+    const debutRepo = Date.now();
     const duRepo = [];
     for (const brut of commandes) {
       const d = verify.decouperCommande(brut);
@@ -171,8 +189,17 @@ async function lancerCommandes(verifier, commandes, repos, onLog = () => {}) {
       const reste = fin - Date.now();
       if (reste <= 0) return { erreur: `délai dépassé (${verifier.timeout_s} s)` };
 
+      /* UN ARRÊT N'EST PAS UN ÉCHEC DE TESTS. « Stop » tue le processus courant : la commande
+         revient avec un code ≠ 0, et sans cette garde elle était lue comme une batterie rouge —
+         la vérification se concluait en `verified_fail` et la merge request héritait d'un
+         verdict qu'aucun test n'avait prononcé. On sort donc en ERREUR, avant et après chaque
+         commande : avant pour ne pas en lancer une de plus, après parce que le code ≠ 0 qu'on
+         vient de lire est la conséquence du kill, pas un résultat. */
+      if (proc.isCancelled()) return { erreur: t('err.job.stopped') };
+
       onLog(`$ ${brut}`);
       const res = await lancerUne(d.programme, d.args, { cwd: r.dir, env, resteMs: reste, onLog });
+      if (proc.isCancelled()) return { erreur: t('err.job.stopped') };
       if (res.erreurLancement) {
         return { erreur: `${d.programme} : ${res.erreurLancement} — vérifie le PATH du serveur, ou déclare les variables d'environnement du vérificateur` };
       }
@@ -184,7 +211,7 @@ async function lancerCommandes(verifier, commandes, repos, onLog = () => {}) {
       }
       onLog(`« ${brut} » : ok (${Math.round(res.duration_ms / 1000)} s)`);
     }
-    details.push(detailDesTests(verifier, r.dir, duRepo, onLog, multi ? r.name : null));
+    details.push(detailDesTests(verifier, r.dir, duRepo, onLog, multi ? r.name : null, debutRepo));
     tous.push(...duRepo);
   }
 
@@ -396,6 +423,9 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
       champs.head ? JSON.stringify(champs.head) : null,
       champs.imputable ? JSON.stringify(champs.imputable) : null,
       verify.tronquer(logs, verify.MAX_LOG), nowIso(), verificationId);
+    /* A26 — on note ce que ce run a trouvé rouge, sur CE code. Best-effort : une trace
+       d'instabilité ne doit jamais faire échouer une vérification qui a, elle, abouti. */
+    try { noterTestsDuRun(verificationId, champs.head); } catch { /* trace non bloquante */ }
     return champs.verdict || 'verify_error';
   };
 
@@ -528,10 +558,68 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
       if (err) { echecs.push(err); noter(`⚠ ${err}`); }
     }
     if (echecs.length) {
-      db.prepare('UPDATE verification SET restore_error = ? WHERE id = ?')
-        .run(echecs.join(' · ').slice(0, 1000), verificationId);
+      const texte = echecs.join(' · ').slice(0, 1000);
+      db.prepare('UPDATE verification SET restore_error = ? WHERE id = ?').run(texte, verificationId);
+      /* B12 — ET ON LE DIT AILLEURS QUE DANS LE RAPPORT. C'est le pire état que l'outil puisse
+         laisser : un dossier de l'utilisateur — son vrai dossier de travail, pas un clone —
+         resté sur une branche détachée ou avec un stash non rendu. Il n'était visible qu'en
+         ouvrant le rapport de cette vérification-là, c'est-à-dire par quelqu'un qui sait déjà
+         qu'il y a un problème. Une todo (qui survit à la notification) et une notification
+         (qui arrive tout de suite) : les deux, parce que les deux moments comptent. */
+      try {
+        require('./notes').todoAuto('restore_error', verificationId,
+          t('todo.restore-error.title'), texte);
+        require('./notify').push('restore_error', { verification_id: verificationId, message: texte.slice(0, 200) });
+      } catch { /* la restauration a déjà échoué : on ne double pas l'échec */ }
     }
   }
+}
+
+/* A26 — LA TRACE QUI PERMET DE DIRE « CE TEST EST INSTABLE ». On garde, par run : le code
+   testé (les couples dépôt:sha triés) et le nom des tests rouges. Une ligne à `test` NULL
+   marque le run lui-même — sans elle, un run tout vert ne laisserait rien, et on ne saurait
+   pas qu'un test rouge ailleurs a été vert ici.
+
+   Seuls les runs qui NOMMENT leurs tests entrent : sans noms, rien à apparier. */
+function cleCibles(cibles) {
+  return (cibles || [])
+    .map((c) => `${c.repo_id}:${String(c.head_sha || c.sha || '').slice(0, 12)}`)
+    .filter((x) => !/:$/.test(x))
+    .sort()
+    .join(',');
+}
+
+function noterTestsDuRun(verificationId, head) {
+  if (!head || !['tap', 'junit', 'mixte'].includes(head.detail_source)) return 0;
+  const v = db.prepare('SELECT verifier_id, targets_json FROM verification WHERE id = ?').get(verificationId);
+  if (!v) return 0;
+  let cibles = [];
+  try { cibles = JSON.parse(v.targets_json || '[]'); } catch { cibles = []; }
+  const cle = cleCibles(cibles);
+  if (!cle) return 0;
+  const now = nowIso();
+  const ins = db.prepare('INSERT INTO verify_run_test (verification_id, verifier_id, targets_key, test, created_at) VALUES (?,?,?,?,?)');
+  ins.run(verificationId, v.verifier_id || null, cle, null, now);          // le run lui-même
+  const noms = [...new Set((head.failed || []).map((f) => f.test).filter(Boolean))].slice(0, 200);
+  for (const nom of noms) ins.run(verificationId, v.verifier_id || null, cle, nom, now);
+  return noms.length;
+}
+
+/* Les tests INSTABLES de ce code-là : rouges à un run, verts à un autre, sans que rien n'ait
+   bougé entre les deux. Il faut au moins deux runs nommés sur la même clé — un seul run ne
+   prouve rien, et prétendre le contraire ferait douter d'un test qui n'a jamais menti. */
+function testsInstables(verificationId) {
+  const v = db.prepare('SELECT verifier_id, targets_json FROM verification WHERE id = ?').get(verificationId);
+  if (!v) return [];
+  let cibles = [];
+  try { cibles = JSON.parse(v.targets_json || '[]'); } catch { cibles = []; }
+  const cle = cleCibles(cibles);
+  if (!cle) return [];
+  const runs = db.prepare('SELECT COUNT(*) c FROM verify_run_test WHERE targets_key = ? AND test IS NULL').get(cle).c;
+  if (runs < 2) return [];
+  return db.prepare(`SELECT test, COUNT(*) n FROM verify_run_test
+    WHERE targets_key = ? AND test IS NOT NULL GROUP BY test HAVING n < ?`).all(cle, runs)
+    .map((r) => ({ test: r.test, rouge: r.n, runs }));
 }
 
 /* ---------------------------------------------------------------- commentaire forge (§5.6) */
@@ -650,10 +738,91 @@ async function commenterSurForge(verificationId, cfg, onLog) {
   return publierCommentaire(verificationId, cfg, { onLog });
 }
 
+/* B12 — UN VERDICT ROUGE DEVIENT UNE TODO. La notification passe et s'oublie ; le badge de
+   la merge request suppose qu'on rouvre Reviews. Entre les deux, rien ne portait « il y a un
+   test cassé sur !218 » jusqu'au lendemain matin — et c'est précisément ce qu'on voulait ne
+   pas perdre en lançant une vérification.
+
+   UNE TODO PAR MERGE REQUEST, pas par vérification : relancer la même vérification trois fois
+   dans l'après-midi doit mettre à jour la même ligne, pas en empiler trois. Et un vert la
+   REFERME — cochée, jamais supprimée : « ce qui a été réparé aujourd'hui » se relit dans les
+   faites, et une todo qui s'évapore donne l'impression de n'avoir rien fait. */
+function todosDuVerdict(verificationId, verdict) {
+  const notes = require('./notes');
+  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
+  if (!v) return 0;
+  let cibles = [];
+  try { cibles = JSON.parse(v.targets_json || '[]'); } catch { cibles = []; }
+  let n = 0;
+  for (const c of cibles) {
+    if (!c.mr_id) continue;
+    const mr = db.prepare(`SELECT mr.iid, mr.title, repo.project AS project FROM mr
+      JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?`).get(c.mr_id);
+    if (!mr) continue;
+    const cle = `mr:${c.mr_id}`;
+    if (verdict === 'verified_fail') {
+      notes.todoAuto('verify_fail', cle,
+        t('todo.verify-fail.title', { iid: mr.iid, verifier: v.verifier_name || '' }),
+        t('todo.verify-fail.note', { project: mr.project, title: String(mr.title || '').slice(0, 80) }));
+      n += 1;
+    } else if (verdict === 'verified_pass') {
+      n += notes.fermerTodoAuto('verify_fail', cle);
+    }
+  }
+  return n;
+}
+
+/* B10 — ET LE VERDICT REMONTE VERS JIRA. Le commentaire sur la merge request s'adresse à qui
+   relit le code ; le ticket, lui, est lu par la QA, le chef de projet, le support — ceux qui
+   demandent « c'est testé ? » sans jamais ouvrir la forge. Jusqu'ici `jira.js` ne connaissait
+   ni verdict ni vérification : la réponse se recopiait à la main.
+
+   TROIS GARDES, et chacune évite d'écrire chez quelqu'un pour rien :
+     — opt-in global (`verify_jira_comment`), décoché par défaut ;
+     — la MÊME règle que le commentaire de forge (`doitCommenterAuto`) : la base passait, la
+       branche casse. Une base déjà rouge n'est pas de notre fait, et un vert n'apprend rien
+       à un ticket ;
+     — une clé par ticket, dédoublonnée : un lot de cinq merge requests d'un même ticket ne
+       doit pas y écrire cinq fois la même phrase.
+
+   Best-effort de bout en bout : un Jira injoignable ne remet pas en cause un verdict acquis. */
+async function commenterSurJira(verificationId, cfg, onLog) {
+  if (!cfg || String(cfg.verify_jira_comment || '') !== '1') return [];
+  const jira = require('./jira');
+  if (!jira.isConfigured(cfg)) return [];
+  const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
+  if (!v) return [];
+  const lire = (j) => { try { return j ? JSON.parse(j) : null; } catch { return null; } };
+  const tete = lire(v.head_run_json);
+  if (!verify.doitCommenterAuto(lire(v.base_run_json), tete)) return [];
+
+  let cibles = [];
+  try { cibles = JSON.parse(v.targets_json || '[]'); } catch { cibles = []; }
+  const faites = new Set();
+  const ecrites = [];
+  for (const c of cibles) {
+    if (!c.mr_id) continue;
+    const mr = db.prepare(`SELECT mr.*, repo.project AS project FROM mr
+      JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?`).get(c.mr_id);
+    if (!mr) continue;
+    const cle = mr.ticket_jira_key || jira.ticketKey(mr.title, mr.source_branch);
+    if (!cle || faites.has(cle)) continue;
+    faites.add(cle);
+    const texte = t('jira.verify.body', {
+      verifier: v.verifier_name || '', iid: mr.iid, project: mr.project,
+      n: ((tete && tete.failed) || []).length,
+    });
+    try { await jira.addComment(cfg, cle, texte); ecrites.push(cle); }
+    catch (e) { if (onLog) onLog(t('log.verify.jira-failed', { key: cle, message: e.message })); }
+  }
+  if (ecrites.length && onLog) onLog(t('log.verify.jira-commented', { liste: ecrites.join(', ') }));
+  return ecrites;
+}
+
 module.exports = {
-  WORKTREES_DIR, cheminWorktree, executerVerification, commenterSurForge,
+  WORKTREES_DIR, cheminWorktree, executerVerification, commenterSurForge, commenterSurJira, todosDuVerdict, noterTestsDuRun, testsInstables,
   corpsCommentaire, publierCommentaire, blocsCommentaire,
-  lancerCommandes, envVerifier, ajouterWorktree, retirerWorktree, gcWorktrees,
+  lancerCommandes, detailDesTests, envVerifier, ajouterWorktree, retirerWorktree, gcWorktrees,
   inspecterWorkdir, preparerInPlace, restaurerInPlace, lireContexte,
   envMinimal,
 };

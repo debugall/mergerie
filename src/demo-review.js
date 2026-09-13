@@ -168,4 +168,26 @@ function explication(mr, diff) {
   ].join('\n');
 }
 
-module.exports = { isDemo, dossierTravail, rapport, explication };
+/* LA RÉPONSE À UNE QUESTION POSÉE SUR LE RAPPORT. On ne simule pas une analyse : on montre ce
+   que cette fonctionnalité garantit — la question est reprise telle quelle, la réponse s'appuie
+   sur les fichiers que le diff touche vraiment, et le rapport, lui, n'a pas bougé. */
+function reponseQuestion(mr, diff, question) {
+  const cibles = ciblesDuDiff(diff).slice(0, 2);
+  const ou = cibles.length
+    ? cibles.map((c) => `\`${c.file}\` (ligne ${c.line})`).join(' et ')
+    : 'les fichiers de cette merge request';
+  /* La question n'est PAS reprise ici : l'écran l'affiche déjà au-dessus de la réponse, et la
+     répéter donnait à lire deux fois la même phrase. Des paragraphes entiers, pas des lignes
+     coupées à 80 colonnes : le Markdown en ferait autant de paragraphes séparés. */
+  const mot = String(question || '').trim().split(/\s+/).slice(0, 6).join(' ');
+  return [
+    '**Réponse simulée — mode démo, aucun agent n’est appelé.**',
+    '',
+    `Ce que tu demandes (« ${mot}… ») porte sur ${ou}. Le constat du rapport tient au chemin où la valeur peut manquer : il est atteignable depuis l’appelant modifié, et rien ne l’intercepte avant. Les autres appelants passent par la même fonction, donc la remarque vaut pour eux aussi.`,
+    '',
+    '*Le rapport de revue n’a pas bougé : une question ne le réécrit jamais, et la note reste celle qui était affichée.*',
+    '',
+  ].join('\n');
+}
+
+module.exports = { isDemo, dossierTravail, rapport, explication, reponseQuestion };

@@ -280,6 +280,11 @@ function aplatir(noeuds, prefixe = '', sortie = [], classeParent = '') {
          un environnement : l'écran peut le DIRE avant qu'on clique, il le dit. */
       params: lireParametres(n.property).length,
       lastParams: paramsDuBuild(n.lastBuild),
+      // Les paramètres du dernier build VERT, et sa date : ce qu'on veut rejouer quand le
+      // dernier a échoué. `null` si le job n'a jamais réussi — on ne propose rien alors.
+      greenParams: n.lastSuccessfulBuild ? paramsDuBuild(n.lastSuccessfulBuild) : [],
+      greenNumber: (n.lastSuccessfulBuild && n.lastSuccessfulBuild.number) || null,
+      greenAt: (n.lastSuccessfulBuild && n.lastSuccessfulBuild.timestamp) || null,
     });
   }
   return sortie;
@@ -288,10 +293,17 @@ function aplatir(noeuds, prefixe = '', sortie = [], classeParent = '') {
 /* Ce qu'on demande pour chaque job. `actions[...]` sert les deux questions que la liste doit
    trancher d'un coup d'œil : QUI a lancé, et SUR QUOI. Tout arrive dans la MÊME requête —
    interroger chaque job séparément ferait trois cents appels à l'ouverture de l'onglet. */
+/* A34 — ET LE DERNIER BUILD VERT, dans la MÊME requête. « Comme le dernier run » repropose les
+   paramètres du dernier lancement… y compris quand il a échoué : or un rouge est souvent une
+   mauvaise valeur, et la rejouer telle quelle refait exactement l'erreur. Les paramètres du
+   dernier VERT sont ce qu'on veut réellement reprendre. Aucun appel de plus : c'est un champ
+   du même arbre. */
 const CHAMPS_JOB = 'name,url,color,buildable,_class,'
   + 'property[parameterDefinitions[name]],'
   + 'lastBuild[timestamp,number,actions[causes[shortDescription,userName,_class],'
-  + 'parameters[name,value,_class],lastBuiltRevision[branch[name]]]]';
+  + 'parameters[name,value,_class],lastBuiltRevision[branch[name]]]],'
+  + 'lastSuccessfulBuild[timestamp,number,actions[parameters[name,value,_class],'
+  + 'lastBuiltRevision[branch[name]]]]';
 const ARBRE = (n) => (n === 0 ? `jobs[${CHAMPS_JOB}]`
   : `jobs[${CHAMPS_JOB},${ARBRE(n - 1)}]`);
 

@@ -101,11 +101,23 @@ function commandsFor(action, row, name, message) {
 /* La merge request OUVERTE dont cette branche est la source, si Mergerie la connaît. Le
    `closed_seen` écarte celles qu'on a vues fermées : supprimer une branche dont la MR est
    mergée est justement ce qu'on vient faire. */
+/* A30 — CE QU'ON S'APPRÊTE À SUPPRIMER. L'aperçu disait « MR !214 » en texte : ni le titre, ni
+   la note de sa review, ni son ticket. Or c'est exactement au moment de cocher douze branches
+   qu'on veut savoir laquelle porte encore une revue à 5,5 et un ticket en cours — et ces trois
+   données sont en base, à une jointure. */
 function mrOuverteSurBranche(repoId, branche) {
-  const m = db.prepare(`SELECT iid, web_url, title FROM mr
+  const m = db.prepare(`SELECT id, iid, web_url, title, ticket_jira_key, ticket_jira_status FROM mr
     WHERE repo_id = ? AND source_branch = ? AND (closed_seen IS NULL OR closed_seen = 0)
     ORDER BY id DESC LIMIT 1`).get(repoId, branche);
-  return m ? { iid: m.iid, url: m.web_url, title: m.title } : null;
+  if (!m) return null;
+  const note = db.prepare(`SELECT note_value FROM review_version
+    WHERE mr_id = ? ORDER BY version DESC LIMIT 1`).get(m.id);
+  return {
+    iid: m.iid, url: m.web_url, title: m.title,
+    note: note && note.note_value != null ? note.note_value : null,
+    ticket: m.ticket_jira_key || null,
+    ticket_status: m.ticket_jira_status || null,
+  };
 }
 
 async function preview({ action, targets, name, message }) {

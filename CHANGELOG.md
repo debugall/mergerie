@@ -11,6 +11,653 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-13
+
+### Added
+
+- **A documentation agent writes a general page and its sub-pages.** The librarian rendered one
+  block: twenty services in a single page is a page nobody re-reads, and splitting it by hand
+  undid itself at the next run. Note pages now hold **sub-pages**, one level deep, and an agent
+  whose output is a note page decides **itself** whether any are needed, how many, and how to
+  split them — the general text stays on the root page, the detail of each point goes to its own.
+  Sub-pages are matched **by title** from one run to the next, so a weekly agent updates them
+  instead of piling up copies; the ones it stops producing are **kept**, not deleted, because one
+  may have been completed by hand, and the run says which. In `Notes`, a sub-page is indented
+  under its parent and joined to it by a tree guide, a search that finds one brings its parent along for context, and deleting a
+  page says how many sub-pages go with it. Sub-pages are **folded by default** — a column where
+  every general page unrolls its eight children is no longer a column you can scan — with the
+  count shown on the folded parent; the parent of the page you are reading unfolds on its own,
+  and folds back when you leave it, and a search unfolds everything it matched.
+- **Reading and writing a note no longer share the width.** Two half-columns cut both: a table
+  overflowed the rendered side while a Markdown line wrapped in the middle of a link. A page now
+  opens on the **rendered view alone, full width** — notes are re-read far more often than they
+  are written — and one click switches to the Markdown alone, or back to two columns. The choice
+  is remembered. An empty page opens on the Markdown: there is nothing to read yet.
+- **The agents screen counts in tokens, and says what each button does.** An agent's card showed
+  the dollar cost of its last run — a figure only some backends announce, absent everywhere else,
+  and not comparable from one month to the next as prices move. It now shows what the run actually
+  brushed against, in **tokens**, which is measured in every case. A domain agent also shows **what
+  its knowledge costs to read**: the map is copied into the request on every single run, so its
+  size is a recurring expense, and the `Knowledge` window now gives it **version by version** —
+  the only way to notice a v4 that swelled from eight to thirty thousand tokens before every run
+  pays for it. Every button on the screen explains itself on hover, saying in particular which
+  ones start a session that costs.
+- **The two agent modals are as wide as the coding-session one.** `New agent` and `New domain
+  agent` opened narrower — a `max-width: 980px` added later silently pulled every wide modal
+  back to 980, Jenkins included, contradicting the rule declared right above it. Widening the
+  box was not enough: the form inside stayed capped at 720px, so the window grew and its content
+  did not. Both now fill the same width, and a repository checklist flows into columns instead of
+  scrolling as one tall narrow strip.
+- **A job panel no longer swallows the clicks meant for the bottom of the page.** The panel is
+  fixed, spans the whole column and stands a hundred and seventy pixels tall; the end of every
+  page passed underneath it. It happens for real — a job that ends **in error** never folds away
+  on its own, by design, so you can read the error — and what it covered included the action bar
+  of the Settings form, hence the `Save` button: measured at 769→801 for the button against
+  787→958 for the panel. The page now reserves the panel's measured height, so anything under it
+  can always be scrolled clear.
+- **Statistics count in tokens too.** The dashboard showed dollars next to the costliest
+  sessions and next to each agent; it now reads in tokens like the agents screen, for the same
+  reason — a dollar figure exists only on the backends that announce one.
+- **`N commits since the map` opens on the commits.** The badge said a domain agent's map had
+  aged, never by what: you re-read the map without knowing whether twelve typos or a rewrite had
+  dated it, and so without knowing whether the update — which costs an AI call — was worth it.
+  Clicking it now lists them per repository, with sha, date, author and message.
+
+- **Ask a question about a review without rewriting it.** Asking why a finding was blocking
+  meant `Ask the AI for a change`, which regenerates the report and makes it one version more —
+  so the question cost you the report you were reading, and the score could move with it. A
+  review now has its own **exchanges**: ask, get an answer under the report, and the report, its
+  score and its versions stay exactly as they were. The question resumes the review session when
+  there is one, so the AI answers from the diff and its own report rather than reading everything
+  again. Exchanges are searchable in the same column view as a session's iterations, and they are
+  deleted along with the report they quote.
+- **The diff of a single follow-up.** Seeing what one correction changed meant re-reading the
+  whole branch diff: by the third follow-up, the three lines you had asked for were buried among
+  two hundred. Every iteration of a coding session on a repository now keeps its own patch, and
+  `AI output` offers, right under the request, **“See what this iteration changed”** — the same
+  screen as the project diff (file tree, whole file with the changes in place), bounded to that
+  one pass. **Only the latest measurement is kept** — what you just asked for is what you re-read,
+  and every new pass erases the one before it. **Out-of-repo coding gets the same thing**, where
+  there is no branch and no commit:
+  Mergerie keeps a tracking repository whose `.git` lives in its own working directory, so your
+  folder receives nothing — dependency and build folders stay out of the diff, and past a size
+  guard rail the measurement is dropped rather than slowing the coding down. Those tracking
+  repositories clean themselves up: the ones no session references any more are removed daily,
+  the rest are compacted. An iteration that
+  changed nothing says so; one older than this addition shows nothing rather than promise a diff
+  it does not have.
+- **Agents — a new tab, and a different way of launching the AI.** An agent is a *session
+  profile*: a role, a scope of repositories, tools, skills, subagents, an output, sometimes a
+  schedule. A session launched inside a clone already has the code, the repository's CLAUDE.md
+  and its skills; what it does not have, Mergerie does — the twenty other clones, what was just
+  merged, and cross-cutting knowledge that lives *between* repositories. An agent run is an
+  ordinary session: same follow-ups, same questions, same archived passes, same cost. Three
+  rules hold everywhere: an agent never pushes and never publishes on its own, never guesses a
+  repository, and never handles conversations between humans.
+- **Two agents ship with the tool.** The **incident investigator** takes a trace, a log or a
+  ticket excerpt, searches every clone, and names the repository, the file and the line with a
+  likely cause — and if nothing matches it says so instead of offering a plausible repository.
+  Its report carries a *Fix in <repository>* button that opens a coding session on the right
+  one. The **librarian** keeps the service map in a note page — created once, updated on every
+  run, never duplicated. Both are editable, and restorable with one button.
+- **Domain agents: “where do we handle notifications, here?”, answered once.** Give a subject;
+  the cartographer searches the repositories and writes the map — entry points, mechanisms,
+  types, configuration, tests, pitfalls. Every quoted path is opened inside the clone: one that
+  does not exist is marked *(unverified)* and counted. The agent can then be asked, or asked to
+  code with its repositories pre-ticked. It reports what it finds wrong in its own map rather
+  than silently fixing it.
+- **You know when a map has aged, for free.** The knowledge records each repository's SHA and
+  the paths it quotes; Mergerie counts the commits that touched *those paths* since — “7 commits
+  since the map”, with no AI call. *Update* relaunches the cartographer with the previous map,
+  the reported gaps and those commits (“look here first”); the result waits for you with a
+  readable diff, and the agent keeps working from the old one until you validate. The team's
+  hand-written notes are carried over by the code, not merely by the prompt.
+- **Your skills, listed instead of remembered.** A sub-tab shows the `.claude/skills/` and
+  `.claude/agents/` of your cloned repositories and of your home — read-only, Mergerie never
+  writes there. In a session they are ticked, and typing `/` in the request offers the skills,
+  `@` the subagents. Nothing is inserted without an explicit choice.
+- **The log finally says what the AI used, and what it cost.** A skill invocation now appears as
+  `» skill <name>`, a subagent as `» sous-agent <name> — <what it was asked>`, and what a
+  subagent says is indented so you can tell who is speaking. Actions blocked by permissions are
+  reported at the end of the run, and the real cost in dollars is kept alongside the token
+  estimate — including per agent, in the statistics.
+- **Agents can run on a schedule.** Every day, every week, or every month, at a set time. A slot
+  missed because the machine was off is caught up rather than lost, and a daily ceiling bounds
+  what may trigger on its own. The morning brief says what ran during the night, and what is
+  waiting for you.
+
+- **Any window you type into can be set aside and picked back up.** A modal covered the whole
+  screen, so going to check a branch name or a ticket's state meant either giving up on checking
+  or closing the window and losing what you had written. Every window with fields now has a `—`
+  button in its corner: it minimises to the bottom of the menu, and one click brings it back
+  exactly as it was — the fields you filled, the cursor in the field you left, and the tab it
+  started from. The chip's cross discards it for good. Windows that ask a question (a
+  confirmation, picking a verifier) have no such button: setting one aside would keep whatever
+  opened it waiting forever.
+
+- **A Jira ticket's detail now shows the tickets it is linked to.** "is blocked by", "duplicates",
+  "relates to" — those links are what says which part you cannot ship on your own, and the card said
+  nothing about them: reading them meant reopening Jira. They now sit under the attachments, grouped
+  by relation, each with its summary and its status; the wording is your instance's own and follows
+  the direction of the link. Sub-tasks and the parent of a sub-task join the same list, a link that is
+  done is struck through, and clicking the key opens that ticket in the column you are reading rather
+  than in a Jira tab.
+
+- **The remarks and follow-ups you wrote and never sent are picked up by the morning brief.** Three
+  inline comments written in the viewer, the window closed to check something else, and the merge
+  request merged without them — the quietest loss of work in the tool. The brief now has a section for
+  them, oldest first, and the button reopens the viewer where they are sent from. A **draft badge**
+  sits on the merge request card and in its report header as well. Same for the **follow-ups** written
+  while a session was running and then forgotten; the ones that leave on their own at the end say so.
+- **A review report shows the todos already open on that merge request.** It offered to add one
+  without showing what existed: two days later you had written the same note twice. They are ticked
+  right there — which is the whole point of showing them.
+- **A free question becomes an exploration or a coding session**, like an exploration already could:
+  the answer named the repository, and nothing carried it further than the screen it was on.
+- **“The AI has a question” leads to the session that asked it.** The notification opened AI Dev on
+  the sub-tab you last consulted, leaving you to find which of twelve sessions was waiting — while the
+  event has carried its identifier from the start. Every notification that names an object now opens
+  that object, from the branch explorer, the palette, the brief and the statistics alike.
+- **A review report says which notes cite it, and which domain map it touches.** The autolink ran one
+  way only: a note led to the merge request, and the merge request had no idea three paragraphs had
+  been written about it on Monday. Incoming links are now listed on the report and on the Jira ticket
+  sheet, with the excerpt taken around the citation. And a merge request whose diff touches the paths
+  a **domain map** quotes carries a badge to that map — which is also handed to the AI as review
+  context, so it knows what that corner of the code does instead of rediscovering it.
+- **“Investigate” now starts from a red Jenkins console and a failed verification**, not only from a
+  Jira ticket. Those are the two places where you actually read a trace; the incident investigator
+  opens with it already in the request. On a verification, it sits next to *Fix*: a red test whose
+  trace you do not understand is not fixed, it is searched for first.
+- **A red verdict leaves a todo behind, and can comment the Jira ticket.** The notification goes by
+  and is forgotten; the badge assumes you reopen Reviews. A todo is now created per merge request
+  (running the same verification three times updates one row rather than stacking three) and a green
+  run closes it. Optionally — unchecked by default, like “Notify Jira” — the merge request's ticket
+  also receives a comment when the branch breaks what the base passed: the ticket is read by QA and
+  support, who ask “is it tested?” without ever opening the forge.
+- **Git operations, fallen containers and finished Jenkins builds finally say something.** Deleting a
+  branch or pushing a tag is the most irreversible gesture in the tool and it happened in silence; a
+  container going down woke nobody; and the end of a build *you started from here* was only noticed
+  if the Jenkins tab had stayed open — when you start a build precisely to go and do something else.
+  A background watch on the server handles the last two, once a minute, asking Jenkins nothing while
+  no launch is pending and alerting on a *transition* rather than a state. The morning brief picks up
+  **the merge left half-resolved yesterday** and the Git operations that failed, and Statistics gained
+  an **Git operations** card — the last trace table it ignored: thirty deletions without a failure is
+  routine, ten with four refused says you are aiming at protected branches.
+- **A todo can be attached to a branch, a verification, a build or a container.** “Rebase this branch
+  before Monday”, “this build breaks one time in three” are exactly what you jot down, and nothing
+  carried them: the button existed on a merge request and a ticket only. It now sits on a branch row,
+  a verification report, a Jenkins build row and a container row — and the todo knows how to take you
+  back there.
+- **The palette acts, it no longer merely navigates.** A verifier, a Jenkins job, a compose project and
+  a saved git command joined it, each opening the screen that knows how to do it — never running
+  anything on its own: a job deploys, it gets started deliberately. A merge request is also found by
+  its **ticket key**, the way half a team refers to it.
+- **A repository's settings row carries a `Sheet`.** The row said what concerns the repository itself;
+  the sheet says what is *attached* to it — verifiers, Jenkins jobs, review rules limited to it, grid
+  services, default linked projects, agents it belongs to. Six answers to “what breaks if I remove
+  it?”, all of them joins that already existed.
+- **Reports, sessions and note pages have an address.** `#/reviews/216` can be pasted into a note
+  or a message, the browser's Back button returns to the previous object instead of leaving the
+  tool, and a link you receive wins over the tab of your last visit. “Copy the reference” now
+  hands over both links: the forge shows the diff, Mergerie shows the report, the score and the
+  verdict.
+- **The merge dialog restates what is known before the irreversible gesture** — score, blocking
+  findings, verdict, stale report, and the remarks written and never sent, which would go out with
+  the merge request. It asked “squash? branch?” and nothing else.
+- **The brief picks up out-of-repo sessions stopped on a question**, which no screen surfaced: they
+  have no branch and no merge request to remind you of them, which makes them the easiest to forget.
+- **A branch row carries what the database knows about it** — its Jira ticket and that ticket's
+  state, the last verification verdict, and the repository's Jenkins job with the branch already
+  filled in (that button existed only on a merge request verified green, when deploying a branch to
+  staging *before* opening a merge request is exactly the case).
+- **A report's findings become inline remarks in one gesture** — all of them, or only the
+  blocking ones. Eight findings meant eight trips through the viewer; they carry their file and
+  their line, which is exactly what an inline draft asks for. Only the findings that fall
+  **inside the diff** are turned into remarks: a report may well talk about a line the branch
+  never touched, but an inline comment attaches to the diff, and the forge refuses a position
+  that is not in it. What is left aside is counted and named. Nothing is sent: they are drafts,
+  re-read and sent as a batch like the others — and **`Delete all`** empties the batch in one go
+  when one of them blocks it, instead of reopening every file to remove them one by one.
+- **The viewer's tree says what each file carries**: unresolved findings, discussion threads,
+  remarks in draft, changed lines. On a forty-file merge request, knowing which ones to open
+  meant opening them one by one.
+- **A verification report shows the five slowest tests, and marks the flaky ones.** The
+  durations were in the runners' output all along and thrown away; a red test that was already
+  green on the very same code in another run now says so, instead of sending you looking for
+  what the branch broke.
+- **“Try” really tries an agent profile.** It opened a session pre-filled with the template
+  while the model, the tools and the subagents stayed behind — you were trying everything
+  except what you had just set. The draft now travels with the session, and no agent is
+  created: trying leaves nothing behind.
+- **A merge in progress says which merge request it is catching up** — number, score, ticket —
+  and, once committed, offers the **diff of the merge itself**: that SHA had been stored and read
+  by nobody, while it is the only way to check what you just assembled.
+- **A job's log can be searched**, and filtered down to its error lines. A verification run pours
+  out two thousand lines; finding `ECONNREFUSED` in them was done by scrolling.
+- **A dozen everyday frictions.** Searchable dropdowns answer the keyboard (`↓`/`↑`/`Enter`, and
+  `Escape` closes the list rather than the window you were filling in); `/` searches in the tab you
+  are in instead of throwing you back to Reviews; a job that cannot be replayed says why; the ticket
+  key in a report title is the one the server computed rather than a second rule; duplicating a
+  session keeps its agent; the dictation vocabulary knows your container names.
+
+- **You can dictate into any text field — and the transcription knows your repositories' names.**
+  A microphone appears on the field you are writing in; you speak, and the text lands at the caret,
+  exactly as if you had typed it (so drafts still autosave and "unsaved changes" still shows).
+  `Ctrl`/`Cmd` + `Shift` + `Space` starts and stops it, `Esc` stops. It works on session prompts,
+  follow-ups, answers to the agent, merge request comments, notes, todos, commit messages and
+  review rules — not on URL, token, path or search fields, where a microphone would just be noise.
+
+  What makes it usable on technical French or English is not the engine, it is what Mergerie sends
+  it with every sentence: the names of your **repositories**, the **services** and **environments**
+  of the Links tab, your **Jira key prefixes**, your **verifiers**, your linked **Jenkins jobs** and
+  the **branches of open merge requests**. The same audio that a bare engine writes as "the merge
+  rec west 244 on web app front" comes back as "merge request 244 on webapp-front". A **glossary**
+  and a list of **corrections** (`heard => written`) cover what the database cannot guess, and
+  `!214` / `PROJ-720` are rebuilt from their spoken forms — those are what become links in your
+  notes and targets in the palette.
+
+  A hiccup on one sentence no longer costs you the rest: a segment the engine could not answer
+  is dropped and the ones behind it still land, while a refusal that cannot be retried — the
+  dictation switched off, an audio format the engine will never take — stops the microphone and
+  says so on the button rather than leaving it listening into the void.
+
+  Sentences are sent as you pause (700 ms of silence, adjustable), so the text arrives while you
+  are still talking rather than ten seconds later; when you stop, the whole take is re-read in the
+  background and replaces what was inserted, unless you have already corrected it yourself. What
+  the engine invents over silence — "Sous-titres réalisés par la communauté d'Amara.org" and its
+  English cousins — is dropped by four successive guards, and what is dropped is **counted** on
+  screen: if that number climbs, the microphone is picking up noise.
+
+  One sentence in the other language does not need a settings trip: **⇧-click the microphone** and
+  that take alone is dictated in the other language, which the bubble announces.
+
+  Three providers, one setting, and the screen says where the audio goes before you choose:
+  **whisper.cpp running locally** (the recommendation — nothing leaves the machine, and the audio
+  is never written to disk), **any OpenAI-compatible API**, or the **browser's own recognition**
+  (nothing to install, but the audio goes to Google or Apple, said in plain words). Dictation is
+  **off by default**: until you pick a provider, no microphone appears anywhere.
+
+- **Installing the local dictation engine is a button, and it tells you what it is doing.** The
+  settings panel does not ping: it walks the whole chain — binary, model, voice detection, startup
+  (naming the acceleration it found: Metal, CUDA, Vulkan or CPU), a real transcription, vocabulary,
+  then the secure origin and the microphone — and names the first step that breaks with the gesture
+  that repairs it. "Install" runs as a job: its log shows live, "Stop" ends it cleanly, an
+  interrupted download resumes, nothing is asked as administrator, and a 1.6 GB download is
+  announced before it starts. When it finishes it fills in the settings itself and re-runs the test.
+
+- **Filing a link is now paste-and-Enter.** The free-link form opens on the address rather than the
+  label — the address is what you paste, the label is what the tool can guess from it — and Enter
+  saves, as it already did for a quick todo or a watched ticket. The same key saves a service, an
+  environment and a context link.
+
+- **“Verify a branch” no longer forces you to take every covered repository.** Each row now
+  carries a checkbox, ticked to start with, so a verifier covering five repositories can
+  verify just one — previously all five branches had to be supplied, and a row whose default
+  branch could not be read (an unreachable repository) blocked the launch of the others. The
+  selection is remembered per verifier, because “only `api-core`” is a habit rather than a
+  whim of the day, and a filter above the list hides rows without unticking them: what is
+  ticked goes out, visible or not. The server already accepted a subset — it is the screen
+  that refused to form one.
+
+- **Automatic publishing can now be limited to reports that block.** *Settings → Merge Request*:
+  when "Automatically post the review report on the MR" is ticked, a second checkbox appears
+  under it — **"Only post when there are blocking findings"**. The report is then posted only
+  when it holds at least one finding of severity *blocker*; the others stay saved and readable
+  in the tab, they just do not land on someone's merge request for three minor remarks. A report
+  with no finding at all does not go out either, and the job log writes how many the pass held —
+  "nothing blocking" and "the findings block is missing" are not the same event. The `Publish`
+  button on a report ignores the filter: an explicit gesture always goes out. Unticked by
+  default, so turning automatic publishing on keeps behaving exactly as before.
+
+- **A second pass over the whole tool: 59 changes, from the three defects found while reading
+  the code to eleven crossings that did not exist.** Nothing new to configure; almost all of it
+  reads data that was already in the database.
+
+  **Deciding faster in the queue**
+
+  - **The queue sorts**: usual order, smallest first, oldest first, lowest score — a dropdown
+    on the same row as the author chips, because who and in which order are two ways of
+    narrowing the same queue. The size and the age were written on every card since 1.4.0 but
+    could not be used to choose what to start with. The order you pick is remembered, and it
+    wears the same pill as the chips beside it — an unusual order is highlighted like an active
+    chip, because a queue sorted by lowest score otherwise just looks out of order.
+  - **The morning brief counts what is ready to merge**: score above the convergence threshold,
+    verified green and not stale, and no ticket standing in the way — three columns already in
+    the database. Nothing is merged: the tool says how many merge requests are only waiting for
+    a decision.
+  - **A merge request in conflict says so on its card**, and the badge opens `Git → Merge`
+    prefilled to catch the branch up — where *Update with main* only ever existed for merge
+    requests born from a session.
+  - **The ticket's status reaches every merge request**, not just watched ones. Discovery
+    already read the whole issue for its context; it now keeps its status too, at no extra call.
+  - **After a green verdict, the verification report offers what comes next** — *Merge*,
+    *Run &lt;job&gt;* — where until now you closed the window, found the card again and opened
+    its "⋯" menu.
+  - **A finding says how long it has been there**: `since v1` is not the same as "not fixed
+    yet", and three passes later that is the whole difference.
+
+  **What the session already knew**
+
+  - **The verifier picks itself** when exactly one covers every repository of the session.
+  - **The dialog proposes the repositories of your last session** of that flavour, instead of
+    the first of the list — wrong thirty-nine times out of forty on a forty-repository setup.
+  - **A card says when it finished** ("finished 3 h ago") and **when a todo is waiting for you**
+    because the AI stopped on a question.
+  - **A session offers to review the merge request it just opened**, and a checkbox in the
+    dialog does it at creation — the global "review on arrival" setting engages the whole
+    estate, this one only engages what this session wrote.
+  - **The resumable agent sessions are proposed** instead of asking for a UUID copied by hand
+    out of a resume command.
+  - **Four session defaults are settings** (auto-push, AI questions, tell Jira, converge
+    afterwards): they no longer start unticked at every opening for someone who ticks them
+    every day.
+
+  **Crossings that did not exist**
+
+  - **Merging closes the Jira loop**: a checkbox in the merge confirmation moves the ticket to
+    its next state and drops the merge request link there — the transition read from Jira, never
+    guessed, remembered per Jira project, unticked by default.
+  - **A ticket becomes a lot**: *Verify together* on a ticket carrying several merge requests
+    creates the lot named by the key and launches the joint verification, instead of going back
+    to Reviews to tick five cards and type a name.
+  - **The Jenkins console enters a follow-up**: `Use the console` fills the field with the last
+    thirty lines and the build number, exactly as *Use the verification report* does. Jenkins
+    keeps the verdict; the agent only receives the text to fix.
+  - **The morning brief says what CI broke on your branches**, computed when it opens from the
+    list Jenkins already loads — no polling.
+  - **A watched ticket can raise a todo when its state changes**, carrying the reason you wrote
+    for watching it: a desktop notification dies with the tab, a todo stays in sight.
+  - **A note becomes a coding session**: the page is the prompt, its screenshots are the
+    attachments — the same path as from a Jira ticket.
+  - **A compose service that publishes a port offers to open it**, and to fill the empty
+    "local" cell of the Links grid with the address it already publishes.
+  - **A green Jenkins build carrying `ENV=preprod` offers to open that environment** of the
+    linked repository — the same resolution already done on merge requests.
+
+  **Memories, copies and gestures**
+
+  - **Git → Merge and Git → Actions remember** their repository, branches, action and targets,
+    as *Compare*, *Navigate* and *Commands* already did. The create-MR dialog reads the same
+    per-project memory as the merge dialog for squash and branch deletion.
+  - **Three filters stop forgetting**: the todo filter, Jenkins's search and checkboxes, and
+    Docker → Actions.
+  - **Copy where you paste into Slack**: the full SHA (shown short), a Jira key, a verifier's
+    command, a Jenkins console, a container name, the address of a grid cell.
+  - **`Ctrl`/`⌘ + Enter` sends** the forge comment, the Jira comment and "Request a change" —
+    and all three keep a draft that survives a reload.
+  - **Changing a Jira status asks first**, naming the ticket and the state: a native `select`
+    applied on `change`, so an arrow key was enough to move a ticket in front of the whole team.
+  - **Shortcuts**: `/` searches the tab you are on instead of ejecting you to Reviews, `j`/`k`
+    walk Jira, Jenkins, todos and lots, `N` opens a session, `f` asks for a fix on the focused
+    card, and the `?` panel finally lists `Ctrl+Enter` and `⇧-click`.
+  - **Quick capture**: "tomorrow 9 am / Monday / +1 h" buttons, the last priority reused, and
+    the short syntax finally written under the add bar.
+
+  **Settings and lots**
+
+  - **A review rule can be limited to one repository**, instead of being guessed through a
+    `path_match` only that repository would satisfy.
+  - **A verifier says how many sessions carry it** — renaming or deleting one was done blind.
+  - **A lot's name is proposed** (the common Jira key, failing that the common branch prefix),
+    *Create and verify* does both in one gesture, and a lot remembers which verifier it uses.
+    A merge request says which lots it belongs to.
+  - **A deleted non-compose container can be restored**: the tool saved its full inspect before
+    every deletion and no screen ever read it.
+  - **The Jira witness ticket is a setting** instead of being retyped at every connection test,
+    and the effective defaults are written into the empty fields.
+
+  **Statistics**
+
+  - **The cost of a review**, on its report and in a "most expensive reviews" ranking next to
+    the sessions — reviews now carry their own token usage, as sessions have since 1.4.0.
+  - **What goes in versus what comes back**: characters sent per character received, which is
+    what points at an over-long template rather than at an unavoidable cost.
+  - **The green rate of verifications per repository**, least green first.
+
+### Changed
+
+- **The Links tab has been rebuilt around what it actually is: a place you read, and a place you
+  write.** It presented itself as a search engine — one field and three rows of pills, all lit, so
+  the grid started a third of the way down the screen — while its grid, designed for one address
+  per cell, could not hold a list. Three rows of filters become one: a switch per column, and a
+  `Tag ▾` menu that says what it will find on each half of the screen ("3 services · 2 links").
+  Hiding a column now hides **a column** and never a row, so looking for the holes in prod is
+  possible again; the old behaviour is a checkbox you tick yourself. The service pills are gone —
+  they repeated the rows visible five centimetres below.
+
+- **A cell with fifty addresses no longer makes a seven-hundred-pixel row.** Expanding in place
+  pushed the service name into a void and the free links off the screen, and the way back was an
+  eleven-pixel "Collapse". A cell shows the **three most opened** — frecency has always been
+  counted per address, it just never showed — then `▸ 50 addresses`, which opens the list in a
+  panel anchored on the cell: one line per address with its last opening, a filter, `↑` `↓`,
+  `Enter` to open. The list scrolls inside the panel; the grid does not move. `✎ Edit` switches
+  the same list to editing, with arrows to reorder and a `Paste several addresses` box.
+  **A row's height no longer depends on its content.**
+
+- **Adding starts from the address.** `+ Paste an address` replaces the menu that asked you to
+  file before pasting. One URL per line; for each one the tool suggests a name (from the path),
+  a service (if the host names one, or its repository) and an environment (if the host names one).
+  Nothing is guessed silently — every suggestion is a selector you can change — and an address
+  whose host names no known environment falls into a free link rather than a "likely" column.
+  The selectors carry `＋ new service` and `＋ new environment`, so creating the columns is no
+  longer a prerequisite: on an empty database, one paste is enough. `Ctrl`/`Cmd` + `V` on the tab
+  opens the same dialog pre-filled, and the empty state is now a single field.
+
+- **An address with no name is shown by what tells it apart.** The cell printed a shortened URL:
+  `api-preprod.demo.invalid/health` repeated the column (*preprod*) and the row (*api-core*) and
+  drowned the only useful word at the end of forty characters. It now reads `health`. The rule —
+  last path segment, else the host stripped of what the row and column already say, else the host
+  — applies in the palette too. The full URL stays in the tooltip and in the copy.
+
+- **A grid row fits on one line, and can be reordered.** The name, the repository and the tags took
+  three lines of text, so a row was 90 pixels tall for one address per cell; they now sit on one
+  line behind a letter tinted from the name, and the column carries its environment's colour so
+  *preprod* is recognisable without reading. Rows and columns are **dragged** into place with one
+  save on release — moving a column from sixth to first cost five clicks and five reloads. Pinned
+  services are separated by a rule, and the pin is in the row (it was set in the service sheet, and
+  drawn with a *tag* icon).
+
+- **Free links are a list, not cards.** Forty-five pixels and a border per link meant sixty links
+  took two and a half screens for sixty lines of text. Twenty-eight pixels, a letter, the name, the
+  shortened host, the tags — and on hover: copy, file into the grid, edit, and **delete with an
+  undo** instead of pencil → Delete → confirm. Sorting follows frecency, like the palette, rather
+  than a raw counter that kept last month's favourite on top for six months. The grouping by folder
+  starts as soon as a folder exists, instead of past twelve links — that is, exactly when you are
+  trying to recognise your own filing.
+
+- **The Links tab has a keyboard.** `/` puts the cursor in the search, `Enter` opens the first
+  result, `↓` moves into the grid, `j` / `k` walk the rows, `←` / `→` the cells, `Enter` opens,
+  `e` edits, `c` copies. A cell with a single address is clickable as a whole, and an empty cell's
+  `+` only appears when its row is hovered — it used to dominate the addresses on a grid where half
+  the cells are legitimately empty.
+
+- **The service sheet shows all the addresses of a cell**, one line per address plus an empty one,
+  instead of the first followed by a count of the rest that you could not open. Context links can
+  be set from creation, the repository is suggested from the name you type when exactly one
+  matches, and a repository already used by another service is announced before saving — only the
+  first one feeds the merge request buttons.
+
+- **The “ticked by default” boxes of Settings → General were never saved.** Ticking “The AI may
+  ask questions” and coming back showed it unticked, and a new session ignored it. Two defects
+  one behind the other: a checkbox's `.value` is `"on"` whether it is ticked or not — so the
+  form sent `"on"` in both cases — and those five settings are stored as integers, so the
+  database hands back `1` where the screen compared against the string `'1'`. The screen also
+  had **no Save button at all** in General: its fields belong to the shared settings form, whose
+  only buttons live in the other sub-tabs. All three are fixed, and the confirmation now appears
+  in General like everywhere else.
+
+- **“Ready to merge” in the brief always counted zero.** Two defects at the same spot, each hiding
+  the other: the threshold arrives on a /10 scale while the score is stored on /1 (0.84 for 8.4), so
+  the comparison was never true — and the sub-query meant to check “this merge request has a green
+  verification” resolved against the outer row instead, which made a single green verification
+  anywhere enough for every well-scored merge request. Fixing one was needed to see the other. A
+  verdict on a SHA the branch has moved past no longer counts either.
+- **A JUnit report and a TAP report now count the same thing.** TAP excluded skipped tests from its
+  total, JUnit counted them: the same project announced two different totals depending on the format
+  its runner emits.
+- **A report left by the previous run is no longer read as this one's result.** In `in place` mode the
+  repository keeps its files between runs; a report file older than the run that was supposed to
+  produce it is now ignored, and says so, instead of passing for a fresh verdict.
+- **An `in place` verification reserves the folder it works in**, with the same key as an out-of-repo
+  session: both worked in the user's own working folder, and nothing stopped them from running at the
+  same time in it.
+- **The retention purge finally covers the Git operation history**, the only trace table that grew
+  without bound.
+- **“Waiting for answers” in the convergence banner showed a raw key** (`converge.status.needs_input`)
+  at the exact place an instruction is expected, and the correction prompt existed twice, in French,
+  in two files — it is now a template like the others: translated, editable, read in one place.
+
+### Fixed
+
+- **An up-to-date map no longer claims one commit has aged it.** `N commits since the map` read
+  `1 commit` on a repository where nothing had moved. On an empty `git log`, a fallback landed on
+  the command object itself and `[object Object]` counted as a line — so as a commit. The same
+  phantom went into the **Cartographer's** context on every knowledge update, which was told a
+  commit named `[object Object]` had touched the map it was asked to re-check.
+
+- **A domain agent stopped reading every repository behind your back.** `New domain agent` asks
+  where to look, and ticking a single repository held for the initial mapping — then quietly
+  stopped holding. A knowledge update is run by the **Cartographer**, whose own scope is *all
+  repositories*, so every update cloned, read and paid for the whole estate on a subject you had
+  said concerned one repository; a repository added to Mergerie months later joined in too. The
+  repositories a run is given now restrict it always, whatever the profile's scope and whatever
+  the mode, and they still never widen it: a repository outside the scope, or disabled, does not
+  become a target because someone named it.
+
+- **Every field of the agent forms now says what it is for.** The form asks for a model, a
+  permission mode, a tool list, a turn bound — settings you cannot guess, and where being wrong
+  is expensive: an agent that writes where you thought it only read. Three fields out of
+  seventeen carried the ⓘ. They all do now, sections included, and the explanation says what
+  happens when the field is left empty. Clicking the ⓘ of a section no longer folds it.
+
+- **The card kept counting pending remarks that had been deleted.** The viewer's counter and the
+  card's `n pending remarks` badge count the same thing, but only the first one redrew: delete a
+  remark — one by one, or with `Delete all` — and the viewer said `1` while the card behind it
+  still announced `3`. The badge exists precisely so that unsent work is not forgotten; stale, it
+  sent you back to re-read a batch that was already empty. Both now follow the same count, in the
+  queue, in the reviewed list and in the report header, without reloading the list.
+
+- **The three fields of "Jobs linked to repositories" now fill the row instead of a third of
+  it.** Settings → Jenkins reserved three wide columns, but its fields are searchable pickers
+  whose box was not told to grow: each one fell back to the default width of a text input,
+  about twenty characters, so a job path like `boutique/api-deploy-recette` had to be read
+  through a slot half as wide as its own label. The job column is now the widest of the three
+  — it holds the longest value of the row.
+
+- **« Install » failed on WSL before doing anything.** A checkout made with Git for Windows
+  (`core.autocrlf=true`) gives the install script Windows line endings, and `sh` stops on its
+  first line with a message the carriage return itself truncates (`set: Illegal option -`). Shell
+  scripts are now pinned to LF in the repository, and when an existing checkout still carries
+  CRLF, the server runs a normalised copy and says so in the job log, with the two git commands
+  that fix the checkout for good.
+- **Esc during the "warming up" moment now cancels dictation instead of closing the window
+  behind it.** Between the shortcut and the first "listening", dictation spends a second or two
+  opening the microphone: pressing Esc in that gap found nothing to stop, closed the session
+  dialog on its way through, and dictation then started into a field that was no longer there —
+  the microphone stayed lit with nowhere to write. A dictation that is opening is now a
+  dictation that can be cancelled, and it hands the microphone back.
+
+- **"Test" no longer turns red the moment dictation actually works.** The check probed the
+  binary with `whisper-server --help`, and that call does not return while another
+  whisper-server is alive — so the very first successful dictation made the next test report
+  "binary missing" while transcription was working. A running engine is now taken as its own
+  proof.
+
+- **The dictated context no longer pushes your glossary out of the engine's prompt.** The last
+  words spoken are appended after the vocabulary, and Whisper keeps only the last 224 tokens:
+  what fell off was the head — your glossary and your repository names, the very things with
+  the highest priority. Their room is now reserved in advance.
+
+- **Adding the first link on an empty Links tab no longer pops the "New environment" dialog.** An
+  older click handler was still listening on the grid and answered the empty state's "Add" button
+  as well as the paste dialog, so closing the one opened the other.
+
+- **Esc closes a cell panel even after you have done something in it.** Pasting several addresses
+  redraws the panel's body and the focus falls back to the page; the key was only listened to
+  inside the panel, so from that moment on the panel could only be closed with the mouse.
+
+- **Opening a link from a merge request was not counted.** The buttons carried a two-segment
+  reference (`service:environment`) where frecency counts three (`service:environment:address`):
+  every opening from a merge request was lost — neither the palette nor "last opened" ever saw it.
+
+- **A context link's ⚡ now shows what it opens.** The "1 context link" chip had a tag's styling and
+  led nowhere; hovering it now resolves each template on an example, and clicking opens the service
+  sheet at the right section.
+
+- **The "File N links" counter follows the ticks**, instead of catching up at the next render.
+
+- **Fields you type in were sometimes the browser's, not the app's.** A field built in JavaScript
+  outside a `.form` block inherited nothing: 21 pixels tall with one pixel of padding, next to
+  38-pixel fields in the same box. It hit the per-environment addresses of a service — where you
+  paste a URL — the label of a review rule, the free answer to a question from the agent, and the
+  three fields of the Docker log tail. Every field of every add/edit dialog now carries the app's
+  own size, and a test measures them so the next one cannot slip through.
+
+- **Adding an address in the links grid gave you a 90-pixel field.** The editor lives in the cell —
+  one click, type, Enter, which is the point of it — but a column is 190 pixels wide once you have
+  six environments, and the editor inherited that: the address field was 90 pixels, the panel
+  spilled over the neighbouring columns and its hint wrapped onto three lines. It still opens from
+  the same `+`, with the same keys, but as a panel anchored under the cell at its own width (a
+  304-pixel address field), naming the service and environment it edits and underlining the cell.
+  The cell keeps what it was showing, so you can see what you are correcting.
+
+- **The label of a free link stopped being suggested from the address.** It was proposed only on an
+  empty field: typing the URL character by character made "h" a valid host, so the label became
+  "h" and stayed there. And once you had typed a label by hand, the suggestion was dead for every
+  link afterwards until the page was reloaded. The suggestion now follows the address as you type
+  and steps aside for good the moment you write in the field yourself.
+
+- **The "⋯" menu of a merge request card opened off-screen.** It really did open — `hidden`
+  flipped, the button reported itself expanded — but it was placed with the rules written for
+  the *combo boxes*: the left edge and the **width** of its trigger, a 39-pixel button pinned to
+  the right of a card. With its 210-pixel minimum width, the box ended past the edge of the
+  window, at every window size. From where you sit: you click, nothing happens. The menu is now
+  anchored by the stylesheet, as the "Review ▾" caret next to it already was — and the list
+  unclips its overflow, so the menu is not cropped from below either.
+
+- **A late file render no longer wipes the one you are reading.** Opening a file in the code
+  viewer empties the pane, *awaits* its diff, then writes it back — so two renders could overlap
+  (opening the viewer starts one, clicking a finding starts another on a different file). The
+  slower one won: it rewrote the pane with its own content, erasing the file you had just opened
+  **and any inline comment editor open on it** — that is, what you were in the middle of writing.
+  A render that is no longer the latest now stands down.
+
+- **Clicking a finding always does something.** It could land on a line that carries no "＋"
+  button (a deleted line, a hunk header), or on a row detached by a re-render between aiming and
+  clicking — and in both cases the function gave up without a word. It now retries on the effect
+  and, when a file genuinely has no commentable line in this diff, says so.
+
+- **A filter that leaves nothing, then removed, gives the list back.** Filtering on "Other
+  people's" (or searching for something absent) until the queue was empty, then going back to
+  the whole list, left the screen empty: the "nothing to show" branches wrote the DOM without
+  recording their signature, so the stored one stayed that of the last *non-empty* render.
+  Coming back computed exactly that signature again, and the render was skipped — no error, and
+  nothing left to click to get out of it.
+
+- **Every comment posted to Jira sent the source code of a function.** `addComment` built its
+  body from the translation function instead of the text you typed, so the "Comment" button on a
+  ticket and "Tell Jira" on a session both posted a block of JavaScript to your colleagues. Demo
+  mode does not go through that route, which is why nothing ever showed it.
+
+- **"Verify afterwards" is filled in when the dialog opens from a merge request or a ticket.**
+  Those are the two most frequent ways into the coding dialog, and neither refreshed the
+  selector: it stayed empty, or kept the list of the previous opening — the verifiers of other
+  repositories. You clicked *Have the AI fix it*, launched, and the session finished "pushed"
+  with no verdict.
+
+- **`Esc` on a confirmation answers it.** It hid the dialog without resolving the promise, so
+  the button that opened it stayed in its loading state for good, waiting for an answer that
+  could never come.
+
+- **The CI badge showed a cross on a green build.** It compared the build state against values
+  the Jenkins client never produces (`ok`/`ko` instead of `succes`/`echec`), so every build was
+  read as a failure and none carried a colour.
+
+- **`npm run check` now refuses a file that does not parse**, front and server. Every guard in
+  those two scripts reads the code as *text*: an unbalanced brace escaped all of them, and the
+  check answered OK on an `app.js` the browser refuses to run — or on a `server.js` that turns
+  the whole test suite into a hang with no error message.
+
 ## [1.4.0] - 2026-09-06
 
 ### Added
@@ -2110,7 +2757,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/debugall/mergerie/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/debugall/mergerie/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/debugall/mergerie/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/debugall/mergerie/compare/v1.1.0...v1.2.0

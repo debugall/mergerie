@@ -52,11 +52,16 @@
     scope.querySelectorAll('[data-i18n-html]').forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
     scope.querySelectorAll('[data-i18n-title]').forEach((el) => { el.title = t(el.dataset.i18nTitle); });
     scope.querySelectorAll('[data-i18n-placeholder]').forEach((el) => { el.placeholder = t(el.dataset.i18nPlaceholder); });
-    // Les info-bulles maison portent le texte deux fois : visible et accessible.
+    /* Les info-bulles maison portent le texte deux fois : visible et accessible — mais
+       SEULEMENT quand l'élément n'a pas de libellé à lui. Sur une icône ⓘ (un SVG et rien
+       d'autre), l'explication EST le nom accessible. Sur un bouton qui affiche déjà
+       « Nouvel agent », elle remplacerait ce nom par une phrase : une synthèse vocale
+       annoncerait l'explication au lieu de l'action, et le bouton deviendrait plus long à
+       identifier à l'oreille qu'à l'œil. */
     scope.querySelectorAll('[data-i18n-tip]').forEach((el) => {
       const s = t(el.dataset.i18nTip);
       el.dataset.tip = s;
-      el.setAttribute('aria-label', s);
+      if (!el.textContent.trim()) el.setAttribute('aria-label', s);
     });
     scope.querySelectorAll('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
   }

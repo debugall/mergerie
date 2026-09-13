@@ -135,6 +135,10 @@ async function ensureRepo(cfg, repo, onLog = () => {}) {
   }
   ensureInternalIgnore(dir); // ne jamais committer les dossiers de travail internes
   await updateSubmodules(dir, tls, secrets, onLog);
+  /* Le clone vient de bouger : un skill ajouté dans `.claude/skills/` doit apparaître au
+     prochain regard, pas cinq minutes plus tard. Require paresseux — `skillscan` dépend de
+     ce module, et le charger en tête ferait un cycle. */
+  try { require('./skillscan').invalidate(); } catch { /* module absent : rien à invalider */ }
   return dir;
 }
 
@@ -328,6 +332,18 @@ async function fileDiffFull(cwd, base, ref, filePath) {
   return stdout;
 }
 
+/* Le même diff à contexte complet, mais entre DEUX COMMITS — ce que voit la relecture d'une
+   seule itération de codage. `fileDiffFull` préfixe sa base par `origin/` : elle attend un nom
+   de branche, or ici les deux bornes sont des SHA, et un `origin/<sha>` n'existe pas. */
+async function fileDiffRange(cwd, fromSha, toSha, filePath) {
+  const { stdout } = await run(
+    'git',
+    ['diff', '--unified=100000', `${fromSha}..${toSha}`, '--', filePath],
+    { cwd, maxBuffer: 1024 * 1024 * 64 },
+  );
+  return stdout;
+}
+
 /* Nombre de commits d'avance de HEAD sur origin/<base>. Sert à distinguer deux situations que
    `commitAll` renvoie à l'identique (« rien à committer ») et qui n'ont rien à voir : une branche
    qui porte DÉJÀ le travail — cas d'une relance après un échec survenu APRÈS le commit — et une
@@ -500,5 +516,5 @@ module.exports = {
   resetWorktree,
   ensureRepo, targetedDiff, diffRange, tagAuthor, branchesForCommit, branchesForCommitDetailed, cloneDirFor, authUrl, run, secretsOf, tokenFor,
   defaultBranch, ensureCleanWorktree, refExists, createBranchFrom, checkoutBranch, commitAll, headSha, branchDiff, pushBranch, gitTlsArgs,
-  lsTree, showFile, fileDiffFull,
+  lsTree, showFile, fileDiffFull, fileDiffRange,
 };

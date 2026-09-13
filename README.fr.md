@@ -34,6 +34,9 @@ npm install
 npm start          # http://localhost:4319
 ```
 
+Optionnel, pour la **dictée vocale** : `sh scripts/install-whisper.sh` (macOS/Linux) ou le bouton
+**Installer** de Réglages → Dictée vocale. Rien d'autre n'est nécessaire pour faire tourner l'outil.
+
 Au premier lancement, l'onglet **Reviews** affiche les trois étapes de démarrage, chacune avec son
 bouton. Elles correspondent à l'onglet **Réglages** :
 1. **Git** — URL GitLab + **access token** (PAT scopes `api` + `read_repository`) et/ou **token GitHub** (scope `repo`), dossier de clonage. Un bouton **Tester la connexion** par forge valide le tout. *(URL Jira et connexion Jira optionnelles : onglet **Jira**.)*
@@ -53,6 +56,10 @@ découvrir l'outil : **zéro configuration**. La démo inclut une **MR convergé
 la feature *Converger* en action, et une **session reliée à sa MR** — le chemin *du prompt à la MR convergée*.
 Elle porte aussi des **vérifications objectives** déjà rendues (dont une rouge, détaillée commande par commande)
 et un **lot** de merge requests vérifiées ensemble.
+Une session de codage y porte **trois itérations, la dernière avec son diff**, et le codage hors dépôt les siennes : de quoi voir la relecture du dernier suivi des deux côtés, sans agent.
+Côté **Agents**, elle porte les trois agents livrés, deux **agents de domaine** avec leur connaissance
+versionnée — dont une version en attente de validation, un chemin non vérifié et un écart signalé — et un
+run déclenché par un **horaire** qui a réécrit une page de notes.
 
 *(Enregistrer une vidéo de présentation : voir le [Guide complet → Mode démo](./docs/guide.fr.md#enregistrer-une-vidéo-de-présentation-prête-pour-youtube).)*
 
@@ -62,12 +69,18 @@ et un **lot** de merge requests vérifiées ensemble.
 
 - **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée,
   re-review incrémentale et **boucle de convergence autonome** (review → correction → re-review jusqu'au seuil).
-  Les listes se filtrent par **couleur de note**.
+  Les listes se filtrent par **couleur de note**. On peut **poser une question sur un rapport** —
+  pourquoi ce constat bloque, vaut-il pour l'autre appelant — et la réponse arrive sous le rapport
+  sans toucher ni à lui ni à sa note.
 - **Dev IA** — sessions de codage automatisées (l'IA code, commite, pousse, ouvre la MR), **codage hors dépôt**
+- **Agents** — des **profils de session** : un rôle, un périmètre, des outils, des skills, une sortie, parfois un horaire. Deux exemples livrés — l'**enquêteur d'incident**, qui trouve dans quel dépôt et quel fichier vit le code désigné par une trace, et le **documentaliste**, qui tient la carte des services dans une page de notes. Et les **agents de domaine** : on donne un sujet, le cartographe écrit la carte du sujet à travers les dépôts — chemins vérifiés un par un, âge de la carte compté sans IA, mise à jour relue et validée. Un agent ne pousse jamais et ne publie jamais de lui-même.
   (avec retour de l'IA et demande de correction), **exploration** de code en lecture seule et **questions
   libres** posées hors de tout dépôt (gardées, libellées, reprenables) ;
   *du prompt à la MR convergée* en un bouton. Sur une session multi-dépôts, chaque projet se lance — et se
-  fait corriger — **séparément**. Les sessions terminées se **rangent** sans être supprimées.
+  fait corriger — **séparément**. La dernière itération garde **le diff de ce qu'elle a changé** — hors
+  dépôt compris, où un dépôt de suivi tenu hors de ton dossier remplace la branche absente : relire
+  ton dernier suivi n'oblige plus à tout relire. Les sessions terminées se **rangent**
+  sans être supprimées.
 - **Vérification objective** — une liste de commandes (`npm ci`, `npm test`) donne à
   une merge request un verdict qui n'est pas un avis : `✓ vérifié`, `✗ 2 tests cassés`, `⚠ base déjà rouge`. Les
   noms des tests cassés sont lus de la sortie **TAP** ou d'un rapport **JUnit** quand il y en a. Des merge requests
@@ -81,7 +94,7 @@ et un **lot** de merge requests vérifiées ensemble.
   attente de réponse, vérifications en échec, MR fraîches et MR dormantes, le tout calculé en local et **sans
   aucun appel IA**. `!214` et `PROJ-720` écrits dans une note deviennent des liens, et une merge request ou un
   ticket s'ajoute aux todos d'un clic.
-- **Jira** — tes tickets récupérés automatiquement, détail + pièces jointes, changement d'état et commentaires ; **tickets surveillés** (affectés ou non) avec notification à chaque changement d'état, et une pastille au menu = tes tickets en cours.
+- **Jira** — tes tickets récupérés automatiquement, détail + pièces jointes, tickets liés (groupés par relation, ouverts sans quitter l'onglet), changement d'état et commentaires ; **tickets surveillés** (affectés ou non) avec notification à chaque changement d'état, et une pastille au menu = tes tickets en cours.
 - **Git** — opérations multi-dépôts (branches, tags, commandes git) sur les deux forges, un **merge de
   branche à branche avec résolution des conflits à l'écran** (les deux versions l'une sous l'autre, garder
   l'une, garder les deux, ou écrire soi-même ; puis commit et push, chacun derrière sa confirmation),
@@ -95,10 +108,13 @@ et un **lot** de merge requests vérifiées ensemble.
   Lancer demande toujours confirmation et nomme le job ; un job paramétré ouvre sa page, pour voir ce qu'on
   s'apprête à envoyer. Rien n'est interrogé en boucle : l'écran demande quand on ouvre l'onglet.
 - **Liens** — les liens de travail que les marque-pages ne savent pas structurer : une **grille services ×
-  environnements** (une URL par case, écrite — aucune adresse devinée depuis une autre), des liens libres
-  retrouvés par tag, et une **palette globale** (`Ctrl`/`Cmd`+`K`) qui cherche d'un coup dans les liens, les
-  MR, les tickets, les notes et les todos, classés par frécence. Un service associé à un dépôt pose ses
-  boutons directement sur ses merge requests, y compris des liens **templatés** (`{env}`, `{branch}`,
+  environnements** (des adresses écrites — aucune devinée depuis une autre), où une case montre ses trois
+  plus ouvertes et ouvre le reste dans un panneau ancré sur elle : la hauteur d'une ligne ne dépend plus de
+  son contenu. On ajoute en **collant** — une URL par ligne, et l'outil propose le nom, le service et
+  l'environnement, jamais en silence et jamais dans une colonne « probable ». Les liens libres forment une
+  liste compacte retrouvée par tag, et une **palette globale** (`Ctrl`/`Cmd`+`K`) cherche d'un coup dans les
+  liens, les MR, les tickets, les notes et les todos, classés par frécence. Un service associé à un dépôt pose
+  ses boutons directement sur ses merge requests, y compris des liens **templatés** (`{env}`, `{branch}`,
   `{mr_iid}`) résolus au clic. Les favoris Chrome s'importent avec aperçu.
 - **Stats** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens,
   **les cinq sessions les plus coûteuses** et **les constats qui reviennent** — le même constat
@@ -108,11 +124,18 @@ et un **lot** de merge requests vérifiées ensemble.
   restant utilisable pour git et les sessions de codage), règles de review, **review automatique des merge
   requests à l'arrivée** et **re-review automatique quand un rapport se périme** (toutes deux plafonnées et
   décochées par défaut), **publication automatique du rapport sur la MR**, templates de prompt, thème et
-  langue.
+  langue, règles de review pouvant être **limitées à un dépôt**, cases cochées d'office d'une nouvelle session, et jobs Jenkins liés aux dépôts.
 
 Partout : `Ctrl`/`Cmd` + `K` ouvre une **palette de commandes** (sauter à un onglet, une MR, une session
 en tapant son nom — `!217` ou `PROJ-1408` tapés seuls y vont directement), `j` / `k` parcourent la liste
-courante, `v` / `c` / `m` / `x` agissent sur la carte au focus, `?` liste tous les raccourcis. L'outil
+courante, `v` / `c` / `m` / `x` agissent sur la carte au focus, `?` liste tous les raccourcis. Un
+**micro sur chaque champ de texte** (`Ctrl`/`Cmd` + `Maj` + `Espace`) écrit ce que tu dis au curseur :
+la transcription est **locale**, par whisper.cpp, et le moteur reçoit **ton** vocabulaire — dépôts,
+services, environnements, préfixes Jira, branches ouvertes —, ce qui lui fait écrire `webapp-front` et
+`!214` plutôt que « web app front » et « 214 ». Éteinte par défaut ; elle s'installe depuis l'écran de
+réglages, qui déroule toute la chaîne et nomme la première marche qui casse. **Toute fenêtre où l'on
+saisit se réduit** dans le bas du menu par un `—` : on va vérifier un nom de branche ou un ticket sans
+perdre ce qu'on écrivait, et on la reprend telle quelle — champs, curseur et onglet compris. L'outil
 rouvre sur l'onglet et le stade que tu as quittés, et le panneau de rapport ouvre sur **ce qui a changé
 depuis ta dernière visite**.
 
@@ -121,6 +144,13 @@ le dernier build Jenkins qui porte une branche s'écrit sur la carte de sa merge
 passé « en revue » fait remonter ses merge requests ; une exploration se transforme en session de
 codage **dans la même session d'agent** ; les branches des merge requests mergées se ramassent en
 un lot ; et une vérification qui tourne « in place » dit l'état des services Docker avant de partir.
+Le rapport d'une review dit **quelles notes le citent** et **quelle carte de domaine il touche** — et
+donne cette carte à l'IA comme contexte de review ; un verdict rouge laisse une todo et, si tu le
+demandes, un commentaire sur le ticket Jira ; une console Jenkins en échec et une vérification rouge
+ouvrent l'**enquêteur d'incident**, la trace déjà dans la demande ; et le brief du matin rattrape **le
+merge laissé à moitié la veille**, les opérations Git qui ont échoué et les conteneurs tombés — ces
+derniers surveillés par le serveur lui-même, comme la fin d'un build Jenkins lancé d'ici, pour que ça
+t'atteigne l'onglet fermé.
 
 Les badges signalent le **travail en attente** (MR à traiter, sessions non lancées), pas des totaux.
 

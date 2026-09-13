@@ -20,6 +20,22 @@ const fail = (title, items) => {
 const ok = (t) => console.log(`✅ ${t}`);
 const lines = app.split('\n');
 
+/* 0. LA SYNTAXE, D'ABORD. Le commentaire d'en-tête dit que `node --check` « ne voit pas » ces
+   contrôles — c'est vrai, et l'inverse l'est aussi : aucun de ces contrôles ne voit une
+   accolade non fermée. Un `app.js` qui ne PARSE pas ne s'exécute pas du tout, et l'écran est
+   blanc — mais `npm run check` répondait OK, parce que chaque garde-fou lit le fichier comme
+   du TEXTE. Vu une fois : une signature de fonction dupliquée sur une seule ligne, invisible
+   au garde-fou « fonction redéfinie », qui compare des lignes. C'est le contrôle le moins cher
+   du fichier et le seul qui attrape la panne totale : il passe donc en premier. */
+for (const f of ['public/app.js', 'public/i18n.js', 'public/i18n-runtime.js']) {
+  try {
+    new (require('vm').Script)(fs.readFileSync(path.join(ROOT, f), 'utf8'), { filename: f });
+  } catch (e) {
+    fail(`${f} ne parse pas — l'application entière ne démarre pas`, [String(e.message)]);
+  }
+}
+if (!failures) ok('Le front parse (app.js, i18n.js, i18n-runtime.js)');
+
 /* 1. $ vs $$ — LE bug qui est passé deux fois.
    `$` renvoie UN élément, `$$` un tableau. Appeler .forEach/.map/.filter sur le
    résultat de `$` explose au clic. La cause récurrente : dans une chaîne de
@@ -125,7 +141,7 @@ const declared = new Set(
 );
 // Champs libres du formulaire : on exclut ceux traités à part (cases à cocher,
 // nombres) car ils ont leur propre ligne dans le chargement/enregistrement.
-const HANDLED_APART = new Set(['auto_refresh_minutes', 'review_explain', 'brief_on_open', 'auto_post_review', 'auto_review_new', 'auto_rereview_stale']);
+const HANDLED_APART = new Set(['auto_refresh_minutes', 'review_explain', 'brief_on_open', 'auto_post_review', 'auto_post_blocking_only', 'auto_review_new', 'auto_rereview_stale', 'dictation_final_pass']);
 const orphanFields = [];
 for (const m of html.matchAll(/<input[^>]*\bform="configForm"[^>]*>/g)) {
   const tag = m[0];
@@ -136,6 +152,23 @@ for (const m of html.matchAll(/<input[^>]*\bform="configForm"[^>]*>/g)) {
 orphanFields.length
   ? fail('Champ de #configForm absent de CONFIG_FIELDS', orphanFields)
   : ok(`Tous les champs de #configForm sont enregistrés (${declared.size} déclarés)`);
+
+/* 8 bis. …et le trou que laisse cette liste d'exception. `HANDLED_APART` désactive le
+   contrôle ci-dessus pour un champ, à charge pour l'auteur d'écrire à la main SES deux
+   lignes : une dans `loadConfig` (relecture) et une dans le `submit` (envoi). Écrire la
+   première et oublier la seconde donne exactement le défaut que le contrôle n°8 existe pour
+   attraper — la case se coche, l'écran dit « enregistré », et rien n'est parti. On vérifie
+   donc que chaque nom exempté est bien cité des DEUX côtés. */
+const submitBloc = (app.match(/#configForm'\)\.addEventListener\('submit'[\s\S]*?\n\}\);/) || [''])[0];
+const loadBloc = (app.match(/async function loadConfig\(\)[\s\S]*?\n\}\n/) || [''])[0];
+const demiCables = [];
+for (const name of HANDLED_APART) {
+  if (!loadBloc.includes(name)) demiCables.push(`public/app.js  ${name} — exempté de CONFIG_FIELDS mais jamais relu dans loadConfig()`);
+  if (!submitBloc.includes(name)) demiCables.push(`public/app.js  ${name} — exempté de CONFIG_FIELDS mais jamais envoyé par le submit de #configForm`);
+}
+demiCables.length
+  ? fail('Champ exempté de CONFIG_FIELDS et câblé à moitié', demiCables)
+  : ok(`Les ${HANDLED_APART.size} champs traités à part sont relus ET envoyés`);
 
 /* 9. Liste de refs git sans recherche.
    Même raison que le contrôle n°7 pour les dépôts : un dépôt actif compte souvent des
@@ -210,6 +243,70 @@ const fondKo = [...fondManuel, ...fondInconnu];
 fondKo.length
   ? fail('Fermeture au clic sur le fond', fondKo)
   : ok(`Toutes les modales se ferment au fond par fermerAuFond() (${[...app.matchAll(/fermerAuFond\('#/g)].length})`);
+
+/* 12. La dictée existe, mais son raccourci n'est écrit nulle part.
+   `Ctrl/Cmd + Maj + Espace` ne se devine pas : c'est la modale `?` qu'on ouvre pour le
+   chercher. Le fichier de capture peut vivre sans que le raccourci y soit listé — et alors
+   la fonctionnalité n'existe que pour qui lit le CHANGELOG. */
+if (fs.existsSync(path.join(ROOT, 'public/dictation-mic.js'))) {
+  const manque = [];
+  if (!/shortcuts\.dictation/.test(app)) manque.push("public/app.js  SHORTCUTS ne cite pas 'shortcuts.dictation' — le raccourci de dictée n'est listé nulle part");
+  if (!html.includes('id="dictationMic"')) manque.push('public/index.html  #dictationMic absent — le micro n\'a nulle part où s\'afficher');
+  manque.length
+    ? fail('Dictée vocale câblée à moitié', manque)
+    : ok('Dictée vocale : le micro existe et son raccourci est documenté');
+}
+
+/* 13. Une liste à cocher de skills, de sous-agents, de dépôts ou d'agents sans son filtre.
+   Même raison que les contrôles 7 et 9, pour les listes qu'ont amenées les agents : un home
+   d'utilisateur porte vite trente skills, et un parc, vingt dépôts. Le filtre doit être un
+   FRÈRE de la liste (même parent) et son id se terminer par `Filter` — c'est la convention
+   que suit `filtrerLignes()`, qui reçoit le couple. Une liste rendue sans lui redevient un
+   mur de cases où l'on cherche à l'œil. */
+const LISTES_A_FILTRER = ['skillList', 'taskSkills', 'taskSubagents', 'agentSkills', 'agentRepos', 'domainRepos'];
+const sansFiltre = [];
+for (const id of LISTES_A_FILTRER) {
+  const re = new RegExp(`<[^>]*\\bid="${id}"[^>]*>`);
+  const m = html.match(re);
+  if (!m) continue;                                   // liste pas encore posée : rien à exiger
+  // Le parent : le dernier <div ...> ouvert avant la liste, et ce qu'il contient jusqu'à elle.
+  const avant = html.slice(0, html.indexOf(m[0]));
+  const debutParent = avant.lastIndexOf('<div');
+  const bloc = html.slice(debutParent, html.indexOf(m[0]) + m[0].length);
+  if (!/<input[^>]*\bid="[\w-]*Filter"/.test(bloc)) {
+    sansFiltre.push(`public/index.html  #${id} — aucun <input id="…Filter"> frère : la liste n'a pas de recherche`);
+  }
+}
+sansFiltre.length
+  ? fail('Liste à cocher sans champ de recherche', sansFiltre)
+  : ok(`Toutes les listes à cocher ont leur filtre (${LISTES_A_FILTRER.filter((id) => html.includes(`id="${id}"`)).length})`);
+
+/* 14. Un helper de premier niveau APPELÉ plus haut que sa déclaration `const`.
+   `app.js` est un seul script global : les instructions de premier niveau s'exécutent dans
+   l'ordre du texte, et un `const` n'existe qu'à partir de sa ligne. Un appel écrit plus haut
+   lève « Cannot access X before initialization » — non pas au clic, mais PENDANT l'évaluation
+   du fichier : tout ce qui suit cesse d'exister, et l'écran est mort dans son ensemble. Le
+   contrôle n°10 ne voit que les doublons ; celui-ci voit l'ordre. Vu en vrai avec un `onEl`
+   déclaré au milieu du fichier et utilisé mille lignes plus haut. Le remède est une
+   déclaration de fonction, qui est hissée. */
+const declLine = new Map();
+lines.forEach((l, i) => {
+  const m = l.match(/^(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=/);
+  if (m && !declLine.has(m[1])) declLine.set(m[1], i + 1);
+});
+const avantDecl = [];
+lines.forEach((l, i) => {
+  // Un APPEL en tout début de ligne : c'est la forme d'un câblage de premier niveau.
+  const m = l.match(/^([A-Za-z_$][\w$]*)\(/);
+  if (!m) return;
+  const decl = declLine.get(m[1]);
+  if (decl && decl > i + 1) {
+    avantDecl.push(`public/app.js:${i + 1}  ${m[1]}(…) appelé avant sa déclaration ligne ${decl} — déclarer \`function ${m[1]}()\` (hissée)`);
+  }
+});
+avantDecl.length
+  ? fail('Helper appelé avant sa déclaration (l’évaluation d’app.js s’arrête là)', avantDecl)
+  : ok('Aucun helper de premier niveau appelé avant sa déclaration');
 
 console.log('');
 if (failures) { console.log(`${failures} contrôle(s) en échec.`); process.exit(1); }

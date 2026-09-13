@@ -123,6 +123,7 @@ function decouperCommande(ligne) {
    Format ligne à ligne, émis par beaucoup de runners dès que leur sortie n'est pas un
    terminal — ce qui est toujours le cas ici. Rien à déclarer : on le reconnaît au passage. */
 
+const MAX_DUREES = 5000;   // A25 : borne de collecte des durées (on n'en affiche que cinq)
 const RE_TAP_VERSION = /^\s*TAP version \d+\s*$/;
 const RE_TAP_PLAN = /^(\s*)1\.\.(\d+)\s*(#.*)?$/;
 const RE_TAP_TEST = /^(\s*)(not )?ok\b\s*(\d+)?\s*-?\s*(.*)$/;
@@ -131,6 +132,21 @@ const RE_TAP_BAILOUT = /^\s*Bail out!\s*(.*)$/;
 
 // Les directives changent le SENS de la ligne : un `not ok … # TODO` est un échec ATTENDU,
 // le compter accuserait une branche pour un test que son auteur a lui-même désarmé.
+/* A25 — LA DURÉE D'UN TEST, quand la sortie la donne. Elle était jetée avec le commentaire :
+   vitest écrit `# time=12.34ms`, node `# duration_ms 12.345`, JUnit porte un attribut `time`
+   en secondes. Le nom du test, lui, doit rester SANS elle — sinon il change à chaque run et le
+   delta base/tête n'apparie plus rien. On la lit donc à part, et elle ne sert qu'à dire ce qui
+   est lent : « les cinq tests les plus lents » est la seule question qu'un chiffre par test
+   permette de poser sans se tromper. */
+function dureeMs(commentaire) {
+  const c = String(commentaire || '');
+  const ms = /#\s*time\s*=\s*([\d.]+)\s*ms/i.exec(c) || /#\s*duration_ms\s+([\d.]+)/i.exec(c);
+  if (ms) return Math.round(Number(ms[1]) * 100) / 100;
+  const sec = /#\s*time\s*=\s*([\d.]+)\s*s\b/i.exec(c);
+  if (sec) return Math.round(Number(sec[1]) * 100000) / 100;
+  return null;
+}
+
 function directive(desc) {
   /* En TAP, « # » ouvre un commentaire : tout ce qui suit sort du nom du test. Ça vaut pour
      les directives (`# SKIP`, `# TODO`) comme pour les annotations libres — vitest écrit
@@ -144,6 +160,7 @@ function directive(desc) {
     desc: nom,
     todo: !!dir && dir[1].toUpperCase() === 'TODO',
     skip: !!dir && dir[1].toUpperCase() === 'SKIP',
+    duration_ms: dureeMs(commentaire),
   };
 }
 
@@ -171,6 +188,7 @@ function parserTap(sortie) {
   if (!estTap(lignes)) return null;
 
   const feuilles = [];
+  const durees = [];               // A25 : { test, ms } quand la sortie donne un chiffre
   let total = 0;                   // feuilles lues, quel que soit leur résultat
   const pile = [];                 // indentations des résultats déjà lus, non encore refermés
   const nomsParIndent = new Map(); // dernier « # Subtest: » vu à chaque indentation
@@ -210,17 +228,23 @@ function parserTap(sortie) {
     /* Vitest annonce ses blocs par une accolade OUVRANTE sur la ligne de résultat elle-même,
        là où node fait suivre le bloc d'une ligne de résultat. Une ligne qui ouvre un bloc est
        donc, elle aussi, un parent — et le nom sous lequel ses enfants seront rangés. */
-    const { desc, todo, skip } = directive(m[4] || '');
+    const { desc, todo, skip, duration_ms } = directive(m[4] || '');
     if (/\{\s*$/.test((m[4] || '').trim())) {
       nomsParIndent.set(ind, desc);
       for (const k of [...nomsParIndent.keys()]) if (k > ind) nomsParIndent.delete(k);
       continue;
     }
     if (!skip) total += 1;
-    if (!echec || todo || skip) continue;
-
     const ancetres = [...nomsParIndent.keys()].filter((k) => k < ind).sort((a, b) => a - b)
       .map((k) => nomsParIndent.get(k));
+    /* Les durées de TOUS les tests qui ont tourné — un test lent est le plus souvent VERT,
+       c'est même pour ça qu'on ne le remarque jamais. Bornées : sur une suite de vingt mille
+       tests, on ne recopie pas vingt mille lignes pour en afficher cinq. */
+    if (!skip && duration_ms != null && durees.length < MAX_DUREES) {
+      durees.push({ test: [...ancetres, desc].filter(Boolean).join(' › ') || desc, ms: duration_ms });
+    }
+    if (!echec || todo || skip) continue;
+
     const bloc = corpsEchec(lignes, i + 1, ind);
     feuilles.push({
       test: [...ancetres, desc].filter(Boolean).join(' › ') || desc || `test ${m[3] || ''}`.trim(),
@@ -231,6 +255,8 @@ function parserTap(sortie) {
 
   return {
     tests: feuilles,
+    // A25 — les plus lents d'abord : c'est la seule lecture utile d'une durée par test.
+    slowest: durees.sort((a, b) => b.ms - a.ms).slice(0, 5),
     total,
     plan,
     racines,
@@ -302,18 +328,30 @@ function parserJUnit(xml) {
   const s = String(xml || '');
   if (!/<testsuites?\b/i.test(s) && !/<testcase\b/i.test(s)) return null;
   const tests = [];
+  const durees = [];               // A25 : { test, ms }, l'attribut `time` du testcase
   let total = 0;
   const re = /<testcase\b([^>]*?)(\/>|>([\s\S]*?)<\/testcase>)/gi;
   let m = re.exec(s);
   while (m) {
-    total += 1;
     const attrs = m[1] || '';
     const corps = m[3] || '';
+    /* `total` COMPTE CE QUI A TOURNÉ, comme du côté TAP (`if (!skip) total += 1`). Ici, chaque
+       `<testcase>` était compté, `<skipped/>` inclus : le même projet annonçait donc deux
+       totaux différents selon qu'il rendait du TAP ou du JUnit, et « 214 tests » d'un rapport
+       n'était pas comparable à « 198 » de l'autre. Un seul sens pour un seul mot. */
+    if (!/<skipped\b/i.test(corps)) total += 1;
     // XML autorise les deux styles de guillemets, et les fichiers réels utilisent les deux.
     const attr = (n) => {
       const a = new RegExp(`\\b${n}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i').exec(attrs);
       return a ? decoderXml(a[1] != null ? a[1] : a[2]) : '';
     };
+    /* A25 — `time` est en SECONDES en JUnit, et il est porté par le testcase qu'il ait réussi
+       ou non : c'est là qu'on trouve les lents, qui sont presque toujours verts. */
+    const tps = Number(attr('time'));
+    if (!/<skipped\b/i.test(corps) && Number.isFinite(tps) && tps > 0 && durees.length < MAX_DUREES) {
+      const nomComplet = [attr('classname'), attr('name')].filter(Boolean).join(' › ');
+      durees.push({ test: nomComplet || attr('name') || 'test sans nom', ms: Math.round(tps * 100000) / 100 });
+    }
     const ko = /<(failure|error)\b([^>]*?)(\/>|>([\s\S]*?)<\/\1>)/i.exec(corps);
     const texteKo = ko ? decoderXml(ko[4] || '').trim() : '';
     // `<skipped/>` : test non exécuté, ni succès ni échec.
@@ -332,7 +370,7 @@ function parserJUnit(xml) {
     m = re.exec(s);
   }
   if (!total) return null;
-  return { tests, total };
+  return { tests, total, slowest: durees.sort((a, b) => b.ms - a.ms).slice(0, 5) };
 }
 
 /* ---------- Ce qui est NOUVEAU par rapport à la base ----------
@@ -409,6 +447,9 @@ function composerRunCommandes(resultats, detail) {
       output_tail: tronquer(queue(r.output, 40), MAX_EXTRAIT),
     })),
     detail_source: source,
+    // A25 — les cinq plus lents, quand la sortie donne des durées. Une donnée de CONFORT :
+    // absente, le rapport ne montre simplement pas la section.
+    slowest: (detail && detail.slowest && detail.slowest.length) ? detail.slowest.slice(0, 5) : null,
     detail_partiel: !!(detail && detail.complet === false),
     incoherence: !!incoherence,
   };
@@ -424,6 +465,9 @@ function fusionnerDetails(details) {
   return {
     tests: utiles.flatMap((d) => d.tests || []),
     total: utiles.reduce((a, d) => a + (d.total || 0), 0),
+    // A25 : les plus lents de TOUS les dépôts confondus — la question « qu'est-ce qui traîne »
+    // ne s'arrête pas à la frontière d'un dépôt.
+    slowest: utiles.flatMap((d) => d.slowest || []).sort((a, b) => b.ms - a.ms).slice(0, 5),
     source: sources.size === 1 ? [...sources][0] : 'mixte',
     complet: utiles.every((d) => d.complet !== false),
   };

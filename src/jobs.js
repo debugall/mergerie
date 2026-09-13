@@ -1,8 +1,9 @@
 'use strict';
 const db = require('./db');
 const { stripAnsi } = require('../public/ansi-runtime.js');
-const { reviewMr, modifyReview, explainMr } = require('./reviewer');
+const { reviewMr, modifyReview, askReview, explainMr } = require('./reviewer');
 const taskrunner = require('./taskrunner');
+const agentprofile = require('./agentprofile');
 const proc = require('./proc');
 const gitops = require('./gitops');
 const notify = require('./notify');
@@ -12,7 +13,9 @@ const localcoder = require('./localcoder');
 const asker = require('./asker');
 const docker = require('./docker');
 const verifyrun = require('./verifyrun');
-const { getConfig } = require('./config');
+const git = require('./git');            // `run` : spawn générique, journal ligne à ligne, Stop câblé
+const { DATA_DIR } = require('./paths');
+const { getConfig, updateConfig } = require('./config');
 const { t } = require('../public/i18n-runtime.js');
 
 /* File d'attente SÉQUENTIELLE : un job à la fois, les suivants attendent. L'état est
@@ -104,14 +107,33 @@ function jobKeys(entry) {
   const targetsOf = (taskId) => db.prepare('SELECT repo_id FROM task_target WHERE task_id = ?').all(taskId);
   switch (entry.kind) {
     case 'docker': return keys;                       // aucun dépôt : jamais en conflit
+    /* L'installation du moteur de dictée ne touche aucun dépôt, mais elle REMPLACE un
+       binaire : deux à la fois écriraient dans le même dossier. Une clé à elle seule suffit
+       à les sérialiser sans bloquer quoi que ce soit d'autre. */
+    case 'install': keys.add('dictation:install'); return keys;
     /* Une question libre ne touche NI dépôt NI dossier : rien à réserver, donc elle ne
        bloque personne et personne ne la bloque. C'est la seule saveur de session dans ce
        cas — les trois autres travaillent toujours dans des fichiers. */
     case 'ask': return keys;
     case 'verify': {
       // Le run crée des worktrees dans le clone : aucun autre job ne doit y toucher pendant.
-      const ver = db.prepare('SELECT targets_json FROM verification WHERE id = ?').get(entry.verificationId);
-      for (const c of JSON.parse((ver && ver.targets_json) || '[]')) repo(c.repo_id);
+      const ver = db.prepare('SELECT verifier_id, targets_json FROM verification WHERE id = ?').get(entry.verificationId);
+      const cibles = JSON.parse((ver && ver.targets_json) || '[]');
+      for (const c of cibles) repo(c.repo_id);
+      /* EN MODE « IN PLACE », LE RUN NE TRAVAILLE PAS DANS LE CLONE mais dans le répertoire de
+         l'utilisateur — celui-là même qu'une session hors dépôt réserve sous `dir:<chemin>`.
+         Réserver le dépôt ne protégeait donc rien : l'agent d'une session locale pouvait écrire
+         dans le dossier pendant que la vérification y faisait son `checkout --detach`. On pose
+         la même clé qu'elle, pour que les deux se sérialisent au lieu de se marcher dessus. */
+      if (ver && ver.verifier_id) {
+        const ids = [...new Set(cibles.map((c) => Number(c.repo_id)).filter(Boolean))];
+        if (ids.length) {
+          const lignes = db.prepare(`SELECT workdir FROM verifier_repo
+            WHERE verifier_id = ? AND mode = 'in_place' AND workdir IS NOT NULL AND workdir <> ''
+              AND repo_id IN (${ids.map(() => '?').join(',')})`).all(ver.verifier_id, ...ids);
+          for (const l of lignes) keys.add(`dir:${l.workdir}`);
+        }
+      }
       return keys;
     }
     case 'gitops':
@@ -140,7 +162,7 @@ function jobKeys(entry) {
       repo(mr && mr.repo_id);
       return keys;
     }
-    default:                                          // review / rereview / modify / explain
+    default:                                          // review / rereview / modify / ask-review / explain
       if (Array.isArray(entry.rows)) { for (const r of entry.rows) repo(r.repo_id); return keys; }
       keys.add('*');
       return keys;
@@ -227,6 +249,11 @@ async function processList(jobId, rows, kind, opts = {}) {
         if (kind === 'modify') {
           await modifyReview(repo, mr, opts.instruction || '', onLog);
           logLine(jobId, mr.id, t('log.job.report-updated', { iid: mr.iid }));
+        } else if (kind === 'ask-review') {
+          /* Une QUESTION : elle ne touche ni au rapport ni à sa note. Le job n'a donc rien à
+             invalider ni à recharger — seul l'historique des échanges s'allonge. */
+          await askReview(repo, mr, opts.question || '', onLog);
+          logLine(jobId, mr.id, t('log.job.review-answered', { iid: mr.iid }));
         } else if (kind === 'explain') {
           await explainMr(repo, mr, onLog);
           logLine(jobId, mr.id, t('log.job.explained', { iid: mr.iid }));
@@ -419,6 +446,15 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
     else if (action === 'update-base') await taskrunner.mettreAJourDepuisBase(task.id, opts.targetId, onLog);
     else await taskrunner.runTask(task, onLog, { targetIds: opts.targetIds });
     setJob(jobId, { status: 'done', done_count: 1, current_mr_id: null, finished_at: new Date().toISOString(), message: '' });
+    /* CE QU'ON FAIT DE LA SORTIE D'UN AGENT : page de notes, création d'un agent de domaine,
+       écarts constatés. AVANT le suivi automatique — un suivi enchaîne un second run, et la
+       sortie du premier serait rangée après celle du second, ou pas du tout.
+       Une erreur ici ne fait PAS échouer le job : le run a réussi, son Markdown est lisible ;
+       c'est la sortie qui a un problème, et perdre le run avec serait le pire des deux. */
+    if (task.agent_id) {
+      try { await agentprofile.apresRun(db.prepare('SELECT * FROM task WHERE id = ?').get(task.id), onLog); }
+      catch (e) { onLog(t('agents.log.output-failed', { message: e.message })); }
+    }
     // La session peut s'être mise EN ATTENTE (l'agent a posé des questions) : notif dédiée,
     // pas « prête à push ». Sinon, codage terminé → prêt à push/MR.
     const after = db.prepare('SELECT status FROM task WHERE id = ?').get(task.id);
@@ -616,7 +652,7 @@ async function runAskJob(jobId, questionId, opts = {}) {
    Les opérations git en sont EXCLUES : rejouer « supprimer ces douze branches » depuis un
    bouton de bandeau, sans repasser par l'aperçu, est précisément ce qu'il ne faut pas
    permettre. Leur écran est à un clic. */
-const RETRYABLE = new Set(['review', 'rereview', 'modify', 'explain', 'task', 'local', 'converge', 'converge-session']);
+const RETRYABLE = new Set(['review', 'rereview', 'modify', 'ask-review', 'explain', 'task', 'local', 'converge', 'converge-session']);
 function rememberRetry(jobId, spec) {
   try { db.prepare('UPDATE job SET retry = ? WHERE id = ?').run(JSON.stringify(spec), jobId); }
   catch { /* colonne absente sur une base très ancienne : la relance sera juste indisponible */ }
@@ -646,6 +682,7 @@ function runEntry(e) {
   if (e.kind === 'task') return runTaskJob(e.jobId, e.taskId, e.action, e.opts);
   if (e.kind === 'gitops') return runGitJob(e.jobId, e.payload);
   if (e.kind === 'docker') return runDockerJob(e.jobId, e.payload);
+  if (e.kind === 'install') return runInstallJob(e.jobId, e.payload);
   if (e.kind === 'converge') return runConvergeJob(e.jobId, e.mrId, e.opts);
   if (e.kind === 'converge-session') return runConvergeSessionJob(e.jobId, e.taskId, e.opts);
   if (e.kind === 'local') return runLocalJob(e.jobId, e.taskId, e.opts);
@@ -748,6 +785,14 @@ async function runGitJob(jobId, payload) {
       ? await gitops.restore(payload.restoreOpId, onLog)
       : await gitops.execute(payload, onLog);
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
+    /* B14 — UNE OPÉRATION GIT NOTIFIE. Elle ne disait rien, ni en réussissant ni en échouant :
+       on supprimait douze branches, on changeait d'onglet, et on ne savait plus si c'était
+       passé. Ce sont pourtant les gestes les plus IRRÉVERSIBLES de l'outil — ceux dont on veut
+       une confirmation, justement parce qu'on est déjà parti voir ailleurs. */
+    notify.push('git_done', {
+      action: payload.restoreOpId ? 'restore' : payload.action,
+      n: (r && r.results ? r.results.filter((x) => x.ok).length : 1),
+    });
     return r;
   } catch (e) {
     // Un arrêt DEMANDÉ n'est pas un échec. Sans ce test, le Stop de l'utilisateur
@@ -759,8 +804,61 @@ async function runGitJob(jobId, payload) {
       return null;
     }
     setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
+    notify.push('job_failed', { message: String(e.message).slice(0, 200) });
   }
   return null;
+}
+
+/* ---------- Installation du moteur de dictée (whisper.md §6.5) ----------
+   Un job comme les autres, et c'est tout l'intérêt : le journal s'affiche en direct sous le
+   bouton, « Stop » tue le script proprement (SIGTERM puis SIGKILL à +2 s, par `proc`), et un
+   téléchargement interrompu REPREND au lancement suivant — c'est le script qui le garantit.
+
+   À la fin, le script parle au serveur : sa dernière ligne est un `MERGERIE_RESULT {…}` que
+   l'on relit pour REMPLIR les réglages. Pas de ligne = erreur : un script qui ne rend pas de
+   résultat n'a pas fini son travail, et deviner les chemins à sa place les inventerait. */
+function startInstallJob(payload) {
+  const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
+    VALUES ('install', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
+  const jobId = info.lastInsertRowid;
+  queue.push({ jobId, kind: 'install', payload });
+  setImmediate(pump);
+  return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
+}
+
+async function runInstallJob(jobId, payload) {
+  setJob(jobId, { status: 'running', total: 1, done_count: 0, started_at: new Date().toISOString(), message: t('job.msg.starting') });
+  const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
+  try {
+    // eslint-disable-next-line global-require
+    const dictation = require('./dictation');
+    // La dictée est SUSPENDUE le temps de l'installation : le binaire est en train d'être
+    // remplacé sous les pieds du moteur qui tourne.
+    dictation.arreterMoteur();
+    const prep = dictation.scriptSansCR(dictation.commandeInstallation(payload));
+    if (prep.normalise) onLog(t('log.dictation.crlf', { script: prep.origine }));
+    const cmd = prep.cmd;
+    const { stdout } = await git.run(cmd.programme, cmd.args, {
+      env: dictation.envInstallation(DATA_DIR), onLog,
+    });
+    const res = dictation.lireResultatInstallation(stdout);
+    if (!res) throw new Error(t('err.dictation.resultat'));
+    const patch = dictation.reglagesDepuisResultat(res);
+    updateConfig(patch);
+    onLog(t('log.dictation.settings-filled', {
+      modele: patch.dictation_model,
+      backend: res.backend || 'CPU',
+    }));
+    setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
+  } catch (e) {
+    // Comme partout : un Stop demandé n'est pas une erreur.
+    if (proc.isCancelled()) {
+      logLine(jobId, null, `⏹ ${t('job.msg.stopped-by-user')}`);
+      setJob(jobId, { status: 'stopped', finished_at: new Date().toISOString(), message: '' });
+      return;
+    }
+    setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
+  }
 }
 
 // Actions Docker (compose up/restart/pull/recreate/down, suppression d'orphelin) → log streamé.
@@ -797,6 +895,11 @@ async function runDockerJob(jobId, payload) {
       await docker.removeContainer(payload.id, onLog);
     } else if (payload.op === 'orphan-stop') {
       await docker.stopContainer(payload.id, onLog);
+    } else if (payload.op === 'orphan-restore') {
+      /* A/Docker 1 — la sauvegarde était ÉCRITE avant chaque suppression et n'était relue par
+         aucun écran : un container hors-compose supprimé par erreur était perdu, alors que de
+         quoi le refaire dormait en base. */
+      await docker.restoreContainer(payload.inspect, onLog);
     } else if (payload.op === 'make') {
       /* On NOTE la cible avant de la lancer et on complète à la fin : « ai-je déjà passé les
          migrations ce matin ? » se lit alors sous le bouton, sans relire un journal. Un échec
@@ -929,6 +1032,13 @@ async function runVerifyJob(jobId, verificationId) {
        job ne se déclare fini : « terminé » doit vouloir dire que tout est fait. */
     try { await verifyrun.commenterSurForge(verificationId, getConfig(), onLog); }
     catch (e) { logLine(jobId, null, `commentaire sur la forge impossible : ${e.message}`); }
+    /* B10 — et le ticket, quand l'option est cochée. Même prudence : Jira injoignable ne
+       transforme pas un verdict acquis en échec de job. */
+    try { await verifyrun.commenterSurJira(verificationId, getConfig(), onLog); }
+    catch (e) { logLine(jobId, null, `commentaire Jira impossible : ${e.message}`); }
+    // B12 — le verdict laisse une trace qui survit à la notification : une todo par MR.
+    try { verifyrun.todosDuVerdict(verificationId, verdict); }
+    catch (e) { logLine(jobId, null, `todo de verdict impossible : ${e.message}`); }
     // Un verdict rouge n'est PAS une erreur de job : le job a parfaitement fait son travail.
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
     logLine(jobId, null, t('log.job.verify-end', { verdict }));
@@ -1077,7 +1187,7 @@ function isRunning() {
 
 module.exports = {
   startVerifyJob, verifyBloquePar, preparerVerificationApres,
-  startJob, startTaskJob, startGitJob, startDockerJob, startConvergeJob, startConvergeSessionJob,
+  startJob, startTaskJob, startGitJob, startDockerJob, startInstallJob, startConvergeJob, startConvergeSessionJob,
   startLocalJob, startAskJob, startReconcileJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
   queueCount, parallelBusy, runningCount, MAX_RUNNING, jobKeys, keysClash, retryJob, canRetry,
   jobTargets, runningTargets,

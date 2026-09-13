@@ -208,6 +208,121 @@ describe('Modales : le clic sur le fond', { skip: dispo ? false : 'chromium abse
     await page.evaluate(() => document.querySelectorAll('#toasts .toast').forEach((x) => x.remove()));
   });
 
+  /* ---------- METTRE LA FENÊTRE DE CÔTÉ ----------
+     Le geste qu'aucune modale ne permettait : aller vérifier quelque chose ailleurs sans
+     rien perdre. Ce qui se garde ici, c'est ce qui fait qu'on ose l'utiliser — la saisie,
+     le curseur, l'onglet — et le fait que la fenêtre reprise se défende toujours contre un
+     clic à côté, sans quoi on aurait déplacé la perte au lieu de l'éviter. */
+  test('une fenêtre réduite se range dans le menu et se reprend intacte', async () => {
+    // La fenêtre part d'un onglet précis : c'est celui-là qu'on doit retrouver en la reprenant.
+    // (L'épreuve précédente a pu laisser une modale ouverte : son voile intercepterait le clic.)
+    await page.evaluate(() => window.closeTaskModal());
+    await page.locator('nav button[data-tab="task"]').click();
+    await page.waitForFunction(() => document.querySelector('nav button[data-tab="task"]').classList.contains('active'));
+    await ouvrir();
+    await ecrire('ce que j’étais en train d’écrire');
+    await page.locator('#taskModal .modal-reduire').click();
+
+    assert.equal(await ouverte(), false, 'la fenêtre libère l’écran…');
+    await page.locator('#modalDock .dock-chip').waitFor({ state: 'visible' });
+    assert.match(await page.locator('#modalDock').innerText(), /session/i, '…et la puce dit LAQUELLE');
+
+    // On va voir ailleurs : c'est tout l'objet de la manœuvre.
+    await page.locator('nav button[data-tab="git"]').click();
+    await page.waitForFunction(() => document.querySelector('nav button[data-tab="git"]').classList.contains('active'));
+
+    await page.locator('#modalDock .dock-open').click();
+    await page.waitForSelector('#taskModal:not([hidden])');
+    assert.equal(await page.inputValue('#taskModal textarea[name="prompt"]'), 'ce que j’étais en train d’écrire',
+      'la fenêtre est masquée, jamais reconstruite : la saisie ne peut pas disparaître');
+    await page.waitForFunction(() => document.activeElement && document.activeElement.name === 'prompt',
+      null, { timeout: ATTENTE_ECRAN });
+    assert.equal(await page.locator('nav button[data-tab="task"].active').count(), 1,
+      'on reprend sur l’onglet d’où la fenêtre était partie — c’est là que son résultat s’affichera');
+    assert.equal(await page.locator('#modalDock').isHidden(), true, 'reparue, elle n’est plus dans le menu');
+
+    /* LA GARDE DE SAISIE SURVIT À L'ALLER-RETOUR. Le drapeau se remet à zéro à chaque
+       masquage : sans exception pour la réduction, la fenêtre reprise se serait laissé
+       fermer d'un clic à côté avec tout ce qu'elle contenait. */
+    const { x, y } = await coinDuFond();
+    await page.mouse.click(x, y);
+    assert.equal(await ouverte(), true, 'une fenêtre reprise protège sa saisie comme avant');
+    await page.keyboard.press('Escape');
+  });
+
+  /* LE BOUTON EST PARTOUT OÙ IL DOIT ÊTRE, ET NULLE PART AILLEURS. Il n'est écrit dans
+     aucune liste : `fermerAuFond` le pose sur toute modale dont la saisie est protégée. On
+     vérifie donc le RÉSULTAT de cette règle sur les fenêtres à formulaire — et qu'il ne se
+     pose ni hors de la boîte ni sur le titre. */
+  test('chaque fenêtre à saisie porte le bouton, au coin, sans recouvrir son titre', async () => {
+    const IDS = ['taskModal', 'mergeModal', 'mrModal', 'convergeModal', 'ticketModal', 'bulkModal',
+      'mergeCommitModal', 'captureModal', 'envModal', 'serviceModal', 'freeLinkModal', 'pasteModal',
+      'toServiceModal', 'importModal', 'dictInstallModal'];
+    await page.evaluate(() => window.closeTaskModal());
+    const vu = await page.evaluate((ids) => ids.map((id) => {
+      const m = document.getElementById(id);
+      if (!m) return { id, err: 'modale absente' };
+      const etait = m.hidden;
+      m.hidden = false;
+      const box = m.querySelector('.modal-box');
+      const b = m.querySelector('.modal-reduire');
+      if (!b) { m.hidden = etait; return { id, err: 'pas de bouton réduire' }; }
+      const bb = b.getBoundingClientRect(); const cb = box.getBoundingClientRect();
+      const h3 = box.querySelector('h3');
+      let surLeTitre = false;
+      if (h3) { const r = document.createRange(); r.selectNodeContents(h3); const t = r.getBoundingClientRect(); surLeTitre = t.right > bb.left && t.top < bb.bottom && t.bottom > bb.top; }
+      m.hidden = etait;
+      return { id, dedans: bb.width > 0 && bb.right <= cb.right + 1 && bb.top >= cb.top - 1, surLeTitre };
+    }), IDS);
+    assert.deepEqual(vu.filter((v) => v.err), [], 'toutes les fenêtres à saisie doivent l’avoir');
+    assert.deepEqual(vu.filter((v) => !v.dedans).map((v) => v.id), [], 'le bouton doit être DANS la boîte, au coin haut-droit');
+    assert.deepEqual(vu.filter((v) => v.surLeTitre).map((v) => v.id), [], 'et ne rien recouvrir du titre');
+  });
+
+  /* UNE FENÊTRE DONT ON NE PEUT PLUS ATTEINDRE LA COMMANDE DE RÉDUCTION N'EST PAS RÉDUCTIBLE.
+     Le formulaire de session fait deux écrans de haut : posé dans le flux, le bouton partait
+     avec le défilement, et il fallait remonter pour mettre la fenêtre de côté. */
+  test('le bouton reste au coin quand le formulaire défile', async () => {
+    await ouvrir();
+    const haut = async () => page.evaluate(() => {
+      const box = document.querySelector('#taskModal .modal-box');
+      return Math.round(document.querySelector('#taskModal .modal-reduire').getBoundingClientRect().top
+        - box.getBoundingClientRect().top);
+    });
+    const avant = await haut();
+    await page.evaluate(() => { const b = document.querySelector('#taskModal .modal-box'); b.scrollTop = b.scrollHeight; });
+    await page.waitForFunction(() => document.querySelector('#taskModal .modal-box').scrollTop > 40);
+    assert.ok(Math.abs(await haut() - avant) <= 2, 'le bouton suit la boîte, pas son contenu');
+    await page.keyboard.press('Escape');
+  });
+
+  test('la croix de la puce abandonne la fenêtre pour de bon', async () => {
+    await ouvrir();
+    await ecrire('à mettre de côté puis à jeter');
+    await page.locator('#taskModal .modal-reduire').click();
+    await page.locator('#modalDock .dock-close').click();
+    await page.locator('#modalDock').waitFor({ state: 'hidden' });
+    assert.equal(await ouverte(), false);
+    // Abandonner passe par la VRAIE fermeture : la fenêtre suivante repart vierge.
+    await ouvrir();
+    assert.equal(await page.inputValue('#taskModal textarea[name="prompt"]'), '');
+    await page.keyboard.press('Escape');
+  });
+
+  /* Une modale qui rend une PROMESSE (confirmation, choix d'un vérificateur) ne se réduit
+     pas : son appelant attend une réponse, et la mettre de côté le laisserait attendre pour
+     toujours — bouton figé en chargement, sans rien à l'écran pour le débloquer. La règle
+     n'est pas une liste à tenir : ces modales-là sont exactement celles qu'on ne protège pas
+     contre le clic au fond (`salissable: false`). */
+  test('une confirmation ne porte pas de bouton « réduire »', async () => {
+    await page.evaluate(() => { window.confirmDialog({ title: 'Test', text: 'On confirme ?' }); });
+    await page.waitForSelector('#confirmModal:not([hidden])');
+    assert.equal(await page.locator('#confirmModal .modal-reduire').count(), 0,
+      'la réduire laisserait son appelant en attente pour toujours');
+    await page.locator('#confirmCancel').click();
+    await page.waitForSelector('#confirmModal[hidden]', { state: 'attached' });
+  });
+
   test('la modale rouverte repart vierge', async () => {
     await ouvrir();
     await ecrire('resté d’une fois précédente');

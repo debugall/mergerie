@@ -91,6 +91,46 @@ function lireDossier(v) {
   return parts.join('/').slice(0, 300);
 }
 
+/* Les mots d'un nom, d'un hôte ou d'un segment : `api-preprod` donne « api » et « preprod ».
+   Sert partout où l'on compare un morceau d'URL à un nom d'environnement ou de service. */
+const decouper = (s) => normaliserTag(s).split(/[-_.]+/).filter(Boolean);
+
+/* CE QU'ON LIT DANS UNE CASE quand l'adresse n'a pas de nom. On y écrivait l'URL raccourcie :
+   `api-preprod.demo.invalid/health` répète la colonne (*preprod*) et la ligne (*api-core*), et
+   noie le seul mot utile (*health*) au bout de quarante caractères.
+   La règle, dans l'ordre : le dernier segment du chemin s'il dit quelque chose ; sinon l'hôte
+   débarrassé de ce que la ligne et la colonne disent déjà ; sinon l'hôte. L'URL entière reste
+   dans l'info-bulle et dans la copie — on ne cache rien, on cesse de répéter. */
+function nomDepuisUrl(brut, { env = '', service = '' } = {}) {
+  let u;
+  try { u = new URL(String(brut || '')); } catch { return ''; }
+  const segs = u.pathname.split('/').filter(Boolean);
+  let dernier = '';
+  try { dernier = decodeURIComponent(segs[segs.length - 1] || '').trim(); } catch { dernier = segs[segs.length - 1] || ''; }
+  if (dernier) return dernier.slice(0, MAX_LABEL);
+  const hote = u.hostname.replace(/^www\./i, '');
+  const parts = hote.split('.');
+  if (parts.length < 2) return hote;
+  /* Le premier segment d'hôte porte presque toujours le service et l'environnement collés
+     (`api-preprod`). S'il ne reste RIEN une fois les deux retirés, il ne dit que ce que la
+     case dit déjà. S'il reste un mot, on garde l'hôte entier : ce mot-là compte. */
+  const connus = new Set([...decouper(env), ...decouper(service)]);
+  const reste = decouper(parts[0]).filter((m) => !connus.has(m));
+  return reste.length ? hote : parts.slice(1).join('.');
+}
+
+/* Le nom d'un LIEN LIBRE : celui du site, pas celui de la page. Un lien libre se retrouve par
+   « Confluence », pas par « runbook » — c'est l'inverse d'une case, où le service est déjà dit
+   par la ligne. Une adresse IP ou un `localhost` ne donnent rien d'utile : on préfère alors le
+   dernier segment du chemin à un libellé « 127 ». */
+function nomDeSite(brut) {
+  let u;
+  try { u = new URL(String(brut || '')); } catch { return ''; }
+  const seg = u.hostname.replace(/^www\./i, '').split('.')[0];
+  if (seg && seg !== 'localhost' && !/^\d+$/.test(seg)) return seg.slice(0, MAX_LABEL);
+  return nomDepuisUrl(brut);
+}
+
 const litTags = (json) => { try { const a = JSON.parse(json || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
 
 /* Un gabarit : on vérifie que TOUTES les variables citées sont connues. Le message rend la
@@ -312,8 +352,29 @@ function supprimerContextLink(id, msgs) {
 /* ---------------------------------------------------- liens libres ---- */
 
 function listerFreeLinks({ q = '', tag = '' } = {}) {
+  /* A/Liens 2 — LES PLUS OUVERTS EN TÊTE. `launcher_usage.uses` était écrit à chaque
+     ouverture et ne servait qu'au classement de la PALETTE : la liste des liens libres, elle,
+     restait alphabétique, et les trois qu'on ouvre tous les jours se cherchaient au milieu de
+     soixante. On garde l'alphabétique comme départage — deux liens jamais ouverts doivent
+     rester dans un ordre stable, sinon la liste bouge sans raison d'une visite à l'autre. */
+  /* LA FRÉCENCE, comme la palette — et non le compteur brut. Un lien ouvert quarante fois en
+     mars restait en tête six mois durant, devant celui qu'on ouvre chaque matin depuis deux
+     semaines. Deux classements pour les mêmes liens sur le même écran, c'était un de trop. */
+  const ouvertures = new Map();
+  for (const u of db.prepare("SELECT ref, uses, last_used_at FROM launcher_usage WHERE kind = 'free_link'").all()) {
+    ouvertures.set(String(u.ref), u);
+  }
+  const maintenant = Date.now();
   const rows = db.prepare('SELECT * FROM free_link ORDER BY label COLLATE NOCASE').all()
-    .map((r) => ({ ...r, tags: litTags(r.tags) }));
+    .map((r) => {
+      const usage = ouvertures.get(String(r.id));
+      return {
+        ...r, tags: litTags(r.tags), uses: (usage && usage.uses) || 0,
+        last_used_at: (usage && usage.last_used_at) || null,
+        score: frecence(usage, maintenant),
+      };
+    })
+    .sort((a, b) => (b.score - a.score) || String(a.label).localeCompare(String(b.label), undefined, { sensitivity: 'base' }));
   const s = String(q || '').trim().toLowerCase();
   const t = normaliserTag(tag);
   return rows.filter((r) => (!t || r.tags.includes(t))
@@ -418,11 +479,13 @@ function rangerDansService(body = {}, msgs) {
 
 function grille() {
   const envs = listerEnvironnements();
+  /* `position` AVANT le nom, et `0` partout tant qu'on n'a rien glissé : une grille jamais
+     réordonnée reste alphabétique, une grille réordonnée garde l'ordre qu'on lui a donné. */
   const services = db.prepare(`SELECT s.*, r.project FROM service s
     LEFT JOIN repo r ON r.id = s.repo_id
-    ORDER BY s.pinned DESC, s.name COLLATE NOCASE`).all();
+    ORDER BY s.pinned DESC, s.position, s.name COLLATE NOCASE`).all();
   const urls = db.prepare('SELECT * FROM service_url ORDER BY position, id').all();
-  const ctx = db.prepare('SELECT service_id, COUNT(*) n FROM context_link GROUP BY service_id').all();
+  const ctx = db.prepare('SELECT * FROM context_link ORDER BY service_id, id').all();
 
   /* `urls[envId]` est une LISTE, même à un seul élément : un client qui doit traiter deux
      formes selon le nombre finit toujours par en oublier une. */
@@ -433,16 +496,34 @@ function grille() {
   for (const u of db.prepare("SELECT ref, last_used_at FROM launcher_usage WHERE kind = 'service_url'").all()) {
     derniere.set(u.ref, u.last_used_at);
   }
+  const nomEnv = new Map(envs.map((e) => [e.id, e.name]));
+  const nomSvc = new Map(services.map((s) => [s.id, s.name]));
+  /* LE COMPTE DES OUVERTURES, par adresse. La case n'en montre que trois : sans savoir
+     lesquelles on ouvre vraiment, le choix des trois serait arbitraire. */
+  const compte = new Map();
+  for (const u of db.prepare("SELECT ref, uses FROM launcher_usage WHERE kind = 'service_url'").all()) {
+    compte.set(u.ref, u.uses || 0);
+  }
   const parService = new Map();
   for (const u of urls) {
     if (!parService.has(u.service_id)) parService.set(u.service_id, {});
     const par = parService.get(u.service_id);
+    const ref = `${u.service_id}:${u.environment_id}:${u.id}`;
     (par[u.environment_id] = par[u.environment_id] || []).push({
       id: u.id, label: u.label, url: u.url,
-      last_used_at: derniere.get(`${u.service_id}:${u.environment_id}:${u.id}`) || null,
+      /* CE QUE L'ÉCRAN AFFICHE À DÉFAUT DE NOM, calculé ici : la règle a besoin du nom de la
+         colonne et de celui de la ligne, et la réécrire côté navigateur ferait deux versions
+         d'une même règle à tenir d'accord. */
+      display: u.label ? '' : nomDepuisUrl(u.url, { env: nomEnv.get(u.environment_id) || '', service: nomSvc.get(u.service_id) || '' }),
+      uses: compte.get(ref) || 0,
+      last_used_at: derniere.get(ref) || null,
     });
   }
-  const ctxParService = new Map(ctx.map((c) => [c.service_id, c.n]));
+  const ctxParService = new Map();
+  for (const c of ctx) {
+    if (!ctxParService.has(c.service_id)) ctxParService.set(c.service_id, []);
+    ctxParService.get(c.service_id).push({ id: c.id, label: c.label, url_template: c.url_template });
+  }
 
   return {
     environments: envs,
@@ -450,7 +531,10 @@ function grille() {
       ...s,
       tags: litTags(s.tags),
       urls: parService.get(s.id) || {},
-      context_links: ctxParService.get(s.id) || 0,
+      /* LES GABARITS EUX-MÊMES, et non leur seul nombre. Le chip « 1 lien contextuel » ne
+         disait ni lequel ni ce qu'il ouvrirait : il fallait ouvrir la fiche pour l'apprendre. */
+      context_templates: ctxParService.get(s.id) || [],
+      context_links: (ctxParService.get(s.id) || []).length,
     })),
     free_links: listerFreeLinks(),
     // Tous les tags en usage, pour les puces de filtre — sans les recalculer côté client.
@@ -485,8 +569,11 @@ function liensDeMr(mr) {
   }
   /* Un bouton PAR ADRESSE : une case qui en porte trois donne trois boutons, chacun nommé.
      N'en montrer qu'un obligerait à deviner lequel, et le libellé existe pour ça. */
+  /* L'ID DE L'ADRESSE VOYAGE AVEC ELLE. La frécence se compte sur `service:env:adresse` ;
+     les boutons d'une merge request n'envoyaient que `service:env`, et chaque ouverture depuis
+     une MR se perdait — ni la palette ni « dernière ouverture » ne la voyaient passer. */
   const cases = envs.filter((e) => parEnv.has(e.id)).flatMap((e) => parEnv.get(e.id)
-    .map((u) => ({ environment_id: e.id, env: e.name, color: e.color, url: u.url, label: u.label })));
+    .map((u) => ({ id: u.id, environment_id: e.id, env: e.name, color: e.color, url: u.url, label: u.label })));
 
   const valeursCommunes = { branch: mr.source_branch, mr_iid: mr.iid, service: service.name };
   const context = listerContextLinks(service.id).map((c) => {
@@ -629,7 +716,10 @@ function preFiltre(requete, colonnes) {
   return { cond: groupes.join(' AND '), args };
 }
 
-function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
+/* `agentsMsgs` : les deux libellés d'agent, déjà traduits par l'appelant. Ce module ne charge
+   PAS `i18n-runtime` — il utilise `t` comme nom de variable locale à trois endroits, et le
+   garde-fou de `check-server` refuse (à raison) qu'un fichier qui traduit masque `t`. */
+function launcher(q, { jiraConfigure = false, actions = [], agentsMsgs = null, dockerProjets = [], msgs = {} } = {}) {
   const requete = String(q || '').trim();
   const use = usages();
   const out = [];
@@ -647,7 +737,9 @@ function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
       /* La FRÉCENCE se compte par adresse (`sid:eid:uid`) et non par case : sur un Kibana de
          production, on ouvre toujours les deux mêmes filtres sur les dix enregistrés. */
       kind: 'service_url', ref: `${r.sid}:${r.eid}:${r.uid}`, group: 'links',
-      label: `${r.service} · ${r.env}${r.label ? ` — ${r.label}` : ''}`, detail: r.url, url: r.url,
+      /* MÊME RÈGLE QUE LA GRILLE pour une adresse sans nom : l'URL brute répétait la colonne
+         et la ligne juste écrites à côté. */
+      label: `${r.service} · ${r.env} — ${r.label || nomDepuisUrl(r.url, { env: r.env, service: r.service })}`, detail: r.url, url: r.url,
       texte: `${r.service} ${r.env} ${r.label || ''}`,
     });
   }
@@ -665,14 +757,17 @@ function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
   /* 2. Merge requests — par NUMÉRO ou par mots du titre. Le numéro passe par une égalité et
      non par un `LIKE` : `!214` ne se retrouve ni dans un titre ni dans un nom de projet, et
      c'est pourtant la façon la plus courante de désigner une merge request. */
-  const fMr = preFiltre(requete, ['m.title', 'p.project']);
+  /* B13 — …ET PAR SA CLÉ DE TICKET. « PROJ-1408 » est la façon dont la moitié d'une équipe
+     désigne un travail : elle ne trouvait rien ici alors que la colonne est remplie par la
+     découverte depuis longtemps. */
+  const fMr = preFiltre(requete, ['m.title', 'p.project', 'm.ticket_jira_key']);
   const iid = parseInt(String(requete).replace(/^!/, ''), 10);
   const parNum = Number.isFinite(iid);
   const condMr = fMr.cond
     ? (parNum ? `WHERE (m.iid = ? OR (${fMr.cond}))` : `WHERE ${fMr.cond}`)
     : '';
   const argsMr = condMr ? (parNum ? [iid, ...fMr.args] : fMr.args) : [];
-  for (const r of db.prepare(`SELECT m.id, m.iid, m.title, m.status, p.project FROM mr m
+  for (const r of db.prepare(`SELECT m.id, m.iid, m.title, m.status, m.ticket_jira_key, p.project FROM mr m
       JOIN repo p ON p.id = m.repo_id ${condMr} ORDER BY m.id DESC LIMIT ?`)
     .all(...argsMr, PAR_SOURCE * 3)) {
     pousser({
@@ -680,7 +775,7 @@ function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
       label: `!${r.iid} — ${r.title || ''}`, detail: r.project,
       // `mr_iid` : le NUMÉRO tel qu'on le tape — la palette y saute directement (« !217 »).
       nav: { tab: 'review', mr_id: r.id, mr_iid: r.iid, status: r.status },
-      texte: `!${r.iid} ${r.iid} ${r.title || ''} ${r.project}`,
+      texte: `!${r.iid} ${r.iid} ${r.title || ''} ${r.project} ${r.ticket_jira_key || ''}`,
     });
   }
 
@@ -730,9 +825,80 @@ function launcher(q, { jiraConfigure = false, actions = [] } = {}) {
     });
   }
 
+  /* B13/TOP 12 — LA PALETTE AGIT, elle ne fait plus seulement naviguer. Quatre objets du
+     quotidien n'y étaient pas, et chacun se cherchait à la souris : un vérificateur, un job
+     Jenkins, un projet compose, une commande git enregistrée. Le principe ne change pas — la
+     palette ne sait rien faire que l'écran ne sache déjà faire, elle emmène au bon endroit et
+     clique le vrai bouton. */
+  const fVerif = preFiltre(requete, ['name']);
+  for (const r of db.prepare(`SELECT id, name FROM verifier
+      ${fVerif.cond ? `WHERE ${fVerif.cond}` : ''} ORDER BY name LIMIT ?`).all(...fVerif.args, PAR_SOURCE)) {
+    pousser({
+      kind: 'verifier', ref: String(r.id), group: 'actions',
+      label: String(msgs.verify || '{name}').replace('{name}', r.name), detail: '',
+      nav: { verifier_id: r.id },
+      texte: `${r.name} verifier verification`,
+    });
+  }
+  /* Les jobs Jenkins RATTACHÉS à un dépôt : la seule liste de jobs que le serveur connaisse
+     sans appeler Jenkins — et la palette ne doit jamais appeler le CI de l'équipe pour
+     remplir une liste de suggestions. */
+  const fJk = preFiltre(requete, ['job_path']);
+  for (const r of db.prepare(`SELECT DISTINCT job_path FROM repo_jenkins
+      ${fJk.cond ? `WHERE ${fJk.cond}` : ''} ORDER BY job_path LIMIT ?`).all(...fJk.args, PAR_SOURCE)) {
+    pousser({
+      kind: 'jenkins', ref: r.job_path, group: 'actions',
+      label: String(msgs.jenkins || '{job}').replace('{job}', r.job_path), detail: '',
+      nav: { jenkins_path: r.job_path },
+      texte: `${r.job_path} jenkins build ci`,
+    });
+  }
+  // Les projets compose DÉJÀ VUS par la veille (aucun `docker ps` déclenché par la palette).
+  for (const nom of dockerProjets.slice(0, PAR_SOURCE)) {
+    pousser({
+      kind: 'compose', ref: String(nom), group: 'actions',
+      label: String(msgs.compose || '{name}').replace('{name}', nom), detail: '',
+      nav: { compose: String(nom) },
+      texte: `${nom} docker compose conteneur container`,
+    });
+  }
+  const fCmd = preFiltre(requete, ['label', 'command']);
+  for (const r of db.prepare(`SELECT id, label, command FROM git_command
+      ${fCmd.cond ? `WHERE ${fCmd.cond}` : ''} ORDER BY sort_order, id LIMIT ?`).all(...fCmd.args, PAR_SOURCE)) {
+    pousser({
+      kind: 'gitcmd', ref: String(r.id), group: 'actions',
+      label: String(msgs.gitcmd || '{label}').replace('{label}', r.label), detail: `git ${r.command}`,
+      nav: { git_command: r.command },
+      texte: `${r.label} git ${r.command}`,
+    });
+  }
+
   // 6. Navigation et actions — fournies par le client, qui seul sait ce qu'il sait faire.
   for (const a of actions) {
     pousser({ kind: 'nav', ref: a.id, group: 'nav', label: a.label, detail: '', action: a.id, texte: a.label });
+  }
+
+  /* 7. Les AGENTS. « Demander à l'enquêteur » se tapait en trois gestes : onglet Agents, la
+     bonne carte, le bouton. La palette est l'endroit où l'on va quand on sait ce qu'on veut. */
+  const fAg = preFiltre(requete, ['name', 'description']);
+  if (agentsMsgs) {
+    for (const a of db.prepare(`SELECT id, name, description, builtin_key FROM agent
+        ${fAg.cond ? `WHERE ${fAg.cond}` : ''} ORDER BY name LIMIT ?`).all(...fAg.args, PAR_SOURCE)) {
+      pousser({
+        kind: 'agent', ref: String(a.id), group: 'agents',
+        label: String(agentsMsgs.ask || '{name}').replace('{name}', a.name), detail: a.description || '', id: a.id,
+        texte: `${a.name} ${a.description || ''}`,
+      });
+      /* L'enquêteur a une SECONDE entrée : « enquêter sur une trace » est le geste, pas le nom
+         de l'agent — et c'est sous ce mot qu'on le cherche quand une trace vient d'arriver. */
+      if (a.builtin_key === 'investigator') {
+        pousser({
+          kind: 'agent-investigate', ref: String(a.id), group: 'agents',
+          label: agentsMsgs.investigate || '', detail: a.name, id: a.id,
+          texte: `${agentsMsgs.investigate || ''} ${a.name} trace erreur incident stack`,
+        });
+      }
+    }
   }
 
   /* PALETTE OUVERTE, RIEN DE TAPÉ : on ne rend pas « les douze premiers de tout ». Sans
@@ -1057,10 +1223,140 @@ function construireGrille(grid, msgs) {
   return { envs_created: envsCrees, services_created: svcCrees, urls_created: urlsCrees };
 }
 
+/* ------------------------------------------------------- réordonner ---- */
+
+/* L'ORDRE COMPLET, POSÉ D'UN COUP. Déplacer une colonne de la sixième à la première coûtait
+   cinq clics, cinq appels et cinq rechargements de la grille ; la glisser en coûte un.
+   Le client envoie la liste TELLE QU'ELLE DOIT ÊTRE : lui demander « déplace de i à j »
+   l'obligerait à connaître les positions de ses voisines, qu'il n'a aucune raison de tenir à
+   jour. Ce qu'il n'a pas cité reste derrière, dans son ordre actuel — un identifiant oublié
+   ne doit pas disparaître de l'écran. */
+function reordonner(table, ids, actuels) {
+  const demande = [...new Set((Array.isArray(ids) ? ids : []).map((i) => Number(i)))]
+    .filter((i) => actuels.includes(i));
+  const final = [...demande, ...actuels.filter((i) => !demande.includes(i))];
+  const up = db.prepare(`UPDATE ${table} SET position = ? WHERE id = ?`);
+  db.transaction(() => { final.forEach((id, i) => up.run(i + 1, id)); })();
+  return { ok: true, order: final };
+}
+const reordonnerEnvironnements = (ids) => reordonner('environment', ids, listerEnvironnements().map((e) => e.id));
+/* Les épinglés restent en tête quoi qu'il arrive : c'est ce que veut dire « épinglé ». On
+   repose donc l'ordre demandé tel quel, et l'affichage trie toujours par `pinned` d'abord. */
+const reordonnerServices = (ids) => reordonner('service', ids,
+  db.prepare('SELECT id FROM service ORDER BY pinned DESC, position, name COLLATE NOCASE').all().map((r) => r.id));
+
+/* ----------------------------------------------------------- coller ---- */
+
+// Vingt adresses collées d'un coup est déjà beaucoup ; au-delà, c'est un import.
+const MAX_COLLAGE = 50;
+
+/* AJOUTER, C'EST COLLER. Le menu « Ajouter » demandait de CLASSER avant de coller — un lien
+   simple, un service, un environnement — alors que ce qu'on a en main, neuf fois sur dix,
+   c'est une URL dans le presse-papiers. Sur une base neuve il fallait trois écrans (créer un
+   environnement, puis un service, puis la case) avant la première adresse.
+   On part donc de l'URL, et le rangement se PROPOSE. Rien n'est deviné en silence : chaque
+   proposition arrive dans un sélecteur visible et modifiable, comme l'aperçu d'import. Et une
+   adresse dont l'hôte ne cite aucun environnement connu tombe en LIEN LIBRE — jamais dans une
+   colonne « probable » : c'est la règle numéro un du module, une URL ne se déduit pas. */
+function analyserCollage(brut) {
+  const envs = listerEnvironnements();
+  const services = db.prepare(`SELECT s.*, r.project FROM service s
+    LEFT JOIN repo r ON r.id = s.repo_id ORDER BY s.name COLLATE NOCASE`).all();
+  const lignes = String(brut || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, MAX_COLLAGE);
+  return lignes.map((ligne) => {
+    const m = ligne.match(/https?:\/\/\S+/i);
+    let u = null;
+    if (m) { try { u = new URL(m[0]); } catch { u = null; } }
+    if (!u) return { url: ligne.slice(0, MAX_URL), invalid: true, target: 'free', label: '', tags: [] };
+    const hote = u.hostname.toLowerCase();
+    const mots = new Set(decouper(hote));
+    /* L'ENVIRONNEMENT SE LIT DANS L'HÔTE, jamais dans le chemin : `…/prod/logs` est un chemin
+       d'application, pas une adresse de production. `localhost` vaut « local » quand la
+       colonne existe — c'est le seul raccourci, et il ne trompe personne. */
+    const env = envs.find((e) => decouper(e.name).length && decouper(e.name).every((w) => mots.has(w)))
+      || (/^(localhost|127\.0\.0\.1)$/.test(hote) ? envs.find((e) => canonEnv(e.name) === 'local') : null)
+      || null;
+    /* LE SERVICE SE RECONNAÎT à son nom dans l'hôte, ou au nom de son dépôt. On exige le
+       SEGMENT ENTIER, pas un fragment : un service nommé « api » se retrouverait sinon dans
+       n'importe quel `rapid-…`. */
+    const svc = services.find((x) => decouper(x.name).length && decouper(x.name).every((w) => mots.has(w)))
+      || services.find((x) => x.project && decouper(String(x.project).split('/').pop()).length
+        && decouper(String(x.project).split('/').pop()).every((w) => mots.has(w)))
+      || null;
+    if (!env) {
+      // Pas de colonne où le poser : lien libre, avec un tag tiré de l'hôte plutôt que rien.
+      const tag = normaliserTag(nomDeSite(u.href));
+      return { url: m[0].slice(0, MAX_URL), target: 'free', label: nomDeSite(u.href), tags: tag ? [tag] : [] };
+    }
+    /* Un environnement reconnu mais aucun service : on PROPOSE un nom de service tiré de
+       l'hôte, débarrassé du nom de l'environnement — `kibana-preprod.corp` donne « kibana ».
+       Le sélecteur porte « ＋ nouveau service » : créer la ligne n'est plus un préalable. */
+    const nomPropose = decouper(hote.replace(/^www\./, '').split('.')[0])
+      .filter((w) => !decouper(env.name).includes(w)).join('-');
+    return {
+      url: m[0].slice(0, MAX_URL),
+      target: 'cell',
+      label: nomDepuisUrl(u.href, { env: env.name, service: svc ? svc.name : nomPropose }),
+      environment_id: env.id,
+      service_id: svc ? svc.id : null,
+      service_name: svc ? '' : nomPropose,
+      tags: [],
+    };
+  });
+}
+
+/* Appliquer le collage, tel qu'il a été confirmé à l'écran. TOUT OU RIEN : une URL invalide au
+   milieu de dix ne doit pas laisser cinq adresses posées et cinq perdues, sans qu'on sache
+   lesquelles. Le service ou l'environnement manquants se créent au passage — c'est ce qui
+   permet de partir d'une base vide avec une seule adresse en main. */
+function appliquerCollage(body = {}, msgs) {
+  const items = (Array.isArray(body.items) ? body.items : []).slice(0, MAX_COLLAGE);
+  let cells = 0; let libres = 0; let svcCrees = 0; let envsCrees = 0;
+  const service = { id: 0, name: '' };
+  db.transaction(() => {
+    for (const it of items) {
+      const url = lireUrl(it && it.url, msgs.urlInvalide);
+      if (String((it || {}).target) === 'free') {
+        creerFreeLink({ label: it.label || nomDeSite(url), url, tags: it.tags, folder: it.folder }, msgs);
+        libres += 1;
+        continue;
+      }
+      let envId = Number(it.environment_id) || 0;
+      const nomEnv = String(it.environment_name || '').trim();
+      if (!envId && nomEnv) {
+        const deja = db.prepare('SELECT id FROM environment WHERE name = ?').get(nomEnv);
+        if (deja) envId = deja.id;
+        else { envId = creerEnvironnement({ name: nomEnv }, msgs).id; envsCrees += 1; }
+      }
+      if (!db.prepare('SELECT 1 FROM environment WHERE id = ?').get(envId)) throw erreur(msgs.envInconnu, 404);
+      let svcId = Number(it.service_id) || 0;
+      const nomSvc = String(it.service_name || '').trim();
+      if (!svcId && nomSvc) {
+        /* Le même nouveau service cité par trois lignes du collage n'en fait qu'UN : on relit
+           la table avant de créer, sinon la deuxième ligne échouerait sur le nom déjà pris. */
+        const deja = db.prepare('SELECT id FROM service WHERE name = ?').get(nomSvc);
+        if (deja) svcId = deja.id;
+        else { svcId = creerService({ name: nomSvc }, msgs).id; svcCrees += 1; }
+      }
+      const s = lireService(svcId);
+      if (!s) throw erreur(msgs.inconnu, 404);
+      // On AJOUTE à la case : `poserUrl` la réécrit entièrement, deux collages successifs
+      // dans la même case ne doivent pas laisser que le dernier.
+      const deja = db.prepare(`SELECT label, url FROM service_url
+        WHERE service_id = ? AND environment_id = ? ORDER BY position, id`).all(svcId, envId);
+      poserUrl(svcId, { environment_id: envId, urls: [...deja, { label: it.label || '', url }] }, msgs);
+      cells += 1;
+      service.id = svcId; service.name = s.name;
+    }
+  })();
+  return { cells, free: libres, services_created: svcCrees, envs_created: envsCrees, service: service.id ? service : null };
+}
+
 module.exports = {
   deplacerEnvironnement,
   VARIABLES, MAX_LABEL, MAX_TAG, MAX_TAGS, MAX_IMPORT,
   lireUrl, lireTags, normaliserTag, lireTemplate, resoudreTemplate, scoreFuzzy, frecence,
+  nomDepuisUrl, nomDeSite, reordonnerEnvironnements, reordonnerServices, analyserCollage, appliquerCollage, MAX_COLLAGE,
   listerEnvironnements, creerEnvironnement, majEnvironnement, supprimerEnvironnement,
   lireService, creerService, majService, supprimerService, poserUrl,
   listerContextLinks, creerContextLink, supprimerContextLink,

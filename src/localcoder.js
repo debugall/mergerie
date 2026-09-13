@@ -13,6 +13,7 @@ const copilot = require('./copilot');
 const agentsession = require('./agentsession');
 const proc = require('./proc');
 const agentpass = require('./agentpass');
+const localsnapshot = require('./localsnapshot');
 const { getConfig } = require('./config');
 const { avecConsignes } = require('./prompts');
 const questions = require('./questions');
@@ -26,10 +27,12 @@ const now = () => new Date().toISOString();
    RÉPONDU au lieu de coder (prompt incomplet). Chaque itération est conservée
    (prompt + retour) via `agentpass` ; `output_path` pointe la plus récente. */
 function saveAgentOutput(taskId, dirId, text, meta = {}) {
-  const { outPath } = agentpass.record('local', taskId, dirId, {
+  const { n, outPath } = agentpass.record('local', taskId, dirId, {
     kind: meta.kind || 'run', prompt: meta.prompt, text,
   });
   if (outPath) setDir(dirId, { output_path: outPath });
+  // Le numéro sert à revenir annoter la passe avec ce qu'elle a changé dans le dossier.
+  return n;
 }
 
 function setDir(id, patch) {
@@ -125,17 +128,35 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
       try { st = fs.statSync(d.path); } catch { throw new Error('Dossier introuvable'); }
       if (!st.isDirectory()) throw new Error('Le chemin n’est pas un dossier');
 
+      /* L'ÉTAT DU DOSSIER AVANT QUE L'AGENT N'Y TOUCHE. C'est l'autre borne du diff de cette
+         itération : ici il n'y a ni branche ni commit, donc rien ne dirait, en relisant un
+         suivi, ce que CE suivi a changé. Le dossier de l'utilisateur ne reçoit rien — le
+         dépôt de suivi vit dans le dossier de travail de Mergerie (`localsnapshot`). `null`
+         quand la mesure est impossible ou renoncée : on code quand même, l'écran se tait. */
+      const avant = await localsnapshot.avant(taskId, d.id, d.path, onLog);
+      let passeN = null;
+      /* …et la borne d'arrivée, posée dès que l'agent a rendu la main — y compris quand il
+         s'est arrêté pour poser ses questions. Hors dépôt, rien ne l'empêche d'avoir déjà
+         modifié des fichiers avant de demander : ne pas mesurer là perdrait justement ce
+         qu'on voudrait relire. */
+      const mesurer = async () => {
+        if (!avant || !passeN) return;
+        const r = await localsnapshot.apres(taskId, d.id, avant, onLog);
+        if (r) agentpass.attacherDiff('local', taskId, d.id, passeN, { baseSha: avant, headSha: r.sha, diff: r.diff });
+      };
+
       onLog(`codage (${copilot.isDryRun() ? 'dry-run' : 'IA'})`);
       if (copilot.isDryRun() && task.ask_questions && !followup && !reponses) {
         // Dry-run, première passe : l'agent simule ses questions plutôt que de coder.
         onLog('$ (DRY-RUN — l’agent pose des questions)');
-        saveAgentOutput(taskId, d.id, questions.DRYRUN_QUESTIONS, { kind: passKind, prompt: promptText });
+        passeN = saveAgentOutput(taskId, d.id, questions.DRYRUN_QUESTIONS, { kind: passKind, prompt: promptText });
         attendQuestions(task, taskId, d, questions.DRYRUN_QUESTIONS, onLog);
+        await mesurer();
         continue;
       } else if (copilot.isDryRun()) {
         // dry-run : trace visible, aucune vraie modification de code.
         fs.appendFileSync(path.join(d.path, 'PROJ_LOCAL_DRYRUN.md'), `\n## ${task.prompt.slice(0, 120)}\n`, 'utf8');
-        saveAgentOutput(taskId, d.id, `(dry-run) ${followup ? 'Suivi appliqué' : 'Tâche réalisée'} dans \`${d.path}\`.`, { kind: passKind, prompt: promptText });
+        passeN = saveAgentOutput(taskId, d.id, `(dry-run) ${followup ? 'Suivi appliqué' : 'Tâche réalisée'} dans \`${d.path}\`.`, { kind: passKind, prompt: promptText });
       } else if (agentsession.backendName() !== 'unknown') {
         // Session reprenable par dossier (clé local-<task>-dir-<id>) → commande de reprise copiable.
         const key = `local-${taskId}-dir-${d.id}`;
@@ -152,16 +173,17 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
           created = true;
         }
         copilot.recordUsage('task', promptText, r.text || '', null, { kind: 'local', id: taskId });
-        saveAgentOutput(taskId, d.id, r.text, { kind: passKind, prompt: promptText });
+        passeN = saveAgentOutput(taskId, d.id, r.text, { kind: passKind, prompt: promptText });
         // À chaque passe : une reprise peut rendre un identifiant nouveau (cf. agentsession).
         setDir(d.id, { session_key: r.handle, session_backend: r.backend, session_cwd: d.path });
-        if (attendQuestions(task, taskId, d, r.text, onLog)) continue;
+        if (attendQuestions(task, taskId, d, r.text, onLog)) { await mesurer(); continue; }
       } else {
         // Backend non reprenable → appel one-shot (pas de commande de reprise possible).
         const out = await copilot.runPrompt(promptText, d.path, { kind: 'task' }, onLog); // renvoie le texte
-        saveAgentOutput(taskId, d.id, out, { kind: passKind, prompt: promptText });
-        if (attendQuestions(task, taskId, d, out, onLog)) continue;
+        passeN = saveAgentOutput(taskId, d.id, out, { kind: passKind, prompt: promptText });
+        if (attendQuestions(task, taskId, d, out, onLog)) { await mesurer(); continue; }
       }
+      await mesurer();
       setDir(d.id, { status: 'done', last_error: null });
       onLog(`✅ ${d.path}`);
       ok += 1;

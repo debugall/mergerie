@@ -16,6 +16,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const copilot = require('./copilot');
+const agentargs = require('./agentargs');
 const { DATA_DIR, ensureDir } = require('./paths');
 const { t } = require('../public/i18n-runtime.js');
 
@@ -85,6 +86,19 @@ function toolHint(input) {
   return '';
 }
 
+/* Deux appels d'outil méritent mieux que leur nom brut : `Skill` (quel skill a servi — la
+   question « l'agent a-t-il vraiment utilisé le skill ? » se posait à chaque run) et `Agent`
+   (quel sous-agent, sur quoi). Le reste garde `» <outil> <indice>`. */
+function ligneOutil(c) {
+  const input = c.input || {};
+  if (c.name === 'Skill' && input.skill) return `» skill ${input.skill}`;
+  if (c.name === 'Agent' && input.subagent_type) {
+    const p = String(input.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    return `» sous-agent ${input.subagent_type}${p ? ` — ${p}` : ''}`;
+  }
+  return `» ${c.name}${toolHint(input)}`;
+}
+
 // Claude en `--output-format stream-json` émet des ÉVÉNEMENTS NDJSON en DIRECT (contrairement
 // à `json` qui ne rend qu'à la fin). On les streame en clair dans le log (texte de l'assistant
 // + outils utilisés) et on capture le RÉSULTAT final (texte + session_id).
@@ -96,6 +110,7 @@ function runClaudeStream(args, cwd, onLog) {
     const child = spawn(bin, args, { cwd, stdio: STDIO });
     proc.setActive(child);                    // idem : c'est LE chemin par défaut (claude)
     let stderr = ''; let buf = ''; let result = null; let sessionId = null; let lastText = '';
+    let costUsd = null; let denials = [];
     const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(t('err.cmd.timeout', { cmd: bin, ms: TIMEOUT_MS }))); }, TIMEOUT_MS);
     const handleLine = (line) => {
       const s = line.trim();
@@ -103,13 +118,19 @@ function runClaudeStream(args, cwd, onLog) {
       let ev;
       try { ev = JSON.parse(s); } catch { onLog(s.slice(0, 300)); return; } // ligne non-JSON : brut
       if (ev.session_id) sessionId = ev.session_id;
+      /* Un événement émis DANS un sous-agent porte `parent_tool_use_id`. On l'indente : sans
+         ça, le journal d'un agent à sous-agents mélange à plat ce que dit le principal et ce que
+         disent ses cinq chercheurs, et on ne sait plus qui parle. */
+      const dire = ev.parent_tool_use_id ? (x) => onLog(`  ${x}`) : onLog;
       if (ev.type === 'assistant' && ev.message && Array.isArray(ev.message.content)) {
         for (const c of ev.message.content) {
-          if (c.type === 'text' && String(c.text || '').trim()) { lastText = c.text; onLog(String(c.text).trim().slice(0, 600)); }
-          else if (c.type === 'tool_use') { onLog(`» ${c.name}${toolHint(c.input)}`); }
+          if (c.type === 'text' && String(c.text || '').trim()) { lastText = c.text; dire(String(c.text).trim().slice(0, 600)); }
+          else if (c.type === 'tool_use') dire(ligneOutil(c));
         }
       } else if (ev.type === 'result') {
         result = (typeof ev.result === 'string') ? ev.result : lastText;
+        if (typeof ev.total_cost_usd === 'number') costUsd = ev.total_cost_usd;
+        if (Array.isArray(ev.permission_denials)) denials = ev.permission_denials;
       }
     };
     child.stdout.on('data', (d) => { buf += d; const parts = buf.split('\n'); buf = parts.pop(); for (const p of parts) handleLine(p); });
@@ -119,7 +140,14 @@ function runClaudeStream(args, cwd, onLog) {
       clearTimeout(timer);
       proc.clearActive(child);
       if (buf.trim()) handleLine(buf);
-      if (code === 0) resolve({ text: (result != null ? result : lastText) || '', sessionId });
+      /* Ce que l'agent n'a PAS eu le droit de faire est la première explication d'un résultat
+         décevant, et la seule que le rapport ne contient jamais : l'agent, lui, ne sait pas
+         qu'une allowlist l'a arrêté. On le dit au journal plutôt que de laisser chercher. */
+      if (denials.length) {
+        const d0 = denials[0] || {};
+        onLog(t('agents.log.denied', { n: denials.length, count: denials.length, first: d0.tool_name || d0.tool || '?' }));
+      }
+      if (code === 0) resolve({ text: (result != null ? result : lastText) || '', sessionId, costUsd, denials });
       else reject(new Error(t('err.cmd.failed', { cmd: bin, code, sortie: stderr.slice(0, 500) })));
     });
   });
@@ -198,16 +226,21 @@ function enrichCopilotError(e, bootstrap, home) {
  * Le handle et le cwd sont à PERSISTER par
  * l'appelant (le cwd fait partie de l'identité de session — refuser une reprise si mismatch).
  */
-async function runInSession({ key, handle, prompt, cwd, resume = false, onLog = () => {} }) {
+async function runInSession({ key, handle, prompt, cwd, resume = false, onLog = () => {}, options }) {
   const backend = backendName();
   if (backend === 'unknown') throw new Error(t('err.agent.backend', { bin: copilot.COPILOT_BIN }));
   const EXTRA = copilot.EXTRA_ARGS;
+  /* Les options du PROFIL viennent après `COPILOT_ARGS` : le .env pose le socle commun à
+     toutes les sessions, l'agent l'affine. Sans profil, `extra.args` est vide et l'argv est
+     exactement celui d'avant — c'est l'invariant d'`agentargs`. */
+  const extra = agentargs.argsFor(backend, options);
+  if (extra.ignored.length) onLog(t('agents.log.copilot-ignored', { list: extra.ignored.join(', ') }));
 
   if (backend === 'claude') {
     const id = handle || crypto.randomUUID();
     // stream-json (+ --verbose, requis en -p) : événements en DIRECT → progression visible.
     const sess = resume ? ['--resume', id] : ['--session-id', id];
-    const args = [...EXTRA, ...sess, '--output-format', 'stream-json', '--verbose', '-p', prompt];
+    const args = [...EXTRA, ...extra.args, ...sess, '--output-format', 'stream-json', '--verbose', '-p', prompt];
     const out = await runClaudeStream(args, cwd, onLog);
     /* LE HANDLE À GARDER EST CELUI QUE L'AGENT ANNONCE, pas celui qu'on lui a passé. `claude
        --resume <id>` ne poursuit pas l'échange sous le même identifiant : il en ouvre un
@@ -215,7 +248,7 @@ async function runInSession({ key, handle, prompt, cwd, resume = false, onLog = 
        repartir la passe suivante de l'état d'AVANT — deux suivis d'affilée sur le même projet
        ne se voyaient donc pas l'un l'autre. On rend l'identifiant courant ; si le backend garde
        le même (création, ou reprise qui ne forke pas), rien ne change. */
-    return { text: out.text, sessionId: out.sessionId, handle: out.sessionId || id, backend };
+    return { text: out.text, sessionId: out.sessionId, handle: out.sessionId || id, backend, costUsd: out.costUsd, denials: out.denials || [] };
   }
 
   // copilot : home isolé par clé (persistant entre les passes d'une même session).
@@ -225,10 +258,10 @@ async function runInSession({ key, handle, prompt, cwd, resume = false, onLog = 
     try { fs.rmSync(home, { recursive: true, force: true }); } catch { /* neuf */ }
     bootstrap = bootstrapCopilotHome(home);
   }
-  const args = resume ? [...EXTRA, '--continue', '-p', prompt] : [...EXTRA, '-p', prompt];
+  const args = resume ? [...EXTRA, ...extra.args, '--continue', '-p', prompt] : [...EXTRA, ...extra.args, '-p', prompt];
   try {
     const text = await spawnAgent({ args, cwd, env: { COPILOT_HOME: home } }, onLog);
-    return { text, sessionId: null, handle: home, backend };
+    return { text, sessionId: null, handle: home, backend, costUsd: null, denials: [] };
   } catch (e) {
     throw enrichCopilotError(e, bootstrap, home);
   }
@@ -238,10 +271,13 @@ async function runInSession({ key, handle, prompt, cwd, resume = false, onLog = 
 // dossier + lancement de l'agent avec le handle de session. claude : --resume <uuid> ;
 // copilot : COPILOT_HOME=<home> + --continue. Renvoie null si la session n'a pas de handle.
 function shQuote(s) { return `'${String(s).replace(/'/g, "'\\''")}'`; }
-function resumeCommand(backend, handle, cwd) {
+function resumeCommand(backend, handle, cwd, options) {
   if (!backend || !handle) return null;
   const bin = copilot.COPILOT_BIN;
-  const extra = (copilot.EXTRA_ARGS || []).length ? ` ${copilot.EXTRA_ARGS.join(' ')}` : '';
+  /* Les options du profil font PARTIE de la commande à recopier : reprendre une session
+     d'agent sans son modèle ni son allowlist, c'est reprendre une autre session. */
+  const mots = [...(copilot.EXTRA_ARGS || []), ...agentargs.argsFor(backend, options).args];
+  const extra = mots.length ? ` ${mots.map((a) => (/[\s"']/.test(a) ? shQuote(a) : a)).join(' ')}` : '';
   /* Le `cd` n'est émis que si le dossier de travail est CONNU. Il ne l'est pas quand la
      session a été fournie à la création : on sait la reprendre, pas d'où elle vient. Mieux
      vaut une commande à lancer depuis le bon dossier soi-même que pas de commande du tout —

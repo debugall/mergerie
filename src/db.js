@@ -191,7 +191,25 @@ try { db.exec('ALTER TABLE mr ADD COLUMN review_session_cwd TEXT'); } catch { /*
    Relevé au moment où l'on ouvre la modale de merge : on est alors à un clic d'une action
    irréversible, un appel d'API pour le dire avant vaut mieux qu'un refus après. */
 try { db.exec('ALTER TABLE mr ADD COLUMN has_conflicts INTEGER'); } catch { /* déjà présente */ }
+/* BROUILLON (« Draft »/« WIP ») et REVIEWERS DEMANDÉS, relevés à la découverte. Les deux
+   viennent de la liste déjà parcourue — on les jetait. Un brouillon n'est pas prêt à être
+   relu : la review automatique lui dépensait un appel IA, et rien à l'écran ne disait
+   pourquoi ce rapport semblait porter sur du travail inachevé. `reviewers` est stocké en
+   texte séparé par des virgules : on ne cherche jamais dedans, on ne fait que l'afficher et
+   dire « on m'a demandé de la relire ». */
+/* CE QUE LA MERGE REQUEST DIT D'ELLE-MÊME. Sans Jira configuré, l'IA ne connaissait que le
+   diff : elle jugeait du code sans savoir ce qu'il prétendait faire, et relevait comme des
+   manques des choix assumés, écrits dans la description. Bornée à 4 000 caractères à
+   l'écriture — au-delà, c'est le diff qu'on ampute. */
+try { db.exec("ALTER TABLE mr ADD COLUMN description TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN is_draft INTEGER'); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE mr ADD COLUMN reviewers TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN ticket_jira_error TEXT'); } catch { /* déjà présente */ }
+/* LE STATUT DU TICKET, POUR TOUTES LES MR — pas seulement celles dont le ticket est surveillé.
+   La découverte lit déjà l'issue en entier pour en tirer le contexte : ranger son statut à côté
+   ne coûte aucun appel, et fait apparaître « ticket en revue » là où on choisit quoi reviewer. */
+try { db.exec('ALTER TABLE mr ADD COLUMN ticket_jira_status TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN ticket_jira_category TEXT'); } catch { /* déjà présente */ }
 // Migration : chemins des fichiers modifiés par la MR (pour le badge « risque » et
 // les règles par chemin), un par ligne. Rempli au discover / à la review.
 try { db.exec('ALTER TABLE mr ADD COLUMN changed_paths TEXT'); } catch { /* déjà présente */ }
@@ -209,6 +227,11 @@ try { db.exec('ALTER TABLE mr ADD COLUMN remove_source_branch INTEGER'); } catch
 // branche. Une règle peut avoir branch_match et/ou path_match. label = badge court.
 try { db.exec('ALTER TABLE review_rule ADD COLUMN path_match TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE review_rule ADD COLUMN label TEXT'); } catch { /* déjà présente */ }
+/* A/Réglages 2 — UNE RÈGLE PEUT NE VALOIR QUE POUR UN DÉPÔT. Sans cette colonne, la seule
+   façon de limiter la portée d'une règle était de deviner un `path_match` que seul ce dépôt
+   satisferait — ce qui n'est pas toujours possible, et jamais lisible. NULL = tous les dépôts,
+   c'est-à-dire le comportement d'avant : les règles existantes ne changent pas de portée. */
+try { db.exec('ALTER TABLE review_rule ADD COLUMN repo_id INTEGER'); } catch { /* déjà présente */ }
 // Projets liés à une MR : l'IA analyse l'impact des changements sur ces dépôts
 // (lecture seule) lors de la review. Un lien = un dépôt connu + une branche.
 db.exec(`CREATE TABLE IF NOT EXISTS mr_link (
@@ -338,6 +361,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS make_run (
    restent comptées dans leur famille. */
 try { db.exec('ALTER TABLE usage ADD COLUMN owner_kind TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE usage ADD COLUMN owner_id INTEGER'); } catch { /* déjà présente */ }
+// Coût annoncé par le backend, à côté de l'estimation en tokens (cf. `agent_pass.cost_usd`).
+try { db.exec('ALTER TABLE usage ADD COLUMN cost_usd REAL'); } catch { /* déjà présente */ }
 db.exec('CREATE INDEX IF NOT EXISTS idx_usage_owner ON usage(owner_kind, owner_id)');
 
 // Type de session de dev : 'code' (l'IA modifie le code) ou 'explore' (lecture seule,
@@ -406,6 +431,42 @@ try { db.exec('ALTER TABLE task ADD COLUMN hidden INTEGER DEFAULT 0'); } catch {
    lien + transition « en revue » si Jira la propose. DÉCOCHÉ par défaut — écrire chez les
    autres se décide, session par session. */
 try { db.exec('ALTER TABLE task ADD COLUMN notify_jira INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+/* B9 — REVIEWER LA MR DÈS SA CRÉATION, par session. Sœur de « Vérifier après » : le réglage
+   global « reviewer à l'arrivée » engage TOUT le parc, alors qu'on veut souvent l'avis de l'IA
+   sur ce que CETTE session vient d'écrire. Décochée par défaut : une review coûte un appel. */
+try { db.exec('ALTER TABLE task ADD COLUMN review_after INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+/* B5 — UNE SURVEILLANCE QUI POSE SA TODO. La notification « À faire → En revue » passe pendant
+   une réunion et disparaît avec l'onglet ; le MOTIF de surveillance (« prévenir Sofia dès que
+   c'est en revue ») dort alors dans la carte. Opt-in, par ticket : on ne veut pas une todo à
+   chaque mouvement de chaque ticket surveillé. */
+try { db.exec('ALTER TABLE jira_watch ADD COLUMN todo_on_change INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+/* C15 — LE TICKET TÉMOIN JIRA se retapait à chaque test de connexion : le champ existait,
+   n'avait pas de `name`, et n'était donc dans aucune des trois listes qui font qu'un réglage
+   se garde. Un champ qu'on remplit à chaque fois n'est pas un réglage, c'est une corvée. */
+try { db.exec('ALTER TABLE config ADD COLUMN jira_test_key TEXT'); } catch { /* déjà présente */ }
+/* A/Réglages 1 — LES DÉFAUTS DE SESSION. Quatre cases repartaient décochées à chaque ouverture
+   de la modale, y compris chez quelqu'un qui les coche toutes, tous les jours. Ce ne sont pas
+   des habitudes de dépôt (celles-là sont mémorisées par dépôt) mais des habitudes de TRAVAIL :
+   elles se règlent une fois. Décochées par défaut, comme aujourd'hui — poser ces réglages ne
+   change rien tant qu'on n'y a pas touché. */
+try { db.exec('ALTER TABLE config ADD COLUMN task_default_auto_push INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE config ADD COLUMN task_default_ask_questions INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE config ADD COLUMN task_default_notify_jira INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE config ADD COLUMN task_default_converge INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+
+/* B10 — LE VERDICT REMONTE VERS JIRA. Opt-in, et décoché par défaut comme « Prévenir Jira » :
+   écrire chez quelqu'un d'autre (le ticket est lu par la QA, le chef de projet, le support)
+   ne se décide pas à notre place. Placée APRÈS le `CREATE TABLE config`, comme toutes les
+   migrations de ce fichier. */
+try { db.exec('ALTER TABLE config ADD COLUMN verify_jira_comment INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+
+/* A18 — « ESSAI » ESSAIE VRAIMENT LE PROFIL. Le bouton n'ouvrait qu'une session pré-remplie du
+   gabarit : le modèle, les outils, les sous-agents et le prompt système ne partaient pas,
+   puisque la session n'avait pas d'`agent_id` — on « essayait » donc tout sauf ce qu'on venait
+   de régler. La session porte maintenant le BROUILLON du profil, tel quel, sans créer d'agent :
+   essayer ne doit pas laisser derrière soi un profil qu'on n'a pas voulu enregistrer.
+   Placée APRÈS le `CREATE TABLE task`. */
+try { db.exec('ALTER TABLE task ADD COLUMN agent_draft_json TEXT'); } catch { /* déjà présente */ }
 
 /* De quoi REJOUER un job : l'intention (quelle fonction, sur quel objet), pas son état.
    Sans ça, un job arrêté ne laisse qu'un `kind` — impossible de savoir quelle session ou
@@ -535,6 +596,21 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_agent_pass_unit ON agent_pass(scope, tas
    une table absente et le `catch` l'avale sans un mot. */
 try { db.exec('ALTER TABLE agent_pass ADD COLUMN favori INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE agent_pass ADD COLUMN titre TEXT'); } catch { /* déjà présente */ }
+/* COÛT RÉEL D'UNE PASSE, en dollars, quand le backend le donne (`result.total_cost_usd` du
+   flux `claude`). L'estimation en tokens reste : elle couvre les backends qui ne disent rien.
+   Nulle sur toute passe antérieure, et sur tout backend muet — l'affichage doit le supporter. */
+try { db.exec('ALTER TABLE agent_pass ADD COLUMN cost_usd REAL'); } catch { /* déjà présente */ }
+/* LE DIFF D'UNE SEULE ITÉRATION. Relire une session de codage revenait à relire TOUT le diff
+   de la branche à chaque suivi : la correction de trois lignes qu'on vient de demander se
+   cherchait au milieu de deux cents. On retient donc les deux bornes de la passe — le HEAD
+   avant qu'elle ne commence, celui qu'elle laisse — et le patch qui les sépare. Nulles sur
+   toute passe antérieure, sur une passe qui n'a rien commité (l'agent a posé des questions) et
+   sur tout le hors-dépôt, qui n'a pas de git : l'affichage doit le supporter.
+   `head_sha` sans `diff_path` n'est pas une anomalie : c'est une itération qui n'a rien changé
+   au code, et le dire vaut mieux qu'ouvrir une vue vide. */
+try { db.exec('ALTER TABLE agent_pass ADD COLUMN base_sha TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE agent_pass ADD COLUMN head_sha TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE agent_pass ADD COLUMN diff_path TEXT'); } catch { /* déjà présente */ }
 /* APRÈS la création de la table, et pas avant : un `ALTER` posé plus haut dans ce fichier
    échoue sur une table qui n'existe pas encore, et le `catch` l'avale sans un mot. La colonne
    n'apparaît alors que sur les bases où la table préexistait — le genre de différence qui ne
@@ -770,6 +846,29 @@ try { db.exec("ALTER TABLE config ADD COLUMN converge_max_passes TEXT DEFAULT '3
 // review → correction IA (commit + push) → re-review incrémentale, jusqu'au seuil,
 // à la régression, ou au plafond de passes. L'historique fin (notes par passe) vit
 // déjà dans review_version ; cette table porte l'état global de la boucle.
+/* A26 — DÉTECTER LES TESTS INSTABLES, sans rien demander à personne. Un test rouge à un run
+   et vert au suivant SANS QUE LE CODE AIT BOUGÉ n'est pas un test qui casse : c'est un test
+   qui ment, et il coûte plus cher qu'un échec franc — on relance, on hausse les épaules, et le
+   jour où il dit vrai on ne le croit plus.
+
+   Ce qu'il faut pour le savoir tient en trois colonnes : le CODE testé (`targets_key` : les
+   couples dépôt:sha triés — deux runs sur le même code sont comparables, sur des codes
+   différents ils ne le sont pas), et le nom des tests ROUGES de ce run. Une ligne à `test`
+   NULL marque le run lui-même : sans elle, un run tout vert ne laisserait aucune trace et on
+   ne saurait pas qu'un test rouge ailleurs a été vert ici.
+
+   Seuls les runs qui NOMMENT leurs tests (TAP, JUnit) y entrent : sans noms, il n'y a rien à
+   apparier. Purgée par la rétention, comme les autres traces. */
+db.exec(`CREATE TABLE IF NOT EXISTS verify_run_test (
+  id INTEGER PRIMARY KEY,
+  verification_id INTEGER NOT NULL REFERENCES verification(id) ON DELETE CASCADE,
+  verifier_id INTEGER,
+  targets_key TEXT NOT NULL,
+  test TEXT,
+  created_at TEXT NOT NULL
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_verify_run_test ON verify_run_test(verifier_id, targets_key)');
+
 /* ---------- Vérification objective (plan_add_verify.md) ----------
    Un verdict de tests produit HORS du circuit IA : l'orchestrateur appelle un script de
    l'utilisateur, jamais l'agent. Le verdict est un FAIT attaché à des SHAs — il se périme
@@ -971,6 +1070,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS service (
   created_at TEXT NOT NULL
 )`);
 
+/* L'ORDRE DES LIGNES, posé à la main. La grille était alphabétique et rien d'autre : on ne
+   pouvait pas mettre en tête les trois services qu'on ouvre tous les jours sans les renommer.
+   `0` partout signifie « jamais touché » — et l'alphabétique reprend la main derrière, ce qui
+   laisse une grille neuve exactement comme avant. */
+try { db.exec('ALTER TABLE service ADD COLUMN position INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+
 /* Une URL par (service, environnement) — EXPLICITE. On aurait pu deviner une URL de preprod
    depuis celle de dev en remplaçant un morceau de domaine ; c'est exactement le genre de
    magie qui envoie un jour sur le mauvais environnement sans prévenir. */
@@ -1067,6 +1172,15 @@ db.exec(`CREATE TABLE IF NOT EXISTS note_page (
   updated_at TEXT NOT NULL
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_note_page_ordre ON note_page(pinned DESC, updated_at DESC)');
+/* LES SOUS-PAGES. Une documentation tient rarement en une page : un texte général, et le
+   détail de chaque point à côté. Tout mettre dans une seule page la rend illisible ; en faire
+   vingt pages sœurs perd le lien entre elles. Un seul niveau, volontairement — une
+   arborescence profonde se navigue mal dans une colonne de 300 pixels, et « le détail du
+   détail » est le signe qu'il fallait une page de plus, pas un étage de plus. Le parent
+   emporte ses sous-pages (cascade, `foreign_keys = ON` en tête de ce fichier).
+   Migration APRÈS le `CREATE TABLE note_page` ci-dessus. */
+try { db.exec('ALTER TABLE note_page ADD COLUMN parent_id INTEGER REFERENCES note_page(id) ON DELETE CASCADE'); } catch { /* déjà présente */ }
+db.exec('CREATE INDEX IF NOT EXISTS idx_note_page_parent ON note_page(parent_id)');
 
 /* Captures collées DANS une page de notes. Le fichier vit sur disque, la page ne garde qu'un
    lien Markdown : mettre l'image en base64 dans `content` ferait grossir la ligne de plusieurs
@@ -1091,7 +1205,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS todo (
   priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('high','normal','low')),
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','done')),
   note TEXT,
-  link_kind TEXT CHECK (link_kind IN ('mr','ticket','repo')),
+  link_kind TEXT CHECK (link_kind IN ('mr','ticket','repo','branch','verification','build','container')),  -- cf. B16 plus bas
   link_ref TEXT,
   due_at TEXT,
   reminded_at TEXT,
@@ -1134,6 +1248,54 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_todo_position ON todo(status, archived_a
 try { db.exec('ALTER TABLE todo ADD COLUMN auto_kind TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE todo ADD COLUMN auto_ref TEXT'); } catch { /* déjà présente */ }
 db.exec('CREATE INDEX IF NOT EXISTS idx_todo_auto ON todo(auto_kind, auto_ref)');
+
+/* B16 — CE À QUOI UNE TODO PEUT SE LIER. Le `CHECK` d'origine ne connaissait que trois objets
+   (`mr`, `ticket`, `repo`), et le bouton « Ajouter aux todos » n'existait donc que là où ils
+   vivent — la fiche de review et la carte Jira. Or « rebaser cette branche avant lundi »,
+   « ce vérificateur est rouge depuis mardi », « ce build casse une fois sur trois », « ce
+   conteneur retombe » sont exactement les choses qu'on se note, et elles n'avaient nulle part
+   où s'accrocher : on les écrivait en texte libre, sans lien pour y retourner.
+
+   SQLite ne sait pas modifier une contrainte : on RECONSTRUIT la table (deuxième et dernière
+   migration de ce fichier à le faire, cf. `service_url`). Tout est recopié tel quel — une todo
+   n'est jamais perdue par une migration —, et la table repart avec les mêmes index. */
+{
+  const sql = (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'todo'").get() || {}).sql || '';
+  if (sql.includes("link_kind IN ('mr','ticket','repo')")) {
+    db.pragma('foreign_keys = OFF');
+    db.transaction(() => {
+      db.exec(`CREATE TABLE todo_v2 (
+        id INTEGER PRIMARY KEY,
+        title TEXT NOT NULL,
+        priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('high','normal','low')),
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','done')),
+        note TEXT,
+        link_kind TEXT CHECK (link_kind IN ('mr','ticket','repo','branch','verification','build','container')),
+        link_ref TEXT,
+        due_at TEXT,
+        reminded_at TEXT,
+        done_at TEXT,
+        archived_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        position INTEGER,
+        auto_kind TEXT,
+        auto_ref TEXT
+      )`);
+      db.exec(`INSERT INTO todo_v2 (id, title, priority, status, note, link_kind, link_ref, due_at,
+          reminded_at, done_at, archived_at, created_at, updated_at, position, auto_kind, auto_ref)
+        SELECT id, title, priority, status, note, link_kind, link_ref, due_at,
+          reminded_at, done_at, archived_at, created_at, updated_at, position, auto_kind, auto_ref
+        FROM todo`);
+      db.exec('DROP TABLE todo');
+      db.exec('ALTER TABLE todo_v2 RENAME TO todo');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_todo_due ON todo(status, archived_at, due_at)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_todo_position ON todo(status, archived_at, position)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_todo_auto ON todo(auto_kind, auto_ref)');
+    })();
+    db.pragma('foreign_keys = ON');
+  }
+}
 
 /* CE QU'ON A ÉCARTÉ DU BRIEF. Le brief recalcule tout à chaque ouverture : un fait qui reste
    vrai reparaît tous les matins, même traité ailleurs — une vérification rouge dont on a déjà
@@ -1179,6 +1341,24 @@ try { db.exec('ALTER TABLE config ADD COLUMN stale_mr_days INTEGER DEFAULT 5'); 
 
 /* Consignes permanentes ajoutées à toutes les sessions de codage (dépôt et hors dépôt). */
 try { db.exec('ALTER TABLE config ADD COLUMN ai_extra_instructions TEXT'); } catch { /* déjà présente */ }
+
+/* LE GABARIT DE CORRECTION, qui applique un rapport de revue au code. Il vivait en dur et en
+   français, recopié à l'identique dans « Faire corriger par l'IA » et dans chaque passe de
+   Converger : ni traduit, ni éditable, et deux copies vouées à diverger. Vide = le défaut de
+   la langue courante s'applique (`src/prompts.js`), comme pour les trois autres gabarits. */
+try { db.exec("ALTER TABLE config ADD COLUMN prompt_fix TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+
+/* A38 — QUAND CHAQUE CONNEXION A ÉTÉ TESTÉE POUR LA DERNIÈRE FOIS, et avec quel résultat. Le
+   bouton « Tester » répondait à l'écran et n'en gardait rien : au retour dans les réglages, les
+   quatre connexions étaient muettes — « GitLab marche-t-il encore ? » se rejouait à chaque
+   fois. Une ligne par service, écrite par le test lui-même ; rien n'est sondé en fond, c'est le
+   souvenir d'un geste, pas une surveillance. */
+db.exec(`CREATE TABLE IF NOT EXISTS conn_test (
+  service TEXT PRIMARY KEY,            -- gitlab | github | jira | jenkins
+  ok INTEGER NOT NULL,
+  detail TEXT,                         -- ce que le service a répondu (compte, login, nb de jobs)
+  tested_at TEXT NOT NULL
+)`);
 
 /* LE SKILL DE REVIEW N'A PLUS DE CHAMP : il s'écrit dans le gabarit de prompt, là où l'on
    choisit déjà tout le reste de ce qu'on demande à l'IA. Les gabarits enregistrés portent
@@ -1249,6 +1429,10 @@ try { db.exec("ALTER TABLE config ADD COLUMN auto_rereview_stale TEXT DEFAULT '0
    contrairement à `review_explain` : écrire chez les autres est une décision, et une
    installation neuve ne doit surprendre personne au premier lancement de review. */
 try { db.exec("ALTER TABLE config ADD COLUMN auto_post_review TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
+/* Filtre de cette publication : n'envoyer que les rapports qui contiennent au moins un
+   constat « blocker ». Décoché par défaut — la publication automatique existante ne doit pas
+   se mettre à taire des rapports du seul fait d'une migration. */
+try { db.exec("ALTER TABLE config ADD COLUMN auto_post_blocking_only TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
 const seeded = db.prepare('SELECT git_commands_seeded AS s FROM config WHERE id = 1').get();
 if (seeded && !seeded.s) {
   const ins = db.prepare('INSERT INTO git_command (label, command, sort_order, created_at) VALUES (?, ?, ?, ?)');
@@ -1269,8 +1453,111 @@ if (seeded && !seeded.s) {
    ne trouve plus rien et ne dit rien. */
 try { db.exec('DROP TABLE IF EXISTS health_status'); } catch { /* déjà partie */ }
 try { db.exec('ALTER TABLE environment DROP COLUMN health_check'); } catch { /* déjà retirée */ }
+/* ---------- Dictée vocale (whisper.md) ----------
+   Treize réglages, tous OPT-IN : `off` par défaut, donc aucun micro à l'écran tant qu'on n'a
+   rien choisi. Placées APRÈS le `CREATE TABLE config`, comme toutes les migrations de cette
+   table — avant, elles lèveraient « no such table » sur une base neuve et le catch vide
+   l'avalerait (la colonne n'existerait alors que sur les bases où la table préexistait). */
+try { db.exec("ALTER TABLE config ADD COLUMN dictation_provider TEXT DEFAULT 'off'"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN dictation_model TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN dictation_vad_model TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN dictation_command TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN dictation_url TEXT DEFAULT 'https://api.openai.com'"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN dictation_api_key TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN dictation_remote_model TEXT DEFAULT 'gpt-4o-mini-transcribe'"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN dictation_language TEXT DEFAULT 'auto'"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN dictation_vocabulary TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN dictation_replacements TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE config ADD COLUMN dictation_silence_ms INTEGER DEFAULT 700'); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN dictation_final_pass TEXT DEFAULT '1'"); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE config ADD COLUMN dictation_idle_minutes INTEGER DEFAULT 15'); } catch { /* déjà présente */ }
+
 try { db.exec('ALTER TABLE config DROP COLUMN health_check'); } catch { /* déjà retirée */ }
 try { db.exec('ALTER TABLE config DROP COLUMN health_minutes'); } catch { /* déjà retirée */ }
+
+/* ---------- AGENTS : des profils de session ----------
+   Un « agent » Mergerie n'est pas un orchestrateur : c'est ce qu'on met AUTOUR d'un lancement
+   du CLI — un rôle, un périmètre, des outils, des skills, des sous-agents, une sortie, un
+   horaire. Un RUN d'agent est une `task` ordinaire portant `agent_id` : suivis, questions,
+   passes archivées, file de jobs et coût viennent sans une ligne de plus.
+
+   `builtin_key` marque les agents LIVRÉS (l'enquêteur, le documentaliste, le cartographe) :
+   modifiables comme les autres, restaurables d'un bouton. `knowledge_prompt` non nul marque un
+   agent de DOMAINE — pas de colonne de famille, la présence du sujet suffit à le dire. */
+db.exec(`CREATE TABLE IF NOT EXISTS agent (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL DEFAULT '',
+  builtin_key TEXT,
+  kind TEXT NOT NULL DEFAULT 'explore' CHECK (kind IN ('explore','code')),
+  scope_kind TEXT NOT NULL DEFAULT 'all_repos' CHECK (scope_kind IN ('repos','all_repos')),
+  system_prompt TEXT NOT NULL DEFAULT '',
+  prompt_template TEXT NOT NULL DEFAULT '',
+  model TEXT NOT NULL DEFAULT '',
+  permission_mode TEXT NOT NULL DEFAULT '',
+  allowed_tools_json TEXT NOT NULL DEFAULT '[]',
+  disallowed_tools_json TEXT NOT NULL DEFAULT '[]',
+  max_turns INTEGER,
+  skills_json TEXT NOT NULL DEFAULT '[]',
+  subagents_json TEXT NOT NULL DEFAULT '{}',
+  output_kind TEXT NOT NULL DEFAULT 'report' CHECK (output_kind IN ('report','note_page','agent')),
+  output_ref TEXT,
+  knowledge_prompt TEXT,
+  schedule TEXT,
+  schedule_fired_at TEXT,
+  defaults_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS agent_repo (
+  agent_id INTEGER NOT NULL REFERENCES agent(id) ON DELETE CASCADE,
+  repo_id INTEGER NOT NULL REFERENCES repo(id) ON DELETE CASCADE,
+  branch TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT 'readonly' CHECK (role IN ('target','readonly')),
+  PRIMARY KEY (agent_id, repo_id)
+)`);
+/* La connaissance d'un agent de domaine : un document Markdown VERSIONNÉ et daté par le SHA
+   de chaque dépôt au moment où il a été écrit. C'est ce SHA qui permet de dire, sans IA, que
+   la carte a vieilli — `git log <sha>..origin/<défaut> -- <chemins>` compte les commits qui
+   ont touché ce qu'elle cite. Une seule version `active` à la fois, garantie par l'index. */
+db.exec(`CREATE TABLE IF NOT EXISTS agent_knowledge (
+  id INTEGER PRIMARY KEY,
+  agent_id INTEGER NOT NULL REFERENCES agent(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  md_path TEXT NOT NULL,
+  repos_json TEXT NOT NULL DEFAULT '[]',
+  task_id INTEGER,
+  diff_summary TEXT,
+  gaps_json TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','active','superseded')),
+  created_at TEXT NOT NULL,
+  activated_at TEXT,
+  UNIQUE (agent_id, version)
+)`);
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS agent_knowledge_active ON agent_knowledge(agent_id) WHERE status = 'active'");
+/* CE QUE LA CARTE COÛTE À LIRE. Une connaissance de domaine est recopiée dans le prompt de
+   chaque run de l'agent : sa taille en tokens est donc une dépense RÉCURRENTE, pas une
+   curiosité. Comptée à l'écriture et rangée ici — la recalculer à chaque affichage de la
+   liste rouvrirait un fichier par version, par agent, à chaque passage sur l'onglet. NULL sur
+   les versions écrites avant cette colonne : elles sont comptées à la première relecture.
+   Migration APRÈS le `CREATE TABLE agent_knowledge` ci-dessus. */
+try { db.exec('ALTER TABLE agent_knowledge ADD COLUMN tokens INTEGER'); } catch { /* déjà présente */ }
+
+/* Un run d'agent EST une session. Trois colonnes suffisent : quel profil, son nom au moment du
+   run (la session reste lisible même après suppression du profil), et qui a appuyé — la main
+   ou l'horaire. Migrations APRÈS le `CREATE TABLE task`, plus haut dans ce fichier. */
+try { db.exec('ALTER TABLE task ADD COLUMN agent_id INTEGER REFERENCES agent(id) ON DELETE SET NULL'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE task ADD COLUMN agent_name TEXT'); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE task ADD COLUMN triggered_by TEXT NOT NULL DEFAULT 'manual'"); } catch { /* déjà présente */ }
+/* LA DEMANDE TELLE QU'ELLE A ÉTÉ TAPÉE, avant composition. `task.prompt` porte la demande
+   COMPOSÉE — gabarit, fichiers d'entrée, consignes, protocoles : c'est ce que l'agent reçoit,
+   et c'est illisible pour un humain. Le sujet d'un agent de domaine, le titre du rapport et le
+   libellé de la carte viennent tous de la question d'origine ; sans cette colonne, ils
+   recopiaient la première ligne du gabarit (« Sujet à cartographier : »). */
+try { db.exec('ALTER TABLE task ADD COLUMN agent_question TEXT'); } catch { /* déjà présente */ }
+db.exec('CREATE INDEX IF NOT EXISTS idx_task_agent ON task(agent_id)');
+// Plafond de runs déclenchés par un horaire, par jour. 0 = illimité.
+try { db.exec('ALTER TABLE config ADD COLUMN agent_auto_max INTEGER NOT NULL DEFAULT 10'); } catch { /* déjà présente */ }
 
 // Au démarrage : tout job resté "running" a été coupé -> interrupted.
 // Ce que ces jobs PORTAIENT (sessions, vérifications) est remis debout par

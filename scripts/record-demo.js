@@ -64,6 +64,8 @@ const TEXTES = {
     verifAuto: 'Coché « automatique », il part tout seul dès qu’une merge request arrive, et le résultat attend sur la carte',
     session: 'Du prompt à la MR convergée : l’IA code, commit, pousse, ouvre la MR et la fait converger. Le merge reste à toi',
     question: 'En cas d’ambiguïté, l’IA s’arrête et te demande — au lieu de deviner',
+    agents: 'Un agent est un profil de session : un rôle, un périmètre de dépôts, des outils, une sortie — et parfois un horaire',
+    agentsKnow: 'Un agent de domaine garde la carte de son sujet, versionnée — et l’outil compte les commits qui l’ont périmée',
     briefTitre: 'Notes',
     brief: 'Le brief du matin : ce qui t’attend, rassemblé avant que tu ne le cherches',
     todos: 'Des todos qui se cochent sur place, avec priorité, échéance et lien vers la MR concernée',
@@ -78,7 +80,7 @@ const TEXTES = {
     docker: 'Le drift .env détecté variable par variable — secrets masqués',
     logs: 'Logs live multi-containers, filtrables',
     stats: 'La qualité progresse-t-elle ? Notes, taux de résolution, coût en tokens',
-    sidebar: 'Dix onglets tiennent dans une colonne, qui se replie en icônes quand l’écran manque',
+    sidebar: 'Onze onglets tiennent dans une colonne, qui se replie en icônes quand l’écran manque',
     finTitre: 'Mergerie — npm run demo',
     finSous: (u) => `30 secondes pour l’essayer. Aucune config, aucun token\n${u}`,
   },
@@ -93,6 +95,8 @@ const TEXTES = {
     verifAuto: 'Tick “automatic” and it fires on its own as soon as a merge request lands, with the result waiting on the card',
     session: 'From prompt to merged-ready MR: the AI codes, commits, pushes, opens the MR and converges it. The merge stays yours',
     question: 'When something is ambiguous the AI stops and asks — instead of guessing',
+    agents: 'An agent is a session profile: a role, a scope of repositories, tools, an output — and sometimes a schedule',
+    agentsKnow: 'A domain agent keeps the map of its subject, versioned — and the tool counts the commits that made it stale',
     briefTitre: 'Notes',
     brief: 'The morning brief: what is waiting for you, gathered before you go looking',
     todos: 'Todos you tick off in place, with priority, due date and a link to the MR they belong to',
@@ -107,7 +111,7 @@ const TEXTES = {
     docker: '.env drift caught variable by variable — secrets masked',
     logs: 'Live logs across containers, filterable',
     stats: 'Is quality improving? Scores, resolution rate, token cost',
-    sidebar: 'Ten tabs fit in one column, which folds down to icons when the screen runs short',
+    sidebar: 'Eleven tabs fit in one column, which folds down to icons when the screen runs short',
     finTitre: 'Mergerie — npm run demo',
     finSous: (u) => `Thirty seconds to try it. No config, no token\n${u}`,
   },
@@ -356,12 +360,19 @@ async function enregistrer(lang) {
     recordVideo: { dir: OUT_DIR, size: { width: W, height: H } },
     locale: T.locale,
     deviceScaleFactor: 1,
+    /* LE THÈME SOMBRE, comme les films longs. Le réglage « auto » suit `prefers-color-scheme`,
+       que Playwright met en clair par défaut : on le dit ici ET dans `localStorage` juste en
+       dessous, pour que rien ne dépende de l'ordre d'application. */
+    colorScheme: 'dark',
   });
   /* La langue AVANT le premier rendu : l'app la lit dans localStorage tout en haut de son
      module, plusieurs tables de libellés étant construites à l'évaluation. La poser après
      chargement obligerait à recharger la page — au milieu de la vidéo. */
   await context.addInitScript(([k, v]) => {
-    try { localStorage.setItem(k, v); } catch { /* stockage indisponible */ }
+    try {
+      localStorage.setItem(k, v);
+      localStorage.setItem('aidevtools_theme', 'dark');
+    } catch { /* stockage indisponible */ }
   }, [LANG_KEY, lang]);
   await context.addInitScript(OVERLAY_JS);
   const page = await context.newPage();
@@ -470,6 +481,29 @@ async function enregistrer(lang) {
       await sleep(900);
       await moveTo(page, page.locator('#taskList .q-opt').first());
       await sleep(4000);
+    });
+
+    /* ═══ 5 bis) Agents ═══
+       L'onglet n'existait pas au tournage précédent, et c'est la nouveauté la plus visible :
+       une session peut être un PROFIL réutilisable — et un agent de domaine garde une carte
+       de son sujet, qui vieillit et le dit. Deux temps, pas plus : le GIF du README a un
+       budget, et chaque seconde y coûte des kilo-octets. */
+    await section('Agents · profils de session et connaissance', async () => {
+      await clickEl(page, page.locator('nav button[data-tab="agents"]'));
+      await page.waitForSelector('#agentList .card', { state: 'visible', timeout: 10000 }).catch(() => {});
+      if (!(await need(page, '#agentList .card', 'Liste des agents'))) return;
+      await cap(page, T.agents);
+      await sleep(900);
+      await moveTo(page, page.locator('#agentList .card').first());
+      await sleep(2600);
+      /* La connaissance d'un agent de domaine : la version active, et l'âge de la carte.
+         Visée par sa classe — un libellé ne survivrait pas à la traduction. */
+      if (await present(page, '#agentList .agent-age-stale')) {
+        await cap(page, T.agentsKnow);
+        await sleep(700);
+        await moveTo(page, page.locator('#agentList .agent-age-stale').first(), 460);
+        await sleep(2800);
+      } else warnings.push('« Agents » : aucun agent de domaine à carte périmée en démo (second temps non filmé)');
     });
 
     /* ═══ 6) Notes : le brief du matin, les todos, les pages ═══

@@ -347,3 +347,69 @@ describe('recherche et tri des listes', () => {
     assert.deepEqual(notes.listerTodos('open').map((t) => t.id), [haute.id, datee.id, sansDate.id, basse.id]);
   });
 });
+
+/* LES SOUS-PAGES. Une documentation tient rarement en une page : un texte général, et le
+   détail de chaque point à côté. Ce qui se casse ici ne se voit que plus tard — une
+   arborescence qui s'approfondit sans qu'on l'ait voulu, un parent supprimé qui laisse des
+   pages orphelines et introuvables, une recherche qui rend un enfant décalé sous rien. */
+describe('pages : un seul étage de sous-pages', () => {
+  const msgs = {
+    titreVide: 'TITRE-VIDE', inconnue: 'INCONNUE', prioriteInvalide: 'PRIO',
+    statutInvalide: 'STATUT', dateInvalide: 'DATE', lienInvalide: 'LIEN',
+    tropProfond: 'TROP-PROFOND', soiMeme: 'SOI-MEME',
+  };
+  const neuf = () => { db.prepare('DELETE FROM note_page').run(); };
+
+  test('une sous-page se range sous sa page, et la page les rend dans l’ordre du titre', () => {
+    neuf();
+    const racine = notes.creerPage({ title: 'Carte des services' }, msgs);
+    notes.creerPage({ title: 'zeta', parent_id: racine.id }, msgs);
+    notes.creerPage({ title: 'alpha', parent_id: racine.id }, msgs);
+    assert.deepEqual(notes.sousPages(racine.id).map((p) => p.title), ['alpha', 'zeta'],
+      'par titre : on y cherche un point précis, pas la dernière frappe');
+    assert.equal(notes.sousPages(racine.id)[0].parent_id, racine.id);
+  });
+
+  test('un seul niveau : une sous-page ne peut pas en contenir, ni une page être la sienne', () => {
+    neuf();
+    const racine = notes.creerPage({ title: 'général' }, msgs);
+    const enfant = notes.creerPage({ title: 'détail', parent_id: racine.id }, msgs);
+    assert.throws(() => notes.creerPage({ title: 'détail du détail', parent_id: enfant.id }, msgs), /TROP-PROFOND/);
+    assert.throws(() => notes.majPage(racine.id, { parent_id: racine.id }, msgs), /SOI-MEME/);
+    // …et on ne range pas sous une autre une page qui a DÉJÀ des enfants : ils passeraient au 3e étage.
+    const autre = notes.creerPage({ title: 'autre' }, msgs);
+    assert.throws(() => notes.majPage(racine.id, { parent_id: autre.id }, msgs), /TROP-PROFOND/);
+    // Un parent inconnu est un 404, pas un rattachement silencieux à rien.
+    assert.throws(() => notes.creerPage({ title: 'x', parent_id: 999999 }, msgs), /INCONNUE/);
+  });
+
+  test('déplacer une page sans enfant sous une autre, et l’en détacher', () => {
+    neuf();
+    const racine = notes.creerPage({ title: 'général' }, msgs);
+    const seule = notes.creerPage({ title: 'esseulée' }, msgs);
+    assert.equal(notes.majPage(seule.id, { parent_id: racine.id }, msgs).parent_id, racine.id);
+    assert.equal(notes.majPage(seule.id, { parent_id: null }, msgs).parent_id, null,
+      'la détacher la remet au premier niveau, elle ne disparaît pas');
+  });
+
+  test('supprimer une page emporte ses sous-pages, et le dit', () => {
+    neuf();
+    const racine = notes.creerPage({ title: 'général' }, msgs);
+    notes.creerPage({ title: 'a', parent_id: racine.id }, msgs);
+    notes.creerPage({ title: 'b', parent_id: racine.id }, msgs);
+    const r = notes.supprimerPage(racine.id, msgs);
+    assert.equal(r.children, 2, 'le nombre emporté est rendu : la confirmation doit pouvoir le dire');
+    assert.equal(notes.listerPages('').length, 0, 'aucune sous-page ne survit à son parent');
+  });
+
+  test('une sous-page trouvée ramène son parent, marqué comme contexte', () => {
+    neuf();
+    const racine = notes.creerPage({ title: 'Carte des services' }, msgs);
+    notes.creerPage({ title: 'groupe/api-core', content: 'le bus d’événements', parent_id: racine.id }, msgs);
+    const trouvees = notes.listerPages('bus d’événements');
+    assert.equal(trouvees.filter((p) => !p.contexte).length, 1, 'un seul vrai résultat');
+    const pere = trouvees.find((p) => p.id === racine.id);
+    assert.ok(pere, 'le parent est ramené : un enfant décalé sous rien ne se lit pas');
+    assert.equal(pere.contexte, 1, 'il est le rayon, pas le livre');
+  });
+});

@@ -12,6 +12,8 @@ const resolution = require('./resolution');
 const glob = require('./glob');
 const diffnum = require('./diffnum');
 const demoReview = require('./demo-review');
+const agentpass = require('./agentpass');
+const agentknowledge = require('./agentknowledge');   // B7 : la carte du domaine touché
 const demoDiff = require('./demo-diff');
 const demoComments = require('./demo-comments');
 const forge = require('./forge');
@@ -96,12 +98,30 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
     diff_file: diffName,
     lines_file: lignesName,
     project: repo.project,
+    /* CE QUE LA MERGE REQUEST PRÉTEND FAIRE. Le gabarit peut désormais l'écrire lui-même
+       (`{title}`, `{description}`) ; et qu'il le fasse ou non, le bloc ci-dessous l'ajoute au
+       prompt — un gabarit personnalisé, écrit avant que ces variables n'existent, doit en
+       profiter aussi. C'est la même règle que les constats et les numéros de ligne. */
+    title: mr.title || '',
+    description: mr.description || '',
   };
 
   // Contexte du ticket. DEUX sources distinctes réunies ici :
   //  - ticket_jira_text : récupéré automatiquement depuis Jira au discover ;
   //  - ticket_text      : le complément saisi à la main par le relecteur.
   // Les deux sont concaténés — l'un n'écrase jamais l'autre (ideas.md « Fetch Jira »).
+  /* L'INTENTION DÉCLARÉE, avant le contexte du ticket. Sans Jira configuré, l'IA ne connaissait
+     que le diff : elle relevait comme des manques des choix assumés, écrits dans la description
+     — « le cache n'est volontairement pas invalidé ici, voir le ticket ». Le titre seul vaut
+     déjà beaucoup ; la description, quand elle existe, vaut le reste. */
+  let intentionBlock = '';
+  if (mr.title && String(mr.title).trim()) {
+    intentionBlock += `\n\n${t('review.intent.title', { title: String(mr.title).trim() })}`;
+  }
+  if (mr.description && String(mr.description).trim()) {
+    intentionBlock += `\n\n${t('review.intent.description', { description: String(mr.description).trim() })}`;
+  }
+
   let ticketBlock = '';
   if (mr.ticket_jira_text && mr.ticket_jira_text.trim()) {
     ticketBlock += `\n\nContexte du ticket ${mr.ticket_jira_key || ''} (récupéré depuis Jira), à prendre en compte dans l'analyse :\n"""\n${mr.ticket_jira_text.trim()}\n"""`;
@@ -132,6 +152,9 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
      Le risque d'une MR vient de ce qu'elle touche, pas de comment elle s'appelle. */
   let rulesBlock = '';
   const rules = db.prepare('SELECT * FROM review_rule WHERE enabled = 1').all().filter((r) => {
+    /* Une règle limitée à un dépôt ne sort pas de ce dépôt, quel que soit son motif : c'est
+       la raison d'être de la limite. `repo_id` nul = toutes, comme avant. */
+    if (r.repo_id && Number(r.repo_id) !== Number(mr.repo_id)) return false;
     const branchHit = r.branch_match && (mr.source_branch || '').includes(r.branch_match);
     const pathHit = r.path_match && glob.matchingPaths(r.path_match, changedPaths).length > 0;
     return branchHit || pathHit;
@@ -145,6 +168,29 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
     }
     onLog(t('log.review.rules', { n: rules.length, count: rules.length }));
   }
+
+  /* B7 — LA CARTE DU DOMAINE TOUCHÉ, comme contexte de review. Un agent de domaine a écrit
+     ce que fait ce coin du code, ce qui l'appelle et ce qui casse quand on y touche ; cette
+     connaissance existait et ne servait qu'à l'onglet Agents. Or c'est exactement ce qu'un
+     relecteur voudrait avoir sous les yeux — et c'est du texte déjà écrit, sans un appel de
+     plus ni un token de production.
+
+     Le croisement est celui du badge (`agentknowledge.cartesTouchees`) : les chemins du diff
+     contre ceux que la carte cite. Deux cartes au plus, et l'index seulement — pas la carte
+     entière : un prompt de review a déjà le diff, le ticket, les règles et les projets liés,
+     et le noyer sous trois pages de contexte de domaine ferait perdre ce qu'on venait ajouter.
+     La carte est DISPONIBLE en entier dans les notes ; on dit où. */
+  let carteBlock = '';
+  try {
+    const cartes = agentknowledge.cartesTouchees(agentknowledge.indexCartes(), mr.repo_id, changedPaths.join('\n'));
+    for (const c of cartes.slice(0, 2)) {
+      const ag = db.prepare('SELECT * FROM agent WHERE id = ?').get(c.agent_id);
+      const idx = ag ? agentknowledge.indexFor(ag) : '';
+      if (!idx) continue;
+      carteBlock += `\n\n${t('review.card-context', { name: c.name })}\n"""\n${idx}\n"""`;
+    }
+    if (carteBlock) onLog(t('log.review.cards', { n: cartes.length, count: cartes.length }));
+  } catch { /* best-effort : une carte illisible ne fait pas échouer une review */ }
 
   /* Projets liés : l'IA analyse l'impact des changements de la MR sur d'autres dépôts.
      Choix d'archi retenu : la review tourne dans le clone principal (cwd inchangé,
@@ -199,14 +245,16 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   // Lance un prompt en demandant à l'IA d'ÉCRIRE sa sortie dans outRel (dans le clone),
   // puis lit ce fichier (contenu propre). extra = bloc additionnel (ex: modif).
   // Fallback sur stdout si le fichier est absent/vide.
-  async function generate(promptTemplate, outRel, kind, extra = '') {
+  async function generate(promptTemplate, outRel, kind, extra = '', opts = {}) {
     /* Démo : aucun agent n'est appelé. On rend le document que l'IA aurait écrit, bâti sur le
        diff fictif — les constats citent donc des lignes qui existent à l'écran. */
     if (enDemo) {
       onLog(t('log.review.run', { mode: 'démo', incremental: '' }));
-      return kind === 'explain'
-        ? demoReview.explication(mr, diff)
-        : demoReview.rapport(mr, diff, { START: resolution.START, END: resolution.END });
+      if (kind === 'explain') return demoReview.explication(mr, diff);
+      // Une question n'est pas un rapport : rendre le rapport ici aurait fait croire, en démo,
+      // qu'une question régénère la revue — exactement ce que la fonctionnalité évite.
+      if (kind === 'question') return demoReview.reponseQuestion(mr, diff, opts.question);
+      return demoReview.rapport(mr, diff, { START: resolution.START, END: resolution.END });
     }
     const outAbs = path.join(cwd, outRel);
     try { fs.rmSync(outAbs, { force: true }); } catch { /* pas de fichier précédent */ }
@@ -225,13 +273,18 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
        comme les numéros de ligne et les constats, pour tous les gabarits. */
     const ni = (kind === 'review') ? `\n\n${t('review.note-instruction')}` : '';
     const lb = (kind === 'review') ? linkedBlock : ''; // analyse d'impact = review uniquement
-    const prompt = fillTemplate(promptTemplate, { ...baseVars, out_file: outRel }) + ticketBlock + rb + lb + extra + li + ni + fi + instruction;
+    const cb = (kind === 'review') ? carteBlock : ''; // contexte de domaine = review uniquement
+    /* `intentionBlock` n'accompagne que la REVIEW et la modification : une explication
+       pédagogique reçoit déjà le diff et n'a pas à juger l'intention, une question porte sur le
+       rapport. */
+    const ib = (kind === 'review' || kind === 'modify') ? intentionBlock : '';
+    const prompt = fillTemplate(promptTemplate, { ...baseVars, out_file: outRel }) + ib + ticketBlock + rb + cb + lb + extra + li + ni + fi + instruction;
     // extraInput : le diff n'est PAS dans le prompt (on ne passe que son chemin),
     // mais l'agent le lit — il doit donc compter dans la consommation.
     // Continuité : la review/modif tourne dans une session reprenable par MR (« Relancer la
     // review » reprend le contexte de la review précédente). Session seulement si un backend
     // reprenable est reconnu et hors dry-run ; sinon appel one-shot (comportement historique).
-    const useSession = !copilot.isDryRun() && (kind === 'review' || kind === 'modify') && agentsession.backendName() !== 'unknown';
+    const useSession = !copilot.isDryRun() && (kind === 'review' || kind === 'modify' || kind === 'question') && agentsession.backendName() !== 'unknown';
     let stdout = '';
     if (useSession) {
       const key = `review-mr-${mr.id}`;
@@ -253,7 +306,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
           .run(r.handle, r.backend, cwd, mr.id);
       }
     } else {
-      stdout = await copilot.runPrompt(prompt, cwd, { ...baseVars, out_file: outRel, kind, extraInput: diff }, onLog);
+      stdout = await copilot.runPrompt(prompt, cwd, { ...baseVars, out_file: outRel, kind, extraInput: diff, owner: { kind: 'mr', id: mr.id } }, onLog);
     }
     let content = '';
     if (fs.existsSync(outAbs)) content = fs.readFileSync(outAbs, 'utf8').trim();
@@ -267,7 +320,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
     }
     // Le run en session ne passe pas par copilot.runPrompt : on compte ici l'appel (prompt +
     // diff en entrée, rapport en sortie).
-    if (useSession) copilot.recordUsage(kind, prompt, content, diff);
+    if (useSession) copilot.recordUsage(kind, prompt, content, diff, { kind: 'mr', id: mr.id });
     return content || '_(aucun contenu produit)_';
   }
 
@@ -316,6 +369,19 @@ function saveReviewVersion(mr, outDir, { reviewContent, explainContent, diffStor
       .run(mr.id, mdPath, explPath, diffStorePath, noteValue, now, now);
   }
   return { version, mdPath, explPath, noteValue, now };
+}
+
+/* La publication automatique part-elle, pour CE rapport ? Deux réglages, dans cet ordre :
+   `auto_post_review` dit si l'on écrit chez les autres, `auto_post_blocking_only` filtre ce
+   qui mérite de les déranger — au moins un constat de sévérité « blocker ». Une passe sans
+   aucun constat ne contient, par définition, aucun bloquant : elle ne part pas non plus.
+   La règle est ici, isolée et exportée, parce qu'elle décide de ce qui est lu par des
+   collègues : elle se teste ligne à ligne, sans faire tourner une review entière. Le bouton
+   « Publier » du rapport, lui, ne la consulte jamais — un geste explicite n'a pas de filtre. */
+function publicationAutoRequise(cfg, findings) {
+  if (cfg.auto_post_review !== '1') return false;
+  if (cfg.auto_post_blocking_only !== '1') return true;
+  return (findings || []).some((f) => f && f.severity === 'blocker');
 }
 
 /* PUBLIER LE RAPPORT EN COMMENTAIRE SUR LA MERGE REQUEST.
@@ -411,9 +477,19 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
        l'enregistrement : le rapport est acquis, et une forge injoignable ne doit pas le faire
        disparaître. D'où le `catch` qui se contente de le dire dans le journal du job, comme
        pour le verdict d'un vérificateur (`jobs.js`). */
+    /* Et son filtre : `auto_post_blocking_only` ne laisse passer que les rapports portant au
+       moins un constat « blocker ». Le rapport lui-même est enregistré dans tous les cas —
+       ce réglage décide de ce qui part chez les autres, jamais de ce qui est produit. Le
+       journal du job dit quand une publication a été retenue, et combien de constats la
+       passe comptait : « 0 constat » signale un bloc de constats absent du rapport, ce qui
+       est un tout autre problème que « rien de bloquant ». */
     if (cfg.auto_post_review === '1') {
-      try { await publierRapport(mr, cfg, { onLog }); }
-      catch (e) { onLog(t('log.review.post-failed', { message: e.message })); }
+      if (publicationAutoRequise(cfg, findings)) {
+        try { await publierRapport(mr, cfg, { onLog }); }
+        catch (e) { onLog(t('log.review.post-failed', { message: e.message })); }
+      } else {
+        onLog(t('log.review.post-skipped', { total: findings.length }));
+      }
     }
 
     return { mdPath, explPath, version };
@@ -488,6 +564,46 @@ async function modifyReview(repo, mr, instruction, onLog = () => {}) {
   }
 }
 
+/* POSER UNE QUESTION SUR UNE REVUE, sans y toucher.
+ *
+ * « Pourquoi ce constat ? », « le point 3 vaut-il aussi pour l'autre appelant ? » — on avait
+ * pour seul geste « Demander une modification », qui RÉÉCRIT le rapport et en fait une version
+ * de plus. Demander un éclaircissement coûtait donc le rapport qu'on était en train de lire,
+ * et la note pouvait changer au passage.
+ *
+ * Une question ne produit donc NI version, NI note, NI fichier de rapport : elle s'ajoute à
+ * l'historique des échanges (`agent_pass`, scope `review`) et c'est tout. La consigne le dit à
+ * l'agent, mais la garantie ne tient pas au prompt : ce code n'écrit simplement nulle part
+ * ailleurs — un agent qui réécrirait le rapport de son propre chef n'aurait aucun effet.
+ *
+ * Elle REPREND la session de review quand il y en a une : l'agent a déjà lu le diff et son
+ * propre rapport, donc la réponse coûte une question, pas une relecture complète. */
+async function askReview(repo, mr, question, onLog = () => {}) {
+  const cfg = getConfig();
+  const rev = db.prepare('SELECT * FROM review WHERE mr_id = ?').get(mr.id);
+  const rapport = (rev && rev.md_path && fs.existsSync(rev.md_path))
+    ? fs.readFileSync(rev.md_path, 'utf8') : '';
+
+  const { generate, cleanupLinked } = await prepareContext(cfg, repo, mr, onLog);
+  try {
+    const extra = `
+
+${t('review.ask.report', { rapport: rapport || t('review.ask.no-report') })}`
+      + `
+
+${t('review.ask.question', { question })}`;
+    onLog(t('log.review.ask', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai') }));
+    const reponse = await generate(t('review.ask.prompt'), 'ai-dev-tools-internal/question.md', 'question', extra, { question });
+    /* La question et sa réponse rejoignent l'historique des échanges. `unit_id = 0` : une MR
+       n'a qu'un fil, là où une session a une unité par projet. */
+    const { n } = agentpass.record('review', mr.id, 0, { kind: 'question', prompt: question, text: reponse });
+    onLog(t('log.review.ask-saved', { n }));
+    return { n, reponse };
+  } finally {
+    await cleanupLinked();
+  }
+}
+
 // Génère la SEULE explication pédagogique pour la version courante d'une MR déjà
 // reviewée (1 appel IA), sans retoucher au rapport. Sert au bouton « Générer
 // l'explication » quand la review a été lancée en mode « review seule ».
@@ -515,4 +631,4 @@ async function explainMr(repo, mr, onLog = () => {}) {
   }
 }
 
-module.exports = { reviewMr, modifyReview, explainMr, fillTemplate, publierRapport };
+module.exports = { reviewMr, modifyReview, askReview, explainMr, fillTemplate, publierRapport, publicationAutoRequise };

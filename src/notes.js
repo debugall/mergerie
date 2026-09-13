@@ -22,6 +22,8 @@
  */
 
 const db = require('./db');
+// La MÊME définition de « citer » que le rendu des notes (cf. `citations`).
+const NOTESRT = require('../public/notes-runtime.js');
 const { t } = require('../public/i18n-runtime.js');
 
 const JOUR_MS = 24 * 60 * 60 * 1000;
@@ -35,7 +37,11 @@ const MAX_NOTE = 2000;
 const MAX_PAGE = 200 * 1024;
 
 const PRIORITES = ['high', 'normal', 'low'];
-const LINK_KINDS = ['mr', 'ticket', 'repo'];
+/* B16 — quatre objets de plus : une branche (`<dépôt>:<branche>`), une vérification, un build
+   Jenkins (`<job>#<numéro>`) et un conteneur. La liste doit rester alignée sur le `CHECK` de
+   la table (`db.js`, migration B16) : ce qui passe ici et que la table refuse ferait une
+   erreur SQLite brute à l'écran. */
+const LINK_KINDS = ['mr', 'ticket', 'repo', 'branch', 'verification', 'build', 'container'];
 // Combien de temps une todo faite reste visible, barrée, avant de s'archiver.
 const JOURS_AVANT_ARCHIVE = 7;
 
@@ -92,7 +98,7 @@ function lireLien(kind, ref, msgInvalide) {
 
 /* ---------------------------------------------------------------- pages ---- */
 
-const PAGE_COLS = 'id, title, pinned, created_at, updated_at';
+const PAGE_COLS = 'id, title, pinned, parent_id, created_at, updated_at';
 
 /* La liste ne rend PAS le contenu : vingt pages de plusieurs dizaines de kilo-octets à
    chaque affichage de colonne, pour n'en lire qu'une. La recherche, elle, porte bien sur
@@ -102,30 +108,67 @@ function listerPages(q = '') {
   const ordre = 'ORDER BY pinned DESC, updated_at DESC';
   if (!s) return db.prepare(`SELECT ${PAGE_COLS} FROM note_page ${ordre}`).all();
   const like = `%${s.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
-  return db.prepare(`SELECT ${PAGE_COLS} FROM note_page
+  const trouvees = db.prepare(`SELECT ${PAGE_COLS} FROM note_page
     WHERE title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' ${ordre}`).all(like, like);
+  /* UNE SOUS-PAGE TROUVÉE RAMÈNE SON PARENT, même si le parent ne correspond pas. Sans lui,
+     la colonne montrerait un enfant orphelin, décalé sous rien — et le mot cherché se trouve
+     souvent dans le détail, jamais dans le texte général qui l'annonce. Le parent ainsi
+     ramené ne compte pas comme un résultat : il est le rayon, pas le livre. */
+  const ids = new Set(trouvees.map((p) => p.id));
+  const parents = [];
+  for (const p of trouvees) {
+    if (!p.parent_id || ids.has(p.parent_id)) continue;
+    const pere = db.prepare(`SELECT ${PAGE_COLS} FROM note_page WHERE id = ?`).get(p.parent_id);
+    if (pere && !ids.has(pere.id)) { ids.add(pere.id); parents.push({ ...pere, contexte: 1 }); }
+  }
+  return [...trouvees, ...parents];
 }
+
+// Les sous-pages d'une page, dans l'ordre où on les lit : par titre, pas par date de frappe.
+const sousPages = (id) => db.prepare(`SELECT ${PAGE_COLS} FROM note_page
+  WHERE parent_id = ? ORDER BY title COLLATE NOCASE`).all(Number(id) || 0);
 
 const lirePage = (id) => db.prepare('SELECT * FROM note_page WHERE id = ?').get(Number(id) || 0);
 
-function creerPage({ title, content } = {}, { titreVide }) {
+/* Le parent d'une page, validé : il doit exister, et ne pas être lui-même une sous-page.
+   UN SEUL NIVEAU — « le détail du détail » veut dire qu'il fallait une page de plus, pas un
+   étage de plus, et une arborescence profonde ne se navigue pas dans une colonne étroite. */
+function lireParent(v, { inconnue, tropProfond }) {
+  if (v === null || v === undefined || v === '' || Number(v) === 0) return null;
+  const pere = lirePage(v);
+  if (!pere) throw erreur(inconnue, 404);
+  if (pere.parent_id) throw erreur(tropProfond);
+  return pere.id;
+}
+
+function creerPage({ title, content, parent_id: parent } = {}, msgs) {
   const now = nowIso();
-  const info = db.prepare(`INSERT INTO note_page (title, content, pinned, created_at, updated_at)
-    VALUES (?,?,0,?,?)`).run(lireTitre(title, titreVide), lireContenu(content), now, now);
+  const info = db.prepare(`INSERT INTO note_page (title, content, pinned, parent_id, created_at, updated_at)
+    VALUES (?,?,0,?,?,?)`).run(lireTitre(title, msgs.titreVide), lireContenu(content),
+    lireParent(parent, msgs), now, now);
   return lirePage(info.lastInsertRowid);
 }
 
 /* Mise à jour PARTIELLE : l'autosauvegarde n'envoie que le contenu, le bouton épingler que
    `pinned`. Envoyer l'objet entier à chaque frappe obligerait le client à garder une copie
    fidèle du reste — et à l'écraser dès qu'elle serait périmée. */
-function majPage(id, patch = {}, { titreVide, inconnue }) {
+function majPage(id, patch = {}, msgs) {
   const page = lirePage(id);
-  if (!page) throw erreur(inconnue, 404);
+  if (!page) throw erreur(msgs.inconnue, 404);
   const champs = [];
   const vals = [];
-  if (patch.title !== undefined) { champs.push('title = ?'); vals.push(lireTitre(patch.title, titreVide)); }
+  if (patch.title !== undefined) { champs.push('title = ?'); vals.push(lireTitre(patch.title, msgs.titreVide)); }
   if (patch.content !== undefined) { champs.push('content = ?'); vals.push(lireContenu(patch.content)); }
   if (patch.pinned !== undefined) { champs.push('pinned = ?'); vals.push(patch.pinned ? 1 : 0); }
+  /* DÉPLACER une page sous une autre. Deux refus : se ranger sous soi-même, et ranger sous
+     soi une page qui a déjà des enfants — les petits-enfants se retrouveraient au troisième
+     étage, que le reste du code ne sait pas afficher. */
+  if (patch.parent_id !== undefined) {
+    const pere = lireParent(patch.parent_id, msgs);
+    if (pere === page.id) throw erreur(msgs.soiMeme);
+    if (pere && sousPages(page.id).length) throw erreur(msgs.tropProfond);
+    champs.push('parent_id = ?'); vals.push(pere);
+  }
   if (champs.length) {
     champs.push('updated_at = ?'); vals.push(nowIso());
     db.prepare(`UPDATE note_page SET ${champs.join(', ')} WHERE id = ?`).run(...vals, page.id);
@@ -133,11 +176,15 @@ function majPage(id, patch = {}, { titreVide, inconnue }) {
   return lirePage(page.id);
 }
 
+/* Supprimer une page EMPORTE ses sous-pages (cascade SQL). On rend leur nombre : c'est ce
+   que la confirmation doit dire avant, et ce que le journal doit dire après — « supprimée »
+   pour une page qui en emportait six est une phrase incomplète. */
 function supprimerPage(id, { inconnue }) {
   const page = lirePage(id);
   if (!page) throw erreur(inconnue, 404);
+  const enfants = sousPages(page.id).length;
   db.prepare('DELETE FROM note_page WHERE id = ?').run(page.id);
-  return { ok: true };
+  return { ok: true, children: enfants };
 }
 
 /* Nom de fichier d'export. Slugifié depuis le titre : un titre porte des espaces, des
@@ -397,6 +444,51 @@ function demarrerArchivage(onLog = () => {}) {
 // Au-delà, une merge request fermée n'est plus une référence qu'on écrit dans une note.
 const JOURS_AUTOLINK = 180;
 
+/* B4 — QUI CITE CECI. L'autolien est à sens unique : une note qui parle de `!217` mène à la
+   merge request, et la merge request ignore qu'on a écrit trois paragraphes sur elle la
+   semaine dernière. C'est pourtant le sens le plus utile des deux — devant un rapport de
+   review, « on en avait parlé, où ? » est une question fréquente, et la réponse est une
+   recherche plein texte qu'on refait à la main.
+
+   DEUX ÉTAPES, et la seconde n'est pas un luxe : le `LIKE` est le FILTRE (il laisse SQLite
+   écarter l'immense majorité des pages), la regex de l'autolien est la RÈGLE. Sans elle,
+   `a!=217` et `PROJ-7200` compteraient comme des citations — et une liste de liens entrants
+   qui contient des faux est pire que pas de liste, parce qu'on la vérifie à la main.
+
+   La MÊME regex que le rendu, importée du même module : deux définitions de « citer »
+   finiraient par désigner des ensembles différents, et l'écran dirait « 2 notes citent !217 »
+   en menant à des pages où le lien n'est pas posé. */
+const MAX_CITATIONS = 20;
+
+function citations({ mr = null, ticket = null } = {}) {
+  const aiguille = mr ? `!${Number(mr)}` : String(ticket || '').trim().toUpperCase();
+  if (!aiguille || (mr && !Number.isFinite(Number(mr)))) return [];
+  if (ticket && !/^[A-Z][A-Z0-9]+-\d+$/.test(aiguille)) return [];
+  const motif = `%${aiguille.replace(/[%_]/g, '')}%`;
+  const out = [];
+  for (const p of db.prepare(`SELECT id, title, content, updated_at FROM note_page
+    WHERE content LIKE ? ESCAPE '\\' ORDER BY updated_at DESC LIMIT ?`).all(motif, MAX_CITATIONS * 3)) {
+    const re = mr ? new RegExp(NOTESRT.MR_RE.source, 'g') : new RegExp(NOTESRT.TICKET_RE.source, 'g');
+    let vraie = false; let m;
+    while ((m = re.exec(p.content)) !== null) {
+      const trouve = mr ? `!${m[2]}` : m[2];
+      if (trouve === aiguille) { vraie = true; break; }
+    }
+    if (!vraie) continue;
+    // L'EXTRAIT AUTOUR DE LA CITATION, pas le début de la page : ce qu'on veut savoir, c'est
+    // ce qui a été dit DE cet objet — le titre de la page ne le dit presque jamais.
+    const i = p.content.indexOf(aiguille);
+    /* Coupé sur des MOTS, pas sur des caractères : « t être prévenue dès la revue » se lit
+       comme une coquille de l'outil, là où « …doit être prévenue… » se lit comme un extrait. */
+    const brut = p.content.slice(Math.max(0, i - 70), i + 110).replace(/\s+/g, ' ');
+    const gauche = i > 70 ? brut.replace(/^\S*\s/, '…') : brut;
+    const extrait = (i + 110 < p.content.length ? gauche.replace(/\s\S*$/, ' …') : gauche).trim();
+    out.push({ id: p.id, title: p.title, excerpt: extrait, updated_at: p.updated_at });
+    if (out.length >= MAX_CITATIONS) break;
+  }
+  return out;
+}
+
 function indexAutolink({ maintenant = Date.now() } = {}) {
   const mrs = {};
   /* BORNÉ, et il faut qu'il le soit : sans clause, la requête sérialisait la table `mr`
@@ -420,9 +512,10 @@ function indexAutolink({ maintenant = Date.now() } = {}) {
 }
 
 module.exports = {
+  sousPages,
   reordonnerTodos, todoAuto, fermerTodoAuto, fermerTodosDeMr,
   MAX_TITLE, MAX_NOTE, MAX_PAGE, PRIORITES, LINK_KINDS, JOURS_AVANT_ARCHIVE, JOURS_AUTOLINK,
   listerPages, lirePage, creerPage, majPage, supprimerPage, slugifier,
   listerTodos, lireTodo, creerTodo, majTodo, supprimerTodo, calculerSnooze,
-  rappelsDus, marquerNotifie, archiver, demarrerArchivage, indexAutolink,
+  rappelsDus, marquerNotifie, archiver, demarrerArchivage, indexAutolink, citations,
 };

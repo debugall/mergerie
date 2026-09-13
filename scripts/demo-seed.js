@@ -20,6 +20,7 @@ const { REVIEWS_DIR, TASKS_DIR, ensureDir, slugify, initDirs } = require('../src
    même merge request donnaient un fichier « non modifié » dans le viewer, donc pas de lignes
    numérotées — et les commentaires en attente, qui s'accrochent à une ligne, disparaissaient. */
 const { diffPour } = require('../src/demo-diff');
+const agentpassDemo = require('../src/agentpass');
 initDirs();
 
 /* Un PNG uni, fabriqué à la main : la démo a besoin d'une image, pas d'un binaire versionné.
@@ -160,10 +161,16 @@ const PROJECTS = [
 ];
 
 // ---------- config : GitLab factice, pas de token (démo hors-ligne) ----------
-db.prepare(`UPDATE config SET gitlab_url = ?, access_token = '', jira_url = ?, ai_extra_instructions = ? WHERE id = 1`)
+/* La DICTÉE est allumée en démo, avec un glossaire et une correction déjà remplis : le moteur
+   y est simulé, si bien que le micro marche vraiment sans rien installer — et c'est le seul
+   moyen de MONTRER ce que le vocabulaire apporte, plutôt que de l'écrire dans un guide. */
+db.prepare(`UPDATE config SET gitlab_url = ?, access_token = '', jira_url = ?, ai_extra_instructions = ?,
+    dictation_provider = 'local', dictation_vocabulary = ?, dictation_replacements = ? WHERE id = 1`)
   .run('https://gitlab.demo', 'https://jira.demo',
     // Des consignes permanentes remplies : un champ vide ne montrerait pas à quoi il sert.
-    'Commente en français.\nLance `npm run check` avant de committer.\nN’ajoute aucune dépendance sans le demander.');
+    'Commente en français.\nLance `npm run check` avant de committer.\nN’ajoute aucune dépendance sans le demander.',
+    'astreinte\nVoxtral\nMergerie',
+    'Jean-Kim => Jenkins\ngite lab => GitLab');
 
 // ---------- dépôts ----------
 const repoIds = {};
@@ -222,6 +229,12 @@ const MRS = [
   { project: 'groupe/batch-jobs', title: 'Hotfix : timeout export nocturne', branch: 'hotfix/export-timeout', status: 'to_review', changed: ['jobs/nightlyExport.js'], summary: 'corrige un timeout sur l\'export de nuit' },
   { project: 'groupe/webapp-front', title: 'Ajout du dark mode', branch: 'feat/PROJ-701-dark', status: 'to_review', changed: ['src/theme.js', 'src/components/Toggle.jsx'], summary: 'introduit un thème sombre configurable' },
   { project: 'acme/design-system', title: 'Tokens de couleur : passage en HSL', branch: 'feat/DS-118-hsl-tokens', status: 'to_review', changed: ['src/tokens/color.ts', 'docs/theming.md'], summary: 'convertit les tokens de couleur en HSL' },
+  /* B7 — CELLE-CI TOUCHE LA CARTE « Notifications » : ses chemins sont exactement ceux que la
+     carte de l'agent de domaine cite (`src/notify.js`, `src/templates/notifications`). Sans
+     elle, le badge « touche la carte … » et le contexte de domaine ajouté au prompt de review
+     n'auraient rien à montrer en démo — et une fonctionnalité qu'on ne voit pas en démo est
+     une fonctionnalité qu'on croit cassée. */
+  { project: 'groupe/api-core', title: 'Notifications : canal Slack pour les alertes', branch: 'feat/PROJ-845-slack', status: 'to_review', changed: ['src/notify.js', 'src/templates/notifications/slack.md'], summary: 'ajoute un canal Slack aux notifications' },
 ];
 // MR déjà reviewées / traitées, réparties dans le temps pour les stats
 const REVIEWED = [
@@ -236,30 +249,41 @@ const REVIEWED = [
 ];
 
 let iid = 200;
+/* Le NUMÉRO peut être imposé. Les diffs taillés à la main (`src/demo-diff.js`) sont indexés
+   PAR IID : ajouter une merge request au milieu de la liste décale tous les suivants et les
+   sépare silencieusement de leur diff — ils retombent alors sur le diff générique, et l'écran
+   montre un fichier qui n'a rien à voir avec les constats du rapport. Une merge request ajoutée
+   après coup prend donc un numéro libre, à la fin. */
 function insertMr(m, extra = {}) {
-  iid += 1;
+  const numero = extra.iid || (iid += 1);
   const sha = require('crypto').randomBytes(20).toString('hex');
   const info = db.prepare(`INSERT INTO mr
     (repo_id, iid, title, source_branch, target_branch, web_url, current_sha, reviewed_sha, status, updated_at, gitlab_created_at, author, changed_paths)
     VALUES (@repo_id, @iid, @title, @source_branch, @target_branch, @web_url, @current_sha, @reviewed_sha, @status, @updated_at, @gitlab_created_at, @author, @changed_paths)`)
     .run({
-      repo_id: repoIds[m.project], iid, title: m.title,
+      repo_id: repoIds[m.project], iid: numero, title: m.title,
       source_branch: m.branch, target_branch: extra.target || 'main',
       web_url: (PROJECTS.find((p) => p.project === m.project) || {}).forge === 'github'
-        ? `https://github.com/${m.project}/pull/${iid}`
-        : `https://gitlab.demo/${m.project}/-/merge_requests/${iid}`,
+        ? `https://github.com/${m.project}/pull/${numero}`
+        : `https://gitlab.demo/${m.project}/-/merge_requests/${numero}`,
       current_sha: sha, reviewed_sha: extra.reviewed_sha || null,
       status: m.status, updated_at: extra.date || at(1),
       gitlab_created_at: extra.date || at(2),
-      author: extra.author || AUTHORS[iid % AUTHORS.length], changed_paths: (m.changed || []).join('\n'),
+      author: extra.author || AUTHORS[numero % AUTHORS.length], changed_paths: (m.changed || []).join('\n'),
     });
-  return { id: info.lastInsertRowid, iid, sha, source_branch: m.branch, target_branch: extra.target || 'main', ...m };
+  return { id: info.lastInsertRowid, iid: numero, sha, source_branch: m.branch, target_branch: extra.target || 'main', ...m };
 }
 
 // MR à traiter
 /* Les deux premières arrivent dans les DERNIÈRES 24 H : c'est ce que le brief appelle
    « MR à traiter », et une section vide n'aurait rien montré. */
-const mrsAtraiter = MRS.map((m) => insertMr(m, { date: at(0.2 + (MRS.indexOf(m) % 4)) }));
+const mrsAtraiter = MRS.map((m) => insertMr(m, {
+  date: at(0.2 + (MRS.indexOf(m) % 4)),
+  /* Celle des notifications a été ajoutée APRÈS coup (B7) : elle prend un numéro libre, en
+     fin de plage. Au milieu, elle décalerait toutes les suivantes — et les séparerait des
+     diffs taillés à la main, qui sont indexés par iid. */
+  iid: m.branch === 'feat/PROJ-845-slack' ? 230 : undefined,
+}));
 
 // MR reviewées/traitées + rapports sur disque + versions + constats
 for (const m of REVIEWED) {
@@ -315,6 +339,25 @@ for (const m of REVIEWED) {
   db.prepare('INSERT INTO finding (mr_id, version, fingerprint, file, line, severity, title, status, created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(mr.id, 2, fp('src/upload/handler.js', 'valider le type MIME réel'), 'src/upload/handler.js', 22, 'blocker', 'valider le type MIME réel', 'resolved', iso(2));
   db.prepare('INSERT INTO finding (mr_id, version, fingerprint, file, line, severity, title, status, created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(mr.id, 2, fp('src/upload/scan.js', 'journaliser le résultat du scan'), 'src/upload/scan.js', 8, 'minor', 'journaliser le résultat du scan', 'resolved', iso(2));
   db.prepare('INSERT INTO review (mr_id, md_path, explanation_path, diff_path, note_value, created_at, updated_at) VALUES (?,?,?,?,?,?,?)').run(mr.id, v2md, explPath, diffPath, 0.81, iso(2), iso(2));
+
+  /* DEUX QUESTIONS POSÉES SUR CETTE REVUE. Elles ne figurent dans AUCUNE version : c'est
+     exactement ce que la fonctionnalité promet, et sans exemple semé personne ne verrait la
+     différence avec « Demander une modification », qui, lui, ajoute une version. */
+  const ECHANGES = [
+    { jours: 1.8,
+      q: 'Le constat sur la taille du fichier est marqué « majeur » : qu’est-ce qui le rend bloquant en pratique ?',
+      r: `La limite manquante n’est pas un confort : \`src/upload/handler.js\` (ligne 40) lit le corps de la requête en entier avant tout contrôle, donc un envoi de plusieurs gigaoctets est accepté, mis en mémoire, puis rejeté. Le service tombe avant d’avoir pu refuser.\n\nC’est pour ça que le constat est classé « majeur » et pas « mineur » : le coût n’est pas la place occupée, c’est la disponibilité du service.\n\n*Le rapport n’a pas été modifié.*\n` },
+    { jours: 1.2,
+      q: 'La remarque vaut-elle aussi pour l’upload d’avatar, qui passe par un autre appelant ?',
+      r: `Oui. Les deux chemins finissent dans la même fonction \`recevoir()\` de \`src/upload/handler.js\`, et c’est elle qui lit le corps. L’avatar a bien une limite côté client, mais rien ne l’impose côté serveur — la contourner suffit à retomber sur le même cas.\n\nÀ noter : le rapport ne le dit pas, parce que le diff de cette merge request ne touche pas l’appelant avatar. La remarque le concerne quand même.\n\n*Le rapport n’a pas été modifié.*\n` },
+  ];
+  const dirEch = ensureDir(path.join(TASKS_DIR, 'review', String(mr.id), '0'));
+  ECHANGES.forEach((e, i) => {
+    const f = path.join(dirEch, `output-v${i + 1}.md`);
+    fs.writeFileSync(f, e.r, 'utf8');
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
+      VALUES ('review',?,0,?,'question',?,?,?)`).run(mr.id, i + 1, e.q, f, iso(e.jours));
+  });
 }
 
 // ---- une MR CONVERGÉE (« Converger ») : 3 passes autonomes 5,8 → 7,1 → 8,4 ----
@@ -435,6 +478,16 @@ for (let d = 55; d >= 0; d -= 2) {
   }
 }
 
+/* UNE SAUVEGARDE DE CONTAINER HORS-COMPOSE, pour que le bloc « de quoi les refaire » existe :
+   il ne s'affiche que s'il y a quelque chose à restaurer, et la démo ne supprime rien. */
+db.prepare(`INSERT INTO docker_backup (container_id, name, image, inspect_json, run_command, created_at)
+  VALUES (?,?,?,?,?,?)`).run(
+  'a1b2c3d4e5f6', 'redis-perso', 'redis:7-alpine',
+  JSON.stringify({ Name: '/redis-perso', Config: { Image: 'redis:7-alpine', Env: ['REDIS_PASSWORD=demo'] },
+    HostConfig: { PortBindings: { '6379/tcp': [{ HostPort: '6379' }] }, RestartPolicy: { Name: 'unless-stopped' } }, Mounts: [] }),
+  'docker run -d \\\n  --name redis-perso \\\n  --restart unless-stopped \\\n  -p 6379:6379 \\\n  -e REDIS_PASSWORD=*** \\\n  redis:7-alpine',
+  iso(2));
+
 // ---------- feed (footer vivant) ----------
 db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)').run('mr_opened', 201, 'groupe/api-core', 'lina', 'Ajout endpoint /health', at(0.1));
 db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)').run('mr_merged', 190, 'groupe/webapp-front', 'sofia', 'Accessibilité : labels et focus', at(0.5));
@@ -448,6 +501,121 @@ const t1 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, s
 db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, mr_iid, mr_url, mr_merged, session_key, session_backend, session_cwd, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
   .run(t1.lastInsertRowid, repoIds['groupe/api-core'], 'ai/metrics-endpoint', 'main', 'pushed', 250, 'https://gitlab.demo/groupe/api-core/-/merge_requests/250', 1,
     '6ba7b810-9dad-11d1-80b4-00c04fd430c8', 'claude', '/home/moi/clones/groupe-api-core', at(4));
+/* LES ITÉRATIONS DE CETTE SESSION, avec le diff de CHACUNE. C'est ce qui rend démontrable la
+   relecture d'un seul suivi : le lancement pose l'endpoint, le premier suivi ajoute un label
+   par route, le second n'écrit qu'un paragraphe de README. Sans diffs séparés, relire ce
+   dernier suivi obligerait à relire les trois. Les chemins sont ceux de l'arborescence fictive
+   du projet (`src/demo-diff.js`) — un diff qui citerait un fichier absent de l'arbre ne serait
+   marqué nulle part dans la colonne de gauche. */
+const tgt1 = db.prepare('SELECT id FROM task_target WHERE task_id = ?').get(t1.lastInsertRowid).id;
+const PASSES_T1 = [
+  {
+    kind: 'run', jours: 4.3,
+    prompt: 'Ajouter un endpoint /metrics au format Prometheus',
+    out: `## Ce que j'ai fait\n\n- Ajouté \`src/metrics.js\` : registre en mémoire et rendu au format texte Prometheus.\n- Branché \`GET /metrics\` dans \`src/index.js\`.\n\n## Point d'attention\n\nLes compteurs sont globaux : aucune dimension par route pour l'instant.\n`,
+    diff: `diff --git a/src/metrics.js b/src/metrics.js
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/src/metrics.js
+@@ -0,0 +1,18 @@
++'use strict';
++
++const compteurs = new Map();
++
++function incrementer(nom) {
++  compteurs.set(nom, (compteurs.get(nom) || 0) + 1);
++}
++
++function rendu() {
++  const lignes = [];
++  for (const [nom, valeur] of compteurs) {
++    lignes.push(\`# TYPE \${nom} counter\`);
++    lignes.push(\`\${nom} \${valeur}\`);
++  }
++  return \`\${lignes.join('\\n')}\\n\`;
++}
++
++module.exports = { incrementer, rendu };
+diff --git a/src/index.js b/src/index.js
+index 4d5e6f7..8a9b0c1 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -12,6 +12,11 @@ const app = express();
+ app.get('/health', (req, res) => res.json({ ok: true }));
+ 
++app.get('/metrics', (req, res) => {
++  res.type('text/plain');
++  res.send(metrics.rendu());
++});
++
+ app.listen(process.env.PORT || 3000);
+`,
+  },
+  {
+    kind: 'followup', jours: 4.15, favori: true, titre: 'un label par route',
+    prompt: 'Les compteurs sont trop grossiers : mets un label par route, sinon on ne peut pas isoler /webhooks.',
+    out: `## Ce que j'ai fait\n\n- \`incrementer(nom, labels)\` accepte désormais un objet de labels, rendu au format Prometheus.\n- Le compteur de requêtes porte \`route\`.\n`,
+    diff: `diff --git a/src/metrics.js b/src/metrics.js
+index a1b2c3d..b2c3d4e 100644
+--- a/src/metrics.js
++++ b/src/metrics.js
+@@ -3,14 +3,20 @@
+ const compteurs = new Map();
+ 
+-function incrementer(nom) {
+-  compteurs.set(nom, (compteurs.get(nom) || 0) + 1);
++function cle(nom, labels) {
++  const paires = Object.entries(labels || {}).map(([k, v]) => \`\${k}="\${v}"\`);
++  return paires.length ? \`\${nom}{\${paires.join(',')}}\` : nom;
++}
++
++function incrementer(nom, labels) {
++  const k = cle(nom, labels);
++  compteurs.set(k, (compteurs.get(k) || 0) + 1);
+ }
+`,
+  },
+  {
+    kind: 'followup', jours: 4.05,
+    prompt: 'Ajoute un paragraphe dans le README qui explique ce qu\'expose /metrics.',
+    out: `## Ce que j'ai fait\n\n- Ajouté une section « Métriques » au README : ce qui est exposé, sous quels labels, et comment brancher Prometheus dessus.\n\nAucun changement de code.\n`,
+    diff: `diff --git a/README.md b/README.md
+index 1122334..5566778 100644
+--- a/README.md
++++ b/README.md
+@@ -24,6 +24,13 @@ npm start
+ 
++## Métriques
++
++\`GET /metrics\` expose les compteurs au format texte Prometheus. Chaque compteur de requêtes
++porte un label \`route\`, ce qui permet d'isoler \`/webhooks\` du reste du trafic.
++
++Aucune authentification : l'endpoint est destiné au réseau interne.
++
+ ## Tests
+`,
+  },
+];
+{
+  const dossier = ensureDir(path.join(TASKS_DIR, String(t1.lastInsertRowid), String(tgt1)));
+  PASSES_T1.forEach((passe, i) => {
+    const n = i + 1;
+    const sortie = path.join(dossier, `output-v${n}.md`);
+    fs.writeFileSync(sortie, passe.out, 'utf8');
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at, favori, titre)
+      VALUES ('task',?,?,?,?,?,?,?,?,?)`)
+      .run(t1.lastInsertRowid, tgt1, n, passe.kind, passe.prompt, sortie, at(passe.jours),
+        passe.favori ? 1 : 0, passe.titre || null);
+    /* SEULE LA DERNIÈRE ITÉRATION GARDE SON DIFF — et c'est `attacherDiff` qui applique la
+       règle, ici comme en production : semer les trois patchs à la main puis en effacer deux
+       aurait fabriqué à la main l'état que le code sait produire. */
+    agentpassDemo.attacherDiff('task', t1.lastInsertRowid, tgt1, n,
+      { baseSha: `demo${n}base`, headSha: `demo${n}head`, diff: passe.diff });
+  });
+  db.prepare('UPDATE task_target SET output_path = ? WHERE id = ?')
+    .run(path.join(dossier, `output-v${PASSES_T1.length}.md`), tgt1);
+}
 /* Un suivi écrit PENDANT que la session travaillait, et toujours pas envoyé : c'est l'état
    qu'on veut montrer. Il attend un geste — la case « automatiquement » est décochée, donc rien
    ne le déclenche à la fin de la session. */
@@ -552,15 +720,42 @@ const LOCAL_OUT = {
    retour courant pour toutes les autres vues. */
 const LOCAL_PASSES = {
   '/home/moi/dev/backup-tool': [
-    { kind: 'run', prompt: lt1prompt, jours: 2.4, out: `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` avec les quatre niveaux.\n- Remplacé les \`console.log\` de \`backup.js\`.\n\n## Reste à faire\n\n\`restore.js\` n'est pas traité : ses sorties sont lues par un script appelant, je préfère une consigne avant d'y toucher.\n` },
-    { kind: 'followup', favori: true, titre: 'stdout gardé pour les données', prompt: 'Les sorties de restore.js sont consommées par un script appelant : garde stdout pour ces données-là et route les logs vers stderr.', jours: 2.2, out: `## Ce que j'ai fait\n\n- \`restore.js\` : logs vers \`stderr\`, données utiles laissées sur \`stdout\`.\n- Vérifié les 14 appels remplacés.\n` },
-    { kind: 'followup', prompt: 'Ajoute un test par cas : format, niveaux, filtrage, sortie stderr.', jours: 2 },
+    { kind: 'run', prompt: lt1prompt, jours: 2.4,
+      fichiers: {
+        'src/logger.js': "'use strict';\n\nconst NIVEAUX = ['debug', 'info', 'warn', 'error'];\n\nfunction log(niveau, message) {\n  if (!NIVEAUX.includes(niveau)) throw new Error(`niveau inconnu : ${niveau}`);\n  process.stderr.write(`${new Date().toISOString()} ${niveau.toUpperCase()} ${message}\\n`);\n}\n\nmodule.exports = { log, NIVEAUX };\n",
+        'backup.js': "'use strict';\nconst { log } = require('./src/logger');\n\nfunction sauvegarder(source, cible) {\n  log('info', `sauvegarde ${source} → ${cible}`);\n  return { source, cible };\n}\n\nmodule.exports = { sauvegarder };\n",
+      }, out: `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` avec les quatre niveaux.\n- Remplacé les \`console.log\` de \`backup.js\`.\n\n## Reste à faire\n\n\`restore.js\` n'est pas traité : ses sorties sont lues par un script appelant, je préfère une consigne avant d'y toucher.\n` },
+    { kind: 'followup', favori: true, titre: 'stdout gardé pour les données', prompt: 'Les sorties de restore.js sont consommées par un script appelant : garde stdout pour ces données-là et route les logs vers stderr.', jours: 2.2,
+      fichiers: {
+        'restore.js': "'use strict';\nconst { log } = require('./src/logger');\n\nfunction restaurer(archive) {\n  log('info', `restauration de ${archive}`);\n  // Les DONNÉES restent sur stdout : un script appelant les consomme.\n  process.stdout.write(JSON.stringify({ archive, ok: true }) + '\\n');\n}\n\nmodule.exports = { restaurer };\n",
+      }, out: `## Ce que j'ai fait\n\n- \`restore.js\` : logs vers \`stderr\`, données utiles laissées sur \`stdout\`.\n- Vérifié les 14 appels remplacés.\n` },
+    { kind: 'followup', prompt: 'Ajoute un test par cas : format, niveaux, filtrage, sortie stderr.', jours: 2,
+      fichiers: {
+        'test/logger.test.js': "'use strict';\nconst test = require('node:test');\nconst assert = require('node:assert/strict');\nconst { log, NIVEAUX } = require('../src/logger');\n\ntest('les quatre niveaux sont acceptés', () => {\n  for (const n of NIVEAUX) assert.doesNotThrow(() => log(n, 'coucou'));\n});\n\ntest('un niveau inconnu est refusé', () => {\n  assert.throws(() => log('verbeux', 'x'), /niveau inconnu/);\n});\n",
+      } },
   ],
   '/home/moi/dev/csv-cleaner': [
-    { kind: 'run', prompt: lt1prompt, jours: 2.4, out: `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` (copie locale).\n- Remplacé les 6 \`console.log\` de \`clean.js\`.\n` },
-    { kind: 'followup', prompt: 'Ajoute aussi un test du logger, comme dans backup-tool.', jours: 2 },
+    { kind: 'run', prompt: lt1prompt, jours: 2.4, out: `## Ce que j'ai fait\n\n- Ajouté \`src/logger.js\` (copie locale).\n- Remplacé les 6 \`console.log\` de \`clean.js\`.\n`,
+      fichiers: {
+        'src/logger.js': "'use strict';\n\nfunction log(niveau, message) {\n  process.stderr.write(`${new Date().toISOString()} ${niveau.toUpperCase()} ${message}\\n`);\n}\n\nmodule.exports = { log };\n",
+        'clean.js': "'use strict';\nconst { log } = require('./src/logger');\n\nfunction nettoyer(lignes) {\n  log('info', `${lignes.length} lignes à nettoyer`);\n  return lignes.map((l) => l.trim()).filter(Boolean);\n}\n\nmodule.exports = { nettoyer };\n",
+      } },
+    { kind: 'followup', prompt: 'Ajoute aussi un test du logger, comme dans backup-tool.', jours: 2,
+      fichiers: {
+        'test/logger.test.js': "'use strict';\nconst test = require('node:test');\nconst { log } = require('../src/logger');\n\ntest('le logger écrit sur stderr', () => { log('info', 'ok'); });\n",
+      } },
   ],
 };
+/* LES DIFFS DES ITÉRATIONS HORS DÉPÔT, fabriqués par le CODE DE PRODUCTION. `localsnapshot`
+   tient un dépôt de suivi hors du dossier de travail : on rejoue donc ici, passe après passe,
+   ce que la vraie session fait — écrire des fichiers entre deux instantanés. Le dossier
+   montré à l'écran reste fictif (`/home/moi/dev/backup-tool`) ; celui qu'on écrit vraiment
+   vit sous `data-demo/`, effacé et refait à chaque semis. Semer un patch à la main aurait
+   fabriqué une forme cousine de la vraie, qui aurait fini par en diverger. */
+const localsnapshot = require('../src/localsnapshot');
+const DOSSIERS_DEMO = path.join(DEMO_DIR, 'dossiers-demo');
+const aSemer = [];
+
 for (const p of Object.keys(LOCAL_OUT)) {
   const info = db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
     .run(lt1.lastInsertRowid, p, 'done', at(2));
@@ -579,6 +774,29 @@ for (const p of Object.keys(LOCAL_OUT)) {
       .run(lt1.lastInsertRowid, info.lastInsertRowid, i + 1, passe.kind, passe.prompt, fichier, at(passe.jours),
         passe.favori ? 1 : 0, passe.titre || null);
   });
+  aSemer.push({ dirId: info.lastInsertRowid, chemin: p, passes: LOCAL_PASSES[p] || [] });
+}
+
+/* Rejoue les passes d'un dossier hors dépôt dans un vrai dossier, pour que chaque itération
+   ait son diff comme en production. Asynchrone — d'où le `then` de la dernière ligne. */
+async function semerDiffsLocaux() {
+  for (const { dirId, chemin, passes } of aSemer) {
+    const reel = ensureDir(path.join(DOSSIERS_DEMO, path.basename(chemin)));
+    for (const [i, passe] of passes.entries()) {
+      if (!passe.fichiers) continue;
+      const avant = await localsnapshot.avant(lt1.lastInsertRowid, dirId, reel);
+      if (!avant) continue;
+      for (const [rel, contenu] of Object.entries(passe.fichiers)) {
+        ensureDir(path.dirname(path.join(reel, rel)));
+        fs.writeFileSync(path.join(reel, rel), contenu, 'utf8');
+      }
+      const apres = await localsnapshot.apres(lt1.lastInsertRowid, dirId, avant);
+      if (apres) {
+        agentpassDemo.attacherDiff('local', lt1.lastInsertRowid, dirId, i + 1,
+          { baseSha: avant, headSha: apres.sha, diff: apres.diff });
+      }
+    }
+  }
 }
 /* Codage hors dépôt CRÉÉ MAIS PAS LANCÉ (« Créer sans lancer ») : la carte porte alors un
    bouton « Lancer », et le badge du menu compte le travail en attente. Sans cet exemple,
@@ -807,10 +1025,39 @@ db.prepare(`INSERT INTO verification
       { command: 'npm test', code: 0, duration_ms: 51000, output_tail: '# pass 96\n# fail 0' }] }),
   JSON.stringify({ version: 1, status: 'fail', total: 96, duration_ms: 94000,
     failed: echecsCmd, detail_source: 'tap', detail_partiel: false, incoherence: false,
+    /* A25 — les cinq plus lents, tels que la sortie du runner les donne (`# time=`). Sans eux,
+       la démo ne montrerait pas que la donnée existe — et un test lent est presque toujours
+       VERT, ce qui est exactement la raison pour laquelle personne ne le voit. */
+    slowest: [
+      { test: 'export › rejoue un mois complet', ms: 18450 },
+      { test: 'export › écrit le fichier', ms: 9120 },
+      { test: 'import › lit un CSV de 200 Mo', ms: 4310 },
+      { test: 'export › reprend après une coupure réseau', ms: 880 },
+      { test: 'santé › ping', ms: 12.4 },
+    ],
     commands: [{ command: 'npm ci', code: 0, duration_ms: 40000, output_tail: 'ajout de 384 paquets en 40 s' },
       { command: 'npm test', code: 1, duration_ms: 54000,
         output_tail: 'TAP version 13\nok 1 - export › écrit le fichier\nnot ok 2 - export › reprend après une coupure réseau\n# fail 1' }] }),
   JSON.stringify(echecsCmd), at(0.15), at(0.15), at(0.15));
+
+/* A26 — UN TEST INSTABLE, pour que la démo le montre. Deux runs sur le MÊME code : le premier
+   trouve deux tests rouges, le second un seul. Celui qui a été vert une fois sans que rien
+   n'ait bougé est instable — et le rapport le dit à côté de son nom. Les lignes à `test` NULL
+   sont les runs eux-mêmes : sans elles, un run tout vert ne laisserait aucune trace. */
+{
+  const vRouge = db.prepare("SELECT id FROM verification WHERE verifier_name = 'tests front (démo)' ORDER BY id DESC LIMIT 1").get();
+  const cle = `${repoIds['groupe/batch-jobs']}:${String(mrRouge.sha).slice(0, 12)}`;
+  const ins = db.prepare(`INSERT INTO verify_run_test (verification_id, verifier_id, targets_key, test, created_at)
+    VALUES (?,?,?,?,?)`);
+  /* Un run PRÉCÉDENT sur le même code où « reprend après une coupure réseau » était VERT : il
+     est donc rouge AUJOURD'HUI sans que rien n'ait bougé — c'est la définition d'un test
+     instable, et c'est bien lui qu'on veut voir marqué sur le rapport courant. */
+  ins.run(vRouge.id, cmdId, cle, null, at(0.9));
+  ins.run(vRouge.id, cmdId, cle, 'export › écrit le fichier', at(0.9));
+  // Le run courant : « reprend après une coupure réseau » est rouge.
+  ins.run(vRouge.id, cmdId, cle, null, at(0.15));
+  ins.run(vRouge.id, cmdId, cle, 'export › reprend après une coupure réseau', at(0.15));
+}
 
 /* ---------- LE CHANGEMENT TRANSVERSE : un ticket, cinq dépôts, cinq merge requests ----------
    C'est le scénario que trois dépôts ne savent pas raconter : le ticket PROJ-1408 (le paiement
@@ -910,12 +1157,18 @@ mrsP3x.forEach((mr) => {
    sessions en attente, verdict rouge, MR fraîches et MR dormantes comprises. */
 {
   const mrHealth = mrsAtraiter.find((m) => m.project === 'groupe/api-core');
+  /* B4 — une note cite aussi une merge request DÉJÀ REVIEWÉE : c'est sur le rapport que
+     « 2 notes en parlent » s'affiche, et une citation qui ne vise que des MR à traiter ne
+     montrerait jamais le lien entrant. */
+  const mrCitee = db.prepare(`SELECT mr.iid FROM mr JOIN repo ON repo.id = mr.repo_id
+    WHERE repo.project = 'groupe/api-core' AND mr.status = 'reviewed' ORDER BY mr.iid LIMIT 1`).get();
   const insPage = db.prepare(`INSERT INTO note_page (title, content, pinned, created_at, updated_at)
     VALUES (?,?,?,?,?)`);
   insPage.run('Points à aborder au daily',
     ['- Relancer le PSP sur le retry : la session IA attend une réponse.',
       `- Reparler de !${mrHealth.iid} — la sonde de santé change le readiness du déploiement.`,
       '- PROJ-1390 bloque la facturation ; Sofia doit être prévenue dès la revue.',
+      `- La validation des webhooks (!${mrCitee.iid}) reste à trancher : on garde le schéma strict ?`,
       '',
       '## À ne pas oublier',
       'Le point archi de jeudi porte sur le cache : préparer deux chiffres.'].join('\n'),
@@ -1034,24 +1287,218 @@ mrsP3x.forEach((mr) => {
   db.prepare('INSERT INTO context_link (service_id, label, url_template) VALUES (?,?,?)')
     .run(svcIds['api-core'], 'Logs', 'https://kibana-{env}.demo.invalid/app/logs?q={service}%20{branch}');
 
-  const insFree = db.prepare('INSERT INTO free_link (label, url, tags, created_at) VALUES (?,?,?,?)');
+  /* LES DOSSIERS, tels qu'un import de marque-pages les aurait posés : la liste des liens
+     libres se regroupe dès qu'un dossier existe, et sans exemple on ne verrait jamais l'arbre. */
+  const insFree = db.prepare('INSERT INTO free_link (label, url, tags, folder, created_at) VALUES (?,?,?,?,?)');
+  const freeIds = {};
   [
-    ['Confluence — specs paiement', 'https://confluence.demo.invalid/paiement', ['confluence', 'produit']],
-    ['Confluence — runbook astreinte', 'https://confluence.demo.invalid/runbook', ['confluence', 'astreinte']],
-    ['Doc API publique', 'https://docs.demo.invalid/api', ['doc']],
-    ['Portail SSO', 'https://sso.demo.invalid', ['outils']],
-    ['Statut fournisseur PSP', 'https://status.demo.invalid/psp', ['outils', 'astreinte']],
-    ['Tableau de bord coûts cloud', 'https://cloud.demo.invalid/couts', ['outils']],
-  ].forEach(([label, url, tags]) => insFree.run(label, url, JSON.stringify(tags), at(20)));
+    ['Confluence — specs paiement', 'https://confluence.demo.invalid/paiement', ['confluence', 'produit'], 'doc/specs'],
+    ['Confluence — runbook astreinte', 'https://confluence.demo.invalid/runbook', ['confluence', 'astreinte'], 'doc/astreinte'],
+    ['Doc API publique', 'https://docs.demo.invalid/api', ['doc'], 'doc'],
+    ['Portail SSO', 'https://sso.demo.invalid', ['outils'], 'outils'],
+    ['Statut fournisseur PSP', 'https://status.demo.invalid/psp', ['outils', 'astreinte'], 'outils'],
+    ['Tableau de bord coûts cloud', 'https://cloud.demo.invalid/couts', ['outils'], 'outils'],
+  ].forEach(([label, url, tags, dossier]) => {
+    freeIds[label] = insFree.run(label, url, JSON.stringify(tags), dossier, at(20)).lastInsertRowid;
+  });
 
-  // De quoi que la palette classe : ce qu'on ouvre le plus se retrouve en tête.
+  /* LA FRÉCENCE, PAR ADRESSE (`service:environnement:adresse`). Les références à deux segments
+     ne désignaient plus rien depuis qu'une case porte une liste : ni la palette, ni l'ordre des
+     trois adresses montrées par une case, ni « dernière ouverture » n'en voyaient la couleur. */
   const insUsage = db.prepare('INSERT INTO launcher_usage (kind, ref, uses, last_used_at) VALUES (?,?,?,?)');
-  insUsage.run('service_url', `${svcIds['api-core']}:${envIds.dev}`, 42, at(0.1));
-  insUsage.run('service_url', `${svcIds['webapp-front']}:${envIds.local}`, 17, at(0.4));
+  const adresse = (svc, env, rang = 0) => db.prepare(`SELECT id FROM service_url
+    WHERE service_id = ? AND environment_id = ? ORDER BY position, id LIMIT 1 OFFSET ?`).get(svcIds[svc], envIds[env], rang);
+  const noter = (svc, env, rang, uses, jours) => {
+    const u = adresse(svc, env, rang);
+    if (u) insUsage.run('service_url', `${svcIds[svc]}:${envIds[env]}:${u.id}`, uses, at(jours));
+  };
+  noter('api-core', 'dev', 0, 42, 0.1);
+  noter('webapp-front', 'local', 0, 17, 0.4);
+  /* Kibana · preprod porte six adresses : sans usages, la case en montrerait trois au hasard.
+     Avec eux, elle montre celles qu'on ouvre — et le panneau les marque d'un point. */
+  noter('Kibana', 'preprod', 1, 31, 0.2);
+  noter('Kibana', 'preprod', 3, 12, 1.2);
+  noter('Kibana', 'preprod', 0, 5, 6);
+  // Les liens libres se classent aussi par frécence : le runbook d'astreinte passe devant.
+  insUsage.run('free_link', String(freeIds['Confluence — runbook astreinte']), 23, at(0.3));
+  insUsage.run('free_link', String(freeIds['Portail SSO']), 9, at(2));
+}
+
+/* ── CE QUE LA SECONDE PASSE A AJOUTÉ, RENDU VISIBLE ────────────────────────────────────────
+   Placé À LA FIN, et pas à côté des autres inserts : ces trois blocs LISENT ce que le seed
+   vient d'écrire (les merge requests reviewées, celles du ticket PROJ-1408, les tickets
+   surveillés). Posés plus haut, ils ne trouvaient rien et ne faisaient rien — en silence. */
+
+/* LES REVIEWS PORTENT LEUR COÛT. Sans propriétaire sur ces usages, le classement « les reviews
+   les plus coûteuses » et le coût affiché sur un rapport restent vides — c'est-à-dire que la
+   démo ne montre pas ce qu'elle vient d'ajouter. On rattache donc quelques appels aux merge
+   requests reviewées, avec des montants qui se distinguent (une grosse, deux moyennes). */
+{
+  const reviewees = db.prepare("SELECT id FROM mr WHERE status IN ('reviewed','done') ORDER BY id LIMIT 4").all();
+  const montants = [24800, 12300, 8100, 5400];
+  reviewees.forEach((m, i) => {
+    const tok = montants[i] || 4000;
+    db.prepare(`INSERT INTO usage (kind, prompt_chars, output_chars, tokens_est, created_at, owner_kind, owner_id)
+      VALUES ('review', ?, ?, ?, ?, 'mr', ?)`).run(tok * 4, tok, tok, iso(3 + i), m.id);
+  });
+}
+
+/* UNE SURVEILLANCE QUI POSE SA TODO au changement d'état : la case est décochée par défaut, et
+   la démo doit montrer à quoi elle sert — sinon on la lit sans comprendre ce qu'elle promet. */
+db.prepare("UPDATE jira_watch SET todo_on_change = 1 WHERE key = (SELECT key FROM jira_watch ORDER BY key LIMIT 1)").run();
+
+/* LE STATUT DU TICKET SUR DES MERGE REQUESTS NON SURVEILLÉES : c'est tout l'intérêt du
+   changement — « ticket en revue » n'existait que pour les tickets watchés, c'est-à-dire presque
+   jamais là où l'on choisit quoi reviewer. On le range comme la découverte le ferait. */
+db.prepare(`UPDATE mr SET ticket_jira_key = 'PROJ-1408', ticket_jira_status = 'En revue',
+    ticket_jira_category = 'indeterminate'
+  WHERE source_branch LIKE '%PROJ-1408%' AND COALESCE(closed_seen, 0) = 0`).run();
+
+/* ---------- LES AGENTS (spec agents §13) ----------
+   Trois agents livrés, deux agents de domaine avec leur connaissance versionnée, et pour
+   chacun une session terminée. Ce qu'on veut MONTRER, et qui n'existe qu'ici : une carte
+   avec un chemin non vérifié, un écart signalé par un run, une version en attente de
+   validation, et un run déclenché par un HORAIRE — l'état qu'aucun clic ne produit. */
+{
+  const agentprofile = require('../src/agentprofile');
+  const { agentsDir } = require('../src/paths');
+  agentprofile.seedBuiltins();
+
+  const doc = db.prepare("SELECT * FROM agent WHERE builtin_key = 'librarian'").get();
+  const enq = db.prepare("SELECT * FROM agent WHERE builtin_key = 'investigator'").get();
+
+  const insAgent = db.prepare(`INSERT INTO agent (name, description, kind, scope_kind, system_prompt,
+      prompt_template, model, permission_mode, allowed_tools_json, disallowed_tools_json, max_turns,
+      skills_json, subagents_json, output_kind, knowledge_prompt, defaults_json, created_at, updated_at)
+    VALUES (?,?,'explore','repos','', '{question}', '', '', '[]', '[]', 60, '[]', '{}', 'report', ?, '{}', ?, ?)`);
+  const insRepoAgent = db.prepare("INSERT INTO agent_repo (agent_id, repo_id, branch, role) VALUES (?,?,'','readonly')");
+  const insK = db.prepare(`INSERT INTO agent_knowledge (agent_id, version, md_path, repos_json, task_id,
+      diff_summary, gaps_json, status, created_at, activated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`);
+
+  const ecrireK = (agentId, n, contenu) => {
+    const f = path.join(agentsDir(agentId), `knowledge-v${n}.md`);
+    fs.writeFileSync(f, contenu, 'utf8');
+    return f;
+  };
+
+  // « Notifications » : trois versions — une remplacée, une en service, une à valider.
+  const notif = insAgent.run('Notifications', 'Où les notifications sont émises, par quel mécanisme, et comment on les teste.',
+    'les notifications : émission, routage, types, configuration, tests', at(20), at(1)).lastInsertRowid;
+  for (const projet of ['groupe/api-core', 'groupe/webapp-front']) insRepoAgent.run(notif, repoIds[projet]);
+  const reposNotif = JSON.stringify([
+    { repo_id: repoIds['groupe/api-core'], project: 'groupe/api-core', role: 'émission et routage', sha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678', paths: ['src/notify.js', 'src/templates/notifications'], unverified: ['src/notify-inexistant.js'] },
+    { repo_id: repoIds['groupe/webapp-front'], project: 'groupe/webapp-front', role: 'affichage', sha: 'b2c3d4e5f60718293a4b5c6d7e8f901234567890', paths: ['src/components/Toast.jsx'], unverified: [] },
+  ]);
+  const corpsNotif = (v) => [`# Les notifications`, '## Périmètre',
+    'Ce que le sujet couvre : l’émission, le routage et l’affichage. Ce qu’il ne couvre pas : les e-mails transactionnels.',
+    '## Dépôts concernés',
+    '- **groupe/api-core** — émission et routage — chemins clés : `src/notify.js`, `src/templates/notifications`',
+    '- **groupe/webapp-front** — affichage — chemins clés : `src/components/Toast.jsx`',
+    '## Points d’entrée', '- `src/notify.js` : `push(kind, payload)`.',
+    '## Mécanismes', '- Un bus interne, écouté par un worker qui appelle le canal choisi.',
+    '## Types / variantes', '- `queue_done`, `review_done`, `job_failed`, `session_done`.',
+    '## Configuration', '- Les canaux actifs vivent dans la table `config`.',
+    '## Tests', '- `test/unit-notify.test.js` couvre le routage, pas l’affichage.',
+    '## Pièges', '- Le worker avale les erreurs de canal.',
+    '## Non trouvé', '- `src/notify-inexistant.js` *(non vérifié)*',
+    '## Notes de l’équipe',
+    'Le canal Slack est désactivé depuis l’incident de mars — ne pas le rallumer sans prévenir l’astreinte.',
+    v === 3 ? '## Ce qui a changé\nLe dossier des gabarits a été renommé ; deux types de notification se sont ajoutés.' : '',
+  ].filter(Boolean).join('\n');
+  insK.run(notif, 1, ecrireK(notif, 1, corpsNotif(1)), reposNotif, null, null, '[]', 'superseded', at(20), at(20));
+  insK.run(notif, 2, ecrireK(notif, 2, corpsNotif(2)), reposNotif, null, null,
+    JSON.stringify([{ task_id: 0, project: 'groupe/api-core', path: 'src/templates/notifications', note: 'le dossier a été renommé en src/notifications/templates', at: at(2) }]),
+    'active', at(9), at(9));
+  insK.run(notif, 3, ecrireK(notif, 3, corpsNotif(3)), reposNotif, null,
+    'Dépôts ajoutés : aucun.\n2 chemins apparus.\nLe dossier des gabarits a été renommé.', '[]', 'pending', at(1), null);
+
+  // « BDD » : une seule version, en service.
+  const bdd = insAgent.run('Accès base de données', 'Comment on parle à la base : connexions, migrations, transactions.',
+    'l’accès à la base : connexions, migrations, transactions, jeux d’essai', at(12), at(12)).lastInsertRowid;
+  insRepoAgent.run(bdd, repoIds['groupe/api-core']);
+  insRepoAgent.run(bdd, repoIds['groupe/batch-jobs']);
+  insK.run(bdd, 1, ecrireK(bdd, 1, [`# L’accès à la base`, '## Périmètre',
+    'Ce que le sujet couvre : la connexion, les migrations et les transactions. Pas le schéma métier.',
+    '## Dépôts concernés',
+    '- **groupe/api-core** — connexion et transactions — chemins clés : `src/db.js`',
+    '- **groupe/batch-jobs** — migrations — chemins clés : `db/migrations`',
+    '## Points d’entrée', '- `src/db.js` ouvre un pool unique.',
+    '## Mécanismes', '- Les migrations sont jouées au démarrage, jamais à la main.',
+    '## Types / variantes', '## Configuration', '## Tests', '## Pièges', '## Non trouvé',
+    '## Notes de l’équipe', ''].join('\n')),
+    JSON.stringify([
+      { repo_id: repoIds['groupe/api-core'], project: 'groupe/api-core', role: 'connexion', sha: 'c3d4e5f60718293a4b5c6d7e8f90123456789012', paths: ['src/db.js'], unverified: [] },
+      { repo_id: repoIds['groupe/batch-jobs'], project: 'groupe/batch-jobs', role: 'migrations', sha: 'd4e5f60718293a4b5c6d7e8f9012345678901234', paths: ['db/migrations'], unverified: [] },
+    ]), null, null, '[]', 'active', at(12), at(12));
+
+  /* Une page de notes écrite par le documentaliste, et le run planifié D'HIER qui l'a
+     produite : c'est ce que le brief du matin annonce, et l'état qu'aucun clic ne fabrique. */
+  const pageCarte = db.prepare(`INSERT INTO note_page (title, content, pinned, created_at, updated_at)
+    VALUES (?,?,0,?,?)`).run('Documentaliste — sortie d’agent',
+    ['> Écrit par l’agent « Documentaliste ».', '', '# Carte des services', '',
+      '## groupe/api-core', '- **Rôle** : l’API métier.', '- **Expose** : HTTP + événements.',
+      '', '## groupe/webapp-front', '- **Rôle** : l’interface web.', '',
+      '## Qui appelle qui', '- groupe/webapp-front → groupe/api-core (HTTP)'].join('\n'),
+    at(1), at(1)).lastInsertRowid;
+  db.prepare('UPDATE agent SET output_ref = ?, schedule = ? WHERE id = ?').run(String(pageCarte), 'weekly mon 07:00', doc.id);
+
+  const runAgent = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, status, md_path,
+      agent_id, agent_name, triggered_by, created_at, updated_at, finished_at)
+    VALUES (?, 'explore', ?, '', '', 'done', ?, ?, ?, ?, ?, ?, ?)`);
+  const cibleAgent = db.prepare("INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, updated_at) VALUES (?,?,'','','done',?)");
+  const poserRun = (agent, prompt, md, quand, declencheur) => {
+    const f = path.join(TASKS_DIR, `demo-agent-${agent.id}-${quand}.md`);
+    fs.writeFileSync(f, md, 'utf8');
+    const id = runAgent.run(repoIds['groupe/api-core'], prompt, f, agent.id, agent.name, declencheur, at(quand), at(quand), at(quand)).lastInsertRowid;
+    for (const projet of ['groupe/api-core', 'groupe/webapp-front']) cibleAgent.run(id, repoIds[projet], at(quand));
+    return id;
+  };
+  poserRun(doc, 'Mets à jour la carte des services.', 'Carte des services mise à jour : trois dépôts, deux flux.', 1, 'schedule');
+  poserRun(enq, 'TypeError: cannot read property « items » of undefined\n  at CartSession.restore (src/cart/session.js:118)',
+    ['# Où est ce code', '', '## Dépôt et fichier', '**groupe/api-core** — `src/cart/session.js:118`', '',
+      '## Hypothèse de cause', 'Le TTL du cookie est plus court que celui de la session.', '',
+      '<<<REPO', 'groupe/api-core | src/cart/session.js | 118', 'REPO>>>'].join('\n'), 2, 'manual');
+  poserRun({ id: notif, name: 'Notifications' }, 'Comment ajouter un nouveau type de notification ?',
+    'Il faut déclarer le type dans `src/notify.js` puis ajouter son gabarit.', 3, 'manual');
+}
+
+/* ---------- B14/B15 : ce que Git a laissé en plan, et ce qu'il a fait ----------
+   Trois choses n'existaient pas en démo et sont devenues visibles dans l'outil : le merge
+   résolu à moitié qui attend dans un dossier de travail (brief), les opérations git en échec
+   (brief, et « Opérations Git » dans Statistiques), et les jobs Jenkins RATTACHÉS à un dépôt —
+   ceux-là alimentent le bouton Jenkins d'une merge request et l'entrée de la palette. */
+{
+  const merge = db.prepare(`INSERT INTO git_merge (repo_id, source_branch, target_branch, dir, status, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?)`);
+  // Hier soir, à moitié résolu : c'est exactement ce que le brief doit rappeler le matin.
+  merge.run(repoIds['groupe/api-core'], 'main', 'feat/PROJ-833-order-index',
+    path.join(DEMO_DIR, 'merges', 'api-core-order-index'), 'conflict', at(0.8), at(0.8));
+  // …et un merge terminé : il ne doit PAS apparaître, c'est la moitié du sens de la section.
+  merge.run(repoIds['groupe/webapp-front'], 'main', 'feat/PROJ-701-dark',
+    path.join(DEMO_DIR, 'merges', 'webapp-dark'), 'pushed', at(3), at(3));
+
+  const op = db.prepare(`INSERT INTO git_op (batch_id, created_at, action, repo_id, project, ref_name, source_ref, status, error, fetched)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`);
+  const lot = `demo-${Date.now().toString(36)}`;
+  for (const [i, ref] of ['feat/PROJ-500-retry', 'feat/PROJ-540-a11y', 'feat/PROJ-560-ratelimit'].entries()) {
+    op.run(lot, at(0.5 + i * 0.01), 'delete_branch', repoIds['groupe/api-core'], 'groupe/api-core', ref, null, 'done', null, 1);
+  }
+  // Une branche protégée refuse d'être supprimée : l'échec entre au brief et dans le taux.
+  op.run(lot, at(0.5), 'delete_branch', repoIds['groupe/api-core'], 'groupe/api-core', 'release/1.4', null,
+    'error', 'protected branch cannot be deleted', 1);
+  op.run(`${lot}-tag`, at(2), 'create_tag', repoIds['groupe/webapp-front'], 'groupe/webapp-front', 'v2.0.1', 'main', 'done', null, 1);
+
+  /* Les jobs Jenkins d'un dépôt. La démo servait déjà une liste de jobs (module `demo-jenkins`),
+     mais AUCUN n'était rattaché à un dépôt : le bouton « Lancer <job> » d'une merge request
+     verte et l'entrée de palette n'avaient donc rien à proposer. */
+  const jk = db.prepare('INSERT OR IGNORE INTO repo_jenkins (repo_id, job_path, param) VALUES (?,?,?)');
+  jk.run(repoIds['groupe/api-core'], 'boutique/api-build', 'BRANCHE');
+  jk.run(repoIds['groupe/webapp-front'], 'boutique/front-build', 'BRANCHE');
 }
 
 const counts = {
   repos: db.prepare('SELECT COUNT(*) c FROM repo').get().c,
+  agents: db.prepare('SELECT COUNT(*) c FROM agent').get().c,
   mrs: db.prepare('SELECT COUNT(*) c FROM mr').get().c,
   reviews: db.prepare('SELECT COUNT(*) c FROM review').get().c,
   findings: db.prepare('SELECT COUNT(*) c FROM finding').get().c,
@@ -1064,6 +1511,7 @@ const counts = {
   questions: db.prepare('SELECT COUNT(*) c FROM question').get().c,
   notePages: db.prepare('SELECT COUNT(*) c FROM note_page').get().c,
   todos: db.prepare('SELECT COUNT(*) c FROM todo').get().c,
+  gitOps: db.prepare('SELECT COUNT(*) c FROM git_op').get().c,
   services: db.prepare('SELECT COUNT(*) c FROM service').get().c,
   freeLinks: db.prepare('SELECT COUNT(*) c FROM free_link').get().c,
   commentDrafts: db.prepare('SELECT COUNT(*) c FROM mr_comment_draft').get().c,
@@ -1114,4 +1562,6 @@ const counts = {
 }
 
 
-console.log('Base de démo semée dans data-demo/ :', JSON.stringify(counts));
+semerDiffsLocaux().then(() => {
+  console.log('Base de démo semée dans data-demo/ :', JSON.stringify(counts));
+});

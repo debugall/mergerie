@@ -22,8 +22,11 @@ const { TASKS_DIR, ensureDir } = require('./paths');
 // Dossier de travail d'une unité : <tasks>/<id>/<unit> ou <tasks>/local/<id>/<unit>.
 /* CHAQUE SCOPE A SON DOSSIER. Les identifiants sont propres à chaque table : la question n°3
    et la session de codage n°3 existent en même temps, et sans ce préfixe elles écriraient
-   leurs passes au même endroit — la seconde écrasant la première sans rien dire. */
-const RACINE_SCOPE = { local: 'local', ask: 'ask' };
+   leurs passes au même endroit — la seconde écrasant la première sans rien dire.
+   `review` : les questions posées SUR un rapport de revue (`unit_id = 0`, `task_id` = la MR).
+   Elles vivent ici et non dans `review_version` parce qu'elles ne changent rien au rapport —
+   c'est tout leur intérêt : demander sans risquer de faire réécrire ce qu'on relisait. */
+const RACINE_SCOPE = { local: 'local', ask: 'ask', review: 'review' };
 
 function unitDir(scope, taskId, unitId) {
   const racine = RACINE_SCOPE[scope];
@@ -35,7 +38,7 @@ function unitDir(scope, taskId, unitId) {
 
 /* Enregistre une passe et renvoie son numéro. Best-effort sur l'écriture du fichier :
    l'absence de trace ne doit jamais faire échouer un codage qui, lui, a réussi. */
-function record(scope, taskId, unitId, { kind, prompt, text }) {
+function record(scope, taskId, unitId, { kind, prompt, text, costUsd }) {
   const md = String(text || '').trim();
   const row = db.prepare('SELECT MAX(n) v FROM agent_pass WHERE scope = ? AND task_id = ? AND unit_id = ?')
     .get(scope, taskId, unitId);
@@ -46,17 +49,88 @@ function record(scope, taskId, unitId, { kind, prompt, text }) {
       outPath = path.join(unitDir(scope, taskId, unitId), `output-v${n}.md`);
       fs.writeFileSync(outPath, md, 'utf8');
     }
-    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
-      VALUES (?,?,?,?,?,?,?,?)`)
-      .run(scope, taskId, unitId, n, kind || 'run', String(prompt || ''), outPath, new Date().toISOString());
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at, cost_usd)
+      VALUES (?,?,?,?,?,?,?,?,?)`)
+      .run(scope, taskId, unitId, n, kind || 'run', String(prompt || ''), outPath, new Date().toISOString(),
+        typeof costUsd === 'number' ? costUsd : null);
   } catch { /* trace best-effort */ }
   return { n, outPath };
 }
 
 // Les passes d'une unité, de la plus ancienne à la plus récente (contenu lu à la demande).
 function list(scope, taskId, unitId) {
-  return db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre FROM agent_pass
+  return db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre, cost_usd,
+      base_sha, head_sha, diff_path FROM agent_pass
     WHERE scope = ? AND task_id = ? AND unit_id = ? ORDER BY n`).all(scope, taskId, unitId);
+}
+
+/* CE QUE CETTE ITÉRATION-LÀ A CHANGÉ. La passe est enregistrée avant le commit — c'est le
+   retour de l'agent qui la crée —, donc ses bornes ne sont connues qu'après. On revient donc
+   l'annoter : le HEAD d'avant, celui d'après, et le patch entre les deux.
+
+   Le patch n'est écrit QUE s'il y a quelque chose dedans. Une itération peut légitimement ne
+   rien changer (l'agent constate que tout est déjà fait, le commit est un simple renommage) :
+   les deux SHA suffisent alors à le dire, et c'est plus honnête qu'un fichier vide qui
+   ouvrirait une vue sans contenu.
+
+   SEUL LE DERNIER SURVIT. Ce qu'on vient de demander est ce qu'on relit ; le diff de
+   l'avant-dernier suivi, lui, n'est jamais rouvert et pèse pour rien. Chaque nouvelle mesure
+   efface donc celles qui précèdent dans la même unité — le patch sur disque ET les deux
+   bornes en base. Effacer le patch en gardant les bornes ferait dire à l'écran « cette
+   itération n'a rien changé au code », ce qui serait faux : les trois partent ensemble, et
+   l'itération redevient une itération sans mesure, sur laquelle l'écran se tait.
+
+   Best-effort, comme `record` : un codage qui a réussi ne doit pas échouer parce que sa trace
+   n'a pas pu s'écrire. */
+function attacherDiff(scope, taskId, unitId, n, { baseSha, headSha, diff } = {}) {
+  const patch = String(diff || '');
+  let diffPath = null;
+  try {
+    if (patch.trim()) {
+      diffPath = path.join(unitDir(scope, taskId, unitId), `diff-v${n}.patch`);
+      fs.writeFileSync(diffPath, patch, 'utf8');
+    }
+    db.prepare(`UPDATE agent_pass SET base_sha = ?, head_sha = ?, diff_path = ?
+      WHERE scope = ? AND task_id = ? AND unit_id = ? AND n = ?`)
+      .run(baseSha || null, headSha || null, diffPath, scope, taskId, unitId, Number(n));
+    oublierDiffs(scope, taskId, unitId, Number(n));
+  } catch { /* trace best-effort */ }
+  return { diffPath };
+}
+
+/* Oublie les mesures des passes ANTÉRIEURES à `n` dans cette unité. Le fichier d'abord, la
+   ligne ensuite : l'inverse laisserait des patchs que plus rien ne nomme. */
+function oublierDiffs(scope, taskId, unitId, n) {
+  const anciennes = db.prepare(`SELECT diff_path FROM agent_pass
+    WHERE scope = ? AND task_id = ? AND unit_id = ? AND n < ? AND diff_path IS NOT NULL`)
+    .all(scope, taskId, unitId, n);
+  for (const a of anciennes) {
+    try { fs.rmSync(a.diff_path, { force: true }); } catch { /* déjà parti */ }
+  }
+  return db.prepare(`UPDATE agent_pass SET diff_path = NULL, base_sha = NULL, head_sha = NULL
+    WHERE scope = ? AND task_id = ? AND unit_id = ? AND n < ?
+      AND (diff_path IS NOT NULL OR base_sha IS NOT NULL OR head_sha IS NOT NULL)`)
+    .run(scope, taskId, unitId, n).changes;
+}
+
+/* LA MÊME RÈGLE, APPLIQUÉE À L'EXISTANT. Les sessions mesurées avant que cette règle n'existe
+   portent un patch par itération ; le ménage quotidien ne garde que le dernier de chaque
+   unité. Rien n'est reconstruit ni recalculé : on ne fait qu'oublier ce qui ne sera pas relu. */
+function purgerDiffsAnciens() {
+  let oublies = 0;
+  const unites = db.prepare(`SELECT scope, task_id, unit_id, MAX(n) AS dernier FROM agent_pass
+    WHERE diff_path IS NOT NULL OR base_sha IS NOT NULL OR head_sha IS NOT NULL
+    GROUP BY scope, task_id, unit_id`).all();
+  for (const u of unites) oublies += oublierDiffs(u.scope, u.task_id, u.unit_id, u.dernier);
+  return oublies;
+}
+
+// Le patch d'une passe, lu sur disque. `null` = cette itération n'en a pas (ou plus).
+function diffDe(pass) {
+  try {
+    if (pass && pass.diff_path && fs.existsSync(pass.diff_path)) return fs.readFileSync(pass.diff_path, 'utf8');
+  } catch { /* fichier illisible */ }
+  return null;
 }
 
 /* Marquer une passe et la nommer. Deux champs de RANGEMENT : ni le favori ni le titre ne
@@ -75,7 +149,8 @@ function marquer(id, { favori, titre } = {}) {
 
 // Une passe précise, avec le retour de l'agent lu sur disque.
 function get(scope, taskId, unitId, n) {
-  const p = db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre FROM agent_pass
+  const p = db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre, cost_usd,
+      base_sha, head_sha, diff_path FROM agent_pass
     WHERE scope = ? AND task_id = ? AND unit_id = ? AND n = ?`).get(scope, taskId, unitId, Number(n));
   if (!p) return null;
   let output = '';
@@ -90,4 +165,4 @@ function removeTask(scope, taskId) {
   db.prepare('DELETE FROM agent_pass WHERE scope = ? AND task_id = ?').run(scope, taskId);
 }
 
-module.exports = { record, list, get, marquer, removeTask };
+module.exports = { record, list, get, marquer, removeTask, attacherDiff, diffDe, purgerDiffsAnciens };

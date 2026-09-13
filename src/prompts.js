@@ -35,6 +35,11 @@ const PROMPTS = {
     prompt_modify:
       'Voici un rapport de revue existant :\n\n{previous}\n\n' +
       'Applique la demande suivante et renvoie le rapport complet mis à jour en Markdown (français) :\n{instruction}',
+    prompt_fix:
+      'Voici une revue de code de la branche {source}. Applique directement dans les fichiers ' +
+      'les corrections et suggestions PERTINENTES de cette revue (concentre-toi sur les vrais problèmes : ' +
+      'bugs, sécurité, robustesse, correction fonctionnelle ; ignore le purement cosmétique ou ambigu).\n\n' +
+      '=== RAPPORT DE REVUE ===\n{report}',
   },
   en: {
     prompt_review:
@@ -51,6 +56,11 @@ const PROMPTS = {
     prompt_modify:
       'Here is an existing review report:\n\n{previous}\n\n' +
       'Apply the following request and return the complete updated report in Markdown (English):\n{instruction}',
+    prompt_fix:
+      'Here is a code review of branch {source}. Apply, directly in the files, ' +
+      'the RELEVANT fixes and suggestions from this review (focus on real problems: ' +
+      'bugs, security, robustness, functional correctness; ignore the purely cosmetic or ambiguous).\n\n' +
+      '=== REVIEW REPORT ===\n{report}',
   },
 };
 
@@ -92,7 +102,11 @@ const ANCIENS_PROMPTS = {
   },
 };
 
-const FIELDS = ['prompt_review', 'prompt_explain', 'prompt_modify'];
+/* `prompt_fix` : la consigne donnée à l'IA pour APPLIQUER un rapport de revue au code. Elle
+   vivait en dur, en français, recopiée à l'identique dans `server.js` (« Faire corriger par
+   l'IA ») et dans `converge.js` (chaque passe de la boucle) — donc ni traduite, ni éditable,
+   et sûre de diverger le jour où l'une des deux serait retouchée. */
+const FIELDS = ['prompt_review', 'prompt_explain', 'prompt_modify', 'prompt_fix'];
 
 // Un gabarit est « au défaut » s'il correspond au défaut de N'IMPORTE quelle langue
 // (sinon, basculer fr → en → fr figerait les prompts après le premier aller-retour).
@@ -114,4 +128,15 @@ function promptsFor(lang, current) {
   return patch;
 }
 
-module.exports = { PROMPTS, ANCIENS_PROMPTS, FIELDS, isDefault, promptsFor, avecConsignes };
+/* LE GABARIT EFFECTIF d'un champ : celui des réglages s'il est renseigné, sinon le défaut de
+   la langue configurée. Les trois premiers champs sont écrits en base au premier démarrage ;
+   `prompt_fix` est arrivé plus tard et peut donc être vide sur une base existante — sans ce
+   repli, la correction serait partie avec un prompt vide. */
+function gabarit(field, cfg = {}) {
+  const v = String(cfg[field] == null ? '' : cfg[field]).trim();
+  if (v) return v;
+  const lang = PROMPTS[cfg.language] ? cfg.language : 'fr';
+  return PROMPTS[lang][field] || '';
+}
+
+module.exports = { PROMPTS, ANCIENS_PROMPTS, FIELDS, isDefault, promptsFor, avecConsignes, gabarit };

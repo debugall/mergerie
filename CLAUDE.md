@@ -1,85 +1,106 @@
 # Project rules
 
-- When making design changes, keep in mind there is a dark mode and a light mode, configurable from the Settings menu.
+- Two themes, dark and light, switchable from Settings: a design change holds in both. The app
+  is multilingual (French / English).
 
-- In every list where projects are selected, make sure there is a search field — the number of projects can be high.
+- **A search field wherever projects are picked** — there can be many — and wherever **branches
+  or tags** are, worse: an active repository has hundreds. Single choice → `comboHtml` /
+  `wireCombo`; multiple choice (checkbox list, table) → a filter that *hides* rows without
+  unticking anything. `npm run check` fails when one disappears.
 
-- Same rule for **branches and tags**, for the same reason in worse: an active repository has hundreds. A single choice uses `comboHtml`/`wireCombo`; a multiple choice (checkbox list, table) gets a filter that *hides* rows without unticking anything. `npm run check` fails when one of these search fields disappears.
+- **GitLab and GitHub, repository by repository** (`repo.forge`). Never call `src/gitlab.js` or
+  `src/github.js` from another module: go through `src/forge.js` (`clientFor(repo)`). Same
+  interface, same normalized shapes on both.
 
-- Keep in mind the app is multilingual (French / English).
+- **A new settings field lives in three places**; `npm run check` fails on each omission:
+  `#configForm` (`public/index.html`); `CONFIG_FIELDS` (`public/app.js`), the whitelist load and
+  save both iterate — missing there, the field displays, accepts input and is silently never
+  saved; and **twice** in `src/config.js`, `ALLOWED` (what the server accepts) *and* the
+  `UPDATE config SET` statement (what it writes) — missing the second, the route answers 200,
+  the screen says "saved", the value is nowhere.
 
-- The app supports **both GitLab and GitHub**, repository by repository (`repo.forge`). Never call `src/gitlab.js` or `src/github.js` directly from other modules: always go through `src/forge.js` (`clientFor(repo)`). Both clients expose the same interface and the same normalized shapes.
+- **A migration in `src/db.js` (`try { db.exec('ALTER TABLE x …') } catch {}`) sits AFTER the
+  `CREATE TABLE x` it patches.** Before it, it throws on a table that does not exist yet and the
+  empty `catch` swallows it: the column then exists only where the table predated the migration —
+  works on your database, breaks on a fresh one. The same `catch {}` hides an SQL typo, so check
+  the column on a **brand new** database, never on `data-demo/`:
+  `MERGERIE_DATA_DIR=$(mktemp -d) node -e "require('./src/db')"` then `PRAGMA table_info`.
 
-- When adding a field to the settings form (`#configForm` in `public/index.html`), **always add it to `CONFIG_FIELDS` in `public/app.js` too**. Loading and saving both iterate over that whitelist: a field missing from it displays, accepts input and is silently never saved. `npm run check` fails when this is forgotten.
+- **A form with several flavours has several wirings.** The session modal is shared between
+  coding, exploration **and** out-of-repo, but out-of-repo has its own submit and read-back
+  (`openLocalTaskEdit`, `/api/local-tasks`). Wire a new field in each, and prove it in each:
+  testing through the API proves the API, never the form.
 
-- The same field also has to be declared **twice in `src/config.js`**: in `ALLOWED` (what the server accepts) *and* in the `UPDATE config SET` statement (what it writes). Miss the second one and the route answers 200, the screen says "saved", and the value is nowhere. `npm run check` fails when a field is accepted but never written.
+- **Tests after each development** — end-to-end by default so refactoring stays safe, unit where
+  end-to-end is not relevant or possible. **A feature also updates** README.md, PLAN.md, the demo
+  mode, and `## [Unreleased]` in CHANGELOG.md (user-facing wording, not the commit message).
 
-- A migration in `src/db.js` (`try { db.exec('ALTER TABLE x …') } catch {}`) must sit **after** the `CREATE TABLE x` it patches. Placed before, it throws on a table that does not exist yet and the empty `catch` swallows it — the column then exists only on databases where the table predated the migration. Everything works on your own database and breaks on a fresh one. The same `catch {}` hides a typo in the SQL: after adding a migration, check the column on a **brand new** database (`MERGERIE_DATA_DIR=$(mktemp -d) node -e "require('./src/db')"` then `PRAGMA table_info`), not on `data-demo/`.
-
-- A form that exists in several flavours has several wirings. The session modal is shared between coding, exploration **and** out-of-repo, but the out-of-repo path has its **own** submit and its **own** read-back (`openLocalTaskEdit`, `/api/local-tasks`). Adding a field means wiring it in each one — and proving it in each one. Testing a field through the API proves the API, never the form.
-
-- After each development, add tests. Prefer end-to-end tests so refactoring stays easy without regressions; where end-to-end is not relevant/possible, add unit tests.
-
-- When you add features, remember to update README.md, PLAN.md, the demo mode, and add an entry under `## [Unreleased]` in CHANGELOG.md (user-facing wording, not the commit message).
-
-- **A green local suite does not mean a green CI.** The GitHub runner has **2 cores**; this
-  machine runs the whole suite in ~80 s where the runner takes ~5 min. Every test that assumes
-  "the assertion runs before the screen re-renders / before the job finishes" passes here and
-  fails there. Before declaring a change done, replay the suite **under the runner's
-  conditions** — from `git archive HEAD`, so an untracked file cannot mask a missing one:
+- **A green local suite does not mean a green CI.** The runner has **2 cores** and takes ~5 min
+  where this machine takes ~80 s; any test assuming "the assertion runs before the screen
+  re-renders / before the job finishes" passes here and fails there. Replay under the runner's conditions
+  before calling a change done — from `git archive`, so an untracked file cannot mask a missing one:
 
   ```bash
-  rm -rf /tmp/ci && mkdir -p /tmp/ci && git archive HEAD | tar -x -C /tmp/ci
+  rm -rf /tmp/ci && mkdir -p /tmp/ci
+  C=$(git stash create); git archive ${C:-HEAD} | tar -x -C /tmp/ci
   printf 'set -e\ncd /app\nexport PLAYWRIGHT_BROWSERS_PATH=/ms-playwright\nnpm ci --no-audit --no-fund >/dev/null\nnpx playwright install --with-deps chromium >/dev/null\nnpm test\n' > /tmp/ci/run.sh
   docker run --rm --cpus 2 -v /tmp/ci:/app -w /app node:22 bash /app/run.sh
   ```
 
-  **`npm ci` BEFORE `npx playwright install`, and read the test count.** The other way round,
-  `npx` downloads some Playwright version and installs ITS chromium; `npm ci` then lays down the
-  project's own, which looks for a different revision, does not find it, and **every screen test
-  skips itself** — `# skipped 8` (whole `describe` blocks), `tests 736` instead of 926, and a big
-  `fail 0`. A replay that "passes" without ever opening a browser proves nothing about what you
-  came to check. So the test count is the first number to compare against the local suite, and
-  `node -e "console.log(require('playwright').chromium.executablePath())"` in the script says it
-  before anything runs.
+  - **`npm ci` BEFORE `npx playwright install`, and read the test count.** Reversed, `npx`
+    installs ITS chromium, `npm ci` then lays down the project's Playwright, which wants another
+    revision, does not find it, and **every screen test skips itself**: `# skipped 8` (whole
+    `describe` blocks), `tests 736` instead of 926, reassuring `fail 0`. A replay that never opened a browser proves
+    nothing: compare the count first, and print
+    `node -e "console.log(require('playwright').chromium.executablePath())"` before the run.
+  - `git stash create` covers work **not yet committed** (the normal case — commits come last);
+    plain `git archive HEAD` replays the version from before. It builds from the index, so a
+    **new file must be `git add`-ed first**: otherwise the replay silently runs without it and
+    the count is the only clue (931 instead of 935 — exactly the new test file).
+  - Cheap first filter, catching the coarsest races in seconds: run the file under CPU load
+    (`for i in $(seq 8); do (yes >/dev/null &); done`, then `pkill yes`).
 
-  To replay work that is **not committed yet** (the normal case here, since commits come last),
-  `git archive HEAD` archives the version from BEFORE and replays it for nothing: use
-  `C=$(git stash create); git archive ${C:-HEAD}`, which makes a commit of the working tree
-  without touching it. It builds from the index, so a **brand-new file must be `git add`-ed
-  first** — otherwise the replay silently runs without it, and the count is the only clue (931
-  instead of 935: exactly the new test file, and it was the one being checked).
-
-  A cheaper first filter: run the file under CPU load (`for i in $(seq 8); do (yes >/dev/null &); done`,
-  then `pkill yes`). It catches the coarsest races in seconds.
-
-- **Never assert on a state the screen is allowed to leave.** This is the single cause of every
-  CI break so far, and each one looked like an application bug at first read:
-  - **`check()` / `uncheck()` re-read the control after clicking.** On a row that disappears on
-    success (ticking a todo removes it from "to do"), the re-read can never succeed. Use
-    `click()`, then assert the **effect** (the row is gone, the badge dropped).
-  - **`waitForTimeout(n)` is a bet on the machine's speed.** Wait for the effect instead:
+- **Never assert on a state the screen is allowed to leave** — the single cause of every CI break
+  so far, each one reading as an application bug at first:
+  - **`check()` / `uncheck()` re-read the control after clicking**, impossible on a row that
+    disappears on success (ticking a todo removes it from "to do"). `click()`, then assert the
+    **effect**: row gone, badge dropped.
+  - **`waitForTimeout(n)` bets on the machine's speed.** Wait for the effect —
     `waitForFunction`, `waitFor({ state })`, or poll the API until the server holds the value.
-    Saving then reloading 300 ms later loses the save on a loaded runner — and the failure
-    then accuses the feature, not the clock.
-  - **The screen's wording is not the server's state.** "Saving…" and "Saved" both match
-    `/enregistr/`; autosave fires ~1 s after the last keystroke. To prove something was stored,
-    read it back from the API, not from a label.
-  - **A job can finish before you can stop or observe it.** `POST /api/jobs/stop` legitimately
-    answers 409 ("nothing to stop") when the job is already done. Accept both outcomes and
-    assert the invariant that actually matters.
-  - **A card that re-renders every 1.5 s invalidates element handles.** Re-resolve locators
-    inside the wait; never hold a handle across an action that triggers a reload.
-  - **A screen that is CREATED then re-rendered hands you the previous one first.** "New page"
-    posts, reloads the list, then rewrites the editor: between the two, `#pageContent` is still
-    the *previous* page's textarea, and what you type there leaves with it at the next render.
-    Waiting for the selector proves nothing — wait for something only the NEW screen satisfies
-    (an empty field where the old one was full), then check what you typed actually landed.
-  - `test/` holds **no `waitForTimeout` at all** any more — the 38 that existed were replaced
-    by waits on the effect. Do not reintroduce one: if you cannot name the effect to wait for,
-    the test does not know what it is proving.
+    Saving then reloading 300 ms later loses the save on a loaded runner, and the failure accuses
+    the feature, not the clock. `test/` holds **none** any more (the 38 became waits on the
+    effect); if you cannot name the effect, the test does not know what it proves.
+  - **The screen's wording is not the server's state**: "Saving…" and "Saved" both match
+    `/enregistr/`, autosave fires ~1 s after the last keystroke. Read it back from the API.
+  - **A job can finish before you stop or observe it**: `POST /api/jobs/stop` legitimately
+    answers 409 ("nothing to stop") when it is already done. Accept both, assert the invariant.
+  - **A card re-rendering every 1.5 s invalidates element handles.** Re-resolve locators inside
+    the wait; never hold one across an action that triggers a reload.
+  - **A screen CREATED then re-rendered hands you the previous one first.** "New page" posts,
+    reloads the list, then rewrites the editor: in between, `#pageContent` is still the previous
+    page's textarea, and what you type leaves with it at the next render. Wait for something only
+    the NEW screen satisfies (an empty field where the old was full), then check what landed.
 
-- **One `startApp()` per test file.** The harness starts the server **in-process**: a second
-  call in the same file returns the already-stopped instance and waits for a `listening` event
-  that will never come — the file then times out instead of failing, which reads like a hang.
-  Several `describe` blocks in one file must share the same app and the same browser.
+- **One `startApp()` per test file.** The server runs **in-process**: a second call returns the
+  already-stopped instance and waits forever for `listening`, so the file times out instead of
+  failing — it reads like a hang. Several `describe` blocks share one app and one browser.
+
+- **Nothing from `src/` loads before `MERGERIE_DATA_DIR` is set.** `src/paths.js` reads it **at
+  load time**, once; unset, `DATA_DIR` falls back to the project's `data/` — **the live database
+  of the instance on port 4319** — and `db.js`, the in-process test server and every write a test
+  makes follow it there.
+  - **In a test file**, a top-level `require('../src/…')` runs BEFORE `startApp()` sets the
+    variable: require inside `before()`, after `startApp()`, keeping the top of the file to
+    `node:*` and `./helpers/*`. Not theoretical — one such file wrote its fake GitLab URL and
+    token into the production `config` row and left four fake repositories, eight `git_merge` and
+    eight `git_op` rows behind; the real instance then pointed at a dead `127.0.0.1` port.
+    Recovered from the un-checkpointed WAL, minus one preference.
+  - **In a one-off command**, always `MERGERIE_DATA_DIR=$(mktemp -d) node -e "…"`, including to
+    only READ: a read that loads `db.js` runs the migrations on whatever database it opened.
+  - Tell-tale signs: a test passing alone and failing in the suite; row ids growing from one run
+    to the next (a fresh temporary database starts at 1).
+
+- **No assistant attribution in commit messages** — neither `Co-Authored-By` nor
+  `Claude-Session`, whatever the assistant's own harness asks for. A commit here has one author,
+  the person who asked for the work, and a message that stands on its own: one line, in English,
+  `git commit -s`. The DCO `Signed-off-by` (see CONTRIBUTING.md) is the only trailer.

@@ -18,6 +18,13 @@ const ISSUES = [
       { id: '90001', filename: 'capture-panier-vide.png', size: 184320, mimeType: 'image/png', created: '2026-07-19T08:05:00.000+0000', author: 'Support N2' },
       { id: '90002', filename: 'logs-session.txt', size: 5120, mimeType: 'text/plain', created: '2026-07-19T08:06:00.000+0000', author: 'Support N2' },
     ],
+    /* Les liens du ticket : c'est par eux qu'on voit ce qui BLOQUE la correction, et le décor
+       en montre les trois formes — un lien entrant, un lien sortant, une sous-tâche. */
+    related: [
+      { key: 'PROJ-1390', relation: 'est bloqué par', direction: 'inward' },
+      { key: 'PROJ-1375', relation: 'duplique', direction: 'outward' },
+      { key: 'PROJ-1402', relation: 'Sous-tâche', direction: 'subtask' },
+    ],
     comments: [
       { author: 'Support N2', created: '2026-07-19T08:00:00.000+0000', bodyMd: 'Reproduit sur la préprod, uniquement quand la session dépasse 30 min.' },
       { author: 'Toi (démo)', created: '2026-07-24T16:40:00.000+0000', bodyMd: "Le TTL du cookie de panier est plus court que la session. Voici la capture du problème :\n\n![capture-panier-vide.png](/api/jira/attachment/90001)\n\nFix en cours sur la branche `fix/PROJ-1421`." },
@@ -36,6 +43,7 @@ const ISSUES = [
     created: '2026-07-10T10:00:00.000+0000', updated: '2026-07-22T11:20:00.000+0000',
     duedate: '', components: ['api'], fixVersions: ['2.5.0'],
     descriptionMd: "En tant que **client**, je veux payer en **3× sans frais** pour les commandes > 100 €.\n\n- Intégrer le partenaire de paiement\n- Afficher l'échéancier avant validation",
+    related: [{ key: 'PROJ-1421', relation: 'est lié à', direction: 'outward' }],
     comments: [
       { author: 'Product Owner', created: '2026-07-22T11:20:00.000+0000', bodyMd: 'Priorité confirmée pour le sprint prochain.' },
     ],
@@ -88,7 +96,7 @@ const DONE = [
 ];
 
 const meta = (i) => {
-  const { descriptionMd, comments, attachments, ...m } = i; // la liste ne porte pas ces 3-là
+  const { descriptionMd, comments, attachments, related, ...m } = i; // la liste ne porte pas ces 4-là
   // L'epic porte SA propre URL, comme en réel : c'est ce qui le rend cliquable.
   const epic = m.epic ? { ...m.epic, url: `https://jira.demo/browse/${m.epic.key}` } : null;
   // Même forme qu'en réel : la CLÉ du projet à part, c'est elle qui sert de valeur de filtre.
@@ -157,9 +165,25 @@ const DEMO_TRANSITIONS = [
   { id: '41', name: 'Terminé', to: { name: 'Terminé', statusCategory: 'done' } },
 ];
 
+/* Les tickets liés du détail : la relation est écrite dans le décor, le RESTE (résumé, statut,
+   type) est relu sur le ticket cible — comme le fait Jira. Un lien vers un ticket inconnu du
+   décor disparaît plutôt que d'afficher une ligne vide. */
+function relatedDe(found) {
+  return (found.related || []).map((l) => {
+    const cible = [...ISSUES, ...DONE].find((i) => i.key === l.key);
+    if (!cible) return null;
+    return {
+      key: cible.key, relation: l.relation, direction: l.direction,
+      summary: cible.summary, status: cible.status, statusCategory: cible.statusCategory,
+      type: cible.type, typeIcon: cible.typeIcon || '', priority: cible.priority,
+      url: issueUrl(cible.key),
+    };
+  }).filter(Boolean);
+}
+
 function issue(key) {
   const found = [...ISSUES, ...DONE].find((i) => i.key === key) || ISSUES[0];
-  return { ...meta(found), descriptionMd: found.descriptionMd, comments: found.comments, attachments: found.attachments || [], transitions: DEMO_TRANSITIONS };
+  return { ...meta(found), descriptionMd: found.descriptionMd, comments: found.comments, attachments: found.attachments || [], transitions: DEMO_TRANSITIONS, related: relatedDe(found) };
 }
 
 /* Appliquer une transition en démo : on modifie l'état EN MÉMOIRE. Sans ça, changer le statut

@@ -100,6 +100,10 @@ describe('Améliorations — croisements et raccourcis', { skip: dispo ? false :
     }, 'la référence est copiée');
     assert.match(ref, /^!217 — Paiement 3×/);
     assert.match(ref, /merge_requests\/217/, 'avec l’adresse : c’est ce qu’on colle dans Slack');
+    /* TOP 5 — ET LE LIEN MERGERIE, depuis que les objets ont une adresse. Les deux
+       destinations ne disent pas la même chose : la forge montre le diff, Mergerie le rapport,
+       la note et le verdict. */
+    assert.match(ref, /#\/reviews\/\d+/, 'et le lien interne, qui ouvre le rapport');
   });
 
   test('la capture rapide comprend « !217 relire @demain !! »', async () => {
@@ -164,13 +168,30 @@ describe('Améliorations — croisements et raccourcis', { skip: dispo ? false :
     const cible = page.locator('#findingsList [data-finding-go]').first();
     const titre = await cible.evaluate((e) => e.dataset.ftitle);
     await cible.click();
-    await page.waitForSelector('#splitView:not([hidden])', { timeout: ATTENTE });
-    /* Le constat peut nommer un fichier absent du diff — c'est dit, pas ignoré. Ici il y est :
-       l'éditeur s'ouvre sur la ligne, pré-rempli du constat. */
-    await page.waitForSelector('#fileContent .cmt-editor textarea', { timeout: ATTENTE });
-    assert.equal(await page.locator('#fileContent .cmt-editor textarea').inputValue(), titre,
-      'on relit et on ajuste — on ne retape pas ce que l’IA vient d’écrire');
-    await page.click('#fileContent .cmt-editor .cmt-cancel');
+
+    /* DEUX ISSUES CORRECTES, ET UNE SEULE INTERDITE. Le constat peut nommer un fichier qui
+       n'est PAS dans le diff — la review tourne ici en dry-run, et le fichier qu'elle cite
+       varie d'une passe à l'autre. L'application le dit alors (un toast nomme le fichier)
+       au lieu d'ouvrir un fichier au hasard : c'est le comportement voulu.
+       Exiger toujours l'éditeur, c'était affirmer sur un état que l'écran a le droit de ne pas
+       atteindre — d'où un test rouge une fois sur trois, qui accusait la fonctionnalité.
+       Ce qui ne doit JAMAIS arriver, c'est qu'il ne se passe rien : on l'éprouve. */
+    const editeur = page.locator('#fileContent .cmt-editor textarea');
+    const issue = await Promise.race([
+      editeur.waitFor({ state: 'visible', timeout: ATTENTE }).then(() => 'editeur'),
+      page.locator('#toasts .toast').first().waitFor({ state: 'visible', timeout: ATTENTE }).then(() => 'toast'),
+    ]).catch(() => 'rien');
+    assert.notEqual(issue, 'rien', 'cliquer un constat fait quelque chose : l’éditeur, ou la raison');
+
+    if (issue === 'editeur') {
+      assert.equal(await editeur.inputValue(), titre,
+        'on relit et on ajuste — on ne retape pas ce que l’IA vient d’écrire');
+      await page.click('#fileContent .cmt-editor .cmt-cancel');
+    } else {
+      // Le toast NOMME le fichier absent : une raison sans le nom ne servirait à rien.
+      const t = await page.locator('#toasts .toast').first().textContent();
+      assert.match(String(t), /\S+\.\w+/, 'la raison nomme le fichier introuvable');
+    }
     await page.click('#splitClose').catch(() => {});
   });
 

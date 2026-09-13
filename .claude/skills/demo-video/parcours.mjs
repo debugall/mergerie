@@ -41,6 +41,12 @@ const LABELS = {
     verify: 'Vérifier', results: 'Voir le résultat des vérificateurs',
     open: 'Ouvrir',
     rerunJob: 'Relancer', todos: 'Todos', pages: 'Pages',
+    drafts: 'Mettre en brouillons', wipe: 'Tout supprimer', ask: 'Poser la question',
+    agentAsk: 'Demander', agentUpdate: 'Mettre à jour', agentKnow: 'Connaissance',
+    agentSkills: 'Skills & sous-agents', newDomainAgent: 'Nouvel agent de domaine',
+    passDiff: 'Voir ce que cette itération a changé', output: 'Retour de l’IA',
+    paste: 'Coller une adresse', daily: 'Copier pour le daily',
+    gitOps: 'Opérations Git', watched: 'Surveillés', light: 'Clair',
   },
   en: {
     review: 'Review', diff: 'View diff', context: 'Context',
@@ -59,6 +65,12 @@ const LABELS = {
     verify: 'Verify', results: 'See the verifiers’ results',
     open: 'Open',
     rerunJob: 'Run again', todos: 'Todos', pages: 'Pages',
+    drafts: 'Turn into drafts', wipe: 'Delete all', ask: 'Ask',
+    agentAsk: 'Ask', agentUpdate: 'Update', agentKnow: 'Knowledge',
+    agentSkills: 'Skills & subagents', newDomainAgent: 'New domain agent',
+    passDiff: 'See what this iteration changed', output: 'AI output',
+    paste: 'Paste an address', daily: 'Copy for the daily',
+    gitOps: 'Git operations', watched: 'Watched', light: 'Light',
   },
 };
 const L = LABELS[LANGUE];
@@ -126,10 +138,19 @@ async function principal() {
     recordVideo: { dir: SORTIE, size: { width: LARGEUR, height: HAUTEUR } },
     locale: LANGUE === 'en' ? 'en-US' : 'fr-FR',
     reducedMotion: 'no-preference',
+    /* LE FILM SE TOURNE EN SOMBRE. Le réglage « auto » suit `prefers-color-scheme`, que
+       Playwright met en clair par défaut : sans cette ligne, la préférence posée juste en
+       dessous serait la seule à décider, et un thème « auto » laissé quelque part rendrait un
+       écran clair au milieu du film. Les deux se disent, pour que rien ne dépende de l'ordre. */
+    colorScheme: 'dark',
   });
-  // La langue de l'app se choisit avant le premier rendu, comme le fait l'app elle-même.
+  /* La langue ET le thème se choisissent avant le premier rendu, comme le fait l'app elle-même
+     (une première application a lieu dans <head> pour éviter le flash). */
   await ctx.addInitScript((lang) => {
-    try { localStorage.setItem('aidevtools_lang', lang); } catch { /* stockage indisponible */ }
+    try {
+      localStorage.setItem('aidevtools_lang', lang);
+      localStorage.setItem('aidevtools_theme', 'dark');
+    } catch { /* stockage indisponible */ }
   }, LANGUE);
   const page = await ctx.newPage();
   await page.addInitScript(CURSEUR);
@@ -291,6 +312,10 @@ async function principal() {
 
   await versEl(carte); await dit();
   await versEl('#tab-review input[type=search]'); await dit();
+  /* L'ORDRE DE LA FILE. Liste déroulante NATIVE : dessinée hors de la page, elle serait
+     invisible dans le film — d'où le `size` posé le temps de montrer ses vraies options. */
+  await montreOptions('#mrTri'); await dit();
+  await fermeOptions('#mrTri');
   await versEl(btn('#toReviewList .card >> nth=0', L.review)); await dit();
 
   await versEl(btn('#toReviewList .card >> nth=0', L.diff)); await dit();
@@ -305,26 +330,60 @@ async function principal() {
 
   await versEl(page.locator('button', { hasText: L.reviewAll }).first()); await dit();
   await versEl(page.locator('button', { hasText: L.fetch }).first()); await dit();
-  await versEl(btn('#toReviewList .card >> nth=0', L.dismiss)); await dit();
+  /* LES ACTIONS SECONDAIRES SONT DANS LE MENU « ⋯ » depuis que la carte a été rangée :
+     trois actions fixes, le reste à un clic. Les viser sans ouvrir le menu attendait un
+     bouton présent dans le DOM mais caché — quinze secondes pour rien, puis l'arrêt. */
+  await clique('#toReviewList .card >> nth=0 >> [data-more]');
+  await versEl('#toReviewList .card >> nth=0 >> .split-menu:visible'); await dit();
+  await clique('#toReviewList .card >> nth=0 >> [data-more]');
+  /* LA CARTE DE DOMAINE QUE CE DIFF TOUCHE. Une seule merge request du jeu de démo en porte
+     une — la viser par son attribut, jamais par un rang, la trouve où qu'elle soit. */
+  await versEl('#toReviewList [data-mr-card]'); await dit();
 
   // Reviews / reviewées
   await versEl('[data-seg="reviewed"]'); await dit();
   await stade('reviewed');
 
   await versEl('#reportDetail'); await dit();
-  await versEl('#reportList .card >> nth=2'); await dit();
-  await clique('#reportList .card >> nth=2');
+  /* LE RAPPORT OUVERT EST CELUI QUI PORTE PLUSIEURS CONSTATS : sans deux constats, la rangée
+     de pastilles — et donc « Mettre en brouillons » — reste masquée. */
+  await versEl('#reportList .card >> nth=0'); await dit();
+  await clique('#reportList .card >> nth=0');
 
   await versEl('#reportDetail'); await dit();
+  /* A7 — LES CONSTATS DEVIENNENT DES REMARQUES INLINE. On clique pour de bon : le compte
+     rendu qui suit (posés / hors du diff) est celui de la vraie merge request. */
+  await versEl('#findingsChips [data-f-drafts="all"]'); await dit();
+  await clique('#findingsChips [data-f-drafts="all"]');
+  await versEl('#findingsList .finding >> nth=0'); await dit();
   await versEl(btn('#reportDetail', L.explanation)); await dit();
   await versEl(btn('#reportDetail', L.openCode)); await dit();
-  await versEl(btn('#reportDetail', L.rerunDelta)); await dit();
-  await versEl(btn('#reportDetail', L.markDone)); await dit();
+  /* LES ACTIONS DU RAPPORT VIVENT DANS LE MENU « ⋯ » depuis que l'en-tête a été rangé : on
+     l'ouvre UNE fois, et les trois étapes qui suivent commentent ce qu'il contient. À noter :
+     « Relancer (delta) » n'apparaît QUE sur un rapport périmé — le viser sur un rapport à
+     jour attendait un bouton que cet écran ne sait pas produire. */
+  await clique('#aMore');
+  await versEl('#aRe'); await dit();
+  await versEl('#aDone'); await dit();
+  await versEl('#aPublish'); await dit();
+  await clique('#aMore');
   await versEl('#reportDetail textarea >> nth=0'); await dit();
+  /* DEMANDER N'EST PAS REFAIRE. Le champ de question vit sous celui des modifications : la
+     réponse s'ajoute, le rapport et sa note ne bougent pas. */
+  await versEl('#askInput'); await dit();
+  await versEl('#btnAsk'); await dit();
+  /* LES NOTES QUI CITENT CETTE MERGE REQUEST — l'autolien dans l'autre sens. La page de
+     notes du jeu de démo cite une AUTRE merge request que celle ouverte jusqu'ici : on passe
+     donc sur la sienne, plutôt que de commenter un encart absent de l'écran. */
+  await clique('#reportList .card >> nth=2');
+  await page.waitForTimeout(900);
+  await versEl('#reportDetail .report-cites'); await dit();
   await versEl(page.locator('#reportDetail h2, #reportDetail h3, #reportDetail h4', { hasText: L.comments }).first()); await dit();
   await versEl(btn('#reportDetail', L.fixCode)); await dit();
-  await versEl(btn('#reportDetail', L.converge)); await dit();
-  await clique(btn('#reportDetail', L.converge));
+  /* « Converger » est passé dans le menu « ⋯ » avec les autres actions rares. */
+  await clique('#aMore');
+  await versEl('#aConverge'); await dit();
+  await clique('#aConverge');
   await versEl(ouvert()); await dit();
   await fermeModale();
   await versEl('[data-seg="done"]'); await dit();
@@ -342,7 +401,13 @@ async function principal() {
   await versEl('#verifyReport'); await dit();               // @@NEW:a2
   await versEl('#verifyFix'); await dit();                  // @@NEW:a3
   await fermeModale();
-  const btnVerif = page.locator('#toReviewList button:not([disabled])', { hasText: L.verify }).first();
+  /* « Vérifier » aussi est passé dans le menu « ⋯ » de la carte. On prend la carte dont le
+     bouton est ACTIF : un dépôt qu'aucun vérificateur ne couvre le laisse grisé, et le clic
+     n'ouvrirait rien du tout — sans lever la moindre erreur. */
+  const carteVerif = page.locator('#toReviewList .card')
+    .filter({ has: page.locator('[data-verify]:not([disabled])') }).first();
+  await clique(carteVerif.locator('[data-more]'));
+  const btnVerif = carteVerif.locator('[data-verify]:not([disabled])').first();
   await versEl(btnVerif); await dit();                      // @@NEW:a4
   await clique(btnVerif);
   await versEl('#verifyPickList'); await dit();             // @@NEW:a5
@@ -362,7 +427,10 @@ async function principal() {
   /* LA CARTE DONT LA VÉRIFICATION EST ROUGE, pas la première venue : une vérification au vert
      n'a pas d'extrait de log, donc pas de `<pre>` — et l'étape suivante commente justement le
      déroulé des commandes. Prendre la première carte montrait un bloc sans ce qu'on annonce. */
-  await clique(page.locator('#toReviewList .card:has(.tag.verify.ko) [data-vresults]').first());
+  /* Le bouton « Voir le résultat des vérificateurs » vit lui aussi dans le menu de la carte. */
+  const carteKo = page.locator('#toReviewList .card:has(.tag.verify.ko)').first();
+  await clique(carteKo.locator('[data-more]'));
+  await clique(carteKo.locator('[data-vresults]').first());
   await versEl('#verifyModal .verify-bloc >> nth=0'); await dit();
   await versEl('#verifyModal .verify-bloc >> nth=0 >> pre'); await dit();
   await fermeModale();
@@ -378,6 +446,7 @@ async function principal() {
   await page.waitForTimeout(1200);
   await versEl('#fileContent .cmt-draft >> nth=0'); await dit();
   await versEl('#draftsSend'); await dit();
+  await versEl('#draftsWipe'); await dit();
   await fermeModale();
   await stade('to_review');
 
@@ -390,8 +459,22 @@ async function principal() {
 
   await versEl(`#taskModal input[placeholder*="${L.phRepo}"]`); await dit();
   await versEl('#taskModal textarea >> nth=0'); await dit();
-  await versEl('#taskModal input[type=checkbox] >> nth=0'); await dit();
-  await versEl(btn('#taskModal', L.converge)); await dit();
+  /* L'OPTION NOMMÉE, pas « la première case » : le premier `input[type=checkbox]` du
+     formulaire est aujourd'hui `notify_jira`, dans une rangée masquée tant qu'aucun ticket
+     n'est saisi. Un rang ne dit pas ce qu'il désigne ; un nom, si. */
+  await versEl('#taskModal [name=auto_push]'); await dit();
+  /* UNE SESSION PEUT EMPRUNTER LE PROFIL D'UN AGENT : rôle, périmètre, outils, skills. */
+  await versEl('#taskAgentBox'); await dit();
+  /* « Créer et lancer » est devenu le geste principal ; « converger » est une CASE à côté,
+     plus un bouton. On désigne la rangée du bas, qui porte les deux. */
+  await versEl('#taskSubmit'); await dit();
+  /* METTRE LA FENÊTRE DE CÔTÉ. Le tiret la range dans le menu avec ce qu'on a écrit ; la
+     pastille la reprend. On fait les deux gestes pour de vrai : c'est la reprise qui compte. */
+  await versEl('#taskModal .modal-reduire'); await dit();
+  await clique('#taskModal .modal-reduire');
+  await versEl('#modalDock button >> nth=0'); await dit();
+  await clique('#modalDock button >> nth=0');
+  await page.waitForTimeout(900);
   await clique(btn('#taskModal', L.cancel));
 
   /* PAR CONTENU, PAS PAR RANG. L'ordre des sessions dépend de leur date de mise à jour : le
@@ -406,10 +489,25 @@ async function principal() {
   await versEl('#taskList .targets-toggle'); await dit();
   // …puis on déplie : les actions par projet vivent DANS la liste, invisibles repliées.
   await clique('#taskList .targets-toggle');
-  await versEl(btnDe(s1, L.push)); await dit();
-  await versEl(btnDe(s1, L.createMr)); await dit();
-  await versEl(btnDe(s1, L.rerunFailed)); await dit();
-  await versEl(btnDe(s1, L.checkBranches)); await dit();
+  /* LES ACTIONS PAR PROJET, visées par leur attribut : « Pousser » et « Créer la MR » ne
+     s'affichent que sur un projet qui n'en est pas encore là, et la session semée a déjà ses
+     merge requests. On montre ce que cet écran-ci porte vraiment. */
+  await versEl(s1.locator('[data-tgrun]').first()); await dit();
+  await versEl(s1.locator('[data-tgfollow]').first()); await dit();
+  /* LES ACTIONS DE LA SESSION ENTIÈRE. « Relancer les projets en échec » et « Vérifier
+     l'état des branches » n'existent que quand l'état les appelle — la session semée est
+     saine. On désigne donc les deux gestes qui sont TOUJOURS là. */
+  await versEl(s1.locator('[data-trun]').first()); await dit();
+  await versEl(s1.locator('[data-tcopy]').first()); await dit();
+
+  /* CE QUE CHAQUE ITÉRATION A CHANGÉ. La sortie s'ouvre par projet ; les itérations sont la
+     liste de gauche, et celle qu'on lit porte son propre diff — seule la DERNIÈRE mesure est
+     gardée, c'est celle qu'on vient de demander. */
+  await clique(page.locator('#taskList [data-tgout]').first());
+  await page.waitForTimeout(1400);
+  await versEl('#taskPassList'); await dit();
+  await versEl('#taskMdBody [data-passdiff]'); await dit();
+  await clique('#taskMdClose');
 
   const sq = page.locator('#taskList .card')
     .filter({ has: page.locator('button', { hasText: L.answerResume }) }).first();
@@ -422,8 +520,31 @@ async function principal() {
   await clique(sous('task', 2));
   await versEl('#taskList .card >> nth=0'); await dit();
 
+  await clique(sous('task', 3));
+  await versEl('#askList .card >> nth=0'); await dit();
   await clique(sous('task', 0));
   await versEl('#lotList .card >> nth=0'); await dit();     // @@NEW:b1
+
+  /* ---------- Agents ----------
+     Un agent est un PROFIL de session : un rôle, un périmètre de dépôts, des outils, des
+     skills, une sortie, parfois un horaire. Les gestes se visent par leur classe
+     (`.btn-agent-ask`…) plutôt que par leur libellé : c'est ce qui survit à la traduction. */
+  await versEl(onglet('agents')); await dit();
+  await clique(onglet('agents'));
+  await versEl('#agentList .card >> nth=0'); await dit();
+  await versEl('#agentList .btn-agent-ask >> nth=0'); await dit();
+  /* L'AGENT QUI PART SEUL : la carte du Documentaliste porte son horaire dans son en-tête.
+     Rang fixé par le jeu de démo (les agents sont rendus dans l'ordre de la liste) ; si le
+     seed change, c'est cette étape qu'il faut revoir — elle parle d'un horaire précis. */
+  await versEl('#agentList .card >> nth=2 >> .agent-head'); await dit();
+  /* La connaissance d'un agent de domaine : la version active, et l'âge de la carte. */
+  await versEl('#agentList .badge.k-active >> nth=0'); await dit();
+  await versEl('#agentList .agent-age-stale >> nth=0'); await dit();
+  await versEl('#agentList .btn-agent-refresh >> nth=0'); await dit();
+  await versEl('#agentList .k-pending >> nth=0'); await dit();
+  await clique(sous('agents', 1));
+  await versEl('#skillList'); await dit();
+  await clique(sous('agents', 0));
 
   /* Notes — le brief du matin, les todos, les pages. C'est l'onglet sur lequel l'application
      s'ouvre : le premier écran de la journée. */
@@ -431,9 +552,16 @@ async function principal() {
   await clique(onglet('notes'));
   await versEl('#briefBox .brief-sec >> nth=0'); await dit();
   await versEl('#briefBox .brief-sec >> nth=2'); await dit();
+  /* CE QUE LA SURVEILLANCE A VU PENDANT QU'ON N'ÉTAIT PAS LÀ. Les sections du brief sont
+     rendues dans un ordre fixé par le code, pas par la langue : le rang est donc sûr dans
+     les deux versions. 12 = les conteneurs tombés, 8 = ce que les agents ont fait. */
+  await versEl('#briefBox .brief-sec >> nth=12'); await dit();
+  await versEl('#briefBox .brief-sec >> nth=8'); await dit();
+  await versEl('#briefCopy'); await dit();
   await clique(sous('notes', 1));
   await versEl('#todoList .todo-row >> nth=0'); await dit();
   await versEl('#todoList .todo-row >> nth=1'); await dit();
+  await versEl('#todoList [data-snooze] >> nth=0'); await dit();
   await clique(sous('notes', 2));
   await versEl('#pageList .note-item >> nth=0'); await dit();
   await clique('#pageList .note-item >> nth=0');
@@ -444,7 +572,13 @@ async function principal() {
   await versEl(onglet('links')); await dit();
   await clique(onglet('links'));
   await versEl('.link-grid'); await dit();
-  await versEl('#linkEnvChips'); await dit();
+  /* LE FILTRE PAR ÉTIQUETTE : les pastilles de filtre ne s'affichent qu'une fois un filtre
+     posé — on ouvre donc le menu, qui montre les étiquettes réellement présentes. */
+  await clique('#linkTagBtn');
+  await versEl('#linkTagMenu'); await dit();
+  await clique('#linkTagBtn');
+  /* COLLER UNE ADRESSE : l'outil lit l'URL et propose où la ranger. */
+  await versEl('#linkPaste'); await dit();
   await versEl('#linkSearch'); await dit();
 
   // Statistiques
@@ -453,6 +587,7 @@ async function principal() {
   await versEl(page.locator('#tab-dashboard h2, #tab-dashboard h3, #tab-dashboard h4', { hasText: L.distribution }).first()); await dit();
   await versEl(page.locator('#tab-dashboard h2, #tab-dashboard h3, #tab-dashboard h4', { hasText: L.byProject }).first()); await dit();
   await versEl(page.locator('#tab-dashboard h2, #tab-dashboard h3, #tab-dashboard h4', { hasText: L.devSessions }).first()); await dit();
+  await versEl(page.locator('#tab-dashboard h2, #tab-dashboard h3, #tab-dashboard h4', { hasText: L.gitOps }).first()); await dit();
 
   // Git
   await versEl(onglet('git')); await dit();
@@ -461,15 +596,23 @@ async function principal() {
   await versEl('#tab-git input[placeholder*="branch"]'); await dit();
   await versEl(page.locator('#tab-git button', { hasText: L.preview }).first()); await dit();
 
+  /* HUIT OUTILS, et deux sont arrivés depuis le tournage précédent : « Merge » en deuxième
+     position et « Comparer » en sixième ont DÉCALÉ tous les rangs suivants. Un index périmé
+     ne lève rien du tout — il ouvre simplement le mauvais panneau, et cela ne se voit qu'à
+     l'image, une fois le film monté. */
   await clique(sous('git', 1));
-  await versEl(page.locator('#tab-git button', { hasText: L.checkout }).first()); await dit();
+  await versEl('#tab-git'); await dit();
   await clique(sous('git', 2));
-  await versEl('#tab-git input[placeholder*="fetch"]'); await dit();
+  await versEl(page.locator('#tab-git button', { hasText: L.checkout }).first()); await dit();
   await clique(sous('git', 3));
-  await versEl(page.locator('#tab-git button', { hasText: L.analyse }).first()); await dit();
+  await versEl('#tab-git input[placeholder*="fetch"]'); await dit();
   await clique(sous('git', 4));
-  await versEl('#tab-git input[placeholder*="v1.2.0"]'); await dit();
+  await versEl(page.locator('#tab-git button', { hasText: L.analyse }).first()); await dit();
   await clique(sous('git', 5));
+  await versEl('#tab-git'); await dit();
+  await clique(sous('git', 6));
+  await versEl('#tab-git input[placeholder*="v1.2.0"]'); await dit();
+  await clique(sous('git', 7));
   await versEl('#tab-git'); await dit();
 
   // Docker
@@ -499,6 +642,11 @@ async function principal() {
   await clique('#jenkinsBox [data-jkopen="boutique/api-deploy-prod"]');
   await page.waitForTimeout(1400);
   await versEl('#jenkinsModalBody .jk-bloc >> nth=0'); await dit();
+  /* L'HISTORIQUE VIT DANS UN `<details>` que la fiche referme selon la place disponible :
+     replié, ses lignes sont dans le DOM mais invisibles, et le parcours attendait quinze
+     secondes un élément qui ne s'afficherait jamais. On l'ouvre — c'est le vrai contrôle. */
+  await page.evaluate(() => { const d = document.querySelector('details.jk-fiche-repli'); if (d) d.open = true; });
+  await page.waitForTimeout(500);
   await versEl('#jenkinsFiche .jk-col-histo .jk-build >> nth=0'); await dit();
   await versEl('#jenkinsFiche .jk-col-detail'); await dit();
   await versEl('#jenkinsFiche [data-jkreuse] >> nth=0'); await dit();
@@ -509,7 +657,17 @@ async function principal() {
   await versEl(onglet('jira')); await dit();
   await clique(onglet('jira'));
   await versEl('#tab-jira input[placeholder*="ticket"]'); await dit();
+  /* CE QUE MERGERIE SAIT DE CE TICKET : les merge requests et les sessions qui le citent.
+     On ouvre le ticket du tunnel de paiement — le fil rouge du jeu de démo. */
+  await clique(page.locator('#jiraList > *').filter({ hasText: 'PROJ-1408' }).first());
+  await page.waitForTimeout(900);
+  await versEl('#jiraDetail .jira-mergerie'); await dit();
   await versEl(page.locator('#tab-jira button', { hasText: L.jiraCode }).first()); await dit();
+  /* `#jiraSubWatch` est le PANNEAU, masqué tant qu'on n'y est pas : c'est le sous-onglet
+     qu'on clique. */
+  await clique(sous('jira', 1));
+  await versEl('#jiraWatchList'); await dit();
+  await clique(sous('jira', 0));
 
   // Réglages
   await versEl(onglet('admin')); await dit();
@@ -528,17 +686,25 @@ async function principal() {
   // suivants viseraient des champs masqués et le parcours s'arrêterait là.
   await clique('#btnNewVerifier');
   await versEl('#verifierForm [name=auto_on_mr]'); await dit();
-  await montreOptions('#verifierForm select[name=kind]'); await dit();   // @@NEW:c1
-  await fermeOptions('#verifierForm select[name=kind]');
+  /* IL N'Y A PLUS DEUX FAMILLES DE VÉRIFICATEURS : le vérificateur « script » a disparu, un
+     vérificateur EST une liste de commandes. La liste déroulante `kind` avec lui. */
+  await versEl('#verifierForm [name=name]'); await dit();   // @@NEW:c1
   await versEl('#verifierCommandList'); await dit();                     // @@NEW:c2
   await versEl('#verifierRepoBox'); await dit();                         // @@NEW:c3
   await clique(reglage('aisession'));
   await versEl('#sub-aisession [name=ai_extra_instructions]'); await dit();
   await versEl('#tab-admin'); await dit();
   await clique(reglage('gitcfg'));
-  await versEl(page.locator('#tab-admin button', { hasText: L.testConn }).first()); await dit();
+  /* Le bouton porte maintenant « Enregistrer et tester » : on le vise par son id, qui ne
+     dépend ni du libellé ni de la langue. */
+  await versEl('#btnTestGitlab'); await dit();
   await clique(reglage('notif'));
   await versEl('#notifThreshold'); await dit();
+  /* LA DICTÉE : un micro sur chaque champ, et le vocabulaire des dépôts donné au moteur. */
+  await clique(reglage('dictation'));
+  await montreOptions('#dictationProvider'); await dit();
+  await fermeOptions('#dictationProvider');
+  await versEl('#dictationPanel'); await dit();
 
   /* Journal : on lance une vraie recherche de MR (elle rend maintenant un compte propre en
      démo), puis on désigne la barre du bas. On n'ouvre PAS le panneau de logs : il ne se
@@ -560,16 +726,24 @@ async function principal() {
   await versEl('#shortcutsModal'); await dit();
   await fermeModale();
 
+  /* LE FILM EST TOURNÉ EN SOMBRE : c'est donc le thème CLAIR qu'on montre ici, par le vrai
+     contrôle, avec ses vraies options. Puis on rend l'écran au thème du film — la dernière
+     image doit être celle qu'on a choisie, pas le détour qu'on vient de faire. */
   await clique(onglet('admin'));
   await clique(reglage('config'));
-  const theme = page.locator('#sub-config select').first();
+  const theme = page.locator('#themeSelect');
   await montreOptions(theme);
   await fermeOptions(theme);
-  await theme.selectOption({ label: L.dark }).catch(() => theme.selectOption({ index: 1 }));
-  await page.waitForTimeout(900);
+  await theme.selectOption('light').catch(() => theme.selectOption({ index: 2 }));
+  await page.waitForTimeout(1100);
   await clique(onglet('review'));
   await versEl('nav');
   await dit();
+  await clique(onglet('admin'));
+  await clique(reglage('config'));
+  await theme.selectOption('dark').catch(() => theme.selectOption({ index: 1 }));
+  await page.waitForTimeout(900);
+  await clique(onglet('review'));
 
   await page.waitForTimeout(2000);
   const fin = Date.now() - t0;

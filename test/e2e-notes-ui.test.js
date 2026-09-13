@@ -342,17 +342,26 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     const barre = await page.locator('nav button[data-tab]').evaluateAll(
       (els) => els.map((e) => e.dataset.tab),
     );
-    assert.equal(barre.length, 10);
-    assert.deepEqual(barre, ['review', 'task', 'notes', 'jira', 'git', 'docker', 'jenkins', 'links', 'dashboard', 'admin'],
+    assert.equal(barre.length, 11);
+    assert.deepEqual(barre, ['review', 'task', 'agents', 'notes', 'jira', 'git', 'docker', 'jenkins', 'links', 'dashboard', 'admin'],
       'le cœur · ce que j’ai à faire · ma machine, son intégration et ses liens · le méta');
 
-    for (let i = 0; i < barre.length; i += 1) {
-      await page.locator('body').click();          // le focus quitte tout champ de saisie
-      // Faute de touche « 10 », le dixième onglet est sur « 0 » — la convention des navigateurs.
-      await page.keyboard.press(i === 9 ? '0' : String(i + 1));
-      await page.waitForSelector(`#tab-${barre[i]}.active`);
-      assert.equal(await page.locator(`#tab-${barre[i]}`).isVisible(), true,
-        `la touche ${i === 9 ? '0' : i + 1} doit ouvrir le ${i + 1}ᵉ onglet de la barre (${barre[i]})`);
+    /* Les neuf premiers sur leur chiffre ; le DERNIER sur « 0 », faute de touche « 10 » — et
+       c'est bien le dernier, pas le dixième : sinon un onglet ajouté retirerait en silence
+       son raccourci à Réglages, qui ferme la barre. Les onglets du milieu au-delà du neuvième
+       n'ont pas de chiffre, et la feuille d'aide annonce « 1 – 9, 0 ». */
+    const avecTouche = [...barre.slice(0, 9).map((tab, i) => [String(i + 1), tab]), ['0', barre[barre.length - 1]]];
+    for (const [touche, tab] of avecTouche) {
+      /* LE FOCUS QUITTE TOUT CHAMP — mais PAS en cliquant `body` : Playwright clique le CENTRE
+         de l'élément, et le centre de la page est la zone de texte de la note ouverte. On
+         focalisait donc le champ qu'on voulait quitter, et les chiffres s'écrivaient dedans au
+         lieu d'ouvrir les onglets. Depuis que les objets ont une adresse (`#/notes/4`), un
+         rechargement rouvre la page et ce centre-là est toujours une zone de texte. */
+      await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
+      await page.keyboard.press(touche);
+      await page.waitForSelector(`#tab-${tab}.active`);
+      assert.equal(await page.locator(`#tab-${tab}`).isVisible(), true,
+        `la touche ${touche} doit ouvrir l’onglet ${tab}`);
     }
 
     // Et la feuille d'aide annonce la plage réelle, pas un « 1 – 8 » recopié une fois de plus.
@@ -477,5 +486,137 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
       assert.notEqual(couleurs.fond, couleurs.texte, `thème ${theme} : le texte ne se confond pas avec le fond`);
       assert.doesNotMatch(couleurs.texte, /rgba?\(0, 0, 0, 0\)/, `thème ${theme} : le texte a une couleur`);
     }
+  });
+
+  /* LIRE ET ÉCRIRE NE SE FONT PAS EN MÊME TEMPS. Deux demi-colonnes coupaient les deux : un
+     tableau de doc débordait de l'aperçu, une ligne de Markdown revenait à la ligne au milieu
+     d'un lien. Le défaut est la LECTURE — on relit ses notes bien plus souvent qu'on ne les
+     écrit — sauf sur une page vide, qui n'a rien à montrer. */
+  test('les colonnes se choisissent : rendu seul par défaut, Markdown seul, ou les deux', async () => {
+    const p = (await app.api('POST', '/api/notes', { title: 'Page à lire' })).body;
+    await app.api('PUT', `/api/notes/${p.id}`, { content: '# Titre\n\nDu texte déjà écrit.' });
+
+    await page.locator('nav button[data-tab="notes"]').click();
+    await page.locator('#tab-notes .subnav button[data-nsub="pages"]').click();
+    const ligne = page.locator('#pageList .note-item', { hasText: 'Page à lire' });
+    await ligne.waitFor();
+    await ligne.click();
+    await page.waitForFunction((id) => NOTES.page && NOTES.page.id === id, p.id);
+
+    const visible = async (sel) => page.locator(sel).isVisible();
+    assert.equal(await visible('#pagePreview'), true, 'une page écrite s’ouvre sur son rendu');
+    assert.equal(await visible('#pageContent'), false, 'l’éditeur est masqué par défaut');
+    // …et le rendu prend toute la largeur, pas la moitié qu'il occupait à deux colonnes.
+    const largeurRendu = await page.locator('#pagePreview').evaluate((e) => e.getBoundingClientRect().width);
+    const largeurBloc = await page.locator('.note-panes').evaluate((e) => e.getBoundingClientRect().width);
+    assert.ok(largeurRendu > largeurBloc * 0.9, `le rendu n’occupe pas les deux colonnes : ${largeurRendu} / ${largeurBloc}`);
+
+    await page.locator('.note-panes-pick [data-panes="editor"]').click();
+    assert.equal(await visible('#pageContent'), true);
+    assert.equal(await visible('#pagePreview'), false, 'le rendu se masque à son tour');
+    const largeurEditeur = await page.locator('#pageContent').evaluate((e) => e.getBoundingClientRect().width);
+    assert.ok(largeurEditeur > largeurBloc * 0.9, `l’éditeur n’occupe pas les deux colonnes : ${largeurEditeur}`);
+
+    await page.locator('.note-panes-pick [data-panes="both"]').click();
+    assert.equal(await visible('#pageContent'), true);
+    assert.equal(await visible('#pagePreview'), true);
+
+    /* LE CHOIX SURVIT AU CHANGEMENT DE PAGE. Le re-choisir à chaque page en ferait un réglage
+       qu'on subit plutôt qu'un réglage qu'on pose. */
+    const q = (await app.api('POST', '/api/notes', { title: 'Une autre' })).body;
+    await app.api('PUT', `/api/notes/${q.id}`, { content: 'du contenu' });
+    await page.locator('#pageSearch').fill('Une autre');
+    const l2 = page.locator('#pageList .note-item', { hasText: 'Une autre' });
+    await l2.waitFor();
+    await l2.click();
+    await page.waitForFunction((id) => NOTES.page && NOTES.page.id === id, q.id);
+    assert.equal(await visible('#pageContent'), true, 'le choix des colonnes est retenu');
+    await page.locator('.note-panes-pick [data-panes="preview"]').click();
+    await page.locator('#pageSearch').fill('');
+  });
+
+  /* UNE PAGE VIDE N'A RIEN À MONTRER : servir un aperçu blanc à qui vient de créer une page
+     est un cul-de-sac — rien à lire, et pas de champ où écrire. */
+  test('une page neuve s’ouvre sur le Markdown, même quand le réglage dit « rendu »', async () => {
+    const vide = (await app.api('POST', '/api/notes', { title: 'Toute neuve' })).body;
+    await page.locator('#pageSearch').fill('Toute neuve');
+    const l = page.locator('#pageList .note-item', { hasText: 'Toute neuve' });
+    await l.waitFor();
+    await l.click();
+    await page.waitForFunction((id) => NOTES.page && NOTES.page.id === id, vide.id);
+    assert.equal(await page.locator('#pageContent').isVisible(), true);
+    await page.locator('#pageSearch').fill('');
+  });
+
+  /* LES SOUS-PAGES. Une documentation tient rarement en une page ; listée à plat, entre deux
+     pages sans rapport, une sous-page perd ce qui fait sa valeur — on ne sait plus de quoi
+     elle est le détail. */
+  test('une sous-page se crée depuis sa page, s’affiche décalée sous elle, et mène à son parent', async () => {
+    const racine = (await app.api('POST', '/api/notes', { title: 'Carte des services' })).body;
+    await app.api('PUT', `/api/notes/${racine.id}`, { content: 'le texte général' });
+    await page.locator('#pageSearch').fill('Carte des services');
+    const l = page.locator('#pageList .note-item', { hasText: 'Carte des services' });
+    await l.waitFor();
+    await l.click();
+    await page.waitForFunction((id) => NOTES.page && NOTES.page.id === id, racine.id);
+
+    await page.locator('#pageNewSub').click();
+    await page.waitForFunction((id) => NOTES.page && NOTES.page.parent_id === id, racine.id);
+    // Une sous-page ne peut pas en contenir : le bouton n'est même pas proposé.
+    assert.equal(await page.locator('#pageNewSub').count(), 0, 'le geste est refusé AVANT le serveur');
+    await page.locator('#pageTitle').fill('groupe/api-core');
+    await attendreServeur(async () => (await app.api('GET', '/api/notes')).body.pages
+      .some((x) => x.title === 'groupe/api-core'), 'le titre de la sous-page est enregistré');
+
+    /* LA SOUS-PAGE OUVERTE RESTE VISIBLE : son parent se déplie tout seul, sinon la page
+       active serait absente de la colonne où on vient de la choisir. */
+    await page.locator('#pageSearch').fill('');
+    await page.waitForSelector(`#pageList [data-fold="${racine.id}"]`);
+    assert.equal(await page.locator('#pageList .note-item.note-sub').count(), 1,
+      'la sous-page ouverte a disparu de la colonne');
+
+    /* …et le pli REVIENT dès qu'on s'en va. Une colonne où chaque page générale déroule ses
+       huit sous-pages ne se lit plus : on vient d'abord y chercher une page, pas un détail. */
+    await page.locator('#pageList .note-item', { hasText: 'Carte des services' }).first().click();
+    await page.waitForFunction((id) => NOTES.page && NOTES.page.id === id, racine.id);
+    assert.equal(await page.locator('#pageList .note-item.note-sub').count(), 0,
+      'les sous-pages sont dépliées d’office');
+    // …et le repli ne les rend pas invisibles : le nombre est sur la page générale.
+    const ligneRacine = page.locator('#pageList .note-row', { hasText: 'Carte des services' }).first();
+    assert.equal(await ligneRacine.locator('.note-item-count').innerText(), '1');
+
+    await page.locator(`#pageList [data-fold="${racine.id}"]`).click();
+    await page.waitForSelector('#pageList .note-item.note-sub');
+    const sub = page.locator('#pageList .note-item.note-sub', { hasText: 'groupe/api-core' });
+    assert.equal(await sub.count(), 1, 'la sous-page est décalée sous son parent');
+    // Et le pli se referme.
+    await page.locator(`#pageList [data-fold="${racine.id}"]`).click();
+    await page.waitForFunction(() => document.querySelectorAll('#pageList .note-item.note-sub').length === 0);
+    await page.locator(`#pageList [data-fold="${racine.id}"]`).click();
+    await page.waitForSelector('#pageList .note-item.note-sub');
+    /* LE DÉCALAGE SE MESURE. Une sous-page n'a pas de dépliant : sans décalage explicite son
+       titre retombait À GAUCHE de celui de son parent — l'indentation valait zéro, et rien à
+       l'écran ne disait le rattachement. C'est un chiffre, donc c'est vérifiable. */
+    const x = await page.evaluate(() => {
+      const par = document.querySelector('#pageList .note-row:not(.note-sub) .note-item-title');
+      const sub = document.querySelector('#pageList .note-row.note-sub .note-item-title');
+      return { parent: par.getBoundingClientRect().left, sous: sub.getBoundingClientRect().left };
+    });
+    assert.ok(x.sous - x.parent >= 12, `la sous-page n’est pas décalée : ${x.sous - x.parent}px`);
+
+    /* …SANS déborder de la colonne. `width: 100%` plus une marge dépasse, quel que soit le
+       `box-sizing` : la colonne ouvrait un défilement horizontal et rognait les titres des
+       pages voisines — un décalage de 14 pixels qui abîme tout l'écran. */
+    const deborde = await page.locator('#pageList').evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+    assert.equal(deborde, false, 'la colonne des pages défile horizontalement');
+
+    // Elle dit de quoi elle est le détail, et le lien y ramène.
+    await sub.click();
+    await page.waitForFunction(() => NOTES.page && NOTES.page.parent_id);
+    assert.match(await page.locator('.note-parent').innerText(), /Carte des services/);
+    await page.locator('.note-parent .lien-page').click();
+    await page.waitForFunction((id) => NOTES.page && NOTES.page.id === id, racine.id);
+    assert.match(await page.locator('.note-children').innerText(), /groupe\/api-core/,
+      'et la page générale annonce ce qu’elle chapeaute');
   });
 });

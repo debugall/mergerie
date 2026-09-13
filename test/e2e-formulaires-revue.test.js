@@ -35,6 +35,9 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     await app.api('POST', '/api/repos', { url: 'https://gitlab.test/groupe/webapp.git', project: 'groupe/webapp' });
     await app.api('POST', '/api/discover');
     mrId = (await app.api('GET', '/api/mrs')).body[0].id;
+    /* La modale d'un lien libre ne s'ouvre plus QUE sur un lien existant : on ajoute désormais
+       en collant, et « Nouveau lien » a disparu de la barre. Il en faut donc un à modifier. */
+    await app.api('POST', '/api/free-links', { label: 'Confluence', url: 'https://confluence.demo.invalid/x', tags: 'doc' });
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 950 } });
     page.on('pageerror', (e) => erreurs.push(String(e)));
@@ -56,6 +59,13 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
       document.querySelectorAll('.modal').forEach((m) => { m.hidden = true; });
       // Le toast de SUCCÈS du test précédent vit 3,5 s : sans ça, il se compte dans le suivant.
       document.querySelectorAll('.toast').forEach((t) => t.remove());
+      /* …ET LE PANNEAU DE JOB. « Créer et lancer » laisse tourner une session sur un dépôt
+         injoignable : elle FINIT EN ERREUR, et un job en erreur ne se replie jamais tout seul
+         — c'est voulu, on doit pouvoir lire l'erreur. Le panneau survit donc d'un test au
+         suivant, flotte au-dessus de la fin de chaque page et intercepte les clics visant le
+         pied du formulaire des Réglages. Mesuré : bouton 769→801, panneau 787→958. */
+      const p = document.querySelector('#logPanel');
+      if (p) p.hidden = true;
     });
   }
 
@@ -197,7 +207,7 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     const ordre = await page.$$eval('#sub-mr > .form > *',
       (els) => els.map((e) => (e.tagName === 'H3' ? `# ${e.textContent}` : ((e.querySelector('input') || {}).name || e.tagName))));
     assert.deepEqual(ordre, [
-      '# Review', 'review_explain', 'auto_post_review',
+      '# Review', 'review_explain', 'auto_post_review', 'auto_post_blocking_only',
       '# Automatisation', 'auto_refresh_minutes', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
       '# Convergence', 'converge_threshold', 'converge_max_passes',
     ], 'l’interrupteur et son plafond ne sont plus séparés par un autre réglage');
@@ -282,8 +292,12 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
 
   test('les jetons refusent l’autocomplétion et les champs d’une connexion sont marqués', async () => {
     await ouvrirReglages('jiracfg');
-    assert.deepEqual(await page.$$eval('[form="configForm"][type="password"]',
-      (els) => els.map((e) => e.autocomplete)), ['off', 'off', 'off', 'off']);
+    /* CHAQUE jeton, pas quatre : la liste s'allonge (la clé de dictée est le cinquième), et
+       figer un compte transformait l'ajout d'un secret en échec de test au lieu de rester ce
+       qu'il doit être — la même exigence appliquée à un champ de plus. */
+    const auto = await page.$$eval('[form="configForm"][type="password"]', (els) => els.map((e) => e.autocomplete));
+    assert.ok(auto.length >= 4, `${auto.length} champs de jeton trouvés`);
+    assert.deepEqual([...new Set(auto)], ['off'], 'aucun jeton ne s’autocomplète');
     assert.deepEqual(await page.$$eval('#sub-jiracfg .req', (els) => els.map((e) => e.textContent)),
       ['URL Jira', 'Email Jira', 'Jeton d’API Jira'.replace('’', "'")]);
   });
@@ -316,13 +330,20 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     await page.evaluate(() => { document.querySelector('#verifyModal').hidden = true; });
   });
 
+  /* La modale d'un lien libre s'ouvre par le crayon de sa ligne : c'est la seule porte depuis
+     que l'ajout passe par « Coller une adresse ». */
+  async function ouvrirLienLibre() {
+    await ecranPropre();
+    await page.click('nav button[data-tab="links"]');
+    await page.waitForSelector('#linkFreeList [data-editfree]', { timeout: ATTENTE });
+    await page.locator('#linkFreeList [data-editfree]').first().click();
+    await page.waitForSelector('#freeLinkModal:not([hidden])', { timeout: ATTENTE });
+  }
+
   test('un toast d’erreur meurt avec la modale qui l’a produit', async () => {
     /* Le chemin est celui de l'application : une session de codage sans branche de travail est
        refusée EN LIGNE ; ce qu'on veut ici, c'est un toast produit par un refus du serveur. */
-    await ecranPropre();
-    await page.click('nav button[data-tab="links"]');
-    await page.click('#linkNewFree');
-    await page.waitForSelector('#freeLinkModal:not([hidden])', { timeout: ATTENTE });
+    await ouvrirLienLibre();
     await page.fill('#freeLabel', 'Tableau de bord');
     await page.fill('#freeUrl', 'pas-une-url');
     await page.click('#freeSave');
@@ -335,14 +356,27 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
   /* ---------- L'annexe ---------- */
 
   test('le lien libre marque ses champs obligatoires et refuse sous le champ', async () => {
-    await ecranPropre();
-    await page.click('nav button[data-tab="links"]');
-    await page.click('#linkNewFree');
-    await page.waitForSelector('#freeLinkModal:not([hidden])', { timeout: ATTENTE });
+    await ouvrirLienLibre();
     assert.equal(await page.locator('#freeTags').getAttribute('placeholder'), 'doc, astreinte');
+    // Vider les deux champs obligatoires : la modale s'ouvre désormais sur un lien existant.
+    await page.fill('#freeUrl', '');
+    await page.fill('#freeLabel', '');
     await page.click('#freeSave');
     await page.waitForSelector('#freeLinkModal .field-error', { timeout: ATTENTE });
-    assert.match(await page.locator('#freeLinkModal .field-error').first().textContent(), /libellé/i);
+    /* DANS L'ORDRE DES CHAMPS, et l'adresse est passée devant : c'est elle qu'on colle, et
+       c'est d'elle que le libellé se déduit. Un refus qui saute au second champ se lirait
+       comme un refus du premier. */
+    assert.match(await page.locator('#freeLinkModal .field-error').first().textContent(), /url/i);
+    /* …et le libellé refuse à son tour, sous LUI. Il faut l'EFFACER après avoir donné
+       l'adresse : le formulaire le propose désormais depuis l'hôte, si bien qu'un libellé vide
+       ne s'obtient plus qu'en supprimant la proposition — ce que fait qui n'en veut pas. */
+    await page.fill('#freeUrl', 'https://exemple.demo.invalid');
+    await page.fill('#freeLabel', '');
+    await page.click('#freeSave');
+    await page.waitForFunction(() => {
+      const e = document.querySelector('#freeLinkModal .field-error');
+      return e && /libell/i.test(e.textContent);
+    }, null, { timeout: ATTENTE });
     assert.equal(await page.locator('.toast.err').count(), 0);
     await page.click('#freeCancel');
   });
@@ -352,10 +386,18 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
        flex : elle devenait une colonne de plus, écrasait la branche de départ de 285 à 157 px
        et renvoyait le « × » du projet à la ligne suivante. */
     await ouvrirSession('code');
-    const geo = () => page.$$eval('#targetRows .target-row > *', (els) => els.map((x) => {
-      const r = x.getBoundingClientRect();
-      return { cls: (x.className || '').split(' ')[0] || x.tagName, y: Math.round(r.y), w: Math.round(r.width) };
-    }));
+    /* Les positions sont mesurées DANS la rangée, pas dans la page. La modale est centrée
+       verticalement : lui ajouter une ligne d'erreur change sa hauteur, donc décale tout son
+       contenu d'un demi-pixel — un décalage qui ne dit rien de ce qu'on veut prouver, et qui
+       faisait échouer le test au premier champ ajouté ailleurs dans le formulaire. Ce qu'on
+       vérifie est que les champs ne bougent pas LES UNS PAR RAPPORT AUX AUTRES. */
+    const geo = () => page.$$eval('#targetRows .target-row', (rows) => {
+      const base = rows[0].getBoundingClientRect().y;
+      return [...rows[0].children].map((x) => {
+        const r = x.getBoundingClientRect();
+        return { cls: (x.className || '').split(' ')[0] || x.tagName, y: Math.round(r.y - base), w: Math.round(r.width) };
+      });
+    });
     const avant = await geo();
 
     await page.fill('#taskForm textarea[name="prompt"]', 'une tâche');
@@ -368,9 +410,12 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
       'aucun champ de la rangée ne bouge ni ne rétrécit : le message n’est pas une colonne');
     const err = apres[apres.length - 1];
     assert.equal(err.cls, 'field-error', 'le message ferme la rangée');
-    const branche = await page.locator('#targetRows .target-row input.t-branch')
-      .evaluate((e) => Math.round(e.getBoundingClientRect().bottom));
-    assert.ok(err.y >= branche, `le message est sous le champ (${err.y} ≥ ${branche})`);
+    // …et il est SOUS le champ, mesuré dans la même page au même instant.
+    const { hautErreur, basBranche } = await page.evaluate(() => ({
+      hautErreur: Math.round(document.querySelector('#targetRows .field-error').getBoundingClientRect().y),
+      basBranche: Math.round(document.querySelector('#targetRows .target-row input.t-branch').getBoundingClientRect().bottom),
+    }));
+    assert.ok(hautErreur >= basBranche, `le message est sous le champ (${hautErreur} ≥ ${basBranche})`);
     assert.equal(await page.locator('.toast.err').count(), 0);
     await fermerSession();
   });

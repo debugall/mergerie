@@ -56,8 +56,11 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
   test('la barre est rangée dans l’ordre du parcours', async () => {
     const ordre = await page.locator('#tab-admin .subnav [data-sub]')
       .evaluateAll((els) => els.map((e) => e.dataset.sub));
+    /* « Dictée vocale » ferme la marche, à côté de « AI sessions » : ce sont les deux panneaux
+       qui portent un BANC D'ESSAI plutôt qu'un simple réglage — on y vient pour éprouver une
+       installation, pas pour cocher une case en passant. */
     assert.deepEqual(ordre, ['gitcfg', 'repos', 'mr', 'rules', 'verifiers',
-      'notif', 'config', 'jiracfg', 'jenkinscfg', 'aisession']);
+      'notif', 'config', 'jiracfg', 'jenkinscfg', 'aisession', 'dictation']);
   });
 
   /* On revient dans Réglages pour finir ce qu'on y faisait : le dernier onglet consulté gagne
@@ -104,6 +107,30 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
     await champ.waitFor();
     await page.waitForFunction(() => document.querySelector('#sub-aisession [name="ai_extra_instructions"]').value !== '');
     assert.equal(await champ.inputValue(), 'Commente en français.');
+  });
+
+  /* UN CHAMP OCCUPE SA COLONNE. La rangée « Jobs liés aux dépôts » réserve trois colonnes
+     larges, mais ses trois champs sont des COMBOS : leur boîte n'était contrainte par rien, et
+     le `width: 100%` de leur input se mesurait donc sur la largeur par défaut d'un `<input>` —
+     une vingtaine de caractères. Résultat : des champs deux fois plus étroits que le libellé
+     qui les annonce, et la moitié de la rangée vide. La preuve se prend à la mesure, pas à
+     l'œil : chaque champ doit remplir son étiquette. */
+  test('les champs des jobs liés remplissent leur colonne', async () => {
+    await page.locator('[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="jenkinscfg"]').click();
+    await page.waitForSelector('#jenkinsLinkForm .combo');
+    const cols = await page.locator('#jenkinsLinkForm').evaluate((f) => [...f.querySelectorAll(':scope > label')].map((l) => {
+      const champ = l.querySelector('.combo') || l.querySelector('input');
+      const r = l.getBoundingClientRect();
+      return { nom: l.textContent.trim().slice(0, 18), colonne: Math.round(r.width), champ: Math.round(champ.getBoundingClientRect().width), haut: Math.round(champ.getBoundingClientRect().top) };
+    }));
+    assert.equal(cols.length, 3);
+    assert.deepEqual(cols.filter((c) => c.colonne - c.champ > 2).map((c) => `${c.nom} : ${c.champ}/${c.colonne} px`), [],
+      'un champ plus étroit que son libellé laisse croire à une saisie courte');
+    /* …et sur un écran large la rangée reste UNE rangée : c'est ce qui la rend lisible. On
+       mesure les CHAMPS, pas les étiquettes — un libellé sur deux lignes commence plus haut
+       que les autres alors que la rangée est bien alignée (elle l'est par le bas). */
+    assert.equal(new Set(cols.map((c) => c.haut)).size, 1, 'les trois champs tiennent sur une ligne à 1400 px');
   });
 
   /* Un nom mémorisé qui n'existe plus (un onglet supprimé depuis) ne doit pas laisser l'écran

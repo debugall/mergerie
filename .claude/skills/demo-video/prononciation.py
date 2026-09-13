@@ -42,7 +42,8 @@ FR = [
     (r'\bJUnit\b', 'J unite'),
     (r'\bTAP\b', 'tape'),
     (r'\bSQL\b', 'S Q L'),
-    (r'\bSHA\b', 'S H A'),
+    # SHA : les développeurs francophones disent « cha », pas les trois lettres.
+    (r'\bSHAs?\b', 'cha'),
     (r'\bGNU\b', 'G N U'),
     (r'\bMINORANT\b', 'minorant'),
     (r'\bN°\b', 'numéro'),
@@ -76,6 +77,27 @@ FR = [
     # `pool` fait basculer espeak en phonèmes anglais (p'u:l), que le modèle français n'a
     # jamais entendus. `poule` donne p'ul — la lecture française de ce mot est la bonne.
     (r'(?i)\bpool\b', 'poule'),
+    # PHP. Lu d'un trait (p,e,aSp'e) : le « ache » s'écrase sur le second « pé ». Épelé avec
+    #    des espaces, chaque lettre porte son accent : p'e 'aS p'e.
+    (r'\bPHP\b', 'pé ache pé'),
+    # BADGE. Le phonème dZ en FIN DE MOT n'existe pas en français (budget, gadget le font
+    #    suivre d'une voyelle) ; le modèle le mange. « bad je » garde l'accent sur « bad » et
+    #    pose la voyelle légère qu'un francophone met de toute façon : b'ad Z@.
+    (r'(?i)\bbadges\b', 'bad jes'),
+    (r'(?i)\bbadge\b', 'bad je'),
+    # CASE. Signalé à l'écoute du film : « case » sonne faux dans « case à cocher ». Ici la
+    #    réécriture ne peut PAS être orthographique, et c'est le seul cas du fichier : espeak
+    #    phonémise déjà « case » correctement — `espeak-ng -v fr -q -x "une case à cocher"`
+    #    rend `yn k'az a koS'e`, soit exactement ce qu'un francophone dit, et « caze » ou
+    #    « kaze » rendent les mêmes phonèmes. Le défaut vient donc du MODÈLE (siwis), pas du
+    #    phonémiseur : mêmes phonèmes, même audio, une respelling ne changerait rien. Ne pas
+    #    en chercher une — c'est le mot qu'il faut changer. On dit donc « option à cocher »
+    #    (Opsj'O~) et, pour la grille de liens, « cellule » (sEl'yl) : deux mots sans piège,
+    #    qui disent la même chose. Le texte écrit, lui, garde « case ».
+    (r'(?i)\bcases à cocher\b', 'options à cocher'),
+    (r'(?i)\bcase à cocher\b', 'option à cocher'),
+    (r'(?i)\bcases\b', 'cellules'),
+    (r'(?i)\bcase\b', 'cellule'),
     (r'(?i)\bissues\b', 'ichiouze'),
     (r'(?i)\bfunnel\b', 'feunel'),
     (r'(?i)\bEnterprise\b', 'Enn-teurpraïze'),
@@ -183,7 +205,8 @@ EN = [
     (r'\bj and k\b', 'J and K'),
     (r'\bJUnit\b', 'J Unit'),
     (r'\bSQL\b', 'S Q L'),
-    (r'\bSHA\b', 'S H A'),
+    # SHA : les développeurs francophones disent « cha », pas les trois lettres.
+    (r'\bSHAs?\b', 'cha'),
     (r'\bGNU\b', 'G N U'),
     (r'\bLOWER BOUND\b', 'lower bound'),
     (r'\band/or\b', 'and or'),

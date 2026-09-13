@@ -253,7 +253,11 @@ describe('Vérificateurs automatiques sur les nouvelles MR', () => {
     app.state.mrs['grp/app'] = [mrApi(200)];
     const { body: r } = await app.api('POST', '/api/discover');
     assert.equal(r.created, 1);
-    assert.deepEqual(r.auto_verify, { lancees: 0, ignorees: 0, plafonnees: 0 });
+    /* `services_arretes` est arrivé avec le pré-vol Docker : une vérification automatique ne
+       part plus quand les services du répertoire « in place » sont à l'arrêt — un run les
+       aurait comptés comme des tests cassés. Ici, il n'y a rien à lancer : le compte est à zéro
+       comme les autres. */
+    assert.deepEqual(r.auto_verify, { lancees: 0, ignorees: 0, plafonnees: 0, services_arretes: 0 });
     assert.equal(verifications().length, avant, 'aucune vérification créée');
   });
 });

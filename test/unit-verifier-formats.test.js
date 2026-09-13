@@ -154,7 +154,10 @@ Failed asserting that 41 matches expected 42.
 </testsuites>`;
 
     const r = v.parserJUnit(xml);
-    assert.equal(r.total, 3);
+    /* `total` COMPTE CE QUI A TOURNÉ, skips exclus — comme du côté TAP. Il valait 3 ici : le
+       même projet annonçait donc un total différent selon le format qu'il rendait, et les deux
+       chiffres n'étaient pas comparables d'un rapport à l'autre. */
+    assert.equal(r.total, 2, 'trois cas déclarés, deux exécutés : le sauté ne compte pas');
     assert.deepEqual(r.tests.map((t) => t.test), ['PanierTest › testRemise'],
       'le test sauté n’est ni un succès ni un échec');
     assert.equal(r.tests[0].message, 'PanierTest::testRemise',
@@ -214,7 +217,8 @@ tests/test_panier.py:12: AssertionError</failure></testcase>
 </testsuite></testsuites>`;
 
     const r = v.parserJUnit(xml);
-    assert.equal(r.total, 3);
+    // Même règle que ci-dessus : `skipped` est déclaré, pas exécuté.
+    assert.equal(r.total, 2);
     assert.deepEqual(r.tests.map((t) => t.test), ['tests.test_panier › test_remise']);
     assert.equal(r.tests[0].message, 'assert 41 == 42');
     assert.match(r.tests[0].log_excerpt, /> {7}assert panier\.total\(\) == 42/,

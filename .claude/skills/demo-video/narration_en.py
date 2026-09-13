@@ -13,13 +13,16 @@ l'orthographe correcte ici, jamais une graphie phonétique.
 
 NARRATION = [
     (
-        "This is Mergerie, a local AI-assisted development cockpit. Ten tabs in a column down the left: merge request reviews, coding sessions, notes, Jira, git, Docker, Jenkins, work links, stats and settings. The badges flag work that is waiting, never decorative totals. "
+        "This is Mergerie, a local AI-assisted development cockpit. Eleven tabs in a column down the left: merge request reviews, coding sessions, agents, notes, Jira, git, Docker, Jenkins, work links, stats and settings. The badges flag work that is waiting, never decorative totals. "
     ),
     (
         "We start with the merge requests to handle. Each card carries the essentials: the number, the title, the project, the author and the date, then the branches involved and links to the ticket and to the forge. "
     ),
     (
         "A search box filters on title, author, project or ticket. You will find one everywhere in the tool: on an active repository, lists grow long fast. "
+    ),
+    (
+        "The queue sorts the way you need it: smallest first, oldest first, lowest score, blockers first. When the order is not the usual one, the control says so — a reordered list nobody can explain is a list nobody reads. "
     ),
     (
         "The Review button runs the AI analysis on this merge request. The small arrow beside it offers two variants: review on its own, or review together with a teaching explanation of the change. "
@@ -46,6 +49,9 @@ NARRATION = [
         "On each card, Classify without review takes a trivial merge request out of the queue, Merge merges it directly, and Let the AI code opens a coding session from this merge request. "
     ),
     (
+        "And when an agent has mapped a subject, the merge requests that touch its files carry its card: you know whose ground you are walking onto before you even open the diff. "
+    ),
+    (
         "Let us move to the merge requests that have already been reviewed. "
     ),
     (
@@ -58,19 +64,37 @@ NARRATION = [
         "Every report follows the same structure: a summary, the findings with their exact location in the code and their severity, what is good, and an overall score. "
     ),
     (
+        "Every finding carries a file and a line. Turn into drafts converts them in one gesture into remarks pinned on the diff, ready to be read again. Nothing reaches the forge. "
+    ),
+    (
+        "And what cannot be pinned is said out loud: a finding about a line the branch never touched has no anchor in the diff, and the forge would refuse the position. Those are left aside, and counted. "
+    ),
+    (
         "The second tab holds the teaching explanation: what the merge request does and why, so you can pick up a change you did not write. The Copy button takes the whole report as Markdown. "
     ),
     (
         "Above them, Open the code launches your editor on the local repository, on the right branch. Context reopens the context folder for this merge request, to complete it before another pass. "
     ),
     (
-        "Re-run the review does everything again. Re-run delta only re-reads what changed since the last pass: far cheaper, and what you want most of the time. "
+        "Re-run the review does the whole thing again. When the branch has moved since, the report is flagged stale, and the re-run becomes a delta one: it only reads what changed. "
     ),
     (
         "Mark as done files the merge request away without merging it, Merge merges it, and Delete report starts over from scratch. "
     ),
     (
+        "The menu holds the rarer gestures: publishing the report on the merge request, filing a finding into the todos, deleting the report. "
+    ),
+    (
         "Further down, you can ask for a change to the report in plain language: dig into this point, make it shorter. The AI regenerates the report with that instruction. "
+    ),
+    (
+        "Just below, you can simply ask a question: why is this point blocking, what would happen if it were left alone. "
+    ),
+    (
+        "The answer is added under the report, and the report does not move: not its text, not its score, not its versions. Asking for an explanation must not cost you the report you are reading. "
+    ),
+    (
+        "And if a note page talks about this merge request, it is quoted here. The autolink works both ways: the note leads to the merge request, the merge request finds the note again. "
     ),
     (
         "Below that, the merge request comments are pulled from the forge. You read the thread, you reply, and the reply is posted to GitLab or GitHub without leaving the tool. "
@@ -118,10 +142,13 @@ NARRATION = [
         "When the read-through is done, one button sends them all. The author gets one notification instead of ten, and a remark you would have dropped three files later never goes out. "
     ),
     (
+        "And when the batch is no longer any good, Delete all empties it at once. The confirmation says how many remarks are going and which ones: ten remarks written yesterday are not thrown away on an anonymous “are you sure”. "
+    ),
+    (
         "Now the AI Dev tab, where the AI writes the code. "
     ),
     (
-        "Three families of sessions: coding on git repositories, coding outside a repository on a plain folder of your machine, and exploration, which answers a question about the code without changing anything. "
+        "Four families of sessions: coding on git repositories, coding outside a repository on a plain folder of your machine, exploration, which reads the code without changing anything, and the free question, with no repository at all. "
     ),
     (
         "Let us create a coding session. "
@@ -136,7 +163,16 @@ NARRATION = [
         "Two options change the behaviour: auto-push, which pushes the branch as soon as the work is done, and permission for the AI to ask questions when it hesitates. Below, a field lets you resume an existing agent session instead of opening a fresh one. "
     ),
     (
-        "Save prepares the session, Converge chains it straight into the review loop. "
+        "A session can also borrow an agent's profile: its role, its scope of repositories, its tools and its skills, without typing any of it again. "
+    ),
+    (
+        "At the bottom, the main button creates the session and runs it. A checkbox chains it straight into the convergence loop, and the button next to it creates the session without running it — you start it when you want. "
+    ),
+    (
+        "A window you have typed into can be set aside. The dash files it into the menu, with what you had written. "
+    ),
+    (
+        "One click brings it back: the fields you filled, the cursor in the field you left, and the tab it came from. "
     ),
     (
         "Here is a session spanning four repositories at once. Each project shows its state, its branch and its progress. A failing project never interrupts the others — its error stays on its own row. "
@@ -145,16 +181,22 @@ NARRATION = [
         "A session covering several projects shows its list folded: past a few repositories a single session would fill the screen and hide the others. One click unfolds it, and the choice is remembered. "
     ),
     (
-        "Each project has its own actions: run it alone, without replaying the other nine, and push its branch. "
+        "Each project has its own actions: run this one again, without replaying the others. "
     ),
     (
-        "And create its merge request. As soon as several projects are ready, two grouped buttons appear: push for all, and create all the merge requests. "
+        "Send it a follow-up that concerns only it, review its merge request, or merge it. And when several projects are ready at once, grouped buttons do the gesture for all of them. "
     ),
     (
-        "On the right, the actions for the whole session. Re-run failed projects replays only what did not go through. "
+        "On the right, the actions for the whole session: run it again, chain it into convergence, and — when some projects failed — re-run only those. A session that stopped in error while the work was done also offers to check the state of the branches. "
     ),
     (
-        "Check branch state is for when a session stopped in error although the work was already committed: the tool re-reads the repositories, recognises what is done, and gives you back the push and merge request buttons. Without spending a single AI call. "
+        "A session can be duplicated: the form opens prefilled, and saving creates a new session instead of overwriting the old one. "
+    ),
+    (
+        "A session keeps all of its iterations: the first run, then every follow-up, with the request that produced it. The list is searchable. "
+    ),
+    (
+        "And each iteration carries its own diff. By the third follow-up, the three lines you had just asked for were buried among two hundred: this button shows only what that one pass changed. Only the latest measurement is kept. "
     ),
     (
         "Here is the other case: the AI chose to ask. It puts its questions with the options it can see in the repository, and waits. "
@@ -172,7 +214,37 @@ NARRATION = [
         "Exploration changes nothing at all: you ask a question about the code, you read the answer, you follow up. This is the mode to use to understand before touching anything. "
     ),
     (
+        "The free question touches no repository at all: you ask the AI something, the answer is kept, and you find it again with its iterations. "
+    ),
+    (
         "These groups can be named and kept: a batch is then re-verified with a single button. "
+    ),
+    (
+        "The Agents tab. An agent is a session profile: a role, a scope of repositories, tools, skills, an output — and sometimes a schedule. "
+    ),
+    (
+        "Each card says what the agent is for and what it works on: every active repository, or only the ones you gave it. "
+    ),
+    (
+        "Ask sets it off on a subject. Its output can be a report, a note page rewritten at every run, or even another agent. "
+    ),
+    (
+        "This one leaves on its own, every Monday at seven. An agent that runs unattended must have a bound on its turns: without one, the schedule is refused. "
+    ),
+    (
+        "A domain agent, for its part, keeps a knowledge: the map of its subject, versioned — where that code lives, by which mechanism, and how it is tested. "
+    ),
+    (
+        "And that map ages. The tool counts the commits that touched its paths since the last mapping, and flags the paths that no longer exist. "
+    ),
+    (
+        "Update re-maps what has moved, rather than doing the whole thing again. "
+    ),
+    (
+        "A new version does not impose itself: it waits to be read and validated. Wrong knowledge costs more than no knowledge. "
+    ),
+    (
+        "The second sub-tab lists what the disk offers: the skills and subagents found in the cloned repositories and in your home. Read-only — the disk decides, not the tool. "
     ),
     (
         "The Notes tab is the one the tool opens on: it is the first screen of the day. "
@@ -184,10 +256,22 @@ NARRATION = [
         "It also counts the coding sessions waiting for a gesture: never run, committed but not pushed, pushed without a merge request. The work is done, only a click is missing. "
     ),
     (
+        "The brief also says what the background watch saw while you were away: a container that went down, a Jenkins build that finished, an automatic cap that left work aside. "
+    ),
+    (
+        "And what the agents did on their own, with what they produced. "
+    ),
+    (
+        "Copy for the daily turns it into text you can paste into the morning meeting. "
+    ),
+    (
         "Todos are sorted by priority first, then in the order you arrange yourself. They are ticked in place. "
     ),
     (
         "This one was raised by the tool: a session stopped to ask a question. The queue is free, nothing will restart, and the desktop notification is long gone — the todo stays in sight. Answering closes it. "
+    ),
+    (
+        "A todo can be pushed an hour later or to tomorrow morning, and it keeps the link to whatever made it exist: a merge request, a ticket, a container, a verification. "
     ),
     (
         "Pages are free-form Markdown notes, searchable. "
@@ -205,6 +289,9 @@ NARRATION = [
         "You filter by environment, by service, by tag — and the grid stays readable without ever scrolling sideways. "
     ),
     (
+        "Pasting an address is enough: the tool reads the URL, recognises the service and the environment, and suggests the label. "
+    ),
+    (
         "Search goes through everything, and the command palette searches the same database: a link, a merge request, a ticket, a todo. "
     ),
     (
@@ -220,16 +307,22 @@ NARRATION = [
         "And the token cost is shown as a deliberate lower bound: the agent's internal work is not counted, and the tool says so rather than pretending. "
     ),
     (
+        "Git operations are counted too, with their failure rate, and the findings that come back from one review to the next are grouped: that is where you see what deserves a rule rather than one more remark. "
+    ),
+    (
         "The Git tab applies the same operation to several repositories at once. "
     ),
     (
-        "Six tools. The first creates or deletes branches and tags across a selection of repositories. "
+        "Eight tools. The first creates or deletes branches and tags across a selection of repositories. "
     ),
     (
         "Repositories are filtered by search, and so are branches — an active repository has hundreds of them, a raw list would be unusable. "
     ),
     (
         "Nothing runs without a line-by-line preview: you see exactly what is about to happen, repository by repository, before you confirm. "
+    ),
+    (
+        "The second merges one branch into another, and when there is a conflict, it is resolved right here, file by file, without leaving the tool. "
     ),
     (
         "Navigation puts your local repositories on a given branch, all at once, from a directory holding all the clones. "
@@ -239,6 +332,9 @@ NARRATION = [
     ),
     (
         "The branch explorer compares branch state across repositories: what is ahead, behind, or missing. "
+    ),
+    (
+        "Compare puts two repositories side by side, branch by branch or tag by tag, even with no common history. "
     ),
     (
         "Find a ref looks for a tag or a branch across every active repository and tells you which ones have it. "
@@ -295,7 +391,7 @@ NARRATION = [
         "Reuse fills the launch form with that run's values without sending anything: you start from what worked and change one thing. Run again, right beside it, goes out immediately — with a confirmation, and the confirmation shows the values. "
     ),
     (
-        "The menu carries the number of jobs that ran today. The question you ask walking past is “did anything move this morning?”. "
+        "The menu carries the number of jobs that ran today, and today's failures in red. A run started from the tool is watched to its end: the notification arrives when the build finishes, with nothing to come back and check. "
     ),
     (
         "The Jira tab automatically pulls the tickets assigned to you. "
@@ -304,10 +400,16 @@ NARRATION = [
         "You filter by ticket or by person, and read the description, the comments and the attachments without leaving the tool. "
     ),
     (
+        "Under the ticket, what Mergerie knows about it: the merge requests that quote it, their state, and the coding sessions it set off. "
+    ),
+    (
         "The status can be changed from here, and Let the AI code opens a coding session already filled in with the ticket's content. "
     ),
     (
-        "That leaves the settings, spread across eight tabs. "
+        "Watched tickets are the ones whose status you want to see change without going to look: the tool re-reads them regularly, and the morning brief says so. "
+    ),
+    (
+        "That leaves the settings, spread across eleven tabs. "
     ),
     (
         "General holds the theme — light, dark, or following the system — the language, French or English, and the display density. "
@@ -325,7 +427,7 @@ NARRATION = [
         "Ticked, it starts by itself on every new merge request of the repositories it covers. Five verifications at most per discovery round: beyond that, the merge requests keep their button and the log says what did not start. "
     ),
     (
-        "A verifier is declared here, in two families. A list of commands, replayed in each targeted repository, with nothing to write. Or your own script, which receives every repository at once and returns a verdict in the expected format. "
+        "A verifier is declared here: you name it, and you give it the list of commands to run. There is nothing else to it — no script to write, no format to respect. "
     ),
     (
         "The commands are ordered: install before testing. They run without a shell, in the prepared repository. Mergerie recovers the names of the broken tests from a JUnit report if you declare one, otherwise from the TAP that many tools already emit, and failing that it names the command rather than inventing a number of tests. "
@@ -343,7 +445,13 @@ NARRATION = [
         "The Git tab carries the forge URL, the access token and the clone directory, with a button that tests the connection before you go any further. "
     ),
     (
-        "And notifications warn you when a job finishes, with a score threshold below which you want to be alerted. "
+        "And notifications warn you when a job finishes, with a score threshold below which you want to be alerted. The background watch adds its own: a Jenkins build finished, a container that goes down, a failed restore, an automatic cap reached. "
+    ),
+    (
+        "Voice dictation is configured here. The engine can run on your own machine, or go through the browser — in which case the audio leaves for Google or Apple, and the screen says so. "
+    ),
+    (
+        "Every text field then carries a microphone, and the vocabulary of your own repositories is handed to the engine: project, branch and ticket names come out right the first time. "
     ),
     (
         "At the bottom of the screen, a bar follows jobs live: what is running, the tokens spent, and a log that unfolds. That log holds an Activity view, listing what was launched and what finished, with a link that takes you straight back to the object concerned. "
@@ -355,6 +463,6 @@ NARRATION = [
         "The question mark key shows every keyboard shortcut. "
     ),
     (
-        "And everything you have just seen exists in dark theme too. The AI prepares, you are the one who merges. "
+        "And everything you have just seen exists in light theme too. The AI prepares, you are the one who merges."
     ),
 ]

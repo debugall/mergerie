@@ -29,10 +29,17 @@ npm install
 npm start          # http://localhost:4319
 ```
 
+Optional, for **voice dictation**: `sh scripts/install-whisper.sh` (macOS/Linux) or the **Install**
+button in Settings → Voice dictation. Nothing else is needed to run the tool.
+
 **`npm run demo` — see it live in 30 seconds, no config, no tokens.** It seeds a realistic fake database
 (reviews, scores, resolution tracking, token cost, AI sessions, and a browsable fictional repository behind
 "View diff") into an isolated `data-demo/`, then launches the tool on it in dry-run — no forge connection,
-no token required.
+no token required. On the **Agents** side it carries the three shipped agents, two **domain agents** with
+their versioned knowledge — one version awaiting validation, one unverified path, one reported gap — and a
+run triggered by a **schedule** that rewrote a note page. One coding session carries **three iterations, the
+last one with its diff**, and the out-of-repo session likewise, so the per-follow-up diff is
+visible on both sides without an agent.
 
 ```bash
 npm run demo       # http://localhost:4319
@@ -45,28 +52,44 @@ npm run demo       # http://localhost:4319
 
 Ten tabs in a left sidebar, each one line — plus the objective verification, which lives inside Reviews and Settings:
 
-- **Reviews** — AI-scored, versioned reviews of GitLab merge requests **and GitHub pull requests**; incremental re-reviews; an autonomous **convergence loop** (review → fix → re-review until the score threshold) Convergence works on the *review*; the **objective verification** comes after, on the merge request itself — see the guide. A report stays with you unless you decide otherwise: one button **publishes it as a comment on the merge request**, and a setting does it automatically at the end of every review — unchecked by default, because writing on other people's work is a decision.
-- **AI Dev** — automated coding sessions (the AI codes, commits, pushes, opens the MR), off-repo coding (with the AI's report back and follow-ups that continue the session), read-only code exploration, and **free questions** asked with no repository at all (kept, labelled and resumable) — *from prompt to converged MR* in one click. On a multi-repo session each project runs, and takes a follow-up fix, on its own. A follow-up can be **written while a session is still running** and waits on the card until you send it — or goes out by itself at the end of the session if you tick the box. Finished sessions can be tidied away without being deleted.
+- **Reviews** — AI-scored, versioned reviews of GitLab merge requests **and GitHub pull requests**; incremental re-reviews; an autonomous **convergence loop** (review → fix → re-review until the score threshold) Convergence works on the *review*; the **objective verification** comes after, on the merge request itself — see the guide. A question can be asked **about** a report — why is this finding blocking, does it hold for the other caller — and the answer lands under it without touching the report or its score. A report stays with you unless you decide otherwise: one button **publishes it as a comment on the merge request**, and a setting does it automatically at the end of every review — unchecked by default, because writing on other people's work is a decision. The morning brief counts what is **ready to merge** — score above the threshold, verified green, no ticket in the way. Nothing is merged: the tool says how many are only waiting for a decision.
+- **AI Dev** — automated coding sessions (the AI codes, commits, pushes, opens the MR), off-repo coding (with the AI's report back and follow-ups that continue the session), read-only code exploration, and **free questions** asked with no repository at all (kept, labelled and resumable) — *from prompt to converged MR* in one click. On a multi-repo session each project runs, and takes a follow-up fix, on its own. The latest iteration keeps **the diff of what it changed** — off-repo included, where a tracking repository kept outside your folder stands in for the missing branch — so re-reading your last follow-up no longer means re-reading everything. A follow-up can be **written while a session is still running** and waits on the card until you send it — or goes out by itself at the end of the session if you tick the box. Finished sessions can be tidied away without being deleted.
+- **Agents** — **session profiles**: a role, a scope, tools, skills, an output, sometimes a schedule. Two shipped examples — the **incident investigator**, which finds which repository and which file holds the code named by a trace, and the **librarian**, which keeps the service map in a note page. And **domain agents**: give a subject, the cartographer writes the map of that subject across the repositories — every path verified one by one, the map's age counted without AI, updates reviewed and validated. An agent never pushes and never publishes on its own.
 - **Objective verification** — a plain list of commands (`npm ci`, `npm test`) gives a merge request a verdict that isn't an opinion: `✓ verified`, `✗ 2 tests broken`, `⚠ base already red`. Broken test names are read straight from TAP or JUnit output when there is any. Merge requests from different repositories that only hold together as a set are **verified together**, and one click opens a fixing session covering all of them. A verifier can also **start by itself on every new merge request** of the repositories it covers, and the verdict then waits on the card: `See the verifiers' results` opens what ran, on which commits, and what the commands returned. See the guide.
 - **Jenkins** — see where your CI jobs stand and run them, without leaving the tool: every job your account sees, grouped by folder, with a search (a company installation has hundreds) and a filter for what is not fine. Running always asks first and names the job; a parameterised job opens its page instead, so you see what you are about to send. Nothing is polled — the screen asks when you open the tab.
-- **Notes** — the sticky notes of everyday work, kept inside the tool: note pages in Markdown, a prioritised todo list with due dates that double as **desktop reminders**, and a **morning brief** that opens the day — reminders, sessions waiting for an answer, failed verifications, fresh and dormant MRs, all computed locally with **no AI call**. `!214` and `PROJ-720` written in a note become links, and a merge request or a ticket can be added to the todos in one click.
-- **Jira** — your assigned tickets fetched automatically, full detail with attachments, status changes and comments; **watched tickets** (assigned to you or not) with a desktop notification on every status change, and a menu badge counting your in-progress tickets.
+- **Notes** — the sticky notes of everyday work, kept inside the tool: note pages in Markdown — with **sub-pages**, one level deep, so a general page can carry the detail of each of its points — a prioritised todo list with due dates that double as **desktop reminders**, and a **morning brief** that opens the day — reminders, sessions waiting for an answer, failed verifications, fresh and dormant MRs, all computed locally with **no AI call**. `!214` and `PROJ-720` written in a note become links, and a merge request or a ticket can be added to the todos in one click.
+- **Jira** — your assigned tickets fetched automatically, full detail with attachments, linked tickets (grouped by relation, opened without leaving the tab), status changes and comments; **watched tickets** (assigned to you or not) with a desktop notification on every status change, and a menu badge counting your in-progress tickets.
 - **Git** — multi-repo branch/tag/command operations across both forges, a **branch merge with on-screen conflict resolution** (both versions side by side, keep one, keep both, or write your own; then commit and push, each behind its own confirmation), branch explorer, ref finder and a **two-repository compare** (no common history required), **restorable** deletions, always with a preview.
 - **Docker** — compose project health and `.env` drift, batch actions, live multi-container logs, error badges in the menu.
-- **Links** — the work links your bookmarks cannot structure: a **services × environments grid** (one URL per cell, written out — no guessing an address from another), free links found by tag, and a **global palette** (`Ctrl`/`Cmd`+`K`) that searches links, MRs, tickets, notes and todos at once, ranked by frecency. A service linked to a repository puts buttons straight on its merge requests, including **templated** ones (`{env}`, `{branch}`, `{mr_iid}`) resolved on click. Chrome bookmarks import with a preview.
+- **Links** — the work links your bookmarks cannot structure: a **services × environments grid** (addresses written out — no guessing one from another), where a cell shows its three most opened and opens the rest in a panel anchored on it, so a row's height never depends on its content. You add by **pasting**: one URL per line, and the tool suggests the name, the service and the environment — never silently, and never a "likely" column. Free links are a compact list found by tag, and a **global palette** (`Ctrl`/`Cmd`+`K`) searches links, MRs, tickets, notes and todos at once, ranked by frecency. A service linked to a repository puts buttons straight on its merge requests, including **templated** ones (`{env}`, `{branch}`, `{mr_iid}`) resolved on click. Chrome bookmarks import with a preview.
 - **Stats** — MR funnel, score trends, per-project resolution rate, token cost, **the five most expensive sessions** and **the findings that keep coming back** — the same finding raised on three merge requests of one repository turns into a review rule in one click. Every number is a door: it opens Reviews filtered on that repository, at the right stage.
-- **Settings** — GitLab / GitHub / Jira connections, repositories (each one can opt out of MR fetching while staying usable for git and coding sessions), review rules, automatic review of merge requests on arrival and automatic re-review when a report goes stale (both capped, both off by default), automatic publishing of review reports on the MR, prompt templates, theme and language.
+- **Settings** — GitLab / GitHub / Jira connections, repositories (each one can opt out of MR fetching while staying usable for git and coding sessions), review rules, automatic review of merge requests on arrival and automatic re-review when a report goes stale (both capped, both off by default), automatic publishing of review reports on the MR, prompt templates, theme and language, review rules that can be limited to one repository, the default boxes of a new session, and the Jenkins jobs linked to your repositories.
 
 Everywhere: `Ctrl`/`Cmd` + `K` opens a command palette (jump to a tab, a merge request, a session by
 name — `!217` or `PROJ-1408` typed alone go straight there), `j` / `k` walk the current list,
-`v` / `c` / `m` / `x` act on the focused card, `?` lists every shortcut. The tool reopens on the tab
-and review stage you left, and the report panel opens on what changed since your last visit.
+`v` / `c` / `m` / `x` act on the focused card, `?` lists every shortcut. A **microphone on every
+text field** (`Ctrl`/`Cmd` + `Shift` + `Space`) writes what you say at the caret: transcription is
+**local**, by whisper.cpp, and the engine is fed **your** vocabulary — repositories, services,
+environments, Jira prefixes, open branches — which is what makes it write `webapp-front` and `!214`
+instead of "web app front" and "214". Off by default; installed from the settings screen, which
+walks the whole chain and names the first step that breaks. **Any window you type into minimises**
+to the bottom of the menu with a `—`, so you can go and check a branch name or a ticket without
+losing what you had written, and come back to it — fields, cursor and tab included. The tool
+reopens on the tab and review stage you left, and the report panel opens on what changed since
+your last visit.
 
 **The tabs talk to each other.** A todo tied to a merge request ticks itself when that merge request
 is merged; the last Jenkins build carrying a branch is written on its merge request card; a ticket
 moved to review pushes its merge requests to the top; an exploration turns into a coding session
 **in the same agent session**; the branches of merged merge requests gather into one lot; and a
 verification that runs in place says the state of the Docker services before it starts.
+A review report says **which notes cite it** and **which domain map it touches** — and hands that map
+to the AI as review context; a red verdict leaves a todo behind and, if you ask, a comment on the
+Jira ticket; a failed Jenkins console and a red verification open the **incident investigator** with
+the trace already in the request; and the morning brief picks up **the merge left half-resolved
+yesterday**, the Git operations that failed and the containers that went down — the last of these
+watched by the server itself, like the end of a Jenkins build you started from here, so it reaches
+you with the tab closed.
 
 ## Learn more
 
