@@ -299,6 +299,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Statistics count in tokens too.** The dashboard showed dollars next to the costliest
+  sessions and next to each agent; it now reads in tokens like the agents screen, for the same
+  reason — a dollar figure exists only on the backends that announce one.
 - **An up-to-date map no longer claims one commit has aged it.** `N commits since the map` read
   `1 commit` on a repository where nothing had moved. On an empty `git log`, a fallback landed on
   the command object itself and `[object Object]` counted as a line — so as a commit. The same

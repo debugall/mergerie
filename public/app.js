@@ -2177,9 +2177,11 @@ async function loadDashboard() {
   const topHtml = `<div class="dash-card"><h3>${tr('stats.top-tasks.title')}</h3>${cap('stats.top-tasks.help')}
     ${/* A36 — CHAQUE LIGNE EST UNE PORTE. Les cinq sessions les plus chères se lisaient sans
           pouvoir les OUVRIR : on retenait le début du prompt et on allait le chercher dans
-          Dev IA. Le coût en dollars, servi depuis toujours, ne s'affichait pas non plus. */''}
+          Dev IA. Le classement se lit en TOKENS, comme l'écran Agents : un montant en dollars
+          n'existe que sur les backends qui l'annoncent et ne se compare pas d'un mois à
+          l'autre quand les tarifs bougent. */''}
     ${top.length ? `<div class="md-tablewrap"><table class="md-table"><tbody>${top.map((x) => `<tr>
-        <td class="stats-top-tok">${esc(fmtNum(x.tokens))}${x.cost_usd != null ? `<div class="muted">${esc(fmtCout(x.cost_usd))}</div>` : ''}</td>
+        <td class="stats-top-tok">${esc(fmtNum(x.tokens))}</td>
         <td><button type="button" class="stat-porte" data-go-session="${x.id}" data-go-kind="${esc(x.kind === 'local' ? 'local' : (x.kind === 'ask' ? 'ask' : 'code'))}"
           title="${esc(tr('stats.go.session'))}">${esc(x.label || x.prompt)}</button></td></tr>`).join('')}</tbody></table></div>`
     : `<p class="muted">${esc(tr('stats.top-tasks.empty'))}</p>`}</div>`;
@@ -2193,7 +2195,7 @@ async function loadDashboard() {
     <div class="md-tablewrap"><table class="md-table"><tbody>${ag.map((x) => `<tr>
         <td class="stats-top-tok">${esc(fmtNum(x.tokens))}</td>
         <td><button type="button" class="stat-porte" data-go-agent="${esc(x.name)}" title="${esc(tr('stats.go.agent'))}">${esc(x.name)}</button>
-          <div class="muted">${esc(tr('agents.stats.runs', { n: x.runs, count: x.runs }))}${x.cost_usd != null ? ` · ${esc(fmtCout(x.cost_usd))}` : ''}</div></td>
+          <div class="muted">${esc(tr('agents.stats.runs', { n: x.runs, count: x.runs }))}</div></td>
       </tr>`).join('')}</tbody></table></div></div>` : '';
 
   /* A37 — LE DÉLAI DE CYCLE : combien de temps une merge request met à passer, et OÙ le temps
