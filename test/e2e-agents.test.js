@@ -326,6 +326,43 @@ describe('Agents : l’onglet, les profils, les runs', { skip: dispo ? false : M
     await page.waitForSelector('#agentModal[hidden]', { state: 'attached' });
   });
 
+  /* CHAQUE BOUTON DIT CE QU'IL FAIT. Le test vise la LIGNE D'ACTIONS entière et pas une
+     liste de boutons connus : un bouton ajouté demain sans explication le fera échouer, ce
+     qui est exactement le service qu'on attend de lui. */
+  test('chaque bouton de la liste des agents porte son explication', async () => {
+    await rechargerListe();
+    const sansAide = await page.evaluate(() => {
+      const manques = [];
+      const vus = new Set();
+      for (const b of document.querySelectorAll('#agentList .agent-actions button, #tab-agents .toolbar button')) {
+        const nom = b.className.replace(/btn|btn-sm|btn-primary|btn-danger/g, '').trim() || b.id;
+        if (vus.has(nom)) continue;
+        vus.add(nom);
+        const aide = (b.dataset.tip || b.title || '').trim();
+        if (!aide || /^agents\./.test(aide)) manques.push(`${nom} → « ${aide} »`);
+      }
+      return manques;
+    });
+    assert.deepEqual(sansAide, [], sansAide.join(' | '));
+    // …et l'explication s'ouvre vraiment au survol, dans la bulle maison.
+    const demander = page.locator('#agentList .btn-agent-ask').first();
+    await demander.hover();
+    await page.waitForSelector('#tip.on');
+    assert.match(await page.locator('#tip').innerText(), /\S/, 'la bulle s’ouvre vide');
+  });
+
+  /* LE COÛT EN TOKENS, PAS EN DOLLARS. Un montant en dollars n'existe que sur les backends
+     qui l'annoncent et ne se compare pas d'un mois à l'autre ; les tokens sont mesurés
+     partout. Le test interdit explicitement le retour du `$` sur cet écran. */
+  test('la carte dit ce que le dernier run a brassé, en tokens et jamais en dollars', async () => {
+    await rechargerListe();
+    await page.waitForFunction(() => [...document.querySelectorAll('#agentList .agent-card')]
+      .some((c) => /token/i.test(c.textContent)));
+    const texte = await page.locator('#agentList').innerText();
+    assert.match(texte, /token/i);
+    assert.ok(!/\$\s?\d/.test(texte), `un montant en dollars est resté : ${texte.match(/\$\s?\d[\d.,]*/)}`);
+  });
+
   test('aucune erreur JavaScript pendant tout ce parcours', () => {
     assert.deepEqual(erreurs, []);
   });

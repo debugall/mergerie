@@ -48,19 +48,23 @@ function repos(agentId) {
 
 function decorer(a) {
   if (!a) return null;
-  const k = db.prepare(`SELECT id, version, status, created_at, repos_json, gaps_json FROM agent_knowledge
-    WHERE agent_id = ? AND status = 'active'`).get(a.id);
+  const k = db.prepare(`SELECT id, version, status, created_at, repos_json, gaps_json, tokens, md_path
+    FROM agent_knowledge WHERE agent_id = ? AND status = 'active'`).get(a.id);
   const enAttente = db.prepare(`SELECT version FROM agent_knowledge
     WHERE agent_id = ? AND status = 'pending' ORDER BY version DESC`).get(a.id);
   const dernier = db.prepare(`SELECT id AS task_id, status, finished_at FROM task
     WHERE agent_id = ? ORDER BY id DESC`).get(a.id);
-  const cout = dernier ? db.prepare(`SELECT SUM(cost_usd) c FROM usage
+  /* CE QUE LE DERNIER RUN A CONSOMMÉ, en TOKENS. La carte affichait des dollars : un chiffre
+     que seul le backend annonce, absent sur les backends muets, et qui ne se compare à rien
+     d'un mois à l'autre quand les tarifs bougent. Les tokens sont mesurés dans tous les cas
+     et disent la seule chose actionnable — combien de texte cet agent brasse à chaque passage. */
+  const cout = dernier ? db.prepare(`SELECT SUM(tokens_est) tok FROM usage
     WHERE owner_kind = 'task' AND owner_id = ?`).get(dernier.task_id) : null;
   return {
     ...a,
     repos: repos(a.id),
     is_domain: a.knowledge_prompt != null,
-    last_run: dernier ? { ...dernier, cost_usd: (cout && cout.c) || null } : null,
+    last_run: dernier ? { ...dernier, tokens: (cout && cout.tok) || null } : null,
     /* L'HORAIRE EN TOUTES LETTRES. La carte affichait la SYNTAXE (`weekly mon 07:00`) : une
        grammaire qu'on écrit dans le formulaire, pas une phrase qu'on lit sur une carte — et
        elle ne suivait pas la langue. `phrase()` existait et n'était appelée nulle part. */
@@ -87,6 +91,9 @@ function decorer(a) {
       created_at: k.created_at,
       unverified: jsonOu(k.repos_json, []).reduce((n, r) => n + ((r.unverified || []).length), 0),
       gaps: jsonOu(k.gaps_json, []).length,
+      // Ce que la carte coûte à lire, à chaque run : elle part dans le prompt à chaque fois.
+      // eslint-disable-next-line global-require
+      tokens: require('./agentknowledge').tokensDe(k),
       pending_version: enAttente ? enAttente.version : null,
     } : (enAttente ? { pending_version: enAttente.version } : null),
   };

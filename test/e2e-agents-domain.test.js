@@ -19,16 +19,20 @@ const path = require('node:path');
 process.env.MERGERIE_CLAUDE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'dom-home-'));
 
 // eslint-disable-next-line import/order
-const { startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, makeRemoteRepo, waitForJobs, attendreServeur } = require('./helpers/app');
+const { startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, makeRemoteRepo, waitForJobs, attendreServeur, git } = require('./helpers/app');
 
 const { dispo } = navigateurDispo();
 
 describe('Agents de domaine', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
-  let app; let navigateur; let page; let idApi; let idFront;
+  let app; let navigateur; let page; let idApi; let idFront; let agentknowledge;
   const erreurs = [];
 
   before(async () => {
     app = await startApp();
+    /* APRÈS `startApp()` : `src/paths.js` lit MERGERIE_DATA_DIR au chargement, une fois.
+       Requis en tête de fichier, ce module pointerait sur la base de l'instance réelle. */
+    // eslint-disable-next-line global-require
+    agentknowledge = require('../src/agentknowledge');
     await app.configure();
     const d1 = makeRemoteRepo(path.join(app.dataDir, 'r1'));
     const d2 = makeRemoteRepo(path.join(app.dataDir, 'r2'));
@@ -228,6 +232,63 @@ describe('Agents de domaine', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
     assert.deepEqual(vue.targets.map((x) => x.project), ['groupe/api-core'],
       'les deux autres dépôts ne sont ni clonés ni lus');
     await waitForJobs(app.api, { timeout: 120000 });
+  });
+
+  /* « 12 COMMITS DEPUIS LA CARTE » NE DIT PAS LESQUELS. On relisait la carte sans savoir si
+     douze corrections de typo ou une refonte l'avaient périmée — et donc sans savoir si la
+     mise à jour, qui coûte un appel d'IA, valait la peine. Le badge est une porte. */
+  test('« N commits depuis la carte » ouvre les commits : sha, date, auteur, message', async () => {
+    // On fait bouger le dépôt DERRIÈRE la carte, comme la vie le fait.
+    const w = path.join(app.dataDir, 'r1', 'work');
+    fs.writeFileSync(path.join(w, 'src/app.js'), 'const a = 1;\nconst c = 3;\nmodule.exports = { a, c };\n');
+    git(w, ['add', '-A']);
+    git(w, ['commit', '-m', 'Réécrire le routage des notifications']);
+    git(w, ['push', 'origin', 'main']);
+    const sha = git(w, ['rev-parse', 'HEAD']).trim();
+    // L'âge est mémorisé une heure : sans cela on relirait la mesure d'avant ce commit.
+    agentknowledge.viderCacheAge();
+
+    await allerAgents();
+    await page.waitForSelector('#agentList .agent-age-stale:not([disabled])');
+    await page.locator('#agentList .agent-age-stale').first().click();
+    await page.waitForSelector('#ageModal:not([hidden])');
+    const txt = await page.locator('#ageBody').innerText();
+    assert.match(txt, /Réécrire le routage des notifications/, 'le message du commit');
+    assert.ok(txt.includes(sha.slice(0, 8)), `le sha court ${sha.slice(0, 8)} manque dans : ${txt}`);
+    assert.match(txt, /groupe\/api-core/i, 'le dépôt concerné est nommé');
+    assert.match(txt, /\d{2}/, 'la date du commit');
+    /* UN DÉPÔT À JOUR N'A PAS DE SECTION. Il en avait une, avec un commit fantôme : sur une
+       sortie `git log` VIDE, un repli tombait sur l'objet de `git.run` et « [object Object] »
+       devenait une ligne, donc un commit. Un dépôt à jour annonçait « 1 commit depuis la
+       carte », et c'est ce chiffre-là qu'on venait cliquer. */
+    assert.ok(!/webapp-front/i.test(txt), `un dépôt sans commit a une section : ${txt}`);
+    assert.ok(!/\[object/.test(txt), `un commit fantôme est affiché : ${txt}`);
+    await page.locator('#ageClose').click();
+    await page.waitForSelector('#ageModal[hidden]', { state: 'attached' });
+  });
+
+  /* CE QUE LA CARTE COÛTE À LIRE, VERSION PAR VERSION. Elle part dans le prompt de chaque run :
+     voir une v4 passer de huit à trente mille tokens est la seule façon de s'apercevoir
+     qu'elle a enflé, avant que chaque run le paie. */
+  test('chaque version de la connaissance dit sa taille en tokens', async () => {
+    /* L'agent des NOTIFICATIONS, nommément : une seconde cartographie tourne plus haut dans
+       ce fichier, et « le premier agent de domaine venu » n'aurait qu'une version. */
+    const a = (await app.api('GET', '/api/agents')).body
+      .filter((x) => x.is_domain).find((x) => /notification/i.test(x.knowledge_prompt || x.name));
+    assert.ok(a, 'agent de domaine des notifications introuvable');
+    const vs = (await app.api('GET', `/api/agents/${a.id}/knowledge`)).body;
+    assert.ok(vs.length >= 2, 'il faut plusieurs versions pour que la comparaison ait un sens');
+    for (const v of vs) assert.ok(v.tokens > 0, `v${v.version} ne dit pas sa taille : ${v.tokens}`);
+    // Et la carte de l'agent porte celle de la version EN SERVICE.
+    assert.ok(a.knowledge.tokens > 0, 'la carte ne dit pas ce que sa connaissance coûte');
+
+    await allerAgents();
+    await carteDomaine().locator('.btn-agent-knowledge').click();
+    await page.waitForSelector('#knowledgeModal:not([hidden])');
+    const versions = await page.locator('#knowledgeVersions').innerText();
+    assert.match(versions, /token/i, versions);
+    await page.locator('#knowledgeClose').click();
+    await page.waitForSelector('#knowledgeModal', { state: 'hidden' });
   });
 
   test('aucune erreur JavaScript pendant tout ce parcours', () => {

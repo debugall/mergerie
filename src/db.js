@@ -1526,6 +1526,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS agent_knowledge (
   UNIQUE (agent_id, version)
 )`);
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS agent_knowledge_active ON agent_knowledge(agent_id) WHERE status = 'active'");
+/* CE QUE LA CARTE COÛTE À LIRE. Une connaissance de domaine est recopiée dans le prompt de
+   chaque run de l'agent : sa taille en tokens est donc une dépense RÉCURRENTE, pas une
+   curiosité. Comptée à l'écriture et rangée ici — la recalculer à chaque affichage de la
+   liste rouvrirait un fichier par version, par agent, à chaque passage sur l'onglet. NULL sur
+   les versions écrites avant cette colonne : elles sont comptées à la première relecture.
+   Migration APRÈS le `CREATE TABLE agent_knowledge` ci-dessus. */
+try { db.exec('ALTER TABLE agent_knowledge ADD COLUMN tokens INTEGER'); } catch { /* déjà présente */ }
 
 /* Un run d'agent EST une session. Trois colonnes suffisent : quel profil, son nom au moment du
    run (la session reste lisible même après suppression du profil), et qui a appuyé — la main

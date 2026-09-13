@@ -3811,8 +3811,24 @@ button.dlog-cname:focus-visible { outline: 2px solid var(--accent); outline-offs
 .agent-desc { font-size: 13px; }
 .agent-knowledge { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .agent-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
-.agent-age { font-size: 12px; color: var(--muted); }
+/* L'âge est un BOUTON : il ouvre les commits qui ont vieilli la carte. Il n'a ni cadre ni
+   fond — un badge cliquable, pas un bouton de plus dans une ligne qui en compte déjà dix —
+   et ne prend le curseur et le soulignement que lorsqu'il mène quelque part. */
+.agent-age {
+  font-size: 12px; color: var(--muted); background: none; border: 0; padding: 0;
+  font: inherit; font-size: 12px; text-align: left;
+}
+.agent-age:disabled { cursor: default; }
+.agent-age:not(:disabled) { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.agent-age:not(:disabled):hover { color: var(--text); }
 .agent-age-stale { color: var(--amber-text, var(--muted)); font-weight: 600; }
+/* Ce que chaque version de carte coûte à lire, à droite de sa date. */
+.knowledge-tok { font-size: 11px; }
+/* Les commits qui ont vieilli la carte, groupés par dépôt. */
+.age-repo + .age-repo { margin-top: 16px; }
+.age-repo h4 { margin: 0 0 6px; }
+.age-sha { font-family: var(--ff-mono); font-size: 11px; }
+#ageBody { max-height: 60vh; overflow: auto; }
 /* Le nom du dépôt prend la place, le rôle en prend juste assez : sans ces largeurs, le
    `<select>` s'étalait et un `groupe/webapp-front` passait à la ligne. */
 .agent-repo-row { display: flex; gap: 8px; align-items: center; }

@@ -36,11 +36,26 @@ function scan() {
 function age(agent) {
   const repos = db.prepare(`SELECT repo.project FROM agent_repo ar JOIN repo ON repo.id = ar.repo_id
     WHERE ar.agent_id = ? ORDER BY repo.project`).all(agent.id);
-  return repos.map((r, i) => ({
-    project: r.project,
-    commits: [7, 0, 3][i % 3],
-    last_at: [7, 0, 3][i % 3] ? new Date(Date.now() - (i + 2) * 86400000).toISOString() : null,
-  }));
+  const sujets = ['Corriger le routage des notifications par courriel',
+    'Extraire le gabarit de message dans son propre module',
+    'Ajouter le canal webhook et ses tests',
+    'Renommer NotificationKind en Channel',
+    'Plafonner les relances à trois par heure',
+    'Documenter la configuration SMTP',
+    'Supprimer le contournement du client historique'];
+  const auteurs = ['Camille Roy', 'Sam Ferrand', 'Dominique Aït', 'Alex Bugnot'];
+  return repos.map((r, i) => {
+    const n = [7, 0, 3][i % 3];
+    /* La liste est celle que le VRAI écran ouvre au clic : sans elle, la démo montrerait le
+       badge et une fenêtre vide — l'écran, mais pas le mécanisme. */
+    const list = Array.from({ length: n }, (_, k) => ({
+      sha: `${(i + 1)}${k}`.padEnd(2, '0') + 'c0ffee'.repeat(5) + 'ab',
+      at: new Date(Date.now() - (i + 2 + k) * 86400000).toISOString(),
+      author: auteurs[(i + k) % auteurs.length],
+      subject: sujets[(i * 3 + k) % sujets.length],
+    }));
+    return { project: r.project, commits: n, last_at: n ? list[0].at : null, list };
+  });
 }
 
 const projets = () => db.prepare('SELECT project FROM repo ORDER BY id').all().map((r) => r.project);

@@ -551,6 +551,12 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
       onLog('$ (DRY-RUN — sortie d’agent simulée)');
       stdout = demoAgents.rapport(agent, 'ask', task.agent_question || question, prompt);
       fs.writeFileSync(outAbs, stdout, 'utf8');
+      /* ON COMPTE QUAND MÊME. `runPrompt` enregistre la consommation même en dry-run ; cette
+         branche-ci court-circuite `runPrompt`, et les runs d'agent étaient donc les SEULS à
+         n'apparaître nulle part — carte à « — tokens », footer de télémétrie muet, démo qui
+         montre un écran vide de la seule mesure qu'il porte. L'estimation ne demande aucune
+         IA : le prompt est vrai, la sortie est celle du décor. */
+      copilot.recordUsage('explore', prompt, stdout, null, { kind: 'task', id: task.id });
     } else if (copilot.isDryRun() && task.ask_questions && !apresReponses) {
       /* Dry-run, première passe : l'agent simule ses questions au lieu de répondre — et il les
          écrit DANS LE FICHIER de réponse, pas sur la sortie standard. C'est ce que fait un

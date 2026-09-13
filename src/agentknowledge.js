@@ -19,6 +19,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('./db');
+const copilot = require('./copilot');
 const git = require('./git');
 const notes = require('./notes');
 const protocol = require('./protocol');
@@ -29,6 +30,8 @@ const i18n = require('../public/i18n-runtime.js');
 const { t } = i18n;
 
 const MAX_INDEX = 4000;
+// Combien de commits on détaille par dépôt derrière « N commits depuis la carte ».
+const MAX_COMMITS = 50;
 const jsonOu = (txt, repli) => { try { const v = JSON.parse(txt); return v == null ? repli : v; } catch { return repli; } };
 
 /* ---------- Lecture ---------- */
@@ -42,6 +45,19 @@ function lireFichier(v) {
 }
 function contenuActif(agent) { return lireFichier(versionActive(agent.id)); }
 
+/* CE QUE CETTE VERSION COÛTE À LIRE. La carte d'un agent de domaine part dans le prompt de
+   chacun de ses runs : sa taille est une dépense qui revient à chaque fois, et c'est le seul
+   chiffre qui dise s'il faut l'élaguer. Compté à l'écriture ; les versions antérieures à la
+   colonne sont comptées ICI, une fois, à leur première relecture — un `countTokens` par
+   version et par affichage de liste ferait le travail vingt fois pour le même résultat. */
+function tokensDe(ligne) {
+  if (!ligne) return null;
+  if (ligne.tokens != null) return ligne.tokens;
+  const n = copilot.countTokens(lireFichier(ligne));
+  try { db.prepare('UPDATE agent_knowledge SET tokens = ? WHERE id = ?').run(n, ligne.id); } catch { /* lecture seule : tant pis, on recomptera */ }
+  return n;
+}
+
 function versions(agentId) {
   return db.prepare('SELECT * FROM agent_knowledge WHERE agent_id = ? ORDER BY version DESC').all(agentId)
     .map((v) => ({
@@ -54,6 +70,7 @@ function versions(agentId) {
       diff_summary: v.diff_summary,
       unverified: jsonOu(v.repos_json, []).reduce((n, r) => n + ((r.unverified || []).length), 0),
       gaps: jsonOu(v.gaps_json, []).length,
+      tokens: tokensDe(v),
       repos: jsonOu(v.repos_json, []),
     }));
 }
@@ -169,9 +186,10 @@ function ecrireVersion(agentId, { contenu, reposJson, taskId, diffSummary, gapsJ
     if (status === 'active') {
       db.prepare("UPDATE agent_knowledge SET status = 'superseded' WHERE agent_id = ? AND status = 'active'").run(agentId);
     }
-    db.prepare(`INSERT INTO agent_knowledge (agent_id, version, md_path, repos_json, task_id, diff_summary, gaps_json, status, created_at, activated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(agentId, n, mdPath, JSON.stringify(reposJson || []), taskId || null,
-      diffSummary || null, JSON.stringify(gapsJson || []), status, now, status === 'active' ? now : null);
+    db.prepare(`INSERT INTO agent_knowledge (agent_id, version, md_path, repos_json, task_id, diff_summary, gaps_json, status, created_at, activated_at, tokens)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(agentId, n, mdPath, JSON.stringify(reposJson || []), taskId || null,
+      diffSummary || null, JSON.stringify(gapsJson || []), status, now, status === 'active' ? now : null,
+      copilot.countTokens(contenu));
   });
   poser();
   return db.prepare('SELECT * FROM agent_knowledge WHERE agent_id = ? AND version = ?').get(agentId, n);
@@ -407,17 +425,24 @@ async function age(agent) {
   const out = [];
   for (const r of jsonOu((v || {}).repos_json, [])) {
     const repo = r.repo_id ? db.prepare('SELECT * FROM repo WHERE id = ?').get(r.repo_id) : null;
-    if (!repo || !r.sha) { out.push({ project: r.project, commits: null, last_at: null }); continue; }
+    if (!repo || !r.sha) { out.push({ project: r.project, commits: null, last_at: null, list: [] }); continue; }
     try {
       const dir = await git.ensureRepo(cfg, repo, () => {});
       const defaut = await git.defaultBranch(dir);
-      const args = ['log', '--format=%H %cI', `${r.sha}..origin/${defaut}`];
       // Chemins vides = tout le dépôt : une carte qui ne cite aucun chemin vieillit quand même.
-      if ((r.paths || []).length) args.push('--', ...r.paths);
-      const sortie = await git.run('git', args, { cwd: dir });
-      const lignes = String((sortie && sortie.stdout) || sortie || '').trim().split('\n').filter(Boolean);
-      out.push({ project: r.project, commits: lignes.length, last_at: lignes.length ? lignes[0].split(' ')[1] : null });
-    } catch { out.push({ project: r.project, commits: null, last_at: null }); }
+      const bornes = (r.paths || []).length ? ['--', ...r.paths] : [];
+      /* LESQUELS, et pas seulement COMBIEN. « 12 commits depuis la carte » ne dit pas s'il
+         s'agit de douze corrections de typo ou de la refonte du module : on rend la liste
+         avec le même appel, et l'écran l'ouvre au clic. Plafonnée — une carte oubliée un an
+         compte des milliers de commits, et personne n'en lit le millième. Le COMPTE, lui,
+         reste exact : il vient d'un `rev-list --count`, pas de la longueur de la liste. */
+      const compte = await git.run('git', ['rev-list', '--count', `${r.sha}..origin/${defaut}`, ...bornes], { cwd: dir });
+      const n = Number(String((compte && compte.stdout) || compte || '').trim()) || 0;
+      const sortie = await git.run('git', ['log', '-n', String(MAX_COMMITS), `--format=%H%x1f%cI%x1f%an%x1f%s`, `${r.sha}..origin/${defaut}`, ...bornes], { cwd: dir });
+      const liste = String((sortie && sortie.stdout) || '').trim().split('\n').filter(Boolean)
+        .map((l) => { const [sha, at, author, subject] = l.split('\x1f'); return { sha, at, author, subject }; });
+      out.push({ project: r.project, commits: n, last_at: liste.length ? liste[0].at : null, list: liste });
+    } catch { out.push({ project: r.project, commits: null, last_at: null, list: [] }); }
   }
   cacheAge.set(agent.id, { at: Date.now(), valeur: out });
   return out;
@@ -477,7 +502,12 @@ async function commitsDepuis(agent) {
       const args = ['log', '--format=%h %s (%an, %cs)', `${r.sha}..origin/${defaut}`];
       if ((r.paths || []).length) args.push('--', ...r.paths);
       const sortie = await git.run('git', args, { cwd: dir });
-      const lignes = String((sortie && sortie.stdout) || sortie || '').trim().split('\n').filter(Boolean);
+      /* `git.run` résout TOUJOURS `{ stdout, stderr }`. Un repli `|| sortie` traînait ici : sur
+         un dépôt SANS nouveau commit, `stdout` vide tombait sur l'objet lui-même, et
+         `String(objet)` donne « [object Object] » — une ligne, donc un commit. Un dépôt à jour
+         annonçait ainsi « 1 commit depuis la carte », et le cartographe recevait dans son
+         contexte de mise à jour un commit nommé « [object Object] ». */
+      const lignes = String((sortie && sortie.stdout) || '').trim().split('\n').filter(Boolean);
       if (lignes.length) out.push({ project: r.project, lines: lignes.slice(0, 200) });
     } catch { /* dépôt injoignable : la mise à jour se fera sans sa liste */ }
   }
@@ -522,6 +552,6 @@ function publierDansNotes(agent) {
 module.exports = {
   ingest, parseHeader, verifierChemins, age, viderCacheAge, refresh, activer, editer, addGaps,
   indexCartes, cartesTouchees, toucheCarte,
-  indexFor, diffSummary, publierDansNotes, contenuActif, versions, versionDe, versionActive,
+  indexFor, diffSummary, publierDansNotes, contenuActif, versions, versionDe, versionActive, tokensDe,
   versionEnAttente, conserverNotes, prendreContexteRefresh, marquerNonVerifies, section,
 };

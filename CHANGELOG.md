@@ -13,6 +13,20 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **The agents screen counts in tokens, and says what each button does.** An agent's card showed
+  the dollar cost of its last run — a figure only some backends announce, absent everywhere else,
+  and not comparable from one month to the next as prices move. It now shows what the run actually
+  brushed against, in **tokens**, which is measured in every case. A domain agent also shows **what
+  its knowledge costs to read**: the map is copied into the request on every single run, so its
+  size is a recurring expense, and the `Knowledge` window now gives it **version by version** —
+  the only way to notice a v4 that swelled from eight to thirty thousand tokens before every run
+  pays for it. Every button on the screen explains itself on hover, saying in particular which
+  ones start a session that costs.
+- **`N commits since the map` opens on the commits.** The badge said a domain agent's map had
+  aged, never by what: you re-read the map without knowing whether twelve typos or a rewrite had
+  dated it, and so without knowing whether the update — which costs an AI call — was worth it.
+  Clicking it now lists them per repository, with sha, date, author and message.
+
 - **Ask a question about a review without rewriting it.** Asking why a finding was blocking
   meant `Ask the AI for a change`, which regenerates the report and makes it one version more —
   so the question cost you the report you were reading, and the score could move with it. A
@@ -284,6 +298,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   in two files — it is now a template like the others: translated, editable, read in one place.
 
 ### Fixed
+
+- **An up-to-date map no longer claims one commit has aged it.** `N commits since the map` read
+  `1 commit` on a repository where nothing had moved. On an empty `git log`, a fallback landed on
+  the command object itself and `[object Object]` counted as a line — so as a commit. The same
+  phantom went into the **Cartographer's** context on every knowledge update, which was told a
+  commit named `[object Object]` had touched the map it was asked to re-check.
 
 - **A domain agent stopped reading every repository behind your back.** `New domain agent` asks
   where to look, and ticking a single repository held for the initial mapping — then quietly

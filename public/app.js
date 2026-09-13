@@ -15702,7 +15702,10 @@ function agentStatutHtml(a) {
   if (!a.last_run) {
     return `<span class="muted">${esc(tr('agents.card.never-run'))}</span>${prochainRunHtml(a)}`;
   }
-  const cout = a.last_run.cost_usd != null ? ` · ${fmtCout(a.last_run.cost_usd)}` : '';
+  /* CE QUE LE DERNIER RUN A BRASSÉ. Un montant en dollars ne vaut que sur le backend qui
+     l'annonce et ne se compare pas d'un mois à l'autre ; les tokens sont mesurés partout et
+     répondent à la seule question qu'on se pose ici — cet agent lit-il trop à chaque passage ? */
+  const cout = a.last_run.tokens ? ` · ${tr('agents.card.tokens', { n: fmtMilliers(a.last_run.tokens) })}` : '';
   const quand = a.last_run.finished_at
     ? `<span class="muted" data-when="${esc(a.last_run.finished_at)}"> · ${esc(depuis(a.last_run.finished_at))}</span>` : '';
   /* Le dernier run MÈNE à sa session : c'est ce qu'on veut lire quand on voit « en erreur ». */
@@ -15732,9 +15735,17 @@ function agentKnowledgeHtml(a) {
   if (k && k.unverified) bouts.push(`<span class="badge k-warn">${esc(tr('agents.card.unverified', { n: k.unverified, count: k.unverified }))}</span>`);
   if (k && k.gaps) bouts.push(`<span class="badge k-warn">${esc(tr('agents.card.gaps', { n: k.gaps, count: k.gaps }))}</span>`);
   if (k && k.pending_version) bouts.push(`<span class="badge k-pending">${esc(tr('agents.card.pending', { version: k.pending_version }))}</span>`);
+  /* CE QUE LA CARTE COÛTE À LIRE. Elle est recopiée dans le prompt de CHAQUE run de l'agent :
+     sa taille est une dépense qui revient à chaque fois, et le seul chiffre qui dise s'il
+     faut l'élaguer. Le détail par version se lit dans la fenêtre « Connaissance ». */
+  if (k && k.tokens) {
+    bouts.push(`<span class="badge" data-tip="${esc(tr('agents.card.knowledge-tokens-tip'))}">${esc(tr('agents.card.tokens', { n: fmtMilliers(k.tokens) }))}</span>`);
+  }
   /* L'ÂGE est chargé à part : il fait un fetch par dépôt, et la liste se recharge à chaque
-     passage sur l'onglet. Un point d'attente ici, le chiffre quand il arrive. */
-  bouts.push(`<span class="agent-age" data-agent-age="${a.id}">${esc(tr('agents.card.age-loading'))}</span>`);
+     passage sur l'onglet. Un point d'attente ici, le chiffre quand il arrive.
+     C'est un BOUTON : « 12 commits depuis la carte » ne dit pas lesquels, et on relisait la
+     carte sans savoir si douze typos ou une refonte l'avaient périmée. */
+  bouts.push(`<button type="button" class="agent-age" data-agent-age="${a.id}" disabled>${esc(tr('agents.card.age-loading'))}</button>`);
   return `<div class="agent-knowledge">${bouts.join(' ')}</div>`;
 }
 
@@ -15752,18 +15763,21 @@ function agentCardHtml(a) {
     </div>
     ${a.description ? `<div class="muted agent-desc">${esc(a.description)}</div>` : ''}
     ${agentKnowledgeHtml(a)}
+    ${/* CHAQUE BOUTON DIT CE QU'IL FAIT. « Demander », « Coder », « Mettre à jour » se
+          ressemblent assez pour qu'on hésite, et deux d'entre eux lancent une session qui
+          coûte : l'explication au survol est moins chère qu'un run lancé pour voir. */''}
     <div class="agent-actions">
-      <button class="btn btn-sm btn-primary btn-agent-ask" data-id="${a.id}"><svg class="ico ico-sm"><use href="#i-search"/></svg>${esc(tr('agents.btn.ask'))}</button>
-      ${peutCoder ? `<button class="btn btn-sm btn-agent-code" data-id="${a.id}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${esc(tr('agents.btn.code'))}</button>` : ''}
-      ${a.is_domain ? `<button class="btn btn-sm btn-agent-knowledge" data-id="${a.id}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${esc(tr('agents.btn.knowledge'))}</button>` : ''}
-      ${a.is_domain ? `<button class="btn btn-sm btn-agent-refresh" data-id="${a.id}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg>${esc(tr('agents.btn.refresh'))}</button>` : ''}
-      ${(a.knowledge && a.knowledge.pending_version) ? `<button class="btn btn-sm btn-agent-review" data-id="${a.id}"><svg class="ico ico-sm"><use href="#i-check"/></svg>${esc(tr('agents.btn.review'))}</button>` : ''}
+      <button class="btn btn-sm btn-primary btn-agent-ask" data-id="${a.id}" data-tip="${esc(tr('agents.tip.ask'))}"><svg class="ico ico-sm"><use href="#i-search"/></svg>${esc(tr('agents.btn.ask'))}</button>
+      ${peutCoder ? `<button class="btn btn-sm btn-agent-code" data-id="${a.id}" data-tip="${esc(tr('agents.tip.code'))}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${esc(tr('agents.btn.code'))}</button>` : ''}
+      ${a.is_domain ? `<button class="btn btn-sm btn-agent-knowledge" data-id="${a.id}" data-tip="${esc(tr('agents.tip.knowledge'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${esc(tr('agents.btn.knowledge'))}</button>` : ''}
+      ${a.is_domain ? `<button class="btn btn-sm btn-agent-refresh" data-id="${a.id}" data-tip="${esc(tr('agents.tip.refresh'))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg>${esc(tr('agents.btn.refresh'))}</button>` : ''}
+      ${(a.knowledge && a.knowledge.pending_version) ? `<button class="btn btn-sm btn-agent-review" data-id="${a.id}" data-tip="${esc(tr('agents.tip.review'))}"><svg class="ico ico-sm"><use href="#i-check"/></svg>${esc(tr('agents.btn.review'))}</button>` : ''}
       <span class="spacer"></span>
-      <button class="btn btn-sm btn-agent-runs" data-id="${a.id}">${esc(tr('agents.btn.runs'))}</button>
-      <button class="btn btn-sm btn-agent-edit" data-id="${a.id}"><svg class="ico ico-sm"><use href="#i-edit"/></svg>${esc(tr('ui.edit'))}</button>
-      <button class="btn btn-sm btn-agent-dup" data-id="${a.id}">${esc(tr('agents.btn.duplicate'))}</button>
-      ${a.builtin_key ? `<button class="btn btn-sm btn-agent-restore" data-id="${a.id}">${esc(tr('agents.btn.restore'))}</button>` : ''}
-      <button class="btn btn-sm btn-danger btn-agent-del" data-id="${a.id}"><svg class="ico ico-sm"><use href="#i-trash"/></svg></button>
+      <button class="btn btn-sm btn-agent-runs" data-id="${a.id}" data-tip="${esc(tr('agents.tip.runs'))}">${esc(tr('agents.btn.runs'))}</button>
+      <button class="btn btn-sm btn-agent-edit" data-id="${a.id}" data-tip="${esc(tr('agents.tip.edit'))}"><svg class="ico ico-sm"><use href="#i-edit"/></svg>${esc(tr('ui.edit'))}</button>
+      <button class="btn btn-sm btn-agent-dup" data-id="${a.id}" data-tip="${esc(tr('agents.tip.duplicate'))}">${esc(tr('agents.btn.duplicate'))}</button>
+      ${a.builtin_key ? `<button class="btn btn-sm btn-agent-restore" data-id="${a.id}" data-tip="${esc(tr('agents.tip.restore'))}">${esc(tr('agents.btn.restore'))}</button>` : ''}
+      <button class="btn btn-sm btn-danger btn-agent-del" data-id="${a.id}" aria-label="${esc(tr('ui.delete'))}" data-tip="${esc(tr('agents.tip.delete'))}"><svg class="ico ico-sm"><use href="#i-trash"/></svg></button>
     </div>
   </div>`;
 }
@@ -15823,19 +15837,64 @@ function rendreComboDepotAgents() {
 
 /* L'ÂGE d'une connaissance : combien de commits ont touché ses chemins depuis qu'elle a été
    écrite. Calculé sans IA — c'est un `git log` — mais il fait un fetch, d'où la route à part. */
+/* Le détail par agent, tel qu'il a été chargé : la fenêtre l'ouvre SANS redemander au serveur.
+   Un second appel relancerait un `git fetch` par dépôt, et pourrait afficher un compte
+   différent de celui du badge qu'on vient de cliquer. */
+const agesCharges = new Map();
+
 async function chargerAges() {
   for (const el of $$('#agentList [data-agent-age]')) {
     const id = Number(el.dataset.agentAge);
     try {
       const lignes = await api(`/agents/${id}/age`);
+      agesCharges.set(id, lignes);
       const total = lignes.reduce((n, x) => n + (x.commits || 0), 0);
       el.textContent = total
         ? tr('agents.card.age', { n: total, count: total })
         : tr('agents.card.age-fresh');
       el.classList.toggle('agent-age-stale', total > 0);
-    } catch { el.textContent = ''; }
+      // Rien derrière un badge « carte à jour » : le bouton n'est une porte que s'il mène quelque part.
+      el.disabled = !total;
+      el.dataset.tip = tr(total ? 'agents.card.age-tip' : 'agents.card.age-fresh-tip');
+    } catch { el.textContent = ''; el.disabled = true; }
   }
 }
+
+/* LES COMMITS QUI ONT VIEILLI LA CARTE, par dépôt : sha, date, auteur, message. La liste est
+   plafonnée côté serveur — le COMPTE du badge, lui, reste exact, et la fenêtre le dit quand
+   elle n'a pas tout. */
+function ouvrirAgeModal(agentId) {
+  const a = agentDe(agentId);
+  const lignes = agesCharges.get(Number(agentId)) || [];
+  $('#ageTitle').textContent = `${(a && a.name) || ''} — ${tr('agents.age.title')}`;
+  const blocs = lignes.filter((x) => (x.list || []).length).map((x) => {
+    const reste = (x.commits || 0) - x.list.length;
+    return `<div class="age-repo">
+      <h4>${esc(x.project)} <span class="muted">${esc(tr('agents.card.age', { n: x.commits, count: x.commits }))}</span></h4>
+      <div class="md-tablewrap"><table class="md-table">
+        <thead><tr><th>${esc(tr('agents.age.col-sha'))}</th><th>${esc(tr('agents.age.col-date'))}</th>
+          <th>${esc(tr('agents.age.col-author'))}</th><th>${esc(tr('agents.age.col-subject'))}</th></tr></thead>
+        <tbody>${x.list.map((c) => `<tr>
+        ${/* Le sha court se lit ; le complet est ce qu'on va coller dans un `git show`. */''}
+        <td><code class="age-sha" data-tip="${esc(c.sha || '')}">${esc(String(c.sha || '').slice(0, 8))}</code></td>
+        <td data-when="${esc(c.at || '')}">${esc(c.at ? fmtDate(c.at) : '')}</td>
+        <td>${esc(c.author || '')}</td>
+        <td>${esc(c.subject || '')}</td></tr>`).join('')}</tbody></table></div>
+      ${reste > 0 ? `<p class="muted">${esc(tr('agents.age.more', { n: reste, count: reste }))}</p>` : ''}
+    </div>`;
+  }).join('');
+  $('#ageBody').innerHTML = blocs || `<p class="muted">${esc(tr('agents.age.empty'))}</p>`;
+  /* La bulle du badge reste ouverte jusqu'au prochain mouvement de souris : sans ça elle
+     flotte par-dessus la fenêtre qu'elle vient d'ouvrir, et masque ses deux premières lignes. */
+  hideTip();
+  $('#ageModal').hidden = false;
+}
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('#agentList [data-agent-age]');
+  if (b && !b.disabled) ouvrirAgeModal(Number(b.dataset.agentAge));
+});
+onEl($('#ageClose'), 'click', () => { $('#ageModal').hidden = true; });
 
 /* ---------- L'éditeur ---------- */
 
@@ -16392,9 +16451,13 @@ async function ouvrirConnaissance(a, { pending = false } = {}) {
   knowledgeAgent = a;
   $('#knowledgeTitle').textContent = `${a.name} — ${tr('agents.knowledge.title')}`;
   const vs = await api(`/agents/${a.id}/knowledge`).catch(() => []);
+  /* CHAQUE VERSION DIT CE QU'ELLE COÛTE À LIRE. Une carte part dans le prompt de chaque run :
+     voir une v4 passer de huit à trente mille tokens est la seule façon de s'apercevoir
+     qu'elle a enflé, et de décider de l'élaguer avant que chaque run le paie. */
   $('#knowledgeVersions').innerHTML = vs.map((v) => `<button type="button" class="knowledge-version" data-id="${v.version}">
       <strong>v${v.version}</strong> <span class="badge k-${esc(v.status)}">${esc(tr(`agents.knowledge.status.${v.status}`))}</span>
       <span class="muted">${esc(fmtDate(v.created_at))}</span>
+      ${v.tokens ? `<span class="muted knowledge-tok">${esc(tr('agents.card.tokens', { n: fmtMilliers(v.tokens) }))}</span>` : ''}
       ${v.unverified ? `<span class="badge k-warn">${esc(tr('agents.card.unverified', { n: v.unverified, count: v.unverified }))}</span>` : ''}
     </button>`).join('') || `<div class="muted">${esc(tr('agents.knowledge.none'))}</div>`;
   const choisie = pending ? (vs.find((v) => v.status === 'pending') || vs[0]) : (vs.find((v) => v.status === 'active') || vs[0]);
