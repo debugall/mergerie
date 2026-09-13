@@ -527,7 +527,15 @@ button.pab:hover .pab-name { color: var(--accent); }
 .card a { color: var(--accent); text-decoration: none; }
 
 /* ---------- Footer télémétrie « live » (esthétique terminal) ---------- */
-body { padding-bottom: 36px; } /* réserve la place du footer fixe */
+/* Réserve la place du bandeau fixe du bas — ET celle du PANNEAU DE JOB quand il est ouvert.
+   Ce panneau est `fixed`, large de toute la colonne et haut de cent-soixante-dix pixels : la
+   fin de chaque page passait dessous, et le bouton qui s'y trouve devenait incliquable.
+   Le cas se produit pour de bon — un job en ERREUR ne se replie jamais tout seul, par choix
+   (on doit pouvoir lire l'erreur) — et il touche le pied de formulaire des Réglages, donc le
+   bouton « Enregistrer ». La réserve rend la page défilable d'autant : ce qui est dessous
+   peut toujours être remonté au-dessus du panneau. La hauteur est mesurée par le script :
+   le panneau grandit avec sa file d'attente et sa barre de progression. */
+body { padding-bottom: calc(36px + var(--logpanel-h, 0px)); }
 /* Le bandeau du bas est FIXE : il recouvre les 30 derniers pixels. Une rangée d'actions qui
    tombe pile dessous se clique à moitié — on garde donc sa hauteur de dégagement quand un
    défilement l'amène à l'écran. */
@@ -707,7 +715,9 @@ form.form { scroll-margin-top: calc(var(--header-h, 56px) + 18px); }
 /* bandeau masqué : plus de réserve de place, et pastille de rappel en bas à droite */
 /* Bandeau masqué : sa hauteur de dégagement tombe à zéro, et ce qui flotte au-dessus
    redescend avec — sinon le panneau de job garderait 30 px de vide sous lui. */
-body.footer-hidden { padding-bottom: 0; --footer-h: 0px; }
+/* Bandeau masqué : sa réserve tombe à zéro — mais PAS celle du panneau de job, qui flotte
+   toujours au-dessus de la fin de la page. */
+body.footer-hidden { padding-bottom: var(--logpanel-h, 0px); --footer-h: 0px; }
 .footer-show {
   position: fixed; right: 14px; bottom: 14px; z-index: 41; cursor: pointer;
   background: #070b07; border: 1px solid #1c3b26; color: #ffd166;

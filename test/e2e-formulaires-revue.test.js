@@ -59,6 +59,13 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
       document.querySelectorAll('.modal').forEach((m) => { m.hidden = true; });
       // Le toast de SUCCÈS du test précédent vit 3,5 s : sans ça, il se compte dans le suivant.
       document.querySelectorAll('.toast').forEach((t) => t.remove());
+      /* …ET LE PANNEAU DE JOB. « Créer et lancer » laisse tourner une session sur un dépôt
+         injoignable : elle FINIT EN ERREUR, et un job en erreur ne se replie jamais tout seul
+         — c'est voulu, on doit pouvoir lire l'erreur. Le panneau survit donc d'un test au
+         suivant, flotte au-dessus de la fin de chaque page et intercepte les clics visant le
+         pied du formulaire des Réglages. Mesuré : bouton 769→801, panneau 787→958. */
+      const p = document.querySelector('#logPanel');
+      if (p) p.hidden = true;
     });
   }
 

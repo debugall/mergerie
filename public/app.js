@@ -2809,9 +2809,26 @@ function showLogPanel() {
   if (p) { p.hidden = false; logHidden = false; clearTimeout(autoHideTimer); if (!logExpanded) $('#logToggle').click(); }
   updateFooterLogs();
 }
+/* LA HAUTEUR DU PANNEAU, DONNÉE AU CSS. `body` réserve cette place en bas : sans elle, la fin
+   de chaque page passe SOUS un panneau `fixed` large de toute la colonne et haut de cent
+   soixante-dix pixels, et ce qui s'y trouve devient incliquable. Le cas se produit pour de
+   bon : un job en ERREUR ne se replie jamais tout seul — c'est voulu, on doit pouvoir lire
+   l'erreur — et il recouvre alors le pied du formulaire des Réglages, donc « Enregistrer ».
+   Mesurée plutôt que devinée : le panneau grandit avec sa file d'attente et sa progression.
+   Le `+ 12` est le retrait qui le décolle du bandeau du bas. */
+function mesurerLogPanel() {
+  const p = $('#logPanel');
+  const h = (p && !p.hidden) ? Math.round(p.getBoundingClientRect().height) + 12 : 0;
+  document.documentElement.style.setProperty('--logpanel-h', `${h}px`);
+}
+if (typeof ResizeObserver === 'function' && $('#logPanel')) {
+  new ResizeObserver(mesurerLogPanel).observe($('#logPanel'));
+}
+
 // Bouton « journal » du bandeau : visible seulement quand un job a tourné ET que le panneau est
 // masqué (sinon il ferait doublon). La pastille rappelle l'issue du dernier job.
 function updateFooterLogs() {
+  mesurerLogPanel();
   const b = $('#footerLogs');
   if (!b) return;
   b.hidden = !(logJobId && $('#logPanel').hidden);

@@ -320,6 +320,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A job panel no longer swallows the clicks meant for the bottom of the page.** The panel is
+  fixed, spans the whole column and stands a hundred and seventy pixels tall; the end of every
+  page passed underneath it. It happens for real — a job that ends **in error** never folds away
+  on its own, by design, so you can read the error — and what it covered included the action bar
+  of the Settings form, hence the `Save` button: measured at 769→801 for the button against
+  787→958 for the panel. The page now reserves the panel's measured height, so anything under it
+  can always be scrolled clear.
 - **An up-to-date map no longer claims one commit has aged it.** `N commits since the map` read
   `1 commit` on a repository where nothing had moved. On an empty `git log`, a fallback landed on
   the command object itself and `[object Object]` counted as a line — so as a commit. The same
