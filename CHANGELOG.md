@@ -285,6 +285,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Every field of the agent forms now says what it is for.** The form asks for a model, a
+  permission mode, a tool list, a turn bound — settings you cannot guess, and where being wrong
+  is expensive: an agent that writes where you thought it only read. Three fields out of
+  seventeen carried the ⓘ. They all do now, sections included, and the explanation says what
+  happens when the field is left empty. Clicking the ⓘ of a section no longer folds it.
+
 - **The card kept counting pending remarks that had been deleted.** The viewer's counter and the
   card's `n pending remarks` badge count the same thing, but only the first one redrew: delete a
   remark — one by one, or with `Delete all` — and the viewer said `1` while the card behind it

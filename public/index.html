@@ -1728,13 +1728,13 @@
         <h3 id="agentModalTitle" data-i18n="agents.modal.title">Agent</h3>
         <p id="agentCopilotWarn" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-alert"/></svg> <span data-i18n="agents.warn.copilot">Le backend configuré est copilot : seul le modèle est transmis, le reste du profil est ignoré.</span></p>
         <form id="agentForm" class="form">
-            <label><span data-i18n="agents.f.name">Nom</span>
+            <label><span data-i18n="agents.f.name">Nom</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.name-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <input id="agentName" name="name" maxlength="120" required placeholder="ex. Enquêteur d'incident" data-i18n-placeholder="agents.f.name-ph" />
             </label>
-            <label><span data-i18n="agents.f.description">À quoi il sert</span>
+            <label><span data-i18n="agents.f.description">À quoi il sert</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.description-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <input id="agentDesc" name="description" maxlength="300" placeholder="Une phrase, lue sur la carte" data-i18n-placeholder="agents.f.description-ph" />
             </label>
-            <label><span data-i18n="agents.f.kind">Ce qu'il fait</span>
+            <label><span data-i18n="agents.f.kind">Ce qu'il fait</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.kind-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <select id="agentKind" name="kind">
                     <option value="explore" data-i18n="agents.f.kind-explore">Explorer (lecture seule)</option>
                     <option value="code" data-i18n="agents.f.kind-code">Coder (il modifie les fichiers)</option>
@@ -1742,7 +1742,7 @@
             </label>
 
             <details class="task-avance" open>
-                <summary data-i18n="agents.f.scope">Périmètre</summary>
+                <summary><span data-i18n="agents.f.scope">Périmètre</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.scope-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></summary>
                 <div class="seg-radios">
                     <label class="inline-check"><input type="radio" name="scope_kind" value="all_repos" checked /> <span data-i18n="agents.f.scope-all">Tous les dépôts actifs</span></label>
                     <label class="inline-check"><input type="radio" name="scope_kind" value="repos" /> <span data-i18n="agents.f.scope-list">Les dépôts choisis ci-dessous</span></label>
@@ -1754,7 +1754,7 @@
             </details>
 
             <details class="task-avance" open>
-                <summary data-i18n="agents.f.role">Rôle et demande</summary>
+                <summary><span data-i18n="agents.f.role">Rôle et demande</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.role-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></summary>
                 <label><span data-i18n="agents.f.system">Rôle (ajouté au prompt système)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.system-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <textarea id="agentSystemPrompt" name="system_prompt" rows="4" placeholder="Tu es…" data-i18n-placeholder="agents.f.system-ph"></textarea>
                 </label>
@@ -1764,27 +1764,27 @@
             </details>
 
             <details class="task-avance">
-                <summary data-i18n="agents.f.caps">Capacités</summary>
-                <label><span data-i18n="agents.f.model">Modèle</span>
+                <summary><span data-i18n="agents.f.caps">Capacités</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.caps-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></summary>
+                <label><span data-i18n="agents.f.model">Modèle</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.model-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input id="agentModel" name="model" placeholder="vide = celui du CLI (sonnet, opus, haiku, ou un identifiant)" data-i18n-placeholder="agents.f.model-ph" />
                 </label>
-                <p class="form-group-title" data-i18n="agents.f.permission">Ce qu'il a le droit de faire sans demander</p>
+                <p class="form-group-title"><span data-i18n="agents.f.permission">Ce qu'il a le droit de faire sans demander</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.permission-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></p>
                 <div id="agentPermission" class="seg-radios">
                     <label class="inline-check"><input type="radio" name="permission_mode" value="" checked /> <span data-i18n="agents.permission.acceptEdits">Modifier les fichiers (défaut)</span></label>
                     <label class="inline-check"><input type="radio" name="permission_mode" value="plan" /> <span data-i18n="agents.permission.plan">Plan seulement : il propose, il ne touche à rien</span></label>
                     <label class="inline-check"><input type="radio" name="permission_mode" value="dontAsk" /> <span data-i18n="agents.permission.dontAsk">Ne rien demander</span></label>
                     <label class="inline-check"><input type="radio" name="permission_mode" value="bypassPermissions" /> <span class="perm-warn" data-i18n="agents.permission.bypassPermissions">Tout, sans garde-fou — à réserver à un dépôt jetable</span></label>
                 </div>
-                <label><span data-i18n="agents.f.allowed">Outils autorisés (séparés par des virgules)</span>
+                <label><span data-i18n="agents.f.allowed">Outils autorisés (séparés par des virgules)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.allowed-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input id="agentAllowed" name="allowed_tools" placeholder="vide = la liste par défaut de son type" data-i18n-placeholder="agents.f.allowed-ph" />
                 </label>
-                <label><span data-i18n="agents.f.disallowed">Outils interdits</span>
+                <label><span data-i18n="agents.f.disallowed">Outils interdits</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.disallowed-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input id="agentDisallowed" name="disallowed_tools" placeholder="ex. Write, Bash(rm *)" data-i18n-placeholder="agents.f.disallowed-ph" />
                 </label>
-                <label><span data-i18n="agents.f.max-turns">Borne de tours</span>
+                <label><span data-i18n="agents.f.max-turns">Borne de tours</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.max-turns-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input id="agentMaxTurns" name="max_turns" class="mini-num" type="number" min="1" max="500" step="1" />
                 </label>
-                <p class="form-group-title" data-i18n="agents.f.skills">Skills qu'il emporte</p>
+                <p class="form-group-title"><span data-i18n="agents.f.skills">Skills qu'il emporte</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.skills-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></p>
                 <div id="agentSkillsBox">
                     <input id="agentSkillFilter" class="search" type="search" placeholder="Filtrer les skills…" data-i18n-placeholder="agents.task.skill-filter-ph" data-i18n-aria="agents.task.skill-filter-aria" aria-label="Filtrer les skills" />
                     <div id="agentSkills" class="check-list"></div>
@@ -1801,21 +1801,21 @@
             </details>
 
             <details class="task-avance">
-                <summary data-i18n="agents.f.output">Sortie</summary>
-                <label><span data-i18n="agents.f.output-kind">Ce qu'on fait de sa réponse</span>
+                <summary><span data-i18n="agents.f.output">Sortie</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.output-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></summary>
+                <label><span data-i18n="agents.f.output-kind">Ce qu'on fait de sa réponse</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.output-kind-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <select id="agentOutputKind" name="output_kind">
                         <option value="report" data-i18n="agents.output.report">Un rapport, gardé sur la session</option>
                         <option value="note_page" data-i18n="agents.output.note_page">Une page de notes, réécrite à chaque run</option>
                         <option value="agent" data-i18n="agents.output.agent">Un agent de domaine (cartographe)</option>
                     </select>
                 </label>
-                <label id="agentOutputRefRow" hidden><span data-i18n="agents.f.output-ref">Page de notes</span>
+                <label id="agentOutputRefRow" hidden><span data-i18n="agents.f.output-ref">Page de notes</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.output-ref-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <div id="agentOutputRefBox"></div>
                 </label>
             </details>
 
             <details class="task-avance">
-                <summary data-i18n="agents.f.schedule">Horaire</summary>
+                <summary><span data-i18n="agents.f.schedule">Horaire</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.schedule-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></summary>
                 <div class="sched-row">
                     <select id="agentScheduleKind">
                         <option value="" data-i18n="agents.schedule.none">À la main seulement</option>
@@ -1831,7 +1831,7 @@
                 <p id="agentScheduleNeeds" class="field-note" hidden data-i18n="agents.schedule.needs-max-turns">Un horaire exige une borne de tours : renseigne « Borne de tours » dans Capacités.</p>
             </details>
 
-            <p class="form-group-title" data-i18n="agents.f.argv">Ce que ça donne en ligne de commande</p>
+            <p class="form-group-title"><span data-i18n="agents.f.argv">Ce que ça donne en ligne de commande</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.argv-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></p>
             <pre id="agentArgvPreview" class="argv-preview"></pre>
             <p id="agentFormErr" class="field-note" hidden></p>
 
@@ -1852,10 +1852,10 @@
         <h3 data-i18n="agents.domain.title">Nouvel agent de domaine</h3>
         <p class="muted" style="max-width:700px" data-i18n="agents.domain.intro">Donne un sujet. Le cartographe fouille les dépôts, écrit la carte du sujet — chemins, mécanismes, configuration, tests — et en fait un agent qu'on pourra interroger ou faire coder.</p>
         <form id="domainForm" class="form">
-            <label><span data-i18n="agents.domain.subject">Sujet à cartographier</span>
+            <label><span data-i18n="agents.domain.subject">Sujet à cartographier</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.domain.subject-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <textarea id="domainSubject" rows="4" required placeholder="ex. les notifications : où elles sont émises, par quel mécanisme, quels types existent, où est la config, comment on les teste" data-i18n-placeholder="agents.domain.subject-ph"></textarea>
             </label>
-            <p class="form-group-title" data-i18n="agents.domain.repos">Où chercher (vide = tous les dépôts)</p>
+            <p class="form-group-title"><span data-i18n="agents.domain.repos">Où chercher (vide = tous les dépôts)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.domain.repos-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></p>
             <div id="domainReposBox">
                 <input id="domainRepoFilter" class="search" type="search" placeholder="Filtrer les dépôts…" data-i18n-placeholder="agents.f.repo-filter-ph" data-i18n-aria="agents.f.repo-filter-aria" aria-label="Filtrer les dépôts" />
                 <div id="domainRepos" class="check-list"></div>

@@ -274,6 +274,58 @@ describe('Agents : l’onglet, les profils, les runs', { skip: dispo ? false : M
     assert.ok(!/^agents\./.test(r.body.error), `clé brute renvoyée : ${r.body.error}`);
   });
 
+  /* CHAQUE CHAMP DIT À QUOI IL SERT. Le formulaire d'agent demande un modèle, un mode de
+     permission, une liste d'outils, une borne de tours : des réglages qu'on ne devine pas, et
+     dont se tromper coûte cher (un agent qui écrit là où on croyait qu'il lisait). Trois champs
+     seulement portaient leur ⓘ. Le test vise les GROUPES de champs plutôt que des id précis :
+     un champ ajouté demain sans explication le fait échouer, ce qu'un test nommant les champs
+     un par un ne ferait pas. */
+  test('chaque champ des formulaires d’agent porte son explication', async () => {
+    await rechargerListe();
+    await page.locator('#btnNewAgent').click();
+    await page.waitForSelector('#agentModal:not([hidden])');
+    // Les sections repliées cachent leurs champs : on ouvre tout avant de compter.
+    await page.evaluate(() => document.querySelectorAll('#agentForm details').forEach((d) => { d.open = true; }));
+    const sansAide = await page.evaluate(() => {
+      const manques = [];
+      for (const modale of ['#agentForm', '#domainForm']) {
+        const f = document.querySelector(modale);
+        if (!f) { manques.push(`${modale} introuvable`); continue; }
+        /* Un « groupe » = ce qui porte un libellé : un <label> (hors cases d'un choix
+           multiple, qui partagent l'explication du groupe), un titre de groupe, une section. */
+        const groupes = [
+          ...f.querySelectorAll('label:not(.inline-check)'),
+          ...f.querySelectorAll('p.form-group-title'),
+          ...f.querySelectorAll('summary'),
+        ];
+        for (const g of groupes) {
+          const aide = g.querySelector('.hint');
+          const texte = (g.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+          if (!aide) manques.push(`${modale} « ${texte} » : pas de ⓘ`);
+          else if (!(aide.dataset.tip || '').trim()) manques.push(`${modale} « ${texte} » : ⓘ sans texte`);
+          else if (/^agents\./.test(aide.dataset.tip)) manques.push(`${modale} « ${texte} » : clé brute « ${aide.dataset.tip} »`);
+        }
+      }
+      return manques;
+    });
+    assert.deepEqual(sansAide, [], sansAide.join(' | '));
+
+    /* LE ⓘ D'UNE SECTION NE DOIT PAS LA REPLIER. Il vit dans le <summary> : sans le
+       `preventDefault` de la délégation, cliquer l'explication fermerait la section qu'on
+       vient d'ouvrir — et on lirait la bulle sur un écran qui a bougé sous elle. */
+    const capacites = page.locator('#agentForm details').nth(2);
+    await capacites.evaluate((d) => { d.open = true; });
+    await capacites.locator('summary .hint').click();
+    // La bulle est un `#tip` créé par le script et marqué `.on` à l'affichage : on attend
+    // l'EFFET du clic, pas un délai.
+    await page.waitForSelector('#tip.on');
+    assert.equal(await capacites.evaluate((d) => d.open), true, 'la section s’est repliée sous la bulle');
+    assert.match(await page.locator('#tip').innerText(), /\S/, 'la bulle s’ouvre vide');
+
+    await page.locator('#agentCancel').click();
+    await page.waitForSelector('#agentModal[hidden]', { state: 'attached' });
+  });
+
   test('aucune erreur JavaScript pendant tout ce parcours', () => {
     assert.deepEqual(erreurs, []);
   });
