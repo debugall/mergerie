@@ -11,6 +11,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-13
+
 ### Added
 
 - **A documentation agent writes a general page and its sub-pages.** The librarian rendered one
@@ -237,6 +239,180 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   are in instead of throwing you back to Reviews; a job that cannot be replayed says why; the ticket
   key in a report title is the one the server computed rather than a second rule; duplicating a
   session keeps its agent; the dictation vocabulary knows your container names.
+
+- **You can dictate into any text field — and the transcription knows your repositories' names.**
+  A microphone appears on the field you are writing in; you speak, and the text lands at the caret,
+  exactly as if you had typed it (so drafts still autosave and "unsaved changes" still shows).
+  `Ctrl`/`Cmd` + `Shift` + `Space` starts and stops it, `Esc` stops. It works on session prompts,
+  follow-ups, answers to the agent, merge request comments, notes, todos, commit messages and
+  review rules — not on URL, token, path or search fields, where a microphone would just be noise.
+
+  What makes it usable on technical French or English is not the engine, it is what Mergerie sends
+  it with every sentence: the names of your **repositories**, the **services** and **environments**
+  of the Links tab, your **Jira key prefixes**, your **verifiers**, your linked **Jenkins jobs** and
+  the **branches of open merge requests**. The same audio that a bare engine writes as "the merge
+  rec west 244 on web app front" comes back as "merge request 244 on webapp-front". A **glossary**
+  and a list of **corrections** (`heard => written`) cover what the database cannot guess, and
+  `!214` / `PROJ-720` are rebuilt from their spoken forms — those are what become links in your
+  notes and targets in the palette.
+
+  A hiccup on one sentence no longer costs you the rest: a segment the engine could not answer
+  is dropped and the ones behind it still land, while a refusal that cannot be retried — the
+  dictation switched off, an audio format the engine will never take — stops the microphone and
+  says so on the button rather than leaving it listening into the void.
+
+  Sentences are sent as you pause (700 ms of silence, adjustable), so the text arrives while you
+  are still talking rather than ten seconds later; when you stop, the whole take is re-read in the
+  background and replaces what was inserted, unless you have already corrected it yourself. What
+  the engine invents over silence — "Sous-titres réalisés par la communauté d'Amara.org" and its
+  English cousins — is dropped by four successive guards, and what is dropped is **counted** on
+  screen: if that number climbs, the microphone is picking up noise.
+
+  One sentence in the other language does not need a settings trip: **⇧-click the microphone** and
+  that take alone is dictated in the other language, which the bubble announces.
+
+  Three providers, one setting, and the screen says where the audio goes before you choose:
+  **whisper.cpp running locally** (the recommendation — nothing leaves the machine, and the audio
+  is never written to disk), **any OpenAI-compatible API**, or the **browser's own recognition**
+  (nothing to install, but the audio goes to Google or Apple, said in plain words). Dictation is
+  **off by default**: until you pick a provider, no microphone appears anywhere.
+
+- **Installing the local dictation engine is a button, and it tells you what it is doing.** The
+  settings panel does not ping: it walks the whole chain — binary, model, voice detection, startup
+  (naming the acceleration it found: Metal, CUDA, Vulkan or CPU), a real transcription, vocabulary,
+  then the secure origin and the microphone — and names the first step that breaks with the gesture
+  that repairs it. "Install" runs as a job: its log shows live, "Stop" ends it cleanly, an
+  interrupted download resumes, nothing is asked as administrator, and a 1.6 GB download is
+  announced before it starts. When it finishes it fills in the settings itself and re-runs the test.
+
+- **Filing a link is now paste-and-Enter.** The free-link form opens on the address rather than the
+  label — the address is what you paste, the label is what the tool can guess from it — and Enter
+  saves, as it already did for a quick todo or a watched ticket. The same key saves a service, an
+  environment and a context link.
+
+- **“Verify a branch” no longer forces you to take every covered repository.** Each row now
+  carries a checkbox, ticked to start with, so a verifier covering five repositories can
+  verify just one — previously all five branches had to be supplied, and a row whose default
+  branch could not be read (an unreachable repository) blocked the launch of the others. The
+  selection is remembered per verifier, because “only `api-core`” is a habit rather than a
+  whim of the day, and a filter above the list hides rows without unticking them: what is
+  ticked goes out, visible or not. The server already accepted a subset — it is the screen
+  that refused to form one.
+
+- **Automatic publishing can now be limited to reports that block.** *Settings → Merge Request*:
+  when "Automatically post the review report on the MR" is ticked, a second checkbox appears
+  under it — **"Only post when there are blocking findings"**. The report is then posted only
+  when it holds at least one finding of severity *blocker*; the others stay saved and readable
+  in the tab, they just do not land on someone's merge request for three minor remarks. A report
+  with no finding at all does not go out either, and the job log writes how many the pass held —
+  "nothing blocking" and "the findings block is missing" are not the same event. The `Publish`
+  button on a report ignores the filter: an explicit gesture always goes out. Unticked by
+  default, so turning automatic publishing on keeps behaving exactly as before.
+
+- **A second pass over the whole tool: 59 changes, from the three defects found while reading
+  the code to eleven crossings that did not exist.** Nothing new to configure; almost all of it
+  reads data that was already in the database.
+
+  **Deciding faster in the queue**
+
+  - **The queue sorts**: usual order, smallest first, oldest first, lowest score — a dropdown
+    on the same row as the author chips, because who and in which order are two ways of
+    narrowing the same queue. The size and the age were written on every card since 1.4.0 but
+    could not be used to choose what to start with. The order you pick is remembered, and it
+    wears the same pill as the chips beside it — an unusual order is highlighted like an active
+    chip, because a queue sorted by lowest score otherwise just looks out of order.
+  - **The morning brief counts what is ready to merge**: score above the convergence threshold,
+    verified green and not stale, and no ticket standing in the way — three columns already in
+    the database. Nothing is merged: the tool says how many merge requests are only waiting for
+    a decision.
+  - **A merge request in conflict says so on its card**, and the badge opens `Git → Merge`
+    prefilled to catch the branch up — where *Update with main* only ever existed for merge
+    requests born from a session.
+  - **The ticket's status reaches every merge request**, not just watched ones. Discovery
+    already read the whole issue for its context; it now keeps its status too, at no extra call.
+  - **After a green verdict, the verification report offers what comes next** — *Merge*,
+    *Run &lt;job&gt;* — where until now you closed the window, found the card again and opened
+    its "⋯" menu.
+  - **A finding says how long it has been there**: `since v1` is not the same as "not fixed
+    yet", and three passes later that is the whole difference.
+
+  **What the session already knew**
+
+  - **The verifier picks itself** when exactly one covers every repository of the session.
+  - **The dialog proposes the repositories of your last session** of that flavour, instead of
+    the first of the list — wrong thirty-nine times out of forty on a forty-repository setup.
+  - **A card says when it finished** ("finished 3 h ago") and **when a todo is waiting for you**
+    because the AI stopped on a question.
+  - **A session offers to review the merge request it just opened**, and a checkbox in the
+    dialog does it at creation — the global "review on arrival" setting engages the whole
+    estate, this one only engages what this session wrote.
+  - **The resumable agent sessions are proposed** instead of asking for a UUID copied by hand
+    out of a resume command.
+  - **Four session defaults are settings** (auto-push, AI questions, tell Jira, converge
+    afterwards): they no longer start unticked at every opening for someone who ticks them
+    every day.
+
+  **Crossings that did not exist**
+
+  - **Merging closes the Jira loop**: a checkbox in the merge confirmation moves the ticket to
+    its next state and drops the merge request link there — the transition read from Jira, never
+    guessed, remembered per Jira project, unticked by default.
+  - **A ticket becomes a lot**: *Verify together* on a ticket carrying several merge requests
+    creates the lot named by the key and launches the joint verification, instead of going back
+    to Reviews to tick five cards and type a name.
+  - **The Jenkins console enters a follow-up**: `Use the console` fills the field with the last
+    thirty lines and the build number, exactly as *Use the verification report* does. Jenkins
+    keeps the verdict; the agent only receives the text to fix.
+  - **The morning brief says what CI broke on your branches**, computed when it opens from the
+    list Jenkins already loads — no polling.
+  - **A watched ticket can raise a todo when its state changes**, carrying the reason you wrote
+    for watching it: a desktop notification dies with the tab, a todo stays in sight.
+  - **A note becomes a coding session**: the page is the prompt, its screenshots are the
+    attachments — the same path as from a Jira ticket.
+  - **A compose service that publishes a port offers to open it**, and to fill the empty
+    "local" cell of the Links grid with the address it already publishes.
+  - **A green Jenkins build carrying `ENV=preprod` offers to open that environment** of the
+    linked repository — the same resolution already done on merge requests.
+
+  **Memories, copies and gestures**
+
+  - **Git → Merge and Git → Actions remember** their repository, branches, action and targets,
+    as *Compare*, *Navigate* and *Commands* already did. The create-MR dialog reads the same
+    per-project memory as the merge dialog for squash and branch deletion.
+  - **Three filters stop forgetting**: the todo filter, Jenkins's search and checkboxes, and
+    Docker → Actions.
+  - **Copy where you paste into Slack**: the full SHA (shown short), a Jira key, a verifier's
+    command, a Jenkins console, a container name, the address of a grid cell.
+  - **`Ctrl`/`⌘ + Enter` sends** the forge comment, the Jira comment and "Request a change" —
+    and all three keep a draft that survives a reload.
+  - **Changing a Jira status asks first**, naming the ticket and the state: a native `select`
+    applied on `change`, so an arrow key was enough to move a ticket in front of the whole team.
+  - **Shortcuts**: `/` searches the tab you are on instead of ejecting you to Reviews, `j`/`k`
+    walk Jira, Jenkins, todos and lots, `N` opens a session, `f` asks for a fix on the focused
+    card, and the `?` panel finally lists `Ctrl+Enter` and `⇧-click`.
+  - **Quick capture**: "tomorrow 9 am / Monday / +1 h" buttons, the last priority reused, and
+    the short syntax finally written under the add bar.
+
+  **Settings and lots**
+
+  - **A review rule can be limited to one repository**, instead of being guessed through a
+    `path_match` only that repository would satisfy.
+  - **A verifier says how many sessions carry it** — renaming or deleting one was done blind.
+  - **A lot's name is proposed** (the common Jira key, failing that the common branch prefix),
+    *Create and verify* does both in one gesture, and a lot remembers which verifier it uses.
+    A merge request says which lots it belongs to.
+  - **A deleted non-compose container can be restored**: the tool saved its full inspect before
+    every deletion and no screen ever read it.
+  - **The Jira witness ticket is a setting** instead of being retyped at every connection test,
+    and the effective defaults are written into the empty fields.
+
+  **Statistics**
+
+  - **The cost of a review**, on its report and in a "most expensive reviews" ranking next to
+    the sessions — reviews now carry their own token usage, as sessions have since 1.4.0.
+  - **What goes in versus what comes back**: characters sent per character received, which is
+    what points at an over-long template rather than at an unavoidable cost.
+  - **The green rate of verifications per repository**, least green first.
 
 ### Changed
 
@@ -481,182 +657,6 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   those two scripts reads the code as *text*: an unbalanced brace escaped all of them, and the
   check answered OK on an `app.js` the browser refuses to run — or on a `server.js` that turns
   the whole test suite into a hang with no error message.
-
-### Added
-
-- **You can dictate into any text field — and the transcription knows your repositories' names.**
-  A microphone appears on the field you are writing in; you speak, and the text lands at the caret,
-  exactly as if you had typed it (so drafts still autosave and "unsaved changes" still shows).
-  `Ctrl`/`Cmd` + `Shift` + `Space` starts and stops it, `Esc` stops. It works on session prompts,
-  follow-ups, answers to the agent, merge request comments, notes, todos, commit messages and
-  review rules — not on URL, token, path or search fields, where a microphone would just be noise.
-
-  What makes it usable on technical French or English is not the engine, it is what Mergerie sends
-  it with every sentence: the names of your **repositories**, the **services** and **environments**
-  of the Links tab, your **Jira key prefixes**, your **verifiers**, your linked **Jenkins jobs** and
-  the **branches of open merge requests**. The same audio that a bare engine writes as "the merge
-  rec west 244 on web app front" comes back as "merge request 244 on webapp-front". A **glossary**
-  and a list of **corrections** (`heard => written`) cover what the database cannot guess, and
-  `!214` / `PROJ-720` are rebuilt from their spoken forms — those are what become links in your
-  notes and targets in the palette.
-
-  A hiccup on one sentence no longer costs you the rest: a segment the engine could not answer
-  is dropped and the ones behind it still land, while a refusal that cannot be retried — the
-  dictation switched off, an audio format the engine will never take — stops the microphone and
-  says so on the button rather than leaving it listening into the void.
-
-  Sentences are sent as you pause (700 ms of silence, adjustable), so the text arrives while you
-  are still talking rather than ten seconds later; when you stop, the whole take is re-read in the
-  background and replaces what was inserted, unless you have already corrected it yourself. What
-  the engine invents over silence — "Sous-titres réalisés par la communauté d'Amara.org" and its
-  English cousins — is dropped by four successive guards, and what is dropped is **counted** on
-  screen: if that number climbs, the microphone is picking up noise.
-
-  One sentence in the other language does not need a settings trip: **⇧-click the microphone** and
-  that take alone is dictated in the other language, which the bubble announces.
-
-  Three providers, one setting, and the screen says where the audio goes before you choose:
-  **whisper.cpp running locally** (the recommendation — nothing leaves the machine, and the audio
-  is never written to disk), **any OpenAI-compatible API**, or the **browser's own recognition**
-  (nothing to install, but the audio goes to Google or Apple, said in plain words). Dictation is
-  **off by default**: until you pick a provider, no microphone appears anywhere.
-
-- **Installing the local dictation engine is a button, and it tells you what it is doing.** The
-  settings panel does not ping: it walks the whole chain — binary, model, voice detection, startup
-  (naming the acceleration it found: Metal, CUDA, Vulkan or CPU), a real transcription, vocabulary,
-  then the secure origin and the microphone — and names the first step that breaks with the gesture
-  that repairs it. "Install" runs as a job: its log shows live, "Stop" ends it cleanly, an
-  interrupted download resumes, nothing is asked as administrator, and a 1.6 GB download is
-  announced before it starts. When it finishes it fills in the settings itself and re-runs the test.
-
-- **Filing a link is now paste-and-Enter.** The free-link form opens on the address rather than the
-  label — the address is what you paste, the label is what the tool can guess from it — and Enter
-  saves, as it already did for a quick todo or a watched ticket. The same key saves a service, an
-  environment and a context link.
-
-- **“Verify a branch” no longer forces you to take every covered repository.** Each row now
-  carries a checkbox, ticked to start with, so a verifier covering five repositories can
-  verify just one — previously all five branches had to be supplied, and a row whose default
-  branch could not be read (an unreachable repository) blocked the launch of the others. The
-  selection is remembered per verifier, because “only `api-core`” is a habit rather than a
-  whim of the day, and a filter above the list hides rows without unticking them: what is
-  ticked goes out, visible or not. The server already accepted a subset — it is the screen
-  that refused to form one.
-
-- **Automatic publishing can now be limited to reports that block.** *Settings → Merge Request*:
-  when "Automatically post the review report on the MR" is ticked, a second checkbox appears
-  under it — **"Only post when there are blocking findings"**. The report is then posted only
-  when it holds at least one finding of severity *blocker*; the others stay saved and readable
-  in the tab, they just do not land on someone's merge request for three minor remarks. A report
-  with no finding at all does not go out either, and the job log writes how many the pass held —
-  "nothing blocking" and "the findings block is missing" are not the same event. The `Publish`
-  button on a report ignores the filter: an explicit gesture always goes out. Unticked by
-  default, so turning automatic publishing on keeps behaving exactly as before.
-
-- **A second pass over the whole tool: 59 changes, from the three defects found while reading
-  the code to eleven crossings that did not exist.** Nothing new to configure; almost all of it
-  reads data that was already in the database.
-
-  **Deciding faster in the queue**
-
-  - **The queue sorts**: usual order, smallest first, oldest first, lowest score — a dropdown
-    on the same row as the author chips, because who and in which order are two ways of
-    narrowing the same queue. The size and the age were written on every card since 1.4.0 but
-    could not be used to choose what to start with. The order you pick is remembered, and it
-    wears the same pill as the chips beside it — an unusual order is highlighted like an active
-    chip, because a queue sorted by lowest score otherwise just looks out of order.
-  - **The morning brief counts what is ready to merge**: score above the convergence threshold,
-    verified green and not stale, and no ticket standing in the way — three columns already in
-    the database. Nothing is merged: the tool says how many merge requests are only waiting for
-    a decision.
-  - **A merge request in conflict says so on its card**, and the badge opens `Git → Merge`
-    prefilled to catch the branch up — where *Update with main* only ever existed for merge
-    requests born from a session.
-  - **The ticket's status reaches every merge request**, not just watched ones. Discovery
-    already read the whole issue for its context; it now keeps its status too, at no extra call.
-  - **After a green verdict, the verification report offers what comes next** — *Merge*,
-    *Run &lt;job&gt;* — where until now you closed the window, found the card again and opened
-    its "⋯" menu.
-  - **A finding says how long it has been there**: `since v1` is not the same as "not fixed
-    yet", and three passes later that is the whole difference.
-
-  **What the session already knew**
-
-  - **The verifier picks itself** when exactly one covers every repository of the session.
-  - **The dialog proposes the repositories of your last session** of that flavour, instead of
-    the first of the list — wrong thirty-nine times out of forty on a forty-repository setup.
-  - **A card says when it finished** ("finished 3 h ago") and **when a todo is waiting for you**
-    because the AI stopped on a question.
-  - **A session offers to review the merge request it just opened**, and a checkbox in the
-    dialog does it at creation — the global "review on arrival" setting engages the whole
-    estate, this one only engages what this session wrote.
-  - **The resumable agent sessions are proposed** instead of asking for a UUID copied by hand
-    out of a resume command.
-  - **Four session defaults are settings** (auto-push, AI questions, tell Jira, converge
-    afterwards): they no longer start unticked at every opening for someone who ticks them
-    every day.
-
-  **Crossings that did not exist**
-
-  - **Merging closes the Jira loop**: a checkbox in the merge confirmation moves the ticket to
-    its next state and drops the merge request link there — the transition read from Jira, never
-    guessed, remembered per Jira project, unticked by default.
-  - **A ticket becomes a lot**: *Verify together* on a ticket carrying several merge requests
-    creates the lot named by the key and launches the joint verification, instead of going back
-    to Reviews to tick five cards and type a name.
-  - **The Jenkins console enters a follow-up**: `Use the console` fills the field with the last
-    thirty lines and the build number, exactly as *Use the verification report* does. Jenkins
-    keeps the verdict; the agent only receives the text to fix.
-  - **The morning brief says what CI broke on your branches**, computed when it opens from the
-    list Jenkins already loads — no polling.
-  - **A watched ticket can raise a todo when its state changes**, carrying the reason you wrote
-    for watching it: a desktop notification dies with the tab, a todo stays in sight.
-  - **A note becomes a coding session**: the page is the prompt, its screenshots are the
-    attachments — the same path as from a Jira ticket.
-  - **A compose service that publishes a port offers to open it**, and to fill the empty
-    "local" cell of the Links grid with the address it already publishes.
-  - **A green Jenkins build carrying `ENV=preprod` offers to open that environment** of the
-    linked repository — the same resolution already done on merge requests.
-
-  **Memories, copies and gestures**
-
-  - **Git → Merge and Git → Actions remember** their repository, branches, action and targets,
-    as *Compare*, *Navigate* and *Commands* already did. The create-MR dialog reads the same
-    per-project memory as the merge dialog for squash and branch deletion.
-  - **Three filters stop forgetting**: the todo filter, Jenkins's search and checkboxes, and
-    Docker → Actions.
-  - **Copy where you paste into Slack**: the full SHA (shown short), a Jira key, a verifier's
-    command, a Jenkins console, a container name, the address of a grid cell.
-  - **`Ctrl`/`⌘ + Enter` sends** the forge comment, the Jira comment and "Request a change" —
-    and all three keep a draft that survives a reload.
-  - **Changing a Jira status asks first**, naming the ticket and the state: a native `select`
-    applied on `change`, so an arrow key was enough to move a ticket in front of the whole team.
-  - **Shortcuts**: `/` searches the tab you are on instead of ejecting you to Reviews, `j`/`k`
-    walk Jira, Jenkins, todos and lots, `N` opens a session, `f` asks for a fix on the focused
-    card, and the `?` panel finally lists `Ctrl+Enter` and `⇧-click`.
-  - **Quick capture**: "tomorrow 9 am / Monday / +1 h" buttons, the last priority reused, and
-    the short syntax finally written under the add bar.
-
-  **Settings and lots**
-
-  - **A review rule can be limited to one repository**, instead of being guessed through a
-    `path_match` only that repository would satisfy.
-  - **A verifier says how many sessions carry it** — renaming or deleting one was done blind.
-  - **A lot's name is proposed** (the common Jira key, failing that the common branch prefix),
-    *Create and verify* does both in one gesture, and a lot remembers which verifier it uses.
-    A merge request says which lots it belongs to.
-  - **A deleted non-compose container can be restored**: the tool saved its full inspect before
-    every deletion and no screen ever read it.
-  - **The Jira witness ticket is a setting** instead of being retyped at every connection test,
-    and the effective defaults are written into the empty fields.
-
-  **Statistics**
-
-  - **The cost of a review**, on its report and in a "most expensive reviews" ranking next to
-    the sessions — reviews now carry their own token usage, as sessions have since 1.4.0.
-  - **What goes in versus what comes back**: characters sent per character received, which is
-    what points at an over-long template rather than at an unavoidable cost.
-  - **The green rate of verifications per repository**, least green first.
 
 ## [1.4.0] - 2026-09-06
 
@@ -2757,7 +2757,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/debugall/mergerie/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/debugall/mergerie/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/debugall/mergerie/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/debugall/mergerie/compare/v1.1.0...v1.2.0
