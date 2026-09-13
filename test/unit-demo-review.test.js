@@ -154,3 +154,79 @@ describe('demo-review — l’explication', () => {
       new RegExp(resolution.START));
   });
 });
+
+/* La démo tourne aussi en anglais, et c'est elle qui fournit la capture de la page d'accueil :
+   le rapport était écrit en français en dur, donc l'accueil anglais illustrait « Reviews » avec
+   « Revue — Paiement 3× », « Points d'attention », « Note globale ». Ces tests tiennent les deux
+   bouts : plus une phrase française quand la langue est l'anglais, et la note reste lisible par
+   `extractNote` alors que le séparateur décimal et le titre de section ont changé. */
+describe('demo-review — le rapport suit la langue de l’interface', () => {
+  const i18n = require('../public/i18n-runtime.js');
+  const enAnglais = (fn) => {
+    const avant = i18n.getLang();
+    i18n.setLang('en');
+    try { return fn(); } finally { i18n.setLang(avant); }
+  };
+  /* Des phrases entières, pas des mots : « constant » ou « test » existent dans les deux
+     langues, et un marqueur trop court rendrait le test vert pour de mauvaises raisons. */
+  const MARQUEURS_FR = [
+    /Mode démo/, /analyse simulée/, /Points d’attention/, /Note globale/, /Ce qui est bien/,
+    /Ce que fait la merge request/, /La branche/, /fichier\(s\)/, /explication simulée/,
+    /Réponse simulée/, /Le rapport de revue n’a pas bougé/,
+  ];
+
+  test('en anglais, aucune phrase française ne subsiste', () => {
+    const diff = demoDiff.diffPour(MR);
+    const tout = enAnglais(() => [
+      demoReview.rapport({ ...MR, ticket_text: 'Business rule: above 100 EUR only.' }, diff, BORNES),
+      demoReview.explication(MR, diff),
+      demoReview.reponseQuestion(MR, diff, 'why is this blocking'),
+    ].join('\n'));
+    for (const re of MARQUEURS_FR) assert.doesNotMatch(tout, re, `français résiduel : ${re}`);
+    assert.match(tout, /Demo mode — simulated analysis/);
+  });
+
+  test('aucun paramètre {…} ne reste à remplacer, dans l’une ou l’autre langue', () => {
+    // Une clé dont le nom de paramètre a divergé laisse « {branch} » en clair dans le rapport.
+    const diff = demoDiff.diffPour(MR);
+    const documents = (mr) => [
+      demoReview.rapport(mr, diff, BORNES),
+      demoReview.explication(mr, diff),
+      demoReview.reponseQuestion(mr, diff, 'une question'),
+    ];
+    const mr = { ...MR, ticket_text: 'Une consigne.' };
+    for (const md of [...documents(mr), ...enAnglais(() => documents(mr))]) {
+      assert.doesNotMatch(md, /\{[a-zA-Z]+\}/, 'un paramètre de traduction n’a pas été remplacé');
+    }
+  });
+
+  test('en anglais la note reste extraite, malgré le point décimal et « Overall score »', () => {
+    // extractNote cherche « note globale » OU « overall score/rating/grade » : changer le titre
+    // sans vérifier ce point ferait tomber toute la démo anglaise dans « sans note ».
+    const note = enAnglais(() => {
+      const { markdown } = resolution.splitFindings(rapport());
+      assert.match(markdown, /## Overall score/);
+      assert.match(markdown, /\*\*\d+\.\d+\/10\*\*/, 'la note anglaise s’écrit avec un point');
+      return extractNote(markdown);
+    });
+    assert.ok(note, 'sans note, la merge request sort des filtres de l’écran des reviews');
+    assert.ok(note.value > 0 && note.value <= 1, `valeur hors bornes : ${note.value}`);
+  });
+
+  test('en anglais le bloc de constats se relit toujours par la chaîne réelle', () => {
+    const constats = enAnglais(() => resolution.parseFindings(resolution.splitFindings(rapport()).block));
+    assert.ok(constats.length > 0);
+    for (const c of constats) {
+      assert.ok(resolution.SEVERITIES.includes(c.severity), `sévérité hors barème : ${c.severity}`);
+      assert.ok(c.file && c.title, 'un constat porte toujours un fichier et un titre');
+    }
+  });
+
+  test('le bandeau « analyse simulée » tient sur UNE citation, pas deux', () => {
+    // Coupé en deux lignes, le rendu Markdown en faisait deux blocs cités l'un sous l'autre.
+    for (const md of [rapport(), enAnglais(() => rapport())]) {
+      const cites = md.split('\n').filter((l) => l.startsWith('> '));
+      assert.equal(cites.length, 1, 'le bandeau doit tenir sur une seule ligne citée');
+    }
+  });
+});

@@ -11,6 +11,18 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Fixed
+
+- **The demo now writes its review in the language of the screen.** The simulated report,
+  the explanation and the answer to a question were written in French, hard-coded: an
+  interface switched to English showed “Revue — Paiement 3×”, “Points d’attention” and
+  “Note globale” under English menus — including on the screenshot that illustrates the
+  tool. Every sentence now goes through the shared dictionary, so the language check
+  guarantees none is missing on either side, and the score follows suit: `7,4/10` in
+  French, `7.4/10` in English, both still read by the screen's score filter. The
+  “simulated analysis” banner, which used to be cut over two lines and rendered as two
+  stacked quotes, is one again.
+
 ## [1.5.0] - 2026-09-13
 
 ### Added
