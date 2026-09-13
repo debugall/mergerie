@@ -2732,8 +2732,10 @@ l'élément ; c'est un artifice d'enregistrement, il vit dans `scripts/record-de
 ailleurs.
 
 **Le GIF du README** se fabrique du même enregistrement : `npm run demo:gif`. Les réglages (6 im/s,
-640 px, 64 couleurs, palette calculée sur la vidéo) sont calés pour tenir sous ~3,5 Mo — un fichier
-que GitHub recharge à chaque visite de la page d'accueil — sans rendre l'interface illisible. Ils
+640 px, 32 couleurs, palette calculée sur la vidéo) sont calés pour tenir sous ~4,5 Mo — un fichier
+que GitHub recharge à chaque visite de la page d'accueil — sans rendre l'interface illisible. La
+palette est passée de 64 à 32 couleurs le jour où la visite a gagné l'onglet Agents et le thème
+sombre : à 64, le même GIF pesait 6,7 Mo. Ils
 vivent dans `scripts/demo-gif.sh` plutôt que dans une commande à retrouver : les redécouvrir coûte
 une demi-heure et donne un fichier deux fois trop lourd.
 

@@ -2645,8 +2645,10 @@ video. The stand-in is built from the element's real options; it is a recording 
 `scripts/record-demo.js` and nowhere else.
 
 **The README's GIF** comes from the same recording: `npm run demo:gif`. Its settings (6 fps, 640 px,
-64 colours, palette computed on the video) are tuned to stay under ~3.5 MB — a file GitHub reloads
-on every visit to the landing page — without making the interface unreadable. They live in
+32 colours, palette computed on the video) are tuned to stay under ~4.5 MB — a file GitHub reloads
+on every visit to the landing page — without making the interface unreadable. The palette dropped
+from 64 to 32 colours the day the tour gained the Agents tab and the dark theme: at 64, the same
+GIF weighed 6.7 MB. They live in
 `scripts/demo-gif.sh` rather than in a command to be rediscovered: working them out again costs half
 an hour and yields a file twice too heavy.
 

@@ -85,6 +85,19 @@ FR = [
     #    pose la voyelle légère qu'un francophone met de toute façon : b'ad Z@.
     (r'(?i)\bbadges\b', 'bad jes'),
     (r'(?i)\bbadge\b', 'bad je'),
+    # CASE. Signalé à l'écoute du film : « case » sonne faux dans « case à cocher ». Ici la
+    #    réécriture ne peut PAS être orthographique, et c'est le seul cas du fichier : espeak
+    #    phonémise déjà « case » correctement — `espeak-ng -v fr -q -x "une case à cocher"`
+    #    rend `yn k'az a koS'e`, soit exactement ce qu'un francophone dit, et « caze » ou
+    #    « kaze » rendent les mêmes phonèmes. Le défaut vient donc du MODÈLE (siwis), pas du
+    #    phonémiseur : mêmes phonèmes, même audio, une respelling ne changerait rien. Ne pas
+    #    en chercher une — c'est le mot qu'il faut changer. On dit donc « option à cocher »
+    #    (Opsj'O~) et, pour la grille de liens, « cellule » (sEl'yl) : deux mots sans piège,
+    #    qui disent la même chose. Le texte écrit, lui, garde « case ».
+    (r'(?i)\bcases à cocher\b', 'options à cocher'),
+    (r'(?i)\bcase à cocher\b', 'option à cocher'),
+    (r'(?i)\bcases\b', 'cellules'),
+    (r'(?i)\bcase\b', 'cellule'),
     (r'(?i)\bissues\b', 'ichiouze'),
     (r'(?i)\bfunnel\b', 'feunel'),
     (r'(?i)\bEnterprise\b', 'Enn-teurpraïze'),
