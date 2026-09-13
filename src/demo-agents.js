@@ -102,21 +102,42 @@ function rapport(agent, mode, question, promptComplet) {
     ].join('\n');
   }
   if (role === 'librarian') {
+    /* LA PAGE GÉNÉRALE, PUIS UNE SOUS-PAGE PAR SERVICE. Le documentaliste décide lui-même de
+       son découpage : le décor doit montrer ce choix, sinon la démo prouve l'écran des pages
+       et jamais le mécanisme qui les crée. Les blocs sont VRAIS — c'est le même parseur qui
+       les lit qu'en production. */
+    const role_ = (x) => (x.includes('front') ? 'l’interface web' : (x.includes('batch') ? 'les traitements par lots' : 'l’API métier'));
     return [
       '# Carte des services',
       '',
-      ...p.flatMap((x) => [
-        `## ${x}`,
-        `- **Rôle** : ${x.includes('front') ? 'l’interface web' : (x.includes('batch') ? 'les traitements par lots' : 'l’API métier')}.`,
-        '- **Expose** : une API HTTP et des événements sur le bus.',
-        '- **Consomme** : la base principale et le service d’authentification.',
-        '- **En local** : `npm ci && npm start`.',
-        '- **Configuration** : `.env`, lu par `src/config.js`.',
-        '',
-      ]),
+      'Ce que fait chaque dépôt, en une ligne. Le détail de chacun est dans sa sous-page.',
+      '',
+      ...p.map((x) => `- **${x}** — ${role_(x)}.`),
+      '',
       '## Qui appelle qui',
       `- ${p1} → ${p0} (HTTP)`,
       `- ${p0} → le bus d’événements`,
+      '',
+      ...p.flatMap((x) => [
+        '<<<PAGE',
+        `title: ${x}`,
+        `## Rôle`,
+        `${role_(x)[0].toUpperCase()}${role_(x).slice(1)}.`,
+        '',
+        '## Expose',
+        'Une API HTTP et des événements sur le bus.',
+        '',
+        '## Consomme',
+        'La base principale et le service d’authentification.',
+        '',
+        '## En local',
+        '`npm ci && npm start`',
+        '',
+        '## Configuration',
+        '`.env`, lu par `src/config.js`.',
+        'PAGE>>>',
+        '',
+      ]),
     ].join('\n');
   }
   if (role === 'cartographer') {

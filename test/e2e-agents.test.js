@@ -363,6 +363,45 @@ describe('Agents : l’onglet, les profils, les runs', { skip: dispo ? false : M
     assert.ok(!/\$\s?\d/.test(texte), `un montant en dollars est resté : ${texte.match(/\$\s?\d[\d.,]*/)}`);
   });
 
+  /* UNE DOCUMENTATION NE TIENT PAS EN UNE PAGE. Le documentaliste rendait un seul bloc :
+     vingt services dans une page, c'est une page que personne ne relit. Il découpe désormais
+     lui-même — un texte général, une sous-page par point — et le rangement doit être
+     IDEMPOTENT : il repasse chaque lundi, et cinq mois de doublons hebdomadaires seraient
+     exactement ce que la règle « jamais dupliquée » interdit déjà pour la page générale. */
+  test('le documentaliste écrit une page générale et ses sous-pages, sans les dupliquer au passage suivant', async () => {
+    const doc = (await app.api('GET', '/api/agents')).body.find((x) => /Documentaliste/i.test(x.name));
+    assert.ok(doc, 'agent documentaliste introuvable');
+    assert.equal(doc.output_kind, 'note_page');
+
+    const r = await app.api('POST', `/api/agents/${doc.id}/run`, { mode: 'ask', question: 'la carte des services' });
+    assert.equal(r.status, 200, r.text);
+    await waitForJobs(app.api, { timeout: 120000 });
+
+    const pages = (await app.api('GET', '/api/notes')).body.pages;
+    const racine = pages.find((x) => !x.parent_id && /Documentaliste/.test(x.title));
+    assert.ok(racine, `page générale introuvable parmi : ${pages.map((x) => x.title).join(' | ')}`);
+    const enfants = pages.filter((x) => x.parent_id === racine.id);
+    assert.ok(enfants.length >= 1, 'aucune sous-page rangée sous la page générale');
+
+    const vue = (await app.api('GET', `/api/notes/${racine.id}`)).body;
+    assert.equal(vue.children.length, enfants.length, 'la page rend ses sous-pages');
+    // Le bloc de protocole est un canal de service : il ne doit JAMAIS atterrir dans la page.
+    assert.ok(!/<<<PAGE/.test(vue.content), `le bloc est resté dans la page : ${vue.content.slice(0, 200)}`);
+    const detail = (await app.api('GET', `/api/notes/${enfants[0].id}`)).body;
+    assert.equal(detail.parent_title, racine.title, 'la sous-page dit de quoi elle est le détail');
+    assert.ok(detail.content.trim().length > 0, 'une sous-page vide n’aurait pas dû être créée');
+
+    // Second passage : les mêmes titres METTENT À JOUR, ils ne s'ajoutent pas.
+    const r2 = await app.api('POST', `/api/agents/${doc.id}/run`, { mode: 'ask', question: 'la carte des services' });
+    assert.equal(r2.status, 200, r2.text);
+    await waitForJobs(app.api, { timeout: 120000 });
+    const apres = (await app.api('GET', '/api/notes')).body.pages;
+    assert.equal(apres.filter((x) => x.parent_id === racine.id).length, enfants.length,
+      'les sous-pages sont appariées par titre, jamais recréées');
+    assert.equal(apres.filter((x) => !x.parent_id && /Documentaliste/.test(x.title)).length, 1,
+      'la page générale non plus');
+  });
+
   test('aucune erreur JavaScript pendant tout ce parcours', () => {
     assert.deepEqual(erreurs, []);
   });

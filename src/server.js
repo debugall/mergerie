@@ -5183,6 +5183,8 @@ const msgNotes = () => ({
   statutInvalide: t('err.notes.status-invalid'),
   dateInvalide: t('err.notes.due-invalid'),
   lienInvalide: t('err.notes.link-invalid'),
+  tropProfond: t('err.notes.parent-too-deep'),
+  soiMeme: t('err.notes.parent-self'),
 });
 
 app.get('/api/notes', wrap((req, res) => {
@@ -5209,7 +5211,10 @@ app.get('/api/notes/citations', wrap((req, res) => {
 app.get('/api/notes/:id', wrap((req, res) => {
   const page = notes.lirePage(req.params.id);
   if (!page) throw Object.assign(new Error(t('err.notes.unknown')), { status: 404 });
-  res.json(page);
+  /* Ses sous-pages, et le titre de son parent si c'en est une : l'écran a besoin des deux
+     pour se situer, et un second aller-retour par page ouverte se verrait à la frappe. */
+  const parent = page.parent_id ? notes.lirePage(page.parent_id) : null;
+  res.json({ ...page, children: notes.sousPages(page.id), parent_title: parent ? parent.title : null });
 }));
 
 app.put('/api/notes/:id', wrap((req, res) => {

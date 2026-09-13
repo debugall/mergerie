@@ -13,6 +13,24 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A documentation agent writes a general page and its sub-pages.** The librarian rendered one
+  block: twenty services in a single page is a page nobody re-reads, and splitting it by hand
+  undid itself at the next run. Note pages now hold **sub-pages**, one level deep, and an agent
+  whose output is a note page decides **itself** whether any are needed, how many, and how to
+  split them — the general text stays on the root page, the detail of each point goes to its own.
+  Sub-pages are matched **by title** from one run to the next, so a weekly agent updates them
+  instead of piling up copies; the ones it stops producing are **kept**, not deleted, because one
+  may have been completed by hand, and the run says which. In `Notes`, a sub-page is indented
+  under its parent and joined to it by a tree guide, a search that finds one brings its parent along for context, and deleting a
+  page says how many sub-pages go with it. Sub-pages are **folded by default** — a column where
+  every general page unrolls its eight children is no longer a column you can scan — with the
+  count shown on the folded parent; the parent of the page you are reading unfolds on its own,
+  and folds back when you leave it, and a search unfolds everything it matched.
+- **Reading and writing a note no longer share the width.** Two half-columns cut both: a table
+  overflowed the rendered side while a Markdown line wrapped in the middle of a link. A page now
+  opens on the **rendered view alone, full width** — notes are re-read far more often than they
+  are written — and one click switches to the Markdown alone, or back to two columns. The choice
+  is remembered. An empty page opens on the Markdown: there is nothing to read yet.
 - **The agents screen counts in tokens, and says what each button does.** An agent's card showed
   the dollar cost of its last run — a figure only some backends announce, absent everywhere else,
   and not comparable from one month to the next as prices move. It now shows what the run actually
@@ -22,6 +40,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   the only way to notice a v4 that swelled from eight to thirty thousand tokens before every run
   pays for it. Every button on the screen explains itself on hover, saying in particular which
   ones start a session that costs.
+- **Statistics count in tokens too.** The dashboard showed dollars next to the costliest
+  sessions and next to each agent; it now reads in tokens like the agents screen, for the same
+  reason — a dollar figure exists only on the backends that announce one.
 - **`N commits since the map` opens on the commits.** The badge said a domain agent's map had
   aged, never by what: you re-read the map without knowing whether twelve typos or a rewrite had
   dated it, and so without knowing whether the update — which costs an AI call — was worth it.
@@ -299,9 +320,6 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
-- **Statistics count in tokens too.** The dashboard showed dollars next to the costliest
-  sessions and next to each agent; it now reads in tokens like the agents screen, for the same
-  reason — a dollar figure exists only on the backends that announce one.
 - **An up-to-date map no longer claims one commit has aged it.** `N commits since the map` read
   `1 commit` on a repository where nothing had moved. On an empty `git log`, a fallback landed on
   the command object itself and `[object Object]` counted as a line — so as a commit. The same

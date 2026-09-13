@@ -1172,6 +1172,15 @@ db.exec(`CREATE TABLE IF NOT EXISTS note_page (
   updated_at TEXT NOT NULL
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_note_page_ordre ON note_page(pinned DESC, updated_at DESC)');
+/* LES SOUS-PAGES. Une documentation tient rarement en une page : un texte général, et le
+   détail de chaque point à côté. Tout mettre dans une seule page la rend illisible ; en faire
+   vingt pages sœurs perd le lien entre elles. Un seul niveau, volontairement — une
+   arborescence profonde se navigue mal dans une colonne de 300 pixels, et « le détail du
+   détail » est le signe qu'il fallait une page de plus, pas un étage de plus. Le parent
+   emporte ses sous-pages (cascade, `foreign_keys = ON` en tête de ce fichier).
+   Migration APRÈS le `CREATE TABLE note_page` ci-dessus. */
+try { db.exec('ALTER TABLE note_page ADD COLUMN parent_id INTEGER REFERENCES note_page(id) ON DELETE CASCADE'); } catch { /* déjà présente */ }
+db.exec('CREATE INDEX IF NOT EXISTS idx_note_page_parent ON note_page(parent_id)');
 
 /* Captures collées DANS une page de notes. Le fichier vit sur disque, la page ne garde qu'un
    lien Markdown : mettre l'image en base64 dans `content` ferait grossir la ligne de plusieurs

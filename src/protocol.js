@@ -8,6 +8,7 @@
  *   <<<REPO>>>   l'enquêteur nomme le dépôt trouvé → bouton « Corriger sur <dépôt> »
  *   <<<AGENT>>>  le cartographe décrit l'agent à créer → une ligne `agent` + son périmètre
  *   <<<STALE>>>  un agent de domaine signale ce qu'il a vu de faux dans sa connaissance
+ *   <<<PAGE>>>   un agent à sortie « page de notes » découpe sa doc en sous-pages (répétable)
  *
  * RÈGLE : un bloc mal formé n'est JAMAIS une erreur de run. L'agent a travaillé, son rapport
  * est lisible ; c'est le protocole qui a raté, et le run vaut mieux que son protocole. On
@@ -36,11 +37,27 @@ function extraire(text, nom) {
   return { block: b.contenu.trim(), rest: (s.slice(0, b.i) + s.slice(b.fin)).trim() };
 }
 
+/* TOUS les blocs d'une même balise, et le reste. `extraire` n'en prend qu'un, à dessein : un
+   agent qui émet deux `<<<AGENT>>>` a hésité. Mais une documentation a SIX sous-pages ou n'en a
+   aucune, et la répétition y est la forme normale — pas une hésitation. */
+function extraireTous(text, nom) {
+  const blocks = [];
+  let s = String(text || '');
+  // Borné : un bloc jamais refermé rend `bornes` nul et arrête la boucle de lui-même.
+  for (;;) {
+    const b = bornes(s, nom);
+    if (!b) break;
+    blocks.push(b.contenu.trim());
+    s = s.slice(0, b.i) + s.slice(b.fin);
+  }
+  return { blocks, rest: s.trim() };
+}
+
 // Retire TOUS les blocs connus d'un coup : ce que l'API rend et ce que l'écran affiche.
-const NOMS = ['REPO', 'AGENT', 'STALE'];
+const NOMS = ['REPO', 'AGENT', 'STALE', 'PAGE'];
 function nettoyer(text) {
   let s = String(text || '');
-  for (const n of NOMS) s = extraire(s, n).rest;
+  for (const n of NOMS) s = extraireTous(s, n).rest;
   return s;
 }
 
@@ -59,4 +76,4 @@ function lignes(block) {
   return out;
 }
 
-module.exports = { extraire, lignes, nettoyer, NOMS };
+module.exports = { extraire, extraireTous, lignes, nettoyer, NOMS };

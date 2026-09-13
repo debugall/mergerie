@@ -3108,6 +3108,51 @@ button.tag { font: inherit; font-size: 11px; line-height: 1.5; background: none;
 .notes-editor-col { flex: 1; min-width: 0; }
 .toolbar-tight { margin: 0; }
 .notes-list { display: flex; flex-direction: column; gap: 4px; max-height: 72vh; overflow: auto; }
+/* L'arbre d'un seul étage : la sous-page est décalée et porte un filet, pour qu'on voie d'un
+   coup d'œil ce qui dépend de quoi sans lire les titres. */
+/* Une LIGNE = le dépliant (ou son vide, pour garder les titres alignés) et la page. Le
+   décalage des sous-pages vit sur la ligne : posé sur `.note-item`, qui porte `width: 100%`,
+   la marge s'AJOUTAIT à la largeur — quel que soit le `box-sizing` — et chaque sous-page
+   dépassait la colonne de 14 pixels, y ouvrant un défilement horizontal qui rognait les
+   titres voisins. */
+.note-row { display: flex; align-items: stretch; gap: 4px; min-width: 0; }
+.note-row > .note-item { width: auto; flex: 1 1 auto; min-width: 0; }
+/* L'ARBORESCENCE SE VOIT. Une sous-page n'a pas de dépliant : sans décalage explicite, son
+   titre retombait À GAUCHE de celui de son parent — l'indentation était nulle, et rien ne
+   disait le rattachement. Le trait vertical part sous le dépliant du parent, l'équerre va
+   chercher la page, et le trait s'arrête au dernier enfant (`note-sub-last`) : le laisser
+   courir ferait croire que la page suivante appartient au groupe. */
+.note-row.note-sub { margin-left: 22px; padding-left: 18px; position: relative;
+  /* Le trait de l'arborescence, assez marqué pour se voir sur les deux fonds : `--line` sert
+     aux CADRES, qui touchent une grande surface ; un filet d'un pixel dans un blanc en a
+     besoin de plus. */
+  --note-tree: color-mix(in srgb, var(--muted) 55%, transparent); }
+.note-row.note-sub::before {
+  content: ''; position: absolute; left: 0; top: -4px; bottom: 0; width: 1px; background: var(--note-tree);
+}
+.note-row.note-sub.note-sub-last::before { bottom: 50%; }
+.note-row.note-sub::after {
+  content: ''; position: absolute; left: 0; top: 50%; width: 12px; height: 1px; background: var(--note-tree);
+}
+/* Le dépliant : une gouttière étroite, sans cadre — un bouton de plus par ligne alourdirait
+   une colonne qui en compte déjà vingt. */
+.note-fold, .note-fold-vide { flex: 0 0 18px; width: 18px; }
+.note-fold { background: none; border: 0; padding: 0; color: var(--muted); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; border-radius: 6px; }
+.note-fold:hover { color: var(--text); background: var(--panel2); }
+.note-fold .ico { width: 14px; height: 14px; }
+/* Combien de sous-pages sont pliées là-dessous : sans ce chiffre, une page générale repliée
+   ne se distingue pas d'une page qui n'a rien. */
+.note-item-count { flex: none; font-size: 11px; color: var(--muted); background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; }
+.note-item.note-sub .note-item-title { font-size: 12px; }
+/* Une page ramenée seulement parce que sa sous-page correspond à la recherche. */
+.note-item.note-contexte .note-item-title { opacity: .6; }
+/* Où l'on est dans l'arbre, au-dessus des colonnes. */
+.note-parent, .note-children { margin: 0 0 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.lien-page { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer;
+  border-bottom: 1px dotted currentColor; }
+.lien-page:hover { color: var(--accent-hi); }
 .note-item { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
   padding: 8px 10px; background: var(--panel); color: var(--text);
   border: 1px solid var(--line); border-radius: 9px; cursor: pointer; font: inherit; }
@@ -3126,7 +3171,12 @@ button.tag { font: inherit; font-size: 11px; line-height: 1.5; background: none;
 /* L'indicateur d'enregistrement est DISCRET par construction : il rassure quand on le
    cherche, il ne réclame pas l'attention à chaque frappe. */
 .note-saved { font-size: 12px; color: var(--muted); min-width: 90px; }
+/* Le choix des colonnes, au-dessus d'elles : un segment de trois positions. */
+.note-panes-pick { margin: 0 0 8px; }
 .note-panes { display: flex; gap: 12px; align-items: stretch; }
+/* Ce qui reste prend toute la largeur : `flex: 1 1 50%` sur un seul enfant remplit la ligne. */
+.note-panes.panes-preview > .note-content { display: none; }
+.note-panes.panes-editor > .note-preview { display: none; }
 .note-content, .note-preview { flex: 1 1 50%; min-width: 0; min-height: 60vh; }
 .note-content { padding: 12px; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
   background: var(--panel2); color: var(--text); border: 1px solid var(--line);

@@ -416,6 +416,7 @@ function composer(agent, { question, targets, kind, entrees }) {
   if (agent.builtin_key === 'investigator') prompt += PROTO_REPO();
   if (agent.builtin_key === 'cartographer') prompt += PROTO_AGENT();
   if (agent.knowledge_prompt) prompt += PROTO_STALE();
+  if (agent.output_kind === 'note_page') prompt += PROTO_PAGES();
   return { prompt, kind: kind || agent.kind };
 }
 
@@ -425,6 +426,10 @@ function composer(agent, { question, targets, kind, entrees }) {
 const PROTO_REPO = () => `\n\n---\n${t('agents.proto.repo')}\n\n<<<REPO\n<projet> | <chemin> | <ligne>\nREPO>>>\n`;
 const PROTO_AGENT = () => `\n\n---\n${t('agents.proto.agent')}\n\n<<<AGENT\nname: <nom>\nrepo: <projet> | <rôle>\npath: <projet> | <chemin>\nAGENT>>>\n`;
 const PROTO_STALE = () => `\n\n---\n${t('agents.proto.stale')}\n\n<<<STALE\n<projet> | <chemin> | <ce qui ne colle plus>\nSTALE>>>\n`;
+/* La sortie « page de notes » peut se DÉCOUPER. Le texte hors bloc devient la page racine,
+   chaque bloc une sous-page. Combien et comment, c'est l'agent qui en juge : lui seul sait
+   si son sujet a trois points ou douze. */
+const PROTO_PAGES = () => `\n\n---\n${t('agents.proto.pages')}\n\n<<<PAGE\ntitle: <titre de la sous-page>\n<son contenu en Markdown>\nPAGE>>>\n`;
 
 /* ---------- Matérialiser et lancer ---------- */
 
@@ -550,20 +555,68 @@ async function apresRun(task, onLog = () => {}) {
    sinon la carte des services existerait en douze exemplaires au bout de trois mois, et
    aucun ne serait « la » page. Le run garde son propre md : la page en est une copie. */
 function versPageDeNotes(agent, task, texte, onLog) {
-  const contenu = `${t('agents.note.header', { name: agent.name, date: new Date().toLocaleString(i18n.currentLocale()) })}\n\n${protocol.nettoyer(texte)}`;
-  const msgs = { titreVide: t('err.notes.title-required'), inconnue: t('err.notes.unknown') };
+  const msgs = {
+    titreVide: t('err.notes.title-required'), inconnue: t('err.notes.unknown'),
+    tropProfond: t('err.notes.parent-too-deep'), soiMeme: t('err.notes.parent-self'),
+  };
+  /* LES SOUS-PAGES, décidées par l'agent. Une documentation tient rarement en une page : un
+     texte général, et le détail de chaque point à côté. C'est l'agent qui juge combien il en
+     faut et comment il les découpe — nous, on range. Ce qui reste après extraction est la
+     page RACINE : le texte général, avec ses renvois. */
+  const { blocks, rest } = protocol.extraireTous(texte, 'PAGE');
+  const entete = t('agents.note.header', { name: agent.name, date: new Date().toLocaleString(i18n.currentLocale()) });
+  const contenu = `${entete}\n\n${protocol.nettoyer(rest)}`;
   const id = Number(agent.output_ref) || 0;
   const page = id && notes.lirePage ? notes.lirePage(id) : null;
+  let racineId;
   if (id && page) {
     notes.majPage(id, { content: contenu }, msgs);
+    racineId = id;
     onLog(t('agents.log.note-updated', { title: page.title }));
-    return { page_id: id };
+  } else {
+    const cree = notes.creerPage({ title: `${agent.name} — ${t('agents.note.title-suffix')}`, content: contenu }, msgs);
+    db.prepare('UPDATE agent SET output_ref = ?, updated_at = ? WHERE id = ?')
+      .run(String(cree.id), new Date().toISOString(), agent.id);
+    racineId = cree.id;
+    onLog(t('agents.log.note-created', { title: cree.title }));
   }
-  const cree = notes.creerPage({ title: `${agent.name} — ${t('agents.note.title-suffix')}`, content: contenu }, msgs);
-  db.prepare('UPDATE agent SET output_ref = ?, updated_at = ? WHERE id = ?')
-    .run(String(cree.id), new Date().toISOString(), agent.id);
-  onLog(t('agents.log.note-created', { title: cree.title }));
-  return { page_id: cree.id };
+  return { page_id: racineId, children: rangerSousPages(agent, racineId, blocks, entete, msgs, onLog) };
+}
+
+/* Chaque bloc `<<<PAGE>>>` devient une sous-page de la racine, APPARIÉE PAR TITRE : l'agent
+   repasse chaque semaine, et vingt exemplaires de « Détail du routage » au bout de cinq mois
+   seraient exactement ce que la règle « jamais dupliquée » interdit pour la page racine.
+   Ce qui a disparu de la sortie n'est PAS supprimé, seulement signalé : une sous-page a pu
+   être relue et complétée à la main, et un run qui l'oublie n'est pas un ordre d'effacer. */
+function rangerSousPages(agent, racineId, blocks, entete, msgs, onLog) {
+  const existantes = notes.sousPages(racineId);
+  const vues = new Set();
+  const out = [];
+  for (const bloc of blocks) {
+    const lignes = String(bloc || '').split('\n');
+    const i = lignes.findIndex((l) => /^title\s*:/i.test(l.trim()));
+    // Un bloc sans titre est un bloc mal formé : le run vaut mieux que son protocole.
+    if (i === -1) { onLog(t('agents.log.subpage-untitled')); continue; }
+    const titre = lignes[i].replace(/^\s*title\s*:/i, '').trim();
+    const corps = lignes.slice(i + 1).join('\n').trim();
+    if (!titre || !corps) { onLog(t('agents.log.subpage-untitled')); continue; }
+    const texte = `${entete}\n\n${corps}`;
+    const deja = existantes.find((p) => p.title.toLowerCase() === titre.toLowerCase());
+    if (deja) {
+      notes.majPage(deja.id, { content: texte }, msgs);
+      out.push(deja.id);
+    } else {
+      out.push(notes.creerPage({ title: titre, content: texte, parent_id: racineId }, msgs).id);
+    }
+    vues.add(titre.toLowerCase());
+  }
+  const orphelines = existantes.filter((p) => !vues.has(p.title.toLowerCase()));
+  if (orphelines.length) {
+    onLog(t('agents.log.subpages-orphan', { n: orphelines.length, count: orphelines.length,
+      titles: orphelines.map((p) => p.title).join(', ') }));
+  }
+  if (out.length) onLog(t('agents.log.subpages', { n: out.length, count: out.length }));
+  return out;
 }
 
 /* Les fichiers d'entrée à écrire avant un run (appelé par les exécutants, qui savent où est

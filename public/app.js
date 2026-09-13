@@ -18139,6 +18139,21 @@ async function refreshOpenTodos() {
 
 /* ---------- Pages ---------- */
 
+/* QUELLES COLONNES ON MONTRE : 'preview' (le rendu seul, par défaut — on relit ses notes plus
+   souvent qu'on ne les écrit), 'editor' (le Markdown seul) ou 'both'. Retenu par navigateur,
+   comme le thème : c'est une commodité de lecture, elle n'a rien à faire en base. */
+/* Les pages générales dont on a déplié les sous-pages. En mémoire, pas en base ni dans le
+   navigateur : « replié par défaut » veut dire qu'on rouvre l'outil sur une colonne propre.
+   Au niveau module, parce que la liste se redessine à chaque sauvegarde automatique — un
+   ensemble tenu dans le rendu se reviderait à chaque frappe. */
+const sousOuvertes = new Set();
+
+const CLE_PANES = 'aidevtools_note_panes';
+let notePanesMode = (() => {
+  try { const v = localStorage.getItem(CLE_PANES); return ['preview', 'editor', 'both'].includes(v) ? v : 'preview'; }
+  catch { return 'preview'; }
+})();
+
 async function loadPages() {
   const box = $('#pageList');
   if (!box) return;
@@ -18160,13 +18175,80 @@ function renderPageList(q) {
       : emptyState({ icon: 'doc', title: esc(tr('notes.page.empty.title')), text: esc(tr('notes.page.empty.text')) });
     return;
   }
-  box.innerHTML = NOTES.pages.map((p) => `<button type="button" class="note-item${p.id === NOTES.pageId ? ' active' : ''}" data-page="${p.id}">
-      <span class="note-item-title">${p.pinned ? `${svgIco('tag')} ` : ''}${esc(p.title || tr('notes.page.untitled'))}</span>
-      <span class="note-item-date">${esc(fmtDate(p.updated_at))}</span>
-    </button>`).join('');
+  /* LA COLONNE EST UN ARBRE D'UN SEUL ÉTAGE. Une sous-page listée à plat, entre deux pages
+     sans rapport, perd ce qui fait sa valeur : on ne sait plus de quoi elle est le détail.
+     L'ordre des parents reste celui de la liste (épinglées d'abord, puis les plus récentes) ;
+     les sous-pages suivent leur parent, par titre — on y cherche un point précis, pas la
+     dernière frappe. Une page ramenée seulement pour porter ses enfants trouvés par la
+     recherche est grisée : c'est le rayon, pas le livre. */
+  const enfantsDe = new Map();
+  for (const p of NOTES.pages) {
+    if (!p.parent_id) continue;
+    if (!enfantsDe.has(p.parent_id)) enfantsDe.set(p.parent_id, []);
+    enfantsDe.get(p.parent_id).push(p);
+  }
+  /* CE QUI EST DÉPLIÉ. Replié par défaut : une colonne où chaque page générale déroule ses
+     huit sous-pages ne se lit plus, et on vient d'abord y chercher une page, pas un détail.
+     Deux exceptions, sans quoi le pli cacherait ce qu'on demande :
+       — le parent de la page OUVERTE (sinon ouvrir une sous-page par un lien la ferait
+         disparaître de la colonne, active et invisible) ;
+       — pendant une RECHERCHE (une sous-page trouvée qui reste pliée n'est pas trouvée). */
+  const ouverte = NOTES.pages.find((x) => x.id === NOTES.pageId);
+  /* Le parent de la page ouverte est déplié SANS être marqué comme tel : le marquer le
+     laisserait déplié après qu'on a quitté la sous-page, et « replié par défaut » ne tiendrait
+     plus dès la première visite. Le pli revient tout seul quand on s'en va. */
+  const autoOuvert = (ouverte && ouverte.parent_id) || 0;
+  const cherche = !!String(q || '').trim();
+  const estDeplie = (id) => cherche || id === autoOuvert || sousOuvertes.has(id);
+
+  const item = (p, sous, dernier = false) => {
+    const enfants = enfantsDe.get(p.id) || [];
+    const deplie = estDeplie(p.id);
+    /* Le dépliant est un bouton À CÔTÉ de la page, pas dedans : un bouton dans un bouton
+       n'est pas du HTML valide, et le clic n'y serait attribuable ni à l'un ni à l'autre.
+       Les pages sans sous-page gardent un vide de la même largeur, pour que les titres
+       restent alignés — une colonne en dents de scie se lit moins bien qu'une colonne droite. */
+    const pli = enfants.length
+      ? `<button type="button" class="note-fold" data-fold="${p.id}" aria-expanded="${deplie}"
+          data-tip="${esc(tr(deplie ? 'notes.page.fold' : 'notes.page.unfold', { n: enfants.length, count: enfants.length }))}"
+          >${svgIco(deplie ? 'down' : 'right')}</button>`
+      : '<span class="note-fold-vide"></span>';
+    return `<div class="note-row${sous ? ' note-sub' : ''}${sous && dernier ? ' note-sub-last' : ''}">${sous ? '' : pli}
+      <button type="button" class="note-item${sous ? ' note-sub' : ''}${p.id === NOTES.pageId ? ' active' : ''}${p.contexte ? ' note-contexte' : ''}" data-page="${p.id}">
+        <span class="note-item-title">${p.pinned ? `${svgIco('tag')} ` : ''}${esc(p.title || tr('notes.page.untitled'))}</span>
+        ${enfants.length && !deplie ? `<span class="note-item-count">${esc(String(enfants.length))}</span>` : ''}
+        <span class="note-item-date">${esc(fmtDate(p.updated_at))}</span>
+      </button></div>`;
+  };
+  const out = [];
+  for (const p of NOTES.pages) {
+    if (p.parent_id) continue;
+    out.push(item(p, false));
+    if (!estDeplie(p.id)) continue;
+    const enfants = (enfantsDe.get(p.id) || []).sort((x, y) => String(x.title).localeCompare(String(y.title)));
+    /* Le DERNIER enfant est marqué : c'est lui qui arrête le trait vertical de
+       l'arborescence. Sans cette marque, le trait descendrait au-delà du groupe et
+       semblerait rattacher la page suivante, qui n'a rien à voir. */
+    enfants.forEach((f, i) => out.push(item(f, true, i === enfants.length - 1)));
+  }
+  /* Une sous-page dont le parent n'est nulle part (parent supprimé entre deux rendus) reste
+     visible : la perdre de la colonne la rendrait introuvable sans rien réparer. */
+  for (const p of NOTES.pages) {
+    if (p.parent_id && !NOTES.pages.some((x) => x.id === p.parent_id)) out.push(item(p, true));
+  }
+  box.innerHTML = out.join('');
 }
 
 $('#pageList') && $('#pageList').addEventListener('click', (e) => {
+  /* Le dépliant AVANT la page : il est à côté, mais un clic qui ouvrirait aussi la page
+     ferait deux choses pour un geste — et on déplie souvent pour REGARDER, sans ouvrir. */
+  const f = e.target.closest('[data-fold]');
+  if (f) {
+    const id = Number(f.dataset.fold);
+    if (sousOuvertes.has(id)) sousOuvertes.delete(id); else sousOuvertes.add(id);
+    renderPageList(($('#pageSearch') && $('#pageSearch').value) || '');
+    return;
+  }
   const b = e.target.closest('[data-page]');
   if (b) openNotePage(Number(b.dataset.page));
 });
@@ -18228,6 +18310,10 @@ function renderPageEditor() {
     box.innerHTML = `<p class="muted note-none">${esc(tr('notes.page.none-selected'))}</p>`;
     return;
   }
+  /* UNE PAGE VIDE N'A RIEN À MONTRER. Le mode par défaut est la lecture — on ouvre ses notes
+     bien plus souvent qu'on ne les écrit —, mais servir un aperçu blanc à qui vient de créer
+     une page est un cul-de-sac : rien à lire, et pas de champ où écrire. */
+  const mode = (notePanesMode === 'preview' && !String(p.content || '').trim()) ? 'editor' : notePanesMode;
   box.innerHTML = `
     <div class="note-editor-head">
       <input id="pageTitle" type="text" class="note-title" maxlength="200" value="${esc(p.title)}" placeholder="${esc(tr('notes.page.title-ph'))}" />
@@ -18239,14 +18325,61 @@ function renderPageEditor() {
             ouvrir la modale, retrouver la capture dans Téléchargements, la ré-attacher. Or
             c'est exactement ce que « Faire coder l'IA » fait déjà depuis un ticket Jira —
             même chemin, autre source. Rien n'est lancé : on relit avant. */''}
+      ${/* UNE SOUS-PAGE NE PEUT PAS EN CONTENIR : le bouton n'apparaît que sur une page
+            racine, plutôt que d'être proposé puis refusé par le serveur. */''}
+      ${p.parent_id ? '' : `<button type="button" id="pageNewSub" class="btn btn-sm" data-tip="${esc(tr('notes.page.new-sub-tip'))}">${svgIco('plus')}<span>${esc(tr('notes.page.new-sub'))}</span></button>`}
       <button type="button" id="pageToCode" class="btn btn-sm" title="${esc(tr('notes.page.to-code-title'))}">${svgIco('bot')}<span>${esc(tr('notes.page.to-code'))}</span></button>
       <button type="button" id="pageExport" class="btn btn-sm" title="${esc(tr('notes.page.export-title'))}">${svgIco('download')}<span>${esc(tr('notes.page.export'))}</span></button>
       <button type="button" id="pageDelete" class="btn btn-sm btn-danger">${svgIco('trash')}<span>${esc(tr('notes.page.delete'))}</span></button>
     </div>
-    <div class="note-panes">
+    ${/* LIRE ET ÉCRIRE NE SE FONT PAS EN MÊME TEMPS. Deux demi-colonnes coupaient les deux :
+          un tableau de doc débordait de l'aperçu, et une ligne de Markdown revenait à la
+          ligne au milieu d'un lien. Le choix est un segment à TROIS positions plutôt que deux
+          cases à cocher : « tout masquer » n'est pas un état qu'on puisse vouloir, et deux
+          cases le rendent atteignable en deux clics. */''}
+    ${/* OÙ L'ON EST DANS L'ARBRE. Une sous-page ouverte seule ne disait pas de quoi elle
+          était le détail ; une page générale ne disait pas ce qu'elle chapeautait. Les deux
+          se lisent ici, et mènent d'un clic à l'autre bout du lien. */''}
+    ${p.parent_id ? `<p class="muted note-parent">${esc(tr('notes.page.child-of'))}
+      <button type="button" class="lien-page" data-page="${p.parent_id}">${esc(p.parent_title || tr('notes.page.untitled'))}</button></p>` : ''}
+    ${(p.children || []).length ? `<p class="muted note-children">${esc(tr('notes.page.children', { n: p.children.length, count: p.children.length }))}
+      ${p.children.map((c) => `<button type="button" class="lien-page" data-page="${c.id}">${esc(c.title || tr('notes.page.untitled'))}</button>`).join(' ')}</p>` : ''}
+    <div class="segmented note-panes-pick" role="tablist">
+      <button type="button" data-panes="preview" class="${mode === 'preview' ? 'active' : ''}" role="tab" data-tip="${esc(tr('notes.panes.preview-tip'))}">${esc(tr('notes.panes.preview'))}</button>
+      <button type="button" data-panes="both" class="${mode === 'both' ? 'active' : ''}" role="tab" data-tip="${esc(tr('notes.panes.both-tip'))}">${esc(tr('notes.panes.both'))}</button>
+      <button type="button" data-panes="editor" class="${mode === 'editor' ? 'active' : ''}" role="tab" data-tip="${esc(tr('notes.panes.editor-tip'))}">${esc(tr('notes.panes.editor'))}</button>
+    </div>
+    <div class="note-panes panes-${esc(mode)}">
       <textarea id="pageContent" class="note-content" placeholder="${esc(tr('notes.page.content-ph'))}" spellcheck="true">${esc(p.content || '')}</textarea>
       <div class="note-preview md-body" id="pagePreview">${renderNoteMd(p.content || '')}</div>
     </div>`;
+
+  /* Le segment change les colonnes SANS re-rendre l'éditeur : un re-rendu recréerait le
+     textarea, donc perdrait le curseur et la frappe non encore enregistrée. */
+  for (const b of $$('.note-panes-pick [data-panes]')) {
+    b.addEventListener('click', () => {
+      notePanesMode = b.dataset.panes;
+      try { localStorage.setItem(CLE_PANES, notePanesMode); } catch { /* stockage indisponible */ }
+      $('.note-panes').className = `note-panes panes-${notePanesMode}`;
+      $$('.note-panes-pick [data-panes]').forEach((x) => x.classList.toggle('active', x === b));
+      if (notePanesMode !== 'preview') $('#pageContent').focus();
+    });
+  }
+
+  for (const b of $$('#pageEditor .lien-page')) {
+    b.addEventListener('click', () => openNotePage(Number(b.dataset.page)));
+  }
+  /* NOUVELLE SOUS-PAGE : créée sous la page ouverte, puis ouverte à son tour — vide, donc
+     l'éditeur, parce qu'on vient d'appuyer sur « nouvelle » pour écrire. */
+  $('#pageNewSub') && $('#pageNewSub').addEventListener('click', async () => {
+    await viderPageSave();
+    try {
+      const cree = await api('/notes', { method: 'POST', body: { title: tr('notes.page.new-sub-title'), parent_id: p.id } });
+      await loadPages();
+      await openNotePage(cree.id);
+      $('#pageTitle') && $('#pageTitle').select();
+    } catch (e) { toast(explainError(e.message), true); }
+  });
 
   const marquer = (cle, param) => { const el = $('#pageSaved'); if (el) el.textContent = cle ? tr(cle, param) : ''; };
   /* Autosauvegarde à la frappe, avec un délai : enregistrer à chaque caractère ferait une
@@ -18301,9 +18434,13 @@ function renderPageEditor() {
      chemin que depuis un ticket Jira, et il se relit avant de partir. */
   $('#pageToCode') && $('#pageToCode').addEventListener('click', () => openTaskForNote(p));
   $('#pageDelete').addEventListener('click', async () => {
+    /* SUPPRIMER UNE PAGE EMPORTE SES SOUS-PAGES. Le dire AVANT : « supprimer » sur une page
+       générale qui en chapeaute six n'est pas le même geste que sur une page seule. */
+    const nEnfants = (p.children || []).length;
     if (!await confirmDialog({
       title: tr('notes.page.delete'),
       text: tr('notes.page.confirm-delete', { title: p.title }),
+      detail: nEnfants ? tr('notes.page.confirm-delete-children', { n: nEnfants, count: nEnfants }) : '',
       confirmLabel: tr('notes.page.delete'),
     })) return;
     /* La page quitte l'éditeur tout de suite ; l'appel, lui, part six secondes plus tard. Si
