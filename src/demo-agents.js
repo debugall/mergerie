@@ -101,6 +101,9 @@ function rapport(agent, mode, question, promptComplet) {
       'REPO>>>',
     ].join('\n');
   }
+  /* Un identifiant Mermaid ne supporte ni `/` ni `-` : `grp/app` ouvrirait un nœud que le
+     parseur refuse. Le nom lisible, lui, reste dans le libellé entre crochets. */
+  const id = (x) => String(x).replace(/[^A-Za-z0-9]/g, '_');
   if (role === 'librarian') {
     /* LA PAGE GÉNÉRALE, PUIS UNE SOUS-PAGE PAR SERVICE. Le documentaliste décide lui-même de
        son découpage : le décor doit montrer ce choix, sinon la démo prouve l'écran des pages
@@ -115,8 +118,16 @@ function rapport(agent, mode, question, promptComplet) {
       ...p.map((x) => `- **${x}** — ${role_(x)}.`),
       '',
       '## Qui appelle qui',
-      `- ${p1} → ${p0} (HTTP)`,
-      `- ${p0} → le bus d’événements`,
+      /* UN DIAGRAMME, pas une liste. Le décor doit montrer ce que le documentaliste produit
+         vraiment depuis qu'il dessine — une démo qui listerait des flèches en texte laisserait
+         croire que le rendu Mermaid des notes n'existe pas. L'identifiant du nœud est nettoyé
+         de ses `/` et `-`, comme le prompt le demande à l'agent. */
+      '```mermaid',
+      'flowchart LR',
+      `  ${id(p1)}[${p1}] -->|REST| ${id(p0)}[${p0}]`,
+      `  ${id(p0)} -->|événement| bus[(bus d’événements)]`,
+      `  ${id(p0)} --> db[(base principale)]`,
+      '```',
       '',
       ...p.flatMap((x) => [
         '<<<PAGE',
@@ -135,6 +146,23 @@ function rapport(agent, mode, question, promptComplet) {
         '',
         '## Configuration',
         '`.env`, lu par `src/config.js`.',
+        '',
+        '## Schéma de base',
+        'Lu dans `migrations/`.',
+        '```mermaid',
+        'erDiagram',
+        '  CLIENT ||--o{ COMMANDE : passe',
+        '  COMMANDE ||--|{ LIGNE : contient',
+        '  CLIENT {',
+        '    int id PK',
+        '    string email',
+        '  }',
+        '  COMMANDE {',
+        '    int id PK',
+        '    int client_id FK',
+        '    datetime creee_le',
+        '  }',
+        '```',
         'PAGE>>>',
         '',
       ]),

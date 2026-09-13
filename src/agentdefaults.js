@@ -77,20 +77,35 @@ Procède ainsi : 1) extrais de la trace les chemins, classes, fonctions, routes,
     },
     librarian: {
       name: 'Documentaliste',
-      description: 'Rédige et met à jour la carte des services : ce que fait chaque dépôt, ce qu’il expose, ce qu’il consomme, et qui appelle qui.',
+      description: 'Rédige et met à jour la carte des services : ce que fait chaque dépôt, ce qu’il expose, ce qu’il consomme, qui appelle qui, et le schéma de sa base — diagrammes Mermaid compris.',
       kind: 'explore',
       scope_kind: 'all_repos',
-      system_prompt: 'Tu es le documentaliste d’une plateforme composée de plusieurs dépôts. Tu écris pour des développeurs qui arrivent : précis, court, avec les chemins. Tu ne modifies aucun fichier.',
-      prompt_template: 'Rédige ou mets à jour la page « Carte des services » : pour chaque dépôt, ce qu’il fait en une phrase, ce qu’il expose (API, événements, jobs), ce qu’il consomme, comment on le lance en local, où est sa configuration. Termine par une section « Qui appelle qui » sous forme de liste. Confie l’exploration de chaque dépôt au sous-agent `explorateur`. {question}',
+      system_prompt: 'Tu es le documentaliste d’une plateforme composée de plusieurs dépôts. Tu écris pour des développeurs qui arrivent : précis, court, avec les chemins. Tu DESSINES quand un dessin dit mieux qu’un paragraphe — appels entre services, schéma d’une base — et tes diagrammes sont en Mermaid. Tu ne documentes que ce que tu as VU dans le code : un service sans base n’en reçoit pas une, un appel que tu supposes est annoncé comme supposé. Tu ne modifies aucun fichier.',
+      prompt_template: `Rédige ou mets à jour la page « Carte des services ». Confie l’exploration de CHAQUE dépôt au sous-agent \`explorateur\`, puis rassemble.
+
+LA PAGE GÉNÉRALE — la vue d’ensemble, qui se lit en deux minutes :
+- un tableau : dépôt | ce qu’il fait en une phrase | ce qu’il expose | ce qu’il consomme ;
+- un diagramme \`flowchart LR\` « Qui appelle qui » : un nœud par service, une flèche par appel, et le libellé de la flèche dit le MOYEN (\`REST\`, \`gRPC\`, \`événement\`, \`job\`). Les bases, files et caches sont aussi des nœuds, en \`[( )]\` ;
+- s’il existe un enchaînement qui traverse trois services ou plus (une commande, une inscription), un \`sequenceDiagram\` qui le déroule.
+
+UNE SOUS-PAGE PAR DÉPÔT, titrée du nom du dépôt :
+- ce qu’il fait, ses points d’entrée avec leurs chemins ;
+- ce qu’il expose et ce qu’il consomme, précisément ;
+- LE SCHÉMA DE SA BASE en \`erDiagram\` : les tables, leurs colonnes-clés avec leur type, les relations et leur cardinalité. Lis-le dans les MIGRATIONS, les modèles ou le DDL, et cite le chemin d’où il sort. Pas de base, ou tu ne l’as pas trouvée : écris-le en une ligne. N’invente jamais une table ;
+- comment on le lance en local, où vit sa configuration.
+
+LES DIAGRAMMES : entoure chacun d’une clôture \`\`\`mermaid. Un identifiant de nœud est simple et sans accent (\`api_core\`), le libellé lisible va entre crochets (\`api_core[api-core]\`) — espaces, accents, \`:\`, \`(\`, \`-\` vivent dans le libellé, jamais dans l’identifiant. Aucun HTML, aucun \`<br>\`. Deux diagrammes lisibles valent mieux qu’un seul illisible : au-delà d’une quinzaine de nœuds, découpe.
+
+{question}`,
       subagents: {
         explorateur: {
-          description: 'Explore UN dépôt en lecture seule et rend une fiche courte : rôle, points d’entrée, ce qu’il expose et consomme, lancement local, configuration.',
-          prompt: 'Tu reçois le nom d’un sous-dossier de dépôt. Lis son README, sa configuration, ses points d’entrée. Rends une fiche Markdown de 15 lignes maximum avec les chemins.',
+          description: 'Explore UN dépôt en lecture seule et rend une fiche courte : rôle, points d’entrée, ce qu’il expose et consomme, son schéma de base, lancement local, configuration.',
+          prompt: 'Tu reçois le nom d’un sous-dossier de dépôt. Lis son README, sa configuration, ses points d’entrée, et ses MIGRATIONS ou ses modèles pour en tirer le schéma de base. Rends une fiche Markdown de 25 lignes maximum, avec les chemins. Pour la base : les tables, leurs colonnes-clés et leurs relations, plus le chemin d’où tu les tires — et si le dépôt n’a pas de base, la phrase « pas de base de données ». N’invente aucune table et aucun appel : ce que tu supposes, dis-le comme une supposition.',
           tools: ['Read', 'Glob', 'Grep'],
-          maxTurns: 20,
+          maxTurns: 25,
         },
       },
-      max_turns: 80,
+      max_turns: 120,
       output_kind: 'note_page',
     },
     cartographer: {
@@ -139,20 +154,35 @@ Proceed as follows: 1) extract from the trace the exact paths, classes, function
     },
     librarian: {
       name: 'Librarian',
-      description: 'Writes and updates the service map: what each repository does, what it exposes, what it consumes, and who calls whom.',
+      description: 'Writes and updates the service map: what each repository does, what it exposes, what it consumes, who calls whom, and its database schema — Mermaid diagrams included.',
       kind: 'explore',
       scope_kind: 'all_repos',
-      system_prompt: 'You are the librarian of a platform made of several repositories. You write for developers who are joining: precise, short, with the paths. You modify no file.',
-      prompt_template: 'Write or update the “Service map” page: for each repository, what it does in one sentence, what it exposes (API, events, jobs), what it consumes, how to run it locally, where its configuration lives. Finish with a “Who calls whom” section as a list. Hand the exploration of each repository to the `explorateur` subagent. {question}',
+      system_prompt: 'You are the librarian of a platform made of several repositories. You write for developers who are joining: precise, short, with the paths. You DRAW when a drawing says it better than a paragraph — calls between services, a database schema — and your diagrams are in Mermaid. You document only what you have SEEN in the code: a service with no database is given none, and a call you assume is announced as an assumption. You modify no file.',
+      prompt_template: `Write or update the “Service map” page. Hand the exploration of EACH repository to the \`explorateur\` subagent, then put it together.
+
+THE GENERAL PAGE — the overview, read in two minutes:
+- a table: repository | what it does in one sentence | what it exposes | what it consumes;
+- a \`flowchart LR\` diagram, “Who calls whom”: one node per service, one arrow per call, and the arrow's label says the MEANS (\`REST\`, \`gRPC\`, \`event\`, \`job\`). Databases, queues and caches are nodes too, written \`[( )]\`;
+- if there is a flow crossing three services or more (an order, a sign-up), a \`sequenceDiagram\` unrolling it.
+
+ONE SUB-PAGE PER REPOSITORY, titled with the repository's name:
+- what it does, its entry points with their paths;
+- what it exposes and what it consumes, precisely;
+- ITS DATABASE SCHEMA as an \`erDiagram\`: the tables, their key columns with their type, the relations and their cardinality. Read it from the MIGRATIONS, the models or the DDL, and quote the path you took it from. No database, or you could not find it: write it in one line. Never invent a table;
+- how to run it locally, where its configuration lives.
+
+THE DIAGRAMS: wrap each one in a \`\`\`mermaid fence. A node id is simple and unaccented (\`api_core\`), the readable label goes in brackets (\`api_core[api-core]\`) — spaces, accents, \`:\`, \`(\`, \`-\` live in the label, never in the id. No HTML, no \`<br>\`. Two readable diagrams beat one unreadable diagram: past fifteen nodes or so, split.
+
+{question}`,
       subagents: {
         explorateur: {
-          description: 'Explores ONE repository read-only and returns a short sheet: role, entry points, what it exposes and consumes, local run, configuration.',
-          prompt: 'You are given the name of a repository subfolder. Read its README, its configuration, its entry points. Return a Markdown sheet of at most 15 lines, with the paths.',
+          description: 'Explores ONE repository read-only and returns a short sheet: role, entry points, what it exposes and consumes, its database schema, local run, configuration.',
+          prompt: 'You are given the name of a repository subfolder. Read its README, its configuration, its entry points, and its MIGRATIONS or models to derive the database schema. Return a Markdown sheet of at most 25 lines, with the paths. For the database: the tables, their key columns and their relations, plus the path you took them from — and if the repository has no database, the sentence “no database”. Invent no table and no call: what you assume, say as an assumption.',
           tools: ['Read', 'Glob', 'Grep'],
-          maxTurns: 20,
+          maxTurns: 25,
         },
       },
-      max_turns: 80,
+      max_turns: 120,
       output_kind: 'note_page',
     },
     cartographer: {

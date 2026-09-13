@@ -15,6 +15,7 @@ Application locale mono-utilisateur (Node + Express + SQLite + front vanilla) po
 - **Back** : Node 22.9+ + Express. Shelle `git` et le binaire d'agent (`copilot`/`claude`) via `child_process`. Clients HTTP GitLab et GitHub en `https`/`http` natif (agent TLS scopé par forge). `gpt-tokenizer` (pur JS, hors-ligne, **optionnel** : repli sur estimation) pour le comptage de tokens du footer.
 - **BDD** : SQLite via `better-sqlite3` (fichier unique, migrations `ALTER TABLE` idempotentes au démarrage).
 - **Front** : SPA vanilla (HTML/CSS/JS), servie en statique, **zéro dépendance réseau** au runtime (rendu markdown + coloration syntaxique maison).
+- **`public/vendor/`** : les bibliothèques tierces posées telles qu'elles sont publiées, plutôt qu'installées — `mermaid.min.js` (12.0.0, MIT, 5,4 Mo) rend les blocs ` ```mermaid ` des notes. En npm, mermaid c'est 23 dépendances directes et 124 Mo décompressés pour un fichier dont le navigateur a seul besoin ; le dépôt garde ses **trois** dépendances runtime et `npm install` sa durée. Chargé **à la demande**, au premier diagramme rencontré dans un rendu, jamais depuis un CDN. Voir `public/vendor/README.md` pour la mise à jour.
 
 ## Modules (`src/`)
 

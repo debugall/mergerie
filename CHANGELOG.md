@@ -11,6 +11,26 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Added
+
+- **The librarian draws, and a note page knows how to show it.** Twenty services described in
+  prose is a page you read once: what you actually want to know is who calls whom, and what a
+  service's tables look like. The librarian now puts a **“who calls whom” diagram** on the
+  general page — one node per service, the arrow saying the means (REST, event, job), databases
+  and queues as nodes too — plus a sequence diagram when a flow crosses three services. And each
+  repository gets **its own sub-page with its database schema**, read from the **migrations** or
+  the models, with the path it came from. A repository with no database says so in one line: the
+  instruction forbids it to invent a table, exactly as the investigator is forbidden to invent a
+  repository.
+- **A ` ```mermaid ` block in a note becomes a diagram.** The renderer used to drop the language
+  of a fence, so a diagram was displayed as its own source code. Colours follow the theme, and
+  switching themes redraws them — they are baked into the SVG, and a dark diagram on a light page
+  is unreadable. A diagram that does not compile **keeps its source on screen** with the error
+  above it: notes are written by hand and by agents, and a typo must not take the page down. The
+  library is **shipped in the repository** (`public/vendor/`), never fetched from a CDN — nothing
+  leaves the machine — and it is loaded **only when a rendering actually contains a diagram**, so
+  a page without one costs nothing.
+
 ### Fixed
 
 - **The demo now writes its review in the language of the screen.** The simulated report,

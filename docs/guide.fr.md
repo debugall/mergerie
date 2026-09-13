@@ -804,6 +804,13 @@ entre humains.
   notes : ce que fait chaque dépôt, ce qu'il expose, ce qu'il consomme, comment on le lance en local, où
   est sa configuration, et « qui appelle qui ». La page est **créée au premier run puis mise à jour**,
   jamais dupliquée. Avec un horaire, le brief du matin annonce qu'elle a changé.
+  **Il dessine** : la page générale porte un `flowchart` « qui appelle qui » — un nœud par service, le
+  libellé de la flèche disant le moyen (REST, événement, job), les bases et les files étant des nœuds
+  aussi — et, quand un enchaînement traverse trois services, un `sequenceDiagram` qui le déroule. Chaque
+  dépôt reçoit **sa sous-page**, avec **le schéma de sa base** en `erDiagram` : tables, colonnes-clés,
+  relations, lus dans les **migrations** ou les modèles, et le chemin d'où ils sortent. Un dépôt sans
+  base le dit en une ligne — la consigne lui interdit d'inventer une table, comme elle interdit à
+  l'enquêteur d'inventer un dépôt.
 
 Ces deux agents sont **modifiables** comme les autres — et **restaurables** d'un bouton si l'on va trop
 loin. Le troisième livré, le **cartographe**, ne se lance pas directement : c'est lui qui crée les agents
@@ -1031,6 +1038,13 @@ Markdown côte à côte** (le même rendu que les rapports de review, donc le m�
   l'aperçu l'affiche aussitôt. L'image part **sur le disque** (`data/notes/<page>/`) et la page ne garde
   qu'un lien : mettre la capture en base64 dans le contenu gonflerait la ligne de plusieurs mégaoctets,
   renvoyés en entier à chaque autosauvegarde — c'est-à-dire toutes les secondes pendant qu'on écrit.
+- **Un bloc ` ```mermaid ` devient un diagramme.** Ce que le documentaliste dessine se lit comme un
+  schéma, pas comme du texte. La bibliothèque de rendu est **posée dans le dépôt**
+  (`public/vendor/mermaid.min.js`, jamais un CDN : rien ne sort de la machine) et n'est chargée qu'**au
+  premier diagramme rencontré** — une page qui n'en contient pas ne paie pas ses cinq mégaoctets. Les
+  couleurs suivent le thème, et changer de thème refait les diagrammes, dont les couleurs sont cuites
+  dans le SVG. Un diagramme qui **ne compile pas garde sa source affichée**, avec l'erreur au-dessus :
+  une faute de frappe n'emporte pas la page.
 - **Épingler** garde une page en tête de liste.
 - **Exporter** télécharge la page en `.md`, au nom **slugifié** depuis le titre. ⚠ Les captures y sont
   référencées par leur **adresse dans Mergerie** : le `.md` relu ailleurs affichera le texte, pas les

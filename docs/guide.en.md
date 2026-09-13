@@ -780,6 +780,13 @@ between humans.
   repository does, what it exposes, what it consumes, how to run it locally, where its configuration
   lives, and “who calls whom”. The page is **created on the first run then updated**, never duplicated.
   With a schedule, the morning brief announces that it changed.
+  **It draws**: the general page carries a “who calls whom” `flowchart` — one node per service, the
+  arrow's label saying the means (REST, event, job), databases and queues being nodes too — and, when a
+  flow crosses three services, a `sequenceDiagram` unrolling it. Each repository gets **its own
+  sub-page**, with **its database schema** as an `erDiagram`: tables, key columns, relations, read from
+  the **migrations** or the models, and the path they came from. A repository with no database says so
+  in one line — the instruction forbids it to invent a table, as it forbids the investigator to invent
+  a repository.
 
 Both are **editable** like any other — and **restorable** with one button if you go too far. The third
 shipped agent, the **cartographer**, is not launched directly: it is the one that creates domain agents.
@@ -1002,6 +1009,12 @@ renderer as the review reports, hence the same escaping).
   the preview shows it right away. The image goes **to disk** (`data/notes/<page>/`) and the page only
   keeps a link: putting the screenshot into the content as base64 would swell the row by several
   megabytes, resent in full on every autosave — that is, about every second while you write.
+- **A ` ```mermaid ` block becomes a diagram.** What the librarian draws reads as a diagram, not as
+  text. The rendering library **lives in the repository** (`public/vendor/mermaid.min.js`, never a CDN:
+  nothing leaves the machine) and is loaded only **on the first diagram met** — a page holding none does
+  not pay its five megabytes. The colours follow the theme, and switching themes redraws the diagrams,
+  whose colours are baked into the SVG. A diagram that **does not compile keeps its source on screen**,
+  with the error above it: a typo does not take the page down.
 - **Pin** keeps a page at the top of the list.
 - **Export** downloads the page as `.md`, under a name **slugified** from the title. ⚠ Screenshots are
   referenced by their **address inside Mergerie**: the `.md` read elsewhere will show the text, not the
