@@ -214,7 +214,9 @@ const REGISTRE = [
        est du même bois : l'instant que la FORGE donne, le même pour toute l'équipe, là où la
        ligne du journal d'activité ne disait que « quand CE poste s'en est aperçu ». */
     partagees: ['status', 'reviewed_sha', 'ticket_text', 'ticket_image', 'squash',
-      'remove_source_branch', 'closed_seen', 'web_url', 'gitlab_created_at', 'merged_at'],
+      'remove_source_branch', 'closed_seen', 'web_url', 'gitlab_created_at', 'merged_at',
+      /* CES QUATRE-LÀ NE PARTENT QUE POUR UNE MR FERMÉE — voir `toFile`. */
+      'title', 'source_branch', 'target_branch', 'author'],
     fichiers: ['mrs/{forge}/{project}/{iid}.{ext} (image du ticket)'],
     note: 'la forge fait foi du reste : titre, branches, SHA, auteur, fichiers changés, Jira ; '
       + 'l’adresse et la date d’ouverture voyagent parce qu’elles ne changent jamais',
@@ -235,6 +237,18 @@ const REGISTRE = [
         web_url: r.web_url || null,
         gitlab_created_at: r.gitlab_created_at || null,
         merged_at: r.merged_at || null,
+        /* UNE MERGE REQUEST FERMÉE NE CHANGE PLUS. Son titre, ses branches et son auteur
+           deviennent des faits figés le jour où elle est mergée : les partager ne fait donc
+           voyager aucun périmé, et évite au poste qui rejoint d'avoir besoin d'un jeton de
+           forge pour lire son propre historique — sans quoi son rapport de review s'ouvre sur
+           un numéro seul. Tant qu'elle est OUVERTE, la forge reste la seule source : le titre
+           se réécrit, la branche se renomme, et deux postes s'écraseraient à tour de rôle. */
+        ...(r.closed_seen ? {
+          title: r.title || null,
+          source_branch: r.source_branch || null,
+          target_branch: r.target_branch || null,
+          author: r.author || null,
+        } : {}),
         reviewed_sha: r.reviewed_sha || null,
         ticket_text: r.ticket_text || null,
         squash: r.squash == null ? null : (r.squash ? 1 : 0),
@@ -266,6 +280,12 @@ const REGISTRE = [
       web_url: doc.web_url || null,
       gitlab_created_at: doc.gitlab_created_at || null,
       merged_at: doc.merged_at || null,
+      /* On ne pose ces colonnes QUE si le fichier les porte : les absentes ne doivent pas
+         devenir des `null` qui effaceraient ce que la découverte sait déjà. */
+      ...(doc.title ? { title: doc.title } : {}),
+      ...(doc.source_branch ? { source_branch: doc.source_branch } : {}),
+      ...(doc.target_branch ? { target_branch: doc.target_branch } : {}),
+      ...(doc.author ? { author: doc.author } : {}),
       reviewed_sha: doc.reviewed_sha || null,
       ticket_text: doc.ticket_text || null,
       squash: doc.squash == null ? null : (doc.squash ? 1 : 0),

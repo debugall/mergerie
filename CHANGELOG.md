@@ -52,6 +52,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **The “AI output” button shows up on a session that came from the team.** Whether to offer it
   was decided from a file path on your own machine, which a received session does not have — so
   the button vanished while every iteration's text sat right there. It is now decided from the
+  iterations themselves, which is what travels and what the button opens. Whether to offer it
+  was decided from a file path on your own machine, which a received session does not have — so
+  the button vanished while every iteration's text sat right there. It is now decided from the
   iterations themselves, which is what travels and what the button opens.
 
 - **You can open the diff of an iteration a colleague ran.** The patch itself stays on the machine
@@ -75,6 +78,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   never showed up. The same held for a review, and for a verifier two people had named the same
   thing. Every uniqueness rule in the database is now checked against the registry by a test, so
   the next one cannot be discovered in production, on someone else's machine.
+
+- **A closed merge request takes its title, branches and author with it.** Once a merge request is
+  closed those stop being able to change, so they are no longer the forge's alone to tell: they
+  travel with it. A machine that has just joined can therefore read its own history — every review
+  report opening on a real title rather than a bare number — without needing a forge token at all.
+  While a merge request is still open, the forge remains the only source: a title gets rewritten, a
+  branch renamed, and two machines would overwrite each other in turns.
 
 - **A closed merge request gets its title, branches, author and merge date back — so the cycle-time
   chart has a past.** Discovery only lists *open* merge requests: anything already closed never

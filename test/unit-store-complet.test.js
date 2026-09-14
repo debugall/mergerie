@@ -108,6 +108,21 @@ describe('store — la base prévient, le store écrit', () => {
     assert.equal(mr.web_url, 'https://gitlab.test/acme/web/-/merge_requests/218');
     assert.equal(mr.gitlab_created_at, '2026-02-01T09:00:00Z');
 
+    /* …ET LE JOUR OÙ ELLE EST FERMÉE, son titre et ses branches cessent de pouvoir changer :
+       ils partent alors avec elle. Sans ça, le poste qui rejoint ouvre son rapport de review
+       sur un numéro seul tant qu'il n'a pas de jeton de forge valide — pour lire un travail
+       qui, lui, est déjà arrivé. */
+    db.prepare('UPDATE mr SET closed_seen = 1 WHERE id = ?').run(mrId);
+    store.ecouler();
+    const fermee = JSON.parse(store.lireFichier('mrs/gitlab/acme/web/218.json'));
+    assert.equal(fermee.title, 'Paiement 3×');
+    assert.equal(fermee.source_branch, 'feat/x');
+    assert.equal(fermee.target_branch, 'main');
+    db.prepare('UPDATE mr SET closed_seen = 0 WHERE id = ?').run(mrId);
+    store.ecouler();
+    assert.ok(!('title' in JSON.parse(store.lireFichier('mrs/gitlab/acme/web/218.json'))),
+      'rouverte, elle redevient celle de la forge : le titre peut à nouveau changer');
+
     const uid = db.prepare('SELECT uid FROM review_version WHERE mr_id = ?').get(mrId).uid;
     assert.equal(store.lireFichier(`reviews/gitlab/acme/web/218/${uid}.md`), '# Revue\n\nDeux constats.',
       'le rapport part en TEXTE : c’est ce qui a de la valeur, et ça se relit hors de l’outil');
