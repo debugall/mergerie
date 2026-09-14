@@ -2719,12 +2719,15 @@ not what you produced.
 
 **Getting a team started.**
 
-1. **Create an empty repository** on the forge, private, say `team/mergerie-data`.
+1. **Create a repository** on the forge, private, say `team/mergerie-data`. Empty or with a
+   README, it makes no difference: the button works out which case it is.
 2. **The first machine** — the one that already has the history — pastes its URL into
-   *Settings → General → Shared data*, then clicks **“Clone / attach”**. The remote being empty,
-   Mergerie **initialises** it with what that machine already holds, and pushes it.
-3. **The other machines** paste the same URL and click the same button. This time the repository
-   has content: it is cloned, and everything appears — rules, verifiers, agents, notes, todos.
+   *Settings → General → Shared data*, then clicks **“Clone / attach”**. Mergerie pushes what that
+   machine already holds: that is what starting a team is.
+3. **The other machines** paste the same URL and click the same button. **The gesture goes both
+   ways**: the team's content comes down — rules, verifiers, agents, notes, todos — and whatever
+   that machine had accumulated on its own goes up with it, in the same commit. Nobody leaves
+   their months of reviews behind by joining, and the screen says how many documents went up.
 4. Everyone checks that git knows them (`git config --global user.name`): **that identity signs
    the commits**, and it is what will later answer “who wrote this?”. Without it nothing is
    committed, and the screen says so.

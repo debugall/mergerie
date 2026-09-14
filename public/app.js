@@ -6345,7 +6345,11 @@ if (btnDataAttach) btnDataAttach.addEventListener('click', async () => {
       data_sync_seconds: ($('#configForm').data_sync_seconds || {}).value || '30',
     } });
     const r = await api('/data-sync/attach', { method: 'POST', body: { url } });
-    $('#dataSyncInfo').textContent = r.mode === 'init' ? tr('datasync.done.init') : tr('datasync.done.clone');
+    /* REJOINDRE VA DANS LES DEUX SENS, et le dire évite la question suivante : on reçoit ce que
+       l'équipe a accumulé, ET ce que ce poste portait déjà part avec. Le compte le prouve. */
+    const emportes = Object.values(r.compte || {}).reduce((n, x) => n + (Number(x) || 0), 0);
+    $('#dataSyncInfo').textContent = r.mode === 'init'
+      ? tr('datasync.done.init') : tr('datasync.done.clone', { n: emportes });
     await chargerDataSync();
   } catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); }
   finally { btn.disabled = false; }

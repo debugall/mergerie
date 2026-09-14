@@ -22,6 +22,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   machine and are billed to you, and it is the **result** that is shared. Nothing to install,
   nothing to administer — and you get “who decided what, and when” for free.
 
+  **Joining takes your history with you.** A repository created on the forge almost always comes
+  with an initial commit — a README —, and attaching to it brings the team's content down. It also
+  sends everything this machine had already accumulated up, in the same gesture: the months of
+  reviews, sessions and notes that predate the switch are what the team wants most, and they would
+  otherwise have stayed behind while only future work travelled. The screen says how many documents
+  went up.
+
   Day to day you do nothing: every thirty seconds the tool sends what is new and fetches what is
   new elsewhere, and the footer shows `↑2 ↓0`. Offline, everything keeps working — commits stay
   local and catch up on return. When two people change the same thing, the remote version wins and

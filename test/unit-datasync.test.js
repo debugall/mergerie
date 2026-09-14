@@ -163,14 +163,57 @@ describe('datasync — deux postes, un dépôt de données', () => {
       datasync.reprendreVersion(c.fichier);
       await datasync.commiter('restore note "Chez B"');
       await datasync.tour();
-      return { restants: datasync.conflitsGardes().length };
+      return {
+        restants: datasync.conflitsGardes().length,
+        ligne: db.prepare("SELECT content FROM note_page WHERE slug = 'chez-b'").get().content,
+      };
     }`);
     assert.equal(apres.restants, 0);
+    /* Reprendre la sienne repose le FICHIER ; si la LIGNE restait celle du voisin, l'écran
+       montrerait le contraire du dépôt et le clic passerait pour perdu. */
+    assert.equal(apres.ligne, 'version de B', 'le fichier repris doit redevenir la ligne');
     const chezA = dans(posteA, `async ({ db, datasync }) => {
       await datasync.tour();
       return db.prepare("SELECT content FROM note_page WHERE slug = 'chez-b'").get().content;
     }`);
     assert.equal(chezA, 'version de B');
+  });
+
+  test('un poste qui REJOINT emporte ce qu’il avait déjà — le dépôt ne s’ouvre pas sur du vide', () => {
+    /* LE CAS ORDINAIRE DE LA BASCULE D'UNE ÉQUIPE. On crée le dépôt sur la forge — qui y met un
+       commit initial, un README —, puis on clique « Cloner / rattacher » depuis le poste qui
+       porte des mois de relectures. Si rejoindre se contentait d'hydrater, ces mois resteraient
+       à quai : seul ce qui serait écrit APRÈS partirait, et l'équipe ouvrirait un dépôt vide.
+       C'est exactement ce qui s'est produit avant ce test. */
+    const posteC = path.join(racine, 'C');
+    fs.mkdirSync(posteC);
+    dans(posteC, `async ({ db, notes, MSGS }) => {
+      notes.creerPage({ title: 'Avant l’équipe', content: 'écrit en mono-poste' }, MSGS);
+      const r = db.prepare("INSERT INTO repo (forge, project, url, enabled) VALUES ('gitlab', 'eq/api', 'https://x/eq/api', 1)").run();
+      db.prepare("INSERT INTO mr (repo_id, iid, status, ticket_text) VALUES (?, 41, 'reviewed', 'contexte saisi à la main')").run(r.lastInsertRowid);
+    }`);
+
+    /* Ce que le dépôt contenait AVANT que C ne le rejoigne : rejoindre doit AJOUTER, et ne
+       jamais réécrire le fichier d'un collègue. */
+    const avant = execFileSync('git', ['-C', nu, 'rev-parse', 'main'], { encoding: 'utf8' }).trim();
+
+    const mode = dans(posteC, `async ({ config, datasync }) => {
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nu)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      const r = await datasync.rattacher({});
+      await datasync.tour();
+      return r.mode;
+    }`);
+    assert.equal(mode, 'clone', 'un dépôt déjà pourvu se rejoint, il ne s’initialise pas');
+
+    const listing = execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' });
+    assert.match(listing, /notes\/avant-l-equipe\.md/, 'la note d’avant doit monter avec');
+    assert.match(listing, /repos\/gitlab\/eq\/api\.json/, 'le dépôt suivi aussi');
+    assert.match(listing, /mrs\/gitlab\/eq\/api\/41\.json/, 'et la MR relue — la question posée');
+
+    const touches = execFileSync('git', ['-C', nu, 'diff', '--name-status', avant, 'main'], { encoding: 'utf8' })
+      .split('\n').map((x) => x.trim()).filter(Boolean).filter((l) => !l.startsWith('A'));
+    assert.deepEqual(touches, [],
+      `rejoindre AJOUTE : les fichiers des collègues ne doivent pas être réécrits — ${touches.join(', ')}`);
   });
 
   test('AUCUN SECRET dans le dépôt nu — ni dans sa dernière version, ni dans son historique', () => {

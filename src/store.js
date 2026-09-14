@@ -76,6 +76,20 @@ function absolu(relatif) {
   return p;
 }
 
+/* LE MÊME GARDE, DANS L'AUTRE SENS. `absolu` protège le dépôt de ce que l'utilisateur tape ;
+   celui-ci protège `data/` de ce que le DÉPÔT raconte. Le nom d'une capture, le dossier d'un
+   agent viennent d'un fichier écrit sur un AUTRE poste : un `../../.ssh/authorized_keys` y est
+   tout aussi concevable, et l'hydratation le déposerait sans broncher. On résout, on vérifie,
+   et on refuse — un fichier refusé vaut mieux qu'un fichier écrit hors du dossier de données. */
+function sousDonnees(sousDossier, nom) {
+  const racine = path.resolve(DATA_DIR) + path.sep;
+  const p = path.resolve(DATA_DIR, String(sousDossier || ''), String(nom || ''));
+  if (!p.startsWith(racine) || /\0/.test(`${sousDossier}${nom}`)) {
+    throw new Error(`store : chemin hors du dossier de données — ${sousDossier}/${nom}`);
+  }
+  return p;
+}
+
 /* `write` puis `rename` : un lecteur (ou un `git add` déclenché au même instant) voit l'ancien
    fichier ou le nouveau, jamais un fichier à moitié écrit. */
 function ecrireFichier(relatif, contenu) {
@@ -184,9 +198,10 @@ function contexte() {
        dépôt rend `null` plutôt que de faire échouer toute la passe pour une vignette. */
     copierDepuisDepot(relatif, sousDossier, nom) {
       if (!relatif) return null;
-      const source = path.resolve(SHARED_DIR, relatif);
+      let source; let dest;
+      try { source = absolu(relatif); dest = sousDonnees(sousDossier, nom); } catch { return null; }
       if (!fs.existsSync(source)) return null;
-      const dest = path.join(ensureDir(path.join(DATA_DIR, sousDossier)), nom);
+      ensureDir(path.dirname(dest));
       try { fs.copyFileSync(source, dest); } catch { return null; }
       return dest;
     },
@@ -201,7 +216,8 @@ function contexte() {
     /* … et le chemin inverse : on repose le corps sur le disque local, là où l'application le
        lit, et on rend son chemin absolu — qui, lui, ne repart jamais dans le dépôt. */
     ecrireDisque(sousDossier, nom, contenu) {
-      const dest = path.join(ensureDir(path.join(DATA_DIR, sousDossier)), nom);
+      const dest = sousDonnees(sousDossier, nom);
+      ensureDir(path.dirname(dest));
       fs.writeFileSync(dest, contenu, 'utf8');
       return dest;
     },

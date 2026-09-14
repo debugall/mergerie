@@ -2808,12 +2808,16 @@ produit.
 
 **Mettre une équipe en route.**
 
-1. **Créer un dépôt vide** sur la forge, privé, par exemple `equipe/mergerie-data`.
+1. **Créer un dépôt** sur la forge, privé, par exemple `equipe/mergerie-data`. Vide ou avec un
+   README, peu importe : le bouton fait la différence tout seul.
 2. **Le premier poste** — celui qui a déjà l'historique — colle son URL dans
-   *Réglages → Général → Données partagées*, puis clique **« Cloner / rattacher »**. Le dépôt
-   distant étant vide, Mergerie l'**initialise** avec ce que ce poste porte déjà, et le pousse.
-3. **Les autres postes** collent la même URL et cliquent le même bouton. Cette fois le dépôt a du
-   contenu : il est cloné, et tout apparaît — règles, vérificateurs, agents, notes, todos.
+   *Réglages → Général → Données partagées*, puis clique **« Cloner / rattacher »**. Mergerie
+   pousse ce que ce poste porte déjà : l'initialisation d'une équipe, c'est ça.
+3. **Les autres postes** collent la même URL et cliquent le même bouton. **Le geste va dans les
+   deux sens** : le contenu de l'équipe descend — règles, vérificateurs, agents, notes, todos —
+   et ce que ce poste avait accumulé de son côté monte avec, dans le même commit. Personne ne
+   laisse ses mois de reviews à quai en rejoignant, et l'écran dit combien de documents sont
+   partis.
 4. Chacun vérifie que git le connaît (`git config --global user.name`) : **c'est cette identité
    qui signe les commits**, et c'est elle qui répondra plus tard à « qui a écrit ça ? ». Sans
    elle, rien n'est commité, et l'écran le dit.

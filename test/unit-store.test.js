@@ -71,6 +71,22 @@ describe('store — écrire dans le dépôt de données', () => {
     assert.throws(() => store.ecrireFichier('notes/../../evade.json', 'x'), /hors du dépôt/);
   });
 
+  test('un chemin venu du DÉPÔT ne peut pas écrire hors du dossier de données', () => {
+    /* L'autre sens, et le plus dangereux : ces noms-là ne viennent pas d'un formulaire mais d'un
+       fichier écrit sur un AUTRE poste. Hydrater, c'est exécuter ce que l'équipe raconte — un
+       collègue dont le dépôt a été repris, ou une branche poussée par erreur, ne doit pas
+       pouvoir poser un fichier dans `~/.ssh` en nommant une capture. */
+    const ctx = store.contexte();
+    assert.throws(() => ctx.ecrireDisque('notes/../../..', 'authorized_keys', 'x'),
+      /hors du dossier de données/);
+    assert.throws(() => ctx.ecrireDisque('notes/1', '../../../evade', 'x'),
+      /hors du dossier de données/);
+    /* La copie d'un binaire, elle, rend `null` : une vignette refusée ne doit pas faire échouer
+       toute la passe d'hydratation — mais elle ne doit rien écrire non plus. */
+    assert.equal(ctx.copierDepuisDepot('../../etc/hosts', 'notes/1', 'vol.png'), null);
+    assert.equal(ctx.copierDepuisDepot('notes/x.png', 'notes/1', '../../../evade.png'), null);
+  });
+
   test('créer une page écrit ses DEUX fichiers : le corps lisible et ses métadonnées', () => {
     const page = notes.creerPage({ title: 'Déploiement prod', content: '# Prod\n\nUn paragraphe.' }, MSGS);
     assert.equal(store.lireFichier('notes/deploiement-prod.md'), '# Prod\n\nUn paragraphe.',

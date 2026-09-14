@@ -77,12 +77,19 @@ async function git(args, opts = {}) {
       ...(opts.env || {}),
     },
   });
-  return String(stdout || '').trim();
+  /* `trim()` PAR DÉFAUT — un sha, une liste de fichiers, un compteur se lisent mieux nus —, mais
+     JAMAIS sur un CONTENU. Le store écrit des fichiers déterministes, terminés par un saut de
+     ligne ; rendre `git show` rogné, c'est reposer un fichier qui n'est plus celui que le store
+     écrirait, et tout export complet le réécrirait ensuite pour un octet. */
+  return opts.brut ? String(stdout || '') : String(stdout || '').trim();
 }
 
 const gitOu = async (args, defaut = '', opts = {}) => {
   try { return await git(args, opts); } catch { return defaut; }
 };
+
+/** La sortie telle quelle : pour tout ce qui est un contenu de fichier et non une information. */
+const gitBrut = async (args, defaut = '') => gitOu(args, defaut, { brut: true });
 
 const estDepot = () => fs.existsSync(path.join(SHARED_DIR, '.git'));
 
@@ -268,7 +275,7 @@ async function rebaser() {
     const enConflit = (await gitOu(['diff', '--name-only', '--diff-filter=U'], ''))
       .split('\n').map((x) => x.trim()).filter(Boolean);
     for (const fichier of enConflit) {
-      const mienne = await gitOu(['show', `:3:${fichier}`], null);   // étape 3 = le commit rejoué
+      const mienne = await gitBrut(['show', `:3:${fichier}`], null); // étape 3 = le commit rejoué
       await gitOu(['checkout', '--ours', '--', fichier], '');        // étape 2 = ce qui est déjà en place
       await gitOu(['add', '--', fichier], '');
       conflits.push({ fichier, mienne });
@@ -315,11 +322,16 @@ function conflitsGardes() {
 function reprendreVersion(cle) {
   const doc = conflitsGardes().find((c) => c.fichier === cle);
   if (!doc) return false;
+  const repris = [];
   for (const fichier of doc.fichiers) {
     const mienne = etat.lire('conflict', fichier, 'mine');
-    if (mienne !== null) store.ecrireFichier(fichier, mienne);
+    if (mienne !== null) { store.ecrireFichier(fichier, mienne); repris.push(fichier); }
     etat.oublier('conflict', fichier);
   }
+  /* LE FICHIER REPOSÉ DOIT REDEVENIR LA LIGNE. Sans ça, l'écran continuerait d'afficher la
+     version du voisin — celle que le rebase avait fait gagner — pendant que le dépôt, lui,
+     porterait de nouveau la sienne : deux vérités, et l'utilisateur croirait son clic perdu. */
+  if (repris.length) { try { store.hydraterFichiers(repris); } catch { /* le tour suivant relira */ } }
   marquerSale(`restore ${cle}`);
   return true;
 }
@@ -441,7 +453,7 @@ async function diffDe(relatif, sha) {
 /** Le contenu du fichier À un commit donné — ce qu'on remet si l'on veut revenir en arrière. */
 async function contenuA(relatif, sha) {
   if (!estDepot() || !/^[0-9a-f]{7,40}$/i.test(String(sha))) return null;
-  return gitOu(['show', `${String(sha)}:${relatif}`], null);
+  return gitBrut(['show', `${String(sha)}:${relatif}`], null);
 }
 
 /* ---------- Clonage / rattachement ---------- */
@@ -482,10 +494,25 @@ async function rattacher({ url, onLog = () => {} } = {}) {
     onLog('hydrate');
     const bilan = store.hydraterTout();
     poserHydrate(sha);
+    /* CE POSTE APPORTE SON HISTORIQUE. Rejoindre une équipe, ce n'est pas repartir de zéro : les
+       MR relues, les sessions, les notes accumulées ici depuis des mois doivent monter avec le
+       premier commit — sans quoi le rattachement ne partagerait que ce qui sera écrit APRÈS, et
+       le dépôt s'ouvrirait sur un dossier vide. Le cas est la règle, pas l'exception : un dépôt
+       créé sur la forge porte presque toujours un commit initial (un README), donc on passe par
+       ici et non par l'initialisation.
+       APRÈS l'hydratation, jamais avant : exporter d'abord écraserait avec nos fichiers ceux
+       qu'on vient de recevoir. Les lignes venues du dépôt se réécrivent à l'identique — la
+       sérialisation est déterministe —, git ne voit rien ; seules les lignes qui n'existaient
+       que chez nous font des fichiers neufs. */
+    onLog('export');
+    const compte = store.exporterTout();
     await majAuteurs(null);          // au rattachement, on recense tout ce que l'équipe a écrit
     await commiter('join shared data repository');
+    /* On vient de commiter NOS fichiers : ils décrivent déjà cette base, il n'y a rien à en
+       réhydrater. Sans ça le premier tour rejouerait notre propre export contre nous-mêmes. */
+    poserHydrate(await gitOu(['rev-parse', 'HEAD'], sha));
     await majCompteurs();
-    return { mode: 'clone', bilan };
+    return { mode: 'clone', bilan, compte };
   }
 
   onLog('export');
