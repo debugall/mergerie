@@ -2746,8 +2746,8 @@ rather than doing it quietly.
    committed, and the screen says so.
 
 **Day to day, you do nothing.** Every *n* seconds (30 by default) the tool sends what is new and
-fetches what is new elsewhere. The footer shows `↑2 ↓0` and the time of the last sync; a click
-forces a round. Offline, everything keeps working: commits stay local, the indicator turns amber,
+fetches what is new elsewhere. The footer shows `↑2 ↓0` and the time of the last sync; hovering it says **how many seconds
+until the next one**, and a click forces a round without waiting. Offline, everything keeps working: commits stay local, the indicator turns amber,
 and the backlog catches up on return.
 
 **What if two people change the same thing?** It is rare by construction — one file per object,

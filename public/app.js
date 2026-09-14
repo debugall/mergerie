@@ -6388,8 +6388,24 @@ async function rafraichirFooterSync() {
   $('#footerSyncTxt').textContent = conflits
     ? tr('datasync.footer.conflicts', { n: conflits })
     : tr('datasync.state.counts', { up: e.enAvance, down: e.enRetard });
-  b.title = conflits ? tr('datasync.footer.conflicts-title')
+  baseBulleSync = conflits ? tr('datasync.footer.conflicts-title')
     : (e.erreur ? tr('datasync.state.error', { msg: e.erreur }) : tr('datasync.head'));
+  prochainSync = e.prochain ? Date.parse(e.prochain) : 0;
+  majTip(b, bulleSync());
+}
+
+/* « C'EST PARTI ? DANS COMBIEN DE TEMPS ? » — la question qu'on se pose en passant la souris sur
+   le témoin, et à laquelle « Données partagées » ne répondait pas. La boucle bat côté serveur et
+   sa cadence se règle : le compte à rebours vient donc de l'échéance que le serveur annonce, pas
+   d'une cadence devinée ici. Il descend seconde par seconde TANT QU'ON REGARDE, et pas au-delà —
+   une minuterie qui tourne pour personne est une minuterie de trop. */
+let baseBulleSync = '';
+let prochainSync = 0;
+
+function bulleSync() {
+  if (!prochainSync) return baseBulleSync;
+  const s = Math.round((prochainSync - Date.now()) / 1000);
+  return `${baseBulleSync}\n${s > 0 ? tr('datasync.footer.next', { s }) : tr('datasync.footer.next-now')}`;
 }
 
 {
@@ -6410,6 +6426,19 @@ async function rafraichirFooterSync() {
       await rafraichirFooterSync();
       b.disabled = false;
     });
+    /* Le compte à rebours ne bat que sous la souris (ou sous le focus clavier) : ouvrir la bulle
+       arme la seconde, la quitter la désarme. */
+    let batteur = null;
+    const ouvrir = () => {
+      majTip(b, bulleSync());
+      if (!batteur) batteur = setInterval(() => majTip(b, bulleSync()), 1000);
+    };
+    const fermer = () => { if (batteur) clearInterval(batteur); batteur = null; };
+    b.addEventListener('mouseenter', ouvrir);
+    b.addEventListener('focus', ouvrir);
+    b.addEventListener('mouseleave', fermer);
+    b.addEventListener('blur', fermer);
+
     /* Même cadence que le reste du pied de page : on ne sonde pas la forge, seulement notre
        propre état, déjà calculé par la boucle du serveur. */
     setInterval(rafraichirFooterSync, 15000);
@@ -11088,7 +11117,13 @@ tipEl.id = 'tip';
 tipEl.setAttribute('role', 'tooltip');
 document.body.appendChild(tipEl);
 
+/* POUR QUI LA BULLE EST OUVERTE. Presque toutes disent une chose fixe ; une seule change pendant
+   qu'on la regarde — le compte à rebours du pied de page. Sans ce repère, la réécrire reviendrait
+   à réécrire la bulle de n'importe qui. */
+let tipPour = null;
+
 function showTip(el) {
+  tipPour = el;
   // `data-when` : le texte est calculé maintenant, pas au rendu (cf. `dateHtml`).
   tipEl.textContent = el.dataset.tip || (el.dataset.when ? depuis(el.dataset.when) : '');
   if (!tipEl.textContent) return;
@@ -11104,7 +11139,14 @@ function showTip(el) {
   const left = r.left + r.width / 2 - t.width / 2;
   tipEl.style.left = `${Math.max(8, Math.min(left, innerWidth - t.width - 8))}px`;
 }
-const hideTip = () => tipEl.classList.remove('on');
+const hideTip = () => { tipPour = null; tipEl.classList.remove('on'); };
+
+/** Change le texte d'une bulle, ouverte ou non — l'attribut fait foi, l'affichage suit. */
+function majTip(el, texte) {
+  if (!el) return;
+  el.dataset.tip = texte;
+  if (tipPour === el) tipEl.textContent = texte;
+}
 
 /* Délégation : couvre aussi les champs rendus dynamiquement (lignes de projet).
    Le sélecteur vise TOUT porteur de `data-tip` et pas seulement les icônes `.hint` :

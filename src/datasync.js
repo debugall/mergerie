@@ -53,6 +53,8 @@ const TENTATIVES_PUSH = 3;
 
 let minuterieCommit = null;
 let minuterieTour = null;
+/* L'instant du prochain tour, en millisecondes epoch. `0` = la boucle ne tourne pas. */
+let prochainTour = 0;
 let enCours = false;
 let dernierMessage = null;
 const etatSync = {
@@ -111,6 +113,11 @@ function statut() {
     clone: estDepot(),
     branch: branche(),
     identite: identite.identite(),
+    /* QUAND A LIEU LE PROCHAIN TOUR. La boucle bat côté serveur ; l'écran, lui, ne peut que la
+       deviner — et deviner mal, puisque la cadence se règle. On le dit donc, pour que le pied de
+       page réponde à « c'est parti ? dans combien de temps ? » sans qu'on ait à cliquer. */
+    prochain: prochainTour ? new Date(prochainTour).toISOString() : null,
+    cadence: Math.round(cadenceMs() / 1000),
   };
 }
 
@@ -541,8 +548,13 @@ store.surEcriture((table, row, genre) => {
 function demarrer() {
   arreter();
   if (!estConfigure()) return false;
-  minuterieTour = setInterval(() => { tour().catch(() => {}); }, cadenceMs());
+  /* On note l'échéance À CHAQUE BATTEMENT plutôt que de la recalculer à la demande : un tour
+     forcé à la main ne décale pas `setInterval`, et une échéance déduite de « dernier pull +
+     cadence » mentirait dès qu'un tour aurait duré plus longtemps que prévu. */
+  const armer = () => { prochainTour = Date.now() + cadenceMs(); };
+  minuterieTour = setInterval(() => { armer(); tour().catch(() => {}); }, cadenceMs());
   if (minuterieTour.unref) minuterieTour.unref();
+  armer();
   return true;
 }
 
@@ -551,6 +563,7 @@ function arreter() {
   if (minuterieCommit) clearTimeout(minuterieCommit);
   minuterieTour = null;
   minuterieCommit = null;
+  prochainTour = 0;
 }
 
 module.exports = {

@@ -49,6 +49,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   rather than what you produced. Every column is classified by name, and the tests refuse a
   secret-looking column that is not declared, because a secret committed to git is permanent.
 
+- **The footer says when the next sync leaves.** Hover the `↑2 ↓0` indicator and it counts down
+  to the next round, second by second — the question you ask in passing, answered where you pass,
+  without opening the settings to look up the interval. Click it and the round happens now.
+
 - **Cards say who did the work.** “by Claire” on a review, a session or a verification — read
   from git, which already knows who committed the file. No field to fill in, and nothing at all
   when you work alone.

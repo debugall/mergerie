@@ -2837,7 +2837,8 @@ dit plutôt que de le faire en silence.
 
 **Au quotidien, on ne fait rien.** Toutes les *n* secondes (30 par défaut), l'outil envoie ce qui
 est nouveau et récupère ce qui l'est chez les autres. Le pied de page affiche `↑2 ↓0` et l'heure
-de la dernière synchro ; un clic force un tour. Hors ligne, tout continue de marcher : les commits
+de la dernière synchro ; le survol dit **dans combien de secondes part la prochaine**, et un clic
+force un tour sans attendre. Hors ligne, tout continue de marcher : les commits
 restent locaux, le témoin passe à l'ambre, et le retard se rattrape au retour.
 
 **Et si deux personnes modifient la même chose ?** C'est rare par construction — un fichier par

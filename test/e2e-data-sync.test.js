@@ -116,6 +116,36 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
     assert.equal(await page.getAttribute('#footerSync', 'data-etat'), 'ok');
   });
 
+  test('le témoin du pied de page dit dans combien de temps part la prochaine synchro', async () => {
+    /* « C'est parti ? dans combien de temps ? » est la question qu'on se pose EN PASSANT, et le
+       pied de page est l'endroit où l'on passe. Le compte à rebours vient de l'échéance que le
+       serveur annonce — la boucle bat chez lui, et sa cadence se règle : la deviner ici, ce
+       serait afficher un chiffre faux dès qu'on change le réglage. */
+    const etat = (await app.api('GET', '/api/data-sync')).body;
+    assert.ok(etat.prochain, 'l’état doit dire QUAND, pas seulement « ça tourne »');
+    assert.ok(Date.parse(etat.prochain) > Date.now() - 1000);
+    assert.ok(etat.cadence >= 10);
+
+    await page.hover('#footerSync');
+    await page.waitForFunction(() => {
+      const t = document.querySelector('#tip');
+      return t && t.classList.contains('on') && /\d+\s*s/.test(t.textContent);
+    }, null, { timeout: ATTENTE });
+    const lire = () => page.evaluate(() => {
+      const m = /(\d+)\s*s/.exec(document.querySelector('#tip').textContent);
+      return m ? Number(m[1]) : null;
+    });
+    const premier = await lire();
+    /* IL DESCEND VRAIMENT. Une bulle écrite une fois à l'ouverture afficherait le même chiffre
+       pendant qu'on la regarde — et un compte à rebours figé est pire que pas de compte à
+       rebours : on le croit. On attend donc que le chiffre CHANGE, sans parier sur une durée. */
+    await page.waitForFunction((n) => {
+      const m = /(\d+)\s*s/.exec(document.querySelector('#tip').textContent);
+      return m && Number(m[1]) !== n;
+    }, premier, { timeout: ATTENTE });
+    assert.ok((await lire()) < premier, 'le compte à rebours descend');
+  });
+
   test('l’historique d’une page se lit — ce que git rend gratuitement', async () => {
     /* Aucune table de versions n'a été écrite pour ça : l'information existe parce qu'on est
        passé par git, et la montrer ne coûte qu'un appel. */
