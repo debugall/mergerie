@@ -199,6 +199,15 @@ describe('store — écrire dans le dépôt de données', () => {
 describe('store — l’aller-retour par les fichiers', () => {
   let store; let db; let notes;
 
+  /* Le rapport vit sur le disque local, comme le pipeline le pose : c'est son CONTENU que le
+     dépôt emporte, jamais son chemin. */
+  const ecrireRapport = (texte) => {
+    const p = path.join(process.env.MERGERIE_DATA_DIR, 'reviews', 'rapport.md');
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, texte);
+    return p;
+  };
+
   before(() => {
     db = require('../src/db');
     store = require('../src/store');
@@ -250,6 +259,32 @@ describe('store — l’aller-retour par les fichiers', () => {
     const fille = db.prepare("SELECT parent_id FROM note_page WHERE slug = 'abeille'").get();
     const mereApres = db.prepare("SELECT id FROM note_page WHERE slug = 'zebre'").get();
     assert.equal(fille.parent_id, mereApres.id, 'la seconde passe doit rattraper la référence');
+  });
+
+  test('un rapport arrivé APRÈS sa review remplit quand même le pointeur', () => {
+    /* LE CAS SIGNALÉ : sur un poste fraîchement rattaché, les reviews arrivaient mais pas les
+       rapports. `review.md_path` désigne un fichier du disque local — rien de tel ne voyage —,
+       et il se recalcule à l'arrivée ; mais une reprise ne tourne que pour les tables que la
+       passe a TOUCHÉES. Une passe qui n'apporte que des `review_version` — un collègue qui
+       reviewe, ou simplement deux commits séparés — laissait donc le pointeur vide. */
+    const mr = db.prepare("INSERT INTO repo (forge, project, url) VALUES ('gitlab', 'eq/api', 'u')").run();
+    const mrId = db.prepare('INSERT INTO mr (repo_id, iid, status) VALUES (?, 7, ?)').run(mr.lastInsertRowid, 'reviewed').lastInsertRowid;
+    db.prepare('INSERT INTO review (mr_id, md_path, created_at, updated_at) VALUES (?,?,?,?)')
+      .run(mrId, '', new Date().toISOString(), new Date().toISOString());
+    db.prepare(`INSERT INTO review_version (mr_id, version, md_path, kind, created_at)
+      VALUES (?, 1, ?, 'review', ?)`).run(mrId, ecrireRapport('le rapport'), new Date().toISOString());
+    store.rafraichir('review', db.prepare('SELECT id FROM review WHERE mr_id = ?').get(mrId).id);
+    store.rafraichir('review_version', db.prepare('SELECT id FROM review_version WHERE mr_id = ?').get(mrId).id);
+    const uidV = db.prepare('SELECT uid FROM review_version WHERE mr_id = ?').get(mrId).uid;
+
+    db.exec('DELETE FROM review_version'); db.exec('DELETE FROM review');
+    // DEUX PASSES, comme deux commits : la review d'abord, son rapport ensuite.
+    store.hydraterFichiers(['reviews/gitlab/eq/api/7/review.json']);
+    store.hydraterFichiers([`reviews/gitlab/eq/api/7/${uidV}.md`]);
+
+    const rev = db.prepare('SELECT md_path FROM review WHERE mr_id = ?').get(mrId);
+    assert.ok(rev.md_path, 'sans pointeur, l’écran montre une review sans rapport');
+    assert.equal(fs.readFileSync(rev.md_path, 'utf8'), 'le rapport');
   });
 
   test('un fichier disparu supprime sa ligne', () => {

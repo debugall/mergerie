@@ -67,6 +67,24 @@ const extensionDe = (chemin) => {
   return m ? m[1].toLowerCase() : '.png';
 };
 
+/* OÙ EST LE RAPPORT DE LA REVIEW COURANTE. `review.md_path` désigne un fichier DU DISQUE LOCAL :
+   `/Users/amady/…` ne veut rien dire chez le voisin, donc rien de tel ne voyage — on le recalcule
+   à l'arrivée, à partir de la version la plus récente (l'ordre des uid EST l'ordre de création).
+
+   APPELÉ PAR LES DEUX TABLES, et c'est le fond de l'affaire : une reprise ne tourne que pour les
+   tables que la passe a touchées. Un collègue qui pousse une NOUVELLE passe de review ne modifie
+   que les fichiers de `review_version` ; sans cette reprise-là, le pointeur resterait sur la
+   passe précédente et l'écran montrerait un rapport périmé — ou rien, si c'est la première. */
+function recalculerCheminsReview(db2) {
+  const maj = db2.prepare('UPDATE review SET md_path = ?, explanation_path = ?, diff_path = ? WHERE id = ?');
+  for (const r of db2.prepare('SELECT id, mr_id FROM review').all()) {
+    const v = db2.prepare(
+      'SELECT md_path, explanation_path FROM review_version WHERE mr_id = ? ORDER BY uid DESC LIMIT 1',
+    ).get(r.mr_id);
+    if (v) maj.run(v.md_path || '', v.explanation_path || null, null, r.id);
+  }
+}
+
 /* CE À QUOI UNE TODO EST ACCROCHÉE, dans les deux sens.
    Trois genres sur sept référencent une ligne par son id entier — et un id entier ne veut rien
    dire sur un autre poste. On les traduit en désignations lisibles. Les quatre autres
@@ -311,17 +329,7 @@ const REGISTRE = [
     }),
     referencesDifferees: ['mr_id'],
     refSource: { mr_id: 'mr' },
-    apresHydratation: (db2) => {
-      /* La review pointe la version la plus récente — c'est déjà ce que fait le pipeline. On la
-         recalcule ici plutôt que de transporter des chemins absolus qui ne mènent nulle part. */
-      const maj = db2.prepare('UPDATE review SET md_path = ?, explanation_path = ?, diff_path = ? WHERE id = ?');
-      for (const r of db2.prepare('SELECT id, mr_id FROM review').all()) {
-        const v = db2.prepare(
-          'SELECT md_path, explanation_path FROM review_version WHERE mr_id = ? ORDER BY uid DESC LIMIT 1',
-        ).get(r.mr_id);
-        if (v) maj.run(v.md_path || '', v.explanation_path || null, null, r.id);
-      }
-    },
+    apresHydratation: recalculerCheminsReview,
   },
   {
     table: 'review_version', famille: 'P', uidPropre: true, cle: 'uid',
@@ -419,6 +427,11 @@ const REGISTRE = [
         lignes.forEach((l, i) => { majF.run(PALIER - i, m.mr_id, l.version); majV.run(PALIER - i, l.id); });
         lignes.forEach((l, i) => { majF.run(i + 1, m.mr_id, PALIER - i); majV.run(i + 1, l.id); });
       }
+      /* ET LE POINTEUR DE LA REVIEW SUIT. Une passe qui n'apporte QUE de nouvelles versions —
+         le cas ordinaire quand un collègue reviewe — ne touche pas la table `review`, donc sa
+         reprise à elle ne tourne pas : sans cette ligne, le rapport affiché resterait celui de
+         la passe d'avant, ou rien du tout si c'est la première qui arrive. */
+      recalculerCheminsReview(db2);
     },
   },
   { table: 'finding', famille: 'P', uidPropre: true, parent: 'review_version', liste: 'findings', fusion: 'parent' },

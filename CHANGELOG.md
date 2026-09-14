@@ -49,6 +49,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   rather than what you produced. Every column is classified by name, and the tests refuse a
   secret-looking column that is not declared, because a secret committed to git is permanent.
 
+- **A review's report now arrives even when it lands after the review itself.** On a freshly
+  attached machine, reviews came through but their reports were blank. The report lives on your
+  own disk — the path means nothing on anyone else's machine — so the pointer to it is recomputed
+  on arrival; but that recomputation only ran when the review row itself was in the same batch. A
+  batch carrying only new report passes — a colleague reviewing, or simply two commits — left the
+  pointer on the previous pass, or empty. It is now refreshed by both.
+
 - **The footer says when the next sync leaves.** Hover the `↑2 ↓0` indicator and it counts down
   to the next round, second by second — the question you ask in passing, answered where you pass,
   without opening the settings to look up the interval. Click it and the round happens now.
