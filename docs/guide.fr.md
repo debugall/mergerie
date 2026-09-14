@@ -2824,7 +2824,7 @@ dit plutôt que de le faire en silence.
 1. **Créer un dépôt** sur la forge, privé, par exemple `equipe/mergerie-data`. Vide ou avec un
    README, peu importe : le bouton fait la différence tout seul.
 2. **Le premier poste** — celui qui a déjà l'historique — colle son URL dans
-   *Réglages → Général → Données partagées*, puis clique **« Cloner / rattacher »**. Mergerie
+   *Réglages → Données partagées*, puis clique **« Cloner / rattacher »**. Mergerie
    pousse ce que ce poste porte déjà : l'initialisation d'une équipe, c'est ça.
 3. **Les autres postes** collent la même URL et cliquent le même bouton. **Le geste va dans les
    deux sens** : le contenu de l'équipe descend — règles, vérificateurs, agents, notes, todos —

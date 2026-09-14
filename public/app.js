@@ -810,7 +810,7 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
    envoie sa première étape. */
 // `mr` partage la logique de `config` : ses champs sont rattachés à #configForm (attribut form=),
 // donc loadConfig les peuple et le submit les enregistre — un seul /config pour les deux onglets.
-const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadGeneralSettings, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadJenkinsConfig, verifiers: loadVerifiersEtPlafond, aisession: loadAiSessionSettings, dictation: loadDictationSettings };
+const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadGeneralSettings, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadJenkinsConfig, verifiers: loadVerifiersEtPlafond, aisession: loadAiSessionSettings, dictation: loadDictationSettings, datasync: loadConfig };
 /* Ce panneau porte à la fois un réglage du formulaire global (les consignes permanentes) et un
    banc d'essai. Il lui faut donc `loadConfig` comme aux autres, sinon le champ s'affiche vide
    quoi qu'il y ait en base — et le premier « Enregistrer » l'efface sans rien demander. */
@@ -6417,7 +6417,7 @@ function bulleSync() {
       if (dataSyncEtat && (dataSyncEtat.conflits || []).length) {
         const onglet = $('nav button[data-tab="admin"]');
         if (onglet) onglet.click();
-        const sous = $('#tab-admin button[data-sub="config"]');
+        const sous = $('#tab-admin button[data-sub="datasync"]');
         if (sous) sous.click();
         return;
       }

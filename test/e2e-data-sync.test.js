@@ -46,21 +46,33 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
     try { fs.rmSync(racine, { recursive: true, force: true }); } catch { /* best-effort */ }
   });
 
-  const ouvrirGeneral = async () => {
+  /* UN SOUS-ONGLET À SOI. Le partage n'est pas une préférence d'affichage : on y revient pour
+     voir où en est la synchro et trancher un conflit, ce qu'on ne fait jamais pour un thème. */
+  const ouvrirPartage = async () => {
     await page.click('nav button[data-tab="admin"]');
-    await page.click('button[data-sub="config"]');
-    await page.waitForFunction(() => document.querySelector('#sub-config').classList.contains('active'),
+    await page.click('button[data-sub="datasync"]');
+    await page.waitForFunction(() => document.querySelector('#sub-datasync').classList.contains('active'),
       null, { timeout: ATTENTE });
     await page.waitForSelector('#dataSyncState', { timeout: ATTENTE });
   };
 
   test('sans dépôt configuré, l’écran le dit et le pied de page se tait', async () => {
-    await ouvrirGeneral();
+    await ouvrirPartage();
     await page.waitForFunction(() => (document.querySelector('#dataSyncState').textContent || '').length > 0,
       null, { timeout: ATTENTE });
     assert.match(await page.textContent('#dataSyncState'), /mono-poste/);
     assert.equal(await page.locator('#footerSync').isVisible(), false,
       'le mode mono-poste ne doit pas découvrir une fonctionnalité qu’il n’a pas demandée');
+  });
+
+  test('le partage a son propre sous-onglet — il n’est plus au milieu du Général', async () => {
+    /* Trois champs perdus entre le thème et la zone dangereuse, alors qu'on revient ici pour
+       voir où en est la synchro et trancher un conflit. Ce n'est pas une préférence
+       d'affichage : ça a son onglet. */
+    assert.equal(await page.locator('#tab-admin button[data-sub="datasync"]').count(), 1);
+    assert.equal(await page.locator('#sub-config [form="configForm"][name="data_repo_url"]').count(), 0,
+      'le bloc ne doit plus vivre dans « Général »');
+    assert.equal(await page.locator('#sub-datasync #dataSyncState').count(), 1);
   });
 
   test('les trois champs sont badgés « ce poste »', async () => {
@@ -84,7 +96,7 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
     const { body: prive } = await app.api('POST', '/api/notes', { title: 'Mon brouillon', content: 'non' });
     assert.ok(prive.id);
 
-    await ouvrirGeneral();
+    await ouvrirPartage();
     await page.fill('[form="configForm"][name="data_repo_url"]', nu);
     await page.fill('[form="configForm"][name="data_repo_branch"]', 'main');
     await page.click('#btnDataAttach');

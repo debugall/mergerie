@@ -56,6 +56,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   batch carrying only new report passes — a colleague reviewing, or simply two commits — left the
   pointer on the previous pass, or empty. It is now refreshed by both.
 
+- **Shared data has a settings tab of its own.** It used to be three fields between the theme
+  picker and the danger zone, in *General*. But this is not a display preference: it is where you
+  decide to open your work to other people, and where you come back — to see where the sync is,
+  to settle a conflict. *Settings → Shared data*.
+
 - **The footer says when the next sync leaves.** Hover the `↑2 ↓0` indicator and it counts down
   to the next round, second by second — the question you ask in passing, answered where you pass,
   without opening the settings to look up the interval. Click it and the round happens now.

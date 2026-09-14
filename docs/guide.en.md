@@ -2735,7 +2735,7 @@ rather than doing it quietly.
 1. **Create a repository** on the forge, private, say `team/mergerie-data`. Empty or with a
    README, it makes no difference: the button works out which case it is.
 2. **The first machine** — the one that already has the history — pastes its URL into
-   *Settings → General → Shared data*, then clicks **“Clone / attach”**. Mergerie pushes what that
+   *Settings → Shared data*, then clicks **“Clone / attach”**. Mergerie pushes what that
    machine already holds: that is what starting a team is.
 3. **The other machines** paste the same URL and click the same button. **The gesture goes both
    ways**: the team's content comes down — rules, verifiers, agents, notes, todos — and whatever
