@@ -39,9 +39,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   **Everything the team accumulates travels**: repositories, the review state of merge requests,
   reports and every pass of them, findings, convergence runs, rules, verifiers and their verdicts,
   agents and their map of the code, coding and exploration sessions with their agent passes and
-  attachments, free questions, todos, lots, Jira watches, git commands and operations, Docker
-  backups, and the team settings. Delete `reviewer.db` and it all
-  comes back from the files.
+  attachments, free questions, todos, lots, and the team settings. Delete `reviewer.db` and it
+  all comes back from the files.
 
   **Nothing secret ever goes in.** The seven API tokens, the clone folder, the language, the
   dictation engine, this machine's absolute paths, agent session handles, tidied-away sessions and
@@ -80,6 +79,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   never showed up. The same held for a review, and for a verifier two people had named the same
   thing. Every uniqueness rule in the database is now checked against the registry by a test, so
   the next one cannot be discovered in production, on someone else's machine.
+
+- **Docker, Jenkins, Git and Jira stay on your machine.** They join the Links tab on the local
+  side, and for the same reason: a palette of git commands, a Jenkins job you point at, a
+  container you backed up, a ticket you watch — all of that describes a machine, its access and a
+  way of working, not a product the team accumulates. Sharing it imposed one person's tooling on
+  everyone, carried a log of git actions nobody else can replay or undo, and filled everyone's
+  todo list the moment a ticket watched by a single person changed state. Whatever had already
+  gone into the repository is removed from it once, on the next start — otherwise it would sit
+  there and land back on a colleague's machine at their next sync.
 
 - **A closed merge request takes its title, branches and author with it.** Once a merge request is
   closed those stop being able to change, so they are no longer the forge's alone to tell: they

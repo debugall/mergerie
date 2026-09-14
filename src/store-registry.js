@@ -146,13 +146,12 @@ const REGISTRE = [
       enabled: r.enabled ? 1 : 0,
       fetch_mrs: r.fetch_mrs ? 1 : 0,
       created_at: r.created_at,
-      /* Les projets liés PAR DÉFAUT et les jobs Jenkins d'un dépôt vivent dans SON fichier : ils
-         ne se modifient qu'avec lui, et un conflit sur eux est un conflit sur le dépôt. */
+      /* Les projets liés PAR DÉFAUT vivent dans SON fichier : ils ne se modifient qu'avec lui,
+         et un conflit sur eux est un conflit sur le dépôt. Les jobs Jenkins, eux, ont quitté ce
+         fichier avec le reste de l'onglet Jenkins — voir `repo_jenkins`. */
       linked: ctx.enfants('repo_link', 'repo_id', r.id)
         .map((l) => ({ repo: ctx.repoRef(l.linked_repo_id), branch: l.branch || null }))
         .filter((l) => l.repo),
-      jenkins: ctx.enfants('repo_jenkins', 'repo_id', r.id)
-        .map((j) => ({ job_path: j.job_path, param: j.param || null })),
     }),
     fromFile: (doc) => ({
       uid: doc.uid,
@@ -179,20 +178,21 @@ const REGISTRE = [
           }
         },
       },
-      {
-        table: 'repo_jenkins',
-        liste: 'jenkins',
-        colonneParent: 'repo_id',
-        remplace: (db2, parent, items) => {
-          db2.prepare('DELETE FROM repo_jenkins WHERE repo_id = ?').run(parent.id);
-          const ins = db2.prepare('INSERT INTO repo_jenkins (repo_id, job_path, param) VALUES (?,?,?)');
-          for (const j of items) ins.run(parent.id, j.job_path, j.param || null);
-        },
-      },
     ],
   },
   { table: 'repo_link', famille: 'P', uidPropre: true, parent: 'repo', liste: 'linked', fusion: 'parent' },
-  { table: 'repo_jenkins', famille: 'P', uidPropre: true, parent: 'repo', liste: 'jenkins', fusion: 'parent' },
+  /* LES TROIS ONGLETS QUI RESTENT À SOI : DOCKER, JENKINS, GIT.
+     Ils ne décrivent pas un travail accumulé mais une MACHINE et ses accès. Un job Jenkins visé
+     depuis ici, une palette de commandes git, le journal des refs qu'on a créées ou supprimées,
+     les conteneurs qu'on sauvegarde : tout cela dit comment CE poste est branché, pas ce que
+     l'équipe a produit — et le partager imposerait à chacun l'outillage du voisin. C'est le même
+     raisonnement que pour l'onglet Liens. */
+  /* `uidPropre` RESTE sur ces quatre tables bien qu'elles soient locales : l'uid n'est pas
+     réservé au partage, c'est une identité stable que SQLite ne recycle pas (voir `mr`, cache et
+     pourtant uidPropre). Le retirer ferait surtout DIVERGER une base neuve d'une base existante
+     — la colonne ne serait plus créée d'un côté et resterait de l'autre, ce qui est exactement
+     le genre d'écart qui ne se voit que chez quelqu'un d'autre. */
+  { table: 'repo_jenkins', famille: 'L', uidPropre: true, note: 'les jobs Jenkins visés depuis CE poste' },
   {
     /* `uidPropre` alors que le FICHIER est nommé par la clé naturelle : les deux ne servent pas
        à la même chose. Le fichier se nomme `forge/projet/iid`, qui désigne la même merge request
@@ -1310,34 +1310,12 @@ const REGISTRE = [
       };
     },
   },
-  {
-    table: 'jira_watch', famille: 'P', uidPropre: false /* identifiée par la clé du ticket (PROJ-1408), qui est déjà sa clé primaire */, cle: 'key', chemin: 'jira/{key}.json', fusion: 'last-writer',
-    locales: ['checked_at', 'error'],
-    note: 'ce qu’on surveille est d’équipe ; QUAND ce poste a regardé, et son erreur réseau, non',
-    commitMessage: (r) => `jira watch ${r.key}`,
-    toFile: (r) => ({
-      key: r.key,
-      summary: r.summary || null,
-      status: r.status || null,
-      status_category: r.status_category || null,
-      /* LE MOTIF de la surveillance : c'est lui qui dit quoi faire trois semaines plus tard, et
-         c'est la seule chose ici qu'un humain ait écrite. */
-      note: r.note || null,
-      todo_on_change: r.todo_on_change ? 1 : 0,
-      added_at: r.added_at,
-      changed_at: r.changed_at || null,
-    }),
-    fromFile: (doc) => ({
-      key: doc.key,
-      summary: doc.summary || null,
-      status: doc.status || null,
-      status_category: doc.status_category || null,
-      note: doc.note || null,
-      todo_on_change: doc.todo_on_change ? 1 : 0,
-      added_at: doc.added_at,
-      changed_at: doc.changed_at || null,
-    }),
-  },
+  /* LA VEILLE JIRA RESTE À SOI. Surveiller un ticket, c'est décider que SON travail en dépend :
+     le motif écrit à côté (« attendre la validation du PO avant de merger ») parle à celui qui
+     l'a écrit, et la todo créée au changement d'état atterrit dans SA liste. Partagée, la veille
+     d'un collègue remplissait la liste de tout le monde. Comme Docker, Jenkins, Git et Liens :
+     ça décrit une façon de travailler, pas un produit. */
+  { table: 'jira_watch', famille: 'L', note: 'les tickets que CE poste surveille' },
 
   /* ── Lots, environnements, services ──────────────────────────────────────────────────── */
   {
@@ -1376,75 +1354,15 @@ const REGISTRE = [
   },
   { table: 'lot_member', famille: 'P', uidPropre: false /* pas de clé primaire propre : (lot, genre, référence) la décrit entièrement */, parent: 'lot', liste: 'members', fusion: 'parent' },
 
-  /* ── Git ─────────────────────────────────────────────────────────────────────────────── */
-  {
-    table: 'git_command', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'git-commands/{uid}.json',
-    fusion: 'last-writer',
-    commitMessage: (r) => `git command ${String(r.label || '').slice(0, 50)}`,
-    toFile: (r) => ({
-      uid: r.uid, label: r.label, command: r.command, sort_order: r.sort_order || 0, created_at: r.created_at,
-    }),
-    fromFile: (doc) => ({
-      uid: doc.uid, label: doc.label, command: doc.command,
-      sort_order: doc.sort_order || 0, created_at: doc.created_at,
-    }),
-  },
-  {
-    table: 'git_op', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'git-ops/{uid}.json',
-    fusion: 'append-only',
-    locales: ['restored_at'],
-    note: 'journal ET restauration : le SHA d’une ref supprimée doit survivre au poste qui l’a '
-      + 'supprimée — c’est précisément le cas où la personne qui répare n’est pas celle qui a '
-      + 'effacé. `restored_at` reste local : restaurer se fait dans SON clone.',
-    commitMessage: (r) => `git ${r.action} ${r.ref_name || ''}`.replace(/\s+/g, ' ').trim(),
-    toFile: (r, ctx) => ({
-      uid: r.uid,
-      batch_id: r.batch_id,
-      action: r.action,
-      repo: r.repo_id ? ctx.repoRef(r.repo_id) : null,
-      project: r.project || null,
-      ref_name: r.ref_name || null,
-      ref_sha: r.ref_sha || null,
-      tag_sha: r.tag_sha || null,
-      tag_message: r.tag_message || null,
-      source_ref: r.source_ref || null,
-      status: r.status,
-      error: r.error || null,
-      fetched: r.fetched ? 1 : 0,
-      created_at: r.created_at,
-    }),
-    fromFile: (doc, ctx) => ({
-      uid: doc.uid,
-      batch_id: doc.batch_id,
-      action: doc.action,
-      repo_id: doc.repo ? ctx.repoId(doc.repo) : null,
-      project: doc.project || null,
-      ref_name: doc.ref_name || null,
-      ref_sha: doc.ref_sha || null,
-      tag_sha: doc.tag_sha || null,
-      tag_message: doc.tag_message || null,
-      source_ref: doc.source_ref || null,
-      status: doc.status,
-      error: doc.error || null,
-      fetched: doc.fetched ? 1 : 0,
-      created_at: doc.created_at,
-    }),
-  },
-  {
-    table: 'docker_backup', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'docker-backups/{uid}.json',
-    fusion: 'last-writer',
-    note: 'les métadonnées d’un conteneur, jamais son archive : celle-ci pèse des centaines de Mo '
-      + 'et se refabrique — la commande qui l’a lancé, elle, ne se retrouve pas',
-    commitMessage: (r) => `docker backup ${String(r.name || '').slice(0, 50)}`,
-    toFile: (r) => ({
-      uid: r.uid, container_id: r.container_id || null, name: r.name, image: r.image || null,
-      inspect_json: r.inspect_json || null, run_command: r.run_command || null, created_at: r.created_at,
-    }),
-    fromFile: (doc) => ({
-      uid: doc.uid, container_id: doc.container_id || null, name: doc.name, image: doc.image || null,
-      inspect_json: doc.inspect_json || null, run_command: doc.run_command || null, created_at: doc.created_at,
-    }),
-  },
+  /* ── Git, Docker : deux onglets qui décrivent CE POSTE ───────────────────────────────── */
+  /* La palette de commandes git, le journal des refs créées ou supprimées, les conteneurs
+     sauvegardés : ce sont des gestes d'outillage, faits depuis une machine, sur des clones et
+     des démons qui n'existent que là. Les partager imposerait à chacun la palette du voisin et
+     ferait voyager un journal d'actions que personne d'autre ne peut ni rejouer ni défaire.
+     Comme l'onglet Liens et l'onglet Jenkins : ça reste à soi. */
+  { table: 'git_command', famille: 'L', uidPropre: true, note: 'la palette de commandes git de CE poste' },
+  { table: 'git_op', famille: 'L', uidPropre: true, note: 'le journal des refs créées/supprimées depuis CE poste' },
+  { table: 'docker_backup', famille: 'L', uidPropre: true, note: 'les conteneurs sauvegardés sur CE poste' },
 
   /* ── Réglages ────────────────────────────────────────────────────────────────────────── */
   /* `config` est la seule table dont CHAQUE colonne est classée nommément, et dont les deux

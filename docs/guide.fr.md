@@ -2802,9 +2802,12 @@ le moteur de dictée, les chemins absolus de cette machine, les sessions rangée
 jobs. Chaque colonne de la base est classée nommément, et un contrôle automatique refuse une
 colonne au nom de secret qui ne serait pas déclarée — parce qu'**un secret commité dans git est
 définitif** : l'historique est immuable, chaque clone le garde, la forge le garde. Le retirer ne
-suffit pas, il faut révoquer. **L'onglet Liens reste local lui aussi** : la grille
-services × environnements et les liens libres disent où l'on va travailler, pas ce qu'on a
-produit.
+suffit pas, il faut révoquer. **CINQ ONGLETS RESTENT LOCAUX** : **Liens**, **Docker**, **Jenkins**, **Git**
+et **Jira**. La grille services × environnements, une palette de commandes git, un job Jenkins
+visé, un conteneur sauvegardé, un ticket surveillé : tout cela dit où l'on va travailler et
+comment on est branché — pas ce qu'on a produit. Les partager imposerait à chacun l'outillage du
+voisin, ferait voyager un journal d'actions que personne d'autre ne peut rejouer, et remplirait
+la liste de todos de tout le monde au premier changement d'état d'un ticket suivi par un seul.
 
 **Les pages de notes se partagent UNE PAR UNE, et pas par défaut.** Tout le reste de ce que
 l'outil garde est un produit — une review, une règle, une carte du code —, et le produire pour soi

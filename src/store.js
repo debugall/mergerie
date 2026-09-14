@@ -576,6 +576,34 @@ function verifierFormat() {
    marqueur plus récent que ce qu'on sait lire, ce serait se donner la permission de l'abîmer. */
 if (!existe(MARQUEUR)) marquer();
 
+/* CE QUI A ÉTÉ PARTAGÉ ET NE DOIT PLUS L'ÊTRE DOIT EN SORTIR.
+ *
+ * Quatre onglets sont redevenus locaux — Docker, Jenkins, Git, Jira : ils décrivent une machine,
+ * ses accès et sa façon de travailler, pas un travail accumulé. Leurs fichiers, eux, sont déjà dans le dépôt des équipes qui
+ * ont synchronisé avant ce changement, et rien ne les en retirerait : le balayage ne connaît
+ * que les tables qui écrivent encore, et une table devenue locale n'en fait plus partie. Ils
+ * resteraient donc là, et la prochaine hydratation d'un collègue les reposerait chez lui.
+ * On les retire donc UNE FOIS, au premier démarrage qui suit. Les dépôts suivis sont remis dans
+ * la file pour que leur fichier se réécrive sans son bloc `jenkins`. */
+const RACINES_RETIREES = ['git-commands', 'git-ops', 'docker-backups', 'jira'];
+{
+  const fait = db.prepare(
+    "SELECT 1 FROM local_state WHERE kind = 'data' AND ref = 'depot' AND key = 'menus_locaux'",
+  ).get();
+  if (!fait) {
+    let n = 0;
+    for (const racine of RACINES_RETIREES) {
+      for (const relatif of listerFichiers(racine)) { supprimerFichier(relatif); n += 1; }
+    }
+    if (n) console.log(`[store] ${n} fichier(s) d'onglets redevenus locaux retirés du dépôt`);
+    try {
+      db.prepare("INSERT INTO store_sale (tbl, rid) SELECT 'repo', rowid FROM repo").run();
+    } catch { /* la file sera remplie au prochain démarrage */ }
+    db.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
+      VALUES ('data', 'depot', 'menus_locaux', '1', ?)`).run(new Date().toISOString());
+  }
+}
+
 /** Écrit TOUT ce qui est partagé. Le point de départ d'une équipe, et le filet d'un doute. */
 function exporterTout() {
   marquer();

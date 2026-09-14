@@ -296,8 +296,8 @@ reconstructible, et les 852 requêtes de lecture ne changent pas.
 - **TOUTES les tables partagées** y passent : dépôts, merge requests (leur état de relecture
   seulement), reviews et leurs versions, constats, convergences, règles, vérificateurs et leurs
   verdicts, agents et leur carte du code, sessions de codage et d'exploration, questions libres,
-  passes d'agent, pièces jointes, notes et captures, todos, lots, veilles Jira, commandes et
-  opérations git, sauvegardes Docker, réglages d'équipe.
+  passes d'agent, pièces jointes, notes et captures, todos, lots, réglages d'équipe.
+- **QUATRE ONGLETS RESTENT À SOI, comme Liens** : **Docker**, **Jenkins**, **Git** et **Jira**. Une palette de commandes git, un job Jenkins visé, un conteneur sauvegardé, un ticket surveillé : tout cela décrit une MACHINE, ses accès et une façon de travailler — pas un produit. Le partager imposerait à chacun l'outillage du voisin, ferait voyager un journal d'actions que personne d'autre ne peut rejouer, et remplirait la liste de todos de tout le monde au premier changement d'état d'un ticket suivi par un seul. `store.js` retire UNE FOIS du dépôt les fichiers de ces onglets (repère `menus_locaux` dans `local_state`) : le balayage ne connaît que les tables qui écrivent encore, donc sans ce retrait ils resteraient là et la prochaine hydratation d'un collègue les reposerait chez lui.
 
 **CE N'EST PAS L'APPELANT QUI PRÉVIENT LE STORE, C'EST LA BASE.** Un déclencheur par table
 partagée note la ligne touchée dans `store_sale` ; `store.ecouler()` écrit ensuite les fichiers.

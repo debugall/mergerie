@@ -343,6 +343,43 @@ describe('datasync — deux postes, un dépôt de données', () => {
       'ce que le collègue a relu doit se voir ici : c’est tout l’intérêt du partage');
   });
 
+  test('Docker, Jenkins, Git et Jira redevenus locaux SORTENT du dépôt', () => {
+    /* Ces quatre onglets décrivent une machine, ses accès et sa façon de travailler, pas un
+       travail accumulé. Leurs
+       fichiers étaient déjà partis chez les équipes qui ont synchronisé avant : rien ne les en
+       aurait retirés — le balayage ne connaît que les tables qui écrivent encore — et la
+       prochaine hydratation d'un collègue les aurait reposés chez lui. */
+    const posteE = path.join(racine, 'E');
+    fs.mkdirSync(posteE);
+    // On reconstitue l'ancien dépôt : des fichiers de ces trois onglets, et un dépôt suivi.
+    const avant = dans(posteE, `async ({ db, store, datasync, config }) => {
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nu)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      store.ecrireFichier('git-commands/01M2GAAAAAAAAAAAAAAAAAAAAA.json', store.serialize({ uid: '01M2GAAAAAAAAAAAAAAAAAAAAA', label: 'Statut', command: 'status' }));
+      store.ecrireFichier('git-ops/01M2GBBBBBBBBBBBBBBBBBBBBB.json', store.serialize({ uid: '01M2GBBBBBBBBBBBBBBBBBBBBB', action: 'delete_branch', status: 'done' }));
+      store.ecrireFichier('docker-backups/01M2GCCCCCCCCCCCCCCCCCCCCC.json', store.serialize({ uid: '01M2GCCCCCCCCCCCCCCCCCCCCC', name: 'api' }));
+      store.ecrireFichier('jira/PROJ-1408.json', store.serialize({ key: 'PROJ-1408', summary: 'Le panier' }));
+      db.prepare("DELETE FROM local_state WHERE key = 'menus_locaux'").run();
+      return store.listerFichiers('git-commands').length + store.listerFichiers('git-ops').length
+        + store.listerFichiers('docker-backups').length + store.listerFichiers('jira').length;
+    }`);
+    assert.equal(avant, 4, 'on part bien d’un dépôt qui les porte');
+
+    // Le démarrage suivant les retire — une seule fois, et sans rien demander.
+    const apres = dans(posteE, `async ({ store }) => ({
+      restants: store.listerFichiers('git-commands').length + store.listerFichiers('git-ops').length
+        + store.listerFichiers('docker-backups').length + store.listerFichiers('jira').length,
+    })`);
+    assert.equal(apres.restants, 0, 'ce qui ne se partage plus doit sortir du dépôt');
+
+    // …et une commande git écrite ensuite ne produit plus aucun fichier.
+    const ecrit = dans(posteE, `async ({ db, store }) => {
+      db.prepare("INSERT INTO git_command (label, command, sort_order, created_at) VALUES ('Log', 'log --oneline', 1, ?)").run(new Date().toISOString());
+      store.ecouler();
+      return store.listerFichiers('git-commands').length;
+    }`);
+    assert.equal(ecrit, 0, 'la palette de commandes reste à soi');
+  });
+
   test('AUCUN SECRET dans le dépôt nu — ni dans sa dernière version, ni dans son historique', () => {
     dans(posteA, `async ({ config, datasync }) => {
       config.updateConfig({ access_token: 'glpat-NE-DOIT-JAMAIS-PARTIR', jira_token: 'jira-NE-DOIT-JAMAIS-PARTIR' });

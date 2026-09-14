@@ -72,12 +72,16 @@ describe('store — la base prévient, le store écrit', () => {
     const autre = db.prepare(`INSERT INTO repo (project, url, forge, enabled, created_at)
       VALUES ('acme/api', 'https://x.test/b.git', 'gitlab', 1, ?)`).run(new Date().toISOString()).lastInsertRowid;
     store.ecouler();
-    db.prepare("INSERT INTO repo_jenkins (repo_id, job_path, param) VALUES (?, 'deploy/web', 'BRANCH')").run(repoId);
+    db.prepare("INSERT INTO repo_link (repo_id, linked_repo_id, branch) VALUES (?, ?, 'main')").run(repoId, autre);
     assert.ok(store.enRetard() > 0);
     store.ecouler();
     const doc = JSON.parse(store.lireFichier('repos/gitlab/acme/web.json'));
-    assert.deepEqual(doc.jenkins, [{ job_path: 'deploy/web', param: 'BRANCH' }]);
-    assert.ok(autre);
+    assert.deepEqual(doc.linked, [{ repo: 'gitlab/acme/api', branch: 'main' }]);
+    /* LES JOBS JENKINS, EUX, NE SONT PLUS DANS CE FICHIER : l'onglet Jenkins décrit une machine
+       et ses accès, pas un travail accumulé. Une ligne écrite ici ne salit donc plus rien. */
+    db.prepare("INSERT INTO repo_jenkins (repo_id, job_path, param) VALUES (?, 'deploy/web', 'BRANCH')").run(repoId);
+    assert.equal(store.enRetard(), 0, 'une table redevenue locale ne déclenche plus rien');
+    assert.ok(!('jenkins' in JSON.parse(store.lireFichier('repos/gitlab/acme/web.json'))));
   });
 
   test('la chaîne complète — dépôt, merge request, review, version, constats', () => {
@@ -135,7 +139,7 @@ describe('store — la base prévient, le store écrit', () => {
   });
 
   test('effacer la base et réhydrater rend la chaîne entière', () => {
-    const T = ['repo', 'repo_jenkins', 'mr', 'review', 'review_version', 'finding'];
+    const T = ['repo', 'repo_link', 'mr', 'review', 'review_version', 'finding'];
     const avant = Object.fromEntries(T.map((t) => [t, db.prepare(`SELECT COUNT(*) n FROM ${t}`).get().n]));
     db.pragma('foreign_keys = OFF');
     for (const t of T) db.exec(`DELETE FROM ${t}`);
@@ -214,12 +218,12 @@ describe('store — la base prévient, le store écrit', () => {
   test('la file survit à la coupure — elle est dans la base, pas en mémoire', () => {
     /* C'est ce qui rend l'ensemble sûr : le processus peut mourir entre la ligne et le fichier,
        le démarrage suivant trouve la file et écrit ce qui manque. */
-    db.prepare(`INSERT INTO git_command (label, command, sort_order, created_at)
-      VALUES ('Statut', 'status --short', 9, ?)`).run(new Date().toISOString());
-    const enFile = db.prepare("SELECT COUNT(*) n FROM store_sale WHERE tbl = 'git_command'").get().n;
+    db.prepare(`INSERT INTO todo (title, status, priority, created_at, updated_at)
+      VALUES ('Relire la file', 'open', 'normal', ?, ?)`).run(new Date().toISOString(), new Date().toISOString());
+    const enFile = db.prepare("SELECT COUNT(*) n FROM store_sale WHERE tbl = 'todo'").get().n;
     assert.ok(enFile >= 1, 'la file vit dans SQLite, donc elle traverse un arrêt brutal');
     store.ecouler();
-    const uid = db.prepare("SELECT uid FROM git_command WHERE label = 'Statut'").get().uid;
-    assert.ok(store.existe(`git-commands/${uid}.json`));
+    const uid = db.prepare("SELECT uid FROM todo WHERE title = 'Relire la file'").get().uid;
+    assert.ok(store.existe(`todos/${uid}.json`));
   });
 });
