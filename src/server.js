@@ -2507,6 +2507,10 @@ function taskTargets(taskId) {
       ...ligne, questions, has_verify_fail: echec ? 1 : 0,
       // Le bouton « Retour de l'IA » se décide sur les PASSES, qui voyagent — pas sur un chemin local.
       has_output: (avecRetour.has(r.id) || !!r.output_path) ? 1 : 0,
+      /* MÊME HISTOIRE POUR LE DIFF DE LA BRANCHE. Le patch est rangé dans un fichier de CE
+         poste ; la route, elle, sait déjà le refaire depuis le clone quand il manque. Ce qui
+         dit qu'il y a quelque chose à montrer, c'est le COMMIT — et lui voyage. */
+      has_diff: (!!r.diff_path || !!r.commit_sha) ? 1 : 0,
       mr_note: r.mr_row_id != null ? (notesParMr[r.mr_row_id] != null ? notesParMr[r.mr_row_id] : null) : null,
       mr_verdict: v ? v.verdict : null,
       mr_drafts: r.mr_row_id ? (cmtParMr[r.mr_row_id] || 0) : 0,

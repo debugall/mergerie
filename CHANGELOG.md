@@ -49,10 +49,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   rather than what you produced. Every column is classified by name, and the tests refuse a
   secret-looking column that is not declared, because a secret committed to git is permanent.
 
-- **The “AI output” button shows up on a session that came from the team.** Whether to offer it
-  was decided from a file path on your own machine, which a received session does not have — so
-  the button vanished while every iteration's text sat right there. It is now decided from the
-  iterations themselves, which is what travels and what the button opens. Whether to offer it
+- **The “AI output” and “diff” buttons show up on a session that came from the team.** Whether to
+  offer them was decided from file paths on your own machine, which a received session does not
+  have — so they vanished, while every iteration's text sat right there and the branch diff was one
+  `git diff` away from the clone (the server already knew how to recompute it). They are now
+  decided from what actually travels: the iterations themselves, and the commit the session
+  produced. Whether to offer it
   was decided from a file path on your own machine, which a received session does not have — so
   the button vanished while every iteration's text sat right there. It is now decided from the
   iterations themselves, which is what travels and what the button opens.

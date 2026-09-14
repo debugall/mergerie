@@ -165,6 +165,22 @@ describe('Diff d’une itération de codage', () => {
     app.db.prepare('UPDATE task_target SET output_path = ? WHERE id = ?').run(avant.output_path, cibleId);
   });
 
+  test('le diff de la BRANCHE se montre aussi sur une session reçue du dépôt', async () => {
+    /* Le patch de la branche est rangé dans un fichier de CE poste. La route sait déjà le
+       refaire depuis le clone quand il manque — mais le BOUTON se décidait sur le fichier, et
+       disparaissait donc sur toute session venue d'un collègue. Ce qui dit qu'il y a quelque
+       chose à montrer, c'est le commit, et lui voyage. */
+    const avant = app.db.prepare('SELECT diff_path FROM task_target WHERE id = ?').get(cibleId);
+    app.db.prepare('UPDATE task_target SET diff_path = NULL WHERE id = ?').run(cibleId);
+    const tg = (await app.api('GET', `/api/tasks/${tacheId}`)).body.task.targets.find((x) => x.id === cibleId);
+    assert.ok(tg.commit_sha, 'la session témoin a bien commité');
+    assert.equal(tg.has_diff, 1, 'le bouton doit être proposé : le diff se refait depuis le clone');
+    const vue = await app.api('GET', `/api/tasks/${tacheId}/targets/${cibleId}/diffview`);
+    assert.equal(vue.status, 200);
+    assert.ok((vue.body.files || []).length > 0, 'et il ouvre le vrai diff de la branche');
+    app.db.prepare('UPDATE task_target SET diff_path = ? WHERE id = ?').run(avant.diff_path, cibleId);
+  });
+
   test('une itération qui n’existe pas répond une phrase, pas une trace', async () => {
     const r = await vue(99);
     assert.equal(r.status, 400);

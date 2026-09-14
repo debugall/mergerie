@@ -9597,7 +9597,10 @@ function etatMrDeLaLigne(tg) {
 
 function targetLine(t, tg) {
   const st = TASK_STATUS[tg.status] || { label: tg.status, cls: '' };
-  const showDiff = !!tg.diff_path && ['committed', 'pushed'].includes(tg.status);
+  /* `has_diff` vient du serveur : le patch est un fichier de CE poste, mais le commit, lui,
+     voyage — et la route refait le diff depuis le clone quand le fichier manque. Se fier au
+     fichier faisait disparaître le bouton sur toute session reçue du dépôt d'équipe. */
+  const showDiff = !!tg.has_diff && ['committed', 'pushed'].includes(tg.status);
   const showPush = tg.status === 'committed';
   /* Le rattrapage ne s'offre QUE si la merge request est réellement en conflit — c'est la
      forge qui le dit (`mr_conflicts`, relevé par la découverte sur l'appel qu'elle fait déjà).
