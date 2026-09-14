@@ -201,10 +201,17 @@ const REGISTRE = [
        recycle, et une MR supprimée puis redécouverte hériterait de la session d'une autre. */
     table: 'mr', famille: 'C', uidPropre: true, chemin: 'mrs/{forge}/{project}/{iid}.json',
     fusion: 'last-writer',
+    /* `web_url` et `gitlab_created_at` PARTENT AUSSI, et ce n'est pas une entorse au « la forge
+       fait foi » : ce sont les deux seules choses d'une merge request qui NE CHANGENT JAMAIS.
+       Un titre se réécrit, une branche se renomme, un SHA avance — les partager ferait voyager
+       du périmé. L'adresse d'une MR et sa date d'ouverture, non. Sans elles, le poste qui
+       rejoint affiche un en-tête SANS LIEN vers la forge tant qu'il n'a pas découvert lui-même
+       (ce qui demande un jeton valide), et le délai de cycle n'a pas de point de départ. */
     partagees: ['status', 'reviewed_sha', 'ticket_text', 'ticket_image', 'squash',
-      'remove_source_branch', 'closed_seen'],
+      'remove_source_branch', 'closed_seen', 'web_url', 'gitlab_created_at'],
     fichiers: ['mrs/{forge}/{project}/{iid}.{ext} (image du ticket)'],
-    note: 'la forge fait foi du reste : titre, branches, SHA, auteur, fichiers changés, Jira',
+    note: 'la forge fait foi du reste : titre, branches, SHA, auteur, fichiers changés, Jira ; '
+      + 'l’adresse et la date d’ouverture voyagent parce qu’elles ne changent jamais',
     commitMessage: (r, ctx) => `mr ${ctx ? ctx.mrRef(r.id) || r.iid : r.iid}`,
     /* LE FICHIER NE PORTE QUE LE TRAVAIL DU RELECTEUR. Titre, branches, SHA, auteur, fichiers
        changés : la forge fait foi, chaque poste les relit lui-même, et les écrire ici ferait
@@ -219,6 +226,8 @@ const REGISTRE = [
         forge: m.forge,
         project: m.project,
         status: r.status,
+        web_url: r.web_url || null,
+        gitlab_created_at: r.gitlab_created_at || null,
         reviewed_sha: r.reviewed_sha || null,
         ticket_text: r.ticket_text || null,
         squash: r.squash == null ? null : (r.squash ? 1 : 0),
@@ -247,6 +256,8 @@ const REGISTRE = [
       repo_id: ctx.repoId(doc.repo),
       iid: doc.iid,
       status: doc.status || 'to_review',
+      web_url: doc.web_url || null,
+      gitlab_created_at: doc.gitlab_created_at || null,
       reviewed_sha: doc.reviewed_sha || null,
       ticket_text: doc.ticket_text || null,
       squash: doc.squash == null ? null : (doc.squash ? 1 : 0),
@@ -846,6 +857,13 @@ const REGISTRE = [
       targets: ctx.enfants('task_target', 'task_id', r.id).map((tg) => ({
         uid: tg.uid,
         repo: ctx.repoRef(tg.repo_id),
+        /* LE RETOUR D'UNE SESSION D'AVANT L'HISTORIQUE DES PASSES. Depuis, chaque itération est
+           une ligne `agent_pass` dont le fichier emporte le texte, et `output_path` ne fait plus
+           que pointer la plus récente — inutile de l'envoyer deux fois. Mais les sessions
+           d'avant n'ont AUCUNE passe : leur retour n'existe que là, et sans ceci le poste qui
+           rejoint ouvre une session de codage vide. */
+        output: ctx.enfants('agent_pass', 'unit_id', tg.id).some((p) => p.scope === 'task')
+          ? null : (tg.output_path ? ctx.lireDisque(tg.output_path) : null),
         branch: tg.branch,
         base_branch: tg.base_branch || null,
         status: tg.status,
@@ -905,6 +923,10 @@ const REGISTRE = [
         if (!repoId) return null;         // dépôt inconnu ici : la cible n'a pas de sens
         return {
           uid: item.uid, task_id: task.id, repo_id: repoId, branch: item.branch,
+          /* Reposé sur le disque local : c'est le CONTENU qui a voyagé, jamais le chemin. Les
+             cibles qui ont des passes, elles, reçoivent leur pointeur à la fin de l'hydratation
+             des passes — il vise la plus récente, comme le fait le pipeline. */
+          output_path: item.output ? ctx.ecrireDisque(`tasks/${task.uid}`, `target-${item.uid}.md`, item.output) : null,
           base_branch: item.base_branch || null, status: item.status || 'new',
           commit_sha: item.commit_sha || null, push_command: item.push_command || null,
           mr_iid: item.mr_iid == null ? null : item.mr_iid, mr_url: item.mr_url || null,
@@ -1076,6 +1098,17 @@ const REGISTRE = [
           'SELECT id FROM agent_pass WHERE scope = ? AND task_id = ? AND unit_id = ? ORDER BY uid',
         ).all(g.scope, g.task_id, g.unit_id);
         lignes.forEach((l, i) => maj.run(i + 1, l.id));
+      }
+      /* ET LE POINTEUR DE LA CIBLE SUIT, comme celui de la review : `output_path` désigne la
+         passe la plus récente — un fichier du disque local, donc recalculé ici. Sans lui, une
+         session dont les passes arrivent dans un autre commit que la session elle-même
+         afficherait « aucun retour » alors que le texte est là. */
+      const majCible = db2.prepare('UPDATE task_target SET output_path = ? WHERE id = ?');
+      for (const c of db2.prepare("SELECT DISTINCT unit_id FROM agent_pass WHERE scope = 'task' AND unit_id > 0").all()) {
+        const derniere = db2.prepare(
+          "SELECT output_path FROM agent_pass WHERE scope = 'task' AND unit_id = ? ORDER BY uid DESC LIMIT 1",
+        ).get(c.unit_id);
+        if (derniere && derniere.output_path) majCible.run(derniere.output_path, c.unit_id);
       }
     },
   },

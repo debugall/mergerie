@@ -82,8 +82,9 @@ describe('store — la base prévient, le store écrit', () => {
 
   test('la chaîne complète — dépôt, merge request, review, version, constats', () => {
     const now = new Date().toISOString();
-    mrId = db.prepare(`INSERT INTO mr (repo_id, iid, title, source_branch, target_branch, status, reviewed_sha, ticket_text, updated_at)
-      VALUES (?, 218, 'Paiement 3×', 'feat/x', 'main', 'reviewed', 'abc123', 'Règle métier : au-dessus de 100 €.', ?)`)
+    mrId = db.prepare(`INSERT INTO mr (repo_id, iid, title, source_branch, target_branch, status, reviewed_sha, ticket_text, web_url, gitlab_created_at, updated_at)
+      VALUES (?, 218, 'Paiement 3×', 'feat/x', 'main', 'reviewed', 'abc123', 'Règle métier : au-dessus de 100 €.',
+        'https://gitlab.test/acme/web/-/merge_requests/218', '2026-02-01T09:00:00Z', ?)`)
       .run(repoId, now).lastInsertRowid;
     const md = path.join(process.env.MERGERIE_DATA_DIR, 'rapport.md');
     fs.writeFileSync(md, '# Revue\n\nDeux constats.');
@@ -101,6 +102,11 @@ describe('store — la base prévient, le store écrit', () => {
     assert.match(mr.ticket_text, /100 €/);
     assert.ok(!('title' in mr), 'la forge fait foi du titre : l’écrire ferait voyager du périmé');
     assert.ok(!('current_sha' in mr), 'idem pour le SHA courant');
+    /* DEUX EXCEPTIONS, ET DEUX SEULEMENT : l'adresse de la merge request et sa date d'ouverture
+       ne changent JAMAIS. Sans elles, le poste qui rejoint affiche un en-tête sans lien vers la
+       forge tant qu'il n'a pas de jeton à lui, et le délai de cycle n'a pas de point de départ. */
+    assert.equal(mr.web_url, 'https://gitlab.test/acme/web/-/merge_requests/218');
+    assert.equal(mr.gitlab_created_at, '2026-02-01T09:00:00Z');
 
     const uid = db.prepare('SELECT uid FROM review_version WHERE mr_id = ?').get(mrId).uid;
     assert.equal(store.lireFichier(`reviews/gitlab/acme/web/218/${uid}.md`), '# Revue\n\nDeux constats.',
@@ -131,6 +137,9 @@ describe('store — la base prévient, le store écrit', () => {
     const m = db.prepare('SELECT * FROM mr WHERE id = ?').get(r.mr_id);
     assert.equal(m.iid, 218);
     assert.equal(m.status, 'reviewed');
+    assert.equal(m.web_url, 'https://gitlab.test/acme/web/-/merge_requests/218',
+      'le lien vers la forge doit survivre au voyage');
+    assert.equal(m.gitlab_created_at, '2026-02-01T09:00:00Z');
     assert.equal(db.prepare('SELECT version FROM review_version WHERE mr_id = ?').get(m.id).version, 1,
       'la version se renumérote dans l’ordre des uid');
     assert.equal(db.prepare('SELECT COUNT(*) n FROM finding WHERE mr_id = ? AND version = 1').get(m.id).n, 1);
@@ -138,6 +147,43 @@ describe('store — la base prévient, le store écrit', () => {
     const v = db.prepare('SELECT md_path FROM review_version WHERE mr_id = ?').get(m.id);
     assert.match(fs.readFileSync(v.md_path, 'utf8'), /Deux constats/);
     assert.equal(store.enRetard(), 0, 'ce qu’on vient d’importer n’est pas « sale »');
+  });
+
+  test('le retour de l’IA d’une session revient, et la cible sait où il est', () => {
+    /* CE QU'ON VIENT LIRE TROIS SEMAINES PLUS TARD. Le texte de chaque itération voyage dans le
+       fichier de sa passe ; le POINTEUR de la cible, lui, désigne un fichier du disque local et
+       se recalcule donc à l'arrivée — sur la passe la plus récente, comme le fait le pipeline.
+       Sans ce recalcul, la session s'ouvrait en annonçant « aucun retour » alors que le texte
+       était bien là, à côté. */
+    const now = new Date().toISOString();
+    const taskId = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, status, created_at, updated_at)
+      VALUES (?, 'code', 'Ajoute le paiement en 3 fois', 'feat/pay', 'pushed', ?, ?)`).run(repoId, now, now).lastInsertRowid;
+    const tgId = db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, status, updated_at)
+      VALUES (?, ?, 'feat/pay', 'pushed', ?)`).run(taskId, repoId, now).lastInsertRowid;
+    const passe = (n, texte) => {
+      const f = path.join(process.env.MERGERIE_DATA_DIR, `passe-${n}.md`);
+      fs.writeFileSync(f, texte);
+      db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
+        VALUES ('task', ?, ?, ?, 'run', 'fais-le', ?, ?)`).run(taskId, tgId, n, f, now);
+    };
+    passe(1, 'première itération');
+    passe(2, 'ce que l’IA a répondu en dernier');
+    db.prepare('UPDATE task_target SET output_path = ? WHERE id = ?')
+      .run(path.join(process.env.MERGERIE_DATA_DIR, 'passe-2.md'), tgId);
+    store.ecouler();
+
+    db.pragma('foreign_keys = OFF');
+    db.exec('DELETE FROM agent_pass'); db.exec('DELETE FROM task_target'); db.exec('DELETE FROM task');
+    db.pragma('foreign_keys = ON');
+    const bilan = store.hydraterTout();
+    assert.deepEqual(bilan.orphelins, [], bilan.orphelins.join('\n'));
+
+    const tg = db.prepare('SELECT id, output_path FROM task_target').get();
+    assert.ok(tg, 'la cible doit revenir');
+    assert.ok(tg.output_path, 'sans pointeur, l’écran annonce « aucun retour »');
+    assert.equal(fs.readFileSync(tg.output_path, 'utf8'), 'ce que l’IA a répondu en dernier',
+      'le pointeur vise la passe la plus RÉCENTE, pas la première');
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM agent_pass WHERE scope = 'task'").get().n, 2);
   });
 
   test('supprimer une ligne retire son fichier — un orphelin la ferait revenir', () => {

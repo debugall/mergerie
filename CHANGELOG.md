@@ -49,6 +49,20 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   rather than what you produced. Every column is classified by name, and the tests refuse a
   secret-looking column that is not declared, because a secret committed to git is permanent.
 
+- **The link to the merge request on the forge now travels, and so does its opening date.** The
+  forge is authoritative for a merge request's title, branches and SHA — sharing those would make
+  stale data travel. Its address and its opening date are the two things that never change, so
+  they go with it: a machine that has just joined shows the header's link to GitLab or GitHub
+  without having to discover the merge request itself first, and the cycle-time chart has an
+  opening date to measure from. (The merge instant is still only known to whichever machine was
+  watching when it happened, so that chart fills in as the team merges from here on.)
+
+- **A session's AI output finds its way back.** Each iteration's text travels in its own file, but
+  the pointer a session keeps to its latest output is a local path, rebuilt on arrival — and it
+  was not being rebuilt, so a session that had come through the repository announced “no output”
+  with the text sitting right next to it. Sessions older than the iteration history carry their
+  output along with the session itself, since they have no iteration to put it in.
+
 - **A machine that already has the same agent — or note, or repository — can now join.** Install
   the shipped “Librarian” on two machines and each gets its own internal id for it; attaching then
   failed outright with *UNIQUE constraint failed: agent.slug*, and since an import walks the
