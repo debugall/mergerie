@@ -294,6 +294,55 @@ describe('datasync — deux postes, un dépôt de données', () => {
       'une page d’avant laissée dans le dépôt repartirait au prochain « git add -A »');
   });
 
+  test('la merge request reviewée par un collègue passe « reviewée » chez moi', () => {
+    /* LA QUESTION DE TOUS LES JOURS. Chacun découvre les mêmes merge requests chez la forge, et
+       chacun leur donne un uid à soi : ce n'est donc PAS l'uid qui les rapproche, mais (dépôt,
+       numéro). Sans ce rapprochement, la base refusait la ligne du collègue — « UNIQUE
+       constraint failed: mr.repo_id, mr.iid » — et sa relecture n'arrivait jamais. */
+    const decouvrir = `(db) => {
+      const r = db.prepare("SELECT id FROM repo WHERE project = 'eq/front'").get()
+        || { id: db.prepare("INSERT INTO repo (forge, project, url, enabled) VALUES ('gitlab','eq/front','https://x/eq/front',1)").run().lastInsertRowid };
+      const e = db.prepare('SELECT id FROM mr WHERE repo_id = ? AND iid = 77').get(r.id);
+      if (e) return e.id;
+      return db.prepare("INSERT INTO mr (repo_id, iid, title, status, updated_at) VALUES (?, 77, 'Le panier', 'to_review', ?)")
+        .run(r.id, new Date().toISOString()).lastInsertRowid;
+    }`;
+    // Les deux postes la découvrent chacun de leur côté : deux uid pour une seule merge request.
+    const uidA = dans(posteA, `async ({ db, datasync }) => {
+      const id = (${decouvrir})(db);
+      await datasync.commiter('repo + mr'); await datasync.tour();
+      return db.prepare('SELECT uid FROM mr WHERE id = ?').get(id).uid;
+    }`);
+    /* B LA DÉCOUVRE DE SON CÔTÉ, AVANT d'avoir reçu quoi que ce soit : c'est là que naissent les
+       deux identités, et c'est le cas ordinaire — chacun découvre la même file de merge
+       requests chez la forge. */
+    const uidB = dans(posteB, `async ({ db, datasync }) => {
+      const r = db.prepare("INSERT INTO repo (forge, project, url, enabled) VALUES ('gitlab','eq/front','https://x/eq/front',1)").run().lastInsertRowid;
+      const id = db.prepare("INSERT INTO mr (repo_id, iid, title, status, updated_at) VALUES (?, 77, 'Le panier', 'to_review', ?)")
+        .run(r, new Date().toISOString()).lastInsertRowid;
+      await datasync.commiter('repo + mr (chez B)');
+      return db.prepare('SELECT uid FROM mr WHERE id = ?').get(id).uid;
+    }`);
+    assert.ok(uidA && uidB, 'les deux postes connaissent la merge request');
+    assert.notEqual(uidA, uidB, 'deux découvertes, deux uid — c’est tout le problème');
+
+    // A la reviewe : le statut part dans le dépôt.
+    dans(posteA, `async ({ db, datasync }) => {
+      const m = db.prepare("SELECT id FROM mr WHERE iid = 77").get();
+      db.prepare("UPDATE mr SET status = 'reviewed', updated_at = ? WHERE id = ?").run(new Date().toISOString(), m.id);
+      await datasync.commiter('mr reviewed'); await datasync.tour();
+    }`);
+
+    const chezB = dans(posteB, `async ({ db, datasync }) => {
+      await datasync.tour();
+      const l = db.prepare("SELECT status FROM mr WHERE iid = 77").all();
+      return { lignes: l.length, status: l[0] && l[0].status };
+    }`);
+    assert.equal(chezB.lignes, 1, 'une merge request, une ligne — pas deux identités pour un objet');
+    assert.equal(chezB.status, 'reviewed',
+      'ce que le collègue a relu doit se voir ici : c’est tout l’intérêt du partage');
+  });
+
   test('AUCUN SECRET dans le dépôt nu — ni dans sa dernière version, ni dans son historique', () => {
     dans(posteA, `async ({ config, datasync }) => {
       config.updateConfig({ access_token: 'glpat-NE-DOIT-JAMAIS-PARTIR', jira_token: 'jira-NE-DOIT-JAMAIS-PARTIR' });

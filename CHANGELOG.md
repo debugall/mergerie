@@ -49,6 +49,25 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   rather than what you produced. Every column is classified by name, and the tests refuse a
   secret-looking column that is not declared, because a secret committed to git is permanent.
 
+- **A merge request reviewed by a colleague now shows up as reviewed on your machine.** Everyone
+  discovers the same merge requests from the forge, and each machine gives them an internal id of
+  its own — so the identity of a merge request is (repository, number), not that id. It was the
+  id, and the colleague's review was refused on arrival with a uniqueness error: their work simply
+  never showed up. The same held for a review, and for a verifier two people had named the same
+  thing. Every uniqueness rule in the database is now checked against the registry by a test, so
+  the next one cannot be discovered in production, on someone else's machine.
+
+- **A closed merge request gets its title, branches, author and merge date back — so the cycle-time
+  chart has a past.** Discovery only lists *open* merge requests: anything already closed never
+  comes up again. A machine that has just joined the team therefore received reviews on merge
+  requests closed months ago and could only show a number at the top of the report — no title, no
+  branches, no author. And the cycle-time chart measured from a line in this machine's own
+  activity log, written when it noticed the merge, which says nothing on anyone else's machine
+  and does not exist at all on a new one. The merge date now comes from the forge — the real
+  instant, the same for everyone, and it travels with the merge request — and one catch-up call
+  per repository fills in everything a closed merge request was missing, without ever overwriting
+  what is already known.
+
 - **The link to the merge request on the forge now travels, and so does its opening date.** The
   forge is authoritative for a merge request's title, branches and SHA — sharing those would make
   stale data travel. Its address and its opening date are the two things that never change, so

@@ -278,9 +278,14 @@ app.get('/api/status', wrap((req, res) => {
  * rien du quotidien. Et on ne compte que ce qui est ALLÉ AU BOUT : une MR encore ouverte n'a
  * pas de délai, elle a un âge — les mélanger ferait baisser le chiffre à chaque nouvelle MR. */
 function delaiDeCycle(projet, depuis) {
+  /* LA DATE DE MERGE VIENT DE LA FORGE quand on l'a : c'est l'instant réel, le même pour toute
+     l'équipe. Le journal d'activité reste en secours pour l'existant — il ne dit que « quand CE
+     poste s'en est aperçu », ce qui ne vaut rien chez le voisin et n'existe pas du tout sur un
+     poste qui vient de rejoindre. */
   const lignes = db.prepare(`SELECT mr.id, repo.project, mr.iid, mr.gitlab_created_at,
       (SELECT MIN(rv.created_at) FROM review_version rv WHERE rv.mr_id = mr.id) AS first_review,
-      (SELECT MAX(f.at) FROM feed f WHERE f.type = 'mr_merged' AND f.mr_iid = mr.iid AND f.project = repo.project) AS merged_at
+      COALESCE(mr.merged_at,
+        (SELECT MAX(f.at) FROM feed f WHERE f.type = 'mr_merged' AND f.mr_iid = mr.iid AND f.project = repo.project)) AS merged_at
     FROM mr JOIN repo ON repo.id = mr.repo_id
     WHERE (? = '' OR repo.project = ?)`).all(projet, projet)
     .filter((r) => r.gitlab_created_at && r.merged_at && (!depuis || r.merged_at >= depuis));

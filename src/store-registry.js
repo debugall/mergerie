@@ -199,16 +199,22 @@ const REGISTRE = [
        partout. L'uid, lui, est une identité LOCALE stable : c'est lui qui rattache le handle de
        session de review dans `local_session`, et un `id` entier ne conviendrait pas — SQLite les
        recycle, et une MR supprimée puis redécouverte hériterait de la session d'une autre. */
-    table: 'mr', famille: 'C', uidPropre: true, chemin: 'mrs/{forge}/{project}/{iid}.json',
+    /* (dépôt, numéro) FAIT L'IDENTITÉ D'UNE MERGE REQUEST, pas l'uid : deux postes la découvrent
+       chacun de leur côté chez la forge et lui donnent chacun le leur. Sans ça, la review du
+       collègue n'arrivait jamais — la base refusait la ligne. */
+    table: 'mr', famille: 'C', uidPropre: true, cleNaturelle: ['repo_id', 'iid'],
+    chemin: 'mrs/{forge}/{project}/{iid}.json',
     fusion: 'last-writer',
     /* `web_url` et `gitlab_created_at` PARTENT AUSSI, et ce n'est pas une entorse au « la forge
        fait foi » : ce sont les deux seules choses d'une merge request qui NE CHANGENT JAMAIS.
        Un titre se réécrit, une branche se renomme, un SHA avance — les partager ferait voyager
        du périmé. L'adresse d'une MR et sa date d'ouverture, non. Sans elles, le poste qui
        rejoint affiche un en-tête SANS LIEN vers la forge tant qu'il n'a pas découvert lui-même
-       (ce qui demande un jeton valide), et le délai de cycle n'a pas de point de départ. */
+       (ce qui demande un jeton valide), et le délai de cycle n'a ni début ni fin — `merged_at`
+       est du même bois : l'instant que la FORGE donne, le même pour toute l'équipe, là où la
+       ligne du journal d'activité ne disait que « quand CE poste s'en est aperçu ». */
     partagees: ['status', 'reviewed_sha', 'ticket_text', 'ticket_image', 'squash',
-      'remove_source_branch', 'closed_seen', 'web_url', 'gitlab_created_at'],
+      'remove_source_branch', 'closed_seen', 'web_url', 'gitlab_created_at', 'merged_at'],
     fichiers: ['mrs/{forge}/{project}/{iid}.{ext} (image du ticket)'],
     note: 'la forge fait foi du reste : titre, branches, SHA, auteur, fichiers changés, Jira ; '
       + 'l’adresse et la date d’ouverture voyagent parce qu’elles ne changent jamais',
@@ -228,6 +234,7 @@ const REGISTRE = [
         status: r.status,
         web_url: r.web_url || null,
         gitlab_created_at: r.gitlab_created_at || null,
+        merged_at: r.merged_at || null,
         reviewed_sha: r.reviewed_sha || null,
         ticket_text: r.ticket_text || null,
         squash: r.squash == null ? null : (r.squash ? 1 : 0),
@@ -258,6 +265,7 @@ const REGISTRE = [
       status: doc.status || 'to_review',
       web_url: doc.web_url || null,
       gitlab_created_at: doc.gitlab_created_at || null,
+      merged_at: doc.merged_at || null,
       reviewed_sha: doc.reviewed_sha || null,
       ticket_text: doc.ticket_text || null,
       squash: doc.squash == null ? null : (doc.squash ? 1 : 0),
@@ -308,7 +316,10 @@ const REGISTRE = [
   { table: 'mr_comment_draft', famille: 'P', uidPropre: true, parent: 'mr', liste: 'drafts', fusion: 'parent' },
   { table: 'comment_log', famille: 'P', uidPropre: true, parent: 'mr', liste: 'comment_log', fusion: 'parent' },
   {
-    table: 'review', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'reviews/{forge}/{project}/{iid}/review.json',
+    /* UNE SEULE REVIEW COURANTE PAR MERGE REQUEST (`UNIQUE(mr_id)`) : c'est elle, l'identité.
+       Deux postes qui reviewent la même MR en créent chacun une — c'est le même objet. */
+    table: 'review', famille: 'P', uidPropre: true, cle: 'uid', cleNaturelle: ['mr_id'],
+    chemin: 'reviews/{forge}/{project}/{iid}/review.json',
     fusion: 'last-writer', locales: ['md_path', 'explanation_path', 'diff_path'],
     note: 'la review courante d’une MR : les chemins pointent les fichiers de la version, recalculés ici',
     commitMessage: (r, ctx) => `review ${ctx ? ctx.mrRef(r.mr_id) || '' : ''}`.trim(),
@@ -518,7 +529,10 @@ const REGISTRE = [
 
   /* ── Vérificateurs ───────────────────────────────────────────────────────────────────── */
   {
-    table: 'verifier', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'verifiers/{uid}.json',
+    /* Le nom est unique en base : deux postes qui définissent « Tests unitaires » parlent du
+       même vérificateur. */
+    table: 'verifier', famille: 'P', uidPropre: true, cle: 'uid', cleNaturelle: ['name'],
+    chemin: 'verifiers/{uid}.json',
     fusion: 'last-writer',
     commitMessage: (r) => `verifier ${String(r.name || '').slice(0, 50)}`,
     toFile: (r, ctx) => ({
@@ -1538,6 +1552,43 @@ const REGISTRE = [
 
 const PAR_TABLE = new Map(REGISTRE.map((e) => [e.table, e]));
 
+/* COMMENT RECONNAÎTRE LE MÊME OBJET D'UN POSTE À L'AUTRE, quand ce n'est pas l'uid.
+ *
+ * L'uid fait l'identité — sauf qu'il est tiré LOCALEMENT, à la création. Deux postes qui
+ * découvrent la même merge request chez la forge, qui installent le même agent livré, qui
+ * définissent le même vérificateur, produisent deux uid pour un seul objet. À l'arrivée, la
+ * base refuse la seconde ligne (`UNIQUE(repo_id, iid)`, `UNIQUE(slug)`, `UNIQUE(name)`) et le
+ * document ne s'hydrate jamais : la review du collègue n'arrive pas.
+ *
+ * On déclare donc, table par table, CE QUI FAIT QU'UNE LIGNE EST LA MÊME. Le fichier fait foi :
+ * la ligne locale adopte son uid, plutôt que de lutter contre l'unicité. Par défaut c'est la
+ * clé naturelle qui nomme déjà le fichier (`slug`, `project`) ; `cleNaturelle` la remplace
+ * quand il en faut plusieurs. */
+function cleNaturelle(table) {
+  const e = PAR_TABLE.get(table);
+  if (!e) return null;
+  if (e.cleNaturelle) return e.cleNaturelle;
+  /* `cle` dit déjà ce qui nomme la ligne — un slug, un projet, une clé de ticket. Les tables
+     SANS uid propre (une veille Jira, nommée `PROJ-1408` partout) s'en servent par une autre
+     voie : le `ON CONFLICT` de l'insertion. Le rapprochement est le même, dit deux fois. */
+  if (e.cle && e.cle !== 'uid' && e.cle !== 'id') return [e.cle];
+  return null;
+}
+
+/* Les contraintes d'unicité qui n'ont PAS besoin d'une clé naturelle, avec la raison. Le test
+   unitaire relit toutes les unicités de la base : une qui n'est ni couverte ni justifiée ici
+   est un « UNIQUE constraint failed » qui attend son équipe. */
+const UNIQUES_SANS_CLE = {
+  'agent.name': 'le slug est dérivé du nom : même nom, même slug, donc déjà rapproché',
+  'repo_jenkins.repo_id+job_path': 'liste fille remplacée en bloc avec son dépôt',
+  'verifier_command.verifier_id+position': 'liste fille remplacée en bloc avec son vérificateur',
+  'verifier_repo.verifier_id+repo_id': 'liste fille remplacée en bloc avec son vérificateur',
+  'agent_repo.agent_id+repo_id': 'liste fille remplacée en bloc avec son agent',
+  'lot_member.lot_id+kind+ref_id': 'liste fille remplacée en bloc avec son lot',
+  'agent_knowledge.agent_id': 'partielle (status = active) : `apresHydratation` renumérote et une seule version reste active',
+  'agent_knowledge.agent_id+version': '`version` est posée en négatif provisoire puis renumérotée : jamais deux égales en vol',
+};
+
 /** L'entrée du registre pour une table, ou `undefined`. */
 const pour = (table) => PAR_TABLE.get(table);
 
@@ -1566,6 +1617,8 @@ const cheminDe = (table, champs) => {
 };
 
 module.exports = {
+  cleNaturelle,
+  UNIQUES_SANS_CLE,
   REGISTRE, TRANSITOIRES, INTERDITS, EXCEPTIONS,
   pour, famille, partage, localesDe, cheminDe,
 };

@@ -715,13 +715,19 @@ function upsert(table, row) {
      chacun avec un uid tiré chez lui. Le fichier, lui, est nommé par la CLÉ NATURELLE
      (`agents/documentaliste/`, `notes/deploiement-prod.md`, `repos/gitlab/eq__api.json`) : deux
      fichiers de même nom sont le même document, il ne peut pas y en avoir deux.
+     Le cas le plus courant n'est même pas celui-là : DEUX POSTES DÉCOUVRENT LA MÊME MERGE
+     REQUEST chez la forge, chacun lui donnant son uid. Le premier qui la reviewe la partage, et
+     le second ne pouvait pas la recevoir — `UNIQUE(repo_id, iid)`. Sa relecture n'arrivait
+     jamais, alors que c'est exactement ce qu'une équipe attend du partage.
      Sans ce rapprochement, l'insertion butait sur l'unicité de la clé — « UNIQUE constraint
      failed: agent.slug » — et faisait échouer tout le rattachement, donc l'arrivée de TOUT le
      reste. La ligne locale adopte donc l'identité du dépôt : c'est lui qui fait foi, et l'uid
      local n'était qu'une identité parallèle pour ce que l'équipe connaît déjà. */
-  const naturelle = e && e.uidPropre && e.cle && e.cle !== 'uid' && e.cle !== 'id' ? e.cle : null;
-  if (naturelle && row[naturelle] != null && row.uid) {
-    const homonyme = db.prepare(`SELECT id, uid FROM ${table} WHERE ${naturelle} = ?`).get(row[naturelle]);
+  const naturelle = registre.cleNaturelle(table);
+  if (naturelle && row.uid && naturelle.every((c) => row[c] != null)) {
+    const homonyme = db.prepare(
+      `SELECT id, uid FROM ${table} WHERE ${naturelle.map((c) => `${c} = ?`).join(' AND ')}`,
+    ).get(...naturelle.map((c) => row[c]));
     if (homonyme && homonyme.uid !== row.uid) {
       db.prepare(`UPDATE ${table} SET ${colonnes.map((c) => `${c} = @${c}`).join(', ')} WHERE id = ${homonyme.id}`).run(row);
       return db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(homonyme.id);

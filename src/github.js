@@ -202,6 +202,8 @@ async function listAllMRs(cfg, project) {
     iid: pr.number, state: mrState(pr),
     source_branch: pr.head && pr.head.ref, target_branch: pr.base && pr.base.ref,
     merged_at: pr.merged_at, web_url: pr.html_url, title: pr.title,
+    author: (pr.user && (pr.user.login || pr.user.name)) || '',
+    created_at: pr.created_at || null,
   }));
 }
 

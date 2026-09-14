@@ -26,9 +26,10 @@ const registre = require('../src/store-registry');
 describe('store-registry — la classification des tables', () => {
   let colonnes;   // table -> [colonnes], lu d'une base NEUVE
   let tables;
+  let db;         // la base NEUVE elle-même : les unicités se lisent d'elle, pas d'une copie
 
   before(() => {
-    const db = require('../src/db');
+    db = require('../src/db');
     tables = db.prepare(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
     ).all().map((r) => r.name);
@@ -65,6 +66,49 @@ describe('store-registry — la classification des tables', () => {
       }
     }
     assert.deepEqual(fautes, [], `colonnes qui partiraient dans le dépôt :\n  ${fautes.join('\n  ')}`);
+  });
+
+  test('toute unicité de la base a de quoi rapprocher deux postes — ou une raison écrite', () => {
+    /* LE BUG QUI ATTEND SON ÉQUIPE. L'uid est tiré LOCALEMENT : deux postes qui découvrent la
+       même merge request, installent le même agent livré ou définissent le même vérificateur
+       produisent deux uid pour un seul objet. À l'arrivée, la base refuse la seconde ligne —
+       « UNIQUE constraint failed » — et le document ne s'hydrate jamais. Ce contrôle relit les
+       unicités RÉELLES de la base et exige, pour chacune, soit une clé naturelle qui la couvre,
+       soit une raison écrite. C'est le seul moyen de ne pas redécouvrir le problème une table
+       à la fois, en production, chez quelqu'un d'autre. */
+    const fautes = [];
+    for (const e of registre.REGISTRE) {
+      if (e.famille !== 'P' && !(e.partagees || []).length) continue;
+      if (!colonnes.has(e.table)) continue;          // table transitoire : rien à garder
+      const index = db.prepare(`PRAGMA index_list(${e.table})`).all();
+      const naturelle = registre.cleNaturelle(e.table);
+      for (const i of index.filter((x) => x.unique)) {
+        const cols = db.prepare(`PRAGMA index_info(${JSON.stringify(i.name)})`).all().map((c) => c.name);
+        if (cols.length === 1 && cols[0] === 'uid') continue;          // l'identité elle-même
+        const nom = `${e.table}.${cols.join('+')}`;
+        if (registre.UNIQUES_SANS_CLE[nom]) continue;
+        const couverte = naturelle && naturelle.length === cols.length
+          && cols.every((c) => naturelle.includes(c));
+        if (!couverte) fautes.push(`${nom} — ni « cleNaturelle », ni raison dans UNIQUES_SANS_CLE`);
+      }
+    }
+    assert.deepEqual(fautes, [], `unicités qui refuseront le document d’un collègue :\n  ${fautes.join('\n  ')}`);
+  });
+
+  test('chaque raison d’UNIQUES_SANS_CLE porte sur une unicité qui existe', () => {
+    // Une justification périmée couvre un nom qui a pu changer de sens.
+    const vraies = new Set();
+    for (const e of registre.REGISTRE) {
+      if (!colonnes.has(e.table)) continue;
+      const index = db.prepare(`PRAGMA index_list(${e.table})`).all();
+      for (const i of index.filter((x) => x.unique)) {
+        const cols = db.prepare(`PRAGMA index_info(${JSON.stringify(i.name)})`).all().map((c) => c.name);
+        vraies.add(`${e.table}.${cols.join('+')}`);
+      }
+    }
+    for (const cle of Object.keys(registre.UNIQUES_SANS_CLE)) {
+      assert.ok(vraies.has(cle), `UNIQUES_SANS_CLE mentionne une unicité qui n’existe plus : ${cle}`);
+    }
   });
 
   test('les colonnes déclarées locales ou partagées existent vraiment', () => {

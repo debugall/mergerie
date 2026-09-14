@@ -191,6 +191,13 @@ try { db.exec('ALTER TABLE job ADD COLUMN target_kind TEXT'); } catch { /* déj�
 try { db.exec('ALTER TABLE job ADD COLUMN target_id INTEGER'); } catch { /* déjà présente */ }
 // Migration : date de création de la MR côté GitLab (pour le tri).
 try { db.exec('ALTER TABLE mr ADD COLUMN gitlab_created_at TEXT'); } catch { /* déjà présente */ }
+/* QUAND LA MERGE REQUEST A ÉTÉ MERGÉE — la date de la FORGE, pas celle où ce poste s'en est
+   aperçu. Le délai de cycle se mesurait entre l'ouverture et une ligne du journal d'activité,
+   écrite par la découverte au moment où elle cessait de voir la MR ouverte : une approximation
+   qui n'existe que sur la machine qui regardait ce jour-là. À plusieurs, elle ne veut plus rien
+   dire — et sur un poste qui vient de rejoindre, elle n'existe pas du tout, donc le graphique
+   restait vide. La forge, elle, connaît l'instant exact et le même pour tout le monde. */
+try { db.exec('ALTER TABLE mr ADD COLUMN merged_at TEXT'); } catch { /* déjà présente */ }
 // Migration : auteur de la MR.
 try { db.exec('ALTER TABLE mr ADD COLUMN author TEXT'); } catch { /* déjà présente */ }
 // Migration : chemin du diff sauvegardé (pour la vue rapport + diff).

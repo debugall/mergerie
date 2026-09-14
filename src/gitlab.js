@@ -462,6 +462,10 @@ async function listAllMRs(cfg, project) {
   return items.map((m) => ({
     iid: m.iid, state: m.state, source_branch: m.source_branch, target_branch: m.target_branch,
     merged_at: m.merged_at, web_url: m.web_url, title: m.title,
+    /* L'AUTEUR AUSSI : c'est ce qui manque en tête d'un rapport de review sur une MR fermée,
+       que la liste des MR OUVERTES ne ramènera jamais. */
+    author: (m.author && (m.author.name || m.author.username)) || '',
+    created_at: m.created_at || null,
   }));
 }
 

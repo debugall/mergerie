@@ -5,6 +5,7 @@ const forge = require('./forge');
 const jira = require('./jira');
 const notify = require('./notify');
 const notes = require('./notes');
+const { etat } = require('./localstate');
 const { t } = require('../public/i18n-runtime.js');
 
 /* Récupère le contexte Jira d'une MR nouvelle et le range dans ticket_jira_*.
@@ -74,6 +75,7 @@ async function discoverAll() {
     WHERE id = @id`);
   const insertFeed = db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)');
   const markClosed = db.prepare('UPDATE mr SET closed_seen = 1 WHERE id = ?');
+  const poserMerge = db.prepare('UPDATE mr SET merged_at = ? WHERE id = ? AND merged_at IS NULL');
   // On ne signale « mergée » que si la MR a été vue ouverte récemment (évite un burst
   // d'événements pour de vieilles MR fantômes au 1er passage). Fenêtre : 7 jours.
   const FRESH_MS = 7 * 24 * 3600 * 1000;
@@ -123,6 +125,15 @@ async function discoverAll() {
       const gone = db.prepare('SELECT id, iid, title, author, updated_at FROM mr WHERE repo_id = ? AND (closed_seen IS NULL OR closed_seen = 0)').all(repo.id)
         .filter((g) => !openIids.has(g.iid));
       for (const g of gone) {
+        /* L'INSTANT DU MERGE VIENT DE LA FORGE, pas de nous. Une MR qui quitte la liste des
+           ouvertes a été mergée — ou simplement fermée : seule la forge sait laquelle, et
+           QUAND. Un appel par MR qui vient de disparaître, ce qui se compte sur les doigts d'un
+           tour de découverte. Best-effort : la date manquante ne doit jamais faire échouer la
+           découverte, et le tour suivant n'y reviendra pas (`closed_seen` est posé). */
+        try {
+          const detail = await forge.clientFor(repo).getMergeRequest(cfg, repo.project, g.iid);
+          if (detail && detail.merged_at) poserMerge.run(detail.merged_at, g.id);
+        } catch { /* la forge n'a pas répondu : le rattrapage ci-dessous s'en chargera */ }
         const recent = g.updated_at && (Date.parse(now) - Date.parse(g.updated_at)) < FRESH_MS;
         if (recent) { insertFeed.run('mr_merged', g.iid, repo.project, g.author || '', g.title || '', now); notify.push('mr_merged', { iid: g.iid, project: repo.project, title: g.title || '' }); } // 🔀 vient d'être mergée
         markClosed.run(g.id); // dans tous les cas : ne pas re-signaler
@@ -133,6 +144,54 @@ async function discoverAll() {
           const n = notes.fermerTodosDeMr(g.id, t('notes.todo.closed-by-merge', { iid: g.iid }));
           if (n) result.todos_closed = (result.todos_closed || 0) + n;
         }
+      }
+
+      /* LE RATTRAPAGE DES MERGE REQUESTS FERMÉES, UNE FOIS PAR DÉPÔT.
+         La découverte ne liste que les MR OUVERTES : ce qui est déjà fermé n'en ressortira
+         jamais. Or un poste qui vient de rejoindre l'équipe reçoit du dépôt des reviews sur des
+         MR fermées depuis longtemps — sans titre, sans branches, sans auteur, sans date de
+         merge, parce que la forge fait foi de tout ça et que personne ne le lui a demandé. En
+         tête de son rapport de review, il n'avait donc qu'un numéro. Un SEUL appel par dépôt
+         rend l'état de toutes les merge requests, et remplit ce qui manque.
+         ON NE REMPLACE JAMAIS CE QU'ON A : `COALESCE`, parce que la liste des ouvertes est plus
+         riche (SHA, brouillon, reviewers) et plus fraîche.
+         Le repère retient COMBIEN il en restait d'incomplètes : sans lui on rappellerait la
+         forge à chaque tour pour des MR fermées sans merge, qui n'auront jamais de date ; avec
+         un simple booléen, on manquerait celles qui arrivent plus tard par le dépôt. */
+      const incompletes = () => db.prepare(`SELECT COUNT(*) n FROM mr
+        WHERE repo_id = ? AND closed_seen = 1
+          AND (merged_at IS NULL OR title IS NULL OR title = '')`).get(repo.id).n;
+      const reste = incompletes();
+      const vuAvant = Number(etat.lire('mr', `repo:${repo.id}`, 'closed_backfill') || -1);
+      if (reste && reste > vuAvant) {
+        try {
+          const toutes = await forge.clientFor(repo).listAllMRs(cfg, repo.project);
+          const parIid = new Map(db.prepare('SELECT id, iid FROM mr WHERE repo_id = ?').all(repo.id).map((r) => [r.iid, r.id]));
+          const completer = db.prepare(`UPDATE mr SET
+              merged_at = COALESCE(merged_at, @merged_at),
+              title = COALESCE(NULLIF(title, ''), @title),
+              source_branch = COALESCE(NULLIF(source_branch, ''), @source_branch),
+              target_branch = COALESCE(NULLIF(target_branch, ''), @target_branch),
+              web_url = COALESCE(NULLIF(web_url, ''), @web_url),
+              author = COALESCE(NULLIF(author, ''), @author),
+              gitlab_created_at = COALESCE(gitlab_created_at, @created_at)
+            WHERE id = @id`);
+          for (const m of toutes) {
+            const id = parIid.get(m.iid);
+            if (!id) continue;
+            completer.run({
+              id,
+              merged_at: m.merged_at || null,
+              title: m.title || null,
+              source_branch: m.source_branch || null,
+              target_branch: m.target_branch || null,
+              web_url: m.web_url || null,
+              author: m.author || null,
+              created_at: m.created_at || null,
+            });
+          }
+          etat.ecrire('mr', `repo:${repo.id}`, 'closed_backfill', String(incompletes()));
+        } catch { /* la forge n'a pas répondu : on réessaiera au prochain tour */ }
       }
     } catch (e) {
       // fetch en échec : NE PAS considérer les MR de ce repo comme disparues.
