@@ -87,8 +87,72 @@ describe('store — écrire dans le dépôt de données', () => {
     assert.equal(ctx.copierDepuisDepot('notes/x.png', 'notes/1', '../../../evade.png'), null);
   });
 
+  test('une page de notes N’EST PAS partagée par défaut', () => {
+    /* LE DÉFAUT D'UNE CASE QUI PUBLIE EST « NON ». Les notes sont le seul endroit de l'outil où
+       l'on écrit sans destinataire — un brouillon, un mot de passe collé le temps d'un test.
+       Une page qui partirait sans qu'on l'ait dit ne se rattraperait pas : un fichier commité
+       dans git reste dans chaque clone. */
+    const page = notes.creerPage({ title: 'Brouillon du soir', content: 'pas pour les autres' }, MSGS);
+    assert.equal(db.prepare('SELECT shared FROM note_page WHERE id = ?').get(page.id).shared, 0);
+    assert.ok(!store.existe('notes/brouillon-du-soir.md'), 'rien ne doit être écrit dans le dépôt');
+    assert.ok(!store.existe('notes/brouillon-du-soir.json'));
+  });
+
+  test('cocher « partager » écrit la page, décocher la RETIRE du dépôt', () => {
+    const page = notes.creerPage({ title: 'Bascule équipe', content: 'texte' }, MSGS);
+    notes.majPage(page.id, { shared: 1 }, MSGS);
+    assert.equal(store.lireFichier('notes/bascule-equipe.md'), 'texte');
+    assert.ok(store.existe('notes/bascule-equipe.json'));
+    /* DÉCOCHER DOIT RETIRER, pas seulement cesser d'écrire : la page resterait sinon chez tout
+       le monde, et la case aurait menti. */
+    notes.majPage(page.id, { shared: 0 }, MSGS);
+    assert.ok(!store.existe('notes/bascule-equipe.md'), 'décocher retire du dépôt');
+    assert.ok(!store.existe('notes/bascule-equipe.json'));
+  });
+
+  test('partager une sous-page emporte sa mère, la départager emporte ses filles', () => {
+    /* Le fichier d'une sous-page désigne sa mère par son SLUG. Partagée seule, elle arriverait
+       chez le collègue sans mère : l'hydratation refuse les lignes amputées, et la page
+       n'arriverait nulle part. L'invariant se tient dans les deux sens. */
+    const mere = notes.creerPage({ title: 'Chapitre', content: 'c' }, MSGS);
+    const fille = notes.creerPage({ title: 'Détail', content: 'd', parent_id: mere.id }, MSGS);
+    const apres = notes.majPage(fille.id, { shared: 1 }, MSGS);
+    assert.deepEqual(apres.entraine, ['Chapitre'], 'l’écran doit pouvoir DIRE ce qui a suivi');
+    assert.ok(store.existe('notes/chapitre.md'), 'la mère monte avec sa fille');
+    assert.equal(JSON.parse(store.lireFichier('notes/detail.json')).parent, 'chapitre');
+
+    const retour = notes.majPage(mere.id, { shared: 0 }, MSGS);
+    assert.deepEqual(retour.entraine, ['Détail']);
+    assert.ok(!store.existe('notes/chapitre.md'));
+    assert.ok(!store.existe('notes/detail.md'), 'une sous-page sans mère chez l’équipe serait orpheline');
+  });
+
+  test('une page qui cesse de se partager emporte ses fichiers ET sa capture', () => {
+    /* LE GESTE DE LA MIGRATION, et celui d'un décochage venu d'ailleurs : la colonne passe à 0
+       sans passer par le store. C'est le déclencheur qui note la ligne, et l'écoulement qui
+       retire — captures comprises, ce que le balayage seul ne saurait pas faire (il ne connaît
+       que le gabarit de la page, pas celui de ses images). */
+    const page = notes.creerPage({ title: 'Avec capture', content: 'x' }, MSGS);
+    notes.majPage(page.id, { shared: 1 }, MSGS);
+    const source = path.join(process.env.MERGERIE_DATA_DIR, 'capture.png');
+    fs.writeFileSync(source, Buffer.from('89504e470d0a1a0a', 'hex'));
+    db.prepare('INSERT INTO note_image (page_id, path, created_at) VALUES (?,?,?)')
+      .run(page.id, source, new Date().toISOString());
+    store.rafraichir('note_page', page.id);
+    const uid = db.prepare('SELECT uid FROM note_image WHERE page_id = ?').get(page.id).uid;
+    assert.ok(store.existe(`notes/avec-capture/${uid}.png`), 'la capture doit d’abord être là');
+
+    db.prepare('UPDATE note_page SET shared = 0 WHERE id = ?').run(page.id);
+    store.ecouler();
+    assert.ok(!store.existe('notes/avec-capture.md'));
+    assert.ok(!store.existe('notes/avec-capture.json'));
+    assert.ok(!store.existe(`notes/avec-capture/${uid}.png`),
+      'une capture laissée derrière repartirait au prochain « git add -A »');
+  });
+
   test('créer une page écrit ses DEUX fichiers : le corps lisible et ses métadonnées', () => {
     const page = notes.creerPage({ title: 'Déploiement prod', content: '# Prod\n\nUn paragraphe.' }, MSGS);
+    notes.majPage(page.id, { shared: 1 }, MSGS);
     assert.equal(store.lireFichier('notes/deploiement-prod.md'), '# Prod\n\nUn paragraphe.',
       'le corps du .md EST la page : une note exportée doit se relire hors de l’outil');
     const meta = JSON.parse(store.lireFichier('notes/deploiement-prod.json'));
@@ -100,6 +164,7 @@ describe('store — écrire dans le dépôt de données', () => {
 
   test('renommer la page ne déplace pas son fichier — son historique git reste le sien', () => {
     const page = notes.creerPage({ title: 'Bascule', content: 'a' }, MSGS);
+    notes.majPage(page.id, { shared: 1 }, MSGS);
     notes.majPage(page.id, { title: 'Bascule v2' }, MSGS);
     assert.ok(store.existe('notes/bascule.md'));
     assert.ok(!store.existe('notes/bascule-v2.md'));
@@ -108,7 +173,8 @@ describe('store — écrire dans le dépôt de données', () => {
 
   test('supprimer une page emporte ses fichiers ET ceux de ses sous-pages', () => {
     const mere = notes.creerPage({ title: 'Mère', content: 'm' }, MSGS);
-    notes.creerPage({ title: 'Fille', content: 'f', parent_id: mere.id }, MSGS);
+    const fille = notes.creerPage({ title: 'Fille', content: 'f', parent_id: mere.id }, MSGS);
+    notes.majPage(fille.id, { shared: 1 }, MSGS);          // emporte la mère : l'invariant du dessus
     assert.ok(store.existe('notes/fille.md'));
     notes.supprimerPage(mere.id, MSGS);
     assert.ok(!store.existe('notes/mere.md'));
@@ -140,8 +206,12 @@ describe('store — l’aller-retour par les fichiers', () => {
   });
 
   test('effacer la base et réhydrater rend les mêmes lignes', () => {
-    notes.creerPage({ title: 'Aller-retour', content: 'du **markdown**' }, MSGS);
+    const page = notes.creerPage({ title: 'Aller-retour', content: 'du **markdown**' }, MSGS);
+    notes.majPage(page.id, { shared: 1 }, MSGS);
     notes.creerTodo({ title: 'Relire la spec', priority: 'high' }, MSGS);
+    /* Une page NON partagée n'a pas de fichier : elle ne revient donc pas, et c'est le contrat.
+       On ne compare que ce qui est parti dans le dépôt. */
+    db.exec('DELETE FROM note_page WHERE shared = 0');
     const avant = {
       pages: db.prepare('SELECT uid, slug, title, content, parent_id FROM note_page ORDER BY uid').all(),
       todos: db.prepare('SELECT uid, title, priority, status FROM todo ORDER BY uid').all(),
@@ -163,12 +233,18 @@ describe('store — l’aller-retour par les fichiers', () => {
     const parSlug = (l) => l.map((p) => ({ ...p, parent_id: p.parent_id ? 'a un parent' : null }));
     assert.deepEqual(parSlug(apres.pages), parSlug(avant.pages));
     assert.deepEqual(apres.todos, avant.todos);
+    /* ELLE EST DANS LE DÉPÔT, DONC ELLE EST PARTAGÉE. Revenir avec `shared = 0` ferait retirer
+       le fichier au premier écoulement : le poste qui reçoit effacerait chez tout le monde la
+       page qu'on vient de lui envoyer. */
+    assert.ok(db.prepare('SELECT COUNT(*) n FROM note_page WHERE shared = 0').get().n === 0,
+      'une page hydratée depuis le dépôt arrive partagée');
   });
 
   test('une sous-page arrivée AVANT son parent retrouve son parent', () => {
     /* Rien ne dit dans quel ordre git rend ses fichiers. On hydrate volontairement à l'envers. */
     const mere = notes.creerPage({ title: 'Zèbre', content: 'z' }, MSGS);
-    notes.creerPage({ title: 'Abeille', content: 'a', parent_id: mere.id }, MSGS);
+    const fille0 = notes.creerPage({ title: 'Abeille', content: 'a', parent_id: mere.id }, MSGS);
+    notes.majPage(fille0.id, { shared: 1 }, MSGS);        // emporte « Zèbre » avec elle
     db.exec('DELETE FROM note_page');
     store.hydraterFichiers(['notes/abeille.md', 'notes/zebre.md']);   // l'enfant d'abord
     const fille = db.prepare("SELECT parent_id FROM note_page WHERE slug = 'abeille'").get();
@@ -177,7 +253,8 @@ describe('store — l’aller-retour par les fichiers', () => {
   });
 
   test('un fichier disparu supprime sa ligne', () => {
-    notes.creerPage({ title: 'Éphémère', content: 'x' }, MSGS);
+    const ephemere = notes.creerPage({ title: 'Éphémère', content: 'x' }, MSGS);
+    notes.majPage(ephemere.id, { shared: 1 }, MSGS);
     store.supprimerFichier('notes/ephemere.md');
     store.supprimerFichier('notes/ephemere.json');
     const bilan = store.hydraterFichiers(['notes/ephemere.md']);

@@ -87,22 +87,29 @@ describe('datasync — deux postes, un dépôt de données', () => {
 
   test('une note écrite chez A devient une LIGNE chez B', () => {
     dans(posteA, `async ({ notes, datasync, MSGS }) => {
-      notes.creerPage({ title: 'Déploiement prod', content: '# Prod\\n\\nTrois étapes.' }, MSGS);
+      /* UNE NOTE NE PART QUE SI ON L'A DIT : c'est le seul objet de l'outil qu'on écrit sans
+         destinataire, et la case est décochée par défaut. */
+      const p = notes.creerPage({ title: 'Déploiement prod', content: '# Prod\\n\\nTrois étapes.' }, MSGS);
+      notes.majPage(p.id, { shared: 1 }, MSGS);
       await datasync.commiter('note "Déploiement prod"');
       await datasync.tour();
     }`);
     const chezB = dans(posteB, `async ({ db, datasync }) => {
       await datasync.tour();
-      return db.prepare('SELECT slug, title, content FROM note_page').all();
+      return db.prepare('SELECT slug, title, content, shared FROM note_page').all();
     }`);
-    assert.deepEqual(chezB, [{ slug: 'deploiement-prod', title: 'Déploiement prod', content: '# Prod\n\nTrois étapes.' }]);
+    /* `shared = 1` À L'ARRIVÉE : la page est dans le dépôt, donc elle est partagée. Arriver
+       décochée la ferait retirer par le premier écoulement — B effacerait chez tout le monde la
+       page que A vient de lui envoyer. */
+    assert.deepEqual(chezB, [{ slug: 'deploiement-prod', title: 'Déploiement prod', content: '# Prod\n\nTrois étapes.', shared: 1 }]);
   });
 
   test('chaque poste garde SES identifiants entiers — c’est l’uid qui fait l’identité', () => {
     /* B crée d'abord une note à lui : sa note venue de A porte donc un `id` différent de celui
        qu'elle a chez A. Si l'identité passait par l'entier, l'une écraserait l'autre. */
     const chezB = dans(posteB, `async ({ notes, db, datasync, MSGS }) => {
-      notes.creerPage({ title: 'Chez B', content: 'local' }, MSGS);
+      const p = notes.creerPage({ title: 'Chez B', content: 'local' }, MSGS);
+      notes.majPage(p.id, { shared: 1 }, MSGS);
       await datasync.commiter('note "Chez B"');
       await datasync.tour();
       return db.prepare('SELECT id, slug, uid FROM note_page ORDER BY slug').all();
@@ -188,7 +195,9 @@ describe('datasync — deux postes, un dépôt de données', () => {
     const posteC = path.join(racine, 'C');
     fs.mkdirSync(posteC);
     dans(posteC, `async ({ db, notes, MSGS }) => {
-      notes.creerPage({ title: 'Avant l’équipe', content: 'écrit en mono-poste' }, MSGS);
+      const p = notes.creerPage({ title: 'Avant l’équipe', content: 'écrit en mono-poste' }, MSGS);
+      notes.majPage(p.id, { shared: 1 }, MSGS);
+      notes.creerPage({ title: 'Mon brouillon', content: 'pas pour les autres' }, MSGS);
       const r = db.prepare("INSERT INTO repo (forge, project, url, enabled) VALUES ('gitlab', 'eq/api', 'https://x/eq/api', 1)").run();
       db.prepare("INSERT INTO mr (repo_id, iid, status, ticket_text) VALUES (?, 41, 'reviewed', 'contexte saisi à la main')").run(r.lastInsertRowid);
     }`);
@@ -209,11 +218,80 @@ describe('datasync — deux postes, un dépôt de données', () => {
     assert.match(listing, /notes\/avant-l-equipe\.md/, 'la note d’avant doit monter avec');
     assert.match(listing, /repos\/gitlab\/eq\/api\.json/, 'le dépôt suivi aussi');
     assert.match(listing, /mrs\/gitlab\/eq\/api\/41\.json/, 'et la MR relue — la question posée');
+    assert.doesNotMatch(listing, /mon-brouillon/,
+      'rejoindre n’emporte PAS les notes qu’on n’a pas cochées : ce serait publier un brouillon');
 
     const touches = execFileSync('git', ['-C', nu, 'diff', '--name-status', avant, 'main'], { encoding: 'utf8' })
       .split('\n').map((x) => x.trim()).filter(Boolean).filter((l) => !l.startsWith('A'));
     assert.deepEqual(touches, [],
       `rejoindre AJOUTE : les fichiers des collègues ne doivent pas être réécrits — ${touches.join(', ')}`);
+  });
+
+  test('décocher « partager » retire la page de l’équipe SANS la perdre chez soi', () => {
+    /* LE PIÈGE. Décocher retire le fichier du dépôt ; ce commit-là revient ensuite par
+       l'hydratation, et « un fichier parti emporte sa ligne » effacerait la page de la base de
+       celui-là même qui vient de la décocher. On ne retire donc une ligne que si elle se
+       partage : une absence qu'on a voulue n'est pas une suppression. */
+    dans(posteA, `async ({ notes, datasync, MSGS }) => {
+      const p = notes.creerPage({ title: 'Rétro du sprint', content: 'ce qu’on garde' }, MSGS);
+      notes.majPage(p.id, { shared: 1 }, MSGS);
+      await datasync.commiter('note "Rétro du sprint"');
+      await datasync.tour();
+      notes.majPage(p.id, { shared: 0 }, MSGS);
+      await datasync.commiter('unshare note "Rétro du sprint"');
+      await datasync.tour();
+    }`);
+    const listing = execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' });
+    assert.doesNotMatch(listing, /retro-du-sprint/, 'elle a bien quitté le dépôt d’équipe');
+
+    /* B pousse autre chose : c'est ce qui oblige A à tirer, donc à réhydrater un intervalle qui
+       CONTIENT SON PROPRE retrait — le moment exact où la page risquait de disparaître de la
+       base de celle qui venait de la décocher. */
+    const chezB = dans(posteB, `async ({ db, notes, datasync, MSGS }) => {
+      await datasync.tour();
+      const p = notes.creerPage({ title: 'Ordre du jour', content: 'chez B' }, MSGS);
+      notes.majPage(p.id, { shared: 1 }, MSGS);
+      await datasync.commiter('note "Ordre du jour"');
+      await datasync.tour();
+      return db.prepare("SELECT COUNT(*) n FROM note_page WHERE slug = 'retro-du-sprint'").get().n;
+    }`);
+    assert.equal(chezB, 0, 'chez le voisin, qui ne l’a pas décochée, elle disparaît : elle n’était pas à lui');
+
+    const garde = dans(posteA, `async ({ db, datasync }) => {
+      await datasync.tour();
+      return db.prepare("SELECT content, shared FROM note_page WHERE slug = 'retro-du-sprint'").get() || null;
+    }`);
+    assert.ok(garde, 'la page décochée ne doit pas disparaître de la base de celle qui l’a écrite');
+    assert.equal(garde.shared, 0);
+    assert.equal(garde.content, 'ce qu’on garde', 'elle reste chez soi, entière');
+  });
+
+  test('les pages écrites AVANT la case sortent du dépôt au démarrage suivant', () => {
+    /* LE PASSAGE. Avant la case, toutes les pages partaient ; la colonne arrive à 0, donc elles
+       deviennent privées — mais leurs FICHIERS, eux, sont déjà dans le dépôt, et le prochain
+       `git add -A` les emporterait. Le démarrage qui suit la migration doit donc les retirer.
+       On reconstitue l'état exact : le fichier présent, la ligne non partagée, la file vide. */
+    const posteD = path.join(racine, 'D');
+    fs.mkdirSync(posteD);
+    const avant = dans(posteD, `async ({ db, notes, store, MSGS }) => {
+      const p = notes.creerPage({ title: 'Avant la case', content: 'tout partait' }, MSGS);
+      notes.majPage(p.id, { shared: 1 }, MSGS);
+      notes.majPage(p.id, { shared: 0 }, MSGS);
+      store.ecouler();
+      // le fichier d'avant, tel que l'ancienne version l'avait laissé dans le dépôt
+      store.ecrireFichier('notes/avant-la-case.md', 'tout partait');
+      db.prepare("DELETE FROM local_state WHERE key = 'unshared_swept'").run();
+      db.prepare('DELETE FROM store_sale').run();
+      return store.existe('notes/avant-la-case.md');
+    }`);
+    assert.equal(avant, true, 'on part bien d’un fichier présent dans le dépôt');
+
+    const apres = dans(posteD, `async ({ store }) => {
+      store.ecouler();                       // ce que le serveur fait au démarrage
+      return store.existe('notes/avant-la-case.md');
+    }`);
+    assert.equal(apres, false,
+      'une page d’avant laissée dans le dépôt repartirait au prochain « git add -A »');
   });
 
   test('AUCUN SECRET dans le dépôt nu — ni dans sa dernière version, ni dans son historique', () => {

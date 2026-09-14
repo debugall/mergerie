@@ -2786,8 +2786,8 @@ elles, ne lisent qu'un `git diff` et ne dépendent jamais de l'état du worktree
 ## Partager avec une équipe (dépôt de données)
 
 Mergerie est fait pour une personne, et le reste par défaut. Mais le travail qu'on accumule — les
-**règles de review**, les **vérificateurs**, les **agents** et leur **carte du code**, les **notes**,
-les **todos** — a toutes les raisons d'être commun : une carte de domaine coûte des heures d'agent
+**règles de review**, les **vérificateurs**, les **agents** et leur **carte du code**, les
+**todos** — a toutes les raisons d'être commun : une carte de domaine coûte des heures d'agent
 à produire, et la refaire sur six postes, c'est payer six fois la même chose pour obtenir six
 réponses légèrement différentes.
 
@@ -2805,6 +2805,19 @@ définitif** : l'historique est immuable, chaque clone le garde, la forge le gar
 suffit pas, il faut révoquer. **L'onglet Liens reste local lui aussi** : la grille
 services × environnements et les liens libres disent où l'on va travailler, pas ce qu'on a
 produit.
+
+**Les pages de notes se partagent UNE PAR UNE, et pas par défaut.** Tout le reste de ce que
+l'outil garde est un produit — une review, une règle, une carte du code —, et le produire pour soi
+seul n'aurait guère de sens : cela part donc en bloc. Une page de notes, non : c'est le seul
+endroit de l'outil où l'on écrit sans destinataire — un brouillon, un mot de passe collé le temps
+d'un test, ce qu'on pense d'une architecture avant de savoir le dire. Chaque page porte donc une
+case **« Partager »**, décochée, et rien ne part tant qu'on ne l'a pas cochée ; la décocher
+**retire** la page du dépôt d'équipe — et des instances des collègues, puisqu'elle n'était pas à
+eux ; sa propre copie, elle, reste entière. Les pages déjà écrites restent à soi. La case n'apparaît
+pas en mono-poste, et la liste marque d'un pictogramme celles qui sont chez tout le monde.
+Partager une **sous-page** emporte sa page mère, et cesser de partager une mère reprend ses
+sous-pages : une sous-page est nommée par sa mère, seule elle n'arriverait nulle part. L'écran le
+dit plutôt que de le faire en silence.
 
 **Mettre une équipe en route.**
 

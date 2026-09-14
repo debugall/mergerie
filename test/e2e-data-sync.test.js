@@ -78,6 +78,11 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
     // Une note d'abord : le dépôt initialisé doit emporter ce que ce poste a déjà.
     const { body: page1 } = await app.api('POST', '/api/notes', { title: 'Déploiement prod', content: '# Prod' });
     assert.ok(page1.id);
+    /* ET ELLE NE PART QUE COCHÉE. Une page de notes est le seul objet qu'on écrit sans
+       destinataire ; l'initialisation d'un dépôt d'équipe ne doit pas publier les brouillons. */
+    await app.api('PUT', `/api/notes/${page1.id}`, { shared: 1 });
+    const { body: prive } = await app.api('POST', '/api/notes', { title: 'Mon brouillon', content: 'non' });
+    assert.ok(prive.id);
 
     await ouvrirGeneral();
     await page.fill('[form="configForm"][name="data_repo_url"]', nu);
@@ -97,6 +102,7 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
     assert.equal(etatApres.erreur, null, `la synchro a échoué : ${etatApres.erreur}`);
     const listing = execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' });
     assert.match(listing, /notes\/deploiement-prod\.md/);
+    assert.doesNotMatch(listing, /mon-brouillon/, 'une note non cochée reste à soi');
     assert.match(listing, /\.mergerie-data\.json/, 'le dépôt doit dire quel format il parle');
   });
 
@@ -137,6 +143,39 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
     assert.equal(h.commits[0].auteur, 'Test', 'l’auteur est l’identité git du poste');
   });
 
+  test('une page de notes ne part QUE si on coche la case — et la case est décochée', async () => {
+    /* PAR LE FORMULAIRE, ET NON PAR L'API. C'est la case qu'on éprouve : une note publiée par
+       inadvertance ne se rattrape pas — un fichier commité dans git reste dans chaque clone.
+       Le reste de l'outil se partage en bloc parce qu'il n'est fait que de produits ; les notes
+       sont l'endroit où l'on écrit sans destinataire. */
+    const { body: creee } = await app.api('POST', '/api/notes', { title: 'Compte rendu équipe', content: 'ce qu’on s’est dit' });
+    await page.click('nav button[data-tab="notes"]');
+    await page.locator('#tab-notes .subnav button[data-nsub="pages"]').click();
+    await page.locator('#pageList .note-item', { hasText: 'Compte rendu équipe' }).click();
+    await page.waitForSelector('#pageShare:not([hidden])', { timeout: ATTENTE });
+    assert.equal(await page.locator('#pageShareBox').isChecked(), false,
+      'le défaut d’une case qui publie est « non »');
+
+    await page.locator('#pageShareBox').click();
+    /* On lit l'ÉTAT SERVEUR, pas le libellé : « enregistré » à l'écran et « enregistré » en
+       base ne sont pas la même phrase. */
+    await attendreServeur(async () => (await app.api('GET', `/api/notes/${creee.id}`)).body.shared === 1,
+      'la page cochée côté serveur');
+    await app.api('POST', '/api/data-sync/now');
+    await attendreServeur(async () => /notes\/compte-rendu-equipe\.md/.test(
+      execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' })),
+    'la page cochée poussée dans le dépôt');
+
+    // …et décocher la RETIRE : sinon la case aurait menti, et la page resterait chez tout le monde.
+    await page.locator('#pageShareBox').click();
+    await attendreServeur(async () => (await app.api('GET', `/api/notes/${creee.id}`)).body.shared === 0,
+      'la page décochée côté serveur');
+    await app.api('POST', '/api/data-sync/now');
+    await attendreServeur(async () => !/notes\/compte-rendu-equipe\.md/.test(
+      execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' })),
+    'la page retirée du dépôt');
+  });
+
   test('la dépense ne part QUE si on l’a demandé', async () => {
     const dansLeDepot = () => execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' });
     assert.doesNotMatch(dansLeDepot(), /^usage\//m,
@@ -159,7 +198,8 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
   });
 
   test('une note écrite ensuite part dans le dépôt, avec un message de commit lisible', async () => {
-    await app.api('POST', '/api/notes', { title: 'Bascule équipe', content: 'texte' });
+    const { body: p } = await app.api('POST', '/api/notes', { title: 'Bascule équipe', content: 'texte' });
+    await app.api('PUT', `/api/notes/${p.id}`, { shared: 1 });
     await app.api('POST', '/api/data-sync/now');
     await attendreServeur(async () => {
       const l = execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' });

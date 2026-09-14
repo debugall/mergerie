@@ -2698,8 +2698,8 @@ state of the worktree.
 ## Sharing with a team (data repository)
 
 Mergerie is built for one person, and stays that way by default. But the work you accumulate — the
-**review rules**, the **verifiers**, the **agents** and their **map of the code**, the **notes**,
-the **todos** — has every reason to be common: a domain map costs hours of agent time to produce,
+**review rules**, the **verifiers**, the **agents** and their **map of the code**, the
+**todos** — has every reason to be common: a domain map costs hours of agent time to produce,
 and redoing it on six machines means paying six times for the same thing and getting six slightly
 different answers.
 
@@ -2716,6 +2716,19 @@ not declared — because **a secret committed to git is permanent**: history is 
 clone keeps it, the forge keeps it. Removing it is not enough; you have to revoke. **The Links tab
 stays local too**: the services × environments grid and the free links say where you go to work,
 not what you produced.
+
+**Notes pages are shared ONE BY ONE, and not by default.** Everything else the tool keeps is a
+product — a review, a rule, a map of the code — and producing one for yourself alone makes little
+sense: it all travels together. A notes page does not: it is the one place in the tool where you
+write with no reader in mind — a draft, a password pasted for the length of a test, what you think
+of an architecture before you can say it out loud. So each page carries a **Share** checkbox,
+unticked, and nothing leaves until you tick it; unticking it **removes** the page from the team
+repository — and from your teammates' instances, since it was never theirs; your own copy stays,
+whole. Pages already written stay yours. The checkbox does not appear on a single-machine
+setup, and the list marks with a glyph the pages that are on everyone's machine. Sharing a
+**sub-page** takes its parent page with it, and un-sharing a parent takes its sub-pages back: a
+sub-page is named by its parent, and on its own it would arrive nowhere. The screen says so
+rather than doing it quietly.
 
 **Getting a team started.**
 

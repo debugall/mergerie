@@ -1207,6 +1207,16 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_note_page_ordre ON note_page(pinned DESC
    Migration APRÈS le `CREATE TABLE note_page` ci-dessus. */
 try { db.exec('ALTER TABLE note_page ADD COLUMN parent_id INTEGER REFERENCES note_page(id) ON DELETE CASCADE'); } catch { /* déjà présente */ }
 db.exec('CREATE INDEX IF NOT EXISTS idx_note_page_parent ON note_page(parent_id)');
+/* UNE PAGE DE NOTES SE PARTAGE UNE PAR UNE, ET PAR DÉFAUT NON. Les notes sont le seul endroit
+   de l'outil où l'on écrit sans destinataire : un brouillon, un mot de passe temporaire collé
+   le temps d'un test, ce qu'on pense d'une architecture avant de savoir le dire. Tout le reste
+   du travail accumulé est un produit — une review, une règle, une carte du code — et se partage
+   donc en bloc. Les notes, non : elles montent dans le dépôt d'équipe QUAND ON LE DIT.
+   `DEFAULT 0` et non `1` : le défaut d'une case qui publie doit être « non ». Une page déjà
+   écrite avant cette colonne reste donc à soi, ce qui est aussi le seul défaut rattrapable —
+   l'inverse aurait poussé des brouillons chez tout le monde au premier démarrage.
+   Migration APRÈS le `CREATE TABLE note_page` ci-dessus. */
+try { db.exec('ALTER TABLE note_page ADD COLUMN shared INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
 
 /* Captures collées DANS une page de notes. Le fichier vit sur disque, la page ne garde qu'un
    lien Markdown : mettre l'image en base64 dans `content` ferait grossir la ligne de plusieurs
@@ -2068,6 +2078,22 @@ db.exec('CREATE TABLE IF NOT EXISTS store_menage (tbl TEXT NOT NULL)');
     recreer(`trg_${e.table}_menage`, `CREATE TRIGGER trg_${e.table}_menage
              AFTER DELETE ON ${e.table}
              BEGIN INSERT INTO store_menage (tbl) VALUES ('${e.table}'); END`);
+  }
+
+  /* LE JOUR OÙ LA COLONNE APPARAÎT, LES PAGES DÉJÀ ÉCRITES DEVIENNENT PRIVÉES — et celles qui
+     étaient déjà dans le dépôt doivent en SORTIR. Sans ce balayage, leurs fichiers resteraient
+     sur le disque, le prochain `git add -A` les emporterait, et la case « partager » aurait été
+     mise en place le jour même où l'outil publiait ses brouillons. On passe par la FILE plutôt
+     que par le balayage : écouler une ligne non partagée retire ses fichiers ET ses captures,
+     là où le balayage ne connaît que le gabarit de la page.
+     LE REPÈRE EST UNE MARQUE, PAS LE SUCCÈS DE L'`ALTER` : une base qui a connu une version
+     intermédiaire a déjà la colonne, et se serait donc passée du nettoyage — c'est-à-dire
+     précisément celle qui en a besoin. */
+  const balaye = db.prepare("SELECT value FROM local_state WHERE kind = 'data' AND ref = 'notes' AND key = 'unshared_swept'").get();
+  if (!balaye) {
+    db.prepare("INSERT INTO store_sale (tbl, rid) SELECT 'note_page', rowid FROM note_page").run();
+    db.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
+      VALUES ('data', 'notes', 'unshared_swept', '1', ?)`).run(new Date().toISOString());
   }
 
   /* Les lignes FILLES marquent leur parent : elles n'ont pas de fichier à elles. Une suppression

@@ -6345,6 +6345,9 @@ if (btnDataAttach) btnDataAttach.addEventListener('click', async () => {
       data_sync_seconds: ($('#configForm').data_sync_seconds || {}).value || '30',
     } });
     const r = await api('/data-sync/attach', { method: 'POST', body: { url } });
+    /* ON VIENT DE REJOINDRE UNE ÉQUIPE : ce qui était caché faute d'équipe doit apparaître sans
+       recharger la page — la case « partager » d'une page de notes, l'exécutant d'un agent. */
+    moiCache = null;
     /* REJOINDRE VA DANS LES DEUX SENS, et le dire évite la question suivante : on reçoit ce que
        l'équipe a accumulé, ET ce que ce poste portait déjà part avec. Le compte le prouve. */
     const emportes = Object.values(r.compte || {}).reduce((n, x) => n + (Number(x) || 0), 0);
@@ -16238,11 +16241,18 @@ function poserHoraireForm(texte) {
    n'apparaît que si un dépôt de données est configuré : en mono-poste la question ne se pose
    pas, et un champ inutile est un champ qu'il faut comprendre pour l'ignorer. */
 let moiCache = null;
+/* Y A-T-IL UNE ÉQUIPE ? Lu une seule fois, et partagé par tous les écrans qui n'ont de sens
+   qu'à plusieurs — l'exécutant d'un agent planifié, la case « partager » d'une page de notes.
+   En mono-poste ils ne s'affichent pas du tout : découvrir une fonctionnalité qu'on n'a pas
+   demandée coûte plus cher que de ne pas l'avoir. */
+async function partageActif() {
+  if (!moiCache) { try { moiCache = await api('/me'); } catch { moiCache = { partage: false, runners: [] }; } }
+  return Boolean(moiCache.partage);
+}
 async function poserExecutantForm(choisi) {
   const ligne = $('#agentRunnerRow');
   if (!ligne) return;
-  if (!moiCache) { try { moiCache = await api('/me'); } catch { moiCache = { partage: false, runners: [] }; } }
-  ligne.hidden = !moiCache.partage;
+  ligne.hidden = !await partageActif();
   $('#agentRunnerNone').hidden = true;
   if (!moiCache.partage) return;
   const liste = [...new Set([...(moiCache.runners || []), choisi].filter(Boolean))].sort();
@@ -18592,7 +18602,7 @@ function renderPageList(q) {
       : '<span class="note-fold-vide"></span>';
     return `<div class="note-row${sous ? ' note-sub' : ''}${sous && dernier ? ' note-sub-last' : ''}">${sous ? '' : pli}
       <button type="button" class="note-item${sous ? ' note-sub' : ''}${p.id === NOTES.pageId ? ' active' : ''}${p.contexte ? ' note-contexte' : ''}" data-page="${p.id}">
-        <span class="note-item-title">${p.pinned ? `${svgIco('tag')} ` : ''}${esc(p.title || tr('notes.page.untitled'))}</span>
+        <span class="note-item-title">${p.pinned ? `${svgIco('tag')} ` : ''}${esc(p.title || tr('notes.page.untitled'))}${p.shared ? ` <span class="note-partagee" title="${esc(tr('notes.page.shared-mark'))}">${svgIco('users')}</span>` : ''}</span>
         ${enfants.length && !deplie ? `<span class="note-item-count">${esc(String(enfants.length))}</span>` : ''}
         <span class="note-item-date">${esc(fmtDate(p.updated_at))}</span>
       </button></div>`;
@@ -18697,6 +18707,15 @@ function renderPageEditor() {
       <span id="pageSaved" class="note-saved"></span>
       <span class="spacer"></span>
       <button type="button" id="pagePin" class="btn btn-sm${p.pinned ? ' active' : ''}" title="${esc(tr('notes.page.pin-title'))}">${svgIco('tag')}<span>${esc(tr(p.pinned ? 'notes.page.unpin' : 'notes.page.pin'))}</span></button>
+      ${/* PAGE PAR PAGE, ET NON PAR DÉFAUT. Les notes sont le seul endroit de l'outil où l'on
+            écrit sans destinataire : un brouillon, un mot de passe collé le temps d'un test, ce
+            qu'on pense d'une architecture avant de savoir le dire. Une case, cochée par un
+            geste conscient, et rien d'autre. Elle n'apparaît pas en mono-poste : il n'y aurait
+            personne à qui partager. */''}
+      <label id="pageShare" class="note-share" title="${esc(tr('notes.page.share-title'))}" hidden>
+        <input type="checkbox" id="pageShareBox"${p.shared ? ' checked' : ''} />
+        <span>${esc(tr('notes.page.share'))}</span>
+      </label>
       ${/* B6 — UNE NOTE DEVIENT UNE SESSION. La page « Bug du tunnel de paiement » est écrite
             en réunion, avec sa capture collée. Pour la faire corriger : copier le texte,
             ouvrir la modale, retrouver la capture dans Téléchargements, la ré-attacher. Or
@@ -18751,6 +18770,29 @@ function renderPageEditor() {
   for (const b of $$('#pageEditor .lien-page')) {
     b.addEventListener('click', () => openNotePage(Number(b.dataset.page)));
   }
+
+  /* ---------- Partager cette page ---------- */
+  (async () => {
+    const zone = $('#pageShare');
+    if (!zone || !await partageActif()) return;
+    zone.hidden = false;
+    $('#pageShareBox').addEventListener('change', async (ev) => {
+      const coche = ev.target.checked;
+      /* On VIDE LA SAUVEGARDE EN ATTENTE d'abord : partager une page dont les trois dernières
+         phrases ne sont pas encore enregistrées enverrait à l'équipe une version tronquée. */
+      await viderPageSave();
+      try {
+        NOTES.page = await api(`/notes/${p.id}`, { method: 'PUT', body: { shared: coche ? 1 : 0 } });
+        const suivis = NOTES.page.entraine || [];
+        /* CE QUI A SUIVI SE DIT. Une case qui en coche une autre en silence est une case à
+           laquelle on n'a plus envie de toucher. */
+        if (suivis.length) toast(tr(coche ? 'notes.page.share-parent' : 'notes.page.unshare-children', { pages: suivis.join(', '), n: suivis.length, count: suivis.length }));
+        else toast(tr(coche ? 'notes.page.shared' : 'notes.page.unshared'));
+        await loadPages();
+        renderPageEditor();
+      } catch (e) { ev.target.checked = !coche; toast(explainError(e.message), true); }
+    });
+  })();
 
   /* ---------- Historique d'une page ----------
      Une page de notes est un fichier du dépôt de données : son historique EXISTE déjà, avec son

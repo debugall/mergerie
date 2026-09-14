@@ -333,6 +333,37 @@ function binairesDe(table, row, ctx) {
   return e.binaires ? e.binaires(row, ctx).filter((b) => b.source && fs.existsSync(b.source)) : [];
 }
 
+/* CETTE LIGNE-CI PART-ELLE ? Par défaut oui : le registre classe par TABLE, et c'est ce qui
+   rend le partage tenable. Une seule table pose la question ligne par ligne — les pages de
+   notes, qu'on écrit sans destinataire —, et elle répond non tant qu'on n'a pas coché. */
+const partageable = (table, row) => {
+  const e = registre.pour(table);
+  return !e || !e.partageable ? true : Boolean(e.partageable(row));
+};
+
+/* Tous les chemins qu'une ligne occupe dans le dépôt, binaires compris et SANS filtrer sur
+   l'existence de la source : c'est ce qu'il faut RETIRER quand une ligne cesse de se partager,
+   et une capture disparue du disque ne doit pas laisser son double dans le dépôt. */
+function cheminsDe(table, row, ctx) {
+  const e = registre.pour(table);
+  const bin = e.binaires ? e.binaires(row, ctx).map((b) => b.chemin) : [];
+  return [...fichiersDe(table, row, ctx).map((f) => f.chemin), ...bin];
+}
+
+/**
+ * Pose (ou retire) les fichiers d'une ligne. LE SEUL ENDROIT qui décide si une ligne devient un
+ * fichier : décocher « partager » doit RETIRER du dépôt, pas simplement cesser d'y écrire —
+ * sinon la page resterait chez tout le monde, et la case aurait menti.
+ */
+function poser(table, row, ctx) {
+  if (!partageable(table, row)) {
+    for (const c of cheminsDe(table, row, ctx)) supprimerFichier(c);
+    return;
+  }
+  for (const f of fichiersDe(table, row, ctx)) ecrireFichier(f.chemin, f.contenu);
+  for (const b of binairesDe(table, row, ctx)) copierBinaire(b.chemin, b.source);
+}
+
 /** Copie un fichier binaire dans le dépôt, sans le relire en mémoire. */
 function copierBinaire(relatif, source) {
   const p = absolu(relatif);
@@ -374,8 +405,7 @@ function ecrire(table, ecrireEnBase) {
     const row = lire.get(Number(id));
     if (!row) throw new Error(`store : ${table}#${id} introuvable après écriture`);
     const ctx = contexte();
-    for (const f of fichiersDe(table, row, ctx)) ecrireFichier(f.chemin, f.contenu);
-    for (const b of binairesDe(table, row, ctx)) copierBinaire(b.chemin, b.source);
+    poser(table, row, ctx);
     prevenir(table, row, 'ecrit');
     return row;
   })();
@@ -388,8 +418,7 @@ function supprimer(table, id) {
     const row = lire.get(Number(id));
     if (!row) return false;
     const ctx = contexte();
-    const fichiers = [...fichiersDe(table, row, ctx).map((f) => f.chemin),
-      ...binairesDe(table, row, ctx).map((b) => b.chemin)];
+    const fichiers = cheminsDe(table, row, ctx);
     db.prepare(`DELETE FROM ${table} WHERE rowid = ?`).run(Number(id));
     for (const c of fichiers) supprimerFichier(c);
     prevenir(table, row, 'supprime');
@@ -402,8 +431,7 @@ function rafraichir(table, id) {
   const row = db.prepare(`SELECT * FROM ${table} WHERE rowid = ?`).get(Number(id));
   if (!row) return null;
   const ctx = contexte();
-  for (const f of fichiersDe(table, row, ctx)) ecrireFichier(f.chemin, f.contenu);
-  for (const b of binairesDe(table, row, ctx)) copierBinaire(b.chemin, b.source);
+  poser(table, row, ctx);
   prevenir(table, row, 'ecrit');
   return row;
 }
@@ -451,8 +479,7 @@ function ecouler() {
       continue;
     }
     try {
-      for (const f of fichiersDe(tbl, row, ctx)) ecrireFichier(f.chemin, f.contenu);
-      for (const b of binairesDe(tbl, row, ctx)) copierBinaire(b.chemin, b.source);
+      poser(tbl, row, ctx);
       prevenir(tbl, row, 'ecrit');
       bilan.ecrits += 1;
     } catch (err) {
@@ -485,6 +512,10 @@ function balayer(table, ctx = contexte()) {
   if (!e || !e.chemin || !e.toFile) return 0;
   const attendus = new Set();
   for (const row of db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()) {
+    /* Une ligne qui ne se partage plus NE PROTÈGE PLUS SES FICHIERS : c'est ainsi que le
+       balayage retire du dépôt une page qu'on vient de décocher, même si personne n'a pensé
+       à la retirer nommément. */
+    if (!partageable(table, row)) continue;
     try {
       for (const f of fichiersDe(table, row, ctx)) attendus.add(f.chemin);
       for (const b of binairesDe(table, row, ctx)) attendus.add(b.chemin);
@@ -553,11 +584,9 @@ function exporterTout() {
   for (const table of tablesFichier()) {
     /* `rowid` et non `id` : `jira_watch` est nommée par la clé du ticket et n'a pas de colonne
        `id`, pas plus que `config`. `rowid` existe partout et donne l'ordre d'insertion. */
-    const rows = db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all();
-    for (const row of rows) {
-      for (const f of fichiersDe(table, row, ctx)) ecrireFichier(f.chemin, f.contenu);
-      for (const b of binairesDe(table, row, ctx)) copierBinaire(b.chemin, b.source);
-    }
+    const rows = db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()
+      .filter((row) => partageable(table, row));
+    for (const row of rows) poser(table, row, ctx);
     compte[table] = rows.length;
   }
   return compte;
@@ -587,6 +616,7 @@ module.exports = {
   existe,
   listerFichiers,
   tablesFichier,
+  partageable,
   marquer,
   verifierFormat,
   exporterTout,
@@ -809,8 +839,13 @@ function supprimerLigne(e, table, relatif) {
     valeurs.push(m[i + 1]);
   });
   if (!conditions.length) return false;
-  const cible = db.prepare(`SELECT rowid AS r FROM ${table} WHERE ${conditions.join(' AND ')}`).get(...valeurs);
+  const cible = db.prepare(`SELECT rowid AS r, * FROM ${table} WHERE ${conditions.join(' AND ')}`).get(...valeurs);
   if (!cible) return false;
+  /* UN FICHIER ABSENT PARCE QU'ON L'A VOULU N'EST PAS UNE SUPPRESSION. Décocher « partager »
+     retire la page du dépôt ; le commit qui la retire revient ensuite par l'hydratation, et
+     sans ce garde-fou il emporterait la page de la base de celui-là même qui l'a décochée. La
+     règle « un fichier parti emporte sa ligne » ne vaut que pour les lignes qui se partagent. */
+  if (!partageable(table, cible)) return false;
   db.prepare(`DELETE FROM ${table} WHERE rowid = ?`).run(cible.r);
   return true;
 }

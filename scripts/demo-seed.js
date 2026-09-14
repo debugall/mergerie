@@ -1442,6 +1442,14 @@ db.prepare(`UPDATE mr SET ticket_jira_key = 'PROJ-1408', ticket_jira_status = 'E
     at(1), at(1)).lastInsertRowid;
   db.prepare('UPDATE agent SET output_ref = ?, schedule = ? WHERE id = ?').run(String(pageCarte), 'weekly mon 07:00', doc.id);
 
+  /* CE QUI EST PARTAGÉ, ET CE QUI NE L'EST PAS. Une page de notes ne part dans le dépôt
+     d'équipe que si on l'a cochée, et la démo doit montrer LES DEUX : la carte des services
+     produite par l'agent et le bilan de migration intéressent tout le monde ; « Points à
+     aborder au daily » et « Bug du tunnel de paiement » sont des brouillons de poste. C'est
+     aussi ce qui donne au bouton « Historique » une page sur laquelle s'afficher. */
+  db.prepare(`UPDATE note_page SET shared = 1
+    WHERE title IN ('Documentaliste — sortie d’agent', 'Notes migration TypeORM')`).run();
+
   const runAgent = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, status, md_path,
       agent_id, agent_name, triggered_by, created_at, updated_at, finished_at)
     VALUES (?, 'explore', ?, '', '', 'done', ?, ?, ?, ?, ?, ?, ?)`);

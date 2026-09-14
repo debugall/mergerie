@@ -100,7 +100,7 @@ function lireLien(kind, ref, msgInvalide) {
 
 /* ---------------------------------------------------------------- pages ---- */
 
-const PAGE_COLS = 'id, title, pinned, parent_id, created_at, updated_at';
+const PAGE_COLS = 'id, title, pinned, shared, parent_id, created_at, updated_at';
 
 /* La liste ne rend PAS le contenu : vingt pages de plusieurs dizaines de kilo-octets à
    chaque affichage de colonne, pour n'en lire qu'une. La recherche, elle, porte bien sur
@@ -171,6 +171,8 @@ function majPage(id, patch = {}, msgs) {
   if (patch.title !== undefined) { champs.push('title = ?'); vals.push(lireTitre(patch.title, msgs.titreVide)); }
   if (patch.content !== undefined) { champs.push('content = ?'); vals.push(lireContenu(patch.content)); }
   if (patch.pinned !== undefined) { champs.push('pinned = ?'); vals.push(patch.pinned ? 1 : 0); }
+  const partage = patch.shared === undefined ? null : (patch.shared ? 1 : 0);
+  if (partage !== null) { champs.push('shared = ?'); vals.push(partage); }
   /* DÉPLACER une page sous une autre. Deux refus : se ranger sous soi-même, et ranger sous
      soi une page qui a déjà des enfants — les petits-enfants se retrouveraient au troisième
      étage, que le reste du code ne sait pas afficher. */
@@ -187,8 +189,37 @@ function majPage(id, patch = {}, msgs) {
       return page.id;
     });
   }
-  return lirePage(page.id);
+  return { ...lirePage(page.id), ...(partage === null ? {} : { entraine: propagerPartage(page, partage) }) };
 }
+
+/* UNE SOUS-PAGE PARTAGÉE SANS SA MÈRE EST ORPHELINE. Le fichier d'une sous-page désigne sa
+   parente par son slug ; chez le collègue, ce slug ne correspond à rien, l'hydratation refuse
+   de poser une ligne amputée, et la page arrive… nulle part. On tient donc l'invariant dans les
+   deux sens, plutôt que de le contrôler et de refuser :
+   — partager le détail emporte le chapitre : sans lui, le détail ne veut rien dire ;
+   — cesser de partager le chapitre retire le détail, sinon le dépôt garderait des sous-pages
+     dont la mère a disparu, et le collègue verrait un enfant décalé sous rien.
+   On rend ce qui a suivi, pour que l'écran le DISE : une case qui en coche une autre en
+   silence est une case à laquelle on n'a pas envie de toucher. */
+function propagerPartage(page, partage) {
+  const suivis = [];
+  if (partage && page.parent_id) {
+    const mere = lirePage(page.parent_id);
+    if (mere && !mere.shared) { poserPartage(mere.id, 1); suivis.push(mere.title); }
+  }
+  if (!partage && !page.parent_id) {
+    for (const enfant of sousPages(page.id)) {
+      if (!enfant.shared) continue;
+      poserPartage(enfant.id, 0); suivis.push(enfant.title);
+    }
+  }
+  return suivis;
+}
+
+const poserPartage = (id, v) => store.ecrire('note_page', () => {
+  db.prepare('UPDATE note_page SET shared = ? WHERE id = ?').run(v, Number(id));
+  return Number(id);
+});
 
 /* Supprimer une page EMPORTE ses sous-pages (cascade SQL). On rend leur nombre : c'est ce
    que la confirmation doit dire avant, et ce que le journal doit dire après — « supprimée »

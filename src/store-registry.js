@@ -25,6 +25,10 @@
  * Ces deux listes sont la seule exception à « une table, une famille », et elles sont explicites
  * plutôt que déduites : une liste noire implicite finit toujours par laisser passer un secret.
  *
+ * `partageable(row)`, sur une table P, se lit « cette LIGNE-CI part-elle ? ». Une seule table
+ * s'en sert (`note_page`) et c'est voulu : le classement reste par table, et la question ne se
+ * pose ligne par ligne que là où l'on écrit sans destinataire.
+ *
  * `locales` sur une table P se lit « ces colonnes ne sortent jamais dans le fichier » : un chemin
  * absolu (`/Users/amady/…`) ne désigne rien sur le poste d'en face, un handle de session d'agent
  * ne vaut que dans le `~/.claude` qui l'a créé, et `hidden` est un geste de rangement personnel.
@@ -1105,8 +1109,15 @@ const REGISTRE = [
   {
     table: 'note_page', famille: 'P', uidPropre: true, cle: 'slug', chemin: 'notes/{slug}.md', fusion: 'last-writer',
     fichiers: ['notes/{slug}.json (uid, parent, épinglage, dates)', 'notes/{slug}/{uid}.png'],
-    note: 'le corps du .md EST le contenu de la page : une note exportée est déjà le fichier du dépôt',
+    note: 'le corps du .md EST le contenu de la page ; PAGE PAR PAGE : `shared` décide, et vaut 0 par défaut',
     corps: 'content',
+    /* LA SEULE TABLE QUI SE PARTAGE LIGNE PAR LIGNE. Ailleurs la famille suffit : une review,
+       une règle, une carte du code sont des produits, et les produire pour soi seul n'aurait
+       pas de sens. Une page de notes, si — c'est le brouillon de l'outil. On demande donc,
+       page par page, et la réponse par défaut est non.
+       `shared` ne part PAS dans le fichier : un fichier qui est là EST partagé, la colonne
+       serait une seconde vérité, et un `shared: 0` dans le dépôt voudrait dire quoi ? */
+    partageable: (r) => Boolean(r.shared),
     commitMessage: (r) => `note "${String(r.title || r.slug).slice(0, 50)}"`,
     toFile: (r, ctx) => ({
       uid: r.uid,
@@ -1132,6 +1143,10 @@ const REGISTRE = [
       content: doc.content || '',
       pinned: doc.pinned ? 1 : 0,
       parent_id: doc.parent ? ctx.idParSlug('note_page', doc.parent) : null,
+      /* ELLE EST DANS LE DÉPÔT, DONC ELLE EST PARTAGÉE. Arriver avec `shared = 0` ferait
+         retirer le fichier au premier écoulement : le poste qui reçoit effacerait chez tout le
+         monde la page qu'on vient de lui envoyer. */
+      shared: 1,
       created_at: doc.created_at,
       updated_at: doc.updated_at,
     }),

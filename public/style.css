@@ -3190,6 +3190,18 @@ button.tag { font: inherit; font-size: 11px; line-height: 1.5; background: none;
 .notes-editor { display: flex; flex-direction: column; gap: 10px; }
 .note-none { padding: 40px 0; text-align: center; }
 .note-editor-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* « PARTAGER CETTE PAGE » : une case, dans la barre, à la hauteur des boutons. Elle ne crie
+   pas — c'est un réglage de la page, pas une action — mais elle se voit quand elle est cochée :
+   savoir d'un coup d'œil qu'on écrit sous les yeux de l'équipe change ce qu'on écrit. */
+.note-share { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;
+  font-size: 12.5px; color: var(--muted); cursor: pointer; user-select: none;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; }
+.note-share:hover { border-color: var(--accent); }
+.note-share > input { margin: 0; }
+.note-share:has(> input:checked) { color: var(--text); border-color: var(--accent); }
+/* Dans la liste, la même information en un glyphe : lesquelles de mes pages sont chez tout
+   le monde. Sans elle, la case ne se vérifie qu'en ouvrant les pages une par une. */
+.note-partagee { color: var(--accent); }
 .note-title { flex: 1 1 240px; min-width: 160px; height: 38px; padding: 8px 12px;
   font: inherit; font-weight: 600; background: var(--panel2); color: var(--text);
   border: 1px solid var(--line); border-radius: 10px; }

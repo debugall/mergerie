@@ -17,7 +17,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   time to produce; redoing it on six machines means paying six times for the same thing and
   getting six slightly different answers. Point Mergerie at a git repository — your team's own, on
   the forge you already have — and it keeps the accumulated work there: **review rules, verifiers,
-  agents and their map of the code, notes, todos**, one readable file per object. Everyone keeps
+  agents and their map of the code, todos, and the notes pages you tick**, one readable file per
+  object. Everyone keeps
   their own instance, their own tokens and their own AI subscription: the requests leave your
   machine and are billed to you, and it is the **result** that is shared. Nothing to install,
   nothing to administer — and you get “who decided what, and when” for free.
@@ -25,7 +26,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   **Joining takes your history with you.** A repository created on the forge almost always comes
   with an initial commit — a README —, and attaching to it brings the team's content down. It also
   sends everything this machine had already accumulated up, in the same gesture: the months of
-  reviews, sessions and notes that predate the switch are what the team wants most, and they would
+  reviews and sessions that predate the switch are what the team wants most, and they would
   otherwise have stayed behind while only future work travelled. The screen says how many documents
   went up.
 
@@ -38,8 +39,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   **Everything the team accumulates travels**: repositories, the review state of merge requests,
   reports and every pass of them, findings, convergence runs, rules, verifiers and their verdicts,
   agents and their map of the code, coding and exploration sessions with their agent passes and
-  attachments, free questions, notes and pasted screenshots, todos, lots, Jira watches, git
-  commands and operations, Docker backups, and the team settings. Delete `reviewer.db` and it all
+  attachments, free questions, todos, lots, Jira watches, git commands and operations, Docker
+  backups, and the team settings. Delete `reviewer.db` and it all
   comes back from the files.
 
   **Nothing secret ever goes in.** The seven API tokens, the clone folder, the language, the
@@ -59,6 +60,18 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **`npm run demo` now shows the sharing too**, with a real local git repository and three
   fictitious authors: the footer counts, the “by <name>” lines and a notes page's History all
   work, because they are the real mechanism rather than a mock.
+
+- **Notes pages are shared one by one, and not by default.** Everything else the tool keeps is a
+  product — a review, a rule, a map of the code — and producing one for yourself alone makes
+  little sense, so it all travels together. A notes page does not: it is the one place in the tool
+  where you write with no reader in mind — a draft, a password pasted for the length of a test,
+  what you think of an architecture before you can say it out loud. So each page carries a
+  **Share** checkbox, unticked, and nothing leaves until you tick it. Untick it and the page is
+  removed from the team repository — and from your teammates' instances, since it was never
+  theirs; your own copy stays, whole. Pages already written stay yours. Sharing a sub-page takes its
+  parent page with it, and un-sharing a parent takes its sub-pages back — a sub-page alone would
+  arrive nowhere, since it is named by its parent — and the screen says so rather than doing it
+  quietly.
 
 - **A notes page now has a History.** Who changed it, when, and what changed — read straight from
   the data repository. It needed no new bookkeeping: the information exists because the page is a
