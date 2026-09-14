@@ -709,6 +709,25 @@ function upsert(table, row) {
   const cle = e && e.uidPropre ? 'uid' : (e && e.cle) || 'uid';
   const colonnes = Object.keys(row).filter((c) => c !== 'id');
   const set = colonnes.filter((c) => c !== cle).map((c) => `${c} = excluded.${c}`).join(', ');
+
+  /* DEUX POSTES, LE MÊME OBJET, DEUX UID. C'est le cas du poste qui rejoint : il a installé le
+     même agent livré (« Documentaliste »), écrit la même page de notes, suivi le même dépôt —
+     chacun avec un uid tiré chez lui. Le fichier, lui, est nommé par la CLÉ NATURELLE
+     (`agents/documentaliste/`, `notes/deploiement-prod.md`, `repos/gitlab/eq__api.json`) : deux
+     fichiers de même nom sont le même document, il ne peut pas y en avoir deux.
+     Sans ce rapprochement, l'insertion butait sur l'unicité de la clé — « UNIQUE constraint
+     failed: agent.slug » — et faisait échouer tout le rattachement, donc l'arrivée de TOUT le
+     reste. La ligne locale adopte donc l'identité du dépôt : c'est lui qui fait foi, et l'uid
+     local n'était qu'une identité parallèle pour ce que l'équipe connaît déjà. */
+  const naturelle = e && e.uidPropre && e.cle && e.cle !== 'uid' && e.cle !== 'id' ? e.cle : null;
+  if (naturelle && row[naturelle] != null && row.uid) {
+    const homonyme = db.prepare(`SELECT id, uid FROM ${table} WHERE ${naturelle} = ?`).get(row[naturelle]);
+    if (homonyme && homonyme.uid !== row.uid) {
+      db.prepare(`UPDATE ${table} SET ${colonnes.map((c) => `${c} = @${c}`).join(', ')} WHERE id = ${homonyme.id}`).run(row);
+      return db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(homonyme.id);
+    }
+  }
+
   db.prepare(`INSERT INTO ${table} (${colonnes.join(', ')})
               VALUES (${colonnes.map((c) => `@${c}`).join(', ')})
               ON CONFLICT (${cle}) DO UPDATE SET ${set}`).run(row);
@@ -778,7 +797,20 @@ function hydraterFichiers(relatifs) {
         }
         continue;
       }
-      const ligne = upsert(item.table, row);
+      /* UN FICHIER QUI PASSE MAL N'EMPORTE PAS LES AUTRES. Une passe d'hydratation pose des
+         centaines de documents ; laisser une exception remonter, c'est perdre TOUT ce qui suit
+         dans l'ordre du registre — et l'ordre du registre étant celui des dépendances, ce qui
+         suit est précisément le plus intéressant. Le poste qui rejoignait avec un agent de même
+         nom recevait ainsi ses reviews (posées avant) mais ni ses sessions, ni ses notes, ni
+         même les pointeurs vers ses rapports, calculés tout à la fin. On le signale comme
+         orphelin — c'est visible dans l'état de la synchro — et on continue. */
+      let ligne;
+      try {
+        ligne = upsert(item.table, row);
+      } catch (err) {
+        bilan.orphelins.push(`${item.relatif} : ${(err && err.message) || err}`);
+        continue;
+      }
       if (e.listes) hydraterListes(e, ligne, item.doc, ctxTour, (m) => bilan.orphelins.push(`${item.relatif} : ${m}`));
       bilan.ecrits += 1;
     }

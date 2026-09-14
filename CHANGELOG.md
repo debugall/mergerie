@@ -49,6 +49,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   rather than what you produced. Every column is classified by name, and the tests refuse a
   secret-looking column that is not declared, because a secret committed to git is permanent.
 
+- **A machine that already has the same agent — or note, or repository — can now join.** Install
+  the shipped “Librarian” on two machines and each gets its own internal id for it; attaching then
+  failed outright with *UNIQUE constraint failed: agent.slug*, and since an import walks the
+  registry in dependency order, everything after that point never arrived — sessions, notes, and
+  the pointers to the review reports, computed at the very end. The file is named by the slug, so
+  two files of the same name are the same document: the local row now adopts the repository's
+  identity instead of fighting it. And one document that cannot be posed no longer costs the whole
+  pass — it is reported and the import carries on.
+
 - **A review's report now arrives even when it lands after the review itself.** On a freshly
   attached machine, reviews came through but their reports were blank. The report lives on your
   own disk — the path means nothing on anyone else's machine — so the pointer to it is recomputed

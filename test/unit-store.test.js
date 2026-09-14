@@ -261,6 +261,49 @@ describe('store — l’aller-retour par les fichiers', () => {
     assert.equal(fille.parent_id, mereApres.id, 'la seconde passe doit rattraper la référence');
   });
 
+  test('un agent installé DES DEUX CÔTÉS ne fait qu’un — pas une erreur d’unicité', () => {
+    /* LE CAS DU POSTE QUI REJOINT. Il a installé le même agent livré que l'équipe : même nom,
+       même slug, mais un uid tiré chez lui. Le fichier étant nommé par le slug
+       (`agents/documentaliste/`), deux fichiers de même nom sont le même document — il ne peut
+       pas y en avoir deux. Sans rapprochement sur la clé naturelle, l'insertion butait sur
+       « UNIQUE constraint failed: agent.slug » et faisait échouer TOUT le rattachement : ni
+       reviews, ni sessions, ni rapports. */
+    const now = new Date().toISOString();
+    const local = db.prepare(`INSERT INTO agent (name, slug, kind, scope_kind, created_at, updated_at)
+      VALUES ('Documentaliste', 'documentaliste', 'explore', 'repos', ?, ?)`).run(now, now).lastInsertRowid;
+    const uidLocal = db.prepare('SELECT uid FROM agent WHERE id = ?').get(local).uid;
+    assert.ok(uidLocal, 'la ligne locale a son propre uid');
+
+    const venuDuDepot = { uid: '01M2FZZZZZZZZZZZZZZZZZZZZZ', slug: 'documentaliste', name: 'Documentaliste', kind: 'explore', scope_kind: 'repos', created_at: now, updated_at: now };
+    const pose = store.upsert('agent', venuDuDepot);
+    assert.equal(pose.uid, venuDuDepot.uid, 'la ligne locale adopte l’identité du dépôt');
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM agent WHERE slug = 'documentaliste'").get().n, 1,
+      'un slug nomme un fichier : il ne peut pas désigner deux lignes');
+    assert.equal(db.prepare('SELECT id FROM agent WHERE slug = ?').get('documentaliste').id, local,
+      'c’est bien la ligne locale qui a été reprise, pas une seconde');
+  });
+
+  test('un document qui passe mal n’emporte pas toute la passe', () => {
+    /* L'ORDRE DU REGISTRE EST CELUI DES DÉPENDANCES : ce qui suit un document en échec est
+       précisément ce qui compte le plus. Une exception qui remonte coûtait donc tout le reste de
+       l'import — et la passe se terminait sans avoir rien recalculé. */
+    const now = new Date().toISOString();
+    store.ecrireFichier('todos/01M2FYYYYYYYYYYYYYYYYYYYYY.json', store.serialize({
+      uid: '01M2FYYYYYYYYYYYYYYYYYYYYY', title: 'Abîmé', status: 'pas-un-statut-valide', created_at: now,
+    }));
+    const page = notes.creerPage({ title: 'Survivante', content: 'je dois passer' }, MSGS);
+    notes.majPage(page.id, { shared: 1 }, MSGS);
+    db.exec("DELETE FROM note_page WHERE slug = 'survivante'");
+
+    const bilan = store.hydraterFichiers([
+      'todos/01M2FYYYYYYYYYYYYYYYYYYYYY.json',
+      'notes/survivante.md',
+    ]);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM note_page WHERE slug = 'survivante'").get().n, 1,
+      'ce qui suit le document fautif doit arriver quand même');
+    assert.ok(bilan.orphelins.length >= 1, 'et l’échec doit se DIRE, pas se taire');
+  });
+
   test('un rapport arrivé APRÈS sa review remplit quand même le pointeur', () => {
     /* LE CAS SIGNALÉ : sur un poste fraîchement rattaché, les reviews arrivaient mais pas les
        rapports. `review.md_path` désigne un fichier du disque local — rien de tel ne voyage —,
