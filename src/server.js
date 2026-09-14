@@ -2319,6 +2319,31 @@ app.put('/api/agent-passes/:id', wrap((req, res) => {
 
 /* Liste des passes d'une unité + la passe demandée (la dernière par défaut). Commun aux
    sessions sur dépôt et au codage hors dépôt : une seule forme de réponse à afficher. */
+/* « CETTE ITÉRATION N'A RIEN CHANGÉ » — et la façon de le savoir SANS le diff local.
+ *
+ * On le déduisait de « on a mesuré (`head_sha`) mais aucun patch n'a été rangé ». Le patch est un
+ * fichier de CE poste : il ne voyage pas, et sur une session reçue du dépôt d'équipe la règle
+ * disait donc « rien changé » à chaque itération — un mensonge, et le genre qui fait douter de
+ * tout l'écran. Les deux SHA, eux, voyagent : égaux, l'agent n'a rien commité ; différents sans
+ * patch sous la main, on ne sait pas — et l'écran se tait, ce qu'il sait déjà faire. */
+const sansChangement = (p) => !!(p && p.base_sha && p.head_sha && p.base_sha === p.head_sha);
+/** Le patch n'est pas là, mais ses deux bornes le sont : git peut le refaire à l'identique. */
+const recalculable = (p) => !!(p && p.base_sha && p.head_sha && p.base_sha !== p.head_sha);
+
+/* Y A-T-IL UN RETOUR D'AGENT À MONTRER, pour chaque unité d'une session ? La question se posait
+   à `output_path` — un chemin de CE poste. Sur une session reçue du dépôt d'équipe, ce pointeur
+   est vide tant qu'aucune passe n'a été hydratée, et le bouton « Retour de l'IA » disparaissait
+   alors que le texte de chaque itération était là. La vraie réponse est dans `agent_pass`, qui
+   voyage. Une requête pour toute la liste : l'écran des sessions se redessine toutes les
+   secondes et demie. */
+function unitesAvecRetour(scope, taskId) {
+  const vus = new Set();
+  for (const r of db.prepare(
+    'SELECT DISTINCT unit_id FROM agent_pass WHERE scope = ? AND task_id = ?',
+  ).all(scope, Number(taskId))) vus.add(r.unit_id);
+  return vus;
+}
+
 function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) {
   /* Le PROMPT part avec la liste : la colonne de gauche montre chaque itération par la demande
      qui l'a produite, et son champ de recherche cherche dans ce que l'utilisateur a écrit. Le
@@ -2332,7 +2357,9 @@ function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) 
          distincts, et un troisième — on ne sait pas — pour tout ce qui n'a pas de git (le
          hors-dépôt, une question libre) ou date d'avant la mesure. L'écran ne doit proposer
          « voir le diff » que pour le premier. */
-      has_diff: !!p.diff_path, no_change: !!(p.head_sha && !p.diff_path),
+      /* LE DIFF EST PROMIS S'IL EST RECALCULABLE : les deux bornes suffisent, et elles
+         voyagent. Sur le poste du collègue, le patch n'est pas là mais git sait le refaire. */
+      has_diff: !!p.diff_path || recalculable(p), no_change: sansChangement(p),
       /* Le coût de CETTE itération. Il était lu en base et jamais servi : on voyait le total
          de la session, jamais laquelle des six passes avait coûté la moitié. */
       cost_usd: p.cost_usd == null ? null : p.cost_usd,
@@ -2365,7 +2392,7 @@ function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) 
     current: current ? {
       id: current.id, n: current.n, kind: current.kind, created_at: current.created_at,
       prompt: current.prompt, output: current.output ? protocol.nettoyer(current.output) : current.output, favori: current.favori ? 1 : 0, titre: current.titre || '',
-      has_diff: !!current.diff_path, no_change: !!(current.head_sha && !current.diff_path),
+      has_diff: !!current.diff_path || recalculable(current), no_change: sansChangement(current),
       cost_usd: current.cost_usd == null ? null : current.cost_usd,
     } : null,
   };
@@ -2448,6 +2475,7 @@ function taskTargets(taskId) {
      savoir où en était ce que la session avait produit : la note, le verdict, et s'il y a des
      commentaires en attente d'envoi. Tout est déjà en base — une requête pour toute la liste,
      pas une par ligne, sur un écran qui se redessine toutes les secondes et demie. */
+  const avecRetour = unitesAvecRetour('task', taskId);
   const notesParMr = {};
   const cmtParMr = {};
   if (rows.some((r) => r.mr_row_id)) {
@@ -2477,6 +2505,8 @@ function taskTargets(taskId) {
     const ligne = localsession.resoudre('task_target', r, poignees);
     return {
       ...ligne, questions, has_verify_fail: echec ? 1 : 0,
+      // Le bouton « Retour de l'IA » se décide sur les PASSES, qui voyagent — pas sur un chemin local.
+      has_output: (avecRetour.has(r.id) || !!r.output_path) ? 1 : 0,
       mr_note: r.mr_row_id != null ? (notesParMr[r.mr_row_id] != null ? notesParMr[r.mr_row_id] : null) : null,
       mr_verdict: v ? v.verdict : null,
       mr_drafts: r.mr_row_id ? (cmtParMr[r.mr_row_id] || 0) : 0,
@@ -3208,11 +3238,25 @@ function passeCodageDe(taskId, tg, n) {
 }
 /* Le patch de la passe, ou la raison de ne rien montrer. Une itération qui n'a rien changé au
    code (l'agent a posé des questions, ou a constaté que tout était déjà fait) n'ouvre pas une
-   vue vide : elle le dit. */
-function diffDePasse(p) {
+   vue vide : elle le dit.
+ *
+ * LE PATCH NE VOYAGE PAS — ET N'A PAS BESOIN DE VOYAGER. C'est un fichier de la machine qui a
+ * fait tourner l'agent, et l'envoyer dans le dépôt d'équipe y mettrait des centaines de
+ * kilo-octets entièrement recalculables. Ce qui voyage, ce sont les deux BORNES : le commit
+ * d'avant et celui d'après. Sur le poste du collègue, on redemande donc simplement le diff à
+ * git — c'est le même travail que celui d'origine, sur le même clone, et le résultat est le
+ * même à l'octet près. Il faut seulement que ces deux commits soient là : si la branche n'a
+ * jamais été récupérée, on le DIT, avec le geste qui répare. */
+async function diffDePasse(p, cwd = null) {
   const diff = agentpass.diffDe(p);
-  if (!diff) throw new Error(t(p.head_sha ? 'err.task.pass-no-change' : 'err.task.pass-no-diff'));
-  return diff;
+  if (diff) return diff;
+  if (p.base_sha && p.head_sha && p.base_sha !== p.head_sha && cwd) {
+    try {
+      const recalcule = await git.diffRange(cwd, p.base_sha, p.head_sha);
+      if (recalcule && recalcule.trim()) return recalcule;
+    } catch { throw new Error(t('err.task.pass-diff-absent-du-clone')); }
+  }
+  throw new Error(t(p.head_sha && p.base_sha === p.head_sha ? 'err.task.pass-no-change' : 'err.task.pass-no-diff'));
 }
 function ctxDePasse(tg, p) {
   return { ...targetCloneCtx(tg), ref: p.head_sha, target: p.base_sha, shaRange: true };
@@ -3222,7 +3266,7 @@ app.get('/api/tasks/:id/targets/:tid/passes/:n/diffview', wrap(async (req, res) 
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
   const p = passeCodageDe(Number(req.params.id), tg, req.params.n);
-  const diff = diffDePasse(p);
+  const diff = await diffDePasse(p, targetCloneCtx(tg).cwd);
   const entete = { project: tg.project, branch: tg.branch, pass: { n: p.n, kind: p.kind, titre: p.titre || '', prompt: p.prompt || '' } };
   if (demoDiff.isDemo()) { res.json({ ...demoDiff.viewFor(demoMrDe(tg), diff), ...entete }); return; }
   res.json({ ...(await viewerPayload(ctxDePasse(tg, p), { diff, source: tg.branch })), ...entete });
@@ -3239,7 +3283,7 @@ app.get('/api/tasks/:id/targets/:tid/passes/:n/filediff', wrap(async (req, res) 
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
   const p = passeCodageDe(Number(req.params.id), tg, req.params.n);
   if (demoDiff.isDemo()) {
-    res.json(demoDiff.fileDiffFor(demoMrDe(tg), String(req.query.path || ''), diffDePasse(p)));
+    res.json(demoDiff.fileDiffFor(demoMrDe(tg), String(req.query.path || ''), await diffDePasse(p)));
     return;
   }
   res.json(await viewerFileDiff(ctxDePasse(tg, p), String(req.query.path || '')));
@@ -3413,9 +3457,11 @@ function localDirsFor(taskId) {
      quelqu'un d'autre, la session se relit mais ne se relance pas. */
   const carteDirs = localdirs.carte();
   const poignees = localsession.carte('local_task_dir');
+  const avecRetour = unitesAvecRetour('local', taskId);
   return db.prepare('SELECT * FROM local_task_dir WHERE task_id = ? ORDER BY id').all(taskId)
     .map((d) => ({
       ...localsession.resoudre('local_task_dir', d, poignees),
+      has_output: (avecRetour.has(d.id) || !!d.output_path) ? 1 : 0,
       path: carteDirs.get(d.dir_hash) || null,
       resume_cmd: agentsession.resumeCommand(d.session_backend, d.session_key, d.session_cwd),
       // Les questions posées par l'agent, prêtes à afficher. Illisibles → aucune, plutôt qu'un plantage.
@@ -3627,7 +3673,8 @@ function passeLocaleDe(taskId, d, n) {
 app.get('/api/local-tasks/:id/dirs/:did/passes/:n/diffview', wrap(async (req, res) => {
   const d = dossierLocalOu404(req.params.id, req.params.did);
   const p = passeLocaleDe(req.params.id, d, req.params.n);
-  const diff = diffDePasse(p);
+  /* Hors dépôt : le dossier EST le dépôt quand il en est un. `ctxPasseLocale` sait où il vit. */
+  const diff = await diffDePasse(p, ctxPasseLocale(req.params.id, d, p).cwd);
   res.json({
     ...(await viewerPayload(ctxPasseLocale(req.params.id, d, p), { diff, source: d.path })),
     project: d.path, branch: '',

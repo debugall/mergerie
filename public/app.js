@@ -8964,7 +8964,7 @@ function localDirLine(d, t) {
     + `${['new', 'done', 'error'].includes(d.status) && t
       ? `<button class="btn btn-sm" data-ldrun="${d.id}" data-ltask="${t.id}" title="${esc(tr('local.title.run-dir'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${tr('task.btn.run-target')}</button>` : ''}`
     // Retour de l'agent : la seule fenêtre sur son travail quand le dossier n'a pas bougé.
-    + `${d.output_path ? `<button class="btn btn-sm" data-ldout="${d.id}" data-ltask="${d.task_id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}`
+    + `${d.has_output ? `<button class="btn btn-sm" data-ldout="${d.id}" data-ltask="${d.task_id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}`
     + `${resumeCmdBtn(d.resume_cmd)}</div>`
     /* Hors dépôt, CHAQUE DOSSIER a sa session d'agent : ses questions sont les siennes, et
        la réponse ne repart que dans celui-là. Un formulaire par dossier, donc. */
@@ -9013,7 +9013,7 @@ function localCard(t) {
     /* Le retour de l'agent au niveau de la SESSION : les boutons par dossier existent aussi,
        mais ils vivent dans la liste repliée — et c'est « qu'a fait l'IA ? » qu'on se demande
        en regardant la carte, pas « qu'a-t-elle fait dans ce dossier-là ». */
-    (t.dirs || []).some((d) => d.output_path)
+    (t.dirs || []).some((d) => d.has_output)
       ? `<button class="btn" data-lout="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : '',
     canFollow ? followBtn(t, 'lfollow', 'local.followup.title') : '',
   ], [
@@ -9656,7 +9656,7 @@ function targetLine(t, tg) {
     ${tg.mr_merged ? `<span class="tag merged" title="${tr('task.tag.merged-title', { forge: forgeLabel(tg.forge) })}">${tr('task.tag.merged')}</span>` : ''}
     <span class="spacer"></span>
     ${resumeCmdBtn(tg.resume_cmd)}
-    ${tg.output_path ? `<button class="btn btn-sm" data-tgout="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}
+    ${tg.has_output ? `<button class="btn btn-sm" data-tgout="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}
     ${showDiff ? `<button class="btn btn-sm" data-tgdiff="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-diff'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>` : ''}
     ${runTarget ? `<button class="btn btn-sm" data-tgrun="${tg.id}" data-task="${t.id}" title="${esc(tg.status === 'new' ? tr('task.title.run-target') : tr('task.title.rerun-target'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${tr('task.btn.run-target')}</button>` : ''}
     ${followTarget ? `<button class="btn btn-sm" data-tgfollow="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.request-fix-target', { project: tg.project }))}"><svg class="ico ico-sm"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : ''}

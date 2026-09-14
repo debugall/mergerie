@@ -49,6 +49,25 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   rather than what you produced. Every column is classified by name, and the tests refuse a
   secret-looking column that is not declared, because a secret committed to git is permanent.
 
+- **The “AI output” button shows up on a session that came from the team.** Whether to offer it
+  was decided from a file path on your own machine, which a received session does not have — so
+  the button vanished while every iteration's text sat right there. It is now decided from the
+  iterations themselves, which is what travels and what the button opens.
+
+- **You can open the diff of an iteration a colleague ran.** The patch itself stays on the machine
+  that ran the agent — sending hundreds of kilobytes into the team repository to carry something
+  entirely recomputable would be a poor trade. What travels is the pair of commits the iteration
+  sits between, and that is enough: your own clone recomputes the same diff, to the byte. If your
+  clone does not have those commits yet, the screen says so and tells you to fetch the branch,
+  rather than opening an empty view.
+
+- **An iteration received from the team no longer claims it changed nothing.** A patch is a file
+  on your own machine and does not travel, and “nothing changed” was deduced from “we measured,
+  and no patch is on file” — so every iteration of a session that came through the repository
+  announced that it had changed nothing, when it had changed everything. The two commit ids do
+  travel: equal, the agent committed nothing; different with no patch at hand, we do not know —
+  and the screen says nothing at all, which it already knew how to do.
+
 - **A merge request reviewed by a colleague now shows up as reviewed on your machine.** Everyone
   discovers the same merge requests from the forge, and each machine gives them an internal id of
   its own — so the identity of a merge request is (repository, number), not that id. It was the
