@@ -4,9 +4,35 @@ const { DB_PATH, DEFAULT_CLONE_DIR, initDirs } = require('./paths');
 
 initDirs();
 
+const { ulid, slugLibre } = require('./ulid');
+
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+
+/* `mergerie_ulid()` APPELABLE DEPUIS SQL. C'est ce qui permet aux déclencheurs du bas de ce
+   fichier de poser un `uid` sur chaque ligne partagée sans qu'aucun des ~100 `INSERT` de
+   l'application n'ait à y penser. Enregistrée ici, tout en haut : une insertion faite plus bas
+   pendant les migrations doit déjà la trouver.
+   `{ deterministic: false }` est le défaut et c'est ce qu'on veut — SQLite ne doit surtout pas
+   mettre en cache le résultat d'un générateur d'identité. */
+db.function('mergerie_ulid', () => ulid());
+
+/* RÉPARATION, TOUT EN HAUT, AVANT LA MOINDRE ÉCRITURE.
+ *
+ * `ALTER TABLE … RENAME` réécrit les références au nom de table DANS LE CORPS DES DÉCLENCHEURS.
+ * Une reconstruction de la file d'export (`store_sale`) laissait donc des déclencheurs pointant
+ * une table renommée puis supprimée : la première écriture venue — une simple mise à jour de la
+ * configuration, quelques lignes plus bas — échouait sur « no such table », et le serveur ne
+ * démarrait plus.
+ *
+ * On les retire ici, avant tout : ils sont recréés en fin de fichier, générés depuis le
+ * registre. Une base saine n'en a aucun et ne paie rien. */
+for (const t of db.prepare(
+  "SELECT name FROM sqlite_master WHERE type = 'trigger' AND sql LIKE '%_ancien%'",
+).all()) {
+  db.exec(`DROP TRIGGER IF EXISTS ${t.name}`);
+}
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS config (
@@ -1433,19 +1459,10 @@ try { db.exec("ALTER TABLE config ADD COLUMN auto_post_review TEXT DEFAULT '0'")
    constat « blocker ». Décoché par défaut — la publication automatique existante ne doit pas
    se mettre à taire des rapports du seul fait d'une migration. */
 try { db.exec("ALTER TABLE config ADD COLUMN auto_post_blocking_only TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
-const seeded = db.prepare('SELECT git_commands_seeded AS s FROM config WHERE id = 1').get();
-if (seeded && !seeded.s) {
-  const ins = db.prepare('INSERT INTO git_command (label, command, sort_order, created_at) VALUES (?, ?, ?, ?)');
-  const now = new Date().toISOString();
-  [
-    ['Récupérer tout (fetch)', 'fetch --all --prune'],
-    ['Statut court', 'status --short --branch'],
-    ['Tirer (fast-forward only)', 'pull --ff-only'],
-    ['Élaguer les branches distantes disparues', 'remote prune origin'],
-    ['10 derniers commits', 'log --oneline -10'],
-  ].forEach(([label, command], i) => ins.run(label, command, i, now));
-  db.prepare('UPDATE config SET git_commands_seeded = 1 WHERE id = 1').run();
-}
+/* L'amorçage des commandes git a déménagé À LA FIN de ce fichier : son drapeau
+   (`git_commands_seeded`) est devenu une donnée de POSTE, et il faut donc que `local_config`
+   existe et soit remplie avant de le lire. Lu ici, il aurait valu 0 sur une installation qui
+   a déjà ses commandes, et les cinq entrées seraient revenues en double à chaque démarrage. */
 
 /* Nettoyage de tables et colonnes qui ne servent plus. Elles ne visent que les bases DÉJÀ EN
    SERVICE — une base neuve ne les crée simplement pas. La donnée qu'elles portaient était
@@ -1558,6 +1575,515 @@ try { db.exec('ALTER TABLE task ADD COLUMN agent_question TEXT'); } catch { /* d
 db.exec('CREATE INDEX IF NOT EXISTS idx_task_agent ON task(agent_id)');
 // Plafond de runs déclenchés par un horaire, par jour. 0 = illimité.
 try { db.exec('ALTER TABLE config ADD COLUMN agent_auto_max INTEGER NOT NULL DEFAULT 10'); } catch { /* déjà présente */ }
+
+/* QUI HONORE L'HORAIRE D'UN AGENT. Trois instances allumées dans une équipe lanceraient trois
+   fois le même agent planifié, chacune persuadée d'être la seule — et paieraient trois fois.
+   `runner` porte l'identité git de l'exécutant ; vide = personne, l'agent ne tourne qu'à la
+   main. Migration APRÈS le `CREATE TABLE agent` ci-dessus. */
+try { db.exec('ALTER TABLE agent ADD COLUMN runner TEXT'); } catch { /* déjà présente */ }
+
+/* ---------- CE QUI RESTE SUR CE POSTE : `local_config` ----------
+ *
+ * `config` est une table d'équipe : gabarits de prompt, seuils, politiques, URL de la forge.
+ * Elle porte pourtant sept jetons d'API, le chemin des clones et le moteur de dictée de CETTE
+ * machine — autant de choses qui n'ont rien à faire dans un dépôt partagé, et que le lot
+ * « base partagée » y enverrait si on ne les sortait pas.
+ *
+ * Le tri n'est pas fait ici : il est déclaré dans `src/store-registry.js`, où chaque colonne de
+ * `config` figure nommément dans `locales` (ce poste) ou dans `partagees` (l'équipe), les deux
+ * listes devant couvrir le schéma exactement — un test unitaire s'en assure. Sortir les jetons
+ * par une LISTE NOIRE (« tout sauf… ») échouerait en s'ouvrant : la colonne ajoutée l'an
+ * prochain partirait par défaut. Ici, une colonne non classée fait rougir les tests.
+ *
+ * La colonne d'origine n'est pas supprimée, elle est VIDÉE ET GELÉE : `ALTER TABLE … DROP
+ * COLUMN` sur une base en service est irréversible, et une lecture oubliée doit trouver du vide
+ * plutôt qu'un jeton périmé qu'elle croirait bon. L'assertion qui suit refuse une colonne gelée
+ * non vide — après le drain, ce ne peut plus être qu'un bug de ce fichier même.
+ *
+ * Placé APRÈS tous les `ALTER TABLE config` : le drain lit des colonnes qui doivent exister. */
+const REGISTRE_CONFIG = require('./store-registry').pour('config');
+/* Les colonnes de poste, avec le défaut de `config` — repris à l'identique, sinon un réglage
+   non renseigné changerait de sens en déménageant. `id` est la clé, pas un réglage. */
+const COLONNES_LOCALES = [
+  ["access_token", "TEXT DEFAULT ''"],
+  ["github_token", "TEXT DEFAULT ''"],
+  ["jira_email", "TEXT DEFAULT ''"],
+  ["jira_token", "TEXT DEFAULT ''"],
+  ["jenkins_user", "TEXT DEFAULT ''"],
+  ["jenkins_token", "TEXT DEFAULT ''"],
+  ["dictation_api_key", "TEXT DEFAULT ''"],
+  ["clone_path", "TEXT DEFAULT ''"],
+  ["language", "TEXT DEFAULT 'fr'"],
+  ['jenkins_refresh_minutes', 'INTEGER DEFAULT 1'],
+  ['git_commands_seeded', 'INTEGER DEFAULT 0'],
+  ["dictation_provider", "TEXT DEFAULT 'off'"],
+  ["dictation_model", "TEXT DEFAULT ''"],
+  ["dictation_vad_model", "TEXT DEFAULT ''"],
+  ["dictation_command", "TEXT DEFAULT ''"],
+  ["dictation_url", "TEXT DEFAULT 'https://api.openai.com'"],
+  ["dictation_remote_model", "TEXT DEFAULT 'gpt-4o-mini-transcribe'"],
+  ["dictation_language", "TEXT DEFAULT 'auto'"],
+  ['dictation_silence_ms', 'INTEGER DEFAULT 700'],
+  ["dictation_final_pass", "TEXT DEFAULT '1'"],
+  ['dictation_idle_minutes', 'INTEGER DEFAULT 15'],
+  /* LE DÉPÔT DE DONNÉES PARTAGÉ. De poste, et non d'équipe : c'est l'adresse par laquelle CE
+     poste rejoint l'équipe, et elle doit être renseignée avant que quoi que ce soit soit
+     partagé — la mettre dans les réglages d'équipe serait circulaire. Vide = mode mono-poste,
+     rien ne change. */
+  ["data_repo_url", "TEXT DEFAULT ''"],
+  ["data_repo_branch", "TEXT DEFAULT 'main'"],
+  ['data_sync_seconds', 'INTEGER DEFAULT 30'],
+  /* PARTAGER SA DÉPENSE, ou non. Décoché par défaut, et c'est délibéré : ce que coûte mon
+     abonnement ne regarde que moi tant que je n'ai pas décidé le contraire. Coché, il part un
+     total PAR JOUR — jamais le détail par appel, qui dirait ce que j'ai demandé et quand. */
+  ["usage_share", "TEXT DEFAULT '0'"],
+];
+db.exec(`CREATE TABLE IF NOT EXISTS local_config (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  ${COLONNES_LOCALES.map(([n, d]) => `${n} ${d}`).join(',\n  ')}
+)`);
+if (!db.prepare('SELECT 1 FROM local_config WHERE id = 1').get()) {
+  db.prepare('INSERT INTO local_config (id) VALUES (1)').run();
+}
+/* Une colonne de poste ajoutée après coup : même migration idempotente que partout ailleurs,
+   APRÈS le CREATE TABLE ci-dessus. */
+for (const [nom, decl] of COLONNES_LOCALES) {
+  try { db.exec(`ALTER TABLE local_config ADD COLUMN ${nom} ${decl}`); } catch { /* déjà présente */ }
+}
+
+/* LE DRAIN. Rejouable : la seconde exécution ne trouve plus rien à déplacer. On ne recopie que
+   si la colonne de `config` porte encore quelque chose — sinon on écraserait ce que
+   l'utilisateur vient de saisir dans `local_config` par le vide laissé au passage précédent. */
+{
+  const gelees = REGISTRE_CONFIG.locales.filter((c) => c !== 'id');
+  const avant = db.prepare('SELECT * FROM config WHERE id = 1').get() || {};
+  const deplacees = [];
+  for (const col of gelees) {
+    const v = avant[col];
+    if (v === null || v === undefined || v === '') continue;
+    db.prepare(`UPDATE local_config SET ${col} = ? WHERE id = 1`).run(v);
+    db.prepare(`UPDATE config SET ${col} = '' WHERE id = 1`).run();
+    deplacees.push(col);
+  }
+  /* L'ASSERTION. Après le drain, une colonne gelée non vide ne peut plus venir que d'un bug de
+     ce fichier — une faute de frappe dans un nom de colonne, avalée par un `catch {}` voisin.
+     On préfère que le serveur refuse de démarrer plutôt que de laisser un jeton là où
+     l'exportateur du dépôt partagé pourrait un jour le lire. */
+  const apres = db.prepare('SELECT * FROM config WHERE id = 1').get() || {};
+  const restantes = gelees.filter((c) => apres[c] !== null && apres[c] !== undefined && apres[c] !== '');
+  if (restantes.length) {
+    throw new Error(`config : colonnes gelées encore remplies après le drain vers local_config — ${restantes.join(', ')}`);
+  }
+  if (deplacees.length) {
+    console.log(`[db] ${deplacees.length} réglage(s) de poste déplacé(s) de config vers local_config`);
+  }
+}
+
+/* Amorçage des commandes git — UNE SEULE FOIS par poste. Supprimer toutes les entrées ne les
+   réintroduit donc pas : c'est un choix de l'utilisateur. Le drapeau vit dans `local_config`
+   parce qu'il décrit CETTE installation, et non ce que l'équipe a décidé ; sans quoi le
+   deuxième poste d'une équipe n'aurait jamais ses commandes de départ. */
+{
+  const seeded = db.prepare('SELECT git_commands_seeded AS s FROM local_config WHERE id = 1').get();
+  if (seeded && !seeded.s) {
+    const ins = db.prepare('INSERT INTO git_command (label, command, sort_order, created_at) VALUES (?, ?, ?, ?)');
+    const now = new Date().toISOString();
+    [
+      ['Récupérer tout (fetch)', 'fetch --all --prune'],
+      ['Statut court', 'status --short --branch'],
+      ['Tirer (fast-forward only)', 'pull --ff-only'],
+      ['Élaguer les branches distantes disparues', 'remote prune origin'],
+      ['10 derniers commits', 'log --oneline -10'],
+    ].forEach(([label, command], i) => ins.run(label, command, i, now));
+    db.prepare('UPDATE local_config SET git_commands_seeded = 1 WHERE id = 1').run();
+  }
+}
+
+/* ---------- L'IDENTITÉ QUI SURVIT AU PARTAGE : `uid` et `slug` ----------
+ *
+ * Les entiers auto-incrémentés sont LOCAUX par nature. Deux postes créent chacun le dépôt
+ * n° 12 ; deux reviews de la même merge request reçoivent chacune la version 2. Dès que le
+ * travail accumulé part dans un dépôt git d'équipe, ces numéros se télescopent — et il n'y a
+ * personne pour arbitrer, c'est tout l'intérêt d'une synchronisation sans serveur.
+ *
+ * Chaque table partagée reçoit donc un `uid` : un ULID, produit sans se concerter, et TRIABLE
+ * PAR DATE DE CRÉATION. C'est cette dernière propriété qui fait le travail : les numéros de
+ * version (`review_version.version`), de passe (`agent_pass.n`) et de connaissance
+ * (`agent_knowledge.version`) deviennent DÉRIVÉS — on les renumérote en lisant les uids dans
+ * l'ordre, sans compteur partagé. Deux postes qui reviewent la même MR en même temps produisent
+ * v2 et v3, jamais deux v2, et dans le même ordre chez tout le monde.
+ *
+ * LES 852 REQUÊTES EXISTANTES NE CHANGENT PAS : elles continuent de joindre par `id`. L'uid ne
+ * sert qu'à franchir la frontière entre deux postes.
+ *
+ * COMMENT IL EST POSÉ. Pas par les ~100 `INSERT` de l'application — les oublier un par un est
+ * précisément ce qui se produirait —, mais par un DÉCLENCHEUR par table, qui appelle la
+ * fonction JS enregistrée plus haut. L'invariant est ainsi tenu par la base elle-même, y
+ * compris pour les insertions du mode démo et des scripts. Contrepartie assumée : cette base
+ * ne s'écrit plus depuis le `sqlite3` en ligne de commande, qui ne connaît pas `mergerie_ulid`.
+ * Elle se LIT toujours, ce qui est le seul usage qu'on en fait de l'extérieur.
+ *
+ * Placé APRÈS tous les `CREATE TABLE` : un `ALTER TABLE` sur une table qui n'existe pas encore
+ * lève, le `catch {}` l'avale, et la colonne n'existe alors que sur les bases où la table
+ * préexistait. */
+{
+  const TABLES_UID = require('./store-registry').REGISTRE.filter((e) => e.uidPropre).map((e) => e.table);
+  for (const table of TABLES_UID) {
+    try { db.exec(`ALTER TABLE ${table} ADD COLUMN uid TEXT`); } catch { /* déjà présente */ }
+
+    /* REMPLISSAGE DES LIGNES EXISTANTES. On respecte l'ordre de création : l'horodatage en tête
+       de l'ULID est repris de `created_at` quand la table en a un, sinon d'un compteur qui suit
+       l'ordre des `rowid`. Sans cette précaution, les uids d'une base déjà en service seraient
+       tous datés de la migration et leur tri serait aléatoire — or c'est ce tri qui renumérote
+       les versions et les passes. Les ex æquo sont départagés par la milliseconde ajoutée. */
+    const colonnes = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+    const dateCol = ['created_at', 'started_at', 'added_at', 'at', 'ts'].find((c) => colonnes.includes(c));
+    const aRemplir = db.prepare(
+      `SELECT rowid AS r${dateCol ? `, ${dateCol} AS d` : ''} FROM ${table} WHERE uid IS NULL ORDER BY rowid`,
+    ).all();
+    if (aRemplir.length) {
+      const poser = db.prepare(`UPDATE ${table} SET uid = ? WHERE rowid = ?`);
+      const base = Date.now() - aRemplir.length;
+      db.transaction(() => {
+        aRemplir.forEach((ligne, i) => {
+          const t = dateCol && ligne.d ? Date.parse(ligne.d) : NaN;
+          poser.run(ulid(Number.isFinite(t) ? t + i : base + i), ligne.r);
+        });
+      })();
+    }
+
+    /* UNIQUE, et non « UNIQUE NOT NULL » : SQLite ne sait pas ajouter une colonne NOT NULL sans
+       valeur par défaut à une table existante, et un index unique laisse passer les NULL. Le
+       déclencheur ci-dessous est ce qui garantit qu'il n'en reste jamais. */
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_uid ON ${table}(uid)`);
+    db.exec(`CREATE TRIGGER IF NOT EXISTS trg_${table}_uid AFTER INSERT ON ${table}
+             WHEN NEW.uid IS NULL
+             BEGIN UPDATE ${table} SET uid = mergerie_ulid() WHERE rowid = NEW.rowid; END`);
+  }
+}
+
+/* ---------- CE QUI N'APPARTIENT QU'À CETTE MACHINE : `local_state` et `local_pref` ----------
+ *
+ * Deux tables de même forme, aux durées de vie différentes (voir `src/localstate.js`) :
+ * `local_state` porte de l'état DÉRIVÉ (quand cet agent planifié a tourné ici, quand ce ticket
+ * Jira a été relu ici) et se recalcule ; `local_pref` porte une PRÉFÉRENCE (une session rangée)
+ * et ne se recalcule pas.
+ *
+ * Elles reprennent des colonnes qui vivaient dans des tables PARTAGÉES, où elles n'avaient rien
+ * à faire : `agent.schedule_fired_at` dirait au collègue que SON agent a tourné, `jira_watch`
+ * lui montrerait MON erreur réseau, et `task.hidden` rangerait chez lui la session qu'on a
+ * rangée chez soi. Les colonnes d'origine sont vidées et gelées, comme celles de `config`.
+ *
+ * `ref` est l'`uid` du parent, jamais son `id` entier : après une réhydratation venue d'un autre
+ * poste, les id se renumérotent et la ligne d'ici se retrouverait accrochée au mauvais parent. */
+db.exec(`CREATE TABLE IF NOT EXISTS local_state (
+  kind TEXT NOT NULL,
+  ref TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT,
+  updated_at TEXT,
+  PRIMARY KEY (kind, ref, key)
+)`);
+/* OÙ SE TROUVE, SUR CETTE MACHINE, LE DOSSIER QU'UNE SESSION HORS DÉPÔT DÉSIGNE.
+ *
+ * `local_task_dir.path` était un chemin absolu — `/Users/amady/lin/monprojet`. Sur le Linux du
+ * collègue, il ne désigne rien. La session, elle, se partage : ses passes se relisent, son
+ * verdict compte. Le fichier du dépôt porte donc `dir_hash` (l'empreinte du chemin normalisé),
+ * `dir_label` (le dernier segment, pour l'affichage) et `owner` ; chaque poste résout le chemin
+ * CHEZ LUI, dans cette table. Ailleurs, la session s'affiche avec son libellé et son
+ * propriétaire, et « Relancer » est refusé plutôt que de lancer l'agent dans le vide.
+ *
+ * Un autre poste peut RATTACHER son propre dossier au même `dir_hash` : il n'écrit alors que
+ * dans sa table à lui. */
+db.exec(`CREATE TABLE IF NOT EXISTS local_dir_map (
+  dir_hash TEXT PRIMARY KEY,
+  path TEXT NOT NULL,
+  updated_at TEXT
+)`);
+
+/* LE HANDLE D'UNE SESSION D'AGENT — et pourquoi il ne peut pas voyager.
+ *
+ * `claude` et `copilot` gardent leurs sessions dans le `~/.claude` de la MACHINE qui les a
+ * créées. Un handle venu d'un collègue ne désigne rien ici : le reprendre échouerait, ou pire,
+ * tomberait sur une session homonyme. Le repli existe déjà — on repart sur une session neuve
+ * avec le contexte réinjecté — et il devient simplement le cas normal entre deux postes.
+ *
+ * `scope` dit de quoi c'est le handle (le projet d'une session, un dossier hors dépôt, une
+ * question libre, la review d'une merge request), `ref` est l'`uid` du parent : jamais son id
+ * entier, que SQLite recycle après une suppression — une MR redécouverte hériterait alors de la
+ * session d'une autre. */
+db.exec(`CREATE TABLE IF NOT EXISTS local_session (
+  scope TEXT NOT NULL,
+  ref TEXT NOT NULL,
+  session_key TEXT,
+  session_backend TEXT,
+  session_cwd TEXT,
+  updated_at TEXT,
+  PRIMARY KEY (scope, ref)
+)`);
+
+db.exec(`CREATE TABLE IF NOT EXISTS local_pref (
+  kind TEXT NOT NULL,
+  ref TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT,
+  updated_at TEXT,
+  PRIMARY KEY (kind, ref, key)
+)`);
+
+/* LE DRAIN, et le gel qui suit. Rejouable : la seconde exécution ne trouve plus rien à déplacer.
+   Placé APRÈS les déclencheurs d'`uid` ci-dessus — il lit la colonne `uid` des parents, qui
+   vient d'être remplie sur les lignes existantes. */
+{
+  const deplacer = (table, cleParent, colonnes, cible, kind) => {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+    const aDeplacer = colonnes.filter((c) => cols.includes(c));
+    if (!aDeplacer.length) return;
+    const poser = db.prepare(`INSERT INTO ${cible} (kind, ref, key, value, updated_at)
+                              VALUES (?, ?, ?, ?, ?)
+                              ON CONFLICT (kind, ref, key) DO NOTHING`);
+    const maintenant = new Date().toISOString();
+    /* « REMPLIE » veut dire « porte autre chose que sa valeur neutre ». `task.hidden` a un
+       DEFAULT 0 : le traiter comme rempli ferait réécrire toutes les sessions à chaque
+       démarrage, et l'assertion du bas se déclencherait dès la première session créée. */
+    const remplie = (c) => `${c} IS NOT NULL AND ${c} <> '' AND ${c} <> 0`;
+    const lignes = db.prepare(
+      `SELECT ${cleParent} AS ref, ${aDeplacer.join(', ')} FROM ${table}
+       WHERE ${cleParent} IS NOT NULL AND (${aDeplacer.map(remplie).join(' OR ')})`,
+    ).all();
+    db.transaction(() => {
+      for (const ligne of lignes) {
+        for (const col of aDeplacer) {
+          if (ligne[col] === null || ligne[col] === undefined || ligne[col] === '') continue;
+          poser.run(kind, String(ligne.ref), col, String(ligne[col]), maintenant);
+        }
+      }
+      for (const col of aDeplacer) db.exec(`UPDATE ${table} SET ${col} = NULL WHERE ${remplie(col)}`);
+    })();
+    /* L'ASSERTION. Après le drain, une colonne gelée encore remplie ne peut plus venir que d'un
+       bug de ce fichier — on préfère un serveur qui refuse de démarrer à une donnée de poste
+       qui repart un jour dans le dépôt d'équipe. */
+    const reste = db.prepare(
+      `SELECT COUNT(*) n FROM ${table} WHERE ${aDeplacer.map(remplie).join(' OR ')}`,
+    ).get().n;
+    if (reste) throw new Error(`${table} : ${aDeplacer.join(', ')} encore rempli(s) après le drain vers ${cible}`);
+  };
+
+  /* LE DOSSIER D'UNE SESSION HORS DÉPÔT. Trois colonnes partageables remplacent le chemin
+     absolu : l'empreinte (qui permet à chacun de rattacher SON dossier), le libellé (pour que
+     la carte dise quelque chose chez le voisin) et le propriétaire. Migration APRÈS le
+     `CREATE TABLE local_task_dir`, plus haut. */
+  for (const [col, decl] of [['dir_hash', 'TEXT'], ['dir_label', 'TEXT'], ['owner', 'TEXT']]) {
+    try { db.exec(`ALTER TABLE local_task_dir ADD COLUMN ${col} ${decl}`); } catch { /* déjà présente */ }
+  }
+  {
+    const aFaire = db.prepare(
+      "SELECT id, path FROM local_task_dir WHERE path IS NOT NULL AND path <> ''",
+    ).all();
+    if (aFaire.length) {
+      const { empreinte, libelle } = require('./dirhash');
+      const moi = require('./identite').nom() || null;
+      /* `path` est `NOT NULL` depuis l'origine : on le gèle à la chaîne vide plutôt qu'à NULL,
+         qui serait refusé. Vide veut dire « ce n'est plus ici qu'on lit le chemin ». */
+      const poser = db.prepare("UPDATE local_task_dir SET dir_hash = ?, dir_label = ?, owner = COALESCE(owner, ?), path = '' WHERE id = ?");
+      const carte = db.prepare(`INSERT INTO local_dir_map (dir_hash, path, updated_at) VALUES (?, ?, ?)
+                                ON CONFLICT (dir_hash) DO UPDATE SET path = excluded.path`);
+      const maintenant = new Date().toISOString();
+      db.transaction(() => {
+        for (const d of aFaire) {
+          const h = empreinte(d.path);
+          carte.run(h, d.path, maintenant);
+          poser.run(h, libelle(d.path), moi, d.id);
+        }
+      })();
+    }
+    const reste = db.prepare("SELECT COUNT(*) n FROM local_task_dir WHERE path IS NOT NULL AND path <> ''").get().n;
+    if (reste) throw new Error('local_task_dir.path encore rempli après le drain vers local_dir_map');
+  }
+
+  /* LES HANDLES DE SESSION quittent les tables partagées pour `local_session`. Trois colonnes
+     qui voyagent ensemble : les déplacer une par une dans `local_state` les séparerait, alors
+     qu'un handle sans son `cwd` perd le garde-fou qui empêche de reprendre une session dans un
+     autre dossier. Rejouable : la seconde exécution ne trouve plus rien. */
+  {
+    const poser = db.prepare(`INSERT INTO local_session (scope, ref, session_key, session_backend, session_cwd, updated_at)
+                              VALUES (?, ?, ?, ?, ?, ?)
+                              ON CONFLICT (scope, ref) DO NOTHING`);
+    const maintenant = new Date().toISOString();
+    const sources = [
+      ['task_target', 'task_target', ['session_key', 'session_backend', 'session_cwd']],
+      ['local_task_dir', 'local_task_dir', ['session_key', 'session_backend', 'session_cwd']],
+      ['question', 'question', ['session_key', 'session_backend', 'session_cwd']],
+      ['mr', 'mr', ['review_session_key', 'review_session_backend', 'review_session_cwd']],
+    ];
+    for (const [scope, table, cols] of sources) {
+      const presentes = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+      if (!cols.every((c) => presentes.includes(c))) continue;
+      const lignes = db.prepare(
+        `SELECT uid, ${cols.join(', ')} FROM ${table} WHERE uid IS NOT NULL AND ${cols[0]} IS NOT NULL AND ${cols[0]} <> ''`,
+      ).all();
+      db.transaction(() => {
+        for (const l of lignes) poser.run(scope, l.uid, l[cols[0]], l[cols[1]] || null, l[cols[2]] || null, maintenant);
+        for (const c of cols) db.exec(`UPDATE ${table} SET ${c} = NULL WHERE ${c} IS NOT NULL AND ${c} <> ''`);
+      })();
+      const reste = db.prepare(
+        `SELECT COUNT(*) n FROM ${table} WHERE ${cols.map((c) => `(${c} IS NOT NULL AND ${c} <> '')`).join(' OR ')}`,
+      ).get().n;
+      if (reste) throw new Error(`${table} : handles de session encore remplis après le drain vers local_session`);
+    }
+  }
+
+  deplacer('agent', 'uid', ['schedule_fired_at'], 'local_state', 'agent');
+  deplacer('jira_watch', 'key', ['checked_at', 'error'], 'local_state', 'jira_watch');
+  deplacer('task', 'uid', ['hidden'], 'local_pref', 'task');
+  deplacer('local_task', 'uid', ['hidden'], 'local_pref', 'local_task');
+  deplacer('question', 'uid', ['hidden'], 'local_pref', 'question');
+}
+
+/* ---------- LE NOM DE FICHIER D'UN OBJET QU'ON NOMME : `slug` ----------
+ *
+ * Un agent et une page de notes portent un nom lisible, et c'est lui qui doit nommer leur
+ * fichier dans le dépôt partagé — `agents/documentaliste/agent.json` se relit, pas
+ * `agents/01JCXZ.../agent.json`. Le slug est donc FIGÉ À LA CRÉATION : renommer l'agent ne
+ * déplace pas son dossier. Sans ce gel, chaque renommage produirait chez les collègues une
+ * suppression suivie d'un ajout au lieu d'un changement de titre, et l'historique git du
+ * fichier — précisément ce qu'on gagne à passer par git — serait perdu à chaque fois.
+ *
+ * Le suffixe `-2`, `-3` règle les homonymes après normalisation (« Déploiement » et
+ * « déploiement ! » donnent le même slug). Il demande une lecture de la table, donc il ne peut
+ * pas vivre dans un déclencheur : `src/ulid.js` le calcule, les deux points de création
+ * l'appellent, et la reprise ci-dessous rattrape tout ce qui aurait été inséré autrement —
+ * l'amorçage du mode démo, par exemple, qui tourne dans son propre processus. */
+for (const [table, colonne] of [['agent', 'name'], ['note_page', 'title']]) {
+  try { db.exec(`ALTER TABLE ${table} ADD COLUMN slug TEXT`); } catch { /* déjà présente */ }
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_slug ON ${table}(slug)`);
+  const sans = db.prepare(`SELECT id, ${colonne} AS nom FROM ${table} WHERE slug IS NULL ORDER BY id`).all();
+  if (sans.length) {
+    const pris = new Set(db.prepare(`SELECT slug FROM ${table} WHERE slug IS NOT NULL`).all().map((r) => r.slug));
+    const poser = db.prepare(`UPDATE ${table} SET slug = ? WHERE id = ?`);
+    db.transaction(() => {
+      for (const ligne of sans) {
+        const s = slugLibre(ligne.nom, (x) => pris.has(x));
+        pris.add(s);
+        poser.run(s, ligne.id);
+      }
+    })();
+  }
+}
+
+/* ---------- CE QUI A CHANGÉ ET N'EST PAS ENCORE ÉCRIT DANS LE DÉPÔT ----------
+ *
+ * Le dossier `data/shared/` est la source de vérité : chaque ligne partagée y a son fichier. Le
+ * problème est de ne JAMAIS en oublier un — l'application compte plus de deux cents écritures,
+ * réparties dans vingt modules, et la moitié se produit au fond d'un runner. Les passer une par
+ * une en revue, c'est se donner rendez-vous avec l'oubli : il suffirait qu'une écriture ajoutée
+ * l'an prochain n'appelle pas le `store` pour qu'un objet cesse silencieusement d'être partagé.
+ *
+ * On prend donc le même parti que pour les `uid` : c'est LA BASE qui tient l'invariant. Un
+ * déclencheur par table partagée note la ligne touchée dans `store_sale` ; `store.ecouler()`
+ * réécrit ensuite les fichiers correspondants. Les suppressions, elles, ne peuvent pas dire
+ * QUEL fichier retirer (le chemin se calcule en JavaScript) : elles marquent la table dans
+ * `store_menage`, et le balayage compare le dossier aux lignes restantes.
+ *
+ * LA FILE EST DANS LA MÊME TRANSACTION QUE L'ÉCRITURE. C'est ce qui rend l'ensemble sûr à la
+ * coupure : si le processus meurt entre la ligne et le fichier, la file a survécu, et le
+ * démarrage suivant écrit le fichier manquant. Rien ne peut être perdu, seulement retardé.
+ *
+ * Une ligne fille marque son PARENT : un constat de review vit dans le fichier de sa passe, une
+ * commande de vérificateur dans celui de son vérificateur.
+ *
+ * Placé APRÈS tous les `CREATE TABLE` : un déclencheur sur une table qui n'existe pas encore
+ * lève, et le `catch {}` voisin l'avalerait. */
+/* PAS DE CLÉ PRIMAIRE, ET CE N'EST PAS UN OUBLI. `INSERT OR IGNORE` À L'INTÉRIEUR D'UN
+   DÉCLENCHEUR NE FAIT RIEN : SQLite ignore la clause `OR IGNORE` du corps d'un déclencheur et
+   applique celle de l'instruction EXTÉRIEURE. Un simple `DELETE FROM verifier` — qui cascade sur
+   ses commandes et met à NULL la référence de ses vérifications — faisait donc marquer deux fois
+   la même ligne, et échouait sur une violation d'unicité. Le doublon ne coûte rien ici : on
+   déduplique à la lecture, et l'effacement retire toutes les copies d'un coup. */
+{
+  /* Une base écrite par une version antérieure porte encore la clé primaire : on la reconstruit
+     en gardant la file, qui peut contenir du travail non écrit. */
+  const aUnIndex = (t) => {
+    try { return db.prepare(`PRAGMA index_list(${t})`).all().length > 0; } catch { return false; }
+  };
+  const existe = (t) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  for (const [table, colonnes] of [['store_sale', 'tbl, rid'], ['store_menage', 'tbl']]) {
+    if (existe(table) && aUnIndex(table)) {
+      /* ON RETIRE D'ABORD LES DÉCLENCHEURS. `ALTER TABLE … RENAME` réécrit les références à la
+         table DANS LE CORPS DES DÉCLENCHEURS : les anciens se mettraient à viser
+         `store_sale_ancien`, qu'on s'apprête à supprimer — et la première écriture venue
+         échouerait sur « no such table ». Ils sont recréés juste en dessous, de toute façon. */
+      for (const t of db.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'trigger' AND (name LIKE 'trg_%_sale_%' OR name LIKE 'trg_%_menage')",
+      ).all()) db.exec(`DROP TRIGGER IF EXISTS ${t.name}`);
+      db.exec(`ALTER TABLE ${table} RENAME TO ${table}_ancien`);
+      db.exec(`CREATE TABLE ${table} (${colonnes.split(', ').map((c) => `${c} ${c === 'rid' ? 'INTEGER' : 'TEXT'} NOT NULL`).join(', ')})`);
+      db.exec(`INSERT INTO ${table} (${colonnes}) SELECT ${colonnes} FROM ${table}_ancien`);
+      db.exec(`DROP TABLE ${table}_ancien`);
+    }
+  }
+}
+/* Un vestige de reconstruction interrompue : sans ça, la table renommée resterait à jamais. */
+for (const t of ['store_sale_ancien', 'store_menage_ancien']) {
+  try { db.exec(`DROP TABLE IF EXISTS ${t}`); } catch { /* déjà partie */ }
+}
+db.exec('CREATE TABLE IF NOT EXISTS store_sale (tbl TEXT NOT NULL, rid INTEGER NOT NULL)');
+db.exec('CREATE TABLE IF NOT EXISTS store_menage (tbl TEXT NOT NULL)');
+
+{
+  const registre = require('./store-registry');
+  const aFichier = registre.REGISTRE.filter((e) => e.chemin && e.toFile
+    && (e.famille === 'P' || (e.partagees || []).length));
+  const parents = new Map();          // table fille -> { parent, colonne }
+  for (const e of aFichier) {
+    for (const l of e.listes || []) parents.set(l.table, { parent: e.table, colonne: l.colonneParent });
+  }
+
+  const marquer = (table, cible, colonne) => {
+    /* `rowid` et non `id` : deux tables partagées n'ont pas de colonne `id` — les réglages, une
+       veille Jira nommée par la clé du ticket. `rowid` existe partout. */
+    const valeur = colonne ? `${cible}.${colonne}` : `${cible}.rowid`;
+    const source = colonne
+      ? `(SELECT rowid FROM ${table} WHERE ${registre.pour(table).uidPropre || table === 'config' ? 'id' : 'rowid'} = ${valeur})`
+      : valeur;
+    return `INSERT INTO store_sale (tbl, rid) VALUES ('${table}', ${source});`;
+  };
+
+  /* ON RECRÉE TOUJOURS, plutôt que `CREATE TRIGGER IF NOT EXISTS`. Le corps de ces déclencheurs
+     est GÉNÉRÉ à partir du registre : s'il change — une table qui rejoint la famille partagée,
+     une liste fille qui apparaît —, un déclencheur d'une version antérieure resterait en place
+     et marquerait la mauvaise chose. Pire : `ALTER TABLE … RENAME` réécrit les références au
+     nom de table DANS le corps des déclencheurs, si bien qu'une reconstruction de la file
+     laissait des déclencheurs pointant une table supprimée, et la première écriture venue
+     échouait sur « no such table ». Les recréer à chaque démarrage coûte quelques
+     millisecondes et supprime toute la classe de problèmes. */
+  const recreer = (nom, corps) => { db.exec(`DROP TRIGGER IF EXISTS ${nom}`); db.exec(corps); };
+  for (const e of aFichier) {
+    for (const evenement of ['INSERT', 'UPDATE']) {
+      const nom = `trg_${e.table}_sale_${evenement.toLowerCase()}`;
+      recreer(nom, `CREATE TRIGGER ${nom}
+               AFTER ${evenement} ON ${e.table}
+               BEGIN ${marquer(e.table, 'NEW')} END`);
+    }
+    recreer(`trg_${e.table}_menage`, `CREATE TRIGGER trg_${e.table}_menage
+             AFTER DELETE ON ${e.table}
+             BEGIN INSERT INTO store_menage (tbl) VALUES ('${e.table}'); END`);
+  }
+
+  /* Les lignes FILLES marquent leur parent : elles n'ont pas de fichier à elles. Une suppression
+     de ligne fille ne demande aucun balayage — le fichier du parent, réécrit, ne la mentionnera
+     simplement plus. */
+  for (const [fille, { parent, colonne }] of parents) {
+    for (const evenement of ['INSERT', 'UPDATE', 'DELETE']) {
+      const ref = evenement === 'DELETE' ? 'OLD' : 'NEW';
+      const nom = `trg_${fille}_sale_${evenement.toLowerCase()}`;
+      recreer(nom, `CREATE TRIGGER ${nom}
+               AFTER ${evenement} ON ${fille}
+               BEGIN INSERT INTO store_sale (tbl, rid)
+                 SELECT '${parent}', rowid FROM ${parent} WHERE id = ${ref}.${colonne}; END`);
+    }
+  }
+}
 
 // Au démarrage : tout job resté "running" a été coupé -> interrupted.
 // Ce que ces jobs PORTAIENT (sessions, vérifications) est remis debout par

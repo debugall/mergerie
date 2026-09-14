@@ -15,6 +15,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('./db');
+const { slugLibre } = require('./ulid');
+const { etat } = require('./localstate');
+const store = require('./store');
 const agentargs = require('./agentargs');
 const agentdefaults = require('./agentdefaults');
 const agentinput = require('./agentinput');
@@ -84,6 +87,10 @@ function decorer(a) {
       } catch { return null; }
     })(),
     run_count: db.prepare('SELECT COUNT(*) n FROM task WHERE agent_id = ?').get(a.id).n,
+    /* LA DERNIÈRE FOIS QUE SON HORAIRE A TIRÉ **ICI**. La colonne a quitté la table : trois
+       instances allumées lanceraient sinon trois fois le même agent, chacune persuadée que le
+       tir de la voisine était le sien. L'écran, lui, continue de lire le même champ. */
+    schedule_fired_at: etat.lire('agent', a.uid, 'schedule_fired_at'),
     knowledge: k ? {
       id: k.id,
       version: k.version,
@@ -114,6 +121,9 @@ function parCle(builtinKey) {
 const COLONNES = ['name', 'description', 'kind', 'scope_kind', 'system_prompt', 'prompt_template',
   'model', 'permission_mode', 'allowed_tools_json', 'disallowed_tools_json', 'max_turns',
   'skills_json', 'subagents_json', 'output_kind', 'output_ref', 'knowledge_prompt', 'schedule',
+  /* QUI honore l'horaire. Une équipe, trois instances allumées : sans ce champ, le même agent
+     planifié tournerait trois fois et serait facturé trois fois. */
+  'runner',
   'defaults_json'];
 
 function valider(body, id = null) {
@@ -219,26 +229,40 @@ function valeursDe(body, base = {}) {
   v.output_ref = v.output_ref ? String(v.output_ref) : null;
   v.knowledge_prompt = String(v.knowledge_prompt || '').trim() || null;
   v.schedule = String(v.schedule || '').trim() || null;
+  v.runner = String(v.runner || '').trim() || null;
   return v;
 }
 
 function creer(body) {
   const v = valeursDe(body, {});
   const now = new Date().toISOString();
-  const cols = [...COLONNES, 'builtin_key', 'created_at', 'updated_at'];
-  const info = db.prepare(`INSERT INTO agent (${cols.join(', ')}) VALUES (${cols.map((c) => `@${c}`).join(', ')})`)
-    .run({ ...v, builtin_key: body.builtin_key || null, created_at: now, updated_at: now });
-  ecrireRepos(info.lastInsertRowid, body.repos);
-  return lire(info.lastInsertRowid);
+  /* LE SLUG EST FIGÉ ICI, une fois pour toutes : c'est lui qui nommera le dossier de l'agent
+     dans le dépôt de données partagé (`agents/documentaliste/`). Renommer l'agent ensuite ne le
+     déplace pas — sinon chaque renommage apparaîtrait chez les collègues comme une suppression
+     suivie d'un ajout, et l'historique git du dossier serait perdu. */
+  const slug = slugLibre(v.name, (x) => !!db.prepare('SELECT 1 FROM agent WHERE slug = ?').get(x));
+  const cols = [...COLONNES, 'builtin_key', 'slug', 'created_at', 'updated_at'];
+  /* Le périmètre est écrit DANS la même transaction : il vit dans le fichier de l'agent, et un
+     fichier écrit sans lui décrirait un agent sans dépôts. */
+  const cree = store.ecrire('agent', () => {
+    const id = db.prepare(`INSERT INTO agent (${cols.join(', ')}) VALUES (${cols.map((c) => `@${c}`).join(', ')})`)
+      .run({ ...v, builtin_key: body.builtin_key || null, slug, created_at: now, updated_at: now }).lastInsertRowid;
+    ecrireRepos(id, body.repos);
+    return id;
+  });
+  return lire(cree.id);
 }
 
 function modifier(id, patch) {
   const a = db.prepare('SELECT * FROM agent WHERE id = ?').get(Number(id) || 0);
   if (!a) return null;
   const v = valeursDe(patch, a);
-  db.prepare(`UPDATE agent SET ${COLONNES.map((c) => `${c} = @${c}`).join(', ')}, updated_at = @updated_at WHERE id = @id`)
-    .run({ ...v, id: a.id, updated_at: new Date().toISOString() });
-  if (patch.repos !== undefined) ecrireRepos(a.id, patch.repos);
+  store.ecrire('agent', () => {
+    db.prepare(`UPDATE agent SET ${COLONNES.map((c) => `${c} = @${c}`).join(', ')}, updated_at = @updated_at WHERE id = @id`)
+      .run({ ...v, id: a.id, updated_at: new Date().toISOString() });
+    if (patch.repos !== undefined) ecrireRepos(a.id, patch.repos);
+    return a.id;
+  });
   return lire(a.id);
 }
 
@@ -247,7 +271,13 @@ function supprimer(id) {
   if (!a) return false;
   /* Les `task` gardent `agent_name` : la session reste lisible et la carte continue de dire
      qui l'a produite. C'est `ON DELETE SET NULL` sur `agent_id` qui s'en charge. */
-  db.prepare('DELETE FROM agent WHERE id = ?').run(a.id);
+  /* Les versions de connaissance partent en cascade SQL — mais leurs FICHIERS, eux, ne se
+     suppriment pas tout seuls : on les retire AVANT l'agent, sans quoi le dépôt garderait des
+     cartes que la base ne connaît plus, et l'hydratation suivante les ferait revenir. */
+  for (const k of db.prepare('SELECT id FROM agent_knowledge WHERE agent_id = ?').all(a.id)) {
+    store.supprimer('agent_knowledge', k.id);
+  }
+  store.supprimer('agent', a.id);
   // Pas de cascade sur le DISQUE : les versions de connaissance s'effacent explicitement.
   // eslint-disable-next-line global-require
   const { AGENTS_DIR } = require('./paths');
@@ -575,8 +605,11 @@ function versPageDeNotes(agent, task, texte, onLog) {
     onLog(t('agents.log.note-updated', { title: page.title }));
   } else {
     const cree = notes.creerPage({ title: `${agent.name} — ${t('agents.note.title-suffix')}`, content: contenu }, msgs);
-    db.prepare('UPDATE agent SET output_ref = ?, updated_at = ? WHERE id = ?')
-      .run(String(cree.id), new Date().toISOString(), agent.id);
+    store.ecrire('agent', () => {
+      db.prepare('UPDATE agent SET output_ref = ?, updated_at = ? WHERE id = ?')
+        .run(String(cree.id), new Date().toISOString(), agent.id);
+      return agent.id;
+    });
     racineId = cree.id;
     onLog(t('agents.log.note-created', { title: cree.title }));
   }

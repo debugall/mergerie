@@ -2052,6 +2052,15 @@ Chaque graphe affiche **la question à laquelle il répond**. Le total de tokens
 travail interne de l'agent n'est pas compté).
 
 ### Réglages
+Chaque champ porte un badge **« équipe »** ou **« ce poste »**, parce que les réglages ne sont pas
+tous de même nature. Un réglage d'**équipe** décrit l'outil : les gabarits de prompt, les seuils,
+les politiques de review, l'adresse de la forge — deux reviews de la même merge request faites avec
+des consignes différentes ne sont pas comparables, donc ces réglages-là sont faits pour être
+communs. Un réglage de **ce poste** n'appartient qu'à ta machine : les jetons d'API, le dossier de
+clonage, la langue, le moteur de dictée. Ils sont rangés à part, dans une table qui n'a pas
+vocation à voyager : c'est ce qui permettra plus tard à une équipe de partager son outil sans que
+le moindre secret quitte les machines.
+
 Sous-onglets, **dans l'ordre du parcours** — connecter, choisir le code, régler la review, régler
 l'outil, les intégrations optionnelles, le banc d'essai :
 
@@ -2773,6 +2782,67 @@ Avant une **session de codage**, le worktree est **remis à zéro s'il est sale*
 précédente interrompue peut laisser des fichiers non commités qui feraient échouer le `checkout`.
 Le nettoyage ne touche qu'au non-commité — **les commits déjà faits sont préservés**. Les reviews,
 elles, ne lisent qu'un `git diff` et ne dépendent jamais de l'état du worktree.
+
+## Partager avec une équipe (dépôt de données)
+
+Mergerie est fait pour une personne, et le reste par défaut. Mais le travail qu'on accumule — les
+**règles de review**, les **vérificateurs**, les **agents** et leur **carte du code**, les **notes**,
+les **todos** — a toutes les raisons d'être commun : une carte de domaine coûte des heures d'agent
+à produire, et la refaire sur six postes, c'est payer six fois la même chose pour obtenir six
+réponses légèrement différentes.
+
+**Le principe.** On désigne un dépôt git — celui de l'équipe, sur la forge qu'elle a déjà — et
+Mergerie y range ce travail : **un fichier par objet**, en texte lisible. Chacun garde **son**
+instance, **ses** jetons et **son** abonnement au CLI d'IA : les requêtes partent de son poste et
+lui sont facturées, et c'est le résultat qui est partagé. Il n'y a rien à installer, rien à
+administrer : l'équipe a déjà une forge, des droits, des sauvegardes et un historique.
+
+**Ce qui ne part JAMAIS dans le dépôt.** Les sept jetons d'API, le dossier de clonage, la langue,
+le moteur de dictée, les chemins absolus de cette machine, les sessions rangées, les journaux de
+jobs. Chaque colonne de la base est classée nommément, et un contrôle automatique refuse une
+colonne au nom de secret qui ne serait pas déclarée — parce qu'**un secret commité dans git est
+définitif** : l'historique est immuable, chaque clone le garde, la forge le garde. Le retirer ne
+suffit pas, il faut révoquer. **L'onglet Liens reste local lui aussi** : la grille
+services × environnements et les liens libres disent où l'on va travailler, pas ce qu'on a
+produit.
+
+**Mettre une équipe en route.**
+
+1. **Créer un dépôt vide** sur la forge, privé, par exemple `equipe/mergerie-data`.
+2. **Le premier poste** — celui qui a déjà l'historique — colle son URL dans
+   *Réglages → Général → Données partagées*, puis clique **« Cloner / rattacher »**. Le dépôt
+   distant étant vide, Mergerie l'**initialise** avec ce que ce poste porte déjà, et le pousse.
+3. **Les autres postes** collent la même URL et cliquent le même bouton. Cette fois le dépôt a du
+   contenu : il est cloné, et tout apparaît — règles, vérificateurs, agents, notes, todos.
+4. Chacun vérifie que git le connaît (`git config --global user.name`) : **c'est cette identité
+   qui signe les commits**, et c'est elle qui répondra plus tard à « qui a écrit ça ? ». Sans
+   elle, rien n'est commité, et l'écran le dit.
+
+**Au quotidien, on ne fait rien.** Toutes les *n* secondes (30 par défaut), l'outil envoie ce qui
+est nouveau et récupère ce qui l'est chez les autres. Le pied de page affiche `↑2 ↓0` et l'heure
+de la dernière synchro ; un clic force un tour. Hors ligne, tout continue de marcher : les commits
+restent locaux, le témoin passe à l'ambre, et le retard se rattrape au retour.
+
+**Et si deux personnes modifient la même chose ?** C'est rare par construction — un fichier par
+objet, nommé par un identifiant qui ne dépend d'aucun poste : deux postes ne se croisent que s'ils
+ont vraiment modifié le même objet. Quand ça arrive, **la version distante l'emporte**, et la
+vôtre est **gardée** : *Réglages → Données partagées* la montre avec deux boutons, *Reprendre la
+mienne* et *Garder la leur*. Jamais de rebase en plan, jamais de marqueur de conflit dans le
+dépôt, jamais une commande git à taper.
+
+**Ce que git offre en prime.** Sur une page de notes, un bouton **Historique** liste qui l'a
+modifiée, quand, et montre le diff. Aucune table de versions n'a été écrite pour ça :
+l'information existe parce qu'on est passé par git.
+
+**Les agents planifiés ont un exécutant.** Trois instances allumées lanceraient trois fois le même
+agent — et l'équipe paierait trois fois. Le formulaire d'agent propose donc un champ *Exécutant* :
+seule l'instance de cette personne honore l'horaire. Sans exécutant, l'agent ne tourne qu'à la
+main, et c'est le défaut.
+
+**Le codage hors dépôt voyage à moitié, et c'est voulu.** La session se partage — ses passes se
+relisent —, mais `/Users/moi/projets/api` ne désigne rien sur le Linux du collègue. Sa carte
+affiche donc le nom du dossier et son propriétaire, et « Relancer » est refusé plutôt que de faire
+travailler l'agent dans un homonyme.
 
 ## Données & sauvegarde
 

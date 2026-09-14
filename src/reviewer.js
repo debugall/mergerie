@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const db = require('./db');
+const localsession = require('./localsession');
 const { getConfig } = require('./config');
 const { REVIEWS_DIR, TMP_DIR, ensureDir, slugify } = require('./paths');
 const git = require('./git');
@@ -288,12 +289,17 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
     let stdout = '';
     if (useSession) {
       const key = `review-mr-${mr.id}`;
-      const s = db.prepare('SELECT review_session_key, review_session_cwd FROM mr WHERE id = ?').get(mr.id) || {};
-      let doResume = !!s.review_session_key;
-      if (doResume && s.review_session_cwd && path.resolve(s.review_session_cwd) !== path.resolve(cwd)) doResume = false;
+      /* Le handle de la session de review vit dans `local_session` : il ne vaut que dans le
+         `~/.claude` de cette machine, alors que l'état de relecture de la MR, lui, se partage.
+         Une review reprise depuis un autre poste repart donc sur une session neuve — c'est le
+         repli qui existait déjà, devenu simplement le cas normal entre deux postes. */
+      const uidMr = (db.prepare('SELECT uid FROM mr WHERE id = ?').get(mr.id) || {}).uid;
+      const s = localsession.lire('mr', uidMr);
+      let doResume = !!s.session_key;
+      if (doResume && s.session_cwd && path.resolve(s.session_cwd) !== path.resolve(cwd)) doResume = false;
       let r; let created = !doResume;
       try {
-        r = await agentsession.runInSession({ key, handle: doResume ? s.review_session_key : null, prompt, cwd, resume: doResume, onLog });
+        r = await agentsession.runInSession({ key, handle: doResume ? s.session_key : null, prompt, cwd, resume: doResume, onLog });
       } catch (e) {
         if (!doResume) throw e;
         onLog(`⚠ reprise de la session de review impossible (${String(e.message).split('\n')[0]}) → session neuve`);
@@ -301,10 +307,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
         created = true;
       }
       stdout = r.text || '';
-      if (created) {
-        db.prepare('UPDATE mr SET review_session_key = ?, review_session_backend = ?, review_session_cwd = ? WHERE id = ?')
-          .run(r.handle, r.backend, cwd, mr.id);
-      }
+      if (created) localsession.ecrire('mr', uidMr, { session_key: r.handle, session_backend: r.backend, session_cwd: cwd });
     } else {
       stdout = await copilot.runPrompt(prompt, cwd, { ...baseVars, out_file: outRel, kind, extraInput: diff, owner: { kind: 'mr', id: mr.id } }, onLog);
     }

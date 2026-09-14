@@ -12,6 +12,7 @@
  */
 
 const db = require('./db');
+const localsession = require('./localsession');
 const agentsession = require('./agentsession');
 const { t } = require('../public/i18n-runtime.js');
 
@@ -56,11 +57,18 @@ function insertTargets(taskId, list, sessionId) {
      dessein : on ignore d'où vient cette session, et le garde-fou « même cwd » ne doit pas
      refuser ce que l'utilisateur a explicitement demandé. Si la reprise échoue, le repli
      existant repart sur une session neuve avec le contexte réinjecté. */
-  const ins = db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, session_key, session_backend, updated_at)
-    VALUES (?, ?, ?, ?, 'new', ?, ?, ?)`);
+  const ins = db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, updated_at)
+    VALUES (?, ?, ?, ?, 'new', ?)`);
   const now = new Date().toISOString();
-  const backend = sessionId ? agentsession.backendName() : null;
-  for (const cible of list) ins.run(taskId, cible.repo_id, cible.branch, cible.base_branch || null, sessionId || null, backend, now);
+  for (const cible of list) {
+    const rowid = ins.run(taskId, cible.repo_id, cible.branch, cible.base_branch || null, now).lastInsertRowid;
+    /* Le handle vit dans `local_session` : il ne vaut que sur cette machine, alors que le
+       projet de session, lui, se partage. */
+    if (sessionId) {
+      const uid = db.prepare('SELECT uid FROM task_target WHERE id = ?').get(rowid).uid;
+      localsession.ecrire('task_target', uid, { session_key: sessionId, session_backend: agentsession.backendName() });
+    }
+  }
 }
 
 /* Insère la session et ses projets. `champs` porte ce que la route a déjà validé (prompt,

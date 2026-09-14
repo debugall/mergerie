@@ -1253,6 +1253,27 @@
             <span id="configInfoGeneral" class="muted"></span>
         </div>
 
+        <!-- DONNÉES PARTAGÉES. Un dépôt git d'équipe devient la source de vérité du travail
+             accumulé : reviews, règles, vérificateurs, agents, notes, todos. Chacun garde son
+             instance, ses jetons et son abonnement IA — rien de secret n'entre dans le dépôt.
+             Vide = mode mono-poste, et rien ne change. -->
+        <h2 data-i18n="datasync.head">Données partagées</h2>
+        <p class="muted" style="max-width:620px" data-i18n="datasync.intro">Un dépôt git où l'équipe range son travail accumulé. Chacun garde son instance et ses jetons : rien de secret n'y entre jamais.</p>
+        <div class="form" style="max-width:560px">
+            <label><span data-i18n="datasync.lbl.url">Dépôt de données</span> <button type="button" class="hint" tabindex="-1" aria-label="L'URL du dépôt git où l'équipe partage son travail. Vide = mode mono-poste, rien n'est partagé." data-tip="L'URL du dépôt git où l'équipe partage son travail. Vide = mode mono-poste, rien n'est partagé." data-i18n-tip="datasync.tip.url"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="data_repo_url" placeholder="https://gitlab.com/equipe/mergerie-data.git" /></label>
+            <label><span data-i18n="datasync.lbl.branch">Branche</span> <input form="configForm" name="data_repo_branch" placeholder="main" /></label>
+            <label><span data-i18n="datasync.lbl.seconds">Cadence (secondes)</span> <button type="button" class="hint" tabindex="-1" aria-label="Toutes les combien de secondes on envoie et on récupère. Entre 10 et 600." data-tip="Toutes les combien de secondes on envoie et on récupère. Entre 10 et 600." data-i18n-tip="datasync.tip.seconds"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="data_sync_seconds" type="number" min="10" max="600" /></label>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="button" id="btnDataAttach" title="Cloner le dépôt, ou l'initialiser avec ce que porte déjà ce poste" data-i18n-title="datasync.title.attach"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="datasync.btn.attach">Cloner / rattacher</span></button>
+                <button class="btn" type="button" id="btnDataNow" title="Envoyer et récupérer maintenant" data-i18n-title="datasync.title.now"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="datasync.btn.now">Synchroniser maintenant</span></button>
+                <button class="btn" type="submit" form="configForm" title="Enregistrer sans rattacher" data-i18n-title="settings.title.save-only"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.save-only">Enregistrer seulement</span></button>
+                <span id="dataSyncInfo" class="muted"></span>
+            </div>
+            <label class="inline-check"><input form="configForm" name="usage_share" type="checkbox" /> <span data-i18n="datasync.lbl.usage">Partager ma dépense IA (un total par jour)</span> <button type="button" class="hint" tabindex="-1" aria-label="Décoché, ce que coûte ton abonnement ne quitte pas ce poste. Coché, l'équipe voit un total par jour — jamais le détail par appel." data-tip="Décoché, ce que coûte ton abonnement ne quitte pas ce poste. Coché, l'équipe voit un total par jour — jamais le détail par appel." data-i18n-tip="datasync.tip.usage"><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <div id="dataSyncState" class="muted"></div>
+            <div id="dataSyncConflicts"></div>
+        </div>
+
         <!-- Formulaire ANCRE : tous les champs de config vivent dans les sous-onglets (Git, Jira,
              Merge Request) et s'y rattachent via l'attribut form= ; c'est ce <form> qui les soumet. -->
         <form id="configForm" class="form"><span id="configInfo" class="muted"></span></form>
@@ -1829,6 +1850,11 @@
                 </div>
                 <p id="agentScheduleSaid" class="muted"></p>
                 <p id="agentScheduleNeeds" class="field-note" hidden data-i18n="agents.schedule.needs-max-turns">Un horaire exige une borne de tours : renseigne « Borne de tours » dans Capacités.</p>
+                <!-- L'EXÉCUTANT. Visible seulement quand un dépôt de données est configuré : en
+                     mono-poste la question ne se pose pas, et un champ qui ne sert à rien est un
+                     champ qu'il faut comprendre pour l'ignorer. -->
+                <label id="agentRunnerRow" hidden><span data-i18n="agents.f.runner">Exécutant</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.runner-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <select id="agentRunner"></select></label>
+                <p id="agentRunnerNone" class="field-note" hidden data-i18n="agents.runner.none">Aucun exécutant : cet agent ne tournera qu'à la main.</p>
             </details>
 
             <p class="form-group-title"><span data-i18n="agents.f.argv">Ce que ça donne en ligne de commande</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.argv-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></p>
@@ -2623,6 +2649,11 @@
     <span class="footer-prompt">dev@mergerie:~$<span class="footer-cursor">▮</span></span>
     <span id="footerFrame" class="footer-frame"></span>
     <span id="footerTokens" class="footer-tokens" title="Tokens IA consommés (cumul estimé)" data-i18n-title="context.title.tokens-ia-consommes-cumul-estime"><svg class="ico ico-sm"><use href="#i-zap"/></svg> <b id="footerTokCount">0</b> tok</span>
+    <!-- LA SYNCHRO DU DÉPÔT DE DONNÉES, en trois caractères. Caché tant qu'aucun dépôt n'est
+         configuré : le mode mono-poste ne doit rien voir de tout ça. Vert = à jour, ambre =
+         hors ligne (les commits sont locaux, rien n'est perdu), rouge = une modification à
+         reprendre. Cliquer force un tour et ouvre les réglages en cas de conflit. -->
+    <button id="footerSync" class="footer-mode footer-sync" type="button" hidden title="Données partagées" data-i18n-title="datasync.head"><svg class="ico ico-sm"><use href="#i-refresh"/></svg><span id="footerSyncTxt">↑0 ↓0</span></button>
     <button id="footerLogs" class="footer-mode footer-logs" type="button" hidden title="Réafficher le journal du dernier job (raccourci : l)" data-i18n-title="context.title.reafficher-le-journal"><span class="footer-logs-dot"></span><svg class="ico ico-sm"><use href="#i-doc"/></svg><span data-i18n="context.btn.journal">journal</span></button>
     <button id="footerMute" class="footer-mode" type="button" title="Mode silencieux (notifications bureau)"><svg class="ico ico-sm"><use href="#i-bell"/></svg></button>
     <!-- LA COUCHE CLAVIER SE VOIT. Onze raccourcis existent — dont `j`/`k` et `1`–`9`, ceux qui

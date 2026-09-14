@@ -19,6 +19,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('./db');
+const store = require('./store');
 const copilot = require('./copilot');
 const git = require('./git');
 const notes = require('./notes');
@@ -182,17 +183,24 @@ function ecrireVersion(agentId, { contenu, reposJson, taskId, diffSummary, gapsJ
   const mdPath = path.join(agentsDir(agentId), `knowledge-v${n}.md`);
   fs.writeFileSync(mdPath, contenu, 'utf8');
   const now = new Date().toISOString();
-  const poser = db.transaction(() => {
+  /* MISE EN SERVICE = DEUX LIGNES QUI CHANGENT. La nouvelle version prend la main, l'ancienne
+     est remplacée : les deux fichiers doivent partir, sinon le dépôt montrerait deux cartes
+     « en service » pour le même agent — exactement ce que l'index unique interdit en base. */
+  const remplacees = status === 'active'
+    ? db.prepare("SELECT id FROM agent_knowledge WHERE agent_id = ? AND status = 'active'").all(agentId)
+    : [];
+  const ligne = store.ecrire('agent_knowledge', () => {
     if (status === 'active') {
       db.prepare("UPDATE agent_knowledge SET status = 'superseded' WHERE agent_id = ? AND status = 'active'").run(agentId);
     }
-    db.prepare(`INSERT INTO agent_knowledge (agent_id, version, md_path, repos_json, task_id, diff_summary, gaps_json, status, created_at, activated_at, tokens)
+    const id = db.prepare(`INSERT INTO agent_knowledge (agent_id, version, md_path, repos_json, task_id, diff_summary, gaps_json, status, created_at, activated_at, tokens)
       VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(agentId, n, mdPath, JSON.stringify(reposJson || []), taskId || null,
       diffSummary || null, JSON.stringify(gapsJson || []), status, now, status === 'active' ? now : null,
-      copilot.countTokens(contenu));
+      copilot.countTokens(contenu)).lastInsertRowid;
+    for (const r of remplacees) store.rafraichir('agent_knowledge', r.id);
+    return id;
   });
-  poser();
-  return db.prepare('SELECT * FROM agent_knowledge WHERE agent_id = ? AND version = ?').get(agentId, n);
+  return ligne;
 }
 
 /* L'état de chaque dépôt au moment où la carte a été écrite : SHA + chemins cités. C'est CE
@@ -325,10 +333,13 @@ function activer(agent, version) {
   if (!v) return { error: 'agents.err.version-not-found' };
   if (v.status !== 'pending') return { error: 'agents.err.not-pending' };
   const now = new Date().toISOString();
-  db.transaction(() => {
+  const remplacees = db.prepare("SELECT id FROM agent_knowledge WHERE agent_id = ? AND status = 'active'").all(agent.id);
+  store.ecrire('agent_knowledge', () => {
     db.prepare("UPDATE agent_knowledge SET status = 'superseded' WHERE agent_id = ? AND status = 'active'").run(agent.id);
     db.prepare("UPDATE agent_knowledge SET status = 'active', activated_at = ? WHERE id = ?").run(now, v.id);
-  })();
+    for (const r of remplacees) store.rafraichir('agent_knowledge', r.id);
+    return v.id;
+  });
   return { ok: true, version: v.version };
 }
 
@@ -354,7 +365,10 @@ function addGaps(agent, task, gaps) {
   const liste = jsonOu(v.gaps_json, []);
   const at = new Date().toISOString();
   for (const g of gaps) liste.push({ task_id: task.id, project: g.project, path: g.path, note: g.note, at });
-  db.prepare('UPDATE agent_knowledge SET gaps_json = ? WHERE id = ?').run(JSON.stringify(liste.slice(-200)), v.id);
+  store.ecrire('agent_knowledge', () => {
+    db.prepare('UPDATE agent_knowledge SET gaps_json = ? WHERE id = ?').run(JSON.stringify(liste.slice(-200)), v.id);
+    return v.id;
+  });
 }
 
 /* ---------- B7 : quelles cartes une merge request touche ---------- */

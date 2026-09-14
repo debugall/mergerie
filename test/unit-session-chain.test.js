@@ -56,8 +56,15 @@ describe('Reprise de session : le handle suit les passes', () => {
   });
   after(async () => { await app.stop(); });
 
-  const cible = (taskId, repoId) => (app.db
-    .prepare('SELECT * FROM task_target WHERE task_id = ? AND repo_id = ?').get(taskId, repoId));
+  /* LE HANDLE A QUITTÉ LA LIGNE. Il ne vaut que dans le `~/.claude` de cette machine : il vit
+     donc dans `local_session`, rangé sous l'`uid` du projet. On le recolle ici, comme le fait
+     l'application — sans quoi ce test éprouverait le stockage plutôt que l'enchaînement. */
+  const cible = (taskId, repoId) => {
+    // eslint-disable-next-line global-require
+    const localsession = require('../src/localsession');
+    return localsession.resoudre('task_target', app.db
+      .prepare('SELECT * FROM task_target WHERE task_id = ? AND repo_id = ?').get(taskId, repoId));
+  };
 
   test('deux suivis d’affilée sur UN projet s’enchaînent dans la même conversation', async () => {
     const { body: t } = await app.api('POST', '/api/tasks', {
@@ -96,7 +103,9 @@ describe('Reprise de session : le handle suit les passes', () => {
   /* La commande « Reprendre au terminal » copie ce handle : elle doit mener à la conversation
      TELLE QU'ELLE EST, pas à son état d'il y a trois suivis. */
   test('la commande de reprise pointe la dernière passe', async () => {
-    const tg = app.db.prepare('SELECT * FROM task_target WHERE repo_id = ? ORDER BY id DESC LIMIT 1').get(idA);
+    // eslint-disable-next-line global-require
+    const tg = require('../src/localsession').resoudre('task_target',
+      app.db.prepare('SELECT * FROM task_target WHERE repo_id = ? ORDER BY id DESC LIMIT 1').get(idA));
     const { body } = await app.api('GET', `/api/tasks/${tg.task_id}`);
     const vue = body.task.targets.find((x) => x.id === tg.id);
     assert.match(vue.resume_cmd || '', new RegExp(`--resume ${tg.session_key}`),

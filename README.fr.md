@@ -124,7 +124,7 @@ run déclenché par un **horaire** qui a réécrit une page de notes.
   restant utilisable pour git et les sessions de codage), règles de review, **review automatique des merge
   requests à l'arrivée** et **re-review automatique quand un rapport se périme** (toutes deux plafonnées et
   décochées par défaut), **publication automatique du rapport sur la MR**, templates de prompt, thème et
-  langue, règles de review pouvant être **limitées à un dépôt**, cases cochées d'office d'une nouvelle session, et jobs Jenkins liés aux dépôts.
+  langue, règles de review pouvant être **limitées à un dépôt**, cases cochées d'office d'une nouvelle session, et jobs Jenkins liés aux dépôts. Chaque champ porte un badge **« équipe » / « ce poste »** : gabarits de prompt, seuils et politiques décrivent l'outil, tandis que les jetons d'API, le dossier de clonage et la langue n'appartiennent qu'à ta machine — et sont rangés à part. Désigne un dépôt git et une **équipe partage le travail accumulé** — règles de review, vérificateurs, agents et leur carte du code, notes, todos — chacun gardant son instance, ses jetons et son abonnement IA.
 
 Partout : `Ctrl`/`Cmd` + `K` ouvre une **palette de commandes** (sauter à un onglet, une MR, une session
 en tapant son nom — `!217` ou `PROJ-1408` tapés seuls y vont directement), `j` / `k` parcourent la liste

@@ -1980,6 +1980,14 @@ Every chart displays **the question it answers**. The token total is a **lower b
 work is not counted).
 
 ### Settings
+Every field carries a **“team”** or **“this machine”** badge, because settings are not all of the
+same kind. A **team** setting describes the tool: the prompt templates, the thresholds, the review
+policies, the forge address — two reviews of the same merge request written under different
+instructions are not comparable, so those settings are meant to be shared. A **this machine**
+setting belongs to your computer alone: the API tokens, the clone folder, the language, the
+dictation engine. They are stored apart, in a table that is never meant to travel: that is what
+will later let a team share its tool without a single secret leaving anyone's machine.
+
 Sub-tabs, **in the order of the journey** — connect, choose the code, tune the review, tune the
 tool, the optional integrations, the test bench:
 
@@ -2686,6 +2694,65 @@ Before a **coding session**, the worktree is **reset if it is dirty**: a previou
 interrupted can leave uncommitted files that would make the `checkout` fail. The cleanup only touches the
 uncommitted — **commits already made are preserved**. Reviews only read a `git diff` and never depend on the
 state of the worktree.
+
+## Sharing with a team (data repository)
+
+Mergerie is built for one person, and stays that way by default. But the work you accumulate — the
+**review rules**, the **verifiers**, the **agents** and their **map of the code**, the **notes**,
+the **todos** — has every reason to be common: a domain map costs hours of agent time to produce,
+and redoing it on six machines means paying six times for the same thing and getting six slightly
+different answers.
+
+**The idea.** You point at a git repository — the team's own, on the forge it already has — and
+Mergerie keeps that work in it: **one file per object**, in readable text. Everyone keeps **their**
+instance, **their** tokens and **their** AI CLI subscription: requests leave their machine and are
+billed to them, and it is the result that is shared. There is nothing to install and nothing to
+administer: the team already has a forge, permissions, backups and a history.
+
+**What NEVER goes into the repository.** The seven API tokens, the clone folder, the language, the
+dictation engine, this machine's absolute paths, tidied-away sessions, job logs. Every column of
+the database is classified by name, and an automatic check refuses a secret-looking column that is
+not declared — because **a secret committed to git is permanent**: history is immutable, every
+clone keeps it, the forge keeps it. Removing it is not enough; you have to revoke. **The Links tab
+stays local too**: the services × environments grid and the free links say where you go to work,
+not what you produced.
+
+**Getting a team started.**
+
+1. **Create an empty repository** on the forge, private, say `team/mergerie-data`.
+2. **The first machine** — the one that already has the history — pastes its URL into
+   *Settings → General → Shared data*, then clicks **“Clone / attach”**. The remote being empty,
+   Mergerie **initialises** it with what that machine already holds, and pushes it.
+3. **The other machines** paste the same URL and click the same button. This time the repository
+   has content: it is cloned, and everything appears — rules, verifiers, agents, notes, todos.
+4. Everyone checks that git knows them (`git config --global user.name`): **that identity signs
+   the commits**, and it is what will later answer “who wrote this?”. Without it nothing is
+   committed, and the screen says so.
+
+**Day to day, you do nothing.** Every *n* seconds (30 by default) the tool sends what is new and
+fetches what is new elsewhere. The footer shows `↑2 ↓0` and the time of the last sync; a click
+forces a round. Offline, everything keeps working: commits stay local, the indicator turns amber,
+and the backlog catches up on return.
+
+**What if two people change the same thing?** It is rare by construction — one file per object,
+named by an identifier that depends on no machine: two machines only meet if they really changed
+the same object. When it happens, **the remote version wins**, and yours is **kept**:
+*Settings → Shared data* shows it with two buttons, *Take mine back* and *Keep theirs*. Never a
+half-finished rebase, never a conflict marker in the repository, never a git command to type.
+
+**What git throws in for free.** On a notes page, a **History** button lists who changed it, when,
+and shows the diff. No version table was written for that: the information exists because you went
+through git.
+
+**Scheduled agents have a runner.** Three instances left open would launch the same agent three
+times — and the team would pay three times. So the agent form offers a *Runner* field: only that
+person's instance honours the schedule. With no runner the agent only runs by hand, and that is
+the default.
+
+**Out-of-repo coding travels halfway, on purpose.** The session is shared — its passes can be read
+back — but `/Users/me/projects/api` means nothing on a colleague's Linux. Its card therefore shows
+the folder name and its owner, and “Run again” is refused rather than setting the agent to work in
+a namesake folder.
 
 ## Data & backup
 

@@ -25,6 +25,17 @@ const db = require('../src/db');
 const agentschedule = require('../src/agentschedule');
 // eslint-disable-next-line import/order
 const agentprofile = require('../src/agentprofile');
+// eslint-disable-next-line global-require
+const { etat } = require('../src/localstate');
+
+/* L'HEURE DU DERNIER TIR A QUITTÉ LA TABLE `agent` — elle dit « CE poste a lancé cet agent »,
+   ce qui n'a pas de sens pour un collègue : trois instances allumées en feraient trois runs.
+   Elle vit dans `local_state`, rangée sous l'`uid` de l'agent. Ces trois raccourcis évitent de
+   répéter la traduction id → uid à chaque épreuve. */
+const uidDe = (id) => db.prepare('SELECT uid FROM agent WHERE id = ?').get(id).uid;
+const poserTir = (id, quand) => etat.ecrire('agent', uidDe(id), 'schedule_fired_at', quand);
+const oublierTir = (id) => etat.ecrire('agent', uidDe(id), 'schedule_fired_at', null);
+const lireTir = (id) => etat.lire('agent', uidDe(id), 'schedule_fired_at');
 
 after(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } });
 
@@ -113,33 +124,33 @@ describe('agentschedule : qui est dû', () => {
   const maintenant = new Date('2026-03-10T09:00:00');
 
   test('jamais tiré : il est dû', () => {
-    db.prepare('UPDATE agent SET schedule_fired_at = NULL WHERE id = ?').run(a.id);
+    oublierTir(a.id);
     const dus = agentschedule.dus(maintenant);
     assert.equal(dus.length, 1);
     assert.equal(dus[0].agent.id, a.id);
   });
 
   test('tiré AVANT le créneau : toujours dû', () => {
-    db.prepare('UPDATE agent SET schedule_fired_at = ? WHERE id = ?')
-      .run(new Date('2026-03-09T07:00:00').toISOString(), a.id);
+    poserTir(a.id, new Date('2026-03-09T07:00:00').toISOString());
     assert.equal(agentschedule.dus(maintenant).length, 1);
   });
 
   test('tiré APRÈS le créneau : plus dû — un tick par minute n’en fait pas soixante runs', () => {
-    db.prepare('UPDATE agent SET schedule_fired_at = ? WHERE id = ?')
-      .run(new Date('2026-03-10T07:00:00').toISOString(), a.id);
+    poserTir(a.id, new Date('2026-03-10T07:00:00').toISOString());
     assert.equal(agentschedule.dus(maintenant).length, 0);
   });
 
   test('un horaire SANS borne de tours n’est jamais dû', () => {
     // La sauvegarde le refuse ; une base héritée pourrait en porter un.
-    db.prepare('UPDATE agent SET schedule_fired_at = NULL, max_turns = NULL WHERE id = ?').run(a.id);
+    oublierTir(a.id);
+    db.prepare('UPDATE agent SET max_turns = NULL WHERE id = ?').run(a.id);
     assert.equal(agentschedule.dus(maintenant).length, 0);
     db.prepare('UPDATE agent SET max_turns = 40 WHERE id = ?').run(a.id);
   });
 
   test('un horaire illisible n’est jamais dû non plus', () => {
-    db.prepare("UPDATE agent SET schedule = 'toutes les lunes', schedule_fired_at = NULL WHERE id = ?").run(a.id);
+    oublierTir(a.id);
+    db.prepare("UPDATE agent SET schedule = 'toutes les lunes' WHERE id = ?").run(a.id);
     assert.equal(agentschedule.dus(maintenant).length, 0);
     db.prepare("UPDATE agent SET schedule = 'daily 07:00' WHERE id = ?").run(a.id);
   });
@@ -152,7 +163,7 @@ describe('agentschedule : le tick et son plafond', () => {
     db.prepare('DELETE FROM task').run();
     db.prepare("UPDATE config SET agent_auto_max = 2 WHERE id = 1").run();
     a = db.prepare("SELECT * FROM agent WHERE name = 'Planifié'").get();
-    db.prepare('UPDATE agent SET schedule_fired_at = NULL WHERE id = ?').run(a.id);
+    oublierTir(a.id);
   });
 
   test('un tick lance l’agent dû, et le second n’en relance pas un autre', () => {
@@ -171,18 +182,18 @@ describe('agentschedule : le tick et son plafond', () => {
   test('le plafond atteint saute le run, l’écrit au journal, et n’essaie pas soixante fois', () => {
     // Sans l'écriture de l'heure de tir, l'agent serait « dû » à chaque minute jusqu'à minuit.
     db.prepare("UPDATE config SET agent_auto_max = 1 WHERE id = 1").run();
-    db.prepare('UPDATE agent SET schedule_fired_at = NULL WHERE id = ?').run(a.id);
+    oublierTir(a.id);
     const journal = [];
     const lances = agentschedule.tick(maintenant, (m) => journal.push(m));
     assert.equal(lances.length, 0);
     assert.ok(journal.some((l) => /1/.test(l) && /Planifié/.test(l)), journal.join(' | '));
-    assert.ok(db.prepare('SELECT schedule_fired_at s FROM agent WHERE id = ?').get(a.id).s,
+    assert.ok(lireTir(a.id),
       'l’heure de tir est écrite quand même : sinon on réessaie chaque minute');
   });
 
   test('un plafond à 0 signifie « sans limite »', () => {
     db.prepare("UPDATE config SET agent_auto_max = 0 WHERE id = 1").run();
-    db.prepare('UPDATE agent SET schedule_fired_at = NULL WHERE id = ?').run(a.id);
+    oublierTir(a.id);
     assert.equal(agentschedule.tick(maintenant, () => {}).length, 1);
   });
 

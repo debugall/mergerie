@@ -15,6 +15,8 @@
  */
 
 const db = require('./db');
+const { etat } = require('./localstate');
+const identite = require('./identite');
 const { getConfig } = require('./config');
 const { t } = require('../public/i18n-runtime.js');
 
@@ -107,17 +109,37 @@ function creneauSuivant(spec, now = new Date()) {
   return new Date(d.getFullYear(), d.getMonth() + 1, spec.dom, spec.hh, spec.mm, 0, 0);
 }
 
+/* CET AGENT EST-IL LE MIEN ? En mono-poste, `runner` est vide et tout ce qui est planifié
+   tourne ici, comme avant. Dès qu'un dépôt de données est configuré, un agent sans exécutant
+   ne tourne NULLE PART tout seul : il faut avoir désigné quelqu'un. */
+function estMonAgent(a) {
+  const partage = String(getConfig().data_repo_url || '').trim();
+  const exécutant = String(a.runner || '').trim();
+  if (!partage) return !exécutant || exécutant === identite.nom();
+  return Boolean(exécutant) && exécutant === identite.nom();
+}
+
 /* Les agents DUS : un horaire, une borne de tours (sans elle la sauvegarde a refusé, mais une
    base héritée pourrait en porter un), et un créneau passé plus récent que le dernier tir. */
 function dus(now = new Date()) {
   const out = [];
   for (const a of db.prepare('SELECT * FROM agent WHERE schedule IS NOT NULL AND schedule <> \'\'').all()) {
     if (!(Number(a.max_turns) > 0)) continue;
+    /* L'EXÉCUTANT. À plusieurs, trois instances allumées lanceraient trois fois le même agent
+       planifié — chacune persuadée d'être la seule, et l'équipe paierait trois fois. `runner`
+       porte l'identité git de celui qui l'honore ; VIDE = personne, l'agent ne tourne qu'à la
+       main. C'est le défaut, et c'est le bon : un agent qui se met à tourner tout seul chez un
+       collègue parce qu'on a coché une case chez soi serait une mauvaise surprise. */
+    if (!estMonAgent(a)) continue;
     const spec = parse(a.schedule);
     if (!spec) continue;
     const creneau = prochainCreneau(spec, now);
     if (!creneau) continue;
-    if (a.schedule_fired_at && new Date(a.schedule_fired_at) >= creneau) continue;
+    /* La DERNIÈRE FOIS QUE CET AGENT A TOURNÉ ICI. L'information est de poste, pas d'équipe :
+       trois instances allumées lanceraient sinon trois fois le même agent, chacune persuadée
+       que le tir de la voisine était le sien. Elle vit donc dans `local_state`. */
+    const tire = etat.lire('agent', a.uid, 'schedule_fired_at');
+    if (tire && new Date(tire) >= creneau) continue;
     out.push({ agent: a, creneau });
   }
   return out;
@@ -141,8 +163,7 @@ function tick(now = new Date(), onLog = () => {}) {
   for (const { agent, creneau } of dus(now)) {
     /* Le plafond atteint N'EMPÊCHE PAS d'écrire l'heure de tir : sans ça, l'agent serait
        « dû » à chaque minute jusqu'à minuit, et le journal se remplirait de refus. */
-    const marquer = () => db.prepare('UPDATE agent SET schedule_fired_at = ? WHERE id = ?')
-      .run(creneau.toISOString(), agent.id);
+    const marquer = () => etat.ecrire('agent', agent.uid, 'schedule_fired_at', creneau.toISOString());
     if (plafond > 0 && lancesAujourdhui(now) >= plafond) {
       onLog(t('agents.log.auto-max', { n: plafond, name: agent.name }));
       marquer();

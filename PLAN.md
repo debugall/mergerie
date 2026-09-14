@@ -22,8 +22,17 @@ Application locale mono-utilisateur (Node + Express + SQLite + front vanilla) po
 | Fichier | Rôle |
 |---|---|
 | `paths.js` | chemins des données ; `MERGERIE_DATA_DIR` pour isoler `data/` |
-| `db.js` | schéma SQLite + migrations ; reset des jobs `running` au boot |
-| `config.js` | lecture/écriture de la config (row unique) |
+| `db.js` | schéma SQLite + migrations ; reset des jobs `running` au boot ; `local_config` (drain des réglages de poste, **assertion de colonnes gelées**) ; déclencheurs `uid` et reprise des `slug` |
+| `config.js` | lecture/écriture de la config — **deux tables, un seul objet** : `config` (équipe) et `local_config` (ce poste), le registre disant la destination de chaque champ |
+| `store-registry.js` | **la famille de chaque table** : P (partagé, part dans le dépôt d'équipe), L (local), C (cache reconstructible), avec le nom de fichier, la stratégie de fusion et les colonnes qui ne sortent jamais. Pur : aucun `require` vers la base, donc lisible par `npm run check` et par les tests |
+| `ulid.js` | l'identité qui survit au partage : ULID triable par date (monotone dans la milliseconde), `slugifier` / `slugLibre` pour les noms de fichiers. Aucune dépendance |
+| `store.js` | **le dossier de fichiers EST la base** : sérialisation déterministe, écriture fichier+SQLite dans une seule transaction, export complet, hydratation complète et incrémentale, traduction des références par clé naturelle |
+| `datasync.js` | git comme moyen de transport : commits groupés, boucle pull-rebase-push, conflits résolus sans jamais bloquer, historique d'un fichier. Ne connaît que des fichiers — aucune ligne |
+| `localstate.js` | `local_state` (état dérivé de ce poste) et `local_pref` (préférences de ce poste), même forme, durées de vie différentes |
+| `dirhash.js` / `localdirs.js` | l'empreinte d'un chemin local (pur, utilisable pendant les migrations) et sa résolution sur CE poste |
+| `identite.js` | l'identité git du poste — pas de compte Mergerie, pas de mot de passe |
+| `localsession.js` | le handle d'une session d'agent : il ne vaut que dans le `~/.claude` du poste qui l'a créé |
+| `demo-shared.js` | le dépôt de données du mode démo : un vrai dépôt git local, trois auteurs fictifs, un faux distant nu |
 | `httpreq.js` | requête HTTP(S) bas niveau partagée par les clients de forge + fabrique d'**agent TLS scopé** (`GITLAB_CA_CERT`/`GITLAB_INSECURE_TLS`, `GITHUB_CA_CERT`/`GITHUB_INSECURE_TLS`) ; timeout de 30 s (sans lui, une forge qui ne répond jamais gèlerait la file de jobs) |
 | `forge.js` | **aiguillage de forge** : `clientFor(repo)` renvoie `gitlab.js` ou `github.js` selon `repo.forge`. **Règle du projet : aucun autre module n'appelle un client en direct.** Les deux clients exposent la MÊME interface et la même forme normalisée, donc aucun appelant n'a de branche `if (github)`. Aussi : `isConfigured(cfg, forge)`, `refUrl` (URL web d'une ref, format propre à chaque forge) |
 | `github.js` | client API GitHub REST v3, **même interface que `gitlab.js`**. Traduit PR → MR (`number`→`iid`, `head.ref`→`source_branch`, `merged:true`→`state:'merged'` — GitHub dit `closed` pour une PR mergée), issue comments + review comments → **discussions** (fils reconstruits via `in_reply_to_id`), position inline (`commit_id`/`path`/`line`/`side`) ↔ position GitLab. Pagination par header **`Link`** (pas de compteur de pages), `User-Agent` obligatoire (403 sinon), 403 + `X-RateLimit-Remaining: 0` → message de quota dédié. GitHub Enterprise : base `<url>/api/v3` |
@@ -128,6 +137,240 @@ Application locale mono-utilisateur (Node + Express + SQLite + front vanilla) po
 - **todo** — `title`, `priority` (high/normal/low), `status` **binaire** (open/done — une todo de poste de travail se coche, elle ne se pilote pas), `note`, **`link_kind`/`link_ref`** (mr → `mr.id` | ticket → clé | repo → `repo.id` ; le couple va ensemble, un type sans référence donnerait un bouton qui ne mène nulle part), **`due_at`** (échéance ET rappel), `reminded_at` (posé par le CLIENT après affichage de la notification, pas à la lecture de la liste : une notification qui échoue ne doit pas consommer l'unique occasion de prévenir), `done_at` (fait courir les 7 jours), `archived_at`. Tri : priorité, puis échéance, les sans-date en dernier — sinon les plus nombreuses repousseraient en bas ce qui est dû aujourd'hui.
 - **config.brief_on_open** (`'1'`/`'0'`) et **config.stale_mr_days** (défaut 5, borné [1,90]) — l'atterrissage sur le brief à la première ouverture de la journée, et le seuil au-delà duquel une MR reviewée et toujours ouverte est « dormante ». Le réglage vit en base (il vaut pour l'outil) ; la DATE du dernier brief affiché reste en localStorage (`mergerie_brief_seen`) — deux navigateurs ouverts n'ont pas à se voler le brief l'un l'autre.
 - **feed** — journal d'événements « frais » du footer : `type` (`mr_opened`/`mr_merged`), `mr_iid`, `project`, `author`, `title`, `at`. Émis par `discover` (nouvelle MR ; MR ouverte disparue de la forge = mergée/fermée, avec garde d'ancienneté 7 j anti-fantômes + flag `mr.closed_seen` anti-doublon) et par le merge applicatif.
+
+## Base partagée — le registre des familles (`store-registry.js`)
+
+Mergerie est mono-poste : une base SQLite, des fichiers à côté. Pour qu'une **équipe** partage le
+travail accumulé (reviews, règles, vérificateurs, agents et leur carte du code, notes, todos), ce
+travail part dans un **dépôt git d'équipe** qui fait foi, chacun gardant son instance, ses jetons
+et son abonnement IA. La spécification complète est `shared_database.md` ; ce qui est en place est
+le socle sur lequel tout le reste s'appuie.
+
+**La décision de fond n'est pas technique, elle est de classement** : chaque table appartient à
+une famille, et à une seule, déclarée dans `src/store-registry.js`.
+
+- **P — partagé** (36 tables) : le travail accumulé. Une ligne = un fichier du dépôt
+  (`todos/<uid>.json`, `notes/<slug>.md`, `reviews/<forge>/<projet>/<iid>/<uid>.md`), ou une
+  **liste dans le fichier de son parent** quand elle ne se modifie qu'avec lui (`repo_link`,
+  `verifier_command`, `finding`, `service_url`…). Chaque entrée dit aussi comment deux postes se
+  départagent : `append-only` (le fichier est nommé par un ULID, deux postes ne touchent jamais le
+  même — aucun conflit possible) ou `last-writer` (le plus récent gagne, l'autre est prévenu et
+  récupère sa version d'un clic).
+- **L — local** (10 tables) : secret, ou propre à un poste. N'entre jamais dans le dépôt. **Tout
+  l'onglet Liens en fait partie** — la grille « services × environnements », les gabarits d'URL de
+  contexte et les liens libres décrivent où l'on va travailler, pas ce qu'on a produit. Les
+  partager imposerait à l'équipe la façon dont une personne range ses raccourcis, et ferait entrer
+  dans un dépôt des adresses d'infrastructure que rien n'oblige à écrire quelque part.
+- **C — cache** (8 tables) : relu de la forge, de Jenkins, de Docker ou du disque. Le partager
+  serait partager du périmé. `job_log` pèse à lui seul 58 % de la base : de la console
+  d'exécution locale, précisément ce qui n'a aucune raison de voyager.
+
+**Deux tables sont coupées en deux**, et c'est assumé plutôt que déduit : `config` est P (gabarits
+de prompt, seuils, URLs de forge — deux reviews de la même MR faites avec des consignes
+différentes ne sont pas comparables) mais porte les jetons, nommés un par un dans `locales` ;
+`mr` est C (la forge fait foi du titre, des branches, du SHA) mais porte l'état du travail du
+relecteur — `status`, `reviewed_sha`, le contexte saisi à la main —, nommé un par un dans
+`partagees`.
+
+**Ce qui tient la classification**, parce qu'une déclaration ne s'exécute pas et que rien ne la
+contredit quand elle ment :
+
+- `npm run check` échoue sur une table de `db.js` absente du registre **et** sur une entrée du
+  registre sans table — dans les deux sens, parce que dans les deux sens l'oubli est silencieux :
+  classée par défaut en partagé, une table nouvelle enverrait un jour un secret sur la forge ;
+  classée par défaut en local, elle ne serait jamais partagée sans que personne ne comprenne
+  pourquoi. Il vérifie aussi qu'une table P sait devenir un fichier (`cle` + `chemin`, ou
+  `parent` + `liste`) et que sa stratégie de fusion est connue.
+- `test/unit-store-registry.test.js` lit le schéma d'une base **neuve** et confronte le registre à
+  ces colonnes réelles. Le contrôle qui compte : **toute colonne dont le nom dit qu'elle porte un
+  secret ou un chemin de poste** (`*token*`, `*_key`, `*_path`, `*cwd*`, `password`, `secret`) doit
+  être déclarée locale, ou justifiée nommément dans `EXCEPTIONS` — c'est ainsi que
+  `repo_jenkins.job_path` (un chemin dans Jenkins) et `agent_knowledge.tokens` (un *nombre* de
+  jetons) restent d'équipe, en le disant. Cette barrière échoue **en se fermant** : une colonne
+  ajoutée l'an prochain et oubliée fait rougir les tests au lieu de partir sur la forge. Un secret
+  commité dans git est définitif — l'historique est immuable, chaque clone le garde, la forge le
+  garde ; il faut révoquer. La barrière vaut donc largement sa gêne.
+
+### Les réglages coupés en deux (`local_config`)
+
+`config` reste la table d'**équipe** — gabarits de prompt, seuils, politiques, URL de la forge,
+glossaire de dictée. Les colonnes de **poste** déménagent dans `local_config`, jumelle à ligne
+unique : les sept jetons (`access_token`, `github_token`, `jira_token`, `jenkins_token`,
+`dictation_api_key`, plus `jira_email` et `jenkins_user`), `clone_path`, `language`,
+`jenkins_refresh_minutes`, `git_commands_seeded` et le moteur de dictée.
+
+- **Le tri est déclaré, pas déduit** : chaque colonne de `config` figure nommément dans `locales`
+  ou dans `partagees` du registre, et un test exige que les deux listes **couvrent le schéma
+  exactement**. Ailleurs une colonne nouvelle est partagée par défaut, ce qui est le bon défaut ;
+  ici ce serait une fuite — cette table est le seul fourre-tout du schéma.
+- **Vidée et gelée, pas supprimée** : `DROP COLUMN` sur une base en service est irréversible, et
+  une lecture oubliée doit trouver du vide plutôt qu'un jeton périmé qu'elle croirait bon. Le
+  drain est idempotent ; une **assertion au démarrage** refuse une colonne gelée non vide — après
+  le drain, ce ne peut plus être qu'un bug de `db.js`, donc le serveur refuse de partir.
+- **Rien ne change pour le reste du code** : `getConfig()` rend le même objet, `updateConfig()`
+  accepte le même patch. Seule la table de destination change, et `npm run check` refuse un champ
+  d'`ALLOWED` sans destination, ou écrit du mauvais côté.
+- **L'écran le dit** : `GET /api/config` renvoie `scopes` (produit par le registre), et chaque
+  champ de `#configForm` reçoit un badge « équipe » / « ce poste ». La liste n'est pas recopiée
+  côté client : dupliquée, elle mentirait au premier réglage déplacé — et un badge qui ment sur un
+  jeton est pire que pas de badge.
+- L'amorçage des commandes git a déménagé en fin de `db.js` : son drapeau est devenu une donnée de
+  poste, et lu avant le drain il aurait réintroduit les cinq entrées à chaque démarrage.
+
+### L'identité qui survit au partage (`uid`, `slug`, `src/ulid.js`)
+
+Les entiers auto-incrémentés sont **locaux par nature** : deux postes créent chacun le dépôt n° 12,
+deux reviews de la même MR reçoivent chacune la version 2. Plutôt que de réécrire 852 requêtes,
+chaque table partagée reçoit une colonne `uid` — un **ULID** (26 caractères, `src/ulid.js`, une
+vingtaine de lignes, aucune dépendance). Les jointures continuent de passer par les entiers ;
+l'uid ne sert qu'à franchir la frontière entre deux postes.
+
+- **Triable par date de création** : les dix premiers caractères encodent l'horodatage. C'est cette
+  propriété qui remplace les compteurs partagés — `review_version.version`, `agent_pass.n` et
+  `agent_knowledge.version` se renumérotent en relisant les uids dans l'ordre. Deux postes qui
+  reviewent la même MR en même temps produisent v2 et v3, jamais deux v2, et dans le même ordre
+  chez tout le monde. Le générateur est **monotone dans la milliseconde** (variante « monotonic »
+  de la spécification ULID) : on insère volontiers vingt-cinq lignes dans la même milliseconde, et
+  sans cela leur ordre retomberait sur la partie aléatoire, c'est-à-dire sur rien.
+- **Posé par un déclencheur, pas par les appelants** : `db.function('mergerie_ulid', …)` rend la
+  fonction appelable depuis SQL, et un `AFTER INSERT … WHEN NEW.uid IS NULL` par table pose l'uid.
+  Aucun des ~100 `INSERT` de l'application n'a à y penser, donc aucun ne peut l'oublier — y compris
+  ceux du mode démo et des scripts. Contrepartie assumée : la base ne s'**écrit** plus depuis le
+  `sqlite3` en ligne de commande ; elle se lit toujours.
+- **Les lignes existantes sont reprises dans l'ordre** : l'horodatage de leur uid vient de leur
+  `created_at`, pas de l'instant de la migration — sinon le tri des versions deviendrait aléatoire
+  sur toute base déjà en service.
+- **`slug` pour ce qu'on nomme en toutes lettres** (`agent`, `note_page`) : c'est lui qui nommera
+  le fichier dans le dépôt partagé (`agents/documentaliste/`, `notes/deploiement-prod.md`). **Figé
+  à la création**, suffixé `-2`, `-3` sur homonymie : renommer ne déplace pas le fichier, sans quoi
+  chaque renommage apparaîtrait chez les collègues comme une suppression suivie d'un ajout, et
+  l'historique git du fichier serait perdu. Il ne peut pas vivre dans un déclencheur (il faut
+  relire la table), donc `npm run check` refuse un `INSERT INTO agent` ou `INSERT INTO note_page`
+  qui ne le renseigne pas.
+
+### Ce qui n'appartient qu'à ce poste (`local_state`, `local_pref`, `local_dir_map`)
+
+Trois colonnes vivaient dans des tables partagées où elles n'avaient rien à faire — non parce
+qu'elles sont secrètes, mais parce qu'elles **ne veulent rien dire ailleurs** :
+
+- `agent.schedule_fired_at` → **`local_state`**. « Cet agent a tiré » : chez qui ? Trois instances
+  allumées liraient chacune le tir des deux autres.
+- `jira_watch.checked_at` / `error` → **`local_state`**. Ce qu'on surveille est d'équipe ; QUAND ce
+  poste a regardé, et son erreur réseau, non. Recollés à la lecture, en deux requêtes.
+- `task.hidden` et ses jumelles → **`local_pref`**. Ranger une session la retire de SA vue ; la
+  supprimer la supprime pour tout le monde, et la confirmation le dit.
+- `local_task_dir.path` → **`local_dir_map`**. Un chemin absolu ne désigne rien sur le poste d'en
+  face. La ligne partagée porte `dir_hash` (l'empreinte du chemin normalisé, qui ne révèle ni
+  l'arborescence ni le nom de l'utilisateur), `dir_label` et `owner` ; chaque poste résout le
+  chemin chez lui. Ailleurs, la session se relit et « Relancer » est **refusé** plutôt que de
+  faire travailler l'agent dans un homonyme.
+
+Pas de clé étrangère : quatre parents possibles, comme pour `agent_pass` et `piece_jointe`. Le
+ménage est explicite (`oublier()`). La référence est l'**uid** du parent, jamais son id entier —
+qui se renumérote d'un poste à l'autre.
+
+### La couche `store` : le dossier de fichiers EST la base
+
+`src/store.js` fait de `data/shared/` la source de vérité ; SQLite redevient un cache
+reconstructible, et les 852 requêtes de lecture ne changent pas.
+
+- **Un fichier par entité**, nommé par un ULID ou une clé naturelle. C'est ce qui rend les
+  conflits rares : deux postes ne touchent le même fichier que s'ils ont vraiment modifié la même
+  chose. Un document Markdown en produit **deux** — le corps, relisible tel quel hors de l'outil,
+  et son `.json` jumeau (`notes/deploiement-prod.md` + `.json`).
+- **Sérialisation déterministe** : clés triées récursivement, deux espaces, aucun champ nul écrit,
+  une nouvelle ligne finale. Deux écritures du même état donnent le même octet — sans quoi
+  « git status propre » ne voudrait plus dire « rien n'a changé ».
+- **Fichier et base dans la MÊME transaction SQLite** : si le fichier ne s'écrit pas, la ligne non
+  plus. « Enregistré » ne peut jamais vouloir dire « enregistré ici seulement ».
+- **Aucun identifiant de poste dans un fichier** : un dépôt se désigne `gitlab/acme/web`, une MR
+  `gitlab/acme/web!218`, un agent par son slug. Une référence qui ne se résout pas est **reportée**
+  (une sous-page arrivée avant son parent), puis **signalée** — jamais devinée : perdre un lien
+  vaut mieux que pointer sur la mauvaise merge request.
+- **Hydratation** complète ou incrémentale (`git diff --name-only`), par upsert sur l'uid. Les
+  compteurs par parent (`agent_knowledge.version`) sont **recalculés dans l'ordre des uid**.
+- **TOUTES les tables partagées** y passent : dépôts, merge requests (leur état de relecture
+  seulement), reviews et leurs versions, constats, convergences, règles, vérificateurs et leurs
+  verdicts, agents et leur carte du code, sessions de codage et d'exploration, questions libres,
+  passes d'agent, pièces jointes, notes et captures, todos, lots, veilles Jira, commandes et
+  opérations git, sauvegardes Docker, réglages d'équipe.
+
+**CE N'EST PAS L'APPELANT QUI PRÉVIENT LE STORE, C'EST LA BASE.** Un déclencheur par table
+partagée note la ligne touchée dans `store_sale` ; `store.ecouler()` écrit ensuite les fichiers.
+L'application compte plus de deux cents écritures réparties dans vingt modules : les passer une
+par une en revue, c'était se donner rendez-vous avec l'oubli — il aurait suffi qu'une écriture
+ajoutée l'an prochain n'appelle pas le `store` pour qu'un objet cesse silencieusement d'être
+partagé. Trois conséquences, toutes voulues :
+
+- **La file est dans la même transaction que l'écriture.** Un processus tué entre la ligne et le
+  fichier ne perd rien : le démarrage suivant trouve la file et écrit ce qui manque.
+- **On écoule après la réponse HTTP**, pas avant : l'utilisateur n'attend pas l'écriture de ses
+  fichiers, et une erreur de disque ne transforme pas une sauvegarde réussie en erreur 500.
+- **Une suppression déclenche un BALAYAGE.** Elle ne peut pas dire quel fichier retirer — le
+  chemin se calcule en JavaScript, pas en SQL : on compare donc le dossier aux lignes restantes.
+  Plus coûteux, mais c'est le seul moyen de garantir qu'il ne reste jamais un fichier orphelin,
+  lequel ferait revenir l'objet à la prochaine hydratation.
+
+Deux pièges rencontrés, notés parce qu'ils ne se devinent pas : `INSERT OR IGNORE` **ne
+fonctionne pas dans un déclencheur** (SQLite applique la résolution de conflit de l'instruction
+extérieure), d'où une file sans clé primaire et un `DISTINCT` à la lecture ; et un `ORDER BY id`
+échoue sur les tables nommées par une clé naturelle (`jira_watch`, `config`), d'où `rowid`
+partout.
+
+### La synchronisation git (`datasync.js`)
+
+- **Commits groupés** trois secondes après la dernière écriture : une review, c'est trois fichiers
+  et une MR touchée ; sans regroupement, quatre commits pour un seul geste. Message généré, en
+  anglais, sur une ligne, **à partir du geste** (`note "Prod deploy"`, `todo done: …`) — pas
+  « update 3 files ».
+- **Boucle** `fetch` → `pull --rebase` → hydratation incrémentale → `push`, trois essais puis on
+  laisse les commits locaux. **Hors ligne est le cas normal**, pas une panne.
+- **Conflits** : la version distante l'emporte, la sienne est **gardée** dans `local_state` et
+  reprenable d'un clic. Attention au piège : **pendant un rebase, `--ours` et `--theirs` sont
+  inversés** par rapport à un merge — c'est `--ours` qui désigne la version d'en face. Les
+  conflits sont regroupés **par objet**, pas par fichier : l'utilisateur a modifié une page, pas
+  deux fichiers.
+- **Identité = identité git** (`src/identite.js`). Sans `user.name`, rien n'est commité, et
+  l'écran le dit : un historique dont l'auteur est « unknown » ne répond pas à la seule question
+  qu'on lui pose.
+- **Exécutant d'un agent planifié** (`agent.runner`) : sans lui, trois instances lanceraient trois
+  fois le même agent. Vide = à la main seulement, et c'est le défaut.
+- **Historique d'une page de notes** (`git log` sur son fichier) : le seul service que git rend
+  gratuitement, et qu'il fallait prendre.
+
+### La merge request, coupée en deux (§ 10)
+
+`mr` est un **cache** : la forge fait foi de son titre, de ses branches, de son SHA, de son
+auteur et de ses fichiers changés — les écrire dans le dépôt ferait voyager du périmé. Ce qui se
+partage, c'est ce qu'un **humain** a décidé : `status`, `reviewed_sha`, le contexte saisi à la
+main, les options de merge, les projets liés, les brouillons de commentaire et le journal des
+commentaires postés. Ces colonnes sont nommées une par une dans `partagees`, et c'est la seule
+liste qui fasse foi. Une MR absente de la forge mais présente dans le dépôt — fermée depuis —
+est hydratée telle quelle : ses reviews restent lisibles.
+
+`mr` porte tout de même un `uid`, alors que son FICHIER est nommé par la clé naturelle : les deux
+ne servent pas à la même chose. Le fichier se nomme `mrs/gitlab/acme/web/218.json`, qui désigne
+la même merge request partout ; l'uid est une identité **locale** stable, qui rattache le handle
+de session de review dans `local_session` — un `id` entier ne conviendrait pas, SQLite les
+recycle, et une MR supprimée puis redécouverte hériterait de la session d'une autre.
+
+### « par &lt;nom&gt; » — sans colonne `author`
+
+Le fichier d'un objet partagé a été commité par quelqu'un : git le sait. Tenir une colonne à côté
+serait une seconde vérité à aligner, et elle mentirait le jour où le fichier est corrigé à la
+main. `datasync` lit `git log --format=%x00%an --name-only` après chaque `pull` — un seul appel
+pour tous les fichiers touchés — et garde le nom dans `local_state`. L'API l'expose sur les
+sessions, les vérifications et la dernière passe de review ; en mono-poste il n'y en a pas, et
+« par moi » sur chaque carte n'apprendrait rien.
+
+### Ce qui reste à faire
+
+Les six lots de `shared_database.md` sont livrés. Restent deux choses que la spécification
+elle-même laisse ouvertes : la **rétention** ne purge pas encore le dépôt de données (elle
+supprime les lignes, donc les fichiers suivent, mais l'historique git garde tout — ce qui est le
+but), et **git LFS** n'est pas câblé (le `.gitattributes` du § 11 n'est pas fourni : une équipe
+qui dépasse quelques centaines de mégaoctets l'ajoutera elle-même, git s'en charge sans que
+Mergerie ait rien à faire).
 
 ## Ce que le rapport d'améliorations a ajouté (2e passe)
 

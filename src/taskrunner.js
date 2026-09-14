@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const db = require('./db');
+const localsession = require('./localsession');
 const { getConfig } = require('./config');
 const { TASKS_DIR, ensureDir } = require('./paths');
 const git = require('./git');
@@ -39,16 +40,38 @@ function saveAgentOutput(taskId, targetId, text, meta = {}) {
 // Les projets d'une session. Une session « codage » les traite l'un après l'autre ;
 // une session « exploration » les regarde tous ensemble.
 function targetsOf(taskId) {
+  /* Le handle de session est recollé depuis `local_session` : il ne vaut que dans le
+     `~/.claude` de cette machine, donc il a quitté la table partagée. Tout ce qui suit
+     continue de lire `tg.session_key` sans rien savoir du déménagement. */
+  const poignees = localsession.carte('task_target');
   return db.prepare(`SELECT tt.*, repo.project AS project, repo.url AS url, repo.forge AS forge
     FROM task_target tt JOIN repo ON repo.id = tt.repo_id
-    WHERE tt.task_id = ? ORDER BY tt.id`).all(taskId);
+    WHERE tt.task_id = ? ORDER BY tt.id`).all(taskId)
+    .map((tg) => localsession.resoudre('task_target', tg, poignees));
 }
 
+/* LES TROIS CHAMPS DE SESSION SONT DÉTOURNÉS VERS `local_session`. On les accepte ici plutôt que
+   d'obliger chaque appelant à savoir où ils vivent : `setTarget` est appelé à huit endroits, et
+   la règle « le handle ne voyage pas » doit tenir même si l'un d'eux est ajouté demain. */
+const CHAMPS_SESSION = ['session_key', 'session_backend', 'session_cwd'];
+
 function setTarget(id, fields) {
-  const keys = Object.keys(fields);
+  const session = {};
+  const reste = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (CHAMPS_SESSION.includes(k)) session[k] = v; else reste[k] = v;
+  }
+  if (Object.keys(session).length) {
+    const ligne = db.prepare('SELECT uid FROM task_target WHERE id = ?').get(id);
+    if (ligne) {
+      const avant = localsession.lire('task_target', ligne.uid);
+      localsession.ecrire('task_target', ligne.uid, { ...avant, ...session });
+    }
+  }
+  const keys = Object.keys(reste);
   if (!keys.length) return;
   const sql = `UPDATE task_target SET ${keys.map((k) => `${k} = @${k}`).join(', ')}, updated_at = @updated_at WHERE id = @id`;
-  db.prepare(sql).run({ ...fields, id, updated_at: new Date().toISOString() });
+  db.prepare(sql).run({ ...reste, id, updated_at: new Date().toISOString() });
 }
 
 // Statut global d'une session = agrégat de ses projets (le plus « en retard » gagne,
@@ -729,7 +752,8 @@ const REBASE_MAX_PASSES = 5;
 async function mettreAJourDepuisBase(taskId, targetId, onLog = () => {}) {
   const task = db.prepare('SELECT * FROM task WHERE id = ?').get(Number(taskId));
   if (!task) throw new Error(t('err.session-introuvable'));
-  const tg = db.prepare('SELECT * FROM task_target WHERE id = ? AND task_id = ?').get(Number(targetId), task.id);
+  const tg = localsession.resoudre('task_target',
+    db.prepare('SELECT * FROM task_target WHERE id = ? AND task_id = ?').get(Number(targetId), task.id));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
   const cfg = getConfig();
   const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
@@ -826,8 +850,8 @@ function marqueursDeConflit(fichier) {
    aussi, et la forge dira non — ce qui est la bonne réponse. */
 async function pushTarget(taskId, targetId, onLog = () => {}, { force } = {}) {
   const cfg = getConfig();
-  const tg = db.prepare(`SELECT tt.*, repo.project, repo.forge FROM task_target tt
-    JOIN repo ON repo.id = tt.repo_id WHERE tt.id = ? AND tt.task_id = ?`).get(targetId, taskId);
+  const tg = localsession.resoudre('task_target', db.prepare(`SELECT tt.*, repo.project, repo.forge FROM task_target tt
+    JOIN repo ON repo.id = tt.repo_id WHERE tt.id = ? AND tt.task_id = ?`).get(targetId, taskId));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session-2'));
   const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
   const cwd = git.cloneDirFor(cfg, repo);

@@ -13,6 +13,64 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Share your work with a team, through a git repository.** A domain map costs hours of agent
+  time to produce; redoing it on six machines means paying six times for the same thing and
+  getting six slightly different answers. Point Mergerie at a git repository — your team's own, on
+  the forge you already have — and it keeps the accumulated work there: **review rules, verifiers,
+  agents and their map of the code, notes, todos**, one readable file per object. Everyone keeps
+  their own instance, their own tokens and their own AI subscription: the requests leave your
+  machine and are billed to you, and it is the **result** that is shared. Nothing to install,
+  nothing to administer — and you get “who decided what, and when” for free.
+
+  Day to day you do nothing: every thirty seconds the tool sends what is new and fetches what is
+  new elsewhere, and the footer shows `↑2 ↓0`. Offline, everything keeps working — commits stay
+  local and catch up on return. When two people change the same thing, the remote version wins and
+  **yours is kept**, with two buttons to take it back or keep theirs: never a half-finished rebase,
+  never a conflict marker, never a git command to type.
+
+  **Everything the team accumulates travels**: repositories, the review state of merge requests,
+  reports and every pass of them, findings, convergence runs, rules, verifiers and their verdicts,
+  agents and their map of the code, coding and exploration sessions with their agent passes and
+  attachments, free questions, notes and pasted screenshots, todos, lots, Jira watches, git
+  commands and operations, Docker backups, and the team settings. Delete `reviewer.db` and it all
+  comes back from the files.
+
+  **Nothing secret ever goes in.** The seven API tokens, the clone folder, the language, the
+  dictation engine, this machine's absolute paths, agent session handles, tidied-away sessions and
+  job logs all stay here — and so does the whole **Links** tab, which says where you go to work
+  rather than what you produced. Every column is classified by name, and the tests refuse a
+  secret-looking column that is not declared, because a secret committed to git is permanent.
+
+- **Cards say who did the work.** “by Claire” on a review, a session or a verification — read
+  from git, which already knows who committed the file. No field to fill in, and nothing at all
+  when you work alone.
+
+- **Your AI spend stays yours unless you say otherwise.** A checkbox in Shared data sends a
+  **daily total** to the team — never the per-call detail, which would say what you asked and
+  when. Off by default.
+
+- **`npm run demo` now shows the sharing too**, with a real local git repository and three
+  fictitious authors: the footer counts, the “by <name>” lines and a notes page's History all
+  work, because they are the real mechanism rather than a mock.
+
+- **A notes page now has a History.** Who changed it, when, and what changed — read straight from
+  the data repository. It needed no new bookkeeping: the information exists because the page is a
+  file in git.
+
+- **A scheduled agent has a runner.** Three instances left open would launch the same agent three
+  times, and the team would pay three times. The agent form now asks who honours the schedule;
+  with nobody named, the agent only runs by hand — which is the default.
+
+- **Every setting now says what it commits: “team” or “this machine”.** Settings were all shown
+  the same way, and they are not the same thing. The prompt templates, the thresholds, the review
+  policies and the forge address describe **the tool** — two reviews of the same merge request
+  written under different instructions are not comparable, so those are meant to be shared. The
+  API tokens, the clone folder, the language and the dictation engine belong to **your machine**
+  alone. A small badge next to each field says which, in both themes and both languages, and the
+  tokens are now stored in a table of their own — one that is never meant to travel. Nothing
+  changes in how you use the screen; what changes is that the tool now knows the difference, which
+  is what a future shared setup will stand on.
+
 - **The librarian draws, and a note page knows how to show it.** Twenty services described in
   prose is a page you read once: what you actually want to know is who calls whom, and what a
   service's tables look like. The librarian now puts a **“who calls whom” diagram** on the

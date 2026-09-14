@@ -37,7 +37,14 @@ const express = require('express');
 const db = require('./db');
 const { REVIEWS_DIR, TICKETS_DIR, TASKS_DIR, NOTES_DIR, TMP_DIR, ensureDir } = require('./paths');
 const { extractNote } = require('./note');
-const { getConfig, updateConfig } = require('./config');
+const { etat: etatLocal, pref: prefLocale } = require('./localstate');
+const localdirs = require('./localdirs');
+const localsession = require('./localsession');
+const store = require('./store');
+const datasync = require('./datasync');
+const identite = require('./identite');
+const configModule = require('./config');
+const { getConfig, updateConfig } = configModule;
 const i18n = require('../public/i18n-runtime.js');
 const gitops = require('./gitops');
 const jira = require('./jira');
@@ -146,6 +153,25 @@ app.use((req, res, next) => {
   const l = String(req.headers['x-mergerie-lang'] || '').trim();
   i18n.setLang(l === 'en' || l === 'fr' ? l : getConfig().language);
   next();
+});
+
+/* ÉCRIRE LES FICHIERS DU DÉPÔT APRÈS CHAQUE REQUÊTE QUI A ÉCRIT.
+ *
+ * Les déclencheurs de `db.js` notent toute ligne partagée touchée, d'où que vienne l'écriture.
+ * On écoule cette file quand la réponse est PARTIE : l'utilisateur n'attend pas l'écriture de
+ * ses fichiers, et une erreur de disque ne transforme pas une sauvegarde réussie en erreur 500.
+ *
+ * La file vivant dans la base, dans la même transaction que l'écriture, rien ne se perd si le
+ * processus meurt entre les deux : le démarrage suivant écrit ce qui manque.
+ *
+ * `res.on('finish')` et non un `await` : une requête de lecture — et il y en a des dizaines par
+ * seconde — trouve une file vide et ne coûte qu'un `SELECT COUNT(*)`. */
+app.use((req, res, next) => {
+  if (req.method === 'GET' || req.method === 'HEAD') return next();
+  res.on('finish', () => {
+    try { if (store.enRetard()) store.ecouler(); } catch (e) { console.log(`[store] ${e.message}`); }
+  });
+  return next();
 });
 
 app.use(express.json({ limit: '20mb' })); // marge pour les captures de ticket (base64)
@@ -1001,7 +1027,15 @@ function sansSecrets(c) {
 
 app.get('/api/config', wrap((req, res) => {
   const c = getConfig();
-  res.json(sansSecrets(c));
+  /* `scopes` dit, champ par champ, ce qu'un changement ENGAGE : « equipe » (le réglage vit dans
+     `config` et partira dans le dépôt de données partagé) ou « poste » (il reste sur cette
+     machine — les jetons, le chemin des clones, la langue, le moteur de dictée). L'écran en fait
+     un badge à côté de chaque champ. La liste vient du registre, pas d'une copie côté client :
+     dupliquée, elle mentirait au premier réglage déplacé, et un badge qui ment sur un jeton est
+     pire que pas de badge du tout. */
+  const scopes = {};
+  for (const champ of Object.keys(c)) scopes[champ] = configModule.destinationDe(champ);
+  res.json({ ...sansSecrets(c), scopes });
 }));
 
 /* ---------- Jenkins : voir et lancer des jobs -------------------------------
@@ -1267,7 +1301,22 @@ app.post('/api/jira/fetch', wrap(async (req, res) => {
    Une erreur (ticket supprimé, droits perdus, Jira injoignable) est rangée sur la ligne
    concernée et affichée ; elle n'interrompt jamais la vérification des autres. */
 
-const watchRows = () => db.prepare('SELECT * FROM jira_watch ORDER BY key').all();
+/* `checked_at` et `error` ont quitté la table : QUAND CE POSTE a regardé, et l'erreur réseau
+   qu'il a rencontrée, ne disent rien à un collègue — chez lui, la réponse de Jira sera
+   différente et son horloge aussi. Ce qu'on surveille est d'équipe ; le fait de l'avoir
+   regardé est de poste. On les recolle donc à la lecture, en DEUX requêtes et non une par
+   ligne : cette liste se redessine souvent. */
+function watchRows() {
+  const vus = etatLocal.carte('jira_watch', 'checked_at');
+  const erreurs = etatLocal.carte('jira_watch', 'error');
+  return db.prepare('SELECT * FROM jira_watch ORDER BY key').all().map((r) => ({
+    ...r, checked_at: vus.get(r.key) || null, error: erreurs.get(r.key) || null,
+  }));
+}
+const marquerVu = (key, erreur = null) => {
+  etatLocal.ecrire('jira_watch', key, 'checked_at', new Date().toISOString());
+  etatLocal.ecrire('jira_watch', key, 'error', erreur);
+};
 
 // Compteur du menu, en cache : le client l'interroge souvent, Jira ne doit pas l'être autant.
 let jiraBadge = { inProgress: 0, at: null, error: null };
@@ -1302,11 +1351,12 @@ app.post('/api/jira/watch', wrap(async (req, res) => {
     meta = (await jira.statusOfKeys(cfg, [key]))[0] || null;
     if (!meta) throw new Error(t('err.jira.watch-not-found', { key }));
   }
-  db.prepare(`INSERT INTO jira_watch (key, summary, status, status_category, added_at, checked_at, note)
-              VALUES (?,?,?,?,?,?,?)`)
-    .run(key, meta.summary || '', meta.status || '', meta.statusCategory || '', now, now,
+  db.prepare(`INSERT INTO jira_watch (key, summary, status, status_category, added_at, note)
+              VALUES (?,?,?,?,?,?)`)
+    .run(key, meta.summary || '', meta.status || '', meta.statusCategory || '', now,
       lireNote(req.body && req.body.note));
-  res.json(db.prepare('SELECT * FROM jira_watch WHERE key = ?').get(key));
+  marquerVu(key);
+  res.json(watchRows().find((r) => r.key === key));
 }));
 
 /* La raison de surveiller change avec le temps — le ticket avance, on suit autre chose. Elle
@@ -1324,11 +1374,15 @@ app.patch('/api/jira/watch/:key', wrap((req, res) => {
   if ((req.body || {}).todo_on_change !== undefined) {
     db.prepare('UPDATE jira_watch SET todo_on_change = ? WHERE key = ?').run(req.body.todo_on_change ? 1 : 0, key);
   }
-  res.json(db.prepare('SELECT * FROM jira_watch WHERE key = ?').get(key));
+  res.json(watchRows().find((r) => r.key === key));
 }));
 
 app.delete('/api/jira/watch/:key', wrap((req, res) => {
-  db.prepare('DELETE FROM jira_watch WHERE key = ?').run(String(req.params.key || '').trim().toUpperCase());
+  const cle = String(req.params.key || '').trim().toUpperCase();
+  db.prepare('DELETE FROM jira_watch WHERE key = ?').run(cle);
+  /* Ménage EXPLICITE : `local_state` n'a pas de clé étrangère (quatre parents possibles), donc
+     rien ne cascade. Une ligne orpheline reviendrait hanter le ticket s'il était re-surveillé. */
+  etatLocal.oublier('jira_watch', cle);
   res.json({ ok: true });
 }));
 
@@ -1358,21 +1412,23 @@ async function faireCheckJiraWatch() {
       : await jira.statusOfKeys(getConfig(), rows.map((r) => r.key));
   } catch (e) {
     // Jira injoignable : on marque toutes les lignes, sans rien perdre de l'état connu.
-    db.prepare('UPDATE jira_watch SET checked_at = ?, error = ?').run(now, String(e.message).slice(0, 300));
+    for (const r of rows) marquerVu(r.key, String(e.message).slice(0, 300));
     resultat.errors = rows.length;
     return resultat;
   }
 
   const parCle = new Map(etats.map((i) => [i.key, i]));
-  const maj = db.prepare(`UPDATE jira_watch SET summary = ?, status = ?, status_category = ?,
-                          checked_at = ?, changed_at = ?, error = NULL WHERE key = ?`);
-  const inchange = db.prepare('UPDATE jira_watch SET summary = ?, checked_at = ?, error = NULL WHERE key = ?');
-  const absent = db.prepare('UPDATE jira_watch SET checked_at = ?, error = ? WHERE key = ?');
+  const majSql = db.prepare(`UPDATE jira_watch SET summary = ?, status = ?, status_category = ?,
+                             changed_at = ? WHERE key = ?`);
+  const inchangeSql = db.prepare('UPDATE jira_watch SET summary = ? WHERE key = ?');
+  const maj = (summary, statut, categorie, quand, cle) => { majSql.run(summary, statut, categorie, quand, cle); marquerVu(cle); };
+  const inchange = (summary, cle) => { inchangeSql.run(summary, cle); marquerVu(cle); };
+  const absent = (cle, erreur) => marquerVu(cle, erreur);
   for (const r of rows) {
     const cur = parCle.get(r.key);
-    if (!cur) { absent.run(now, t('err.jira.watch-unreachable'), r.key); resultat.errors += 1; continue; }
+    if (!cur) { absent(r.key, t('err.jira.watch-unreachable')); resultat.errors += 1; continue; }
     if ((cur.status || '') !== (r.status || '')) {
-      maj.run(cur.summary || '', cur.status || '', cur.statusCategory || '', now, now, r.key);
+      maj(cur.summary || '', cur.status || '', cur.statusCategory || '', now, r.key);
       resultat.changed += 1;
       /* On ne notifie QUE si un état précédent était connu. Sans état de référence il n'y a pas
          de changement à annoncer, seulement une première observation — la signaler ferait sonner
@@ -1394,7 +1450,7 @@ async function faireCheckJiraWatch() {
         }
       }
     } else {
-      inchange.run(cur.summary || r.summary || '', now, r.key);
+      inchange(cur.summary || r.summary || '', r.key);
     }
   }
   return resultat;
@@ -2310,15 +2366,48 @@ function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) 
   };
 }
 
+/* « PAR <NOM> » — sans colonne `author`, et c'est le point.
+ *
+ * Le fichier d'un objet partagé a été commité par quelqu'un : git le sait, et le redemander ne
+ * coûte rien puisque `datasync` garde le nom en cache. Tenir une colonne à côté, ce serait une
+ * seconde vérité à aligner — et elle mentirait le jour où quelqu'un corrige le fichier à la main.
+ *
+ * `null` quand le partage n'est pas configuré : en mono-poste, « par moi » sur chaque carte
+ * n'apprendrait rien à personne. */
+function auteurs(table, rows) {
+  if (!datasync.estConfigure() || !rows.length) return new Map();
+  const chemins = new Map();
+  for (const r of rows) {
+    const c = store.cheminSur(table, r);
+    if (c) chemins.set(r.id, c);
+  }
+  const parFichier = datasync.auteursDe([...new Set(chemins.values())]);
+  return new Map([...chemins].map(([id, c]) => [id, parFichier.get(c) || null]));
+}
+
+/* RANGER UNE SESSION EST UN GESTE DE POSTE. `hidden` a quitté les tables `task`, `local_task` et
+   `question` : la supprimer la supprime pour tout le monde, mais la RANGER ne doit la retirer
+   que de sa propre vue — le collègue qui la regarde n'a pas demandé qu'elle disparaisse. La
+   préférence vit dans `local_pref`, rangée sous l'`uid` de la session, et l'API continue
+   d'exposer le même champ : l'écran ne voit pas la différence.
+
+   `carte()` en une requête plutôt qu'une par ligne : ces listes se redessinent toutes les
+   secondes et demie. */
+const rangement = (kind) => prefLocale.carte(kind, 'hidden');
+const avecRangement = (kind, row, carte = null) => (row
+  ? { ...row, hidden: ((carte || rangement(kind)).get(row.uid) === '1') ? 1 : 0 }
+  : row);
+
 /* ---------- Tasks (tâches de dev pilotées par l'IA) ---------- */
 function taskById(id) {
-  return db.prepare(`SELECT task.*, repo.project AS project, repo.forge AS forge FROM task JOIN repo ON repo.id = task.repo_id WHERE task.id = ?`).get(id);
+  return avecRangement('task', db.prepare(`SELECT task.*, repo.project AS project, repo.forge AS forge FROM task JOIN repo ON repo.id = task.repo_id WHERE task.id = ?`).get(id));
 }
 // Les projets d'une session, avec leur état d'exécution propre (commit, diff, MR…).
 function taskTargets(taskId) {
   /* Les options du profil, s'il y en a un : la commande « Reprendre au terminal » doit
      reprendre LA MÊME session — sans son modèle ni son allowlist, ce serait une autre. */
   const optionsAgent = agentprofile.optionsFor(db.prepare('SELECT * FROM task WHERE id = ?').get(taskId));
+  const poignees = localsession.carte('task_target');   // une requête, pas une par projet
   /* `has_review` : la merge request de ce projet porte-t-elle un rapport ? C'est ce qui décide
      de l'apparition du bouton « Reprendre le rapport de review » sur le formulaire de suivi.
      Un booléen, pas le rapport lui-même — la liste des sessions n'a pas à charrier le Markdown
@@ -2376,8 +2465,13 @@ function taskTargets(taskId) {
     let imputables = [];
     try { imputables = v && v.imputable_json ? JSON.parse(v.imputable_json) : []; } catch { imputables = []; }
     const echec = !!(v && v.verdict === 'verified_fail' && imputables.length);
+    /* LE HANDLE DE SESSION NE VIENT PLUS DE LA LIGNE : il ne vaut que dans le `~/.claude` de la
+       machine qui l'a créée, donc il vit dans `local_session`. Recollé ICI, en tête, pour que
+       tout ce qui suit — `resume_cmd` compris — lise la valeur recollée et non le vide laissé
+       dans la table. */
+    const ligne = localsession.resoudre('task_target', r, poignees);
     return {
-      ...r, questions, has_verify_fail: echec ? 1 : 0,
+      ...ligne, questions, has_verify_fail: echec ? 1 : 0,
       mr_note: r.mr_row_id != null ? (notesParMr[r.mr_row_id] != null ? notesParMr[r.mr_row_id] : null) : null,
       mr_verdict: v ? v.verdict : null,
       mr_drafts: r.mr_row_id ? (cmtParMr[r.mr_row_id] || 0) : 0,
@@ -2388,7 +2482,7 @@ function taskTargets(taskId) {
       ticket_key: r.mr_ticket_key || null,
       ticket_status: r.mr_ticket_status || null,
       ticket_category: r.mr_ticket_category || null,
-      resume_cmd: agentsession.resumeCommand(r.session_backend, r.session_key, r.session_cwd, optionsAgent),
+      resume_cmd: agentsession.resumeCommand(ligne.session_backend, ligne.session_key, ligne.session_cwd, optionsAgent),
     };
   });
 }
@@ -2403,9 +2497,9 @@ function effectiveMr(tg) {
   return found ? { iid: found.iid, fromApp: false } : null;
 }
 function targetById(taskId, targetId) {
-  return db.prepare(`SELECT tt.*, repo.project AS project, repo.forge AS forge
+  return localsession.resoudre('task_target', db.prepare(`SELECT tt.*, repo.project AS project, repo.forge AS forge
     FROM task_target tt JOIN repo ON repo.id = tt.repo_id
-    WHERE tt.id = ? AND tt.task_id = ?`).get(targetId, taskId);
+    WHERE tt.id = ? AND tt.task_id = ?`).get(targetId, taskId));
 }
 // Valide la liste des projets. En codage la branche de travail est obligatoire ;
 // en exploration elle est facultative (défaut : branche par défaut du dépôt).
@@ -2423,13 +2517,16 @@ const insertTargets = tasks.insertTargets;
    réécrire des handles corrects, ni effacer le `session_cwd` qui protège la reprise.
    Un champ VIDE ne signifie jamais « efface » — on ne perd pas une session d'un formulaire
    simplement soumis ; pour repartir à neuf, on change les unités, ce qui les recrée. */
-function applySessionId(table, key, taskId, sessionId, units) {
+function applySessionId(scope, key, taskId, sessionId, units) {
   if (!sessionId) return;
   const commun = units.length && units.every((u) => u.session_key && u.session_key === units[0].session_key)
     ? units[0].session_key : null;
   if (sessionId === commun) return;
-  db.prepare(`UPDATE ${table} SET session_key = ?, session_backend = ?, session_cwd = NULL WHERE ${key} = ?`)
-    .run(sessionId, agentsession.backendName(), taskId);
+  /* `session_cwd` reste NUL : on ignore d'où vient la session fournie, et le garde-fou « même
+     dossier » ne doit pas refuser ce que l'utilisateur a explicitement demandé. */
+  for (const u of units) {
+    localsession.ecrire(scope, u.uid, { session_key: sessionId, session_backend: agentsession.backendName(), session_cwd: null });
+  }
 }
 
 function normalizeSessionId(raw) {
@@ -2625,18 +2722,23 @@ function dureeParSession(kind) {
    nommé par ce qui l'a produit — un identifiant nu ne dit rien trois jours plus tard. */
 app.get('/api/agent-sessions', wrap((req, res) => {
   const out = [];
-  for (const r of db.prepare(`SELECT tt.session_key AS cle, tt.updated_at AS at, repo.project AS quoi,
+  /* LES HANDLES VIENNENT DE `local_session` — ils n'appartiennent qu'à cette machine. La
+     jointure se fait sur l'`uid` de l'unité, jamais sur son id entier : celui-ci change d'un
+     poste à l'autre, et une session partagée par un collègue proposerait le handle d'une autre. */
+  for (const r of db.prepare(`SELECT ls.session_key AS cle, ls.updated_at AS at, repo.project AS quoi,
       task.label AS libelle, task.prompt AS prompt
-    FROM task_target tt JOIN task ON task.id = tt.task_id JOIN repo ON repo.id = tt.repo_id
-    WHERE tt.session_key IS NOT NULL AND tt.session_key <> ''
-    ORDER BY tt.updated_at DESC LIMIT 40`).all()) {
+    FROM local_session ls JOIN task_target tt ON tt.uid = ls.ref
+    JOIN task ON task.id = tt.task_id JOIN repo ON repo.id = tt.repo_id
+    WHERE ls.scope = 'task_target' AND ls.session_key IS NOT NULL AND ls.session_key <> ''
+    ORDER BY ls.updated_at DESC LIMIT 40`).all()) {
     out.push({ key: r.cle, when: r.at, label: r.libelle || String(r.prompt || '').slice(0, 70), where: r.quoi });
   }
-  for (const r of db.prepare(`SELECT d.session_key AS cle, d.updated_at AS at, d.path AS quoi,
+  for (const r of db.prepare(`SELECT ls.session_key AS cle, ls.updated_at AS at, d.dir_label AS quoi,
       lt.label AS libelle, lt.prompt AS prompt
-    FROM local_task_dir d JOIN local_task lt ON lt.id = d.task_id
-    WHERE d.session_key IS NOT NULL AND d.session_key <> ''
-    ORDER BY d.updated_at DESC LIMIT 20`).all()) {
+    FROM local_session ls JOIN local_task_dir d ON d.uid = ls.ref
+    JOIN local_task lt ON lt.id = d.task_id
+    WHERE ls.scope = 'local_task_dir' AND ls.session_key IS NOT NULL AND ls.session_key <> ''
+    ORDER BY ls.updated_at DESC LIMIT 20`).all()) {
     out.push({ key: r.cle, when: r.at, label: r.libelle || String(r.prompt || '').slice(0, 70), where: r.quoi });
   }
   // Une même session d'agent peut servir plusieurs projets : on ne la propose qu'une fois.
@@ -2661,8 +2763,11 @@ app.get('/api/tasks', wrap((req, res) => {
         ORDER BY (status = 'running') DESC, COALESCE(finished_at, created_at) DESC, id DESC`).all();
   const couts = coutParSession('task');
   const durees = dureeParSession('task');
+  const range = rangement('task');
+  const parQui = auteurs('task', rows);
   res.json(rows.map((tache) => ({
-    ...tache,
+    author: parQui.get(tache.id) || null,
+    ...avecRangement('task', tache, range),
     image_count: db.prepare('SELECT COUNT(*) c FROM piece_jointe WHERE scope = ? AND owner_id = ?').get('task', tache.id).c,
     // Le chapeau ne sert qu'aux explorations : une session de codage se lit à ses projets.
     answer_head: tache.kind === 'explore' ? chapeauReponse(tache.md_path) : '',
@@ -3020,8 +3125,8 @@ app.post('/api/tasks/:id/hidden', wrap((req, res) => {
   const t2 = taskById(Number(req.params.id));
   if (!t2) throw new Error(t('err.session-introuvable'));
   const hidden = (req.body && req.body.hidden) ? 1 : 0;
-  db.prepare('UPDATE task SET hidden = ?, updated_at = ? WHERE id = ?')
-    .run(hidden, new Date().toISOString(), t2.id);
+  prefLocale.ecrire('task', t2.uid, 'hidden', hidden ? '1' : null);
+  db.prepare('UPDATE task SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), t2.id);
   res.json({ ok: true, hidden });
 }));
 
@@ -3296,16 +3401,24 @@ app.post('/api/tasks/:id/converge', wrap((req, res) => {
 /* ---- « Codage hors dépôt » : l'IA code dans des dossiers locaux, en place, sans git ---- */
 // Dossiers d'une session hors dépôt + la commande de reprise de leur session d'agent.
 function localDirsFor(taskId) {
+  /* LE CHEMIN NE VIENT PLUS DE LA LIGNE. Il vivait ici en absolu — `/Users/amady/lin/monprojet`,
+     qui ne désigne rien sur le Linux du collègue alors que la SESSION, elle, se partage. La
+     ligne ne porte donc que l'empreinte, le libellé et le propriétaire ; le chemin est résolu
+     ICI, dans la carte de ce poste. Absent, `path` vaut `null` : le dossier appartient à
+     quelqu'un d'autre, la session se relit mais ne se relance pas. */
+  const carteDirs = localdirs.carte();
+  const poignees = localsession.carte('local_task_dir');
   return db.prepare('SELECT * FROM local_task_dir WHERE task_id = ? ORDER BY id').all(taskId)
     .map((d) => ({
-      ...d,
+      ...localsession.resoudre('local_task_dir', d, poignees),
+      path: carteDirs.get(d.dir_hash) || null,
       resume_cmd: agentsession.resumeCommand(d.session_backend, d.session_key, d.session_cwd),
       // Les questions posées par l'agent, prêtes à afficher. Illisibles → aucune, plutôt qu'un plantage.
       questions: d.questions_json ? (() => { try { return JSON.parse(d.questions_json); } catch { return null; } })() : null,
     }));
 }
 function localTaskById(id) {
-  const lt = db.prepare('SELECT * FROM local_task WHERE id = ?').get(id);
+  const lt = avecRangement('local_task', db.prepare('SELECT * FROM local_task WHERE id = ?').get(id));
   if (!lt) return null;
   lt.dirs = localDirsFor(id);
   return lt;
@@ -3316,7 +3429,9 @@ app.get('/api/local-tasks', wrap((req, res) => {
     ORDER BY (status = 'running') DESC, COALESCE(finished_at, created_at) DESC, id DESC`).all();
   const couts = coutParSession('local');
   const durees = dureeParSession('local');
+  const range = rangement('local_task');
   for (const lt of list) {
+    lt.hidden = range.get(lt.uid) === '1' ? 1 : 0;
     lt.dirs = localDirsFor(lt.id);
     /* Hors dépôt, la réponse vit PAR DOSSIER : on prend celle du premier qui en a une — la
        carte porte un chapeau, pas un rapport, et l'ouvrir donne toujours le détail complet. */
@@ -3342,10 +3457,22 @@ app.post('/api/local-tasks', wrap((req, res) => {
     .run(prompt.trim(), lireLibelle(label), ask_questions ? 1 : 0, now, now).lastInsertRowid;
   // Même principe que pour les sessions sur dépôt : la session fournie est rangée comme
   // si la première passe l'avait créée, `localcoder` la reprend alors sans rien savoir.
-  const ins = db.prepare(`INSERT INTO local_task_dir (task_id, path, status, session_key, session_backend, updated_at)
-    VALUES (?, ?, 'new', ?, ?, ?)`);
-  const backend = sessionId ? agentsession.backendName() : null;
-  for (const p of [...new Set(list)]) ins.run(id, p, sessionId || null, backend, now);
+  /* `path` reste à la chaîne vide : la colonne est `NOT NULL` depuis l'origine, et elle est
+     GELÉE — le chemin vit désormais dans `local_dir_map`, sur le poste qui le connaît. */
+  const ins = db.prepare(`INSERT INTO local_task_dir (task_id, path, dir_hash, dir_label, owner, status, updated_at)
+    VALUES (?, '', ?, ?, ?, 'new', ?)`);
+  const moi = identite.nom() || null;
+  for (const p of [...new Set(list)]) {
+    const { dir_hash: h, dir_label: lbl } = localdirs.declarer(p);
+    const rowid = ins.run(id, h, lbl, moi, now).lastInsertRowid;
+    /* Le handle fourni à la création est rangé comme si la première passe l'avait produit :
+       `localcoder` le reprend alors sans rien savoir. Il vit dans `local_session` — il ne vaut
+       que sur cette machine. */
+    if (sessionId) {
+      const uid = db.prepare('SELECT uid FROM local_task_dir WHERE id = ?').get(rowid).uid;
+      localsession.ecrire('local_task_dir', uid, { session_key: sessionId, session_backend: agentsession.backendName() });
+    }
+  }
   savePiecesEtImages('local', id, req.body || {}); // captures et documents (facultatif)
   res.json(localTaskById(id));
 }));
@@ -3371,8 +3498,13 @@ app.put('/api/local-tasks/:id', wrap((req, res) => {
     if (list.join('|') !== lt.dirs.map((d) => d.path).join('|')) {
       const now = new Date().toISOString();
       db.prepare('DELETE FROM local_task_dir WHERE task_id = ?').run(lt.id);
-      const ins = db.prepare("INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?, ?, 'new', ?)");
-      for (const p of list) ins.run(lt.id, p, now);
+      const ins = db.prepare(`INSERT INTO local_task_dir (task_id, path, dir_hash, dir_label, owner, status, updated_at)
+        VALUES (?, '', ?, ?, ?, 'new', ?)`);
+      const moi = identite.nom() || null;
+      for (const p of list) {
+        const { dir_hash: h, dir_label: lbl } = localdirs.declarer(p);
+        ins.run(lt.id, h, lbl, moi, now);
+      }
     }
   }
   if (prompt != null && !String(prompt).trim()) throw new Error(t('err.prompt-requis'));
@@ -3461,8 +3593,8 @@ app.put('/api/local-tasks/:id/followup-draft', wrap((req, res) => {
 
 // Historique des itérations d'un dossier hors dépôt (même forme que côté session).
 app.get('/api/local-tasks/:id/dirs/:did/passes', wrap((req, res) => {
-  const d = db.prepare('SELECT * FROM local_task_dir WHERE id = ? AND task_id = ?')
-    .get(Number(req.params.did), Number(req.params.id));
+  const d = localdirs.resoudre(db.prepare('SELECT * FROM local_task_dir WHERE id = ? AND task_id = ?')
+    .get(Number(req.params.did), Number(req.params.id)));
   if (!d) throw new Error(t('err.local-dir-introuvable'));
   res.json(passesPayload('local', d.id, Number(req.params.id), req.query.n, d.path, d.output_path));
 }));
@@ -3472,7 +3604,7 @@ app.get('/api/local-tasks/:id/dirs/:did/passes', wrap((req, res) => {
    dossier de l'utilisateur — les deux bornes sont des commits du dépôt de SUIVI, qui vit dans
    le dossier de travail de Mergerie (`localsnapshot`), et c'est lui qu'on interroge. */
 function dossierLocalOu404(taskId, dirId) {
-  const d = db.prepare('SELECT * FROM local_task_dir WHERE id = ? AND task_id = ?').get(Number(dirId), Number(taskId));
+  const d = localdirs.resoudre(db.prepare('SELECT * FROM local_task_dir WHERE id = ? AND task_id = ?').get(Number(dirId), Number(taskId)));
   if (!d) throw new Error(t('err.local-dir-introuvable'));
   return d;
 }
@@ -3510,8 +3642,8 @@ app.get('/api/local-tasks/:id/dirs/:did/passes/:n/filediff', wrap(async (req, re
 
 // Retour de l'agent pour UN dossier (ce qu'il dit avoir fait).
 app.get('/api/local-tasks/:id/dirs/:did/output', wrap((req, res) => {
-  const d = db.prepare('SELECT * FROM local_task_dir WHERE id = ? AND task_id = ?')
-    .get(Number(req.params.did), Number(req.params.id));
+  const d = localdirs.resoudre(db.prepare('SELECT * FROM local_task_dir WHERE id = ? AND task_id = ?')
+    .get(Number(req.params.did), Number(req.params.id)));
   if (!d) throw new Error(t('err.local-dir-introuvable'));
   res.json({ output: d.output_path ? readFileSafe(d.output_path) : null, path: d.path });
 }));
@@ -3530,8 +3662,8 @@ app.post('/api/local-tasks/:id/hidden', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
   const hidden = (req.body && req.body.hidden) ? 1 : 0;
-  db.prepare('UPDATE local_task SET hidden = ?, updated_at = ? WHERE id = ?')
-    .run(hidden, new Date().toISOString(), lt.id);
+  prefLocale.ecrire('local_task', lt.uid, 'hidden', hidden ? '1' : null);
+  db.prepare('UPDATE local_task SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), lt.id);
   res.json({ ok: true, hidden });
 }));
 
@@ -3543,7 +3675,8 @@ app.post('/api/local-tasks/:id/hidden', wrap((req, res) => {
    les trois autres saveurs. Calculée à la lecture — elle dépend du binaire configuré, pas
    d'un état stocké. */
 const questionById = (id) => {
-  const q = db.prepare('SELECT * FROM question WHERE id = ?').get(Number(id));
+  const q = localsession.resoudre('question',
+    avecRangement('question', db.prepare('SELECT * FROM question WHERE id = ?').get(Number(id))));
   return q ? { ...q, resume_cmd: agentsession.resumeCommand(q.session_backend, q.session_key, q.session_cwd) } : q;
 };
 const exigerQuestion = (id) => {
@@ -3558,8 +3691,10 @@ app.get('/api/questions', wrap((req, res) => {
     ORDER BY (status = 'running') DESC, COALESCE(finished_at, created_at) DESC, id DESC`).all();
   const couts = coutParSession('ask');
   const durees = dureeParSession('ask');
+  const range = rangement('question');
+  const poignees = localsession.carte('question');
   res.json(rows.map((q) => ({
-    ...q,
+    ...localsession.resoudre('question', avecRangement('question', q, range), poignees),
     answer_head: chapeauReponse(q.md_path),
     tokens_est: (couts[q.id] || {}).tokens || null,
     cost_usd: (couts[q.id] || {}).cost_usd ?? null,
@@ -3636,8 +3771,8 @@ app.get('/api/questions/:id/passes', wrap((req, res) => {
 app.post('/api/questions/:id/hidden', wrap((req, res) => {
   const q = exigerQuestion(req.params.id);
   const hidden = (req.body && req.body.hidden) ? 1 : 0;
-  db.prepare('UPDATE question SET hidden = ?, updated_at = ? WHERE id = ?')
-    .run(hidden, new Date().toISOString(), q.id);
+  prefLocale.ecrire('question', q.uid, 'hidden', hidden ? '1' : null);
+  db.prepare('UPDATE question SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), q.id);
   res.json({ ok: true, hidden });
 }));
 
@@ -3795,7 +3930,8 @@ app.post('/api/tasks/:id/targets/:tid/push', wrap((req, res) => {
 app.post('/api/tasks/:id/targets/:tid/forget-session', wrap((req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
-  db.prepare('UPDATE task_target SET session_key = NULL, session_backend = NULL, session_cwd = NULL, session_note = NULL WHERE id = ?')
+  localsession.oublier('task_target', db.prepare('SELECT uid FROM task_target WHERE id = ?').get(tg.id).uid);
+  db.prepare('UPDATE task_target SET session_note = NULL WHERE id = ?')
     .run(tg.id);
   res.json({ ok: true });
 }));
@@ -4110,15 +4246,21 @@ app.post('/api/verifiers', wrap((req, res) => {
   if (db.prepare('SELECT 1 FROM verifier WHERE name = ?').get(v.name)) {
     throw new Error(t('err.verifier.name-taken', { name: v.name }));
   }
-  const info = db.prepare(`INSERT INTO verifier
-    (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, auto_on_stale,
-     comment_template, mentions, env_json, report_path, parse_tap, created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(v.name, v.kind, v.command, v.timeout_s, v.run_base,
-    v.comment_on_forge, v.auto_on_mr, v.auto_on_stale, v.comment_template, v.mentions,
-    v.env_json, v.report_path, v.parse_tap, new Date().toISOString());
-  ecrireRepos(info.lastInsertRowid, v.repos || []);
-  ecrireCommandes(info.lastInsertRowid, v.commands || []);
-  res.json(verifierAvecRepos(info.lastInsertRowid));
+  /* Les listes filles sont écrites AVANT que le store ne compose le fichier : elles vivent
+     DANS le fichier du vérificateur, et un fichier écrit sans ses commandes décrirait un
+     vérificateur qui ne fait rien. */
+  const cree = store.ecrire('verifier', () => {
+    const id = db.prepare(`INSERT INTO verifier
+      (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, auto_on_stale,
+       comment_template, mentions, env_json, report_path, parse_tap, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(v.name, v.kind, v.command, v.timeout_s, v.run_base,
+      v.comment_on_forge, v.auto_on_mr, v.auto_on_stale, v.comment_template, v.mentions,
+      v.env_json, v.report_path, v.parse_tap, new Date().toISOString()).lastInsertRowid;
+    ecrireRepos(id, v.repos || []);
+    ecrireCommandes(id, v.commands || []);
+    return id;
+  });
+  res.json(verifierAvecRepos(cree.id));
 }));
 
 app.put('/api/verifiers/:id', wrap((req, res) => {
@@ -4127,13 +4269,16 @@ app.put('/api/verifiers/:id', wrap((req, res) => {
   const v = lireVerifier(req.body, cur);
   const homonyme = db.prepare('SELECT 1 FROM verifier WHERE name = ? AND id <> ?').get(v.name, cur.id);
   if (homonyme) throw new Error(t('err.verifier.name-taken', { name: v.name }));
-  db.prepare(`UPDATE verifier SET name = ?, kind = ?, command = ?, timeout_s = ?, run_base = ?,
-    comment_on_forge = ?, auto_on_mr = ?, auto_on_stale = ?, comment_template = ?, mentions = ?,
-    env_json = ?, report_path = ?, parse_tap = ? WHERE id = ?`)
-    .run(v.name, v.kind, v.command, v.timeout_s, v.run_base, v.comment_on_forge, v.auto_on_mr,
-      v.auto_on_stale, v.comment_template, v.mentions, v.env_json, v.report_path, v.parse_tap, cur.id);
-  ecrireRepos(cur.id, v.repos);
-  ecrireCommandes(cur.id, v.commands);
+  store.ecrire('verifier', () => {
+    db.prepare(`UPDATE verifier SET name = ?, kind = ?, command = ?, timeout_s = ?, run_base = ?,
+      comment_on_forge = ?, auto_on_mr = ?, auto_on_stale = ?, comment_template = ?, mentions = ?,
+      env_json = ?, report_path = ?, parse_tap = ? WHERE id = ?`)
+      .run(v.name, v.kind, v.command, v.timeout_s, v.run_base, v.comment_on_forge, v.auto_on_mr,
+        v.auto_on_stale, v.comment_template, v.mentions, v.env_json, v.report_path, v.parse_tap, cur.id);
+    ecrireRepos(cur.id, v.repos);
+    ecrireCommandes(cur.id, v.commands);
+    return cur.id;
+  });
   res.json(verifierAvecRepos(cur.id));
 }));
 
@@ -4158,7 +4303,7 @@ app.post('/api/verifiers/comment-preview', wrap((req, res) => {
 }));
 
 app.delete('/api/verifiers/:id', wrap((req, res) => {
-  db.prepare('DELETE FROM verifier WHERE id = ?').run(Number(req.params.id));
+  store.supprimer('verifier', Number(req.params.id));
   res.json({ ok: true });
 }));
 
@@ -4526,8 +4671,10 @@ app.get('/api/verifiers/command-suggestions', wrap((req, res) => {
 
 app.get('/api/verifications', wrap((req, res) => {
   const mrId = Number(req.query.mr_id) || null;
-  const lignes = db.prepare('SELECT * FROM verification ORDER BY id DESC LIMIT 200').all()
-    .map(detailVerification)
+  const brut = db.prepare('SELECT * FROM verification ORDER BY id DESC LIMIT 200').all();
+  const parQui = auteurs('verification', brut);
+  const lignes = brut
+    .map((v) => ({ ...detailVerification(v), author: parQui.get(v.id) || null }))
     .filter((v) => !mrId || v.targets.some((c) => c.mr_id === mrId));
   res.json({ verifications: mrId ? lignes.slice(0, 1) : lignes });
 }));
@@ -4736,30 +4883,86 @@ app.post('/api/rules', wrap((req, res) => {
   if ((!branch_match && !path_match) || !content) throw new Error(t('err.rule-needs-trigger'));
   // A/Réglages 2 : 0 ou absent = « tous les dépôts », c'est-à-dire le comportement d'avant.
   const repoId = Number((req.body && req.body.repo_id) || 0) || null;
-  const info = db.prepare(`INSERT INTO review_rule (branch_match, path_match, label, content, repo_id, enabled, created_at)
-    VALUES (?, ?, ?, ?, ?, 1, ?)`).run(branch_match, path_match, label, content, repoId, new Date().toISOString());
-  res.json(db.prepare('SELECT * FROM review_rule WHERE id = ?').get(info.lastInsertRowid));
+  res.json(store.ecrire('review_rule', () => db.prepare(
+    `INSERT INTO review_rule (branch_match, path_match, label, content, repo_id, enabled, created_at)
+     VALUES (?, ?, ?, ?, ?, 1, ?)`,
+  ).run(branch_match, path_match, label, content, repoId, new Date().toISOString()).lastInsertRowid));
 }));
 
 app.put('/api/rules/:id', wrap((req, res) => {
   const cur = db.prepare('SELECT * FROM review_rule WHERE id = ?').get(Number(req.params.id));
   if (!cur) throw new Error(t('err.regle-introuvable'));
   const { branch_match, path_match, label, content, enabled } = req.body || {};
-  db.prepare('UPDATE review_rule SET branch_match = ?, path_match = ?, label = ?, content = ?, repo_id = ?, enabled = ? WHERE id = ?').run(
-    branch_match != null ? String(branch_match).trim() : cur.branch_match,
-    path_match != null ? String(path_match).trim() : (cur.path_match || ''),
-    label != null ? String(label).trim() : (cur.label || ''),
-    content != null ? String(content).trim() : cur.content,
-    (req.body || {}).repo_id === undefined ? cur.repo_id : (Number(req.body.repo_id) || null),
-    enabled == null ? cur.enabled : (enabled ? 1 : 0),
-    cur.id,
-  );
-  res.json(db.prepare('SELECT * FROM review_rule WHERE id = ?').get(cur.id));
+  res.json(store.ecrire('review_rule', () => {
+    db.prepare('UPDATE review_rule SET branch_match = ?, path_match = ?, label = ?, content = ?, repo_id = ?, enabled = ? WHERE id = ?').run(
+      branch_match != null ? String(branch_match).trim() : cur.branch_match,
+      path_match != null ? String(path_match).trim() : (cur.path_match || ''),
+      label != null ? String(label).trim() : (cur.label || ''),
+      content != null ? String(content).trim() : cur.content,
+      (req.body || {}).repo_id === undefined ? cur.repo_id : (Number(req.body.repo_id) || null),
+      enabled == null ? cur.enabled : (enabled ? 1 : 0),
+      cur.id,
+    );
+    return cur.id;
+  }));
 }));
 
 app.delete('/api/rules/:id', wrap((req, res) => {
-  db.prepare('DELETE FROM review_rule WHERE id = ?').run(Number(req.params.id));
+  store.supprimer('review_rule', Number(req.params.id));
   res.json({ ok: true });
+}));
+
+/* QUI SUIS-JE ? L'identité git de ce poste — pas de compte Mergerie, pas de mot de passe : le
+   jour où une équipe partage un dépôt, l'auteur d'une review est celui qui a commité le fichier,
+   et git le sait déjà. Inventer une identité à côté, ce serait deux vérités à tenir alignées
+   pour ne rien gagner. `runners` liste les exécutants déjà désignés, pour que le formulaire
+   d'agent propose une liste plutôt qu'une saisie libre. */
+app.get('/api/me', wrap((req, res) => {
+  const moi = identite.identite();
+  const connus = db.prepare("SELECT DISTINCT runner FROM agent WHERE runner IS NOT NULL AND runner <> ''")
+    .all().map((r) => r.runner);
+  res.json({
+    ...moi,
+    runners: [...new Set([...(moi.ok ? [moi.name] : []), ...connus])].sort(),
+    partage: Boolean(String(getConfig().data_repo_url || '').trim()),
+  });
+}));
+
+/* ---------- Données partagées : le dépôt git qui fait foi ----------
+   Quatre routes, et rien de plus : dire où l'on en est, rattacher ce poste, forcer un tour,
+   et trancher un conflit. L'utilisateur ne tape jamais une commande git pour ses données. */
+
+app.get('/api/data-sync', wrap((req, res) => {
+  res.json({ ...datasync.statut(), conflits: datasync.conflitsGardes() });
+}));
+
+/* Cloner, ou INITIALISER depuis ce qu'on a déjà : c'est le même geste côté utilisateur, et
+   c'est voulu — la bascule d'une équipe consiste, pour le poste qui a l'historique, à le
+   pousser. `datasync` regarde si le distant a du contenu et choisit. */
+app.post('/api/data-sync/attach', wrap(async (req, res) => {
+  const url = String((req.body && req.body.url) || '').trim();
+  if (url) updateConfig({ data_repo_url: url });
+  const r = await datasync.rattacher({ url: url || undefined });
+  datasync.demarrer();
+  res.json({ ok: true, ...r, statut: datasync.statut() });
+}));
+
+app.post('/api/data-sync/now', wrap(async (req, res) => {
+  await datasync.commiter();
+  const bilan = await datasync.tour();
+  res.json({ ok: true, bilan, statut: datasync.statut(), conflits: datasync.conflitsGardes() });
+}));
+
+/* Trancher un conflit. `keep: 'mine'` réécrit sa version et la repousse ; `keep: 'theirs'`
+   oublie simplement la version gardée. Dans les deux cas rien n'est perdu tant qu'on n'a pas
+   choisi — c'est tout l'intérêt de garder la version écrasée plutôt que de la jeter. */
+app.post('/api/data-sync/conflicts/resolve', wrap((req, res) => {
+  const fichier = String((req.body && req.body.file) || '').trim();
+  const garder = (req.body && req.body.keep) === 'mine' ? 'mine' : 'theirs';
+  if (!fichier) throw new Error(t('err.data-sync.file-required'));
+  const ok = garder === 'mine' ? datasync.reprendreVersion(fichier) : datasync.oublierConflit(fichier);
+  if (!ok) throw new Error(t('err.data-sync.conflict-unknown'));
+  res.json({ ok: true, conflits: datasync.conflitsGardes() });
 }));
 
 /* ---------- Découverte + jobs ---------- */
@@ -5217,6 +5420,24 @@ app.post('/api/notes', wrap((req, res) => {
    mène à la merge request depuis toujours ; la merge request ignorait qu'on avait écrit trois
    paragraphes sur elle. La règle de « citer » est celle du rendu, pas un second `LIKE` qui
    dériverait (cf. `notes.citations`). */
+/* L'HISTOIRE D'UNE PAGE — ce que git rend gratuitement.
+ *
+ * Une page de notes est un fichier du dépôt de données : son historique existe déjà, avec son
+ * auteur et sa date, sans qu'on ait eu à tenir une table de versions. On le montre, et c'est
+ * tout ce que cette route fait. Sans dépôt de données, elle rend une liste vide plutôt qu'une
+ * erreur : l'écran affiche alors « pas d'historique ici », ce qui est la vérité.
+ *
+ * Déclarée AVANT `/api/notes/:id` — Express prendrait sinon « citations » ou « history » pour
+ * un identifiant, comme le rappelle la route voisine. */
+app.get('/api/notes/:id/history', wrap(async (req, res) => {
+  const page = notes.lirePage(req.params.id);
+  if (!page) throw Object.assign(new Error(t('err.notes.unknown')), { status: 404 });
+  const fichier = `notes/${page.slug}.md`;
+  const sha = String(req.query.sha || '').trim();
+  if (sha) return res.json({ sha, diff: await datasync.diffDe(fichier, sha) });
+  res.json({ file: fichier, commits: await datasync.historique(fichier) });
+}));
+
 app.get('/api/notes/citations', wrap((req, res) => {
   const mr = req.query.mr ? Number(req.query.mr) : null;
   const ticket = String(req.query.ticket || '').trim();
@@ -5262,6 +5483,10 @@ app.post('/api/notes/:id/images', wrap((req, res) => {
   fs.writeFileSync(file, buf);
   const id = db.prepare('INSERT INTO note_image (page_id, path, created_at) VALUES (?,?,?)')
     .run(page.id, file, new Date().toISOString()).lastInsertRowid;
+  /* Une capture vit dans le fichier de SA PAGE — elle ne change qu'avec elle, et un conflit sur
+     une image est un conflit sur la page. On réécrit donc la page, ce qui recopie aussi le
+     binaire dans le dépôt de données. */
+  store.rafraichir('note_page', page.id);
   res.json({ id, url: `/api/notes/${page.id}/images/${id}` });
 }));
 
@@ -5658,10 +5883,15 @@ app.get('/api/mrs', wrap((req, res) => {
      décide avant d'ouvrir. Une seule requête pour toute la liste — la dernière version de
      chaque merge request —, pas une par carte. */
   const derniereVersion = {};
-  for (const v of db.prepare(`SELECT rv.* FROM review_version rv
-    WHERE rv.version = (SELECT MAX(v2.version) FROM review_version v2 WHERE v2.mr_id = rv.mr_id)`).all()) {
+  const versions = db.prepare(`SELECT rv.* FROM review_version rv
+    WHERE rv.version = (SELECT MAX(v2.version) FROM review_version v2 WHERE v2.mr_id = rv.mr_id)`).all();
+  /* « PAR QUI » sur la carte d'une merge request : c'est l'auteur de sa DERNIÈRE passe de review
+     qu'on veut, pas celui de la merge request — la question est « qui l'a reviewée ? ». Lu du
+     cache alimenté par git, sans aucune colonne à tenir. */
+  const parQui = auteurs('review_version', versions);
+  for (const v of versions) {
     derniereVersion[v.mr_id] = {
-      version: v.version, at: v.created_at,
+      version: v.version, at: v.created_at, author: parQui.get(v.id) || null,
       n_new: v.n_new, n_persistent: v.n_persistent, n_resolved: v.n_resolved, n_disappeared: v.n_disappeared,
     };
   }
@@ -5798,9 +6028,10 @@ app.get('/api/mrs', wrap((req, res) => {
    il se reconstitue par (dépôt, branche). En cas d'ambiguïté — plusieurs sessions sur la même
    branche — on prend la PLUS RÉCENTE, et seulement si elle a bien une session d'agent. */
 function originSessionKey(mr) {
-  const row = db.prepare(`SELECT tt.session_key FROM task_target tt
+  const row = db.prepare(`SELECT ls.session_key FROM task_target tt
     JOIN task t ON t.id = tt.task_id
-    WHERE tt.repo_id = ? AND tt.branch = ? AND tt.session_key IS NOT NULL AND t.kind = 'code'
+    JOIN local_session ls ON ls.scope = 'task_target' AND ls.ref = tt.uid
+    WHERE tt.repo_id = ? AND tt.branch = ? AND ls.session_key IS NOT NULL AND t.kind = 'code'
     ORDER BY tt.id DESC LIMIT 1`).get(mr.repo_id, mr.source_branch);
   return (row && row.session_key) || null;
 }
@@ -5852,7 +6083,12 @@ app.get('/api/mrs/:id', wrap((req, res) => {
     ticket_key: tkey,
     ticket_url: ticketUrl(getConfig(), tkey),
     // Commande pour reprendre la session d'agent de la review dans un terminal.
-    resume_cmd: agentsession.resumeCommand(mr.review_session_backend, mr.review_session_key, mr.review_session_cwd),
+    resume_cmd: (() => {
+      /* Le handle de la session de REVIEW a quitté la ligne `mr` : il ne vaut que dans le
+         `~/.claude` de cette machine, alors que l'état de relecture de la MR, lui, se partage. */
+      const h = localsession.lire('mr', mr.uid);
+      return agentsession.resumeCommand(h.session_backend, h.session_key, h.session_cwd);
+    })(),
     /* Session de CODAGE dont cette MR est issue, s'il y en a une. Sert à pré-remplir le champ
        « identifiant de session » quand on demande une correction : l'IA reprend alors le fil de
        son propre travail au lieu de redécouvrir le code. Simple proposition — le champ reste
@@ -7376,6 +7612,31 @@ const server = app.listen(PORT, HOST, () => {
      fil des runs, et un semis qui écrase serait une perte silencieuse à chaque redémarrage. */
   try { agentprofile.seedBuiltins(); } catch (e) { console.log(`[agents] ${e.message}`); }
   agentschedule.demarrer((m) => console.log(`[agents] ${m}`));
+  /* LA SYNCHRONISATION DU DÉPÔT DE DONNÉES. Sans URL configurée, `demarrer()` rend `false` et
+     rien ne tourne : le mode mono-poste est exactement ce cas, et il ne coûte pas un timer. */
+  /* EN DÉMO, LE DÉPÔT DE DONNÉES EXISTE VRAIMENT. Sans lui, la section « Données partagées »
+     afficherait « mode mono-poste », le pied de page se tairait et le bouton « Historique »
+     d'une page de notes resterait caché : on montrerait la fonctionnalité en la décrivant. */
+  if (process.env.MERGERIE_DEMO === '1') {
+    try {
+      // eslint-disable-next-line global-require
+      const origine = require('./demo-shared').preparer((m) => console.log(m));
+      if (origine) updateConfig({ data_repo_url: origine, data_repo_branch: 'main' });
+    } catch (e) { console.log(`[demo] dépôt de données : ${e.message}`); }
+  }
+  /* CE QUI RESTAIT À ÉCRIRE. La file a survécu à l'arrêt — elle est dans la base : on la vide
+     avant toute chose, pour que le dépôt reparte complet même après une coupure en plein vol. */
+  try {
+    const retard = store.ecouler();
+    if (retard.ecrits || retard.supprimes) {
+      console.log(`  données partagées : ${retard.ecrits} fichier(s) réécrit(s), ${retard.supprimes} retiré(s) après l’arrêt`);
+    }
+  } catch (e) { console.log(`[store] ${e.message}`); }
+  if (datasync.demarrer()) {
+    console.log(`  données partagées : ${getConfig().data_repo_url} (${getConfig().data_sync_seconds}s)`);
+    if (!identite.identite().ok) console.log('  ⚠ git n’a pas de `user.name` — rien ne sera commité tant qu’il manque');
+    datasync.tour().catch(() => {});
+  }
   verifyrun.gcWorktrees((m) => console.log(`[verify] ${m}`));
   // Ménage de l'historique : au démarrage, puis une fois par jour.
   retentionTimer = retention.demarrer(
