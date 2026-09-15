@@ -240,10 +240,20 @@ function transcriptionDesPasses(taskId, unitId) {
  * mécanique) : on ne réinjecte rien plutôt que de tout rejouer à un agent qui s'en souvient.
  */
 function passesVenuesDAilleurs(taskId, tg) {
+  let passes = [];
+  try { passes = agentpass.list('task', taskId, tg.id); } catch { return []; }
   const repere = etat.lire('session', tg.uid, 'derniere_passe');
-  if (!repere) return [];
-  try { return agentpass.list('task', taskId, tg.id).filter((p) => p.uid && p.uid > repere); }
-  catch { return []; }
+  if (repere) return passes.filter((p) => p.uid && p.uid > repere);
+  /* PAS DE REPÈRE — une session commencée AVANT cette mécanique, c'est-à-dire toutes celles
+     qui existent déjà. Sans rien de plus, elles n'auraient jamais de rattrapage : le repère ne
+     se pose qu'à la première itération locale, et une passe arrivée AVANT elle lui serait
+     antérieure, donc invisible pour toujours.
+     On reconnaît alors une passe venue d'ailleurs à SON FICHIER : l'hydratation écrit
+     `tasks/passes/<session>/pass-<uid>.md`, là où une passe produite ici s'écrit
+     `output-v<n>.md` dans le dossier de son unité. Ce n'est pas un repère, c'est une trace —
+     mais elle dit la même chose, et elle vaut rétroactivement. Dès la première itération
+     locale, le repère prend le relais et cette lecture-là ne sert plus. */
+  return passes.filter((p) => p.output_path && path.basename(p.output_path).startsWith('pass-'));
 }
 
 function rattrapageDesPasses(taskId, tg) {

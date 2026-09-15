@@ -177,6 +177,44 @@ describe('Reprise de session : le handle suit les passes', () => {
     assert.match(envoye, /Documente le cache/, 'et la demande du jour');
   });
 
+  /* ET POUR LES SESSIONS QUI EXISTAIENT DÉJÀ. Le repère ne se pose qu'à la première itération
+     locale : une session commencée avant cette mécanique n'en a aucun, et la passe d'un
+     collègue arrivée entre-temps lui serait antérieure — donc invisible pour toujours. On
+     reconnaît alors une passe venue d'ailleurs à son FICHIER, celui qu'écrit l'hydratation. */
+  test('une session d’avant le repère rattrape quand même ce qui vient du dépôt', async () => {
+    const { body: t } = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Ajoute un endpoint /live',
+      targets: [{ repo_id: idA, branch: 'feat/live', base_branch: 'main' }],
+    });
+    const tache = app.db.prepare('SELECT * FROM task WHERE id = ?').get(t.id);
+    await taskrunner.runTask(tache, () => {});
+    const tg = cible(t.id, idA);
+
+    // eslint-disable-next-line global-require
+    const localstate = require('../src/localstate');
+    localstate.etat.ecrire('session', tg.uid, 'derniere_passe', null);   // session d'avant
+    assert.equal(localstate.etat.lire('session', tg.uid, 'derniere_passe'), null);
+
+    /* La passe du collègue, telle que l'hydratation la pose : sous `tasks/passes/<session>/`,
+       nommée par l'uid. C'est cette forme-là qui la distingue d'une passe produite ici. */
+    const dossier = path.join(app.dataDir, 'tasks', 'passes', tache.uid || 'x');
+    fs.mkdirSync(dossier, { recursive: true });
+    const sien = path.join(dossier, 'pass-01JZZZCOLLEGUE.md');
+    fs.writeFileSync(sien, 'J’ai basculé la sonde sur le port 9000.', 'utf8');
+    const n = app.db.prepare('SELECT MAX(n) v FROM agent_pass WHERE scope = ? AND task_id = ? AND unit_id = ?')
+      .get('task', t.id, tg.id).v + 1;
+    app.db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
+      VALUES ('task', ?, ?, ?, 'followup', ?, ?, ?)`)
+      .run(t.id, tg.id, n, 'Bascule la sonde sur 9000', sien, new Date().toISOString());
+
+    appels.length = 0;
+    await taskrunner.runTaskFollowup(tache, 'Ajoute le port au README', () => {});
+    assert.equal(appels[0].resume, true, 'la session locale est toujours reprise');
+    const envoye = prompts[prompts.length - 1];
+    assert.match(envoye, /Bascule la sonde sur 9000/, 'la demande du collègue est rattrapée');
+    assert.match(envoye, /port 9000/, 'et ce que son agent a répondu');
+  });
+
   /* La commande « Reprendre au terminal » copie ce handle : elle doit mener à la conversation
      TELLE QU'ELLE EST, pas à son état d'il y a trois suivis. */
   test('la commande de reprise pointe la dernière passe', async () => {

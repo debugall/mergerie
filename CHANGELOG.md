@@ -332,8 +332,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   nothing on screen said so. Each local iteration now leaves a marker, so the next turn can
   recognise the iterations that came from elsewhere and replay **only those**, under a heading
   that says what happened. Your own conversation is not replayed: the agent remembers it, and
-  serving it back would make it doubt what it had already done. Sessions that predate this get
-  no catch-up rather than a full replay; the marker is set at your next iteration.
+  serving it back would make it doubt what it had already done. Sessions that predate the marker are covered too: an
+  iteration that came through the repository is recognised by the file hydration wrote for it,
+  so a session started before all this still catches up — otherwise a colleague's iteration
+  that arrived before your next local one would have stayed invisible for good.
 
 - **A follow-up sent from the machine that received a coding session now carries the
   conversation.** The agent's session handle only means something in the `~/.claude` of the
