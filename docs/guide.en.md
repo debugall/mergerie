@@ -2776,6 +2776,16 @@ fetches what is new elsewhere. The footer shows `↑2 ↓0` and the time of the 
 until the next one**, and a click forces a round without waiting. Offline, everything keeps working: commits stay local, the indicator turns amber,
 and the backlog catches up on return.
 
+**Before attaching, you are told what leaves.** “Clone / attach” and “Send everything again”
+open a summary first: which way the exchange goes, what leaves by kind, **what stays on this
+machine** (sessions and todos are private by default), how many documents the repository already
+holds, and file by file how many will be added, changed or left alone. **Deleted: none** — sending
+writes, it never deletes; a colleague's work is read and added here BEFORE anything goes out.
+
+**“Sync” only sends what changed.** That is what you want day to day, but it puts nothing back
+into a repository emptied by hand: the queue of pending writes is empty, so there is nothing to
+send. For that case there is **“Send everything again”**, which rewrites everything shareable.
+
 **A sync cannot empty your database.** “A file gone takes its row with it” holds for ONE deleted
 document. For a repository that was reset — a force push, a project recreated on the forge — the
 same rule would wipe everything at once. A pass that would remove more than half of what the

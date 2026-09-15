@@ -428,6 +428,46 @@ describe('datasync — deux postes, un dépôt de données', () => {
     assert.match(String(apres.erreur || ''), /vidé/, 'et DIT : l’écran ne doit pas afficher « à jour »');
   });
 
+  test('« Tout ré-envoyer » n’écrase pas ce qu’un collègue a partagé', () => {
+    /* La question qu'on se pose devant ce bouton. La réponse tient à l'ordre des gestes : le
+       rattachement LIT d'abord ce que le dépôt porte et l'ajoute ici, et l'export n'ÉCRIT que
+       des fichiers — il n'en supprime jamais. Le travail d'un collègue survit donc, même s'il
+       porte sur des objets que ce poste ne connaissait pas. */
+    const uidA = dans(posteA, `async ({ notes, datasync, MSGS }) => {
+      const p = notes.creerPage({ title: 'Écrit par A', content: 'ce que A a rédigé' }, MSGS);
+      notes.majPage(p.id, { shared: 1 }, MSGS);
+      await datasync.commiter('note "Écrit par A"');
+      await datasync.tour();
+      return p.id;
+    }`);
+    assert.ok(uidA);
+
+    /* B ne l'a jamais vue : il ne synchronise pas avant de tout ré-envoyer, ce qui est le pire
+       cas — sa base ignore la page de A. */
+    const chezB = dans(posteB, `async ({ db, notes, store, datasync, MSGS }) => {
+      const p = notes.creerPage({ title: 'Écrit par B', content: 'ce que B a rédigé' }, MSGS);
+      notes.majPage(p.id, { shared: 1 }, MSGS);
+      /* Le geste du bouton : rattacher (qui lit le dépôt, puis réécrit tout), puis un tour. */
+      await datasync.rattacher({});
+      await datasync.tour();
+      return {
+        pages: db.prepare('SELECT title FROM note_page ORDER BY title').all().map((x) => x.title),
+        fichiers: store.listerFichiers('notes').filter((f) => f.endsWith('.md')).sort(),
+      };
+    }`);
+    assert.ok(chezB.pages.includes('Écrit par A'), 'le rattachement LIT le dépôt avant d’écrire');
+    assert.ok(chezB.pages.includes('Écrit par B'));
+
+    const listing = execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' });
+    assert.match(listing, /notes\/ecrit-par-a\.md/, 'la page de A est toujours dans le dépôt');
+    assert.match(listing, /notes\/ecrit-par-b\.md/, '…et celle de B est arrivée');
+    const chezA = dans(posteA, `async ({ db, datasync }) => {
+      await datasync.tour();
+      return db.prepare("SELECT content FROM note_page WHERE slug = 'ecrit-par-a'").get().content;
+    }`);
+    assert.equal(chezA, 'ce que A a rédigé', 'et son contenu n’a pas été réécrit par celui de B');
+  });
+
   test('AUCUN SECRET dans le dépôt nu — ni dans sa dernière version, ni dans son historique', () => {
     dans(posteA, `async ({ config, datasync }) => {
       config.updateConfig({ access_token: 'glpat-NE-DOIT-JAMAIS-PARTIR', jira_token: 'jira-NE-DOIT-JAMAIS-PARTIR' });

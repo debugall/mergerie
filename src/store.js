@@ -646,6 +646,40 @@ const RACINES_RETIREES = ['git-commands', 'git-ops', 'docker-backups', 'jira'];
   }
 }
 
+/* CE QUE L'EXPORT FERAIT, SANS LE FAIRE.
+ *
+ * On compose en mémoire exactement ce que `exporterTout` écrirait, et on le compare à ce que le
+ * dépôt porte déjà : un fichier absent est un ajout, un fichier différent une modification, un
+ * fichier identique ne bougera pas (git ne verra rien). Ce qui ne figure pas dans la liste n'est
+ * pas touché — et c'est là que vivent les documents des collègues : l'export ÉCRIT, il ne
+ * supprime jamais, d'où `supprimes: 0` qui n'est pas une approximation mais une propriété.
+ * Rien n'est écrit sur le disque par cette fonction : c'est toute la raison de son existence. */
+function apercuExport() {
+  const ctx = contexte();
+  const attendus = new Map();
+  for (const table of tablesFichier()) {
+    for (const row of db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()) {
+      if (!partageable(table, row, ctx)) continue;
+      try {
+        for (const f of fichiersDe(table, row, ctx)) attendus.set(f.chemin, f.contenu);
+        for (const b of binairesDe(table, row, ctx)) attendus.set(b.chemin, null);
+      } catch { /* une ligne qui ne sait pas encore devenir un fichier ne compte pas */ }
+    }
+  }
+  let nouveaux = 0;
+  let modifies = 0;
+  let identiques = 0;
+  for (const [chemin, contenu] of attendus) {
+    if (contenu === null) { (existe(chemin) ? identiques++ : nouveaux++); continue; }  // binaire : on ne relit pas des Mo
+    const actuel = lireFichier(chemin);
+    if (actuel === null) nouveaux += 1;
+    else if (actuel === contenu) identiques += 1;
+    else modifies += 1;
+  }
+  const intacts = listerFichiers().filter((f) => f !== MARQUEUR && !attendus.has(f)).length;
+  return { nouveaux, modifies, identiques, intacts, supprimes: 0 };
+}
+
 /** Écrit TOUT ce qui est partagé. Le point de départ d'une équipe, et le filet d'un doute. */
 function exporterTout() {
   marquer();
@@ -687,6 +721,7 @@ module.exports = {
   listerFichiers,
   tablesFichier,
   partageable,
+  apercuExport,
   marquer,
   verifierFormat,
   exporterTout,
@@ -920,9 +955,14 @@ function hydraterFichiers(relatifs) {
      ordinaire — supprimer trois notes reste possible. */
   if (disparus.length) {
     const restants = listerFichiers().filter((f) => tablePour(f)).length;
-    if (disparus.length >= 10 && disparus.length > restants) {
+    /* DEUX SIGNATURES D'ACCIDENT, pas une. La seconde — « il ne reste RIEN » — est celle d'un
+       petit dépôt : à huit documents, le seuil de dix ne se déclencherait jamais, et une équipe
+       qui débute perdrait tout par la même porte. Or personne ne supprime le dernier document
+       d'un dépôt par un `pull` : ça se fait chez soi, et ça passe par un autre chemin. */
+    if ((disparus.length >= 10 && disparus.length > restants) || restants === 0) {
       bilan.refuses = disparus.length;
       bilan.raison = `hydratation refusée : ${disparus.length} document(s) disparus pour ${restants} restant(s) — le dépôt a été vidé, pas les objets supprimés`;
+      bilan.vide = restants === 0;
       console.log(`[store] ${bilan.raison}`);
     } else {
       for (const d of disparus) if (supprimerLigne(d.e, d.table, d.relatif)) bilan.supprimes += 1;

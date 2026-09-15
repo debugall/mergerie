@@ -100,6 +100,14 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
     await page.fill('[form="configForm"][name="data_repo_url"]', nu);
     await page.fill('[form="configForm"][name="data_repo_branch"]', 'main');
     await page.click('#btnDataAttach');
+    /* CE QUI VA PARTIR SE LIT AVANT DE CLIQUER : le rattachement demande confirmation et montre
+       ce qu'il emporte — et surtout ce qu'il NE PREND PAS, les sessions et todos étant privées
+       par défaut. Rien n'est écrit tant qu'on n'a pas répondu. */
+    await page.waitForSelector('#confirmModal:not([hidden])', { timeout: ATTENTE });
+    const resume = await page.textContent('#confirmText');
+    assert.match(resume, /notes|merge requests|reviews|dépôts|repositories/i,
+      'le récapitulatif doit dire ce qui part');
+    await page.click('#confirmOk');
     /* On attend le PUSH, pas le clone : `estDepot()` devient vrai dès le `git init`, c'est-à-dire
        avant que quoi que ce soit soit parti. Attendre là, ce serait regarder le dépôt nu pendant
        qu'on écrit encore dedans. */
@@ -339,4 +347,53 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
     assert.match(messages, /note "Bascule équipe"/,
       'un message généré doit dire le GESTE, pas « update 3 files »');
   });
+  test('« Tout ré-envoyer » remet ce qu’un dépôt vidé à la main a perdu', async () => {
+    /* « Synchroniser » n'envoie que CE QUI A CHANGÉ : la file des écritures décide, et elle est
+       vide quand rien n'a bougé. Un dépôt vidé à la main ne se rattrapait donc pas — et le seul
+       chemin, « Cloner / rattacher », ne dit pas dans son nom qu'il ré-exporte.
+       CE TEST VIENT EN DERNIER : il vide le dépôt d'équipe, donc il emporte le décor des
+       autres. (Le garde-fou anti-vidage, lui, a son épreuve à l'échelle dans `unit-datasync` :
+       sous dix documents, une suppression reste une suppression.) */
+    const listing = () => execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' });
+    assert.match(listing(), /notes\/deploiement-prod\.md/, 'on part d’un dépôt pourvu');
+
+    // On vide le dépôt À LA MAIN, comme on le ferait depuis la forge.
+    const vide = path.join(racine, 'vidage');
+    execFileSync('git', ['clone', nu, vide], { stdio: 'ignore' });
+    execFileSync('git', ['-C', vide, 'checkout', '--orphan', 'neuve'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', vide, 'rm', '-rf', '.'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', vide, '-c', 'user.name=T', '-c', 'user.email=t@x',
+      'commit', '--allow-empty', '-m', 'vidé à la main'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', vide, 'push', '-f', 'origin', 'neuve:main'], { stdio: 'ignore' });
+
+    // Une synchro ordinaire ne remet rien — et surtout, elle ne VIDE pas la base.
+    /* UNE SYNCHRO ORDINAIRE NE DOIT NI REMETTRE, NI DÉTRUIRE. Le dépôt ne porte plus rien : le
+       garde-fou refuse d'appliquer la disparition, même à cette échelle-là — un petit dépôt est
+       précisément celui où le seuil de dix ne suffirait pas. */
+    const avantPages = app.db.prepare('SELECT COUNT(*) n FROM note_page').get().n;
+    await app.api('POST', '/api/data-sync/now');
+    assert.equal(app.db.prepare('SELECT COUNT(*) n FROM note_page').get().n, avantPages,
+      'il ne reste RIEN dans le dépôt : c’est un vidage, pas des suppressions');
+    const apresSynchro = listing().split('\n').filter((f) => f.trim() && !/^\./.test(f));
+    assert.deepEqual(apresSynchro, [],
+      'une synchro ordinaire ne remet rien : elle n’envoie que ce qui a CHANGÉ, et rien n’a changé');
+
+    /* Le geste qui remet tout, lui, existe et se nomme. Il passe par le rattachement : un dépôt
+       vidé par une branche orpheline n'a plus d'ancêtre commun avec l'historique local, et un
+       simple commit suivi d'un push serait refusé. */
+    /* CE QUI VA SE PASSER SE LIT AVANT : ajoutés, modifiés, inchangés — et zéro supprimé, qui
+       n'est pas une estimation mais une propriété de l'export. */
+    const ap = (await app.api('GET', '/api/data-sync/preview')).body;
+    assert.equal(ap.ecriture.supprimes, 0, 'l’envoi n’efface rien, jamais');
+    assert.ok(ap.ecriture.nouveaux > 0, 'le dépôt est vide : tout est à (re)poser');
+
+    const r = await app.api('POST', '/api/data-sync/reexport');
+    assert.equal(r.status, 200);
+    const total = Object.values(r.body.compte || {}).reduce((t2, x) => t2 + (Number(x) || 0), 0);
+    assert.ok(total > 0, 'il doit avoir réécrit des documents');
+    await attendreServeur(async () => listing().split('\n').filter((f) => f.trim() && !/^\./.test(f)).length >= total,
+      'tout ce que la base porte de partageable est de retour dans le dépôt');
+    assert.match(listing(), /settings\.json/, 'les réglages d’équipe compris');
+  });
+
 });

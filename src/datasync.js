@@ -468,6 +468,31 @@ async function contenuA(relatif, sha) {
   return gitBrut(['show', `${String(sha)}:${relatif}`], null);
 }
 
+/* CE QUE LE DISTANT PORTE DÉJÀ. Un `ls-remote` suffit — on ne clone rien pour répondre à
+   « est-ce que je vais initialiser, ou rejoindre ? ». Sans réseau, on ne sait pas, et on le dit
+   plutôt que d'affirmer l'un ou l'autre. */
+async function distantPourvu(url) {
+  const adresse = String(url || urlDepot()).trim();
+  if (!adresse) return null;
+  try {
+    const sortie = await git(['ls-remote', '--heads', adresse, branche()], { timeout: 20000 });
+    return Boolean(sortie);
+  } catch { return null; }
+}
+
+/* COMBIEN LE DISTANT PORTE DÉJÀ. Sert à répondre, AVANT de cliquer, à « est-ce que je vais
+   écraser ce que les autres ont partagé ? ». On ne clone pas pour ça : si ce poste a déjà le
+   dépôt, un `fetch` puis un `ls-tree` suffisent ; sinon on ne sait pas, et on le dit. */
+async function compterDistant(url) {
+  if (!estDepot()) return null;
+  const adresse = String(url || urlDepot()).trim();
+  try {
+    await git(['fetch', adresse || 'origin', branche()], { timeout: 60000 });
+    const sortie = await git(['ls-tree', '-r', '--name-only', 'FETCH_HEAD']);
+    return sortie.split('\n').map((x) => x.trim()).filter((x) => x && !x.startsWith('.')).length;
+  } catch { return null; }
+}
+
 /* ---------- Clonage / rattachement ---------- */
 
 /**
@@ -575,6 +600,8 @@ module.exports = {
   REGROUPEMENT_MS,
   estConfigure,
   estDepot,
+  distantPourvu,
+  compterDistant,
   statut,
   messagePour,
   marquerSale,

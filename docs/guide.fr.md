@@ -2870,6 +2870,17 @@ de la dernière synchro ; le survol dit **dans combien de secondes part la proch
 force un tour sans attendre. Hors ligne, tout continue de marcher : les commits
 restent locaux, le témoin passe à l'ambre, et le retard se rattrape au retour.
 
+**Avant de rattacher, on te dit ce qui part.** « Cloner / rattacher » et « Tout ré-envoyer »
+ouvrent d'abord un récapitulatif : dans quel sens va l'échange, ce qui part par famille, **ce qui
+reste sur ce poste** (les sessions et les todos sont privées par défaut), combien de documents le
+dépôt porte déjà, et fichier par fichier combien seront ajoutés, modifiés ou laissés tels quels.
+**Supprimés : aucun** — l'envoi écrit, il ne supprime jamais ; le travail d'un collègue est lu et
+ajouté chez toi AVANT que quoi que ce soit ne parte.
+
+**« Synchroniser » n'envoie que ce qui a changé.** C'est ce qu'on veut au quotidien, mais ça ne
+remet rien dans un dépôt vidé à la main : la file des écritures est vide, donc il n'y a rien à
+envoyer. Pour ce cas-là, il y a **« Tout ré-envoyer »**, qui réécrit tout ce qui se partage.
+
 **Une synchro ne peut pas vider ta base.** « Un fichier parti emporte sa ligne » vaut pour UN
 document supprimé. Pour un dépôt remis à zéro — un `push --force`, un projet recréé sur la forge —
 la même règle effacerait tout d'un coup. Une passe qui ferait disparaître plus de la moitié de ce

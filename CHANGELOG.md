@@ -80,12 +80,27 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   thing. Every uniqueness rule in the database is now checked against the registry by a test, so
   the next one cannot be discovered in production, on someone else's machine.
 
+- **Attaching and re-sending now say what they will do, before they do it.** “Clone / attach” and
+  the new **Send everything again** both open a summary first: which way the exchange goes, what
+  leaves by kind, **what stays on this machine** (sessions and todos are private by default —
+  better to learn it here than by looking for your session on a colleague's screen), how many
+  documents the repository already holds, and file by file how many will be added, changed or left
+  unchanged. Deleted: none — sending writes, it never deletes, and the summary says how many of the
+  repository's files it will not touch at all.
+
+- **“Send everything again”, because “Sync” only sends what changed.** After a repository emptied
+  or truncated by hand, a normal sync put nothing back — the queue of pending writes was empty, and
+  nothing said so. The button now exists and is named for what it does. It goes through the attach
+  path on purpose: a repository reset by an orphan force-push shares no ancestor with your local
+  history, and a plain commit-and-push would be refused.
+
 - **A sync can no longer empty your database.** “A file gone takes its row with it” is right for
   one document: someone deletes a note, it goes away for everyone. Applied to a repository that
   was just reset — a force push, a recreated project, a truncated clone — the same rule wiped
   reviews, sessions, agents and verifiers in one pass, and the database's own cascades took the
   rest. That happened. A pass that would remove more than half of what the repository holds, and
-  at least ten documents, is now refused outright: nothing is deleted, everything is kept, and the
+  at least ten documents — or that would leave the repository with nothing at all, which is the
+  same accident on a small team — is now refused outright: nothing is deleted, everything is kept, and the
   sync indicator turns red with the reason instead of reporting “up to date”. Deleting three notes
   still works.
 

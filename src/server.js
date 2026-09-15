@@ -44,6 +44,7 @@ const store = require('./store');
 const datasync = require('./datasync');
 const identite = require('./identite');
 const verifierenv = require('./verifierenv');
+const registre = require('./store-registry');
 const configModule = require('./config');
 const { getConfig, updateConfig } = configModule;
 const i18n = require('../public/i18n-runtime.js');
@@ -5106,12 +5107,83 @@ app.get('/api/data-sync', wrap((req, res) => {
 /* Cloner, ou INITIALISER depuis ce qu'on a déjà : c'est le même geste côté utilisateur, et
    c'est voulu — la bascule d'une équipe consiste, pour le poste qui a l'historique, à le
    pousser. `datasync` regarde si le distant a du contenu et choisit. */
+/* CE QUI VA PARTIR, ET CE QUI VA RESTER — avant de cliquer, pas après.
+ *
+ * « Cloner / rattacher » est le geste qui ouvre son travail à d'autres : il mérite qu'on dise ce
+ * qu'il emporte. On compte donc, table par table, ce que l'export écrirait — sans rien écrire —
+ * et on dit aussi ce qui RESTE ici, parce que c'est là que se trouvent les surprises : les
+ * sessions et les todos sont privées par défaut, et quelqu'un qui croit tout partager doit
+ * l'apprendre maintenant plutôt qu'en cherchant sa session chez un collègue.
+ * Le sens du geste (initialiser un dépôt vide / rejoindre un dépôt pourvu) vient d'un
+ * `ls-remote` : pas de clone, pas d'écriture, rien d'irréversible avant le « oui ». */
+const GROUPES_APERCU = {
+  repo: 'repos', mr: 'mrs', review: 'reviews', review_version: 'reviews', finding: 'reviews',
+  convergence_run: 'reviews', review_rule: 'rules', verifier: 'verifiers', verification: 'verifiers',
+  agent: 'agents', agent_knowledge: 'agents', task: 'sessions', local_task: 'sessions',
+  question: 'sessions', agent_pass: 'sessions', piece_jointe: 'sessions',
+  note_page: 'notes', todo: 'todos', lot: 'lots', config: 'settings',
+};
+
+app.get('/api/data-sync/preview', wrap(async (req, res) => {
+  const url = String(req.query.url || '').trim() || getConfig().data_repo_url;
+  const partants = {};
+  const retenus = {};
+  for (const table of store.tablesFichier()) {
+    const groupe = GROUPES_APERCU[table] || table;
+    const rows = db.prepare(`SELECT * FROM ${table}`).all();
+    const ctx = store.contexte();
+    let part = 0;
+    for (const r of rows) if (store.partageable(table, r, ctx)) part += 1;
+    partants[groupe] = (partants[groupe] || 0) + part;
+    /* Ce qui reste n'a de sens que là où l'on CHOISIT : ailleurs, tout part, et annoncer
+       « 0 retenu » ajouterait du bruit à un écran qui doit se lire d'un coup d'œil. */
+    if (registre.pour(table) && registre.pour(table).partageable) {
+      retenus[groupe] = (retenus[groupe] || 0) + (rows.length - part);
+    }
+  }
+  res.json({
+    url,
+    pourvu: await datasync.distantPourvu(url),   // true = on rejoint, false = on initialise, null = injoignable
+    /* CE QUE LE DÉPÔT PORTE DÉJÀ : la réponse à « est-ce que je vais écraser le travail des
+       autres ? ». Non — on lit d'abord, on n'écrit qu'ensuite, et on ne supprime jamais — mais
+       le dire avec un nombre vaut mieux que le promettre. */
+    distants: await datasync.compterDistant(url),
+    /* CE QUE L'ENVOI FERAIT, fichier par fichier : ajoutés, modifiés, inchangés — et ce qu'il
+       ne touche pas. `supprimes` vaut zéro et ce n'est pas une estimation : l'export écrit, il
+       ne supprime jamais. */
+    ecriture: store.apercuExport(),
+    partants: Object.entries(partants).filter(([, n]) => n).map(([cle, n]) => ({ cle, n })),
+    retenus: Object.entries(retenus).filter(([, n]) => n).map(([cle, n]) => ({ cle, n })),
+  });
+}));
+
 app.post('/api/data-sync/attach', wrap(async (req, res) => {
   const url = String((req.body && req.body.url) || '').trim();
   if (url) updateConfig({ data_repo_url: url });
   const r = await datasync.rattacher({ url: url || undefined });
   datasync.demarrer();
   res.json({ ok: true, ...r, statut: datasync.statut() });
+}));
+
+/* TOUT RÉ-ENVOYER — le geste qu'il manquait.
+ *
+ * « Synchroniser » n'envoie que CE QUI A CHANGÉ : c'est la file des écritures qui décide, et
+ * elle est vide quand rien n'a bougé. Après un dépôt vidé à la main, le bouton ne remettait donc
+ * rien, et le seul chemin était « Cloner / rattacher » — dont le nom ne dit pas qu'il ré-exporte.
+ * On nomme donc le geste : réécrire TOUS les fichiers de ce qui se partage, puis commiter et
+ * pousser. Idempotent : sur un dépôt intact, les fichiers réécrits sont identiques à l'octet
+ * près, git ne voit rien, et il ne se passe rien. */
+app.post('/api/data-sync/reexport', wrap(async (req, res) => {
+  if (!datasync.estConfigure()) throw new Error(t('err.data-sync.not-configured'));
+  /* ON PASSE PAR LE RATTACHEMENT, et ce n'est pas un détour : un dépôt vidé à la main l'a
+     souvent été par une branche orpheline poussée en force. L'historique local et le distant
+     n'ont alors plus d'ancêtre commun — un simple commit suivi d'un push serait refusé, et
+     `rebase` aussi. Le rattachement, lui, repose le local SUR le distant, lit ce qu'il porte,
+     puis réécrit tout. C'est exactement ce qu'on veut dire par « tout ré-envoyer », et le
+     nommer évite d'avoir à deviner que « Cloner / rattacher » le faisait déjà. */
+  const r = await datasync.rattacher({});
+  const bilan = await datasync.tour();
+  res.json({ ok: true, compte: r.compte || {}, mode: r.mode, bilan, statut: datasync.statut() });
 }));
 
 app.post('/api/data-sync/now', wrap(async (req, res) => {

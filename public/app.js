@@ -6328,11 +6328,51 @@ document.addEventListener('click', async (ev) => {
   } catch (e) { toast(explainError(e.message), true); b.disabled = false; }
 });
 
+/* CE QUI VA PARTIR SE LIT AVANT DE CLIQUER, PAS APRÈS.
+ *
+ * « Cloner / rattacher » est le geste qui ouvre son travail à d'autres. On demande donc au
+ * serveur ce que l'export emporterait — sans rien écrire —, on le montre, et on n'agit qu'après
+ * un « oui ». La liste de ce qui RESTE est la plus utile des deux : sessions et todos sont
+ * privées par défaut, et l'apprendre ici vaut mieux que de chercher sa session chez un collègue.
+ */
+function resumeApercu(a) {
+  const nom = (cle) => tr(`datasync.apercu.${cle}`);
+  const part = (a.partants || []).map((x) => `${x.n} ${nom(x.cle)}`).join(' · ');
+  const reste = (a.retenus || []).map((x) => `${x.n} ${nom(x.cle)}`).join(' · ');
+  const lignes = [
+    a.pourvu === null ? tr('datasync.apercu.injoignable')
+      : tr(a.pourvu ? 'datasync.apercu.rejoindre' : 'datasync.apercu.initialiser'),
+    part ? tr('datasync.apercu.part', { liste: part }) : tr('datasync.apercu.rien'),
+  ];
+  /* CE QUE LE DÉPÔT PORTE DÉJÀ — la question qu'on se pose vraiment devant ce bouton : « est-ce
+     que je vais écraser le travail des autres ? ». On répond par un nombre et par la règle. */
+  if (a.distants) lignes.push(tr('datasync.apercu.distants', { n: a.distants, count: a.distants }));
+  /* CE QUE L'ENVOI FERA, FICHIER PAR FICHIER. « 0 supprimé » n'est pas une estimation : l'export
+     écrit, il ne supprime jamais — et ce qu'il ne touche pas, ce sont les documents des autres. */
+  const e = a.ecriture || {};
+  lignes.push(tr('datasync.apercu.ecriture', {
+    nouveaux: e.nouveaux || 0, modifies: e.modifies || 0, identiques: e.identiques || 0,
+  }));
+  lignes.push(tr('datasync.apercu.pas-de-suppression', { intacts: e.intacts || 0 }));
+  if (reste) lignes.push(tr('datasync.apercu.reste', { liste: reste }));
+  return lignes.join('\n\n');
+}
+
 const btnDataAttach = $('#btnDataAttach');
 if (btnDataAttach) btnDataAttach.addEventListener('click', async () => {
   const btn = btnDataAttach;
   const url = String(($('#configForm').data_repo_url || {}).value || '').trim();
   if (!url) { toast(tr('datasync.err.url-required'), true); return; }
+  let apercu = null;
+  try { apercu = await api(`/data-sync/preview?url=${encodeURIComponent(url)}`); }
+  catch (e) { toast(explainError(e.message), true); return; }
+  if (!await confirmDialog({
+    title: tr('datasync.btn.attach'),
+    text: resumeApercu(apercu),
+    detail: tr('datasync.apercu.detail'),
+    confirmLabel: tr('datasync.apercu.go'),
+    danger: false,
+  })) return;
   btn.disabled = true;
   $('#dataSyncInfo').textContent = tr('datasync.working');
   try {
@@ -6356,6 +6396,29 @@ if (btnDataAttach) btnDataAttach.addEventListener('click', async () => {
     await chargerDataSync();
   } catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); }
   finally { btn.disabled = false; }
+});
+
+/* TOUT RÉ-ENVOYER. « Synchroniser » n'envoie que ce qui a CHANGÉ — après un dépôt vidé à la
+   main, il ne remet donc rien. Ce bouton-là réécrit tout ce qui se partage, et il montre d'abord
+   quoi : c'est le même récapitulatif que le rattachement. */
+const btnDataReexport = $('#btnDataReexport');
+if (btnDataReexport) btnDataReexport.addEventListener('click', async () => {
+  let apercu = null;
+  try { apercu = await api('/data-sync/preview'); } catch (e) { toast(explainError(e.message), true); return; }
+  if (!await confirmDialog({
+    title: tr('datasync.btn.reexport'),
+    text: resumeApercu(apercu),
+    detail: tr('datasync.title.reexport'),
+    confirmLabel: tr('datasync.reexport.go'),
+    danger: false,
+  })) return;
+  $('#dataSyncInfo').textContent = tr('datasync.working');
+  try {
+    const r = await busy(btnDataReexport, () => api('/data-sync/reexport', { method: 'POST' }));
+    const n = Object.values(r.compte || {}).reduce((t2, x) => t2 + (Number(x) || 0), 0);
+    $('#dataSyncInfo').textContent = tr('datasync.reexport.done', { n });
+    await chargerDataSync();
+  } catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); }
 });
 
 const btnDataNow = $('#btnDataNow');
@@ -6388,8 +6451,10 @@ async function rafraichirFooterSync() {
   $('#footerSyncTxt').textContent = conflits
     ? tr('datasync.footer.conflicts', { n: conflits })
     : tr('datasync.state.counts', { up: e.enAvance, down: e.enRetard });
+  /* L'INFOBULLE DU TÉMOIN DIT CE QUE LE CLIC FERA, pas seulement où l'on en est : c'est le seul
+     bouton de synchro qu'on rencontre sans être venu pour ça. */
   baseBulleSync = conflits ? tr('datasync.footer.conflicts-title')
-    : (e.erreur ? tr('datasync.state.error', { msg: e.erreur }) : tr('datasync.head'));
+    : (e.erreur ? tr('datasync.state.error', { msg: e.erreur }) : tr('datasync.footer.tip'));
   prochainSync = e.prochain ? Date.parse(e.prochain) : 0;
   majTip(b, bulleSync());
 }
