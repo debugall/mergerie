@@ -3227,11 +3227,44 @@ app.post('/api/tasks/:id/hidden', wrap((req, res) => {
   res.json({ ok: true, hidden });
 }));
 
+/* MÊME HISTOIRE QUE POUR UNE REVIEW, ET MÊME REMÈDE (cf. `diffDeLaMr`). `target.diff_path` est
+ * un fichier de la machine qui a fait tourner l'agent : le poste qui REÇOIT la session ne l'a
+ * pas, et il ouvrait « Voir le diff » sur du vide.
+ *
+ * Un repli existait pourtant — `branchDiff` — mais il comparait `origin/<base>...HEAD`, et HEAD
+ * c'est la branche sur laquelle le clone se trouve, pas celle de la session. Sur le poste
+ * d'origine il ne servait jamais (le fichier est là) ; ailleurs, il répondait le diff d'un
+ * travail sans rapport, ou rien. On vise donc le COMMIT de la session — celui-là même que
+ * l'arbre affiche à côté, pour que les deux parlent de la même version.
+ */
+async function diffDeLaCible(tg, cwdConnu = null) {
+  const garde = tg.diff_path ? readFileSafe(tg.diff_path) : null;
+  if (garde) return garde;
+  const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
+  if (!repo && !cwdConnu) return null;
+  try {
+    let cwd = cwdConnu || git.cloneDirFor(getConfig(), repo);
+    const base = `origin/${tg.base_branch || 'main'}`;
+    const vise = async () => (tg.commit_sha && await git.refExists(cwd, tg.commit_sha)
+      ? tg.commit_sha
+      : (tg.branch && await git.refExists(cwd, `origin/${tg.branch}`) ? `origin/${tg.branch}` : null));
+    let ref = await vise();
+    /* LE CLONE PEUT ÊTRE EN RETARD : la branche de la session a été poussée après le dernier
+       fetch de ce poste. On ne va chercher qu'à ce moment-là. */
+    if (repo && (!ref || !await git.refExists(cwd, base))) {
+      cwd = await git.ensureRepo(getConfig(), repo, () => {});
+      ref = await vise();
+    }
+    if (!ref || !await git.refExists(cwd, base)) return null;
+    return await git.diffTroisPoints(cwd, base, ref);
+  } catch { return null; }
+}
+
 // Diff d'UN projet de la session.
-app.get('/api/tasks/:id/targets/:tid/diff', wrap((req, res) => {
+app.get('/api/tasks/:id/targets/:tid/diff', wrap(async (req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
-  res.json({ diff: tg.diff_path ? readFileSafe(tg.diff_path) : null, project: tg.project, branch: tg.branch });
+  res.json({ diff: await diffDeLaCible(tg), project: tg.project, branch: tg.branch });
 }));
 
 /* Un projet de session n'a pas de numéro de MR : on le présente au dépôt fictif de démo
@@ -3251,10 +3284,10 @@ app.get('/api/tasks/:id/targets/:tid/diffview', wrap(async (req, res) => {
     return;
   }
   const ctx = targetCloneCtx(tg);
-  // Le diff produit par la session est stocké ; s'il manque (session ancienne), on le
-  // recalcule depuis la branche de départ.
-  let diff = tg.diff_path ? readFileSafe(tg.diff_path) : null;
-  if (!diff) { try { diff = await git.branchDiff(ctx.cwd, ctx.target); } catch { diff = ''; } }
+  /* Le diff produit par la session est stocké ; s'il manque — session ancienne, ou session
+     REÇUE de l'équipe —, on le recalcule entre la branche de départ et le commit de la
+     session, qui est justement la référence que `ctx` affiche. */
+  const diff = await diffDeLaCible(tg, ctx.cwd);
   res.json({
     ...(await viewerPayload(ctx, { diff: diff || '', source: tg.branch })),
     project: tg.project, branch: tg.branch,

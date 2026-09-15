@@ -325,6 +325,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   references are there: the two calls leave the screen in parallel, and two fetches at once in
   one clone would fight over its locks.
 
+- **Same for a coding session received from the team: “See the diff” shows the branch again.**
+  A fallback did exist when the patch file is missing, but it compared `origin/<base>...HEAD` —
+  and HEAD is the branch the clone happens to be sitting on, not the session's. On the machine
+  that ran the agent those are the same, so the fallback looked right; anywhere else it answered
+  the diff of unrelated work, or nothing. It now targets the session's **commit**, which is also
+  the version the file tree beside it shows. The test was passing for that same reason and now
+  puts the clone somewhere else first, which is the colleague's situation.
+
 - **A merge request received from the team now arrives with its title.** Title, branches and
   author only travelled once an MR was closed: while it is open the forge is authoritative, and
   sharing a mutable value makes stale data travel. The argument does not survive what it

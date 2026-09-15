@@ -28,6 +28,7 @@ const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const {
   startApp, makeRemoteRepo, waitForJobs, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
 } = require('./helpers/app');
@@ -172,12 +173,28 @@ describe('Diff d’une itération de codage', () => {
        chose à montrer, c'est le commit, et lui voyage. */
     const avant = app.db.prepare('SELECT diff_path FROM task_target WHERE id = ?').get(cibleId);
     app.db.prepare('UPDATE task_target SET diff_path = NULL WHERE id = ?').run(cibleId);
+    /* ET LE CLONE EST SUR UNE AUTRE BRANCHE — c'est la situation du collègue, et c'est elle qui
+       comptait : le repli comparait `origin/<base>...HEAD`, or HEAD c'est la branche sur
+       laquelle le clone se trouve. Sur le poste qui a fait tourner l'agent, HEAD EST la branche
+       de la session, et le repli semblait juste ; ailleurs il répondait le diff d'un travail
+       sans rapport, ou rien. */
+    const clone = path.join(app.dataDir, 'clones', 'grp__app');   // slugify : « / » → « __ »
+    const base = app.db.prepare('SELECT base_branch FROM task_target WHERE id = ?').get(cibleId).base_branch || 'main';
+    execFileSync('git', ['-C', clone, 'checkout', '--quiet', '--detach', `origin/${base}`]);
+    const surQuoi = execFileSync('git', ['-C', clone, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+
     const tg = (await app.api('GET', `/api/tasks/${tacheId}`)).body.task.targets.find((x) => x.id === cibleId);
     assert.ok(tg.commit_sha, 'la session témoin a bien commité');
+    assert.notEqual(surQuoi, tg.commit_sha, 'le clone doit être ailleurs que sur le commit de la session');
     assert.equal(tg.has_diff, 1, 'le bouton doit être proposé : le diff se refait depuis le clone');
     const vue = await app.api('GET', `/api/tasks/${tacheId}/targets/${cibleId}/diffview`);
     assert.equal(vue.status, 200);
     assert.ok((vue.body.files || []).length > 0, 'et il ouvre le vrai diff de la branche');
+    /* LE VRAI DIFF, pas n'importe lequel : celui de la session porte ce que l'agent a écrit. */
+    assert.match(String(vue.body.diff || ''), /diff --git /,
+      'le diff de la session doit être recalculé, pas remplacé par celui de la branche courante');
+    assert.ok((vue.body.files || []).some((f) => f.changed),
+      'et ses fichiers modifiés doivent être marqués');
     app.db.prepare('UPDATE task_target SET diff_path = ? WHERE id = ?').run(avant.diff_path, cibleId);
   });
 
