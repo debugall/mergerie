@@ -3,13 +3,17 @@
 /* Sème une base de démonstration réaliste dans `data-demo/`, pour `npm run demo`.
    But : qu'un visiteur du dépôt voie l'outil VIVANT en 30 s, sans GitLab ni token.
 
-   Isolé de la vraie base : on force MERGERIE_DATA_DIR=data-demo AVANT de charger db/paths,
-   et on efface le dossier à chaque exécution (démo repeatable, jamais de résidu). */
+   Isolé de la vraie base : on pose MERGERIE_DATA_DIR AVANT de charger db/paths — `data-demo/`
+   à côté du dépôt par défaut, ou le dossier déjà donné par la variable (c'est ainsi que
+   `npx mergerie demo` sème dans `~/.mergerie/demo`, le paquet vivant dans un cache) — et on
+   efface le dossier à chaque exécution (démo repeatable, jamais de résidu). */
 
 const path = require('path');
 const fs = require('fs');
 
-const DEMO_DIR = path.resolve(__dirname, '..', 'data-demo');
+const DEMO_DIR = process.env.MERGERIE_DATA_DIR
+  ? path.resolve(process.env.MERGERIE_DATA_DIR)
+  : path.resolve(__dirname, '..', 'data-demo');
 process.env.MERGERIE_DATA_DIR = DEMO_DIR;
 fs.rmSync(DEMO_DIR, { recursive: true, force: true }); // repart d'une base propre
 

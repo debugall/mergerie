@@ -13,6 +13,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **`npx mergerie demo` — the tool in one command, with nothing to clone.** The package now ships
+  a `mergerie` command: `npx mergerie demo` seeds the fictional database and opens the tool on it,
+  in dry-run and with no token; `npx mergerie` is the real thing. Under `npx` the code lives in a
+  cache that can vanish at any time, so the data no longer goes next to the code: it goes to
+  `~/.mergerie/data`, and the demo to `~/.mergerie/demo`, unless `MERGERIE_DATA_DIR` says
+  otherwise. `PORT`, `HOST` and a `.env` in the current folder are honoured as with `npm start`,
+  and Ctrl-C stops the server rather than leaving it running on its port. The archive published to
+  npm carries the command, the server, the screen and the demo seed — never the tests, the plans,
+  the data or the demo video — and `scripts/publish-npm.sh` rehearses the whole thing from an
+  empty folder with a throwaway home before anything is published.
+
 - **Share your work with a team, through a git repository.** A domain map costs hours of agent
   time to produce; redoing it on six machines means paying six times for the same thing and
   getting six slightly different answers. Point Mergerie at a git repository — your team's own, on

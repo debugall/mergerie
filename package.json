@@ -24,9 +24,18 @@
   "bugs": {
     "url": "https://github.com/debugall/mergerie/issues"
   },
-  "homepage": "https://github.com/debugall/mergerie#readme",
+  "homepage": "https://mergerie.dev",
   "type": "commonjs",
   "main": "src/server.js",
+  "bin": {
+    "mergerie": "bin/mergerie.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "public",
+    "scripts/demo-seed.js"
+  ],
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server.js",
     "dev": "node --env-file-if-exists=.env --watch src/server.js",

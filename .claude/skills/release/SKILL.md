@@ -115,7 +115,12 @@ git checkout develop
 
 ```bash
 git push origin main --follow-tags     # GitLab ; le miroir GitHub suit
+git checkout main && sh scripts/publish-npm.sh --publish   # npm : `npx mergerie demo` (npm login avant)
+cd ../mergerie_site && npm run deploy                        # le site relit version, changelog et guides
 ```
+
+Le script de publication refuse tout seul hors de `main`, d'un arbre propre ou d'un HEAD non
+tagué, et répète `npx mergerie demo` depuis un dossier vide avant de publier.
 
 ## 7. Notes de release
 

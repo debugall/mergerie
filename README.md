@@ -22,12 +22,16 @@ corrections, autonomous convergence — and **you** merge.
 
 ## Quick start
 
-Requires **Node 22.9+**.
+Requires **Node 22.9+** and `git`.
 
 ```bash
-npm install
-npm start          # http://localhost:4319
+npx mergerie demo    # see it live in 30 seconds — nothing to clone, no config, no token
+npx mergerie         # the real thing: http://localhost:4319, your data in ~/.mergerie/data
 ```
+
+From a clone, the same two things are `npm install` then `npm run demo` or `npm start`, with the
+data next to the code (`data-demo/`, `data/`). `PORT`, `MERGERIE_DATA_DIR` and a `.env` in the
+current folder are honoured either way.
 
 Optional, for **voice dictation**: `sh scripts/install-whisper.sh` (macOS/Linux) or the **Install**
 button in Settings → Voice dictation. Nothing else is needed to run the tool.

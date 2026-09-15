@@ -834,6 +834,25 @@ suivent la langue via les gabarits de prompt de `src/prompts.js`, **sans jamais 
 personnalisé**.
 
 
+## Paquet npm (`bin/mergerie.js`, `scripts/publish-npm.sh`)
+
+`npx mergerie demo` et `npx mergerie` passent par **`bin/mergerie.js`**, déclaré dans `bin` de
+`package.json`. Sous npx le paquet vit dans un cache (`~/.npm/_npx/…`) effacé sans prévenir, donc
+la commande pose `MERGERIE_DATA_DIR` sur `~/.mergerie/data` (ou `~/.mergerie/demo`) quand il n'est
+pas donné, puis lance `scripts/demo-seed.js` (qui honore désormais la variable au lieu de forcer
+`data-demo/`) et `src/server.js` **en processus enfant** avec le même `--env-file-if-exists=.env`
+que `npm start` — un `require` du serveur ne transmettrait pas Ctrl-C, et l'orphelin garderait le
+port et la base. La liste **`files`** de `package.json` dit ce qui part sur le registre : `bin`,
+`src`, `public` (dont `vendor/mermaid.min.js`), `scripts/demo-seed.js` ; README, LICENSE et
+`package.json` sont ajoutés par npm ; tests, plans, données, GIF et vidéos ne partent jamais —
+3 Mo archivés au lieu de 8,6. **`scripts/publish-npm.sh`** enchaîne `npm run check`, la
+vérification de ce contenu, `npm pack`, puis un **essai réel** : `npm exec --package=<tgz> --
+mergerie demo` depuis un dossier vide avec un `HOME` jetable (donc tout est téléchargé comme chez
+un inconnu, binaire natif de `better-sqlite3` compris), attente du serveur, bannière de démo,
+base dans `~/.mergerie/demo` et rien dans le cache ; `--publish` ajoute `npm publish`, refusé hors
+de `main`, d'un arbre propre, d'un HEAD tagué ou sans `npm login`. `test/unit-bin.test.js` rejoue
+la commande en sous-processus.
+
 ## Environnement cible
 
 WSL/MAC/Linux. GitLab self-hosted ou GitHub Enterprise avec CA d'entreprise → `GITLAB_CA_CERT`/`GITHUB_CA_CERT` (ou `GITLAB_INSECURE_TLS=1`/`GITHUB_INSECURE_TLS=1`), et `GIT_CLONE_SSH=1` pour le clone. Agent IA lancé avec le flag « yolo » pour autoriser la modification de fichiers. `.env` chargé automatiquement au démarrage.
