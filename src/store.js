@@ -835,14 +835,24 @@ function hydraterFichiers(relatifs) {
   }
   aPoser.sort((a, b) => (rang.get(a.table) - rang.get(b.table)));
 
+  /* UNE SYNCHRO NE VIDE PAS UNE BASE.
+   *
+   * « Un fichier parti emporte sa ligne » est juste pour UN document : quelqu'un a supprimé une
+   * note, elle disparaît chez tout le monde. Appliquée à un dépôt qu'on vient de vider — une
+   * remise à zéro, un `push --force` malheureux, un clone tronqué —, la même règle efface
+   * reviews, sessions, agents et vérificateurs d'un coup, et la cascade SQL emporte le reste.
+   * C'est arrivé, et ça ne doit plus pouvoir arriver : le travail de quelqu'un ne se supprime
+   * pas parce qu'un fichier manque à l'appel.
+   * On compare donc ce qui disparaît à ce qui RESTE. Un dépôt qui perd la moitié de ses
+   * documents d'un coup n'est pas une suppression, c'est un accident : on refuse, on garde
+   * tout, et on le DIT — l'écran de la synchro passe au rouge avec la raison. Rien n'est perdu
+   * dans les deux sens : les fichiers manquants se réécrivent d'un « Cloner / rattacher ». */
+  const disparus = [];
   const enAttente = [];
   for (const { table, relatif } of aPoser) {
     const e = registre.pour(table);
     const doc = lireDocument(table, relatif);
-    if (doc === null) {
-      if (supprimerLigne(e, table, relatif)) bilan.supprimes += 1;
-      continue;
-    }
+    if (doc === null) { disparus.push({ e, table, relatif }); continue; }
     /* Une entité se reconnaît à son uid — sauf celles qui ont une clé naturelle et une seule
        ligne possible : `settings.json`, ou un ticket Jira nommé par sa clé. */
     if (!doc.uid && e.cle !== 'id' && !doc[e.cle]) { bilan.orphelins.push(`${relatif} : sans identité`); continue; }
@@ -902,6 +912,21 @@ function hydraterFichiers(relatifs) {
       break;
     }
     reste = encore;
+  }
+
+  /* LE GARDE-FOU, appliqué AVANT les suppressions. `restants` compte les documents que le dépôt
+     porte encore : s'il en reste moins qu'il n'en disparaît, c'est le dépôt qui a été vidé, pas
+     les documents qui ont été supprimés un par un. Le seuil de dix évite de gêner le cas
+     ordinaire — supprimer trois notes reste possible. */
+  if (disparus.length) {
+    const restants = listerFichiers().filter((f) => tablePour(f)).length;
+    if (disparus.length >= 10 && disparus.length > restants) {
+      bilan.refuses = disparus.length;
+      bilan.raison = `hydratation refusée : ${disparus.length} document(s) disparus pour ${restants} restant(s) — le dépôt a été vidé, pas les objets supprimés`;
+      console.log(`[store] ${bilan.raison}`);
+    } else {
+      for (const d of disparus) if (supprimerLigne(d.e, d.table, d.relatif)) bilan.supprimes += 1;
+    }
   }
 
   /* CE QUI SE RECALCULE UNE FOIS TOUT POSÉ. Les numéros de version et de passe sont des

@@ -380,6 +380,54 @@ describe('datasync — deux postes, un dépôt de données', () => {
     assert.equal(ecrit, 0, 'la palette de commandes reste à soi');
   });
 
+  test('UN DÉPÔT VIDÉ NE VIDE PAS LA BASE — le garde-fou', () => {
+    /* CE QUI EST ARRIVÉ POUR DE VRAI. On remet le dépôt d'équipe à zéro (`push --force` d'une
+       branche orpheline, ou un projet recréé sur la forge) pendant qu'une instance synchronise
+       toutes les trente secondes. Elle tire, voit que TOUS les fichiers ont disparu, applique
+       « un fichier parti emporte sa ligne » — et la base se vide : dépôts, merge requests,
+       reviews, sessions, agents, vérificateurs, et la cascade SQL pour le reste.
+       La règle est juste pour UN document supprimé. Pour un dépôt vidé, c'est un accident : on
+       refuse, on garde tout, et on le dit. */
+    const posteF = path.join(racine, 'F');
+    fs.mkdirSync(posteF);
+    const nuF = path.join(racine, 'equipe-f.git');
+    execFileSync('git', ['init', '--bare', '--initial-branch=main', nuF], { stdio: 'ignore' });
+
+    // Un poste avec de quoi perdre : douze notes partagées, poussées dans le dépôt.
+    const avant = dans(posteF, `async ({ db, notes, datasync, config, MSGS }) => {
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuF)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      for (let i = 0; i < 12; i++) {
+        const p = notes.creerPage({ title: 'Page ' + i, content: 'du contenu' }, MSGS);
+        notes.majPage(p.id, { shared: 1 }, MSGS);
+      }
+      await datasync.rattacher({});
+      await datasync.tour();
+      return db.prepare('SELECT COUNT(*) n FROM note_page').get().n;
+    }`);
+    assert.equal(avant, 12);
+
+    // Le dépôt est remis à zéro : une branche orpheline, vide, poussée en force.
+    const vide = path.join(racine, 'vide');
+    execFileSync('git', ['clone', nuF, vide], { stdio: 'ignore' });
+    execFileSync('git', ['-C', vide, 'checkout', '--orphan', 'neuve'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', vide, 'rm', '-rf', '.'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', vide, '-c', 'user.name=T', '-c', 'user.email=t@x',
+      'commit', '--allow-empty', '-m', 'reset'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', vide, 'push', '-f', 'origin', 'neuve:main'], { stdio: 'ignore' });
+
+    const apres = dans(posteF, `async ({ db, datasync }) => {
+      const bilan = await datasync.tour();
+      return {
+        pages: db.prepare('SELECT COUNT(*) n FROM note_page').get().n,
+        refuses: (bilan && bilan.hydrate && bilan.hydrate.refuses) || 0,
+        erreur: datasync.statut().erreur,
+      };
+    }`);
+    assert.equal(apres.pages, 12, 'le travail de quelqu’un ne se supprime pas parce qu’un fichier manque');
+    assert.ok(apres.refuses >= 10, 'le refus doit être compté');
+    assert.match(String(apres.erreur || ''), /vidé/, 'et DIT : l’écran ne doit pas afficher « à jour »');
+  });
+
   test('AUCUN SECRET dans le dépôt nu — ni dans sa dernière version, ni dans son historique', () => {
     dans(posteA, `async ({ config, datasync }) => {
       config.updateConfig({ access_token: 'glpat-NE-DOIT-JAMAIS-PARTIR', jira_token: 'jira-NE-DOIT-JAMAIS-PARTIR' });

@@ -2776,6 +2776,12 @@ fetches what is new elsewhere. The footer shows `↑2 ↓0` and the time of the 
 until the next one**, and a click forces a round without waiting. Offline, everything keeps working: commits stay local, the indicator turns amber,
 and the backlog catches up on return.
 
+**A sync cannot empty your database.** “A file gone takes its row with it” holds for ONE deleted
+document. For a repository that was reset — a force push, a project recreated on the forge — the
+same rule would wipe everything at once. A pass that would remove more than half of what the
+repository holds (and at least ten documents) is therefore **refused**: nothing is deleted, and the
+indicator turns red with the reason. A “Clone / attach” then rewrites what is missing.
+
 **What if two people change the same thing?** It is rare by construction — one file per object,
 named by an identifier that depends on no machine: two machines only meet if they really changed
 the same object. When it happens, **the remote version wins**, and yours is **kept**:

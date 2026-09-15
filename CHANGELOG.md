@@ -80,6 +80,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   thing. Every uniqueness rule in the database is now checked against the registry by a test, so
   the next one cannot be discovered in production, on someone else's machine.
 
+- **A sync can no longer empty your database.** “A file gone takes its row with it” is right for
+  one document: someone deletes a note, it goes away for everyone. Applied to a repository that
+  was just reset — a force push, a recreated project, a truncated clone — the same rule wiped
+  reviews, sessions, agents and verifiers in one pass, and the database's own cascades took the
+  rest. That happened. A pass that would remove more than half of what the repository holds, and
+  at least ten documents, is now refused outright: nothing is deleted, everything is kept, and the
+  sync indicator turns red with the reason instead of reporting “up to date”. Deleting three notes
+  still works.
+
 - **Todos are personal unless you share them, one at a time.** A todo list is somebody's list —
   the tool already said so by keeping “you have been reminded” local. Yet every todo travelled,
   including the ones nobody typed: the one a Jira watch created, the one an agent left when it

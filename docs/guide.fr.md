@@ -2870,6 +2870,12 @@ de la dernière synchro ; le survol dit **dans combien de secondes part la proch
 force un tour sans attendre. Hors ligne, tout continue de marcher : les commits
 restent locaux, le témoin passe à l'ambre, et le retard se rattrape au retour.
 
+**Une synchro ne peut pas vider ta base.** « Un fichier parti emporte sa ligne » vaut pour UN
+document supprimé. Pour un dépôt remis à zéro — un `push --force`, un projet recréé sur la forge —
+la même règle effacerait tout d'un coup. Une passe qui ferait disparaître plus de la moitié de ce
+que le dépôt porte (et au moins dix documents) est donc **refusée** : rien n'est supprimé, et le
+témoin passe au rouge avec la raison. Un « Cloner / rattacher » réécrit alors ce qui manque.
+
 **Et si deux personnes modifient la même chose ?** C'est rare par construction — un fichier par
 objet, nommé par un identifiant qui ne dépend d'aucun poste : deux postes ne se croisent que s'ils
 ont vraiment modifié le même objet. Quand ça arrive, **la version distante l'emporte**, et la

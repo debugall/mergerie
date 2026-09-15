@@ -227,6 +227,10 @@ async function tour() {
       const apres = await gitOu(['rev-parse', 'HEAD'], '');
       if (apres !== avant || !dernierHydrate()) {
         bilan.hydrate = await hydraterDepuis(dernierHydrate(), apres);
+        /* UNE HYDRATATION REFUSÉE SE VOIT. Le store a gardé les lignes plutôt que d'appliquer
+           une disparition massive ; sans le dire ici, l'écran afficherait « à jour » alors que
+           le dépôt et la base ne racontent plus la même chose. */
+        if (bilan.hydrate && bilan.hydrate.refuses) etatSync.erreur = bilan.hydrate.raison;
         // « par qui » : on ne relit que les commits nouveaux, pas tout l'historique.
         await majAuteurs(avant && apres !== avant ? `${avant}..${apres}` : null);
       }
@@ -247,7 +251,8 @@ async function tour() {
       }
     }
     etatSync.dernierPull = new Date().toISOString();
-    etatSync.erreur = null;
+    // …sauf si l'hydratation vient de refuser quelque chose : cette raison-là doit rester.
+    if (!(bilan.hydrate && bilan.hydrate.refuses)) etatSync.erreur = null;
   } catch (e) {
     /* HORS LIGNE EST LE CAS NORMAL, pas une panne : on note la raison, le pied de page passe à
        l'orange, et le prochain tour réessaie. Rien n'est perdu — tout est commité localement. */
