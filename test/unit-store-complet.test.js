@@ -234,4 +234,46 @@ describe('store — la base prévient, le store écrit', () => {
     const uid = db.prepare("SELECT uid FROM todo WHERE title = 'Relire la file'").get().uid;
     assert.ok(store.existe(`todos/${uid}.json`));
   });
+
+  /* UNE LIGNE QUI NE SAIT PAS ENCORE DEVENIR UN FICHIER RESTE DANS LA FILE.
+     C'était l'intention écrite au-dessus du `catch`, et elle ne s'appliquait pas : un
+     `oublier.run()` inconditionnel suivait, et retirait la ligne de toute façon. Une passe dont
+     le chemin ne se calculait pas disparaissait donc POUR TOUJOURS — pas de fichier, file vide,
+     aucune trace. Vu de l'équipe : un suivi qui n'arrive jamais chez personne. Vu en vrai, sur
+     une vraie base : deux suivis évaporés sur sept.
+     On reproduit la panne exactement : une passe dont la session ne se résout pas (le chemin
+     `sessions/{session}/…` ne peut pas être écrit), puis la session apparaît. */
+  test('une ligne qui ne sait pas ENCORE devenir un fichier attend, elle ne s’évapore pas', () => {
+    const now = new Date().toISOString();
+    /* LE CAS DU COMMENTAIRE, MOT POUR MOT : une passe dont la « session » ne se résout pas
+       encore. Une passe de REVIEW appartient à la merge request — produit d'équipe, donc
+       toujours partagée : rien ne la retient, et pourtant son chemin se calcule à partir de la
+       MR. Sans elle, `cheminDe` refuse de nommer le fichier. C'est le « pas encore » que la
+       file existe pour absorber. (`agent_pass` n'a pas de clé étrangère : deux tables parentes
+       possibles selon le scope — c'est ce qui rend la situation atteignable.) */
+    const absente = 999999;
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
+      VALUES ('review', ?, 0, 1, 'question', 'la question qui doit finir par partir', NULL, ?)`)
+      .run(absente, now);
+    const rid = db.prepare("SELECT rowid AS r FROM agent_pass WHERE scope = 'review' AND task_id = ?").get(absente).r;
+    /* `>= 1` : la file accepte les doublons — `INSERT OR IGNORE` ne fonctionne pas dans un
+       déclencheur SQLite. Ce qui compte est qu'elle y soit, pas combien de fois. */
+    const enFile = () => db.prepare("SELECT COUNT(*) n FROM store_sale WHERE tbl = 'agent_pass' AND rid = ?").get(rid).n;
+    assert.ok(enFile() >= 1, 'le déclencheur l’a bien mise dans la file');
+    store.ecouler();
+    assert.ok(enFile() >= 1, 'elle doit ATTENDRE sa merge request, pas disparaître de la file');
+
+    /* La MR apparaît : le passage suivant écrit le fichier, sans que personne ait à y penser.
+       C'est toute la promesse de la file — et elle était morte. */
+    const dep = db.prepare("INSERT INTO repo (project, url, forge, enabled) VALUES ('grp/attente','https://x/grp/attente.git','gitlab',1)").run();
+    db.prepare(`INSERT INTO mr (id, repo_id, iid, title, source_branch, target_branch, status, updated_at)
+      VALUES (?, ?, 4242, 'MR retrouvée', 'feat/x', 'main', 'to_review', ?)`)
+      .run(absente, dep.lastInsertRowid, now);
+    store.ecouler();
+    assert.equal(enFile(), 0, 'une fois écrite, elle quitte la file');
+    const mrUid = db.prepare('SELECT uid FROM mr WHERE id = ?').get(absente).uid;
+    const passUid = db.prepare('SELECT uid FROM agent_pass WHERE rowid = ?').get(rid).uid;
+    assert.ok(store.lireFichier(`sessions/${mrUid}/pass-${passUid}.md`) !== null,
+      'et le fichier finit par exister : c’est tout ce qu’on lui demandait');
+  });
 });

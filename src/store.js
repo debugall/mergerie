@@ -499,6 +499,10 @@ const enRetard = () => db.prepare('SELECT COUNT(*) n FROM store_sale').get().n
  * Idempotent, et sans effet quand la file est vide — on peut l'appeler après chaque requête.
  * @returns {{ ecrits: number, supprimes: number }}
  */
+/* Ce dont on a déjà parlé : un `ecouler()` par requête non-GET, on ne réécrit pas la même
+   ligne d'alerte des centaines de fois pour une ligne qui attend sa dépendance. */
+const signales = new Set();
+
 function ecouler() {
   const bilan = { ecrits: 0, supprimes: 0 };
   /* DISTINCT : la file accepte les doublons — `INSERT OR IGNORE` ne fonctionne pas dans un
@@ -520,18 +524,36 @@ function ecouler() {
       oublier.run(tbl, rid);
       continue;
     }
+    /* UNE LIGNE QUI NE SAIT PAS ENCORE DEVENIR UN FICHIER N'EST PAS UNE PANNE. Une review dont
+       la merge request vient d'être supprimée, une passe dont la session ne se résout pas encore :
+       on la LAISSE DANS LA FILE, et le passage suivant réessaiera. Ce qui ne doit jamais
+       arriver, c'est qu'une erreur ici fasse échouer la requête qui l'a déclenchée.
+       C'était l'intention, et elle ne s'appliquait pas : un `oublier.run()` inconditionnel
+       suivait le `catch` et retirait la ligne de la file de toute façon. Une passe dont le
+       chemin n'avait pas pu être calculé disparaissait donc POUR TOUJOURS — le fichier n'était
+       jamais écrit, la file était vide, et rien ne le disait. Vu de l'équipe : un suivi qui
+       n'arrive jamais chez personne.
+       Et la condition regardait la mauvaise moitié des erreurs : le « pas encore » typique est
+       `store-registry: champ « session » manquant`, qui ne porte pas le préfixe `store :`. */
+    let garder = false;
     try {
       poser(tbl, row, ctx);
       prevenir(tbl, row, 'ecrit');
       bilan.ecrits += 1;
     } catch (err) {
-      /* UNE LIGNE QUI NE SAIT PAS ENCORE DEVENIR UN FICHIER N'EST PAS UNE PANNE. Une review dont
-         la merge request vient d'être supprimée, une passe dont la session n'existe plus : on la
-         laisse dans la file, et le tour suivant réessaiera. Ce qui ne doit jamais arriver, c'est
-         qu'une erreur ici fasse échouer la requête qui l'a déclenchée. */
-      if (!/store :/.test(String(err && err.message))) oublier.run(tbl, rid);
+      const message = String((err && err.message) || err);
+      garder = /^store :|^store-registry:/.test(message);
+      /* CE QU'ON JETTE, ON LE DIT. Une ligne qui ne pourra jamais devenir un fichier est un
+         défaut de programme, pas un état transitoire : la taire, c'est ce qui a permis à deux
+         suivis de s'évaporer sans laisser de trace. Une fois par ligne et par processus, pour
+         ne pas transformer un détail en tapis de journal. */
+      const cle = `${tbl}#${rid}`;
+      if (!signales.has(cle)) {
+        signales.add(cle);
+        console.log(`[store] ${cle} ${garder ? 'pas encore écrivable' : 'ne peut pas devenir un fichier'} : ${message}`);
+      }
     }
-    oublier.run(tbl, rid);
+    if (!garder) oublier.run(tbl, rid);
   }
 
   for (const tbl of menages) {

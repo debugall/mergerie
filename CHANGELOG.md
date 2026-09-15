@@ -374,6 +374,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   reason on hover: a dangling dash reads as an empty title, the number alone reads as a title
   not known yet — which is what is true.
 
+- **A row that could not become a file no longer vanishes without a trace.** The queue of
+  pending writes was meant to hold on to anything that cannot be written *yet* — a review whose
+  merge request was just deleted, a pass whose session does not resolve — and retry on the next
+  pass. The comment said so; the code removed the row right after, unconditionally, so the retry
+  never happened and nothing was logged. Found on a real database: two follow-ups out of a
+  session's nine had no file in the shared repository and had never had one, with an empty queue
+  and no error anywhere. Such a row now stays queued until it can be written, and a row that can
+  never be written says so in the log instead of disappearing.
+
 - **Automatic sync now sends what runs in the background, instead of waiting for a click.** The
   queue of pending writes is drained at the end of every non-GET request, and that is what arms
   the grouped commit. Anything written *outside* a request went through nobody: a merge request
