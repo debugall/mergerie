@@ -87,6 +87,26 @@ describe('Review de bout en bout', () => {
     assert.deepEqual(modifies, ['db/migration.sql', 'src/app.js']);
   });
 
+  /* UNE MR ARRIVÉE PAR LE DÉPÔT DE DONNÉES AVANT D'AVOIR ÉTÉ DÉCOUVERTE n'a pas encore ses
+     branches : ce poste-là ne les tient pas de la forge. `origin/${null}` donnait
+     `git diff origin/null...origin/null`, et l'écran rendait le « ambiguous argument » de git —
+     qui décrit la commande ratée, pas ce qui manque ni quoi faire. */
+  test('sans branches connues, le diff dit ce qui manque — pas « ambiguous argument »', async () => {
+    const avant = app.db.prepare('SELECT source_branch, target_branch FROM mr WHERE id = ?').get(mrId);
+    app.db.prepare('UPDATE mr SET source_branch = NULL, target_branch = NULL WHERE id = ?').run(mrId);
+    try {
+      const { status, body } = await app.api('GET', `/api/mrs/${mrId}/diffview`);
+      assert.notEqual(status, 200, 'sans branches, il n’y a pas de diff à montrer');
+      const message = String((body && body.error) || '');
+      assert.doesNotMatch(message, /origin\/null|ambiguous argument/,
+        `l’écran ne doit pas rendre l’échec de git : ${message}`);
+      assert.match(message, /branche|branch/i, `le message doit nommer ce qui manque : ${message}`);
+    } finally {
+      app.db.prepare('UPDATE mr SET source_branch = ?, target_branch = ? WHERE id = ?')
+        .run(avant.source_branch, avant.target_branch, mrId);
+    }
+  });
+
   test('POST /api/mrs/:id/review produit un rapport, une note et des constats', async () => {
     const job = await app.api('POST', `/api/mrs/${mrId}/review`, { explain: true });
     assert.equal(job.body.kind, 'review');

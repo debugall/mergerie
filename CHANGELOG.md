@@ -303,6 +303,24 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A merge request received from the team now arrives with its title.** Title, branches and
+  author only travelled once an MR was closed: while it is open the forge is authoritative, and
+  sharing a mutable value makes stale data travel. The argument does not survive what it
+  produced — a machine that had not yet discovered the MR itself listed it in *to review* with
+  **no title at all**, and “See the diff” then ran `git diff origin/null...origin/null` and put
+  git's `ambiguous argument` on screen. There is no tug of war: both machines read the **same
+  forge**, so they converge; the worst case is a title a minute out of date, and that beats a
+  blank line — it is all a machine without forge access will ever have. The current SHA still
+  does not travel: it moves with every push, and a stale one is the single value that makes you
+  review a diff that no longer exists.
+
+- **Without branches, the diff says what is missing instead of quoting git.** A merge request
+  that arrived through the data repository before this machine discovered it has no branches
+  yet; the message now names that and points at refreshing the repository's MRs. And a merge
+  request whose title is not known yet shows its number alone rather than `!203 —`, with the
+  reason on hover: a dangling dash reads as an empty title, the number alone reads as a title
+  not known yet — which is what is true.
+
 - **“Clone / attach” no longer fails on `index.lock`.** Three things write into the shared
   repository without knowing about each other: the periodic round, the commit grouped three
   seconds after your last write, and the attach you just asked for. Two of them at once and git

@@ -204,6 +204,34 @@ describe('Retour d’action après une review', { skip: dispo ? false : 'chromiu
     await page.unroute('**/api/stats').catch(() => {});
   });
 
+  /* UNE MERGE REQUEST SANS TITRE NE LAISSE PAS UN TIRET PENDU.
+     Elle arrive par le dépôt de données avant d'avoir été découverte chez la forge : ce poste
+     n'a que son numéro. « !203 — » se lit comme un titre VIDE ; le numéro seul, suivi de la
+     raison, se lit comme un titre PAS ENCORE CONNU — et c'est ce qui est vrai. */
+  test('une MR dont on n’a pas encore le titre montre son numéro, pas un tiret seul', async () => {
+    /* Une MR encore DANS la file : les tests précédents en ont fait passer d'autres à
+       « reviewée », et une carte absente ne prouverait rien. */
+    const ligne = app.db.prepare("SELECT id, iid, title FROM mr WHERE status = 'to_review' ORDER BY iid DESC").get();
+    assert.ok(ligne, 'il doit rester une merge request à traiter pour ce test');
+    app.db.prepare('UPDATE mr SET title = NULL WHERE id = ?').run(ligne.id);
+    try {
+      await page.reload();
+      await page.locator('nav button[data-tab="review"]').click();
+      /* Le segment est RÉTABLI au rechargement, et les tests précédents en ont changé : on
+         revient explicitement sur « à traiter », sinon la carte existe mais reste masquée. */
+      await page.locator('#tab-review .segmented button[data-seg="to_review"]').click();
+      /* On attend l'écran QUI PORTE LE CAS, pas un délai : la carte de cette MR-là, rendue. */
+      const titre = page.locator(`#toReviewList .card[data-id="${ligne.id}"] .title`);
+      await titre.waitFor({ timeout: ATTENTE });
+      const texte = (await titre.innerText()).trim();
+      assert.doesNotMatch(texte, /—\s*$/, `un tiret cadratin pendu dans le vide : « ${texte} »`);
+      assert.match(texte, new RegExp(`!${ligne.iid}\\b`), 'le numéro reste, c’est tout ce qu’on sait');
+      assert.match(texte, /titre|title/i, 'et l’écran dit que le titre n’est pas encore connu');
+    } finally {
+      app.db.prepare('UPDATE mr SET title = ? WHERE id = ?').run(ligne.title, ligne.id);
+    }
+  });
+
   test('aucune erreur JavaScript pendant le parcours', async () => {
     await waitForJobs(app.api);
     assert.deepEqual(erreurs, []);

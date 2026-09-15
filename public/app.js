@@ -53,6 +53,17 @@ async function copyText(text, btn) {
    où il apparaît — carte de merge request, ligne de projet d'une session, explorateur de
    branches, en-tête de rapport. ⇧-clic copie la commande de récupération complète : c'est
    toujours la même, et la retaper est le geste qui suit le copier neuf fois sur dix. */
+/* LE TITRE D'UNE MERGE REQUEST, ET CE QU'ON MONTRE QUAND ON NE L'A PAS.
+   Une MR arrivée par le dépôt de données avant d'avoir été découverte chez la forge n'a pas
+   encore de titre sur ce poste : « !42 — » laissait un tiret cadratin pendu dans le vide, qui
+   se lit comme un titre vide plutôt que comme un titre pas encore connu. Sans titre, le numéro
+   suffit, et l'infobulle dit pourquoi il est seul. */
+function titreMr(m) {
+  const t2 = String((m && m.title) || '').trim();
+  if (t2) return `!${m.iid} — ${esc(t2)}`;
+  return `!${m.iid} <span class="muted" title="${esc(tr('mr.title.inconnu'))}">${esc(tr('mr.title.a-decouvrir'))}</span>`;
+}
+
 const CMD_CHECKOUT = (b) => `git fetch origin && git checkout ${b}`;
 function chipBranche(nom, { cible = false } = {}) {
   if (!nom) return '';
@@ -3797,7 +3808,7 @@ function mrCard(m) {
     ${/* Case à cocher : vérifier ENSEMBLE des MR qui ne valent qu'ensemble (§8). */''}
     <label class="mr-pick-box" title="${esc(tr('verify.pick.mr-title'))}"><input type="checkbox" class="mr-pick" value="${m.id}" ${mrSelection.has(m.id) ? 'checked' : ''} /></label>
     <div class="card-main">
-      <div class="title">!${m.iid} — ${esc(m.title || '')}</div>
+      <div class="title">${titreMr(m)}</div>
       <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}${m.gitlab_created_at ? ` · ${dateHtml(m.gitlab_created_at, fmtDate(m.gitlab_created_at))}` : ''}</div>
       ${mrLinks(m)}
       <div class="meta branches">${chipBranche(m.source_branch)} <span class="branch-arrow">→</span> ${chipBranche(m.target_branch, { cible: true })}</div>
@@ -4076,7 +4087,7 @@ function renderReports() {
     <div class="card selectable report-card ${selectedMr === m.id ? 'active' : ''}" data-id="${m.id}">
       ${noteBadge(m.note, m)}
       <div class="report-main">
-        <div class="title">!${m.iid} — ${esc(m.title || '')}</div>
+        <div class="title">${titreMr(m)}</div>
         <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}${m.gitlab_created_at ? ` · ${dateHtml(m.gitlab_created_at, fmtDate(m.gitlab_created_at))}` : ''}${ticketLink(m.ticket_url, m.ticket_key)}</div>
         ${/* A13 — LA TAILLE ET LES LOTS, comme sur une carte à traiter. Le tri « petites
               d'abord » s'applique à ce stade aussi, et il triait sur une donnée que la carte
@@ -4809,7 +4820,7 @@ async function openReport(id, opts = {}) {
           badges : deux rendus différents pour un même fait finiraient par se contredire. */''}
     <div class="card" style="margin-bottom:12px">
       <div>
-        <div class="title">${noteBadge(mLigne.note, mLigne)} !${m.iid} — ${esc(m.title || '')}</div>
+        <div class="title">${noteBadge(mLigne.note, mLigne)} ${titreMr(m)}</div>
         <div class="meta">${esc(m.project)}${ticketLink(d.ticket_url, d.ticket_key)} · ${chipBranche(m.source_branch)} → ${chipBranche(m.target_branch, { cible: true })}
           ${badgeDraft(mLigne)}
           ${fenteBrouillons({ ...mLigne, drafts: d.drafts || mLigne.drafts })}

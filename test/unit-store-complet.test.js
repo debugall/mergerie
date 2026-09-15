@@ -104,18 +104,24 @@ describe('store — la base prévient, le store écrit', () => {
     assert.equal(mr.repo, 'gitlab/acme/web');
     assert.equal(mr.status, 'reviewed');
     assert.match(mr.ticket_text, /100 €/);
-    assert.ok(!('title' in mr), 'la forge fait foi du titre : l’écrire ferait voyager du périmé');
-    assert.ok(!('current_sha' in mr), 'idem pour le SHA courant');
+    /* LE TITRE ET LES BRANCHES VOYAGENT, MÊME OUVERTE. Le poste qui reçoit n'a pas forcément
+       découvert la MR chez la forge — il l'affichait alors SANS TITRE dans « à relire », et
+       « Voir le diff » partait sur `origin/null...origin/null`. Les deux postes lisent la même
+       forge, donc ils convergent : le pire cas est un titre d'une minute en retard, et il vaut
+       infiniment mieux qu'une ligne vide. */
+    assert.equal(mr.title, 'Paiement 3×');
+    assert.equal(mr.source_branch, 'feat/x');
+    assert.equal(mr.target_branch, 'main');
+    /* LE SHA COURANT, LUI, NE PART PAS : il avance à chaque push, et c'est LE seul champ dont
+       une valeur en retard fait prendre une décision fausse — relire un diff qui n'existe plus. */
+    assert.ok(!('current_sha' in mr), 'le SHA courant avance : chaque poste le lit chez la forge');
     /* DEUX EXCEPTIONS, ET DEUX SEULEMENT : l'adresse de la merge request et sa date d'ouverture
        ne changent JAMAIS. Sans elles, le poste qui rejoint affiche un en-tête sans lien vers la
        forge tant qu'il n'a pas de jeton à lui, et le délai de cycle n'a pas de point de départ. */
     assert.equal(mr.web_url, 'https://gitlab.test/acme/web/-/merge_requests/218');
     assert.equal(mr.gitlab_created_at, '2026-02-01T09:00:00Z');
 
-    /* …ET LE JOUR OÙ ELLE EST FERMÉE, son titre et ses branches cessent de pouvoir changer :
-       ils partent alors avec elle. Sans ça, le poste qui rejoint ouvre son rapport de review
-       sur un numéro seul tant qu'il n'a pas de jeton de forge valide — pour lire un travail
-       qui, lui, est déjà arrivé. */
+    /* …ET FERMÉE, RIEN NE CHANGE : ces colonnes-là ne dépendent plus de son état. */
     db.prepare('UPDATE mr SET closed_seen = 1 WHERE id = ?').run(mrId);
     store.ecouler();
     const fermee = JSON.parse(store.lireFichier('mrs/gitlab/acme/web/218.json'));
@@ -124,8 +130,6 @@ describe('store — la base prévient, le store écrit', () => {
     assert.equal(fermee.target_branch, 'main');
     db.prepare('UPDATE mr SET closed_seen = 0 WHERE id = ?').run(mrId);
     store.ecouler();
-    assert.ok(!('title' in JSON.parse(store.lireFichier('mrs/gitlab/acme/web/218.json'))),
-      'rouverte, elle redevient celle de la forge : le titre peut à nouveau changer');
 
     const uid = db.prepare('SELECT uid FROM review_version WHERE mr_id = ?').get(mrId).uid;
     assert.equal(store.lireFichier(`reviews/gitlab/acme/web/218/${uid}.md`), '# Revue\n\nDeux constats.',

@@ -223,7 +223,9 @@ const REGISTRE = [
        ligne du journal d'activité ne disait que « quand CE poste s'en est aperçu ». */
     partagees: ['status', 'reviewed_sha', 'ticket_text', 'ticket_image', 'squash',
       'remove_source_branch', 'closed_seen', 'web_url', 'gitlab_created_at', 'merged_at',
-      /* CES QUATRE-LÀ NE PARTENT QUE POUR UNE MR FERMÉE — voir `toFile`. */
+      /* CES QUATRE-LÀ SONT UN REPLI, PAS UNE VÉRITÉ — voir `toFile` : la découverte locale les
+         réécrit depuis la forge, et le fichier ne sert qu'au poste qui n'a pas encore vu la MR
+         (ou pas de jeton pour la voir). */
       'title', 'source_branch', 'target_branch', 'author'],
     fichiers: ['mrs/{forge}/{project}/{iid}.{ext} (image du ticket)'],
     note: 'la forge fait foi du reste : titre, branches, SHA, auteur, fichiers changés, Jira ; '
@@ -245,18 +247,22 @@ const REGISTRE = [
         web_url: r.web_url || null,
         gitlab_created_at: r.gitlab_created_at || null,
         merged_at: r.merged_at || null,
-        /* UNE MERGE REQUEST FERMÉE NE CHANGE PLUS. Son titre, ses branches et son auteur
-           deviennent des faits figés le jour où elle est mergée : les partager ne fait donc
-           voyager aucun périmé, et évite au poste qui rejoint d'avoir besoin d'un jeton de
-           forge pour lire son propre historique — sans quoi son rapport de review s'ouvre sur
-           un numéro seul. Tant qu'elle est OUVERTE, la forge reste la seule source : le titre
-           se réécrit, la branche se renomme, et deux postes s'écraseraient à tour de rôle. */
-        ...(r.closed_seen ? {
-          title: r.title || null,
-          source_branch: r.source_branch || null,
-          target_branch: r.target_branch || null,
-          author: r.author || null,
-        } : {}),
+        /* TITRE, BRANCHES ET AUTEUR VOYAGENT, OUVERTE OU FERMÉE — et c'est un revirement.
+           Ils ne partaient d'abord que pour une MR fermée, au motif qu'un titre se réécrit et
+           qu'une branche se renomme : partager du mutable, c'est faire voyager du périmé, et
+           deux postes risquent de s'écraser à tour de rôle.
+           L'argument tombe devant ce qu'il produit. Le poste qui reçoit affiche la MR SANS
+           TITRE dans « à relire » tant qu'il ne l'a pas découverte lui-même — et « Voir le
+           diff » tente alors `origin/null...origin/null`. Or il n'y a pas de tour de rôle : les
+           deux postes lisent la MÊME forge, donc ils convergent vers la même valeur ; le pire
+           cas est un titre d'une minute en retard, que la découverte suivante corrige. Un titre
+           légèrement en retard vaut infiniment mieux qu'une ligne vide, et le poste sans jeton
+           de forge n'a que celui-là. La forge reste la source : la découverte locale réécrit
+           ces colonnes à chaque passage. */
+        title: r.title || null,
+        source_branch: r.source_branch || null,
+        target_branch: r.target_branch || null,
+        author: r.author || null,
         reviewed_sha: r.reviewed_sha || null,
         ticket_text: r.ticket_text || null,
         squash: r.squash == null ? null : (r.squash ? 1 : 0),

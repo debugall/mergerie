@@ -166,8 +166,16 @@ function ensureInternalIgnore(cwd) {
 // Diff ciblé : changements de la branche source depuis sa divergence d'avec target.
 // three-dot => n'inclut pas les commits de target absents de source.
 async function targetedDiff(cwd, sourceBranch, targetBranch, onLog = () => {}) {
-  const src = `origin/${sourceBranch}`;
-  const tgt = `origin/${targetBranch}`;
+  /* UN NOM DE BRANCHE MANQUANT NE DEVIENT PAS `origin/null`. Une merge request arrivée par le
+     dépôt de données avant que ce poste ne l'ait découverte chez la forge n'a pas encore ses
+     branches : l'interpolation en faisait `git diff origin/null...origin/null`, et l'écran
+     rendait le « ambiguous argument » de git — qui décrit la commande, pas ce qui manque. */
+  const nom = (b) => (b == null ? '' : String(b).trim());
+  if (!nom(sourceBranch) || !nom(targetBranch)) {
+    throw new Error(t('err.mr.branches-inconnues'));
+  }
+  const src = `origin/${nom(sourceBranch)}`;
+  const tgt = `origin/${nom(targetBranch)}`;
   // on log la commande mais PAS la sortie (le diff peut être énorme) : juste un résumé.
   onLog(`$ git diff ${tgt}...${src}`);
   const { stdout } = await run(
