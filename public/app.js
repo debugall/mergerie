@@ -6167,7 +6167,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'verif_auto_max', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment',
-  'stale_mr_days',
+  'stale_mr_days', 'auto_runner',
   /* Dictée vocale (whisper.md §6.3). `dictation_silence_ms` et `dictation_idle_minutes` sont
      ici comme `retention_days` : envoyés par cette liste, mais BORNÉS côté serveur, où ils
      n'appartiennent pas à `ALLOWED`. La case `dictation_final_pass`, elle, est traitée à
@@ -6508,6 +6508,9 @@ async function loadConfig() {
   if (f.auto_post_blocking_only) f.auto_post_blocking_only.checked = c.auto_post_blocking_only === '1';
   if (f.auto_review_new) f.auto_review_new.checked = c.auto_review_new === '1';
   if (f.auto_rereview_stale) f.auto_rereview_stale.checked = c.auto_rereview_stale === '1';
+  /* L'exécutant des automatismes : une LISTE, remplie des exécutants connus, et cachée en
+     mono-poste. Posé après les cases, car l'avertissement dépend d'elles. */
+  poserExecutantAuto(c.auto_runner || '');
   // 0 = « sans limite » : il doit s'ÉCRIRE, une case vide se lirait comme « valeur par défaut ».
   if (f.review_auto_max) f.review_auto_max.value = Number(c.review_auto_max) || 0;
   // Atterrissage sur le brief : coché par défaut, comme côté serveur.
@@ -7569,6 +7572,14 @@ document.addEventListener('paste', (e) => {
 let editingTaskId = null;
 let launchAfterCreate = false;
 
+/* La case « partager » du formulaire de session : montrée seulement en mode partagé, et jamais
+   remplie d'office. `partageActif()` lit `/api/whoami` une fois pour toute la page. */
+async function majCasePartageSession() {
+  const ligne = $('#taskShareRow');
+  if (!ligne) return;
+  ligne.hidden = !await partageActif();
+}
+
 function applyKindToModal(kind) {
   const isLocal = kind === 'local';
   /* UNE QUESTION LIBRE N'A AUCUNE CIBLE : ni projet, ni dossier, ni ticket, ni vérificateur.
@@ -7602,6 +7613,9 @@ function applyKindToModal(kind) {
      cible sur laquelle l'agent hésite ou travaille : sans dépôt ni dossier, elles n'ont rien
      à quoi se rattacher. */
   const gRow = $('#taskAgentFields'); if (gRow) gRow.hidden = isAsk;
+  /* « Partager avec l'équipe » vaut pour LES TROIS SAVEURS — une question libre se partage
+     comme une session de codage —, mais seulement quand il y a une équipe. */
+  majCasePartageSession();
   /* Le combo Agent est MASQUÉ hors dépôt et en question libre — un profil parle de dépôts, et
      il n'y en a pas. Le champ reste dans le formulaire unique : il est simplement ignoré là. */
   const agRow = $('#taskAgentRow'); if (agRow) agRow.hidden = isLocal || isAsk;
@@ -8453,6 +8467,9 @@ $('#taskForm').addEventListener('submit', async (e) => {
         label: f.label ? f.label.value : '',
         prompt: f.prompt.value, dirs, files: taskNewImages, session_id: f.session_id ? f.session_id.value : '',
         ask_questions: f.ask_questions ? f.ask_questions.checked : false,
+        /* La modale est commune aux trois saveurs, mais CHAQUE SAVEUR A SON ENVOI : la case
+           « partager » doit donc être câblée trois fois, sans quoi elle ne ferait rien ici. */
+        shared: f.shared ? f.shared.checked : false,
       } }));
       if (launchAfterCreate) {
         await api(`/local-tasks/${created.id}/run`, { method: 'POST' });
@@ -8471,7 +8488,10 @@ $('#taskForm').addEventListener('submit', async (e) => {
   if (taskKind === 'ask') {
     const btn = $('#taskSubmit');
     // Une question libre aussi peut s'appuyer sur un document : le devis, la spec, le mail.
-    const body = { prompt: f.prompt.value, label: f.label ? f.label.value : '', files: taskNewImages };
+    const body = {
+      prompt: f.prompt.value, label: f.label ? f.label.value : '', files: taskNewImages,
+      shared: f.shared ? f.shared.checked : false,
+    };
     try {
       if (editingTaskId) {
         await busy(btn, () => api(`/questions/${editingTaskId}`, { method: 'PUT', body }));
@@ -8530,6 +8550,8 @@ $('#taskForm').addEventListener('submit', async (e) => {
        modèle, ses outils et ses sous-agents sans qu'un agent soit enregistré. Ignoré si un
        agent existant a été choisi : un run ne porte qu'un profil. */
     agent_draft: essaiAgent && !agentChoisiDansModale() ? essaiAgent : undefined,
+    // Partager cette session : décochée par défaut, et ignorée par le serveur à l'édition.
+    shared: f.shared ? f.shared.checked : false,
     files: taskNewImages,
     targets,
   };
@@ -8794,6 +8816,9 @@ const followBtn = (t, attr, titreFini, libelleFini = 'task.btn.request-fix') => 
 let tasksSeq = 0;
 async function loadTasks() {
   const seq = ++tasksSeq;
+  /* Y a-t-il une équipe, et qui suis-je ? Lu UNE fois (mémorisé), et avant le rendu : les cartes
+     décident sans attendre s'il faut proposer « partager » et « supprimer » ou « ranger ». */
+  await partageActif();
   try {
     const [tasks, locals, asks] = await Promise.all([
       api('/tasks'), api('/local-tasks').catch(() => []), api('/questions').catch(() => []),
@@ -8823,8 +8848,39 @@ function taskMatches(t, q, units) {
   return hay.includes(q);
 }
 
+/* LES MIENNES / L'ÉQUIPE / TOUTES. Dès qu'on partage, la liste mêle son propre travail et celui
+   des autres — et la question du matin est « où en est CE que je fais ? ». Le filtre n'existe
+   qu'en mode partagé : en mono-poste, tout est à soi. Mémorisé dans le navigateur, comme le
+   filtre d'auteur des merge requests. */
+let filtreProprio = 'toutes';
+try { filtreProprio = localStorage.getItem('mergerie_task_owner') || 'toutes'; } catch { /* ignore */ }
+
+function renderFiltreProprio() {
+  const box = $('#taskOwnerFiltre');
+  if (!box) return;
+  box.hidden = !(partageEtMoi && partageEtMoi.partage);
+  if (box.hidden) return;
+  const opts = [['toutes', 'session.filter.all'], ['miennes', 'session.filter.mine'], ['equipe', 'session.filter.team']];
+  box.innerHTML = opts.map(([v, k]) => `<button type="button" class="chip${filtreProprio === v ? ' active' : ''}" data-task-proprio="${v}">${esc(tr(k))}</button>`).join('');
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-task-proprio]');
+  if (!b) return;
+  filtreProprio = b.dataset.taskProprio;
+  try { localStorage.setItem('mergerie_task_owner', filtreProprio); } catch { /* ignore */ }
+  renderTasks();
+});
+
+/* « Les miennes » = ce que personne d'autre n'a écrit : une session sans auteur n'est jamais
+   partie dans le dépôt, elle est donc à moi. */
+function duProprio(t) {
+  if (!partageEtMoi || !partageEtMoi.partage || filtreProprio === 'toutes') return true;
+  const mienne = estAMoi(t);
+  return filtreProprio === 'miennes' ? mienne : !mienne;
+}
+
 // Une session rangée ne sort que si la case le demande.
-const taskVisible = (t) => showHiddenTasks || !t.hidden;
+const taskVisible = (t) => (showHiddenTasks || !t.hidden) && duProprio(t);
 
 /* Combien de sessions le rangement retire de la vue. Affiché à côté de la case : une
    session qui disparaît sans laisser de trace se croit supprimée, et on la recrée. */
@@ -8835,6 +8891,7 @@ function reportHiddenCount(n) {
 }
 
 function renderTasks() {
+  renderFiltreProprio();
   const isLocal = taskKind === 'local';
   const isAsk = taskKind === 'ask';
   const el = $('#taskList');
@@ -8985,7 +9042,7 @@ function localCard(t) {
     <div style="min-width:0;flex:1">
       <div class="title">
         <span class="tag ${st.cls}">${st.label}</span>
-        <span class="task-projects">${tr('local.dirs-count', { n, count: n })}</span>
+        <span class="task-projects">${tr('local.dirs-count', { n, count: n })}</span>${shareMark(t)}
         <span class="task-date" title="${tr('task.created-at')}" data-when="${esc(t.created_at || '')}">${esc(fmtDateTime(t.created_at))}</span>
       </div>
       ${libelleBlock(t, 'local')}
@@ -9019,8 +9076,9 @@ function localCard(t) {
   ], [
     `<button class="btn btn-icon btn-sm" data-ledit="${t.id}" title="${esc(tr('local.edit-title'))}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
     `<button class="btn btn-icon btn-sm" data-lcopy="${t.id}" title="${esc(tr('local.title.duplicate'))}"><svg class="ico"><use href="#i-copy"/></svg></button>`,
+    shareBtn('local', t),
     hideBtn('local', t),
-    `<button class="btn btn-icon btn-sm btn-danger" data-ldel="${t.id}" title="${esc(tr('local.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>`,
+    estAMoi(t) ? `<button class="btn btn-icon btn-sm btn-danger" data-ldel="${t.id}" title="${esc(tr('local.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>` : '',
   ])}
     ${t.last_error ? errorBox(t.last_error, null, null, t.id) : ''}
   </div>`;
@@ -9143,7 +9201,7 @@ function askCard(q) {
   return `<div class="card task-row${q.hidden ? ' is-hidden' : ''}" data-ask="${q.id}">
     <div style="min-width:0;flex:1">
       <div class="title">
-        <span class="tag ${st.cls}">${st.label}</span>
+        <span class="tag ${st.cls}">${st.label}</span>${shareMark(q)}
         <span class="task-date" title="${tr('task.created-at')}" data-when="${esc(q.created_at || '')}">${esc(fmtDateTime(q.created_at))}</span>
       </div>
       ${libelleBlock(q, 'ask')}
@@ -9174,8 +9232,9 @@ function askCard(q) {
     resumeCmdBtn(q.resume_cmd),
   ], [
     `<button class="btn btn-icon btn-sm" data-qedit="${q.id}" title="${esc(tr('ask.edit-title'))}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
+    shareBtn('ask', q),
     hideBtn('ask', q),
-    `<button class="btn btn-icon btn-sm btn-danger" data-qdel="${q.id}" title="${esc(tr('ask.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>`,
+    estAMoi(q) ? `<button class="btn btn-icon btn-sm btn-danger" data-qdel="${q.id}" title="${esc(tr('ask.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>` : '',
   ])}
     ${q.last_error ? errorBox(q.last_error, null, null, null, q.id) : ''}
   </div>`;
@@ -9296,6 +9355,26 @@ function hideBtn(scope, t) {
     + `<svg class="ico"><use href="#i-${on ? 'eye' : 'eye-off'}"/></svg></button>`;
 }
 
+/* PARTAGER OU NON CETTE SESSION, depuis sa carte. Le bouton n'apparaît qu'en mode partagé et
+   qu'à son AUTEUR : la session d'un collègue se range, elle ne se retire pas du dépôt.
+   `partageEtMoi` est rempli une fois par `partageActif()` ; tant qu'il ne l'est pas, on ne rend
+   rien plutôt que de faire clignoter un bouton qui disparaîtrait. */
+let partageEtMoi = null;
+function shareBtn(scope, t) {
+  if (!partageEtMoi || !partageEtMoi.partage) return '';
+  if (t.author && partageEtMoi.name && t.author !== partageEtMoi.name) return '';
+  const on = t.shared ? 1 : 0;
+  return `<button class="btn btn-icon btn-sm${on ? ' active' : ''}" data-share="${t.id}" data-scope="${scope}" data-on="${on}"`
+    + ` title="${esc(tr(on ? 'session.unshare' : 'session.share'))}">`
+    + `<svg class="ico"><use href="#i-users"/></svg></button>`;
+}
+/* …et le pictogramme qui dit, sans cliquer, que cette session est chez tout le monde. */
+const shareMark = (t) => (t.shared
+  ? ` <span class="note-partagee" title="${esc(tr('session.shared-mark'))}">${svgIco('users')}</span>` : '');
+/* La session d'un collègue ne se supprime pas : on la range. Le serveur refuse de toute façon
+   (403), mais proposer un bouton qui refuse est une promesse qu'on ne tient pas. */
+const estAMoi = (t) => !t.author || !partageEtMoi || !partageEtMoi.name || t.author === partageEtMoi.name;
+
 function taskActions(work, meta) {
   const w = work.filter(Boolean).join('');
   const m = meta.filter(Boolean).join('');
@@ -9360,6 +9439,9 @@ function taskHead(t) {
       <span class="task-projects">${tr('task.projects', { n: nb, count: nb })}</span>
       ${t.agent_name ? `<span class="tag tag-agent" title="${esc(tr('agents.card.ran-by'))}">${svgIco('zap')} ${esc(t.agent_name)}</span>` : ''}
       ${t.triggered_by === 'schedule' ? `<span class="tag" title="${esc(tr('agents.card.by-schedule'))}">${svgIco('clock')}</span>` : ''}
+      ${/* Chez tout le monde, ou à soi : la question se pose d'un coup d'œil, comme pour une
+            page de notes. Le pictogramme est le même — c'est le même geste. */''}
+      ${shareMark(t)}
       ${t.auto_push && t.kind !== 'explore' ? '<span class="tag">auto-push</span>' : ''}
       <span class="task-date" title="${tr('task.created-at')}" data-when="${esc(t.created_at || '')}">${esc(fmtDateTime(t.created_at))}</span>
     </div>
@@ -9491,8 +9573,10 @@ function codeCard(t) {
   ], [
     `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
     `<button class="btn btn-icon btn-sm" data-tcopy="${t.id}" title="${esc(tr('task.title.duplicate'))}"><svg class="ico"><use href="#i-copy"/></svg></button>`,
+    shareBtn('task', t),
     hideBtn('task', t),
-    `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>`,
+    // La session d'un collègue ne se supprime pas : on la range, et le bouton disparaît.
+    estAMoi(t) ? `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>` : '',
   ])}
     ${t.last_error ? errorBox(t.last_error, null, t.id) : ''}
   </div>`;
@@ -9786,8 +9870,10 @@ function exploreCard(t) {
   ], [
     `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
     `<button class="btn btn-icon btn-sm" data-tcopy="${t.id}" title="${esc(tr('task.title.duplicate'))}"><svg class="ico"><use href="#i-copy"/></svg></button>`,
+    shareBtn('task', t),
     hideBtn('task', t),
-    `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>`,
+    // La session d'un collègue ne se supprime pas : on la range, et le bouton disparaît.
+    estAMoi(t) ? `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>` : '',
   ])}
     ${t.last_error ? errorBox(t.last_error, null, t.id) : ''}
   </div>`;
@@ -9804,6 +9890,21 @@ document.addEventListener('click', async (e) => {
   try {
     await busy(b, () => api(`/${scope}/${b.dataset.hide}/hidden`, { method: 'POST', body: { hidden } }));
     toast(tr(hidden ? 'task.hidden.done' : 'task.hidden.undone'));
+    loadTasks();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
+/* Partager / ne plus partager : délégué une fois, comme « ranger ». Le serveur fait suivre les
+   passes et les pièces jointes — elles n'ont pas de case à elles. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-share]');
+  if (!b) return;
+  const SCOPE_ROUTE = { local: 'local-tasks', ask: 'questions' };
+  const scope = SCOPE_ROUTE[b.dataset.scope] || 'tasks';
+  const shared = b.dataset.on !== '1';
+  try {
+    await busy(b, () => api(`/${scope}/${b.dataset.share}/share`, { method: 'POST', body: { shared: shared ? 1 : 0 } }));
+    toast(tr(shared ? 'session.shared' : 'session.unshared'));
     loadTasks();
   } catch (err) { toast(explainError(err.message), true); }
 });
@@ -16291,9 +16392,46 @@ let moiCache = null;
    En mono-poste ils ne s'affichent pas du tout : découvrir une fonctionnalité qu'on n'a pas
    demandée coûte plus cher que de ne pas l'avoir. */
 async function partageActif() {
-  if (!moiCache) { try { moiCache = await api('/me'); } catch { moiCache = { partage: false, runners: [] }; } }
+  if (!moiCache) { try { moiCache = await api('/whoami'); } catch { moiCache = { partage: false, runners: [] }; } }
+  /* Les cartes de session se redessinent toutes les secondes et demie : elles ne peuvent pas
+     attendre une requête. On dépose donc ici ce qu'elles ont besoin de savoir — y a-t-il une
+     équipe, et qui suis-je — pour que le rendu reste synchrone. */
+  partageEtMoi = { partage: Boolean(moiCache.partage), name: moiCache.name || null };
   return Boolean(moiCache.partage);
 }
+/* L'EXÉCUTANT DES AUTOMATISMES, dans les réglages. Même chose que pour un agent planifié : la
+   liste des exécutants connus plutôt qu'une saisie libre, et le champ caché en mono-poste où la
+   question ne se pose pas. L'avertissement n'apparaît que si une politique est cochée sans
+   personne pour la faire tourner — c'est le seul cas où rien ne se passerait en silence. */
+async function poserExecutantAuto(choisi) {
+  const ligne = $('#autoRunnerRow');
+  if (!ligne) return;
+  ligne.hidden = !await partageActif();
+  const avert = $('#autoRunnerNone');
+  if (ligne.hidden) { if (avert) avert.hidden = true; return; }
+  const sel = $('#autoRunnerSelect');
+  const liste = [...new Set([...(moiCache.runners || []), choisi].filter(Boolean))].sort();
+  sel.innerHTML = `<option value="">${esc(tr('agents.runner.nobody'))}</option>`
+    + liste.map((n) => `<option value="${esc(n)}"${n === choisi ? ' selected' : ''}>`
+      + `${esc(n === moiCache.name ? tr('agents.runner.me', { name: n }) : n)}</option>`).join('');
+  sel.value = choisi || '';
+  majAvertissementAuto();
+}
+function majAvertissementAuto() {
+  const avert = $('#autoRunnerNone');
+  const sel = $('#autoRunnerSelect');
+  const f = $('#configForm');
+  if (!avert || !sel || !f) return;
+  const coche = ['auto_review_new', 'auto_rereview_stale'].some((n) => f[n] && f[n].checked);
+  avert.hidden = !!sel.value || !coche || $('#autoRunnerRow').hidden;
+}
+document.addEventListener('change', (e) => {
+  if (!e.target.closest) return;
+  if (e.target.matches('#autoRunnerSelect, #configForm [name="auto_review_new"], #configForm [name="auto_rereview_stale"]')) {
+    majAvertissementAuto();
+  }
+});
+
 async function poserExecutantForm(choisi) {
   const ligne = $('#agentRunnerRow');
   if (!ligne) return;
@@ -18386,7 +18524,7 @@ function renderTodos(rows) {
       ${ordonnable ? `<span class="todo-grip" aria-hidden="true" title="${esc(tr('notes.todo.reorder-title'))}">${svgIco('grip')}</span>` : ''}
       <input type="checkbox" class="todo-check" data-todo-check="${t.id}"${t.status === 'done' ? ' checked' : ''} aria-label="${esc(tr('notes.todo.done'))}" />
       <div class="brief-item-main">
-        <div class="brief-item-title">${esc(t.title)}</div>
+        <div class="brief-item-title">${esc(t.title)}${t.shared ? ` <span class="note-partagee" title="${esc(tr('todo.shared-mark'))}">${svgIco('users')}</span>` : ''}</div>
         <div class="meta">${todoPrioBadge(t.priority)}${todoDueHtml(t)}${todoLinkHtml(t)}${todoEtatMr(t)}${todoEtatTicket(t)}
           ${t.archived_at ? `<span class="muted">${esc(tr('notes.todo.archived-at', { date: fmtDate(t.archived_at) }))}</span>` : ''}</div>
         ${t.note ? `<div class="todo-note md-body">${renderNoteMd(t.note)}</div>` : ''}
@@ -18399,10 +18537,27 @@ function renderTodos(rows) {
             « corriger le cache Redis » est écrit, il n'y a plus qu'à le faire faire. Le titre
             et la note deviennent la demande, le lien (MR ou dépôt) devient la cible. */''}
       ${t.status === 'open' ? `<button type="button" class="btn btn-sm btn-ghost" data-todo-code="${t.id}" title="${esc(tr('notes.todo.to-session-title'))}">${svgIco('bot')}</button>` : ''}
+      ${/* UNE TODO EST PERSONNELLE PAR NATURE : elle ne part à l'équipe que si on le dit. Les
+            todos AUTOMATIQUES (veille Jira, question d'un agent) n'ont pas de bouton du tout —
+            elles ne partent jamais, et proposer la bascule serait mentir. */''}
+      ${partageEtMoi && partageEtMoi.partage && !t.auto_kind
+    ? `<button type="button" class="btn btn-sm btn-ghost${t.shared ? ' active' : ''}" data-todo-share="${t.id}" data-on="${t.shared ? 1 : 0}" title="${esc(tr(t.shared ? 'todo.unshare' : 'todo.share'))}">${svgIco('users')}</button>` : ''}
       <button type="button" class="btn btn-sm btn-ghost" data-todo-edit="${t.id}" title="${esc(tr('notes.todo.edit-title'))}">${svgIco('edit')}</button>
       <button type="button" class="btn btn-sm btn-ghost btn-danger" data-todo-del="${t.id}" title="${esc(tr('notes.todo.delete-title'))}">${svgIco('trash')}</button>
     </div>`).join('');
 }
+
+/* Partager une todo, ou cesser de la partager. Délégué une fois, comme pour les sessions. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-todo-share]');
+  if (!b) return;
+  const shared = b.dataset.on !== '1';
+  try {
+    await api(`/todos/${b.dataset.todoShare}`, { method: 'PUT', body: { shared: shared ? 1 : 0 } });
+    toast(tr(shared ? 'todo.shared' : 'todo.unshared'));
+    loadTodos();
+  } catch (err) { toast(explainError(err.message), true); }
+});
 
 /* A42 — « FAIRE FAIRE CETTE TODO ». On ouvre la modale de codage remplie de ce que la todo
    sait : son titre et sa note deviennent la demande, et son lien la cible — une todo liée à
@@ -21995,6 +22150,11 @@ function renderVerifierList() {
     /* A/Réglages 3 — combien de sessions le portent. Renommer ou supprimer se faisait à
        l'aveugle : douze sessions le relanceraient en finissant, et rien ne le disait. */
     v.used_by_tasks ? esc(tr('verify.verifier.used-by', { n: v.used_by_tasks, count: v.used_by_tasks })) : '',
+    /* CE QUI MANQUE SUR CE POSTE. Les valeurs d'environnement ne voyagent pas — ce sont des
+       secrets en puissance. Un vérificateur reçu d'un collègue arrive avec les NOMS de ses
+       variables : le dire ici évite un échec au lancement dont la cause serait à chercher. */
+    (v.env_missing || []).length
+      ? `<span class="tag warn" title="${esc((v.env_missing || []).join(', '))}">${esc(tr('verify.verifier.env-missing', { n: v.env_missing.length, count: v.env_missing.length }))}</span>` : '',
   ].filter(Boolean).join(' · ')}</div>
       ${herite
     ? `<p class="field-note">${esc(tr('verify.kind.script-removed.hint'))}</p>`
@@ -22073,10 +22233,10 @@ function remplirFormVerifier(v, info) {
   f.name.value = v.name;
   f.report_path.value = v.report_path || '';
   f.parse_tap.checked = v.parse_tap == null ? true : !!v.parse_tap;
-  let env = '';
-  try { env = Object.entries(JSON.parse(v.env_json || '{}')).map(([k, val]) => `${k}=${val}`).join('\n'); }
-  catch { env = ''; }
-  f.env.value = env;
+  /* Les valeurs viennent du POSTE : le serveur les recompose en « CLE=valeur » à partir des
+     noms d'équipe et de ce qui est renseigné ici. Un vérificateur reçu d'un collègue arrive
+     donc avec ses noms et des valeurs vides — à remplir. */
+  f.env.value = v.env || '';
   f.timeout_s.value = v.timeout_s;
   f.run_base.checked = !!v.run_base;
   f.comment_on_forge.checked = !!v.comment_on_forge;

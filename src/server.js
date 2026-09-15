@@ -43,6 +43,7 @@ const localsession = require('./localsession');
 const store = require('./store');
 const datasync = require('./datasync');
 const identite = require('./identite');
+const verifierenv = require('./verifierenv');
 const configModule = require('./config');
 const { getConfig, updateConfig } = configModule;
 const i18n = require('../public/i18n-runtime.js');
@@ -2417,6 +2418,46 @@ function auteurs(table, rows) {
   return new Map([...chemins].map(([id, c]) => [id, parFichier.get(c) || null]));
 }
 
+/* SEUL L'AUTEUR BASCULE OU SUPPRIME CE QUI EST PARTAGÉ.
+ *
+ * L'auteur n'est pas une colonne : c'est celui qui a commité le fichier, et git le sait
+ * (`auteurs`). Une session sans auteur n'est jamais partie — elle est donc à nous. Un collègue
+ * qui reçoit la session d'un autre peut la RANGER chez lui (`hidden`, une préférence de poste)
+ * mais pas la retirer du dépôt : ce serait effacer le travail de quelqu'un d'autre chez tout le
+ * monde. Un « retrait local » sans rangement n'existe pas dans ce modèle — le fichier fait foi,
+ * la ligne reviendrait au `pull` suivant. */
+function auteurDeLigne(table, row) {
+  return auteurs(table, [row]).get(row.id) || null;
+}
+function exigerProprietaire(table, row) {
+  const auteur = auteurDeLigne(table, row);
+  const moi = identite.nom() || null;
+  if (!auteur || !moi || auteur === moi) return;
+  const e = new Error(t('session.err.not-owner', { who: auteur }));
+  e.status = 403;
+  throw e;
+}
+
+/* La bascule « partager / ne plus partager » d'une session, pour les trois saveurs.
+   LES ENFANTS SUIVENT : passes et pièces jointes n'ont pas de case à elles, mais leurs fichiers
+   doivent apparaître (ou disparaître) avec la session. Rien ne les a touchés, donc rien ne les a
+   mis dans la file : on les y met nous-mêmes. */
+function basculerPartage(table, scope, row, shared) {
+  exigerProprietaire(table, row);
+  const v = shared ? 1 : 0;
+  store.ecrire(table, () => {
+    db.prepare(`UPDATE ${table} SET shared = ?, updated_at = ? WHERE id = ?`)
+      .run(v, new Date().toISOString(), row.id);
+    return row.id;
+  });
+  db.prepare("INSERT INTO store_sale (tbl, rid) SELECT 'agent_pass', rowid FROM agent_pass WHERE scope = ? AND task_id = ?")
+    .run(scope, row.id);
+  db.prepare("INSERT INTO store_sale (tbl, rid) SELECT 'piece_jointe', rowid FROM piece_jointe WHERE scope = ? AND owner_id = ?")
+    .run(scope, row.id);
+  store.ecouler();
+  return v;
+}
+
 /* RANGER UNE SESSION EST UN GESTE DE POSTE. `hidden` a quitté les tables `task`, `local_task` et
    `question` : la supprimer la supprime pour tout le monde, mais la RANGER ne doit la retirer
    que de sa propre vue — le collègue qui la regarde n'a pas demandé qu'elle disparaisse. La
@@ -3096,6 +3137,8 @@ app.post('/api/tasks', wrap((req, res) => {
     triggeredBy: 'manual',
     agentQuestion: profil ? promptFinal : null,
     agentDraft: brouillon,
+    // Partager cette session-là : décoché par défaut, et la case n'apparaît qu'en mode partagé.
+    shared: req.body && req.body.shared ? 1 : 0,
   });
   savePiecesEtImages('task', taskId, req.body || {});
   res.json({ ...taskById(taskId), targets: taskTargets(taskId) });
@@ -3149,6 +3192,10 @@ app.put('/api/tasks/:id', wrap((req, res) => {
 }));
 
 app.delete('/api/tasks/:id', wrap((req, res) => {
+  /* LA SESSION D'UN COLLÈGUE NE SE SUPPRIME PAS : la supprimer ici retirerait son fichier du
+     dépôt, et la ligne disparaîtrait chez son auteur au `pull` suivant. On la range. */
+  const aSupprimer = taskById(Number(req.params.id));
+  if (aSupprimer) exigerProprietaire('task', aSupprimer);
   db.prepare('DELETE FROM task_target WHERE task_id = ?').run(Number(req.params.id));
   agentpass.removeTask('task', Number(req.params.id));   // pas de FK : nettoyage explicite
   pieces.removeOwner('task', Number(req.params.id));     // idem pour les pièces jointes
@@ -3160,6 +3207,16 @@ app.delete('/api/tasks/:id', wrap((req, res) => {
 /* Ranger / ressortir une session. Volontairement séparé de PUT /tasks/:id : c'est un geste
    de rangement, qui doit rester possible sur une session en cours d'exécution — le PUT, lui,
    refuse d'éditer une session lancée. */
+/* Partager CETTE session-là, ou cesser de la partager. Volontairement à côté de `/hidden` : ce
+   sont les deux gestes qu'on fait sur une session sans y toucher — l'un est pour soi, l'autre
+   pour l'équipe. */
+app.post('/api/tasks/:id/share', wrap((req, res) => {
+  const t2 = taskById(Number(req.params.id));
+  if (!t2) throw new Error(t('err.session-introuvable'));
+  const shared = basculerPartage('task', 'task', t2, req.body && req.body.shared);
+  res.json({ ok: true, shared, task: taskById(t2.id) });
+}));
+
 app.post('/api/tasks/:id/hidden', wrap((req, res) => {
   const t2 = taskById(Number(req.params.id));
   if (!t2) throw new Error(t('err.session-introuvable'));
@@ -3485,7 +3542,11 @@ app.get('/api/local-tasks', wrap((req, res) => {
   const couts = coutParSession('local');
   const durees = dureeParSession('local');
   const range = rangement('local_task');
+  /* « PAR QUI » — lu de git, sans colonne. C'est ce qui décide si la carte propose « supprimer »
+     ou seulement « ranger » : la session d'un collègue ne se retire pas du dépôt. */
+  const parQui = auteurs('local_task', list);
   for (const lt of list) {
+    lt.author = parQui.get(lt.id) || null;
     lt.hidden = range.get(lt.uid) === '1' ? 1 : 0;
     lt.dirs = localDirsFor(lt.id);
     /* Hors dépôt, la réponse vit PAR DOSSIER : on prend celle du premier qui en a une — la
@@ -3508,8 +3569,10 @@ app.post('/api/local-tasks', wrap((req, res) => {
   const list = (Array.isArray(dirs) ? dirs : []).map((d) => String(d || '').trim()).filter(Boolean);
   if (!list.length) throw new Error(t('err.local-dirs-required'));
   const now = new Date().toISOString();
-  const id = db.prepare("INSERT INTO local_task (prompt, label, ask_questions, status, created_at, updated_at) VALUES (?, ?, ?, 'new', ?, ?)")
-    .run(prompt.trim(), lireLibelle(label), ask_questions ? 1 : 0, now, now).lastInsertRowid;
+  const id = db.prepare(`INSERT INTO local_task (prompt, label, ask_questions, shared, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'new', ?, ?)`)
+    .run(prompt.trim(), lireLibelle(label), ask_questions ? 1 : 0,
+      req.body && req.body.shared ? 1 : 0, now, now).lastInsertRowid;
   // Même principe que pour les sessions sur dépôt : la session fournie est rangée comme
   // si la première passe l'avait créée, `localcoder` la reprend alors sans rien savoir.
   /* `path` reste à la chaîne vide : la colonne est `NOT NULL` depuis l'origine, et elle est
@@ -3706,6 +3769,8 @@ app.get('/api/local-tasks/:id/dirs/:did/output', wrap((req, res) => {
 
 app.delete('/api/local-tasks/:id', wrap((req, res) => {
   const id = Number(req.params.id);
+  const aSupprimer = localTaskById(id);
+  if (aSupprimer) exigerProprietaire('local_task', aSupprimer);
   agentpass.removeTask('local', id);                     // pas de FK : nettoyage explicite
   pieces.removeOwner('local', id);
   db.prepare('DELETE FROM local_task WHERE id = ?').run(id); // cascade sur dirs + images
@@ -3714,6 +3779,13 @@ app.delete('/api/local-tasks/:id', wrap((req, res) => {
 }));
 
 // Ranger / ressortir une session hors dépôt — pendant de POST /tasks/:id/hidden.
+app.post('/api/local-tasks/:id/share', wrap((req, res) => {
+  const lt = localTaskById(Number(req.params.id));
+  if (!lt) throw new Error(t('err.session-introuvable'));
+  const shared = basculerPartage('local_task', 'local', lt, req.body && req.body.shared);
+  res.json({ ok: true, shared, task: localTaskById(lt.id) });
+}));
+
 app.post('/api/local-tasks/:id/hidden', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
@@ -3749,7 +3821,9 @@ app.get('/api/questions', wrap((req, res) => {
   const durees = dureeParSession('ask');
   const range = rangement('question');
   const poignees = localsession.carte('question');
+  const parQui = auteurs('question', rows);
   res.json(rows.map((q) => ({
+    author: parQui.get(q.id) || null,
     ...localsession.resoudre('question', avecRangement('question', q, range), poignees),
     answer_head: chapeauReponse(q.md_path),
     tokens_est: (couts[q.id] || {}).tokens || null,
@@ -3763,8 +3837,9 @@ app.post('/api/questions', wrap((req, res) => {
   const { prompt, label } = req.body || {};
   if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
   const now = new Date().toISOString();
-  const id = db.prepare("INSERT INTO question (prompt, label, status, created_at, updated_at) VALUES (?, ?, 'new', ?, ?)")
-    .run(String(prompt).trim(), lireLibelle(label), now, now).lastInsertRowid;
+  const id = db.prepare(`INSERT INTO question (prompt, label, shared, status, created_at, updated_at)
+    VALUES (?, ?, ?, 'new', ?, ?)`)
+    .run(String(prompt).trim(), lireLibelle(label), req.body && req.body.shared ? 1 : 0, now, now).lastInsertRowid;
   savePiecesEtImages('ask', id, req.body || {});
   res.json(questionById(id));
 }));
@@ -3824,6 +3899,12 @@ app.get('/api/questions/:id/passes', wrap((req, res) => {
   res.json(passesPayload('ask', 0, q.id, req.query.n, null, q.md_path));
 }));
 
+app.post('/api/questions/:id/share', wrap((req, res) => {
+  const q = exigerQuestion(req.params.id);
+  const shared = basculerPartage('question', 'ask', q, req.body && req.body.shared);
+  res.json({ ok: true, shared, question: exigerQuestion(q.id) });
+}));
+
 app.post('/api/questions/:id/hidden', wrap((req, res) => {
   const q = exigerQuestion(req.params.id);
   const hidden = (req.body && req.body.hidden) ? 1 : 0;
@@ -3841,6 +3922,7 @@ app.post('/api/questions/:id/clear-error', wrap((req, res) => {
 
 app.delete('/api/questions/:id', wrap((req, res) => {
   const id = Number(req.params.id);
+  exigerProprietaire('question', exigerQuestion(id));
   agentpass.removeTask('ask', id);                       // pas de FK : nettoyage explicite
   pieces.removeOwner('ask', id);
   db.prepare('DELETE FROM question WHERE id = ?').run(id);
@@ -4148,7 +4230,20 @@ const verifierCommandes = (id) => db.prepare('SELECT command FROM verifier_comma
   .all(id).map((c) => c.command);
 const verifierAvecRepos = (id) => {
   const v = db.prepare('SELECT * FROM verifier WHERE id = ?').get(id);
-  return v ? { ...v, repos: verifierRepos(id), commands: verifierCommandes(id) } : null;
+  if (!v) return null;
+  /* LES VALEURS VIENNENT DU POSTE, PAS DE LA LIGNE. `env` est ce que le formulaire édite —
+     « CLE=valeur », une par ligne — recomposé à partir des noms d'équipe et des valeurs locales.
+     `env_missing` dit ce que ce poste n'a pas encore renseigné : un vérificateur reçu d'un
+     collègue arrive avec ses noms et sans ses valeurs, et l'écran doit le dire. */
+  const valeurs = verifierenv.valeurs(v);
+  const noms = verifierenv.noms(v);
+  return {
+    ...v,
+    repos: verifierRepos(id),
+    commands: verifierCommandes(id),
+    env: noms.map((n) => `${n}=${valeurs[n] || ''}`).join('\n'),
+    env_missing: verifierenv.manquantes(v),
+  };
 };
 
 /* Valide le corps d'un vérificateur. On refuse tôt et avec un message précis : ces réglages
@@ -4180,18 +4275,19 @@ function lireVerifier(body, courant) {
     if (!d.ok) throw new Error(t('err.verifier.command-invalid', { command: c, reason: d.erreur }));
   }
 
-  // Variables ajoutées à l'environnement minimal : « CLE=valeur », une par ligne.
-  let env_json = courant ? courant.env_json : null;
+  /* Variables ajoutées à l'environnement minimal : « CLE=valeur », une par ligne. Les VALEURS
+     ne vont pas en base : elles restent sur ce poste (`local_state`), et seuls les NOMS partent
+     avec le vérificateur. `null` = le formulaire n'en parle pas, on ne touche à rien. */
+  let envPaires = null;
   if (b.env != null) {
-    const env = {};
+    envPaires = {};
     for (const ligne of String(b.env).split('\n')) {
       const l = ligne.trim();
       if (!l || l.startsWith('#')) continue;
       const i = l.indexOf('=');
       if (i <= 0) throw new Error(t('err.verifier.env-line', { line: l }));
-      env[l.slice(0, i).trim()] = l.slice(i + 1).trim();
+      envPaires[l.slice(0, i).trim()] = l.slice(i + 1).trim();
     }
-    env_json = Object.keys(env).length ? JSON.stringify(env) : null;
   }
 
   /* Rapport JUnit : chemin RELATIF au dépôt testé — le répertoire change à chaque run
@@ -4231,7 +4327,7 @@ function lireVerifier(body, courant) {
     vus.add(l.repo_id);
   }
   return {
-    name, kind, command, commands, timeout_s, env_json, report_path,
+    name, kind, command, commands, timeout_s, envPaires, report_path,
     parse_tap: bool(b.parse_tap, courant ? courant.parse_tap : 1),
     run_base: bool(b.run_base, courant ? courant.run_base : 1),
     comment_on_forge: bool(b.comment_on_forge, courant ? courant.comment_on_forge : 0),
@@ -4294,6 +4390,10 @@ app.get('/api/verifiers', wrap((req, res) => {
       ...v, repos: verifierRepos(v.id), commands: verifierCommandes(v.id),
       last: dernieres[v.id] || null, pending_mrs: enAttente[v.id] || 0,
       used_by_tasks: parSession[v.id] || 0,
+      /* CE QUI MANQUE SUR CE POSTE. Un vérificateur reçu d'un collègue arrive avec les NOMS de
+         ses variables et sans leurs valeurs — les valeurs ne voyagent pas. Le dire sur la carte
+         évite un échec au lancement dont la cause serait à chercher. */
+      env_missing: verifierenv.manquantes(v),
     })));
 }));
 
@@ -4308,10 +4408,16 @@ app.post('/api/verifiers', wrap((req, res) => {
   const cree = store.ecrire('verifier', () => {
     const id = db.prepare(`INSERT INTO verifier
       (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, auto_on_stale,
-       comment_template, mentions, env_json, report_path, parse_tap, created_at)
+       comment_template, mentions, env_keys, report_path, parse_tap, created_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(v.name, v.kind, v.command, v.timeout_s, v.run_base,
       v.comment_on_forge, v.auto_on_mr, v.auto_on_stale, v.comment_template, v.mentions,
-      v.env_json, v.report_path, v.parse_tap, new Date().toISOString()).lastInsertRowid;
+      '[]', v.report_path, v.parse_tap, new Date().toISOString()).lastInsertRowid;
+    /* Les VALEURS restent ici ; seuls les noms partent avec le vérificateur. L'uid est posé par
+       le déclencheur à l'insertion : on le relit. */
+    if (v.envPaires) {
+      const uid = db.prepare('SELECT uid FROM verifier WHERE id = ?').get(id).uid;
+      db.prepare('UPDATE verifier SET env_keys = ? WHERE id = ?').run(verifierenv.poser(uid, v.envPaires), id);
+    }
     ecrireRepos(id, v.repos || []);
     ecrireCommandes(id, v.commands || []);
     return id;
@@ -4326,11 +4432,12 @@ app.put('/api/verifiers/:id', wrap((req, res) => {
   const homonyme = db.prepare('SELECT 1 FROM verifier WHERE name = ? AND id <> ?').get(v.name, cur.id);
   if (homonyme) throw new Error(t('err.verifier.name-taken', { name: v.name }));
   store.ecrire('verifier', () => {
+    const cles = v.envPaires ? verifierenv.poser(cur.uid, v.envPaires) : (cur.env_keys || '[]');
     db.prepare(`UPDATE verifier SET name = ?, kind = ?, command = ?, timeout_s = ?, run_base = ?,
       comment_on_forge = ?, auto_on_mr = ?, auto_on_stale = ?, comment_template = ?, mentions = ?,
-      env_json = ?, report_path = ?, parse_tap = ? WHERE id = ?`)
+      env_keys = ?, report_path = ?, parse_tap = ? WHERE id = ?`)
       .run(v.name, v.kind, v.command, v.timeout_s, v.run_base, v.comment_on_forge, v.auto_on_mr,
-        v.auto_on_stale, v.comment_template, v.mentions, v.env_json, v.report_path, v.parse_tap, cur.id);
+        v.auto_on_stale, v.comment_template, v.mentions, cles, v.report_path, v.parse_tap, cur.id);
     ecrireRepos(cur.id, v.repos);
     ecrireCommandes(cur.id, v.commands);
     return cur.id;
@@ -4973,7 +5080,11 @@ app.delete('/api/rules/:id', wrap((req, res) => {
    et git le sait déjà. Inventer une identité à côté, ce serait deux vérités à tenir alignées
    pour ne rien gagner. `runners` liste les exécutants déjà désignés, pour que le formulaire
    d'agent propose une liste plutôt qu'une saisie libre. */
-app.get('/api/me', wrap((req, res) => {
+/* `/api/whoami`, ET NON `/api/me` : une route de ce nom existait déjà — l'identité sur les
+   forges, qui sert au filtre « mes merge requests / les autres ». Express sert la PREMIÈRE
+   déclarée ; celle-ci masquait donc l'autre, et le filtre avait disparu sans que rien ne casse.
+   Deux routes d'un même nom, c'est une panne muette qui attend son écran. */
+app.get('/api/whoami', wrap((req, res) => {
   const moi = identite.identite();
   const connus = db.prepare("SELECT DISTINCT runner FROM agent WHERE runner IS NOT NULL AND runner <> ''")
     .all().map((r) => r.runner);
@@ -5077,6 +5188,7 @@ async function servicesPretsPour(verifier, onLog = () => {}) {
 async function lancerVerificationsAuto(mrIds, { colonne = 'auto_on_mr' } = {}) {
   const bilan = { lancees: 0, ignorees: 0, plafonnees: 0, services_arretes: 0 };
   if (!Array.isArray(mrIds) || !mrIds.length) return bilan;
+  if (!autoAMoi('vérification automatique')) return bilan;
   const plafond = plafondVerifAuto();
   /* Un vérificateur hérité de la famille « script » ne part pas tout seul : `creerVerification`
      le refuserait, et une exception par merge request découverte transformerait la découverte en
@@ -5167,8 +5279,39 @@ function lancerLotReview(mrIds, { kind, opts = {}, etiquette }) {
   return bilan;
 }
 
+/* UNE POLITIQUE AUTOMATIQUE A UN EXÉCUTANT — comme un agent planifié.
+ *
+ * `auto_review_new`, `auto_rereview_stale` et les cases `auto_on_*` d'un vérificateur sont des
+ * réglages d'ÉQUIPE : ils voyagent, et chaque instance a sa propre file de jobs et sa propre
+ * découverte. Deux postes allumés, et chaque merge request nouvelle recevait DEUX reviews — deux
+ * versions, deux facturations — et, si la publication automatique est cochée, deux commentaires
+ * sur la forge. Le spec avait vu le problème pour les agents planifiés et pas pour les
+ * politiques, qui sont pourtant le même cas.
+ * En mono-poste, rien ne change : sans dépôt de données, la question ne se pose pas. */
+function executantAuto() {
+  if (!datasync.estConfigure()) return { agit: true, qui: null };
+  const qui = String(getConfig().auto_runner || '').trim();
+  if (!qui) return { agit: false, qui: null };        // personne désigné : personne n'agit
+  return { agit: qui === (identite.nom() || ''), qui };
+}
+let dernierRefusAuto = 0;
+function autoAMoi(quoi) {
+  const e = executantAuto();
+  if (e.agit) return true;
+  /* On le DIT, mais pas cent fois : une ligne par minute suffit à comprendre pourquoi rien ne
+     part, sans noyer le journal à chaque découverte. */
+  if (Date.now() - dernierRefusAuto > 60000) {
+    dernierRefusAuto = Date.now();
+    console.log(e.qui
+      ? `[auto] ${quoi} : exécutant = ${e.qui}, ce poste n'agit pas`
+      : `[auto] ${quoi} : aucun exécutant désigné (Réglages → Merge Request), personne n'agit`);
+  }
+  return false;
+}
+
 function lancerReviewsAuto(mrIds) {
   if (getConfig().auto_review_new !== '1') return { lancees: 0, plafonnees: 0 };
+  if (!autoAMoi('review automatique')) return { lancees: 0, plafonnees: 0 };
   /* UN BROUILLON N'EST PAS PRÊT À ÊTRE RELU. « Draft » / « WIP » veut dire « je n'ai pas fini » :
      la review automatique y dépensait un appel IA, produisait un rapport sur du travail en
      cours, et ce rapport se périmait au commit suivant. Le bouton « Reviewer », lui, reste
@@ -5192,6 +5335,7 @@ function lancerReviewsAuto(mrIds) {
  * une branche qui bouge dix fois par jour, la différence de coût n'est pas un détail. */
 function lancerRereviewsAuto(mrIds) {
   if (getConfig().auto_rereview_stale !== '1') return { lancees: 0, plafonnees: 0 };
+  if (!autoAMoi('re-review automatique')) return { lancees: 0, plafonnees: 0 };
   if (!Array.isArray(mrIds) || !mrIds.length) return { lancees: 0, plafonnees: 0 };
   const perimees = mrIds.filter((id) => db.prepare(`SELECT 1 FROM mr
     JOIN review ON review.mr_id = mr.id
@@ -7001,7 +7145,13 @@ app.post('/api/mrs/:id/comment-drafts/send', wrap(async (req, res) => {
     if (d.new_line != null) position.new_line = Number(d.new_line);
     if (d.old_line != null) position.old_line = Number(d.old_line);
     try {
-      await client.postMrDiscussion(cfg, mr.project, mr.iid, d.body, position);
+      const note = await client.postMrDiscussion(cfg, mr.project, mr.iid, d.body, position);
+      /* PARTI = PRODUIT. Le brouillon reste à celui qui l'écrit, mais une fois posté le
+         commentaire est sur la merge request : il rejoint le journal, qui lui est d'équipe —
+         c'est ce qui permet de relire ce qui a été dit sans rouvrir la forge. */
+      db.prepare('INSERT INTO comment_log (mr_id, body, gitlab_note_id, sent_at) VALUES (?,?,?,?)')
+        .run(mr.id, d.body, (note && (note.id || (note.notes && note.notes[0] && note.notes[0].id))) || null,
+          new Date().toISOString());
       supprimer.run(d.id);
       sent += 1;
     } catch (e) {

@@ -175,8 +175,10 @@ describe('store — la base prévient, le store écrit', () => {
        Sans ce recalcul, la session s'ouvrait en annonçant « aucun retour » alors que le texte
        était bien là, à côté. */
     const now = new Date().toISOString();
-    const taskId = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, status, created_at, updated_at)
-      VALUES (?, 'code', 'Ajoute le paiement en 3 fois', 'feat/pay', 'pushed', ?, ?)`).run(repoId, now, now).lastInsertRowid;
+    /* `shared = 1` : une session est PRIVÉE par défaut depuis qu'elle se partage une par une.
+       Ce test-ci parle de l'aller-retour, pas de la case — on la coche donc explicitement. */
+    const taskId = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, status, shared, created_at, updated_at)
+      VALUES (?, 'code', 'Ajoute le paiement en 3 fois', 'feat/pay', 'pushed', 1, ?, ?)`).run(repoId, now, now).lastInsertRowid;
     const tgId = db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, status, updated_at)
       VALUES (?, ?, 'feat/pay', 'pushed', ?)`).run(taskId, repoId, now).lastInsertRowid;
     const passe = (n, texte) => {
@@ -218,8 +220,10 @@ describe('store — la base prévient, le store écrit', () => {
   test('la file survit à la coupure — elle est dans la base, pas en mémoire', () => {
     /* C'est ce qui rend l'ensemble sûr : le processus peut mourir entre la ligne et le fichier,
        le démarrage suivant trouve la file et écrit ce qui manque. */
-    db.prepare(`INSERT INTO todo (title, status, priority, created_at, updated_at)
-      VALUES ('Relire la file', 'open', 'normal', ?, ?)`).run(new Date().toISOString(), new Date().toISOString());
+    /* `shared = 1` : une todo est personnelle par défaut depuis qu'elle se partage une par une.
+       Ce test-ci parle de la FILE, pas de la case — on la coche donc explicitement. */
+    db.prepare(`INSERT INTO todo (title, status, priority, shared, created_at, updated_at)
+      VALUES ('Relire la file', 'open', 'normal', 1, ?, ?)`).run(new Date().toISOString(), new Date().toISOString());
     const enFile = db.prepare("SELECT COUNT(*) n FROM store_sale WHERE tbl = 'todo'").get().n;
     assert.ok(enFile >= 1, 'la file vit dans SQLite, donc elle traverse un arrêt brutal');
     store.ecouler();

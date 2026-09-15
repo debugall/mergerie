@@ -2720,6 +2720,29 @@ work and how you are wired up — not what you produced. Sharing it would impose
 tooling on everyone, carry a log of actions nobody else can replay, and fill everyone's todo list
 the moment a ticket watched by one person changed state.
 
+**Todos are shared one by one too**, and never the ones nobody typed: a todo born of a Jira watch
+or of a question an agent stopped to ask never leaves the machine that created it — shared, they
+filled everyone's list. **A draft never leaves**: an inline remark not yet sent, the text of a
+follow-up you are still typing, the agent profile you are trying out. And **a verifier's
+environment values stay here**: only their NAMES travel, so everyone knows what to fill in — a
+variable on a test command is the natural home of a password.
+
+**Automations have a runner.** Automatic reviews and verifications are set for the team, but every
+machine has its own queue: with nobody named, two machines left open would each run the same
+review — two billed AI calls, and two comments on the merge request. *Settings → Merge Request*
+asks who honours them; with nobody named, they run nowhere.
+
+**Sessions are shared ONE BY ONE, and not by default.** A coding session, an exploration, a free
+question: what they hold is not a product but the way you worked — the prompt as you typed it, the
+three follow-ups, the question you would not have asked out loud, the screenshot you pasted that
+shows another window, and what each attempt cost. The result already travels through its own
+channel: the branch and the merge request on the forge, the map of the code, the notes page an
+agent wrote. So each session carries a **Share with the team** checkbox, unticked. Its iterations
+and attachments follow the session — it cannot be half shared — and unticking it removes the whole
+folder from the repository. Sessions written before this version become private and leave the
+repository on the next start. And **a colleague's session cannot be deleted**: you put it away
+instead. Deleting it here would delete it for everyone.
+
 **Notes pages are shared ONE BY ONE, and not by default.** Everything else the tool keeps is a
 product — a review, a rule, a map of the code — and producing one for yourself alone makes little
 sense: it all travels together. A notes page does not: it is the one place in the tool where you

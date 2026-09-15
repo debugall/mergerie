@@ -319,6 +319,10 @@
         <div class="task-filters">
             <input id="taskSearch" class="search" type="search" placeholder="Rechercher (prompt, projet, branche, dossier)…" data-i18n-placeholder="task.search.ph" aria-label="Rechercher une session" data-i18n-aria="task.search.aria" />
             <div id="taskAgentFilterBox"></div>
+            <!-- LES MIENNES OU CELLES DE L'ÉQUIPE. Dès qu'on partage, la liste mêle son propre
+                 travail et celui des autres : deux boutons, pas une liste à choix, et rien du
+                 tout en mono-poste — il n'y aurait qu'un seul cas. -->
+            <div id="taskOwnerFiltre" class="chips" role="group" hidden></div>
         </div>
         <div class="list-head">
             <label class="inline-check"><input type="checkbox" id="taskShowHidden" /> <span data-i18n="task.hidden.show">Afficher les sessions masquées</span></label>
@@ -1453,6 +1457,16 @@
             <label class="inline-check"><input form="configForm" name="auto_rereview_stale" type="checkbox" /> <span data-i18n="settings.lbl.auto-rereview-stale">Relancer automatiquement la review quand le rapport est périmé</span>
                 <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.auto-rereview-stale" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
 
+            <!-- QUI EXÉCUTE CES POLITIQUES. Elles sont d'équipe et voyagent ; chaque poste a sa
+                 propre file de jobs. Sans exécutant désigné, deux postes allumés reviewaient
+                 deux fois la même merge request — deux appels d'IA facturés, et deux
+                 commentaires sur la forge. Le champ n'apparaît qu'en mode partagé : en
+                 mono-poste la question ne se pose pas. -->
+            <label id="autoRunnerRow" hidden><span data-i18n="settings.lbl.auto-runner">Exécutant des automatismes</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.auto-runner" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <select form="configForm" name="auto_runner" id="autoRunnerSelect"></select>
+            </label>
+            <p id="autoRunnerNone" class="field-note" hidden data-i18n="settings.auto-runner.none">Aucun exécutant : les automatismes cochés ne tourneront sur aucun poste.</p>
+
             <h3 data-i18n="settings.mr.group.converge">Convergence</h3>
             <label><span data-i18n="settings.lbl.converge-threshold">Convergence — seuil cible (/10)</span> <button type="button" class="hint" tabindex="-1" aria-label="Note cible par défaut de la boucle « Converger ». La boucle s'arrête dès que la note atteint ce seuil. Surchargeable au lancement." data-tip="Note cible par défaut de la boucle « Converger ». La boucle s'arrête dès que la note atteint ce seuil. Surchargeable au lancement." data-i18n-tip="settings.tip.converge-threshold"><svg class="ico"><use href="#i-info"/></svg></button>
                 <input form="configForm" name="converge_threshold" type="number" min="1" max="10" step="0.5" placeholder="8" />
@@ -1703,6 +1717,14 @@
                 <div id="taskPieces" class="task-previews"></div>
                 <div id="taskPreviews" class="task-previews"></div>
             </div>
+            <!-- PARTAGER CETTE SESSION-LÀ. Une session est un processus, pas un produit : le
+                 prompt tel qu'on l'a tapé, les trois relances, la capture collée qui montre un
+                 autre onglet. Le résultat, lui, part déjà par la forge ou la carte du code. La
+                 case vit HORS de l'accordéon « Avancé » : celui-ci disparaît sur une question
+                 libre, qui se partage exactement comme les deux autres saveurs. Et elle
+                 n'apparaît pas en mono-poste — il n'y aurait personne à qui partager. -->
+            <label id="taskShareRow" class="inline-check" hidden><input type="checkbox" name="shared" /> <span data-i18n="session.share">Partager avec l'équipe</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="session.share-title" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+
             <!-- TROIS CHAMPS QU'ON NE TOUCHE PAS UNE FOIS SUR DIX — mais qui restent SOUS LES
                  YEUX : ils sont regroupés et repliables, pas cachés. Ils s'intercalaient entre
                  le libellé et la décision de vérifier ; ils ferment maintenant le formulaire. -->

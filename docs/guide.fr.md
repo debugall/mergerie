@@ -2809,6 +2809,32 @@ comment on est branché — pas ce qu'on a produit. Les partager imposerait à c
 voisin, ferait voyager un journal d'actions que personne d'autre ne peut rejouer, et remplirait
 la liste de todos de tout le monde au premier changement d'état d'un ticket suivi par un seul.
 
+**Les todos aussi se partagent une par une**, et jamais celles qu'aucune main n'a écrites : la
+todo née d'une veille Jira ou d'une question posée par un agent ne quitte jamais le poste qui l'a
+créée — partagées, elles remplissaient la liste de tout le monde. **Un brouillon ne part jamais** :
+une remarque inline pas encore envoyée, le texte d'une relance en cours de frappe, le profil
+d'agent qu'on essaie. Et **les valeurs d'environnement d'un vérificateur restent ici** : seuls
+leurs NOMS voyagent, pour que chacun sache quoi renseigner — une variable de commande de test est
+le lieu naturel d'un mot de passe.
+
+**Les automatismes ont un exécutant.** Les reviews et vérifications automatiques sont réglées pour
+l'équipe, mais chaque poste a sa propre file : sans exécutant désigné, deux postes allumés
+lanceraient deux fois la même review — deux appels d'IA facturés, et deux commentaires sur la
+merge request. *Réglages → Merge Request* demande donc qui les fait tourner ; sans personne, elles
+ne tournent nulle part.
+
+**Les sessions se partagent UNE PAR UNE, et pas par défaut.** Une session de codage, une
+exploration, une question libre : ce qu'elles portent n'est pas un produit mais la façon dont on
+a travaillé — le prompt tel qu'on l'a tapé, les trois relances, la question qu'on n'aurait pas
+posée à voix haute, la capture collée qui montre une autre fenêtre, et ce qu'a coûté chaque
+essai. Le résultat, lui, part déjà par son propre canal : la branche et la merge request sur la
+forge, la carte du code, la page de notes qu'un agent a produite. Chaque session porte donc une
+case **« Partager avec l'équipe »**, décochée. Ses itérations et ses pièces jointes suivent la
+session — elle ne peut pas être à moitié partagée —, et la décocher retire tout le dossier du
+dépôt. Les sessions écrites avant cette version deviennent privées et en sortent au premier
+démarrage. Enfin, **la session d'un collègue ne se supprime pas** : on la range. L'effacer ici
+l'effacerait chez tout le monde.
+
 **Les pages de notes se partagent UNE PAR UNE, et pas par défaut.** Tout le reste de ce que
 l'outil garde est un produit — une review, une règle, une carte du code —, et le produire pour soi
 seul n'aurait guère de sens : cela part donc en bloc. Une page de notes, non : c'est le seul

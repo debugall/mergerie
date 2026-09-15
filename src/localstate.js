@@ -35,6 +35,7 @@ function tableau(table) {
   const del = db.prepare(`DELETE FROM ${table} WHERE kind = ? AND ref = ? AND key = ?`);
   const delTout = db.prepare(`DELETE FROM ${table} WHERE kind = ? AND ref = ?`);
   const parCle = db.prepare(`SELECT ref, value FROM ${table} WHERE kind = ? AND key = ?`);
+  const parRef = db.prepare(`SELECT key, value FROM ${table} WHERE kind = ? AND ref = ?`);
 
   return {
     /** La valeur, ou `null`. Jamais `undefined` : un appelant ne doit pas avoir à distinguer. */
@@ -53,6 +54,13 @@ function tableau(table) {
     },
     /** Tout ce qui est rangé sous ce parent — à appeler quand le parent disparaît. */
     oublier(kind, ref) { if (ref) delTout.run(kind, String(ref)); },
+    /** `key -> value` pour UN parent : tout ce qu'il range ici, en une requête. */
+    sous(kind, ref) {
+      const m = new Map();
+      if (!ref) return m;
+      for (const r of parRef.all(kind, String(ref))) m.set(r.key, r.value);
+      return m;
+    },
     /** `ref -> value` pour une clé donnée : une seule requête là où l'on afficherait une liste. */
     carte(kind, key) {
       const m = new Map();

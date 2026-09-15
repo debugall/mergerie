@@ -142,3 +142,124 @@ describe('store — règles, vérificateurs, agents et connaissance', () => {
     assert.match(bilan.orphelins[0], /service-inconnu/);
   });
 });
+
+/* UNE SESSION EST UN PROCESSUS, PAS UN PRODUIT.
+ *
+ * Ce qu'elle porte, c'est la façon dont quelqu'un a travaillé : le prompt tel qu'il l'a tapé,
+ * ses relances, la capture qu'il a collée, le coût de chaque essai. Le RÉSULTAT, lui, part déjà
+ * par la forge, la carte du code ou la page de notes. Elle se partage donc UNE PAR UNE, comme
+ * une page de notes, et la réponse par défaut est non.
+ *
+ * — RIEN N'EST ÉCRIT tant qu'on n'a pas coché : ni la session, ni ses passes, ni ses pièces.
+ * — LES ENFANTS SUIVENT LEUR PARENT : une session ne peut pas être « à moitié » partagée —
+ *   publier le retour de l'agent sans la demande qui l'a produit n'aurait aucun sens.
+ * — DÉCOCHER RETIRE, dossier compris : sinon la case aurait menti.
+ */
+describe('store — une session ne part que si on la coche', () => {
+  let db; let store; let repoId;
+
+  before(() => {
+    db = require('../src/db');
+    store = require('../src/store');
+    repoId = db.prepare("SELECT id FROM repo WHERE project = 'acme/web'").get().id;
+  });
+
+  const creerSession = (prompt, shared = 0) => {
+    const now = new Date().toISOString();
+    const id = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, status, shared, created_at, updated_at)
+      VALUES (?, 'code', ?, 'ai/x', 'new', ?, ?, ?)`).run(repoId, prompt, shared, now, now).lastInsertRowid;
+    /* Une cible : le fichier d'une session désigne son dépôt par la première d'entre elles, et
+       sans cible elle n'est pas hydratable — `repo_id` est `NOT NULL`. */
+    db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, status, updated_at)
+      VALUES (?, ?, 'ai/x', 'new', ?)`).run(id, repoId, now);
+    const f = path.join(process.env.MERGERIE_DATA_DIR, `sortie-${id}.md`);
+    fs.writeFileSync(f, `ce que l’agent a répondu à « ${prompt} »`);
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
+      VALUES ('task', ?, 0, 1, 'run', ?, ?, ?)`).run(id, prompt, f, now);
+    store.ecouler();
+    return { id, uid: db.prepare('SELECT uid FROM task WHERE id = ?').get(id).uid };
+  };
+
+  test('une session créée n’écrit RIEN dans le dépôt', () => {
+    const s = creerSession('refonte du tunnel de paiement');
+    assert.equal(store.listerFichiers(`sessions/${s.uid}`).length, 0,
+      'le défaut d’une case qui publie est « non » — et une passe d’agent n’est pas une exception');
+  });
+
+  test('cochée, la session emporte ses passes ; décochée, tout le dossier s’en va', () => {
+    const s = creerSession('ajoute un endpoint /health');
+    db.prepare('UPDATE task SET shared = 1 WHERE id = ?').run(s.id);
+    db.prepare("INSERT INTO store_sale (tbl, rid) SELECT 'agent_pass', rowid FROM agent_pass WHERE scope = 'task' AND task_id = ?").run(s.id);
+    store.ecouler();
+
+    const fichiers = store.listerFichiers(`sessions/${s.uid}`);
+    assert.ok(fichiers.includes(`sessions/${s.uid}/session.json`), 'la session elle-même');
+    assert.ok(fichiers.some((f) => /\/pass-.*\.md$/.test(f)), 'et le retour de l’agent, qui a la valeur');
+    assert.match(store.lireFichier(fichiers.find((f) => /\/pass-.*\.md$/.test(f))), /endpoint \/health/);
+    assert.ok(!('shared' in JSON.parse(store.lireFichier(`sessions/${s.uid}/session.json`))),
+      'un fichier qui est là EST partagé : la colonne n’a rien à y faire');
+
+    db.prepare('UPDATE task SET shared = 0 WHERE id = ?').run(s.id);
+    db.prepare("INSERT INTO store_sale (tbl, rid) SELECT 'agent_pass', rowid FROM agent_pass WHERE scope = 'task' AND task_id = ?").run(s.id);
+    store.ecouler();
+    assert.equal(store.listerFichiers(`sessions/${s.uid}`).length, 0,
+      'décocher retire la session ET ses passes — sinon la case aurait menti');
+  });
+
+  test('l’export complet ne compte que les sessions cochées', () => {
+    const avant = db.prepare('SELECT COUNT(*) n FROM task WHERE shared = 1').get().n;
+    const compte = store.exporterTout();
+    assert.equal(compte.task, avant, 'une session privée n’est pas un fichier');
+  });
+
+  test('une todo ne part que cochée — et une todo AUTOMATIQUE jamais', () => {
+    /* Une liste de todos est personnelle par nature : c'est déjà ce que disait `reminded_at`,
+       local depuis toujours. Et les todos automatiques naissent de sources locales — la veille
+       Jira, la question posée par un agent : partagées, elles remplissaient la liste de tout le
+       monde. */
+    const now = new Date().toISOString();
+    const poser = (titre, shared, autoKind = null) => db.prepare(`INSERT INTO todo
+      (title, priority, status, shared, auto_kind, auto_ref, created_at, updated_at)
+      VALUES (?, 'normal', 'open', ?, ?, ?, ?, ?)`).run(titre, shared, autoKind, autoKind ? '1' : null, now, now).lastInsertRowid;
+
+    const perso = poser('relire mes notes', 0);
+    const equipe = poser('relire le lot avant vendredi', 1);
+    const auto = poser('répondre à l’agent', 1, 'session_question');
+    store.ecouler();
+
+    const uid = (id) => db.prepare('SELECT uid FROM todo WHERE id = ?').get(id).uid;
+    assert.ok(!store.existe(`todos/${uid(perso)}.json`), 'décochée : rien ne part');
+    assert.ok(store.existe(`todos/${uid(equipe)}.json`), 'cochée : elle part');
+    assert.ok(!store.existe(`todos/${uid(auto)}.json`),
+      'une todo automatique ne part JAMAIS, même cochée : elle vient d’une source locale');
+  });
+
+  test('un chemin de poste ne sort pas dans un texte d’erreur', () => {
+    /* `last_error` est un texte produit par un processus lancé ICI : il cite volontiers
+       `/Users/amady/…`. Ce n'est pas un secret, mais c'est un identifiant de poste, et la règle
+       est qu'aucun n'entre dans le dépôt. Le message garde son sens — le collègue lit
+       `<data>/…` au lieu d'un chemin qui n'existe pas chez lui. */
+    const s2 = creerSession('celle qui échoue', 1);
+    const chemin = path.join(process.env.MERGERIE_DATA_DIR, 'tasks', '7', 'sortie.md');
+    db.prepare('UPDATE task SET last_error = ? WHERE id = ?')
+      .run(`ENOENT: ${chemin} introuvable (home: ${os.homedir()}/x)`, s2.id);
+    store.ecouler();
+
+    const doc = JSON.parse(store.lireFichier(`sessions/${s2.uid}/session.json`));
+    assert.ok(!doc.last_error.includes(process.env.MERGERIE_DATA_DIR), 'le dossier de données est masqué');
+    assert.ok(!doc.last_error.includes(os.homedir()), 'le home aussi');
+    assert.match(doc.last_error, /<data>\/tasks\/7\/sortie\.md/, '…et le message reste lisible');
+  });
+
+  test('une session venue du dépôt arrive PARTAGÉE', () => {
+    /* Sans ça, le premier écoulement chez celui qui la reçoit retirerait le fichier qu'on vient
+       de lui envoyer — et l'effacerait chez tout le monde au commit suivant. */
+    const s = creerSession('ce qui vient du dépôt', 1);
+    store.ecouler();
+    const doc = JSON.parse(store.lireFichier(`sessions/${s.uid}/session.json`));
+    db.exec(`DELETE FROM task WHERE id = ${s.id}`);
+    store.hydraterFichiers([`sessions/${s.uid}/session.json`]);
+    const revenue = db.prepare('SELECT shared FROM task WHERE uid = ?').get(doc.uid);
+    assert.ok(revenue && revenue.shared === 1);
+  });
+});

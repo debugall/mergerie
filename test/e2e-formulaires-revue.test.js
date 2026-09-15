@@ -205,10 +205,14 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
   test('neuf réglages en vrac deviennent trois groupes titrés', async () => {
     await ouvrirReglages('mr');
     const ordre = await page.$$eval('#sub-mr > .form > *',
-      (els) => els.map((e) => (e.tagName === 'H3' ? `# ${e.textContent}` : ((e.querySelector('input') || {}).name || e.tagName))));
+      (els) => els.map((e) => (e.tagName === 'H3' ? `# ${e.textContent}` : ((e.querySelector('input, select') || {}).name || e.tagName))));
     assert.deepEqual(ordre, [
       '# Review', 'review_explain', 'auto_post_review', 'auto_post_blocking_only',
+      /* L'EXÉCUTANT FERME LE GROUPE : il dit QUI fait tourner les deux automatismes juste
+         au-dessus, et le `P` qui suit est l'avertissement affiché quand ils sont cochés sans
+         personne pour les exécuter. */
       '# Automatisation', 'auto_refresh_minutes', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
+      'auto_runner', 'P',
       '# Convergence', 'converge_threshold', 'converge_max_passes',
     ], 'l’interrupteur et son plafond ne sont plus séparés par un autre réglage');
   });

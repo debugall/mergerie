@@ -337,7 +337,11 @@ function fermerTodoAuto(kind, ref) {
    Opt-in : coché par défaut (`todo_close_on_merge`), débrayable dans Réglages → Général. */
 function fermerTodosDeMr(mrId, mention) {
   const now = nowIso();
-  const rows = db.prepare("SELECT id, note FROM todo WHERE link_kind = 'mr' AND link_ref = ? AND status = 'open'")
+  /* ON NE FERME QUE LES SIENNES. Une todo partagée est celle de quelqu'un : la cocher « faite »
+     parce que SA merge request a fusionné chez moi la clôturerait chez tout le monde, y compris
+     chez celui qui la suivait pour une autre raison. Les todos locales, elles, sont à moi. */
+  const rows = db.prepare(`SELECT id, note FROM todo
+    WHERE link_kind = 'mr' AND link_ref = ? AND status = 'open' AND (shared = 0 OR shared IS NULL)`)
     .all(String(mrId));
   const maj = db.prepare(`UPDATE todo SET status = 'done', done_at = ?, updated_at = ?, note = ?
     WHERE id = ?`);
@@ -371,13 +375,14 @@ function creerTodo(body = {}, msgs) {
   const now = nowIso();
   const lien = lireLien(body.link_kind, body.link_ref, msgs.lienInvalide);
   return store.ecrire('todo', () => db.prepare(`INSERT INTO todo
-    (title, priority, status, note, link_kind, link_ref, due_at, created_at, updated_at)
-    VALUES (?,?,'open',?,?,?,?,?,?)`).run(
+    (title, priority, status, note, link_kind, link_ref, due_at, shared, created_at, updated_at)
+    VALUES (?,?,'open',?,?,?,?,?,?,?)`).run(
     lireTitre(body.title, msgs.titreVide),
     lirePriorite(body.priority, msgs.prioriteInvalide),
     lireNote(body.note),
     lien.link_kind, lien.link_ref,
     lireDate(body.due_at, msgs.dateInvalide),
+    body.shared ? 1 : 0,            // décochée par défaut : une liste de todos est à soi
     now, now,
   ).lastInsertRowid);
 }
@@ -397,6 +402,10 @@ function majTodo(id, patch = {}, msgs) {
 
   if (patch.title !== undefined) set('title', lireTitre(patch.title, msgs.titreVide));
   if (patch.priority !== undefined) set('priority', lirePriorite(patch.priority, msgs.prioriteInvalide));
+  /* PARTAGER CETTE TODO-LÀ. Une liste de todos est personnelle par nature — c'est déjà ce que
+     disait `reminded_at`, local. Une todo d'équipe existe, mais c'est la case, pas le défaut ;
+     et une todo AUTOMATIQUE ne part jamais, quoi qu'on coche (registre). */
+  if (patch.shared !== undefined) set('shared', patch.shared ? 1 : 0);
   if (patch.note !== undefined) set('note', lireNote(patch.note));
   if (patch.link_kind !== undefined || patch.link_ref !== undefined) {
     const lien = lireLien(

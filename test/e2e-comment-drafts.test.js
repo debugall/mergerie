@@ -73,6 +73,27 @@ describe('Commentaires inline en attente', () => {
     await app.api('DELETE', `/api/mrs/${mrId}/comment-drafts/${d.id}`);
   });
 
+  test('un brouillon ne part JAMAIS dans le dépôt d’équipe — le commentaire posté, oui', async () => {
+    /* Un brouillon n'est pas encore un commentaire : il se modifie jusqu'à un envoi explicite.
+       Partagé, deux relecteurs de la même merge request se voyaient mutuellement RÉDIGER, et le
+       « dernier écrivain gagne » du fichier de la MR pouvait écraser les remarques de l'un par
+       celles de l'autre. Ce qui est le produit, c'est le commentaire POSTÉ. */
+    for (const d of await liste()) await app.api('DELETE', `/api/mrs/${mrId}/comment-drafts/${d.id}`);
+    await creer('remarque pas encore envoyée', 1);
+    const store = require('../src/store');
+    store.ecouler();
+    const mr = app.db.prepare('SELECT mr.iid, repo.forge, repo.project FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?').get(mrId);
+    const fichier = store.lireFichier(`mrs/${mr.forge}/${mr.project}/${mr.iid}.json`);
+    assert.ok(fichier, 'le fichier de la merge request doit exister');
+    assert.ok(!/remarque pas encore envoyée/.test(fichier), 'un brouillon reste à celui qui l’écrit');
+    assert.ok(!('drafts' in JSON.parse(fichier)), 'et le champ lui-même a quitté le fichier');
+
+    await app.api('POST', `/api/mrs/${mrId}/comment-drafts/send`);
+    store.ecouler();
+    const apres = store.lireFichier(`mrs/${mr.forge}/${mr.project}/${mr.iid}.json`);
+    assert.match(apres, /remarque pas encore envoyée/, 'posté, il devient un produit d’équipe');
+  });
+
   test('l’envoi les publie tous, dans l’ordre, et vide la file', async () => {
     for (const d of await liste()) await app.api('DELETE', `/api/mrs/${mrId}/comment-drafts/${d.id}`);
     await creer('premier', 1);

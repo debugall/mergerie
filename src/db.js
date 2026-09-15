@@ -652,6 +652,22 @@ try { db.exec('ALTER TABLE local_task ADD COLUMN label TEXT'); } catch { /* déj
 try { db.exec('ALTER TABLE local_task ADD COLUMN followup_draft TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE local_task ADD COLUMN followup_auto INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
 
+/* UNE SESSION EST UN PROCESSUS, PAS UN PRODUIT — et elle se partage donc UNE PAR UNE.
+ *
+ * Ce qu'une session porte, c'est la façon dont quelqu'un a travaillé : le prompt tel qu'il l'a
+ * tapé, ses trois relances, la question qu'il n'osait poser à personne, la capture collée qui
+ * montre un autre onglet, et le coût en dollars de chaque essai. Le RÉSULTAT, lui, est déjà
+ * partagé par un autre canal — la branche et la merge request sur la forge, la carte du code,
+ * la page de notes qu'un agent a produite. Partager le processus en bloc, c'est publier le
+ * brouillon avec le livre.
+ * Même mécanique que les pages de notes, et pas une seconde : une colonne `shared`, `DEFAULT 0`,
+ * et le registre qui décide ligne par ligne. Les sessions déjà écrites deviennent donc privées,
+ * et leurs fichiers SORTENT du dépôt au premier démarrage (repère `sessions_unshared_swept`).
+ * Migrations APRÈS les `CREATE TABLE` correspondants. */
+try { db.exec('ALTER TABLE task ADD COLUMN shared INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE local_task ADD COLUMN shared INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE question ADD COLUMN shared INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+
 
 /* LES PIÈCES JOINTES D'UNE SESSION — captures ET documents, une seule table.
  *
@@ -949,6 +965,13 @@ try { db.exec("ALTER TABLE verifier ADD COLUMN mentions TEXT DEFAULT ''"); } cat
 // Ajoutées à l'environnement minimal. Sans elles, un `npm` installé par nvm reste introuvable
 // quand Mergerie est lancé par un service plutôt que depuis un terminal.
 try { db.exec('ALTER TABLE verifier ADD COLUMN env_json TEXT'); } catch { /* déjà présente */ }
+/* LES NOMS SONT D'ÉQUIPE, LES VALEURS NON. Une variable de commande de test est le lieu naturel
+   d'un `DATABASE_URL` ou d'un `NPM_TOKEN`, et la liste noire du registre ne regarde que le NOM DE
+   COLONNE — `env_json` n'y ressemble pas, donc rien ne l'arrêtait. Le vérificateur reste un
+   produit d'équipe : on partage les NOMS qu'il attend, pour que le collègue sache quoi
+   renseigner, et les valeurs vivent dans `local_state` sur le poste qui les a saisies.
+   `env_json` est donc VIDÉE puis GELÉE, comme les jetons de `config`. */
+try { db.exec('ALTER TABLE verifier ADD COLUMN env_keys TEXT'); } catch { /* déjà présente */ }
 // Rapport JUnit produit par les commandes (chemin RELATIF au dépôt testé) : donne les noms
 // des tests là où la sortie ne les livre pas, et sans subir la troncature du journal.
 try { db.exec('ALTER TABLE verifier ADD COLUMN report_path TEXT'); } catch { /* déjà présente */ }
@@ -1340,6 +1363,17 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_todo_auto ON todo(auto_kind, auto_ref)')
   }
 }
 
+/* UNE TODO EST PERSONNELLE PAR NATURE — elle se partage donc une par une, comme une session.
+ *
+ * Deux indices le disaient déjà : `reminded_at` est local (« un rappel est personnel »), et les
+ * todos AUTOMATIQUES naissent de sources classées locales — la veille Jira, la question posée
+ * par un agent au milieu d'une session. Partagées en bloc, la veille d'un collègue remplissait
+ * la liste de tout le monde. Une todo d'équipe existe (« relire le lot X avant vendredi »),
+ * mais c'est la case à cocher, pas le défaut.
+ * Migration APRÈS le `CREATE TABLE todo` — y compris la variante `todo_v2` renommée ci-dessus,
+ * d'où la place de cette ligne. */
+try { db.exec('ALTER TABLE todo ADD COLUMN shared INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+
 /* CE QU'ON A ÉCARTÉ DU BRIEF. Le brief recalcule tout à chaque ouverture : un fait qui reste
    vrai reparaît tous les matins, même traité ailleurs — une vérification rouge dont on a déjà
    fait le tour revient indéfiniment et finit par apprendre à ne plus lire la section.
@@ -1468,6 +1502,11 @@ try { db.exec('ALTER TABLE config ADD COLUMN review_auto_max INTEGER DEFAULT 5')
    Séparée de la précédente et décochée elle aussi : reviewer à l'arrivée et suivre une branche
    qui bouge sont deux dépenses différentes, et la seconde se répète à chaque poussée. */
 try { db.exec("ALTER TABLE config ADD COLUMN auto_rereview_stale TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
+/* QUI EXÉCUTE LES POLITIQUES AUTOMATIQUES. Réglage d'ÉQUIPE, comme les cases qu'il commande :
+   sans lui, deux postes allumés reviewaient deux fois la même merge request — deux appels d'IA,
+   deux facturations, deux commentaires sur la forge. Vide = personne n'agit (en mode partagé) ;
+   en mono-poste, il est ignoré et tout se comporte comme avant. */
+try { db.exec("ALTER TABLE config ADD COLUMN auto_runner TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 /* Publication automatique du rapport de review sur la merge request. DÉCOCHÉ PAR DÉFAUT,
    contrairement à `review_explain` : écrire chez les autres est une décision, et une
    installation neuve ne doit surprendre personne au premier lancement de review. */
@@ -1654,6 +1693,20 @@ const COLONNES_LOCALES = [
      abonnement ne regarde que moi tant que je n'ai pas décidé le contraire. Coché, il part un
      total PAR JOUR — jamais le détail par appel, qui dirait ce que j'ai demandé et quand. */
   ["usage_share", "TEXT DEFAULT '0'"],
+  /* DES HABITUDES, PAS DES POLITIQUES. Le brief du matin qui s'ouvre au lancement, la cadence à
+     laquelle CE poste interroge la forge ou Jira, la fermeture des todos à la fusion (la todo
+     est devenue personnelle), et les quatre cases cochées d'office d'une nouvelle session : les
+     imposer à l'équipe, c'est rendre l'outil désagréable pour cinq personnes afin d'en arranger
+     une. Les DÉFAUTS sont repris à l'identique de `config`, sinon un réglage non renseigné
+     changerait de sens en déménageant. */
+  ["brief_on_open", "TEXT DEFAULT '1'"],
+  ['auto_refresh_minutes', 'INTEGER DEFAULT 0'],
+  ['jira_watch_minutes', 'INTEGER DEFAULT 5'],
+  ["todo_close_on_merge", "TEXT DEFAULT '1'"],
+  ['task_default_auto_push', 'INTEGER DEFAULT 0'],
+  ['task_default_ask_questions', 'INTEGER DEFAULT 0'],
+  ['task_default_notify_jira', 'INTEGER DEFAULT 0'],
+  ['task_default_converge', 'INTEGER DEFAULT 0'],
 ];
 db.exec(`CREATE TABLE IF NOT EXISTS local_config (
   id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -1955,6 +2008,36 @@ db.exec(`CREATE TABLE IF NOT EXISTS local_pref (
   deplacer('task', 'uid', ['hidden'], 'local_pref', 'task');
   deplacer('local_task', 'uid', ['hidden'], 'local_pref', 'local_task');
   deplacer('question', 'uid', ['hidden'], 'local_pref', 'question');
+
+  /* LES VALEURS D'ENVIRONNEMENT D'UN VÉRIFICATEUR. Elles partaient dans le dépôt : un
+     `DATABASE_URL`, un `NPM_TOKEN`, la clé d'un bac à sable — et un secret commité dans git est
+     définitif. On garde les NOMS côté équipe (`env_keys`, pour que le collègue sache quoi
+     renseigner) et on déplace les VALEURS ici, une ligne par variable. Le drain générique ne
+     convient pas : une seule colonne porte un objet entier, qu'il faut éclater. */
+  {
+    const aEclater = db.prepare(
+      "SELECT uid, env_json FROM verifier WHERE uid IS NOT NULL AND env_json IS NOT NULL AND env_json <> ''",
+    ).all();
+    if (aEclater.length) {
+      const poser = db.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
+        VALUES ('verifier_env', ?, ?, ?, ?) ON CONFLICT (kind, ref, key) DO NOTHING`);
+      const noms = db.prepare('UPDATE verifier SET env_keys = ?, env_json = NULL WHERE uid = ?');
+      const maintenant = new Date().toISOString();
+      db.transaction(() => {
+        for (const v of aEclater) {
+          let obj = {};
+          try { obj = JSON.parse(v.env_json) || {}; } catch { obj = {}; }
+          const cles = Object.keys(obj).filter(Boolean);
+          for (const k of cles) poser.run(v.uid, k, String(obj[k] == null ? '' : obj[k]), maintenant);
+          noms.run(JSON.stringify(cles), v.uid);
+        }
+      })();
+    }
+    /* L'ASSERTION, comme pour les jetons : une valeur encore là ne peut plus venir que d'un bug
+       de ce fichier, et on préfère un serveur qui refuse de démarrer à un secret qui repart. */
+    const reste = db.prepare("SELECT COUNT(*) n FROM verifier WHERE env_json IS NOT NULL AND env_json <> ''").get().n;
+    if (reste) throw new Error('verifier : env_json encore rempli après le déplacement vers local_state');
+  }
 }
 
 /* ---------- LE NOM DE FICHIER D'UN OBJET QU'ON NOMME : `slug` ----------
@@ -2101,6 +2184,60 @@ db.exec('CREATE TABLE IF NOT EXISTS store_menage (tbl TEXT NOT NULL)');
     db.prepare("INSERT INTO store_sale (tbl, rid) SELECT 'note_page', rowid FROM note_page").run();
     db.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
       VALUES ('data', 'notes', 'unshared_swept', '1', ?)`).run(new Date().toISOString());
+  }
+
+  /* LE MÊME JOUR POUR LES SESSIONS. Elles partaient en bloc : prompt, réponse, chaque passe avec
+     son retour complet, les captures jointes, le coût de chaque essai. Devenues privées par
+     défaut, elles doivent SORTIR du dépôt — avec leurs passes et leurs pièces, qui suivent leur
+     session et n'ont pas de case à elles. On remet donc les cinq tables dans la file : écouler
+     une ligne qui ne se partage plus retire ses fichiers et ses binaires. */
+  const balayeSessions = db.prepare(
+    "SELECT value FROM local_state WHERE kind = 'data' AND ref = 'sessions' AND key = 'unshared_swept'",
+  ).get();
+  if (!balayeSessions) {
+    for (const t of ['task', 'local_task', 'question', 'agent_pass', 'piece_jointe']) {
+      db.prepare(`INSERT INTO store_sale (tbl, rid) SELECT '${t}', rowid FROM ${t}`).run();
+    }
+    db.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
+      VALUES ('data', 'sessions', 'unshared_swept', '1', ?)`).run(new Date().toISOString());
+  }
+
+  /* LES BROUILLONS DE COMMENTAIRE SORTENT DU FICHIER DE LEUR MERGE REQUEST. Ils y étaient
+     encore : une remarque inline pas encore envoyée, lisible par tout le monde. Le fichier se
+     réécrit sans eux dès qu'on remet les merge requests dans la file — rien d'autre ne les
+     aurait retirés, puisque le fichier de la MR existe toujours. */
+  const brouillonsSortis = db.prepare(
+    "SELECT value FROM local_state WHERE kind = 'data' AND ref = 'mrs' AND key = 'drafts_unshared'",
+  ).get();
+  if (!brouillonsSortis) {
+    db.prepare("INSERT INTO store_sale (tbl, rid) SELECT 'mr', rowid FROM mr").run();
+    db.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
+      VALUES ('data', 'mrs', 'drafts_unshared', '1', ?)`).run(new Date().toISOString());
+  }
+
+  /* ET LES TODOS. Elles partaient en bloc, y compris celles qu'aucune main n'a écrites — la
+     veille Jira d'un collègue, la question posée par son agent. Devenues privées par défaut,
+     leurs fichiers doivent sortir du dépôt. */
+  const todosBalayees = db.prepare(
+    "SELECT value FROM local_state WHERE kind = 'data' AND ref = 'todos' AND key = 'unshared_swept'",
+  ).get();
+  if (!todosBalayees) {
+    db.prepare("INSERT INTO store_sale (tbl, rid) SELECT 'todo', rowid FROM todo").run();
+    db.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
+      VALUES ('data', 'todos', 'unshared_swept', '1', ?)`).run(new Date().toISOString());
+  }
+
+  /* HUIT RÉGLAGES ONT CHANGÉ DE CÔTÉ (brief du matin, cadences, fermeture des todos, cases
+     d'office d'une session) : `settings.json` les porte encore. On remet la ligne de réglages
+     dans la file pour que le fichier se réécrive sans eux — le drain les a déjà vidés de
+     `config`, mais rien n'aurait réécrit le fichier. */
+  const reglagesRelus = db.prepare(
+    "SELECT value FROM local_state WHERE kind = 'data' AND ref = 'settings' AND key = 'locaux_2'",
+  ).get();
+  if (!reglagesRelus) {
+    db.prepare("INSERT INTO store_sale (tbl, rid) SELECT 'config', rowid FROM config").run();
+    db.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
+      VALUES ('data', 'settings', 'locaux_2', '1', ?)`).run(new Date().toISOString());
   }
 
   /* Les lignes FILLES marquent leur parent : elles n'ont pas de fichier à elles. Une suppression

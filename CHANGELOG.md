@@ -80,6 +80,68 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   thing. Every uniqueness rule in the database is now checked against the registry by a test, so
   the next one cannot be discovered in production, on someone else's machine.
 
+- **Todos are personal unless you share them, one at a time.** A todo list is somebody's list —
+  the tool already said so by keeping “you have been reminded” local. Yet every todo travelled,
+  including the ones nobody typed: the one a Jira watch created, the one an agent left when it
+  stopped to ask a question. Those two sources are local, so their todos never leave at all now,
+  whatever you tick. A team todo still exists (“review lot X before Friday”) — it is the checkbox,
+  not the default. And closing todos when a merge request lands now only closes yours.
+
+- **Eight settings moved from “team” to “this machine”.** Opening the morning brief at launch, how
+  often *this* machine polls the forge and Jira, closing your todos on merge, and the four boxes
+  ticked by default on a new session: those are habits, not policies. Imposing yours on everyone
+  made the tool unpleasant for five people to suit one. Retention stays a team setting, and
+  deliberately: a purge removes files from the repository for everybody, so one value keeps a
+  machine set to seven days from erasing everyone else's history.
+
+- **Machine paths no longer leak in error messages.** The text of a failed session or a
+  verification log quotes `/Users/you/…` happily. It is not a secret, but it identifies a machine,
+  and the rule is that none of that enters the repository: those are replaced on the way out by
+  `<data>`, `<clones>` and `~`, so the message keeps its meaning and reads on any machine.
+
+- **Automatic reviews and verifications now have a runner, like a scheduled agent.** They are team
+  settings and they travel, but every machine has its own queue and its own discovery — so with
+  two machines left open, each new merge request got **two** reviews (two versions, two billed
+  AI calls) and, with automatic publishing on, **two** comments on the forge. Settings → Merge
+  Request now asks who honours them; with nobody named, they run nowhere, and the screen says so
+  next to the boxes. On a single machine nothing changes at all.
+
+- **The merge-request author filter is back.** “Mine / the others” had quietly vanished when
+  shared data arrived: a second route of the same name was declared ahead of the one that asks
+  each forge who you are, so the screen got an answer with no forge account in it and stopped
+  drawing the chips. No test was watching that screen; one is now.
+
+- **A verifier's environment values stay on your machine, and what each iteration cost stays
+  yours.** A variable on a test command is the natural home of a `DATABASE_URL`, an `NPM_TOKEN`, a
+  sandbox API key — and nothing stopped them from being committed, because the safety net only
+  looks at column names. A verifier is still a team product: its commands, its coverage, and now
+  the **names** of the variables it expects, so a colleague knows what to fill in. The **values**
+  live on the machine that typed them, and a verifier that arrives with names you have not filled
+  in says so on its card rather than failing later for a reason you would have to hunt down. In
+  the same vein, the dollar cost of each iteration no longer travels: spending is already opt-in
+  as a daily total, and sharing it per pass gave away by session what the checkbox refuses to give
+  by day.
+
+- **A draft never leaves.** Inline remarks you have written on a merge request but not sent yet,
+  the text of a follow-up you are still typing, the agent profile you are trying out: none of them
+  travel now, whatever the parent's checkbox says. A draft is not a comment — it changes until you
+  press send — and sharing them meant two reviewers watched each other write, with the last one to
+  save quietly overwriting the other's remarks. What is the product is the **posted** comment, and
+  posting an inline remark now records it in the merge request's comment log, where the team can
+  read it back without opening the forge.
+
+- **Your sessions are yours until you say otherwise.** A coding session, an exploration, a free
+  question: what they hold is not a product the team consumes but the way you worked — the prompt
+  as you typed it, the three follow-ups, the question you would not have asked out loud, the
+  screenshot you pasted that shows another window, and what each attempt cost. The result is
+  already shared through its own channel: the branch and the merge request on the forge, the map
+  of the code, the notes page an agent wrote. So sessions now carry the same **Share** checkbox as
+  a notes page — unticked — and nothing leaves until you tick it. Their iterations and attachments
+  follow the session: it cannot be half shared. Untick it and the whole folder leaves the
+  repository. Sessions written before this update become private, and leave the repository on the
+  next start. And a session someone else shared can no longer be deleted from your machine — you
+  put it away instead; deleting it here would delete their work for everyone.
+
 - **Docker, Jenkins, Git and Jira stay on your machine.** They join the Links tab on the local
   side, and for the same reason: a palette of git commands, a Jenkins job you point at, a
   container you backed up, a ticket you watch — all of that describes a machine, its access and a

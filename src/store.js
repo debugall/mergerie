@@ -30,6 +30,7 @@
  * ici, on ne connaît que des fichiers.
  */
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const db = require('./db');
 const { SHARED_DIR, DATA_DIR, ensureDir } = require('./paths');
@@ -226,6 +227,31 @@ function contexte() {
        de l'ordre des uid, donc seulement une fois toutes les lignes posées. On pose donc un
        négatif distinct — jamais deux lignes égales, et `apresHydratation` renumérote. */
     sequence() { provisoire -= 1; return provisoire; },
+    /* CE QUI SORT NE DIT PAS OÙ L'ON HABITE. Les textes produits par un processus lancé ici —
+       l'erreur d'une session, l'extrait de journal d'une vérification — citent volontiers
+       `/Users/amady/…` ou `C:\\Users\\amady\\…`. Ce n'est pas un secret, mais c'est un
+       identifiant de poste, et la règle est qu'aucun n'entre dans le dépôt. On remplace donc les
+       trois racines connues par un repère lisible : le message garde son sens, et le collègue
+       lit `<clones>/api/src/x.js` au lieu d'un chemin qui n'existe pas chez lui.
+       Le plus LONG d'abord : le dossier de données vit souvent sous le home, et masquer le home
+       en premier empêcherait de reconnaître le reste. */
+    masquer(texte) {
+      if (!texte) return texte;
+      let out = String(texte);
+      const cfg = (() => { try { return require('./config').getConfig(); } catch { return {}; } })();
+      const racines = [
+        [DATA_DIR, '<data>'],
+        [String(cfg.clone_path || '').trim(), '<clones>'],
+        [os.homedir(), '~'],
+      ].filter(([r]) => r && r.length > 3).sort((a, b) => b[0].length - a[0].length);
+      for (const [racine, repere] of racines) {
+        out = out.split(racine).join(repere);
+        // …et la même racine écrite à la Windows, telle qu'un outil peut la rendre.
+        const dos = racine.replace(/\//g, '\\');
+        if (dos !== racine) out = out.split(dos).join(repere);
+      }
+      return out;
+    },
     /** Les colonnes d'équipe d'une table — le registre fait foi, on ne les recopie nulle part. */
     champsPartages: (table) => ((registre.pour(table) || {}).partagees || []),
     /** Les lignes filles d'un parent — la liste que le fichier du parent héberge. */
@@ -259,6 +285,18 @@ function contexte() {
     sessionId(scope, uid) {
       const table = { task: 'task', local: 'local_task', ask: 'question', review: 'mr' }[scope];
       return table ? this.id(table, uid) : null;
+    },
+    /* CETTE SESSION SE PARTAGE-T-ELLE ? Les passes et les pièces jointes n'ont pas de case à
+       elles : une session ne peut pas être « à moitié » partagée, sinon on publierait le
+       retour de l'agent sans la demande qui l'a produit. Le `review` est le seul scope qui n'a
+       pas de session : une passe de review appartient à la merge request, produit d'équipe. */
+    sessionPartagee(scope, id) {
+      if (scope === 'review') return true;
+      const table = { task: 'task', local: 'local_task', ask: 'question' }[scope];
+      if (!table || !id) return false;
+      const r = memoise(`sp:${table}:${id}`,
+        () => db.prepare(`SELECT shared FROM ${table} WHERE id = ?`).get(Number(id)));
+      return Boolean(r && r.shared);
     },
     /** La désignation d'une merge request : `gitlab/acme/web!218`. */
     mrRef(id) {
@@ -334,11 +372,15 @@ function binairesDe(table, row, ctx) {
 }
 
 /* CETTE LIGNE-CI PART-ELLE ? Par défaut oui : le registre classe par TABLE, et c'est ce qui
-   rend le partage tenable. Une seule table pose la question ligne par ligne — les pages de
-   notes, qu'on écrit sans destinataire —, et elle répond non tant qu'on n'a pas coché. */
-const partageable = (table, row) => {
+   rend le partage tenable. Quelques tables posent la question LIGNE PAR LIGNE — celles où l'on
+   écrit sans destinataire : une page de notes, une session, une todo — et elles répondent non
+   tant qu'on n'a pas coché.
+   Le `ctx` est passé parce qu'un ENFANT ne décide pas de lui-même : une passe d'agent et une
+   pièce jointe suivent leur session, et la retrouver demande de savoir résoudre les saveurs. */
+const partageable = (table, row, ctx = null) => {
   const e = registre.pour(table);
-  return !e || !e.partageable ? true : Boolean(e.partageable(row));
+  if (!e || !e.partageable) return true;
+  return Boolean(e.partageable(row, ctx || contexte()));
 };
 
 /* Tous les chemins qu'une ligne occupe dans le dépôt, binaires compris et SANS filtrer sur
@@ -356,7 +398,7 @@ function cheminsDe(table, row, ctx) {
  * sinon la page resterait chez tout le monde, et la case aurait menti.
  */
 function poser(table, row, ctx) {
-  if (!partageable(table, row)) {
+  if (!partageable(table, row, ctx)) {
     for (const c of cheminsDe(table, row, ctx)) supprimerFichier(c);
     return;
   }
@@ -515,7 +557,7 @@ function balayer(table, ctx = contexte()) {
     /* Une ligne qui ne se partage plus NE PROTÈGE PLUS SES FICHIERS : c'est ainsi que le
        balayage retire du dépôt une page qu'on vient de décocher, même si personne n'a pensé
        à la retirer nommément. */
-    if (!partageable(table, row)) continue;
+    if (!partageable(table, row, ctx)) continue;
     try {
       for (const f of fichiersDe(table, row, ctx)) attendus.add(f.chemin);
       for (const b of binairesDe(table, row, ctx)) attendus.add(b.chemin);
@@ -613,7 +655,7 @@ function exporterTout() {
     /* `rowid` et non `id` : `jira_watch` est nommée par la clé du ticket et n'a pas de colonne
        `id`, pas plus que `config`. `rowid` existe partout et donne l'ordre d'insertion. */
     const rows = db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()
-      .filter((row) => partageable(table, row));
+      .filter((row) => partageable(table, row, ctx));
     for (const row of rows) poser(table, row, ctx);
     compte[table] = rows.length;
   }
@@ -911,7 +953,7 @@ function supprimerLigne(e, table, relatif) {
      retire la page du dépôt ; le commit qui la retire revient ensuite par l'hydratation, et
      sans ce garde-fou il emporterait la page de la base de celui-là même qui l'a décochée. La
      règle « un fichier parti emporte sa ligne » ne vaut que pour les lignes qui se partagent. */
-  if (!partageable(table, cible)) return false;
+  if (!partageable(table, cible, contexte())) return false;
   db.prepare(`DELETE FROM ${table} WHERE rowid = ?`).run(cible.r);
   return true;
 }

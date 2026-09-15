@@ -84,4 +84,22 @@ describe('Tableau de bord — Top 5 activité récente', { skip: dispo ? false :
     assert.deepEqual(heures, ['17:45', '12:30', '08:12'],
       'sans l’heure, trois dépôts du même jour donnent un rang inexplicable');
   });
+
+  /* LE FILTRE PAR AUTEUR EXISTE — et il avait disparu sans que rien ne casse.
+     Une seconde route `/api/me` (l'identité git, pour le partage) avait été déclarée AVANT
+     celle-ci ; Express sert la première, donc l'écran recevait une réponse sans compte de
+     forge, n'y trouvait ni `username` ni `name`, et n'affichait plus les pastilles. Aucun test
+     ne regardait cet écran : c'est la panne muette que ce test rend bruyante. */
+  test('« mes merge requests / les autres » réapparaît quand la forge dit qui je suis', async () => {
+    const moi = (await app.api('GET', '/api/me')).body;
+    assert.ok(moi.gitlab && (moi.gitlab.username || moi.gitlab.name),
+      'la route d’identité de forge doit répondre : c’est elle que le filtre consomme');
+
+    await page.reload();
+    await page.locator('[data-tab="review"]').click();
+    await page.waitForFunction(() => {
+      const b = document.querySelector('#mrAuteurFiltre');
+      return b && !b.hidden && b.querySelectorAll('[data-mr-auteur]').length >= 3;
+    }, null, { timeout: 20000 });
+  });
 });

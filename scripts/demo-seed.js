@@ -1450,6 +1450,17 @@ db.prepare(`UPDATE mr SET ticket_jira_key = 'PROJ-1408', ticket_jira_status = 'E
   db.prepare(`UPDATE note_page SET shared = 1
     WHERE title IN ('Documentaliste — sortie d’agent', 'Notes migration TypeORM')`).run();
 
+  /* CE QUI EST PARTAGÉ, ET CE QUI NE L'EST PAS — pour les sessions aussi. Une session est un
+     processus : elle ne part que si on l'a cochée. La démo en montre DEUX partagées (une de
+     codage, une exploration) pour que « par Claire » et le pictogramme se voient, et laisse
+     les autres privées — c'est le cas ordinaire. */
+  db.prepare("UPDATE task SET shared = 1 WHERE id IN (SELECT id FROM task ORDER BY id LIMIT 1)").run();
+  db.prepare("UPDATE task SET shared = 1 WHERE kind = 'explore' AND id IN (SELECT id FROM task WHERE kind = 'explore' ORDER BY id LIMIT 1)").run();
+  /* Et UNE todo d'équipe parmi les personnelles : « relire le lot avant vendredi » est le cas
+     où la case a un sens, et la démo doit montrer les deux états côte à côte. */
+  db.prepare(`UPDATE todo SET shared = 1 WHERE auto_kind IS NULL
+    AND id IN (SELECT id FROM todo WHERE auto_kind IS NULL ORDER BY id LIMIT 1)`).run();
+
   const runAgent = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, status, md_path,
       agent_id, agent_name, triggered_by, created_at, updated_at, finished_at)
     VALUES (?, 'explore', ?, '', '', 'done', ?, ?, ?, ?, ?, ?, ?)`);

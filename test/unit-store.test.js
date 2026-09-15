@@ -189,7 +189,7 @@ describe('store — écrire dans le dépôt de données', () => {
     const bloque = path.join(process.env.MERGERIE_DATA_DIR, 'shared', 'todos');
     fs.rmSync(bloque, { recursive: true, force: true });
     fs.writeFileSync(bloque, 'je suis un fichier, pas un dossier');
-    assert.throws(() => notes.creerTodo({ title: 'Ne doit pas exister' }, MSGS));
+    assert.throws(() => notes.creerTodo({ title: 'Ne doit pas exister', shared: 1 }, MSGS));
     assert.equal(db.prepare('SELECT COUNT(*) n FROM todo').get().n, avant,
       '« enregistré » ne doit jamais vouloir dire « enregistré ici seulement »');
     fs.rmSync(bloque, { force: true });
@@ -217,7 +217,7 @@ describe('store — l’aller-retour par les fichiers', () => {
   test('effacer la base et réhydrater rend les mêmes lignes', () => {
     const page = notes.creerPage({ title: 'Aller-retour', content: 'du **markdown**' }, MSGS);
     notes.majPage(page.id, { shared: 1 }, MSGS);
-    notes.creerTodo({ title: 'Relire la spec', priority: 'high' }, MSGS);
+    notes.creerTodo({ title: 'Relire la spec', priority: 'high', shared: 1 }, MSGS);
     /* Une page NON partagée n'a pas de fichier : elle ne revient donc pas, et c'est le contrat.
        On ne compare que ce qui est parti dans le dépôt. */
     db.exec('DELETE FROM note_page WHERE shared = 0');
@@ -365,7 +365,7 @@ describe('store — ce à quoi une todo est accrochée voyage, ou ne voyage pas'
   });
 
   test('une merge request est désignée par sa clé naturelle, pas par son id', () => {
-    const todo = notes.creerTodo({ title: 'Suivre !218', link_kind: 'mr', link_ref: String(mrId) }, MSGS);
+    const todo = notes.creerTodo({ title: 'Suivre !218', link_kind: 'mr', link_ref: String(mrId), shared: 1 }, MSGS);
     const uid = db.prepare('SELECT uid FROM todo WHERE id = ?').get(todo.id).uid;
     const doc = JSON.parse(store.lireFichier(`todos/${uid}.json`));
     assert.equal(doc.link_ref, 'gitlab/acme/web!218');
@@ -396,7 +396,7 @@ describe('store — ce à quoi une todo est accrochée voyage, ou ne voyage pas'
   test('le rappel déjà affiché ne part PAS dans le dépôt', () => {
     // `reminded_at` dit « cette machine a montré la notification » : partagé, il éteindrait le
     // rappel du collègue, qui, lui, ne l'a jamais vu.
-    const todo = notes.creerTodo({ title: 'Avec échéance', due_at: '2026-12-01' }, MSGS);
+    const todo = notes.creerTodo({ title: 'Avec échéance', due_at: '2026-12-01', shared: 1 }, MSGS);
     notes.marquerNotifie(todo.id, MSGS);
     const uid = db.prepare('SELECT uid FROM todo WHERE id = ?').get(todo.id).uid;
     const doc = JSON.parse(store.lireFichier(`todos/${uid}.json`));

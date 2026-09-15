@@ -333,6 +333,24 @@ describe('Vérification objective — vérificateur « commandes »', () => {
     assert.match(sortie, /vu=bonjour/, 'la variable déclarée est transmise');
     assert.match(sortie, /token=absent/, 'aucun jeton ne fuit dans l’environnement');
     assert.match(sortie, /verify=1/);
+
+    /* LA VALEUR NE VOYAGE PAS, LE NOM SI. Une variable de commande de test est le lieu naturel
+       d'un `DATABASE_URL` ou d'un `NPM_TOKEN`, et un secret commité dans git est définitif :
+       l'historique est immuable, chaque clone le garde. Le fichier du vérificateur porte donc
+       les NOMS — pour que le collègue sache quoi renseigner — et rien de plus. */
+    const store = require('../src/store');
+    store.ecouler();
+    const uid = app.db.prepare('SELECT uid FROM verifier WHERE id = ?').get(v.id).uid;
+    const fichier = store.lireFichier(`verifiers/${uid}.json`);
+    assert.ok(fichier, 'le vérificateur doit avoir son fichier : c’est un produit d’équipe');
+    assert.ok(!/bonjour/.test(fichier), 'aucune VALEUR d’environnement dans le dépôt');
+    assert.deepEqual(JSON.parse(fichier).env_keys, ['MA_VAR'], 'les noms, eux, se partagent');
+    assert.equal(app.db.prepare('SELECT env_json FROM verifier WHERE id = ?').get(v.id).env_json, null,
+      'la colonne est vidée et gelée, comme les jetons');
+    assert.equal(
+      app.db.prepare("SELECT value FROM local_state WHERE kind = 'verifier_env' AND ref = ? AND key = 'MA_VAR'").get(uid).value,
+      'bonjour', 'la valeur vit sur le poste qui l’a saisie');
+
     await app.api('DELETE', `/api/verifiers/${v.id}`);
   });
 

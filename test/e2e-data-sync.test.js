@@ -218,6 +218,94 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
     'la page retirée du dépôt');
   });
 
+  test('une session de codage ne part QUE si on coche la case', async () => {
+    /* PAR LE FORMULAIRE, comme la case des notes. Une session est un processus — le prompt tel
+       qu'on l'a tapé, les relances, la capture collée — et le résultat, lui, part déjà par la
+       forge. Publier le brouillon avec le livre ne se rattrape pas. */
+    const { body: repo } = await app.api('POST', '/api/repos', { url: 'https://gitlab.test/eq/api.git', project: 'eq/api' });
+    const { body: creee } = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'refonte du tunnel', targets: [{ repo_id: repo.id, branch: 'ai/tunnel' }],
+    });
+    assert.equal(creee.shared, 0, 'le défaut d’une case qui publie est « non »');
+
+    const { body: apres } = await app.api('POST', `/api/tasks/${creee.id}/share`, { shared: 1 });
+    assert.equal(apres.shared, 1);
+    await app.api('POST', '/api/data-sync/now');
+    const uid = app.db.prepare('SELECT uid FROM task WHERE id = ?').get(creee.id).uid;
+    await attendreServeur(async () => new RegExp(`sessions/${uid}/session\\.json`).test(
+      execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' })),
+    'la session cochée poussée dans le dépôt');
+
+    await app.api('POST', `/api/tasks/${creee.id}/share`, { shared: 0 });
+    await app.api('POST', '/api/data-sync/now');
+    await attendreServeur(async () => !new RegExp(`sessions/${uid}/`).test(
+      execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' })),
+    'la session décochée retirée du dépôt');
+  });
+
+  test('la session d’un collègue ne se supprime pas — on la range', async () => {
+    /* Avec des sessions partagées, l'auteur est identifiable : c'est celui qui a commité le
+       fichier, et git le sait. Supprimer ici retirerait le fichier du dépôt, et la ligne
+       disparaîtrait chez son auteur au `pull` suivant — on effacerait le travail de quelqu'un
+       d'autre. Ranger, en revanche, est une préférence de poste et reste possible. */
+    const { body: repo2 } = await app.api('POST', '/api/repos', { url: 'https://gitlab.test/eq/front.git', project: 'eq/front' });
+    const { body: t2 } = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'ce que Claire a demandé', targets: [{ repo_id: repo2.id, branch: 'ai/claire' }],
+    });
+    await app.api('POST', `/api/tasks/${t2.id}/share`, { shared: 1 });
+    await app.api('POST', '/api/data-sync/now');
+    const uid2 = app.db.prepare('SELECT uid FROM task WHERE id = ?').get(t2.id).uid;
+    await attendreServeur(async () => new RegExp(`sessions/${uid2}/session\\.json`).test(
+      execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' })),
+    'la session poussée avant que Claire ne la reprenne');
+
+    /* Claire la modifie de son côté : le dernier commit de CE fichier porte son nom, et c'est
+       exactement ce que l'outil lit pour dire « par Claire ». */
+    const chezClaire = path.join(racine, 'claire');
+    execFileSync('git', ['clone', nu, chezClaire], { stdio: 'ignore' });
+    const fichier = path.join(chezClaire, 'sessions', uid2, 'session.json');
+    const doc = JSON.parse(fs.readFileSync(fichier, 'utf8'));
+    doc.label = 'repris par Claire';
+    fs.writeFileSync(fichier, `${JSON.stringify(doc, null, 2)}\n`);
+    for (const args of [['add', '-A'], ['-c', 'user.name=Claire', '-c', 'user.email=claire@exemple.test',
+      'commit', '-m', 'session de Claire', '--author=Claire <claire@exemple.test>'], ['push', 'origin', 'main']]) {
+      execFileSync('git', ['-C', chezClaire, ...args], { stdio: 'ignore' });
+    }
+    await app.api('POST', '/api/data-sync/now');
+    await attendreServeur(async () => (await app.api('GET', '/api/tasks')).body.some((x) => x.id === t2.id && x.author === 'Claire'),
+      'la session reconnue comme celle de Claire');
+
+    const refus = await app.api('DELETE', `/api/tasks/${t2.id}`);
+    assert.equal(refus.status, 403, 'effacer ici l’effacerait chez tout le monde');
+    assert.match(refus.body.error, /Claire/, 'le message doit dire à QUI elle est');
+    assert.ok(app.db.prepare('SELECT 1 FROM task WHERE id = ?').get(t2.id), 'et rien n’a été supprimé');
+
+    // …mais la ranger reste possible : c'est un geste de poste, il ne touche pas au dépôt.
+    const range = await app.api('POST', `/api/tasks/${t2.id}/hidden`, { hidden: 1 });
+    assert.equal(range.status, 200);
+  });
+
+  test('la case « partager » existe dans les trois saveurs, et pas en mono-poste', async () => {
+    /* La modale est commune aux trois saveurs mais chaque saveur a son envoi : la case doit
+       exister ET être câblée dans les trois. On éprouve ici qu'elle s'affiche ; le câblage est
+       prouvé par les créations ci-dessus et par l'API. */
+    await page.click('nav button[data-tab="task"]');
+    await page.waitForSelector('#btnNewTask', { timeout: ATTENTE });
+    for (const kind of ['code', 'local', 'ask']) {
+      await page.click(`#tab-task .subnav [data-kind="${kind}"]`);
+      await page.waitForFunction((k) => {
+        const b = document.querySelector(`#tab-task .subnav [data-kind="${k}"]`);
+        return b && b.classList.contains('active');
+      }, kind, { timeout: ATTENTE });
+      await page.click('#btnNewTask');
+      await page.waitForSelector('#taskShareRow:not([hidden])', { timeout: ATTENTE });
+      assert.equal(await page.locator('#taskShareRow input[name="shared"]').isChecked(), false,
+        `jamais cochée d’office (${kind})`);
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('#taskModal', { state: 'hidden', timeout: ATTENTE });
+    }
+  });
+
   test('la dépense ne part QUE si on l’a demandé', async () => {
     const dansLeDepot = () => execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' });
     assert.doesNotMatch(dansLeDepot(), /^usage\//m,

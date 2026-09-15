@@ -25,9 +25,13 @@
  * Ces deux listes sont la seule exception à « une table, une famille », et elles sont explicites
  * plutôt que déduites : une liste noire implicite finit toujours par laisser passer un secret.
  *
- * `partageable(row)`, sur une table P, se lit « cette LIGNE-CI part-elle ? ». Une seule table
- * s'en sert (`note_page`) et c'est voulu : le classement reste par table, et la question ne se
- * pose ligne par ligne que là où l'on écrit sans destinataire.
+ * `partageable(row, ctx)`, sur une table P, se lit « cette LIGNE-CI part-elle ? ». Le classement
+ * reste par TABLE — c'est ce qui rend le partage tenable —, et la question ne se pose ligne par
+ * ligne que là où l'on écrit SANS DESTINATAIRE : une page de notes, une session de codage ou
+ * d'exploration, une question libre, une todo. Partout ailleurs la famille suffit, parce que
+ * l'objet est un PRODUIT que l'équipe consomme.
+ * Les enfants ne décident pas d'eux-mêmes : une passe d'agent et une pièce jointe suivent leur
+ * session (`ctx.sessionPartagee`), sinon on publierait le retour de l'agent sans la demande.
  *
  * `locales` sur une table P se lit « ces colonnes ne sortent jamais dans le fichier » : un chemin
  * absolu (`/Users/amady/…`) ne désigne rien sur le poste d'en face, un handle de session d'agent
@@ -41,7 +45,11 @@ const TRANSITOIRES = ['todo_v2', 'service_url_v2', 'verification_new'];
 /* Ce qu'un nom de colonne ne doit jamais porter dans un fichier du dépôt. Le test unitaire du
    registre s'en sert pour relire chaque `locales` : une colonne qui ressemble à un secret ou à un
    chemin de poste et qui N'EST PAS déclarée locale est un échec. */
-const INTERDITS = [/token/i, /_key$/i, /password/i, /secret/i, /^path$/i, /_path$/i, /^cwd$/i, /_cwd$/i];
+const INTERDITS = [/token/i, /_key$/i, /password/i, /secret/i, /^path$/i, /_path$/i, /^cwd$/i, /_cwd$/i,
+  /* `env_json` portait les valeurs d'environnement d'un vérificateur — le lieu naturel d'un
+     `DATABASE_URL` ou d'un `NPM_TOKEN` — et aucun motif ne l'attrapait. Il en faut un, pour que
+     la prochaine colonne du même genre ne repasse jamais sans être déclarée. */
+  /^env(_json)?$/i];
 
 /* Colonnes dont le nom déclenche `INTERDITS` mais qui sont bel et bien d'équipe, avec la raison.
    Une exception se justifie ici, pas dans un coin du code. */
@@ -258,11 +266,6 @@ const REGISTRE = [
         links: ctx.enfants('mr_link', 'mr_id', r.id)
           .map((l) => ({ repo: ctx.repoRef(l.repo_id), branch: l.branch || null }))
           .filter((l) => l.repo),
-        drafts: ctx.enfants('mr_comment_draft', 'mr_id', r.id).map((d) => ({
-          uid: d.uid, old_path: d.old_path || null, new_path: d.new_path || null,
-          old_line: d.old_line, new_line: d.new_line, body: d.body,
-          created_at: d.created_at, updated_at: d.updated_at,
-        })),
         comment_log: ctx.enfants('comment_log', 'mr_id', r.id).map((c) => ({
           uid: c.uid, body: c.body, note_id: c.gitlab_note_id || null, sent_at: c.sent_at,
         })),
@@ -311,17 +314,6 @@ const REGISTRE = [
         },
       },
       {
-        table: 'mr_comment_draft',
-        liste: 'drafts',
-        colonneParent: 'mr_id',
-        fromItem: (item, ctx, mr) => (item && item.uid ? {
-          uid: item.uid, mr_id: mr.id, old_path: item.old_path || null, new_path: item.new_path || null,
-          old_line: item.old_line == null ? null : item.old_line,
-          new_line: item.new_line == null ? null : item.new_line,
-          body: item.body || '', created_at: item.created_at, updated_at: item.updated_at,
-        } : null),
-      },
-      {
         table: 'comment_log',
         liste: 'comment_log',
         colonneParent: 'mr_id',
@@ -333,7 +325,12 @@ const REGISTRE = [
     ],
   },
   { table: 'mr_link', famille: 'P', uidPropre: true, parent: 'mr', liste: 'links', fusion: 'parent' },
-  { table: 'mr_comment_draft', famille: 'P', uidPropre: true, parent: 'mr', liste: 'drafts', fusion: 'parent' },
+  /* UN BROUILLON NE PART JAMAIS. Ces remarques-là ne sont pas encore des commentaires : elles
+     se modifient jusqu'à un envoi explicite. Partagées, deux relecteurs de la même merge request
+     se voyaient mutuellement RÉDIGER, et le « dernier écrivain gagne » du fichier de la MR
+     pouvait écraser les brouillons de l'un par ceux de l'autre. Ce qui est le produit, ce sont
+     les commentaires POSTÉS : ils vivent dans `comment_log` et sur la forge. */
+  { table: 'mr_comment_draft', famille: 'L', uidPropre: true, note: 'des remarques pas encore envoyées : elles restent à celui qui les écrit' },
   { table: 'comment_log', famille: 'P', uidPropre: true, parent: 'mr', liste: 'comment_log', fusion: 'parent' },
   {
     /* UNE SEULE REVIEW COURANTE PAR MERGE REQUEST (`UNIQUE(mr_id)`) : c'est elle, l'identité.
@@ -554,6 +551,11 @@ const REGISTRE = [
     table: 'verifier', famille: 'P', uidPropre: true, cle: 'uid', cleNaturelle: ['name'],
     chemin: 'verifiers/{uid}.json',
     fusion: 'last-writer',
+    /* LES NOMS SONT D'ÉQUIPE, LES VALEURS NON. `env_json` portait des VALEURS — un
+       `DATABASE_URL`, un `NPM_TOKEN` — et rien ne l'arrêtait : la liste noire ne regarde que le
+       nom de colonne. Vidée et gelée (`src/db.js`), elle est remplacée dans le fichier par
+       `env_keys`, les noms seuls ; les valeurs vivent dans `local_state` sur le poste. */
+    locales: ['env_json'],
     commitMessage: (r) => `verifier ${String(r.name || '').slice(0, 50)}`,
     toFile: (r, ctx) => ({
       uid: r.uid,
@@ -567,7 +569,8 @@ const REGISTRE = [
       auto_on_stale: r.auto_on_stale ? 1 : 0,
       comment_template: r.comment_template || null,
       mentions: r.mentions || null,
-      env_json: r.env_json || null,
+      /* LES NOMS SEULS : le collègue sait quoi renseigner, et aucune valeur ne voyage. */
+      env_keys: (() => { try { return JSON.parse(r.env_keys || '[]'); } catch { return []; } })(),
       report_path: r.report_path || null,
       parse_tap: r.parse_tap ? 1 : 0,
       created_at: r.created_at,
@@ -598,7 +601,7 @@ const REGISTRE = [
       auto_on_stale: doc.auto_on_stale ? 1 : 0,
       comment_template: doc.comment_template || null,
       mentions: doc.mentions || null,
-      env_json: doc.env_json || null,
+      env_keys: JSON.stringify(Array.isArray(doc.env_keys) ? doc.env_keys : []),
       report_path: doc.report_path || null,
       parse_tap: doc.parse_tap ? 1 : 0,
       created_at: doc.created_at,
@@ -653,14 +656,14 @@ const REGISTRE = [
       status: r.status,
       verdict: r.verdict || null,
       targets_json: r.targets_json || null,
-      context_json: r.context_json || null,
+      context_json: ctx.masquer(r.context_json) || null,
       base_run_json: r.base_run_json || null,
       head_run_json: r.head_run_json || null,
       imputable_json: r.imputable_json || null,
       /* L'EXTRAIT DE JOURNAL, pas le journal. Le `.log` complet est ce qui fait grossir une base
          sans rien apprendre à qui n'a pas lancé la vérification : c'est le VERDICT qui voyage. */
-      log_excerpt: r.log_excerpt || null,
-      restore_error: r.restore_error || null,
+      log_excerpt: ctx.masquer(r.log_excerpt) || null,
+      restore_error: ctx.masquer(r.restore_error) || null,
       comment_posted_at: r.comment_posted_at || null,
       comment_targets: r.comment_targets || null,
       started_at: r.started_at,
@@ -857,7 +860,13 @@ const REGISTRE = [
   /* ── Sessions de codage, questions, passes ───────────────────────────────────────────── */
   {
     table: 'task', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'sessions/{uid}/session.json',
-    fusion: 'last-writer', locales: ['md_path', 'diff_path', 'hidden'],
+    /* LES BROUILLONS NE PARTENT JAMAIS, quelle que soit la case du parent : `followup_draft`
+       est le texte d'une relance en cours de frappe, et `agent_draft_json` le profil qu'on
+       ESSAIE — l'endroit même où l'on tente un prompt sans engager l'équipe. */
+    fusion: 'last-writer', locales: ['md_path', 'diff_path', 'hidden', 'shared', 'followup_draft', 'agent_draft_json'],
+    /* PRIVÉE TANT QU'ON N'A PAS COCHÉ. `shared` ne part pas dans le fichier : un fichier qui est
+       là EST partagé, et un `shared: 0` dans le dépôt ne voudrait rien dire. */
+    partageable: (r) => Boolean(r.shared),
     note: 'une session de codage ou d’exploration. Son PROMPT et son RÉSULTAT se partagent ; les '
       + 'diffs et les handles d’agent, non — ils ne valent que sur la machine qui a cloné.',
     commitMessage: (r) => `session ${String(r.label || r.agent_question || r.prompt || '').replace(/\s+/g, ' ').slice(0, 50)}`,
@@ -877,13 +886,11 @@ const REGISTRE = [
       /* La RÉPONSE d'une exploration est ce qui a de la valeur : elle part en texte, pas en
          chemin — `/Users/amady/…` ne désigne rien chez le voisin. */
       answer: r.md_path ? ctx.lireDisque(r.md_path) : null,
-      last_error: r.last_error || null,
+      last_error: ctx.masquer(r.last_error) || null,
       agent: r.agent_id ? ctx.slug('agent', r.agent_id) : null,
       agent_name: r.agent_name || null,
-      agent_draft_json: r.agent_draft_json || null,
       triggered_by: r.triggered_by || 'manual',
       verifier: r.verifier_id ? ctx.uid('verifier', r.verifier_id) : null,
-      followup_draft: r.followup_draft || null,
       followup_auto: r.followup_auto ? 1 : 0,
       created_at: r.created_at,
       updated_at: r.updated_at,
@@ -909,7 +916,7 @@ const REGISTRE = [
         mr_merged: tg.mr_merged ? 1 : 0,
         mr_conflicts: tg.mr_conflicts ? 1 : 0,
         force_push: tg.force_push ? 1 : 0,
-        last_error: tg.last_error || null,
+        last_error: ctx.masquer(tg.last_error) || null,
         questions_json: tg.questions_json || null,
         updated_at: tg.updated_at,
       })).filter((tg) => tg.repo),
@@ -920,6 +927,9 @@ const REGISTRE = [
          les cibles. On y met le dépôt de la première cible connue — et si aucune ne se résout,
          la session n'est pas hydratable ici, ce que la seconde passe signale. */
       repo_id: ctx.repoId((doc.targets || [])[0] && doc.targets[0].repo),
+      /* ELLE EST DANS LE DÉPÔT, DONC ELLE EST PARTAGÉE — sans quoi le premier écoulement chez
+         celui qui la reçoit retirerait le fichier qu'on vient de lui envoyer. */
+      shared: 1,
       kind: doc.kind || 'code',
       prompt: doc.prompt || '',
       agent_question: doc.agent_question || null,
@@ -936,10 +946,8 @@ const REGISTRE = [
       last_error: doc.last_error || null,
       agent_id: doc.agent ? ctx.idParSlug('agent', doc.agent) : null,
       agent_name: doc.agent_name || null,
-      agent_draft_json: doc.agent_draft_json || null,
       triggered_by: doc.triggered_by || 'manual',
       verifier_id: doc.verifier ? ctx.id('verifier', doc.verifier) : null,
-      followup_draft: doc.followup_draft || null,
       followup_auto: doc.followup_auto ? 1 : 0,
       created_at: doc.created_at,
       updated_at: doc.updated_at,
@@ -981,8 +989,10 @@ const REGISTRE = [
   {
     table: 'question', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'sessions/{uid}/question.json',
     fusion: 'last-writer',
-    locales: ['md_path', 'session_key', 'session_backend', 'session_cwd', 'hidden'],
-    note: 'une question libre et sa réponse — ni dépôt, ni dossier : rien à résoudre chez le voisin',
+    locales: ['md_path', 'session_key', 'session_backend', 'session_cwd', 'hidden', 'shared', 'followup_draft'],
+    note: 'une question libre et sa réponse — ni dépôt, ni dossier : rien à résoudre chez le voisin. '
+      + 'PRIVÉE par défaut : « explique-moi ce code que je ne comprends pas » ne se publie pas.',
+    partageable: (r) => Boolean(r.shared),
     commitMessage: (r) => `question ${String(r.label || r.prompt || '').replace(/\s+/g, ' ').slice(0, 50)}`,
     toFile: (r, ctx) => ({
       uid: r.uid,
@@ -991,8 +1001,7 @@ const REGISTRE = [
       label: r.label || null,
       status: r.status,
       answer: r.md_path ? ctx.lireDisque(r.md_path) : null,
-      last_error: r.last_error || null,
-      followup_draft: r.followup_draft || null,
+      last_error: ctx.masquer(r.last_error) || null,
       followup_auto: r.followup_auto ? 1 : 0,
       created_at: r.created_at,
       updated_at: r.updated_at,
@@ -1000,12 +1009,12 @@ const REGISTRE = [
     }),
     fromFile: (doc, ctx) => ({
       uid: doc.uid,
+      shared: 1,                      // elle vient du dépôt : elle y est donc partagée
       prompt: doc.prompt || '',
       label: doc.label || null,
       status: doc.status || 'new',
       md_path: doc.answer ? ctx.ecrireDisque(`tasks/ask/${doc.uid}`, 'answer.md', doc.answer) : null,
       last_error: doc.last_error || null,
-      followup_draft: doc.followup_draft || null,
       followup_auto: doc.followup_auto ? 1 : 0,
       created_at: doc.created_at,
       updated_at: doc.updated_at,
@@ -1014,8 +1023,10 @@ const REGISTRE = [
   },
   {
     table: 'local_task', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'sessions/{uid}/local.json',
-    fusion: 'last-writer', locales: ['hidden'],
-    note: 'du codage hors dépôt : la session se PARTAGE (ses passes se relisent), le dossier non',
+    fusion: 'last-writer', locales: ['hidden', 'shared', 'followup_draft'],
+    note: 'du codage hors dépôt : le dossier ne voyage pas, et la session ne part que si on l’a '
+      + 'cochée — hors dépôt, c’est souvent un projet personnel',
+    partageable: (r) => Boolean(r.shared),
     commitMessage: (r) => `local session ${String(r.label || r.prompt || '').replace(/\s+/g, ' ').slice(0, 50)}`,
     toFile: (r, ctx) => ({
       uid: r.uid,
@@ -1024,8 +1035,7 @@ const REGISTRE = [
       label: r.label || null,
       status: r.status,
       ask_questions: r.ask_questions ? 1 : 0,
-      last_error: r.last_error || null,
-      followup_draft: r.followup_draft || null,
+      last_error: ctx.masquer(r.last_error) || null,
       followup_auto: r.followup_auto ? 1 : 0,
       created_at: r.created_at,
       updated_at: r.updated_at,
@@ -1035,18 +1045,18 @@ const REGISTRE = [
          chose plutôt que d'afficher une ligne vide. */
       dirs: ctx.enfants('local_task_dir', 'task_id', r.id).map((d) => ({
         uid: d.uid, dir_hash: d.dir_hash, dir_label: d.dir_label, owner: d.owner || null,
-        status: d.status, last_error: d.last_error || null,
+        status: d.status, last_error: ctx.masquer(d.last_error) || null,
         questions_json: d.questions_json || null, updated_at: d.updated_at,
       })),
     }),
     fromFile: (doc) => ({
       uid: doc.uid,
+      shared: 1,                      // elle vient du dépôt : elle y est donc partagée
       prompt: doc.prompt || '',
       label: doc.label || null,
       status: doc.status || 'new',
       ask_questions: doc.ask_questions ? 1 : 0,
       last_error: doc.last_error || null,
-      followup_draft: doc.followup_draft || null,
       followup_auto: doc.followup_auto ? 1 : 0,
       created_at: doc.created_at,
       updated_at: doc.updated_at,
@@ -1074,7 +1084,14 @@ const REGISTRE = [
   },
   {
     table: 'agent_pass', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'sessions/{session}/pass-{uid}.md',
-    fusion: 'append-only', locales: ['output_path', 'diff_path', 'n'],
+    /* `cost_usd` EST LOCAL. La dépense est déjà opt-in par un total quotidien (`usage_share`) :
+       laisser le coût de chaque passe voyager, c'était donner par session ce que la case refuse
+       de donner par jour. */
+    fusion: 'append-only', locales: ['output_path', 'diff_path', 'n', 'cost_usd'],
+    /* UNE PASSE SUIT SA SESSION. Elle n'a pas de case à elle : publier le retour de l'agent sans
+       la demande qui l'a produit n'aurait pas de sens, et une session « à moitié » partagée non
+       plus. Les passes de review, elles, appartiennent à la merge request — produit d'équipe. */
+    partageable: (r, ctx) => ctx.sessionPartagee(r.scope, r.task_id),
     fichiers: ['pass-{uid}.json (demande, genre, coût)'],
     note: '`favori` et `titre` sont PARTAGÉS — ranger une passe utile sert à toute l’équipe ; `n` est dérivé. '
       + 'AJOUT SEUL : le fichier est nommé par un ULID, deux postes ne touchent jamais le même.',
@@ -1096,7 +1113,7 @@ const REGISTRE = [
       content: r.output_path ? ctx.lireDisque(r.output_path) : '',
       favori: r.favori ? 1 : 0,
       titre: r.titre || null,
-      cost_usd: r.cost_usd == null ? null : r.cost_usd,
+
       base_sha: r.base_sha || null,
       head_sha: r.head_sha || null,
       created_at: r.created_at,
@@ -1114,7 +1131,7 @@ const REGISTRE = [
       output_path: ctx.ecrireDisque(`tasks/passes/${doc.session || 'orphelines'}`, `pass-${doc.uid}.md`, doc.content || ''),
       favori: doc.favori ? 1 : 0,
       titre: doc.titre || null,
-      cost_usd: doc.cost_usd == null ? null : doc.cost_usd,
+
       base_sha: doc.base_sha || null,
       head_sha: doc.head_sha || null,
       created_at: doc.created_at,
@@ -1149,6 +1166,9 @@ const REGISTRE = [
   {
     table: 'piece_jointe', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'sessions/{session}/attachments/{uid}.json',
     fusion: 'append-only', locales: ['path'],
+    /* Comme les passes : la capture suit sa session. Une image collée montre volontiers autre
+       chose que ce qu'on croit — un autre onglet, une fenêtre voisine. */
+    partageable: (r, ctx) => ctx.sessionPartagee(r.scope, r.owner_id),
     fichiers: ['sessions/{session}/attachments/{uid}.{ext}'],
     note: 'la capture ou le document joint à une demande : le binaire part tel quel, jamais en base64',
     commitMessage: (r) => `attachment ${String(r.name || '').slice(0, 40)}`,
@@ -1265,7 +1285,12 @@ const REGISTRE = [
     /* UN RAPPEL EST PERSONNEL. `reminded_at` dit « cette machine a affiché la notification » :
        partagé, il éteindrait le rappel du collègue qui, lui, ne l'a jamais vu. La todo se
        partage ; le fait d'avoir été prévenu, non. */
-    locales: ['reminded_at'],
+    locales: ['reminded_at', 'shared'],
+    /* PERSONNELLE PAR DÉFAUT, et JAMAIS pour une todo automatique : celles-là naissent de
+       sources locales — la veille Jira, la question posée par un agent au milieu d'une session —
+       et les partager remplissait la liste de tout le monde. Une todo d'équipe existe (« relire
+       le lot X avant vendredi ») : c'est la case, pas le défaut. */
+    partageable: (r) => Boolean(r.shared) && !r.auto_kind,
     commitMessage: (r) => `todo ${r.status === 'done' ? 'done' : (r.archived_at ? 'archived' : 'set')}: ${String(r.title || '').slice(0, 50)}`,
     toFile: (r, ctx) => ({
       uid: r.uid,
@@ -1293,6 +1318,7 @@ const REGISTRE = [
       const ref = refEntrante(doc.link_kind, doc.link_ref, ctx);
       return {
         uid: doc.uid,
+        shared: 1,                    // elle vient du dépôt : elle y est donc partagée
         title: doc.title,
         priority: doc.priority,
         status: doc.status,
@@ -1384,7 +1410,16 @@ const REGISTRE = [
       'dictation_url', 'dictation_remote_model', 'dictation_language', 'dictation_silence_ms',
       'dictation_final_pass', 'dictation_idle_minutes',
       // L'adresse par laquelle CE poste rejoint l'équipe. Vide = mono-poste.
-      'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share'],
+      'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share',
+      /* DES HABITUDES, PAS DES POLITIQUES. Ouvrir le brief au lancement est une habitude
+         d'écran ; la cadence à laquelle CE poste interroge la forge ou Jira le regarde lui
+         (et la veille Jira est elle-même locale) ; fermer ses todos à la fusion suit la todo,
+         devenue personnelle ; et les cases cochées d'office d'une nouvelle session sont une
+         façon de travailler, pas une décision d'équipe. Imposer la sienne à tout le monde,
+         c'est rendre l'outil désagréable pour cinq personnes afin d'en arranger une. */
+      'brief_on_open', 'auto_refresh_minutes', 'jira_watch_minutes', 'todo_close_on_merge',
+      'task_default_auto_push', 'task_default_ask_questions', 'task_default_notify_jira',
+      'task_default_converge'],
     partagees: [
       // Où est la forge, Jira, Jenkins : une équipe en a UNE. Le jeton, lui, reste de poste.
       'gitlab_url', 'github_url', 'jira_url', 'jenkins_url',
@@ -1396,12 +1431,15 @@ const REGISTRE = [
       'dictation_vocabulary', 'dictation_replacements',
       // Politiques : ce qui part tout seul, à quelle cadence, jusqu'où, et ce qu'on garde.
       'auto_review_new', 'auto_rereview_stale', 'auto_post_review', 'auto_post_blocking_only',
-      'review_auto_max', 'verif_auto_max', 'agent_auto_max', 'auto_refresh_minutes',
-      'jira_watch_minutes', 'retention_days', 'review_explain', 'verify_jira_comment',
-      'converge_threshold', 'converge_max_passes', 'stale_mr_days', 'todo_close_on_merge',
-      'brief_on_open', 'jira_test_key',
-      'task_default_auto_push', 'task_default_ask_questions', 'task_default_notify_jira',
-      'task_default_converge'],
+      /* L'EXÉCUTANT EST D'ÉQUIPE : c'est une décision collective (« c'est Claire qui fait
+         tourner les reviews automatiques »), pas une préférence de poste. */
+      'auto_runner',
+      'review_auto_max', 'verif_auto_max', 'agent_auto_max',
+      /* `retention_days` RESTE D'ÉQUIPE, et c'est délibéré : une purge passe par le store, donc
+         elle retire les fichiers du dépôt POUR TOUT LE MONDE. Une seule valeur évite qu'un poste
+         réglé à sept jours efface l'historique des autres. */
+      'retention_days', 'review_explain', 'verify_jira_comment',
+      'converge_threshold', 'converge_max_passes', 'stale_mr_days', 'jira_test_key'],
     commitMessage: () => 'settings',
     /* UNE SEULE LIGNE, UN SEUL FICHIER. On n'énumère pas les colonnes ici : c'est `partagees`
        qui fait foi, et la dupliquer serait la garantie qu'un jour les deux divergent — et que

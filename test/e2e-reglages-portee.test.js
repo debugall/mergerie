@@ -61,6 +61,20 @@ describe('Réglages · la portée de chaque champ', { skip: dispo ? false : 'chr
     assert.equal(c.scopes.clone_path, 'poste');
     assert.equal(c.scopes.language, 'poste');
     assert.equal(c.scopes.prompt_review, 'equipe');
+    /* DES HABITUDES, PAS DES POLITIQUES : le brief du matin au lancement, les cadences de CE
+       poste, la fermeture des todos (devenues personnelles) et les cases cochées d'office
+       d'une nouvelle session. Les imposer à l'équipe, c'est rendre l'outil désagréable pour
+       cinq personnes afin d'en arranger une. */
+    assert.equal(c.scopes.brief_on_open, 'poste');
+    assert.equal(c.scopes.auto_refresh_minutes, 'poste');
+    assert.equal(c.scopes.jira_watch_minutes, 'poste');
+    assert.equal(c.scopes.todo_close_on_merge, 'poste');
+    assert.equal(c.scopes.task_default_converge, 'poste');
+    /* …et ce qui RESTE d'équipe, pour que le reclassement ne déborde pas : une purge retire les
+       fichiers du dépôt pour tout le monde, donc une seule valeur. */
+    assert.equal(c.scopes.retention_days, 'equipe');
+    assert.equal(c.scopes.auto_review_new, 'equipe');
+    assert.equal(c.scopes.auto_runner, 'equipe');
     assert.equal(c.scopes.gitlab_url, 'equipe');
     assert.equal(c.scopes.stale_mr_days, 'equipe');
   });
