@@ -487,4 +487,17 @@ describe('datasync — deux postes, un dépôt de données', () => {
     } catch { trouve = ''; }        // `git grep` sort en 1 quand il ne trouve rien : c'est le cas vert
     assert.equal(trouve.trim(), '', `un jeton est parti dans le dépôt de données : ${trouve}`);
   });
+
+  /* UNE ADRESSE N'EST PAS UNE OPTION. L'URL du dépôt part telle quelle dans l'argv de `git`, et
+     elle ne vient pas que des réglages : l'aperçu la prend dans la query string d'un GET, donc
+     n'importe quelle page ouverte dans le navigateur peut l'appeler. Une valeur qui commence par
+     un tiret est refusée AVANT git — un `--` oublié à un seul appel serait invisible. */
+  test('une adresse qui commence par un tiret n’est jamais passée à git', () => {
+    const r = dans(posteA, `async ({ config, datasync }) => {
+      const piege = '--upload-pack=touch /tmp/mergerie-injection';
+      config.updateConfig({ data_repo_url: piege });
+      try { await datasync.rattacher({}); return 'rattaché'; } catch (e) { return String(e.message); }
+    }`);
+    assert.match(r, /aucune URL/, 'une valeur qui commence par un tiret ne vaut pas adresse');
+  });
 });

@@ -88,6 +88,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   unchanged. Deleted: none — sending writes, it never deletes, and the summary says how many of the
   repository's files it will not touch at all.
 
+  The summary is read, not deciphered: **what leaves and what stays sit side by side**, one line
+  per kind with the count on the left, because their opposition is the information; the file
+  counts are four figures under them, the zero of deletions included — that one is what you came
+  to check. In front of an **empty** repository everything counts as added: the files this machine
+  already wrote for itself are “unchanged” on disk and yet all of them will travel, and announcing
+  “0 added” before initialising a bare repository would have said that nothing leaves. Building
+  the summary questions the remote repository, which takes as long as the network takes, so the
+  button spins and the line next to it says what is being waited for.
+
 - **“Send everything again”, because “Sync” only sends what changed.** After a repository emptied
   or truncated by hand, a normal sync put nothing back — the queue of pending writes was empty, and
   nothing said so. The button now exists and is named for what it does. It goes through the attach

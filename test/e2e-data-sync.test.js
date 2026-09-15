@@ -99,14 +99,43 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
     await ouvrirPartage();
     await page.fill('[form="configForm"][name="data_repo_url"]', nu);
     await page.fill('[form="configForm"][name="data_repo_branch"]', 'main');
+    /* L'APERÇU INTERROGE LE DÉPÔT DISTANT, ce qui prend le temps que prend le réseau : le
+       bouton doit tourner pendant ce temps-là, sinon on le re-clique. On RETIENT la réponse
+       jusqu'à l'avoir vu tourner — un délai fixe ne prouverait que la vitesse de la machine. */
+    let libererApercu;
+    const apercuTenu = new Promise((r) => { libererApercu = r; });
+    await page.route('**/api/data-sync/preview*', async (route) => { await apercuTenu; await route.continue(); });
     await page.click('#btnDataAttach');
+    await page.waitForSelector('#btnDataAttach[data-busy]', { timeout: ATTENTE });
+    libererApercu();
     /* CE QUI VA PARTIR SE LIT AVANT DE CLIQUER : le rattachement demande confirmation et montre
        ce qu'il emporte — et surtout ce qu'il NE PREND PAS, les sessions et todos étant privées
        par défaut. Rien n'est écrit tant qu'on n'a pas répondu. */
     await page.waitForSelector('#confirmModal:not([hidden])', { timeout: ATTENTE });
-    const resume = await page.textContent('#confirmText');
+    await page.unroute('**/api/data-sync/preview*');
+    const resume = await page.textContent('#confirmBody');
     assert.match(resume, /notes|merge requests|reviews|dépôts|repositories/i,
       'le récapitulatif doit dire ce qui part');
+    /* DEUX COLONNES, PAS UN PARAGRAPHE : « ce qui part » et « ce qui reste » s'opposent, et
+       cette opposition EST l'information. Plus le compte des fichiers, dont le zéro des
+       suppressions — le chiffre qu'on vient vérifier avant de cliquer. */
+    const forme = await page.evaluate(() => ({
+      part: document.querySelectorAll('#confirmBody .apercu-col-part .apercu-liste li').length,
+      reste: document.querySelectorAll('#confirmBody .apercu-col-reste').length,
+      chiffres: [...document.querySelectorAll('#confirmBody .apercu-chiffre b')].map((n) => n.textContent),
+      supprimes: (document.querySelector('#confirmBody .apercu-chiffre-nul b') || {}).textContent,
+      large: document.querySelector('#confirmModal .modal-box').classList.contains('modal-confirm-lg'),
+    }));
+    assert.ok(forme.part >= 2, `une ligne par famille, pas une phrase (${forme.part})`);
+    assert.equal(forme.reste, 1, 'ce qui reste sur ce poste a sa propre colonne');
+    assert.equal(forme.chiffres.length, 4, 'ajoutés, modifiés, inchangés, supprimés');
+    assert.equal(forme.supprimes, '0', 'l’envoi écrit, il ne supprime jamais — et il le montre');
+    /* DEVANT UN DÉPÔT VIDE, TOUT EST NOUVEAU. Le compte se fait contre le répertoire de travail,
+       qui porte déjà les fichiers que ce poste s'est écrits à lui-même : les annoncer
+       « inchangés » avant d'initialiser un dépôt nu reviendrait à dire que rien ne part. */
+    assert.ok(Number(forme.chiffres[0]) > 0,
+      `le dépôt est vide : ce qui part doit être compté comme ajouté (${forme.chiffres.join('/')})`);
+    assert.ok(forme.large, 'deux colonnes ne tiennent pas dans une modale de 460 px');
     await page.click('#confirmOk');
     /* On attend le PUSH, pas le clone : `estDepot()` devient vrai dès le `git init`, c'est-à-dire
        avant que quoi que ce soit soit parti. Attendre là, ce serait regarder le dépôt nu pendant

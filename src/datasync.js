@@ -98,8 +98,21 @@ const estDepot = () => fs.existsSync(path.join(SHARED_DIR, '.git'));
 /* ---------- Réglages et état ---------- */
 
 const config = () => getConfig();
-const urlDepot = () => String(config().data_repo_url || '').trim();
-const branche = () => String(config().data_repo_branch || '').trim() || 'main';
+/* UN ARGUMENT DE `git` NE PEUT PAS COMMENCER PAR UN TIRET.
+ *
+ * L'adresse et la branche partent telles quelles dans `git ls-remote`, `git fetch` et
+ * `git remote add`. Une valeur comme `--upload-pack=<commande>` n'y serait pas lue comme une
+ * adresse mais comme une OPTION, c'est-à-dire une commande exécutée sur ce poste. Et l'adresse
+ * ne vient pas que des réglages : `GET /api/data-sync/preview?url=…` la prend dans l'URL, donc
+ * n'importe quelle page ouverte dans le navigateur peut l'appeler. On refuse le tiret d'entrée
+ * plutôt que de compter sur un `--` à chaque appel — un oubli y serait invisible.
+ */
+const sansOption = (v) => {
+  const t = String(v || '').trim();
+  return t.startsWith('-') ? '' : t;
+};
+const urlDepot = () => sansOption(config().data_repo_url);
+const branche = () => sansOption(config().data_repo_branch) || 'main';
 const cadenceMs = () => Math.max(10, Number(config().data_sync_seconds) || 30) * 1000;
 
 /** Le partage est-il demandé ? URL vide = mono-poste, et rien de ce module ne tourne. */
@@ -472,7 +485,7 @@ async function contenuA(relatif, sha) {
    « est-ce que je vais initialiser, ou rejoindre ? ». Sans réseau, on ne sait pas, et on le dit
    plutôt que d'affirmer l'un ou l'autre. */
 async function distantPourvu(url) {
-  const adresse = String(url || urlDepot()).trim();
+  const adresse = sansOption(url) || urlDepot();
   if (!adresse) return null;
   try {
     const sortie = await git(['ls-remote', '--heads', adresse, branche()], { timeout: 20000 });
@@ -485,7 +498,7 @@ async function distantPourvu(url) {
    dépôt, un `fetch` puis un `ls-tree` suffisent ; sinon on ne sait pas, et on le dit. */
 async function compterDistant(url) {
   if (!estDepot()) return null;
-  const adresse = String(url || urlDepot()).trim();
+  const adresse = sansOption(url) || urlDepot();
   try {
     await git(['fetch', adresse || 'origin', branche()], { timeout: 60000 });
     const sortie = await git(['ls-tree', '-r', '--name-only', 'FETCH_HEAD']);
@@ -503,7 +516,7 @@ async function compterDistant(url) {
  *   — c'est déjà un dépôt → on remet l'origine à jour, et on fait un tour.
  */
 async function rattacher({ url, onLog = () => {} } = {}) {
-  const adresse = String(url || urlDepot()).trim();
+  const adresse = sansOption(url) || urlDepot();
   if (!adresse) throw new Error('datasync: aucune URL de dépôt de données');
   const qui = identite.identite();
   if (!qui.ok) throw new Error('datasync: git n’a pas de `user.name` — configurez-le avant de partager');

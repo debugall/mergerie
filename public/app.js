@@ -1338,9 +1338,20 @@ let confirmResolve = null;
 /* `check` : { label, checked, danger } ajoute une CASE À COCHER à la confirmation, et la
    promesse rend alors `{ ok, checked }` au lieu d'un booléen. Sert au push forcé — une décision
    qui appartient à celui qui pousse, et qui n'a pas à se cacher dans un second bouton. */
-function confirmDialog({ title, text, detail, confirmLabel, danger = true, check = null } = {}) {
+/* `html` : un corps STRUCTURÉ à la place de la phrase. Un récapitulatif qui aligne des
+   comptes de fichiers et deux colonnes ne se lit pas en paragraphe — et `white-space:
+   pre-line` sur un `<p>` ne fait pas un tableau. Le texte reste l'usage courant ; `wide`
+   élargit la modale quand ce corps porte deux colonnes. */
+function confirmDialog({
+  title, text, html = '', detail, confirmLabel, danger = true, check = null, wide = false,
+} = {}) {
   $('#confirmTitle').textContent = title || tr('confirm.default-title');
   $('#confirmText').textContent = text || '';
+  $('#confirmText').hidden = !text;
+  const corps = $('#confirmBody');
+  corps.hidden = !html;
+  corps.innerHTML = html || '';
+  $('#confirmModal').querySelector('.modal-box').classList.toggle('modal-confirm-lg', !!wide);
   const d = $('#confirmDetail');
   d.hidden = !detail;
   d.textContent = detail || '';
@@ -6335,27 +6346,51 @@ document.addEventListener('click', async (ev) => {
  * un « oui ». La liste de ce qui RESTE est la plus utile des deux : sessions et todos sont
  * privées par défaut, et l'apprendre ici vaut mieux que de chercher sa session chez un collègue.
  */
-function resumeApercu(a) {
+function resumeApercu(a, pied) {
   const nom = (cle) => tr(`datasync.apercu.${cle}`);
-  const part = (a.partants || []).map((x) => `${x.n} ${nom(x.cle)}`).join(' · ');
-  const reste = (a.retenus || []).map((x) => `${x.n} ${nom(x.cle)}`).join(' · ');
-  const lignes = [
+  /* UNE LIGNE PAR FAMILLE, le nombre à gauche. Tout sur une seule ligne séparée par des
+     points médians, c'était une phrase de deux cents caractères où l'on cherchait son objet :
+     on veut y trouver « mes sessions » du regard, pas la lire. */
+  const liste = (xs) => `<ul class="apercu-liste">${(xs || []).map((x) => `<li><b>${esc(String(x.n))}</b> <span>${esc(nom(x.cle))}</span></li>`).join('')}</ul>`;
+  const colonne = (cle, icone, xs, note) => `<section class="apercu-col apercu-col-${cle}">
+      <h4>${svgIco(icone)}<span>${esc(tr(`datasync.apercu.${cle}-titre`))}</span></h4>
+      ${xs && xs.length ? liste(xs) : `<p class="apercu-vide muted">${esc(tr('datasync.apercu.rien'))}</p>`}
+      ${note ? `<p class="apercu-note muted">${esc(note)}</p>` : ''}
+    </section>`;
+  /* CE QUE L'ENVOI FERA, FICHIER PAR FICHIER. « 0 supprimé » n'est pas une estimation : l'export
+     écrit, il ne supprime jamais — et ce qu'il ne touche pas, ce sont les documents des autres.
+     Le zéro est donc AFFICHÉ, pas omis : c'est lui qu'on vient vérifier. */
+  const e = a.ecriture || {};
+  const chiffre = (cle, v, ton) => `<div class="apercu-chiffre${ton ? ` apercu-chiffre-${ton}` : ''}">
+      <b>${esc(String(v))}</b><span>${esc(nom(cle))}</span></div>`;
+  return `<div class="apercu">
+    <p class="apercu-tete apercu-tete-${a.pourvu === null ? 'muet' : (a.pourvu ? 'rejoint' : 'init')}">${esc(
     a.pourvu === null ? tr('datasync.apercu.injoignable')
       : tr(a.pourvu ? 'datasync.apercu.rejoindre' : 'datasync.apercu.initialiser'),
-    part ? tr('datasync.apercu.part', { liste: part }) : tr('datasync.apercu.rien'),
-  ];
-  /* CE QUE LE DÉPÔT PORTE DÉJÀ — la question qu'on se pose vraiment devant ce bouton : « est-ce
-     que je vais écraser le travail des autres ? ». On répond par un nombre et par la règle. */
-  if (a.distants) lignes.push(tr('datasync.apercu.distants', { n: a.distants, count: a.distants }));
-  /* CE QUE L'ENVOI FERA, FICHIER PAR FICHIER. « 0 supprimé » n'est pas une estimation : l'export
-     écrit, il ne supprime jamais — et ce qu'il ne touche pas, ce sont les documents des autres. */
-  const e = a.ecriture || {};
-  lignes.push(tr('datasync.apercu.ecriture', {
-    nouveaux: e.nouveaux || 0, modifies: e.modifies || 0, identiques: e.identiques || 0,
-  }));
-  lignes.push(tr('datasync.apercu.pas-de-suppression', { intacts: e.intacts || 0 }));
-  if (reste) lignes.push(tr('datasync.apercu.reste', { liste: reste }));
-  return lignes.join('\n\n');
+  )}</p>
+    <div class="apercu-cols">
+      ${colonne('part', 'upload', a.partants, '')}
+      ${colonne('reste', 'lock', a.retenus, tr('datasync.apercu.reste-note'))}
+    </div>
+    <div class="apercu-bloc">
+      <h4>${svgIco('doc')}<span>${esc(tr('datasync.apercu.fichiers'))}</span></h4>
+      <div class="apercu-chiffres">
+        ${chiffre('ajoutes', e.nouveaux || 0)}
+        ${chiffre('modifies', e.modifies || 0)}
+        ${chiffre('inchanges', e.identiques || 0)}
+        ${chiffre('supprimes', e.supprimes || 0, 'nul')}
+      </div>
+      <p class="apercu-note muted">${esc(e.intacts
+    ? tr('datasync.apercu.ecriture-note', { intacts: e.intacts, n: e.intacts })
+    : tr('datasync.apercu.ecriture-note-nul'))}</p>
+    </div>
+    ${/* CE QUE LE DÉPÔT PORTE DÉJÀ — la question qu'on se pose vraiment devant ce bouton :
+         « est-ce que je vais écraser le travail des autres ? ». Un nombre, puis la règle. */
+    a.distants ? `<p class="apercu-distants">${svgIco('users')}<span>${esc(tr('datasync.apercu.distants', { n: a.distants, count: a.distants }))}</span></p>` : ''}
+    ${/* LA RÈGLE, EN BAS ET EN PETIT. Elle vivait dans le `<pre>` des détails — police à
+         chasse fixe et pas de retour à la ligne : une phrase y sortait du cadre. */
+    pied ? `<p class="apercu-pied muted">${esc(pied)}</p>` : ''}
+  </div>`;
 }
 
 const btnDataAttach = $('#btnDataAttach');
@@ -6363,15 +6398,20 @@ if (btnDataAttach) btnDataAttach.addEventListener('click', async () => {
   const btn = btnDataAttach;
   const url = String(($('#configForm').data_repo_url || {}).value || '').trim();
   if (!url) { toast(tr('datasync.err.url-required'), true); return; }
+  /* L'APERÇU INTERROGE LE DÉPÔT DISTANT : un `ls-remote` sur un dépôt lointain prend
+     facilement plusieurs secondes, et un bouton qui ne bouge pas se re-clique. Le bouton
+     tourne, et la ligne d'état dit ce qu'on attend. */
   let apercu = null;
-  try { apercu = await api(`/data-sync/preview?url=${encodeURIComponent(url)}`); }
-  catch (e) { toast(explainError(e.message), true); return; }
+  $('#dataSyncInfo').textContent = tr('datasync.apercu.calcul');
+  try { apercu = await busy(btn, () => api(`/data-sync/preview?url=${encodeURIComponent(url)}`)); }
+  catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); return; }
+  $('#dataSyncInfo').textContent = '';
   if (!await confirmDialog({
     title: tr('datasync.btn.attach'),
-    text: resumeApercu(apercu),
-    detail: tr('datasync.apercu.detail'),
+    html: resumeApercu(apercu, tr('datasync.apercu.detail')),
     confirmLabel: tr('datasync.apercu.go'),
     danger: false,
+    wide: true,
   })) return;
   btn.disabled = true;
   $('#dataSyncInfo').textContent = tr('datasync.working');
@@ -6404,13 +6444,16 @@ if (btnDataAttach) btnDataAttach.addEventListener('click', async () => {
 const btnDataReexport = $('#btnDataReexport');
 if (btnDataReexport) btnDataReexport.addEventListener('click', async () => {
   let apercu = null;
-  try { apercu = await api('/data-sync/preview'); } catch (e) { toast(explainError(e.message), true); return; }
+  $('#dataSyncInfo').textContent = tr('datasync.apercu.calcul');
+  try { apercu = await busy(btnDataReexport, () => api('/data-sync/preview')); }
+  catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); return; }
+  $('#dataSyncInfo').textContent = '';
   if (!await confirmDialog({
     title: tr('datasync.btn.reexport'),
-    text: resumeApercu(apercu),
-    detail: tr('datasync.title.reexport'),
+    html: resumeApercu(apercu, tr('datasync.title.reexport')),
     confirmLabel: tr('datasync.reexport.go'),
     danger: false,
+    wide: true,
   })) return;
   $('#dataSyncInfo').textContent = tr('datasync.working');
   try {

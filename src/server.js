@@ -5141,17 +5141,26 @@ app.get('/api/data-sync/preview', wrap(async (req, res) => {
       retenus[groupe] = (retenus[groupe] || 0) + (rows.length - part);
     }
   }
+  const pourvu = await datasync.distantPourvu(url);
+  /* CE QUE L'ENVOI FERAIT, fichier par fichier : ajoutés, modifiés, inchangés — et ce qu'il
+     ne touche pas. `supprimes` vaut zéro et ce n'est pas une estimation : l'export écrit, il
+     ne supprime jamais.
+     `apercuExport()` compare au RÉPERTOIRE DE TRAVAIL, qui porte déjà les fichiers que ce poste
+     a écrits sans destinataire. Devant un dépôt VIDE, ces fichiers-là sont « inchangés » ici et
+     pourtant ils partiront tous : annoncer « 0 ajouté, 12 inchangés » avant d'initialiser un
+     dépôt nu reviendrait à dire que rien ne part. Face à un dépôt vide, tout est nouveau. */
+  const ecrit = store.apercuExport();
+  const ecriture = pourvu === false
+    ? { nouveaux: ecrit.nouveaux + ecrit.modifies + ecrit.identiques, modifies: 0, identiques: 0, intacts: 0, supprimes: 0 }
+    : ecrit;
   res.json({
     url,
-    pourvu: await datasync.distantPourvu(url),   // true = on rejoint, false = on initialise, null = injoignable
+    pourvu,   // true = on rejoint, false = on initialise, null = injoignable
     /* CE QUE LE DÉPÔT PORTE DÉJÀ : la réponse à « est-ce que je vais écraser le travail des
        autres ? ». Non — on lit d'abord, on n'écrit qu'ensuite, et on ne supprime jamais — mais
        le dire avec un nombre vaut mieux que le promettre. */
     distants: await datasync.compterDistant(url),
-    /* CE QUE L'ENVOI FERAIT, fichier par fichier : ajoutés, modifiés, inchangés — et ce qu'il
-       ne touche pas. `supprimes` vaut zéro et ce n'est pas une estimation : l'export écrit, il
-       ne supprime jamais. */
-    ecriture: store.apercuExport(),
+    ecriture,
     partants: Object.entries(partants).filter(([, n]) => n).map(([cle, n]) => ({ cle, n })),
     retenus: Object.entries(retenus).filter(([, n]) => n).map(([cle, n]) => ({ cle, n })),
   });

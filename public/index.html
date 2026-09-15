@@ -2317,6 +2317,10 @@
     <div class="modal-box modal-confirm">
         <h3 id="confirmTitle"></h3>
         <p id="confirmText" class="confirm-text"></p>
+        <!-- Corps STRUCTURÉ, optionnel : un récapitulatif qui compte des fichiers et deux
+             colonnes « ce qui part / ce qui reste » se lit en tableau, pas en paragraphe.
+             Absent par défaut — les confirmations en une phrase ne changent pas d'aspect. -->
+        <div id="confirmBody" class="confirm-body" hidden></div>
         <pre id="confirmDetail" class="confirm-detail" hidden></pre>
         <!-- Case OPTIONNELLE : une confirmation qui porte une décision de plus. Le premier
              usage est le push forcé, qu'on ne veut ni imposer ni cacher dans un bouton à part.

@@ -977,7 +977,57 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 /* Modale de confirmation : plus étroite que les formulaires, le texte doit se lire d'un
    coup d'œil. `confirm-detail` porte la liste des éléments concernés (containers, refs…). */
 .modal-confirm { width: 460px; }
+/* Une confirmation qui porte un RÉCAPITULATIF (ce qui part, ce qui reste, ce que l'envoi
+   écrira) ne tient pas en 460 px : les deux colonnes s'y empilaient en une bande étroite.
+   Assez large pour deux colonnes, pas plus — au-delà, la phrase d'en-tête se lit en balayant. */
+.modal-confirm.modal-confirm-lg { width: min(760px, 95vw); }
 .confirm-text { margin: 6px 0 0; white-space: pre-line; }
+.confirm-text[hidden] { display: none; }
+
+/* ============ Aperçu d'un envoi vers le dépôt d'équipe ============
+
+   TROIS QUESTIONS, TROIS ZONES. « Qu'est-ce qui part ? », « qu'est-ce qui reste chez moi ? »
+   et « qu'est-ce que ça écrit là-bas ? » se posaient en un seul paragraphe de six lignes où
+   l'on cherchait son objet à la relecture. Deux colonnes côte à côte pour les deux premières
+   — leur opposition EST l'information —, un bloc de chiffres pour la troisième. */
+.confirm-body { margin: 10px 0 0; }
+.apercu { display: flex; flex-direction: column; gap: 12px; }
+.apercu-tete { margin: 0; font-size: var(--fs-sm); line-height: 1.45; border-left: 3px solid var(--line);
+  padding: 2px 0 2px 10px; color: var(--text); }
+.apercu-tete-rejoint { border-left-color: var(--accent); }
+.apercu-tete-init { border-left-color: var(--green); }
+.apercu-tete-muet { border-left-color: var(--amber); }
+.apercu-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 620px) { .apercu-cols { grid-template-columns: 1fr; } }
+.apercu-col, .apercu-bloc { background: var(--panel2); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 10px 12px; }
+/* Ce qui part et ce qui reste ne sont pas deux listes de même nature : la première ouvre,
+   la seconde protège. Un liseré suffit à les distinguer sans les colorer entièrement. */
+.apercu-col-part { border-top: 2px solid var(--accent); }
+.apercu-col-reste { border-top: 2px solid var(--muted); }
+.apercu-col h4, .apercu-bloc h4 { margin: 0 0 8px; display: flex; align-items: center; gap: 6px;
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.apercu-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.apercu-liste li { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-sm); line-height: 1.35; }
+/* Le nombre est ce qu'on vient chercher : colonne fixe, tabulaire, aligné à droite — sinon
+   « 1 » et « 128 » décalent leurs libellés et la liste ne se parcourt plus verticalement. */
+.apercu-liste li b { min-width: 2.6em; text-align: right; font-variant-numeric: tabular-nums; }
+.apercu-vide { margin: 0; font-size: var(--fs-sm); }
+.apercu-note { margin: 8px 0 0; font-size: var(--fs-xs); line-height: 1.4; }
+.apercu-chiffres { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+@media (max-width: 620px) { .apercu-chiffres { grid-template-columns: repeat(2, 1fr); } }
+.apercu-chiffre { display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 4px; }
+.apercu-chiffre b { font-size: var(--fs-lg, 1.15rem); font-variant-numeric: tabular-nums; }
+.apercu-chiffre span { font-size: var(--fs-xs); color: var(--muted); }
+/* « Supprimés : 0 » n'est pas un chiffre parmi d'autres — c'est celui qu'on vient vérifier
+   avant de cliquer. Il s'affiche donc même à zéro, et se lit comme une garantie. */
+.apercu-chiffre-nul b { color: var(--green-text); }
+.apercu-distants { margin: 0; display: flex; align-items: flex-start; gap: 8px; font-size: var(--fs-xs);
+  line-height: 1.45; background: var(--panel2); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 8px 10px; color: var(--muted); }
+.apercu-distants .ico { flex: none; margin-top: 1px; }
+.apercu-pied { margin: 0; font-size: var(--fs-xs); line-height: 1.45; border-top: 1px solid var(--line); padding-top: 8px; }
 .confirm-detail { margin: 10px 0 0; max-height: 220px; overflow: auto; background: var(--panel2);
   border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; font-size: var(--fs-xs); }
 .modal-fields { display: flex; flex-direction: column; gap: 10px; margin: 14px 0 4px; }
