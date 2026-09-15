@@ -374,6 +374,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   reason on hover: a dangling dash reads as an empty title, the number alone reads as a title
   not known yet — which is what is true.
 
+- **Automatic sync now sends what runs in the background, instead of waiting for a click.** The
+  queue of pending writes is drained at the end of every non-GET request, and that is what arms
+  the grouped commit. Anything written *outside* a request went through nobody: a merge request
+  discovered on its own, a review finishing, a session committing, the Jira watch. Their work
+  stayed in the queue, no commit was armed, and the next round found nothing to push — while
+  the **Sync** button, which commits first, sent everything. Hence “it only leaves when I
+  click.” A round now makes the same gesture as the button. With nothing to commit it costs one
+  `git add -A` and an empty `diff --cached`: the price of a loop that stands on its own.
+
 - **“Clone / attach” no longer fails on `index.lock`.** Three things write into the shared
   repository without knowing about each other: the periodic round, the commit grouped three
   seconds after your last write, and the attach you just asked for. Two of them at once and git

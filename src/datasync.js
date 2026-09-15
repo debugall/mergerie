@@ -248,6 +248,19 @@ async function tourMaintenant() {
   try {
     // Si l'on a accepté de dire sa dépense, c'est le moment : avant de regarder ce qui a changé.
     try { exporterUsage(); } catch { /* la dépense n'est pas une raison d'échouer une synchro */ }
+    /* UN TOUR COMMITE CE QUI ATTEND — sinon il ne peut rien pousser.
+     *
+     * La file d'écritures est écoulée par le serveur à la fin de chaque requête NON-GET, et
+     * `marquerSale` arme alors le commit groupé. Tout ce qui est écrit HORS d'une requête ne
+     * passe donc par personne : une découverte de MR, une review qui se termine, une session
+     * qui commite, la veille Jira. Leur travail restait dans la file, aucun commit n'était
+     * armé, et le tour suivant ne trouvait rien à pousser — la synchro automatique tournait
+     * en rond pendant que le bouton « Synchroniser », lui, commitait d'abord et envoyait tout.
+     * C'est ce que l'utilisateur voyait : « ça ne part que quand je clique ».
+     *
+     * Le tour fait donc maintenant le même geste que le bouton. Sans rien à commiter, c'est un
+     * `git add -A` suivi d'un `diff --cached` vide : le prix d'une boucle qui se suffit. */
+    try { await commiterMaintenant(); } catch { /* le tour suivant réessaiera */ }
     await git(['fetch', 'origin', branche()]);
     await majCompteurs();
     if (!etatSync.enRetard && !etatSync.enAvance) { etatSync.erreur = null; etatSync.dernierPull = new Date().toISOString(); return bilan; }

@@ -527,6 +527,27 @@ describe('datasync — deux postes, un dépôt de données', () => {
     assert.equal(max, 1, `deux git en même temps dans le même dépôt : c'est ça, index.lock (${max})`);
   });
 
+  /* UN TOUR ENVOIE CE QU'UN TRAITEMENT DE FOND A ÉCRIT.
+     La file d'écritures est écoulée par le serveur à la fin de chaque requête non-GET. Tout ce
+     qui s'écrit HORS d'une requête — une découverte de MR, une review qui se termine, une
+     session qui commite — ne passe par personne : le travail restait dans la file, aucun commit
+     n'était armé, et le tour ne trouvait rien à pousser. Vu de l'utilisateur : « ça ne part que
+     quand je clique », puisque le bouton, lui, commite d'abord. On reproduit exactement ça — on
+     écrit SANS écouler la file — et on regarde le dépôt nu. */
+  test('un tour envoie ce qu’un traitement de fond a écrit, sans attendre une requête', () => {
+    const retard = dans(posteA, `async ({ db, store, notes, datasync, MSGS }) => {
+      const p = notes.creerPage({ title: 'Ecrit par un job de fond', content: 'du fond' }, MSGS);
+      db.prepare('UPDATE note_page SET shared = 1 WHERE id = ?').run(p.id);
+      const enFile = store.enRetard();
+      await datasync.tour();
+      return enFile;
+    }`);
+    assert.ok(retard > 0, 'le décor doit bien être « des écritures en attente, personne pour les écouler »');
+    const listing = execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' });
+    assert.match(listing, /notes\/ecrit-par-un-job-de-fond\.md/,
+      'la synchro automatique doit envoyer sans qu’on ait à cliquer');
+  });
+
   /* UNE ADRESSE N'EST PAS UNE OPTION. L'URL du dépôt part telle quelle dans l'argv de `git`, et
      elle ne vient pas que des réglages : l'aperçu la prend dans la query string d'un GET, donc
      n'importe quelle page ouverte dans le navigateur peut l'appeler. Une valeur qui commence par
