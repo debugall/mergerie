@@ -6468,11 +6468,10 @@ app.post('/api/mrs/:id/explain', wrap((req, res) => {
   res.json(job);
 }));
 
-app.get('/api/mrs/:id/diff', wrap((req, res) => {
+app.get('/api/mrs/:id/diff', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
-  const rev = db.prepare('SELECT diff_path FROM review WHERE mr_id = ?').get(mr.id);
-  res.json({ diff: rev ? readFileSafe(rev.diff_path) : null });
+  res.json({ diff: await diffDeLaMr(mr) });
 }));
 
 /* Diff d'une MR AVANT review : permet de juger une MR sans dépenser un appel IA
@@ -6489,10 +6488,10 @@ app.get('/api/mrs/:id/diffview', wrap(async (req, res) => {
   if (!repo) throw new Error(t('err.depot-introuvable'));
   const cfg = getConfig();
   const cwd = await git.ensureRepo(cfg, repo, () => {});
-  // Si la review a déjà stocké le diff, on le réutilise ; sinon calcul en direct.
-  const rev = db.prepare('SELECT diff_path FROM review WHERE mr_id = ?').get(mr.id);
-  const stored = rev ? readFileSafe(rev.diff_path) : null;
-  const diff = stored || await git.targetedDiff(cwd, mr.source_branch, mr.target_branch, () => {});
+  /* Si la review a déjà stocké le diff, on le réutilise ; sinon calcul en direct — et le clone
+     vient d'être mis à jour, donc `diffDeLaMr` n'a rien à aller chercher. */
+  const diff = await diffDeLaMr(mr, cwd)
+    || await git.targetedDiff(cwd, mr.source_branch, mr.target_branch, () => {});
   /* LA MÊME VERSION QUE LE RAPPORT. Le diff servi ici est celui de la review ; l'arborescence
      doit donc être celle du commit REVIEWÉ, pas de la tête de branche — sinon, dès que la
      branche avance, l'écran mélange deux versions : un fichier listé d'après la tête, un
@@ -6514,6 +6513,47 @@ function changedFilesFromDiff(diff) {
   while ((m = re.exec(diff))) set.add(m[2]);
   return set;
 }
+/* LE DIFF D'UNE REVIEW EST UN FICHIER DE CETTE MACHINE — et le collègue ne l'a pas.
+ *
+ * `review.diff_path` est un chemin local : il ne part pas dans le dépôt de données, et il n'y
+ * aurait aucun sens. Le poste qui REÇOIT une review ouvrait donc « le code » sur un arbre sans
+ * un seul fichier colorié et un diff vide — le rapport était arrivé, le code à côté duquel le
+ * lire, non.
+ *
+ * On le RECALCULE depuis son clone quand le fichier manque. Un diff de merge request n'est pas
+ * une donnée à transporter : c'est une fonction de deux références que tout le monde a. On vise
+ * le commit RELU tant que le clone le porte — c'est de celui-là que parle le rapport, et c'est
+ * l'arbre qu'on affiche à côté — et on retombe sur la tête de branche sinon (force-push,
+ * branche avancée depuis).
+ *
+ * Aucun `fetch` tant que les références sont là : `/diff` et `/tree` partent EN PARALLÈLE
+ * depuis l'écran, et deux fetch simultanés dans le même clone se disputeraient ses verrous.
+ */
+async function diffDeLaMr(mr, cwdConnu = null) {
+  const rev = db.prepare('SELECT diff_path FROM review WHERE mr_id = ?').get(mr.id);
+  const garde = rev ? readFileSafe(rev.diff_path) : null;
+  if (garde) return garde;
+  const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(mr.repo_id);
+  if (!repo || !mr.target_branch || !(mr.reviewed_sha || mr.source_branch)) return null;
+  try {
+    let cwd = cwdConnu || git.cloneDirFor(getConfig(), repo);
+    const base = `origin/${mr.target_branch}`;
+    const vise = async () => (mr.reviewed_sha && await git.refExists(cwd, mr.reviewed_sha)
+      ? mr.reviewed_sha
+      : (mr.source_branch && await git.refExists(cwd, `origin/${mr.source_branch}`)
+        ? `origin/${mr.source_branch}` : null));
+    let ref = await vise();
+    /* LE CLONE PEUT ÊTRE EN RETARD : une branche créée après le dernier fetch n'y est pas
+       encore. On ne va chercher qu'à ce moment-là — pas à chaque ouverture. */
+    if (!cwdConnu && (!ref || !await git.refExists(cwd, base))) {
+      cwd = await git.ensureRepo(getConfig(), repo, () => {});
+      ref = await vise();
+    }
+    if (!ref || !await git.refExists(cwd, base)) return null;
+    return await git.diffTroisPoints(cwd, base, ref);
+  } catch { return null; }
+}
+
 function mrCloneCtx(mr) {
   const cfg = getConfig();
   const cwd = git.cloneDirFor(cfg, { project: mr.project, forge: mr.forge });
@@ -6590,8 +6630,7 @@ app.get('/api/mrs/:id/tree', wrap(async (req, res) => {
   let files;
   try { files = await git.lsTree(cwd, ref); }
   catch { files = await git.lsTree(cwd, `origin/${mr.source_branch}`); }
-  const rev = db.prepare('SELECT diff_path FROM review WHERE mr_id = ?').get(mr.id);
-  const changed = changedFilesFromDiff(rev ? readFileSafe(rev.diff_path) : null);
+  const changed = changedFilesFromDiff(await diffDeLaMr(mr, cwd));
   res.json({ ref, target: mr.target_branch, files: files.map((f) => ({ path: f, changed: changed.has(f) })) });
 }));
 

@@ -200,6 +200,29 @@ describe('Review de bout en bout', () => {
     assert.match(fd.body.diff, /const b = 2;/);
   });
 
+  /* CHEZ LE COLLÈGUE, LE FICHIER DU DIFF N'EXISTE PAS. `review.diff_path` est un chemin de
+     CETTE machine : il ne part pas dans le dépôt de données, et il n'y aurait aucun sens. Le
+     poste qui reçoit la review ouvrait donc « le code » sur un arbre sans un seul fichier
+     colorié et un diff vide — le rapport arrivé, le code à côté duquel le lire, non. On simule
+     exactement ça : la ligne de review est là, son fichier non. */
+  test('une review reçue de l’équipe ouvre le code avec ses fichiers modifiés', async () => {
+    const avant = app.db.prepare('SELECT diff_path FROM review WHERE mr_id = ?').get(mrId);
+    app.db.prepare('UPDATE review SET diff_path = NULL WHERE mr_id = ?').run(mrId);
+    try {
+      const diff = await app.api('GET', `/api/mrs/${mrId}/diff`);
+      assert.match(String(diff.body.diff || ''), /\+const b = 2;/,
+        'le diff se recalcule depuis le clone : c’est une fonction de deux références, pas une donnée à transporter');
+
+      const tree = await app.api('GET', `/api/mrs/${mrId}/tree`);
+      const modifies = (tree.body.files || []).filter((f) => f.changed).map((f) => f.path);
+      assert.ok(modifies.includes('src/app.js'), `aucun fichier colorié : ${JSON.stringify(modifies)}`);
+      assert.equal(tree.body.files.find((f) => f.path === 'README.md').changed, false,
+        'et un fichier intact ne se colorie pas pour autant');
+    } finally {
+      app.db.prepare('UPDATE review SET diff_path = ? WHERE mr_id = ?').run(avant.diff_path, mrId);
+    }
+  });
+
   /* LA VUE PLEIN ÉCRAN PARLE D'UNE SEULE VERSION. Le rapport décrit le commit REVIEWÉ, et
      `/file` comme `/filediff` servent ce commit-là. `/diffview`, lui, listait l'arborescence de
      la TÊTE de branche : dès qu'un commit arrivait après la review, l'écran mélangeait deux

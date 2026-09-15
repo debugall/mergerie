@@ -314,6 +314,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Opening the code on a review received from the team shows the changed files again.** The
+  report arrived, but the code to read it against did not: `review.diff_path` is a path on the
+  machine that ran the review, so it never travels — and the two endpoints behind “open the
+  code” read nothing else. The colleague got a file tree with **not one file coloured** and an
+  empty diff. The diff is now recomputed from their own clone when the file is missing: a merge
+  request's diff is not data to carry around, it is a function of two references everyone has.
+  It targets the **reviewed commit** while the clone still holds it — the tree next to it shows
+  that same commit — and falls back to the branch head otherwise. No fetch as long as the
+  references are there: the two calls leave the screen in parallel, and two fetches at once in
+  one clone would fight over its locks.
+
 - **A merge request received from the team now arrives with its title.** Title, branches and
   author only travelled once an MR was closed: while it is open the forge is authoritative, and
   sharing a mutable value makes stale data travel. The argument does not survive what it
