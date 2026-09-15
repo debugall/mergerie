@@ -303,6 +303,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **“Clone / attach” no longer fails on `index.lock`.** Three things write into the shared
+  repository without knowing about each other: the periodic round, the commit grouped three
+  seconds after your last write, and the attach you just asked for. Two of them at once and git
+  answers `Unable to create index.lock: File exists` — in practice it is *your* gesture that
+  fails, because a timer took the lock a second earlier. The guard only protected the periodic
+  round against itself. The three now queue: a request **waits its turn instead of failing**, in
+  the order asked. A periodic round that falls while something else is working is skipped rather
+  than queued — it comes back in a few seconds, and stacking identical rounds behind a slow
+  attach would only replay them for nothing.
+
 - **Answering an exploration's question now closes the todo it left behind.** A session that
   stops to ask puts a high-priority todo in your list — the queue is free and nothing will
   restart on its own. It was closed only once no repository of the session was waiting any

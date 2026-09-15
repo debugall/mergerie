@@ -36,8 +36,9 @@ let racine; let nu; let posteA; let posteB;
 
 /* Exécute du code DANS un poste : un processus à lui, avec son `MERGERIE_DATA_DIR`, donc sa
    base. Le code reçoit `{ db, store, datasync, notes, config, MSGS }` et rend ce qu'il veut. */
-function dans(poste, corps) {
+function dans(poste, corps, avant = '') {
   const script = `
+    ${avant}
     const MSGS = { titreVide: 'v', inconnue: 'i', tropProfond: 'p', soiMeme: 's',
       prioriteInvalide: 'p', dateInvalide: 'd', lienInvalide: 'l', statutInvalide: 'st' };
     const db = require(${JSON.stringify(path.join(ROOT, 'src/db'))});
@@ -486,6 +487,44 @@ describe('datasync — deux postes, un dépôt de données', () => {
         { encoding: 'utf8' });
     } catch { trouve = ''; }        // `git grep` sort en 1 quand il ne trouve rien : c'est le cas vert
     assert.equal(trouve.trim(), '', `un jeton est parti dans le dépôt de données : ${trouve}`);
+  });
+
+  /* DEUX GESTES EN MÊME TEMPS NE SE DISPUTENT PAS `index.lock`.
+     Le tour périodique, le commit groupé et le rattachement écrivent dans le même dépôt sans se
+     connaître. Deux d'entre eux à la fois, et git rend « Unable to create index.lock: File
+     exists » — c'est le geste de l'utilisateur qui échoue parce qu'une minuterie avait pris le
+     verrou. On ne compte donc pas les erreurs (elles dépendent du moment), on compte les
+     PROCESSUS git vivants en même temps : la propriété est « jamais deux », et elle se vérifie
+     sans rien parier sur la vitesse de la machine. */
+  test('deux gestes en même temps ne lancent jamais deux git à la fois', () => {
+    /* `execFile` est déstructuré au chargement de datasync : on l'enveloppe AVANT les `require`,
+       d'où le prologue. Le compteur monte à l'appel, redescend au rappel. */
+    const espion = `
+      const cp = require('node:child_process');
+      const vraiExecFile = cp.execFile;
+      global.__gitMax = 0;
+      let vivants = 0;
+      cp.execFile = function (...args) {
+        const i = args.length - 1;
+        const rappel = args[i];
+        if (typeof rappel !== 'function') return vraiExecFile.apply(this, args);
+        vivants += 1;
+        if (vivants > global.__gitMax) global.__gitMax = vivants;
+        args[i] = function (...r) { vivants -= 1; return rappel.apply(this, r); };
+        return vraiExecFile.apply(this, args);
+      };
+    `;
+    const max = dans(posteA, `async ({ datasync, notes, MSGS }) => {
+      notes.creerPage({ title: 'Deux gestes', content: 'x' }, MSGS);
+      /* Lancés dans le MÊME tour de boucle : sans file, les deux premiers git partent ensemble. */
+      await Promise.all([
+        datasync.commiter('un geste').catch(() => null),
+        datasync.rattacher({}).catch(() => null),
+      ]);
+      return global.__gitMax;
+    }`, espion);
+    assert.ok(max >= 1, 'le test doit avoir vu passer des commandes git');
+    assert.equal(max, 1, `deux git en même temps dans le même dépôt : c'est ça, index.lock (${max})`);
   });
 
   /* UNE ADRESSE N'EST PAS UNE OPTION. L'URL du dépôt part telle quelle dans l'argv de `git`, et

@@ -57,6 +57,30 @@ let minuterieTour = null;
 let prochainTour = 0;
 let enCours = false;
 let dernierMessage = null;
+
+/* UN SEUL GIT À LA FOIS DANS CE DÉPÔT.
+ *
+ * Trois choses écrivent dans `data/shared` sans se connaître : le tour périodique, le commit
+ * groupé armé trois secondes après la dernière écriture, et le rattachement demandé à l'écran.
+ * Deux d'entre elles en même temps, et git rend `Unable to create index.lock: File exists` —
+ * concrètement, c'est le geste de l'utilisateur qui échoue parce qu'une minuterie avait pris le
+ * verrou une seconde plus tôt. `enCours` ne protégeait que le tour CONTRE LUI-MÊME.
+ *
+ * On les met donc à la file : une demande ATTEND son tour au lieu d'échouer, et l'ordre est
+ * celui des demandes. La file survit à une opération qui échoue — sinon la première panne de
+ * réseau bloquerait tout ce qui suit.
+ */
+let file = Promise.resolve();
+function seul(fn) {
+  const suite = file.then(fn);
+  file = suite.then(() => {}, () => {});
+  return suite;
+}
+
+/* LES PORTES PUBLIQUES PASSENT PAR LA FILE, les appels internes par la version nue :
+   `rattacher` commite lui-même, et se remettre en file derrière soi ne se débloquerait jamais. */
+const commiter = (message = null) => seul(() => commiterMaintenant(message));
+const rattacher = (options = {}) => seul(() => rattacherMaintenant(options));
 const etatSync = {
   configure: false, enAvance: 0, enRetard: 0, dernierPull: null, dernierPush: null,
   erreur: null, conflits: 0,
@@ -162,7 +186,7 @@ function marquerSale(message) {
 }
 
 /** Commite ce qui a changé dans le dépôt de données. Sans rien à commiter, ne fait rien. */
-async function commiter(message = null) {
+async function commiterMaintenant(message = null) {
   if (!estDepot()) return false;
   /* CE QUI N'EST PAS ENCORE ÉCRIT NE PEUT PAS ÊTRE COMMITÉ. On écoule la file avant de regarder
      ce qui a changé : sinon un commit partirait sans la modification qui l'a déclenché. */
@@ -219,9 +243,7 @@ async function hydraterDepuis(avant, apres) {
  * Un tour complet. Jamais deux en même temps : une synchronisation qui se chevauche produit
  * exactement le genre de rebase à moitié fait qu'on veut éviter.
  */
-async function tour() {
-  if (!estConfigure() || !estDepot() || enCours) return null;
-  enCours = true;
+async function tourMaintenant() {
   const bilan = { pull: false, push: false, hydrate: null, conflits: [] };
   try {
     // Si l'on a accepté de dire sa dépense, c'est le moment : avant de regarder ce qui a changé.
@@ -271,10 +293,19 @@ async function tour() {
        l'orange, et le prochain tour réessaie. Rien n'est perdu — tout est commité localement. */
     etatSync.erreur = String(e.message || e).slice(0, 300);
   } finally {
-    enCours = false;
     etatSync.conflits = db.prepare("SELECT COUNT(*) n FROM local_state WHERE kind = 'conflict'").get().n;
   }
   return bilan;
+}
+
+/* UN TOUR EN RETARD NE SE RATTRAPE PAS. Le tour périodique qui tombe pendant qu'un autre geste
+   travaille est SAUTÉ, pas mis en file : il repassera dans quelques secondes, et empiler des
+   tours identiques derrière un rattachement lent ne ferait que les rejouer pour rien. Les
+   gestes de l'utilisateur, eux, attendent — eux, on les a demandés. */
+function tour() {
+  if (!estConfigure() || !estDepot() || enCours) return Promise.resolve(null);
+  enCours = true;
+  return seul(tourMaintenant).finally(() => { enCours = false; });
 }
 
 /* ---------- Conflits : jamais de blocage, jamais de marqueur ---------- */
@@ -515,7 +546,7 @@ async function compterDistant(url) {
  *     déjà en local. C'est la bascule d'une équipe : le poste qui a l'historique le pousse ;
  *   — c'est déjà un dépôt → on remet l'origine à jour, et on fait un tour.
  */
-async function rattacher({ url, onLog = () => {} } = {}) {
+async function rattacherMaintenant({ url, onLog = () => {} } = {}) {
   const adresse = sansOption(url) || urlDepot();
   if (!adresse) throw new Error('datasync: aucune URL de dépôt de données');
   const qui = identite.identite();
@@ -557,7 +588,7 @@ async function rattacher({ url, onLog = () => {} } = {}) {
     onLog('export');
     const compte = store.exporterTout();
     await majAuteurs(null);          // au rattachement, on recense tout ce que l'équipe a écrit
-    await commiter('join shared data repository');
+    await commiterMaintenant('join shared data repository');
     /* On vient de commiter NOS fichiers : ils décrivent déjà cette base, il n'y a rien à en
        réhydrater. Sans ça le premier tour rejouerait notre propre export contre nous-mêmes. */
     poserHydrate(await gitOu(['rev-parse', 'HEAD'], sha));
@@ -567,7 +598,7 @@ async function rattacher({ url, onLog = () => {} } = {}) {
 
   onLog('export');
   const compte = store.exporterTout();
-  await commiter('initialise shared data repository');
+  await commiterMaintenant('initialise shared data repository');
   poserHydrate(await gitOu(['rev-parse', 'HEAD'], ''));
   try {
     await git(['push', '-u', 'origin', `HEAD:${branche()}`]);
