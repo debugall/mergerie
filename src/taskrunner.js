@@ -11,6 +11,7 @@ const agentsession = require('./agentsession');
 const questions = require('./questions');
 const { avecConsignes } = require('./prompts');
 const agentpass = require('./agentpass');
+const protocol = require('./protocol');
 const agentprofile = require('./agentprofile');
 const demoAgents = require('./demo-agents');
 const pieces = require('./pieces');
@@ -193,6 +194,54 @@ function buildCodePrompt(task) {
   return task && task.ask_questions ? base + questions.QUESTIONS_INSTRUCTION : base;
 }
 
+/* REPRENDRE UNE CONVERSATION QUI S'EST TENUE AILLEURS.
+ *
+ * Le handle de session de l'agent ne vaut que dans le `~/.claude` de la machine qui l'a
+ * ouvert : il ne voyage pas, et il n'aurait aucun sens ailleurs. Le collègue qui reçoit une
+ * session de codage et y envoie un suivi repart donc d'un agent NEUF — qui ne recevait que
+ * « applique cette correction », sans la tâche d'origine ni rien de ce qui s'est dit avant.
+ * L'agent devinait ce qu'il pouvait.
+ *
+ * Ce qui VOYAGE, en revanche, ce sont les itérations : la demande et le retour de l'agent de
+ * chacune sont partagés, fichier par fichier. On reconstitue donc la conversation à partir
+ * d'elles et on la réinjecte en tête du prompt. Ce n'est pas la mémoire de l'agent — c'est sa
+ * transcription, et c'est tout ce qui peut traverser une machine.
+ *
+ * BORNÉE, et par la FIN : un retour d'agent fait volontiers vingt mille caractères, et six
+ * itérations dépasseraient la fenêtre de n'importe quel modèle. On garde les plus RÉCENTES —
+ * c'est la suite de la conversation qu'on reprend — et on DIT ce qu'on a coupé, plutôt que de
+ * laisser croire à un historique complet.
+ */
+const REINJECTION_MAX = 24000;        // caractères de transcription réinjectés, au total
+const REINJECTION_PASSE_MAX = 4000;   // …dont au plus autant pour un seul retour d'agent
+
+function transcriptionDesPasses(taskId, unitId) {
+  let passes = [];
+  try { passes = agentpass.list('task', taskId, unitId); } catch { return ''; }
+  if (!passes.length) return '';
+  const blocs = [];
+  let total = 0;
+  let omisesJusqua = 0;
+  for (const p of [...passes].reverse()) {
+    const complet = agentpass.get('task', taskId, unitId, p.n) || {};
+    /* Les blocs de protocole (`<<<QUESTIONS>>>`, `<<<AGENT>>>`…) sont un canal de service :
+       les réinjecter ferait rejouer leurs consignes à contretemps. */
+    const retour = protocol.nettoyer(complet.output || '').trim();
+    const abrege = retour.length > REINJECTION_PASSE_MAX
+      ? `${retour.slice(0, REINJECTION_PASSE_MAX).trim()}\n[…retour tronqué]`
+      : retour;
+    const bloc = `### Itération ${p.n}\n\nCe qui t'était demandé :\n${String(p.prompt || '').trim() || '(non conservé)'}`
+      + `\n\nCe que tu avais répondu :\n${abrege || '(pas de retour conservé)'}`;
+    if (blocs.length && total + bloc.length > REINJECTION_MAX) { omisesJusqua = p.n; break; }
+    blocs.unshift(bloc);
+    total += bloc.length;
+  }
+  return `## Ce qui s'est déjà dit sur cette session${omisesJusqua
+    ? ` (les ${omisesJusqua} premières itérations sont omises, faute de place)` : ''}\n\n`
+    + `Cet échange a eu lieu sur une autre machine : tu ne t'en souviens pas, mais il t'engage.\n\n`
+    + blocs.join('\n\n');
+}
+
 /* Relues à CHAQUE prompt et non mises en cache : on les change en réglages parce qu'on vient de
    voir ce qui manquait, et la session suivante doit en tenir compte sans redémarrer l'outil. */
 const consignesPermanentes = () => getConfig().ai_extra_instructions;
@@ -295,8 +344,15 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     }
     let r; let created = !doResume; // création = 1re passe OU repli après échec de reprise
     let note = null;
+    /* LE CONTEXTE RÉINJECTÉ SERT DEUX FOIS : quand la reprise ÉCHOUE (plus bas), et quand il
+       n'y a RIEN À REPRENDRE — un suivi envoyé depuis le poste qui a reçu la session. Le
+       second cas n'était pas traité : le prompt partait seul. */
+    const reinjecte = () => (promptRepli != null
+      ? promptRepli
+      : [buildCodePrompt(task), transcriptionDesPasses(task.id, tg.id), promptText].filter(Boolean).join('\n\n'));
+    const envoye = doResume ? promptText : reinjecte();
     try {
-      r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt: promptText + imgBlock, cwd, resume: doResume, onLog, options });
+      r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt: envoye + imgBlock, cwd, resume: doResume, onLog, options });
     } catch (e) {
       if (!doResume) throw e;
       // Fallback (§4.5) : reprise impossible → session neuve avec contexte réinjecté.
@@ -308,14 +364,13 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
          pas. Sans cette note, l'écran affiche après coup un identifiant que l'utilisateur
          n'a jamais saisi, sans rien dire de la substitution. */
       note = `${tg.session_key} : ${raison}`;
-      const complet = promptRepli != null ? promptRepli : `${buildCodePrompt(task)}\n\n${promptText}`;
-      r = await agentsession.runInSession({ key, prompt: complet + imgBlock, cwd, resume: false, onLog, options });
+      r = await agentsession.runInSession({ key, prompt: reinjecte() + imgBlock, cwd, resume: false, onLog, options });
       created = true;
     }
     agentText = r.text || '';
     coutUsd = r.costUsd;
     // `owner` : la dépense se rattache à SA session — c'est ce qui permet de dire laquelle coûte.
-    copilot.recordUsage('task', promptText + imgBlock, agentText, null, { kind: 'task', id: task.id }, r.costUsd);
+    copilot.recordUsage('task', envoye + imgBlock, agentText, null, { kind: 'task', id: task.id }, r.costUsd);
     /* On enregistre le handle À CHAQUE passe, pas seulement à la création : l'agent peut rendre
        un identifiant DIFFÉRENT après une reprise (claude en ouvre un nouveau, qui porte tout
        l'échange). Garder l'ancien faisait repartir la passe suivante de l'état d'avant — deux

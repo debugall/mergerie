@@ -24,6 +24,7 @@ describe('Reprise de session : le handle suit les passes', () => {
   let app; let taskrunner; let agentsession; let copilot;
   let repoA; let repoB; let idA; let idB;
   const appels = [];          // ce qu'on a demandé à l'agent, passe après passe
+  const prompts = [];         // …et le TEXTE envoyé, gardé à part (les `deepEqual` ci-dessous)
 
   before(async () => {
     app = await startApp();
@@ -45,9 +46,10 @@ describe('Reprise de session : le handle suit les passes', () => {
        deux. Le reste (git, commit) tourne pour de vrai. */
     let n = 0;
     agentsession.backendName = () => 'claude';
-    agentsession.runInSession = async ({ key, handle, resume, cwd }) => {
+    agentsession.runInSession = async ({ key, handle, resume, cwd, prompt }) => {
       n += 1;
       appels.push({ key, handle: handle || null, resume: !!resume });
+      prompts.push(String(prompt || ''));
       // L'agent est censé MODIFIER le code : sans quoi la passe échoue « rien à committer ».
       fs.appendFileSync(path.join(cwd, 'PASSE.md'), `passe ${n}\n`, 'utf8');
       return { text: `passe ${n}`, sessionId: `sess-${n}`, handle: `sess-${n}`, backend: 'claude' };
@@ -98,6 +100,42 @@ describe('Reprise de session : le handle suit les passes', () => {
 
     // Le projet B n'a pas bougé : son handle est resté celui de son propre run.
     assert.equal(cible(t.id, idB).session_key, b1, 'un suivi ciblé ne touche pas la session des autres');
+  });
+
+  /* LE SUIVI ENVOYÉ DEPUIS LE POSTE QUI A REÇU LA SESSION.
+     Le handle ne voyage pas : il ne vaut que dans le `~/.claude` de la machine qui l'a ouvert.
+     Chez le collègue, la session est là, l'agent est neuf — et il ne recevait que « applique
+     cette correction », sans la tâche d'origine ni rien de ce qui s'est dit avant. On efface
+     donc le handle, ce qui EST la situation du collègue : la ligne existe, le handle non. */
+  test('un suivi sans session à reprendre réinjecte la tâche et les échanges précédents', async () => {
+    const { body: t } = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Ajoute un endpoint /metrics',
+      targets: [{ repo_id: idA, branch: 'feat/metrics', base_branch: 'main' }],
+    });
+    const tache = app.db.prepare('SELECT * FROM task WHERE id = ?').get(t.id);
+    await taskrunner.runTask(tache, () => {});
+    // Un premier suivi : il faut une conversation AVANT de vérifier qu'on la reprend.
+    await taskrunner.runTaskFollowup(tache, 'Renomme le compteur en total', () => {});
+    const retourPrecedent = prompts.length;
+
+    // eslint-disable-next-line global-require
+    const localsession = require('../src/localsession');
+    const tg = cible(t.id, idA);
+    localsession.oublier('task_target', tg.uid);
+    assert.equal(cible(t.id, idA).session_key, null, 'le décor doit être celui du collègue');
+
+    appels.length = 0;
+    await taskrunner.runTaskFollowup(tache, 'Ajoute un test du compteur', () => {});
+    assert.equal(appels[0].resume, false, 'il n’y a rien à reprendre, et c’est le cas qu’on éprouve');
+
+    const envoye = prompts[prompts.length - 1];
+    assert.match(envoye, /Ajoute un endpoint \/metrics/,
+      'la tâche d’origine : sans elle, « applique cette correction » ne veut rien dire');
+    assert.match(envoye, /Renomme le compteur en total/,
+      'et ce qui a déjà été demandé — c’est la conversation qu’on reprend');
+    assert.match(envoye, new RegExp(`passe ${retourPrecedent}`),
+      'et ce que l’agent avait répondu, pas seulement ce qu’on lui avait demandé');
+    assert.match(envoye, /Ajoute un test du compteur/, 'la demande du jour reste, évidemment');
   });
 
   /* La commande « Reprendre au terminal » copie ce handle : elle doit mener à la conversation

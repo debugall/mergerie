@@ -325,6 +325,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   references are there: the two calls leave the screen in parallel, and two fetches at once in
   one clone would fight over its locks.
 
+- **A follow-up sent from the machine that received a coding session now carries the
+  conversation.** The agent's session handle only means something in the `~/.claude` of the
+  machine that opened it: it does not travel, and it could not. So the colleague's follow-up
+  started a **brand new agent** that received `apply this correction` and nothing else — not
+  the original task, not one word of what had been said before. What does travel is the
+  **iterations**: each one's request and the agent's answer are shared, file by file. They are
+  now replayed at the top of the prompt when there is no local session to resume — it is not
+  the agent's memory, it is its transcript, and that is all that can cross a machine. Bounded,
+  and from the end: the most recent iterations are kept, and the prompt says how many were left
+  out rather than implying a complete history.
+
 - **Same for a coding session received from the team: “See the diff” shows the branch again.**
   A fallback did exist when the patch file is missing, but it compared `origin/<base>...HEAD` —
   and HEAD is the branch the clone happens to be sitting on, not the session's. On the machine
