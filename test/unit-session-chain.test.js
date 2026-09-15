@@ -138,6 +138,45 @@ describe('Reprise de session : le handle suit les passes', () => {
     assert.match(envoye, /Ajoute un test du compteur/, 'la demande du jour reste, évidemment');
   });
 
+  /* ET LE CAS SYMÉTRIQUE, LE PLUS TRAÎTRE : ma session locale est reprenable, mais le collègue
+     a itéré de son côté et sa passe m'est arrivée par la synchro. L'agent d'ici ne l'a jamais
+     vue : il repart de l'état où IL avait laissé les choses, alors que la branche porte déjà le
+     travail de l'autre — et rien à l'écran ne le signale. On ne réinjecte QUE ce qui manque :
+     lui rejouer sa propre conversation le ferait douter de ce qu'il a déjà fait. */
+  test('une itération venue d’ailleurs rattrape la session locale, sans rejouer la sienne', async () => {
+    const { body: t } = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Ajoute un endpoint /ready',
+      targets: [{ repo_id: idA, branch: 'feat/ready', base_branch: 'main' }],
+    });
+    const tache = app.db.prepare('SELECT * FROM task WHERE id = ?').get(t.id);
+    await taskrunner.runTask(tache, () => {});
+    const monRetour = `passe ${prompts.length}`;      // ce que MON agent vient de répondre
+    const tg = cible(t.id, idA);
+    assert.ok(cible(t.id, idA).session_key, 'ma session à moi est bien reprenable');
+
+    /* LE COLLÈGUE ITÈRE, et sa passe arrive par la synchro : une ligne `agent_pass` de plus,
+       dont le retour a été écrit sur le disque à l'hydratation. C'est exactement ce que fait
+       `fromFile` — on le reproduit ici plutôt que de monter deux instances. */
+    const sien = path.join(app.dataDir, 'passe-du-collegue.md');
+    fs.writeFileSync(sien, 'J’ai ajouté le cache Redis et corrigé le timeout.', 'utf8');
+    const n = app.db.prepare('SELECT MAX(n) v FROM agent_pass WHERE scope = ? AND task_id = ? AND unit_id = ?')
+      .get('task', t.id, tg.id).v + 1;
+    app.db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
+      VALUES ('task', ?, ?, ?, 'followup', ?, ?, ?)`)
+      .run(t.id, tg.id, n, 'Mets un cache sur /ready', sien, new Date().toISOString());
+
+    appels.length = 0;
+    await taskrunner.runTaskFollowup(tache, 'Documente le cache', () => {});
+    assert.equal(appels[0].resume, true, 'ma session locale est toujours reprise : c’est bien elle qu’on prolonge');
+
+    const envoye = prompts[prompts.length - 1];
+    assert.match(envoye, /Mets un cache sur \/ready/, 'ce que le collègue a demandé');
+    assert.match(envoye, /cache Redis/, 'et ce que son agent a répondu — sinon le mien code à l’aveugle');
+    assert.doesNotMatch(envoye, new RegExp(monRetour),
+      'mais PAS ma propre conversation : l’agent s’en souvient, la rejouer le ferait douter');
+    assert.match(envoye, /Documente le cache/, 'et la demande du jour');
+  });
+
   /* La commande « Reprendre au terminal » copie ce handle : elle doit mener à la conversation
      TELLE QU'ELLE EST, pas à son état d'il y a trois suivis. */
   test('la commande de reprise pointe la dernière passe', async () => {

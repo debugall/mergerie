@@ -325,6 +325,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   references are there: the two calls leave the screen in parallel, and two fetches at once in
   one clone would fight over its locks.
 
+- **And the mirror case: an iteration done by a colleague catches your own agent up.** Your
+  session here is resumable, so the agent picks up its own conversation — which never contained
+  the colleague's iteration: another agent did it, on another machine. Yours restarted from the
+  state *it* had left things in while the branch already carried someone else's commits, and
+  nothing on screen said so. Each local iteration now leaves a marker, so the next turn can
+  recognise the iterations that came from elsewhere and replay **only those**, under a heading
+  that says what happened. Your own conversation is not replayed: the agent remembers it, and
+  serving it back would make it doubt what it had already done. Sessions that predate this get
+  no catch-up rather than a full replay; the marker is set at your next iteration.
+
 - **A follow-up sent from the machine that received a coding session now carries the
   conversation.** The agent's session handle only means something in the `~/.claude` of the
   machine that opened it: it does not travel, and it could not. So the colleague's follow-up

@@ -12,6 +12,7 @@ const questions = require('./questions');
 const { avecConsignes } = require('./prompts');
 const agentpass = require('./agentpass');
 const protocol = require('./protocol');
+const { etat } = require('./localstate');
 const agentprofile = require('./agentprofile');
 const demoAgents = require('./demo-agents');
 const pieces = require('./pieces');
@@ -30,10 +31,14 @@ function taskDir(taskId) {
 /* Retour de l'agent pour UNE passe. On enregistre l'itération complète (prompt envoyé +
    retour) dans l'historique, et `output_path` continue de pointer la plus récente. */
 function saveAgentOutput(taskId, targetId, text, meta = {}) {
-  const { n, outPath } = agentpass.record('task', taskId, targetId, {
+  const { n, uid, outPath } = agentpass.record('task', taskId, targetId, {
     kind: meta.kind || 'run', prompt: meta.prompt, text, costUsd: meta.costUsd,
   });
   if (outPath) setTarget(targetId, { output_path: outPath });
+  /* JUSQU'OÙ LA CONVERSATION LOCALE EST ALLÉE. Ce repère ne vaut que pour l'agent de CETTE
+     machine, donc il reste ici : il sert à reconnaître, au tour suivant, les itérations que
+     quelqu'un d'autre a faites entre-temps. */
+  if (uid && meta.unitUid) etat.ecrire('session', meta.unitUid, 'derniere_passe', uid);
   // Le numéro sert à revenir annoter la passe une fois le commit fait (ses deux bornes).
   return n;
 }
@@ -218,6 +223,39 @@ const REINJECTION_PASSE_MAX = 4000;   // …dont au plus autant pour un seul ret
 function transcriptionDesPasses(taskId, unitId) {
   let passes = [];
   try { passes = agentpass.list('task', taskId, unitId); } catch { return ''; }
+  return redigerTranscription(taskId, unitId, passes,
+    'Ce qui s\'est déjà dit sur cette session',
+    'Cet échange a eu lieu sur une autre machine : tu ne t\'en souviens pas, mais il t\'engage.');
+}
+
+/* ET L'INVERSE : UNE CONVERSATION LOCALE QUI A PRIS DU RETARD.
+ *
+ * Le collègue itère à son tour, sa passe arrive par la synchro, et l'agent d'ici — dont la
+ * session, elle, est bien reprenable — ne l'a jamais vue : il repart de l'état où IL avait
+ * laissé les choses, alors que la branche porte désormais le travail de quelqu'un d'autre.
+ * C'est le cas symétrique du précédent, et le plus traître : tout a l'air normal.
+ *
+ * On repère ces itérations avec le REPÈRE posé à chaque passe locale — l'uid de la dernière —
+ * et on ne réinjecte que celles qui lui sont postérieures. Pas de repère (session d'avant cette
+ * mécanique) : on ne réinjecte rien plutôt que de tout rejouer à un agent qui s'en souvient.
+ */
+function passesVenuesDAilleurs(taskId, tg) {
+  const repere = etat.lire('session', tg.uid, 'derniere_passe');
+  if (!repere) return [];
+  try { return agentpass.list('task', taskId, tg.id).filter((p) => p.uid && p.uid > repere); }
+  catch { return []; }
+}
+
+function rattrapageDesPasses(taskId, tg) {
+  const manquantes = passesVenuesDAilleurs(taskId, tg);
+  if (!manquantes.length) return '';
+  return redigerTranscription(taskId, tg.id, manquantes,
+    'Ce qui a été fait sur cette session depuis ton dernier tour',
+    'Quelqu\'un d\'autre a travaillé sur cette branche entre-temps, depuis une autre machine : '
+    + 'ces itérations ne sont pas dans ta mémoire, et le code porte déjà leurs commits.');
+}
+
+function redigerTranscription(taskId, unitId, passes, titre, avertissement) {
   if (!passes.length) return '';
   const blocs = [];
   let total = 0;
@@ -236,9 +274,9 @@ function transcriptionDesPasses(taskId, unitId) {
     blocs.unshift(bloc);
     total += bloc.length;
   }
-  return `## Ce qui s'est déjà dit sur cette session${omisesJusqua
-    ? ` (les ${omisesJusqua} premières itérations sont omises, faute de place)` : ''}\n\n`
-    + `Cet échange a eu lieu sur une autre machine : tu ne t'en souviens pas, mais il t'engage.\n\n`
+  return `## ${titre}${omisesJusqua
+    ? ` (les itérations jusqu'à la ${omisesJusqua}e sont omises, faute de place)` : ''}\n\n`
+    + `${avertissement}\n\n`
     + blocs.join('\n\n');
 }
 
@@ -350,7 +388,11 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     const reinjecte = () => (promptRepli != null
       ? promptRepli
       : [buildCodePrompt(task), transcriptionDesPasses(task.id, tg.id), promptText].filter(Boolean).join('\n\n'));
-    const envoye = doResume ? promptText : reinjecte();
+    /* EN REPRISE, ON NE RÉINJECTE QUE CE QUI MANQUE : l'agent se souvient du reste, et lui
+       rejouer sa propre conversation le ferait douter de ce qu'il a déjà fait. */
+    const envoye = doResume
+      ? [rattrapageDesPasses(task.id, tg), promptText].filter(Boolean).join('\n\n')
+      : reinjecte();
     try {
       r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt: envoye + imgBlock, cwd, resume: doResume, onLog, options });
     } catch (e) {
@@ -387,7 +429,9 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
 
   // Retour de l'agent (ce qu'il dit avoir fait), consultable en fin de session — comme la
   // réponse d'une exploration. Vide en dry-run (pas de vrai retour).
-  const passeN = saveAgentOutput(task.id, tg.id, agentText, { kind: passKind || 'run', prompt: promptText + imgBlock, costUsd: coutUsd });
+  const passeN = saveAgentOutput(task.id, tg.id, agentText, {
+    kind: passKind || 'run', prompt: promptText + imgBlock, costUsd: coutUsd, unitUid: tg.uid,
+  });
 
   // L'agent a-t-il posé des questions ? Si oui → session en ATTENTE, sans commit (il s'est
   // arrêté avant d'implémenter). Un bloc malformé/absent est ignoré (parseQuestions → null).
