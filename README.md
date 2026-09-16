@@ -31,8 +31,12 @@ npx mergerie         # the real thing: http://localhost:4319, your data in ~/.me
 ```
 
 From a clone, the same two things are `npm install` then `npm run demo` or `npm start`, with the
-data next to the code (`data-demo/`, `data/`). `PORT`, `MERGERIE_DATA_DIR` and a `.env` in the
-current folder are honoured either way.
+data next to the code (`data-demo/`, `data/`).
+
+`PORT`, `HOST`, `MERGERIE_DATA_DIR` and the settings of [`.env.example`](./.env.example) are
+honoured either way. The `.env` is read **from the folder the command is run in** — for `npx`,
+wherever you are when you type it, so come back to that folder next time. What the shell exports
+wins over the file, as everywhere with Node.
 
 Optional, for **voice dictation**: `sh scripts/install-whisper.sh` (macOS/Linux) or the **Install**
 button in Settings → Voice dictation. Nothing else is needed to run the tool.

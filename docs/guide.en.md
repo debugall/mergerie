@@ -2594,7 +2594,10 @@ In both cases the refusal is immediate and says which of the two reasons applies
 
 ## Configuration (.env)
 
-A `.env` file at the root is loaded automatically at startup.
+A `.env` file is loaded automatically at startup: **the one in the folder the command is run
+from** — the root of the clone with `npm start`, the current directory with `npx mergerie`
+(come back to that folder next time, or the file is ignored without a word). What the shell
+exports wins over the file.
 
 | Variable | Default | Role |
 |---|---|---|

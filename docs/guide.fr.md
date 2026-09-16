@@ -2683,7 +2683,10 @@ configurée. En **mode démo**, en revanche, aucune commande n'est lancée : le 
 
 ## Configuration (.env)
 
-Un fichier `.env` à la racine est chargé automatiquement au démarrage.
+Un fichier `.env` est chargé automatiquement au démarrage : **celui du dossier d'où la commande
+est lancée** — la racine du clone avec `npm start`, le répertoire courant avec `npx mergerie`
+(reviens-y la fois suivante, sinon le fichier est ignoré sans un mot). Ce que le shell exporte
+passe devant le fichier.
 
 | Variable | Défaut | Rôle |
 |---|---|---|

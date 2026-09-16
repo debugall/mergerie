@@ -11,6 +11,18 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Fixed
+
+- **A `.env` asking for another data folder is now obeyed by `npx mergerie`.** The file was read —
+  its port, its agent, its proxy all worked — but its `MERGERIE_DATA_DIR` line was quietly dropped
+  and the database went to `~/.mergerie/data` anyway: the command had already decided where the
+  data lived before the server got to read the file. It now reads the `.env` of the folder you run
+  it from before deciding, and what your shell exports still wins over the file. The two READMEs
+  and the guides said the variable was honoured either way; they now also say **which folder** the
+  file is looked for in — with `npx`, the one you are standing in when you type the command. And
+  since `mergerie demo` erases its data folder before re-seeding it, the command now names that
+  folder out loud rather than erasing in silence.
+
 ## [1.6.0] - 2026-09-16
 
 ### Added

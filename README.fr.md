@@ -36,8 +36,12 @@ npx mergerie         # pour de vrai : http://localhost:4319, tes données dans ~
 ```
 
 Depuis un clone, ce sont `npm install` puis `npm run demo` ou `npm start`, avec les données à côté
-du code (`data-demo/`, `data/`). `PORT`, `MERGERIE_DATA_DIR` et un `.env` dans le dossier courant
-sont honorés dans les deux cas.
+du code (`data-demo/`, `data/`).
+
+`PORT`, `HOST`, `MERGERIE_DATA_DIR` et les réglages de [`.env.example`](./.env.example) sont honorés
+dans les deux cas. Le `.env` est lu **dans le dossier d'où la commande est lancée** — sous `npx`,
+là où tu te trouves au moment de la taper, donc reviens-y la fois suivante. Ce que le shell exporte
+passe devant le fichier, comme partout avec Node.
 
 Optionnel, pour la **dictée vocale** : `sh scripts/install-whisper.sh` (macOS/Linux) ou le bouton
 **Installer** de Réglages → Dictée vocale. Rien d'autre n'est nécessaire pour faire tourner l'outil.
