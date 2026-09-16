@@ -2835,6 +2835,19 @@ dépôt. Les sessions écrites avant cette version deviennent privées et en sor
 démarrage. Enfin, **la session d'un collègue ne se supprime pas** : on la range. L'effacer ici
 l'effacerait chez tout le monde.
 
+**Une session partagée se passe de main en main, et l'IA ne perd pas le fil.** C'est ce qui
+rend le partage d'une session utile plutôt que documentaire : tu lances une session sur un
+ticket, tu coches la case, un collègue la reprend — **avec son abonnement à lui**. Son agent
+n'a pourtant aucune mémoire de la tienne : une conversation d'agent appartient au poste qui l'a
+ouverte et ne voyage pas. Ce qui voyage, ce sont les **itérations** : la demande et la réponse
+de chacune. L'outil les rejoue en tête du prompt quand il n'a pas de session locale à reprendre,
+et l'agent du collègue repart donc avec tout ce qui s'est dit — pas sa mémoire, sa
+transcription, bornée aux plus récentes quand l'échange est long (le prompt dit alors combien
+sont omises). Dans l'autre sens, quand la session te revient, ton agent à toi est **rattrapé**
+sur les itérations faites ailleurs pendant ce temps, et sur celles-là seulement : lui rejouer sa
+propre conversation le ferait douter de ce qu'il a déjà fait. La session peut ainsi faire
+plusieurs tours d'équipe.
+
 **Les pages de notes se partagent UNE PAR UNE, et pas par défaut.** Tout le reste de ce que
 l'outil garde est un produit — une review, une règle, une carte du code —, et le produire pour soi
 seul n'aurait guère de sens : cela part donc en bloc. Une page de notes, non : c'est le seul

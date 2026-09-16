@@ -11,7 +11,8 @@
 **From prompt to merge — a local AI dev cockpit for GitLab and GitHub.**
 
 *Mergerie* (pronounced *mer-zhuh-REE*) is a local, single-user web app that turns an AI agent CLI into a
-review-and-ship workstation for your GitLab and GitHub projects.
+review-and-ship workstation for your GitLab and GitHub projects. One instance each — and a team shares its
+accumulated work through a git repository it owns, with no server in between.
 
 Everything runs **on your machine** — a Node + SQLite server and a web UI, nothing sent anywhere except the
 services **you** configure. It drives your **existing Claude or Copilot subscription** through their own CLI

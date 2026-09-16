@@ -2743,6 +2743,18 @@ folder from the repository. Sessions written before this version become private 
 repository on the next start. And **a colleague's session cannot be deleted**: you put it away
 instead. Deleting it here would delete it for everyone.
 
+**A shared session is handed from one person to the next, and the AI does not lose the thread.**
+This is what makes sharing a session useful rather than documentary: you start a session on a
+ticket, you tick the box, a colleague picks it up — **on their own subscription**. Their agent
+has no memory of yours: an agent conversation belongs to the machine that opened it and does not
+travel. What travels is the **iterations**: each one's request and answer. The tool replays them
+at the top of the prompt when there is no local session to resume, so your colleague's agent
+starts with everything that was said — not its memory, its transcript, capped to the most recent
+ones on a long exchange (the prompt then says how many were left out). The other way round, when
+the session comes back to you, your own agent is **caught up** on the iterations done elsewhere
+meanwhile, and on those only: replaying its own conversation would make it doubt what it had
+already done. A session can go round the team several times.
+
 **Notes pages are shared ONE BY ONE, and not by default.** Everything else the tool keeps is a
 product — a review, a rule, a map of the code — and producing one for yourself alone makes little
 sense: it all travels together. A notes page does not: it is the one place in the tool where you

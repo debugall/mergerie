@@ -15,7 +15,8 @@
 Outil local (mono-utilisateur) pour **reviewer les merge requests GitLab et les pull requests GitHub** assisté par IA, **piloter des
 sessions de développement** automatisées (l'IA code, commite, pousse, ouvre et merge les MR) et **explorer
 du code** en lecture seule pour répondre à une question, via un CLI d'agent (`copilot` / `claude`) et le
-skill `git-review`.
+skill `git-review`. Une instance chacun — et une **équipe partage le travail accumulé** par un dépôt git
+qui lui appartient, sans serveur au milieu.
 
 Dans toute la documentation, **« MR »** désigne indifféremment une *merge request* GitLab ou une
 *pull request* GitHub : les écrans et les actions sont les mêmes.
