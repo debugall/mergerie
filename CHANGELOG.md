@@ -11,6 +11,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-16
+
 ### Added
 
 - **`npx mergerie demo` — the tool in one command, with nothing to clone.** The package now ships
@@ -3219,7 +3221,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/debugall/mergerie/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/debugall/mergerie/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/debugall/mergerie/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/debugall/mergerie/compare/v1.2.0...v1.3.0
