@@ -314,6 +314,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A review of a single pass now shows its findings.** The list of findings — one line per
+  finding, its severity, the link to the file and the line, the filters by severity — lived
+  inside the resolution banner, which only exists from the **second** pass onwards, when there
+  is a delta to tell. A review that had only been run once therefore displayed the report and
+  nothing else: no blocker, no major, no minor, no way to turn a finding into a draft comment.
+  Barely visible while you reviewed your own merge requests — you re-run, you reach v2 — and
+  systematic on a review **received from a colleague** through the shared repository, which
+  arrives with its single pass. The list now stands on its own; the banner joins it when there
+  is something to compare.
+
 - **A merge request no longer produces a commit — and a conflict — on every discovery.** The
   file of a merge request carried `updated_at`, and discovery rewrites every open merge request
   on every pass: same values, fresh timestamp. So every pass changed every merge request file,

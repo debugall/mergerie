@@ -184,9 +184,17 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
     assert.deepEqual(visibles, ['aSplit', 'aFix', 'aMerge', 'aMore'],
       `trois actions et le menu, pas onze boutons — vu : ${JSON.stringify(visibles)}`);
 
-    const y = await page.locator('#mdView').evaluate((el) => el.getBoundingClientRect().top);
+    /* CE QUI SUIT LES ACTIONS, pas `#mdView` nommément : sous les boutons vient d'abord la
+       liste des constats quand il y en a une — elle n'apparaissait ici que faute d'exister sur
+       une review d'une seule passe, et elle existe maintenant. Le sujet du test reste le mur
+       d'actions : c'est lui qui repoussait la lecture hors de l'écran. */
+    const y = await page.evaluate(() => {
+      const box = document.querySelector('#resolutionBox');
+      const premier = box && !box.hidden ? box : document.querySelector('#mdView');
+      return premier.getBoundingClientRect().top;
+    });
     const h = await page.evaluate(() => window.innerHeight);
-    assert.ok(y < h, `la première ligne du rapport doit être dans l’écran (y=${Math.round(y)}, fenêtre ${h})`);
+    assert.ok(y < h, `la lecture doit commencer dans l’écran (y=${Math.round(y)}, fenêtre ${h})`);
 
     // Le menu contient bien le reste, dont la suppression — en dernier, derrière un séparateur.
     await page.locator('#aMore').click();

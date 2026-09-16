@@ -142,15 +142,42 @@ describe('Améliorations — croisements et raccourcis', { skip: dispo ? false :
 
   /* ---------- Axe A : ce que l'existant ne disait pas ---------- */
 
-  test('un constat mène à sa ligne, le commentaire pré-rempli', async () => {
+  /* UNE SEULE PASSE MONTRE DÉJÀ SES CONSTATS. La liste vivait dans la boîte du suivi de
+     résolution, laquelle n'existe qu'à partir de la deuxième review : une review d'une passe
+     n'affichait ni gravités, ni filtres, ni constats. C'est le cas ORDINAIRE d'une review reçue
+     d'un collègue par le dépôt partagé — elle arrive avec sa passe unique. */
+  test('une review d’une seule passe affiche ses constats et leurs gravités', async () => {
     await app.api('POST', `/api/mrs/${mrId}/review`);
     await attendre(async () => {
       const r = await app.api('GET', `/api/mrs/${mrId}/findings`);
       return (r.body.findings || []).length > 0;
     }, 'la review a produit des constats', 60000);
-    /* DEUX PASSES. Le bandeau des constats est celui du SUIVI DE RÉSOLUTION : il n'existe qu'à
-       partir de la deuxième review, quand il y a un delta à raconter. Une seule passe n'affiche
-       aucune liste — et le test porterait alors sur un écran qui n'a rien à montrer. */
+    const versions = (await app.api('GET', `/api/mrs/${mrId}/versions`)).body;
+    assert.equal(versions.length, 1, 'une seule passe : c’est tout l’objet du test');
+    assert.equal(versions[0].resolution, null, 'et donc aucun delta de résolution à raconter');
+
+    await page.goto(app.base);
+    await page.click('nav button[data-tab="review"]');
+    await page.click('[data-seg="reviewed"]');
+    await page.waitForSelector('#reportList .card', { timeout: ATTENTE });
+    await page.click('#reportList .card');
+    await page.waitForSelector('#findingsList .finding', { timeout: ATTENTE });
+
+    assert.equal(await page.locator('#resolutionBox').evaluate((e) => e.hidden), false,
+      'la boîte s’ouvre pour la liste seule');
+    assert.equal(await page.locator('#resolutionBox .resolution-banner').count(), 0,
+      'sans bandeau : il n’y a rien à comparer à une passe précédente');
+    const gravites = await page.locator('#findingsList .finding .f-sev').count();
+    assert.ok(gravites > 0, 'chaque constat porte sa gravité — bloquant, majeur, mineur, info');
+    if (await page.locator('#findingsList .finding').count() >= 2) {
+      assert.equal(await page.locator('#findingsChips').evaluate((e) => e.hidden), false,
+        'et les filtres par gravité sont là dès qu’il y a deux constats à trier');
+    }
+  });
+
+  test('un constat mène à sa ligne, le commentaire pré-rempli', async () => {
+    /* La deuxième passe : c'est elle qui fait naître le bandeau du suivi de résolution, à côté
+       de la liste que le test précédent a déjà vue seule. */
     await app.api('POST', `/api/mrs/${mrId}/rereview`);
     await attendre(async () => {
       // La route rend un TABLEAU de versions, pas un objet enveloppe.

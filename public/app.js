@@ -4595,35 +4595,45 @@ async function renderResolution(id, versions) {
   const box = $('#resolutionBox');
   if (!box) return;
   const latest = versions[0];
-  const r = latest && latest.resolution;
-  if (!r) { box.hidden = true; return; }
+  if (!latest) { box.hidden = true; return; }
+  /* LE BANDEAU N'ARRIVE QU'À LA DEUXIÈME PASSE ; LA LISTE DES CONSTATS EXISTE DÈS LA PREMIÈRE.
+     Les deux vivaient dans la même boîte, et la boîte entière était masquée faute de delta à
+     raconter : une review d'UNE SEULE passe n'affichait donc aucun constat, aucune gravité,
+     aucun filtre — alors que la liste était là, complète, dans la réponse du serveur. Invisible
+     tant qu'on reviewe ses propres merge requests (on relance, on passe en v2) ; systématique
+     sur une review REÇUE d'un collègue, qui arrive avec sa passe unique et rien d'autre. */
+  const r = latest.resolution;
   // Évolution de la note entre l'avant-dernière et la dernière passe.
   const prev = versions[1];
   const noteFrom = prev ? prev.note10 : null;
   const noteTo = latest.note10;
   const noteBit = (noteFrom != null && noteTo != null && noteFrom !== noteTo)
     ? ` · ${tr('resolution.note-evo', { from: noteFrom, to: noteTo })}` : '';
-  const bits = [
+  const bits = !r ? '' : [
     r.resolved ? `<span class="res-chip ok">${tr('resolution.resolved', { n: r.resolved, count: r.resolved })}</span>` : '',
     r.persistent ? `<span class="res-chip warn">${tr('resolution.persistent', { n: r.persistent, count: r.persistent })}</span>` : '',
     r.new ? `<span class="res-chip new">${tr('resolution.new', { n: r.new, count: r.new })}</span>` : '',
     r.disappeared ? `<span class="res-chip muted" title="${tr('resolution.disappeared-hint')}">${tr('resolution.disappeared', { n: r.disappeared, count: r.disappeared })}</span>` : '',
   ].filter(Boolean).join('');
-  box.innerHTML = `<div class="resolution-banner">
+  const banniere = r ? `<div class="resolution-banner">
       <span class="res-title">${tr('resolution.title', { v: latest.version })}</span>${bits}<span class="res-note">${noteBit}</span>
-    </div><div id="findingsChips" class="findings-chips" hidden></div><div id="findingsList" class="findings-list"></div>`;
+    </div>` : '';
+  box.innerHTML = `${banniere}<div id="findingsChips" class="findings-chips" hidden></div><div id="findingsList" class="findings-list"></div>`;
   box.hidden = false;
   /* Le compte des constats résolus se JOUE, une seule fois par (MR, version). C'est la seule
      micro-récompense de l'app entièrement dérivée d'un fait : l'IA avait trouvé huit choses,
      il en reste deux. Rejouée à chaque ouverture du rapport elle deviendrait un tic — d'où la
      clé mémorisée. Jamais sur une première review : il n'y a rien à résoudre. */
-  jouerResolution(id, latest.version, r.resolved);
+  if (r) jouerResolution(id, latest.version, r.resolved);
 
   // Liste détaillée des constats de la dernière passe.
   const list = $('#findingsList');
   let data;
-  try { data = await api(`/mrs/${id}/findings`); } catch { return; }
-  if (!data.findings || !data.findings.length) { list.hidden = true; return; }
+  /* Sans bandeau, la boîte n'a que la liste à montrer : pas de constat, pas de boîte — sinon
+     l'écran gagnerait un cadre vide là où il n'y avait rien. */
+  const vide = () => { list.hidden = true; if (!r) box.hidden = true; };
+  try { data = await api(`/mrs/${id}/findings`); } catch { vide(); return; }
+  if (!data.findings || !data.findings.length) { vide(); return; }
   list.innerHTML = data.findings.map((f) => {
     const st = FINDING_STATUS[f.status] || { icon: '·', cls: '', key: null };
     const sv = SEV[f.severity] || SEV.minor;
