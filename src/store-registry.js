@@ -268,7 +268,15 @@ const REGISTRE = [
         squash: r.squash == null ? null : (r.squash ? 1 : 0),
         remove_source_branch: r.remove_source_branch == null ? null : (r.remove_source_branch ? 1 : 0),
         closed_seen: r.closed_seen ? 1 : 0,
-        updated_at: r.updated_at,
+        /* `updated_at` NE PART PAS, ET C'EST TOUT SAUF UN DÉTAIL. La découverte réécrit CHAQUE
+           merge request ouverte à chaque passage — mêmes valeurs, horodatage neuf. Exporté, il
+           faisait changer le fichier de toutes les MR à chaque découverte : un commit « mr
+           gitlab/acme/web!218 » par MR et par tour, et surtout un CONFLIT de rebase sur chaque
+           fichier dès que deux postes découvraient entre deux synchros — sur des documents que
+           personne n'avait touchés. C'était la promesse « les conflits sont rares par
+           construction » retournée contre elle-même. Il n'est d'ailleurs pas dans `partagees` :
+           c'est une observation LOCALE — « quand CE poste l'a vue bouger » —, du même bois que
+           `current_sha`, et elle sert ici à trier et à dater l'activité. */
         links: ctx.enfants('mr_link', 'mr_id', r.id)
           .map((l) => ({ repo: ctx.repoRef(l.repo_id), branch: l.branch || null }))
           .filter((l) => l.repo),
@@ -300,7 +308,8 @@ const REGISTRE = [
       squash: doc.squash == null ? null : (doc.squash ? 1 : 0),
       remove_source_branch: doc.remove_source_branch == null ? null : (doc.remove_source_branch ? 1 : 0),
       closed_seen: doc.closed_seen ? 1 : 0,
-      updated_at: doc.updated_at,
+      /* Pas d'`updated_at` non plus au retour : le fichier n'en porte plus, et la valeur locale
+         — la dernière fois que CE poste a vu la MR bouger — n'a pas à être écrasée. */
     }),
     referencesDifferees: ['repo_id'],
     refSource: { repo_id: 'repo' },

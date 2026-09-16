@@ -263,7 +263,14 @@ async function tourMaintenant() {
     try { await commiterMaintenant(); } catch { /* le tour suivant réessaiera */ }
     await git(['fetch', 'origin', branche()]);
     await majCompteurs();
-    if (!etatSync.enRetard && !etatSync.enAvance) { etatSync.erreur = null; etatSync.dernierPull = new Date().toISOString(); return bilan; }
+    /* « RIEN À ÉCHANGER » NE VEUT PAS DIRE « RIEN À FAIRE ». Une base neuve devant un clone déjà
+       à jour est à ↑0 ↓0 : on sortait donc ici, avant la branche qui hydrate quand ce poste n'a
+       jamais hydraté — et « supprime `reviewer.db`, tout revient des fichiers » était faux tant
+       qu'on n'avait pas cliqué « Cloner / rattacher ». Pire, dans cet état la première
+       suppression locale faisait balayer un dossier que plus aucune ligne ne protégeait. */
+    if (!etatSync.enRetard && !etatSync.enAvance && dernierHydrate()) {
+      etatSync.erreur = null; etatSync.dernierPull = new Date().toISOString(); return bilan;
+    }
 
     for (let essai = 0; essai < TENTATIVES_PUSH; essai++) {
       const avant = await gitOu(['rev-parse', 'HEAD'], '');
@@ -329,6 +336,17 @@ function tour() {
  * toujours réparable d'un clic, là où un rebase interrompu demande de savoir ce qu'est un
  * rebase. La version écrasée n'est jamais perdue : elle est gardée, et l'écran le dit.
  */
+/* UN REBASE EN COURS SE LIT SUR LE DISQUE : git y pose `rebase-merge/` (le rebase interactif,
+   celui qu'utilise `pull --rebase`) ou `rebase-apply/`. C'est la seule façon de savoir s'il
+   reste des commits à rejouer — le code de sortie de `--continue` dit seulement que CETTE
+   étape-là a échoué. */
+const rebaseEnCours = () => fs.existsSync(path.join(SHARED_DIR, '.git', 'rebase-merge'))
+  || fs.existsSync(path.join(SHARED_DIR, '.git', 'rebase-apply'));
+
+/* Autant d'étapes que de commits locaux en attente, et une marge. Borné pour ne pas tourner
+   indéfiniment si git refuse d'avancer pour une raison qu'on n'a pas prévue. */
+const MAX_ETAPES_REBASE = 40;
+
 async function rebaser() {
   const conflits = [];
   try {
@@ -341,19 +359,41 @@ async function rebaser() {
        d'appliquer est le NÔTRE (`--theirs`, étape 3). Prendre `--theirs` ici, comme on le
        ferait pour un merge, garderait sa propre version en croyant prendre celle du voisin —
        et le conflit reviendrait au tour suivant, en boucle. */
-    const enConflit = (await gitOu(['diff', '--name-only', '--diff-filter=U'], ''))
-      .split('\n').map((x) => x.trim()).filter(Boolean);
-    for (const fichier of enConflit) {
-      const mienne = await gitBrut(['show', `:3:${fichier}`], null); // étape 3 = le commit rejoué
-      await gitOu(['checkout', '--ours', '--', fichier], '');        // étape 2 = ce qui est déjà en place
-      await gitOu(['add', '--', fichier], '');
-      conflits.push({ fichier, mienne });
+    /* UN REBASE COINCE AUTANT DE FOIS QU'IL A DE COMMITS À REJOUER. On n'en résolvait qu'un :
+       deux sauvegardes de la même note avant une synchro, et le second commit rebutait le
+       `--continue`. On abandonnait alors le rebase, les versions écrasées n'étaient même pas
+       gardées (elles ne l'étaient qu'après un `--continue` réussi), et le tour suivant rejouait
+       la même scène — le poste restait « ↑2 » pour toujours, sans un mot à l'écran.
+       On boucle donc tant que le rebase est en cours, en accumulant les versions au fur et à
+       mesure. */
+    for (let etape = 0; etape < MAX_ETAPES_REBASE && rebaseEnCours(); etape += 1) {
+      const enConflit = (await gitOu(['diff', '--name-only', '--diff-filter=U'], ''))
+        .split('\n').map((x) => x.trim()).filter(Boolean);
+      for (const fichier of enConflit) {
+        const mienne = await gitBrut(['show', `:3:${fichier}`], null); // étape 3 = le commit rejoué
+        await gitOu(['checkout', '--ours', '--', fichier], '');        // étape 2 = ce qui est déjà en place
+        await gitOu(['add', '--', fichier], '');
+        conflits.push({ fichier, mienne });
+      }
+      try {
+        await git(['-c', 'core.editor=true', 'rebase', '--continue']);
+      } catch {
+        /* DEUX RAISONS D'ÉCHOUER ICI, et une seule est un problème. Si la résolution a rendu le
+           commit rejoué VIDE — on a pris la version d'en face, qui contenait déjà tout —, git
+           refuse de continuer et attend un `--skip` : ce commit n'a plus rien à apporter. S'il
+           reste des fichiers en conflit, c'est l'étape suivante, et le tour de boucle la prend. */
+        if (!(await gitOu(['diff', '--name-only', '--diff-filter=U'], ''))) {
+          await gitOu(['rebase', '--skip'], '');
+        }
+      }
     }
-    try { await git(['-c', 'core.editor=true', 'rebase', '--continue']); } catch {
-      /* Même ça a échoué : on abandonne le rebase plutôt que de laisser le dépôt dans un état
-         que personne ne saura défaire. Les commits locaux restent, le tour suivant réessaiera. */
+    if (rebaseEnCours()) {
+      /* Dernier recours : on abandonne plutôt que de laisser le dépôt dans un état que personne
+         ne saura défaire. Les commits locaux restent — rien n'est perdu — et on ne garde AUCUNE
+         « version écrasée » : rien n'a été écrasé, puisque le rebase n'a pas eu lieu. */
       await gitOu(['rebase', '--abort'], '');
-      return conflits;
+      etatSync.erreur = 'rebase impossible : trop d’étapes en conflit, les commits restent locaux';
+      return [];
     }
     for (const c of conflits) garderVersionEcrasee(c);
     return conflits;

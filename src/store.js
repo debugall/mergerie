@@ -591,16 +591,26 @@ function balayer(table, ctx = contexte()) {
   const racine = e.chemin.split('/')[0];
   if (racine.includes('{')) return 0;
   const motif = motifDe(e);
-  let n = 0;
+  const aRetirer = [];
   for (const relatif of listerFichiers(racine)) {
     if (attendus.has(relatif)) continue;
     const nom = canonique(e, relatif);
     if (!motif.test(nom)) continue;          // un fichier d'une autre table : ce n'est pas le nôtre
     if (attendus.has(nom)) continue;
-    supprimerFichier(relatif);
-    n += 1;
+    aRetirer.push(relatif);
   }
-  return n;
+  /* UNE TABLE VIDE NE VIDE PAS LE DÉPÔT. Le pendant exact du garde-fou de l'hydratation, dans
+     l'autre sens : si plus AUCUNE ligne ne protège de fichier et que le dépôt en porte une
+     dizaine, ce n'est pas qu'on vient de tout supprimer à la main — c'est que cette base-ci ne
+     sait pas encore ce que le dépôt contient (base neuve, hydratation pas encore faite). Le
+     balayage y effacerait le travail de toute l'équipe, et le pousserait. Supprimer sa dernière
+     note, elle, retire un ou deux fichiers : ce cas-là passe toujours. */
+  if (!attendus.size && aRetirer.length >= 10) {
+    console.log(`[store] balayage de « ${table} » refusé : ${aRetirer.length} fichier(s) dans le dépôt et aucune ligne ici — base non hydratée, pas objets supprimés`);
+    return 0;
+  }
+  for (const relatif of aRetirer) supprimerFichier(relatif);
+  return aRetirer.length;
 }
 
 /* ---------- 6. Export complet ---------- */
@@ -875,6 +885,15 @@ function hydraterFichiers(relatifs) {
   const ctx = contexte();
   const bilan = { ecrits: 0, supprimes: 0, orphelins: [] };
 
+  /* CE QUI ATTENDAIT DÉJÀ DANS LA FILE N'EST PAS À NOUS. On vide la file à la fin — les lignes
+     que l'hydratation vient d'écrire n'ont pas à être réexportées —, mais ce vidage emportait
+     aussi ce qui attendait AVANT : une ligne gardée faute de dépendance résolue, et tout ce
+     qu'un traitement de fond avait écrit sans qu'aucune requête ne l'écoule. Ces fichiers-là
+     n'auraient plus été écrits qu'à la prochaine modification de leur ligne, c'est-à-dire
+     peut-être jamais. On relève donc la file d'avant, et on la remet. */
+  const fileDAvant = db.prepare('SELECT DISTINCT tbl, rid FROM store_sale').all();
+  const menagesDAvant = db.prepare('SELECT DISTINCT tbl FROM store_menage').all().map((r) => r.tbl);
+
   /* DANS L'ORDRE DU REGISTRE, PARENTS D'ABORD. Git rend ses fichiers par ordre alphabétique :
      `convergences/` arrive avant `mrs/`, qui arrive avant `repos/`. Hydrater dans cet ordre-là
      obligerait à trois passes de rattrapage pour une chaîne dépôt → merge request → review.
@@ -927,7 +946,18 @@ function hydraterFichiers(relatifs) {
     for (const item of reste) {
       const e = registre.pour(item.table);
       const ctxTour = contexte();
-      const row = e.fromFile(item.doc, ctxTour);
+      /* `fromFile` LÈVE, LUI AUSSI. Il écrit sur le disque (`ecrireDisque`, `copierDepuisDepot`)
+         et refuse un chemin qui sortirait du dossier de données ; un disque plein ou un droit
+         manquant lèvent de la même façon. Hors du `try`, l'exception remontait jusqu'au tour :
+         `hydrated_at` n'avançait pas, et chaque tour rejouait le même échec — la synchro de
+         TOUTE l'équipe bloquée par un fichier qu'un seul poste avait écrit. */
+      let row;
+      try {
+        row = e.fromFile(item.doc, ctxTour);
+      } catch (err) {
+        bilan.orphelins.push(`${item.relatif} : ${(err && err.message) || err}`);
+        continue;
+      }
       /* `fromFile` peut REFUSER une ligne : une pièce jointe dont le binaire n'est pas dans le
          dépôt (clone sans LFS) vaut mieux absente qu'affichée en vignette cassée. */
       if (!row) { bilan.orphelins.push(`${item.relatif} : ignoré ici (contenu absent du dépôt)`); continue; }
@@ -954,7 +984,13 @@ function hydraterFichiers(relatifs) {
         bilan.orphelins.push(`${item.relatif} : ${(err && err.message) || err}`);
         continue;
       }
-      if (e.listes) hydraterListes(e, ligne, item.doc, ctxTour, (m) => bilan.orphelins.push(`${item.relatif} : ${m}`));
+      /* Les lignes FILLES aussi : `hydraterListes` appelle `upsert` sans protection, et une
+         contrainte d'unicité sur une cible de session suffisait à emporter tout le reste. */
+      try {
+        if (e.listes) hydraterListes(e, ligne, item.doc, ctxTour, (m) => bilan.orphelins.push(`${item.relatif} : ${m}`));
+      } catch (err) {
+        bilan.orphelins.push(`${item.relatif} : ${(err && err.message) || err}`);
+      }
       bilan.ecrits += 1;
     }
     if (encore.length === reste.length) {
@@ -1009,6 +1045,13 @@ function hydraterFichiers(relatifs) {
      nettoyer. */
   db.exec('DELETE FROM store_sale');
   db.exec('DELETE FROM store_menage');
+  /* …et on remet ce qui attendait avant nous. Une ligne écrite entre-temps par l'hydratation
+     elle-même porte le même (tbl, rid) que sa version d'avant : la remettre ne coûte qu'une
+     réécriture d'octets identiques, là où l'oublier perdrait le fichier. */
+  const remettre = db.prepare('INSERT INTO store_sale (tbl, rid) VALUES (?, ?)');
+  for (const r of fileDAvant) remettre.run(r.tbl, r.rid);
+  const remettreMenage = db.prepare('INSERT INTO store_menage (tbl) VALUES (?)');
+  for (const t of menagesDAvant) remettreMenage.run(t);
   return bilan;
 }
 

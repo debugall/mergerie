@@ -568,6 +568,102 @@ describe('datasync — deux postes, un dépôt de données', () => {
       'la synchro automatique doit envoyer sans qu’on ait à cliquer');
   });
 
+  /* DEUX DÉCOUVERTES SANS CHANGEMENT NE PRODUISENT AUCUN COMMIT.
+     La découverte réécrit chaque merge request ouverte à chaque passage — mêmes valeurs,
+     horodatage neuf. Tant que `updated_at` partait dans le fichier, cela faisait un commit par
+     MR et par tour sur CHAQUE poste, et un conflit de rebase sur chaque fichier dès que deux
+     postes découvraient entre deux synchros : des conflits sur des documents que personne
+     n'avait touchés. On rejoue ici ce que fait `updateMr` — toutes les colonnes réécrites à
+     l'identique, `updated_at` en plus — et on compte les commits du dépôt nu. */
+  test('une découverte qui ne change rien ne produit aucun commit', () => {
+    const compter = () => execFileSync('git', ['-C', nu, 'rev-list', '--count', 'main'], { encoding: 'utf8' }).trim();
+    dans(posteA, `async ({ db, store, datasync }) => {
+      const repoId = (db.prepare("SELECT id FROM repo LIMIT 1").get()
+        || { id: db.prepare("INSERT INTO repo (forge, project, url, enabled) VALUES ('gitlab','eq/temoin','https://x/eq/temoin',1)").run().lastInsertRowid }).id;
+      store.ecrire('mr', () => db.prepare(
+        "INSERT INTO mr (repo_id, iid, title, source_branch, target_branch, status, updated_at) VALUES (?, 4321, 'Rien ne bouge', 'feat/rien', 'main', 'to_review', ?)",
+      ).run(repoId, new Date().toISOString()).lastInsertRowid);
+      await datasync.commiter('mr témoin'); await datasync.tour();
+    }`);
+    const avant = compter();
+
+    dans(posteA, `async ({ db, store, datasync }) => {
+      const id = db.prepare('SELECT id FROM mr WHERE iid = 4321').get().id;
+      // Exactement ce que fait la découverte sur une MR inchangée : tout réécrit, l'heure en plus.
+      store.ecrire('mr', () => db.prepare(
+        "UPDATE mr SET title = 'Rien ne bouge', source_branch = 'feat/rien', target_branch = 'main', closed_seen = 0, updated_at = ? WHERE id = ?",
+      ).run(new Date().toISOString(), id) && id);
+      await datasync.commiter('découverte'); await datasync.tour();
+    }`);
+    assert.equal(compter(), avant,
+      'une découverte sans changement ne doit RIEN commiter : sinon chaque tour pousse un commit par MR, et deux postes se retrouvent en conflit sur des fichiers que personne n’a touchés');
+  });
+
+  /* DEUX COMMITS LOCAUX EN CONFLIT : LE REBASE DOIT CONVERGER.
+     Deux sauvegardes de la même note avant une synchro font deux commits locaux. Le rebase n'en
+     résolvait qu'un : le second faisait échouer `--continue`, on abandonnait le rebase, et le
+     tour suivant rejouait la même scène — le poste restait « en avance » pour toujours, sans un
+     mot à l'écran. On monte exactement ce décor et on regarde si B finit par retomber à zéro. */
+  test('deux commits locaux en conflit finissent par passer, sans rester bloqués', () => {
+    dans(posteA, `async ({ db, store, notes, datasync, MSGS }) => {
+      const p = notes.creerPage({ title: 'Duel', content: 'version de départ' }, MSGS);
+      db.prepare('UPDATE note_page SET shared = 1 WHERE id = ?').run(p.id);
+      await datasync.commiter('note duel'); await datasync.tour();
+    }`);
+    dans(posteB, `async ({ datasync }) => { await datasync.tour(); }`);
+
+    // A change la note et pousse.
+    dans(posteA, `async ({ db, store, datasync }) => {
+      const p = db.prepare("SELECT * FROM note_page WHERE slug = 'duel'").get();
+      store.ecrire('note_page', () => db.prepare('UPDATE note_page SET content = ?, updated_at = ? WHERE id = ?')
+        .run('écrit par A', new Date().toISOString(), p.id) && p.id);
+      await datasync.commiter('A écrit'); await datasync.tour();
+    }`);
+
+    /* B écrit DEUX FOIS sans synchroniser : deux commits locaux, tous deux sur le même fichier
+       que A vient de changer. C'est le cas ordinaire — on enregistre, on se reprend. */
+    const etat = dans(posteB, `async ({ db, store, datasync }) => {
+      const p = db.prepare("SELECT * FROM note_page WHERE slug = 'duel'").get();
+      for (const texte of ['premier jet de B', 'second jet de B']) {
+        store.ecrire('note_page', () => db.prepare('UPDATE note_page SET content = ?, updated_at = ? WHERE id = ?')
+          .run(texte, new Date().toISOString(), p.id) && p.id);
+        await datasync.commiter('B écrit');
+      }
+      await datasync.tour();
+      await datasync.tour();          // un second tour : un poste bloqué le reste au suivant
+      const s = datasync.statut();
+      return { enAvance: s.enAvance, enRetard: s.enRetard, erreur: s.erreur };
+    }`);
+    assert.equal(etat.enAvance, 0, `B reste bloqué avec des commits qui ne partent pas : ${JSON.stringify(etat)}`);
+    assert.equal(etat.enRetard, 0, 'et il a bien reçu ce que A avait poussé');
+  });
+
+  /* « SUPPRIME `reviewer.db` ET TOUT REVIENT DES FICHIERS » — y compris sans rien cliquer.
+     Une base neuve devant un clone déjà à jour est à ↑0 ↓0 : le tour sortait avant la branche
+     qui hydrate, et la base restait vide tant qu'on n'avait pas cliqué « Cloner / rattacher ».
+     On reproduit l'état exact — les lignes effacées, le repère d'hydratation retiré, le clone
+     intact — et on demande un simple tour. */
+  test('une base vide devant un clone à jour se réhydrate toute seule', () => {
+    const revenu = dans(posteB, `async ({ db, datasync }) => {
+      await datasync.tour();                                  // B est à jour
+      await datasync.tour();
+      const s0 = datasync.statut();                           // …et vraiment à ↑0 ↓0
+      const avant = db.prepare('SELECT COUNT(*) n FROM note_page').get().n;
+      // La base repart de zéro : les lignes partent, le repère aussi, le clone reste.
+      db.exec('DELETE FROM note_page');
+      db.exec("DELETE FROM local_state WHERE kind = 'data' AND ref = 'repo' AND key = 'hydrated_at'");
+      db.exec('DELETE FROM store_sale'); db.exec('DELETE FROM store_menage');
+      await datasync.tour();
+      return { avant, s0: { enAvance: s0.enAvance, enRetard: s0.enRetard },
+        apres: db.prepare('SELECT COUNT(*) n FROM note_page').get().n };
+    }`);
+    assert.ok(revenu.avant > 0, 'le décor doit contenir des pages avant l’effacement');
+    assert.deepEqual(revenu.s0, { enAvance: 0, enRetard: 0 },
+      'le décor DOIT être « rien à échanger » : c’est le cas où le tour sortait trop tôt');
+    assert.equal(revenu.apres, revenu.avant,
+      'un tour doit suffire à retrouver ce que le dépôt contient : c’est la promesse « supprime la base, tout revient »');
+  });
+
   /* UNE ADRESSE N'EST PAS UNE OPTION. L'URL du dépôt part telle quelle dans l'argv de `git`, et
      elle ne vient pas que des réglages : l'aperçu la prend dans la query string d'un GET, donc
      n'importe quelle page ouverte dans le navigateur peut l'appeler. Une valeur qui commence par

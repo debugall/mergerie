@@ -169,7 +169,13 @@ describe('store — la base prévient, le store écrit', () => {
     // Le rapport a été REPOSÉ sur le disque local, là où l'application le lit.
     const v = db.prepare('SELECT md_path FROM review_version WHERE mr_id = ?').get(m.id);
     assert.match(fs.readFileSync(v.md_path, 'utf8'), /Deux constats/);
-    assert.equal(store.enRetard(), 0, 'ce qu’on vient d’importer n’est pas « sale »');
+    /* CE QU'ON VIENT D'IMPORTER N'EST PAS « SALE » : aucune ÉCRITURE en attente. Le balayage,
+       lui, reste armé — ce test efface six tables d'un coup, et chaque suppression demande de
+       comparer le dossier aux lignes restantes. L'hydratation ne jette plus ce qui attendait
+       avant elle (une ligne gardée faute de dépendance, un traitement de fond) : elle ne peut
+       donc pas non plus désarmer un balayage qu'une vraie suppression aurait demandé. */
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM store_sale').get().n, 0,
+      'ce qu’on vient d’importer n’est pas « sale »');
   });
 
   test('le retour de l’IA d’une session revient, et la cible sait où il est', () => {
@@ -275,5 +281,82 @@ describe('store — la base prévient, le store écrit', () => {
     const passUid = db.prepare('SELECT uid FROM agent_pass WHERE rowid = ?').get(rid).uid;
     assert.ok(store.lireFichier(`sessions/${mrUid}/pass-${passUid}.md`) !== null,
       'et le fichier finit par exister : c’est tout ce qu’on lui demandait');
+  });
+
+  /* CE QUI ATTENDAIT DANS LA FILE SURVIT À UNE HYDRATATION.
+     L'hydratation vidait la file entière à la fin — les lignes qu'elle venait d'écrire, mais
+     aussi tout ce qui attendait AVANT : une ligne gardée faute de dépendance résolue, et ce
+     qu'un traitement de fond avait écrit sans qu'aucune requête ne l'écoule. Ces fichiers-là
+     n'auraient plus été écrits qu'à la prochaine modification de leur ligne, c'est-à-dire
+     peut-être jamais. */
+  test('une hydratation ne jette pas ce qui attendait déjà dans la file', () => {
+    const now = new Date().toISOString();
+    // Une passe de review dont la merge request n'existe pas : elle attend, c'est son droit.
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
+      VALUES ('review', 888888, 0, 1, 'question', 'en attente de sa MR', NULL, ?)`).run(now);
+    const rid = db.prepare("SELECT rowid AS r FROM agent_pass WHERE scope = 'review' AND task_id = 888888").get().r;
+    store.ecouler();
+    const enFile = () => db.prepare("SELECT COUNT(*) n FROM store_sale WHERE tbl = 'agent_pass' AND rid = ?").get(rid).n;
+    assert.ok(enFile() >= 1, 'elle doit attendre : c’est le décor du test');
+
+    store.hydraterFichiers([]);       // une hydratation qui n'apporte rien, mais qui vidait tout
+    assert.ok(enFile() >= 1, 'l’hydratation ne doit pas emporter ce qui attendait avant elle');
+  });
+
+  /* UNE TABLE VIDE NE VIDE PAS LE DÉPÔT.
+     Base neuve devant un clone plein : plus aucune ligne ne protège de fichier, et le premier
+     balayage retirait tout ce que la table avait dans le dépôt — puis le poussait. Supprimer sa
+     dernière note, elle, ne retire qu'un fichier : ce cas-là doit continuer de passer. */
+  test('un balayage ne vide pas le dépôt quand la table, elle, est vide', () => {
+    const now = new Date().toISOString();
+    for (let i = 0; i < 12; i += 1) {
+      db.prepare(`INSERT INTO note_page (slug, title, content, shared, created_at, updated_at)
+        VALUES (?, ?, 'contenu', 1, ?, ?)`).run(`balayage-${i}`, `Balayage ${i}`, now, now);
+    }
+    store.ecouler();
+    const compter = () => store.listerFichiers('notes').filter((f) => f.includes('balayage-')).length;
+    assert.ok(compter() >= 12, `les douze pages doivent être dans le dépôt (${compter()})`);
+
+    /* La base repart de zéro — c'est ce que fait une base neuve, pas un utilisateur : lui
+       supprime page par page, et chaque balayage ne retire alors qu'un fichier. */
+    db.exec('DELETE FROM note_page');
+    db.exec('DELETE FROM store_sale');
+    db.prepare("INSERT INTO store_menage (tbl) VALUES ('note_page')").run();
+    store.ecouler();
+    assert.ok(compter() >= 12,
+      'le balayage doit REFUSER : douze fichiers dans le dépôt et aucune ligne ici, c’est une base non hydratée');
+  });
+
+  /* UN SEUL DOCUMENT MALFORMÉ N'EMPORTE PAS TOUTE L'HYDRATATION.
+     Le commentaire du code le promettait, mais seul `upsert` était protégé : `fromFile` écrit
+     sur le disque (il refuse un chemin qui sortirait du dossier de données), et son exception
+     remontait jusqu'au tour. `hydrated_at` n'avançait pas, et chaque tour rejouait le même
+     échec : la synchro de toute l'équipe bloquée par un fichier qu'un seul poste avait écrit. */
+  test('un document qui refuse de s’hydrater n’emporte pas les autres', () => {
+    const partage = path.join(process.env.MERGERIE_DATA_DIR, 'shared');
+    /* L'`uid` NOMME UN DOSSIER sur le disque local : celui-ci tente d'en sortir, et
+       `ecrireDisque` le refuse — depuis `fromFile`, avant tout `upsert`. */
+    const piege = 'sessions/piege/session.json';
+    fs.mkdirSync(path.join(partage, 'sessions', 'piege'), { recursive: true });
+    fs.writeFileSync(path.join(partage, piege), JSON.stringify({
+      uid: '../../../../evade', flavour: 'explore', kind: 'explore', prompt: 'où est le code ?',
+      answer: 'une réponse qui veut s’écrire hors du dossier', status: 'done',
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(), targets: [],
+    }), 'utf8');
+
+    // Un document SAIN à côté, écrit par le store lui-même : c'est lui qui doit passer malgré l'autre.
+    const now2 = new Date().toISOString();
+    db.prepare(`INSERT INTO note_page (slug, title, content, shared, created_at, updated_at)
+      VALUES ('temoin-sain', 'Témoin sain', 'du contenu', 1, ?, ?)`).run(now2, now2);
+    store.ecouler();
+    const sain = store.listerFichiers('notes').find((f) => f.includes('temoin-sain') && f.endsWith('.md'));
+    assert.ok(sain, 'le décor doit porter un document sain à hydrater à côté');
+
+    let bilan;
+    assert.doesNotThrow(() => { bilan = store.hydraterFichiers([piege, sain]); },
+      'un document refusé ne doit pas faire échouer l’hydratation entière');
+    assert.ok(bilan.orphelins.some((o) => o.startsWith(piege)),
+      `le document refusé doit être SIGNALÉ, pas avalé : ${JSON.stringify(bilan.orphelins)}`);
+    assert.ok(bilan.ecrits >= 1, 'et ce qui suivait dans la liste doit être passé quand même');
   });
 });

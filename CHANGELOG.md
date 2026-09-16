@@ -314,6 +314,42 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A merge request no longer produces a commit — and a conflict — on every discovery.** The
+  file of a merge request carried `updated_at`, and discovery rewrites every open merge request
+  on every pass: same values, fresh timestamp. So every pass changed every merge request file,
+  committed one line per merge request, and two machines that had refreshed between two syncs
+  collided on **every** one of them — conflicts, a red indicator and a “kept version” for
+  documents nobody had touched. That is the promise “conflicts are rare by construction” turned
+  against itself, and it made sharing unusable as soon as automatic refresh was on. The
+  timestamp stays local now: it says when *this* machine last saw the merge request move.
+
+- **A rebase with two conflicting local commits now converges.** Saving the same note twice
+  before a sync makes two local commits. Only the first was resolved: the second made
+  `rebase --continue` fail, the rebase was abandoned, the overwritten versions were not even
+  kept, and the next round replayed the same scene — the machine stayed “↑2” forever, without a
+  word on screen. The rebase now loops until it is done, skipping a replayed commit that the
+  resolution has emptied, and it says so if it truly cannot finish.
+
+- **An empty database in front of an up-to-date clone hydrates itself again.** “Delete
+  `reviewer.db` and it all comes back from the files” was false: with nothing to exchange the
+  round returned before reaching the branch that hydrates, so the database stayed empty until
+  someone clicked *Clone / attach*. Worse, in that state the first local deletion swept the
+  repository clean of a table nothing protected any more, and pushed it. A round now hydrates
+  when this machine never has, and a sweep **refuses** to remove a dozen files for a table that
+  holds no rows at all — deleting your last note still removes its file.
+
+- **One malformed document no longer blocks the whole sync, permanently.** Only the database
+  write was protected; reading a document back — which writes files, and refuses a path that
+  would escape the data folder — was not. One such file and the hydration marker stopped moving,
+  so every round replayed the same failure: the whole team's sync held up by a file one machine
+  wrote. Such a document is now reported as an orphan, and the rest goes through.
+
+- **A hydration no longer throws away writes that were waiting.** The queue is emptied at the
+  end of a hydration — what it just imported does not need re-exporting — but that also emptied
+  what was waiting *before*: a row held back because its dependency was not there yet, and
+  everything a background job had written that no request had flushed. Those files would only
+  have been written at the next change to their row, which is to say possibly never.
+
 - **A review rule that fires on a path, with no branch, now reaches the team.** Such a rule
   (the most common kind: “on `**/migrations/**`, check reversibility”) was written to the data
   repository but refused on every other machine — the file arrived, the row never did, and the
