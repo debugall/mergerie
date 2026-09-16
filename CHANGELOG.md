@@ -314,6 +314,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A review rule that fires on a path, with no branch, now reaches the team.** Such a rule
+  (the most common kind: “on `**/migrations/**`, check reversibility”) was written to the data
+  repository but refused on every other machine — the file arrived, the row never did, and the
+  colleagues kept reviewing without it. It now lands like the others.
+
 - **Opening the code on a review received from the team shows the changed files again.** The
   report arrived, but the code to read it against did not: `review.diff_path` is a path on the
   machine that ran the review, so it never travels — and the two endpoints behind “open the

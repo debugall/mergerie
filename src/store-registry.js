@@ -535,7 +535,11 @@ const REGISTRE = [
     fromFile: (doc, ctx) => ({
       uid: doc.uid,
       label: doc.label || null,
-      branch_match: doc.branch_match || null,
+      /* `branch_match` est NOT NULL en base et l'application y écrit '' quand la règle se
+         déclenche sur un chemin seulement. L'export omet un champ vide : « || null » faisait
+         donc échouer l'hydratation de TOUTE règle par chemin venue d'un collègue —
+         « NOT NULL constraint failed » — et l'équipe ne recevait jamais ses règles. */
+      branch_match: doc.branch_match || '',
       path_match: doc.path_match || null,
       content: doc.content || '',
       enabled: doc.enabled ? 1 : 0,

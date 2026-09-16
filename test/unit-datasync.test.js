@@ -344,6 +344,26 @@ describe('datasync — deux postes, un dépôt de données', () => {
       'ce que le collègue a relu doit se voir ici : c’est tout l’intérêt du partage');
   });
 
+  test('une règle qui se déclenche sur un CHEMIN, sans branche, arrive chez le collègue', () => {
+    /* La règle la plus courante d'une équipe — « sur le dossier migrations, vérifie la réversibilité » —
+       n'a pas de branche : l'application écrit '' dans `branch_match`, colonne NOT NULL. L'export
+       omet un champ vide, et l'hydratation rendait `null` : « NOT NULL constraint failed », la
+       règle restait orpheline, et l'équipe ne recevait jamais ce qui gagne le plus à être commun. */
+    dans(posteA, `async ({ db, store, datasync }) => {
+      store.ecrire('review_rule', () => db.prepare(
+        "INSERT INTO review_rule (branch_match, path_match, label, content, enabled, created_at) VALUES ('', '**/migrations/**', 'migrations', 'Vérifier la réversibilité.', 1, ?)",
+      ).run(new Date().toISOString()).lastInsertRowid);
+      await datasync.commiter('rule migrations'); await datasync.tour();
+    }`);
+    const chezB = dans(posteB, `async ({ db, datasync }) => {
+      const bilan = await datasync.tour();
+      return { orphelins: (bilan.hydrate && bilan.hydrate.orphelins) || [],
+        regles: db.prepare("SELECT label, branch_match, path_match FROM review_rule WHERE label = 'migrations'").all() };
+    }`);
+    assert.deepEqual(chezB.orphelins, [], 'aucun fichier laissé de côté');
+    assert.deepEqual(chezB.regles, [{ label: 'migrations', branch_match: '', path_match: '**/migrations/**' }]);
+  });
+
   test('Docker, Jenkins, Git et Jira redevenus locaux SORTENT du dépôt', () => {
     /* Ces quatre onglets décrivent une machine, ses accès et sa façon de travailler, pas un
        travail accumulé. Leurs
