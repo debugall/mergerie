@@ -70,6 +70,12 @@ FR = [
     (r'(?i)\bprompts\b', 'promptes'),
     (r'(?i)\bprompt\b', 'prompte'),
     (r'(?i)\bcockpit\b', 'cockpitte'),
+    # COPILOT. Même défaut que `cockpit`, et plus gênant : c'est un nom de produit, dit dès la
+    #    première phrase du film. Le t final est muet en français — `espeak-ng -v fr -q -x
+    #    "Copilot"` rend `kopil'o`, soit « copilo ». `Copilote` rend `kopil'Ot`, exactement ce
+    #    que dit un développeur francophone, qui prononce ce nom comme le mot français.
+    #    Français seulement : la voix anglaise lit « Copilot » correctement.
+    (r'(?i)\bcopilot\b', 'Copilote'),
     # JENKINS. Lu « jan-quin » (ZA~k'E~) : le J français, et deux nasalisations là où il n'y
     #    en a aucune. Le n doublé casse la seconde, comme pour `lint` → `linnte`. Mesuré avec
     #    `espeak-ng -v fr -q -x` : `djènkinnsse` donne dZEnk'ins, soit exactement ce qu'on dit. 
