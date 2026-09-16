@@ -166,13 +166,27 @@ function ensureInternalIgnore(cwd) {
 // Diff ciblé : changements de la branche source depuis sa divergence d'avec target.
 // three-dot => n'inclut pas les commits de target absents de source.
 async function targetedDiff(cwd, sourceBranch, targetBranch, onLog = () => {}) {
-  const src = `origin/${sourceBranch}`;
-  const tgt = `origin/${targetBranch}`;
+  /* UN NOM DE BRANCHE MANQUANT NE DEVIENT PAS `origin/null`. Une merge request arrivée par le
+     dépôt de données avant que ce poste ne l'ait découverte chez la forge n'a pas encore ses
+     branches : l'interpolation en faisait `git diff origin/null...origin/null`, et l'écran
+     rendait le « ambiguous argument » de git — qui décrit la commande, pas ce qui manque. */
+  const nom = (b) => (b == null ? '' : String(b).trim());
+  if (!nom(sourceBranch) || !nom(targetBranch)) {
+    throw new Error(t('err.mr.branches-inconnues'));
+  }
+  return diffTroisPoints(cwd, `origin/${nom(targetBranch)}`, `origin/${nom(sourceBranch)}`, onLog);
+}
+
+/* LE MÊME DIFF, MAIS VERS UNE RÉFÉRENCE DÉJÀ RÉSOLUE — un SHA relu, par exemple. L'arbre
+   affiché et les fichiers marqués « modifiés » doivent parler du MÊME commit : marquer un
+   fichier d'après la tête de branche pendant qu'on liste l'arbre du commit relu fait apparaître
+   des fichiers modifiés qui n'existent pas dans l'arbre. */
+async function diffTroisPoints(cwd, baseRef, ref, onLog = () => {}) {
   // on log la commande mais PAS la sortie (le diff peut être énorme) : juste un résumé.
-  onLog(`$ git diff ${tgt}...${src}`);
+  onLog(`$ git diff ${baseRef}...${ref}`);
   const { stdout } = await run(
     'git',
-    ['diff', `${tgt}...${src}`],
+    ['diff', `${baseRef}...${ref}`],
     { cwd, maxBuffer: 1024 * 1024 * 64 },
   );
   const lines = stdout ? stdout.split('\n').length : 0;
@@ -514,7 +528,7 @@ module.exports = {
   aheadOf, behindOf, isPushed, renommerDernierCommit, nonPousses,
   rebaseSur, rebaseContinuer, rebaseAbandonner, rebaseEnCours, fichiersEnConflit,
   resetWorktree,
-  ensureRepo, targetedDiff, diffRange, tagAuthor, branchesForCommit, branchesForCommitDetailed, cloneDirFor, authUrl, run, secretsOf, tokenFor,
+  ensureRepo, targetedDiff, diffTroisPoints, diffRange, tagAuthor, branchesForCommit, branchesForCommitDetailed, cloneDirFor, authUrl, run, secretsOf, tokenFor,
   defaultBranch, ensureCleanWorktree, refExists, createBranchFrom, checkoutBranch, commitAll, headSha, branchDiff, pushBranch, gitTlsArgs,
   lsTree, showFile, fileDiffFull, fileDiffRange,
 };

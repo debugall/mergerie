@@ -2,12 +2,30 @@
 const db = require('./db');
 const { DEFAULT_CLONE_DIR } = require('./paths');
 const { promptsFor } = require('./prompts');
+const registre = require('./store-registry');
+
+/* DEUX TABLES, UN SEUL OBJET. Les réglages vivent désormais dans `config` (ce que l'ÉQUIPE a
+   décidé : gabarits de prompt, seuils, politiques, URL de la forge) et dans `local_config` (ce
+   qui appartient à CE POSTE : les sept jetons, le chemin des clones, la langue, le moteur de
+   dictée). Le tri est déclaré une fois pour toutes dans `src/store-registry.js`, colonne par
+   colonne, et `npm run check` refuse un champ sans destination.
+
+   Le reste de l'application ne voit rien de ce découpage : `getConfig()` rend le même objet
+   qu'avant, `updateConfig()` accepte le même patch. Seule change la table où chaque valeur
+   atterrit — et c'est tout l'intérêt, puisque c'est ce qui décidera un jour de ce qui part
+   dans le dépôt d'équipe. */
+const CHAMPS_POSTE = registre.localesDe('config').filter((c) => c !== 'id');
 
 function getConfig() {
-  const row = db.prepare('SELECT * FROM config WHERE id = 1').get();
+  const row = { ...db.prepare('SELECT * FROM config WHERE id = 1').get() };
+  const local = db.prepare('SELECT * FROM local_config WHERE id = 1').get() || {};
+  for (const champ of CHAMPS_POSTE) row[champ] = local[champ];
   if (!row.clone_path) row.clone_path = DEFAULT_CLONE_DIR;
   return row;
 }
+
+/** Le champ est-il d'équipe (`config`) ou de ce poste (`local_config`) ? Sert aux badges. */
+const destinationDe = (champ) => (CHAMPS_POSTE.includes(champ) ? 'poste' : 'equipe');
 
 const ALLOWED = [
   'gitlab_url', 'access_token', 'clone_path', 'jira_url',
@@ -15,6 +33,7 @@ const ALLOWED = [
   'prompt_review', 'prompt_explain', 'prompt_modify', 'prompt_fix', 'language', 'ai_extra_instructions',
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
   'brief_on_open', 'auto_post_review', 'auto_post_blocking_only', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
+  'auto_runner',
   'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'verif_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'task_default_auto_push', 'task_default_ask_questions',
@@ -23,6 +42,7 @@ const ALLOWED = [
   'dictation_provider', 'dictation_model', 'dictation_vad_model', 'dictation_command',
   'dictation_url', 'dictation_api_key', 'dictation_remote_model', 'dictation_language',
   'dictation_vocabulary', 'dictation_replacements', 'dictation_final_pass',
+  'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share',
 ];
 
 function updateConfig(patch) {
@@ -136,53 +156,69 @@ function updateConfig(patch) {
     const di = parseInt(patch.dictation_idle_minutes, 10);
     next.dictation_idle_minutes = (!Number.isFinite(di) || di <= 0) ? 0 : Math.min(240, Math.max(1, di));
   }
+  /* ---------- Données partagées ----------
+     L'URL est normalisée comme les autres (pas de slash final). La branche vide retombe sur
+     `main` : une branche vide ferait échouer le premier `push` avec un message que personne ne
+     relierait au champ laissé blanc. La cadence est bornée [10, 600] s — en dessous, on
+     interroge la forge plus souvent qu'on ne travaille ; au-dessus, « partagé » ne veut plus
+     rien dire dans une journée. */
+  if (next.data_repo_url) next.data_repo_url = next.data_repo_url.trim().replace(/\/+$/, '');
+  next.data_repo_branch = String(next.data_repo_branch || '').trim() || 'main';
+  // Partage de la dépense : booléen en texte, DÉCOCHÉ par défaut — le doute profite au silence.
+  next.usage_share = next.usage_share === '1' ? '1' : '0';
+  if ('data_sync_seconds' in patch) {
+    const ds = parseInt(patch.data_sync_seconds, 10);
+    next.data_sync_seconds = Number.isFinite(ds) ? Math.min(600, Math.max(10, ds)) : 30;
+  }
   // Seconde passe : booléen en texte, ACTIVÉE par défaut (elle ne coûte rien en local).
   next.dictation_final_pass = next.dictation_final_pass === '0' ? '0' : '1';
   // Les rapports produits par l'IA suivent la langue de l'interface (i18n.md lot 5,
   // option 1). On n'aligne QUE les gabarits restés au défaut : un prompt que
   // l'utilisateur a personnalisé n'est jamais écrasé (piège n°4 du plan).
   if (next.language !== current.language) Object.assign(next, promptsFor(next.language, next));
+  /* CE QUE L'ÉQUIPE A DÉCIDÉ. Un champ ajouté ici doit l'être aussi dans `ALLOWED` ci-dessus
+     et dans `partagees` du registre — sans quoi la route répond 200, l'écran dit
+     « enregistré », et la valeur n'est nulle part. `npm run check` rattrape les trois cas. */
   db.prepare(`UPDATE config SET
       gitlab_url = @gitlab_url,
-      access_token = @access_token,
-      clone_path = @clone_path,
       github_url = @github_url,
-      github_token = @github_token,
       jira_url = @jira_url,
+      jenkins_url = @jenkins_url,
       prompt_review = @prompt_review,
       prompt_explain = @prompt_explain,
       prompt_modify = @prompt_modify,
       prompt_fix = @prompt_fix,
       ai_extra_instructions = @ai_extra_instructions,
-      language = @language,
-      jira_email = @jira_email,
       jira_test_key = @jira_test_key,
-      task_default_auto_push = @task_default_auto_push,
-      task_default_ask_questions = @task_default_ask_questions,
-      task_default_notify_jira = @task_default_notify_jira,
-      task_default_converge = @task_default_converge,
       verify_jira_comment = @verify_jira_comment,
-      jira_token = @jira_token,
       review_explain = @review_explain,
       auto_post_review = @auto_post_review,
       auto_post_blocking_only = @auto_post_blocking_only,
       auto_review_new = @auto_review_new,
       auto_rereview_stale = @auto_rereview_stale,
+      auto_runner = @auto_runner,
       review_auto_max = @review_auto_max,
       converge_threshold = @converge_threshold,
       converge_max_passes = @converge_max_passes,
-      auto_refresh_minutes = @auto_refresh_minutes,
-      jira_watch_minutes = @jira_watch_minutes,
       retention_days = @retention_days,
-      brief_on_open = @brief_on_open,
-      todo_close_on_merge = @todo_close_on_merge,
       stale_mr_days = @stale_mr_days,
-      jenkins_url = @jenkins_url,
+      verif_auto_max = @verif_auto_max,
+      agent_auto_max = @agent_auto_max,
+      dictation_vocabulary = @dictation_vocabulary,
+      dictation_replacements = @dictation_replacements
+    WHERE id = 1`).run(next);
+  /* CE QUI APPARTIENT À CE POSTE. Les sept jetons sont ici, et nulle part ailleurs : les
+     colonnes de même nom dans `config` sont vidées et gelées au démarrage (`src/db.js`). */
+  db.prepare(`UPDATE local_config SET
+      access_token = @access_token,
+      clone_path = @clone_path,
+      github_token = @github_token,
+      language = @language,
+      jira_email = @jira_email,
+      jira_token = @jira_token,
       jenkins_user = @jenkins_user,
       jenkins_token = @jenkins_token,
       jenkins_refresh_minutes = @jenkins_refresh_minutes,
-      verif_auto_max = @verif_auto_max,
-      agent_auto_max = @agent_auto_max,
       dictation_provider = @dictation_provider,
       dictation_model = @dictation_model,
       dictation_vad_model = @dictation_vad_model,
@@ -191,13 +227,25 @@ function updateConfig(patch) {
       dictation_api_key = @dictation_api_key,
       dictation_remote_model = @dictation_remote_model,
       dictation_language = @dictation_language,
-      dictation_vocabulary = @dictation_vocabulary,
-      dictation_replacements = @dictation_replacements,
       dictation_silence_ms = @dictation_silence_ms,
       dictation_final_pass = @dictation_final_pass,
-      dictation_idle_minutes = @dictation_idle_minutes
+      dictation_idle_minutes = @dictation_idle_minutes,
+      data_repo_url = @data_repo_url,
+      data_repo_branch = @data_repo_branch,
+      data_sync_seconds = @data_sync_seconds,
+      usage_share = @usage_share,
+      /* Des habitudes, pas des politiques : le brief au lancement, les cadences de CE poste,
+         la fermeture des todos (devenues personnelles) et les cases d'office d'une session. */
+      brief_on_open = @brief_on_open,
+      auto_refresh_minutes = @auto_refresh_minutes,
+      jira_watch_minutes = @jira_watch_minutes,
+      todo_close_on_merge = @todo_close_on_merge,
+      task_default_auto_push = @task_default_auto_push,
+      task_default_ask_questions = @task_default_ask_questions,
+      task_default_notify_jira = @task_default_notify_jira,
+      task_default_converge = @task_default_converge
     WHERE id = 1`).run(next);
   return getConfig();
 }
 
-module.exports = { getConfig, updateConfig };
+module.exports = { getConfig, updateConfig, destinationDe, CHAMPS_POSTE };

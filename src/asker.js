@@ -17,6 +17,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('./db');
+const localsession = require('./localsession');
 const copilot = require('./copilot');
 const agentsession = require('./agentsession');
 const agentpass = require('./agentpass');
@@ -26,11 +27,26 @@ const { t } = require('../public/i18n-runtime.js');
 
 const now = () => new Date().toISOString();
 
-const questionById = (id) => db.prepare('SELECT * FROM question WHERE id = ?').get(Number(id));
+/* Le handle de session est recollé depuis `local_session` : il ne vaut que dans le `~/.claude`
+   de cette machine, alors que la question et sa réponse, elles, se partagent. */
+const questionById = (id) => localsession.resoudre('question',
+  db.prepare('SELECT * FROM question WHERE id = ?').get(Number(id)));
+
+const CHAMPS_SESSION = ['session_key', 'session_backend', 'session_cwd'];
 
 function setQuestion(id, patch) {
-  const cols = Object.keys(patch).map((k) => `${k} = @${k}`).join(', ');
-  db.prepare(`UPDATE question SET ${cols}, updated_at = @u WHERE id = @id`).run({ ...patch, u: now(), id });
+  const session = {};
+  const reste = {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (CHAMPS_SESSION.includes(k)) session[k] = v; else reste[k] = v;
+  }
+  if (Object.keys(session).length) {
+    const ligne = db.prepare('SELECT uid FROM question WHERE id = ?').get(id);
+    if (ligne) localsession.ecrire('question', ligne.uid, { ...localsession.lire('question', ligne.uid), ...session });
+  }
+  const cols = Object.keys(reste).map((k) => `${k} = @${k}`).join(', ');
+  if (!cols) return;
+  db.prepare(`UPDATE question SET ${cols}, updated_at = @u WHERE id = @id`).run({ ...reste, u: now(), id });
 }
 
 // Le dossier de travail d'une question : son `cwd` d'agent et le fichier de sa réponse.

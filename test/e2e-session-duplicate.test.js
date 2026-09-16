@@ -44,7 +44,12 @@ describe('Dupliquer une session', { skip: dispo ? false : MSG_NAVIGATEUR }, () =
     })).body;
     /* Une session d'agent sur la cible : c'est CE champ qui ne doit pas être repris — le
        reprendre continuerait la conversation de l'originale au lieu d'en ouvrir une neuve. */
-    app.db.prepare('UPDATE task_target SET session_key = ? WHERE task_id = ?').run('cle-agent-origine', origine.id);
+    /* Le handle a quitté la table partagée : il ne vaut que dans le `~/.claude` de cette
+       machine, donc il vit dans `local_session`, rangé sous l'`uid` du projet. */
+    for (const r of app.db.prepare('SELECT uid FROM task_target WHERE task_id = ?').all(origine.id)) {
+      // eslint-disable-next-line global-require
+      require('../src/localsession').ecrire('task_target', r.uid, { session_key: 'cle-agent-origine' });
+    }
 
     // Une EXPLORATION : sa branche est celle qu'on lit, elle ne doit surtout pas être décalée.
     exploration = (await app.api('POST', '/api/tasks', {
@@ -60,7 +65,10 @@ describe('Dupliquer une session', { skip: dispo ? false : MSG_NAVIGATEUR }, () =
     horsDepot = (await app.api('POST', '/api/local-tasks', {
       prompt: 'Range les imports de ces scripts', label: 'Imports', ask_questions: 1, dirs: [dossier],
     })).body;
-    app.db.prepare('UPDATE local_task_dir SET session_key = ? WHERE task_id = ?').run('cle-agent-locale', horsDepot.id);
+    for (const r of app.db.prepare('SELECT uid FROM local_task_dir WHERE task_id = ?').all(horsDepot.id)) {
+      // eslint-disable-next-line global-require
+      require('../src/localsession').ecrire('local_task_dir', r.uid, { session_key: 'cle-agent-locale' });
+    }
 
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 950 } });

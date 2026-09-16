@@ -59,8 +59,10 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
     /* « Dictée vocale » ferme la marche, à côté de « AI sessions » : ce sont les deux panneaux
        qui portent un BANC D'ESSAI plutôt qu'un simple réglage — on y vient pour éprouver une
        installation, pas pour cocher une case en passant. */
+    /* « Données partagées » suit « Général » : les deux règlent L'OUTIL, l'un pour soi, l'autre
+       à plusieurs. Elle passe avant Jira et Jenkins, qui branchent des services du dehors. */
     assert.deepEqual(ordre, ['gitcfg', 'repos', 'mr', 'rules', 'verifiers',
-      'notif', 'config', 'jiracfg', 'jenkinscfg', 'aisession', 'dictation']);
+      'notif', 'config', 'datasync', 'jiracfg', 'jenkinscfg', 'aisession', 'dictation']);
   });
 
   /* On revient dans Réglages pour finir ce qu'on y faisait : le dernier onglet consulté gagne

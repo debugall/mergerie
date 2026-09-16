@@ -53,6 +53,17 @@ async function copyText(text, btn) {
    où il apparaît — carte de merge request, ligne de projet d'une session, explorateur de
    branches, en-tête de rapport. ⇧-clic copie la commande de récupération complète : c'est
    toujours la même, et la retaper est le geste qui suit le copier neuf fois sur dix. */
+/* LE TITRE D'UNE MERGE REQUEST, ET CE QU'ON MONTRE QUAND ON NE L'A PAS.
+   Une MR arrivée par le dépôt de données avant d'avoir été découverte chez la forge n'a pas
+   encore de titre sur ce poste : « !42 — » laissait un tiret cadratin pendu dans le vide, qui
+   se lit comme un titre vide plutôt que comme un titre pas encore connu. Sans titre, le numéro
+   suffit, et l'infobulle dit pourquoi il est seul. */
+function titreMr(m) {
+  const t2 = String((m && m.title) || '').trim();
+  if (t2) return `!${m.iid} — ${esc(t2)}`;
+  return `!${m.iid} <span class="muted" title="${esc(tr('mr.title.inconnu'))}">${esc(tr('mr.title.a-decouvrir'))}</span>`;
+}
+
 const CMD_CHECKOUT = (b) => `git fetch origin && git checkout ${b}`;
 function chipBranche(nom, { cible = false } = {}) {
   if (!nom) return '';
@@ -693,6 +704,10 @@ function mdToHtml(md) {
   let html = '';
   let inList = false;
   let inCode = false;
+  /* Un bloc ``` peut porter un langage. Il était jeté : `mermaid` ressortait en <pre>, donc
+     un diagramme se lisait comme du texte. Seul `mermaid` est distingué — les autres langages
+     ne changent rien au rendu, et inventer une coloration syntaxique ici serait un autre sujet. */
+  let inMermaid = false;
   const inline = (t) => esc(t)
     // Image embarquée Jira → vignette inline cliquable (URL restreinte à NOTRE proxy = sûr).
     .replace(/!\[([^\]]*)\]\((\/api\/jira\/attachment\/\d+)\)/g, '<img class="jira-inline-img" src="$2" alt="$1" data-jimg="$2" data-jname="$1" loading="lazy" />')
@@ -715,8 +730,16 @@ function mdToHtml(md) {
     const raw = lines[i];
 
     if (raw.trim().startsWith('```')) {
-      if (inCode) { html += '</pre>'; inCode = false; }
-      else { closeList(); html += '<pre>'; inCode = true; }
+      if (inCode) { html += inMermaid ? '</pre></div>' : '</pre>'; inCode = false; inMermaid = false; }
+      else {
+        closeList();
+        inMermaid = raw.trim().slice(3).trim().toLowerCase() === 'mermaid';
+        /* Le <pre> reste À L'INTÉRIEUR, et c'est voulu : il porte la source, il sert de repli
+           quand le diagramme ne compile pas, et l'autolink des notes saute déjà tout <pre>.
+           Le rendu remplacera son contenu par le SVG, pas le <pre> lui-même. */
+        html += inMermaid ? '<div class="mermaid-wrap" data-mermaid><pre>' : '<pre>';
+        inCode = true;
+      }
       continue;
     }
     if (inCode) { html += esc(raw) + '\n'; continue; }
@@ -756,7 +779,7 @@ function mdToHtml(md) {
     html += `<p>${inline(raw)}</p>`;
   }
   if (inList) html += '</ul>';
-  if (inCode) html += '</pre>';
+  if (inCode) html += inMermaid ? '</pre></div>' : '</pre>';
   return html;
 }
 
@@ -798,7 +821,7 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
    envoie sa première étape. */
 // `mr` partage la logique de `config` : ses champs sont rattachés à #configForm (attribut form=),
 // donc loadConfig les peuple et le submit les enregistre — un seul /config pour les deux onglets.
-const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadGeneralSettings, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadJenkinsConfig, verifiers: loadVerifiersEtPlafond, aisession: loadAiSessionSettings, dictation: loadDictationSettings };
+const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSettings, config: loadGeneralSettings, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadJenkinsConfig, verifiers: loadVerifiersEtPlafond, aisession: loadAiSessionSettings, dictation: loadDictationSettings, datasync: loadConfig };
 /* Ce panneau porte à la fois un réglage du formulaire global (les consignes permanentes) et un
    banc d'essai. Il lui faut donc `loadConfig` comme aux autres, sinon le champ s'affiche vide
    quoi qu'il y ait en base — et le premier « Enregistrer » l'efface sans rien demander. */
@@ -1326,9 +1349,20 @@ let confirmResolve = null;
 /* `check` : { label, checked, danger } ajoute une CASE À COCHER à la confirmation, et la
    promesse rend alors `{ ok, checked }` au lieu d'un booléen. Sert au push forcé — une décision
    qui appartient à celui qui pousse, et qui n'a pas à se cacher dans un second bouton. */
-function confirmDialog({ title, text, detail, confirmLabel, danger = true, check = null } = {}) {
+/* `html` : un corps STRUCTURÉ à la place de la phrase. Un récapitulatif qui aligne des
+   comptes de fichiers et deux colonnes ne se lit pas en paragraphe — et `white-space:
+   pre-line` sur un `<p>` ne fait pas un tableau. Le texte reste l'usage courant ; `wide`
+   élargit la modale quand ce corps porte deux colonnes. */
+function confirmDialog({
+  title, text, html = '', detail, confirmLabel, danger = true, check = null, wide = false,
+} = {}) {
   $('#confirmTitle').textContent = title || tr('confirm.default-title');
   $('#confirmText').textContent = text || '';
+  $('#confirmText').hidden = !text;
+  const corps = $('#confirmBody');
+  corps.hidden = !html;
+  corps.innerHTML = html || '';
+  $('#confirmModal').querySelector('.modal-box').classList.toggle('modal-confirm-lg', !!wide);
   const d = $('#confirmDetail');
   d.hidden = !detail;
   d.textContent = detail || '';
@@ -3774,7 +3808,7 @@ function mrCard(m) {
     ${/* Case à cocher : vérifier ENSEMBLE des MR qui ne valent qu'ensemble (§8). */''}
     <label class="mr-pick-box" title="${esc(tr('verify.pick.mr-title'))}"><input type="checkbox" class="mr-pick" value="${m.id}" ${mrSelection.has(m.id) ? 'checked' : ''} /></label>
     <div class="card-main">
-      <div class="title">!${m.iid} — ${esc(m.title || '')}</div>
+      <div class="title">${titreMr(m)}</div>
       <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}${m.gitlab_created_at ? ` · ${dateHtml(m.gitlab_created_at, fmtDate(m.gitlab_created_at))}` : ''}</div>
       ${mrLinks(m)}
       <div class="meta branches">${chipBranche(m.source_branch)} <span class="branch-arrow">→</span> ${chipBranche(m.target_branch, { cible: true })}</div>
@@ -4053,7 +4087,7 @@ function renderReports() {
     <div class="card selectable report-card ${selectedMr === m.id ? 'active' : ''}" data-id="${m.id}">
       ${noteBadge(m.note, m)}
       <div class="report-main">
-        <div class="title">!${m.iid} — ${esc(m.title || '')}</div>
+        <div class="title">${titreMr(m)}</div>
         <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}${m.gitlab_created_at ? ` · ${dateHtml(m.gitlab_created_at, fmtDate(m.gitlab_created_at))}` : ''}${ticketLink(m.ticket_url, m.ticket_key)}</div>
         ${/* A13 — LA TAILLE ET LES LOTS, comme sur une carte à traiter. Le tri « petites
               d'abord » s'applique à ce stade aussi, et il triait sur une donnée que la carte
@@ -4164,6 +4198,10 @@ function detailNote(m) {
   const bouts = [];
   if (d && d.version) bouts.push(`v${d.version}`);
   if (d && d.at) bouts.push(fmtDate(d.at));
+  /* « par Claire », quand l'équipe partage un dépôt de données. Le nom vient de git — celui qui
+     a commité le fichier du rapport —, donc aucune colonne à tenir et rien à saisir. En
+     mono-poste il n'y en a pas, et « par moi » sur chaque ligne n'apprendrait rien. */
+  if (d && d.author) bouts.push(tr('share.by', { name: d.author }));
   if (d && d.n_resolved) bouts.push(tr('review.note.detail.resolved', { n: d.n_resolved, count: d.n_resolved }));
   if (d && d.n_persistent) bouts.push(tr('review.note.detail.persistent', { n: d.n_persistent, count: d.n_persistent }));
   if (d && d.n_new) bouts.push(tr('review.note.detail.new', { n: d.n_new, count: d.n_new }));
@@ -4557,35 +4595,45 @@ async function renderResolution(id, versions) {
   const box = $('#resolutionBox');
   if (!box) return;
   const latest = versions[0];
-  const r = latest && latest.resolution;
-  if (!r) { box.hidden = true; return; }
+  if (!latest) { box.hidden = true; return; }
+  /* LE BANDEAU N'ARRIVE QU'À LA DEUXIÈME PASSE ; LA LISTE DES CONSTATS EXISTE DÈS LA PREMIÈRE.
+     Les deux vivaient dans la même boîte, et la boîte entière était masquée faute de delta à
+     raconter : une review d'UNE SEULE passe n'affichait donc aucun constat, aucune gravité,
+     aucun filtre — alors que la liste était là, complète, dans la réponse du serveur. Invisible
+     tant qu'on reviewe ses propres merge requests (on relance, on passe en v2) ; systématique
+     sur une review REÇUE d'un collègue, qui arrive avec sa passe unique et rien d'autre. */
+  const r = latest.resolution;
   // Évolution de la note entre l'avant-dernière et la dernière passe.
   const prev = versions[1];
   const noteFrom = prev ? prev.note10 : null;
   const noteTo = latest.note10;
   const noteBit = (noteFrom != null && noteTo != null && noteFrom !== noteTo)
     ? ` · ${tr('resolution.note-evo', { from: noteFrom, to: noteTo })}` : '';
-  const bits = [
+  const bits = !r ? '' : [
     r.resolved ? `<span class="res-chip ok">${tr('resolution.resolved', { n: r.resolved, count: r.resolved })}</span>` : '',
     r.persistent ? `<span class="res-chip warn">${tr('resolution.persistent', { n: r.persistent, count: r.persistent })}</span>` : '',
     r.new ? `<span class="res-chip new">${tr('resolution.new', { n: r.new, count: r.new })}</span>` : '',
     r.disappeared ? `<span class="res-chip muted" title="${tr('resolution.disappeared-hint')}">${tr('resolution.disappeared', { n: r.disappeared, count: r.disappeared })}</span>` : '',
   ].filter(Boolean).join('');
-  box.innerHTML = `<div class="resolution-banner">
+  const banniere = r ? `<div class="resolution-banner">
       <span class="res-title">${tr('resolution.title', { v: latest.version })}</span>${bits}<span class="res-note">${noteBit}</span>
-    </div><div id="findingsChips" class="findings-chips" hidden></div><div id="findingsList" class="findings-list"></div>`;
+    </div>` : '';
+  box.innerHTML = `${banniere}<div id="findingsChips" class="findings-chips" hidden></div><div id="findingsList" class="findings-list"></div>`;
   box.hidden = false;
   /* Le compte des constats résolus se JOUE, une seule fois par (MR, version). C'est la seule
      micro-récompense de l'app entièrement dérivée d'un fait : l'IA avait trouvé huit choses,
      il en reste deux. Rejouée à chaque ouverture du rapport elle deviendrait un tic — d'où la
      clé mémorisée. Jamais sur une première review : il n'y a rien à résoudre. */
-  jouerResolution(id, latest.version, r.resolved);
+  if (r) jouerResolution(id, latest.version, r.resolved);
 
   // Liste détaillée des constats de la dernière passe.
   const list = $('#findingsList');
   let data;
-  try { data = await api(`/mrs/${id}/findings`); } catch { return; }
-  if (!data.findings || !data.findings.length) { list.hidden = true; return; }
+  /* Sans bandeau, la boîte n'a que la liste à montrer : pas de constat, pas de boîte — sinon
+     l'écran gagnerait un cadre vide là où il n'y avait rien. */
+  const vide = () => { list.hidden = true; if (!r) box.hidden = true; };
+  try { data = await api(`/mrs/${id}/findings`); } catch { vide(); return; }
+  if (!data.findings || !data.findings.length) { vide(); return; }
   list.innerHTML = data.findings.map((f) => {
     const st = FINDING_STATUS[f.status] || { icon: '·', cls: '', key: null };
     const sv = SEV[f.severity] || SEV.minor;
@@ -4782,7 +4830,7 @@ async function openReport(id, opts = {}) {
           badges : deux rendus différents pour un même fait finiraient par se contredire. */''}
     <div class="card" style="margin-bottom:12px">
       <div>
-        <div class="title">${noteBadge(mLigne.note, mLigne)} !${m.iid} — ${esc(m.title || '')}</div>
+        <div class="title">${noteBadge(mLigne.note, mLigne)} ${titreMr(m)}</div>
         <div class="meta">${esc(m.project)}${ticketLink(d.ticket_url, d.ticket_key)} · ${chipBranche(m.source_branch)} → ${chipBranche(m.target_branch, { cible: true })}
           ${badgeDraft(mLigne)}
           ${fenteBrouillons({ ...mLigne, drafts: d.drafts || mLigne.drafts })}
@@ -6151,7 +6199,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'verif_auto_max', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment',
-  'stale_mr_days',
+  'stale_mr_days', 'auto_runner',
   /* Dictée vocale (whisper.md §6.3). `dictation_silence_ms` et `dictation_idle_minutes` sont
      ici comme `retention_days` : envoyés par cette liste, mais BORNÉS côté serveur, où ils
      n'appartiennent pas à `ALLOWED`. La case `dictation_final_pass`, elle, est traitée à
@@ -6159,7 +6207,11 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'dictation_provider', 'dictation_model', 'dictation_vad_model', 'dictation_command',
   'dictation_url', 'dictation_api_key', 'dictation_remote_model', 'dictation_language',
   'dictation_vocabulary', 'dictation_replacements',
-  'dictation_silence_ms', 'dictation_idle_minutes'];
+  'dictation_silence_ms', 'dictation_idle_minutes',
+  /* Données partagées : l'adresse du dépôt d'équipe, sa branche, la cadence. De POSTE — c'est
+     par là que cette machine rejoint l'équipe, et la mettre dans les réglages d'équipe serait
+     circulaire : il faudrait déjà être rattaché pour savoir où se rattacher. */
+  'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share'];
 /* CE QUI EST TAPÉ NE DOIT PAS ÊTRE EFFACÉ PAR UN CHARGEMENT EN RETARD.
  *
  * `loadConfig()` part à chaque ouverture d'un sous-onglet de réglages, et sa réponse revient
@@ -6246,9 +6298,327 @@ document.addEventListener('change', (e) => {
   if (e.target.name === 'auto_post_review') syncAutoPostBlocking();
 });
 
+/* ---------- DONNÉES PARTAGÉES ----------
+ *
+ * L'écran de la synchronisation : où l'on en est, un bouton pour rattacher ce poste, un pour
+ * forcer un tour, et la liste des conflits gardés. Rien d'autre — et surtout aucune commande
+ * git à taper : c'est l'outil qui fait le git, sinon la promesse tombe.
+ *
+ * La liste des conflits est le seul écran qui compte vraiment. Un conflit n'est jamais bloquant
+ * (le distant l'emporte, toujours), mais la version écrasée est GARDÉE : cet écran est ce qui
+ * permet de la reprendre. Sans lui, « le dernier gagne » serait « le premier perd en silence ».
+ */
+let dataSyncEtat = null;
+
+async function chargerDataSync() {
+  const zone = $('#dataSyncState');
+  if (!zone) return;
+  try { dataSyncEtat = await api('/data-sync'); } catch { return; }
+  const e = dataSyncEtat;
+  if (!e.configure) {
+    zone.textContent = tr('datasync.state.off');
+    $('#dataSyncConflicts').innerHTML = '';
+    return;
+  }
+  const bouts = [];
+  if (!e.clone) bouts.push(tr('datasync.state.not-attached'));
+  else bouts.push(tr('datasync.state.counts', { up: e.enAvance, down: e.enRetard }));
+  if (e.dernierPull) bouts.push(tr('datasync.state.last-pull', { at: new Date(e.dernierPull).toLocaleTimeString() }));
+  /* L'IDENTITÉ GIT MANQUANTE EST UN CAS À PART : tout a l'air de marcher, mais rien n'est
+     commité. On le dit en toutes lettres plutôt que de laisser chercher. */
+  if (e.identite && !e.identite.ok) bouts.push(tr('datasync.state.no-identity'));
+  else if (e.identite) bouts.push(tr('datasync.state.as', { name: e.identite.name }));
+  if (e.erreur) bouts.push(tr('datasync.state.error', { msg: e.erreur }));
+  zone.textContent = bouts.join(' · ');
+  rendreConflits(e.conflits || []);
+}
+
+function rendreConflits(liste) {
+  const zone = $('#dataSyncConflicts');
+  if (!zone) return;
+  if (!liste.length) { zone.innerHTML = ''; return; }
+  zone.innerHTML = `<h3 class="conflits-h">${esc(tr('datasync.conflicts.head', { n: liste.length }))}</h3>`
+    + liste.map((c) => `<div class="conflit" data-file="${esc(c.fichier)}">
+        <div class="conflit-nom">${esc(c.fichier)}</div>
+        <pre class="conflit-mienne">${esc(String(c.mienne || '').slice(0, 2000))}</pre>
+        <div class="conflit-actions">
+          <button class="btn btn-small" data-keep="mine">${esc(tr('datasync.conflicts.keep-mine'))}</button>
+          <button class="btn btn-small" data-keep="theirs">${esc(tr('datasync.conflicts.keep-theirs'))}</button>
+        </div>
+      </div>`).join('');
+}
+
+document.addEventListener('click', async (ev) => {
+  const b = ev.target.closest('#dataSyncConflicts [data-keep]');
+  if (!b) return;
+  const fichier = b.closest('.conflit').dataset.file;
+  b.disabled = true;
+  try {
+    const r = await api('/data-sync/conflicts/resolve', { method: 'POST', body: { file: fichier, keep: b.dataset.keep } });
+    rendreConflits(r.conflits || []);
+    toast(tr('datasync.conflicts.settled'));
+  } catch (e) { toast(explainError(e.message), true); b.disabled = false; }
+});
+
+/* CE QUI VA PARTIR SE LIT AVANT DE CLIQUER, PAS APRÈS.
+ *
+ * « Cloner / rattacher » est le geste qui ouvre son travail à d'autres. On demande donc au
+ * serveur ce que l'export emporterait — sans rien écrire —, on le montre, et on n'agit qu'après
+ * un « oui ». La liste de ce qui RESTE est la plus utile des deux : sessions et todos sont
+ * privées par défaut, et l'apprendre ici vaut mieux que de chercher sa session chez un collègue.
+ */
+function resumeApercu(a, pied) {
+  const nom = (cle) => tr(`datasync.apercu.${cle}`);
+  /* UNE LIGNE PAR FAMILLE, le nombre à gauche. Tout sur une seule ligne séparée par des
+     points médians, c'était une phrase de deux cents caractères où l'on cherchait son objet :
+     on veut y trouver « mes sessions » du regard, pas la lire. */
+  const liste = (xs) => `<ul class="apercu-liste">${(xs || []).map((x) => `<li><b>${esc(String(x.n))}</b> <span>${esc(nom(x.cle))}</span></li>`).join('')}</ul>`;
+  const colonne = (cle, icone, xs, note) => `<section class="apercu-col apercu-col-${cle}">
+      <h4>${svgIco(icone)}<span>${esc(tr(`datasync.apercu.${cle}-titre`))}</span></h4>
+      ${xs && xs.length ? liste(xs) : `<p class="apercu-vide muted">${esc(tr('datasync.apercu.rien'))}</p>`}
+      ${note ? `<p class="apercu-note muted">${esc(note)}</p>` : ''}
+    </section>`;
+  /* CE QUE L'ENVOI FERA, FICHIER PAR FICHIER. « 0 supprimé » n'est pas une estimation : l'export
+     écrit, il ne supprime jamais — et ce qu'il ne touche pas, ce sont les documents des autres.
+     Le zéro est donc AFFICHÉ, pas omis : c'est lui qu'on vient vérifier. */
+  const e = a.ecriture || {};
+  const chiffre = (cle, v, ton) => `<div class="apercu-chiffre${ton ? ` apercu-chiffre-${ton}` : ''}">
+      <b>${esc(String(v))}</b><span>${esc(nom(cle))}</span></div>`;
+  return `<div class="apercu">
+    <p class="apercu-tete apercu-tete-${a.pourvu === null ? 'muet' : (a.pourvu ? 'rejoint' : 'init')}">${esc(
+    a.pourvu === null ? tr('datasync.apercu.injoignable')
+      : tr(a.pourvu ? 'datasync.apercu.rejoindre' : 'datasync.apercu.initialiser'),
+  )}</p>
+    <div class="apercu-cols">
+      ${colonne('part', 'upload', a.partants, '')}
+      ${colonne('reste', 'lock', a.retenus, tr('datasync.apercu.reste-note'))}
+    </div>
+    <div class="apercu-bloc">
+      <h4>${svgIco('doc')}<span>${esc(tr('datasync.apercu.fichiers'))}</span></h4>
+      <div class="apercu-chiffres">
+        ${chiffre('ajoutes', e.nouveaux || 0)}
+        ${chiffre('modifies', e.modifies || 0)}
+        ${chiffre('inchanges', e.identiques || 0)}
+        ${chiffre('supprimes', e.supprimes || 0, 'nul')}
+      </div>
+      <p class="apercu-note muted">${esc(e.intacts
+    ? tr('datasync.apercu.ecriture-note', { intacts: e.intacts, n: e.intacts })
+    : tr('datasync.apercu.ecriture-note-nul'))}</p>
+    </div>
+    ${/* CE QUE LE DÉPÔT PORTE DÉJÀ — la question qu'on se pose vraiment devant ce bouton :
+         « est-ce que je vais écraser le travail des autres ? ». Un nombre, puis la règle. */
+    a.distants ? `<p class="apercu-distants">${svgIco('users')}<span>${esc(tr('datasync.apercu.distants', { n: a.distants, count: a.distants }))}</span></p>` : ''}
+    ${/* LA RÈGLE, EN BAS ET EN PETIT. Elle vivait dans le `<pre>` des détails — police à
+         chasse fixe et pas de retour à la ligne : une phrase y sortait du cadre. */
+    pied ? `<p class="apercu-pied muted">${esc(pied)}</p>` : ''}
+  </div>`;
+}
+
+const btnDataAttach = $('#btnDataAttach');
+if (btnDataAttach) btnDataAttach.addEventListener('click', async () => {
+  const btn = btnDataAttach;
+  const url = String(($('#configForm').data_repo_url || {}).value || '').trim();
+  if (!url) { toast(tr('datasync.err.url-required'), true); return; }
+  /* L'APERÇU INTERROGE LE DÉPÔT DISTANT : un `ls-remote` sur un dépôt lointain prend
+     facilement plusieurs secondes, et un bouton qui ne bouge pas se re-clique. Le bouton
+     tourne, et la ligne d'état dit ce qu'on attend. */
+  let apercu = null;
+  $('#dataSyncInfo').textContent = tr('datasync.apercu.calcul');
+  try { apercu = await busy(btn, () => api(`/data-sync/preview?url=${encodeURIComponent(url)}`)); }
+  catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); return; }
+  $('#dataSyncInfo').textContent = '';
+  if (!await confirmDialog({
+    title: tr('datasync.btn.attach'),
+    html: resumeApercu(apercu, tr('datasync.apercu.detail')),
+    confirmLabel: tr('datasync.apercu.go'),
+    danger: false,
+    wide: true,
+  })) return;
+  btn.disabled = true;
+  $('#dataSyncInfo').textContent = tr('datasync.working');
+  try {
+    /* On ENREGISTRE d'abord : le rattachement lit la branche et la cadence en base, et
+       rattacher avec l'ancienne branche pendant que l'écran en montre une autre serait
+       exactement le genre de petit mensonge qu'on évite. */
+    await api('/config', { method: 'PUT', body: {
+      data_repo_url: url,
+      data_repo_branch: ($('#configForm').data_repo_branch || {}).value || 'main',
+      data_sync_seconds: ($('#configForm').data_sync_seconds || {}).value || '30',
+    } });
+    const r = await api('/data-sync/attach', { method: 'POST', body: { url } });
+    /* ON VIENT DE REJOINDRE UNE ÉQUIPE : ce qui était caché faute d'équipe doit apparaître sans
+       recharger la page — la case « partager » d'une page de notes, l'exécutant d'un agent. */
+    moiCache = null;
+    /* REJOINDRE VA DANS LES DEUX SENS, et le dire évite la question suivante : on reçoit ce que
+       l'équipe a accumulé, ET ce que ce poste portait déjà part avec. Le compte le prouve. */
+    const emportes = Object.values(r.compte || {}).reduce((n, x) => n + (Number(x) || 0), 0);
+    $('#dataSyncInfo').textContent = r.mode === 'init'
+      ? tr('datasync.done.init') : tr('datasync.done.clone', { n: emportes });
+    await chargerDataSync();
+  } catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); }
+  finally { btn.disabled = false; }
+});
+
+/* TOUT RÉ-ENVOYER. « Synchroniser » n'envoie que ce qui a CHANGÉ — après un dépôt vidé à la
+   main, il ne remet donc rien. Ce bouton-là réécrit tout ce qui se partage, et il montre d'abord
+   quoi : c'est le même récapitulatif que le rattachement. */
+const btnDataReexport = $('#btnDataReexport');
+if (btnDataReexport) btnDataReexport.addEventListener('click', async () => {
+  let apercu = null;
+  $('#dataSyncInfo').textContent = tr('datasync.apercu.calcul');
+  try { apercu = await busy(btnDataReexport, () => api('/data-sync/preview')); }
+  catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); return; }
+  $('#dataSyncInfo').textContent = '';
+  if (!await confirmDialog({
+    title: tr('datasync.btn.reexport'),
+    html: resumeApercu(apercu, tr('datasync.title.reexport')),
+    confirmLabel: tr('datasync.reexport.go'),
+    danger: false,
+    wide: true,
+  })) return;
+  $('#dataSyncInfo').textContent = tr('datasync.working');
+  try {
+    const r = await busy(btnDataReexport, () => api('/data-sync/reexport', { method: 'POST' }));
+    const n = Object.values(r.compte || {}).reduce((t2, x) => t2 + (Number(x) || 0), 0);
+    $('#dataSyncInfo').textContent = tr('datasync.reexport.done', { n });
+    await chargerDataSync();
+  } catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); }
+});
+
+const btnDataNow = $('#btnDataNow');
+if (btnDataNow) btnDataNow.addEventListener('click', async () => {
+  const btn = btnDataNow;
+  btn.disabled = true;
+  $('#dataSyncInfo').textContent = tr('datasync.working');
+  try {
+    await api('/data-sync/now', { method: 'POST' });
+    $('#dataSyncInfo').textContent = '';
+    await chargerDataSync();
+  } catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); }
+  finally { btn.disabled = false; }
+});
+
+/* LE PIED DE PAGE DIT OÙ EN EST LE PARTAGE, en trois caractères. On ne va pas dans les réglages
+   pour savoir si son travail est parti : c'est la question qu'on se pose en passant, et c'est là
+   qu'il faut y répondre. Trois états, et trois seulement — à jour, hors ligne (les commits sont
+   locaux, rien n'est perdu), une modification à reprendre. */
+async function rafraichirFooterSync() {
+  const b = $('#footerSync');
+  if (!b) return;
+  let e = null;
+  try { e = await api('/data-sync'); } catch { b.hidden = true; return; }
+  dataSyncEtat = e;
+  if (!e.configure) { b.hidden = true; return; }
+  b.hidden = false;
+  const conflits = (e.conflits || []).length;
+  b.dataset.etat = conflits ? 'conflit' : (e.erreur ? 'horsligne' : 'ok');
+  $('#footerSyncTxt').textContent = conflits
+    ? tr('datasync.footer.conflicts', { n: conflits })
+    : tr('datasync.state.counts', { up: e.enAvance, down: e.enRetard });
+  /* L'INFOBULLE DU TÉMOIN DIT CE QUE LE CLIC FERA, pas seulement où l'on en est : c'est le seul
+     bouton de synchro qu'on rencontre sans être venu pour ça. */
+  baseBulleSync = conflits ? tr('datasync.footer.conflicts-title')
+    : (e.erreur ? tr('datasync.state.error', { msg: e.erreur }) : tr('datasync.footer.tip'));
+  prochainSync = e.prochain ? Date.parse(e.prochain) : 0;
+  majTip(b, bulleSync());
+}
+
+/* « C'EST PARTI ? DANS COMBIEN DE TEMPS ? » — la question qu'on se pose en passant la souris sur
+   le témoin, et à laquelle « Données partagées » ne répondait pas. La boucle bat côté serveur et
+   sa cadence se règle : le compte à rebours vient donc de l'échéance que le serveur annonce, pas
+   d'une cadence devinée ici. Il descend seconde par seconde TANT QU'ON REGARDE, et pas au-delà —
+   une minuterie qui tourne pour personne est une minuterie de trop. */
+let baseBulleSync = '';
+let prochainSync = 0;
+
+function bulleSync() {
+  if (!prochainSync) return baseBulleSync;
+  const s = Math.round((prochainSync - Date.now()) / 1000);
+  return `${baseBulleSync}\n${s > 0 ? tr('datasync.footer.next', { s }) : tr('datasync.footer.next-now')}`;
+}
+
+{
+  const b = $('#footerSync');
+  if (b) {
+    b.addEventListener('click', async () => {
+      /* Un conflit se règle dans les réglages, pas ici : il demande de LIRE sa version avant de
+         choisir, et un pied de page n'est pas l'endroit pour ça. */
+      if (dataSyncEtat && (dataSyncEtat.conflits || []).length) {
+        const onglet = $('nav button[data-tab="admin"]');
+        if (onglet) onglet.click();
+        const sous = $('#tab-admin button[data-sub="datasync"]');
+        if (sous) sous.click();
+        return;
+      }
+      b.disabled = true;
+      try { await api('/data-sync/now', { method: 'POST' }); } catch { /* hors ligne : l'état le dira */ }
+      await rafraichirFooterSync();
+      b.disabled = false;
+    });
+    /* Le compte à rebours ne bat que sous la souris (ou sous le focus clavier) : ouvrir la bulle
+       arme la seconde, la quitter la désarme. */
+    let batteur = null;
+    const ouvrir = () => {
+      majTip(b, bulleSync());
+      if (!batteur) batteur = setInterval(() => majTip(b, bulleSync()), 1000);
+    };
+    const fermer = () => { if (batteur) clearInterval(batteur); batteur = null; };
+    b.addEventListener('mouseenter', ouvrir);
+    b.addEventListener('focus', ouvrir);
+    b.addEventListener('mouseleave', fermer);
+    b.addEventListener('blur', fermer);
+
+    /* Même cadence que le reste du pied de page : on ne sonde pas la forge, seulement notre
+       propre état, déjà calculé par la boucle du serveur. */
+    setInterval(rafraichirFooterSync, 15000);
+    rafraichirFooterSync();
+  }
+}
+
+/* ---------- « ÉQUIPE » OU « CE POSTE » ----------
+ *
+ * Les réglages ne sont plus tous de même nature. Certains décrivent ce que L'ÉQUIPE a décidé —
+ * les gabarits de prompt, les seuils, l'URL de la forge — et partiront dans le dépôt de données
+ * partagé ; d'autres appartiennent à CETTE machine : les sept jetons, le chemin des clones, la
+ * langue, le moteur de dictée. Un écran qui ne le dit pas laisse croire qu'on règle son outil
+ * alors qu'on règle celui de six personnes, ou l'inverse.
+ *
+ * La destination vient du SERVEUR (`scopes`, produit par le registre) : recopiée ici, la liste
+ * mentirait au premier réglage déplacé — et un badge qui ment sur un jeton est pire que pas de
+ * badge du tout.
+ *
+ * Le badge se glisse après le premier <span> du label : sur un champ texte c'est juste après
+ * l'intitulé, sur une case à cocher juste après son libellé. Idempotent — `loadConfig` repasse
+ * à chaque ouverture de sous-onglet. */
+function poserBadgesConfig(scopes) {
+  const f = $('#configForm');
+  if (!f || !scopes) return;
+  /* Les champs de réglages sont éclatés sur six sous-onglets et rattachés au formulaire par
+     `form="configForm"` : `f.elements` est la seule liste qui les voie tous. */
+  for (const el of [...f.elements]) {
+    const scope = el.name && scopes[el.name];
+    if (!scope) continue;
+    const label = el.closest('label');
+    if (!label) continue;
+    let badge = label.querySelector(':scope > .scope-badge');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'scope-badge';
+      const titre = label.querySelector(':scope > span');
+      if (titre) titre.insertAdjacentElement('afterend', badge);
+      else label.appendChild(badge);
+    }
+    badge.dataset.scope = scope;
+    badge.textContent = tr(scope === 'poste' ? 'settings.scope.poste' : 'settings.scope.equipe');
+    badge.title = tr(scope === 'poste' ? 'settings.scope.poste.tip' : 'settings.scope.equipe.tip');
+  }
+}
+
 async function loadConfig() {
   const depart = Date.now();
   const c = await api('/config');
+  poserBadgesConfig(c.scopes);   // avant les abandons ci-dessous : un badge ne touche à aucune valeur
+  chargerDataSync();             // l'état de la synchro, indépendant des champs
   if (configFrappe >= depart) return;      // l'utilisateur a tapé pendant ce temps : on s'abstient
   /* ET S'IL A TAPÉ AVANT ? Chaque sous-onglet de Réglages rappelle `loadConfig` en s'ouvrant :
      une valeur modifiée puis non enregistrée était écrasée par le serveur au premier changement
@@ -6267,6 +6637,9 @@ async function loadConfig() {
   if (f.auto_post_blocking_only) f.auto_post_blocking_only.checked = c.auto_post_blocking_only === '1';
   if (f.auto_review_new) f.auto_review_new.checked = c.auto_review_new === '1';
   if (f.auto_rereview_stale) f.auto_rereview_stale.checked = c.auto_rereview_stale === '1';
+  /* L'exécutant des automatismes : une LISTE, remplie des exécutants connus, et cachée en
+     mono-poste. Posé après les cases, car l'avertissement dépend d'elles. */
+  poserExecutantAuto(c.auto_runner || '');
   // 0 = « sans limite » : il doit s'ÉCRIRE, une case vide se lirait comme « valeur par défaut ».
   if (f.review_auto_max) f.review_auto_max.value = Number(c.review_auto_max) || 0;
   // Atterrissage sur le brief : coché par défaut, comme côté serveur.
@@ -6286,6 +6659,8 @@ async function loadConfig() {
   if (f.dictation_silence_ms) f.dictation_silence_ms.value = Number(c.dictation_silence_ms) || 700;
   if (f.dictation_idle_minutes) f.dictation_idle_minutes.value = Number(c.dictation_idle_minutes) || 0;
   if (f.dictation_final_pass) f.dictation_final_pass.checked = c.dictation_final_pass !== '0';
+  // Partager sa dépense : DÉCOCHÉ par défaut, donc `=== '1'`, comme les autres réglages prudents.
+  if (f.usage_share) f.usage_share.checked = c.usage_share === '1';
   syncDictationProvider();
   /* C15 — LE DÉFAUT EFFECTIF S'ÉCRIT, il ne se devine pas dans un `placeholder`. Un champ vide
      avec « 5 » en gris se lit « rien n'est réglé », alors que 5 EST la valeur appliquée : on
@@ -7326,6 +7701,14 @@ document.addEventListener('paste', (e) => {
 let editingTaskId = null;
 let launchAfterCreate = false;
 
+/* La case « partager » du formulaire de session : montrée seulement en mode partagé, et jamais
+   remplie d'office. `partageActif()` lit `/api/whoami` une fois pour toute la page. */
+async function majCasePartageSession() {
+  const ligne = $('#taskShareRow');
+  if (!ligne) return;
+  ligne.hidden = !await partageActif();
+}
+
 function applyKindToModal(kind) {
   const isLocal = kind === 'local';
   /* UNE QUESTION LIBRE N'A AUCUNE CIBLE : ni projet, ni dossier, ni ticket, ni vérificateur.
@@ -7359,6 +7742,9 @@ function applyKindToModal(kind) {
      cible sur laquelle l'agent hésite ou travaille : sans dépôt ni dossier, elles n'ont rien
      à quoi se rattacher. */
   const gRow = $('#taskAgentFields'); if (gRow) gRow.hidden = isAsk;
+  /* « Partager avec l'équipe » vaut pour LES TROIS SAVEURS — une question libre se partage
+     comme une session de codage —, mais seulement quand il y a une équipe. */
+  majCasePartageSession();
   /* Le combo Agent est MASQUÉ hors dépôt et en question libre — un profil parle de dépôts, et
      il n'y en a pas. Le champ reste dans le formulaire unique : il est simplement ignoré là. */
   const agRow = $('#taskAgentRow'); if (agRow) agRow.hidden = isLocal || isAsk;
@@ -8210,6 +8596,9 @@ $('#taskForm').addEventListener('submit', async (e) => {
         label: f.label ? f.label.value : '',
         prompt: f.prompt.value, dirs, files: taskNewImages, session_id: f.session_id ? f.session_id.value : '',
         ask_questions: f.ask_questions ? f.ask_questions.checked : false,
+        /* La modale est commune aux trois saveurs, mais CHAQUE SAVEUR A SON ENVOI : la case
+           « partager » doit donc être câblée trois fois, sans quoi elle ne ferait rien ici. */
+        shared: f.shared ? f.shared.checked : false,
       } }));
       if (launchAfterCreate) {
         await api(`/local-tasks/${created.id}/run`, { method: 'POST' });
@@ -8228,7 +8617,10 @@ $('#taskForm').addEventListener('submit', async (e) => {
   if (taskKind === 'ask') {
     const btn = $('#taskSubmit');
     // Une question libre aussi peut s'appuyer sur un document : le devis, la spec, le mail.
-    const body = { prompt: f.prompt.value, label: f.label ? f.label.value : '', files: taskNewImages };
+    const body = {
+      prompt: f.prompt.value, label: f.label ? f.label.value : '', files: taskNewImages,
+      shared: f.shared ? f.shared.checked : false,
+    };
     try {
       if (editingTaskId) {
         await busy(btn, () => api(`/questions/${editingTaskId}`, { method: 'PUT', body }));
@@ -8287,6 +8679,8 @@ $('#taskForm').addEventListener('submit', async (e) => {
        modèle, ses outils et ses sous-agents sans qu'un agent soit enregistré. Ignoré si un
        agent existant a été choisi : un run ne porte qu'un profil. */
     agent_draft: essaiAgent && !agentChoisiDansModale() ? essaiAgent : undefined,
+    // Partager cette session : décochée par défaut, et ignorée par le serveur à l'édition.
+    shared: f.shared ? f.shared.checked : false,
     files: taskNewImages,
     targets,
   };
@@ -8551,6 +8945,9 @@ const followBtn = (t, attr, titreFini, libelleFini = 'task.btn.request-fix') => 
 let tasksSeq = 0;
 async function loadTasks() {
   const seq = ++tasksSeq;
+  /* Y a-t-il une équipe, et qui suis-je ? Lu UNE fois (mémorisé), et avant le rendu : les cartes
+     décident sans attendre s'il faut proposer « partager » et « supprimer » ou « ranger ». */
+  await partageActif();
   try {
     const [tasks, locals, asks] = await Promise.all([
       api('/tasks'), api('/local-tasks').catch(() => []), api('/questions').catch(() => []),
@@ -8580,8 +8977,39 @@ function taskMatches(t, q, units) {
   return hay.includes(q);
 }
 
+/* LES MIENNES / L'ÉQUIPE / TOUTES. Dès qu'on partage, la liste mêle son propre travail et celui
+   des autres — et la question du matin est « où en est CE que je fais ? ». Le filtre n'existe
+   qu'en mode partagé : en mono-poste, tout est à soi. Mémorisé dans le navigateur, comme le
+   filtre d'auteur des merge requests. */
+let filtreProprio = 'toutes';
+try { filtreProprio = localStorage.getItem('mergerie_task_owner') || 'toutes'; } catch { /* ignore */ }
+
+function renderFiltreProprio() {
+  const box = $('#taskOwnerFiltre');
+  if (!box) return;
+  box.hidden = !(partageEtMoi && partageEtMoi.partage);
+  if (box.hidden) return;
+  const opts = [['toutes', 'session.filter.all'], ['miennes', 'session.filter.mine'], ['equipe', 'session.filter.team']];
+  box.innerHTML = opts.map(([v, k]) => `<button type="button" class="chip${filtreProprio === v ? ' active' : ''}" data-task-proprio="${v}">${esc(tr(k))}</button>`).join('');
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-task-proprio]');
+  if (!b) return;
+  filtreProprio = b.dataset.taskProprio;
+  try { localStorage.setItem('mergerie_task_owner', filtreProprio); } catch { /* ignore */ }
+  renderTasks();
+});
+
+/* « Les miennes » = ce que personne d'autre n'a écrit : une session sans auteur n'est jamais
+   partie dans le dépôt, elle est donc à moi. */
+function duProprio(t) {
+  if (!partageEtMoi || !partageEtMoi.partage || filtreProprio === 'toutes') return true;
+  const mienne = estAMoi(t);
+  return filtreProprio === 'miennes' ? mienne : !mienne;
+}
+
 // Une session rangée ne sort que si la case le demande.
-const taskVisible = (t) => showHiddenTasks || !t.hidden;
+const taskVisible = (t) => (showHiddenTasks || !t.hidden) && duProprio(t);
 
 /* Combien de sessions le rangement retire de la vue. Affiché à côté de la case : une
    session qui disparaît sans laisser de trace se croit supprimée, et on la recrée. */
@@ -8592,6 +9020,7 @@ function reportHiddenCount(n) {
 }
 
 function renderTasks() {
+  renderFiltreProprio();
   const isLocal = taskKind === 'local';
   const isAsk = taskKind === 'ask';
   const el = $('#taskList');
@@ -8721,7 +9150,7 @@ function localDirLine(d, t) {
     + `${['new', 'done', 'error'].includes(d.status) && t
       ? `<button class="btn btn-sm" data-ldrun="${d.id}" data-ltask="${t.id}" title="${esc(tr('local.title.run-dir'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${tr('task.btn.run-target')}</button>` : ''}`
     // Retour de l'agent : la seule fenêtre sur son travail quand le dossier n'a pas bougé.
-    + `${d.output_path ? `<button class="btn btn-sm" data-ldout="${d.id}" data-ltask="${d.task_id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}`
+    + `${d.has_output ? `<button class="btn btn-sm" data-ldout="${d.id}" data-ltask="${d.task_id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}`
     + `${resumeCmdBtn(d.resume_cmd)}</div>`
     /* Hors dépôt, CHAQUE DOSSIER a sa session d'agent : ses questions sont les siennes, et
        la réponse ne repart que dans celui-là. Un formulaire par dossier, donc. */
@@ -8742,7 +9171,7 @@ function localCard(t) {
     <div style="min-width:0;flex:1">
       <div class="title">
         <span class="tag ${st.cls}">${st.label}</span>
-        <span class="task-projects">${tr('local.dirs-count', { n, count: n })}</span>
+        <span class="task-projects">${tr('local.dirs-count', { n, count: n })}</span>${shareMark(t)}
         <span class="task-date" title="${tr('task.created-at')}" data-when="${esc(t.created_at || '')}">${esc(fmtDateTime(t.created_at))}</span>
       </div>
       ${libelleBlock(t, 'local')}
@@ -8770,14 +9199,15 @@ function localCard(t) {
     /* Le retour de l'agent au niveau de la SESSION : les boutons par dossier existent aussi,
        mais ils vivent dans la liste repliée — et c'est « qu'a fait l'IA ? » qu'on se demande
        en regardant la carte, pas « qu'a-t-elle fait dans ce dossier-là ». */
-    (t.dirs || []).some((d) => d.output_path)
+    (t.dirs || []).some((d) => d.has_output)
       ? `<button class="btn" data-lout="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : '',
     canFollow ? followBtn(t, 'lfollow', 'local.followup.title') : '',
   ], [
     `<button class="btn btn-icon btn-sm" data-ledit="${t.id}" title="${esc(tr('local.edit-title'))}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
     `<button class="btn btn-icon btn-sm" data-lcopy="${t.id}" title="${esc(tr('local.title.duplicate'))}"><svg class="ico"><use href="#i-copy"/></svg></button>`,
+    shareBtn('local', t),
     hideBtn('local', t),
-    `<button class="btn btn-icon btn-sm btn-danger" data-ldel="${t.id}" title="${esc(tr('local.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>`,
+    estAMoi(t) ? `<button class="btn btn-icon btn-sm btn-danger" data-ldel="${t.id}" title="${esc(tr('local.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>` : '',
   ])}
     ${t.last_error ? errorBox(t.last_error, null, null, t.id) : ''}
   </div>`;
@@ -8900,7 +9330,7 @@ function askCard(q) {
   return `<div class="card task-row${q.hidden ? ' is-hidden' : ''}" data-ask="${q.id}">
     <div style="min-width:0;flex:1">
       <div class="title">
-        <span class="tag ${st.cls}">${st.label}</span>
+        <span class="tag ${st.cls}">${st.label}</span>${shareMark(q)}
         <span class="task-date" title="${tr('task.created-at')}" data-when="${esc(q.created_at || '')}">${esc(fmtDateTime(q.created_at))}</span>
       </div>
       ${libelleBlock(q, 'ask')}
@@ -8931,8 +9361,9 @@ function askCard(q) {
     resumeCmdBtn(q.resume_cmd),
   ], [
     `<button class="btn btn-icon btn-sm" data-qedit="${q.id}" title="${esc(tr('ask.edit-title'))}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
+    shareBtn('ask', q),
     hideBtn('ask', q),
-    `<button class="btn btn-icon btn-sm btn-danger" data-qdel="${q.id}" title="${esc(tr('ask.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>`,
+    estAMoi(q) ? `<button class="btn btn-icon btn-sm btn-danger" data-qdel="${q.id}" title="${esc(tr('ask.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>` : '',
   ])}
     ${q.last_error ? errorBox(q.last_error, null, null, null, q.id) : ''}
   </div>`;
@@ -9053,6 +9484,26 @@ function hideBtn(scope, t) {
     + `<svg class="ico"><use href="#i-${on ? 'eye' : 'eye-off'}"/></svg></button>`;
 }
 
+/* PARTAGER OU NON CETTE SESSION, depuis sa carte. Le bouton n'apparaît qu'en mode partagé et
+   qu'à son AUTEUR : la session d'un collègue se range, elle ne se retire pas du dépôt.
+   `partageEtMoi` est rempli une fois par `partageActif()` ; tant qu'il ne l'est pas, on ne rend
+   rien plutôt que de faire clignoter un bouton qui disparaîtrait. */
+let partageEtMoi = null;
+function shareBtn(scope, t) {
+  if (!partageEtMoi || !partageEtMoi.partage) return '';
+  if (t.author && partageEtMoi.name && t.author !== partageEtMoi.name) return '';
+  const on = t.shared ? 1 : 0;
+  return `<button class="btn btn-icon btn-sm${on ? ' active' : ''}" data-share="${t.id}" data-scope="${scope}" data-on="${on}"`
+    + ` title="${esc(tr(on ? 'session.unshare' : 'session.share'))}">`
+    + `<svg class="ico"><use href="#i-users"/></svg></button>`;
+}
+/* …et le pictogramme qui dit, sans cliquer, que cette session est chez tout le monde. */
+const shareMark = (t) => (t.shared
+  ? ` <span class="note-partagee" title="${esc(tr('session.shared-mark'))}">${svgIco('users')}</span>` : '');
+/* La session d'un collègue ne se supprime pas : on la range. Le serveur refuse de toute façon
+   (403), mais proposer un bouton qui refuse est une promesse qu'on ne tient pas. */
+const estAMoi = (t) => !t.author || !partageEtMoi || !partageEtMoi.name || t.author === partageEtMoi.name;
+
 function taskActions(work, meta) {
   const w = work.filter(Boolean).join('');
   const m = meta.filter(Boolean).join('');
@@ -9117,6 +9568,9 @@ function taskHead(t) {
       <span class="task-projects">${tr('task.projects', { n: nb, count: nb })}</span>
       ${t.agent_name ? `<span class="tag tag-agent" title="${esc(tr('agents.card.ran-by'))}">${svgIco('zap')} ${esc(t.agent_name)}</span>` : ''}
       ${t.triggered_by === 'schedule' ? `<span class="tag" title="${esc(tr('agents.card.by-schedule'))}">${svgIco('clock')}</span>` : ''}
+      ${/* Chez tout le monde, ou à soi : la question se pose d'un coup d'œil, comme pour une
+            page de notes. Le pictogramme est le même — c'est le même geste. */''}
+      ${shareMark(t)}
       ${t.auto_push && t.kind !== 'explore' ? '<span class="tag">auto-push</span>' : ''}
       <span class="task-date" title="${tr('task.created-at')}" data-when="${esc(t.created_at || '')}">${esc(fmtDateTime(t.created_at))}</span>
     </div>
@@ -9248,8 +9702,10 @@ function codeCard(t) {
   ], [
     `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
     `<button class="btn btn-icon btn-sm" data-tcopy="${t.id}" title="${esc(tr('task.title.duplicate'))}"><svg class="ico"><use href="#i-copy"/></svg></button>`,
+    shareBtn('task', t),
     hideBtn('task', t),
-    `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>`,
+    // La session d'un collègue ne se supprime pas : on la range, et le bouton disparaît.
+    estAMoi(t) ? `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>` : '',
   ])}
     ${t.last_error ? errorBox(t.last_error, null, t.id) : ''}
   </div>`;
@@ -9287,6 +9743,10 @@ function chapeauCarte(t) {
    ils ne s'affichent pas — un « 0 token » se lirait comme une mesure, pas comme une absence. */
 function coutCarte(t) {
   const bouts = [];
+  /* « par Claire » quand l'équipe partage un dépôt de données : le nom vient de git, celui qui
+     a commité le fichier de la session. Rien à saisir, aucune colonne à tenir — et rien du tout
+     en mono-poste, où « par moi » sur chaque carte n'apprendrait à personne. */
+  if (t && t.author) bouts.push(esc(tr('share.by', { name: t.author })));
   if (t && t.duration_ms) bouts.push(esc(dureeCourte(t.duration_ms)));
   if (t && t.tokens_est) bouts.push(esc(tr('task.cost.tokens', { n: fmtMilliers(t.tokens_est) })));
   /* LE COÛT EN DOLLARS, quand le backend l'annonce. Il était servi avec chaque session et
@@ -9350,7 +9810,10 @@ function etatMrDeLaLigne(tg) {
 
 function targetLine(t, tg) {
   const st = TASK_STATUS[tg.status] || { label: tg.status, cls: '' };
-  const showDiff = !!tg.diff_path && ['committed', 'pushed'].includes(tg.status);
+  /* `has_diff` vient du serveur : le patch est un fichier de CE poste, mais le commit, lui,
+     voyage — et la route refait le diff depuis le clone quand le fichier manque. Se fier au
+     fichier faisait disparaître le bouton sur toute session reçue du dépôt d'équipe. */
+  const showDiff = !!tg.has_diff && ['committed', 'pushed'].includes(tg.status);
   const showPush = tg.status === 'committed';
   /* Le rattrapage ne s'offre QUE si la merge request est réellement en conflit — c'est la
      forge qui le dit (`mr_conflicts`, relevé par la découverte sur l'appel qu'elle fait déjà).
@@ -9409,7 +9872,7 @@ function targetLine(t, tg) {
     ${tg.mr_merged ? `<span class="tag merged" title="${tr('task.tag.merged-title', { forge: forgeLabel(tg.forge) })}">${tr('task.tag.merged')}</span>` : ''}
     <span class="spacer"></span>
     ${resumeCmdBtn(tg.resume_cmd)}
-    ${tg.output_path ? `<button class="btn btn-sm" data-tgout="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}
+    ${tg.has_output ? `<button class="btn btn-sm" data-tgout="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}
     ${showDiff ? `<button class="btn btn-sm" data-tgdiff="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-diff'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>` : ''}
     ${runTarget ? `<button class="btn btn-sm" data-tgrun="${tg.id}" data-task="${t.id}" title="${esc(tg.status === 'new' ? tr('task.title.run-target') : tr('task.title.rerun-target'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${tr('task.btn.run-target')}</button>` : ''}
     ${followTarget ? `<button class="btn btn-sm" data-tgfollow="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.request-fix-target', { project: tg.project }))}"><svg class="ico ico-sm"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : ''}
@@ -9536,8 +9999,10 @@ function exploreCard(t) {
   ], [
     `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
     `<button class="btn btn-icon btn-sm" data-tcopy="${t.id}" title="${esc(tr('task.title.duplicate'))}"><svg class="ico"><use href="#i-copy"/></svg></button>`,
+    shareBtn('task', t),
     hideBtn('task', t),
-    `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>`,
+    // La session d'un collègue ne se supprime pas : on la range, et le bouton disparaît.
+    estAMoi(t) ? `<button class="btn btn-icon btn-sm btn-danger" data-tdel="${t.id}" title="${tr('task.title.delete')}"><svg class="ico"><use href="#i-close"/></svg></button>` : '',
   ])}
     ${t.last_error ? errorBox(t.last_error, null, t.id) : ''}
   </div>`;
@@ -9554,6 +10019,21 @@ document.addEventListener('click', async (e) => {
   try {
     await busy(b, () => api(`/${scope}/${b.dataset.hide}/hidden`, { method: 'POST', body: { hidden } }));
     toast(tr(hidden ? 'task.hidden.done' : 'task.hidden.undone'));
+    loadTasks();
+  } catch (err) { toast(explainError(err.message), true); }
+});
+
+/* Partager / ne plus partager : délégué une fois, comme « ranger ». Le serveur fait suivre les
+   passes et les pièces jointes — elles n'ont pas de case à elles. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-share]');
+  if (!b) return;
+  const SCOPE_ROUTE = { local: 'local-tasks', ask: 'questions' };
+  const scope = SCOPE_ROUTE[b.dataset.scope] || 'tasks';
+  const shared = b.dataset.on !== '1';
+  try {
+    await busy(b, () => api(`/${scope}/${b.dataset.share}/share`, { method: 'POST', body: { shared: shared ? 1 : 0 } }));
+    toast(tr(shared ? 'session.shared' : 'session.unshared'));
     loadTasks();
   } catch (err) { toast(explainError(err.message), true); }
 });
@@ -10870,7 +11350,13 @@ tipEl.id = 'tip';
 tipEl.setAttribute('role', 'tooltip');
 document.body.appendChild(tipEl);
 
+/* POUR QUI LA BULLE EST OUVERTE. Presque toutes disent une chose fixe ; une seule change pendant
+   qu'on la regarde — le compte à rebours du pied de page. Sans ce repère, la réécrire reviendrait
+   à réécrire la bulle de n'importe qui. */
+let tipPour = null;
+
 function showTip(el) {
+  tipPour = el;
   // `data-when` : le texte est calculé maintenant, pas au rendu (cf. `dateHtml`).
   tipEl.textContent = el.dataset.tip || (el.dataset.when ? depuis(el.dataset.when) : '');
   if (!tipEl.textContent) return;
@@ -10886,7 +11372,14 @@ function showTip(el) {
   const left = r.left + r.width / 2 - t.width / 2;
   tipEl.style.left = `${Math.max(8, Math.min(left, innerWidth - t.width - 8))}px`;
 }
-const hideTip = () => tipEl.classList.remove('on');
+const hideTip = () => { tipPour = null; tipEl.classList.remove('on'); };
+
+/** Change le texte d'une bulle, ouverte ou non — l'attribut fait foi, l'affichage suit. */
+function majTip(el, texte) {
+  if (!el) return;
+  el.dataset.tip = texte;
+  if (tipPour === el) tipEl.textContent = texte;
+}
 
 /* Délégation : couvre aussi les champs rendus dynamiquement (lignes de projet).
    Le sélecteur vise TOUT porteur de `data-tip` et pas seulement les icônes `.hint` :
@@ -15952,6 +16445,7 @@ function lireAgentForm() {
     output_kind: $('#agentOutputKind').value,
     output_ref: (($('#agentOutputRefBox') || {}).querySelector ? ($('#agentOutputRefBox').querySelector('.agentOutputRefVal') || {}).value : '') || null,
     schedule: lireHoraireForm(),
+    runner: ($('#agentRunner') || {}).value || '',
     repos: $$('#agentRepos .ag-repo:checked').map((c) => ({
       repo_id: Number(c.value), branch: '', role: c.closest('label').querySelector('.ag-role').value,
     })),
@@ -16017,6 +16511,80 @@ function poserHoraireForm(texte) {
   majHoraireForm();
 }
 
+/* L'EXÉCUTANT D'UN AGENT PLANIFIÉ. À plusieurs, trois instances allumées lanceraient trois fois
+   le même agent — chacune persuadée d'être la seule, et l'équipe paierait trois fois. Le champ
+   n'apparaît que si un dépôt de données est configuré : en mono-poste la question ne se pose
+   pas, et un champ inutile est un champ qu'il faut comprendre pour l'ignorer. */
+let moiCache = null;
+/* Y A-T-IL UNE ÉQUIPE ? Lu une seule fois, et partagé par tous les écrans qui n'ont de sens
+   qu'à plusieurs — l'exécutant d'un agent planifié, la case « partager » d'une page de notes.
+   En mono-poste ils ne s'affichent pas du tout : découvrir une fonctionnalité qu'on n'a pas
+   demandée coûte plus cher que de ne pas l'avoir. */
+async function partageActif() {
+  if (!moiCache) { try { moiCache = await api('/whoami'); } catch { moiCache = { partage: false, runners: [] }; } }
+  /* Les cartes de session se redessinent toutes les secondes et demie : elles ne peuvent pas
+     attendre une requête. On dépose donc ici ce qu'elles ont besoin de savoir — y a-t-il une
+     équipe, et qui suis-je — pour que le rendu reste synchrone. */
+  partageEtMoi = { partage: Boolean(moiCache.partage), name: moiCache.name || null };
+  return Boolean(moiCache.partage);
+}
+/* L'EXÉCUTANT DES AUTOMATISMES, dans les réglages. Même chose que pour un agent planifié : la
+   liste des exécutants connus plutôt qu'une saisie libre, et le champ caché en mono-poste où la
+   question ne se pose pas. L'avertissement n'apparaît que si une politique est cochée sans
+   personne pour la faire tourner — c'est le seul cas où rien ne se passerait en silence. */
+async function poserExecutantAuto(choisi) {
+  const ligne = $('#autoRunnerRow');
+  if (!ligne) return;
+  ligne.hidden = !await partageActif();
+  const avert = $('#autoRunnerNone');
+  if (ligne.hidden) { if (avert) avert.hidden = true; return; }
+  const sel = $('#autoRunnerSelect');
+  const liste = [...new Set([...(moiCache.runners || []), choisi].filter(Boolean))].sort();
+  sel.innerHTML = `<option value="">${esc(tr('agents.runner.nobody'))}</option>`
+    + liste.map((n) => `<option value="${esc(n)}"${n === choisi ? ' selected' : ''}>`
+      + `${esc(n === moiCache.name ? tr('agents.runner.me', { name: n }) : n)}</option>`).join('');
+  sel.value = choisi || '';
+  majAvertissementAuto();
+}
+function majAvertissementAuto() {
+  const avert = $('#autoRunnerNone');
+  const sel = $('#autoRunnerSelect');
+  const f = $('#configForm');
+  if (!avert || !sel || !f) return;
+  const coche = ['auto_review_new', 'auto_rereview_stale'].some((n) => f[n] && f[n].checked);
+  avert.hidden = !!sel.value || !coche || $('#autoRunnerRow').hidden;
+}
+document.addEventListener('change', (e) => {
+  if (!e.target.closest) return;
+  if (e.target.matches('#autoRunnerSelect, #configForm [name="auto_review_new"], #configForm [name="auto_rereview_stale"]')) {
+    majAvertissementAuto();
+  }
+});
+
+async function poserExecutantForm(choisi) {
+  const ligne = $('#agentRunnerRow');
+  if (!ligne) return;
+  ligne.hidden = !await partageActif();
+  $('#agentRunnerNone').hidden = true;
+  if (!moiCache.partage) return;
+  const liste = [...new Set([...(moiCache.runners || []), choisi].filter(Boolean))].sort();
+  const sel = $('#agentRunner');
+  sel.innerHTML = `<option value="">${esc(tr('agents.runner.nobody'))}</option>`
+    + liste.map((n) => `<option value="${esc(n)}"${n === choisi ? ' selected' : ''}>`
+      + `${esc(n === moiCache.name ? tr('agents.runner.me', { name: n }) : n)}</option>`).join('');
+  sel.value = choisi || '';
+  majExecutantForm();
+}
+
+function majExecutantForm() {
+  const ligne = $('#agentRunnerRow');
+  const note = $('#agentRunnerNone');
+  if (!ligne || !note) return;
+  /* Un agent PLANIFIÉ sans exécutant ne tournera nulle part : on le dit sous le champ, pas
+     après coup. Sans horaire, la remarque n'a aucun sens — on se tait. */
+  note.hidden = ligne.hidden || !$('#agentScheduleKind').value || Boolean($('#agentRunner').value);
+}
+
 function majHoraireForm() {
   const k = $('#agentScheduleKind').value;
   $('#agentScheduleDow').hidden = k !== 'weekly';
@@ -16028,6 +16596,7 @@ function majHoraireForm() {
      champ, plutôt qu'en toast rouge après le clic. */
   const manque = $('#agentScheduleNeeds');
   if (manque) manque.hidden = !k || !!$('#agentMaxTurns').value;
+  majExecutantForm();
 }
 
 async function ouvrirAgentModal(a) {
@@ -16052,6 +16621,7 @@ async function ouvrirAgentModal(a) {
   $('#agentOutputKind').value = a ? a.output_kind : 'report';
   $('#agentRepos').innerHTML = agentReposHtml(a ? a.repos : []);
   poserHoraireForm(a ? a.schedule : '');
+  poserExecutantForm(a ? a.runner : '');
   majPerimetreVisible();
   majSortieVisible(a ? a.output_ref : null);
   await majSkillsAgent(a);
@@ -16315,6 +16885,7 @@ onEl($('#agentCancel'), 'click', () => { $('#agentModal').hidden = true; });
 onEl($('#agentKind'), 'change', majApercuArgv);
 onEl($('#agentOutputKind'), 'change', () => { majSortieVisible(null); majApercuArgv(); });
 onEl($('#agentScheduleKind'), 'change', majHoraireForm);
+onEl($('#agentRunner'), 'change', majExecutantForm);
 onEl($('#agentScheduleDow'), 'change', majHoraireForm);
 onEl($('#agentScheduleDom'), 'change', majHoraireForm);
 onEl($('#agentScheduleTime'), 'change', majHoraireForm);
@@ -17258,9 +17829,120 @@ function insererAuCurseur(champ, texte) {
 
 function renderNoteMd(md) {
   const html = mdToHtml(md);
+  /* Le rendu des diagrammes est demandé ICI, pas chez l'appelant : `renderNoteMd` est le seul
+     passage obligé du Markdown des notes, et une douzaine d'appels à ne pas oublier auraient
+     fini par en oublier un. La passe cherche dans tout le document, après insertion. */
+  if (html.includes('data-mermaid')) planifierMermaid();
   return html.split(NOTE_CODE_RE)
     .map((part, i) => (i % 2 ? part : NOTESRT.autolink(part, NOTES.index)))
     .join('');
+}
+
+/* ---------- Les diagrammes Mermaid des notes ----------
+   Un bloc ```mermaid devient un SVG. La bibliothèque fait 5,4 Mo : elle n'est PAS chargée avec
+   l'application, mais au premier diagramme rencontré, une seule fois pour la session (la
+   promesse est mémorisée, y compris pendant le chargement — sans quoi trois diagrammes dans une
+   page déclencheraient trois téléchargements concurrents). Une note sans diagramme ne paie rien.
+
+   Elle n'est pas non plus une dépendance npm : le fichier est posé dans `public/vendor/`, voir
+   son README. Rien ne sort de la machine, ici comme ailleurs. */
+let mermaidPret = null;
+function chargerMermaid() {
+  if (mermaidPret) return mermaidPret;
+  mermaidPret = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = '/vendor/mermaid.min.js';
+    s.onload = () => (window.mermaid ? resolve(window.mermaid) : reject(new Error('mermaid')));
+    /* L'échec est DÉFINITIF pour la session : on remet la promesse à zéro pour qu'un prochain
+       rendu retente, plutôt que de garder une promesse rejetée qui rejetterait pour toujours. */
+    s.onerror = () => { mermaidPret = null; reject(new Error('mermaid')); };
+    document.head.appendChild(s);
+  });
+  return mermaidPret;
+}
+
+const themeMermaid = () => (document.documentElement.getAttribute('data-theme') === 'light' ? 'default' : 'dark');
+
+/* Une passe DIFFÉRÉE et groupée. L'aperçu d'une page se réécrit à chaque frappe : rendre les
+   diagrammes à chaque touche rendrait la saisie collante, puisque le innerHTML les détruit et
+   qu'il faut tout refaire. On attend donc une pause. */
+let mermaidTimer = null;
+function planifierMermaid(delai = 250) {
+  if (mermaidTimer) clearTimeout(mermaidTimer);
+  mermaidTimer = setTimeout(() => { mermaidTimer = null; rendreMermaid(); }, delai);
+}
+
+let mermaidSeq = 0;
+async function rendreMermaid() {
+  const blocs = [...document.querySelectorAll('[data-mermaid]:not([data-mermaid-done])')];
+  if (!blocs.length) return;
+  let mermaid;
+  try { mermaid = await chargerMermaid(); } catch {
+    for (const b of blocs) marquerMermaidKo(b, tr('notes.mermaid.unavailable'));
+    return;
+  }
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: themeMermaid(),
+    /* `strict` : le contenu d'une note est écrit à la main ou par un agent. Les libellés sont
+       nettoyés, aucun HTML ne s'y exécute, aucun gestionnaire de clic n'est posé. */
+    securityLevel: 'strict',
+    /* Sans ça, un diagramme fautif laisse SA PROPRE bannière d'erreur greffée dans la page,
+       hors de notre bloc, et on ne peut plus l'enlever. On préfère montrer la source. */
+    suppressErrorRendering: true,
+  });
+  for (const bloc of blocs) {
+    const pre = bloc.querySelector('pre');
+    const source = pre ? pre.textContent : '';
+    bloc.setAttribute('data-mermaid-done', '');
+    if (!source.trim()) continue;
+    try {
+      mermaidSeq += 1;
+      const { svg } = await mermaid.render(`mmd-${mermaidSeq}`, source);
+      /* La source reste dans le DOM, cachée : c'est elle qu'on relit quand le diagramme est
+         faux, et c'est elle que le prochain rendu (changement de thème) réutilisera. */
+      pre.hidden = true;
+      const vue = document.createElement('div');
+      vue.className = 'mermaid-svg';
+      vue.innerHTML = svg;
+      bloc.appendChild(vue);
+      bloc.classList.remove('mermaid-ko');
+    } catch (e) {
+      marquerMermaidKo(bloc, String((e && e.message) || e).split('\n')[0]);
+    }
+  }
+}
+
+/* Un diagramme qui ne compile pas ne doit RIEN casser : la source reste lisible, l'erreur est
+   dite au-dessus. Une page de notes contenant une faute de frappe reste une page de notes. */
+function marquerMermaidKo(bloc, message) {
+  bloc.classList.add('mermaid-ko');
+  const pre = bloc.querySelector('pre');
+  if (pre) pre.hidden = false;
+  let err = bloc.querySelector('.mermaid-err');
+  if (!err) {
+    err = document.createElement('p');
+    err.className = 'mermaid-err';
+    bloc.prepend(err);
+  }
+  err.textContent = `${tr('notes.mermaid.failed')} ${message}`.trim();
+}
+
+/* LE THÈME CHANGE, LES DIAGRAMMES AUSSI. Les couleurs sont cuites dans le SVG au rendu : un
+   diagramme sombre laissé sur un fond clair devient illisible. On observe l'attribut plutôt que
+   de se brancher sur la bascule — l'ordre de définition des blocs de ce fichier n'a alors
+   aucune importance, et le mode « auto » qui suit le système passe par le même chemin. */
+if (typeof MutationObserver === 'function') {
+  new MutationObserver(() => {
+    const faits = document.querySelectorAll('[data-mermaid][data-mermaid-done]');
+    if (!faits.length) return;
+    for (const b of faits) {
+      b.removeAttribute('data-mermaid-done');
+      const vue = b.querySelector('.mermaid-svg');
+      if (vue) vue.remove();
+    }
+    planifierMermaid(0);
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 }
 
 /* ---------- Un autolien dit ce qu'il désigne, au survol ----------
@@ -17971,7 +18653,7 @@ function renderTodos(rows) {
       ${ordonnable ? `<span class="todo-grip" aria-hidden="true" title="${esc(tr('notes.todo.reorder-title'))}">${svgIco('grip')}</span>` : ''}
       <input type="checkbox" class="todo-check" data-todo-check="${t.id}"${t.status === 'done' ? ' checked' : ''} aria-label="${esc(tr('notes.todo.done'))}" />
       <div class="brief-item-main">
-        <div class="brief-item-title">${esc(t.title)}</div>
+        <div class="brief-item-title">${esc(t.title)}${t.shared ? ` <span class="note-partagee" title="${esc(tr('todo.shared-mark'))}">${svgIco('users')}</span>` : ''}</div>
         <div class="meta">${todoPrioBadge(t.priority)}${todoDueHtml(t)}${todoLinkHtml(t)}${todoEtatMr(t)}${todoEtatTicket(t)}
           ${t.archived_at ? `<span class="muted">${esc(tr('notes.todo.archived-at', { date: fmtDate(t.archived_at) }))}</span>` : ''}</div>
         ${t.note ? `<div class="todo-note md-body">${renderNoteMd(t.note)}</div>` : ''}
@@ -17984,10 +18666,27 @@ function renderTodos(rows) {
             « corriger le cache Redis » est écrit, il n'y a plus qu'à le faire faire. Le titre
             et la note deviennent la demande, le lien (MR ou dépôt) devient la cible. */''}
       ${t.status === 'open' ? `<button type="button" class="btn btn-sm btn-ghost" data-todo-code="${t.id}" title="${esc(tr('notes.todo.to-session-title'))}">${svgIco('bot')}</button>` : ''}
+      ${/* UNE TODO EST PERSONNELLE PAR NATURE : elle ne part à l'équipe que si on le dit. Les
+            todos AUTOMATIQUES (veille Jira, question d'un agent) n'ont pas de bouton du tout —
+            elles ne partent jamais, et proposer la bascule serait mentir. */''}
+      ${partageEtMoi && partageEtMoi.partage && !t.auto_kind
+    ? `<button type="button" class="btn btn-sm btn-ghost${t.shared ? ' active' : ''}" data-todo-share="${t.id}" data-on="${t.shared ? 1 : 0}" title="${esc(tr(t.shared ? 'todo.unshare' : 'todo.share'))}">${svgIco('users')}</button>` : ''}
       <button type="button" class="btn btn-sm btn-ghost" data-todo-edit="${t.id}" title="${esc(tr('notes.todo.edit-title'))}">${svgIco('edit')}</button>
       <button type="button" class="btn btn-sm btn-ghost btn-danger" data-todo-del="${t.id}" title="${esc(tr('notes.todo.delete-title'))}">${svgIco('trash')}</button>
     </div>`).join('');
 }
+
+/* Partager une todo, ou cesser de la partager. Délégué une fois, comme pour les sessions. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-todo-share]');
+  if (!b) return;
+  const shared = b.dataset.on !== '1';
+  try {
+    await api(`/todos/${b.dataset.todoShare}`, { method: 'PUT', body: { shared: shared ? 1 : 0 } });
+    toast(tr(shared ? 'todo.shared' : 'todo.unshared'));
+    loadTodos();
+  } catch (err) { toast(explainError(err.message), true); }
+});
 
 /* A42 — « FAIRE FAIRE CETTE TODO ». On ouvre la modale de codage remplie de ce que la todo
    sait : son titre et sa note deviennent la demande, et son lien la cible — une todo liée à
@@ -18232,7 +18931,7 @@ function renderPageList(q) {
       : '<span class="note-fold-vide"></span>';
     return `<div class="note-row${sous ? ' note-sub' : ''}${sous && dernier ? ' note-sub-last' : ''}">${sous ? '' : pli}
       <button type="button" class="note-item${sous ? ' note-sub' : ''}${p.id === NOTES.pageId ? ' active' : ''}${p.contexte ? ' note-contexte' : ''}" data-page="${p.id}">
-        <span class="note-item-title">${p.pinned ? `${svgIco('tag')} ` : ''}${esc(p.title || tr('notes.page.untitled'))}</span>
+        <span class="note-item-title">${p.pinned ? `${svgIco('tag')} ` : ''}${esc(p.title || tr('notes.page.untitled'))}${p.shared ? ` <span class="note-partagee" title="${esc(tr('notes.page.shared-mark'))}">${svgIco('users')}</span>` : ''}</span>
         ${enfants.length && !deplie ? `<span class="note-item-count">${esc(String(enfants.length))}</span>` : ''}
         <span class="note-item-date">${esc(fmtDate(p.updated_at))}</span>
       </button></div>`;
@@ -18337,6 +19036,15 @@ function renderPageEditor() {
       <span id="pageSaved" class="note-saved"></span>
       <span class="spacer"></span>
       <button type="button" id="pagePin" class="btn btn-sm${p.pinned ? ' active' : ''}" title="${esc(tr('notes.page.pin-title'))}">${svgIco('tag')}<span>${esc(tr(p.pinned ? 'notes.page.unpin' : 'notes.page.pin'))}</span></button>
+      ${/* PAGE PAR PAGE, ET NON PAR DÉFAUT. Les notes sont le seul endroit de l'outil où l'on
+            écrit sans destinataire : un brouillon, un mot de passe collé le temps d'un test, ce
+            qu'on pense d'une architecture avant de savoir le dire. Une case, cochée par un
+            geste conscient, et rien d'autre. Elle n'apparaît pas en mono-poste : il n'y aurait
+            personne à qui partager. */''}
+      <label id="pageShare" class="note-share" title="${esc(tr('notes.page.share-title'))}" hidden>
+        <input type="checkbox" id="pageShareBox"${p.shared ? ' checked' : ''} />
+        <span>${esc(tr('notes.page.share'))}</span>
+      </label>
       ${/* B6 — UNE NOTE DEVIENT UNE SESSION. La page « Bug du tunnel de paiement » est écrite
             en réunion, avec sa capture collée. Pour la faire corriger : copier le texte,
             ouvrir la modale, retrouver la capture dans Téléchargements, la ré-attacher. Or
@@ -18347,6 +19055,10 @@ function renderPageEditor() {
       ${p.parent_id ? '' : `<button type="button" id="pageNewSub" class="btn btn-sm" data-tip="${esc(tr('notes.page.new-sub-tip'))}">${svgIco('plus')}<span>${esc(tr('notes.page.new-sub'))}</span></button>`}
       <button type="button" id="pageToCode" class="btn btn-sm" title="${esc(tr('notes.page.to-code-title'))}">${svgIco('bot')}<span>${esc(tr('notes.page.to-code'))}</span></button>
       <button type="button" id="pageExport" class="btn btn-sm" title="${esc(tr('notes.page.export-title'))}">${svgIco('download')}<span>${esc(tr('notes.page.export'))}</span></button>
+      ${/* L'HISTOIRE DE LA PAGE — le seul service que git rend gratuitement, et qu'il faut
+            prendre. Le bouton n'apparaît que si un dépôt de données est configuré : sans lui il
+            n'y a pas d'historique, et un bouton qui ouvre le vide vaut moins que rien. */''}
+      <button type="button" id="pageHistory" class="btn btn-sm" title="${esc(tr('notes.page.history-title'))}" hidden>${svgIco('doc')}<span>${esc(tr('notes.page.history'))}</span></button>
       <button type="button" id="pageDelete" class="btn btn-sm btn-danger">${svgIco('trash')}<span>${esc(tr('notes.page.delete'))}</span></button>
     </div>
     ${/* LIRE ET ÉCRIRE NE SE FONT PAS EN MÊME TEMPS. Deux demi-colonnes coupaient les deux :
@@ -18366,6 +19078,7 @@ function renderPageEditor() {
       <button type="button" data-panes="both" class="${mode === 'both' ? 'active' : ''}" role="tab" data-tip="${esc(tr('notes.panes.both-tip'))}">${esc(tr('notes.panes.both'))}</button>
       <button type="button" data-panes="editor" class="${mode === 'editor' ? 'active' : ''}" role="tab" data-tip="${esc(tr('notes.panes.editor-tip'))}">${esc(tr('notes.panes.editor'))}</button>
     </div>
+    <div id="pageHistoryPanel" class="note-history-panel" hidden></div>
     <div class="note-panes panes-${esc(mode)}">
       <textarea id="pageContent" class="note-content" placeholder="${esc(tr('notes.page.content-ph'))}" spellcheck="true">${esc(p.content || '')}</textarea>
       <div class="note-preview md-body" id="pagePreview">${renderNoteMd(p.content || '')}</div>
@@ -18386,6 +19099,71 @@ function renderPageEditor() {
   for (const b of $$('#pageEditor .lien-page')) {
     b.addEventListener('click', () => openNotePage(Number(b.dataset.page)));
   }
+
+  /* ---------- Partager cette page ---------- */
+  (async () => {
+    const zone = $('#pageShare');
+    if (!zone || !await partageActif()) return;
+    zone.hidden = false;
+    $('#pageShareBox').addEventListener('change', async (ev) => {
+      const coche = ev.target.checked;
+      /* On VIDE LA SAUVEGARDE EN ATTENTE d'abord : partager une page dont les trois dernières
+         phrases ne sont pas encore enregistrées enverrait à l'équipe une version tronquée. */
+      await viderPageSave();
+      try {
+        NOTES.page = await api(`/notes/${p.id}`, { method: 'PUT', body: { shared: coche ? 1 : 0 } });
+        const suivis = NOTES.page.entraine || [];
+        /* CE QUI A SUIVI SE DIT. Une case qui en coche une autre en silence est une case à
+           laquelle on n'a plus envie de toucher. */
+        if (suivis.length) toast(tr(coche ? 'notes.page.share-parent' : 'notes.page.unshare-children', { pages: suivis.join(', '), n: suivis.length, count: suivis.length }));
+        else toast(tr(coche ? 'notes.page.shared' : 'notes.page.unshared'));
+        await loadPages();
+        renderPageEditor();
+      } catch (e) { ev.target.checked = !coche; toast(explainError(e.message), true); }
+    });
+  })();
+
+  /* ---------- Historique d'une page ----------
+     Une page de notes est un fichier du dépôt de données : son historique EXISTE déjà, avec son
+     auteur et sa date, sans qu'on ait eu à tenir la moindre table de versions. On le montre, et
+     c'est tout. Le bouton reste caché tant qu'aucun dépôt n'est configuré — il n'y aurait rien
+     à montrer, et un bouton qui ouvre le vide apprend à ne plus cliquer. */
+  (async () => {
+    const bouton = $('#pageHistory');
+    if (!bouton) return;
+    let h = null;
+    try { h = await api(`/notes/${p.id}/history`); } catch { return; }
+    if (!h.commits || !h.commits.length) return;
+    bouton.hidden = false;
+    /* Un PANNEAU dans la page, et non une modale : on consulte l'historique EN ÉCRIVANT, pour
+       retrouver ce qu'on avait dit avant. Une modale masquerait précisément le texte qu'on est
+       en train de comparer. */
+    bouton.addEventListener('click', () => {
+      const panneau = $('#pageHistoryPanel');
+      if (!panneau) return;
+      panneau.hidden = !panneau.hidden;
+      bouton.classList.toggle('active', !panneau.hidden);
+      if (panneau.hidden || panneau.dataset.rendu === '1') return;
+      panneau.dataset.rendu = '1';
+      panneau.innerHTML = `<p class="muted">${esc(tr('notes.history.intro', { file: h.file }))}</p>
+        <ul class="note-history">${h.commits.map((c) => `<li><button type="button" class="lien-commit" data-sha="${esc(c.sha)}">
+          <b>${esc(c.sujet || c.sha.slice(0, 7))}</b>
+          <span class="muted"> — ${esc(c.auteur)}, ${esc(new Date(c.date).toLocaleString())}</span>
+        </button></li>`).join('')}</ul>
+        <pre id="noteHistoryDiff" class="note-history-diff" hidden></pre>`;
+      for (const b of $$('#pageHistoryPanel .lien-commit')) {
+        b.addEventListener('click', async () => {
+          const zone = $('#noteHistoryDiff');
+          zone.hidden = false;
+          zone.textContent = tr('notes.history.loading');
+          try {
+            const d = await api(`/notes/${p.id}/history?sha=${encodeURIComponent(b.dataset.sha)}`);
+            zone.textContent = d.diff || tr('notes.history.empty');
+          } catch (e) { zone.textContent = explainError(e.message); }
+        });
+      }
+    });
+  })();
   /* NOUVELLE SOUS-PAGE : créée sous la page ouverte, puis ouverte à son tour — vide, donc
      l'éditeur, parce qu'on vient d'appuyer sur « nouvelle » pour écrire. */
   $('#pageNewSub') && $('#pageNewSub').addEventListener('click', async () => {
@@ -21501,6 +22279,11 @@ function renderVerifierList() {
     /* A/Réglages 3 — combien de sessions le portent. Renommer ou supprimer se faisait à
        l'aveugle : douze sessions le relanceraient en finissant, et rien ne le disait. */
     v.used_by_tasks ? esc(tr('verify.verifier.used-by', { n: v.used_by_tasks, count: v.used_by_tasks })) : '',
+    /* CE QUI MANQUE SUR CE POSTE. Les valeurs d'environnement ne voyagent pas — ce sont des
+       secrets en puissance. Un vérificateur reçu d'un collègue arrive avec les NOMS de ses
+       variables : le dire ici évite un échec au lancement dont la cause serait à chercher. */
+    (v.env_missing || []).length
+      ? `<span class="tag warn" title="${esc((v.env_missing || []).join(', '))}">${esc(tr('verify.verifier.env-missing', { n: v.env_missing.length, count: v.env_missing.length }))}</span>` : '',
   ].filter(Boolean).join(' · ')}</div>
       ${herite
     ? `<p class="field-note">${esc(tr('verify.kind.script-removed.hint'))}</p>`
@@ -21579,10 +22362,10 @@ function remplirFormVerifier(v, info) {
   f.name.value = v.name;
   f.report_path.value = v.report_path || '';
   f.parse_tap.checked = v.parse_tap == null ? true : !!v.parse_tap;
-  let env = '';
-  try { env = Object.entries(JSON.parse(v.env_json || '{}')).map(([k, val]) => `${k}=${val}`).join('\n'); }
-  catch { env = ''; }
-  f.env.value = env;
+  /* Les valeurs viennent du POSTE : le serveur les recompose en « CLE=valeur » à partir des
+     noms d'équipe et de ce qui est renseigné ici. Un vérificateur reçu d'un collègue arrive
+     donc avec ses noms et des valeurs vides — à remplir. */
+  f.env.value = v.env || '';
   f.timeout_s.value = v.timeout_s;
   f.run_base.checked = !!v.run_base;
   f.comment_on_forge.checked = !!v.comment_on_forge;

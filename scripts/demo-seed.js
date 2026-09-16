@@ -3,13 +3,17 @@
 /* Sème une base de démonstration réaliste dans `data-demo/`, pour `npm run demo`.
    But : qu'un visiteur du dépôt voie l'outil VIVANT en 30 s, sans GitLab ni token.
 
-   Isolé de la vraie base : on force MERGERIE_DATA_DIR=data-demo AVANT de charger db/paths,
-   et on efface le dossier à chaque exécution (démo repeatable, jamais de résidu). */
+   Isolé de la vraie base : on pose MERGERIE_DATA_DIR AVANT de charger db/paths — `data-demo/`
+   à côté du dépôt par défaut, ou le dossier déjà donné par la variable (c'est ainsi que
+   `npx mergerie demo` sème dans `~/.mergerie/demo`, le paquet vivant dans un cache) — et on
+   efface le dossier à chaque exécution (démo repeatable, jamais de résidu). */
 
 const path = require('path');
 const fs = require('fs');
 
-const DEMO_DIR = path.resolve(__dirname, '..', 'data-demo');
+const DEMO_DIR = process.env.MERGERIE_DATA_DIR
+  ? path.resolve(process.env.MERGERIE_DATA_DIR)
+  : path.resolve(__dirname, '..', 'data-demo');
 process.env.MERGERIE_DATA_DIR = DEMO_DIR;
 fs.rmSync(DEMO_DIR, { recursive: true, force: true }); // repart d'une base propre
 
@@ -1441,6 +1445,25 @@ db.prepare(`UPDATE mr SET ticket_jira_key = 'PROJ-1408', ticket_jira_status = 'E
       '## Qui appelle qui', '- groupe/webapp-front → groupe/api-core (HTTP)'].join('\n'),
     at(1), at(1)).lastInsertRowid;
   db.prepare('UPDATE agent SET output_ref = ?, schedule = ? WHERE id = ?').run(String(pageCarte), 'weekly mon 07:00', doc.id);
+
+  /* CE QUI EST PARTAGÉ, ET CE QUI NE L'EST PAS. Une page de notes ne part dans le dépôt
+     d'équipe que si on l'a cochée, et la démo doit montrer LES DEUX : la carte des services
+     produite par l'agent et le bilan de migration intéressent tout le monde ; « Points à
+     aborder au daily » et « Bug du tunnel de paiement » sont des brouillons de poste. C'est
+     aussi ce qui donne au bouton « Historique » une page sur laquelle s'afficher. */
+  db.prepare(`UPDATE note_page SET shared = 1
+    WHERE title IN ('Documentaliste — sortie d’agent', 'Notes migration TypeORM')`).run();
+
+  /* CE QUI EST PARTAGÉ, ET CE QUI NE L'EST PAS — pour les sessions aussi. Une session est un
+     processus : elle ne part que si on l'a cochée. La démo en montre DEUX partagées (une de
+     codage, une exploration) pour que « par Claire » et le pictogramme se voient, et laisse
+     les autres privées — c'est le cas ordinaire. */
+  db.prepare("UPDATE task SET shared = 1 WHERE id IN (SELECT id FROM task ORDER BY id LIMIT 1)").run();
+  db.prepare("UPDATE task SET shared = 1 WHERE kind = 'explore' AND id IN (SELECT id FROM task WHERE kind = 'explore' ORDER BY id LIMIT 1)").run();
+  /* Et UNE todo d'équipe parmi les personnelles : « relire le lot avant vendredi » est le cas
+     où la case a un sens, et la démo doit montrer les deux états côte à côte. */
+  db.prepare(`UPDATE todo SET shared = 1 WHERE auto_kind IS NULL
+    AND id IN (SELECT id FROM todo WHERE auto_kind IS NULL ORDER BY id LIMIT 1)`).run();
 
   const runAgent = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, status, md_path,
       agent_id, agent_name, triggered_by, created_at, updated_at, finished_at)

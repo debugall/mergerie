@@ -804,6 +804,13 @@ entre humains.
   notes : ce que fait chaque dépôt, ce qu'il expose, ce qu'il consomme, comment on le lance en local, où
   est sa configuration, et « qui appelle qui ». La page est **créée au premier run puis mise à jour**,
   jamais dupliquée. Avec un horaire, le brief du matin annonce qu'elle a changé.
+  **Il dessine** : la page générale porte un `flowchart` « qui appelle qui » — un nœud par service, le
+  libellé de la flèche disant le moyen (REST, événement, job), les bases et les files étant des nœuds
+  aussi — et, quand un enchaînement traverse trois services, un `sequenceDiagram` qui le déroule. Chaque
+  dépôt reçoit **sa sous-page**, avec **le schéma de sa base** en `erDiagram` : tables, colonnes-clés,
+  relations, lus dans les **migrations** ou les modèles, et le chemin d'où ils sortent. Un dépôt sans
+  base le dit en une ligne — la consigne lui interdit d'inventer une table, comme elle interdit à
+  l'enquêteur d'inventer un dépôt.
 
 Ces deux agents sont **modifiables** comme les autres — et **restaurables** d'un bouton si l'on va trop
 loin. Le troisième livré, le **cartographe**, ne se lance pas directement : c'est lui qui crée les agents
@@ -1031,6 +1038,13 @@ Markdown côte à côte** (le même rendu que les rapports de review, donc le m�
   l'aperçu l'affiche aussitôt. L'image part **sur le disque** (`data/notes/<page>/`) et la page ne garde
   qu'un lien : mettre la capture en base64 dans le contenu gonflerait la ligne de plusieurs mégaoctets,
   renvoyés en entier à chaque autosauvegarde — c'est-à-dire toutes les secondes pendant qu'on écrit.
+- **Un bloc ` ```mermaid ` devient un diagramme.** Ce que le documentaliste dessine se lit comme un
+  schéma, pas comme du texte. La bibliothèque de rendu est **posée dans le dépôt**
+  (`public/vendor/mermaid.min.js`, jamais un CDN : rien ne sort de la machine) et n'est chargée qu'**au
+  premier diagramme rencontré** — une page qui n'en contient pas ne paie pas ses cinq mégaoctets. Les
+  couleurs suivent le thème, et changer de thème refait les diagrammes, dont les couleurs sont cuites
+  dans le SVG. Un diagramme qui **ne compile pas garde sa source affichée**, avec l'erreur au-dessus :
+  une faute de frappe n'emporte pas la page.
 - **Épingler** garde une page en tête de liste.
 - **Exporter** télécharge la page en `.md`, au nom **slugifié** depuis le titre. ⚠ Les captures y sont
   référencées par leur **adresse dans Mergerie** : le `.md` relu ailleurs affichera le texte, pas les
@@ -2038,6 +2052,15 @@ Chaque graphe affiche **la question à laquelle il répond**. Le total de tokens
 travail interne de l'agent n'est pas compté).
 
 ### Réglages
+Chaque champ porte un badge **« équipe »** ou **« ce poste »**, parce que les réglages ne sont pas
+tous de même nature. Un réglage d'**équipe** décrit l'outil : les gabarits de prompt, les seuils,
+les politiques de review, l'adresse de la forge — deux reviews de la même merge request faites avec
+des consignes différentes ne sont pas comparables, donc ces réglages-là sont faits pour être
+communs. Un réglage de **ce poste** n'appartient qu'à ta machine : les jetons d'API, le dossier de
+clonage, la langue, le moteur de dictée. Ils sont rangés à part, dans une table qui n'a pas
+vocation à voyager : c'est ce qui permettra plus tard à une équipe de partager son outil sans que
+le moindre secret quitte les machines.
+
 Sous-onglets, **dans l'ordre du parcours** — connecter, choisir le code, régler la review, régler
 l'outil, les intégrations optionnelles, le banc d'essai :
 
@@ -2759,6 +2782,144 @@ Avant une **session de codage**, le worktree est **remis à zéro s'il est sale*
 précédente interrompue peut laisser des fichiers non commités qui feraient échouer le `checkout`.
 Le nettoyage ne touche qu'au non-commité — **les commits déjà faits sont préservés**. Les reviews,
 elles, ne lisent qu'un `git diff` et ne dépendent jamais de l'état du worktree.
+
+## Partager avec une équipe (dépôt de données)
+
+Mergerie est fait pour une personne, et le reste par défaut. Mais le travail qu'on accumule — les
+**règles de review**, les **vérificateurs**, les **agents** et leur **carte du code**, les
+**todos** — a toutes les raisons d'être commun : une carte de domaine coûte des heures d'agent
+à produire, et la refaire sur six postes, c'est payer six fois la même chose pour obtenir six
+réponses légèrement différentes.
+
+**Le principe.** On désigne un dépôt git — celui de l'équipe, sur la forge qu'elle a déjà — et
+Mergerie y range ce travail : **un fichier par objet**, en texte lisible. Chacun garde **son**
+instance, **ses** jetons et **son** abonnement au CLI d'IA : les requêtes partent de son poste et
+lui sont facturées, et c'est le résultat qui est partagé. Il n'y a rien à installer, rien à
+administrer : l'équipe a déjà une forge, des droits, des sauvegardes et un historique.
+
+**Ce qui ne part JAMAIS dans le dépôt.** Les sept jetons d'API, le dossier de clonage, la langue,
+le moteur de dictée, les chemins absolus de cette machine, les sessions rangées, les journaux de
+jobs. Chaque colonne de la base est classée nommément, et un contrôle automatique refuse une
+colonne au nom de secret qui ne serait pas déclarée — parce qu'**un secret commité dans git est
+définitif** : l'historique est immuable, chaque clone le garde, la forge le garde. Le retirer ne
+suffit pas, il faut révoquer. **CINQ ONGLETS RESTENT LOCAUX** : **Liens**, **Docker**, **Jenkins**, **Git**
+et **Jira**. La grille services × environnements, une palette de commandes git, un job Jenkins
+visé, un conteneur sauvegardé, un ticket surveillé : tout cela dit où l'on va travailler et
+comment on est branché — pas ce qu'on a produit. Les partager imposerait à chacun l'outillage du
+voisin, ferait voyager un journal d'actions que personne d'autre ne peut rejouer, et remplirait
+la liste de todos de tout le monde au premier changement d'état d'un ticket suivi par un seul.
+
+**Les todos aussi se partagent une par une**, et jamais celles qu'aucune main n'a écrites : la
+todo née d'une veille Jira ou d'une question posée par un agent ne quitte jamais le poste qui l'a
+créée — partagées, elles remplissaient la liste de tout le monde. **Un brouillon ne part jamais** :
+une remarque inline pas encore envoyée, le texte d'une relance en cours de frappe, le profil
+d'agent qu'on essaie. Et **les valeurs d'environnement d'un vérificateur restent ici** : seuls
+leurs NOMS voyagent, pour que chacun sache quoi renseigner — une variable de commande de test est
+le lieu naturel d'un mot de passe.
+
+**Les automatismes ont un exécutant.** Les reviews et vérifications automatiques sont réglées pour
+l'équipe, mais chaque poste a sa propre file : sans exécutant désigné, deux postes allumés
+lanceraient deux fois la même review — deux appels d'IA facturés, et deux commentaires sur la
+merge request. *Réglages → Merge Request* demande donc qui les fait tourner ; sans personne, elles
+ne tournent nulle part.
+
+**Les sessions se partagent UNE PAR UNE, et pas par défaut.** Une session de codage, une
+exploration, une question libre : ce qu'elles portent n'est pas un produit mais la façon dont on
+a travaillé — le prompt tel qu'on l'a tapé, les trois relances, la question qu'on n'aurait pas
+posée à voix haute, la capture collée qui montre une autre fenêtre, et ce qu'a coûté chaque
+essai. Le résultat, lui, part déjà par son propre canal : la branche et la merge request sur la
+forge, la carte du code, la page de notes qu'un agent a produite. Chaque session porte donc une
+case **« Partager avec l'équipe »**, décochée. Ses itérations et ses pièces jointes suivent la
+session — elle ne peut pas être à moitié partagée —, et la décocher retire tout le dossier du
+dépôt. Les sessions écrites avant cette version deviennent privées et en sortent au premier
+démarrage. Enfin, **la session d'un collègue ne se supprime pas** : on la range. L'effacer ici
+l'effacerait chez tout le monde.
+
+**Une session partagée se passe de main en main, et l'IA ne perd pas le fil.** C'est ce qui
+rend le partage d'une session utile plutôt que documentaire : tu lances une session sur un
+ticket, tu coches la case, un collègue la reprend — **avec son abonnement à lui**. Son agent
+n'a pourtant aucune mémoire de la tienne : une conversation d'agent appartient au poste qui l'a
+ouverte et ne voyage pas. Ce qui voyage, ce sont les **itérations** : la demande et la réponse
+de chacune. L'outil les rejoue en tête du prompt quand il n'a pas de session locale à reprendre,
+et l'agent du collègue repart donc avec tout ce qui s'est dit — pas sa mémoire, sa
+transcription, bornée aux plus récentes quand l'échange est long (le prompt dit alors combien
+sont omises). Dans l'autre sens, quand la session te revient, ton agent à toi est **rattrapé**
+sur les itérations faites ailleurs pendant ce temps, et sur celles-là seulement : lui rejouer sa
+propre conversation le ferait douter de ce qu'il a déjà fait. La session peut ainsi faire
+plusieurs tours d'équipe.
+
+**Les pages de notes se partagent UNE PAR UNE, et pas par défaut.** Tout le reste de ce que
+l'outil garde est un produit — une review, une règle, une carte du code —, et le produire pour soi
+seul n'aurait guère de sens : cela part donc en bloc. Une page de notes, non : c'est le seul
+endroit de l'outil où l'on écrit sans destinataire — un brouillon, un mot de passe collé le temps
+d'un test, ce qu'on pense d'une architecture avant de savoir le dire. Chaque page porte donc une
+case **« Partager »**, décochée, et rien ne part tant qu'on ne l'a pas cochée ; la décocher
+**retire** la page du dépôt d'équipe — et des instances des collègues, puisqu'elle n'était pas à
+eux ; sa propre copie, elle, reste entière. Les pages déjà écrites restent à soi. La case n'apparaît
+pas en mono-poste, et la liste marque d'un pictogramme celles qui sont chez tout le monde.
+Partager une **sous-page** emporte sa page mère, et cesser de partager une mère reprend ses
+sous-pages : une sous-page est nommée par sa mère, seule elle n'arriverait nulle part. L'écran le
+dit plutôt que de le faire en silence.
+
+**Mettre une équipe en route.**
+
+1. **Créer un dépôt** sur la forge, privé, par exemple `equipe/mergerie-data`. Vide ou avec un
+   README, peu importe : le bouton fait la différence tout seul.
+2. **Le premier poste** — celui qui a déjà l'historique — colle son URL dans
+   *Réglages → Données partagées*, puis clique **« Cloner / rattacher »**. Mergerie
+   pousse ce que ce poste porte déjà : l'initialisation d'une équipe, c'est ça.
+3. **Les autres postes** collent la même URL et cliquent le même bouton. **Le geste va dans les
+   deux sens** : le contenu de l'équipe descend — règles, vérificateurs, agents, notes, todos —
+   et ce que ce poste avait accumulé de son côté monte avec, dans le même commit. Personne ne
+   laisse ses mois de reviews à quai en rejoignant, et l'écran dit combien de documents sont
+   partis.
+4. Chacun vérifie que git le connaît (`git config --global user.name`) : **c'est cette identité
+   qui signe les commits**, et c'est elle qui répondra plus tard à « qui a écrit ça ? ». Sans
+   elle, rien n'est commité, et l'écran le dit.
+
+**Au quotidien, on ne fait rien.** Toutes les *n* secondes (30 par défaut), l'outil envoie ce qui
+est nouveau et récupère ce qui l'est chez les autres. Le pied de page affiche `↑2 ↓0` et l'heure
+de la dernière synchro ; le survol dit **dans combien de secondes part la prochaine**, et un clic
+force un tour sans attendre. Hors ligne, tout continue de marcher : les commits
+restent locaux, le témoin passe à l'ambre, et le retard se rattrape au retour.
+
+**Avant de rattacher, on te dit ce qui part.** « Cloner / rattacher » et « Tout ré-envoyer »
+ouvrent d'abord un récapitulatif : dans quel sens va l'échange, ce qui part par famille, **ce qui
+reste sur ce poste** (les sessions et les todos sont privées par défaut), combien de documents le
+dépôt porte déjà, et fichier par fichier combien seront ajoutés, modifiés ou laissés tels quels.
+**Supprimés : aucun** — l'envoi écrit, il ne supprime jamais ; le travail d'un collègue est lu et
+ajouté chez toi AVANT que quoi que ce soit ne parte.
+
+**« Synchroniser » n'envoie que ce qui a changé.** C'est ce qu'on veut au quotidien, mais ça ne
+remet rien dans un dépôt vidé à la main : la file des écritures est vide, donc il n'y a rien à
+envoyer. Pour ce cas-là, il y a **« Tout ré-envoyer »**, qui réécrit tout ce qui se partage.
+
+**Une synchro ne peut pas vider ta base.** « Un fichier parti emporte sa ligne » vaut pour UN
+document supprimé. Pour un dépôt remis à zéro — un `push --force`, un projet recréé sur la forge —
+la même règle effacerait tout d'un coup. Une passe qui ferait disparaître plus de la moitié de ce
+que le dépôt porte (et au moins dix documents) est donc **refusée** : rien n'est supprimé, et le
+témoin passe au rouge avec la raison. Un « Cloner / rattacher » réécrit alors ce qui manque.
+
+**Et si deux personnes modifient la même chose ?** C'est rare par construction — un fichier par
+objet, nommé par un identifiant qui ne dépend d'aucun poste : deux postes ne se croisent que s'ils
+ont vraiment modifié le même objet. Quand ça arrive, **la version distante l'emporte**, et la
+vôtre est **gardée** : *Réglages → Données partagées* la montre avec deux boutons, *Reprendre la
+mienne* et *Garder la leur*. Jamais de rebase en plan, jamais de marqueur de conflit dans le
+dépôt, jamais une commande git à taper.
+
+**Ce que git offre en prime.** Sur une page de notes, un bouton **Historique** liste qui l'a
+modifiée, quand, et montre le diff. Aucune table de versions n'a été écrite pour ça :
+l'information existe parce qu'on est passé par git.
+
+**Les agents planifiés ont un exécutant.** Trois instances allumées lanceraient trois fois le même
+agent — et l'équipe paierait trois fois. Le formulaire d'agent propose donc un champ *Exécutant* :
+seule l'instance de cette personne honore l'horaire. Sans exécutant, l'agent ne tourne qu'à la
+main, et c'est le défaut.
+
+**Le codage hors dépôt voyage à moitié, et c'est voulu.** La session se partage — ses passes se
+relisent —, mais `/Users/moi/projets/api` ne désigne rien sur le Linux du collègue. Sa carte
+affiche donc le nom du dossier et son propriétaire, et « Relancer » est refusé plutôt que de faire
+travailler l'agent dans un homonyme.
 
 ## Données & sauvegarde
 

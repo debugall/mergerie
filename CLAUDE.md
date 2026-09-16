@@ -97,6 +97,13 @@
     Recovered from the un-checkpointed WAL, minus one preference.
   - **In a one-off command**, always `MERGERIE_DATA_DIR=$(mktemp -d) node -e "…"`, including to
     only READ: a read that loads `db.js` runs the migrations on whatever database it opened.
+  - **And the reverse: a child process must not INHERIT it.** `scripts/demo-seed.js` seeds into
+    `MERGERIE_DATA_DIR` when it is set — that is how `mergerie demo` seeds `~/.mergerie/demo` —
+    and it *starts by erasing the target directory*. A test spawning it after `startApp()`
+    therefore wiped its own data directory while `data-demo/` stayed empty. Spawn it with the
+    variable deleted from `env`. Invisible on a dev machine, where `data-demo/` already exists
+    and the seed never runs; systematic in CI, where it is git-ignored and absent from the
+    archive — which is the shape of every bug this section is about.
   - Tell-tale signs: a test passing alone and failing in the suite; row ids growing from one run
     to the next (a fresh temporary database starts at 1).
 

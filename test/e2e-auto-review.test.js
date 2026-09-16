@@ -103,6 +103,40 @@ describe('Review automatique à l’arrivée d’une MR', () => {
     assert.equal(reviewees(), avant + 1, 'la review doit avoir produit son rapport');
   });
 
+  /* UNE POLITIQUE AUTOMATIQUE A UN EXÉCUTANT — sans quoi deux postes allumés reviewaient DEUX
+     fois la même merge request : deux appels d'IA facturés, deux rapports, et deux commentaires
+     sur la forge si la publication automatique est cochée. Le spec l'avait vu pour les agents
+     planifiés, et pas pour les politiques, qui sont pourtant le même cas. */
+  test('en équipe, seul l’exécutant désigné lance la review automatique', async () => {
+    await app.api('PUT', '/api/config', { auto_review_new: '1', review_auto_max: '5' });
+    /* On passe en mode PARTAGÉ : une URL de dépôt suffit, rien n'est cloné ni poussé ici. */
+    await app.api('PUT', '/api/config', { data_repo_url: '/tmp/depot-qui-n-existe-pas.git' });
+
+    await app.api('PUT', '/api/config', { auto_runner: 'Quelqu’un d’autre' });
+    let avant = reviewees();
+    let bilan = await arriver(1);
+    assert.equal(bilan.auto_review.lancees, 0, 'ce poste n’est pas l’exécutant : il ne lance rien');
+    await fileVide();
+    assert.equal(reviewees(), avant, 'et aucun rapport n’apparaît');
+
+    /* Personne de désigné : personne n'agit. C'est le défaut sûr — mieux vaut rien que deux. */
+    await app.api('PUT', '/api/config', { auto_runner: '' });
+    bilan = await arriver(1);
+    assert.equal(bilan.auto_review.lancees, 0, 'sans exécutant, aucune instance n’agit');
+
+    // …et quand c'est moi, tout se passe comme avant.
+    const moi = (await app.api('GET', '/api/whoami')).body.name;
+    await app.api('PUT', '/api/config', { auto_runner: moi });
+    avant = reviewees();
+    bilan = await arriver(1);
+    assert.equal(bilan.auto_review.lancees, 1, 'l’exécutant, lui, lance');
+    await fileVide();
+    assert.equal(reviewees(), avant + 1);
+
+    // On remet le mono-poste : les épreuves suivantes parlent d'autre chose.
+    await app.api('PUT', '/api/config', { data_repo_url: '', auto_runner: '' });
+  });
+
   test('le plafond tient, et ce qui n’est pas parti est ANNONCÉ', async () => {
     await app.api('PUT', '/api/config', { auto_review_new: '1', review_auto_max: '2' });
     const avant = reviewees();

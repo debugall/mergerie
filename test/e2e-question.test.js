@@ -98,7 +98,12 @@ describe('Question libre', () => {
      l'édition, sinon la question suivante repartirait d'une page blanche. */
   test('éditer la question garde la session d’agent', async () => {
     const { body: q } = await app.api('POST', '/api/questions', { prompt: 'Version 1' });
-    app.db.prepare("UPDATE question SET session_key='sess-1', session_backend='claude', session_cwd='/tmp/x' WHERE id=?").run(q.id);
+    /* LE HANDLE A QUITTÉ LA LIGNE : il ne vaut que dans le `~/.claude` de cette machine, donc
+       il vit dans `local_session`, rangé sous l'`uid` de la question. */
+    // eslint-disable-next-line global-require
+    require('../src/localsession').ecrire('question',
+      app.db.prepare('SELECT uid FROM question WHERE id = ?').get(q.id).uid,
+      { session_key: 'sess-1', session_backend: 'claude', session_cwd: '/tmp/x' });
 
     await app.api('PUT', `/api/questions/${q.id}`, { prompt: 'Version 2 corrigée', label: 'Étude' });
     const apres = (await app.api('GET', `/api/questions/${q.id}`)).body.task;

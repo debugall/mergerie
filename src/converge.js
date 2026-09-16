@@ -11,6 +11,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('./db');
+const localsession = require('./localsession');
 const git = require('./git');
 const copilot = require('./copilot');
 const notify = require('./notify');
@@ -70,7 +71,8 @@ async function applyFixAndPush(repo, mr, reviewMd, message, onLog, ctx = {}) {
     fs.appendFileSync(path.join(cwd, 'PROJ_CONVERGE_DRYRUN.md'), `\n## ${message}\n`, 'utf8');
   } else if (ctx.targetId && agentsession.backendName() !== 'unknown') {
     // Continuité : reprend la MÊME session que le dev (clé task-…-target-…).
-    const tg = db.prepare('SELECT session_key, session_cwd FROM task_target WHERE id = ?').get(ctx.targetId) || {};
+    const uidCible = (db.prepare('SELECT uid FROM task_target WHERE id = ?').get(ctx.targetId) || {}).uid;
+    const tg = localsession.lire('task_target', uidCible);
     const key = `task-${ctx.task.id}-target-${ctx.targetId}`;
     let doResume = !!tg.session_key;
     if (doResume && tg.session_cwd && path.resolve(tg.session_cwd) !== path.resolve(cwd)) doResume = false;
@@ -85,7 +87,8 @@ async function applyFixAndPush(repo, mr, reviewMd, message, onLog, ctx = {}) {
     copilot.recordUsage('task', prompt, agentText, null, { kind: 'mr', id: mr.id }, r.costUsd);
     taskrunner.saveAgentOutput(ctx.task.id, ctx.targetId, agentText, { kind: 'converge-fix', prompt }); // passe consultable
     // Le handle est réenregistré à CHAQUE passe : une reprise peut en rendre un nouveau.
-    db.prepare('UPDATE task_target SET session_key = ?, session_backend = ?, session_cwd = ?, updated_at = ? WHERE id = ?').run(r.handle, r.backend, cwd, new Date().toISOString(), ctx.targetId);
+    localsession.ecrire('task_target', uidCible, { session_key: r.handle, session_backend: r.backend, session_cwd: cwd });
+    db.prepare('UPDATE task_target SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), ctx.targetId);
   } else {
     await copilot.runPrompt(prompt, cwd, { kind: 'task', owner: { kind: 'mr', id: mr.id } }, onLog);
   }
@@ -221,7 +224,8 @@ function latestRun(mrId) {
    Amorce : dev IA → commit → push → crée la MR → upsert ciblé en base → délègue à
    convergeRun. Idempotent : une étape déjà faite (code committé, MR ouverte) est sautée. */
 function reloadTarget(id) {
-  return db.prepare('SELECT tt.*, repo.project, repo.forge FROM task_target tt JOIN repo ON repo.id = tt.repo_id WHERE tt.id = ?').get(id);
+  return localsession.resoudre('task_target',
+    db.prepare('SELECT tt.*, repo.project, repo.forge FROM task_target tt JOIN repo ON repo.id = tt.repo_id WHERE tt.id = ?').get(id));
 }
 
 async function bootstrapMrForTarget(task, tg, onLog) {

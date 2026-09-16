@@ -11,6 +11,470 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-16
+
+### Added
+
+- **`npx mergerie demo` — the tool in one command, with nothing to clone.** The package now ships
+  a `mergerie` command: `npx mergerie demo` seeds the fictional database and opens the tool on it,
+  in dry-run and with no token; `npx mergerie` is the real thing. Under `npx` the code lives in a
+  cache that can vanish at any time, so the data no longer goes next to the code: it goes to
+  `~/.mergerie/data`, and the demo to `~/.mergerie/demo`, unless `MERGERIE_DATA_DIR` says
+  otherwise. `PORT`, `HOST` and a `.env` in the current folder are honoured as with `npm start`,
+  and Ctrl-C stops the server rather than leaving it running on its port. The archive published to
+  npm carries the command, the server, the screen and the demo seed — never the tests, the plans,
+  the data or the demo video — and `scripts/publish-npm.sh` rehearses the whole thing from an
+  empty folder with a throwaway home before anything is published.
+
+- **Share your work with a team, through a git repository.** A domain map costs hours of agent
+  time to produce; redoing it on six machines means paying six times for the same thing and
+  getting six slightly different answers. Point Mergerie at a git repository — your team's own, on
+  the forge you already have — and it keeps the accumulated work there: **review rules, verifiers,
+  agents and their map of the code, todos, and the notes pages you tick**, one readable file per
+  object. Everyone keeps
+  their own instance, their own tokens and their own AI subscription: the requests leave your
+  machine and are billed to you, and it is the **result** that is shared. Nothing to install,
+  nothing to administer — and you get “who decided what, and when” for free.
+
+  **Joining takes your history with you.** A repository created on the forge almost always comes
+  with an initial commit — a README —, and attaching to it brings the team's content down. It also
+  sends everything this machine had already accumulated up, in the same gesture: the months of
+  reviews and sessions that predate the switch are what the team wants most, and they would
+  otherwise have stayed behind while only future work travelled. The screen says how many documents
+  went up.
+
+  Day to day you do nothing: every thirty seconds the tool sends what is new and fetches what is
+  new elsewhere, and the footer shows `↑2 ↓0`. Offline, everything keeps working — commits stay
+  local and catch up on return. When two people change the same thing, the remote version wins and
+  **yours is kept**, with two buttons to take it back or keep theirs: never a half-finished rebase,
+  never a conflict marker, never a git command to type.
+
+  **Everything the team accumulates travels**: repositories, the review state of merge requests,
+  reports and every pass of them, findings, convergence runs, rules, verifiers and their verdicts,
+  agents and their map of the code, coding and exploration sessions with their agent passes and
+  attachments, free questions, todos, lots, and the team settings. Delete `reviewer.db` and it
+  all comes back from the files.
+
+  **Nothing secret ever goes in.** The seven API tokens, the clone folder, the language, the
+  dictation engine, this machine's absolute paths, agent session handles, tidied-away sessions and
+  job logs all stay here — and so does the whole **Links** tab, which says where you go to work
+  rather than what you produced. Every column is classified by name, and the tests refuse a
+  secret-looking column that is not declared, because a secret committed to git is permanent.
+
+- **The “AI output” and “diff” buttons show up on a session that came from the team.** Whether to
+  offer them was decided from file paths on your own machine, which a received session does not
+  have — so they vanished, while every iteration's text sat right there and the branch diff was one
+  `git diff` away from the clone (the server already knew how to recompute it). They are now
+  decided from what actually travels: the iterations themselves, and the commit the session
+  produced. Whether to offer it
+  was decided from a file path on your own machine, which a received session does not have — so
+  the button vanished while every iteration's text sat right there. It is now decided from the
+  iterations themselves, which is what travels and what the button opens.
+
+- **You can open the diff of an iteration a colleague ran.** The patch itself stays on the machine
+  that ran the agent — sending hundreds of kilobytes into the team repository to carry something
+  entirely recomputable would be a poor trade. What travels is the pair of commits the iteration
+  sits between, and that is enough: your own clone recomputes the same diff, to the byte. If your
+  clone does not have those commits yet, the screen says so and tells you to fetch the branch,
+  rather than opening an empty view.
+
+- **An iteration received from the team no longer claims it changed nothing.** A patch is a file
+  on your own machine and does not travel, and “nothing changed” was deduced from “we measured,
+  and no patch is on file” — so every iteration of a session that came through the repository
+  announced that it had changed nothing, when it had changed everything. The two commit ids do
+  travel: equal, the agent committed nothing; different with no patch at hand, we do not know —
+  and the screen says nothing at all, which it already knew how to do.
+
+- **A merge request reviewed by a colleague now shows up as reviewed on your machine.** Everyone
+  discovers the same merge requests from the forge, and each machine gives them an internal id of
+  its own — so the identity of a merge request is (repository, number), not that id. It was the
+  id, and the colleague's review was refused on arrival with a uniqueness error: their work simply
+  never showed up. The same held for a review, and for a verifier two people had named the same
+  thing. Every uniqueness rule in the database is now checked against the registry by a test, so
+  the next one cannot be discovered in production, on someone else's machine.
+
+- **Attaching and re-sending now say what they will do, before they do it.** “Clone / attach” and
+  the new **Send everything again** both open a summary first: which way the exchange goes, what
+  leaves by kind, **what stays on this machine** (sessions and todos are private by default —
+  better to learn it here than by looking for your session on a colleague's screen), how many
+  documents the repository already holds, and file by file how many will be added, changed or left
+  unchanged. Deleted: none — sending writes, it never deletes, and the summary says how many of the
+  repository's files it will not touch at all.
+
+  The summary is read, not deciphered: **what leaves and what stays sit side by side**, one line
+  per kind with the count on the left, because their opposition is the information; the file
+  counts are four figures under them, the zero of deletions included — that one is what you came
+  to check. In front of an **empty** repository everything counts as added: the files this machine
+  already wrote for itself are “unchanged” on disk and yet all of them will travel, and announcing
+  “0 added” before initialising a bare repository would have said that nothing leaves. Building
+  the summary questions the remote repository, which takes as long as the network takes, so the
+  button spins and the line next to it says what is being waited for.
+
+- **“Send everything again”, because “Sync” only sends what changed.** After a repository emptied
+  or truncated by hand, a normal sync put nothing back — the queue of pending writes was empty, and
+  nothing said so. The button now exists and is named for what it does. It goes through the attach
+  path on purpose: a repository reset by an orphan force-push shares no ancestor with your local
+  history, and a plain commit-and-push would be refused.
+
+- **A sync can no longer empty your database.** “A file gone takes its row with it” is right for
+  one document: someone deletes a note, it goes away for everyone. Applied to a repository that
+  was just reset — a force push, a recreated project, a truncated clone — the same rule wiped
+  reviews, sessions, agents and verifiers in one pass, and the database's own cascades took the
+  rest. That happened. A pass that would remove more than half of what the repository holds, and
+  at least ten documents — or that would leave the repository with nothing at all, which is the
+  same accident on a small team — is now refused outright: nothing is deleted, everything is kept, and the
+  sync indicator turns red with the reason instead of reporting “up to date”. Deleting three notes
+  still works.
+
+- **Todos are personal unless you share them, one at a time.** A todo list is somebody's list —
+  the tool already said so by keeping “you have been reminded” local. Yet every todo travelled,
+  including the ones nobody typed: the one a Jira watch created, the one an agent left when it
+  stopped to ask a question. Those two sources are local, so their todos never leave at all now,
+  whatever you tick. A team todo still exists (“review lot X before Friday”) — it is the checkbox,
+  not the default. And closing todos when a merge request lands now only closes yours.
+
+- **Eight settings moved from “team” to “this machine”.** Opening the morning brief at launch, how
+  often *this* machine polls the forge and Jira, closing your todos on merge, and the four boxes
+  ticked by default on a new session: those are habits, not policies. Imposing yours on everyone
+  made the tool unpleasant for five people to suit one. Retention stays a team setting, and
+  deliberately: a purge removes files from the repository for everybody, so one value keeps a
+  machine set to seven days from erasing everyone else's history.
+
+- **Machine paths no longer leak in error messages.** The text of a failed session or a
+  verification log quotes `/Users/you/…` happily. It is not a secret, but it identifies a machine,
+  and the rule is that none of that enters the repository: those are replaced on the way out by
+  `<data>`, `<clones>` and `~`, so the message keeps its meaning and reads on any machine.
+
+- **Automatic reviews and verifications now have a runner, like a scheduled agent.** They are team
+  settings and they travel, but every machine has its own queue and its own discovery — so with
+  two machines left open, each new merge request got **two** reviews (two versions, two billed
+  AI calls) and, with automatic publishing on, **two** comments on the forge. Settings → Merge
+  Request now asks who honours them; with nobody named, they run nowhere, and the screen says so
+  next to the boxes. On a single machine nothing changes at all.
+
+- **The merge-request author filter is back.** “Mine / the others” had quietly vanished when
+  shared data arrived: a second route of the same name was declared ahead of the one that asks
+  each forge who you are, so the screen got an answer with no forge account in it and stopped
+  drawing the chips. No test was watching that screen; one is now.
+
+- **A verifier's environment values stay on your machine, and what each iteration cost stays
+  yours.** A variable on a test command is the natural home of a `DATABASE_URL`, an `NPM_TOKEN`, a
+  sandbox API key — and nothing stopped them from being committed, because the safety net only
+  looks at column names. A verifier is still a team product: its commands, its coverage, and now
+  the **names** of the variables it expects, so a colleague knows what to fill in. The **values**
+  live on the machine that typed them, and a verifier that arrives with names you have not filled
+  in says so on its card rather than failing later for a reason you would have to hunt down. In
+  the same vein, the dollar cost of each iteration no longer travels: spending is already opt-in
+  as a daily total, and sharing it per pass gave away by session what the checkbox refuses to give
+  by day.
+
+- **A draft never leaves.** Inline remarks you have written on a merge request but not sent yet,
+  the text of a follow-up you are still typing, the agent profile you are trying out: none of them
+  travel now, whatever the parent's checkbox says. A draft is not a comment — it changes until you
+  press send — and sharing them meant two reviewers watched each other write, with the last one to
+  save quietly overwriting the other's remarks. What is the product is the **posted** comment, and
+  posting an inline remark now records it in the merge request's comment log, where the team can
+  read it back without opening the forge.
+
+- **Your sessions are yours until you say otherwise.** A coding session, an exploration, a free
+  question: what they hold is not a product the team consumes but the way you worked — the prompt
+  as you typed it, the three follow-ups, the question you would not have asked out loud, the
+  screenshot you pasted that shows another window, and what each attempt cost. The result is
+  already shared through its own channel: the branch and the merge request on the forge, the map
+  of the code, the notes page an agent wrote. So sessions now carry the same **Share** checkbox as
+  a notes page — unticked — and nothing leaves until you tick it. Their iterations and attachments
+  follow the session: it cannot be half shared. Untick it and the whole folder leaves the
+  repository. Sessions written before this update become private, and leave the repository on the
+  next start. And a session someone else shared can no longer be deleted from your machine — you
+  put it away instead; deleting it here would delete their work for everyone.
+
+- **Docker, Jenkins, Git and Jira stay on your machine.** They join the Links tab on the local
+  side, and for the same reason: a palette of git commands, a Jenkins job you point at, a
+  container you backed up, a ticket you watch — all of that describes a machine, its access and a
+  way of working, not a product the team accumulates. Sharing it imposed one person's tooling on
+  everyone, carried a log of git actions nobody else can replay or undo, and filled everyone's
+  todo list the moment a ticket watched by a single person changed state. Whatever had already
+  gone into the repository is removed from it once, on the next start — otherwise it would sit
+  there and land back on a colleague's machine at their next sync.
+
+- **A closed merge request takes its title, branches and author with it.** Once a merge request is
+  closed those stop being able to change, so they are no longer the forge's alone to tell: they
+  travel with it. A machine that has just joined can therefore read its own history — every review
+  report opening on a real title rather than a bare number — without needing a forge token at all.
+  While a merge request is still open, the forge remains the only source: a title gets rewritten, a
+  branch renamed, and two machines would overwrite each other in turns.
+
+- **A closed merge request gets its title, branches, author and merge date back — so the cycle-time
+  chart has a past.** Discovery only lists *open* merge requests: anything already closed never
+  comes up again. A machine that has just joined the team therefore received reviews on merge
+  requests closed months ago and could only show a number at the top of the report — no title, no
+  branches, no author. And the cycle-time chart measured from a line in this machine's own
+  activity log, written when it noticed the merge, which says nothing on anyone else's machine
+  and does not exist at all on a new one. The merge date now comes from the forge — the real
+  instant, the same for everyone, and it travels with the merge request — and one catch-up call
+  per repository fills in everything a closed merge request was missing, without ever overwriting
+  what is already known.
+
+- **The link to the merge request on the forge now travels, and so does its opening date.** The
+  forge is authoritative for a merge request's title, branches and SHA — sharing those would make
+  stale data travel. Its address and its opening date are the two things that never change, so
+  they go with it: a machine that has just joined shows the header's link to GitLab or GitHub
+  without having to discover the merge request itself first, and the cycle-time chart has an
+  opening date to measure from. (The merge instant is still only known to whichever machine was
+  watching when it happened, so that chart fills in as the team merges from here on.)
+
+- **A session's AI output finds its way back.** Each iteration's text travels in its own file, but
+  the pointer a session keeps to its latest output is a local path, rebuilt on arrival — and it
+  was not being rebuilt, so a session that had come through the repository announced “no output”
+  with the text sitting right next to it. Sessions older than the iteration history carry their
+  output along with the session itself, since they have no iteration to put it in.
+
+- **A machine that already has the same agent — or note, or repository — can now join.** Install
+  the shipped “Librarian” on two machines and each gets its own internal id for it; attaching then
+  failed outright with *UNIQUE constraint failed: agent.slug*, and since an import walks the
+  registry in dependency order, everything after that point never arrived — sessions, notes, and
+  the pointers to the review reports, computed at the very end. The file is named by the slug, so
+  two files of the same name are the same document: the local row now adopts the repository's
+  identity instead of fighting it. And one document that cannot be posed no longer costs the whole
+  pass — it is reported and the import carries on.
+
+- **A review's report now arrives even when it lands after the review itself.** On a freshly
+  attached machine, reviews came through but their reports were blank. The report lives on your
+  own disk — the path means nothing on anyone else's machine — so the pointer to it is recomputed
+  on arrival; but that recomputation only ran when the review row itself was in the same batch. A
+  batch carrying only new report passes — a colleague reviewing, or simply two commits — left the
+  pointer on the previous pass, or empty. It is now refreshed by both.
+
+- **Shared data has a settings tab of its own.** It used to be three fields between the theme
+  picker and the danger zone, in *General*. But this is not a display preference: it is where you
+  decide to open your work to other people, and where you come back — to see where the sync is,
+  to settle a conflict. *Settings → Shared data*.
+
+- **The footer says when the next sync leaves.** Hover the `↑2 ↓0` indicator and it counts down
+  to the next round, second by second — the question you ask in passing, answered where you pass,
+  without opening the settings to look up the interval. Click it and the round happens now.
+
+- **Cards say who did the work.** “by Claire” on a review, a session or a verification — read
+  from git, which already knows who committed the file. No field to fill in, and nothing at all
+  when you work alone.
+
+- **Your AI spend stays yours unless you say otherwise.** A checkbox in Shared data sends a
+  **daily total** to the team — never the per-call detail, which would say what you asked and
+  when. Off by default.
+
+- **`npm run demo` now shows the sharing too**, with a real local git repository and three
+  fictitious authors: the footer counts, the “by <name>” lines and a notes page's History all
+  work, because they are the real mechanism rather than a mock.
+
+- **Notes pages are shared one by one, and not by default.** Everything else the tool keeps is a
+  product — a review, a rule, a map of the code — and producing one for yourself alone makes
+  little sense, so it all travels together. A notes page does not: it is the one place in the tool
+  where you write with no reader in mind — a draft, a password pasted for the length of a test,
+  what you think of an architecture before you can say it out loud. So each page carries a
+  **Share** checkbox, unticked, and nothing leaves until you tick it. Untick it and the page is
+  removed from the team repository — and from your teammates' instances, since it was never
+  theirs; your own copy stays, whole. Pages already written stay yours. Sharing a sub-page takes its
+  parent page with it, and un-sharing a parent takes its sub-pages back — a sub-page alone would
+  arrive nowhere, since it is named by its parent — and the screen says so rather than doing it
+  quietly.
+
+- **A notes page now has a History.** Who changed it, when, and what changed — read straight from
+  the data repository. It needed no new bookkeeping: the information exists because the page is a
+  file in git.
+
+- **A scheduled agent has a runner.** Three instances left open would launch the same agent three
+  times, and the team would pay three times. The agent form now asks who honours the schedule;
+  with nobody named, the agent only runs by hand — which is the default.
+
+- **Every setting now says what it commits: “team” or “this machine”.** Settings were all shown
+  the same way, and they are not the same thing. The prompt templates, the thresholds, the review
+  policies and the forge address describe **the tool** — two reviews of the same merge request
+  written under different instructions are not comparable, so those are meant to be shared. The
+  API tokens, the clone folder, the language and the dictation engine belong to **your machine**
+  alone. A small badge next to each field says which, in both themes and both languages, and the
+  tokens are now stored in a table of their own — one that is never meant to travel. Nothing
+  changes in how you use the screen; what changes is that the tool now knows the difference, which
+  is what a future shared setup will stand on.
+
+- **The librarian draws, and a note page knows how to show it.** Twenty services described in
+  prose is a page you read once: what you actually want to know is who calls whom, and what a
+  service's tables look like. The librarian now puts a **“who calls whom” diagram** on the
+  general page — one node per service, the arrow saying the means (REST, event, job), databases
+  and queues as nodes too — plus a sequence diagram when a flow crosses three services. And each
+  repository gets **its own sub-page with its database schema**, read from the **migrations** or
+  the models, with the path it came from. A repository with no database says so in one line: the
+  instruction forbids it to invent a table, exactly as the investigator is forbidden to invent a
+  repository.
+- **A ` ```mermaid ` block in a note becomes a diagram.** The renderer used to drop the language
+  of a fence, so a diagram was displayed as its own source code. Colours follow the theme, and
+  switching themes redraws them — they are baked into the SVG, and a dark diagram on a light page
+  is unreadable. A diagram that does not compile **keeps its source on screen** with the error
+  above it: notes are written by hand and by agents, and a typo must not take the page down. The
+  library is **shipped in the repository** (`public/vendor/`), never fetched from a CDN — nothing
+  leaves the machine — and it is loaded **only when a rendering actually contains a diagram**, so
+  a page without one costs nothing.
+
+### Fixed
+
+- **A review of a single pass now shows its findings.** The list of findings — one line per
+  finding, its severity, the link to the file and the line, the filters by severity — lived
+  inside the resolution banner, which only exists from the **second** pass onwards, when there
+  is a delta to tell. A review that had only been run once therefore displayed the report and
+  nothing else: no blocker, no major, no minor, no way to turn a finding into a draft comment.
+  Barely visible while you reviewed your own merge requests — you re-run, you reach v2 — and
+  systematic on a review **received from a colleague** through the shared repository, which
+  arrives with its single pass. The list now stands on its own; the banner joins it when there
+  is something to compare.
+
+- **A merge request no longer produces a commit — and a conflict — on every discovery.** The
+  file of a merge request carried `updated_at`, and discovery rewrites every open merge request
+  on every pass: same values, fresh timestamp. So every pass changed every merge request file,
+  committed one line per merge request, and two machines that had refreshed between two syncs
+  collided on **every** one of them — conflicts, a red indicator and a “kept version” for
+  documents nobody had touched. That is the promise “conflicts are rare by construction” turned
+  against itself, and it made sharing unusable as soon as automatic refresh was on. The
+  timestamp stays local now: it says when *this* machine last saw the merge request move.
+
+- **A rebase with two conflicting local commits now converges.** Saving the same note twice
+  before a sync makes two local commits. Only the first was resolved: the second made
+  `rebase --continue` fail, the rebase was abandoned, the overwritten versions were not even
+  kept, and the next round replayed the same scene — the machine stayed “↑2” forever, without a
+  word on screen. The rebase now loops until it is done, skipping a replayed commit that the
+  resolution has emptied, and it says so if it truly cannot finish.
+
+- **An empty database in front of an up-to-date clone hydrates itself again.** “Delete
+  `reviewer.db` and it all comes back from the files” was false: with nothing to exchange the
+  round returned before reaching the branch that hydrates, so the database stayed empty until
+  someone clicked *Clone / attach*. Worse, in that state the first local deletion swept the
+  repository clean of a table nothing protected any more, and pushed it. A round now hydrates
+  when this machine never has, and a sweep **refuses** to remove a dozen files for a table that
+  holds no rows at all — deleting your last note still removes its file.
+
+- **One malformed document no longer blocks the whole sync, permanently.** Only the database
+  write was protected; reading a document back — which writes files, and refuses a path that
+  would escape the data folder — was not. One such file and the hydration marker stopped moving,
+  so every round replayed the same failure: the whole team's sync held up by a file one machine
+  wrote. Such a document is now reported as an orphan, and the rest goes through.
+
+- **A hydration no longer throws away writes that were waiting.** The queue is emptied at the
+  end of a hydration — what it just imported does not need re-exporting — but that also emptied
+  what was waiting *before*: a row held back because its dependency was not there yet, and
+  everything a background job had written that no request had flushed. Those files would only
+  have been written at the next change to their row, which is to say possibly never.
+
+- **A review rule that fires on a path, with no branch, now reaches the team.** Such a rule
+  (the most common kind: “on `**/migrations/**`, check reversibility”) was written to the data
+  repository but refused on every other machine — the file arrived, the row never did, and the
+  colleagues kept reviewing without it. It now lands like the others.
+
+- **Opening the code on a review received from the team shows the changed files again.** The
+  report arrived, but the code to read it against did not: `review.diff_path` is a path on the
+  machine that ran the review, so it never travels — and the two endpoints behind “open the
+  code” read nothing else. The colleague got a file tree with **not one file coloured** and an
+  empty diff. The diff is now recomputed from their own clone when the file is missing: a merge
+  request's diff is not data to carry around, it is a function of two references everyone has.
+  It targets the **reviewed commit** while the clone still holds it — the tree next to it shows
+  that same commit — and falls back to the branch head otherwise. No fetch as long as the
+  references are there: the two calls leave the screen in parallel, and two fetches at once in
+  one clone would fight over its locks.
+
+- **And the mirror case: an iteration done by a colleague catches your own agent up.** Your
+  session here is resumable, so the agent picks up its own conversation — which never contained
+  the colleague's iteration: another agent did it, on another machine. Yours restarted from the
+  state *it* had left things in while the branch already carried someone else's commits, and
+  nothing on screen said so. Each local iteration now leaves a marker, so the next turn can
+  recognise the iterations that came from elsewhere and replay **only those**, under a heading
+  that says what happened. Your own conversation is not replayed: the agent remembers it, and
+  serving it back would make it doubt what it had already done. Sessions that predate the marker are covered too: an
+  iteration that came through the repository is recognised by the file hydration wrote for it,
+  so a session started before all this still catches up — otherwise a colleague's iteration
+  that arrived before your next local one would have stayed invisible for good.
+
+- **A follow-up sent from the machine that received a coding session now carries the
+  conversation.** The agent's session handle only means something in the `~/.claude` of the
+  machine that opened it: it does not travel, and it could not. So the colleague's follow-up
+  started a **brand new agent** that received `apply this correction` and nothing else — not
+  the original task, not one word of what had been said before. What does travel is the
+  **iterations**: each one's request and the agent's answer are shared, file by file. They are
+  now replayed at the top of the prompt when there is no local session to resume — it is not
+  the agent's memory, it is its transcript, and that is all that can cross a machine. Bounded,
+  and from the end: the most recent iterations are kept, and the prompt says how many were left
+  out rather than implying a complete history.
+
+- **Same for a coding session received from the team: “See the diff” shows the branch again.**
+  A fallback did exist when the patch file is missing, but it compared `origin/<base>...HEAD` —
+  and HEAD is the branch the clone happens to be sitting on, not the session's. On the machine
+  that ran the agent those are the same, so the fallback looked right; anywhere else it answered
+  the diff of unrelated work, or nothing. It now targets the session's **commit**, which is also
+  the version the file tree beside it shows. The test was passing for that same reason and now
+  puts the clone somewhere else first, which is the colleague's situation.
+
+- **A merge request received from the team now arrives with its title.** Title, branches and
+  author only travelled once an MR was closed: while it is open the forge is authoritative, and
+  sharing a mutable value makes stale data travel. The argument does not survive what it
+  produced — a machine that had not yet discovered the MR itself listed it in *to review* with
+  **no title at all**, and “See the diff” then ran `git diff origin/null...origin/null` and put
+  git's `ambiguous argument` on screen. There is no tug of war: both machines read the **same
+  forge**, so they converge; the worst case is a title a minute out of date, and that beats a
+  blank line — it is all a machine without forge access will ever have. The current SHA still
+  does not travel: it moves with every push, and a stale one is the single value that makes you
+  review a diff that no longer exists.
+
+- **Without branches, the diff says what is missing instead of quoting git.** A merge request
+  that arrived through the data repository before this machine discovered it has no branches
+  yet; the message now names that and points at refreshing the repository's MRs. And a merge
+  request whose title is not known yet shows its number alone rather than `!203 —`, with the
+  reason on hover: a dangling dash reads as an empty title, the number alone reads as a title
+  not known yet — which is what is true.
+
+- **A row that could not become a file no longer vanishes without a trace.** The queue of
+  pending writes was meant to hold on to anything that cannot be written *yet* — a review whose
+  merge request was just deleted, a pass whose session does not resolve — and retry on the next
+  pass. The comment said so; the code removed the row right after, unconditionally, so the retry
+  never happened and nothing was logged. Found on a real database: two follow-ups out of a
+  session's nine had no file in the shared repository and had never had one, with an empty queue
+  and no error anywhere. Such a row now stays queued until it can be written, and a row that can
+  never be written says so in the log instead of disappearing.
+
+- **Automatic sync now sends what runs in the background, instead of waiting for a click.** The
+  queue of pending writes is drained at the end of every non-GET request, and that is what arms
+  the grouped commit. Anything written *outside* a request went through nobody: a merge request
+  discovered on its own, a review finishing, a session committing, the Jira watch. Their work
+  stayed in the queue, no commit was armed, and the next round found nothing to push — while
+  the **Sync** button, which commits first, sent everything. Hence “it only leaves when I
+  click.” A round now makes the same gesture as the button. With nothing to commit it costs one
+  `git add -A` and an empty `diff --cached`: the price of a loop that stands on its own.
+
+- **“Clone / attach” no longer fails on `index.lock`.** Three things write into the shared
+  repository without knowing about each other: the periodic round, the commit grouped three
+  seconds after your last write, and the attach you just asked for. Two of them at once and git
+  answers `Unable to create index.lock: File exists` — in practice it is *your* gesture that
+  fails, because a timer took the lock a second earlier. The guard only protected the periodic
+  round against itself. The three now queue: a request **waits its turn instead of failing**, in
+  the order asked. A periodic round that falls while something else is working is skipped rather
+  than queued — it comes back in a few seconds, and stacking identical rounds behind a slow
+  attach would only replay them for nothing.
+
+- **Answering an exploration's question now closes the todo it left behind.** A session that
+  stops to ask puts a high-priority todo in your list — the queue is free and nothing will
+  restart on its own. It was closed only once no repository of the session was waiting any
+  more, which is right for coding, where each repository has its own session and its own
+  questions: answering the first does not settle the four others. An exploration is the
+  opposite — **one session for all its repositories** — so the question is written on every
+  target, and answering once answers for the whole session, which is exactly what the resume
+  does when it unblocks the others before relaunching. The count still saw them waiting, and
+  the todo stayed open forever as soon as there were two repositories: that is, for the three
+  shipped agents, all scoped to every repository.
+- **The demo now writes its review in the language of the screen.** The simulated report,
+  the explanation and the answer to a question were written in French, hard-coded: an
+  interface switched to English showed “Revue — Paiement 3×”, “Points d’attention” and
+  “Note globale” under English menus — including on the screenshot that illustrates the
+  tool. Every sentence now goes through the shared dictionary, so the language check
+  guarantees none is missing on either side, and the score follows suit: `7,4/10` in
+  French, `7.4/10` in English, both still read by the screen's score filter. The
+  “simulated analysis” banner, which used to be cut over two lines and rendered as two
+  stacked quotes, is one again.
+
 ## [1.5.0] - 2026-09-13
 
 ### Added
@@ -2757,7 +3221,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/debugall/mergerie/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/debugall/mergerie/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/debugall/mergerie/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/debugall/mergerie/compare/v1.2.0...v1.3.0

@@ -22,6 +22,8 @@
  */
 
 const db = require('./db');
+const { slugLibre } = require('./ulid');
+const store = require('./store');
 // La MÊME définition de « citer » que le rendu des notes (cf. `citations`).
 const NOTESRT = require('../public/notes-runtime.js');
 const { t } = require('../public/i18n-runtime.js');
@@ -98,7 +100,7 @@ function lireLien(kind, ref, msgInvalide) {
 
 /* ---------------------------------------------------------------- pages ---- */
 
-const PAGE_COLS = 'id, title, pinned, parent_id, created_at, updated_at';
+const PAGE_COLS = 'id, title, pinned, shared, parent_id, created_at, updated_at';
 
 /* La liste ne rend PAS le contenu : vingt pages de plusieurs dizaines de kilo-octets à
    chaque affichage de colonne, pour n'en lire qu'une. La recherche, elle, porte bien sur
@@ -143,10 +145,19 @@ function lireParent(v, { inconnue, tropProfond }) {
 
 function creerPage({ title, content, parent_id: parent } = {}, msgs) {
   const now = nowIso();
-  const info = db.prepare(`INSERT INTO note_page (title, content, pinned, parent_id, created_at, updated_at)
-    VALUES (?,?,0,?,?,?)`).run(lireTitre(title, msgs.titreVide), lireContenu(content),
-    lireParent(parent, msgs), now, now);
-  return lirePage(info.lastInsertRowid);
+  const titre = lireTitre(title, msgs.titreVide);
+  /* Le slug nomme le fichier de la page dans le dépôt partagé (`notes/deploiement-prod.md`) et
+     est FIGÉ ICI : renommer la page ne déplace pas son fichier, donc son historique git reste
+     celui de la même page. */
+  const slug = slugLibre(titre, (x) => !!db.prepare('SELECT 1 FROM note_page WHERE slug = ?').get(x));
+  /* PAR LE `store` : le fichier du dépôt de données est écrit dans la MÊME transaction que la
+     ligne. Si l'écriture du fichier échoue, la base revient en arrière — « enregistré » ne peut
+     jamais vouloir dire « enregistré ici seulement ». */
+  const page = store.ecrire('note_page', () => db.prepare(
+    `INSERT INTO note_page (title, content, pinned, parent_id, slug, created_at, updated_at)
+     VALUES (?,?,0,?,?,?,?)`,
+  ).run(titre, lireContenu(content), lireParent(parent, msgs), slug, now, now).lastInsertRowid);
+  return lirePage(page.id);
 }
 
 /* Mise à jour PARTIELLE : l'autosauvegarde n'envoie que le contenu, le bouton épingler que
@@ -160,6 +171,8 @@ function majPage(id, patch = {}, msgs) {
   if (patch.title !== undefined) { champs.push('title = ?'); vals.push(lireTitre(patch.title, msgs.titreVide)); }
   if (patch.content !== undefined) { champs.push('content = ?'); vals.push(lireContenu(patch.content)); }
   if (patch.pinned !== undefined) { champs.push('pinned = ?'); vals.push(patch.pinned ? 1 : 0); }
+  const partage = patch.shared === undefined ? null : (patch.shared ? 1 : 0);
+  if (partage !== null) { champs.push('shared = ?'); vals.push(partage); }
   /* DÉPLACER une page sous une autre. Deux refus : se ranger sous soi-même, et ranger sous
      soi une page qui a déjà des enfants — les petits-enfants se retrouveraient au troisième
      étage, que le reste du code ne sait pas afficher. */
@@ -171,10 +184,42 @@ function majPage(id, patch = {}, msgs) {
   }
   if (champs.length) {
     champs.push('updated_at = ?'); vals.push(nowIso());
-    db.prepare(`UPDATE note_page SET ${champs.join(', ')} WHERE id = ?`).run(...vals, page.id);
+    store.ecrire('note_page', () => {
+      db.prepare(`UPDATE note_page SET ${champs.join(', ')} WHERE id = ?`).run(...vals, page.id);
+      return page.id;
+    });
   }
-  return lirePage(page.id);
+  return { ...lirePage(page.id), ...(partage === null ? {} : { entraine: propagerPartage(page, partage) }) };
 }
+
+/* UNE SOUS-PAGE PARTAGÉE SANS SA MÈRE EST ORPHELINE. Le fichier d'une sous-page désigne sa
+   parente par son slug ; chez le collègue, ce slug ne correspond à rien, l'hydratation refuse
+   de poser une ligne amputée, et la page arrive… nulle part. On tient donc l'invariant dans les
+   deux sens, plutôt que de le contrôler et de refuser :
+   — partager le détail emporte le chapitre : sans lui, le détail ne veut rien dire ;
+   — cesser de partager le chapitre retire le détail, sinon le dépôt garderait des sous-pages
+     dont la mère a disparu, et le collègue verrait un enfant décalé sous rien.
+   On rend ce qui a suivi, pour que l'écran le DISE : une case qui en coche une autre en
+   silence est une case à laquelle on n'a pas envie de toucher. */
+function propagerPartage(page, partage) {
+  const suivis = [];
+  if (partage && page.parent_id) {
+    const mere = lirePage(page.parent_id);
+    if (mere && !mere.shared) { poserPartage(mere.id, 1); suivis.push(mere.title); }
+  }
+  if (!partage && !page.parent_id) {
+    for (const enfant of sousPages(page.id)) {
+      if (!enfant.shared) continue;
+      poserPartage(enfant.id, 0); suivis.push(enfant.title);
+    }
+  }
+  return suivis;
+}
+
+const poserPartage = (id, v) => store.ecrire('note_page', () => {
+  db.prepare('UPDATE note_page SET shared = ? WHERE id = ?').run(v, Number(id));
+  return Number(id);
+});
 
 /* Supprimer une page EMPORTE ses sous-pages (cascade SQL). On rend leur nombre : c'est ce
    que la confirmation doit dire avant, et ce que le journal doit dire après — « supprimée »
@@ -182,9 +227,13 @@ function majPage(id, patch = {}, msgs) {
 function supprimerPage(id, { inconnue }) {
   const page = lirePage(id);
   if (!page) throw erreur(inconnue, 404);
-  const enfants = sousPages(page.id).length;
-  db.prepare('DELETE FROM note_page WHERE id = ?').run(page.id);
-  return { ok: true, children: enfants };
+  const petits = sousPages(page.id);
+  /* Les sous-pages partent en cascade SQL — mais leurs FICHIERS, eux, ne se suppriment pas tout
+     seuls. On les retire un par un AVANT le parent, sans quoi le dépôt garderait des pages que
+     la base ne connaît plus, et la prochaine hydratation les ferait revenir. */
+  for (const enfant of petits) store.supprimer('note_page', enfant.id);
+  store.supprimer('note_page', page.id);
+  return { ok: true, children: petits.length };
 }
 
 /* Nom de fichier d'export. Slugifié depuis le titre : un titre porte des espaces, des
@@ -248,23 +297,32 @@ function todoAuto(kind, ref, titre, note) {
   const existante = db.prepare('SELECT * FROM todo WHERE auto_kind = ? AND auto_ref = ? AND archived_at IS NULL')
     .get(kind, cle);
   if (existante) {
-    db.prepare("UPDATE todo SET status = 'open', done_at = NULL, title = ?, note = ?, updated_at = ? WHERE id = ?")
-      .run(lireTitre(titre, 'titre'), lireNote(note), now, existante.id);
-    return db.prepare('SELECT * FROM todo WHERE id = ?').get(existante.id);
+    return store.ecrire('todo', () => {
+      db.prepare("UPDATE todo SET status = 'open', done_at = NULL, title = ?, note = ?, updated_at = ? WHERE id = ?")
+        .run(lireTitre(titre, 'titre'), lireNote(note), now, existante.id);
+      return existante.id;
+    });
   }
-  const info = db.prepare(`INSERT INTO todo
+  return store.ecrire('todo', () => db.prepare(`INSERT INTO todo
     (title, priority, status, note, due_at, created_at, updated_at, auto_kind, auto_ref)
     VALUES (?, 'high', 'open', ?, NULL, ?, ?, ?, ?)`)
-    .run(lireTitre(titre, 'titre'), lireNote(note), now, now, kind, cle);
-  return db.prepare('SELECT * FROM todo WHERE id = ?').get(info.lastInsertRowid);
+    .run(lireTitre(titre, 'titre'), lireNote(note), now, now, kind, cle).lastInsertRowid);
 }
 
 /* La refermer : cochée, pas supprimée. Ce qu'on a fait de sa journée se relit dans « Faites » —
    une todo qui disparaît sans laisser de trace donne l'impression de n'avoir rien fait. */
 function fermerTodoAuto(kind, ref) {
   const now = nowIso();
-  return db.prepare("UPDATE todo SET status = 'done', done_at = ?, updated_at = ? WHERE auto_kind = ? AND auto_ref = ? AND status = 'open'")
+  /* Un UPDATE de MASSE : on relève d'abord qui il touche, pour pouvoir réécrire ces fichiers-là
+     et eux seuls. Réexporter toutes les todos à chaque fermeture produirait un diff de bruit à
+     chaque question d'agent. */
+  const touchees = db.prepare(
+    "SELECT id FROM todo WHERE auto_kind = ? AND auto_ref = ? AND status = 'open'",
+  ).all(kind, String(ref));
+  const n = db.prepare("UPDATE todo SET status = 'done', done_at = ?, updated_at = ? WHERE auto_kind = ? AND auto_ref = ? AND status = 'open'")
     .run(now, now, kind, String(ref)).changes;
+  for (const r of touchees) store.rafraichir('todo', r.id);
+  return n;
 }
 
 /* ---------- B1 : une todo liée à une merge request se ferme avec elle ----------
@@ -279,14 +337,18 @@ function fermerTodoAuto(kind, ref) {
    Opt-in : coché par défaut (`todo_close_on_merge`), débrayable dans Réglages → Général. */
 function fermerTodosDeMr(mrId, mention) {
   const now = nowIso();
-  const rows = db.prepare("SELECT id, note FROM todo WHERE link_kind = 'mr' AND link_ref = ? AND status = 'open'")
+  /* ON NE FERME QUE LES SIENNES. Une todo partagée est celle de quelqu'un : la cocher « faite »
+     parce que SA merge request a fusionné chez moi la clôturerait chez tout le monde, y compris
+     chez celui qui la suivait pour une autre raison. Les todos locales, elles, sont à moi. */
+  const rows = db.prepare(`SELECT id, note FROM todo
+    WHERE link_kind = 'mr' AND link_ref = ? AND status = 'open' AND (shared = 0 OR shared IS NULL)`)
     .all(String(mrId));
   const maj = db.prepare(`UPDATE todo SET status = 'done', done_at = ?, updated_at = ?, note = ?
     WHERE id = ?`);
   for (const todo of rows) {
     // La mention s'AJOUTE à la note : ce qui y était écrit reste, c'est le travail de quelqu'un.
     const note = [String(todo.note || '').trim(), mention].filter(Boolean).join('\n');
-    maj.run(now, now, note.slice(0, MAX_NOTE), todo.id);
+    store.ecrire('todo', () => { maj.run(now, now, note.slice(0, MAX_NOTE), todo.id); return todo.id; });
   }
   return rows.length;
 }
@@ -298,8 +360,12 @@ function fermerTodosDeMr(mrId, mention) {
 function reordonnerTodos(ids) {
   const liste = (Array.isArray(ids) ? ids : []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
   const maj = db.prepare('UPDATE todo SET position = ? WHERE id = ? AND archived_at IS NULL');
-  const tout = db.transaction((l) => { l.forEach((id, i) => maj.run(i + 1, id)); });
-  tout(liste);
+  /* L'ordre est une donnée comme une autre : il part dans le dépôt. On réécrit les fichiers
+     DANS la transaction, pour que la base ne puisse pas être en avance sur eux. */
+  db.transaction((l) => {
+    l.forEach((id, i) => maj.run(i + 1, id));
+    for (const id of l) store.rafraichir('todo', id);
+  })(liste);
   return liste.length;
 }
 
@@ -308,17 +374,17 @@ const lireTodo = (id) => db.prepare('SELECT * FROM todo WHERE id = ?').get(Numbe
 function creerTodo(body = {}, msgs) {
   const now = nowIso();
   const lien = lireLien(body.link_kind, body.link_ref, msgs.lienInvalide);
-  const info = db.prepare(`INSERT INTO todo
-    (title, priority, status, note, link_kind, link_ref, due_at, created_at, updated_at)
-    VALUES (?,?,'open',?,?,?,?,?,?)`).run(
+  return store.ecrire('todo', () => db.prepare(`INSERT INTO todo
+    (title, priority, status, note, link_kind, link_ref, due_at, shared, created_at, updated_at)
+    VALUES (?,?,'open',?,?,?,?,?,?,?)`).run(
     lireTitre(body.title, msgs.titreVide),
     lirePriorite(body.priority, msgs.prioriteInvalide),
     lireNote(body.note),
     lien.link_kind, lien.link_ref,
     lireDate(body.due_at, msgs.dateInvalide),
+    body.shared ? 1 : 0,            // décochée par défaut : une liste de todos est à soi
     now, now,
-  );
-  return lireTodo(info.lastInsertRowid);
+  ).lastInsertRowid);
 }
 
 /* Cocher/décocher, éditer, snoozer : une seule route, parce que ce sont les mêmes colonnes.
@@ -336,6 +402,10 @@ function majTodo(id, patch = {}, msgs) {
 
   if (patch.title !== undefined) set('title', lireTitre(patch.title, msgs.titreVide));
   if (patch.priority !== undefined) set('priority', lirePriorite(patch.priority, msgs.prioriteInvalide));
+  /* PARTAGER CETTE TODO-LÀ. Une liste de todos est personnelle par nature — c'est déjà ce que
+     disait `reminded_at`, local. Une todo d'équipe existe, mais c'est la case, pas le défaut ;
+     et une todo AUTOMATIQUE ne part jamais, quoi qu'on coche (registre). */
+  if (patch.shared !== undefined) set('shared', patch.shared ? 1 : 0);
   if (patch.note !== undefined) set('note', lireNote(patch.note));
   if (patch.link_kind !== undefined || patch.link_ref !== undefined) {
     const lien = lireLien(
@@ -359,7 +429,10 @@ function majTodo(id, patch = {}, msgs) {
   }
   if (champs.length) {
     set('updated_at', nowIso());
-    db.prepare(`UPDATE todo SET ${champs.join(', ')} WHERE id = ?`).run(...vals, todo.id);
+    store.ecrire('todo', () => {
+      db.prepare(`UPDATE todo SET ${champs.join(', ')} WHERE id = ?`).run(...vals, todo.id);
+      return todo.id;
+    });
   }
   return lireTodo(todo.id);
 }
@@ -367,7 +440,7 @@ function majTodo(id, patch = {}, msgs) {
 function supprimerTodo(id, { inconnue }) {
   const todo = lireTodo(id);
   if (!todo) throw erreur(inconnue, 404);
-  db.prepare('DELETE FROM todo WHERE id = ?').run(todo.id);
+  store.supprimer('todo', todo.id);
   return { ok: true };
 }
 
@@ -414,9 +487,15 @@ function marquerNotifie(id, { inconnue }) {
 
 function archiver(maintenant = new Date(), jours = JOURS_AVANT_ARCHIVE) {
   const limite = new Date(maintenant.getTime() - jours * JOUR_MS).toISOString();
-  return db.prepare(`UPDATE todo SET archived_at = ?
+  const cibles = db.prepare(`SELECT id FROM todo
+    WHERE status = 'done' AND archived_at IS NULL AND done_at IS NOT NULL AND done_at < ?`).all(limite);
+  const n = db.prepare(`UPDATE todo SET archived_at = ?
     WHERE status = 'done' AND archived_at IS NULL AND done_at IS NOT NULL AND done_at < ?`)
     .run(maintenant.toISOString(), limite).changes;
+  // Archiver n'est pas supprimer : la todo reste dans le dépôt, son fichier dit simplement
+  // qu'elle est rangée. On ne réécrit que les lignes touchées.
+  for (const r of cibles) store.rafraichir('todo', r.id);
+  return n;
 }
 
 /* Au démarrage puis une fois par jour — comme la rétention. `unref()` pour qu'un minuteur

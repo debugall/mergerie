@@ -79,14 +79,43 @@ coupables.length
    valeur n'est nulle part. Ça s'est produit en ajoutant Jenkins ; ce contrôle le rattrape. */
 {
   const conf = fs.readFileSync(path.join(SRC, 'config.js'), 'utf8');
-  const bloc = (conf.match(/UPDATE config SET([\s\S]*?)WHERE id = 1/) || [])[1] || '';
+  const registre = require(path.join(SRC, 'store-registry.js'));
+  const bloc = (nom) => (conf.match(new RegExp(`UPDATE ${nom} SET([\\s\\S]*?)WHERE id = 1`)) || [])[1] || '';
+  const ecrit = { equipe: bloc('config'), poste: bloc('local_config') };
   const liste = (conf.match(/const ALLOWED = \[([\s\S]*?)\]/) || [])[1] || '';
   const champs = [...liste.matchAll(/'([a-z0-9_]+)'/g)].map((m) => m[1]);
-  const oublies = champs.filter((c) => !new RegExp(`\\b${c}\\s*=\\s*@${c}\\b`).test(bloc));
-  oublies.length
-    ? fail('Champs de config acceptés mais jamais écrits (ALLOWED sans ligne dans l’UPDATE)',
-      oublies.map((c) => `src/config.js  ${c} — accepté par ALLOWED, absent de l'UPDATE`))
-    : ok(`Tout champ de config accepté est écrit (${champs.length})`);
+
+  /* DEPUIS QUE LES RÉGLAGES SONT COUPÉS EN DEUX, un champ n'a pas seulement besoin d'être
+     écrit : il doit l'être dans LA BONNE TABLE. `config` est ce que l'équipe a décidé et
+     partira un jour dans le dépôt partagé ; `local_config` est ce qui appartient à ce poste,
+     à commencer par les sept jetons. Un jeton écrit du mauvais côté serait poussé sur la
+     forge — et un secret commité dans git est définitif. D'où les trois contrôles ci-dessous,
+     le registre faisant foi de la destination. */
+  const poste = new Set(registre.localesDe('config'));
+  const equipe = new Set(registre.pour('config').partagees);
+  const soucis = [];
+  for (const c of champs) {
+    const ou = poste.has(c) ? 'poste' : (equipe.has(c) ? 'equipe' : null);
+    if (!ou) {
+      soucis.push(`src/store-registry.js  ${c} — champ accepté sans destination : « locales » (ce poste) ou « partagees » (l'équipe) ?`);
+      continue;
+    }
+    const table = ou === 'poste' ? 'local_config' : 'config';
+    const autre = ou === 'poste' ? 'config' : 'local_config';
+    if (new RegExp(`\\b${c}\\s*=\\s*@${c}\\b`).test(ecrit[ou])) {
+      if (new RegExp(`\\b${c}\\s*=\\s*@${c}\\b`).test(ecrit[ou === 'poste' ? 'equipe' : 'poste'])) {
+        soucis.push(`src/config.js  ${c} — écrit dans les DEUX tables : laquelle fait foi ?`);
+      }
+      continue;
+    }
+    soucis.push(`src/config.js  ${c} — accepté par ALLOWED, absent de l'UPDATE ${table}`
+      + (new RegExp(`\\b${c}\\s*=\\s*@${c}\\b`).test(ecrit[ou === 'poste' ? 'equipe' : 'poste'])
+        ? ` (il est écrit dans ${autre}, qui n'est pas sa destination)` : ''));
+  }
+  soucis.length
+    ? fail('Champs de config sans destination, ou écrits dans la mauvaise table', soucis)
+    : ok(`Tout champ de config accepté est écrit, et du bon côté (${champs.length} : `
+      + `${champs.filter((c) => poste.has(c)).length} de poste, ${champs.filter((c) => equipe.has(c)).length} d'équipe)`);
 }
 
 /* UNE MIGRATION SE JOUE APRÈS LE `CREATE TABLE` QU'ELLE RETOUCHE. Placée avant, elle lève
@@ -99,7 +128,9 @@ coupables.length
   const lignes = fs.readFileSync(path.join(SRC, 'db.js'), 'utf8').split('\n');
   const cree = new Map();
   lignes.forEach((l, i) => {
-    const m = /CREATE TABLE (?:IF NOT EXISTS )?(\w+)/.exec(l);
+    // Le `(` est exigé : sans lui, un commentaire disant « le CREATE TABLE ci-dessus »
+    // créerait une table fantôme nommée « ci ».
+    const m = /CREATE TABLE (?:IF NOT EXISTS )?(\w+)\s*\(/.exec(l);
     if (m && !cree.has(m[1])) cree.set(m[1], i + 1);
   });
   const avant = [];
@@ -174,6 +205,85 @@ coupables.length
     ? fail('Attente de test qui n’attend rien', creuses)
     : ok('Aucune attente creuse (waitForFunction async)');
 }
+
+/* UN OBJET QU'ON NOMME EN TOUTES LETTRES REÇOIT SON SLUG À LA CRÉATION, et jamais après.
+   C'est le slug qui nommera son fichier dans le dépôt de données partagé
+   (`agents/documentaliste/`, `notes/deploiement-prod.md`) : le figer à la création est ce qui
+   fait qu'un renommage reste un renommage chez les collègues, et non une suppression suivie
+   d'un ajout qui perdrait l'historique git du fichier.
+
+   L'`uid`, lui, est posé par un déclencheur de `db.js` : aucun `INSERT` n'a à y penser. Le
+   slug ne peut pas l'être — il demande de relire la table pour suffixer `-2`, `-3`, ce qu'une
+   fonction SQL n'a pas le droit de faire. D'où ce contrôle, qui tient les deux seuls points de
+   création concernés. */
+{
+  const fautifs = [];
+  for (const f of fichiers) {
+    const code = fs.readFileSync(path.join(SRC, f), 'utf8');
+    for (const table of ['agent', 'note_page']) {
+      /* On ne lit pas la liste de colonnes : elle est parfois CONSTRUITE (`${cols.join(', ')}`),
+         et une lecture naïve s'arrêterait à la première parenthèse du code. On regarde donc si
+         le mot `slug` figure dans l'instruction et son `.run(…)` — grossier, et suffisant : ce
+         qu'on cherche est un oubli, pas une ruse. */
+      const re = new RegExp(`INSERT INTO ${table}\\s*[(\`]`, 'g');
+      for (const m of code.matchAll(re)) {
+        if (/\bslug\b/.test(code.slice(m.index, m.index + 500))) continue;
+        const ligne = code.slice(0, m.index).split('\n').length;
+        fautifs.push(`src/${f}:${ligne}  INSERT INTO ${table} sans colonne slug — la ligne n'aura pas de nom de fichier`);
+      }
+    }
+  }
+  fautifs.length
+    ? fail('Création d’un agent ou d’une page de notes sans slug', fautifs)
+    : ok('Agents et pages de notes reçoivent leur slug à la création');
+}
+
+/* CHAQUE TABLE A UNE FAMILLE, ET UNE SEULE. Mergerie devient partageable : le travail accumulé
+   part dans un dépôt git d'équipe, le reste ne bouge pas. La décision « cette table se partage-
+   t-elle ? » se prend une fois, à la création de la table, et s'écrit dans `src/store-registry.js`.
+   Oubliée, elle se prend toute seule plus tard, et dans les deux sens l'oubli est silencieux :
+   une table classée par défaut en partagé enverrait un jour un secret sur la forge, une table
+   classée par défaut en local ne serait jamais partagée sans que personne ne comprenne pourquoi.
+   D'où ce contrôle, dans les deux sens. */
+{
+  const src = fs.readFileSync(path.join(SRC, 'db.js'), 'utf8');
+  const registre = require(path.join(SRC, 'store-registry.js'));
+  const creees = new Set([...src.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?(\w+)\s*\(/g)].map((m) => m[1]));
+  for (const t of registre.TRANSITOIRES) creees.delete(t);
+  const declarees = new Set(registre.REGISTRE.map((e) => e.table));
+
+  const manquantes = [...creees].filter((t) => !declarees.has(t)).sort();
+  const fantomes = [...declarees].filter((t) => !creees.has(t)).sort();
+  const soucis = [
+    ...manquantes.map((t) => `src/store-registry.js  ${t} — table de db.js sans famille (P, L ou C ?)`),
+    ...fantomes.map((t) => `src/store-registry.js  ${t} — classée ici, mais aucune table de ce nom dans db.js`),
+  ];
+
+  /* Une entrée P dit COMMENT elle devient un fichier : soit elle porte son propre fichier
+     (`cle` + `chemin`), soit elle est une liste dans le fichier d'un parent (`parent` + `liste`).
+     Sans l'un des deux, la classification est un vœu : rien ne saurait l'exporter. */
+  for (const e of registre.REGISTRE) {
+    if (!['P', 'L', 'C'].includes(e.famille)) {
+      soucis.push(`src/store-registry.js  ${e.table} — famille « ${e.famille} » inconnue (P, L ou C)`);
+      continue;
+    }
+    if (e.famille !== 'P') continue;
+    const propre = e.cle && e.chemin;
+    const fille = e.parent && e.liste;
+    if (!propre && !fille) soucis.push(`src/store-registry.js  ${e.table} — table P sans « cle + chemin » ni « parent + liste »`);
+    if (fille && !declarees.has(e.parent)) soucis.push(`src/store-registry.js  ${e.table} — parent « ${e.parent} » absent du registre`);
+    if (!['append-only', 'last-writer', 'parent'].includes(e.fusion || '')) {
+      soucis.push(`src/store-registry.js  ${e.table} — fusion « ${e.fusion} » inconnue`);
+    }
+  }
+
+  soucis.length
+    ? fail('Tables sans famille, ou famille sans table (src/store-registry.js)', soucis)
+    : ok(`Chaque table a une famille et une seule (${declarees.size} : `
+      + `${registre.famille('P').length} partagées, ${registre.famille('L').length} locales, `
+      + `${registre.famille('C').length} caches)`);
+}
+
 
 console.log(failures ? '\nContrôles serveur : ÉCHEC\n' : '\nContrôles serveur : OK\n');
 process.exit(failures ? 1 : 0);

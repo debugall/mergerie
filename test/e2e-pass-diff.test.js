@@ -28,6 +28,7 @@ const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const {
   startApp, makeRemoteRepo, waitForJobs, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
 } = require('./helpers/app');
@@ -117,6 +118,84 @@ describe('Diff d’une itération de codage', () => {
     const f = await app.api('GET', `/api/tasks/${tacheId}/targets/${cibleId}/passes/2/file?path=${encodeURIComponent(chemin)}`);
     assert.equal(f.status, 200);
     assert.equal(f.body.path, chemin);
+  });
+
+  test('une session REÇUE DU DÉPÔT ne prétend pas que rien n’a changé', async () => {
+    /* Le patch est un fichier de CE poste : il ne voyage pas. On déduisait « rien changé » de
+       « on a mesuré, et aucun patch n'est rangé » — sur une session venue d'un collègue, cette
+       règle affirmait donc « rien changé » à CHAQUE itération, alors qu'elles avaient tout
+       changé. Les deux SHA, eux, voyagent : égaux, l'agent n'a rien commité ; différents sans
+       patch sous la main, on ne sait pas, et l'écran se tait. */
+    const derniere = app.db.prepare(`SELECT id, base_sha, head_sha, diff_path FROM agent_pass
+      WHERE scope = 'task' AND unit_id = ? AND diff_path IS NOT NULL ORDER BY n DESC LIMIT 1`).get(cibleId);
+    assert.ok(derniere && derniere.base_sha && derniere.head_sha !== derniere.base_sha,
+      'l’itération témoin doit avoir commité quelque chose');
+
+    app.db.prepare('UPDATE agent_pass SET diff_path = NULL WHERE id = ?').run(derniere.id);   // ce que l’hydratation laisse
+    let liste = await passes();
+    assert.deepEqual(liste.map((p) => p.no_change), [false, false],
+      'sans le patch, on ne sait pas — et ne pas savoir ne se dit pas « rien changé »');
+
+    /* LE PATCH NE VOYAGE PAS, LES DEUX BORNES SI : git refait le même diff sur le clone local.
+       Le bouton est donc bien proposé, et il ouvre le VRAI diff — pas une vue vide. */
+    assert.equal(liste[1].has_diff, true, 'un diff recalculable se propose');
+    const vueRecalculee = await vue(2);
+    assert.equal(vueRecalculee.status, 200);
+    assert.ok((vueRecalculee.body.files || []).length > 0,
+      'le diff recalculé doit montrer les mêmes fichiers que le patch d’origine');
+
+    app.db.prepare('UPDATE agent_pass SET head_sha = base_sha WHERE id = ?').run(derniere.id);
+    liste = await passes();
+    assert.equal(liste[1].no_change, true, 'deux SHA égaux : là, on sait que rien n’a été commité');
+    /* ON REPOSE TOUT : ce fichier partage UNE session entre toutes ses épreuves, et les
+       suivantes ouvrent le diff de cette itération-là dans un navigateur. */
+    app.db.prepare('UPDATE agent_pass SET head_sha = ?, diff_path = ? WHERE id = ?')
+      .run(derniere.head_sha, derniere.diff_path, derniere.id);
+  });
+
+  test('le bouton « Retour de l’IA » se décide sur les PASSES, pas sur un chemin local', async () => {
+    /* `output_path` désigne un fichier de CE poste. Sur une session reçue du dépôt d'équipe il
+       est vide, et le bouton disparaissait — alors que le texte de chaque itération, lui, était
+       bien arrivé. La question n'est pas « ai-je un fichier ? » mais « y a-t-il un retour ? ». */
+    const avant = app.db.prepare('SELECT output_path FROM task_target WHERE id = ?').get(cibleId);
+    app.db.prepare('UPDATE task_target SET output_path = NULL WHERE id = ?').run(cibleId);
+    const tg = (await app.api('GET', `/api/tasks/${tacheId}`)).body.task.targets.find((x) => x.id === cibleId);
+    assert.equal(tg.has_output, 1, 'les passes sont là : le retour de l’IA se montre');
+    const passesReçues = (await app.api('GET', `/api/tasks/${tacheId}/targets/${cibleId}/passes`)).body;
+    assert.ok(passesReçues.current && passesReçues.current.output, 'et il y a bien un texte à lire');
+    app.db.prepare('UPDATE task_target SET output_path = ? WHERE id = ?').run(avant.output_path, cibleId);
+  });
+
+  test('le diff de la BRANCHE se montre aussi sur une session reçue du dépôt', async () => {
+    /* Le patch de la branche est rangé dans un fichier de CE poste. La route sait déjà le
+       refaire depuis le clone quand il manque — mais le BOUTON se décidait sur le fichier, et
+       disparaissait donc sur toute session venue d'un collègue. Ce qui dit qu'il y a quelque
+       chose à montrer, c'est le commit, et lui voyage. */
+    const avant = app.db.prepare('SELECT diff_path FROM task_target WHERE id = ?').get(cibleId);
+    app.db.prepare('UPDATE task_target SET diff_path = NULL WHERE id = ?').run(cibleId);
+    /* ET LE CLONE EST SUR UNE AUTRE BRANCHE — c'est la situation du collègue, et c'est elle qui
+       comptait : le repli comparait `origin/<base>...HEAD`, or HEAD c'est la branche sur
+       laquelle le clone se trouve. Sur le poste qui a fait tourner l'agent, HEAD EST la branche
+       de la session, et le repli semblait juste ; ailleurs il répondait le diff d'un travail
+       sans rapport, ou rien. */
+    const clone = path.join(app.dataDir, 'clones', 'grp__app');   // slugify : « / » → « __ »
+    const base = app.db.prepare('SELECT base_branch FROM task_target WHERE id = ?').get(cibleId).base_branch || 'main';
+    execFileSync('git', ['-C', clone, 'checkout', '--quiet', '--detach', `origin/${base}`]);
+    const surQuoi = execFileSync('git', ['-C', clone, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+
+    const tg = (await app.api('GET', `/api/tasks/${tacheId}`)).body.task.targets.find((x) => x.id === cibleId);
+    assert.ok(tg.commit_sha, 'la session témoin a bien commité');
+    assert.notEqual(surQuoi, tg.commit_sha, 'le clone doit être ailleurs que sur le commit de la session');
+    assert.equal(tg.has_diff, 1, 'le bouton doit être proposé : le diff se refait depuis le clone');
+    const vue = await app.api('GET', `/api/tasks/${tacheId}/targets/${cibleId}/diffview`);
+    assert.equal(vue.status, 200);
+    assert.ok((vue.body.files || []).length > 0, 'et il ouvre le vrai diff de la branche');
+    /* LE VRAI DIFF, pas n'importe lequel : celui de la session porte ce que l'agent a écrit. */
+    assert.match(String(vue.body.diff || ''), /diff --git /,
+      'le diff de la session doit être recalculé, pas remplacé par celui de la branche courante');
+    assert.ok((vue.body.files || []).some((f) => f.changed),
+      'et ses fichiers modifiés doivent être marqués');
+    app.db.prepare('UPDATE task_target SET diff_path = ? WHERE id = ?').run(avant.diff_path, cibleId);
   });
 
   test('une itération qui n’existe pas répond une phrase, pas une trace', async () => {

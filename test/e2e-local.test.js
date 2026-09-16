@@ -12,6 +12,15 @@ const { startApp, waitForJobs } = require('./helpers/app');
 
 describe('Codage hors dépôt (dossiers locaux)', () => {
   let app;
+
+  /* LE HANDLE A QUITTÉ LA TABLE PARTAGÉE. Il ne vaut que dans le `~/.claude` de cette machine —
+     un handle venu d'un collègue ne désignerait rien ici —, donc il vit dans `local_session`,
+     rangé sous l'`uid` de l'unité. On le relit comme l'application le fait. */
+  const poignees = (table, scope, ou, ...args) => app.db
+    .prepare(`SELECT uid FROM ${table} WHERE ${ou}`).all(...args)
+    // eslint-disable-next-line global-require
+    .map((r) => require('../src/localsession').lire(scope, r.uid));
+
   const mkdir = () => fs.mkdtempSync(path.join(app.dataDir, 'ldir-'));
 
   before(async () => { app = await startApp(); await app.configure(); });
@@ -287,7 +296,7 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
       : '/home/moi/.mergerie/agent-sessions/deja-la';
     const a = mkdir(); const b = mkdir();
     const created = (await app.api('POST', '/api/local-tasks', { prompt: 'continue', dirs: [a, b], session_id: id })).body;
-    const rows = app.db.prepare('SELECT session_key, session_backend, session_cwd FROM local_task_dir WHERE task_id = ?').all(created.id);
+    const rows = poignees('local_task_dir', 'local_task_dir', 'task_id = ?', created.id);
     assert.equal(rows.length, 2);
     for (const r of rows) {
       assert.equal(r.session_key, id);

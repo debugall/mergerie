@@ -391,7 +391,17 @@ describe('Le dépôt local du décor de démo', () => {
     /* Le semis efface `data-demo/` : on ne le lance QUE s'il n'a pas déjà tourné, pour ne pas
        détruire un décor que quelqu'un est en train de filmer. */
     if (!fs.existsSync(bareDemo)) {
-      execFileSync('node', [path.resolve(__dirname, '..', 'scripts', 'demo-seed.js')], { stdio: 'pipe' });
+      /* SANS `MERGERIE_DATA_DIR` — et c'est tout sauf un détail. Le semis sème dans cette
+         variable quand elle est posée (c'est ainsi que `mergerie demo` sème dans
+         `~/.mergerie/demo`), et il COMMENCE par effacer le dossier visé. Héritée d'un
+         `startApp()` plus haut dans ce fichier, elle faisait semer dans le dossier de données
+         du test — qui était donc effacé — pendant que `data-demo/` restait vide et que les
+         trois assertions ci-dessous échouaient. Invisible sur une machine de développement,
+         où `data-demo/` existe déjà et où le semis ne tourne jamais ; systématique en CI, où
+         le dossier est ignoré par git et n'arrive donc pas dans l'archive. */
+      const env = { ...process.env };
+      delete env.MERGERIE_DATA_DIR;
+      execFileSync('node', [path.resolve(__dirname, '..', 'scripts', 'demo-seed.js')], { stdio: 'pipe', env });
       seme = true;
     }
     void seme;

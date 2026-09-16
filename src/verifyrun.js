@@ -55,8 +55,11 @@ function envMinimal() {
    « commande introuvable » sans rien laisser faire. */
 function envVerifier(verifier) {
   const base = envMinimal();
-  let sup = {};
-  try { sup = JSON.parse(verifier.env_json || '{}') || {}; } catch { sup = {}; }
+  /* LES VALEURS VIENNENT DU POSTE, pas de la ligne partagée : un `DATABASE_URL` ou un
+     `NPM_TOKEN` n'a jamais eu à voyager. Le vérificateur porte les NOMS, chacun renseigne les
+     siens. Absentes, on ne met rien : la commande échouera en le disant, ce qui vaut mieux que
+     de tourner avec la valeur d'un autre. */
+  const sup = require('./verifierenv').valeurs(verifier);
   for (const [k, v] of Object.entries(sup)) if (k) base[String(k)] = String(v == null ? '' : v);
   return base;
 }

@@ -32,7 +32,7 @@ async function attendreServeur(cond, quoi, ms = 20000) {
 }
 
 describe('Questions de l’agent : exploration et hors dépôt', () => {
-  let app; let repoId;
+  let app; let repoId; let repoId2;
 
   before(async () => {
     app = await startApp();
@@ -40,6 +40,11 @@ describe('Questions de l’agent : exploration et hors dépôt', () => {
     app.state.branches['grp/app'] = [{ name: 'main', default: true, protected: false, merged: false, commit: { id: repo.mainSha } }];
     await app.configure();
     repoId = (await app.api('POST', '/api/repos', { url: repo.url, project: 'grp/app' })).body.id;
+    /* Un SECOND dépôt : le périmètre « tous les dépôts » des agents livrés est la situation
+       normale, et c'est elle qui révèle le décompte fautif. */
+    const repo2 = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'q2-')));
+    app.state.branches['grp/api'] = [{ name: 'main', default: true, protected: false, merged: false, commit: { id: repo2.mainSha } }];
+    repoId2 = (await app.api('POST', '/api/repos', { url: repo2.url, project: 'grp/api' })).body.id;
   });
   after(async () => { await app.stop(); });
 
@@ -88,6 +93,39 @@ describe('Questions de l’agent : exploration et hors dépôt', () => {
     assert.ok(md, 'et la synthèse existe');
     // Et la réponse est une RÉPONSE : jamais le protocole rendu tel quel, comme un texte à lire.
     assert.ok(!md.includes('<<<QUESTIONS'), 'le bloc de protocole ne doit pas se retrouver dans la réponse');
+  });
+
+  /* LE CAS DE LA VIE RÉELLE : les trois agents livrés ont tous le périmètre « tous les dépôts »,
+     donc une exploration qui hésite pose sa question sur CHAQUE cible — une seule session pour
+     tous les dépôts, mais autant de lignes `needs_input` que de dépôts. Répondre une fois répond
+     pour la session entière, et c'est bien ce que fait la reprise : elle débloque les autres
+     cibles avant de relancer. La todo, elle, était refermée sous condition « plus aucune cible
+     n'attend » — vraie en codage, où chaque dépôt a sa propre session et ses propres questions ;
+     fausse ici. Avec deux dépôts, elle restait donc ouverte pour toujours. */
+  test('une exploration multi-dépôts referme sa todo quand on répond', async () => {
+    const { body: t } = await app.api('POST', '/api/tasks', {
+      kind: 'explore', prompt: 'Où est la facturation ?', ask_questions: true,
+      targets: [{ repo_id: repoId, branch: 'main' }, { repo_id: repoId2, branch: 'main' }],
+    });
+    await app.api('POST', `/api/tasks/${t.id}/run`);
+    await waitForJobs(app.api);
+
+    const task = (await app.api('GET', `/api/tasks/${t.id}`)).body.task;
+    assert.equal(task.targets.length, 2, 'les deux dépôts sont bien des cibles de la même session');
+    assert.equal(task.targets.filter((x) => x.status === 'needs_input').length, 2,
+      'la question est posée sur chaque cible — c’est ce qui piégeait le décompte');
+    const todoDe = async (statut) => ((await app.api('GET', `/api/todos?status=${statut}`)).body.todos)
+      .find((x) => x.auto_kind === 'session_question' && x.auto_ref === String(t.id));
+    assert.ok(await todoDe('open'), 'la todo est bien posée');
+
+    await app.api('POST', `/api/tasks/${t.id}/targets/${task.targets[0].id}/answer`, {
+      answers: { q1: 'decorator', q2: 'Oui' },
+    });
+    await waitForJobs(app.api);
+
+    assert.equal(await todoDe('open'), undefined, 'la todo ne doit plus être en attente');
+    const faite = await todoDe('done');
+    assert.ok(faite, 'elle est COCHÉE, pas supprimée : « Faites » doit garder la trace du geste');
   });
 
   test('sans la case, une exploration ne pose rien et répond du premier coup', async () => {

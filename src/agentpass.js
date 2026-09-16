@@ -44,22 +44,28 @@ function record(scope, taskId, unitId, { kind, prompt, text, costUsd }) {
     .get(scope, taskId, unitId);
   const n = ((row && row.v) || 0) + 1;
   let outPath = null;
+  /* L'`uid` PLUTÔT QUE LE NUMÉRO pour désigner une passe hors de cette base : `n` est un
+     compteur local, renuméroté à chaque hydratation dans l'ordre des uid. Un repère posé sur
+     `n` désignerait une autre passe dès qu'une itération venue d'ailleurs s'intercale. */
+  let uid = null;
   try {
     if (md) {
       outPath = path.join(unitDir(scope, taskId, unitId), `output-v${n}.md`);
       fs.writeFileSync(outPath, md, 'utf8');
     }
-    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at, cost_usd)
+    const info = db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at, cost_usd)
       VALUES (?,?,?,?,?,?,?,?,?)`)
       .run(scope, taskId, unitId, n, kind || 'run', String(prompt || ''), outPath, new Date().toISOString(),
         typeof costUsd === 'number' ? costUsd : null);
+    // L'uid est posé par un déclencheur à l'insertion : on le relit plutôt que de le deviner.
+    uid = (db.prepare('SELECT uid FROM agent_pass WHERE rowid = ?').get(info.lastInsertRowid) || {}).uid || null;
   } catch { /* trace best-effort */ }
-  return { n, outPath };
+  return { n, uid, outPath };
 }
 
 // Les passes d'une unité, de la plus ancienne à la plus récente (contenu lu à la demande).
 function list(scope, taskId, unitId) {
-  return db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre, cost_usd,
+  return db.prepare(`SELECT id, uid, n, kind, prompt, output_path, created_at, favori, titre, cost_usd,
       base_sha, head_sha, diff_path FROM agent_pass
     WHERE scope = ? AND task_id = ? AND unit_id = ? ORDER BY n`).all(scope, taskId, unitId);
 }

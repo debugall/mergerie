@@ -1084,7 +1084,14 @@ describe('API de bout en bout', () => {
   });
 
   test('Une MR disparue de GitLab est signalée mergée puis oubliée', async () => {
-    app.state.mrs['grp/app'] = app.state.mrs['grp/app'].filter((m) => m.iid !== 8);
+    /* La forge garde la MR, fermée : c'est elle qui sait QUAND elle a été mergée, et c'est cette
+       date-là — la même pour toute l'équipe — que le délai de cycle doit mesurer. */
+    /* ON NE LA SUPPRIME PAS DE LA FORGE : une MR mergée n'est pas une MR effacée — elle quitte
+       la liste des OUVERTES et reste consultable. C'est ce qui permet d'aller lui demander sa
+       date de merge. */
+    const partie = app.state.mrs['grp/app'].find((m) => m.iid === 8);
+    partie.state = 'merged';
+    partie.merged_at = '2026-03-02T10:00:00Z';
     const r = await app.api('POST', '/api/discover');
     assert.equal(r.body.found, 0, 'plus aucune MR ouverte côté GitLab');
     const feed = (await app.api('GET', '/api/footer')).body.feed;
@@ -1094,6 +1101,37 @@ describe('API de bout en bout', () => {
     await app.api('POST', '/api/discover');
     const apres = (await app.api('GET', '/api/footer')).body.feed.filter((f) => f.mr_iid === 8).length;
     assert.equal(apres, avant, 'une MR déjà signalée close ne re-déclenche pas d’événement');
+    /* L'INSTANT DU MERGE VIENT DE LA FORGE. Le journal d'activité ne disait que « quand CE poste
+       s'en est aperçu » : inutilisable à plusieurs, et absent sur un poste qui vient de
+       rejoindre — d'où un délai de cycle vide de tout son passé. */
+    const mr8 = app.db.prepare("SELECT merged_at FROM mr WHERE iid = 8").get();
+    assert.equal(mr8.merged_at, '2026-03-02T10:00:00Z');
+  });
+
+  test('une MR fermée retrouve son titre, ses branches et son auteur — le rattrapage', async () => {
+    /* LE CAS DU POSTE QUI REJOINT. Il reçoit du dépôt des reviews sur des merge requests fermées
+       depuis longtemps ; la découverte, elle, ne liste que les OUVERTES. Sans rattrapage, l'en-
+       tête de son rapport n'a qu'un numéro : ni titre, ni branches, ni auteur, ni lien. */
+    const repoId = app.db.prepare("SELECT id FROM repo WHERE project = 'grp/app'").get().id;
+    app.db.prepare(`INSERT INTO mr (repo_id, iid, status, closed_seen, updated_at)
+      VALUES (?, 4242, 'done', 1, ?)`).run(repoId, new Date().toISOString());
+    app.state.mrs['grp/app'].push({
+      iid: 4242, state: 'merged', title: 'Le paiement en trois fois',
+      source_branch: 'feat/pay', target_branch: 'main',
+      web_url: 'https://gitlab.test/grp/app/-/merge_requests/4242',
+      merged_at: '2026-04-05T08:30:00Z', created_at: '2026-04-01T08:00:00Z',
+      author: { name: 'Camille' },
+    });
+
+    await app.api('POST', '/api/discover');
+    const mr = app.db.prepare('SELECT * FROM mr WHERE iid = 4242').get();
+    assert.equal(mr.title, 'Le paiement en trois fois', 'un rapport de review ne peut pas s’ouvrir sur un numéro seul');
+    assert.equal(mr.source_branch, 'feat/pay');
+    assert.equal(mr.target_branch, 'main');
+    assert.equal(mr.author, 'Camille');
+    assert.equal(mr.web_url, 'https://gitlab.test/grp/app/-/merge_requests/4242');
+    assert.equal(mr.merged_at, '2026-04-05T08:30:00Z');
+    assert.equal(mr.gitlab_created_at, '2026-04-01T08:00:00Z');
   });
 
   /* ---------- Tableaux de bord ---------- */

@@ -32,6 +32,11 @@ const TMP_DIR = path.join(DATA_DIR, 'tmp');
 const NOTES_DIR = path.join(DATA_DIR, 'notes');
 // Un dossier par agent de domaine : ses versions de connaissance (`knowledge-v<N>.md`).
 const AGENTS_DIR = path.join(DATA_DIR, 'agents');
+/* LE DÉPÔT DE DONNÉES PARTAGÉ. Un dossier de fichiers texte qui, à terme, EST la base : une
+   entité = un fichier, format déterministe, et git par-dessus pour qu'une équipe se le passe.
+   Il vit sous `DATA_DIR` comme le reste, et non ailleurs sur le disque : une sauvegarde du
+   dossier de données doit continuer de tout emporter. */
+const SHARED_DIR = path.join(DATA_DIR, 'shared');
 
 // Le dossier de connaissance d'un agent, créé à la demande.
 function agentsDir(agentId) { return ensureDir(path.join(AGENTS_DIR, String(agentId))); }
@@ -50,6 +55,7 @@ function initDirs() {
   ensureDir(NOTES_DIR);
   ensureDir(TMP_DIR);
   ensureDir(AGENTS_DIR);
+  ensureDir(SHARED_DIR);
 }
 
 // slug sûr pour un chemin de dossier à partir d'un "group/sub/project"
@@ -60,7 +66,7 @@ function slugify(project) {
 }
 
 module.exports = {
-  ROOT, DATA_DIR, DB_PATH, DEFAULT_CLONE_DIR, REVIEWS_DIR, TICKETS_DIR, TASKS_DIR, NOTES_DIR, TMP_DIR, AGENTS_DIR,
+  ROOT, DATA_DIR, DB_PATH, DEFAULT_CLONE_DIR, REVIEWS_DIR, TICKETS_DIR, TASKS_DIR, NOTES_DIR, TMP_DIR, AGENTS_DIR, SHARED_DIR,
   agentsDir,
   ensureDir, initDirs, slugify,
 };

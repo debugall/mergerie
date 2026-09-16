@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const db = require('./db');
+const localsession = require('./localsession');
 const { getConfig } = require('./config');
 const { TASKS_DIR, ensureDir } = require('./paths');
 const git = require('./git');
@@ -10,6 +11,8 @@ const agentsession = require('./agentsession');
 const questions = require('./questions');
 const { avecConsignes } = require('./prompts');
 const agentpass = require('./agentpass');
+const protocol = require('./protocol');
+const { etat } = require('./localstate');
 const agentprofile = require('./agentprofile');
 const demoAgents = require('./demo-agents');
 const pieces = require('./pieces');
@@ -28,10 +31,14 @@ function taskDir(taskId) {
 /* Retour de l'agent pour UNE passe. On enregistre l'itération complète (prompt envoyé +
    retour) dans l'historique, et `output_path` continue de pointer la plus récente. */
 function saveAgentOutput(taskId, targetId, text, meta = {}) {
-  const { n, outPath } = agentpass.record('task', taskId, targetId, {
+  const { n, uid, outPath } = agentpass.record('task', taskId, targetId, {
     kind: meta.kind || 'run', prompt: meta.prompt, text, costUsd: meta.costUsd,
   });
   if (outPath) setTarget(targetId, { output_path: outPath });
+  /* JUSQU'OÙ LA CONVERSATION LOCALE EST ALLÉE. Ce repère ne vaut que pour l'agent de CETTE
+     machine, donc il reste ici : il sert à reconnaître, au tour suivant, les itérations que
+     quelqu'un d'autre a faites entre-temps. */
+  if (uid && meta.unitUid) etat.ecrire('session', meta.unitUid, 'derniere_passe', uid);
   // Le numéro sert à revenir annoter la passe une fois le commit fait (ses deux bornes).
   return n;
 }
@@ -39,16 +46,38 @@ function saveAgentOutput(taskId, targetId, text, meta = {}) {
 // Les projets d'une session. Une session « codage » les traite l'un après l'autre ;
 // une session « exploration » les regarde tous ensemble.
 function targetsOf(taskId) {
+  /* Le handle de session est recollé depuis `local_session` : il ne vaut que dans le
+     `~/.claude` de cette machine, donc il a quitté la table partagée. Tout ce qui suit
+     continue de lire `tg.session_key` sans rien savoir du déménagement. */
+  const poignees = localsession.carte('task_target');
   return db.prepare(`SELECT tt.*, repo.project AS project, repo.url AS url, repo.forge AS forge
     FROM task_target tt JOIN repo ON repo.id = tt.repo_id
-    WHERE tt.task_id = ? ORDER BY tt.id`).all(taskId);
+    WHERE tt.task_id = ? ORDER BY tt.id`).all(taskId)
+    .map((tg) => localsession.resoudre('task_target', tg, poignees));
 }
 
+/* LES TROIS CHAMPS DE SESSION SONT DÉTOURNÉS VERS `local_session`. On les accepte ici plutôt que
+   d'obliger chaque appelant à savoir où ils vivent : `setTarget` est appelé à huit endroits, et
+   la règle « le handle ne voyage pas » doit tenir même si l'un d'eux est ajouté demain. */
+const CHAMPS_SESSION = ['session_key', 'session_backend', 'session_cwd'];
+
 function setTarget(id, fields) {
-  const keys = Object.keys(fields);
+  const session = {};
+  const reste = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (CHAMPS_SESSION.includes(k)) session[k] = v; else reste[k] = v;
+  }
+  if (Object.keys(session).length) {
+    const ligne = db.prepare('SELECT uid FROM task_target WHERE id = ?').get(id);
+    if (ligne) {
+      const avant = localsession.lire('task_target', ligne.uid);
+      localsession.ecrire('task_target', ligne.uid, { ...avant, ...session });
+    }
+  }
+  const keys = Object.keys(reste);
   if (!keys.length) return;
   const sql = `UPDATE task_target SET ${keys.map((k) => `${k} = @${k}`).join(', ')}, updated_at = @updated_at WHERE id = @id`;
-  db.prepare(sql).run({ ...fields, id, updated_at: new Date().toISOString() });
+  db.prepare(sql).run({ ...reste, id, updated_at: new Date().toISOString() });
 }
 
 // Statut global d'une session = agrégat de ses projets (le plus « en retard » gagne,
@@ -170,6 +199,97 @@ function buildCodePrompt(task) {
   return task && task.ask_questions ? base + questions.QUESTIONS_INSTRUCTION : base;
 }
 
+/* REPRENDRE UNE CONVERSATION QUI S'EST TENUE AILLEURS.
+ *
+ * Le handle de session de l'agent ne vaut que dans le `~/.claude` de la machine qui l'a
+ * ouvert : il ne voyage pas, et il n'aurait aucun sens ailleurs. Le collègue qui reçoit une
+ * session de codage et y envoie un suivi repart donc d'un agent NEUF — qui ne recevait que
+ * « applique cette correction », sans la tâche d'origine ni rien de ce qui s'est dit avant.
+ * L'agent devinait ce qu'il pouvait.
+ *
+ * Ce qui VOYAGE, en revanche, ce sont les itérations : la demande et le retour de l'agent de
+ * chacune sont partagés, fichier par fichier. On reconstitue donc la conversation à partir
+ * d'elles et on la réinjecte en tête du prompt. Ce n'est pas la mémoire de l'agent — c'est sa
+ * transcription, et c'est tout ce qui peut traverser une machine.
+ *
+ * BORNÉE, et par la FIN : un retour d'agent fait volontiers vingt mille caractères, et six
+ * itérations dépasseraient la fenêtre de n'importe quel modèle. On garde les plus RÉCENTES —
+ * c'est la suite de la conversation qu'on reprend — et on DIT ce qu'on a coupé, plutôt que de
+ * laisser croire à un historique complet.
+ */
+const REINJECTION_MAX = 24000;        // caractères de transcription réinjectés, au total
+const REINJECTION_PASSE_MAX = 4000;   // …dont au plus autant pour un seul retour d'agent
+
+function transcriptionDesPasses(taskId, unitId) {
+  let passes = [];
+  try { passes = agentpass.list('task', taskId, unitId); } catch { return ''; }
+  return redigerTranscription(taskId, unitId, passes,
+    'Ce qui s\'est déjà dit sur cette session',
+    'Cet échange a eu lieu sur une autre machine : tu ne t\'en souviens pas, mais il t\'engage.');
+}
+
+/* ET L'INVERSE : UNE CONVERSATION LOCALE QUI A PRIS DU RETARD.
+ *
+ * Le collègue itère à son tour, sa passe arrive par la synchro, et l'agent d'ici — dont la
+ * session, elle, est bien reprenable — ne l'a jamais vue : il repart de l'état où IL avait
+ * laissé les choses, alors que la branche porte désormais le travail de quelqu'un d'autre.
+ * C'est le cas symétrique du précédent, et le plus traître : tout a l'air normal.
+ *
+ * On repère ces itérations avec le REPÈRE posé à chaque passe locale — l'uid de la dernière —
+ * et on ne réinjecte que celles qui lui sont postérieures. Pas de repère (session d'avant cette
+ * mécanique) : on ne réinjecte rien plutôt que de tout rejouer à un agent qui s'en souvient.
+ */
+function passesVenuesDAilleurs(taskId, tg) {
+  let passes = [];
+  try { passes = agentpass.list('task', taskId, tg.id); } catch { return []; }
+  const repere = etat.lire('session', tg.uid, 'derniere_passe');
+  if (repere) return passes.filter((p) => p.uid && p.uid > repere);
+  /* PAS DE REPÈRE — une session commencée AVANT cette mécanique, c'est-à-dire toutes celles
+     qui existent déjà. Sans rien de plus, elles n'auraient jamais de rattrapage : le repère ne
+     se pose qu'à la première itération locale, et une passe arrivée AVANT elle lui serait
+     antérieure, donc invisible pour toujours.
+     On reconnaît alors une passe venue d'ailleurs à SON FICHIER : l'hydratation écrit
+     `tasks/passes/<session>/pass-<uid>.md`, là où une passe produite ici s'écrit
+     `output-v<n>.md` dans le dossier de son unité. Ce n'est pas un repère, c'est une trace —
+     mais elle dit la même chose, et elle vaut rétroactivement. Dès la première itération
+     locale, le repère prend le relais et cette lecture-là ne sert plus. */
+  return passes.filter((p) => p.output_path && path.basename(p.output_path).startsWith('pass-'));
+}
+
+function rattrapageDesPasses(taskId, tg) {
+  const manquantes = passesVenuesDAilleurs(taskId, tg);
+  if (!manquantes.length) return '';
+  return redigerTranscription(taskId, tg.id, manquantes,
+    'Ce qui a été fait sur cette session depuis ton dernier tour',
+    'Quelqu\'un d\'autre a travaillé sur cette branche entre-temps, depuis une autre machine : '
+    + 'ces itérations ne sont pas dans ta mémoire, et le code porte déjà leurs commits.');
+}
+
+function redigerTranscription(taskId, unitId, passes, titre, avertissement) {
+  if (!passes.length) return '';
+  const blocs = [];
+  let total = 0;
+  let omisesJusqua = 0;
+  for (const p of [...passes].reverse()) {
+    const complet = agentpass.get('task', taskId, unitId, p.n) || {};
+    /* Les blocs de protocole (`<<<QUESTIONS>>>`, `<<<AGENT>>>`…) sont un canal de service :
+       les réinjecter ferait rejouer leurs consignes à contretemps. */
+    const retour = protocol.nettoyer(complet.output || '').trim();
+    const abrege = retour.length > REINJECTION_PASSE_MAX
+      ? `${retour.slice(0, REINJECTION_PASSE_MAX).trim()}\n[…retour tronqué]`
+      : retour;
+    const bloc = `### Itération ${p.n}\n\nCe qui t'était demandé :\n${String(p.prompt || '').trim() || '(non conservé)'}`
+      + `\n\nCe que tu avais répondu :\n${abrege || '(pas de retour conservé)'}`;
+    if (blocs.length && total + bloc.length > REINJECTION_MAX) { omisesJusqua = p.n; break; }
+    blocs.unshift(bloc);
+    total += bloc.length;
+  }
+  return `## ${titre}${omisesJusqua
+    ? ` (les itérations jusqu'à la ${omisesJusqua}e sont omises, faute de place)` : ''}\n\n`
+    + `${avertissement}\n\n`
+    + blocs.join('\n\n');
+}
+
 /* Relues à CHAQUE prompt et non mises en cache : on les change en réglages parce qu'on vient de
    voir ce qui manquait, et la session suivante doit en tenir compte sans redémarrer l'outil. */
 const consignesPermanentes = () => getConfig().ai_extra_instructions;
@@ -272,8 +392,19 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     }
     let r; let created = !doResume; // création = 1re passe OU repli après échec de reprise
     let note = null;
+    /* LE CONTEXTE RÉINJECTÉ SERT DEUX FOIS : quand la reprise ÉCHOUE (plus bas), et quand il
+       n'y a RIEN À REPRENDRE — un suivi envoyé depuis le poste qui a reçu la session. Le
+       second cas n'était pas traité : le prompt partait seul. */
+    const reinjecte = () => (promptRepli != null
+      ? promptRepli
+      : [buildCodePrompt(task), transcriptionDesPasses(task.id, tg.id), promptText].filter(Boolean).join('\n\n'));
+    /* EN REPRISE, ON NE RÉINJECTE QUE CE QUI MANQUE : l'agent se souvient du reste, et lui
+       rejouer sa propre conversation le ferait douter de ce qu'il a déjà fait. */
+    const envoye = doResume
+      ? [rattrapageDesPasses(task.id, tg), promptText].filter(Boolean).join('\n\n')
+      : reinjecte();
     try {
-      r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt: promptText + imgBlock, cwd, resume: doResume, onLog, options });
+      r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt: envoye + imgBlock, cwd, resume: doResume, onLog, options });
     } catch (e) {
       if (!doResume) throw e;
       // Fallback (§4.5) : reprise impossible → session neuve avec contexte réinjecté.
@@ -285,14 +416,13 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
          pas. Sans cette note, l'écran affiche après coup un identifiant que l'utilisateur
          n'a jamais saisi, sans rien dire de la substitution. */
       note = `${tg.session_key} : ${raison}`;
-      const complet = promptRepli != null ? promptRepli : `${buildCodePrompt(task)}\n\n${promptText}`;
-      r = await agentsession.runInSession({ key, prompt: complet + imgBlock, cwd, resume: false, onLog, options });
+      r = await agentsession.runInSession({ key, prompt: reinjecte() + imgBlock, cwd, resume: false, onLog, options });
       created = true;
     }
     agentText = r.text || '';
     coutUsd = r.costUsd;
     // `owner` : la dépense se rattache à SA session — c'est ce qui permet de dire laquelle coûte.
-    copilot.recordUsage('task', promptText + imgBlock, agentText, null, { kind: 'task', id: task.id }, r.costUsd);
+    copilot.recordUsage('task', envoye + imgBlock, agentText, null, { kind: 'task', id: task.id }, r.costUsd);
     /* On enregistre le handle À CHAQUE passe, pas seulement à la création : l'agent peut rendre
        un identifiant DIFFÉRENT après une reprise (claude en ouvre un nouveau, qui porte tout
        l'échange). Garder l'ancien faisait repartir la passe suivante de l'état d'avant — deux
@@ -309,7 +439,9 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
 
   // Retour de l'agent (ce qu'il dit avoir fait), consultable en fin de session — comme la
   // réponse d'une exploration. Vide en dry-run (pas de vrai retour).
-  const passeN = saveAgentOutput(task.id, tg.id, agentText, { kind: passKind || 'run', prompt: promptText + imgBlock, costUsd: coutUsd });
+  const passeN = saveAgentOutput(task.id, tg.id, agentText, {
+    kind: passKind || 'run', prompt: promptText + imgBlock, costUsd: coutUsd, unitUid: tg.uid,
+  });
 
   // L'agent a-t-il posé des questions ? Si oui → session en ATTENTE, sans commit (il s'est
   // arrêté avant d'implémenter). Un bloc malformé/absent est ignoré (parseQuestions → null).
@@ -729,7 +861,8 @@ const REBASE_MAX_PASSES = 5;
 async function mettreAJourDepuisBase(taskId, targetId, onLog = () => {}) {
   const task = db.prepare('SELECT * FROM task WHERE id = ?').get(Number(taskId));
   if (!task) throw new Error(t('err.session-introuvable'));
-  const tg = db.prepare('SELECT * FROM task_target WHERE id = ? AND task_id = ?').get(Number(targetId), task.id);
+  const tg = localsession.resoudre('task_target',
+    db.prepare('SELECT * FROM task_target WHERE id = ? AND task_id = ?').get(Number(targetId), task.id));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
   const cfg = getConfig();
   const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
@@ -826,8 +959,8 @@ function marqueursDeConflit(fichier) {
    aussi, et la forge dira non — ce qui est la bonne réponse. */
 async function pushTarget(taskId, targetId, onLog = () => {}, { force } = {}) {
   const cfg = getConfig();
-  const tg = db.prepare(`SELECT tt.*, repo.project, repo.forge FROM task_target tt
-    JOIN repo ON repo.id = tt.repo_id WHERE tt.id = ? AND tt.task_id = ?`).get(targetId, taskId);
+  const tg = localsession.resoudre('task_target', db.prepare(`SELECT tt.*, repo.project, repo.forge FROM task_target tt
+    JOIN repo ON repo.id = tt.repo_id WHERE tt.id = ? AND tt.task_id = ?`).get(targetId, taskId));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session-2'));
   const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
   const cwd = git.cloneDirFor(cfg, repo);

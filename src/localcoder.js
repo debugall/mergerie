@@ -9,6 +9,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('./db');
+const localdirs = require('./localdirs');
+const localsession = require('./localsession');
 const copilot = require('./copilot');
 const agentsession = require('./agentsession');
 const proc = require('./proc');
@@ -35,9 +37,26 @@ function saveAgentOutput(taskId, dirId, text, meta = {}) {
   return n;
 }
 
+/* Comme `setTarget` côté dépôt : les trois champs de session sont DÉTOURNÉS vers
+   `local_session`. Un handle d'agent ne vaut que dans le `~/.claude` de la machine qui l'a
+   créé, alors que la session, elle, se partage. */
+const CHAMPS_SESSION = ['session_key', 'session_backend', 'session_cwd'];
+
 function setDir(id, patch) {
-  const cols = Object.keys(patch).map((k) => `${k} = @${k}`).join(', ');
-  db.prepare(`UPDATE local_task_dir SET ${cols}, updated_at = @u WHERE id = @id`).run({ ...patch, u: now(), id });
+  const session = {};
+  const reste = {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (CHAMPS_SESSION.includes(k)) session[k] = v; else reste[k] = v;
+  }
+  if (Object.keys(session).length) {
+    const ligne = db.prepare('SELECT uid FROM local_task_dir WHERE id = ?').get(id);
+    if (ligne) {
+      localsession.ecrire('local_task_dir', ligne.uid, { ...localsession.lire('local_task_dir', ligne.uid), ...session });
+    }
+  }
+  const cols = Object.keys(reste).map((k) => `${k} = @${k}`).join(', ');
+  if (!cols) return;
+  db.prepare(`UPDATE local_task_dir SET ${cols}, updated_at = @u WHERE id = @id`).run({ ...reste, u: now(), id });
 }
 
 // Statut agrégé de la session à partir de ses dossiers.
@@ -72,7 +91,14 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
   const passKind = reponses ? 'answer' : (followup ? 'followup' : 'run');
   const voulus = Array.isArray(opts.dirIds) && opts.dirIds.length
     ? new Set(opts.dirIds.map(Number)) : null;
+  /* LE CHEMIN EST RÉSOLU ICI, sur ce poste. Une session hors dépôt peut venir d'un collègue :
+     sa ligne porte l'empreinte du dossier et son libellé, pas un chemin qui n'existerait que
+     chez lui. Sans correspondance locale, on refuse de lancer plutôt que de faire travailler
+     l'agent dans le vide — ou pire, dans un dossier homonyme qui n'est pas le bon. */
+  const carteDirs = localdirs.carte();
+  const poignees = localsession.carte('local_task_dir');
   const dirs = db.prepare('SELECT * FROM local_task_dir WHERE task_id = ? ORDER BY id').all(taskId)
+    .map((d) => ({ ...localsession.resoudre('local_task_dir', d, poignees), path: carteDirs.get(d.dir_hash) || null }))
     .filter((d) => (reponses ? d.id === reponses : (!voulus || voulus.has(d.id))));
   if (!dirs.length) throw new Error(t('err.local.no-dir'));
   db.prepare("UPDATE local_task SET status = 'running', last_error = NULL, updated_at = ? WHERE id = ?").run(now(), taskId);
@@ -120,9 +146,15 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
   let ok = 0;
   for (const d of dirs) {
     if (proc.isCancelled()) break;
-    onLog(`──────── ${d.path} ────────`);
+    onLog(`──────── ${d.path || d.dir_label || '?'} ────────`);
     setDir(d.id, { status: 'running', last_error: null });
     try {
+      /* LE DOSSIER D'UN AUTRE POSTE. Une session hors dépôt peut venir d'un collègue : sa ligne
+         dit quel dossier, pas où il est. On le dit franchement plutôt que de laisser tomber
+         sur « introuvable » — et surtout plutôt que de lancer l'agent dans un homonyme. */
+      if (!d.path) {
+        throw new Error(t('err.local-dir-other-machine', { label: d.dir_label || '?', owner: d.owner || '?' }));
+      }
       // Chemin fourni par l'utilisateur : on vérifie juste qu'il désigne un dossier.
       let st;
       try { st = fs.statSync(d.path); } catch { throw new Error('Dossier introuvable'); }

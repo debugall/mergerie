@@ -15,7 +15,8 @@
 Outil local (mono-utilisateur) pour **reviewer les merge requests GitLab et les pull requests GitHub** assisté par IA, **piloter des
 sessions de développement** automatisées (l'IA code, commite, pousse, ouvre et merge les MR) et **explorer
 du code** en lecture seule pour répondre à une question, via un CLI d'agent (`copilot` / `claude`) et le
-skill `git-review`.
+skill `git-review`. Une instance chacun — et une **équipe partage le travail accumulé** par un dépôt git
+qui lui appartient, sans serveur au milieu.
 
 Dans toute la documentation, **« MR »** désigne indifféremment une *merge request* GitLab ou une
 *pull request* GitHub : les écrans et les actions sont les mêmes.
@@ -30,9 +31,13 @@ c'est **toi** qui merges. Voir [PLAN.md](./PLAN.md) pour l'architecture détaill
 Nécessite **Node 22.9+**.
 
 ```bash
-npm install
-npm start          # http://localhost:4319
+npx mergerie demo    # le voir vivant en 30 secondes — rien à cloner, aucune config, aucun jeton
+npx mergerie         # pour de vrai : http://localhost:4319, tes données dans ~/.mergerie/data
 ```
+
+Depuis un clone, ce sont `npm install` puis `npm run demo` ou `npm start`, avec les données à côté
+du code (`data-demo/`, `data/`). `PORT`, `MERGERIE_DATA_DIR` et un `.env` dans le dossier courant
+sont honorés dans les deux cas.
 
 Optionnel, pour la **dictée vocale** : `sh scripts/install-whisper.sh` (macOS/Linux) ou le bouton
 **Installer** de Réglages → Dictée vocale. Rien d'autre n'est nécessaire pour faire tourner l'outil.
@@ -124,7 +129,7 @@ run déclenché par un **horaire** qui a réécrit une page de notes.
   restant utilisable pour git et les sessions de codage), règles de review, **review automatique des merge
   requests à l'arrivée** et **re-review automatique quand un rapport se périme** (toutes deux plafonnées et
   décochées par défaut), **publication automatique du rapport sur la MR**, templates de prompt, thème et
-  langue, règles de review pouvant être **limitées à un dépôt**, cases cochées d'office d'une nouvelle session, et jobs Jenkins liés aux dépôts.
+  langue, règles de review pouvant être **limitées à un dépôt**, cases cochées d'office d'une nouvelle session, et jobs Jenkins liés aux dépôts. Chaque champ porte un badge **« équipe » / « ce poste »** : gabarits de prompt, seuils et politiques décrivent l'outil, tandis que les jetons d'API, le dossier de clonage et la langue n'appartiennent qu'à ta machine — et sont rangés à part. Désigne un dépôt git et une **équipe partage le travail accumulé** — règles de review, vérificateurs, agents et leur carte du code, et les pages de notes, sessions et todos que tu coches — chacun gardant son instance, ses jetons et son abonnement IA. Ce qu'on écrit sans destinataire (une session, une question, un brouillon) reste à soi tant qu'on n'a pas dit le contraire.
 
 Partout : `Ctrl`/`Cmd` + `K` ouvre une **palette de commandes** (sauter à un onglet, une MR, une session
 en tapant son nom — `!217` ou `PROJ-1408` tapés seuls y vont directement), `j` / `k` parcourent la liste

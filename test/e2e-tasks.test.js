@@ -14,6 +14,15 @@ const PNG = 'data:image/png;base64,aGVsbG8=';
 describe('Sessions de dev de bout en bout', () => {
   let app; let repo; let repo2; let repoId; let repo2Id;
 
+  /* LE HANDLE A QUITTÉ LA TABLE PARTAGÉE. Il ne vaut que dans le `~/.claude` de cette machine —
+     un handle venu d'un collègue ne désignerait rien ici —, donc il vit dans `local_session`,
+     rangé sous l'`uid` de l'unité. On le relit comme l'application le fait. */
+  const poignees = (table, scope, ou, ...args) => app.db
+    .prepare(`SELECT uid FROM ${table} WHERE ${ou}`).all(...args)
+    // eslint-disable-next-line global-require
+    .map((r) => require('../src/localsession').lire(scope, r.uid));
+
+
   before(async () => {
     app = await startApp();
     repo = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'r1-')));
@@ -656,7 +665,7 @@ describe('Sessions de dev de bout en bout', () => {
     assert.equal((await app.api('GET', '/api/tasks/99999/md')).status, 400);
 
     // En dry-run, aucune session n'est ouverte : les cibles restent sans handle.
-    const cible = app.db.prepare('SELECT session_key FROM task_target WHERE task_id = ?').get(task.id);
+    const [cible] = poignees('task_target', 'task_target', 'task_id = ?', task.id);
     assert.equal(cible.session_key, null, 'le dry-run n’invente pas de session');
   });
 
@@ -819,7 +828,7 @@ describe('Sessions de dev de bout en bout', () => {
       targets: [{ repo_id: repoId, branch: 'ai/reprise' }, { repo_id: repo2Id, branch: 'ai/reprise' }],
     });
     assert.equal(avec.status, 200);
-    const cibles = app.db.prepare('SELECT session_key, session_backend, session_cwd FROM task_target WHERE task_id = ?').all(avec.body.id);
+    const cibles = poignees('task_target', 'task_target', 'task_id = ?', avec.body.id);
     assert.equal(cibles.length, 2);
     for (const c of cibles) {
       assert.equal(c.session_key, id, 'chaque projet part sur la session fournie');
@@ -831,7 +840,7 @@ describe('Sessions de dev de bout en bout', () => {
     const sans = await app.api('POST', '/api/tasks', {
       kind: 'code', prompt: 'p', targets: [{ repo_id: repoId, branch: 'ai/neuve' }],
     });
-    assert.equal(app.db.prepare('SELECT session_key FROM task_target WHERE task_id = ?').get(sans.body.id).session_key, null);
+    assert.equal(poignees('task_target', 'task_target', 'task_id = ?', sans.body.id)[0].session_key, null);
 
     // Un identifiant est passé tel quel à l'agent : il ne doit jamais pouvoir passer pour un flag.
     const flag = await app.api('POST', '/api/tasks', {
@@ -851,10 +860,10 @@ describe('Sessions de dev de bout en bout', () => {
     // La session se change aussi APRÈS coup ; un champ vide, lui, n'efface pas ce qui existe.
     const autre = backendName() === 'claude' ? '11111111-2222-3333-4444-555555555555' : '/tmp/agent-sessions/autre';
     await app.api('PUT', `/api/tasks/${avec.body.id}`, { prompt: 'suite', session_id: autre });
-    let keys = app.db.prepare('SELECT session_key FROM task_target WHERE task_id = ?').all(avec.body.id).map((x) => x.session_key);
+    let keys = poignees('task_target', 'task_target', 'task_id = ?', avec.body.id).map((x) => x.session_key);
     assert.deepEqual(keys, [autre, autre]);
     await app.api('PUT', `/api/tasks/${avec.body.id}`, { prompt: 'encore', session_id: '' });
-    keys = app.db.prepare('SELECT session_key FROM task_target WHERE task_id = ?').all(avec.body.id).map((x) => x.session_key);
+    keys = poignees('task_target', 'task_target', 'task_id = ?', avec.body.id).map((x) => x.session_key);
     assert.deepEqual(keys, [autre, autre], 'un champ vide ne perd pas la session');
   });
 

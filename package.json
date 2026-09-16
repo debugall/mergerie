@@ -1,6 +1,6 @@
 {
   "name": "mergerie",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "From prompt to merge — a local AI dev cockpit for GitLab: MR review, autonomous coding sessions and convergence.",
   "license": "AGPL-3.0-only",
   "author": "Amady (https://github.com/debugall)",
@@ -24,9 +24,18 @@
   "bugs": {
     "url": "https://github.com/debugall/mergerie/issues"
   },
-  "homepage": "https://github.com/debugall/mergerie#readme",
+  "homepage": "https://mergerie.dev",
   "type": "commonjs",
   "main": "src/server.js",
+  "bin": {
+    "mergerie": "bin/mergerie.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "public",
+    "scripts/demo-seed.js"
+  ],
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server.js",
     "dev": "node --env-file-if-exists=.env --watch src/server.js",
