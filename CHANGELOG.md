@@ -75,6 +75,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **“Bulk add from GitLab / GitHub” now says what is missing instead of quoting the forge.**
+  With no token the button was still there — and rightly so: it tells you what the tool can do,
+  which is worth knowing before you have a token. But clicking it went to fetch the list anyway
+  and came back with the forge's own words, “401”, “missing token”: what happened, never what to
+  do. The modal now names the connection that is missing and carries the door — Settings → Git,
+  cursor in the field, and the GitHub button leads to the GitHub field rather than the GitLab
+  address.
+
 - **A team setting added by a new version now reaches the machines that were already up to
   date.** Hydration is incremental: it applies the files that changed since the last mark. So a
   setting a new version understands was never read from a file an older one had already

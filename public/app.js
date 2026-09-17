@@ -1895,6 +1895,9 @@ document.addEventListener('click', (e) => {
   const viser = (sel) => { const c = $(sel); if (c) c.focus({ preventScroll: true }); };
   switch (b.dataset.emptyAct) {
     case 'go-config': closeBulk(); go('admin'); showAdminSub('gitcfg'); viser('[name="gitlab_url"]'); break;
+    /* La même porte, mais sur le champ de L'AUTRE forge : envoyer sur l'URL GitLab quelqu'un à
+       qui il manque un jeton GitHub, c'est le faire chercher. */
+    case 'go-config-github': closeBulk(); go('admin'); showAdminSub('gitcfg'); viser('[name="github_token"]'); break;
     case 'go-repos': go('admin'); showAdminSub('repos'); viser('#repoForm [name="url"]'); break;
     case 'go-rules': go('admin'); showAdminSub('rules'); break;
     case 'discover': go('review'); $('#btnDiscover').click(); break;
@@ -10871,6 +10874,29 @@ async function openBulk(forge = 'gitlab') {
      cinquante dépôts s'aborde par son filtre. */
   $('#bulkSearch').focus({ preventScroll: true });
   try {
+    /* SANS CONNEXION À LA FORGE, IL N'Y A PAS DE LISTE À CHERCHER. L'appel partait quand même
+       et revenait avec le message de la forge — « 401 », « jeton manquant » — qui dit ce qui
+       s'est passé, jamais quoi faire. Le bouton, lui, RESTE : il dit ce que l'outil sait faire,
+       et c'est une information utile avant d'avoir un jeton. C'est la modale qui explique ce
+       qui manque, et qui ouvre la porte — le même geste que les écrans vides ailleurs. */
+    const cfg = await api('/config');
+    const manque = bulkForge === 'github'
+      ? !cfg.github_token
+      : !(cfg.access_token && cfg.gitlab_url);
+    if (manque) {
+      /* Clés écrites en toutes lettres plutôt que composées : c'est ce qui les rend
+         greppables, et `npm run i18n:check` les cherche telles quelles. */
+      $('#bulkList').innerHTML = bulkForge === 'github'
+        ? emptyState({ icon: 'alert',
+          title: tr('settings.bulk.no-token.github.title'),
+          text: tr('settings.bulk.no-token.github.text'),
+          actions: [{ act: 'go-config-github', label: tr('settings.bulk.no-token.action') }] })
+        : emptyState({ icon: 'alert',
+          title: tr('settings.bulk.no-token.gitlab.title'),
+          text: tr('settings.bulk.no-token.gitlab.text'),
+          actions: [{ act: 'go-config', label: tr('settings.bulk.no-token.action') }] });
+      return;
+    }
     bulkProjects = await api(`/${bulkForge}/projects`);
     renderBulk();
   } catch (e) {
