@@ -18,6 +18,7 @@ const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
+  afficherMenusOptionnels,
 } = require('./helpers/app');
 
 const { dispo } = navigateurDispo();
@@ -47,6 +48,7 @@ describe('Champs de saisie — taille', { skip: dispo ? false : MSG_NAVIGATEUR }
     await app.api('PUT', `/api/services/${svc.id}/urls`, { environment_id: env.id, url: 'https://api-local.demo.invalid/health' });
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 950 } });
+    await afficherMenusOptionnels(page);
     await page.goto(app.base);
     await page.waitForSelector('nav button[data-tab="links"]');
   });

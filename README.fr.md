@@ -74,7 +74,8 @@ run déclenché par un **horaire** qui a réécrit une page de notes.
 
 ## Les onglets
 
-**Dix onglets**, dans une barre latérale — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)**, et la **[vérification objective](./docs/guide.fr.md#vérification-objective-vérificateurs)** a sa propre section :
+**Onze onglets**, dans une barre latérale — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)**, et la **[vérification objective](./docs/guide.fr.md#vérification-objective-vérificateurs)** a sa propre section.
+**Git, Docker, Jenkins et Liens démarrent repliés** : ce sont des commodités, et la barre porte d'abord le travail de tous les jours — une case dans Réglages → Général → Menus les ramène pour de bon.
 
 - **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée,
   re-review incrémentale et **boucle de convergence autonome** (review → correction → re-review jusqu'au seuil).

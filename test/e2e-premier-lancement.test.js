@@ -15,7 +15,7 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { startApp } = require('./helpers/app');
+const { startApp, afficherMenusOptionnels } = require('./helpers/app');
 
 let chromium = null;
 let dispo = false;
@@ -42,6 +42,7 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
 
     navigateur = await chromium.launch();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 900 } });
+    await afficherMenusOptionnels(page);
     page.on('pageerror', (e) => erreurs.push(String(e)));
     await page.goto(app.base);
   });

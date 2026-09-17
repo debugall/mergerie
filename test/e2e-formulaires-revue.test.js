@@ -12,7 +12,7 @@
 
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR } = require('./helpers/app');
+const { startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, afficherMenusOptionnels } = require('./helpers/app');
 
 const { dispo } = navigateurDispo();
 const ATTENTE = 20000;
@@ -40,6 +40,7 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     await app.api('POST', '/api/free-links', { label: 'Confluence', url: 'https://confluence.demo.invalid/x', tags: 'doc' });
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 950 } });
+    await afficherMenusOptionnels(page);
     page.on('pageerror', (e) => erreurs.push(String(e)));
     await page.goto(app.base);
   });

@@ -21,6 +21,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const {
   startApp, poserIdentiteGit, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, attendreServeur,
+  afficherMenusOptionnels,
 } = require('./helpers/app');
 /* On importe le module PUR, jamais `src/gitmerge` : celui-ci require `src/db`, qui OUVRE la
    base au chargement — et à cet instant le harnais n'a pas encore posé `MERGERIE_DATA_DIR`.
@@ -303,6 +304,7 @@ describe('Git · Merge de branche à branche', () => {
       mergeId = (await demarrer(src)).body.id;
       navigateur = await lancerNavigateur();
       page = await navigateur.newPage({ viewport: { width: 1500, height: 1000 } });
+      await afficherMenusOptionnels(page);
       await page.goto(app.base);
       await page.locator('nav button[data-tab="git"]').click();
       await page.locator('#tab-git .subnav [data-gsub="merge"]').click();

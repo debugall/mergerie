@@ -11,9 +11,12 @@ security model. For a quick start, stay on the [README](../README.md).
 
 ## The tabs in detail
 
-Ten tabs, in a **left sidebar**, grouped by family — the core, what I have to do, my machine and its
+Eleven tabs, in a **left sidebar**, grouped by family — the core, what I have to do, my machine and its
 links, the meta:
-**Reviews** · **AI Dev** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Links** — **Stats** · **Settings**.
+**Reviews** · **AI Dev** · **Agents** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Links** — **Stats** · **Settings**.
+**Four of them — Git, Docker, Jenkins and Links — start folded away**: they are conveniences, you go
+there the day you need them, and a bar of seven entries reads better than a bar of eleven. Nothing is
+disabled: one tick in *Settings → General → Menus* brings them back, for good.
 The bar **collapses to icons** from a button at the foot of the column (the choice is remembered), and
 collapses on its own below 1100 px wide.
 Badges show **work waiting**, not totals (MRs to review, sessions not yet run). The **Reviews** tab carries
@@ -2206,8 +2209,11 @@ data**: a skeleton while it loads, never a “0” that would read as “nothing
   even when the form scrolls, and a window brought back still **protects what you typed** against
   a click outside. Windows that ask a **question** (a confirmation, picking a verifier) have no
   such button: they keep their caller waiting, and setting one aside would keep it waiting forever.
-- **The menu bar can be arranged** (Settings → General). Move **up** what you open ten times a day,
-  **hide** what you never use: drag and drop or arrows, applied at once. A hidden menu also leaves
+- **The menu bar can be arranged** (Settings → General). It carries the everyday work by default —
+  Reviews, AI Dev, Agents, Notes, Jira, Stats, Settings — and leaves **Git, Docker, Jenkins and
+  Links folded away**, one tick from coming back. Then move **up** what you open ten times a day,
+  **hide** what you never use: drag and drop or arrows, applied at once. “Restore the original
+  menus” returns to that starting point, folds included. A hidden menu also leaves
   the **palette** and the **number shortcuts** — `3` opens the third *shown* menu, not the third
   original one; offering a screen whose menu entry has gone would be a one-way ticket. The
   **feature itself stays**: nothing is disabled, only filed away. ⚠ **Settings cannot be hidden**

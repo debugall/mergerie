@@ -17486,7 +17486,9 @@ const PASTILLES = [
 ];
 function openShortcuts() {
   const m = $('#shortcutsModal'); if (!m) return;
-  const nbOnglets = $$('nav button[data-tab]').length;
+  /* Ce que les chiffres ouvrent, c'est la barre VISIBLE — c'est elle que compte le gestionnaire
+     de touches. Compter tous les boutons annonçait « 1 – 9, 0 » à qui n'en voyait que sept. */
+  const nbOnglets = $$('nav button[data-tab]:not([hidden])').length;
   // La plage annoncée doit être la VRAIE : au-delà de neuf onglets, le DERNIER est sur « 0 ».
   const plage = nbOnglets > 9 ? '1 – 9, 0' : `1 – ${nbOnglets}`;
   $('#shortcutsList').innerHTML = SHORTCUTS
@@ -17527,11 +17529,24 @@ const NAV_KEY = 'mergerie_nav';
 // Réglages : toujours visible. C'est le chemin du retour — le masquer enfermerait dehors.
 const NAV_TOUJOURS = 'admin';
 
+/* CE QUI EST REPLIÉ D'OFFICE. Onze entrées, et la plupart des journées n'en demandent que
+   quelques-unes : Git, Docker, Jenkins et Liens sont des COMMODITÉS — on y va le jour où on en
+   a besoin, pas dix fois par jour —, tandis que Reviews, Dev IA, Agents, Notes et Jira sont le
+   travail lui-même. La barre porte donc d'abord ce qui a de la valeur tous les jours, et une
+   case des Réglages rend les autres. Rien n'est désactivé au passage : les écrans, les données
+   et les fonctions restent entières, c'est la barre qui ne les affiche plus d'entrée.
+
+   Ce défaut ne vaut que pour qui n'a JAMAIS touché sa barre. Une préférence enregistrée fait
+   foi, fût-elle antérieure : on ne retire pas ses menus à quelqu'un qui les a rangés lui-même. */
+const NAV_MASQUES_DEFAUT = ['git', 'docker', 'jenkins', 'links'];
+
 function lireNav() {
   try {
-    const v = JSON.parse(localStorage.getItem(NAV_KEY) || '{}');
+    const brut = localStorage.getItem(NAV_KEY);
+    if (brut == null) return { ordre: [], masques: [...NAV_MASQUES_DEFAUT] };
+    const v = JSON.parse(brut) || {};
     return { ordre: Array.isArray(v.ordre) ? v.ordre : [], masques: Array.isArray(v.masques) ? v.masques : [] };
-  } catch { return { ordre: [], masques: [] }; }
+  } catch { return { ordre: [], masques: [...NAV_MASQUES_DEFAUT] }; }
 }
 function ecrireNav(v) {
   try { localStorage.setItem(NAV_KEY, JSON.stringify(v)); } catch { /* stockage indisponible */ }
@@ -17623,7 +17638,10 @@ $('#navPrefs') && $('#navPrefs').addEventListener('change', (e) => {
   enregistrerNav(ordreAffiche(), masquesAffiches());
 });
 $('#navPrefsReset') && $('#navPrefsReset').addEventListener('click', () => {
-  ecrireNav({ ordre: [], masques: [] });
+  /* ON EFFACE LA PRÉFÉRENCE, on n'en écrit pas une vide : « rétablir » doit rendre l'état du
+     DÉPART — l'ordre du fichier ET les quatre menus repliés —, et une liste de masqués vide
+     serait au contraire « tout afficher », ce que personne n'a demandé en cliquant ici. */
+  try { localStorage.removeItem(NAV_KEY); } catch { /* stockage indisponible */ }
   /* Rétablir ne suffit pas à remettre les boutons dans l'ordre d'origine : ils ont été
      DÉPLACÉS dans le DOM. On les repose donc dans l'ordre du fichier, qui est celui que
      `NAV_DEFAUT` a retenu au démarrage — avant toute application de préférence. */
@@ -17631,8 +17649,9 @@ $('#navPrefsReset') && $('#navPrefsReset').addEventListener('click', () => {
   const ancre = [...barre.children].find((el) => !el.dataset || !el.dataset.tab) || null;
   for (const tab of NAV_DEFAUT) {
     const b = $(`nav button[data-tab="${tab}"]`);
-    if (b) { b.hidden = false; barre.insertBefore(b, ancre); }
+    if (b) barre.insertBefore(b, ancre);
   }
+  appliquerNav();      // et la visibilité d'origine avec, en quittant un onglet qu'elle replie
   renderNavPrefs();
 });
 

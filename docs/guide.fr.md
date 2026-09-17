@@ -13,9 +13,12 @@ données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide
 
 ## Les onglets en détail
 
-Dix onglets, dans une **barre latérale** à gauche, rangés par familles — le cœur, ce que j'ai à
+Onze onglets, dans une **barre latérale** à gauche, rangés par familles — le cœur, ce que j'ai à
 faire, ma machine et ses liens, le méta :
-**Reviews** · **Dev IA** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Liens** — **Stats** · **Réglages**.
+**Reviews** · **Dev IA** · **Agents** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Liens** — **Stats** · **Réglages**.
+**Quatre d'entre eux — Git, Docker, Jenkins et Liens — démarrent repliés** : ce sont des commodités,
+on y va le jour où on en a besoin, et une barre de sept entrées se lit mieux qu'une barre de onze.
+Rien n'est désactivé : une case dans *Réglages → Général → Menus* les ramène, définitivement.
 La barre se **réduit en icônes** d'un bouton en pied de colonne (choix mémorisé), et se réduit d'elle-même
 sous 1100 px de large.
 Les badges signalent le **travail en attente** (MR à traiter, sessions non lancées), pas des totaux.
@@ -2283,9 +2286,11 @@ donnée** : squelette pendant le chargement, jamais un « 0 » qui voudrait dire
   fenêtre reprise **protège toujours sa saisie** contre un clic à côté. Les fenêtres qui posent
   une **question** (confirmation, choix d'un vérificateur) n'ont pas ce bouton : elles font
   attendre celui qui les a ouvertes, et les mettre de côté le laisserait attendre pour toujours.
-- **La barre de menus se range** (Réglages → Général). On **remonte** ce qu'on ouvre dix fois par
+- **La barre de menus se range** (Réglages → Général). Elle porte d'office le travail de tous les
+  jours — Reviews, Dev IA, Agents, Notes, Jira, Stats, Réglages — et laisse **repliés Git, Docker,
+  Jenkins et Liens**, qu'une case rend. On **remonte** ensuite ce qu'on ouvre dix fois par
   jour et on **masque** ce dont on ne se sert pas : glisser-déposer ou flèches, appliqué tout de
-  suite. Un menu masqué quitte aussi la **palette** et les **raccourcis chiffrés** — `3` ouvre le
+  suite. « Rétablir les menus d'origine » revient à ce point de départ, replis compris. Un menu masqué quitte aussi la **palette** et les **raccourcis chiffrés** — `3` ouvre le
   troisième menu *affiché*, pas le troisième d'origine ; proposer un écran dont l'entrée de menu a
   disparu serait offrir un aller sans retour. La **fonctionnalité, elle, reste** : rien n'est
   désactivé, seulement rangé. ⚠ **Réglages ne se masque pas** (c'est le chemin du retour), et

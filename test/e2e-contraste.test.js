@@ -15,7 +15,7 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { startApp } = require('./helpers/app');
+const { startApp, afficherMenusOptionnels } = require('./helpers/app');
 
 let chromium = null;
 let dispo = false;
@@ -119,6 +119,8 @@ describe('Contraste WCAG AA', { skip: dispo ? false : 'chromium absent — npx p
   for (const theme of ['light', 'dark']) {
     test(`aucun texte sous son seuil — thème ${theme}`, async () => {
       const page = await navigateur.newPage({ viewport: { width: 1500, height: 950 } });
+      // Le contraste se mesure sur TOUS les écrans, y compris ceux dont le menu est replié d'office.
+      await afficherMenusOptionnels(page);
       await page.goto(app.base);
       await page.evaluate((t) => localStorage.setItem('aidevtools_theme', t), theme);
       await page.reload();

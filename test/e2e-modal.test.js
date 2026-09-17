@@ -14,7 +14,7 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { startApp } = require('./helpers/app');
+const { startApp, afficherMenusOptionnels } = require('./helpers/app');
 
 let chromium = null;
 let dispo = false;
@@ -39,6 +39,7 @@ describe('Modales : le clic sur le fond', { skip: dispo ? false : 'chromium abse
     await app.configure();
     navigateur = await chromium.launch();
     page = await navigateur.newPage({ viewport: { width: 1280, height: 900 } });
+    await afficherMenusOptionnels(page);
     await page.goto(app.base);
     await page.waitForFunction(() => typeof window.openTaskModal === 'function');
   });

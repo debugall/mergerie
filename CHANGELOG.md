@@ -11,6 +11,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Changed
+
+- **The menu bar starts with the everyday work, and folds the rest away.** Eleven entries is a list
+  you stop reading. Git, Docker, Jenkins and Links are conveniences — you go there the day you need
+  them, not ten times a day — so they now start **folded**, leaving Reviews, AI Dev, Agents, Notes,
+  Jira, Stats and Settings in the bar. Nothing is disabled, removed or hidden from the product: the
+  screens, their data and their shortcuts are whole, and one tick in **Settings → General → Menus**
+  brings a menu back for good. “Restore the original menus” returns to that starting point rather
+  than showing everything. If you had already arranged your own bar, it is left exactly as you set
+  it — the new default only applies to a bar nobody has touched.
+
 ### Fixed
 
 - **A `.env` asking for another data folder is now obeyed by `npx mergerie`.** The file was read —

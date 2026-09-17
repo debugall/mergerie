@@ -14,7 +14,7 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { startApp } = require('./helpers/app');
+const { startApp, afficherMenusOptionnels } = require('./helpers/app');
 
 let chromium = null;
 let dispo = false;
@@ -63,6 +63,7 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
 
     navigateur = await chromium.launch();
     page = await navigateur.newPage({ viewport: { width: 1440, height: 900 } });
+    await afficherMenusOptionnels(page);
   });
 
   after(async () => {

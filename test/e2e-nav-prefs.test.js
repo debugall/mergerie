@@ -1,10 +1,13 @@
 'use strict';
 /* RANGER LA BARRE DE MENUS : ordre et visibilité.
  *
- * Neuf onglets, et chacun n'en utilise que quelques-uns. Le geste attendu tient en deux choses :
+ * Onze onglets, et chacun n'en utilise que quelques-uns. Le geste attendu tient en deux choses :
  * remonter ce qu'on ouvre dix fois par jour, et faire disparaître ce dont on ne se sert pas.
  *
  * Ce qui se joue ici :
+ *
+ *   0. la barre ne porte D'OFFICE que le travail de tous les jours : Git, Docker, Jenkins et
+ *      Liens démarrent repliés, et une case des Réglages les rend — sans rien désactiver ;
  *
  *   1. l'ordre et le masquage s'appliquent À LA BARRE, tout de suite, et survivent au
  *      rechargement — une préférence qu'il faut reposer à chaque visite n'en est pas une ;
@@ -38,6 +41,10 @@ describe('Réglages · ordre et visibilité des menus', { skip: navigateurDispo(
 
   const barre = () => page.locator('nav button[data-tab]:not([hidden])')
     .evaluateAll((els) => els.map((e) => e.dataset.tab));
+  // Tous les onglets du fichier, repliés compris : ce que les Réglages doivent lister.
+  const tousLesOnglets = () => page.locator('nav button[data-tab]')
+    .evaluateAll((els) => els.map((e) => e.dataset.tab));
+  const REPLIES_DOFFICE = ['git', 'docker', 'jenkins', 'links'];
   const ouvrirReglages = async () => {
     await page.locator('nav button[data-tab="admin"]').click();
     await page.locator('#tab-admin .subnav [data-sub="config"]').click();
@@ -49,12 +56,41 @@ describe('Réglages · ordre et visibilité des menus', { skip: navigateurDispo(
     await page.waitForSelector('nav button[data-tab]');
   };
 
-  test('la liste des Réglages reprend la barre, dans son ordre', async () => {
+  test('la liste des Réglages reprend TOUS les menus, dans leur ordre', async () => {
     await remettreAZero();
     await ouvrirReglages();
     const lignes = await page.locator('#navPrefs .nav-prefs-row')
       .evaluateAll((els) => els.map((e) => e.dataset.navtab));
-    assert.deepEqual(lignes, await barre(), 'une ligne par onglet, dans le même ordre');
+    /* La liste porte aussi les menus repliés — c'est par elle qu'on les rend. Comparer à la
+       barre VISIBLE reviendrait à exiger qu'un menu replié disparaisse aussi des Réglages,
+       c'est-à-dire qu'on ne puisse plus jamais le rappeler. */
+    assert.deepEqual(lignes, await tousLesOnglets(), 'une ligne par menu, dans le même ordre');
+  });
+
+  /* LE DÉFAUT. Une barre de onze entrées se lit moins bien qu'une barre de sept : Git, Docker,
+     Jenkins et Liens sont des commodités — on y va le jour où on en a besoin. Elles démarrent
+     donc repliées. Rien n'est désactivé pour autant : la ligne est dans les Réglages, décochée,
+     et une case suffit. */
+  test('Git, Docker, Jenkins et Liens sont repliés d’office, et une case les rend', async () => {
+    await remettreAZero();
+    const visibles = await barre();
+    for (const t of REPLIES_DOFFICE) {
+      assert.ok(!visibles.includes(t), `« ${t} » n’est pas dans la barre au premier lancement`);
+    }
+    assert.ok(visibles.includes('review') && visibles.includes('task') && visibles.includes('notes')
+      && visibles.includes('jira') && visibles.includes('agents') && visibles.includes('admin'),
+    `le travail de tous les jours, lui, est là : ${visibles.join(', ')}`);
+
+    await ouvrirReglages();
+    for (const t of REPLIES_DOFFICE) {
+      assert.equal(await page.locator(`.nav-prefs-row[data-navtab="${t}"] .nav-show`).isChecked(), false,
+        `« ${t} » est listé, décoché : on peut le rappeler`);
+    }
+    await page.locator('.nav-prefs-row[data-navtab="docker"] .nav-show').check();
+    await page.waitForFunction(() => !!document.querySelector('nav button[data-tab="docker"]:not([hidden])'));
+    await page.reload();
+    await page.waitForSelector('nav button[data-tab]');
+    assert.ok((await barre()).includes('docker'), 'et ce choix-là tient au rechargement');
   });
 
   test('monter un menu le déplace dans la barre, et ça survit au rechargement', async () => {
@@ -84,19 +120,19 @@ describe('Réglages · ordre et visibilité des menus', { skip: navigateurDispo(
     await ouvrirReglages();
     const avant = await barre();
 
-    await page.locator('.nav-prefs-row[data-navtab="docker"] .nav-show').uncheck();
-    await page.waitForFunction(() => !document.querySelector('nav button[data-tab="docker"]:not([hidden])'));
-    assert.ok(!(await barre()).includes('docker'));
+    await page.locator('.nav-prefs-row[data-navtab="jira"] .nav-show').uncheck();
+    await page.waitForFunction(() => !document.querySelector('nav button[data-tab="jira"]:not([hidden])'));
+    assert.ok(!(await barre()).includes('jira'));
 
     await page.reload();
     await page.waitForSelector('nav button[data-tab]');
-    assert.ok(!(await barre()).includes('docker'), 'le masquage tient au rechargement');
+    assert.ok(!(await barre()).includes('jira'), 'le masquage tient au rechargement');
 
     await ouvrirReglages();
-    assert.equal(await page.locator('.nav-prefs-row[data-navtab="docker"]').count(), 1,
+    assert.equal(await page.locator('.nav-prefs-row[data-navtab="jira"]').count(), 1,
       'il reste dans les Réglages — sinon on ne pourrait plus le rendre');
-    await page.locator('.nav-prefs-row[data-navtab="docker"] .nav-show').check();
-    await page.waitForFunction(() => !!document.querySelector('nav button[data-tab="docker"]:not([hidden])'));
+    await page.locator('.nav-prefs-row[data-navtab="jira"] .nav-show').check();
+    await page.waitForFunction(() => !!document.querySelector('nav button[data-tab="jira"]:not([hidden])'));
     assert.deepEqual(await barre(), avant, 'il revient à sa place d’origine');
   });
 
@@ -118,17 +154,17 @@ describe('Réglages · ordre et visibilité des menus', { skip: navigateurDispo(
   test('un menu masqué quitte la palette et les raccourcis chiffrés', async () => {
     await remettreAZero();
     await ouvrirReglages();
-    await page.locator('.nav-prefs-row[data-navtab="docker"] .nav-show').uncheck();
-    await page.waitForFunction(() => !document.querySelector('nav button[data-tab="docker"]:not([hidden])'));
+    await page.locator('.nav-prefs-row[data-navtab="jira"] .nav-show').uncheck();
+    await page.waitForFunction(() => !document.querySelector('nav button[data-tab="jira"]:not([hidden])'));
 
     // La palette ne le propose plus.
     await page.keyboard.press('Escape');
     await page.keyboard.press('Control+k');
     await page.waitForSelector('#paletteModal:not([hidden])');
-    await page.locator('#paletteModal input').fill('docker');
+    await page.locator('#paletteModal input').fill('jira');
     await page.waitForFunction(() => !document.querySelector('#paletteModal .palette-item.loading'));
     const propositions = await page.locator('#paletteModal .palette-item').allTextContents();
-    assert.ok(!propositions.some((x) => /docker/i.test(x)),
+    assert.ok(!propositions.some((x) => /jira/i.test(x)),
       `la palette n’offre plus l’onglet masqué : ${propositions.join(' | ')}`);
     await page.keyboard.press('Escape');
     await page.waitForSelector('#paletteModal[hidden]', { state: 'attached' });
@@ -146,34 +182,46 @@ describe('Réglages · ordre et visibilité des menus', { skip: navigateurDispo(
 
   test('masquer l’onglet ouvert bascule sur un autre', async () => {
     await remettreAZero();
-    await page.locator('nav button[data-tab="jenkins"]').click();
-    await ouvrirReglages();                       // on quitte Jenkins pour aller dans Réglages…
-    await page.evaluate(() => document.querySelector('nav button[data-tab="jenkins"]').click());
-    await page.waitForFunction(() => document.querySelector('nav button[data-tab="jenkins"]').classList.contains('active'));
+    // Un menu AFFICHÉ d'office : c'est le fait de le masquer qui est éprouvé ici.
+    await page.locator('nav button[data-tab="notes"]').click();
+    await ouvrirReglages();                       // on quitte Notes pour aller dans Réglages…
+    await page.evaluate(() => document.querySelector('nav button[data-tab="notes"]').click());
+    await page.waitForFunction(() => document.querySelector('nav button[data-tab="notes"]').classList.contains('active'));
 
     // …puis on le masque depuis la palette de réglages restée en mémoire : la barre doit réagir.
     await page.evaluate(() => {
-      localStorage.setItem('mergerie_nav', JSON.stringify({ ordre: [], masques: ['jenkins'] }));
+      localStorage.setItem('mergerie_nav', JSON.stringify({ ordre: [], masques: ['notes'] }));
     });
     await page.reload();
     await page.waitForSelector('nav button[data-tab]');
-    assert.ok(!(await barre()).includes('jenkins'));
+    assert.ok(!(await barre()).includes('notes'));
     const actif = await page.locator('nav button[data-tab].active').getAttribute('data-tab');
-    assert.notEqual(actif, 'jenkins', 'on n’atterrit pas sur un onglet dont le menu a disparu');
+    assert.notEqual(actif, 'notes', 'on n’atterrit pas sur un onglet dont le menu a disparu');
     assert.deepEqual(erreurs, []);
   });
 
-  test('« Rétablir l’ordre d’origine » rend la barre du départ', async () => {
+  /* « Rétablir » rend l'état DU DÉPART, repliés compris — et non « tout afficher ». Écrire une
+     liste de masqués vide aurait déplié les quatre commodités à qui demandait seulement de
+     défaire son rangement : ce n'est pas l'origine, c'est l'inverse. */
+  test('« Rétablir les menus d’origine » rend la barre du départ, repliés compris', async () => {
     await remettreAZero();
     const origine = await barre();
     await ouvrirReglages();
     await page.locator('[data-navup="dashboard"]').click();
-    await page.locator('.nav-prefs-row[data-navtab="git"] .nav-show').uncheck();
-    await page.waitForFunction((n) => document.querySelectorAll('nav button[data-tab]:not([hidden])').length === n - 1, origine.length);
+    // On dérange dans les deux sens : un menu qu'on rend, un menu qu'on replie.
+    await page.locator('.nav-prefs-row[data-navtab="docker"] .nav-show').check();
+    await page.locator('.nav-prefs-row[data-navtab="jira"] .nav-show').uncheck();
+    await page.waitForFunction(() => {
+      const v = [...document.querySelectorAll('nav button[data-tab]:not([hidden])')].map((e) => e.dataset.tab);
+      return v.includes('docker') && !v.includes('jira');
+    });
 
     await page.locator('#navPrefsReset').click();
-    await page.waitForFunction((n) => document.querySelectorAll('nav button[data-tab]:not([hidden])').length === n, origine.length);
-    assert.deepEqual(await barre(), origine);
+    await page.waitForFunction((o) => {
+      const v = [...document.querySelectorAll('nav button[data-tab]:not([hidden])')].map((e) => e.dataset.tab);
+      return v.join(',') === o.join(',');
+    }, origine);
+    assert.deepEqual(await barre(), origine, 'Docker est reparti se replier, Jira est revenu, l’ordre aussi');
     await page.reload();
     await page.waitForSelector('nav button[data-tab]');
     assert.deepEqual(await barre(), origine, 'et ça tient au rechargement');
