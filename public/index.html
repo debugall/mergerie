@@ -1441,6 +1441,17 @@
                  dans un écran qui en compte déjà neuf. -->
             <label class="inline-check sous-reglage" id="autoPostBlockingRow" hidden><input form="configForm" name="auto_post_blocking_only" type="checkbox" /> <span data-i18n="settings.lbl.auto-post-blocking-only">Envoyer uniquement s'il y a des points bloquants</span>
                 <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.auto-post-blocking-only" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- CE QUI PART : le rapport, ou son LIEN. La ligne suit la case du dessus ET
+                 l'existence d'un dépôt de données : sans dépôt, il n'y a pas d'adresse où
+                 pointer, et un réglage qui ne peut rien faire n'a pas à occuper une ligne. -->
+            <label class="inline-check sous-reglage" id="autoPostLinkRow" hidden><input form="configForm" name="auto_post_review_link" type="checkbox" /> <span data-i18n="settings.lbl.auto-post-review-link">Publier le lien vers le rapport, pas le rapport</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.auto-post-review-link" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- LE TEXTE QUE L'ÉQUIPE POSTE. Laissé vide, c'est le message livré — et il suit la
+                 langue de l'interface. Le `placeholder` montre EXACTEMENT ce message : un champ
+                 vide ne doit pas laisser deviner ce qui partira. -->
+            <label class="sous-reglage" id="reviewLinkTemplateRow" hidden><span data-i18n="settings.lbl.review-link-template">Gabarit du commentaire</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.review-link-template" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <textarea form="configForm" name="review_link_template" rows="4"></textarea></label>
 
             <h3 data-i18n="settings.mr.group.auto">Automatisation</h3>
             <label><span data-i18n="settings.lbl.rafraichir-les-mr-automatiquement-minutes">Rafraîchir les MR automatiquement (minutes, 0 = désactivé)</span> <button type="button" class="hint" tabindex="-1" aria-label="Découverte automatique des nouvelles MR à intervalle régulier. 0 = désactivé. Minimum 1 minute, pour éviter les rate limits de l'API GitLab." data-tip="Découverte automatique des nouvelles MR à intervalle régulier. 0 = désactivé. Minimum 1 minute, pour éviter les rate limits de l'API GitLab." data-i18n-tip="settings.tip.decouverte-automatique-des-nouvelles-mr"><svg class="ico"><use href="#i-info"/></svg></button>

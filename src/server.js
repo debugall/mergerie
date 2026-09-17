@@ -8,7 +8,16 @@ const { spawn } = require('child_process');
 // répertoire de lancement, la façon de lancer (npm/node), ET la version de Node
 // (process.loadEnvFile n'existe qu'à partir de Node 20.12 -> parseur de secours).
 function loadEnv(file) {
-  if (!fs.existsSync(file)) { console.log(`.env absent (${file}) — variables d'environnement uniquement`); return; }
+  if (!fs.existsSync(file)) {
+    /* On ne l'annonce QUE s'il n'y en a pas non plus dans le dossier courant : celui-là est
+       déjà chargé par `--env-file-if-exists` au démarrage du processus. Sous `npx`, la racine
+       du paquet est un cache sans `.env` — annoncer « absent » juste après avoir écrit un
+       `.env` dans le dossier de l'utilisateur ne serait pas faux, seulement incompréhensible. */
+    if (!fs.existsSync(path.resolve('.env'))) {
+      console.log(`.env absent (${file}) — variables d'environnement uniquement`);
+    }
+    return;
+  }
   if (typeof process.loadEnvFile === 'function') {
     process.loadEnvFile(file);
     console.log(`.env chargé (natif) depuis ${file}`);
@@ -6421,6 +6430,10 @@ app.get('/api/mrs/:id', wrap((req, res) => {
     })(),
     // Un vérificateur couvre-t-il ce dépôt ? Le bouton n'apparaît que si oui.
     verifiable: !!db.prepare('SELECT 1 FROM verifier_repo WHERE repo_id = ?').get(mr.repo_id),
+    /* L'équipe partage-t-elle un dépôt de données ? Alors le rapport y a une adresse, et on
+       peut publier ce LIEN sur la merge request plutôt que six cents lignes. Sans dépôt, le
+       bouton n'aurait nulle part où pointer : il n'existe pas. */
+    data_repo: datasync.estConfigure(),
     review: rev ? {
       md: readFileSafe(rev.md_path),
       explanation: readFileSafe(rev.explanation_path),
@@ -6428,6 +6441,9 @@ app.get('/api/mrs/:id', wrap((req, res) => {
       // Ce qui est DÉJÀ parti sur la merge request : le bouton « Publier » le dit, pour
       // qu'on ne poste pas deux fois le même rapport en croyant au premier échec.
       comment_posted_at: rev.comment_posted_at || null,
+      /* Et pour le LIEN, la même chose — lue dans les commentaires déjà enregistrés, qui
+         voyagent : le bouton dit donc aussi ce qu'un COLLÈGUE a déjà publié. */
+      link_posted_at: (reviewer.lienDejaPublie(mr.id) || {}).at || null,
     } : null,
     comments,
     ticket: {
@@ -7008,6 +7024,16 @@ app.post('/api/mrs/:id/publish-review', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   res.json({ ok: true, ...(await reviewer.publierRapport(mr, getConfig())) });
+}));
+
+/* PUBLIER LE LIEN DU RAPPORT, quand l'équipe a un dépôt de données. Comme ci-dessus, rien du
+   corps n'est reçu du navigateur : l'adresse est CALCULÉE à partir du fichier que la ligne
+   occupe dans le dépôt, sinon la route serait un moyen de poster n'importe quel lien sous le
+   nom de l'utilisateur. */
+app.post('/api/mrs/:id/publish-review-link', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  res.json({ ok: true, ...(await reviewer.publierLienRapport(mr, getConfig())) });
 }));
 
 /* Compte associé au jeton d'une forge. Sert à reconnaître MES commentaires, donc ceux que

@@ -162,6 +162,29 @@ than sorting on a guessed identity.
   to its author without copying it over. A confirmation spells it out: what goes out is read by the whole
   team. Once published, the button becomes **`Publish again`** and carries the date of the first send, so
   you do not post the same text twice believing the first one failed.
+- **Publish the report LINK rather than the report** — only when the team shares a **data
+  repository**. Six hundred lines copied into a comment, nobody reads them, and the next pass posts
+  six hundred more. The report is already in the team's repository, in Markdown rendered by the
+  forge: the **`Publish the report LINK`** button posts a three-line comment pointing at its address,
+  with the score and the pass number. The merge request stays readable and the report keeps a single
+  copy, which everyone re-reads in the same place.
+  **The sync runs first**: publishing a link to a file still sitting on this machine would send the
+  team to a 404, which is worse than no comment at all — you would believe the work was done. If the
+  repository cannot be sent (offline, rebase in progress), **nothing is published** and the screen
+  says why. A data repository on a **local path** (shared drive, USB key) has no web address: the
+  button says so rather than inventing a link.
+  **The automatic publication can do it too**: under the “Automatically post the review report…”
+  checkbox, a second one — **“Post the link to the report, not the report”** — changes what goes
+  out on every pass. It does not decide *whether* the author is told, only the form; and if the
+  link cannot be made, **the report itself goes out**, with the job log saying why. It only shows
+  when a data repository is configured.
+  **The text of the comment is yours to write**, just underneath — a **team template**: everyone
+  posts the same thing. Left empty it is the shipped message, which follows the interface
+  language (the field shows it as a placeholder rather than making you guess). Filled, it is
+  taken word for word, with `{url}` (required), `{note}` — empty when the pass has none —, `{v}`
+  the pass number, `{iid}`, `{project}` and `{title}`; an unknown variable is left as written. A
+  template **without `{url}` is refused when saved**, not when publishing: it would announce a
+  report without saying where it is.
   The setting **Settings → Merge Request → “Automatically post the review report on the MR”** does it at
   the end of every review. It is **unchecked by default**: writing on other people's work is a decision.
   If it is checked and the forge refuses, the review is **not** lost — the report stays saved, and the
@@ -2599,6 +2622,15 @@ In both cases the refusal is immediate and says which of the two reasons applies
 **demo mode**, on the other hand, no command is run at all: the verdict is simulated.
 
 ## Configuration (.env)
+
+**`npx mergerie` writes one on its first launch**, in the folder you run it from: it looks for
+`claude` then `copilot` on the machine (on the `PATH`, then where the installers put them) and
+points `COPILOT_BIN` at the one it finds, with that agent's arguments — `--dangerously-skip-permissions`
+for claude, `--yolo --model claude-sonnet-5` for copilot. Without that file `COPILOT_BIN` is
+“copilot”: whoever installed Claude Code does not have that binary, the tool falls back to
+**dry-run**, and every review returns a fake report — it “works” and is useless. The file is
+written once, mode `600`, never rewritten afterwards (it will end up carrying tokens), and the
+command says what it created. `npx mergerie demo` writes none: it promises to leave nothing behind.
 
 A `.env` file is loaded automatically at startup: **the one in the folder the command is run
 from** — the root of the clone with `npm start`, the current directory with `npx mergerie`

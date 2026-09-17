@@ -3,6 +3,7 @@ const db = require('./db');
 const { DEFAULT_CLONE_DIR } = require('./paths');
 const { promptsFor } = require('./prompts');
 const registre = require('./store-registry');
+const { t } = require('../public/i18n-runtime.js');
 
 /* DEUX TABLES, UN SEUL OBJET. Les réglages vivent désormais dans `config` (ce que l'ÉQUIPE a
    décidé : gabarits de prompt, seuils, politiques, URL de la forge) et dans `local_config` (ce
@@ -32,7 +33,9 @@ const ALLOWED = [
   'github_url', 'github_token',
   'prompt_review', 'prompt_explain', 'prompt_modify', 'prompt_fix', 'language', 'ai_extra_instructions',
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
-  'brief_on_open', 'auto_post_review', 'auto_post_blocking_only', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
+  'brief_on_open', 'auto_post_review', 'auto_post_blocking_only', 'auto_post_review_link',
+  'review_link_template',
+  'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
   'auto_runner',
   'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'verif_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
@@ -170,6 +173,13 @@ function updateConfig(patch) {
     const ds = parseInt(patch.data_sync_seconds, 10);
     next.data_sync_seconds = Number.isFinite(ds) ? Math.min(600, Math.max(10, ds)) : 30;
   }
+  /* UN GABARIT DE LIEN SANS `{url}` NE PORTE PAS DE LIEN. Le commentaire partirait sur les
+     merge requests de toute l'équipe en annonçant un rapport qu'il ne désigne pas — et personne
+     ne s'en apercevrait avant d'aller le lire. On refuse ici, où l'écran peut encore le dire,
+     plutôt qu'au moment de publier, où il serait trop tard. */
+  if (String(next.review_link_template || '').trim() && !String(next.review_link_template).includes('{url}')) {
+    throw new Error(t('err.config.link-template-no-url'));
+  }
   // Seconde passe : booléen en texte, ACTIVÉE par défaut (elle ne coûte rien en local).
   next.dictation_final_pass = next.dictation_final_pass === '0' ? '0' : '1';
   // Les rapports produits par l'IA suivent la langue de l'interface (i18n.md lot 5,
@@ -194,6 +204,8 @@ function updateConfig(patch) {
       review_explain = @review_explain,
       auto_post_review = @auto_post_review,
       auto_post_blocking_only = @auto_post_blocking_only,
+      auto_post_review_link = @auto_post_review_link,
+      review_link_template = @review_link_template,
       auto_review_new = @auto_review_new,
       auto_rereview_stale = @auto_rereview_stale,
       auto_runner = @auto_runner,

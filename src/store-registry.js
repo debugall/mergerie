@@ -1450,6 +1450,9 @@ const REGISTRE = [
       'dictation_vocabulary', 'dictation_replacements',
       // Politiques : ce qui part tout seul, à quelle cadence, jusqu'où, et ce qu'on garde.
       'auto_review_new', 'auto_rereview_stale', 'auto_post_review', 'auto_post_blocking_only',
+      'auto_post_review_link',
+      // Le gabarit du commentaire qui porte le lien : écrit une fois, posté par tout le monde.
+      'review_link_template',
       /* L'EXÉCUTANT EST D'ÉQUIPE : c'est une décision collective (« c'est Claire qui fait
          tourner les reviews automatiques »), pas une préférence de poste. */
       'auto_runner',

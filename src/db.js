@@ -1515,6 +1515,15 @@ try { db.exec("ALTER TABLE config ADD COLUMN auto_post_review TEXT DEFAULT '0'")
    constat « blocker ». Décoché par défaut — la publication automatique existante ne doit pas
    se mettre à taire des rapports du seul fait d'une migration. */
 try { db.exec("ALTER TABLE config ADD COLUMN auto_post_blocking_only TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
+/* CE QUI PART AUTOMATIQUEMENT : le rapport, ou son LIEN dans le dépôt de données de l'équipe.
+   Décochée par défaut — une migration ne doit pas changer ce que les merge requests reçoivent
+   déjà. Sans dépôt de données, la case n'a pas de sens et l'écran ne la montre pas. */
+try { db.exec("ALTER TABLE config ADD COLUMN auto_post_review_link TEXT DEFAULT '0'"); } catch { /* déjà présente */ }
+/* LE GABARIT DU COMMENTAIRE qui porte le lien. VIDE = le message livré, qui suit la langue de
+   l'interface ; rempli, c'est celui de l'équipe, mot pour mot. On ne sème donc rien ici : un
+   défaut recopié en base serait figé dans la langue du jour de l'installation, et cesserait de
+   suivre la langue comme le reste des textes. */
+try { db.exec("ALTER TABLE config ADD COLUMN review_link_template TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 /* L'amorçage des commandes git a déménagé À LA FIN de ce fichier : son drapeau
    (`git_commands_seeded`) est devenu une donnée de POSTE, et il faut donc que `local_config`
    existe et soit remplie avant de le lire. Lu ici, il aurait valu 0 sur une installation qui

@@ -11,6 +11,46 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Added
+
+- **Publish the *link* to a review report, instead of the report.** Six hundred lines of report
+  copied into a merge request comment: nobody reads them, and the next pass posts six hundred
+  more. When your team shares a data repository, the report already lives there in Markdown —
+  rendered by the forge like any other file. A new button on the report, **“Publish the report
+  LINK”**, posts a three-line comment pointing at that address, with the score and the pass
+  number. One copy, read by everyone in the same place, and a merge request that stays readable.
+  The button only exists when a data repository is configured — without one there would be
+  nowhere to point. The sync runs **before** publishing: a link to a file still sitting on your
+  machine would send the team to a 404, which is worse than no comment at all, so if the
+  repository cannot be sent the screen says why and nothing goes out. A repository on a local
+  path (a shared drive, a USB key) has no web address, and the button says that too rather than
+  inventing a link. The address is computed from the file the report occupies — never taken from
+  the browser — and a token carried in the clone URL never reaches the comment.
+
+  **And it says when it already went out.** Like the report button, this one turns into
+  “Publish the report link again” and carries the date of the first send — except the date is
+  read from the comments the team shares, so it also stops you when a **colleague** published
+  that pass before you. Publishing again is not a correction: it puts a second comment in front
+  of the same report.
+
+  **And it can happen by itself.** Under “Automatically post the review report on the MR”, a new
+  checkbox — **“Post the link to the report, not the report”** — changes what that automation
+  sends: three lines instead of six hundred, on every pass. It does not decide *whether* the
+  author is told, only the form; the checkbox above still decides that. And if the link cannot
+  be made — no data repository any more, a repository on a local path, a sync that will not go
+  through — the **report itself is posted** and the job log says why the form changed. Staying
+  silent would leave a review with no reader, which is not what ticking the box asked for. The
+  line only shows when a data repository is configured.
+
+  **And the text is yours.** Under the two checkboxes, a **comment template** — a team setting,
+  so everyone posts the same thing. Left empty it is the shipped message, which follows the
+  interface language; filled, it is taken word for word, with `{url}` (required), `{note}`,
+  `{v}` for the pass number, `{iid}`, `{project}` and `{title}` substituted, and any variable
+  it does not know left exactly as written. An empty field shows the shipped message as its
+  placeholder rather than making you publish once to find out. A template without `{url}` is
+  refused when you save it, not when it publishes: it would announce a report without saying
+  where it is, on the merge requests of the whole team.
+
 ### Changed
 
 - **The menu bar starts with the everyday work, and folds the rest away.** Eleven entries is a list
@@ -23,6 +63,24 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   it — the new default only applies to a bar nobody has touched.
 
 ### Fixed
+
+- **`npx mergerie` no longer starts on an agent you do not have.** Without a `.env`,
+  `COPILOT_BIN` was “copilot”: whoever had installed Claude Code did not have that binary, the
+  tool silently fell back to **dry-run**, and every review came back a fake report — it “worked”
+  and was useless. From a clone you copy `.env.example`; under `npx` there is no clone, nothing
+  to copy, and nothing saying where the file should go. The first launch now writes one **in the
+  folder you run it from**: it looks for `claude` then `copilot` (on the `PATH`, then where the
+  installers put them) and points `COPILOT_BIN` at the one it finds, with that agent's own
+  arguments. The file is written once, mode `600`, and never rewritten — it will end up carrying
+  tokens. The command says what it created, rather than leaving a file to be discovered. The two
+  TLS escape hatches are written **commented out**: nobody should turn off certificate checking
+  without meaning to. `npx mergerie demo` writes none — it promises to leave nothing behind.
+
+- **The sync indicator no longer says “↑1” just after sending.** The counters were read to
+  decide whether to push, and never again afterwards: a successful send left the footer showing
+  one commit still waiting until the next round, up to thirty seconds later. They are refreshed
+  as soon as the push lands — and so is what reads them to decide, such as “is that report
+  really on the forge?”.
 
 - **A `.env` asking for another data folder is now obeyed by `npx mergerie`.** The file was read —
   its port, its agent, its proxy all worked — but its `MERGERIE_DATA_DIR` line was quietly dropped

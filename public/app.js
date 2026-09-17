@@ -4886,6 +4886,21 @@ async function openReport(id, opts = {}) {
                 ? tr('report.btn.publish-again', { forge: forgeLabel(m.forge) })
                 : tr('report.btn.publish', { forge: forgeLabel(m.forge) })}</button>`;
             })() : ''}
+            ${/* LE LIEN PLUTÔT QUE LE RAPPORT. Quand l'équipe partage un dépôt de données, le
+                  rapport y est déjà, en Markdown rendu par la forge : publier son ADRESSE tient
+                  en trois lignes là où le rapport en pose six cents, et la passe suivante n'en
+                  repose pas six cents de plus. Sans dépôt de données, pas de bouton : il n'aurait
+                  aucune adresse où pointer. */''}
+            ${d.review && d.data_repo ? (() => {
+              /* DÉJÀ PARTI ? La date est lue dans les commentaires enregistrés, qui voyagent :
+                 le bouton dit donc aussi ce qu'un collègue a publié avant nous. Republier n'est
+                 pas une correction — ça pose un SECOND lien vers le même rapport. */
+              const dejaLien = d.review.link_posted_at;
+              return `<button id="aPublishLink" role="menuitem" data-posted="${esc(dejaLien || '')}" title="${dejaLien
+                ? esc(tr('report.btn.publish-link-again-title', { date: fmtDate(dejaLien) }))
+                : esc(tr('report.btn.publish-link-title'))}">${dejaLien
+                ? tr('report.btn.publish-link-again') : tr('report.btn.publish-link')}</button>`;
+            })() : ''}
             ${addTodoBtn('mr', m.id, tr('notes.add-todo.mr', { iid: m.iid, title: String(m.title || '').slice(0, 60) }))}
             ${resumeCmdBtn(d.resume_cmd)}
             <div class="menu-sep"></div>
@@ -5116,6 +5131,33 @@ async function openReport(id, opts = {}) {
          apparaître dans le fil en dessous. Réécrire le libellé à la main mentirait le jour
          où le serveur aurait refusé sans lever d'erreur. */
       await openReport(id);
+    } catch (e) { toast(e.message, true); }
+  });
+
+  /* Le lien part sous le même engagement que le rapport : un commentaire chez les autres. Et
+     il dit ce qu'il expose — qui peut lire le dépôt de données lira le rapport. */
+  const aPublishLink = $('#aPublishLink');   // absent sans dépôt de données partagé
+  if (aPublishLink) aPublishLink.addEventListener('click', async () => {
+    const forge = forgeLabel(m.forge);
+    const ok = await confirmDialog({
+      title: tr('report.publish-link.confirm.title', { forge }),
+      text: tr('report.publish-link.confirm.text', { forge, mr: `${m.project} !${m.iid}` }),
+      /* Ce qu'un collègue a peut-être déjà fait : la date vient du dépôt partagé, pas de ce
+         poste. C'est l'avertissement qui manquait — deux liens vers le même rapport. */
+      detail: aPublishLink.dataset.posted
+        ? tr('report.btn.publish-link-again-title', { date: fmtDate(aPublishLink.dataset.posted) }) : '',
+      confirmLabel: aPublishLink.dataset.posted
+        ? tr('report.btn.publish-link-again') : tr('report.btn.publish-link'),
+      danger: false,
+    });
+    if (!ok) return;
+    try {
+      /* La synchro part avant la publication : le bouton peut donc mettre quelques secondes.
+         `busy` le dit — sans quoi on cliquerait une seconde fois, et deux commentaires
+         partiraient pour un seul geste. */
+      await busy(aPublishLink, () => api(`/mrs/${id}/publish-review-link`, { method: 'POST' }));
+      toast(tr('toast.review.link-published', { forge }));
+      await openReport(id);      // le commentaire doit apparaître dans le fil, en dessous
     } catch (e) { toast(e.message, true); }
   });
 
@@ -6199,7 +6241,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'verif_auto_max', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment',
-  'stale_mr_days', 'auto_runner',
+  'stale_mr_days', 'auto_runner', 'auto_post_review_link', 'review_link_template',
   /* Dictée vocale (whisper.md §6.3). `dictation_silence_ms` et `dictation_idle_minutes` sont
      ici comme `retention_days` : envoyés par cette liste, mais BORNÉS côté serveur, où ils
      n'appartiennent pas à `ALLOWED`. La case `dictation_final_pass`, elle, est traitée à
@@ -6285,17 +6327,35 @@ function syncReviewAutoMax() {
    reviews automatiques, lui, reste visible parce qu'il porte une valeur qu'on veut relire ;
    celui-ci n'est qu'un oui/non, et une case inerte dans un écran de neuf réglages se lit
    comme un réglage qu'on aurait oublié de cocher. */
+/* Y a-t-il un dépôt de données ? Relu à chaque `loadConfig` : sans lui, « publier le lien »
+   n'aurait nulle part où pointer, et la ligne ne s'affiche pas. */
+let depotDonneesConfigure = false;
 function syncAutoPostBlocking() {
   const f = $('#configForm');
   const c = f && f.auto_post_review;
   const rang = $('#autoPostBlockingRow');
-  if (!c || !rang) return;
-  rang.hidden = !c.checked;
+  if (!c) return;
+  if (rang) rang.hidden = !c.checked;
+  const rangLien = $('#autoPostLinkRow');
+  if (rangLien) rangLien.hidden = !c.checked || !depotDonneesConfigure;
+  /* Le gabarit ne sert que si un lien part : il suit la case « publier le lien », pas seulement
+     la case du dessus. Un champ de texte inutile coûte plus cher qu'une case inutile.
+     MAIS UN CHAMP REMPLI RESTE VISIBLE, quoi qu'en disent les cases : le serveur refuse un
+     gabarit sans `{url}`, et ce refus arrête l'enregistrement de TOUT le formulaire. Caché, il
+     bloquerait les réglages en parlant d'un champ que personne ne peut plus atteindre. */
+  const rangGabarit = $('#reviewLinkTemplateRow');
+  const lien = f && f.auto_post_review_link;
+  const gabaritRempli = !!(f && f.review_link_template && String(f.review_link_template.value || '').trim());
+  if (rangGabarit) {
+    rangGabarit.hidden = !gabaritRempli
+      && (!c.checked || !depotDonneesConfigure || !(lien && lien.checked));
+  }
 }
 document.addEventListener('change', (e) => {
   if (!e.target) return;
   if (e.target.name === 'auto_review_new') syncReviewAutoMax();
-  if (e.target.name === 'auto_post_review') syncAutoPostBlocking();
+  if (e.target.name === 'auto_post_review' || e.target.name === 'auto_post_review_link'
+    || e.target.name === 'review_link_template') syncAutoPostBlocking();
 });
 
 /* ---------- DONNÉES PARTAGÉES ----------
@@ -6635,6 +6695,17 @@ async function loadConfig() {
   // Publication automatique : défaut DÉSACTIVÉ — le test est donc `=== '1'`, pas `!== '0'`.
   if (f.auto_post_review) f.auto_post_review.checked = c.auto_post_review === '1';
   if (f.auto_post_blocking_only) f.auto_post_blocking_only.checked = c.auto_post_blocking_only === '1';
+  if (f.auto_post_review_link) f.auto_post_review_link.checked = c.auto_post_review_link === '1';
+  /* CE QUI PARTIRA SI ON NE TOUCHE À RIEN. Un champ vide avec une aide qui dit « laissez vide
+     pour le message par défaut » oblige à publier une fois pour savoir de quoi il s'agit. */
+  if (f.review_link_template) {
+    f.review_link_template.placeholder = tr('mr.link.comment-note', {
+      url: 'https://…/reviews/…/rapport.md', v: 2, note: '8,4',
+    });
+  }
+  /* La ligne « publier le lien » n'a de sens qu'avec un dépôt de données : on retient ici ce
+     que le serveur vient de dire, `syncAutoPostBlocking` s'en sert à chaque changement. */
+  depotDonneesConfigure = !!String(c.data_repo_url || '').trim();
   if (f.auto_review_new) f.auto_review_new.checked = c.auto_review_new === '1';
   if (f.auto_rereview_stale) f.auto_rereview_stale.checked = c.auto_rereview_stale === '1';
   /* L'exécutant des automatismes : une LISTE, remplie des exécutants connus, et cachée en

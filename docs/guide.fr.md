@@ -165,6 +165,29 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
   façon de rendre la review à l'auteur sans la recopier. Une confirmation le rappelle : ce qui part est
   lu par toute l'équipe. Une fois publié, le bouton devient **`Republier`** et porte la date du premier
   envoi, pour qu'on ne poste pas deux fois le même texte en croyant à un échec.
+- **Publier le LIEN du rapport, plutôt que le rapport** — seulement quand l'équipe partage un
+  **dépôt de données**. Six cents lignes recopiées en commentaire, personne ne les lit, et la passe
+  suivante en repose six cents. Le rapport est déjà dans le dépôt de l'équipe, en Markdown rendu par
+  la forge : le bouton **`Publier le LIEN du rapport`** poste un commentaire de trois lignes qui
+  pointe son adresse, avec la note et le numéro de passe. La merge request reste lisible et le
+  rapport garde un seul exemplaire, que tout le monde relit au même endroit.
+  **La synchro part d'abord** : publier un lien vers un fichier resté sur ce poste enverrait
+  l'équipe sur un 404, ce qui est pire qu'un commentaire absent — on croirait le travail fait. Si le
+  dépôt ne peut pas être envoyé (hors ligne, rebase en cours), **rien n'est publié** et l'écran dit
+  pourquoi. Un dépôt de données posé sur un **chemin local** (disque partagé, clé USB) n'a pas
+  d'adresse web : le bouton le dit plutôt que d'inventer un lien.
+  **La publication automatique sait le faire aussi** : sous la case « Publier automatiquement le
+  rapport… », une seconde — **« Publier le lien vers le rapport, pas le rapport »** — change ce
+  qui part à chaque passe. Elle ne décide pas SI l'auteur est prévenu, seulement la FORME ; et si
+  le lien ne peut pas être fait, **c'est le rapport qui part**, le journal du job disant pourquoi.
+  Elle n'apparaît que si un dépôt de données est configuré.
+  **Le texte du commentaire s'écrit** juste en dessous — un **gabarit d'équipe** : tout le monde
+  poste le même. Laissé vide, c'est le message livré, qui suit la langue de l'interface (le champ
+  le montre en filigrane, plutôt que de le faire deviner). Rempli, il est pris au mot, avec
+  `{url}` (obligatoire), `{note}` — vide si la passe n'en a pas —, `{v}` le numéro de passe,
+  `{iid}`, `{project}` et `{title}` ; une variable inconnue est laissée telle quelle. Un gabarit
+  **sans `{url}` est refusé à l'enregistrement**, pas à la publication : il annoncerait un rapport
+  sans dire où il est.
   Le réglage **Réglages → Merge Request → « Publier automatiquement le rapport de review sur la MR »**
   le fait **à la fin de chaque review**. Il est **décoché par défaut** : écrire chez les autres est une
   décision. S'il est coché et que la forge refuse, la review n'est **pas** perdue pour autant — le
@@ -2687,6 +2710,15 @@ Dans les deux cas le refus est immédiat et dit laquelle des deux raisons s'appl
 configurée. En **mode démo**, en revanche, aucune commande n'est lancée : le verdict est simulé.
 
 ## Configuration (.env)
+
+**`npx mergerie` en écrit un au premier lancement**, dans le dossier d'où on le lance : il cherche
+`claude` puis `copilot` sur la machine (dans le `PATH`, puis là où les installateurs les posent) et
+pointe `COPILOT_BIN` sur celui qu'il trouve, avec les arguments de cet agent — `--dangerously-skip-permissions`
+pour claude, `--yolo --model claude-sonnet-5` pour copilot. Sans ce fichier, `COPILOT_BIN` vaut
+« copilot » : qui a installé Claude Code n'a pas ce binaire, l'outil bascule en **dry-run** et
+chaque review rend un rapport factice — il « marche » et ne sert à rien. Le fichier est écrit une
+seule fois, en `600`, jamais réécrit ensuite (il finira par porter des jetons), et la commande dit
+ce qu'elle a créé. `npx mergerie demo` n'en pose pas : elle promet de ne rien laisser derrière elle.
 
 Un fichier `.env` est chargé automatiquement au démarrage : **celui du dossier d'où la commande
 est lancée** — la racine du clone avec `npm start`, le répertoire courant avec `npx mergerie`

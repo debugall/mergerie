@@ -20,7 +20,9 @@ const { execFileSync } = require('node:child_process');
 
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { startApp, lancerNavigateur, navigateurDispo, attendreServeur } = require('./helpers/app');
+const {
+  startApp, lancerNavigateur, navigateurDispo, attendreServeur, makeRemoteRepo,
+} = require('./helpers/app');
 
 const { dispo } = navigateurDispo();
 const ATTENTE = 20000;
@@ -380,8 +382,9 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
     /* « Synchroniser » n'envoie que CE QUI A CHANGÉ : la file des écritures décide, et elle est
        vide quand rien n'a bougé. Un dépôt vidé à la main ne se rattrapait donc pas — et le seul
        chemin, « Cloner / rattacher », ne dit pas dans son nom qu'il ré-exporte.
-       CE TEST VIENT EN DERNIER : il vide le dépôt d'équipe, donc il emporte le décor des
-       autres. (Le garde-fou anti-vidage, lui, a son épreuve à l'échelle dans `unit-datasync` :
+       CE TEST VIENT APRÈS TOUS CEUX QUI DÉPENDENT DU DÉCOR : il vide le dépôt d'équipe. Le
+       seul qui le suit apporte le sien — dépôt, merge request et review —, et éprouve au
+       passage qu'on repart proprement d'un dépôt tout juste ré-envoyé. (Le garde-fou anti-vidage, lui, a son épreuve à l'échelle dans `unit-datasync` :
        sous dix documents, une suppression reste une suppression.) */
     const listing = () => execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' });
     assert.match(listing(), /notes\/deploiement-prod\.md/, 'on part d’un dépôt pourvu');
@@ -425,4 +428,162 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
     assert.match(listing(), /settings\.json/, 'les réglages d’équipe compris');
   });
 
+
+
+  /* LE LIEN DU RAPPORT, PLUTÔT QUE LE RAPPORT. (Placé après le vidage ci-dessus : il monte son
+     propre décor, il ne dépend de celui de personne.) Six cents lignes recopiées en commentaire de
+     merge request, personne ne les lit — et la passe suivante en repose six cents. Le rapport
+     est déjà dans le dépôt de données : on en publie l'ADRESSE.
+     Ce qui est éprouvé, c'est que le lien MÈNE QUELQUE PART : on relit le fichier dans le dépôt
+     NU, celui qui joue la forge. Un lien publié à toute l'équipe et qui rend 404 serait pire
+     qu'un commentaire absent — on croirait le travail fait. */
+  test('« Publier le lien du rapport » poste une adresse, et le fichier est vraiment dans le dépôt', async () => {
+    /* UN VRAI DÉPÔT : la review clone la branche pour en lire le diff. Une URL inventée ferait
+       échouer le job, et le test attendrait une version qui ne viendrait jamais. */
+    const depot = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'remote-lien-')));
+    const { body: repo } = await app.api('POST', '/api/repos', { url: depot.url, project: 'eq/lien' });
+    assert.ok(repo && repo.id);
+    app.state.mrs['eq/lien'] = [{
+      iid: 77, title: 'Publier le lien du rapport', state: 'opened',
+      source_branch: depot.branch, target_branch: 'main',
+      web_url: 'https://gitlab.test/eq/lien/-/merge_requests/77',
+      sha: depot.branchSha, created_at: new Date().toISOString(), author: { name: 'Alice' },
+      diff_refs: { base_sha: depot.mainSha, start_sha: depot.mainSha, head_sha: depot.branchSha },
+    }];
+    app.state.changes['eq/lien!77'] = [{ new_path: 'src/app.js', diff: '@@\n+une ligne\n' }];
+    await app.api('POST', '/api/discover');
+    const mr = (await app.api('GET', '/api/mrs')).body.find((m) => m.iid === 77);
+    assert.ok(mr, 'la merge request de ce test doit exister');
+
+    await app.api('POST', `/api/mrs/${mr.id}/review`);
+    await attendreServeur(async () => {
+      const v = await app.api('GET', `/api/mrs/${mr.id}/versions`);
+      return Array.isArray(v.body) && v.body.length > 0;
+    }, 'la review a produit une version', 60000);
+
+    /* LE DÉPÔT DE DONNÉES EST UN CHEMIN LOCAL ICI — un dépôt nu dans un dossier temporaire :
+       c'est ce qui permet au test de relire son contenu. Un chemin n'a pas d'adresse web, et
+       l'application le dit plutôt que d'inventer un lien. On lui donne donc l'adresse qu'aurait
+       le même dépôt sur une forge, le temps de cette épreuve : `origin` du clone ne bouge pas
+       (il est posé dans sa config git au rattachement), donc la synchro continue de pousser
+       dans le dépôt nu — et c'est bien lui qu'on relit à la fin. */
+    const urlLocale = (await app.api('GET', '/api/config')).body.data_repo_url;
+    await app.api('PUT', '/api/config', { data_repo_url: 'https://gitlab.test/eq/mergerie-data.git' });
+
+    // …et on passe par l'ÉCRAN : c'est le bouton qu'on éprouve, pas la route.
+    await page.goto(app.base);
+    await page.click('nav button[data-tab="review"]');
+    await page.click('[data-seg="reviewed"]');
+    await page.waitForSelector('#reportList .card', { timeout: ATTENTE });
+    await page.evaluate((id) => window.openReport(id, { force: true }), mr.id);
+    await page.waitForSelector('#aMore', { timeout: ATTENTE });
+    await page.click('#aMore');
+    await page.waitForSelector('#aPublishLink', { timeout: ATTENTE });
+    await page.click('#aPublishLink');
+    await page.waitForSelector('#confirmModal:not([hidden])', { timeout: ATTENTE });
+    /* On attend la RÉPONSE, pas un toast : un toast s'efface au bout de quelques secondes et
+       un échec ne laisserait qu'un « délai dépassé » muet. Le corps de la réponse, lui, porte
+       la raison du refus — c'est elle qu'on veut lire dans l'échec. */
+    const [reponse] = await Promise.all([
+      page.waitForResponse((r) => /publish-review-link/.test(r.url()), { timeout: 60000 }),
+      page.click('#confirmOk'),
+    ]);
+    assert.equal(reponse.status(), 200, `la publication doit passer — le serveur a dit : ${await reponse.text()}`);
+
+    // Le commentaire parti est celui que le serveur a enregistré : on le relit en base.
+    const dernier = () => app.db
+      .prepare('SELECT body FROM comment_log WHERE mr_id = ? ORDER BY id DESC LIMIT 1').get(mr.id);
+    await attendreServeur(async () => !!dernier(), 'le commentaire est enregistré', 20000);
+    const poste = dernier();
+    const lien = (String(poste.body).match(/https?:\/\/\S+/) || [])[0];
+    assert.ok(lien, `le commentaire porte une adresse : ${poste.body}`);
+    assert.match(lien, /\/-\/blob\/main\/reviews\//, `une adresse de fichier du dépôt de données : ${lien}`);
+    assert.ok(!/glpat|oauth2|:\/\/[^/]*@/.test(lien), `et aucun secret dedans : ${lien}`);
+
+    /* LE FICHIER EXISTE-T-IL LÀ-BAS ? On extrait le chemin de l'URL et on le relit dans le
+       dépôt NU : c'est la seule preuve que le lien ne mène pas à un 404. */
+    const chemin = decodeURI(lien.split('/-/blob/main/')[1]);
+    const contenu = execFileSync('git', ['-C', nu, 'show', `main:${chemin}`], { encoding: 'utf8' });
+    assert.ok(contenu.trim().length > 0, 'le rapport pointé par le lien est bien dans le dépôt');
+
+    /* LE LIEN PORTE L'UID DE LA PASSE — le fichier du dépôt s'appelle `<uid>.md`. C'est là-dessus
+       que repose « déjà publié ? » : sans colonne de plus, on cherche cet uid dans les
+       commentaires enregistrés. Le jour où le chemin ne portera plus l'uid, ce test tombe, et
+       c'est exactement là qu'il faut le savoir. */
+    const uid = app.db.prepare('SELECT uid FROM review_version WHERE mr_id = ? ORDER BY version DESC LIMIT 1').get(mr.id).uid;
+    assert.ok(poste.body.includes(uid), `le commentaire porte l’uid de la passe (${uid})`);
+
+    /* ET LE BOUTON LE DIT MAINTENANT. La date est lue dans les commentaires, qui voyagent : un
+       collègue qui a publié avant nous doit nous arrêter aussi. */
+    await page.evaluate((id) => window.openReport(id, { force: true }), mr.id);
+    await page.waitForSelector('#aMore', { timeout: ATTENTE });
+    await page.click('#aMore');
+    await page.waitForSelector('#aPublishLink', { timeout: ATTENTE });
+    const bouton = page.locator('#aPublishLink');
+    assert.ok(await bouton.getAttribute('data-posted'), 'le bouton porte la date du premier envoi');
+    assert.match(await bouton.textContent(), /Republier/,
+      'republier n’est pas une correction : ça pose un SECOND lien vers le même rapport');
+    await page.keyboard.press('Escape');
+
+    await app.api('PUT', '/api/config', { data_repo_url: urlLocale });   // les tests suivants retrouvent leur dépôt
+  });
+
+  /* LA PUBLICATION AUTOMATIQUE PEUT ENVOYER LE LIEN. Le réglage ne décide pas SI l'auteur est
+     prévenu — c'est la case du dessus —, seulement de la FORME : trois lignes qui pointent le
+     rapport, plutôt que six cents recopiées à chaque passe.
+     Et quand le lien ne peut pas être fait, c'est le RAPPORT qui part : la promesse « préviens
+     l'auteur » est tenue, et le journal dit pourquoi la forme a changé. Se taire laisserait une
+     review sans destinataire, ce que personne n'a demandé en cochant la case. */
+  test('la publication automatique envoie le lien — et retombe sur le rapport s’il n’y a pas d’adresse', async () => {
+    const mr = (await app.api('GET', '/api/mrs')).body.find((m) => m.iid === 77);
+    assert.ok(mr, 'la merge request du test précédent');
+    const urlLocale = (await app.api('GET', '/api/config')).body.data_repo_url;
+    const compter = () => app.db.prepare('SELECT COUNT(*) n FROM comment_log WHERE mr_id = ?').get(mr.id).n;
+    const dernier = () => app.db.prepare('SELECT body FROM comment_log WHERE mr_id = ? ORDER BY id DESC LIMIT 1').get(mr.id).body;
+
+    // 1. dépôt de données avec une adresse web : c'est le LIEN qui part
+    await app.api('PUT', '/api/config', {
+      auto_post_review: '1', auto_post_review_link: '1',
+      data_repo_url: 'https://gitlab.test/eq/mergerie-data.git',
+    });
+    let avant = compter();
+    await app.api('POST', `/api/mrs/${mr.id}/rereview`);
+    await attendreServeur(async () => compter() > avant, 'la publication automatique est partie', 90000);
+    const parLien = dernier();
+    assert.match(parLien, /https:\/\/gitlab\.test\/eq\/mergerie-data\/-\/blob\/main\/reviews\//,
+      `c’est l’adresse du rapport qui est postée : ${parLien.slice(0, 200)}`);
+    assert.ok(parLien.length < 500, `trois lignes, pas six cents (${parLien.length} caractères)`);
+
+    // 2. dépôt sur un chemin local : pas d'adresse web, donc c'est le RAPPORT qui part
+    await app.api('PUT', '/api/config', { data_repo_url: urlLocale });
+    avant = compter();
+    await app.api('POST', `/api/mrs/${mr.id}/rereview`);
+    await attendreServeur(async () => compter() > avant, 'la publication automatique est repartie', 90000);
+    const parRapport = dernier();
+    assert.doesNotMatch(parRapport, /\/-\/blob\//, 'sans adresse web, il n’y a pas de lien à poster');
+    assert.ok(parRapport.length > 200, `c’est le rapport lui-même qui part (${parRapport.length} caractères)`);
+
+    await app.api('PUT', '/api/config', { auto_post_review: '0', auto_post_review_link: '0' });
+  });
+
+  /* LE TEXTE EST CELUI DE L'ÉQUIPE. Le gabarit n'est pas une préférence d'affichage : c'est ce
+     que des collègues lisent sur leur merge request. On éprouve donc qu'il part MOT POUR MOT,
+     variables remplacées — pas qu'il est enregistré, ce que prouve déjà le formulaire. */
+  test('le gabarit de l’équipe est le texte qui part sur la merge request', async () => {
+    const mr = (await app.api('GET', '/api/mrs')).body.find((m) => m.iid === 77);
+    const urlLocale = (await app.api('GET', '/api/config')).body.data_repo_url;
+    await app.api('PUT', '/api/config', {
+      data_repo_url: 'https://gitlab.test/eq/mergerie-data.git',
+      review_link_template: 'Review de !{iid} ({project}) — rapport : {url} — note {note}/10',
+    });
+
+    const r = await app.api('POST', `/api/mrs/${mr.id}/publish-review-link`);
+    assert.equal(r.status, 200, `la publication doit passer : ${r.text}`);
+    const corps = app.db.prepare('SELECT body FROM comment_log WHERE mr_id = ? ORDER BY id DESC LIMIT 1').get(mr.id).body;
+    assert.match(corps, /^Review de !77 \(eq\/lien\) — rapport : https:\/\/gitlab\.test\/eq\/mergerie-data\/-\/blob\/main\/reviews\//,
+      `c’est le texte de l’équipe, pas le message livré : ${corps}`);
+    assert.doesNotMatch(corps, /dépôt de données de l’équipe/, 'le message livré ne s’y ajoute pas');
+
+    await app.api('PUT', '/api/config', { data_repo_url: urlLocale, review_link_template: '' });
+  });
 });
