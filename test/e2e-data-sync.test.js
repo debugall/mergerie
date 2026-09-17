@@ -586,4 +586,44 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
 
     await app.api('PUT', '/api/config', { data_repo_url: urlLocale, review_link_template: '' });
   });
+
+  /* L'EXÉCUTANT DES AUTOMATISMES OFFRE « L'AUTEUR ». Désigner un poste fait payer une personne
+     pour toute l'équipe et suppose qu'elle soit allumée ; « chacun les siennes » met l'abonnement
+     de chacun sur son propre travail. C'est un choix de liste, donc il doit être DANS la liste —
+     et s'enregistrer depuis le formulaire, pas seulement par l'API. */
+  test('« l’auteur de la merge request » est proposé comme exécutant, et s’enregistre', async () => {
+    await page.click('nav button[data-tab="admin"]');
+    await page.click('button[data-sub="mr"]');
+    await page.waitForFunction(() => document.querySelector('#sub-mr').classList.contains('active'),
+      null, { timeout: ATTENTE });
+    await page.waitForFunction(() => {
+      const r = document.querySelector('#autoRunnerRow');
+      return r && !r.hidden && document.querySelector('#autoRunnerSelect').options.length > 1;
+    }, null, { timeout: ATTENTE });
+
+    const options = await page.locator('#autoRunnerSelect option').evaluateAll(
+      (els) => els.map((e) => ({ v: e.value, t: e.textContent })));
+    assert.ok(options.some((o) => o.v === ''), '« Personne » reste le premier choix — le défaut sûr');
+    const auteur = options.find((o) => o.v === '@auteur');
+    assert.ok(auteur, `« l’auteur » est dans la liste : ${JSON.stringify(options)}`);
+    assert.match(auteur.t, /auteur|author/i, 'et il se lit, il ne se devine pas');
+    assert.equal(options.filter((o) => o.v === '@auteur').length, 1,
+      'une seule fois : la sentinelle ne doit pas aussi apparaître comme un nom de poste');
+
+    await page.selectOption('#autoRunnerSelect', '@auteur');
+    await page.locator('#sub-mr button[type="submit"][form="configForm"]').first().click();
+    await attendreServeur(async () => (await app.api('GET', '/api/config')).body.auto_runner === '@auteur',
+      'le choix arrive en base', ATTENTE);
+
+    // …et il revient sélectionné : ce qui est enregistré est aussi ce qui est relu.
+    await page.reload();
+    await page.click('nav button[data-tab="admin"]');
+    await page.click('button[data-sub="mr"]');
+    await page.waitForFunction(() => {
+      const sel = document.querySelector('#autoRunnerSelect');
+      return sel && sel.value === '@auteur';
+    }, null, { timeout: ATTENTE });
+
+    await app.api('PUT', '/api/config', { auto_runner: '' });
+  });
 });

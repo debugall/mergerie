@@ -16603,6 +16603,9 @@ async function partageActif() {
    liste des exécutants connus plutôt qu'une saisie libre, et le champ caché en mono-poste où la
    question ne se pose pas. L'avertissement n'apparaît que si une politique est cochée sans
    personne pour la faire tourner — c'est le seul cas où rien ne se passerait en silence. */
+/* La même sentinelle que le serveur (`AUTEUR_AUTO` dans `src/server.js`) : un poste ne peut pas
+   porter ce nom, `git config user.name` ne commence pas par une arobase. */
+const AUTEUR_AUTO = '@auteur';
 async function poserExecutantAuto(choisi) {
   const ligne = $('#autoRunnerRow');
   if (!ligne) return;
@@ -16610,8 +16613,15 @@ async function poserExecutantAuto(choisi) {
   const avert = $('#autoRunnerNone');
   if (ligne.hidden) { if (avert) avert.hidden = true; return; }
   const sel = $('#autoRunnerSelect');
-  const liste = [...new Set([...(moiCache.runners || []), choisi].filter(Boolean))].sort();
+  /* « L'AUTEUR » N'EST PAS UNE MACHINE : la sentinelle ne doit pas se retrouver dans la liste
+     des postes connus, où elle s'afficherait comme un nom de collègue. */
+  const liste = [...new Set([...(moiCache.runners || []), choisi]
+    .filter(Boolean).filter((n) => n !== AUTEUR_AUTO))].sort();
   sel.innerHTML = `<option value="">${esc(tr('agents.runner.nobody'))}</option>`
+    /* CHACUN POUR SES MERGE REQUESTS. L'autre réponse raisonnable à « qui paie les appels ? » :
+       l'abonnement de chacun sert son propre travail, et personne n'attend qu'un poste désigné
+       soit allumé. */
+    + `<option value="${esc(AUTEUR_AUTO)}"${choisi === AUTEUR_AUTO ? ' selected' : ''}>${esc(tr('agents.runner.author'))}</option>`
     + liste.map((n) => `<option value="${esc(n)}"${n === choisi ? ' selected' : ''}>`
       + `${esc(n === moiCache.name ? tr('agents.runner.me', { name: n }) : n)}</option>`).join('');
   sel.value = choisi || '';

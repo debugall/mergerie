@@ -2862,6 +2862,14 @@ l'équipe, mais chaque poste a sa propre file : sans exécutant désigné, deux 
 lanceraient deux fois la même review — deux appels d'IA facturés, et deux commentaires sur la
 merge request. *Réglages → Merge Request* demande donc qui les fait tourner ; sans personne, elles
 ne tournent nulle part.
+La liste offre deux réponses. Un **poste** : une personne paie les appels de toute l'équipe, et
+rien ne tourne quand sa machine est éteinte. Ou **« l'auteur de la merge request »** : chaque poste
+ne prend que les merge requests dont le compte de la forge est le SIEN, avec son abonnement, et
+laisse celles du voisin — la décision n'est plus globale, elle se prend merge request par merge
+request. Le compte est celui du jeton de la forge concernée, comparé à l'auteur sur le **pseudo**
+comme sur le **nom affiché**, GitLab et GitHub ne stockant pas le même. Si ce compte ne peut pas
+être connu (jeton absent, forge injoignable), le poste ne lance **rien** et le dit dans le journal :
+mieux vaut rien que la même review sur tous les postes.
 
 **Les sessions se partagent UNE PAR UNE, et pas par défaut.** Une session de codage, une
 exploration, une question libre : ce qu'elles portent n'est pas un produit mais la façon dont on

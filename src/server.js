@@ -5311,7 +5311,8 @@ async function servicesPretsPour(verifier, onLog = () => {}) {
 async function lancerVerificationsAuto(mrIds, { colonne = 'auto_on_mr' } = {}) {
   const bilan = { lancees: 0, ignorees: 0, plafonnees: 0, services_arretes: 0 };
   if (!Array.isArray(mrIds) || !mrIds.length) return bilan;
-  if (!autoAMoi('vérification automatique')) return bilan;
+  const miennes = await mrsAMoi('vérification automatique', mrIds);
+  if (!miennes.length) return bilan;
   const plafond = plafondVerifAuto();
   /* Un vérificateur hérité de la famille « script » ne part pas tout seul : `creerVerification`
      le refuserait, et une exception par merge request découverte transformerait la découverte en
@@ -5322,7 +5323,7 @@ async function lancerVerificationsAuto(mrIds, { colonne = 'auto_on_mr' } = {}) {
   if (herites) console.log(`[verif-auto] ${herites} vérificateur(s) « script » ignoré(s) : famille retirée, à réécrire en liste de commandes`);
   if (!autos.length) return bilan;
 
-  for (const mrId of mrIds) {
+  for (const mrId of miennes) {
     const mr = mrById(Number(mrId));
     if (!mr) continue;
     // Ceux qui couvrent CE dépôt. Plusieurs peuvent le couvrir : ils partent tous.
@@ -5411,36 +5412,85 @@ function lancerLotReview(mrIds, { kind, opts = {}, etiquette }) {
  * sur la forge. Le spec avait vu le problème pour les agents planifiés et pas pour les
  * politiques, qui sont pourtant le même cas.
  * En mono-poste, rien ne change : sans dépôt de données, la question ne se pose pas. */
+/* « L'AUTEUR » N'EST PAS UNE MACHINE. Désigner un poste répond à « qui paie les appels d'IA
+   de toute l'équipe ? » par un nom ; y répondre par CHACUN POUR SES MERGE REQUESTS est l'autre
+   réponse raisonnable, et souvent la plus juste — l'abonnement de chacun sert son propre
+   travail, et personne n'attend que l'exécutant désigné soit allumé. La valeur est une sentinelle,
+   pas un nom : un poste ne peut pas s'appeler comme ça (`identite.nom()` vient de `git config
+   user.name`, qui ne contient pas d'arobase en tête par convention). */
+const AUTEUR_AUTO = '@auteur';
+
 function executantAuto() {
-  if (!datasync.estConfigure()) return { agit: true, qui: null };
+  if (!datasync.estConfigure()) return { mode: 'tous', qui: null };   // mono-poste : rien à répartir
   const qui = String(getConfig().auto_runner || '').trim();
-  if (!qui) return { agit: false, qui: null };        // personne désigné : personne n'agit
-  return { agit: qui === (identite.nom() || ''), qui };
+  if (!qui) return { mode: 'personne', qui: null };                   // personne désigné : personne n'agit
+  if (qui === AUTEUR_AUTO) return { mode: 'auteur', qui: AUTEUR_AUTO };
+  return { mode: qui === (identite.nom() || '') ? 'tous' : 'personne', qui };
 }
 let dernierRefusAuto = 0;
-function autoAMoi(quoi) {
-  const e = executantAuto();
-  if (e.agit) return true;
-  /* On le DIT, mais pas cent fois : une ligne par minute suffit à comprendre pourquoi rien ne
-     part, sans noyer le journal à chaque découverte. */
-  if (Date.now() - dernierRefusAuto > 60000) {
-    dernierRefusAuto = Date.now();
-    console.log(e.qui
-      ? `[auto] ${quoi} : exécutant = ${e.qui}, ce poste n'agit pas`
-      : `[auto] ${quoi} : aucun exécutant désigné (Réglages → Merge Request), personne n'agit`);
-  }
-  return false;
+/* On le DIT, mais pas cent fois : une ligne par minute suffit à comprendre pourquoi rien ne
+   part, sans noyer le journal à chaque découverte. */
+function direRefusAuto(message) {
+  if (Date.now() - dernierRefusAuto <= 60000) return;
+  dernierRefusAuto = Date.now();
+  console.log(`[auto] ${message}`);
 }
 
-function lancerReviewsAuto(mrIds) {
+/* EST-ELLE DE MOI ? La forge stocke tantôt le pseudo, tantôt le nom affiché — GitLab pose
+   `author.name`, GitHub le `login` — et une installation peut suivre les deux forges. On
+   reconnaît donc les deux formes, comme le filtre « mes merge requests » de l'écran. Le compte
+   vient du JETON de la forge de cette merge request : c'est la seule définition de « moi » qui
+   ne dépende d'aucune convention de nommage. */
+async function mrDeMoi(mr) {
+  const auteur = String(mr.author || '').trim().toLowerCase();
+  if (!auteur) return false;
+  const moi = await forgeIdentite(forge.forgeOf(mr));
+  const noms = [moi.username, moi.name].filter(Boolean).map((v) => String(v).trim().toLowerCase());
+  if (!noms.length) return null;      // compte inconnu : on ne peut pas trancher (≠ « pas de moi »)
+  return noms.includes(auteur);
+}
+
+/* LES MERGE REQUESTS SUR LESQUELLES CE POSTE DOIT AGIR. Remplace le « oui/non » global : en mode
+   « l'auteur », la question n'a de réponse que merge request par merge request. */
+async function mrsAMoi(quoi, mrIds) {
+  const liste = (Array.isArray(mrIds) ? mrIds : []).filter((id) => id != null);
+  const e = executantAuto();
+  if (e.mode === 'tous') return liste;
+  if (e.mode === 'personne') {
+    direRefusAuto(e.qui
+      ? `${quoi} : exécutant = ${e.qui}, ce poste n'agit pas`
+      : `${quoi} : aucun exécutant désigné (Réglages → Merge Request), personne n'agit`);
+    return [];
+  }
+  const gardees = [];
+  let inconnu = false;
+  for (const id of liste) {
+    const mr = db.prepare(`SELECT mr.author AS author, repo.forge AS forge
+      FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?`).get(Number(id));
+    if (!mr) continue;
+    const mien = await mrDeMoi(mr);
+    if (mien === null) { inconnu = true; continue; }
+    if (mien) gardees.push(id);
+  }
+  /* POURQUOI RIEN NE PART. Un compte de forge injoignable, et « chacun ses MR » ne peut plus
+     rien trancher : mieux vaut ne rien lancer et le dire que lancer tout chez tout le monde. */
+  if (inconnu) direRefusAuto(`${quoi} : compte de la forge inconnu (jeton absent ou forge injoignable) — ce poste ne sait pas quelles merge requests sont les siennes`);
+  else if (gardees.length < liste.length) {
+    direRefusAuto(`${quoi} : ${liste.length - gardees.length} merge request(s) d'un autre auteur — leur auteur s'en occupe`);
+  }
+  return gardees;
+}
+
+async function lancerReviewsAuto(mrIds) {
   if (getConfig().auto_review_new !== '1') return { lancees: 0, plafonnees: 0 };
-  if (!autoAMoi('review automatique')) return { lancees: 0, plafonnees: 0 };
+  const miennes = await mrsAMoi('review automatique', mrIds);
+  if (!miennes.length) return { lancees: 0, plafonnees: 0 };
   /* UN BROUILLON N'EST PAS PRÊT À ÊTRE RELU. « Draft » / « WIP » veut dire « je n'ai pas fini » :
      la review automatique y dépensait un appel IA, produisait un rapport sur du travail en
      cours, et ce rapport se périmait au commit suivant. Le bouton « Reviewer », lui, reste
      disponible — un brouillon qu'on veut relire quand même est une décision, pas un défaut. */
-  const prets = (mrIds || []).filter((id) => !(db.prepare('SELECT is_draft FROM mr WHERE id = ?').get(Number(id)) || {}).is_draft);
-  const sautes = (mrIds || []).length - prets.length;
+  const prets = miennes.filter((id) => !(db.prepare('SELECT is_draft FROM mr WHERE id = ?').get(Number(id)) || {}).is_draft);
+  const sautes = miennes.length - prets.length;
   const bilan = lancerLotReview(prets, { kind: 'review', etiquette: 'review-auto' });
   return sautes ? { ...bilan, brouillons: sautes } : bilan;
 }
@@ -5456,11 +5506,11 @@ function lancerReviewsAuto(mrIds) {
  * En INCRÉMENTAL, comme le bouton « Relancer (incrémental) » qu'elle remplace : l'IA ne voit
  * que le delta depuis le dernier SHA reviewé et reçoit le rapport précédent en contexte. Sur
  * une branche qui bouge dix fois par jour, la différence de coût n'est pas un détail. */
-function lancerRereviewsAuto(mrIds) {
+async function lancerRereviewsAuto(mrIds) {
   if (getConfig().auto_rereview_stale !== '1') return { lancees: 0, plafonnees: 0 };
-  if (!autoAMoi('re-review automatique')) return { lancees: 0, plafonnees: 0 };
-  if (!Array.isArray(mrIds) || !mrIds.length) return { lancees: 0, plafonnees: 0 };
-  const perimees = mrIds.filter((id) => db.prepare(`SELECT 1 FROM mr
+  const miennes = await mrsAMoi('re-review automatique', mrIds);
+  if (!miennes.length) return { lancees: 0, plafonnees: 0 };
+  const perimees = miennes.filter((id) => db.prepare(`SELECT 1 FROM mr
     JOIN review ON review.mr_id = mr.id
     WHERE mr.id = ? AND mr.status != 'done'
       AND mr.reviewed_sha IS NOT NULL AND mr.reviewed_sha != mr.current_sha`).get(Number(id)));
@@ -5474,8 +5524,8 @@ function lancerRereviewsAuto(mrIds) {
 async function decouvrir() {
   const result = await discoverAll();
   result.auto_verify = await lancerVerificationsAuto(result.new_mr_ids);
-  result.auto_review = lancerReviewsAuto(result.new_mr_ids);
-  result.auto_rereview = lancerRereviewsAuto(result.stale_mr_ids);
+  result.auto_review = await lancerReviewsAuto(result.new_mr_ids);
+  result.auto_rereview = await lancerRereviewsAuto(result.stale_mr_ids);
   /* Les MR dont le SHA vient de bouger : leur verdict est périmé. Deux appels séparés et deux
      plafonds distincts — une poussée massive sur des MR connues ne doit pas manger le budget
      des MR nouvelles, qui est le cas d'usage principal. */

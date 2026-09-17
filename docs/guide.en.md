@@ -2772,6 +2772,14 @@ variable on a test command is the natural home of a password.
 machine has its own queue: with nobody named, two machines left open would each run the same
 review — two billed AI calls, and two comments on the merge request. *Settings → Merge Request*
 asks who honours them; with nobody named, they run nowhere.
+The list offers two answers. A **machine**: one person pays the calls for the whole team, and
+nothing runs while that machine is off. Or **“the merge request's author”**: each machine takes
+only the merge requests whose forge account is its OWN, on its own subscription, and leaves its
+neighbour's alone — the decision is no longer global, it is taken merge request by merge request.
+The account is the one behind that forge's token, matched against the author on the **username**
+as well as the **display name**, since GitLab and GitHub do not store the same one. If that
+account cannot be known (no token, forge unreachable), the machine runs **nothing** and says so in
+the log: better nothing than the same review on every machine.
 
 **Sessions are shared ONE BY ONE, and not by default.** A coding session, an exploration, a free
 question: what they hold is not a product but the way you worked — the prompt as you typed it, the

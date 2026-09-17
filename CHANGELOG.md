@@ -13,6 +13,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **“The merge request's author” can be the runner of the automatic reviews.** Until now the
+  automatic reviews and verifications needed a **designated machine**: one person paid the AI
+  calls for the whole team, and nothing ran while that machine was off. The runner list now
+  offers a second answer — **the author** — and the decision stops being global: each machine
+  takes only the merge requests whose forge account is its own, on its own subscription, and
+  leaves its neighbour's alone. The account is the one behind that forge's token, matched
+  against the merge request's author on the username **or** the display name, since GitLab and
+  GitHub do not store the same one. If that account cannot be known (no token, forge
+  unreachable), the machine runs **nothing** and says why in the log — better nothing than the
+  same review twice on every machine.
+
 - **Publish the *link* to a review report, instead of the report.** Six hundred lines of report
   copied into a merge request comment: nobody reads them, and the next pass posts six hundred
   more. When your team shares a data repository, the report already lives there in Markdown —
