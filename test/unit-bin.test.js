@@ -145,6 +145,16 @@ describe('Le `.env` écrit au premier lancement', () => {
       'il pointe le binaire trouvé sur cette machine, pas « copilot » au hasard');
     assert.match(texte, /^COPILOT_ARGS=--dangerously-skip-permissions$/m,
       'et les arguments de CET agent : « --yolo » ferait échouer claude');
+    /* UNE OPTION QUI LAISSE UN AGENT AGIR SANS RIEN DEMANDER NE S'ÉCRIT PAS EN SILENCE. Elle est
+       nécessaire — en mode `-p`, personne ne peut répondre à une demande de permission —, et
+       c'est bien pour ça qu'elle doit être EXPLIQUÉE là où on la découvre : un fichier qu'on n'a
+       pas écrit qui porte « dangerously » sans un mot, c'est ce qui fait peur à raison. */
+    assert.match(texte, /NON-INTERACTIF/,
+      'le fichier dit POURQUOI l’agent agit sans demander');
+    assert.match(texte, /AUCUN MUR/,
+      'et il dit aussi ce que ça ne protège pas : l’agent tourne avec les droits de l’utilisateur');
+    assert.match(texte, /^# COPILOT_ARGS=--permission-mode acceptEdits$/m,
+      'la variante plus étroite est offerte, commentée, avec son prix écrit');
     assert.match(texte, /^COPILOT_DRY_RUN=0$/m, 'l’IA est vraiment appelée — c’est le nom exact de la variable');
     assert.match(texte, /^# GITLAB_INSECURE_TLS=1$/m,
       'les coupe-circuit TLS sont livrés COMMENTÉS : personne ne désactive TLS sans l’avoir voulu');

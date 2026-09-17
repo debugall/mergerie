@@ -98,6 +98,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   TLS escape hatches are written **commented out**: nobody should turn off certificate checking
   without meaning to. `npx mergerie demo` writes none — it promises to leave nothing behind.
 
+  **And it explains the option that lets the agent act without asking.**
+  `--dangerously-skip-permissions` (claude) and `--yolo` (copilot) are not a convenience: the
+  agent is called non-interactively (`-p`), so nobody is there to answer a permission prompt —
+  without them the work hangs, or everything that would prompt is denied **without a word** and
+  the report comes back poorer for no visible reason. A file you did not write carrying
+  “dangerously” and no explanation is exactly what should worry someone, so the generated `.env`
+  now says why it is there, what it does **not** protect (the agent runs with your rights; the
+  option builds no wall around the clone), and offers the narrower
+  `--permission-mode acceptEdits` as a commented line — with its price written next to it,
+  since under `-p` a denial is silent.
+
 - **The sync indicator no longer says “↑1” just after sending.** The counters were read to
   decide whether to push, and never again afterwards: a successful send left the footer showing
   one commit still waiting until the next round, up to thirty seconds later. They are refreshed

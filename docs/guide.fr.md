@@ -2720,6 +2720,17 @@ chaque review rend un rapport factice — il « marche » et ne sert à rien. Le
 seule fois, en `600`, jamais réécrit ensuite (il finira par porter des jetons), et la commande dit
 ce qu'elle a créé. `npx mergerie demo` n'en pose pas : elle promet de ne rien laisser derrière elle.
 
+Le fichier **explique l'option qui laisse l'agent agir sans rien demander**
+(`--dangerously-skip-permissions` pour claude, `--yolo` pour copilot). Elle est nécessaire : l'agent
+est appelé en **non-interactif**, personne n'est là pour répondre à une demande de permission — sans
+elle, le travail se bloque, ou tout ce qui demanderait est refusé **sans un mot** et le rapport revient
+plus pauvre sans raison visible. Le fichier dit aussi ce qu'elle **ne** protège **pas** : l'agent
+tourne avec tes droits, il travaille dans le clone du dépôt relu et c'est Mergerie qui fait le git,
+mais l'option ne construit aucun mur autour de ce dossier — et ce qu'il lit (un diff, un ticket) n'est
+pas écrit par toi. Une variante plus étroite est proposée en commentaire,
+`--permission-mode acceptEdits` : les éditions de fichiers sont acceptées, le reste est refusé — et
+refusé **en silence** sous `-p`, ce qui est le prix à connaître avant de la choisir.
+
 Un fichier `.env` est chargé automatiquement au démarrage : **celui du dossier d'où la commande
 est lancée** — la racine du clone avec `npm start`, le répertoire courant avec `npx mergerie`
 (reviens-y la fois suivante, sinon le fichier est ignoré sans un mot). Ce que le shell exporte

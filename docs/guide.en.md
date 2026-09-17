@@ -2632,6 +2632,17 @@ for claude, `--yolo --model claude-sonnet-5` for copilot. Without that file `COP
 written once, mode `600`, never rewritten afterwards (it will end up carrying tokens), and the
 command says what it created. `npx mergerie demo` writes none: it promises to leave nothing behind.
 
+The file also **explains the option that lets the agent act without asking**
+(`--dangerously-skip-permissions` for claude, `--yolo` for copilot). It is necessary: the agent is
+called **non-interactively**, so nobody is there to answer a permission prompt — without it the work
+hangs, or everything that would prompt is denied **without a word** and the report comes back poorer
+for no visible reason. The file also says what it does **not** protect: the agent runs with your
+rights, it works in the clone of the repository under review and it is Mergerie that runs git, but
+the option builds no wall around that folder — and what it reads (a diff, a ticket) is not written by
+you. A narrower variant is offered as a commented line, `--permission-mode acceptEdits`: file edits
+are accepted, everything else is refused — and refused **silently** under `-p`, which is the price to
+know before choosing it.
+
 A `.env` file is loaded automatically at startup: **the one in the folder the command is run
 from** — the root of the clone with `npm start`, the current directory with `npx mergerie`
 (come back to that folder next time, or the file is ignored without a word). What the shell

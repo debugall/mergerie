@@ -74,6 +74,22 @@ function contenuEnv(agent) {
 # La commande relit ce fichier à chaque démarrage depuis ici : reviens dans ce dossier, ou
 # emporte le fichier avec toi. La liste complète des variables est dans le guide.
 
+# ─────────────────────────────────────────────────────────────────────────────────────────
+#  L'AGENT IA, ET CE QU'IL A LE DROIT DE FAIRE — à lire une fois.
+#
+#  \`--dangerously-skip-permissions\` (claude) et \`--yolo\` (copilot) laissent l'agent agir sans
+#  rien demander. Ce n'est pas du confort : Mergerie l'appelle en NON-INTERACTIF
+#  (\`<bin> [args] -p "<prompt>"\`, sortie capturée), et personne n'est là pour répondre à une
+#  demande de permission. Sans ces options, le travail se bloque — ou, pire, tout ce qui
+#  demanderait est refusé SANS UN MOT et le rapport revient plus pauvre sans qu'on sache
+#  pourquoi.
+#
+#  CE QUE ÇA VEUT DIRE QUAND MÊME. L'agent tourne avec TES droits. Il travaille dans le clone
+#  du dépôt relu, et c'est Mergerie qui fait le git — commit, push —, pas lui ; mais l'option
+#  ne construit AUCUN MUR autour de ce dossier. Et ce qu'il lit — un diff, un ticket — n'est
+#  pas écrit par toi.
+# ─────────────────────────────────────────────────────────────────────────────────────────
+
 ${agent ? `# L'agent IA trouvé sur cette machine au moment de la création.
 COPILOT_BIN=${agent.chemin}
 COPILOT_ARGS=${agent.args}`
@@ -81,7 +97,14 @@ COPILOT_ARGS=${agent.args}`
 # faux, Mergerie tourne en dry-run : les rapports sont simulés, aucun appel n'est fait.
 COPILOT_BIN=claude
 COPILOT_ARGS=--dangerously-skip-permissions`}
-
+${(!agent || agent.bin === 'claude') ? `
+# PLUS ÉTROIT, SI TU PRÉFÈRES : REMPLACE la ligne ci-dessus par celle-ci (n'en laisse qu'une,
+# sinon la dernière lue gagne en silence). Les éditions de fichiers sont acceptées, le reste
+# est refusé.
+# Le prix est écrit plus haut : sous \`-p\`, un refus est MUET. Une review qui ne peut plus
+# lire l'historique git rend un rapport plus faible, et rien ne le signale.
+# COPILOT_ARGS=--permission-mode acceptEdits
+` : ''}
 # Pour l'autre agent, remplacer les deux lignes ci-dessus par :
 # COPILOT_BIN=${autre.bin}
 # COPILOT_ARGS=${autre.args}
