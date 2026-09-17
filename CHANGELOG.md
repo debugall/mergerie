@@ -75,6 +75,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A team setting added by a new version now reaches the machines that were already up to
+  date.** Hydration is incremental: it applies the files that changed since the last mark. So a
+  setting a new version understands was never read from a file an older one had already
+  hydrated — the file had no reason to change again, the mark had moved past it, and restarting
+  changed nothing. That is how “post the link, not the report” stayed unticked on a machine
+  whose `settings.json` carried it at “1”, with nothing broken and nothing to see. The tool now
+  keeps a **signature of what its code understands** — its version, and the list of shared
+  settings fields — and re-reads the repository **once** when that signature changes. It adds,
+  it never removes, and it does nothing at all when the signature has not moved, so an ordinary
+  start costs nothing.
+
 - **`npx mergerie` no longer starts on an agent you do not have.** Without a `.env`,
   `COPILOT_BIN` was “copilot”: whoever had installed Claude Code did not have that binary, the
   tool silently fell back to **dry-run**, and every review came back a fake report — it “worked”

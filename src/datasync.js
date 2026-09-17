@@ -215,6 +215,45 @@ function statut() {
   };
 }
 
+/* ---------- CE QUE CE CODE SAIT LIRE, et le rattrapage quand il en sait plus qu'hier ----------
+ *
+ * L'HYDRATATION EST INCRÉMENTALE : elle applique les fichiers qui ont changé depuis le dernier
+ * repère. Un champ ajouté aux réglages partagés n'est donc compris que pour les fichiers qui
+ * changeront APRÈS la montée de version — celui qui portait déjà la valeur a été lu par l'ancien
+ * code, qui l'a ignorée, et le repère est passé devant. Le fichier n'a plus à changer : le
+ * réglage reste donc éternellement à sa valeur locale, et redémarrer n'y change rien.
+ *
+ * C'est ce qui est arrivé à « publier le lien plutôt que le rapport » : `settings.json` le
+ * portait à « 1 » dans le dépôt, le poste voisin l'avait déjà hydraté avec la version d'avant, et
+ * la case restait décochée sans que rien ne soit en panne.
+ *
+ * On garde donc une SIGNATURE de ce que le code comprend — la version du paquet, et la liste des
+ * champs partagés de `config`, qui est la seule table dont les champs sont déclarés un par un.
+ * Quand elle change, on relit TOUT une fois. `hydraterTout()` est le bon outil : elle applique ce
+ * que les fichiers disent et n'enlève rien, ce qu'on veut exactement après une montée de version.
+ */
+const CLE_FORMAT = 'format_compris';
+function signatureFormat() {
+  const champs = ((registre.pour('config') || {}).partagees || []).slice().sort().join(',');
+  // eslint-disable-next-line global-require
+  const { version } = require('../package.json');
+  return `${version}|${champs}`;
+}
+
+/**
+ * À appeler UNE FOIS au démarrage, après avoir écoulé la file (les écritures locales en attente
+ * doivent être dans les fichiers avant qu'on les relise). Rend le bilan de l'hydratation si elle
+ * a eu lieu, `null` sinon.
+ */
+function rattraperFormat() {
+  if (!estConfigure() || !estDepot()) return null;
+  const attendue = signatureFormat();
+  if (etat.lire('data', 'repo', CLE_FORMAT) === attendue) return null;
+  const bilan = store.hydraterTout();
+  etat.ecrire('data', 'repo', CLE_FORMAT, attendue);
+  return bilan;
+}
+
 /* ---------- Message de commit ---------- */
 
 /* EN ANGLAIS ET SUR UNE LIGNE, comme les commits du code. Généré, parce que personne n'écrira un
@@ -759,6 +798,7 @@ function arreter() {
 module.exports = {
   REGROUPEMENT_MS,
   estConfigure,
+  rattraperFormat,
   baseWeb,
   lienFichier,
   estDepot,

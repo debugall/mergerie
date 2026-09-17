@@ -8067,6 +8067,16 @@ const server = app.listen(PORT, HOST, () => {
       console.log(`  données partagées : ${retard.ecrits} fichier(s) réécrit(s), ${retard.supprimes} retiré(s) après l’arrêt`);
     }
   } catch (e) { console.log(`[store] ${e.message}`); }
+  /* CE CODE EN SAIT-IL PLUS QU'HIER ? L'hydratation est incrémentale : un réglage d'équipe ajouté
+     par une nouvelle version n'est jamais lu si le fichier qui le porte a déjà été hydraté par
+     l'ancienne. On relit donc tout une fois quand la signature du format change — après avoir
+     écoulé la file, pour que ce qui attendait localement soit déjà dans les fichiers. */
+  try {
+    const rattrapage = datasync.rattraperFormat();
+    if (rattrapage) {
+      console.log(`  données partagées : format relu après montée de version — ${rattrapage.ecrits} ligne(s) reprise(s)`);
+    }
+  } catch (e) { console.log(`[store] rattrapage de format : ${e.message}`); }
   if (datasync.demarrer()) {
     console.log(`  données partagées : ${getConfig().data_repo_url} (${getConfig().data_sync_seconds}s)`);
     if (!identite.identite().ok) console.log('  ⚠ git n’a pas de `user.name` — rien ne sera commité tant qu’il manque');
