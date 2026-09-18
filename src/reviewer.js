@@ -470,16 +470,30 @@ function lienDejaPublie(mrId) {
  * `{note}` vaut la chaîne vide quand la passe n'a pas de note : c'est à l'équipe de décider si
  * sa phrase le supporte. Le message livré, lui, a ses deux versions.
  */
-function messageLien(cfg, { url, version, note, mr }) {
+/* LES CONSTATS DE LA PASSE, PAR SÉVÉRITÉ — pour que le commentaire dise d'un coup d'œil s'il y a
+   quelque chose de bloquant, sans ouvrir le rapport. Même compte que la carte de l'écran : les
+   constats de CETTE passe, hors ceux qu'elle a vus résolus. */
+function constatsParSeverite(mrId, version) {
+  const n = { blocker: 0, major: 0, minor: 0, info: 0 };
+  for (const r of db.prepare(`SELECT severity, COUNT(*) AS c FROM finding
+    WHERE mr_id = ? AND version = ? AND status != 'resolved' GROUP BY severity`).all(mrId, version)) {
+    if (r.severity in n) n[r.severity] = r.c;
+  }
+  return n;
+}
+
+function messageLien(cfg, { url, version, note, mr, constats }) {
   const gabarit = String((cfg && cfg.review_link_template) || '').trim();
   if (!gabarit) {
     return note == null
       ? t('mr.link.comment', { url, v: version })
       : t('mr.link.comment-note', { url, v: version, note });
   }
+  const c = constats || { blocker: 0, major: 0, minor: 0 };
   const valeurs = {
     url, v: version, note: note == null ? '' : note,
     iid: mr.iid, project: mr.project, title: mr.title || '',
+    blockers: c.blocker, majors: c.major, minors: c.minor,
   };
   return gabarit.replace(/\{(\w+)\}/g, (brut, cle) => (cle in valeurs ? String(valeurs[cle]) : brut));
 }
@@ -509,6 +523,7 @@ async function publierLienRapport(mr, cfg, { onLog = () => {} } = {}) {
   const note = version.note_value == null ? null : Math.round(version.note_value * 100) / 10;
   const corps = messageLien(cfg, {
     url: lien, version: version.version, note: note == null ? null : String(note).replace('.', ','), mr,
+    constats: constatsParSeverite(mr.id, version.version),
   });
 
   const now = new Date().toISOString();
@@ -750,4 +765,4 @@ async function explainMr(repo, mr, onLog = () => {}) {
   }
 }
 
-module.exports = { reviewMr, modifyReview, askReview, explainMr, fillTemplate, publierRapport, publierLienRapport, messageLien, lienDejaPublie, publicationAutoRequise };
+module.exports = { reviewMr, modifyReview, askReview, explainMr, fillTemplate, publierRapport, publierLienRapport, messageLien, constatsParSeverite, lienDejaPublie, publicationAutoRequise };

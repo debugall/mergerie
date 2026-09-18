@@ -1451,7 +1451,9 @@
                  vide ne doit pas laisser deviner ce qui partira. -->
             <label class="sous-reglage" id="reviewLinkTemplateRow" hidden><span data-i18n="settings.lbl.review-link-template">Gabarit du commentaire</span>
                 <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.review-link-template" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                <textarea form="configForm" name="review_link_template" rows="4"></textarea></label>
+                <textarea form="configForm" name="review_link_template" rows="4"></textarea>
+                <!-- LES VARIABLES, SOUS LE CHAMP ET PAS DANS UNE BULLE : on les consulte en tapant. -->
+                <span class="muted template-vars" id="reviewLinkVars" data-i18n-html="settings.review-link-vars">Variables : <code>{url}</code> le lien du rapport (obligatoire) · <code>{note}</code> la note, vide si la passe n’en a pas · <code>{v}</code> le numéro de passe · <code>{iid}</code> le numéro de la MR · <code>{project}</code> le projet · <code>{title}</code> le titre de la MR · <code>{blockers}</code>, <code>{majors}</code>, <code>{minors}</code> le nombre de constats bloquants, majeurs et mineurs de la passe.</span></label>
 
             <h3 data-i18n="settings.mr.group.auto">Automatisation</h3>
             <label><span data-i18n="settings.lbl.rafraichir-les-mr-automatiquement-minutes">Rafraîchir les MR automatiquement (minutes, 0 = désactivé)</span> <button type="button" class="hint" tabindex="-1" aria-label="Découverte automatique des nouvelles MR à intervalle régulier. 0 = désactivé. Minimum 1 minute, pour éviter les rate limits de l'API GitLab." data-tip="Découverte automatique des nouvelles MR à intervalle régulier. 0 = désactivé. Minimum 1 minute, pour éviter les rate limits de l'API GitLab." data-i18n-tip="settings.tip.decouverte-automatique-des-nouvelles-mr"><svg class="ico"><use href="#i-info"/></svg></button>

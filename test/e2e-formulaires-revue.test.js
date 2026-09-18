@@ -254,6 +254,12 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     assert.match(await page.locator('[form="configForm"][name="review_link_template"]').getAttribute('placeholder'),
       /\{url\}|https?:/, 'le champ vide montre le message livré');
 
+    /* Les variables sont écrites SOUS le champ — on les consulte en tapant, pas en survolant. */
+    const vars = await page.locator('#reviewLinkVars').innerText();
+    for (const v of ['{url}', '{note}', '{v}', '{iid}', '{project}', '{title}', '{blockers}', '{majors}', '{minors}']) {
+      assert.ok(vars.includes(v), `${v} figure dans la liste sous le champ : ${vars}`);
+    }
+    assert.ok(await page.locator('#reviewLinkVars').isVisible(), 'la liste est visible avec le champ');
     await page.locator('[form="configForm"][name="review_link_template"]').fill('Rapport de review : {url}');
     await page.locator('#sub-mr button[type="submit"][form="configForm"]').first().click();
     await attendreServeur(async () => (await app.api('GET', '/api/config')).body.auto_post_review_link === '1',
