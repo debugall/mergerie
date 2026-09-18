@@ -3763,10 +3763,12 @@ function localDirsFor(taskId) {
   const poignees = localsession.carte('local_task_dir');
   const avecRetour = unitesAvecRetour('local', taskId);
   return db.prepare('SELECT * FROM local_task_dir WHERE task_id = ? ORDER BY id').all(taskId)
+    .map((brute) => localsession.resoudre('local_task_dir', brute, poignees))
     .map((d) => ({
-      ...localsession.resoudre('local_task_dir', d, poignees),
+      ...d,
       has_output: (avecRetour.has(d.id) || !!d.output_path) ? 1 : 0,
       path: carteDirs.get(d.dir_hash) || null,
+      // Sur la ligne RECOLLÉE à `local_session` : la ligne brute n'a plus la poignée.
       resume_cmd: agentsession.resumeCommand(d.session_backend, d.session_key, d.session_cwd),
       // Les questions posées par l'agent, prêtes à afficher. Illisibles → aucune, plutôt qu'un plantage.
       questions: d.questions_json ? (() => { try { return JSON.parse(d.questions_json); } catch { return null; } })() : null,
@@ -4065,15 +4067,21 @@ app.get('/api/questions', wrap((req, res) => {
   const range = rangement('question');
   const poignees = localsession.carte('question');
   const parQui = auteurs('question', rows);
-  res.json(rows.map((q) => ({
-    author: parQui.get(q.id) || null,
-    ...localsession.resoudre('question', avecRangement('question', q, range), poignees),
-    answer_head: chapeauReponse(q.md_path),
-    tokens_est: (couts[q.id] || {}).tokens || null,
-    cost_usd: (couts[q.id] || {}).cost_usd ?? null,
-    duration_ms: durees[q.id] != null ? durees[q.id] : null,
-    resume_cmd: agentsession.resumeCommand(q.session_backend, q.session_key, q.session_cwd),
-  })));
+  res.json(rows.map((brute) => {
+    /* La poignée de session vit dans `local_session` : la commande de reprise se calcule sur
+       la ligne RECOLLÉE, jamais sur la ligne brute — où elle n'est plus, et où elle rendait
+       toujours null. */
+    const q = localsession.resoudre('question', avecRangement('question', brute, range), poignees);
+    return {
+      author: parQui.get(q.id) || null,
+      ...q,
+      answer_head: chapeauReponse(q.md_path),
+      tokens_est: (couts[q.id] || {}).tokens || null,
+      cost_usd: (couts[q.id] || {}).cost_usd ?? null,
+      duration_ms: durees[q.id] != null ? durees[q.id] : null,
+      resume_cmd: agentsession.resumeCommand(q.session_backend, q.session_key, q.session_cwd),
+    };
+  }));
 }));
 
 app.post('/api/questions', wrap((req, res) => {

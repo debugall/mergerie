@@ -3550,6 +3550,7 @@ async function loadToReview() {
   toReviewRows = await api('/mrs?status=to_review');
   fileJamaisChargee = false;
   listeChargee = true;
+  renderFiltreAuteur();
   renderToReview();
 }
 /* ---------- « Mes merge requests » / « Les autres » ----------
@@ -3582,7 +3583,10 @@ function renderFiltreAuteur() {
      demande de review. La pastille ne s'affiche que s'il y en a, sinon elle proposerait un
      filtre toujours vide. */
   const opts = [['tous', 'review.auteur.tous'], ['moi', 'review.auteur.moi'], ['autres', 'review.auteur.autres']];
-  if (reportRows.some(demandeeAMoi)) opts.push(['demandee', 'mr.filter.to-review-by-me']);
+  /* Sur les lignes DU STADE AFFICHÉ : la file « À traiter » en était exclue, et la pastille
+     n'y apparaissait jamais — là même où la demande de relecture attend. */
+  const lignes = currentSeg === 'to_review' ? toReviewRows : reportRows;
+  if (filtreAuteur === 'demandee' || (lignes || []).some(demandeeAMoi)) opts.push(['demandee', 'mr.filter.to-review-by-me']);
   box.innerHTML = opts.map(([v, k]) => `<button type="button" class="chip${filtreAuteur === v ? ' active' : ''}" data-mr-auteur="${v}"`
     + `${v === 'demandee' ? ` title="${esc(tr('mr.filter.to-review-by-me-title'))}"` : ''}>${esc(tr(k))}</button>`).join('');
 }
@@ -3623,13 +3627,16 @@ const TRIS = {
   // « Petites d'abord » : les lignes changées, à défaut les fichiers. Sans mesure, on passe après.
   petites: (a, b) => tailleNum(a) - tailleNum(b),
   anciennes: (a, b) => String(a.updated_at || a.gitlab_created_at || '').localeCompare(String(b.updated_at || b.gitlab_created_at || '')),
-  note: (a, b) => (a.note == null ? 99 : Number(a.note)) - (b.note == null ? 99 : Number(b.note)),
+  note: (a, b) => note10(a) - note10(b),
   /* « Bloquants d'abord » : le nombre de bloquants, puis de majeurs, puis la note. Une merge
      request sans rapport n'a pas de constat — elle passe après, comme pour le tri par note. */
   bloquants: (a, b) => (nbSeverite(b, 'blocker') - nbSeverite(a, 'blocker'))
     || (nbSeverite(b, 'major') - nbSeverite(a, 'major'))
-    || ((a.note == null ? 99 : Number(a.note)) - (b.note == null ? 99 : Number(b.note))),
+    || (note10(a) - note10(b)),
 };
+/* LA NOTE SUR 10, OU 99 SANS NOTE (elle passe après). `m.note` est un objet `{ raw, value }`,
+   `value` sur 1 : `Number(m.note)` donnait NaN, et un tri sur NaN ne trie rien. */
+const note10 = (m) => (m && m.note && m.note.value != null ? m.note.value * 10 : 99);
 const nbSeverite = (m, cle) => ((m && m.severites && m.severites[cle]) || 0);
 
 /* LES CONSTATS QUI RESTENT, PAR GRAVITÉ. Le détail d'une carte disait « 1 résolu · 1
@@ -3958,7 +3965,7 @@ function mrCard(m) {
    verdict sont dans la charge utile de la carte, l'adresse aussi. */
 function refMr(m) {
   const bouts = [];
-  if (m.note != null) bouts.push(`${String(m.note).replace('.', ',')}/10`);
+  if (m.note && m.note.value != null) bouts.push(fmtNote(m.note));
   const v = m.verification && m.verification.verdict;
   if (v) bouts.push(tr(`mr.ref.verdict.${v}`));
   const qualif = bouts.length ? ` (${bouts.join(' · ')})` : '';
@@ -4014,7 +4021,10 @@ $('#btnDiscover').addEventListener('click', async () => {
     $('#reviewErrors').innerHTML = r.errors.length
       ? r.errors.map((er) => errorBox(`${er.repo} : ${er.error}`)).join('')
       : '';
-    loadToReview();
+    /* Les compteurs et « Reviewer » suivent la file : sans eux, une file vide qui se remplit
+       gardait « 0 » et un bouton grisé au-dessus des cartes qu'on venait de découvrir. */
+    await loadToReview();
+    refreshCounts();
   } catch (e) { $('#discoverInfo').textContent = ''; $('#reviewErrors').innerHTML = errorBox(e.message); }
   finally { delete db_.dataset.busy; db_.disabled = false; }
 });
@@ -4092,7 +4102,7 @@ const passeFiltreNote = (m) => !filtreNoteActif() || noteFilter.has(noteClass(m.
 let seuilPret = 8;
 function estPreteAMerger(m) {
   if (!m || m.closed_seen) return false;
-  if (m.note == null || Number(m.note) < seuilPret) return false;
+  if (note10(m) === 99 || note10(m) < seuilPret) return false;
   if (m.has_conflicts) return false;
   const cat = m.ticket_category;
   if (cat && cat !== 'indeterminate') return false;
@@ -4111,6 +4121,7 @@ async function loadReports(status = 'reviewed') {
   reportRows = await api(`/mrs?status=${status}`);
   stadeDejaCharge.add(status);
   listeChargee = true;
+  renderFiltreAuteur();
   renderReports();
 }
 function renderReports() {
@@ -7626,6 +7637,9 @@ function renderTargetRows(list) {
     if (cur.length <= 1) { toast(tr('toast.au-moins-un-projet-est'), true); return; }
     cur.splice(Number(b.dataset.rmrow), 1);
     renderTargetRows(cur);
+    /* Retirer un dépôt change ce que les vérificateurs couvrent : sans ce rappel, la liste
+       disait encore « aucun ne couvre » après qu'on avait ôté le seul dépôt qui manquait. */
+    majVerificateursSession(); majSkillsSession();
   }));
   /* Une saisie manuelle gèle le champ : la proposition ne doit jamais écraser ce que
      l'utilisateur a écrit, ni revenir après qu'il l'a effacé. */
@@ -7638,7 +7652,10 @@ function renderTargetRows(list) {
     ? tr('task.hint.code')
     : tr('task.hint.explore');
 }
-$('#addTarget').addEventListener('click', () => renderTargetRows([...readTargetRows(), {}]));
+$('#addTarget').addEventListener('click', () => {
+  renderTargetRows([...readTargetRows(), {}]);
+  majVerificateursSession(); majSkillsSession();
+});
 
 
 /* ---- Sélecteur de branche existante (liste déroulante avec recherche) ----
@@ -17232,17 +17249,33 @@ onEl($('#agentTry'), 'click', async () => {
   $('#taskPrompt').focus();
 });
 
+/* UN REFUS DU SERVEUR SE DIT, il ne remonte pas en « erreur inattendue ». « Dupliquer » et
+   « Coder » sur un agent pas encore approuvé reçoivent un 409 légitime : sans ce filet, la
+   promesse partait rejetée et le message n'arrivait que par le filet global, préfixé. */
 document.addEventListener('click', async (e) => {
   const b = e.target.closest && e.target.closest('[class*="btn-agent-"]');
   if (!b) return;
   const a = agentDe(b.dataset.id);
   if (!a) return;
+  try { await actionAgent(b, a); } catch (err) { toast(explainError(err.message), true); }
+});
+
+async function actionAgent(b, a) {
   if (b.classList.contains('btn-agent-ask')) return agentDemander(a);
   if (b.classList.contains('btn-agent-code')) return agentCoder(a);
   if (b.classList.contains('btn-agent-edit')) return ouvrirAgentModal(a);
   if (b.classList.contains('btn-agent-knowledge')) return ouvrirConnaissance(a);
   if (b.classList.contains('btn-agent-review')) return ouvrirConnaissance(a, { pending: true });
-  if (b.classList.contains('btn-agent-runs')) { navTab('task'); poserFiltreAgent(a.id); loadTasks(); return; }
+  if (b.classList.contains('btn-agent-runs')) {
+    /* LA SAVEUR D'ABORD, LE FILTRE ENSUITE. Les runs d'un explorateur vivent dans
+       « Exploration » : filtrer « Codage » ne montrait rien. Et l'ordre compte — changer de
+       saveur remet le filtre à zéro. */
+    navTab('task');
+    const saveur = a.kind === 'code' ? 'code' : 'explore';
+    const onglet = $(`#tab-task .subnav [data-kind="${saveur}"]`);
+    if (onglet && taskKind !== saveur) onglet.click();
+    poserFiltreAgent(a.id); loadTasks(); return;
+  }
   if (b.classList.contains('btn-agent-refresh')) {
     return busy(b, async () => {
       try { await api(`/agents/${a.id}/knowledge/refresh`, { method: 'POST' }); toast(tr('agents.refresh.started')); refreshStatus(); }
@@ -17282,7 +17315,7 @@ document.addEventListener('click', async (e) => {
     toast(tr('agents.deleted')); return loadAgentList();
   }
   return undefined;
-});
+}
 
 // L'état vide propose le geste principal.
 document.addEventListener('click', (e) => {

@@ -29,6 +29,27 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   translation errors; CONTRIBUTING.md says what a useful report carries, and asks for the fix in
   words rather than as a patch, for the same reason.
 
+### Fixed
+
+- **Reviews: sorting by lowest score now sorts.** “Lowest score first” left the list in arrival
+  order, and “Blocking first” did not break ties by score either.
+- **Reviews: “ready to merge” no longer includes low-scored merge requests.** A merge request
+  scored 2/10 with a green verification was listed as ready; the list now applies the same score
+  threshold as the morning brief. The copied reference of a scored merge request shows its score
+  properly.
+- **Reviews: “Search for new MRs” updates the counter and the Review button.** On an empty queue
+  they stayed at 0 and greyed out above the merge requests just found.
+- **Reviews: the “To review by me” chip appears in the “To review” queue**, where review requests
+  wait — it only looked at reviewed reports.
+- **AI dev: “Resume in terminal” is offered on free questions and out-of-repo folders** again;
+  the list never carried the command.
+- **AI dev: the verifier list follows the projects of the session form** when a project is added
+  or removed, not only when a repository is changed.
+- **Agents: “Sessions” on an exploration agent opens the Exploration list**, filtered on that
+  agent, instead of an empty Coding list.
+- **Agents: “Duplicate” and “Code” on an agent awaiting approval say why they are refused**
+  instead of reporting an unexpected error.
+
 ### Security
 
 A security review of the whole tool, and what came out of it. Most of it is invisible when all goes
