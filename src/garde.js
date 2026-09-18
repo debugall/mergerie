@@ -137,7 +137,21 @@ button{margin-top:14px;width:100%;padding:10px;border:0;border-radius:8px;backgr
 <button type="submit">Entrer</button>${erreur ? `<p class="err">${echapper(erreur)}</p>` : ''}</form></body></html>`;
 }
 
+/* « TESTER » AVEC UNE AUTRE ADRESSE EXIGE UN JETON TAPÉ. Le masque `***` veut dire « le jeton
+   enregistré » : il ne doit partir que vers l'adresse où il est enregistré. Rien d'enregistré, rien
+   à protéger ; un jeton tapé dans la requête est le sien. `defaut` est l'adresse que vaut un champ
+   vide (pour GitHub, l'hôte WEB `https://github.com` — c'est ce que `github_url` désigne). */
+function jetonFraisRequis(urlCorps, urlBase, jetonCorps, jetonBase, defaut = '') {
+  if (urlCorps == null || !jetonBase || (jetonCorps && jetonCorps !== '***')) return false;
+  const origine = (u) => {
+    const v = String(u || '').trim() || defaut;
+    try { return new URL(v).origin; } catch { return v; }
+  };
+  return origine(urlCorps) !== origine(urlBase);
+}
+
 module.exports = {
+  jetonFraisRequis,
   nomHote, estIpLitterale, estBoucle, nomsAutorises, hoteAutorise, siteEtranger, adresseAdmise,
   COOKIE, memeJeton, lireCookie, jetonPresente, pageAcces,
 };

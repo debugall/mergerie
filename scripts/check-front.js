@@ -319,6 +319,8 @@ avantDecl.length
     texte.split('\n').forEach((l, i) => {
       if (/<[a-z][^>]*\son[a-z]+\s*=\s*["'{]/i.test(l)) soucis.push(`${nom}:${i + 1}  gestionnaire en attribut : ${l.trim().slice(0, 90)}`);
       if (/(?<![\w-])(href|src)="\$\{(?!\s*(esc\()?\s*(safeUrl|safeImg)\()/.test(l)) soucis.push(`${nom}:${i + 1}  URL interpolée sans safeUrl/safeImg : ${l.trim().slice(0, 90)}`);
+      // …et la même URL construite par CONCATÉNATION (`'href="' + esc(url) + '"'`), qui échappait au motif.
+      if (/(?<![\w-])(href|src)="'\s*\+(?!\s*(esc\()?\s*(safeUrl|safeImg)\()/.test(l)) soucis.push(`${nom}:${i + 1}  URL concaténée sans safeUrl/safeImg : ${l.trim().slice(0, 90)}`);
       if (/target="_blank"/.test(l) && !/rel=/.test(l)) soucis.push(`${nom}:${i + 1}  target="_blank" sans rel : ${l.trim().slice(0, 90)}`);
     });
   }

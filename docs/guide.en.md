@@ -2954,7 +2954,10 @@ that: it is **your** browser that sends. Three barriers:
 pushed there reaches everyone. For a report, a note, a rule, that is the point. For what **decides to run
 something** — a verifier's commands, an agent's permissions and schedule, the settings that start reviews
 on their own —, a change that arrives through sync **waits**: the launch is refused, the screen shows what
-changed (“+ echo …”), and an **“Approve on this machine”** button releases it. What you create or edit
+changed (“+ echo …”), and an **“Approve on this machine”** button releases it. The click approves what
+the screen showed: if sync brings yet another version in between, it is refused and the new one is
+shown. Everything that counts is written there — “all authors” for automatic verifications, an
+agent's skills and subagents with their tools. What you create or edit
 yourself is approved on the way; approval lives on your machine and never travels. On upgrade, what
 already existed is taken over once; what arrives afterwards waits. Whoever can push to the data repository
 can therefore *propose* code to you, not *run* it: still protect its branch (write access, signed commits
@@ -2980,7 +2983,7 @@ permission to work “in place” do not travel. Each review rule shows who set 
   **allowlist** (PATH, HOME, locale, proxy, its provider's variables — nothing from Mergerie's `.env`;
   `MERGERIE_AGENT_ENV=NAME1,NAME2` adds some), and the forge token is **no longer in the clone**: it goes
   as an HTTP header, in the environment of the git process alone;
-- **bounds**: a default `--max-turns` (Settings → AI, 200) and a daily spend cap.
+- **bounds**: a default `--max-turns` (Settings → AI, 200) and a daily spend cap — two settings of **this machine**, which do not travel with the team's.
 
 Copilot CLI has no tool list: with it, reading is not restricted, and the run log says so. **A limit to
 keep in mind**: an agent that writes code can write code that leaks; what bounds the damage is what it no
@@ -3011,7 +3014,7 @@ authors” is an explicit choice (Settings → Verifiers). An automatic run gets
 before you choose. With the **local** engine (the recommended default), audio goes from the browser to
 the server on `localhost`, then to the engine on `127.0.0.1`: it is **never written to disk** nor logged.
 The engine is spawned **without a shell**, with a **minimal environment carrying no token**; the saved
-command must be `whisper-server` or the **absolute path of an existing file** (optionally behind `nice`).
+command must be `whisper-server`, looked up in PATH or given as the **absolute path of an existing `whisper-server` file** (optionally behind `nice`) — any other program, `/bin/sh` included, is refused.
 The audio body is capped at 10 MB and its **WAV header is validated**. The **“Install”** button runs the
 repository's script, which downloads a **pinned version** of whisper.cpp and of the models, and **checks
 the sha256** of each file before using it.

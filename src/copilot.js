@@ -127,7 +127,8 @@ function runReal(prompt, cwd, onLog = () => {}, meta = {}) {
     let obuf = '';
     let ebuf = '';
     const timer = setTimeout(() => {
-      child.kill('SIGKILL');
+      // Le GROUPE : l'agent a pu lancer un serveur ou des tests, qui lui survivraient (proc.js).
+      proc.tuerGroupe(child, 'SIGKILL');
       reject(new Error(t('err.cmd.timeout', { cmd: 'copilot', ms: TIMEOUT_MS })));
     }, TIMEOUT_MS);
     child.stdout.on('data', (d) => { stdout += d; obuf = emitLines(obuf + d, onLog); });

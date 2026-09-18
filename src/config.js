@@ -166,9 +166,9 @@ function updateConfig(patch, opts = {}) {
   if (!['off', 'local', 'openai', 'browser'].includes(next.dictation_provider)) next.dictation_provider = 'off';
   if (!['auto', 'fr', 'en'].includes(next.dictation_language)) next.dictation_language = 'auto';
   if (next.dictation_url) next.dictation_url = next.dictation_url.trim().replace(/\/+$/, '');
-  /* LA COMMANDE DE DICTÉE LANCE UN PROGRAMME. Elle n'accepte que `whisper-server` (cherché dans
-     le PATH) ou un chemin ABSOLU vers un fichier qui existe — éventuellement derrière `nice`.
-     Un nom nu quelconque (`sh`, `curl`…) ou un chemin relatif est refusé à l'enregistrement :
+  /* LA COMMANDE DE DICTÉE LANCE UN PROGRAMME. Elle n'accepte que `whisper-server` — cherché dans
+     le PATH, ou par le chemin ABSOLU d'un fichier de ce nom qui existe —, éventuellement derrière
+     `nice`. Tout autre programme (`sh`, `/bin/sh`, `curl`…) ou un chemin relatif est refusé :
      c'est ici qu'on le voit, pas au premier clic sur le micro. */
   // Seulement quand elle CHANGE : un binaire désinstallé depuis ne doit pas bloquer l'enregistrement
   // de tous les autres réglages — le diagnostic de dictée, lui, le signale.
@@ -180,7 +180,10 @@ function updateConfig(patch, opts = {}) {
     if (mots[0] === 'nice') mots = mots.slice(1).filter((m, i, l) => !(m.startsWith('-') || (i > 0 && l[i - 1] === '-n')));
     const prog = mots[0] || '';
     const fichier = (p) => { try { return path.isAbsolute(p) && fs.statSync(p).isFile(); } catch { return false; } };
-    if (!d.ok || !(prog === 'whisper-server' || fichier(prog))) {
+    /* Un chemin absolu ne suffit pas — `/bin/sh -c …` en est un. C'est le SERVEUR whisper, par
+       son nom, où qu'il soit installé. */
+    const estWhisper = (p) => p === 'whisper-server' || (fichier(p) && /^whisper-server(\.exe)?$/i.test(path.basename(p)));
+    if (!d.ok || !estWhisper(prog)) {
       const e = new Error(t('err.dictation.command-refused', { cmd: String(next.dictation_command).slice(0, 120) }));
       e.status = 400;
       throw e;
@@ -217,7 +220,11 @@ function updateConfig(patch, opts = {}) {
   /* UNE ADRESSE DE DÉPÔT QUE GIT NE DOIT PAS JOINDRE est refusée À L'ENREGISTREMENT : `ext::`
      y lancerait une commande, `http://` y enverrait les identifiants en clair. Refuser ici, où
      l'écran peut le dire, plutôt qu'au premier tour de synchro, qui échouerait en silence. */
-  if (!adresseAdmise(next.data_repo_url)) throw new Error(t('err.datasync.url-scheme'));
+  /* Seulement quand elle CHANGE, comme la commande de dictée : une adresse enregistrée avant cette
+     règle (un GitLab interne en `http://`) ne doit pas bloquer l'enregistrement de TOUS les autres
+     réglages avec un message sans rapport avec le champ modifié. La synchro, elle, la refuse et le dit. */
+  if (String(next.data_repo_url || '') !== String(current.data_repo_url || '')
+    && !adresseAdmise(next.data_repo_url)) throw new Error(t('err.datasync.url-scheme'));
   /* UN GABARIT DE LIEN SANS `{url}` NE PORTE PAS DE LIEN. Le commentaire partirait sur les
      merge requests de toute l'équipe en annonçant un rapport qu'il ne désigne pas — et personne
      ne s'en apercevrait avant d'aller le lire. On refuse ici, où l'écran peut encore le dire,
@@ -262,8 +269,6 @@ function updateConfig(patch, opts = {}) {
       verif_auto_max = @verif_auto_max,
       verif_auto_authors = @verif_auto_authors,
       agent_auto_max = @agent_auto_max,
-      agent_max_turns = @agent_max_turns,
-      agent_daily_budget_usd = @agent_daily_budget_usd,
       dictation_vocabulary = @dictation_vocabulary,
       dictation_replacements = @dictation_replacements
     WHERE id = 1`).run(next);
@@ -303,7 +308,9 @@ function updateConfig(patch, opts = {}) {
       task_default_auto_push = @task_default_auto_push,
       task_default_ask_questions = @task_default_ask_questions,
       task_default_notify_jira = @task_default_notify_jira,
-      task_default_converge = @task_default_converge
+      task_default_converge = @task_default_converge,
+      agent_max_turns = @agent_max_turns,
+      agent_daily_budget_usd = @agent_daily_budget_usd
     WHERE id = 1`).run(next);
   /* LES RÉGLAGES D'AUTOMATISME SUIVENT L'APPROBATION, SANS LA CONTOURNER. Ce que l'utilisateur
      règle ICI sur une base déjà approuvée est approuvé avec — il vient de le décider. Mais si

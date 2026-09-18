@@ -113,7 +113,7 @@ describe('Installation · la dernière ligne du script', () => {
 
 describe('Installation · les réglages qu’elle remplit', () => {
   test('binaire dans le PATH ⇒ commande VIDE (un chemin absolu figerait l’installation)', () => {
-    updateConfig({ dictation_provider: 'off', dictation_command: process.execPath });   // une commande quelconque, admise
+    updateConfig({ dictation_provider: 'off', dictation_command: 'whisper-server' });   // une commande quelconque, admise
     const patch = dictation.reglagesDepuisResultat({ server: '/opt/homebrew/bin/whisper-server', model: '/m/g.bin', vad: '/m/s.bin', in_path: true });
     assert.equal(patch.dictation_command, '');
     assert.equal(patch.dictation_model, '/m/g.bin');
@@ -283,10 +283,13 @@ describe('fins de ligne Windows dans le script shell', () => {
   /* LA COMMANDE DE DICTÉE LANCE UN PROGRAMME : à l'enregistrement, seul `whisper-server` ou un
      chemin absolu existant passe (éventuellement derrière `nice`). */
   test('une commande de dictée quelconque est refusée à l’enregistrement', () => {
-    for (const cmd of ['sh -c id', 'curl http://x', 'bin/whisper-server', '/binaire/qui/nexiste/pas']) {
+    const dossier = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'whisper-bin-'));
+    const serveur = require('node:path').join(dossier, 'whisper-server');
+    require('node:fs').writeFileSync(serveur, '#!/bin/sh\n', { mode: 0o755 });
+    for (const cmd of ['sh -c id', 'curl http://x', 'bin/whisper-server', '/binaire/qui/nexiste/pas', '/bin/sh -c id', process.execPath]) {
       assert.throws(() => updateConfig({ dictation_command: cmd }), /Commande de dictée refusée|Dictation command refused/, cmd);
     }
-    for (const cmd of ['whisper-server --port 9', `nice -n 10 ${process.execPath}`, process.execPath]) {
+    for (const cmd of ['whisper-server --port 9', `nice -n 10 ${serveur}`, serveur]) {
       updateConfig({ dictation_command: cmd });
       assert.equal(getConfig().dictation_command, cmd);
     }

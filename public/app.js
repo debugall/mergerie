@@ -11923,7 +11923,7 @@ function gitRenderPreview(pv) {
     const surete = r.state !== 'ok' || !gitIsDelete() ? ''
       : (r.open_mr
         ? '<span class="git-sur git-sur-mr" title="' + esc(r.open_mr.title || '') + '">'
-          + (r.open_mr.url ? '<a href="' + esc(r.open_mr.url) + '" target="_blank" rel="noopener noreferrer">' : '')
+          + (r.open_mr.url ? '<a href="' + esc(safeUrl(r.open_mr.url)) + '" target="_blank" rel="noopener noreferrer">' : '')
           + esc(tr('git.safe.open-mr', { iid: r.open_mr.iid })) + (r.open_mr.url ? ' ↗</a>' : '')
           + (r.open_mr.title ? ' <span class="muted">' + esc(String(r.open_mr.title).slice(0, 50)) + '</span>' : '')
           + (r.open_mr.note != null ? ' ' + noteBadge(Math.round(r.open_mr.note * 1000) / 100) : '')
@@ -12074,7 +12074,7 @@ function gitRenderExplorer(d, box) {
       const ab = b.default ? '<span class="muted">—</span>'
         : '<span class="git-ab">' + (b.ahead ? '↑' + b.ahead : '') + (b.behind ? ' <strong class="git-behind">↓' + b.behind + '</strong>' : (b.ahead ? '' : '=')) + '</span>';
       const merged = b.merged_into
-        ? '<code>' + esc(b.merged_into) + '</code>' + (b.merged_mr ? ' <a href="' + esc(b.merged_mr.url) + '" target="_blank" rel="noopener noreferrer">!' + b.merged_mr.iid + '</a>' : '')
+        ? '<code>' + esc(b.merged_into) + '</code>' + (b.merged_mr ? ' <a href="' + esc(safeUrl(b.merged_mr.url)) + '" target="_blank" rel="noopener noreferrer">!' + b.merged_mr.iid + '</a>' : '')
         : '<span class="muted">—</span>';
       // « Créer la MR » entre la branche et sa SOURCE : cible = l'origine déduite,
       // sinon la branche par défaut. Proposé seulement si la branche a des commits
@@ -12105,7 +12105,7 @@ function gitRenderExplorer(d, box) {
           + esc(tr('git.br.jenkins-title', { job: j.path, branch: b.name })) + '">' + svgIco('pipeline') + '</button>').join(''))
         + addTodoBtn('branch', d.repo_id + ':' + b.name, tr('notes.add-todo.branch', { branch: b.name }));
       const mrBtn = b.open_mr
-        ? '<a class="btn btn-sm" href="' + esc(b.open_mr.url) + '" target="_blank" rel="noopener noreferrer" title="' + esc(tr('git.mr.open-title', { target: b.open_mr.target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + b.open_mr.iid + ' ↗</a>'
+        ? '<a class="btn btn-sm" href="' + esc(safeUrl(b.open_mr.url)) + '" target="_blank" rel="noopener noreferrer" title="' + esc(tr('git.mr.open-title', { target: b.open_mr.target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + b.open_mr.iid + ' ↗</a>'
         : (canMr
           ? '<button class="btn btn-sm" data-gitmr="' + esc(b.name) + '" data-target="' + esc(mrTarget) + '" title="' + esc(tr('git.mr.title', { target: mrTarget })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>' + esc(tr('git.btn.create-mr')) + '</button>'
           : '');
@@ -12168,7 +12168,7 @@ function gitRenderExplorer(d, box) {
       onDone: (r) => {
         // Remplace le bouton par le lien vers la MR : l'écran reflète la réalité
         // sans re-analyser tout le dépôt (coûteux).
-        b.outerHTML = '<a class="btn btn-sm" href="' + esc(r.url) + '" target="_blank" rel="noopener noreferrer" title="' + esc(tr('git.mr.open-title', { target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + r.iid + ' ↗</a>';
+        b.outerHTML = '<a class="btn btn-sm" href="' + esc(safeUrl(r.url)) + '" target="_blank" rel="noopener noreferrer" title="' + esc(tr('git.mr.open-title', { target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + r.iid + ' ↗</a>';
       },
     });
   }));
@@ -16466,6 +16466,7 @@ function agentCardHtml(a) {
       kind: a.kind, model: a.model, permission_mode: a.permission_mode,
       allowed_tools: a.allowed_tools_json, disallowed_tools: a.disallowed_tools_json,
       max_turns: a.max_turns, schedule: a.schedule, runner: a.runner,
+      skills: a.skills_json, subagents: a.subagents_json,
     }),
     bouton: `<button type="button" class="btn btn-primary btn-sm btn-agent-approve" data-id="${a.id}">${esc(tr('approval.btn'))}</button>`,
   }) : ''}
@@ -16494,6 +16495,18 @@ function agentCardHtml(a) {
 function resumeApprobationAgent(x) {
   const o = x || {};
   const outils = (brut) => { try { const l = JSON.parse(brut || '[]'); return Array.isArray(l) ? l.join(', ') : ''; } catch { return String(brut || ''); } };
+  /* Les sous-agents portent leurs PROPRES outils et modèle : un sous-agent élargi est un agent
+     élargi. Nom, puis ce qu'il peut faire. */
+  const sousAgents = (brut) => {
+    try {
+      const o2 = JSON.parse(brut || '{}');
+      if (!o2 || typeof o2 !== 'object') return '';
+      return Object.entries(o2).map(([nom, d]) => {
+        const t2 = d && d.tools ? (Array.isArray(d.tools) ? d.tools.join(', ') : String(d.tools)) : '';
+        return `${nom}${t2 ? ` (${t2})` : ''}${d && d.model ? ` [${d.model}]` : ''}`;
+      }).join(' ; ');
+    } catch { return String(brut || ''); }
+  };
   return [
     `${tr('approval.agent.kind')} : ${o.kind || '—'}`,
     `${tr('approval.agent.permission')} : ${o.permission_mode || '—'}`,
@@ -16503,6 +16516,8 @@ function resumeApprobationAgent(x) {
     `${tr('approval.agent.max-turns')} : ${o.max_turns == null ? '—' : o.max_turns}`,
     `${tr('approval.agent.schedule')} : ${o.schedule || '—'}`,
     `${tr('approval.agent.runner')} : ${o.runner || '—'}`,
+    `${tr('approval.agent.skills')} : ${outils(o.skills) || '—'}`,
+    `${tr('approval.agent.subagents')} : ${sousAgents(o.subagents) || '—'}`,
   ];
 }
 
@@ -16759,9 +16774,15 @@ function poserApprobationAuto(c) {
   const avant = a.before || {};
   const libelle = (k, v) => {
     if (k === 'auto_runner') return v === AUTEUR_AUTO ? tr('agents.runner.author') : (v || tr('agents.runner.nobody'));
+    if (k === 'verif_auto_authors') return tr(`settings.opt.verif-auto-authors.${v === 'all' ? 'all' : 'mine'}`);
     return v === '1' ? tr('approval.config.on') : tr('approval.config.off');
   };
-  const noms = { auto_review_new: tr('approval.config.review-new'), auto_rereview_stale: tr('approval.config.rereview-stale'), auto_runner: tr('settings.lbl.auto-runner') };
+  /* TOUT ce qui est dans l'empreinte est MONTRÉ : un changement qui la fait basculer sans
+     apparaître ici ferait approuver sans voir — « tous les auteurs » en premier. */
+  const noms = {
+    auto_review_new: tr('approval.config.review-new'), auto_rereview_stale: tr('approval.config.rereview-stale'),
+    auto_runner: tr('settings.lbl.auto-runner'), verif_auto_authors: tr('settings.lbl.verif-auto-authors'),
+  };
   const lignes = Object.keys(noms).map((k) => {
     const apres = String(c[k] == null ? '' : c[k]);
     const change = a.before && String(avant[k] == null ? '' : avant[k]) !== apres;
@@ -16775,10 +16796,13 @@ function poserApprobationAuto(c) {
   });
   $('#btnApproveAuto').addEventListener('click', async (e) => {
     try {
-      await busy(e.currentTarget, () => api('/config/approve-auto', { method: 'POST' }));
+      await busy(e.currentTarget, () => api('/config/approve-auto', { method: 'POST', body: { signature: a.signature } }));
       toast(tr('approval.done'));
       loadConfig();
-    } catch (err) { toast(explainError(err.message), true); }
+    } catch (err) {
+      toast(explainError(err.message), true);
+      if (err.code === 'APPROBATION_PERIMEE') loadConfig();     // montrer ce qui a changé entre-temps
+    }
   });
 }
 
@@ -17227,10 +17251,13 @@ document.addEventListener('click', async (e) => {
   }
   if (b.classList.contains('btn-agent-approve')) {
     try {
-      await busy(b, () => api(`/agents/${a.id}/approve`, { method: 'POST' }));
+      await busy(b, () => api(`/agents/${a.id}/approve`, { method: 'POST', body: { signature: a.approval_signature } }));
       toast(tr('approval.done'));
       return loadAgentList();
-    } catch (err) { return toast(explainError(err.message), true); }
+    } catch (err) {
+      toast(explainError(err.message), true);
+      return err.code === 'APPROBATION_PERIMEE' ? loadAgentList() : undefined;
+    }
   }
   if (b.classList.contains('btn-agent-dup')) {
     await api(`/agents/${a.id}/duplicate`, { method: 'POST' });
@@ -22605,10 +22632,14 @@ function renderVerifierList() {
   /* APPROUVER, c'est dire « j'ai vu ces commandes, elles peuvent tourner sur MA machine ». */
   $$('#verifierList [data-vapprove]').forEach((b) => b.addEventListener('click', async () => {
     try {
-      await busy(b, () => api(`/verifiers/${b.dataset.vapprove}/approve`, { method: 'POST' }));
+      const vu = (verifiers || []).find((x) => x.id === Number(b.dataset.vapprove));
+      await busy(b, () => api(`/verifiers/${b.dataset.vapprove}/approve`, { method: 'POST', body: { signature: vu && vu.approval_signature } }));
       toast(tr('approval.done'));
       loadVerifiers();
-    } catch (e) { toast(explainError(e.message), true); }
+    } catch (e) {
+      toast(explainError(e.message), true);
+      if (e.code === 'APPROBATION_PERIMEE') loadVerifiers();
+    }
   }));
   $$('#verifierList [data-vcopy]').forEach((b) => b.addEventListener('click', () => dupliquerVerifier(Number(b.dataset.vcopy))));
   $$('#verifierList [data-vdel]').forEach((b) => b.addEventListener('click', async () => {

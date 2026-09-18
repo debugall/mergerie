@@ -122,6 +122,44 @@ describe('Approbation locale : ce qui arrive changé ne tourne pas avant d’avo
     assert.equal((await app.api('GET', '/api/config')).body.auto_approval.pending, false);
   });
 
+  /* CE QUI FAIT BASCULER L'EMPREINTE EST MONTRÉ. « Tous les auteurs » élargit ce qui s'exécute
+     tout seul : arrivé par la synchro, il doit se LIRE dans le bandeau — sinon on approuve trois
+     lignes inchangées sans avoir vu la quatrième. */
+  test('« tous les auteurs » arrivé par la synchro se lit dans le bandeau d’approbation', async () => {
+    app.db.prepare("UPDATE config SET verif_auto_authors = 'all' WHERE id = 1").run();
+    await page.click('nav button[data-tab="admin"]');
+    await page.click('button[data-sub="mr"]');
+    await page.waitForSelector('#autoApprovalBanner:not([hidden]) #btnApproveAuto', { timeout: ATTENTE });
+    const bandeau = await page.locator('#autoApprovalBanner').innerText();
+    assert.match(bandeau, /Tous les auteurs|All the project/, `le changement qui élargit se voit : ${bandeau}`);
+    await page.click('#btnApproveAuto');
+    await page.waitForSelector('#autoApprovalBanner[hidden]', { state: 'attached', timeout: ATTENTE });
+  });
+
+  /* ON APPROUVE CE QU'ON A VU, pas ce qui est arrivé entre l'affichage et le clic. La signature de
+     l'état montré revient avec le clic ; un objet changé entre-temps est refusé. */
+  test('une approbation d’un état périmé est refusée, celle de l’état montré passe', async () => {
+    const agent = (await app.api('POST', '/api/agents', { name: 'Chercheur signé', kind: 'explore', scope_kind: 'all_repos' })).body;
+    app.db.prepare("UPDATE agent SET subagents_json = ? WHERE id = ?")
+      .run(JSON.stringify({ fouineur: { description: 'd', prompt: 'p', tools: ['Bash'] } }), agent.id);
+    const vu = (await app.api('GET', `/api/agents/${agent.id}`)).body;
+    assert.equal(vu.approval_pending, true);
+    // …la synchro change encore l'agent avant le clic.
+    app.db.prepare("UPDATE agent SET permission_mode = 'acceptEdits' WHERE id = ?").run(agent.id);
+    const perime = await app.api('POST', `/api/agents/${agent.id}/approve`, { signature: vu.approval_signature });
+    assert.equal(perime.status, 409, 'la version jamais montrée n’est pas approuvée');
+    assert.equal(perime.body.code, 'APPROBATION_PERIMEE');
+
+    // À l'écran : la carte montre le sous-agent et ses outils, et le bouton approuve ce qu'elle montre.
+    await page.click('nav button[data-tab="agents"]');
+    await page.waitForSelector(`#agentList .agent-card[data-id="${agent.id}"] .btn-agent-approve`, { timeout: ATTENTE });
+    const bloc = await page.locator(`#agentList .agent-card[data-id="${agent.id}"] .approval-box`).innerText();
+    assert.match(bloc, /fouineur \(Bash\)/, `le sous-agent et ses outils sont lisibles : ${bloc}`);
+    await page.click(`#agentList .agent-card[data-id="${agent.id}"] .btn-agent-approve`);
+    await page.waitForFunction((id) => !document.querySelector(`#agentList .agent-card[data-id="${id}"] .btn-agent-approve`), agent.id, { timeout: ATTENTE });
+    assert.equal((await app.api('GET', `/api/agents/${agent.id}`)).body.approval_pending, false);
+  });
+
   /* LA BRANCHE D'AUTRUI QUI RÉÉCRIT LES RÈGLES DE L'AGENT. Converger, c'est lancer l'agent en
      écriture dans le clone de la branche : un CLAUDE.md ou un .claude/settings.json poussé là
      deviennent ses consignes et ses hooks. On ne l'interdit pas, on le fait voir — à l'écran. */

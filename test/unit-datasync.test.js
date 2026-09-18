@@ -800,4 +800,30 @@ describe('datasync — deux postes, un dépôt de données', () => {
     assert.match(r.aLEnregistrement, /Adresse refusée/, 'l’enregistrement refuse une valeur qui ne vaut pas adresse');
     assert.match(r.auRattachement, /aucune URL/, 'et, glissée en base malgré tout, elle ne part pas vers git');
   });
+
+  /* UNE ADRESSE D'AVANT LA RÈGLE NE BLOQUE PAS TOUS LES RÉGLAGES. Un dépôt d'équipe enregistré en
+     `http://` (un GitLab interne) empêchait d'enregistrer quoi que ce soit — la langue comprise —
+     avec un message sur l'adresse du dépôt. On ne refuse que ce qu'on SAISIT ; la synchro, elle,
+     se suspend et le dit. */
+  test('une adresse enregistrée hors règle n’empêche pas d’enregistrer les autres réglages', () => {
+    const r = dans(posteA, `async ({ config, datasync, db }) => {
+      db.prepare("UPDATE local_config SET data_repo_url = 'http://gitlab.interne/eq/data.git' WHERE id = 1").run();
+      let autre;
+      try { config.updateConfig({ stale_mr_days: '9' }); autre = 'enregistré'; } catch (e) { autre = String(e.message); }
+      let memeAdresse;
+      try { config.updateConfig({ data_repo_url: 'http://gitlab.interne/eq/data.git' }); memeAdresse = 'enregistré'; } catch (e) { memeAdresse = String(e.message); }
+      let nouvelle;
+      try { config.updateConfig({ data_repo_url: 'http://autre/eq/data.git' }); nouvelle = 'accepté'; } catch (e) { nouvelle = String(e.message); }
+      const lignes = []; const log = console.log; console.log = (m) => lignes.push(String(m));
+      const actif = datasync.estConfigure();
+      console.log = log;
+      db.prepare("UPDATE local_config SET data_repo_url = '' WHERE id = 1").run();
+      return { autre, memeAdresse, nouvelle, actif, dit: lignes.some((l) => /synchro suspendue/.test(l)) };
+    }`);
+    assert.equal(r.autre, 'enregistré', 'un autre réglage s’enregistre');
+    assert.equal(r.memeAdresse, 'enregistré', 'renvoyer l’adresse inchangée (le formulaire le fait) passe aussi');
+    assert.match(r.nouvelle, /Adresse refusée/, 'une adresse SAISIE hors règle reste refusée');
+    assert.equal(r.actif, false, 'la synchro ne part pas vers cette adresse');
+    assert.equal(r.dit, true, 'et le journal dit pourquoi, au lieu d’un mono-poste silencieux');
+  });
 });

@@ -70,6 +70,7 @@ function decorer(a) {
   return {
     approval_pending: approval.pending,
     approved_before: approval.before,
+    approval_signature: approbation.signature(approbation.empreinteAgent(a.id)),
     ...a,
     repos: repos(a.id),
     is_domain: a.knowledge_prompt != null,

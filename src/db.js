@@ -1732,6 +1732,10 @@ const COLONNES_LOCALES = [
   ['task_default_ask_questions', 'INTEGER DEFAULT 0'],
   ['task_default_notify_jira', 'INTEGER DEFAULT 0'],
   ['task_default_converge', 'INTEGER DEFAULT 0'],
+  /* LES BORNES D'UN AGENT SONT CELLES DE CE POSTE. La dépense du jour se compte ici, et un réglage
+     d'équipe aurait permis à un seul push de retirer les deux bornes chez tout le monde, sans porte. */
+  ['agent_max_turns', 'INTEGER NOT NULL DEFAULT 200'],
+  ['agent_daily_budget_usd', 'REAL NOT NULL DEFAULT 0'],
 ];
 db.exec(`CREATE TABLE IF NOT EXISTS local_config (
   id INTEGER PRIMARY KEY CHECK (id = 1),

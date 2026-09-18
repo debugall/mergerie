@@ -1447,7 +1447,10 @@ const REGISTRE = [
          c'est rendre l'outil désagréable pour cinq personnes afin d'en arranger une. */
       'brief_on_open', 'auto_refresh_minutes', 'jira_watch_minutes', 'todo_close_on_merge',
       'task_default_auto_push', 'task_default_ask_questions', 'task_default_notify_jira',
-      'task_default_converge'],
+      'task_default_converge',
+      // Les bornes d'un agent : le budget se dépense sur CE poste, et une borne d'équipe se
+      // relâcherait chez tout le monde d'un seul push.
+      'agent_max_turns', 'agent_daily_budget_usd'],
     partagees: [
       // Où est la forge, Jira, Jenkins : une équipe en a UNE. Le jeton, lui, reste de poste.
       'gitlab_url', 'github_url', 'jira_url', 'jenkins_url',
@@ -1466,7 +1469,6 @@ const REGISTRE = [
          tourner les reviews automatiques »), pas une préférence de poste. */
       'auto_runner',
       'review_auto_max', 'verif_auto_max', 'verif_auto_authors', 'agent_auto_max',
-      'agent_max_turns', 'agent_daily_budget_usd',
       /* `retention_days` RESTE D'ÉQUIPE, et c'est délibéré : une purge passe par le store, donc
          elle retire les fichiers du dépôt POUR TOUT LE MONDE. Une seule valeur évite qu'un poste
          réglé à sept jours efface l'historique des autres. */

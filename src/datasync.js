@@ -146,7 +146,20 @@ const sansOptionAdresse = (v) => {
 };
 
 const { adresseAdmise } = require('./garde');
-const urlDepot = () => sansOptionAdresse(config().data_repo_url);
+/* Une adresse ENREGISTRÉE que la règle refuse (d'avant elle) suspend la synchro — et on le DIT,
+   une fois : sans ça, le poste repassait en mono-poste sans un mot. L'URL n'est pas journalisée,
+   elle peut porter des identifiants. */
+let refusDit = false;
+const urlDepot = () => {
+  const brut = sansOption(config().data_repo_url);
+  const admise = sansOptionAdresse(brut);
+  if (brut && !admise && !refusDit) {
+    refusDit = true;
+    console.log('[datasync] adresse du dépôt de données refusée (schéma non admis : https, ssh, git@, chemin absolu ou file://) — synchro suspendue ; corrigez-la dans Réglages → Données partagées');
+  }
+  if (admise) refusDit = false;
+  return admise;
+};
 const branche = () => sansOption(config().data_repo_branch) || 'main';
 const cadenceMs = () => Math.max(10, Number(config().data_sync_seconds) || 30) * 1000;
 

@@ -1167,6 +1167,7 @@ app.get('/api/config', wrap((req, res) => {
   const autoApproval = {
     pending: !approbation.configApprouvee(c),
     before: approbation.configApprouveeAvant(),
+    signature: approbation.signature(approbation.empreinteConfig(c)),
   };
   res.json({ ...sansSecrets(c), scopes, auto_approval: autoApproval });
 }));
@@ -1250,10 +1251,7 @@ app.get('/api/conn-tests', wrap((req, res) => {
    gardant le masque faisait envoyer le jeton en base à l'hôte de son choix. Adresse changée
    (autre origine) ⇒ le jeton doit être retapé dans la même requête. */
 function exigerJetonFrais(urlCorps, urlBase, jetonCorps, jetonBase, defaut = '') {
-  // Rien d'enregistré, rien à protéger ; un jeton tapé dans la requête est le sien.
-  if (urlCorps == null || !jetonBase || (jetonCorps && jetonCorps !== '***')) return;
-  const origine = (u) => { try { return new URL(String(u || defaut).trim()).origin; } catch { return String(u || '').trim(); } };
-  if (origine(urlCorps) === origine(urlBase)) return;
+  if (!garde.jetonFraisRequis(urlCorps, urlBase, jetonCorps, jetonBase, defaut)) return;
   const e = new Error(t('err.test.fresh-token'));
   e.status = 400;
   throw e;
@@ -2447,7 +2445,7 @@ app.get('/api/github/projects', wrap(async (req, res) => {
 app.post('/api/github/test', wrap(async (req, res) => {
   const cfg = getConfig();
   const test = { ...cfg };
-  if (req.body && req.body.github_url != null) exigerJetonFrais(req.body.github_url, cfg.github_url, req.body.github_token, cfg.github_token, 'https://api.github.com');
+  if (req.body && req.body.github_url != null) exigerJetonFrais(req.body.github_url, cfg.github_url, req.body.github_token, cfg.github_token, 'https://github.com');   // l'hôte WEB, défaut de `github.webBase`
   if (req.body && req.body.github_url != null) test.github_url = req.body.github_url;
   if (req.body && req.body.github_token && req.body.github_token !== '***') test.github_token = req.body.github_token;
   if (!forge.github.isConfigured(test)) throw new Error(t('err.token-github-non-configure'));
@@ -3116,8 +3114,15 @@ app.delete('/api/agents/:id', wrap((req, res) => {
   res.json({ ok: true });
 }));
 
+/* L'état APPROUVÉ est celui que l'écran a montré : sa signature revient avec le clic, et un objet
+   changé entre-temps par la synchro est refusé (409) — l'écran recharge et le montre. */
+function exigerMemeEtat(vue, courante) {
+  if (vue !== courante) throw Object.assign(new Error(t('err.approval.stale')), { status: 409, code: 'APPROBATION_PERIMEE' });
+}
+
 app.post('/api/agents/:id/approve', wrap((req, res) => {
   const a = agentOu404(req.params.id);
+  exigerMemeEtat((req.body || {}).signature, approbation.signature(approbation.empreinteAgent(a.id)));
   approbation.approuverAgent(a.id);
   res.json(agentprofile.lire(a.id));
 }));
@@ -4641,10 +4646,12 @@ app.get('/api/verifiers', wrap((req, res) => {
          pas seulement QUE quelque chose a changé. */
       approval_pending: !approbation.verificateurApprouve(v.id),
       approved_before: approbation.verificateurApprouveAvant(v.id),
+      approval_signature: approbation.signature(approbation.empreinteVerificateur(v.id)),
     })));
 }));
 
 app.post('/api/config/approve-auto', wrap((req, res) => {
+  exigerMemeEtat((req.body || {}).signature, approbation.signature(approbation.empreinteConfig(getConfig())));
   approbation.approuverConfig(getConfig());
   res.json({ ok: true });
 }));
@@ -4652,6 +4659,7 @@ app.post('/api/config/approve-auto', wrap((req, res) => {
 app.post('/api/verifiers/:id/approve', wrap((req, res) => {
   const v = db.prepare('SELECT id FROM verifier WHERE id = ?').get(Number(req.params.id));
   if (!v) throw new Error(t('err.verifier.not-found'));
+  exigerMemeEtat((req.body || {}).signature, approbation.signature(approbation.empreinteVerificateur(v.id)));
   approbation.approuverVerificateur(v.id);
   res.json({ ok: true });
 }));

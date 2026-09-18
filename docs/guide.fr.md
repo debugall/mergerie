@@ -3053,7 +3053,10 @@ d'une équipe : ce qu'on y pousse arrive chez chacun. Pour un rapport, une note,
 Pour ce qui **décide d'exécuter** — les commandes d'un vérificateur, les permissions et l'horaire d'un
 agent, les réglages qui font tourner les reviews toutes seules —, un changement arrivé par la synchro
 **attend** : le lancement est refusé, l'écran montre ce qui a changé (« + echo … »), et un bouton
-**« Approuver sur ce poste »** le libère. Ce que tu crées ou modifies toi-même est approuvé au passage ;
+**« Approuver sur ce poste »** le libère. Le clic approuve ce que l'écran a montré : si la synchro
+apporte encore une autre version entre-temps, il est refusé et la nouvelle s'affiche. Tout ce qui compte
+y est écrit — « tous les auteurs » pour les vérifications automatiques, les skills et les sous-agents
+d'un agent avec leurs outils. Ce que tu crées ou modifies toi-même est approuvé au passage ;
 l'approbation vit sur ta machine et ne voyage pas. À la mise à jour, ce qui existait déjà est repris une
 fois ; ce qui arrive ensuite attend. Qui peut pousser sur le dépôt de données peut donc te *proposer* du
 code, pas le *lancer* : protège quand même sa branche (droits d'écriture, commits signés côté forge).
@@ -3079,7 +3082,7 @@ pas. Chaque règle de review affiche qui l'a posée.
   **liste blanche** (PATH, HOME, langue, proxy, variables de son fournisseur — rien du `.env` de Mergerie ;
   `MERGERIE_AGENT_ENV=NOM1,NOM2` en ajoute), et le jeton de la forge n'est **plus dans le clone** : il part
   en en-tête HTTP, dans l'environnement du seul processus git.
-- **bornes** : `--max-turns` par défaut (Réglages → IA, 200) et un plafond de dépense par jour.
+- **bornes** : `--max-turns` par défaut (Réglages → IA, 200) et un plafond de dépense par jour — deux réglages **de ce poste**, qui ne voyagent pas avec ceux de l'équipe.
 
 Copilot CLI n'a pas de liste d'outils : avec lui, la lecture n'est pas restreinte, et le journal du run le
 dit. **Limite, à ne pas oublier** : un agent qui écrit du code peut écrire un code qui fuit ; ce qui borne
@@ -3111,7 +3114,7 @@ automatique tourne avec un **`HOME` jetable** : ni `~/.ssh`, ni `~/.npmrc`, ni `
 qu'on choisisse. Avec le moteur **local** (le défaut recommandé), l'audio va du navigateur au serveur sur
 `localhost`, puis au moteur sur `127.0.0.1` : il n'est **jamais écrit sur disque** ni journalisé. Le moteur
 est lancé **sans shell**, avec un environnement **minimal sans aucun jeton** ; la commande enregistrée doit
-être `whisper-server` ou le **chemin absolu d'un fichier existant** (éventuellement derrière `nice`). Le
+être `whisper-server`, cherché dans le PATH ou désigné par le **chemin absolu d'un fichier `whisper-server` existant** (éventuellement derrière `nice`) — un autre programme, `/bin/sh` compris, est refusé. Le
 corps audio est plafonné à 10 Mo et son **en-tête WAV est validé**. Le bouton **« Installer »** lance le
 script du dépôt, qui télécharge une **version épinglée** de whisper.cpp et des modèles, et **vérifie
 l'empreinte sha256** de chaque fichier avant de l'utiliser.

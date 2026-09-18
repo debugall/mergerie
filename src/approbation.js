@@ -24,6 +24,13 @@ const { etat } = require('./localstate');
 
 const KIND = 'approbation';
 
+/* CE QUE L'ÉCRAN A MONTRÉ. L'approbation porte sur l'état qu'on a VU : la synchro tourne toutes les
+   trente secondes, et un clic qui approuverait l'état courant approuverait peut-être une version
+   arrivée entre l'affichage et le clic, jamais montrée. L'écran renvoie donc cette signature, et
+   la route refuse si l'objet a changé depuis. */
+const signature = (empreinte) => (empreinte == null ? null
+  : require('node:crypto').createHash('sha256').update(String(empreinte)).digest('hex').slice(0, 16));
+
 /* ---------------------------------------------------------------- vérificateurs */
 
 /* CE QUI DÉCIDE DE CE QUI S'EXÉCUTE, ET QUAND : les commandes et leur ordre, la base relancée,
@@ -146,6 +153,7 @@ function enAttente(getConfig) {
 }
 
 module.exports = {
+  signature,
   empreinteVerificateur, verificateurApprouve, approuverVerificateur, verificateurApprouveAvant,
   empreinteAgent, agentApprouve, approuverAgent, agentApprouveAvant,
   CHAMPS_AUTO, empreinteConfig, configApprouvee, approuverConfig, configApprouveeAvant,

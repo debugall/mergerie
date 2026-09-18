@@ -44,8 +44,11 @@ well; a few things now ask for a click or a setting, and those are listed first.
 - **Code that arrives through the shared data repository waits for you.** A verifier whose commands
   changed, an agent whose permissions or schedule changed, the automatic reviews switched on by a
   colleague: each is marked “to approve”, shows what changed, and does not run on your machine until
-  you click **Approve on this machine**. What you create or edit yourself is approved on the way, and
-  everything that existed before this version is taken over once.
+  you click **Approve on this machine**. The click approves what the screen showed: if sync brings yet
+  another version in between, it is refused and the new one is shown. Every change that counts is
+  listed — “all the project's authors” for automatic verifications, an agent's skills and subagents
+  with their tools. What you create or edit yourself is approved on the way, and everything that
+  existed before this version is taken over once.
 - **Reviews, explanations, questions and explorations run the agent read-only.** The broad mode from
   `COPILOT_ARGS` (`--dangerously-skip-permissions`) no longer applies to them; the report comes back as
   the agent's answer. Coding sessions keep your mode but lose web fetching, `curl`, `ssh`, `git push`,
@@ -61,14 +64,15 @@ well; a few things now ask for a click or a setting, and those are listed first.
 - **Automatic verifications run only on your own merge requests by default**, never on a draft or a
   fork, with a throwaway `HOME`. “All the project's authors” is a new explicit choice in Settings →
   Verifiers.
-- **Two new AI bounds** in Settings → AI: at most N turns per agent session (200 by default) and an
-  optional daily spend cap.
+- **Two new AI bounds** in Settings → AI, set per machine: at most N turns per agent session (200
+  by default) and an optional daily spend cap. They do not travel with the team settings — one push
+  could otherwise lift both on every machine.
 - **The git palette is an allowlist** of everyday subcommands (status, fetch, pull, push, log, diff,
   branch, checkout, rebase, stash, tag…). Entries outside it — `config`, `bisect`, `submodule`, an
   option that runs a program or writes outside the repository — are refused when saved and when run.
 - **“Test” with a changed address requires typing the token again**: the saved token is only ever sent
   to its own address.
-- **The dictation command** must be `whisper-server` or the absolute path of an existing file.
+- **The dictation command** must be `whisper-server` — in PATH, or the absolute path of an existing `whisper-server` file.
 - **The backup README no longer claims the tokens are removed**: the archive carries the database,
   tokens included, and now says to keep it like a password.
 

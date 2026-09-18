@@ -51,7 +51,8 @@ function spawnAgent({ args, cwd, env }, onLog = () => {}) {
     const child = spawn(bin, args, proc.options({ cwd, env: { ...agentpolicy.envAgent('copilot'), ...(env || {}) }, stdio: STDIO }));
     proc.setActive(child);                    // sans ça, « Stop » ne tue pas l'agent (cf. en-tête)
     let stdout = ''; let stderr = ''; let obuf = '';
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(t('err.cmd.timeout', { cmd: bin, ms: TIMEOUT_MS }))); }, TIMEOUT_MS);
+    // Au délai, le GROUPE entier : un serveur ou des tests lancés par l'agent lui survivraient sinon.
+    const timer = setTimeout(() => { proc.tuerGroupe(child, 'SIGKILL'); reject(new Error(t('err.cmd.timeout', { cmd: bin, ms: TIMEOUT_MS }))); }, TIMEOUT_MS);
     // Streame la sortie ligne par ligne : on voit l'agent avancer (copilot n'a pas de mode événements).
     child.stdout.on('data', (d) => { stdout += d; obuf = emitLines(obuf + d, onLog); });
     child.stderr.on('data', (d) => { stderr += d; });
@@ -109,7 +110,8 @@ function runClaudeStream(args, cwd, onLog) {
     proc.setActive(child);                    // idem : c'est LE chemin par défaut (claude)
     let stderr = ''; let buf = ''; let result = null; let sessionId = null; let lastText = '';
     let costUsd = null; let denials = [];
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(t('err.cmd.timeout', { cmd: bin, ms: TIMEOUT_MS }))); }, TIMEOUT_MS);
+    // Au délai, le GROUPE entier : un serveur ou des tests lancés par l'agent lui survivraient sinon.
+    const timer = setTimeout(() => { proc.tuerGroupe(child, 'SIGKILL'); reject(new Error(t('err.cmd.timeout', { cmd: bin, ms: TIMEOUT_MS }))); }, TIMEOUT_MS);
     const handleLine = (line) => {
       const s = line.trim();
       if (!s) return;
