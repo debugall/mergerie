@@ -1,24 +1,60 @@
 # Contributing to Mergerie
 
-Thanks for your interest in improving Mergerie! This guide covers where development happens, how to run the
-project in development, what to work on, and the requirements for opening a merge request.
+Thanks for your interest in Mergerie! This guide says what kind of help the project takes, where to
+send it, and how to run the project on your machine when you want to reproduce a bug or explore the
+code.
 
-## Where development happens
+## Code contributions are not accepted
 
-Mergerie lives in two public places:
+Mergerie is written by **one maintainer**, and it stays that way on purpose: pull requests and merge
+requests from outside are **not merged** — on GitHub they are **closed automatically** by a workflow,
+with a pointer to this page; on GitLab, the merge requests you will see are the maintainer's own,
+each one reviewed by Mergerie before it lands.
 
-- **GitLab — [gitlab.com/amady/mergerie](https://gitlab.com/amady/mergerie)** — the **source of truth**.
-  All changes land here through **merge requests**, reviewed by Mergerie itself (we dogfood the tool on its
-  own code). To contribute code, fork on GitLab and open an MR.
-- **GitHub — [github.com/debugall/mergerie](https://github.com/debugall/mergerie)** — a read-only **mirror**,
-  kept in sync automatically. **Issues and discussions are welcome here.**
+Why:
 
-If you open a pull request on GitHub instead, it won't be merged there: a maintainer will push your branch to
-GitLab, open the merge request, and let Mergerie review it — your authorship and DCO sign-off are preserved,
-and you'll get the MR link.
+- **One rights holder.** Every line of the code belongs to the same author, which keeps the
+  project free to evolve its licensing without asking anyone's permission — the AGPL stays, and a
+  commercial licence can be offered next to it. Accepting outside code without a contributor
+  agreement would close that door for good.
+- **One voice in the code.** The project is small, documented in depth, and tested end to end. A
+  single author keeps it that way at a lower cost than reviewing and maintaining code written by
+  many hands.
+- **Time.** Reviewing, discussing and carrying other people's changes is what costs a solo
+  maintainer the most. That time goes into the product instead.
+
+This may change one day — with a contributor licence agreement in place. Until then, please do
+not open a pull request, and please **do not paste patches in an issue** either: a patch has an
+author, and code written by someone else cannot be merged for the same reason. Describe the
+fix in words — where the bug is and what should happen — and it will be written from scratch.
+
+The code is **AGPL-3.0**, so forking is of course allowed: keep the licence, keep the notices, and
+pick another name for what you ship.
+
+## How to help
+
+All of this is welcome, on **GitHub — [github.com/debugall/mergerie](https://github.com/debugall/mergerie)**,
+in the **issues**:
+
+- **Bug reports**, with the version you run (the `version` field of `package.json` from a clone,
+  `npm ls -g mergerie` for a global install), the forge
+  (GitLab or GitHub), the agent CLI (`claude` or `copilot`), and the steps to reproduce. A
+  screenshot of the screen and the relevant lines of the server log go a long way.
+- **Ideas and feedback** on the [Roadmap](./ROADMAP.md), or on anything the tool does that gets in
+  your way. Saying *what* you are trying to do matters more than proposing *how* to build it.
+- **Translation and documentation errors** — a wrong word in the French or English UI, a guide
+  section that does not match the screen. Point at the string; it gets fixed.
+- **Security issues** — see [SECURITY.md](./SECURITY.md); please do not open a public issue for
+  those.
+
+Development happens on **GitLab — [gitlab.com/amady/mergerie](https://gitlab.com/amady/mergerie)**,
+the **source of truth**, where every change lands through a merge request reviewed by Mergerie
+itself (we dogfood the tool on its own code). GitHub is a read-only **mirror**, kept in sync
+automatically — the issues live there.
 
 ## Running in development
 
+Useful to reproduce a bug precisely, or to read the code with the app running next to it.
 Mergerie is a Node 22.9+ app (Express + better-sqlite3 + a vanilla-JS SPA). No build step.
 
 ```bash
@@ -26,8 +62,8 @@ npm install
 npm start          # http://localhost:4319  (or `npm run dev` for auto-reload)
 ```
 
-**Develop without AI or a forge — dry-run mode.** You don't need an AI CLI, a GitLab or GitHub account, or any
-token to work on most of the app. Dry-run generates mock review reports from the diff, so the whole pipeline stays
+**Run without AI or a forge — dry-run mode.** You don't need an AI CLI, a GitLab or GitHub account, or any
+token to run most of the app. Dry-run generates mock review reports from the diff, so the whole pipeline stays
 exercisable:
 
 ```bash
@@ -51,17 +87,15 @@ To find your way around the codebase (modules, data model, pipelines), read **[P
 **[full guide](./docs/guide.en.md)** (also in [French](./docs/guide.fr.md) — the two must keep the same
 section structure, which `npm run check` enforces).
 
-## Before you open a pull request
+## Running the checks and the tests
 
-Two checks are **mandatory** and must pass:
+The same gates the maintainer runs before every merge. Useful on a fork, and to confirm that a bug
+you report is not already caught by the suite:
 
 ```bash
 npm run check        # front-end + server guardrails, and i18n consistency
 npm run i18n:check   # translation dictionary consistency (also part of `npm run check`)
 ```
-
-Please also run the test suite and **add tests for your change** (end-to-end where possible, unit tests
-otherwise):
 
 ```bash
 npx playwright install chromium   # once: the browsers are downloaded separately from the package
@@ -86,45 +120,19 @@ npm test
   (`poserIdentiteGit` in `test/helpers/app.js`). Nothing reads — or writes — your global git
   configuration, so a bare machine passes and yours is left untouched.
 
-The UI is **bilingual (French / English)** and supports **light and dark themes** — keep both working when
-you touch strings or styles.
+## How the code is kept
 
-User-visible changes go in **[CHANGELOG.md](./CHANGELOG.md)**, under `## [Unreleased]`, in the
-`Added` / `Changed` / `Fixed` section that fits. Write for the person who uses the tool — what changed and
-why it matters — not a copy of your commit message. Internal refactors that change nothing for them do not
-need an entry.
+For the curious, and for anyone maintaining a fork — the rules the maintainer works by:
 
-Mergerie talks to **two forges** (GitLab and GitHub). Never call `src/gitlab.js` or `src/github.js` directly
-from another module: go through `src/forge.js` (`clientFor(repo)`). Both clients expose the same interface
-and return the same normalized shapes, so callers stay forge-agnostic. A feature that touches a forge should
-be covered on both (`test/e2e-*.test.js` and `test/e2e-github.test.js`).
-
-## What to work on
-
-See the **[Roadmap](./ROADMAP.md)** for the direction the project is heading. Good contributions:
-
-- fit one of the roadmap milestones, or
-- fix a bug, improve accessibility, tighten security, or improve a translation.
-
-For anything larger or that changes the product's scope, please **open an issue first** to discuss it before
-investing time — it saves everyone a wasted PR.
-
-## Sign your commits (DCO)
-
-Mergerie uses the [Developer Certificate of Origin](./DCO). By signing off on a commit, you certify that you
-wrote the change (or have the right to submit it) under the project's license.
-
-**Every commit must be signed off.** Add the `Signed-off-by` line automatically with the `-s` flag:
-
-```bash
-git commit -s -m "Your message"
-```
-
-This appends a line like:
-
-```
-Signed-off-by: Your Name <your.email@example.com>
-```
-
-The name and email must be real and match your `git config user.name` / `user.email`. Pull requests with
-unsigned commits will be asked to sign off before merging.
+- The UI is **bilingual (French / English)** and supports **light and dark themes**; both must keep
+  working when a string or a style changes.
+- User-visible changes go in **[CHANGELOG.md](./CHANGELOG.md)**, under `## [Unreleased]`, in the
+  `Added` / `Changed` / `Fixed` section that fits, written for the person who uses the tool — what
+  changed and why it matters — not as a copy of the commit message.
+- Mergerie talks to **two forges** (GitLab and GitHub). `src/gitlab.js` and `src/github.js` are never
+  called directly from another module: everything goes through `src/forge.js` (`clientFor(repo)`).
+  Both clients expose the same interface and return the same normalized shapes, and a feature that
+  touches a forge is covered on both (`test/e2e-*.test.js` and `test/e2e-github.test.js`).
+- Every commit is **signed off** under the [Developer Certificate of Origin](./DCO) (`git commit -s`),
+  certifying that its author wrote the change and has the right to submit it under the project's
+  licence.

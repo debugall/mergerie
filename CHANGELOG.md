@@ -20,6 +20,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   author whether there is anything urgent without opening the report. And the variables are now
   **listed under the field**, where you look while typing, instead of hiding in a tooltip.
 
+### Changed
+
+- **Code contributions are closed.** Mergerie is written by one maintainer, who stays its only
+  rights holder — that is what keeps the project free to evolve its licensing, the AGPL staying in
+  place. Pull requests on the GitHub mirror are now closed automatically with a note explaining
+  why. Issues remain the place for bugs, ideas and
+  translation errors; CONTRIBUTING.md says what a useful report carries, and asks for the fix in
+  words rather than as a patch, for the same reason.
+
 ### Security
 
 A security review of the whole tool, and what came out of it. Most of it is invisible when all goes

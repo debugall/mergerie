@@ -119,9 +119,11 @@ you with the tab closed.
   default and a token when exposed; code that arrives through the shared repository waits for your
   approval on this machine; reviews and explorations run the agent read-only, with a filtered environment
   and the forge token out of the clone.
-- 🤝 **[Contributing](./CONTRIBUTING.md)** — how to run it in dev and open a merge request.
+- 🤝 **[Contributing](./CONTRIBUTING.md)** — how to report a bug or an idea, how to run it in dev, and why
+  **pull requests are not accepted**: Mergerie is written by one maintainer, who stays its only rights holder.
 - 🦊 **Development happens on [GitLab](https://gitlab.com/amady/mergerie)** — merge requests are opened there
-  and **reviewed by Mergerie itself**. This GitHub repository is a synchronized mirror; issues are welcome here.
+  and **reviewed by Mergerie itself**. This GitHub repository is a synchronized mirror; **issues are welcome
+  here**, pull requests are closed automatically.
 
 ## License
 

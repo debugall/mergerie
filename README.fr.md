@@ -198,7 +198,12 @@ Ce qui change de version en version : **[CHANGELOG.md](./CHANGELOG.md)**.
 
 Le développement se fait sur **[GitLab](https://gitlab.com/amady/mergerie)** : les merge requests y sont
 ouvertes et **reviewées par Mergerie lui-même**. Le dépôt **[GitHub](https://github.com/debugall/mergerie)**
-est un miroir synchronisé — les issues y sont les bienvenues. Voir [CONTRIBUTING.md](./CONTRIBUTING.md).
+est un miroir synchronisé — **les issues y sont les bienvenues** : bugs, idées, erreurs de traduction.
+
+**Les contributions de code ne sont pas acceptées** : Mergerie est écrit par un seul mainteneur, qui en
+reste l'unique ayant droit — c'est ce qui laisse le projet libre de faire évoluer sa licence. Les pull
+requests GitHub sont fermées automatiquement ; les merge requests GitLab sont celles du mainteneur. Décris le bug ou la
+correction en mots plutôt que de coller un patch. Voir [CONTRIBUTING.md](./CONTRIBUTING.md) (en anglais).
 
 ## Licence
 
