@@ -11,6 +11,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Added
+
+- **The report-link comment can say how many findings the pass carries.** Three new variables in
+  the comment template — `{blockers}`, `{majors}` and `{minors}` — give the number of blocking,
+  major and minor findings of the pass, counted as on the report card (findings the pass saw
+  resolved are left out). “Review ready: {url} — {blockers} blocking, {majors} major” tells the
+  author whether there is anything urgent without opening the report. And the variables are now
+  **listed under the field**, where you look while typing, instead of hiding in a tooltip.
+
 ### Security
 
 A security review of the whole tool, and what came out of it. Most of it is invisible when all goes

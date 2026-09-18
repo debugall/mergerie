@@ -185,7 +185,9 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
   poste le même. Laissé vide, c'est le message livré, qui suit la langue de l'interface (le champ
   le montre en filigrane, plutôt que de le faire deviner). Rempli, il est pris au mot, avec
   `{url}` (obligatoire), `{note}` — vide si la passe n'en a pas —, `{v}` le numéro de passe,
-  `{iid}`, `{project}` et `{title}` ; une variable inconnue est laissée telle quelle. Un gabarit
+  `{iid}`, `{project}`, `{title}`, et `{blockers}`, `{majors}`, `{minors}` — le nombre de constats
+  bloquants, majeurs et mineurs de la passe, comptés comme sur la carte (les constats résolus n'y
+  sont pas) ; la liste est écrite sous le champ. Une variable inconnue est laissée telle quelle. Un gabarit
   **sans `{url}` est refusé à l'enregistrement**, pas à la publication : il annoncerait un rapport
   sans dire où il est.
   Le réglage **Réglages → Merge Request → « Publier automatiquement le rapport de review sur la MR »**

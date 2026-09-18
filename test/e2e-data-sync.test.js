@@ -587,6 +587,40 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
     await app.api('PUT', '/api/config', { data_repo_url: urlLocale, review_link_template: '' });
   });
 
+  /* LE NOMBRE DE CONSTATS PAR SÉVÉRITÉ, dans le commentaire : dire d'un coup d'œil s'il y a du
+     bloquant sans ouvrir le rapport. Le compte est celui de la carte — la dernière passe, hors
+     constats résolus —, et on le compare à ce que la base dit, pas à un chiffre supposé. */
+  test('le gabarit peut dire combien de constats bloquants, majeurs et mineurs porte la passe', async () => {
+    const mr = (await app.api('GET', '/api/mrs')).body.find((m) => m.iid === 77);
+    const urlLocale = (await app.api('GET', '/api/config')).body.data_repo_url;
+    const v = app.db.prepare('SELECT MAX(version) AS v FROM review_version WHERE mr_id = ?').get(mr.id).v;
+    // Des constats connus sur la dernière passe : un de chaque, plus un majeur déjà résolu.
+    const ins = app.db.prepare(`INSERT INTO finding (mr_id, version, fingerprint, file, line, severity, title, status, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?)`);
+    const maintenant = new Date().toISOString();
+    ins.run(mr.id, v, 'fp-b1', 'a.js', 1, 'blocker', 'bloquant', 'new', maintenant);
+    ins.run(mr.id, v, 'fp-m1', 'a.js', 2, 'major', 'majeur', 'new', maintenant);
+    ins.run(mr.id, v, 'fp-m2', 'a.js', 3, 'major', 'majeur résolu', 'resolved', maintenant);
+    ins.run(mr.id, v, 'fp-n1', 'a.js', 4, 'minor', 'mineur', 'persistent', maintenant);
+    const attendu = { blocker: 0, major: 0, minor: 0 };
+    for (const r of app.db.prepare(`SELECT severity, COUNT(*) c FROM finding WHERE mr_id = ? AND version = ?
+      AND status != 'resolved' GROUP BY severity`).all(mr.id, v)) if (r.severity in attendu) attendu[r.severity] = r.c;
+
+    await app.api('PUT', '/api/config', {
+      data_repo_url: 'https://gitlab.test/eq/mergerie-data.git',
+      review_link_template: '{url} — {blockers} bloquant(s), {majors} majeur(s), {minors} mineur(s)',
+    });
+    const r = await app.api('POST', `/api/mrs/${mr.id}/publish-review-link`);
+    assert.equal(r.status, 200, r.text);
+    const corps = app.db.prepare('SELECT body FROM comment_log WHERE mr_id = ? ORDER BY id DESC LIMIT 1').get(mr.id).body;
+    assert.match(corps, new RegExp(`— ${attendu.blocker} bloquant\\(s\\), ${attendu.major} majeur\\(s\\), ${attendu.minor} mineur\\(s\\)$`),
+      `les trois comptes sont ceux de la passe (${JSON.stringify(attendu)}) : ${corps}`);
+    assert.ok(attendu.blocker >= 1 && attendu.major >= 1 && attendu.minor >= 1, 'le constat résolu n’est pas compté, les autres si');
+
+    app.db.prepare("DELETE FROM finding WHERE fingerprint IN ('fp-b1','fp-m1','fp-m2','fp-n1')").run();
+    await app.api('PUT', '/api/config', { data_repo_url: urlLocale, review_link_template: '' });
+  });
+
   /* L'EXÉCUTANT DES AUTOMATISMES OFFRE « L'AUTEUR ». Désigner un poste fait payer une personne
      pour toute l'équipe et suppose qu'elle soit allumée ; « chacun les siennes » met l'abonnement
      de chacun sur son propre travail. C'est un choix de liste, donc il doit être DANS la liste —

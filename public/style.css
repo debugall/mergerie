@@ -680,6 +680,9 @@ body { padding-bottom: calc(36px + var(--logpanel-h, 0px)); }
    dixième réglage indépendant. */
 .sous-reglage { margin-left: 26px; border-left: 2px solid var(--line); padding-left: 12px; }
 .sous-reglage.is-off { opacity: .5; }
+/* La liste des variables d'un gabarit, sous son champ : lisible en tapant, sans bulle à survoler. */
+.template-vars { display: block; margin-top: 6px; font-size: 12px; line-height: 1.6; }
+.template-vars code { white-space: nowrap; }
 /* Les titres de groupe d'un formulaire de réglages : même niveau que les h4 du système
    (13 px, 700, capitales), avec de l'air au-dessus sauf pour le premier. */
 .form > h3 { font-size: var(--fs-sm, 13px); font-weight: 700; text-transform: uppercase;

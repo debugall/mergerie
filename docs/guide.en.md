@@ -182,7 +182,9 @@ than sorting on a guessed identity.
   posts the same thing. Left empty it is the shipped message, which follows the interface
   language (the field shows it as a placeholder rather than making you guess). Filled, it is
   taken word for word, with `{url}` (required), `{note}` — empty when the pass has none —, `{v}`
-  the pass number, `{iid}`, `{project}` and `{title}`; an unknown variable is left as written. A
+  the pass number, `{iid}`, `{project}`, `{title}`, and `{blockers}`, `{majors}`, `{minors}` — the
+  number of blocking, major and minor findings of the pass, counted as on the card (resolved findings
+  are left out); the list is written under the field. An unknown variable is left as written. A
   template **without `{url}` is refused when saved**, not when publishing: it would announce a
   report without saying where it is.
   The setting **Settings → Merge Request → “Automatically post the review report on the MR”** does it at
