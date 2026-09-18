@@ -36,8 +36,19 @@ npx mergerie         # pour de vrai : http://localhost:4319, tes données dans ~
 ```
 
 Depuis un clone, ce sont `npm install` puis `npm run demo` ou `npm start`, avec les données à côté
-du code (`data-demo/`, `data/`). `PORT`, `MERGERIE_DATA_DIR` et un `.env` dans le dossier courant
-sont honorés dans les deux cas.
+du code (`data-demo/`, `data/`).
+
+Au **premier lancement**, `npx mergerie` écrit un `.env` dans le dossier d'où tu le lances : il
+cherche `claude` puis `copilot` sur la machine et pointe `COPILOT_BIN` sur celui qu'il trouve,
+avec les arguments de cet agent. Sans lui, l'outil démarrerait sur le binaire `copilot` par
+défaut, ne trouverait rien, et produirait des rapports **simulés** sans le dire. Les deux
+coupe-circuit TLS sont écrits commentés — personne ne doit désactiver la vérification des
+certificats sans l'avoir voulu.
+
+`PORT`, `HOST`, `MERGERIE_DATA_DIR` et les réglages de [`.env.example`](./.env.example) sont honorés
+dans les deux cas. Le `.env` est lu **dans le dossier d'où la commande est lancée** — sous `npx`,
+là où tu te trouves au moment de la taper, donc reviens-y la fois suivante. Ce que le shell exporte
+passe devant le fichier, comme partout avec Node.
 
 Optionnel, pour la **dictée vocale** : `sh scripts/install-whisper.sh` (macOS/Linux) ou le bouton
 **Installer** de Réglages → Dictée vocale. Rien d'autre n'est nécessaire pour faire tourner l'outil.
@@ -70,13 +81,17 @@ run déclenché par un **horaire** qui a réécrit une page de notes.
 
 ## Les onglets
 
-**Dix onglets**, dans une barre latérale — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)**, et la **[vérification objective](./docs/guide.fr.md#vérification-objective-vérificateurs)** a sa propre section :
+**Onze onglets**, dans une barre latérale — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)**, et la **[vérification objective](./docs/guide.fr.md#vérification-objective-vérificateurs)** a sa propre section.
+**Git, Docker, Jenkins et Liens démarrent repliés** : ce sont des commodités, et la barre porte d'abord le travail de tous les jours — une case dans Réglages → Général → Menus les ramène pour de bon.
 
 - **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée,
   re-review incrémentale et **boucle de convergence autonome** (review → correction → re-review jusqu'au seuil).
   Les listes se filtrent par **couleur de note**. On peut **poser une question sur un rapport** —
   pourquoi ce constat bloque, vaut-il pour l'autre appelant — et la réponse arrive sous le rapport
   sans toucher ni à lui ni à sa note.
+  Un rapport se **publie en commentaire sur la MR** d'un bouton ; et quand l'équipe partage un dépôt
+  de données, un second bouton en publie le **lien** plutôt que ses six cents lignes — un seul
+  exemplaire, relu par tous au même endroit.
 - **Dev IA** — sessions de codage automatisées (l'IA code, commite, pousse, ouvre la MR), **codage hors dépôt**
 - **Agents** — des **profils de session** : un rôle, un périmètre, des outils, des skills, une sortie, parfois un horaire. Deux exemples livrés — l'**enquêteur d'incident**, qui trouve dans quel dépôt et quel fichier vit le code désigné par une trace, et le **documentaliste**, qui tient la carte des services dans une page de notes. Et les **agents de domaine** : on donne un sujet, le cartographe écrit la carte du sujet à travers les dépôts — chemins vérifiés un par un, âge de la carte compté sans IA, mise à jour relue et validée. Un agent ne pousse jamais et ne publie jamais de lui-même.
   (avec retour de l'IA et demande de correction), **exploration** de code en lecture seule et **questions

@@ -12,7 +12,7 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { startApp } = require('./helpers/app');
+const { startApp, afficherMenusOptionnels } = require('./helpers/app');
 const mock = require('./helpers/mock-jenkins');
 
 let chromium = null;
@@ -142,6 +142,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
 
     navigateur = await chromium.launch();
     page = await navigateur.newPage({ viewport: { width: 1300, height: 900 } });
+    await afficherMenusOptionnels(page);
     await page.goto(app.base);
   });
   after(async () => {

@@ -13,9 +13,12 @@ données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide
 
 ## Les onglets en détail
 
-Dix onglets, dans une **barre latérale** à gauche, rangés par familles — le cœur, ce que j'ai à
+Onze onglets, dans une **barre latérale** à gauche, rangés par familles — le cœur, ce que j'ai à
 faire, ma machine et ses liens, le méta :
-**Reviews** · **Dev IA** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Liens** — **Stats** · **Réglages**.
+**Reviews** · **Dev IA** · **Agents** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Liens** — **Stats** · **Réglages**.
+**Quatre d'entre eux — Git, Docker, Jenkins et Liens — démarrent repliés** : ce sont des commodités,
+on y va le jour où on en a besoin, et une barre de sept entrées se lit mieux qu'une barre de onze.
+Rien n'est désactivé : une case dans *Réglages → Général → Menus* les ramène, définitivement.
 La barre se **réduit en icônes** d'un bouton en pied de colonne (choix mémorisé), et se réduit d'elle-même
 sous 1100 px de large.
 Les badges signalent le **travail en attente** (MR à traiter, sessions non lancées), pas des totaux.
@@ -162,6 +165,29 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
   façon de rendre la review à l'auteur sans la recopier. Une confirmation le rappelle : ce qui part est
   lu par toute l'équipe. Une fois publié, le bouton devient **`Republier`** et porte la date du premier
   envoi, pour qu'on ne poste pas deux fois le même texte en croyant à un échec.
+- **Publier le LIEN du rapport, plutôt que le rapport** — seulement quand l'équipe partage un
+  **dépôt de données**. Six cents lignes recopiées en commentaire, personne ne les lit, et la passe
+  suivante en repose six cents. Le rapport est déjà dans le dépôt de l'équipe, en Markdown rendu par
+  la forge : le bouton **`Publier le LIEN du rapport`** poste un commentaire de trois lignes qui
+  pointe son adresse, avec la note et le numéro de passe. La merge request reste lisible et le
+  rapport garde un seul exemplaire, que tout le monde relit au même endroit.
+  **La synchro part d'abord** : publier un lien vers un fichier resté sur ce poste enverrait
+  l'équipe sur un 404, ce qui est pire qu'un commentaire absent — on croirait le travail fait. Si le
+  dépôt ne peut pas être envoyé (hors ligne, rebase en cours), **rien n'est publié** et l'écran dit
+  pourquoi. Un dépôt de données posé sur un **chemin local** (disque partagé, clé USB) n'a pas
+  d'adresse web : le bouton le dit plutôt que d'inventer un lien.
+  **La publication automatique sait le faire aussi** : sous la case « Publier automatiquement le
+  rapport… », une seconde — **« Publier le lien vers le rapport, pas le rapport »** — change ce
+  qui part à chaque passe. Elle ne décide pas SI l'auteur est prévenu, seulement la FORME ; et si
+  le lien ne peut pas être fait, **c'est le rapport qui part**, le journal du job disant pourquoi.
+  Elle n'apparaît que si un dépôt de données est configuré.
+  **Le texte du commentaire s'écrit** juste en dessous — un **gabarit d'équipe** : tout le monde
+  poste le même. Laissé vide, c'est le message livré, qui suit la langue de l'interface (le champ
+  le montre en filigrane, plutôt que de le faire deviner). Rempli, il est pris au mot, avec
+  `{url}` (obligatoire), `{note}` — vide si la passe n'en a pas —, `{v}` le numéro de passe,
+  `{iid}`, `{project}` et `{title}` ; une variable inconnue est laissée telle quelle. Un gabarit
+  **sans `{url}` est refusé à l'enregistrement**, pas à la publication : il annoncerait un rapport
+  sans dire où il est.
   Le réglage **Réglages → Merge Request → « Publier automatiquement le rapport de review sur la MR »**
   le fait **à la fin de chaque review**. Il est **décoché par défaut** : écrire chez les autres est une
   décision. S'il est coché et que la forge refuse, la review n'est **pas** perdue pour autant — le
@@ -2070,7 +2096,8 @@ et la **palette de commandes git** de l'onglet *Git → Commandes Git* : ajout/�
 commandes *nom + commande figée*). C'est le **premier** onglet, et celui qui s'ouvre d'office la
 première fois : sans jeton, aucun autre réglage ne sert à rien ·
 **Dépôts** (ajout un par un ou en masse **depuis GitLab** ou **depuis GitHub** — chaque dépôt porte un badge
-de forge, et un même chemin peut exister sur les deux —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ; chaque dépôt affiche aussi **ses merge requests ouvertes**, **la date de la dernière
+de forge, et un même chemin peut exister sur les deux ; sans jeton pour cette forge, la fenêtre
+d'ajout en masse le dit et renvoie vers le champ à remplir —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ; chaque dépôt affiche aussi **ses merge requests ouvertes**, **la date de la dernière
 recherche** et **l'état de son clone**, avec un bouton **`Re-cloner`** — rien n'est perdu côté forge, mais
 les modifications non poussées du clone local le sont, d'où la confirmation) ; un bouton **`Fiche`**
 déplie **ce qui est rattaché** à ce dépôt — vérificateurs, jobs Jenkins, règles de review limitées à lui,
@@ -2283,9 +2310,11 @@ donnée** : squelette pendant le chargement, jamais un « 0 » qui voudrait dire
   fenêtre reprise **protège toujours sa saisie** contre un clic à côté. Les fenêtres qui posent
   une **question** (confirmation, choix d'un vérificateur) n'ont pas ce bouton : elles font
   attendre celui qui les a ouvertes, et les mettre de côté le laisserait attendre pour toujours.
-- **La barre de menus se range** (Réglages → Général). On **remonte** ce qu'on ouvre dix fois par
+- **La barre de menus se range** (Réglages → Général). Elle porte d'office le travail de tous les
+  jours — Reviews, Dev IA, Agents, Notes, Jira, Stats, Réglages — et laisse **repliés Git, Docker,
+  Jenkins et Liens**, qu'une case rend. On **remonte** ensuite ce qu'on ouvre dix fois par
   jour et on **masque** ce dont on ne se sert pas : glisser-déposer ou flèches, appliqué tout de
-  suite. Un menu masqué quitte aussi la **palette** et les **raccourcis chiffrés** — `3` ouvre le
+  suite. « Rétablir les menus d'origine » revient à ce point de départ, replis compris. Un menu masqué quitte aussi la **palette** et les **raccourcis chiffrés** — `3` ouvre le
   troisième menu *affiché*, pas le troisième d'origine ; proposer un écran dont l'entrée de menu a
   disparu serait offrir un aller sans retour. La **fonctionnalité, elle, reste** : rien n'est
   désactivé, seulement rangé. ⚠ **Réglages ne se masque pas** (c'est le chemin du retour), et
@@ -2683,7 +2712,30 @@ configurée. En **mode démo**, en revanche, aucune commande n'est lancée : le 
 
 ## Configuration (.env)
 
-Un fichier `.env` à la racine est chargé automatiquement au démarrage.
+**`npx mergerie` en écrit un au premier lancement**, dans le dossier d'où on le lance : il cherche
+`claude` puis `copilot` sur la machine (dans le `PATH`, puis là où les installateurs les posent) et
+pointe `COPILOT_BIN` sur celui qu'il trouve, avec les arguments de cet agent — `--dangerously-skip-permissions`
+pour claude, `--yolo --model claude-sonnet-5` pour copilot. Sans ce fichier, `COPILOT_BIN` vaut
+« copilot » : qui a installé Claude Code n'a pas ce binaire, l'outil bascule en **dry-run** et
+chaque review rend un rapport factice — il « marche » et ne sert à rien. Le fichier est écrit une
+seule fois, en `600`, jamais réécrit ensuite (il finira par porter des jetons), et la commande dit
+ce qu'elle a créé. `npx mergerie demo` n'en pose pas : elle promet de ne rien laisser derrière elle.
+
+Le fichier **explique l'option qui laisse l'agent agir sans rien demander**
+(`--dangerously-skip-permissions` pour claude, `--yolo` pour copilot). Elle est nécessaire : l'agent
+est appelé en **non-interactif**, personne n'est là pour répondre à une demande de permission — sans
+elle, le travail se bloque, ou tout ce qui demanderait est refusé **sans un mot** et le rapport revient
+plus pauvre sans raison visible. Le fichier dit aussi ce qu'elle **ne** protège **pas** : l'agent
+tourne avec tes droits, il travaille dans le clone du dépôt relu et c'est Mergerie qui fait le git,
+mais l'option ne construit aucun mur autour de ce dossier — et ce qu'il lit (un diff, un ticket) n'est
+pas écrit par toi. Une variante plus étroite est proposée en commentaire,
+`--permission-mode acceptEdits` : les éditions de fichiers sont acceptées, le reste est refusé — et
+refusé **en silence** sous `-p`, ce qui est le prix à connaître avant de la choisir.
+
+Un fichier `.env` est chargé automatiquement au démarrage : **celui du dossier d'où la commande
+est lancée** — la racine du clone avec `npm start`, le répertoire courant avec `npx mergerie`
+(reviens-y la fois suivante, sinon le fichier est ignoré sans un mot). Ce que le shell exporte
+passe devant le fichier.
 
 | Variable | Défaut | Rôle |
 |---|---|---|
@@ -2822,6 +2874,14 @@ l'équipe, mais chaque poste a sa propre file : sans exécutant désigné, deux 
 lanceraient deux fois la même review — deux appels d'IA facturés, et deux commentaires sur la
 merge request. *Réglages → Merge Request* demande donc qui les fait tourner ; sans personne, elles
 ne tournent nulle part.
+La liste offre deux réponses. Un **poste** : une personne paie les appels de toute l'équipe, et
+rien ne tourne quand sa machine est éteinte. Ou **« l'auteur de la merge request »** : chaque poste
+ne prend que les merge requests dont le compte de la forge est le SIEN, avec son abonnement, et
+laisse celles du voisin — la décision n'est plus globale, elle se prend merge request par merge
+request. Le compte est celui du jeton de la forge concernée, comparé à l'auteur sur le **pseudo**
+comme sur le **nom affiché**, GitLab et GitHub ne stockant pas le même. Si ce compte ne peut pas
+être connu (jeton absent, forge injoignable), le poste ne lance **rien** et le dit dans le journal :
+mieux vaut rien que la même review sur tous les postes.
 
 **Les sessions se partagent UNE PAR UNE, et pas par défaut.** Une session de codage, une
 exploration, une question libre : ce qu'elles portent n'est pas un produit mais la façon dont on

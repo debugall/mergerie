@@ -11,6 +11,139 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-18
+
+### Added
+
+- **“The merge request's author” can be the runner of the automatic reviews.** Until now the
+  automatic reviews and verifications needed a **designated machine**: one person paid the AI
+  calls for the whole team, and nothing ran while that machine was off. The runner list now
+  offers a second answer — **the author** — and the decision stops being global: each machine
+  takes only the merge requests whose forge account is its own, on its own subscription, and
+  leaves its neighbour's alone. The account is the one behind that forge's token, matched
+  against the merge request's author on the username **or** the display name, since GitLab and
+  GitHub do not store the same one. If that account cannot be known (no token, forge
+  unreachable), the machine runs **nothing** and says why in the log — better nothing than the
+  same review twice on every machine.
+
+- **Publish the *link* to a review report, instead of the report.** Six hundred lines of report
+  copied into a merge request comment: nobody reads them, and the next pass posts six hundred
+  more. When your team shares a data repository, the report already lives there in Markdown —
+  rendered by the forge like any other file. A new button on the report, **“Publish the report
+  LINK”**, posts a three-line comment pointing at that address, with the score and the pass
+  number. One copy, read by everyone in the same place, and a merge request that stays readable.
+  The button only exists when a data repository is configured — without one there would be
+  nowhere to point. The sync runs **before** publishing: a link to a file still sitting on your
+  machine would send the team to a 404, which is worse than no comment at all, so if the
+  repository cannot be sent the screen says why and nothing goes out. A repository on a local
+  path (a shared drive, a USB key) has no web address, and the button says that too rather than
+  inventing a link. The address is computed from the file the report occupies — never taken from
+  the browser — and a token carried in the clone URL never reaches the comment.
+
+  **And it says when it already went out.** Like the report button, this one turns into
+  “Publish the report link again” and carries the date of the first send — except the date is
+  read from the comments the team shares, so it also stops you when a **colleague** published
+  that pass before you. Publishing again is not a correction: it puts a second comment in front
+  of the same report.
+
+  **And it can happen by itself.** Under “Automatically post the review report on the MR”, a new
+  checkbox — **“Post the link to the report, not the report”** — changes what that automation
+  sends: three lines instead of six hundred, on every pass. It does not decide *whether* the
+  author is told, only the form; the checkbox above still decides that. And if the link cannot
+  be made — no data repository any more, a repository on a local path, a sync that will not go
+  through — the **report itself is posted** and the job log says why the form changed. Staying
+  silent would leave a review with no reader, which is not what ticking the box asked for. The
+  line only shows when a data repository is configured.
+
+  **And the text is yours.** Under the two checkboxes, a **comment template** — a team setting,
+  so everyone posts the same thing. Left empty it is the shipped message, which follows the
+  interface language; filled, it is taken word for word, with `{url}` (required), `{note}`,
+  `{v}` for the pass number, `{iid}`, `{project}` and `{title}` substituted, and any variable
+  it does not know left exactly as written. An empty field shows the shipped message as its
+  placeholder rather than making you publish once to find out. A template without `{url}` is
+  refused when you save it, not when it publishes: it would announce a report without saying
+  where it is, on the merge requests of the whole team.
+
+### Changed
+
+- **The menu bar starts with the everyday work, and folds the rest away.** Eleven entries is a list
+  you stop reading. Git, Docker, Jenkins and Links are conveniences — you go there the day you need
+  them, not ten times a day — so they now start **folded**, leaving Reviews, AI Dev, Agents, Notes,
+  Jira, Stats and Settings in the bar. Nothing is disabled, removed or hidden from the product: the
+  screens, their data and their shortcuts are whole, and one tick in **Settings → General → Menus**
+  brings a menu back for good. “Restore the original menus” returns to that starting point rather
+  than showing everything. If you had already arranged your own bar, it is left exactly as you set
+  it — the new default only applies to a bar nobody has touched.
+
+### Fixed
+
+- **Review reports read as paragraphs again, not as a pile of fragments.** Agents now wrap their
+  reports at about a hundred characters, the way they write source files, and each wrapped line
+  was shown as a paragraph of its own — with its own spacing — so a report looked like a column of
+  broken sentences, and the continuation of a bullet fell out of it. Text written by the AI
+  (reports, explanations, answers, session output, domain cards) now follows the Markdown rule:
+  consecutive lines make one paragraph, and an indented line continues its bullet. Level-5 and
+  level-6 headings (`##### 🟠 IMPORTANT`) are shown as headings instead of raw text. Notes and Jira
+  texts keep their line breaks — there, a new line is what the person typed.
+
+- **“Bulk add from GitLab / GitHub” now says what is missing instead of quoting the forge.**
+  With no token the button was still there — and rightly so: it tells you what the tool can do,
+  which is worth knowing before you have a token. But clicking it went to fetch the list anyway
+  and came back with the forge's own words, “401”, “missing token”: what happened, never what to
+  do. The modal now names the connection that is missing and carries the door — Settings → Git,
+  cursor in the field, and the GitHub button leads to the GitHub field rather than the GitLab
+  address.
+
+- **A team setting added by a new version now reaches the machines that were already up to
+  date.** Hydration is incremental: it applies the files that changed since the last mark. So a
+  setting a new version understands was never read from a file an older one had already
+  hydrated — the file had no reason to change again, the mark had moved past it, and restarting
+  changed nothing. That is how “post the link, not the report” stayed unticked on a machine
+  whose `settings.json` carried it at “1”, with nothing broken and nothing to see. The tool now
+  keeps a **signature of what its code understands** — its version, and the list of shared
+  settings fields — and re-reads the repository **once** when that signature changes. It adds,
+  it never removes, and it does nothing at all when the signature has not moved, so an ordinary
+  start costs nothing.
+
+- **`npx mergerie` no longer starts on an agent you do not have.** Without a `.env`,
+  `COPILOT_BIN` was “copilot”: whoever had installed Claude Code did not have that binary, the
+  tool silently fell back to **dry-run**, and every review came back a fake report — it “worked”
+  and was useless. From a clone you copy `.env.example`; under `npx` there is no clone, nothing
+  to copy, and nothing saying where the file should go. The first launch now writes one **in the
+  folder you run it from**: it looks for `claude` then `copilot` (on the `PATH`, then where the
+  installers put them) and points `COPILOT_BIN` at the one it finds, with that agent's own
+  arguments. The file is written once, mode `600`, and never rewritten — it will end up carrying
+  tokens. The command says what it created, rather than leaving a file to be discovered. The two
+  TLS escape hatches are written **commented out**: nobody should turn off certificate checking
+  without meaning to. `npx mergerie demo` writes none — it promises to leave nothing behind.
+
+  **And it explains the option that lets the agent act without asking.**
+  `--dangerously-skip-permissions` (claude) and `--yolo` (copilot) are not a convenience: the
+  agent is called non-interactively (`-p`), so nobody is there to answer a permission prompt —
+  without them the work hangs, or everything that would prompt is denied **without a word** and
+  the report comes back poorer for no visible reason. A file you did not write carrying
+  “dangerously” and no explanation is exactly what should worry someone, so the generated `.env`
+  now says why it is there, what it does **not** protect (the agent runs with your rights; the
+  option builds no wall around the clone), and offers the narrower
+  `--permission-mode acceptEdits` as a commented line — with its price written next to it,
+  since under `-p` a denial is silent.
+
+- **The sync indicator no longer says “↑1” just after sending.** The counters were read to
+  decide whether to push, and never again afterwards: a successful send left the footer showing
+  one commit still waiting until the next round, up to thirty seconds later. They are refreshed
+  as soon as the push lands — and so is what reads them to decide, such as “is that report
+  really on the forge?”.
+
+- **A `.env` asking for another data folder is now obeyed by `npx mergerie`.** The file was read —
+  its port, its agent, its proxy all worked — but its `MERGERIE_DATA_DIR` line was quietly dropped
+  and the database went to `~/.mergerie/data` anyway: the command had already decided where the
+  data lived before the server got to read the file. It now reads the `.env` of the folder you run
+  it from before deciding, and what your shell exports still wins over the file. The two READMEs
+  and the guides said the variable was honoured either way; they now also say **which folder** the
+  file is looked for in — with `npx`, the one you are standing in when you type the command. And
+  since `mergerie demo` erases its data folder before re-seeding it, the command now names that
+  folder out loud rather than erasing in silence.
+
 ## [1.6.0] - 2026-09-16
 
 ### Added
@@ -3221,7 +3354,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/debugall/mergerie/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/debugall/mergerie/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/debugall/mergerie/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/debugall/mergerie/compare/v1.3.0...v1.4.0

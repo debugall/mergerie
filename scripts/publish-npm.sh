@@ -77,7 +77,24 @@ wait "$RUNNER" 2>/dev/null || true
 say "6/6  Publication"
 if [ "$PUBLISH" = 1 ]; then
   npm publish "$TGZ"
-  echo "publié : $(npm view "$NAME" version) — https://www.npmjs.com/package/$NAME"
+  # LE REGISTRE ÉCRIT PLUS VITE QU'IL NE RELIT. Interrogé dans la foulée du `publish`, `npm view`
+  # répond 404 — le paquet est bien parti, la lecture n'a pas encore propagé. La ligne annonçait
+  # alors « publié :  » (version vide) précédée d'une erreur 404 en travers d'une publication
+  # RÉUSSIE : de quoi la croire ratée et la refaire. On laisse au registre le temps de se relire,
+  # et on ne redescend jamais en échec — ce qui est publié est publié.
+  PUBLIEE=""
+  i=0
+  while [ $i -lt 12 ]; do
+    PUBLIEE=$(npm view "$NAME" version --prefer-online 2>/dev/null || true)
+    [ "$PUBLIEE" = "$VERSION" ] && break
+    i=$((i + 1)); sleep 3
+  done
+  if [ "$PUBLIEE" = "$VERSION" ]; then
+    echo "publié : $VERSION — https://www.npmjs.com/package/$NAME"
+  else
+    echo "publié : $VERSION — https://www.npmjs.com/package/$NAME"
+    echo "le registre ne le relit pas encore${PUBLIEE:+ (il annonce $PUBLIEE)} — à revérifier dans une minute : npm view $NAME version"
+  fi
   cat <<EOF
 
 Reste à faire, à la main :

@@ -16,7 +16,7 @@ const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { startApp, makeRemoteRepo } = require('./helpers/app');
+const { startApp, makeRemoteRepo, afficherMenusOptionnels } = require('./helpers/app');
 
 let chromium = null;
 let dispo = false;
@@ -40,6 +40,7 @@ describe('Git · Explorateur de branches', { skip: dispo ? false : 'chromium abs
     }
     navigateur = await chromium.launch();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 900 } });
+    await afficherMenusOptionnels(page);
     await page.goto(app.base);
     await page.locator('nav button[data-tab="git"]').click();
     await page.locator('#tab-git .subnav [data-gsub="explore"]').click();

@@ -242,8 +242,23 @@ async function waitForJobs(api, { timeout = 60000 } = {}) {
   }
 }
 
+/* LES QUATRE MENUS OPTIONNELS — Git, Docker, Jenkins, Liens — DÉMARRENT REPLIÉS : la barre
+   ne porte d'office que le travail de tous les jours. Un test qui va sur l'un de ces écrans
+   commence donc par les afficher, exactement comme l'utilisateur le fait dans Réglages →
+   Menus : la préférence vit dans le stockage du navigateur, on l'y pose.
+
+   `addInitScript` et non `page.evaluate` : la barre lit cette préférence AU CHARGEMENT, donc
+   il faut que la valeur existe avant lui — et elle est reposée à chaque navigation, ce qui la
+   fait survivre aux `reload()` des tests. À appeler AVANT le premier `goto`. */
+async function afficherMenusOptionnels(page) {
+  await page.addInitScript(() => {
+    try { localStorage.setItem('mergerie_nav', JSON.stringify({ ordre: [], masques: [] })); } catch { /* stockage refusé */ }
+  });
+}
+
 module.exports = {
   startApp, makeRemoteRepo, pushChange, waitForJobs, git, ROOT,
   poserIdentiteGit, ARGS_IDENTITE_GIT, IDENTITE_GIT,
   navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, attendreServeur,
+  afficherMenusOptionnels,
 };

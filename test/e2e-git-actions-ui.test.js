@@ -20,7 +20,7 @@ const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { startApp, makeRemoteRepo } = require('./helpers/app');
+const { startApp, makeRemoteRepo, afficherMenusOptionnels } = require('./helpers/app');
 
 let chromium = null;
 let dispo = false;
@@ -44,6 +44,7 @@ describe('Git · Actions — largeur du champ de branche', { skip: dispo ? false
     await app.api('POST', '/api/repos', { url: depot.url, project: 'groupe/comptabilite' });
     navigateur = await chromium.launch();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 900 } });
+    await afficherMenusOptionnels(page);
     /* Les refs viennent de l'API de la forge, pas d'un clone : sans GitLab ni GitHub en face,
        la liste revient vide et il n'y a rien à mesurer. On répond donc à sa place — ce qui
        est testé ici, c'est la mise en page du champ, pas le client de forge (couvert

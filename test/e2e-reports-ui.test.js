@@ -98,6 +98,34 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
      bouton du rapport ne rafraîchissait que le panneau de droite — la carte restait dans une
      liste où elle n'avait plus sa place, et le compteur du segment mentait jusqu'au prochain
      rechargement. Le même geste depuis la file « À traiter » mettait déjà la liste à jour. */
+  /* UN RAPPORT ÉCRIT « COMME DU CODE ». Les agents reviennent à la ligne vers cent caractères :
+     rendu ligne par ligne, chaque morceau devenait un paragraphe, avec sa marge, et la suite d'une
+     puce se détachait d'elle. Des lignes consécutives forment UN paragraphe ; une ligne indentée
+     continue la puce ; un titre `#####` est un titre, pas du texte. */
+  test('un rapport revenu à la ligne se lit en paragraphes, pas en fragments', async () => {
+    const md = '# Revue\n\nLe correctif couvre le cas nominal,\nmais deux marches manquent encore.\n\n'
+      + '##### 🟠 IMPORTANT\n\n- `src/datasync.js:264` : le fetch part avant\n  la branche qui hydrate.\n\nNote globale : 7/10\n';
+    const rapports = app.db.prepare('SELECT md_path FROM review').all();
+    const originaux = rapports.map((rv) => fs.readFileSync(rv.md_path, 'utf8'));
+    for (const rv of rapports) fs.writeFileSync(rv.md_path, md, 'utf8');
+    await ouvrirStade('reviewed');
+    await page.waitForFunction(() => /deux marches/.test(document.querySelector('#mdView').textContent));
+    const vu = await page.evaluate(() => {
+      const v = document.querySelector('#mdView');
+      return {
+        paras: [...v.querySelectorAll('p')].map((p) => p.textContent),
+        h5: (v.querySelector('h5') || {}).textContent || null,
+        li: [...v.querySelectorAll('li')].map((l) => l.textContent),
+      };
+    });
+    // Les tests suivants lisent les notes étalées d'origine.
+    rapports.forEach((rv, i) => fs.writeFileSync(rv.md_path, originaux[i], 'utf8'));
+    assert.ok(vu.paras.includes('Le correctif couvre le cas nominal, mais deux marches manquent encore.'),
+      `les deux lignes forment un seul paragraphe : ${JSON.stringify(vu.paras)}`);
+    assert.equal(vu.h5, '🟠 IMPORTANT', 'le titre de niveau 5 est un titre');
+    assert.deepEqual(vu.li, ['src/datasync.js:264 : le fetch part avant la branche qui hydrate.'], 'la puce garde sa suite');
+  });
+
   test('« Marquer traitée » retire la carte de la liste, et « Rouvrir » la ramène', async () => {
     /* EN PREMIER dans ce fichier, et il rend ce qu'il a pris. Les tests suivants filtrent par
        note et mémorisent leur choix : les laisser passer d'abord ferait observer un retrait de
@@ -442,5 +470,4 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
     assert.ok(fin.enBas, 'la liste a bien été parcourue jusqu’en bas');
     assert.equal(fin.bouge, 0, 'la page n’a pas suivi');
   });
-
 });

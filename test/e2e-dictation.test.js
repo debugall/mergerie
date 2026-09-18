@@ -24,7 +24,7 @@ const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { startApp, attendreServeur, lancerNavigateur, navigateurDispo, ROOT } = require('./helpers/app');
+const { startApp, attendreServeur, lancerNavigateur, navigateurDispo, ROOT, afficherMenusOptionnels } = require('./helpers/app');
 
 const { dispo } = navigateurDispo();
 const FIXTURE = path.join(ROOT, 'test/fixtures/dictation/phrase-fr.wav');
@@ -61,6 +61,7 @@ describe('Dictée vocale · du micro au champ', { skip: dispo ? false : 'chromiu
     const ctx = await navigateur.newContext({ viewport: { width: 1400, height: 950 }, permissions: ['microphone'] });
     await ctx.grantPermissions(['microphone'], { origin: app.base });
     page = await ctx.newPage();
+    await afficherMenusOptionnels(page);
     page.on('pageerror', (e) => erreurs.push(String(e)));
     page.on('console', (m) => { if (m.type() === 'error') erreurs.push(m.text()); });
     await page.goto(app.base);

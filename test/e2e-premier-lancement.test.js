@@ -15,7 +15,7 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { startApp } = require('./helpers/app');
+const { startApp, afficherMenusOptionnels } = require('./helpers/app');
 
 let chromium = null;
 let dispo = false;
@@ -42,6 +42,7 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
 
     navigateur = await chromium.launch();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 900 } });
+    await afficherMenusOptionnels(page);
     page.on('pageerror', (e) => erreurs.push(String(e)));
     await page.goto(app.base);
   });
@@ -168,6 +169,47 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
      engageant de l'écran — et on se fait répondre que le jeton n'est pas configuré. Le test
      doit porter sur CE QUI EST À L'ÉCRAN. Et l'arrivée depuis l'assistant pose le curseur :
      l'écran changeait sans que le curseur suive, il fallait viser le premier champ. */
+  /* LE BOUTON RESTE, C'EST LA MODALE QUI EXPLIQUE. « Ajout en masse depuis GitLab » dit ce que
+     l'outil sait faire, et c'est utile à savoir AVANT d'avoir un jeton : le masquer ferait
+     disparaître la fonctionnalité au lieu de la rendre atteignable. Mais cliquer partait
+     chercher la liste chez la forge et revenait avec SON message — « 401 », « jeton manquant » —
+     qui dit ce qui s'est passé, jamais quoi faire. La modale dit maintenant ce qui manque, et
+     porte la porte : Réglages → Git, curseur dans le champ. */
+  test('« Ajout en masse » sans jeton explique ce qui manque, et ouvre la porte', async () => {
+    await page.locator('nav button[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="repos"]').click();
+    await page.waitForFunction(() => document.querySelector('#sub-repos').classList.contains('active'),
+      null, { timeout: ATTENTE });
+
+    await page.locator('#btnBrowseProjects').click();
+    await page.waitForSelector('#bulkModal:not([hidden])', { timeout: ATTENTE });
+    await page.waitForSelector('#bulkList .empty', { timeout: ATTENTE });
+    const texte = await page.locator('#bulkList').textContent();
+    assert.match(texte, /GitLab/, 'la modale nomme la forge dont la connexion manque');
+    assert.doesNotMatch(texte, /401|Unauthorized/i,
+      'et pas le message de la forge : il dit ce qui s’est passé, jamais quoi faire');
+
+    await page.locator('#bulkList [data-empty-act]').click();
+    await page.waitForFunction(() => document.querySelector('#bulkModal').hidden, null, { timeout: ATTENTE });
+    await page.waitForFunction(() => document.querySelector('#sub-gitcfg')
+      && document.querySelector('#sub-gitcfg').classList.contains('active'), null, { timeout: ATTENTE });
+
+    /* LA PORTE DE GITHUB MÈNE AU CHAMP DE GITHUB. Envoyer sur l'URL GitLab quelqu'un à qui il
+       manque un jeton GitHub, c'est le faire chercher. */
+    await page.locator('#tab-admin .subnav [data-sub="repos"]').click();
+    await page.locator('#btnBrowseGithub').click();
+    await page.waitForSelector('#bulkList .empty', { timeout: ATTENTE });
+    assert.match(await page.locator('#bulkList').textContent(), /GitHub/);
+    await page.locator('#bulkList [data-empty-act]').click();
+    await page.waitForFunction(() => document.activeElement
+      && document.activeElement.name === 'github_token', null, { timeout: ATTENTE });
+
+    /* ON REPOSE L'ÉCRAN OÙ ON L'A TROUVÉ : ce fichier raconte un PARCOURS, et l'épreuve suivante
+       repart de la file de Reviews et de son écran vide. */
+    await page.locator('nav button[data-tab="review"]').click();
+    await page.waitForSelector('#toReviewList [data-empty-act="go-config"]', { timeout: ATTENTE });
+  });
+
   test('« Enregistrer et tester » part du formulaire, et dit sous le champ ce qui manque', async () => {
     await page.locator('#toReviewList [data-empty-act="go-config"]').click();
     await page.waitForSelector('#btnTestGitlab', { timeout: ATTENTE });

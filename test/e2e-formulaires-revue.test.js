@@ -12,7 +12,7 @@
 
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR } = require('./helpers/app');
+const { startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, afficherMenusOptionnels, attendreServeur } = require('./helpers/app');
 
 const { dispo } = navigateurDispo();
 const ATTENTE = 20000;
@@ -40,6 +40,7 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     await app.api('POST', '/api/free-links', { label: 'Confluence', url: 'https://confluence.demo.invalid/x', tags: 'doc' });
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 950 } });
+    await afficherMenusOptionnels(page);
     page.on('pageerror', (e) => erreurs.push(String(e)));
     await page.goto(app.base);
   });
@@ -205,9 +206,10 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
   test('neuf réglages en vrac deviennent trois groupes titrés', async () => {
     await ouvrirReglages('mr');
     const ordre = await page.$$eval('#sub-mr > .form > *',
-      (els) => els.map((e) => (e.tagName === 'H3' ? `# ${e.textContent}` : ((e.querySelector('input, select') || {}).name || e.tagName))));
+      (els) => els.map((e) => (e.tagName === 'H3' ? `# ${e.textContent}` : ((e.querySelector('input, select, textarea') || {}).name || e.tagName))));
     assert.deepEqual(ordre, [
-      '# Review', 'review_explain', 'auto_post_review', 'auto_post_blocking_only',
+      '# Review', 'review_explain', 'auto_post_review', 'auto_post_blocking_only', 'auto_post_review_link',
+      'review_link_template',
       /* L'EXÉCUTANT FERME LE GROUPE : il dit QUI fait tourner les deux automatismes juste
          au-dessus, et le `P` qui suit est l'avertissement affiché quand ils sont cochés sans
          personne pour les exécuter. */
@@ -215,6 +217,77 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
       'auto_runner', 'P',
       '# Convergence', 'converge_threshold', 'converge_max_passes',
     ], 'l’interrupteur et son plafond ne sont plus séparés par un autre réglage');
+  });
+
+  /* LE CHOIX DE LA FORME : le rapport, ou son lien. La ligne ne s'affiche qu'avec un dépôt de
+     données — sans lui il n'y aurait nulle part où pointer —, et elle suit la case du dessus.
+     Et surtout elle S'ENREGISTRE : un champ ajouté au HTML sans sa ligne dans la liste blanche
+     s'affiche, se coche, et n'est jamais sauvegardé. C'est le formulaire qu'on éprouve ici, pas
+     l'API — passer par l'API prouverait l'API. */
+  test('« publier le lien » n’apparaît qu’avec un dépôt de données, et s’enregistre depuis le formulaire', async () => {
+    await ouvrirReglages('mr');
+    await page.locator('[form="configForm"][name="auto_post_review"]').check();
+    await page.waitForFunction(() => !document.querySelector('#autoPostBlockingRow').hidden);
+    assert.equal(await page.locator('#autoPostLinkRow').isVisible(), false,
+      'sans dépôt de données, la ligne ne prend pas de place : elle n’aurait pas d’adresse où pointer');
+
+    /* L'équipe se donne un dépôt de données : la ligne apparaît. `auto_post_review` part avec —
+       la case cochée plus haut ne l'a pas été DANS LA BASE, et le rechargement qui suit repart
+       de ce que le serveur a. */
+    await app.api('PUT', '/api/config', {
+      data_repo_url: 'https://gitlab.test/eq/mergerie-data.git', auto_post_review: '1',
+    });
+    await page.reload();
+    await ouvrirReglages('mr');
+    await page.waitForFunction(() => {
+      const r = document.querySelector('#autoPostLinkRow');
+      return r && !r.hidden;
+    }, null, { timeout: ATTENTE });
+
+    /* Le gabarit du commentaire n'apparaît qu'avec la case : un champ de texte inutile coûte
+       plus cher qu'une case inutile. */
+    assert.equal(await page.locator('#reviewLinkTemplateRow').isVisible(), false,
+      'pas de gabarit tant qu’aucun lien ne part');
+    await page.locator('[form="configForm"][name="auto_post_review_link"]').check();
+    await page.waitForFunction(() => !document.querySelector('#reviewLinkTemplateRow').hidden);
+    /* CE QUI PARTIRA SI ON N'ÉCRIT RIEN : le champ vide le MONTRE, il ne le fait pas deviner. */
+    assert.match(await page.locator('[form="configForm"][name="review_link_template"]').getAttribute('placeholder'),
+      /\{url\}|https?:/, 'le champ vide montre le message livré');
+
+    await page.locator('[form="configForm"][name="review_link_template"]').fill('Rapport de review : {url}');
+    await page.locator('#sub-mr button[type="submit"][form="configForm"]').first().click();
+    await attendreServeur(async () => (await app.api('GET', '/api/config')).body.auto_post_review_link === '1',
+      'la case cochée arrive en base', ATTENTE);
+    assert.equal((await app.api('GET', '/api/config')).body.review_link_template, 'Rapport de review : {url}',
+      'et le gabarit avec elle');
+
+    // …et elle revient cochée : ce qui est enregistré est aussi ce qui est relu.
+    await page.reload();
+    await ouvrirReglages('mr');
+    await page.waitForFunction(() => {
+      const c = document.querySelector('#configForm') && document.querySelector('#configForm').auto_post_review_link;
+      return c && c.checked;
+    }, null, { timeout: ATTENTE });
+
+    /* UN GABARIT SANS {url} EST REFUSÉ, et l'écran le dit — sinon le commentaire annoncerait
+       un rapport sans dire où il est, sur les merge requests de toute l'équipe. */
+    await page.locator('[form="configForm"][name="review_link_template"]').fill('Le rapport est prêt.');
+    await page.locator('#sub-mr button[type="submit"][form="configForm"]').first().click();
+    await page.waitForFunction(() => [...document.querySelectorAll('#toasts .toast')]
+      .some((t) => /url/i.test(t.textContent)), null, { timeout: ATTENTE });
+    assert.equal((await app.api('GET', '/api/config')).body.review_link_template, 'Rapport de review : {url}',
+      'le refus n’écrase pas le gabarit qui marchait');
+    /* LE CHAMP FAUTIF RESTE VISIBLE, cases décochées ou non : c'est lui qui bloque
+       l'enregistrement de tout le formulaire, le cacher enfermerait dehors. */
+    await page.locator('[form="configForm"][name="auto_post_review_link"]').uncheck();
+    assert.equal(await page.locator('#reviewLinkTemplateRow').isVisible(), true,
+      'un gabarit refusé ne se cache pas : on doit pouvoir le corriger');
+    await page.locator('[form="configForm"][name="review_link_template"]').fill('');
+
+    // On repose le décor : les tests suivants n'ont pas demandé un dépôt de données.
+    await app.api('PUT', '/api/config', {
+      auto_post_review: '0', auto_post_review_link: '0', data_repo_url: '', review_link_template: '',
+    });
   });
 
   test('le plafond des reviews auto est indenté sous sa case, et éteint avec elle', async () => {

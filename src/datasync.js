@@ -142,6 +142,63 @@ const cadenceMs = () => Math.max(10, Number(config().data_sync_seconds) || 30) *
 /** Le partage est-il demandé ? URL vide = mono-poste, et rien de ce module ne tourne. */
 const estConfigure = () => Boolean(urlDepot());
 
+/* ---------- L'ADRESSE WEB D'UN FICHIER DU DÉPÔT DE DONNÉES ----------
+ *
+ * Le dépôt de données est un dépôt comme un autre sur la forge : ses fichiers ont une adresse
+ * de navigation, et c'est elle qu'on donne à l'équipe — « le rapport est là » vaut mieux que
+ * six cents lignes recopiées dans un commentaire, et le lien suit les passes suivantes.
+ *
+ * L'URL de CLONE peut prendre trois formes : `git@hote:groupe/projet.git`, `ssh://…` ou
+ * `https://…`. On en tire l'adresse de navigation — et au passage on jette ce qui ne doit
+ * JAMAIS sortir : un identifiant ou un jeton glissé dans l'URL (`https://oauth2:glpat-…@…`).
+ * Un lien publié sur une merge request est lu par toute l'équipe et archivé par la forge ;
+ * un secret qui y passerait serait à révoquer, pas à effacer. */
+function baseWeb(url) {
+  const u = String(url || '').trim().replace(/\.git$/i, '');
+  if (!u) return '';
+  const scp = /^[^/]+@([^:/]+):(.+)$/.exec(u);            // git@hote:groupe/projet
+  if (scp) return `https://${scp[1].toLowerCase()}/${scp[2].replace(/^\/+/, '')}`;
+  try {
+    const p = new URL(u);
+    const chemin = p.pathname.replace(/\/+$/, '');
+    // `origin` n'emporte ni l'utilisateur ni le mot de passe : c'est ce qui protège le jeton.
+    if (p.protocol === 'http:' || p.protocol === 'https:') return `${p.origin}${chemin}`;
+    return `https://${p.hostname.toLowerCase()}${chemin}`;  // ssh:// → le port n'est pas celui du web
+  } catch { return ''; }
+}
+
+/* GitLab range ses fichiers sous `/-/blob/`, GitHub sous `/blob/`. On reconnaît GitHub à son
+   hôte — celui du réglage `github_url` quand il est posé (GitHub Enterprise), « github.com »
+   sinon — et on retombe sinon sur la forme GitLab, celle de la forge de référence du projet. */
+function estGitHub(base, cfg) {
+  const hote = (v) => { try { return new URL(v).hostname.toLowerCase(); } catch { return ''; } };
+  const h = hote(base);
+  if (!h) return false;
+  return h === 'github.com' || h === hote(String((cfg && cfg.github_url) || ''));
+}
+
+/* Ce qui reste à échapper une fois le chemin découpé : l'espace, et surtout `#` et `?`, qui
+   couperaient l'URL en deux. `encodeURI` laisse les `/` tranquilles — on veut des segments. */
+const echapper = (v) => encodeURI(String(v)).replace(/#/g, '%23').replace(/\?/g, '%3F');
+
+/**
+ * L'adresse web d'un fichier du dépôt de données, ou `null` si aucun dépôt n'est configuré.
+ * Le chemin est celui du dépôt (`reviews/gitlab/grp/app/42/01J….md`).
+ */
+function lienFichier(chemin) {
+  /* EN DÉMO, LE DÉPÔT DE DONNÉES EST UN DOSSIER — un dépôt nu posé à côté de la base, pour que
+     la synchro se joue pour de vrai sans qu'une requête sorte de la machine. Un dossier n'a pas
+     d'adresse web, et le bouton n'aurait donc rien à montrer : on rend celle qu'aurait le même
+     dépôt sur une forge, comme la démo le fait déjà pour ses dépôts de code (`gitlab.demo`, une
+     machine qui n'existe pas). Ce qui est montré est la FORME du lien, et elle est exacte. */
+  const base = process.env.MERGERIE_DEMO === '1'
+    ? 'https://gitlab.demo/equipe/mergerie-data'
+    : baseWeb(urlDepot());
+  if (!base || !chemin) return null;
+  const segment = estGitHub(base, config()) ? 'blob' : '-/blob';
+  return `${base}/${segment}/${echapper(branche())}/${echapper(chemin)}`;
+}
+
 /** Ce que le pied de page affiche : deux compteurs, deux dates, et la raison d'un ennui. */
 function statut() {
   return {
@@ -156,6 +213,45 @@ function statut() {
     prochain: prochainTour ? new Date(prochainTour).toISOString() : null,
     cadence: Math.round(cadenceMs() / 1000),
   };
+}
+
+/* ---------- CE QUE CE CODE SAIT LIRE, et le rattrapage quand il en sait plus qu'hier ----------
+ *
+ * L'HYDRATATION EST INCRÉMENTALE : elle applique les fichiers qui ont changé depuis le dernier
+ * repère. Un champ ajouté aux réglages partagés n'est donc compris que pour les fichiers qui
+ * changeront APRÈS la montée de version — celui qui portait déjà la valeur a été lu par l'ancien
+ * code, qui l'a ignorée, et le repère est passé devant. Le fichier n'a plus à changer : le
+ * réglage reste donc éternellement à sa valeur locale, et redémarrer n'y change rien.
+ *
+ * C'est ce qui est arrivé à « publier le lien plutôt que le rapport » : `settings.json` le
+ * portait à « 1 » dans le dépôt, le poste voisin l'avait déjà hydraté avec la version d'avant, et
+ * la case restait décochée sans que rien ne soit en panne.
+ *
+ * On garde donc une SIGNATURE de ce que le code comprend — la version du paquet, et la liste des
+ * champs partagés de `config`, qui est la seule table dont les champs sont déclarés un par un.
+ * Quand elle change, on relit TOUT une fois. `hydraterTout()` est le bon outil : elle applique ce
+ * que les fichiers disent et n'enlève rien, ce qu'on veut exactement après une montée de version.
+ */
+const CLE_FORMAT = 'format_compris';
+function signatureFormat() {
+  const champs = ((registre.pour('config') || {}).partagees || []).slice().sort().join(',');
+  // eslint-disable-next-line global-require
+  const { version } = require('../package.json');
+  return `${version}|${champs}`;
+}
+
+/**
+ * À appeler UNE FOIS au démarrage, après avoir écoulé la file (les écritures locales en attente
+ * doivent être dans les fichiers avant qu'on les relise). Rend le bilan de l'hydratation si elle
+ * a eu lieu, `null` sinon.
+ */
+function rattraperFormat() {
+  if (!estConfigure() || !estDepot()) return null;
+  const attendue = signatureFormat();
+  if (etat.lire('data', 'repo', CLE_FORMAT) === attendue) return null;
+  const bilan = store.hydraterTout();
+  etat.ecrire('data', 'repo', CLE_FORMAT, attendue);
+  return bilan;
 }
 
 /* ---------- Message de commit ---------- */
@@ -295,6 +391,12 @@ async function tourMaintenant() {
         await git(['push', 'origin', `HEAD:${branche()}`]);
         bilan.push = true;
         etatSync.dernierPush = new Date().toISOString();
+        /* ET LES COMPTEURS SUIVENT. Ils avaient été relus JUSTE AVANT le push — c'est ainsi
+           qu'on décide de pousser — et plus après : le pied de page annonçait donc « ↑1 » sur
+           un dépôt qui venait d'envoyer, jusqu'au tour suivant. Un compteur qui ment sur ce
+           qu'on vient de faire, on cesse vite de le regarder ; et ce qui le lit pour décider —
+           « le rapport est-il vraiment sur la forge ? » — se trompait avec lui. */
+        await majCompteurs();
         break;
       } catch {
         /* Quelqu'un a poussé entre-temps. On refait un tour. Après trois essais on ABANDONNE
@@ -696,6 +798,9 @@ function arreter() {
 module.exports = {
   REGROUPEMENT_MS,
   estConfigure,
+  rattraperFormat,
+  baseWeb,
+  lienFichier,
   estDepot,
   distantPourvu,
   compterDistant,

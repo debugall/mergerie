@@ -11,9 +11,12 @@ security model. For a quick start, stay on the [README](../README.md).
 
 ## The tabs in detail
 
-Ten tabs, in a **left sidebar**, grouped by family — the core, what I have to do, my machine and its
+Eleven tabs, in a **left sidebar**, grouped by family — the core, what I have to do, my machine and its
 links, the meta:
-**Reviews** · **AI Dev** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Links** — **Stats** · **Settings**.
+**Reviews** · **AI Dev** · **Agents** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Links** — **Stats** · **Settings**.
+**Four of them — Git, Docker, Jenkins and Links — start folded away**: they are conveniences, you go
+there the day you need them, and a bar of seven entries reads better than a bar of eleven. Nothing is
+disabled: one tick in *Settings → General → Menus* brings them back, for good.
 The bar **collapses to icons** from a button at the foot of the column (the choice is remembered), and
 collapses on its own below 1100 px wide.
 Badges show **work waiting**, not totals (MRs to review, sessions not yet run). The **Reviews** tab carries
@@ -159,6 +162,29 @@ than sorting on a guessed identity.
   to its author without copying it over. A confirmation spells it out: what goes out is read by the whole
   team. Once published, the button becomes **`Publish again`** and carries the date of the first send, so
   you do not post the same text twice believing the first one failed.
+- **Publish the report LINK rather than the report** — only when the team shares a **data
+  repository**. Six hundred lines copied into a comment, nobody reads them, and the next pass posts
+  six hundred more. The report is already in the team's repository, in Markdown rendered by the
+  forge: the **`Publish the report LINK`** button posts a three-line comment pointing at its address,
+  with the score and the pass number. The merge request stays readable and the report keeps a single
+  copy, which everyone re-reads in the same place.
+  **The sync runs first**: publishing a link to a file still sitting on this machine would send the
+  team to a 404, which is worse than no comment at all — you would believe the work was done. If the
+  repository cannot be sent (offline, rebase in progress), **nothing is published** and the screen
+  says why. A data repository on a **local path** (shared drive, USB key) has no web address: the
+  button says so rather than inventing a link.
+  **The automatic publication can do it too**: under the “Automatically post the review report…”
+  checkbox, a second one — **“Post the link to the report, not the report”** — changes what goes
+  out on every pass. It does not decide *whether* the author is told, only the form; and if the
+  link cannot be made, **the report itself goes out**, with the job log saying why. It only shows
+  when a data repository is configured.
+  **The text of the comment is yours to write**, just underneath — a **team template**: everyone
+  posts the same thing. Left empty it is the shipped message, which follows the interface
+  language (the field shows it as a placeholder rather than making you guess). Filled, it is
+  taken word for word, with `{url}` (required), `{note}` — empty when the pass has none —, `{v}`
+  the pass number, `{iid}`, `{project}` and `{title}`; an unknown variable is left as written. A
+  template **without `{url}` is refused when saved**, not when publishing: it would announce a
+  report without saying where it is.
   The setting **Settings → Merge Request → “Automatically post the review report on the MR”** does it at
   the end of every review. It is **unchecked by default**: writing on other people's work is a decision.
   If it is checked and the forge refuses, the review is **not** lost — the report stays saved, and the
@@ -1998,7 +2024,8 @@ commands* tab: add/edit/delete commands as *name + fixed command*). It comes **f
 that opens on a fresh install: without a token no other setting is worth anything ·
 **Repositories**
 (added one by one or in bulk **from GitLab** or **from GitHub** — each repository carries a forge badge, and
-the same path can exist on both —, plus the **local directories** — a folder on your machine holding one
+the same path can exist on both; without a token for that forge, the bulk-add window says so and points
+to the field to fill —, plus the **local directories** — a folder on your machine holding one
 subfolder per git project, which feeds the *Git → Navigate* tab and *Out-of-repo coding*; the displayed
 count “n git projects out of m folders” confirms at a glance that you pointed at the right level of the
 tree; each repository also shows **its open merge requests**, **the date of the last discovery** and **the
@@ -2206,8 +2233,11 @@ data**: a skeleton while it loads, never a “0” that would read as “nothing
   even when the form scrolls, and a window brought back still **protects what you typed** against
   a click outside. Windows that ask a **question** (a confirmation, picking a verifier) have no
   such button: they keep their caller waiting, and setting one aside would keep it waiting forever.
-- **The menu bar can be arranged** (Settings → General). Move **up** what you open ten times a day,
-  **hide** what you never use: drag and drop or arrows, applied at once. A hidden menu also leaves
+- **The menu bar can be arranged** (Settings → General). It carries the everyday work by default —
+  Reviews, AI Dev, Agents, Notes, Jira, Stats, Settings — and leaves **Git, Docker, Jenkins and
+  Links folded away**, one tick from coming back. Then move **up** what you open ten times a day,
+  **hide** what you never use: drag and drop or arrows, applied at once. “Restore the original
+  menus” returns to that starting point, folds included. A hidden menu also leaves
   the **palette** and the **number shortcuts** — `3` opens the third *shown* menu, not the third
   original one; offering a screen whose menu entry has gone would be a one-way ticket. The
   **feature itself stays**: nothing is disabled, only filed away. ⚠ **Settings cannot be hidden**
@@ -2594,7 +2624,30 @@ In both cases the refusal is immediate and says which of the two reasons applies
 
 ## Configuration (.env)
 
-A `.env` file at the root is loaded automatically at startup.
+**`npx mergerie` writes one on its first launch**, in the folder you run it from: it looks for
+`claude` then `copilot` on the machine (on the `PATH`, then where the installers put them) and
+points `COPILOT_BIN` at the one it finds, with that agent's arguments — `--dangerously-skip-permissions`
+for claude, `--yolo --model claude-sonnet-5` for copilot. Without that file `COPILOT_BIN` is
+“copilot”: whoever installed Claude Code does not have that binary, the tool falls back to
+**dry-run**, and every review returns a fake report — it “works” and is useless. The file is
+written once, mode `600`, never rewritten afterwards (it will end up carrying tokens), and the
+command says what it created. `npx mergerie demo` writes none: it promises to leave nothing behind.
+
+The file also **explains the option that lets the agent act without asking**
+(`--dangerously-skip-permissions` for claude, `--yolo` for copilot). It is necessary: the agent is
+called **non-interactively**, so nobody is there to answer a permission prompt — without it the work
+hangs, or everything that would prompt is denied **without a word** and the report comes back poorer
+for no visible reason. The file also says what it does **not** protect: the agent runs with your
+rights, it works in the clone of the repository under review and it is Mergerie that runs git, but
+the option builds no wall around that folder — and what it reads (a diff, a ticket) is not written by
+you. A narrower variant is offered as a commented line, `--permission-mode acceptEdits`: file edits
+are accepted, everything else is refused — and refused **silently** under `-p`, which is the price to
+know before choosing it.
+
+A `.env` file is loaded automatically at startup: **the one in the folder the command is run
+from** — the root of the clone with `npm start`, the current directory with `npx mergerie`
+(come back to that folder next time, or the file is ignored without a word). What the shell
+exports wins over the file.
 
 | Variable | Default | Role |
 |---|---|---|
@@ -2731,6 +2784,14 @@ variable on a test command is the natural home of a password.
 machine has its own queue: with nobody named, two machines left open would each run the same
 review — two billed AI calls, and two comments on the merge request. *Settings → Merge Request*
 asks who honours them; with nobody named, they run nowhere.
+The list offers two answers. A **machine**: one person pays the calls for the whole team, and
+nothing runs while that machine is off. Or **“the merge request's author”**: each machine takes
+only the merge requests whose forge account is its OWN, on its own subscription, and leaves its
+neighbour's alone — the decision is no longer global, it is taken merge request by merge request.
+The account is the one behind that forge's token, matched against the author on the **username**
+as well as the **display name**, since GitLab and GitHub do not store the same one. If that
+account cannot be known (no token, forge unreachable), the machine runs **nothing** and says so in
+the log: better nothing than the same review on every machine.
 
 **Sessions are shared ONE BY ONE, and not by default.** A coding session, an exploration, a free
 question: what they hold is not a product but the way you worked — the prompt as you typed it, the

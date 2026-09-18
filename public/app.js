@@ -698,10 +698,20 @@ function fmtHour(iso) {
 }
 
 // Rendu markdown minimal (titres, gras, code, listes, blockquote, tableaux GFM).
-function mdToHtml(md) {
+/* `opts.paragraphes` : un texte ÉCRIT PAR UNE IA (rapport, réponse, retour de session). Les agents
+   reviennent à la ligne vers cent caractères, comme dans un fichier source : rendu ligne par
+   ligne, chaque morceau devenait un paragraphe à part, avec sa marge — un rapport se lisait comme
+   une liste de fragments. On suit alors la règle de Markdown : des lignes consécutives forment UN
+   paragraphe, et une ligne indentée sous une puce la continue. Les notes et les textes Jira gardent
+   le rendu ligne à ligne : là, un retour à la ligne est voulu par celui qui l'a tapé. */
+const IA = { paragraphes: true };   // voir `mdToHtml` : un texte écrit par une IA
+function mdToHtml(md, opts = {}) {
   if (!md) return '<p class="muted">(vide)</p>';
   const lines = md.split('\n');
+  const fusion = !!opts.paragraphes;
   let html = '';
+  let para = [];                 // lignes du paragraphe en cours (mode fusion)
+  let li = null;                 // texte de la puce en cours (mode fusion)
   let inList = false;
   let inCode = false;
   /* Un bloc ``` peut porter un langage. Il était jeté : `mermaid` ressortait en <pre>, donc
@@ -724,10 +734,26 @@ function mdToHtml(md) {
   const splitRow = (line) => line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '')
     .split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, '|'));
   const isSep = (line) => { const c = splitRow(line); return c.length > 0 && c.every((x) => /^:?-+:?$/.test(x)); };
-  const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+  const flushPara = () => { if (para.length) { html += `<p>${inline(para.join(' '))}</p>`; para = []; } };
+  const flushLi = () => { if (li !== null) { html += `<li>${inline(li)}</li>`; li = null; } };
+  const closeList = () => { flushLi(); if (inList) { html += '</ul>'; inList = false; } };
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
+
+    // Continuation d'une puce : ligne indentée, sans marqueur, juste sous elle.
+    if (fusion && li !== null && /^\s+\S/.test(raw) && !/^\s*([-*]|\d+[.)])\s+/.test(raw)
+      && !raw.trim().startsWith('```')) {
+      li += ` ${raw.trim()}`;
+      continue;
+    }
+    if (!inCode && fusion) {
+      const simple = raw.trim() !== '' && !raw.trim().startsWith('```') && !/^#{1,6}\s/.test(raw)
+        && !/^\s*[-*]\s+/.test(raw) && !raw.trim().startsWith('>') && raw.trim() !== '---'
+        && !(raw.includes('|') && i + 1 < lines.length && isSep(lines[i + 1]));
+      if (simple) { closeList(); para.push(raw.trim()); continue; }
+      flushPara();
+    }
 
     if (raw.trim().startsWith('```')) {
       if (inCode) { html += inMermaid ? '</pre></div>' : '</pre>'; inCode = false; inMermaid = false; }
@@ -769,16 +795,23 @@ function mdToHtml(md) {
       continue;
     }
 
-    const h = raw.match(/^(#{1,4})\s+(.*)/);
+    // Jusqu'à six niveaux : un « ##### 🟠 IMPORTANT » d'agent s'affichait tel quel.
+    const h = raw.match(/^(#{1,6})\s+(.*)/);
     if (h) { closeList(); html += `<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`; continue; }
-    if (/^\s*[-*]\s+/.test(raw)) { if (!inList) { html += '<ul>'; inList = true; } html += `<li>${inline(raw.replace(/^\s*[-*]\s+/, ''))}</li>`; continue; }
+    if (/^\s*[-*]\s+/.test(raw)) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      const texte = raw.replace(/^\s*[-*]\s+/, '');
+      if (fusion) { flushLi(); li = texte; } else html += `<li>${inline(texte)}</li>`;
+      continue;
+    }
     closeList();
     if (raw.trim().startsWith('>')) { html += `<blockquote>${inline(raw.replace(/^\s*>\s?/, ''))}</blockquote>`; continue; }
     if (raw.trim() === '---') { html += '<hr>'; continue; }
     if (raw.trim() === '') { continue; }
     html += `<p>${inline(raw)}</p>`;
   }
-  if (inList) html += '</ul>';
+  flushPara();
+  closeList();
   if (inCode) html += inMermaid ? '</pre></div>' : '</pre>';
   return html;
 }
@@ -1895,6 +1928,9 @@ document.addEventListener('click', (e) => {
   const viser = (sel) => { const c = $(sel); if (c) c.focus({ preventScroll: true }); };
   switch (b.dataset.emptyAct) {
     case 'go-config': closeBulk(); go('admin'); showAdminSub('gitcfg'); viser('[name="gitlab_url"]'); break;
+    /* La même porte, mais sur le champ de L'AUTRE forge : envoyer sur l'URL GitLab quelqu'un à
+       qui il manque un jeton GitHub, c'est le faire chercher. */
+    case 'go-config-github': closeBulk(); go('admin'); showAdminSub('gitcfg'); viser('[name="github_token"]'); break;
     case 'go-repos': go('admin'); showAdminSub('repos'); viser('#repoForm [name="url"]'); break;
     case 'go-rules': go('admin'); showAdminSub('rules'); break;
     case 'discover': go('review'); $('#btnDiscover').click(); break;
@@ -4886,6 +4922,21 @@ async function openReport(id, opts = {}) {
                 ? tr('report.btn.publish-again', { forge: forgeLabel(m.forge) })
                 : tr('report.btn.publish', { forge: forgeLabel(m.forge) })}</button>`;
             })() : ''}
+            ${/* LE LIEN PLUTÔT QUE LE RAPPORT. Quand l'équipe partage un dépôt de données, le
+                  rapport y est déjà, en Markdown rendu par la forge : publier son ADRESSE tient
+                  en trois lignes là où le rapport en pose six cents, et la passe suivante n'en
+                  repose pas six cents de plus. Sans dépôt de données, pas de bouton : il n'aurait
+                  aucune adresse où pointer. */''}
+            ${d.review && d.data_repo ? (() => {
+              /* DÉJÀ PARTI ? La date est lue dans les commentaires enregistrés, qui voyagent :
+                 le bouton dit donc aussi ce qu'un collègue a publié avant nous. Republier n'est
+                 pas une correction — ça pose un SECOND lien vers le même rapport. */
+              const dejaLien = d.review.link_posted_at;
+              return `<button id="aPublishLink" role="menuitem" data-posted="${esc(dejaLien || '')}" title="${dejaLien
+                ? esc(tr('report.btn.publish-link-again-title', { date: fmtDate(dejaLien) }))
+                : esc(tr('report.btn.publish-link-title'))}">${dejaLien
+                ? tr('report.btn.publish-link-again') : tr('report.btn.publish-link')}</button>`;
+            })() : ''}
             ${addTodoBtn('mr', m.id, tr('notes.add-todo.mr', { iid: m.iid, title: String(m.title || '').slice(0, 60) }))}
             ${resumeCmdBtn(d.resume_cmd)}
             <div class="menu-sep"></div>
@@ -4937,7 +4988,7 @@ async function openReport(id, opts = {}) {
     </div>
     <div id="mdVersionNote" class="version-note" hidden></div>
     <div id="resolutionBox" hidden></div>
-    <div id="mdView" class="md">${mdToHtml(rev && rev.md)}</div>
+    <div id="mdView" class="md">${mdToHtml(rev && rev.md, IA)}</div>
 
     <div class="box">
       <h4>${tr('report.modify.title')}</h4>
@@ -4990,7 +5041,7 @@ async function openReport(id, opts = {}) {
       });
       return;
     }
-    $('#mdView').innerHTML = mdToHtml(view === 'review' ? shown.md : shown.explanation);
+    $('#mdView').innerHTML = mdToHtml(view === 'review' ? shown.md : shown.explanation, IA);
   };
   (async () => {
     let versions = [];
@@ -5116,6 +5167,33 @@ async function openReport(id, opts = {}) {
          apparaître dans le fil en dessous. Réécrire le libellé à la main mentirait le jour
          où le serveur aurait refusé sans lever d'erreur. */
       await openReport(id);
+    } catch (e) { toast(e.message, true); }
+  });
+
+  /* Le lien part sous le même engagement que le rapport : un commentaire chez les autres. Et
+     il dit ce qu'il expose — qui peut lire le dépôt de données lira le rapport. */
+  const aPublishLink = $('#aPublishLink');   // absent sans dépôt de données partagé
+  if (aPublishLink) aPublishLink.addEventListener('click', async () => {
+    const forge = forgeLabel(m.forge);
+    const ok = await confirmDialog({
+      title: tr('report.publish-link.confirm.title', { forge }),
+      text: tr('report.publish-link.confirm.text', { forge, mr: `${m.project} !${m.iid}` }),
+      /* Ce qu'un collègue a peut-être déjà fait : la date vient du dépôt partagé, pas de ce
+         poste. C'est l'avertissement qui manquait — deux liens vers le même rapport. */
+      detail: aPublishLink.dataset.posted
+        ? tr('report.btn.publish-link-again-title', { date: fmtDate(aPublishLink.dataset.posted) }) : '',
+      confirmLabel: aPublishLink.dataset.posted
+        ? tr('report.btn.publish-link-again') : tr('report.btn.publish-link'),
+      danger: false,
+    });
+    if (!ok) return;
+    try {
+      /* La synchro part avant la publication : le bouton peut donc mettre quelques secondes.
+         `busy` le dit — sans quoi on cliquerait une seconde fois, et deux commentaires
+         partiraient pour un seul geste. */
+      await busy(aPublishLink, () => api(`/mrs/${id}/publish-review-link`, { method: 'POST' }));
+      toast(tr('toast.review.link-published', { forge }));
+      await openReport(id);      // le commentaire doit apparaître dans le fil, en dessous
     } catch (e) { toast(e.message, true); }
   });
 
@@ -5277,7 +5355,7 @@ function parseDiffByFile(diff) {
 // bascule des onglets rapport / explication
 function setSplitPane(which) {
   $$('#splitView .split-tabs button').forEach((b) => b.classList.toggle('active', b.dataset.split === which));
-  $('#splitMd').innerHTML = mdToHtml(which === 'review' ? split.md : split.explanation);
+  $('#splitMd').innerHTML = mdToHtml(which === 'review' ? split.md : split.explanation, IA);
   $('#splitMd').scrollTop = 0;
 }
 
@@ -5670,7 +5748,7 @@ async function chargerEchangesRevue(id) {
     + complets.slice().reverse().map((p) => `<div class="ask-entry">
         <div class="ask-entry-head"><span class="muted">${esc(fmtDateTime(p.created_at))}</span></div>
         <div class="ask-q">${esc(p.prompt || '')}</div>
-        <div class="ask-a md">${p.output ? mdToHtml(p.output) : `<span class="muted">${esc(tr('report.ask.running'))}</span>`}</div>
+        <div class="ask-a md">${p.output ? mdToHtml(p.output, IA) : `<span class="muted">${esc(tr('report.ask.running'))}</span>`}</div>
       </div>`).join('')
     + `<button type="button" class="btn btn-sm btn-ghost" id="askSeeAll">${svgIco('doc')}<span>${esc(tr('report.ask.see-all'))}</span></button>`;
   const tout = $('#askSeeAll');
@@ -6199,7 +6277,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'verif_auto_max', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment',
-  'stale_mr_days', 'auto_runner',
+  'stale_mr_days', 'auto_runner', 'auto_post_review_link', 'review_link_template',
   /* Dictée vocale (whisper.md §6.3). `dictation_silence_ms` et `dictation_idle_minutes` sont
      ici comme `retention_days` : envoyés par cette liste, mais BORNÉS côté serveur, où ils
      n'appartiennent pas à `ALLOWED`. La case `dictation_final_pass`, elle, est traitée à
@@ -6285,17 +6363,35 @@ function syncReviewAutoMax() {
    reviews automatiques, lui, reste visible parce qu'il porte une valeur qu'on veut relire ;
    celui-ci n'est qu'un oui/non, et une case inerte dans un écran de neuf réglages se lit
    comme un réglage qu'on aurait oublié de cocher. */
+/* Y a-t-il un dépôt de données ? Relu à chaque `loadConfig` : sans lui, « publier le lien »
+   n'aurait nulle part où pointer, et la ligne ne s'affiche pas. */
+let depotDonneesConfigure = false;
 function syncAutoPostBlocking() {
   const f = $('#configForm');
   const c = f && f.auto_post_review;
   const rang = $('#autoPostBlockingRow');
-  if (!c || !rang) return;
-  rang.hidden = !c.checked;
+  if (!c) return;
+  if (rang) rang.hidden = !c.checked;
+  const rangLien = $('#autoPostLinkRow');
+  if (rangLien) rangLien.hidden = !c.checked || !depotDonneesConfigure;
+  /* Le gabarit ne sert que si un lien part : il suit la case « publier le lien », pas seulement
+     la case du dessus. Un champ de texte inutile coûte plus cher qu'une case inutile.
+     MAIS UN CHAMP REMPLI RESTE VISIBLE, quoi qu'en disent les cases : le serveur refuse un
+     gabarit sans `{url}`, et ce refus arrête l'enregistrement de TOUT le formulaire. Caché, il
+     bloquerait les réglages en parlant d'un champ que personne ne peut plus atteindre. */
+  const rangGabarit = $('#reviewLinkTemplateRow');
+  const lien = f && f.auto_post_review_link;
+  const gabaritRempli = !!(f && f.review_link_template && String(f.review_link_template.value || '').trim());
+  if (rangGabarit) {
+    rangGabarit.hidden = !gabaritRempli
+      && (!c.checked || !depotDonneesConfigure || !(lien && lien.checked));
+  }
 }
 document.addEventListener('change', (e) => {
   if (!e.target) return;
   if (e.target.name === 'auto_review_new') syncReviewAutoMax();
-  if (e.target.name === 'auto_post_review') syncAutoPostBlocking();
+  if (e.target.name === 'auto_post_review' || e.target.name === 'auto_post_review_link'
+    || e.target.name === 'review_link_template') syncAutoPostBlocking();
 });
 
 /* ---------- DONNÉES PARTAGÉES ----------
@@ -6635,6 +6731,17 @@ async function loadConfig() {
   // Publication automatique : défaut DÉSACTIVÉ — le test est donc `=== '1'`, pas `!== '0'`.
   if (f.auto_post_review) f.auto_post_review.checked = c.auto_post_review === '1';
   if (f.auto_post_blocking_only) f.auto_post_blocking_only.checked = c.auto_post_blocking_only === '1';
+  if (f.auto_post_review_link) f.auto_post_review_link.checked = c.auto_post_review_link === '1';
+  /* CE QUI PARTIRA SI ON NE TOUCHE À RIEN. Un champ vide avec une aide qui dit « laissez vide
+     pour le message par défaut » oblige à publier une fois pour savoir de quoi il s'agit. */
+  if (f.review_link_template) {
+    f.review_link_template.placeholder = tr('mr.link.comment-note', {
+      url: 'https://…/reviews/…/rapport.md', v: 2, note: '8,4',
+    });
+  }
+  /* La ligne « publier le lien » n'a de sens qu'avec un dépôt de données : on retient ici ce
+     que le serveur vient de dire, `syncAutoPostBlocking` s'en sert à chaque changement. */
+  depotDonneesConfigure = !!String(c.data_repo_url || '').trim();
   if (f.auto_review_new) f.auto_review_new.checked = c.auto_review_new === '1';
   if (f.auto_rereview_stale) f.auto_rereview_stale.checked = c.auto_rereview_stale === '1';
   /* L'exécutant des automatismes : une LISTE, remplie des exécutants connus, et cachée en
@@ -10386,7 +10493,7 @@ async function openTargetDiff(taskId, targetId) {
   $('#splitView').classList.add('session-mode');
   $('#splitTitle').textContent = `${dv.project} — ${dv.branch}`;
   $('#splitMd').innerHTML = output
-    ? mdToHtml(output)
+    ? mdToHtml(output, IA)
     : `<p class="muted">${esc(tr('task.no-output'))}</p>`;
   renderTree();
   $('#splitView').hidden = false;
@@ -10590,7 +10697,7 @@ function passBodyHtml(p) {
   return (prompt ? `<h3>${esc(tr('task.pass.prompt'))}</h3><pre class="pass-prompt">${esc(prompt)}</pre>` : '')
     + diff
     + `<h3>${esc(tr('task.pass.answer'))}</h3>`
-    + (p.output ? mdToHtml(p.output) : `<p class="muted">${esc(tr('task.no-output'))}</p>`);
+    + (p.output ? mdToHtml(p.output, IA) : `<p class="muted">${esc(tr('task.no-output'))}</p>`);
 }
 
 /* LE DIFF D'UNE SEULE ITÉRATION, dans le viewer de tout le reste : même arbre, même fichier
@@ -10800,6 +10907,29 @@ async function openBulk(forge = 'gitlab') {
      cinquante dépôts s'aborde par son filtre. */
   $('#bulkSearch').focus({ preventScroll: true });
   try {
+    /* SANS CONNEXION À LA FORGE, IL N'Y A PAS DE LISTE À CHERCHER. L'appel partait quand même
+       et revenait avec le message de la forge — « 401 », « jeton manquant » — qui dit ce qui
+       s'est passé, jamais quoi faire. Le bouton, lui, RESTE : il dit ce que l'outil sait faire,
+       et c'est une information utile avant d'avoir un jeton. C'est la modale qui explique ce
+       qui manque, et qui ouvre la porte — le même geste que les écrans vides ailleurs. */
+    const cfg = await api('/config');
+    const manque = bulkForge === 'github'
+      ? !cfg.github_token
+      : !(cfg.access_token && cfg.gitlab_url);
+    if (manque) {
+      /* Clés écrites en toutes lettres plutôt que composées : c'est ce qui les rend
+         greppables, et `npm run i18n:check` les cherche telles quelles. */
+      $('#bulkList').innerHTML = bulkForge === 'github'
+        ? emptyState({ icon: 'alert',
+          title: tr('settings.bulk.no-token.github.title'),
+          text: tr('settings.bulk.no-token.github.text'),
+          actions: [{ act: 'go-config-github', label: tr('settings.bulk.no-token.action') }] })
+        : emptyState({ icon: 'alert',
+          title: tr('settings.bulk.no-token.gitlab.title'),
+          text: tr('settings.bulk.no-token.gitlab.text'),
+          actions: [{ act: 'go-config', label: tr('settings.bulk.no-token.action') }] });
+      return;
+    }
     bulkProjects = await api(`/${bulkForge}/projects`);
     renderBulk();
   } catch (e) {
@@ -16532,6 +16662,9 @@ async function partageActif() {
    liste des exécutants connus plutôt qu'une saisie libre, et le champ caché en mono-poste où la
    question ne se pose pas. L'avertissement n'apparaît que si une politique est cochée sans
    personne pour la faire tourner — c'est le seul cas où rien ne se passerait en silence. */
+/* La même sentinelle que le serveur (`AUTEUR_AUTO` dans `src/server.js`) : un poste ne peut pas
+   porter ce nom, `git config user.name` ne commence pas par une arobase. */
+const AUTEUR_AUTO = '@auteur';
 async function poserExecutantAuto(choisi) {
   const ligne = $('#autoRunnerRow');
   if (!ligne) return;
@@ -16539,8 +16672,15 @@ async function poserExecutantAuto(choisi) {
   const avert = $('#autoRunnerNone');
   if (ligne.hidden) { if (avert) avert.hidden = true; return; }
   const sel = $('#autoRunnerSelect');
-  const liste = [...new Set([...(moiCache.runners || []), choisi].filter(Boolean))].sort();
+  /* « L'AUTEUR » N'EST PAS UNE MACHINE : la sentinelle ne doit pas se retrouver dans la liste
+     des postes connus, où elle s'afficherait comme un nom de collègue. */
+  const liste = [...new Set([...(moiCache.runners || []), choisi]
+    .filter(Boolean).filter((n) => n !== AUTEUR_AUTO))].sort();
   sel.innerHTML = `<option value="">${esc(tr('agents.runner.nobody'))}</option>`
+    /* CHACUN POUR SES MERGE REQUESTS. L'autre réponse raisonnable à « qui paie les appels ? » :
+       l'abonnement de chacun sert son propre travail, et personne n'attend qu'un poste désigné
+       soit allumé. */
+    + `<option value="${esc(AUTEUR_AUTO)}"${choisi === AUTEUR_AUTO ? ' selected' : ''}>${esc(tr('agents.runner.author'))}</option>`
     + liste.map((n) => `<option value="${esc(n)}"${n === choisi ? ' selected' : ''}>`
       + `${esc(n === moiCache.name ? tr('agents.runner.me', { name: n }) : n)}</option>`).join('');
   sel.value = choisi || '';
@@ -17059,7 +17199,7 @@ async function montrerVersion(n) {
   knowledgeVersion = n;
   $$('#knowledgeVersions .knowledge-version').forEach((b) => b.classList.toggle('active', Number(b.dataset.id) === Number(n)));
   const v = await api(`/agents/${knowledgeAgent.id}/knowledge/${n}`);
-  $('#knowledgeBody').innerHTML = mdToHtml(v.content || '');
+  $('#knowledgeBody').innerHTML = mdToHtml(v.content || '', IA);
   $('#knowledgeBody').hidden = false;
   $('#knowledgeEdit').hidden = true;
   $('#knowledgeEdit').value = v.content || '';
@@ -17486,7 +17626,9 @@ const PASTILLES = [
 ];
 function openShortcuts() {
   const m = $('#shortcutsModal'); if (!m) return;
-  const nbOnglets = $$('nav button[data-tab]').length;
+  /* Ce que les chiffres ouvrent, c'est la barre VISIBLE — c'est elle que compte le gestionnaire
+     de touches. Compter tous les boutons annonçait « 1 – 9, 0 » à qui n'en voyait que sept. */
+  const nbOnglets = $$('nav button[data-tab]:not([hidden])').length;
   // La plage annoncée doit être la VRAIE : au-delà de neuf onglets, le DERNIER est sur « 0 ».
   const plage = nbOnglets > 9 ? '1 – 9, 0' : `1 – ${nbOnglets}`;
   $('#shortcutsList').innerHTML = SHORTCUTS
@@ -17527,11 +17669,24 @@ const NAV_KEY = 'mergerie_nav';
 // Réglages : toujours visible. C'est le chemin du retour — le masquer enfermerait dehors.
 const NAV_TOUJOURS = 'admin';
 
+/* CE QUI EST REPLIÉ D'OFFICE. Onze entrées, et la plupart des journées n'en demandent que
+   quelques-unes : Git, Docker, Jenkins et Liens sont des COMMODITÉS — on y va le jour où on en
+   a besoin, pas dix fois par jour —, tandis que Reviews, Dev IA, Agents, Notes et Jira sont le
+   travail lui-même. La barre porte donc d'abord ce qui a de la valeur tous les jours, et une
+   case des Réglages rend les autres. Rien n'est désactivé au passage : les écrans, les données
+   et les fonctions restent entières, c'est la barre qui ne les affiche plus d'entrée.
+
+   Ce défaut ne vaut que pour qui n'a JAMAIS touché sa barre. Une préférence enregistrée fait
+   foi, fût-elle antérieure : on ne retire pas ses menus à quelqu'un qui les a rangés lui-même. */
+const NAV_MASQUES_DEFAUT = ['git', 'docker', 'jenkins', 'links'];
+
 function lireNav() {
   try {
-    const v = JSON.parse(localStorage.getItem(NAV_KEY) || '{}');
+    const brut = localStorage.getItem(NAV_KEY);
+    if (brut == null) return { ordre: [], masques: [...NAV_MASQUES_DEFAUT] };
+    const v = JSON.parse(brut) || {};
     return { ordre: Array.isArray(v.ordre) ? v.ordre : [], masques: Array.isArray(v.masques) ? v.masques : [] };
-  } catch { return { ordre: [], masques: [] }; }
+  } catch { return { ordre: [], masques: [...NAV_MASQUES_DEFAUT] }; }
 }
 function ecrireNav(v) {
   try { localStorage.setItem(NAV_KEY, JSON.stringify(v)); } catch { /* stockage indisponible */ }
@@ -17623,7 +17778,10 @@ $('#navPrefs') && $('#navPrefs').addEventListener('change', (e) => {
   enregistrerNav(ordreAffiche(), masquesAffiches());
 });
 $('#navPrefsReset') && $('#navPrefsReset').addEventListener('click', () => {
-  ecrireNav({ ordre: [], masques: [] });
+  /* ON EFFACE LA PRÉFÉRENCE, on n'en écrit pas une vide : « rétablir » doit rendre l'état du
+     DÉPART — l'ordre du fichier ET les quatre menus repliés —, et une liste de masqués vide
+     serait au contraire « tout afficher », ce que personne n'a demandé en cliquant ici. */
+  try { localStorage.removeItem(NAV_KEY); } catch { /* stockage indisponible */ }
   /* Rétablir ne suffit pas à remettre les boutons dans l'ordre d'origine : ils ont été
      DÉPLACÉS dans le DOM. On les repose donc dans l'ordre du fichier, qui est celui que
      `NAV_DEFAUT` a retenu au démarrage — avant toute application de préférence. */
@@ -17631,8 +17789,9 @@ $('#navPrefsReset') && $('#navPrefsReset').addEventListener('click', () => {
   const ancre = [...barre.children].find((el) => !el.dataset || !el.dataset.tab) || null;
   for (const tab of NAV_DEFAUT) {
     const b = $(`nav button[data-tab="${tab}"]`);
-    if (b) { b.hidden = false; barre.insertBefore(b, ancre); }
+    if (b) barre.insertBefore(b, ancre);
   }
+  appliquerNav();      // et la visibilité d'origine avec, en quittant un onglet qu'elle replie
   renderNavPrefs();
 });
 

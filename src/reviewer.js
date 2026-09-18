@@ -20,6 +20,11 @@ const demoComments = require('./demo-comments');
 const forge = require('./forge');
 const notify = require('./notify');
 const { t } = require('../public/i18n-runtime.js');
+/* Le dépôt de données : il sait s'il est configuré, où en est la synchro, et l'adresse web
+   d'un de ses fichiers. `store` sait, lui, quel fichier porte une ligne. */
+const datasync = require('./datasync');
+const store = require('./store');
+const { SHARED_DIR } = require('./paths');
 
 /* Instruction de CONSTATS STRUCTURÉS, ajoutée au prompt de review UNIQUEMENT à
    l'exécution — jamais écrite dans le template de l'utilisateur. Elle demande à
@@ -420,6 +425,102 @@ async function publierRapport(mr, cfg, { onLog = () => {} } = {}) {
   return { posted_at: now, note_id: note && note.id };
 }
 
+/* PUBLIER LE LIEN DU RAPPORT, au lieu du rapport.
+ *
+ * Six cents lignes de rapport recopiées dans un commentaire de merge request, personne ne les
+ * lit — et la passe suivante en repose six cents autres. Quand l'équipe partage un dépôt de
+ * données, le rapport y vit déjà, en Markdown, rendu par la forge : il suffit d'en donner
+ * l'ADRESSE. Le commentaire tient en trois lignes, la merge request reste lisible, et le
+ * rapport garde un seul exemplaire — celui que tout le monde relit au même endroit.
+ *
+ * DEUX CONDITIONS, et on ne publie pas sans elles : le fichier doit être dans le dépôt, et le
+ * dépôt doit être à jour sur la forge. Publier un lien vers un fichier resté sur cette machine
+ * enverrait l'équipe sur un 404 — pire qu'un commentaire absent, parce qu'on croit avoir fait
+ * le travail. On lance donc un tour de synchro, puis on vérifie ; si ça ne passe pas (hors
+ * ligne, rebase en cours), on le DIT et on ne poste rien. */
+/* CE LIEN EST-IL DÉJÀ PARTI — ET PAS SEULEMENT DEPUIS CE POSTE ?
+ *
+ * Le bouton du rapport le sait : `review.comment_posted_at` voyage dans le dépôt de données, et
+ * il passe donc à « Republier » chez tout le monde. Le bouton du LIEN ne posait aucune marque :
+ * deux clics, ou un collègue après soi, et deux commentaires partaient sans un mot.
+ *
+ * On n'ajoute pas de colonne pour autant. Le lien d'une passe porte l'uid de cette passe — le
+ * fichier du dépôt s'appelle `<uid>.md` —, et tout commentaire posté est enregistré dans
+ * `comment_log`, qui voyage avec la merge request. Chercher cet uid dans les commentaires déjà
+ * enregistrés répond exactement à la question posée : « CETTE passe a-t-elle déjà été annoncée,
+ * par moi ou par quelqu'un d'autre ? » `instr` et non `LIKE` : un `_` dans un nom de projet est
+ * un joker pour `LIKE`, et la réponse doit être exacte.
+ */
+function lienDejaPublie(mrId) {
+  const version = db.prepare('SELECT uid, version FROM review_version WHERE mr_id = ? ORDER BY version DESC LIMIT 1').get(mrId);
+  if (!version || !version.uid) return null;
+  const ligne = db.prepare('SELECT sent_at FROM comment_log WHERE mr_id = ? AND instr(body, ?) > 0 ORDER BY id DESC LIMIT 1')
+    .get(mrId, version.uid);
+  return ligne ? { at: ligne.sent_at, version: version.version } : null;
+}
+
+/* LE TEXTE DU COMMENTAIRE, que l'équipe peut écrire elle-même.
+ *
+ * Vide, c'est le message livré — qui suit la langue de l'interface, comme le reste. Rempli,
+ * c'est celui de l'équipe, mot pour mot : « merci de relire avant vendredi », une convention
+ * interne, la langue du client. Les variables sont remplacées ; celles qu'on ne connaît pas
+ * restent TELLES QUELLES, parce qu'une accolade dans un texte est plus souvent une accolade
+ * qu'une faute de frappe — et effacer en silence un mot qu'on n'a pas compris serait pire.
+ *
+ * `{note}` vaut la chaîne vide quand la passe n'a pas de note : c'est à l'équipe de décider si
+ * sa phrase le supporte. Le message livré, lui, a ses deux versions.
+ */
+function messageLien(cfg, { url, version, note, mr }) {
+  const gabarit = String((cfg && cfg.review_link_template) || '').trim();
+  if (!gabarit) {
+    return note == null
+      ? t('mr.link.comment', { url, v: version })
+      : t('mr.link.comment-note', { url, v: version, note });
+  }
+  const valeurs = {
+    url, v: version, note: note == null ? '' : note,
+    iid: mr.iid, project: mr.project, title: mr.title || '',
+  };
+  return gabarit.replace(/\{(\w+)\}/g, (brut, cle) => (cle in valeurs ? String(valeurs[cle]) : brut));
+}
+
+async function publierLienRapport(mr, cfg, { onLog = () => {} } = {}) {
+  if (!datasync.estConfigure()) throw new Error(t('err.review.no-data-repo'));
+  const version = db.prepare('SELECT * FROM review_version WHERE mr_id = ? ORDER BY version DESC LIMIT 1').get(mr.id);
+  if (!version) throw new Error(t('err.review.no-report'));
+
+  const chemin = store.cheminSur('review_version', version);
+  if (!chemin) throw new Error(t('err.review.no-shared-file'));
+
+  /* Le tour de synchro est celui du pied de page : commit, rebase, push. Il peut rendre `null`
+     — un autre tour tournait déjà —, auquel cas l'état ci-dessous tranche de toute façon. */
+  try { await datasync.tour(); } catch { /* la raison est dans l'état, lue juste après */ }
+  const etat = datasync.statut();
+  if (!fs.existsSync(path.join(SHARED_DIR, chemin))) throw new Error(t('err.review.not-shared-yet'));
+  if (etat.enAvance) throw new Error(t('err.review.not-pushed', { n: etat.enAvance }));
+
+  /* UN DÉPÔT PEUT NE PAS AVOIR D'ADRESSE WEB : un dépôt de données posé sur un disque partagé
+     ou une clé USB (`/mnt/equipe/data.git`) se synchronise très bien, mais il n'y a rien à
+     donner à cliquer. Ce n'est pas « aucun dépôt configuré » — le dire ainsi enverrait dans les
+     réglages remplir un champ déjà rempli. */
+  const lien = datasync.lienFichier(chemin);
+  if (!lien) throw new Error(t('err.review.no-web-url'));
+
+  const note = version.note_value == null ? null : Math.round(version.note_value * 100) / 10;
+  const corps = messageLien(cfg, {
+    url: lien, version: version.version, note: note == null ? null : String(note).replace('.', ','), mr,
+  });
+
+  const now = new Date().toISOString();
+  const forgeNote = demoReview.isDemo()
+    ? { id: demoComments.post(mr.id, corps, null).notes[0].id }
+    : await forge.clientFor(mr).postMrNote(cfg, mr.project, mr.iid, corps);
+  db.prepare('INSERT INTO comment_log (mr_id, body, gitlab_note_id, sent_at) VALUES (?,?,?,?)')
+    .run(mr.id, corps, forgeNote && forgeNote.id, now);
+  onLog(t('log.review.link-posted', { forge: forge.label(forge.forgeOf(mr)) }));
+  return { posted_at: now, note_id: forgeNote && forgeNote.id, url: lien, path: chemin };
+}
+
 // Produit (ou reproduit) la review pour une MR. L'explication pédagogique (2e appel IA)
 // est optionnelle : `opts.explain` la force (true/false) ; sinon on suit le réglage global
 // `review_explain`. En review seule, l'explication reste disponible à la demande (explainMr).
@@ -488,8 +589,23 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
        est un tout autre problème que « rien de bloquant ». */
     if (cfg.auto_post_review === '1') {
       if (publicationAutoRequise(cfg, findings)) {
-        try { await publierRapport(mr, cfg, { onLog }); }
-        catch (e) { onLog(t('log.review.post-failed', { message: e.message })); }
+        /* LE RAPPORT, OU SON LIEN. Quand l'équipe partage un dépôt de données, elle peut
+           demander que ce soit l'ADRESSE du rapport qui parte : trois lignes au lieu de six
+           cents, et un seul exemplaire relu au même endroit.
+           SI LE LIEN NE PEUT PAS ÊTRE FAIT — plus de dépôt configuré, dépôt sur un chemin
+           local, synchro qui ne passe pas — ON POSTE LE RAPPORT, et le journal dit pourquoi.
+           Se taire serait pire : la case cochée au-dessus dit « préviens l'auteur », et c'est
+           cette promesse-là qu'on tient ; le choix du lien n'était que la FORME. */
+        const parLien = cfg.auto_post_review_link === '1' && datasync.estConfigure();
+        let poste = false;
+        if (parLien) {
+          try { await publierLienRapport(mr, cfg, { onLog }); poste = true; }
+          catch (e) { onLog(t('log.review.link-fallback', { message: e.message })); }
+        }
+        if (!poste) {
+          try { await publierRapport(mr, cfg, { onLog }); }
+          catch (e) { onLog(t('log.review.post-failed', { message: e.message })); }
+        }
       } else {
         onLog(t('log.review.post-skipped', { total: findings.length }));
       }
@@ -634,4 +750,4 @@ async function explainMr(repo, mr, onLog = () => {}) {
   }
 }
 
-module.exports = { reviewMr, modifyReview, askReview, explainMr, fillTemplate, publierRapport, publicationAutoRequise };
+module.exports = { reviewMr, modifyReview, askReview, explainMr, fillTemplate, publierRapport, publierLienRapport, messageLien, lienDejaPublie, publicationAutoRequise };

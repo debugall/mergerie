@@ -668,6 +668,118 @@ describe('datasync — deux postes, un dépôt de données', () => {
      elle ne vient pas que des réglages : l'aperçu la prend dans la query string d'un GET, donc
      n'importe quelle page ouverte dans le navigateur peut l'appeler. Une valeur qui commence par
      un tiret est refusée AVANT git — un `--` oublié à un seul appel serait invisible. */
+  /* L'ADRESSE WEB D'UN FICHIER DU DÉPÔT — c'est elle qu'on publie sur une merge request quand
+     on donne le lien du rapport plutôt que le rapport. Trois choses s'y jouent :
+       — l'URL de CLONE devient une URL de NAVIGATION, quelle que soit sa forme (SSH, ssh://,
+         HTTPS) : c'est un lien qu'un humain va cliquer ;
+       — GitLab range ses fichiers sous `/-/blob/`, GitHub sous `/blob/` ;
+       — et surtout AUCUN SECRET N'EN SORT. Une URL de clone peut porter un jeton
+         (`https://oauth2:glpat-…@…`) ; publié en commentaire, il serait lu par toute l'équipe,
+         archivé par la forge, et il n'y aurait plus qu'à le révoquer. */
+  test('le lien web d’un fichier du dépôt : SSH ou HTTPS, la bonne forge, et jamais le jeton', () => {
+    const r = dans(posteA, `async ({ config, datasync }) => {
+      const cas = {};
+      const essai = (nom, url, extra = {}) => {
+        config.updateConfig({ data_repo_url: url, data_repo_branch: 'main', ...extra });
+        cas[nom] = datasync.lienFichier('reviews/gitlab/grp/app/42/01JZERO.md');
+      };
+      essai('ssh', 'git@gitlab.com:equipe/mergerie-data.git');
+      essai('https', 'https://gitlab.com/equipe/mergerie-data.git');
+      essai('jeton', 'https://oauth2:glpat-NE-DOIT-JAMAIS-PARTIR@gitlab.com/equipe/mergerie-data.git');
+      essai('ssh_port', 'ssh://git@gitlab.interne:2222/equipe/data.git');
+      essai('github', 'https://github.com/equipe/mergerie-data.git');
+      config.updateConfig({ data_repo_url: 'git@gitlab.com:equipe/data.git', data_repo_branch: 'equipe' });
+      cas.branche = datasync.lienFichier('reviews/gitlab/grp/app/42/01JZERO.md');
+      config.updateConfig({ data_repo_url: '' });
+      cas.sansDepot = datasync.lienFichier('reviews/gitlab/grp/app/42/01JZERO.md');
+      return cas;
+    }`);
+
+    const FICHIER = 'reviews/gitlab/grp/app/42/01JZERO.md';
+    assert.equal(r.ssh, `https://gitlab.com/equipe/mergerie-data/-/blob/main/${FICHIER}`,
+      'une URL SSH devient une adresse qu’on clique');
+    assert.equal(r.https, `https://gitlab.com/equipe/mergerie-data/-/blob/main/${FICHIER}`,
+      'et l’URL HTTPS donne exactement la même');
+    assert.equal(r.jeton, `https://gitlab.com/equipe/mergerie-data/-/blob/main/${FICHIER}`,
+      'le jeton de l’URL de clone ne passe pas dans le lien');
+    assert.ok(!/glpat|oauth2/.test(r.jeton), `aucun secret dans le lien publié : ${r.jeton}`);
+    assert.equal(r.ssh_port, `https://gitlab.interne/equipe/data/-/blob/main/${FICHIER}`,
+      'le port SSH n’est pas celui du web : il ne suit pas');
+    assert.equal(r.github, `https://github.com/equipe/mergerie-data/blob/main/${FICHIER}`,
+      'GitHub range ses fichiers sous /blob/, sans le tiret de GitLab');
+    assert.equal(r.branche, `https://gitlab.com/equipe/data/-/blob/equipe/${FICHIER}`,
+      'et c’est la branche du dépôt de données, pas « main » d’office');
+    assert.equal(r.sansDepot, null, 'sans dépôt de données, il n’y a pas d’adresse — et pas de bouton');
+  });
+
+  /* CE QUE LE CODE SAIT LIRE CHANGE — et les fichiers déjà lus, non.
+   *
+   * L'hydratation est incrémentale : elle applique ce qui a changé depuis le dernier repère. Un
+   * champ compris par une NOUVELLE version ne sera donc jamais lu dans un fichier que l'ANCIENNE
+   * a déjà hydraté : le fichier n'a plus à changer, la base garde sa valeur, et redémarrer n'y
+   * change rien — le repère est passé devant. C'est exactement ce qui est arrivé à « publier le
+   * lien plutôt que le rapport », resté décoché sur un poste dont le `settings.json` le portait
+   * pourtant à « 1 ».
+   *
+   * Le test décrit le MÉCANISME, pas un champ : un objet d'équipe reçu, puis une divergence entre
+   * le fichier et la base que personne ne réexporte, puis un tour ordinaire qui ne la voit pas, et
+   * enfin la signature de format qui change — le fichier redevient la référence.
+   *
+   * DEUX POSTES À LUI : les épreuves précédentes vident le dépôt et le ré-envoient, et un test de
+   * rattrapage doit partir d'un décor dont il répond. */
+  test('ce que l’ancienne version avait mal lu est rattrapé quand le format change', () => {
+    const nu2 = path.join(racine, 'format.git');
+    const posteFormatBormatA = path.join(racine, 'format-A');
+    const posteFormatB = path.join(racine, 'format-B');
+    fs.mkdirSync(posteFormatBormatA); fs.mkdirSync(posteFormatB);
+    execFileSync('git', ['init', '--bare', '--initial-branch=main', nu2], { stdio: 'ignore' });
+    for (const poste of [posteFormatBormatA, posteFormatB]) {
+      dans(poste, `async ({ config, datasync }) => {
+        config.updateConfig({ data_repo_url: ${JSON.stringify(nu2)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+        await datasync.rattacher({});
+      }`);
+    }
+
+    dans(posteFormatBormatA, `async ({ notes, datasync, MSGS }) => {
+      const p = notes.creerPage({ title: 'Format', content: '# La version de l’équipe' }, MSGS);
+      notes.majPage(p.id, { shared: 1 }, MSGS);
+      await datasync.commiter('note "Format"');
+      await datasync.tour();
+    }`);
+
+    const r = dans(posteFormatB, `async ({ db, datasync }) => {
+      await datasync.tour();                            // le second poste reçoit le fichier…
+      datasync.rattraperFormat();                       // …et note ce que CE code comprend
+      const lire = () => (db.prepare("SELECT content FROM note_page WHERE slug = 'format'").get() || {}).content;
+      const recu = lire();
+
+      /* L'ANCIENNE VERSION : elle a lu le fichier et n'en a pas tout compris, donc la base et le
+         fichier divergent — et rien n'est réexporté, puisque ce qu'elle a manqué n'existait pas
+         pour elle. */
+      db.prepare("UPDATE note_page SET content = '# Ce que l’ancienne version en avait fait' WHERE slug = 'format'").run();
+      db.exec('DELETE FROM store_sale');
+      await datasync.tour();
+      const apresTour = lire();
+
+      // Le code monte de version : la signature change, et les fichiers redeviennent la référence.
+      db.prepare("UPDATE local_state SET value = 'une-version-d-avant' WHERE kind = 'data' AND ref = 'repo' AND key = 'format_compris'").run();
+      const bilan = datasync.rattraperFormat();
+      return { recu, apresTour, apres: lire(), ecrits: bilan && bilan.ecrits };
+    }`);
+
+    assert.match(String(r.recu), /version de l’équipe/, 'le décor : le second poste a bien reçu ce que le premier a écrit');
+    assert.match(String(r.apresTour), /ancienne version/,
+      'un tour ordinaire ne relit pas un fichier qui n’a pas changé — c’est le défaut à corriger, pas un bug du test');
+    assert.match(String(r.apres), /version de l’équipe/,
+      'la signature de format a changé : tout est relu, et le dépôt reprend le dessus');
+    assert.ok(r.ecrits > 0, 'et le rattrapage dit combien de lignes il a reprises');
+
+    /* ET IL NE SE REJOUE PAS À CHAQUE DÉMARRAGE : sans changement de signature il ne fait rien,
+       sinon chaque lancement relirait tout le dépôt d'une équipe pour rien. */
+    const encore = dans(posteFormatB, `async ({ datasync }) => datasync.rattraperFormat()`);
+    assert.equal(encore, null, 'signature inchangée : aucun rattrapage');
+  });
+
   test('une adresse qui commence par un tiret n’est jamais passée à git', () => {
     const r = dans(posteA, `async ({ config, datasync }) => {
       const piege = '--upload-pack=touch /tmp/mergerie-injection';

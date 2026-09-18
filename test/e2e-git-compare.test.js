@@ -27,6 +27,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const {
   startApp, poserIdentiteGit, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
+  afficherMenusOptionnels,
 } = require('./helpers/app');
 
 const { dispo: navDispo } = navigateurDispo();
@@ -286,6 +287,7 @@ describe('Git · Comparer deux dépôts', () => {
     before(async () => {
       navigateur = await lancerNavigateur();
       page = await navigateur.newPage({ viewport: { width: 1500, height: 950 } });
+      await afficherMenusOptionnels(page);
       page.on('pageerror', (e) => erreurs.push(e.message));
       await page.goto(app.base);
       await page.locator('nav button[data-tab="git"]').click();

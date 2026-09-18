@@ -19,7 +19,7 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { startApp, attendreServeur } = require('./helpers/app');
+const { startApp, attendreServeur, afficherMenusOptionnels } = require('./helpers/app');
 
 let chromium = null;
 let dispo = false;
@@ -51,6 +51,7 @@ describe('Liens · refonte : épingle, ordre, clavier, collage', { skip: dispo ?
 
     navigateur = await chromium.launch();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 950 } });
+    await afficherMenusOptionnels(page);
     page.on('pageerror', (e) => erreurs.push(String(e)));
     page.on('console', (m) => { if (m.type() === 'error') erreurs.push(m.text()); });
     await page.goto(app.base);

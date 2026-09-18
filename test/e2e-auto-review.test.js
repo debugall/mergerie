@@ -39,7 +39,7 @@ describe('Review automatique à l’arrivée d’une MR', () => {
   after(async () => { await app.stop(); });
 
   /** Fait arriver `n` merge requests neuves, puis rend le bilan de la découverte. */
-  async function arriver(n) {
+  async function arriver(n, auteur = 'A') {
     const git = (...a) => execFileSync('git', a, { cwd: distant, stdio: 'pipe' }).toString().trim();
     const mrs = [];
     for (let k = 0; k < n; k += 1) {
@@ -51,7 +51,7 @@ describe('Review automatique à l’arrivée d’une MR', () => {
       mrs.push({
         iid, title: `Sujet ${iid}`, state: 'opened', source_branch: `feature/x${iid}`,
         target_branch: 'main', web_url: `http://x/${iid}`, sha: git('rev-parse', 'HEAD'),
-        created_at: new Date().toISOString(), author: { name: 'A' },
+        created_at: new Date().toISOString(), author: { name: auteur },
       });
       git('checkout', '-q', 'main');
     }
@@ -136,6 +136,39 @@ describe('Review automatique à l’arrivée d’une MR', () => {
     // On remet le mono-poste : les épreuves suivantes parlent d'autre chose.
     await app.api('PUT', '/api/config', { data_repo_url: '', auto_runner: '' });
   });
+
+  /* « L'AUTEUR DE LA MERGE REQUEST » — l'autre réponse raisonnable à « qui paie les appels ? ».
+     Désigner un poste suppose qu'il soit allumé et fait payer une personne pour toute l'équipe ;
+     « chacun les siennes » met l'abonnement de chacun sur son propre travail, et la répartition
+     n'a plus besoin d'être tenue à la main.
+     La décision n'est donc plus globale mais MERGE REQUEST PAR MERGE REQUEST : le même poste
+     doit lancer la review de la sienne et laisser celle du voisin. C'est tout l'objet du test —
+     un mutant qui répondrait « oui » ou « non » pour tout le monde le fait tomber. */
+  test('exécutant « l’auteur » : chacun lance la review de SES merge requests, et pas des autres', async () => {
+    await app.api('PUT', '/api/config', { auto_review_new: '1', review_auto_max: '5' });
+    await app.api('PUT', '/api/config', { data_repo_url: '/tmp/depot-qui-n-existe-pas.git', auto_runner: '@auteur' });
+
+    /* Le faux GitLab répond « Testeur » au compte du jeton : c'est donc « moi ». Une merge
+       request d'« Alice » ne doit pas bouger — et les deux arrivent dans la MÊME découverte,
+       sinon on ne prouverait pas que le tri se fait par merge request. */
+    const avant = reviewees();
+    const bilan = await arriverMeles();
+    assert.equal(bilan.auto_review.lancees, 1,
+      'une seule des deux : la mienne — le tri se fait merge request par merge request');
+    await fileVide();
+    assert.equal(reviewees(), avant + 1, 'et c’est bien un rapport de plus, pas deux');
+    const auteurs = app.db.prepare(`SELECT mr.author AS a FROM review JOIN mr ON mr.id = review.mr_id
+      ORDER BY review.id DESC LIMIT 1`).get();
+    assert.equal(auteurs.a, 'Testeur', 'la review produite est celle de MA merge request');
+
+    await app.api('PUT', '/api/config', { data_repo_url: '', auto_runner: '' });
+  });
+
+  /* Deux merge requests dans une seule découverte : une de moi, une d'ailleurs. */
+  async function arriverMeles() {
+    await arriver(1, 'Alice');
+    return arriver(1, 'Testeur');
+  }
 
   test('le plafond tient, et ce qui n’est pas parti est ANNONCÉ', async () => {
     await app.api('PUT', '/api/config', { auto_review_new: '1', review_auto_max: '2' });
