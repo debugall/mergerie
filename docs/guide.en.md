@@ -2024,7 +2024,8 @@ commands* tab: add/edit/delete commands as *name + fixed command*). It comes **f
 that opens on a fresh install: without a token no other setting is worth anything ·
 **Repositories**
 (added one by one or in bulk **from GitLab** or **from GitHub** — each repository carries a forge badge, and
-the same path can exist on both —, plus the **local directories** — a folder on your machine holding one
+the same path can exist on both; without a token for that forge, the bulk-add window says so and points
+to the field to fill —, plus the **local directories** — a folder on your machine holding one
 subfolder per git project, which feeds the *Git → Navigate* tab and *Out-of-repo coding*; the displayed
 count “n git projects out of m folders” confirms at a glance that you pointed at the right level of the
 tree; each repository also shows **its open merge requests**, **the date of the last discovery** and **the
