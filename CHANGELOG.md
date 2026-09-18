@@ -75,6 +75,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Review reports read as paragraphs again, not as a pile of fragments.** Agents now wrap their
+  reports at about a hundred characters, the way they write source files, and each wrapped line
+  was shown as a paragraph of its own — with its own spacing — so a report looked like a column of
+  broken sentences, and the continuation of a bullet fell out of it. Text written by the AI
+  (reports, explanations, answers, session output, domain cards) now follows the Markdown rule:
+  consecutive lines make one paragraph, and an indented line continues its bullet. Level-5 and
+  level-6 headings (`##### 🟠 IMPORTANT`) are shown as headings instead of raw text. Notes and Jira
+  texts keep their line breaks — there, a new line is what the person typed.
+
 - **“Bulk add from GitLab / GitHub” now says what is missing instead of quoting the forge.**
   With no token the button was still there — and rightly so: it tells you what the tool can do,
   which is worth knowing before you have a token. But clicking it went to fetch the list anyway
