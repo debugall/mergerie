@@ -2024,7 +2024,8 @@ commands* tab: add/edit/delete commands as *name + fixed command*). It comes **f
 that opens on a fresh install: without a token no other setting is worth anything ·
 **Repositories**
 (added one by one or in bulk **from GitLab** or **from GitHub** — each repository carries a forge badge, and
-the same path can exist on both —, plus the **local directories** — a folder on your machine holding one
+the same path can exist on both; without a token for that forge, the bulk-add window says so and points
+to the field to fill —, plus the **local directories** — a folder on your machine holding one
 subfolder per git project, which feeds the *Git → Navigate* tab and *Out-of-repo coding*; the displayed
 count “n git projects out of m folders” confirms at a glance that you pointed at the right level of the
 tree; each repository also shows **its open merge requests**, **the date of the last discovery** and **the
@@ -2787,8 +2788,9 @@ The list offers two answers. A **machine**: one person pays the calls for the wh
 nothing runs while that machine is off. Or **“the merge request's author”**: each machine takes
 only the merge requests whose forge account is its OWN, on its own subscription, and leaves its
 neighbour's alone — the decision is no longer global, it is taken merge request by merge request.
-The account is the one behind that forge's token, matched against the author on the **username**
-as well as the **display name**, since GitLab and GitHub do not store the same one. If that
+The account is the one behind that forge's token, matched against the author's forge **username** —
+the display name, which anyone can take, only serves for a merge request discovered before the
+username was recorded. If that
 account cannot be known (no token, forge unreachable), the machine runs **nothing** and says so in
 the log: better nothing than the same review on every machine.
 

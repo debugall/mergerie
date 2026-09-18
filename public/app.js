@@ -732,10 +732,20 @@ function fmtHour(iso) {
 }
 
 // Rendu markdown minimal (titres, gras, code, listes, blockquote, tableaux GFM).
-function mdToHtml(md) {
+/* `opts.paragraphes` : un texte ÉCRIT PAR UNE IA (rapport, réponse, retour de session). Les agents
+   reviennent à la ligne vers cent caractères, comme dans un fichier source : rendu ligne par
+   ligne, chaque morceau devenait un paragraphe à part, avec sa marge — un rapport se lisait comme
+   une liste de fragments. On suit alors la règle de Markdown : des lignes consécutives forment UN
+   paragraphe, et une ligne indentée sous une puce la continue. Les notes et les textes Jira gardent
+   le rendu ligne à ligne : là, un retour à la ligne est voulu par celui qui l'a tapé. */
+const IA = { paragraphes: true };   // voir `mdToHtml` : un texte écrit par une IA
+function mdToHtml(md, opts = {}) {
   if (!md) return '<p class="muted">(vide)</p>';
   const lines = md.split('\n');
+  const fusion = !!opts.paragraphes;
   let html = '';
+  let para = [];                 // lignes du paragraphe en cours (mode fusion)
+  let li = null;                 // texte de la puce en cours (mode fusion)
   let inList = false;
   let inCode = false;
   /* Un bloc ``` peut porter un langage. Il était jeté : `mermaid` ressortait en <pre>, donc
@@ -758,10 +768,26 @@ function mdToHtml(md) {
   const splitRow = (line) => line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '')
     .split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, '|'));
   const isSep = (line) => { const c = splitRow(line); return c.length > 0 && c.every((x) => /^:?-+:?$/.test(x)); };
-  const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+  const flushPara = () => { if (para.length) { html += `<p>${inline(para.join(' '))}</p>`; para = []; } };
+  const flushLi = () => { if (li !== null) { html += `<li>${inline(li)}</li>`; li = null; } };
+  const closeList = () => { flushLi(); if (inList) { html += '</ul>'; inList = false; } };
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
+
+    // Continuation d'une puce : ligne indentée, sans marqueur, juste sous elle.
+    if (fusion && li !== null && /^\s+\S/.test(raw) && !/^\s*([-*]|\d+[.)])\s+/.test(raw)
+      && !raw.trim().startsWith('```')) {
+      li += ` ${raw.trim()}`;
+      continue;
+    }
+    if (!inCode && fusion) {
+      const simple = raw.trim() !== '' && !raw.trim().startsWith('```') && !/^#{1,6}\s/.test(raw)
+        && !/^\s*[-*]\s+/.test(raw) && !raw.trim().startsWith('>') && raw.trim() !== '---'
+        && !(raw.includes('|') && i + 1 < lines.length && isSep(lines[i + 1]));
+      if (simple) { closeList(); para.push(raw.trim()); continue; }
+      flushPara();
+    }
 
     if (raw.trim().startsWith('```')) {
       if (inCode) { html += inMermaid ? '</pre></div>' : '</pre>'; inCode = false; inMermaid = false; }
@@ -803,16 +829,23 @@ function mdToHtml(md) {
       continue;
     }
 
-    const h = raw.match(/^(#{1,4})\s+(.*)/);
+    // Jusqu'à six niveaux : un « ##### 🟠 IMPORTANT » d'agent s'affichait tel quel.
+    const h = raw.match(/^(#{1,6})\s+(.*)/);
     if (h) { closeList(); html += `<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`; continue; }
-    if (/^\s*[-*]\s+/.test(raw)) { if (!inList) { html += '<ul>'; inList = true; } html += `<li>${inline(raw.replace(/^\s*[-*]\s+/, ''))}</li>`; continue; }
+    if (/^\s*[-*]\s+/.test(raw)) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      const texte = raw.replace(/^\s*[-*]\s+/, '');
+      if (fusion) { flushLi(); li = texte; } else html += `<li>${inline(texte)}</li>`;
+      continue;
+    }
     closeList();
     if (raw.trim().startsWith('>')) { html += `<blockquote>${inline(raw.replace(/^\s*>\s?/, ''))}</blockquote>`; continue; }
     if (raw.trim() === '---') { html += '<hr>'; continue; }
     if (raw.trim() === '') { continue; }
     html += `<p>${inline(raw)}</p>`;
   }
-  if (inList) html += '</ul>';
+  flushPara();
+  closeList();
   if (inCode) html += inMermaid ? '</pre></div>' : '</pre>';
   return html;
 }
@@ -4990,7 +5023,7 @@ async function openReport(id, opts = {}) {
     </div>
     <div id="mdVersionNote" class="version-note" hidden></div>
     <div id="resolutionBox" hidden></div>
-    <div id="mdView" class="md">${mdToHtml(rev && rev.md)}</div>
+    <div id="mdView" class="md">${mdToHtml(rev && rev.md, IA)}</div>
 
     <div class="box">
       <h4>${tr('report.modify.title')}</h4>
@@ -5043,7 +5076,7 @@ async function openReport(id, opts = {}) {
       });
       return;
     }
-    $('#mdView').innerHTML = mdToHtml(view === 'review' ? shown.md : shown.explanation);
+    $('#mdView').innerHTML = mdToHtml(view === 'review' ? shown.md : shown.explanation, IA);
   };
   (async () => {
     let versions = [];
@@ -5357,7 +5390,7 @@ function parseDiffByFile(diff) {
 // bascule des onglets rapport / explication
 function setSplitPane(which) {
   $$('#splitView .split-tabs button').forEach((b) => b.classList.toggle('active', b.dataset.split === which));
-  $('#splitMd').innerHTML = mdToHtml(which === 'review' ? split.md : split.explanation);
+  $('#splitMd').innerHTML = mdToHtml(which === 'review' ? split.md : split.explanation, IA);
   $('#splitMd').scrollTop = 0;
 }
 
@@ -5750,7 +5783,7 @@ async function chargerEchangesRevue(id) {
     + complets.slice().reverse().map((p) => `<div class="ask-entry">
         <div class="ask-entry-head"><span class="muted">${esc(fmtDateTime(p.created_at))}</span></div>
         <div class="ask-q">${esc(p.prompt || '')}</div>
-        <div class="ask-a md">${p.output ? mdToHtml(p.output) : `<span class="muted">${esc(tr('report.ask.running'))}</span>`}</div>
+        <div class="ask-a md">${p.output ? mdToHtml(p.output, IA) : `<span class="muted">${esc(tr('report.ask.running'))}</span>`}</div>
       </div>`).join('')
     + `<button type="button" class="btn btn-sm btn-ghost" id="askSeeAll">${svgIco('doc')}<span>${esc(tr('report.ask.see-all'))}</span></button>`;
   const tout = $('#askSeeAll');
@@ -10497,7 +10530,7 @@ async function openTargetDiff(taskId, targetId) {
   $('#splitView').classList.add('session-mode');
   $('#splitTitle').textContent = `${dv.project} — ${dv.branch}`;
   $('#splitMd').innerHTML = output
-    ? mdToHtml(output)
+    ? mdToHtml(output, IA)
     : `<p class="muted">${esc(tr('task.no-output'))}</p>`;
   renderTree();
   $('#splitView').hidden = false;
@@ -10701,7 +10734,7 @@ function passBodyHtml(p) {
   return (prompt ? `<h3>${esc(tr('task.pass.prompt'))}</h3><pre class="pass-prompt">${esc(prompt)}</pre>` : '')
     + diff
     + `<h3>${esc(tr('task.pass.answer'))}</h3>`
-    + (p.output ? mdToHtml(p.output) : `<p class="muted">${esc(tr('task.no-output'))}</p>`);
+    + (p.output ? mdToHtml(p.output, IA) : `<p class="muted">${esc(tr('task.no-output'))}</p>`);
 }
 
 /* LE DIFF D'UNE SEULE ITÉRATION, dans le viewer de tout le reste : même arbre, même fichier
@@ -17290,7 +17323,7 @@ async function montrerVersion(n) {
   knowledgeVersion = n;
   $$('#knowledgeVersions .knowledge-version').forEach((b) => b.classList.toggle('active', Number(b.dataset.id) === Number(n)));
   const v = await api(`/agents/${knowledgeAgent.id}/knowledge/${n}`);
-  $('#knowledgeBody').innerHTML = mdToHtml(v.content || '');
+  $('#knowledgeBody').innerHTML = mdToHtml(v.content || '', IA);
   $('#knowledgeBody').hidden = false;
   $('#knowledgeEdit').hidden = true;
   $('#knowledgeEdit').value = v.content || '';
