@@ -1585,6 +1585,31 @@ const counts = {
 }
 
 
+/* ---------- un vérificateur « à approuver », venu du dépôt partagé ----------
+   Ce qui exécute du code et arrive par la synchro n'est pas lancé tant qu'on ne l'a pas vu ici.
+   Sans un exemple, l'écran des vérificateurs ne montre jamais ce bloc — on ne saurait pas qu'il
+   existe avant d'en avoir besoin. Tout le reste est repris comme approuvé (c'est ce que fait la
+   montée de version), PUIS un collègue ajoute une commande : elle attend. */
+{
+  // eslint-disable-next-line global-require
+  const approbation = require('../src/approbation');
+  // eslint-disable-next-line global-require
+  const { getConfig } = require('../src/config');
+  const e2eId = db.prepare(`INSERT INTO verifier
+    (name, kind, command, timeout_s, run_base, comment_on_forge, parse_tap, created_at)
+    VALUES (?, 'commands', '', ?,?,?,1,?)`).run('e2e navigateur (démo)', 900, 0, 0, at(9)).lastInsertRowid;
+  db.prepare("INSERT INTO verifier_repo (verifier_id, repo_id, mode, workdir, checkout_allowed) VALUES (?,?,'worktree',NULL,0)")
+    .run(e2eId, repoIds['groupe/webapp-front']);
+  ['npm ci', 'npm run test:e2e'].forEach((c, i) => {
+    db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)').run(e2eId, i, c);
+  });
+  approbation.reprendreLExistant(getConfig);
+  // …et la synchro apporte une commande de plus, jamais vue sur ce poste.
+  db.prepare('UPDATE verifier_command SET position = 2 WHERE verifier_id = ? AND command = ?').run(e2eId, 'npm run test:e2e');
+  db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)')
+    .run(e2eId, 1, 'npx playwright install --with-deps chromium');
+}
+
 semerDiffsLocaux().then(() => {
   console.log('Base de démo semée dans data-demo/ :', JSON.stringify(counts));
 });

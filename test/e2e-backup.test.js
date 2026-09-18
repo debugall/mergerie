@@ -44,7 +44,7 @@ describe('Sauvegarde des données', () => {
     fs.mkdirSync(path.join(app.dataDir, 'clones', 'grp__app'), { recursive: true });
     fs.writeFileSync(path.join(app.dataDir, 'clones', 'grp__app', 'gros.bin'), Buffer.alloc(512 * 1024, 7));
 
-    const res = await fetch(`${app.base}/api/backup`);
+    const res = await fetch(`${app.base}/api/backup`, { method: 'POST' });
     assert.equal(res.status, 200);
     assert.match(res.headers.get('content-type') || '', /zip/);
     assert.match(res.headers.get('content-disposition') || '', /filename="mergerie-\d{4}-\d{2}-\d{2}/,
@@ -95,6 +95,9 @@ describe('Sauvegarde des données', () => {
     assert.match(txt, /Arrêter Mergerie/, 'la première étape est celle qu’on oublie');
     assert.match(txt, /clones/i, '…et ce qui n’est pas dedans est dit');
     assert.match(txt, /\d{4}-\d{2}-\d{2}T/, 'la date de la sauvegarde y figure');
+    // Il disait « les jetons y sont TOUJOURS retirés » alors que la base les emporte.
+    assert.match(txt, /CONTIENT VOS JETONS/, 'l’archive dit qu’elle se garde comme un mot de passe');
+    assert.doesNotMatch(txt, /TOUJOURS retirés/);
   });
 });
 

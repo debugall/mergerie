@@ -86,6 +86,18 @@ describe('API de bout en bout', () => {
     // Garde-fous d'action : action inconnue / répertoire manquant → 400 explicite.
     assert.equal((await app.api('POST', '/api/docker/compose/action', { dir: '/x', action: 'nope' })).status, 400);
     assert.equal((await app.api('POST', '/api/docker/compose/action', { action: 'up' })).status, 400);
+    /* Le dossier doit être celui d'un compose trouvé sous les répertoires déclarés : sinon
+       `docker compose up --build` ou `make` partaient dans n'importe quel dossier de la machine. */
+    for (const [route, corps] of [
+      ['/api/docker/compose/action', { dir: '/tmp', action: 'up' }],
+      ['/api/docker/make/run', { dir: '/tmp', target: 'all' }],
+      ['/api/docker/bulk-action', { action: 'up', targets: [{ dir: '/tmp', service: 'x' }] }],
+      ['/api/docker/compose/preview-down', { dir: '/tmp' }],
+    ]) {
+      const r = await app.api('POST', route, corps);
+      assert.equal(r.status, 400, `${route} : ${r.text}`);
+      assert.match(r.body.error || '', /\/tmp/, `${route} : le refus nomme le dossier`);
+    }
     // « build » est une action valide (au moins la validation passe — dir manquant sinon).
     assert.equal((await app.api('POST', '/api/docker/compose/action', { action: 'build' })).status, 400, 'build sans dir → 400 (dir requis), pas action inconnue');
 
@@ -474,6 +486,13 @@ describe('API de bout en bout', () => {
     const test = await app.api('POST', '/api/jira/test', { key: 'PROJ-21977' });
     assert.deepEqual(test.body, { ok: true, key: 'PROJ-21977', summary: 'Calculer le total' });
 
+    /* LE JETON ENREGISTRÉ NE PART PAS VERS UNE AUTRE ADRESSE : l'URL changée avec le masque
+       `***` faisait envoyer le jeton en base à l'hôte choisi par la requête. */
+    const detourne = await app.api('POST', '/api/jira/test', { key: 'PROJ-21977', jira_url: 'https://ailleurs.example', jira_token: '***' });
+    assert.equal(detourne.status, 400, detourne.text);
+    assert.match(detourne.body.error, /retapez le jeton|type the token again/);
+    const ghDetourne = await app.api('POST', '/api/gitlab/test', { gitlab_url: 'https://ailleurs.example', access_token: '***' });
+    assert.equal(ghDetourne.status, 400, 'même règle pour la forge');
     const inconnu = await app.api('POST', '/api/jira/test', { key: 'PROJ-0' });
     assert.equal(inconnu.status, 400);
     assert.match(inconnu.body.error, /404/);

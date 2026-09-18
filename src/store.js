@@ -35,6 +35,27 @@ const path = require('node:path');
 const db = require('./db');
 const { SHARED_DIR, DATA_DIR, ensureDir } = require('./paths');
 const registre = require('./store-registry');
+const crypto = require('node:crypto');
+const { etat } = require('./localstate');
+
+/* ---------- « Ajout seul », appliqué et non plus seulement déclaré ----------
+ *
+ * Un rapport de review, la sortie d'une passe d'agent, une version de carte de domaine sont
+ * écrits UNE fois, par le poste qui les a produits, dans un fichier nommé par un uid : le
+ * registre les déclare `fusion: 'append-only'`. Mais rien ne le faisait respecter — c'était un
+ * commentaire. Or c'est exactement ce qui nourrit un agent : un rapport modifié après coup dans
+ * le dépôt devenait le rapport courant, et « Faire corriger » le collait tel quel dans le prompt.
+ *
+ * Un tel corps qui CHANGE n'a aucun cas légitime (le modifier crée une nouvelle version, sous un
+ * nouvel uid). Donc : on retient l'empreinte du corps à la première vue — à l'écriture ici, ou à
+ * la première hydratation —, et un corps qui revient différent est REFUSÉ et signalé. L'original
+ * reste ce qu'on lit. Pas de faux positif possible, donc pas de porte à cliquer. */
+const APPEND = 'append-only';
+const empreinte = (texte) => crypto.createHash('sha256').update(String(texte == null ? '' : texte)).digest('hex');
+const corpsAjoutSeul = (table) => {
+  const e = registre.pour(table);
+  return !!(e && e.fusion === 'append-only' && e.corps);
+};
 
 /* La version du FORMAT DE FICHIERS, indépendante des migrations SQLite. Un dépôt écrit par une
    version plus récente est refusé au démarrage : hydrater à moitié ferait pire que ne rien
@@ -201,7 +222,11 @@ function contexte() {
       if (!relatif) return null;
       let source; let dest;
       try { source = absolu(relatif); dest = sousDonnees(sousDossier, nom); } catch { return null; }
-      if (!fs.existsSync(source)) return null;
+      /* Un binaire du dépôt n'est recopié que s'il EST un fichier : `copyFileSync` suit les liens
+         symboliques, et `piece.png -> ~/.ssh/id_rsa` recopierait la clé dans la base locale. */
+      let st;
+      try { st = fs.lstatSync(source); } catch { return null; }
+      if (!st.isFile() || st.size > TAILLE_MAX_DOCUMENT * 4) return null;
       ensureDir(path.dirname(dest));
       try { fs.copyFileSync(source, dest); } catch { return null; }
       return dest;
@@ -402,7 +427,14 @@ function poser(table, row, ctx) {
     for (const c of cheminsDe(table, row, ctx)) supprimerFichier(c);
     return;
   }
-  for (const f of fichiersDe(table, row, ctx)) ecrireFichier(f.chemin, f.contenu);
+  for (const f of fichiersDe(table, row, ctx)) {
+    ecrireFichier(f.chemin, f.contenu);
+    /* Écrit ICI : on retient son empreinte, pour reconnaître plus tard une réécriture venue
+       d'ailleurs. Seulement la première fois — c'est la version d'origine qui fait foi. */
+    if (corpsAjoutSeul(table) && f.chemin.endsWith('.md') && !etat.lire(APPEND, f.chemin, 'sha')) {
+      etat.ecrire(APPEND, f.chemin, 'sha', empreinte(f.contenu));
+    }
+  }
   for (const b of binairesDe(table, row, ctx)) copierBinaire(b.chemin, b.source);
 }
 
@@ -810,16 +842,94 @@ const versMd = (relatif) => (relatif.endsWith('.json') ? relatif.replace(/\.json
 const canonique = (e, relatif) => (e && e.corps ? versMd(relatif) : relatif);
 
 /** Relit le document complet d'une entité depuis ses fichiers. `null` s'il a disparu. */
+/* ---------- Ce qu'on accepte de lire dans le dépôt de données ----------
+ *
+ * LE DÉPÔT EST ÉCRIT PAR D'AUTRES. Le store y pose des fichiers réguliers, de taille raisonnable,
+ * au format qu'il connaît ; tout ce qui s'en écarte vient d'ailleurs et n'est pas lu :
+ *   — un LIEN SYMBOLIQUE : `rapport.md -> ~/.ssh/id_rsa` ferait recopier une clé privée dans la
+ *     base, puis dans le prochain export — chez toute l'équipe ;
+ *   — un fichier DÉMESURÉ : un rapport fait quelques centaines de Ko, cinquante Mo sont une
+ *     attaque ou un accident, et dans les deux cas ils ne doivent pas remplir la mémoire ;
+ *   — un document dont un champ n'a pas la forme attendue : un `iid` qui n'est pas un entier
+ *     finissait rendu tel quel à l'écran (`7<img onerror=…>`), une `web_url` en `javascript:`
+ *     devenait un lien cliquable.
+ * Un tel document est SIGNALÉ ET SAUTÉ — jamais traité comme supprimé : un fichier refusé ne doit
+ * pas faire disparaître la ligne qu'il portait. */
+const TAILLE_MAX_DOCUMENT = 8 * 1024 * 1024;
+
+function lireFichierImport(relatif) {
+  const chemin = absolu(relatif);
+  let st;
+  try { st = fs.lstatSync(chemin); } catch { return null; }          // absent : c'est une disparition
+  if (st.isSymbolicLink()) throw new Error(`store : ${relatif} est un lien symbolique — refusé`);
+  if (!st.isFile()) return null;
+  if (st.size > TAILLE_MAX_DOCUMENT) {
+    throw new Error(`store : ${relatif} pèse ${Math.round(st.size / 1e6)} Mo — refusé (plafond ${TAILLE_MAX_DOCUMENT / 1e6} Mo)`);
+  }
+  return fs.readFileSync(chemin, 'utf8');
+}
+
+const ENTIERS = ['iid', 'mr_iid', 'existing_mr_iid', 'n', 'position'];
+const URLS_WEB = ['web_url', 'mr_url'];
+/* Les listes FERMÉES de ce qui décide d'une exécution. Une valeur hors liste ne serait pas une
+   variante : ce serait une option que le code ne sait pas traiter — ou une injection. */
+const ENUMS = {
+  verifier: { kind: ['commands', 'script'] },
+  agent: { kind: ['explore', 'code'], permission_mode: ['acceptEdits', 'plan', 'dontAsk', 'default', null, ''] },
+  mr: { status: ['to_review', 'reviewed', 'done'] },
+};
+const MODES_DEPOT = ['worktree', 'in_place'];
+
+function champInvalide(obj, cheminParent = '') {
+  if (!obj || typeof obj !== 'object') return null;
+  for (const c of ENTIERS) {
+    if (obj[c] === undefined || obj[c] === null || obj[c] === '') continue;
+    if (!/^-?\d+$/.test(String(obj[c]))) return `${cheminParent}${c} n’est pas un entier`;
+  }
+  for (const c of URLS_WEB) {
+    if (obj[c] === undefined || obj[c] === null || obj[c] === '') continue;
+    if (!/^https?:\/\//i.test(String(obj[c]))) return `${cheminParent}${c} n’est pas une adresse http(s)`;
+  }
+  return null;
+}
+
+/** Rend la raison d'un refus, ou `null` si le document a la forme attendue. */
+function validerDocument(table, doc) {
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return 'le document n’est pas un objet';
+  const direct = champInvalide(doc);
+  if (direct) return direct;
+  for (const [cle, valeur] of Object.entries(doc)) {
+    if (!Array.isArray(valeur)) continue;
+    for (const item of valeur) {
+      const r = champInvalide(item, `${cle}[].`);
+      if (r) return r;
+    }
+  }
+  for (const [champ, admis] of Object.entries(ENUMS[table] || {})) {
+    if (doc[champ] === undefined) continue;
+    if (!admis.includes(doc[champ])) return `${champ} « ${String(doc[champ]).slice(0, 40)} » hors de la liste admise`;
+  }
+  if (table === 'verifier' && Array.isArray(doc.repos)) {
+    const mauvais = doc.repos.find((r) => r && r.mode && !MODES_DEPOT.includes(r.mode));
+    if (mauvais) return `repos[].mode « ${String(mauvais.mode).slice(0, 40)} » hors de la liste admise`;
+  }
+  if (table === 'verifier' && doc.commands !== undefined
+    && (!Array.isArray(doc.commands) || doc.commands.some((c) => typeof c !== 'string'))) {
+    return 'commands n’est pas une liste de chaînes';
+  }
+  return null;
+}
+
 function lireDocument(table, relatif) {
   const e = registre.pour(table);
   if (!e.corps) {
-    const brut = lireFichier(relatif);
+    const brut = lireFichierImport(relatif);
     if (brut === null) return null;
     try { return JSON.parse(brut); } catch { throw new Error(`store : ${relatif} illisible (JSON)`); }
   }
   const md = versMd(relatif);      // ici l'entité a forcément un corps : on est dans la branche `e.corps`
-  const corps = lireFichier(md);
-  const metaBrut = lireFichier(jumeau(md));
+  const corps = lireFichierImport(md);
+  const metaBrut = lireFichierImport(jumeau(md));
   if (corps === null && metaBrut === null) return null;
   let meta = {};
   if (metaBrut !== null) {
@@ -927,8 +1037,26 @@ function hydraterFichiers(relatifs) {
   const enAttente = [];
   for (const { table, relatif } of aPoser) {
     const e = registre.pour(table);
-    const doc = lireDocument(table, relatif);
+    /* REFUSÉ N'EST PAS DISPARU : un fichier illisible, un lien symbolique, un document hors de
+       sa forme sont signalés et sautés — la ligne qu'ils portaient reste telle quelle ici. */
+    let doc;
+    try { doc = lireDocument(table, relatif); } catch (err) {
+      bilan.orphelins.push(`${relatif} : ${(err && err.message) || err}`);
+      continue;
+    }
     if (doc === null) { disparus.push({ e, table, relatif }); continue; }
+    const invalide = validerDocument(table, doc);
+    if (invalide) { bilan.orphelins.push(`${relatif} : refusé — ${invalide}`); continue; }
+    if (corpsAjoutSeul(table)) {
+      const md = versMd(relatif);
+      const sha = empreinte(doc[e.corps]);
+      const connu = etat.lire(APPEND, md, 'sha');
+      if (connu && connu !== sha) {
+        bilan.orphelins.push(`${md} : modifié après sa création — ignoré, l'original reste celui qu'on lit`);
+        continue;
+      }
+      if (!connu) etat.ecrire(APPEND, md, 'sha', sha);
+    }
     /* Une entité se reconnaît à son uid — sauf celles qui ont une clé naturelle et une seule
        ligne possible : `settings.json`, ou un ticket Jira nommé par sa clé. */
     if (!doc.uid && e.cle !== 'id' && !doc[e.cle]) { bilan.orphelins.push(`${relatif} : sans identité`); continue; }
@@ -1123,6 +1251,7 @@ module.exports.versMd = versMd;
 module.exports.motifDe = motifDe;
 module.exports.tablePour = tablePour;
 module.exports.lireDocument = lireDocument;
+module.exports.validerDocument = validerDocument;
 module.exports.upsert = upsert;
 module.exports.hydraterFichiers = hydraterFichiers;
 module.exports.hydraterTout = hydraterTout;

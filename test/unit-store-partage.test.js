@@ -67,7 +67,10 @@ describe('store — règles, vérificateurs, agents et connaissance', () => {
     const doc = JSON.parse(store.lireFichier(`verifiers/${v.uid}.json`));
     assert.deepEqual(doc.commands, ['npm ci', 'npm test', 'npm run lint'],
       'l’ordre porte du sens : `npm ci` avant `npm test`');
-    assert.deepEqual(doc.repos, [{ repo: 'gitlab/acme/web', mode: 'worktree', checkout_allowed: 1 }]);
+    /* Le CONSENTEMENT (`checkout_allowed`) et le dossier de travail ne partent plus : ils sont de
+       ce poste. Un consentement donné ici ne doit rien autoriser chez un collègue — et un fichier
+       poussé ne doit rien autoriser ici. */
+    assert.deepEqual(doc.repos, [{ repo: 'gitlab/acme/web', mode: 'worktree' }]);
   });
 
   test('un agent emporte son périmètre, par clé naturelle', () => {

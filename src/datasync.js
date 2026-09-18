@@ -100,6 +100,9 @@ async function git(args, opts = {}) {
       ...process.env,
       GIT_TERMINAL_PROMPT: '0',          // jamais de demande de mot de passe : on ne la verrait pas
       GIT_ASKPASS: 'echo',
+      /* Les seuls transports d'un dépôt d'équipe. `ext::` (une commande), `fd::`, `http://` en
+         clair : refusés par git lui-même, quoi qu'on lui passe. */
+      GIT_ALLOW_PROTOCOL: 'https:ssh:file',
       ...(opts.env || {}),
     },
   });
@@ -135,7 +138,15 @@ const sansOption = (v) => {
   const t = String(v || '').trim();
   return t.startsWith('-') ? '' : t;
 };
-const urlDepot = () => sansOption(config().data_repo_url);
+/* Une ADRESSE, pas seulement une valeur sans tiret : la branche passe par `sansOption`, l'URL
+   par ceci — une branche nommée « equipe » n'a pas de schéma et ne doit pas en exiger un. */
+const sansOptionAdresse = (v) => {
+  const t = sansOption(v);
+  return adresseAdmise(t) ? t : '';
+};
+
+const { adresseAdmise } = require('./garde');
+const urlDepot = () => sansOptionAdresse(config().data_repo_url);
 const branche = () => sansOption(config().data_repo_branch) || 'main';
 const cadenceMs = () => Math.max(10, Number(config().data_sync_seconds) || 30) * 1000;
 
@@ -671,7 +682,7 @@ async function contenuA(relatif, sha) {
    « est-ce que je vais initialiser, ou rejoindre ? ». Sans réseau, on ne sait pas, et on le dit
    plutôt que d'affirmer l'un ou l'autre. */
 async function distantPourvu(url) {
-  const adresse = sansOption(url) || urlDepot();
+  const adresse = sansOptionAdresse(url) || urlDepot();
   if (!adresse) return null;
   try {
     const sortie = await git(['ls-remote', '--heads', adresse, branche()], { timeout: 20000 });
@@ -684,7 +695,7 @@ async function distantPourvu(url) {
    dépôt, un `fetch` puis un `ls-tree` suffisent ; sinon on ne sait pas, et on le dit. */
 async function compterDistant(url) {
   if (!estDepot()) return null;
-  const adresse = sansOption(url) || urlDepot();
+  const adresse = sansOptionAdresse(url) || urlDepot();
   try {
     await git(['fetch', adresse || 'origin', branche()], { timeout: 60000 });
     const sortie = await git(['ls-tree', '-r', '--name-only', 'FETCH_HEAD']);
@@ -702,7 +713,7 @@ async function compterDistant(url) {
  *   — c'est déjà un dépôt → on remet l'origine à jour, et on fait un tour.
  */
 async function rattacherMaintenant({ url, onLog = () => {} } = {}) {
-  const adresse = sansOption(url) || urlDepot();
+  const adresse = sansOptionAdresse(url) || urlDepot();
   if (!adresse) throw new Error('datasync: aucune URL de dépôt de données');
   const qui = identite.identite();
   if (!qui.ok) throw new Error('datasync: git n’a pas de `user.name` — configurez-le avant de partager');
@@ -798,6 +809,7 @@ function arreter() {
 module.exports = {
   REGROUPEMENT_MS,
   estConfigure,
+  adresseAdmise,
   rattraperFormat,
   baseWeb,
   lienFichier,

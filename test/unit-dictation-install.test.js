@@ -113,7 +113,7 @@ describe('Installation · la dernière ligne du script', () => {
 
 describe('Installation · les réglages qu’elle remplit', () => {
   test('binaire dans le PATH ⇒ commande VIDE (un chemin absolu figerait l’installation)', () => {
-    updateConfig({ dictation_provider: 'off', dictation_command: 'ancien' });
+    updateConfig({ dictation_provider: 'off', dictation_command: process.execPath });   // une commande quelconque, admise
     const patch = dictation.reglagesDepuisResultat({ server: '/opt/homebrew/bin/whisper-server', model: '/m/g.bin', vad: '/m/s.bin', in_path: true });
     assert.equal(patch.dictation_command, '');
     assert.equal(patch.dictation_model, '/m/g.bin');
@@ -221,7 +221,10 @@ describe('Diagnostic · le composeur', () => {
   });
 
   test('sans binaire, on s’arrête à la première marche et les suivantes sont sautées', async () => {
-    updateConfig({ dictation_provider: 'local', dictation_command: '/binaire/qui/nexiste/pas' });
+    /* Un binaire DISPARU depuis l'enregistrement (désinstallé) : l'enregistrement le refuserait
+       aujourd'hui, on le pose donc directement là où il vit — le diagnostic doit le voir. */
+    updateConfig({ dictation_provider: 'local' });
+    require('../src/db').prepare('UPDATE local_config SET dictation_command = ? WHERE id = 1').run('/binaire/qui/nexiste/pas');
     const d = await dictation.diagnostic();
     assert.equal(d.verdict, 'incomplete');
     const par = Object.fromEntries(d.steps.map((s) => [s.key, s]));
@@ -275,5 +278,18 @@ describe('fins de ligne Windows dans le script shell', () => {
     const vrai = fs.readFileSync(path.join(ROOT, 'scripts/install-whisper.sh'), 'utf8');
     assert.ok(!vrai.includes('\r'));
     assert.match(fs.readFileSync(path.join(ROOT, '.gitattributes'), 'utf8'), /\*\.sh text eol=lf/);
+  });
+
+  /* LA COMMANDE DE DICTÉE LANCE UN PROGRAMME : à l'enregistrement, seul `whisper-server` ou un
+     chemin absolu existant passe (éventuellement derrière `nice`). */
+  test('une commande de dictée quelconque est refusée à l’enregistrement', () => {
+    for (const cmd of ['sh -c id', 'curl http://x', 'bin/whisper-server', '/binaire/qui/nexiste/pas']) {
+      assert.throws(() => updateConfig({ dictation_command: cmd }), /Commande de dictée refusée|Dictation command refused/, cmd);
+    }
+    for (const cmd of ['whisper-server --port 9', `nice -n 10 ${process.execPath}`, process.execPath]) {
+      updateConfig({ dictation_command: cmd });
+      assert.equal(getConfig().dictation_command, cmd);
+    }
+    updateConfig({ dictation_command: '' });
   });
 });

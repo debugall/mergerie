@@ -168,4 +168,25 @@ describe('Pièces jointes des sessions', () => {
     assert.equal(pieces('task', t.id).length, 0);
     assert.ok(!fs.existsSync(chemin));
   });
+
+  /* UNE PIÈCE JOINTE N'EXÉCUTE RIEN SUR NOTRE ORIGINE. Un `.html` ou un `.svg` servi `inline`
+     et ouvert d'un clic exécutait son script avec accès à l'API locale. Seules les images
+     matricielles et le PDF s'affichent ; le reste se télécharge, sous `nosniff` et `sandbox`. */
+  test('une pièce .html se télécharge, sous nosniff et CSP sandbox ; une image s’affiche', async () => {
+    const HTML = `data:text/html;base64,${Buffer.from('<script>fetch("/api/config")</script>').toString('base64')}`;
+    const { body: t } = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Regarde la maquette',
+      files: [{ name: 'maquette.html', data: HTML }, { name: 'ecran.png', data: PNG }],
+      targets: [{ repo_id: repoId, branch: 'feat/maquette', base_branch: 'main' }],
+    });
+    const [html, png] = pieces('task', t.id);
+    const r = await fetch(`${app.base}/api/pieces/task/${html.id}`);
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get('content-disposition') || '', /^attachment/, 'téléchargée, pas rendue');
+    assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+    assert.match(r.headers.get('content-security-policy') || '', /sandbox/);
+    const i = await fetch(`${app.base}/api/pieces/task/${png.id}`);
+    assert.match(i.headers.get('content-disposition') || '', /^inline/, 'une image matricielle s’affiche');
+    assert.equal(i.headers.get('content-type'), 'image/png');
+  });
 });

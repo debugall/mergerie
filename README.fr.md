@@ -176,13 +176,17 @@ Les badges signalent le **travail en attente** (MR à traiter, sessions non lanc
 
 ## Sécurité (résumé)
 
-L'outil est **local et mono-utilisateur** : pas d'authentification, et par défaut le serveur **n'écoute que
-sur `localhost`** (`127.0.0.1`). L'exposer (`HOST=0.0.0.0`) est un **opt-in explicite** à réserver à un réseau
-de confiance. L'agent IA tourne en mode « yolo » (permissions désactivées) pour pouvoir coder — son rayon
-d'action nominal est le clone de travail, mais pendant une session de codage il a **les droits de l'utilisateur**
-sur la machine : à connaître avant usage. Les **secrets** (PAT GitLab, token GitHub, jeton Jira) sont stockés en local et
-**jamais renvoyés en clair**. Exécution **sans shell**, garde-fous **anti-injection** (git / Docker / Jira /
-chemins), rendu **anti-XSS**, opérations destructrices **restaurables** et **jamais de merge automatique**.
+L'outil est **local** : par défaut le serveur **n'écoute que sur `localhost`** (`127.0.0.1`), et l'exposer
+(`HOST=0.0.0.0`) **exige un jeton** (`MERGERIE_ACCESS_TOKEN`). Une page ouverte dans un autre onglet ne peut
+rien faire à ta place (garde `Host` contre le *DNS rebinding*, `Sec-Fetch-Site`, CSP). Ce qui **exécute du
+code** et arrive par le dépôt de données — commandes d'un vérificateur, permissions d'un agent, reviews
+automatiques — **attend ton approbation sur ce poste**. L'agent IA n'a que les droits de ce qu'on lui
+demande : une review ou une exploration tourne **en lecture seule**, un codage garde l'écriture mais perd
+réseau, `push` et `remote` ; son environnement est filtré et le jeton de la forge n'est plus dans le clone.
+Le texte venu d'ailleurs (description de MR, ticket) lui est présenté **comme une donnée**. Les **secrets**
+sont stockés en local et **jamais renvoyés en clair**. Exécution **sans shell**, git durci (ni hooks ni
+fsmonitor), palette git en **liste blanche**, rendu **anti-XSS**, opérations destructrices **restaurables**
+et **jamais de merge automatique**.
 
 → **[Modèle de sécurité détaillé](./docs/guide.fr.md#sécurité)** · Signaler une vulnérabilité : [SECURITY.md](./SECURITY.md)
 

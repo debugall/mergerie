@@ -32,9 +32,27 @@ async function api(path, opts = {}) {
     /* Le CODE du refus, quand le serveur en donne un. Reconnaître un cas particulier au mot
        près dans le message ne marcherait pas : il est traduit. */
     if (data.code) e.code = data.code;
+    e.data = data;
     throw e;
   }
   return data;
+}
+
+/* UNE BRANCHE QUI RÉÉCRIT LES RÈGLES DE L'AGENT (409 CONFIG_AGENT) : le serveur nomme les
+   fichiers, on les montre, et un accord renvoie l'empreinte vue — un nouveau push qui les change
+   encore redemandera. `envoyer(extra)` refait la même requête, le corps complété de l'accord. */
+async function avecConfigAgent(envoyer) {
+  try {
+    return await envoyer({});
+  } catch (e) {
+    if (e.code !== 'CONFIG_AGENT' || !e.data || !e.data.empreinte) throw e;
+    const ok = await confirmDialog({
+      title: tr('confirm.agent-config.title'), text: e.message,
+      detail: (e.data.files || []).join('\n'), confirmLabel: tr('confirm.agent-config.ok'),
+    });
+    if (!ok) { const annule = new Error(''); annule.annule = true; throw annule; }
+    return envoyer({ accept_agent_config: e.data.empreinte });
+  }
 }
 
 async function copyText(text, btn) {
@@ -604,6 +622,22 @@ document.addEventListener('click', async (e) => {
   box.remove();
 });
 
+/* UNE ADRESSE QU'ON REND CLIQUABLE doit mener quelque part d'inoffensif. `esc()` protège
+   l'attribut, pas le SCHÉMA : une `web_url` en `javascript:…` venue du dépôt partagé devenait un
+   lien qui exécutait du code au clic. On garde http(s), les chemins de l'application, une ancre
+   et mailto ; tout le reste devient `#`. `npm run check` exige ce passage pour tout `href`. */
+function safeUrl(u) {
+  const t = String(u == null ? '' : u).trim();
+  if (/^https?:\/\//i.test(t) || /^\/(?!\/)/.test(t) || /^#/.test(t) || /^mailto:/i.test(t)) return t;
+  return '#';
+}
+/* Une IMAGE : en plus, les `data:image/…` (une capture collée) et les `blob:` (un aperçu local). */
+function safeImg(u) {
+  const t = String(u == null ? '' : u).trim();
+  if (/^data:image\/(png|jpe?g|gif|webp|bmp);/i.test(t) || /^blob:/i.test(t)) return t;
+  return safeUrl(t);
+}
+
 function esc(s) {
   // échappe pour contexte contenu ET attribut (guillemets inclus)
   return String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -614,7 +648,7 @@ function esc(s) {
 // Lien vers le ticket Jira (si une URL Jira est configurée et une clé détectée).
 function ticketLink(url, key) {
   if (!url || !key) return '';
-  return ` · <a href="${esc(url)}" target="_blank" title="${esc(tr('mr.link.ticket-title'))}">${svgIco('tag')} ${esc(key)} ↗</a>`;
+  return ` · <a href="${esc(safeUrl(url))}" target="_blank" rel="noopener noreferrer" title="${esc(tr('mr.link.ticket-title'))}">${svgIco('tag')} ${esc(key)} ↗</a>`;
 }
 
 /* Les liens sortants (ticket, forge) ont leur PROPRE ligne. Dans la ligne d'identité, ils
@@ -626,11 +660,11 @@ function ticketLink(url, key) {
 function mrLinks(m) {
   const liens = [];
   if (m.ticket_url && m.ticket_key) {
-    liens.push(`<a href="${esc(m.ticket_url)}" target="_blank" title="${esc(tr('mr.link.ticket-title'))}">`
+    liens.push(`<a href="${esc(safeUrl(m.ticket_url))}" target="_blank" rel="noopener noreferrer" title="${esc(tr('mr.link.ticket-title'))}">`
       + `${svgIco('tag')} ${esc(m.ticket_key)} ↗</a>`);
   }
   if (m.web_url) {
-    liens.push(`<a href="${esc(m.web_url)}" target="_blank" title="${esc(tr('mr.link.forge-title', { forge: forgeLabel(m.forge) }))}">`
+    liens.push(`<a href="${esc(safeUrl(m.web_url))}" target="_blank" rel="noopener noreferrer" title="${esc(tr('mr.link.forge-title', { forge: forgeLabel(m.forge) }))}">`
       + `${svgIco('merge')} ${forgeLabel(m.forge)} ↗</a>`);
   }
   return liens.length ? `<div class="meta links">${liens.join('')}</div>` : '';
@@ -1691,12 +1725,12 @@ $('#convStart') && $('#convStart').addEventListener('click', async () => {
   const b = $('#convStart'); b.disabled = true;
   try {
     const url = tgt.type === 'mr' ? `/mrs/${tgt.id}/converge` : `/tasks/${tgt.id}/converge`;
-    await api(url, { method: 'POST', body });
+    await avecConfigAgent((accord) => api(url, { method: 'POST', body: { ...body, ...accord } }));
     closeConvergeModal();
     toast(tr('toast.converge-lancee'));
     refreshStatus();
     if (tgt.type === 'task') { navTab('task'); loadTasks(); }
-  } catch (e) { b.disabled = false; toast(explainError(e.message), true); }
+  } catch (e) { b.disabled = false; if (!e.annule) toast(explainError(e.message), true); }
 });
 
 /* ---------- Delta depuis la dernière visite ----------
@@ -2540,7 +2574,8 @@ $('#btnBackup') && $('#btnBackup').addEventListener('click', (e) => busy(e.curre
   const info = $('#backupInfo');
   if (info) { info.className = 'muted'; info.textContent = tr('settings.backup.running'); }
   try {
-    const res = await fetch('/api/backup');
+    // POST : l'archive porte la base entière, jetons compris — elle ne part que sur un geste de l'application.
+    const res = await fetch('/api/backup', { method: 'POST' });
     if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || res.statusText);
     const blob = await res.blob();
     // Le nom vient du serveur (daté) : deux sauvegardes ne doivent pas s'écraser.
@@ -2572,7 +2607,7 @@ fermerAuFond('#activityModal', fermerActivite, { salissable: false });
 // Cellule « dernier commit » : date (lien vers le commit GitLab) + auteur.
 function lastCommitCell(c) {
   const when = c.date ? fmtDate(c.date) : '—';
-  const link = c.url ? `<a href="${esc(c.url)}" target="_blank" title="${esc(`${c.title || ''}${c.sha ? ` · ${c.sha}` : ''}`)}">${when}</a>` : when;
+  const link = c.url ? `<a href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener noreferrer" title="${esc(`${c.title || ''}${c.sha ? ` · ${c.sha}` : ''}`)}">${when}</a>` : when;
   return `${link}${c.author ? ` · <span class="muted">${esc(c.author)}</span>` : ''}`;
 }
 
@@ -2600,7 +2635,7 @@ async function fillDashboardCommits() {
   t5.innerHTML = `<h3>${tr('stats.top5.title')}</h3><p class="dash-help">${tr('stats.top5.help')}</p>`
     + (top.length
       ? `<div class="md-tablewrap"><table class="md-table"><thead><tr><th>${tr('stats.col.project')}</th><th>${tr('stats.col.last-commit')}</th><th>${tr('stats.col.author')}</th></tr></thead>
-          <tbody>${top.map((c) => `<tr><td>${esc(c.project)}</td><td>${c.url ? `<a href="${esc(c.url)}" target="_blank" title="${esc(c.title)}"><code>${esc(c.sha)}</code></a>` : `<code>${esc(c.sha)}</code>`} · ${c.date ? `${fmtDate(c.date)} ${fmtHour(c.date)}` : '—'}</td><td class="muted">${esc(c.author)}</td></tr>`).join('')}</tbody></table></div>`
+          <tbody>${top.map((c) => `<tr><td>${esc(c.project)}</td><td>${c.url ? `<a href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener noreferrer" title="${esc(c.title)}"><code>${esc(c.sha)}</code></a>` : `<code>${esc(c.sha)}</code>`} · ${c.date ? `${fmtDate(c.date)} ${fmtHour(c.date)}` : '—'}</td><td class="muted">${esc(c.author)}</td></tr>`).join('')}</tbody></table></div>`
       : `<p class="muted">${d.configured ? tr('stats.top5.empty') : tr('stats.top5.not-configured')}</p>`);
 }
 $('#dashRefresh').addEventListener('click', loadDashboard);
@@ -3841,11 +3876,11 @@ function mrCard(m) {
     </div>
     <div class="btn-group">
     <span class="btn-split">
-      <button class="btn btn-primary" data-review="${m.id}" data-iid="${m.iid}" title="${tr('mr.btn.review-title')}"><svg class=\"ico\"><use href=\"#i-play\"/></svg>${tr('mr.btn.review')}</button>
+      <button class="btn btn-primary" data-review="${m.id}" data-iid="${esc(m.iid)}" title="${tr('mr.btn.review-title')}"><svg class=\"ico\"><use href=\"#i-play\"/></svg>${tr('mr.btn.review')}</button>
       <button class="btn btn-primary btn-split-caret" data-review-menu="${m.id}" title="${tr('mr.btn.review-opts-title')}" aria-haspopup="true" aria-expanded="false">▾</button>
       <div class="split-menu" hidden role="menu">
-        <button role="menuitem" data-review-run="${m.id}" data-iid="${m.iid}" data-explain="1">${tr('mr.btn.review-with-explain')}</button>
-        <button role="menuitem" data-review-run="${m.id}" data-iid="${m.iid}" data-explain="0">${tr('mr.btn.review-no-explain')}</button>
+        <button role="menuitem" data-review-run="${m.id}" data-iid="${esc(m.iid)}" data-explain="1">${tr('mr.btn.review-with-explain')}</button>
+        <button role="menuitem" data-review-run="${m.id}" data-iid="${esc(m.iid)}" data-explain="0">${tr('mr.btn.review-no-explain')}</button>
       </div>
     </span>
     </div>
@@ -3877,7 +3912,7 @@ function mrCard(m) {
         ${jiraConfigured && (m.ticket_key || jiraCleDe(m))
     ? `<button role="menuitem" data-jira-watch="${esc(m.ticket_key || jiraCleDe(m))}">${tr('mr.btn.watch-ticket', { key: m.ticket_key || jiraCleDe(m) })}</button>`
     : ''}
-        <button role="menuitem" data-done="${m.id}" data-iid="${m.iid}">${tr('mr.btn.dismiss')}</button>
+        <button role="menuitem" data-done="${m.id}" data-iid="${esc(m.iid)}">${tr('mr.btn.dismiss')}</button>
         ${m.closed_seen ? '' : `<button role="menuitem" class="danger" data-merge="${m.id}">${tr('task.btn.merge')}</button>`}
       </div>
     </span>
@@ -4856,7 +4891,7 @@ async function openReport(id, opts = {}) {
       </div>
       <div class="spacer"></div>
       ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
-      ${m.web_url ? `<a href="${esc(m.web_url)}" target="_blank">${forgeLabel(m.forge)} ↗</a>` : ''}
+      ${m.web_url ? `<a href="${esc(safeUrl(m.web_url))}" target="_blank" rel="noopener noreferrer">${forgeLabel(m.forge)} ↗</a>` : ''}
     </div>
 
     ${/* TROIS ACTIONS VISIBLES, le reste dans le menu « ⋯ ». Onze boutons sur trois rangées
@@ -4907,7 +4942,7 @@ async function openReport(id, opts = {}) {
             ${addTodoBtn('mr', m.id, tr('notes.add-todo.mr', { iid: m.iid, title: String(m.title || '').slice(0, 60) }))}
             ${resumeCmdBtn(d.resume_cmd)}
             <div class="menu-sep"></div>
-            <button id="aDelReport" role="menuitem" class="danger" data-iid="${m.iid}" title="${tr('mr.btn.delete-report-title')}">${tr('report.btn.delete')}</button>
+            <button id="aDelReport" role="menuitem" class="danger" data-iid="${esc(m.iid)}" title="${tr('mr.btn.delete-report-title')}">${tr('report.btn.delete')}</button>
           </div>
         </div>
       </div>
@@ -6241,7 +6276,8 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'clone_path', 'prompt_review', 'prompt_explain', 'prompt_modify', 'prompt_fix', 'ai_extra_instructions',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
-  'verif_auto_max', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
+  'verif_auto_max', 'verif_auto_authors', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
+  'agent_max_turns', 'agent_daily_budget_usd',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment',
   'stale_mr_days', 'auto_runner', 'auto_post_review_link', 'review_link_template',
@@ -6487,7 +6523,7 @@ if (btnDataAttach) btnDataAttach.addEventListener('click', async () => {
      tourne, et la ligne d'état dit ce qu'on attend. */
   let apercu = null;
   $('#dataSyncInfo').textContent = tr('datasync.apercu.calcul');
-  try { apercu = await busy(btn, () => api(`/data-sync/preview?url=${encodeURIComponent(url)}`)); }
+  try { apercu = await busy(btn, () => api('/data-sync/preview', { method: 'POST', body: { url } })); }
   catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); return; }
   $('#dataSyncInfo').textContent = '';
   if (!await confirmDialog({
@@ -6529,7 +6565,7 @@ const btnDataReexport = $('#btnDataReexport');
 if (btnDataReexport) btnDataReexport.addEventListener('click', async () => {
   let apercu = null;
   $('#dataSyncInfo').textContent = tr('datasync.apercu.calcul');
-  try { apercu = await busy(btnDataReexport, () => api('/data-sync/preview')); }
+  try { apercu = await busy(btnDataReexport, () => api('/data-sync/preview', { method: 'POST', body: {} })); }
   catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); return; }
   $('#dataSyncInfo').textContent = '';
   if (!await confirmDialog({
@@ -6714,6 +6750,7 @@ async function loadConfig() {
   /* L'exécutant des automatismes : une LISTE, remplie des exécutants connus, et cachée en
      mono-poste. Posé après les cases, car l'avertissement dépend d'elles. */
   poserExecutantAuto(c.auto_runner || '');
+  poserApprobationAuto(c);
   // 0 = « sans limite » : il doit s'ÉCRIRE, une case vide se lirait comme « valeur par défaut ».
   if (f.review_auto_max) f.review_auto_max.value = Number(c.review_auto_max) || 0;
   // Atterrissage sur le brief : coché par défaut, comme côté serveur.
@@ -7685,7 +7722,7 @@ function wireBranchPickers() {
 const estImage = (p) => /^data:image\//i.test(p.data || '');
 function renderTaskPreviews() {
   $('#taskPreviews').innerHTML = taskNewImages.map((p, i) => (estImage(p)
-    ? `<span class="task-prev"><img src="${p.data}" title="${esc(p.name)}" /><button type="button" data-rmimg="${i}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`
+    ? `<span class="task-prev"><img src="${esc(safeImg(p.data))}" title="${esc(p.name)}" /><button type="button" data-rmimg="${i}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`
     : `<span class="task-prev task-prev-doc" title="${esc(p.name)}">${svgIco('doc')}<span class="task-prev-nom">${esc(p.name)}</span><button type="button" data-rmimg="${i}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`)).join('');
   $$('#taskPreviews [data-rmimg]').forEach((b) => b.addEventListener('click', () => {
     taskNewImages.splice(Number(b.dataset.rmimg), 1); renderTaskPreviews();
@@ -7711,10 +7748,10 @@ function renderTaskPieces() {
        le prompt. */
     const titre = esc(pj.name + (pj.followup ? ` — ${tr('task.piece.from-followup')}` : ''));
     const dedans = pieceEstImage(pj)
-      ? `<img src="${url}" alt="${titre}" />`
+      ? `<img src="${esc(safeImg(url))}" alt="${titre}" />`
       : `${svgIco('doc')}<span class="task-prev-nom">${esc(pj.name)}</span>`;
     return `<span class="task-prev${pieceEstImage(pj) ? '' : ' task-prev-doc'}${pj.followup ? ' task-prev-suivi' : ''}" title="${titre}">`
-      + `<a href="${url}" target="_blank" rel="noopener noreferrer">${dedans}</a>`
+      + `<a href="${esc(safeUrl(url))}" target="_blank" rel="noopener noreferrer">${dedans}</a>`
       + `<button type="button" data-rmpj="${pj.id}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`;
   }).join('');
   $$('#taskPieces [data-rmpj]').forEach((b) => b.addEventListener('click', async () => {
@@ -8254,7 +8291,7 @@ async function proposerPiecesNote(pageId) {
   const defaut = images.length <= 3;
   box.innerHTML = `<p class="field-note">${esc(tr('task.note.pieces.intro'))}</p>`
     + piecesNoteProposees.map((a, i) => `<label class="jira-piece"><input type="checkbox" data-note-piece="${i}"${defaut ? ' checked' : ''} />
-        <img src="${esc(a.url)}" alt="${esc(a.name)}" loading="lazy" />
+        <img src="${esc(safeImg(a.url))}" alt="${esc(a.name)}" loading="lazy" />
         <span class="muted">${esc(a.name)}</span></label>`).join('');
 }
 
@@ -8887,7 +8924,7 @@ function renderSuiviPreviews(form) {
   if (!box) return;
   const imgs = suiviImages.get(cleFormSuivi(form)) || [];
   box.innerHTML = imgs.map((p, i) => (estImage(p)
-    ? `<span class="task-prev"><img src="${p.data}" title="${esc(p.name)}" />`
+    ? `<span class="task-prev"><img src="${esc(safeImg(p.data))}" title="${esc(p.name)}" />`
       + `<button type="button" data-rmfollowimg="${i}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`
     : `<span class="task-prev task-prev-doc" title="${esc(p.name)}">${svgIco('doc')}<span class="task-prev-nom">${esc(p.name)}</span>`
       + `<button type="button" data-rmfollowimg="${i}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`)).join('');
@@ -9920,7 +9957,7 @@ function targetLine(t, tg) {
     ${/* La session demandée n'a pas pu être reprise : on le dit ICI, pas seulement dans un
           journal qui défile — sinon l'écran affiche un identifiant que personne n'a saisi. */''}
     ${tg.session_note ? `<span class="t-note" title="${esc(tr('task.session.fallback-title', { detail: tg.session_note }))}">${svgIco('alert')} ${esc(tr('task.session.fallback'))}</span>` : ''}
-    ${mrIid ? (mrUrl ? ` <a href="${esc(mrUrl)}" target="_blank">MR !${mrIid} ↗</a>` : ` <span class="muted">MR !${mrIid}</span>`) : ''}
+    ${mrIid ? (mrUrl ? ` <a href="${esc(safeUrl(mrUrl))}" target="_blank" rel="noopener noreferrer">MR !${mrIid} ↗</a>` : ` <span class="muted">MR !${mrIid}</span>`) : ''}
     ${etatMrDeLaLigne(tg)}
     ${/* B5 — L'ÉTAT DU TICKET sur la ligne de projet. La ligne disait la note, le verdict et
           les brouillons ; le ticket, jamais — alors qu'« il est repassé en cours » change ce
@@ -10120,9 +10157,9 @@ function wireTaskActions() {
   on('[data-trun]', async (b) => {
     const t2 = allTasks.find((x) => x.id === Number(b.dataset.trun));
     if (!await confirmerRelance(t2 && t2.status !== 'new')) return;
-    busy(b, () => api(`/tasks/${b.dataset.trun}/run`, { method: 'POST' }))
+    busy(b, () => avecConfigAgent((accord) => api(`/tasks/${b.dataset.trun}/run`, { method: 'POST', body: accord })))
       .then(() => { toast(tr('toast.session-lancee')); loadTasks(); refreshStatus(); })
-      .catch((e) => toast(explainError(e.message), true));
+      .catch((e) => { if (!e.annule) toast(explainError(e.message), true); });
   });
 
   on('[data-tfold]', (b) => basculerProjets(b.dataset.tfold));
@@ -10158,18 +10195,18 @@ function wireTaskActions() {
     const t2 = allTasks.find((x) => x.id === Number(b.dataset.task));
     const tg = ((t2 && t2.targets) || []).find((x) => x.id === Number(b.dataset.tgrun));
     if (!await confirmerRelance(tg && tg.status !== 'new', 'confirm.rerun-target')) return;
-    busy(b, () => api(`/tasks/${b.dataset.task}/run`, { method: 'POST', body: { targets: [Number(b.dataset.tgrun)] } }))
+    busy(b, () => avecConfigAgent((accord) => api(`/tasks/${b.dataset.task}/run`, { method: 'POST', body: { targets: [Number(b.dataset.tgrun)], ...accord } })))
       .then(() => { toast(tr('toast.projet-lance')); loadTasks(); refreshStatus(); })
-      .catch((e) => toast(explainError(e.message), true));
+      .catch((e) => { if (!e.annule) toast(explainError(e.message), true); });
   });
 
   on('[data-trunfailed]', (b) => {
     const t2 = allTasks.find((x) => x.id === Number(b.dataset.trunfailed));
     const echecs = ((t2 && t2.targets) || []).filter((tg) => tg.status === 'error').map((tg) => tg.id);
     if (!echecs.length) return;
-    busy(b, () => api(`/tasks/${b.dataset.trunfailed}/run`, { method: 'POST', body: { targets: echecs } }))
+    busy(b, () => avecConfigAgent((accord) => api(`/tasks/${b.dataset.trunfailed}/run`, { method: 'POST', body: { targets: echecs, ...accord } })))
       .then(() => { toast(tr('toast.session-lancee')); loadTasks(); refreshStatus(); })
-      .catch((e) => toast(explainError(e.message), true));
+      .catch((e) => { if (!e.annule) toast(explainError(e.message), true); });
   });
 
   on('[data-treconcile]', (b) => busy(b, () => api(`/tasks/${b.dataset.treconcile}/reconcile`, { method: 'POST' }))
@@ -10853,6 +10890,23 @@ if (showHiddenEl) {
 
 try { taskKind = localStorage.getItem('aidevtools_task_kind') || 'code'; } catch { /* ignore */ }
 
+/* ---------- Approuver sur ce poste ----------
+   CE QUI EXÉCUTE DU CODE, arrivé changé par la synchro, attend un geste ici. Le bloc montre CE
+   qui a changé — les commandes d'avant et celles d'aujourd'hui —, pas seulement QUE quelque chose
+   a changé : approuver sans voir serait un clic sans valeur. */
+function blocApprobation({ texte, avant, apres, bouton }) {
+  const ligne = (c, cls) => `<div class="approval-line ${cls}"><code>${esc(c)}</code></div>`;
+  const diff = avant
+    ? [...avant.filter((c) => !apres.includes(c)).map((c) => ligne(`− ${c}`, 'gone')),
+      ...apres.map((c) => ligne(`${avant.includes(c) ? '  ' : '+ '}${c}`, avant.includes(c) ? 'same' : 'added'))].join('')
+    : apres.map((c) => ligne(c, 'added')).join('');
+  return `<div class="approval-box" role="note">
+    <p class="approval-text">${svgIco('alert')} ${esc(texte)}</p>
+    ${diff ? `<div class="approval-diff">${diff}</div>` : ''}
+    <div class="approval-actions">${bouton}</div>
+  </div>`;
+}
+
 /* ---------- Ajout en masse de dépôts (GitLab ou GitHub) ----------
    Une seule modale, paramétrée par la forge : même recherche, même « tout cocher »,
    seules la source et l'étiquette changent. */
@@ -11007,6 +11061,7 @@ async function loadRules() {
             matche plus rien reste dans la liste sans qu'on le sache. Calculé localement,
             sans IA : les chemins modifiés et le nom de branche sont en base. */''}
       ${r.repo_id ? `<p class="field-note">${esc(tr('settings.rule.scoped', { project: (repoOptions.find((x) => x.id === r.repo_id) || {}).project || `#${r.repo_id}` }))}</p>` : ''}
+      ${r.author ? `<p class="field-note">${esc(tr('settings.rule.author', { who: r.author }))}</p>` : ''}
       <p class="field-note${r.open_mrs ? '' : ' rule-vide'}">${esc(r.open_mrs
     ? tr('settings.rule.reach', { n: r.open_mrs, count: r.open_mrs })
     : tr('settings.rule.reach-none'))}</p>
@@ -11835,7 +11890,7 @@ function gitRenderPreview(pv) {
     const surete = r.state !== 'ok' || !gitIsDelete() ? ''
       : (r.open_mr
         ? '<span class="git-sur git-sur-mr" title="' + esc(r.open_mr.title || '') + '">'
-          + (r.open_mr.url ? '<a href="' + esc(r.open_mr.url) + '" target="_blank">' : '')
+          + (r.open_mr.url ? '<a href="' + esc(r.open_mr.url) + '" target="_blank" rel="noopener noreferrer">' : '')
           + esc(tr('git.safe.open-mr', { iid: r.open_mr.iid })) + (r.open_mr.url ? ' ↗</a>' : '')
           + (r.open_mr.title ? ' <span class="muted">' + esc(String(r.open_mr.title).slice(0, 50)) + '</span>' : '')
           + (r.open_mr.note != null ? ' ' + noteBadge(Math.round(r.open_mr.note * 1000) / 100) : '')
@@ -11986,7 +12041,7 @@ function gitRenderExplorer(d, box) {
       const ab = b.default ? '<span class="muted">—</span>'
         : '<span class="git-ab">' + (b.ahead ? '↑' + b.ahead : '') + (b.behind ? ' <strong class="git-behind">↓' + b.behind + '</strong>' : (b.ahead ? '' : '=')) + '</span>';
       const merged = b.merged_into
-        ? '<code>' + esc(b.merged_into) + '</code>' + (b.merged_mr ? ' <a href="' + esc(b.merged_mr.url) + '" target="_blank">!' + b.merged_mr.iid + '</a>' : '')
+        ? '<code>' + esc(b.merged_into) + '</code>' + (b.merged_mr ? ' <a href="' + esc(b.merged_mr.url) + '" target="_blank" rel="noopener noreferrer">!' + b.merged_mr.iid + '</a>' : '')
         : '<span class="muted">—</span>';
       // « Créer la MR » entre la branche et sa SOURCE : cible = l'origine déduite,
       // sinon la branche par défaut. Proposé seulement si la branche a des commits
@@ -12017,7 +12072,7 @@ function gitRenderExplorer(d, box) {
           + esc(tr('git.br.jenkins-title', { job: j.path, branch: b.name })) + '">' + svgIco('pipeline') + '</button>').join(''))
         + addTodoBtn('branch', d.repo_id + ':' + b.name, tr('notes.add-todo.branch', { branch: b.name }));
       const mrBtn = b.open_mr
-        ? '<a class="btn btn-sm" href="' + esc(b.open_mr.url) + '" target="_blank" title="' + esc(tr('git.mr.open-title', { target: b.open_mr.target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + b.open_mr.iid + ' ↗</a>'
+        ? '<a class="btn btn-sm" href="' + esc(b.open_mr.url) + '" target="_blank" rel="noopener noreferrer" title="' + esc(tr('git.mr.open-title', { target: b.open_mr.target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + b.open_mr.iid + ' ↗</a>'
         : (canMr
           ? '<button class="btn btn-sm" data-gitmr="' + esc(b.name) + '" data-target="' + esc(mrTarget) + '" title="' + esc(tr('git.mr.title', { target: mrTarget })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>' + esc(tr('git.btn.create-mr')) + '</button>'
           : '');
@@ -12080,7 +12135,7 @@ function gitRenderExplorer(d, box) {
       onDone: (r) => {
         // Remplace le bouton par le lien vers la MR : l'écran reflète la réalité
         // sans re-analyser tout le dépôt (coûteux).
-        b.outerHTML = '<a class="btn btn-sm" href="' + esc(r.url) + '" target="_blank" title="' + esc(tr('git.mr.open-title', { target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + r.iid + ' ↗</a>';
+        b.outerHTML = '<a class="btn btn-sm" href="' + esc(r.url) + '" target="_blank" rel="noopener noreferrer" title="' + esc(tr('git.mr.open-title', { target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + r.iid + ' ↗</a>';
       },
     });
   }));
@@ -12219,7 +12274,7 @@ async function findRefSearch(e) {
       + `<th>${esc(tr('stats.col.project'))}</th><th>${esc(tr('git.findref.col.type'))}</th><th>${esc(tr('git.findref.col.commit'))}</th><th>${esc(tr('git.findref.col.tagdate'))}</th><th>${esc(tr('git.findref.col.branchdate'))}</th><th>${esc(tr('git.tags.col.author'))}</th><th>${esc(tr('git.tags.fetch-author'))}</th></tr></thead><tbody>`
       + found.map((r) => r.matches.map((m) => `<tr><td>${esc(r.project)}</td>`
         + `<td>${typeBadge(m.kind)}</td>`
-        + `<td>${m.url ? `<a href="${esc(m.url)}" target="_blank"><code>${esc(m.sha || d.name)}</code> ↗</a>` : ''}`
+        + `<td>${m.url ? `<a href="${esc(safeUrl(m.url))}" target="_blank" rel="noopener noreferrer"><code>${esc(m.sha || d.name)}</code> ↗</a>` : ''}`
         + `${m.sha ? ` <button type="button" class="muted git-sha git-sha-copy" data-copy-txt="${esc(m.sha)}" title="${esc(tr('git.copy-sha'))}">${esc(m.url ? tr('ui.copy') : m.sha)}</button>` : ''}</td>`
         + `<td class="muted">${m.date ? fmtDate(m.date) : '—'}</td>`
         + `<td>${m.kind === 'tag' ? findRefBranchesHtml(m.branches) : '<span class="muted">—</span>'}</td>`
@@ -12994,7 +13049,7 @@ function mergeRenderWork() {
         <strong>${esc(e.project)}</strong> — <code>${esc(e.source_branch)}</code> → <code>${esc(e.target_branch)}</code>
         ${/* A31 — CE QU'ON RATTRAPE. On arrive ici depuis un badge « en conflit » : sans ce
               rappel, on résout des conflits sans plus savoir sur quelle merge request. */''}
-        ${e.mr ? `${e.mr.url ? `<a href="${esc(e.mr.url)}" target="_blank" class="tag">!${e.mr.iid} ↗</a>` : `<span class="tag">!${e.mr.iid}</span>`}
+        ${e.mr ? `${e.mr.url ? `<a href="${esc(safeUrl(e.mr.url))}" target="_blank" rel="noopener noreferrer" class="tag">!${e.mr.iid} ↗</a>` : `<span class="tag">!${e.mr.iid}</span>`}
           ${e.mr.note != null ? noteBadge(Math.round(e.mr.note * 1000) / 100) : ''}
           ${e.mr.ticket ? `<span class="tag">${esc(e.mr.ticket)}</span>` : ''}
           <span class="muted">${esc(String(e.mr.title || '').slice(0, 60))}</span>` : ''}
@@ -15038,12 +15093,12 @@ function jiraRelatedBlock(it) {
     groupes.get(cle).push(r);
   }
   const ligne = (r) => `<li class="jira-rel-row${r.statusCategory === 'done' ? ' jira-rel-done' : ''}">
-      ${r.typeIcon ? `<img class="jira-rel-icon" src="${esc(r.typeIcon)}" alt="${esc(r.type)}" title="${esc(r.type)}" loading="lazy" />` : ''}
+      ${r.typeIcon ? `<img class="jira-rel-icon" src="${esc(safeImg(r.typeIcon))}" alt="${esc(r.type)}" title="${esc(r.type)}" loading="lazy" />` : ''}
       <button type="button" class="jira-rel-key" data-jira-open="${esc(r.key)}" title="${esc(tr('jira.related.open', { key: r.key, summary: r.summary }))}">${esc(r.key)}</button>
       <span class="jira-rel-sum">${esc(r.summary)}</span>
       <span class="spacer"></span>
       ${jiraStatusChip(r)}
-      <a class="jira-rel-ext" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(tr('jira.related.jira', { key: r.key }))}" aria-label="${esc(tr('jira.related.jira', { key: r.key }))}">↗</a>
+      <a class="jira-rel-ext" href="${esc(safeUrl(r.url))}" target="_blank" rel="noopener noreferrer" title="${esc(tr('jira.related.jira', { key: r.key }))}" aria-label="${esc(tr('jira.related.jira', { key: r.key }))}">↗</a>
     </li>`;
   const corps = [...groupes.entries()].map(([rel, rows]) => `<div class="jira-rel-group">
       <div class="jira-rel-rel muted">${esc(rel)}</div>
@@ -15058,12 +15113,12 @@ function jiraAttachmentsBlock(it) {
   const src = (a) => `/api/jira/attachment/${encodeURIComponent(a.id)}`;
   const isImg = (a) => /^image\//i.test(a.mimeType || '') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(a.filename || '');
   // Les IMAGES s'affichent directement (aperçu chargé via le proxy) ; clic = plein écran.
-  const images = list.filter(isImg).map((a) => `<a class="jira-img" href="${src(a)}" data-jimg="${src(a)}" data-jname="${esc(a.filename)}" title="${esc(a.filename)}">
-      <img src="${src(a)}" alt="${esc(a.filename)}" loading="lazy" />
+  const images = list.filter(isImg).map((a) => `<a class="jira-img" href="${esc(safeUrl(src(a)))}" data-jimg="${esc(safeUrl(src(a)))}" data-jname="${esc(a.filename)}" title="${esc(a.filename)}">
+      <img src="${esc(safeImg(src(a)))}" alt="${esc(a.filename)}" loading="lazy" />
       <span class="jira-img-name muted">${esc(a.filename)}</span>
     </a>`).join('');
   // Les autres fichiers restent en « chip » téléchargeable.
-  const files = list.filter((a) => !isImg(a)).map((a) => `<a class="jira-attach" href="${src(a)}" download="${esc(a.filename)}" title="${esc(tr('jira.download'))}">
+  const files = list.filter((a) => !isImg(a)).map((a) => `<a class="jira-attach" href="${esc(safeUrl(src(a)))}" download="${esc(a.filename)}" title="${esc(tr('jira.download'))}">
       <svg class="ico"><use href="#i-clip"/></svg>
       <span class="jira-attach-name">${esc(a.filename)}</span>
       <span class="jira-attach-size muted">${esc(jiraSize(a.size))}</span>
@@ -15093,7 +15148,7 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
     jiraMetaRow(tr('jira.meta.reporter'), person(it.reporter)),
     jiraMetaRow(tr('jira.meta.project'), esc(it.project)),
     it.epic ? jiraMetaRow(tr('jira.meta.epic'), it.epic.url
-      ? `<a href="${esc(it.epic.url)}" target="_blank" rel="noopener" class="jira-epic-link" title="${esc(tr('jira.epic-open', { key: it.epic.key, summary: it.epic.summary }))}"><code>${esc(it.epic.key)}</code> ${esc(it.epic.summary)} ↗</a>`
+      ? `<a href="${esc(safeUrl(it.epic.url))}" target="_blank" rel="noopener noreferrer" class="jira-epic-link" title="${esc(tr('jira.epic-open', { key: it.epic.key, summary: it.epic.summary }))}"><code>${esc(it.epic.key)}</code> ${esc(it.epic.summary)} ↗</a>`
       : `<code>${esc(it.epic.key)}</code> ${esc(it.epic.summary)}`) : '',
     jiraMetaRow(tr('jira.meta.created'), esc(fmtDate(it.created))),
     jiraMetaRow(tr('jira.meta.updated'), esc(fmtDate(it.updated))),
@@ -15148,7 +15203,7 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
                 sinon c'est un bouton qui ne sert à rien sur les neuf tickets sur dix. */''}
           ${detecterTrace(`${it.summary || ''}\n${it.descriptionMd || ''}`) ? `<button type="button" class="btn btn-sm btn-jira-investigate" data-jirakey="${esc(it.key)}" title="${esc(tr('jira.investigate-title'))}"><svg class="ico ico-sm"><use href="#i-search"/></svg>${esc(tr('jira.investigate'))}</button>` : ''}
           <button type="button" class="btn btn-sm btn-primary" data-jiracode="${esc(it.key)}" title="${esc(tr('jira.code-title'))}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${esc(tr('jira.code'))}</button>
-          <a href="${esc(it.url)}" target="_blank" rel="noopener" class="jira-open">${esc(tr('jira.open'))} ↗</a>
+          <a href="${esc(safeUrl(it.url))}" target="_blank" rel="noopener noreferrer" class="jira-open">${esc(tr('jira.open'))} ↗</a>
         </div>
         <h2 class="jira-title">${esc(it.summary)}</h2>
         <div class="jira-chips">${chips}</div>
@@ -15391,7 +15446,7 @@ function renderJiraWatch() {
   box.innerHTML = rows.map((r) => `<div class="jira-item jira-watch-item jira-cat-${JIRA_CAT[r.status_category] || 'todo'}${r.key === JIRA_WATCH.selectedKey ? ' active' : ''}" data-jirawatchopen="${esc(r.key)}">
       <div class="jira-item-row1">
         ${r.url
-          ? `<a class="jira-key jira-key-link" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(tr('jira.watch.open', { key: r.key }))}">${esc(r.key)} ↗</a>`
+          ? `<a class="jira-key jira-key-link" href="${esc(safeUrl(r.url))}" target="_blank" rel="noopener noreferrer" title="${esc(tr('jira.watch.open', { key: r.key }))}">${esc(r.key)} ↗</a>`
           : `<code class="jira-key">${esc(r.key)}</code>`}
         <span class="jira-status jira-status-${JIRA_CAT[r.status_category] || 'todo'}">${esc(r.status || '—')}</span>
         <span class="spacer"></span>
@@ -15657,7 +15712,7 @@ surLeDetailJira('click', (e) => {
   $('#jiraLightboxImg').src = img.dataset.jimg;
   $('#jiraLightboxImg').alt = img.dataset.jname || '';
   $('#jiraLightboxName').textContent = img.dataset.jname || '';
-  $('#jiraLightboxOpen').href = img.dataset.jimg;
+  $('#jiraLightboxOpen').href = safeUrl(img.dataset.jimg);
   $('#jiraLightbox').hidden = false;
 });
 $('#jiraLightbox') && $('#jiraLightbox').addEventListener('click', (e) => {
@@ -16371,6 +16426,16 @@ function agentCardHtml(a) {
       ${agentStatutHtml(a)}
     </div>
     ${a.description ? `<div class="muted agent-desc">${esc(a.description)}</div>` : ''}
+    ${a.approval_pending ? blocApprobation({
+    texte: tr(a.approved_before ? 'approval.agent.changed' : 'approval.agent.new'),
+    avant: a.approved_before ? resumeApprobationAgent(a.approved_before) : null,
+    apres: resumeApprobationAgent({
+      kind: a.kind, model: a.model, permission_mode: a.permission_mode,
+      allowed_tools: a.allowed_tools_json, disallowed_tools: a.disallowed_tools_json,
+      max_turns: a.max_turns, schedule: a.schedule, runner: a.runner,
+    }),
+    bouton: `<button type="button" class="btn btn-primary btn-sm btn-agent-approve" data-id="${a.id}">${esc(tr('approval.btn'))}</button>`,
+  }) : ''}
     ${agentKnowledgeHtml(a)}
     ${/* CHAQUE BOUTON DIT CE QU'IL FAIT. « Demander », « Coder », « Mettre à jour » se
           ressemblent assez pour qu'on hésite, et deux d'entre eux lancent une session qui
@@ -16389,6 +16454,23 @@ function agentCardHtml(a) {
       <button class="btn btn-sm btn-danger btn-agent-del" data-id="${a.id}" aria-label="${esc(tr('ui.delete'))}" data-tip="${esc(tr('agents.tip.delete'))}"><svg class="ico ico-sm"><use href="#i-trash"/></svg></button>
     </div>
   </div>`;
+}
+
+/* Ce qui compte pour approuver un agent, en lignes lisibles : c'est CE QUI CHANGE qu'on doit
+   voir d'un coup d'œil — une permission élargie, un outil ajouté, un horaire posé. */
+function resumeApprobationAgent(x) {
+  const o = x || {};
+  const outils = (brut) => { try { const l = JSON.parse(brut || '[]'); return Array.isArray(l) ? l.join(', ') : ''; } catch { return String(brut || ''); } };
+  return [
+    `${tr('approval.agent.kind')} : ${o.kind || '—'}`,
+    `${tr('approval.agent.permission')} : ${o.permission_mode || '—'}`,
+    `${tr('approval.agent.allowed')} : ${outils(o.allowed_tools) || '—'}`,
+    `${tr('approval.agent.disallowed')} : ${outils(o.disallowed_tools) || '—'}`,
+    `${tr('approval.agent.model')} : ${o.model || '—'}`,
+    `${tr('approval.agent.max-turns')} : ${o.max_turns == null ? '—' : o.max_turns}`,
+    `${tr('approval.agent.schedule')} : ${o.schedule || '—'}`,
+    `${tr('approval.agent.runner')} : ${o.runner || '—'}`,
+  ];
 }
 
 async function loadAgentList() {
@@ -16632,6 +16714,41 @@ async function partageActif() {
 /* La même sentinelle que le serveur (`AUTEUR_AUTO` dans `src/server.js`) : un poste ne peut pas
    porter ce nom, `git config user.name` ne commence pas par une arobase. */
 const AUTEUR_AUTO = '@auteur';
+/* LE BANDEAU DES RÉGLAGES D'AUTOMATISME EN ATTENTE. Ce qui a changé, valeur par valeur, et le
+   bouton qui l'approuve pour CE poste — tant qu'il n'est pas cliqué, aucune review ni
+   vérification automatique ne part d'ici. */
+function poserApprobationAuto(c) {
+  const box = $('#autoApprovalBanner');
+  if (!box) return;
+  const a = (c && c.auto_approval) || {};
+  box.hidden = !a.pending;
+  if (!a.pending) { box.innerHTML = ''; return; }
+  const avant = a.before || {};
+  const libelle = (k, v) => {
+    if (k === 'auto_runner') return v === AUTEUR_AUTO ? tr('agents.runner.author') : (v || tr('agents.runner.nobody'));
+    return v === '1' ? tr('approval.config.on') : tr('approval.config.off');
+  };
+  const noms = { auto_review_new: tr('approval.config.review-new'), auto_rereview_stale: tr('approval.config.rereview-stale'), auto_runner: tr('settings.lbl.auto-runner') };
+  const lignes = Object.keys(noms).map((k) => {
+    const apres = String(c[k] == null ? '' : c[k]);
+    const change = a.before && String(avant[k] == null ? '' : avant[k]) !== apres;
+    return `${noms[k]} : ${change ? `${libelle(k, String(avant[k] || ''))} → ` : ''}${libelle(k, apres)}`;
+  });
+  box.innerHTML = blocApprobation({
+    texte: tr('approval.config.text'),
+    avant: null,
+    apres: lignes,
+    bouton: `<button type="button" class="btn btn-primary btn-sm" id="btnApproveAuto">${esc(tr('approval.btn'))}</button>`,
+  });
+  $('#btnApproveAuto').addEventListener('click', async (e) => {
+    try {
+      await busy(e.currentTarget, () => api('/config/approve-auto', { method: 'POST' }));
+      toast(tr('approval.done'));
+      loadConfig();
+    } catch (err) { toast(explainError(err.message), true); }
+  });
+}
+
 async function poserExecutantAuto(choisi) {
   const ligne = $('#autoRunnerRow');
   if (!ligne) return;
@@ -17075,6 +17192,13 @@ document.addEventListener('click', async (e) => {
       catch (err) { toast(explainError(err.message), true); }
     });
   }
+  if (b.classList.contains('btn-agent-approve')) {
+    try {
+      await busy(b, () => api(`/agents/${a.id}/approve`, { method: 'POST' }));
+      toast(tr('approval.done'));
+      return loadAgentList();
+    } catch (err) { return toast(explainError(err.message), true); }
+  }
   if (b.classList.contains('btn-agent-dup')) {
     await api(`/agents/${a.id}/duplicate`, { method: 'POST' });
     toast(tr('agents.duplicated')); return loadAgentList();
@@ -17343,7 +17467,7 @@ async function ouvrirSession(id, kind = 'code', { vivant = () => true } = {}) {
    aujourd'hui. */
 function ouvrirResultatPalette(r) {
   api('/launcher/used', { method: 'POST', body: { kind: r.kind, ref: r.ref } }).catch(() => {});
-  if (r.url) { window.open(r.url, '_blank', 'noopener,noreferrer'); return; }
+  if (r.url) { window.open(safeUrl(r.url), '_blank', 'noopener,noreferrer'); return; }
   if (r.action) {
     const i = Number(String(r.action).split(':')[1]);
     const a = PALETTE_ACTIONS[i];
@@ -18219,7 +18343,7 @@ function renderBrief(d) {
               n'affichait que « N tests cassés », sans dire OÙ. */''}
         <div class="meta">${esc(tr('notes.brief.verif.failed', { n: v.failed, count: v.failed }))}
           ${v.targets.map((c) => (c.iid
-    ? ` · !${c.iid}`
+    ? ` · !${esc(c.iid)}`
     : ` · ${esc(c.project || '')}${c.branch ? ` · ${esc(c.branch)}` : ''}`)).join('')}</div>
       </div>
       ${/* LE BRIEF PORTE L'ACTION, PAS SEULEMENT LE LIEN. Chaque ligne se fermait en trois
@@ -18235,7 +18359,7 @@ function renderBrief(d) {
         <div class="brief-item-title">!${m.iid} — ${esc(m.title || '')}</div>
         <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}</div>
       </div>
-      <button type="button" class="btn btn-primary" data-brief-review="${m.id}" data-iid="${m.iid}">${esc(tr('mr.btn.review'))}</button>
+      <button type="button" class="btn btn-primary" data-brief-review="${m.id}" data-iid="${esc(m.iid)}">${esc(tr('mr.btn.review'))}</button>
       ${briefHideBtn('mr', m.id)}
     </div>`).join('');
 
@@ -18310,7 +18434,7 @@ function renderBrief(d) {
         <div class="brief-item-meta muted">${esc(tr('notes.brief.ci.on', { branch: m.source_branch, iid: m.iid }))}</div>
       </div>
       <button type="button" class="btn btn-primary" data-ci-job="${esc(ci.path)}">${esc(tr('notes.brief.ci.details'))}</button>
-      <button type="button" class="btn" data-brief-review="${m.id}" data-iid="${m.iid}">${esc(tr('mr.btn.review'))}</button>
+      <button type="button" class="btn" data-brief-review="${m.id}" data-iid="${esc(m.iid)}">${esc(tr('mr.btn.review'))}</button>
     </div>`).join('');
 
   /* B11 — CE QUE JE PEUX MERGER MAINTENANT. Une ligne, un nombre, une porte : le brief ne
@@ -19957,7 +20081,7 @@ function caseHtml(s, e) {
   const montrees = troisPlusOuvertes(retenues);
   const bulle = (u) => [u.label || '', u.url, u.last_used_at ? tr('links.last-open', { when: depuis(u.last_used_at) }) : '']
     .filter(Boolean).join('\n');
-  const ligne = (u) => `<span class="link-line"><a class="link-open" href="${esc(u.url)}" target="_blank" rel="noopener noreferrer"
+  const ligne = (u) => `<span class="link-line"><a class="link-open" href="${esc(safeUrl(u.url))}" target="_blank" rel="noopener noreferrer"
       data-usekind="service_url" data-useref="${s.id}:${e.id}:${u.id}" data-tip="${esc(bulle(u))}">
       <span>${esc(nomAdresse(u))}</span></a><button type="button" class="link-copy" data-copy-txt="${esc(u.url)}"
       title="${esc(tr('links.copy-url', { url: u.url }))}" aria-label="${esc(tr('links.copy-url', { url: u.url }))}">${svgIco('copy')}</button></span>`;
@@ -20055,7 +20179,7 @@ function lignePanneau(s, e, u, marquee) {
     <span class="lcp-when muted">${u.last_used_at ? esc(depuis(u.last_used_at)) : ''}</span>
     <button type="button" class="link-icon lcp-copy" data-copy-txt="${esc(u.url)}"
       title="${esc(tr('links.copy-url', { url: u.url }))}" aria-label="${esc(tr('links.copy-url', { url: u.url }))}">${svgIco('copy')}</button>
-    <a class="link-icon lcp-open" href="${esc(u.url)}" target="_blank" rel="noopener noreferrer"
+    <a class="link-icon lcp-open" href="${esc(safeUrl(u.url))}" target="_blank" rel="noopener noreferrer"
       data-usekind="service_url" data-useref="${s.id}:${e.id}:${u.id}"
       title="${esc(tr('links.url.open'))}" aria-label="${esc(tr('links.url.open'))}">${svgIco('external')}</a>
   </div>`;
@@ -20178,7 +20302,7 @@ async function enregistrerCase(box) {
 const ligneFreeLink = (l) => `<div class="link-free-row" data-free="${l.id}">
       <input type="checkbox" class="lfr-pick" data-freepick="${l.id}"${LINKS.selection.has(l.id) ? ' checked' : ''} aria-label="${esc(tr('links.free.pick'))}" />
       <span class="link-ava la-c${jkTeinte(l.label || l.url)}" aria-hidden="true">${esc(initiale(l.label))}</span>
-      <a class="link-free-label" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer"
+      <a class="link-free-label" href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener noreferrer"
          data-usekind="free_link" data-useref="${l.id}" title="${esc(l.url)}">${esc(l.label)}</a>
       <span class="link-free-url muted">${esc(urlCourte(l.url))}</span>
       <span class="link-free-tags">${(l.tags || []).map((t) => `<span class="link-svc-tag">${esc(t)}</span>`).join('')}</span>
@@ -20445,7 +20569,7 @@ document.addEventListener('click', async (e) => {
   })) return;
   for (const { s, u } of adresses) {
     api('/launcher/used', { method: 'POST', body: { kind: 'service_url', ref: `${s.id}:${envId}:${u.id}` } }).catch(() => {});
-    window.open(u.url, '_blank', 'noopener,noreferrer');
+    window.open(safeUrl(u.url), '_blank', 'noopener,noreferrer');
   }
 });
 
@@ -21688,7 +21812,7 @@ function renderBoutonsLiens(d, box) {
     /* LA RÉFÉRENCE A TROIS SEGMENTS, comme partout ailleurs : la frécence se compte PAR
        ADRESSE (`service:environnement:adresse`). À deux, chaque ouverture depuis une merge
        request se perdait — ni la palette ni « dernière ouverture » ne la voyaient passer. */
-    ...d.envs.map((e) => `<a class="btn btn-sm" href="${esc(e.url)}" target="_blank" rel="noopener noreferrer"
+    ...d.envs.map((e) => `<a class="btn btn-sm" href="${esc(safeUrl(e.url))}" target="_blank" rel="noopener noreferrer"
         data-usekind="service_url" data-useref="${d.service.id}:${e.environment_id}:${e.id}" title="${esc(e.url)}">
         <span class="link-env-dot" style="background:${esc(e.color)}"></span>${esc(e.label
           ? tr('links.mr.open-named', { env: e.env, name: e.label })
@@ -21696,11 +21820,11 @@ function renderBoutonsLiens(d, box) {
     ...d.context.flatMap((c) => {
       if (c.per_env.length) {
         return c.per_env.map((k) => (k.url
-          ? `<a class="btn btn-sm" href="${esc(k.url)}" target="_blank" rel="noopener noreferrer">${svgIco('zap')}${esc(c.label)} · ${esc(k.env)}</a>`
+          ? `<a class="btn btn-sm" href="${esc(safeUrl(k.url))}" target="_blank" rel="noopener noreferrer">${svgIco('zap')}${esc(c.label)} · ${esc(k.env)}</a>`
           : `<button type="button" class="btn btn-sm" disabled title="${esc(tr('links.mr.unresolved', { name: `{${k.manquante}}` }))}">${svgIco('zap')}${esc(c.label)} · ${esc(k.env)}</button>`));
       }
       return [c.url
-        ? `<a class="btn btn-sm" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${svgIco('zap')}${esc(c.label)}</a>`
+        ? `<a class="btn btn-sm" href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener noreferrer">${svgIco('zap')}${esc(c.label)}</a>`
         : `<button type="button" class="btn btn-sm" disabled title="${esc(tr('links.mr.unresolved', { name: `{${c.manquante}}` }))}">${svgIco('zap')}${esc(c.label)}</button>`];
     }),
   ];
@@ -22388,7 +22512,13 @@ function renderVerifierList() {
     const herite = v.kind !== 'commands';
     return `<div class="card${herite ? ' is-hidden' : ''}" data-id="${v.id}">
     <div class="card-main">
-      <div class="title">${esc(v.name)}${herite ? ` <span class="tag stale">${esc(tr('verify.kind.script-removed.tag'))}</span>` : ''}</div>
+      <div class="title">${esc(v.name)}${herite ? ` <span class="tag stale">${esc(tr('verify.kind.script-removed.tag'))}</span>` : ''}${v.approval_pending ? ` <span class="tag warn">${esc(tr('approval.tag'))}</span>` : ''}</div>
+      ${v.approval_pending ? blocApprobation({
+    texte: tr(v.approved_before ? 'approval.verifier.changed' : 'approval.verifier.new'),
+    avant: v.approved_before ? (v.approved_before.commands || []) : null,
+    apres: v.commands || [],
+    bouton: `<button type="button" class="btn btn-primary btn-sm" data-vapprove="${v.id}">${esc(tr('approval.btn'))}</button>`,
+  }) : ''}
       <div class="meta">${herite
     ? `<code>${esc(v.command || '')}</code>`
     : (v.commands || []).map((c) => `<button type="button" class="code-copy" data-copy-txt="${esc(c)}" title="${esc(tr('verify.copy-command'))}"><code>${esc(c)}</code></button>`).join(' <span class="muted">→</span> ')}</div>
@@ -22439,6 +22569,14 @@ function renderVerifierList() {
   </div>`;
   }).join('');
   $$('#verifierList [data-vedit]').forEach((b) => b.addEventListener('click', () => editerVerifier(Number(b.dataset.vedit))));
+  /* APPROUVER, c'est dire « j'ai vu ces commandes, elles peuvent tourner sur MA machine ». */
+  $$('#verifierList [data-vapprove]').forEach((b) => b.addEventListener('click', async () => {
+    try {
+      await busy(b, () => api(`/verifiers/${b.dataset.vapprove}/approve`, { method: 'POST' }));
+      toast(tr('approval.done'));
+      loadVerifiers();
+    } catch (e) { toast(explainError(e.message), true); }
+  }));
   $$('#verifierList [data-vcopy]').forEach((b) => b.addEventListener('click', () => dupliquerVerifier(Number(b.dataset.vcopy))));
   $$('#verifierList [data-vdel]').forEach((b) => b.addEventListener('click', async () => {
     const v = verifiers.find((x) => x.id === Number(b.dataset.vdel));
@@ -23828,7 +23966,7 @@ function jkParamPastilles(liste, frequents) {
    `noopener` : la page ouverte ne doit pas pouvoir reprendre la main sur la nôtre. */
 function jkLienExterne(url) {
   if (!/^https?:\/\//i.test(String(url || ''))) return '';
-  return `<a class="btn btn-icon btn-sm jk-open-ext" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="${esc(tr('jenkins.open-ext'))}" aria-label="${esc(tr('jenkins.open-ext'))}"><svg class="ico ico-sm"><use href="#i-external"/></svg></a>`;
+  return `<a class="btn btn-icon btn-sm jk-open-ext" href="${esc(safeUrl(url))}" target="_blank" rel="noopener noreferrer" title="${esc(tr('jenkins.open-ext'))}" aria-label="${esc(tr('jenkins.open-ext'))}"><svg class="ico ico-sm"><use href="#i-external"/></svg></a>`;
 }
 
 function jkRow(j, colonnes = []) {
@@ -23954,7 +24092,7 @@ async function remplirLiensJenkins() {
     const d = await cacheLiensJob.get(chemin);
     const cases = (d.envs || []).filter((c) => valeurs.has(String(c.env || '').trim().toLowerCase()));
     if (!cases.length || !zone.isConnected) continue;
-    zone.innerHTML = cases.slice(0, 3).map((c) => `<a class="btn btn-sm" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer"
+    zone.innerHTML = cases.slice(0, 3).map((c) => `<a class="btn btn-sm" href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener noreferrer"
         style="border-color:${esc(c.color || 'var(--line)')}"
         title="${esc(tr('jenkins.open-env.title', { env: c.env, url: c.url }))}">${svgIco('external')}${esc(c.env)}</a>`).join('');
   }
@@ -24245,7 +24383,7 @@ function jkBuildDetail(d, b) {
               puis on la resélectionnait à la souris pour la coller à un collègue, et on
               retournait dans Jenkins à la main pour la suite. */''}
         <button type="button" class="btn btn-sm btn-ghost" data-jk-tail-copy="${b.number}" title="${esc(tr('jenkins.tail.copy'))}">${svgIco('copy')}</button>
-        ${b.url ? `<a class="btn btn-sm btn-ghost" href="${esc(b.url)}" target="_blank" rel="noopener" title="${esc(tr('jenkins.build.open'))}">${svgIco('external')}</a>` : ''}
+        ${b.url ? `<a class="btn btn-sm btn-ghost" href="${esc(safeUrl(b.url))}" target="_blank" rel="noopener noreferrer" title="${esc(tr('jenkins.build.open'))}">${svgIco('external')}</a>` : ''}
       </h4><pre class="jk-tail verify-log" data-jk-tail="${b.number}">${esc(tr('ui.combo.loading'))}</pre>` : ''}
   </div>`;
 }

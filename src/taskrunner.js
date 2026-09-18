@@ -6,7 +6,10 @@ const localsession = require('./localsession');
 const { getConfig } = require('./config');
 const { TASKS_DIR, ensureDir } = require('./paths');
 const git = require('./git');
+const configagent = require('./configagent');
 const copilot = require('./copilot');
+const agentpolicy = require('./agentpolicy');
+const { nonFiable } = require('./nonfiable');
 const agentsession = require('./agentsession');
 const questions = require('./questions');
 const { avecConsignes } = require('./prompts');
@@ -225,7 +228,7 @@ function transcriptionDesPasses(taskId, unitId) {
   try { passes = agentpass.list('task', taskId, unitId); } catch { return ''; }
   return redigerTranscription(taskId, unitId, passes,
     'Ce qui s\'est déjà dit sur cette session',
-    'Cet échange a eu lieu sur une autre machine : tu ne t\'en souviens pas, mais il t\'engage.');
+    'Cet échange a eu lieu sur une autre machine : tu ne t\'en souviens pas ; il est ton contexte de travail.');
 }
 
 /* ET L'INVERSE : UNE CONVERSATION LOCALE QUI A PRIS DU RETARD.
@@ -287,7 +290,7 @@ function redigerTranscription(taskId, unitId, passes, titre, avertissement) {
   return `## ${titre}${omisesJusqua
     ? ` (les itérations jusqu'à la ${omisesJusqua}e sont omises, faute de place)` : ''}\n\n`
     + `${avertissement}\n\n`
-    + blocs.join('\n\n');
+    + nonFiable('échanges précédents', blocs.join('\n\n'));
 }
 
 /* Relues à CHAQUE prompt et non mises en cache : on les change en réglages parce qu'on vient de
@@ -349,6 +352,16 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   } else if (hasRemote) {
     onLog(t('log.task.branch-remote', { branch: tg.branch }));
     await git.createBranchFrom(cwd, tg.branch, `origin/${tg.branch}`, onLog);
+    /* Une branche déjà poussée — celle d'une MR à corriger, souvent celle d'un collègue — peut
+       réécrire les règles de l'agent qu'on va y lancer (configagent.js). À la PREMIÈRE passe
+       seulement : ensuite la session tourne déjà sur cette branche, et ce qui y change vient
+       d'elle. */
+    if (!copilot.isDryRun() && !doResume) {
+      const examen = await configagent.examiner(cwd, `origin/${base}`, 'HEAD');
+      if (examen.fichiers.length && !configagent.accepte(repo, tg.branch, examen.empreinte)) {
+        throw configagent.erreur(t('err.agent-config.touched', { branch: tg.branch, files: examen.fichiers.join(', ') }), examen);
+      }
+    }
   } else if (allowCreate) {
     onLog(t('log.task.branch-create', { branch: tg.branch, base }));
     await git.createBranchFrom(cwd, tg.branch, `origin/${base}`, onLog);
@@ -404,7 +417,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
       ? [rattrapageDesPasses(task.id, tg), promptText].filter(Boolean).join('\n\n')
       : reinjecte();
     try {
-      r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt: envoye + imgBlock, cwd, resume: doResume, onLog, options });
+      r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt: envoye + imgBlock, cwd, resume: doResume, onLog, options, saveur: 'code' });
     } catch (e) {
       if (!doResume) throw e;
       // Fallback (§4.5) : reprise impossible → session neuve avec contexte réinjecté.
@@ -416,7 +429,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
          pas. Sans cette note, l'écran affiche après coup un identifiant que l'utilisateur
          n'a jamais saisi, sans rien dire de la substitution. */
       note = `${tg.session_key} : ${raison}`;
-      r = await agentsession.runInSession({ key, prompt: reinjecte() + imgBlock, cwd, resume: false, onLog, options });
+      r = await agentsession.runInSession({ key, prompt: reinjecte() + imgBlock, cwd, resume: false, onLog, options, saveur: 'code' });
       created = true;
     }
     agentText = r.text || '';
@@ -634,8 +647,11 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
     + `IMPORTANT : c'est une exploration en LECTURE SEULE — ne modifie, ne crée et ne supprime AUCUN fichier `
     + `dans les dépôts, et ne fais aucun commit.${prev}${imgBlock}\n\n`
     + `Rédige UNE SEULE réponse de synthèse, transversale aux dépôts, en Markdown (français), `
-    + `et écris-la UNIQUEMENT dans le fichier \`${outRel}\` (chemin relatif au répertoire courant). `
-    + `Ne duplique pas ce contenu sur la sortie standard.`
+    + (agentpolicy.sortieSurStdout('explore', copilot.COPILOT_BIN)
+      // Lecture seule tenue par le lanceur : aucun fichier ne peut être écrit, la réponse finale en tient lieu.
+      ? `et rends-la comme ta réponse finale, complète — tu ne peux écrire aucun fichier.`
+      : `et écris-la UNIQUEMENT dans le fichier \`${outRel}\` (chemin relatif au répertoire courant). `
+        + `Ne duplique pas ce contenu sur la sortie standard.`)
     /* Option « l'IA peut poser des questions » : une exploration hésite comme un codage —
        « de quel des trois services parles-tu ? » vaut mieux qu'une synthèse à côté du sujet. */
     /* …et on lève la CONTRADICTION avec la consigne ci-dessus : « n'écris rien sur la sortie
@@ -655,7 +671,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
       let created = !doResume;
       let r;
       try {
-        r = await agentsession.runInSession({ key, handle: doResume ? known.session_key : null, prompt, cwd: root, resume: doResume, onLog, options });
+        r = await agentsession.runInSession({ key, handle: doResume ? known.session_key : null, prompt, cwd: root, resume: doResume, onLog, options, saveur: 'explore' });
       } catch (e) {
         if (!doResume) throw e;
         // Même repli que pour un codage : la session est perdue, pas l'exploration. On
@@ -664,7 +680,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
         const withPrev = previous
           ? `${prompt}\n\nTu avais déjà produit la réponse suivante :\n"""\n${previous}\n"""`
           : prompt;
-        r = await agentsession.runInSession({ key, prompt: withPrev, cwd: root, resume: false, onLog, options });
+        r = await agentsession.runInSession({ key, prompt: withPrev, cwd: root, resume: false, onLog, options, saveur: 'explore' });
         created = true;
       }
       stdout = r.text || '';

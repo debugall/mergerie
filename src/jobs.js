@@ -1,4 +1,5 @@
 'use strict';
+const path = require('node:path');
 const db = require('./db');
 const { stripAnsi } = require('../public/ansi-runtime.js');
 const { reviewMr, modifyReview, askReview, explainMr } = require('./reviewer');
@@ -844,7 +845,7 @@ async function runInstallJob(jobId, payload) {
     const res = dictation.lireResultatInstallation(stdout);
     if (!res) throw new Error(t('err.dictation.resultat'));
     const patch = dictation.reglagesDepuisResultat(res);
-    updateConfig(patch);
+    updateConfig(patch, { installation: true });   // le chemin que l'installation vient de poser
     onLog(t('log.dictation.settings-filled', {
       modele: patch.dictation_model,
       backend: res.backend || 'CPU',
@@ -862,7 +863,24 @@ async function runInstallJob(jobId, payload) {
 }
 
 // Actions Docker (compose up/restart/pull/recreate/down, suppression d'orphelin) → log streamé.
+/* UNE SEULE GARDE POUR TOUTES LES ROUTES DOCKER. Le `dir` venait du client tel quel :
+   `docker compose up --build` ou `make` dans n'importe quel dossier de la machine. Il doit être
+   celui d'un fichier compose trouvé sous les racines déclarées (Réglages → Répertoires locaux),
+   comme `composeOne` l'exigeait déjà pour l'inspection. */
+function exigerDossierCompose(dir) {
+  const racines = db.prepare('SELECT * FROM local_root').all();
+  const d = path.resolve(String(dir || ''));
+  const connu = racines.some((r) => docker.composeFilesUnder(r.path).some((h) => path.resolve(h.dir) === d));
+  if (!dir || !connu) {
+    const e = new Error(t('err.docker.dir-unknown', { dir: String(dir || '') }));
+    e.status = 400;
+    throw e;
+  }
+}
+
 function startDockerJob(payload) {
+  if (payload && (payload.op === 'compose' || payload.op === 'make')) exigerDossierCompose(payload.dir);
+  if (payload && payload.op === 'compose-bulk') for (const g of payload.groups || []) exigerDossierCompose(g && g.dir);
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES ('docker', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
   const jobId = info.lastInsertRowid;
@@ -1185,7 +1203,7 @@ function isRunning() {
   return active.size > 0 || !!activeJob();
 }
 
-module.exports = {
+module.exports = { exigerDossierCompose,
   startVerifyJob, verifyBloquePar, preparerVerificationApres,
   startJob, startTaskJob, startGitJob, startDockerJob, startInstallJob, startConvergeJob, startConvergeSessionJob,
   startLocalJob, startAskJob, startReconcileJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,

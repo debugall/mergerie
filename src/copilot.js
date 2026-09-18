@@ -96,17 +96,31 @@ function emitLines(buf, onLog) {
 
 // Lance `copilot -p "<prompt>"` dans cwd, renvoie stdout (le rapport).
 // onLog reçoit la commande puis la sortie en temps réel (ligne à ligne).
-function runReal(prompt, cwd, onLog = () => {}) {
+/* `meta.saveur` (ou `meta.kind`) choisit les permissions (`agentpolicy`) : une review n'emporte
+   pas le `--dangerously-skip-permissions` de `COPILOT_ARGS`. Requis ici, pas en tête : agentpolicy
+   ne dépend de rien, mais on garde ce module chargeable tel quel par les scripts. */
+function runReal(prompt, cwd, onLog = () => {}, meta = {}) {
+  const agentpolicy = require('./agentpolicy');
+  const backend = agentpolicy.backendDe(COPILOT_BIN);
+  const pol = agentpolicy.argvPermissions({
+    backend, bin: COPILOT_BIN, extra: EXTRA_ARGS, kind: meta.saveur || meta.kind, addDirs: meta.addDirs,
+  });
+  if (pol.note) onLog(t('agents.log.copilot-not-restricted'));
+  agentpolicy.exigerBudget();                // le plafond du jour, avant de dépenser
+  const flags = [...pol.extra, ...pol.args];
+  flags.push(...agentpolicy.argsMaxTurns(backend, flags));
+  prompt = require('./nonfiable').avecPreambule(prompt);   // ce qui est balisé comme donnée est dit tel
   return new Promise((resolve, reject) => {
     // flags additionnels (ex: --yolo) placés AVANT -p
-    const args = [...EXTRA_ARGS, '-p', prompt];
+    const args = [...flags, '-p', prompt];
     // commande COMPLÈTE (non tronquée) : prompt encodé en une ligne lisible
-    const parts = [COPILOT_BIN, ...EXTRA_ARGS, '-p', JSON.stringify(prompt)];
+    const parts = [COPILOT_BIN, ...flags, '-p', JSON.stringify(prompt)];
     if (proc.isCancelled()) return reject(new Error(t('err.job.stopped')));
     onLog(`$ ${parts.join(' ')}  (cwd=${cwd})`);
     /* stdin fermée : sinon le CLI attend des données sur un tube que personne n'alimente,
        avertit au bout de trois secondes et l'avertissement masque la vraie erreur. */
-    const child = spawn(COPILOT_BIN, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const env = agentpolicy.envAgent(backend === 'unknown' ? null : backend);
+    const child = spawn(COPILOT_BIN, args, proc.options({ cwd, env, stdio: ['ignore', 'pipe', 'pipe'] }));
     proc.setActive(child);
     let stdout = '';
     let stderr = '';
@@ -221,7 +235,7 @@ async function runPrompt(prompt, cwd, meta = {}, onLog = () => {}) {
     output = mockReport(prompt, cwd, meta);
     onLog(t('log.copilot.mock-done', { n: output.length }));
   } else {
-    output = await runReal(prompt, cwd, onLog);
+    output = await runReal(prompt, cwd, onLog, meta);
   }
   /* `meta.owner` : à QUI imputer cet appel. Sans lui, une review coûtait « la moyenne » et
      on ne pouvait pas dire laquelle avait été chère — alors que les sessions, elles, portent

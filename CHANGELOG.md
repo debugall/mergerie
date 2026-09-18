@@ -19,8 +19,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   offers a second answer — **the author** — and the decision stops being global: each machine
   takes only the merge requests whose forge account is its own, on its own subscription, and
   leaves its neighbour's alone. The account is the one behind that forge's token, matched
-  against the merge request's author on the username **or** the display name, since GitLab and
-  GitHub do not store the same one. If that account cannot be known (no token, forge
+  against the merge request's author on the forge **username** — the display name, which anyone
+  can change, is only a fallback for a merge request discovered before the username was recorded. If that account cannot be known (no token, forge
   unreachable), the machine runs **nothing** and says why in the log — better nothing than the
   same review twice on every machine.
 
@@ -132,6 +132,73 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   file is looked for in — with `npx`, the one you are standing in when you type the command. And
   since `mergerie demo` erases its data folder before re-seeding it, the command now names that
   folder out loud rather than erasing in silence.
+
+### Security
+
+A security review of the whole tool, and what came out of it. Most of it is invisible when all goes
+well; a few things now ask for a click or a setting, and those are listed first.
+
+**What you may notice**
+
+- **Exposing the server now requires a token.** With `HOST` set to anything but a loopback address,
+  Mergerie refuses to start without `MERGERIE_ACCESS_TOKEN`; the browser enters it once on an
+  `/acces` page, scripts send it as a `Bearer` header. On `localhost`, nothing changes.
+- **Reaching Mergerie through a host name** (reverse proxy, `/etc/hosts` entry) needs that name in
+  `MERGERIE_ALLOWED_HOSTS`; anything else gets a 421. `localhost` and IP addresses always work.
+- **Code that arrives through the shared data repository waits for you.** A verifier whose commands
+  changed, an agent whose permissions or schedule changed, the automatic reviews switched on by a
+  colleague: each is marked “to approve”, shows what changed, and does not run on your machine until
+  you click **Approve on this machine**. What you create or edit yourself is approved on the way, and
+  everything that existed before this version is taken over once.
+- **Reviews, explanations, questions and explorations run the agent read-only.** The broad mode from
+  `COPILOT_ARGS` (`--dangerously-skip-permissions`) no longer applies to them; the report comes back as
+  the agent's answer. Coding sessions keep your mode but lose web fetching, `curl`, `ssh`, `git push`,
+  `git remote` and `git config`. With Copilot CLI, which has no tool list, the run log says the read is
+  not restricted.
+- **Converging or coding on a branch that changes `CLAUDE.md`, `.claude/`, `.mcp.json` or
+  `.github/copilot-instructions.md` stops first** and names the files: that branch would rewrite the
+  rules of the agent about to work in it. Confirm once for that content; a new push that changes them
+  asks again.
+- **Automatic verifications run only on your own merge requests by default**, never on a draft or a
+  fork, with a throwaway `HOME`. “All the project's authors” is a new explicit choice in Settings →
+  Verifiers.
+- **Two new AI bounds** in Settings → AI: at most N turns per agent session (200 by default) and an
+  optional daily spend cap.
+- **The git palette is an allowlist** of everyday subcommands (status, fetch, pull, push, log, diff,
+  branch, checkout, rebase, stash, tag…). Entries outside it — `config`, `bisect`, `submodule`, an
+  option that runs a program or writes outside the repository — are refused when saved and when run.
+- **“Test” with a changed address requires typing the token again**: the saved token is only ever sent
+  to its own address.
+- **The dictation command** must be `whisper-server` or the absolute path of an existing file.
+- **The backup README no longer claims the tokens are removed**: the archive carries the database,
+  tokens included, and now says to keep it like a password.
+
+**What closed without asking anything**
+
+- Another website open in your browser can no longer drive Mergerie: `Host` check against DNS
+  rebinding, `Sec-Fetch-Site` check on the API, a strict Content Security Policy, `nosniff`,
+  `no-referrer`; the backup and the data repository preview became `POST`s.
+- The forge token is no longer written in the clones' `origin` URL, where the agent could read it: it
+  travels as an HTTP header in the git process's environment only, and existing clones are cleaned at
+  startup. Every git command runs without hooks, `fsmonitor`, external diff or `textconv`.
+- The agent's environment is an allowlist — nothing from Mergerie's `.env` — and its file tools cannot
+  read the database or the `.env`.
+- Text from elsewhere (MR title and description, Jira ticket, previous report, exchanges from another
+  machine, domain cards) enters the prompt framed as data, between tags a text cannot close. Automatic
+  posting waits for a complete findings block; convergence reads its score only from the requested
+  “Overall score: X/10” line.
+- Importing the shared repository validates each file (types, closed lists, 8 MB, no symbolic link) and
+  refuses silent rewrites of append-only documents; a verifier's local folder no longer travels. Each
+  review rule shows who set it.
+- Files supplied by others (attachments, note captures, ticket images) are served through one careful
+  door: only raster images and PDFs display, the rest downloads, under `nosniff` and a `sandbox` CSP.
+- Docker actions only run in a compose folder found under your local folders; the data repository
+  address refuses `http://`, `ext::` and friends; Docker drift masks secrets by value, not just by name.
+- “Stop” now kills the whole process group, grandchildren included.
+- The whisper install script downloads a pinned version and checks each file's sha256; the CI pins its
+  actions by commit and runs with a read-only token. A `.env` in the current folder that picks the agent
+  binary is flagged at startup.
+- The data folder is created readable by you only.
 
 ## [1.6.0] - 2026-09-16
 

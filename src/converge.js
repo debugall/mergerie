@@ -13,6 +13,8 @@ const path = require('node:path');
 const db = require('./db');
 const localsession = require('./localsession');
 const git = require('./git');
+const configagent = require('./configagent');
+const { extractNoteStricte } = require('./note');
 const copilot = require('./copilot');
 const notify = require('./notify');
 const proc = require('./proc');
@@ -23,14 +25,21 @@ const agentsession = require('./agentsession');
 const questions = require('./questions');
 const { getConfig } = require('./config');
 const { reviewMr, fillTemplate } = require('./reviewer');
+const { nonFiable } = require('./nonfiable');
 const prompts = require('./prompts');
 const { t } = require('../public/i18n-runtime.js');
 
 function latestVersion(mrId) {
   return db.prepare('SELECT * FROM review_version WHERE mr_id = ? ORDER BY version DESC LIMIT 1').get(mrId);
 }
-// note_value est une fraction [0,1] ; la note /10 = note_value * 10.
-function note10Of(v) { return v && v.note_value != null ? Math.round(v.note_value * 1000) / 100 : null; }
+/* LA NOTE QUI ARRÊTE LA BOUCLE est relue dans son marqueur strict (`note.extractNoteStricte`),
+   pas dans `note_value` — que la lecture tolérante remplit à partir de n'importe quelle
+   fraction du rapport. Pas de marqueur, pas de note : la boucle ne se croit jamais arrivée. */
+function note10Of(v) {
+  if (!v || !v.md_path || !fs.existsSync(v.md_path)) return null;
+  const n = extractNoteStricte(fs.readFileSync(v.md_path, 'utf8'));
+  return n ? Math.round(n.value * 1000) / 100 : null;
+}
 
 // Réglages par défaut (surchargeables au lancement), bornés comme dans config.js.
 function convergeDefaults() {
@@ -54,13 +63,21 @@ async function applyFixAndPush(repo, mr, reviewMd, message, onLog, ctx = {}) {
   await git.ensureCleanWorktree(cwd, onLog);
   onLog(`alignement sur origin/${mr.source_branch}`);
   await git.createBranchFrom(cwd, mr.source_branch, `origin/${mr.source_branch}`, onLog);
+  /* La branche d'autrui peut réécrire les règles de l'agent qu'on va y lancer (configagent.js).
+     Une convergence de SESSION (`ctx.targetId`) tourne sur la branche que la session a créée. */
+  if (!copilot.isDryRun() && !ctx.targetId) {
+    const examen = await configagent.examiner(cwd, `origin/${mr.target_branch || await git.defaultBranch(cwd)}`, 'HEAD');
+    if (examen.fichiers.length && !configagent.accepte(repo, mr.source_branch, examen.empreinte)) {
+      throw configagent.erreur(t('err.agent-config.touched', { branch: mr.source_branch, files: examen.fichiers.join(', ') }), examen);
+    }
+  }
 
   const ask = !!(ctx.task && ctx.task.ask_questions);
   /* LE MÊME GABARIT QUE « FAIRE CORRIGER PAR L'IA ». Ce texte était recopié ici en français,
      hors des réglages : ni traduit, ni éditable, et deux copies qui auraient divergé dès la
      première retouche de l'une d'elles. */
   let prompt = fillTemplate(prompts.gabarit('prompt_fix', cfg), {
-    source: mr.source_branch, target: mr.target_branch || '', report: reviewMd,
+    source: mr.source_branch, target: mr.target_branch || '', report: nonFiable('rapport de revue', reviewMd),
   });
   if (ask) prompt += questions.QUESTIONS_INSTRUCTION;
 
@@ -77,8 +94,8 @@ async function applyFixAndPush(repo, mr, reviewMd, message, onLog, ctx = {}) {
     let doResume = !!tg.session_key;
     if (doResume && tg.session_cwd && path.resolve(tg.session_cwd) !== path.resolve(cwd)) doResume = false;
     let r; let created = !doResume;
-    try { r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt, cwd, resume: doResume, onLog }); }
-    catch (e) { if (!doResume) throw e; onLog('⚠ reprise de session impossible → session neuve'); r = await agentsession.runInSession({ key, prompt, cwd, resume: false, onLog }); created = true; }
+    try { r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt, cwd, resume: doResume, onLog, saveur: 'converge' }); }
+    catch (e) { if (!doResume) throw e; onLog('⚠ reprise de session impossible → session neuve'); r = await agentsession.runInSession({ key, prompt, cwd, resume: false, onLog, saveur: 'converge' }); created = true; }
     agentText = r.text || '';
     /* LA DÉPENSE SE RATTACHE À LA MERGE REQUEST. Sans `owner`, la passe de convergence
        n'entrait dans aucun compte : le coût affiché sur un rapport ne lit que

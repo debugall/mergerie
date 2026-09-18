@@ -115,7 +115,10 @@ you with the tab closed.
 - 🧭 **Architecture** — modules, data model, pipelines: **[PLAN.md (🇫🇷 French)](./PLAN.md)**.
 - 🇫🇷 **Version française :** **[README.fr.md](./README.fr.md)**.
 - 📜 **[Changelog](./CHANGELOG.md)** — what changed, release by release.
-- 🔒 **[Security](./SECURITY.md)** — trust model and how to report a vulnerability.
+- 🔒 **[Security](./SECURITY.md)** — trust model and how to report a vulnerability. In short: localhost by
+  default and a token when exposed; code that arrives through the shared repository waits for your
+  approval on this machine; reviews and explorations run the agent read-only, with a filtered environment
+  and the forge token out of the clone.
 - 🤝 **[Contributing](./CONTRIBUTING.md)** — how to run it in dev and open a merge request.
 - 🦊 **Development happens on [GitLab](https://gitlab.com/amady/mergerie)** — merge requests are opened there
   and **reviewed by Mergerie itself**. This GitHub repository is a synchronized mirror; issues are welcome here.

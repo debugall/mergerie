@@ -47,7 +47,10 @@ function ensureDir(p) {
 }
 
 function initDirs() {
-  ensureDir(DATA_DIR);
+  /* LE DOSSIER DE DONNÉES EST À SOI : la base, les jetons de poste, les rapports. Créé avec
+     l'umask par défaut, il était lisible par tous les comptes de la machine. `0700` à la
+     création — un dossier qui existe déjà garde les droits que son propriétaire lui a donnés. */
+  fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
   ensureDir(DEFAULT_CLONE_DIR);
   ensureDir(REVIEWS_DIR);
   ensureDir(TICKETS_DIR);

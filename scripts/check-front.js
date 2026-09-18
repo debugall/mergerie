@@ -308,6 +308,27 @@ avantDecl.length
   ? fail('Helper appelé avant sa déclaration (l’évaluation d’app.js s’arrête là)', avantDecl)
   : ok('Aucun helper de premier niveau appelé avant sa déclaration');
 
+/* LES VERROUS DE SÉCURITÉ DE L'ÉCRAN (guard.md). Chacun fige un zéro atteint : une régression
+   ici redonne à une page tierce ou à un texte venu d'ailleurs le moyen d'exécuter du code.
+   — aucun gestionnaire `on…=` en attribut, aucun `<script>` en ligne : la CSP n'en admet pas ;
+   — toute URL interpolée dans un `href`/`src` passe par `safeUrl`/`safeImg` (sinon `javascript:`) ;
+   — tout `target="_blank"` porte un `rel` (sinon la page ouverte pilote la nôtre). */
+{
+  const soucis = [];
+  for (const [nom, texte] of [['public/app.js', app], ['public/index.html', html]]) {
+    texte.split('\n').forEach((l, i) => {
+      if (/<[a-z][^>]*\son[a-z]+\s*=\s*["'{]/i.test(l)) soucis.push(`${nom}:${i + 1}  gestionnaire en attribut : ${l.trim().slice(0, 90)}`);
+      if (/(?<![\w-])(href|src)="\$\{(?!\s*(esc\()?\s*(safeUrl|safeImg)\()/.test(l)) soucis.push(`${nom}:${i + 1}  URL interpolée sans safeUrl/safeImg : ${l.trim().slice(0, 90)}`);
+      if (/target="_blank"/.test(l) && !/rel=/.test(l)) soucis.push(`${nom}:${i + 1}  target="_blank" sans rel : ${l.trim().slice(0, 90)}`);
+    });
+  }
+  const enLigne = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>/g)].length;
+  if (enLigne) soucis.push(`public/index.html  ${enLigne} <script> en ligne — la CSP les refuse, mettez le code dans un fichier`);
+  soucis.length
+    ? fail('Verrous de sécurité de l’écran (guard.md)', soucis)
+    : ok('Aucun gestionnaire en attribut ni script en ligne ; URLs via safeUrl ; _blank avec rel');
+}
+
 console.log('');
 if (failures) { console.log(`${failures} contrôle(s) en échec.`); process.exit(1); }
 console.log('Contrôles front : OK');

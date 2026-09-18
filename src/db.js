@@ -237,6 +237,11 @@ try { db.exec('ALTER TABLE mr ADD COLUMN has_conflicts INTEGER'); } catch { /* d
 try { db.exec("ALTER TABLE mr ADD COLUMN description TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN is_draft INTEGER'); } catch { /* déjà présente */ }
 try { db.exec("ALTER TABLE mr ADD COLUMN reviewers TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+/* L'IDENTIFIANT DE L'AUTEUR et L'ORIGINE (fork), relevés à la découverte : la vérification
+   automatique n'exécute pas le code d'un fork, et reconnaît « mes » merge requests par
+   l'identifiant, pas par le nom affiché qu'on change en deux clics. Locaux : la forge fait foi. */
+try { db.exec("ALTER TABLE mr ADD COLUMN author_username TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN is_fork INTEGER'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN ticket_jira_error TEXT'); } catch { /* déjà présente */ }
 /* LE STATUT DU TICKET, POUR TOUTES LES MR — pas seulement celles dont le ticket est surveillé.
    La découverte lit déjà l'issue en entier pour en tirer le contexte : ranger son statut à côté
@@ -302,6 +307,10 @@ try { db.exec('ALTER TABLE config ADD COLUMN jenkins_refresh_minutes INTEGER DEF
    avec les reviews. Le bon chiffre dépend de la machine et de la durée des suites — il se règle
    donc, au lieu d'être une constante que seul le code connaît. 0 = aucune limite (assumé). */
 try { db.exec('ALTER TABLE config ADD COLUMN verif_auto_max INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
+/* De QUI la vérification automatique exécute le code sans un clic : 'mine' (défaut) ou 'all'.
+   « Tout le monde » était le défaut implicite du mono-poste — celui qui ouvre une MR sur un
+   projet suivi faisait tourner ses commandes sur ce poste. */
+try { db.exec("ALTER TABLE config ADD COLUMN verif_auto_authors TEXT DEFAULT 'mine'"); } catch { /* déjà présente */ }
 // Migration : message de commit personnalisable des tâches.
 /* LE VÉRIFICATEUR D'UNE SESSION, facultatif. Rattaché à la session et non au lancement :
    relancer la même session doit revérifier de la même façon, sans qu'on ait à s'en souvenir.
@@ -1038,6 +1047,10 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_verification_lot ON verification(lot_id,
 /* Échec de restauration d'un répertoire « in place » : signalé de façon PERSISTANTE, jamais
    noyé dans un journal. Le dépôt de l'utilisateur est resté sur un commit détaché. */
 try { db.exec('ALTER TABLE verification ADD COLUMN restore_error TEXT'); } catch { /* déjà présente */ }
+/* Partie TOUTE SEULE (découverte), sans que personne ne l'ait lancée : ses commandes tournent
+   alors avec un `HOME` jetable — ni `~/.ssh`, ni `~/.npmrc`, ni `~/.aws` à portée du code de la
+   branche. Locale : un poste qui relit l'archive n'a rien à en faire. */
+try { db.exec('ALTER TABLE verification ADD COLUMN automatic INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 /* Ce qui a été PUBLIÉ, et quand. Sans cette trace, l'écran repropose « Publier » comme si de
    rien n'était et on poste deux fois le même verdict sur la merge request de quelqu'un. */
 try { db.exec('ALTER TABLE verification ADD COLUMN comment_posted_at TEXT'); } catch { /* déjà présente */ }
@@ -1640,6 +1653,9 @@ try { db.exec('ALTER TABLE task ADD COLUMN agent_question TEXT'); } catch { /* d
 db.exec('CREATE INDEX IF NOT EXISTS idx_task_agent ON task(agent_id)');
 // Plafond de runs déclenchés par un horaire, par jour. 0 = illimité.
 try { db.exec('ALTER TABLE config ADD COLUMN agent_auto_max INTEGER NOT NULL DEFAULT 10'); } catch { /* déjà présente */ }
+/* Les bornes d'un agent (config.js) : tours par session et dépense du jour. */
+try { db.exec('ALTER TABLE config ADD COLUMN agent_max_turns INTEGER NOT NULL DEFAULT 200'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE config ADD COLUMN agent_daily_budget_usd REAL NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
 
 /* QUI HONORE L'HORAIRE D'UN AGENT. Trois instances allumées dans une équipe lanceraient trois
    fois le même agent planifié, chacune persuadée d'être la seule — et paieraient trois fois.
@@ -2301,6 +2317,19 @@ function reconcilierTravauxCoupes(raison) {
   compte.verifications = maj(`UPDATE verification SET status = 'error', verdict = 'verify_error',
                               finished_at = ? WHERE status = 'running'`, maintenant);
   return compte;
+}
+
+/* UN NUMÉRO DE MERGE REQUEST EST UN ENTIER — et la base le garantit désormais à chaque
+   démarrage. Les colonnes sont `INTEGER` mais pas `STRICT` : SQLite y acceptait un TEXTE, et un
+   `iid` reçu par le dépôt partagé (`7<img onerror=…>`) finissait rendu tel quel à l'écran. L'import
+   refuse maintenant ces documents ; ceci nettoie ce qu'une version d'avant aurait déjà accepté.
+   `OR IGNORE` : deux lignes ramenées au même numéro violeraient l'unicité (dépôt, numéro) — la
+   seconde garde alors sa valeur, et le rendu échappé la neutralise. */
+for (const [table, col] of [['mr', 'iid'], ['task_target', 'mr_iid'], ['task_target', 'existing_mr_iid'], ['task', 'mr_iid']]) {
+  try {
+    db.exec(`UPDATE OR IGNORE ${table} SET ${col} = CAST(${col} AS INTEGER)
+             WHERE ${col} IS NOT NULL AND typeof(${col}) <> 'integer'`);
+  } catch { /* colonne absente d'une très vieille base : rien à normaliser */ }
 }
 
 module.exports = db;

@@ -69,14 +69,41 @@ $WhisperHome = Join-Path $Dir 'whisper'
 $BinDir      = Join-Path $WhisperHome 'bin'
 $ModelFile   = Join-Path $ModelsDir "ggml-$Model.bin"
 $VadFile     = Join-Path $ModelsDir 'ggml-silero-v5.1.2.bin'
-$ModelUrl    = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-$Model.bin"
-$VadUrl      = 'https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin'
+# ÉPINGLÉ, comme install-whisper.sh : une version, une révision des modèles, une empreinte par
+# fichier. « latest » et « main » exécutaient ce que le dépôt distant servait ce jour-là.
+$Tag         = 'v1.9.2'
+$HfRev       = '5359861c739e955e79d9a303bcbc70fb988958b1'
+$VadRev      = '9ffd54a1e1ee413ddf265af9913beaf518d1639b'
+$ModelUrl    = "https://huggingface.co/ggerganov/whisper.cpp/resolve/$HfRev/ggml-$Model.bin"
+$VadUrl      = "https://huggingface.co/ggml-org/whisper-vad/resolve/$VadRev/ggml-silero-v5.1.2.bin"
 $Repo        = 'ggml-org/whisper.cpp'
+$Empreintes  = @{
+  'ggml-large-v3-turbo.bin'      = '1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69'
+  'ggml-large-v3-turbo-q8_0.bin' = '317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1'
+  'ggml-large-v3-turbo-q5_0.bin' = '394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2'
+  'ggml-large-v3.bin'            = '64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2'
+  'ggml-large-v3-q5_0.bin'       = 'd75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1'
+  'ggml-medium.bin'              = '6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208'
+  'ggml-small.bin'               = '1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b'
+  'ggml-base.bin'                = '60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe'
+  'ggml-silero-v5.1.2.bin'       = '29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf'
+  'whisper-bin-x64.zip'          = '49dcc16de826f20bd53d44f947a1ae49dfa81f86cad67a64d80820cb192d674a'
+  'whisper-cublas-12.4.0-bin-x64.zip' = '443110ddaad70d4290ab2e77179e31cf712035bbc4fad56bb4519a90c917b39c'
+}
 
 function Say($t)  { Write-Host ''; Write-Host $t -ForegroundColor White }
 function Ok($t)   { Write-Host "  [ok] $t" -ForegroundColor Green }
 function Warn($t) { Write-Host "  [!!] $t" -ForegroundColor Yellow }
 function Die($t)  { Write-Host ''; Write-Host "  [x] $t" -ForegroundColor Red; exit 1 }
+# Refuse (et efface) un fichier dont l'empreinte n'est pas celle attendue.
+function VerifierSha($fichier) {
+  $nom = Split-Path $fichier -Leaf
+  $attendu = $Empreintes[$nom]
+  if (-not $attendu) { Warn "$nom : aucune empreinte connue, fichier NON vérifié"; return }
+  $recu = (Get-FileHash -Algorithm SHA256 -Path $fichier).Hash.ToLower()
+  if ($recu -ne $attendu) { Remove-Item -Force $fichier; Die "$nom : empreinte inattendue ($recu) — fichier effacé, rien n'est installé" }
+  Ok "$nom : empreinte sha256 vérifiée"
+}
 
 $known = 'large-v3-turbo','large-v3-turbo-q8_0','large-v3-turbo-q5_0','large-v3','large-v3-q5_0','medium','small','base'
 if ($known -notcontains $Model) { Warn "modèle « $Model » hors de la liste connue : on tente quand même ggml-$Model.bin" }
@@ -124,22 +151,16 @@ $CliBin    = Join-Path $BinDir 'whisper-cli.exe'
 if ((Test-Path $ServerBin) -and -not $Force) {
   Ok "whisper-server.exe déjà là : $ServerBin (relancer avec -Force pour le remplacer)"
 } else {
-  Write-Host "  recherche de la dernière release de $Repo …"
-  $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers @{ 'User-Agent' = 'mergerie-install-whisper' }
-  $assets = @($rel.assets)
-  if ($Cuda) {
-    # plusieurs variantes cublas (11.8, 12.x) : la plus récente
-    $asset = $assets | Where-Object { $_.name -match '^whisper-cublas-.*-bin-x64\.zip$' } | Sort-Object name -Descending | Select-Object -First 1
-    if (-not $asset) { Warn 'aucun zip CUDA dans cette release : repli sur la variante CPU' }
-  }
-  if (-not $asset) { $asset = $assets | Where-Object { $_.name -match '^whisper-bin-x64\.zip$' } | Select-Object -First 1 }
-  if (-not $asset) { $asset = $assets | Where-Object { $_.name -match 'bin-x64\.zip$' -and $_.name -notmatch 'Win32|arm64' } | Select-Object -First 1 }
-  if (-not $asset) { Die "aucun zip Windows x64 dans la release $($rel.tag_name) — voir https://github.com/$Repo/releases" }
+  # La release épinglée ; la variante CUDA est celle de cette release (cublas 12.4).
+  $nomZip = if ($Cuda) { 'whisper-cublas-12.4.0-bin-x64.zip' } else { 'whisper-bin-x64.zip' }
+  $rel = @{ tag_name = $Tag }
+  $asset = @{ name = $nomZip; browser_download_url = "https://github.com/$Repo/releases/download/$Tag/$nomZip" }
 
   New-Item -ItemType Directory -Force -Path $WhisperHome | Out-Null
   $zip = Join-Path $WhisperHome $asset.name
-  Write-Host "  téléchargement de $($asset.name) ($($rel.tag_name), $([math]::Round($asset.size / 1MB)) Mo) …"
+  Write-Host "  téléchargement de $($asset.name) ($Tag) …"
   Fetch $asset.browser_download_url $zip
+  VerifierSha $zip
 
   $tmp = Join-Path $WhisperHome '_extract'
   if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
@@ -168,6 +189,7 @@ if ((IsGgml $ModelFile) -and ((Get-Item $ModelFile).Length -gt 10MB)) {
 } else {
   Write-Host "  téléchargement de ggml-$Model.bin (large-v3-turbo ≈ 1,6 Go ; large-v3 ≈ 3,1 Go) …"
   Fetch $ModelUrl $ModelFile
+  VerifierSha $ModelFile
   if (-not (IsGgml $ModelFile)) { Remove-Item -Force $ModelFile; Die 'le fichier reçu n''est pas un modèle ggml (nom de modèle inconnu sur Hugging Face ?)' }
   Ok "ggml-$Model.bin ($(Mo $ModelFile) Mo)"
 }
@@ -178,6 +200,7 @@ if (-not $NoVad) {
   } else {
     Write-Host '  téléchargement du modèle de détection de voix Silero …'
     Fetch $VadUrl $VadFile
+    VerifierSha $VadFile
     if ((Head $VadFile 1) -eq '<') { Remove-Item -Force $VadFile; Die 'le fichier VAD reçu est une page HTML, pas un modèle' }
     Ok 'ggml-silero-v5.1.2.bin'
   }

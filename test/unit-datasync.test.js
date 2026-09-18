@@ -781,11 +781,23 @@ describe('datasync — deux postes, un dépôt de données', () => {
   });
 
   test('une adresse qui commence par un tiret n’est jamais passée à git', () => {
-    const r = dans(posteA, `async ({ config, datasync }) => {
+    const r = dans(posteA, `async ({ config, datasync, db }) => {
       const piege = '--upload-pack=touch /tmp/mergerie-injection';
-      config.updateConfig({ data_repo_url: piege });
-      try { await datasync.rattacher({}); return 'rattaché'; } catch (e) { return String(e.message); }
+      /* PREMIÈRE PORTE : l'enregistrement. Une adresse que git ne doit pas joindre est refusée
+         là où l'écran peut encore le dire. */
+      let aLEnregistrement;
+      try { config.updateConfig({ data_repo_url: piege }); aLEnregistrement = 'accepté'; }
+      catch (e) { aLEnregistrement = String(e.message); }
+      /* SECONDE PORTE : si la valeur arrive quand même en base — une ancienne version, une
+         édition à la main —, elle ne part toujours pas vers git. */
+      db.prepare('UPDATE local_config SET data_repo_url = ? WHERE id = 1').run(piege);
+      let auRattachement;
+      try { await datasync.rattacher({}); auRattachement = 'rattaché'; }
+      catch (e) { auRattachement = String(e.message); }
+      db.prepare("UPDATE local_config SET data_repo_url = '' WHERE id = 1").run();
+      return { aLEnregistrement, auRattachement };
     }`);
-    assert.match(r, /aucune URL/, 'une valeur qui commence par un tiret ne vaut pas adresse');
+    assert.match(r.aLEnregistrement, /Adresse refusée/, 'l’enregistrement refuse une valeur qui ne vaut pas adresse');
+    assert.match(r.auRattachement, /aucune URL/, 'et, glissée en base malgré tout, elle ne part pas vers git');
   });
 });

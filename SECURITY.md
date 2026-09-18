@@ -1,10 +1,17 @@
 # Security Policy
 
-Mergerie is a **local, single-user** tool: it runs on your own machine, with your own credentials, and by
-default the server listens **only on `localhost`** (`127.0.0.1`). The full trust model — AI agent permissions
-(« yolo » mode), secret handling, no-shell execution, anti-injection guards, XSS handling, restorable
-destructive operations — is documented in the
-**[detailed security section of the guide](./docs/guide.fr.md#sécurité)** (French for now).
+Mergerie is a **local** tool: it runs on your own machine, with your own credentials. By default the server
+listens **only on `localhost`** (`127.0.0.1`); exposing it (`HOST=0.0.0.0`) **requires an access token**.
+Requests from another site are refused (`Host` allowlist against DNS rebinding, `Sec-Fetch-Site`, CSP).
+Anything that **runs code** and arrives through the shared data repository — verifier commands, agent
+permissions, automatic reviews — **waits for approval on each machine**. The AI agent runs **read-only**
+for reviews and explorations, loses network, `push` and `remote` when it codes, gets an allowlisted
+environment, and never sees the forge token. Text from elsewhere reaches it framed as data.
+
+The full trust model — access, approval, agent permissions and their limits, prompt injection, verifiers,
+secrets, no-shell execution, targeted guards, served files, destructive operations — is documented in the
+**[security section of the guide](./docs/guide.en.md#security)** (also
+**[in French](./docs/guide.fr.md#sécurité)**).
 
 **Voice dictation** is off by default and, once on, sends audio only where the provider you picked
 sends it — the screen says which before you choose. With the recommended **local** engine
