@@ -59,7 +59,9 @@ const INTERDITS = {
 
 /* Qui a le droit d'importer un dossier gardé. */
 const IMPORTEURS = {
-  app: { dossiers: [], fichiers: [], motif: 'rien n’importe la couche HTTP' },
+  /* Seul le point d'entrée (`server.js`, à la racine) monte la couche HTTP : il charge les
+     middlewares et les routes dans l'ordre qui fait la sécurité du serveur. */
+  app: { dossiers: ['racine'], fichiers: [], motif: 'rien n’importe la couche HTTP, sauf server.js qui la monte' },
   jobs: { dossiers: ['app', 'racine', 'jobs'], fichiers: [
     /* Lancer un agent depuis son profil ouvre un job : c'est le seul chemin qui remonte, et
        il est nommé — refacto.md §4.5, `agent/profile/lancer.js`. Tant que agent/profile.js n'est
