@@ -894,7 +894,7 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_git_op_batch ON git_op(batch_id)');
 
 // Ligne de config unique (id=1). Les gabarits de prompt par défaut vivent dans
 // prompts.js, qui les tient dans les deux langues (i18n.md lot 5).
-const { PROMPTS, ANCIENS_PROMPTS } = require('./agent/prompts');
+const { PROMPTS, ANCIENS_PROMPTS } = require('./core/prompts');
 // Convergence (« Converger ») : réglages par défaut (surchargeables au lancement).
 // Seuil cible en /10, plafond de passes de correction.
 try { db.exec("ALTER TABLE config ADD COLUMN converge_threshold TEXT DEFAULT '8'"); } catch { /* déjà présente */ }

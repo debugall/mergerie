@@ -74,9 +74,6 @@ const IMPORTEURS = {
 
 /* LES ARÊTES TOLÉRÉES, une par une, avec leur motif — et le commit qui les fera disparaître. */
 const EXCEPTIONS = [
-  /* Les prompts sont des constantes sans dépendance, lues par la config, le schéma et les
-     agents : ils descendent dans core/ au commit suivant, et l'exception part avec. */
-  { de: 'data/config.js', vers: 'agent/prompts.js', motif: 'prompts.js rejoint core/' },
   /* Le cycle git ↔ skillscan : `git.js` invalide le cache des skills après un fetch, par un
      require paresseux. Se casse à l'étape 5 de refacto.md (un événement `apresFetch`). */
   { de: 'git/git.js', vers: 'agent/skillscan.js', motif: 'cycle connu, cassé à l’étape 5' },

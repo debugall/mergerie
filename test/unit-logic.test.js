@@ -20,7 +20,7 @@ const jira = require('../src/integrations/jira');
 const gitlab = require('../src/forge/gitlab');
 const gitops = require('../src/git/gitops');
 const { fillTemplate } = require('../src/review/reviewer');
-const { promptsFor, isDefault, PROMPTS } = require('../src/agent/prompts');
+const { promptsFor, isDefault, PROMPTS } = require('../src/core/prompts');
 const i18n = require('../public/i18n-runtime.js');
 
 describe('glob : règles de review par chemin', () => {

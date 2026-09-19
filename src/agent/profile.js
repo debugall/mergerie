@@ -28,7 +28,7 @@ const questions = require('./questions');
 const notes = require('../notes/notes');
 const git = require('../git/git');
 const { getConfig } = require('../data/config');
-const { avecConsignes } = require('./prompts');
+const { avecConsignes } = require('../core/prompts');
 const i18n = require('../../public/i18n-runtime.js');
 const { t } = i18n;
 

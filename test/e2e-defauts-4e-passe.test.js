@@ -106,7 +106,7 @@ describe('Défauts de la 4ᵉ passe', () => {
   /* §5.7 — la consigne de correction était recopiée en français dans deux fichiers. Elle est
      maintenant un gabarit comme les autres : traduit, éditable, et relu au même endroit. */
   test('le gabarit de correction est traduit, éditable, et pris dans les réglages', async () => {
-    const prompts = require('../src/agent/prompts');
+    const prompts = require('../src/core/prompts');
     assert.ok(prompts.FIELDS.includes('prompt_fix'));
     assert.notEqual(prompts.PROMPTS.fr.prompt_fix, prompts.PROMPTS.en.prompt_fix);
     // Vide en base → le défaut de la langue configurée s'applique.

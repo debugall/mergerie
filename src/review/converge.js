@@ -26,7 +26,7 @@ const questions = require('../agent/questions');
 const { getConfig } = require('../data/config');
 const { reviewMr, fillTemplate } = require('./reviewer');
 const { nonFiable } = require('../core/nonfiable');
-const prompts = require('../agent/prompts');
+const prompts = require('../core/prompts');
 const { t } = require('../../public/i18n-runtime.js');
 
 function latestVersion(mrId) {
