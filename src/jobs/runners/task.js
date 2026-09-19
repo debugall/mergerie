@@ -3,7 +3,7 @@
    Extrait de jobs.js (refacto.md, étape 4) : les corps sont ceux d'origine, au mot près. */
 const db = require('../../db');
 const taskrunner = require('../../session/taskrunner');
-const agentprofile = require('../../agent/profile');
+const { apresRun } = require('../../agent/profile/apres');
 const proc = require('../../core/proc');
 const notify = require('../../core/notify');
 const { t } = require('../../core/i18n');
@@ -32,7 +32,7 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
        Une erreur ici ne fait PAS échouer le job : le run a réussi, son Markdown est lisible ;
        c'est la sortie qui a un problème, et perdre le run avec serait le pire des deux. */
     if (task.agent_id) {
-      try { await agentprofile.apresRun(db.prepare('SELECT * FROM task WHERE id = ?').get(task.id), onLog); }
+      try { await apresRun(db.prepare('SELECT * FROM task WHERE id = ?').get(task.id), onLog); }
       catch (e) { onLog(t('agents.log.output-failed', { message: e.message })); }
     }
     // La session peut s'être mise EN ATTENTE (l'agent a posé des questions) : notif dédiée,

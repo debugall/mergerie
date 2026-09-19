@@ -21,6 +21,8 @@ const { getConfig } = require('../data/config');
 const { t } = require('../core/i18n');
 
 const { JOURS, parse, canonique, prochainCreneau, creneauSuivant, phrase } = require('./horaire');
+const modele = require('./profile/modele');
+const { lancer, refreshKnowledge } = require('./profile/lancer');
 
 /* CET AGENT EST-IL LE MIEN ? En mono-poste, `runner` est vide et tout ce qui est planifié
    tourne ici, comme avant. Dès qu'un dépôt de données est configuré, un agent sans exécutant
@@ -68,8 +70,6 @@ function lancesAujourdhui(now = new Date()) {
 /* Un tick. Isolé de `demarrer` pour qu'un test puisse le déclencher sans attendre la minute —
    attendre soixante secondes dans un test, c'est parier sur l'horloge d'une machine chargée. */
 function tick(now = new Date(), onLog = () => {}) {
-  // eslint-disable-next-line global-require
-  const agentprofile = require('./profile');
   const cfg = getConfig();
   const plafond = Number(cfg.agent_auto_max);
   const lances = [];
@@ -94,10 +94,9 @@ function tick(now = new Date(), onLog = () => {}) {
       /* Un agent de DOMAINE planifié ne relance pas sa propre exploration : il fait vieillir
          sa connaissance, donc c'est une MISE À JOUR qu'on programme. */
       if (agent.knowledge_prompt) {
-        // eslint-disable-next-line global-require
-        lances.push(require('./knowledge').refresh(agentprofile.lire(agent.id), 'schedule'));
+        lances.push(refreshKnowledge(modele.lire(agent.id), 'schedule'));
       } else {
-        lances.push(agentprofile.lancer(agentprofile.lire(agent.id), {
+        lances.push(lancer(modele.lire(agent.id), {
           mode: 'ask', question: '', triggeredBy: 'schedule',
         }));
       }

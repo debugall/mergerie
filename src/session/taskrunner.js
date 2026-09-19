@@ -16,7 +16,8 @@ const { avecConsignes } = require('../core/prompts');
 const agentpass = require('../agent/pass');
 const protocol = require('../agent/protocol');
 const { etat } = require('../data/localstate');
-const agentprofile = require('../agent/profile');
+const { optionsFor } = require('../agent/profile/prompt');
+const apres = require('../agent/profile/apres');
 const demoAgents = require('../demo/agents');
 const pieces = require('../agent/pieces');
 const { t } = require('../core/i18n');
@@ -398,7 +399,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     const key = `task-${task.id}-target-${tg.id}`;
     /* Les options du PROFIL, relues à chaque passe : un agent modifié entre deux passes
        s'applique à la suivante. Vide pour une session ordinaire — l'argv reste celui d'avant. */
-    const options = agentprofile.optionsFor(task);
+    const options = optionsFor(task);
     if (doResume && tg.session_cwd && path.resolve(tg.session_cwd) !== path.resolve(cwd)) {
       onLog(t('log.task.cwd-mismatch'));
       doResume = false;
@@ -615,8 +616,8 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
      qu'elle n'a pas — les autres dépôts, ce qui vient d'être mergé, la connaissance d'un agent
      de domaine — vit à la RACINE des clones, qui n'appartient à aucun dépôt. Rien n'est écrit
      pour une session sans agent. */
-  const entrees = agentprofile.ecrireEntrees(task, root, dirs.map((d) => ({ repo_id: d.repo_id, project: d.project })));
-  const blocEntrees = agentprofile.blocEntrees(task, entrees);
+  const entrees = apres.ecrireEntrees(task, root, dirs.map((d) => ({ repo_id: d.repo_id, project: d.project })));
+  const blocEntrees = apres.blocEntrees(task, entrees);
   const listing = dirs.map((d) => `- \`${d.dir}/\` → projet **${d.project}**, branche \`${d.branch}\``).join('\n');
 
   /* Une exploration tourne dans une SESSION reprenable, comme un codage : la question de
@@ -667,7 +668,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
   try {
     if (sessionable) {
       const key = `explore-${task.id}`;
-      const options = agentprofile.optionsFor(task);
+      const options = optionsFor(task);
       let created = !doResume;
       let r;
       try {

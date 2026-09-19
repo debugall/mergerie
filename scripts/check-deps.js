@@ -64,9 +64,8 @@ const IMPORTEURS = {
   app: { dossiers: ['racine'], fichiers: [], motif: 'rien n’importe la couche HTTP, sauf server.js qui la monte' },
   jobs: { dossiers: ['app', 'racine', 'jobs'], fichiers: [
     /* Lancer un agent depuis son profil ouvre un job : c'est le seul chemin qui remonte, et
-       il est nommé — refacto.md §4.5, `agent/profile/lancer.js`. Tant que agent/profile.js n'est
-       pas découpé, c'est lui. */
-    'agent/profile.js', 'agent/profile/lancer.js',
+       il est nommé — refacto.md §4.5. Rien d'autre sous agent/ n'importe jobs/. */
+    'agent/profile/lancer.js',
   ], motif: 'la file de jobs se lance depuis app/, pas depuis le métier' },
   demo: { dossiers: ['app', 'racine', 'jobs', 'demo'], fichiers: [
     /* Les modules qui savent déjà répondre en mode démo (`isDemo()`), et eux seuls. */
@@ -85,8 +84,7 @@ const PORTE_FORGE = ['forge.js', 'forge/index.js'];
    se tiennent (une composante fortement connexe), par chemin sous src/. L'ordre importe peu,
    l'ensemble oui : un fichier de plus ou de moins dans la composante, et l'entrée ne vaut plus. */
 const CYCLES_CONNUS = [
-  ['agent/profile.js', 'agent/knowledge.js', 'session/taskrunner.js', 'review/reviewer.js', 'review/converge.js',
-    'jobs/index.js', 'jobs/runners/task.js', 'jobs/runners/converge.js', 'jobs/runners/converge-session.js', 'jobs/runners/reconcile.js', 'jobs/runners/review.js'],
+  // vide depuis l'étape 5 de refacto.md : un cycle est une erreur, pas une exception.
 ];
 
 /* ---------- Le graphe ---------- */

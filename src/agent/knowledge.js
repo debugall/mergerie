@@ -41,6 +41,7 @@ const versionActive = (agentId) => db.prepare("SELECT * FROM agent_knowledge WHE
 const versionEnAttente = (agentId) => db.prepare("SELECT * FROM agent_knowledge WHERE agent_id = ? AND status = 'pending' ORDER BY version DESC").get(agentId);
 
 const { lireFichier, tokensDe } = require('./knowledge-texte');
+const modele = require('./profile/modele');
 function contenuActif(agent) { return lireFichier(versionActive(agent.id)); }
 
 function versions(agentId) {
@@ -222,9 +223,7 @@ async function ingest(task, agentCarto, texte, onLog = () => {}) {
     onLog(t('agents.err.no-agent-header'));
     return null;
   }
-  // eslint-disable-next-line global-require
-  const agentprofile = require('./profile');
-  const majDe = task.agent_id && task.agent_id !== agentCarto.id ? agentprofile.lire(task.agent_id) : null;
+  const majDe = task.agent_id && task.agent_id !== agentCarto.id ? modele.lire(task.agent_id) : null;
 
   const connus = [];
   for (const r of tete.repos) {
@@ -258,7 +257,7 @@ async function ingest(task, agentCarto, texte, onLog = () => {}) {
   }
 
   const nom = nomLibre(tete.name.trim());
-  const cree = agentprofile.creer({
+  const cree = modele.creer({
     name: nom,
     description: t('agents.knowledge.created-desc', { subject: task.prompt ? '' : '' }).trim() || '',
     kind: 'explore',
@@ -452,25 +451,15 @@ function viderCacheAge(agentId) { if (agentId) cacheAge.delete(agentId); else ca
 /* Relancer le cartographe avec le MÊME sujet, plus tout ce qu'on a appris depuis : la carte
    précédente, les écarts constatés, et les commits qui ont touché ses chemins. « Regarde
    d'abord là » — c'est la différence entre vérifier et recommencer. */
-async function refresh(agent, triggeredBy = 'manual') {
-  // eslint-disable-next-line global-require
-  const agentprofile = require('./profile');
-  const carto = agentprofile.parCle('cartographer');
-  if (!carto) throw new Error(t('agents.err.no-cartographer'));
+/* PRÉPARER une mise à jour de connaissance : ce qu'on savait, ce qu'on a vu de faux, les commits
+   qui ont touché les chemins cités — gardé le temps que le cartographe parte (`profile/lancer.js`
+   lance le run ; ce module ne lance rien, et n'importe donc pas le profil qui l'importe). */
+async function preparerRefresh(agent) {
   const v = versionActive(agent.id);
   contexteRefresh.set(agent.id, {
     precedent: lireFichier(v),
     gaps: jsonOu((v || {}).gaps_json, []),
     commits: await commitsDepuis(agent),
-  });
-  const repoIds = agentprofile.repos(agent.id).map((r) => r.repo_id);
-  return agentprofile.lancer(carto, {
-    mode: 'ask',
-    question: agent.knowledge_prompt || agent.name,
-    repoIds,
-    triggeredBy,
-    // La `task` porte l'agent de DOMAINE : c'est sur sa carte que la mise à jour doit apparaître.
-    agentIdSur: agent.id,
   });
 }
 
@@ -548,7 +537,7 @@ function publierDansNotes(agent) {
 }
 
 module.exports = {
-  ingest, parseHeader, verifierChemins, age, viderCacheAge, refresh, activer, editer, addGaps,
+  ingest, parseHeader, verifierChemins, age, viderCacheAge, preparerRefresh, activer, editer, addGaps,
   indexCartes, cartesTouchees, toucheCarte,
   indexFor, diffSummary, publierDansNotes, contenuActif, versions, versionDe, versionActive, tokensDe,
   versionEnAttente, conserverNotes, prendreContexteRefresh, marquerNonVerifies, section,

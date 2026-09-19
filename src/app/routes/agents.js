@@ -110,7 +110,7 @@ app.put('/api/agents/:id/knowledge', wrap((req, res) => {
 app.post('/api/agents/:id/knowledge/refresh', wrap(async (req, res) => {
   const a = agentOu404(req.params.id);
   if (!a.is_domain) throw new Error(t('agents.err.not-domain'));
-  res.json(await agentknowledge.refresh(a, 'manual'));
+  res.json(await agentprofile.refreshKnowledge(a, 'manual'));
 }));
 app.post('/api/agents/:id/knowledge/:version/activate', wrap((req, res) => {
   const a = agentOu404(req.params.id);
