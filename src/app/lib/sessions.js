@@ -15,6 +15,7 @@ const agentprofile = require('../../agent/profile');
 const path = require('path');
 const { readFileSafe } = require('../http');
 const { avecRangement, unitesAvecRetour } = require('./partage');
+const { programmation } = require('../../jobs');
 const { verifsParMrDuTour } = require('./verifications');
 
 /* ---------- Tasks (tâches de dev pilotées par l'IA) ---------- */
@@ -236,10 +237,20 @@ const lireSuivi = (v) => (v == null ? null : (String(v).trim() || null));
 /* `auto` : le suivi part-il de lui-même à la fin de la session ? Sans texte, la question ne se
    pose pas — un envoi automatique de rien n'existe pas, et laisser la case armée sur un suivi
    supprimé ferait partir le suivant sans qu'on l'ait demandé. */
-function poserSuivi(table, id, valeur, auto) {
+/* `at` : la DATE à laquelle le suivi part tout seul (`jobs/programmation.js`). Absente du corps
+   (`undefined`), la date en place ne bouge pas ; vide, elle s'efface ; posée, elle remplace la
+   case « automatiquement » — un suivi n'a qu'un armement, la date ou la fin de session, jamais
+   les deux : il partirait deux fois. Un suivi effacé emporte sa date. */
+function poserSuivi(table, id, valeur, auto, at) {
   const texte = lireSuivi(valeur);
+  const programmable = !!programmation.TABLES[table];
+  const uid = programmable ? (db.prepare(`SELECT uid FROM ${table} WHERE id = ?`).get(id) || {}).uid : null;
+  let date = null;
+  if (programmable && texte) {
+    date = at === undefined ? programmation.lire(table, uid).followup_at : programmation.programmer(table, uid, 'followup', at);
+  } else if (programmable) programmation.programmer(table, uid, 'followup', null);
   db.prepare(`UPDATE ${table} SET followup_draft = ?, followup_auto = ?, updated_at = ? WHERE id = ?`)
-    .run(texte, (texte && auto) ? 1 : 0, new Date().toISOString(), id);
+    .run(texte, (texte && auto && !date) ? 1 : 0, new Date().toISOString(), id);
 }
 function lireVerifierSession(kind, autoPush, verifierId) {
   if (kind !== 'code' || !autoPush) return null;
@@ -333,9 +344,10 @@ function localTaskById(id) {
    sur une session qui tournait déjà. */
 function envoyerSuivi(table, session, lancer) {
   const garde = session.followup_draft;
+  const gardeAt = session.followup_at || null;    // la date programmée, à remettre avec le texte
   if (garde) poserSuivi(table, session.id, null, 0);
   try { return lancer(); } catch (e) {
-    if (garde) poserSuivi(table, session.id, garde, session.followup_auto);   // texte ET case
+    if (garde) poserSuivi(table, session.id, garde, session.followup_auto, gardeAt);   // texte, case ET date
     throw e;
   }
 }

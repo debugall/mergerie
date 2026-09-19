@@ -79,6 +79,7 @@ const copilot = require('./agent/copilot');
 const dictation = require('./integrations/dictation');
 const agentprofile = require('./agent/profile');
 const agentschedule = require('./agent/schedule');
+const jobs = require('./jobs');
 
 /* L'ORDRE DE MONTAGE EST LA SÉCURITÉ DU SERVEUR (réorganisation de src/ par couches). Chaque fichier de
    `app/middleware/` s'accroche à l'application quand on le charge : la ligne où il est chargé
@@ -118,6 +119,7 @@ require('./app/routes/mrs-commentaires');
 require('./app/routes/mrs-resume');
 require('./app/routes/notes');
 require('./app/routes/pieces');
+require('./app/routes/programmation');
 require('./app/routes/questions');
 require('./app/routes/repos');
 require('./app/routes/rules');
@@ -185,6 +187,8 @@ const server = app.listen(PORT, HOST, () => {
      fil des runs, et un semis qui écrase serait une perte silencieuse à chaque redémarrage. */
   try { agentprofile.seedBuiltins(); } catch (e) { console.log(`[agents] ${e.message}`); }
   agentschedule.demarrer((m) => console.log(`[agents] ${m}`));
+  // Les sessions et suivis programmés à une date : même cadence, même forme.
+  jobs.programmation.demarrer((m) => console.log(`[programmation] ${m}`));
   /* LA SYNCHRONISATION DU DÉPÔT DE DONNÉES. Sans URL configurée, `demarrer()` rend `false` et
      rien ne tourne : le mode mono-poste est exactement ce cas, et il ne coûte pas un timer. */
   /* EN DÉMO, LE DÉPÔT DE DONNÉES EXISTE VRAIMENT. Sans lui, la section « Données partagées »
@@ -269,6 +273,7 @@ module.exports = {
     dictation.arreterMoteur();
     // Même raison pour le tic des horaires d'agents.
     agentschedule.arreter();
+    jobs.programmation.arreter();
     return new Promise((resolve) => server.close(resolve));
   },
 };

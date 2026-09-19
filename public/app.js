@@ -7990,6 +7990,8 @@ function applyKindToModal(kind) {
   majLibelleConverge();
   // Le message de commit ne veut rien dire hors codage : l'exploration ne commit pas.
   const cm = $('#taskCommitRow'); if (cm) cm.hidden = kind !== 'code';
+  // Lancer plus tard : les trois saveurs qui travaillent dans des fichiers. Pas la question libre.
+  const sr = $('#taskScheduleRow'); if (sr) sr.hidden = isAsk;
   /* L'accordéon « Avancé » ne s'affiche que s'il lui reste quelque chose : une question libre
      n'a ni session d'agent, ni message de commit, ni question à poser. */
   const av = $('#taskAdvanced'); if (av) av.hidden = isAsk;
@@ -8530,6 +8532,7 @@ async function openTaskEdit(id) {
     if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
   if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
   if (f.review_after) f.review_after.checked = !!t.review_after;
+    poserDateProgrammee(f, t.scheduled_at);
     await majVerificateursSession(t.verifier_id || '');
     if (f.session_id) f.session_id.value = sharedSessionKey(t.targets);
     $('#taskModalTitle').textContent = tr(taskKind === 'code' ? 'task.edit.code-title' : 'task.edit.explore-title');
@@ -8639,6 +8642,48 @@ function boutonsCreation() {
   $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-play"/></svg>${tr('task.btn.create-run')}`;
   $('#taskSubmitOnly').hidden = false;
 }
+/* UNE DATE CHANGE LE BOUTON. « Créer et lancer » avec une date remplie lancerait… plus tard :
+   le bouton le dit (« Créer et programmer ») et « Créer sans lancer » disparaît — avec une date,
+   la question ne se pose plus. Effacer la date rend les boutons d'avant. À l'édition, rien ne
+   bouge : « Enregistrer » couvre la date comme le reste. */
+function majBoutonProgrammation() {
+  const champ = $('#taskScheduleAt');
+  const btn = $('#taskSubmit');
+  const seul = $('#taskSubmitOnly');
+  if (!champ || !btn || editingTaskId) return;
+  if (champ.value) {
+    if (!btn.dataset.avant) { btn.dataset.avant = btn.innerHTML; btn.dataset.seulAvant = seul.hidden ? '1' : '0'; }
+    btn.innerHTML = `${svgIco('clock')}${tr('task.btn.create-schedule')}`;
+    seul.hidden = true;
+  } else if (btn.dataset.avant) {
+    btn.innerHTML = btn.dataset.avant;
+    seul.hidden = btn.dataset.seulAvant === '1';
+    delete btn.dataset.avant; delete btn.dataset.seulAvant;
+  }
+}
+/* La date du champ, en ISO — ou `null` sans date, ou `false` si elle est déjà passée (signalée
+   sous le champ : c'est presque toujours une faute de frappe, et la session partirait pendant
+   qu'on relit). Le champ est en heure locale, comme l'horloge du poste qui lancera. */
+function lireDateProgrammee(f) {
+  const champ = f && f.scheduled_at;
+  if (!champ || taskKind === 'ask' || !champ.value) return null;
+  viderErreursChamps(champ.parentElement);
+  const d = new Date(champ.value);
+  if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) return signalerChamp(champ, tr('err.programmation.date-passee'));
+  return d.toISOString();
+}
+// À l'édition : la date en place, et ce qu'elle était — pour ne l'envoyer que si elle change.
+function poserDateProgrammee(f, iso) {
+  const champ = f && f.scheduled_at;
+  if (!champ) return;
+  champ.value = versDatetimeLocal(iso);
+  champ.dataset.initial = champ.value;
+}
+async function majProgrammationEdition(f, route, iso) {
+  const champ = f && f.scheduled_at;
+  if (!champ || (champ.dataset.initial || '') === (champ.value || '')) return;
+  await api(route, { method: 'PUT', body: { at: iso } });
+}
 
 /* DUPLIQUER une session HORS DÉPÔT. Même geste, mais son propre câblage : les dossiers sont
    stockés en chemins absolus et la modale se pilote en « répertoire + noms de projets » —
@@ -8707,6 +8752,7 @@ async function openLocalTaskEdit(id) {
   if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
   if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
   if (f.review_after) f.review_after.checked = !!t.review_after;
+  poserDateProgrammee(f, t.scheduled_at);
   if (f.session_id) f.session_id.value = sharedSessionKey(t.dirs);
   $('#taskModalTitle').textContent = tr('local.edit-title');
   setTaskPieces('local', d.images);
@@ -8799,6 +8845,7 @@ $('#taskSubmitOnly').addEventListener('click', () => {
   launchAfterCreate = false; // on crée, on ne lance pas
   $('#taskForm').requestSubmit();            // passe par la validation native du formulaire
 });
+$('#taskScheduleAt').addEventListener('input', majBoutonProgrammation);
 fermerAuFond('#taskModal', closeTaskModal);
 
 /* La proposition de branche suit le libellé et le prompt tant qu'on n'a pas touché au champ.
@@ -8825,6 +8872,10 @@ fermerAuFond('#taskModal', closeTaskModal);
 $('#taskForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
+  /* LANCER PLUS TARD : lue une fois pour les trois saveurs. `false` = date passée, déjà signalée
+     sous le champ — on s'arrête là plutôt que de créer une session qui ne partirait jamais. */
+  const programmeA = lireDateProgrammee(f);
+  if (programmeA === false) return;
   // Codage hors dépôt : projets d'un répertoire local + images, endpoint dédié, créé
   // ET lancé. Le serveur continue de recevoir des CHEMINS absolus : c'est la saisie
   // qui a changé, pas le contrat — les sessions déjà enregistrées restent lisibles.
@@ -8849,6 +8900,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
           session_id: f.session_id ? f.session_id.value : '',
           ask_questions: f.ask_questions ? f.ask_questions.checked : false,
         } }));
+        await majProgrammationEdition(f, `/local-tasks/${editingTaskId}/schedule`, programmeA);
         toast(tr('toast.session-mise-a-jour'));
         resetTaskFiles(); closeTaskModal(); loadTasks();
         return;
@@ -8861,7 +8913,10 @@ $('#taskForm').addEventListener('submit', async (e) => {
            « partager » doit donc être câblée trois fois, sans quoi elle ne ferait rien ici. */
         shared: f.shared ? f.shared.checked : false,
       } }));
-      if (launchAfterCreate) {
+      if (programmeA) {
+        await api(`/local-tasks/${created.id}/schedule`, { method: 'PUT', body: { at: programmeA } });
+        toast(tr('toast.session-programmee', { when: fmtDateTime(programmeA) }));
+      } else if (launchAfterCreate) {
         await api(`/local-tasks/${created.id}/run`, { method: 'POST' });
         toast(tr('local.started')); refreshStatus();
       } else {
@@ -8964,12 +9019,22 @@ $('#taskForm').addEventListener('submit', async (e) => {
      et son plafond dans son libellé — la convergence part directement avec ces valeurs, sans
      seconde fenêtre pour redemander ce qui vient d'être affiché. */
   const veutConverger = !editingTaskId && taskKind === 'code' && !!(f.converge_after && f.converge_after.checked);
+  // Une convergence ne se programme pas : on le dit sous la date plutôt que d'en ignorer une des deux.
+  if (veutConverger && programmeA) { signalerChamp(f.scheduled_at, tr('err.programmation.converge')); return; }
   let convergeId = null;
   try {
     await busy(btn, async () => {
-      if (editingTaskId) { await api(`/tasks/${editingTaskId}`, { method: 'PUT', body }); toast(tr('toast.session-mise-a-jour')); return; }
+      if (editingTaskId) {
+        await api(`/tasks/${editingTaskId}`, { method: 'PUT', body });
+        await majProgrammationEdition(f, `/tasks/${editingTaskId}/schedule`, programmeA);
+        toast(tr('toast.session-mise-a-jour'));
+        return;
+      }
       const created = await api('/tasks', { method: 'POST', body });
-      if (veutConverger) {
+      if (programmeA) {
+        await api(`/tasks/${created.id}/schedule`, { method: 'PUT', body: { at: programmeA } });
+        toast(tr('toast.session-programmee', { when: fmtDateTime(programmeA) }));
+      } else if (veutConverger) {
         convergeId = created.id; // on ne lance PAS le run : la convergence pilote tout
       } else if (launchAfterCreate) {
         await api(`/tasks/${created.id}/run`, { method: 'POST' });
@@ -9019,6 +9084,30 @@ const fmtDateTime = (iso) => {
   return d.toLocaleDateString(I18Nrt.currentLocale(), { day: '2-digit', month: '2-digit', year: '2-digit' })
     + ' ' + d.toLocaleTimeString(I18Nrt.currentLocale(), { hour: '2-digit', minute: '2-digit' });
 };
+/* Une date ISO → la valeur d'un `<input type="datetime-local">`, en heure LOCALE : c'est l'heure
+   du poste qui lancera, et « 7:00 » veut dire 7:00 ici. Vide si pas de date. */
+function versDatetimeLocal(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+/* LE BADGE « PROGRAMMÉE POUR LE … » sur la carte, avec sa croix : la date se voit là où l'on
+   regarde la session, et s'annule d'un geste — sans rouvrir la modale. */
+function badgeProgrammation(t, pre) {
+  if (!t || !t.scheduled_at) return '';
+  const quand = fmtDateTime(t.scheduled_at);
+  return `<span class="tag tag-programme" title="${esc(tr('task.scheduled-for', { when: quand }))}">${svgIco('clock')} ${esc(quand)}</span>`
+    + `<button type="button" class="tag-x" data-${pre}unschedule="${t.id}" title="${esc(tr('task.title.unschedule'))}" aria-label="${esc(tr('task.title.unschedule'))}">${svgIco('close')}</button>`;
+}
+async function annulerProgrammation(b, route) {
+  try {
+    await busy(b, () => api(route, { method: 'PUT', body: { at: null } }));
+    toast(tr('toast.programmation-annulee'));
+    loadTasks();
+  } catch (e) { toast(explainError(e.message), true); }
+}
 
 /* Sauvegarde/restaure les formulaires inline ouverts avant un re-rendu. Une session qui tourne
    se re-rend toutes les secondes et demie : sans ça, un suivi qu'on est en train d'écrire
@@ -9032,7 +9121,8 @@ function captureTaskForms(racine = '#taskList') {
     if (!cle || f.hidden) return;
     const field = f.querySelector('textarea, input');
     const auto = f.querySelector('.followup-auto');
-    state[`${cle}:${f.dataset[cle]}`] = { v: field ? field.value : '', auto: auto ? auto.checked : null };
+    const at = f.querySelector('.followup-at');
+    state[`${cle}:${f.dataset[cle]}`] = { v: field ? field.value : '', auto: auto ? auto.checked : null, at: at ? at.value : null };
   });
   return state;
 }
@@ -9046,6 +9136,8 @@ function restoreTaskForms(state, racine = '#taskList') {
     if (field) field.value = value.v;
     const auto = f.querySelector('.followup-auto');
     if (auto && value.auto !== null) auto.checked = value.auto;
+    const at = f.querySelector('.followup-at');
+    if (at && value.at !== null) at.value = value.at;
     renderSuiviPreviews(f);      // les captures collées survivent au re-rendu, comme le texte
   }
 }
@@ -9125,15 +9217,23 @@ document.addEventListener('paste', (e) => {
    le premier instant, désactivé, pour qu'on sache où il sera. */
 /* La case qui arme le suivi. Décochée par défaut, et sur la MÊME ligne que le texte : c'est au
    moment où on écrit la remarque qu'on sait si elle mérite de partir toute seule. */
-const autoSuiviCase = (t) => `<label class="inline-check followup-auto-line"><input type="checkbox" class="followup-auto"${t.followup_auto ? ' checked' : ''} />
-    <span>${tr('task.followup.auto')}</span></label>`;
+/* …ou une DATE. Une session de dépôt ou hors dépôt peut faire partir son suivi à une heure
+   fixée (`sansDate` pour la question libre, qui ne se programme pas). Une date remplace la case :
+   un suivi n'a qu'un armement, et le serveur y veille aussi. */
+const autoSuiviCase = (t, sansDate = false) => `<label class="inline-check followup-auto-line"><input type="checkbox" class="followup-auto"${t.followup_auto ? ' checked' : ''} />
+    <span>${tr('task.followup.auto')}</span></label>${sansDate ? '' : `
+  <label class="inline-check followup-at-line"><span>${tr('task.followup.at')}</span> <input type="datetime-local" class="followup-at" step="60" value="${versDatetimeLocal(t.followup_at)}" /></label>`}`;
 
 function suiviBlock(t, pre) {
   if (!t.followup_draft) return '';
   const enCours = t.status === 'running';
-  return `<div class="followup-draft${t.followup_auto ? ' is-auto' : ''}">
-    <div class="followup-draft-head">${svgIco('repeat')}<span>${tr(t.followup_auto ? 'task.followup.draft-auto' : 'task.followup.draft')}</span>
-      <span class="muted">${tr(t.followup_auto ? 'task.followup.draft-hint-auto' : 'task.followup.draft-hint')}</span></div>
+  const arme = t.followup_at ? 'scheduled' : (t.followup_auto ? 'auto' : '');
+  const titre = { scheduled: 'task.followup.draft-scheduled', auto: 'task.followup.draft-auto' }[arme] || 'task.followup.draft';
+  const indice = arme === 'scheduled' ? tr('task.followup.draft-hint-scheduled', { when: esc(fmtDateTime(t.followup_at)) })
+    : tr(arme === 'auto' ? 'task.followup.draft-hint-auto' : 'task.followup.draft-hint');
+  return `<div class="followup-draft${arme ? ' is-auto' : ''}">
+    <div class="followup-draft-head">${svgIco(arme === 'scheduled' ? 'clock' : 'repeat')}<span>${tr(titre)}</span>
+      <span class="muted">${indice}</span></div>
     <div class="followup-draft-text">${esc(t.followup_draft)}</div>
     <div class="followup-draft-actions">
       <button class="btn btn-sm" data-${pre}followedit="${t.id}">${tr('ui.edit')}</button>
@@ -9155,8 +9255,15 @@ async function enregistrerSuivi(b, route) {
      image qu'on croit enregistrée et qui disparaît au rechargement est une perte silencieuse. */
   if ((suiviImages.get(cleFormSuivi(form)) || []).length) toast(tr('task.followup.draft-no-image'));
   const caseAuto = form.querySelector('.followup-auto');
+  const champAt = form.querySelector('.followup-at');
+  let at = null;
+  if (champAt && champAt.value) {
+    const d = new Date(champAt.value);
+    if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) { toast(tr('err.programmation.date-passee'), true); return; }
+    at = d.toISOString();
+  }
   try {
-    await busy(b, () => api(route, { method: 'PUT', body: { instruction, auto: !!(caseAuto && caseAuto.checked) } }));
+    await busy(b, () => api(route, { method: 'PUT', body: { instruction, auto: !!(caseAuto && caseAuto.checked) && !at, ...(champAt ? { at } : {}) } }));
     /* On referme AVANT de recharger : ouvert, `captureTaskForms` le rouvrirait au rendu
        suivant et on croirait que l'enregistrement n'a rien fait. */
     form.hidden = true;
@@ -9432,7 +9539,7 @@ function localCard(t) {
     <div style="min-width:0;flex:1">
       <div class="title">
         <span class="tag ${st.cls}">${st.label}</span>
-        <span class="task-projects">${tr('local.dirs-count', { n, count: n })}</span>${shareMark(t)}
+        <span class="task-projects">${tr('local.dirs-count', { n, count: n })}</span>${badgeProgrammation(t, 'l')}${shareMark(t)}
         <span class="task-date" title="${tr('task.created-at')}" data-when="${esc(t.created_at || '')}">${esc(fmtDateTime(t.created_at))}</span>
       </div>
       ${libelleBlock(t, 'local')}
@@ -9560,6 +9667,8 @@ function renderLocalTasks() {
   // Suivi préparé pendant que la session tourne : enregistré ici, envoyé plus tard, par nous.
   $$('#localList [data-lfollowsave]').forEach((b) => b.addEventListener('click',
     () => enregistrerSuivi(b, `/local-tasks/${b.dataset.lfollowsave}/followup-draft`)));
+  $$('#localList [data-lunschedule]').forEach((b) => b.addEventListener('click',
+    () => annulerProgrammation(b, `/local-tasks/${b.dataset.lunschedule}/schedule`)));
   $$('#localList [data-lfollowedit]').forEach((b) => b.addEventListener('click', () => {
     const form = $(`#localList .followup[data-lfollowform="${b.dataset.lfollowedit}"]`);
     if (form) { form.hidden = false; form.querySelector('.followup-text').focus(); }
@@ -9602,7 +9711,7 @@ function askCard(q) {
       <div class="mr-create followup" data-qfollowform="${q.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('ask.followup.ph'))}">${esc(q.followup_draft || '')}</textarea>
         ${suiviCapturesHtml()}
-        ${autoSuiviCase(q)}
+        ${autoSuiviCase(q, true)}
         <button class="btn" data-qfollowcancel="${q.id}">${tr('ui.cancel')}</button>
         <button class="btn" data-qfollowsave="${q.id}">${tr('task.btn.save-followup')}</button>
         ${enCours ? '' : `<button class="btn btn-primary" data-qfollowsubmit="${q.id}">${tr('task.btn.ask')}</button>`}
@@ -9841,6 +9950,7 @@ function taskHead(t) {
       <span class="task-projects">${tr('task.projects', { n: nb, count: nb })}</span>
       ${t.agent_name ? `<span class="tag tag-agent" title="${esc(tr('agents.card.ran-by'))}">${svgIco('zap')} ${esc(t.agent_name)}</span>` : ''}
       ${t.triggered_by === 'schedule' ? `<span class="tag" title="${esc(tr('agents.card.by-schedule'))}">${svgIco('clock')}</span>` : ''}
+      ${badgeProgrammation(t, '')}
       ${/* Chez tout le monde, ou à soi : la question se pose d'un coup d'œil, comme pour une
             page de notes. Le pictogramme est le même — c'est le même geste. */''}
       ${shareMark(t)}
@@ -10544,6 +10654,7 @@ function wireTaskActions() {
     const form = $(`#taskList .followup[data-followform="${b.dataset.followedit}"]`);
     if (form) { form.hidden = false; form.querySelector('.followup-text').focus(); }
   });
+  on('[data-unschedule]', (b) => annulerProgrammation(b, `/tasks/${b.dataset.unschedule}/schedule`));
   on('[data-followdrop]', (b) => supprimerSuivi(b, `/tasks/${b.dataset.followdrop}/followup-draft`));
   // Envoi manuel : le corps est vide exprès, le serveur prend le suivi enregistré et l'efface.
   on('[data-followsend]', (b) => envoyerSuivi(b, `/tasks/${b.dataset.followsend}/followup`));

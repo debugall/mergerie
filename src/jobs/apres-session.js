@@ -106,10 +106,13 @@ function todoQuestion(taskId) {
    geste conscient. Rien non plus après un échec : l'appelant ne passe ici que sur une fin
    normale, on n'enchaîne pas une consigne sur une session qui vient de casser. */
 const TABLE_SCOPE = { local: 'local_task', ask: 'question', task: 'task' };
-function suiviAutomatique(scope, id, onLog) {
+/* Le suivi en attente, envoyé sans clic. `exigerCase` : ne part que si la case « automatiquement »
+   est cochée — c'est la fin de session. Une DATE programmée (`programmation.js`) passe outre :
+   la date est l'armement, la case n'a plus à l'être. */
+function envoyerSuiviEnAttente(scope, id, onLog, { exigerCase = true } = {}) {
   const table = TABLE_SCOPE[scope] || 'task';
   const s = db.prepare(`SELECT followup_draft d, followup_auto a FROM ${table} WHERE id = ?`).get(id);
-  if (!s || !s.a || !s.d) return null;
+  if (!s || !s.d || (exigerCase && !s.a)) return null;
   db.prepare(`UPDATE ${table} SET followup_draft = NULL, followup_auto = 0, updated_at = ? WHERE id = ?`)
     .run(new Date().toISOString(), id);
   onLog(t('log.job.followup-sent', { texte: String(s.d).split('\n')[0].slice(0, 120) }));
@@ -117,6 +120,7 @@ function suiviAutomatique(scope, id, onLog) {
   if (scope === 'ask') return startAskJob(id, { instruction: s.d });
   return startTaskJob(id, 'followup', { instruction: s.d, autoSuivi: true });
 }
+const suiviAutomatique = (scope, id, onLog) => envoyerSuiviEnAttente(scope, id, onLog, { exigerCase: true });
 async function verifierApresSession(task, onLog) {
   if (!task || !task.verifier_id) return null;
   try {
@@ -136,5 +140,5 @@ async function verifierApresSession(task, onLog) {
 }
 
 module.exports = {
-  preparerVerificationApres, todoQuestionLocal, todoQuestion, TABLE_SCOPE, suiviAutomatique, verifierApresSession,
+  preparerVerificationApres, todoQuestionLocal, todoQuestion, TABLE_SCOPE, suiviAutomatique, envoyerSuiviEnAttente, verifierApresSession,
 };

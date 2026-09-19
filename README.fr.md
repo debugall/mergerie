@@ -99,8 +99,12 @@ run déclenché par un **horaire** qui a réécrit une page de notes.
   *du prompt à la MR convergée* en un bouton. Sur une session multi-dépôts, chaque projet se lance — et se
   fait corriger — **séparément**. La dernière itération garde **le diff de ce qu'elle a changé** — hors
   dépôt compris, où un dépôt de suivi tenu hors de ton dossier remplace la branche absente : relire
-  ton dernier suivi n'oblige plus à tout relire. Les sessions terminées se **rangent**
-  sans être supprimées.
+  ton dernier suivi n'oblige plus à tout relire. Une session — codage, exploration ou hors dépôt —
+  se **programme aussi à une date et une heure** depuis la même modale (« Créer et programmer »),
+  et un suivi en attente de même (« Ou l'envoyer le… ») : la carte porte la date avec une croix
+  pour l'annuler, lancer à la main l'annule aussi, et la date est celle de *ton* poste — c'est
+  lui qui lance, et il rattrape le lancement s'il était éteint à l'heure dite. Les sessions
+  terminées se **rangent** sans être supprimées.
 - **Vérification objective** — une liste de commandes (`npm ci`, `npm test`) donne à
   une merge request un verdict qui n'est pas un avis : `✓ vérifié`, `✗ 2 tests cassés`, `⚠ base déjà rouge`. Les
   noms des tests cassés sont lus de la sortie **TAP** ou d'un rapport **JUnit** quand il y en a. Des merge requests

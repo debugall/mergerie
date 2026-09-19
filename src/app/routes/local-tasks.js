@@ -20,7 +20,7 @@ const pieces = require('../../agent/pieces');
 const path = require('path');
 const fs = require('fs');
 const { readFileSafe, wrap } = require('../http');
-const { auteurs, basculerPartage, exigerProprietaire, passesPayload, rangement } = require('../lib/partage');
+const { auteurs, basculerPartage, exigerProprietaire, passesPayload, programmations, rangement } = require('../lib/partage');
 const { piecesExposees, savePiecesEtImages } = require('../lib/pieces');
 const { applySessionId, chapeauReponse, coutParSession, diffDePasse, dureeParSession, envoyerSuivi, lireLibelle, localDirsFor, localTaskById, normalizeDirIds, normalizeSessionId, poserSuivi } = require('../lib/sessions');
 const { viewerFile, viewerFileDiff, viewerPayload } = require('../lib/visionneuse');
@@ -32,12 +32,15 @@ app.get('/api/local-tasks', wrap((req, res) => {
   const couts = coutParSession('local');
   const durees = dureeParSession('local');
   const range = rangement('local_task');
+  const prog = programmations('local_task');
   /* « PAR QUI » — lu de git, sans colonne. C'est ce qui décide si la carte propose « supprimer »
      ou seulement « ranger » : la session d'un collègue ne se retire pas du dépôt. */
   const parQui = auteurs('local_task', list);
   for (const lt of list) {
     lt.author = parQui.get(lt.id) || null;
     lt.hidden = range.get(lt.uid) === '1' ? 1 : 0;
+    lt.scheduled_at = prog.run.get(lt.uid) || null;
+    lt.followup_at = prog.followup.get(lt.uid) || null;
     lt.dirs = localDirsFor(lt.id);
     /* Hors dépôt, la réponse vit PAR DOSSIER : on prend celle du premier qui en a une — la
        carte porte un chapeau, pas un rapport, et l'ouvrir donne toujours le détail complet. */
@@ -129,6 +132,8 @@ app.post('/api/local-tasks/:id/run', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
   const dirIds = normalizeDirIds(lt.id, req.body && req.body.dirs);
+  // Lancer à la main annule le lancement programmé : la session ne doit pas partir deux fois.
+  jobs.programmation.programmer('local_task', lt.uid, 'run', null);
   res.json(jobs.startLocalJob(lt.id, dirIds ? { dirIds } : {}));
 }));
 // Demande de correction : nouvelle passe de l'IA sur les mêmes dossiers, en REPRENANT
@@ -190,9 +195,9 @@ app.post('/api/local-tasks/:id/followup', wrap((req, res) => {
 app.put('/api/local-tasks/:id/followup-draft', wrap((req, res) => {
   const lt = localTaskById(Number(req.params.id));
   if (!lt) throw new Error(t('err.session-introuvable'));
-  poserSuivi('local_task', lt.id, req.body && req.body.instruction, req.body && req.body.auto);
+  poserSuivi('local_task', lt.id, req.body && req.body.instruction, req.body && req.body.auto, req.body && req.body.at);
   const apres = localTaskById(lt.id);
-  res.json({ ok: true, followup_draft: apres.followup_draft, followup_auto: apres.followup_auto });
+  res.json({ ok: true, followup_draft: apres.followup_draft, followup_auto: apres.followup_auto, followup_at: apres.followup_at });
 }));
 // Historique des itérations d'un dossier hors dépôt (même forme que côté session).
 app.get('/api/local-tasks/:id/dirs/:did/passes', wrap((req, res) => {

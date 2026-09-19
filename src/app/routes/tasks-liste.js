@@ -6,7 +6,7 @@ const db = require('../../db');
 const i18n = require('../../core/i18n');
 const { t } = i18n;
 const { wrap } = require('../http');
-const { auteurs, avecRangement, rangement } = require('../lib/partage');
+const { auteurs, avecRangement, programmations, rangement } = require('../lib/partage');
 const { piecesExposees } = require('../lib/pieces');
 const { chapeauReponse, coutParSession, dureeParSession, taskById, taskTargets } = require('../lib/sessions');
 
@@ -57,10 +57,11 @@ app.get('/api/tasks', wrap((req, res) => {
   const couts = coutParSession('task');
   const durees = dureeParSession('task');
   const range = rangement('task');
+  const prog = programmations('task');
   const parQui = auteurs('task', rows);
   res.json(rows.map((tache) => ({
     author: parQui.get(tache.id) || null,
-    ...avecRangement('task', tache, range),
+    ...avecRangement('task', tache, range, prog),
     image_count: db.prepare('SELECT COUNT(*) c FROM piece_jointe WHERE scope = ? AND owner_id = ?').get('task', tache.id).c,
     // Le chapeau ne sert qu'aux explorations : une session de codage se lit à ses projets.
     answer_head: tache.kind === 'explore' ? chapeauReponse(tache.md_path) : '',

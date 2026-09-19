@@ -46,9 +46,9 @@ app.post('/api/tasks/:id/followup', wrap((req, res) => {
 app.put('/api/tasks/:id/followup-draft', wrap((req, res) => {
   const tache = taskById(Number(req.params.id));
   if (!tache) throw new Error(t('err.session-introuvable'));
-  poserSuivi('task', tache.id, req.body && req.body.instruction, req.body && req.body.auto);
+  poserSuivi('task', tache.id, req.body && req.body.instruction, req.body && req.body.auto, req.body && req.body.at);
   const apres = taskById(tache.id);
-  res.json({ ok: true, followup_draft: apres.followup_draft, followup_auto: apres.followup_auto });
+  res.json({ ok: true, followup_draft: apres.followup_draft, followup_auto: apres.followup_auto, followup_at: apres.followup_at });
 }));
 // Réponses aux questions de l'agent (ask → stop → resume) : on enregistre les réponses sur
 // la cible, puis on relance l'agent DANS LA MÊME session pour qu'il poursuive.

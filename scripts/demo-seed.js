@@ -809,6 +809,15 @@ const lt0 = db.prepare('INSERT INTO local_task (prompt, status, created_at, upda
   .run('Passe ces scripts en ES modules et remplace les require() restants.', 'new', at(0.4), at(0.4));
 db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
   .run(lt0.lastInsertRowid, '/home/moi/dev/scripts', 'new', at(0.4));
+/* …ET PROGRAMMÉE : elle partira demain à 7:00, toute seule. La date est de poste (`local_pref`,
+   sous l'uid de la session) — c'est cette machine qui la lancera —, et c'est ce que la carte
+   montre : le badge à l'horloge et sa croix. */
+{
+  const demain = new Date(); demain.setDate(demain.getDate() + 1); demain.setHours(7, 0, 0, 0);
+  const uid = db.prepare('SELECT uid FROM local_task WHERE id = ?').get(lt0.lastInsertRowid).uid;
+  db.prepare(`INSERT INTO local_pref (kind, ref, key, value, updated_at) VALUES ('local_task', ?, 'run_at', ?, ?)`)
+    .run(uid, demain.toISOString(), at(0));
+}
 
 /* ---------- Questions libres ----------
    La quatrième saveur de Dev IA : une question posée à l'IA hors de tout dépôt, et sa réponse

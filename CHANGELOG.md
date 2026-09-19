@@ -13,6 +13,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Schedule a session for a date and time.** The session modal — coding, exploration and
+  off-repo alike — has a “Launch later, on” field: fill it and the primary button becomes “Create
+  and schedule”; the session is created and waits, its card showing the date with a cross to cancel
+  it. Editing the session shows the date and saves it with the rest. A waiting follow-up can be
+  scheduled the same way (“Or send it on…”): it then goes out by itself at that moment, whether or
+  not the “automatically at the end” box is ticked — a follow-up has one trigger, never two. Launching
+  a session by hand cancels its date, a date already past is refused, and the date belongs to the
+  workstation that set it: that one launches, and catches up at the next minute if it was switched
+  off at the time. Free questions are not schedulable.
+
 - **The report-link comment can say how many findings the pass carries.** Three new variables in
   the comment template — `{blockers}`, `{majors}` and `{minors}` — give the number of blocking,
   major and minor findings of the pass, counted as on the report card (findings the pass saw

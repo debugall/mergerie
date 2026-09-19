@@ -11,6 +11,8 @@
 const { exigerDossierCompose, startVerifyJob, startJob, startTaskJob, startGitJob, startDockerJob, startInstallJob, startConvergeJob, startConvergeSessionJob, startLocalJob, startAskJob, startReconcileJob, startNow, stopJob, isRunning, retryJob } = require('./ordonnanceur');
 const { verifyBloquePar, currentJob, activeJob, runningJobs, queuedJobs, queueCount, parallelBusy, runningCount, MAX_RUNNING, jobKeys, keysClash, canRetry, jobTargets, runningTargets } = require('./file');
 const { preparerVerificationApres } = require('./apres-session');
+/* Lancer plus tard : la date d'une session ou d'un suivi, et le tick qui l'honore. */
+const programmation = require('./programmation');
 require('./runners/review');
 require('./runners/task');
 require('./runners/converge');
@@ -28,5 +30,5 @@ module.exports = { exigerDossierCompose,
   startJob, startTaskJob, startGitJob, startDockerJob, startInstallJob, startConvergeJob, startConvergeSessionJob,
   startLocalJob, startAskJob, startReconcileJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
   queueCount, parallelBusy, runningCount, MAX_RUNNING, jobKeys, keysClash, retryJob, canRetry,
-  jobTargets, runningTargets,
+  jobTargets, runningTargets, programmation,
 };

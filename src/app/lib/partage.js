@@ -11,6 +11,7 @@ const { t } = i18n;
 const agentpass = require('../../agent/pass');
 const protocol = require('../../agent/protocol');
 const { readFileSafe } = require('../http');
+const { programmation } = require('../../jobs');
 
 /* Liste des passes d'une unité + la passe demandée (la dernière par défaut). Commun aux
    sessions sur dépôt et au codage hors dépôt : une seule forme de réponse à afficher. */
@@ -158,10 +159,20 @@ function basculerPartage(table, scope, row, shared) {
    `carte()` en une requête plutôt qu'une par ligne : ces listes se redessinent toutes les
    secondes et demie. */
 const rangement = (kind) => prefLocale.carte(kind, 'hidden');
-const avecRangement = (kind, row, carte = null) => (row
-  ? { ...row, hidden: ((carte || rangement(kind)).get(row.uid) === '1') ? 1 : 0 }
-  : row);
+/* MÊME LOGIQUE POUR LES DATES PROGRAMMÉES (`jobs/programmation.js`) : de poste, sous l'uid,
+   exposées sur la ligne comme si elles en étaient — `scheduled_at` (la session part à cette
+   date) et `followup_at` (le suivi en attente part à celle-là). Une question libre n'en a pas. */
+const programmations = (kind) => (programmation.TABLES[kind] ? programmation.cartes(kind) : null);
+const avecRangement = (kind, row, carte = null, prog = undefined) => {
+  if (!row) return row;
+  const p = prog === undefined ? programmations(kind) : prog;
+  return {
+    ...row,
+    hidden: ((carte || rangement(kind)).get(row.uid) === '1') ? 1 : 0,
+    ...(p ? { scheduled_at: p.run.get(row.uid) || null, followup_at: p.followup.get(row.uid) || null } : {}),
+  };
+};
 
 module.exports = {
-  sansChangement, recalculable, unitesAvecRetour, passesPayload, auteurs, auteurDeLigne, exigerProprietaire, basculerPartage, rangement, avecRangement,
+  sansChangement, recalculable, unitesAvecRetour, passesPayload, auteurs, auteurDeLigne, exigerProprietaire, basculerPartage, rangement, avecRangement, programmations,
 };

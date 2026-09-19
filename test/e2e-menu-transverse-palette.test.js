@@ -348,8 +348,12 @@ describe('Transverse — la palette de commandes', { skip: dispo ? false : MSG_N
        fois les deux là, c'est bien le ticket demandé qui reste à l'écran. */
     await page.waitForFunction(() => /\d/.test(document.querySelector('#jiraInfo').textContent)
       && /Ticket surveillé de la palette/.test(document.querySelector('#jiraDetail').textContent));
-    assert.match(await page.locator('#jiraDetail').textContent(), /Ticket surveillé de la palette/,
-      'le détail montre le ticket demandé, pas le rendu de la liste arrivée après');
+    /* L'attente EST la preuve. Relire le détail juste après la trouvait parfois VIDE sur le
+       runner à deux cœurs : le détail se repeint (un rendu vide le temps de la réponse), et une
+       lecture instantanée tombe dans ce creux. On attend qu'il soit REVENU sur le ticket demandé
+       après que la liste est là — c'est ce que la phrase ci-dessus affirme, et rien d'autre. */
+    await page.waitForFunction(() => /Ticket surveillé de la palette/.test(document.querySelector('#jiraDetail').textContent)
+      && /\d/.test(document.querySelector('#jiraInfo').textContent));
   });
 
   test('une page de notes s’ouvre, et l’adresse la désigne', async () => {

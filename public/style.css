@@ -1419,6 +1419,13 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
 /* Armé : le liseré passe au vert, comme partout ailleurs pour « ça va se faire tout seul ». */
 .followup-draft.is-auto { border-left-color: var(--green); }
 .followup-auto-line { flex: 1 1 100%; }
+/* La date d'un suivi, sur sa ligne ; le champ garde sa largeur naturelle. */
+.followup-at-line { flex: 1 1 100%; }
+.followup-at-line > input { flex: 0 0 auto; width: auto; }
+/* « Programmée pour le … » et sa croix, dans la ligne de titre de la carte. */
+.tag-programme { color: var(--accent); border-color: var(--accent); display: inline-flex; align-items: center; gap: 4px; }
+.tag-x { background: none; border: 0; padding: 0 2px; color: var(--muted); cursor: pointer; line-height: 1; display: inline-flex; align-items: center; }
+.tag-x:hover { color: var(--text); }
 .task-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; flex: 0 0 auto; }
 /* Cartes Dev IA : la colonne d'actions garde la même largeur d'une carte à l'autre, sinon
    elle se cale sur le libellé le plus long de CHAQUE carte et les icônes ✏/✕ se déplacent

@@ -259,6 +259,8 @@ app.post('/api/tasks/:id/run', wrap(async (req, res) => {
       await gardeConfigAgent(db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id), tg.branch, tg.base_branch, req.body);
     }
   }
+  // Lancer à la main annule le lancement programmé : la session ne doit pas partir deux fois.
+  jobs.programmation.programmer('task', tache.uid, 'run', null);
   res.json(jobs.startTaskJob(tache.id, 'run', targetIds ? { targetIds } : {}));
 }));
 // « Converger » une session de dev : du prompt à la/les MR convergée(s). L'IA code,

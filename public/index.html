@@ -1739,6 +1739,12 @@
                 <div id="taskPieces" class="task-previews"></div>
                 <div id="taskPreviews" class="task-previews"></div>
             </div>
+            <!-- LANCER PLUS TARD. Une date, pas un horaire : la session part toute seule à ce
+                 moment-là, depuis ce poste. Vide, « Créer et lancer » la lance tout de suite.
+                 Hors de l'accordéon : décider QUAND part une session n'est pas un réglage avancé. -->
+            <label id="taskScheduleRow"><span data-i18n="task.lbl.schedule">Lancer plus tard, le</span> <button type="button" class="hint" tabindex="-1" aria-label="" data-tip="" data-i18n-tip="task.tip.schedule"><svg class="ico"><use href="#i-info"/></svg></button>
+                <input type="datetime-local" name="scheduled_at" id="taskScheduleAt" step="60" />
+            </label>
             <!-- PARTAGER CETTE SESSION-LÀ. Une session est un processus, pas un produit : le
                  prompt tel qu'on l'a tapé, les trois relances, la capture collée qui montre un
                  autre onglet. Le résultat, lui, part déjà par la forge ou la carte du code. La

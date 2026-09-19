@@ -37,8 +37,8 @@ describe('le suivi en attente ne part pas tout seul', () => {
      case ni le retrait du texte avant lancement. */
   test('dans jobs/, elle n’est lue que par la fonction qui décide de l’envoi', () => {
     const src = lireDossier('jobs');
-    const debut = src.indexOf('function suiviAutomatique(');
-    assert.ok(debut > 0, 'la fonction d’envoi automatique doit exister sous ce nom');
+    const debut = src.indexOf('function envoyerSuiviEnAttente(');
+    assert.ok(debut > 0, 'la fonction d’envoi du suivi en attente doit exister sous ce nom');
     const fin = src.indexOf('\n}', debut);
     const dedans = src.slice(debut, fin);
 
@@ -50,10 +50,23 @@ describe('le suivi en attente ne part pas tout seul', () => {
     assert.deepEqual(dehors, [],
       'un second chemin d’envoi n’aurait ni la garde de la case ni le retrait du texte : il bouclerait');
 
-    // Et cette fonction refuse d'envoyer tant que la case n'est pas armée.
-    assert.match(dedans, /if \(!s \|\| !s\.a \|\| !s\.d\) return null;/,
-      'sans case armée et sans texte, rien ne part');
+    // Et cette fonction refuse d'envoyer tant que la case n'est pas armée — sauf si l'appelant
+    // porte un autre armement (la DATE programmée), et il doit le dire.
+    assert.match(dedans, /if \(!s \|\| !s\.d \|\| \(exigerCase && !s\.a\)\) return null;/,
+      'sans texte rien ne part ; sans case armée non plus, à moins que l’appelant ne passe outre explicitement');
     assert.match(dedans, /SET followup_draft = NULL, followup_auto = 0/,
       'le texte est retiré AVANT le lancement : sinon la passe suivante le retrouve et la session boucle');
+    // La fin de session, elle, exige la case.
+    assert.match(src, /const suiviAutomatique = \(scope, id, onLog\) => envoyerSuiviEnAttente\(scope, id, onLog, \{ exigerCase: true \}\);/);
+  });
+
+  /* LA DATE PROGRAMMÉE est le SEUL autre armement : un suivi part à la fin de la session (case) ou
+     à sa date, jamais parce qu'un troisième chemin l'a trouvé. Passer outre la case ne se fait
+     qu'à un endroit, et c'est celui qui efface la date avant de lancer. */
+  test('seule la programmation à une date passe outre la case', () => {
+    const src = lireDossier('jobs');
+    const occurrences = src.split('exigerCase: false').length - 1;
+    assert.equal(occurrences, 1, 'un seul appel qui n’exige pas la case');
+    assert.ok(lire('jobs/programmation').includes('exigerCase: false'), 'et c’est celui de la date programmée');
   });
 });
