@@ -121,7 +121,7 @@ describe('Défauts de la 4ᵉ passe', () => {
 
   /* §5.9 — `git_op` était la seule table de trace à croître sans fin. */
   test('la rétention purge aussi l’historique des opérations git', () => {
-    const retention = require('../src/data/retention');
+    const retention = require('../src/session/retention');
     const d = app.db;
     const ligne = (jours) => d.prepare(`INSERT INTO git_op (batch_id, created_at, action, project, ref_name, status)
       VALUES ('b', datetime('now', ?), 'delete_branch', 'grp/a', 'x', 'done')`).run(`-${jours} days`);

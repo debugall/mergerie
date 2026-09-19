@@ -20,7 +20,7 @@
  */
 
 const db = require('../db');
-const localsnapshot = require('../session/localsnapshot');
+const localsnapshot = require('./localsnapshot');
 const agentpass = require('../agentpass');
 const { t } = require('../../public/i18n-runtime.js');
 

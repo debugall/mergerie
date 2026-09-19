@@ -74,9 +74,7 @@ const IMPORTEURS = {
 
 /* LES ARÊTES TOLÉRÉES, une par une, avec leur motif — et le commit qui les fera disparaître. */
 const EXCEPTIONS = [
-  /* La rétention purge les passes d'agent et les instantanés de session : c'est du ménage de
-     SESSION, pas une couche de données. Elle rejoint session/ au commit suivant. */
-  { de: 'data/retention.js', vers: 'session/localsnapshot.js', motif: 'retention.js rejoint session/' },
+  // { de: 'data/config.js', vers: 'verify/verify.js', motif: '…' } — la forme d'une entrée.
 ];
 
 /* `gitlab.js` et `github.js` : la règle de CLAUDE.md, enfin vérifiée. */
