@@ -92,6 +92,11 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     { fn: ([j, p]) => document.querySelectorAll('#targetRows .target-row')[j].querySelector('.t-repo-search').value === p, arg: [i, projet] },
   );
   const lignes = () => page.locator('#targetRows .target-row');
+  // L'accordéon « Avancé » démarre replié : ce qu'il contient se remplit après l'avoir déplié.
+  const deplierAvance = async () => {
+    if (!await page.locator('#taskAdvanced').evaluate((e) => e.open)) await page.locator('#taskAdvanced > summary').click();
+    await page.waitForSelector('#taskAdvanced [name="session_id"]', { state: 'visible' });
+  };
 
   before(async () => {
     app = await startApp();
@@ -161,6 +166,11 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     test(`${kind} : la modale montre ce qui sert à cette saveur, et rien d’autre`, async () => {
       await ouvrir(kind);
       assert.equal((await page.locator('#taskModalTitle').textContent()).trim(), await tr(`task.kind.${kind}.title`));
+      // Replié par défaut ; on le déplie pour juger de ce qu'il contient (absent en question libre).
+      if (kind !== 'ask') {
+        assert.equal(await page.locator('#taskAdvanced').evaluate((e) => e.open), false, `${kind} : l’avancé démarre replié`);
+        await deplierAvance();
+      }
       for (let i = 0; i < BLOCS.length; i += 1) {
         assert.equal(await page.locator(BLOCS[i]).isVisible(), attendu[i], `${kind} : ${BLOCS[i]} ${attendu[i] ? 'visible' : 'masqué'}`);
       }
@@ -205,6 +215,7 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
       { fn: () => document.querySelector('#targetRows .target-row .t-base').value === 'develop' },
     );
 
+    await deplierAvance();
     await page.locator('#taskForm [name="commit_message"]').fill('feat: cache du panier');
     for (const c of ['ask_questions', 'review_after', 'notify_jira', 'auto_push']) {
       await page.locator(`#taskForm [name="${c}"]`).check();
@@ -388,6 +399,7 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
 
   test('codage : une session d’agent connue se choisit, et la session créée la reprend', async () => {
     await ouvrir('code');
+    await deplierAvance();
     const pick = page.locator('#taskSessionPick [data-sesskey="6ba7b810-9dad-11d1-80b4-00c04fd430c8"]');
     await pick.waitFor();
     await pick.click();
@@ -588,6 +600,8 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     assert.equal(await page.locator('#taskConvergeRow').isVisible(), false, 'converger se lance depuis la carte d’une session écrite');
     assert.equal(await page.locator('#taskForm [name="label"]').inputValue(), 'Ajout du cache');
     assert.equal(await page.locator('#taskForm [name="commit_message"]').inputValue(), 'feat: cache du panier');
+    // Un message de commit relu se VOIT : l'avancé s'est déplié tout seul à l'édition.
+    assert.equal(await page.locator('#taskAdvanced').evaluate((e) => e.open), true, 'l’avancé se déplie quand il porte une valeur');
     for (const c of ['ask_questions', 'review_after', 'notify_jira', 'auto_push']) {
       assert.equal(await page.locator(`#taskForm [name="${c}"]`).isChecked(), true, `${c} relu`);
     }

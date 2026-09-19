@@ -109,19 +109,21 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     await fermerSession();
   });
 
-  test('l’avancé groupe les trois champs qu’on ne touche pas, et reste déplié', async () => {
+  test('l’avancé groupe les champs qu’on ne touche pas, replié ; la question de l’IA reste dehors', async () => {
     await ouvrirSession('code');
-    /* REGROUPÉS, PAS CACHÉS. Ils s'intercalaient entre le libellé et la décision de vérifier ;
-       ils ferment maintenant le formulaire, sous un titre qui dit ce qu'ils sont — et le bloc
-       s'ouvre déplié : ce qui compte est qu'ils ne coupent plus le parcours principal, pas
-       qu'ils disparaissent. Le repli reste à la main de qui veut de l'air. */
-    assert.equal(await page.locator('#taskAdvanced').evaluate((e) => e.open), true,
-      'déplié par défaut : on doit voir ce qu’on peut régler sans avoir à le chercher');
+    /* REGROUPÉS ET REPLIÉS. Ils ferment le formulaire sous un titre qui dit ce qu'ils sont, et
+       le bloc démarre fermé : le formulaire tient à l'écran, un clic déplie. La case « l'IA peut
+       poser une question » n'en fait plus partie — c'est une décision de chaque session, pas un
+       réglage qu'on cherche. */
+    assert.equal(await page.locator('#taskAdvanced').evaluate((e) => e.open), false,
+      'replié par défaut : le formulaire tient à l’écran, un clic déplie');
     const dedans = await page.$$eval('#taskAdvanced input, #taskAdvanced textarea',
       (els) => els.map((e) => e.name).filter(Boolean));
-    assert.deepEqual(dedans.sort(), ['ask_questions', 'commit_message', 'session_id']);
-    assert.equal(await page.locator('#taskAdvanced [name="session_id"]').isVisible(), true,
-      'et ils sont vraiment à l’écran, pas seulement dans le DOM');
+    assert.deepEqual(dedans.sort(), ['commit_message', 'session_id']);
+    assert.equal(await page.locator('#taskForm [name="ask_questions"]').isVisible(), true,
+      'la case est sous les yeux, hors de l’accordéon');
+    await page.locator('#taskAdvanced > summary').click();
+    await page.waitForSelector('#taskAdvanced [name="session_id"]', { state: 'visible' });
     await fermerSession();
   });
 

@@ -231,16 +231,12 @@ describe('Questions de l’agent : exploration et hors dépôt', () => {
         await page.waitForSelector('#btnNewTask:not([hidden])');
         await page.locator('#btnNewTask').click();
         await page.waitForSelector('#taskModal:not([hidden])');
-        /* La case a rejoint l'accordéon « Avancé » — on ne la touche pas une fois sur dix. Elle
-           doit y être PROPOSÉE dans les trois saveurs : ce qu'on éprouve ici, c'est qu'elle
-           existe et se déplie, pas qu'elle occupe le formulaire. */
+        /* La case vit SOUS LES YEUX, hors de l'accordéon « Avancé » (replié par défaut) : une
+           décision qu'on prend à chaque session. Elle doit être PROPOSÉE dans les trois saveurs. */
         assert.equal(await page.locator('#taskAdvanced').isVisible(), true,
           `l’avancé doit exister en « ${kind} »`);
-        /* Un clic sur un <summary> BASCULE : la modale garde son accordéon d'une saveur à
-           l'autre, et cliquer trois fois de suite le refermerait une fois sur deux. */
-        if (!await page.locator('#taskAdvanced').evaluate((e) => e.open)) {
-          await page.locator('#taskAdvanced > summary').click();
-        }
+        assert.equal(await page.locator('#taskAdvanced').evaluate((e) => e.open), false,
+          `l’avancé démarre replié en « ${kind} »`);
         assert.equal(await page.locator('#taskForm [name="ask_questions"]').isVisible(), true,
           `la case doit être proposée en « ${kind} » — elle ne vaut pas que pour le codage sur dépôt`);
         await page.locator('#taskCancel, #taskModal .modal-actions .btn').first().click();

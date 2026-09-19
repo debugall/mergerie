@@ -11,6 +11,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Changed
+
+- **The session form keeps “The AI may ask me questions” in plain sight, and starts with
+  “Advanced” folded.** The box has left the Advanced accordion: whether the AI may stop and ask
+  is a decision you take for each session, not a setting to go looking for — it now sits above
+  “Launch later”, in the coding, exploration and off-repo forms alike. The accordion (commit
+  message, agent session to resume, skills) is folded by default so the form fits the screen; one
+  click unfolds it, and editing a session unfolds it by itself when one of its fields holds a value.
+
 ### Added
 
 - **Schedule a session for a date and time.** The session modal — coding, exploration and

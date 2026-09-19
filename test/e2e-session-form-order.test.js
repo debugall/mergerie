@@ -11,12 +11,14 @@
  *   3. LE NOM        le libellé — facultatif, et il nomme la carte : après ce qu'il résume ;
  *   4. APRÈS         ce qui change le RÉSULTAT une fois le code écrit : le vérificateur, la
  *                    convergence, l'auto-push. Puis les pièces jointes, qui sont une possibilité ;
- *   5. QUAND         la date d'un lancement différé — vide neuf fois sur dix, mais elle change
+ *   5. COMMENT       l'IA peut-elle poser une question ? Une décision qu'on prend à chaque
+ *                    session, pas un réglage : elle reste sous les yeux, hors de l'accordéon ;
+ *   6. QUAND         la date d'un lancement différé — vide neuf fois sur dix, mais elle change
  *                    le BOUTON qui suit (« Créer et programmer ») : elle ferme donc le parcours
  *                    principal, juste au-dessus des actions, et hors de l'accordéon ;
- *   6. AVANCÉ        questions de l'IA, message de commit, reprise d'une session d'agent —
- *                    trois champs qu'on ne touche pas une fois sur dix. Regroupés et repliables,
- *                    mais DÉPLIÉS : ils ne coupent plus le parcours principal, ils le ferment.
+ *   7. AVANCÉ        message de commit, reprise d'une session d'agent, skills — ce qu'on ne
+ *                    touche pas une fois sur dix. Regroupés et REPLIÉS par défaut : ils ne
+ *                    coupent plus le parcours principal, ils le ferment, et le formulaire tient.
  *
  * Le bloc gris des projets ouvrait ce formulaire : on choisissait des dépôts avant d'avoir
  * formulé la tâche. Un champ qui remonte ou qui descend d'un cran ne casse rien et ne se voit
@@ -113,9 +115,11 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
       'taskConvergeRow',
       'auto_push',
       'taskImages',                    // une possibilité, pas une étape
+      'taskAskQuestionsRow',           // COMMENT : l'IA peut demander, hors de l'accordéon
       'taskScheduleRow',               // QUAND : lancer plus tard, juste au-dessus du bouton qu'elle renomme
-      'taskAdvanced',                  // questions, message de commit, session d'agent
+      'taskAdvanced',                  // message de commit, session d'agent, skills — replié
     ]);
+    assert.equal(await page.evaluate(() => document.querySelector('#taskAdvanced').open), false, 'l’avancé démarre replié');
     assert.deepEqual(erreurs, []);
   });
 
@@ -129,6 +133,7 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
       'taskLocalWarn',
       'label',
       'taskImages',
+      'taskAskQuestionsRow',
       'taskScheduleRow',
       'taskAdvanced',
     ]);
@@ -147,6 +152,7 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
       'taskReposWrap',
       'label',
       'taskImages',
+      'taskAskQuestionsRow',
       'taskScheduleRow',
       'taskAdvanced',
     ]);

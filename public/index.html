@@ -1739,6 +1739,10 @@
                 <div id="taskPieces" class="task-previews"></div>
                 <div id="taskPreviews" class="task-previews"></div>
             </div>
+            <!-- L'IA PEUT POSER UNE QUESTION : c'est une décision qu'on prend à chaque session, pas
+                 un réglage avancé — elle vit donc SOUS LES YEUX, pour les trois saveurs qui ont
+                 une cible (une question libre n'hésite sur rien). -->
+            <label id="taskAskQuestionsRow" class="inline-check"><input type="checkbox" name="ask_questions" /> <span data-i18n="task.lbl.ask-questions">L'IA peut me poser des questions quand elle hésite</span> <button type="button" class="hint" tabindex="-1" aria-label="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-tip="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-i18n-tip="task.tip.ask-questions"><svg class="ico"><use href="#i-info"/></svg></button></label>
             <!-- LANCER PLUS TARD. Une date, pas un horaire : la session part toute seule à ce
                  moment-là, depuis ce poste. Vide, « Créer et lancer » la lance tout de suite.
                  Hors de l'accordéon : décider QUAND part une session n'est pas un réglage avancé. -->
@@ -1753,13 +1757,13 @@
                  n'apparaît pas en mono-poste — il n'y aurait personne à qui partager. -->
             <label id="taskShareRow" class="inline-check" hidden><input type="checkbox" name="shared" /> <span data-i18n="session.share">Partager avec l'équipe</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="session.share-title" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
 
-            <!-- TROIS CHAMPS QU'ON NE TOUCHE PAS UNE FOIS SUR DIX — mais qui restent SOUS LES
-                 YEUX : ils sont regroupés et repliables, pas cachés. Ils s'intercalaient entre
-                 le libellé et la décision de vérifier ; ils ferment maintenant le formulaire. -->
-            <details id="taskAdvanced" class="task-avance" open>
+            <!-- LES CHAMPS QU'ON NE TOUCHE PAS UNE FOIS SUR DIX — message de commit, session
+                 d'agent à reprendre, skills : regroupés et REPLIÉS par défaut, pour que le
+                 formulaire tienne à l'écran ; un clic les déplie, et l'édition les déplie
+                 d'elle-même quand l'un d'eux porte une valeur. -->
+            <details id="taskAdvanced" class="task-avance">
                 <summary data-i18n="task.group.advanced">Avancé</summary>
                 <div id="taskAgentFields">
-                    <label id="taskAskQuestionsRow" class="inline-check"><input type="checkbox" name="ask_questions" /> <span data-i18n="task.lbl.ask-questions">L'IA peut me poser des questions quand elle hésite</span> <button type="button" class="hint" tabindex="-1" aria-label="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-tip="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-i18n-tip="task.tip.ask-questions"><svg class="ico"><use href="#i-info"/></svg></button></label>
                     <label id="taskSessionRow"><span data-i18n="task.lbl.session-id">Reprendre une session d'agent existante (optionnel)</span> <button type="button" class="hint" tabindex="-1" aria-label="Laisse vide pour ouvrir une nouvelle session. Renseigné, l'IA travaille DANS cette session et garde donc tout son contexte : rien de neuf n'est créé. L'identifiant est celui affiché par « Reprendre au terminal » sur une session existante — un UUID avec claude, un chemin de home avec copilot. Une session appartient à un dossier de travail : si la reprise est refusée, une session neuve prend le relais avec le contexte réinjecté." data-tip="Laisse vide pour ouvrir une nouvelle session. Renseigné, l'IA travaille DANS cette session et garde donc tout son contexte : rien de neuf n'est créé. L'identifiant est celui affiché par « Reprendre au terminal » sur une session existante — un UUID avec claude, un chemin de home avec copilot. Une session appartient à un dossier de travail : si la reprise est refusée, une session neuve prend le relais avec le contexte réinjecté." data-i18n-tip="task.tip.session-id"><svg class="ico"><use href="#i-info"/></svg></button>
                     <input name="session_id" id="taskSessionId" autocomplete="off" placeholder="vide = nouvelle session" data-i18n-placeholder="task.ph.session-id" />
                     <!-- On collait un UUID extrait à la main de la commande de reprise. Les

@@ -7994,7 +7994,9 @@ function applyKindToModal(kind) {
   const sr = $('#taskScheduleRow'); if (sr) sr.hidden = isAsk;
   /* L'accordéon « Avancé » ne s'affiche que s'il lui reste quelque chose : une question libre
      n'a ni session d'agent, ni message de commit, ni question à poser. */
-  const av = $('#taskAdvanced'); if (av) av.hidden = isAsk;
+  const av = $('#taskAdvanced'); if (av) { av.hidden = isAsk; av.open = false; }   // replié à chaque ouverture
+  // La case « l'IA peut poser une question » vit hors de l'accordéon, pour les trois saveurs à cible.
+  const aq = $('#taskAskQuestionsRow'); if (aq) aq.hidden = isAsk;
   // Codage hors dépôt : dossiers locaux à la place des projets, Jira & avertissement.
   $('#taskReposWrap').hidden = isLocal || isAsk;
   $('#taskLocalWrap').hidden = !isLocal;
@@ -8535,6 +8537,7 @@ async function openTaskEdit(id) {
     poserDateProgrammee(f, t.scheduled_at);
     await majVerificateursSession(t.verifier_id || '');
     if (f.session_id) f.session_id.value = sharedSessionKey(t.targets);
+    deplierAvanceSiRempli(f);
     $('#taskModalTitle').textContent = tr(taskKind === 'code' ? 'task.edit.code-title' : 'task.edit.explore-title');
     setTaskPieces('task', d.images);      // les pièces, pas leur compte : on veut les VOIR
     $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
@@ -8637,6 +8640,14 @@ function infoDuplication(brancheDecalee, nImages) {
 
    L'ÉDITION n'a ni l'un ni l'autre : elle enregistre (voir les appelants qui posent
    `launchAfterCreate = false` et masquent le secondaire). */
+/* L'ACCORDÉON « AVANCÉ » DÉMARRE REPLIÉ. À l'édition, une valeur qu'on ne verrait pas serait
+   une surprise : s'il porte un message de commit ou une session d'agent, on le déplie. */
+function deplierAvanceSiRempli(f) {
+  const av = $('#taskAdvanced');
+  if (!av) return;
+  const rempli = (f.commit_message && f.commit_message.value) || (f.session_id && f.session_id.value);
+  if (rempli) av.open = true;
+}
 function boutonsCreation() {
   launchAfterCreate = true;
   $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-play"/></svg>${tr('task.btn.create-run')}`;
@@ -8754,6 +8765,7 @@ async function openLocalTaskEdit(id) {
   if (f.review_after) f.review_after.checked = !!t.review_after;
   poserDateProgrammee(f, t.scheduled_at);
   if (f.session_id) f.session_id.value = sharedSessionKey(t.dirs);
+  deplierAvanceSiRempli(f);
   $('#taskModalTitle').textContent = tr('local.edit-title');
   setTaskPieces('local', d.images);
   $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;

@@ -68,6 +68,8 @@ describe('Session : skills et sous-agents', { skip: dispo ? false : MSG_NAVIGATE
     await page.locator('#tab-task .subnav [data-kind="code"]').click();
     await page.locator('#btnNewTask').click();
     await page.waitForSelector('#taskModal:not([hidden])');
+    // Les skills vivent dans l'accordéon « Avancé », replié par défaut : on le déplie.
+    if (!await page.locator('#taskAdvanced').evaluate((e) => e.open)) await page.locator('#taskAdvanced > summary').click();
     // La liste arrive d'un appel API : on attend qu'elle soit peuplée, pas qu'elle existe.
     await page.waitForFunction(() => document.querySelectorAll('#taskSkills [data-skill]').length > 0);
   };
