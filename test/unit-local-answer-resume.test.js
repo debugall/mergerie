@@ -29,11 +29,11 @@ describe('Hors dépôt : la reprise après réponses', () => {
     app = await startApp();
     await app.configure();
     // eslint-disable-next-line global-require
-    agentsession = require('../src/agentsession');
+    agentsession = require('../src/agent/session');
     // eslint-disable-next-line global-require
-    copilot = require('../src/copilot');
+    copilot = require('../src/agent/copilot');
     // eslint-disable-next-line global-require
-    questions = require('../src/questions');
+    questions = require('../src/agent/questions');
 
     /* Passe 1 : l'agent POSE ses questions et s'arrête. Passe 2 et suivantes : il travaille.
        Comme le vrai `claude --resume`, chaque reprise rend un identifiant NEUF. */
@@ -60,7 +60,7 @@ describe('Hors dépôt : la reprise après réponses', () => {
     /* Le handle a quitté la ligne : il ne vaut que dans le `~/.claude` de cette machine, donc
        il vit dans `local_session`. On le recolle, comme le fait `localcoder`. */
     // eslint-disable-next-line global-require
-    const localsession = require('../src/localsession');
+    const localsession = require('../src/data/localsession');
     const dir = () => localsession.resoudre('local_task_dir',
       app.db.prepare('SELECT * FROM local_task_dir WHERE task_id = ?').get(lt.id));
     assert.equal(dir().status, 'needs_input', 'l’agent s’est arrêté sur ses questions');

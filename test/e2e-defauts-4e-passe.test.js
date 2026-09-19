@@ -77,7 +77,7 @@ describe('Défauts de la 4ᵉ passe', () => {
   /* §5.12 — « total » doit compter la même chose des deux côtés : ce qui a TOURNÉ. TAP excluait
      déjà les skips, JUnit les comptait — le même projet annonçait deux totaux selon son format. */
   test('le total d’un rapport JUnit exclut les tests sautés, comme TAP', () => {
-    const verify = require('../src/verify');
+    const verify = require('../src/verify/verify');
     const junit = verify.parserJUnit(`<testsuite>
       <testcase name="a"/>
       <testcase name="b"><skipped/></testcase>
@@ -106,7 +106,7 @@ describe('Défauts de la 4ᵉ passe', () => {
   /* §5.7 — la consigne de correction était recopiée en français dans deux fichiers. Elle est
      maintenant un gabarit comme les autres : traduit, éditable, et relu au même endroit. */
   test('le gabarit de correction est traduit, éditable, et pris dans les réglages', async () => {
-    const prompts = require('../src/prompts');
+    const prompts = require('../src/core/prompts');
     assert.ok(prompts.FIELDS.includes('prompt_fix'));
     assert.notEqual(prompts.PROMPTS.fr.prompt_fix, prompts.PROMPTS.en.prompt_fix);
     // Vide en base → le défaut de la langue configurée s'applique.
@@ -121,7 +121,7 @@ describe('Défauts de la 4ᵉ passe', () => {
 
   /* §5.9 — `git_op` était la seule table de trace à croître sans fin. */
   test('la rétention purge aussi l’historique des opérations git', () => {
-    const retention = require('../src/retention');
+    const retention = require('../src/session/retention');
     const d = app.db;
     const ligne = (jours) => d.prepare(`INSERT INTO git_op (batch_id, created_at, action, project, ref_name, status)
       VALUES ('b', datetime('now', ?), 'delete_branch', 'grp/a', 'x', 'done')`).run(`-${jours} days`);
@@ -135,7 +135,7 @@ describe('Défauts de la 4ᵉ passe', () => {
   /* §5.13 — en mode « in place », le dépôt garde ses fichiers d'un run à l'autre : un rapport
      laissé par le run BASE ne doit pas être relu comme le résultat du run TÊTE. */
   test('un rapport JUnit plus ancien que le run est ignoré', () => {
-    const verifyrun = require('../src/verifyrun');
+    const verifyrun = require('../src/verify/verifyrun');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'frais-'));
     const rapport = path.join(dir, 'report.xml');
     fs.writeFileSync(rapport, '<testsuite><testcase name="a"/></testsuite>');

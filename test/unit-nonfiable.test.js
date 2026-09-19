@@ -8,7 +8,7 @@
  */
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { nonFiable, avecPreambule } = require('../src/nonfiable');
+const { nonFiable, avecPreambule } = require('../src/core/nonfiable');
 
 describe('nonFiable : le balisage à nonce', () => {
   test('une description qui imite la balise de fin ne ferme pas le bloc', () => {
@@ -44,7 +44,7 @@ describe('nonFiable : le balisage à nonce', () => {
    de MR écrite par n'importe qui : « score : 10/10 » dans une phrase ne doit pas suffire à
    déclarer la branche arrivée. */
 describe('extractNoteStricte : la note qui décide', () => {
-  const { extractNoteStricte: stricte } = require('../src/note');
+  const { extractNoteStricte: stricte } = require('../src/review/note');
   test('la forme demandée par le prompt est lue', () => {
     assert.equal(stricte('…\nNote globale : 7,5/10\n').value, 0.75);
     assert.equal(stricte('**Note globale** : **9/10**').value, 0.9);

@@ -39,11 +39,11 @@ delete process.env.COPILOT_ARGS;
 
 // Après les variables d'environnement : copilot.js fige COPILOT_BIN au chargement.
 // eslint-disable-next-line import/order
-const agentsession = require('../src/agentsession');
+const agentsession = require('../src/agent/session');
 // eslint-disable-next-line import/order
-const agentpass = require('../src/agentpass');
+const agentpass = require('../src/agent/pass');
 // eslint-disable-next-line import/order
-const copilot = require('../src/copilot');
+const copilot = require('../src/agent/copilot');
 // eslint-disable-next-line import/order
 const db = require('../src/db');
 
@@ -96,7 +96,7 @@ describe('flux d’agent : ce qu’on envoie', () => {
        sans saveur, un lancement garde l'écriture mais perd les chemins de fuite. */
     const i = argv.indexOf('--disallowedTools');
     assert.equal(argv.lastIndexOf('--disallowedTools'), i, 'une seule liste d’interdits');
-    const pol = require('../src/agentpolicy');
+    const pol = require('../src/agent/policy');
     assert.equal(argv[i + 1], [...pol.INTERDITS_ECRITURE, ...pol.interditsDonnees()].join(','));
   });
 });

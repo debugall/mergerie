@@ -31,8 +31,8 @@ describe('Menu Notes · Aujourd’hui — Docker, Jenkins, Git et sessions sans 
   before(async () => {
     app = await startApp();
     /* eslint-disable global-require */
-    docker = require('../src/docker');
-    veille = require('../src/veille');
+    docker = require('../src/integrations/docker');
+    veille = require('../src/integrations/veille');
     /* eslint-enable global-require */
 
     // Jenkins : un job ROUGE dont le dernier build porte la branche d'une de mes MR.

@@ -101,7 +101,7 @@ describe('Question libre', () => {
     /* LE HANDLE A QUITTÉ LA LIGNE : il ne vaut que dans le `~/.claude` de cette machine, donc
        il vit dans `local_session`, rangé sous l'`uid` de la question. */
     // eslint-disable-next-line global-require
-    require('../src/localsession').ecrire('question',
+    require('../src/data/localsession').ecrire('question',
       app.db.prepare('SELECT uid FROM question WHERE id = ?').get(q.id).uid,
       { session_key: 'sess-1', session_backend: 'claude', session_cwd: '/tmp/x' });
 

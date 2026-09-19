@@ -19,10 +19,10 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-demo
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const demoReview = require('../src/demo-review');
-const demoDiff = require('../src/demo-diff');
-const resolution = require('../src/resolution');
-const { extractNote } = require('../src/note');
+const demoReview = require('../src/demo/review');
+const demoDiff = require('../src/demo/diff');
+const resolution = require('../src/git/resolution');
+const { extractNote } = require('../src/review/note');
 
 const MR = {
   iid: 218, project: 'groupe/orders-service', title: 'Paiement 3× : éligibilité > 100 €',

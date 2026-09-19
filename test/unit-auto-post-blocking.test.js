@@ -19,7 +19,7 @@ const path = require('node:path');
 /* `src/reviewer` tire `src/db` avec lui, qui OUVRE une base dès le chargement : sans ce dossier
    posé AVANT le require, le test écrirait dans la base réelle de l'utilisateur. */
 process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'auto-post-'));
-const { publicationAutoRequise } = require('../src/reviewer');
+const { publicationAutoRequise } = require('../src/review/reviewer');
 
 const f = (severity) => ({ severity, file: 'src/a.js', line: 1, title: 'x' });
 

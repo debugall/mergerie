@@ -13,14 +13,14 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-unit
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
-const glob = require('../src/glob');
-const { extractNote } = require('../src/note');
-const resolution = require('../src/resolution');
-const jira = require('../src/jira');
-const gitlab = require('../src/gitlab');
-const gitops = require('../src/gitops');
-const { fillTemplate } = require('../src/reviewer');
-const { promptsFor, isDefault, PROMPTS } = require('../src/prompts');
+const glob = require('../src/core/glob');
+const { extractNote } = require('../src/review/note');
+const resolution = require('../src/git/resolution');
+const jira = require('../src/integrations/jira');
+const gitlab = require('../src/forge/gitlab');
+const gitops = require('../src/git/gitops');
+const { fillTemplate } = require('../src/review/reviewer');
+const { promptsFor, isDefault, PROMPTS } = require('../src/core/prompts');
 const i18n = require('../public/i18n-runtime.js');
 
 describe('glob : règles de review par chemin', () => {
@@ -438,7 +438,7 @@ describe('i18n : moteur de traduction partagé serveur / navigateur', () => {
 });
 
 describe('questions : parsing du bloc <<<QUESTIONS>>> (ask → stop → resume)', () => {
-  const questions = require('../src/questions');
+  const questions = require('../src/agent/questions');
 
   test('un bloc valide est extrait et normalisé', () => {
     const out = questions.parseQuestions(`bla bla
@@ -479,7 +479,7 @@ suite ignorée`);
 });
 
 describe('agentsession : commande de reprise de session', () => {
-  const agentsession = require('../src/agentsession');
+  const agentsession = require('../src/agent/session');
   test('claude → cd + --resume <uuid> ; copilot → COPILOT_HOME + --continue', () => {
     const claude = agentsession.resumeCommand('claude', 'uuid-123', '/home/moi/mon app');
     assert.match(claude, /^cd '\/home\/moi\/mon app' && /, 'cd vers le bon dossier (chemin cité)');
@@ -512,7 +512,7 @@ describe('agentsession : commande de reprise de session', () => {
    Envoyer quelqu'un faire /login alors que son proxy bloque api.github.com lui fait perdre
    des heures : ces cas réels sont figés ici pour que la distinction ne reparte pas. */
 describe('agentsession : réseau vs authentification dans les erreurs copilot', () => {
-  const { enrichCopilotError } = require('../src/agentsession');
+  const { enrichCopilotError } = require('../src/agent/session');
   const bootstrap = { source: '/home/moi/.copilot', linked: ['config.json'] };
   const enrich = (m) => enrichCopilotError(new Error(m), bootstrap, '/data/agent-sessions/x').message;
 

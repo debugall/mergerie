@@ -48,7 +48,7 @@ describe('Dupliquer une session', { skip: dispo ? false : MSG_NAVIGATEUR }, () =
        machine, donc il vit dans `local_session`, rangé sous l'`uid` du projet. */
     for (const r of app.db.prepare('SELECT uid FROM task_target WHERE task_id = ?').all(origine.id)) {
       // eslint-disable-next-line global-require
-      require('../src/localsession').ecrire('task_target', r.uid, { session_key: 'cle-agent-origine' });
+      require('../src/data/localsession').ecrire('task_target', r.uid, { session_key: 'cle-agent-origine' });
     }
 
     // Une EXPLORATION : sa branche est celle qu'on lit, elle ne doit surtout pas être décalée.
@@ -67,7 +67,7 @@ describe('Dupliquer une session', { skip: dispo ? false : MSG_NAVIGATEUR }, () =
     })).body;
     for (const r of app.db.prepare('SELECT uid FROM local_task_dir WHERE task_id = ?').all(horsDepot.id)) {
       // eslint-disable-next-line global-require
-      require('../src/localsession').ecrire('local_task_dir', r.uid, { session_key: 'cle-agent-locale' });
+      require('../src/data/localsession').ecrire('local_task_dir', r.uid, { session_key: 'cle-agent-locale' });
     }
 
     navigateur = await lancerNavigateur();

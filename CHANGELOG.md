@@ -33,6 +33,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **The server's code is now organised by layer** (`src/app/`, `src/jobs/`, `src/db/`,
+  `src/agent/profile/`… — see PLAN.md). Nothing changes on screen or in the API: same routes,
+  same database schema, same behaviour. What changes is where a thing is found: one file per
+  route domain instead of an eight-thousand-line `server.js`, one schema slice per domain, one
+  runner per job kind, and a check that refuses an import going the wrong way. A fork or a
+  reader of the code finds each piece in a folder that names it.
 - **Code contributions are closed.** Mergerie is written by one maintainer, who stays its only
   rights holder — that is what keeps the project free to evolve its licensing, the AGPL staying in
   place. Pull requests on the GitHub mirror are now closed automatically with a note explaining

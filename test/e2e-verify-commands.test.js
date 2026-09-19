@@ -338,7 +338,7 @@ describe('Vérification objective — vérificateur « commandes »', () => {
        d'un `DATABASE_URL` ou d'un `NPM_TOKEN`, et un secret commité dans git est définitif :
        l'historique est immuable, chaque clone le garde. Le fichier du vérificateur porte donc
        les NOMS — pour que le collègue sache quoi renseigner — et rien de plus. */
-    const store = require('../src/store');
+    const store = require('../src/data/store');
     store.ecouler();
     const uid = app.db.prepare('SELECT uid FROM verifier WHERE id = ?').get(v.id).uid;
     const fichier = store.lireFichier(`verifiers/${uid}.json`);

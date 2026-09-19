@@ -44,7 +44,7 @@ describe('Review de bout en bout', () => {
     const vide = await app.api('GET', `/api/mrs/${mrId}`);
     assert.equal(vide.body.origin_session, null, 'aucune session de codage : on ne propose rien');
 
-    const { backendName } = require('../src/agentsession');
+    const { backendName } = require('../src/agent/session');
     const sid = backendName() === 'claude'
       ? '6ba7b810-9dad-11d1-80b4-00c04fd430c8'
       : '/home/moi/.mergerie/agent-sessions/origine';

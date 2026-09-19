@@ -190,7 +190,7 @@ describe('Répertoires locaux et navigation (checkout multi-projets)', () => {
   });
 
   test('parseGitArgs : tokenise, tolère « git » de tête, refuse un guillemet ouvert', () => {
-    const lr = require('../src/localrepos');
+    const lr = require('../src/git/localrepos');
     assert.deepEqual(lr.parseGitArgs('fetch --all'), ['fetch', '--all']);
     assert.deepEqual(lr.parseGitArgs('git log --oneline -5'), ['log', '--oneline', '-5']);
     assert.deepEqual(lr.parseGitArgs('commit -m "hello world"'), ['commit', '-m', 'hello world']);
@@ -198,7 +198,7 @@ describe('Répertoires locaux et navigation (checkout multi-projets)', () => {
   });
 
   test('sécurité : les options git « exécution arbitraire » sont refusées (anti-RCE)', () => {
-    const lr = require('../src/localrepos');
+    const lr = require('../src/git/localrepos');
     // Normal : autorisé.
     assert.doesNotThrow(() => lr.assertSafeGitArgs(['fetch', '--all', '--prune']));
     assert.doesNotThrow(() => lr.assertSafeGitArgs(['log', '--oneline', '-10']));

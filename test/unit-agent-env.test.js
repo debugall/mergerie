@@ -26,9 +26,9 @@ delete process.env.COPILOT_DRY_RUN;
 
 // Après les variables d'environnement : copilot.js fige COPILOT_BIN et COPILOT_ARGS au chargement.
 // eslint-disable-next-line import/order
-const agentsession = require('../src/agentsession');
+const agentsession = require('../src/agent/session');
 // eslint-disable-next-line import/order
-const copilot = require('../src/copilot');
+const copilot = require('../src/agent/copilot');
 
 after(() => {
   for (const k of ['GITLAB_TOKEN', 'JIRA_API_TOKEN', 'MERGERIE_ACCESS_TOKEN', 'COPILOT_ARGS']) delete process.env[k];
@@ -72,7 +72,7 @@ describe('Ce que reçoit le processus de l’agent', () => {
   });
 
   test('au-delà du plafond de dépense du jour, aucun agent ne part', async () => {
-    const config = require('../src/config');
+    const config = require('../src/data/config');
     const db = require('../src/db');
     config.updateConfig({ agent_daily_budget_usd: '1.5' });
     db.prepare('INSERT INTO usage (kind, prompt_chars, output_chars, tokens_est, created_at, cost_usd) VALUES (?,?,?,?,?,?)')

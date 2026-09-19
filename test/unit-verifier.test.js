@@ -13,7 +13,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-veri
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const v = require('../src/verify');
+const v = require('../src/verify/verify');
 
 const run = (status, failed = [], extra = {}) => ({ version: 1, status, failed, ...extra });
 const sortie = (obj, avant = '') => `${avant}${JSON.stringify(obj)}\n`;

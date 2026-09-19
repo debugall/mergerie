@@ -30,7 +30,7 @@ const MSGS = {
 };
 
 describe('store — la sérialisation qui ne bouge pas', () => {
-  const { serialize } = require('../src/store');
+  const { serialize } = require('../src/data/store');
 
   test('l’ordre des clés à l’écriture ne change pas le fichier', () => {
     const a = serialize({ b: 1, a: 2, c: { z: 1, y: 2 } });
@@ -59,8 +59,8 @@ describe('store — écrire dans le dépôt de données', () => {
 
   before(() => {
     db = require('../src/db');
-    store = require('../src/store');
-    notes = require('../src/notes');
+    store = require('../src/data/store');
+    notes = require('../src/notes/notes');
   });
 
   test('un chemin qui remonte hors du dépôt est refusé', () => {
@@ -210,8 +210,8 @@ describe('store — l’aller-retour par les fichiers', () => {
 
   before(() => {
     db = require('../src/db');
-    store = require('../src/store');
-    notes = require('../src/notes');
+    store = require('../src/data/store');
+    notes = require('../src/notes/notes');
   });
 
   test('effacer la base et réhydrater rend les mêmes lignes', () => {
@@ -355,8 +355,8 @@ describe('store — ce à quoi une todo est accrochée voyage, ou ne voyage pas'
 
   before(() => {
     db = require('../src/db');
-    store = require('../src/store');
-    notes = require('../src/notes');
+    store = require('../src/data/store');
+    notes = require('../src/notes/notes');
     const now = new Date().toISOString();
     const repo = db.prepare(`INSERT INTO repo (project, url, forge, enabled, created_at)
       VALUES ('acme/web', 'https://x.test/a.git', 'gitlab', 1, ?)`).run(now).lastInsertRowid;

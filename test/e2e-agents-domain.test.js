@@ -32,7 +32,7 @@ describe('Agents de domaine', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
     /* APRÈS `startApp()` : `src/paths.js` lit MERGERIE_DATA_DIR au chargement, une fois.
        Requis en tête de fichier, ce module pointerait sur la base de l'instance réelle. */
     // eslint-disable-next-line global-require
-    agentknowledge = require('../src/agentknowledge');
+    agentknowledge = require('../src/agent/knowledge');
     await app.configure();
     const d1 = makeRemoteRepo(path.join(app.dataDir, 'r1'));
     const d2 = makeRemoteRepo(path.join(app.dataDir, 'r2'));

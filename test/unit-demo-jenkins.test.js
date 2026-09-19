@@ -14,7 +14,7 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
-const demo = require('../src/demo-jenkins');
+const demo = require('../src/demo/jenkins');
 
 const minuitDe = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
 

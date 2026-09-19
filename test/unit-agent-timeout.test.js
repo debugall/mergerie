@@ -29,7 +29,7 @@ after(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { 
 describe('Délai d’un agent', { skip: process.platform === 'win32' ? 'groupes POSIX' : false }, () => {
   test('le petit-fils meurt avec l’agent quand le délai expire', async () => {
     // eslint-disable-next-line global-require
-    const agentsession = require('../src/agentsession');
+    const agentsession = require('../src/agent/session');
     await assert.rejects(agentsession.runInSession({
       key: 'delai', prompt: 'x', cwd: fs.mkdtempSync(path.join(tmp, 'w-')), resume: false, saveur: 'code',
     }), /délai|timeout/i);
