@@ -112,7 +112,7 @@ describe('agentargs : ce que la sauvegarde refuse', () => {
 
   test('toutes les clés d’erreur existent au dictionnaire, dans les deux langues', () => {
     // Sinon l'écran afficherait la clé brute à la place de la phrase.
-    const dict = require('../public/i18n.js');
+    const dict = require('../public/i18n/index.js');
     const toutes = [
       ...agentargs.validate({ permissionMode: 'default' }),
       ...agentargs.validate({ permissionMode: 'yolo' }),

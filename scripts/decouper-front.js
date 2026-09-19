@@ -43,6 +43,117 @@ const lignes = source.split('\n');
 const mode = carte.mode;
 const echec = (m) => { console.error(`✗ ${m}`); process.exit(1); };
 
+/* ---------- Mode i18n : le dictionnaire, une famille de préfixes par fichier ----------
+   La carte donne `familles` (préfixe → fichier) et `ordre` (les fichiers, dans l'ordre du manifeste).
+   Chaque ligne de clé du dictionnaire (`"task.x": …,`, fr puis en) part dans le fichier de sa
+   famille, dans l'ordre du fichier d'origine, fr et en côte à côte ; un commentaire de section
+   suit la clé qui le suit. `_socle.js` pose `I18N` vide dans le navigateur, `index.js` assemble
+   pour Node. Preuve : le dictionnaire assemblé est identique à l'original, clé par clé. */
+if (mode === 'i18n') {
+  const { familles, ordre } = carte;
+  const dictAvant = require(path.join(ROOT, carte.source));
+  const fichiers = new Map(ordre.map((f) => [f, { fr: [], en: [] }]));
+  const decoupe = (debut, fin, langue) => {
+    let commentaire = [];
+    for (let i = debut; i <= fin; i++) {
+      const l = lignes[i - 1];
+      const m = l.match(/^\s*"([^"]+)":/);
+      if (!m) { if (l.trim()) commentaire.push(l); continue; }
+      const fam = m[1].split('.')[0];
+      const f = familles[fam];
+      if (!f) echec(`famille inconnue « ${fam} » (clé ${m[1]}, ligne ${i})`);
+      fichiers.get(f)[langue].push(...commentaire, l);
+      commentaire = [];
+    }
+    if (commentaire.length) echec(`commentaire sans clé après lui, ligne ${fin}`);
+  };
+  const debutFr = lignes.findIndex((l) => /^\s*fr: \{$/.test(l)) + 1;
+  const debutEn = lignes.findIndex((l) => /^\s*en: \{$/.test(l)) + 1;
+  const finFr = lignes.findIndex((l, i) => i >= debutFr && /^\s*\},$/.test(l)) + 1;
+  const finEn = lignes.findIndex((l, i) => i >= debutEn && /^\s*\},$/.test(l)) + 1;
+  decoupe(debutFr + 1, finFr - 1, 'fr');
+  decoupe(debutEn + 1, finEn - 1, 'en');
+  const dir = path.join(PUBLIC, 'i18n');
+  fs.mkdirSync(dir, { recursive: true });
+  for (const [f, d] of fichiers) {
+    const fams = Object.entries(familles).filter(([, x]) => x === f).map(([k]) => k).join(' · ');
+    const texte = [
+      "'use strict';",
+      `/* Dictionnaire de traduction — famille${fams.includes('·') ? 's' : ''} ${fams}. Le français est la langue de référence,`,
+      "   l'anglais sa traduction, côte à côte dans ce fichier : une clé ajoutée se relit avec sa traduction",
+      '   dans le même diff. Chargement UMD : require() côté Node (assemblé par i18n/index.js),',
+      '   I18N.etendre() côté navigateur. Contrôle de cohérence : npm run i18n:check */',
+      '(function (root, factory) {',
+      '  const d = factory();',
+      "  if (typeof module === 'object' && module.exports) module.exports = d;",
+      '  else root.I18N.etendre(d);',
+      "}(typeof self !== 'undefined' ? self : this, function () {",
+      '  return {',
+      '    fr: {',
+      ...d.fr,
+      '    },',
+      '    en: {',
+      ...d.en,
+      '    },',
+      '  };',
+      '}));',
+      '',
+    ].join('\n');
+    fs.writeFileSync(path.join(dir, f), texte);
+  }
+  fs.writeFileSync(path.join(dir, '_socle.js'), [
+    "'use strict';",
+    "/* Le dictionnaire du navigateur, VIDE au départ : chaque famille (i18n/*.js, dans l'ordre du",
+    "   manifeste) s'y ajoute par `I18N.etendre({ fr, en })`. Côté Node, c'est `i18n/index.js` qui",
+    '   assemble. `etendre` est non énumérable : `Object.keys(I18N)` reste la liste des langues. */',
+    '(function (root) {',
+    '  const I18N = { fr: {}, en: {} };',
+    "  Object.defineProperty(I18N, 'etendre', {",
+    '    value(d) { for (const l of Object.keys(d)) Object.assign(I18N[l] || (I18N[l] = {}), d[l]); },',
+    '  });',
+    '  root.I18N = I18N;',
+    "}(typeof self !== 'undefined' ? self : this));",
+    '',
+  ].join('\n'));
+  fs.writeFileSync(path.join(dir, 'index.js'), [
+    "'use strict';",
+    '/* Le dictionnaire assemblé pour Node — le pendant, côté serveur, de `_socle.js` suivi des balises',
+    '   du manifeste. `FAMILLES` dit dans quel fichier vit chaque préfixe de clé (`task.*` → sessions.js) :',
+    "   c'est le tableau que `npm run i18n:check` fait respecter ; `FICHIERS` est l'ordre de chargement.",
+    '   Les deux sont non énumérables : `Object.keys(I18N)` reste la liste des langues. */',
+    'const FAMILLES = {',
+    ...Object.entries(familles).map(([k, v]) => `  ${k}: '${v}',`),
+    '};',
+    `const FICHIERS = [${ordre.map((f) => `'${f}'`).join(', ')}];`,
+    'const I18N = { fr: {}, en: {} };',
+    'for (const f of FICHIERS) {',
+    '  const d = require(`./${f}`);',
+    '  for (const l of Object.keys(d)) Object.assign(I18N[l] || (I18N[l] = {}), d[l]);',
+    '}',
+    "Object.defineProperty(I18N, 'FAMILLES', { value: FAMILLES });",
+    "Object.defineProperty(I18N, 'FICHIERS', { value: FICHIERS });",
+    'module.exports = I18N;',
+    '',
+  ].join('\n'));
+  // Le manifeste
+  const index = path.join(PUBLIC, 'index.html');
+  let html = fs.readFileSync(index, 'utf8');
+  if (!html.includes(carte.balise)) echec(`index.html ne contient pas « ${carte.balise} »`);
+  html = html.replace(carte.balise, ['_socle.js', ...ordre].map((f) => `<script src="/i18n/${f}"></script>`).join('\n'));
+  fs.writeFileSync(index, html);
+  // La preuve
+  const dictApres = require(path.join(dir, 'index.js'));
+  const soucis = [];
+  for (const l of ['fr', 'en']) {
+    const a = Object.keys(dictAvant[l]); const b = Object.keys(dictApres[l]);
+    if (a.length !== b.length) soucis.push(`${l} : ${a.length} clés avant, ${b.length} après`);
+    for (const k of a) if (JSON.stringify(dictAvant[l][k]) !== JSON.stringify(dictApres[l][k])) soucis.push(`${l} : ${k} diffère`);
+  }
+  if (soucis.length) { soucis.forEach((s) => console.error(`✗ ${s}`)); process.exit(1); }
+  console.log(`✓ ${ordre.length} familles + _socle.js + index.js écrits, ${Object.keys(dictApres.fr).length} clés × 2 identiques à l'original, manifeste mis à jour`);
+  process.exit(0);
+}
+
 /* ---------- La carte : des tranches ordonnées, jointives, qui couvrent tout ---------- */
 const cibles = carte.cibles.map((c) => ({ ...c, tranches: (c.tranches || [[c.de, c.a]]) }));
 const prises = new Array(lignes.length + 1).fill(null);
@@ -56,7 +167,8 @@ for (const c of cibles) {
   }
 }
 const oubliees = [];
-for (let i = 1; i <= lignes.length; i++) if (!prises[i] && lignes[i - 1].trim() !== '') oubliees.push(i);
+// Le `'use strict';` de la source n'est pris par personne : chaque cible reçoit le sien.
+for (let i = 1; i <= lignes.length; i++) if (!prises[i] && lignes[i - 1].trim() !== '' && lignes[i - 1].trim() !== "'use strict';") oubliees.push(i);
 if (oubliees.length) echec(`${oubliees.length} ligne(s) non vides de la source ne sont dans aucune tranche : ${oubliees.slice(0, 10).join(', ')}…`);
 
 /* Une borne tombe entre deux blocs : la profondeur d'accolades y est nulle. Les commentaires et
@@ -72,10 +184,15 @@ for (let i = 0; i < depouille.length; i++) {
   for (const ch of depouille[i]) { if (ch === '{' || ch === '(' || ch === '[') d++; else if (ch === '}' || ch === ')' || ch === ']') d--; }
   profondeurAvant.push(d);
 }
-for (const c of cibles) {
-  for (const [de, a] of c.tranches) {
-    if (profondeurAvant[de - 1] !== 0) echec(`${c.vers} : la tranche commence ligne ${de} au milieu d'un bloc (profondeur ${profondeurAvant[de - 1]})`);
-    if (profondeurAvant[a] !== 0) echec(`${c.vers} : la tranche finit ligne ${a} au milieu d'un bloc (profondeur ${profondeurAvant[a]})`);
+/* En CSS le compte d'accolades suffit ; en JavaScript, une expression régulière ou un gabarit
+   imbriqué le trompent — là, c'est l'ANALYSE SYNTAXIQUE de chaque fichier écrit qui fait foi
+   (plus bas) : une tranche coupée au milieu d'un bloc ne parse pas. */
+if (mode === 'css') {
+  for (const c of cibles) {
+    for (const [de, a] of c.tranches) {
+      if (profondeurAvant[de - 1] !== 0) echec(`${c.vers} : la tranche commence ligne ${de} au milieu d'un bloc (profondeur ${profondeurAvant[de - 1]})`);
+      if (profondeurAvant[a] !== 0) echec(`${c.vers} : la tranche finit ligne ${a} au milieu d'un bloc (profondeur ${profondeurAvant[a]})`);
+    }
   }
 }
 
@@ -95,6 +212,9 @@ for (const c of cibles) {
      remet — sauf pour la fin de la source, qui a le sien (ou n'en a pas). */
   const corps = c.tranches.map(([de, a]) => lignes.slice(de - 1, a).join('\n') + (a === lignes.length ? '' : '\n')).join('');
   fs.writeFileSync(chemin, entete(c) + corps);
+  if (mode === 'js') {
+    try { new (require('vm').Script)(entete(c) + corps, { filename: c.vers }); } catch (e) { echec(`${c.vers} ne parse pas — une tranche coupe un bloc : ${e.message}`); }
+  }
 }
 
 /* ---------- Le manifeste ---------- */
@@ -115,21 +235,11 @@ if (mode === 'css') {
   const DECL = /^(?:(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(|(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=)/;
   /* Les instructions de premier niveau : une ligne qui commence en colonne 0 par autre chose
      qu'une déclaration, un commentaire ou une accolade fermante — à profondeur nulle. */
-  const instructions = (texte, dep) => {
-    const out = [];
-    const ls = texte.split('\n');
-    const prof = [0];
-    for (let i = 0; i < dep.length; i++) {
-      let d = prof[i];
-      for (const ch of dep[i]) { if (ch === '{' || ch === '(' || ch === '[') d++; else if (ch === '}' || ch === ')' || ch === ']') d--; }
-      prof.push(d);
-    }
-    ls.forEach((l, i) => {
-      if (prof[i] !== 0 || !/^[A-Za-z_$(]/.test(l) || DECL.test(l)) return;
-      out.push(l.replace(/\s+/g, ' ').trim());
-    });
-    return out;
-  };
+  /* Une instruction de premier niveau commence en colonne 0 — le code est indenté partout
+     ailleurs — par autre chose qu'une déclaration, un commentaire ou une accolade fermante. */
+  const instructions = (texte) => texte.split('\n')
+    .filter((l) => /^[A-Za-z_$(]/.test(l) && !DECL.test(l))
+    .map((l) => l.replace(/\s+/g, ' ').trim());
   const declsDe = (texte) => {
     const m = new Map();
     texte.split('\n').forEach((l, i) => { const d = l.match(DECL); if (d) m.set(d[1] || d[2], (m.get(d[1] || d[2]) || 0) + 1); });
@@ -142,9 +252,8 @@ if (mode === 'css') {
   for (const [n, k] of avant) if (apres.get(n) !== k) soucis.push(`déclaration ${n} : ${k} fois dans la source, ${apres.get(n) || 0} après`);
   for (const [n, k] of apres) if (!avant.has(n)) soucis.push(`déclaration ${n} apparue (${k})`);
   if (soucis.length) { soucis.forEach((s) => console.error(`✗ ${s}`)); process.exit(1); }
-  const iAvant = instructions(source, depouille);
-  const depConcat = cibles.map((c) => c.tranches.map(([de, a]) => depouille.slice(de - 1, a).join('\n')).join('\n')).join('\n').split('\n');
-  const iApres = instructions(concat, depConcat);
+  const iAvant = instructions(source);
+  const iApres = instructions(concat);
   if (iAvant.length !== iApres.length || [...iAvant].sort().join('\n') !== [...iApres].sort().join('\n')) {
     echec(`les instructions de premier niveau ne sont pas les mêmes (${iAvant.length} avant, ${iApres.length} après)`);
   }
