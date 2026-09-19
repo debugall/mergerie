@@ -175,7 +175,7 @@ function updateConfig(patch, opts = {}) {
   if (!opts.installation && 'dictation_command' in patch && String(next.dictation_command || '').trim()
     && String(next.dictation_command) !== String(current.dictation_command || '')) {
     // eslint-disable-next-line global-require
-    const d = require('../verify/verify').decouperCommande(next.dictation_command);
+    const d = require('../core/commande').decouperCommande(next.dictation_command);
     let mots = d.ok ? [d.programme, ...d.args] : [];
     if (mots[0] === 'nice') mots = mots.slice(1).filter((m, i, l) => !(m.startsWith('-') || (i > 0 && l[i - 1] === '-n')));
     const prog = mots[0] || '';

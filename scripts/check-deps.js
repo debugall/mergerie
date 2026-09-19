@@ -74,9 +74,7 @@ const IMPORTEURS = {
 
 /* LES ARÊTES TOLÉRÉES, une par une, avec leur motif — et le commit qui les fera disparaître. */
 const EXCEPTIONS = [
-  /* config.js valide la commande de dictée avec `decouperCommande`, une fonction PURE qui vit
-     encore dans verify.js. Elle descend dans core/ au commit suivant ; l'exception part avec. */
-  { de: 'data/config.js', vers: 'verify/verify.js', motif: 'decouperCommande, à extraire dans core/' },
+  // { de: 'data/config.js', vers: 'verify/verify.js', motif: '…' } — la forme d'une entrée.
 ];
 
 /* `gitlab.js` et `github.js` : la règle de CLAUDE.md, enfin vérifiée. */

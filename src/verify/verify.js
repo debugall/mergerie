@@ -92,32 +92,10 @@ function validerReponse(stdout) {
 
 // Métacaractères de shell. Il n'y a pas de shell ici : les laisser passer donnerait un
 // `npm test && lint` qui échoue de façon incompréhensible (« && » deviendrait un argument).
-const META_SHELL = /[;|&<>`$\n\r]|\$\(/;
+const { decouperCommande } = require('../core/commande');
 
 /* Découpe une commande en programme + arguments, guillemets respectés. Même esprit que la
    palette de commandes git : on tokenise nous-mêmes plutôt que de confier la ligne à un shell. */
-function decouperCommande(ligne) {
-  const s = String(ligne || '').trim();
-  if (!s) return { ok: false, erreur: 'commande vide' };
-  if (META_SHELL.test(s)) {
-    return { ok: false, erreur: 'les tubes, redirections, enchaînements et variables ne sont pas interprétés (aucun shell) — mets-les dans un script' };
-  }
-  const toks = [];
-  let cur = '';
-  let quote = null;
-  let has = false;
-  for (let i = 0; i < s.length; i += 1) {
-    const c = s[i];
-    if (quote) { if (c === quote) quote = null; else cur += c; has = true; }
-    else if (c === '"' || c === "'") { quote = c; has = true; }
-    else if (/\s/.test(c)) { if (has) { toks.push(cur); cur = ''; has = false; } }
-    else { cur += c; has = true; }
-  }
-  if (quote) return { ok: false, erreur: 'guillemet non fermé' };
-  if (has) toks.push(cur);
-  if (!toks.length) return { ok: false, erreur: 'commande vide' };
-  return { ok: true, programme: toks[0], args: toks.slice(1) };
-}
 
 /* ---------- TAP ----------
    Format ligne à ligne, émis par beaucoup de runners dès que leur sortie n'est pas un
