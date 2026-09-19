@@ -12,6 +12,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-unit
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
+const { lireFront } = require('./helpers/front');
 
 const glob = require('../src/core/glob');
 const { extractNote } = require('../src/review/note');
@@ -551,7 +552,7 @@ describe('agentsession : réseau vs authentification dans les erreurs copilot', 
    trop large, elle fait confirmer un `git fetch` et on apprend à cliquer sans lire ; trop
    étroite, un `reset --hard` part sur trente dépôts sans un mot. */
 describe('front : classement des commandes git destructives', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const src = lireFront();
   const from = src.indexOf('const GIT_DESTRUCTIVE');
   const to = src.indexOf('\n', src.indexOf('function gitCmdIsDestructive'));
   assert.ok(from > 0 && to > from, 'GIT_DESTRUCTIVE et gitCmdIsDestructive doivent rester ensemble dans app.js');
@@ -578,7 +579,7 @@ describe('front : classement des commandes git destructives', () => {
    (ET entre champs, OU dans un champ, critère vide = inactif) est ce qui décide de ce que
    l'utilisateur voit : se tromper ici cache des tickets sans rien dire. */
 describe('front : filtre Jira par champ', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const src = lireFront();
   const from = src.indexOf('const JIRA_CHAMPS');
   const to = src.indexOf('\n}', src.indexOf('function jiraPasseFiltres')) + 2;
   assert.ok(from > 0 && to > from, 'JIRA_CHAMPS et jiraPasseFiltres doivent rester contigus dans app.js');
@@ -853,7 +854,7 @@ describe('jobs : objets marqués « en cours »', () => {
    entièrement à ce qu'il TAIT : sans rien qui ait changé, il ne doit rien afficher — une
    ligne « 0 nouvelle MR » chaque matin est exactement ce qui rend un tableau de bord mort. */
 describe('front : delta depuis la dernière visite', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const src = lireFront();
   const from = src.indexOf('const VISITE_GAP_MS');
   const to = src.indexOf('// La colonne de droite');
   assert.ok(from > 0 && to > from, 'le bloc du delta doit rester d’un seul tenant dans app.js');

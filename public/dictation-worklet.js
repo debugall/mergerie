@@ -1,3 +1,4 @@
+'use strict';
 /* Le collecteur d'échantillons de la dictée, côté audio.
  *
  * Un AudioWorklet, et pas un ScriptProcessorNode : celui-ci est déprécié et tourne sur le fil

@@ -3,13 +3,26 @@
 /* Contrôles statiques du front — nés de bugs réels, pas de suppositions.
 
    `node --check` ne les voit pas : ce sont des erreurs de RUNTIME, qui ne se
-   déclenchent qu'au clic sur l'écran concerné. D'où ces vérifications. */
+   déclenchent qu'au clic sur l'écran concerné. D'où ces vérifications.
+
+   LE FRONT SE LIT PAR SON MANIFESTE. Sans build ni modules, la liste des `<script src>` et des
+   `<link rel="stylesheet">` d'`index.html` est la seule liste de ce qui est chargé, et dans quel
+   ordre — l'ordre des balises est l'ordre d'évaluation. Les contrôles construisent donc le texte
+   du front comme la CONCATÉNATION des scripts du manifeste, chacun précédé d'un repère
+   `//// js/ecrans/git/merge.js`, et chaque message sort en `public/<fichier>:<ligne>`. Un front
+   d'un seul `app.js` et un front de soixante-quinze fichiers se lisent de la même façon : la
+   portée d'un script classique est celle d'une concaténation (`function` hissée, `const` avec sa
+   zone morte, un nom pris deux fois), et les contrôles n° 10 et n° 14 gardent leur sens exact
+   en lisant les fichiers dans l'ordre du manifeste. */
 const fs = require('fs');
 const path = require('path');
+const { PUBLIC, lireHtml, manifeste, scriptsApp, lirePublic } = require('../test/helpers/front');
 
 const ROOT = path.join(__dirname, '..');
-const app = fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8');
-const html = fs.readFileSync(path.join(ROOT, 'public/index.html'), 'utf8');
+const html = lireHtml();
+const man = manifeste(html);
+const nomDe = (rel) => `public/${rel}`;
+const existe = (rel) => fs.existsSync(path.join(PUBLIC, rel));
 
 let failures = 0;
 const fail = (title, items) => {
@@ -18,23 +31,40 @@ const fail = (title, items) => {
   items.forEach((i) => console.log(`   ${i}`));
 };
 const ok = (t) => console.log(`✅ ${t}`);
-const lines = app.split('\n');
+const avertir = (title, items) => {
+  console.log(`\n⚠️  ${title} (${items.length})`);
+  items.forEach((i) => console.log(`   ${i}`));
+};
+
+/* LE TEXTE DU FRONT : les scripts de l'application (ce qu'`app.js` contenait — ni les runtimes
+   partagés avec Node, ni le dictionnaire, ni le thème du <head>), dans l'ordre du manifeste.
+   `lignes` garde pour chaque ligne le fichier d'où elle vient ; `app` est le texte d'un seul
+   tenant, pour les contrôles qui cherchent un bloc à cheval sur plusieurs lignes. */
+const fichiersApp = scriptsApp(man).filter(existe);
+const lignes = fichiersApp.flatMap((f) => lirePublic(f).split('\n').map((texte, i) => ({ f, i: i + 1, texte })));
+const app = fichiersApp.map((f) => `//// ${f}\n${lirePublic(f)}`).join('\n');
+const ou = (l) => `${nomDe(l.f)}:${l.i}`;
 
 /* 0. LA SYNTAXE, D'ABORD. Le commentaire d'en-tête dit que `node --check` « ne voit pas » ces
    contrôles — c'est vrai, et l'inverse l'est aussi : aucun de ces contrôles ne voit une
-   accolade non fermée. Un `app.js` qui ne PARSE pas ne s'exécute pas du tout, et l'écran est
+   accolade non fermée. Un script qui ne PARSE pas ne s'exécute pas du tout, et l'écran est
    blanc — mais `npm run check` répondait OK, parce que chaque garde-fou lit le fichier comme
    du TEXTE. Vu une fois : une signature de fonction dupliquée sur une seule ligne, invisible
    au garde-fou « fonction redéfinie », qui compare des lignes. C'est le contrôle le moins cher
    du fichier et le seul qui attrape la panne totale : il passe donc en premier. */
-for (const f of ['public/app.js', 'public/i18n.js', 'public/i18n-runtime.js']) {
-  try {
-    new (require('vm').Script)(fs.readFileSync(path.join(ROOT, f), 'utf8'), { filename: f });
-  } catch (e) {
-    fail(`${f} ne parse pas — l'application entière ne démarre pas`, [String(e.message)]);
+{
+  const aParser = [...man.scripts, ...(existe('i18n/index.js') ? ['i18n/index.js'] : [])].filter(existe);
+  let casse = 0;
+  for (const f of aParser) {
+    try {
+      new (require('vm').Script)(lirePublic(f), { filename: nomDe(f) });
+    } catch (e) {
+      casse++;
+      fail(`${nomDe(f)} ne parse pas — l'application entière ne démarre pas`, [String(e.message)]);
+    }
   }
+  if (!casse) ok(`Le front parse (${aParser.length} scripts du manifeste)`);
 }
-if (!failures) ok('Le front parse (app.js, i18n.js, i18n-runtime.js)');
 
 /* 1. $ vs $$ — LE bug qui est passé deux fois.
    `$` renvoie UN élément, `$$` un tableau. Appeler .forEach/.map/.filter sur le
@@ -42,9 +72,9 @@ if (!failures) ok('Le front parse (app.js, i18n.js, i18n-runtime.js)');
    remplacement JS, `$$` vaut un `$` littéral — insérer du code avec
    String.replace transforme silencieusement tous les `$$` en `$`. */
 const singleOnList = [];
-lines.forEach((l, i) => {
-  const m = l.match(/(?<!\$)\$\((['"`][^'"`]*['"`][^)]*)\)\s*\.\s*(forEach|map|filter|some|every|slice|reduce)\b/);
-  if (m) singleOnList.push(`public/app.js:${i + 1}  $(…).${m[2]} — devrait être $$(…)`);
+lignes.forEach((l) => {
+  const m = l.texte.match(/(?<!\$)\$\((['"`][^'"`]*['"`][^)]*)\)\s*\.\s*(forEach|map|filter|some|every|slice|reduce)\b/);
+  if (m) singleOnList.push(`${ou(l)}  $(…).${m[2]} — devrait être $$(…)`);
 });
 singleOnList.length ? fail('Sélecteur $ utilisé comme une liste', singleOnList) : ok('Aucun $(…) traité comme un tableau');
 
@@ -71,10 +101,10 @@ const created = new Set([
   ...[...app.matchAll(/idAttr:\s*['"]([\w-]+)['"]/g)].map((m) => m[1]),
 ]);
 const unknown = [];
-lines.forEach((l, i) => {
-  for (const m of l.matchAll(/\$\$?\('#([\w-]+)'\)/g)) {
+lignes.forEach((l) => {
+  for (const m of l.texte.matchAll(/\$\$?\('#([\w-]+)'\)/g)) {
     const id = m[1];
-    if (!htmlIds.has(id) && !created.has(id)) unknown.push(`public/app.js:${i + 1}  #${id} n'existe ni dans index.html ni créé en JS`);
+    if (!htmlIds.has(id) && !created.has(id)) unknown.push(`${ou(l)}  #${id} n'existe ni dans index.html ni créé en JS`);
   }
 });
 unknown.length ? fail('Sélecteur pointant un id inconnu', unknown) : ok(`Tous les id référencés existent (${htmlIds.size} dans le HTML)`);
@@ -100,9 +130,9 @@ missingIcons.length
    `busy(btn, fn)` enveloppe une opération asynchrone ; l'appeler comme un
    interrupteur (`busy(btn, true)`) donne « fn is not a function » au clic. */
 const wrongBusy = [];
-lines.forEach((l, i) => {
-  if (/\bbusy\(\s*[^,)]+,\s*(true|false)\s*\)/.test(l)) {
-    wrongBusy.push(`public/app.js:${i + 1}  busy(…, true/false) — busy attend une fonction à envelopper`);
+lignes.forEach((l) => {
+  if (/\bbusy\(\s*[^,)]+,\s*(true|false)\s*\)/.test(l.texte)) {
+    wrongBusy.push(`${ou(l)}  busy(…, true/false) — busy attend une fonction à envelopper`);
   }
 });
 wrongBusy.length ? fail('busy() appelé comme un interrupteur', wrongBusy) : ok('busy() toujours appelé avec une fonction');
@@ -120,9 +150,9 @@ missingDyn.length
    toute liste de dépôts doit passer par le combo repoComboHtml (recherche à la
    frappe). On repère un <select> dont le contenu vient de repoOptions. */
 const bareRepoSelect = [];
-lines.forEach((l, i) => {
-  if (/<select[^>]*>.{0,40}repoOptions\.map/.test(l) || /repoOptions\.map[^\n]*<option/.test(l)) {
-    bareRepoSelect.push(`public/app.js:${i + 1}  <select> alimenté par repoOptions — utiliser repoComboHtml (recherche)`);
+lignes.forEach((l) => {
+  if (/<select[^>]*>.{0,40}repoOptions\.map/.test(l.texte) || /repoOptions\.map[^\n]*<option/.test(l.texte)) {
+    bareRepoSelect.push(`${ou(l)}  <select> alimenté par repoOptions — utiliser repoComboHtml (recherche)`);
   }
 });
 bareRepoSelect.length
@@ -165,8 +195,8 @@ const submitBloc = (app.match(/#configForm'\)\.addEventListener\('submit'[\s\S]*
 const loadBloc = (app.match(/async function loadConfig\(\)[\s\S]*?\n\}\n/) || [''])[0];
 const demiCables = [];
 for (const name of HANDLED_APART) {
-  if (!loadBloc.includes(name)) demiCables.push(`public/app.js  ${name} — exempté de CONFIG_FIELDS mais jamais relu dans loadConfig()`);
-  if (!submitBloc.includes(name)) demiCables.push(`public/app.js  ${name} — exempté de CONFIG_FIELDS mais jamais envoyé par le submit de #configForm`);
+  if (!loadBloc.includes(name)) demiCables.push(`public/  ${name} — exempté de CONFIG_FIELDS mais jamais relu dans loadConfig()`);
+  if (!submitBloc.includes(name)) demiCables.push(`public/  ${name} — exempté de CONFIG_FIELDS mais jamais envoyé par le submit de #configForm`);
 }
 demiCables.length
   ? fail('Champ exempté de CONFIG_FIELDS et câblé à moitié', demiCables)
@@ -185,44 +215,45 @@ const refPickers = [
   ['class="search git-ref-filter"', 'la liste des refs à supprimer (Git → Actions) doit garder son champ de recherche'],
   ['class="search git-ex-filter"', 'le tableau de branches (Git → Explorateur) doit garder son champ de recherche'],
 ];
-const lostSearch = refPickers.filter(([m]) => !app.includes(m)).map(([m, why]) => `public/app.js  \`${m}\` introuvable — ${why}`);
-lines.forEach((l, i) => {
-  if (/<select[^>]*class=['"][^'"]*git-ref/.test(l)) {
-    lostSearch.push(`public/app.js:${i + 1}  <select> de refs git — utiliser comboHtml('git-ref') (recherche)`);
+const lostSearch = refPickers.filter(([m]) => !app.includes(m)).map(([m, why]) => `public/  \`${m}\` introuvable — ${why}`);
+lignes.forEach((l) => {
+  if (/<select[^>]*class=['"][^'"]*git-ref/.test(l.texte)) {
+    lostSearch.push(`${ou(l)}  <select> de refs git — utiliser comboHtml('git-ref') (recherche)`);
   }
 });
 lostSearch.length
   ? fail('Liste de refs git sans recherche', lostSearch)
   : ok('Toutes les listes de refs git ont une recherche');
 
-/* 10. Deux fonctions de même nom au premier niveau d'app.js.
-   Le fichier est un seul script global : une seconde `function foo()` écrase la
-   première par hoisting, sans le moindre avertissement. Tous les appels partent
-   alors sur l'autre corps — et sur l'autre SIGNATURE. C'est arrivé à toastUndo,
-   redéfini avec (msg, undoLabel, onUndo) alors que l'original attendait
-   (msg, onUndo, ms) : le callback d'annulation recevait une chaîne. */
+/* 10. Deux fonctions de même nom au premier niveau du front.
+   Les scripts partagent une seule portée globale : une seconde `function foo()` écrase la
+   première par hoisting, sans le moindre avertissement — qu'elle soit dans le même fichier
+   ou dans un autre. Tous les appels partent alors sur l'autre corps — et sur l'autre
+   SIGNATURE. C'est arrivé à toastUndo, redéfini avec (msg, undoLabel, onUndo) alors que
+   l'original attendait (msg, onUndo, ms) : le callback d'annulation recevait une chaîne. */
 /* Les `const nom = (…) => …` du premier niveau comptent AUSSI, et sont pires : une
    `function` redéclarée écrase silencieusement, un `const` en double est une SyntaxError
    qui empêche le script ENTIER de s'évaluer — plus une seule ligne d'interface ne
    fonctionne. C'est arrivé avec un `fmtDateTime` ajouté en haut du fichier alors qu'il
    existait déjà 3600 lignes plus bas, et ce contrôle ne regardait alors que `function`. */
+const DECL = /^(?:(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(|(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=)/;
 const declaredFns = new Map();
 const dupFns = [];
-lines.forEach((l, i) => {
-  const m = l.match(/^(?:function\s+([A-Za-z_$][\w$]*)\s*\(|(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=)/);
+lignes.forEach((l) => {
+  const m = l.texte.match(DECL);
   if (!m) return;
   const nom = m[1] || m[2];
   const quoi = m[1] ? `function ${nom}()` : `const ${nom}`;
   const prev = declaredFns.get(nom);
   if (prev) {
     dupFns.push(m[1]
-      ? `public/app.js:${i + 1}  ${quoi} — déjà défini ligne ${prev} ; la seconde écrase la première`
-      : `public/app.js:${i + 1}  ${quoi} — déjà défini ligne ${prev} ; SyntaxError, tout app.js cesse de s'exécuter`);
-  } else declaredFns.set(nom, i + 1);
+      ? `${ou(l)}  ${quoi} — déjà défini ${ou(prev)} ; la seconde écrase la première`
+      : `${ou(l)}  ${quoi} — déjà défini ${ou(prev)} ; SyntaxError, tout le front cesse de s'exécuter`);
+  } else declaredFns.set(nom, l);
 });
 dupFns.length
-  ? fail('Fonction redéfinie au premier niveau d’app.js', dupFns)
-  : ok(`Aucune fonction d'app.js redéfinie (${declaredFns.size} au premier niveau)`);
+  ? fail('Fonction redéfinie au premier niveau du front', dupFns)
+  : ok(`Aucune fonction du front redéfinie (${declaredFns.size} au premier niveau)`);
 
 /* 11. Fermeture d'une modale au clic sur le fond, écrite à la main.
    `if (e.target.id === 'xModal') close()` a l'air juste et ne l'est pas : un `click` naît
@@ -231,15 +262,15 @@ dupFns.length
    que la pression ait commencé sur le fond, et refuse d'emporter une saisie en cours.
    La règle vaut aussi pour les modales à venir : elles doivent passer par le même chemin. */
 const fondManuel = [];
-lines.forEach((l, i) => {
-  const m = l.match(/e\.target\.id === '(\w*[Mm]odal)'/);
-  if (m) fondManuel.push(`public/app.js:${i + 1}  clic sur le fond de #${m[1]} — passer par fermerAuFond()`);
+lignes.forEach((l) => {
+  const m = l.texte.match(/e\.target\.id === '(\w*[Mm]odal)'/);
+  if (m) fondManuel.push(`${ou(l)}  clic sur le fond de #${m[1]} — passer par fermerAuFond()`);
 });
 // …et chaque modale déclarée doit exister : un id mal orthographié ne lève aucune erreur,
 // la modale ne se ferme simplement plus au clic sur le fond.
 const fondInconnu = [];
 for (const m of app.matchAll(/fermerAuFond\('#(\w+)'/g)) {
-  if (!html.includes(`id="${m[1]}"`)) fondInconnu.push(`public/app.js  fermerAuFond('#${m[1]}') — cet id n'existe pas dans index.html`);
+  if (!html.includes(`id="${m[1]}"`)) fondInconnu.push(`public/  fermerAuFond('#${m[1]}') — cet id n'existe pas dans index.html`);
 }
 const fondKo = [...fondManuel, ...fondInconnu];
 fondKo.length
@@ -250,9 +281,9 @@ fondKo.length
    `Ctrl/Cmd + Maj + Espace` ne se devine pas : c'est la modale `?` qu'on ouvre pour le
    chercher. Le fichier de capture peut vivre sans que le raccourci y soit listé — et alors
    la fonctionnalité n'existe que pour qui lit le CHANGELOG. */
-if (fs.existsSync(path.join(ROOT, 'public/dictation-mic.js'))) {
+if (man.scripts.some((s) => /(?:^|\/)(?:dictee|dictation-mic)\.js$/.test(s))) {
   const manque = [];
-  if (!/shortcuts\.dictation/.test(app)) manque.push("public/app.js  SHORTCUTS ne cite pas 'shortcuts.dictation' — le raccourci de dictée n'est listé nulle part");
+  if (!/shortcuts\.dictation/.test(app)) manque.push("public/  SHORTCUTS ne cite pas 'shortcuts.dictation' — le raccourci de dictée n'est listé nulle part");
   if (!html.includes('id="dictationMic"')) manque.push('public/index.html  #dictationMic absent — le micro n\'a nulle part où s\'afficher');
   manque.length
     ? fail('Dictée vocale câblée à moitié', manque)
@@ -284,30 +315,31 @@ sansFiltre.length
   : ok(`Toutes les listes à cocher ont leur filtre (${LISTES_A_FILTRER.filter((id) => html.includes(`id="${id}"`)).length})`);
 
 /* 14. Un helper de premier niveau APPELÉ plus haut que sa déclaration `const`.
-   `app.js` est un seul script global : les instructions de premier niveau s'exécutent dans
-   l'ordre du texte, et un `const` n'existe qu'à partir de sa ligne. Un appel écrit plus haut
-   lève « Cannot access X before initialization » — non pas au clic, mais PENDANT l'évaluation
-   du fichier : tout ce qui suit cesse d'exister, et l'écran est mort dans son ensemble. Le
-   contrôle n°10 ne voit que les doublons ; celui-ci voit l'ordre. Vu en vrai avec un `onEl`
-   déclaré au milieu du fichier et utilisé mille lignes plus haut. Le remède est une
-   déclaration de fonction, qui est hissée. */
+   Les scripts forment une seule portée globale, évaluée dans l'ordre du manifeste : les
+   instructions de premier niveau s'exécutent dans l'ordre du texte, et un `const` n'existe
+   qu'à partir de sa ligne. Un appel écrit plus haut — dans le même fichier ou dans un fichier
+   chargé AVANT — lève « Cannot access X before initialization » — non pas au clic, mais
+   PENDANT l'évaluation : tout ce qui suit cesse d'exister, et l'écran est mort dans son
+   ensemble. Le contrôle n°10 ne voit que les doublons ; celui-ci voit l'ordre. Vu en vrai
+   avec un `onEl` déclaré au milieu du fichier et utilisé mille lignes plus haut. Le remède est
+   une déclaration de fonction, qui est hissée — ou, entre deux fichiers, `core/` en tête. */
 const declLine = new Map();
-lines.forEach((l, i) => {
-  const m = l.match(/^(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=/);
-  if (m && !declLine.has(m[1])) declLine.set(m[1], i + 1);
+lignes.forEach((l, n) => {
+  const m = l.texte.match(/^(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=/);
+  if (m && !declLine.has(m[1])) declLine.set(m[1], n);
 });
 const avantDecl = [];
-lines.forEach((l, i) => {
+lignes.forEach((l, n) => {
   // Un APPEL en tout début de ligne : c'est la forme d'un câblage de premier niveau.
-  const m = l.match(/^([A-Za-z_$][\w$]*)\(/);
+  const m = l.texte.match(/^([A-Za-z_$][\w$]*)\(/);
   if (!m) return;
   const decl = declLine.get(m[1]);
-  if (decl && decl > i + 1) {
-    avantDecl.push(`public/app.js:${i + 1}  ${m[1]}(…) appelé avant sa déclaration ligne ${decl} — déclarer \`function ${m[1]}()\` (hissée)`);
+  if (decl != null && decl > n) {
+    avantDecl.push(`${ou(l)}  ${m[1]}(…) appelé avant sa déclaration ${ou(lignes[decl])} — déclarer \`function ${m[1]}()\` (hissée)`);
   }
 });
 avantDecl.length
-  ? fail('Helper appelé avant sa déclaration (l’évaluation d’app.js s’arrête là)', avantDecl)
+  ? fail('Helper appelé avant sa déclaration (l’évaluation du front s’arrête là)', avantDecl)
   : ok('Aucun helper de premier niveau appelé avant sa déclaration');
 
 /* LES VERROUS DE SÉCURITÉ DE L'ÉCRAN (guard.md). Chacun fige un zéro atteint : une régression
@@ -317,20 +349,229 @@ avantDecl.length
    — tout `target="_blank"` porte un `rel` (sinon la page ouverte pilote la nôtre). */
 {
   const soucis = [];
-  for (const [nom, texte] of [['public/app.js', app], ['public/index.html', html]]) {
-    texte.split('\n').forEach((l, i) => {
-      if (/<[a-z][^>]*\son[a-z]+\s*=\s*["'{]/i.test(l)) soucis.push(`${nom}:${i + 1}  gestionnaire en attribut : ${l.trim().slice(0, 90)}`);
-      if (/(?<![\w-])(href|src)="\$\{(?!\s*(esc\()?\s*(safeUrl|safeImg)\()/.test(l)) soucis.push(`${nom}:${i + 1}  URL interpolée sans safeUrl/safeImg : ${l.trim().slice(0, 90)}`);
-      // …et la même URL construite par CONCATÉNATION (`'href="' + esc(url) + '"'`), qui échappait au motif.
-      if (/(?<![\w-])(href|src)="'\s*\+(?!\s*(esc\()?\s*(safeUrl|safeImg)\()/.test(l)) soucis.push(`${nom}:${i + 1}  URL concaténée sans safeUrl/safeImg : ${l.trim().slice(0, 90)}`);
-      if (/target="_blank"/.test(l) && !/rel=/.test(l)) soucis.push(`${nom}:${i + 1}  target="_blank" sans rel : ${l.trim().slice(0, 90)}`);
-    });
+  const textes = [...lignes.map((l) => [ou(l), l.texte]), ...html.split('\n').map((t, i) => [`public/index.html:${i + 1}`, t])];
+  for (const [nom, l] of textes) {
+    if (/<[a-z][^>]*\son[a-z]+\s*=\s*["'{]/i.test(l)) soucis.push(`${nom}  gestionnaire en attribut : ${l.trim().slice(0, 90)}`);
+    if (/(?<![\w-])(href|src)="\$\{(?!\s*(esc\()?\s*(safeUrl|safeImg)\()/.test(l)) soucis.push(`${nom}  URL interpolée sans safeUrl/safeImg : ${l.trim().slice(0, 90)}`);
+    // …et la même URL construite par CONCATÉNATION (`'href="' + esc(url) + '"'`), qui échappait au motif.
+    if (/(?<![\w-])(href|src)="'\s*\+(?!\s*(esc\()?\s*(safeUrl|safeImg)\()/.test(l)) soucis.push(`${nom}  URL concaténée sans safeUrl/safeImg : ${l.trim().slice(0, 90)}`);
+    if (/target="_blank"/.test(l) && !/rel=/.test(l)) soucis.push(`${nom}  target="_blank" sans rel : ${l.trim().slice(0, 90)}`);
   }
   const enLigne = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>/g)].length;
   if (enLigne) soucis.push(`public/index.html  ${enLigne} <script> en ligne — la CSP les refuse, mettez le code dans un fichier`);
   soucis.length
     ? fail('Verrous de sécurité de l’écran (guard.md)', soucis)
     : ok('Aucun gestionnaire en attribut ni script en ligne ; URLs via safeUrl ; _blank avec rel');
+}
+
+/* ======================================================================================
+   LE MANIFESTE ET L'ARBORESCENCE (réorganisation de public/ par écran et par couche). Les
+   cinq contrôles qui suivent gardent ce qu'un dossier de fichiers courts rend possible — et
+   ce qu'il rend possible de casser en silence. Sur un front d'un seul `app.js`, ils n'ont rien
+   à dire et le disent : c'est ainsi qu'on a prouvé qu'ils ne changent pas le sens des autres.
+   ====================================================================================== */
+
+function tousLes(dir, ext, out = []) {
+  if (!fs.existsSync(dir)) return out;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) tousLes(p, ext, out);
+    else if (e.name.endsWith(ext)) out.push(path.relative(PUBLIC, p).split(path.sep).join('/'));
+  }
+  return out;
+}
+
+/* (a) LE MANIFESTE ET LE DISQUE COÏNCIDENT. Un fichier de `js/`, `css/`, `i18n/` ou `runtime/`
+   qui n'est pas cité est un écran mort en silence — le pendant du « nouveau fichier non
+   `git add`-é » de la relecture CI ; une balise qui vise un fichier absent est un 404 que seul
+   le navigateur voit. Cité UNE fois : deux fois, un script s'évalue deux fois et un `const`
+   en double arrête tout. Les exceptions sont nommées, avec ce qui les charge à la place. */
+{
+  const HORS_MANIFESTE = {
+    'i18n/index.js': 'assemblage pour Node, jamais chargé par le navigateur',
+    'js/transverse/dictee-worklet.js': 'chargé par `audioWorklet.addModule`, pas par une balise',
+  };
+  const surDisque = [
+    ...tousLes(path.join(PUBLIC, 'js'), '.js'), ...tousLes(path.join(PUBLIC, 'i18n'), '.js'),
+    ...tousLes(path.join(PUBLIC, 'runtime'), '.js'), ...tousLes(path.join(PUBLIC, 'css'), '.css'),
+  ];
+  const cites = [...man.scripts, ...man.styles];
+  const compte = new Map();
+  for (const c of cites) compte.set(c, (compte.get(c) || 0) + 1);
+  const soucis = [];
+  for (const f of surDisque) {
+    const n = compte.get(f) || 0;
+    if (n === 0 && !HORS_MANIFESTE[f]) soucis.push(`${nomDe(f)}  sur le disque, absent du manifeste — jamais chargé`);
+    if (n > 1) soucis.push(`${nomDe(f)}  cité ${n} fois dans index.html — évalué ${n} fois`);
+    if (n && HORS_MANIFESTE[f]) soucis.push(`${nomDe(f)}  cité dans le manifeste alors qu'il est ${HORS_MANIFESTE[f]}`);
+  }
+  for (const c of cites) if (!existe(c)) soucis.push(`public/index.html  <${c.endsWith('.css') ? 'link' : 'script'}> vise /${c}, qui n'existe pas`);
+  for (const [f, pourquoi] of Object.entries(HORS_MANIFESTE)) if (!existe(f) && surDisque.length) soucis.push(`${nomDe(f)}  nommé hors manifeste (${pourquoi}) mais absent du disque — retirer l'exception`);
+  soucis.length
+    ? fail('Le manifeste et le disque ne coïncident pas', soucis)
+    : ok(`Le manifeste et le disque coïncident (${man.scripts.length} scripts, ${man.styles.length} feuilles, ${Object.keys(HORS_MANIFESTE).filter(existe).length} hors manifeste nommés)`);
+}
+
+/* (e) `'use strict';` EN TÊTE DE CHAQUE FICHIER. La directive en tête d'`app.js` couvrait
+   vingt-cinq mille lignes ; découpé, un fichier sans directive tourne en mode relâché — une
+   affectation à une variable non déclarée y crée un global au lieu de lever. C'est le seul
+   changement de comportement possible d'un découpage, et il est silencieux. Première
+   instruction du fichier, après son commentaire d'en-tête. */
+{
+  const premiereInstruction = (texte) => {
+    const ls = texte.split('\n');
+    let dans = false;
+    for (const l of ls) {
+      let t = l.trim();
+      if (dans) { if (!t.includes('*/')) continue; t = t.slice(t.indexOf('*/') + 2).trim(); dans = false; }
+      while (t.startsWith('/*')) {
+        const fin = t.indexOf('*/', 2);
+        if (fin === -1) { dans = true; t = ''; break; }
+        t = t.slice(fin + 2).trim();
+      }
+      if (!t || t.startsWith('//')) continue;
+      return t;
+    }
+    return '';
+  };
+  const relaches = [];
+  const aVerifier = [...tousLes(path.join(PUBLIC, 'js'), '.js'), ...tousLes(path.join(PUBLIC, 'i18n'), '.js'), ...tousLes(path.join(PUBLIC, 'runtime'), '.js'), ...fichiersApp.filter((f) => !f.includes('/'))];
+  for (const f of new Set(aVerifier)) {
+    if (!/^'use strict';?$/.test(premiereInstruction(lirePublic(f)))) relaches.push(`${nomDe(f)}  ne commence pas par 'use strict' — mode relâché, une faute de frappe crée un global`);
+  }
+  relaches.length
+    ? fail('Fichier du front sans \'use strict\' en tête', relaches)
+    : ok(`'use strict' en tête de chaque fichier (${new Set(aVerifier).size})`);
+}
+
+/* (b) LA TAILLE D'UN FICHIER SE SURVEILLE — la règle de `check-server.js`, mot pour mot :
+   avertissement passé 600 lignes de code, échec passé 1 200, les commentaires non comptés. Les
+   exceptions sont NOMMÉES et ne font que disparaître. */
+{
+  const AVERTIR = 600;
+  const ECHOUER = 1200;
+  const EXCEPTIONS = [];
+  const compter = (code) => code.split('\n').filter((l) => l.trim() && !/^\s*(\/\/|\/\*|\*)/.test(l)).length;
+  const gros = [];
+  const trop = [];
+  for (const f of tousLes(path.join(PUBLIC, 'js'), '.js')) {
+    const n = compter(lirePublic(f));
+    if (n > ECHOUER && !EXCEPTIONS.includes(f)) trop.push(`${nomDe(f)}  ${n} lignes de code — à découper (seuil ${ECHOUER})`);
+    else if (n > AVERTIR) gros.push(`${nomDe(f)}  ${n} lignes de code${n > ECHOUER ? ' (exception nommée)' : ''}`);
+  }
+  if (trop.length) fail(`Fichiers de js/ au-delà de ${ECHOUER} lignes de code, hors exceptions nommées`, trop);
+  if (gros.length) avertir(`Fichiers de js/ au-delà de ${AVERTIR} lignes de code — à découper avant la prochaine fonctionnalité`, gros);
+  if (!trop.length) ok(`Aucun fichier de js/ ne dépasse ${ECHOUER} lignes de code hors exceptions (${EXCEPTIONS.length} nommées, ${gros.length} au-delà de ${AVERTIR})`);
+}
+
+/* (d) AUCUN ORDRE CASSÉ PAR LE MANIFESTE. Le dictionnaire avant le moteur qui le lit, les
+   runtimes avant l'application, `core/` — ce que tout le monde appelle et qui n'appelle
+   personne — en tête de `js/`, `demarrage.js` en dernier : c'est lui qui câble, et il appelle
+   ce qu'il veut. La dictée était déjà chargée après `app.js` (elle s'appuie sur `toast`) : elle
+   reste après. */
+{
+  const js = man.scripts.filter((s) => s.startsWith('js/') && !/theme-early\.js$/.test(s) && s !== 'js/transverse/dictee.js');
+  const soucis = [];
+  if (js.length) {
+    const premierNonCore = js.findIndex((s) => !s.startsWith('js/core/'));
+    js.forEach((s, i) => { if (s.startsWith('js/core/') && premierNonCore !== -1 && i > premierNonCore) soucis.push(`${nomDe(s)}  core/ chargé après ${nomDe(js[premierNonCore])} — core/ vient en tête`); });
+    const dem = js.indexOf('js/demarrage.js');
+    if (dem === -1) soucis.push('public/js/demarrage.js  absent du manifeste — rien ne câble l’application');
+    else if (dem !== js.length - 1) soucis.push(`${nomDe(js[js.length - 1])}  chargé après js/demarrage.js — demarrage.js est le dernier script de js/`);
+    const idx = (re) => man.scripts.findIndex((s) => re.test(s));
+    const dernier = (re) => man.scripts.length - 1 - [...man.scripts].reverse().findIndex((s) => re.test(s));
+    if (idx(/^runtime\//) !== -1 && idx(/^i18n\//) !== -1 && dernier(/^i18n\//) > idx(/^runtime\//)) soucis.push('public/index.html  un fichier de i18n/ est chargé après runtime/ — le dictionnaire précède le moteur');
+    if (idx(/^runtime\//) !== -1 && dernier(/^runtime\//) > idx(/^js\/core\//)) soucis.push('public/index.html  un fichier de runtime/ est chargé après js/core/ — les runtimes précèdent l’application');
+  }
+  soucis.length ? fail('Ordre du manifeste', soucis) : ok(js.length ? `L'ordre du manifeste tient (core/ en tête, demarrage.js en dernier, ${js.length} scripts de js/)` : 'Ordre du manifeste : un seul script, rien à ordonner');
+}
+
+/* (c) LA DIRECTION DES DÉPENDANCES, ET LES PORTS.
+
+       core  ←  transverse  ←  ecrans/<x>  ←  demarrage
+                                 ↕ (entre écrans : par les PORTS déclarés)
+
+   `core/` n'appelle que `core/` ; `transverse/` appelle `core/` et les ports des écrans ;
+   un écran appelle `core/`, `transverse/`, son propre dossier — et les PORTS d'un autre écran,
+   jamais son intérieur ; `demarrage.js` appelle ce qu'il veut, personne ne l'appelle. Un port
+   est un nom déclaré en tête du fichier qui le définit : `// @expose nom1, nom2`. L'état global
+   (`let`) obéit à la même règle : une variable lue depuis un autre dossier est un port, ou une
+   erreur. Un port que personne d'autre n'appelle est une promesse : il s'enlève — sauf s'il est
+   appelé par un test d'écran (`page.evaluate(() => loadTasks())`), qui est un appelant comme
+   un autre.
+
+   Le jour où un dossier passe en modules ES, ses `@expose` sont ses `export` et ses usages de
+   `core/` ses `import` : la liste est déjà exacte. */
+{
+  const fichiersJs = fichiersApp.filter((f) => f.startsWith('js/') && f !== 'js/transverse/dictee.js');
+  const dossier = (f) => {
+    if (f === 'js/demarrage.js') return { genre: 'demarrage', cle: 'demarrage' };
+    const m = f.match(/^js\/(core|transverse)\//);
+    if (m) return { genre: m[1], cle: m[1] };
+    const e = f.match(/^js\/ecrans\/([^/]+)\//);
+    if (e) return { genre: 'ecran', cle: `ecrans/${e[1]}` };
+    return { genre: 'autre', cle: f };
+  };
+  /* Le texte sans ses commentaires ni ses chaînes simples — les gabarits (`…${x}…`) restent :
+     leurs `${}` sont de vrais usages. Un mot dans le texte d'un gabarit qui serait aussi un nom
+     de fonction compte donc comme un usage : rare, et il se règle par un `@expose` de plus. */
+  const depouiller = (s) => s
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:\\])\/\/[^\n]*/g, '$1')
+    .replace(/'(?:[^'\\\n]|\\.)*'/g, "''")
+    .replace(/"(?:[^"\\\n]|\\.)*"/g, '""');
+  const declPar = new Map();      // nom → fichier
+  const exposePar = new Map();    // fichier → Set(noms)
+  const textes = new Map();
+  for (const f of fichiersJs) {
+    const texte = lirePublic(f);
+    textes.set(f, texte);
+    for (const l of texte.split('\n')) {
+      const m = l.match(DECL);
+      if (m && !declPar.has(m[1] || m[2])) declPar.set(m[1] || m[2], f);
+    }
+    const ex = new Set();
+    for (const m of texte.matchAll(/^\/\/ @expose\s+(.+)$/gm)) m[1].split(',').map((x) => x.trim()).filter(Boolean).forEach((n) => ex.add(n));
+    exposePar.set(f, ex);
+  }
+  const soucis = [];
+  const portsUtilises = new Map();  // fichier → Set(noms utilisés d'ailleurs)
+  for (const f of fichiersJs) {
+    const de = dossier(f);
+    const vus = new Set();
+    for (const m of depouiller(textes.get(f)).matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)/g)) vus.add(m[1]);
+    for (const nom of vus) {
+      const d = declPar.get(nom);
+      if (!d || d === f) continue;
+      const vers = dossier(d);
+      const meme = vers.cle === de.cle;
+      if (de.genre === 'core' && vers.genre !== 'core') { soucis.push(`${nomDe(f)}  utilise ${nom} (${d}) — core/ n'appelle que core/`); continue; }
+      if (vers.genre === 'demarrage') { soucis.push(`${nomDe(f)}  utilise ${nom} (${d}) — personne n'appelle demarrage.js`); continue; }
+      if (vers.genre === 'core' || vers.genre === 'transverse' || meme) continue;
+      // Un écran, appelé depuis un autre dossier : par un port déclaré, ou pas du tout.
+      if (!portsUtilises.has(d)) portsUtilises.set(d, new Set());
+      portsUtilises.get(d).add(nom);
+      if (!exposePar.get(d).has(nom)) soucis.push(`${nomDe(f)}  utilise ${nom} (${d}) — non exposé : ajouter \`// @expose ${nom}\` en tête de ${d}`);
+    }
+  }
+  /* Les ports que les tests d'écran appellent par `page.evaluate` : des appelants légitimes. */
+  const motsTests = new Set();
+  const TEST = path.join(ROOT, 'test');
+  for (const t of fs.readdirSync(TEST).filter((x) => x.endsWith('.test.js'))) {
+    for (const m of fs.readFileSync(path.join(TEST, t), 'utf8').matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(/g)) motsTests.add(m[1]);
+    for (const m of fs.readFileSync(path.join(TEST, t), 'utf8').matchAll(/window\.([A-Za-z_$][\w$]*)/g)) motsTests.add(m[1]);
+  }
+  for (const [f, ex] of exposePar) {
+    if (dossier(f).genre !== 'ecran' && ex.size) soucis.push(`${nomDe(f)}  porte un @expose — seuls les écrans déclarent des ports (core/ et transverse/ sont visibles de tous)`);
+    for (const nom of ex) {
+      if (!declPar.has(nom) || declPar.get(nom) !== f) soucis.push(`${nomDe(f)}  @expose ${nom} — pas une déclaration de premier niveau de ce fichier`);
+      else if (!(portsUtilises.get(f) || new Set()).has(nom) && !motsTests.has(nom)) soucis.push(`${nomDe(f)}  @expose ${nom} — personne d'ailleurs ne l'appelle : une promesse, à retirer`);
+    }
+  }
+  const nPorts = [...exposePar.values()].reduce((n, s) => n + s.size, 0);
+  soucis.length
+    ? fail('Direction des dépendances et ports du front', soucis)
+    : ok(fichiersJs.length ? `Chaque usage respecte la direction core ← transverse ← ecrans ← demarrage (${fichiersJs.length} fichiers, ${nPorts} ports)` : 'Direction des dépendances : un seul script, rien à ordonner');
 }
 
 console.log('');

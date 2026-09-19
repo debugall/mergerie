@@ -1,3 +1,4 @@
+'use strict';
 /* Dictée vocale — la capture et l'insertion, côté navigateur (whisper.md §3.1, §6).
  *
  * Le geste : on clique le micro posé sur le champ où l'on écrit (ou Ctrl/Cmd + Maj + Espace),

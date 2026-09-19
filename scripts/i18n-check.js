@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 'use strict';
-/* Garde-fous i18n (i18n.md §7). Trois contrôles, exécutés par `npm run i18n:check`.
+/* Garde-fous i18n (i18n.md §7). Quatre contrôles, exécutés par `npm run i18n:check`.
    Ils sont posés AVANT le gros de la migration, pour la guider au lieu de la constater.
 
-   1. Parité      — toute clé de `fr` existe en `en`, et réciproquement.
+   1. Parité      — toute clé de `fr` existe en `en`, et réciproquement — FICHIER PAR FICHIER
+                    dès que le dictionnaire est découpé par famille (`public/i18n/`).
+   1 bis. Rangement — une clé vit dans le fichier de sa famille (`task.*` dans `sessions.js`),
+                    et une famille inconnue ne passe pas.
    2. Clés mortes — toute clé appelée dans le code existe au dictionnaire.
    3. Oublis      — littérales accentuées restées en dur hors dictionnaire.
 
@@ -14,7 +17,10 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const DICT = require(path.join(ROOT, 'public/i18n.js'));
+/* Le dictionnaire : découpé par famille (`public/i18n/index.js` l'assemble pour Node), ou le
+   fichier unique d'avant le découpage — le contrôle lit l'un comme l'autre. */
+const DECOUPE = fs.existsSync(path.join(ROOT, 'public/i18n/index.js'));
+const DICT = require(path.join(ROOT, DECOUPE ? 'public/i18n/index.js' : 'public/i18n.js'));
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 let failures = 0;
@@ -27,7 +33,7 @@ const fail = (title, items) => {
 const ok = (title) => console.log(`✅ ${title}`);
 
 /* ---------- 1. Parité des dictionnaires ---------- */
-const langs = Object.keys(DICT);
+const langs = Object.keys(DICT).filter((l) => typeof DICT[l] === 'object');
 const keysOf = (l) => Object.keys(DICT[l]);
 const base = new Set(keysOf('fr'));
 const parity = [];
@@ -45,27 +51,61 @@ for (const k of base) {
 }
 parity.length ? fail('Parité des dictionnaires', parity) : ok(`Parité des dictionnaires (${base.size} clés × ${langs.length} langues)`);
 
+/* ---------- 1 bis. Une clé vit dans le fichier de sa famille ----------
+   Le dictionnaire est découpé par famille de préfixe (`task.*` dans `sessions.js`, `err.*` dans
+   `erreurs.js`) : deux fonctionnalités qui ajoutent un libellé n'écrivent plus au même endroit,
+   à condition que chacune écrive AU BON. Le tableau famille → fichier vit dans
+   `public/i18n/index.js` ; une clé rangée ailleurs, ou d'une famille que le tableau ne connaît
+   pas, est une erreur — avant le découpage, n'importe quel préfixe passait. La parité se
+   vérifie aussi par fichier : le message nomme alors le fichier où la traduction manque. */
+if (DECOUPE) {
+  const { FAMILLES, FICHIERS } = require(path.join(ROOT, 'public/i18n/index.js'));
+  const soucis = [];
+  let total = 0;
+  for (const fichier of FICHIERS) {
+    const d = require(path.join(ROOT, 'public/i18n', fichier));
+    for (const l of ['fr', 'en']) {
+      for (const k of Object.keys(d[l] || {})) {
+        const famille = k.split('.')[0];
+        const attendu = FAMILLES[famille];
+        if (!attendu) soucis.push(`public/i18n/${fichier}  ${k} — famille « ${famille} » inconnue du tableau d'i18n/index.js`);
+        else if (attendu !== fichier) soucis.push(`public/i18n/${fichier}  ${k} — la famille « ${famille} » vit dans ${attendu}`);
+      }
+    }
+    const fr = new Set(Object.keys(d.fr || {}));
+    const en = new Set(Object.keys(d.en || {}));
+    for (const k of fr) if (!en.has(k)) soucis.push(`public/i18n/${fichier}  ${k} — traduit en fr, pas en en`);
+    for (const k of en) if (!fr.has(k)) soucis.push(`public/i18n/${fichier}  ${k} — en en sans son fr`);
+    total += fr.size;
+  }
+  soucis.length
+    ? fail('Rangement des clés par famille, et parité par fichier', soucis)
+    : ok(`Chaque clé vit dans le fichier de sa famille, fr et en côte à côte (${FICHIERS.length} fichiers, ${total} clés × 2)`);
+}
+
 /* ---------- 2. Clés utilisées mais absentes ---------- */
-/* Tout le front, pas seulement `app.js` : la dictée vit dans ses propres fichiers
-   (`public/dictation-*.js`) et appelle `t()` comme les autres. Restreint à `app.js`, ce
-   contrôle ne voyait pas une clé manquante appelée depuis un de ces fichiers — c'est-à-dire
-   un libellé qui s'afficherait sous forme de clé à l'écran. */
+/* Tout le front, pas seulement `app.js` : la dictée vit dans ses propres fichiers et appelle
+   `t()` comme les autres. Restreint à `app.js`, ce contrôle ne voyait pas une clé manquante
+   appelée depuis un de ces fichiers — c'est-à-dire un libellé qui s'afficherait sous forme de
+   clé à l'écran. `public/` se parcourt RÉCURSIVEMENT (`js/ecrans/…`, `html/…`), hors `vendor/`
+   et `images/` : un `tr('…')` dans un sous-dossier compterait sinon pour orphelin. */
 /* `src/` se parcourt RÉCURSIVEMENT : un module déplacé dans un sous-dossier (réorganisation de src/ par couches)
    appelle `t()` comme avant, et une clé qu'il serait seul à utiliser ne doit pas passer
    pour orpheline — ni une clé qu'il appelle sans qu'elle existe passer inaperçue. */
-function tousLesJs(dir, out = []) {
+function tousLes(dir, exts, out = [], exclure = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (exclure.includes(e.name)) continue;
     const p = path.join(dir, e.name);
-    if (e.isDirectory()) tousLesJs(p, out);
-    else if (e.name.endsWith('.js')) out.push(p);
+    if (e.isDirectory()) tousLes(p, exts, out, exclure);
+    else if (exts.some((x) => e.name.endsWith(x))) out.push(p);
   }
   return out;
 }
+const rel = (f) => path.relative(ROOT, f).split(path.sep).join('/');
 const SOURCES = [
-  'public/index.html',
-  ...fs.readdirSync(path.join(ROOT, 'public')).filter((f) => f.endsWith('.js')).map((f) => `public/${f}`),
-  ...tousLesJs(path.join(ROOT, 'src')).map((f) => path.relative(ROOT, f).split(path.sep).join('/')),
-].filter((p) => /\.(js|html)$/.test(p));
+  ...tousLes(path.join(ROOT, 'public'), ['.js', '.html'], [], ['vendor', 'images']).map(rel),
+  ...tousLes(path.join(ROOT, 'src'), ['.js']).map(rel),
+];
 const used = new Set();
 // Les commentaires sont retirés AVANT extraction : un exemple de code cité dans un
 // commentaire n'est pas un appel réel, et le compter produit un faux positif
@@ -112,14 +152,16 @@ entities.length
 // Heuristique : une littérale contenant une lettre accentuée hors commentaire.
 // Les exemptions sont NOMMÉES : chacune doit se justifier, sinon on masque des bugs.
 const EXEMPT = [
-  /^public\/i18n(-runtime)?\.js$/,   // le dictionnaire lui-même, évidemment
+  /^public\/i18n(-runtime)?\.js$/,   // le dictionnaire lui-même, évidemment…
+  /^public\/i18n\/.*\.js$/,          // …découpé par famille, et son assemblage
+  /^public\/runtime\/i18n-runtime\.js$/,
   /^src\/db\.js$/,                   // schéma SQL + commentaires de migration
   /^src\/cli\.js$/,                  // outil de dev en ligne de commande, jamais affiché dans l'UI
   /^src\/agentdefaults\.js$/,       // dictionnaire BILINGUE des textes d'agents livrés (DEFAULTS.fr /
   //                                    DEFAULTS.en) : c'est un i18n.js de plus, pas du français en dur.
   //                                    Ce sont des PROMPTS — ils ne s'affichent pas, ils partent à l'IA,
   //                                    et la langue choisie décide lequel des deux jeux est semé.
-  /^public\/dictation-runtime\.js$/, // les FORMES PARLÉES des commandes vocales (« annule ça ») sont
+  /^public\/(runtime\/)?dictation-runtime\.js$/, // les FORMES PARLÉES des commandes vocales (« annule ça ») sont
   //                                    des données, pas des libellés : elles ne se traduisent pas,
   //                                    elles se reconnaissent, et chaque langue a les siennes.
 ];
