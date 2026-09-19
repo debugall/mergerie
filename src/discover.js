@@ -2,7 +2,7 @@
 const db = require('./db');
 const { getConfig } = require('./config');
 const forge = require('./forge');
-const jira = require('./jira');
+const jira = require('./integrations/jira');
 const notify = require('./core/notify');
 const notes = require('./notes');
 const { etat } = require('./localstate');

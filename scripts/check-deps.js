@@ -145,6 +145,10 @@ casses.length ? fail('require qui ne mènent nulle part', casses) : ok(`Tous les
       const ou = `${nomDe(de)}:${ligne}  → ${nomDe(vers)}`;
       if (RANG[dDe] === undefined) { soucis.push(`${ou} — dossier « ${dDe} » inconnu du schéma (refacto.md §2)`); continue; }
       if (RANG[dVers] === undefined) { soucis.push(`${ou} — dossier « ${dVers} » inconnu du schéma (refacto.md §2)`); continue; }
+      /* Un fichier encore à la racine de `src/` n'est pas classé : le temps du déménagement,
+         l'importer ne dit rien de la direction. Une fois `server.js` et `cli.js` seuls à la
+         racine, plus rien ne les importe, et la ligne ne sert plus. */
+      if (dVers === 'racine') continue;
       if (dVers !== dDe && RANG[dVers] > RANG[dDe] && !IMPORTEURS[dVers]) {
         soucis.push(`${ou} — ${dDe}/ (rang ${RANG[dDe]}) importe ${dVers}/ (rang ${RANG[dVers]}) : la flèche remonte`);
         continue;

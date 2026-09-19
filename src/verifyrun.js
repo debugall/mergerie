@@ -803,7 +803,7 @@ function todosDuVerdict(verificationId, verdict) {
    Best-effort de bout en bout : un Jira injoignable ne remet pas en cause un verdict acquis. */
 async function commenterSurJira(verificationId, cfg, onLog) {
   if (!cfg || String(cfg.verify_jira_comment || '') !== '1') return [];
-  const jira = require('./jira');
+  const jira = require('./integrations/jira');
   if (!jira.isConfigured(cfg)) return [];
   const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
   if (!v) return [];

@@ -9,7 +9,7 @@
 
 const https = require('https');
 const http = require('http');
-const { t } = require('../public/i18n-runtime.js');
+const { t } = require('../../public/i18n-runtime.js');
 
 // Client HTTP autonome (Jira Cloud est en TLS public : pas d'agent CA self-signed).
 function request(url, { method = 'GET', headers = {}, body = null } = {}) {

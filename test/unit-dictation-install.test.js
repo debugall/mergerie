@@ -23,7 +23,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'dict-inst
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
-const dictation = require('../src/dictation');
+const dictation = require('../src/integrations/dictation');
 const { getConfig, updateConfig } = require('../src/config');
 
 const ROOT = path.resolve(__dirname, '..');

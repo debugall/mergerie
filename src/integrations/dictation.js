@@ -27,14 +27,14 @@ const path = require('node:path');
 const net = require('node:net');
 const crypto = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
-const db = require('./db');
-const { getConfig } = require('./config');
-const { DATA_DIR, ROOT } = require('./core/paths');
-const httpreq = require('./core/httpreq');
-const i18n = require('../public/i18n-runtime.js');
-const { countTokens } = require('./copilot');
-const demo = require('./demo/dictation');
-const rt = require('../public/dictation-runtime.js');
+const db = require('../db');
+const { getConfig } = require('../config');
+const { DATA_DIR, ROOT } = require('../core/paths');
+const httpreq = require('../core/httpreq');
+const i18n = require('../../public/i18n-runtime.js');
+const { countTokens } = require('../copilot');
+const demo = require('../demo/dictation');
+const rt = require('../../public/dictation-runtime.js');
 const { t } = i18n;
 
 /* Le plafond du corps audio (10 Mo, soit un peu plus de cinq minutes de PCM 16 kHz mono) et
@@ -288,7 +288,7 @@ function commandeMoteur(cfg) {
   const brut = String((cfg || getConfig()).dictation_command || '').trim();
   if (!brut) return { ok: true, programme: 'whisper-server', args: [] };
   // eslint-disable-next-line global-require
-  const verify = require('./verify');
+  const verify = require('../verify');
   return verify.decouperCommande(brut);
 }
 

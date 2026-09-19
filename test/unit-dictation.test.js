@@ -25,7 +25,7 @@ const { test, describe, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 
 const RT = require('../public/dictation-runtime.js');
-const dictation = require('../src/dictation');
+const dictation = require('../src/integrations/dictation');
 const demo = require('../src/demo/dictation');
 const db = require('../src/db');
 const { updateConfig } = require('../src/config');

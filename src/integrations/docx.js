@@ -12,7 +12,7 @@
  * pire qu'un export un peu fruste.
  */
 
-const { zipper } = require('./core/zip');
+const { zipper } = require('../core/zip');
 
 /* ---------------------------------------------------------------- Markdown → OOXML */
 

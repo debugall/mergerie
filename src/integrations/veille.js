@@ -21,7 +21,7 @@
  *      éteint) sort de la liste d'attente au bout de six heures plutôt que d'y sonder sans fin.
  */
 
-const notify = require('./core/notify');
+const notify = require('../core/notify');
 const jenkins = require('./jenkins');
 const docker = require('./docker');
 

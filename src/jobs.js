@@ -12,7 +12,7 @@ const notes = require('./notes');
 const converge = require('./converge');
 const localcoder = require('./localcoder');
 const asker = require('./asker');
-const docker = require('./docker');
+const docker = require('./integrations/docker');
 const verifyrun = require('./verifyrun');
 const git = require('./git');            // `run` : spawn générique, journal ligne à ligne, Stop câblé
 const { DATA_DIR } = require('./core/paths');
@@ -832,7 +832,7 @@ async function runInstallJob(jobId, payload) {
   const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   try {
     // eslint-disable-next-line global-require
-    const dictation = require('./dictation');
+    const dictation = require('./integrations/dictation');
     // La dictée est SUSPENDUE le temps de l'installation : le binaire est en train d'être
     // remplacé sous les pieds du moteur qui tourne.
     dictation.arreterMoteur();

@@ -58,7 +58,7 @@ async function main() {
   // Après la lecture des arguments : `paths.js` lit MERGERIE_DATA_DIR au chargement, et on
   // ne veut pas ouvrir la base avant d'avoir pu échouer sur une option inconnue.
   // eslint-disable-next-line global-require
-  const dictation = require('../src/dictation');
+  const dictation = require('../src/integrations/dictation');
 
   let liste = fichiers;
   if (!liste.length) {
