@@ -121,12 +121,20 @@ describe('Partage — objets d’équipe et objets de poste', { skip: dispo ? fa
     await page.waitForFunction((id) => /par Claire/.test(
       (document.querySelector(`#reportList .card[data-id="${id}"] .note`) || { dataset: {} }).dataset.tip || '',
     ), mrId);
-    // Le survol le montre, dans la bulle.
-    await note.hover();
-    await page.waitForFunction(() => {
+    /* Le survol le montre, dans la bulle. La bulle ne s'ouvre qu'au `mouseover` : si la carte se
+       redessine entre le survol et la lecture (la liste se rafraîchit, la synchro tourne), le
+       nouvel élément sous un curseur IMMOBILE ne reçoit pas d'événement, et la bulle reste fermée
+       — c'est arrivé sur le runner à deux cœurs. On survole donc À NOUVEAU tant qu'elle n'est pas
+       là, en re-résolvant la carte à chaque fois. */
+    const bulle = () => page.waitForFunction(() => {
       const t = document.querySelector('#tip');
       return t && t.classList.contains('on') && /par Claire/.test(t.textContent);
-    });
+    }, null, { timeout: 3000 });
+    for (let essai = 1; ; essai += 1) {
+      await page.mouse.move(0, 0);
+      await note.hover();
+      try { await bulle(); break; } catch (e) { if (essai === 10) throw e; }
+    }
   });
 
   /* ------------------------------------------------------------ Règles de review ---- */
