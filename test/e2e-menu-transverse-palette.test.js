@@ -342,9 +342,12 @@ describe('Transverse — la palette de commandes', { skip: dispo ? false : MSG_N
     await page.locator('#paletteInput').press('Enter');
     await page.waitForSelector('#paletteModal', { state: 'hidden' });
     await actif('jira');
-    // La liste « Mes tickets » est arrivée (son compteur est écrit) : l'écran ne bougera plus.
+    /* La liste « Mes tickets » est arrivée (son compteur est écrit) ET le détail est peint :
+       les deux réponses arrivent dans un ordre qui dépend de la machine, et un détail encore vide
+       n'est pas « le rendu de la liste », c'est un rendu pas encore fait. Ce qu'on prouve : une
+       fois les deux là, c'est bien le ticket demandé qui reste à l'écran. */
     await page.waitForFunction(() => /\d/.test(document.querySelector('#jiraInfo').textContent)
-      && !document.querySelector('#jiraDetail .sk-wrap'));
+      && /Ticket surveillé de la palette/.test(document.querySelector('#jiraDetail').textContent));
     assert.match(await page.locator('#jiraDetail').textContent(), /Ticket surveillé de la palette/,
       'le détail montre le ticket demandé, pas le rendu de la liste arrivée après');
   });
